@@ -25,7 +25,6 @@ export class Game {
   constructor() {
     this.audio = null;  // set from main.js on first user gesture
     this.paused = false;
-    this.aimAssist = true;
 
     // Load background image — try canonical path first, fall back to enemies/ (OneDrive quirk)
     this._bgImage = new Image();
@@ -362,24 +361,10 @@ export class Game {
 
   _handleMouseShooting(input) {
     if (input.mouseDown && this.player.canShoot()) {
-      let aimPos = input.mousePos;
-      if (this.aimAssist) {
-        const nearest = this._findNearestEnemy(this.player.pos, 250);
-        if (nearest) aimPos = nearest.pos;
-      }
-      const proj = this.player.shoot(aimPos);
+      const proj = this.player.shoot(input.mousePos);
       this.projectiles.push(proj);
       this.audio?.playShoot();
     }
-  }
-
-  _findNearestEnemy(from, maxRadius) {
-    let best = null, bestDist = maxRadius;
-    for (const e of this.enemies) {
-      const d = distance(from, e.pos);
-      if (d < bestDist) { bestDist = d; best = e; }
-    }
-    return best;
   }
 
   _handleCorePickupAndSlotting(dt) {
@@ -693,181 +678,108 @@ export class Game {
     const hasMockup = mockup && mockup.complete && mockup.naturalWidth > 0;
 
     if (hasMockup) {
-      // Show the mockup image only — it already contains all button text/visuals
+      // Use the mockup image as background — draw it full-screen
       ctx.drawImage(mockup, 0, 0, WIDTH, HEIGHT);
+      // Slight dark tint so interactive highlights read clearly
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      ctx.fillRect(0, 0, WIDTH, HEIGHT);
     } else {
-      // Procedural fallback when image is missing
+      // Procedural fallback: city bg + dark overlay + title
       this._drawBackground(ctx);
       ctx.fillStyle = 'rgba(0,0,0,0.72)';
       ctx.fillRect(0, 0, WIDTH, HEIGHT);
-
-      ctx.font = 'bold 56px Consolas, monospace';
+      ctx.font      = 'bold 64px Consolas, monospace';
       ctx.fillStyle = CYAN;
       ctx.textAlign = 'center';
-      ctx.fillText('PHENIX SURVIVORS', WIDTH / 2, 140);
+      ctx.fillText('CYBER-GRID PROTOCOL', WIDTH / 2, 120);
+    }
 
-      ctx.font = 'bold 26px Consolas, monospace';
-      const startY = 280, gap = 72;
-      for (let i = 0; i < this.menuItems.length; i++) {
-        const y = startY + i * gap;
-        ctx.textAlign = 'center';
-        if (i === this.menuIndex) {
-          ctx.fillStyle = CYAN;
-          ctx.fillText('▶  ' + this.menuItems[i], WIDTH / 2, y);
-        } else {
-          ctx.fillStyle = GREY;
-          ctx.fillText(this.menuItems[i], WIDTH / 2, y);
-        }
+    // Interactive button overlay (always drawn on top)
+    ctx.font = 'bold 32px Consolas, monospace';
+    const startY = 280, spacing = 80, BW = 360;
+    for (let i = 0; i < this.menuItems.length; i++) {
+      const y  = startY + i * spacing;
+      const bx = WIDTH / 2 - BW / 2;
+      if (i === this.menuIndex) {
+        // Selected: neon highlight
+        ctx.fillStyle = 'rgba(255,220,0,0.15)';
+        ctx.fillRect(bx, y - 30, BW, 52);
+        ctx.strokeStyle = YELLOW; ctx.lineWidth = 2;
+        ctx.strokeRect(bx, y - 30, BW, 52);
+        ctx.fillStyle = YELLOW;
+      } else {
+        ctx.fillStyle = WHITE;
       }
+      ctx.textAlign = 'center';
+      ctx.fillText(this.menuItems[i], WIDTH / 2, y);
     }
 
     ctx.font      = '14px Consolas, monospace';
-    ctx.fillStyle = 'rgba(180,180,180,0.65)';
+    ctx.fillStyle = 'rgba(200,200,200,0.7)';
     ctx.textAlign = 'center';
-    ctx.fillText('↑↓ W/S  Navigate     ENTER / Click  Select', WIDTH / 2, HEIGHT - 22);
+    ctx.fillText('↑↓ W/S  Navigate     ENTER / Click  Select', WIDTH / 2, HEIGHT - 30);
     ctx.textAlign = 'left';
   }
 
   _drawCharacterSelect(ctx) {
     this._drawBackground(ctx);
-    ctx.fillStyle = 'rgba(0,0,0,0.80)';
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
-    // Title
-    ctx.font      = 'bold 38px Consolas, monospace';
+    ctx.font = 'bold 48px Consolas, monospace';
     ctx.fillStyle = CYAN;
     ctx.textAlign = 'center';
-    ctx.fillText('SELECT YOUR CHARACTER', WIDTH / 2, 58);
+    ctx.fillText('SELECT YOUR CHARACTER', WIDTH / 2, 100);
 
-    // Card layout: 3 cards of 200px wide, 24px gaps, centered
-    const CW   = 200;  // card width
-    const CH   = 540;  // card height — tall enough for all content
-    const GAP  = 36;   // gap between cards
-    const TOTAL = 3 * CW + 2 * GAP;            // 672
-    const X0   = Math.round((WIDTH - TOTAL) / 2); // first card left edge ≈ 304
-    const Y0   = 80;                             // top of cards
+    ctx.font = 'bold 32px Consolas, monospace';
+    const cardWidth = 220;
+    const cardHeight = 280;
+    const spacing = 280;
+    const startX = WIDTH / 2 - cardWidth - spacing / 2;
 
-    const profiles = [
-      {
-        name:    'Cyber Skeleton Warrior',
-        role:    'TANK / SURVIVAL',
-        imgId:   'skeleton_warrior',
-        fallback: '#8B0050',
-        stats:   [['HP',5],['SPEED',2],['DAMAGE',3],['PICKUP',3],['CARRY',3]],
-        special: ['Larger repel aura','High survivability'],
-      },
-      {
-        name:    'Neon Taekwondo Girl',
-        role:    'FAST COLLECTOR',
-        imgId:   'taekwondo_girl',
-        fallback: '#00D9FF',
-        stats:   [['HP',2],['SPEED',5],['DAMAGE',2],['PICKUP',5],['CARRY',3]],
-        special: ['Fast movement','Best for collecting cores'],
-      },
-      {
-        name:    'Cyber Arm Hero',
-        role:    'BALANCED FIGHTER',
-        imgId:   'cyber_arm_hero',
-        fallback: '#FF6600',
-        stats:   [['HP',3],['SPEED',3],['DAMAGE',5],['PICKUP',3],['CARRY',4]],
-        special: ['Stronger pulse shots','+1 carry capacity'],
-      },
-    ];
+    for (let i = 0; i < this.characters.length; i++) {
+      const char = this.characters[i];
+      const x = startX + i * spacing;
+      const y = HEIGHT / 2 - cardHeight / 2;
 
-    for (let i = 0; i < 3; i++) {
-      const p          = profiles[i];
-      const cx         = X0 + i * (CW + GAP);
-      const isSelected = i === this.characterIndex;
-
-      // Card background
-      ctx.fillStyle = isSelected ? '#12183a' : '#080c1e';
-      ctx.fillRect(cx, Y0, CW, CH);
-
-      // Card border
-      ctx.strokeStyle = isSelected ? CYAN : '#2a4060';
-      ctx.lineWidth   = isSelected ? 3 : 1;
-      ctx.strokeRect(cx, Y0, CW, CH);
-
-      // Portrait
-      const cimg = this._charImages[p.imgId];
-      const imgH = 160;
-      if (cimg && cimg.complete && cimg.naturalWidth > 0) {
-        const imgW = Math.round(cimg.naturalWidth * (imgH / cimg.naturalHeight));
-        ctx.drawImage(cimg, cx + (CW - imgW) / 2, Y0 + 8, imgW, imgH);
+      // Draw card border
+      if (i === this.characterIndex) {
+        ctx.strokeStyle = YELLOW;
+        ctx.lineWidth = 4;
       } else {
-        ctx.fillStyle = p.fallback;
+        ctx.strokeStyle = WHITE;
+        ctx.lineWidth = 2;
+      }
+      ctx.strokeRect(x, y, cardWidth, cardHeight);
+
+      // Character portrait — use preloaded image or fallback circle
+      const charData = this.characters[i];
+      const cimg     = this._charImages[charData.id];
+      if (cimg && cimg.complete && cimg.naturalWidth > 0) {
+        const imgH = 200;
+        const imgW = Math.round(cimg.naturalWidth * (imgH / cimg.naturalHeight));
+        ctx.drawImage(cimg, x + (cardWidth - imgW) / 2, y + 8, imgW, imgH);
+      } else {
+        ctx.fillStyle = charData.fallbackColor;
         ctx.beginPath();
-        ctx.arc(cx + CW / 2, Y0 + 80, 60, 0, Math.PI * 2);
+        ctx.arc(x + cardWidth / 2, y + 90, 60, 0, Math.PI * 2);
         ctx.fill();
+        ctx.strokeStyle = charData.fallbackAlt;
+        ctx.lineWidth = 3;
+        ctx.stroke();
       }
 
-      // Role
-      ctx.font      = 'bold 10px Consolas, monospace';
-      ctx.fillStyle = isSelected ? CYAN : GREY;
-      ctx.textAlign = 'center';
-      ctx.fillText(p.role, cx + CW / 2, Y0 + 178);
-
-      // Name
-      ctx.font      = 'bold 13px Consolas, monospace';
+      // Draw character name
+      ctx.font = 'bold 16px Consolas, monospace';
       ctx.fillStyle = WHITE;
       ctx.textAlign = 'center';
-      ctx.fillText(p.name, cx + CW / 2, Y0 + 196);
-
-      // Divider
-      ctx.strokeStyle = isSelected ? CYAN : '#2a4060';
-      ctx.lineWidth   = 1;
-      ctx.beginPath();
-      ctx.moveTo(cx + 8, Y0 + 204);
-      ctx.lineTo(cx + CW - 8, Y0 + 204);
-      ctx.stroke();
-
-      // Stat bars
-      const bx = cx + 10;
-      const lw = 52;
-      const bw = CW - 20 - lw;
-      let sy = Y0 + 216;
-      for (const [label, val] of p.stats) {
-        ctx.font      = '10px Consolas, monospace';
-        ctx.fillStyle = GREY;
-        ctx.textAlign = 'left';
-        ctx.fillText(label, bx, sy + 7);
-        const fc = val >= 4 ? GREEN : val >= 3 ? CYAN : ORANGE;
-        ctx.fillStyle = '#1a2a3a';
-        ctx.fillRect(bx + lw, sy, bw, 7);
-        ctx.fillStyle = fc;
-        ctx.fillRect(bx + lw, sy, bw * val / 5, 7);
-        sy += 18;
-      }
-
-      // Special
-      sy += 6;
-      ctx.font      = 'bold 10px Consolas, monospace';
-      ctx.fillStyle = isSelected ? CYAN : GREY;
-      ctx.textAlign = 'left';
-      ctx.fillText('SPECIAL:', bx, sy + 7);
-      sy += 16;
-      ctx.font      = '10px Consolas, monospace';
-      ctx.fillStyle = WHITE;
-      for (const line of p.special) {
-        ctx.fillText('• ' + line, bx, sy + 7);
-        sy += 15;
-      }
-
-      // Selected indicator at bottom of card
-      if (isSelected) {
-        ctx.font      = 'bold 12px Consolas, monospace';
-        ctx.fillStyle = CYAN;
-        ctx.textAlign = 'center';
-        ctx.fillText('[ SELECTED ]', cx + CW / 2, Y0 + CH - 12);
-      }
+      ctx.fillText(char.name, x + cardWidth / 2, y + cardHeight - 30);
     }
 
-    // Hint text
-    ctx.font      = '13px Consolas, monospace';
-    ctx.fillStyle = 'rgba(180,180,180,0.7)';
+    ctx.font = '14px Consolas, monospace';
+    ctx.fillStyle = WHITE;
     ctx.textAlign = 'center';
-    ctx.fillText('← → / A D  Select     ENTER / Click twice  Confirm     ESC  Back', WIDTH / 2, HEIGHT - 10);
-    ctx.textAlign = 'left';
+    ctx.fillText('← → Select • ENTER Confirm • ESC Back', WIDTH / 2, HEIGHT - 30);
   }
 
   _drawExitScreen(ctx) {
