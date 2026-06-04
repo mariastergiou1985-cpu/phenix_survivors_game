@@ -45,9 +45,9 @@ export class Game {
       this._charImages[id] = img;
     });
 
-    // Preload start-menu mockup (used as background if present)
-    this._menuMockup = new Image();
-    this._menuMockup.src = 'assets/ui/start_menu_mockup.png';
+    // Preload start-menu background image
+    this._menuBg = new Image();
+    this._menuBg.src = 'assets/ui/start_menu_background.png';
 
     // Preload phoenix revive effect image
     this._phoenixImage = new Image();
@@ -949,60 +949,47 @@ export class Game {
   }
 
   _drawStartMenu(ctx) {
-    const mockup    = this._menuMockup;
-    const hasMockup = mockup && mockup.complete && mockup.naturalWidth > 0;
-
-    if (hasMockup) {
-      // ── Mockup path ──────────────────────────────────────────────────────────
-      // The image already contains START GAME / CHARACTER SELECT / UPGRADES / EXIT.
-      // Draw ONLY the image. No text. No rectangles. No labels of any kind.
-      ctx.drawImage(mockup, 0, 0, WIDTH, HEIGHT);
-
-      // Tiny cyan arrow to show keyboard selection position (no text drawn)
-      const startY = 280, spacing = 80, BW = 360;
-      const bx = WIDTH / 2 - BW / 2;
-      const ay = startY + this.menuIndex * spacing - 10;
-      ctx.fillStyle = 'rgba(0,230,255,0.7)';
-      ctx.beginPath();
-      ctx.moveTo(bx - 6,  ay);
-      ctx.lineTo(bx - 20, ay - 8);
-      ctx.lineTo(bx - 20, ay + 8);
-      ctx.closePath();
-      ctx.fill();
-
+    // Background — use the new clean background image, fall back to city bg
+    const bg = this._menuBg;
+    if (bg && bg.complete && bg.naturalWidth > 0) {
+      ctx.drawImage(bg, 0, 0, WIDTH, HEIGHT);
     } else {
-      // ── Fallback path (image missing) ────────────────────────────────────────
-      // Only reached when the mockup file could not be loaded.
       this._drawBackground(ctx);
       ctx.fillStyle = 'rgba(0,0,0,0.72)';
       ctx.fillRect(0, 0, WIDTH, HEIGHT);
-
-      ctx.font      = 'bold 56px Consolas, monospace';
-      ctx.fillStyle = CYAN;
-      ctx.textAlign = 'center';
-      ctx.fillText('PHENIX SURVIVORS', WIDTH / 2, 130);
-
-      const startY = 280, spacing = 80, BW = 360;
-      for (let i = 0; i < this.menuItems.length; i++) {
-        const y  = startY + i * spacing;
-        const bx = WIDTH / 2 - BW / 2;
-        if (i === this.menuIndex) {
-          ctx.fillStyle = 'rgba(0,230,255,0.12)';
-          ctx.fillRect(bx, y - 30, BW, 52);
-          ctx.strokeStyle = CYAN; ctx.lineWidth = 2;
-          ctx.strokeRect(bx, y - 30, BW, 52);
-          ctx.font      = 'bold 30px Consolas, monospace';
-          ctx.fillStyle = CYAN;
-        } else {
-          ctx.font      = 'bold 30px Consolas, monospace';
-          ctx.fillStyle = WHITE;
-        }
-        ctx.textAlign = 'center';
-        ctx.fillText(this.menuItems[i], WIDTH / 2, y);
-      }
     }
 
-    // Navigation hint shown in both paths
+    // Dark tint so button text reads clearly over the image
+    ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+    // Title
+    ctx.font      = 'bold 56px Consolas, monospace';
+    ctx.fillStyle = CYAN;
+    ctx.textAlign = 'center';
+    ctx.fillText('PHENIX SURVIVORS', WIDTH / 2, 130);
+
+    // Button labels — always drawn, no duplication possible since image has none
+    const startY = 280, spacing = 80, BW = 360;
+    for (let i = 0; i < this.menuItems.length; i++) {
+      const y  = startY + i * spacing;
+      const bx = WIDTH / 2 - BW / 2;
+      if (i === this.menuIndex) {
+        ctx.fillStyle   = 'rgba(0,230,255,0.15)';
+        ctx.fillRect(bx, y - 30, BW, 52);
+        ctx.strokeStyle = CYAN; ctx.lineWidth = 2;
+        ctx.strokeRect(bx, y - 30, BW, 52);
+        ctx.font      = 'bold 30px Consolas, monospace';
+        ctx.fillStyle = CYAN;
+      } else {
+        ctx.font      = 'bold 30px Consolas, monospace';
+        ctx.fillStyle = WHITE;
+      }
+      ctx.textAlign = 'center';
+      ctx.fillText(this.menuItems[i], WIDTH / 2, y);
+    }
+
+    // Navigation hint
     ctx.font      = '14px Consolas, monospace';
     ctx.fillStyle = 'rgba(200,200,200,0.6)';
     ctx.textAlign = 'center';
