@@ -62,17 +62,17 @@ export class Enemy {
   }
 
   _statsForType(type, minute) {
-    const d = 1 + minute * 0.035;
+    const d = 1 + minute * 0.03;
     switch (type) {
-      case 'Glitch Drone':          return [95 * d,  2,   BLUE,   2.00];
-      case 'Rogue Punk':            return [125 * d, 3,   MAGENTA, 1.65];
-      case 'Stealth Infiltrator':   return [155 * d, 2,   PURPLE,  1.20];
-      case 'Scrap Scavenger':       return [105 * d, 5,   ORANGE,  1.55];
-      case 'Cyber-Net Junkie':      return [135 * d, 4,   GREEN,   1.45];
-      case 'Overclocked Berserker': return [210 * d, 3,   RED,     1.00];
-      case 'Security Defector Mech':return [90 * d,  30,  YELLOW,  0.75];
-      case 'Rogue AI Overlord':     return [75 * d,  120, RED,     0.55];
-      default:                      return [100,      2,   WHITE,   1.80];
+      case 'Glitch Drone':          return [Math.min(65 * d,  240), 2,   BLUE,    3.0];
+      case 'Rogue Punk':            return [Math.min(88 * d,  280), 3,   MAGENTA, 2.5];
+      case 'Stealth Infiltrator':   return [Math.min(108 * d, 310), 2,   PURPLE,  2.0];
+      case 'Scrap Scavenger':       return [Math.min(75 * d,  260), 5,   ORANGE,  2.2];
+      case 'Cyber-Net Junkie':      return [Math.min(100 * d, 290), 4,   GREEN,   2.0];
+      case 'Overclocked Berserker': return [Math.min(160 * d, 350), 3,   RED,     1.5];
+      case 'Security Defector Mech':return [Math.min(70 * d,  200), 30,  YELLOW,  1.2];
+      case 'Rogue AI Overlord':     return [Math.min(60 * d,  160), 120, RED,     0.9];
+      default:                      return [75,                      2,   WHITE,   2.5];
     }
   }
 

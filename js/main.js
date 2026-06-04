@@ -43,6 +43,9 @@ window.addEventListener('keydown', e => {
   if (key === 'q') game.activateSonicPulse(mousePos);
   if (key === 'e') game.activateEMPCloud();
   if (key === 'm') game.audio?.toggleMute();
+  if (key === 't' && game.gameState === 'playing' && !game.gameOver && !game.victory) {
+    game.aimAssist = !game.aimAssist;
+  }
 
   // Restart after game over / victory
   if (key === 'r' && (game.gameOver || game.victory)) {
@@ -121,7 +124,7 @@ canvas.addEventListener('mousedown', e => {
 
   // ── Character Select clicks ───────────────────────────────────
   if (game.gameState === 'character_select') {
-    const cardW = 220, cardH = 280, spacing = 280;
+    const cardW = 220, cardH = 400, spacing = 280;
     const startX = canvas.width / 2 - cardW - spacing / 2;
     for (let i = 0; i < game.characters.length; i++) {
       const cx = startX + i * spacing;

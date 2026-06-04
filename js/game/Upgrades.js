@@ -22,31 +22,35 @@ export class UpgradeDefinition {
 
 export const ALL_UPGRADES = [
   new UpgradeDefinition(
-    'Cyber-Legs', 'Cyber-Legs', '+3% move speed per level',
-    CYAN, 8, p => { p.speedBonus += 0.03; }
+    'Cyber-Legs', 'Speed Boost', '+10% movement speed per level',
+    CYAN, 8, p => { p.speedBonus += 0.10; }
   ),
   new UpgradeDefinition(
-    'Memory Bank', 'Memory Bank', '+1 core carry slot',
+    'Memory Bank', 'Extra Storage', '+1 core carry capacity',
     YELLOW, 8, p => { p.maxCarry++; }
   ),
   new UpgradeDefinition(
-    'Overclock Boost', 'Overclock Boost', '+10 max stamina',
+    'Tractor Beam', 'Core Magnet', '+20% pickup radius per level',
+    BLUE, 6, p => { p.pickupRadius = Math.round(p.pickupRadius * 1.20); }
+  ),
+  new UpgradeDefinition(
+    'Pulse Damage', 'Pulse Damage', '+1 projectile damage per level',
+    MAGENTA, 5, () => {}
+  ),
+  new UpgradeDefinition(
+    'Firewall Protection', 'Firewall', '-5% Network Overload gain per level',
+    PURPLE, 5, () => {}
+  ),
+  new UpgradeDefinition(
+    'Dash Cooldown', 'Dash Cooldown', 'Reduces dash cooldown by 0.1s per level',
+    CYAN, 4, () => {}
+  ),
+  new UpgradeDefinition(
+    'Overclock Boost', 'Overclock Boost', '+10 max stamina per level',
     ORANGE, 6, p => { p.maxStamina += 10; p.stamina = p.maxStamina; }
   ),
   new UpgradeDefinition(
-    'Tractor Beam', 'Tractor Beam', '+8 pickup radius',
-    BLUE, 6, p => { p.pickupRadius += 8; }
-  ),
-  new UpgradeDefinition(
-    'Firewall Protection', 'Firewall', '-2% overload rate',
-    PURPLE, 5, () => {}  // overload dampening is computed from upgrades dict directly
-  ),
-  new UpgradeDefinition(
-    'Pulse Damage', 'Pulse Damage', '+1 projectile damage',
-    MAGENTA, 5, () => {}  // damage computed from upgrades dict in Player.shoot()
-  ),
-  new UpgradeDefinition(
-    'Sonic Pulse', 'Sonic Pulse', 'Q: cone knockback, wider each level',
+    'Sonic Pulse', 'Sonic Pulse', 'Q: cone knockback ability, wider each level',
     WHITE, 5, () => {}
   ),
   new UpgradeDefinition(
@@ -54,7 +58,7 @@ export const ALL_UPGRADES = [
     GREEN, 4, () => {}
   ),
   new UpgradeDefinition(
-    'EMP Cloud', 'EMP Cloud', 'E: stuns all enemies in radius',
+    'EMP Cloud', 'EMP Cloud', 'E: stuns all nearby enemies',
     GREY, 4, () => {}
   ),
   new UpgradeDefinition(

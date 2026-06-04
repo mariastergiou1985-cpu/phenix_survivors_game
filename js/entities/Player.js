@@ -32,8 +32,10 @@ export class Player {
     this.dashCooldown = 0.0;
     this.dashDuration = 0.16;
     this.dashSpeed    = 560;
+    this.facingLeft   = false;
 
     this.shootCooldown = 0.0;
+    this.baseDamage    = 1;
 
     this.level        = 1;
     this.xp           = 0;
@@ -48,6 +50,7 @@ export class Player {
       'Cyber-Legs': 0, 'Memory Bank': 0, 'Overclock Boost': 0,
       'Tractor Beam': 0, 'Firewall Protection': 0, 'Pulse Damage': 0,
       'Sonic Pulse': 0, 'Homing Disc': 0, 'EMP Cloud': 0, 'Quantum Overhaul': 0,
+      'Dash Cooldown': 0,
     };
 
     // Ability cooldown timers
@@ -55,6 +58,8 @@ export class Player {
     this.empCloudCooldown    = 0.0;
     this.homingDiscTimer     = 0.0;
     this.quantumOverhaulTimer = 0.0;
+
+    this._applyCharacterStats();
   }
 
   _loadCharacterSprite() {
@@ -73,8 +78,27 @@ export class Player {
     }
   }
 
+  _applyCharacterStats() {
+    switch (this.selectedCharacter) {
+      case 'skeleton_warrior':
+        this.maxHp = 140; this.hp = 140;
+        this.baseSpeed = 185;
+        this.repelRadius = 145;
+        break;
+      case 'taekwondo_girl':
+        this.maxHp = 75; this.hp = 75;
+        this.baseSpeed = 280;
+        this.pickupRadius = 95;
+        break;
+      case 'cyber_arm_hero':
+        this.maxCarry = 6;
+        this.baseDamage = 2;
+        break;
+    }
+  }
+
   get speed()             { return this.baseSpeed * (1 + this.speedBonus); }
-  get overloadDampening() { return this.upgrades['Firewall Protection'] * 0.02; }
+  get overloadDampening() { return this.upgrades['Firewall Protection'] * 0.05; }
 
   gainXp(amount, floatingTexts) {
     this.xp += amount;
@@ -107,10 +131,13 @@ export class Player {
     this.sonicPulseCooldown = Math.max(0, this.sonicPulseCooldown - dt);
     this.empCloudCooldown   = Math.max(0, this.empCloudCooldown - dt);
 
+    if (dir.x < 0) this.facingLeft = true;
+    else if (dir.x > 0) this.facingLeft = false;
+
     const wantsDash = keys.has(' ') || keys.has('shift');
     if (wantsDash && this.dashCooldown <= 0 && this.stamina >= 25 && dir.lengthSq() > 0) {
       this.dashTimer    = this.dashDuration;
-      this.dashCooldown = 0.75;
+      this.dashCooldown = Math.max(0.3, 0.75 - this.upgrades['Dash Cooldown'] * 0.1);
       this.stamina     -= 25;
     }
 
@@ -132,7 +159,7 @@ export class Player {
   shoot(mousePos) {
     this.shootCooldown = 0.18;
     const dir    = safeNormalize(new Vec2(mousePos.x - this.pos.x, mousePos.y - this.pos.y));
-    const damage = 1 + this.upgrades['Pulse Damage'];
+    const damage = this.baseDamage + this.upgrades['Pulse Damage'];
     return new Projectile(this.pos.clone(), dir, damage);
   }
 
@@ -152,27 +179,23 @@ export class Player {
       ctx.beginPath(); ctx.arc(this.pos.x, this.pos.y, PLAYER_RADIUS + 8, 0, Math.PI * 2); ctx.stroke();
     }
 
-    // Draw character sprite (64 px tall) or fallback colored circle
+    // Draw character sprite (64 px tall, flipped when moving left) or fallback colored circle
     const colors = this._getCharacterFallbackColors();
     const spr    = this.characterSprite;
     if (spr && spr.complete && spr.naturalWidth > 0) {
       const sprH = 64;
       const sprW = Math.round(spr.naturalWidth * (sprH / spr.naturalHeight));
-      ctx.drawImage(spr, this.pos.x - sprW / 2, this.pos.y - sprH / 2, sprW, sprH);
+      ctx.save();
+      ctx.translate(this.pos.x, this.pos.y);
+      if (this.facingLeft) ctx.scale(-1, 1);
+      ctx.drawImage(spr, -sprW / 2, -sprH / 2, sprW, sprH);
+      ctx.restore();
     } else {
       ctx.fillStyle   = colors.primary;
       ctx.beginPath(); ctx.arc(this.pos.x, this.pos.y, PLAYER_RADIUS, 0, Math.PI * 2); ctx.fill();
       ctx.strokeStyle = colors.secondary; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(this.pos.x, this.pos.y, PLAYER_RADIUS, 0, Math.PI * 2); ctx.stroke();
     }
-
-    // Aim line toward mouse
-    const aim = safeNormalize(new Vec2(mousePos.x - this.pos.x, mousePos.y - this.pos.y));
-    ctx.strokeStyle = WHITE; ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(this.pos.x, this.pos.y);
-    ctx.lineTo(this.pos.x + aim.x * 32, this.pos.y + aim.y * 32);
-    ctx.stroke();
 
     // Carried cores orbiting around player
     for (let i = 0; i < this.carry; i++) {

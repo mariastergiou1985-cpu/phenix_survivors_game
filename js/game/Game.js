@@ -25,6 +25,7 @@ export class Game {
   constructor() {
     this.audio = null;  // set from main.js on first user gesture
     this.paused = false;
+    this.aimAssist = true;
 
     // Load background image — try canonical path first, fall back to enemies/ (OneDrive quirk)
     this._bgImage = new Image();
@@ -361,10 +362,24 @@ export class Game {
 
   _handleMouseShooting(input) {
     if (input.mouseDown && this.player.canShoot()) {
-      const proj = this.player.shoot(input.mousePos);
+      let aimPos = input.mousePos;
+      if (this.aimAssist) {
+        const nearest = this._findNearestEnemy(this.player.pos, 250);
+        if (nearest) aimPos = nearest.pos;
+      }
+      const proj = this.player.shoot(aimPos);
       this.projectiles.push(proj);
       this.audio?.playShoot();
     }
+  }
+
+  _findNearestEnemy(from, maxRadius) {
+    let best = null, bestDist = maxRadius;
+    for (const e of this.enemies) {
+      const d = distance(from, e.pos);
+      if (d < bestDist) { bestDist = d; best = e; }
+    }
+    return best;
   }
 
   _handleCorePickupAndSlotting(dt) {
@@ -694,24 +709,28 @@ export class Game {
       ctx.fillText('CYBER-GRID PROTOCOL', WIDTH / 2, 120);
     }
 
-    // Interactive button overlay (always drawn on top)
+    // Interactive button overlay — only draw text labels when no mockup image is present
     ctx.font = 'bold 32px Consolas, monospace';
     const startY = 280, spacing = 80, BW = 360;
     for (let i = 0; i < this.menuItems.length; i++) {
       const y  = startY + i * spacing;
       const bx = WIDTH / 2 - BW / 2;
       if (i === this.menuIndex) {
-        // Selected: neon highlight
+        // Selected: neon highlight box (text skipped when mockup already has labels)
         ctx.fillStyle = 'rgba(255,220,0,0.15)';
         ctx.fillRect(bx, y - 30, BW, 52);
         ctx.strokeStyle = YELLOW; ctx.lineWidth = 2;
         ctx.strokeRect(bx, y - 30, BW, 52);
-        ctx.fillStyle = YELLOW;
-      } else {
+        if (!hasMockup) {
+          ctx.fillStyle = YELLOW;
+          ctx.textAlign = 'center';
+          ctx.fillText(this.menuItems[i], WIDTH / 2, y);
+        }
+      } else if (!hasMockup) {
         ctx.fillStyle = WHITE;
+        ctx.textAlign = 'center';
+        ctx.fillText(this.menuItems[i], WIDTH / 2, y);
       }
-      ctx.textAlign = 'center';
-      ctx.fillText(this.menuItems[i], WIDTH / 2, y);
     }
 
     ctx.font      = '14px Consolas, monospace';
@@ -723,63 +742,138 @@ export class Game {
 
   _drawCharacterSelect(ctx) {
     this._drawBackground(ctx);
-    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.fillStyle = 'rgba(0,0,0,0.78)';
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
-    ctx.font = 'bold 48px Consolas, monospace';
+    ctx.font = 'bold 42px Consolas, monospace';
     ctx.fillStyle = CYAN;
     ctx.textAlign = 'center';
-    ctx.fillText('SELECT YOUR CHARACTER', WIDTH / 2, 100);
+    ctx.fillText('SELECT YOUR CHARACTER', WIDTH / 2, 72);
 
-    ctx.font = 'bold 32px Consolas, monospace';
-    const cardWidth = 220;
-    const cardHeight = 280;
-    const spacing = 280;
-    const startX = WIDTH / 2 - cardWidth - spacing / 2;
+    const cardWidth  = 220;
+    const cardHeight = 400;
+    const spacing    = 280;
+    const startX     = WIDTH / 2 - cardWidth - spacing / 2;
+    const cardY      = HEIGHT / 2 - cardHeight / 2;
+
+    const profiles = [
+      {
+        role: 'TANK / SURVIVAL',
+        stats: [
+          { label: 'HP',     val: 5 },
+          { label: 'SPEED',  val: 2 },
+          { label: 'DAMAGE', val: 2 },
+          { label: 'PICKUP', val: 3 },
+          { label: 'CARRY',  val: 3 },
+        ],
+        special: ['Larger repel aura', 'High survivability'],
+      },
+      {
+        role: 'FAST COLLECTOR',
+        stats: [
+          { label: 'HP',     val: 2 },
+          { label: 'SPEED',  val: 5 },
+          { label: 'DAMAGE', val: 2 },
+          { label: 'PICKUP', val: 5 },
+          { label: 'CARRY',  val: 3 },
+        ],
+        special: ['Fast movement', 'Extended pickup range'],
+      },
+      {
+        role: 'BALANCED FIGHTER',
+        stats: [
+          { label: 'HP',     val: 3 },
+          { label: 'SPEED',  val: 3 },
+          { label: 'DAMAGE', val: 5 },
+          { label: 'PICKUP', val: 3 },
+          { label: 'CARRY',  val: 4 },
+        ],
+        special: ['+1 carry slot', 'High pulse damage'],
+      },
+    ];
 
     for (let i = 0; i < this.characters.length; i++) {
-      const char = this.characters[i];
-      const x = startX + i * spacing;
-      const y = HEIGHT / 2 - cardHeight / 2;
+      const char      = this.characters[i];
+      const profile   = profiles[i];
+      const x         = startX + i * spacing;
+      const y         = cardY;
+      const isSelected = i === this.characterIndex;
 
-      // Draw card border
-      if (i === this.characterIndex) {
-        ctx.strokeStyle = YELLOW;
-        ctx.lineWidth = 4;
-      } else {
-        ctx.strokeStyle = WHITE;
-        ctx.lineWidth = 2;
-      }
+      // Card background
+      ctx.fillStyle = isSelected ? 'rgba(30,30,60,0.95)' : 'rgba(8,12,28,0.92)';
+      ctx.fillRect(x, y, cardWidth, cardHeight);
+
+      // Card border — bright neon when selected
+      ctx.strokeStyle = isSelected ? YELLOW : 'rgba(80,120,160,0.5)';
+      ctx.lineWidth   = isSelected ? 3 : 1;
       ctx.strokeRect(x, y, cardWidth, cardHeight);
 
-      // Character portrait — use preloaded image or fallback circle
-      const charData = this.characters[i];
-      const cimg     = this._charImages[charData.id];
+      // Portrait
+      const cimg = this._charImages[char.id];
+      const imgH = 148;
       if (cimg && cimg.complete && cimg.naturalWidth > 0) {
-        const imgH = 200;
         const imgW = Math.round(cimg.naturalWidth * (imgH / cimg.naturalHeight));
-        ctx.drawImage(cimg, x + (cardWidth - imgW) / 2, y + 8, imgW, imgH);
+        ctx.drawImage(cimg, x + (cardWidth - imgW) / 2, y + 6, imgW, imgH);
       } else {
-        ctx.fillStyle = charData.fallbackColor;
+        ctx.fillStyle = char.fallbackColor;
         ctx.beginPath();
-        ctx.arc(x + cardWidth / 2, y + 90, 60, 0, Math.PI * 2);
+        ctx.arc(x + cardWidth / 2, y + 74, 54, 0, Math.PI * 2);
         ctx.fill();
-        ctx.strokeStyle = charData.fallbackAlt;
-        ctx.lineWidth = 3;
-        ctx.stroke();
       }
 
-      // Draw character name
-      ctx.font = 'bold 16px Consolas, monospace';
+      // Role badge
+      ctx.font      = 'bold 10px Consolas, monospace';
+      ctx.fillStyle = isSelected ? YELLOW : CYAN;
+      ctx.textAlign = 'center';
+      ctx.fillText(profile.role, x + cardWidth / 2, y + 164);
+
+      // Character name
+      ctx.font      = 'bold 12px Consolas, monospace';
       ctx.fillStyle = WHITE;
       ctx.textAlign = 'center';
-      ctx.fillText(char.name, x + cardWidth / 2, y + cardHeight - 30);
+      ctx.fillText(char.name, x + cardWidth / 2, y + 180);
+
+      // Stat bars
+      const barX  = x + 10;
+      const labelW = 48;
+      const barW   = cardWidth - 20 - labelW;
+      let sy = y + 198;
+
+      for (const stat of profile.stats) {
+        ctx.font      = '10px Consolas, monospace';
+        ctx.fillStyle = GREY;
+        ctx.textAlign = 'left';
+        ctx.fillText(stat.label, barX, sy + 7);
+
+        const fillColor = stat.val >= 4 ? GREEN : stat.val >= 3 ? CYAN : ORANGE;
+        ctx.fillStyle = 'rgba(30,50,70,0.8)';
+        ctx.fillRect(barX + labelW, sy, barW, 7);
+        ctx.fillStyle = fillColor;
+        ctx.fillRect(barX + labelW, sy, barW * (stat.val / 5), 7);
+        sy += 17;
+      }
+
+      // Special abilities
+      sy += 4;
+      ctx.font      = 'bold 10px Consolas, monospace';
+      ctx.fillStyle = isSelected ? YELLOW : GREY;
+      ctx.textAlign = 'left';
+      ctx.fillText('SPECIAL:', barX, sy + 7);
+      sy += 16;
+
+      ctx.font      = '10px Consolas, monospace';
+      ctx.fillStyle = WHITE;
+      for (const line of profile.special) {
+        ctx.fillText('• ' + line, barX, sy + 7);
+        sy += 15;
+      }
     }
 
-    ctx.font = '14px Consolas, monospace';
+    ctx.font      = '14px Consolas, monospace';
     ctx.fillStyle = WHITE;
     ctx.textAlign = 'center';
-    ctx.fillText('← → Select • ENTER Confirm • ESC Back', WIDTH / 2, HEIGHT - 30);
+    ctx.fillText('← → / A D  Select     ENTER / Click  Confirm     ESC  Back', WIDTH / 2, HEIGHT - 22);
+    ctx.textAlign = 'left';
   }
 
   _drawExitScreen(ctx) {
