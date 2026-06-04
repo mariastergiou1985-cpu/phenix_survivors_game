@@ -760,20 +760,28 @@ export class Game {
   }
 
   _updateOverload(dt) {
-    this.overloadTickTimer += dt;
-    if (this.overloadTickTimer < CORE_OVERLOAD_TICK_TIME) return;
-    this.overloadTickTimer = 0;
+    // Chaos = dropped cores on ground + cores carried by enemies + empty matrix slots
+    const groundCount  = this.groundCores.length;
+    const carriedCount = this.enemies.filter(e => e.carryingCore !== null).length;
+    const emptySlots   = this.matrices.reduce((sum, m) => sum + (m.capacity - m.stored), 0);
+    const chaosCount   = groundCount + carriedCount + emptySlots;
 
-    const count = this.groundCores.length;
-    if (count > 0) {
-      let gain = count * BASE_OVERLOAD_PER_CORE;
-      gain *= this.overloadRateMultiplier();
-      gain *= (1 - this.player.overloadDampening);
-      this.overload += gain;
-      this.overload  = clamp(this.overload, 0, MAX_OVERLOAD);
-      this.floatingTexts.push(
-        new FloatingText(`OVERLOAD +${gain.toFixed(1)}%`, new Vec2(WIDTH - 240, 72), RED, 0.75)
-      );
+    if (chaosCount === 0) {
+      // Grid fully secure — drain overload at 2% per second
+      this.overload = Math.max(0, this.overload - 2 * dt);
+    } else {
+      // Grid under threat — tick-based increase scaled to chaos
+      this.overloadTickTimer += dt;
+      if (this.overloadTickTimer >= CORE_OVERLOAD_TICK_TIME) {
+        this.overloadTickTimer = 0;
+        let gain = chaosCount * BASE_OVERLOAD_PER_CORE;
+        gain *= this.overloadRateMultiplier();
+        gain *= (1 - this.player.overloadDampening);
+        this.overload = clamp(this.overload + gain, 0, MAX_OVERLOAD);
+        this.floatingTexts.push(
+          new FloatingText(`OVERLOAD +${gain.toFixed(1)}%`, new Vec2(WIDTH - 240, 72), RED, 0.75)
+        );
+      }
     }
 
     if (this.audio) this.audio.updateAlarm(this.overload);
