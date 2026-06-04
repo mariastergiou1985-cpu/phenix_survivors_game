@@ -106,6 +106,7 @@ export class Game {
     if (!this.selectedCharacter) {
       this.gameState = 'character_select';
     } else {
+      this.audio?.startGameplayMusic();
       this.gameState = 'playing';
       this.reset();
     }
@@ -113,7 +114,7 @@ export class Game {
 
   selectCharacter(charId) {
     this.selectedCharacter = charId;
-    this.audio?.stopMenuMusic();
+    this.audio?.startGameplayMusic();
     this.gameState = 'playing';
     this.reset();
   }

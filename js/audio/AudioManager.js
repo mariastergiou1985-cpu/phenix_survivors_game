@@ -11,42 +11,45 @@ export class AudioManager {
     this._alarmOsc  = null;
     this._alarmGain = null;
 
-    // Menu music — HTML Audio routed through Web Audio for unified mute control
-    this._menuAudio = null;
-    this._setupMenuMusic();
+    // Music tracks — HTML Audio routed through Web Audio for unified mute control
+    this._menuAudio     = null;
+    this._gameplayAudio = null;
+    this._setupMusic('assets/audio/music/menu_theme.mp3',     0.28, a => { this._menuAudio     = a; });
+    this._setupMusic('assets/audio/music/gameplay_theme.mp3', 0.20, a => { this._gameplayAudio = a; });
   }
 
-  _setupMenuMusic() {
+  _setupMusic(src, volume, assign) {
     try {
-      const audio = new Audio('assets/audio/music/menu_theme.mp3');
-      audio.loop = true;
-
+      const audio = new Audio(src);
+      audio.loop  = true;
       const source = this.actx.createMediaElementSource(audio);
       const gain   = this.actx.createGain();
-      gain.gain.value = 0.28;
+      gain.gain.value = volume;
       source.connect(gain);
       gain.connect(this.masterGain);
-
-      this._menuAudio = audio;
-    } catch (_) {
-      // Missing file or browser issue — stay silent, no crash
-    }
+      assign(audio);
+    } catch (_) { /* missing file — stay silent */ }
   }
 
-  startMenuMusic() {
-    if (!this._menuAudio || !this._menuAudio.paused) return;
+  _play(audio) {
+    if (!audio || !audio.paused) return;
     if (this.actx.state === 'suspended') {
-      this.actx.resume().then(() => this._menuAudio.play().catch(() => {}));
+      this.actx.resume().then(() => audio.play().catch(() => {}));
     } else {
-      this._menuAudio.play().catch(() => {});
+      audio.play().catch(() => {});
     }
   }
 
-  stopMenuMusic() {
-    if (!this._menuAudio) return;
-    this._menuAudio.pause();
-    this._menuAudio.currentTime = 0;
+  _stop(audio) {
+    if (!audio) return;
+    audio.pause();
+    audio.currentTime = 0;
   }
+
+  startMenuMusic()    { this._stop(this._gameplayAudio); this._play(this._menuAudio); }
+  stopMenuMusic()     { this._stop(this._menuAudio); }
+  startGameplayMusic(){ this._stop(this._menuAudio); this._play(this._gameplayAudio); }
+  stopGameplayMusic() { this._stop(this._gameplayAudio); }
 
   toggleMute() {
     this.muted = !this.muted;

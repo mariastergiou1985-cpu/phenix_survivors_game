@@ -94,8 +94,10 @@ canvas.addEventListener('mousedown', e => {
     game.audio = new AudioManager();
     const hint = document.getElementById('click-to-start');
     if (hint) hint.style.display = 'none';
-    // Start menu music if we're on a menu screen
-    if (game.gameState === 'start_menu' || game.gameState === 'character_select') {
+    // Start the right music for the current state
+    if (game.gameState === 'playing') {
+      game.audio.startGameplayMusic();
+    } else if (game.gameState === 'start_menu' || game.gameState === 'character_select') {
       game.audio.startMenuMusic();
     }
   }
