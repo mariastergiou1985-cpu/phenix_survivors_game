@@ -2,16 +2,50 @@ import { clamp } from '../utils.js';
 
 export class AudioManager {
   constructor() {
-    this.actx        = new AudioContext();
-    this.muted       = false;
-    this.masterGain  = this.actx.createGain();
+    this.actx       = new AudioContext();
+    this.muted      = false;
+    this.masterGain = this.actx.createGain();
     this.masterGain.gain.value = 0.65;
     this.masterGain.connect(this.actx.destination);
 
-    this._alarmOsc   = null;
-    this._alarmGain  = null;
+    this._alarmOsc  = null;
+    this._alarmGain = null;
 
-    this._startMusic();
+    // Menu music — HTML Audio routed through Web Audio for unified mute control
+    this._menuAudio = null;
+    this._setupMenuMusic();
+  }
+
+  _setupMenuMusic() {
+    try {
+      const audio = new Audio('assets/audio/music/menu_theme.mp3');
+      audio.loop = true;
+
+      const source = this.actx.createMediaElementSource(audio);
+      const gain   = this.actx.createGain();
+      gain.gain.value = 0.28;
+      source.connect(gain);
+      gain.connect(this.masterGain);
+
+      this._menuAudio = audio;
+    } catch (_) {
+      // Missing file or browser issue — stay silent, no crash
+    }
+  }
+
+  startMenuMusic() {
+    if (!this._menuAudio || !this._menuAudio.paused) return;
+    if (this.actx.state === 'suspended') {
+      this.actx.resume().then(() => this._menuAudio.play().catch(() => {}));
+    } else {
+      this._menuAudio.play().catch(() => {});
+    }
+  }
+
+  stopMenuMusic() {
+    if (!this._menuAudio) return;
+    this._menuAudio.pause();
+    this._menuAudio.currentTime = 0;
   }
 
   toggleMute() {
@@ -75,31 +109,6 @@ export class AudioManager {
     this._alarmOsc.stop(t + 0.5);
     this._alarmOsc  = null;
     this._alarmGain = null;
-  }
-
-  _startMusic() {
-    // Layered synthwave drone: root A1(55Hz), fifth E2(82.5Hz), octave A2(110Hz)
-    const layers = [
-      { freq: 55,   vol: 0.055, lfoRate: 0.10 },
-      { freq: 82.5, vol: 0.038, lfoRate: 0.13 },
-      { freq: 110,  vol: 0.025, lfoRate: 0.08 },
-    ];
-
-    for (const { freq, vol, lfoRate } of layers) {
-      const osc  = this.actx.createOscillator();
-      const g    = this.actx.createGain();
-      const lfo  = this.actx.createOscillator();
-      const lfoG = this.actx.createGain();
-
-      osc.type = 'sawtooth'; osc.frequency.value = freq;
-      lfo.frequency.value = lfoRate;
-      lfoG.gain.value     = vol * 0.25;
-
-      g.gain.value = vol;
-      lfo.connect(lfoG); lfoG.connect(g.gain);
-      osc.connect(g);    g.connect(this.masterGain);
-      osc.start(); lfo.start();
-    }
   }
 
   _sweep(startHz, endHz, duration, volume) {

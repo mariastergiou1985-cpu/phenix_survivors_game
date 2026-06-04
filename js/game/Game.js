@@ -113,6 +113,7 @@ export class Game {
 
   selectCharacter(charId) {
     this.selectedCharacter = charId;
+    this.audio?.stopMenuMusic();
     this.gameState = 'playing';
     this.reset();
   }
@@ -125,6 +126,7 @@ export class Game {
   goToMainMenu() {
     this.gameState = 'start_menu';
     this.menuIndex = 0;
+    this.audio?.startMenuMusic();
   }
 
   goToExitScreen() {

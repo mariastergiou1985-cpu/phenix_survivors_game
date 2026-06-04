@@ -92,9 +92,12 @@ canvas.addEventListener('mousedown', e => {
   // Initialize Web Audio on first user gesture (browser requirement)
   if (!game.audio) {
     game.audio = new AudioManager();
-    // Hide the "click to enable audio" hint
     const hint = document.getElementById('click-to-start');
     if (hint) hint.style.display = 'none';
+    // Start menu music if we're on a menu screen
+    if (game.gameState === 'start_menu' || game.gameState === 'character_select') {
+      game.audio.startMenuMusic();
+    }
   }
 
   // Upgrade card click
