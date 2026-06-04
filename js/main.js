@@ -112,13 +112,15 @@ canvas.addEventListener('mousedown', e => {
     }
   }
 
-  // Upgrade card click
-  if (game.upgradeUI) {
-    game.upgradeUI.handleClick(mousePos, game);
-  }
+  // Each block is else-if so only ONE handler fires per click,
+  // even if a handler changes game.gameState mid-event.
 
-  // ── Start Menu button clicks ──────────────────────────────────
-  if (game.gameState === 'start_menu') {
+  if (game.upgradeUI) {
+    // ── In-game upgrade card (level-up choice) ────────────────────
+    game.upgradeUI.handleClick(mousePos, game);
+
+  } else if (game.gameState === 'start_menu') {
+    // ── Start Menu ───────────────────────────────────────────────
     const BW = 360, BH = 52, startY = 280, spacing = 80;
     for (let i = 0; i < game.menuItems.length; i++) {
       const bx = canvas.width / 2 - BW / 2;
@@ -132,15 +134,13 @@ canvas.addEventListener('mousedown', e => {
         break;
       }
     }
-  }
 
-  // ── Upgrades screen clicks ────────────────────────────────────
-  if (game.gameState === 'upgrades') {
+  } else if (game.gameState === 'upgrades') {
+    // ── Upgrades screen ──────────────────────────────────────────
     game.handleUpgradesClick(mousePos);
-  }
 
-  // ── Character Select clicks ───────────────────────────────────
-  if (game.gameState === 'character_select') {
+  } else if (game.gameState === 'character_select') {
+    // ── Character Select ─────────────────────────────────────────
     const cardW = 220, cardH = 280, spacing = 280;
     const startX = canvas.width / 2 - cardW - spacing / 2;
     for (let i = 0; i < game.characters.length; i++) {
@@ -148,11 +148,9 @@ canvas.addEventListener('mousedown', e => {
       const cy = canvas.height / 2 - cardH / 2;
       if (mousePos.x >= cx && mousePos.x <= cx + cardW &&
           mousePos.y >= cy && mousePos.y <= cy + cardH) {
-        if (game.characterIndex === i) {
-          game.selectCharacter(game.characters[i].id);  // confirm on second click
-        } else {
-          game.characterIndex = i;                        // first click: select
-        }
+        // Single click: select and immediately start gameplay
+        game.characterIndex = i;
+        game.selectCharacter(game.characters[i].id);
         break;
       }
     }
