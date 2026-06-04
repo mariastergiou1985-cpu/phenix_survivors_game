@@ -166,14 +166,6 @@ export class Player {
       ctx.beginPath(); ctx.arc(this.pos.x, this.pos.y, PLAYER_RADIUS, 0, Math.PI * 2); ctx.stroke();
     }
 
-    // Aim line toward mouse
-    const aim = safeNormalize(new Vec2(mousePos.x - this.pos.x, mousePos.y - this.pos.y));
-    ctx.strokeStyle = WHITE; ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(this.pos.x, this.pos.y);
-    ctx.lineTo(this.pos.x + aim.x * 32, this.pos.y + aim.y * 32);
-    ctx.stroke();
-
     // Carried cores orbiting around player
     for (let i = 0; i < this.carry; i++) {
       const angle = i * 0.7;

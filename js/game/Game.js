@@ -24,9 +24,10 @@ import { MetaProgress, META_UPGRADES, upgradeCost } from './MetaProgress.js';
 
 export class Game {
   constructor() {
-    this.audio = null;  // set from main.js on first user gesture
-    this.paused = false;
-    this.meta = new MetaProgress();
+    this.audio     = null;  // set from main.js on first user gesture
+    this.paused    = false;
+    this.aimAssist = true;
+    this.meta      = new MetaProgress();
 
     // Load background image — try canonical path first, fall back to enemies/ (OneDrive quirk)
     this._bgImage = new Image();
@@ -632,10 +633,24 @@ export class Game {
 
   _handleMouseShooting(input) {
     if (input.mouseDown && this.player.canShoot()) {
-      const proj = this.player.shoot(input.mousePos);
+      let aimPos = input.mousePos;
+      if (this.aimAssist) {
+        const nearest = this._nearestEnemy(this.player.pos, 300);
+        if (nearest) aimPos = nearest.pos;
+      }
+      const proj = this.player.shoot(aimPos);
       this.projectiles.push(proj);
       this.audio?.playShoot();
     }
+  }
+
+  _nearestEnemy(from, maxRadius) {
+    let best = null, bestDist = maxRadius;
+    for (const e of this.enemies) {
+      const d = distance(from, e.pos);
+      if (d < bestDist) { bestDist = d; best = e; }
+    }
+    return best;
   }
 
   _handleCorePickupAndSlotting(dt) {

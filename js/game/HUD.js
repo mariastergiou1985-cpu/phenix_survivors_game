@@ -34,6 +34,11 @@ export function drawHUD(ctx, game) {
   // Ability cooldown indicators
   _drawAbilityHUD(ctx, game.player);
 
+  // Aim assist indicator (bottom-right)
+  const aaColor = game.aimAssist ? GREEN : GREY;
+  drawText(ctx, game.aimAssist ? '[T] AIM ASSIST: ON' : '[T] AIM ASSIST: OFF',
+    WIDTH - 200, HEIGHT - 50, aaColor, '13px Consolas, monospace');
+
   // Grid Blackout warning
   if (game.gridBlackoutActive) {
     const flash = (Math.floor(Date.now() / 400) % 2 === 0);
