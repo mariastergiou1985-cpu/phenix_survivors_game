@@ -80,6 +80,7 @@ export class Game {
     this.projectiles  = [];
     this.homingDiscs  = [];
     this.empRings     = [];
+    this.enemyBullets = [];
     this.floatingTexts = [];
     this.particles    = new ParticleSystem();
     this.screenShake  = new ScreenShake();
@@ -548,6 +549,7 @@ export class Game {
     this._updateFloatingTexts(dt);
     this._updateEffects(dt);
     this._checkPlayerEnemyCollisions(dt);
+    this._updateEnemyBullets(dt);
     this._updateAbilityTimers(dt);
     this._updateQuantumOverhaul(dt);
     this.events.update(dt, this.timeAlive, this);
@@ -652,6 +654,38 @@ export class Game {
       if (d < bestDist) { bestDist = d; best = e; }
     }
     return best;
+  }
+
+  spawnEnemyBullet(pos, dir, speed, damage, radius, color) {
+    this.enemyBullets.push({ pos, dir: dir.clone(), speed, damage, radius, color, life: 4.0 });
+  }
+
+  _updateEnemyBullets(dt) {
+    for (let i = this.enemyBullets.length - 1; i >= 0; i--) {
+      const b = this.enemyBullets[i];
+      b.pos.addMut(b.dir.scale(b.speed * dt));
+      b.life -= dt;
+
+      if (b.life <= 0 || b.pos.x < -60 || b.pos.x > WIDTH + 60 ||
+          b.pos.y < -60 || b.pos.y > HEIGHT + 60) {
+        this.enemyBullets.splice(i, 1);
+        continue;
+      }
+
+      // Hit player — ignore during hit cooldown or phoenix revive
+      if (this.playerHitCooldown <= 0 && this.phoenixReviveTimer <= 0) {
+        if (distance(b.pos, this.player.pos) < b.radius + PLAYER_RADIUS) {
+          this.player.hp = Math.max(0, this.player.hp - b.damage);
+          this.playerHitCooldown = 0.5;
+          this.screenShake.trigger(5, 0.2);
+          this.particles.spawnHitSparks(this.player.pos, RED);
+          this.floatingTexts.push(
+            new FloatingText(`-${b.damage} HP`, this.player.pos.clone(), RED, 0.7)
+          );
+          this.enemyBullets.splice(i, 1);
+        }
+      }
+    }
   }
 
   _handleCorePickupAndSlotting(dt) {
@@ -814,7 +848,7 @@ export class Game {
         const push = safeNormalize(this.player.pos.sub(e.pos));
         this.player.pos.addMut(push.scale(60 * dt));
 
-        if (!damageDone) {
+        if (!damageDone && this.phoenixReviveTimer <= 0) {
           // Apply per-enemy contact damage
           const dmg = (e.contactDamage ?? 8) * dt;
           this.player.hp = Math.max(0, this.player.hp - dmg);
@@ -941,6 +975,14 @@ export class Game {
     for (const d of this.homingDiscs) d.draw(ctx);
     for (const r of this.empRings)    r.draw(ctx);
     this.particles.draw(ctx);
+
+    // 6c ── Enemy bullets
+    for (const b of this.enemyBullets) {
+      ctx.fillStyle   = b.color;
+      ctx.beginPath(); ctx.arc(b.pos.x, b.pos.y, b.radius, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = WHITE; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(b.pos.x, b.pos.y, b.radius, 0, Math.PI * 2); ctx.stroke();
+    }
 
     // 6b ── Phoenix revive flash (drawn above everything except HUD)
     if (this.phoenixReviveTimer > 0) {

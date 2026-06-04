@@ -34,9 +34,66 @@ export class Enemy {
     this.isMegaBoss      = false;
     this.bodyguardTarget = null;
 
+    // Role-based targeting
+    this.role          = this._roleForType(enemyType);
+    this.shootTimer    = Math.random() * 2;  // stagger initial shots
+    this.shootInterval = null;  // null = melee-only
+    this.bulletSpeed   = 0;
+    this.bulletDamage  = 0;
+    this.bulletRadius  = 5;
+    this.bulletColor   = CYAN;
+    this._initRole(enemyType);
+
     // Load enemy sprite
     this.sprite = null;
     this._loadSprite();
+  }
+
+  _roleForType(type) {
+    switch (type) {
+      case 'Glitch Drone':           return 'hunter';
+      case 'Rogue Punk':             return 'mixed';
+      case 'Stealth Infiltrator':    return 'assassin';
+      case 'Overclocked Berserker':  return 'mixed';
+      case 'Security Defector Mech': return 'hybrid';
+      case 'Rogue AI Overlord':      return 'boss';
+      default:                       return 'scavenger';
+    }
+  }
+
+  _initRole(type) {
+    switch (type) {
+      case 'Glitch Drone':
+        this.shootInterval = 2.5;
+        this.bulletSpeed   = 380;
+        this.bulletDamage  = 5;
+        this.bulletRadius  = 5;
+        this.bulletColor   = CYAN;
+        break;
+      case 'Security Defector Mech':
+        this.shootInterval = 3.5;
+        this.bulletSpeed   = 250;
+        this.bulletDamage  = 15;
+        this.bulletRadius  = 9;
+        this.bulletColor   = ORANGE;
+        break;
+      case 'Rogue AI Overlord':
+        this.shootInterval = 2.5;
+        this.bulletSpeed   = 300;
+        this.bulletDamage  = 20;
+        this.bulletRadius  = 11;
+        this.bulletColor   = RED;
+        break;
+    }
+  }
+
+  _tryShoot(game) {
+    if (!this.shootInterval || this.shootTimer > 0) return;
+    this.shootTimer = this.shootInterval;
+    const dir = safeNormalize(game.player.pos.sub(this.pos));
+    if (dir.lengthSq() === 0) return;
+    game.spawnEnemyBullet(this.pos.clone(), dir,
+      this.bulletSpeed, this.bulletDamage, this.bulletRadius, this.bulletColor);
   }
 
   _loadSprite() {
@@ -197,6 +254,34 @@ export class Enemy {
         this.dumpTarget   = null;
       }
       return;
+    }
+
+    // ── Role-based targeting ──────────────────────────────────────────────
+    if (this.shootTimer > 0) this.shootTimer -= dt;
+
+    if (this.role === 'hunter' || this.role === 'assassin') {
+      // Always chase player — bypass repel aura
+      let dir = safeNormalize(player.pos.sub(this.pos));
+      let burst = 1;
+      if (this.role === 'assassin' && Math.random() < 0.01) burst = 2;
+      this.vel = dir.scale(this.baseSpeed * burst);
+      this.pos.addMut(this.vel.scale(dt));
+      this._tryShoot(game);
+      return;
+    }
+
+    if (this.role === 'mixed' && playerDist < 280) {
+      // Chase player when nearby — ignore repel aura
+      let dir = safeNormalize(player.pos.sub(this.pos));
+      if (this.enemyType === 'Overclocked Berserker')
+        dir = safeNormalize(dir.add(new Vec2(randomRange(-1, 1), randomRange(-1, 1)).scale(0.75)));
+      this.vel = dir.scale(this.baseSpeed);
+      this.pos.addMut(this.vel.scale(dt));
+      return;
+    }
+
+    if (this.role === 'hybrid' || this.role === 'boss') {
+      this._tryShoot(game);  // falls through to existing matrix behavior
     }
 
     // ── Repel aura ───────────────────────────────────────────────────────
