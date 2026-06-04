@@ -20,11 +20,13 @@ import { SystemEventManager } from './Events.js';
 import { UpgradeUI }      from './UpgradeUI.js';
 import { weightedSample } from './Upgrades.js';
 import { drawHUD, drawEndScreen } from './HUD.js';
+import { MetaProgress, META_UPGRADES, upgradeCost } from './MetaProgress.js';
 
 export class Game {
   constructor() {
     this.audio = null;  // set from main.js on first user gesture
     this.paused = false;
+    this.meta = new MetaProgress();
 
     // Load background image — try canonical path first, fall back to enemies/ (OneDrive quirk)
     this._bgImage = new Image();
@@ -70,6 +72,7 @@ export class Game {
 
   reset() {
     this.player       = new Player(this.selectedCharacter);
+    this._applyMetaUpgrades();
     this.matrices     = [];
     this.groundCores  = [];
     this.enemies      = [];
@@ -95,9 +98,11 @@ export class Game {
     this.phoenixUsed        = false;
     this.phoenixReviveTimer = 0;   // > 0 while the flash animation plays
 
-    this.gameOver     = false;
-    this.victory      = false;
-    this.finalMessage = '';
+    this.gameOver          = false;
+    this.victory           = false;
+    this.finalMessage      = '';
+    this.rewardsGranted    = false;
+    this.runCreditsEarned  = 0;
 
     this._createMatrices();
   }
@@ -133,6 +138,258 @@ export class Game {
 
   goToExitScreen() {
     this.gameState = 'exit_screen';
+  }
+
+  goToUpgradesScreen() {
+    this.gameState      = 'upgrades';
+    this._upgradeMsg    = '';
+    this._upgradeMsgTimer = 0;
+    this._confirmReset  = false;
+  }
+
+  // ─── Meta upgrades ──────────────────────────────────────────────────────────
+  _applyMetaUpgrades() {
+    if (!this.meta) return;
+    const p  = this.player;
+    const m  = this.meta;
+
+    const hpLevels = m.getLevel('maxHp');
+    p.maxHp += hpLevels * 10;
+    p.hp     = Math.min(p.hp + hpLevels * 10, p.maxHp);
+
+    p.speedBonus += m.getLevel('moveSpeed') * 0.05;
+
+    let pickup = p.pickupRadius;
+    for (let i = 0; i < m.getLevel('coreMagnet'); i++) pickup = Math.round(pickup * 1.10);
+    p.pickupRadius = pickup;
+
+    p.maxCarry  += m.getLevel('coreCapacity');
+    p.baseDamage += m.getLevel('pulseDamage');
+    p.upgrades['Firewall Protection'] = m.getLevel('firewall');
+  }
+
+  _grantRewards() {
+    if (this.rewardsGranted) return;
+    this.rewardsGranted = true;
+
+    const coreCredits    = Math.floor(this.player.coresSecured / 10);
+    const killCredits    = Math.floor(this.player.kills / 10);
+    const timeCredits    = this.timeAlive >= 300 ? 5 : 0;
+    const victoryCredits = this.victory ? 10 : 0;
+
+    this.runCreditsEarned = coreCredits + killCredits + timeCredits + victoryCredits;
+    this.meta.addCredits(this.runCreditsEarned);
+  }
+
+  // ─── Upgrades screen interaction ─────────────────────────────────────────────
+  handleUpgradesClick(mousePos) {
+    const { rects, backRect, resetRect } = this._upgradeRects();
+
+    // Back button
+    if (this._inRect(mousePos, backRect)) {
+      this.goToMainMenu();
+      return;
+    }
+
+    // Reset button
+    if (this._inRect(mousePos, resetRect)) {
+      if (this._confirmReset) {
+        this.meta.reset();
+        this._confirmReset = false;
+        this._upgradeMsg = 'Progress reset.';
+        this._upgradeMsgTimer = 2.5;
+      } else {
+        this._confirmReset = true;
+        this._upgradeMsg = 'Click RESET again to confirm.';
+        this._upgradeMsgTimer = 3.0;
+      }
+      return;
+    }
+
+    // Upgrade cards
+    for (let i = 0; i < META_UPGRADES.length; i++) {
+      if (!this._inRect(mousePos, rects[i])) continue;
+      const upg    = META_UPGRADES[i];
+      const result = this.meta.tryBuy(upg);
+      if (result === 'ok') {
+        this._upgradeMsg = `${upg.name} upgraded!`;
+        this._upgradeMsgTimer = 2.0;
+      } else if (result === 'poor') {
+        this._upgradeMsg = 'Not enough Grid Credits.';
+        this._upgradeMsgTimer = 2.0;
+      } else {
+        this._upgradeMsg = `${upg.name} is already at MAX level.`;
+        this._upgradeMsgTimer = 2.0;
+      }
+      this._confirmReset = false;
+      break;
+    }
+  }
+
+  _inRect(pos, r) {
+    return pos.x >= r.x && pos.x <= r.x + r.w && pos.y >= r.y && pos.y <= r.y + r.h;
+  }
+
+  _upgradeRects() {
+    const CW = 300, CH = 160, CGAP = 30, RGAP = 20;
+    const totalW = 3 * CW + 2 * CGAP;
+    const x0     = Math.round((WIDTH - totalW) / 2);
+    const y0     = 110;
+    const rects  = META_UPGRADES.map((_, i) => ({
+      x: x0 + (i % 3) * (CW + CGAP),
+      y: y0 + Math.floor(i / 3) * (CH + RGAP),
+      w: CW, h: CH,
+    }));
+    const backRect  = { x: x0,              y: y0 + 2*(CH+RGAP) + 20, w: 160, h: 40 };
+    const resetRect = { x: x0 + totalW - 160, y: backRect.y,            w: 160, h: 40 };
+    return { rects, backRect, resetRect };
+  }
+
+  _updateUpgradesScreen(input) {
+    if (this._upgradeMsgTimer > 0) this._upgradeMsgTimer -= 1/60;
+    if (input.keys.has('escape')) {
+      this.goToMainMenu();
+      input.keys.delete('escape');
+    }
+  }
+
+  _drawUpgradesScreen(ctx) {
+    this._drawBackground(ctx);
+    ctx.fillStyle = 'rgba(0,0,0,0.82)';
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+    // Title
+    ctx.font      = 'bold 40px Consolas, monospace';
+    ctx.fillStyle = CYAN;
+    ctx.textAlign = 'center';
+    ctx.fillText('GRID UPGRADES', WIDTH / 2, 52);
+
+    // Credits
+    ctx.font      = '20px Consolas, monospace';
+    ctx.fillStyle = YELLOW;
+    ctx.fillText(`Grid Credits: ${this.meta.credits}`, WIDTH / 2, 82);
+
+    const { rects, backRect, resetRect } = this._upgradeRects();
+
+    // Upgrade cards
+    for (let i = 0; i < META_UPGRADES.length; i++) {
+      const upg  = META_UPGRADES[i];
+      const lvl  = this.meta.getLevel(upg.key);
+      const cost = upgradeCost(upg, lvl);
+      const maxed = lvl >= upg.maxLevel;
+      const can   = !maxed && this.meta.credits >= cost;
+      const r     = rects[i];
+
+      // Card bg + border
+      ctx.fillStyle   = '#0a0f20';
+      ctx.fillRect(r.x, r.y, r.w, r.h);
+      ctx.strokeStyle = maxed ? YELLOW : can ? CYAN : '#2a4060';
+      ctx.lineWidth   = maxed || can ? 2 : 1;
+      ctx.strokeRect(r.x, r.y, r.w, r.h);
+
+      // Name
+      ctx.font      = 'bold 16px Consolas, monospace';
+      ctx.fillStyle = WHITE;
+      ctx.textAlign = 'left';
+      ctx.fillText(upg.name, r.x + 12, r.y + 22);
+
+      // Level badge (top-right)
+      ctx.font      = '13px Consolas, monospace';
+      ctx.fillStyle = maxed ? YELLOW : CYAN;
+      ctx.textAlign = 'right';
+      ctx.fillText(`${lvl} / ${upg.maxLevel}`, r.x + r.w - 10, r.y + 22);
+
+      // Description
+      ctx.font      = '11px Consolas, monospace';
+      ctx.fillStyle = '#6a8090';
+      ctx.textAlign = 'left';
+      ctx.fillText(upg.desc, r.x + 12, r.y + 42);
+
+      // Current effect
+      if (lvl > 0) {
+        ctx.font      = '11px Consolas, monospace';
+        ctx.fillStyle = GREEN;
+        ctx.fillText(`Active: ${this._metaEffectText(upg.key, lvl)}`, r.x + 12, r.y + 60);
+      }
+
+      // Level dots
+      for (let d = 0; d < upg.maxLevel; d++) {
+        ctx.fillStyle = d < lvl ? CYAN : '#1a2a3a';
+        ctx.beginPath();
+        ctx.arc(r.x + 14 + d * 16, r.y + 82, 5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Cost / BUY button area
+      const btnY = r.y + 100;
+      const btnH = 38;
+      if (maxed) {
+        ctx.fillStyle   = '#1a2510';
+        ctx.fillRect(r.x + 10, btnY, r.w - 20, btnH);
+        ctx.font        = 'bold 15px Consolas, monospace';
+        ctx.fillStyle   = YELLOW;
+        ctx.textAlign   = 'center';
+        ctx.fillText('MAX', r.x + r.w / 2, btnY + 24);
+      } else {
+        ctx.fillStyle   = can ? '#0a2030' : '#120a0a';
+        ctx.fillRect(r.x + 10, btnY, r.w - 20, btnH);
+        ctx.strokeStyle = can ? CYAN : '#3a2020';
+        ctx.lineWidth   = 1;
+        ctx.strokeRect(r.x + 10, btnY, r.w - 20, btnH);
+        ctx.font        = 'bold 13px Consolas, monospace';
+        ctx.fillStyle   = can ? CYAN : '#5a3030';
+        ctx.textAlign   = 'center';
+        ctx.fillText(`BUY  —  ${cost} Credits`, r.x + r.w / 2, btnY + 24);
+      }
+    }
+
+    // Back button
+    ctx.fillStyle   = '#0a1820';
+    ctx.fillRect(backRect.x, backRect.y, backRect.w, backRect.h);
+    ctx.strokeStyle = CYAN; ctx.lineWidth = 1;
+    ctx.strokeRect(backRect.x, backRect.y, backRect.w, backRect.h);
+    ctx.font      = 'bold 14px Consolas, monospace';
+    ctx.fillStyle = CYAN;
+    ctx.textAlign = 'center';
+    ctx.fillText('◀  BACK', backRect.x + backRect.w / 2, backRect.y + 26);
+
+    // Reset button
+    const resetColor = this._confirmReset ? RED : '#5a3030';
+    ctx.fillStyle   = '#120808';
+    ctx.fillRect(resetRect.x, resetRect.y, resetRect.w, resetRect.h);
+    ctx.strokeStyle = resetColor; ctx.lineWidth = 1;
+    ctx.strokeRect(resetRect.x, resetRect.y, resetRect.w, resetRect.h);
+    ctx.font      = 'bold 14px Consolas, monospace';
+    ctx.fillStyle = resetColor;
+    ctx.textAlign = 'center';
+    ctx.fillText('RESET', resetRect.x + resetRect.w / 2, resetRect.y + 26);
+
+    // Message
+    if (this._upgradeMsgTimer > 0 && this._upgradeMsg) {
+      ctx.font      = '15px Consolas, monospace';
+      ctx.fillStyle = ORANGE;
+      ctx.textAlign = 'center';
+      ctx.fillText(this._upgradeMsg, WIDTH / 2, backRect.y + 62);
+    }
+
+    // Hint
+    ctx.font      = '13px Consolas, monospace';
+    ctx.fillStyle = '#3a5060';
+    ctx.textAlign = 'center';
+    ctx.fillText('Click an upgrade to purchase  •  ESC = Back to menu', WIDTH / 2, HEIGHT - 16);
+    ctx.textAlign = 'left';
+  }
+
+  _metaEffectText(key, lvl) {
+    switch (key) {
+      case 'maxHp':        return `+${lvl * 10} HP`;
+      case 'moveSpeed':    return `+${lvl * 5}% speed`;
+      case 'coreMagnet':   return `+${Math.round((Math.pow(1.10, lvl) - 1) * 100)}% pickup radius`;
+      case 'coreCapacity': return `+${lvl} carry slot${lvl > 1 ? 's' : ''}`;
+      case 'pulseDamage':  return `+${lvl} damage`;
+      case 'firewall':     return `-${lvl * 5}% overload`;
+      default:             return '';
+    }
   }
 
   _createMatrices() {
@@ -246,6 +503,10 @@ export class Game {
       this._updateExitScreen(input);
       return;
     }
+    if (this.gameState === 'upgrades') {
+      this._updateUpgradesScreen(input);
+      return;
+    }
     if (this.gameState !== 'playing') return;
 
     if (this.paused || this.gameOver || this.victory) return;
@@ -270,6 +531,7 @@ export class Game {
       this.victory      = true;
       this.finalMessage = 'CITY GRID STABILIZED — VICTORY';
       this.audio?.stopAll();
+      this._grantRewards();
       return;
     }
 
@@ -298,6 +560,7 @@ export class Game {
       this.gameOver     = true;
       this.finalMessage = 'CITY GRID TOTAL BLACKOUT';
       this.audio?.stopAll();
+      this._grantRewards();
     } else if (this.player.hp <= 0) {
       if (!this.phoenixUsed) {
         this._triggerPhoenixRevive();   // first death → revive
@@ -305,6 +568,7 @@ export class Game {
         this.gameOver     = true;
         this.finalMessage = 'CYBER-HERO OFFLINE';
         this.audio?.stopAll();
+        this._grantRewards();
       }
     }
   }
@@ -609,6 +873,10 @@ export class Game {
     }
     if (this.gameState === 'exit_screen') {
       this._drawExitScreen(ctx);
+      return;
+    }
+    if (this.gameState === 'upgrades') {
+      this._drawUpgradesScreen(ctx);
       return;
     }
     if (this.gameState !== 'playing') {

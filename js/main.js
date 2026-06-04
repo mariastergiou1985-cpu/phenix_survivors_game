@@ -127,11 +127,16 @@ canvas.addEventListener('mousedown', e => {
           mousePos.y >= by && mousePos.y <= by + BH) {
         game.menuIndex = i;
         if (i === 0 || i === 1) game.goToCharacterSelect();
-        else if (i === 2) { /* UPGRADES — placeholder, do nothing */ }
+        else if (i === 2) game.goToUpgradesScreen();
         else if (i === 3) { try { window.close(); } catch (e) {} game.goToExitScreen(); }
         break;
       }
     }
+  }
+
+  // ── Upgrades screen clicks ────────────────────────────────────
+  if (game.gameState === 'upgrades') {
+    game.handleUpgradesClick(mousePos);
   }
 
   // ── Character Select clicks ───────────────────────────────────

@@ -99,8 +99,10 @@ export function drawEndScreen(ctx, game) {
     `Final Level: ${game.player.level}`,
     `Final Overload: ${game.overload.toFixed(1)}%`,
     '',
-    'Press R to restart',
-    'Press ESC to quit / pause',
+    `Grid Credits Earned: +${game.runCreditsEarned}`,
+    `Total Grid Credits: ${game.meta?.credits ?? 0}`,
+    '',
+    'Press R to restart  •  ESC to return to menu',
   ];
 
   ctx.font = '26px Consolas, monospace';
