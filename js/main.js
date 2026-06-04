@@ -32,6 +32,18 @@ window.addEventListener('keydown', e => {
 
   keys.add(key);
 
+  // Unlock audio on first keypress (browsers block autoplay until user gesture)
+  if (!game.audio) {
+    game.audio = new AudioManager();
+    const hint = document.getElementById('click-to-start');
+    if (hint) hint.style.display = 'none';
+    if (game.gameState === 'playing') {
+      game.audio.startGameplayMusic();
+    } else if (game.gameState === 'start_menu' || game.gameState === 'character_select') {
+      game.audio.startMenuMusic();
+    }
+  }
+
   // Upgrade card selection (1/2/3)
   if (game.upgradeUI) {
     const idx = { '1': 0, '2': 1, '3': 2 }[e.key];
@@ -46,10 +58,8 @@ window.addEventListener('keydown', e => {
 
   // Restart after game over / victory
   if (key === 'r' && (game.gameOver || game.victory)) {
-    if (game.audio) {
-      // Keep audio manager but reset game state
-    }
     game.reset();
+    game.audio?.startGameplayMusic();
   }
 
   // ESC — context-sensitive behaviour

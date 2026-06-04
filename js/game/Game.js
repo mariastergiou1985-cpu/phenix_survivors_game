@@ -122,6 +122,7 @@ export class Game {
   goToCharacterSelect() {
     this.gameState = 'character_select';
     this.characterIndex = 0;
+    this.audio?.startMenuMusic();
   }
 
   goToMainMenu() {
@@ -268,6 +269,7 @@ export class Game {
     if (this.timeAlive >= WIN_TIME_SECONDS) {
       this.victory      = true;
       this.finalMessage = 'CITY GRID STABILIZED — VICTORY';
+      this.audio?.stopAll();
       return;
     }
 
@@ -295,12 +297,14 @@ export class Game {
     if (this.overload >= MAX_OVERLOAD) {
       this.gameOver     = true;
       this.finalMessage = 'CITY GRID TOTAL BLACKOUT';
+      this.audio?.stopAll();
     } else if (this.player.hp <= 0) {
       if (!this.phoenixUsed) {
         this._triggerPhoenixRevive();   // first death → revive
       } else {
         this.gameOver     = true;
         this.finalMessage = 'CYBER-HERO OFFLINE';
+        this.audio?.stopAll();
       }
     }
   }
