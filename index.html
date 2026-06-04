@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Phenix Survivors — Cyber-Grid Protocol</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #05080f;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      overflow: hidden;
+      font-family: Consolas, monospace;
+    }
+    canvas {
+      display: block;
+      cursor: crosshair;
+      max-width: 100vw;
+      max-height: 100vh;
+    }
+    #click-to-start {
+      position: absolute;
+      bottom: 16px;
+      color: #78919f;
+      font-size: 14px;
+      font-family: Consolas, monospace;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="game" width="1280" height="720"></canvas>
+  <div id="click-to-start">Click canvas to enable audio &nbsp;|&nbsp; M = mute &nbsp;|&nbsp; ESC = pause</div>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

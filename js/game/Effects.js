@@ -1,0 +1,151 @@
+import { Vec2, WIDTH, HEIGHT, GREY } from '../constants.js';
+import { clamp } from '../utils.js';
+
+// ─── Particle ─────────────────────────────────────────────────────────────────
+class Particle {
+  constructor(pos, vel, color, radius, life) {
+    this.pos     = pos.clone();
+    this.vel     = vel;
+    this.color   = color;
+    this.radius  = radius;
+    this.life    = life;
+    this.maxLife = life;
+  }
+
+  update(dt) {
+    this.pos.addMut(this.vel.scale(dt));
+    this.life -= dt;
+  }
+
+  draw(ctx) {
+    ctx.globalAlpha = clamp(this.life / this.maxLife, 0, 1);
+    ctx.fillStyle   = this.color;
+    ctx.beginPath();
+    ctx.arc(this.pos.x, this.pos.y, Math.max(1, this.radius * (this.life / this.maxLife)), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+}
+
+// ─── ParticleSystem ───────────────────────────────────────────────────────────
+export class ParticleSystem {
+  constructor() {
+    this.particles = [];
+    this.MAX       = 200;
+  }
+
+  _add(p) {
+    if (this.particles.length >= this.MAX) this.particles.shift();
+    this.particles.push(p);
+  }
+
+  spawnCorePickup(pos, color) {
+    for (let i = 0; i < 8; i++) {
+      const angle = (i / 8) * Math.PI * 2;
+      const speed = 80 + Math.random() * 80;
+      const vel   = new Vec2(Math.cos(angle) * speed, Math.sin(angle) * speed);
+      this._add(new Particle(pos, vel, color, 3, 0.4));
+    }
+  }
+
+  spawnCoreSlot(pos, color) {
+    for (let i = 0; i < 6; i++) {
+      const angle = (i / 6) * Math.PI * 2 - Math.PI / 2;
+      const speed = 60 + Math.random() * 60;
+      const vel   = new Vec2(Math.cos(angle) * speed, Math.sin(angle) * speed - 40);
+      this._add(new Particle(pos, vel, color, 4, 0.6));
+    }
+  }
+
+  spawnHitSparks(pos, color) {
+    for (let i = 0; i < 4; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 40 + Math.random() * 60;
+      const vel   = new Vec2(Math.cos(angle) * speed, Math.sin(angle) * speed);
+      this._add(new Particle(pos, vel, color, 2, 0.25));
+    }
+  }
+
+  update(dt) {
+    this.particles = this.particles.filter(p => {
+      p.update(dt);
+      return p.life > 0;
+    });
+  }
+
+  draw(ctx) {
+    for (const p of this.particles) p.draw(ctx);
+  }
+}
+
+// ─── ScreenShake ──────────────────────────────────────────────────────────────
+export class ScreenShake {
+  constructor() {
+    this.intensity = 0;
+    this.timer     = 0;
+    this._ox = 0;
+    this._oy = 0;
+  }
+
+  trigger(intensity, duration) {
+    this.intensity = intensity;
+    this.timer     = duration;
+  }
+
+  update(dt) {
+    if (this.timer <= 0) { this._ox = 0; this._oy = 0; return; }
+    this.timer -= dt;
+    const i  = this.intensity * clamp(this.timer, 0, 1);
+    this._ox = (Math.random() - 0.5) * i * 2;
+    this._oy = (Math.random() - 0.5) * i * 2;
+  }
+
+  getOffset() { return [this._ox, this._oy]; }
+}
+
+// ─── VignetteEffect ───────────────────────────────────────────────────────────
+export function drawVignette(ctx, overload, timeAlive) {
+  if (overload <= 60) return;
+  const intensity = (overload - 60) / 40;
+  const pulse     = 0.5 + 0.5 * Math.sin(timeAlive * 3 * (1 + intensity));
+  const alpha     = intensity * pulse * 0.43;
+
+  ctx.save();
+  const grad = ctx.createRadialGradient(
+    WIDTH / 2, HEIGHT / 2, HEIGHT * 0.3,
+    WIDTH / 2, HEIGHT / 2, HEIGHT * 0.8,
+  );
+  grad.addColorStop(0, 'rgba(255,55,80,0)');
+  grad.addColorStop(1, `rgba(255,55,80,${alpha.toFixed(3)})`);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, WIDTH, HEIGHT);
+  ctx.restore();
+}
+
+// ─── EMPRing ──────────────────────────────────────────────────────────────────
+export class EMPRing {
+  constructor(pos, maxRadius) {
+    this.pos       = pos.clone();
+    this.maxRadius = maxRadius;
+    this.radius    = 0;
+    this.life      = 0.6;
+  }
+
+  update(dt) {
+    this.life  -= dt;
+    this.radius = this.maxRadius * (1 - this.life / 0.6);
+  }
+
+  draw(ctx) {
+    if (this.life <= 0) return;
+    ctx.globalAlpha = clamp(this.life / 0.6, 0, 1);
+    ctx.strokeStyle = GREY;
+    ctx.lineWidth   = 3;
+    ctx.beginPath();
+    ctx.arc(this.pos.x, this.pos.y, this.radius, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  alive() { return this.life > 0; }
+}
