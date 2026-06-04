@@ -693,186 +693,180 @@ export class Game {
     const hasMockup = mockup && mockup.complete && mockup.naturalWidth > 0;
 
     if (hasMockup) {
-      // Use the mockup image as background — draw it full-screen
+      // Show the mockup image only — it already contains all button text/visuals
       ctx.drawImage(mockup, 0, 0, WIDTH, HEIGHT);
-      // Slight dark tint so interactive highlights read clearly
-      ctx.fillStyle = 'rgba(0,0,0,0.35)';
-      ctx.fillRect(0, 0, WIDTH, HEIGHT);
     } else {
-      // Procedural fallback: city bg + dark overlay + title
+      // Procedural fallback when image is missing
       this._drawBackground(ctx);
       ctx.fillStyle = 'rgba(0,0,0,0.72)';
       ctx.fillRect(0, 0, WIDTH, HEIGHT);
-      ctx.font      = 'bold 64px Consolas, monospace';
+
+      ctx.font = 'bold 56px Consolas, monospace';
       ctx.fillStyle = CYAN;
       ctx.textAlign = 'center';
-      ctx.fillText('CYBER-GRID PROTOCOL', WIDTH / 2, 120);
-    }
+      ctx.fillText('PHENIX SURVIVORS', WIDTH / 2, 140);
 
-    // Interactive button overlay — only draw text labels when no mockup image is present
-    ctx.font = 'bold 32px Consolas, monospace';
-    const startY = 280, spacing = 80, BW = 360;
-    for (let i = 0; i < this.menuItems.length; i++) {
-      const y  = startY + i * spacing;
-      const bx = WIDTH / 2 - BW / 2;
-      if (i === this.menuIndex) {
-        // Selected: neon highlight box (text skipped when mockup already has labels)
-        ctx.fillStyle = 'rgba(255,220,0,0.15)';
-        ctx.fillRect(bx, y - 30, BW, 52);
-        ctx.strokeStyle = YELLOW; ctx.lineWidth = 2;
-        ctx.strokeRect(bx, y - 30, BW, 52);
-        if (!hasMockup) {
-          ctx.fillStyle = YELLOW;
-          ctx.textAlign = 'center';
+      ctx.font = 'bold 26px Consolas, monospace';
+      const startY = 280, gap = 72;
+      for (let i = 0; i < this.menuItems.length; i++) {
+        const y = startY + i * gap;
+        ctx.textAlign = 'center';
+        if (i === this.menuIndex) {
+          ctx.fillStyle = CYAN;
+          ctx.fillText('▶  ' + this.menuItems[i], WIDTH / 2, y);
+        } else {
+          ctx.fillStyle = GREY;
           ctx.fillText(this.menuItems[i], WIDTH / 2, y);
         }
-      } else if (!hasMockup) {
-        ctx.fillStyle = WHITE;
-        ctx.textAlign = 'center';
-        ctx.fillText(this.menuItems[i], WIDTH / 2, y);
       }
     }
 
     ctx.font      = '14px Consolas, monospace';
-    ctx.fillStyle = 'rgba(200,200,200,0.7)';
+    ctx.fillStyle = 'rgba(180,180,180,0.65)';
     ctx.textAlign = 'center';
-    ctx.fillText('↑↓ W/S  Navigate     ENTER / Click  Select', WIDTH / 2, HEIGHT - 30);
+    ctx.fillText('↑↓ W/S  Navigate     ENTER / Click  Select', WIDTH / 2, HEIGHT - 22);
     ctx.textAlign = 'left';
   }
 
   _drawCharacterSelect(ctx) {
     this._drawBackground(ctx);
-    ctx.fillStyle = 'rgba(0,0,0,0.78)';
+    ctx.fillStyle = 'rgba(0,0,0,0.80)';
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
-    ctx.font = 'bold 42px Consolas, monospace';
+    // Title
+    ctx.font      = 'bold 38px Consolas, monospace';
     ctx.fillStyle = CYAN;
     ctx.textAlign = 'center';
-    ctx.fillText('SELECT YOUR CHARACTER', WIDTH / 2, 72);
+    ctx.fillText('SELECT YOUR CHARACTER', WIDTH / 2, 58);
 
-    const cardWidth  = 220;
-    const cardHeight = 400;
-    const spacing    = 280;
-    const startX     = WIDTH / 2 - cardWidth - spacing / 2;
-    const cardY      = HEIGHT / 2 - cardHeight / 2;
+    // Card layout: 3 cards of 200px wide, 24px gaps, centered
+    const CW   = 200;  // card width
+    const CH   = 540;  // card height — tall enough for all content
+    const GAP  = 36;   // gap between cards
+    const TOTAL = 3 * CW + 2 * GAP;            // 672
+    const X0   = Math.round((WIDTH - TOTAL) / 2); // first card left edge ≈ 304
+    const Y0   = 80;                             // top of cards
 
     const profiles = [
       {
-        role: 'TANK / SURVIVAL',
-        stats: [
-          { label: 'HP',     val: 5 },
-          { label: 'SPEED',  val: 2 },
-          { label: 'DAMAGE', val: 2 },
-          { label: 'PICKUP', val: 3 },
-          { label: 'CARRY',  val: 3 },
-        ],
-        special: ['Larger repel aura', 'High survivability'],
+        name:    'Cyber Skeleton Warrior',
+        role:    'TANK / SURVIVAL',
+        imgId:   'skeleton_warrior',
+        fallback: '#8B0050',
+        stats:   [['HP',5],['SPEED',2],['DAMAGE',3],['PICKUP',3],['CARRY',3]],
+        special: ['Larger repel aura','High survivability'],
       },
       {
-        role: 'FAST COLLECTOR',
-        stats: [
-          { label: 'HP',     val: 2 },
-          { label: 'SPEED',  val: 5 },
-          { label: 'DAMAGE', val: 2 },
-          { label: 'PICKUP', val: 5 },
-          { label: 'CARRY',  val: 3 },
-        ],
-        special: ['Fast movement', 'Extended pickup range'],
+        name:    'Neon Taekwondo Girl',
+        role:    'FAST COLLECTOR',
+        imgId:   'taekwondo_girl',
+        fallback: '#00D9FF',
+        stats:   [['HP',2],['SPEED',5],['DAMAGE',2],['PICKUP',5],['CARRY',3]],
+        special: ['Fast movement','Best for collecting cores'],
       },
       {
-        role: 'BALANCED FIGHTER',
-        stats: [
-          { label: 'HP',     val: 3 },
-          { label: 'SPEED',  val: 3 },
-          { label: 'DAMAGE', val: 5 },
-          { label: 'PICKUP', val: 3 },
-          { label: 'CARRY',  val: 4 },
-        ],
-        special: ['+1 carry slot', 'High pulse damage'],
+        name:    'Cyber Arm Hero',
+        role:    'BALANCED FIGHTER',
+        imgId:   'cyber_arm_hero',
+        fallback: '#FF6600',
+        stats:   [['HP',3],['SPEED',3],['DAMAGE',5],['PICKUP',3],['CARRY',4]],
+        special: ['Stronger pulse shots','+1 carry capacity'],
       },
     ];
 
-    for (let i = 0; i < this.characters.length; i++) {
-      const char      = this.characters[i];
-      const profile   = profiles[i];
-      const x         = startX + i * spacing;
-      const y         = cardY;
+    for (let i = 0; i < 3; i++) {
+      const p          = profiles[i];
+      const cx         = X0 + i * (CW + GAP);
       const isSelected = i === this.characterIndex;
 
       // Card background
-      ctx.fillStyle = isSelected ? 'rgba(30,30,60,0.95)' : 'rgba(8,12,28,0.92)';
-      ctx.fillRect(x, y, cardWidth, cardHeight);
+      ctx.fillStyle = isSelected ? '#12183a' : '#080c1e';
+      ctx.fillRect(cx, Y0, CW, CH);
 
-      // Card border — bright neon when selected
-      ctx.strokeStyle = isSelected ? YELLOW : 'rgba(80,120,160,0.5)';
+      // Card border
+      ctx.strokeStyle = isSelected ? CYAN : '#2a4060';
       ctx.lineWidth   = isSelected ? 3 : 1;
-      ctx.strokeRect(x, y, cardWidth, cardHeight);
+      ctx.strokeRect(cx, Y0, CW, CH);
 
       // Portrait
-      const cimg = this._charImages[char.id];
-      const imgH = 148;
+      const cimg = this._charImages[p.imgId];
+      const imgH = 160;
       if (cimg && cimg.complete && cimg.naturalWidth > 0) {
         const imgW = Math.round(cimg.naturalWidth * (imgH / cimg.naturalHeight));
-        ctx.drawImage(cimg, x + (cardWidth - imgW) / 2, y + 6, imgW, imgH);
+        ctx.drawImage(cimg, cx + (CW - imgW) / 2, Y0 + 8, imgW, imgH);
       } else {
-        ctx.fillStyle = char.fallbackColor;
+        ctx.fillStyle = p.fallback;
         ctx.beginPath();
-        ctx.arc(x + cardWidth / 2, y + 74, 54, 0, Math.PI * 2);
+        ctx.arc(cx + CW / 2, Y0 + 80, 60, 0, Math.PI * 2);
         ctx.fill();
       }
 
-      // Role badge
+      // Role
       ctx.font      = 'bold 10px Consolas, monospace';
-      ctx.fillStyle = isSelected ? YELLOW : CYAN;
+      ctx.fillStyle = isSelected ? CYAN : GREY;
       ctx.textAlign = 'center';
-      ctx.fillText(profile.role, x + cardWidth / 2, y + 164);
+      ctx.fillText(p.role, cx + CW / 2, Y0 + 178);
 
-      // Character name
-      ctx.font      = 'bold 12px Consolas, monospace';
+      // Name
+      ctx.font      = 'bold 13px Consolas, monospace';
       ctx.fillStyle = WHITE;
       ctx.textAlign = 'center';
-      ctx.fillText(char.name, x + cardWidth / 2, y + 180);
+      ctx.fillText(p.name, cx + CW / 2, Y0 + 196);
+
+      // Divider
+      ctx.strokeStyle = isSelected ? CYAN : '#2a4060';
+      ctx.lineWidth   = 1;
+      ctx.beginPath();
+      ctx.moveTo(cx + 8, Y0 + 204);
+      ctx.lineTo(cx + CW - 8, Y0 + 204);
+      ctx.stroke();
 
       // Stat bars
-      const barX  = x + 10;
-      const labelW = 48;
-      const barW   = cardWidth - 20 - labelW;
-      let sy = y + 198;
-
-      for (const stat of profile.stats) {
+      const bx = cx + 10;
+      const lw = 52;
+      const bw = CW - 20 - lw;
+      let sy = Y0 + 216;
+      for (const [label, val] of p.stats) {
         ctx.font      = '10px Consolas, monospace';
         ctx.fillStyle = GREY;
         ctx.textAlign = 'left';
-        ctx.fillText(stat.label, barX, sy + 7);
-
-        const fillColor = stat.val >= 4 ? GREEN : stat.val >= 3 ? CYAN : ORANGE;
-        ctx.fillStyle = 'rgba(30,50,70,0.8)';
-        ctx.fillRect(barX + labelW, sy, barW, 7);
-        ctx.fillStyle = fillColor;
-        ctx.fillRect(barX + labelW, sy, barW * (stat.val / 5), 7);
-        sy += 17;
+        ctx.fillText(label, bx, sy + 7);
+        const fc = val >= 4 ? GREEN : val >= 3 ? CYAN : ORANGE;
+        ctx.fillStyle = '#1a2a3a';
+        ctx.fillRect(bx + lw, sy, bw, 7);
+        ctx.fillStyle = fc;
+        ctx.fillRect(bx + lw, sy, bw * val / 5, 7);
+        sy += 18;
       }
 
-      // Special abilities
-      sy += 4;
+      // Special
+      sy += 6;
       ctx.font      = 'bold 10px Consolas, monospace';
-      ctx.fillStyle = isSelected ? YELLOW : GREY;
+      ctx.fillStyle = isSelected ? CYAN : GREY;
       ctx.textAlign = 'left';
-      ctx.fillText('SPECIAL:', barX, sy + 7);
+      ctx.fillText('SPECIAL:', bx, sy + 7);
       sy += 16;
-
       ctx.font      = '10px Consolas, monospace';
       ctx.fillStyle = WHITE;
-      for (const line of profile.special) {
-        ctx.fillText('• ' + line, barX, sy + 7);
+      for (const line of p.special) {
+        ctx.fillText('• ' + line, bx, sy + 7);
         sy += 15;
+      }
+
+      // Selected indicator at bottom of card
+      if (isSelected) {
+        ctx.font      = 'bold 12px Consolas, monospace';
+        ctx.fillStyle = CYAN;
+        ctx.textAlign = 'center';
+        ctx.fillText('[ SELECTED ]', cx + CW / 2, Y0 + CH - 12);
       }
     }
 
-    ctx.font      = '14px Consolas, monospace';
-    ctx.fillStyle = WHITE;
+    // Hint text
+    ctx.font      = '13px Consolas, monospace';
+    ctx.fillStyle = 'rgba(180,180,180,0.7)';
     ctx.textAlign = 'center';
-    ctx.fillText('← → / A D  Select     ENTER / Click  Confirm     ESC  Back', WIDTH / 2, HEIGHT - 22);
+    ctx.fillText('← → / A D  Select     ENTER / Click twice  Confirm     ESC  Back', WIDTH / 2, HEIGHT - 10);
     ctx.textAlign = 'left';
   }
 

@@ -124,17 +124,17 @@ canvas.addEventListener('mousedown', e => {
 
   // ── Character Select clicks ───────────────────────────────────
   if (game.gameState === 'character_select') {
-    const cardW = 220, cardH = 400, spacing = 280;
-    const startX = canvas.width / 2 - cardW - spacing / 2;
-    for (let i = 0; i < game.characters.length; i++) {
-      const cx = startX + i * spacing;
-      const cy = canvas.height / 2 - cardH / 2;
-      if (mousePos.x >= cx && mousePos.x <= cx + cardW &&
-          mousePos.y >= cy && mousePos.y <= cy + cardH) {
+    const CW = 200, CH = 540, GAP = 36;
+    const X0 = Math.round((canvas.width - (3 * CW + 2 * GAP)) / 2);
+    const Y0 = 80;
+    for (let i = 0; i < 3; i++) {
+      const cx = X0 + i * (CW + GAP);
+      if (mousePos.x >= cx && mousePos.x <= cx + CW &&
+          mousePos.y >= Y0 && mousePos.y <= Y0 + CH) {
         if (game.characterIndex === i) {
-          game.selectCharacter(game.characters[i].id);  // confirm on second click
+          game.selectCharacter(game.characters[i].id);
         } else {
-          game.characterIndex = i;                        // first click: select
+          game.characterIndex = i;
         }
         break;
       }
