@@ -137,14 +137,6 @@ export class Player {
   }
 
   draw(ctx, mousePos) {
-    // Aura rings
-    ctx.strokeStyle = 'rgba(0,90,120,0.6)';
-    ctx.lineWidth   = 1;
-    ctx.beginPath(); ctx.arc(this.pos.x, this.pos.y, this.repelRadius, 0, Math.PI * 2); ctx.stroke();
-
-    ctx.strokeStyle = 'rgba(0,130,160,0.6)';
-    ctx.beginPath(); ctx.arc(this.pos.x, this.pos.y, this.pickupRadius, 0, Math.PI * 2); ctx.stroke();
-
     // Dash glow
     if (this.dashTimer > 0) {
       ctx.strokeStyle = CYAN;
