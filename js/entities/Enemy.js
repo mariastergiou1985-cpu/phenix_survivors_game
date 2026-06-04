@@ -19,12 +19,13 @@ export class Enemy {
     this.hitFlash   = 0;
     this.stunned    = 0;
 
-    const [spd, hp, color, stealTime] = this._statsForType(enemyType, minute);
-    this.baseSpeed = spd;
-    this.hp        = hp;
-    this.color     = color;
-    this.stealTime = stealTime;
-    this.radius    = ENEMY_RADIUS;
+    const [spd, hp, color, stealTime, contactDamage] = this._statsForType(enemyType, minute);
+    this.baseSpeed     = spd;
+    this.hp            = hp;
+    this.color         = color;
+    this.stealTime     = stealTime;
+    this.contactDamage = contactDamage;
+    this.radius        = ENEMY_RADIUS;
 
     if (enemyType === 'Security Defector Mech')  this.radius = 28;
     else if (enemyType === 'Rogue AI Overlord')   this.radius = 44;
@@ -63,16 +64,17 @@ export class Enemy {
 
   _statsForType(type, minute) {
     const d = 1 + minute * 0.035;
+    // [speed, hp, color, stealTime, contactDamage (HP/sec)]
     switch (type) {
-      case 'Glitch Drone':          return [95 * d,  2,   BLUE,   2.00];
-      case 'Rogue Punk':            return [125 * d, 3,   MAGENTA, 1.65];
-      case 'Stealth Infiltrator':   return [155 * d, 2,   PURPLE,  1.20];
-      case 'Scrap Scavenger':       return [105 * d, 5,   ORANGE,  1.55];
-      case 'Cyber-Net Junkie':      return [135 * d, 4,   GREEN,   1.45];
-      case 'Overclocked Berserker': return [210 * d, 3,   RED,     1.00];
-      case 'Security Defector Mech':return [90 * d,  30,  YELLOW,  0.75];
-      case 'Rogue AI Overlord':     return [75 * d,  120, RED,     0.55];
-      default:                      return [100,      2,   WHITE,   1.80];
+      case 'Glitch Drone':          return [95 * d,  2,   BLUE,    2.00,  6];
+      case 'Rogue Punk':            return [125 * d, 3,   MAGENTA, 1.65, 10];
+      case 'Stealth Infiltrator':   return [155 * d, 2,   PURPLE,  1.20, 12];
+      case 'Scrap Scavenger':       return [105 * d, 5,   ORANGE,  1.55,  8];
+      case 'Cyber-Net Junkie':      return [135 * d, 4,   GREEN,   1.45, 10];
+      case 'Overclocked Berserker': return [210 * d, 3,   RED,     1.00, 14];
+      case 'Security Defector Mech':return [90 * d,  30,  YELLOW,  0.75, 18];
+      case 'Rogue AI Overlord':     return [75 * d,  120, RED,     0.55, 25];
+      default:                      return [100,      2,   WHITE,   1.80,  6];
     }
   }
 

@@ -104,6 +104,7 @@ export class Game {
     this.finalMessage      = '';
     this.rewardsGranted    = false;
     this.runCreditsEarned  = 0;
+    this.playerHitCooldown = 0;
 
     this._createMatrices();
   }
@@ -804,16 +805,30 @@ export class Game {
   }
 
   _checkPlayerEnemyCollisions(dt) {
+    if (this.playerHitCooldown > 0) this.playerHitCooldown -= dt;
+
     let damageDone = false;
     for (const e of this.enemies) {
       if (distance(e.pos, this.player.pos) < e.radius + PLAYER_RADIUS) {
+        // Pushback
         const push = safeNormalize(this.player.pos.sub(e.pos));
-        this.player.pos.addMut(push.scale(80 * dt));
+        this.player.pos.addMut(push.scale(60 * dt));
+
         if (!damageDone) {
-          this.player.hp -= 8 * dt;
+          // Apply per-enemy contact damage
+          const dmg = (e.contactDamage ?? 8) * dt;
+          this.player.hp = Math.max(0, this.player.hp - dmg);
           damageDone = true;
-          this.screenShake.trigger(3, 0.12);
-          this.particles.spawnHitSparks(this.player.pos, RED);
+
+          // Throttle screen shake and floating text to once per 0.5s
+          if (this.playerHitCooldown <= 0) {
+            this.playerHitCooldown = 0.5;
+            this.screenShake.trigger(4, 0.15);
+            this.particles.spawnHitSparks(this.player.pos, RED);
+            this.floatingTexts.push(
+              new FloatingText(`-${Math.ceil(e.contactDamage ?? 8)} HP`, this.player.pos.clone(), RED, 0.6)
+            );
+          }
         }
       }
     }
