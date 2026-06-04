@@ -79,39 +79,87 @@ function _drawAbilityHUD(ctx, player) {
 }
 
 export function drawEndScreen(ctx, game) {
-  ctx.fillStyle = 'rgba(0,0,0,0.75)';
+  ctx.fillStyle = 'rgba(0,0,0,0.82)';
   ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
-  const color = game.victory ? GREEN : RED;
-  ctx.font      = '46px Consolas, monospace';
-  ctx.fillStyle = color;
+  // Title
+  const titleColor = game.victory ? GREEN : RED;
+  ctx.font      = '44px Consolas, monospace';
+  ctx.fillStyle = titleColor;
   ctx.textAlign = 'center';
-  ctx.fillText(game.finalMessage, WIDTH / 2, HEIGHT / 2 - 150);
+  ctx.fillText(game.finalMessage, WIDTH / 2, 80);
 
   const mins = Math.floor(game.timeAlive / 60).toString().padStart(2, '0');
   const secs = Math.floor(game.timeAlive % 60).toString().padStart(2, '0');
 
-  const stats = [
-    `Survival Time: ${mins}:${secs}`,
-    `Data-Cores Secured: ${game.player.coresSecured}`,
-    `Cores Intercepted: ${game.player.coresIntercepted}`,
-    `Cyber-Punks Neutralized: ${game.player.kills}`,
-    `Final Level: ${game.player.level}`,
-    `Final Overload: ${game.overload.toFixed(1)}%`,
-    '',
-    `Grid Credits Earned: +${game.runCreditsEarned}`,
-    `Total Grid Credits: ${game.meta?.credits ?? 0}`,
-    '',
-    'Press R to restart  •  ESC to return to menu',
+  // Run stats section
+  const runStats = [
+    [`Survival Time`,          `${mins}:${secs}`],
+    [`Data-Cores Secured`,     `${game.player.coresSecured}`],
+    [`Cores Intercepted`,      `${game.player.coresIntercepted}`],
+    [`Cyber-Punks Neutralized`,`${game.player.kills}`],
+    [`Final Level`,            `${game.player.level}`],
+    [`Network Overload`,       `${game.overload.toFixed(1)}%`],
   ];
 
-  ctx.font = '26px Consolas, monospace';
-  let y = HEIGHT / 2 - 70;
-  for (const line of stats) {
+  ctx.font      = '20px Consolas, monospace';
+  ctx.textAlign = 'left';
+  let y = 130;
+  const lx = WIDTH / 2 - 280;
+  const rx = WIDTH / 2 + 280;
+  for (const [label, value] of runStats) {
+    ctx.fillStyle = GREY;
+    ctx.fillText(label, lx, y);
     ctx.fillStyle = WHITE;
-    ctx.fillText(line, WIDTH / 2, y);
-    y += 34;
+    ctx.textAlign = 'right';
+    ctx.fillText(value, rx, y);
+    ctx.textAlign = 'left';
+    y += 28;
   }
+
+  // Separator
+  y += 6;
+  ctx.strokeStyle = '#2a4060';
+  ctx.lineWidth   = 1;
+  ctx.beginPath();
+  ctx.moveTo(lx, y);
+  ctx.lineTo(rx, y);
+  ctx.stroke();
+  y += 20;
+
+  // Grid Credits section — colored so it's impossible to miss
+  ctx.font      = '22px Consolas, monospace';
+  ctx.fillStyle = GREY;
+  ctx.textAlign = 'left';
+  ctx.fillText('Grid Credits Earned', lx, y);
+  ctx.fillStyle = YELLOW;
+  ctx.textAlign = 'right';
+  ctx.fillText(`+${game.runCreditsEarned ?? 0}`, rx, y);
+  y += 32;
+
+  ctx.font      = '22px Consolas, monospace';
+  ctx.fillStyle = GREY;
+  ctx.textAlign = 'left';
+  ctx.fillText('Total Grid Credits', lx, y);
+  ctx.fillStyle = CYAN;
+  ctx.textAlign = 'right';
+  ctx.fillText(`${game.meta?.credits ?? 0}`, rx, y);
+  y += 16;
+
+  // Separator
+  ctx.strokeStyle = '#2a4060';
+  ctx.lineWidth   = 1;
+  ctx.beginPath();
+  ctx.moveTo(lx, y + 6);
+  ctx.lineTo(rx, y + 6);
+  ctx.stroke();
+  y += 30;
+
+  // Controls hint
+  ctx.font      = '18px Consolas, monospace';
+  ctx.fillStyle = '#5a7080';
+  ctx.textAlign = 'center';
+  ctx.fillText('R = Restart   •   ESC = Main Menu', WIDTH / 2, y);
 
   ctx.textAlign = 'left';
 }
