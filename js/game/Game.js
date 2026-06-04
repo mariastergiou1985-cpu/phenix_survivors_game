@@ -969,24 +969,40 @@ export class Game {
       ctx.fillText('CYBER-GRID PROTOCOL', WIDTH / 2, 120);
     }
 
-    // Interactive button overlay (always drawn on top)
-    ctx.font = 'bold 32px Consolas, monospace';
+    // When mockup is loaded it already contains all button text — only draw a
+    // subtle arrow indicator so the player knows which item is selected.
+    // When mockup is missing, draw the full text labels as fallback.
     const startY = 280, spacing = 80, BW = 360;
     for (let i = 0; i < this.menuItems.length; i++) {
       const y  = startY + i * spacing;
       const bx = WIDTH / 2 - BW / 2;
-      if (i === this.menuIndex) {
-        // Selected: neon highlight
-        ctx.fillStyle = 'rgba(255,220,0,0.15)';
-        ctx.fillRect(bx, y - 30, BW, 52);
-        ctx.strokeStyle = YELLOW; ctx.lineWidth = 2;
-        ctx.strokeRect(bx, y - 30, BW, 52);
-        ctx.fillStyle = YELLOW;
+      if (hasMockup) {
+        // No text, no yellow box — just a small cyan triangle on the selected row
+        if (i === this.menuIndex) {
+          ctx.fillStyle = 'rgba(0,230,255,0.55)';
+          ctx.beginPath();
+          ctx.moveTo(bx - 6,  y - 10);
+          ctx.lineTo(bx - 18, y - 16);
+          ctx.lineTo(bx - 18, y - 4);
+          ctx.closePath();
+          ctx.fill();
+        }
       } else {
-        ctx.fillStyle = WHITE;
+        // Fallback: full highlight + text
+        if (i === this.menuIndex) {
+          ctx.fillStyle = 'rgba(0,230,255,0.12)';
+          ctx.fillRect(bx, y - 30, BW, 52);
+          ctx.strokeStyle = CYAN; ctx.lineWidth = 2;
+          ctx.strokeRect(bx, y - 30, BW, 52);
+          ctx.font      = 'bold 32px Consolas, monospace';
+          ctx.fillStyle = CYAN;
+        } else {
+          ctx.font      = 'bold 32px Consolas, monospace';
+          ctx.fillStyle = WHITE;
+        }
+        ctx.textAlign = 'center';
+        ctx.fillText(this.menuItems[i], WIDTH / 2, y);
       }
-      ctx.textAlign = 'center';
-      ctx.fillText(this.menuItems[i], WIDTH / 2, y);
     }
 
     ctx.font      = '14px Consolas, monospace';
