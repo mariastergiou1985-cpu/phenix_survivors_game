@@ -949,55 +949,52 @@ export class Game {
   }
 
   _drawStartMenu(ctx) {
-    const mockup = this._menuMockup;
+    const mockup    = this._menuMockup;
     const hasMockup = mockup && mockup.complete && mockup.naturalWidth > 0;
 
     if (hasMockup) {
-      // Use the mockup image as background — draw it full-screen
+      // ── Mockup path ──────────────────────────────────────────────────────────
+      // The image already contains START GAME / CHARACTER SELECT / UPGRADES / EXIT.
+      // Draw ONLY the image. No text. No rectangles. No labels of any kind.
       ctx.drawImage(mockup, 0, 0, WIDTH, HEIGHT);
-      // Slight dark tint so interactive highlights read clearly
-      ctx.fillStyle = 'rgba(0,0,0,0.35)';
-      ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+      // Tiny cyan arrow to show keyboard selection position (no text drawn)
+      const startY = 280, spacing = 80, BW = 360;
+      const bx = WIDTH / 2 - BW / 2;
+      const ay = startY + this.menuIndex * spacing - 10;
+      ctx.fillStyle = 'rgba(0,230,255,0.7)';
+      ctx.beginPath();
+      ctx.moveTo(bx - 6,  ay);
+      ctx.lineTo(bx - 20, ay - 8);
+      ctx.lineTo(bx - 20, ay + 8);
+      ctx.closePath();
+      ctx.fill();
+
     } else {
-      // Procedural fallback: city bg + dark overlay + title
+      // ── Fallback path (image missing) ────────────────────────────────────────
+      // Only reached when the mockup file could not be loaded.
       this._drawBackground(ctx);
       ctx.fillStyle = 'rgba(0,0,0,0.72)';
       ctx.fillRect(0, 0, WIDTH, HEIGHT);
-      ctx.font      = 'bold 64px Consolas, monospace';
+
+      ctx.font      = 'bold 56px Consolas, monospace';
       ctx.fillStyle = CYAN;
       ctx.textAlign = 'center';
-      ctx.fillText('CYBER-GRID PROTOCOL', WIDTH / 2, 120);
-    }
+      ctx.fillText('PHENIX SURVIVORS', WIDTH / 2, 130);
 
-    // When mockup is loaded it already contains all button text — only draw a
-    // subtle arrow indicator so the player knows which item is selected.
-    // When mockup is missing, draw the full text labels as fallback.
-    const startY = 280, spacing = 80, BW = 360;
-    for (let i = 0; i < this.menuItems.length; i++) {
-      const y  = startY + i * spacing;
-      const bx = WIDTH / 2 - BW / 2;
-      if (hasMockup) {
-        // No text, no yellow box — just a small cyan triangle on the selected row
-        if (i === this.menuIndex) {
-          ctx.fillStyle = 'rgba(0,230,255,0.55)';
-          ctx.beginPath();
-          ctx.moveTo(bx - 6,  y - 10);
-          ctx.lineTo(bx - 18, y - 16);
-          ctx.lineTo(bx - 18, y - 4);
-          ctx.closePath();
-          ctx.fill();
-        }
-      } else {
-        // Fallback: full highlight + text
+      const startY = 280, spacing = 80, BW = 360;
+      for (let i = 0; i < this.menuItems.length; i++) {
+        const y  = startY + i * spacing;
+        const bx = WIDTH / 2 - BW / 2;
         if (i === this.menuIndex) {
           ctx.fillStyle = 'rgba(0,230,255,0.12)';
           ctx.fillRect(bx, y - 30, BW, 52);
           ctx.strokeStyle = CYAN; ctx.lineWidth = 2;
           ctx.strokeRect(bx, y - 30, BW, 52);
-          ctx.font      = 'bold 32px Consolas, monospace';
+          ctx.font      = 'bold 30px Consolas, monospace';
           ctx.fillStyle = CYAN;
         } else {
-          ctx.font      = 'bold 32px Consolas, monospace';
+          ctx.font      = 'bold 30px Consolas, monospace';
           ctx.fillStyle = WHITE;
         }
         ctx.textAlign = 'center';
@@ -1005,10 +1002,11 @@ export class Game {
       }
     }
 
+    // Navigation hint shown in both paths
     ctx.font      = '14px Consolas, monospace';
-    ctx.fillStyle = 'rgba(200,200,200,0.7)';
+    ctx.fillStyle = 'rgba(200,200,200,0.6)';
     ctx.textAlign = 'center';
-    ctx.fillText('↑↓ W/S  Navigate     ENTER / Click  Select', WIDTH / 2, HEIGHT - 30);
+    ctx.fillText('↑↓ W/S  Navigate     ENTER / Click  Select', WIDTH / 2, HEIGHT - 22);
     ctx.textAlign = 'left';
   }
 
