@@ -420,10 +420,13 @@ export class Game {
   enemySpawnInterval()        { return Math.max(0.25, 1.25 - this.currentMinute() * 0.035); }
 
   chooseEnemyType() {
+    const t      = this.timeAlive;
     const minute = this.currentMinute();
     let pool;
-    if      (minute < 2)  pool = ['Glitch Drone'];
-    else if (minute < 5)  pool = ['Glitch Drone', 'Rogue Punk'];
+
+    if      (t < 60)   pool = ['Glitch Drone', 'Glitch Drone', 'Rogue Punk'];
+    else if (t < 150)  pool = ['Glitch Drone', 'Rogue Punk', 'Scrap Scavenger'];
+    else if (t < 240)  pool = ['Glitch Drone', 'Rogue Punk', 'Stealth Infiltrator', 'Scrap Scavenger'];
     else if (minute < 8)  pool = ['Glitch Drone', 'Rogue Punk', 'Stealth Infiltrator'];
     else if (minute < 12) pool = ['Rogue Punk', 'Stealth Infiltrator', 'Scrap Scavenger'];
     else if (minute < 15) {
@@ -887,7 +890,7 @@ export class Game {
     this.spawnTimer += dt;
     if (this.spawnTimer >= this.enemySpawnInterval()) {
       this.spawnTimer = 0;
-      const count = (this.currentMinute() >= 2 && Math.random() < 0.35) ? 2 : 1;
+      const count = (this.currentMinute() >= 1 && Math.random() < 0.35) ? 2 : 1;
       for (let i = 0; i < count; i++) this.spawnEnemy();
     }
   }
