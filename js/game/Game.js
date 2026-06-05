@@ -473,7 +473,8 @@ export class Game {
     const p = this.player;
     if (p.upgrades['Sonic Pulse'] === 0 || p.sonicPulseCooldown > 0) return;
 
-    const aimDir   = safeNormalize(new Vec2(mousePos.x - p.pos.x, mousePos.y - p.pos.y));
+    const wm       = this._worldMouse(mousePos);
+    const aimDir   = safeNormalize(new Vec2(wm.x - p.pos.x, wm.y - p.pos.y));
     const range    = 220;
     const halfCone = Math.PI / 2; // 180° total arc
     const force    = 300 + p.upgrades['Sonic Pulse'] * 60;
@@ -521,8 +522,9 @@ export class Game {
 
   _activateLightningDashStrike() {
     const p = this.player;
-    const aimDir = this._lastMousePos
-      ? safeNormalize(new Vec2(this._lastMousePos.x - p.pos.x, this._lastMousePos.y - p.pos.y))
+    const wm = this._worldMouse(this._lastMousePos);
+    const aimDir = wm
+      ? safeNormalize(new Vec2(wm.x - p.pos.x, wm.y - p.pos.y))
       : p.lastFacingDir.clone();
     p.specialDashDir   = aimDir;
     p.specialDashTimer = 0.28;
@@ -534,8 +536,9 @@ export class Game {
 
   _activateOverdriveBeam() {
     const p = this.player;
-    const aimDir = this._lastMousePos
-      ? safeNormalize(new Vec2(this._lastMousePos.x - p.pos.x, this._lastMousePos.y - p.pos.y))
+    const wm = this._worldMouse(this._lastMousePos);
+    const aimDir = wm
+      ? safeNormalize(new Vec2(wm.x - p.pos.x, wm.y - p.pos.y))
       : new Vec2(1, 0);
     const beamLength = 600, beamWidth = 28, dmg = 25, maxHits = 8;
     let hits = 0;
@@ -734,7 +737,7 @@ export class Game {
 
   _handleMouseShooting(input) {
     if (input.mouseDown && this.player.canShoot()) {
-      let aimPos = input.mousePos;
+      let aimPos = { x: input.mousePos.x + this.camera.x, y: input.mousePos.y + this.camera.y };
       if (this.aimAssist) {
         const nearest = this._nearestEnemy(this.player.pos, 300);
         if (nearest) aimPos = nearest.pos;
@@ -1468,6 +1471,11 @@ export class Game {
     const cy = this.player.pos.y - HEIGHT / 2;
     this.camera.x = Math.max(0, Math.min(cx, WORLD_W - WIDTH));
     this.camera.y = Math.max(0, Math.min(cy, WORLD_H - HEIGHT));
+  }
+
+  _worldMouse(screenPos) {
+    if (!screenPos) return null;
+    return { x: screenPos.x + this.camera.x, y: screenPos.y + this.camera.y };
   }
 
   _drawWorldBackground(ctx) {

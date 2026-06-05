@@ -1,4 +1,4 @@
-import { Game } from './game/Game.js?v=50';
+import { Game } from './game/Game.js?v=60';
 import { AudioManager } from './audio/AudioManager.js?v=10';
 
 const canvas = document.getElementById('game');
@@ -9,11 +9,12 @@ function resizeCanvas() {
   const scaleX = window.innerWidth  / canvas.width;
   const scaleY = window.innerHeight / canvas.height;
   const scale  = Math.min(scaleX, scaleY);
-  canvas.style.width  = `${canvas.width  * scale}px`;
-  canvas.style.height = `${canvas.height * scale}px`;
+  canvas.style.width  = `${Math.floor(canvas.width  * scale)}px`;
+  canvas.style.height = `${Math.floor(canvas.height * scale)}px`;
 }
 resizeCanvas();
 window.addEventListener('resize', resizeCanvas);
+document.addEventListener('fullscreenchange', resizeCanvas);
 
 // ─── Input state ──────────────────────────────────────────────────────────────
 const keys    = new Set();
@@ -56,6 +57,13 @@ window.addEventListener('keydown', e => {
   if (key === 'e') game.activateEMPCloud();
   if (key === 'e') game.activateSpecial();
   if (key === 'm') game.audio?.toggleMute();
+  if (key === 'f') {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    } else {
+      document.exitFullscreen().catch(() => {});
+    }
+  }
   if (key === 't' && game.gameState === 'playing' && !game.gameOver && !game.victory) {
     game.aimAssist = !game.aimAssist;
   }
