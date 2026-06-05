@@ -13,7 +13,7 @@ import { DataCore }       from '../entities/DataCore.js';
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=10';
 import { Player }         from '../entities/Player.js';
 import { Projectile, HomingDisc } from '../entities/Projectile.js';
-import { Enemy }          from '../entities/Enemy.js?v=10';
+import { Enemy }          from '../entities/Enemy.js?v=30';
 
 import { ParticleSystem, ScreenShake, drawVignette, EMPRing } from './Effects.js';
 import { SystemEventManager } from './Events.js';

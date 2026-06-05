@@ -107,7 +107,7 @@ export class Enemy {
     const spriteFile = spriteMap[this.enemyType];
     if (spriteFile) {
       this.sprite = new Image();
-      this.sprite.src = `assets/enemies/${spriteFile}.png?v=10`;
+      this.sprite.src = `assets/enemies/${spriteFile}.png?v=30`;
     }
   }
 
