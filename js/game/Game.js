@@ -799,7 +799,7 @@ export class Game {
     const carriedCount = this.enemies.filter(e => e.carryingCore !== null).length;
     const emptySlots   = this.matrices.reduce((sum, m) => sum + (m.capacity - m.stored), 0);
 
-    const chaosGain = groundCount * 0.02 + carriedCount * 0.05 + emptySlots * 0.025;
+    const chaosGain = groundCount * 0.024 + carriedCount * 0.06 + emptySlots * 0.029;
 
     if (chaosGain === 0) {
       // Grid fully secure — drain at 1.2% per second
