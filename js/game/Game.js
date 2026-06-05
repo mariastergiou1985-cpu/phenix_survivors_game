@@ -1190,6 +1190,13 @@ export class Game {
       ctx.fillText(this.menuItems[i], WIDTH / 2, y);
     }
 
+    // Credits
+    ctx.font      = '12px Consolas, monospace';
+    ctx.fillStyle = 'rgba(160,160,160,0.65)';
+    ctx.textAlign = 'center';
+    ctx.fillText('GAME BY  InkSpireM Visuals', WIDTH / 2, HEIGHT - 58);
+    ctx.fillText('MUSIC  "HOPE" BY TSALI', WIDTH / 2, HEIGHT - 42);
+
     // Navigation hint
     ctx.font      = '14px Consolas, monospace';
     ctx.fillStyle = 'rgba(200,200,200,0.6)';
