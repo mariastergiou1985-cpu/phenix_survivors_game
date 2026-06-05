@@ -66,7 +66,7 @@ export class Game {
       { id: 'taekwondo_girl', name: 'Neon Taekwondo Girl', fallbackColor: '#00D9FF', fallbackAlt: '#0099CC' },
       { id: 'cyber_arm_hero', name: 'Cyber Arm Hero', fallbackColor: '#FF6600', fallbackAlt: '#CC0000' }
     ];
-    this.menuItems = ['START GAME', 'CHARACTER SELECT', 'UPGRADES', 'EXIT'];
+    this.menuItems = ['START GAME', 'CHARACTER SELECT', 'UPGRADES', 'CREDITS', 'EXIT'];
 
     this.reset();
   }
@@ -153,6 +153,8 @@ export class Game {
     this._upgradeMsgTimer = 0;
     this._confirmReset  = false;
   }
+
+  goToCredits() { this.gameState = 'credits'; }
 
   // ─── Meta upgrades ──────────────────────────────────────────────────────────
   _applyMetaUpgrades() {
@@ -580,6 +582,10 @@ export class Game {
       this._updateUpgradesScreen(input);
       return;
     }
+    if (this.gameState === 'credits') {
+      this._updateCreditsScreen(input);
+      return;
+    }
     if (this.gameState !== 'playing') return;
 
     if (this.paused || this.gameOver || this.victory) return;
@@ -663,7 +669,11 @@ export class Game {
     if (keys.has('enter') || keys.has(' ')) {
       if (this.menuIndex === 0 || this.menuIndex === 1) {
         this.goToCharacterSelect();
+      } else if (this.menuIndex === 2) {
+        this.goToUpgradesScreen();
       } else if (this.menuIndex === 3) {
+        this.goToCredits();
+      } else if (this.menuIndex === 4) {
         try { window.close(); } catch (e) {}
         this.goToExitScreen();
       }
@@ -1046,6 +1056,10 @@ export class Game {
       this._drawUpgradesScreen(ctx);
       return;
     }
+    if (this.gameState === 'credits') {
+      this._drawCreditsScreen(ctx);
+      return;
+    }
     if (this.gameState !== 'playing') {
       this._drawBackground(ctx);
       return;
@@ -1190,13 +1204,6 @@ export class Game {
       ctx.fillText(this.menuItems[i], WIDTH / 2, y);
     }
 
-    // Credits
-    ctx.font      = '12px Consolas, monospace';
-    ctx.fillStyle = 'rgba(160,160,160,0.65)';
-    ctx.textAlign = 'center';
-    ctx.fillText('GAME BY  InkSpireM Visuals', WIDTH / 2, HEIGHT - 58);
-    ctx.fillText('MUSIC  "HOPE" BY TSALI', WIDTH / 2, HEIGHT - 42);
-
     // Navigation hint
     ctx.font      = '14px Consolas, monospace';
     ctx.fillStyle = 'rgba(200,200,200,0.6)';
@@ -1286,6 +1293,71 @@ export class Game {
     ctx.font = '22px Consolas, monospace';
     ctx.fillStyle = 'rgba(200, 200, 200, 0.8)';
     ctx.fillText('Press ENTER or ESC to return to Start Menu', WIDTH / 2, HEIGHT / 2 + 80);
+
+    ctx.textAlign = 'left';
+  }
+
+  _updateCreditsScreen(input) {
+    const { keys } = input;
+    if (keys.has('escape')) {
+      this.goToMainMenu();
+      keys.delete('escape');
+    }
+  }
+
+  _drawCreditsScreen(ctx) {
+    this._drawBackground(ctx);
+    ctx.fillStyle = 'rgba(0,0,0,0.84)';
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+    const pw = 620, ph = 380;
+    const px = WIDTH / 2 - pw / 2;
+    const py = HEIGHT / 2 - ph / 2 - 20;
+
+    ctx.fillStyle = 'rgba(0,12,28,0.95)';
+    ctx.fillRect(px, py, pw, ph);
+    ctx.strokeStyle = CYAN; ctx.lineWidth = 2;
+    ctx.strokeRect(px, py, pw, ph);
+    ctx.strokeStyle = 'rgba(0,230,255,0.18)'; ctx.lineWidth = 1;
+    ctx.strokeRect(px + 6, py + 6, pw - 12, ph - 12);
+
+    ctx.textAlign = 'center';
+
+    ctx.font      = 'bold 44px Consolas, monospace';
+    ctx.fillStyle = CYAN;
+    ctx.fillText('CREDITS', WIDTH / 2, py + 60);
+
+    ctx.strokeStyle = 'rgba(0,230,255,0.25)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(px + 40, py + 76); ctx.lineTo(px + pw - 40, py + 76); ctx.stroke();
+
+    ctx.font      = '15px Consolas, monospace';
+    ctx.fillStyle = YELLOW;
+    ctx.fillText('CREATED BY', WIDTH / 2, py + 116);
+    ctx.font      = 'bold 30px Consolas, monospace';
+    ctx.fillStyle = WHITE;
+    ctx.fillText('InkSpireM Visuals', WIDTH / 2, py + 154);
+
+    ctx.font      = '15px Consolas, monospace';
+    ctx.fillStyle = YELLOW;
+    ctx.fillText('MUSIC', WIDTH / 2, py + 204);
+    ctx.font      = 'bold 26px Consolas, monospace';
+    ctx.fillStyle = WHITE;
+    ctx.fillText('"HOPE" by TSALI', WIDTH / 2, py + 240);
+
+    const bw = 220, bh = 48;
+    const bx = WIDTH / 2 - bw / 2;
+    const by = py + ph - 72;
+    ctx.fillStyle = 'rgba(0,230,255,0.1)';
+    ctx.fillRect(bx, by, bw, bh);
+    ctx.strokeStyle = CYAN; ctx.lineWidth = 2;
+    ctx.strokeRect(bx, by, bw, bh);
+    ctx.font      = 'bold 22px Consolas, monospace';
+    ctx.fillStyle = CYAN;
+    ctx.fillText('[ BACK ]', WIDTH / 2, by + 32);
+
+    ctx.font      = '13px Consolas, monospace';
+    ctx.fillStyle = 'rgba(180,180,180,0.5)';
+    ctx.fillText('ESC = Return to Menu', WIDTH / 2, HEIGHT - 18);
 
     ctx.textAlign = 'left';
   }
