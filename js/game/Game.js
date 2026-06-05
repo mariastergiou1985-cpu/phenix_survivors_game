@@ -13,7 +13,7 @@ import { DataCore }       from '../entities/DataCore.js';
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=10';
 import { Player }         from '../entities/Player.js?v=50';
 import { Projectile, HomingDisc } from '../entities/Projectile.js';
-import { Enemy }          from '../entities/Enemy.js?v=50';
+import { Enemy }          from '../entities/Enemy.js?v=90';
 
 import { ParticleSystem, ScreenShake, drawVignette, EMPRing } from './Effects.js';
 import { SystemEventManager } from './Events.js';
@@ -442,23 +442,51 @@ export class Game {
     const minute = this.currentMinute();
     let pool;
 
-    if      (t < 60)   pool = ['Glitch Drone', 'Rogue Punk', 'Scrap Scavenger'];
-    else if (t < 150)  pool = ['Glitch Drone', 'Rogue Punk', 'Scrap Scavenger', 'Scrap Scavenger'];
-    else if (t < 240)  pool = ['Rogue Punk', 'Stealth Infiltrator', 'Scrap Scavenger', 'Scrap Scavenger'];
-    else if (minute < 8)  pool = ['Glitch Drone', 'Rogue Punk', 'Stealth Infiltrator'];
-    else if (minute < 12) pool = ['Rogue Punk', 'Stealth Infiltrator', 'Scrap Scavenger'];
+    // 0:00-1:00 — gentle intro: core stealers + first hunters
+    if (t < 60)
+      pool = ['Scrap Scavenger', 'Scrap Scavenger', 'Combat Hunter', 'Glitch Drone'];
+
+    // 1:00-1:30 — ramp up: first Cyber Shooters appear
+    else if (t < 90)
+      pool = ['Combat Hunter', 'Cyber Shooter', 'Scrap Scavenger', 'Scrap Scavenger'];
+
+    // 1:30-3:00 — 60% combat hunters/shooters, 40% saboteurs
+    else if (t < 180)
+      pool = ['Combat Hunter', 'Combat Hunter', 'Cyber Shooter', 'Scrap Scavenger', 'Scrap Scavenger'];
+
+    // 3:00-6:00 — 67% combat, 33% saboteurs
+    else if (t < 360)
+      pool = ['Combat Hunter', 'Combat Hunter', 'Cyber Shooter', 'Cyber Shooter', 'Scrap Scavenger', 'Cyber-Net Junkie'];
+
+    // 6:00-10:00 min — 60% combat, more variety
+    else if (minute < 10)
+      pool = ['Combat Hunter', 'Cyber Shooter', 'Stealth Infiltrator', 'Scrap Scavenger', 'Cyber-Net Junkie'];
+
+    // 10:00-15:00 min — introduce Heavy Mechs
     else if (minute < 15) {
-      pool = ['Rogue Punk', 'Stealth Infiltrator', 'Scrap Scavenger'];
+      pool = ['Combat Hunter', 'Cyber Shooter', 'Overclocked Berserker', 'Scrap Scavenger', 'Cyber-Net Junkie'];
+      if (!this.enemies.some(e => e.enemyType === 'Heavy Mech'))
+        return 'Heavy Mech';
+    }
+
+    // 15:00-20:00 min — heavy pressure + boss
+    else if (minute < 20) {
+      pool = ['Combat Hunter', 'Cyber Shooter', 'Heavy Mech', 'Overclocked Berserker', 'Scrap Scavenger'];
       if (!this.enemies.some(e => e.enemyType === 'Security Defector Mech'))
         return 'Security Defector Mech';
     }
-    else if (minute < 20) pool = ['Stealth Infiltrator', 'Scrap Scavenger', 'Cyber-Net Junkie'];
-    else if (minute < 25) pool = ['Cyber-Net Junkie', 'Overclocked Berserker', 'Scrap Scavenger'];
+
+    // 20:00-25:00 min — near endgame
+    else if (minute < 25)
+      pool = ['Combat Hunter', 'Cyber Shooter', 'Heavy Mech', 'Overclocked Berserker', 'Cyber-Net Junkie'];
+
+    // 25:00+ — endgame with boss
     else {
-      pool = ['Overclocked Berserker', 'Cyber-Net Junkie', 'Stealth Infiltrator'];
+      pool = ['Overclocked Berserker', 'Combat Hunter', 'Cyber Shooter', 'Heavy Mech', 'Cyber-Net Junkie'];
       if (!this.enemies.some(e => e.enemyType === 'Rogue AI Overlord') && !this.megaBoss)
         return 'Rogue AI Overlord';
     }
+
     return randomChoice(pool);
   }
 

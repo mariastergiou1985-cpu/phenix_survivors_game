@@ -29,6 +29,7 @@ export class Enemy {
 
     if (enemyType === 'Security Defector Mech')  this.radius = 28;
     else if (enemyType === 'Rogue AI Overlord')   this.radius = 44;
+    else if (enemyType === 'Heavy Mech')          this.radius = 22;
 
     // Phase D flags
     this.isMegaBoss      = false;
@@ -57,6 +58,9 @@ export class Enemy {
       case 'Overclocked Berserker':  return 'mixed';
       case 'Security Defector Mech': return 'hybrid';
       case 'Rogue AI Overlord':      return 'boss';
+      case 'Combat Hunter':          return 'hunter';
+      case 'Cyber Shooter':          return 'shooter';
+      case 'Heavy Mech':             return 'hunter';
       default:                       return 'scavenger';
     }
   }
@@ -83,6 +87,20 @@ export class Enemy {
         this.bulletDamage  = 20;
         this.bulletRadius  = 11;
         this.bulletColor   = RED;
+        break;
+      case 'Cyber Shooter':
+        this.shootInterval = 2.2;
+        this.bulletSpeed   = 340;
+        this.bulletDamage  = 8;
+        this.bulletRadius  = 6;
+        this.bulletColor   = CYAN;
+        break;
+      case 'Heavy Mech':
+        this.shootInterval = 4.5;
+        this.bulletSpeed   = 180;
+        this.bulletDamage  = 15;
+        this.bulletRadius  = 9;
+        this.bulletColor   = ORANGE;
         break;
     }
   }
@@ -131,6 +149,9 @@ export class Enemy {
       case 'Overclocked Berserker': return [210 * d, 3,   RED,     1.00, 14];
       case 'Security Defector Mech':return [90 * d,  30,  YELLOW,  0.75, 18];
       case 'Rogue AI Overlord':     return [75 * d,  120, RED,     0.55, 25];
+      case 'Combat Hunter':         return [168 * d,  3,  MAGENTA, 9999, 12];
+      case 'Cyber Shooter':         return [108 * d,  4,  CYAN,    9999,  6];
+      case 'Heavy Mech':            return [58  * d, 20,  ORANGE,  9999, 20];
       default:                      return [100,      2,   WHITE,   1.80,  6];
     }
   }
@@ -265,6 +286,18 @@ export class Enemy {
       let burst = 1;
       if (this.role === 'assassin' && Math.random() < 0.01) burst = 2;
       this.vel = dir.scale(this.baseSpeed * burst);
+      this.pos.addMut(this.vel.scale(dt));
+      this._tryShoot(game);
+      return;
+    }
+
+    if (this.role === 'shooter') {
+      // Keep preferred distance, shoot frequently, never targets matrices
+      const PREF_DIST = 300;
+      let dir = new Vec2();
+      if (playerDist < PREF_DIST - 60)       dir = safeNormalize(this.pos.sub(player.pos));
+      else if (playerDist > PREF_DIST + 100)  dir = safeNormalize(player.pos.sub(this.pos));
+      this.vel = dir.scale(this.baseSpeed);
       this.pos.addMut(this.vel.scale(dt));
       this._tryShoot(game);
       return;
