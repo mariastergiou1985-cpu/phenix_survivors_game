@@ -60,6 +60,12 @@ export class Game {
     this._creditImgTsali = new Image();
     this._creditImgTsali.src = 'assets/credits/tsali_photo.jpg';
 
+    // Preload core and matrix sprites
+    this._coreSprite = new Image();
+    this._coreSprite.src = 'assets/cores/data_core.png';
+    this._matrixSprite = new Image();
+    this._matrixSprite.src = 'assets/bases/matrix_base.png';
+
     // Game state management
     this.gameState = 'start_menu'; // 'start_menu' | 'character_select' | 'playing' | 'game_over' | 'victory' | 'exit_screen'
     this.selectedCharacter = null; // 'skeleton_warrior' | 'taekwondo_girl' | 'cyber_arm_hero'
@@ -1079,12 +1085,16 @@ export class Game {
 
     // 3 ── Data-Cores on the ground
     for (const core of this.groundCores) {
-      ctx.fillStyle = core.color;
-      ctx.beginPath(); ctx.arc(core.pos.x, core.pos.y, 8, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = WHITE; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.arc(core.pos.x, core.pos.y, 8, 0, Math.PI * 2); ctx.stroke();
-      ctx.strokeStyle = core.color; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.arc(core.pos.x, core.pos.y, 14, 0, Math.PI * 2); ctx.stroke();
+      const spr = this._coreSprite;
+      const sz  = 28;
+      if (spr && spr.complete && spr.naturalWidth > 0) {
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(spr, Math.round(core.pos.x - sz / 2), Math.round(core.pos.y - sz / 2), sz, sz);
+        ctx.imageSmoothingEnabled = true;
+      } else {
+        ctx.fillStyle = core.color;
+        ctx.beginPath(); ctx.arc(core.pos.x, core.pos.y, 8, 0, Math.PI * 2); ctx.fill();
+      }
     }
 
     // 4 ── Enemies

@@ -9,6 +9,9 @@ export class PowerMatrix {
     this.capacity = capacity;
     this.stored   = capacity;
     this.hackTimer = 0.0;
+
+    this._sprite = new Image();
+    this._sprite.src = 'assets/bases/matrix_base.png';
   }
 
   hasCore()  { return this.stored > 0; }
@@ -31,44 +34,16 @@ export class PowerMatrix {
   }
 
   draw(ctx) {
-    const pulse  = 1 + 0.1 * Math.sin(performance.now() * 0.006);
-    const radius = Math.round(MATRIX_RADIUS * pulse);
-
-    // Outer pulsing ring
-    ctx.strokeStyle = this.color;
-    ctx.lineWidth   = 3;
-    ctx.beginPath();
-    ctx.arc(this.pos.x, this.pos.y, radius, 0, Math.PI * 2);
-    ctx.stroke();
-
-    // Inner accent ring
-    ctx.strokeStyle = CYAN_DARK;
-    ctx.lineWidth   = 1;
-    ctx.beginPath();
-    ctx.arc(this.pos.x, this.pos.y, MATRIX_RADIUS - 8, 0, Math.PI * 2);
-    ctx.stroke();
-
-    // Fill indicator
-    const fillRatio = this.stored / this.capacity;
-    const innerR    = Math.round((MATRIX_RADIUS - 12) * fillRatio);
-    if (innerR > 3) {
-      ctx.fillStyle = this.color;
-      ctx.beginPath();
-      ctx.arc(this.pos.x, this.pos.y, innerR, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    // Port marks (6 equidistant ticks around the ring)
-    for (let i = 0; i < 6; i++) {
-      const angle = (i / 6) * Math.PI * 2;
-      const inner = MATRIX_RADIUS + 4;
-      const outer = MATRIX_RADIUS + 10;
-      ctx.strokeStyle = this.color;
-      ctx.lineWidth   = 2;
-      ctx.beginPath();
-      ctx.moveTo(this.pos.x + Math.cos(angle) * inner, this.pos.y + Math.sin(angle) * inner);
-      ctx.lineTo(this.pos.x + Math.cos(angle) * outer, this.pos.y + Math.sin(angle) * outer);
-      ctx.stroke();
+    // Sprite (replaces all old rings, fill indicator, port marks)
+    const spr = this._sprite;
+    const sz  = 72;
+    if (spr && spr.complete && spr.naturalWidth > 0) {
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(spr, Math.round(this.pos.x - sz / 2), Math.round(this.pos.y - sz / 2), sz, sz);
+      ctx.imageSmoothingEnabled = true;
+    } else {
+      ctx.strokeStyle = this.color; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(this.pos.x, this.pos.y, MATRIX_RADIUS, 0, Math.PI * 2); ctx.stroke();
     }
 
     // Hack warning ring (flashes when enemy is actively stealing)
@@ -86,10 +61,12 @@ export class PowerMatrix {
       ctx.stroke();
     }
 
-    // Core count label
-    ctx.fillStyle = BLACK;
+    // Core count label (white + shadow for readability over sprite)
     ctx.font      = '16px Consolas, monospace';
     ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(0,0,0,0.75)';
+    ctx.fillText(`${this.stored}/${this.capacity}`, this.pos.x + 1, this.pos.y + 7);
+    ctx.fillStyle = 'white';
     ctx.fillText(`${this.stored}/${this.capacity}`, this.pos.x, this.pos.y + 6);
     ctx.textAlign = 'left';
   }
