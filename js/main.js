@@ -183,14 +183,14 @@ canvas.addEventListener('mousedown', e => {
     }
 
   } else if (game.gameState === 'character_select') {
-    // ── Character Select — must match _drawCharacterSelect layout ─
-    const cardW = 260, cardH = 440, cardGap = 20;
-    const startX = Math.floor((canvas.width - (cardW * 3 + cardGap * 2)) / 2);
-    const startY = 70;
+    // ── Character Select ─────────────────────────────────────────
+    const cardW = 220, cardH = 280, spacing = 280;
+    const startX = canvas.width / 2 - cardW - spacing / 2;
     for (let i = 0; i < game.characters.length; i++) {
-      const cx = startX + i * (cardW + cardGap);
+      const cx = startX + i * spacing;
+      const cy = canvas.height / 2 - cardH / 2;
       if (mousePos.x >= cx && mousePos.x <= cx + cardW &&
-          mousePos.y >= startY && mousePos.y <= startY + cardH) {
+          mousePos.y >= cy && mousePos.y <= cy + cardH) {
         game.characterIndex = i;
         game.selectCharacter(game.characters[i].id);
         break;
