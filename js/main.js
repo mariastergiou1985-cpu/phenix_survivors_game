@@ -125,6 +125,24 @@ canvas.addEventListener('mousedown', e => {
     // ── In-game upgrade card (level-up choice) ────────────────────
     game.upgradeUI.handleClick(mousePos, game);
 
+  } else if (game.gameOver || game.victory) {
+    // ── Game Over / Victory screen buttons ───────────────────────
+    // RETRY  (x 316–516, y 440–486)
+    if (mousePos.x >= 316 && mousePos.x <= 516 &&
+        mousePos.y >= 440 && mousePos.y <= 486) {
+      game.reset();
+      game.audio?.startGameplayMusic();
+    // UPGRADES  (x 540–740, y 440–486)
+    } else if (mousePos.x >= 540 && mousePos.x <= 740 &&
+               mousePos.y >= 440 && mousePos.y <= 486) {
+      game.audio?.startMenuMusic();
+      game.goToUpgradesScreen();
+    // MAIN MENU  (x 764–964, y 440–486)
+    } else if (mousePos.x >= 764 && mousePos.x <= 964 &&
+               mousePos.y >= 440 && mousePos.y <= 486) {
+      game.goToMainMenu();
+    }
+
   } else if (game.gameState === 'start_menu') {
     // ── Start Menu ───────────────────────────────────────────────
     const BW = 360, BH = 52, startY = 280, spacing = 80;

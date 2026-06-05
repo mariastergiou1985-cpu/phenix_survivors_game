@@ -19,7 +19,7 @@ import { ParticleSystem, ScreenShake, drawVignette, EMPRing } from './Effects.js
 import { SystemEventManager } from './Events.js';
 import { UpgradeUI }      from './UpgradeUI.js';
 import { weightedSample } from './Upgrades.js';
-import { drawHUD, drawEndScreen } from './HUD.js';
+import { drawHUD, drawEndScreen } from './HUD.js?v=30';
 import { MetaProgress, META_UPGRADES, upgradeCost } from './MetaProgress.js';
 
 export class Game {

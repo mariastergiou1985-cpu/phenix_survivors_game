@@ -89,38 +89,44 @@ function _drawAbilityHUD(ctx, player) {
 }
 
 export function drawEndScreen(ctx, game) {
-  ctx.fillStyle = 'rgba(0,0,0,0.82)';
+  ctx.fillStyle = 'rgba(0,0,0,0.88)';
   ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
   // Title
-  const titleColor = game.victory ? GREEN : RED;
-  ctx.font      = '44px Consolas, monospace';
-  ctx.fillStyle = titleColor;
-  ctx.textAlign = 'center';
-  ctx.fillText(game.finalMessage, WIDTH / 2, 80);
+  if (game.victory) {
+    ctx.font      = '44px Consolas, monospace';
+    ctx.fillStyle = GREEN;
+    ctx.textAlign = 'center';
+    ctx.fillText(game.finalMessage, WIDTH / 2, 80);
+  } else {
+    ctx.font      = '48px Consolas, monospace';
+    ctx.fillStyle = '#ff2244';
+    ctx.textAlign = 'center';
+    ctx.fillText('CITY GRID BLACKOUT', WIDTH / 2, 80);
+  }
 
   const mins = Math.floor(game.timeAlive / 60).toString().padStart(2, '0');
   const secs = Math.floor(game.timeAlive % 60).toString().padStart(2, '0');
 
-  // Run stats section
+  // Run stats
   const runStats = [
-    [`Survival Time`,          `${mins}:${secs}`],
-    [`Data-Cores Secured`,     `${game.player.coresSecured}`],
-    [`Cores Intercepted`,      `${game.player.coresIntercepted}`],
-    [`Cyber-Punks Neutralized`,`${game.player.kills}`],
-    [`Final Level`,            `${game.player.level}`],
-    [`Network Overload`,       `${game.overload.toFixed(1)}%`],
+    ['Survival Time',          `${mins}:${secs}`],
+    ['Data-Cores Secured',     `${game.player.coresSecured}`],
+    ['Cores Intercepted',      `${game.player.coresIntercepted}`],
+    ['Enemies Defeated',       `${game.player.kills}`],
+    ['Final Level',            `${game.player.level}`],
+    ['Final Network Overload', `${game.overload.toFixed(1)}%`],
   ];
 
-  ctx.font      = '20px Consolas, monospace';
+  ctx.font      = '22px Consolas, monospace';
   ctx.textAlign = 'left';
   let y = 130;
   const lx = WIDTH / 2 - 280;
   const rx = WIDTH / 2 + 280;
   for (const [label, value] of runStats) {
-    ctx.fillStyle = GREY;
+    ctx.fillStyle = CYAN;
     ctx.fillText(label, lx, y);
-    ctx.fillStyle = WHITE;
+    ctx.fillStyle = YELLOW;
     ctx.textAlign = 'right';
     ctx.fillText(value, rx, y);
     ctx.textAlign = 'left';
@@ -137,9 +143,9 @@ export function drawEndScreen(ctx, game) {
   ctx.stroke();
   y += 20;
 
-  // Grid Credits section — colored so it's impossible to miss
+  // Grid Credits section
   ctx.font      = '22px Consolas, monospace';
-  ctx.fillStyle = GREY;
+  ctx.fillStyle = CYAN;
   ctx.textAlign = 'left';
   ctx.fillText('Grid Credits Earned', lx, y);
   ctx.fillStyle = YELLOW;
@@ -147,11 +153,9 @@ export function drawEndScreen(ctx, game) {
   ctx.fillText(`+${game.runCreditsEarned ?? 0}`, rx, y);
   y += 32;
 
-  ctx.font      = '22px Consolas, monospace';
-  ctx.fillStyle = GREY;
+  ctx.fillStyle = CYAN;
   ctx.textAlign = 'left';
   ctx.fillText('Total Grid Credits', lx, y);
-  ctx.fillStyle = CYAN;
   ctx.textAlign = 'right';
   ctx.fillText(`${game.meta?.credits ?? 0}`, rx, y);
   y += 16;
@@ -163,13 +167,33 @@ export function drawEndScreen(ctx, game) {
   ctx.moveTo(lx, y + 6);
   ctx.lineTo(rx, y + 6);
   ctx.stroke();
-  y += 30;
 
-  // Controls hint
-  ctx.font      = '18px Consolas, monospace';
+  // Buttons: RETRY / UPGRADES / MAIN MENU
+  const BW = 200, BH = 46, BY = 440;
+  const btns = [
+    { label: 'RETRY',     x: 316, border: CYAN     },
+    { label: 'UPGRADES',  x: 540, border: YELLOW   },
+    { label: 'MAIN MENU', x: 764, border: '#ff4444' },
+  ];
+  for (const btn of btns) {
+    ctx.fillStyle   = 'rgba(0, 20, 40, 0.9)';
+    ctx.strokeStyle = btn.border;
+    ctx.lineWidth   = 2;
+    ctx.beginPath();
+    ctx.roundRect(btn.x, BY, BW, BH, 4);
+    ctx.fill();
+    ctx.stroke();
+    ctx.font      = '20px Consolas, monospace';
+    ctx.fillStyle = WHITE;
+    ctx.textAlign = 'center';
+    ctx.fillText(btn.label, btn.x + BW / 2, BY + BH / 2 + 7);
+  }
+
+  // Keyboard hint
+  ctx.font      = '16px Consolas, monospace';
   ctx.fillStyle = '#5a7080';
   ctx.textAlign = 'center';
-  ctx.fillText('R = Restart   •   ESC = Main Menu', WIDTH / 2, y);
+  ctx.fillText('R = Retry   •   ESC = Main Menu', WIDTH / 2, 510);
 
   ctx.textAlign = 'left';
 }
