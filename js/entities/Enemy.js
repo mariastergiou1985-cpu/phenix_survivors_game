@@ -107,7 +107,7 @@ export class Enemy {
     const spriteFile = spriteMap[this.enemyType];
     if (spriteFile) {
       this.sprite = new Image();
-      this.sprite.src = `assets/enemies/${spriteFile}.png`;
+      this.sprite.src = `assets/enemies/${spriteFile}.png?v=10`;
     }
   }
 
@@ -393,7 +393,9 @@ export class Enemy {
     // Try to draw sprite if loaded
     const spritePath = this.sprite && this.sprite.complete && this.sprite.naturalWidth > 0;
     if (spritePath) {
+      ctx.imageSmoothingEnabled = false;
       ctx.drawImage(this.sprite, this.pos.x - this.radius, this.pos.y - this.radius, this.radius * 2, this.radius * 2);
+      ctx.imageSmoothingEnabled = true;
     } else {
       // Fallback: Body — bosses drawn as rectangles
       if (this.isBoss()) {
