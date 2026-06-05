@@ -638,8 +638,13 @@ export class Game {
 
     if (this.paused || this.gameOver || this.victory) return;
 
-    // If upgrade UI is active, freeze everything but allow UI interaction
-    if (this.upgradeUI) return;
+    // If upgrade UI is active, freeze gameplay but process card selection
+    if (this.upgradeUI) {
+      if (input.keys.has('1')) { this.selectUpgrade(0); input.keys.delete('1'); }
+      else if (input.keys.has('2')) { this.selectUpgrade(1); input.keys.delete('2'); }
+      else if (input.keys.has('3')) { this.selectUpgrade(2); input.keys.delete('3'); }
+      return;
+    }
 
     // Check for pending level-up to show upgrade cards (one at a time)
     if (this.player.pendingLevelupCount > 0) {

@@ -1,4 +1,4 @@
-import { Game } from './game/Game.js?v=101';
+import { Game } from './game/Game.js?v=102';
 import { AudioManager } from './audio/AudioManager.js?v=10';
 
 const canvas = document.getElementById('game');
@@ -112,6 +112,13 @@ canvas.addEventListener('mousemove', e => {
 canvas.addEventListener('mousedown', e => {
   if (e.button !== 0) return;
   mouseDown = true;
+
+  // Always resolve mousePos from this exact click position (not stale from last mousemove)
+  const rect = canvas.getBoundingClientRect();
+  mousePos = {
+    x: (e.clientX - rect.left) * (canvas.width  / rect.width),
+    y: (e.clientY - rect.top)  * (canvas.height / rect.height),
+  };
 
   // Initialize Web Audio on first user gesture (browser requirement)
   if (!game.audio) {
