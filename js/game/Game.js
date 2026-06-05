@@ -16,7 +16,7 @@ import { Projectile, HomingDisc } from '../entities/Projectile.js';
 import { Enemy }          from '../entities/Enemy.js?v=90';
 
 import { ParticleSystem, ScreenShake, drawVignette, EMPRing } from './Effects.js';
-import { SystemEventManager } from './Events.js';
+import { SystemEventManager } from './Events.js?v=90';
 import { UpgradeUI }      from './UpgradeUI.js';
 import { weightedSample } from './Upgrades.js';
 import { drawHUD, drawEndScreen } from './HUD.js?v=30';
@@ -113,6 +113,7 @@ export class Game {
     this.spawnPauseTimer    = 0;
     this.stealSpeedMultiplier = 1.0;
     this.gridBlackoutActive   = false;
+    this.announcement         = null;
 
     // Phoenix revive — triggers once when player HP first hits 0
     this.phoenixUsed        = false;
@@ -677,6 +678,7 @@ export class Game {
     this._updateAbilityTimers(dt);
     this._updateQuantumOverhaul(dt);
     this.events.update(dt, this.timeAlive, this);
+    this._updateAnnouncement(dt);
     this.particles.update(dt);
     this._updateCamera();
 
@@ -1208,6 +1210,7 @@ export class Game {
 
     drawHUD(ctx, this);
     drawVignette(ctx, this.overload, this.timeAlive);
+    this._drawAnnouncement(ctx);
 
     if (this.upgradeUI) this.upgradeUI.draw(ctx, this.player);
     if (this.gameOver || this.victory) drawEndScreen(ctx, this);
@@ -1274,6 +1277,69 @@ export class Game {
     ctx.fillText('↑↓ W/S  Navigate     ENTER / Click  Select', WIDTH / 2, HEIGHT - 22);
     ctx.textAlign = 'left';
   }
+
+  // ── Wave announcement system ──────────────────────────────────────────────
+
+  triggerAnnouncement(text, color) {
+    this.announcement = { text, color, phase: 'fadein', timer: 0 };
+  }
+
+  _updateAnnouncement(dt) {
+    const a = this.announcement;
+    if (!a) return;
+    const FADE_IN = 0.35, HOLD = 1.9, FADE_OUT = 0.55;
+    a.timer += dt;
+    if (a.phase === 'fadein'  && a.timer >= FADE_IN)  { a.phase = 'hold';    a.timer = 0; }
+    if (a.phase === 'hold'    && a.timer >= HOLD)     { a.phase = 'fadeout'; a.timer = 0; }
+    if (a.phase === 'fadeout' && a.timer >= FADE_OUT) { this.announcement = null; }
+  }
+
+  _drawAnnouncement(ctx) {
+    const a = this.announcement;
+    if (!a) return;
+    const FADE_IN = 0.35, HOLD = 1.9, FADE_OUT = 0.55;
+    let alpha = 1;
+    if (a.phase === 'fadein')  alpha = a.timer / FADE_IN;
+    if (a.phase === 'fadeout') alpha = 1 - (a.timer / FADE_OUT);
+    alpha = Math.max(0, Math.min(1, alpha));
+
+    const panelW = Math.min(820, WIDTH - 60);
+    const panelH = 76;
+    const panelX = Math.round(WIDTH  / 2 - panelW / 2);
+    const panelY = Math.round(HEIGHT / 2 - 100);
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+
+    // Dark backing panel
+    ctx.fillStyle = 'rgba(0,0,12,0.84)';
+    ctx.fillRect(panelX, panelY, panelW, panelH);
+
+    // Colored border top + bottom
+    ctx.strokeStyle = a.color;
+    ctx.lineWidth   = 2;
+    ctx.strokeRect(panelX, panelY, panelW, panelH);
+
+    // Subtle inner glow line at top
+    ctx.strokeStyle = a.color;
+    ctx.lineWidth   = 1;
+    ctx.globalAlpha = alpha * 0.35;
+    ctx.beginPath();
+    ctx.moveTo(panelX + 4, panelY + 4);
+    ctx.lineTo(panelX + panelW - 4, panelY + 4);
+    ctx.stroke();
+    ctx.globalAlpha = alpha;
+
+    // Event text
+    ctx.font      = 'bold 30px Consolas, monospace';
+    ctx.fillStyle = a.color;
+    ctx.textAlign = 'center';
+    ctx.fillText(a.text, WIDTH / 2, panelY + 47);
+
+    ctx.restore();
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
 
   _drawCharacterSelect(ctx) {
     this._drawBackground(ctx);

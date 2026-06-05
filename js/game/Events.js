@@ -1,22 +1,32 @@
-import { Vec2, WIDTH, HEIGHT, ORANGE, GREEN, RED, YELLOW } from '../constants.js';
+import { Vec2, WIDTH, HEIGHT, ORANGE, GREEN, RED, YELLOW, CYAN, PURPLE } from '../constants.js';
 import { randomChoice, randomRange } from '../utils.js';
 import { FloatingText } from '../entities/FloatingText.js';
 import { DataCore } from '../entities/DataCore.js';
-import { Enemy } from '../entities/Enemy.js';
+import { Enemy } from '../entities/Enemy.js?v=90';
 
 const EVENT_LABELS = {
+  drone_swarm:    'DRONE SWARM INCOMING',
+  core_raiders:   'CORE RAIDERS DETECTED',
+  security_mech:  'SECURITY MECH DEPLOYED',
+  overload_surge: 'OVERLOAD SURGE',
+  hunter_squad:   'HUNTER SQUAD ENTERING GRID',
   grid_blackout:  'GRID BLACKOUT',
   firewall_purge: 'FIREWALL PURGE',
   mega_boss:      'MEGA-BOSS ATTACK',
   core_meltdown:  'CORE MELTDOWN',
 };
 
-// Event windows: trigger at these survival times (seconds)
+// warn:false = suppress the 30s FloatingText countdown (announcement is the notification)
 const WINDOWS = [
-  { time: 8 * 60,  type: 'grid_blackout'  },
-  { time: 15 * 60, type: 'firewall_purge' },
-  { time: 22 * 60, type: 'mega_boss'      },
-  { time: 28 * 60, type: 'core_meltdown'  },
+  { time: 45,      type: 'drone_swarm',    warn: false },
+  { time: 105,     type: 'core_raiders',   warn: false },
+  { time: 180,     type: 'security_mech',  warn: false },
+  { time: 270,     type: 'overload_surge', warn: false },
+  { time: 360,     type: 'hunter_squad',   warn: false },
+  { time: 8 * 60,  type: 'grid_blackout',  warn: true  },
+  { time: 15 * 60, type: 'firewall_purge', warn: true  },
+  { time: 22 * 60, type: 'mega_boss',      warn: true  },
+  { time: 28 * 60, type: 'core_meltdown',  warn: true  },
 ];
 
 export class SystemEventManager {
@@ -29,8 +39,8 @@ export class SystemEventManager {
     for (const w of this.windows) {
       const timeUntil = w.time - timeAlive;
 
-      // 30-second countdown warning
-      if (!w.warned && timeUntil > 0 && timeUntil <= 30) {
+      // 30-second countdown warning (suppressed for early wave events)
+      if (!w.warned && w.warn && timeUntil > 0 && timeUntil <= 30) {
         w.warned = true;
         const label = EVENT_LABELS[w.type];
         game.floatingTexts.push(
@@ -56,11 +66,54 @@ export class SystemEventManager {
 
   _trigger(type, game) {
     switch (type) {
+      case 'drone_swarm':    this._droneSwarm(game);    break;
+      case 'core_raiders':   this._coreRaiders(game);   break;
+      case 'security_mech':  this._securityMech(game);  break;
+      case 'overload_surge': this._overloadSurge(game); break;
+      case 'hunter_squad':   this._hunterSquad(game);   break;
       case 'grid_blackout':  this._gridBlackout(game);  break;
       case 'firewall_purge': this._firewallPurge(game); break;
       case 'mega_boss':      this._megaBoss(game);      break;
       case 'core_meltdown':  this._coreMeltdown(game);  break;
     }
+  }
+
+  // ── Early-game wave events ──────────────────────────────────────────────────
+
+  _droneSwarm(game) {
+    const m = game.currentMinute();
+    for (let i = 0; i < 4; i++) game.enemies.push(new Enemy('Glitch Drone',    m));
+    for (let i = 0; i < 2; i++) game.enemies.push(new Enemy('Combat Hunter',   m));
+    game.triggerAnnouncement('DRONE SWARM INCOMING', CYAN);
+  }
+
+  _coreRaiders(game) {
+    const m = game.currentMinute();
+    for (let i = 0; i < 4; i++) game.enemies.push(new Enemy('Scrap Scavenger', m));
+    for (let i = 0; i < 2; i++) game.enemies.push(new Enemy('Cyber-Net Junkie',m));
+    game.triggerAnnouncement('CORE RAIDERS DETECTED', YELLOW);
+  }
+
+  _securityMech(game) {
+    const m = game.currentMinute();
+    for (let i = 0; i < 2; i++) game.enemies.push(new Enemy('Heavy Mech',      m));
+    for (let i = 0; i < 2; i++) game.enemies.push(new Enemy('Combat Hunter',   m));
+    game.triggerAnnouncement('SECURITY MECH DEPLOYED', RED);
+  }
+
+  _overloadSurge(game) {
+    const m = game.currentMinute();
+    for (let i = 0; i < 3; i++) game.enemies.push(new Enemy('Combat Hunter',   m));
+    for (let i = 0; i < 2; i++) game.enemies.push(new Enemy('Cyber Shooter',   m));
+    for (let i = 0; i < 2; i++) game.enemies.push(new Enemy('Scrap Scavenger', m));
+    game.triggerAnnouncement('OVERLOAD SURGE', PURPLE);
+  }
+
+  _hunterSquad(game) {
+    const m = game.currentMinute();
+    for (let i = 0; i < 5; i++) game.enemies.push(new Enemy('Combat Hunter',   m));
+    for (let i = 0; i < 2; i++) game.enemies.push(new Enemy('Cyber Shooter',   m));
+    game.triggerAnnouncement('HUNTER SQUAD ENTERING GRID', ORANGE);
   }
 
   _gridBlackout(game) {
