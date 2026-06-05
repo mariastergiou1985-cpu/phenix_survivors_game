@@ -64,7 +64,7 @@ export class Player {
     this.characterSprite.src = spritePath;
 
     const attackMap = {
-      'skeleton_warrior': 'assets/effects/attacks/bone_shockwave.png.png',
+      'skeleton_warrior': 'assets/effects/attacks/bone_shockwave.png',
       'taekwondo_girl':   'assets/effects/attacks/lightning_kick_arc.png',
       'cyber_arm_hero':   'assets/effects/attacks/cyber_arm_pulse_beam.png',
     };
