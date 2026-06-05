@@ -147,10 +147,10 @@ canvas.addEventListener('mousedown', e => {
     game.handleUpgradesClick(mousePos);
 
   } else if (game.gameState === 'credits') {
-    const ph = 380, bw = 220, bh = 48;
-    const py = canvas.height / 2 - ph / 2 - 20;
+    const ph = 460, bw = 220, bh = 46;
+    const py = canvas.height / 2 - ph / 2 - 10;
     const bx = canvas.width  / 2 - bw / 2;
-    const by = py + ph - 72;
+    const by = py + ph - 60;
     if (mousePos.x >= bx && mousePos.x <= bx + bw &&
         mousePos.y >= by && mousePos.y <= by + bh) {
       game.goToMainMenu();

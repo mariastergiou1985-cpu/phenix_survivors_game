@@ -54,6 +54,12 @@ export class Game {
     this._phoenixImage = new Image();
     this._phoenixImage.src = 'assets/effects/phoenix_revive.png';
 
+    // Preload credits photos
+    this._creditImgInk = new Image();
+    this._creditImgInk.src = 'assets/credits/inkspirem_visuals_photo.jpg';
+    this._creditImgTsali = new Image();
+    this._creditImgTsali.src = 'assets/credits/tsali_photo.jpg';
+
     // Game state management
     this.gameState = 'start_menu'; // 'start_menu' | 'character_select' | 'playing' | 'game_over' | 'victory' | 'exit_screen'
     this.selectedCharacter = null; // 'skeleton_warrior' | 'taekwondo_girl' | 'cyber_arm_hero'
@@ -1310,54 +1316,123 @@ export class Game {
     ctx.fillStyle = 'rgba(0,0,0,0.84)';
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
-    const pw = 620, ph = 380;
-    const px = WIDTH / 2 - pw / 2;
-    const py = HEIGHT / 2 - ph / 2 - 20;
+    // Outer panel
+    const pw = 780, ph = 460;
+    const px = WIDTH  / 2 - pw / 2;   // 250
+    const py = HEIGHT / 2 - ph / 2 - 10; // 115
 
-    ctx.fillStyle = 'rgba(0,12,28,0.95)';
+    ctx.fillStyle = 'rgba(0,10,24,0.96)';
     ctx.fillRect(px, py, pw, ph);
     ctx.strokeStyle = CYAN; ctx.lineWidth = 2;
     ctx.strokeRect(px, py, pw, ph);
-    ctx.strokeStyle = 'rgba(0,230,255,0.18)'; ctx.lineWidth = 1;
-    ctx.strokeRect(px + 6, py + 6, pw - 12, ph - 12);
+    ctx.strokeStyle = 'rgba(0,230,255,0.15)'; ctx.lineWidth = 1;
+    ctx.strokeRect(px + 5, py + 5, pw - 10, ph - 10);
 
     ctx.textAlign = 'center';
 
-    ctx.font      = 'bold 44px Consolas, monospace';
+    // Title
+    ctx.font      = 'bold 42px Consolas, monospace';
     ctx.fillStyle = CYAN;
-    ctx.fillText('CREDITS', WIDTH / 2, py + 60);
+    ctx.fillText('CREDITS', WIDTH / 2, py + 50);
 
-    ctx.strokeStyle = 'rgba(0,230,255,0.25)'; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(px + 40, py + 76); ctx.lineTo(px + pw - 40, py + 76); ctx.stroke();
+    // Separator
+    ctx.strokeStyle = 'rgba(0,230,255,0.28)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(px + 50, py + 68); ctx.lineTo(px + pw - 50, py + 68); ctx.stroke();
 
-    ctx.font      = '15px Consolas, monospace';
-    ctx.fillStyle = YELLOW;
-    ctx.fillText('CREATED BY', WIDTH / 2, py + 116);
-    ctx.font      = 'bold 30px Consolas, monospace';
-    ctx.fillStyle = WHITE;
-    ctx.fillText('InkSpireM Visuals', WIDTH / 2, py + 154);
+    // ── Two creator cards ───────────────────────────────────────────────────
+    const cardW = 340, cardH = 300, cardY = py + 82;
+    const cards = [
+      { x: px + 25,          label: 'CREATED BY',      name: 'InkSpireM Visuals', img: this._creditImgInk   },
+      { x: px + 25 + cardW + 25, label: 'MUSIC',       name: '"HOPE" by TSALI',   img: this._creditImgTsali },
+    ];
 
-    ctx.font      = '15px Consolas, monospace';
-    ctx.fillStyle = YELLOW;
-    ctx.fillText('MUSIC', WIDTH / 2, py + 204);
-    ctx.font      = 'bold 26px Consolas, monospace';
-    ctx.fillStyle = WHITE;
-    ctx.fillText('"HOPE" by TSALI', WIDTH / 2, py + 240);
+    for (const card of cards) {
+      const cx = card.x, cy = cardY;
 
-    const bw = 220, bh = 48;
+      // Card background + border
+      ctx.fillStyle = 'rgba(0,8,20,0.92)';
+      ctx.fillRect(cx, cy, cardW, cardH);
+      ctx.strokeStyle = 'rgba(0,230,255,0.55)'; ctx.lineWidth = 1.5;
+      ctx.strokeRect(cx, cy, cardW, cardH);
+      ctx.strokeStyle = 'rgba(0,230,255,0.12)'; ctx.lineWidth = 1;
+      ctx.strokeRect(cx + 4, cy + 4, cardW - 8, cardH - 8);
+
+      const midX = cx + cardW / 2;
+
+      // Section label
+      ctx.font      = '13px Consolas, monospace';
+      ctx.fillStyle = YELLOW;
+      ctx.fillText(card.label, midX, cy + 26);
+
+      // Creator name
+      ctx.font      = 'bold 18px Consolas, monospace';
+      ctx.fillStyle = WHITE;
+      ctx.fillText(card.name, midX, cy + 50);
+
+      // Photo area
+      const fw = 150, fh = 160;
+      const fx = cx + (cardW - fw) / 2;
+      const fy = cy + 65;
+
+      // Draw photo or placeholder
+      let photoDrawn = false;
+      const img = card.img;
+      if (img && img.complete && img.naturalWidth > 0) {
+        const scale = Math.max(fw / img.naturalWidth, fh / img.naturalHeight);
+        const sw = fw / scale, sh = fh / scale;
+        const sx = (img.naturalWidth  - sw) / 2;
+        const sy = (img.naturalHeight - sh) / 2;
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(fx, fy, fw, fh);
+        ctx.clip();
+        ctx.drawImage(img, sx, sy, sw, sh, fx, fy, fw, fh);
+        ctx.restore();
+        photoDrawn = true;
+      }
+
+      if (!photoDrawn) {
+        ctx.fillStyle = 'rgba(0,20,40,0.8)';
+        ctx.fillRect(fx, fy, fw, fh);
+        ctx.font      = '13px Consolas, monospace';
+        ctx.fillStyle = 'rgba(0,200,255,0.4)';
+        ctx.fillText('[ no photo ]', midX, fy + fh / 2 + 5);
+      }
+
+      // Neon frame around photo
+      ctx.strokeStyle = CYAN; ctx.lineWidth = 2;
+      ctx.strokeRect(fx, fy, fw, fh);
+      // Corner L-accents (12px)
+      const ca = 12;
+      ctx.strokeStyle = YELLOW; ctx.lineWidth = 2;
+      [[fx, fy, ca, 0, 0, ca], [fx+fw, fy, -ca, 0, 0, ca],
+       [fx, fy+fh, ca, 0, 0, -ca], [fx+fw, fy+fh, -ca, 0, 0, -ca]].forEach(([ox, oy, hx, hy, vx, vy]) => {
+        ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(ox+hx, oy+hy); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(ox+vx, oy+vy); ctx.stroke();
+      });
+
+      // Name below photo
+      ctx.font      = '13px Consolas, monospace';
+      ctx.fillStyle = CYAN;
+      ctx.fillText(card.name, midX, fy + fh + 22);
+    }
+
+    // ── BACK button ──────────────────────────────────────────────────────────
+    const bw = 220, bh = 46;
     const bx = WIDTH / 2 - bw / 2;
-    const by = py + ph - 72;
-    ctx.fillStyle = 'rgba(0,230,255,0.1)';
+    const by = py + ph - 60;
+    ctx.fillStyle = 'rgba(0,230,255,0.08)';
     ctx.fillRect(bx, by, bw, bh);
     ctx.strokeStyle = CYAN; ctx.lineWidth = 2;
     ctx.strokeRect(bx, by, bw, bh);
-    ctx.font      = 'bold 22px Consolas, monospace';
+    ctx.font      = 'bold 21px Consolas, monospace';
     ctx.fillStyle = CYAN;
-    ctx.fillText('[ BACK ]', WIDTH / 2, by + 32);
+    ctx.fillText('[ BACK ]', WIDTH / 2, by + 30);
 
+    // ESC hint
     ctx.font      = '13px Consolas, monospace';
-    ctx.fillStyle = 'rgba(180,180,180,0.5)';
-    ctx.fillText('ESC = Return to Menu', WIDTH / 2, HEIGHT - 18);
+    ctx.fillStyle = 'rgba(180,180,180,0.45)';
+    ctx.fillText('ESC = Return to Menu', WIDTH / 2, HEIGHT - 16);
 
     ctx.textAlign = 'left';
   }
