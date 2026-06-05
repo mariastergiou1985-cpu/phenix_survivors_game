@@ -10,7 +10,7 @@ import { clamp, distance, safeNormalize, randomChoice } from '../utils.js';
 
 import { FloatingText }   from '../entities/FloatingText.js';
 import { DataCore }       from '../entities/DataCore.js';
-import { PowerMatrix }    from '../entities/PowerMatrix.js?v=4';
+import { PowerMatrix }    from '../entities/PowerMatrix.js?v=10';
 import { Player }         from '../entities/Player.js';
 import { Projectile, HomingDisc } from '../entities/Projectile.js';
 import { Enemy }          from '../entities/Enemy.js';
@@ -48,7 +48,7 @@ export class Game {
 
     // Preload start-menu background image
     this._menuBg = new Image();
-    this._menuBg.src = 'assets/ui/start_menu_background.png';
+    this._menuBg.src = 'assets/ui/start_menu_background.png?v=10';
 
     // Preload phoenix revive effect image
     this._phoenixImage = new Image();
@@ -63,10 +63,10 @@ export class Game {
     // Preload core and matrix sprites
     this._coreSprite = new Image();
     this._coreSprite.onerror = () => console.warn('[Assets] Failed to load: assets/cores/data_core.png');
-    this._coreSprite.src = 'assets/cores/data_core.png?v=2';
+    this._coreSprite.src = 'assets/cores/data_core.png?v=10';
     this._matrixSprite = new Image();
     this._matrixSprite.onerror = () => console.warn('[Assets] Failed to load: assets/bases/matrix_base.png');
-    this._matrixSprite.src = 'assets/bases/matrix_base.png?v=2';
+    this._matrixSprite.src = 'assets/bases/matrix_base.png?v=10';
 
     // Game state management
     this.gameState = 'start_menu'; // 'start_menu' | 'character_select' | 'playing' | 'game_over' | 'victory' | 'exit_screen'

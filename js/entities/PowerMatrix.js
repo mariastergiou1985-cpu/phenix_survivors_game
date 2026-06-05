@@ -12,7 +12,7 @@ export class PowerMatrix {
 
     this._sprite = new Image();
     this._sprite.onerror = () => console.warn('[Assets] Failed to load: assets/bases/matrix_base.png');
-    this._sprite.src = 'assets/bases/matrix_base.png?v=2';
+    this._sprite.src = 'assets/bases/matrix_base.png?v=10';
   }
 
   hasCore()  { return this.stored > 0; }

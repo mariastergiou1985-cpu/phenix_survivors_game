@@ -9,8 +9,8 @@ export class AudioManager {
     this._menuAudio     = null;
     this._gameplayAudio = null;
 
-    this._setupTrack('assets/audio/music/menu_theme.mp3?v=3', 0.28, a => { this._menuAudio     = a; });
-    this._setupTrack('assets/audio/music/gameplay_theme.mp3', 0.20, a => { this._gameplayAudio = a; });
+    this._setupTrack('assets/audio/music/menu_theme.mp3?v=10', 0.28, a => { this._menuAudio     = a; });
+    this._setupTrack('assets/audio/music/gameplay_theme.mp3?v=10', 0.20, a => { this._gameplayAudio = a; });
   }
 
   _setupTrack(src, volume, assign) {
