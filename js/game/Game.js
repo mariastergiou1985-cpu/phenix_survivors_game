@@ -432,17 +432,17 @@ export class Game {
   currentMinute()             { return Math.floor(this.timeAlive / 60); }
   coreVolatilityMultiplier()  { return 1 + (this.timeAlive / WIN_TIME_SECONDS) * 1.8; }
   overloadRateMultiplier()    { return 1 + Math.floor(this.timeAlive / 120) * 0.05; }
-  enemyCap()                  { return 10 + this.currentMinute() * 8; }
-  enemySpawnInterval()        { return Math.max(0.25, 1.25 - this.currentMinute() * 0.035); }
+  enemyCap()                  { return 12 + this.currentMinute() * 8; }
+  enemySpawnInterval()        { return Math.max(0.25, 1.0  - this.currentMinute() * 0.035); }
 
   chooseEnemyType() {
     const t      = this.timeAlive;
     const minute = this.currentMinute();
     let pool;
 
-    if      (t < 60)   pool = ['Glitch Drone', 'Glitch Drone', 'Rogue Punk'];
-    else if (t < 150)  pool = ['Glitch Drone', 'Rogue Punk', 'Scrap Scavenger'];
-    else if (t < 240)  pool = ['Glitch Drone', 'Rogue Punk', 'Stealth Infiltrator', 'Scrap Scavenger'];
+    if      (t < 60)   pool = ['Glitch Drone', 'Rogue Punk', 'Scrap Scavenger'];
+    else if (t < 150)  pool = ['Glitch Drone', 'Rogue Punk', 'Scrap Scavenger', 'Scrap Scavenger'];
+    else if (t < 240)  pool = ['Rogue Punk', 'Stealth Infiltrator', 'Scrap Scavenger', 'Scrap Scavenger'];
     else if (minute < 8)  pool = ['Glitch Drone', 'Rogue Punk', 'Stealth Infiltrator'];
     else if (minute < 12) pool = ['Rogue Punk', 'Stealth Infiltrator', 'Scrap Scavenger'];
     else if (minute < 15) {
@@ -894,15 +894,15 @@ export class Game {
     const carriedCount = this.enemies.filter(e => e.carryingCore !== null).length;
     const emptySlots   = this.matrices.reduce((sum, m) => sum + (m.capacity - m.stored), 0);
 
-    const chaosGain = groundCount * 0.024 + carriedCount * 0.06 + emptySlots * 0.029;
+    const chaosGain = groundCount * 0.034 + carriedCount * 0.09 + emptySlots * 0.041;
 
     if (chaosGain === 0) {
       // Grid fully secure — drain at 1.2% per second
       this.overload = Math.max(0, this.overload - 1.2 * dt);
     } else {
-      // Scale with time: x1.0 at min 0, +0.02 per minute, capped at x1.6
+      // Scale with time: x1.0 at min 0, +0.04 per minute, capped at x2.2
       const minutes  = this.timeAlive / 60;
-      const diffMult = Math.min(1.6, 1.0 + minutes * 0.02) * (1 - this.player.overloadDampening);
+      const diffMult = Math.min(2.2, 1.0 + minutes * 0.04) * (1 - this.player.overloadDampening);
       this.overload  = clamp(this.overload + chaosGain * diffMult * dt, 0, MAX_OVERLOAD);
     }
 
@@ -914,7 +914,7 @@ export class Game {
     this.spawnTimer += dt;
     if (this.spawnTimer >= this.enemySpawnInterval()) {
       this.spawnTimer = 0;
-      const count = (this.currentMinute() >= 1 && Math.random() < 0.35) ? 2 : 1;
+      const count = Math.random() < Math.min(0.35, 0.20 + this.currentMinute() * 0.05) ? 2 : 1;
       for (let i = 0; i < count; i++) this.spawnEnemy();
     }
   }
