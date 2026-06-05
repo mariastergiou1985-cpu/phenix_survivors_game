@@ -2,13 +2,14 @@ import { Vec2, WIDTH, HEIGHT, MAGENTA, WHITE, GREEN } from '../constants.js';
 import { safeNormalize, distance } from '../utils.js';
 
 export class Projectile {
-  constructor(pos, direction, damage) {
+  constructor(pos, direction, damage, sprite = null) {
     this.pos       = pos.clone();
     this.direction = direction.clone();
     this.speed     = 760;
     this.damage    = damage;
     this.radius    = 5;
     this.life      = 0.9;
+    this.sprite    = sprite;
   }
 
   update(dt) {
@@ -25,10 +26,21 @@ export class Projectile {
   }
 
   draw(ctx) {
-    ctx.fillStyle = MAGENTA;
-    ctx.beginPath(); ctx.arc(this.pos.x, this.pos.y, this.radius, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = WHITE; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.arc(this.pos.x, this.pos.y, this.radius, 0, Math.PI * 2); ctx.stroke();
+    const spr = this.sprite;
+    if (spr && spr.complete && spr.naturalWidth > 0) {
+      const angle = Math.atan2(this.direction.y, this.direction.x);
+      const size  = 28;
+      ctx.save();
+      ctx.translate(this.pos.x, this.pos.y);
+      ctx.rotate(angle);
+      ctx.drawImage(spr, -size / 2, -size / 2, size, size);
+      ctx.restore();
+    } else {
+      ctx.fillStyle = MAGENTA;
+      ctx.beginPath(); ctx.arc(this.pos.x, this.pos.y, this.radius, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = WHITE; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(this.pos.x, this.pos.y, this.radius, 0, Math.PI * 2); ctx.stroke();
+    }
   }
 }
 

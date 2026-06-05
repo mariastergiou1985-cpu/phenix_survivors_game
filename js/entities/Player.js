@@ -10,6 +10,7 @@ export class Player {
 
     this.selectedCharacter = selectedCharacter || 'skeleton_warrior';
     this.characterSprite = null;
+    this.attackSprite    = null;
     this._loadCharacterSprite();
 
     this.baseSpeed  = 230;
@@ -61,7 +62,17 @@ export class Player {
     const spritePath = `assets/characters/${this.selectedCharacter}.png`;
     this.characterSprite = new Image();
     this.characterSprite.src = spritePath;
-    // No error handling needed - will use fallback if image doesn't load
+
+    const attackMap = {
+      'skeleton_warrior': 'assets/effects/attacks/bone_shockwave.png.png',
+      'taekwondo_girl':   'assets/effects/attacks/lightning_kick_arc.png',
+      'cyber_arm_hero':   'assets/effects/attacks/cyber_arm_pulse_beam.png',
+    };
+    const attackPath = attackMap[this.selectedCharacter];
+    if (attackPath) {
+      this.attackSprite = new Image();
+      this.attackSprite.src = attackPath;
+    }
   }
 
   _getCharacterFallbackColors() {
@@ -133,7 +144,7 @@ export class Player {
     this.shootCooldown = 0.18;
     const dir    = safeNormalize(new Vec2(mousePos.x - this.pos.x, mousePos.y - this.pos.y));
     const damage = 1 + this.upgrades['Pulse Damage'];
-    return new Projectile(this.pos.clone(), dir, damage);
+    return new Projectile(this.pos.clone(), dir, damage, this.attackSprite);
   }
 
   draw(ctx, mousePos) {
