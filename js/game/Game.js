@@ -1258,11 +1258,11 @@ export class Game {
     ctx.textAlign = 'center';
     ctx.fillText('SELECT YOUR OPERATIVE', WIDTH / 2, 48);
 
-    const CARD_W   = 310;
-    const CARD_H   = 480;
+    const CARD_W   = 260;
+    const CARD_H   = 440;
     const CARD_GAP = 20;
     const START_X  = Math.round((WIDTH - (CARD_W * 3 + CARD_GAP * 2)) / 2);
-    const START_Y  = 66;
+    const START_Y  = 70;
     const PAD      = 14;
 
     const INFO = [
@@ -1325,7 +1325,7 @@ export class Game {
         ctx.lineWidth   = 3;
         ctx.strokeRect(x, y, CARD_W, CARD_H);
       } else {
-        ctx.strokeStyle = '#1e4060';
+        ctx.strokeStyle = '#2a6090';
         ctx.lineWidth   = 1;
         ctx.strokeRect(x, y, CARD_W, CARD_H);
       }
@@ -1347,7 +1347,7 @@ export class Game {
 
       // Portrait
       const portY = y + 57;
-      const portH = 110;
+      const portH = 95;
       const cimg  = this._charImages[char.id];
       if (cimg && cimg.complete && cimg.naturalWidth > 0) {
         const imgH = portH;

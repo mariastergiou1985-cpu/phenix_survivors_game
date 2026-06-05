@@ -1,4 +1,4 @@
-import { Game } from './game/Game.js?v=70';
+import { Game } from './game/Game.js?v=80';
 import { AudioManager } from './audio/AudioManager.js?v=10';
 
 const canvas = document.getElementById('game');
@@ -184,9 +184,9 @@ canvas.addEventListener('mousedown', e => {
 
   } else if (game.gameState === 'character_select') {
     // ── Character Select — must match _drawCharacterSelect layout ─
-    const cardW = 310, cardH = 480, cardGap = 20;
+    const cardW = 260, cardH = 440, cardGap = 20;
     const startX = Math.floor((canvas.width - (cardW * 3 + cardGap * 2)) / 2);
-    const startY = 66;
+    const startY = 70;
     for (let i = 0; i < game.characters.length; i++) {
       const cx = startX + i * (cardW + cardGap);
       if (mousePos.x >= cx && mousePos.x <= cx + cardW &&
