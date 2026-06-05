@@ -1,11 +1,11 @@
-import { Vec2, WIDTH, HEIGHT, WORLD_MARGIN, PLAYER_RADIUS, CYAN, WHITE, YELLOW, GREEN } from '../constants.js';
+import { Vec2, WIDTH, HEIGHT, WORLD_W, WORLD_H, WORLD_MARGIN, PLAYER_RADIUS, CYAN, WHITE, YELLOW, GREEN } from '../constants.js?v=50';
 import { clamp, safeNormalize } from '../utils.js';
 import { Projectile } from './Projectile.js';
 import { FloatingText } from './FloatingText.js';
 
 export class Player {
   constructor(selectedCharacter = null) {
-    this.pos = new Vec2(WIDTH / 2, HEIGHT / 2);
+    this.pos = new Vec2(WORLD_W / 2, WORLD_H / 2);
     this.vel = new Vec2();
 
     this.selectedCharacter = selectedCharacter || 'skeleton_warrior';
@@ -162,8 +162,8 @@ export class Player {
     }
 
     this.pos.addMut(this.vel.scale(dt));
-    this.pos.x = clamp(this.pos.x, WORLD_MARGIN, WIDTH  - WORLD_MARGIN);
-    this.pos.y = clamp(this.pos.y, WORLD_MARGIN + 40, HEIGHT - WORLD_MARGIN);
+    this.pos.x = clamp(this.pos.x, WORLD_MARGIN, WORLD_W - WORLD_MARGIN);
+    this.pos.y = clamp(this.pos.y, WORLD_MARGIN + 40, WORLD_H - WORLD_MARGIN);
   }
 
   canShoot() { return this.shootCooldown <= 0; }

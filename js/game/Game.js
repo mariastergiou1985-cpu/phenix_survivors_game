@@ -1,19 +1,19 @@
 import {
-  Vec2, WIDTH, HEIGHT, WORLD_MARGIN,
+  Vec2, WIDTH, HEIGHT, WORLD_W, WORLD_H, WORLD_MARGIN,
   WIN_TIME_SECONDS, CORE_OVERLOAD_TICK_TIME, BASE_OVERLOAD_PER_CORE,
   OVERLOAD_PICKUP_REDUCTION, OVERLOAD_SLOT_REDUCTION,
   MAX_OVERLOAD, PLAYER_RADIUS, CORE_RADIUS,
   DARK_BG, GRID_LINE, BLACK, CYAN, RED, GREEN, YELLOW, ORANGE, WHITE,
   CORE_COLORS,
-} from '../constants.js';
+} from '../constants.js?v=50';
 import { clamp, distance, safeNormalize, randomChoice } from '../utils.js';
 
 import { FloatingText }   from '../entities/FloatingText.js';
 import { DataCore }       from '../entities/DataCore.js';
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=10';
-import { Player }         from '../entities/Player.js';
+import { Player }         from '../entities/Player.js?v=50';
 import { Projectile, HomingDisc } from '../entities/Projectile.js';
-import { Enemy }          from '../entities/Enemy.js?v=30';
+import { Enemy }          from '../entities/Enemy.js?v=50';
 
 import { ParticleSystem, ScreenShake, drawVignette, EMPRing } from './Effects.js';
 import { SystemEventManager } from './Events.js';
@@ -124,6 +124,8 @@ export class Game {
     this.rewardsGranted    = false;
     this.runCreditsEarned  = 0;
     this.playerHitCooldown = 0;
+
+    this.camera = { x: 0, y: 0 };
 
     this._createMatrices();
   }
@@ -417,11 +419,11 @@ export class Game {
 
   _createMatrices() {
     const positions = [
-      [190,         165],
-      [WIDTH - 190, 165],
-      [210,         HEIGHT - 145],
-      [WIDTH - 210, HEIGHT - 145],
-      [WIDTH / 2,   HEIGHT / 2],
+      [260,           230],
+      [WORLD_W - 260, 230],
+      [280,           WORLD_H - 200],
+      [WORLD_W - 280, WORLD_H - 200],
+      [WORLD_W / 2,   WORLD_H / 2],
     ];
     for (let i = 0; i < positions.length; i++) {
       const [x, y] = positions[i];
@@ -645,6 +647,7 @@ export class Game {
     this._updateQuantumOverhaul(dt);
     this.events.update(dt, this.timeAlive, this);
     this.particles.update(dt);
+    this._updateCamera();
 
     for (const m of this.matrices) m.update(dt);
 
@@ -1079,8 +1082,12 @@ export class Game {
       return;
     }
 
-    // 1 ── Background
-    this._drawBackground(ctx);
+    // ── Camera-space block (world entities) ─────────────────────────────────
+    ctx.save();
+    ctx.translate(-this.camera.x, -this.camera.y);
+
+    // 1 ── World Background
+    this._drawWorldBackground(ctx);
 
     // 2 ── Power Matrices
     for (const m of this.matrices) m.draw(ctx);
@@ -1149,7 +1156,7 @@ export class Game {
     if (this.phoenixReviveTimer > 0) {
       const alpha = this.phoenixReviveTimer / 2.5;
       ctx.fillStyle = `rgba(255,140,0,${(alpha * 0.45).toFixed(3)})`;
-      ctx.fillRect(0, 0, WIDTH, HEIGHT);
+      ctx.fillRect(this.camera.x, this.camera.y, WIDTH, HEIGHT);
       const pimg = this._phoenixImage;
       if (pimg && pimg.complete && pimg.naturalWidth > 0) {
         const sz = 280;
@@ -1159,8 +1166,15 @@ export class Game {
       }
     }
 
-    // 7 ── HUD layer: floating texts, bars, vignette, overlays
+    // Floating texts (world-space)
     for (const ft of this.floatingTexts) ft.draw(ctx);
+
+    ctx.restore();  // end camera-space block
+
+    // ── Screen-space block (HUD, overlays) ───────────────────────────────────
+    ctx.fillStyle = BLACK;
+    ctx.fillRect(0, 0, WIDTH, 44);
+
     drawHUD(ctx, this);
     drawVignette(ctx, this.overload, this.timeAlive);
 
@@ -1447,6 +1461,44 @@ export class Game {
     ctx.fillText('ESC = Return to Menu', WIDTH / 2, HEIGHT - 16);
 
     ctx.textAlign = 'left';
+  }
+
+  _updateCamera() {
+    const cx = this.player.pos.x - WIDTH  / 2;
+    const cy = this.player.pos.y - HEIGHT / 2;
+    this.camera.x = Math.max(0, Math.min(cx, WORLD_W - WIDTH));
+    this.camera.y = Math.max(0, Math.min(cy, WORLD_H - HEIGHT));
+  }
+
+  _drawWorldBackground(ctx) {
+    ctx.fillStyle = DARK_BG;
+    ctx.fillRect(0, 0, WORLD_W, WORLD_H);
+
+    const img = this._bgImage;
+    if (img.complete && img.naturalWidth > 0) {
+      const scale = WORLD_W / img.naturalWidth;
+      const drawH = img.naturalHeight * scale;
+      ctx.drawImage(img, 0, 0, WORLD_W, drawH);
+      ctx.fillStyle = this.gridBlackoutActive ? 'rgba(0,0,0,0.65)' : 'rgba(0,0,0,0.38)';
+      ctx.fillRect(0, 0, WORLD_W, WORLD_H);
+    } else {
+      const spacing = 48;
+      const offset  = Math.floor(performance.now() * 0.025) % spacing;
+      ctx.strokeStyle = GRID_LINE;
+      ctx.lineWidth   = 1;
+      for (let x = -spacing; x < WORLD_W + spacing; x += spacing) {
+        ctx.beginPath();
+        ctx.moveTo(x + offset, 44);
+        ctx.lineTo(x + offset, WORLD_H);
+        ctx.stroke();
+      }
+      for (let y = 44; y < WORLD_H + spacing; y += spacing) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(WORLD_W, y);
+        ctx.stroke();
+      }
+    }
   }
 
   _drawBackground(ctx) {

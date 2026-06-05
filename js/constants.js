@@ -1,6 +1,8 @@
 // ─── Game config ──────────────────────────────────────────────────────────────
 export const WIDTH  = 1280;
 export const HEIGHT = 720;
+export const WORLD_W = 1792;
+export const WORLD_H = 1008;
 export const FPS    = 60;
 export const WORLD_MARGIN = 40;
 

@@ -1,7 +1,7 @@
 import {
-  Vec2, ENEMY_RADIUS, WIDTH, HEIGHT, WORLD_MARGIN,
+  Vec2, ENEMY_RADIUS, WIDTH, HEIGHT, WORLD_W, WORLD_H, WORLD_MARGIN,
   BLUE, MAGENTA, PURPLE, ORANGE, GREEN, RED, YELLOW, WHITE, CYAN, MATRIX_RADIUS,
-} from '../constants.js';
+} from '../constants.js?v=50';
 import { clamp, distance, safeNormalize, randomPosition, randomRange, randomChoice, drawBar } from '../utils.js';
 import { DataCore } from './DataCore.js';
 import { FloatingText } from './FloatingText.js';
@@ -113,10 +113,10 @@ export class Enemy {
 
   _spawnEdge() {
     const side = randomChoice(['top', 'bottom', 'left', 'right']);
-    if (side === 'top')    return new Vec2(Math.random() * WIDTH, -20);
-    if (side === 'bottom') return new Vec2(Math.random() * WIDTH, HEIGHT + 20);
-    if (side === 'left')   return new Vec2(-20, 70 + Math.random() * (HEIGHT - 70));
-    return new Vec2(WIDTH + 20, 70 + Math.random() * (HEIGHT - 70));
+    if (side === 'top')    return new Vec2(Math.random() * WORLD_W, -20);
+    if (side === 'bottom') return new Vec2(Math.random() * WORLD_W, WORLD_H + 20);
+    if (side === 'left')   return new Vec2(-20, 70 + Math.random() * (WORLD_H - 70));
+    return new Vec2(WORLD_W + 20, 70 + Math.random() * (WORLD_H - 70));
   }
 
   _statsForType(type, minute) {
@@ -362,8 +362,8 @@ export class Enemy {
   }
 
   keepInBounds() {
-    this.pos.x = clamp(this.pos.x, -30, WIDTH  + 30);
-    this.pos.y = clamp(this.pos.y, 40,  HEIGHT + 30);
+    this.pos.x = clamp(this.pos.x, -30, WORLD_W + 30);
+    this.pos.y = clamp(this.pos.y, 40,  WORLD_H + 30);
   }
 
   draw(ctx) {
