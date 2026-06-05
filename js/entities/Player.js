@@ -34,6 +34,10 @@ export class Player {
     this.dashDuration = 0.16;
     this.dashSpeed    = 560;
 
+    this.lastFacingDir = new Vec2(1, 0);
+    this._dashDir      = new Vec2(1, 0);
+    this._dashTrail    = [];
+
     this.shootCooldown = 0.0;
 
     this.level        = 1;
@@ -118,19 +122,32 @@ export class Player {
     this.sonicPulseCooldown = Math.max(0, this.sonicPulseCooldown - dt);
     this.empCloudCooldown   = Math.max(0, this.empCloudCooldown - dt);
 
+    if (dir.lengthSq() > 0) this.lastFacingDir = dir.clone();
+
+    const dashCost  = this.selectedCharacter === 'taekwondo_girl' ? 30 : 35;
+    const regenRate = this.selectedCharacter === 'taekwondo_girl' ? 28.75 : 25;
+    const dashDir   = dir.lengthSq() > 0 ? dir : this.lastFacingDir;
+
     const wantsDash = keys.has(' ') || keys.has('shift');
-    if (wantsDash && this.dashCooldown <= 0 && this.stamina >= 25 && dir.lengthSq() > 0) {
+    if (wantsDash && this.dashCooldown <= 0 && this.stamina >= dashCost) {
+      this._dashDir     = dashDir.clone();
       this.dashTimer    = this.dashDuration;
-      this.dashCooldown = 0.75;
-      this.stamina     -= 25;
+      this.dashCooldown = 0.4;
+      this.stamina      = Math.max(0, this.stamina - dashCost);
     }
 
     if (this.dashTimer > 0) {
+      this._dashTrail.push({ x: this.pos.x, y: this.pos.y, alpha: 0.55 });
+    }
+    for (const t of this._dashTrail) t.alpha -= 4 * dt;
+    this._dashTrail = this._dashTrail.filter(t => t.alpha > 0);
+
+    if (this.dashTimer > 0) {
       this.dashTimer -= dt;
-      this.vel = dir.scale(this.dashSpeed);
+      this.vel = this._dashDir.scale(this.speed * 3.5);
     } else {
       this.vel = dir.scale(this.speed);
-      this.stamina = Math.min(this.maxStamina, this.stamina + 26 * dt);
+      this.stamina = Math.min(this.maxStamina, this.stamina + regenRate * dt);
     }
 
     this.pos.addMut(this.vel.scale(dt));
@@ -154,6 +171,16 @@ export class Player {
       ctx.lineWidth   = 3;
       ctx.beginPath(); ctx.arc(this.pos.x, this.pos.y, PLAYER_RADIUS + 8, 0, Math.PI * 2); ctx.stroke();
     }
+
+    // Afterimage trail
+    for (const t of this._dashTrail) {
+      ctx.globalAlpha = t.alpha;
+      ctx.fillStyle = CYAN;
+      ctx.beginPath();
+      ctx.arc(t.x, t.y, PLAYER_RADIUS * 0.65, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
 
     // Draw character sprite (64 px tall) or fallback colored circle
     const colors = this._getCharacterFallbackColors();

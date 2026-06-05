@@ -848,7 +848,7 @@ export class Game {
         const push = safeNormalize(this.player.pos.sub(e.pos));
         this.player.pos.addMut(push.scale(60 * dt));
 
-        if (!damageDone && this.phoenixReviveTimer <= 0) {
+        if (!damageDone && this.phoenixReviveTimer <= 0 && this.player.dashTimer <= 0) {
           // Apply per-enemy contact damage
           const dmg = (e.contactDamage ?? 8) * dt;
           this.player.hp = Math.max(0, this.player.hp - dmg);
