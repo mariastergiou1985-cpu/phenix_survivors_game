@@ -80,6 +80,10 @@ export class Game {
     this.projectiles  = [];
     this.homingDiscs  = [];
     this.empRings     = [];
+    this._specialRings    = [];
+    this._specialBeams    = [];
+    this._specialTrail    = [];
+    this._taekwondoDmgSet = new Set();
     this.enemyBullets = [];
     this.floatingTexts = [];
     this.particles    = new ParticleSystem();
@@ -469,6 +473,69 @@ export class Game {
     this.floatingTexts.push(new FloatingText('SONIC PULSE!', p.pos.clone(), WHITE, 0.8));
   }
 
+  activateSpecial() {
+    if (this.gameState !== 'playing' || this.gameOver || this.victory || this.upgradeUI) return;
+    const p = this.player;
+    if (p.specialCooldown > 0) return;
+    if      (p.selectedCharacter === 'skeleton_warrior')  this._activateBoneGuardBlast();
+    else if (p.selectedCharacter === 'taekwondo_girl')    this._activateLightningDashStrike();
+    else if (p.selectedCharacter === 'cyber_arm_hero')    this._activateOverdriveBeam();
+  }
+
+  _activateBoneGuardBlast() {
+    const p = this.player;
+    const radius = 210, force = 350, dmg = 20;
+    for (const e of this.enemies) {
+      if (distance(e.pos, p.pos) < radius) {
+        e.vel.addMut(safeNormalize(e.pos.sub(p.pos)).scale(force));
+        e.takeHit(dmg, this);
+      }
+    }
+    this._specialRings.push({ pos: p.pos.clone(), radius: 0, maxRadius: radius,
+                               life: 0.55, maxLife: 0.55, color1: '#ff3030', color2: '#ffffff' });
+    p.specialCooldown = p.specialMaxCooldown;
+    this.floatingTexts.push(new FloatingText('BONE GUARD BLAST!', p.pos.clone(), RED, 1.0));
+    this.screenShake.trigger(5, 0.2);
+  }
+
+  _activateLightningDashStrike() {
+    const p = this.player;
+    const aimDir = this._lastMousePos
+      ? safeNormalize(new Vec2(this._lastMousePos.x - p.pos.x, this._lastMousePos.y - p.pos.y))
+      : p.lastFacingDir.clone();
+    p.specialDashDir   = aimDir;
+    p.specialDashTimer = 0.28;
+    p.specialCooldown  = p.specialMaxCooldown;
+    this._taekwondoDmgSet = new Set();
+    this.floatingTexts.push(new FloatingText('LIGHTNING STRIKE!', p.pos.clone(), CYAN, 1.0));
+    this.screenShake.trigger(3, 0.15);
+  }
+
+  _activateOverdriveBeam() {
+    const p = this.player;
+    const aimDir = this._lastMousePos
+      ? safeNormalize(new Vec2(this._lastMousePos.x - p.pos.x, this._lastMousePos.y - p.pos.y))
+      : new Vec2(1, 0);
+    const beamLength = 600, beamWidth = 28, dmg = 25, maxHits = 8;
+    let hits = 0;
+    for (const e of this.enemies) {
+      if (hits >= maxHits) break;
+      const toEnemy = e.pos.sub(p.pos);
+      const along   = toEnemy.dot(aimDir);
+      if (along < 0 || along > beamLength) continue;
+      const perp = toEnemy.sub(aimDir.scale(along));
+      if (perp.lengthSq() < (beamWidth + e.radius) ** 2) {
+        e.takeHit(dmg, this);
+        hits++;
+      }
+    }
+    this._specialBeams.push({ startPos: p.pos.clone(), dir: aimDir,
+                               length: beamLength, life: 0.4, maxLife: 0.4 });
+    p.specialCooldown = p.specialMaxCooldown;
+    this.floatingTexts.push(new FloatingText('OVERDRIVE BEAM!', p.pos.clone(), ORANGE, 1.0));
+    this.screenShake.trigger(4, 0.2);
+  }
+
   activateEMPCloud() {
     const p = this.player;
     if (p.upgrades['EMP Cloud'] === 0 || p.empCloudCooldown > 0) return;
@@ -548,6 +615,7 @@ export class Game {
     this._updateSpawning(dt);
     this._updateFloatingTexts(dt);
     this._updateEffects(dt);
+    this._updateSpecialEffects(dt);
     this._checkPlayerEnemyCollisions(dt);
     this._updateEnemyBullets(dt);
     this._updateAbilityTimers(dt);
@@ -873,6 +941,38 @@ export class Game {
     // Sonic pulse / EMP cooldowns decremented in Player.update
   }
 
+  _updateSpecialEffects(dt) {
+    const p = this.player;
+    if (p.specialDashTimer > 0 && p.selectedCharacter === 'taekwondo_girl') {
+      this._specialTrail.push({ x: p.pos.x, y: p.pos.y, alpha: 0.7 });
+      for (const e of this.enemies) {
+        if (this._taekwondoDmgSet.has(e)) continue;
+        if (distance(p.pos, e.pos) < 45 + e.radius) {
+          this._taekwondoDmgSet.add(e);
+          e.takeHit(15, this);
+        }
+      }
+      for (let i = this.groundCores.length - 1; i >= 0; i--) {
+        const core = this.groundCores[i];
+        if (p.carry < p.maxCarry && distance(p.pos, core.pos) < 60) {
+          this.groundCores.splice(i, 1);
+          p.carry++;
+          this.overload = Math.max(0, this.overload - OVERLOAD_PICKUP_REDUCTION);
+          this.particles.spawnCorePickup(core.pos, core.color);
+        }
+      }
+    }
+    for (const t of this._specialTrail) t.alpha -= 3.5 * dt;
+    this._specialTrail = this._specialTrail.filter(t => t.alpha > 0);
+    for (const r of this._specialRings) {
+      r.radius = r.maxRadius * (1 - r.life / r.maxLife);
+      r.life  -= dt;
+    }
+    this._specialRings = this._specialRings.filter(r => r.life > 0);
+    for (const b of this._specialBeams) b.life -= dt;
+    this._specialBeams = this._specialBeams.filter(b => b.life > 0);
+  }
+
   _updateQuantumOverhaul(dt) {
     const p = this.player;
     if (p.upgrades['Quantum Overhaul'] === 0) return;
@@ -974,6 +1074,32 @@ export class Game {
     for (const p of this.projectiles) p.draw(ctx);
     for (const d of this.homingDiscs) d.draw(ctx);
     for (const r of this.empRings)    r.draw(ctx);
+    for (const r of this._specialRings) {
+      const alpha = r.life / r.maxLife;
+      ctx.save(); ctx.globalAlpha = alpha;
+      ctx.strokeStyle = r.color1; ctx.lineWidth = 5;
+      ctx.beginPath(); ctx.arc(r.pos.x, r.pos.y, r.radius, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = r.color2; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(r.pos.x, r.pos.y, r.radius * 0.85, 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
+    }
+    for (const t of this._specialTrail) {
+      ctx.save(); ctx.globalAlpha = t.alpha;
+      ctx.fillStyle = CYAN;
+      ctx.beginPath(); ctx.arc(t.x, t.y, 10, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
+    for (const b of this._specialBeams) {
+      const alpha = b.life / b.maxLife;
+      const endX = b.startPos.x + b.dir.x * b.length;
+      const endY = b.startPos.y + b.dir.y * b.length;
+      ctx.save(); ctx.globalAlpha = alpha; ctx.lineCap = 'round';
+      ctx.strokeStyle = '#ff6600'; ctx.lineWidth = Math.round(12 * alpha);
+      ctx.beginPath(); ctx.moveTo(b.startPos.x, b.startPos.y); ctx.lineTo(endX, endY); ctx.stroke();
+      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = Math.round(4 * alpha);
+      ctx.beginPath(); ctx.moveTo(b.startPos.x, b.startPos.y); ctx.lineTo(endX, endY); ctx.stroke();
+      ctx.restore();
+    }
     this.particles.draw(ctx);
 
     // 6c ── Enemy bullets

@@ -54,6 +54,7 @@ window.addEventListener('keydown', e => {
   // One-shot abilities
   if (key === 'q') game.activateSonicPulse(mousePos);
   if (key === 'e') game.activateEMPCloud();
+  if (key === 'e') game.activateSpecial();
   if (key === 'm') game.audio?.toggleMute();
   if (key === 't' && game.gameState === 'playing' && !game.gameOver && !game.victory) {
     game.aimAssist = !game.aimAssist;

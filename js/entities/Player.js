@@ -34,6 +34,11 @@ export class Player {
     this.dashDuration = 0.16;
     this.dashSpeed    = 560;
 
+    this.specialCooldown    = 0.0;
+    this.specialMaxCooldown = 25.0;
+    this.specialDashDir     = new Vec2(1, 0);
+    this.specialDashTimer   = 0.0;
+
     this.lastFacingDir = new Vec2(1, 0);
     this._dashDir      = new Vec2(1, 0);
     this._dashTrail    = [];
@@ -118,6 +123,7 @@ export class Player {
     dir.normalizeMut();
 
     this.dashCooldown     = Math.max(0, this.dashCooldown - dt);
+    if (this.specialCooldown > 0) this.specialCooldown -= dt;
     this.shootCooldown    = Math.max(0, this.shootCooldown - dt);
     this.sonicPulseCooldown = Math.max(0, this.sonicPulseCooldown - dt);
     this.empCloudCooldown   = Math.max(0, this.empCloudCooldown - dt);
@@ -148,6 +154,11 @@ export class Player {
     } else {
       this.vel = dir.scale(this.speed);
       this.stamina = Math.min(this.maxStamina, this.stamina + regenRate * dt);
+    }
+
+    if (this.specialDashTimer > 0) {
+      this.specialDashTimer -= dt;
+      this.vel = this.specialDashDir.scale(this.speed * 6);
     }
 
     this.pos.addMut(this.vel.scale(dt));

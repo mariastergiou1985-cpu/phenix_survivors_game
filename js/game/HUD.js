@@ -39,6 +39,11 @@ export function drawHUD(ctx, game) {
   drawText(ctx, game.aimAssist ? '[T] AIM ASSIST: ON' : '[T] AIM ASSIST: OFF',
     WIDTH - 200, HEIGHT - 50, aaColor, '13px Consolas, monospace');
 
+  const sc = game.player.specialCooldown;
+  const spText  = sc <= 0 ? '[E] SPECIAL: READY' : `[E] SPECIAL: ${Math.ceil(sc)}s`;
+  const spColor = sc <= 0 ? CYAN : GREY;
+  drawText(ctx, spText, WIDTH - 220, HEIGHT - 32, spColor, '13px Consolas, monospace');
+
   // Grid Blackout warning
   if (game.gridBlackoutActive) {
     const flash = (Math.floor(Date.now() / 400) % 2 === 0);
