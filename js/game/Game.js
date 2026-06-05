@@ -29,14 +29,14 @@ export class Game {
     this.aimAssist = true;
     this.meta      = new MetaProgress();
 
-    // Load background image — try canonical path first, fall back to enemies/ (OneDrive quirk)
+    // Load background image — new clean bg, fallback to old
     this._bgImage = new Image();
     this._bgImage.onerror = () => {
       const fallback = new Image();
-      fallback.src = 'assets/enemies/cyberpunk_city_background.png';
+      fallback.src = 'assets/backgrounds/cyberpunk_city_background.png';
       this._bgImage = fallback;
     };
-    this._bgImage.src = 'assets/cyberpunk_city_background.png';
+    this._bgImage.src = 'assets/backgrounds/cyber_city_bg_clean.png?v=1';
 
     // Preload character portraits for Character Select screen
     this._charImages = {};
