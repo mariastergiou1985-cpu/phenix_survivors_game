@@ -12,13 +12,13 @@ import { FloatingText }   from '../entities/FloatingText.js';
 import { DataCore }       from '../entities/DataCore.js';
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=10';
 import { Player }         from '../entities/Player.js?v=50';
-import { Projectile, HomingDisc } from '../entities/Projectile.js';
+import { Projectile, HomingDisc } from '../entities/Projectile.js?v=1';
 import { Enemy }          from '../entities/Enemy.js?v=90';
 
 import { ParticleSystem, ScreenShake, drawVignette, EMPRing } from './Effects.js';
 import { SystemEventManager } from './Events.js?v=90';
 import { UpgradeUI }      from './UpgradeUI.js';
-import { weightedSample } from './Upgrades.js';
+import { weightedSample } from './Upgrades.js?v=1';
 import { drawHUD, drawEndScreen } from './HUD.js?v=30';
 import { MetaProgress, META_UPGRADES, upgradeCost } from './MetaProgress.js';
 
@@ -1212,7 +1212,13 @@ export class Game {
     drawVignette(ctx, this.overload, this.timeAlive);
     this._drawAnnouncement(ctx);
 
-    if (this.upgradeUI) this.upgradeUI.draw(ctx, this.player);
+    if (this.upgradeUI) {
+      ctx.save();
+      const [sox, soy] = this.screenShake.getOffset();
+      ctx.translate(-sox, -soy);
+      this.upgradeUI.draw(ctx, this.player);
+      ctx.restore();
+    }
     if (this.gameOver || this.victory) drawEndScreen(ctx, this);
 
     if (this.paused && !this.gameOver && !this.victory) {
