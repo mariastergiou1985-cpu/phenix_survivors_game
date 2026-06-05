@@ -1249,63 +1249,194 @@ export class Game {
 
   _drawCharacterSelect(ctx) {
     this._drawBackground(ctx);
-    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.fillStyle = 'rgba(0,0,0,0.78)';
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
-    ctx.font = 'bold 48px Consolas, monospace';
+    // Title
+    ctx.font = '38px Consolas, monospace';
     ctx.fillStyle = CYAN;
     ctx.textAlign = 'center';
-    ctx.fillText('SELECT YOUR CHARACTER', WIDTH / 2, 100);
+    ctx.fillText('SELECT YOUR OPERATIVE', WIDTH / 2, 48);
 
-    ctx.font = 'bold 32px Consolas, monospace';
-    const cardWidth = 220;
-    const cardHeight = 280;
-    const spacing = 280;
-    const startX = WIDTH / 2 - cardWidth - spacing / 2;
+    const CARD_W   = 310;
+    const CARD_H   = 480;
+    const CARD_GAP = 20;
+    const START_X  = Math.round((WIDTH - (CARD_W * 3 + CARD_GAP * 2)) / 2);
+    const START_Y  = 66;
+    const PAD      = 14;
+
+    const INFO = [
+      {
+        role: 'Tank / Survival',        roleColor: GREEN,
+        stats: [
+          ['HP',     'HIGH',   GREEN,  3],
+          ['SPEED',  'MED',    YELLOW, 2],
+          ['ATTACK', 'MED',    YELLOW, 2],
+          ['DASH',   'NORMAL', WHITE,  2],
+        ],
+        passive: 'Bone Guard',
+        special: 'Bone Guard Blast',
+        diff: 'EASY', diffColor: GREEN,
+      },
+      {
+        role: 'Speed / Core Recovery',  roleColor: CYAN,
+        stats: [
+          ['HP',     'MED',    YELLOW, 2],
+          ['SPEED',  'HIGH',   CYAN,   3],
+          ['ATTACK', 'MED',    YELLOW, 2],
+          ['DASH',   'FAST',   CYAN,   3],
+        ],
+        passive: 'Electric Footwork',
+        special: 'Lightning Dash Strike',
+        diff: 'MEDIUM', diffColor: YELLOW,
+      },
+      {
+        role: 'Ranged / Damage',         roleColor: ORANGE,
+        stats: [
+          ['HP',     'MED',    YELLOW, 2],
+          ['SPEED',  'MED',    YELLOW, 2],
+          ['ATTACK', 'HIGH',   ORANGE, 3],
+          ['DASH',   'NORMAL', WHITE,  2],
+        ],
+        passive: 'Overcharged Arm',
+        special: 'Overdrive Beam',
+        diff: 'MEDIUM', diffColor: YELLOW,
+      },
+    ];
 
     for (let i = 0; i < this.characters.length; i++) {
       const char = this.characters[i];
-      const x = startX + i * spacing;
-      const y = HEIGHT / 2 - cardHeight / 2;
+      const info = INFO[i];
+      const x    = START_X + i * (CARD_W + CARD_GAP);
+      const y    = START_Y;
+      const sel  = i === this.characterIndex;
+      const cx   = x + CARD_W / 2;
 
-      // Draw card border
-      if (i === this.characterIndex) {
+      // Card background
+      ctx.fillStyle = sel ? 'rgba(0,36,72,0.96)' : 'rgba(0,10,28,0.90)';
+      ctx.fillRect(x, y, CARD_W, CARD_H);
+
+      // Card border
+      if (sel) {
+        ctx.strokeStyle = 'rgba(255,230,0,0.25)';
+        ctx.lineWidth   = 10;
+        ctx.strokeRect(x - 2, y - 2, CARD_W + 4, CARD_H + 4);
         ctx.strokeStyle = YELLOW;
-        ctx.lineWidth = 4;
+        ctx.lineWidth   = 3;
+        ctx.strokeRect(x, y, CARD_W, CARD_H);
       } else {
-        ctx.strokeStyle = WHITE;
-        ctx.lineWidth = 2;
-      }
-      ctx.strokeRect(x, y, cardWidth, cardHeight);
-
-      // Character portrait — use preloaded image or fallback circle
-      const charData = this.characters[i];
-      const cimg     = this._charImages[charData.id];
-      if (cimg && cimg.complete && cimg.naturalWidth > 0) {
-        const imgH = 200;
-        const imgW = Math.round(cimg.naturalWidth * (imgH / cimg.naturalHeight));
-        ctx.drawImage(cimg, x + (cardWidth - imgW) / 2, y + 8, imgW, imgH);
-      } else {
-        ctx.fillStyle = charData.fallbackColor;
-        ctx.beginPath();
-        ctx.arc(x + cardWidth / 2, y + 90, 60, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = charData.fallbackAlt;
-        ctx.lineWidth = 3;
-        ctx.stroke();
+        ctx.strokeStyle = '#1e4060';
+        ctx.lineWidth   = 1;
+        ctx.strokeRect(x, y, CARD_W, CARD_H);
       }
 
-      // Draw character name
-      ctx.font = 'bold 16px Consolas, monospace';
-      ctx.fillStyle = WHITE;
+      // Character name
+      ctx.font      = 'bold 15px Consolas, monospace';
+      ctx.fillStyle = sel ? YELLOW : WHITE;
       ctx.textAlign = 'center';
-      ctx.fillText(char.name, x + cardWidth / 2, y + cardHeight - 30);
+      ctx.fillText(char.name.toUpperCase(), cx, y + 22);
+
+      // Role
+      ctx.font      = '13px Consolas, monospace';
+      ctx.fillStyle = info.roleColor;
+      ctx.fillText(info.role, cx, y + 40);
+
+      // Separator
+      ctx.strokeStyle = '#1e4060'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(x + PAD, y + 50); ctx.lineTo(x + CARD_W - PAD, y + 50); ctx.stroke();
+
+      // Portrait
+      const portY = y + 57;
+      const portH = 110;
+      const cimg  = this._charImages[char.id];
+      if (cimg && cimg.complete && cimg.naturalWidth > 0) {
+        const imgH = portH;
+        const imgW = Math.round(cimg.naturalWidth * (imgH / cimg.naturalHeight));
+        ctx.drawImage(cimg, cx - imgW / 2, portY, imgW, imgH);
+      } else {
+        ctx.fillStyle = char.fallbackColor;
+        ctx.beginPath(); ctx.arc(cx, portY + portH / 2, 44, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = char.fallbackAlt; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(cx, portY + portH / 2, 44, 0, Math.PI * 2); ctx.stroke();
+      }
+
+      // Separator after portrait
+      const afterPort = portY + portH + 8;
+      ctx.strokeStyle = '#1e4060'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(x + PAD, afterPort); ctx.lineTo(x + CARD_W - PAD, afterPort); ctx.stroke();
+
+      // Stats section
+      let ly = afterPort + 14;
+      ctx.font      = '11px Consolas, monospace';
+      ctx.fillStyle = GREY;
+      ctx.textAlign = 'left';
+      ctx.fillText('STATS', x + PAD, ly);
+      ly += 16;
+
+      for (const [label, val, color, bars] of info.stats) {
+        ctx.font = '12px Consolas, monospace'; ctx.fillStyle = GREY; ctx.textAlign = 'left';
+        ctx.fillText(label, x + PAD, ly);
+        const barX = x + PAD + 60;
+        const bW = 14, bH = 8, bG = 3;
+        for (let b = 0; b < 3; b++) {
+          ctx.fillStyle = b < bars ? color : '#1a2a3a';
+          ctx.fillRect(barX + b * (bW + bG), ly - bH, bW, bH);
+        }
+        ctx.font = '12px Consolas, monospace'; ctx.fillStyle = color; ctx.textAlign = 'left';
+        ctx.fillText(val, barX + 3 * (bW + bG) + 6, ly);
+        ly += 22;
+      }
+
+      // Separator
+      ly += 4;
+      ctx.strokeStyle = '#1e4060'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(x + PAD, ly); ctx.lineTo(x + CARD_W - PAD, ly); ctx.stroke();
+      ly += 13;
+
+      // Passive
+      ctx.font = '11px Consolas, monospace'; ctx.fillStyle = GREY; ctx.textAlign = 'left';
+      ctx.fillText('PASSIVE', x + PAD, ly);
+      ly += 15;
+      ctx.font = '13px Consolas, monospace'; ctx.fillStyle = CYAN;
+      ctx.fillText(info.passive, x + PAD, ly);
+      ly += 21;
+
+      // Special Move
+      ctx.font = '11px Consolas, monospace'; ctx.fillStyle = GREY;
+      ctx.fillText('SPECIAL MOVE', x + PAD, ly);
+      ly += 15;
+      ctx.font = '13px Consolas, monospace'; ctx.fillStyle = ORANGE;
+      ctx.fillText(info.special, x + PAD, ly);
+      ly += 21;
+
+      // Separator
+      ly += 4;
+      ctx.strokeStyle = '#1e4060'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(x + PAD, ly); ctx.lineTo(x + CARD_W - PAD, ly); ctx.stroke();
+      ly += 13;
+
+      // Difficulty
+      ctx.font = '11px Consolas, monospace'; ctx.fillStyle = GREY; ctx.textAlign = 'left';
+      ctx.fillText('DIFFICULTY', x + PAD, ly);
+      ly += 15;
+      ctx.font = 'bold 14px Consolas, monospace'; ctx.fillStyle = info.diffColor;
+      ctx.fillText(info.diff, x + PAD, ly);
+
+      // Selected tag at card bottom
+      if (sel) {
+        ctx.font      = 'bold 12px Consolas, monospace';
+        ctx.fillStyle = YELLOW;
+        ctx.textAlign = 'center';
+        ctx.fillText('▶  SELECTED  ◀', cx, y + CARD_H - 10);
+      }
     }
 
-    ctx.font = '14px Consolas, monospace';
-    ctx.fillStyle = WHITE;
+    // Controls hint
+    ctx.font      = '14px Consolas, monospace';
+    ctx.fillStyle = '#78919f';
     ctx.textAlign = 'center';
-    ctx.fillText('← → Select • ENTER Confirm • ESC Back', WIDTH / 2, HEIGHT - 30);
+    ctx.fillText('A / ← →  /  D  Navigate     ENTER / Click  Select     ESC  Back', WIDTH / 2, HEIGHT - 12);
+    ctx.textAlign = 'left';
   }
 
   _drawExitScreen(ctx) {

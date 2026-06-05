@@ -1,4 +1,4 @@
-import { Game } from './game/Game.js?v=60';
+import { Game } from './game/Game.js?v=70';
 import { AudioManager } from './audio/AudioManager.js?v=10';
 
 const canvas = document.getElementById('game');
@@ -183,15 +183,14 @@ canvas.addEventListener('mousedown', e => {
     }
 
   } else if (game.gameState === 'character_select') {
-    // ── Character Select ─────────────────────────────────────────
-    const cardW = 220, cardH = 280, spacing = 280;
-    const startX = canvas.width / 2 - cardW - spacing / 2;
+    // ── Character Select — must match _drawCharacterSelect layout ─
+    const cardW = 310, cardH = 480, cardGap = 20;
+    const startX = Math.floor((canvas.width - (cardW * 3 + cardGap * 2)) / 2);
+    const startY = 66;
     for (let i = 0; i < game.characters.length; i++) {
-      const cx = startX + i * spacing;
-      const cy = canvas.height / 2 - cardH / 2;
+      const cx = startX + i * (cardW + cardGap);
       if (mousePos.x >= cx && mousePos.x <= cx + cardW &&
-          mousePos.y >= cy && mousePos.y <= cy + cardH) {
-        // Single click: select and immediately start gameplay
+          mousePos.y >= startY && mousePos.y <= startY + cardH) {
         game.characterIndex = i;
         game.selectCharacter(game.characters[i].id);
         break;
