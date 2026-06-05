@@ -1,4 +1,4 @@
-import { Game } from './game/Game.js?v=102';
+import { Game } from './game/Game.js?v=103';
 import { AudioManager } from './audio/AudioManager.js?v=10';
 
 const canvas = document.getElementById('game');
@@ -45,8 +45,8 @@ window.addEventListener('keydown', e => {
     }
   }
 
-  // Upgrade card selection (1/2/3)
-  if (game.upgradeUI) {
+  // Upgrade card selection (1/2/3) — only when actively playing
+  if (game.upgradeUI && game.gameState === 'playing') {
     const idx = { '1': 0, '2': 1, '3': 2 }[e.key];
     if (idx !== undefined) game.selectUpgrade(idx);
     return;
@@ -136,7 +136,7 @@ canvas.addEventListener('mousedown', e => {
   // Each block is else-if so only ONE handler fires per click,
   // even if a handler changes game.gameState mid-event.
 
-  if (game.upgradeUI) {
+  if (game.upgradeUI && game.gameState === 'playing') {
     // ── In-game upgrade card (level-up choice) ────────────────────
     game.upgradeUI.handleClick(mousePos, game);
 

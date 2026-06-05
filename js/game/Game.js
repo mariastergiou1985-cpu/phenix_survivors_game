@@ -121,6 +121,7 @@ export class Game {
 
     this.gameOver          = false;
     this.victory           = false;
+    this.paused            = false;
     this.finalMessage      = '';
     this.rewardsGranted    = false;
     this.runCreditsEarned  = 0;
@@ -149,19 +150,27 @@ export class Game {
   }
 
   goToCharacterSelect() {
-    this.gameState = 'character_select';
+    this.gameState    = 'character_select';
     this.characterIndex = 0;
+    this.upgradeUI    = null;
+    this.paused       = false;
     this.audio?.startMenuMusic();
   }
 
   goToMainMenu() {
     this.gameState = 'start_menu';
     this.menuIndex = 0;
+    this.gameOver  = false;
+    this.victory   = false;
+    this.upgradeUI = null;
+    this.paused    = false;
     this.audio?.startMenuMusic();
   }
 
   goToExitScreen() {
     this.gameState = 'exit_screen';
+    this.upgradeUI = null;
+    this.paused    = false;
   }
 
   goToUpgradesScreen() {
@@ -169,9 +178,15 @@ export class Game {
     this._upgradeMsg    = '';
     this._upgradeMsgTimer = 0;
     this._confirmReset  = false;
+    this.upgradeUI      = null;
+    this.paused         = false;
   }
 
-  goToCredits() { this.gameState = 'credits'; }
+  goToCredits() {
+    this.gameState = 'credits';
+    this.upgradeUI = null;
+    this.paused    = false;
+  }
 
   // ─── Meta upgrades ──────────────────────────────────────────────────────────
   _applyMetaUpgrades() {
