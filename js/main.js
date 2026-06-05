@@ -1,4 +1,4 @@
-import { Game } from './game/Game.js?v=103';
+import { Game } from './game/Game.js?v=100';
 import { AudioManager } from './audio/AudioManager.js?v=10';
 
 const canvas = document.getElementById('game');
@@ -45,8 +45,8 @@ window.addEventListener('keydown', e => {
     }
   }
 
-  // Upgrade card selection (1/2/3) — only when actively playing
-  if (game.upgradeUI && game.gameState === 'playing') {
+  // Upgrade card selection (1/2/3)
+  if (game.upgradeUI) {
     const idx = { '1': 0, '2': 1, '3': 2 }[e.key];
     if (idx !== undefined) game.selectUpgrade(idx);
     return;
@@ -113,13 +113,6 @@ canvas.addEventListener('mousedown', e => {
   if (e.button !== 0) return;
   mouseDown = true;
 
-  // Always resolve mousePos from this exact click position (not stale from last mousemove)
-  const rect = canvas.getBoundingClientRect();
-  mousePos = {
-    x: (e.clientX - rect.left) * (canvas.width  / rect.width),
-    y: (e.clientY - rect.top)  * (canvas.height / rect.height),
-  };
-
   // Initialize Web Audio on first user gesture (browser requirement)
   if (!game.audio) {
     game.audio = new AudioManager();
@@ -136,7 +129,7 @@ canvas.addEventListener('mousedown', e => {
   // Each block is else-if so only ONE handler fires per click,
   // even if a handler changes game.gameState mid-event.
 
-  if (game.upgradeUI && game.gameState === 'playing') {
+  if (game.upgradeUI) {
     // ── In-game upgrade card (level-up choice) ────────────────────
     game.upgradeUI.handleClick(mousePos, game);
 

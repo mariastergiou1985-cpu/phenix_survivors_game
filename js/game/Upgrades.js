@@ -74,8 +74,7 @@ export function weightedSample(player, n = 3) {
   const pool    = [...eligible];
   const poolW   = [...weights];
 
-  const maxChoices = Math.min(n, pool.length);
-  for (let i = 0; i < maxChoices; i++) {
+  for (let i = 0; i < Math.min(n, pool.length); i++) {
     let r   = Math.random() * poolW.reduce((a, b) => a + b, 0);
     let idx = 0;
     while (r > poolW[idx]) { r -= poolW[idx]; idx++; }

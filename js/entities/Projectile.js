@@ -1,4 +1,4 @@
-import { Vec2, MAGENTA, WHITE, GREEN } from '../constants.js';
+import { Vec2, WIDTH, HEIGHT, MAGENTA, WHITE, GREEN } from '../constants.js';
 import { safeNormalize, distance } from '../utils.js';
 
 export class Projectile {
@@ -18,7 +18,11 @@ export class Projectile {
   }
 
   alive() {
-    return this.life > 0;
+    return (
+      this.life > 0 &&
+      this.pos.x >= -40 && this.pos.x <= WIDTH  + 40 &&
+      this.pos.y >= -40 && this.pos.y <= HEIGHT + 40
+    );
   }
 
   draw(ctx) {

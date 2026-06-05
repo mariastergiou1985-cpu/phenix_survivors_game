@@ -12,13 +12,13 @@ import { FloatingText }   from '../entities/FloatingText.js';
 import { DataCore }       from '../entities/DataCore.js';
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=10';
 import { Player }         from '../entities/Player.js?v=50';
-import { Projectile, HomingDisc } from '../entities/Projectile.js?v=1';
+import { Projectile, HomingDisc } from '../entities/Projectile.js';
 import { Enemy }          from '../entities/Enemy.js?v=90';
 
 import { ParticleSystem, ScreenShake, drawVignette, EMPRing } from './Effects.js';
 import { SystemEventManager } from './Events.js?v=90';
 import { UpgradeUI }      from './UpgradeUI.js';
-import { weightedSample } from './Upgrades.js?v=1';
+import { weightedSample } from './Upgrades.js';
 import { drawHUD, drawEndScreen } from './HUD.js?v=30';
 import { MetaProgress, META_UPGRADES, upgradeCost } from './MetaProgress.js';
 
@@ -121,7 +121,6 @@ export class Game {
 
     this.gameOver          = false;
     this.victory           = false;
-    this.paused            = false;
     this.finalMessage      = '';
     this.rewardsGranted    = false;
     this.runCreditsEarned  = 0;
@@ -150,27 +149,19 @@ export class Game {
   }
 
   goToCharacterSelect() {
-    this.gameState    = 'character_select';
+    this.gameState = 'character_select';
     this.characterIndex = 0;
-    this.upgradeUI    = null;
-    this.paused       = false;
     this.audio?.startMenuMusic();
   }
 
   goToMainMenu() {
     this.gameState = 'start_menu';
     this.menuIndex = 0;
-    this.gameOver  = false;
-    this.victory   = false;
-    this.upgradeUI = null;
-    this.paused    = false;
     this.audio?.startMenuMusic();
   }
 
   goToExitScreen() {
     this.gameState = 'exit_screen';
-    this.upgradeUI = null;
-    this.paused    = false;
   }
 
   goToUpgradesScreen() {
@@ -178,15 +169,9 @@ export class Game {
     this._upgradeMsg    = '';
     this._upgradeMsgTimer = 0;
     this._confirmReset  = false;
-    this.upgradeUI      = null;
-    this.paused         = false;
   }
 
-  goToCredits() {
-    this.gameState = 'credits';
-    this.upgradeUI = null;
-    this.paused    = false;
-  }
+  goToCredits() { this.gameState = 'credits'; }
 
   // ─── Meta upgrades ──────────────────────────────────────────────────────────
   _applyMetaUpgrades() {
@@ -653,13 +638,8 @@ export class Game {
 
     if (this.paused || this.gameOver || this.victory) return;
 
-    // If upgrade UI is active, freeze gameplay but process card selection
-    if (this.upgradeUI) {
-      if (input.keys.has('1')) { this.selectUpgrade(0); input.keys.delete('1'); }
-      else if (input.keys.has('2')) { this.selectUpgrade(1); input.keys.delete('2'); }
-      else if (input.keys.has('3')) { this.selectUpgrade(2); input.keys.delete('3'); }
-      return;
-    }
+    // If upgrade UI is active, freeze everything but allow UI interaction
+    if (this.upgradeUI) return;
 
     // Check for pending level-up to show upgrade cards (one at a time)
     if (this.player.pendingLevelupCount > 0) {
@@ -1232,13 +1212,7 @@ export class Game {
     drawVignette(ctx, this.overload, this.timeAlive);
     this._drawAnnouncement(ctx);
 
-    if (this.upgradeUI) {
-      ctx.save();
-      const [sox, soy] = this.screenShake.getOffset();
-      ctx.translate(-sox, -soy);
-      this.upgradeUI.draw(ctx, this.player);
-      ctx.restore();
-    }
+    if (this.upgradeUI) this.upgradeUI.draw(ctx, this.player);
     if (this.gameOver || this.victory) drawEndScreen(ctx, this);
 
     if (this.paused && !this.gameOver && !this.victory) {
