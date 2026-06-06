@@ -3,7 +3,7 @@ import {
   WIN_TIME_SECONDS, CORE_OVERLOAD_TICK_TIME, BASE_OVERLOAD_PER_CORE,
   OVERLOAD_PICKUP_REDUCTION, OVERLOAD_SLOT_REDUCTION,
   MAX_OVERLOAD, PLAYER_RADIUS, CORE_RADIUS,
-  DARK_BG, GRID_LINE, BLACK, CYAN, RED, GREEN, YELLOW, ORANGE, WHITE,
+  DARK_BG, GRID_LINE, BLACK, CYAN, RED, GREEN, YELLOW, ORANGE, WHITE, PURPLE,
   CORE_COLORS,
 } from '../constants.js?v=50';
 import { clamp, distance, safeNormalize, randomChoice, randomRange } from '../utils.js';
@@ -89,6 +89,11 @@ export class Game {
     this._acidRainSplashImg.onerror = () => console.warn('[Weather] acid_rain_splash.png not found — using ellipse fallback');
     this._acidRainSplashImg.src = 'assets/events/weather/acid_rain_splash.png?v=1';
 
+    // Preload AI Overload Titan boss sprite
+    this._titanSprite = new Image();
+    this._titanSprite.onerror = () => console.warn('[Boss] ai_overload_titan.png failed to load — using fallback');
+    this._titanSprite.src = 'assets/enemies/bosses/ai_overload_titan.png?v=1';
+
     // Game state management
     this.gameState = 'start_menu'; // 'start_menu' | 'character_select' | 'playing' | 'game_over' | 'victory' | 'exit_screen'
     this.selectedCharacter = null; // 'skeleton_warrior' | 'taekwondo_girl' | 'cyber_arm_hero'
@@ -156,6 +161,12 @@ export class Game {
 
     this.acidRain      = null;  // { timer, damageAccum } | null
     this.acidRainTimer = 150;   // first event at 2:30
+
+    this.titanSpawned     = false;
+    this.titanBoss        = null;
+    this.titanSpawnTimer  = 180;  // 3:00
+    this._titanShockwaves = [];
+    this._titanBeams      = [];
 
     this._createMatrices();
   }
@@ -718,6 +729,7 @@ export class Game {
     this._updateAbilityTimers(dt);
     this._updateQuantumOverhaul(dt);
     this._updateAcidRain(dt);
+    this._updateTitan(dt);
     this.events.update(dt, this.timeAlive, this);
     this._updateGridCache(dt);
     this._updateAnnouncement(dt);
@@ -1029,6 +1041,17 @@ export class Game {
         }
       }
 
+      // Check titan hit
+      if (!hit && this.titanBoss && this.titanBoss.hp > 0 &&
+          distance(p.pos, this.titanBoss.pos) < p.radius + this.titanBoss.radius) {
+        this.titanBoss.hp      -= p.damage;
+        this.titanBoss.hitFlash = 0.08;
+        this.particles.spawnHitSparks(p.pos, PURPLE);
+        this.projectiles.splice(i, 1);
+        hit = true;
+        if (this.titanBoss.hp <= 0) this._titanDie();
+      }
+
       if (!hit && !p.alive()) this.projectiles.splice(i, 1);
     }
   }
@@ -1332,6 +1355,9 @@ export class Game {
 
     // 4 ── Enemies
     for (const e of this.enemies) e.draw(ctx);
+
+    // 4a ── AI Overload Titan mini-boss
+    this._drawTitan(ctx);
 
     // 4b ── Grid Cache supply drop crate
     if (this.gridCache) {
@@ -2086,6 +2112,223 @@ export class Game {
       this.acidRain = { timer: 12, damageAccum: 0 };
       this.triggerAnnouncement('ACID RAIN WARNING', GREEN);
     }
+  }
+
+  // ── AI Overload Titan mini-boss ───────────────────────────────────────────
+
+  _updateTitan(dt) {
+    if (!this.titanSpawned) {
+      this.titanSpawnTimer -= dt;
+      if (this.titanSpawnTimer > 0) return;
+      this.titanSpawned = true;
+      this._spawnTitan();
+    }
+
+    const t = this.titanBoss;
+    if (!t || t.hp <= 0) return;
+
+    // Move toward player (slow)
+    const toPlayer = this.player.pos.sub(t.pos);
+    if (toPlayer.length() > t.radius + PLAYER_RADIUS + 4) {
+      t.pos.addMut(safeNormalize(toPlayer).scale(t.speed * dt));
+    }
+    t.pos.x = clamp(t.pos.x, WORLD_MARGIN + t.radius, WORLD_W - WORLD_MARGIN - t.radius);
+    t.pos.y = clamp(t.pos.y, WORLD_MARGIN + 40 + t.radius, WORLD_H - WORLD_MARGIN - t.radius);
+
+    if (t.hitFlash > 0) t.hitFlash -= dt;
+
+    // Contact damage (same rate pattern as regular enemies)
+    if (distance(t.pos, this.player.pos) < t.radius + PLAYER_RADIUS) {
+      const push = safeNormalize(this.player.pos.sub(t.pos));
+      this.player.pos.addMut(push.scale(60 * dt));
+      if (this.player.dashTimer <= 0 && this.phoenixReviveTimer <= 0) {
+        const dmg = t.contactDamage * dt * (1 - this.player.contactDamageReduction);
+        this.player.hp = Math.max(0, this.player.hp - dmg);
+        if (this.playerHitCooldown <= 0) {
+          this.playerHitCooldown = 0.5;
+          this.screenShake.trigger(4, 0.15);
+          this.floatingTexts.push(new FloatingText(`-${Math.ceil(t.contactDamage)} HP`, this.player.pos.clone(), RED, 0.6));
+        }
+      }
+    }
+
+    // Shockwave attack (every 6–8s)
+    t.shockwaveTimer -= dt;
+    if (t.shockwaveTimer <= 0) {
+      t.shockwaveTimer = 6 + Math.random() * 2;
+      this._titanShockwave(t);
+    }
+
+    // Beam attack (every 10–12s)
+    t.beamTimer -= dt;
+    if (t.beamTimer <= 0) {
+      t.beamTimer = 10 + Math.random() * 2;
+      this._titanBeam(t);
+    }
+
+    // Update expanding shockwave rings
+    for (let i = this._titanShockwaves.length - 1; i >= 0; i--) {
+      const sw = this._titanShockwaves[i];
+      sw.radius += 200 * dt;
+      sw.alpha   = Math.max(0, 1.0 - sw.radius / 350);
+      if (!sw.hit) {
+        const d = distance(sw.pos, this.player.pos);
+        if (sw.radius >= d - PLAYER_RADIUS - 4) {
+          sw.hit = true;
+          const dmg = 10 * (1 - this.player.contactDamageReduction);
+          this.player.hp = Math.max(0, this.player.hp - dmg);
+          this.screenShake.trigger(3, 0.15);
+          this.floatingTexts.push(new FloatingText(`-${Math.ceil(dmg)} HP`, this.player.pos.clone(), PURPLE, 0.8));
+        }
+      }
+      if (sw.alpha <= 0) this._titanShockwaves.splice(i, 1);
+    }
+
+    // Update titan beams
+    for (let i = this._titanBeams.length - 1; i >= 0; i--) {
+      const b = this._titanBeams[i];
+      b.pos.addMut(b.dir.scale(b.speed * dt));
+      b.life -= dt;
+      if (!b.hit && distance(b.pos, this.player.pos) < b.radius + PLAYER_RADIUS) {
+        b.hit = true;
+        const dmg = 15 * (1 - this.player.contactDamageReduction);
+        this.player.hp = Math.max(0, this.player.hp - dmg);
+        this.overload = clamp(this.overload + 3, 0, MAX_OVERLOAD);
+        this.floatingTexts.push(new FloatingText(`-${Math.ceil(dmg)} HP`, this.player.pos.clone(), PURPLE, 0.8));
+        this.floatingTexts.push(new FloatingText('+3% OVERLOAD', new Vec2(this.player.pos.x, this.player.pos.y - 24), RED, 0.8));
+        this.screenShake.trigger(4, 0.2);
+      }
+      if (b.hit || b.life <= 0) this._titanBeams.splice(i, 1);
+    }
+  }
+
+  _spawnTitan() {
+    const R    = 50;
+    const side = Math.random() < 0.5 ? -1 : 1;
+    const pos  = new Vec2(
+      WORLD_W / 2 + side * (WORLD_W / 2 - WORLD_MARGIN - R - 30),
+      WORLD_H / 2
+    );
+    this.titanBoss = {
+      pos, hp: 600, maxHp: 600,
+      radius: R, speed: 60, contactDamage: 12, hitFlash: 0,
+      shockwaveTimer: 4, beamTimer: 8,
+    };
+    this.triggerAnnouncement('AI OVERLOAD TITAN DETECTED', PURPLE);
+    this.screenShake.trigger(6, 0.5);
+    this.floatingTexts.push(
+      new FloatingText('AI OVERLOAD TITAN DETECTED', new Vec2(WIDTH / 2 - 220, HEIGHT / 2 - 60), PURPLE, 3.0)
+    );
+  }
+
+  _titanShockwave(t) {
+    this._titanShockwaves.push({ pos: t.pos.clone(), radius: t.radius, alpha: 1.0, hit: false });
+    this.screenShake.trigger(2, 0.1);
+  }
+
+  _titanBeam(t) {
+    const dir = safeNormalize(this.player.pos.sub(t.pos));
+    if (dir.lengthSq() === 0) return;
+    this._titanBeams.push({ pos: t.pos.clone(), dir, speed: 420, life: 3.5, radius: 10, hit: false });
+    this.screenShake.trigger(2, 0.1);
+  }
+
+  _titanDie() {
+    const t = this.titanBoss;
+    if (!t) return;
+    this.player.gainXp(25, this.floatingTexts);
+    this.meta.addCredits(15);
+    this.runCreditsEarned = (this.runCreditsEarned || 0) + 15;
+    this.overload = Math.max(0, this.overload - 10);
+    this.floatingTexts.push(new FloatingText('TITAN DEFEATED',     t.pos.clone(),                            YELLOW, 2.5));
+    this.floatingTexts.push(new FloatingText('+15 GRID CREDITS',   new Vec2(t.pos.x, t.pos.y - 30),         GREEN,  2.5));
+    this.floatingTexts.push(new FloatingText('NETWORK STABILIZED', new Vec2(t.pos.x, t.pos.y - 60),         CYAN,   2.5));
+    this.triggerAnnouncement('TITAN DEFEATED — NETWORK STABILIZED', GREEN);
+    this.screenShake.trigger(8, 0.8);
+    this.particles.spawnHitSparks(t.pos, YELLOW);
+    this.particles.spawnHitSparks(t.pos, PURPLE);
+    this.titanBoss        = null;
+    this._titanShockwaves = [];
+    this._titanBeams      = [];
+  }
+
+  _drawTitan(ctx) {
+    // Shockwave rings (draw even after boss dies until they fade)
+    for (const sw of this._titanShockwaves) {
+      ctx.save();
+      ctx.globalAlpha = sw.alpha * 0.9;
+      ctx.strokeStyle = PURPLE; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.arc(sw.pos.x, sw.pos.y, sw.radius, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = CYAN; ctx.lineWidth = 1;
+      ctx.globalAlpha = sw.alpha * 0.4;
+      ctx.beginPath(); ctx.arc(sw.pos.x, sw.pos.y, sw.radius + 5, 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
+    }
+
+    // Titan beams
+    for (const b of this._titanBeams) {
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, b.life);
+      ctx.fillStyle   = PURPLE;
+      ctx.beginPath(); ctx.arc(b.pos.x, b.pos.y, b.radius, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = CYAN; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(b.pos.x, b.pos.y, b.radius, 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
+    }
+
+    const t = this.titanBoss;
+    if (!t || t.hp <= 0) return;
+
+    const R = t.radius;
+
+    // Pulsing aura
+    const pulse = 0.4 + 0.35 * Math.sin(Date.now() / 200);
+    ctx.save();
+    ctx.globalAlpha = pulse;
+    ctx.strokeStyle = PURPLE; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(t.pos.x, t.pos.y, R + 10, 0, Math.PI * 2); ctx.stroke();
+    ctx.strokeStyle = CYAN; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(t.pos.x, t.pos.y, R + 18, 0, Math.PI * 2); ctx.stroke();
+    ctx.restore();
+
+    // Sprite or fallback
+    const spr = this._titanSprite;
+    if (spr && spr.complete && spr.naturalWidth > 0) {
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(spr, t.pos.x - R, t.pos.y - R, R * 2, R * 2);
+      ctx.imageSmoothingEnabled = true;
+    } else {
+      ctx.fillStyle   = PURPLE;
+      ctx.strokeStyle = CYAN; ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.roundRect(t.pos.x - R, t.pos.y - R, R * 2, R * 2, 8);
+      ctx.fill(); ctx.stroke();
+    }
+
+    // Hit flash overlay
+    if (t.hitFlash > 0) {
+      ctx.save();
+      ctx.globalAlpha = 0.6;
+      ctx.fillStyle   = WHITE;
+      ctx.beginPath(); ctx.arc(t.pos.x, t.pos.y, R, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
+
+    // HP bar above sprite (world-space)
+    const bw = R * 2 + 20;
+    const bx = t.pos.x - bw / 2;
+    const by = t.pos.y - R - 20;
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(bx - 1, by - 1, bw + 2, 8);
+    ctx.fillStyle = RED;
+    ctx.fillRect(bx, by, Math.round(bw * (t.hp / t.maxHp)), 6);
+
+    // Name label
+    ctx.font      = 'bold 10px Consolas, monospace';
+    ctx.fillStyle = PURPLE;
+    ctx.textAlign = 'center';
+    ctx.fillText('AI OVERLOAD TITAN', t.pos.x, by - 3);
+    ctx.textAlign = 'left';
   }
 
   _drawAcidRain(ctx) {
