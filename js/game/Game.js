@@ -50,9 +50,17 @@ export class Game {
     this._menuBg = new Image();
     this._menuBg.src = 'assets/ui/start_menu_background.png?v=10';
 
-    // Preload phoenix revive effect image
+    // Preload phoenix revive effect images (orange / blue / gold tiers)
     this._phoenixImage = new Image();
     this._phoenixImage.src = 'assets/effects/phoenix_revive.png';
+
+    this._phoenixBlueImage = new Image();
+    this._phoenixBlueImage.onerror = () => console.warn('[Assets] Failed to load: assets/effects/phoenix/blue_phoenix_revive.png');
+    this._phoenixBlueImage.src = 'assets/effects/phoenix/blue_phoenix_revive.png';
+
+    this._phoenixGoldImage = new Image();
+    this._phoenixGoldImage.onerror = () => console.warn('[Assets] Failed to load: assets/effects/phoenix/gold_phoenix_revive.png');
+    this._phoenixGoldImage.src = 'assets/effects/phoenix/gold_phoenix_revive.png';
 
     // Preload credits photos
     this._creditImgInk = new Image();
@@ -128,9 +136,11 @@ export class Game {
     this.gridBlackoutActive   = false;
     this.announcement         = null;
 
-    // Phoenix revive — triggers once when player HP first hits 0
+    // Phoenix revive tiers (orange → blue → gold, one per death per run)
     this.phoenixUsed        = false;
-    this.phoenixReviveTimer = 0;   // > 0 while the flash animation plays
+    this.phoenixReviveTimer = 0;    // > 0 while the flash animation plays
+    this.phoenixReviveCount = 0;    // how many revives used this run (0–3)
+    this.phoenixReviveType  = 'orange'; // 'orange' | 'blue' | 'gold'
 
     this.gameOver          = false;
     this.victory           = false;
@@ -724,8 +734,8 @@ export class Game {
       this.audio?.stopAll();
       this._grantRewards();
     } else if (this.player.hp <= 0) {
-      if (!this.phoenixUsed) {
-        this._triggerPhoenixRevive();   // first death → revive
+      if (this.phoenixReviveCount < 3) {
+        this._triggerPhoenixRevive();
       } else {
         this.gameOver     = true;
         this.finalMessage = 'CYBER-HERO OFFLINE';
@@ -1218,11 +1228,41 @@ export class Game {
   }
 
   _triggerPhoenixRevive() {
-    this.phoenixUsed        = true;
-    this.player.hp          = Math.ceil(this.player.maxHp * 0.5);
-    this.phoenixReviveTimer = 2.5;
-    this.floatingTexts.push(new FloatingText('✦ PHOENIX REVIVE ✦', this.player.pos.clone(), ORANGE, 2.5));
-    this.screenShake.trigger(8, 0.5);
+    this.phoenixReviveCount++;
+    this.phoenixUsed        = true;  // keep existing flag
+    this.phoenixReviveTimer = 3.0;
+
+    if (this.phoenixReviveCount === 1) {
+      // ── Orange — original first-death revive ──────────────────────────────
+      this.phoenixReviveType = 'orange';
+      this.player.hp = Math.ceil(this.player.maxHp * 0.5);
+      this.floatingTexts.push(
+        new FloatingText('✦ PHOENIX REVIVE ✦', this.player.pos.clone(), ORANGE, 2.5)
+      );
+      this.screenShake.trigger(8, 0.5);
+
+    } else if (this.phoenixReviveCount === 2) {
+      // ── Blue — 75 % HP, −50 % overload ───────────────────────────────────
+      this.phoenixReviveType = 'blue';
+      this.player.hp = Math.ceil(this.player.maxHp * 0.75);
+      this.overload  = Math.max(0, this.overload * 0.5);
+      this.triggerAnnouncement('✦ BLUE PHOENIX REVIVE ✦', CYAN);
+      this.floatingTexts.push(
+        new FloatingText('BLUE PHOENIX REVIVE', this.player.pos.clone(), CYAN, 3.0)
+      );
+      this.screenShake.trigger(12, 0.7);
+
+    } else {
+      // ── Gold — 100 % HP, −75 % overload ──────────────────────────────────
+      this.phoenixReviveType = 'gold';
+      this.player.hp = this.player.maxHp;
+      this.overload  = Math.max(0, this.overload * 0.25);
+      this.triggerAnnouncement('✦ GOLD PHOENIX REVIVE ✦', YELLOW);
+      this.floatingTexts.push(
+        new FloatingText('GOLD PHOENIX REVIVE', this.player.pos.clone(), YELLOW, 3.0)
+      );
+      this.screenShake.trigger(16, 1.0);
+    }
   }
 
   // ─── Draw ─────────────────────────────────────────────────────────────────
@@ -1367,18 +1407,144 @@ export class Game {
       ctx.beginPath(); ctx.arc(b.pos.x, b.pos.y, b.radius, 0, Math.PI * 2); ctx.stroke();
     }
 
-    // 6b ── Phoenix revive flash (drawn above everything except HUD)
+    // 6b ── Phoenix revive effect (epic multi-layer, world-space)
     if (this.phoenixReviveTimer > 0) {
-      const alpha = this.phoenixReviveTimer / 2.5;
-      ctx.fillStyle = `rgba(255,140,0,${(alpha * 0.45).toFixed(3)})`;
-      ctx.fillRect(this.camera.x, this.camera.y, WIDTH, HEIGHT);
-      const pimg = this._phoenixImage;
-      if (pimg && pimg.complete && pimg.naturalWidth > 0) {
-        const sz = 280;
-        ctx.globalAlpha = Math.min(1, alpha * 1.6);
-        ctx.drawImage(pimg, this.player.pos.x - sz / 2, this.player.pos.y - sz, sz, sz);
-        ctx.globalAlpha = 1;
+      const elapsed = 3.0 - this.phoenixReviveTimer;           // 0 at birth → 3 at end
+      const alpha   = Math.max(0, this.phoenixReviveTimer / 3.0);
+      const rtype   = this.phoenixReviveType || 'orange';
+      const px = this.player.pos.x;
+      const py = this.player.pos.y;
+
+      // ── per-tier colour config ──────────────────────────────────────────
+      let tintRGBA, coreColor, ringColor, sparkColor, pimg, sprSz;
+      if (rtype === 'blue') {
+        tintRGBA   = `rgba(0,160,255,${(alpha * 0.32).toFixed(3)})`;
+        coreColor  = '#00e6ff';
+        ringColor  = '#0099ff';
+        sparkColor = '#aaeeff';
+        pimg       = this._phoenixBlueImage;
+        sprSz      = 310;
+      } else if (rtype === 'gold') {
+        tintRGBA   = `rgba(255,200,0,${(alpha * 0.45).toFixed(3)})`;
+        coreColor  = '#ffdd00';
+        ringColor  = '#ff8800';
+        sparkColor = '#ffe066';
+        pimg       = this._phoenixGoldImage;
+        sprSz      = 390;
+      } else {
+        tintRGBA   = `rgba(255,140,0,${(alpha * 0.40).toFixed(3)})`;
+        coreColor  = '#ff8800';
+        ringColor  = '#ffaa00';
+        sparkColor = '#ff6600';
+        pimg       = this._phoenixImage;
+        sprSz      = 280;
       }
+
+      // ── Layer 1: full-screen tint ───────────────────────────────────────
+      ctx.fillStyle = tintRGBA;
+      ctx.fillRect(this.camera.x, this.camera.y, WIDTH, HEIGHT);
+
+      // ── Layer 2: radial gradient burst ─────────────────────────────────
+      {
+        const gr = 80 + elapsed * 80;
+        const grd = ctx.createRadialGradient(px, py, 0, px, py, gr);
+        const gc  = rtype === 'blue' ? '0,200,255' : rtype === 'gold' ? '255,210,0' : '255,160,0';
+        grd.addColorStop(0, `rgba(${gc},${(alpha * 0.55).toFixed(3)})`);
+        grd.addColorStop(1, `rgba(${gc},0)`);
+        ctx.fillStyle = grd;
+        ctx.beginPath(); ctx.arc(px, py, gr, 0, Math.PI * 2); ctx.fill();
+      }
+
+      // ── Layer 3: phoenix sprite (or fallback glow rings) ────────────────
+      if (pimg && pimg.complete && pimg.naturalWidth > 0) {
+        ctx.save();
+        ctx.globalAlpha          = Math.min(1, alpha * 1.8);
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(pimg, px - sprSz / 2, py - sprSz, sprSz, sprSz);
+        ctx.imageSmoothingEnabled = true;
+        ctx.restore();
+      } else {
+        // Fallback: two concentric glow rings
+        ctx.save();
+        ctx.strokeStyle = coreColor;
+        ctx.lineWidth   = 6;
+        ctx.globalAlpha = alpha * 0.9;
+        ctx.beginPath(); ctx.arc(px, py, 70 + elapsed * 30, 0, Math.PI * 2); ctx.stroke();
+        ctx.lineWidth   = 3;
+        ctx.globalAlpha = alpha * 0.5;
+        ctx.beginPath(); ctx.arc(px, py, 110 + elapsed * 40, 0, Math.PI * 2); ctx.stroke();
+        ctx.restore();
+      }
+
+      // ── Layer 4: shockwave ring(s) ──────────────────────────────────────
+      const drawRing = (delay, lw, maxR) => {
+        const t = elapsed - delay;
+        if (t <= 0) return;
+        const r  = t * 320;
+        if (r > maxR) return;
+        const rA = Math.max(0, (1 - r / maxR)) * alpha;
+        ctx.save();
+        ctx.strokeStyle = ringColor;
+        ctx.lineWidth   = lw;
+        ctx.globalAlpha = rA;
+        ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2); ctx.stroke();
+        ctx.restore();
+      };
+      drawRing(0,    5, 340);
+      if (rtype !== 'orange') drawRing(0.28, 3, 300);
+      if (rtype === 'gold')   drawRing(0.50, 2, 260);
+
+      // ── Layer 5: radial spark particles ────────────────────────────────
+      {
+        const SPARKS = rtype === 'gold' ? 24 : rtype === 'blue' ? 16 : 8;
+        ctx.save();
+        for (let i = 0; i < SPARKS; i++) {
+          const angle = (i / SPARKS) * Math.PI * 2;
+          const dist  = elapsed * (150 + (i % 4) * 45);
+          const sx    = px + Math.cos(angle) * dist;
+          const sy    = py + Math.sin(angle) * dist;
+          const pA    = Math.max(0, 1 - dist / 380) * alpha;
+          if (pA <= 0) continue;
+          ctx.globalAlpha = pA;
+          ctx.fillStyle   = sparkColor;
+          ctx.beginPath();
+          ctx.arc(sx, sy, Math.max(1, 4 - elapsed * 1.2), 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+
+      // ── Layer 6: rising feather streaks (blue / gold only) ─────────────
+      if (rtype !== 'orange') {
+        const STREAKS = rtype === 'gold' ? 12 : 8;
+        ctx.save();
+        ctx.lineCap = 'round';
+        for (let i = 0; i < STREAKS; i++) {
+          const angle  = ((i / STREAKS) * Math.PI * 2) - Math.PI / 2;
+          const spread = 70 + (i % 3) * 45;
+          const rise   = elapsed * 160;
+          const sx     = px + Math.cos(angle) * spread;
+          const sy     = py + Math.sin(angle) * spread - rise;
+          const sA     = Math.max(0, 1 - elapsed / 2.2) * alpha;
+          if (sA <= 0) continue;
+          ctx.globalAlpha = sA;
+          ctx.strokeStyle = coreColor;
+          ctx.lineWidth   = rtype === 'gold' ? 3 : 2;
+          ctx.beginPath();
+          ctx.moveTo(sx, sy + 22);
+          ctx.lineTo(sx, sy);
+          ctx.stroke();
+          // small dot at tip
+          ctx.fillStyle = sparkColor;
+          ctx.globalAlpha = sA * 0.8;
+          ctx.beginPath();
+          ctx.arc(sx, sy, 2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+
+      ctx.globalAlpha = 1;
     }
 
     // Floating texts (world-space)
