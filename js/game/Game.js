@@ -73,6 +73,14 @@ export class Game {
     this._gridCacheSprite.onerror = () => console.warn('[Assets] grid_cache_crate not found — cyan fallback will be used');
     this._gridCacheSprite.src = 'assets/events/supply_drop/grid_cache_crate.png';
 
+    // Preload acid rain weather sprites
+    this._acidRainFallImg = new Image();
+    this._acidRainFallImg.onerror = () => console.warn('[Weather] acid_rain_fall.png not found — using line fallback');
+    this._acidRainFallImg.src = 'assets/weather/acid_rain_fall.png';
+    this._acidRainSplashImg = new Image();
+    this._acidRainSplashImg.onerror = () => console.warn('[Weather] acid_rain_splash.png not found — using ellipse fallback');
+    this._acidRainSplashImg.src = 'assets/weather/acid_rain_splash.png';
+
     // Game state management
     this.gameState = 'start_menu'; // 'start_menu' | 'character_select' | 'playing' | 'game_over' | 'victory' | 'exit_screen'
     this.selectedCharacter = null; // 'skeleton_warrior' | 'taekwondo_girl' | 'cyber_arm_hero'
@@ -135,6 +143,9 @@ export class Game {
 
     this.gridCache           = null;  // { pos: Vec2, timer: number } | null
     this.gridCacheSpawnTimer = 75;    // first crate at 75s (avoids Drone Swarm at 60s)
+
+    this.acidRain      = null;  // { timer, damageAccum } | null
+    this.acidRainTimer = 150;   // first event at 2:30
 
     this._createMatrices();
   }
@@ -695,6 +706,7 @@ export class Game {
     this._updateEnemyBullets(dt);
     this._updateAbilityTimers(dt);
     this._updateQuantumOverhaul(dt);
+    this._updateAcidRain(dt);
     this.events.update(dt, this.timeAlive, this);
     this._updateGridCache(dt);
     this._updateAnnouncement(dt);
@@ -1375,6 +1387,7 @@ export class Game {
     ctx.restore();  // end camera-space block
 
     // ── Screen-space block (HUD, overlays) ───────────────────────────────────
+    this._drawAcidRain(ctx);
     this._drawGridCacheArrow(ctx);
     ctx.fillStyle = BLACK;
     ctx.fillRect(0, 0, WIDTH, 44);
@@ -1872,6 +1885,109 @@ export class Game {
     ctx.fillText('ESC = Return to Menu', WIDTH / 2, HEIGHT - 16);
 
     ctx.textAlign = 'left';
+  }
+
+  // ─── Acid Rain weather event ──────────────────────────────────────────────
+
+  _updateAcidRain(dt) {
+    if (this.acidRain) {
+      const ar = this.acidRain;
+      ar.timer       -= dt;
+      ar.damageAccum += dt;
+
+      // 1 HP damage per second to all enemies (no floating text to avoid spam)
+      if (ar.damageAccum >= 1.0) {
+        ar.damageAccum -= 1.0;
+        for (const e of this.enemies) {
+          e.hp = Math.max(0, e.hp - 1);
+        }
+      }
+
+      if (ar.timer <= 0) {
+        this.acidRain      = null;
+        this.acidRainTimer = 120; // repeat every 120s
+      }
+      return;
+    }
+
+    this.acidRainTimer -= dt;
+    if (this.acidRainTimer <= 0) {
+      this.acidRain = { timer: 12, damageAccum: 0 };
+      this.triggerAnnouncement('ACID RAIN WARNING', GREEN);
+    }
+  }
+
+  _drawAcidRain(ctx) {
+    if (!this.acidRain) return;
+
+    const now = performance.now() / 1000;
+
+    ctx.save();
+
+    // Subtle green screen tint
+    ctx.fillStyle = 'rgba(0,60,0,0.09)';
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+    const fallImg   = this._acidRainFallImg;
+    const splashImg = this._acidRainSplashImg;
+    const hasFall   = fallImg   && fallImg.complete   && fallImg.naturalWidth   > 0;
+    const hasSplash = splashImg && splashImg.complete && splashImg.naturalWidth > 0;
+
+    const ACID_COLOR = '#44ff88';
+    const DROP_W     = 6,  DROP_H   = 18; // crop from first frame of fall sprite
+    const SPLASH_W   = 16, SPLASH_H = 8;  // crop from first frame of splash sprite
+    const DROP_SPEED = 300; // px/sec downward
+    const DIAGONAL   = 0.24;
+    const TOTAL_H    = HEIGHT + 60;
+    const COUNT      = 60;
+
+    ctx.imageSmoothingEnabled = false;
+
+    for (let i = 0; i < COUNT; i++) {
+      const seedX     = ((i * 23.4 + i * i * 0.71) % (WIDTH + 80)) - 40;
+      const seedPhase = (i * 17.13) % 1;
+      const alpha     = 0.35 + 0.25 * ((i * 7 % 3) / 3);
+      const progress  = ((now * DROP_SPEED / TOTAL_H) + seedPhase) % 1;
+      const x         = seedX + progress * TOTAL_H * DIAGONAL;
+      const y         = progress * TOTAL_H - 30;
+
+      ctx.globalAlpha = alpha;
+
+      if (y > HEIGHT - 24 && y <= HEIGHT + 10) {
+        // Splash zone
+        if (hasSplash) {
+          ctx.drawImage(splashImg, 0, 0,
+            Math.min(SPLASH_W, splashImg.naturalWidth),
+            Math.min(SPLASH_H, splashImg.naturalHeight),
+            Math.round(x), HEIGHT - SPLASH_H, SPLASH_W, SPLASH_H);
+        } else {
+          ctx.strokeStyle = ACID_COLOR;
+          ctx.lineWidth   = 1;
+          ctx.beginPath();
+          ctx.ellipse(Math.round(x + 5), HEIGHT - 3, 5, 2, 0, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      } else if (y < HEIGHT - 24) {
+        // Falling drop
+        if (hasFall) {
+          ctx.drawImage(fallImg, 0, 0,
+            Math.min(DROP_W, fallImg.naturalWidth),
+            Math.min(DROP_H, fallImg.naturalHeight),
+            Math.round(x), Math.round(y), DROP_W, DROP_H);
+        } else {
+          ctx.strokeStyle = ACID_COLOR;
+          ctx.lineWidth   = 2;
+          ctx.beginPath();
+          ctx.moveTo(Math.round(x),     Math.round(y));
+          ctx.lineTo(Math.round(x + 4), Math.round(y + 14));
+          ctx.stroke();
+        }
+      }
+    }
+
+    ctx.globalAlpha           = 1;
+    ctx.imageSmoothingEnabled = true;
+    ctx.restore();
   }
 
   _updateCamera() {
