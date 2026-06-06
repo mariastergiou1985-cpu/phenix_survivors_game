@@ -233,12 +233,13 @@ export class Game {
     if (this.rewardsGranted) return;
     this.rewardsGranted = true;
 
-    const coreCredits    = Math.floor(this.player.coresSecured / 10);
-    const killCredits    = Math.floor(this.player.kills / 10);
-    const timeCredits    = this.timeAlive >= 300 ? 5 : 0;
+    const timeCredits    = Math.floor(this.timeAlive / 30);
+    const killCredits    = Math.floor(this.player.kills / 5);
+    const coreCredits    = this.player.coresSecured * 2;
+    const survivalBonus  = this.timeAlive >= 180 ? 5 : 0;
     const victoryCredits = this.victory ? 10 : 0;
 
-    this.runCreditsEarned = coreCredits + killCredits + timeCredits + victoryCredits;
+    this.runCreditsEarned = timeCredits + killCredits + coreCredits + survivalBonus + victoryCredits;
     this.meta.addCredits(this.runCreditsEarned);
   }
 
