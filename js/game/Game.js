@@ -85,7 +85,7 @@ export class Game {
       { id: 'taekwondo_girl', name: 'Neon Taekwondo Girl', fallbackColor: '#00D9FF', fallbackAlt: '#0099CC' },
       { id: 'cyber_arm_hero', name: 'Cyber Arm Hero', fallbackColor: '#FF6600', fallbackAlt: '#CC0000' }
     ];
-    this.menuItems = ['START GAME', 'CHARACTER SELECT', 'UPGRADES', 'CREDITS', 'EXIT'];
+    this.menuItems = ['START GAME', 'CHARACTER SELECT', 'UPGRADES', 'INSTRUCTIONS', 'CREDITS', 'EXIT'];
 
     this.reset();
   }
@@ -184,6 +184,8 @@ export class Game {
   }
 
   goToCredits() { this.gameState = 'credits'; }
+
+  goToInstructions() { this.gameState = 'instructions'; }
 
   // ─── Meta upgrades ──────────────────────────────────────────────────────────
   _applyMetaUpgrades() {
@@ -646,6 +648,10 @@ export class Game {
       this._updateCreditsScreen(input);
       return;
     }
+    if (this.gameState === 'instructions') {
+      this._updateInstructionsScreen(input);
+      return;
+    }
     if (this.gameState !== 'playing') return;
 
     if (this.paused || this.gameOver || this.victory) return;
@@ -848,8 +854,10 @@ export class Game {
       } else if (this.menuIndex === 2) {
         this.goToUpgradesScreen();
       } else if (this.menuIndex === 3) {
-        this.goToCredits();
+        this.goToInstructions();
       } else if (this.menuIndex === 4) {
+        this.goToCredits();
+      } else if (this.menuIndex === 5) {
         try { window.close(); } catch (e) {}
         this.goToExitScreen();
       }
@@ -1236,6 +1244,10 @@ export class Game {
       this._drawCreditsScreen(ctx);
       return;
     }
+    if (this.gameState === 'instructions') {
+      this._drawInstructionsScreen(ctx);
+      return;
+    }
     if (this.gameState !== 'playing') {
       this._drawBackground(ctx);
       return;
@@ -1591,6 +1603,138 @@ export class Game {
       this.goToMainMenu();
       keys.delete('escape');
     }
+  }
+
+  _updateInstructionsScreen(input) {
+    const { keys } = input;
+    if (keys.has('escape')) {
+      this.goToMainMenu();
+      keys.delete('escape');
+    }
+  }
+
+  _drawInstructionsScreen(ctx) {
+    this._drawBackground(ctx);
+    ctx.fillStyle = 'rgba(0,0,0,0.85)';
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+    const pw = 1140, ph = 580;
+    const px = Math.round((WIDTH  - pw) / 2);
+    const py = Math.round((HEIGHT - ph) / 2);
+
+    // Panel
+    ctx.fillStyle = 'rgba(0,10,24,0.96)';
+    ctx.fillRect(px, py, pw, ph);
+    ctx.strokeStyle = CYAN; ctx.lineWidth = 2;
+    ctx.strokeRect(px, py, pw, ph);
+    ctx.strokeStyle = 'rgba(0,230,255,0.15)'; ctx.lineWidth = 1;
+    ctx.strokeRect(px + 5, py + 5, pw - 10, ph - 10);
+
+    // Title
+    ctx.textAlign = 'center';
+    ctx.font      = 'bold 36px Consolas, monospace';
+    ctx.fillStyle = CYAN;
+    ctx.fillText('HOW TO PLAY', WIDTH / 2, py + 46);
+
+    // Separator
+    ctx.strokeStyle = 'rgba(0,230,255,0.28)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(px + 50, py + 58); ctx.lineTo(px + pw - 50, py + 58); ctx.stroke();
+
+    ctx.textAlign = 'left';
+    const lx = px + 28;
+    const rx = px + 598;
+    const y0 = py + 76;
+    const lh = 21;
+
+    // ── OBJECTIVE ──────────────────────────────────────────────
+    ctx.font      = 'bold 15px Consolas, monospace';
+    ctx.fillStyle = CYAN;
+    ctx.fillText('OBJECTIVE', lx, y0);
+
+    const objectives = [
+      'Protect the Power Matrices.',
+      'Recover dropped Data-Cores.',
+      'Return Data-Cores to the Matrix bases.',
+      'Stop enemies from stealing cores.',
+      'Survive enemy attacks.',
+      'Prevent Network Overload from reaching 100%.',
+    ];
+    ctx.font      = '14px Consolas, monospace';
+    ctx.fillStyle = WHITE;
+    objectives.forEach((line, i) => ctx.fillText('• ' + line, lx + 8, y0 + 22 + i * lh));
+
+    // ── CONTROLS ───────────────────────────────────────────────
+    const ctrY = y0 + 22 + objectives.length * lh + 20;
+    ctx.font      = 'bold 15px Consolas, monospace';
+    ctx.fillStyle = CYAN;
+    ctx.fillText('CONTROLS', lx, ctrY);
+
+    const controls = [
+      ['WASD / Arrow Keys', 'Move'],
+      ['SPACE',             'Dash'],
+      ['E',                 'Special Move'],
+      ['T',                 'Toggle Aim Assist'],
+      ['M',                 'Mute / Unmute Music'],
+      ['ESC',               'Back / Pause'],
+    ];
+    controls.forEach(([key, action], i) => {
+      const ky = ctrY + 22 + i * lh;
+      ctx.font      = 'bold 13px Consolas, monospace';
+      ctx.fillStyle = YELLOW;
+      ctx.fillText(key, lx + 8, ky);
+      ctx.font      = '13px Consolas, monospace';
+      ctx.fillStyle = WHITE;
+      ctx.fillText('—  ' + action, lx + 192, ky);
+    });
+
+    // ── GAME SYSTEMS ───────────────────────────────────────────
+    ctx.font      = 'bold 15px Consolas, monospace';
+    ctx.fillStyle = CYAN;
+    ctx.fillText('GAME SYSTEMS', rx, y0);
+
+    const systems = [
+      { name: 'Grid Credits',
+        desc: ['Earned after each run.', 'Spend in UPGRADES.'] },
+      { name: 'Phoenix Revive',
+        desc: ['Can save you from death once per run.'] },
+      { name: 'Network Overload',
+        desc: ['Rises when cores are stolen or ignored.', 'Reach 100% and the run ends.'] },
+      { name: 'Grid Cache',
+        desc: ['Timed supply drop. Follow the blinking arrow.', 'Collect for HP, XP, and overload reduction.'] },
+      { name: 'Characters',
+        desc: ['Each has different stats, attacks,', 'and a unique special move.'] },
+    ];
+
+    let sy = y0 + 22;
+    for (const sys of systems) {
+      ctx.font      = 'bold 14px Consolas, monospace';
+      ctx.fillStyle = YELLOW;
+      ctx.fillText(sys.name, rx + 8, sy);
+      sy += 19;
+      ctx.font      = '13px Consolas, monospace';
+      ctx.fillStyle = WHITE;
+      for (const dline of sys.desc) {
+        ctx.fillText(dline, rx + 14, sy);
+        sy += 18;
+      }
+      sy += 10;
+    }
+
+    // ── BACK button ────────────────────────────────────────────
+    const bw = 160, bh = 40;
+    const bx = Math.round(WIDTH / 2 - bw / 2);
+    const by = py + ph - 52;
+
+    ctx.fillStyle   = '#0a1820';
+    ctx.fillRect(bx, by, bw, bh);
+    ctx.strokeStyle = CYAN; ctx.lineWidth = 1;
+    ctx.strokeRect(bx, by, bw, bh);
+    ctx.font      = 'bold 14px Consolas, monospace';
+    ctx.fillStyle = CYAN;
+    ctx.textAlign = 'center';
+    ctx.fillText('◄  BACK', bx + bw / 2, by + 26);
+
+    ctx.textAlign = 'left';
   }
 
   _drawCreditsScreen(ctx) {

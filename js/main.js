@@ -82,6 +82,8 @@ window.addEventListener('keydown', e => {
       game.goToMainMenu();          // exit screen → back to start menu
     } else if (game.gameState === 'credits') {
       game.goToMainMenu();
+    } else if (game.gameState === 'instructions') {
+      game.goToMainMenu();
     } else if (game.gameState === 'playing') {
       if (game.gameOver || game.victory) {
         game.goToMainMenu();        // game ended → back to start menu
@@ -162,8 +164,9 @@ canvas.addEventListener('mousedown', e => {
         game.menuIndex = i;
         if (i === 0 || i === 1) game.goToCharacterSelect();
         else if (i === 2) game.goToUpgradesScreen();
-        else if (i === 3) game.goToCredits();
-        else if (i === 4) { try { window.close(); } catch (e) {} game.goToExitScreen(); }
+        else if (i === 3) game.goToInstructions();
+        else if (i === 4) game.goToCredits();
+        else if (i === 5) { try { window.close(); } catch (e) {} game.goToExitScreen(); }
         break;
       }
     }
@@ -177,6 +180,16 @@ canvas.addEventListener('mousedown', e => {
     const py = canvas.height / 2 - ph / 2 - 10;
     const bx = canvas.width  / 2 - bw / 2;
     const by = py + ph - 60;
+    if (mousePos.x >= bx && mousePos.x <= bx + bw &&
+        mousePos.y >= by && mousePos.y <= by + bh) {
+      game.goToMainMenu();
+    }
+
+  } else if (game.gameState === 'instructions') {
+    // BACK button: bw=160,bh=40 centered, by=py+ph-52 where pw=1140,ph=580,py=70
+    const bw = 160, bh = 40;
+    const bx = Math.round(canvas.width / 2 - bw / 2);
+    const by = Math.round((canvas.height - 580) / 2) + 580 - 52;
     if (mousePos.x >= bx && mousePos.x <= bx + bw &&
         mousePos.y >= by && mousePos.y <= by + bh) {
       game.goToMainMenu();
