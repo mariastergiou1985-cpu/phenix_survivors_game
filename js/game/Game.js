@@ -11,7 +11,7 @@ import { clamp, distance, safeNormalize, randomChoice, randomRange } from '../ut
 import { FloatingText }   from '../entities/FloatingText.js';
 import { DataCore }       from '../entities/DataCore.js';
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=10';
-import { Player }         from '../entities/Player.js?v=51';
+import { Player }         from '../entities/Player.js?v=52';
 import { Projectile, HomingDisc } from '../entities/Projectile.js';
 import { Enemy }          from '../entities/Enemy.js?v=90';
 
@@ -97,9 +97,9 @@ export class Game {
     this.menuIndex = 0;
     this.characterIndex = 0;
     this.characters = [
-      { id: 'skeleton_warrior', name: 'Cyber Skeleton Warrior', fallbackColor: '#8B0050', fallbackAlt: '#FF0080' },
-      { id: 'taekwondo_girl', name: 'Neon Taekwondo Girl', fallbackColor: '#00D9FF', fallbackAlt: '#0099CC' },
-      { id: 'cyber_arm_hero', name: 'Cyber Arm Hero', fallbackColor: '#FF6600', fallbackAlt: '#CC0000' }
+      { id: 'skeleton_warrior', name: 'Cyber Skeleton Warrior', fallbackColor: '#8B0050', fallbackAlt: '#FF0080', role: 'Tank / Survival' },
+      { id: 'taekwondo_girl',   name: 'Neon Taekwondo Girl',    fallbackColor: '#00D9FF', fallbackAlt: '#0099CC', role: 'Speed / AoE' },
+      { id: 'cyber_arm_hero',   name: 'Cyber Arm Hero',         fallbackColor: '#FF6600', fallbackAlt: '#CC0000', role: 'Ranged / Damage' },
     ];
     this.menuItems = ['START GAME', 'CHARACTER SELECT', 'UPGRADES', 'INSTRUCTIONS', 'CREDITS', 'EXIT'];
 
@@ -1138,7 +1138,7 @@ export class Game {
 
         if (!damageDone && this.phoenixReviveTimer <= 0 && this.player.dashTimer <= 0) {
           // Apply per-enemy contact damage
-          const dmg = (e.contactDamage ?? 8) * dt;
+          const dmg = (e.contactDamage ?? 8) * dt * (1 - this.player.contactDamageReduction);
           this.player.hp = Math.max(0, this.player.hp - dmg);
           damageDone = true;
 
@@ -1745,6 +1745,10 @@ export class Game {
       ctx.fillStyle = WHITE;
       ctx.textAlign = 'center';
       ctx.fillText(char.name, x + cardWidth / 2, y + cardHeight - 30);
+
+      ctx.font      = 'italic 12px Consolas, monospace';
+      ctx.fillStyle = '#AAAAAA';
+      ctx.fillText(char.role, x + cardWidth / 2, y + cardHeight - 12);
     }
 
     ctx.font = '14px Consolas, monospace';

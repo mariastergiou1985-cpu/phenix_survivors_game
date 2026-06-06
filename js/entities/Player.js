@@ -26,6 +26,20 @@ export class Player {
     this.returnRadius = 70;
     this.repelRadius  = 115;
 
+    this.contactDamageReduction = 0;
+
+    if (this.selectedCharacter === 'skeleton_warrior') {
+      this.maxHp   = 130;
+      this.hp      = 130;
+      this.baseSpeed = Math.round(230 * 0.90);   // 207
+      this.contactDamageReduction = 0.15;
+    } else if (this.selectedCharacter === 'taekwondo_girl') {
+      this.maxHp        = 90;
+      this.hp           = 90;
+      this.baseSpeed    = Math.round(230 * 1.20); // 276
+      this.pickupRadius = 100;
+    }
+
     this.carry    = 0;
     this.maxCarry = 5;
 
@@ -144,7 +158,7 @@ export class Player {
     if (wantsDash && this.dashCooldown <= 0 && this.stamina >= dashCost) {
       this._dashDir     = dashDir.clone();
       this.dashTimer    = this.dashDuration;
-      this.dashCooldown = 0.4;
+      this.dashCooldown = this.selectedCharacter === 'taekwondo_girl' ? 0.32 : 0.4;
       this.stamina      = Math.max(0, this.stamina - dashCost);
     }
 
@@ -177,8 +191,18 @@ export class Player {
   shoot(mousePos) {
     this.shootCooldown = 0.18;
     const dir    = safeNormalize(new Vec2(mousePos.x - this.pos.x, mousePos.y - this.pos.y));
-    const damage = 1 + this.upgrades['Pulse Damage'];
-    return new Projectile(this.pos.clone(), dir, damage, this.attackSprite);
+    const base   = 1 + this.upgrades['Pulse Damage'];
+    let damage   = base;
+    let projLife = 0.9;
+    if (this.selectedCharacter === 'taekwondo_girl') {
+      damage = base * 0.9;
+    } else if (this.selectedCharacter === 'cyber_arm_hero') {
+      damage   = base * 1.2;
+      projLife = 1.3;
+    }
+    const proj = new Projectile(this.pos.clone(), dir, damage, this.attackSprite);
+    proj.life  = projLife;
+    return proj;
   }
 
   draw(ctx, mousePos) {
