@@ -145,7 +145,7 @@ export class Game {
     this.gridCacheSpawnTimer = 75;    // first crate at 75s (avoids Drone Swarm at 60s)
 
     this.acidRain      = null;  // { timer, damageAccum } | null
-    this.acidRainTimer = 10;    // TEMP TEST — restore to 150 after online verification
+    this.acidRainTimer = 150;   // first event at 2:30
 
     this._createMatrices();
   }
