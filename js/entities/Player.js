@@ -47,7 +47,7 @@ export class Player {
 
     this.level        = 1;
     this.xp           = 0;
-    this.xpToNext     = 6;
+    this.xpToNext     = 3;
     this.pendingLevelupCount = 0;
 
     this.kills             = 0;
@@ -103,7 +103,13 @@ export class Player {
     while (this.xp >= this.xpToNext) {
       this.xp      -= this.xpToNext;
       this.level++;
-      this.xpToNext = Math.round(this.xpToNext * 1.35 + 4);
+      const EARLY_THRESHOLDS = [5, 7, 10]; // XP to reach levels 3, 4, 5
+      const earlyIdx = this.level - 2;
+      if (earlyIdx >= 0 && earlyIdx < EARLY_THRESHOLDS.length) {
+        this.xpToNext = EARLY_THRESHOLDS[earlyIdx];
+      } else {
+        this.xpToNext = Math.round(this.xpToNext * 1.35 + 4);
+      }
       this.pendingLevelupCount++;
     }
   }

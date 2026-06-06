@@ -11,7 +11,7 @@ import { clamp, distance, safeNormalize, randomChoice, randomRange } from '../ut
 import { FloatingText }   from '../entities/FloatingText.js';
 import { DataCore }       from '../entities/DataCore.js';
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=10';
-import { Player }         from '../entities/Player.js?v=50';
+import { Player }         from '../entities/Player.js?v=51';
 import { Projectile, HomingDisc } from '../entities/Projectile.js';
 import { Enemy }          from '../entities/Enemy.js?v=90';
 
