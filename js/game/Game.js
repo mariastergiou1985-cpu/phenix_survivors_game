@@ -753,7 +753,7 @@ export class Game {
       this.finalMessage = 'CITY GRID TOTAL BLACKOUT';
       this.audio?.stopAll();
       this._grantRewards();
-    } else if (this.player.hp <= 0) {
+    } else if (this.player.hp <= 0 && this.phoenixReviveTimer <= 0) {
       if (this.phoenixReviveCount < 3) {
         this._triggerPhoenixRevive();
       } else {
@@ -1272,6 +1272,7 @@ export class Game {
       // ── Orange — original first-death revive ──────────────────────────────
       this.phoenixReviveType = 'orange';
       this.player.hp = Math.ceil(this.player.maxHp * 0.5);
+      this.overload  = Math.max(0, this.overload * 0.75);
       this.floatingTexts.push(
         new FloatingText('✦ PHOENIX REVIVE ✦', this.player.pos.clone(), ORANGE, 2.5)
       );
@@ -2215,7 +2216,7 @@ export class Game {
       const sw = this._titanShockwaves[i];
       sw.radius += 200 * dt;
       sw.alpha   = Math.max(0, 1.0 - sw.radius / 350);
-      if (!sw.hit) {
+      if (!sw.hit && this.phoenixReviveTimer <= 0) {
         const d = distance(sw.pos, this.player.pos);
         if (sw.radius >= d - PLAYER_RADIUS - 4) {
           sw.hit = true;
@@ -2233,7 +2234,7 @@ export class Game {
       const b = this._titanBeams[i];
       b.pos.addMut(b.dir.scale(b.speed * dt));
       b.life -= dt;
-      if (!b.hit && distance(b.pos, this.player.pos) < b.radius + PLAYER_RADIUS) {
+      if (!b.hit && this.phoenixReviveTimer <= 0 && distance(b.pos, this.player.pos) < b.radius + PLAYER_RADIUS) {
         b.hit = true;
         const dmg = 15 * (1 - this.player.contactDamageReduction);
         this.player.hp = Math.max(0, this.player.hp - dmg);
