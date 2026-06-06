@@ -1,6 +1,6 @@
 # Phenix Survivors — Cyber-Grid Protocol
 
-A cyberpunk survival browser game where the player protects Power Matrices, collects Data-Cores, fights enemies, survives waves, earns Grid Credits, and upgrades characters.
+A cyberpunk HTML5 Canvas survival game where the player protects Power Matrices, recovers Data-Cores, fights enemy waves, survives events, earns Grid Credits, and upgrades characters.
 
 ## Play Online
 
@@ -13,7 +13,6 @@ No install required. Runs in any modern browser.
 | Key / Action | Effect |
 |---|---|
 | WASD / Arrow Keys | Move |
-| Mouse / Aim Assist | Aim |
 | SPACE | Dash |
 | E | Special Move |
 | T | Toggle Aim Assist |
@@ -40,16 +39,21 @@ No install required. Runs in any modern browser.
 ## Features
 
 - Online playable via GitHub Pages
-- Character select screen
-- Permanent upgrade system (Grid Credits)
-- Stamina-based dash
-- Character special moves
+- Start Menu
+- Character Select
+- Permanent Upgrades (Grid Credits)
+- Data-Core / Power Matrix gameplay
+- Network Overload system
+- Enemy waves with proper sprites in all waves and events
+- Wave event announcements
+- Grid Cache supply drop event with blinking arrow indicator
+- Dash with SPACE
+- Special Move with E
 - Aim Assist toggle
 - Phoenix Revive (one-time revival per run)
-- Enemy waves with event announcements
-- Grid Cache supply drop event
+- Game Over / rewards screen
 - Credits screen
-- Custom music
+- Custom menu music
 
 ## Credits
 
