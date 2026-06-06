@@ -1,6 +1,6 @@
 # Phenix Survivors — Cyber-Grid Protocol
 
-A cyberpunk HTML5 Canvas survival game where the player protects Power Matrices, recovers Data-Cores, fights enemy waves, survives events, earns Grid Credits, and upgrades characters.
+A cyberpunk HTML5 Canvas survival game where the player protects Power Matrices, recovers Data-Cores, fights enemy waves, survives events, defeats the AI Overload Titan, earns Grid Credits, and upgrades characters.
 
 ## Play Online
 
@@ -23,10 +23,12 @@ No install required. Runs in any modern browser.
 
 - Protect the Power Matrices
 - Recover dropped Data-Cores
+- Return Data-Cores to the Matrix bases
 - Stop enemies from stealing cores
 - Survive enemy attacks and waves
 - Prevent Network Overload from reaching 100%
-- Collect Grid Cache supply events
+- Collect Grid Cache supply events (follow the blinking arrow)
+- Defeat the AI Overload Titan mini-boss
 - Earn Grid Credits after each run
 - Spend credits on permanent upgrades from the Upgrades menu
 
@@ -36,32 +38,40 @@ No install required. Runs in any modern browser.
 - Neon Taekwondo Girl
 - Cyber Arm Hero
 
+Each character has different stats, attacks, and a unique special move.
+
 ## Features
 
 - Online playable via GitHub Pages
 - Start Menu
 - Character Select
+- Character differentiation
+- Instructions screen with animated tutorial panels
 - Permanent Upgrades (Grid Credits)
-- Data-Core / Power Matrix gameplay
+- Grid Credits earned per run
+- Score / High Score / Combo system
+- Data-Core / Power Matrix objective
 - Network Overload system
-- Enemy waves with proper sprites in all waves and events
-- Wave event announcements
-- Grid Cache supply drop event with blinking arrow indicator
+- Enemy waves and events
+- Grid Cache supply drop event with arrow indicator
+- Acid Rain weather event
+- AI Overload Titan mini-boss
+- Boss support drones
+- Phoenix Revive tiers
 - Dash with SPACE
 - Special Move with E
 - Aim Assist toggle
-- Phoenix Revive (one-time revival per run)
-- Game Over / rewards screen
-- Credits screen
-- Custom menu music
+- Game Over / Run Summary
+- Custom music by TSALI
 
 ## Credits
 
-**Game, Art, Design & Code:** InkSpireM Visuals  
-**Music:**  
-- Menu Theme: "HOPE" by TSALI  
-- Gameplay Theme: "PHENIX OVERDRIVE" by TSALI  
-**Development Assistance:** Claude — AI coding assistance, debugging, implementation support, and project guidance.
+**Game, Art, Design & Code:** InkSpireM Visuals
+**Project Assistance & Music:** TSALI
+
+**Music:**
+- Menu Theme: "HOPE" by TSALI
+- Gameplay Theme: "PHENIX OVERDRIVE" by TSALI
 
 ## Run Locally
 
