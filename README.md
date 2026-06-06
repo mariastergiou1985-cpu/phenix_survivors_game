@@ -57,8 +57,10 @@ No install required. Runs in any modern browser.
 
 ## Credits
 
-**Game, Art, Design & Code:** InkSpireM Visuals
-**Music:** "HOPE" by TSALI
+**Game, Art, Design & Code:** InkSpireM Visuals  
+**Music:**  
+- Menu Theme: "HOPE" by TSALI  
+- Gameplay Theme: "PHENIX OVERDRIVE" by TSALI  
 **Development Assistance:** Claude — AI coding assistance, debugging, implementation support, and project guidance.
 
 ## Run Locally

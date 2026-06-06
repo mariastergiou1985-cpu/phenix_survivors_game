@@ -1769,7 +1769,9 @@ export class Game {
     const cardW = 340, cardH = 300, cardY = py + 82;
     const cards = [
       { x: px + 25,          label: 'CREATED BY',      name: 'InkSpireM Visuals', img: this._creditImgInk   },
-      { x: px + 25 + cardW + 25, label: 'MUSIC',       name: '"HOPE" by TSALI',   img: this._creditImgTsali },
+      { x: px + 25 + cardW + 25, label: 'MUSIC', name: 'TSALI',
+        tracks: ['Menu: "HOPE"', 'Gameplay: "PHENIX OVERDRIVE"'],
+        img: this._creditImgTsali },
     ];
 
     for (const card of cards) {
@@ -1841,6 +1843,12 @@ export class Game {
       ctx.font      = '13px Consolas, monospace';
       ctx.fillStyle = CYAN;
       ctx.fillText(card.name, midX, fy + fh + 22);
+
+      if (card.tracks) {
+        ctx.font      = '11px Consolas, monospace';
+        ctx.fillStyle = WHITE;
+        card.tracks.forEach((t, i) => ctx.fillText(t, midX, fy + fh + 38 + i * 16));
+      }
     }
 
     // ── BACK button ──────────────────────────────────────────────────────────
