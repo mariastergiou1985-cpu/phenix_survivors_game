@@ -1,52 +1,69 @@
-# Phenix Survivors Game
+# Phenix Survivors — Cyber-Grid Protocol
 
-HTML5 Canvas cyberpunk survival game — no install, runs in any modern browser.
+A cyberpunk survival browser game where the player protects Power Matrices, collects Data-Cores, fights enemies, survives waves, earns Grid Credits, and upgrades characters.
 
 ## Play Online
 
-After enabling GitHub Pages (see below), the game will be live at:
+https://mariastergiou1985-cpu.github.io/phenix_survivors_game/
 
-```
-https://<your-github-username>.github.io/phenix_survivors_game/
-```
-
-## Run Locally
-
-```bash
-cd phenix_survivors_game
-python -m http.server 8000
-```
-
-Then open: http://localhost:8000
-
-## Deploy to GitHub Pages
-
-1. Push this repo to GitHub as `phenix_survivors_game`
-2. Go to the repo on GitHub
-3. Click **Settings** → **Pages**
-4. Under *Build and deployment*, set:
-   - **Source**: Deploy from a branch
-   - **Branch**: `main` → `/ (root)`
-5. Click **Save**
-6. Wait ~60 seconds, then visit:
-   `https://<your-github-username>.github.io/phenix_survivors_game/`
+No install required. Runs in any modern browser.
 
 ## Controls
 
 | Key / Action | Effect |
 |---|---|
-| WASD / Arrow keys | Move |
-| Mouse | Aim |
-| Left click | Shoot |
-| Q | Sonic Pulse |
-| E | EMP Cloud |
-| M | Mute / unmute audio |
-| ESC | Pause / back to menu |
-| R | Restart (after game over) |
-| 1 / 2 / 3 | Select upgrade card |
+| WASD / Arrow Keys | Move |
+| Mouse / Aim Assist | Aim |
+| SPACE | Dash |
+| E | Special Move |
+| T | Toggle Aim Assist |
+| M | Mute / Unmute Music |
+| ESC | Back / Pause |
 
-## Tech Stack
+## Gameplay
 
-- Vanilla HTML5 Canvas (no framework, no build step)
-- ES Modules (`type="module"`)
-- Web Audio API for sound
+- Protect the Power Matrices
+- Recover dropped Data-Cores
+- Stop enemies from stealing cores
+- Survive enemy attacks and waves
+- Prevent Network Overload from reaching 100%
+- Collect Grid Cache supply events
+- Earn Grid Credits after each run
+- Spend credits on permanent upgrades from the Upgrades menu
+
+## Characters
+
+- Cyber Skeleton Warrior
+- Neon Taekwondo Girl
+- Cyber Arm Hero
+
+## Features
+
+- Online playable via GitHub Pages
+- Character select screen
+- Permanent upgrade system (Grid Credits)
+- Stamina-based dash
+- Character special moves
+- Aim Assist toggle
+- Phoenix Revive (one-time revival per run)
+- Enemy waves with event announcements
+- Grid Cache supply drop event
+- Credits screen
+- Custom music
+
+## Credits
+
+Game by **InkSpireM Visuals**
+Music: *"HOPE"* by **TSALI**
+
+## Run Locally
+
+```bash
+python -m http.server 8000
+```
+
+Then open: http://localhost:8000
+
+## Tech
+
+Vanilla HTML5 Canvas / JavaScript browser game. No external game engine. ES Modules, Web Audio API.
