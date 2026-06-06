@@ -1770,7 +1770,7 @@ export class Game {
     const cards = [
       { x: px + 25,          label: 'CREATED BY',      name: 'InkSpireM Visuals', img: this._creditImgInk   },
       { x: px + 25 + cardW + 25, label: 'MUSIC', name: 'TSALI',
-        tracks: ['Menu: "HOPE"', 'Gameplay: "PHENIX OVERDRIVE"'],
+        tracks: ['Menu Theme: "HOPE" by TSALI', 'Gameplay Theme: "PHENIX OVERDRIVE" by TSALI'],
         img: this._creditImgTsali },
     ];
 
@@ -1792,15 +1792,23 @@ export class Game {
       ctx.fillStyle = YELLOW;
       ctx.fillText(card.label, midX, cy + 26);
 
-      // Creator name
-      ctx.font      = 'bold 18px Consolas, monospace';
-      ctx.fillStyle = WHITE;
-      ctx.fillText(card.name, midX, cy + 50);
+      // Creator name (or track list for music card)
+      if (card.tracks) {
+        ctx.font      = '13px Consolas, monospace';
+        ctx.fillStyle = CYAN;
+        ctx.fillText(card.tracks[0], midX, cy + 44);
+        ctx.fillStyle = YELLOW;
+        ctx.fillText(card.tracks[1], midX, cy + 62);
+      } else {
+        ctx.font      = 'bold 18px Consolas, monospace';
+        ctx.fillStyle = WHITE;
+        ctx.fillText(card.name, midX, cy + 50);
+      }
 
-      // Photo area
+      // Photo area (pushed down slightly for music card to give track text room)
       const fw = 150, fh = 160;
       const fx = cx + (cardW - fw) / 2;
-      const fy = cy + 65;
+      const fy = card.tracks ? cy + 78 : cy + 65;
 
       // Draw photo or placeholder
       let photoDrawn = false;
@@ -1844,11 +1852,6 @@ export class Game {
       ctx.fillStyle = CYAN;
       ctx.fillText(card.name, midX, fy + fh + 22);
 
-      if (card.tracks) {
-        ctx.font      = '11px Consolas, monospace';
-        ctx.fillStyle = WHITE;
-        card.tracks.forEach((t, i) => ctx.fillText(t, midX, fy + fh + 38 + i * 16));
-      }
     }
 
     // ── BACK button ──────────────────────────────────────────────────────────
