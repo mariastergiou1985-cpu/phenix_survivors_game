@@ -56,11 +56,11 @@ export class Game {
 
     this._phoenixBlueImage = new Image();
     this._phoenixBlueImage.onerror = () => console.warn('[Assets] Failed to load: assets/effects/phoenix/blue_phoenix_revive.png');
-    this._phoenixBlueImage.src = 'assets/effects/phoenix/blue_phoenix_revive.png';
+    this._phoenixBlueImage.src = 'assets/effects/phoenix/blue_phoenix_revive.png?v=2';
 
     this._phoenixGoldImage = new Image();
     this._phoenixGoldImage.onerror = () => console.warn('[Assets] Failed to load: assets/effects/phoenix/gold_phoenix_revive.png');
-    this._phoenixGoldImage.src = 'assets/effects/phoenix/gold_phoenix_revive.png';
+    this._phoenixGoldImage.src = 'assets/effects/phoenix/gold_phoenix_revive.png?v=2';
 
     // Preload credits photos
     this._creditImgInk = new Image();
