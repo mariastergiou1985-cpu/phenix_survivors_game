@@ -134,7 +134,7 @@ export class Game {
     this.camera = { x: 0, y: 0 };
 
     this.gridCache           = null;  // { pos: Vec2, timer: number } | null
-    this.gridCacheSpawnTimer = 60;    // first crate spawns at t=60s
+    this.gridCacheSpawnTimer = 75;    // first crate at 75s (avoids Drone Swarm at 60s)
 
     this._createMatrices();
   }
@@ -764,6 +764,68 @@ export class Game {
     this.triggerAnnouncement('GRID CACHE DETECTED', CYAN);
   }
 
+  _drawGridCacheArrow(ctx) {
+    if (!this.gridCache) return;
+
+    // Convert world position → screen position
+    const sx = this.gridCache.pos.x - this.camera.x;
+    const sy = this.gridCache.pos.y - this.camera.y;
+
+    const HUD_H  = 44;
+    const MARGIN = 28;
+    const A_SIZE = 14;
+    const blink  = 0.6 + 0.4 * Math.sin(Date.now() / 350);
+
+    const onScreen = sx >= MARGIN && sx <= WIDTH - MARGIN &&
+                     sy >= HUD_H + MARGIN && sy <= HEIGHT - MARGIN;
+
+    ctx.save();
+    ctx.globalAlpha = blink;
+
+    if (onScreen) {
+      // ▼ cyan triangle pointing down, above the crate
+      const ax = sx;
+      const ay = sy - 38;
+      ctx.fillStyle   = CYAN;
+      ctx.strokeStyle = '#004455';
+      ctx.lineWidth   = 1;
+      ctx.beginPath();
+      ctx.moveTo(ax,          ay);
+      ctx.lineTo(ax - A_SIZE, ay - A_SIZE * 1.2);
+      ctx.lineTo(ax + A_SIZE, ay - A_SIZE * 1.2);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    } else {
+      // Edge indicator — clamp to screen bounds, rotate toward crate
+      const ex    = Math.max(MARGIN, Math.min(WIDTH  - MARGIN, sx));
+      const ey    = Math.max(HUD_H + MARGIN, Math.min(HEIGHT - MARGIN, sy));
+      const angle = Math.atan2(sy - ey, sx - ex);
+
+      // Rotated yellow triangle
+      ctx.save();
+      ctx.translate(ex, ey);
+      ctx.rotate(angle);
+      ctx.fillStyle = YELLOW;
+      ctx.beginPath();
+      ctx.moveTo( A_SIZE + 4,  0);
+      ctx.lineTo(-A_SIZE,     -A_SIZE * 0.65);
+      ctx.lineTo(-A_SIZE,      A_SIZE * 0.65);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+
+      // Label (drawn un-rotated)
+      ctx.font      = 'bold 11px Consolas, monospace';
+      ctx.fillStyle = YELLOW;
+      ctx.textAlign = 'center';
+      ctx.fillText('GRID CACHE', ex, ey - A_SIZE - 4);
+      ctx.textAlign = 'left';
+    }
+
+    ctx.restore();
+  }
+
   _updateStartMenu(input) {
     const { keys } = input;
     if (keys.has('arrowup') || keys.has('w')) {
@@ -1206,13 +1268,16 @@ export class Game {
     if (this.gridCache) {
       const { pos, timer } = this.gridCache;
       const sz = 48;
-      // Pulse glow ring
-      const pulse = 0.35 + 0.25 * Math.sin(Date.now() / 300);
+      // Pulse glow — two rings for visibility
+      const pulse = 0.5 + 0.4 * Math.sin(Date.now() / 300);
       ctx.save();
-      ctx.globalAlpha = pulse;
       ctx.strokeStyle = CYAN;
-      ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(pos.x, pos.y, sz / 2 + 7, 0, Math.PI * 2); ctx.stroke();
+      ctx.globalAlpha = pulse;
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(pos.x, pos.y, sz / 2 + 6,  0, Math.PI * 2); ctx.stroke();
+      ctx.lineWidth = 1;
+      ctx.globalAlpha = pulse * 0.5;
+      ctx.beginPath(); ctx.arc(pos.x, pos.y, sz / 2 + 14, 0, Math.PI * 2); ctx.stroke();
       ctx.restore();
       // Sprite or cyan-square fallback
       const spr = this._gridCacheSprite;
@@ -1294,6 +1359,7 @@ export class Game {
     ctx.restore();  // end camera-space block
 
     // ── Screen-space block (HUD, overlays) ───────────────────────────────────
+    this._drawGridCacheArrow(ctx);
     ctx.fillStyle = BLACK;
     ctx.fillRect(0, 0, WIDTH, 44);
 
