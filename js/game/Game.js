@@ -6,7 +6,7 @@ import {
   DARK_BG, GRID_LINE, BLACK, CYAN, RED, GREEN, YELLOW, ORANGE, WHITE,
   CORE_COLORS,
 } from '../constants.js?v=50';
-import { clamp, distance, safeNormalize, randomChoice } from '../utils.js';
+import { clamp, distance, safeNormalize, randomChoice, randomRange } from '../utils.js';
 
 import { FloatingText }   from '../entities/FloatingText.js';
 import { DataCore }       from '../entities/DataCore.js';
@@ -68,6 +68,11 @@ export class Game {
     this._matrixSprite.onerror = () => console.warn('[Assets] Failed to load: assets/bases/matrix_base.png');
     this._matrixSprite.src = 'assets/bases/matrix_base.png?v=10';
 
+    // Preload grid cache supply drop sprite
+    this._gridCacheSprite = new Image();
+    this._gridCacheSprite.onerror = () => console.warn('[Assets] grid_cache_crate not found — cyan fallback will be used');
+    this._gridCacheSprite.src = 'assets/events/supply_drop/grid_cache_crate.png';
+
     // Game state management
     this.gameState = 'start_menu'; // 'start_menu' | 'character_select' | 'playing' | 'game_over' | 'victory' | 'exit_screen'
     this.selectedCharacter = null; // 'skeleton_warrior' | 'taekwondo_girl' | 'cyber_arm_hero'
@@ -127,6 +132,9 @@ export class Game {
     this.playerHitCooldown = 0;
 
     this.camera = { x: 0, y: 0 };
+
+    this.gridCache           = null;  // { pos: Vec2, timer: number } | null
+    this.gridCacheSpawnTimer = 60;    // first crate spawns at t=60s
 
     this._createMatrices();
   }
@@ -678,6 +686,7 @@ export class Game {
     this._updateAbilityTimers(dt);
     this._updateQuantumOverhaul(dt);
     this.events.update(dt, this.timeAlive, this);
+    this._updateGridCache(dt);
     this._updateAnnouncement(dt);
     this.particles.update(dt);
     this._updateCamera();
@@ -702,6 +711,57 @@ export class Game {
         this._grantRewards();
       }
     }
+  }
+
+  _updateGridCache(dt) {
+    const DURATION = 20;
+    const CRATE_R  = 24;  // pickup radius (half of 48px sprite)
+
+    if (this.gridCache) {
+      // Check player pickup
+      if (distance(this.player.pos, this.gridCache.pos) < PLAYER_RADIUS + CRATE_R) {
+        this.player.hp = Math.min(this.player.maxHp, this.player.hp + 20);
+        this.player.gainXp(10, this.floatingTexts);
+        this.overload = Math.max(0, this.overload - 5);
+        this.floatingTexts.push(new FloatingText('GRID CACHE CLAIMED', this.player.pos.clone(), CYAN, 1.2));
+        this.particles.spawnCorePickup(this.gridCache.pos, CYAN);
+        this.gridCache = null;
+        this.gridCacheSpawnTimer = 60;
+        return;
+      }
+      // Expire after DURATION seconds
+      this.gridCache.timer -= dt;
+      if (this.gridCache.timer <= 0) {
+        this.floatingTexts.push(new FloatingText('GRID CACHE LOST', this.gridCache.pos.clone(), '#888888', 1.0));
+        this.gridCache = null;
+        this.gridCacheSpawnTimer = 60;
+      }
+      return;
+    }
+
+    // Count down to next spawn
+    this.gridCacheSpawnTimer -= dt;
+    if (this.gridCacheSpawnTimer > 0) return;
+
+    // Pick a safe random position inside the world
+    const margin = 100;
+    let spawnPos = null;
+    for (let i = 0; i < 10; i++) {
+      const candidate = new Vec2(
+        randomRange(margin, WORLD_W - margin),
+        randomRange(margin, WORLD_H - margin)
+      );
+      if (!this.enemies.some(e => distance(e.pos, candidate) < 80)) {
+        spawnPos = candidate;
+        break;
+      }
+    }
+    if (!spawnPos) {
+      spawnPos = new Vec2(randomRange(margin, WORLD_W - margin), randomRange(margin, WORLD_H - margin));
+    }
+
+    this.gridCache = { pos: spawnPos, timer: DURATION };
+    this.triggerAnnouncement('GRID CACHE DETECTED', CYAN);
   }
 
   _updateStartMenu(input) {
@@ -1141,6 +1201,35 @@ export class Game {
 
     // 4 ── Enemies
     for (const e of this.enemies) e.draw(ctx);
+
+    // 4b ── Grid Cache supply drop crate
+    if (this.gridCache) {
+      const { pos, timer } = this.gridCache;
+      const sz = 48;
+      // Pulse glow ring
+      const pulse = 0.35 + 0.25 * Math.sin(Date.now() / 300);
+      ctx.save();
+      ctx.globalAlpha = pulse;
+      ctx.strokeStyle = CYAN;
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(pos.x, pos.y, sz / 2 + 7, 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
+      // Sprite or cyan-square fallback
+      const spr = this._gridCacheSprite;
+      if (spr && spr.complete && spr.naturalWidth > 0) {
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(spr, Math.round(pos.x - sz / 2), Math.round(pos.y - sz / 2), sz, sz);
+        ctx.imageSmoothingEnabled = true;
+      } else {
+        ctx.fillStyle = CYAN;
+        ctx.fillRect(Math.round(pos.x - sz / 2), Math.round(pos.y - sz / 2), sz, sz);
+      }
+      // Countdown bar
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      ctx.fillRect(Math.round(pos.x - sz / 2), Math.round(pos.y + sz / 2 + 4), sz, 4);
+      ctx.fillStyle = CYAN;
+      ctx.fillRect(Math.round(pos.x - sz / 2), Math.round(pos.y + sz / 2 + 4), Math.round(sz * (timer / 20)), 4);
+    }
 
     // 5 ── Player
     this.player.draw(ctx, this._lastMousePos || { x: 0, y: 0 });
