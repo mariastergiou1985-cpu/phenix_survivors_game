@@ -11,8 +11,8 @@ import { clamp, distance, safeNormalize, randomChoice, randomRange } from '../ut
 import { FloatingText }   from '../entities/FloatingText.js';
 import { DataCore }       from '../entities/DataCore.js';
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=10';
-import { Player }         from '../entities/Player.js?v=52';
-import { Projectile, HomingDisc } from '../entities/Projectile.js';
+import { Player }         from '../entities/Player.js?v=54';
+import { Projectile, HomingDisc } from '../entities/Projectile.js?v=3';
 import { Enemy }          from '../entities/Enemy.js?v=90';
 
 import { ParticleSystem, ScreenShake, drawVignette, EMPRing } from './Effects.js';
@@ -164,7 +164,7 @@ export class Game {
 
     this.titanSpawned     = false;
     this.titanBoss        = null;
-    this.titanSpawnTimer  = 180;  // 3:00
+    this.titanSpawnTimer  = 180;
     this._titanShockwaves = [];
     this._titanBeams      = [];
 
@@ -952,6 +952,11 @@ export class Game {
     for (const e of this.enemies) {
       const d = distance(from, e.pos);
       if (d < bestDist) { bestDist = d; best = e; }
+    }
+    // Include Titan in aim assist if it is alive and closer than current best
+    if (this.titanBoss && this.titanBoss.hp > 0) {
+      const d = distance(from, this.titanBoss.pos);
+      if (d < bestDist) { best = this.titanBoss; }
     }
     return best;
   }
@@ -2210,7 +2215,7 @@ export class Game {
       WORLD_H / 2
     );
     this.titanBoss = {
-      pos, hp: 600, maxHp: 600,
+      pos, hp: 350, maxHp: 350,
       radius: R, speed: 60, contactDamage: 12, hitFlash: 0,
       shockwaveTimer: 4, beamTimer: 8,
     };
