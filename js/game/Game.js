@@ -1908,7 +1908,6 @@ export class Game {
 
     ctx.textAlign = 'left';
     const lx = px + 28;
-    const rx = px + 598;
     const y0 = py + 76;
     const lh = 21;
 
@@ -1953,37 +1952,52 @@ export class Game {
       ctx.fillText('—  ' + action, lx + 192, ky);
     });
 
-    // ── GAME SYSTEMS ───────────────────────────────────────────
-    ctx.font      = 'bold 15px Consolas, monospace';
-    ctx.fillStyle = CYAN;
-    ctx.fillText('GAME SYSTEMS', rx, y0);
+    // ── ANIMATED TUTORIAL PANELS (right column) ─────────────────
+    const PANEL_DURATION = 3.5;
+    const now      = Date.now() / 1000;
+    const panelIdx = Math.floor(now / PANEL_DURATION) % 5;
+    const t        = (now % PANEL_DURATION) / PANEL_DURATION;
 
-    const systems = [
-      { name: 'Grid Credits',
-        desc: ['Earned after each run.', 'Spend in UPGRADES.'] },
-      { name: 'Phoenix Revive',
-        desc: ['Can save you from death once per run.'] },
-      { name: 'Network Overload',
-        desc: ['Rises when cores are stolen or ignored.', 'Reach 100% and the run ends.'] },
-      { name: 'Grid Cache',
-        desc: ['Timed supply drop. Follow the blinking arrow.', 'Collect for HP, XP, and overload reduction.'] },
-      { name: 'Characters',
-        desc: ['Each has different stats, attacks,', 'and a unique special move.'] },
+    const tpX  = px + 596;
+    const tpY  = py + 68;
+    const tpW  = pw - 596 - 24;
+    const tpH  = 415;
+    const tpCX = tpX + tpW / 2;
+
+    // Vertical divider
+    ctx.strokeStyle = 'rgba(0,230,255,0.18)'; ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(px + 584, py + 65);
+    ctx.lineTo(px + 584, py + ph - 55);
+    ctx.stroke();
+
+    // Tutorial area box
+    ctx.fillStyle = 'rgba(0,6,16,0.8)';
+    ctx.fillRect(tpX, tpY, tpW, tpH);
+    ctx.strokeStyle = 'rgba(0,200,255,0.25)'; ctx.lineWidth = 1;
+    ctx.strokeRect(tpX, tpY, tpW, tpH);
+
+    // Panel title
+    const panelTitles = [
+      'COLLECT DATA-CORES',
+      'RETURN TO POWER MATRIX',
+      'STOP NETWORK OVERLOAD',
+      'SURVIVE ENEMY WAVES',
+      'PHOENIX REVIVE',
     ];
+    ctx.font      = 'bold 14px Consolas, monospace';
+    ctx.fillStyle = CYAN;
+    ctx.textAlign = 'center';
+    ctx.fillText(panelTitles[panelIdx], tpCX, tpY + 26);
 
-    let sy = y0 + 22;
-    for (const sys of systems) {
-      ctx.font      = 'bold 14px Consolas, monospace';
-      ctx.fillStyle = YELLOW;
-      ctx.fillText(sys.name, rx + 8, sy);
-      sy += 19;
-      ctx.font      = '13px Consolas, monospace';
-      ctx.fillStyle = WHITE;
-      for (const dline of sys.desc) {
-        ctx.fillText(dline, rx + 14, sy);
-        sy += 18;
-      }
-      sy += 10;
+    this._drawTutorialPanel(ctx, panelIdx, t, tpX, tpY, tpW, tpH);
+
+    // Dot indicators
+    for (let i = 0; i < 5; i++) {
+      ctx.fillStyle = i === panelIdx ? CYAN : 'rgba(0,200,255,0.25)';
+      ctx.beginPath();
+      ctx.arc(tpCX - 32 + i * 16, tpY + tpH + 16, 5, 0, Math.PI * 2);
+      ctx.fill();
     }
 
     // ── BACK button ────────────────────────────────────────────
@@ -2001,6 +2015,282 @@ export class Game {
     ctx.fillText('◄  BACK', bx + bw / 2, by + 26);
 
     ctx.textAlign = 'left';
+  }
+
+  _drawTutorialPanel(ctx, idx, t, tpX, tpY, tpW, tpH) {
+    const cx    = tpX + tpW / 2;
+    const ey    = tpY + 200;
+    const descY = tpY + 355;
+
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.font      = '13px Consolas, monospace';
+
+    switch (idx) {
+      case 0: { // COLLECT DATA-CORES
+        const reached = t > 0.55;
+        const playerX = reached
+          ? cx + 60
+          : cx - 90 + 150 * (t / 0.55);
+        const coreX = cx + 60;
+
+        if (!reached) {
+          const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 300);
+          ctx.save();
+          ctx.globalAlpha = 0.35 * pulse;
+          ctx.fillStyle   = YELLOW;
+          ctx.beginPath(); ctx.arc(coreX, ey, 22, 0, Math.PI * 2); ctx.fill();
+          ctx.restore();
+          ctx.fillStyle   = YELLOW;
+          ctx.beginPath(); ctx.arc(coreX, ey, 8, 0, Math.PI * 2); ctx.fill();
+          ctx.strokeStyle = WHITE; ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.arc(coreX, ey, 8, 0, Math.PI * 2); ctx.stroke();
+          const arrowA = 0.4 + 0.6 * Math.abs(Math.sin(Date.now() / 500));
+          ctx.save();
+          ctx.globalAlpha = arrowA;
+          ctx.strokeStyle = CYAN; ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(playerX + 17, ey);
+          ctx.lineTo(playerX + 29, ey);
+          ctx.moveTo(playerX + 25, ey - 5);
+          ctx.lineTo(playerX + 29, ey);
+          ctx.lineTo(playerX + 25, ey + 5);
+          ctx.stroke();
+          ctx.restore();
+        } else {
+          const flashA = Math.max(0, 1 - (t - 0.55) * 6);
+          ctx.save();
+          ctx.globalAlpha = flashA;
+          ctx.fillStyle   = YELLOW;
+          ctx.beginPath(); ctx.arc(coreX, ey, 20, 0, Math.PI * 2); ctx.fill();
+          ctx.restore();
+        }
+
+        ctx.fillStyle   = CYAN;
+        ctx.beginPath(); ctx.arc(playerX, ey, 12, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = WHITE; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(playerX, ey, 12, 0, Math.PI * 2); ctx.stroke();
+
+        ctx.fillStyle = WHITE;
+        ctx.fillText('Enemies steal Data-Cores from Power Matrices.', cx, descY);
+        ctx.fillText('Walk over them to pick them up.', cx, descY + 20);
+        break;
+      }
+
+      case 1: { // RETURN TO POWER MATRIX
+        const matX   = cx + 110;
+        const startX = cx - 100;
+        const arrived = t > 0.6;
+        const playerX = arrived
+          ? matX - 28
+          : startX + (matX - 28 - startX) * (t / 0.6);
+
+        const matFlash = arrived ? Math.max(0, 1 - (t - 0.6) * 5) : 0;
+        ctx.strokeStyle = matFlash > 0 ? WHITE : CYAN;
+        ctx.lineWidth   = 2 + matFlash * 2;
+        ctx.strokeRect(matX - 22, ey - 22, 44, 44);
+        ctx.fillStyle = `rgba(0,220,255,${(0.08 + matFlash * 0.3).toFixed(2)})`;
+        ctx.fillRect(matX - 22, ey - 22, 44, 44);
+        ctx.font      = 'bold 10px Consolas, monospace';
+        ctx.fillStyle = matFlash > 0 ? WHITE : CYAN;
+        ctx.fillText('MAT', matX, ey + 4);
+        ctx.font = '13px Consolas, monospace';
+
+        ctx.fillStyle   = CYAN;
+        ctx.beginPath(); ctx.arc(playerX, ey, 12, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = WHITE; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(playerX, ey, 12, 0, Math.PI * 2); ctx.stroke();
+
+        if (!arrived) {
+          const angle = Date.now() / 400;
+          ctx.fillStyle = YELLOW;
+          ctx.beginPath();
+          ctx.arc(playerX + Math.cos(angle) * 18, ey + Math.sin(angle) * 18, 5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
+        if (arrived) {
+          const popA = Math.max(0, 1 - (t - 0.6) * 4);
+          ctx.save();
+          ctx.globalAlpha = popA;
+          ctx.fillStyle   = GREEN;
+          ctx.font        = 'bold 14px Consolas, monospace';
+          ctx.fillText('+25', matX, ey - 38);
+          ctx.font        = '13px Consolas, monospace';
+          ctx.restore();
+        }
+
+        ctx.fillStyle = WHITE;
+        ctx.fillText('Return carried cores to a Power Matrix', cx, descY);
+        ctx.fillText('to stabilize the grid and earn score.', cx, descY + 20);
+        break;
+      }
+
+      case 2: { // STOP NETWORK OVERLOAD
+        const rising = t < 0.5;
+        const overloadPct = rising
+          ? t * 2 * 0.85
+          : 0.85 - (t - 0.5) * 2 * 0.65;
+
+        const barW = 320, barH = 28;
+        const barX = cx - barW / 2;
+        const barY = ey - 14;
+
+        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        ctx.fillRect(barX, barY, barW, barH);
+
+        const barColor = overloadPct > 0.6 ? RED : overloadPct > 0.35 ? ORANGE : CYAN;
+        ctx.fillStyle  = barColor;
+        ctx.fillRect(barX, barY, Math.round(barW * overloadPct), barH);
+        ctx.strokeStyle = WHITE; ctx.lineWidth = 1;
+        ctx.strokeRect(barX, barY, barW, barH);
+
+        ctx.font      = 'bold 13px Consolas, monospace';
+        ctx.fillStyle = WHITE;
+        ctx.textAlign = 'left';
+        ctx.fillText('NETWORK OVERLOAD', barX, barY - 10);
+        ctx.fillStyle = barColor;
+        ctx.textAlign = 'right';
+        ctx.fillText(`${Math.round(overloadPct * 100)}%`, barX + barW, barY - 10);
+        ctx.textAlign = 'center';
+        ctx.font      = '13px Consolas, monospace';
+        ctx.fillStyle = rising ? RED : GREEN;
+        ctx.fillText(
+          rising ? '▲ Cores stolen — Overload rising!' : '▼ Cores returned — Overload dropping!',
+          cx, barY + barH + 22
+        );
+
+        ctx.fillStyle = WHITE;
+        ctx.fillText('If Overload reaches 100% the run ends.', cx, descY);
+        ctx.fillText('Slot cores into the Matrix to keep it low.', cx, descY + 20);
+        break;
+      }
+
+      case 3: { // SURVIVE ENEMY WAVES
+        const phase = t < 0.35 ? 'approach' : t < 0.6 ? 'fire' : t < 0.8 ? 'hit' : 'reset';
+        const positions = [
+          [cx - 140, ey - 45], [cx + 150, ey + 25], [cx + 15, ey - 85],
+        ];
+        const approachF = phase === 'approach' ? (t / 0.35) : 1;
+
+        ctx.fillStyle   = CYAN;
+        ctx.beginPath(); ctx.arc(cx, ey, 12, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = WHITE; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(cx, ey, 12, 0, Math.PI * 2); ctx.stroke();
+
+        for (let i = 0; i < 3; i++) {
+          const [eposX, eposY] = positions[i];
+          const offX  = eposX < cx ? tpX - 20 : tpX + tpW + 20;
+          const drawX = offX + (eposX - offX) * approachF;
+          const drawY = eposY;
+          const dead  = (phase === 'hit' || phase === 'reset') && i === 1;
+
+          if (!dead) {
+            ctx.fillStyle   = '#CC2244';
+            ctx.beginPath(); ctx.arc(drawX, drawY, 10, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = '#FF4466'; ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.arc(drawX, drawY, 10, 0, Math.PI * 2); ctx.stroke();
+          } else if (phase === 'hit') {
+            const explodeT = (t - 0.6) / 0.2;
+            ctx.save();
+            ctx.globalAlpha = Math.max(0, 1 - explodeT);
+            ctx.fillStyle   = ORANGE;
+            for (let s = 0; s < 6; s++) {
+              const ang  = (s / 6) * Math.PI * 2;
+              const dist = explodeT * 22;
+              ctx.beginPath();
+              ctx.arc(eposX + Math.cos(ang) * dist, eposY + Math.sin(ang) * dist, 3, 0, Math.PI * 2);
+              ctx.fill();
+            }
+            ctx.restore();
+          }
+        }
+
+        if (phase === 'fire' || phase === 'hit') {
+          const fireT = phase === 'fire' ? (t - 0.35) / 0.25 : 1;
+          const [tx2, ty2] = positions[1];
+          const projX = cx + (tx2 - cx) * Math.min(1, fireT * 1.4);
+          const projY = ey + (ty2 - ey) * Math.min(1, fireT * 1.4);
+          if (fireT < 1) {
+            ctx.fillStyle = CYAN;
+            ctx.beginPath(); ctx.arc(projX, projY, 4, 0, Math.PI * 2); ctx.fill();
+          }
+        }
+
+        ctx.fillStyle = WHITE;
+        ctx.fillText('Shoot, dash, and use specials to survive.', cx, descY);
+        ctx.fillText('Killing enemies earns XP and score.', cx, descY + 20);
+        break;
+      }
+
+      case 4: { // PHOENIX REVIVE
+        let hpPct, showBurst;
+        if (t < 0.35) {
+          hpPct     = 1 - (t / 0.35);
+          showBurst = false;
+        } else if (t < 0.65) {
+          hpPct     = 0;
+          showBurst = true;
+        } else {
+          hpPct     = (t - 0.65) / 0.35 * 0.5;
+          showBurst = false;
+        }
+
+        const barW = 280, barH = 22;
+        const barX = cx - barW / 2;
+        const barY = ey - 75;
+        const pcy  = ey + 15;
+
+        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        ctx.fillRect(barX, barY, barW, barH);
+        const hpColor = hpPct > 0.5 ? GREEN : hpPct > 0.25 ? ORANGE : RED;
+        if (hpPct > 0) {
+          ctx.fillStyle = hpColor;
+          ctx.fillRect(barX, barY, Math.round(barW * hpPct), barH);
+        }
+        ctx.strokeStyle = WHITE; ctx.lineWidth = 1;
+        ctx.strokeRect(barX, barY, barW, barH);
+        ctx.font      = 'bold 12px Consolas, monospace';
+        ctx.fillStyle = WHITE;
+        ctx.textAlign = 'left';
+        ctx.fillText('HP', barX - 30, barY + 15);
+        ctx.textAlign = 'center';
+        ctx.font = '13px Consolas, monospace';
+
+        if (showBurst) {
+          const burstT = (t - 0.35) / 0.3;
+          const radius = burstT * 75;
+          const alpha  = Math.max(0, 1 - burstT);
+          ctx.save();
+          ctx.globalAlpha = alpha * 0.55;
+          ctx.fillStyle   = ORANGE;
+          ctx.beginPath(); ctx.arc(cx, pcy, radius, 0, Math.PI * 2); ctx.fill();
+          ctx.globalAlpha = alpha;
+          ctx.strokeStyle = YELLOW; ctx.lineWidth = 3;
+          ctx.beginPath(); ctx.arc(cx, pcy, radius, 0, Math.PI * 2); ctx.stroke();
+          ctx.restore();
+          ctx.fillStyle = ORANGE;
+          ctx.font      = 'bold 14px Consolas, monospace';
+          ctx.fillText('❆ PHOENIX REVIVE ❆', cx, pcy + 5);
+          ctx.font = '13px Consolas, monospace';
+        }
+
+        ctx.save();
+        ctx.globalAlpha = showBurst ? 0.3 : 1;
+        ctx.fillStyle   = CYAN;
+        ctx.beginPath(); ctx.arc(cx, pcy, 12, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = WHITE; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(cx, pcy, 12, 0, Math.PI * 2); ctx.stroke();
+        ctx.restore();
+
+        ctx.fillStyle = WHITE;
+        ctx.fillText('When HP hits 0, Phoenix Revive activates.', cx, descY);
+        ctx.fillText('Up to 3 revives are available per run.', cx, descY + 20);
+        break;
+      }
+    }
+
+    ctx.restore();
   }
 
   _drawCreditsScreen(ctx) {
