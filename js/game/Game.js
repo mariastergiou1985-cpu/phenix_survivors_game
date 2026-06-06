@@ -14,6 +14,7 @@ import { PowerMatrix }    from '../entities/PowerMatrix.js?v=10';
 import { Player }         from '../entities/Player.js?v=54';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=3';
 import { Enemy }          from '../entities/Enemy.js?v=90';
+import { SupportDrone }   from '../entities/SupportDrone.js?v=1';
 
 import { ParticleSystem, ScreenShake, drawVignette, EMPRing } from './Effects.js';
 import { SystemEventManager } from './Events.js?v=90';
@@ -168,6 +169,10 @@ export class Game {
     this._titanShockwaves = [];
     this._titanBeams      = [];
 
+    this.supportDrones     = [];
+    this._droneFlameLast   = null;
+    this._droneElectroLast = null;
+
     this._createMatrices();
   }
 
@@ -200,7 +205,8 @@ export class Game {
     this.gameOver  = false;
     this.victory   = false;
     this.paused    = false;
-    this.upgradeUI = null;
+    this.upgradeUI     = null;
+    this.supportDrones = [];
     this.audio?.startMenuMusic();
   }
 
@@ -730,6 +736,7 @@ export class Game {
     this._updateQuantumOverhaul(dt);
     this._updateAcidRain(dt);
     this._updateTitan(dt);
+    this._updateSupportDrones(dt);
     this.events.update(dt, this.timeAlive, this);
     this._updateGridCache(dt);
     this._updateAnnouncement(dt);
@@ -1361,7 +1368,10 @@ export class Game {
     // 4 ── Enemies
     for (const e of this.enemies) e.draw(ctx);
 
-    // 4a ── AI Overload Titan mini-boss
+    // 4a ── Support drones (drawn between enemies and titan so they appear above enemies)
+    for (const d of this.supportDrones) d.draw(ctx);
+
+    // 4b ── AI Overload Titan mini-boss
     this._drawTitan(ctx);
 
     // 4b ── Grid Cache supply drop crate
@@ -2119,6 +2129,35 @@ export class Game {
     }
   }
 
+  // ── Boss support drones ───────────────────────────────────────────────────
+
+  _spawnSupportDrones() {
+    const p = this.player.pos;
+    this.supportDrones = [
+      new SupportDrone('flame',   p),
+      new SupportDrone('electro', p),
+    ];
+  }
+
+  _updateSupportDrones(dt) {
+    if (this.supportDrones.length === 0) return;
+    const drones = this.supportDrones.slice();  // snapshot so _titanDie won't corrupt the loop
+    for (const drone of drones) {
+      drone.update(dt, this.player.pos, this);
+    }
+    // Corrosive DOT
+    const dotTargets = [...this.enemies];
+    if (this.titanBoss && this.titanBoss.hp > 0) dotTargets.push(this.titanBoss);
+    for (const t of dotTargets) {
+      if (t._corrosiveTimer > 0) {
+        t._corrosiveTimer -= dt;
+        t.hp -= dt;  // 1 dmg/s
+      }
+    }
+    // Titan death check after all drone updates (safe — not inside the loop)
+    if (this.titanBoss && this.titanBoss.hp <= 0) this._titanDie();
+  }
+
   // ── AI Overload Titan mini-boss ───────────────────────────────────────────
 
   _updateTitan(dt) {
@@ -2224,6 +2263,7 @@ export class Game {
     this.floatingTexts.push(
       new FloatingText('AI OVERLOAD TITAN DETECTED', new Vec2(WIDTH / 2 - 220, HEIGHT / 2 - 60), PURPLE, 3.0)
     );
+    this._spawnSupportDrones();
   }
 
   _titanShockwave(t) {
@@ -2252,6 +2292,7 @@ export class Game {
     this.screenShake.trigger(8, 0.8);
     this.particles.spawnHitSparks(t.pos, YELLOW);
     this.particles.spawnHitSparks(t.pos, PURPLE);
+    this.supportDrones    = [];
     this.titanBoss        = null;
     this._titanShockwaves = [];
     this._titanBeams      = [];
