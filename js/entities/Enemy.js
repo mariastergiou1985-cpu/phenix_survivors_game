@@ -190,6 +190,7 @@ export class Enemy {
 
   _die(game) {
     game.player.kills++;
+    game.addKillScore?.();
     let xp = this.isMegaBoss ? 42 : (this.isBoss() ? 12 : 1);
     game.player.gainXp(xp, game.floatingTexts);
 

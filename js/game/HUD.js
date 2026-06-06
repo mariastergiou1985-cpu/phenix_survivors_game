@@ -44,6 +44,15 @@ export function drawHUD(ctx, game) {
   const spColor = sc <= 0 ? CYAN : GREY;
   drawText(ctx, spText, WIDTH - 220, HEIGHT - 32, spColor, '13px Consolas, monospace');
 
+  // Score / Best (stacked under CORES/LV, top-right)
+  drawText(ctx, `SCORE: ${Math.floor(game.score ?? 0)}`, 1095, 48, WHITE,  '13px Consolas, monospace');
+  drawText(ctx, `BEST:  ${game.bestScore ?? 0}`,         1095, 63, YELLOW, '13px Consolas, monospace');
+  if ((game.comboCount ?? 0) >= 2) {
+    const n   = game.comboCount;
+    const col = n >= 10 ? '#FFCC00' : n >= 5 ? '#00CCFF' : '#00FF88';
+    drawText(ctx, `COMBO x${n}`, 1095, 80, col, 'bold 13px Consolas, monospace');
+  }
+
   // Grid Blackout warning
   if (game.gridBlackoutActive) {
     const flash = (Math.floor(Date.now() / 400) % 2 === 0);
@@ -107,22 +116,33 @@ export function drawEndScreen(ctx, game) {
 
   const mins = Math.floor(game.timeAlive / 60).toString().padStart(2, '0');
   const secs = Math.floor(game.timeAlive % 60).toString().padStart(2, '0');
+  const lx = WIDTH / 2 - 280;
+  const rx = WIDTH / 2 + 280;
+  let y = 130;
+
+  // New high score banner
+  if (game.isNewHighScore) {
+    ctx.font      = 'bold 26px Consolas, monospace';
+    ctx.fillStyle = '#FFD700';
+    ctx.textAlign = 'center';
+    ctx.fillText('★  NEW HIGH SCORE!  ★', WIDTH / 2, y);
+    y += 38;
+  }
 
   // Run stats
   const runStats = [
-    ['Survival Time',          `${mins}:${secs}`],
-    ['Data-Cores Secured',     `${game.player.coresSecured}`],
-    ['Cores Intercepted',      `${game.player.coresIntercepted}`],
-    ['Enemies Defeated',       `${game.player.kills}`],
-    ['Final Level',            `${game.player.level}`],
-    ['Final Network Overload', `${game.overload.toFixed(1)}%`],
+    ['Score',               `${Math.floor(game.score ?? 0)}`],
+    ['Best Score',          `${game.bestScore ?? 0}`],
+    ['Max Combo',           `x${game.maxCombo ?? 0}`],
+    ['Survival Time',       `${mins}:${secs}`],
+    ['Enemies Defeated',    `${game.player.kills}`],
+    ['Data-Cores Secured',  `${game.player.coresSecured}`],
+    ['Grid Credits Earned', `+${game.runCreditsEarned ?? 0}`],
+    ['Total Grid Credits',  `${game.meta?.credits ?? 0}`],
   ];
 
   ctx.font      = '22px Consolas, monospace';
   ctx.textAlign = 'left';
-  let y = 130;
-  const lx = WIDTH / 2 - 280;
-  const rx = WIDTH / 2 + 280;
   for (const [label, value] of runStats) {
     ctx.fillStyle = CYAN;
     ctx.fillText(label, lx, y);
@@ -140,32 +160,6 @@ export function drawEndScreen(ctx, game) {
   ctx.beginPath();
   ctx.moveTo(lx, y);
   ctx.lineTo(rx, y);
-  ctx.stroke();
-  y += 20;
-
-  // Grid Credits section
-  ctx.font      = '22px Consolas, monospace';
-  ctx.fillStyle = CYAN;
-  ctx.textAlign = 'left';
-  ctx.fillText('Grid Credits Earned', lx, y);
-  ctx.fillStyle = YELLOW;
-  ctx.textAlign = 'right';
-  ctx.fillText(`+${game.runCreditsEarned ?? 0}`, rx, y);
-  y += 32;
-
-  ctx.fillStyle = CYAN;
-  ctx.textAlign = 'left';
-  ctx.fillText('Total Grid Credits', lx, y);
-  ctx.textAlign = 'right';
-  ctx.fillText(`${game.meta?.credits ?? 0}`, rx, y);
-  y += 16;
-
-  // Separator
-  ctx.strokeStyle = '#2a4060';
-  ctx.lineWidth   = 1;
-  ctx.beginPath();
-  ctx.moveTo(lx, y + 6);
-  ctx.lineTo(rx, y + 6);
   ctx.stroke();
 
   // Buttons: RETRY / UPGRADES / MAIN MENU

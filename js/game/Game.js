@@ -13,14 +13,14 @@ import { DataCore }       from '../entities/DataCore.js';
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=10';
 import { Player }         from '../entities/Player.js?v=54';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=3';
-import { Enemy }          from '../entities/Enemy.js?v=90';
+import { Enemy }          from '../entities/Enemy.js?v=91';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=1';
 
 import { ParticleSystem, ScreenShake, drawVignette, EMPRing } from './Effects.js';
 import { SystemEventManager } from './Events.js?v=90';
 import { UpgradeUI }      from './UpgradeUI.js';
 import { weightedSample } from './Upgrades.js';
-import { drawHUD, drawEndScreen } from './HUD.js?v=30';
+import { drawHUD, drawEndScreen } from './HUD.js?v=31';
 import { MetaProgress, META_UPGRADES, upgradeCost } from './MetaProgress.js';
 
 export class Game {
@@ -29,6 +29,8 @@ export class Game {
     this.paused    = false;
     this.aimAssist = true;
     this.meta      = new MetaProgress();
+    this.bestScore      = parseInt(localStorage.getItem('phenix_best_score') || '0', 10);
+    this.isNewHighScore = false;
 
     // Load background image — new clean bg, fallback to old
     this._bgImage = new Image();
@@ -148,6 +150,13 @@ export class Game {
     this.phoenixReviveCount = 0;    // how many revives used this run (0–3)
     this.phoenixReviveType  = 'orange'; // 'orange' | 'blue' | 'gold'
 
+    // Score / combo
+    this.score      = 0;
+    this.comboCount = 0;
+    this.comboTimer = 0;
+    this.maxCombo   = 0;
+    this.isNewHighScore = false;
+
     this.gameOver          = false;
     this.victory           = false;
     this.finalMessage      = '';
@@ -258,6 +267,24 @@ export class Game {
 
     this.runCreditsEarned = timeCredits + killCredits + coreCredits + survivalBonus + victoryCredits;
     this.meta.addCredits(this.runCreditsEarned);
+
+    const finalScore = Math.floor(this.score);
+    if (finalScore > this.bestScore) {
+      this.bestScore      = finalScore;
+      this.isNewHighScore = true;
+      localStorage.setItem('phenix_best_score', finalScore);
+    }
+  }
+
+  addKillScore() {
+    this.comboCount++;
+    this.comboTimer = 3.0;
+    if (this.comboCount > this.maxCombo) this.maxCombo = this.comboCount;
+    let bonus = 0;
+    if      (this.comboCount >= 10) bonus = 20;
+    else if (this.comboCount >= 5)  bonus = 10;
+    else if (this.comboCount >= 2)  bonus = 5;
+    this.score += 10 + bonus;
   }
 
   // ─── Upgrades screen interaction ─────────────────────────────────────────────
@@ -661,6 +688,7 @@ export class Game {
   selectUpgrade(index) {
     if (!this.upgradeUI || index >= this.upgradeUI.choices.length) return;
     this.upgradeUI.choices[index].apply(this.player);
+    this.score = (this.score ?? 0) + 50;
     this.upgradeUI = null;
   }
 
@@ -709,6 +737,11 @@ export class Game {
     }
 
     this.timeAlive += dt;
+    this.score += dt;
+    if (this.comboTimer > 0) {
+      this.comboTimer -= dt;
+      if (this.comboTimer <= 0) this.comboCount = 0;
+    }
     this.screenShake.update(dt);
 
     if (this.timeAlive >= WIN_TIME_SECONDS) {
@@ -777,6 +810,7 @@ export class Game {
         this.overload = Math.max(0, this.overload - 5);
         this.floatingTexts.push(new FloatingText('GRID CACHE CLAIMED', this.player.pos.clone(), CYAN, 1.2));
         this.particles.spawnCorePickup(this.gridCache.pos, CYAN);
+        this.score += 50;
         this.gridCache = null;
         this.gridCacheSpawnTimer = 60;
         return;
@@ -1032,6 +1066,7 @@ export class Game {
           this.floatingTexts.push(new FloatingText('CORE SLOTTED', matrix.pos.clone(), GREEN, 0.9));
           this.particles.spawnCoreSlot(matrix.pos, matrix.color);
           this.audio?.playCoreSlot();
+          this.score += 25;
         }
       }
     }
@@ -1265,6 +1300,7 @@ export class Game {
 
   _triggerPhoenixRevive() {
     this.phoenixReviveCount++;
+    this.score = (this.score ?? 0) + 100;
     this.phoenixUsed        = true;  // keep existing flag
     this.phoenixReviveTimer = 3.0;
 
@@ -1675,6 +1711,10 @@ export class Game {
 
   triggerAnnouncement(text, color) {
     this.announcement = { text, color, phase: 'fadein', timer: 0 };
+    const WAVE_EVENTS = ['DRONE SWARM', 'CORE RAIDERS', 'SECURITY MECH', 'OVERLOAD SURGE', 'HUNTER SQUAD'];
+    if (WAVE_EVENTS.some(w => text.includes(w))) {
+      this.score = (this.score ?? 0) + 100;
+    }
   }
 
   _updateAnnouncement(dt) {
@@ -2282,6 +2322,7 @@ export class Game {
   _titanDie() {
     const t = this.titanBoss;
     if (!t) return;
+    this.score = (this.score ?? 0) + 300;
     this.player.gainXp(25, this.floatingTexts);
     this.meta.addCredits(15);
     this.runCreditsEarned = (this.runCreditsEarned || 0) + 15;
