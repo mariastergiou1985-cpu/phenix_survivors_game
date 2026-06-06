@@ -53,8 +53,9 @@ No install required. Runs in any modern browser.
 
 ## Credits
 
-Game by **InkSpireM Visuals**
-Music: *"HOPE"* by **TSALI**
+**Game, Art, Design & Code:** InkSpireM Visuals
+**Music:** "HOPE" by TSALI
+**Development Assistance:** Claude — AI coding assistance, debugging, implementation support, and project guidance.
 
 ## Run Locally
 
