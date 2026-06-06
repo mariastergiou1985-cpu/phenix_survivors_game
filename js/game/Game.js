@@ -165,6 +165,10 @@ export class Game {
   goToMainMenu() {
     this.gameState = 'start_menu';
     this.menuIndex = 0;
+    this.gameOver  = false;
+    this.victory   = false;
+    this.paused    = false;
+    this.upgradeUI = null;
     this.audio?.startMenuMusic();
   }
 
