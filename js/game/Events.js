@@ -82,37 +82,37 @@ export class SystemEventManager {
 
   _droneSwarm(game) {
     const m = game.currentMinute();
-    for (let i = 0; i < 4; i++) game.enemies.push(new Enemy('Glitch Drone',    m));
-    for (let i = 0; i < 2; i++) game.enemies.push(new Enemy('Combat Hunter',   m));
+    for (let i = 0; i < 4; i++) game.enemies.push(new Enemy('Glitch Drone',  m));
+    for (let i = 0; i < 2; i++) game.enemies.push(new Enemy('Rogue Punk',    m));
     game.triggerAnnouncement('DRONE SWARM INCOMING', CYAN);
   }
 
   _coreRaiders(game) {
     const m = game.currentMinute();
-    for (let i = 0; i < 4; i++) game.enemies.push(new Enemy('Scrap Scavenger', m));
-    for (let i = 0; i < 2; i++) game.enemies.push(new Enemy('Cyber-Net Junkie',m));
+    for (let i = 0; i < 4; i++) game.enemies.push(new Enemy('Rogue Punk',          m));
+    for (let i = 0; i < 2; i++) game.enemies.push(new Enemy('Stealth Infiltrator', m));
     game.triggerAnnouncement('CORE RAIDERS DETECTED', YELLOW);
   }
 
   _securityMech(game) {
     const m = game.currentMinute();
-    for (let i = 0; i < 2; i++) game.enemies.push(new Enemy('Heavy Mech',      m));
-    for (let i = 0; i < 2; i++) game.enemies.push(new Enemy('Combat Hunter',   m));
+    for (let i = 0; i < 2; i++) game.enemies.push(new Enemy('Security Defector Mech', m));
+    for (let i = 0; i < 2; i++) game.enemies.push(new Enemy('Rogue Punk',             m));
     game.triggerAnnouncement('SECURITY MECH DEPLOYED', RED);
   }
 
   _overloadSurge(game) {
     const m = game.currentMinute();
-    for (let i = 0; i < 3; i++) game.enemies.push(new Enemy('Combat Hunter',   m));
-    for (let i = 0; i < 2; i++) game.enemies.push(new Enemy('Cyber Shooter',   m));
-    for (let i = 0; i < 2; i++) game.enemies.push(new Enemy('Scrap Scavenger', m));
+    for (let i = 0; i < 3; i++) game.enemies.push(new Enemy('Rogue Punk',          m));
+    for (let i = 0; i < 2; i++) game.enemies.push(new Enemy('Glitch Drone',        m));
+    for (let i = 0; i < 2; i++) game.enemies.push(new Enemy('Stealth Infiltrator', m));
     game.triggerAnnouncement('OVERLOAD SURGE', PURPLE);
   }
 
   _hunterSquad(game) {
     const m = game.currentMinute();
-    for (let i = 0; i < 5; i++) game.enemies.push(new Enemy('Combat Hunter',   m));
-    for (let i = 0; i < 2; i++) game.enemies.push(new Enemy('Cyber Shooter',   m));
+    for (let i = 0; i < 4; i++) game.enemies.push(new Enemy('Stealth Infiltrator', m));
+    for (let i = 0; i < 3; i++) game.enemies.push(new Enemy('Rogue Punk',          m));
     game.triggerAnnouncement('HUNTER SQUAD ENTERING GRID', ORANGE);
   }
 

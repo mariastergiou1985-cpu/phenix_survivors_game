@@ -116,16 +116,27 @@ export class Enemy {
 
   _loadSprite() {
     const spriteMap = {
-      'Glitch Drone': 'glitch_drone',
-      'Rogue Punk': 'rogue_punk',
-      'Stealth Infiltrator': 'stealth_infiltrator',
-      'Security Defector Mech': 'security_defector_mech',
-      'Rogue AI Overlord': 'ai_overlord',
+      // Primary types — dedicated sprite
+      'Glitch Drone':            'glitch_drone',
+      'Rogue Punk':              'rogue_punk',
+      'Stealth Infiltrator':     'stealth_infiltrator',
+      'Security Defector Mech':  'security_defector_mech',
+      'Rogue AI Overlord':       'ai_overlord',
+      // Secondary types — mapped to closest existing sprite
+      'Combat Hunter':           'glitch_drone',
+      'Scrap Scavenger':         'rogue_punk',
+      'Cyber-Net Junkie':        'stealth_infiltrator',
+      'Overclocked Berserker':   'rogue_punk',
+      'Cyber Shooter':           'glitch_drone',
+      'Heavy Mech':              'security_defector_mech',
     };
     const spriteFile = spriteMap[this.enemyType];
     if (spriteFile) {
       this.sprite = new Image();
+      this.sprite.onerror = () => console.warn(`[Enemy] Sprite failed: assets/enemies/${spriteFile}.png`);
       this.sprite.src = `assets/enemies/${spriteFile}.png?v=30`;
+    } else {
+      console.warn(`[Enemy] No sprite mapped for: ${this.enemyType}`);
     }
   }
 
