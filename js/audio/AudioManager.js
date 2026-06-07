@@ -225,7 +225,56 @@ export class AudioManager {
     this._tone({ type: 'sine', freqStart: 495, freqEnd: 990, dur: 0.16, gain: 0.09, delay: 0.05 });
   }
 
-  // Stubs kept so existing game.audio?.playX() calls don't crash (out of scope).
-  playDash()    {}
+  // 6. Dash — fast 16-bit cyber whoosh (descending saw + airy noise sweep).
+  playDash() {
+    if (!this._canPlay('dash', 0.10)) return;
+    this._tone({ type: 'sawtooth', freqStart: 720, freqEnd: 180, dur: 0.14, gain: 0.10 });
+    this._noiseBurst({ dur: 0.12, gain: 0.07, filterType: 'highpass', freq: 1200 });
+  }
+
+  // 7. Phoenix revive — epic rising energy burst; Gold tier sounds stronger.
+  playPhoenixRevive(type = 'orange') {
+    if (!this._canPlay('phoenix', 0.20)) return;
+    const strong = type === 'gold';
+    const g = strong ? 0.16 : 0.13;
+    this._tone({ type: 'sawtooth', freqStart: 220, freqEnd: 880,  dur: 0.50, gain: g });
+    this._tone({ type: 'sine',     freqStart: 330, freqEnd: 1320, dur: 0.55, gain: g * 0.7, delay: 0.05 });
+    this._noiseBurst({ dur: 0.40, gain: strong ? 0.10 : 0.07, filterType: 'bandpass', freq: 1000 });
+    if (strong) {
+      this._tone({ type: 'square', freqStart: 660, freqEnd: 1760, dur: 0.50, gain: 0.08, delay: 0.10 });
+    }
+  }
+
+  // 8. Boss spawn — deep bass impact + dark alarm beeps.
+  playBossSpawn() {
+    if (!this._canPlay('bossSpawn', 0.30)) return;
+    this._tone({ type: 'sine', freqStart: 120, freqEnd: 40, dur: 0.50, gain: 0.18 });
+    this._noiseBurst({ dur: 0.30, gain: 0.10, filterType: 'lowpass', freq: 400 });
+    this._tone({ type: 'square', freqStart: 440, freqEnd: 440, dur: 0.12, gain: 0.09, delay: 0.16 });
+    this._tone({ type: 'square', freqStart: 440, freqEnd: 440, dur: 0.12, gain: 0.09, delay: 0.40 });
+  }
+
+  // 9. Level-up / upgrade cards — bright ascending cyber power-up chime.
+  playLevelUp() {
+    if (!this._canPlay('levelup', 0.10)) return;
+    this._tone({ type: 'triangle', freqStart: 523, freqEnd: 523, dur: 0.10, gain: 0.12 });
+    this._tone({ type: 'triangle', freqStart: 659, freqEnd: 659, dur: 0.10, gain: 0.12, delay: 0.08 });
+    this._tone({ type: 'triangle', freqStart: 988, freqEnd: 988, dur: 0.16, gain: 0.13, delay: 0.16 });
+  }
+
+  // 10. Event warning — short red-alert two-tone beep (rate-limited, no spam).
+  playEventWarning() {
+    if (!this._canPlay('warning', 0.25)) return;
+    this._tone({ type: 'square', freqStart: 880, freqEnd: 880, dur: 0.10, gain: 0.10 });
+    this._tone({ type: 'square', freqStart: 660, freqEnd: 660, dur: 0.12, gain: 0.10, delay: 0.14 });
+  }
+
+  // 11. Grid Cache appear — soft bright rising ping (distinct from core pickup).
+  playGridCache() {
+    if (!this._canPlay('gridcache', 0.10)) return;
+    this._tone({ type: 'sine', freqStart: 784, freqEnd: 1568, dur: 0.18, gain: 0.11 });
+  }
+
+  // Stub kept so existing game.audio?.updateAlarm() calls don't crash (out of scope).
   updateAlarm() {}
 }

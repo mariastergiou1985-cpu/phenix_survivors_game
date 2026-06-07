@@ -17,7 +17,7 @@ import { Enemy }          from '../entities/Enemy.js?v=93';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=1';
 
 import { ParticleSystem, ScreenShake, drawVignette, EMPRing } from './Effects.js';
-import { SystemEventManager } from './Events.js?v=90';
+import { SystemEventManager } from './Events.js?v=91';
 import { UpgradeUI }      from './UpgradeUI.js';
 import { weightedSample } from './Upgrades.js';
 import { drawHUD, drawEndScreen } from './HUD.js?v=31';
@@ -744,6 +744,7 @@ export class Game {
       this.player.pendingLevelupCount--;
       const choices = weightedSample(this.player, 3);
       if (choices.length > 0) {
+        this.audio?.playLevelUp();
         this.upgradeUI = new UpgradeUI(choices);
         return;
       }
@@ -766,6 +767,10 @@ export class Game {
     }
 
     this.player.update(dt, input);
+    // Dash SFX — fire once on the frame a dash begins (rising edge of dashTimer).
+    const dashing = this.player.dashTimer > 0;
+    if (dashing && !this._wasDashing) this.audio?.playDash();
+    this._wasDashing = dashing;
     this._handleMouseShooting(input);
     this._handleCorePickupAndSlotting(dt);
     this._updateProjectiles(dt);
@@ -861,6 +866,7 @@ export class Game {
 
     this.gridCache = { pos: spawnPos, timer: DURATION };
     this.triggerAnnouncement('GRID CACHE DETECTED', CYAN);
+    this.audio?.playGridCache();
   }
 
   _drawGridCacheArrow(ctx) {
@@ -1498,6 +1504,8 @@ export class Game {
       );
       this.screenShake.trigger(16, 1.0);
     }
+
+    this.audio?.playPhoenixRevive(this.phoenixReviveType);
   }
 
   // ─── Draw ─────────────────────────────────────────────────────────────────
@@ -2624,6 +2632,7 @@ export class Game {
     if (this.acidRainTimer <= 0) {
       this.acidRain = { timer: 12, damageAccum: 0 };
       this.triggerAnnouncement('ACID RAIN WARNING', GREEN);
+      this.audio?.playEventWarning();
     }
   }
 
@@ -2757,6 +2766,7 @@ export class Game {
       shockwaveTimer: 4, beamTimer: 8,
     };
     this.triggerAnnouncement('AI OVERLOAD TITAN DETECTED', PURPLE);
+    this.audio?.playBossSpawn();
     this.screenShake.trigger(6, 0.5);
     this.floatingTexts.push(
       new FloatingText('AI OVERLOAD TITAN DETECTED', new Vec2(WIDTH / 2 - 220, HEIGHT / 2 - 60), PURPLE, 3.0)

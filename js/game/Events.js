@@ -65,6 +65,7 @@ export class SystemEventManager {
   }
 
   _trigger(type, game) {
+    game.audio?.playEventWarning();
     switch (type) {
       case 'drone_swarm':    this._droneSwarm(game);    break;
       case 'core_raiders':   this._coreRaiders(game);   break;
