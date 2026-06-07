@@ -13,11 +13,11 @@ import { DataCore }       from '../entities/DataCore.js';
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=10';
 import { Player }         from '../entities/Player.js?v=56';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=3';
-import { Enemy }          from '../entities/Enemy.js?v=95';
+import { Enemy }          from '../entities/Enemy.js?v=96';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=1';
 
 import { ParticleSystem, ScreenShake, drawVignette, EMPRing, drawGlow } from './Effects.js?v=2';
-import { SystemEventManager } from './Events.js?v=93';
+import { SystemEventManager } from './Events.js?v=94';
 import { UpgradeUI }      from './UpgradeUI.js';
 import { weightedSample } from './Upgrades.js';
 import { drawHUD, drawEndScreen } from './HUD.js?v=31';
@@ -182,6 +182,9 @@ export class Game {
     this.acidRain      = null;  // { timer, damageAccum } | null
     this.acidRainTimer = 150;   // first event at 2:30
 
+    this.killsSinceHealthDrop = 0;   // counts toward the next HP CELL drop
+    this.healthPickups        = [];  // [{ pos: Vec2, timer: number }] — heals 25% maxHp on touch
+
     this.titanSpawned     = false;
     this.titanBoss        = null;
     this.titanSpawnTimer  = 180;
@@ -305,7 +308,7 @@ export class Game {
     }
   }
 
-  addKillScore() {
+  addKillScore(pos) {
     this.comboCount++;
     this.comboTimer = 3.0;
     if (this.comboCount > this.maxCombo) this.maxCombo = this.comboCount;
@@ -314,6 +317,14 @@ export class Game {
     else if (this.comboCount >= 5)  bonus = 10;
     else if (this.comboCount >= 2)  bonus = 5;
     this.score += 10 + bonus;
+
+    // HP CELL drop: guaranteed one healing pickup every 20 kills, near the defeated enemy.
+    // Does not touch overload / credits / score / combo, and never replaces Phoenix revives.
+    if (pos && ++this.killsSinceHealthDrop >= 20) {
+      this.killsSinceHealthDrop = 0;
+      const dropPos = pos.clone().add(new Vec2(randomRange(-10, 10), -8));
+      this.healthPickups.push({ pos: dropPos, timer: 25 });
+    }
   }
 
   // ─── Upgrades screen interaction ─────────────────────────────────────────────
@@ -812,6 +823,7 @@ export class Game {
     this._updateSupportDrones(dt);
     this.events.update(dt, this.timeAlive, this);
     this._updateGridCache(dt);
+    this._updateHealthPickups(dt);
     this._updateAnnouncement(dt);
     this.particles.update(dt);
     this._updateCamera();
@@ -891,6 +903,50 @@ export class Game {
     this.gridCache = { pos: spawnPos, timer: DURATION };
     this.triggerAnnouncement('GRID CACHE DETECTED', CYAN);
     this.audio?.playGridCache();
+  }
+
+  _updateHealthPickups(dt) {
+    const PICKUP_R = 16;
+    for (let i = this.healthPickups.length - 1; i >= 0; i--) {
+      const hp = this.healthPickups[i];
+
+      if (distance(this.player.pos, hp.pos) < PLAYER_RADIUS + PICKUP_R) {
+        this.player.hp = Math.min(this.player.maxHp, this.player.hp + this.player.maxHp * 0.25);
+        this.floatingTexts.push(new FloatingText('+25% HP', this.player.pos.clone(), GREEN, 1.2));
+        this.particles.spawnCorePickup(hp.pos, GREEN);
+        this.audio?.playCorePickup();
+        this.healthPickups.splice(i, 1);
+        continue;
+      }
+
+      hp.timer -= dt;
+      if (hp.timer <= 0) this.healthPickups.splice(i, 1);
+    }
+  }
+
+  // Drawn inside the camera-space block (translate handles the camera offset) → raw world coords.
+  _drawHealthPickups(ctx) {
+    const R = 16;
+    for (const hp of this.healthPickups) {
+      const x = hp.pos.x;
+      const y = hp.pos.y;
+      const pulse = 0.6 + 0.4 * Math.sin(this.timeAlive * 6 + x);
+
+      // Soft green glow + disc
+      drawGlow(ctx, x, y, R + 8, GREEN, 0.35 * pulse);
+      ctx.beginPath();
+      ctx.arc(x, y, R, 0, Math.PI * 2);
+      ctx.fillStyle   = '#0c3a1e';
+      ctx.fill();
+      ctx.lineWidth   = 2.5;
+      ctx.strokeStyle = GREEN;
+      ctx.stroke();
+
+      // White cyber-cross (med icon)
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(x - 7, y - 2.5, 14, 5);
+      ctx.fillRect(x - 2.5, y - 7, 5, 14);
+    }
   }
 
   _drawGridCacheArrow(ctx) {
@@ -1387,6 +1443,12 @@ export class Game {
       this.overload  = clamp(this.overload + chaosGain * diffMult * dt, 0, MAX_OVERLOAD);
     }
 
+    // Time-based minimum floor: guarantees gradual early-game tension even when the grid is fully
+    // secure. 5% per minute, capped at 35% (~7:00) so it never becomes a late-game auto-loss.
+    // Falling behind on cores still pushes overload ABOVE the floor via chaosGain above.
+    const floorPct = Math.min(35, (this.timeAlive / 60) * 5.0);
+    this.overload  = Math.max(this.overload, floorPct);
+
     if (this.audio) this.audio.updateAlarm(this.overload);
   }
 
@@ -1639,6 +1701,9 @@ export class Game {
         ctx.beginPath(); ctx.arc(core.pos.x, core.pos.y, 8, 0, Math.PI * 2); ctx.fill();
       }
     }
+
+    // 3a ── HP CELL recovery pickups
+    this._drawHealthPickups(ctx);
 
     // 4 ── Enemies
     for (const e of this.enemies) e.draw(ctx);
@@ -2677,17 +2742,34 @@ export class Game {
   // ─── Acid Rain weather event ──────────────────────────────────────────────
 
   _updateAcidRain(dt) {
+    const ACID_DPS    = 10;   // damage per second to normal enemies (kills weak, hurts strong)
+    const BOSS_FACTOR = 0.2;  // bosses / mini-bosses take 20% — heavily resistant, never deleted
+
     if (this.acidRain) {
       const ar = this.acidRain;
       ar.timer       -= dt;
       ar.damageAccum += dt;
 
-      // 1 HP damage per second to all enemies (no floating text to avoid spam)
+      // Purge tick once per second. Player is never damaged. No per-hit floating numbers/sounds
+      // (avoids spam) — lethal hits route through _die for correct kill/score/XP attribution.
       if (ar.damageAccum >= 1.0) {
         ar.damageAccum -= 1.0;
-        for (const e of this.enemies) {
-          e.hp = Math.max(0, e.hp - 1);
+
+        // Enemies in the main array (reverse index so _die can splice safely)
+        for (let i = this.enemies.length - 1; i >= 0; i--) {
+          const e   = this.enemies[i];
+          const dmg = (e.isBoss() || e.isMegaBoss) ? ACID_DPS * BOSS_FACTOR : ACID_DPS;
+          e.hp -= dmg;
+          if (e.hp <= 0) { e.hp = 0; e._die(this); }
         }
+
+        // Separate boss objects take reduced damage (effectively never lethal from acid)
+        for (const b of [this.titanBoss, this.annihilatorBoss, this.bloodfangBoss]) {
+          if (b && b.hp > 0) b.hp = Math.max(0, b.hp - ACID_DPS * BOSS_FACTOR);
+        }
+        if (this.titanBoss && this.titanBoss.hp <= 0)             this._titanDie();
+        if (this.annihilatorBoss && this.annihilatorBoss.hp <= 0) this._annihilatorDie();
+        if (this.bloodfangBoss && this.bloodfangBoss.hp <= 0)     this._bloodfangDie();
       }
 
       if (ar.timer <= 0) {
@@ -2701,6 +2783,9 @@ export class Game {
     if (this.acidRainTimer <= 0) {
       this.acidRain = { timer: 12, damageAccum: 0 };
       this.triggerAnnouncement('ACID RAIN WARNING', GREEN);
+      this.floatingTexts.push(
+        new FloatingText('TOXIC RAIN PURGE', new Vec2(WIDTH / 2 - 120, HEIGHT / 2 - 70), GREEN, 2.5)
+      );
       this.audio?.playEventWarning();
     }
   }

@@ -205,7 +205,7 @@ export class Enemy {
     game.audio?.playDeath();
     game.particles.spawnDeathBurst(this.pos, this.color);
     game.player.kills++;
-    game.addKillScore?.();
+    game.addKillScore?.(this.pos);
     let xp = this.isMegaBoss ? 42 : (this.isBoss() ? 12 : 1);
     game.player.gainXp(xp, game.floatingTexts);
 
