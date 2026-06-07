@@ -1,6 +1,6 @@
 # Phenix Survivors — Cyber-Grid Protocol
 
-A cyberpunk HTML5 Canvas survival game where the player protects Power Matrices, recovers Data-Cores, fights enemy waves, survives events, defeats the AI Overload Titan, earns Grid Credits, and upgrades characters.
+A cyberpunk HTML5 Canvas survival game where the player protects Power Matrices, recovers Data-Cores, fights enemy waves, survives events, defeats the AI Overload Titan and Matrix Annihilator mini-bosses, earns Grid Credits, and upgrades characters.
 
 ## Play Online
 
@@ -29,6 +29,7 @@ No install required. Runs in any modern browser.
 - Prevent Network Overload from reaching 100%
 - Collect Grid Cache supply events (follow the blinking arrow)
 - Defeat the AI Overload Titan mini-boss
+- Defend a Power Matrix from the Matrix Annihilator mid-game mini-boss (rush to stop it before it drains the Matrix)
 - Earn Grid Credits after each run
 - Spend credits on permanent upgrades from the Upgrades menu
 
@@ -56,6 +57,7 @@ Each character has different stats, attacks, and a unique special move.
 - Grid Cache supply drop event with arrow indicator
 - Acid Rain weather event
 - AI Overload Titan mini-boss
+- Matrix Annihilator mini-boss (mid-game second boss beat — targets and drains a Power Matrix)
 - Boss support drones
 - Phoenix Revive tiers
 - Dash with SPACE
