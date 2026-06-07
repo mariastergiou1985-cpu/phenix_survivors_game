@@ -1352,7 +1352,7 @@ export class Game {
     const emptySlots   = this.matrices.reduce((sum, m) => sum + (m.capacity - m.stored), 0);
 
     // Capped so falling behind on cores ramps pressure GRADUALLY instead of spiking.
-    const chaosGain = Math.min(0.28, groundCount * 0.010 + carriedCount * 0.025 + emptySlots * 0.006);
+    const chaosGain = Math.min(0.28, groundCount * 0.020 + carriedCount * 0.050 + emptySlots * 0.012);
 
     if (chaosGain === 0) {
       // Grid fully secure — drain at 1.0% per second
