@@ -58,6 +58,7 @@ Each character has different stats, attacks, and a unique special move.
 - Acid Rain weather event
 - AI Overload Titan mini-boss
 - Matrix Annihilator mini-boss (mid-game second boss beat — targets and drains a Power Matrix)
+- Bloodfang Packmaster mini-boss (10:00 third boss beat — fast cyber-beast pack leader with 3 Razorhounds; bite/lunge stagger)
 - Boss support drones
 - Phoenix Revive tiers
 - Dash with SPACE

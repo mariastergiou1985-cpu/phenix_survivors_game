@@ -76,6 +76,16 @@ export class ParticleSystem {
     }
   }
 
+  // Bite-impact blood splash — stylized crimson/red flecks (short, arcade, not gore).
+  spawnBloodSplash(pos) {
+    for (let i = 0; i < 10; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 70 + Math.random() * 140;
+      const vel   = new Vec2(Math.cos(angle) * speed, Math.sin(angle) * speed);
+      this._add(new Particle(pos, vel, i % 4 === 0 ? '#ff3750' : '#a8112a', 2 + Math.random() * 2, 0.3));
+    }
+  }
+
   // Bigger one-shot burst for boss death; cycles through `colors`.
   spawnExplosion(pos, colors, count = 24) {
     for (let i = 0; i < count; i++) {

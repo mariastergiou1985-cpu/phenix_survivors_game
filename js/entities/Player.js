@@ -22,6 +22,11 @@ export class Player {
     this.stamina    = 100;
     this.maxStamina = 100;
 
+    // Bite debuffs (Bloodfang Packmaster / Razorhounds)
+    this.staggerTimer      = 0.0;  // reduced movement + stamina regen while > 0
+    this.stunImmunityTimer = 0.0;  // blocks NEW stagger (anti chain-lock) while > 0
+    this.bleedTimer        = 0.0;  // 1 HP/s while > 0 (refresh, never stacks)
+
     this.pickupRadius = 72;
     this.returnRadius = 70;
     this.repelRadius  = 115;
@@ -148,6 +153,11 @@ export class Player {
     this.sonicPulseCooldown = Math.max(0, this.sonicPulseCooldown - dt);
     this.empCloudCooldown   = Math.max(0, this.empCloudCooldown - dt);
 
+    // Bite debuff timers + bleed tick (1 HP/s)
+    if (this.staggerTimer > 0)      this.staggerTimer      -= dt;
+    if (this.stunImmunityTimer > 0) this.stunImmunityTimer -= dt;
+    if (this.bleedTimer > 0)      { this.bleedTimer -= dt; this.hp = Math.max(0, this.hp - dt); }
+
     if (dir.lengthSq() > 0) this.lastFacingDir = dir.clone();
 
     const dashCost  = this.selectedCharacter === 'taekwondo_girl' ? 30 : 35;
@@ -172,8 +182,11 @@ export class Player {
       this.dashTimer -= dt;
       this.vel = this._dashDir.scale(this.speed * 3.5);
     } else {
-      this.vel = dir.scale(this.speed);
-      this.stamina = Math.min(this.maxStamina, this.stamina + regenRate * dt);
+      // Stagger debuff: slower walk + reduced stamina regen (dash stays full — an escape).
+      const moveMult  = this.staggerTimer > 0 ? 0.45 : 1.0;
+      const regenMult = this.staggerTimer > 0 ? 0.40 : 1.0;
+      this.vel = dir.scale(this.speed * moveMult);
+      this.stamina = Math.min(this.maxStamina, this.stamina + regenRate * regenMult * dt);
     }
 
     if (this.specialDashTimer > 0) {
@@ -184,6 +197,22 @@ export class Player {
     this.pos.addMut(this.vel.scale(dt));
     this.pos.x = clamp(this.pos.x, WORLD_MARGIN, WORLD_W - WORLD_MARGIN);
     this.pos.y = clamp(this.pos.y, WORLD_MARGIN + 40, WORLD_H - WORLD_MARGIN);
+  }
+
+  // Bite from Bloodfang/Razorhound. HP is always applied; stagger/knockback/bleed are
+  // suppressed while stunImmunityTimer > 0 (anti chain-lock). Returns true if a NEW
+  // stagger was applied (for "STAGGERED" feedback). Callers guard dash/phoenix i-frames.
+  applyBite({ hp = 0, stamina = 0, stagger = 0, knockback = 0, dir = null, bleed = 0 } = {}) {
+    if (hp > 0) this.hp = Math.max(0, this.hp - hp);
+    if (this.stunImmunityTimer > 0) return false;     // immune to new stagger
+    if (stamina > 0) this.stamina = Math.max(0, this.stamina - stamina);
+    if (stagger > 0) {
+      this.staggerTimer      = Math.max(this.staggerTimer, stagger);
+      this.stunImmunityTimer = stagger + 2;            // 2 s immunity after stagger ends
+    }
+    if (knockback > 0 && dir) this.pos.addMut(dir.scale(knockback));
+    if (bleed > 0) this.bleedTimer = Math.max(this.bleedTimer, bleed);  // refresh, not stack
+    return stagger > 0;
   }
 
   canShoot() { return this.shootCooldown <= 0; }

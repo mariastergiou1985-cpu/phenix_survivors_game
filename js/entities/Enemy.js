@@ -5,7 +5,7 @@ import {
 import { clamp, distance, safeNormalize, randomPosition, randomRange, randomChoice, drawBar } from '../utils.js';
 import { DataCore } from './DataCore.js';
 import { FloatingText } from './FloatingText.js';
-import { drawGlow } from '../game/Effects.js?v=1';
+import { drawGlow } from '../game/Effects.js?v=2';
 
 export class Enemy {
   constructor(enemyType, minute) {
@@ -62,6 +62,7 @@ export class Enemy {
       case 'Combat Hunter':          return 'hunter';
       case 'Cyber Shooter':          return 'shooter';
       case 'Heavy Mech':             return 'hunter';
+      case 'Razorhound':             return 'hunter';  // fast melee chaser, never steals
       default:                       return 'scavenger';
     }
   }
@@ -130,6 +131,8 @@ export class Enemy {
       'Overclocked Berserker':   'rogue_punk',
       'Cyber Shooter':           'glitch_drone',
       'Heavy Mech':              'security_defector_mech',
+      // Bloodfang pack minion — dedicated sprite in minions/ subfolder
+      'Razorhound':              'minions/razorhound',
     };
     const spriteFile = spriteMap[this.enemyType];
     if (spriteFile) {
@@ -164,6 +167,7 @@ export class Enemy {
       case 'Combat Hunter':         return [168 * d,  3,  MAGENTA, 9999, 12];
       case 'Cyber Shooter':         return [108 * d,  4,  CYAN,    9999,  6];
       case 'Heavy Mech':            return [58  * d, 20,  ORANGE,  9999, 20];
+      case 'Razorhound':            return [200 * d, 14,  RED,     9999,  6];
       default:                      return [100,      2,   WHITE,   1.80,  6];
     }
   }

@@ -11,13 +11,13 @@ import { clamp, distance, safeNormalize, randomChoice, randomRange } from '../ut
 import { FloatingText }   from '../entities/FloatingText.js';
 import { DataCore }       from '../entities/DataCore.js';
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=10';
-import { Player }         from '../entities/Player.js?v=55';
+import { Player }         from '../entities/Player.js?v=56';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=3';
-import { Enemy }          from '../entities/Enemy.js?v=94';
+import { Enemy }          from '../entities/Enemy.js?v=95';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=1';
 
-import { ParticleSystem, ScreenShake, drawVignette, EMPRing, drawGlow } from './Effects.js?v=1';
-import { SystemEventManager } from './Events.js?v=92';
+import { ParticleSystem, ScreenShake, drawVignette, EMPRing, drawGlow } from './Effects.js?v=2';
+import { SystemEventManager } from './Events.js?v=93';
 import { UpgradeUI }      from './UpgradeUI.js';
 import { weightedSample } from './Upgrades.js';
 import { drawHUD, drawEndScreen } from './HUD.js?v=31';
@@ -101,6 +101,11 @@ export class Game {
     this._annihilatorSprite = new Image();
     this._annihilatorSprite.onerror = () => console.warn('[Boss] assets/enemies/bosses/matrix_annihilator.png failed to load — using fallback');
     this._annihilatorSprite.src = 'assets/enemies/bosses/matrix_annihilator.png?v=1';
+
+    // Preload Bloodfang Packmaster mini-boss sprite (existing asset)
+    this._bloodfangSprite = new Image();
+    this._bloodfangSprite.onerror = () => console.warn('[Boss] assets/enemies/bosses/bloodfang_packmaster.png failed to load — using fallback');
+    this._bloodfangSprite.src = 'assets/enemies/bosses/bloodfang_packmaster.png?v=1';
 
     // Game state management
     this.gameState = 'start_menu'; // 'start_menu' | 'character_select' | 'playing' | 'game_over' | 'victory' | 'exit_screen'
@@ -187,6 +192,11 @@ export class Game {
     this.annihilatorSpawned    = false;
     this.annihilatorBoss       = null;
     this.annihilatorSpawnTimer = 450;
+
+    // Bloodfang Packmaster — third mini-boss (fast pack leader) at 10:00
+    this.bloodfangSpawned    = false;
+    this.bloodfangBoss       = null;
+    this.bloodfangSpawnTimer = 600;
 
     this.supportDrones     = [];
     this._droneFlameLast   = null;
@@ -798,6 +808,7 @@ export class Game {
     this._updateAcidRain(dt);
     this._updateTitan(dt);
     this._updateAnnihilator(dt);
+    this._updateBloodfang(dt);
     this._updateSupportDrones(dt);
     this.events.update(dt, this.timeAlive, this);
     this._updateGridCache(dt);
@@ -1293,6 +1304,18 @@ export class Game {
         if (this.annihilatorBoss.hp <= 0) this._annihilatorDie();
       }
 
+      // Check Bloodfang Packmaster hit
+      if (!hit && this.bloodfangBoss && this.bloodfangBoss.hp > 0 &&
+          distance(p.pos, this.bloodfangBoss.pos) < p.radius + this.bloodfangBoss.radius) {
+        this.bloodfangBoss.hp      -= p.damage;
+        this.bloodfangBoss.hitFlash = 0.08;
+        this.floatingTexts.push(new FloatingText('-' + p.damage, this.bloodfangBoss.pos.add(new Vec2(randomRange(-10, 10), -this.bloodfangBoss.radius - 6)), WHITE, 0.5));
+        this.particles.spawnHitSparks(p.pos, RED);
+        this.projectiles.splice(i, 1);
+        hit = true;
+        if (this.bloodfangBoss.hp <= 0) this._bloodfangDie();
+      }
+
       if (!hit && !p.alive()) this.projectiles.splice(i, 1);
     }
   }
@@ -1413,10 +1436,20 @@ export class Game {
           if (this.playerHitCooldown <= 0) {
             this.playerHitCooldown = 0.5;
             this.screenShake.trigger(4, 0.15);
-            this.particles.spawnHitSparks(this.player.pos, RED);
-            this.floatingTexts.push(
-              new FloatingText(`-${Math.ceil(e.contactDamage ?? 8)} HP`, this.player.pos.clone(), RED, 0.6)
-            );
+            // Razorhound bite: stamina drain + short stagger + knockback + bleed (anti-lock via immunity)
+            if (e.enemyType === 'Razorhound') {
+              const dir = safeNormalize(this.player.pos.sub(e.pos));
+              const staggered = this.player.applyBite({ stamina: 8, stagger: 0.6, knockback: 14, dir, bleed: 2.5 });
+              this.particles.spawnBloodSplash(this.player.pos);
+              this.floatingTexts.push(
+                new FloatingText(staggered ? 'STAGGERED' : 'BLEED', new Vec2(this.player.pos.x, this.player.pos.y - 28), RED, 0.7)
+              );
+            } else {
+              this.particles.spawnHitSparks(this.player.pos, RED);
+              this.floatingTexts.push(
+                new FloatingText(`-${Math.ceil(e.contactDamage ?? 8)} HP`, this.player.pos.clone(), RED, 0.6)
+              );
+            }
           }
         }
       }
@@ -1616,6 +1649,7 @@ export class Game {
     // 4b ── AI Overload Titan mini-boss
     this._drawTitan(ctx);
     this._drawAnnihilator(ctx);
+    this._drawBloodfang(ctx);
 
     // 4b ── Grid Cache supply drop crate
     if (this.gridCache) {
@@ -3125,6 +3159,159 @@ export class Game {
     ctx.fillStyle = RED;
     ctx.textAlign = 'center';
     ctx.fillText('MATRIX ANNIHILATOR', a.pos.x, by - 3);
+    ctx.textAlign = 'left';
+  }
+
+  // ── Bloodfang Packmaster mini-boss (fast pack leader at 10:00) ─────────────
+  _spawnBloodfang() {
+    const R    = 40;
+    const side = Math.random() < 0.5 ? -1 : 1;
+    const pos  = new Vec2(
+      WORLD_W / 2 + side * (WORLD_W / 2 - WORLD_MARGIN - R - 30),
+      WORLD_H / 2
+    );
+    this.bloodfangBoss = {
+      pos, hp: 420, maxHp: 420,
+      radius: R, speed: 112, hitFlash: 0,
+      biteTimer: 2.0, lungeTimer: 0, lungeDir: new Vec2(1, 0),
+    };
+    this.triggerAnnouncement('BLOODFANG PACKMASTER DETECTED', RED);
+    this.audio?.playBossSpawn();
+    this.screenShake.trigger(7, 0.6);
+    this.floatingTexts.push(new FloatingText('BLOODFANG PACKMASTER DETECTED', new Vec2(WIDTH / 2 - 240, HEIGHT / 2 - 70), RED,    3.0));
+    this.floatingTexts.push(new FloatingText('RAZORHOUND PACK INBOUND',       new Vec2(WIDTH / 2 - 200, HEIGHT / 2 - 40), ORANGE, 3.0));
+    // 3 Razorhounds join the boss
+    for (let i = 0; i < 3; i++) this.enemies.push(new Enemy('Razorhound', this.currentMinute()));
+    // Ally support drones join the fight (reuses the existing boss-drone system)
+    this._spawnSupportDrones();
+  }
+
+  _updateBloodfang(dt) {
+    if (!this.bloodfangSpawned) {
+      this.bloodfangSpawnTimer -= dt;
+      if (this.bloodfangSpawnTimer > 0) return;
+      this.bloodfangSpawned = true;
+      this._spawnBloodfang();
+    }
+
+    const a = this.bloodfangBoss;
+    if (!a || a.hp <= 0) return;
+
+    if (a.hitFlash > 0) a.hitFlash -= dt;
+
+    const toPlayer = this.player.pos.sub(a.pos);
+    const dist     = toPlayer.length();
+
+    // Savage Bite / Lunge — short forward rush every 1.2–1.8 s when in range
+    a.biteTimer -= dt;
+    if (a.lungeTimer > 0) {
+      a.lungeTimer -= dt;
+      a.pos.addMut(a.lungeDir.scale(a.speed * 3.2 * dt));
+    } else {
+      if (dist > a.radius + PLAYER_RADIUS + 2) {
+        a.pos.addMut(safeNormalize(toPlayer).scale(a.speed * dt));
+      }
+      if (a.biteTimer <= 0 && dist < 240) {
+        a.biteTimer  = 1.2 + Math.random() * 0.6;
+        a.lungeTimer = 0.22;
+        a.lungeDir   = safeNormalize(toPlayer);
+      }
+    }
+
+    a.pos.x = clamp(a.pos.x, WORLD_MARGIN + a.radius, WORLD_W - WORLD_MARGIN - a.radius);
+    a.pos.y = clamp(a.pos.y, WORLD_MARGIN + 40 + a.radius, WORLD_H - WORLD_MARGIN - a.radius);
+
+    // Bite contact — throttled discrete bites (heavier on a lunge); dash/phoenix i-frames respected
+    if (distance(a.pos, this.player.pos) < a.radius + PLAYER_RADIUS &&
+        this.playerHitCooldown <= 0 &&
+        this.player.dashTimer <= 0 && this.phoenixReviveTimer <= 0) {
+      this.playerHitCooldown = 0.5;
+      const lunging   = a.lungeTimer > 0;
+      const dir       = safeNormalize(this.player.pos.sub(a.pos));
+      const hp        = (lunging ? 12 : 10) * (1 - this.player.contactDamageReduction);
+      const staggered = this.player.applyBite({
+        hp, stamina: 12, dir,
+        stagger:   lunging ? 0.8 : 0.5,
+        knockback: lunging ? 22 : 12,
+        bleed:     2.5,
+      });
+      this.screenShake.trigger(lunging ? 7 : 4, 0.2);
+      this.particles.spawnBloodSplash(this.player.pos);
+      this.floatingTexts.push(new FloatingText(staggered ? 'STAGGERED' : 'BLEED', new Vec2(this.player.pos.x, this.player.pos.y - 28), RED, 0.7));
+    }
+
+    if (a.hp <= 0) this._bloodfangDie();
+  }
+
+  _bloodfangDie() {
+    const a = this.bloodfangBoss;
+    if (!a) return;
+    // Break the pack — remaining Razorhounds die with their master; clear ally drones
+    this.enemies = this.enemies.filter(e => e.enemyType !== 'Razorhound');
+    this.supportDrones = [];
+    this.score = (this.score ?? 0) + 500;
+    this.player.gainXp(45, this.floatingTexts);
+    this.meta.addCredits(30);
+    this.runCreditsEarned = (this.runCreditsEarned || 0) + 30;
+    this.overload = Math.max(0, this.overload - 10);
+    this.floatingTexts.push(new FloatingText('BLOODFANG PACKMASTER DEFEATED', a.pos.clone(),                   YELLOW, 2.5));
+    this.floatingTexts.push(new FloatingText('RAZORHOUND PACK BROKEN',         new Vec2(a.pos.x, a.pos.y - 28), ORANGE, 2.5));
+    this.floatingTexts.push(new FloatingText('+30 GRID CREDITS',               new Vec2(a.pos.x, a.pos.y - 56), GREEN,  2.5));
+    this.triggerAnnouncement('BLOODFANG PACKMASTER DEFEATED', GREEN);
+    this.screenShake.trigger(14, 1.0);
+    this.particles.spawnExplosion(a.pos, [RED, ORANGE, YELLOW], 30);
+    this.bloodfangBoss = null;
+  }
+
+  _drawBloodfang(ctx) {
+    const a = this.bloodfangBoss;
+    if (!a || a.hp <= 0) return;
+    const R = a.radius;
+
+    // Pulsing red aura
+    const pulse = 0.4 + 0.35 * Math.sin(Date.now() / 160);
+    ctx.save();
+    ctx.globalAlpha = pulse;
+    ctx.strokeStyle = RED; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(a.pos.x, a.pos.y, R + 10, 0, Math.PI * 2); ctx.stroke();
+    ctx.restore();
+
+    // Body glow + real sprite (fallback box ONLY if the sprite failed to load)
+    drawGlow(ctx, a.pos.x, a.pos.y, R, RED, 0.32);
+    const spr = this._bloodfangSprite;
+    if (spr && spr.complete && spr.naturalWidth > 0) {
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(spr, a.pos.x - R, a.pos.y - R, R * 2, R * 2);
+      ctx.imageSmoothingEnabled = true;
+    } else {
+      ctx.fillStyle   = RED;
+      ctx.strokeStyle = WHITE; ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.roundRect(a.pos.x - R, a.pos.y - R, R * 2, R * 2, 8);
+      ctx.fill(); ctx.stroke();
+    }
+
+    // Hit flash
+    if (a.hitFlash > 0) {
+      ctx.save();
+      ctx.globalAlpha = 0.6;
+      ctx.fillStyle   = WHITE;
+      ctx.beginPath(); ctx.arc(a.pos.x, a.pos.y, R, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
+
+    // HP bar + name label
+    const bw = R * 2 + 20;
+    const bx = a.pos.x - bw / 2;
+    const by = a.pos.y - R - 20;
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(bx - 1, by - 1, bw + 2, 8);
+    ctx.fillStyle = RED;
+    ctx.fillRect(bx, by, Math.round(bw * (a.hp / a.maxHp)), 6);
+    ctx.font      = 'bold 10px Consolas, monospace';
+    ctx.fillStyle = RED;
+    ctx.textAlign = 'center';
+    ctx.fillText('BLOODFANG PACKMASTER', a.pos.x, by - 3);
     ctx.textAlign = 'left';
   }
 
