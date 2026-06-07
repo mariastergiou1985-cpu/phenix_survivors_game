@@ -1,5 +1,5 @@
-import { Game } from './game/Game.js?v=112';
-import { AudioManager } from './audio/AudioManager.js?v=11';
+import { Game } from './game/Game.js?v=113';
+import { AudioManager } from './audio/AudioManager.js?v=12';
 
 const canvas = document.getElementById('game');
 const ctx    = canvas.getContext('2d');
@@ -155,7 +155,8 @@ canvas.addEventListener('mousedown', e => {
 
   } else if (game.gameState === 'start_menu') {
     // ── Start Menu ───────────────────────────────────────────────
-    const BW = 360, BH = 52, startY = 280, spacing = 80;
+    // Layout constants mirror Game.js _drawStartMenu (must stay in sync).
+    const BW = 360, BH = 52, startY = 250, spacing = 64;
     for (let i = 0; i < game.menuItems.length; i++) {
       const bx = canvas.width / 2 - BW / 2;
       const by = startY + i * spacing - 30;
@@ -165,8 +166,9 @@ canvas.addEventListener('mousedown', e => {
         if (i === 0 || i === 1) game.goToCharacterSelect();
         else if (i === 2) game.goToUpgradesScreen();
         else if (i === 3) game.goToInstructions();
-        else if (i === 4) game.goToCredits();
-        else if (i === 5) { try { window.close(); } catch (e) {} game.goToExitScreen(); }
+        else if (i === 4) game.goToAudioSettings();
+        else if (i === 5) game.goToCredits();
+        else if (i === 6) { try { window.close(); } catch (e) {} game.goToExitScreen(); }
         break;
       }
     }

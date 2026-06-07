@@ -109,7 +109,7 @@ export class Game {
       { id: 'taekwondo_girl',   name: 'Neon Taekwondo Girl',    fallbackColor: '#00D9FF', fallbackAlt: '#0099CC', role: 'Speed / AoE' },
       { id: 'cyber_arm_hero',   name: 'Cyber Arm Hero',         fallbackColor: '#FF6600', fallbackAlt: '#CC0000', role: 'Ranged / Damage' },
     ];
-    this.menuItems = ['START GAME', 'CHARACTER SELECT', 'UPGRADES', 'INSTRUCTIONS', 'CREDITS', 'EXIT'];
+    this.menuItems = ['START GAME', 'CHARACTER SELECT', 'UPGRADES', 'INSTRUCTIONS', 'AUDIO SETTINGS', 'CREDITS', 'EXIT'];
 
     this.reset();
   }
@@ -231,6 +231,15 @@ export class Game {
   }
 
   goToCredits() { this.gameState = 'credits'; }
+
+  goToAudioSettings() {
+    this.gameState      = 'audio_settings';
+    this._audioSelIndex = 0;
+    // Assume the button is still held from the click that opened this screen,
+    // so the entering click is not mistaken for a BACK press (their hit-boxes
+    // overlap). Only a fresh press after release should register.
+    this._prevMouseDown = true;
+  }
 
   goToInstructions() { this.gameState = 'instructions'; }
 
@@ -719,6 +728,10 @@ export class Game {
       this._updateInstructionsScreen(input);
       return;
     }
+    if (this.gameState === 'audio_settings') {
+      this._updateAudioSettings(input);
+      return;
+    }
     if (this.gameState !== 'playing') return;
 
     if (this.paused || this.gameOver || this.victory) return;
@@ -932,8 +945,10 @@ export class Game {
       } else if (this.menuIndex === 3) {
         this.goToInstructions();
       } else if (this.menuIndex === 4) {
-        this.goToCredits();
+        this.goToAudioSettings();
       } else if (this.menuIndex === 5) {
+        this.goToCredits();
+      } else if (this.menuIndex === 6) {
         try { window.close(); } catch (e) {}
         this.goToExitScreen();
       }
@@ -973,6 +988,153 @@ export class Game {
       keys.delete('enter');
       keys.delete('escape');
     }
+  }
+
+  // ─── Audio Settings screen ───────────────────────────────────────────────────
+  _audioRects() {
+    const TW = 440;
+    const tx = Math.round((WIDTH - TW) / 2);
+    const rows = [
+      { key: 'master', label: 'MASTER VOLUME' },
+      { key: 'music',  label: 'MUSIC VOLUME'  },
+      { key: 'sfx',    label: 'SFX VOLUME'    },
+    ];
+    const startY = 240, gap = 78;
+    const sliders = rows.map((r, i) => {
+      const ty = startY + i * gap;
+      return { ...r, tx, ty, tw: TW, y0: ty - 26, y1: ty + 26 };
+    });
+    const backRect = { x: Math.round((WIDTH - 160) / 2), y: startY + 3 * gap + 6, w: 160, h: 44 };
+    return { sliders, backRect };
+  }
+
+  _audioVolumeFor(key) {
+    const a = this.audio;
+    if (key === 'master') return a?.masterVolume ?? 1.0;
+    if (key === 'music')  return a?.musicVolume  ?? 0.70;
+    return a?.sfxVolume ?? 0.80;
+  }
+
+  _setAudioVolume(key, v) {
+    if (!this.audio) return;
+    if      (key === 'master') this.audio.setMasterVolume(v);
+    else if (key === 'music')  this.audio.setMusicVolume(v);
+    else if (key === 'sfx')    this.audio.setSfxVolume(v);
+  }
+
+  _updateAudioSettings(input) {
+    const { keys, mousePos, mouseDown } = input;
+    const { sliders, backRect } = this._audioRects();
+
+    // Mouse: set/drag the slider whose horizontal band holds the cursor.
+    if (mouseDown && this.audio) {
+      for (let i = 0; i < sliders.length; i++) {
+        const s = sliders[i];
+        if (mousePos.y >= s.y0 && mousePos.y <= s.y1 &&
+            mousePos.x >= s.tx - 14 && mousePos.x <= s.tx + s.tw + 14) {
+          const v = Math.max(0, Math.min(1, (mousePos.x - s.tx) / s.tw));
+          this._setAudioVolume(s.key, v);
+          this._audioSelIndex = i;
+          break;
+        }
+      }
+    }
+
+    // BACK button — rising edge only, so a drag does not trigger it.
+    if (mouseDown && !this._prevMouseDown && this._inRect(mousePos, backRect)) {
+      this.goToMainMenu();
+    }
+    this._prevMouseDown = mouseDown;
+
+    // Keyboard: ↑/↓ select row, ←/→ adjust by 5%, ESC back.
+    if (keys.has('arrowup') || keys.has('w')) {
+      this._audioSelIndex = (this._audioSelIndex + sliders.length - 1) % sliders.length;
+      keys.delete('arrowup'); keys.delete('w');
+    }
+    if (keys.has('arrowdown') || keys.has('s')) {
+      this._audioSelIndex = (this._audioSelIndex + 1) % sliders.length;
+      keys.delete('arrowdown'); keys.delete('s');
+    }
+    if (keys.has('arrowleft') || keys.has('a')) {
+      const s = sliders[this._audioSelIndex];
+      this._setAudioVolume(s.key, this._audioVolumeFor(s.key) - 0.05);
+      keys.delete('arrowleft'); keys.delete('a');
+    }
+    if (keys.has('arrowright') || keys.has('d')) {
+      const s = sliders[this._audioSelIndex];
+      this._setAudioVolume(s.key, this._audioVolumeFor(s.key) + 0.05);
+      keys.delete('arrowright'); keys.delete('d');
+    }
+    if (keys.has('escape')) {
+      this.goToMainMenu();
+      keys.delete('escape');
+    }
+  }
+
+  _drawAudioSettings(ctx) {
+    this._drawBackground(ctx);
+    ctx.fillStyle = 'rgba(0,0,0,0.82)';
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+    ctx.font      = 'bold 40px Consolas, monospace';
+    ctx.fillStyle = CYAN;
+    ctx.textAlign = 'center';
+    ctx.fillText('AUDIO SETTINGS', WIDTH / 2, 120);
+
+    const { sliders, backRect } = this._audioRects();
+
+    for (let i = 0; i < sliders.length; i++) {
+      const s        = sliders[i];
+      const v        = this._audioVolumeFor(s.key);
+      const selected = i === this._audioSelIndex;
+      const th       = 8;
+
+      // Label + percent readout
+      ctx.font      = 'bold 18px Consolas, monospace';
+      ctx.fillStyle = selected ? CYAN : WHITE;
+      ctx.textAlign = 'left';
+      ctx.fillText(s.label, s.tx, s.ty - 16);
+      ctx.textAlign = 'right';
+      ctx.fillStyle = YELLOW;
+      ctx.fillText(`${Math.round(v * 100)}%`, s.tx + s.tw, s.ty - 16);
+
+      // Track + filled portion + border
+      ctx.fillStyle = '#1a2a3a';
+      ctx.fillRect(s.tx, s.ty - th / 2, s.tw, th);
+      ctx.fillStyle = selected ? CYAN : '#2a6a8a';
+      ctx.fillRect(s.tx, s.ty - th / 2, s.tw * v, th);
+      ctx.strokeStyle = selected ? CYAN : '#2a4060';
+      ctx.lineWidth   = selected ? 2 : 1;
+      ctx.strokeRect(s.tx, s.ty - th / 2, s.tw, th);
+
+      // Handle
+      const hx = s.tx + s.tw * v;
+      ctx.fillStyle = selected ? CYAN : WHITE;
+      ctx.fillRect(hx - 5, s.ty - 12, 10, 24);
+    }
+
+    // Mute status / hint
+    ctx.font      = '14px Consolas, monospace';
+    ctx.textAlign = 'center';
+    if (this.audio?.muted) {
+      ctx.fillStyle = '#ff6a6a';
+      ctx.fillText('MUTED — press M to unmute', WIDTH / 2, backRect.y - 22);
+    } else {
+      ctx.fillStyle = 'rgba(200,200,200,0.6)';
+      ctx.fillText('Press M to mute      Drag sliders, or ↑↓ select / ← → adjust', WIDTH / 2, backRect.y - 22);
+    }
+
+    // BACK button
+    ctx.fillStyle = '#0a0f20';
+    ctx.fillRect(backRect.x, backRect.y, backRect.w, backRect.h);
+    ctx.strokeStyle = CYAN; ctx.lineWidth = 2;
+    ctx.strokeRect(backRect.x, backRect.y, backRect.w, backRect.h);
+    ctx.font      = 'bold 18px Consolas, monospace';
+    ctx.fillStyle = CYAN;
+    ctx.textAlign = 'center';
+    ctx.fillText('BACK', backRect.x + backRect.w / 2, backRect.y + 28);
+
+    ctx.textAlign = 'left';
   }
 
   _handleMouseShooting(input) {
@@ -1373,6 +1535,10 @@ export class Game {
       this._drawInstructionsScreen(ctx);
       return;
     }
+    if (this.gameState === 'audio_settings') {
+      this._drawAudioSettings(ctx);
+      return;
+    }
     if (this.gameState !== 'playing') {
       this._drawBackground(ctx);
       return;
@@ -1680,7 +1846,8 @@ export class Game {
     ctx.fillText('PHENIX SURVIVORS', WIDTH / 2, 130);
 
     // Button labels — always drawn, no duplication possible since image has none
-    const startY = 280, spacing = 80, BW = 360;
+    // Layout constants are mirrored in main.js start_menu click hit-test.
+    const startY = 250, spacing = 64, BW = 360;
     for (let i = 0; i < this.menuItems.length; i++) {
       const y  = startY + i * spacing;
       const bx = WIDTH / 2 - BW / 2;

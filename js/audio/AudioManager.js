@@ -1,16 +1,37 @@
+// ─── Volume settings (persisted to localStorage) ──────────────────────────────
+const VOL_KEYS = {
+  master: 'phenix_master_volume',
+  music:  'phenix_music_volume',
+  sfx:    'phenix_sfx_volume',
+  muted:  'phenix_muted',
+};
+const VOL_DEFAULTS = { master: 1.0, music: 0.70, sfx: 0.80, muted: false };
+
+const clamp01 = v => Math.max(0, Math.min(1, v));
+
 export class AudioManager {
   constructor() {
-    this.actx       = new AudioContext();
-    this.muted      = false;
+    this.actx = new AudioContext();
+
+    // Load persisted volume/mute settings (source of truth lives here).
+    this._loadVolumes();
+
+    // Master node — its gain reflects masterVolume (or 0 while muted).
     this.masterGain = this.actx.createGain();
-    this.masterGain.gain.value = 0.65;
+    this.masterGain.gain.value = this.muted ? 0 : this.masterVolume;
     this.masterGain.connect(this.actx.destination);
 
-    // Dedicated bus for synthesized SFX. Routed through masterGain so the
-    // existing mute (M) — which zeroes masterGain — silences SFX too, while
-    // keeping SFX level independent of the music tracks.
+    // Music bus — scaled by musicVolume. Per-track base gains feed into this.
+    this.musicGain = this.actx.createGain();
+    this.musicGain.gain.value = this.musicVolume;
+    this.musicGain.connect(this.masterGain);
+
+    // SFX bus — scaled by sfxVolume. Routed through masterGain so mute (M),
+    // which zeroes masterGain, silences SFX too while keeping its level
+    // independent of music. Final music = master×music×trackBase;
+    // final SFX = master×sfx×toneBase.
     this.sfxGain = this.actx.createGain();
-    this.sfxGain.gain.value = 0.9;
+    this.sfxGain.gain.value = this.sfxVolume;
     this.sfxGain.connect(this.masterGain);
 
     // Per-sound timestamps for rate-limiting (avoids machine-gun stacking).
@@ -23,6 +44,46 @@ export class AudioManager {
     this._setupTrack('assets/audio/music/gameplay_theme.mp3?v=2', 0.20, a => { this._gameplayAudio = a; });
   }
 
+  // ─── Volume persistence ─────────────────────────────────────────────────────
+  _loadVolumes() {
+    const read = (key, def) => {
+      try {
+        const raw = localStorage.getItem(key);
+        if (raw === null) return def;
+        const n = Number(raw);
+        return Number.isFinite(n) ? clamp01(n) : def;
+      } catch (_) { return def; }
+    };
+    this.masterVolume = read(VOL_KEYS.master, VOL_DEFAULTS.master);
+    this.musicVolume  = read(VOL_KEYS.music,  VOL_DEFAULTS.music);
+    this.sfxVolume    = read(VOL_KEYS.sfx,    VOL_DEFAULTS.sfx);
+    try {
+      this.muted = localStorage.getItem(VOL_KEYS.muted) === 'true';
+    } catch (_) { this.muted = VOL_DEFAULTS.muted; }
+  }
+
+  _saveVolume(key, val) {
+    try { localStorage.setItem(key, String(val)); } catch (_) {}
+  }
+
+  setMasterVolume(v) {
+    this.masterVolume = clamp01(v);
+    if (!this.muted) this.masterGain.gain.value = this.masterVolume;
+    this._saveVolume(VOL_KEYS.master, this.masterVolume);
+  }
+
+  setMusicVolume(v) {
+    this.musicVolume = clamp01(v);
+    this.musicGain.gain.value = this.musicVolume;
+    this._saveVolume(VOL_KEYS.music, this.musicVolume);
+  }
+
+  setSfxVolume(v) {
+    this.sfxVolume = clamp01(v);
+    this.sfxGain.gain.value = this.sfxVolume;
+    this._saveVolume(VOL_KEYS.sfx, this.sfxVolume);
+  }
+
   _setupTrack(src, volume, assign) {
     try {
       const audio = new Audio(src);
@@ -31,7 +92,7 @@ export class AudioManager {
       const gain   = this.actx.createGain();
       gain.gain.value = volume;
       source.connect(gain);
-      gain.connect(this.masterGain);
+      gain.connect(this.musicGain);
       assign(audio);
     } catch (_) {
       console.warn(`[Audio] Could not load: ${src}`);
@@ -71,10 +132,12 @@ export class AudioManager {
 
   toggleMute() {
     this.muted = !this.muted;
+    // Restore to the saved masterVolume on unmute; volume sliders are untouched.
     this.masterGain.gain.setTargetAtTime(
-      this.muted ? 0 : 0.65,
+      this.muted ? 0 : this.masterVolume,
       this.actx.currentTime, 0.05
     );
+    this._saveVolume(VOL_KEYS.muted, this.muted);
   }
 
   // ─── SFX (WebAudio-synthesized, no external files) ──────────────────────────
