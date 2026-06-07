@@ -11,13 +11,13 @@ import { clamp, distance, safeNormalize, randomChoice, randomRange } from '../ut
 import { FloatingText }   from '../entities/FloatingText.js';
 import { DataCore }       from '../entities/DataCore.js';
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=10';
-import { Player }         from '../entities/Player.js?v=54';
+import { Player }         from '../entities/Player.js?v=55';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=3';
-import { Enemy }          from '../entities/Enemy.js?v=93';
+import { Enemy }          from '../entities/Enemy.js?v=94';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=1';
 
-import { ParticleSystem, ScreenShake, drawVignette, EMPRing } from './Effects.js';
-import { SystemEventManager } from './Events.js?v=91';
+import { ParticleSystem, ScreenShake, drawVignette, EMPRing, drawGlow } from './Effects.js?v=1';
+import { SystemEventManager } from './Events.js?v=92';
 import { UpgradeUI }      from './UpgradeUI.js';
 import { weightedSample } from './Upgrades.js';
 import { drawHUD, drawEndScreen } from './HUD.js?v=31';
@@ -1261,6 +1261,7 @@ export class Game {
           distance(p.pos, this.titanBoss.pos) < p.radius + this.titanBoss.radius) {
         this.titanBoss.hp      -= p.damage;
         this.titanBoss.hitFlash = 0.08;
+        this.floatingTexts.push(new FloatingText('-' + p.damage, this.titanBoss.pos.add(new Vec2(randomRange(-10, 10), -this.titanBoss.radius - 6)), WHITE, 0.5));
         this.particles.spawnHitSparks(p.pos, PURPLE);
         this.projectiles.splice(i, 1);
         hit = true;
@@ -1559,13 +1560,15 @@ export class Game {
     // 1 ── World Background
     this._drawWorldBackground(ctx);
 
-    // 2 ── Power Matrices
+    // 2 ── Power Matrices (additive glow under the sprite)
+    for (const m of this.matrices) drawGlow(ctx, m.pos.x, m.pos.y, 30, m.color, 0.35);
     for (const m of this.matrices) m.draw(ctx);
 
     // 3 ── Data-Cores on the ground
     for (const core of this.groundCores) {
       const spr = this._coreSprite;
       const sz  = 28;
+      drawGlow(ctx, core.pos.x, core.pos.y, 13, core.color, 0.5);
       if (spr && spr.complete && spr.naturalWidth > 0) {
         ctx.imageSmoothingEnabled = false;
         ctx.drawImage(spr, Math.round(core.pos.x - sz / 2), Math.round(core.pos.y - sz / 2), sz, sz);
@@ -1591,6 +1594,7 @@ export class Game {
       const sz = 48;
       // Pulse glow — two rings for visibility
       const pulse = 0.5 + 0.4 * Math.sin(Date.now() / 300);
+      drawGlow(ctx, pos.x, pos.y, sz / 2, CYAN, pulse * 0.4);
       ctx.save();
       ctx.strokeStyle = CYAN;
       ctx.globalAlpha = pulse;
@@ -1621,8 +1625,8 @@ export class Game {
     this.player.draw(ctx, this._lastMousePos || { x: 0, y: 0 });
 
     // 6 ── Projectiles, homing discs, EMP rings, particles
-    for (const p of this.projectiles) p.draw(ctx);
-    for (const d of this.homingDiscs) d.draw(ctx);
+    for (const p of this.projectiles) { drawGlow(ctx, p.pos.x, p.pos.y, 10, CYAN,  0.55); p.draw(ctx); }
+    for (const d of this.homingDiscs) { drawGlow(ctx, d.pos.x, d.pos.y, 12, GREEN, 0.50); d.draw(ctx); }
     for (const r of this.empRings)    r.draw(ctx);
     for (const r of this._specialRings) {
       const alpha = r.life / r.maxLife;
@@ -1654,6 +1658,7 @@ export class Game {
 
     // 6c ── Enemy bullets
     for (const b of this.enemyBullets) {
+      drawGlow(ctx, b.pos.x, b.pos.y, b.radius * 2, b.color, 0.5);
       ctx.fillStyle   = b.color;
       ctx.beginPath(); ctx.arc(b.pos.x, b.pos.y, b.radius, 0, Math.PI * 2); ctx.fill();
       ctx.strokeStyle = WHITE; ctx.lineWidth = 1;
@@ -1711,6 +1716,7 @@ export class Game {
       // ── Layer 3: phoenix sprite (or fallback glow rings) ────────────────
       if (pimg && pimg.complete && pimg.naturalWidth > 0) {
         ctx.save();
+        ctx.globalCompositeOperation = 'lighter';   // additive resurrection glow
         ctx.globalAlpha          = Math.min(1, alpha * 1.8);
         ctx.imageSmoothingEnabled = false;
         ctx.drawImage(pimg, px - sprSz / 2, py - sprSz, sprSz, sprSz);
@@ -1813,6 +1819,7 @@ export class Game {
 
     drawHUD(ctx, this);
     drawVignette(ctx, this.overload, this.timeAlive);
+    this._drawScanlines(ctx);
     this._drawAnnouncement(ctx);
 
     if (this.upgradeUI) this.upgradeUI.draw(ctx, this.player);
@@ -2774,6 +2781,25 @@ export class Game {
     this._spawnSupportDrones();
   }
 
+  // Subtle CRT scanline overlay (screen space). Pattern built + cached once.
+  _drawScanlines(ctx) {
+    if (!this._scanlineBuilt) {
+      this._scanlineBuilt = true;
+      const c = document.createElement('canvas');
+      c.width = 1; c.height = 3;
+      const g = c.getContext('2d');
+      g.fillStyle = 'rgba(0,0,0,1)';
+      g.fillRect(0, 2, 1, 1);          // one dark line every 3 px
+      this._scanlinePattern = ctx.createPattern(c, 'repeat');
+    }
+    if (!this._scanlinePattern) return;
+    ctx.save();
+    ctx.globalAlpha = 0.07;
+    ctx.fillStyle = this._scanlinePattern;
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+    ctx.restore();
+  }
+
   _titanShockwave(t) {
     this._titanShockwaves.push({ pos: t.pos.clone(), radius: t.radius, alpha: 1.0, hit: false });
     this.screenShake.trigger(2, 0.1);
@@ -2798,9 +2824,10 @@ export class Game {
     this.floatingTexts.push(new FloatingText('+15 GRID CREDITS',   new Vec2(t.pos.x, t.pos.y - 30),         GREEN,  2.5));
     this.floatingTexts.push(new FloatingText('NETWORK STABILIZED', new Vec2(t.pos.x, t.pos.y - 60),         CYAN,   2.5));
     this.triggerAnnouncement('TITAN DEFEATED — NETWORK STABILIZED', GREEN);
-    this.screenShake.trigger(8, 0.8);
+    this.screenShake.trigger(14, 1.0);
     this.particles.spawnHitSparks(t.pos, YELLOW);
     this.particles.spawnHitSparks(t.pos, PURPLE);
+    this.particles.spawnExplosion(t.pos, [PURPLE, CYAN, YELLOW], 28);
     this.supportDrones    = [];
     this.titanBoss        = null;
     this._titanShockwaves = [];
@@ -2822,6 +2849,7 @@ export class Game {
 
     // Titan beams
     for (const b of this._titanBeams) {
+      drawGlow(ctx, b.pos.x, b.pos.y, b.radius * 2, PURPLE, Math.min(0.6, b.life));
       ctx.save();
       ctx.globalAlpha = Math.min(1, b.life);
       ctx.fillStyle   = PURPLE;
@@ -2846,7 +2874,8 @@ export class Game {
     ctx.beginPath(); ctx.arc(t.pos.x, t.pos.y, R + 18, 0, Math.PI * 2); ctx.stroke();
     ctx.restore();
 
-    // Sprite or fallback
+    // Sprite or fallback (additive body glow underneath)
+    drawGlow(ctx, t.pos.x, t.pos.y, R, PURPLE, 0.30);
     const spr = this._titanSprite;
     if (spr && spr.complete && spr.naturalWidth > 0) {
       ctx.imageSmoothingEnabled = false;

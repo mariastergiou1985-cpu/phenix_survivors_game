@@ -66,6 +66,26 @@ export class ParticleSystem {
     }
   }
 
+  // Short cyber/glitch spark burst on enemy death (color + white flecks).
+  spawnDeathBurst(pos, color) {
+    for (let i = 0; i < 8; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 60 + Math.random() * 110;
+      const vel   = new Vec2(Math.cos(angle) * speed, Math.sin(angle) * speed);
+      this._add(new Particle(pos, vel, i % 3 === 0 ? '#e6f5ff' : color, 2 + Math.random() * 2, 0.3));
+    }
+  }
+
+  // Bigger one-shot burst for boss death; cycles through `colors`.
+  spawnExplosion(pos, colors, count = 24) {
+    for (let i = 0; i < count; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 80 + Math.random() * 220;
+      const vel   = new Vec2(Math.cos(angle) * speed, Math.sin(angle) * speed);
+      this._add(new Particle(pos, vel, colors[i % colors.length], 3 + Math.random() * 3, 0.4 + Math.random() * 0.4));
+    }
+  }
+
   update(dt) {
     this.particles = this.particles.filter(p => {
       p.update(dt);
@@ -101,6 +121,20 @@ export class ScreenShake {
   }
 
   getOffset() { return [this._ox, this._oy]; }
+}
+
+// ─── Additive neon glow ───────────────────────────────────────────────────────
+// Soft additive halo (globalCompositeOperation 'lighter'). Cheap: two stacked
+// arcs, no gradients/offscreen. Always restores canvas state.
+export function drawGlow(ctx, x, y, r, color, alpha = 0.5) {
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.fillStyle = color;
+  ctx.globalAlpha = alpha;
+  ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+  ctx.globalAlpha = Math.min(1, alpha * 1.6);
+  ctx.beginPath(); ctx.arc(x, y, r * 0.55, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
 }
 
 // ─── VignetteEffect ───────────────────────────────────────────────────────────

@@ -5,6 +5,7 @@ import {
 import { clamp, distance, safeNormalize, randomPosition, randomRange, randomChoice, drawBar } from '../utils.js';
 import { DataCore } from './DataCore.js';
 import { FloatingText } from './FloatingText.js';
+import { drawGlow } from '../game/Effects.js?v=1';
 
 export class Enemy {
   constructor(enemyType, minute) {
@@ -175,6 +176,10 @@ export class Enemy {
     this.hp       -= damage;
     this.hitFlash  = 0.08;
 
+    // Floating damage number (render-only; short life avoids spam)
+    const dmgPos = this.pos.add(new Vec2(randomRange(-6, 6), -this.radius - 4));
+    game.floatingTexts.push(new FloatingText('-' + damage, dmgPos, WHITE, 0.5));
+
     if (this.carryingCore !== null) {
       const dropped = this.carryingCore;
       dropped.pos = this.pos.add(new Vec2(randomRange(-12, 12), randomRange(-12, 12)));
@@ -194,6 +199,7 @@ export class Enemy {
 
   _die(game) {
     game.audio?.playDeath();
+    game.particles.spawnDeathBurst(this.pos, this.color);
     game.player.kills++;
     game.addKillScore?.();
     let xp = this.isMegaBoss ? 42 : (this.isBoss() ? 12 : 1);
@@ -469,6 +475,12 @@ export class Enemy {
         ctx.strokeStyle = WHITE; ctx.lineWidth = 1;
         ctx.beginPath(); ctx.arc(this.pos.x, this.pos.y, this.radius, 0, Math.PI * 2); ctx.stroke();
       }
+    }
+
+    // Additive hit flash — visible over sprites (color depends on enemy type)
+    if (this.hitFlash > 0) {
+      const flashColor = this.isBoss() ? RED : (this.role === 'assassin' ? CYAN : WHITE);
+      drawGlow(ctx, this.pos.x, this.pos.y, this.radius + 4, flashColor, Math.min(0.6, this.hitFlash * 6));
     }
 
     // Small HP bar

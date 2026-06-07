@@ -1,4 +1,4 @@
-import { Vec2, WIDTH, HEIGHT, WORLD_W, WORLD_H, WORLD_MARGIN, PLAYER_RADIUS, CYAN, WHITE, YELLOW, GREEN } from '../constants.js?v=50';
+import { Vec2, WIDTH, HEIGHT, WORLD_W, WORLD_H, WORLD_MARGIN, PLAYER_RADIUS, CYAN, WHITE, YELLOW, GREEN, BLUE } from '../constants.js?v=50';
 import { clamp, safeNormalize } from '../utils.js';
 import { Projectile } from './Projectile.js?v=3';
 import { FloatingText } from './FloatingText.js';
@@ -213,15 +213,19 @@ export class Player {
       ctx.beginPath(); ctx.arc(this.pos.x, this.pos.y, PLAYER_RADIUS + 8, 0, Math.PI * 2); ctx.stroke();
     }
 
-    // Afterimage trail
+    // Afterimage trail — additive cyan streak with a softer blue outer glow
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
     for (const t of this._dashTrail) {
+      const r = PLAYER_RADIUS * (0.4 + 0.5 * t.alpha);
+      ctx.globalAlpha = t.alpha * 0.45;
+      ctx.fillStyle   = BLUE;
+      ctx.beginPath(); ctx.arc(t.x, t.y, r * 1.7, 0, Math.PI * 2); ctx.fill();
       ctx.globalAlpha = t.alpha;
-      ctx.fillStyle = CYAN;
-      ctx.beginPath();
-      ctx.arc(t.x, t.y, PLAYER_RADIUS * 0.65, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.fillStyle   = CYAN;
+      ctx.beginPath(); ctx.arc(t.x, t.y, r, 0, Math.PI * 2); ctx.fill();
     }
-    ctx.globalAlpha = 1;
+    ctx.restore();
 
     // Draw character sprite (64 px tall) or fallback colored circle
     const colors = this._getCharacterFallbackColors();

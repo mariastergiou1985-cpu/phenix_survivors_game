@@ -1,4 +1,4 @@
-import { Game } from './game/Game.js?v=114';
+import { Game } from './game/Game.js?v=115';
 import { AudioManager } from './audio/AudioManager.js?v=13';
 
 const canvas = document.getElementById('game');
