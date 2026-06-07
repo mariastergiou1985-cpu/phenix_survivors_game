@@ -2,7 +2,7 @@ import { Vec2, WIDTH, HEIGHT, ORANGE, GREEN, RED, YELLOW, CYAN, PURPLE } from '.
 import { randomChoice, randomRange } from '../utils.js';
 import { FloatingText } from '../entities/FloatingText.js';
 import { DataCore } from '../entities/DataCore.js';
-import { Enemy } from '../entities/Enemy.js?v=90';
+import { Enemy } from '../entities/Enemy.js?v=92';
 
 const EVENT_LABELS = {
   drone_swarm:    'DRONE SWARM INCOMING',

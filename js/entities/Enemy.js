@@ -185,10 +185,15 @@ export class Enemy {
       game.floatingTexts.push(new FloatingText('INTERCEPT!', this.pos.clone(), CYAN, 1.2));
     }
 
-    if (this.hp <= 0) this._die(game);
+    if (this.hp <= 0) {
+      this._die(game);
+    } else {
+      game.audio?.playHit();
+    }
   }
 
   _die(game) {
+    game.audio?.playDeath();
     game.player.kills++;
     game.addKillScore?.();
     let xp = this.isMegaBoss ? 42 : (this.isBoss() ? 12 : 1);
