@@ -1351,15 +1351,16 @@ export class Game {
     const carriedCount = this.enemies.filter(e => e.carryingCore !== null).length;
     const emptySlots   = this.matrices.reduce((sum, m) => sum + (m.capacity - m.stored), 0);
 
-    const chaosGain = groundCount * 0.055 + carriedCount * 0.15 + emptySlots * 0.065;
+    // Capped so falling behind on cores ramps pressure GRADUALLY instead of spiking.
+    const chaosGain = Math.min(0.28, groundCount * 0.010 + carriedCount * 0.025 + emptySlots * 0.006);
 
     if (chaosGain === 0) {
-      // Grid fully secure — drain at 0.7% per second (leaves residual tension)
-      this.overload = Math.max(0, this.overload - 0.7 * dt);
+      // Grid fully secure — drain at 1.0% per second
+      this.overload = Math.max(0, this.overload - 1.0 * dt);
     } else {
-      // Scale with time: x1.2 at min 0, +0.05 per minute, capped at x2.4
+      // Scale with time: x1.0 at min 0, +0.04 per minute, capped at x2.0
       const minutes  = this.timeAlive / 60;
-      const diffMult = Math.min(2.4, 1.2 + minutes * 0.05) * (1 - this.player.overloadDampening);
+      const diffMult = Math.min(2.0, 1.0 + minutes * 0.04) * (1 - this.player.overloadDampening);
       this.overload  = clamp(this.overload + chaosGain * diffMult * dt, 0, MAX_OVERLOAD);
     }
 
