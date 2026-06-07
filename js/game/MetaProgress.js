@@ -7,8 +7,13 @@ export const META_UPGRADES = [
   { key: 'firewall',     name: 'Firewall',       desc: '-5% Network Overload per level',     maxLevel: 5, baseCost: 10 },
 ];
 
+// Explicit per-level cost curves (steeper sink so a single run can't max everything).
+const COST_5 = [25, 50, 90, 140, 220];  // 5-level upgrades
+const COST_3 = [35, 90, 180];           // 3-level upgrades (e.g. Core Capacity)
+
 export function upgradeCost(upg, level) {
-  return upg.baseCost * (level + 1);
+  const table = upg.maxLevel <= 3 ? COST_3 : COST_5;
+  return table[Math.min(level, table.length - 1)];
 }
 
 export class MetaProgress {

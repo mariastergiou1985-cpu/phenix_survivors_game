@@ -87,7 +87,8 @@ export class AudioManager {
   _setupTrack(src, volume, assign) {
     try {
       const audio = new Audio(src);
-      audio.loop  = true;
+      audio.loop    = true;
+      audio.preload = 'auto';   // buffer aggressively so playback starts promptly
       const source = this.actx.createMediaElementSource(audio);
       const gain   = this.actx.createGain();
       gain.gain.value = volume;

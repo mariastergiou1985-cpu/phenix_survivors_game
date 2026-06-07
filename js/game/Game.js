@@ -21,7 +21,7 @@ import { SystemEventManager } from './Events.js?v=92';
 import { UpgradeUI }      from './UpgradeUI.js';
 import { weightedSample } from './Upgrades.js';
 import { drawHUD, drawEndScreen } from './HUD.js?v=31';
-import { MetaProgress, META_UPGRADES, upgradeCost } from './MetaProgress.js';
+import { MetaProgress, META_UPGRADES, upgradeCost } from './MetaProgress.js?v=1';
 
 export class Game {
   constructor() {
@@ -268,11 +268,11 @@ export class Game {
     if (this.rewardsGranted) return;
     this.rewardsGranted = true;
 
-    const timeCredits    = Math.floor(this.timeAlive / 30);
-    const killCredits    = Math.floor(this.player.kills / 5);
-    const coreCredits    = this.player.coresSecured * 2;
-    const survivalBonus  = this.timeAlive >= 180 ? 5 : 0;
-    const victoryCredits = this.victory ? 10 : 0;
+    const timeCredits    = Math.floor(this.timeAlive / 60);
+    const killCredits    = Math.floor(this.player.kills / 40);
+    const coreCredits    = Math.floor(this.player.coresSecured / 12);
+    const survivalBonus  = this.timeAlive >= 300 ? 5 : 0;
+    const victoryCredits = this.victory ? 15 : 0;
 
     this.runCreditsEarned = timeCredits + killCredits + coreCredits + survivalBonus + victoryCredits;
     this.meta.addCredits(this.runCreditsEarned);
@@ -524,8 +524,8 @@ export class Game {
   currentMinute()             { return Math.floor(this.timeAlive / 60); }
   coreVolatilityMultiplier()  { return 1 + (this.timeAlive / WIN_TIME_SECONDS) * 1.8; }
   overloadRateMultiplier()    { return 1 + Math.floor(this.timeAlive / 120) * 0.05; }
-  enemyCap()                  { return 12 + this.currentMinute() * 8; }
-  enemySpawnInterval()        { return Math.max(0.25, 1.0  - this.currentMinute() * 0.035); }
+  enemyCap()                  { return 18 + this.currentMinute() * 9; }
+  enemySpawnInterval()        { return Math.max(0.22, 0.8  - this.currentMinute() * 0.04); }
 
   chooseEnemyType() {
     const t      = this.timeAlive;
@@ -804,7 +804,9 @@ export class Game {
       this.finalMessage = 'CITY GRID TOTAL BLACKOUT';
       this.audio?.stopAll();
       this._grantRewards();
-    } else if (this.player.hp <= 0 && this.phoenixReviveTimer <= 0) {
+    } else if (this.player.hp <= 0 && this.phoenixReviveTimer <= 0 && !this.gameOver && !this.victory) {
+      // Phoenix revive is DEATH-ONLY: it fires solely when HP has reached 0,
+      // never from a timer/cooldown/visual schedule.
       if (this.phoenixReviveCount < 3) {
         this._triggerPhoenixRevive();
       } else {
@@ -1326,15 +1328,15 @@ export class Game {
     const carriedCount = this.enemies.filter(e => e.carryingCore !== null).length;
     const emptySlots   = this.matrices.reduce((sum, m) => sum + (m.capacity - m.stored), 0);
 
-    const chaosGain = groundCount * 0.034 + carriedCount * 0.09 + emptySlots * 0.041;
+    const chaosGain = groundCount * 0.055 + carriedCount * 0.15 + emptySlots * 0.065;
 
     if (chaosGain === 0) {
-      // Grid fully secure — drain at 1.2% per second
-      this.overload = Math.max(0, this.overload - 1.2 * dt);
+      // Grid fully secure — drain at 0.7% per second (leaves residual tension)
+      this.overload = Math.max(0, this.overload - 0.7 * dt);
     } else {
-      // Scale with time: x1.0 at min 0, +0.04 per minute, capped at x2.2
+      // Scale with time: x1.2 at min 0, +0.05 per minute, capped at x2.4
       const minutes  = this.timeAlive / 60;
-      const diffMult = Math.min(2.2, 1.0 + minutes * 0.04) * (1 - this.player.overloadDampening);
+      const diffMult = Math.min(2.4, 1.2 + minutes * 0.05) * (1 - this.player.overloadDampening);
       this.overload  = clamp(this.overload + chaosGain * diffMult * dt, 0, MAX_OVERLOAD);
     }
 
@@ -1346,8 +1348,10 @@ export class Game {
     this.spawnTimer += dt;
     if (this.spawnTimer >= this.enemySpawnInterval()) {
       this.spawnTimer = 0;
-      const count = Math.random() < Math.min(0.35, 0.20 + this.currentMinute() * 0.05) ? 2 : 1;
-      for (let i = 0; i < count; i++) this.spawnEnemy();
+      const minute = this.currentMinute();
+      let count = Math.random() < Math.min(0.55, 0.30 + minute * 0.06) ? 2 : 1;
+      if (minute >= 3 && Math.random() < 0.20) count++;   // occasional +1 after Titan
+      for (let i = 0; i < count; i++) this.spawnEnemy();   // spawnEnemy() still enforces enemyCap
     }
   }
 
@@ -1625,8 +1629,8 @@ export class Game {
     this.player.draw(ctx, this._lastMousePos || { x: 0, y: 0 });
 
     // 6 ── Projectiles, homing discs, EMP rings, particles
-    for (const p of this.projectiles) { drawGlow(ctx, p.pos.x, p.pos.y, 10, CYAN,  0.55); p.draw(ctx); }
-    for (const d of this.homingDiscs) { drawGlow(ctx, d.pos.x, d.pos.y, 12, GREEN, 0.50); d.draw(ctx); }
+    for (const p of this.projectiles) p.draw(ctx);   // keep character-specific attack sprite identity
+    for (const d of this.homingDiscs) d.draw(ctx);
     for (const r of this.empRings)    r.draw(ctx);
     for (const r of this._specialRings) {
       const alpha = r.life / r.maxLife;
@@ -1716,7 +1720,6 @@ export class Game {
       // ── Layer 3: phoenix sprite (or fallback glow rings) ────────────────
       if (pimg && pimg.complete && pimg.naturalWidth > 0) {
         ctx.save();
-        ctx.globalCompositeOperation = 'lighter';   // additive resurrection glow
         ctx.globalAlpha          = Math.min(1, alpha * 1.8);
         ctx.imageSmoothingEnabled = false;
         ctx.drawImage(pimg, px - sprSz / 2, py - sprSz, sprSz, sprSz);
