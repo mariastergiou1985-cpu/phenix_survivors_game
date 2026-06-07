@@ -2,7 +2,7 @@ import {
   Vec2, WIDTH, HEIGHT, WORLD_W, WORLD_H, WORLD_MARGIN,
   WIN_TIME_SECONDS, CORE_OVERLOAD_TICK_TIME, BASE_OVERLOAD_PER_CORE,
   OVERLOAD_PICKUP_REDUCTION, OVERLOAD_SLOT_REDUCTION,
-  MAX_OVERLOAD, PLAYER_RADIUS, CORE_RADIUS,
+  MAX_OVERLOAD, PLAYER_RADIUS, CORE_RADIUS, MATRIX_RADIUS,
   DARK_BG, GRID_LINE, BLACK, CYAN, RED, GREEN, YELLOW, ORANGE, WHITE, PURPLE,
   CORE_COLORS,
 } from '../constants.js?v=50';
@@ -97,6 +97,11 @@ export class Game {
     this._titanSprite.onerror = () => console.warn('[Boss] ai_overload_titan.png failed to load — using fallback');
     this._titanSprite.src = 'assets/enemies/bosses/ai_overload_titan.png?v=1';
 
+    // Preload Matrix Annihilator mini-boss sprite (existing asset)
+    this._annihilatorSprite = new Image();
+    this._annihilatorSprite.onerror = () => console.warn('[Boss] assets/enemies/bosses/matrix_annihilator.png failed to load — using fallback');
+    this._annihilatorSprite.src = 'assets/enemies/bosses/matrix_annihilator.png?v=1';
+
     // Game state management
     this.gameState = 'start_menu'; // 'start_menu' | 'character_select' | 'playing' | 'game_over' | 'victory' | 'exit_screen'
     this.selectedCharacter = null; // 'skeleton_warrior' | 'taekwondo_girl' | 'cyber_arm_hero'
@@ -177,6 +182,11 @@ export class Game {
     this.titanSpawnTimer  = 180;
     this._titanShockwaves = [];
     this._titanBeams      = [];
+
+    // Matrix Annihilator — second mini-boss, marches on a Power Matrix at ~7:30
+    this.annihilatorSpawned    = false;
+    this.annihilatorBoss       = null;
+    this.annihilatorSpawnTimer = 450;
 
     this.supportDrones     = [];
     this._droneFlameLast   = null;
@@ -787,6 +797,7 @@ export class Game {
     this._updateQuantumOverhaul(dt);
     this._updateAcidRain(dt);
     this._updateTitan(dt);
+    this._updateAnnihilator(dt);
     this._updateSupportDrones(dt);
     this.events.update(dt, this.timeAlive, this);
     this._updateGridCache(dt);
@@ -1270,6 +1281,18 @@ export class Game {
         if (this.titanBoss.hp <= 0) this._titanDie();
       }
 
+      // Check Matrix Annihilator hit
+      if (!hit && this.annihilatorBoss && this.annihilatorBoss.hp > 0 &&
+          distance(p.pos, this.annihilatorBoss.pos) < p.radius + this.annihilatorBoss.radius) {
+        this.annihilatorBoss.hp      -= p.damage;
+        this.annihilatorBoss.hitFlash = 0.08;
+        this.floatingTexts.push(new FloatingText('-' + p.damage, this.annihilatorBoss.pos.add(new Vec2(randomRange(-10, 10), -this.annihilatorBoss.radius - 6)), WHITE, 0.5));
+        this.particles.spawnHitSparks(p.pos, RED);
+        this.projectiles.splice(i, 1);
+        hit = true;
+        if (this.annihilatorBoss.hp <= 0) this._annihilatorDie();
+      }
+
       if (!hit && !p.alive()) this.projectiles.splice(i, 1);
     }
   }
@@ -1591,6 +1614,7 @@ export class Game {
 
     // 4b ── AI Overload Titan mini-boss
     this._drawTitan(ctx);
+    this._drawAnnihilator(ctx);
 
     // 4b ── Grid Cache supply drop crate
     if (this.gridCache) {
@@ -2915,6 +2939,191 @@ export class Game {
     ctx.fillStyle = PURPLE;
     ctx.textAlign = 'center';
     ctx.fillText('AI OVERLOAD TITAN', t.pos.x, by - 3);
+    ctx.textAlign = 'left';
+  }
+
+  // ── Matrix Annihilator mini-boss ──────────────────────────────────────────
+  _nearestMatrix(pos) {
+    if (!this.matrices.length) return null;
+    const withCores = this.matrices.filter(m => m.hasCore());
+    const pool = withCores.length ? withCores : this.matrices;
+    return pool.reduce((a, b) => distance(pos, a.pos) < distance(pos, b.pos) ? a : b);
+  }
+
+  _spawnAnnihilator() {
+    const R    = 46;
+    const side = Math.random() < 0.5 ? -1 : 1;
+    const pos  = new Vec2(
+      WORLD_W / 2 + side * (WORLD_W / 2 - WORLD_MARGIN - R - 30),
+      WORLD_H / 2
+    );
+    this.annihilatorBoss = {
+      pos, hp: 360, maxHp: 360,
+      radius: R, speed: 52, contactDamage: 12, hitFlash: 0,
+      targetMatrix: this._nearestMatrix(pos),
+      attackTimer: 3,
+    };
+    this.triggerAnnouncement('MATRIX ANNIHILATOR INBOUND', RED);
+    this.audio?.playBossSpawn();
+    this.screenShake.trigger(6, 0.5);
+    this.floatingTexts.push(
+      new FloatingText('MATRIX ANNIHILATOR INBOUND', new Vec2(WIDTH / 2 - 230, HEIGHT / 2 - 60), RED, 3.0)
+    );
+  }
+
+  // Ejects cores from the targeted Matrix (threatens it — never permanently destroys it).
+  _annihilatorStrike(a, target) {
+    let ejected = 0;
+    for (let i = 0; i < 2; i++) {
+      if (target.stored <= 0) break;
+      target.stored--;
+      const angle  = Math.random() * Math.PI * 2;
+      const radius = randomRange(50, 110);
+      const cpos   = target.pos.add(new Vec2(Math.cos(angle) * radius, Math.sin(angle) * radius));
+      this.groundCores.push(new DataCore(cpos, target.color));
+      ejected++;
+    }
+    target.hackTimer = 0.6;  // flash the Matrix warning ring
+    if (ejected > 0) {
+      this.floatingTexts.push(new FloatingText('MATRIX BREACH!', target.pos.clone(), RED, 1.2));
+      this.screenShake.trigger(4, 0.2);
+    }
+  }
+
+  _updateAnnihilator(dt) {
+    if (!this.annihilatorSpawned) {
+      this.annihilatorSpawnTimer -= dt;
+      if (this.annihilatorSpawnTimer > 0) return;
+      this.annihilatorSpawned = true;
+      this._spawnAnnihilator();
+    }
+
+    const a = this.annihilatorBoss;
+    if (!a || a.hp <= 0) return;
+
+    if (a.hitFlash > 0) a.hitFlash -= dt;
+
+    // Re-acquire a target Matrix if the current one is gone or drained
+    if (!a.targetMatrix || !this.matrices.includes(a.targetMatrix) || !a.targetMatrix.hasCore()) {
+      a.targetMatrix = this._nearestMatrix(a.pos);
+    }
+    const target = a.targetMatrix;
+
+    if (target) {
+      const toMatrix = target.pos.sub(a.pos);
+      const reach    = a.radius + MATRIX_RADIUS + 6;
+      if (toMatrix.length() > reach) {
+        a.pos.addMut(safeNormalize(toMatrix).scale(a.speed * dt));
+        a.attackTimer = Math.min(a.attackTimer, 2.5);
+      } else {
+        // Adjacent to the Matrix — periodically annihilate (eject) its cores
+        a.attackTimer -= dt;
+        if (a.attackTimer <= 0) {
+          a.attackTimer = 2.5;
+          this._annihilatorStrike(a, target);
+        }
+      }
+    }
+
+    a.pos.x = clamp(a.pos.x, WORLD_MARGIN + a.radius, WORLD_W - WORLD_MARGIN - a.radius);
+    a.pos.y = clamp(a.pos.y, WORLD_MARGIN + 40 + a.radius, WORLD_H - WORLD_MARGIN - a.radius);
+
+    // Contact damage (same pattern as the Titan)
+    if (distance(a.pos, this.player.pos) < a.radius + PLAYER_RADIUS) {
+      const push = safeNormalize(this.player.pos.sub(a.pos));
+      this.player.pos.addMut(push.scale(60 * dt));
+      if (this.player.dashTimer <= 0 && this.phoenixReviveTimer <= 0) {
+        const dmg = a.contactDamage * dt * (1 - this.player.contactDamageReduction);
+        this.player.hp = Math.max(0, this.player.hp - dmg);
+        if (this.playerHitCooldown <= 0) {
+          this.playerHitCooldown = 0.5;
+          this.screenShake.trigger(4, 0.15);
+          this.floatingTexts.push(new FloatingText(`-${Math.ceil(a.contactDamage)} HP`, this.player.pos.clone(), RED, 0.6));
+        }
+      }
+    }
+
+    if (a.hp <= 0) this._annihilatorDie();
+  }
+
+  _annihilatorDie() {
+    const a = this.annihilatorBoss;
+    if (!a) return;
+    this.score = (this.score ?? 0) + 300;
+    this.player.gainXp(25, this.floatingTexts);
+    this.meta.addCredits(15);
+    this.runCreditsEarned = (this.runCreditsEarned || 0) + 15;
+    this.overload = Math.max(0, this.overload - 10);
+    this.floatingTexts.push(new FloatingText('MATRIX ANNIHILATOR DESTROYED', a.pos.clone(),                    YELLOW, 2.5));
+    this.floatingTexts.push(new FloatingText('+15 GRID CREDITS',            new Vec2(a.pos.x, a.pos.y - 30),  GREEN,  2.5));
+    this.triggerAnnouncement('MATRIX ANNIHILATOR DESTROYED', GREEN);
+    this.screenShake.trigger(14, 1.0);
+    this.particles.spawnExplosion(a.pos, [RED, ORANGE, YELLOW], 28);
+    this.annihilatorBoss = null;
+  }
+
+  _drawAnnihilator(ctx) {
+    const a = this.annihilatorBoss;
+    if (!a || a.hp <= 0) return;
+    const R = a.radius;
+
+    // Targeting line to the Matrix it is threatening
+    if (a.targetMatrix && this.matrices.includes(a.targetMatrix)) {
+      ctx.save();
+      ctx.globalAlpha = 0.5 + 0.3 * Math.sin(Date.now() / 150);
+      ctx.strokeStyle = RED; ctx.lineWidth = 2;
+      ctx.setLineDash([8, 8]);
+      ctx.beginPath();
+      ctx.moveTo(a.pos.x, a.pos.y);
+      ctx.lineTo(a.targetMatrix.pos.x, a.targetMatrix.pos.y);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Pulsing aura
+    const pulse = 0.4 + 0.35 * Math.sin(Date.now() / 200);
+    ctx.save();
+    ctx.globalAlpha = pulse;
+    ctx.strokeStyle = RED; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(a.pos.x, a.pos.y, R + 10, 0, Math.PI * 2); ctx.stroke();
+    ctx.restore();
+
+    // Body glow + real sprite (fallback ONLY if the sprite failed to load)
+    drawGlow(ctx, a.pos.x, a.pos.y, R, RED, 0.30);
+    const spr = this._annihilatorSprite;
+    if (spr && spr.complete && spr.naturalWidth > 0) {
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(spr, a.pos.x - R, a.pos.y - R, R * 2, R * 2);
+      ctx.imageSmoothingEnabled = true;
+    } else {
+      ctx.fillStyle   = RED;
+      ctx.strokeStyle = WHITE; ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.roundRect(a.pos.x - R, a.pos.y - R, R * 2, R * 2, 8);
+      ctx.fill(); ctx.stroke();
+    }
+
+    // Hit flash
+    if (a.hitFlash > 0) {
+      ctx.save();
+      ctx.globalAlpha = 0.6;
+      ctx.fillStyle   = WHITE;
+      ctx.beginPath(); ctx.arc(a.pos.x, a.pos.y, R, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
+
+    // HP bar + name label
+    const bw = R * 2 + 20;
+    const bx = a.pos.x - bw / 2;
+    const by = a.pos.y - R - 20;
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(bx - 1, by - 1, bw + 2, 8);
+    ctx.fillStyle = RED;
+    ctx.fillRect(bx, by, Math.round(bw * (a.hp / a.maxHp)), 6);
+    ctx.font      = 'bold 10px Consolas, monospace';
+    ctx.fillStyle = RED;
+    ctx.textAlign = 'center';
+    ctx.fillText('MATRIX ANNIHILATOR', a.pos.x, by - 3);
     ctx.textAlign = 'left';
   }
 
