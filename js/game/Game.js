@@ -864,7 +864,7 @@ export class Game {
         this.player.hp = Math.min(this.player.maxHp, this.player.hp + 20);
         this.player.gainXp(10, this.floatingTexts);
         this.overload = Math.max(0, this.overload - 5);
-        this.floatingTexts.push(new FloatingText('GRID CACHE CLAIMED', this.player.pos.clone(), CYAN, 1.2));
+        this.floatingTexts.push(new FloatingText('GRID CACHE COLLECTED', this.player.pos.clone(), CYAN, 1.2));
         this.particles.spawnCorePickup(this.gridCache.pos, CYAN);
         this.score += 50;
         this.gridCache = null;
@@ -961,7 +961,7 @@ export class Game {
     const HUD_H  = 44;
     const MARGIN = 28;
     const A_SIZE = 14;
-    const blink  = 0.6 + 0.4 * Math.sin(Date.now() / 350);
+    const blink  = 0.65 + 0.35 * Math.sin(Date.now() / 300);  // floored so it never fully fades
 
     const onScreen = sx >= MARGIN && sx <= WIDTH - MARGIN &&
                      sy >= HUD_H + MARGIN && sy <= HEIGHT - MARGIN;
@@ -970,19 +970,30 @@ export class Game {
     ctx.globalAlpha = blink;
 
     if (onScreen) {
-      // ▼ cyan triangle pointing down, above the crate
-      const ax = sx;
-      const ay = sy - 38;
+      // ▼ bright cyan triangle pointing down at the crate, with glow, gold outline, and label
+      const S   = 16;
+      const bob = Math.sin(Date.now() / 200) * 4;   // gentle vertical bob
+      const ax  = sx;
+      const ay  = sy - 40 + bob;
+      drawGlow(ctx, ax, ay - S * 0.6, S * 1.6, CYAN, 0.35 * blink);
       ctx.fillStyle   = CYAN;
-      ctx.strokeStyle = '#004455';
-      ctx.lineWidth   = 1;
+      ctx.strokeStyle = YELLOW;
+      ctx.lineWidth   = 2;
       ctx.beginPath();
-      ctx.moveTo(ax,          ay);
-      ctx.lineTo(ax - A_SIZE, ay - A_SIZE * 1.2);
-      ctx.lineTo(ax + A_SIZE, ay - A_SIZE * 1.2);
+      ctx.moveTo(ax,     ay);
+      ctx.lineTo(ax - S, ay - S * 1.2);
+      ctx.lineTo(ax + S, ay - S * 1.2);
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
+      // "GRID CACHE" label above the arrow (dark shadow for readability)
+      ctx.font      = 'bold 11px Consolas, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = 'rgba(0,0,0,0.7)';
+      ctx.fillText('GRID CACHE', ax + 1, ay - S * 1.2 - 5);
+      ctx.fillStyle = YELLOW;
+      ctx.fillText('GRID CACHE', ax,     ay - S * 1.2 - 6);
+      ctx.textAlign = 'left';
     } else {
       // Edge indicator — clamp to screen bounds, rotate toward crate
       const ex    = Math.max(MARGIN, Math.min(WIDTH  - MARGIN, sx));
@@ -1729,17 +1740,23 @@ export class Game {
     if (this.gridCache) {
       const { pos, timer } = this.gridCache;
       const sz = 48;
-      // Pulse glow — two rings for visibility
-      const pulse = 0.5 + 0.4 * Math.sin(Date.now() / 300);
-      drawGlow(ctx, pos.x, pos.y, sz / 2, CYAN, pulse * 0.4);
+      const r0 = sz / 2;
+      // Continuous neon beacon — breathing pulse (alpha + gentle radius expansion)
+      const ph     = Date.now() / 240;
+      const pulse  = 0.5 + 0.5 * Math.sin(ph);   // 0..1 alpha pulse
+      const expand = 1 + 0.16 * Math.sin(ph);    // breathing radius
+      // Layered additive glow: gold outer, purple secondary, bright cyan core
+      drawGlow(ctx, pos.x, pos.y, (r0 + 22) * expand, YELLOW, 0.22 + 0.16 * pulse);
+      drawGlow(ctx, pos.x, pos.y, (r0 + 13) * expand, PURPLE, 0.24 + 0.16 * pulse);
+      drawGlow(ctx, pos.x, pos.y,  r0 + 4,            CYAN,   0.45 + 0.25 * pulse);
+      // Pulsing neon rings — cyan inner + expanding gold outer
       ctx.save();
-      ctx.strokeStyle = CYAN;
-      ctx.globalAlpha = pulse;
-      ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.arc(pos.x, pos.y, sz / 2 + 6,  0, Math.PI * 2); ctx.stroke();
-      ctx.lineWidth = 1;
-      ctx.globalAlpha = pulse * 0.5;
-      ctx.beginPath(); ctx.arc(pos.x, pos.y, sz / 2 + 14, 0, Math.PI * 2); ctx.stroke();
+      ctx.globalAlpha = 0.55 + 0.45 * pulse;
+      ctx.strokeStyle = CYAN;   ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(pos.x, pos.y, (r0 + 6)  * expand, 0, Math.PI * 2); ctx.stroke();
+      ctx.globalAlpha = 0.30 + 0.35 * pulse;
+      ctx.strokeStyle = YELLOW; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(pos.x, pos.y, (r0 + 16) * expand, 0, Math.PI * 2); ctx.stroke();
       ctx.restore();
       // Sprite or cyan-square fallback
       const spr = this._gridCacheSprite;
