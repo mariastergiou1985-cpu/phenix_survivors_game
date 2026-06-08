@@ -72,14 +72,14 @@ export class Enemy {
       case 'Glitch Drone':
         this.shootInterval = 2.5;
         this.bulletSpeed   = 380;
-        this.bulletDamage  = 5;
+        this.bulletDamage  = 4;
         this.bulletRadius  = 5;
         this.bulletColor   = CYAN;
         break;
       case 'Security Defector Mech':
         this.shootInterval = 3.5;
         this.bulletSpeed   = 250;
-        this.bulletDamage  = 15;
+        this.bulletDamage  = 11;
         this.bulletRadius  = 9;
         this.bulletColor   = ORANGE;
         break;
@@ -93,14 +93,14 @@ export class Enemy {
       case 'Cyber Shooter':
         this.shootInterval = 2.2;
         this.bulletSpeed   = 340;
-        this.bulletDamage  = 8;
+        this.bulletDamage  = 6;
         this.bulletRadius  = 6;
         this.bulletColor   = CYAN;
         break;
       case 'Heavy Mech':
         this.shootInterval = 4.5;
         this.bulletSpeed   = 180;
-        this.bulletDamage  = 15;
+        this.bulletDamage  = 11;
         this.bulletRadius  = 9;
         this.bulletColor   = ORANGE;
         break;

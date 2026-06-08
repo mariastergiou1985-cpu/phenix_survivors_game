@@ -13,7 +13,7 @@ import { DataCore }       from '../entities/DataCore.js';
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=10';
 import { Player }         from '../entities/Player.js?v=56';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=3';
-import { Enemy }          from '../entities/Enemy.js?v=96';
+import { Enemy }          from '../entities/Enemy.js?v=97';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=1';
 
 import { ParticleSystem, ScreenShake, drawVignette, EMPRing, drawGlow } from './Effects.js?v=2';
@@ -318,9 +318,9 @@ export class Game {
     else if (this.comboCount >= 2)  bonus = 5;
     this.score += 10 + bonus;
 
-    // HP CELL drop: guaranteed one healing pickup every 20 kills, near the defeated enemy.
+    // HP CELL drop: guaranteed one healing pickup every 40 kills, near the defeated enemy.
     // Does not touch overload / credits / score / combo, and never replaces Phoenix revives.
-    if (pos && ++this.killsSinceHealthDrop >= 20) {
+    if (pos && ++this.killsSinceHealthDrop >= 40) {
       this.killsSinceHealthDrop = 0;
       const dropPos = pos.clone().add(new Vec2(randomRange(-10, 10), -8));
       this.healthPickups.push({ pos: dropPos, timer: 25 });
@@ -914,8 +914,8 @@ export class Game {
 
       if (distance(this.player.pos, hp.pos) < PLAYER_RADIUS + PICKUP_R) {
         this.player.hp = Math.min(this.player.maxHp, this.player.hp + this.player.maxHp * 0.25);
-        this.floatingTexts.push(new FloatingText('+25% HP', this.player.pos.clone(), GREEN, 1.2));
-        this.particles.spawnCorePickup(hp.pos, GREEN);
+        this.floatingTexts.push(new FloatingText('+25% HP', this.player.pos.clone(), RED, 1.2));
+        this.particles.spawnCorePickup(hp.pos, RED);
         this.audio?.playCorePickup();
         this.healthPickups.splice(i, 1);
         continue;
@@ -934,14 +934,14 @@ export class Game {
       const y = hp.pos.y;
       const pulse = 0.6 + 0.4 * Math.sin(this.timeAlive * 6 + x);
 
-      // Soft green glow + disc
-      drawGlow(ctx, x, y, R + 8, GREEN, 0.35 * pulse);
+      // Soft red glow + disc
+      drawGlow(ctx, x, y, R + 8, RED, 0.35 * pulse);
       ctx.beginPath();
       ctx.arc(x, y, R, 0, Math.PI * 2);
-      ctx.fillStyle   = '#0c3a1e';
+      ctx.fillStyle   = '#3a0c12';
       ctx.fill();
       ctx.lineWidth   = 2.5;
-      ctx.strokeStyle = GREEN;
+      ctx.strokeStyle = RED;
       ctx.stroke();
 
       // White cyber-cross (med icon)
