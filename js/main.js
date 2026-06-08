@@ -1,4 +1,4 @@
-import { Game } from './game/Game.js?v=129';
+import { Game } from './game/Game.js?v=130';
 import { AudioManager } from './audio/AudioManager.js?v=14';
 
 const canvas = document.getElementById('game');
@@ -56,6 +56,7 @@ window.addEventListener('keydown', e => {
   if (key === 'q') game.activateSonicPulse(mousePos);
   if (key === 'e') game.activateEMPCloud();
   if (key === 'e') game.activateSpecial();
+  if (key === ' ') game.activateThunderSolo();   // SPACE ultimate (skeleton only; self-guards)
   if (key === 'm') game.audio?.toggleMute();
   if (key === 'f') {
     if (!document.fullscreenElement) {

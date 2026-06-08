@@ -11,10 +11,7 @@ export function drawHUD(ctx, game) {
   drawText(ctx, `TIME ${mins}:${secs}`, 18, 30, CYAN);
 
   // HP is shown above the player character (world-space); top-HUD HP bar removed as redundant.
-
-  // Stamina bar
-  drawText(ctx, 'STAM', 335, 30, WHITE);
-  drawBar(ctx, 390, 12, 130, 18, game.player.stamina, game.player.maxStamina, CYAN);
+  // Stamina bar removed from the HUD (dash still uses stamina internally; just not displayed).
 
   // Overload bar
   let overloadColor = CYAN;

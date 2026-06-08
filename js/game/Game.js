@@ -20,7 +20,7 @@ import { ParticleSystem, ScreenShake, drawVignette, EMPRing, drawGlow } from './
 import { SystemEventManager } from './Events.js?v=94';
 import { UpgradeUI }      from './UpgradeUI.js';
 import { weightedSample } from './Upgrades.js';
-import { drawHUD, drawEndScreen } from './HUD.js?v=32';
+import { drawHUD, drawEndScreen } from './HUD.js?v=33';
 import { MetaProgress, META_UPGRADES, upgradeCost } from './MetaProgress.js?v=1';
 
 export class Game {
@@ -84,6 +84,14 @@ export class Game {
     this._gridCacheSprite.onerror = () => console.warn('[Assets] grid_cache_crate not found — cyan fallback will be used');
     this._gridCacheSprite.src = 'assets/events/supply_drop/grid_cache_crate.png';
 
+    // Preload Thunder Solo ultimate sprites (Cyber Skeleton Warrior)
+    this._thunderGuitarSprite = new Image();
+    this._thunderGuitarSprite.onerror = () => console.warn('[Ultimate] thunder_solo_guitar.png not found — drawn fallback will be used');
+    this._thunderGuitarSprite.src = 'assets/abilities/ultimates/thunder_solo_guitar.png';
+    this._lightningStormSprite = new Image();
+    this._lightningStormSprite.onerror = () => console.warn('[Ultimate] cyan_lightning_storm.png not found — drawn fallback will be used');
+    this._lightningStormSprite.src = 'assets/abilities/ultimates/cyan_lightning_storm.png';
+
     // Preload acid rain weather sprites
     this._acidRainFallImg = new Image();
     this._acidRainFallImg.onerror = () => console.warn('[Weather] acid_rain_fall.png not found — using line fallback');
@@ -134,6 +142,7 @@ export class Game {
     this.homingDiscs  = [];
     this.empRings     = [];
     this._specialRings    = [];
+    this.thunderSolo      = null;   // Thunder Solo ultimate state while active
     this._specialBeams    = [];
     this._specialTrail    = [];
     this._taekwondoDmgSet = new Set();
@@ -738,6 +747,166 @@ export class Game {
     this.floatingTexts.push(new FloatingText('STUN PULSE!', p.pos.clone(), CYAN, 0.9));
   }
 
+  // ── Thunder Solo ultimate (Cyber Skeleton Warrior, SPACE, 100 mana) ──────────
+  activateThunderSolo() {
+    if (this.gameState !== 'playing' || this.paused || this.gameOver || this.victory || this.upgradeUI) return;
+    const p = this.player;
+    if (p.selectedCharacter !== 'skeleton_warrior') return;  // only this character has an ultimate
+    if (this.thunderSolo) return;                            // already running
+    if (p.mana < p.maxMana) {
+      this.floatingTexts.push(new FloatingText('NOT ENOUGH MANA', p.pos.clone(), CYAN, 1.0));
+      return;
+    }
+    p.mana = 0;                                              // consume full mana
+    this.thunderSolo = { phase: 'windup', t: 0, strikeTimer: 0, bolts: [] };
+    this.screenShake.trigger(4, 0.2);
+    this.floatingTexts.push(new FloatingText('THUNDER SOLO!', p.pos.clone(), CYAN, 1.4));
+  }
+
+  _updateThunderSolo(dt) {
+    const ts = this.thunderSolo;
+    if (!ts) return;
+    const WINDUP = 0.5, STORM = 2.0, FADE = 0.4;
+    ts.t += dt;
+
+    // Fade out existing bolt visuals
+    for (const b of ts.bolts) b.life -= dt;
+    ts.bolts = ts.bolts.filter(b => b.life > 0);
+
+    if (ts.phase === 'windup') {
+      if (ts.t >= WINDUP) { ts.phase = 'storm'; ts.t = 0; }
+      return;
+    }
+
+    if (ts.phase === 'storm') {
+      ts.strikeTimer -= dt;
+      if (ts.strikeTimer <= 0) {
+        ts.strikeTimer = 0.09;
+        this._spawnThunderStrike();
+      }
+      if (ts.t >= STORM) { ts.phase = 'fade'; ts.t = 0; }
+      return;
+    }
+
+    // fade
+    if (ts.t >= FADE) this.thunderSolo = null;
+  }
+
+  _spawnThunderStrike() {
+    const ts = this.thunderSolo;
+    // Target an alive enemy if any, else a random on-screen world point (spectacle)
+    let tx, ty;
+    if (this.enemies.length > 0 && Math.random() < 0.8) {
+      const e = this.enemies[(Math.random() * this.enemies.length) | 0];
+      tx = e.pos.x; ty = e.pos.y;
+    } else {
+      tx = this.camera.x + randomRange(40, WIDTH - 40);
+      ty = this.camera.y + randomRange(60, HEIGHT - 40);
+    }
+    ts.bolts.push({ x: tx, y: ty, life: 0.22, maxLife: 0.22 });
+
+    // Cyan shockwave + sparks + shake
+    this._specialRings.push({ pos: new Vec2(tx, ty), radius: 0, maxRadius: 95,
+                               life: 0.45, maxLife: 0.45, color1: CYAN, color2: '#ffffff' });
+    this.particles.spawnHitSparks(new Vec2(tx, ty), CYAN);
+    this.screenShake.trigger(5, 0.12);
+
+    // AoE damage within ~95px — normal enemies obliterated, bosses heavily but safely chunked
+    const R = 95;
+    for (let i = this.enemies.length - 1; i >= 0; i--) {
+      const e = this.enemies[i];
+      if (distance(e.pos, new Vec2(tx, ty)) < R + e.radius) {
+        e.takeHit((e.isBoss() || e.isMegaBoss) ? 16 : 80, this);
+      }
+    }
+    const hitBoss = (boss, die) => {
+      if (boss && boss.hp > 0 && distance(boss.pos, new Vec2(tx, ty)) < R + boss.radius) {
+        boss.hp -= 16; boss.hitFlash = 0.08;
+        if (boss.hp <= 0) die.call(this);
+      }
+    };
+    hitBoss(this.titanBoss,       this._titanDie);
+    hitBoss(this.annihilatorBoss, this._annihilatorDie);
+    hitBoss(this.bloodfangBoss,   this._bloodfangDie);
+  }
+
+  // World-space FX (called inside the camera block)
+  _drawThunderSoloWorld(ctx) {
+    const ts = this.thunderSolo;
+    if (!ts) return;
+    const p = this.player;
+
+    // Guitar sprite over the player (windup + early storm)
+    const guitarAlpha = ts.phase === 'windup' ? Math.min(1, ts.t / 0.25)
+                       : ts.phase === 'storm' ? Math.max(0, 1 - ts.t / 1.2) : 0;
+    const gspr = this._thunderGuitarSprite;
+    if (guitarAlpha > 0) {
+      ctx.save();
+      ctx.globalAlpha = guitarAlpha;
+      const gh = 96;
+      if (gspr && gspr.complete && gspr.naturalWidth > 0) {
+        const gw = Math.round(gspr.naturalWidth * (gh / gspr.naturalHeight));
+        ctx.drawImage(gspr, Math.round(p.pos.x - gw / 2), Math.round(p.pos.y - gh - 4), gw, gh);
+      } else {
+        drawGlow(ctx, p.pos.x, p.pos.y - 30, 40, CYAN, 0.6);
+      }
+      ctx.restore();
+    }
+
+    // Lightning bolts — jagged line from top of screen down to each strike point
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (const b of ts.bolts) {
+      const a = b.life / b.maxLife;
+      const topY = this.camera.y - 10;
+      ctx.globalAlpha = a;
+      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 4;
+      this._strokeBolt(ctx, b.x, topY, b.x, b.y);
+      ctx.strokeStyle = CYAN;      ctx.lineWidth = 9; ctx.globalAlpha = a * 0.6;
+      this._strokeBolt(ctx, b.x, topY, b.x, b.y);
+    }
+    ctx.restore();
+  }
+
+  _strokeBolt(ctx, x0, y0, x1, y1) {
+    const segs = 7;
+    ctx.beginPath();
+    ctx.moveTo(x0, y0);
+    for (let i = 1; i < segs; i++) {
+      const f = i / segs;
+      const x = x0 + (x1 - x0) * f + (Math.random() - 0.5) * 26;
+      const y = y0 + (y1 - y0) * f;
+      ctx.lineTo(x, y);
+    }
+    ctx.lineTo(x1, y1);
+    ctx.stroke();
+  }
+
+  // Screen-space FX (called after the camera restore, before the HUD)
+  _drawThunderSoloScreen(ctx) {
+    const ts = this.thunderSolo;
+    if (!ts) return;
+    // Dramatic darken — ramps in during windup, holds through storm, fades out
+    let dark = 0;
+    if (ts.phase === 'windup')     dark = 0.35 * Math.min(1, ts.t / 0.5);
+    else if (ts.phase === 'storm') dark = 0.35;
+    else                           dark = 0.35 * Math.max(0, 1 - ts.t / 0.4);
+    if (dark > 0) { ctx.fillStyle = `rgba(2,6,16,${dark})`; ctx.fillRect(0, 0, WIDTH, HEIGHT); }
+
+    // Fullscreen cyan lightning-storm sprite flashing during the storm
+    if (ts.phase === 'storm') {
+      const spr = this._lightningStormSprite;
+      const flash = 0.25 + 0.35 * Math.abs(Math.sin(ts.t * 22));
+      ctx.save();
+      ctx.globalAlpha = flash;
+      ctx.globalCompositeOperation = 'lighter';
+      if (spr && spr.complete && spr.naturalWidth > 0) {
+        ctx.drawImage(spr, 0, 0, WIDTH, HEIGHT);
+      }
+      ctx.restore();
+    }
+  }
+
   selectUpgrade(index) {
     if (!this.upgradeUI || index >= this.upgradeUI.choices.length) return;
     this.upgradeUI.choices[index].apply(this.player);
@@ -825,6 +994,7 @@ export class Game {
     this._updateFloatingTexts(dt);
     this._updateEffects(dt);
     this._updateSpecialEffects(dt);
+    this._updateThunderSolo(dt);
     this._checkPlayerEnemyCollisions(dt);
     this._updateEnemyBullets(dt);
     this._updateAbilityTimers(dt);
@@ -2029,7 +2199,11 @@ export class Game {
     // Floating texts (world-space)
     for (const ft of this.floatingTexts) ft.draw(ctx);
 
+    this._drawThunderSoloWorld(ctx);   // ultimate bolts/guitar on top of world entities
+
     ctx.restore();  // end camera-space block
+
+    this._drawThunderSoloScreen(ctx);  // darken + fullscreen lightning flash (under HUD)
 
     // ── Screen-space block (HUD, overlays) ───────────────────────────────────
     this._drawAcidRain(ctx);
