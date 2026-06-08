@@ -758,7 +758,8 @@ export class Game {
       return;
     }
     p.mana = 0;                                              // consume full mana
-    this.thunderSolo = { phase: 'windup', t: 0, strikeTimer: 0, bolts: [] };
+    this.thunderSolo = { phase: 'windup', t: 0, totalT: 0, strikeTimer: 0, bolts: [],
+                         bossDmgThisSec: 0, bossDmgTimer: 1.0 };
     this.screenShake.trigger(4, 0.2);
     this.floatingTexts.push(new FloatingText('THUNDER SOLO!', p.pos.clone(), CYAN, 1.4));
   }
@@ -766,8 +767,9 @@ export class Game {
   _updateThunderSolo(dt) {
     const ts = this.thunderSolo;
     if (!ts) return;
-    const WINDUP = 0.5, STORM = 2.0, FADE = 0.4;
+    const WINDUP = 0.8, STORM = 20.0, FADE = 0.5;
     ts.t += dt;
+    ts.totalT += dt;   // total elapsed across all phases (drives the ~7s guitar)
 
     // Fade out existing bolt visuals
     for (const b of ts.bolts) b.life -= dt;
@@ -779,9 +781,13 @@ export class Game {
     }
 
     if (ts.phase === 'storm') {
+      // Per-second boss-damage budget reset (keeps bosses alive through the long storm)
+      ts.bossDmgTimer -= dt;
+      if (ts.bossDmgTimer <= 0) { ts.bossDmgTimer = 1.0; ts.bossDmgThisSec = 0; }
+
       ts.strikeTimer -= dt;
       if (ts.strikeTimer <= 0) {
-        ts.strikeTimer = 0.09;
+        ts.strikeTimer = 0.13;
         this._spawnThunderStrike();
       }
       if (ts.t >= STORM) { ts.phase = 'fade'; ts.t = 0; }
@@ -794,34 +800,56 @@ export class Game {
 
   _spawnThunderStrike() {
     const ts = this.thunderSolo;
-    // Target an alive enemy if any, else a random on-screen world point (spectacle)
+    // Prefer enemies (and clusters) — avoid wasting bolts on empty space
     let tx, ty;
-    if (this.enemies.length > 0 && Math.random() < 0.8) {
+    if (this.enemies.length > 0 && Math.random() < 0.92) {
       const e = this.enemies[(Math.random() * this.enemies.length) | 0];
       tx = e.pos.x; ty = e.pos.y;
     } else {
       tx = this.camera.x + randomRange(40, WIDTH - 40);
       ty = this.camera.y + randomRange(60, HEIGHT - 40);
     }
-    ts.bolts.push({ x: tx, y: ty, life: 0.22, maxLife: 0.22 });
+    // Precompute the jagged path once so all bolt color layers align (stable per bolt)
+    const offsets = [];
+    for (let s = 0; s < 6; s++) offsets.push((Math.random() - 0.5) * 24);
+    ts.bolts.push({ x: tx, y: ty, life: 0.3, maxLife: 0.3, offsets });
 
-    // Cyan shockwave + sparks + shake
-    this._specialRings.push({ pos: new Vec2(tx, ty), radius: 0, maxRadius: 95,
-                               life: 0.45, maxLife: 0.45, color1: CYAN, color2: '#ffffff' });
+    // Small cyan ground shockwave + sparks + a calm shake
+    this._specialRings.push({ pos: new Vec2(tx, ty), radius: 0, maxRadius: 75,
+                               life: 0.4, maxLife: 0.4, color1: CYAN, color2: '#ffffff' });
     this.particles.spawnHitSparks(new Vec2(tx, ty), CYAN);
-    this.screenShake.trigger(5, 0.12);
+    // Intermittent shake only — a constant rumble over the 20s storm would be fatiguing
+    if (Math.random() < 0.35) this.screenShake.trigger(3, 0.08);
+
+    // Shared per-second boss-damage budget: ≤10 dmg/s so bosses survive the long storm but
+    // still take heavy chip damage. Normal enemies are unaffected (full 80 each strike).
+    const BOSS_DPS_CAP = 10;
+    const bossHit = (perStrike) => {
+      const budget = BOSS_DPS_CAP - ts.bossDmgThisSec;
+      if (budget <= 0) return 0;
+      const dmg = Math.min(perStrike, budget);
+      ts.bossDmgThisSec += dmg;
+      return dmg;
+    };
 
     // AoE damage within ~95px — normal enemies obliterated, bosses heavily but safely chunked
     const R = 95;
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       const e = this.enemies[i];
       if (distance(e.pos, new Vec2(tx, ty)) < R + e.radius) {
-        e.takeHit((e.isBoss() || e.isMegaBoss) ? 16 : 80, this);
+        if (e.isBoss() || e.isMegaBoss) {
+          const dmg = bossHit(16);
+          if (dmg > 0) e.takeHit(dmg, this);
+        } else {
+          e.takeHit(80, this);
+        }
       }
     }
     const hitBoss = (boss, die) => {
       if (boss && boss.hp > 0 && distance(boss.pos, new Vec2(tx, ty)) < R + boss.radius) {
-        boss.hp -= 16; boss.hitFlash = 0.08;
+        const dmg = bossHit(16);
+        if (dmg <= 0) return;
+        boss.hp -= dmg; boss.hitFlash = 0.08;
         if (boss.hp <= 0) die.call(this);
       }
     };
@@ -836,14 +864,25 @@ export class Game {
     if (!ts) return;
     const p = this.player;
 
-    // Guitar sprite over the player (windup + early storm)
-    const guitarAlpha = ts.phase === 'windup' ? Math.min(1, ts.t / 0.25)
-                       : ts.phase === 'storm' ? Math.max(0, 1 - ts.t / 1.2) : 0;
+    // Guitar visibility runs on total elapsed time (~7s): fade-in, hold, fade-out, + gentle pulse
+    const gt = ts.totalT;
+    let guitarAlpha = 0;
+    if (gt < 0.2)      guitarAlpha = gt / 0.2;
+    else if (gt < 6.5) guitarAlpha = 1;
+    else if (gt < 7.0) guitarAlpha = 1 - (gt - 6.5) / 0.5;
+    guitarAlpha *= 0.85 + 0.15 * Math.sin(gt * 8);
+
+    // Pulsing cyan glow around the player for as long as the guitar shows (the skeleton "plays" it)
+    if (gt < 7.0) {
+      drawGlow(ctx, p.pos.x, p.pos.y, 42, CYAN, 0.28 + 0.22 * Math.abs(Math.sin(gt * 12)));
+    }
+
+    // Guitar sprite over the player — smaller than the 64px character (~58px), readable
     const gspr = this._thunderGuitarSprite;
     if (guitarAlpha > 0) {
       ctx.save();
       ctx.globalAlpha = guitarAlpha;
-      const gh = 96;
+      const gh = 58;
       if (gspr && gspr.complete && gspr.naturalWidth > 0) {
         const gw = Math.round(gspr.naturalWidth * (gh / gspr.naturalHeight));
         ctx.drawImage(gspr, Math.round(p.pos.x - gw / 2), Math.round(p.pos.y - gh - 4), gw, gh);
@@ -853,30 +892,41 @@ export class Game {
       ctx.restore();
     }
 
-    // Lightning bolts — jagged line from top of screen down to each strike point
+    // Vertical lightning bolts — blue glow + cyan body + white core (aligned), with ground impact flash
+    const topY = this.camera.y - 10;
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     for (const b of ts.bolts) {
       const a = b.life / b.maxLife;
-      const topY = this.camera.y - 10;
-      ctx.globalAlpha = a;
-      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 4;
-      this._strokeBolt(ctx, b.x, topY, b.x, b.y);
-      ctx.strokeStyle = CYAN;      ctx.lineWidth = 9; ctx.globalAlpha = a * 0.6;
-      this._strokeBolt(ctx, b.x, topY, b.x, b.y);
+      ctx.globalAlpha = a * 0.45; ctx.strokeStyle = '#468cff'; ctx.lineWidth = 10;
+      this._strokeBolt(ctx, b.x, topY, b.x, b.y, b.offsets);
+      ctx.globalAlpha = a * 0.9;  ctx.strokeStyle = CYAN;      ctx.lineWidth = 5;
+      this._strokeBolt(ctx, b.x, topY, b.x, b.y, b.offsets);
+      ctx.globalAlpha = a;        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2;
+      this._strokeBolt(ctx, b.x, topY, b.x, b.y, b.offsets);
     }
     ctx.restore();
+
+    // Ground impact flash per bolt (bright early, fades fast)
+    for (const b of ts.bolts) {
+      const a = b.life / b.maxLife;
+      drawGlow(ctx, b.x, b.y, 8 + 20 * a, CYAN, 0.7 * a);
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = a;
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath(); ctx.arc(b.x, b.y, 4 * a + 1.5, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
   }
 
-  _strokeBolt(ctx, x0, y0, x1, y1) {
-    const segs = 7;
+  _strokeBolt(ctx, x0, y0, x1, y1, offsets) {
+    const segs = offsets.length + 1;
     ctx.beginPath();
     ctx.moveTo(x0, y0);
     for (let i = 1; i < segs; i++) {
       const f = i / segs;
-      const x = x0 + (x1 - x0) * f + (Math.random() - 0.5) * 26;
-      const y = y0 + (y1 - y0) * f;
-      ctx.lineTo(x, y);
+      ctx.lineTo(x0 + (x1 - x0) * f + offsets[i - 1], y0 + (y1 - y0) * f);
     }
     ctx.lineTo(x1, y1);
     ctx.stroke();
@@ -886,25 +936,12 @@ export class Game {
   _drawThunderSoloScreen(ctx) {
     const ts = this.thunderSolo;
     if (!ts) return;
-    // Dramatic darken — ramps in during windup, holds through storm, fades out
+    // Light, brief darken only — keeps gameplay readable (no fullscreen storm overlay)
     let dark = 0;
-    if (ts.phase === 'windup')     dark = 0.35 * Math.min(1, ts.t / 0.5);
-    else if (ts.phase === 'storm') dark = 0.35;
-    else                           dark = 0.35 * Math.max(0, 1 - ts.t / 0.4);
+    if (ts.phase === 'windup')     dark = 0.28 * Math.min(1, ts.t / 0.8);
+    else if (ts.phase === 'storm') dark = 0.10;
+    else                           dark = 0.10 * Math.max(0, 1 - ts.t / 0.5);
     if (dark > 0) { ctx.fillStyle = `rgba(2,6,16,${dark})`; ctx.fillRect(0, 0, WIDTH, HEIGHT); }
-
-    // Fullscreen cyan lightning-storm sprite flashing during the storm
-    if (ts.phase === 'storm') {
-      const spr = this._lightningStormSprite;
-      const flash = 0.25 + 0.35 * Math.abs(Math.sin(ts.t * 22));
-      ctx.save();
-      ctx.globalAlpha = flash;
-      ctx.globalCompositeOperation = 'lighter';
-      if (spr && spr.complete && spr.naturalWidth > 0) {
-        ctx.drawImage(spr, 0, 0, WIDTH, HEIGHT);
-      }
-      ctx.restore();
-    }
   }
 
   selectUpgrade(index) {
