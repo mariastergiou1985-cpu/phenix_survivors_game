@@ -1,4 +1,4 @@
-import { Game } from './game/Game.js?v=122';
+import { Game } from './game/Game.js?v=125';
 import { AudioManager } from './audio/AudioManager.js?v=14';
 
 const canvas = document.getElementById('game');
@@ -221,6 +221,17 @@ canvas.addEventListener('mouseup', e => {
 // Prevent context menu on right-click over canvas
 canvas.addEventListener('contextmenu', e => e.preventDefault());
 
+// ─── Contextual cursor ────────────────────────────────────────────────────────
+// Hide the OS cursor during active combat (shooting is automatic); show it for any
+// screen where the player must click/select — menus, pause, end-screen, upgrade cards.
+let _lastCursor = '';
+function applyContextualCursor() {
+  const inCombat = game.gameState === 'playing'
+    && !game.paused && !game.gameOver && !game.victory && !game.upgradeUI;
+  const want = inCombat ? 'none' : 'default';
+  if (want !== _lastCursor) { canvas.style.cursor = want; _lastCursor = want; }
+}
+
 // ─── Game loop ────────────────────────────────────────────────────────────────
 let lastTime = 0;
 
@@ -230,6 +241,7 @@ function loop(timestamp) {
 
   game.setMousePos(mousePos);
   game.update(dt, { keys, mousePos, mouseDown });
+  applyContextualCursor();
 
   // Apply screen shake offset
   const [ox, oy] = game.screenShake.getOffset();

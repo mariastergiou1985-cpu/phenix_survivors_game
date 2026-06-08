@@ -11,7 +11,7 @@ import { clamp, distance, safeNormalize, randomChoice, randomRange } from '../ut
 import { FloatingText }   from '../entities/FloatingText.js';
 import { DataCore }       from '../entities/DataCore.js';
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=10';
-import { Player }         from '../entities/Player.js?v=56';
+import { Player }         from '../entities/Player.js?v=57';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=3';
 import { Enemy }          from '../entities/Enemy.js?v=97';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=1';
@@ -804,7 +804,7 @@ export class Game {
     const dashing = this.player.dashTimer > 0;
     if (dashing && !this._wasDashing) this.audio?.playDash();
     this._wasDashing = dashing;
-    this._handleMouseShooting(input);
+    this._handleAutoShooting();
     this._handleCorePickupAndSlotting(dt);
     this._updateProjectiles(dt);
     this._updateHomingDiscs(dt);
@@ -1225,31 +1225,36 @@ export class Game {
     ctx.textAlign = 'left';
   }
 
-  _handleMouseShooting(input) {
-    if (input.mouseDown && this.player.canShoot()) {
-      let aimPos = { x: input.mousePos.x + this.camera.x, y: input.mousePos.y + this.camera.y };
-      if (this.aimAssist) {
-        const nearest = this._nearestEnemy(this.player.pos, 300);
-        if (nearest) aimPos = nearest.pos;
-      }
-      const proj = this.player.shoot(aimPos);
-      this.projectiles.push(proj);
-      this.audio?.playShoot();
-    }
+  _handleAutoShooting() {
+    // Auto-fire at the existing cadence — only when a valid target exists (never into empty space).
+    if (!this.player.canShoot()) return;
+    if (!this.aimAssist) return;                          // T still toggles auto-fire on/off
+    const target = this._autoTarget(this.player.pos, 750); // wide, screen-aware detection
+    if (!target) return;                                  // no enemy/boss/carrier in range → hold fire
+    const proj = this.player.shoot(target.pos);
+    this.projectiles.push(proj);
+    this.audio?.playShoot();
   }
 
-  _nearestEnemy(from, maxRadius) {
-    let best = null, bestDist = maxRadius;
+  _autoTarget(from, range) {
+    // Nearest valid target (enemy or live boss) within range, preferring an in-range Data-Core
+    // carrier (same priority the Homing Disc uses) so core theft is punished. Not global damage —
+    // this only selects ONE aim target; projectiles still travel and hit normally.
+    let best = null,    bestDist = range;
+    let carrier = null, carrierDist = range;
     for (const e of this.enemies) {
       const d = distance(from, e.pos);
       if (d < bestDist) { bestDist = d; best = e; }
+      if (e.carryingCore && d < carrierDist) { carrierDist = d; carrier = e; }
     }
-    // Include Titan in aim assist if it is alive and closer than current best
-    if (this.titanBoss && this.titanBoss.hp > 0) {
-      const d = distance(from, this.titanBoss.pos);
-      if (d < bestDist) { best = this.titanBoss; }
+    // Include live bosses / mini-bosses if closer than current best
+    for (const boss of [this.titanBoss, this.annihilatorBoss, this.bloodfangBoss]) {
+      if (boss && boss.hp > 0) {
+        const d = distance(from, boss.pos);
+        if (d < bestDist) { bestDist = d; best = boss; }
+      }
     }
-    return best;
+    return carrier || best;   // prefer an in-range core carrier, else nearest enemy/boss
   }
 
   spawnEnemyBullet(pos, dir, speed, damage, radius, color) {
@@ -2249,7 +2254,9 @@ export class Game {
 
     const controls = [
       ['WASD / Arrow Keys', 'Move'],
-      ['SPACE',             'Dash'],
+      ['Auto-Fire',         'Automatic — no mouse click'],
+      ['SHIFT',             'Dash'],
+      ['SPACE',             'Reserved — Special Ability (soon)'],
       ['E',                 'Special Move'],
       ['T',                 'Toggle Aim Assist'],
       ['M',                 'Mute / Unmute Music'],
@@ -2531,7 +2538,7 @@ export class Game {
         }
 
         ctx.fillStyle = WHITE;
-        ctx.fillText('Shoot, dash, and use specials to survive.', cx, descY);
+        ctx.fillText('Auto-fire at enemies, dash with SHIFT, and use specials to survive.', cx, descY);
         ctx.fillText('Killing enemies earns XP and score.', cx, descY + 20);
         break;
       }

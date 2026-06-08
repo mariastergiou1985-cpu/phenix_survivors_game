@@ -164,7 +164,7 @@ export class Player {
     const regenRate = this.selectedCharacter === 'taekwondo_girl' ? 28.75 : 25;
     const dashDir   = dir.lengthSq() > 0 ? dir : this.lastFacingDir;
 
-    const wantsDash = keys.has(' ') || keys.has('shift');
+    const wantsDash = keys.has('shift');  // SPACE reserved for future special ability
     if (wantsDash && this.dashCooldown <= 0 && this.stamina >= dashCost) {
       this._dashDir     = dashDir.clone();
       this.dashTimer    = this.dashDuration;

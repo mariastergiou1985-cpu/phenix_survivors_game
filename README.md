@@ -13,7 +13,9 @@ No install required. Runs in any modern browser.
 | Key / Action | Effect |
 |---|---|
 | WASD / Arrow Keys | Move |
-| SPACE | Dash |
+| Auto-Fire | Automatic — no mouse click |
+| SHIFT | Dash |
+| SPACE | Reserved — Special Ability (soon) |
 | E | Special Move |
 | T | Toggle Aim Assist |
 | M | Mute / Unmute Music |
@@ -61,7 +63,8 @@ Each character has different stats, attacks, and a unique special move.
 - Bloodfang Packmaster mini-boss (10:00 third boss beat — fast cyber-beast pack leader with 3 Razorhounds; bite/lunge stagger)
 - Boss support drones
 - Phoenix Revive tiers
-- Dash with SPACE
+- Auto-fire (no mouse click required)
+- Dash with SHIFT
 - Special Move with E
 - Aim Assist toggle
 - Game Over / Run Summary
