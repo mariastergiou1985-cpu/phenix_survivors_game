@@ -1,4 +1,4 @@
-import { Vec2, WIDTH, HEIGHT, WORLD_W, WORLD_H, WORLD_MARGIN, PLAYER_RADIUS, CYAN, WHITE, YELLOW, GREEN, BLUE } from '../constants.js?v=50';
+import { Vec2, WIDTH, HEIGHT, WORLD_W, WORLD_H, WORLD_MARGIN, PLAYER_RADIUS, CYAN, WHITE, YELLOW, GREEN, BLUE, RED } from '../constants.js?v=50';
 import { clamp, safeNormalize } from '../utils.js';
 import { Projectile } from './Projectile.js?v=3';
 import { FloatingText } from './FloatingText.js';
@@ -21,6 +21,9 @@ export class Player {
 
     this.stamina    = 100;
     this.maxStamina = 100;
+
+    this.mana    = 100;   // starts full; future specials spend it, pickups refill +25
+    this.maxMana = 100;
 
     // Bite debuffs (Bloodfang Packmaster / Razorhounds)
     this.staggerTimer      = 0.0;  // reduced movement + stamina regen while > 0
@@ -279,5 +282,33 @@ export class Player {
       ctx.fillStyle = YELLOW;
       ctx.beginPath(); ctx.arc(ox, oy, 4, 0, Math.PI * 2); ctx.fill();
     }
+
+    // HP (red) + Mana (cyan) bars above the sprite — world-space, follow the player.
+    // Both stay visible even when empty: dark track + colored fill + bright bordered frame.
+    const bw = 46, bh = 5, gap = 3;
+    const bx = this.pos.x - bw / 2;
+    const byHp   = this.pos.y - 50;
+    const byMana = byHp + bh + gap;          // directly below HP, no overlap
+
+    // Shared dark backing for contrast over any background
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(bx - 2, byHp - 2, bw + 4, bh * 2 + gap + 4);
+
+    // HP bar (red) with a subtle red frame
+    ctx.fillStyle = '#2a0a10'; ctx.fillRect(bx, byHp, bw, bh);
+    ctx.fillStyle = RED;
+    ctx.fillRect(bx, byHp, Math.round(bw * clamp(this.hp / this.maxHp, 0, 1)), bh);
+    ctx.strokeStyle = 'rgba(255,90,110,0.85)'; ctx.lineWidth = 1;
+    ctx.strokeRect(bx + 0.5, byHp + 0.5, bw - 1, bh - 1);
+
+    // Mana bar (cyan) — ALWAYS visible, even at 0: dark-blue bg + cyan border + subtle glow
+    ctx.fillStyle = '#06283a'; ctx.fillRect(bx, byMana, bw, bh);
+    ctx.fillStyle = CYAN;
+    ctx.fillRect(bx, byMana, Math.round(bw * clamp(this.mana / this.maxMana, 0, 1)), bh);
+    ctx.save();
+    ctx.shadowColor = CYAN; ctx.shadowBlur = 5;             // subtle cyan glow
+    ctx.strokeStyle = CYAN; ctx.lineWidth = 1.2;
+    ctx.strokeRect(bx + 0.5, byMana + 0.5, bw - 1, bh - 1);
+    ctx.restore();
   }
 }

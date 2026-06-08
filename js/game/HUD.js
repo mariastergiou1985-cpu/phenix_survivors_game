@@ -10,9 +10,7 @@ export function drawHUD(ctx, game) {
   const secs = Math.floor(game.timeAlive % 60).toString().padStart(2, '0');
   drawText(ctx, `TIME ${mins}:${secs}`, 18, 30, CYAN);
 
-  // HP bar
-  drawText(ctx, 'HP', 145, 30, WHITE);
-  drawBar(ctx, 175, 12, 140, 18, game.player.hp, game.player.maxHp, GREEN);
+  // HP is shown above the player character (world-space); top-HUD HP bar removed as redundant.
 
   // Stamina bar
   drawText(ctx, 'STAM', 335, 30, WHITE);

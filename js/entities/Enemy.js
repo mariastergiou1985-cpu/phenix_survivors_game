@@ -488,6 +488,13 @@ export class Enemy {
       drawGlow(ctx, this.pos.x, this.pos.y, this.radius + 4, flashColor, Math.min(0.6, this.hitFlash * 6));
     }
 
+    // Stunned — cyan electric glow + outline while frozen
+    if (this.stunned > 0) {
+      drawGlow(ctx, this.pos.x, this.pos.y, this.radius + 5, CYAN, 0.4);
+      ctx.strokeStyle = CYAN; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(this.pos.x, this.pos.y, this.radius + 4, 0, Math.PI * 2); ctx.stroke();
+    }
+
     // Small HP bar
     if (this.hp > 1) {
       const bw = this.radius * 2;

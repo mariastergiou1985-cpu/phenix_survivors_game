@@ -11,16 +11,16 @@ import { clamp, distance, safeNormalize, randomChoice, randomRange } from '../ut
 import { FloatingText }   from '../entities/FloatingText.js';
 import { DataCore }       from '../entities/DataCore.js';
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=10';
-import { Player }         from '../entities/Player.js?v=57';
+import { Player }         from '../entities/Player.js?v=59';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=3';
-import { Enemy }          from '../entities/Enemy.js?v=97';
+import { Enemy }          from '../entities/Enemy.js?v=98';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=1';
 
 import { ParticleSystem, ScreenShake, drawVignette, EMPRing, drawGlow } from './Effects.js?v=2';
 import { SystemEventManager } from './Events.js?v=94';
 import { UpgradeUI }      from './UpgradeUI.js';
 import { weightedSample } from './Upgrades.js';
-import { drawHUD, drawEndScreen } from './HUD.js?v=31';
+import { drawHUD, drawEndScreen } from './HUD.js?v=32';
 import { MetaProgress, META_UPGRADES, upgradeCost } from './MetaProgress.js?v=1';
 
 export class Game {
@@ -184,6 +184,9 @@ export class Game {
 
     this.killsSinceHealthDrop = 0;   // counts toward the next HP CELL drop
     this.healthPickups        = [];  // [{ pos: Vec2, timer: number }] — heals 25% maxHp on touch
+
+    this.manaPickups     = [];   // [{ pos: Vec2 }] — restores +25 mana on touch
+    this.manaPickupTimer = 30;   // time-based: one every 30s while mana < 100
 
     this.titanSpawned     = false;
     this.titanBoss        = null;
@@ -713,18 +716,26 @@ export class Game {
 
   activateEMPCloud() {
     const p = this.player;
-    if (p.upgrades['EMP Cloud'] === 0 || p.empCloudCooldown > 0) return;
+    if (p.empCloudCooldown > 0) return;   // baseline ability — no longer upgrade-gated
 
-    const radius   = 200 + p.upgrades['EMP Cloud'] * 40;
-    const duration = 2.0 + p.upgrades['EMP Cloud'] * 0.4;
+    const radius = 240 + p.upgrades['EMP Cloud'] * 40;   // base 200 +20%; upgrade still extends
 
     for (const e of this.enemies) {
-      if (distance(e.pos, p.pos) < radius) e.stunned = duration;
+      if (distance(e.pos, p.pos) >= radius) continue;
+      if (e.isBoss() || e.isMegaBoss) {
+        e.stunned = Math.max(e.stunned, 0.5);  // bosses: short safe interrupt only, never a full lock
+      } else {
+        e.stunned = 5.0;                       // normal enemies: immobilized 5s
+        this.floatingTexts.push(new FloatingText('STUNNED', e.pos.clone(), CYAN, 0.8));
+        this.particles.spawnHitSparks(e.pos, CYAN);
+      }
     }
 
-    this.empRings.push(new EMPRing(p.pos.clone(), radius));
-    p.empCloudCooldown = Math.max(8, 18 - p.upgrades['EMP Cloud'] * 2);
-    this.floatingTexts.push(new FloatingText('EMP DEPLOYED!', p.pos.clone(), ORANGE, 0.9));
+    // Cyan electric pulse ring around the player
+    this._specialRings.push({ pos: p.pos.clone(), radius: 0, maxRadius: radius,
+                               life: 0.5, maxLife: 0.5, color1: CYAN, color2: '#ffffff' });
+    p.empCloudCooldown = Math.max(8, 12 - p.upgrades['EMP Cloud']);   // 12s base, upgrade trims it
+    this.floatingTexts.push(new FloatingText('STUN PULSE!', p.pos.clone(), CYAN, 0.9));
   }
 
   selectUpgrade(index) {
@@ -826,6 +837,7 @@ export class Game {
     this.events.update(dt, this.timeAlive, this);
     this._updateGridCache(dt);
     this._updateHealthPickups(dt);
+    this._updateManaPickups(dt);
     this._updateAnnouncement(dt);
     this.particles.update(dt);
     this._updateCamera();
@@ -926,6 +938,33 @@ export class Game {
     }
   }
 
+  _updateManaPickups(dt) {
+    const PICKUP_R = 16;
+    // Collect
+    for (let i = this.manaPickups.length - 1; i >= 0; i--) {
+      const m = this.manaPickups[i];
+      if (distance(this.player.pos, m.pos) < PLAYER_RADIUS + PICKUP_R) {
+        this.player.mana = Math.min(this.player.maxMana, this.player.mana + 25);
+        this.floatingTexts.push(new FloatingText('+25 MANA', this.player.pos.clone(), CYAN, 1.2));
+        this.particles.spawnCorePickup(m.pos, CYAN);
+        this.audio?.playCorePickup();
+        this.manaPickups.splice(i, 1);
+      }
+    }
+    // Time-based spawn — one every 30s, only while mana < 100 and none already present (no spam/dupes)
+    this.manaPickupTimer -= dt;
+    if (this.manaPickupTimer <= 0) {
+      this.manaPickupTimer = 30;
+      if (this.player.mana < this.player.maxMana && this.manaPickups.length === 0) {
+        const ang = Math.random() * Math.PI * 2;
+        const r   = randomRange(140, 240);
+        const px  = clamp(this.player.pos.x + Math.cos(ang) * r, WORLD_MARGIN, WORLD_W - WORLD_MARGIN);
+        const py  = clamp(this.player.pos.y + Math.sin(ang) * r, WORLD_MARGIN + 40, WORLD_H - WORLD_MARGIN);
+        this.manaPickups.push({ pos: new Vec2(px, py) });
+      }
+    }
+  }
+
   // Drawn inside the camera-space block (translate handles the camera offset) → raw world coords.
   _drawHealthPickups(ctx) {
     const R = 16;
@@ -948,6 +987,33 @@ export class Game {
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(x - 7, y - 2.5, 14, 5);
       ctx.fillRect(x - 2.5, y - 7, 5, 14);
+    }
+  }
+
+  // Cyan mana pickup — visually distinct from the red/white HP cross (world-space).
+  _drawManaPickups(ctx) {
+    const R = 16;
+    for (const m of this.manaPickups) {
+      const x = m.pos.x, y = m.pos.y;
+      const pulse = 0.6 + 0.4 * Math.sin(this.timeAlive * 6 + x);
+
+      // Soft cyan glow + disc
+      drawGlow(ctx, x, y, R + 8, CYAN, 0.4 * pulse);
+      ctx.beginPath();
+      ctx.arc(x, y, R, 0, Math.PI * 2);
+      ctx.fillStyle   = '#06283a';
+      ctx.fill();
+      ctx.lineWidth   = 2.5;
+      ctx.strokeStyle = CYAN;
+      ctx.stroke();
+
+      // White diamond rune (rotated square) — distinct from the HP cross
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(Math.PI / 4);
+      ctx.fillStyle   = '#ffffff';
+      ctx.fillRect(-5, -5, 10, 10);
+      ctx.restore();
     }
   }
 
@@ -1724,6 +1790,7 @@ export class Game {
 
     // 3a ── HP CELL recovery pickups
     this._drawHealthPickups(ctx);
+    this._drawManaPickups(ctx);
 
     // 4 ── Enemies
     for (const e of this.enemies) e.draw(ctx);
