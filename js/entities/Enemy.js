@@ -114,6 +114,7 @@ export class Enemy {
     if (dir.lengthSq() === 0) return;
     game.spawnEnemyBullet(this.pos.clone(), dir,
       this.bulletSpeed, this.bulletDamage, this.bulletRadius, this.bulletColor);
+    game.audio?.playEnemyShoot();
   }
 
   _loadSprite() {

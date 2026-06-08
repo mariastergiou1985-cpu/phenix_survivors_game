@@ -613,7 +613,9 @@ export class Game {
 
   spawnEnemy() {
     if (this.enemies.length >= this.enemyCap()) return;
-    this.enemies.push(new Enemy(this.chooseEnemyType(), this.currentMinute()));
+    const e = new Enemy(this.chooseEnemyType(), this.currentMinute());
+    this.enemies.push(e);
+    if (e.isBoss()) this.audio?.playBossWarning();
   }
 
   // ─── Ability activations ──────────────────────────────────────────────────
@@ -1273,6 +1275,7 @@ export class Game {
           this.playerHitCooldown = 0.5;
           this.screenShake.trigger(5, 0.2);
           this.particles.spawnHitSparks(this.player.pos, RED);
+          this.audio?.playEnemyProjectileImpact();
           this.floatingTexts.push(
             new FloatingText(`-${b.damage} HP`, this.player.pos.clone(), RED, 0.7)
           );
@@ -1502,6 +1505,7 @@ export class Game {
             if (e.enemyType === 'Razorhound') {
               const dir = safeNormalize(this.player.pos.sub(e.pos));
               const staggered = this.player.applyBite({ stamina: 8, stagger: 0.6, knockback: 14, dir, bleed: 2.5 });
+              this.audio?.playRazorhoundBite();
               this.particles.spawnBloodSplash(this.player.pos);
               this.floatingTexts.push(
                 new FloatingText(staggered ? 'STAGGERED' : 'BLEED', new Vec2(this.player.pos.x, this.player.pos.y - 28), RED, 0.7)
@@ -2950,6 +2954,7 @@ export class Game {
   _titanShockwave(t) {
     this._titanShockwaves.push({ pos: t.pos.clone(), radius: t.radius, alpha: 1.0, hit: false });
     this.screenShake.trigger(2, 0.1);
+    this.audio?.playTitanShockwave();
   }
 
   _titanBeam(t) {
@@ -2957,6 +2962,7 @@ export class Game {
     if (dir.lengthSq() === 0) return;
     this._titanBeams.push({ pos: t.pos.clone(), dir, speed: 420, life: 3.5, radius: 10, hit: false });
     this.screenShake.trigger(2, 0.1);
+    this.audio?.playTitanBeam();
   }
 
   _titanDie() {
@@ -3107,6 +3113,8 @@ export class Game {
     if (ejected > 0) {
       this.floatingTexts.push(new FloatingText('MATRIX BREACH!', target.pos.clone(), RED, 1.2));
       this.screenShake.trigger(4, 0.2);
+      this.audio?.playMatrixBreach();
+      if (target.stored <= 0) this.audio?.playMatrixCritical();
     }
   }
 
@@ -3321,6 +3329,7 @@ export class Game {
         bleed:     2.5,
       });
       this.screenShake.trigger(lunging ? 7 : 4, 0.2);
+      this.audio?.playBloodfangBite();
       this.particles.spawnBloodSplash(this.player.pos);
       this.floatingTexts.push(new FloatingText(staggered ? 'STAGGERED' : 'BLEED', new Vec2(this.player.pos.x, this.player.pos.y - 28), RED, 0.7));
     }

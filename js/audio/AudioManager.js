@@ -276,6 +276,87 @@ export class AudioManager {
     this._tone({ type: 'sine', freqStart: 784, freqEnd: 1568, dur: 0.18, gain: 0.11 });
   }
 
+  // ─── Enemy / boss / drone SFX ───────────────────────────────────────────────
+
+  // Enemy shoot — hostile descending square, darker/lower than the player blip.
+  playEnemyShoot() {
+    if (!this._canPlay('enemyShoot', 0.06)) return;
+    this._tone({ type: 'square', freqStart: 520, freqEnd: 160, dur: 0.07, gain: 0.07 });
+    this._noiseBurst({ dur: 0.03, gain: 0.03, filterType: 'highpass', freq: 1400 });
+  }
+
+  // Enemy projectile impact on player — short electric shield zap.
+  playEnemyProjectileImpact() {
+    if (!this._canPlay('enemyImpact', 0.05)) return;
+    this._tone({ type: 'sawtooth', freqStart: 260, freqEnd: 90, dur: 0.07, gain: 0.10 });
+    this._noiseBurst({ dur: 0.05, gain: 0.06, filterType: 'highpass', freq: 1200 });
+  }
+
+  // Titan shockwave — deep bass slam + low rumble.
+  playTitanShockwave() {
+    if (!this._canPlay('titanShock', 0.25)) return;
+    this._tone({ type: 'sine', freqStart: 90, freqEnd: 30, dur: 0.35, gain: 0.16 });
+    this._noiseBurst({ dur: 0.28, gain: 0.10, filterType: 'lowpass', freq: 320 });
+  }
+
+  // Titan beam — charged energy blast (rising sweep + airy texture).
+  playTitanBeam() {
+    if (!this._canPlay('titanBeam', 0.25)) return;
+    this._tone({ type: 'sawtooth', freqStart: 180, freqEnd: 900, dur: 0.30, gain: 0.12 });
+    this._noiseBurst({ dur: 0.26, gain: 0.08, filterType: 'bandpass', freq: 1100 });
+  }
+
+  // Matrix Annihilator breach — corruption alarm / detuned hum.
+  playMatrixBreach() {
+    if (!this._canPlay('matrixBreach', 0.20)) return;
+    this._tone({ type: 'square', freqStart: 330, freqEnd: 330, dur: 0.22, gain: 0.09 });
+    this._tone({ type: 'square', freqStart: 247, freqEnd: 247, dur: 0.22, gain: 0.07 });
+    this._noiseBurst({ dur: 0.18, gain: 0.06, filterType: 'bandpass', freq: 500 });
+  }
+
+  // Matrix critical (matrix fully drained) — sharp critical-error glitch beep.
+  playMatrixCritical() {
+    if (!this._canPlay('matrixCrit', 0.30)) return;
+    this._tone({ type: 'square', freqStart: 880, freqEnd: 880, dur: 0.09, gain: 0.10 });
+    this._tone({ type: 'square', freqStart: 660, freqEnd: 660, dur: 0.10, gain: 0.10, delay: 0.10 });
+  }
+
+  // Bloodfang bite/lunge — heavy cyber-beast snap.
+  playBloodfangBite() {
+    if (!this._canPlay('bloodfangBite', 0.12)) return;
+    this._tone({ type: 'sawtooth', freqStart: 200, freqEnd: 60, dur: 0.12, gain: 0.13 });
+    this._noiseBurst({ dur: 0.08, gain: 0.08, filterType: 'bandpass', freq: 700 });
+  }
+
+  // Razorhound bite — fast sharp slash.
+  playRazorhoundBite() {
+    if (!this._canPlay('razorBite', 0.10)) return;
+    this._tone({ type: 'sawtooth', freqStart: 400, freqEnd: 140, dur: 0.07, gain: 0.09 });
+    this._noiseBurst({ dur: 0.04, gain: 0.05, filterType: 'highpass', freq: 1800 });
+  }
+
+  // Flame support drone attack — soft flame whoosh.
+  playDroneFlame() {
+    if (!this._canPlay('droneFlame', 0.10)) return;
+    this._noiseBurst({ dur: 0.14, gain: 0.07, filterType: 'bandpass', freq: 420 });
+    this._tone({ type: 'sine', freqStart: 180, freqEnd: 110, dur: 0.12, gain: 0.05 });
+  }
+
+  // Electro support drone attack — electric zap / bolt.
+  playDroneElectro() {
+    if (!this._canPlay('droneElectro', 0.10)) return;
+    this._tone({ type: 'sawtooth', freqStart: 600, freqEnd: 1400, dur: 0.09, gain: 0.07 });
+    this._noiseBurst({ dur: 0.06, gain: 0.06, filterType: 'highpass', freq: 2000 });
+  }
+
+  // Classic boss spawn warning — short two-tone red-alert klaxon
+  // (distinct from the mini-boss playBossSpawn impact).
+  playBossWarning() {
+    if (!this._canPlay('bossWarn', 0.50)) return;
+    this._tone({ type: 'square', freqStart: 660, freqEnd: 440, dur: 0.18, gain: 0.10 });
+    this._tone({ type: 'square', freqStart: 660, freqEnd: 440, dur: 0.18, gain: 0.10, delay: 0.22 });
+  }
+
   // Stub kept so existing game.audio?.updateAlarm() calls don't crash (out of scope).
   updateAlarm() {}
 }

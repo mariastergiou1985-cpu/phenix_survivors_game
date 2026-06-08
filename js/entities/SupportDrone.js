@@ -97,6 +97,10 @@ export class SupportDrone {
     this._beamTo    = target.pos.clone();
     this._beamTimer = 0.12;
 
+    // Attack SFX
+    if (this.type === 'flame') game.audio?.playDroneFlame();
+    else                        game.audio?.playDroneElectro();
+
     // Corrosive combo tracking
     const now = game.timeAlive;
     if (this.type === 'flame') game._droneFlameLast   = { target, time: now };
