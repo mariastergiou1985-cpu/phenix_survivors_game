@@ -10,7 +10,7 @@ import { clamp, distance, safeNormalize, randomChoice, randomRange } from '../ut
 
 import { FloatingText }   from '../entities/FloatingText.js';
 import { DataCore }       from '../entities/DataCore.js';
-import { PowerMatrix }    from '../entities/PowerMatrix.js?v=10';
+import { PowerMatrix }    from '../entities/PowerMatrix.js?v=11';
 import { Player }         from '../entities/Player.js?v=59';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=3';
 import { Enemy }          from '../entities/Enemy.js?v=99';
@@ -2290,9 +2290,8 @@ export class Game {
     // 1a ── Boss Lava/Fire Rain zones (ground markers — under entities so they read as terrain)
     this._drawBossLava(ctx);
 
-    // 2 ── Power Matrices (additive glow under the sprite)
-    for (const m of this.matrices) drawGlow(ctx, m.pos.x, m.pos.y, 30, m.color, 0.35);
-    for (const m of this.matrices) m.draw(ctx);
+    // 2 ── Power Matrices (fill-based glow + counter owned by PowerMatrix; overload drives danger blink)
+    for (const m of this.matrices) m.draw(ctx, this.overload / MAX_OVERLOAD);
 
     // 3 ── Data-Cores on the ground
     for (const core of this.groundCores) {
