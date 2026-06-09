@@ -107,6 +107,14 @@ export class Game {
     this._lightningRainSprite.onerror = () => console.warn('[Ultimate] cyan_lightning_rain_notes.png not found — drawn fallback will be used');
     this._lightningRainSprite.src = 'assets/abilities/ultimates/cyan_lightning_rain_notes.png';
 
+    // HUD icons: Data-Core (top-right credits) + chains (Cyber Arm SPACE ultimate icon)
+    this._dataCoreIcon = new Image();
+    this._dataCoreIcon.onerror = () => console.warn('[HUD] data_core.png not found — drawn fallback used');
+    this._dataCoreIcon.src = 'assets/cores/data_core.png';
+    this._chainsIcon = new Image();
+    this._chainsIcon.onerror = () => console.warn('[HUD] overheated_heavy_chains.png not found — drawn fallback used');
+    this._chainsIcon.src = 'assets/abilities/ultimates/overheated_heavy_chains.png';
+
     // Preload acid rain weather sprites
     this._acidRainFallImg = new Image();
     this._acidRainFallImg.onerror = () => console.warn('[Weather] acid_rain_fall.png not found — using line fallback');
@@ -760,6 +768,21 @@ export class Game {
                                life: 0.5, maxLife: 0.5, color1: CYAN, color2: '#ffffff' });
     p.empCloudCooldown = Math.max(8, 12 - p.upgrades['EMP Cloud']);   // 12s base, upgrade trims it
     this.floatingTexts.push(new FloatingText('STUN PULSE!', p.pos.clone(), CYAN, 0.9));
+  }
+
+  // ── Pulse Shield (Q): 7s cyan bubble, -60% incoming damage, 25s cooldown ──────
+  activatePulseShield() {
+    if (this.gameState !== 'playing' || this.paused || this.gameOver || this.victory || this.upgradeUI) return;
+    const p = this.player;
+    if (p.pulseShieldCooldown > 0) {
+      this.floatingTexts.push(new FloatingText(`SHIELD ${Math.ceil(p.pulseShieldCooldown)}s`, p.pos.clone(), '#88aacc', 0.7));
+      return;
+    }
+    p.shieldTimer         = p.shieldDuration;          // 7s active
+    p.pulseShieldCooldown = p.pulseShieldMaxCooldown;  // 25s cooldown
+    this._specialRings.push({ pos: p.pos.clone(), radius: 0, maxRadius: 60,
+                               life: 0.45, maxLife: 0.45, color1: CYAN, color2: '#bfefff' });
+    this.floatingTexts.push(new FloatingText('PULSE SHIELD!', p.pos.clone(), CYAN, 1.0));
   }
 
   // ── Thunder Solo ultimate (Cyber Skeleton Warrior, SPACE, 100 mana) ──────────
@@ -1699,7 +1722,7 @@ export class Game {
       // Hit player — ignore during hit cooldown or phoenix revive
       if (this.playerHitCooldown <= 0 && this.phoenixReviveTimer <= 0) {
         if (distance(b.pos, this.player.pos) < b.radius + PLAYER_RADIUS) {
-          this.player.hp = Math.max(0, this.player.hp - b.damage);
+          this.player.applyDamage(b.damage);
           this.playerHitCooldown = 0.5;
           this.screenShake.trigger(5, 0.2);
           this.particles.spawnHitSparks(this.player.pos, RED);
@@ -1922,7 +1945,7 @@ export class Game {
         if (!damageDone && this.phoenixReviveTimer <= 0 && this.player.dashTimer <= 0) {
           // Apply per-enemy contact damage
           const dmg = (e.contactDamage ?? 8) * dt * (1 - this.player.contactDamageReduction);
-          this.player.hp = Math.max(0, this.player.hp - dmg);
+          this.player.applyDamage(dmg);
           damageDone = true;
 
           // Throttle screen shake and floating text to once per 0.5s
@@ -3294,7 +3317,7 @@ export class Game {
       this.player.pos.addMut(push.scale(60 * dt));
       if (this.player.dashTimer <= 0 && this.phoenixReviveTimer <= 0) {
         const dmg = t.contactDamage * dt * (1 - this.player.contactDamageReduction);
-        this.player.hp = Math.max(0, this.player.hp - dmg);
+        this.player.applyDamage(dmg);
         if (this.playerHitCooldown <= 0) {
           this.playerHitCooldown = 0.5;
           this.screenShake.trigger(4, 0.15);
@@ -3327,7 +3350,7 @@ export class Game {
         if (sw.radius >= d - PLAYER_RADIUS - 4) {
           sw.hit = true;
           const dmg = 10 * (1 - this.player.contactDamageReduction);
-          this.player.hp = Math.max(0, this.player.hp - dmg);
+          this.player.applyDamage(dmg);
           this.screenShake.trigger(3, 0.15);
           this.floatingTexts.push(new FloatingText(`-${Math.ceil(dmg)} HP`, this.player.pos.clone(), PURPLE, 0.8));
         }
@@ -3343,7 +3366,7 @@ export class Game {
       if (!b.hit && this.phoenixReviveTimer <= 0 && distance(b.pos, this.player.pos) < b.radius + PLAYER_RADIUS) {
         b.hit = true;
         const dmg = 15 * (1 - this.player.contactDamageReduction);
-        this.player.hp = Math.max(0, this.player.hp - dmg);
+        this.player.applyDamage(dmg);
         this.overload = clamp(this.overload + 3, 0, MAX_OVERLOAD);
         this.floatingTexts.push(new FloatingText(`-${Math.ceil(dmg)} HP`, this.player.pos.clone(), PURPLE, 0.8));
         this.floatingTexts.push(new FloatingText('+3% OVERLOAD', new Vec2(this.player.pos.x, this.player.pos.y - 24), RED, 0.8));
@@ -3604,7 +3627,7 @@ export class Game {
       this.player.pos.addMut(push.scale(60 * dt));
       if (this.player.dashTimer <= 0 && this.phoenixReviveTimer <= 0) {
         const dmg = a.contactDamage * dt * (1 - this.player.contactDamageReduction);
-        this.player.hp = Math.max(0, this.player.hp - dmg);
+        this.player.applyDamage(dmg);
         if (this.playerHitCooldown <= 0) {
           this.playerHitCooldown = 0.5;
           this.screenShake.trigger(4, 0.15);

@@ -2,94 +2,165 @@ import {
   WIDTH, HEIGHT, MAX_OVERLOAD,
   CYAN, ORANGE, RED, GREEN, WHITE, GREY, YELLOW, BLACK,
 } from '../constants.js';
-import { drawText, drawBar } from '../utils.js';
+import { drawText, drawBar, clamp } from '../utils.js';
 
 export function drawHUD(ctx, game) {
-  // Time
+  const p = game.player;
+
+  // ── Top: full-width blue XP bar ─────────────────────────────────────────
+  const xpRatio = clamp(p.xp / p.xpToNext, 0, 1);
+  ctx.fillStyle = 'rgba(6,14,26,0.92)';
+  ctx.fillRect(0, 0, WIDTH, 6);
+  const xpGrad = ctx.createLinearGradient(0, 0, WIDTH, 0);
+  xpGrad.addColorStop(0, '#1e90ff');
+  xpGrad.addColorStop(1, '#66e0ff');
+  ctx.fillStyle = xpGrad;
+  ctx.fillRect(0, 0, Math.round(WIDTH * xpRatio), 6);
+  ctx.textAlign = 'right';
+  drawText(ctx, `LV ${p.level}`, WIDTH - 12, 23, '#cfeaff', 'bold 15px Consolas, monospace');
+
+  // ── Top-center: timer + kills (skull) ───────────────────────────────────
   const mins = Math.floor(game.timeAlive / 60).toString().padStart(2, '0');
   const secs = Math.floor(game.timeAlive % 60).toString().padStart(2, '0');
-  drawText(ctx, `TIME ${mins}:${secs}`, 18, 30, CYAN);
+  ctx.textAlign = 'center';
+  drawText(ctx, `${mins}:${secs}`, WIDTH / 2, 42, WHITE, 'bold 26px Consolas, monospace');
+  _drawSkull(ctx, WIDTH / 2 - 36, 60, '#d7dee6');
+  ctx.textAlign = 'left';
+  drawText(ctx, `KILLS ${p.kills}`, WIDTH / 2 - 24, 65, '#d7dee6', 'bold 15px Consolas, monospace');
 
-  // HP is shown above the player character (world-space); top-HUD HP bar removed as redundant.
-  // Stamina bar removed from the HUD (dash still uses stamina internally; just not displayed).
+  // ── Top-left: compact Network Overload (kept — drives the blackout mechanic) ──
+  let oc = CYAN;
+  if (game.overload > 60) oc = ORANGE;
+  if (game.overload > 82) oc = RED;
+  ctx.textAlign = 'left';
+  drawText(ctx, 'OVERLOAD', 12, 22, '#7fa8c8', '11px Consolas, monospace');
+  drawBar(ctx, 12, 28, 150, 8, game.overload, MAX_OVERLOAD, oc);
+  drawText(ctx, `${game.overload.toFixed(0)}%`, 168, 37, oc, '11px Consolas, monospace');
 
-  // Overload bar
-  let overloadColor = CYAN;
-  if (game.overload > 60) overloadColor = ORANGE;
-  if (game.overload > 82) overloadColor = RED;
+  // ── Top-right: Data-Core icon + live Grid Credits ───────────────────────
+  const credits = (game.meta?.credits ?? 0).toLocaleString();
+  ctx.textAlign = 'right';
+  drawText(ctx, credits, WIDTH - 14, 52, '#bfefff', 'bold 18px Consolas, monospace');
+  ctx.font = 'bold 18px Consolas, monospace';
+  const cw = ctx.measureText(credits).width;
+  _drawIcon(ctx, game._dataCoreIcon, WIDTH - 14 - cw - 26, 38, 20, '#3fd0ff');
 
-  drawText(ctx, 'NETWORK OVERLOAD', 550, 30, WHITE);
-  drawBar(ctx, 735, 12, 240, 18, game.overload, MAX_OVERLOAD, overloadColor);
-  drawText(ctx, `${game.overload.toFixed(1).padStart(5, '0')}%`, 985, 30, overloadColor);
-
-  // Inventory / Level
-  drawText(ctx, `CORES ${game.player.carry}/${game.player.maxCarry}`, 1095, 15, YELLOW);
-  drawText(ctx, `LV ${game.player.level} XP ${game.player.xp}/${game.player.xpToNext}`, 1095, 32, GREEN);
-
-  // Ability cooldown indicators
-  _drawAbilityHUD(ctx, game.player);
-
-  // Aim assist indicator (bottom-right)
-  const aaColor = game.aimAssist ? GREEN : GREY;
-  drawText(ctx, game.aimAssist ? '[T] AIM ASSIST: ON' : '[T] AIM ASSIST: OFF',
-    WIDTH - 200, HEIGHT - 50, aaColor, '13px Consolas, monospace');
-
-  const sc = game.player.specialCooldown;
-  const spText  = sc <= 0 ? '[E] SPECIAL: READY' : `[E] SPECIAL: ${Math.ceil(sc)}s`;
-  const spColor = sc <= 0 ? CYAN : GREY;
-  drawText(ctx, spText, WIDTH - 220, HEIGHT - 32, spColor, '13px Consolas, monospace');
-
-  // Score / Best (stacked under CORES/LV, top-right)
-  drawText(ctx, `SCORE: ${Math.floor(game.score ?? 0)}`, 1095, 48, WHITE,  '13px Consolas, monospace');
-  drawText(ctx, `BEST:  ${game.bestScore ?? 0}`,         1095, 63, YELLOW, '13px Consolas, monospace');
-  if ((game.comboCount ?? 0) >= 2) {
-    const n   = game.comboCount;
-    const col = n >= 10 ? '#FFCC00' : n >= 5 ? '#00CCFF' : '#00FF88';
-    drawText(ctx, `COMBO x${n}`, 1095, 80, col, 'bold 13px Consolas, monospace');
+  // Grid Blackout warning (overload mechanic — kept)
+  if (game.gridBlackoutActive && (Math.floor(Date.now() / 400) % 2 === 0)) {
+    ctx.textAlign = 'center';
+    drawText(ctx, '!! GRID BLACKOUT ACTIVE !!', WIDTH / 2, 96, RED, '16px Consolas, monospace');
   }
 
-  // Grid Blackout warning
-  if (game.gridBlackoutActive) {
-    const flash = (Math.floor(Date.now() / 400) % 2 === 0);
-    if (flash) drawText(ctx, '!! GRID BLACKOUT ACTIVE !!', WIDTH / 2 - 160, 30, RED, '18px Consolas, monospace');
+  // ── Bottom-left: Q Pulse Shield + E EMP ─────────────────────────────────
+  const by = HEIGHT - 62, bs = 44;
+  const qFrac = 1 - clamp(p.pulseShieldCooldown / p.pulseShieldMaxCooldown, 0, 1);
+  _drawAbilityBox(ctx, 16, by, bs, 'Q', qFrac, p.pulseShieldCooldown <= 0,
+    (cx, cy) => _glyphShield(ctx, cx, cy, bs));
+  const empMax = Math.max(8, 12 - p.upgrades['EMP Cloud']);
+  const eFrac  = 1 - clamp(p.empCloudCooldown / empMax, 0, 1);
+  _drawAbilityBox(ctx, 16 + bs + 18, by, bs, 'E', eFrac, p.empCloudCooldown <= 0,
+    (cx, cy) => _glyphEMP(ctx, cx, cy, bs));
+
+  // ── Bottom-right: SPACE ultimate (mana-fill) ────────────────────────────
+  if (p.selectedCharacter === 'skeleton_warrior' || p.selectedCharacter === 'cyber_arm_hero') {
+    const icon = p.selectedCharacter === 'skeleton_warrior' ? game._thunderGuitarSprite : game._chainsIcon;
+    const manaFrac = clamp(p.mana / p.maxMana, 0, 1);
+    _drawUltimateBox(ctx, WIDTH - 64, HEIGHT - 66, 48, 'SPACE', manaFrac, icon);
   }
 
-  // Bottom status bar
-  const statY = HEIGHT - 14;
-  const leftStatus = `Enemies: ${game.enemies.length}/${game.enemyCap()} | Cores on ground: ${game.groundCores.length} | Secured: ${game.player.coresSecured} | Intercepts: ${game.player.coresIntercepted}`;
-  const rightStatus = `Volatility x${game.coreVolatilityMultiplier().toFixed(2)} | Overload Rate x${game.overloadRateMultiplier().toFixed(2)}`;
-  drawText(ctx, leftStatus,  18,           statY, GREY, '14px Consolas, monospace');
-  drawText(ctx, rightStatus, 760,          statY, GREY, '14px Consolas, monospace');
+  ctx.textAlign = 'left';
 }
 
-function _drawAbilityHUD(ctx, player) {
-  let x = 18;
-  const y = HEIGHT - 50;
+// Rounded-square ability box with a circular ready/cooldown ring + key label + % readout.
+function _drawAbilityBox(ctx, x, y, s, label, frac, ready, glyphFn) {
+  const cx = x + s / 2, cy = y + s / 2;
+  ctx.fillStyle = 'rgba(6,18,32,0.85)';
+  ctx.beginPath(); ctx.roundRect(x, y, s, s, 6); ctx.fill();
+  ctx.strokeStyle = ready ? CYAN : 'rgba(120,150,170,0.5)';
+  ctx.lineWidth = 1.5; ctx.beginPath(); ctx.roundRect(x, y, s, s, 6); ctx.stroke();
+  ctx.save();
+  ctx.globalAlpha = ready ? 1 : 0.5;
+  glyphFn(cx, cy);
+  ctx.restore();
+  _drawRing(ctx, cx, cy, s / 2 + 5, frac, ready);
+  ctx.textAlign = 'center';
+  drawText(ctx, label, cx, y - 8, ready ? '#cfeaff' : '#90a4b4', 'bold 13px Consolas, monospace');
+  drawText(ctx, `${Math.round(frac * 100)}%`, cx, y + s + 16, ready ? CYAN : '#90a4b4', '11px Consolas, monospace');
+}
 
-  if (player.upgrades['Sonic Pulse'] > 0) {
-    const cd    = player.sonicPulseCooldown;
-    const maxCd = Math.max(2.5, 5.0 - player.upgrades['Sonic Pulse'] * 0.5);
-    drawText(ctx, '[Q] PULSE', x, y, cd <= 0 ? WHITE : GREY, '14px Consolas, monospace');
-    if (cd > 0) drawBar(ctx, x, y + 5, 68, 3, maxCd - cd, maxCd, CYAN);
-    x += 88;
-  }
+// Bottom-right ultimate box: icon image + circular mana-fill ring.
+function _drawUltimateBox(ctx, x, y, s, label, frac, icon) {
+  const cx = x + s / 2, cy = y + s / 2;
+  const ready = frac >= 1;
+  ctx.fillStyle = 'rgba(6,18,32,0.85)';
+  ctx.beginPath(); ctx.roundRect(x, y, s, s, 6); ctx.fill();
+  ctx.strokeStyle = ready ? CYAN : 'rgba(120,150,170,0.5)';
+  ctx.lineWidth = 1.5; ctx.beginPath(); ctx.roundRect(x, y, s, s, 6); ctx.stroke();
+  ctx.save();
+  ctx.globalAlpha = 0.45 + 0.55 * frac;
+  _drawIcon(ctx, icon, x + 5, y + 5, s - 10, CYAN);
+  ctx.restore();
+  _drawRing(ctx, cx, cy, s / 2 + 5, frac, ready);
+  ctx.textAlign = 'center';
+  drawText(ctx, label, cx, y - 8, ready ? '#cfeaff' : '#90a4b4', 'bold 12px Consolas, monospace');
+  drawText(ctx, `${Math.round(frac * 100)}%`, cx, y + s + 16, ready ? CYAN : '#90a4b4', '11px Consolas, monospace');
+}
 
-  if (player.upgrades['EMP Cloud'] > 0) {
-    const cd    = player.empCloudCooldown;
-    const maxCd = Math.max(8.0, 18.0 - player.upgrades['EMP Cloud'] * 2.0);
-    drawText(ctx, '[E] EMP', x, y, cd <= 0 ? WHITE : GREY, '14px Consolas, monospace');
-    if (cd > 0) drawBar(ctx, x, y + 5, 68, 3, maxCd - cd, maxCd, ORANGE);
-    x += 88;
+// Circular gauge: dim full ring + bright arc sweeping clockwise from the top by `frac`.
+function _drawRing(ctx, cx, cy, r, frac, ready) {
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = 'rgba(40,70,90,0.55)';
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
+  if (frac > 0) {
+    ctx.strokeStyle = ready ? CYAN : '#3a86ff';
+    ctx.beginPath(); ctx.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + frac * Math.PI * 2); ctx.stroke();
   }
+}
 
-  if (player.upgrades['Homing Disc'] > 0) {
-    drawText(ctx, 'DISC', x, y, CYAN, '14px Consolas, monospace');
-    x += 60;
+function _drawIcon(ctx, img, x, y, size, fallbackColor) {
+  if (img && img.complete && img.naturalWidth > 0) {
+    ctx.drawImage(img, x, y, size, size);
+  } else {
+    ctx.fillStyle = fallbackColor;
+    ctx.beginPath(); ctx.arc(x + size / 2, y + size / 2, size / 2, 0, Math.PI * 2); ctx.fill();
   }
+}
 
-  if (player.upgrades['Quantum Overhaul'] > 0) {
-    drawText(ctx, 'QOB', x, y, ORANGE, '14px Consolas, monospace');
+function _glyphShield(ctx, cx, cy, s) {
+  const w = s * 0.42, h = s * 0.52;
+  ctx.fillStyle = 'rgba(0,200,255,0.18)';
+  ctx.strokeStyle = CYAN; ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - h * 0.5);
+  ctx.lineTo(cx + w * 0.5, cy - h * 0.28);
+  ctx.lineTo(cx + w * 0.5, cy + h * 0.08);
+  ctx.quadraticCurveTo(cx + w * 0.45, cy + h * 0.42, cx, cy + h * 0.5);
+  ctx.quadraticCurveTo(cx - w * 0.45, cy + h * 0.42, cx - w * 0.5, cy + h * 0.08);
+  ctx.lineTo(cx - w * 0.5, cy - h * 0.28);
+  ctx.closePath();
+  ctx.fill(); ctx.stroke();
+}
+
+function _glyphEMP(ctx, cx, cy, s) {
+  ctx.strokeStyle = CYAN; ctx.lineWidth = 1.6;
+  for (let i = 1; i <= 3; i++) {
+    ctx.globalAlpha = 1 - i * 0.22;
+    ctx.beginPath(); ctx.arc(cx, cy, s * 0.1 * i, 0, Math.PI * 2); ctx.stroke();
   }
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = CYAN;
+  ctx.beginPath(); ctx.arc(cx, cy, 2, 0, Math.PI * 2); ctx.fill();
+}
+
+function _drawSkull(ctx, cx, cy, color) {
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.beginPath(); ctx.arc(cx, cy, 7, 0, Math.PI * 2); ctx.fill();   // cranium
+  ctx.fillRect(cx - 4, cy + 4, 8, 4);                                // jaw
+  ctx.fillStyle = 'rgba(10,15,25,1)';                                // eye sockets
+  ctx.beginPath(); ctx.arc(cx - 2.7, cy - 0.5, 2, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx + 2.7, cy - 0.5, 2, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
 }
 
 export function drawEndScreen(ctx, game) {

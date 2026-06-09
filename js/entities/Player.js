@@ -87,6 +87,19 @@ export class Player {
     this.empCloudCooldown    = 0.0;
     this.homingDiscTimer     = 0.0;
     this.quantumOverhaulTimer = 0.0;
+
+    // Pulse Shield (Q): cyan bubble, cuts incoming damage 60% for 7s, 25s cooldown
+    this.shieldTimer            = 0.0;   // seconds of active shield remaining
+    this.shieldDuration         = 7.0;
+    this.pulseShieldCooldown    = 0.0;
+    this.pulseShieldMaxCooldown = 25.0;
+  }
+
+  // Single chokepoint for incoming combat damage so Pulse Shield can scale it (60% reduction).
+  // When the shield is inactive this is identical to a plain hp subtraction (no balance change).
+  applyDamage(amount) {
+    const mult = this.shieldTimer > 0 ? 0.4 : 1;
+    this.hp = Math.max(0, this.hp - amount * mult);
   }
 
   _loadCharacterSprite() {
@@ -155,6 +168,8 @@ export class Player {
     this.shootCooldown    = Math.max(0, this.shootCooldown - dt);
     this.sonicPulseCooldown = Math.max(0, this.sonicPulseCooldown - dt);
     this.empCloudCooldown   = Math.max(0, this.empCloudCooldown - dt);
+    this.shieldTimer         = Math.max(0, this.shieldTimer - dt);
+    this.pulseShieldCooldown = Math.max(0, this.pulseShieldCooldown - dt);
 
     // Bite debuff timers + bleed tick (1 HP/s)
     if (this.staggerTimer > 0)      this.staggerTimer      -= dt;
@@ -206,7 +221,7 @@ export class Player {
   // suppressed while stunImmunityTimer > 0 (anti chain-lock). Returns true if a NEW
   // stagger was applied (for "STAGGERED" feedback). Callers guard dash/phoenix i-frames.
   applyBite({ hp = 0, stamina = 0, stagger = 0, knockback = 0, dir = null, bleed = 0 } = {}) {
-    if (hp > 0) this.hp = Math.max(0, this.hp - hp);
+    if (hp > 0) this.applyDamage(hp);                 // routes through Pulse Shield reduction
     if (this.stunImmunityTimer > 0) return false;     // immune to new stagger
     if (stamina > 0) this.stamina = Math.max(0, this.stamina - stamina);
     if (stagger > 0) {
@@ -310,5 +325,26 @@ export class Player {
     ctx.strokeStyle = CYAN; ctx.lineWidth = 1.2;
     ctx.strokeRect(bx + 0.5, byMana + 0.5, bw - 1, bh - 1);
     ctx.restore();
+
+    // Pulse Shield bubble — clean transparent cyan dome around the player (player stays visible)
+    if (this.shieldTimer > 0) {
+      const fade  = Math.min(1, this.shieldTimer / 0.6);    // gentle fade-out over the last 0.6s
+      const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 180);
+      const r     = PLAYER_RADIUS + 14;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      // soft translucent fill
+      const grad = ctx.createRadialGradient(this.pos.x, this.pos.y, r * 0.55, this.pos.x, this.pos.y, r);
+      grad.addColorStop(0, 'rgba(0,200,255,0)');
+      grad.addColorStop(1, `rgba(40,180,255,${0.14 * fade})`);
+      ctx.fillStyle = grad;
+      ctx.beginPath(); ctx.arc(this.pos.x, this.pos.y, r, 0, Math.PI * 2); ctx.fill();
+      // bright thin rim with a subtle pulse
+      ctx.globalAlpha = (0.45 + 0.3 * pulse) * fade;
+      ctx.strokeStyle = CYAN; ctx.lineWidth = 2;
+      ctx.shadowColor = CYAN; ctx.shadowBlur = 8;
+      ctx.beginPath(); ctx.arc(this.pos.x, this.pos.y, r, 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
+    }
   }
 }
