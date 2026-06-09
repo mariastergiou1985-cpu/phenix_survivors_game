@@ -805,7 +805,7 @@ export class Game {
   _updateThunderSolo(dt) {
     const ts = this.thunderSolo;
     if (!ts) return;
-    const WINDUP = 0.8, STORM = 20.0, FADE = 0.5;
+    const WINDUP = 0.6, STORM = 6.0, FADE = 0.4;   // ~7s total ultimate (was 20s storm)
     ts.t += dt;
     ts.totalT += dt;   // total elapsed across all phases (drives the ~7s guitar)
 
@@ -1891,16 +1891,21 @@ export class Game {
       // Grid fully secure — drain at 1.0% per second
       this.overload = Math.max(0, this.overload - 1.0 * dt);
     } else {
-      // Scale with time: x1.0 at min 0, +0.04 per minute, capped at x2.0
+      // Scale with time: ramps faster mid/late so falling behind on cores bites after 10 min.
       const minutes  = this.timeAlive / 60;
-      const diffMult = Math.min(2.0, 1.0 + minutes * 0.04) * (1 - this.player.overloadDampening);
+      const diffMult = Math.min(2.6, 1.0 + minutes * 0.05) * (1 - this.player.overloadDampening);
       this.overload  = clamp(this.overload + chaosGain * diffMult * dt, 0, MAX_OVERLOAD);
     }
 
-    // Time-based minimum floor: guarantees gradual early-game tension even when the grid is fully
-    // secure. 5% per minute, capped at 35% (~7:00) so it never becomes a late-game auto-loss.
+    // Time-based minimum floor — phased so a secured grid still feels increasingly dangerous late-game:
+    //   0–10 min: gentle ramp, caps 35% (~7:00) — early pace unchanged.
+    //   10–15 min: 35% → 55%.   15+ min: 55% → 80% (@20:00), hard-capped 85% so it's never auto-loss.
     // Falling behind on cores still pushes overload ABOVE the floor via chaosGain above.
-    const floorPct = Math.min(35, (this.timeAlive / 60) * 5.0);
+    const mins = this.timeAlive / 60;
+    let floorPct;
+    if      (mins <= 10) floorPct = Math.min(35, mins * 5.0);
+    else if (mins <= 15) floorPct = 35 + (mins - 10) * 4.0;
+    else                 floorPct = Math.min(85, 55 + (mins - 15) * 5.0);
     this.overload  = Math.max(this.overload, floorPct);
 
     if (this.audio) this.audio.updateAlarm(this.overload);
@@ -1909,7 +1914,10 @@ export class Game {
   _updateSpawning(dt) {
     if (this.spawnPauseTimer > 0) { this.spawnPauseTimer -= dt; return; }
     this.spawnTimer += dt;
-    if (this.spawnTimer >= this.enemySpawnInterval()) {
+    // During Thunder Solo, keep waves arriving fast so the 7s ultimate always has targets
+    // (still capped by enemyCap() inside spawnEnemy — not unfair spam).
+    const interval = this.thunderSolo ? Math.min(this.enemySpawnInterval(), 0.4) : this.enemySpawnInterval();
+    if (this.spawnTimer >= interval) {
       this.spawnTimer = 0;
       const minute = this.currentMinute();
       let count = Math.random() < Math.min(0.55, 0.30 + minute * 0.06) ? 2 : 1;
@@ -2272,30 +2280,33 @@ export class Game {
         ringColor  = '#0099ff';
         sparkColor = '#aaeeff';
         pimg       = this._phoenixBlueImage;
-        sprSz      = 310;
+        sprSz      = 165;
       } else if (rtype === 'gold') {
         tintRGBA   = `rgba(255,200,0,${(alpha * 0.45).toFixed(3)})`;
         coreColor  = '#ffdd00';
         ringColor  = '#ff8800';
         sparkColor = '#ffe066';
         pimg       = this._phoenixGoldImage;
-        sprSz      = 390;
+        sprSz      = 200;
       } else {
         tintRGBA   = `rgba(255,140,0,${(alpha * 0.40).toFixed(3)})`;
         coreColor  = '#ff8800';
         ringColor  = '#ffaa00';
         sparkColor = '#ff6600';
         pimg       = this._phoenixImage;
-        sprSz      = 280;
+        sprSz      = 150;
       }
 
-      // ── Layer 1: full-screen tint ───────────────────────────────────────
+      // ── Layer 1: full-screen tint (softened so the revive isn't an overwhelming flash) ──
+      ctx.save();
+      ctx.globalAlpha = 0.6;
       ctx.fillStyle = tintRGBA;
       ctx.fillRect(this.camera.x, this.camera.y, WIDTH, HEIGHT);
+      ctx.restore();
 
       // ── Layer 2: radial gradient burst ─────────────────────────────────
       {
-        const gr = 80 + elapsed * 80;
+        const gr = 50 + elapsed * 40;
         const grd = ctx.createRadialGradient(px, py, 0, px, py, gr);
         const gc  = rtype === 'blue' ? '0,200,255' : rtype === 'gold' ? '255,210,0' : '255,160,0';
         grd.addColorStop(0, `rgba(${gc},${(alpha * 0.55).toFixed(3)})`);
@@ -2318,10 +2329,10 @@ export class Game {
         ctx.strokeStyle = coreColor;
         ctx.lineWidth   = 6;
         ctx.globalAlpha = alpha * 0.9;
-        ctx.beginPath(); ctx.arc(px, py, 70 + elapsed * 30, 0, Math.PI * 2); ctx.stroke();
+        ctx.beginPath(); ctx.arc(px, py, 40 + elapsed * 18, 0, Math.PI * 2); ctx.stroke();
         ctx.lineWidth   = 3;
         ctx.globalAlpha = alpha * 0.5;
-        ctx.beginPath(); ctx.arc(px, py, 110 + elapsed * 40, 0, Math.PI * 2); ctx.stroke();
+        ctx.beginPath(); ctx.arc(px, py, 62 + elapsed * 24, 0, Math.PI * 2); ctx.stroke();
         ctx.restore();
       }
 
@@ -2329,7 +2340,7 @@ export class Game {
       const drawRing = (delay, lw, maxR) => {
         const t = elapsed - delay;
         if (t <= 0) return;
-        const r  = t * 320;
+        const r  = t * 200;
         if (r > maxR) return;
         const rA = Math.max(0, (1 - r / maxR)) * alpha;
         ctx.save();
@@ -2339,9 +2350,9 @@ export class Game {
         ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2); ctx.stroke();
         ctx.restore();
       };
-      drawRing(0,    5, 340);
-      if (rtype !== 'orange') drawRing(0.28, 3, 300);
-      if (rtype === 'gold')   drawRing(0.50, 2, 260);
+      drawRing(0,    5, 190);
+      if (rtype !== 'orange') drawRing(0.28, 3, 165);
+      if (rtype === 'gold')   drawRing(0.50, 2, 145);
 
       // ── Layer 5: radial spark particles ────────────────────────────────
       {
@@ -2349,7 +2360,7 @@ export class Game {
         ctx.save();
         for (let i = 0; i < SPARKS; i++) {
           const angle = (i / SPARKS) * Math.PI * 2;
-          const dist  = elapsed * (150 + (i % 4) * 45);
+          const dist  = elapsed * (90 + (i % 4) * 25);
           const sx    = px + Math.cos(angle) * dist;
           const sy    = py + Math.sin(angle) * dist;
           const pA    = Math.max(0, 1 - dist / 380) * alpha;

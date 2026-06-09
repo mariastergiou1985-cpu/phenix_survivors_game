@@ -1,4 +1,4 @@
-import { Game } from './game/Game.js?v=135';
+import { Game } from './game/Game.js?v=136';
 import { AudioManager } from './audio/AudioManager.js?v=14';
 
 const canvas = document.getElementById('game');
@@ -54,8 +54,7 @@ window.addEventListener('keydown', e => {
 
   // One-shot abilities
   if (key === 'q') game.activatePulseShield();   // Pulse Shield (was Sonic Pulse)
-  if (key === 'e') game.activateEMPCloud();
-  if (key === 'e') game.activateSpecial();
+  if (key === 'e') game.activateEMPCloud();   // EMP = stun only (no damage); Special unbound
   if (key === ' ') game.activateThunderSolo();   // SPACE ultimate (skeleton only; self-guards)
   if (key === 'm') game.audio?.toggleMute();
   if (key === 'f') {
