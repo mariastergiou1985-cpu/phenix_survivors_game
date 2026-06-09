@@ -118,6 +118,10 @@ export class Game {
     this._chainsIcon = new Image();
     this._chainsIcon.onerror = () => console.warn('[HUD] overheated_heavy_chains.png not found — drawn fallback used');
     this._chainsIcon.src = 'assets/abilities/ultimates/overheated_heavy_chains.png';
+    // Neon Pierce Beam — Cyber Arm Hero's automatic secondary weapon (red laser identity)
+    this._neonBeamSprite = new Image();
+    this._neonBeamSprite.onerror = () => console.warn('[Weapon] neon_pierce_beam.png missing — drawn fallback used');
+    this._neonBeamSprite.src = 'assets/weapons/neon_pierce_beam.png';
 
     // Preload acid rain weather sprites
     this._acidRainFallImg = new Image();
@@ -170,6 +174,8 @@ export class Game {
     this._chainBolts  = [];   // Chain Lightning Laser: travelling lead bolts (visual + carry the chain plan)
     this._chainLinks  = [];   // Chain Lightning Laser: active jump segments (drawn on activation, then fade)
     this._chainTimer  = 0;    // auto-fire cooldown
+    this._neonBeamTimer = 0;  // Neon Pierce Beam (Cyber Arm Hero only) auto-fire cooldown
+    this._neonBeams     = [];  // active Neon Pierce Beam visuals (short-lived)
     this.empRings     = [];
     this._specialRings    = [];
     this.thunderSolo      = null;   // Thunder Solo ultimate state while active
@@ -1200,6 +1206,7 @@ export class Game {
     this._updateProjectiles(dt);
     this._updateHomingDiscs(dt);
     this._updateChainLightning(dt);
+    this._updateNeonPierceBeam(dt);
     this._updateEnemies(dt);
     this._updateOverload(dt);
     this._updateSpawning(dt);
@@ -2004,6 +2011,119 @@ export class Game {
     ctx.restore();
   }
 
+  // ── Neon Pierce Beam ──────────────────────────────────────────────────────
+  // Cyber Arm Hero's automatic secondary weapon: a straight RED laser from the cyber arm that
+  // pierces every enemy on one line (each hit once). No bounce, no chain, no jump, not an ultimate.
+  _updateNeonPierceBeam(dt) {
+    // Advance + retire short-lived beam visuals
+    for (const b of this._neonBeams) b.life -= dt;
+    if (this._neonBeams.length) this._neonBeams = this._neonBeams.filter(b => b.life > 0);
+
+    if (this.player.selectedCharacter !== 'cyber_arm_hero') return;   // Cyber Arm Hero only
+    this._neonBeamTimer -= dt;
+    if (this._neonBeamTimer <= 0) {
+      this._neonBeamTimer = this._fireNeonPierceBeam() ? 1.5 : 0.25;  // retry soon if nothing in range
+    }
+  }
+
+  // Returns true if the beam fired (a valid target existed in range).
+  _fireNeonPierceBeam() {
+    const p = this.player;
+    const RANGE = 800, WIDTH = 22, DMG = 20;
+
+    // Candidates: array enemies + any present singleton mini-boss object
+    const singles = [
+      this.titanBoss       && this.titanBoss.hp       > 0 ? { obj: this.titanBoss,       die: this._titanDie }       : null,
+      this.annihilatorBoss && this.annihilatorBoss.hp > 0 ? { obj: this.annihilatorBoss, die: this._annihilatorDie } : null,
+      this.bloodfangBoss   && this.bloodfangBoss.hp   > 0 ? { obj: this.bloodfangBoss,   die: this._bloodfangDie }   : null,
+    ].filter(Boolean);
+
+    // Nearest valid target within range sets the beam direction
+    let target = null, bestD = RANGE;
+    for (const e of this.enemies)  { const d = distance(p.pos, e.pos);     if (d < bestD) { bestD = d; target = e.pos; } }
+    for (const s of singles)       { const d = distance(p.pos, s.obj.pos); if (d < bestD) { bestD = d; target = s.obj.pos; } }
+    if (!target) return false;
+
+    const aimDir = safeNormalize(new Vec2(target.x - p.pos.x, target.y - p.pos.y));
+
+    // Straight-line pierce test (reused from Overdrive Beam): along/perp vs the beam segment.
+    const onBeam = (pos, radius) => {
+      const toE   = pos.sub(p.pos);
+      const along = toE.dot(aimDir);
+      if (along < 0 || along > RANGE) return false;
+      const perp  = toE.sub(aimDir.scale(along));
+      return perp.lengthSq() < (WIDTH + radius) ** 2;
+    };
+    const tierDmg = (isMega, isMini) => isMega ? DMG * 0.4 : isMini ? DMG * 0.6 : DMG;  // 8 / 12 / 20
+
+    // Damage each enemy on the line at most once
+    for (let i = this.enemies.length - 1; i >= 0; i--) {
+      const e = this.enemies[i];
+      if (!onBeam(e.pos, e.radius)) continue;
+      const d = tierDmg(e.isMegaBoss, e.isBoss() && !e.isMegaBoss);
+      e.takeHit(d, this);
+      this.particles.spawnHitSparks(e.pos, RED);
+    }
+    // Singleton mini-bosses on the line (reduced damage, safe death routing)
+    for (const s of singles) {
+      const b = s.obj;
+      if (b.hp <= 0 || !onBeam(b.pos, b.radius)) continue;
+      b.hp -= tierDmg(false, true); b.hitFlash = 0.08;
+      this.particles.spawnHitSparks(b.pos, RED);
+      if (b.hp <= 0) s.die.call(this);
+    }
+
+    // One short-lived visual originating from the cyber arm
+    const startPos = new Vec2(p.pos.x + aimDir.x * 16, p.pos.y + aimDir.y * 16);
+    this._neonBeams.push({ startPos, dir: aimDir, length: RANGE, life: 0.15, maxLife: 0.15 });
+    this.audio?.playHit?.();
+    return true;
+  }
+
+  // World-space red beam: optional asset muzzle at the arm + procedural red beam + origin glow.
+  _drawNeonPierceBeam(ctx) {
+    if (!this._neonBeams.length) return;
+    const spr   = this._neonBeamSprite;
+    const ready = spr && spr.complete && spr.naturalWidth > 0;
+    ctx.save();
+    ctx.lineCap = 'round';
+    for (const b of this._neonBeams) {
+      const alpha = Math.max(0, b.life / b.maxLife);
+      const endX  = b.startPos.x + b.dir.x * b.length;
+      const endY  = b.startPos.y + b.dir.y * b.length;
+      const ang   = Math.atan2(b.dir.y, b.dir.x);
+
+      // Procedural red beam (additive)
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = alpha;
+      ctx.strokeStyle = '#ff2a2a'; ctx.lineWidth = Math.max(1, 10 * alpha);
+      ctx.beginPath(); ctx.moveTo(b.startPos.x, b.startPos.y); ctx.lineTo(endX, endY); ctx.stroke();
+      ctx.strokeStyle = '#ffd2d2'; ctx.lineWidth = Math.max(1, 3 * alpha);
+      ctx.beginPath(); ctx.moveTo(b.startPos.x, b.startPos.y); ctx.lineTo(endX, endY); ctx.stroke();
+
+      // Red muzzle glow at the cyber-arm origin
+      const g = ctx.createRadialGradient(b.startPos.x, b.startPos.y, 0, b.startPos.x, b.startPos.y, 26);
+      g.addColorStop(0, 'rgba(255,80,80,' + (0.9 * alpha) + ')');
+      g.addColorStop(1, 'rgba(255,0,0,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(b.startPos.x, b.startPos.y, 26, 0, Math.PI * 2); ctx.fill();
+
+      // Asset muzzle + near-beam (the barrel sits at the cyber arm), drawn on top in normal blend
+      if (ready) {
+        const dh = 60;                                           // muzzle height
+        const dw = dh * (spr.naturalWidth / spr.naturalHeight);  // keep aspect (barrel + near-beam)
+        ctx.save();
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = alpha;
+        ctx.translate(b.startPos.x, b.startPos.y);
+        ctx.rotate(ang);
+        ctx.drawImage(spr, -dw * 0.15, -dh / 2, dw, dh);          // barrel just behind origin, beam forward
+        ctx.restore();
+      }
+    }
+    ctx.restore();
+  }
+
   _updateEnemies(dt) {
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       const e = this.enemies[i];
@@ -2370,6 +2490,7 @@ export class Game {
     for (const p of this.projectiles) p.draw(ctx);   // keep character-specific attack sprite identity
     for (const d of this.homingDiscs) d.draw(ctx);
     this._drawChainLightning(ctx);
+    this._drawNeonPierceBeam(ctx);
     for (const r of this.empRings)    r.draw(ctx);
     for (const r of this._specialRings) {
       const alpha = r.life / r.maxLife;
