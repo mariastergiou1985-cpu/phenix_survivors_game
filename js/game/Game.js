@@ -163,6 +163,9 @@ export class Game {
     this.enemies      = [];
     this.projectiles  = [];
     this.homingDiscs  = [];
+    this._chainBolts  = [];   // Chain Lightning Laser: travelling lead bolts (visual + carry the chain plan)
+    this._chainLinks  = [];   // Chain Lightning Laser: active jump segments (drawn on activation, then fade)
+    this._chainTimer  = 0;    // auto-fire cooldown
     this.empRings     = [];
     this._specialRings    = [];
     this.thunderSolo      = null;   // Thunder Solo ultimate state while active
@@ -1187,6 +1190,7 @@ export class Game {
     this._handleCorePickupAndSlotting(dt);
     this._updateProjectiles(dt);
     this._updateHomingDiscs(dt);
+    this._updateChainLightning(dt);
     this._updateEnemies(dt);
     this._updateOverload(dt);
     this._updateSpawning(dt);
@@ -1863,6 +1867,133 @@ export class Game {
     }
   }
 
+  // ── Chain Lightning Laser ─────────────────────────────────────────────────
+  // Automatic secondary weapon: a fast electric-blue bolt that hits the nearest enemy and
+  // then chains to up to 3 more nearby enemies. Damage is applied on the visible impact of
+  // each link (no enemies vanishing early). Lightweight: a few short-lived bolts/links only.
+  _updateChainLightning(dt) {
+    this._chainTimer -= dt;
+    if (this._chainTimer <= 0) {
+      this._chainTimer = this._fireChainLightning() ? 1.5 : 0.25;   // retry soon if nothing in range
+    }
+
+    // Lead bolts travel player → first target; on arrival, hit it and spawn the staggered jumps
+    for (let i = this._chainBolts.length - 1; i >= 0; i--) {
+      const b = this._chainBolts[i];
+      b.t += dt;
+      const f = Math.min(1, b.t / b.travelTime);
+      b.x = b.fromX + (b.toX - b.fromX) * f;
+      b.y = b.fromY + (b.toY - b.fromY) * f;
+      if (b.t >= b.travelTime) {
+        this._chainHit(b.chain[0]);                       // first target — damage + spark on arrival
+        for (let k = 0; k < b.chain.length - 1; k++) {    // queue the jumps t0→t1→t2→t3
+          const a = b.chain[k], c = b.chain[k + 1];
+          const offsets = [(Math.random() - 0.5) * 14, (Math.random() - 0.5) * 14, (Math.random() - 0.5) * 14];
+          this._chainLinks.push({ ax: a.x, ay: a.y, bx: c.x, by: c.y, target: c,
+                                  delay: (k + 1) * 0.05, life: 0.07, struck: false, offsets });
+        }
+        this._chainBolts.splice(i, 1);
+      }
+    }
+
+    // Links activate at their stagger delay (damage + spark synced to the visible jump), then fade
+    for (let i = this._chainLinks.length - 1; i >= 0; i--) {
+      const L = this._chainLinks[i];
+      if (!L.struck) {
+        L.delay -= dt;
+        if (L.delay <= 0) { L.struck = true; this._chainHit(L.target); }
+      } else {
+        L.life -= dt;
+        if (L.life <= 0) this._chainLinks.splice(i, 1);
+      }
+    }
+  }
+
+  // Returns true if a bolt was fired (a target existed in range).
+  _fireChainLightning() {
+    const p = this.player;
+    const FIRST_RANGE = 520, JUMP_RADIUS = 240, BOUNCES = 3, BOLT_SPEED = 1200;
+    let first = null, bestD = FIRST_RANGE;
+    for (const e of this.enemies) {
+      const d = distance(p.pos, e.pos);
+      if (d < bestD) { bestD = d; first = e; }
+    }
+    if (!first) return false;
+    // Build the chain: nearest unchosen enemy within JUMP_RADIUS of the last link
+    const chosen = [first];
+    let last = first;
+    for (let j = 0; j < BOUNCES; j++) {
+      let next = null, nd = JUMP_RADIUS;
+      for (const e of this.enemies) {
+        if (chosen.includes(e)) continue;
+        const d = distance(last.pos, e.pos);
+        if (d < nd) { nd = d; next = e; }
+      }
+      if (!next) break;
+      chosen.push(next); last = next;
+    }
+    const chain = chosen.map(e => ({ x: e.pos.x, y: e.pos.y, enemy: e }));   // snapshot positions
+    const d0 = distance(p.pos, first.pos);
+    this._chainBolts.push({ fromX: p.pos.x, fromY: p.pos.y, toX: first.pos.x, toY: first.pos.y,
+                            x: p.pos.x, y: p.pos.y, t: 0, travelTime: Math.max(0.05, d0 / BOLT_SPEED), chain });
+    return true;
+  }
+
+  // Apply chain damage to a node {x,y,enemy} and pop a small spark at the visible hit point.
+  _chainHit(node) {
+    if (!node) return;
+    const e = node.enemy;
+    if (e && e.hp > 0 && this.enemies.includes(e)) {
+      const dmg = (e.isBoss() || e.isMegaBoss) ? 8 : 25;   // reduced vs bosses so it never melts them
+      e.takeHit(dmg, this);
+    }
+    this.particles.spawnHitSparks(new Vec2(node.x, node.y), CYAN);
+  }
+
+  _drawChainLightning(ctx) {
+    if (this._chainBolts.length === 0 && this._chainLinks.length === 0) return;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.lineCap = 'round';
+
+    // Lead bolts — small fast electric-blue projectile with a short trail
+    for (const b of this._chainBolts) {
+      const dx = b.toX - b.fromX, dy = b.toY - b.fromY;
+      const len = Math.hypot(dx, dy) || 1;
+      const tailX = b.x - (dx / len) * 14, tailY = b.y - (dy / len) * 14;
+      ctx.globalAlpha = 0.5;  ctx.strokeStyle = '#3aa0ff'; ctx.lineWidth = 6;
+      ctx.beginPath(); ctx.moveTo(tailX, tailY); ctx.lineTo(b.x, b.y); ctx.stroke();
+      ctx.globalAlpha = 0.95; ctx.strokeStyle = CYAN;      ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.moveTo(tailX, tailY); ctx.lineTo(b.x, b.y); ctx.stroke();
+      ctx.globalAlpha = 1;    ctx.fillStyle = '#ffffff';
+      ctx.beginPath(); ctx.arc(b.x, b.y, 2.5, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // Chain links — thin jagged cyan lightning between targets, drawn only once struck, fading out
+    for (const L of this._chainLinks) {
+      if (!L.struck) continue;
+      const a  = L.life / 0.07;
+      const dx = L.bx - L.ax, dy = L.by - L.ay;
+      const nlen = Math.hypot(dx, dy) || 1;
+      const px = -dy / nlen, py = dx / nlen;   // unit perpendicular for the jagged offsets
+      const pts = [{ x: L.ax, y: L.ay }];
+      for (let i = 1; i <= L.offsets.length; i++) {
+        const f = i / (L.offsets.length + 1), off = L.offsets[i - 1];
+        pts.push({ x: L.ax + dx * f + px * off, y: L.ay + dy * f + py * off });
+      }
+      pts.push({ x: L.bx, y: L.by });
+      const stroke = (w, col, al) => {
+        ctx.globalAlpha = al * a; ctx.strokeStyle = col; ctx.lineWidth = w;
+        ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y);
+        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+        ctx.stroke();
+      };
+      stroke(5, '#3aa0ff', 0.45);   // blue glow
+      stroke(2, CYAN,      0.95);   // cyan core
+    }
+    ctx.restore();
+  }
+
   _updateEnemies(dt) {
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       const e = this.enemies[i];
@@ -2226,6 +2357,7 @@ export class Game {
     // 6 ── Projectiles, homing discs, EMP rings, particles
     for (const p of this.projectiles) p.draw(ctx);   // keep character-specific attack sprite identity
     for (const d of this.homingDiscs) d.draw(ctx);
+    this._drawChainLightning(ctx);
     for (const r of this.empRings)    r.draw(ctx);
     for (const r of this._specialRings) {
       const alpha = r.life / r.maxLife;
