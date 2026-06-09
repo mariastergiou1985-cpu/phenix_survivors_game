@@ -16,7 +16,7 @@ import { Projectile, HomingDisc } from '../entities/Projectile.js?v=3';
 import { Enemy }          from '../entities/Enemy.js?v=98';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=1';
 
-import { ParticleSystem, ScreenShake, drawVignette, EMPRing, drawGlow } from './Effects.js?v=2';
+import { ParticleSystem, ScreenShake, drawVignette, EMPRing, drawGlow } from './Effects.js?v=3';
 import { SystemEventManager } from './Events.js?v=94';
 import { UpgradeUI }      from './UpgradeUI.js';
 import { weightedSample } from './Upgrades.js';
@@ -1890,7 +1890,7 @@ export class Game {
           const a = b.chain[k], c = b.chain[k + 1];
           const offsets = [(Math.random() - 0.5) * 14, (Math.random() - 0.5) * 14, (Math.random() - 0.5) * 14];
           this._chainLinks.push({ ax: a.x, ay: a.y, bx: c.x, by: c.y, target: c,
-                                  delay: (k + 1) * 0.05, life: 0.07, struck: false, offsets });
+                                  delay: (k + 1) * 0.05, life: 0.10, struck: false, offsets });
         }
         this._chainBolts.splice(i, 1);
       }
@@ -1947,7 +1947,7 @@ export class Game {
       const dmg = (e.isBoss() || e.isMegaBoss) ? 8 : 25;   // reduced vs bosses so it never melts them
       e.takeHit(dmg, this);
     }
-    this.particles.spawnHitSparks(new Vec2(node.x, node.y), CYAN);
+    this.particles.spawnHitSparks(new Vec2(node.x, node.y), CYAN, 7, 3);   // larger spark for readability
   }
 
   _drawChainLightning(ctx) {
@@ -1961,18 +1961,18 @@ export class Game {
       const dx = b.toX - b.fromX, dy = b.toY - b.fromY;
       const len = Math.hypot(dx, dy) || 1;
       const tailX = b.x - (dx / len) * 14, tailY = b.y - (dy / len) * 14;
-      ctx.globalAlpha = 0.5;  ctx.strokeStyle = '#3aa0ff'; ctx.lineWidth = 6;
+      ctx.globalAlpha = 0.6;  ctx.strokeStyle = '#3aa0ff'; ctx.lineWidth = 8;
       ctx.beginPath(); ctx.moveTo(tailX, tailY); ctx.lineTo(b.x, b.y); ctx.stroke();
-      ctx.globalAlpha = 0.95; ctx.strokeStyle = CYAN;      ctx.lineWidth = 2.5;
+      ctx.globalAlpha = 1;    ctx.strokeStyle = CYAN;      ctx.lineWidth = 3.5;
       ctx.beginPath(); ctx.moveTo(tailX, tailY); ctx.lineTo(b.x, b.y); ctx.stroke();
       ctx.globalAlpha = 1;    ctx.fillStyle = '#ffffff';
-      ctx.beginPath(); ctx.arc(b.x, b.y, 2.5, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(b.x, b.y, 3.5, 0, Math.PI * 2); ctx.fill();
     }
 
     // Chain links — thin jagged cyan lightning between targets, drawn only once struck, fading out
     for (const L of this._chainLinks) {
       if (!L.struck) continue;
-      const a  = L.life / 0.07;
+      const a  = L.life / 0.10;
       const dx = L.bx - L.ax, dy = L.by - L.ay;
       const nlen = Math.hypot(dx, dy) || 1;
       const px = -dy / nlen, py = dx / nlen;   // unit perpendicular for the jagged offsets
@@ -1988,8 +1988,8 @@ export class Game {
         for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
         ctx.stroke();
       };
-      stroke(5, '#3aa0ff', 0.45);   // blue glow
-      stroke(2, CYAN,      0.95);   // cyan core
+      stroke(7, '#3aa0ff', 0.60);   // blue glow
+      stroke(3, CYAN,      1.00);   // cyan core
     }
     ctx.restore();
   }

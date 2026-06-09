@@ -57,12 +57,12 @@ export class ParticleSystem {
     }
   }
 
-  spawnHitSparks(pos, color) {
-    for (let i = 0; i < 4; i++) {
+  spawnHitSparks(pos, color, count = 4, size = 2) {
+    for (let i = 0; i < count; i++) {
       const angle = Math.random() * Math.PI * 2;
       const speed = 40 + Math.random() * 60;
       const vel   = new Vec2(Math.cos(angle) * speed, Math.sin(angle) * speed);
-      this._add(new Particle(pos, vel, color, 2, 0.25));
+      this._add(new Particle(pos, vel, color, size, 0.25));
     }
   }
 
