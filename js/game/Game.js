@@ -1929,6 +1929,9 @@ export class Game {
   // Returns true if a bolt was fired (a target existed in range).
   _fireChainLightning() {
     const p = this.player;
+    // Cyber Arm Hero uses the Neon Pierce Beam instead — Chain Lightning is gated off for him
+    // (code kept intact for the other characters / future use).
+    if (p.selectedCharacter === 'cyber_arm_hero') return false;
     const FIRST_RANGE = 520, JUMP_RADIUS = 240, BOUNCES = 3, BOLT_SPEED = 1200;
     let first = null, bestD = FIRST_RANGE;
     for (const e of this.enemies) {
