@@ -154,21 +154,33 @@ export class Enemy {
   }
 
   _statsForType(type, minute) {
-    const d = 1 + minute * 0.035;
+    const d = 1 + minute * 0.035;                 // speed scaling (unchanged)
+
+    // HP/contact-damage difficulty multiplier. ~+15% baseline (per spec), then ramps after min 5
+    // so 0–5 stays fair and 20+ becomes intense. Applied to NORMAL enemies only.
+    let g = 1.15;
+    if (minute > 5)  g += (Math.min(minute, 10) - 5)  * 0.07;   // 5→10 : 1.15 → 1.50
+    if (minute > 10) g += (Math.min(minute, 20) - 10) * 0.07;   // 10→20: 1.50 → 2.20
+    if (minute > 20) g += (minute - 20) * 0.08;                 // 20+  : keeps climbing
+
+    // Gentler ramp for enemy-type mini-bosses (avoids compounding into a brick; the mega-boss
+    // also multiplies HP ×3 in Events.js afterward).
+    const gB = 1 + minute * 0.03;
+
     // [speed, hp, color, stealTime, contactDamage (HP/sec)]
     switch (type) {
-      case 'Glitch Drone':          return [95 * d,  2,   BLUE,    2.00,  6];
-      case 'Rogue Punk':            return [125 * d, 3,   MAGENTA, 1.65, 10];
-      case 'Stealth Infiltrator':   return [155 * d, 2,   PURPLE,  1.20, 12];
-      case 'Scrap Scavenger':       return [105 * d, 5,   ORANGE,  1.55,  8];
-      case 'Cyber-Net Junkie':      return [135 * d, 4,   GREEN,   1.45, 10];
-      case 'Overclocked Berserker': return [210 * d, 3,   RED,     1.00, 14];
-      case 'Security Defector Mech':return [90 * d,  30,  YELLOW,  0.75, 18];
-      case 'Rogue AI Overlord':     return [75 * d,  120, RED,     0.55, 25];
-      case 'Combat Hunter':         return [168 * d,  3,  MAGENTA, 9999, 12];
-      case 'Cyber Shooter':         return [108 * d,  4,  CYAN,    9999,  6];
-      case 'Heavy Mech':            return [58  * d, 20,  ORANGE,  9999, 20];
-      case 'Razorhound':            return [200 * d, 14,  RED,     9999,  6];
+      case 'Glitch Drone':          return [95 * d,  2 * g,  BLUE,    2.00,  6 * g];
+      case 'Rogue Punk':            return [125 * d, 3 * g,  MAGENTA, 1.65, 10 * g];
+      case 'Stealth Infiltrator':   return [155 * d, 2 * g,  PURPLE,  1.20, 12 * g];
+      case 'Scrap Scavenger':       return [105 * d, 5 * g,  ORANGE,  1.55,  8 * g];
+      case 'Cyber-Net Junkie':      return [135 * d, 4 * g,  GREEN,   1.45, 10 * g];
+      case 'Overclocked Berserker': return [210 * d, 3 * g,  RED,     1.00, 14 * g];
+      case 'Security Defector Mech':return [90 * d,  40 * gB, YELLOW, 0.75, 22 * gB];
+      case 'Rogue AI Overlord':     return [75 * d,  150 * gB, RED,    0.55, 28 * gB];
+      case 'Combat Hunter':         return [168 * d, 3 * g,  MAGENTA, 9999, 12 * g];
+      case 'Cyber Shooter':         return [108 * d, 4 * g,  CYAN,    9999,  6 * g];
+      case 'Heavy Mech':            return [58  * d, 20 * g, ORANGE,  9999, 20 * g];
+      case 'Razorhound':            return [200 * d, 14 * g, RED,     9999,  6 * g];
       default:                      return [100,      2,   WHITE,   1.80,  6];
     }
   }

@@ -13,7 +13,7 @@ import { DataCore }       from '../entities/DataCore.js';
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=10';
 import { Player }         from '../entities/Player.js?v=59';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=3';
-import { Enemy }          from '../entities/Enemy.js?v=98';
+import { Enemy }          from '../entities/Enemy.js?v=99';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=1';
 
 import { ParticleSystem, ScreenShake, drawVignette, EMPRing, drawGlow } from './Effects.js?v=3';
@@ -106,6 +106,10 @@ export class Game {
     this._lightningRainSprite = new Image();   // strike + ripple + musical-note sheet
     this._lightningRainSprite.onerror = () => console.warn('[Ultimate] cyan_lightning_rain_notes.png not found — drawn fallback will be used');
     this._lightningRainSprite.src = 'assets/abilities/ultimates/cyan_lightning_rain_notes.png';
+    // Boss Lava/Fire Rain impact sheet (2 cols × 4 rows = 8 frames, 512×384 each)
+    this._lavaRainSprite = new Image();
+    this._lavaRainSprite.onerror = () => console.warn('[Boss] lava_fire_rain.png not found — drawn fallback will be used');
+    this._lavaRainSprite.src = 'assets/enemies/bosses/lava_fire_rain.png';
 
     // HUD icons: Data-Core (top-right credits) + chains (Cyber Arm SPACE ultimate icon)
     this._dataCoreIcon = new Image();
@@ -179,6 +183,7 @@ export class Game {
     this.events       = new SystemEventManager();
     this.upgradeUI    = null;
     this.megaBoss     = null;
+    this.bossLavaZones = [];   // telegraphed lava/fire-rain zones cast by the main boss (player-only)
 
     this.timeAlive          = 0;
     this.overload           = 0;
@@ -800,7 +805,8 @@ export class Game {
     }
     p.mana = 0;                                              // consume full mana
     this.thunderSolo = { phase: 'windup', t: 0, totalT: 0, strikeTimer: 0, bolts: [],
-                         notes: [], noteTimer: 0, bossDmgThisSec: 0, bossDmgTimer: 1.0 };
+                         notes: [], noteTimer: 0,
+                         miniDmgThisSec: 0, megaDmgThisSec: 0, bossDmgTimer: 1.0 };
     this.screenShake.trigger(4, 0.2);
     this.floatingTexts.push(new FloatingText('THUNDER SOLO!', p.pos.clone(), CYAN, 1.4));
   }
@@ -847,7 +853,7 @@ export class Game {
     if (ts.phase === 'storm') {
       // Per-second boss-damage budget reset (keeps bosses alive through the long storm)
       ts.bossDmgTimer -= dt;
-      if (ts.bossDmgTimer <= 0) { ts.bossDmgTimer = 1.0; ts.bossDmgThisSec = 0; }
+      if (ts.bossDmgTimer <= 0) { ts.bossDmgTimer = 1.0; ts.miniDmgThisSec = 0; ts.megaDmgThisSec = 0; }
 
       ts.strikeTimer -= dt;
       if (ts.strikeTimer <= 0) {
@@ -957,13 +963,16 @@ export class Game {
   _applyStrikeDamage(tx, ty) {
     const ts = this.thunderSolo;
     if (!ts) return;
-    // Shared per-second boss-damage budget so bosses take strong but survivable chip damage.
-    const BOSS_DPS_CAP = 12;
-    const bossHit = (perStrike) => {
-      const budget = BOSS_DPS_CAP - ts.bossDmgThisSec;
+    // Per-second boss-damage budgets: strong vs mini-bosses, meaningful (reduced) vs the main boss,
+    // but never an instant melt over the ~6s storm.
+    const MINI_DPS_CAP = 45;   // ~270 dmg over the storm — kills a mini-boss in ~2 ultimates
+    const MEGA_DPS_CAP = 25;   // ~150 dmg over the storm — meaningful chunk of the main boss
+    const bossHit = (perStrike, isMega) => {
+      const used   = isMega ? ts.megaDmgThisSec : ts.miniDmgThisSec;
+      const budget = (isMega ? MEGA_DPS_CAP : MINI_DPS_CAP) - used;
       if (budget <= 0) return 0;
       const dmg = Math.min(perStrike, budget);
-      ts.bossDmgThisSec += dmg;
+      if (isMega) ts.megaDmgThisSec += dmg; else ts.miniDmgThisSec += dmg;
       return dmg;
     };
 
@@ -974,16 +983,16 @@ export class Game {
       const e = this.enemies[i];
       if (distance(e.pos, at) < R + e.radius) {
         if (e.isBoss() || e.isMegaBoss) {
-          const dmg = bossHit(16);
+          const dmg = bossHit(16, e.isMegaBoss);
           if (dmg > 0) e.takeHit(dmg, this);
         } else {
           e.takeHit(80, this);
         }
       }
     }
-    const hitBoss = (boss, die) => {
+    const hitBoss = (boss, die) => {     // singleton mini-bosses always use the mini budget
       if (boss && boss.hp > 0 && distance(boss.pos, at) < R + boss.radius) {
-        const dmg = bossHit(16);
+        const dmg = bossHit(16, false);
         if (dmg <= 0) return;
         boss.hp -= dmg; boss.hitFlash = 0.08;
         if (boss.hp <= 0) die.call(this);
@@ -1206,6 +1215,7 @@ export class Game {
     this._updateTitan(dt);
     this._updateAnnihilator(dt);
     this._updateBloodfang(dt);
+    this._updateBossAttacks(dt);
     this._updateSupportDrones(dt);
     this.events.update(dt, this.timeAlive, this);
     this._updateGridCache(dt);
@@ -2276,6 +2286,9 @@ export class Game {
 
     // 1 ── World Background
     this._drawWorldBackground(ctx);
+
+    // 1a ── Boss Lava/Fire Rain zones (ground markers — under entities so they read as terrain)
+    this._drawBossLava(ctx);
 
     // 2 ── Power Matrices (additive glow under the sprite)
     for (const m of this.matrices) drawGlow(ctx, m.pos.x, m.pos.y, 30, m.color, 0.35);
@@ -3354,8 +3367,9 @@ export class Game {
   // ─── Acid Rain weather event ──────────────────────────────────────────────
 
   _updateAcidRain(dt) {
-    const ACID_DPS    = 10;   // damage per second to normal enemies (kills weak, hurts strong)
-    const BOSS_FACTOR = 0.2;  // bosses / mini-bosses take 20% — heavily resistant, never deleted
+    const ACID_DPS   = 10;    // damage per second to normal enemies (kills weak, hurts strong)
+    const MINI_VULN  = 0.7;   // mini-bosses take 70% — strong, meaningful chip
+    const MAIN_VULN  = 0.4;   // main boss takes 40% — reduced but still real
 
     if (this.acidRain) {
       const ar = this.acidRain;
@@ -3370,14 +3384,16 @@ export class Game {
         // Enemies in the main array (reverse index so _die can splice safely)
         for (let i = this.enemies.length - 1; i >= 0; i--) {
           const e   = this.enemies[i];
-          const dmg = (e.isBoss() || e.isMegaBoss) ? ACID_DPS * BOSS_FACTOR : ACID_DPS;
+          const dmg = e.isMegaBoss ? ACID_DPS * MAIN_VULN
+                    : e.isBoss()   ? ACID_DPS * MINI_VULN
+                    : ACID_DPS;
           e.hp -= dmg;
           if (e.hp <= 0) { e.hp = 0; e._die(this); }
         }
 
-        // Separate boss objects take reduced damage (effectively never lethal from acid)
+        // Separate mini-boss objects take strong-but-survivable chip (killable over time)
         for (const b of [this.titanBoss, this.annihilatorBoss, this.bloodfangBoss]) {
-          if (b && b.hp > 0) b.hp = Math.max(0, b.hp - ACID_DPS * BOSS_FACTOR);
+          if (b && b.hp > 0) b.hp = Math.max(0, b.hp - ACID_DPS * MINI_VULN);
         }
         if (this.titanBoss && this.titanBoss.hp <= 0)             this._titanDie();
         if (this.annihilatorBoss && this.annihilatorBoss.hp <= 0) this._annihilatorDie();
@@ -3399,6 +3415,125 @@ export class Game {
         new FloatingText('TOXIC RAIN PURGE', new Vec2(WIDTH / 2 - 120, HEIGHT / 2 - 70), GREEN, 2.5)
       );
       this.audio?.playEventWarning();
+    }
+  }
+
+  // ─── Main-boss danger behaviours (Lava Rain + mini-boss summons) ───────────
+  // Gated on this.megaBoss. Lava Rain damages the PLAYER ONLY (never enemies/bosses);
+  // it is a separate system from the player's Acid Rain.
+
+  _updateBossAttacks(dt) {
+    // Advance active lava zones (warning → impact → expire). Player-only damage.
+    if (this.bossLavaZones.length) {
+      for (const z of this.bossLavaZones) {
+        z.t += dt;
+        if (z.t >= z.warn && z.t < z.warn + z.impact) {
+          z.dmgAccum += dt;
+          if (z.dmgAccum >= 1.0) {
+            z.dmgAccum -= 1.0;
+            if (this.phoenixReviveTimer <= 0 && this.player.dashTimer <= 0 &&
+                distance(this.player.pos, z.pos) < z.radius) {
+              this.player.applyDamage(z.dps * (1 - this.player.contactDamageReduction));
+              if (this.playerHitCooldown <= 0) {
+                this.playerHitCooldown = 0.5;
+                this.screenShake.trigger(5, 0.2);
+                this.particles.spawnHitSparks(this.player.pos, ORANGE);
+                this.floatingTexts.push(
+                  new FloatingText(`-${Math.ceil(z.dps)} HP`, this.player.pos.clone(), ORANGE, 0.6)
+                );
+              }
+            }
+          }
+        }
+      }
+      this.bossLavaZones = this.bossLavaZones.filter(z => z.t < z.warn + z.impact);
+    }
+
+    const boss = this.megaBoss;
+    if (!boss || boss.hp <= 0) return;
+
+    const late = this.currentMinute() >= 20 ? 0.7 : 1.0;   // attacks come faster past 20 min
+
+    if (boss.lavaCd   === undefined) boss.lavaCd   = randomRange(3, 5);
+    if (boss.summonCd === undefined) boss.summonCd = randomRange(6, 9);
+
+    // ── Lava Rain: 3–5 telegraphed zones scattered around the player ──
+    boss.lavaCd -= dt;
+    if (boss.lavaCd <= 0) {
+      boss.lavaCd = randomRange(6, 8) * late;
+      const count = 3 + Math.floor(Math.random() * 3);
+      for (let i = 0; i < count; i++) {
+        const ang  = Math.random() * Math.PI * 2;
+        const dist = randomRange(40, 260);   // reroute the player without being unavoidable
+        const pos  = new Vec2(
+          clamp(this.player.pos.x + Math.cos(ang) * dist, WORLD_MARGIN, WORLD_W - WORLD_MARGIN),
+          clamp(this.player.pos.y + Math.sin(ang) * dist, WORLD_MARGIN, WORLD_H - WORLD_MARGIN)
+        );
+        this.bossLavaZones.push({ pos, radius: 70, warn: 1.2, impact: 1.4, t: 0, dmgAccum: 0, dps: 16 });
+      }
+      this.triggerAnnouncement('LAVA RAIN INCOMING', ORANGE);
+      this.audio?.playEventWarning();
+    }
+
+    // ── Summon an existing mini-boss enemy (capped so it never floods) ──
+    boss.summonCd -= dt;
+    if (boss.summonCd <= 0) {
+      boss.summonCd = randomRange(12, 15) * late;
+      const living = this.enemies.filter(e => e.enemyType === 'Security Defector Mech').length;
+      if (living < 2) {
+        const minion = new Enemy('Security Defector Mech', this.currentMinute());
+        const ang = Math.random() * Math.PI * 2;
+        minion.pos = new Vec2(
+          clamp(boss.pos.x + Math.cos(ang) * 80, WORLD_MARGIN, WORLD_W - WORLD_MARGIN),
+          clamp(boss.pos.y + Math.sin(ang) * 80, WORLD_MARGIN, WORLD_H - WORLD_MARGIN)
+        );
+        this.enemies.push(minion);
+        this.floatingTexts.push(
+          new FloatingText('BOSS SUMMONS REINFORCEMENT', new Vec2(WIDTH / 2 - 190, HEIGHT / 2 - 50), RED, 2.0)
+        );
+        this.audio?.playEventWarning();
+      }
+    }
+  }
+
+  // Lava/Fire-Rain zones: pulsing telegraph ring during warning, then the eruption sheet on impact.
+  _drawBossLava(ctx) {
+    if (!this.bossLavaZones.length) return;
+    const spr   = this._lavaRainSprite;
+    const ready = spr && spr.complete && spr.naturalWidth > 0;
+    const FW = 512, FH = 384, COLS = 2, FRAMES = 8;
+
+    for (const z of this.bossLavaZones) {
+      if (z.t < z.warn) {
+        const k     = z.t / z.warn;
+        const pulse = 0.35 + 0.25 * Math.sin(this.timeAlive * 12);
+        ctx.save();
+        ctx.globalAlpha = 0.16 + 0.18 * k;
+        ctx.fillStyle = ORANGE;
+        ctx.beginPath(); ctx.arc(z.pos.x, z.pos.y, z.radius, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = Math.min(1, pulse + 0.3 * k);
+        ctx.strokeStyle = RED; ctx.lineWidth = 3; ctx.setLineDash([10, 8]);
+        ctx.beginPath(); ctx.arc(z.pos.x, z.pos.y, z.radius, 0, Math.PI * 2); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.restore();
+      } else {
+        const it   = (z.t - z.warn) / z.impact;            // 0→1 over impact
+        const fade = it > 0.8 ? (1 - it) / 0.2 : 1;        // fade the last 20%
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, fade);
+        if (ready) {
+          const fi = Math.min(FRAMES - 1, Math.floor(it * FRAMES));
+          const sx = (fi % COLS) * FW, sy = Math.floor(fi / COLS) * FH;
+          const dw = z.radius * 2.6, dh = dw * (FH / FW);
+          ctx.drawImage(spr, sx, sy, FW, FH, z.pos.x - dw / 2, z.pos.y - dh * 0.78, dw, dh);
+        } else {
+          const g = ctx.createRadialGradient(z.pos.x, z.pos.y, 4, z.pos.x, z.pos.y, z.radius);
+          g.addColorStop(0, '#fff2a0'); g.addColorStop(0.4, ORANGE); g.addColorStop(1, 'rgba(120,10,0,0.12)');
+          ctx.fillStyle = g;
+          ctx.beginPath(); ctx.arc(z.pos.x, z.pos.y, z.radius, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.restore();
+      }
     }
   }
 
@@ -3527,8 +3662,8 @@ export class Game {
       WORLD_H / 2
     );
     this.titanBoss = {
-      pos, hp: 350, maxHp: 350,
-      radius: R, speed: 60, contactDamage: 12, hitFlash: 0,
+      pos, hp: 480, maxHp: 480,
+      radius: R, speed: 60, contactDamage: 16, hitFlash: 0,
       shockwaveTimer: 4, beamTimer: 8,
     };
     this.triggerAnnouncement('AI OVERLOAD TITAN DETECTED', PURPLE);
@@ -3692,8 +3827,8 @@ export class Game {
       WORLD_H / 2
     );
     this.annihilatorBoss = {
-      pos, hp: 360, maxHp: 360,
-      radius: R, speed: 52, contactDamage: 12, hitFlash: 0,
+      pos, hp: 480, maxHp: 480,
+      radius: R, speed: 52, contactDamage: 16, hitFlash: 0,
       targetMatrix: this._nearestMatrix(pos),
       attackTimer: 3,
     };
@@ -3872,7 +4007,7 @@ export class Game {
       WORLD_H / 2
     );
     this.bloodfangBoss = {
-      pos, hp: 420, maxHp: 420,
+      pos, hp: 560, maxHp: 560,
       radius: R, speed: 112, hitFlash: 0,
       biteTimer: 2.0, lungeTimer: 0, lungeDir: new Vec2(1, 0),
     };
@@ -3929,7 +4064,7 @@ export class Game {
       this.playerHitCooldown = 0.5;
       const lunging   = a.lungeTimer > 0;
       const dir       = safeNormalize(this.player.pos.sub(a.pos));
-      const hp        = (lunging ? 12 : 10) * (1 - this.player.contactDamageReduction);
+      const hp        = (lunging ? 16 : 14) * (1 - this.player.contactDamageReduction);
       const staggered = this.player.applyBite({
         hp, stamina: 12, dir,
         stagger:   lunging ? 0.8 : 0.5,
