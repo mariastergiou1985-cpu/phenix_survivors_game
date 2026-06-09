@@ -786,9 +786,13 @@ export class Game {
     ts.t += dt;
     ts.totalT += dt;   // total elapsed across all phases (drives the ~7s guitar)
 
-    // Fade out existing strike visuals (flash decays over the bolt's short life)
-    for (const b of ts.bolts) b.life -= dt;
-    ts.bolts = ts.bolts.filter(b => b.life > 0);
+    // Advance strikes; damage + impact FX fire exactly when each bolt LANDS so enemies are
+    // visibly struck before they die (no more vanishing ahead of the visible impact).
+    for (const b of ts.bolts) {
+      b.t += dt;
+      if (!b.struck && b.t >= b.windup) { b.struck = true; this._strikeImpact(b); }
+    }
+    ts.bolts = ts.bolts.filter(b => b.t < b.maxLife);
 
     // Drift musical notes upward with a gentle sway, then fade out
     for (const n of ts.notes) {
@@ -803,9 +807,9 @@ export class Game {
     if (ts.phase !== 'fade') {
       ts.noteTimer -= dt;
       if (ts.noteTimer <= 0) {
-        ts.noteTimer = randomRange(0.22, 0.38);
+        ts.noteTimer = randomRange(0.15, 0.26);   // a touch more frequent for stronger musical identity
         const p = this.player;
-        this._spawnThunderNote(p.pos.x + randomRange(-38, 38), p.pos.y - randomRange(14, 50));
+        this._spawnThunderNote(p.pos.x + randomRange(-42, 42), p.pos.y - randomRange(14, 54));
       }
     }
 
@@ -821,8 +825,8 @@ export class Game {
 
       ts.strikeTimer -= dt;
       if (ts.strikeTimer <= 0) {
-        ts.strikeTimer = 0.16;   // dense rain, slightly calmer than before for readability
-        this._spawnThunderStrike();
+        ts.strikeTimer = 0.15;   // rapid waves of strikes — heavy thunder rain
+        this._spawnThunderWave();
       }
       if (ts.t >= STORM) { ts.phase = 'fade'; ts.t = 0; }
       return;
@@ -839,43 +843,96 @@ export class Game {
     const glyph = (Math.random() * THUNDER_NOTES.length) | 0;
     ts.notes.push({
       x, y, glyph,
-      size: randomRange(22, 34),
-      life: randomRange(0.9, 1.4), maxLife: 1.4,
+      size: randomRange(24, 38),
+      life: randomRange(1.0, 1.5), maxLife: 1.5,
       vy: randomRange(26, 46),
       sway: randomRange(14, 30), swaySpd: randomRange(5, 9), swayPhase: Math.random() * 6.28,
       rot: randomRange(-0.2, 0.2), spin: randomRange(-1.2, 1.2),
     });
   }
 
-  _spawnThunderStrike() {
-    const ts = this.thunderSolo;
-    // Prefer enemies (and clusters) — avoid wasting bolts on empty space
-    let tx, ty;
-    if (this.enemies.length > 0 && Math.random() < 0.92) {
-      const e = this.enemies[(Math.random() * this.enemies.length) | 0];
-      tx = e.pos.x; ty = e.pos.y;
-    } else {
-      tx = this.camera.x + randomRange(40, WIDTH - 40);
-      ty = this.camera.y + randomRange(60, HEIGHT - 40);
+  // One wave of several strikes — re-scans the live battlefield each time so enemies that
+  // spawn DURING the 20s storm are hunted too (the rain never runs out of targets).
+  _spawnThunderWave() {
+    const n = this.enemies.length;
+    // 2 strikes baseline, scaling with crowd size, capped for readability + performance
+    const strikes = Math.max(2, Math.min(4, 2 + Math.floor(n / 12)));
+    for (let i = 0; i < strikes; i++) {
+      const t = this._pickStrikeTarget();
+      if (t) this._spawnThunderStrike(t.x, t.y);
     }
-    // Pick a sliced strike sprite (bolt + ripple base) and a small scale jitter so the
-    // rain reads as many distinct, clean strikes rather than one repeated shape.
+  }
+
+  // Priority targeting: clusters / close enemies / core-carriers / bosses, random only as fallback
+  _pickStrikeTarget() {
+    const p = this.player;
+    const enemies = this.enemies;
+    const bosses = [this.titanBoss, this.annihilatorBoss, this.bloodfangBoss].filter(b => b && b.hp > 0);
+    const r = Math.random();
+
+    // Occasionally hammer an active boss/mini-boss so they take steady (capped) pressure
+    if (bosses.length && r < 0.15) {
+      const b = bosses[(Math.random() * bosses.length) | 0];
+      return { x: b.pos.x + randomRange(-22, 22), y: b.pos.y + randomRange(-22, 22) };
+    }
+
+    if (enemies.length === 0) {
+      // No normal enemies: favour a boss if present, else a random visible point (rare fallback)
+      if (bosses.length) { const b = bosses[(Math.random() * bosses.length) | 0]; return { x: b.pos.x, y: b.pos.y }; }
+      return { x: this.camera.x + randomRange(40, WIDTH - 40), y: this.camera.y + randomRange(60, HEIGHT - 40) };
+    }
+
+    // Small share of random spread so the storm reads as battlefield-wide, not laser-focused
+    if (r > 0.93) {
+      return { x: this.camera.x + randomRange(40, WIDTH - 40), y: this.camera.y + randomRange(60, HEIGHT - 40) };
+    }
+
+    // Sample a handful of enemies and pick the best target: dense clusters, close to the
+    // player, and core-carriers score highest. Target the cluster centroid for max AoE overlap.
+    let best = null, bestScore = -Infinity;
+    const samples = Math.min(enemies.length, 6);
+    for (let s = 0; s < samples; s++) {
+      const e = enemies[(Math.random() * enemies.length) | 0];
+      let cluster = 0, cx = 0, cy = 0;
+      for (const o of enemies) {
+        if (distance(o.pos, e.pos) < 100) { cluster++; cx += o.pos.x; cy += o.pos.y; }
+      }
+      cx /= cluster; cy /= cluster;   // centroid of the local cluster (cluster ≥ 1: includes e)
+      const closeBonus = Math.max(0, 1 - distance(e.pos, p.pos) / 620) * 3;  // nearer the player → higher
+      const coreBonus  = (e.carryingCore !== null) ? 5 : 0;
+      const score = cluster * 2 + closeBonus + coreBonus + Math.random() * 1.5;
+      if (score > bestScore) { bestScore = score; best = { x: cx, y: cy }; }
+    }
+    return best;
+  }
+
+  // Create a single falling bolt with a short wind-up; damage is applied later, on impact.
+  _spawnThunderStrike(tx, ty) {
+    const ts = this.thunderSolo;
+    if (!ts) return;
     const variant = (Math.random() * THUNDER_STRIKES.length) | 0;
     const scale   = randomRange(0.85, 1.15);
-    ts.bolts.push({ x: tx, y: ty, variant, scale, life: 0.42, maxLife: 0.42 });
+    const windup  = randomRange(0.10, 0.16);   // brief telegraph so the bolt is seen landing
+    ts.bolts.push({ x: tx, y: ty, variant, scale, t: 0, windup, struck: false,
+                    life: windup + 0.34, maxLife: windup + 0.34 });
+  }
 
-    // Small cyan ground shockwave + sparks + a calm shake
-    this._specialRings.push({ pos: new Vec2(tx, ty), radius: 0, maxRadius: 75,
+  // Fired the instant a bolt lands: ground ring, sparks, shake, a note, then the AoE damage.
+  _strikeImpact(b) {
+    const pos = new Vec2(b.x, b.y);
+    this._specialRings.push({ pos: pos.clone(), radius: 0, maxRadius: 82,
                                life: 0.4, maxLife: 0.4, color1: CYAN, color2: '#ffffff' });
-    this.particles.spawnHitSparks(new Vec2(tx, ty), CYAN);
-    // Some strikes fling a musical note up from the impact — "musical thunder"
-    if (Math.random() < 0.30) this._spawnThunderNote(tx + randomRange(-12, 12), ty - randomRange(8, 24));
-    // Intermittent shake only — a constant rumble over the 20s storm would be fatiguing
-    if (Math.random() < 0.35) this.screenShake.trigger(3, 0.08);
+    this.particles.spawnHitSparks(pos, CYAN);
+    if (Math.random() < 0.16) this._spawnThunderNote(b.x + randomRange(-12, 12), b.y - randomRange(8, 24));
+    if (Math.random() < 0.25) this.screenShake.trigger(3, 0.08);
+    this._applyStrikeDamage(b.x, b.y);
+  }
 
-    // Shared per-second boss-damage budget: ≤10 dmg/s so bosses survive the long storm but
-    // still take heavy chip damage. Normal enemies are unaffected (full 80 each strike).
-    const BOSS_DPS_CAP = 10;
+  _applyStrikeDamage(tx, ty) {
+    const ts = this.thunderSolo;
+    if (!ts) return;
+    // Shared per-second boss-damage budget so bosses take strong but survivable chip damage.
+    const BOSS_DPS_CAP = 12;
     const bossHit = (perStrike) => {
       const budget = BOSS_DPS_CAP - ts.bossDmgThisSec;
       if (budget <= 0) return 0;
@@ -884,11 +941,12 @@ export class Game {
       return dmg;
     };
 
-    // AoE damage within ~95px — normal enemies obliterated, bosses heavily but safely chunked
-    const R = 95;
+    // AoE within ~110px — normal enemy crowds obliterated, bosses heavily but safely chunked
+    const R = 110;
+    const at = new Vec2(tx, ty);
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       const e = this.enemies[i];
-      if (distance(e.pos, new Vec2(tx, ty)) < R + e.radius) {
+      if (distance(e.pos, at) < R + e.radius) {
         if (e.isBoss() || e.isMegaBoss) {
           const dmg = bossHit(16);
           if (dmg > 0) e.takeHit(dmg, this);
@@ -898,7 +956,7 @@ export class Game {
       }
     }
     const hitBoss = (boss, die) => {
-      if (boss && boss.hp > 0 && distance(boss.pos, new Vec2(tx, ty)) < R + boss.radius) {
+      if (boss && boss.hp > 0 && distance(boss.pos, at) < R + boss.radius) {
         const dmg = bossHit(16);
         if (dmg <= 0) return;
         boss.hp -= dmg; boss.hitFlash = 0.08;
@@ -959,10 +1017,15 @@ export class Game {
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     for (const b of ts.bolts) {
-      const a = b.life / b.maxLife;                 // 1 → 0 over the bolt's life
-      const prog = 1 - a;                           // 0 → 1
-      // Bright flash-in over the first ~25%, then ease out
-      const alpha = prog < 0.25 ? prog / 0.25 : Math.max(0, 1 - (prog - 0.25) / 0.75);
+      const impactFrac = b.windup / b.maxLife;      // when the bolt lands within its lifetime
+      const prog = b.t / b.maxLife;                 // 0 → 1
+      let alpha, fade = 0;
+      if (prog < impactFrac) {
+        alpha = 0.35 + 0.5 * (prog / impactFrac);   // telegraph: bolt forms & brightens as it falls
+      } else {
+        fade  = Math.max(0, 1 - (prog - impactFrac) / (1 - impactFrac));
+        alpha = fade;                               // bright flash at impact, then fade out
+      }
       if (alpha <= 0) continue;
       if (haveSheet) {
         const S = THUNDER_STRIKES[b.variant];
@@ -973,17 +1036,21 @@ export class Game {
         ctx.globalAlpha = 0.9 * alpha;
         ctx.drawImage(sheet, S.sx, S.sy, S.sw, S.sh, Math.round(dx), Math.round(dy), Math.round(dw), Math.round(dh));
       }
-      // White impact spark on top (bright early)
-      ctx.globalAlpha = alpha;
-      ctx.fillStyle = '#ffffff';
-      ctx.beginPath(); ctx.arc(b.x, b.y, 3 * alpha + 1.5, 0, Math.PI * 2); ctx.fill();
+      // White impact spark only once the bolt has landed
+      if (b.struck && fade > 0) {
+        ctx.globalAlpha = fade;
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath(); ctx.arc(b.x, b.y, 3 * fade + 1.5, 0, Math.PI * 2); ctx.fill();
+      }
     }
     ctx.restore();
 
-    // Ground impact halo per strike (soft, fades fast)
+    // Ground impact halo — only after the bolt lands (soft, fades fast)
     for (const b of ts.bolts) {
-      const a = b.life / b.maxLife;
-      drawGlow(ctx, b.x, b.y, 8 + 18 * a, CYAN, 0.55 * a);
+      if (!b.struck) continue;
+      const impactFrac = b.windup / b.maxLife;
+      const fade = Math.max(0, 1 - (b.t / b.maxLife - impactFrac) / (1 - impactFrac));
+      drawGlow(ctx, b.x, b.y, 8 + 18 * fade, CYAN, 0.55 * fade);
     }
 
     // Musical-note energy accents — additive glyphs drifting up, swaying, spinning, fading
@@ -995,7 +1062,7 @@ export class Game {
         const nw = nh * (N.sw / N.sh);
         ctx.save();   // preserves the enclosing camera + screen-shake transform
         ctx.globalCompositeOperation = 'lighter';
-        ctx.globalAlpha = 0.85 * a;
+        ctx.globalAlpha = 0.95 * a;
         ctx.translate(n.x, n.y);
         ctx.rotate(n.rot);
         ctx.drawImage(sheet, N.sx, N.sy, N.sw, N.sh, -nw / 2, -nh / 2, nw, nh);
