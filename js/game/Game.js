@@ -179,6 +179,7 @@ export class Game {
     this.empRings     = [];
     this._specialRings    = [];
     this.thunderSolo      = null;   // Thunder Solo ultimate state while active
+    this.overChains       = null;   // Overheated Heavy Chains ultimate (Cyber Arm Hero) while active
     this._specialBeams    = [];
     this._specialTrail    = [];
     this._taekwondoDmgSet = new Set();
@@ -817,6 +818,131 @@ export class Game {
     this.floatingTexts.push(new FloatingText('THUNDER SOLO!', p.pos.clone(), CYAN, 1.4));
   }
 
+  // ── Overheated Heavy Chains ultimate (Cyber Arm Hero, SPACE, 100 mana) ───────
+  // Heavy fiery chains rotate around the hero for 7s, burning crowds and bosses (capped).
+  // The cyber arm overheats, costing the player up to 10% max HP gradually (never lethal).
+  activateOverheatedChains() {
+    if (this.gameState !== 'playing' || this.paused || this.gameOver || this.victory || this.upgradeUI) return;
+    const p = this.player;
+    if (p.selectedCharacter !== 'cyber_arm_hero') return;   // Cyber Arm Hero only
+    if (this.overChains) return;                            // already running
+    if (p.mana < p.maxMana) {                               // same NOT-ENOUGH-MANA behavior as Thunder Solo
+      this.floatingTexts.push(new FloatingText('NOT ENOUGH MANA', p.pos.clone(), ORANGE, 1.0));
+      return;
+    }
+    p.mana = 0;                                             // consume full mana → HUD ring empties
+    this.overChains = { t: 0, angle: 0, dmgTimer: 0,
+                        miniDmgThisSec: 0, megaDmgThisSec: 0, bossDmgTimer: 1.0 };
+    this.screenShake.trigger(5, 0.3);
+    this.audio?.playEventWarning?.();
+    this.floatingTexts.push(new FloatingText('OVERHEATED HEAVY CHAINS!', p.pos.clone(), ORANGE, 1.4));
+  }
+
+  _updateOverheatedChains(dt) {
+    const oc = this.overChains;
+    if (!oc) return;
+    const p = this.player;
+    const DURATION = 7, RADIUS = 155;
+    const TICK = 0.25, NORMAL_DMG = 12, KNOCK = 90;   // 48 DPS to normal enemies + small knockback
+    const MINI_CAP = 32, MAIN_CAP = 48;               // per-second boss caps (≈47% / ≈45% over 7s)
+
+    oc.t     += dt;
+    oc.angle += dt * 3.4;        // heavy rotation (rad/s)
+
+    // Gradual cyber-arm overheat self-damage: 10% maxHp over the duration, never lethal (floor 1 HP)
+    const selfRate = (0.10 * p.maxHp) / DURATION;
+    p.hp = Math.max(1, p.hp - selfRate * dt);
+
+    // Per-second boss-damage budget reset (keeps bosses controlled / unbreakable)
+    oc.bossDmgTimer -= dt;
+    if (oc.bossDmgTimer <= 0) { oc.bossDmgTimer = 1.0; oc.miniDmgThisSec = 0; oc.megaDmgThisSec = 0; }
+
+    // Repeating burn ticks
+    oc.dmgTimer -= dt;
+    if (oc.dmgTimer <= 0) {
+      oc.dmgTimer = TICK;
+
+      const bossHit = (isMega) => {
+        const cap  = isMega ? MAIN_CAP : MINI_CAP;
+        const used = isMega ? oc.megaDmgThisSec : oc.miniDmgThisSec;
+        const dmg  = Math.min(cap * TICK, cap - used);   // this tick's slice, clamped to the per-sec cap
+        if (dmg <= 0) return 0;
+        if (isMega) oc.megaDmgThisSec += dmg; else oc.miniDmgThisSec += dmg;
+        return dmg;
+      };
+
+      for (let i = this.enemies.length - 1; i >= 0; i--) {
+        const e = this.enemies[i];
+        if (distance(e.pos, p.pos) > RADIUS + e.radius) continue;
+        if (e.isMegaBoss) {
+          const d = bossHit(true);  if (d > 0) e.takeHit(d, this);
+        } else if (e.isBoss()) {
+          const d = bossHit(false); if (d > 0) e.takeHit(d, this);
+        } else {
+          e.takeHit(NORMAL_DMG, this);
+          e.vel.addMut(safeNormalize(e.pos.sub(p.pos)).scale(KNOCK));   // small knockback
+          if (Math.random() < 0.35) this.particles.spawnHitSparks(e.pos, ORANGE);  // burn sparks (throttled)
+        }
+      }
+
+      // Singleton mini-bosses share the mini budget (reduced, controlled)
+      const hitSingle = (b, die) => {
+        if (!b || b.hp <= 0 || distance(b.pos, p.pos) > RADIUS + b.radius) return;
+        const d = bossHit(false); if (d <= 0) return;
+        b.hp -= d; b.hitFlash = 0.08;
+        if (b.hp <= 0) die.call(this);
+      };
+      hitSingle(this.titanBoss,       this._titanDie);
+      hitSingle(this.annihilatorBoss, this._annihilatorDie);
+      hitSingle(this.bloodfangBoss,   this._bloodfangDie);
+    }
+
+    if (oc.t >= DURATION) this.overChains = null;
+  }
+
+  // World-space: heat glow + the rotating chains asset centred on the hero (hollow centre keeps
+  // the character visible). Drawn over world entities, follows the player.
+  _drawOverheatedChains(ctx) {
+    const oc = this.overChains;
+    if (!oc) return;
+    const p = this.player;
+    const RADIUS = 155, DURATION = 7;
+    const a = Math.max(0, Math.min(oc.t / 0.3, (DURATION - oc.t) / 0.5, 1));   // fade in/out
+
+    // Orange/red heat glow under the chains (additive)
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const g = ctx.createRadialGradient(p.pos.x, p.pos.y, RADIUS * 0.2, p.pos.x, p.pos.y, RADIUS * 1.05);
+    g.addColorStop(0,   'rgba(255,90,20,'  + (0.20 * a) + ')');
+    g.addColorStop(0.6, 'rgba(255,40,0,'   + (0.12 * a) + ')');
+    g.addColorStop(1,   'rgba(255,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(p.pos.x, p.pos.y, RADIUS * 1.05, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+
+    // Rotating chains (reuse the loaded HUD/ultimate asset). Normal blend keeps the chains solid;
+    // the asset's hollow centre lets the hero show through.
+    const spr = this._chainsIcon;
+    if (spr && spr.complete && spr.naturalWidth > 0) {
+      const size = RADIUS * 2.35;
+      ctx.save();
+      ctx.globalAlpha = 0.9 * a;
+      ctx.translate(p.pos.x, p.pos.y);
+      ctx.rotate(oc.angle);
+      ctx.drawImage(spr, -size / 2, -size / 2, size, size);
+      ctx.restore();
+    } else {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = a; ctx.strokeStyle = '#ff5a14'; ctx.lineWidth = 6; ctx.lineCap = 'round';
+      for (let k = 0; k < 4; k++) {
+        const ang = oc.angle + k * (Math.PI / 2);
+        ctx.beginPath(); ctx.arc(p.pos.x, p.pos.y, RADIUS * 0.9, ang, ang + 1.4); ctx.stroke();
+      }
+      ctx.restore();
+    }
+  }
+
   _updateThunderSolo(dt) {
     const ts = this.thunderSolo;
     if (!ts) return;
@@ -1214,6 +1340,7 @@ export class Game {
     this._updateEffects(dt);
     this._updateSpecialEffects(dt);
     this._updateThunderSolo(dt);
+    this._updateOverheatedChains(dt);
     this._checkPlayerEnemyCollisions(dt);
     this._updateEnemyBullets(dt);
     this._updateAbilityTimers(dt);
@@ -2679,6 +2806,7 @@ export class Game {
     for (const ft of this.floatingTexts) ft.draw(ctx);
 
     this._drawThunderSoloWorld(ctx);   // ultimate lightning rain + musical notes over world entities
+    this._drawOverheatedChains(ctx);   // Cyber Arm Hero ultimate: rotating fiery chains around the hero
 
     ctx.restore();  // end camera-space block
 
