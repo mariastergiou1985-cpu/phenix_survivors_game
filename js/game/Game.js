@@ -23,6 +23,21 @@ import { weightedSample } from './Upgrades.js';
 import { drawHUD, drawEndScreen } from './HUD.js?v=33';
 import { MetaProgress, META_UPGRADES, upgradeCost } from './MetaProgress.js?v=1';
 
+// ── Thunder Solo sprite slices (cyan_lightning_rain_notes.png, 1254×1254) ──────
+// Strike variants: a clean bolt column + ripple base. (ax,ay) = ripple-centre as a
+// fraction of the crop, so the strike is anchored on its ground-impact point.
+const THUNDER_STRIKES = [
+  { sx: 430, sy:   0, sw: 270, sh: 1240, ax: 0.50, ay: 0.95 }, // tall centre bolt
+  { sx:  70, sy: 620, sw: 210, sh:  560, ax: 0.43, ay: 0.68 }, // medium-left bolt
+  { sx: 830, sy: 300, sw: 215, sh:  600, ax: 0.50, ay: 0.83 }, // medium-right bolt
+];
+// Musical-note glyphs sliced from the same sheet (transparent background).
+const THUNDER_NOTES = [
+  { sx: 745, sy: 890, sw: 125, sh: 165 }, // eighth note
+  { sx:1020, sy: 935, sw: 100, sh: 190 }, // treble clef
+  { sx: 462, sy:  72, sw:  95, sh:  95 }, // beamed pair
+];
+
 export class Game {
   constructor() {
     this.audio     = null;  // set from main.js on first user gesture
@@ -88,9 +103,9 @@ export class Game {
     this._thunderGuitarSprite = new Image();
     this._thunderGuitarSprite.onerror = () => console.warn('[Ultimate] thunder_solo_guitar.png not found — drawn fallback will be used');
     this._thunderGuitarSprite.src = 'assets/abilities/ultimates/thunder_solo_guitar.png';
-    this._lightningStormSprite = new Image();
-    this._lightningStormSprite.onerror = () => console.warn('[Ultimate] cyan_lightning_storm.png not found — drawn fallback will be used');
-    this._lightningStormSprite.src = 'assets/abilities/ultimates/cyan_lightning_storm.png';
+    this._lightningRainSprite = new Image();   // strike + ripple + musical-note sheet
+    this._lightningRainSprite.onerror = () => console.warn('[Ultimate] cyan_lightning_rain_notes.png not found — drawn fallback will be used');
+    this._lightningRainSprite.src = 'assets/abilities/ultimates/cyan_lightning_rain_notes.png';
 
     // Preload acid rain weather sprites
     this._acidRainFallImg = new Image();
@@ -759,7 +774,7 @@ export class Game {
     }
     p.mana = 0;                                              // consume full mana
     this.thunderSolo = { phase: 'windup', t: 0, totalT: 0, strikeTimer: 0, bolts: [],
-                         bossDmgThisSec: 0, bossDmgTimer: 1.0 };
+                         notes: [], noteTimer: 0, bossDmgThisSec: 0, bossDmgTimer: 1.0 };
     this.screenShake.trigger(4, 0.2);
     this.floatingTexts.push(new FloatingText('THUNDER SOLO!', p.pos.clone(), CYAN, 1.4));
   }
@@ -771,9 +786,28 @@ export class Game {
     ts.t += dt;
     ts.totalT += dt;   // total elapsed across all phases (drives the ~7s guitar)
 
-    // Fade out existing bolt visuals
+    // Fade out existing strike visuals (flash decays over the bolt's short life)
     for (const b of ts.bolts) b.life -= dt;
     ts.bolts = ts.bolts.filter(b => b.life > 0);
+
+    // Drift musical notes upward with a gentle sway, then fade out
+    for (const n of ts.notes) {
+      n.life -= dt;
+      n.y    -= n.vy * dt;
+      n.x    += Math.sin(n.life * n.swaySpd + n.swayPhase) * n.sway * dt;
+      n.rot  += n.spin * dt;
+    }
+    ts.notes = ts.notes.filter(n => n.life > 0);
+
+    // Ambient notes stream up from around the skeleton/guitar for the whole cast — "musical thunder"
+    if (ts.phase !== 'fade') {
+      ts.noteTimer -= dt;
+      if (ts.noteTimer <= 0) {
+        ts.noteTimer = randomRange(0.22, 0.38);
+        const p = this.player;
+        this._spawnThunderNote(p.pos.x + randomRange(-38, 38), p.pos.y - randomRange(14, 50));
+      }
+    }
 
     if (ts.phase === 'windup') {
       if (ts.t >= WINDUP) { ts.phase = 'storm'; ts.t = 0; }
@@ -787,7 +821,7 @@ export class Game {
 
       ts.strikeTimer -= dt;
       if (ts.strikeTimer <= 0) {
-        ts.strikeTimer = 0.13;
+        ts.strikeTimer = 0.16;   // dense rain, slightly calmer than before for readability
         this._spawnThunderStrike();
       }
       if (ts.t >= STORM) { ts.phase = 'fade'; ts.t = 0; }
@@ -796,6 +830,21 @@ export class Game {
 
     // fade
     if (ts.t >= FADE) this.thunderSolo = null;
+  }
+
+  // A floating musical-note glyph (cyan energy accent) that drifts up and fades
+  _spawnThunderNote(x, y) {
+    const ts = this.thunderSolo;
+    if (!ts) return;
+    const glyph = (Math.random() * THUNDER_NOTES.length) | 0;
+    ts.notes.push({
+      x, y, glyph,
+      size: randomRange(22, 34),
+      life: randomRange(0.9, 1.4), maxLife: 1.4,
+      vy: randomRange(26, 46),
+      sway: randomRange(14, 30), swaySpd: randomRange(5, 9), swayPhase: Math.random() * 6.28,
+      rot: randomRange(-0.2, 0.2), spin: randomRange(-1.2, 1.2),
+    });
   }
 
   _spawnThunderStrike() {
@@ -809,15 +858,18 @@ export class Game {
       tx = this.camera.x + randomRange(40, WIDTH - 40);
       ty = this.camera.y + randomRange(60, HEIGHT - 40);
     }
-    // Precompute the jagged path once so all bolt color layers align (stable per bolt)
-    const offsets = [];
-    for (let s = 0; s < 6; s++) offsets.push((Math.random() - 0.5) * 24);
-    ts.bolts.push({ x: tx, y: ty, life: 0.3, maxLife: 0.3, offsets });
+    // Pick a sliced strike sprite (bolt + ripple base) and a small scale jitter so the
+    // rain reads as many distinct, clean strikes rather than one repeated shape.
+    const variant = (Math.random() * THUNDER_STRIKES.length) | 0;
+    const scale   = randomRange(0.85, 1.15);
+    ts.bolts.push({ x: tx, y: ty, variant, scale, life: 0.42, maxLife: 0.42 });
 
     // Small cyan ground shockwave + sparks + a calm shake
     this._specialRings.push({ pos: new Vec2(tx, ty), radius: 0, maxRadius: 75,
                                life: 0.4, maxLife: 0.4, color1: CYAN, color2: '#ffffff' });
     this.particles.spawnHitSparks(new Vec2(tx, ty), CYAN);
+    // Some strikes fling a musical note up from the impact — "musical thunder"
+    if (Math.random() < 0.30) this._spawnThunderNote(tx + randomRange(-12, 12), ty - randomRange(8, 24));
     // Intermittent shake only — a constant rumble over the 20s storm would be fatiguing
     if (Math.random() < 0.35) this.screenShake.trigger(3, 0.08);
 
@@ -858,78 +910,98 @@ export class Game {
     hitBoss(this.bloodfangBoss,   this._bloodfangDie);
   }
 
-  // World-space FX (called inside the camera block)
-  _drawThunderSoloWorld(ctx) {
+  // Guitar FX — drawn just BEFORE the player so the skeleton renders on top (source behind it)
+  _drawThunderSoloGuitar(ctx) {
     const ts = this.thunderSolo;
     if (!ts) return;
     const p = this.player;
 
-    // Guitar visibility runs on total elapsed time (~7s): fade-in, hold, fade-out, + gentle pulse
+    // Visibility runs on total elapsed time (~7s): fade-in, hold, fade-out + gentle shimmer
     const gt = ts.totalT;
+    if (gt >= 7.0) return;
     let guitarAlpha = 0;
     if (gt < 0.2)      guitarAlpha = gt / 0.2;
     else if (gt < 6.5) guitarAlpha = 1;
-    else if (gt < 7.0) guitarAlpha = 1 - (gt - 6.5) / 0.5;
-    guitarAlpha *= 0.85 + 0.15 * Math.sin(gt * 8);
+    else               guitarAlpha = 1 - (gt - 6.5) / 0.5;
+    guitarAlpha *= 0.9 + 0.1 * Math.sin(gt * 6);   // soft shimmer (no harsh strobe)
 
-    // Pulsing cyan glow around the player for as long as the guitar shows (the skeleton "plays" it)
-    if (gt < 7.0) {
-      drawGlow(ctx, p.pos.x, p.pos.y, 42, CYAN, 0.28 + 0.22 * Math.abs(Math.sin(gt * 12)));
-    }
+    // Guitar floats above-and-behind the skeleton so it clearly reads as the attack's source
+    const cx = p.pos.x + 6, cy = p.pos.y - 30;
 
-    // Guitar sprite over the player — smaller than the 64px character (~58px), readable
+    // Soft cyan aura behind the skeleton while it "plays" the guitar (kept dim so the guitar pops)
+    drawGlow(ctx, p.pos.x, p.pos.y - 8, 44, CYAN, 0.16 + 0.12 * Math.abs(Math.sin(gt * 9)));
+
     const gspr = this._thunderGuitarSprite;
-    if (guitarAlpha > 0) {
-      ctx.save();
-      ctx.globalAlpha = guitarAlpha;
-      const gh = 58;
-      if (gspr && gspr.complete && gspr.naturalWidth > 0) {
-        const gw = Math.round(gspr.naturalWidth * (gh / gspr.naturalHeight));
-        ctx.drawImage(gspr, Math.round(p.pos.x - gw / 2), Math.round(p.pos.y - gh - 4), gw, gh);
-      } else {
-        drawGlow(ctx, p.pos.x, p.pos.y - 30, 40, CYAN, 0.6);
-      }
-      ctx.restore();
+    if (guitarAlpha <= 0) return;
+    ctx.save();
+    ctx.globalAlpha = guitarAlpha;
+    const gh = 58;   // smaller than the 64px character, raised so the full guitar is clearly visible
+    if (gspr && gspr.complete && gspr.naturalWidth > 0) {
+      // Bright halo right behind the guitar body to silhouette its dark, neon-edged shape
+      drawGlow(ctx, cx, cy, 30, '#bfefff', 0.45 * guitarAlpha);
+      drawGlow(ctx, cx, cy, 40, CYAN,      0.30 * guitarAlpha);
+      const gw = Math.round(gspr.naturalWidth * (gh / gspr.naturalHeight));
+      ctx.drawImage(gspr, Math.round(cx - gw / 2), Math.round(cy - gh / 2), gw, gh);
+    } else {
+      drawGlow(ctx, cx, cy, 38, CYAN, 0.6 * guitarAlpha);
     }
+    ctx.restore();
+  }
 
-    // Vertical lightning bolts — blue glow + cyan body + white core (aligned), with ground impact flash
-    const topY = this.camera.y - 10;
+  // World-space rain FX (called inside the camera block, after entities) — sliced strike sprites + notes
+  _drawThunderSoloWorld(ctx) {
+    const ts = this.thunderSolo;
+    if (!ts) return;
+    const sheet = this._lightningRainSprite;
+    const haveSheet = sheet && sheet.complete && sheet.naturalWidth > 0;
+
+    // Lightning strikes: blit a sliced bolt+ripple sprite anchored on each impact point, additive
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     for (const b of ts.bolts) {
-      const a = b.life / b.maxLife;
-      ctx.globalAlpha = a * 0.45; ctx.strokeStyle = '#468cff'; ctx.lineWidth = 10;
-      this._strokeBolt(ctx, b.x, topY, b.x, b.y, b.offsets);
-      ctx.globalAlpha = a * 0.9;  ctx.strokeStyle = CYAN;      ctx.lineWidth = 5;
-      this._strokeBolt(ctx, b.x, topY, b.x, b.y, b.offsets);
-      ctx.globalAlpha = a;        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2;
-      this._strokeBolt(ctx, b.x, topY, b.x, b.y, b.offsets);
+      const a = b.life / b.maxLife;                 // 1 → 0 over the bolt's life
+      const prog = 1 - a;                           // 0 → 1
+      // Bright flash-in over the first ~25%, then ease out
+      const alpha = prog < 0.25 ? prog / 0.25 : Math.max(0, 1 - (prog - 0.25) / 0.75);
+      if (alpha <= 0) continue;
+      if (haveSheet) {
+        const S = THUNDER_STRIKES[b.variant];
+        const dh = 132 * b.scale;                   // on-screen height ~115–150px (not full-screen)
+        const dw = dh * (S.sw / S.sh);
+        const dx = b.x - dw * S.ax;                 // anchor ripple-centre on the impact point
+        const dy = b.y - dh * S.ay;
+        ctx.globalAlpha = 0.9 * alpha;
+        ctx.drawImage(sheet, S.sx, S.sy, S.sw, S.sh, Math.round(dx), Math.round(dy), Math.round(dw), Math.round(dh));
+      }
+      // White impact spark on top (bright early)
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath(); ctx.arc(b.x, b.y, 3 * alpha + 1.5, 0, Math.PI * 2); ctx.fill();
     }
     ctx.restore();
 
-    // Ground impact flash per bolt (bright early, fades fast)
+    // Ground impact halo per strike (soft, fades fast)
     for (const b of ts.bolts) {
       const a = b.life / b.maxLife;
-      drawGlow(ctx, b.x, b.y, 8 + 20 * a, CYAN, 0.7 * a);
-      ctx.save();
-      ctx.globalCompositeOperation = 'lighter';
-      ctx.globalAlpha = a;
-      ctx.fillStyle = '#ffffff';
-      ctx.beginPath(); ctx.arc(b.x, b.y, 4 * a + 1.5, 0, Math.PI * 2); ctx.fill();
-      ctx.restore();
+      drawGlow(ctx, b.x, b.y, 8 + 18 * a, CYAN, 0.55 * a);
     }
-  }
 
-  _strokeBolt(ctx, x0, y0, x1, y1, offsets) {
-    const segs = offsets.length + 1;
-    ctx.beginPath();
-    ctx.moveTo(x0, y0);
-    for (let i = 1; i < segs; i++) {
-      const f = i / segs;
-      ctx.lineTo(x0 + (x1 - x0) * f + offsets[i - 1], y0 + (y1 - y0) * f);
+    // Musical-note energy accents — additive glyphs drifting up, swaying, spinning, fading
+    if (haveSheet) {
+      for (const n of ts.notes) {
+        const N = THUNDER_NOTES[n.glyph];
+        const a = Math.max(0, Math.min(1, Math.min(1, n.life / 0.4) * (n.life / n.maxLife + 0.15)));
+        const nh = n.size;
+        const nw = nh * (N.sw / N.sh);
+        ctx.save();   // preserves the enclosing camera + screen-shake transform
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.85 * a;
+        ctx.translate(n.x, n.y);
+        ctx.rotate(n.rot);
+        ctx.drawImage(sheet, N.sx, N.sy, N.sw, N.sh, -nw / 2, -nh / 2, nw, nh);
+        ctx.restore();
+      }
     }
-    ctx.lineTo(x1, y1);
-    ctx.stroke();
   }
 
   // Screen-space FX (called after the camera restore, before the HUD)
@@ -2049,7 +2121,8 @@ export class Game {
       ctx.fillRect(Math.round(pos.x - sz / 2), Math.round(pos.y + sz / 2 + 4), Math.round(sz * (timer / 20)), 4);
     }
 
-    // 5 ── Player
+    // 5 ── Player (Thunder Solo guitar + aura drawn first so the skeleton sits in front of them)
+    this._drawThunderSoloGuitar(ctx);
     this.player.draw(ctx, this._lastMousePos || { x: 0, y: 0 });
 
     // 6 ── Projectiles, homing discs, EMP rings, particles
@@ -2236,7 +2309,7 @@ export class Game {
     // Floating texts (world-space)
     for (const ft of this.floatingTexts) ft.draw(ctx);
 
-    this._drawThunderSoloWorld(ctx);   // ultimate bolts/guitar on top of world entities
+    this._drawThunderSoloWorld(ctx);   // ultimate lightning rain + musical notes over world entities
 
     ctx.restore();  // end camera-space block
 
