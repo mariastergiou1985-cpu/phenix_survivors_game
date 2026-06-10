@@ -62,8 +62,10 @@ export function drawHUD(ctx, game) {
     (cx, cy) => _glyphEMP(ctx, cx, cy, bs));
 
   // ── Bottom-right: SPACE ultimate (mana-fill) ────────────────────────────
-  if (p.selectedCharacter === 'skeleton_warrior' || p.selectedCharacter === 'cyber_arm_hero') {
-    const icon = p.selectedCharacter === 'skeleton_warrior' ? game._thunderGuitarSprite : game._chainsIcon;
+  if (p.selectedCharacter === 'skeleton_warrior' || p.selectedCharacter === 'cyber_arm_hero' || p.selectedCharacter === 'taekwondo_girl') {
+    const icon = p.selectedCharacter === 'skeleton_warrior' ? game._thunderGuitarSprite
+               : p.selectedCharacter === 'cyber_arm_hero'   ? game._chainsIcon
+               : game._dojangFlagSprite;
     const manaFrac = clamp(p.mana / p.maxMana, 0, 1);
     _drawUltimateBox(ctx, WIDTH - 64, HEIGHT - 66, 48, 'SPACE', manaFrac, icon);
   }

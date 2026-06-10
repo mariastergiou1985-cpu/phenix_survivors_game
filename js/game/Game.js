@@ -20,7 +20,7 @@ import { ParticleSystem, ScreenShake, drawVignette, EMPRing, drawGlow } from './
 import { SystemEventManager } from './Events.js?v=94';
 import { UpgradeUI }      from './UpgradeUI.js';
 import { weightedSample } from './Upgrades.js';
-import { drawHUD, drawEndScreen } from './HUD.js?v=33';
+import { drawHUD, drawEndScreen } from './HUD.js?v=34';
 import { MetaProgress, META_UPGRADES, upgradeCost } from './MetaProgress.js?v=1';
 
 // ── Thunder Solo sprite slices (cyan_lightning_rain_notes.png, 1254×1254) ──────
@@ -122,6 +122,13 @@ export class Game {
     this._neonBeamSprite = new Image();
     this._neonBeamSprite.onerror = () => console.warn('[Weapon] neon_pierce_beam.png missing — drawn fallback used');
     this._neonBeamSprite.src = 'assets/weapons/neon_pierce_beam.png';
+    // Neon Taekwondo Girl — Aqua Spirit Trail (movement secondary) + Spirit Dojang Flag (SPACE ultimate)
+    this._aquaTrailSprite = new Image();
+    this._aquaTrailSprite.onerror = () => console.warn('[Weapon] aqua_spirit_trail.png missing — drawn fallback used');
+    this._aquaTrailSprite.src = 'assets/weapons/aqua_spirit_trail.png';
+    this._dojangFlagSprite = new Image();
+    this._dojangFlagSprite.onerror = () => console.warn('[Ultimate] spirit_dojang_flag.png missing — drawn fallback used');
+    this._dojangFlagSprite.src = 'assets/abilities/ultimates/spirit_dojang_flag.png';
 
     // Preload acid rain weather sprites
     this._acidRainFallImg = new Image();
@@ -180,6 +187,9 @@ export class Game {
     this._specialRings    = [];
     this.thunderSolo      = null;   // Thunder Solo ultimate state while active
     this.overChains       = null;   // Overheated Heavy Chains ultimate (Cyber Arm Hero) while active
+    this._aquaPuddles     = [];   // Aqua Spirit Trail puddles (Neon Taekwondo Girl movement secondary)
+    this._aquaTrailTimer  = 0;    // spawn cadence while moving
+    this.spiritDojang     = null; // Spirit Dojang Flag ultimate (Neon Taekwondo Girl) while active
     this._specialBeams    = [];
     this._specialTrail    = [];
     this._taekwondoDmgSet = new Set();
@@ -1333,6 +1343,7 @@ export class Game {
     this._updateHomingDiscs(dt);
     this._updateChainLightning(dt);
     this._updateNeonPierceBeam(dt);
+    this._updateAquaTrail(dt);
     this._updateEnemies(dt);
     this._updateOverload(dt);
     this._updateSpawning(dt);
@@ -1341,6 +1352,7 @@ export class Game {
     this._updateSpecialEffects(dt);
     this._updateThunderSolo(dt);
     this._updateOverheatedChains(dt);
+    this._updateSpiritDojang(dt);
     this._checkPlayerEnemyCollisions(dt);
     this._updateEnemyBullets(dt);
     this._updateAbilityTimers(dt);
@@ -2254,6 +2266,251 @@ export class Game {
     ctx.restore();
   }
 
+  // ── Aqua Spirit Trail (Neon Taekwondo Girl secondary) ───────────────────────
+  // Passive: while she MOVES she leaves cyan spirit-water puddles. Enemies standing in a
+  // puddle take gradual, capped damage. Bosses take heavily reduced damage. No knockback,
+  // no instant kills, count-limited for performance. Standing still spawns nothing.
+  _updateAquaTrail(dt) {
+    const AQUA_TICK = 0.25, AQUA_NORMAL_TICK = 2.0, AQUA_CAP = 16;  // per-tick + per-enemy/per-puddle cap
+
+    // Advance + retire puddles, and apply DoT (runs for any character so leftover puddles still fade)
+    const puddles = this._aquaPuddles;
+    for (let i = puddles.length - 1; i >= 0; i--) {
+      const pud = puddles[i];
+      pud.t += dt;
+      if (pud.t >= pud.life) { puddles.splice(i, 1); continue; }
+      pud.dmgTimer -= dt;
+      if (pud.dmgTimer <= 0) {
+        pud.dmgTimer = AQUA_TICK;
+        this._applyAquaPuddleDamage(pud, AQUA_NORMAL_TICK, AQUA_CAP);
+      }
+    }
+
+    if (this.player.selectedCharacter !== 'taekwondo_girl') return;
+
+    // Spawn only while actually moving (ignore tiny jitter) — never while standing still.
+    if (this.player.vel.lengthSq() < 25 * 25) return;
+    this._aquaTrailTimer -= dt;
+    if (this._aquaTrailTimer <= 0) {
+      this._aquaTrailTimer = 0.20;                       // every ~0.2s while moving
+      if (puddles.length < 22) {                         // count cap for performance
+        puddles.push({ pos: this.player.pos.clone(), t: 0, life: randomRange(3.0, 3.8),
+                       radius: randomRange(38, 48), dmgTimer: 0, hits: new Map(),
+                       seed: Math.random() * 6.28 });
+      }
+    }
+  }
+
+  _applyAquaPuddleDamage(pud, normalTick, cap) {
+    const tierTick = (isMega, isMini) => isMega ? normalTick * 0.2 : isMini ? normalTick * 0.4 : normalTick;
+    const tierCap  = (isMega, isMini) => isMega ? cap * 0.2 : isMini ? cap * 0.4 : cap;
+
+    const hitOne = (obj, isMega, isMini, applyDmg) => {
+      if (distance(obj.pos, pud.pos) > pud.radius + obj.radius) return;
+      const done = pud.hits.get(obj) || 0;
+      const lim  = tierCap(isMega, isMini);
+      if (done >= lim) return;
+      const dmg = Math.min(tierTick(isMega, isMini), lim - done);
+      if (dmg <= 0) return;
+      pud.hits.set(obj, done + dmg);
+      applyDmg(dmg);
+    };
+
+    for (let i = this.enemies.length - 1; i >= 0; i--) {
+      const e = this.enemies[i];
+      hitOne(e, e.isMegaBoss, e.isBoss() && !e.isMegaBoss, (d) => {
+        e.takeHit(d, this);
+        if (Math.random() < 0.12) this.particles.spawnHitSparks(e.pos, CYAN);
+      });
+    }
+    // Singleton mini-bosses (reduced damage, safe death routing) — same pattern as the beam/chains
+    const singles = [
+      [this.titanBoss,       this._titanDie],
+      [this.annihilatorBoss, this._annihilatorDie],
+      [this.bloodfangBoss,   this._bloodfangDie],
+    ];
+    for (const [b, die] of singles) {
+      if (!b || b.hp <= 0) continue;
+      hitOne(b, false, true, (d) => { b.hp -= d; b.hitFlash = 0.08; if (b.hp <= 0) die.call(this); });
+    }
+  }
+
+  // Ground-layer puddles: translucent cyan/teal spirit-water with the asset texture on top.
+  _drawAquaPuddles(ctx) {
+    if (!this._aquaPuddles.length) return;
+    const spr   = this._aquaTrailSprite;
+    const ready = spr && spr.complete && spr.naturalWidth > 0;
+    const now   = performance.now() / 1000;
+    ctx.save();
+    for (const pud of this._aquaPuddles) {
+      const r    = pud.radius;
+      const grow = Math.min(1, pud.t / 0.25);                       // quick fade-in
+      const fade = Math.min(1, (pud.life - pud.t) / 0.8);           // fade-out over last 0.8s
+      const a    = Math.max(0, Math.min(grow, fade));
+      const pulse = 0.85 + 0.15 * Math.sin(now * 3 + pud.seed);
+
+      // Soft translucent water glow (additive teal core + cyan rim)
+      ctx.globalCompositeOperation = 'lighter';
+      const g = ctx.createRadialGradient(pud.pos.x, pud.pos.y, r * 0.15, pud.pos.x, pud.pos.y, r);
+      g.addColorStop(0,   'rgba(60,230,255,' + (0.30 * a) + ')');
+      g.addColorStop(0.6, 'rgba(40,140,255,' + (0.16 * a) + ')');
+      g.addColorStop(1,   'rgba(150,80,255,0)');                    // subtle purple highlight at edge
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.ellipse(pud.pos.x, pud.pos.y, r * pulse, r * 0.7 * pulse, 0, 0, Math.PI * 2); ctx.fill();
+
+      // Asset texture on top (normal blend, kept low-alpha so it reads as spirit-water footprints)
+      if (ready) {
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = 0.5 * a;
+        const w = r * 2 * pulse, h = r * 1.5 * pulse;
+        ctx.drawImage(spr, pud.pos.x - w / 2, pud.pos.y - h / 2, w, h);
+        ctx.globalAlpha = 1;
+      }
+    }
+    ctx.restore();
+  }
+
+  // ── Spirit Dojang Flag ultimate (Neon Taekwondo Girl, SPACE, 100 mana) ───────
+  // Plants a flag at the cast position; a 7s circular cyan dojo field damages enemies over time
+  // and slightly slows normal enemies. Bosses take controlled, capped damage and are not slowed.
+  activateSpiritDojang() {
+    if (this.gameState !== 'playing' || this.paused || this.gameOver || this.victory || this.upgradeUI) return;
+    const p = this.player;
+    if (p.selectedCharacter !== 'taekwondo_girl') return;   // Neon Taekwondo Girl only
+    if (this.spiritDojang) return;                          // already running
+    if (p.mana < p.maxMana) {                               // same NOT-ENOUGH-MANA behavior as other ultimates
+      this.floatingTexts.push(new FloatingText('NOT ENOUGH MANA', p.pos.clone(), CYAN, 1.0));
+      return;
+    }
+    p.mana = 0;                                             // consume full mana → HUD ring empties
+    this.spiritDojang = { pos: p.pos.clone(), t: 0, dmgTimer: 0,
+                          miniDmgThisSec: 0, megaDmgThisSec: 0, bossDmgTimer: 1.0,
+                          particles: [], partTimer: 0 };
+    this.screenShake.trigger(4, 0.25);
+    this.audio?.playEventWarning?.();
+    this.floatingTexts.push(new FloatingText('SPIRIT DOJANG FLAG!', p.pos.clone(), CYAN, 1.4));
+  }
+
+  _updateSpiritDojang(dt) {
+    const sd = this.spiritDojang;
+    if (!sd) return;
+    const DURATION = 7, RADIUS = 205;
+    const TICK = 0.25, NORMAL_DMG = 9;       // 36 DPS to normal enemies
+    const MINI_CAP = 28, MAIN_CAP = 42;      // per-second boss caps (controlled / safe)
+    const SLOW = 0.30;                       // 30% slow on normal enemies inside the field
+
+    sd.t += dt;
+
+    // Subtle martial-arts spirit particles rising inside the field
+    sd.partTimer -= dt;
+    if (sd.t < DURATION - 0.3 && sd.partTimer <= 0) {
+      sd.partTimer = 0.10;
+      const ang = Math.random() * Math.PI * 2;
+      const rr  = Math.sqrt(Math.random()) * RADIUS;
+      sd.particles.push({ x: sd.pos.x + Math.cos(ang) * rr, y: sd.pos.y + Math.sin(ang) * rr,
+                          life: randomRange(0.5, 0.9), maxLife: 0.9,
+                          vy: randomRange(20, 40), size: randomRange(2, 4) });
+    }
+    for (const pt of sd.particles) { pt.life -= dt; pt.y -= pt.vy * dt; }
+    sd.particles = sd.particles.filter(pt => pt.life > 0);
+
+    // Per-second boss-damage budget reset (keeps bosses controlled / unbreakable)
+    sd.bossDmgTimer -= dt;
+    if (sd.bossDmgTimer <= 0) { sd.bossDmgTimer = 1.0; sd.miniDmgThisSec = 0; sd.megaDmgThisSec = 0; }
+
+    // Slow normal enemies inside the field — Game-side, no Enemy.js change (same idea as knockback):
+    // cancel a fraction of the movement they just applied this frame. Bosses + stunned are skipped.
+    for (const e of this.enemies) {
+      if (e.isBoss() || e.isMegaBoss || e.stunned > 0) continue;
+      if (distance(e.pos, sd.pos) <= RADIUS + e.radius) e.pos.subMut(e.vel.scale(SLOW * dt));
+    }
+
+    // Repeating damage ticks
+    sd.dmgTimer -= dt;
+    if (sd.dmgTimer <= 0) {
+      sd.dmgTimer = TICK;
+      const bossHit = (isMega) => {
+        const cap  = isMega ? MAIN_CAP : MINI_CAP;
+        const used = isMega ? sd.megaDmgThisSec : sd.miniDmgThisSec;
+        const dmg  = Math.min(cap * TICK, cap - used);
+        if (dmg <= 0) return 0;
+        if (isMega) sd.megaDmgThisSec += dmg; else sd.miniDmgThisSec += dmg;
+        return dmg;
+      };
+      for (let i = this.enemies.length - 1; i >= 0; i--) {
+        const e = this.enemies[i];
+        if (distance(e.pos, sd.pos) > RADIUS + e.radius) continue;
+        if (e.isMegaBoss)    { const d = bossHit(true);  if (d > 0) e.takeHit(d, this); }
+        else if (e.isBoss()) { const d = bossHit(false); if (d > 0) e.takeHit(d, this); }
+        else                 { e.takeHit(NORMAL_DMG, this); if (Math.random() < 0.25) this.particles.spawnHitSparks(e.pos, CYAN); }
+      }
+      const hitSingle = (b, die) => {
+        if (!b || b.hp <= 0 || distance(b.pos, sd.pos) > RADIUS + b.radius) return;
+        const d = bossHit(false); if (d <= 0) return;
+        b.hp -= d; b.hitFlash = 0.08;
+        if (b.hp <= 0) die.call(this);
+      };
+      hitSingle(this.titanBoss,       this._titanDie);
+      hitSingle(this.annihilatorBoss, this._annihilatorDie);
+      hitSingle(this.bloodfangBoss,   this._bloodfangDie);
+    }
+
+    if (sd.t >= DURATION) this.spiritDojang = null;
+  }
+
+  // World-space: cyan dojo field aura + rising spirit particles + the flag asset at the cast point.
+  _drawSpiritDojang(ctx) {
+    const sd = this.spiritDojang;
+    if (!sd) return;
+    const RADIUS = 205, DURATION = 7;
+    const a = Math.max(0, Math.min(sd.t / 0.3, (DURATION - sd.t) / 0.6, 1));   // fade in/out
+    const now = performance.now() / 1000;
+    const pulse = 0.5 + 0.5 * Math.sin(now * 2.2);
+
+    // Translucent cyan/blue field fill (additive — character + enemies stay readable through it)
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const g = ctx.createRadialGradient(sd.pos.x, sd.pos.y, RADIUS * 0.2, sd.pos.x, sd.pos.y, RADIUS);
+    g.addColorStop(0,   'rgba(40,200,255,' + (0.16 * a) + ')');
+    g.addColorStop(0.7, 'rgba(40,120,255,' + (0.10 * a) + ')');
+    g.addColorStop(1,   'rgba(150,80,255,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(sd.pos.x, sd.pos.y, RADIUS, 0, Math.PI * 2); ctx.fill();
+
+    // Bright pulsing rim
+    ctx.globalAlpha = (0.4 + 0.3 * pulse) * a;
+    ctx.strokeStyle = CYAN; ctx.lineWidth = 2.5;
+    ctx.shadowColor = CYAN; ctx.shadowBlur = 10;
+    ctx.beginPath(); ctx.arc(sd.pos.x, sd.pos.y, RADIUS - 2, 0, Math.PI * 2); ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // Spirit particles
+    for (const pt of sd.particles) {
+      ctx.globalAlpha = (pt.life / pt.maxLife) * 0.8 * a;
+      ctx.fillStyle = '#bfefff';
+      ctx.beginPath(); ctx.arc(pt.x, pt.y, pt.size, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
+
+    // Flag asset at the centre (normal blend, drawn last so it reads clearly)
+    const spr = this._dojangFlagSprite;
+    if (spr && spr.complete && spr.naturalWidth > 0) {
+      const h = 96, w = h * (spr.naturalWidth / spr.naturalHeight);
+      ctx.save();
+      ctx.globalAlpha = a;
+      ctx.drawImage(spr, sd.pos.x - w / 2, sd.pos.y - h, w, h);   // pole base anchored at cast point
+      ctx.restore();
+    } else {
+      ctx.save();
+      ctx.globalAlpha = a;
+      ctx.strokeStyle = CYAN; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(sd.pos.x, sd.pos.y); ctx.lineTo(sd.pos.x, sd.pos.y - 80); ctx.stroke();
+      ctx.fillStyle = 'rgba(40,200,255,0.8)';
+      ctx.fillRect(sd.pos.x, sd.pos.y - 80, 34, 22);
+      ctx.restore();
+    }
+  }
+
   _updateEnemies(dt) {
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       const e = this.enemies[i];
@@ -2562,6 +2819,9 @@ export class Game {
     this._drawHealthPickups(ctx);
     this._drawManaPickups(ctx);
 
+    // 3b ── Aqua Spirit Trail puddles (ground terrain — under entities so they read as footprints)
+    this._drawAquaPuddles(ctx);
+
     // 4 ── Enemies
     for (const e of this.enemies) e.draw(ctx);
 
@@ -2807,6 +3067,7 @@ export class Game {
 
     this._drawThunderSoloWorld(ctx);   // ultimate lightning rain + musical notes over world entities
     this._drawOverheatedChains(ctx);   // Cyber Arm Hero ultimate: rotating fiery chains around the hero
+    this._drawSpiritDojang(ctx);       // Neon Taekwondo Girl ultimate: cyan dojo field + flag at cast point
 
     ctx.restore();  // end camera-space block
 
