@@ -48,8 +48,9 @@ export class Player {
       this.pickupRadius = 100;
     }
 
-    this.carry    = 0;
-    this.maxCarry = 5;
+    this.carry        = 0;
+    this.maxCarry     = 5;
+    this.carriedCores = [];   // values of carried cores (3 = silver, 5 = gold), FIFO on deposit
 
     this.dashTimer    = 0.0;
     this.dashCooldown = 0.0;
@@ -85,7 +86,7 @@ export class Player {
       'Firewall Protection': 0, 'Pulse Damage': 0, 'Homing Disc': 0,
       'EMP Cloud': 0, 'Quantum Overhaul': 0,
       'Fire Rate': 0, 'Projectile Speed': 0, 'Cryo Rounds': 0,
-      'Max HP': 0, 'Max Mana': 0,
+      'Max HP': 0, 'Max Mana': 0, 'Grid Investor': 0, 'Suppression': 0,
     };
 
     // Ability cooldown timers

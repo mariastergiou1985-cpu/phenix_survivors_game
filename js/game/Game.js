@@ -9,17 +9,17 @@ import {
 import { clamp, distance, safeNormalize, randomChoice, randomRange } from '../utils.js';
 
 import { FloatingText }   from '../entities/FloatingText.js';
-import { DataCore }       from '../entities/DataCore.js';
-import { PowerMatrix }    from '../entities/PowerMatrix.js?v=11';
-import { Player }         from '../entities/Player.js?v=60';
+import { DataCore, rollCoreType } from '../entities/DataCore.js?v=2';
+import { PowerMatrix }    from '../entities/PowerMatrix.js?v=12';
+import { Player }         from '../entities/Player.js?v=61';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=3';
-import { Enemy }          from '../entities/Enemy.js?v=100';
+import { Enemy }          from '../entities/Enemy.js?v=101';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=1';
 
 import { ParticleSystem, ScreenShake, drawVignette, EMPRing, drawGlow } from './Effects.js?v=3';
 import { SystemEventManager } from './Events.js?v=94';
-import { UpgradeUI }      from './UpgradeUI.js?v=2';
-import { weightedSample } from './Upgrades.js?v=2';
+import { UpgradeUI }      from './UpgradeUI.js?v=3';
+import { weightedSample } from './Upgrades.js?v=3';
 import { drawHUD, drawEndScreen } from './HUD.js?v=34';
 import { MetaProgress, META_UPGRADES, upgradeCost } from './MetaProgress.js?v=1';
 
@@ -1461,6 +1461,15 @@ export class Game {
     this.audio?.playGridCache();
   }
 
+  // Grid Credits award, scaled by the Grid Investor card (+10% per level). Returns granted amount.
+  _awardCredits(n) {
+    const mult  = 1 + (this.player.upgrades['Grid Investor'] || 0) * 0.10;
+    const total = Math.max(1, Math.round(n * mult));
+    this.meta.addCredits(total);
+    this.runCreditsEarned = (this.runCreditsEarned || 0) + total;
+    return total;
+  }
+
   // RNG bonus on top of the Grid Cache base reward: HP / Mana / Grid Credits / loose Cores.
   _grantGridCacheBonus() {
     const p = this.player;
@@ -1474,16 +1483,13 @@ export class Game {
       p.mana = Math.min(p.maxMana, p.mana + m);
       this.floatingTexts.push(new FloatingText('+' + m + ' MANA', p.pos.clone(), CYAN, 1.4));
     } else if (r < 0.80) {
-      const c = 3 + Math.floor(Math.random() * 4);   // 3..6 Grid Credits
-      this.meta.addCredits(c);
-      this.runCreditsEarned = (this.runCreditsEarned || 0) + c;
+      const c = this._awardCredits(3 + Math.floor(Math.random() * 4));   // 3..6 (×Grid Investor)
       this.floatingTexts.push(new FloatingText('+' + c + ' GRID CREDITS', p.pos.clone(), GREEN, 1.4));
     } else {
       const n = 2 + Math.floor(Math.random() * 2);    // 2..3 loose cores to secure
       for (let i = 0; i < n; i++) {
         const off = new Vec2(randomRange(-40, 40), randomRange(-40, 40));
-        const col = CORE_COLORS[Math.floor(Math.random() * CORE_COLORS.length)];
-        this.groundCores.push(new DataCore(this._clampPickupPos(p.pos.clone().add(off)), col));
+        this.groundCores.push(new DataCore(this._clampPickupPos(p.pos.clone().add(off)), rollCoreType()));
       }
       this.floatingTexts.push(new FloatingText('+' + n + ' CORES', p.pos.clone(), YELLOW, 1.4));
     }
@@ -1959,8 +1965,9 @@ export class Game {
         if (d < PLAYER_RADIUS + CORE_RADIUS + 8) {
           this.groundCores.splice(i, 1);
           this.player.carry++;
+          this.player.carriedCores.push(core.value ?? 3);   // remember gold/silver value
           this.overload = Math.max(0, this.overload - OVERLOAD_PICKUP_REDUCTION);
-          this.floatingTexts.push(new FloatingText('CORE VACUUMED', this.player.pos.clone(), CYAN, 0.8));
+          this.floatingTexts.push(new FloatingText('CORE VACUUMED', this.player.pos.clone(), core.color || CYAN, 0.8));
           this.particles.spawnCorePickup(core.pos, core.color);
           this.audio?.playCorePickup();
         }
@@ -1971,20 +1978,21 @@ export class Game {
       for (const matrix of this.matrices) {
         if (this.player.carry <= 0) break;
         if (matrix.hasSpace() && distance(this.player.pos, matrix.pos) < this.player.returnRadius) {
-          matrix.slotCore();
+          const value = this.player.carriedCores.shift() ?? 3;   // Gold = 5, Silver = 3
+          matrix.slotCore(value);
           this.player.carry--;
           this.player.coresSecured++;
           this.overload = Math.max(0, this.overload - OVERLOAD_SLOT_REDUCTION);
           this.player.gainXp(2, this.floatingTexts);
-          this.floatingTexts.push(new FloatingText('CORE SLOTTED', matrix.pos.clone(), GREEN, 0.9));
-          this.particles.spawnCoreSlot(matrix.pos, matrix.color);
+          const isGold = value >= 5;
+          this.floatingTexts.push(new FloatingText('+' + value + ' MATRIX',
+            matrix.pos.clone(), isGold ? '#ffd23c' : GREEN, 0.9));
+          this.particles.spawnCoreSlot(matrix.pos, isGold ? '#ffd23c' : matrix.color);
           this.audio?.playCoreSlot();
           this.score += 25;
           // Matrix RNG bonus: ~22% of deposits award a variable Grid Credit cache (2–5).
           if (Math.random() < 0.22) {
-            const c = 2 + Math.floor(Math.random() * 4);   // 2..5
-            this.meta.addCredits(c);
-            this.runCreditsEarned = (this.runCreditsEarned || 0) + c;
+            const c = this._awardCredits(2 + Math.floor(Math.random() * 4));   // 2..5
             this.floatingTexts.push(new FloatingText('+' + c + ' GRID CREDITS',
               new Vec2(matrix.pos.x, matrix.pos.y - 22), GREEN, 1.4));
           }
@@ -2003,8 +2011,10 @@ export class Game {
         const e = this.enemies[j];
         if (distance(p.pos, e.pos) < p.radius + e.radius) {
           const cryo = this.player.upgrades['Cryo Rounds'] || 0;
-          if (cryo > 0 && !e.isBoss() && !e.isMegaBoss) {
-            e.slowTimer = Math.max(e.slowTimer, 0.8 + 0.3 * cryo);   // refresh, don't stack
+          const supp = this.player.upgrades['Suppression'] || 0;
+          if ((cryo > 0 || supp > 0) && !e.isBoss() && !e.isMegaBoss) {
+            e.slowTimer  = Math.max(e.slowTimer, 0.8 + 0.3 * cryo + 0.25 * supp);  // Suppression = longer
+            e.slowFactor = clamp(0.55 - 0.08 * supp, 0.30, 0.55);                  // Suppression = stronger
           }
           e.takeHit(p.damage, this);
           this.projectiles.splice(i, 1);
@@ -2713,6 +2723,7 @@ export class Game {
         if (p.carry < p.maxCarry && distance(p.pos, core.pos) < 60) {
           this.groundCores.splice(i, 1);
           p.carry++;
+          p.carriedCores.push(core.value ?? 3);
           this.overload = Math.max(0, this.overload - OVERLOAD_PICKUP_REDUCTION);
           this.particles.spawnCorePickup(core.pos, core.color);
         }
@@ -2756,7 +2767,7 @@ export class Game {
     if (bestCore && bestMatrix) {
       const idx = this.groundCores.indexOf(bestCore);
       this.groundCores.splice(idx, 1);
-      bestMatrix.slotCore();
+      bestMatrix.slotCore(bestCore.value ?? 3);   // honor Gold (+5) / Silver (+3)
       this.player.coresSecured++;
       this.overload = Math.max(0, this.overload - OVERLOAD_SLOT_REDUCTION);
       this.floatingTexts.push(new FloatingText('QUANTUM BEAM!', bestCore.pos.clone(), ORANGE, 1.2));
@@ -2871,19 +2882,28 @@ export class Game {
     // 2 ── Power Matrices (fill-based glow + counter owned by PowerMatrix; overload drives danger blink)
     for (const m of this.matrices) m.draw(ctx, this.overload / MAX_OVERLOAD);
 
-    // 3 ── Data-Cores on the ground
+    // 3 ── Data-Cores on the ground (only two types: GOLD and SILVER, both pulse/glow).
+    // Gold reads as clearly superior: bigger, brighter, faster pulse + a gold ring.
+    const nowCore = performance.now() / 1000;
     for (const core of this.groundCores) {
-      const spr = this._coreSprite;
-      const sz  = 28;
-      drawGlow(ctx, core.pos.x, core.pos.y, 13, core.color, 0.5);
-      if (spr && spr.complete && spr.naturalWidth > 0) {
-        ctx.imageSmoothingEnabled = false;
-        ctx.drawImage(spr, Math.round(core.pos.x - sz / 2), Math.round(core.pos.y - sz / 2), sz, sz);
-        ctx.imageSmoothingEnabled = true;
-      } else {
-        ctx.fillStyle = core.color;
-        ctx.beginPath(); ctx.arc(core.pos.x, core.pos.y, 8, 0, Math.PI * 2); ctx.fill();
-      }
+      const gold  = core.type === 'gold';
+      const col   = core.color || (gold ? '#ffd23c' : '#dfe9f5');
+      const glowC = core.glow  || (gold ? '#ffe680' : '#ffffff');
+      // Pulsing/blinking glow — gold pulses stronger & faster so it stands out in combat.
+      const pulse = gold ? (0.7 + 0.3 * Math.sin(nowCore * 7 + core.pos.x))
+                         : (0.6 + 0.25 * Math.sin(nowCore * 4.5 + core.pos.x));
+      drawGlow(ctx, core.pos.x, core.pos.y, (gold ? 22 : 15) * pulse, glowC, (gold ? 0.7 : 0.45) * pulse);
+
+      const r = gold ? 7.5 : 6;
+      ctx.save();
+      ctx.shadowColor = glowC; ctx.shadowBlur = (gold ? 14 : 8) * pulse;
+      ctx.fillStyle   = col;
+      ctx.beginPath(); ctx.arc(core.pos.x, core.pos.y, r, 0, Math.PI * 2); ctx.fill();
+      // bright outline ring (gold gets a thicker, brighter ring)
+      ctx.lineWidth   = gold ? 2.5 : 1.5;
+      ctx.strokeStyle = gold ? '#fff4c2' : '#cfe2f5';
+      ctx.beginPath(); ctx.arc(core.pos.x, core.pos.y, r + (gold ? 3 : 2), 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
     }
 
     // 3a ── HP CELL recovery pickups
@@ -4296,9 +4316,7 @@ export class Game {
     if (!t) return;
     this.score = (this.score ?? 0) + 300;
     this.player.gainXp(25, this.floatingTexts);
-    const titanCredits = 12 + Math.floor(Math.random() * 9);   // 12..20
-    this.meta.addCredits(titanCredits);
-    this.runCreditsEarned = (this.runCreditsEarned || 0) + titanCredits;
+    const titanCredits = this._awardCredits(12 + Math.floor(Math.random() * 9));   // 12..20 (×Grid Investor)
     this.overload = Math.max(0, this.overload - 10);
     this.floatingTexts.push(new FloatingText('TITAN DEFEATED',     t.pos.clone(),                            YELLOW, 2.5));
     this.floatingTexts.push(new FloatingText('+' + titanCredits + ' GRID CREDITS',   new Vec2(t.pos.x, t.pos.y - 30),         GREEN,  2.5));
@@ -4433,7 +4451,7 @@ export class Game {
       const angle  = Math.random() * Math.PI * 2;
       const radius = randomRange(50, 110);
       const cpos   = target.pos.add(new Vec2(Math.cos(angle) * radius, Math.sin(angle) * radius));
-      this.groundCores.push(new DataCore(cpos, target.color));
+      this.groundCores.push(new DataCore(cpos, rollCoreType()));
       ejected++;
     }
     target.hackTimer = 0.6;  // flash the Matrix warning ring
@@ -4506,9 +4524,7 @@ export class Game {
     if (!a) return;
     this.score = (this.score ?? 0) + 300;
     this.player.gainXp(25, this.floatingTexts);
-    const annihilatorCredits = 12 + Math.floor(Math.random() * 9);   // 12..20
-    this.meta.addCredits(annihilatorCredits);
-    this.runCreditsEarned = (this.runCreditsEarned || 0) + annihilatorCredits;
+    const annihilatorCredits = this._awardCredits(12 + Math.floor(Math.random() * 9));   // 12..20 (×Grid Investor)
     this.overload = Math.max(0, this.overload - 10);
     this.floatingTexts.push(new FloatingText('MATRIX ANNIHILATOR DESTROYED', a.pos.clone(),                    YELLOW, 2.5));
     this.floatingTexts.push(new FloatingText('+' + annihilatorCredits + ' GRID CREDITS',            new Vec2(a.pos.x, a.pos.y - 30),  GREEN,  2.5));
@@ -4673,9 +4689,7 @@ export class Game {
     this.supportDrones = [];
     this.score = (this.score ?? 0) + 500;
     this.player.gainXp(45, this.floatingTexts);
-    const bloodfangCredits = 25 + Math.floor(Math.random() * 16);   // 25..40
-    this.meta.addCredits(bloodfangCredits);
-    this.runCreditsEarned = (this.runCreditsEarned || 0) + bloodfangCredits;
+    const bloodfangCredits = this._awardCredits(25 + Math.floor(Math.random() * 16));   // 25..40 (×Grid Investor)
     this.overload = Math.max(0, this.overload - 10);
     this.floatingTexts.push(new FloatingText('BLOODFANG PACKMASTER DEFEATED', a.pos.clone(),                   YELLOW, 2.5));
     this.floatingTexts.push(new FloatingText('RAZORHOUND PACK BROKEN',         new Vec2(a.pos.x, a.pos.y - 28), ORANGE, 2.5));

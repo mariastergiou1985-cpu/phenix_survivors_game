@@ -1,5 +1,6 @@
 import { WIDTH, HEIGHT, YELLOW, WHITE, GREY } from '../constants.js';
 import { drawText, wrapText, roundRect } from '../utils.js';
+import { RARITY_COLORS } from './Upgrades.js?v=3';
 
 export class UpgradeUI {
   constructor(choices) {
@@ -58,42 +59,62 @@ export class UpgradeUI {
     ctx.textAlign = 'left';
 
     this.choices.forEach((upg, i) => {
-      const r = this.cardRects[i];
+      const r      = this.cardRects[i];
+      const rarity = RARITY_COLORS[upg.rarity] || upg.iconColor;
 
-      // Card background
-      ctx.fillStyle   = '#0b1220';
-      ctx.strokeStyle = upg.iconColor;
-      ctx.lineWidth   = 2;
-      roundRect(ctx, r.x, r.y, r.w, r.h, 10);
+      // Card background — dark panel with a rarity-colored neon border + soft outer glow
+      ctx.save();
+      ctx.fillStyle = '#0b1220';
+      roundRect(ctx, r.x, r.y, r.w, r.h, 12);
       ctx.fill();
+      ctx.shadowColor = rarity;
+      ctx.shadowBlur  = 16;                  // soft neon glow around the border
+      ctx.strokeStyle = rarity;
+      ctx.lineWidth   = 2.5;
+      roundRect(ctx, r.x, r.y, r.w, r.h, 12);
       ctx.stroke();
+      ctx.restore();
 
-      // Icon box
+      // Icon box — tinted by rarity with a thin glowing frame
       const ix = r.x + (r.w - 80) / 2;
-      const iy = r.y + 18;
-      ctx.fillStyle   = upg.iconColor + '33';
-      ctx.strokeStyle = upg.iconColor;
-      ctx.lineWidth   = 2;
-      roundRect(ctx, ix, iy, 80, 80, 8);
+      const iy = r.y + 16;
+      ctx.save();
+      ctx.fillStyle = rarity + '22';
+      roundRect(ctx, ix, iy, 80, 80, 10);
       ctx.fill();
+      ctx.shadowColor = rarity; ctx.shadowBlur = 8;
+      ctx.strokeStyle = rarity; ctx.lineWidth = 2;
+      roundRect(ctx, ix, iy, 80, 80, 10);
       ctx.stroke();
+      ctx.restore();
 
-      // Icon symbol (large)
-      ctx.font      = (upg.icon.length > 1 ? '30px' : '40px') + ' Consolas, monospace';
+      // Icon symbol/emoji (large, centered)
+      ctx.font      = (upg.icon.length > 1 ? '34px' : '42px') + ' "Segoe UI Emoji", Consolas, monospace';
       ctx.fillStyle = upg.iconColor;
       ctx.textAlign = 'center';
-      ctx.fillText(upg.icon, ix + 40, iy + 54);
+      ctx.textBaseline = 'middle';
+      ctx.fillText(upg.icon, ix + 40, iy + 42);
+      ctx.textBaseline = 'alphabetic';
       ctx.textAlign = 'left';
 
-      // Upgrade name
-      ctx.font      = '17px Consolas, monospace';
+      // Upgrade name — bold, bright, with a subtle glow for readability
+      ctx.save();
+      ctx.font      = 'bold 19px Consolas, monospace';
       ctx.fillStyle = WHITE;
+      ctx.shadowColor = rarity; ctx.shadowBlur = 6;
       ctx.textAlign = 'center';
-      ctx.fillText(upg.name, r.x + r.w / 2, r.y + 118);
+      ctx.fillText(upg.name, r.x + r.w / 2, r.y + 122);
+      ctx.restore();
+
+      // Rarity label
+      ctx.font      = 'bold 11px Consolas, monospace';
+      ctx.fillStyle = rarity;
+      ctx.textAlign = 'center';
+      ctx.fillText(upg.rarity.toUpperCase(), r.x + r.w / 2, r.y + 140);
       ctx.textAlign = 'left';
 
       // Description (word-wrapped)
-      wrapText(ctx, upg.description, r.x + 12, r.y + 142, r.w - 24, 20, GREY, '14px Consolas, monospace');
+      wrapText(ctx, upg.description, r.x + 12, r.y + 162, r.w - 24, 20, WHITE, '14px Consolas, monospace');
 
       // Current level dots
       const level = player.upgrades[upg.key] ?? 0;

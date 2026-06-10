@@ -1,6 +1,6 @@
 import { Vec2, MATRIX_RADIUS, CYAN_DARK, BLACK, RED, ORANGE, CYAN, WHITE } from '../constants.js';
 import { randomRange } from '../utils.js';
-import { DataCore } from './DataCore.js';
+import { DataCore, rollCoreType } from './DataCore.js?v=2';
 
 export class PowerMatrix {
   constructor(pos, color, capacity = 8) {
@@ -27,12 +27,14 @@ export class PowerMatrix {
     if (this.stored <= 0) return null;
     this.stored--;
     const offset = new Vec2(randomRange(-18, 18), randomRange(-18, 18));
-    return new DataCore(this.pos.add(offset), this.color);
+    return new DataCore(this.pos.add(offset), rollCoreType());
   }
 
-  slotCore() {
-    if (this.hasSpace()) { this.stored++; return true; }
-    return false;
+  // Deposit a core worth `amount` Matrix-cores (Gold = 5, Silver = 3), capped at capacity.
+  slotCore(amount = 1) {
+    if (!this.hasSpace()) return false;
+    this.stored = Math.min(this.capacity, this.stored + amount);
+    return true;
   }
 
   update(dt) {

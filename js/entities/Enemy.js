@@ -3,7 +3,7 @@ import {
   BLUE, MAGENTA, PURPLE, ORANGE, GREEN, RED, YELLOW, WHITE, CYAN, MATRIX_RADIUS,
 } from '../constants.js?v=50';
 import { clamp, distance, safeNormalize, randomPosition, randomRange, randomChoice, drawBar } from '../utils.js';
-import { DataCore } from './DataCore.js';
+import { DataCore } from './DataCore.js?v=2';
 import { FloatingText } from './FloatingText.js';
 import { drawGlow } from '../game/Effects.js?v=2';
 
@@ -19,7 +19,8 @@ export class Enemy {
     this.stealTimer = 0;
     this.hitFlash   = 0;
     this.stunned    = 0;
-    this.slowTimer  = 0;   // Cryo Rounds debuff: reduced movement speed while > 0
+    this.slowTimer  = 0;     // Cryo Rounds debuff: reduced movement speed while > 0
+    this.slowFactor = 0.55;  // speed multiplier while slowed (Suppression lowers it)
 
     const [spd, hp, color, stealTime, contactDamage] = this._statsForType(enemyType, minute);
     this.baseSpeed     = spd;
@@ -278,7 +279,7 @@ export class Enemy {
     // read this.baseSpeed). Bosses are immune so they stay threatening.
     if (this.slowTimer > 0) this.slowTimer -= dt;
     this.baseSpeed = (this.slowTimer > 0 && !this.isBoss() && !this.isMegaBoss)
-      ? this._baseSpeedFull * 0.55
+      ? this._baseSpeedFull * (this.slowFactor || 0.55)
       : this._baseSpeedFull;
     if (this.stunned > 0)  { this.stunned -= dt; return; }
 
@@ -401,10 +402,14 @@ export class Enemy {
       this.pos.addMut(this.vel.scale(dt));
       this.stealTimer = 0;
     } else {
-      // ── Steal from matrix ────────────────────────────────────────────
-      const volatilityBonus = game.coreVolatilityMultiplier();
-      const stealMult       = game.stealSpeedMultiplier || 1;
-      const effectiveTime   = this.stealTime / (volatilityBonus * stealMult);
+      // ── Steal from matrix (gradual) ──────────────────────────────────
+      // ~1.25s per core → a full 8-core Matrix takes ~10s of sustained stealing to
+      // empty, so the player has time to react. Per-type flavor is kept as a mild
+      // factor; the old time-based acceleration is dropped (no near-instant drains).
+      const stealMult      = game.stealSpeedMultiplier || 1;
+      const SECONDS_PER_CORE = 1.25;
+      const typeFactor     = Math.min(1.2, Math.max(0.7, this.stealTime / 1.5));
+      const effectiveTime  = Math.max(0.9, (SECONDS_PER_CORE * typeFactor) / stealMult);
       this.stealTimer += dt;
       target.hackTimer = 0.15;
 

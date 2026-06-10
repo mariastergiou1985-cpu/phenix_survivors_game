@@ -102,9 +102,20 @@ export class AudioManager {
 
   _play(audio) {
     if (!audio) return;
-    const doPlay = () => audio.play().catch(() => {});
+    // Resume the context (created mid-gesture, it may start suspended), then play.
+    // The first attempt can race media buffering and reject silently, leaving the
+    // menu mute until a later call — so retry once the element can actually play.
+    const doPlay = () => {
+      audio.play().catch(() => {});
+      if (audio.readyState < 3 && !audio._retryBound) {
+        audio._retryBound = true;
+        const retry = () => { audio.play().catch(() => {}); };
+        audio.addEventListener('canplay',    retry, { once: true });
+        audio.addEventListener('loadeddata', retry, { once: true });
+      }
+    };
     if (this.actx.state === 'suspended') {
-      this.actx.resume().then(doPlay);
+      this.actx.resume().then(doPlay).catch(doPlay);
     } else {
       doPlay();
     }
