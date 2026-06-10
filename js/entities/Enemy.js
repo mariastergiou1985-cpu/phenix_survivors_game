@@ -454,6 +454,38 @@ export class Enemy {
     this.pos.y = clamp(this.pos.y, 40,  WORLD_H + 30);
   }
 
+  // Role → distinct shape + outline color (read at a glance, no shadowBlur → cheap at 280 enemies).
+  _drawRoleMarker(ctx) {
+    let shape, color, lw, pad;
+    if (this.isMegaBoss || this.isBoss()) { shape = 'hexagon'; color = PURPLE; lw = 3; pad = 6; }
+    else switch (this.enemyType) {
+      case 'Heavy Mech':            shape = 'square';   color = RED;       lw = 3;   pad = 4; break;  // tank
+      case 'Stealth Infiltrator':
+      case 'Overclocked Berserker':
+      case 'Razorhound':
+      case 'Combat Hunter':         shape = 'triangle'; color = ORANGE;    lw = 2.5; pad = 5; break;  // runner
+      case 'Glitch Drone':
+      case 'Rogue Punk':
+      case 'Scrap Scavenger':
+      case 'Cyber-Net Junkie':      shape = 'diamond';  color = YELLOW;    lw = 2;   pad = 4; break;  // core-stealer
+      case 'Cyber Shooter':         shape = 'hexagon';  color = MAGENTA;   lw = 2;   pad = 4; break;  // shooter
+      default:                      shape = 'circle';   color = '#cfe0f2'; lw = 1.5; pad = 3; break;  // basic drone
+    }
+    const r = this.radius + pad, x = this.pos.x, y = this.pos.y;
+    ctx.save();
+    ctx.strokeStyle = color; ctx.lineWidth = lw;
+    ctx.beginPath();
+    switch (shape) {
+      case 'circle':   ctx.arc(x, y, r, 0, Math.PI * 2); break;
+      case 'square':   ctx.rect(x - r, y - r, r * 2, r * 2); break;
+      case 'diamond':  ctx.moveTo(x, y - r); ctx.lineTo(x + r, y); ctx.lineTo(x, y + r); ctx.lineTo(x - r, y); ctx.closePath(); break;
+      case 'triangle': ctx.moveTo(x, y - r); ctx.lineTo(x + r * 0.92, y + r * 0.7); ctx.lineTo(x - r * 0.92, y + r * 0.7); ctx.closePath(); break;
+      case 'hexagon':  for (let k = 0; k < 6; k++) { const ang = (Math.PI / 3) * k + Math.PI / 6; const px = x + Math.cos(ang) * r, py = y + Math.sin(ang) * r; k === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py); } ctx.closePath(); break;
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
   draw(ctx) {
     const drawColor = this.hitFlash > 0 ? WHITE : this.color;
 
@@ -508,6 +540,11 @@ export class Enemy {
         ctx.beginPath(); ctx.arc(this.pos.x, this.pos.y, this.radius, 0, Math.PI * 2); ctx.stroke();
       }
     }
+
+    // Role silhouette marker — a shape + colored outline so roles read INSTANTLY at high
+    // density (not by base color alone). Color language: boss=purple, tank=red, runner=orange,
+    // core-stealer=gold, shooter=magenta, basic=steel.
+    this._drawRoleMarker(ctx);
 
     // Additive hit flash — visible over sprites (color depends on enemy type)
     if (this.hitFlash > 0) {

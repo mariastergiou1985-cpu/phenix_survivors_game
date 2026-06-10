@@ -13,7 +13,7 @@ import { DataCore, rollCoreType } from '../entities/DataCore.js?v=2';
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=12';
 import { Player }         from '../entities/Player.js?v=62';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=3';
-import { Enemy }          from '../entities/Enemy.js?v=101';
+import { Enemy }          from '../entities/Enemy.js?v=102';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=1';
 
 import { ParticleSystem, ScreenShake, drawVignette, EMPRing, drawGlow } from './Effects.js?v=3';
@@ -615,7 +615,9 @@ export class Game {
     ];
     for (let i = 0; i < positions.length; i++) {
       const [x, y] = positions[i];
-      this.matrices.push(new PowerMatrix(new Vec2(x, y), CORE_COLORS[i % CORE_COLORS.length]));
+      // Capacity 12 (was 8): matrices no longer instantly refill from a couple of cores,
+      // so defending them matters and Overload stays a real threat. Gold=+5 / Silver=+3.
+      this.matrices.push(new PowerMatrix(new Vec2(x, y), CORE_COLORS[i % CORE_COLORS.length], 12));
     }
   }
 
@@ -858,7 +860,8 @@ export class Game {
     }
     p.mana = 0;                                             // consume full mana → HUD ring empties
     this.overChains = { t: 0, angle: 0, dmgTimer: 0,
-                        miniDmgThisSec: 0, megaDmgThisSec: 0, bossDmgTimer: 1.0 };
+                        miniDmgThisSec: 0, megaDmgThisSec: 0, bossDmgTimer: 1.0,
+                        drops: [], dropTimer: 0 };           // visual-only: falling chain-rain segments
     this.screenShake.trigger(5, 0.3);
     this.audio?.playEventWarning?.();
     this.floatingTexts.push(new FloatingText('OVERHEATED HEAVY CHAINS!', p.pos.clone(), ORANGE, 1.4));
@@ -873,7 +876,26 @@ export class Game {
     const MINI_CAP = 32, MAIN_CAP = 48;               // per-second boss caps (≈47% / ≈45% over 7s)
 
     oc.t     += dt;
-    oc.angle += dt * 3.4;        // heavy rotation (rad/s)
+    oc.angle += dt * 3.4;        // (kept for any timing use; visual is now chain-rain, not a cyclone)
+
+    // ── Chain Rain (visual only) — heavy overheated chains fall around the hero. Spawned to
+    // random ground points within the damage RADIUS so the rain reads as "striking around me".
+    oc.dropTimer -= dt;
+    if (oc.t < DURATION - 0.4 && oc.dropTimer <= 0) {
+      oc.dropTimer = 0.07;
+      const n = 1 + (Math.random() < 0.7 ? 1 : 0);
+      for (let i = 0; i < n; i++) {
+        const ang = Math.random() * Math.PI * 2;
+        const rr  = Math.sqrt(Math.random()) * RADIUS;
+        oc.drops.push({
+          x: p.pos.x + Math.cos(ang) * rr,
+          ty: p.pos.y + Math.sin(ang) * rr * 0.85,   // slight vertical squash → ground-plane feel
+          t: 0, fall: randomRange(0.26, 0.4), len: randomRange(40, 70),
+        });
+      }
+    }
+    for (const d of oc.drops) d.t += dt;
+    oc.drops = oc.drops.filter(d => d.t < d.fall + 0.28);   // fall time + brief impact linger
 
     // Gradual cyber-arm overheat self-damage: 10% maxHp over the duration, never lethal (floor 1 HP)
     const selfRate = (0.10 * p.maxHp) / DURATION;
@@ -926,8 +948,8 @@ export class Game {
     if (oc.t >= DURATION) this.overChains = null;
   }
 
-  // World-space: heat glow + the rotating chains asset centred on the hero (hollow centre keeps
-  // the character visible). Drawn over world entities, follows the player.
+  // World-space: OVERHEATED CHAIN RAIN — heavy chains fall vertically and strike around the hero.
+  // No cyclone/tornado; the hero stays fully visible (chains land around, not over, the player).
   _drawOverheatedChains(ctx) {
     const oc = this.overChains;
     if (!oc) return;
@@ -935,38 +957,50 @@ export class Game {
     const RADIUS = 155, DURATION = 7;
     const a = Math.max(0, Math.min(oc.t / 0.3, (DURATION - oc.t) / 0.5, 1));   // fade in/out
 
-    // Orange/red heat glow under the chains (additive)
+    // Low hot-floor glow marking the strike zone (subtle, additive — not a giant cloud)
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
-    const g = ctx.createRadialGradient(p.pos.x, p.pos.y, RADIUS * 0.2, p.pos.x, p.pos.y, RADIUS * 1.05);
-    g.addColorStop(0,   'rgba(255,90,20,'  + (0.20 * a) + ')');
-    g.addColorStop(0.6, 'rgba(255,40,0,'   + (0.12 * a) + ')');
+    const g = ctx.createRadialGradient(p.pos.x, p.pos.y, RADIUS * 0.25, p.pos.x, p.pos.y, RADIUS);
+    g.addColorStop(0,   'rgba(255,80,20,'  + (0.12 * a) + ')');
     g.addColorStop(1,   'rgba(255,0,0,0)');
     ctx.fillStyle = g;
-    ctx.beginPath(); ctx.arc(p.pos.x, p.pos.y, RADIUS * 1.05, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(p.pos.x, p.pos.y, RADIUS, RADIUS * 0.85, 0, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
 
-    // Rotating chains (reuse the loaded HUD/ultimate asset). Normal blend keeps the chains solid;
-    // the asset's hollow centre lets the hero show through.
-    const spr = this._chainsIcon;
-    if (spr && spr.complete && spr.naturalWidth > 0) {
-      const size = RADIUS * 2.35;
-      ctx.save();
-      ctx.globalAlpha = 0.9 * a;
-      ctx.translate(p.pos.x, p.pos.y);
-      ctx.rotate(oc.angle);
-      ctx.drawImage(spr, -size / 2, -size / 2, size, size);
-      ctx.restore();
-    } else {
-      ctx.save();
-      ctx.globalCompositeOperation = 'lighter';
-      ctx.globalAlpha = a; ctx.strokeStyle = '#ff5a14'; ctx.lineWidth = 6; ctx.lineCap = 'round';
-      for (let k = 0; k < 4; k++) {
-        const ang = oc.angle + k * (Math.PI / 2);
-        ctx.beginPath(); ctx.arc(p.pos.x, p.pos.y, RADIUS * 0.9, ang, ang + 1.4); ctx.stroke();
+    const FALL = 150;                       // how far above the target a chain starts
+    ctx.save();
+    ctx.lineCap = 'round';
+    for (const d of oc.drops) {
+      const falling = d.t < d.fall;
+      const prog    = falling ? d.t / d.fall : 1;          // 0→1 descent
+      const bottomY = d.ty - FALL * (1 - prog);            // chain bottom reaches d.ty on impact
+      const topY    = bottomY - d.len;
+      const fade    = a * (falling ? 1 : Math.max(0, 1 - (d.t - d.fall) / 0.28));
+
+      // The chain: a hot core line + a brighter inner line + round "links" along it (mechanical/heavy)
+      ctx.globalAlpha = 0.9 * fade;
+      ctx.strokeStyle = '#ff5a14'; ctx.lineWidth = 5;
+      ctx.beginPath(); ctx.moveTo(d.x, topY); ctx.lineTo(d.x, bottomY); ctx.stroke();
+      ctx.strokeStyle = '#ffd27a'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(d.x, topY); ctx.lineTo(d.x, bottomY); ctx.stroke();
+      ctx.fillStyle = '#ffae3c';
+      for (let ly = topY; ly <= bottomY; ly += 9) {
+        ctx.beginPath(); ctx.ellipse(d.x, ly, 3.2, 2.2, 0, 0, Math.PI * 2); ctx.fill();
       }
-      ctx.restore();
+
+      // Impact burst at the strike point once landed
+      if (!falling) {
+        const k = (d.t - d.fall) / 0.28;
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = fade;
+        drawGlow(ctx, d.x, d.ty, 10 + 16 * k, '#ff8a2a', 0.7 * (1 - k));
+        ctx.strokeStyle = '#ffd27a'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(d.x, d.ty, 6 + 14 * k, 0, Math.PI * 2); ctx.stroke();
+        ctx.restore();
+      }
     }
+    ctx.restore();
   }
 
   _updateThunderSolo(dt) {
@@ -1574,20 +1608,33 @@ export class Game {
   // Drawn inside the camera-space block (translate handles the camera offset) → raw world coords.
   _drawHealthPickups(ctx) {
     const R = 16;
+    const now = performance.now() / 1000;
     for (const hp of this.healthPickups) {
       const x = hp.pos.x;
       const y = hp.pos.y;
-      const pulse = 0.6 + 0.4 * Math.sin(this.timeAlive * 6 + x);
+      // Pronounced blink so it stays readable in late-game chaos (abs-sine = on/off pulse).
+      const blink = 0.45 + 0.55 * Math.abs(Math.sin(now * 4 + x * 0.05));
+      const scale = 1 + 0.12 * blink;
 
-      // Soft red glow + disc
-      drawGlow(ctx, x, y, R + 8, RED, 0.35 * pulse);
+      // Strong blinking red halo + outer beacon ring
+      drawGlow(ctx, x, y, (R + 14) * scale, RED, 0.55 * blink);
+      ctx.save();
+      ctx.globalAlpha = 0.5 + 0.5 * blink;
+      ctx.strokeStyle = '#ff7a8c'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(x, y, R + 6 * scale, 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
+
+      // Disc with a bold readable outline
       ctx.beginPath();
       ctx.arc(x, y, R, 0, Math.PI * 2);
       ctx.fillStyle   = '#3a0c12';
       ctx.fill();
-      ctx.lineWidth   = 2.5;
-      ctx.strokeStyle = RED;
+      ctx.lineWidth   = 3;
+      ctx.strokeStyle = '#ffffff';
       ctx.stroke();
+      ctx.lineWidth   = 2;
+      ctx.strokeStyle = RED;
+      ctx.beginPath(); ctx.arc(x, y, R - 2, 0, Math.PI * 2); ctx.stroke();
 
       // White cyber-cross (med icon)
       ctx.fillStyle = '#ffffff';
@@ -1599,19 +1646,33 @@ export class Game {
   // Cyan mana pickup — visually distinct from the red/white HP cross (world-space).
   _drawManaPickups(ctx) {
     const R = 16;
+    const now = performance.now() / 1000;
+    const MANA_BLUE = '#3aa0ff';   // support = blue (distinct from player-ability cyan)
     for (const m of this.manaPickups) {
       const x = m.pos.x, y = m.pos.y;
-      const pulse = 0.6 + 0.4 * Math.sin(this.timeAlive * 6 + x);
+      // Pronounced blink (offset phase from HP so the two never sync) for late-game readability.
+      const blink = 0.45 + 0.55 * Math.abs(Math.sin(now * 3.4 + x * 0.05 + 1.6));
+      const scale = 1 + 0.12 * blink;
 
-      // Soft cyan glow + disc
-      drawGlow(ctx, x, y, R + 8, CYAN, 0.4 * pulse);
+      // Strong blinking blue halo + outer beacon ring
+      drawGlow(ctx, x, y, (R + 14) * scale, MANA_BLUE, 0.55 * blink);
+      ctx.save();
+      ctx.globalAlpha = 0.5 + 0.5 * blink;
+      ctx.strokeStyle = '#9fd0ff'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(x, y, R + 6 * scale, 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
+
+      // Disc with a bold readable outline
       ctx.beginPath();
       ctx.arc(x, y, R, 0, Math.PI * 2);
       ctx.fillStyle   = '#06283a';
       ctx.fill();
-      ctx.lineWidth   = 2.5;
-      ctx.strokeStyle = CYAN;
+      ctx.lineWidth   = 3;
+      ctx.strokeStyle = '#ffffff';
       ctx.stroke();
+      ctx.lineWidth   = 2;
+      ctx.strokeStyle = MANA_BLUE;
+      ctx.beginPath(); ctx.arc(x, y, R - 2, 0, Math.PI * 2); ctx.stroke();
 
       // White diamond rune (rotated square) — distinct from the HP cross
       ctx.save();

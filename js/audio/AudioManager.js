@@ -102,22 +102,21 @@ export class AudioManager {
 
   _play(audio) {
     if (!audio) return;
-    // Resume the context (created mid-gesture, it may start suspended), then play.
-    // The first attempt can race media buffering and reject silently, leaving the
-    // menu mute until a later call — so retry once the element can actually play.
-    const doPlay = () => {
-      audio.play().catch(() => {});
-      if (audio.readyState < 3 && !audio._retryBound) {
-        audio._retryBound = true;
-        const retry = () => { audio.play().catch(() => {}); };
-        audio.addEventListener('canplay',    retry, { once: true });
-        audio.addEventListener('loadeddata', retry, { once: true });
-      }
+    // The first play() on a gesture can fail because the AudioContext is still resuming
+    // or the media element hasn't buffered yet — which is why the menu used to stay silent
+    // until a SECOND interaction. Resume the context, then retry play() a few times until
+    // it actually starts. The `!audio.paused` guard makes every call idempotent, so this
+    // never stacks duplicate playback and never restarts an already-playing track.
+    const attempt = (n) => {
+      if (!audio.paused) return;                 // already playing → done (no duplicates)
+      audio.play().catch(() => {
+        if (n > 0) setTimeout(() => attempt(n - 1), 250);
+      });
     };
     if (this.actx.state === 'suspended') {
-      this.actx.resume().then(doPlay).catch(doPlay);
+      this.actx.resume().then(() => attempt(10)).catch(() => attempt(10));
     } else {
-      doPlay();
+      attempt(10);
     }
   }
 
