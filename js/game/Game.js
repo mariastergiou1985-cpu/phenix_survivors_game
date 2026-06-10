@@ -10,10 +10,10 @@ import { clamp, distance, safeNormalize, randomChoice, randomRange } from '../ut
 
 import { FloatingText }   from '../entities/FloatingText.js';
 import { DataCore, rollCoreType } from '../entities/DataCore.js?v=2';
-import { PowerMatrix }    from '../entities/PowerMatrix.js?v=12';
+import { PowerMatrix }    from '../entities/PowerMatrix.js?v=13';
 import { Player }         from '../entities/Player.js?v=62';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=3';
-import { Enemy }          from '../entities/Enemy.js?v=102';
+import { Enemy }          from '../entities/Enemy.js?v=103';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=1';
 
 import { ParticleSystem, ScreenShake, drawVignette, EMPRing, drawGlow } from './Effects.js?v=3';
@@ -2716,25 +2716,54 @@ export class Game {
   _updateCoreEconomy(dt) {
     if (!this.matrices.length) return;
 
-    // Deficit in matrix charge → cores needed to recover. Deliberately SCARCE: roughly one
-    // core per 6 missing charge, hard-capped, so the player can recover but can NOT trivially
-    // keep every matrix topped off — keeping Overload a real threat. (Gold = 5, Silver = 3.)
-    let missingSlots = 0;
-    for (const m of this.matrices) missingSlots += (m.capacity - m.stored);
-    const target = Math.min(8, Math.ceil(missingSlots / 6));
+    // Cores are NOT generated here — they are minted only when enemies steal charge (conserved
+    // 1:1 with the dropped core's value in PowerMatrix.stealCore). This pass is a READABILITY
+    // GUARANTEE that bounds loose GROUND cores three ways so the field never floods:
+    //   (1) Hard COUNT cap — at most MAX_GROUND_CORES cores on the ground, regardless of deficit.
+    //   (2) Hard VALUE cap — ground-core value must not exceed the real Matrix deficit minus the
+    //       value already in-transit (carried by the player or by enemies). No buffer: cores that
+    //       are being delivered already account for that slice of the deficit.
+    //   (3) Near-full grid — if the deficit is tiny (<= 4), a recovered grid keeps at most 1
+    //       straggler so it isn't littered.
+    // In every case the FARTHEST-from-player ground cores (least recoverable) are removed first.
+    const MAX_GROUND_CORES = 10;
 
-    // Cores already recoverable (loose on ground, carried by the player, or carried by enemies).
-    const enemyCarried = this.enemies.reduce((n, e) => n + (e.carryingCore ? 1 : 0), 0);
-    const available    = this.groundCores.length + this.player.carry + enemyCarried;
+    if (!this.groundCores.length) return;
 
-    this._coreSpawnTimer -= dt;
-    if (available < target && this._coreSpawnTimer <= 0) {
-      this._coreSpawnTimer = 1.1;   // slow drip so cores stay controlled, never a flood
-      const depleted = this.matrices.filter(m => m.hasSpace());
-      const anchor   = depleted.length ? randomChoice(depleted) : randomChoice(this.matrices);
-      const off      = new Vec2(randomRange(-90, 90), randomRange(-90, 90));
-      const pos      = this._clampPickupPos(anchor.pos.clone().add(off));
-      this.groundCores.push(new DataCore(pos, rollCoreType()));
+    const coreVal = c => (c.value ?? 3);
+
+    let deficit = 0;
+    for (const m of this.matrices) deficit += (m.capacity - m.stored);
+
+    // Value already on its way back to a Matrix (player carry + enemy-carried). That slice of the
+    // deficit is spoken for, so GROUND cores may only fill the REMAINING deficit — no buffer.
+    let inTransit = 0;
+    for (const v of this.player.carriedCores) inTransit += v;
+    for (const e of this.enemies) if (e.carryingCore) inTransit += coreVal(e.carryingCore);
+
+    // (1)+(3) COUNT cap: at most 10 ground cores normally; a nearly-full grid (deficit <= 4)
+    // keeps at most 1 straggler. (2) VALUE cap: ground value may not exceed the outstanding
+    // deficit not already covered in-transit. The stricter of the two governs.
+    const countCap = deficit <= 4 ? 1 : MAX_GROUND_CORES;
+    const valueCap = Math.max(0, deficit - inTransit);
+
+    let groundValue = 0;
+    for (const c of this.groundCores) groundValue += coreVal(c);
+
+    if (this.groundCores.length > countCap || groundValue > valueCap) {
+      // Remove FARTHEST-from-player ground cores first (least useful to recover).
+      this.groundCores.sort((p, q) =>
+        distance(q.pos, this.player.pos) - distance(p.pos, this.player.pos));
+
+      let removed = 0;
+      const n = this.groundCores.length;
+      while (removed < n) {
+        const kept = n - removed;
+        if (kept <= countCap && groundValue <= valueCap) break;
+        groundValue -= coreVal(this.groundCores[removed]);
+        removed++;
+      }
+      if (removed > 0) this.groundCores.splice(0, removed);
     }
   }
 
@@ -4584,12 +4613,13 @@ export class Game {
   _annihilatorStrike(a, target) {
     let ejected = 0;
     for (let i = 0; i < 2; i++) {
-      if (target.stored <= 0) break;
-      target.stored--;
+      // Eject via stealCore so removed charge == ejected core value (conserved, no inflation).
+      const core = target.stealCore();
+      if (!core) break;
       const angle  = Math.random() * Math.PI * 2;
       const radius = randomRange(50, 110);
-      const cpos   = target.pos.add(new Vec2(Math.cos(angle) * radius, Math.sin(angle) * radius));
-      this.groundCores.push(new DataCore(cpos, rollCoreType()));
+      core.pos = target.pos.add(new Vec2(Math.cos(angle) * radius, Math.sin(angle) * radius));
+      this.groundCores.push(core);
       ejected++;
     }
     target.hackTimer = 0.6;  // flash the Matrix warning ring

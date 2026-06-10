@@ -403,11 +403,11 @@ export class Enemy {
       this.stealTimer = 0;
     } else {
       // ── Steal from matrix (gradual) ──────────────────────────────────
-      // ~1.25s per core → a full 8-core Matrix takes ~10s of sustained stealing to
-      // empty, so the player has time to react. Per-type flavor is kept as a mild
-      // factor; the old time-based acceleration is dropped (no near-instant drains).
+      // Each steal now removes a WHOLE core of charge (3–5), so steals are slower: ~3.5s
+      // each → one enemy drains a full 12-charge Matrix in ~10s, leaving time to react.
+      // Per-type flavor kept as a mild factor; no time-based acceleration.
       const stealMult      = game.stealSpeedMultiplier || 1;
-      const SECONDS_PER_CORE = 1.25;
+      const SECONDS_PER_CORE = 3.5;
       const typeFactor     = Math.min(1.2, Math.max(0.7, this.stealTime / 1.5));
       const effectiveTime  = Math.max(0.9, (SECONDS_PER_CORE * typeFactor) / stealMult);
       this.stealTimer += dt;
