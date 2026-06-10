@@ -50,7 +50,7 @@ export class SupportDrone {
     for (let i = this._burns.length - 1; i >= 0; i--) {
       const b = this._burns[i];
       b.timer -= dt;
-      if (b.target.hp > 0) b.target.hp -= dt;  // 1 dmg/s
+      if (b.target.hp > 0) b.target.hp -= game._resistDrone(b.target, dt);  // 1 dmg/s (boss survival: drone-resisted on bosses)
       if (b.timer <= 0) this._burns.splice(i, 1);
     }
 
@@ -73,7 +73,7 @@ export class SupportDrone {
     const crit = Math.random() < 0.10;
     if (crit) dmg *= 2;
 
-    target.hp -= dmg;
+    target.hp -= game._resistDrone(target, dmg);   // boss survival: support drones do reduced damage to bosses
     if (target.hitFlash !== undefined) target.hitFlash = 0.08;
 
     // Floating damage number

@@ -178,8 +178,8 @@ export class Enemy {
       case 'Scrap Scavenger':       return [105 * d, 5 * g,  ORANGE,  1.55,  8 * g];
       case 'Cyber-Net Junkie':      return [135 * d, 4 * g,  GREEN,   1.45, 10 * g];
       case 'Overclocked Berserker': return [210 * d, 3 * g,  RED,     1.00, 14 * g];
-      case 'Security Defector Mech':return [90 * d,  40 * gB, YELLOW, 0.75, 22 * gB];
-      case 'Rogue AI Overlord':     return [75 * d,  150 * gB, RED,    0.55, 28 * gB];
+      case 'Security Defector Mech':return [90 * d,  50 * gB, YELLOW, 0.75, 22 * gB];   // survival pass: 40 → 50 (+25%)
+      case 'Rogue AI Overlord':     return [75 * d,  187.5 * gB, RED,  0.55, 28 * gB];  // survival pass: 150 → 187.5 (+25%); mega-boss ×3 inherits it
       case 'Combat Hunter':         return [168 * d, 3 * g,  MAGENTA, 9999, 12 * g];
       case 'Cyber Shooter':         return [108 * d, 4 * g,  CYAN,    9999,  6 * g];
       case 'Heavy Mech':            return [58  * d, 20 * g, ORANGE,  9999, 20 * g];

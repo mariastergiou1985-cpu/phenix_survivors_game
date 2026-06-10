@@ -51,6 +51,12 @@ const BOSS_MAX_PLAYER_HIT = 30;
 const BOSS_DPS_CAP_MINI   = 60;   // titan / annihilator / bloodfang mini-bosses
 const BOSS_DPS_CAP_MEGA   = 40;   // promoted main boss (isMegaBoss)
 
+// ── Boss survival pass ─────────────────────────────────────────────────────────
+// Bosses shrug off a slice of damage-over-time and support-drone fire so their
+// mechanics have time to play out. Primary-fire DPS cap & fairness are untouched.
+const BOSS_DOT_RESIST   = 0.28;   // −28% from DoT (aqua trail / burn / corrosive)  [20–35% band]
+const BOSS_DRONE_RESIST = 0.20;   // −20% from support drones                       [15–25% band]
+
 export class Game {
   constructor() {
     this.audio     = null;  // set from main.js on first user gesture
@@ -939,9 +945,9 @@ export class Game {
         const e = this.enemies[i];
         if (distance(e.pos, p.pos) > RADIUS + e.radius) continue;
         if (e.isMegaBoss) {
-          const d = bossHit(true);  if (d > 0) e.takeHit(d, this);
+          const d = bossHit(true);  if (d > 0) e.takeHit(this._resistDot(e, d), this);
         } else if (e.isBoss()) {
-          const d = bossHit(false); if (d > 0) e.takeHit(d, this);
+          const d = bossHit(false); if (d > 0) e.takeHit(this._resistDot(e, d), this);
         } else {
           e.takeHit(NORMAL_DMG, this);
           e.vel.addMut(safeNormalize(e.pos.sub(p.pos)).scale(KNOCK));   // small knockback
@@ -953,7 +959,7 @@ export class Game {
       const hitSingle = (b, die) => {
         if (!b || b.hp <= 0 || distance(b.pos, p.pos) > RADIUS + b.radius) return;
         const d = bossHit(false); if (d <= 0) return;
-        b.hp -= d; b.hitFlash = 0.08;
+        b.hp -= this._resistDot(b, d); b.hitFlash = 0.08;
         if (b.hp <= 0) die.call(this);
       };
       hitSingle(this.titanBoss,       this._titanDie);
@@ -2523,7 +2529,7 @@ export class Game {
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       const e = this.enemies[i];
       hitOne(e, e.isMegaBoss, e.isBoss() && !e.isMegaBoss, (d) => {
-        e.takeHit(d, this);
+        e.takeHit(this._resistDot(e, d), this);
         if (Math.random() < 0.12) this.particles.spawnHitSparks(e.pos, CYAN);
       });
     }
@@ -2535,7 +2541,7 @@ export class Game {
     ];
     for (const [b, die] of singles) {
       if (!b || b.hp <= 0) continue;
-      hitOne(b, false, true, (d) => { b.hp -= d; b.hitFlash = 0.08; if (b.hp <= 0) die.call(this); });
+      hitOne(b, false, true, (d) => { b.hp -= this._resistDot(b, d); b.hitFlash = 0.08; if (b.hp <= 0) die.call(this); });
     }
   }
 
@@ -4279,6 +4285,16 @@ export class Game {
     return eff;
   }
 
+  // Boss survival resistances — applied ONLY to boss targets (enemy-type bosses, the mega-boss,
+  // and the singleton mini-bosses) so support drones still help and DoT still matters, but neither
+  // melts a boss before its mechanics land. Returns the damage to actually apply.
+  _isBossTarget(t) {
+    return t === this.titanBoss || t === this.annihilatorBoss || t === this.bloodfangBoss
+        || (typeof t.isBoss === 'function' && t.isBoss()) || t.isMegaBoss === true;
+  }
+  _resistDot(t, dmg)   { return this._isBossTarget(t) ? dmg * (1 - BOSS_DOT_RESIST)   : dmg; }
+  _resistDrone(t, dmg) { return this._isBossTarget(t) ? dmg * (1 - BOSS_DRONE_RESIST) : dmg; }
+
   // ─── Main-boss danger behaviours (Lava Rain + mini-boss summons) ───────────
   // Gated on this.megaBoss. Lava Rain damages the PLAYER ONLY (never enemies/bosses);
   // it is a separate system from the player's Acid Rain.
@@ -4420,7 +4436,7 @@ export class Game {
     for (const t of dotTargets) {
       if (t._corrosiveTimer > 0) {
         t._corrosiveTimer -= dt;
-        t.hp -= dt;  // 1 dmg/s
+        t.hp -= this._resistDot(t, dt);  // 1 dmg/s (boss survival: DoT-resisted on bosses)
       }
     }
     // Titan death check after all drone updates (safe — not inside the loop)
@@ -4536,7 +4552,7 @@ export class Game {
       WORLD_H / 2
     );
     this.titanBoss = {
-      pos, hp: 480, maxHp: 480,
+      pos, hp: 600, maxHp: 600,                 // survival pass: 480 → 600 (+25%)
       radius: R, speed: 60, contactDamage: 16, hitFlash: 0,
       shockwaveTimer: 4, beamTimer: 8,
     };
@@ -4700,7 +4716,7 @@ export class Game {
       WORLD_H / 2
     );
     this.annihilatorBoss = {
-      pos, hp: 480, maxHp: 480,
+      pos, hp: 600, maxHp: 600,                 // survival pass: 480 → 600 (+25%)
       radius: R, speed: 52, contactDamage: 16, hitFlash: 0,
       targetMatrix: this._nearestMatrix(pos),
       attackTimer: 3,
@@ -4893,7 +4909,7 @@ export class Game {
       WORLD_H / 2
     );
     this.bloodfangBoss = {
-      pos, hp: 560, maxHp: 560,
+      pos, hp: 700, maxHp: 700,                 // survival pass: 560 → 700 (+25%)
       radius: R, speed: 112, hitFlash: 0,
       biteTimer: 2.0, lungeTimer: 0, lungeDir: new Vec2(1, 0),
       slamTimer: 4,
