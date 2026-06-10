@@ -5,7 +5,7 @@ import {
   MAX_OVERLOAD, PLAYER_RADIUS, CORE_RADIUS, MATRIX_RADIUS,
   DARK_BG, GRID_LINE, BLACK, CYAN, RED, GREEN, YELLOW, ORANGE, WHITE, PURPLE,
   CORE_COLORS, VIEW_SCALE, VIEW_W, VIEW_H,
-} from '../constants.js?v=51';
+} from '../constants.js?v=52';
 import { clamp, distance, safeNormalize, randomChoice, randomRange } from '../utils.js';
 
 import { FloatingText }   from '../entities/FloatingText.js';
@@ -20,7 +20,7 @@ import { ParticleSystem, ScreenShake, drawVignette, EMPRing, drawGlow } from './
 import { SystemEventManager } from './Events.js?v=94';
 import { UpgradeUI }      from './UpgradeUI.js?v=3';
 import { weightedSample } from './Upgrades.js?v=3';
-import { drawHUD, drawEndScreen } from './HUD.js?v=34';
+import { drawHUD, drawEndScreen } from './HUD.js?v=35';
 import { MetaProgress, META_UPGRADES, upgradeCost } from './MetaProgress.js?v=1';
 
 // ── Thunder Solo sprite slices (cyan_lightning_rain_notes.png, 1254×1254) ──────

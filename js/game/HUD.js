@@ -1,5 +1,5 @@
 import {
-  WIDTH, HEIGHT, MAX_OVERLOAD,
+  WIDTH, HEIGHT, MAX_OVERLOAD, VIEW_SCALE,
   CYAN, ORANGE, RED, GREEN, WHITE, GREY, YELLOW, BLACK,
 } from '../constants.js';
 import { drawText, drawBar, clamp } from '../utils.js';
@@ -70,7 +70,49 @@ export function drawHUD(ctx, game) {
     _drawUltimateBox(ctx, WIDTH - 64, HEIGHT - 66, 48, 'SPACE', manaFrac, icon);
   }
 
+  // Player visibility marker — drawn last in the HUD layer so it stays on top of enemies,
+  // projectiles, rain, and effects during late-game chaos.
+  _drawPlayerMarker(ctx, game);
+
   ctx.textAlign = 'left';
+}
+
+// Small downward cyan/white pointer hovering just above the player's HP/Mana bars so the player
+// is instantly findable when the screen is crowded. Screen-space; follows the player via the same
+// world→screen transform the camera-space block uses (scale, then camera offset). Subtle hover/pulse.
+function _drawPlayerMarker(ctx, game) {
+  const p = game.player;
+  if (!p || !game.camera) return;
+
+  const sx = clamp((p.pos.x - game.camera.x) * VIEW_SCALE, 12, WIDTH - 12);
+  const sy = (p.pos.y - game.camera.y) * VIEW_SCALE;
+
+  // Apex (the downward tip) sits just above the HP/Mana bars (their top is ~52 world-units above
+  // the player centre). Clamp so it never tucks under the top HUD strip.
+  const t     = performance.now();
+  const bob   = Math.sin(t * 0.005) * 2;
+  const apexY = Math.max(50, sy - 52 * VIEW_SCALE - 6) + bob;
+  const baseY = apexY - 11;
+  const halfW = 8;
+  const pulse = 0.7 + 0.3 * (0.5 + 0.5 * Math.sin(t * 0.005));
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(sx, apexY);
+  ctx.lineTo(sx - halfW, baseY);
+  ctx.lineTo(sx + halfW, baseY);
+  ctx.closePath();
+  ctx.shadowColor = CYAN;
+  ctx.shadowBlur  = 8;
+  ctx.globalAlpha = pulse;
+  ctx.fillStyle   = CYAN;
+  ctx.fill();
+  ctx.shadowBlur  = 0;
+  ctx.globalAlpha = 1;
+  ctx.lineWidth   = 1.5;
+  ctx.strokeStyle = WHITE;
+  ctx.stroke();
+  ctx.restore();
 }
 
 // Rounded-square ability box with a circular ready/cooldown ring + key label + % readout.

@@ -1,8 +1,8 @@
 // ─── Game config ──────────────────────────────────────────────────────────────
 export const WIDTH  = 1280;
 export const HEIGHT = 720;
-export const WORLD_W = 1792;
-export const WORLD_H = 1008;
+export const WORLD_W = 2240;   // enlarged from 1792 for late-game breathing room / kiting space
+export const WORLD_H = 1260;   // enlarged from 1008 (keeps 16:9); matrices/camera/spawns/clamps all derive from these
 export const FPS    = 60;
 export const WORLD_MARGIN = 40;
 
