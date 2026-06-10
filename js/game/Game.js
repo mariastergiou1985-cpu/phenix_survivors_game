@@ -43,6 +43,14 @@ const THUNDER_NOTES = [
 // never delay them. Base maxMana is 100, so a player with no Mana Core is unaffected.
 const ULTIMATE_MANA_COST = 100;
 
+// ── Boss-combat fairness (Boss Threat audit, Steps 1–2) ────────────────────────
+// Per-hit ceiling so no single boss/enemy blow can one-shot (≈⅓ of Taekwondo's 90 HP),
+// and per-second soft caps on how fast the player's PRIMARY/auto-weapons can burn a boss
+// down (ultimates and DoT are capped elsewhere and do NOT route through these).
+const BOSS_MAX_PLAYER_HIT = 30;
+const BOSS_DPS_CAP_MINI   = 60;   // titan / annihilator / bloodfang mini-bosses
+const BOSS_DPS_CAP_MEGA   = 40;   // promoted main boss (isMegaBoss)
+
 export class Game {
   constructor() {
     this.audio     = null;  // set from main.js on first user gesture
@@ -2024,17 +2032,12 @@ export class Game {
         continue;
       }
 
-      // Hit player — ignore during hit cooldown or phoenix revive
-      if (this.playerHitCooldown <= 0 && this.phoenixReviveTimer <= 0) {
-        if (distance(b.pos, this.player.pos) < b.radius + PLAYER_RADIUS) {
-          this.player.applyDamage(b.damage);
-          this.playerHitCooldown = 0.5;
-          this.screenShake.trigger(5, 0.2);
-          this.particles.spawnHitSparks(this.player.pos, RED);
+      // Hit player — routed through the shared fairness gate (dash/Phoenix i-frames + 0.5s grace
+      // + per-hit ceiling). While dashing the gate returns false, so the bullet is NOT consumed
+      // and passes through — a true dodge.
+      if (distance(b.pos, this.player.pos) < b.radius + PLAYER_RADIUS) {
+        if (this._damagePlayer(b.damage, { color: RED, shake: 5 })) {
           this.audio?.playEnemyProjectileImpact();
-          this.floatingTexts.push(
-            new FloatingText(`-${b.damage} HP`, this.player.pos.clone(), RED, 0.7)
-          );
           this.enemyBullets.splice(i, 1);
         }
       }
@@ -2108,7 +2111,9 @@ export class Game {
             e.slowTimer  = Math.max(e.slowTimer, 0.8 + 0.3 * cryo + 0.25 * supp);  // Suppression = longer
             e.slowFactor = clamp(0.55 - 0.08 * supp, 0.30, 0.55);                  // Suppression = stronger
           }
-          e.takeHit(p.damage, this);
+          // Primary-fire soft cap: bosses/mega bosses absorb only capped DPS (normal enemies unaffected).
+          const projDmg = (e.isBoss() || e.isMegaBoss) ? this._capBossDamage(e, p.damage) : p.damage;
+          e.takeHit(projDmg, this);
           if (wasSlowed) this._glacialShatter(shatterPos, e);
           this.projectiles.splice(i, 1);
           hit = true;
@@ -2119,9 +2124,10 @@ export class Game {
       // Check titan hit
       if (!hit && this.titanBoss && this.titanBoss.hp > 0 &&
           distance(p.pos, this.titanBoss.pos) < p.radius + this.titanBoss.radius) {
-        this.titanBoss.hp      -= p.damage;
+        const titanDmg = this._capBossDamage(this.titanBoss, p.damage);
+        this.titanBoss.hp      -= titanDmg;
         this.titanBoss.hitFlash = 0.08;
-        this.floatingTexts.push(new FloatingText('-' + p.damage, this.titanBoss.pos.add(new Vec2(randomRange(-10, 10), -this.titanBoss.radius - 6)), WHITE, 0.5));
+        this.floatingTexts.push(new FloatingText('-' + Math.round(titanDmg), this.titanBoss.pos.add(new Vec2(randomRange(-10, 10), -this.titanBoss.radius - 6)), WHITE, 0.5));
         this.particles.spawnHitSparks(p.pos, PURPLE);
         this.projectiles.splice(i, 1);
         hit = true;
@@ -2131,9 +2137,10 @@ export class Game {
       // Check Matrix Annihilator hit
       if (!hit && this.annihilatorBoss && this.annihilatorBoss.hp > 0 &&
           distance(p.pos, this.annihilatorBoss.pos) < p.radius + this.annihilatorBoss.radius) {
-        this.annihilatorBoss.hp      -= p.damage;
+        const annihDmg = this._capBossDamage(this.annihilatorBoss, p.damage);
+        this.annihilatorBoss.hp      -= annihDmg;
         this.annihilatorBoss.hitFlash = 0.08;
-        this.floatingTexts.push(new FloatingText('-' + p.damage, this.annihilatorBoss.pos.add(new Vec2(randomRange(-10, 10), -this.annihilatorBoss.radius - 6)), WHITE, 0.5));
+        this.floatingTexts.push(new FloatingText('-' + Math.round(annihDmg), this.annihilatorBoss.pos.add(new Vec2(randomRange(-10, 10), -this.annihilatorBoss.radius - 6)), WHITE, 0.5));
         this.particles.spawnHitSparks(p.pos, RED);
         this.projectiles.splice(i, 1);
         hit = true;
@@ -2143,9 +2150,10 @@ export class Game {
       // Check Bloodfang Packmaster hit
       if (!hit && this.bloodfangBoss && this.bloodfangBoss.hp > 0 &&
           distance(p.pos, this.bloodfangBoss.pos) < p.radius + this.bloodfangBoss.radius) {
-        this.bloodfangBoss.hp      -= p.damage;
+        const bloodfangDmg = this._capBossDamage(this.bloodfangBoss, p.damage);
+        this.bloodfangBoss.hp      -= bloodfangDmg;
         this.bloodfangBoss.hitFlash = 0.08;
-        this.floatingTexts.push(new FloatingText('-' + p.damage, this.bloodfangBoss.pos.add(new Vec2(randomRange(-10, 10), -this.bloodfangBoss.radius - 6)), WHITE, 0.5));
+        this.floatingTexts.push(new FloatingText('-' + Math.round(bloodfangDmg), this.bloodfangBoss.pos.add(new Vec2(randomRange(-10, 10), -this.bloodfangBoss.radius - 6)), WHITE, 0.5));
         this.particles.spawnHitSparks(p.pos, RED);
         this.projectiles.splice(i, 1);
         hit = true;
@@ -2206,7 +2214,8 @@ export class Game {
       for (let j = this.enemies.length - 1; j >= 0; j--) {
         const e = this.enemies[j];
         if (distance(disc.pos, e.pos) < disc.radius + e.radius) {
-          e.takeHit(disc.damage, this);
+          const discDmg = (e.isBoss() || e.isMegaBoss) ? this._capBossDamage(e, disc.damage) : disc.damage;
+          e.takeHit(discDmg, this);
           this.homingDiscs.splice(i, 1);
           hit = true;
           break;
@@ -4232,6 +4241,43 @@ export class Game {
     }
   }
 
+  // ─── Boss-combat fairness layer (Boss Threat audit, Steps 1–2) ─────────────
+  // Single gate for DISCRETE incoming hits (enemy/boss bullets, beams, shockwaves, and any
+  // future boss attack). Enforces dash + Phoenix i-frames uniformly so a dash reliably dodges,
+  // honours the shared 0.5s hit grace so overlapping hits can't burst the player, and clamps to
+  // a per-hit ceiling so no single blow one-shots. Returns true ONLY if damage actually landed —
+  // callers should consume the projectile / relay side-effects only on a true result.
+  // (Continuous contact + lava already respect dash inline and keep their own per-tick cadence.)
+  _damagePlayer(dmg, { color = RED, shake = 5 } = {}) {
+    if (this.player.dashTimer > 0 || this.phoenixReviveTimer > 0) return false;  // i-frames → dodged
+    if (this.playerHitCooldown > 0) return false;                                // within 0.5s grace
+    const applied = Math.min(dmg, BOSS_MAX_PLAYER_HIT);
+    this.player.applyDamage(applied);
+    this.playerHitCooldown = 0.5;
+    this.screenShake.trigger(shake, 0.2);
+    this.particles.spawnHitSparks(this.player.pos, color);
+    this.floatingTexts.push(new FloatingText(`-${Math.ceil(applied)} HP`, this.player.pos.clone(), color, 0.7));
+    return true;
+  }
+
+  // Primary-fire / auto-weapon soft cap: bounds how fast the player's MAIN weapons can burn a
+  // boss down so high fire-rate builds can't melt bosses instantly. Damage past the per-second
+  // cap is heavily diminished (not zeroed) so shooting always feels responsive. Uses a timeAlive
+  // window so it works for both Enemy bosses and the plain mini-boss objects. Ultimates and DoT
+  // have their own caps and intentionally do NOT route through here. Returns the effective damage.
+  _capBossDamage(boss, rawDmg) {
+    const cap = boss.isMegaBoss ? BOSS_DPS_CAP_MEGA : BOSS_DPS_CAP_MINI;
+    const now = this.timeAlive;
+    if (boss._dpsWindowStart === undefined || now - boss._dpsWindowStart >= 1.0) {
+      boss._dpsWindowStart = now;
+      boss._dpsAccum       = 0;
+    }
+    const room = Math.max(0, cap - (boss._dpsAccum || 0));
+    const eff  = rawDmg <= room ? rawDmg : room + (rawDmg - room) * 0.2;   // diminishing past the cap
+    boss._dpsAccum = (boss._dpsAccum || 0) + eff;
+    return eff;
+  }
+
   // ─── Main-boss danger behaviours (Lava Rain + mini-boss summons) ───────────
   // Gated on this.megaBoss. Lava Rain damages the PLAYER ONLY (never enemies/bosses);
   // it is a separate system from the player's Acid Rain.
@@ -4455,14 +4501,11 @@ export class Game {
       const sw = this._titanShockwaves[i];
       sw.radius += 200 * dt;
       sw.alpha   = Math.max(0, 1.0 - sw.radius / 350);
-      if (!sw.hit && this.phoenixReviveTimer <= 0) {
+      if (!sw.resolved) {
         const d = distance(sw.pos, this.player.pos);
         if (sw.radius >= d - PLAYER_RADIUS - 4) {
-          sw.hit = true;
-          const dmg = 10 * (1 - this.player.contactDamageReduction);
-          this.player.applyDamage(dmg);
-          this.screenShake.trigger(3, 0.15);
-          this.floatingTexts.push(new FloatingText(`-${Math.ceil(dmg)} HP`, this.player.pos.clone(), PURPLE, 0.8));
+          sw.resolved = true;                                       // resolve once: a dash at the crossing instant cleanly misses
+          this._damagePlayer(10, { color: PURPLE, shake: 3 });      // damage applies only if not dashing/Phoenix/in-grace
         }
       }
       if (sw.alpha <= 0) this._titanShockwaves.splice(i, 1);
@@ -4473,14 +4516,12 @@ export class Game {
       const b = this._titanBeams[i];
       b.pos.addMut(b.dir.scale(b.speed * dt));
       b.life -= dt;
-      if (!b.hit && this.phoenixReviveTimer <= 0 && distance(b.pos, this.player.pos) < b.radius + PLAYER_RADIUS) {
-        b.hit = true;
-        const dmg = 15 * (1 - this.player.contactDamageReduction);
-        this.player.applyDamage(dmg);
-        this.overload = clamp(this.overload + 3, 0, MAX_OVERLOAD);
-        this.floatingTexts.push(new FloatingText(`-${Math.ceil(dmg)} HP`, this.player.pos.clone(), PURPLE, 0.8));
-        this.floatingTexts.push(new FloatingText('+3% OVERLOAD', new Vec2(this.player.pos.x, this.player.pos.y - 24), RED, 0.8));
-        this.screenShake.trigger(4, 0.2);
+      if (!b.hit && distance(b.pos, this.player.pos) < b.radius + PLAYER_RADIUS) {
+        if (this._damagePlayer(15, { color: PURPLE, shake: 4 })) {   // false while dashing → beam passes through
+          b.hit = true;
+          this.overload = clamp(this.overload + 3, 0, MAX_OVERLOAD);  // relay the pre-existing overload spike only on a real hit
+          this.floatingTexts.push(new FloatingText('+3% OVERLOAD', new Vec2(this.player.pos.x, this.player.pos.y - 24), RED, 0.8));
+        }
       }
       if (b.hit || b.life <= 0) this._titanBeams.splice(i, 1);
     }
