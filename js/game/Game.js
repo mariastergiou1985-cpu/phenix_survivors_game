@@ -246,7 +246,7 @@ export class Game {
     this._coreSpawnTimer = 0;         // rate-limit for matrix-deficit core replenishment
 
     this.acidRain      = null;  // { timer, damageAccum } | null
-    this.acidRainTimer = 150;   // first event at 2:30
+    this.acidRainTimer = 600;   // first event at 10:00
 
     this.killsSinceHealthDrop = 0;   // counts toward the next HP CELL drop
     this.healthPickups        = [];  // [{ pos: Vec2, timer: number }] — heals 25% maxHp on touch
@@ -4180,7 +4180,7 @@ export class Game {
 
       if (ar.timer <= 0) {
         this.acidRain      = null;
-        this.acidRainTimer = 120; // repeat every 120s
+        this.acidRainTimer = 138; // 138 = 150s start-to-start − 12s event duration → rains 2.5 min apart
       }
       return;
     }
@@ -4188,7 +4188,7 @@ export class Game {
     this.acidRainTimer -= dt;
     if (this.acidRainTimer <= 0) {
       this.acidRain = { timer: 12, damageAccum: 0 };
-      this.triggerAnnouncement('ACID RAIN WARNING', GREEN);
+      this.triggerAnnouncement('INCOMING ACID RAIN', GREEN);
       this.floatingTexts.push(
         new FloatingText('TOXIC RAIN PURGE', new Vec2(WIDTH / 2 - 120, HEIGHT / 2 - 70), GREEN, 2.5)
       );
