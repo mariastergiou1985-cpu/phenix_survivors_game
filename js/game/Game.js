@@ -267,6 +267,7 @@ export class Game {
     this.titanSpawnTimer  = 180;
     this._titanShockwaves = [];
     this._titanBeams      = [];
+    this._bloodfangSlams  = [];   // telegraphed pounce-slam zones cast by the Bloodfang Packmaster (player-only)
 
     // Matrix Annihilator — second mini-boss, marches on a Power Matrix at ~7:30
     this.annihilatorSpawned    = false;
@@ -4703,6 +4704,7 @@ export class Game {
       radius: R, speed: 52, contactDamage: 16, hitFlash: 0,
       targetMatrix: this._nearestMatrix(pos),
       attackTimer: 3,
+      shotTimer: 3,
     };
     this.triggerAnnouncement('MATRIX ANNIHILATOR INBOUND', RED);
     this.audio?.playBossSpawn();
@@ -4771,6 +4773,18 @@ export class Game {
 
     a.pos.x = clamp(a.pos.x, WORLD_MARGIN + a.radius, WORLD_W - WORLD_MARGIN - a.radius);
     a.pos.y = clamp(a.pos.y, WORLD_MARGIN + 40 + a.radius, WORLD_H - WORLD_MARGIN - a.radius);
+
+    // Aimed energy shot — ranged pressure while it harasses the Matrix (fully dodgeable,
+    // routed through the shared enemy-bullet → _damagePlayer fairness gate)
+    a.shotTimer -= dt;
+    if (a.shotTimer <= 0) {
+      a.shotTimer = 3.2 + Math.random() * 0.8;            // 3.2–4.0s cadence
+      const dir = safeNormalize(this.player.pos.sub(a.pos));
+      if (dir.lengthSq() > 0) {
+        this.spawnEnemyBullet(a.pos.clone(), dir, 260, 10, 9, PURPLE);
+        this.audio?.playEnemyShoot();
+      }
+    }
 
     // Contact damage (same pattern as the Titan)
     if (distance(a.pos, this.player.pos) < a.radius + PLAYER_RADIUS) {
@@ -4882,6 +4896,7 @@ export class Game {
       pos, hp: 560, maxHp: 560,
       radius: R, speed: 112, hitFlash: 0,
       biteTimer: 2.0, lungeTimer: 0, lungeDir: new Vec2(1, 0),
+      slamTimer: 4,
     };
     this.triggerAnnouncement('BLOODFANG PACKMASTER DETECTED', RED);
     this.audio?.playBossSpawn();
@@ -4929,6 +4944,28 @@ export class Game {
     a.pos.x = clamp(a.pos.x, WORLD_MARGIN + a.radius, WORLD_W - WORLD_MARGIN - a.radius);
     a.pos.y = clamp(a.pos.y, WORLD_MARGIN + 40 + a.radius, WORLD_H - WORLD_MARGIN - a.radius);
 
+    // Telegraphed pounce slam — clearly warned, single heavy hit, dodgeable by moving/dashing out.
+    // Threatens a kiting player who out-ranges the lunge; mirrors the Lava-zone warn→impact pattern.
+    a.slamTimer -= dt;
+    if (a.slamTimer <= 0 && dist < 360) {
+      a.slamTimer = 5.5 + Math.random() * 1.5;            // 5.5–7.0s cadence
+      this._bloodfangSlams.push({ pos: this.player.pos.clone(), radius: 75, warn: 0.9, impact: 0.25, t: 0, hit: false });
+      this.audio?.playEventWarning();
+    }
+    for (let i = this._bloodfangSlams.length - 1; i >= 0; i--) {
+      const s = this._bloodfangSlams[i];
+      s.t += dt;
+      if (!s.hit && s.t >= s.warn) {                       // warning ended → strike
+        s.hit = true;
+        this.screenShake.trigger(6, 0.2);
+        this.particles.spawnExplosion(s.pos, [RED, ORANGE], 12);
+        this.audio?.playBloodfangBite?.();
+        if (distance(this.player.pos, s.pos) < s.radius)
+          this._damagePlayer(18, { color: RED, shake: 6 }); // routed through fairness gate (dash/grace/30-cap)
+      }
+      if (s.t >= s.warn + s.impact) this._bloodfangSlams.splice(i, 1);
+    }
+
     // Bite contact — throttled discrete bites (heavier on a lunge); dash/phoenix i-frames respected
     if (distance(a.pos, this.player.pos) < a.radius + PLAYER_RADIUS &&
         this.playerHitCooldown <= 0 &&
@@ -4968,6 +5005,7 @@ export class Game {
     this.triggerAnnouncement('BLOODFANG PACKMASTER DEFEATED', GREEN);
     this.screenShake.trigger(14, 1.0);
     this.particles.spawnExplosion(a.pos, [RED, ORANGE, YELLOW], 30);
+    this._bloodfangSlams = [];   // drop any pending telegraph so it never outlives the boss
     this.bloodfangBoss = null;
   }
 
@@ -4975,6 +5013,22 @@ export class Game {
     const a = this.bloodfangBoss;
     if (!a || a.hp <= 0) return;
     const R = a.radius;
+
+    // Pounce-slam telegraph — pulsing dashed ring over a translucent fill during the warn phase
+    // (same idiom as the Lava-zone telegraph) so the heavy hit is always clearly readable.
+    for (const s of this._bloodfangSlams) {
+      if (s.t >= s.warn) continue;
+      const k = s.t / s.warn;
+      ctx.save();
+      ctx.globalAlpha = 0.14 + 0.20 * k;
+      ctx.fillStyle = RED;
+      ctx.beginPath(); ctx.arc(s.pos.x, s.pos.y, s.radius, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = Math.min(1, 0.4 + 0.4 * k);
+      ctx.strokeStyle = ORANGE; ctx.lineWidth = 3; ctx.setLineDash([10, 8]);
+      ctx.beginPath(); ctx.arc(s.pos.x, s.pos.y, s.radius, 0, Math.PI * 2); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
 
     // Pulsing red aura
     const pulse = 0.4 + 0.35 * Math.sin(Date.now() / 160);
