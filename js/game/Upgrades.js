@@ -79,8 +79,8 @@ export const ALL_UPGRADES = [
   ),
   // ── Grid economy / Mobility ─────────────────────────────────────────────────
   new UpgradeDefinition(
-    'Grid Investor', 'Grid Investor', '+10% Grid Credits',
-    YELLOW, 5, () => {}, '💰', 'legendary'  // multiplier applied in Game._awardCredits
+    'Grid Investor', 'Grid Investor', '+10% Grid Credits, +2% Gold Core',
+    YELLOW, 5, () => {}, '💰', 'legendary'  // credits ×Game._awardCredits; Gold chance ×PowerMatrix.stealCore
   ),
   new UpgradeDefinition(
     'Cyber-Legs', 'Move Speed', '+4% move speed',

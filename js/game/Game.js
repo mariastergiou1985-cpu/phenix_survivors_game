@@ -38,6 +38,11 @@ const THUNDER_NOTES = [
   { sx: 462, sy:  72, sw:  95, sh:  95 }, // beamed pair
 ];
 
+// Ultimate activation cost (fixed). Mana Core raises maxMana for a bigger pool but NEVER the cost
+// to fire — so taking Mana Core can only speed up ultimates (overflow banks toward the next cast),
+// never delay them. Base maxMana is 100, so a player with no Mana Core is unaffected.
+const ULTIMATE_MANA_COST = 100;
+
 export class Game {
   constructor() {
     this.audio     = null;  // set from main.js on first user gesture
@@ -834,11 +839,11 @@ export class Game {
     const p = this.player;
     if (p.selectedCharacter !== 'skeleton_warrior') return;  // only this character has an ultimate
     if (this.thunderSolo) return;                            // already running
-    if (p.mana < p.maxMana) {
+    if (p.mana < ULTIMATE_MANA_COST) {
       this.floatingTexts.push(new FloatingText('NOT ENOUGH MANA', p.pos.clone(), CYAN, 1.0));
       return;
     }
-    p.mana = 0;                                              // consume full mana
+    p.mana -= ULTIMATE_MANA_COST;                            // fixed 100 cost; Mana Core overflow banks toward next cast
     this.thunderSolo = { phase: 'windup', t: 0, totalT: 0, strikeTimer: 0, bolts: [],
                          notes: [], noteTimer: 0,
                          miniDmgThisSec: 0, megaDmgThisSec: 0, bossDmgTimer: 1.0 };
@@ -854,11 +859,11 @@ export class Game {
     const p = this.player;
     if (p.selectedCharacter !== 'cyber_arm_hero') return;   // Cyber Arm Hero only
     if (this.overChains) return;                            // already running
-    if (p.mana < p.maxMana) {                               // same NOT-ENOUGH-MANA behavior as Thunder Solo
+    if (p.mana < ULTIMATE_MANA_COST) {                      // same NOT-ENOUGH-MANA behavior as Thunder Solo
       this.floatingTexts.push(new FloatingText('NOT ENOUGH MANA', p.pos.clone(), ORANGE, 1.0));
       return;
     }
-    p.mana = 0;                                             // consume full mana → HUD ring empties
+    p.mana -= ULTIMATE_MANA_COST;                           // fixed 100 cost; Mana Core overflow banks toward next cast
     this.overChains = { t: 0, angle: 0, dmgTimer: 0,
                         miniDmgThisSec: 0, megaDmgThisSec: 0, bossDmgTimer: 1.0,
                         drops: [], dropTimer: 0 };           // visual-only: falling chain-rain segments
@@ -1433,7 +1438,9 @@ export class Game {
     this.particles.update(dt);
     this._updateCamera();
 
-    for (const m of this.matrices) m.update(dt);
+    // Grid Investor card: +2% Gold Core chance per level on stolen cores (read in PowerMatrix.stealCore).
+    const gridGoldBonus = (this.player.upgrades['Grid Investor'] || 0) * 0.02;
+    for (const m of this.matrices) { m.update(dt); m.goldChanceBonus = gridGoldBonus; }
 
     // Tick down phoenix animation
     if (this.phoenixReviveTimer > 0) this.phoenixReviveTimer -= dt;
@@ -2530,11 +2537,11 @@ export class Game {
     const p = this.player;
     if (p.selectedCharacter !== 'taekwondo_girl') return;   // Neon Taekwondo Girl only
     if (this.spiritDojang) return;                          // already running
-    if (p.mana < p.maxMana) {                               // same NOT-ENOUGH-MANA behavior as other ultimates
+    if (p.mana < ULTIMATE_MANA_COST) {                      // same NOT-ENOUGH-MANA behavior as other ultimates
       this.floatingTexts.push(new FloatingText('NOT ENOUGH MANA', p.pos.clone(), CYAN, 1.0));
       return;
     }
-    p.mana = 0;                                             // consume full mana → HUD ring empties
+    p.mana -= ULTIMATE_MANA_COST;                           // fixed 100 cost; Mana Core overflow banks toward next cast
     this.spiritDojang = { pos: p.pos.clone(), t: 0, dmgTimer: 0,
                           miniDmgThisSec: 0, megaDmgThisSec: 0, bossDmgTimer: 1.0,
                           particles: [], partTimer: 0 };

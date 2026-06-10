@@ -9,6 +9,7 @@ export class PowerMatrix {
     this.capacity = capacity;
     this.stored   = capacity;
     this.hackTimer = 0.0;
+    this.goldChanceBonus = 0;   // Grid Investor card: extra Gold Core chance, set by Game each frame
 
     // Visual-feedback state (no gameplay impact)
     this.flashTimer  = 0;            // brief cyan/white flash after a core is inserted
@@ -31,7 +32,7 @@ export class PowerMatrix {
     // removed equals the dropped core's value, so total world-core value can never exceed the
     // matrix deficit. Gold is rarer than silver; the last dregs drop a partial silver.
     let type, value;
-    if (this.stored >= 5 && Math.random() < 0.18) { type = 'gold';   value = 5; }
+    if (this.stored >= 5 && Math.random() < 0.18 + this.goldChanceBonus) { type = 'gold';   value = 5; }
     else if (this.stored >= 3)                     { type = 'silver'; value = 3; }
     else                                           { type = 'silver'; value = this.stored; }
     this.stored -= value;
