@@ -69,17 +69,23 @@ export class Player {
 
     this.level        = 1;
     this.xp           = 0;
-    this.xpToNext     = 3;
+    this.xpToNext     = this._xpForLevel(1);   // XP needed to reach level 2
     this.pendingLevelupCount = 0;
+
+    // Projectile tuning (raised by upgrade cards)
+    this.projSpeedBonus = 0.0;   // +% projectile travel speed
+    this.fireRateBonus  = 0.0;   // +% shots per second
 
     this.kills             = 0;
     this.coresSecured      = 0;
     this.coresIntercepted  = 0;
 
     this.upgrades = {
-      'Cyber-Legs': 0, 'Memory Bank': 0, 'Overclock Boost': 0,
-      'Tractor Beam': 0, 'Firewall Protection': 0, 'Pulse Damage': 0,
-      'Sonic Pulse': 0, 'Homing Disc': 0, 'EMP Cloud': 0, 'Quantum Overhaul': 0,
+      'Cyber-Legs': 0, 'Memory Bank': 0, 'Tractor Beam': 0,
+      'Firewall Protection': 0, 'Pulse Damage': 0, 'Homing Disc': 0,
+      'EMP Cloud': 0, 'Quantum Overhaul': 0,
+      'Fire Rate': 0, 'Projectile Speed': 0, 'Cryo Rounds': 0,
+      'Max HP': 0, 'Max Mana': 0,
     };
 
     // Ability cooldown timers
@@ -131,6 +137,14 @@ export class Player {
   get speed()             { return this.baseSpeed * (1 + this.speedBonus); }
   get overloadDampening() { return this.upgrades['Firewall Protection'] * 0.02; }
 
+  // Smooth quadratic curve (XP to go from `level` → `level+1`). Gentle early so the
+  // first minutes don't level instantly, then a steady rise that NEVER runs away
+  // exponentially — combined with time-scaled kill XP (Enemy._die) this keeps
+  // level-up cards arriving regularly through mid and late game.
+  _xpForLevel(level) {
+    return Math.round(4 + level * 3 + level * level * 0.6);
+  }
+
   gainXp(amount, floatingTexts) {
     this.xp += amount;
     floatingTexts.push(new FloatingText(`+${amount} TECH-XP`, this.pos.clone(), GREEN));
@@ -138,13 +152,7 @@ export class Player {
     while (this.xp >= this.xpToNext) {
       this.xp      -= this.xpToNext;
       this.level++;
-      const EARLY_THRESHOLDS = [5, 7, 10]; // XP to reach levels 3, 4, 5
-      const earlyIdx = this.level - 2;
-      if (earlyIdx >= 0 && earlyIdx < EARLY_THRESHOLDS.length) {
-        this.xpToNext = EARLY_THRESHOLDS[earlyIdx];
-      } else {
-        this.xpToNext = Math.round(this.xpToNext * 1.35 + 4);
-      }
+      this.xpToNext = this._xpForLevel(this.level);
       this.pendingLevelupCount++;
     }
   }
@@ -236,7 +244,7 @@ export class Player {
   canShoot() { return this.shootCooldown <= 0; }
 
   shoot(mousePos) {
-    this.shootCooldown = 0.18;
+    this.shootCooldown = 0.18 / (1 + this.fireRateBonus);   // Fire Rate card
     const dir    = safeNormalize(new Vec2(mousePos.x - this.pos.x, mousePos.y - this.pos.y));
     const base   = 1 + this.upgrades['Pulse Damage'];
     let damage   = base;
@@ -249,6 +257,7 @@ export class Player {
     }
     const proj = new Projectile(this.pos.clone(), dir, damage, this.attackSprite);
     proj.life  = projLife;
+    proj.speed = 760 * (1 + this.projSpeedBonus);            // Shot Speed card
     return proj;
   }
 
@@ -313,8 +322,19 @@ export class Player {
     ctx.fillStyle = '#2a0a10'; ctx.fillRect(bx, byHp, bw, bh);
     ctx.fillStyle = RED;
     ctx.fillRect(bx, byHp, Math.round(bw * clamp(this.hp / this.maxHp, 0, 1)), bh);
-    ctx.strokeStyle = 'rgba(255,90,110,0.85)'; ctx.lineWidth = 1;
-    ctx.strokeRect(bx + 0.5, byHp + 0.5, bw - 1, bh - 1);
+    // Overheal segment (gold) — only when HP exceeds max (Gold Phoenix Revive). Drawn
+    // on top of the full red bar so the bonus HP is clearly visible; normal HP logic
+    // (the red clamp above) is untouched.
+    if (this.hp > this.maxHp) {
+      const over = clamp((this.hp - this.maxHp) / this.maxHp, 0, 1);
+      ctx.fillStyle = '#ffd23c';
+      ctx.fillRect(bx, byHp, Math.round(bw * over), bh);
+      ctx.strokeStyle = '#fff2a8'; ctx.lineWidth = 1.2;
+      ctx.strokeRect(bx + 0.5, byHp + 0.5, bw - 1, bh - 1);
+    } else {
+      ctx.strokeStyle = 'rgba(255,90,110,0.85)'; ctx.lineWidth = 1;
+      ctx.strokeRect(bx + 0.5, byHp + 0.5, bw - 1, bh - 1);
+    }
 
     // Mana bar (cyan) — ALWAYS visible, even at 0: dark-blue bg + cyan border + subtle glow
     ctx.fillStyle = '#06283a'; ctx.fillRect(bx, byMana, bw, bh);

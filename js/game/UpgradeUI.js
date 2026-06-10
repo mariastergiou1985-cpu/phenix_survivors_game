@@ -6,11 +6,11 @@ export class UpgradeUI {
     this.choices = choices;
 
     const cardW  = 220;
-    const cardH  = 320;
+    const cardH  = 250;   // shorter cards (descriptions are now one short line)
     const gap    = 30;
     const totalW = choices.length * cardW + (choices.length - 1) * gap;
     const startX = (WIDTH  - totalW) / 2;
-    const startY = (HEIGHT - cardH)  / 2;
+    const startY = (HEIGHT - cardH)  / 2 - 10;
 
     this.cardRects = choices.map((_, i) => ({
       x: startX + i * (cardW + gap),
@@ -18,9 +18,22 @@ export class UpgradeUI {
       w: cardW,
       h: cardH,
     }));
+
+    // Reroll button centered below the cards
+    const rbW = 240, rbH = 40;
+    this.rerollRect = { x: (WIDTH - rbW) / 2, y: startY + cardH + 22, w: rbW, h: rbH };
   }
 
+  // Rebind choices after a reroll without recreating the layout (count is unchanged).
+  setChoices(choices) { this.choices = choices; }
+
   handleClick(mousePos, game) {
+    const rr = this.rerollRect;
+    if (mousePos.x >= rr.x && mousePos.x <= rr.x + rr.w &&
+        mousePos.y >= rr.y && mousePos.y <= rr.y + rr.h) {
+      game.rerollUpgrade();
+      return;
+    }
     this.cardRects.forEach((r, i) => {
       if (
         mousePos.x >= r.x && mousePos.x <= r.x + r.w &&
@@ -31,7 +44,7 @@ export class UpgradeUI {
     });
   }
 
-  draw(ctx, player) {
+  draw(ctx, player, game) {
     // Dim overlay
     ctx.fillStyle = 'rgba(0,0,0,0.78)';
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
@@ -65,11 +78,11 @@ export class UpgradeUI {
       ctx.fill();
       ctx.stroke();
 
-      // Icon symbol (first letter of name, large)
-      ctx.font      = '40px Consolas, monospace';
+      // Icon symbol (large)
+      ctx.font      = (upg.icon.length > 1 ? '30px' : '40px') + ' Consolas, monospace';
       ctx.fillStyle = upg.iconColor;
       ctx.textAlign = 'center';
-      ctx.fillText(upg.name[0], ix + 40, iy + 55);
+      ctx.fillText(upg.icon, ix + 40, iy + 54);
       ctx.textAlign = 'left';
 
       // Upgrade name
@@ -106,5 +119,20 @@ export class UpgradeUI {
       ctx.fillText(`[${i + 1}]`, r.x + r.w - 8, r.y + r.h - 10);
       ctx.textAlign = 'left';
     });
+
+    // ── Reroll button (one free reroll per level-up screen) ──────────────────
+    const rr        = this.rerollRect;
+    const available = !game || game.rerollAvailable;
+    ctx.fillStyle   = available ? 'rgba(20,40,60,0.95)' : 'rgba(20,26,34,0.8)';
+    ctx.strokeStyle = available ? YELLOW : GREY;
+    ctx.lineWidth   = 2;
+    roundRect(ctx, rr.x, rr.y, rr.w, rr.h, 8);
+    ctx.fill();
+    ctx.stroke();
+    ctx.font      = 'bold 16px Consolas, monospace';
+    ctx.fillStyle = available ? YELLOW : GREY;
+    ctx.textAlign = 'center';
+    ctx.fillText(available ? '↻ REROLL  [R]' : '↻ REROLL USED', rr.x + rr.w / 2, rr.y + 26);
+    ctx.textAlign = 'left';
   }
 }

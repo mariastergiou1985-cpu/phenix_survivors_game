@@ -4,22 +4,22 @@ import {
   OVERLOAD_PICKUP_REDUCTION, OVERLOAD_SLOT_REDUCTION,
   MAX_OVERLOAD, PLAYER_RADIUS, CORE_RADIUS, MATRIX_RADIUS,
   DARK_BG, GRID_LINE, BLACK, CYAN, RED, GREEN, YELLOW, ORANGE, WHITE, PURPLE,
-  CORE_COLORS,
-} from '../constants.js?v=50';
+  CORE_COLORS, VIEW_SCALE, VIEW_W, VIEW_H,
+} from '../constants.js?v=51';
 import { clamp, distance, safeNormalize, randomChoice, randomRange } from '../utils.js';
 
 import { FloatingText }   from '../entities/FloatingText.js';
 import { DataCore }       from '../entities/DataCore.js';
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=11';
-import { Player }         from '../entities/Player.js?v=59';
+import { Player }         from '../entities/Player.js?v=60';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=3';
-import { Enemy }          from '../entities/Enemy.js?v=99';
+import { Enemy }          from '../entities/Enemy.js?v=100';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=1';
 
 import { ParticleSystem, ScreenShake, drawVignette, EMPRing, drawGlow } from './Effects.js?v=3';
 import { SystemEventManager } from './Events.js?v=94';
-import { UpgradeUI }      from './UpgradeUI.js';
-import { weightedSample } from './Upgrades.js';
+import { UpgradeUI }      from './UpgradeUI.js?v=2';
+import { weightedSample } from './Upgrades.js?v=2';
 import { drawHUD, drawEndScreen } from './HUD.js?v=34';
 import { MetaProgress, META_UPGRADES, upgradeCost } from './MetaProgress.js?v=1';
 
@@ -165,7 +165,8 @@ export class Game {
       { id: 'taekwondo_girl',   name: 'Neon Taekwondo Girl',    fallbackColor: '#00D9FF', fallbackAlt: '#0099CC', role: 'Speed / AoE' },
       { id: 'cyber_arm_hero',   name: 'Cyber Arm Hero',         fallbackColor: '#FF6600', fallbackAlt: '#CC0000', role: 'Ranged / Damage' },
     ];
-    this.menuItems = ['START GAME', 'CHARACTER SELECT', 'UPGRADES', 'INSTRUCTIONS', 'AUDIO SETTINGS', 'CREDITS', 'EXIT'];
+    // 'UPGRADES' (the buggy meta-upgrade screen) removed — all upgrades come from level-up cards.
+    this.menuItems = ['START GAME', 'CHARACTER SELECT', 'INSTRUCTIONS', 'AUDIO SETTINGS', 'CREDITS', 'EXIT'];
 
     this.reset();
   }
@@ -199,6 +200,7 @@ export class Game {
     this.screenShake  = new ScreenShake();
     this.events       = new SystemEventManager();
     this.upgradeUI    = null;
+    this.rerollAvailable = false;
     this.megaBoss     = null;
     this.bossLavaZones = [];   // telegraphed lava/fire-rain zones cast by the main boss (player-only)
 
@@ -306,11 +308,10 @@ export class Game {
     this.gameState = 'exit_screen';
   }
 
+  // The meta upgrade screen is disabled (it was buggy). Any remaining entry point
+  // (e.g. the end-screen button) now harmlessly returns to the main menu.
   goToUpgradesScreen() {
-    this.gameState      = 'upgrades';
-    this._upgradeMsg    = '';
-    this._upgradeMsgTimer = 0;
-    this._confirmReset  = false;
+    this.goToMainMenu();
   }
 
   goToCredits() { this.gameState = 'credits'; }
@@ -382,7 +383,7 @@ export class Game {
     // Does not touch overload / credits / score / combo, and never replaces Phoenix revives.
     if (pos && ++this.killsSinceHealthDrop >= 40) {
       this.killsSinceHealthDrop = 0;
-      const dropPos = pos.clone().add(new Vec2(randomRange(-10, 10), -8));
+      const dropPos = this._clampPickupPos(pos.clone().add(new Vec2(randomRange(-10, 10), -8)));
       this.healthPickups.push({ pos: dropPos, timer: 25 });
     }
   }
@@ -1053,12 +1054,12 @@ export class Game {
     if (enemies.length === 0) {
       // No normal enemies: favour a boss if present, else a random visible point (rare fallback)
       if (bosses.length) { const b = bosses[(Math.random() * bosses.length) | 0]; return { x: b.pos.x, y: b.pos.y }; }
-      return { x: this.camera.x + randomRange(40, WIDTH - 40), y: this.camera.y + randomRange(60, HEIGHT - 40) };
+      return { x: this.camera.x + randomRange(40, VIEW_W - 40), y: this.camera.y + randomRange(60, VIEW_H - 40) };
     }
 
     // Small share of random spread so the storm reads as battlefield-wide, not laser-focused
     if (r > 0.93) {
-      return { x: this.camera.x + randomRange(40, WIDTH - 40), y: this.camera.y + randomRange(60, HEIGHT - 40) };
+      return { x: this.camera.x + randomRange(40, VIEW_W - 40), y: this.camera.y + randomRange(60, VIEW_H - 40) };
     }
 
     // Sample a handful of enemies and pick the best target: dense clusters, close to the
@@ -1267,6 +1268,16 @@ export class Game {
     this.upgradeUI = null;
   }
 
+  // One free reroll per level-up screen — re-samples the (already useful) card pool.
+  rerollUpgrade() {
+    if (!this.upgradeUI || !this.rerollAvailable) return;
+    const choices = weightedSample(this.player, 3);
+    if (choices.length === 0) return;
+    this.upgradeUI.setChoices(choices);
+    this.rerollAvailable = false;
+    this.audio?.playLevelUp?.();
+  }
+
   // ─── Main update ──────────────────────────────────────────────────────────
 
   update(dt, input) {
@@ -1312,6 +1323,7 @@ export class Game {
       if (choices.length > 0) {
         this.audio?.playLevelUp();
         this.upgradeUI = new UpgradeUI(choices);
+        this.rerollAvailable = true;   // one free reroll per level-up screen
         return;
       }
     }
@@ -1402,12 +1414,13 @@ export class Game {
     if (this.gridCache) {
       // Check player pickup
       if (distance(this.player.pos, this.gridCache.pos) < PLAYER_RADIUS + CRATE_R) {
-        this.player.hp = Math.min(this.player.maxHp, this.player.hp + 20);
+        // Base reward (always): a little XP + overload relief + score
         this.player.gainXp(10, this.floatingTexts);
         this.overload = Math.max(0, this.overload - 5);
+        this.score += 50;
         this.floatingTexts.push(new FloatingText('GRID CACHE COLLECTED', this.player.pos.clone(), CYAN, 1.2));
         this.particles.spawnCorePickup(this.gridCache.pos, CYAN);
-        this.score += 50;
+        this._grantGridCacheBonus();
         this.gridCache = null;
         this.gridCacheSpawnTimer = 60;
         return;
@@ -1448,13 +1461,53 @@ export class Game {
     this.audio?.playGridCache();
   }
 
+  // RNG bonus on top of the Grid Cache base reward: HP / Mana / Grid Credits / loose Cores.
+  _grantGridCacheBonus() {
+    const p = this.player;
+    const r = Math.random();
+    if (r < 0.30) {
+      const heal = Math.round(p.maxHp * 0.30);
+      p.hp = p.hp >= p.maxHp ? p.hp : Math.min(p.maxHp, p.hp + heal);   // never clip overheal
+      this.floatingTexts.push(new FloatingText('+' + heal + ' HP', p.pos.clone(), RED, 1.4));
+    } else if (r < 0.55) {
+      const m = Math.random() < 0.5 ? 25 : 50;
+      p.mana = Math.min(p.maxMana, p.mana + m);
+      this.floatingTexts.push(new FloatingText('+' + m + ' MANA', p.pos.clone(), CYAN, 1.4));
+    } else if (r < 0.80) {
+      const c = 3 + Math.floor(Math.random() * 4);   // 3..6 Grid Credits
+      this.meta.addCredits(c);
+      this.runCreditsEarned = (this.runCreditsEarned || 0) + c;
+      this.floatingTexts.push(new FloatingText('+' + c + ' GRID CREDITS', p.pos.clone(), GREEN, 1.4));
+    } else {
+      const n = 2 + Math.floor(Math.random() * 2);    // 2..3 loose cores to secure
+      for (let i = 0; i < n; i++) {
+        const off = new Vec2(randomRange(-40, 40), randomRange(-40, 40));
+        const col = CORE_COLORS[Math.floor(Math.random() * CORE_COLORS.length)];
+        this.groundCores.push(new DataCore(this._clampPickupPos(p.pos.clone().add(off)), col));
+      }
+      this.floatingTexts.push(new FloatingText('+' + n + ' CORES', p.pos.clone(), YELLOW, 1.4));
+    }
+  }
+
+  // Keep a pickup comfortably inside the reachable play area (well away from edges so
+  // HP/Mana/cores are never stranded outside where the player can travel).
+  _clampPickupPos(pos) {
+    const mx = 120, myTop = 150, myBot = 120;
+    pos.x = clamp(pos.x, mx, WORLD_W - mx);
+    pos.y = clamp(pos.y, myTop, WORLD_H - myBot);
+    return pos;
+  }
+
   _updateHealthPickups(dt) {
     const PICKUP_R = 16;
     for (let i = this.healthPickups.length - 1; i >= 0; i--) {
       const hp = this.healthPickups[i];
 
       if (distance(this.player.pos, hp.pos) < PLAYER_RADIUS + PICKUP_R) {
-        this.player.hp = Math.min(this.player.maxHp, this.player.hp + this.player.maxHp * 0.25);
+        const heal = this.player.maxHp * 0.25;
+        this.player.hp = this.player.hp >= this.player.maxHp   // never clip overheal
+          ? this.player.hp
+          : Math.min(this.player.maxHp, this.player.hp + heal);
         this.floatingTexts.push(new FloatingText('+25% HP', this.player.pos.clone(), RED, 1.2));
         this.particles.spawnCorePickup(hp.pos, RED);
         this.audio?.playCorePickup();
@@ -1487,9 +1540,11 @@ export class Game {
       if (this.player.mana < this.player.maxMana && this.manaPickups.length === 0) {
         const ang = Math.random() * Math.PI * 2;
         const r   = randomRange(140, 240);
-        const px  = clamp(this.player.pos.x + Math.cos(ang) * r, WORLD_MARGIN, WORLD_W - WORLD_MARGIN);
-        const py  = clamp(this.player.pos.y + Math.sin(ang) * r, WORLD_MARGIN + 40, WORLD_H - WORLD_MARGIN);
-        this.manaPickups.push({ pos: new Vec2(px, py) });
+        const pos = this._clampPickupPos(new Vec2(
+          this.player.pos.x + Math.cos(ang) * r,
+          this.player.pos.y + Math.sin(ang) * r,
+        ));
+        this.manaPickups.push({ pos });
       }
     }
   }
@@ -1549,9 +1604,9 @@ export class Game {
   _drawGridCacheArrow(ctx) {
     if (!this.gridCache) return;
 
-    // Convert world position → screen position
-    const sx = this.gridCache.pos.x - this.camera.x;
-    const sy = this.gridCache.pos.y - this.camera.y;
+    // Convert world position → screen position (account for the VIEW_SCALE zoom)
+    const sx = (this.gridCache.pos.x - this.camera.x) * VIEW_SCALE;
+    const sy = (this.gridCache.pos.y - this.camera.y) * VIEW_SCALE;
 
     const HUD_H  = 44;
     const MARGIN = 28;
@@ -1632,23 +1687,19 @@ export class Game {
       keys.delete('s');
     }
     if (keys.has('enter') || keys.has(' ')) {
-      if (this.menuIndex === 0 || this.menuIndex === 1) {
-        this.goToCharacterSelect();
-      } else if (this.menuIndex === 2) {
-        this.goToUpgradesScreen();
-      } else if (this.menuIndex === 3) {
-        this.goToInstructions();
-      } else if (this.menuIndex === 4) {
-        this.goToAudioSettings();
-      } else if (this.menuIndex === 5) {
-        this.goToCredits();
-      } else if (this.menuIndex === 6) {
-        try { window.close(); } catch (e) {}
-        this.goToExitScreen();
-      }
+      this._selectMenuItem(this.menuItems[this.menuIndex]);
       keys.delete('enter');
       keys.delete(' ');
     }
+  }
+
+  // Name-based menu dispatch (shared by keyboard + mouse) so item order can change safely.
+  _selectMenuItem(item) {
+    if (item === 'START GAME' || item === 'CHARACTER SELECT') this.goToCharacterSelect();
+    else if (item === 'INSTRUCTIONS')   this.goToInstructions();
+    else if (item === 'AUDIO SETTINGS') this.goToAudioSettings();
+    else if (item === 'CREDITS')        this.goToCredits();
+    else if (item === 'EXIT') { try { window.close(); } catch (e) {} this.goToExitScreen(); }
   }
 
   _updateCharacterSelect(input) {
@@ -1929,6 +1980,14 @@ export class Game {
           this.particles.spawnCoreSlot(matrix.pos, matrix.color);
           this.audio?.playCoreSlot();
           this.score += 25;
+          // Matrix RNG bonus: ~22% of deposits award a variable Grid Credit cache (2–5).
+          if (Math.random() < 0.22) {
+            const c = 2 + Math.floor(Math.random() * 4);   // 2..5
+            this.meta.addCredits(c);
+            this.runCreditsEarned = (this.runCreditsEarned || 0) + c;
+            this.floatingTexts.push(new FloatingText('+' + c + ' GRID CREDITS',
+              new Vec2(matrix.pos.x, matrix.pos.y - 22), GREEN, 1.4));
+          }
         }
       }
     }
@@ -1943,6 +2002,10 @@ export class Game {
       for (let j = this.enemies.length - 1; j >= 0; j--) {
         const e = this.enemies[j];
         if (distance(p.pos, e.pos) < p.radius + e.radius) {
+          const cryo = this.player.upgrades['Cryo Rounds'] || 0;
+          if (cryo > 0 && !e.isBoss() && !e.isMegaBoss) {
+            e.slowTimer = Math.max(e.slowTimer, 0.8 + 0.3 * cryo);   // refresh, don't stack
+          }
           e.takeHit(p.damage, this);
           this.projectiles.splice(i, 1);
           hit = true;
@@ -2708,9 +2771,9 @@ export class Game {
     this.phoenixReviveTimer = 3.0;
 
     if (this.phoenixReviveCount === 1) {
-      // ── Orange — original first-death revive ──────────────────────────────
+      // ── Orange — 33.3 % HP, −25 % overload ────────────────────────────────
       this.phoenixReviveType = 'orange';
-      this.player.hp = Math.ceil(this.player.maxHp * 0.5);
+      this.player.hp = Math.ceil(this.player.maxHp * 0.333);
       this.overload  = Math.max(0, this.overload * 0.75);
       this.floatingTexts.push(
         new FloatingText('✦ PHOENIX REVIVE ✦', this.player.pos.clone(), ORANGE, 2.5)
@@ -2718,9 +2781,9 @@ export class Game {
       this.screenShake.trigger(8, 0.5);
 
     } else if (this.phoenixReviveCount === 2) {
-      // ── Blue — 75 % HP, −50 % overload ───────────────────────────────────
+      // ── Blue — 55.5 % HP, −50 % overload ─────────────────────────────────
       this.phoenixReviveType = 'blue';
-      this.player.hp = Math.ceil(this.player.maxHp * 0.75);
+      this.player.hp = Math.ceil(this.player.maxHp * 0.555);
       this.overload  = Math.max(0, this.overload * 0.5);
       this.triggerAnnouncement('✦ BLUE PHOENIX REVIVE ✦', CYAN);
       this.floatingTexts.push(
@@ -2729,9 +2792,9 @@ export class Game {
       this.screenShake.trigger(12, 0.7);
 
     } else {
-      // ── Gold — 100 % HP, −75 % overload ──────────────────────────────────
+      // ── Gold — 125 % HP (overheal), −75 % overload ───────────────────────
       this.phoenixReviveType = 'gold';
-      this.player.hp = this.player.maxHp;
+      this.player.hp = Math.round(this.player.maxHp * 1.25);   // overheal: gold segment on HP bar
       this.overload  = Math.max(0, this.overload * 0.25);
       this.triggerAnnouncement('✦ GOLD PHOENIX REVIVE ✦', YELLOW);
       this.floatingTexts.push(
@@ -2739,6 +2802,12 @@ export class Game {
       );
       this.screenShake.trigger(16, 1.0);
     }
+
+    // Every Phoenix Revive also restores +25 mana (capped at max).
+    this.player.mana = Math.min(this.player.maxMana, this.player.mana + 25);
+    this.floatingTexts.push(
+      new FloatingText('+25 MANA', new Vec2(this.player.pos.x, this.player.pos.y + 18), CYAN, 2.0)
+    );
 
     this.audio?.playPhoenixRevive(this.phoenixReviveType);
   }
@@ -2788,7 +2857,9 @@ export class Game {
     }
 
     // ── Camera-space block (world entities) ─────────────────────────────────
+    // Zoom out slightly so more of the battlefield is visible (VIEW_SCALE < 1).
     ctx.save();
+    ctx.scale(VIEW_SCALE, VIEW_SCALE);
     ctx.translate(-this.camera.x, -this.camera.y);
 
     // 1 ── World Background
@@ -2956,7 +3027,7 @@ export class Game {
       ctx.save();
       ctx.globalAlpha = 0.6;
       ctx.fillStyle = tintRGBA;
-      ctx.fillRect(this.camera.x, this.camera.y, WIDTH, HEIGHT);
+      ctx.fillRect(this.camera.x, this.camera.y, VIEW_W, VIEW_H);   // cover the zoomed-out view
       ctx.restore();
 
       // ── Layer 2: radial gradient burst ─────────────────────────────────
@@ -3084,7 +3155,7 @@ export class Game {
     this._drawScanlines(ctx);
     this._drawAnnouncement(ctx);
 
-    if (this.upgradeUI) this.upgradeUI.draw(ctx, this.player);
+    if (this.upgradeUI) this.upgradeUI.draw(ctx, this.player, this);
     if (this.gameOver || this.victory) drawEndScreen(ctx, this);
 
     if (this.paused && !this.gameOver && !this.victory) {
@@ -4225,11 +4296,12 @@ export class Game {
     if (!t) return;
     this.score = (this.score ?? 0) + 300;
     this.player.gainXp(25, this.floatingTexts);
-    this.meta.addCredits(15);
-    this.runCreditsEarned = (this.runCreditsEarned || 0) + 15;
+    const titanCredits = 12 + Math.floor(Math.random() * 9);   // 12..20
+    this.meta.addCredits(titanCredits);
+    this.runCreditsEarned = (this.runCreditsEarned || 0) + titanCredits;
     this.overload = Math.max(0, this.overload - 10);
     this.floatingTexts.push(new FloatingText('TITAN DEFEATED',     t.pos.clone(),                            YELLOW, 2.5));
-    this.floatingTexts.push(new FloatingText('+15 GRID CREDITS',   new Vec2(t.pos.x, t.pos.y - 30),         GREEN,  2.5));
+    this.floatingTexts.push(new FloatingText('+' + titanCredits + ' GRID CREDITS',   new Vec2(t.pos.x, t.pos.y - 30),         GREEN,  2.5));
     this.floatingTexts.push(new FloatingText('NETWORK STABILIZED', new Vec2(t.pos.x, t.pos.y - 60),         CYAN,   2.5));
     this.triggerAnnouncement('TITAN DEFEATED — NETWORK STABILIZED', GREEN);
     this.screenShake.trigger(14, 1.0);
@@ -4434,11 +4506,12 @@ export class Game {
     if (!a) return;
     this.score = (this.score ?? 0) + 300;
     this.player.gainXp(25, this.floatingTexts);
-    this.meta.addCredits(15);
-    this.runCreditsEarned = (this.runCreditsEarned || 0) + 15;
+    const annihilatorCredits = 12 + Math.floor(Math.random() * 9);   // 12..20
+    this.meta.addCredits(annihilatorCredits);
+    this.runCreditsEarned = (this.runCreditsEarned || 0) + annihilatorCredits;
     this.overload = Math.max(0, this.overload - 10);
     this.floatingTexts.push(new FloatingText('MATRIX ANNIHILATOR DESTROYED', a.pos.clone(),                    YELLOW, 2.5));
-    this.floatingTexts.push(new FloatingText('+15 GRID CREDITS',            new Vec2(a.pos.x, a.pos.y - 30),  GREEN,  2.5));
+    this.floatingTexts.push(new FloatingText('+' + annihilatorCredits + ' GRID CREDITS',            new Vec2(a.pos.x, a.pos.y - 30),  GREEN,  2.5));
     this.triggerAnnouncement('MATRIX ANNIHILATOR DESTROYED', GREEN);
     this.screenShake.trigger(14, 1.0);
     this.particles.spawnExplosion(a.pos, [RED, ORANGE, YELLOW], 28);
@@ -4600,12 +4673,13 @@ export class Game {
     this.supportDrones = [];
     this.score = (this.score ?? 0) + 500;
     this.player.gainXp(45, this.floatingTexts);
-    this.meta.addCredits(30);
-    this.runCreditsEarned = (this.runCreditsEarned || 0) + 30;
+    const bloodfangCredits = 25 + Math.floor(Math.random() * 16);   // 25..40
+    this.meta.addCredits(bloodfangCredits);
+    this.runCreditsEarned = (this.runCreditsEarned || 0) + bloodfangCredits;
     this.overload = Math.max(0, this.overload - 10);
     this.floatingTexts.push(new FloatingText('BLOODFANG PACKMASTER DEFEATED', a.pos.clone(),                   YELLOW, 2.5));
     this.floatingTexts.push(new FloatingText('RAZORHOUND PACK BROKEN',         new Vec2(a.pos.x, a.pos.y - 28), ORANGE, 2.5));
-    this.floatingTexts.push(new FloatingText('+30 GRID CREDITS',               new Vec2(a.pos.x, a.pos.y - 56), GREEN,  2.5));
+    this.floatingTexts.push(new FloatingText('+' + bloodfangCredits + ' GRID CREDITS',               new Vec2(a.pos.x, a.pos.y - 56), GREEN,  2.5));
     this.triggerAnnouncement('BLOODFANG PACKMASTER DEFEATED', GREEN);
     this.screenShake.trigger(14, 1.0);
     this.particles.spawnExplosion(a.pos, [RED, ORANGE, YELLOW], 30);
@@ -4754,15 +4828,17 @@ export class Game {
   }
 
   _updateCamera() {
-    const cx = this.player.pos.x - WIDTH  / 2;
-    const cy = this.player.pos.y - HEIGHT / 2;
-    this.camera.x = Math.max(0, Math.min(cx, WORLD_W - WIDTH));
-    this.camera.y = Math.max(0, Math.min(cy, WORLD_H - HEIGHT));
+    // Center the player in the (larger, zoomed-out) visible world window.
+    const cx = this.player.pos.x - VIEW_W / 2;
+    const cy = this.player.pos.y - VIEW_H / 2;
+    this.camera.x = Math.max(0, Math.min(cx, WORLD_W - VIEW_W));
+    this.camera.y = Math.max(0, Math.min(cy, WORLD_H - VIEW_H));
   }
 
   _worldMouse(screenPos) {
     if (!screenPos) return null;
-    return { x: screenPos.x + this.camera.x, y: screenPos.y + this.camera.y };
+    // Screen → world: undo the VIEW_SCALE zoom, then the camera offset.
+    return { x: screenPos.x / VIEW_SCALE + this.camera.x, y: screenPos.y / VIEW_SCALE + this.camera.y };
   }
 
   _drawWorldBackground(ctx) {

@@ -6,6 +6,13 @@ export const WORLD_H = 1008;
 export const FPS    = 60;
 export const WORLD_MARGIN = 40;
 
+// Camera zoom-out: render the world slightly smaller so more of the battlefield
+// is visible (late-game crowds read better). The visible world window is
+// WIDTH/VIEW_SCALE × HEIGHT/VIEW_SCALE world-units inside the fixed 1280×720 canvas.
+export const VIEW_SCALE = 0.85;
+export const VIEW_W = WIDTH  / VIEW_SCALE;   // ≈ 1505.9 world-units shown horizontally
+export const VIEW_H = HEIGHT / VIEW_SCALE;   // ≈ 847.1  world-units shown vertically
+
 // Full target is 30 minutes. Change to 180 for quick testing.
 export const WIN_TIME_SECONDS = 30 * 60;
 

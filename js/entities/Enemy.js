@@ -19,9 +19,11 @@ export class Enemy {
     this.stealTimer = 0;
     this.hitFlash   = 0;
     this.stunned    = 0;
+    this.slowTimer  = 0;   // Cryo Rounds debuff: reduced movement speed while > 0
 
     const [spd, hp, color, stealTime, contactDamage] = this._statsForType(enemyType, minute);
     this.baseSpeed     = spd;
+    this._baseSpeedFull = spd;   // canonical speed; baseSpeed is recomputed each frame with slow
     this.hp            = hp;
     this.color         = color;
     this.stealTime     = stealTime;
@@ -219,7 +221,9 @@ export class Enemy {
     game.particles.spawnDeathBurst(this.pos, this.color);
     game.player.kills++;
     game.addKillScore?.(this.pos);
-    let xp = this.isMegaBoss ? 42 : (this.isBoss() ? 12 : 1);
+    // Normal-enemy XP scales with elapsed time (+1 every 2 min) so dense late-game
+    // crowds still feed steady level-ups; bosses keep their flat high values.
+    let xp = this.isMegaBoss ? 42 : (this.isBoss() ? 12 : 1 + Math.floor((game.timeAlive || 0) / 120));
     game.player.gainXp(xp, game.floatingTexts);
 
     if (this.carryingCore !== null) {
@@ -270,6 +274,12 @@ export class Enemy {
 
   update(dt, game) {
     if (this.hitFlash > 0) this.hitFlash -= dt;
+    // Cryo Rounds slow — recompute effective speed each frame (all movement branches
+    // read this.baseSpeed). Bosses are immune so they stay threatening.
+    if (this.slowTimer > 0) this.slowTimer -= dt;
+    this.baseSpeed = (this.slowTimer > 0 && !this.isBoss() && !this.isMegaBoss)
+      ? this._baseSpeedFull * 0.55
+      : this._baseSpeedFull;
     if (this.stunned > 0)  { this.stunned -= dt; return; }
 
     const { player, matrices } = game;

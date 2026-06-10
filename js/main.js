@@ -1,4 +1,4 @@
-import { Game } from './game/Game.js?v=145';
+import { Game } from './game/Game.js?v=146';
 import { AudioManager } from './audio/AudioManager.js?v=14';
 
 const canvas = document.getElementById('game');
@@ -45,10 +45,11 @@ window.addEventListener('keydown', e => {
     }
   }
 
-  // Upgrade card selection (1/2/3)
+  // Upgrade card selection (1/2/3) + reroll (R)
   if (game.upgradeUI) {
     const idx = { '1': 0, '2': 1, '3': 2 }[e.key];
     if (idx !== undefined) game.selectUpgrade(idx);
+    else if (key === 'r') game.rerollUpgrade();
     return;
   }
 
@@ -163,12 +164,7 @@ canvas.addEventListener('mousedown', e => {
       if (mousePos.x >= bx && mousePos.x <= bx + BW &&
           mousePos.y >= by && mousePos.y <= by + BH) {
         game.menuIndex = i;
-        if (i === 0 || i === 1) game.goToCharacterSelect();
-        else if (i === 2) game.goToUpgradesScreen();
-        else if (i === 3) game.goToInstructions();
-        else if (i === 4) game.goToAudioSettings();
-        else if (i === 5) game.goToCredits();
-        else if (i === 6) { try { window.close(); } catch (e) {} game.goToExitScreen(); }
+        game._selectMenuItem(game.menuItems[i]);
         break;
       }
     }

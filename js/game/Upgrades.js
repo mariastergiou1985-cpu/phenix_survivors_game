@@ -1,65 +1,85 @@
-import { CYAN, YELLOW, ORANGE, BLUE, PURPLE, MAGENTA, WHITE, GREEN, GREY } from '../constants.js';
+import { CYAN, YELLOW, ORANGE, BLUE, PURPLE, MAGENTA, GREEN, GREY, RED } from '../constants.js';
 
 export class UpgradeDefinition {
-  constructor(key, name, description, iconColor, maxLevel, applyFn) {
+  constructor(key, name, description, iconColor, maxLevel, applyFn, icon = null) {
     this.key         = key;
     this.name        = name;
     this.description = description;
     this.iconColor   = iconColor;
     this.maxLevel    = maxLevel;
     this._applyFn    = applyFn;
+    this.icon        = icon || name[0];   // short symbol drawn on the card
   }
 
   apply(player) {
-    player.upgrades[this.key]++;
+    // `|| 0` keeps newly-introduced keys (Max HP, Fire Rate, …) numeric even if
+    // they were never seeded in Player.upgrades — avoids NaN breaking canApply().
+    player.upgrades[this.key] = (player.upgrades[this.key] || 0) + 1;
     this._applyFn(player);
   }
 
   canApply(player) {
-    return (player.upgrades[this.key] ?? 0) < this.maxLevel;
+    return (player.upgrades[this.key] || 0) < this.maxLevel;
   }
 }
 
+// Curated pool — every card boosts a system the player actually uses. No stamina
+// (stamina has no upgrade value) and no Sonic Pulse (its key is unbound).
 export const ALL_UPGRADES = [
+  // ── Offense ──────────────────────────────────────────────────────────────
   new UpgradeDefinition(
-    'Cyber-Legs', 'Cyber-Legs', '+3% move speed per level',
-    CYAN, 8, p => { p.speedBonus += 0.03; }
+    'Pulse Damage', 'Damage Up', '+1 shot damage',
+    MAGENTA, 6, () => {}, '✦'   // damage read from upgrades dict in Player.shoot()
   ),
   new UpgradeDefinition(
-    'Memory Bank', 'Memory Bank', '+1 core carry slot',
-    YELLOW, 8, p => { p.maxCarry++; }
+    'Fire Rate', 'Fire Rate', '+8% fire rate',
+    ORANGE, 5, p => { p.fireRateBonus += 0.08; }, '»'
   ),
   new UpgradeDefinition(
-    'Overclock Boost', 'Overclock Boost', '+10 max stamina',
-    ORANGE, 6, p => { p.maxStamina += 10; p.stamina = p.maxStamina; }
+    'Projectile Speed', 'Shot Speed', '+6% projectile speed',
+    CYAN, 5, p => { p.projSpeedBonus += 0.06; }, '→'
   ),
   new UpgradeDefinition(
-    'Tractor Beam', 'Tractor Beam', '+8 pickup radius',
-    BLUE, 6, p => { p.pickupRadius += 8; }
+    'Cryo Rounds', 'Cryo Rounds', 'Shots slow enemies',
+    BLUE, 4, () => {}, '❄'   // slow applied on projectile hit in Game._updateProjectiles
+  ),
+  new UpgradeDefinition(
+    'Homing Disc', 'Homing Disc', 'Auto-homing shots',
+    GREEN, 4, () => {}, '◉'
+  ),
+  // ── Survivability ────────────────────────────────────────────────────────
+  new UpgradeDefinition(
+    'Max HP', 'Vitality', '+20 max HP',
+    RED, 5, p => { p.maxHp += 20; p.hp += 20; }, '+'
+  ),
+  new UpgradeDefinition(
+    'Max Mana', 'Mana Cell', '+25 max mana',
+    CYAN, 5, p => { p.maxMana += 25; p.mana += 25; }, '◆'
   ),
   new UpgradeDefinition(
     'Firewall Protection', 'Firewall', '-2% overload rate',
-    PURPLE, 5, () => {}  // overload dampening is computed from upgrades dict directly
+    PURPLE, 5, () => {}, 'F'   // overload dampening computed from upgrades dict
   ),
   new UpgradeDefinition(
-    'Pulse Damage', 'Pulse Damage', '+1 projectile damage',
-    MAGENTA, 5, () => {}  // damage computed from upgrades dict in Player.shoot()
+    'EMP Cloud', 'EMP Cloud', 'E: bigger stun burst',
+    GREY, 4, () => {}, 'E'
+  ),
+  // ── Mobility / Grid economy ────────────────────────────────────────────────
+  new UpgradeDefinition(
+    'Cyber-Legs', 'Move Speed', '+4% move speed',
+    CYAN, 8, p => { p.speedBonus += 0.04; }, '⚡'
   ),
   new UpgradeDefinition(
-    'Sonic Pulse', 'Sonic Pulse', 'Q: cone knockback, wider each level',
-    WHITE, 5, () => {}
+    'Tractor Beam', 'Magnet', '+10 pickup range',
+    BLUE, 6, p => { p.pickupRadius += 10; }, '◎'
   ),
   new UpgradeDefinition(
-    'Homing Disc', 'Homing Disc', 'Auto-launches homing shots at core carriers',
-    GREEN, 4, () => {}
+    'Memory Bank', 'Core Slots', '+1 core carry slot',
+    YELLOW, 8, p => { p.maxCarry++; }, '▣'
   ),
   new UpgradeDefinition(
-    'EMP Cloud', 'EMP Cloud', 'E: stuns all enemies in radius',
-    GREY, 4, () => {}
-  ),
-  new UpgradeDefinition(
-    'Quantum Overhaul', 'Quantum Overhaul', 'Auto-recovers nearest loose core',
-    ORANGE, 4, () => {}
+    'Quantum Overhaul', 'Auto-Recover', 'Auto-recovers cores',
+    ORANGE, 4, () => {}, '↻'
   ),
 ];
 
