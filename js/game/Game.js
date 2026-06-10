@@ -57,6 +57,19 @@ const BOSS_DPS_CAP_MEGA   = 40;   // promoted main boss (isMegaBoss)
 const BOSS_DOT_RESIST   = 0.28;   // −28% from DoT (aqua trail / burn / corrosive)  [20–35% band]
 const BOSS_DRONE_RESIST = 0.20;   // −20% from support drones                       [15–25% band]
 
+// ── Final-boss (mega-boss) multi-phase encounter ───────────────────────────────
+// All player damage routes through _damagePlayer (dash i-frames / hit grace / 30-HP ceiling),
+// so every attack below is capped and fully dodgeable. Reuses the lava-zone / bullet / telegraph
+// systems; only the signature beam + nova add small self-contained state.
+const FINAL_BEAM_CHARGE  = 1.2;   // s — telegraph line follows the player while charging
+const FINAL_BEAM_FIRE    = 0.6;   // s — thick beam is live (locked direction)
+const FINAL_BEAM_HALFW   = 22;    // px — beam half-width for hit detection / draw
+const FINAL_BEAM_LEN     = 1600;  // px — beam length (spans the arena)
+const FINAL_BEAM_DMG     = 22;    // 20–25 band, hard-capped at 30 by _damagePlayer
+const FINAL_NOVA_WARN    = 1.0;   // s — radial-burst warning
+const FINAL_NOVA_RADIUS  = 155;   // px — medium burst radius
+const FINAL_NOVA_DMG     = 17;    // 15–20 band
+
 export class Game {
   constructor() {
     this.audio     = null;  // set from main.js on first user gesture
@@ -274,6 +287,8 @@ export class Game {
     this._titanShockwaves = [];
     this._titanBeams      = [];
     this._bloodfangSlams  = [];   // telegraphed pounce-slam zones cast by the Bloodfang Packmaster (player-only)
+    this._corruptionBeam  = null; // final-boss CORRUPTION GRID BEAM: { phase:'charge'|'fire', t, origin, dir }
+    this._corruptionNovas = [];   // final-boss CORRUPTION NOVA telegraphed radial bursts (player-only)
 
     // Matrix Annihilator — second mini-boss, marches on a Power Matrix at ~7:30
     this.annihilatorSpawned    = false;
@@ -3237,6 +3252,9 @@ export class Game {
       ctx.beginPath(); ctx.arc(b.pos.x, b.pos.y, b.radius, 0, Math.PI * 2); ctx.stroke();
     }
 
+    // 6d ── Final-boss CORRUPTION beam + novas (on top of entities for readability)
+    this._drawBossCorruption(ctx);
+
     // 6b ── Phoenix revive effect (epic multi-layer, world-space)
     if (this.phoenixReviveTimer > 0) {
       const elapsed = 3.0 - this.phoenixReviveTimer;           // 0 at birth → 3 at end
@@ -4326,19 +4344,57 @@ export class Game {
       this.bossLavaZones = this.bossLavaZones.filter(z => z.t < z.warn + z.impact);
     }
 
+    // Advance the signature beam + novas every frame so active ones resolve even as the boss dies.
+    this._updateCorruptionBeam(dt);
+    this._updateCorruptionNovas(dt);
+
     const boss = this.megaBoss;
     if (!boss || boss.hp <= 0) return;
 
-    const late = this.currentMinute() >= 20 ? 0.7 : 1.0;   // attacks come faster past 20 min
+    // ── Phase tracking (HP-fraction gated): 1 = 100–70%, 2 = 70–35%, 3 = 35–0% ──
+    if (boss._fullHp === undefined) boss._fullHp = boss.hp;   // capture full HP on first sight
+    if (boss._phase  === undefined) boss._phase  = 1;
+    const frac   = boss.hp / boss._fullHp;
+    const target = frac > 0.70 ? 1 : frac > 0.35 ? 2 : 3;
+    if (target > boss._phase) {
+      boss._phase = target;
+      if (target === 2) this.triggerAnnouncement('PHASE 2 — GRID CORRUPTION RISING', PURPLE);
+      else              this.triggerAnnouncement('PHASE 3 — FINAL OVERRIDE', RED);
+      this.screenShake.trigger(7, 0.5);
+      this.audio?.playEventWarning();
+    }
+    const phase = boss._phase;
+    const late  = this.currentMinute() >= 20 ? 0.7 : 1.0;   // attacks come faster past 20 min
 
-    if (boss.lavaCd   === undefined) boss.lavaCd   = randomRange(3, 5);
-    if (boss.summonCd === undefined) boss.summonCd = randomRange(6, 9);
+    // ── Corruption bolts (ALL phases): aimed, visible, dodgeable energy projectiles ──
+    if (boss.boltCd === undefined) boss.boltCd = randomRange(2, 3);
+    boss.boltCd -= dt;
+    if (boss.boltCd <= 0) {
+      boss.boltCd = (phase === 1 ? randomRange(2.0, 3.0)
+                   : phase === 2 ? randomRange(1.8, 2.6)
+                   :               randomRange(1.3, 2.0)) * late;
+      const base = safeNormalize(this.player.pos.sub(boss.pos));
+      if (base.lengthSq() > 0) {
+        const spread = phase === 3 ? [-0.13, 0.13] : [0];   // phase 3 fires a tight twin-bolt
+        const dmg    = phase === 3 ? 12 : 10;               // 8–12 band
+        for (const off of spread) {
+          const c = Math.cos(off), s = Math.sin(off);
+          const dir = new Vec2(base.x * c - base.y * s, base.x * s + base.y * c);
+          this.spawnEnemyBullet(boss.pos.clone(), dir, 280, dmg, 9, PURPLE);
+        }
+        this.audio?.playEnemyShoot();
+      }
+    }
 
-    // ── Lava Rain: 3–5 telegraphed zones scattered around the player ──
+    // Phase 1 is a clean teaching phase — bolts only. Area denial begins in phase 2.
+    if (phase < 2) return;
+
+    // ── Lava Rain: telegraphed corruption zones (phase 2+, denser in phase 3) ──
+    if (boss.lavaCd === undefined) boss.lavaCd = randomRange(3, 5);
     boss.lavaCd -= dt;
     if (boss.lavaCd <= 0) {
-      boss.lavaCd = randomRange(6, 8) * late;
-      const count = 3 + Math.floor(Math.random() * 3);
+      boss.lavaCd = (phase === 3 ? randomRange(4.5, 6.5) : randomRange(6, 8)) * late;
+      const count = (phase === 3 ? 4 : 3) + Math.floor(Math.random() * 3);
       for (let i = 0; i < count; i++) {
         const ang  = Math.random() * Math.PI * 2;
         const dist = randomRange(40, 260);   // reroute the player without being unavoidable
@@ -4352,7 +4408,34 @@ export class Game {
       this.audio?.playEventWarning();
     }
 
-    // ── Summon an existing mini-boss enemy (capped so it never floods) ──
+    // ── CORRUPTION GRID BEAM (signature, phase 2+): only one active at a time ──
+    if (boss.beamCd === undefined) boss.beamCd = randomRange(6, 9);
+    if (!this._corruptionBeam) {
+      boss.beamCd -= dt;
+      if (boss.beamCd <= 0) {
+        boss.beamCd = (phase === 3 ? randomRange(7, 9) : randomRange(10, 12));
+        this._corruptionBeam = {
+          phase: 'charge', t: 0,
+          origin: boss.pos.clone(),
+          dir: safeNormalize(this.player.pos.sub(boss.pos)),
+        };
+        this.triggerAnnouncement('CORRUPTION BEAM', PURPLE);
+        this.screenShake.trigger(3, 0.2);
+        this.audio?.playEventWarning();
+      }
+    }
+
+    // ── CORRUPTION NOVA (phase 2+): telegraphed radial burst centred on the boss ──
+    if (boss.novaCd === undefined) boss.novaCd = randomRange(8, 12);
+    boss.novaCd -= dt;
+    if (boss.novaCd <= 0) {
+      boss.novaCd = randomRange(8, 12);
+      this._corruptionNovas.push({ pos: boss.pos.clone(), radius: FINAL_NOVA_RADIUS, warn: FINAL_NOVA_WARN, t: 0, hit: false });
+      this.audio?.playEventWarning();
+    }
+
+    // ── Summon a reinforcement (phase 2+, capped so it never floods) ──
+    if (boss.summonCd === undefined) boss.summonCd = randomRange(6, 9);
     boss.summonCd -= dt;
     if (boss.summonCd <= 0) {
       boss.summonCd = randomRange(12, 15) * late;
@@ -4371,6 +4454,109 @@ export class Game {
         this.audio?.playEventWarning();
       }
     }
+  }
+
+  // CORRUPTION GRID BEAM — charge (telegraph follows the player) → fire (locked thick beam).
+  // Damage routes through _damagePlayer, so dash i-frames / hit grace / 30-HP ceiling all apply.
+  _updateCorruptionBeam(dt) {
+    const beam = this._corruptionBeam;
+    if (!beam) return;
+    const boss = this.megaBoss;
+    beam.t += dt;
+
+    if (beam.phase === 'charge') {
+      if (!boss || boss.hp <= 0) { this._corruptionBeam = null; return; }   // source gone → cancel
+      beam.origin = boss.pos.clone();
+      beam.dir    = safeNormalize(this.player.pos.sub(boss.pos));            // telegraph follows the player
+      if (beam.t >= FINAL_BEAM_CHARGE) {
+        beam.phase = 'fire'; beam.t = 0;
+        this.screenShake.trigger(5, 0.25);
+        this.audio?.playTitanBeam?.();
+      }
+      return;
+    }
+
+    // fire phase — locked ray; perpendicular distance test against the player
+    const o = beam.origin, d = beam.dir;
+    const toP  = this.player.pos.sub(o);
+    const proj = toP.dot(d);
+    if (proj > 0 && proj < FINAL_BEAM_LEN) {
+      const perp = Math.abs(-d.y * toP.x + d.x * toP.y);
+      if (perp < FINAL_BEAM_HALFW + PLAYER_RADIUS) {
+        if (this._damagePlayer(FINAL_BEAM_DMG, { color: PURPLE, shake: 6 })) {
+          this.player.staggerTimer = Math.max(this.player.staggerTimer, 1.0);   // 1s corruption slow (reuses stagger)
+          this.floatingTexts.push(new FloatingText('CORRUPTED', new Vec2(this.player.pos.x, this.player.pos.y - 26), PURPLE, 0.7));
+        }
+      }
+    }
+    if (beam.t >= FINAL_BEAM_FIRE) this._corruptionBeam = null;
+  }
+
+  // CORRUPTION NOVA — 1s telegraphed ring around the boss, then a single radial burst.
+  _updateCorruptionNovas(dt) {
+    if (!this._corruptionNovas.length) return;
+    for (let i = this._corruptionNovas.length - 1; i >= 0; i--) {
+      const n = this._corruptionNovas[i];
+      n.t += dt;
+      if (!n.hit && n.t >= n.warn) {
+        n.hit = true;
+        this.screenShake.trigger(5, 0.2);
+        this.particles.spawnExplosion(n.pos, [PURPLE, RED, '#ff44aa'], 18);
+        if (distance(this.player.pos, n.pos) < n.radius)
+          this._damagePlayer(FINAL_NOVA_DMG, { color: PURPLE, shake: 5 });
+      }
+      if (n.t >= n.warn + 0.35) this._corruptionNovas.splice(i, 1);
+    }
+  }
+
+  // Draws the signature beam (charge telegraph + fire) and nova telegraphs/bursts — world-space, on top of entities.
+  _drawBossCorruption(ctx) {
+    for (const n of this._corruptionNovas) {
+      ctx.save();
+      if (n.t < n.warn) {
+        const k = n.t / n.warn;
+        ctx.globalAlpha = 0.12 + 0.20 * k;
+        ctx.fillStyle = PURPLE;
+        ctx.beginPath(); ctx.arc(n.pos.x, n.pos.y, n.radius, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = Math.min(1, 0.45 + 0.5 * k);
+        ctx.strokeStyle = RED; ctx.lineWidth = 3; ctx.setLineDash([12, 9]);
+        ctx.beginPath(); ctx.arc(n.pos.x, n.pos.y, n.radius, 0, Math.PI * 2); ctx.stroke();
+        ctx.setLineDash([]);
+      } else {
+        const k = (n.t - n.warn) / 0.35;
+        ctx.globalAlpha = Math.max(0, 1 - k);
+        ctx.strokeStyle = '#ff44aa'; ctx.lineWidth = 6;
+        ctx.beginPath(); ctx.arc(n.pos.x, n.pos.y, n.radius * (0.7 + 0.5 * k), 0, Math.PI * 2); ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    const beam = this._corruptionBeam;
+    if (!beam) return;
+    const o = beam.origin, d = beam.dir;
+    const ex = o.x + d.x * FINAL_BEAM_LEN, ey = o.y + d.y * FINAL_BEAM_LEN;
+    ctx.save();
+    ctx.lineCap = 'round';
+    if (beam.phase === 'charge') {
+      const k = beam.t / FINAL_BEAM_CHARGE;
+      ctx.globalAlpha = 0.35 + 0.35 * Math.abs(Math.sin(this.timeAlive * 16));
+      ctx.strokeStyle = PURPLE; ctx.lineWidth = 2 + 6 * k;
+      ctx.beginPath(); ctx.moveTo(o.x, o.y); ctx.lineTo(ex, ey); ctx.stroke();
+      ctx.globalAlpha = 0.9;
+      ctx.strokeStyle = RED; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(o.x, o.y); ctx.lineTo(ex, ey); ctx.stroke();
+    } else {
+      const a = beam.t < 0.1 ? 1 : Math.max(0, 1 - (beam.t - 0.1) / (FINAL_BEAM_FIRE - 0.1));
+      ctx.globalAlpha = 0.85 * a + 0.15;
+      ctx.strokeStyle = PURPLE; ctx.lineWidth = FINAL_BEAM_HALFW * 2;
+      ctx.beginPath(); ctx.moveTo(o.x, o.y); ctx.lineTo(ex, ey); ctx.stroke();
+      ctx.strokeStyle = '#ff44aa'; ctx.lineWidth = FINAL_BEAM_HALFW;
+      ctx.beginPath(); ctx.moveTo(o.x, o.y); ctx.lineTo(ex, ey); ctx.stroke();
+      ctx.globalAlpha = a;
+      ctx.strokeStyle = WHITE; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.moveTo(o.x, o.y); ctx.lineTo(ex, ey); ctx.stroke();
+    }
+    ctx.restore();
   }
 
   // Lava/Fire-Rain zones: pulsing telegraph ring during warning, then the eruption sheet on impact.
