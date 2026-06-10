@@ -11,7 +11,7 @@ import { clamp, distance, safeNormalize, randomChoice, randomRange } from '../ut
 import { FloatingText }   from '../entities/FloatingText.js';
 import { DataCore, rollCoreType } from '../entities/DataCore.js?v=2';
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=12';
-import { Player }         from '../entities/Player.js?v=61';
+import { Player }         from '../entities/Player.js?v=62';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=3';
 import { Enemy }          from '../entities/Enemy.js?v=101';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=1';
@@ -622,14 +622,15 @@ export class Game {
   currentMinute()             { return Math.floor(this.timeAlive / 60); }
   coreVolatilityMultiplier()  { return 1 + (this.timeAlive / WIN_TIME_SECONDS) * 1.8; }
   overloadRateMultiplier()    { return 1 + Math.floor(this.timeAlive / 120) * 0.05; }
-  // Population caps tuned to four pressure tiers so the map never feels empty:
-  //   0–3 min light · 3–7 constant · 7–15 visible hordes · 15+ heavy (perf-capped).
+  // Population caps tuned to five pressure tiers so the map is never empty for long:
+  //   0–2 light · 2–5 constant · 5–10 mini-hordes · 10–20 continuous · 20+ heavy chaos.
   enemyCap() {
     const m = this.currentMinute();
-    if (m < 3)  return 30 + m * 6;               // 30 → 48  (light but always present)
-    if (m < 7)  return 48 + (m - 3) * 11;        // 48 → 92  (constant presence)
-    if (m < 15) return 92 + (m - 7) * 13;        // 92 → 196 (visible hordes)
-    return Math.min(240, 196 + (m - 15) * 7);    // heavy pressure, capped for performance
+    if (m < 2)  return 28 + m * 8;               // 28 → 36   (light, but always populated)
+    if (m < 5)  return 44 + (m - 2) * 12;        // 44 → 80   (constant presence)
+    if (m < 10) return 80 + (m - 5) * 14;        // 80 → 150  (visible groups / mini-hordes)
+    if (m < 20) return 150 + (m - 10) * 10;      // 150 → 250 (continuous pressure)
+    return Math.min(280, 250 + (m - 20) * 5);    // heavy survivor chaos, perf-capped
   }
   enemySpawnInterval()        { return Math.max(0.16, 0.5 - this.currentMinute() * 0.025); }
 
@@ -2654,10 +2655,12 @@ export class Game {
   _updateCoreEconomy(dt) {
     if (!this.matrices.length) return;
 
-    // Deficit in matrix slots → cores needed to refill it (avg core value ≈ 4: gold 5 / silver 3).
+    // Deficit in matrix charge → cores needed to recover. Deliberately SCARCE: roughly one
+    // core per 6 missing charge, hard-capped, so the player can recover but can NOT trivially
+    // keep every matrix topped off — keeping Overload a real threat. (Gold = 5, Silver = 3.)
     let missingSlots = 0;
     for (const m of this.matrices) missingSlots += (m.capacity - m.stored);
-    const target = Math.round(missingSlots / 4);
+    const target = Math.min(8, Math.ceil(missingSlots / 6));
 
     // Cores already recoverable (loose on ground, carried by the player, or carried by enemies).
     const enemyCarried = this.enemies.reduce((n, e) => n + (e.carryingCore ? 1 : 0), 0);
@@ -2665,7 +2668,7 @@ export class Game {
 
     this._coreSpawnTimer -= dt;
     if (available < target && this._coreSpawnTimer <= 0) {
-      this._coreSpawnTimer = 0.8;   // gentle drip — at most ~1 replacement core/0.8s
+      this._coreSpawnTimer = 1.1;   // slow drip so cores stay controlled, never a flood
       const depleted = this.matrices.filter(m => m.hasSpace());
       const anchor   = depleted.length ? randomChoice(depleted) : randomChoice(this.matrices);
       const off      = new Vec2(randomRange(-90, 90), randomRange(-90, 90));
@@ -2684,9 +2687,10 @@ export class Game {
       this.spawnTimer = 0;
       const m = this.currentMinute();
       // Per-tick batch grows with the tiers so the cap actually FILLS (and stays filled vs kills).
-      let count = m < 3 ? 2 : m < 7 ? 3 : m < 12 ? 4 : 5;
-      // Catch-up: if the battlefield is sparse relative to the cap, surge so it never stays empty.
-      if (this.enemies.length < this.enemyCap() * 0.5) count += 3;
+      let count = m < 2 ? 3 : m < 5 ? 4 : m < 10 ? 5 : 6;
+      // Catch-up surge: if the battlefield is below 70% of the cap, spawn extra so it never
+      // sits empty (kills early were outpacing spawns and leaving the map sparse).
+      if (this.enemies.length < this.enemyCap() * 0.7) count += 4;
       for (let i = 0; i < count; i++) this.spawnEnemy();   // spawnEnemy() still enforces enemyCap
     }
   }
@@ -2926,55 +2930,56 @@ export class Game {
     // 2 ── Power Matrices (fill-based glow + counter owned by PowerMatrix; overload drives danger blink)
     for (const m of this.matrices) m.draw(ctx, this.overload / MAX_OVERLOAD);
 
-    // 3 ── Data-Cores on the ground: GOLD and SILVER only, each with a distinct SILHOUETTE
-    // (not generic orbs) so they read instantly in combat. Gold = spinning 4-point starburst
-    // (rare/valuable); Silver = slow-spinning hexagon. Both glow + pulse.
+    // 3 ── Data-Cores: GOLD and SILVER only, each a distinct SILHOUETTE in a distinct HUE
+    // so they never read as generic white particles. GOLD = warm amber spinning starburst
+    // (premium/rare); SILVER = cool steel-blue spinning hexagon. Both have a blinking glow.
     const nowCore = performance.now() / 1000;
     for (const core of this.groundCores) {
-      const gold  = core.type === 'gold';
-      const col   = core.color || (gold ? '#ffd23c' : '#cfd8e6');
-      const glowC = core.glow  || (gold ? '#ffe680' : '#eaf2ff');
-      const pulse = gold ? (0.82 + 0.18 * Math.sin(nowCore * 6 + core.pos.x))
-                         : (0.88 + 0.12 * Math.sin(nowCore * 4 + core.pos.x));
-      const r     = (gold ? 12 : 9.5) * pulse;
+      const gold = core.type === 'gold';
       const x = core.pos.x, y = core.pos.y;
+      const body  = gold ? '#ffc21a' : '#9fb6d6';   // saturated amber  vs  cool steel-blue
+      const edge  = gold ? '#fff0a0' : '#e2edff';
+      const glowC = gold ? '#ff9d00' : '#6fd0ff';   // warm  vs  cool — instantly distinguishable
+      // Pronounced BLINK (abs-sine → visible on/off pulse); gold blinks faster & brighter.
+      const blink = gold ? (0.50 + 0.50 * Math.abs(Math.sin(nowCore * 4.5 + x * 0.05)))
+                         : (0.45 + 0.45 * Math.abs(Math.sin(nowCore * 3.2 + x * 0.05)));
+      const r = gold ? 14 : 11;
 
-      // Soft outer glow halo
-      drawGlow(ctx, x, y, r * 2.0, glowC, (gold ? 0.7 : 0.5) * pulse);
+      // Blinking outer halo (carries the glow identity; cheap — no per-shape shadowBlur)
+      drawGlow(ctx, x, y, r * 2.2, glowC, (gold ? 0.85 : 0.6) * blink);
 
+      // Solid shaped body in its own hue (no white center → not a generic orb)
       ctx.save();
       ctx.translate(x, y);
-      ctx.rotate(nowCore * (gold ? 1.1 : -0.7));   // gentle spin; opposite directions
-      ctx.shadowColor = glowC; ctx.shadowBlur = (gold ? 16 : 10);
-      ctx.fillStyle   = col;
-      ctx.strokeStyle = gold ? '#fff4c2' : '#ffffff';
+      ctx.rotate(nowCore * (gold ? 0.9 : -0.6));
+      ctx.fillStyle   = body;
+      ctx.strokeStyle = edge;
       ctx.lineWidth   = gold ? 2.5 : 2;
-
       ctx.beginPath();
       if (gold) {
-        // 4-point starburst (8 vertices: outer spikes + inner valleys)
-        for (let k = 0; k < 8; k++) {
-          const ang = (Math.PI / 4) * k;
-          const rad = (k % 2 === 0) ? r : r * 0.42;
-          const px = Math.cos(ang) * rad, py = Math.sin(ang) * rad;
+        for (let k = 0; k < 8; k++) {                 // sharp 4-point starburst
+          const a = (Math.PI / 4) * k, rad = (k % 2 === 0) ? r : r * 0.42;
+          const px = Math.cos(a) * rad, py = Math.sin(a) * rad;
           k === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
         }
       } else {
-        // Hexagon
-        for (let k = 0; k < 6; k++) {
-          const ang = (Math.PI / 3) * k + Math.PI / 6;
-          const px = Math.cos(ang) * r, py = Math.sin(ang) * r;
+        for (let k = 0; k < 6; k++) {                 // hexagon
+          const a = (Math.PI / 3) * k + Math.PI / 6;
+          const px = Math.cos(a) * r, py = Math.sin(a) * r;
           k === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
         }
       }
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
+      ctx.restore();
 
-      // Bright white core dot at the center for extra pop
-      ctx.shadowBlur = 0;
-      ctx.fillStyle  = '#ffffff';
-      ctx.beginPath(); ctx.arc(0, 0, r * 0.26, 0, Math.PI * 2); ctx.fill();
+      // Blinking ring around the core for extra recognition during crowded fights
+      ctx.save();
+      ctx.globalAlpha = (gold ? 0.9 : 0.7) * blink;
+      ctx.strokeStyle = glowC;
+      ctx.lineWidth   = gold ? 2 : 1.5;
+      ctx.beginPath(); ctx.arc(x, y, r + (gold ? 6 : 5), 0, Math.PI * 2); ctx.stroke();
       ctx.restore();
     }
 

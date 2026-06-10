@@ -143,7 +143,10 @@ export class Player {
   // exponentially — combined with time-scaled kill XP (Enemy._die) this keeps
   // level-up cards arriving regularly through mid and late game.
   _xpForLevel(level) {
-    return Math.round(4 + level * 3 + level * level * 0.6);
+    // Slightly slower early (so the new higher enemy density doesn't strobe level-ups),
+    // a steady quadratic mid-game, and — paired with time-scaled kill XP in Enemy._die —
+    // still regular level-ups in the late game.
+    return Math.round(6 + level * 4 + level * level * 0.7);
   }
 
   gainXp(amount, floatingTexts) {
