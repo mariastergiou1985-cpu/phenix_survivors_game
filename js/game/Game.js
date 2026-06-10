@@ -165,8 +165,8 @@ export class Game {
       { id: 'taekwondo_girl',   name: 'Neon Taekwondo Girl',    fallbackColor: '#00D9FF', fallbackAlt: '#0099CC', role: 'Speed / AoE' },
       { id: 'cyber_arm_hero',   name: 'Cyber Arm Hero',         fallbackColor: '#FF6600', fallbackAlt: '#CC0000', role: 'Ranged / Damage' },
     ];
-    // 'UPGRADES' (the buggy meta-upgrade screen) removed — all upgrades come from level-up cards.
-    this.menuItems = ['START GAME', 'CHARACTER SELECT', 'INSTRUCTIONS', 'AUDIO SETTINGS', 'CREDITS', 'EXIT'];
+    // UPGRADES = the permanent Grid-Credit progression (spent between runs). Kept & fixed.
+    this.menuItems = ['START GAME', 'CHARACTER SELECT', 'UPGRADES', 'INSTRUCTIONS', 'AUDIO SETTINGS', 'CREDITS', 'EXIT'];
 
     this.reset();
   }
@@ -238,6 +238,8 @@ export class Game {
     this.gridCache           = null;  // { pos: Vec2, timer: number } | null
     this.gridCacheSpawnTimer = 75;    // first crate at 75s (avoids Drone Swarm at 60s)
 
+    this._coreSpawnTimer = 0;         // rate-limit for matrix-deficit core replenishment
+
     this.acidRain      = null;  // { timer, damageAccum } | null
     this.acidRainTimer = 150;   // first event at 2:30
 
@@ -308,10 +310,12 @@ export class Game {
     this.gameState = 'exit_screen';
   }
 
-  // The meta upgrade screen is disabled (it was buggy). Any remaining entry point
-  // (e.g. the end-screen button) now harmlessly returns to the main menu.
+  // Permanent Grid-Credit progression screen (spent between runs).
   goToUpgradesScreen() {
-    this.goToMainMenu();
+    this.gameState        = 'upgrades';
+    this._upgradeMsg      = '';
+    this._upgradeMsgTimer = 0;
+    this._confirmReset    = false;
   }
 
   goToCredits() { this.gameState = 'credits'; }
@@ -344,7 +348,9 @@ export class Game {
     p.pickupRadius = pickup;
 
     p.maxCarry  += m.getLevel('coreCapacity');
-    p.baseDamage += m.getLevel('pulseDamage');
+    // Player damage is read from upgrades['Pulse Damage'] in Player.shoot() — there is no
+    // p.baseDamage field, so the old line was a no-op. Seed the dict so the meta upgrade applies.
+    p.upgrades['Pulse Damage']        = (p.upgrades['Pulse Damage'] || 0) + m.getLevel('pulseDamage');
     p.upgrades['Firewall Protection'] = m.getLevel('firewall');
   }
 
@@ -616,8 +622,16 @@ export class Game {
   currentMinute()             { return Math.floor(this.timeAlive / 60); }
   coreVolatilityMultiplier()  { return 1 + (this.timeAlive / WIN_TIME_SECONDS) * 1.8; }
   overloadRateMultiplier()    { return 1 + Math.floor(this.timeAlive / 120) * 0.05; }
-  enemyCap()                  { return 18 + this.currentMinute() * 9; }
-  enemySpawnInterval()        { return Math.max(0.22, 0.8  - this.currentMinute() * 0.04); }
+  // Population caps tuned to four pressure tiers so the map never feels empty:
+  //   0–3 min light · 3–7 constant · 7–15 visible hordes · 15+ heavy (perf-capped).
+  enemyCap() {
+    const m = this.currentMinute();
+    if (m < 3)  return 30 + m * 6;               // 30 → 48  (light but always present)
+    if (m < 7)  return 48 + (m - 3) * 11;        // 48 → 92  (constant presence)
+    if (m < 15) return 92 + (m - 7) * 13;        // 92 → 196 (visible hordes)
+    return Math.min(240, 196 + (m - 15) * 7);    // heavy pressure, capped for performance
+  }
+  enemySpawnInterval()        { return Math.max(0.16, 0.5 - this.currentMinute() * 0.025); }
 
   chooseEnemyType() {
     const t      = this.timeAlive;
@@ -1359,6 +1373,7 @@ export class Game {
     this._updateEnemies(dt);
     this._updateOverload(dt);
     this._updateSpawning(dt);
+    this._updateCoreEconomy(dt);
     this._updateFloatingTexts(dt);
     this._updateEffects(dt);
     this._updateSpecialEffects(dt);
@@ -1702,6 +1717,7 @@ export class Game {
   // Name-based menu dispatch (shared by keyboard + mouse) so item order can change safely.
   _selectMenuItem(item) {
     if (item === 'START GAME' || item === 'CHARACTER SELECT') this.goToCharacterSelect();
+    else if (item === 'UPGRADES')       this.goToUpgradesScreen();
     else if (item === 'INSTRUCTIONS')   this.goToInstructions();
     else if (item === 'AUDIO SETTINGS') this.goToAudioSettings();
     else if (item === 'CREDITS')        this.goToCredits();
@@ -2632,17 +2648,45 @@ export class Game {
     if (this.audio) this.audio.updateAlarm(this.overload);
   }
 
+  // World cores are tied to Matrix state — never unlimited. The number of recoverable
+  // cores in play tracks how much the matrices are MISSING: full grid → ~no new cores;
+  // depleted grid → spawn replacements (near the depleted matrices) so recovery is possible.
+  _updateCoreEconomy(dt) {
+    if (!this.matrices.length) return;
+
+    // Deficit in matrix slots → cores needed to refill it (avg core value ≈ 4: gold 5 / silver 3).
+    let missingSlots = 0;
+    for (const m of this.matrices) missingSlots += (m.capacity - m.stored);
+    const target = Math.round(missingSlots / 4);
+
+    // Cores already recoverable (loose on ground, carried by the player, or carried by enemies).
+    const enemyCarried = this.enemies.reduce((n, e) => n + (e.carryingCore ? 1 : 0), 0);
+    const available    = this.groundCores.length + this.player.carry + enemyCarried;
+
+    this._coreSpawnTimer -= dt;
+    if (available < target && this._coreSpawnTimer <= 0) {
+      this._coreSpawnTimer = 0.8;   // gentle drip — at most ~1 replacement core/0.8s
+      const depleted = this.matrices.filter(m => m.hasSpace());
+      const anchor   = depleted.length ? randomChoice(depleted) : randomChoice(this.matrices);
+      const off      = new Vec2(randomRange(-90, 90), randomRange(-90, 90));
+      const pos      = this._clampPickupPos(anchor.pos.clone().add(off));
+      this.groundCores.push(new DataCore(pos, rollCoreType()));
+    }
+  }
+
   _updateSpawning(dt) {
     if (this.spawnPauseTimer > 0) { this.spawnPauseTimer -= dt; return; }
     this.spawnTimer += dt;
     // During Thunder Solo, keep waves arriving fast so the 7s ultimate always has targets
     // (still capped by enemyCap() inside spawnEnemy — not unfair spam).
-    const interval = this.thunderSolo ? Math.min(this.enemySpawnInterval(), 0.4) : this.enemySpawnInterval();
+    const interval = this.thunderSolo ? Math.min(this.enemySpawnInterval(), 0.3) : this.enemySpawnInterval();
     if (this.spawnTimer >= interval) {
       this.spawnTimer = 0;
-      const minute = this.currentMinute();
-      let count = Math.random() < Math.min(0.55, 0.30 + minute * 0.06) ? 2 : 1;
-      if (minute >= 3 && Math.random() < 0.20) count++;   // occasional +1 after Titan
+      const m = this.currentMinute();
+      // Per-tick batch grows with the tiers so the cap actually FILLS (and stays filled vs kills).
+      let count = m < 3 ? 2 : m < 7 ? 3 : m < 12 ? 4 : 5;
+      // Catch-up: if the battlefield is sparse relative to the cap, surge so it never stays empty.
+      if (this.enemies.length < this.enemyCap() * 0.5) count += 3;
       for (let i = 0; i < count; i++) this.spawnEnemy();   // spawnEnemy() still enforces enemyCap
     }
   }
@@ -2882,27 +2926,55 @@ export class Game {
     // 2 ── Power Matrices (fill-based glow + counter owned by PowerMatrix; overload drives danger blink)
     for (const m of this.matrices) m.draw(ctx, this.overload / MAX_OVERLOAD);
 
-    // 3 ── Data-Cores on the ground (only two types: GOLD and SILVER, both pulse/glow).
-    // Gold reads as clearly superior: bigger, brighter, faster pulse + a gold ring.
+    // 3 ── Data-Cores on the ground: GOLD and SILVER only, each with a distinct SILHOUETTE
+    // (not generic orbs) so they read instantly in combat. Gold = spinning 4-point starburst
+    // (rare/valuable); Silver = slow-spinning hexagon. Both glow + pulse.
     const nowCore = performance.now() / 1000;
     for (const core of this.groundCores) {
       const gold  = core.type === 'gold';
-      const col   = core.color || (gold ? '#ffd23c' : '#dfe9f5');
-      const glowC = core.glow  || (gold ? '#ffe680' : '#ffffff');
-      // Pulsing/blinking glow — gold pulses stronger & faster so it stands out in combat.
-      const pulse = gold ? (0.7 + 0.3 * Math.sin(nowCore * 7 + core.pos.x))
-                         : (0.6 + 0.25 * Math.sin(nowCore * 4.5 + core.pos.x));
-      drawGlow(ctx, core.pos.x, core.pos.y, (gold ? 22 : 15) * pulse, glowC, (gold ? 0.7 : 0.45) * pulse);
+      const col   = core.color || (gold ? '#ffd23c' : '#cfd8e6');
+      const glowC = core.glow  || (gold ? '#ffe680' : '#eaf2ff');
+      const pulse = gold ? (0.82 + 0.18 * Math.sin(nowCore * 6 + core.pos.x))
+                         : (0.88 + 0.12 * Math.sin(nowCore * 4 + core.pos.x));
+      const r     = (gold ? 12 : 9.5) * pulse;
+      const x = core.pos.x, y = core.pos.y;
 
-      const r = gold ? 7.5 : 6;
+      // Soft outer glow halo
+      drawGlow(ctx, x, y, r * 2.0, glowC, (gold ? 0.7 : 0.5) * pulse);
+
       ctx.save();
-      ctx.shadowColor = glowC; ctx.shadowBlur = (gold ? 14 : 8) * pulse;
+      ctx.translate(x, y);
+      ctx.rotate(nowCore * (gold ? 1.1 : -0.7));   // gentle spin; opposite directions
+      ctx.shadowColor = glowC; ctx.shadowBlur = (gold ? 16 : 10);
       ctx.fillStyle   = col;
-      ctx.beginPath(); ctx.arc(core.pos.x, core.pos.y, r, 0, Math.PI * 2); ctx.fill();
-      // bright outline ring (gold gets a thicker, brighter ring)
-      ctx.lineWidth   = gold ? 2.5 : 1.5;
-      ctx.strokeStyle = gold ? '#fff4c2' : '#cfe2f5';
-      ctx.beginPath(); ctx.arc(core.pos.x, core.pos.y, r + (gold ? 3 : 2), 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = gold ? '#fff4c2' : '#ffffff';
+      ctx.lineWidth   = gold ? 2.5 : 2;
+
+      ctx.beginPath();
+      if (gold) {
+        // 4-point starburst (8 vertices: outer spikes + inner valleys)
+        for (let k = 0; k < 8; k++) {
+          const ang = (Math.PI / 4) * k;
+          const rad = (k % 2 === 0) ? r : r * 0.42;
+          const px = Math.cos(ang) * rad, py = Math.sin(ang) * rad;
+          k === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+        }
+      } else {
+        // Hexagon
+        for (let k = 0; k < 6; k++) {
+          const ang = (Math.PI / 3) * k + Math.PI / 6;
+          const px = Math.cos(ang) * r, py = Math.sin(ang) * r;
+          k === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+        }
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      // Bright white core dot at the center for extra pop
+      ctx.shadowBlur = 0;
+      ctx.fillStyle  = '#ffffff';
+      ctx.beginPath(); ctx.arc(0, 0, r * 0.26, 0, Math.PI * 2); ctx.fill();
       ctx.restore();
     }
 
