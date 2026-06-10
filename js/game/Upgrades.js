@@ -57,6 +57,10 @@ export const ALL_UPGRADES = [
     PURPLE, 3, () => {}, '🌀', 'epic'  // amplifies the slow applied on hit
   ),
   new UpgradeDefinition(
+    'Glacial Shatter', 'Glacial Shatter', 'Slowed enemies shatter in a frost burst',
+    BLUE, 3, () => {}, '🧊', 'epic'  // shatter rolled on hitting an already-slowed enemy in Game._updateProjectiles
+  ),
+  new UpgradeDefinition(
     'Homing Disc', 'Homing Disc', 'Auto-homing shots',
     GREEN, 4, () => {}, '◉', 'rare'
   ),
@@ -97,6 +101,10 @@ export const ALL_UPGRADES = [
   new UpgradeDefinition(
     'Quantum Overhaul', 'Auto-Recover', 'Auto-recovers cores',
     ORANGE, 4, () => {}, '↻', 'rare'
+  ),
+  new UpgradeDefinition(
+    'Auto-Forge Drone', 'Auto-Forge Drone', 'Deploys a persistent combat drone',
+    ORANGE, 2, () => {}, '🛸', 'legendary'  // persistent ally drones spawned/updated in Game._updateAllyDrones
   ),
 ];
 

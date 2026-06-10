@@ -11,15 +11,15 @@ import { clamp, distance, safeNormalize, randomChoice, randomRange } from '../ut
 import { FloatingText }   from '../entities/FloatingText.js';
 import { DataCore, rollCoreType } from '../entities/DataCore.js?v=2';
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=13';
-import { Player }         from '../entities/Player.js?v=62';
+import { Player }         from '../entities/Player.js?v=63';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=3';
 import { Enemy }          from '../entities/Enemy.js?v=103';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=1';
 
 import { ParticleSystem, ScreenShake, drawVignette, EMPRing, drawGlow } from './Effects.js?v=3';
 import { SystemEventManager } from './Events.js?v=94';
-import { UpgradeUI }      from './UpgradeUI.js?v=3';
-import { weightedSample } from './Upgrades.js?v=3';
+import { UpgradeUI }      from './UpgradeUI.js?v=4';
+import { weightedSample } from './Upgrades.js?v=4';
 import { drawHUD, drawEndScreen } from './HUD.js?v=35';
 import { MetaProgress, META_UPGRADES, upgradeCost } from './MetaProgress.js?v=1';
 
@@ -271,6 +271,7 @@ export class Game {
     this.bloodfangSpawnTimer = 600;
 
     this.supportDrones     = [];
+    this.allyDrones        = [];   // Auto-Forge Drone card: persistent allies (NOT cleared by boss logic)
     this._droneFlameLast   = null;
     this._droneElectroLast = null;
 
@@ -308,6 +309,7 @@ export class Game {
     this.paused    = false;
     this.upgradeUI     = null;
     this.supportDrones = [];
+    this.allyDrones    = [];
     this.audio?.startMenuMusic();
   }
 
@@ -1430,6 +1432,7 @@ export class Game {
     this._updateBloodfang(dt);
     this._updateBossAttacks(dt);
     this._updateSupportDrones(dt);
+    this._updateAllyDrones(dt);
     this.events.update(dt, this.timeAlive, this);
     this._updateGridCache(dt);
     this._updateHealthPickups(dt);
@@ -2097,11 +2100,16 @@ export class Game {
         if (distance(p.pos, e.pos) < p.radius + e.radius) {
           const cryo = this.player.upgrades['Cryo Rounds'] || 0;
           const supp = this.player.upgrades['Suppression'] || 0;
+          // Glacial Shatter triggers off enemies ALREADY slowed before this hit (true
+          // frost-build synergy), so capture the slow state before Cryo refreshes it.
+          const wasSlowed  = e.slowTimer > 0 && !e.isBoss() && !e.isMegaBoss;
+          const shatterPos = e.pos.clone();
           if ((cryo > 0 || supp > 0) && !e.isBoss() && !e.isMegaBoss) {
             e.slowTimer  = Math.max(e.slowTimer, 0.8 + 0.3 * cryo + 0.25 * supp);  // Suppression = longer
             e.slowFactor = clamp(0.55 - 0.08 * supp, 0.30, 0.55);                  // Suppression = stronger
           }
           e.takeHit(p.damage, this);
+          if (wasSlowed) this._glacialShatter(shatterPos, e);
           this.projectiles.splice(i, 1);
           hit = true;
           break;
@@ -2146,6 +2154,33 @@ export class Game {
 
       if (!hit && !p.alive()) this.projectiles.splice(i, 1);
     }
+  }
+
+  // ── Glacial Shatter card ──────────────────────────────────────────────────
+  // Rolled when a shot lands on an already-slowed enemy: a frost burst that deals
+  // bounded AoE damage to nearby normal enemies and briefly slows them. Bosses are
+  // immune (consistent with the Cryo/Suppression slow rules), so no boss-death path here.
+  _glacialShatter(originPos, source) {
+    const lvl = this.player.upgrades['Glacial Shatter'] || 0;
+    if (lvl === 0) return;
+    if (Math.random() >= 0.25 + 0.15 * lvl) return;   // L1 .40 / L2 .55 / L3 .70
+
+    const radius = 70 + 10 * lvl;
+    const dmg    = 10 + 6 * lvl;
+
+    for (const e of this.enemies.slice()) {            // snapshot: takeHit can splice this.enemies
+      if (e === source || e.isBoss() || e.isMegaBoss) continue;
+      if (distance(originPos, e.pos) > radius + e.radius) continue;
+      e.slowTimer  = Math.max(e.slowTimer, 1.0);
+      e.slowFactor = Math.min(e.slowFactor, 0.45);
+      e.takeHit(dmg, this);
+    }
+
+    // Frost burst visual (matches existing _specialRings ring structure)
+    this._specialRings.push({ pos: originPos.clone(), radius: 0, maxRadius: radius,
+                              life: 0.35, maxLife: 0.35, color1: CYAN, color2: '#ffffff' });
+    this.particles.spawnExplosion(originPos, [CYAN, '#aaddff', '#ffffff'], 16);
+    this.floatingTexts.push(new FloatingText('SHATTER', new Vec2(originPos.x, originPos.y - 28), CYAN, 0.9));
   }
 
   _updateHomingDiscs(dt) {
@@ -3093,6 +3128,7 @@ export class Game {
 
     // 4a ── Support drones (drawn between enemies and titan so they appear above enemies)
     for (const d of this.supportDrones) d.draw(ctx);
+    for (const d of this.allyDrones)    d.draw(ctx);   // persistent Auto-Forge Drone allies
 
     // 4b ── AI Overload Titan mini-boss
     this._drawTitan(ctx);
@@ -4341,6 +4377,24 @@ export class Game {
       }
     }
     // Titan death check after all drone updates (safe — not inside the loop)
+    if (this.titanBoss && this.titanBoss.hp <= 0) this._titanDie();
+  }
+
+  // ── Auto-Forge Drone card: persistent combat allies ───────────────────────
+  // Reuses the SupportDrone class/assets. Kept in its own array so the boss-fight
+  // drone logic (which clears this.supportDrones on boss death) never removes them.
+  // Lazy-spawns to match the card level — L1 = flame, L2 adds electro.
+  _updateAllyDrones(dt) {
+    const lvl = this.player.upgrades['Auto-Forge Drone'] || 0;
+    while (this.allyDrones.length < lvl) {
+      const type = this.allyDrones.length === 0 ? 'flame' : 'electro';
+      this.allyDrones.push(new SupportDrone(type, this.player.pos));
+    }
+    if (this.allyDrones.length === 0) return;
+    for (const drone of this.allyDrones.slice()) {   // snapshot: a death mid-loop can mutate game arrays
+      drone.update(dt, this.player.pos, this);
+    }
+    // Titan death can be triggered by ally drone damage too — resolve it safely after the loop.
     if (this.titanBoss && this.titanBoss.hp <= 0) this._titanDie();
   }
 

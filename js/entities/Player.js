@@ -87,6 +87,7 @@ export class Player {
       'EMP Cloud': 0, 'Quantum Overhaul': 0,
       'Fire Rate': 0, 'Projectile Speed': 0, 'Cryo Rounds': 0,
       'Max HP': 0, 'Max Mana': 0, 'Grid Investor': 0, 'Suppression': 0,
+      'Glacial Shatter': 0, 'Auto-Forge Drone': 0,
     };
 
     // Ability cooldown timers
