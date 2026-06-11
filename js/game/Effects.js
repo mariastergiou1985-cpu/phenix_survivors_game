@@ -67,12 +67,25 @@ export class ParticleSystem {
   }
 
   // Short cyber/glitch spark burst on enemy death (color + white flecks).
-  spawnDeathBurst(pos, color) {
-    for (let i = 0; i < 8; i++) {
+  // count/size are optional so callers can scale the burst by enemy weight; the
+  // defaults reproduce the original 8-particle burst exactly.
+  spawnDeathBurst(pos, color, count = 8, size = 2) {
+    for (let i = 0; i < count; i++) {
       const angle = Math.random() * Math.PI * 2;
       const speed = 60 + Math.random() * 110;
       const vel   = new Vec2(Math.cos(angle) * speed, Math.sin(angle) * speed);
-      this._add(new Particle(pos, vel, i % 3 === 0 ? '#e6f5ff' : color, 2 + Math.random() * 2, 0.3));
+      this._add(new Particle(pos, vel, i % 3 === 0 ? '#e6f5ff' : color, size + Math.random() * 2, 0.3));
+    }
+  }
+
+  // Expanding neon shock-ring for heavier/elite/boss-type deaths. Evenly spaced
+  // particles flung radially outward read as a clean cyber ring. Uses the same
+  // capped pool — no new system, no Game-loop wiring.
+  spawnDeathRing(pos, color, count = 14, speed = 160, size = 2) {
+    for (let i = 0; i < count; i++) {
+      const angle = (i / count) * Math.PI * 2;
+      const vel   = new Vec2(Math.cos(angle) * speed, Math.sin(angle) * speed);
+      this._add(new Particle(pos, vel, color, size, 0.32));
     }
   }
 
