@@ -4,11 +4,12 @@ import { Projectile } from './Projectile.js?v=3';
 import { FloatingText } from './FloatingText.js';
 
 export class Player {
-  constructor(selectedCharacter = null) {
+  constructor(selectedCharacter = null, outfitSpritePath = null) {
     this.pos = new Vec2(WORLD_W / 2, WORLD_H / 2);
     this.vel = new Vec2();
 
     this.selectedCharacter = selectedCharacter || 'skeleton_warrior';
+    this._outfitSpritePath = outfitSpritePath;   // null = default sprite; cosmetic only
     this.characterSprite = null;
     this.attackSprite    = null;
     this._loadCharacterSprite();
@@ -111,8 +112,19 @@ export class Player {
   }
 
   _loadCharacterSprite() {
-    const spritePath = `assets/characters/${this.selectedCharacter}.png`;
+    const defaultPath = `assets/characters/${this.selectedCharacter}.png`;
+    const spritePath  = this._outfitSpritePath || defaultPath;
     this.characterSprite = new Image();
+    if (spritePath !== defaultPath) {
+      // Equipped a secret outfit — if its asset is missing/fails, fall back to the default
+      // sprite so the run is never broken. Draw code re-reads this.characterSprite each frame.
+      this.characterSprite.onerror = () => {
+        console.warn('[Outfit] failed to load ' + spritePath + ' — falling back to default outfit (' + defaultPath + ')');
+        const fb = new Image();
+        fb.src = defaultPath;
+        this.characterSprite = fb;
+      };
+    }
     this.characterSprite.src = spritePath;
 
     const attackMap = {

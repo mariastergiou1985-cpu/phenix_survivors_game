@@ -1,4 +1,4 @@
-import { Game } from './game/Game.js?v=167';
+import { Game } from './game/Game.js?v=168';
 import { AudioManager } from './audio/AudioManager.js?v=16';
 
 const canvas = document.getElementById('game');
@@ -213,16 +213,26 @@ canvas.addEventListener('mousedown', e => {
 
   } else if (game.gameState === 'character_select') {
     // ── Character Select ─────────────────────────────────────────
-    const cardW = 220, cardH = 280, spacing = 280;
-    const startX = canvas.width / 2 - cardW - spacing / 2;
-    for (let i = 0; i < game.characters.length; i++) {
-      const cx = startX + i * spacing;
-      const cy = canvas.height / 2 - cardH / 2;
-      if (mousePos.x >= cx && mousePos.x <= cx + cardW &&
-          mousePos.y >= cy && mousePos.y <= cy + cardH) {
-        game.characterIndex = i;
-        game.selectCharacter(game.characters[i].id);
-        break;
+    // Outfit toggle buttons first (top-centre) — equip a cosmetic outfit for the
+    // highlighted character WITHOUT starting the run. Locked secret is a no-op.
+    const ob   = game._outfitBtnRects();
+    const ocid = game.characters[game.characterIndex].id;
+    if (game._inRect(mousePos, ob.defaultRect)) {
+      game.meta.setSelectedOutfit(ocid, 'default');
+    } else if (game._inRect(mousePos, ob.secretRect)) {
+      game.meta.setSelectedOutfit(ocid, 'secret');
+    } else {
+      const cardW = 220, cardH = 280, spacing = 280;
+      const startX = canvas.width / 2 - cardW - spacing / 2;
+      for (let i = 0; i < game.characters.length; i++) {
+        const cx = startX + i * spacing;
+        const cy = canvas.height / 2 - cardH / 2;
+        if (mousePos.x >= cx && mousePos.x <= cx + cardW &&
+            mousePos.y >= cy && mousePos.y <= cy + cardH) {
+          game.characterIndex = i;
+          game.selectCharacter(game.characters[i].id);
+          break;
+        }
       }
     }
   }

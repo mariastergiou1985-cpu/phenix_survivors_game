@@ -11,7 +11,7 @@ import { clamp, distance, safeNormalize, randomChoice, randomRange } from '../ut
 import { FloatingText }   from '../entities/FloatingText.js';
 import { DataCore, rollCoreType } from '../entities/DataCore.js?v=2';
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=13';
-import { Player }         from '../entities/Player.js?v=64';
+import { Player }         from '../entities/Player.js?v=65';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=3';
 import { Enemy }          from '../entities/Enemy.js?v=105';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=1';
@@ -21,7 +21,7 @@ import { SystemEventManager } from './Events.js?v=94';
 import { UpgradeUI }      from './UpgradeUI.js?v=4';
 import { weightedSample } from './Upgrades.js?v=4';
 import { drawHUD, drawEndScreen } from './HUD.js?v=42';
-import { MetaProgress, META_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS } from './MetaProgress.js?v=5';
+import { MetaProgress, META_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS } from './MetaProgress.js?v=6';
 
 // ── Thunder Solo sprite slices (cyan_lightning_rain_notes.png, 1254×1254) ──────
 // Strike variants: a clean bolt column + ripple base. (ax,ay) = ripple-centre as a
@@ -253,7 +253,11 @@ export class Game {
   }
 
   reset() {
-    this.player       = new Player(this.selectedCharacter);
+    // Resolve the equipped (cosmetic) outfit sprite for this character, if any.
+    const _char       = this.selectedCharacter || 'skeleton_warrior';
+    const _outfit     = this.meta.getSelectedOutfit(_char);
+    const _outfitPath = _outfit === 'default' ? null : this.meta.getOutfitAsset(_char, _outfit);
+    this.player       = new Player(this.selectedCharacter, _outfitPath);
     this._applyMetaUpgrades();
     this.matrices     = [];
     this.groundCores  = [];
@@ -2060,6 +2064,14 @@ export class Game {
       keys.delete('arrowright');
       keys.delete('d');
     }
+    // Up/Down (or W/S) toggle the equipped outfit for the highlighted character.
+    // setSelectedOutfit is a no-op when the secret outfit is still locked.
+    if (keys.has('arrowup') || keys.has('arrowdown') || keys.has('w') || keys.has('s')) {
+      const charId = this.characters[this.characterIndex].id;
+      const next   = this.meta.getSelectedOutfit(charId) === 'default' ? 'secret' : 'default';
+      this.meta.setSelectedOutfit(charId, next);
+      ['arrowup', 'arrowdown', 'w', 's'].forEach(k => keys.delete(k));
+    }
     if (keys.has('enter') || keys.has(' ')) {
       const charId = this.characters[this.characterIndex].id;
       this.selectCharacter(charId);
@@ -2070,6 +2082,17 @@ export class Game {
       this.goToMainMenu();
       keys.delete('escape');
     }
+  }
+
+  // Shared geometry for the Character-Select outfit toggle (top-centre, clear of the
+  // character cards so a click here equips an outfit instead of starting the run).
+  _outfitBtnRects() {
+    const bw = 150, bh = 32, gap = 16, y = 150;
+    const x0 = Math.round(WIDTH / 2 - (bw * 2 + gap) / 2);
+    return {
+      defaultRect: { x: x0,             y, w: bw, h: bh },
+      secretRect:  { x: x0 + bw + gap,  y, w: bw, h: bh },
+    };
   }
 
   _updateExitScreen(input) {
@@ -3947,6 +3970,43 @@ export class Game {
     ctx.restore();
   }
 
+  // Outfit toggle bar (top-centre): OUTFIT: [ DEFAULT ] [ SECRET | LOCKED ] for the
+  // highlighted character, + a short unlock hint when the secret outfit is locked.
+  _drawOutfitBar(ctx) {
+    const charId   = this.characters[this.characterIndex].id;
+    const equipped = this.meta?.getSelectedOutfit(charId) || 'default';
+    const secretOk = this.meta?.isOutfitUnlocked(charId, 'secret') === true;
+    const { defaultRect, secretRect } = this._outfitBtnRects();
+
+    ctx.font      = 'bold 14px Consolas, monospace';
+    ctx.fillStyle = '#9fb8c8';
+    ctx.textAlign = 'center';
+    ctx.fillText('OUTFIT', WIDTH / 2, defaultRect.y - 8);
+
+    const btn = (rect, label, selected, enabled) => {
+      ctx.fillStyle   = selected ? 'rgba(0,230,255,0.16)' : 'rgba(8,18,30,0.85)';
+      ctx.beginPath(); ctx.roundRect(rect.x, rect.y, rect.w, rect.h, 5); ctx.fill();
+      ctx.lineWidth   = selected ? 2.5 : 1.5;
+      ctx.strokeStyle = selected ? CYAN : (enabled ? '#3a5e74' : '#33414f');
+      ctx.beginPath(); ctx.roundRect(rect.x, rect.y, rect.w, rect.h, 5); ctx.stroke();
+      ctx.font      = 'bold 15px Consolas, monospace';
+      ctx.fillStyle = selected ? CYAN : (enabled ? WHITE : '#5a7080');
+      ctx.textAlign = 'center';
+      ctx.fillText(label, rect.x + rect.w / 2, rect.y + 21);
+    };
+
+    btn(defaultRect, 'DEFAULT', equipped === 'default', true);
+    btn(secretRect, secretOk ? 'SECRET' : 'LOCKED', equipped === 'secret', secretOk);
+
+    if (!secretOk) {
+      ctx.font      = '12px Consolas, monospace';
+      ctx.fillStyle = '#6a8090';
+      ctx.textAlign = 'center';
+      ctx.fillText('Secret outfit locked — win a run to unlock it', WIDTH / 2, secretRect.y + secretRect.h + 16);
+    }
+    ctx.textAlign = 'left';
+  }
+
   _drawCharacterSelect(ctx) {
     this._drawBackground(ctx);
     ctx.fillStyle = 'rgba(0,0,0,0.7)';
@@ -3956,6 +4016,9 @@ export class Game {
     ctx.fillStyle = CYAN;
     ctx.textAlign = 'center';
     ctx.fillText('SELECT YOUR CHARACTER', WIDTH / 2, 100);
+
+    // Outfit toggle for the highlighted character (cosmetic equip).
+    this._drawOutfitBar(ctx);
 
     ctx.font = 'bold 32px Consolas, monospace';
     const cardWidth = 220;
@@ -3978,9 +4041,15 @@ export class Game {
       }
       ctx.strokeRect(x, y, cardWidth, cardHeight);
 
-      // Character portrait — use preloaded image or fallback circle
+      // Character portrait — reflects the equipped outfit (secret skin if equipped & loaded),
+      // otherwise the default portrait, otherwise a fallback circle.
       const charData = this.characters[i];
-      const cimg     = this._charImages[charData.id];
+      let cimg = this._charImages[charData.id];
+      if (this.meta?.getSelectedOutfit(charData.id) === 'secret') {
+        const sk   = CHARACTER_OUTFITS[charData.id]?.secret?.unlockKey;
+        const simg = sk && this._skinImages[sk];
+        if (simg && simg.complete && simg.naturalWidth > 0) cimg = simg;
+      }
       if (cimg && cimg.complete && cimg.naturalWidth > 0) {
         const imgH = 200;
         const imgW = Math.round(cimg.naturalWidth * (imgH / cimg.naturalHeight));
@@ -4032,7 +4101,7 @@ export class Game {
     ctx.font = '14px Consolas, monospace';
     ctx.fillStyle = WHITE;
     ctx.textAlign = 'center';
-    ctx.fillText('← → Select • ENTER Confirm • ESC Back', WIDTH / 2, HEIGHT - 12);
+    ctx.fillText('← → Select • ↑ ↓ Outfit • ENTER Confirm • ESC Back', WIDTH / 2, HEIGHT - 12);
   }
 
   _drawExitScreen(ctx) {

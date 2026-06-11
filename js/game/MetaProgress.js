@@ -26,6 +26,24 @@ export const UNLOCK_KEYS = [
   'grandmaster_dojang_girl',
 ];
 
+// Equippable outfits per base character. `default` is always available; `secret` reuses the
+// EXISTING Easter-Egg unlock flags + secret-skin assets (no new keys/assets invented).
+// Cosmetic only — outfits change the sprite path, never stats/weapons/balance.
+export const CHARACTER_OUTFITS = {
+  skeleton_warrior: {
+    default: { name: 'Default', asset: 'assets/characters/skeleton_warrior.png' },
+    secret:  { name: 'Golden Skeleton Warrior', asset: 'assets/unlocks/secret_skins/golden_skeleton_warrior.png', unlockKey: 'golden_skeleton_warrior' },
+  },
+  taekwondo_girl: {
+    default: { name: 'Default', asset: 'assets/characters/taekwondo_girl.png' },
+    secret:  { name: 'Grandmaster Dojang Girl', asset: 'assets/unlocks/secret_skins/grandmaster_dojang_girl.png', unlockKey: 'grandmaster_dojang_girl' },
+  },
+  cyber_arm_hero: {
+    default: { name: 'Default', asset: 'assets/characters/cyber_arm_hero.png' },
+    secret:  { name: 'Dark Cyber Arm Hero', asset: 'assets/unlocks/secret_skins/dark_cyber_arm_hero.png', unlockKey: 'dark_cyber_arm_hero' },
+  },
+};
+
 // Endless-only achievement milestones. Each `test` is a PURE read-only predicate over a
 // finished-run stats snapshot { time (s), level, score, combo, cores } — it never mutates
 // game state. Recognition only: no rewards, no stat bonuses. Persisted in `phenix_meta`.
@@ -49,6 +67,9 @@ export class MetaProgress {
     this.endlessRecords = { time: 0, score: 0, level: 0 };
     // Endless achievement flags: { [id]: true } once earned. Persisted alongside records.
     this.achievements = {};
+    // Equipped outfit per character: { [characterId]: 'default' | 'secret' }. Stored SEPARATELY
+    // from `unlocks` (which gates availability). Cosmetic selection only.
+    this.selectedOutfits = {};
     this._load();
   }
 
@@ -67,6 +88,7 @@ export class MetaProgress {
         level: Number(er.level) || 0,
       };
       this.achievements = d.achievements || {};
+      this.selectedOutfits = d.selectedOutfits || {};
     } catch (_) {}
   }
 
@@ -78,6 +100,7 @@ export class MetaProgress {
         unlocks: this.unlocks,
         endlessRecords: this.endlessRecords,
         achievements: this.achievements,
+        selectedOutfits: this.selectedOutfits,
       }));
     } catch (_) {}
   }
@@ -157,6 +180,42 @@ export class MetaProgress {
     this.unlocks = {};
     this.endlessRecords = { time: 0, score: 0, level: 0 };
     this.achievements   = {};
+    this.selectedOutfits = {};
     this._save();
+  }
+
+  // ─── Secret outfit equip system ─────────────────────────────────────────────
+  // Display/equip helpers. Default is always available; secret reuses the existing
+  // Easter-Egg unlock flag. Cosmetic only — never affects stats/balance.
+  isOutfitUnlocked(characterId, outfitId) {
+    if (outfitId === 'default') return true;
+    const o = CHARACTER_OUTFITS[characterId]?.[outfitId];
+    if (!o) return false;
+    if (!o.unlockKey) return true;
+    return this.isUnlocked(o.unlockKey);
+  }
+
+  // The equipped outfit for a character — falls back to 'default' if none chosen, an
+  // unknown id, or a secret that is no longer unlocked (defensive).
+  getSelectedOutfit(characterId) {
+    const sel = this.selectedOutfits[characterId];
+    if (sel && sel !== 'default' && this.isOutfitUnlocked(characterId, sel)) return sel;
+    return 'default';
+  }
+
+  // Equip an outfit. No-op + false if the outfit is locked/unknown; persists on success.
+  setSelectedOutfit(characterId, outfitId) {
+    if (!CHARACTER_OUTFITS[characterId]) return false;
+    if (!this.isOutfitUnlocked(characterId, outfitId)) return false;
+    this.selectedOutfits[characterId] = outfitId;
+    this._save();
+    return true;
+  }
+
+  // Resolve the sprite asset for a character+outfit (always returns a valid path).
+  getOutfitAsset(characterId, outfitId) {
+    const c = CHARACTER_OUTFITS[characterId];
+    if (!c) return `assets/characters/${characterId}.png`;
+    return (c[outfitId] || c.default).asset;
   }
 }
