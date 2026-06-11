@@ -441,7 +441,7 @@ export class Game {
     // Endless-local elite-wave clock: first wave after firstDelay, then every interval.
     this._eliteWaveTimer   = ELITE_WAVE.firstDelay;
     this._eliteWaveElapsed = 0;
-    this.audio?.startGameplayMusic();
+    this.audio?.startEndlessMusic();   // Endless-only track (dawn) replaces gameplay music
   }
 
   // Permanent Grid-Credit progression screen (spent between runs).

@@ -39,9 +39,13 @@ export class AudioManager {
 
     this._menuAudio     = null;
     this._gameplayAudio = null;
+    this._endlessAudio  = null;
 
     this._setupTrack('assets/audio/music/menu_theme.mp3?v=10', 0.28, a => { this._menuAudio     = a; });
     this._setupTrack('assets/audio/music/gameplay_theme.mp3?v=2', 0.20, a => { this._gameplayAudio = a; });
+    // Endless-only track (dawn). NOTE: real on-disk filename is dawn.wav.wav (double extension);
+    // referenced as-is per "do not rename". Missing/failed load degrades safely (onerror warn).
+    this._setupTrack('assets/audio/music/endless/dawn.wav.wav?v=1', 0.20, a => { this._endlessAudio = a; });
   }
 
   // ─── Volume persistence ─────────────────────────────────────────────────────
@@ -89,6 +93,7 @@ export class AudioManager {
       const audio = new Audio(src);
       audio.loop    = true;
       audio.preload = 'auto';   // buffer aggressively so playback starts promptly
+      audio.onerror = () => console.warn(`[Audio] failed to load: ${src}`);
       const source = this.actx.createMediaElementSource(audio);
       const gain   = this.actx.createGain();
       gain.gain.value = volume;
@@ -128,17 +133,28 @@ export class AudioManager {
 
   startMenuMusic() {
     this._stop(this._gameplayAudio);
+    this._stop(this._endlessAudio);
     if (this._menuAudio?.paused) this._play(this._menuAudio);
   }
 
   startGameplayMusic() {
     this._stop(this._menuAudio);
+    this._stop(this._endlessAudio);
     if (this._gameplayAudio?.paused) this._play(this._gameplayAudio);
+  }
+
+  // Endless-only music — plays solely after CONTINUE — ENDLESS (Game.continueEndless).
+  // Stops the menu/gameplay tracks first so only one track ever plays.
+  startEndlessMusic() {
+    this._stop(this._menuAudio);
+    this._stop(this._gameplayAudio);
+    if (this._endlessAudio?.paused) this._play(this._endlessAudio);
   }
 
   stopAll() {
     this._stop(this._menuAudio);
     this._stop(this._gameplayAudio);
+    this._stop(this._endlessAudio);
   }
 
   toggleMute() {
