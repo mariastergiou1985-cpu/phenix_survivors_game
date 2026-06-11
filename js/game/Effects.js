@@ -179,6 +179,26 @@ export function drawVignette(ctx, overload, timeAlive) {
   ctx.restore();
 }
 
+// ─── Player damage pulse ────────────────────────────────────────────────────────
+// Short red edge-vignette flashed when the player takes a hit. Same radial style as
+// drawVignette (transparent center → readable), scaled by the remaining flash time and
+// the hit's intensity (boss attacks pass a higher intensity than chip/contact). Visual only.
+export function drawDamagePulse(ctx, flash, intensity, duration) {
+  if (flash <= 0 || intensity <= 0) return;
+  const t     = clamp(flash / duration, 0, 1);   // 1 at the moment of the hit → 0 as it fades
+  const alpha = t * intensity * 0.34;             // peak ~0.34 for a heavy hit — premium, not opaque
+  ctx.save();
+  const grad = ctx.createRadialGradient(
+    WIDTH / 2, HEIGHT / 2, HEIGHT * 0.26,
+    WIDTH / 2, HEIGHT / 2, HEIGHT * 0.82,
+  );
+  grad.addColorStop(0, 'rgba(255,40,60,0)');
+  grad.addColorStop(1, `rgba(255,40,60,${alpha.toFixed(3)})`);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, WIDTH, HEIGHT);
+  ctx.restore();
+}
+
 // ─── EMPRing ──────────────────────────────────────────────────────────────────
 export class EMPRing {
   constructor(pos, maxRadius) {

@@ -16,7 +16,7 @@ import { Projectile, HomingDisc } from '../entities/Projectile.js?v=3';
 import { Enemy }          from '../entities/Enemy.js?v=104';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=1';
 
-import { ParticleSystem, ScreenShake, drawVignette, EMPRing, drawGlow } from './Effects.js?v=4';
+import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow } from './Effects.js?v=5';
 import { SystemEventManager } from './Events.js?v=94';
 import { UpgradeUI }      from './UpgradeUI.js?v=4';
 import { weightedSample } from './Upgrades.js?v=4';
@@ -65,6 +65,12 @@ const FINAL_BEAM_CHARGE  = 1.2;   // s — telegraph line follows the player whi
 const FINAL_BEAM_FIRE    = 0.6;   // s — thick beam is live (locked direction)
 const FINAL_BEAM_HALFW   = 22;    // px — beam half-width for hit detection / draw
 const FINAL_BEAM_LEN     = 1600;  // px — beam length (spans the arena)
+// Player damage pulse (red edge-vignette) — visual feedback only, no balance impact.
+// duration sits in the requested 0.15–0.25s band; intensity is derived from HP lost so a
+// big boss attack reads stronger than chip/contact damage. minGap stops sustained contact
+// from strobing; big discrete hits bypass the gap so they always register immediately.
+const DMG_PULSE = { duration: 0.22, minGap: 0.40, bigHit: 3, base: 0.36, slope: 0.045 };
+
 const FINAL_BEAM_DMG     = 22;    // 20–25 band, hard-capped at 30 by _damagePlayer
 const FINAL_NOVA_WARN    = 1.0;   // s — radial-burst warning
 const FINAL_NOVA_RADIUS  = 155;   // px — medium burst radius
@@ -287,6 +293,12 @@ export class Game {
     this.rewardsGranted    = false;
     this.runCreditsEarned  = 0;
     this.playerHitCooldown = 0;
+
+    // Player damage pulse (red vignette) state — visual only.
+    this.damageFlash          = 0;
+    this.damageFlashIntensity = 0;
+    this._dmgPulseGap         = 0;
+    this._prevPlayerHp        = this.player.hp;
 
     this.camera = { x: 0, y: 0 };
 
@@ -1509,6 +1521,7 @@ export class Game {
     this._updateAnnouncement(dt);
     this.particles.update(dt);
     this._updateCamera();
+    this._updateDamagePulse(dt);
 
     // Grid Investor card: +2% Gold Core chance per level on stolen cores (read in PowerMatrix.stealCore).
     const gridGoldBonus = (this.player.upgrades['Grid Investor'] || 0) * 0.02;
@@ -3456,6 +3469,7 @@ export class Game {
 
     drawHUD(ctx, this);
     drawVignette(ctx, this.overload, this.timeAlive);
+    drawDamagePulse(ctx, this.damageFlash, this.damageFlashIntensity, DMG_PULSE.duration);
     this._drawScanlines(ctx);
     this._drawAnnouncement(ctx);
 
@@ -4460,6 +4474,30 @@ export class Game {
   // a per-hit ceiling so no single blow one-shots. Returns true ONLY if damage actually landed —
   // callers should consume the projectile / relay side-effects only on a true result.
   // (Continuous contact + lava already respect dash inline and keep their own per-tick cadence.)
+  // Central, source-agnostic damage pulse: fires when the player's HP drops this frame,
+  // covering every damage route (contact, bullets, boss attacks, acid) without editing each
+  // site. Intensity scales with HP lost, so big boss hits read stronger than chip/contact.
+  // A min-gap stops sustained contact from strobing; big discrete hits bypass it.
+  _updateDamagePulse(dt) {
+    if (this.damageFlash > 0) {
+      this.damageFlash -= dt;
+      if (this.damageFlash <= 0) { this.damageFlash = 0; this.damageFlashIntensity = 0; }
+    }
+    if (this._dmgPulseGap > 0) this._dmgPulseGap -= dt;
+
+    const hpDrop = this._prevPlayerHp - this.player.hp;
+    if (hpDrop > 0) {
+      const big = hpDrop >= DMG_PULSE.bigHit;          // discrete hit vs dt-scaled chip/contact
+      if (big || this._dmgPulseGap <= 0) {
+        const intensity = clamp(DMG_PULSE.base + hpDrop * DMG_PULSE.slope, DMG_PULSE.base, 1.0);
+        this.damageFlash          = DMG_PULSE.duration;
+        this.damageFlashIntensity = Math.max(this.damageFlashIntensity, intensity);
+        this._dmgPulseGap         = big ? 0.12 : DMG_PULSE.minGap;
+      }
+    }
+    this._prevPlayerHp = this.player.hp;
+  }
+
   _damagePlayer(dmg, { color = RED, shake = 5 } = {}) {
     if (this.player.dashTimer > 0 || this.phoenixReviveTimer > 0) return false;  // i-frames → dodged
     if (this.playerHitCooldown > 0) return false;                                // within 0.5s grace
