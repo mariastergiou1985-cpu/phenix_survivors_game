@@ -52,6 +52,10 @@ export class Enemy {
     this.isMegaBoss      = false;
     this.bodyguardTarget = null;
 
+    // Endless Elite Waves flag — set AFTER construction by Game._spawnEliteWave (Endless only).
+    // Visual/feedback marker only; never alters base stats here or any Act-1 enemy.
+    this.isElite         = false;
+
     // Role-based targeting
     this.role          = this._roleForType(enemyType);
     this.shootTimer    = Math.random() * 2;  // stagger initial shots
@@ -234,7 +238,7 @@ export class Enemy {
     game.audio?.playDeath();
     // Tiered death feedback (visual only). Heavy/elite/boss-type enemies get a larger
     // burst plus an expanding neon shock-ring so big kills read weightier than trash.
-    const heavy = this.isBoss() || this.isMegaBoss || this.radius >= FEEDBACK.heavyRadius;
+    const heavy = this.isBoss() || this.isMegaBoss || this.isElite || this.radius >= FEEDBACK.heavyRadius;
     if (heavy) {
       game.particles.spawnDeathBurst(this.pos, this.color, FEEDBACK.heavyDeathParticles, FEEDBACK.burstSize + 0.8);
       game.particles.spawnDeathRing(this.pos, this.color, FEEDBACK.heavyRingCount, FEEDBACK.heavyRingSpeed, FEEDBACK.burstSize);
@@ -566,6 +570,23 @@ export class Enemy {
     // density (not by base color alone). Color language: boss=purple, tank=red, runner=orange,
     // core-stealer=gold, shooter=magenta, basic=steel.
     this._drawRoleMarker(ctx);
+
+    // Elite marker (Endless elite waves) — pulsing gold glow + ring so elites read
+    // instantly against the normal horde. Purely visual; no balance impact.
+    if (this.isElite) {
+      const t     = performance.now() * 0.006;
+      const pulse = 0.6 + 0.4 * (0.5 + 0.5 * Math.sin(t));
+      drawGlow(ctx, this.pos.x, this.pos.y, this.radius + 7, '#FFD700', 0.22 * pulse);
+      ctx.save();
+      ctx.globalAlpha = pulse;
+      ctx.strokeStyle = '#FFD700';
+      ctx.lineWidth   = 2.5;
+      ctx.beginPath();
+      ctx.arc(this.pos.x, this.pos.y, this.radius + 8, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+      ctx.globalAlpha = 1;
+    }
 
     // Additive hit flash — visible over sprites (color depends on enemy type)
     if (this.hitFlash > 0) {

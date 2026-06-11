@@ -13,7 +13,7 @@ import { DataCore, rollCoreType } from '../entities/DataCore.js?v=2';
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=13';
 import { Player }         from '../entities/Player.js?v=64';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=3';
-import { Enemy }          from '../entities/Enemy.js?v=104';
+import { Enemy }          from '../entities/Enemy.js?v=105';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=1';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow } from './Effects.js?v=5';
@@ -79,6 +79,23 @@ const FINAL_BEAM_DMG     = 22;    // 20–25 band, hard-capped at 30 by _damageP
 const FINAL_NOVA_WARN    = 1.0;   // s — radial-burst warning
 const FINAL_NOVA_RADIUS  = 155;   // px — medium burst radius
 const FINAL_NOVA_DMG     = 17;    // 15–20 band
+
+// ─── Endless Elite Waves (Phase 1) — tuning isolated here ───────────────────────
+// Endless-only recurring waves of EXISTING enemy types, buffed AFTER construction.
+// Tankier + slightly faster, NOT deadlier (damage ×1.0) so the _damagePlayer fairness
+// invariant is untouched. Gated entirely on Game.endless — never fires in Act 1.
+const ELITE_WAVE = {
+  firstDelay:   90,    // s after CONTINUE — ENDLESS before the first wave
+  interval:    110,    // s between waves
+  baseBatch:     3,    // elites per wave
+  batch10min:    4,    // max elites once 10 min into Endless
+  batch20min:    5,    // max elites once 20 min into Endless
+  hpMult:      2.0,
+  speedMult:   1.10,
+  radiusMult:  1.20,
+  // Late-game existing types only — no bosses, no new types.
+  pool: ['Combat Hunter', 'Cyber Shooter', 'Heavy Mech', 'Overclocked Berserker', 'Stealth Infiltrator'],
+};
 
 export class Game {
   constructor() {
@@ -298,6 +315,8 @@ export class Game {
     this.endlessBest    = null;
     this.endlessNewBest = null;
     this.endlessNewAchievements = null;   // [{id,name}] newly earned this run (end-screen only)
+    this._eliteWaveTimer   = 0;           // Endless elite-wave clock (armed by continueEndless)
+    this._eliteWaveElapsed = 0;           // s elapsed in Endless — drives batch-size tiers
 
     this.gameOver          = false;
     this.victory           = false;
@@ -408,6 +427,9 @@ export class Game {
     if (!this.victory) return;
     this.endless = true;
     this.victory = false;
+    // Endless-local elite-wave clock: first wave after firstDelay, then every interval.
+    this._eliteWaveTimer   = ELITE_WAVE.firstDelay;
+    this._eliteWaveElapsed = 0;
     this.audio?.startGameplayMusic();
   }
 
@@ -1640,6 +1662,7 @@ export class Game {
     this._updateEnemies(dt);
     this._updateOverload(dt);
     this._updateSpawning(dt);
+    this._updateEliteWaves(dt);
     this._updateCoreEconomy(dt);
     this._updateFloatingTexts(dt);
     this._updateEffects(dt);
@@ -3056,6 +3079,44 @@ export class Game {
       if (this.enemies.length < this.enemyCap() * 0.7) count += 4;
       for (let i = 0; i < count; i++) this.spawnEnemy();   // spawnEnemy() still enforces enemyCap
     }
+  }
+
+  // Endless Elite Waves (Phase 1). Endless-only; additive layer that never touches Act 1,
+  // chooseEnemyType, WINDOWS, base enemy stats, enemyCap logic, or the bosses. Elites are
+  // normal Enemy instances buffed AFTER construction (tankier + faster, damage unchanged),
+  // so every player hit still routes through the existing _damagePlayer path.
+  _updateEliteWaves(dt) {
+    if (!this.endless) return;            // hard gate — inert during Act 1
+    this._eliteWaveElapsed += dt;
+    this._eliteWaveTimer   -= dt;
+    if (this._eliteWaveTimer <= 0) {
+      this._spawnEliteWave();
+      this._eliteWaveTimer = ELITE_WAVE.interval;
+    }
+  }
+
+  _spawnEliteWave() {
+    // Batch size grows with time spent in Endless (capped).
+    let batch = ELITE_WAVE.baseBatch;
+    if (this._eliteWaveElapsed >= 20 * 60)      batch = ELITE_WAVE.batch20min;
+    else if (this._eliteWaveElapsed >= 10 * 60) batch = ELITE_WAVE.batch10min;
+
+    const m   = this.currentMinute();
+    const cap = this.enemyCap();
+    let spawned = 0;
+    for (let i = 0; i < batch; i++) {
+      if (this.enemies.length >= cap) break;          // respect cap — skip when full
+      const e = new Enemy(randomChoice(ELITE_WAVE.pool), m);
+      e.isElite        = true;
+      e.hp            *= ELITE_WAVE.hpMult;
+      e._baseSpeedFull *= ELITE_WAVE.speedMult;        // canonical speed (baseSpeed recomputed per frame)
+      e.baseSpeed     *= ELITE_WAVE.speedMult;
+      e.radius        *= ELITE_WAVE.radiusMult;
+      // Damage intentionally unchanged (×1.0) in Phase 1 — no new/elevated damage path.
+      this.enemies.push(e);
+      spawned++;
+    }
+    if (spawned > 0) this.triggerAnnouncement('⚠ ELITE WAVE', '#FFD700');
   }
 
   _updateFloatingTexts(dt) {
