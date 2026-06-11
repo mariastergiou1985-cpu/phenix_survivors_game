@@ -9,7 +9,7 @@ export const RARITY_COLORS = {
 };
 
 export class UpgradeDefinition {
-  constructor(key, name, description, iconColor, maxLevel, applyFn, icon = null, rarity = 'common') {
+  constructor(key, name, description, iconColor, maxLevel, applyFn, icon = null, rarity = 'common', char = null) {
     this.key         = key;
     this.name        = name;
     this.description = description;
@@ -18,6 +18,7 @@ export class UpgradeDefinition {
     this._applyFn    = applyFn;
     this.icon        = icon || name[0];   // short symbol/emoji drawn on the card
     this.rarity      = rarity;
+    this.char        = char;   // null = global; otherwise only offered for that character id
   }
 
   apply(player) {
@@ -106,13 +107,50 @@ export const ALL_UPGRADES = [
     'Auto-Forge Drone', 'Auto-Forge Drone', 'Deploys a persistent combat drone',
     ORANGE, 2, () => {}, '🛸', 'legendary'  // persistent ally drones spawned/updated in Game._updateAllyDrones
   ),
+
+  // ── Corrosive (global) — reuses the existing _corrosiveTimer DoT (Game._updateCorrosive) ──
+  new UpgradeDefinition(
+    'corrosive_payload', 'Corrosive Payload', 'Attacks may apply corrosive damage over time',
+    GREEN, 3, () => {}, '☣', 'epic'
+  ),
+
+  // ── Character weapon mastery cards (level read by each weapon in Game.js; char-gated) ──
+  // Skeleton Warrior — electric guitar / thunder / chain lightning identity
+  new UpgradeDefinition('skeleton_primary_mastery', 'Storm Shots', '+12% primary damage & electric sparks',
+    BLUE, 3, () => {}, '⚡', 'rare', 'skeleton_warrior'),
+  new UpgradeDefinition('skeleton_chain_lightning_mastery', 'Chain Overload', 'Chain Lightning: +1 fork & +15% damage',
+    BLUE, 3, () => {}, '🔗', 'epic', 'skeleton_warrior'),
+  new UpgradeDefinition('skeleton_thunder_solo_mastery', 'Encore Solo', 'Thunder Solo: larger shockwave',
+    PURPLE, 3, () => {}, '🎸', 'legendary', 'skeleton_warrior'),
+  // Cyber Arm Hero — neon pierce beam / overheated heavy chains identity
+  new UpgradeDefinition('cyber_primary_mastery', 'Arm Overdrive', '+12% primary damage & cyber sparks',
+    ORANGE, 3, () => {}, '🦾', 'rare', 'cyber_arm_hero'),
+  new UpgradeDefinition('cyber_neon_pierce_mastery', 'Neon Lance', 'Neon Pierce Beam: wider & stronger',
+    CYAN, 3, () => {}, '➤', 'epic', 'cyber_arm_hero'),
+  new UpgradeDefinition('cyber_heavy_chains_mastery', 'Molten Chains', 'Overheated Chains: larger heat radius',
+    ORANGE, 3, () => {}, '⛓', 'legendary', 'cyber_arm_hero'),
+  // Neon Taekwondo Girl — aqua spirit trail / dojang flag identity
+  new UpgradeDefinition('taekwondo_primary_mastery', 'Tidal Kicks', '+12% primary damage & cyan kick arc',
+    CYAN, 3, () => {}, '🌊', 'rare', 'taekwondo_girl'),
+  new UpgradeDefinition('taekwondo_aqua_trail_mastery', 'Spirit Current', 'Aqua Spirit Trail: hits harder',
+    CYAN, 3, () => {}, '💧', 'epic', 'taekwondo_girl'),
+  new UpgradeDefinition('taekwondo_dojang_flag_mastery', 'Greater Dojang', 'Spirit Dojang Flag: larger aura',
+    BLUE, 3, () => {}, '⚑', 'legendary', 'taekwondo_girl'),
+  // Brawler Warrior — chakram / crescent claw / skyfall lances identity
+  new UpgradeDefinition('brawler_chakram_mastery', 'Razor Chakram', 'Nexus Chakram: +1 pierce & stronger return',
+    GREEN, 3, () => {}, '◎', 'rare', 'brawler_warrior'),
+  new UpgradeDefinition('brawler_crescent_claw_mastery', 'Rift Render', 'Crescent Rift Claw: larger, faster arc',
+    GREEN, 3, () => {}, '⟢', 'epic', 'brawler_warrior'),
+  new UpgradeDefinition('brawler_skyfall_lances_mastery', 'Lance Storm', 'Skyfall Lances: extra lances & wider impact',
+    CYAN, 3, () => {}, '⇣', 'legendary', 'brawler_warrior'),
 ];
 
 // ─── Weighted sample: every card is useful; bias toward the player's current build ──
 // New cards stay common (weight 3); cards already invested in are weighted higher so
 // the offered set leans into the build the player is forming (and reroll does the same).
 export function weightedSample(player, n = 3) {
-  const eligible = ALL_UPGRADES.filter(u => u.canApply(player));
+  // Character mastery cards only offer for the matching character; global cards always eligible.
+  const eligible = ALL_UPGRADES.filter(u => u.canApply(player) && (!u.char || u.char === player.selectedCharacter));
   if (!eligible.length) return [];
 
   const weightOf = u => {

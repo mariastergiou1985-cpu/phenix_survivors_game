@@ -11,7 +11,7 @@ import { clamp, distance, safeNormalize, randomChoice, randomRange } from '../ut
 import { FloatingText }   from '../entities/FloatingText.js';
 import { DataCore, rollCoreType } from '../entities/DataCore.js?v=2';
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=13';
-import { Player }         from '../entities/Player.js?v=66';
+import { Player }         from '../entities/Player.js?v=67';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=3';
 import { Enemy }          from '../entities/Enemy.js?v=105';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=1';
@@ -19,7 +19,7 @@ import { SupportDrone }   from '../entities/SupportDrone.js?v=1';
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow } from './Effects.js?v=5';
 import { SystemEventManager } from './Events.js?v=94';
 import { UpgradeUI }      from './UpgradeUI.js?v=4';
-import { weightedSample } from './Upgrades.js?v=4';
+import { weightedSample } from './Upgrades.js?v=5';
 import { drawHUD, drawEndScreen } from './HUD.js?v=45';
 import { MetaProgress, META_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS } from './MetaProgress.js?v=7';
 
@@ -1162,7 +1162,7 @@ export class Game {
     const oc = this.overChains;
     if (!oc) return;
     const p = this.player;
-    const DURATION = 7, RADIUS = 155;
+    const DURATION = 7, RADIUS = 155 * (1 + 0.12 * this._cardLvl('cyber_heavy_chains_mastery'));
     const TICK = 0.25, NORMAL_DMG = 12, KNOCK = 90;   // 48 DPS to normal enemies + small knockback
     const MINI_CAP = 32, MAIN_CAP = 48;               // per-second boss caps (≈47% / ≈45% over 7s)
 
@@ -1245,7 +1245,7 @@ export class Game {
     const oc = this.overChains;
     if (!oc) return;
     const p = this.player;
-    const RADIUS = 155, DURATION = 7;
+    const RADIUS = 155 * (1 + 0.12 * this._cardLvl('cyber_heavy_chains_mastery')), DURATION = 7;
     const a = Math.max(0, Math.min(oc.t / 0.3, (DURATION - oc.t) / 0.5, 1));   // fade in/out
 
     // Low hot-floor glow marking the strike zone (subtle, additive — not a giant cloud)
@@ -1435,8 +1435,11 @@ export class Game {
   // Fired the instant a bolt lands: ground ring, sparks, shake, a note, then the AoE damage.
   _strikeImpact(b) {
     const pos = new Vec2(b.x, b.y);
-    this._specialRings.push({ pos: pos.clone(), radius: 0, maxRadius: 82,
+    const tm  = this._cardLvl('skeleton_thunder_solo_mastery');
+    this._specialRings.push({ pos: pos.clone(), radius: 0, maxRadius: 82 * (1 + 0.16 * tm),
                                life: 0.4, maxLife: 0.4, color1: CYAN, color2: '#ffffff' });
+    if (tm > 0) this._specialRings.push({ pos: pos.clone(), radius: 0, maxRadius: 120 * (1 + 0.16 * tm),
+                               life: 0.5, maxLife: 0.5, color1: '#bfe6ff', color2: CYAN });   // extra storm pulse
     this.particles.spawnHitSparks(pos, CYAN);
     if (Math.random() < 0.16) this._spawnThunderNote(b.x + randomRange(-12, 12), b.y - randomRange(8, 24));
     if (Math.random() < 0.25) this.screenShake.trigger(3, 0.08);
@@ -1460,7 +1463,7 @@ export class Game {
     };
 
     // AoE within ~110px — normal enemy crowds obliterated, bosses heavily but safely chunked
-    const R = 110;
+    const R = 110 * (1 + 0.12 * this._cardLvl('skeleton_thunder_solo_mastery'));
     const at = new Vec2(tx, ty);
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       const e = this.enemies[i];
@@ -1729,6 +1732,7 @@ export class Game {
     this._updateBloodfang(dt);
     this._updateBossAttacks(dt);
     this._updateSupportDrones(dt);
+    this._updateCorrosive(dt);   // centralized corrosive DoT (drone + Corrosive Payload card)
     this._updateAllyDrones(dt);
     this.events.update(dt, this.timeAlive, this);
     this._updateGridCache(dt);
@@ -2424,8 +2428,11 @@ export class Game {
             e.slowFactor = clamp(0.55 - 0.08 * supp, 0.30, 0.55);                  // Suppression = stronger
           }
           // Primary-fire soft cap: bosses/mega bosses absorb only capped DPS (normal enemies unaffected).
-          const projDmg = (e.isBoss() || e.isMegaBoss) ? this._capBossDamage(e, p.damage) : p.damage;
-          e.takeHit(projDmg, this);
+          const pm = this._primaryMasteryLvl();
+          const baseDmg = (e.isBoss() || e.isMegaBoss) ? this._capBossDamage(e, p.damage) : p.damage;
+          e.takeHit(baseDmg * (1 + 0.12 * pm), this);
+          if (pm > 0) this.particles.spawnHitSparks(e.pos, this._primarySparkColor());  // char-matched primary spark
+          this._tryCorrode(e);
           if (wasSlowed) this._glacialShatter(shatterPos, e);
           this.projectiles.splice(i, 1);
           hit = true;
@@ -2586,7 +2593,8 @@ export class Game {
     // Neon Pierce Beam and Neon Taekwondo Girl uses the Aqua Spirit Trail instead, so both are
     // gated off here (code kept intact for the Skeleton / future use).
     if (p.selectedCharacter !== 'skeleton_warrior') return false;
-    const FIRST_RANGE = 520, JUMP_RADIUS = 240, BOUNCES = 3, BOLT_SPEED = 1200;
+    const FIRST_RANGE = 520, JUMP_RADIUS = 240, BOLT_SPEED = 1200;
+    const BOUNCES = 3 + this._cardLvl('skeleton_chain_lightning_mastery');   // +1 fork per level
     let first = null, bestD = FIRST_RANGE;
     for (const e of this.enemies) {
       const d = distance(p.pos, e.pos);
@@ -2618,8 +2626,10 @@ export class Game {
     if (!node) return;
     const e = node.enemy;
     if (e && e.hp > 0 && this.enemies.includes(e)) {
-      const dmg = (e.isBoss() || e.isMegaBoss) ? 8 : 25;   // reduced vs bosses so it never melts them
+      const cm  = 1 + 0.15 * this._cardLvl('skeleton_chain_lightning_mastery');
+      const dmg = ((e.isBoss() || e.isMegaBoss) ? 8 : 25) * cm;   // reduced vs bosses so it never melts them
       e.takeHit(dmg, this);
+      this._tryCorrode(e);
     }
     this.particles.spawnHitSparks(new Vec2(node.x, node.y), CYAN, 7, 3);   // larger spark for readability
   }
@@ -2686,7 +2696,8 @@ export class Game {
   // Returns true if the beam fired (a valid target existed in range).
   _fireNeonPierceBeam() {
     const p = this.player;
-    const RANGE = 800, WIDTH = 22, DMG = 20;
+    const nm = this._cardLvl('cyber_neon_pierce_mastery');   // Neon Lance: wider + stronger
+    const RANGE = 800, WIDTH = 22 * (1 + 0.20 * nm), DMG = 20 * (1 + 0.15 * nm);
 
     // Candidates: array enemies + any present singleton mini-boss object
     const singles = [
@@ -2719,6 +2730,7 @@ export class Game {
       if (!onBeam(e.pos, e.radius)) continue;
       const d = tierDmg(e.isMegaBoss, e.isBoss() && !e.isMegaBoss);
       e.takeHit(d, this);
+      this._tryCorrode(e);
       this.particles.spawnHitSparks(e.pos, RED);
     }
     // Singleton mini-bosses on the line (reduced damage, safe death routing)
@@ -2732,7 +2744,7 @@ export class Game {
 
     // One short-lived visual originating from the cyber arm
     const startPos = new Vec2(p.pos.x + aimDir.x * 16, p.pos.y + aimDir.y * 16);
-    this._neonBeams.push({ startPos, dir: aimDir, length: RANGE, life: 0.15, maxLife: 0.15 });
+    this._neonBeams.push({ startPos, dir: aimDir, length: RANGE, life: 0.15, maxLife: 0.15, boost: nm });
     this.audio?.playHit?.();
     return true;
   }
@@ -2750,12 +2762,13 @@ export class Game {
       const endY  = b.startPos.y + b.dir.y * b.length;
       const ang   = Math.atan2(b.dir.y, b.dir.x);
 
-      // Procedural red beam (additive)
+      // Procedural red beam (additive). Neon Lance upgrade widens + brightens the streak.
+      const bw = 1 + 0.35 * (b.boost || 0);
       ctx.globalCompositeOperation = 'lighter';
       ctx.globalAlpha = alpha;
-      ctx.strokeStyle = '#ff2a2a'; ctx.lineWidth = Math.max(1, 10 * alpha);
+      ctx.strokeStyle = '#ff2a2a'; ctx.lineWidth = Math.max(1, 10 * alpha * bw);
       ctx.beginPath(); ctx.moveTo(b.startPos.x, b.startPos.y); ctx.lineTo(endX, endY); ctx.stroke();
-      ctx.strokeStyle = '#ffd2d2'; ctx.lineWidth = Math.max(1, 3 * alpha);
+      ctx.strokeStyle = '#ffd2d2'; ctx.lineWidth = Math.max(1, 3 * alpha * bw);
       ctx.beginPath(); ctx.moveTo(b.startPos.x, b.startPos.y); ctx.lineTo(endX, endY); ctx.stroke();
 
       // Red muzzle glow at the cyber-arm origin
@@ -2808,11 +2821,57 @@ export class Game {
     const b = t.obj;
     if (t.arr) {
       b.takeHit(dmg, this);
+      this._tryCorrode(b);
     } else {
       b.hp -= dmg; b.hitFlash = 0.08;
       if (b.hp <= 0) t.die.call(this);
     }
     this.particles.spawnHitSparks(b.pos, color);
+  }
+
+  // ── Upgrade-card helpers + corrosive (Phase 1) ──────────────────────────────
+  _cardLvl(key) { return this.player.upgrades[key] || 0; }
+
+  // Level of the SELECTED character's primary mastery card (originals only; brawler uses chakram).
+  _primaryMasteryLvl() {
+    const c = this.player.selectedCharacter;
+    if (c === 'skeleton_warrior') return this._cardLvl('skeleton_primary_mastery');
+    if (c === 'cyber_arm_hero')   return this._cardLvl('cyber_primary_mastery');
+    if (c === 'taekwondo_girl')   return this._cardLvl('taekwondo_primary_mastery');
+    return 0;
+  }
+  // Character-matched primary hit spark color (electric / cyber / aqua).
+  _primarySparkColor() {
+    const c = this.player.selectedCharacter;
+    if (c === 'cyber_arm_hero') return '#ff8a3c';
+    if (c === 'taekwondo_girl') return '#14ebd2';
+    return '#bfe6ff';   // skeleton blue-white
+  }
+
+  // Corrosive Payload: a modest chance for a player hit to apply the existing corrosive DoT.
+  _tryCorrode(e) {
+    const lvl = this._cardLvl('corrosive_payload');
+    if (lvl <= 0 || !e || e.hp <= 0) return;
+    if (Math.random() < 0.18 * lvl) {
+      e._corrosiveTimer = Math.max(e._corrosiveTimer || 0, 3.0);
+      this.particles?.spawnHitSparks?.(e.pos, '#7CFF3C');   // acid-green corrosion splash
+    }
+  }
+  // Centralized corrosive DoT (reuses _corrosiveTimer + _resistDot). Base 1 dmg/s keeps existing
+  // drone-applied corrosion identical; Corrosive Payload scales it up. Acid-green bubbling visuals.
+  _updateCorrosive(dt) {
+    const dps = 1 + 3 * this._cardLvl('corrosive_payload');
+    const tick = (t) => {
+      if (!t || t.hp <= 0 || !(t._corrosiveTimer > 0)) return;
+      t._corrosiveTimer -= dt;
+      t.hp -= this._resistDot(t, dps * dt);
+      if (Math.random() < dt * 5) this.particles?.spawnHitSparks?.(t.pos, '#7CFF3C');
+    };
+    for (const e of this.enemies) tick(e);
+    tick(this.titanBoss); tick(this.annihilatorBoss); tick(this.bloodfangBoss);
+    if (this.titanBoss       && this.titanBoss.hp       <= 0) this._titanDie();
+    if (this.annihilatorBoss && this.annihilatorBoss.hp <= 0) this._annihilatorDie();
+    if (this.bloodfangBoss   && this.bloodfangBoss.hp   <= 0) this._bloodfangDie();
   }
 
   // ── Primary: Nexus Chakram ──────────────────────────────────────────────────
@@ -2836,8 +2895,9 @@ export class Game {
     }
     if (!target) return false;
     const dir = safeNormalize(new Vec2(target.x - p.pos.x, target.y - p.pos.y));
+    const km = this._cardLvl('brawler_chakram_mastery');   // Razor Chakram: +1 pierce, brighter
     this._chakrams.push({ pos: p.pos.clone(), dir, phase: 'out', dist: 0, maxDist: RANGE,
-                          speed: 520, dmg: 22, pierceLeft: 3, ang: 0, hit: new Set() });
+                          speed: 520, dmg: 22, pierceLeft: 3 + km, ang: 0, hit: new Set(), boost: km });
     this.audio?.playShoot?.();
     return true;
   }
@@ -2857,7 +2917,7 @@ export class Game {
         c.dir = safeNormalize(toP);
         c.pos.addMut(c.dir.scale(c.speed * dt));
       }
-      const retMult = c.phase === 'return' ? 0.7 : 1.0;
+      const retMult = c.phase === 'return' ? (0.7 + 0.12 * (c.boost || 0)) : 1.0;   // stronger return per level
       for (const t of this._brawlerTargets()) {
         const b = t.obj;
         if (c.hit.has(b)) continue;
@@ -2876,6 +2936,11 @@ export class Game {
     for (const c of this._chakrams) {
       ctx.save();
       ctx.translate(c.pos.x, c.pos.y); ctx.rotate(c.ang);
+      if (c.boost) {   // Razor Chakram: brighter spinning green/cyan ring trail
+        ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.55;
+        ctx.strokeStyle = '#34ff9e'; ctx.lineWidth = 2 + c.boost;
+        ctx.beginPath(); ctx.arc(0, 0, 24 + c.boost * 2, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
+      }
       if (ready) {
         ctx.drawImage(spr, -26, -26, 52, 52);
       } else {
@@ -2898,11 +2963,12 @@ export class Game {
     if (this.player.selectedCharacter !== 'brawler_warrior') return;
     this._crescentTimer -= dt;
     if (this._crescentTimer > 0) return;
-    this._crescentTimer = 3.2;
+    const rm = this._cardLvl('brawler_crescent_claw_mastery');   // Rift Render: larger + faster
+    this._crescentTimer = 3.2 - 0.3 * rm;
 
     const p = this.player;
     const aimDir = safeNormalize(p.lastFacingDir || new Vec2(1, 0));
-    const RANGE = 145, halfCone = (100 * Math.PI / 180) / 2, KB = 230;
+    const RANGE = 145 * (1 + 0.12 * rm), halfCone = ((100 + 8 * rm) * Math.PI / 180) / 2, KB = 230;
     let hits = 0;
     for (const t of this._brawlerTargets()) {
       if (hits >= 10) break;
@@ -2969,7 +3035,8 @@ export class Game {
     if (this._skyfallImpacts.length) this._skyfallImpacts = this._skyfallImpacts.filter(im => im.life > 0);
     const sf = this._skyfall;
     if (!sf) return;
-    const DURATION = 3.5, WAVES = 5, PER_WAVE = 7, DMG = 42, RADIUS = 70;
+    const lm = this._cardLvl('brawler_skyfall_lances_mastery');   // Lance Storm: extra lances + wider impact
+    const DURATION = 3.5, WAVES = 5, PER_WAVE = 7 + lm, DMG = 42, RADIUS = 70 * (1 + 0.12 * lm);
     const interval = DURATION / WAVES;
     sf.t += dt; sf.waveTimer -= dt;
     if (sf.wave < WAVES && sf.waveTimer <= 0) {
@@ -3025,7 +3092,8 @@ export class Game {
   // puddle take gradual, capped damage. Bosses take heavily reduced damage. No knockback,
   // no instant kills, count-limited for performance. Standing still spawns nothing.
   _updateAquaTrail(dt) {
-    const AQUA_TICK = 0.25, AQUA_NORMAL_TICK = 2.0, AQUA_CAP = 16;  // per-tick + per-enemy/per-puddle cap
+    const AQUA_TICK = 0.25, AQUA_CAP = 16;  // per-tick + per-enemy/per-puddle cap
+    const AQUA_NORMAL_TICK = 2.0 * (1 + 0.2 * this._cardLvl('taekwondo_aqua_trail_mastery'));  // Spirit Current: harder
 
     // Advance + retire puddles, and apply DoT (runs for any character so leftover puddles still fade)
     const puddles = this._aquaPuddles;
@@ -3148,7 +3216,7 @@ export class Game {
   _updateSpiritDojang(dt) {
     const sd = this.spiritDojang;
     if (!sd) return;
-    const DURATION = 7, RADIUS = 205;
+    const DURATION = 7, RADIUS = 205 * (1 + 0.12 * this._cardLvl('taekwondo_dojang_flag_mastery'));
     const TICK = 0.25, NORMAL_DMG = 9;       // 36 DPS to normal enemies
     const MINI_CAP = 28, MAIN_CAP = 42;      // per-second boss caps (controlled / safe)
     const SLOW = 0.30;                       // 30% slow on normal enemies inside the field
@@ -3216,7 +3284,7 @@ export class Game {
   _drawSpiritDojang(ctx) {
     const sd = this.spiritDojang;
     if (!sd) return;
-    const RADIUS = 205, DURATION = 7;
+    const RADIUS = 205 * (1 + 0.12 * this._cardLvl('taekwondo_dojang_flag_mastery')), DURATION = 7;
     const a = Math.max(0, Math.min(sd.t / 0.3, (DURATION - sd.t) / 0.6, 1));   // fade in/out
     const now = performance.now() / 1000;
     const pulse = 0.5 + 0.5 * Math.sin(now * 2.2);
@@ -5542,15 +5610,8 @@ export class Game {
     for (const drone of drones) {
       drone.update(dt, this.player.pos, this);
     }
-    // Corrosive DOT
-    const dotTargets = [...this.enemies];
-    if (this.titanBoss && this.titanBoss.hp > 0) dotTargets.push(this.titanBoss);
-    for (const t of dotTargets) {
-      if (t._corrosiveTimer > 0) {
-        t._corrosiveTimer -= dt;
-        t.hp -= this._resistDot(t, dt);  // 1 dmg/s (boss survival: DoT-resisted on bosses)
-      }
-    }
+    // Corrosive DoT is now centralized in Game._updateCorrosive (runs every frame), so drones
+    // only SET _corrosiveTimer — the tick/damage happens there (avoids double application).
     // Titan death check after all drone updates (safe — not inside the loop)
     if (this.titanBoss && this.titanBoss.hp <= 0) this._titanDie();
   }
