@@ -52,6 +52,8 @@ export function drawHUD(ctx, game) {
   drawText(ctx, 'OVERLOAD', 12, 22, '#7fa8c8', '11px Consolas, monospace');
   drawBar(ctx, 12, 28, 150, 8, game.overload, MAX_OVERLOAD, oc);
   drawText(ctx, `${game.overload.toFixed(0)}%`, 168, 37, oc, '11px Consolas, monospace');
+  // Plain-language reminder of what the meter means (display-only).
+  drawText(ctx, 'GRID COLLAPSE RISK', 12, 47, 'rgba(150,180,200,0.5)', '9px Consolas, monospace');
 
   // ── Top-right: Data-Core icon + live Grid Credits ───────────────────────
   const credits = (game.meta?.credits ?? 0).toLocaleString();
@@ -98,6 +100,28 @@ export function drawHUD(ctx, game) {
       ctx.restore();
       ctx.globalAlpha = 1;
     }
+  }
+
+  // First-run loop hint — teaches the core → matrix → overload loop without opening
+  // Instructions. Auto-dismisses (fades out over its last 1.5s); upper third, never covers
+  // the player at screen-centre. Skipped in Endless. Display-only (reads game.timeAlive).
+  if (game.timeAlive < 6.5 && !game.endless && !game.gameOver && !game.victory) {
+    const a = clamp((6.5 - game.timeAlive) / 1.5, 0, 1);
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.textAlign = 'center';
+    drawText(ctx, 'PROTECT THE GRID', WIDTH / 2, 146, CYAN, 'bold 15px Consolas, monospace');
+    drawText(ctx, 'Collect cores  →  return them to a Matrix  →  keep Overload under 100%',
+             WIDTH / 2, 168, '#cfe6f5', '12px Consolas, monospace');
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
+
+  // Contextual: while carrying cores, spell out where they go (appears only when relevant).
+  if (p.carry > 0) {
+    ctx.textAlign = 'center';
+    drawText(ctx, `CARRYING ${p.carry} CORE${p.carry === 1 ? '' : 'S'} → RETURN TO A MATRIX`,
+             WIDTH / 2, HEIGHT - 30, '#ffd23c', 'bold 12px Consolas, monospace');
   }
 
   // Matrix-under-attack warning (banner + off-screen arrow) + objective reminder.
