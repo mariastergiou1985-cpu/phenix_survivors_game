@@ -380,8 +380,8 @@ export function drawEndScreen(ctx, game) {
   const rx = WIDTH / 2 + 280;
   let y = game.victory ? 130 : 158;
 
-  // New high score banner
-  if (game.isNewHighScore) {
+  // New high score banner (suppressed in Endless — Endless shows per-record ★ NEW BEST below)
+  if (game.isNewHighScore && !game.endless) {
     ctx.font      = 'bold 26px Consolas, monospace';
     ctx.fillStyle = '#FFD700';
     ctx.textAlign = 'center';
@@ -389,28 +389,33 @@ export function drawEndScreen(ctx, game) {
     y += 38;
   }
 
-  // Run stats
-  const runStats = [
-    ['Score',               `${Math.floor(game.score ?? 0)}`],
-    ['Best Score',          `${game.bestScore ?? 0}`],
-    ['Max Combo',           `x${game.maxCombo ?? 0}`],
-    ['Survival Time',       `${mins}:${secs}`],
-    ['Enemies Defeated',    `${game.player.kills}`],
-    ['Data-Cores Secured',  `${game.player.coresSecured}`],
-    ['Grid Credits Earned', `+${game.runCreditsEarned ?? 0}`],
-    ['Total Grid Credits',  `${game.meta?.credits ?? 0}`],
-  ];
+  if (game.endless && game.endlessRun) {
+    // ── Endless mode: THIS RUN vs BEST personal records ──────────────────────
+    y = _drawEndlessRecords(ctx, game, y, lx, rx);
+  } else {
+    // Run stats
+    const runStats = [
+      ['Score',               `${Math.floor(game.score ?? 0)}`],
+      ['Best Score',          `${game.bestScore ?? 0}`],
+      ['Max Combo',           `x${game.maxCombo ?? 0}`],
+      ['Survival Time',       `${mins}:${secs}`],
+      ['Enemies Defeated',    `${game.player.kills}`],
+      ['Data-Cores Secured',  `${game.player.coresSecured}`],
+      ['Grid Credits Earned', `+${game.runCreditsEarned ?? 0}`],
+      ['Total Grid Credits',  `${game.meta?.credits ?? 0}`],
+    ];
 
-  ctx.font      = '22px Consolas, monospace';
-  ctx.textAlign = 'left';
-  for (const [label, value] of runStats) {
-    ctx.fillStyle = CYAN;
-    ctx.fillText(label, lx, y);
-    ctx.fillStyle = YELLOW;
-    ctx.textAlign = 'right';
-    ctx.fillText(value, rx, y);
+    ctx.font      = '22px Consolas, monospace';
     ctx.textAlign = 'left';
-    y += 28;
+    for (const [label, value] of runStats) {
+      ctx.fillStyle = CYAN;
+      ctx.fillText(label, lx, y);
+      ctx.fillStyle = YELLOW;
+      ctx.textAlign = 'right';
+      ctx.fillText(value, rx, y);
+      ctx.textAlign = 'left';
+      y += 28;
+    }
   }
 
   // Separator
@@ -450,4 +455,72 @@ export function drawEndScreen(ctx, game) {
   ctx.fillText('R = Retry   •   ESC = Main Menu', WIDTH / 2, 510);
 
   ctx.textAlign = 'left';
+}
+
+// Endless personal-records panel for the end screen: THIS RUN vs BEST for Time / Score / Level,
+// with a gold ★ NEW BEST tag on any record this run set. Display-only; reads the snapshot set in
+// Game._grantRewards (endlessRun / endlessBest / endlessNewBest). Returns the next y.
+function _drawEndlessRecords(ctx, game, startY, lx, rx) {
+  const run   = game.endlessRun     || { time: 0, score: 0, level: 0 };
+  const best  = game.endlessBest    || run;
+  const isNew = game.endlessNewBest || {};
+
+  const fmtTime = (s) => {
+    const m = Math.floor((s || 0) / 60).toString().padStart(2, '0');
+    const c = Math.floor((s || 0) % 60).toString().padStart(2, '0');
+    return `${m}:${c}`;
+  };
+  const fmtNum = (n) => Math.floor(n || 0).toLocaleString();
+
+  let y = startY;
+
+  // Header
+  ctx.font      = 'bold 22px Consolas, monospace';
+  ctx.fillStyle = GREEN;
+  ctx.textAlign = 'center';
+  ctx.fillText('◆ ENDLESS RECORDS ◆', WIDTH / 2, y);
+  y += 34;
+
+  // Column anchors (right edges of the THIS RUN / BEST value columns)
+  const runR  = WIDTH / 2 + 90;
+  const bestR = WIDTH / 2 + 250;
+  const tagX  = WIDTH / 2 + 262;   // left edge of the ★ NEW BEST tag
+
+  // Column headers
+  ctx.font      = '14px Consolas, monospace';
+  ctx.fillStyle = '#7fa8c8';
+  ctx.textAlign = 'right';
+  ctx.fillText('THIS RUN', runR, y);
+  ctx.fillText('BEST', bestR, y);
+  y += 26;
+
+  const rows = [
+    ['TIME',  fmtTime(run.time),  fmtTime(best.time),  isNew.time],
+    ['SCORE', fmtNum(run.score),  fmtNum(best.score),  isNew.score],
+    ['LEVEL', fmtNum(run.level),  fmtNum(best.level),  isNew.level],
+  ];
+
+  for (const [label, runV, bestV, beat] of rows) {
+    ctx.font      = '22px Consolas, monospace';
+    ctx.textAlign = 'left';
+    ctx.fillStyle = CYAN;
+    ctx.fillText(label, lx, y);
+
+    ctx.textAlign = 'right';
+    ctx.fillStyle = beat ? '#FFD700' : WHITE;
+    ctx.fillText(runV, runR, y);
+    ctx.fillStyle = beat ? '#FFD700' : YELLOW;
+    ctx.fillText(bestV, bestR, y);
+
+    if (beat) {
+      ctx.textAlign = 'left';
+      ctx.font      = 'bold 14px Consolas, monospace';
+      ctx.fillStyle = '#FFD700';
+      ctx.fillText('★ NEW BEST', tagX, y);
+    }
+    y += 30;
+  }
+
+  ctx.textAlign = 'left';
+  return y;
 }

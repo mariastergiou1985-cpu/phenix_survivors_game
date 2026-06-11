@@ -31,6 +31,9 @@ export class MetaProgress {
     this.credits = 0;
     this.levels  = {};
     this.unlocks = {};
+    // Personal Endless-mode records — kept SEPARATE from Act 1 / global high score.
+    // { time: seconds survived, score: best score, level: highest player level }.
+    this.endlessRecords = { time: 0, score: 0, level: 0 };
     this._load();
   }
 
@@ -42,6 +45,12 @@ export class MetaProgress {
       this.credits = Number(d.credits) || 0;
       this.levels  = d.levels || {};
       this.unlocks = d.unlocks || {};
+      const er = d.endlessRecords || {};
+      this.endlessRecords = {
+        time:  Number(er.time)  || 0,
+        score: Number(er.score) || 0,
+        level: Number(er.level) || 0,
+      };
     } catch (_) {}
   }
 
@@ -51,8 +60,26 @@ export class MetaProgress {
         credits: this.credits,
         levels:  this.levels,
         unlocks: this.unlocks,
+        endlessRecords: this.endlessRecords,
       }));
     } catch (_) {}
+  }
+
+  // Submit a finished Endless run. Updates any beaten personal records and persists.
+  // Returns per-record flags { time, score, level } marking which records this run set,
+  // so the end screen can show ★ NEW BEST. Compares against the PRIOR bests.
+  submitEndlessRun(run) {
+    const r = this.endlessRecords;
+    const beat = {
+      time:  (run.time  || 0) > (r.time  || 0),
+      score: (run.score || 0) > (r.score || 0),
+      level: (run.level || 0) > (r.level || 0),
+    };
+    if (beat.time)  r.time  = Math.floor(run.time  || 0);
+    if (beat.score) r.score = Math.floor(run.score || 0);
+    if (beat.level) r.level = Math.floor(run.level || 0);
+    if (beat.time || beat.score || beat.level) this._save();
+    return beat;
   }
 
   getLevel(key) { return Number(this.levels[key]) || 0; }
@@ -92,6 +119,7 @@ export class MetaProgress {
     this.credits = 0;
     this.levels  = {};
     this.unlocks = {};
+    this.endlessRecords = { time: 0, score: 0, level: 0 };
     this._save();
   }
 }

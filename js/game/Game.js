@@ -20,8 +20,8 @@ import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, dr
 import { SystemEventManager } from './Events.js?v=94';
 import { UpgradeUI }      from './UpgradeUI.js?v=4';
 import { weightedSample } from './Upgrades.js?v=4';
-import { drawHUD, drawEndScreen } from './HUD.js?v=40';
-import { MetaProgress, META_UPGRADES, upgradeCost } from './MetaProgress.js?v=2';
+import { drawHUD, drawEndScreen } from './HUD.js?v=41';
+import { MetaProgress, META_UPGRADES, upgradeCost } from './MetaProgress.js?v=3';
 
 // ── Thunder Solo sprite slices (cyan_lightning_rain_notes.png, 1254×1254) ──────
 // Strike variants: a clean bolt column + ripple base. (ax,ay) = ripple-centre as a
@@ -291,6 +291,13 @@ export class Game {
     this.comboPopups = [];   // transient milestone popups (visual only)
     this.isNewHighScore = false;
 
+    // Endless-mode records snapshot for the end screen (display-only; set in _grantRewards
+    // when this.endless). endlessRun = THIS RUN values, endlessBest = updated personal bests,
+    // endlessNewBest = which records this run beat (drives the ★ NEW BEST tag).
+    this.endlessRun     = null;
+    this.endlessBest    = null;
+    this.endlessNewBest = null;
+
     this.gameOver          = false;
     this.victory           = false;
     this.endless           = false;   // set by CONTINUE — ENDLESS after an Act 1 victory
@@ -465,6 +472,19 @@ export class Game {
       this.bestScore      = finalScore;
       this.isNewHighScore = true;
       localStorage.setItem('phenix_best_score', finalScore);
+    }
+
+    // Endless-mode personal records (separate from the global best score above).
+    // Only an Endless run feeds these; compares against the PRIOR bests, then persists.
+    if (this.endless) {
+      const run = {
+        time:  Math.floor(this.timeAlive),
+        score: finalScore,
+        level: this.player.level,
+      };
+      this.endlessRun     = run;
+      this.endlessNewBest = this.meta.submitEndlessRun(run);   // updates + persists records
+      this.endlessBest    = { ...this.meta.endlessRecords };   // post-update bests for display
     }
   }
 
