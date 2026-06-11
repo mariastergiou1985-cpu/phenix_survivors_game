@@ -1,11 +1,11 @@
 import {
   Vec2, WIDTH, HEIGHT, WORLD_W, WORLD_H, WORLD_MARGIN,
-  WIN_TIME_SECONDS, CORE_OVERLOAD_TICK_TIME, BASE_OVERLOAD_PER_CORE,
+  WIN_TIME_SECONDS, ACT1_WIN_SECONDS, CORE_OVERLOAD_TICK_TIME, BASE_OVERLOAD_PER_CORE,
   OVERLOAD_PICKUP_REDUCTION, OVERLOAD_SLOT_REDUCTION,
   MAX_OVERLOAD, PLAYER_RADIUS, CORE_RADIUS, MATRIX_RADIUS,
   DARK_BG, GRID_LINE, BLACK, CYAN, RED, GREEN, YELLOW, ORANGE, WHITE, PURPLE,
   CORE_COLORS, VIEW_SCALE, VIEW_W, VIEW_H,
-} from '../constants.js?v=52';
+} from '../constants.js?v=53';
 import { clamp, distance, safeNormalize, randomChoice, randomRange } from '../utils.js';
 
 import { FloatingText }   from '../entities/FloatingText.js';
@@ -20,7 +20,7 @@ import { ParticleSystem, ScreenShake, drawVignette, EMPRing, drawGlow } from './
 import { SystemEventManager } from './Events.js?v=94';
 import { UpgradeUI }      from './UpgradeUI.js?v=4';
 import { weightedSample } from './Upgrades.js?v=4';
-import { drawHUD, drawEndScreen } from './HUD.js?v=35';
+import { drawHUD, drawEndScreen } from './HUD.js?v=36';
 import { MetaProgress, META_UPGRADES, upgradeCost } from './MetaProgress.js?v=2';
 
 // ── Thunder Solo sprite slices (cyan_lightning_rain_notes.png, 1254×1254) ──────
@@ -282,6 +282,7 @@ export class Game {
 
     this.gameOver          = false;
     this.victory           = false;
+    this.endless           = false;   // set by CONTINUE — ENDLESS after an Act 1 victory
     this.finalMessage      = '';
     this.rewardsGranted    = false;
     this.runCreditsEarned  = 0;
@@ -367,6 +368,17 @@ export class Game {
 
   goToExitScreen() {
     this.gameState = 'exit_screen';
+  }
+
+  // CONTINUE — ENDLESS: resume an already-won run. Unlocks/rewards have already been
+  // granted at the Act 1 victory; clearing `victory` resumes the update loop, and the
+  // `!this.endless` guard on the win check stops it ever re-firing. Difficulty/roster
+  // keep scaling on absolute time, so the Rogue AI Overlord still arrives at 25:00.
+  continueEndless() {
+    if (!this.victory) return;
+    this.endless = true;
+    this.victory = false;
+    this.audio?.startGameplayMusic();
   }
 
   // Permanent Grid-Credit progression screen (spent between runs).
@@ -1444,7 +1456,7 @@ export class Game {
     }
     this.screenShake.update(dt);
 
-    if (this.timeAlive >= WIN_TIME_SECONDS) {
+    if (!this.endless && this.timeAlive >= ACT1_WIN_SECONDS) {
       this.victory      = true;
       this.finalMessage = 'CITY GRID STABILIZED — VICTORY';
       // Persist the secret unlocks revealed on the Victory screen.
@@ -3679,20 +3691,28 @@ export class Game {
       ctx.fillText(skins[i].name, centers[i], topY + th + 20);
     }
 
-    // RETURN TO MAIN MENU button — rect kept in sync with main.js click handler.
-    const BW = 320, BH = 50, BX = Math.round(WIDTH / 2 - BW / 2), BY = 540;
-    ctx.fillStyle   = 'rgba(0,20,40,0.92)';
-    ctx.strokeStyle = CYAN;
-    ctx.lineWidth   = 2;
-    ctx.beginPath(); ctx.roundRect(BX, BY, BW, BH, 6); ctx.fill(); ctx.stroke();
-    ctx.font      = 'bold 20px Consolas, monospace';
-    ctx.fillStyle = WHITE;
-    ctx.textAlign = 'center';
-    ctx.fillText('RETURN TO MAIN MENU', WIDTH / 2, BY + BH / 2 + 7);
+    // Two buttons — rects kept in sync with main.js click handler.
+    // RETURN TO MAIN MENU (left, x 328–628) • CONTINUE — ENDLESS (right, x 652–952).
+    const BW = 300, BH = 50, BY = 540, GAP = 24;
+    const LBX = Math.round(WIDTH / 2 - BW - GAP / 2);   // 328
+    const RBX = Math.round(WIDTH / 2 + GAP / 2);        // 652
+    const btn = (bx, label, border) => {
+      ctx.fillStyle   = 'rgba(0,20,40,0.92)';
+      ctx.strokeStyle = border;
+      ctx.lineWidth   = 2;
+      ctx.beginPath(); ctx.roundRect(bx, BY, BW, BH, 6); ctx.fill(); ctx.stroke();
+      ctx.font      = 'bold 19px Consolas, monospace';
+      ctx.fillStyle = WHITE;
+      ctx.textAlign = 'center';
+      ctx.fillText(label, bx + BW / 2, BY + BH / 2 + 7);
+    };
+    btn(LBX, 'RETURN TO MAIN MENU', CYAN);
+    btn(RBX, 'CONTINUE — ENDLESS', GREEN);
 
     ctx.font      = '15px Consolas, monospace';
     ctx.fillStyle = '#5a7080';
-    ctx.fillText('Click RETURN TO MAIN MENU  •  or press ESC', WIDTH / 2, 616);
+    ctx.textAlign = 'center';
+    ctx.fillText('Click a button to continue  •  ESC returns to Main Menu', WIDTH / 2, 616);
 
     ctx.textAlign = 'left';
     ctx.restore();

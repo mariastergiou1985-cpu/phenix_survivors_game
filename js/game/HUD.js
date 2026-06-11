@@ -7,17 +7,23 @@ import { drawText, drawBar, clamp } from '../utils.js';
 export function drawHUD(ctx, game) {
   const p = game.player;
 
-  // ── Top: full-width blue XP bar ─────────────────────────────────────────
+  // ── Top: full-width blue XP bar (thicker + readable LV / XP readout) ─────
+  const XPH = 9;
   const xpRatio = clamp(p.xp / p.xpToNext, 0, 1);
   ctx.fillStyle = 'rgba(6,14,26,0.92)';
-  ctx.fillRect(0, 0, WIDTH, 6);
+  ctx.fillRect(0, 0, WIDTH, XPH);
   const xpGrad = ctx.createLinearGradient(0, 0, WIDTH, 0);
   xpGrad.addColorStop(0, '#1e90ff');
   xpGrad.addColorStop(1, '#66e0ff');
   ctx.fillStyle = xpGrad;
-  ctx.fillRect(0, 0, Math.round(WIDTH * xpRatio), 6);
+  ctx.fillRect(0, 0, Math.round(WIDTH * xpRatio), XPH);
+  // thin highlight line so the fill edge reads against the dark track
+  ctx.fillStyle = 'rgba(180,235,255,0.85)';
+  ctx.fillRect(0, XPH - 1, Math.round(WIDTH * xpRatio), 1);
+  // Readout: bold level + XP-to-next, right-aligned just under the bar.
   ctx.textAlign = 'right';
-  drawText(ctx, `LV ${p.level}`, WIDTH - 12, 23, '#cfeaff', 'bold 15px Consolas, monospace');
+  drawText(ctx, `LV ${p.level}`, WIDTH - 12, 26, '#dff2ff', 'bold 17px Consolas, monospace');
+  drawText(ctx, `${Math.floor(p.xp)} / ${p.xpToNext} XP`, WIDTH - 70, 25, '#8fc6e8', '12px Consolas, monospace');
 
   // ── Top-center: timer + kills (skull) ───────────────────────────────────
   const mins = Math.floor(game.timeAlive / 60).toString().padStart(2, '0');
@@ -27,6 +33,16 @@ export function drawHUD(ctx, game) {
   _drawSkull(ctx, WIDTH / 2 - 36, 60, '#d7dee6');
   ctx.textAlign = 'left';
   drawText(ctx, `KILLS ${p.kills}`, WIDTH / 2 - 24, 65, '#d7dee6', 'bold 15px Consolas, monospace');
+
+  // Endless-mode marker (shown after a player chooses CONTINUE — ENDLESS)
+  if (game.endless) {
+    ctx.textAlign = 'center';
+    const pulse = 0.6 + 0.4 * Math.abs(Math.sin(Date.now() / 500));
+    ctx.globalAlpha = pulse;
+    drawText(ctx, '◆ ENDLESS ◆', WIDTH / 2, 84, GREEN, 'bold 13px Consolas, monospace');
+    ctx.globalAlpha = 1;
+    ctx.textAlign = 'left';
+  }
 
   // ── Top-left: compact Network Overload (kept — drives the blackout mechanic) ──
   let oc = CYAN;

@@ -14,7 +14,14 @@ export const VIEW_W = WIDTH  / VIEW_SCALE;   // ≈ 1505.9 world-units shown hor
 export const VIEW_H = HEIGHT / VIEW_SCALE;   // ≈ 847.1  world-units shown vertically
 
 // Full target is 30 minutes. Change to 180 for quick testing.
+// NOTE: WIN_TIME_SECONDS also normalizes coreVolatilityMultiplier() — do NOT repurpose
+// it as the win time. The reachable "Act 1" victory uses ACT1_WIN_SECONDS below.
 export const WIN_TIME_SECONDS = 30 * 60;
+
+// Reachable primary victory ("Act 1") — climaxes just after the Bloodfang Packmaster (10:00).
+// Used ONLY by the win check; kept separate from WIN_TIME_SECONDS so the core economy is
+// untouched. Endless mode (CONTINUE) lifts this so the run keeps scaling on absolute time.
+export const ACT1_WIN_SECONDS = 12 * 60;
 
 export const CORE_OVERLOAD_TICK_TIME  = 2.0;
 export const BASE_OVERLOAD_PER_CORE   = 1.0;

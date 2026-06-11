@@ -1,4 +1,4 @@
-import { Game } from './game/Game.js?v=154';
+import { Game } from './game/Game.js?v=155';
 import { AudioManager } from './audio/AudioManager.js?v=16';
 
 const canvas = document.getElementById('game');
@@ -137,11 +137,15 @@ canvas.addEventListener('mousedown', e => {
     game.upgradeUI.handleClick(mousePos, game);
 
   } else if (game.victory) {
-    // ── Victory screen — single RETURN TO MAIN MENU button ───────
-    // Rect kept in sync with Game._drawVictoryScreen (BX=480, BW=320, BY=540, BH=50).
-    if (mousePos.x >= 480 && mousePos.x <= 800 &&
-        mousePos.y >= 540 && mousePos.y <= 590) {
-      game.goToMainMenu();
+    // ── Victory screen — two buttons ─────────────────────────────
+    // Rects kept in sync with Game._drawVictoryScreen (BW=300, BH=50, BY=540).
+    // RETURN TO MAIN MENU (x 328–628) • CONTINUE — ENDLESS (x 652–952).
+    if (mousePos.y >= 540 && mousePos.y <= 590) {
+      if (mousePos.x >= 328 && mousePos.x <= 628) {
+        game.goToMainMenu();
+      } else if (mousePos.x >= 652 && mousePos.x <= 952) {
+        game.continueEndless();
+      }
     }
 
   } else if (game.gameOver) {
