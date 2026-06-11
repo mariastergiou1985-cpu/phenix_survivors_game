@@ -115,6 +115,15 @@ export class Game {
     };
     this._bgImage.src = 'assets/backgrounds/cyber_city_bg_clean.png?v=1';
 
+    // Endless Stage 02 visuals (only used while this.endless — Act 1 keeps default visuals).
+    // Missing files degrade to the default background / default Nexus visual (warn, no crash).
+    this._endlessBgImage = new Image();
+    this._endlessBgImage.onerror = () => console.warn('[Stage] missing assets/maps/endless/stage_02_neon_shinjuku_plaza.png — using default background');
+    this._endlessBgImage.src = 'assets/maps/endless/stage_02_neon_shinjuku_plaza.png?v=1';
+    this._endlessNexusImage = new Image();
+    this._endlessNexusImage.onerror = () => console.warn('[Nexus] missing assets/nexus/endless_nexus_base_8cores.png — using default Nexus visual');
+    this._endlessNexusImage.src = 'assets/nexus/endless_nexus_base_8cores.png?v=1';
+
     // Preload character portraits for Character Select screen
     this._charImages = {};
     ['skeleton_warrior', 'taekwondo_girl', 'cyber_arm_hero', 'brawler_warrior'].forEach(id => {
@@ -466,6 +475,7 @@ export class Game {
     this._eliteWaveTimer   = ELITE_WAVE.firstDelay;
     this._eliteWaveElapsed = 0;
     this.audio?.startEndlessMusic();   // Endless-only track (dawn) replaces gameplay music
+    this.triggerAnnouncement('STAGE 02 — NEON SHINJUKU PLAZA', CYAN);   // Endless Stage 02 visuals
   }
 
   // Permanent Grid-Credit progression screen (spent between runs).
@@ -3661,7 +3671,10 @@ export class Game {
     this._drawBossLava(ctx);
 
     // 2 ── Power Matrices (fill-based glow + counter owned by PowerMatrix; overload drives danger blink)
-    for (const m of this.matrices) m.draw(ctx, this.overload / MAX_OVERLOAD);
+    for (const m of this.matrices) {
+      if (this.endless) this._drawEndlessNexusBase(ctx, m);   // sprite UNDER the matrix (Endless only)
+      m.draw(ctx, this.overload / MAX_OVERLOAD);              // core indicators/status stay on top
+    }
 
     // 3 ── Data-Cores: GOLD and SILVER only, each a distinct SILHOUETTE in a distinct HUE
     // so they never read as generic white particles. GOLD = warm amber spinning starburst
@@ -6295,11 +6308,22 @@ export class Game {
     return { x: screenPos.x / VIEW_SCALE + this.camera.x, y: screenPos.y / VIEW_SCALE + this.camera.y };
   }
 
+  // Endless-only Nexus base sprite drawn UNDER a matrix. Clean fixed size so it doesn't cover
+  // too much play space; if the image is missing, draw nothing (the matrix renders itself).
+  _drawEndlessNexusBase(ctx, m) {
+    const img = this._endlessNexusImage;
+    if (!(img && img.complete && img.naturalWidth > 0)) return;
+    const D = 150;
+    ctx.drawImage(img, m.pos.x - D / 2, m.pos.y - D / 2, D, D);
+  }
+
   _drawWorldBackground(ctx) {
     ctx.fillStyle = DARK_BG;
     ctx.fillRect(0, 0, WORLD_W, WORLD_H);
 
-    const img = this._bgImage;
+    // Endless-only Stage 02 map; falls back to the default background if not loaded / not endless.
+    const eb  = this._endlessBgImage;
+    const img = (this.endless && eb && eb.complete && eb.naturalWidth > 0) ? eb : this._bgImage;
     if (img.complete && img.naturalWidth > 0) {
       const scale = WORLD_W / img.naturalWidth;
       const drawH = img.naturalHeight * scale;
