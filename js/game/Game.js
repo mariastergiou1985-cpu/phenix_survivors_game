@@ -20,7 +20,7 @@ import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, dr
 import { SystemEventManager } from './Events.js?v=94';
 import { UpgradeUI }      from './UpgradeUI.js?v=4';
 import { weightedSample } from './Upgrades.js?v=4';
-import { drawHUD, drawEndScreen } from './HUD.js?v=43';
+import { drawHUD, drawEndScreen } from './HUD.js?v=44';
 import { MetaProgress, META_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS } from './MetaProgress.js?v=6';
 
 // ── Thunder Solo sprite slices (cyan_lightning_rain_notes.png, 1254×1254) ──────
@@ -862,12 +862,20 @@ export class Game {
   }
 
   _createMatrices() {
-    // Phase 1 — SINGLE CENTRAL NEXUS: replaces the old 4-corner + centre layout with one
-    // larger central Nexus Matrix (capacity 16) so the map reads as a Vampire-Survivors-style
-    // central anchor instead of a 4-point tower-defence. Starts full (PowerMatrix.stored =
-    // capacity), so the early game stays gentle. Gold=+5 / Silver=+3 are core values set in
-    // PowerMatrix.stealCore — unchanged.
-    this.matrices.push(new PowerMatrix(new Vec2(WORLD_W / 2, WORLD_H / 2), CORE_COLORS[0], 16));
+    // FOUR NEXUS LAYOUT (Phase 1): 4 inset-corner Nexus points, NO centre Nexus, capacity 8
+    // each (32 total). Cleaner multi-Nexus identity than the old 5-matrix setup, with a clear
+    // central play space. Each starts full (PowerMatrix.stored = capacity), so the early game
+    // stays gentle. Gold=+5 / Silver=+3 are core values set in PowerMatrix.stealCore — unchanged.
+    const positions = [
+      [260,           230],
+      [WORLD_W - 260, 230],
+      [280,           WORLD_H - 200],
+      [WORLD_W - 280, WORLD_H - 200],
+    ];
+    for (let i = 0; i < positions.length; i++) {
+      const [x, y] = positions[i];
+      this.matrices.push(new PowerMatrix(new Vec2(x, y), CORE_COLORS[i % CORE_COLORS.length], 8));
+    }
   }
 
   currentMinute()             { return Math.floor(this.timeAlive / 60); }
@@ -3003,10 +3011,10 @@ export class Game {
     const emptySlots   = this.matrices.reduce((sum, m) => sum + (m.capacity - m.stored), 0);
 
     // Capped so falling behind on cores ramps pressure GRADUALLY instead of spiking.
-    // Nexus retune (Phase 1): empty-slot weight raised 0.012 → 0.030 because the single Nexus
-    // has 16 slots vs the old ~60, so an empty/drained Nexus still meaningfully drives Overload.
-    // Conservative (not full 3.75× compensation) + the min(0.28) cap keeps it survivable, not unfair.
-    const chaosGain = Math.min(0.28, groundCount * 0.020 + carriedCount * 0.050 + emptySlots * 0.030);
+    // Nexus retune (Four-Nexus layout): empty-slot weight 0.015 for 32 total slots (4×8). Scales
+    // the per-slot pressure back toward the original ~0.012 regime now that the grid is larger than
+    // the single 16-slot Nexus. The min(0.28) cap keeps a fully-drained grid survivable, not unfair.
+    const chaosGain = Math.min(0.28, groundCount * 0.020 + carriedCount * 0.050 + emptySlots * 0.015);
 
     if (chaosGain === 0) {
       // Grid fully secure — drain at 1.0% per second

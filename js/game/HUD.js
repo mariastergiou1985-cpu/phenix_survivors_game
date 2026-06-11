@@ -120,15 +120,21 @@ export function drawHUD(ctx, game) {
   // Contextual: while carrying cores, spell out where they go (appears only when relevant).
   if (p.carry > 0) {
     ctx.textAlign = 'center';
-    drawText(ctx, `CARRYING ${p.carry} CORE${p.carry === 1 ? '' : 'S'} → RETURN TO THE NEXUS`,
+    drawText(ctx, `CARRYING ${p.carry} CORE${p.carry === 1 ? '' : 'S'} → RETURN TO A NEXUS`,
              WIDTH / 2, HEIGHT - 30, '#ffd23c', 'bold 12px Consolas, monospace');
   }
 
   // Nexus-under-attack warning (banner + off-screen arrow) + objective reminder.
   _drawMatrixWarning(ctx, game);
   ctx.textAlign = 'center';
-  const _nx = game.matrices && game.matrices[0];
-  const _obj = _nx ? `DEFEND THE NEXUS · CORES ${Math.round(_nx.stored)}/${_nx.capacity}` : 'DEFEND THE NEXUS · RETURN CORES';
+  // Aggregate cores across ALL Nexus points (not just matrices[0]) → "CORES X/32".
+  const _mx = game.matrices || [];
+  let _obj = 'DEFEND THE NEXUS GRID · RETURN CORES';
+  if (_mx.length) {
+    let _stored = 0, _cap = 0;
+    for (const m of _mx) { _stored += m.stored; _cap += m.capacity; }
+    _obj = `DEFEND THE NEXUS GRID · CORES ${Math.round(_stored)}/${_cap}`;
+  }
   drawText(ctx, _obj, WIDTH / 2, HEIGHT - 14, 'rgba(150,180,200,0.5)', '12px Consolas, monospace');
 
   // Player visibility marker — drawn last in the HUD layer so it stays on top of enemies,
