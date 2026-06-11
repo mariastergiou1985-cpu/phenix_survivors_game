@@ -136,6 +136,22 @@ export class Player {
     }
   }
 
+  // Readability-only visibility tint (under-glow pool + sprite rim). Per-character so the
+  // hero stays trackable in late-game crowds: Skeleton = crimson, Cyber Arm = blue,
+  // Taekwondo/Dojang Girl = aqua. Subtle alphas keep it premium, not gaudy.
+  _getVisibilityColors() {
+    switch (this.selectedCharacter) {
+      case 'skeleton_warrior':
+        return { rim: '#ff3a4e', innerGlow: 'rgba(255,58,78,0.32)',  outerGlow: 'rgba(255,58,78,0)' };
+      case 'cyber_arm_hero':
+        return { rim: '#3aa0ff', innerGlow: 'rgba(58,160,255,0.30)', outerGlow: 'rgba(58,160,255,0)' };
+      case 'taekwondo_girl':
+        return { rim: '#14ebd2', innerGlow: 'rgba(20,235,210,0.30)', outerGlow: 'rgba(20,235,210,0)' };
+      default:
+        return { rim: '#00e6ff', innerGlow: 'rgba(0,230,255,0.28)',  outerGlow: 'rgba(0,230,255,0)' };
+    }
+  }
+
   get speed()             { return this.baseSpeed * (1 + this.speedBonus); }
   get overloadDampening() { return this.upgrades['Firewall Protection'] * 0.02; }
 
@@ -288,13 +304,32 @@ export class Player {
     }
     ctx.restore();
 
+    // ── Player visibility pass (readability only) — character-tinted ground glow + sprite rim.
+    // Drawn in world space so it scales with the camera zoom on every map. A soft neon pool at
+    // the feet plus a tinted rim that hugs the silhouette keeps the player trackable in late-game
+    // crowds. Purely cosmetic — no gameplay effect.
+    const vis = this._getVisibilityColors();
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const gx = this.pos.x, gy = this.pos.y + 16, gr = PLAYER_RADIUS * 2.5;
+    const pool = ctx.createRadialGradient(gx, gy, 0, gx, gy, gr);
+    pool.addColorStop(0, vis.innerGlow);
+    pool.addColorStop(1, vis.outerGlow);
+    ctx.fillStyle = pool;
+    ctx.beginPath(); ctx.ellipse(gx, gy, gr, gr * 0.5, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+
     // Draw character sprite (64 px tall) or fallback colored circle
     const colors = this._getCharacterFallbackColors();
     const spr    = this.characterSprite;
     if (spr && spr.complete && spr.naturalWidth > 0) {
       const sprH = 64;
       const sprW = Math.round(spr.naturalWidth * (sprH / spr.naturalHeight));
+      ctx.save();
+      ctx.shadowColor = vis.rim;   // tinted rim hugging the sprite silhouette ("outline")
+      ctx.shadowBlur  = 8;
       ctx.drawImage(spr, this.pos.x - sprW / 2, this.pos.y - sprH / 2, sprW, sprH);
+      ctx.restore();
     } else {
       ctx.fillStyle   = colors.primary;
       ctx.beginPath(); ctx.arc(this.pos.x, this.pos.y, PLAYER_RADIUS, 0, Math.PI * 2); ctx.fill();
