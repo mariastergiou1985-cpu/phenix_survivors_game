@@ -21,7 +21,7 @@ import { SystemEventManager } from './Events.js?v=94';
 import { UpgradeUI }      from './UpgradeUI.js?v=4';
 import { weightedSample } from './Upgrades.js?v=4';
 import { drawHUD, drawEndScreen } from './HUD.js?v=42';
-import { MetaProgress, META_UPGRADES, upgradeCost } from './MetaProgress.js?v=4';
+import { MetaProgress, META_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS } from './MetaProgress.js?v=5';
 
 // ── Thunder Solo sprite slices (cyan_lightning_rain_notes.png, 1254×1254) ──────
 // Strike variants: a clean bolt column + ripple base. (ax,ay) = ripple-centre as a
@@ -230,7 +230,7 @@ export class Game {
       { id: 'cyber_arm_hero',   name: 'Cyber Arm Hero',         fallbackColor: '#FF6600', fallbackAlt: '#CC0000', role: 'Ranged / Damage' },
     ];
     // UPGRADES = the permanent Grid-Credit progression (spent between runs). Kept & fixed.
-    this.menuItems = ['START GAME', 'CHARACTER SELECT', 'UPGRADES', 'INSTRUCTIONS', 'AUDIO SETTINGS', 'CREDITS', 'EXIT'];
+    this.menuItems = ['START GAME', 'CHARACTER SELECT', 'UPGRADES', 'ACHIEVEMENTS', 'INSTRUCTIONS', 'AUDIO SETTINGS', 'CREDITS', 'EXIT'];
 
     this.reset();
   }
@@ -420,6 +420,9 @@ export class Game {
   }
 
   goToCredits() { this.gameState = 'credits'; }
+
+  // Read-only Endless achievements gallery (display only — never unlocks/resets anything).
+  goToAchievementsScreen() { this.gameState = 'achievements'; }
 
   goToAudioSettings() {
     this.gameState      = 'audio_settings';
@@ -718,6 +721,98 @@ export class Game {
     ctx.fillStyle = '#3a5060';
     ctx.textAlign = 'center';
     ctx.fillText('Click an upgrade to purchase  •  ESC = Back to menu', WIDTH / 2, HEIGHT - 16);
+    ctx.textAlign = 'left';
+  }
+
+  // ─── Achievements screen (read-only Endless gallery) ─────────────────────────
+  // Display only: reads MetaProgress.achievements / ENDLESS_ACHIEVEMENTS. Never unlocks
+  // or resets anything, never touches gameplay. Mirrors the UPGRADES screen pattern.
+  _achievementsBackRect() {
+    return { x: Math.round(WIDTH / 2 - 80), y: HEIGHT - 70, w: 160, h: 40 };
+  }
+
+  _updateAchievementsScreen(input) {
+    if (input.keys.has('escape')) {
+      this.goToMainMenu();
+      input.keys.delete('escape');
+    }
+  }
+
+  handleAchievementsClick(mousePos) {
+    if (this._inRect(mousePos, this._achievementsBackRect())) this.goToMainMenu();
+  }
+
+  _drawAchievementsScreen(ctx) {
+    this._drawBackground(ctx);
+    ctx.fillStyle = 'rgba(0,0,0,0.82)';
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+    // Title
+    ctx.font      = 'bold 40px Consolas, monospace';
+    ctx.fillStyle = CYAN;
+    ctx.textAlign = 'center';
+    ctx.fillText('ACHIEVEMENTS', WIDTH / 2, 52);
+
+    // Progress header — X / N UNLOCKED
+    const total  = ENDLESS_ACHIEVEMENTS.length;
+    const earned = ENDLESS_ACHIEVEMENTS.reduce((n, a) => n + (this.meta.achievements[a.id] ? 1 : 0), 0);
+    ctx.font      = 'bold 20px Consolas, monospace';
+    ctx.fillStyle = YELLOW;
+    ctx.fillText(`${earned} / ${total} UNLOCKED`, WIDTH / 2, 82);
+
+    // Rows
+    const listW = 760, rowH = 54, gap = 8, x0 = Math.round((WIDTH - listW) / 2), y0 = 108;
+    for (let i = 0; i < total; i++) {
+      const a   = ENDLESS_ACHIEVEMENTS[i];
+      const got = !!this.meta.achievements[a.id];
+      const ry  = y0 + i * (rowH + gap);
+
+      // Row background + border
+      ctx.fillStyle   = got ? '#0c1410' : '#0a0f20';
+      ctx.fillRect(x0, ry, listW, rowH);
+      ctx.strokeStyle = got ? GREEN : '#2a4060';
+      ctx.lineWidth   = got ? 2 : 1;
+      ctx.strokeRect(x0, ry, listW, rowH);
+
+      // Name
+      ctx.font      = 'bold 18px Consolas, monospace';
+      ctx.fillStyle = got ? WHITE : '#6a8090';
+      ctx.textAlign = 'left';
+      ctx.fillText(a.name, x0 + 18, ry + 23);
+
+      // Description / goal
+      ctx.font      = '12px Consolas, monospace';
+      ctx.fillStyle = got ? '#7fa8c8' : '#56707f';
+      ctx.fillText(a.desc, x0 + 18, ry + 42);
+
+      // Status tag (right-aligned)
+      ctx.font      = 'bold 15px Consolas, monospace';
+      ctx.textAlign = 'right';
+      if (got) {
+        ctx.fillStyle = '#FFD700';
+        ctx.fillText('★ UNLOCKED', x0 + listW - 16, ry + 32);
+      } else {
+        ctx.fillStyle = '#5a7080';
+        ctx.fillText('🔒 LOCKED', x0 + listW - 16, ry + 32);
+      }
+    }
+
+    // Back button
+    const back = this._achievementsBackRect();
+    ctx.fillStyle   = '#0a1820';
+    ctx.fillRect(back.x, back.y, back.w, back.h);
+    ctx.strokeStyle = CYAN; ctx.lineWidth = 1;
+    ctx.strokeRect(back.x, back.y, back.w, back.h);
+    ctx.font      = 'bold 14px Consolas, monospace';
+    ctx.fillStyle = CYAN;
+    ctx.textAlign = 'center';
+    ctx.fillText('◀  BACK', back.x + back.w / 2, back.y + 26);
+
+    // Hint
+    ctx.font      = '13px Consolas, monospace';
+    ctx.fillStyle = '#3a5060';
+    ctx.textAlign = 'center';
+    ctx.fillText('ESC = Back to menu', WIDTH / 2, HEIGHT - 16);
     ctx.textAlign = 'left';
   }
 
@@ -1474,6 +1569,10 @@ export class Game {
       this._updateUpgradesScreen(input);
       return;
     }
+    if (this.gameState === 'achievements') {
+      this._updateAchievementsScreen(input);
+      return;
+    }
     if (this.gameState === 'credits') {
       this._updateCreditsScreen(input);
       return;
@@ -1919,6 +2018,7 @@ export class Game {
   _selectMenuItem(item) {
     if (item === 'START GAME' || item === 'CHARACTER SELECT') this.goToCharacterSelect();
     else if (item === 'UPGRADES')       this.goToUpgradesScreen();
+    else if (item === 'ACHIEVEMENTS')   this.goToAchievementsScreen();
     else if (item === 'INSTRUCTIONS')   this.goToInstructions();
     else if (item === 'AUDIO SETTINGS') this.goToAudioSettings();
     else if (item === 'CREDITS')        this.goToCredits();
@@ -3161,6 +3261,10 @@ export class Game {
       this._drawUpgradesScreen(ctx);
       return;
     }
+    if (this.gameState === 'achievements') {
+      this._drawAchievementsScreen(ctx);
+      return;
+    }
     if (this.gameState === 'credits') {
       this._drawCreditsScreen(ctx);
       return;
@@ -3564,7 +3668,7 @@ export class Game {
 
     // Button labels — always drawn, no duplication possible since image has none
     // Layout constants are mirrored in main.js start_menu click hit-test.
-    const startY = 250, spacing = 64, BW = 360;
+    const startY = 250, spacing = 56, BW = 360;
     for (let i = 0; i < this.menuItems.length; i++) {
       const y  = startY + i * spacing;
       const bx = WIDTH / 2 - BW / 2;

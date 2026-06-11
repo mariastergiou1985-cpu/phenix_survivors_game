@@ -30,13 +30,13 @@ export const UNLOCK_KEYS = [
 // finished-run stats snapshot { time (s), level, score, combo, cores } — it never mutates
 // game state. Recognition only: no rewards, no stat bonuses. Persisted in `phenix_meta`.
 export const ENDLESS_ACHIEVEMENTS = [
-  { id: 'first_endless',   name: 'FIRST ENDLESS RUN', test: ()  => true },
-  { id: 'endless_survivor', name: 'ENDLESS SURVIVOR',  test: (s) => s.time  >= 15 * 60 },
-  { id: 'grid_legend',     name: 'GRID LEGEND',        test: (s) => s.time  >= 20 * 60 },
-  { id: 'level_breaker',   name: 'LEVEL BREAKER',      test: (s) => s.level >= 30 },
-  { id: 'score_hunter',    name: 'SCORE HUNTER',       test: (s) => s.score >= 50000 },
-  { id: 'combo_master',    name: 'COMBO MASTER',       test: (s) => s.combo >= 100 },
-  { id: 'core_defender',   name: 'CORE DEFENDER',      test: (s) => s.cores >= 25 },
+  { id: 'first_endless',   name: 'FIRST ENDLESS RUN', desc: 'Finish one Endless run',       test: ()  => true },
+  { id: 'endless_survivor', name: 'ENDLESS SURVIVOR',  desc: 'Survive 15:00 in Endless',     test: (s) => s.time  >= 15 * 60 },
+  { id: 'grid_legend',     name: 'GRID LEGEND',        desc: 'Survive 20:00 in Endless',     test: (s) => s.time  >= 20 * 60 },
+  { id: 'level_breaker',   name: 'LEVEL BREAKER',      desc: 'Reach Level 30 in Endless',    test: (s) => s.level >= 30 },
+  { id: 'score_hunter',    name: 'SCORE HUNTER',       desc: 'Reach 50,000 score in Endless', test: (s) => s.score >= 50000 },
+  { id: 'combo_master',    name: 'COMBO MASTER',       desc: 'Reach combo x100 in Endless',  test: (s) => s.combo >= 100 },
+  { id: 'core_defender',   name: 'CORE DEFENDER',      desc: 'Secure 25 cores in Endless',   test: (s) => s.cores >= 25 },
 ];
 
 export class MetaProgress {

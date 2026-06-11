@@ -1,4 +1,4 @@
-import { Game } from './game/Game.js?v=165';
+import { Game } from './game/Game.js?v=166';
 import { AudioManager } from './audio/AudioManager.js?v=16';
 
 const canvas = document.getElementById('game');
@@ -85,6 +85,8 @@ window.addEventListener('keydown', e => {
       game.goToMainMenu();
     } else if (game.gameState === 'instructions') {
       game.goToMainMenu();
+    } else if (game.gameState === 'achievements') {
+      game.goToMainMenu();
     } else if (game.gameState === 'playing') {
       if (game.gameOver || game.victory) {
         game.goToMainMenu();        // game ended → back to start menu
@@ -169,7 +171,7 @@ canvas.addEventListener('mousedown', e => {
   } else if (game.gameState === 'start_menu') {
     // ── Start Menu ───────────────────────────────────────────────
     // Layout constants mirror Game.js _drawStartMenu (must stay in sync).
-    const BW = 360, BH = 52, startY = 250, spacing = 64;
+    const BW = 360, BH = 52, startY = 250, spacing = 56;
     for (let i = 0; i < game.menuItems.length; i++) {
       const bx = canvas.width / 2 - BW / 2;
       const by = startY + i * spacing - 30;
@@ -184,6 +186,10 @@ canvas.addEventListener('mousedown', e => {
   } else if (game.gameState === 'upgrades') {
     // ── Upgrades screen ──────────────────────────────────────────
     game.handleUpgradesClick(mousePos);
+
+  } else if (game.gameState === 'achievements') {
+    // ── Achievements screen (display only) ───────────────────────
+    game.handleAchievementsClick(mousePos);
 
   } else if (game.gameState === 'credits') {
     const ph = 460, bw = 220, bh = 46;
