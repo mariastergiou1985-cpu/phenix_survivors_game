@@ -15,8 +15,9 @@ No install required. Runs in any modern browser.
 | WASD / Arrow Keys | Move |
 | Auto-Fire | Automatic — no mouse click |
 | SHIFT | Dash |
-| SPACE | Reserved — Special Ability (soon) |
-| E | Special Move |
+| SPACE | Ultimate — per-character special (Thunder Solo / Overheated Chains / Spirit Dojang) |
+| Q | Pulse Shield |
+| E | EMP Cloud (stun burst) |
 | T | Toggle Aim Assist |
 | M | Mute / Unmute Music |
 | ESC | Back / Pause |

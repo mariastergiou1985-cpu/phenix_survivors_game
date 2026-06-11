@@ -21,7 +21,7 @@ import { SystemEventManager } from './Events.js?v=94';
 import { UpgradeUI }      from './UpgradeUI.js?v=4';
 import { weightedSample } from './Upgrades.js?v=4';
 import { drawHUD, drawEndScreen } from './HUD.js?v=35';
-import { MetaProgress, META_UPGRADES, upgradeCost } from './MetaProgress.js?v=1';
+import { MetaProgress, META_UPGRADES, upgradeCost } from './MetaProgress.js?v=2';
 
 // ── Thunder Solo sprite slices (cyan_lightning_rain_notes.png, 1254×1254) ──────
 // Strike variants: a clean bolt column + ripple base. (ax,ay) = ripple-centre as a
@@ -184,6 +184,28 @@ export class Game {
     this._bloodfangSprite = new Image();
     this._bloodfangSprite.onerror = () => console.warn('[Boss] assets/enemies/bosses/bloodfang_packmaster.png failed to load — using fallback');
     this._bloodfangSprite.src = 'assets/enemies/bosses/bloodfang_packmaster.png?v=1';
+
+    // Preload secret-skin preview sprites (Character Select locked/unlocked + Victory screen).
+    // Keyed by the same flags MetaProgress persists. Missing files degrade to a text fallback.
+    this._skinImages = {};
+    [
+      ['golden_skeleton_warrior', 'assets/unlocks/secret_skins/golden_skeleton_warrior.png'],
+      ['dark_cyber_arm_hero',     'assets/unlocks/secret_skins/dark_cyber_arm_hero.png'],
+      ['grandmaster_dojang_girl', 'assets/unlocks/secret_skins/grandmaster_dojang_girl.png'],
+    ].forEach(([key, src]) => {
+      const img = new Image();
+      img.onerror = () => console.warn('[Skins] missing ' + src + ' — text fallback used');
+      img.src = src;
+      this._skinImages[key] = img;
+    });
+
+    // Optional Victory-screen art (decorative only — null-checked at draw time, never required)
+    this._victoryLogo = new Image();
+    this._victoryLogo.onerror = () => console.warn('[Victory] victory_logo.png missing — text title used');
+    this._victoryLogo.src = 'assets/ui/victory/victory_logo.png';
+    this._victoryLogsBadge = new Image();
+    this._victoryLogsBadge.onerror = () => console.warn('[Victory] secret_logs_badge.png missing — text used');
+    this._victoryLogsBadge.src = 'assets/ui/victory/secret_logs_badge.png';
 
     // Game state management
     this.gameState = 'start_menu'; // 'start_menu' | 'character_select' | 'playing' | 'game_over' | 'victory' | 'exit_screen'
@@ -1425,6 +1447,11 @@ export class Game {
     if (this.timeAlive >= WIN_TIME_SECONDS) {
       this.victory      = true;
       this.finalMessage = 'CITY GRID STABILIZED — VICTORY';
+      // Persist the secret unlocks revealed on the Victory screen.
+      this.meta?.unlockMany([
+        'log_1985', 'log_1983',
+        'golden_skeleton_warrior', 'dark_cyber_arm_hero', 'grandmaster_dojang_girl',
+      ]);
       this.audio?.stopAll();
       this._grantRewards();
       return;
@@ -3421,7 +3448,8 @@ export class Game {
     this._drawAnnouncement(ctx);
 
     if (this.upgradeUI) this.upgradeUI.draw(ctx, this.player, this);
-    if (this.gameOver || this.victory) drawEndScreen(ctx, this);
+    if (this.victory)        this._drawVictoryScreen(ctx);
+    else if (this.gameOver)  drawEndScreen(ctx, this);
 
     if (this.paused && !this.gameOver && !this.victory) {
       ctx.fillStyle = 'rgba(0,0,0,0.55)';
@@ -3554,6 +3582,122 @@ export class Game {
 
   // ─────────────────────────────────────────────────────────────────────────
 
+  // Secret-skin roster (flag key → display name). Single source of truth shared by
+  // the Victory screen and Character Select so the two never drift.
+  _secretSkins() {
+    return [
+      { key: 'golden_skeleton_warrior', name: 'Golden Skeleton Warrior' },
+      { key: 'dark_cyber_arm_hero',     name: 'Dark Cyber Arm Hero'     },
+      { key: 'grandmaster_dojang_girl', name: 'Grandmaster Dojang Girl' },
+    ];
+  }
+
+  // Framed skin thumbnail. Unlocked → bright preview + neon frame; locked → darkened
+  // silhouette + padlock. Missing image degrades to a '?' placeholder (never crashes).
+  _drawSkinThumb(ctx, key, cx, topY, w, h, unlocked) {
+    const x   = Math.round(cx - w / 2);
+    const img = this._skinImages[key];
+
+    ctx.fillStyle = unlocked ? 'rgba(12,24,40,0.92)' : 'rgba(6,10,18,0.92)';
+    ctx.beginPath(); ctx.roundRect(x, topY, w, h, 6); ctx.fill();
+
+    if (img && img.complete && img.naturalWidth > 0) {
+      const pad = 6, aw = w - pad * 2, ah = h - pad * 2;
+      const s   = Math.min(aw / img.naturalWidth, ah / img.naturalHeight);
+      const dw  = Math.round(img.naturalWidth * s);
+      const dh  = Math.round(img.naturalHeight * s);
+      const dx  = Math.round(cx - dw / 2);
+      const dy  = Math.round(topY + (h - dh) / 2);
+      ctx.drawImage(img, dx, dy, dw, dh);
+      if (!unlocked) {
+        ctx.fillStyle = 'rgba(0,0,0,0.74)';
+        ctx.beginPath(); ctx.roundRect(x, topY, w, h, 6); ctx.fill();
+      }
+    } else {
+      ctx.fillStyle = unlocked ? PURPLE : '#33414f';
+      ctx.font = 'bold 46px Consolas, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('?', cx, topY + h / 2 + 16);
+    }
+
+    ctx.lineWidth   = 2;
+    ctx.strokeStyle = unlocked ? PURPLE : '#2d3c4b';
+    ctx.beginPath(); ctx.roundRect(x, topY, w, h, 6); ctx.stroke();
+
+    if (!unlocked) {
+      // Simple padlock glyph (vector — no emoji font dependency)
+      const ly = topY + h / 2;
+      ctx.strokeStyle = '#9fb0c0'; ctx.fillStyle = '#9fb0c0'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(cx, ly - 6, 8, Math.PI, 0); ctx.stroke();
+      ctx.fillRect(cx - 11, ly - 2, 22, 16);
+    }
+  }
+
+  // ─── Victory screen ───────────────────────────────────────────────────────────
+  // Shown when the run is WON (this.victory). Cyberpunk end card + secret-skin reveal.
+  // Loss still uses drawEndScreen(); this method is victory-only and additive.
+  _drawVictoryScreen(ctx) {
+    ctx.save();
+    ctx.fillStyle = 'rgba(2,6,14,0.95)';
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+    // Optional decorative logo — drawn small at the very top if the asset exists.
+    const logo = this._victoryLogo;
+    if (logo && logo.complete && logo.naturalWidth > 0) {
+      const lh = 64, lw = Math.round(logo.naturalWidth * (lh / logo.naturalHeight));
+      ctx.globalAlpha = 0.85;
+      ctx.drawImage(logo, Math.round(WIDTH / 2 - lw / 2), 6, lw, lh);
+      ctx.globalAlpha = 1;
+    }
+
+    ctx.textAlign = 'center';
+
+    const line = (text, y, size, color, bold = false) => {
+      ctx.font      = `${bold ? 'bold ' : ''}${size}px Consolas, monospace`;
+      ctx.fillStyle = color;
+      ctx.fillText(text, WIDTH / 2, y);
+    };
+
+    line('THANK YOU FOR PLAYING',          80,  38, GREEN, true);
+    line('THE CYBER GRID HAS BEEN SAVED',  116, 24, CYAN);
+    line('MADE BY InkSpireM Visuals',      150, 18, WHITE);
+    line('MUSIC BY Tsali',                 174, 18, WHITE);
+    line('SYSTEM LOG #1985 FOUND',         210, 18, YELLOW);
+    line('SYSTEM LOG #1983 FOUND',         234, 18, YELLOW);
+    line('ACCESS GRANTED...',              268, 20, GREEN);
+    line('SECRET SKINS UNLOCKED',          304, 26, PURPLE, true);
+
+    // Three unlocked skin previews
+    const skins = this._secretSkins();
+    const tw = 120, th = 130, topY = 322;
+    const centers = [WIDTH / 2 - 180, WIDTH / 2, WIDTH / 2 + 180];
+    for (let i = 0; i < skins.length; i++) {
+      this._drawSkinThumb(ctx, skins[i].key, centers[i], topY, tw, th, true);
+      ctx.font = '13px Consolas, monospace';
+      ctx.fillStyle = WHITE;
+      ctx.textAlign = 'center';
+      ctx.fillText(skins[i].name, centers[i], topY + th + 20);
+    }
+
+    // RETURN TO MAIN MENU button — rect kept in sync with main.js click handler.
+    const BW = 320, BH = 50, BX = Math.round(WIDTH / 2 - BW / 2), BY = 540;
+    ctx.fillStyle   = 'rgba(0,20,40,0.92)';
+    ctx.strokeStyle = CYAN;
+    ctx.lineWidth   = 2;
+    ctx.beginPath(); ctx.roundRect(BX, BY, BW, BH, 6); ctx.fill(); ctx.stroke();
+    ctx.font      = 'bold 20px Consolas, monospace';
+    ctx.fillStyle = WHITE;
+    ctx.textAlign = 'center';
+    ctx.fillText('RETURN TO MAIN MENU', WIDTH / 2, BY + BH / 2 + 7);
+
+    ctx.font      = '15px Consolas, monospace';
+    ctx.fillStyle = '#5a7080';
+    ctx.fillText('Click RETURN TO MAIN MENU  •  or press ESC', WIDTH / 2, 616);
+
+    ctx.textAlign = 'left';
+    ctx.restore();
+  }
+
   _drawCharacterSelect(ctx) {
     this._drawBackground(ctx);
     ctx.fillStyle = 'rgba(0,0,0,0.7)';
@@ -3613,10 +3757,33 @@ export class Game {
       ctx.fillText(char.role, x + cardWidth / 2, y + cardHeight - 12);
     }
 
+    // ── Secret skins strip (locked silhouettes until earned via a victory) ──────
+    ctx.font      = 'bold 15px Consolas, monospace';
+    ctx.fillStyle = PURPLE;
+    ctx.textAlign = 'center';
+    ctx.fillText('◆  SECRET SKINS  ◆', WIDTH / 2, 528);
+
+    const skins = this._secretSkins();
+    const stW = 54, stH = 64, stTop = 536;
+    const stCenters = [WIDTH / 2 - 200, WIDTH / 2, WIDTH / 2 + 200];
+    for (let i = 0; i < skins.length; i++) {
+      const unlocked = this.meta?.isUnlocked(skins[i].key) === true;
+      this._drawSkinThumb(ctx, skins[i].key, stCenters[i], stTop, stW, stH, unlocked);
+
+      ctx.font      = '11px Consolas, monospace';
+      ctx.fillStyle = unlocked ? WHITE : '#78919f';
+      ctx.textAlign = 'center';
+      ctx.fillText(skins[i].name, stCenters[i], stTop + stH + 16);
+
+      ctx.font      = 'bold 12px Consolas, monospace';
+      ctx.fillStyle = unlocked ? GREEN : '#5a7080';
+      ctx.fillText(unlocked ? 'UNLOCKED' : 'LOCKED', stCenters[i], stTop + stH + 32);
+    }
+
     ctx.font = '14px Consolas, monospace';
     ctx.fillStyle = WHITE;
     ctx.textAlign = 'center';
-    ctx.fillText('← → Select • ENTER Confirm • ESC Back', WIDTH / 2, HEIGHT - 30);
+    ctx.fillText('← → Select • ENTER Confirm • ESC Back', WIDTH / 2, HEIGHT - 12);
   }
 
   _drawExitScreen(ctx) {

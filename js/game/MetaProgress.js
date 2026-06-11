@@ -16,10 +16,21 @@ export function upgradeCost(upg, level) {
   return table[Math.min(level, table.length - 1)];
 }
 
+// Secret unlock flags — set on a victory, persisted in localStorage, read by the
+// Victory screen and Character Select. Additive: never gates existing progression.
+export const UNLOCK_KEYS = [
+  'log_1985',
+  'log_1983',
+  'golden_skeleton_warrior',
+  'dark_cyber_arm_hero',
+  'grandmaster_dojang_girl',
+];
+
 export class MetaProgress {
   constructor() {
     this.credits = 0;
     this.levels  = {};
+    this.unlocks = {};
     this._load();
   }
 
@@ -30,6 +41,7 @@ export class MetaProgress {
       const d = JSON.parse(raw);
       this.credits = Number(d.credits) || 0;
       this.levels  = d.levels || {};
+      this.unlocks = d.unlocks || {};
     } catch (_) {}
   }
 
@@ -38,6 +50,7 @@ export class MetaProgress {
       localStorage.setItem('phenix_meta', JSON.stringify({
         credits: this.credits,
         levels:  this.levels,
+        unlocks: this.unlocks,
       }));
     } catch (_) {}
   }
@@ -45,6 +58,24 @@ export class MetaProgress {
   getLevel(key) { return Number(this.levels[key]) || 0; }
 
   addCredits(n) { this.credits += n; this._save(); }
+
+  // ─── Secret unlocks ─────────────────────────────────────────────────────────
+  isUnlocked(key) { return this.unlocks[key] === true; }
+
+  unlock(key) {
+    if (this.unlocks[key] === true) return;
+    this.unlocks[key] = true;
+    this._save();
+  }
+
+  // Unlock several flags and persist once (used by the Victory screen).
+  unlockMany(keys) {
+    let changed = false;
+    for (const k of keys) {
+      if (this.unlocks[k] !== true) { this.unlocks[k] = true; changed = true; }
+    }
+    if (changed) this._save();
+  }
 
   tryBuy(upg) {
     const lvl  = this.getLevel(upg.key);
@@ -60,6 +91,7 @@ export class MetaProgress {
   reset() {
     this.credits = 0;
     this.levels  = {};
+    this.unlocks = {};
     this._save();
   }
 }

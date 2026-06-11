@@ -1,4 +1,4 @@
-import { Game } from './game/Game.js?v=153';
+import { Game } from './game/Game.js?v=154';
 import { AudioManager } from './audio/AudioManager.js?v=16';
 
 const canvas = document.getElementById('game');
@@ -136,8 +136,16 @@ canvas.addEventListener('mousedown', e => {
     // ── In-game upgrade card (level-up choice) ────────────────────
     game.upgradeUI.handleClick(mousePos, game);
 
-  } else if (game.gameOver || game.victory) {
-    // ── Game Over / Victory screen buttons ───────────────────────
+  } else if (game.victory) {
+    // ── Victory screen — single RETURN TO MAIN MENU button ───────
+    // Rect kept in sync with Game._drawVictoryScreen (BX=480, BW=320, BY=540, BH=50).
+    if (mousePos.x >= 480 && mousePos.x <= 800 &&
+        mousePos.y >= 540 && mousePos.y <= 590) {
+      game.goToMainMenu();
+    }
+
+  } else if (game.gameOver) {
+    // ── Game Over screen buttons ─────────────────────────────────
     // RETRY  (x 316–516, y 440–486)
     if (mousePos.x >= 316 && mousePos.x <= 516 &&
         mousePos.y >= 440 && mousePos.y <= 486) {
