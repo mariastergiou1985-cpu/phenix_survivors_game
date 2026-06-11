@@ -120,14 +120,16 @@ export function drawHUD(ctx, game) {
   // Contextual: while carrying cores, spell out where they go (appears only when relevant).
   if (p.carry > 0) {
     ctx.textAlign = 'center';
-    drawText(ctx, `CARRYING ${p.carry} CORE${p.carry === 1 ? '' : 'S'} → RETURN TO A MATRIX`,
+    drawText(ctx, `CARRYING ${p.carry} CORE${p.carry === 1 ? '' : 'S'} → RETURN TO THE NEXUS`,
              WIDTH / 2, HEIGHT - 30, '#ffd23c', 'bold 12px Consolas, monospace');
   }
 
-  // Matrix-under-attack warning (banner + off-screen arrow) + objective reminder.
+  // Nexus-under-attack warning (banner + off-screen arrow) + objective reminder.
   _drawMatrixWarning(ctx, game);
   ctx.textAlign = 'center';
-  drawText(ctx, 'DEFEND MATRICES · RETURN CORES', WIDTH / 2, HEIGHT - 14, 'rgba(150,180,200,0.5)', '12px Consolas, monospace');
+  const _nx = game.matrices && game.matrices[0];
+  const _obj = _nx ? `DEFEND THE NEXUS · CORES ${Math.round(_nx.stored)}/${_nx.capacity}` : 'DEFEND THE NEXUS · RETURN CORES';
+  drawText(ctx, _obj, WIDTH / 2, HEIGHT - 14, 'rgba(150,180,200,0.5)', '12px Consolas, monospace');
 
   // Player visibility marker — drawn last in the HUD layer so it stays on top of enemies,
   // projectiles, rain, and effects during late-game chaos.
@@ -163,7 +165,7 @@ function _drawMatrixWarning(ctx, game) {
   ctx.globalAlpha = pulse;
   ctx.shadowColor = RED; ctx.shadowBlur = 8;
   ctx.textAlign = 'center';
-  drawText(ctx, '‹ MATRIX UNDER ATTACK ›', WIDTH / 2, 118, '#ff5a3c', 'bold 16px Consolas, monospace');
+  drawText(ctx, '‹ NEXUS UNDER ATTACK ›', WIDTH / 2, 118, '#ff5a3c', 'bold 16px Consolas, monospace');
   ctx.restore();
   ctx.globalAlpha = 1;
 
@@ -196,7 +198,7 @@ function _drawMatrixWarning(ctx, game) {
     ctx.fillStyle = '#ffb070';
     ctx.font = 'bold 10px Consolas, monospace';
     ctx.textAlign = 'center';
-    ctx.fillText('MATRIX', ex - Math.cos(ang) * 18, ey - Math.sin(ang) * 18 + 3);
+    ctx.fillText('NEXUS', ex - Math.cos(ang) * 18, ey - Math.sin(ang) * 18 + 3);
     ctx.restore();
     ctx.globalAlpha = 1;
   }
@@ -359,7 +361,7 @@ export function drawEndScreen(ctx, game) {
     let cause = '', hint = '';
     if (game.finalMessage === 'CITY GRID TOTAL BLACKOUT') {
       cause = 'CAUSE: OVERLOAD REACHED 100%';
-      hint  = 'DEFEND MATRICES · RETURN CORES TO REDUCE OVERLOAD';
+      hint  = 'DEFEND THE NEXUS · RETURN CORES TO REDUCE OVERLOAD';
     } else if (game.finalMessage === 'CYBER-HERO OFFLINE') {
       cause = 'CAUSE: HERO DEFEATED';
       hint  = 'UPGRADE HP · USE PHENIX REVIVES WISELY';
