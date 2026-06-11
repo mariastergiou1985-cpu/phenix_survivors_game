@@ -141,7 +141,14 @@ export class Game {
 
     // Preload credits photos
     this._creditImgInk = new Image();
-    this._creditImgInk.src = 'assets/credits/inkspirem_visuals_photo.jpg';
+    // Newer Maria / InkSpireM portrait. Safe fallback to the previous photo if it fails to load.
+    this._creditImgInk.onerror = () => {
+      console.warn('[Credits] InkSpireM_Visuals_Potrait.png failed to load — falling back to inkspirem_visuals_photo.jpg');
+      const fb = new Image();
+      fb.src = 'assets/credits/inkspirem_visuals_photo.jpg';
+      this._creditImgInk = fb;
+    };
+    this._creditImgInk.src = 'assets/credits/InkSpireM_Visuals_Potrait.png';
     this._creditImgTsali = new Image();
     this._creditImgTsali.src = 'assets/credits/tsali_photo.jpg';
 
