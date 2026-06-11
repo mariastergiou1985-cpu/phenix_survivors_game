@@ -84,6 +84,20 @@ export function drawHUD(ctx, game) {
                : game._dojangFlagSprite;
     const manaFrac = clamp(p.mana / 100, 0, 1);   // ultimate is ready at the fixed 100 cost, not maxMana (Mana Core safe)
     _drawUltimateBox(ctx, WIDTH - 64, HEIGHT - 66, 48, 'SPACE', manaFrac, icon);
+
+    // One-shot "ULTIMATE READY" cue — shown briefly the moment the ultimate becomes castable
+    // (timer set in Game._updateUltReady). Holds, then fades over its final 0.6s. Not a loop.
+    if (game._ultReadyCue > 0) {
+      const a     = clamp(game._ultReadyCue / 0.6, 0, 1);
+      const pulse = 0.75 + 0.25 * Math.sin(Date.now() / 90);
+      ctx.save();
+      ctx.globalAlpha = a * pulse;
+      ctx.shadowColor = CYAN; ctx.shadowBlur = 8;
+      ctx.textAlign = 'right';
+      drawText(ctx, 'ULTIMATE READY', WIDTH - 16, HEIGHT - 92, '#cfeaff', 'bold 14px Consolas, monospace');
+      ctx.restore();
+      ctx.globalAlpha = 1;
+    }
   }
 
   // Player visibility marker — drawn last in the HUD layer so it stays on top of enemies,
@@ -154,8 +168,13 @@ function _drawUltimateBox(ctx, x, y, s, label, frac, icon) {
   const ready = frac >= 1;
   ctx.fillStyle = 'rgba(6,18,32,0.85)';
   ctx.beginPath(); ctx.roundRect(x, y, s, s, 6); ctx.fill();
+  // Steady (non-animated) glow on the border while ready, so readiness stays readable
+  // after the one-shot banner fades — a calm indicator, never a flashing alarm.
+  ctx.save();
+  if (ready) { ctx.shadowColor = CYAN; ctx.shadowBlur = 9; }
   ctx.strokeStyle = ready ? CYAN : 'rgba(120,150,170,0.5)';
   ctx.lineWidth = 1.5; ctx.beginPath(); ctx.roundRect(x, y, s, s, 6); ctx.stroke();
+  ctx.restore();
   ctx.save();
   ctx.globalAlpha = 0.45 + 0.55 * frac;
   _drawIcon(ctx, icon, x + 5, y + 5, s - 10, CYAN);

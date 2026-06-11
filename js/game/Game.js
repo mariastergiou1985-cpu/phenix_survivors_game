@@ -20,7 +20,7 @@ import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, dr
 import { SystemEventManager } from './Events.js?v=94';
 import { UpgradeUI }      from './UpgradeUI.js?v=4';
 import { weightedSample } from './Upgrades.js?v=4';
-import { drawHUD, drawEndScreen } from './HUD.js?v=36';
+import { drawHUD, drawEndScreen } from './HUD.js?v=37';
 import { MetaProgress, META_UPGRADES, upgradeCost } from './MetaProgress.js?v=2';
 
 // ── Thunder Solo sprite slices (cyan_lightning_rain_notes.png, 1254×1254) ──────
@@ -70,6 +70,10 @@ const FINAL_BEAM_LEN     = 1600;  // px — beam length (spans the arena)
 // big boss attack reads stronger than chip/contact damage. minGap stops sustained contact
 // from strobing; big discrete hits bypass the gap so they always register immediately.
 const DMG_PULSE = { duration: 0.22, minGap: 0.40, bigHit: 3, base: 0.36, slope: 0.045 };
+
+// Ultimate-ready feedback — a one-shot cue fired the moment the SPACE ultimate becomes
+// castable (mana >= cost). Visual only: never changes charge rate, cost, or cooldowns.
+const ULT_CUE = { banner: 1.6, aura: 0.7 };
 
 const FINAL_BEAM_DMG     = 22;    // 20–25 band, hard-capped at 30 by _damagePlayer
 const FINAL_NOVA_WARN    = 1.0;   // s — radial-burst warning
@@ -299,6 +303,11 @@ export class Game {
     this.damageFlashIntensity = 0;
     this._dmgPulseGap         = 0;
     this._prevPlayerHp        = this.player.hp;
+
+    // Ultimate-ready cue state — visual only.
+    this._ultWasReady = false;
+    this._ultReadyCue = 0;   // HUD "ULTIMATE READY" banner timer
+    this._ultAura     = 0;   // player aura-pulse timer
 
     this.camera = { x: 0, y: 0 };
 
@@ -1522,6 +1531,7 @@ export class Game {
     this.particles.update(dt);
     this._updateCamera();
     this._updateDamagePulse(dt);
+    this._updateUltReady(dt);
 
     // Grid Investor card: +2% Gold Core chance per level on stolen cores (read in PowerMatrix.stealCore).
     const gridGoldBonus = (this.player.upgrades['Grid Investor'] || 0) * 0.02;
@@ -3260,6 +3270,7 @@ export class Game {
     // 5 ── Player (Thunder Solo guitar + aura drawn first so the skeleton sits in front of them)
     this._drawThunderSoloGuitar(ctx);
     this.player.draw(ctx, this._lastMousePos || { x: 0, y: 0 });
+    this._drawUltAura(ctx);
 
     // 6 ── Projectiles, homing discs, EMP rings, particles
     for (const p of this.projectiles) p.draw(ctx);   // keep character-specific attack sprite identity
@@ -4496,6 +4507,51 @@ export class Game {
       }
     }
     this._prevPlayerHp = this.player.hp;
+  }
+
+  // True only while the SPACE ultimate could actually be cast right now (mana-gated, per
+  // character, not already mid-cast). Read-only — drives the one-shot "ready" cue.
+  _ultimateReady() {
+    const p = this.player;
+    if (!p) return false;
+    const hasUlt = p.selectedCharacter === 'skeleton_warrior'
+                || p.selectedCharacter === 'cyber_arm_hero'
+                || p.selectedCharacter === 'taekwondo_girl';
+    if (!hasUlt) return false;
+    if (this.thunderSolo || this.overChains || this.spiritDojang) return false;  // mid-cast
+    return p.mana >= ULTIMATE_MANA_COST;
+  }
+
+  // Fire the ready cue once on the rising edge of readiness (full → spend → recharge → fires
+  // again). Sitting at full mana does NOT re-fire, so there is no constant flashing.
+  _updateUltReady(dt) {
+    if (this._ultReadyCue > 0) this._ultReadyCue -= dt;
+    if (this._ultAura     > 0) this._ultAura     -= dt;
+    const ready = this._ultimateReady();
+    if (ready && !this._ultWasReady) {
+      this._ultReadyCue = ULT_CUE.banner;
+      this._ultAura     = ULT_CUE.aura;
+    }
+    this._ultWasReady = ready;
+  }
+
+  // Brief expanding character-colored ring around the player when the ultimate becomes ready.
+  // World-space (scales with zoom); additive + short-lived, so it reads premium and costs nothing.
+  _drawUltAura(ctx) {
+    if (this._ultAura <= 0) return;
+    const p   = this.player;
+    const vis = p._getVisibilityColors();
+    const t   = clamp(this._ultAura / ULT_CUE.aura, 0, 1);   // 1 → 0
+    const r   = PLAYER_RADIUS + 8 + (1 - t) * 46;            // expands outward as it fades
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.strokeStyle = vis.rim;
+    ctx.lineWidth   = 3;
+    ctx.globalAlpha = t * 0.6;
+    ctx.beginPath(); ctx.arc(p.pos.x, p.pos.y, r, 0, Math.PI * 2); ctx.stroke();
+    ctx.globalAlpha = t * 0.3;
+    ctx.beginPath(); ctx.arc(p.pos.x, p.pos.y, r * 0.6, 0, Math.PI * 2); ctx.stroke();
+    ctx.restore();
   }
 
   _damagePlayer(dmg, { color = RED, shake = 5 } = {}) {
