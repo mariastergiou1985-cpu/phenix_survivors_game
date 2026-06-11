@@ -20,7 +20,7 @@ import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, dr
 import { SystemEventManager } from './Events.js?v=94';
 import { UpgradeUI }      from './UpgradeUI.js?v=4';
 import { weightedSample } from './Upgrades.js?v=4';
-import { drawHUD, drawEndScreen } from './HUD.js?v=39';
+import { drawHUD, drawEndScreen } from './HUD.js?v=40';
 import { MetaProgress, META_UPGRADES, upgradeCost } from './MetaProgress.js?v=2';
 
 // ── Thunder Solo sprite slices (cyan_lightning_rain_notes.png, 1254×1254) ──────

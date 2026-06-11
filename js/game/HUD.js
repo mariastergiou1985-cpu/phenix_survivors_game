@@ -353,13 +353,32 @@ export function drawEndScreen(ctx, game) {
     ctx.fillStyle = '#ff2244';
     ctx.textAlign = 'center';
     ctx.fillText('CITY GRID BLACKOUT', WIDTH / 2, 80);
+
+    // Death-cause clarity (display only): translate finalMessage into a plain
+    // "why you lost" line + a matching tip. Does not affect any game logic.
+    let cause = '', hint = '';
+    if (game.finalMessage === 'CITY GRID TOTAL BLACKOUT') {
+      cause = 'CAUSE: OVERLOAD REACHED 100%';
+      hint  = 'DEFEND MATRICES · RETURN CORES TO REDUCE OVERLOAD';
+    } else if (game.finalMessage === 'CYBER-HERO OFFLINE') {
+      cause = 'CAUSE: HERO DEFEATED';
+      hint  = 'UPGRADE HP · USE PHENIX REVIVES WISELY';
+    }
+    if (cause) {
+      ctx.font      = 'bold 20px Consolas, monospace';
+      ctx.fillStyle = '#ff6a7a';
+      ctx.fillText(cause, WIDTH / 2, 112);
+      ctx.font      = '13px Consolas, monospace';
+      ctx.fillStyle = 'rgba(150,180,200,0.75)';
+      ctx.fillText(hint, WIDTH / 2, 134);
+    }
   }
 
   const mins = Math.floor(game.timeAlive / 60).toString().padStart(2, '0');
   const secs = Math.floor(game.timeAlive % 60).toString().padStart(2, '0');
   const lx = WIDTH / 2 - 280;
   const rx = WIDTH / 2 + 280;
-  let y = 130;
+  let y = game.victory ? 130 : 158;
 
   // New high score banner
   if (game.isNewHighScore) {
