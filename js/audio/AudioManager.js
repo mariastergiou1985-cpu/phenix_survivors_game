@@ -43,9 +43,8 @@ export class AudioManager {
 
     this._setupTrack('assets/audio/music/menu_theme.mp3?v=10', 0.28, a => { this._menuAudio     = a; });
     this._setupTrack('assets/audio/music/gameplay_theme.mp3?v=2', 0.20, a => { this._gameplayAudio = a; });
-    // Endless-only track (dawn). NOTE: real on-disk filename is dawn.wav.wav (double extension);
-    // referenced as-is per "do not rename". Missing/failed load degrades safely (onerror warn).
-    this._setupTrack('assets/audio/music/endless/dawn.wav.wav?v=1', 0.20, a => { this._endlessAudio = a; });
+    // Endless-only track (dawn). Missing/failed load degrades safely (onerror warn).
+    this._setupTrack('assets/audio/music/endless/dawn.wav?v=1', 0.20, a => { this._endlessAudio = a; });
   }
 
   // ─── Volume persistence ─────────────────────────────────────────────────────

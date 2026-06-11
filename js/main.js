@@ -1,5 +1,5 @@
 import { Game } from './game/Game.js?v=172';
-import { AudioManager } from './audio/AudioManager.js?v=17';
+import { AudioManager } from './audio/AudioManager.js?v=18';
 
 const canvas = document.getElementById('game');
 const ctx    = canvas.getContext('2d');
