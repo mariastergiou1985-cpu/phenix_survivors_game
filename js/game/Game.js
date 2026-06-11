@@ -288,6 +288,7 @@ export class Game {
     this.comboCount = 0;
     this.comboTimer = 0;
     this.maxCombo   = 0;
+    this.comboPopups = [];   // transient milestone popups (visual only)
     this.isNewHighScore = false;
 
     this.gameOver          = false;
@@ -471,6 +472,11 @@ export class Game {
     this.comboCount++;
     this.comboTimer = 3.0;
     if (this.comboCount > this.maxCombo) this.maxCombo = this.comboCount;
+    // Combo milestone popup — visual only; reads comboCount, never alters it or the score below.
+    const c = this.comboCount;
+    if (c === 10 || c === 25 || c === 50 || (c >= 100 && (c - 100) % 50 === 0)) {
+      this._spawnComboPopup(c, pos);
+    }
     let bonus = 0;
     if      (this.comboCount >= 10) bonus = 20;
     else if (this.comboCount >= 5)  bonus = 10;
@@ -1532,6 +1538,7 @@ export class Game {
     this._updateCamera();
     this._updateDamagePulse(dt);
     this._updateUltReady(dt);
+    this._updateComboPopups(dt);
 
     // Grid Investor card: +2% Gold Core chance per level on stolen cores (read in PowerMatrix.stealCore).
     const gridGoldBonus = (this.player.upgrades['Grid Investor'] || 0) * 0.02;
@@ -3468,6 +3475,8 @@ export class Game {
     this._drawOverheatedChains(ctx);   // Cyber Arm Hero ultimate: rotating fiery chains around the hero
     this._drawSpiritDojang(ctx);       // Neon Taekwondo Girl ultimate: cyan dojo field + flag at cast point
 
+    this._drawComboPopups(ctx);        // combo milestone popups (world-space, on top of the action)
+
     ctx.restore();  // end camera-space block
 
     this._drawThunderSoloScreen(ctx);  // darken + fullscreen lightning flash (under HUD)
@@ -4552,6 +4561,53 @@ export class Game {
     ctx.globalAlpha = t * 0.3;
     ctx.beginPath(); ctx.arc(p.pos.x, p.pos.y, r * 0.6, 0, Math.PI * 2); ctx.stroke();
     ctx.restore();
+  }
+
+  // ── Combo milestone popups (visual only) ────────────────────────────────────
+  // Tasteful neon escalation by tier; bigger/brighter at higher combos.
+  _comboTierStyle(c) {
+    if (c >= 100) return { color: '#fff36a', font: 26 };   // bright gold-white
+    if (c >= 50)  return { color: '#ffb030', font: 21 };   // gold/red
+    if (c >= 25)  return { color: '#c060ff', font: 18 };   // purple/magenta
+    return          { color: '#00e6ff', font: 16 };        // x10 cyan
+  }
+
+  _spawnComboPopup(c, pos) {
+    const style = this._comboTierStyle(c);
+    const at = (pos && pos.clone) ? pos.clone() : this.player.pos.clone();
+    this.comboPopups.push({ text: `COMBO x${c}`, pos: at, color: style.color, font: style.font, t: 0, life: 0.95 });
+    if (this.comboPopups.length > 4) this.comboPopups.shift();   // cap (anti-spam safety)
+  }
+
+  _updateComboPopups(dt) {
+    if (!this.comboPopups.length) return;
+    for (const cp of this.comboPopups) cp.t += dt;
+    this.comboPopups = this.comboPopups.filter(cp => cp.t < cp.life);
+  }
+
+  _drawComboPopups(ctx) {
+    if (!this.comboPopups.length) return;
+    for (const cp of this.comboPopups) {
+      const p     = cp.t / cp.life;                              // 0 → 1
+      const tin   = Math.min(1, cp.t / 0.18);
+      const scale = 0.45 + 0.55 * (1 - Math.pow(1 - tin, 3));    // quick ease-out pop to full
+      const alpha = p < 0.6 ? 1 : Math.max(0, 1 - (p - 0.6) / 0.4); // hold, then fade last 40%
+      ctx.save();
+      ctx.translate(cp.pos.x, cp.pos.y - 30 - p * 24);           // sits above the kill, rises as it fades
+      ctx.scale(scale, scale);
+      ctx.globalAlpha = alpha;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = `bold ${cp.font}px Consolas, monospace`;
+      ctx.shadowColor = cp.color;
+      ctx.shadowBlur  = 12 * (1 - p) + 4;                        // bright flash at spawn, settles
+      ctx.lineWidth   = 4;
+      ctx.strokeStyle = 'rgba(0,8,16,0.75)';
+      ctx.strokeText(cp.text, 0, 0);
+      ctx.fillStyle = cp.color;
+      ctx.fillText(cp.text, 0, 0);
+      ctx.restore();
+    }
   }
 
   _damagePlayer(dmg, { color = RED, shake = 5 } = {}) {
