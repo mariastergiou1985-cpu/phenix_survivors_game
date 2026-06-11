@@ -47,6 +47,13 @@ export class Player {
       this.hp           = 90;
       this.baseSpeed    = Math.round(230 * 1.20); // 276
       this.pickupRadius = 100;
+    } else if (this.selectedCharacter === 'brawler_warrior') {
+      // Tanky hybrid: between Cyber Arm (ranged) and Skeleton (tank). Slower than Taekwondo,
+      // tankier than Cyber Arm, not a glass cannon. Armor = existing contact-damage reduction.
+      this.maxHp   = 125;
+      this.hp      = 125;
+      this.baseSpeed = Math.round(230 * 0.95);   // 219
+      this.contactDamageReduction = 0.08;
     }
 
     this.carry        = 0;
@@ -144,6 +151,7 @@ export class Player {
       case 'skeleton_warrior': return { primary: '#8B0050', secondary: '#FF0080' };
       case 'taekwondo_girl': return { primary: '#00D9FF', secondary: '#0099CC' };
       case 'cyber_arm_hero': return { primary: '#FF6600', secondary: '#CC0000' };
+      case 'brawler_warrior': return { primary: '#1fd6a6', secondary: '#0a9c78' };
       default: return { primary: CYAN, secondary: WHITE };
     }
   }
@@ -159,6 +167,8 @@ export class Player {
         return { rim: '#3aa0ff', innerGlow: 'rgba(58,160,255,0.30)', outerGlow: 'rgba(58,160,255,0)' };
       case 'taekwondo_girl':
         return { rim: '#14ebd2', innerGlow: 'rgba(20,235,210,0.30)', outerGlow: 'rgba(20,235,210,0)' };
+      case 'brawler_warrior':
+        return { rim: '#1fd6a6', innerGlow: 'rgba(31,214,166,0.30)', outerGlow: 'rgba(31,214,166,0)' };
       default:
         return { rim: '#00e6ff', innerGlow: 'rgba(0,230,255,0.28)',  outerGlow: 'rgba(0,230,255,0)' };
     }

@@ -212,6 +212,13 @@ export class MetaProgress {
     return true;
   }
 
+  // Character unlock gate. The 3 base characters are always available; Brawler Warrior is
+  // unlocked by reaching 10:00 in Endless (flag set via unlock('brawler_warrior')).
+  isCharacterUnlocked(characterId) {
+    if (characterId === 'brawler_warrior') return this.isUnlocked('brawler_warrior');
+    return true;
+  }
+
   // Resolve the sprite asset for a character+outfit (always returns a valid path).
   getOutfitAsset(characterId, outfitId) {
     const c = CHARACTER_OUTFITS[characterId];

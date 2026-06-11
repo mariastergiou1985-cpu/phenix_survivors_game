@@ -80,9 +80,10 @@ export function drawHUD(ctx, game) {
     (cx, cy) => _glyphEMP(ctx, cx, cy, bs));
 
   // ── Bottom-right: SPACE ultimate (mana-fill) ────────────────────────────
-  if (p.selectedCharacter === 'skeleton_warrior' || p.selectedCharacter === 'cyber_arm_hero' || p.selectedCharacter === 'taekwondo_girl') {
+  if (p.selectedCharacter === 'skeleton_warrior' || p.selectedCharacter === 'cyber_arm_hero' || p.selectedCharacter === 'taekwondo_girl' || p.selectedCharacter === 'brawler_warrior') {
     const icon = p.selectedCharacter === 'skeleton_warrior' ? game._thunderGuitarSprite
                : p.selectedCharacter === 'cyber_arm_hero'   ? game._chainsIcon
+               : p.selectedCharacter === 'brawler_warrior'  ? game._weaponImages?.skyfall_lances
                : game._dojangFlagSprite;
     const manaFrac = clamp(p.mana / 100, 0, 1);   // ultimate is ready at the fixed 100 cost, not maxMana (Mana Core safe)
     _drawUltimateBox(ctx, WIDTH - 64, HEIGHT - 66, 48, 'SPACE', manaFrac, icon);

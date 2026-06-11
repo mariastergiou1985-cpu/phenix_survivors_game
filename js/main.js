@@ -1,4 +1,4 @@
-import { Game } from './game/Game.js?v=172';
+import { Game } from './game/Game.js?v=173';
 import { AudioManager } from './audio/AudioManager.js?v=18';
 
 const canvas = document.getElementById('game');
@@ -56,7 +56,7 @@ window.addEventListener('keydown', e => {
   // One-shot abilities
   if (key === 'q') game.activatePulseShield();   // Pulse Shield (was Sonic Pulse)
   if (key === 'e') game.activateEMPCloud();   // EMP = stun only (no damage); Special unbound
-  if (key === ' ') { game.activateThunderSolo(); game.activateOverheatedChains(); game.activateSpiritDojang(); }   // SPACE ultimate (per-character; each self-guards)
+  if (key === ' ') { game.activateThunderSolo(); game.activateOverheatedChains(); game.activateSpiritDojang(); game.activateSkyfallLances(); }   // SPACE ultimate (per-character; each self-guards)
   if (key === 'm') game.audio?.toggleMute();
   if (key === 'f') {
     if (!document.fullscreenElement) {
@@ -222,15 +222,17 @@ canvas.addEventListener('mousedown', e => {
     } else if (game._inRect(mousePos, ob.secretRect)) {
       game.meta.setSelectedOutfit(ocid, 'secret');
     } else {
-      const cardW = 220, cardH = 280, spacing = 280;
-      const startX = canvas.width / 2 - cardW - spacing / 2;
-      for (let i = 0; i < game.characters.length; i++) {
-        const cx = startX + i * spacing;
+      // Layout mirrors Game._drawCharacterSelect (cardWidth 200, gap 28, centered N cards).
+      const cardW = 200, cardH = 280, gap = 28;
+      const n = game.characters.length;
+      const startX = Math.round(canvas.width / 2 - (n * cardW + (n - 1) * gap) / 2);
+      for (let i = 0; i < n; i++) {
+        const cx = startX + i * (cardW + gap);
         const cy = canvas.height / 2 - cardH / 2;
         if (mousePos.x >= cx && mousePos.x <= cx + cardW &&
             mousePos.y >= cy && mousePos.y <= cy + cardH) {
-          game.characterIndex = i;
-          game.selectCharacter(game.characters[i].id);
+          game.characterIndex = i;                       // highlight (shows unlock hint if locked)
+          game.selectCharacter(game.characters[i].id);   // self-guards: locked characters don't start
           break;
         }
       }

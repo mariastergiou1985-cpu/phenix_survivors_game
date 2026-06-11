@@ -11,7 +11,7 @@ import { clamp, distance, safeNormalize, randomChoice, randomRange } from '../ut
 import { FloatingText }   from '../entities/FloatingText.js';
 import { DataCore, rollCoreType } from '../entities/DataCore.js?v=2';
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=13';
-import { Player }         from '../entities/Player.js?v=65';
+import { Player }         from '../entities/Player.js?v=66';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=3';
 import { Enemy }          from '../entities/Enemy.js?v=105';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=1';
@@ -20,8 +20,8 @@ import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, dr
 import { SystemEventManager } from './Events.js?v=94';
 import { UpgradeUI }      from './UpgradeUI.js?v=4';
 import { weightedSample } from './Upgrades.js?v=4';
-import { drawHUD, drawEndScreen } from './HUD.js?v=44';
-import { MetaProgress, META_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS } from './MetaProgress.js?v=6';
+import { drawHUD, drawEndScreen } from './HUD.js?v=45';
+import { MetaProgress, META_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS } from './MetaProgress.js?v=7';
 
 // ── Thunder Solo sprite slices (cyan_lightning_rain_notes.png, 1254×1254) ──────
 // Strike variants: a clean bolt column + ripple base. (ax,ay) = ripple-centre as a
@@ -117,10 +117,25 @@ export class Game {
 
     // Preload character portraits for Character Select screen
     this._charImages = {};
-    ['skeleton_warrior', 'taekwondo_girl', 'cyber_arm_hero'].forEach(id => {
+    ['skeleton_warrior', 'taekwondo_girl', 'cyber_arm_hero', 'brawler_warrior'].forEach(id => {
       const img = new Image();
+      img.onerror = () => console.warn(`[Char] missing assets/characters/${id}.png — fallback circle used`);
       img.src = `assets/characters/${id}.png`;
       this._charImages[id] = img;
+    });
+
+    // Brawler Warrior weapon sprites (Nexus Chakram / Crescent Rift Claw / Skyfall Lances).
+    // Missing files degrade to drawn-shape fallbacks (never crash).
+    this._weaponImages = {};
+    [
+      ['nexus_chakram',     'assets/weapons/nexus_chakram.png'],
+      ['crescent_rift_claw','assets/weapons/crescent_rift_claw.png'],
+      ['skyfall_lances',    'assets/weapons/skyfall_lances.png'],
+    ].forEach(([key, src]) => {
+      const img = new Image();
+      img.onerror = () => console.warn(`[Weapon] missing ${src} — drawn-shape fallback used`);
+      img.src = src;
+      this._weaponImages[key] = img;
     });
 
     // Preload start-menu background image
@@ -252,6 +267,7 @@ export class Game {
       { id: 'skeleton_warrior', name: 'Cyber Skeleton Warrior', fallbackColor: '#8B0050', fallbackAlt: '#FF0080', role: 'Tank / Survival' },
       { id: 'taekwondo_girl',   name: 'Neon Taekwondo Girl',    fallbackColor: '#00D9FF', fallbackAlt: '#0099CC', role: 'Speed / AoE' },
       { id: 'cyber_arm_hero',   name: 'Cyber Arm Hero',         fallbackColor: '#FF6600', fallbackAlt: '#CC0000', role: 'Ranged / Damage' },
+      { id: 'brawler_warrior',  name: 'Brawler Warrior',        fallbackColor: '#1fd6a6', fallbackAlt: '#0a9c78', role: 'Tank / Brawler' },
     ];
     // UPGRADES = the permanent Grid-Credit progression (spent between runs). Kept & fixed.
     this.menuItems = ['START GAME', 'CHARACTER SELECT', 'UPGRADES', 'ACHIEVEMENTS', 'INSTRUCTIONS', 'AUDIO SETTINGS', 'CREDITS', 'EXIT'];
@@ -276,6 +292,13 @@ export class Game {
     this._chainTimer  = 0;    // auto-fire cooldown
     this._neonBeamTimer = 0;  // Neon Pierce Beam (Cyber Arm Hero only) auto-fire cooldown
     this._neonBeams     = [];  // active Neon Pierce Beam visuals (short-lived)
+    // Brawler Warrior weapons (only active while selectedCharacter === 'brawler_warrior')
+    this._chakramTimer    = 0;     // Nexus Chakram auto-fire cooldown
+    this._chakrams        = [];    // active chakrams (out → return phases)
+    this._crescentTimer   = 0;     // Crescent Rift Claw cooldown
+    this._crescentSlashes = [];    // short-lived crescent slash visuals
+    this._skyfall         = null;  // Skyfall Lances ultimate state | null
+    this._skyfallImpacts  = [];    // short-lived lance impact visuals
     this.empRings     = [];
     this._specialRings    = [];
     this.thunderSolo      = null;   // Thunder Solo ultimate state while active
@@ -402,6 +425,7 @@ export class Game {
   }
 
   selectCharacter(charId) {
+    if (!this.meta.isCharacterUnlocked(charId)) return;   // locked characters can't be started
     this.selectedCharacter = charId;
     this.audio?.startGameplayMusic();
     this.gameState = 'playing';
@@ -1671,6 +1695,9 @@ export class Game {
     this._updateChainLightning(dt);
     this._updateNeonPierceBeam(dt);
     this._updateAquaTrail(dt);
+    this._updateNexusChakram(dt);   // Brawler primary (guards on character)
+    this._updateCrescentClaw(dt);   // Brawler secondary
+    this._updateSkyfall(dt);        // Brawler ultimate
     this._updateEnemies(dt);
     this._updateOverload(dt);
     this._updateSpawning(dt);
@@ -2744,6 +2771,245 @@ export class Game {
     ctx.restore();
   }
 
+  // ════════════════════════════════════════════════════════════════════════════
+  // BRAWLER WARRIOR weapons (Phase 1). Every per-frame method guards on
+  // selectedCharacter === 'brawler_warrior', so the other 3 characters are unaffected.
+  // Damage routes through e.takeHit / singleton mini-boss hp like the other weapons; bosses
+  // take reduced damage so nothing is one-shot.
+  // ════════════════════════════════════════════════════════════════════════════
+
+  // Uniform list of damageable targets: array enemies + present singleton mini-bosses.
+  _brawlerTargets() {
+    const list = [];
+    for (const e of this.enemies) list.push({ obj: e, arr: true });
+    const singles = [
+      [this.titanBoss,       this._titanDie],
+      [this.annihilatorBoss, this._annihilatorDie],
+      [this.bloodfangBoss,   this._bloodfangDie],
+    ];
+    for (const [b, die] of singles) if (b && b.hp > 0) list.push({ obj: b, arr: false, die });
+    return list;
+  }
+
+  _targetIsBoss(t) { return t.arr ? (t.obj.isMegaBoss || t.obj.isBoss()) : true; }
+
+  // Apply a hit (array enemy via takeHit; singleton mini-boss via hp + death routing).
+  _brawlerHit(t, dmg, color) {
+    const b = t.obj;
+    if (t.arr) {
+      b.takeHit(dmg, this);
+    } else {
+      b.hp -= dmg; b.hitFlash = 0.08;
+      if (b.hp <= 0) t.die.call(this);
+    }
+    this.particles.spawnHitSparks(b.pos, color);
+  }
+
+  // ── Primary: Nexus Chakram ──────────────────────────────────────────────────
+  // Throws a spinning energy chakram at the nearest enemy; it flies out (piercing) then
+  // returns to the player, damaging on both legs. NOT chain lightning — one travelling disc.
+  _updateNexusChakram(dt) {
+    if (this._chakrams.length) this._advanceChakrams(dt);   // let in-flight discs finish cleanly
+    if (this.player.selectedCharacter !== 'brawler_warrior') return;
+    this._chakramTimer -= dt;
+    if (this._chakramTimer <= 0) {
+      this._chakramTimer = this._fireNexusChakram() ? 1.15 : 0.25;   // retry soon if no target
+    }
+  }
+
+  _fireNexusChakram() {
+    const p = this.player, RANGE = 620;
+    let target = null, bestD = RANGE;
+    for (const t of this._brawlerTargets()) {
+      const d = distance(p.pos, t.obj.pos);
+      if (d < bestD) { bestD = d; target = t.obj.pos; }
+    }
+    if (!target) return false;
+    const dir = safeNormalize(new Vec2(target.x - p.pos.x, target.y - p.pos.y));
+    this._chakrams.push({ pos: p.pos.clone(), dir, phase: 'out', dist: 0, maxDist: RANGE,
+                          speed: 520, dmg: 22, pierceLeft: 3, ang: 0, hit: new Set() });
+    this.audio?.playShoot?.();
+    return true;
+  }
+
+  _advanceChakrams(dt) {
+    const p = this.player, R = 26;
+    for (let i = this._chakrams.length - 1; i >= 0; i--) {
+      const c = this._chakrams[i];
+      c.ang += dt * 18;   // spin
+      if (c.phase === 'out') {
+        c.pos.addMut(c.dir.scale(c.speed * dt));
+        c.dist += c.speed * dt;
+        if (c.dist >= c.maxDist || c.pierceLeft <= 0) { c.phase = 'return'; c.hit.clear(); }
+      } else {
+        const toP = new Vec2(p.pos.x - c.pos.x, p.pos.y - c.pos.y);
+        if (toP.length() < 34) { this._chakrams.splice(i, 1); continue; }   // caught by player
+        c.dir = safeNormalize(toP);
+        c.pos.addMut(c.dir.scale(c.speed * dt));
+      }
+      const retMult = c.phase === 'return' ? 0.7 : 1.0;
+      for (const t of this._brawlerTargets()) {
+        const b = t.obj;
+        if (c.hit.has(b)) continue;
+        if (distance(c.pos, b.pos) > R + b.radius) continue;
+        c.hit.add(b);
+        this._brawlerHit(t, (this._targetIsBoss(t) ? 0.5 : 1) * c.dmg * retMult, '#1fd6a6');
+        if (c.phase === 'out' && --c.pierceLeft <= 0) break;
+      }
+    }
+  }
+
+  _drawChakrams(ctx) {
+    if (!this._chakrams.length) return;
+    const spr = this._weaponImages?.nexus_chakram;
+    const ready = spr && spr.complete && spr.naturalWidth > 0;
+    for (const c of this._chakrams) {
+      ctx.save();
+      ctx.translate(c.pos.x, c.pos.y); ctx.rotate(c.ang);
+      if (ready) {
+        ctx.drawImage(spr, -26, -26, 52, 52);
+      } else {
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.strokeStyle = '#1fd6a6'; ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.arc(0, 0, 18, 0, Math.PI * 2); ctx.stroke();
+        ctx.strokeStyle = '#bdfff0'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(0, 0, 10, 0, Math.PI * 1.4); ctx.stroke();
+      }
+      ctx.restore();
+    }
+  }
+
+  // ── Secondary: Crescent Rift Claw ───────────────────────────────────────────
+  // Periodic crescent slash in front of the brawler — cone CC that knocks back / stuns close
+  // normal enemies. Reuses the Sonic Pulse cone logic. Not full-screen, weaker than the ultimate.
+  _updateCrescentClaw(dt) {
+    for (const s of this._crescentSlashes) s.life -= dt;
+    if (this._crescentSlashes.length) this._crescentSlashes = this._crescentSlashes.filter(s => s.life > 0);
+    if (this.player.selectedCharacter !== 'brawler_warrior') return;
+    this._crescentTimer -= dt;
+    if (this._crescentTimer > 0) return;
+    this._crescentTimer = 3.2;
+
+    const p = this.player;
+    const aimDir = safeNormalize(p.lastFacingDir || new Vec2(1, 0));
+    const RANGE = 145, halfCone = (100 * Math.PI / 180) / 2, KB = 230;
+    let hits = 0;
+    for (const t of this._brawlerTargets()) {
+      if (hits >= 10) break;
+      const b = t.obj;
+      const to = new Vec2(b.pos.x - p.pos.x, b.pos.y - p.pos.y);
+      if (to.length() > RANGE + b.radius) continue;
+      if (Math.acos(clamp(aimDir.dot(safeNormalize(to)), -1, 1)) > halfCone) continue;
+      hits++;
+      this._brawlerHit(t, (this._targetIsBoss(t) ? 0.55 : 1) * 34, '#1fd6a6');
+      if (t.arr && !this._targetIsBoss(t)) {        // knockback/stun only normal array enemies
+        b.vel.addMut(safeNormalize(to).scale(KB));
+        b.stunned = Math.max(b.stunned, 0.25);
+      }
+    }
+    this._crescentSlashes.push({ pos: p.pos.clone(), dir: aimDir, range: RANGE, half: halfCone, life: 0.22, maxLife: 0.22 });
+    this.audio?.playHit?.();
+  }
+
+  _drawCrescentSlashes(ctx) {
+    if (!this._crescentSlashes.length) return;
+    const spr = this._weaponImages?.crescent_rift_claw;
+    const ready = spr && spr.complete && spr.naturalWidth > 0;
+    for (const s of this._crescentSlashes) {
+      const a = Math.max(0, s.life / s.maxLife);
+      ctx.save();
+      ctx.translate(s.pos.x, s.pos.y); ctx.rotate(Math.atan2(s.dir.y, s.dir.x));
+      ctx.globalAlpha = a;
+      if (ready) {
+        const h = s.range * 1.7, w = h * (spr.naturalWidth / spr.naturalHeight);
+        ctx.drawImage(spr, -w * 0.1, -h / 2, w, h);
+      } else {
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.strokeStyle = '#1fd6a6'; ctx.lineWidth = 8;
+        ctx.beginPath(); ctx.arc(0, 0, s.range * 0.8, -s.half, s.half); ctx.stroke();
+        ctx.strokeStyle = '#bdfff0'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(0, 0, s.range * 0.8, -s.half, s.half); ctx.stroke();
+      }
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // ── Ultimate: Skyfall Lances (SPACE, 100 mana) ──────────────────────────────
+  // Vertical energy lances rain around the player / dense clusters over several waves, each a
+  // small impact AoE. Clears groups; bosses take reduced damage so they are not one-shot.
+  activateSkyfallLances() {
+    if (this.gameState !== 'playing' || this.paused || this.gameOver || this.victory || this.upgradeUI) return;
+    const p = this.player;
+    if (p.selectedCharacter !== 'brawler_warrior') return;     // Brawler Warrior only
+    if (this._skyfall) return;                                  // already running
+    if (p.mana < ULTIMATE_MANA_COST) {                          // same NOT-ENOUGH-MANA behavior as other ultimates
+      this.floatingTexts.push(new FloatingText('NOT ENOUGH MANA', p.pos.clone(), CYAN, 1.0));
+      return;
+    }
+    p.mana -= ULTIMATE_MANA_COST;                               // fixed 100 cost; Mana Core overflow banks toward next cast
+    this._skyfall = { t: 0, waveTimer: 0, wave: 0 };
+    this.screenShake.trigger(4, 0.3);
+    this.audio?.playEventWarning?.();
+    this.floatingTexts.push(new FloatingText('SKYFALL LANCES!', p.pos.clone(), '#1fd6a6', 1.4));
+  }
+
+  _updateSkyfall(dt) {
+    for (const im of this._skyfallImpacts) im.life -= dt;
+    if (this._skyfallImpacts.length) this._skyfallImpacts = this._skyfallImpacts.filter(im => im.life > 0);
+    const sf = this._skyfall;
+    if (!sf) return;
+    const DURATION = 3.5, WAVES = 5, PER_WAVE = 7, DMG = 42, RADIUS = 70;
+    const interval = DURATION / WAVES;
+    sf.t += dt; sf.waveTimer -= dt;
+    if (sf.wave < WAVES && sf.waveTimer <= 0) {
+      sf.waveTimer = interval; sf.wave++;
+      const p = this.player;
+      for (let i = 0; i < PER_WAVE; i++) {
+        let cx, cy;
+        if (this.enemies.length && Math.random() < 0.6) {
+          const e = this.enemies[Math.floor(Math.random() * this.enemies.length)];
+          cx = e.pos.x + randomRange(-50, 50); cy = e.pos.y + randomRange(-50, 50);
+        } else {
+          cx = p.pos.x + randomRange(-260, 260); cy = p.pos.y + randomRange(-200, 200);
+        }
+        const center = new Vec2(cx, cy);
+        for (const t of this._brawlerTargets()) {
+          if (distance(center, t.obj.pos) > RADIUS + t.obj.radius) continue;
+          this._brawlerHit(t, (this._targetIsBoss(t) ? 0.65 : 1) * DMG, '#34ff9e');
+        }
+        this._skyfallImpacts.push({ pos: center, r: RADIUS, life: 0.45, maxLife: 0.45 });
+      }
+      this.screenShake.trigger(3, 0.18);
+    }
+    if (sf.t >= DURATION && sf.wave >= WAVES) this._skyfall = null;
+  }
+
+  _drawSkyfall(ctx) {
+    if (!this._skyfallImpacts.length) return;
+    const spr = this._weaponImages?.skyfall_lances;
+    const ready = spr && spr.complete && spr.naturalWidth > 0;
+    for (const im of this._skyfallImpacts) {
+      const a = Math.max(0, im.life / im.maxLife);
+      ctx.save();
+      ctx.globalAlpha = a;
+      if (ready) {
+        const h = 150, w = h * (spr.naturalWidth / spr.naturalHeight), drop = (1 - a) * 40;
+        ctx.drawImage(spr, im.pos.x - w / 2, im.pos.y - h + drop, w, h);
+      } else {
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.strokeStyle = '#34ff9e'; ctx.lineWidth = 5;
+        ctx.beginPath(); ctx.moveTo(im.pos.x, im.pos.y - 120); ctx.lineTo(im.pos.x, im.pos.y); ctx.stroke();
+      }
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = a * 0.7;
+      ctx.strokeStyle = '#1fd6a6'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(im.pos.x, im.pos.y, im.r * (1 - a * 0.4), 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+  }
+
   // ── Aqua Spirit Trail (Neon Taekwondo Girl secondary) ───────────────────────
   // Passive: while she MOVES she leaves cyan spirit-water puddles. Enemies standing in a
   // puddle take gradual, capped damage. Bosses take heavily reduced damage. No knockback,
@@ -3122,6 +3388,11 @@ export class Game {
   _updateEliteWaves(dt) {
     if (!this.endless) return;            // hard gate — inert during Act 1
     this._eliteWaveElapsed += dt;
+    // Brawler Warrior unlock: reaching 10:00 INSIDE Endless (not Act 1, not at Continue). One-shot.
+    if (this._eliteWaveElapsed >= 600 && !this.meta.isUnlocked('brawler_warrior')) {
+      this.meta.unlock('brawler_warrior');
+      this.triggerAnnouncement('BRAWLER WARRIOR UNLOCKED', GREEN);
+    }
     this._eliteWaveTimer   -= dt;
     if (this._eliteWaveTimer <= 0) {
       this._spawnEliteWave();
@@ -3513,6 +3784,9 @@ export class Game {
     for (const d of this.homingDiscs) d.draw(ctx);
     this._drawChainLightning(ctx);
     this._drawNeonPierceBeam(ctx);
+    this._drawSkyfall(ctx);         // Brawler ultimate impacts
+    this._drawCrescentSlashes(ctx); // Brawler secondary
+    this._drawChakrams(ctx);        // Brawler primary
     for (const r of this.empRings)    r.draw(ctx);
     for (const r of this._specialRings) {
       const alpha = r.life / r.maxLife;
@@ -3985,6 +4259,8 @@ export class Game {
   // highlighted character, + a short unlock hint when the secret outfit is locked.
   _drawOutfitBar(ctx) {
     const charId   = this.characters[this.characterIndex].id;
+    // Characters without a defined secret outfit (e.g. Brawler Warrior, Phase 1) show no bar.
+    if (!CHARACTER_OUTFITS[charId]?.secret) return;
     const equipped = this.meta?.getSelectedOutfit(charId) || 'default';
     const secretOk = this.meta?.isOutfitUnlocked(charId, 'secret') === true;
     const { defaultRect, secretRect } = this._outfitBtnRects();
@@ -4032,22 +4308,25 @@ export class Game {
     this._drawOutfitBar(ctx);
 
     ctx.font = 'bold 32px Consolas, monospace';
-    const cardWidth = 220;
+    // Centered N-card layout (mirrored in main.js click hit-test — keep both in sync).
+    const cardWidth = 200;
     const cardHeight = 280;
-    const spacing = 280;
-    const startX = WIDTH / 2 - cardWidth - spacing / 2;
+    const gap = 28;
+    const n = this.characters.length;
+    const startX = Math.round(WIDTH / 2 - (n * cardWidth + (n - 1) * gap) / 2);
 
     for (let i = 0; i < this.characters.length; i++) {
       const char = this.characters[i];
-      const x = startX + i * spacing;
+      const x = startX + i * (cardWidth + gap);
       const y = HEIGHT / 2 - cardHeight / 2;
+      const unlocked = this.meta.isCharacterUnlocked(char.id);
 
       // Draw card border
       if (i === this.characterIndex) {
         ctx.strokeStyle = YELLOW;
         ctx.lineWidth = 4;
       } else {
-        ctx.strokeStyle = WHITE;
+        ctx.strokeStyle = unlocked ? WHITE : '#4a5a68';
         ctx.lineWidth = 2;
       }
       ctx.strokeRect(x, y, cardWidth, cardHeight);
@@ -4062,7 +4341,7 @@ export class Game {
         if (simg && simg.complete && simg.naturalWidth > 0) cimg = simg;
       }
       if (cimg && cimg.complete && cimg.naturalWidth > 0) {
-        const imgH = 200;
+        const imgH = 180;
         const imgW = Math.round(cimg.naturalWidth * (imgH / cimg.naturalHeight));
         ctx.drawImage(cimg, x + (cardWidth - imgW) / 2, y + 8, imgW, imgH);
       } else {
@@ -4084,6 +4363,27 @@ export class Game {
       ctx.font      = 'italic 12px Consolas, monospace';
       ctx.fillStyle = '#AAAAAA';
       ctx.fillText(char.role, x + cardWidth / 2, y + cardHeight - 12);
+
+      // Locked overlay (e.g. Brawler Warrior until unlocked): dim the card + padlock glyph.
+      if (!unlocked) {
+        ctx.fillStyle = 'rgba(4,10,18,0.72)';
+        ctx.fillRect(x, y, cardWidth, cardHeight);
+        const lx = x + cardWidth / 2, ly = y + cardHeight / 2;
+        ctx.strokeStyle = '#9fb0c0'; ctx.fillStyle = '#9fb0c0'; ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.arc(lx, ly - 10, 12, Math.PI, 0); ctx.stroke();
+        ctx.fillRect(lx - 16, ly - 2, 32, 24);
+        ctx.font = 'bold 13px Consolas, monospace'; ctx.fillStyle = '#c8d6e2'; ctx.textAlign = 'center';
+        ctx.fillText('LOCKED', lx, ly + 44);
+      }
+    }
+
+    // Unlock hint for the highlighted locked character.
+    const selChar = this.characters[this.characterIndex];
+    if (!this.meta.isCharacterUnlocked(selChar.id)) {
+      ctx.font = 'bold 14px Consolas, monospace';
+      ctx.fillStyle = '#ffcf6a';
+      ctx.textAlign = 'center';
+      ctx.fillText('Reach 10:00 in Endless Mode to unlock Brawler Warrior.', WIDTH / 2, HEIGHT / 2 + cardHeight / 2 + 24);
     }
 
     // ── Secret skins strip (locked silhouettes until earned via a victory) ──────
@@ -4800,7 +5100,8 @@ export class Game {
     if (!p) return false;
     const hasUlt = p.selectedCharacter === 'skeleton_warrior'
                 || p.selectedCharacter === 'cyber_arm_hero'
-                || p.selectedCharacter === 'taekwondo_girl';
+                || p.selectedCharacter === 'taekwondo_girl'
+                || p.selectedCharacter === 'brawler_warrior';
     if (!hasUlt) return false;
     if (this.thunderSolo || this.overChains || this.spiritDojang) return false;  // mid-cast
     return p.mana >= ULTIMATE_MANA_COST;
