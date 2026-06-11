@@ -392,6 +392,10 @@ export function drawEndScreen(ctx, game) {
   if (game.endless && game.endlessRun) {
     // ── Endless mode: THIS RUN vs BEST personal records ──────────────────────
     y = _drawEndlessRecords(ctx, game, y, lx, rx);
+    // Newly-earned Endless achievements (this run only) — under the records panel.
+    if (game.endlessNewAchievements && game.endlessNewAchievements.length) {
+      y = _drawEndlessAchievements(ctx, game, y);
+    }
   } else {
     // Run stats
     const runStats = [
@@ -523,4 +527,41 @@ function _drawEndlessRecords(ctx, game, startY, lx, rx) {
 
   ctx.textAlign = 'left';
   return y;
+}
+
+// Newly-earned Endless achievements panel for the end screen: a gold "ACHIEVEMENTS UNLOCKED"
+// header + a ★ line per achievement earned THIS run (already-earned ones are filtered out in
+// MetaProgress before this point). Laid out in columns of up to 3 rows so even a big first run
+// that earns several at once stays clean and never overlaps the buttons. Display-only.
+function _drawEndlessAchievements(ctx, game, startY) {
+  const items = game.endlessNewAchievements || [];
+  if (!items.length) return startY;
+
+  let y = startY + 14;
+
+  ctx.font      = 'bold 18px Consolas, monospace';
+  ctx.fillStyle = GREEN;
+  ctx.textAlign = 'center';
+  ctx.fillText('ACHIEVEMENTS UNLOCKED', WIDTH / 2, y);
+  y += 28;
+
+  const perCol = 3;
+  const lineH  = 22;
+  const colW   = 260;
+  const cols   = Math.ceil(items.length / perCol);
+  const rows   = Math.min(perCol, items.length);
+  const startX = WIDTH / 2 - (cols * colW) / 2;
+
+  ctx.font = '16px Consolas, monospace';
+  for (let i = 0; i < items.length; i++) {
+    const col = Math.floor(i / perCol);
+    const row = i % perCol;
+    const cx  = startX + col * colW + colW / 2;
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#FFD700';
+    ctx.fillText('★ ' + items[i].name, cx, y + row * lineH);
+  }
+
+  ctx.textAlign = 'left';
+  return y + rows * lineH;
 }

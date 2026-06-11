@@ -20,8 +20,8 @@ import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, dr
 import { SystemEventManager } from './Events.js?v=94';
 import { UpgradeUI }      from './UpgradeUI.js?v=4';
 import { weightedSample } from './Upgrades.js?v=4';
-import { drawHUD, drawEndScreen } from './HUD.js?v=41';
-import { MetaProgress, META_UPGRADES, upgradeCost } from './MetaProgress.js?v=3';
+import { drawHUD, drawEndScreen } from './HUD.js?v=42';
+import { MetaProgress, META_UPGRADES, upgradeCost } from './MetaProgress.js?v=4';
 
 // ── Thunder Solo sprite slices (cyan_lightning_rain_notes.png, 1254×1254) ──────
 // Strike variants: a clean bolt column + ripple base. (ax,ay) = ripple-centre as a
@@ -297,6 +297,7 @@ export class Game {
     this.endlessRun     = null;
     this.endlessBest    = null;
     this.endlessNewBest = null;
+    this.endlessNewAchievements = null;   // [{id,name}] newly earned this run (end-screen only)
 
     this.gameOver          = false;
     this.victory           = false;
@@ -485,6 +486,15 @@ export class Game {
       this.endlessRun     = run;
       this.endlessNewBest = this.meta.submitEndlessRun(run);   // updates + persists records
       this.endlessBest    = { ...this.meta.endlessRecords };   // post-update bests for display
+
+      // Endless achievement milestones (recognition only — no rewards/bonuses).
+      this.endlessNewAchievements = this.meta.unlockEndlessAchievements({
+        time:  run.time,
+        level: run.level,
+        score: run.score,
+        combo: this.maxCombo,
+        cores: this.player.coresSecured,
+      });
     }
   }
 

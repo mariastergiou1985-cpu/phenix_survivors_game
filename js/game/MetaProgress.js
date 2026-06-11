@@ -26,6 +26,19 @@ export const UNLOCK_KEYS = [
   'grandmaster_dojang_girl',
 ];
 
+// Endless-only achievement milestones. Each `test` is a PURE read-only predicate over a
+// finished-run stats snapshot { time (s), level, score, combo, cores } — it never mutates
+// game state. Recognition only: no rewards, no stat bonuses. Persisted in `phenix_meta`.
+export const ENDLESS_ACHIEVEMENTS = [
+  { id: 'first_endless',   name: 'FIRST ENDLESS RUN', test: ()  => true },
+  { id: 'endless_survivor', name: 'ENDLESS SURVIVOR',  test: (s) => s.time  >= 15 * 60 },
+  { id: 'grid_legend',     name: 'GRID LEGEND',        test: (s) => s.time  >= 20 * 60 },
+  { id: 'level_breaker',   name: 'LEVEL BREAKER',      test: (s) => s.level >= 30 },
+  { id: 'score_hunter',    name: 'SCORE HUNTER',       test: (s) => s.score >= 50000 },
+  { id: 'combo_master',    name: 'COMBO MASTER',       test: (s) => s.combo >= 100 },
+  { id: 'core_defender',   name: 'CORE DEFENDER',      test: (s) => s.cores >= 25 },
+];
+
 export class MetaProgress {
   constructor() {
     this.credits = 0;
@@ -34,6 +47,8 @@ export class MetaProgress {
     // Personal Endless-mode records — kept SEPARATE from Act 1 / global high score.
     // { time: seconds survived, score: best score, level: highest player level }.
     this.endlessRecords = { time: 0, score: 0, level: 0 };
+    // Endless achievement flags: { [id]: true } once earned. Persisted alongside records.
+    this.achievements = {};
     this._load();
   }
 
@@ -51,6 +66,7 @@ export class MetaProgress {
         score: Number(er.score) || 0,
         level: Number(er.level) || 0,
       };
+      this.achievements = d.achievements || {};
     } catch (_) {}
   }
 
@@ -61,6 +77,7 @@ export class MetaProgress {
         levels:  this.levels,
         unlocks: this.unlocks,
         endlessRecords: this.endlessRecords,
+        achievements: this.achievements,
       }));
     } catch (_) {}
   }
@@ -80,6 +97,25 @@ export class MetaProgress {
     if (beat.level) r.level = Math.floor(run.level || 0);
     if (beat.time || beat.score || beat.level) this._save();
     return beat;
+  }
+
+  // Evaluate Endless achievements against a finished-run stats snapshot
+  // { time, level, score, combo, cores }. Marks newly-earned ones, persists once,
+  // and returns ONLY the newly-earned [{ id, name }] (already-earned ones are skipped),
+  // so the end screen shows just what was unlocked this run.
+  unlockEndlessAchievements(stats) {
+    const newly = [];
+    for (const a of ENDLESS_ACHIEVEMENTS) {
+      if (this.achievements[a.id]) continue;          // already earned — don't re-report
+      let earned = false;
+      try { earned = !!a.test(stats); } catch (_) {}  // a bad predicate must never break game-over
+      if (earned) {
+        this.achievements[a.id] = true;
+        newly.push({ id: a.id, name: a.name });
+      }
+    }
+    if (newly.length) this._save();
+    return newly;
   }
 
   getLevel(key) { return Number(this.levels[key]) || 0; }
@@ -120,6 +156,7 @@ export class MetaProgress {
     this.levels  = {};
     this.unlocks = {};
     this.endlessRecords = { time: 0, score: 0, level: 0 };
+    this.achievements   = {};
     this._save();
   }
 }
