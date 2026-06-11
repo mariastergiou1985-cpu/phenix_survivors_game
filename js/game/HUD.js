@@ -100,10 +100,82 @@ export function drawHUD(ctx, game) {
     }
   }
 
+  // Matrix-under-attack warning (banner + off-screen arrow) + objective reminder.
+  _drawMatrixWarning(ctx, game);
+  ctx.textAlign = 'center';
+  drawText(ctx, 'DEFEND MATRICES · RETURN CORES', WIDTH / 2, HEIGHT - 14, 'rgba(150,180,200,0.5)', '12px Consolas, monospace');
+
   // Player visibility marker — drawn last in the HUD layer so it stays on top of enemies,
   // projectiles, rain, and effects during late-game chaos.
   _drawPlayerMarker(ctx, game);
 
+  ctx.textAlign = 'left';
+}
+
+// Warns when a Power Matrix is being drained (matrix.hackTimer > 0, set by the steal logic —
+// read-only here, no gameplay change). Shows a banner while any matrix is attacked, and an
+// edge arrow pointing toward the most urgent one when it is off-screen. Gentle pulse, no hard
+// blink. The most urgent = lowest stored charge, tie-broken by nearest the player.
+function _drawMatrixWarning(ctx, game) {
+  const matrices = game.matrices || [];
+  let target = null;
+  for (const m of matrices) {
+    if (!(m.hackTimer > 0)) continue;
+    if (!target) { target = m; continue; }
+    if (m.stored < target.stored) { target = m; continue; }
+    if (m.stored === target.stored && game.player) {
+      const dm = (m.pos.x - game.player.pos.x) ** 2 + (m.pos.y - game.player.pos.y) ** 2;
+      const dt = (target.pos.x - game.player.pos.x) ** 2 + (target.pos.y - game.player.pos.y) ** 2;
+      if (dm < dt) target = m;
+    }
+  }
+  if (!target) return;
+
+  const now   = performance.now();
+  const pulse = 0.6 + 0.4 * (0.5 + 0.5 * Math.sin(now * 0.006));   // gentle, not a hard blink
+
+  // ── On-screen banner (top-center, below the timer/overload row) ──
+  ctx.save();
+  ctx.globalAlpha = pulse;
+  ctx.shadowColor = RED; ctx.shadowBlur = 8;
+  ctx.textAlign = 'center';
+  drawText(ctx, '‹ MATRIX UNDER ATTACK ›', WIDTH / 2, 118, '#ff5a3c', 'bold 16px Consolas, monospace');
+  ctx.restore();
+  ctx.globalAlpha = 1;
+
+  // ── Off-screen directional arrow (only when the urgent matrix is off-screen) ──
+  if (!game.camera) { ctx.textAlign = 'left'; return; }
+  const sx = (target.pos.x - game.camera.x) * VIEW_SCALE;
+  const sy = (target.pos.y - game.camera.y) * VIEW_SCALE;
+  const onScreen = sx >= 0 && sx <= WIDTH && sy >= 0 && sy <= HEIGHT;
+  if (!onScreen) {
+    const cx0 = WIDTH / 2, cy0 = HEIGHT / 2;
+    const dx = sx - cx0, dy = sy - cy0;
+    const pad = 50, halfW = WIDTH / 2 - pad, halfH = HEIGHT / 2 - pad;
+    const k = 1 / Math.max(Math.abs(dx) / halfW, Math.abs(dy) / halfH);
+    const ex = cx0 + dx * k, ey = cy0 + dy * k;     // point on the inset screen edge
+    const ang = Math.atan2(dy, dx);
+
+    ctx.save();
+    ctx.globalAlpha = pulse;
+    ctx.translate(ex, ey);
+    ctx.rotate(ang);
+    ctx.fillStyle = '#ff5a3c';
+    ctx.shadowColor = RED; ctx.shadowBlur = 6;
+    ctx.beginPath();
+    ctx.moveTo(14, 0); ctx.lineTo(-9, -9); ctx.lineTo(-9, 9); ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+
+    ctx.save();
+    ctx.globalAlpha = pulse;
+    ctx.fillStyle = '#ffb070';
+    ctx.font = 'bold 10px Consolas, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('MATRIX', ex - Math.cos(ang) * 18, ey - Math.sin(ang) * 18 + 3);
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
   ctx.textAlign = 'left';
 }
 
