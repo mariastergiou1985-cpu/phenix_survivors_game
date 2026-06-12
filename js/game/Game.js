@@ -140,9 +140,10 @@ export class Game {
       ['nexus_chakram',     'assets/weapons/nexus_chakram.png'],
       ['crescent_rift_claw','assets/weapons/crescent_rift_claw.png'],
       ['skyfall_lances',    'assets/weapons/skyfall_lances.png'],
-      // Assassin Clone weapons (Plasma Twin Daggers / Plasma Whip-Sword)
-      ['assassin_clone_plasma_daggers',     'assets/weapons/assassin_clone_plasma_daggers.png'],
-      ['assassin_clone_plasma_whip_sword',  'assets/weapons/assassin_clone_plasma_whip_sword.png'],
+      // Assassin Clone weapons (Plasma Twin Daggers / Plasma Whip-Sword) — ?v bumped because the
+      // PNG ART was remade (compact/horizontal); forces browsers+CDN to fetch the new image.
+      ['assassin_clone_plasma_daggers',     'assets/weapons/assassin_clone_plasma_daggers.png?v=2'],
+      ['assassin_clone_plasma_whip_sword',  'assets/weapons/assassin_clone_plasma_whip_sword.png?v=2'],
     ].forEach(([key, src]) => {
       const img = new Image();
       img.onerror = () => console.warn(`[Weapon] missing ${src} — drawn-shape fallback used`);
@@ -2411,6 +2412,10 @@ export class Game {
     const target = this._autoTarget(this.player.pos, 750); // wide, screen-aware detection
     if (!target) return;                                  // no enemy/boss/carrier in range → hold fire
     const proj = this.player.shoot(target.pos);
+    // Assassin Clone fights with her 2 plasma weapons + ultimate only. Her universal base shot
+    // still fires and deals its (unchanged) damage, but is drawn HIDDEN so there is no pink-orb
+    // projectile spam / "3rd weapon" look. Visual-only flag — no balance change.
+    if (this.player.selectedCharacter === 'assassin_clone') proj.hidden = true;
     this.projectiles.push(proj);
     this.audio?.playShoot();
   }
@@ -3240,15 +3245,14 @@ export class Game {
       ctx.translate(s.pos.x, s.pos.y); ctx.rotate(Math.atan2(s.dir.y, s.dir.x));
 
       if (ready) {
-        // MAIN VISUAL — the real twin-dagger sprite ONLY (the extra pink slash arcs were removed so
-        // it no longer looks like extra weapons). Small + sharp like a normal attack (~77–84px base,
-        // hard-capped 95). Swept across the slash, oriented to the attack dir.
-        const h = Math.min(95, Math.max(80, s.range * 0.68)) * (0.92 + 0.08 * a);
+        // MAIN VISUAL — the real twin-dagger sprite ONLY (compact, horizontal art; blades point
+        // along the attack dir, handle at the player). Small + sharp normal attack (~64–72px tall).
+        const h = Math.min(82, Math.max(64, s.range * 0.58)) * (0.92 + 0.08 * a);
         const w = h * (spr.naturalWidth / spr.naturalHeight);
         const sweep = (1 - a) * 0.5 - 0.25;                            // small wrist-flick during the slash
         ctx.save();
         ctx.rotate(sweep);
-        ctx.shadowColor = '#ff4dd2'; ctx.shadowBlur = 6;               // tight, sharp pink edge
+        ctx.shadowColor = '#ff4dd2'; ctx.shadowBlur = 3;               // tight edge (asset already glows)
         ctx.globalAlpha = Math.min(1, a * 3);                          // opaque most of its life
         ctx.drawImage(spr, s.range * 0.02, -h / 2, w, h);
         ctx.restore();
@@ -3317,14 +3321,15 @@ export class Game {
       ctx.translate(s.pos.x, s.pos.y); ctx.rotate(Math.atan2(s.dir.y, s.dir.x));
 
       if (ready) {
-        // MAIN VISUAL — the real whip-sword sprite ONLY (the pink reach-line was removed so it no
-        // longer looks like an extra weapon). Natural square aspect, small + sharp like a normal
-        // attack (~105–135px), drawn just ahead of the player along the strike dir.
-        const sz = Math.min(135, Math.max(112, s.range * 0.32)) * (0.94 + 0.06 * a);
+        // MAIN VISUAL — the real whip-sword sprite ONLY (compact, horizontal art; aspect PRESERVED
+        // so it never smears). Small + sharp normal attack: ~115–140px long, handle at the player,
+        // blade extending along the strike dir.
+        const W = Math.min(140, Math.max(115, s.range * 0.32)) * (0.94 + 0.06 * a);
+        const H = W * (spr.naturalHeight / spr.naturalWidth);
         ctx.save();
-        ctx.shadowColor = '#ff4dd2'; ctx.shadowBlur = 8;
+        ctx.shadowColor = '#ff4dd2'; ctx.shadowBlur = 4;
         ctx.globalAlpha = Math.min(1, a * 3);                  // opaque most of its life
-        ctx.drawImage(spr, sz * 0.1, -sz / 2, sz, sz);
+        ctx.drawImage(spr, 0, -H / 2, W, H);
         ctx.restore();
       } else {
         // Fallback (image not ready): brighter drawn segmented whip so it never blanks.
@@ -4235,7 +4240,7 @@ export class Game {
     this._drawUltAura(ctx);
 
     // 6 ── Projectiles, homing discs, EMP rings, particles
-    for (const p of this.projectiles) p.draw(ctx);   // keep character-specific attack sprite identity
+    for (const p of this.projectiles) { if (!p.hidden) p.draw(ctx); }   // keep character-specific attack sprite identity (assassin base shot drawn hidden)
     for (const d of this.homingDiscs) d.draw(ctx);
     this._drawChainLightning(ctx);
     this._drawNeonPierceBeam(ctx);
