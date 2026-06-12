@@ -3249,16 +3249,17 @@ export class Game {
       ctx.restore();
 
       if (ready) {
-        // MAIN VISUAL — the real twin-dagger sprite, swept across the slash arc with a quick
-        // scale-pop. Big enough to read clearly at gameplay scale; oriented to the attack dir.
-        const h = s.range * 0.95 * (0.85 + 0.15 * a);          // ~110px at base range, pops on cast
+        // MAIN VISUAL — the real twin-dagger sprite, drawn LARGE and near-opaque so it is the
+        // dominant weapon visual at gameplay scale (not a faint pink shape). Swept across the
+        // slash arc, oriented to the attack dir. Stays bold then fades only at the very end.
+        const h = Math.max(165, s.range * 1.3) * (0.92 + 0.08 * a);   // big + clear at gameplay zoom
         const w = h * (spr.naturalWidth / spr.naturalHeight);
-        const sweep = (1 - a) * 0.6 - 0.3;                      // small wrist-flick rotation during the slash
+        const sweep = (1 - a) * 0.5 - 0.25;                            // small wrist-flick during the slash
         ctx.save();
         ctx.rotate(sweep);
-        ctx.shadowColor = '#ff4dd2'; ctx.shadowBlur = 16;        // pink energy edge
-        ctx.globalAlpha = Math.min(1, 0.5 + a);
-        ctx.drawImage(spr, s.range * 0.12, -h / 2, w, h);
+        ctx.shadowColor = '#ff4dd2'; ctx.shadowBlur = 10;              // tight pink edge (not a soft wash)
+        ctx.globalAlpha = Math.min(1, a * 3);                          // opaque most of its life
+        ctx.drawImage(spr, s.range * 0.02, -h / 2, w, h);
         ctx.restore();
       } else {
         // Fallback (image not ready): brighter drawn dual-dagger arcs so it never blanks.
@@ -3324,28 +3325,25 @@ export class Game {
       ctx.save();
       ctx.translate(s.pos.x, s.pos.y); ctx.rotate(Math.atan2(s.dir.y, s.dir.x));
 
-      // Plasma reach — a bright segmented pink energy whip from the player to the strike end.
-      // This carries the "extends toward the target" read; the sprite below is the blade itself.
+      // Plasma reach — a thin pink energy thread from the player to the strike end. SUPPORT only
+      // (kept subtle so the blade sprite below is the dominant visual), carries the "extends
+      // toward the target" read.
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
-      ctx.globalAlpha = a * 0.9;
-      ctx.strokeStyle = '#ff4dd2'; ctx.lineWidth = 8 + s.boost;
+      ctx.globalAlpha = a * 0.6;
+      ctx.strokeStyle = '#ff4dd2'; ctx.lineWidth = 4;
       ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(s.range, 0); ctx.stroke();
-      ctx.strokeStyle = '#ffd9f4'; ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(s.range, 0); ctx.stroke();
-      ctx.fillStyle = '#ffd0f4';
-      for (let i = 1; i <= 6; i++) { const x = s.range * i / 6; ctx.beginPath(); ctx.arc(x, 0, 3, 0, Math.PI * 2); ctx.fill(); }
       ctx.restore();
 
       if (ready) {
-        // MAIN VISUAL — the real whip-sword sprite at its NATURAL (square) aspect, oriented along
-        // the strike and positioned forward so it clearly reads as a katana-whip blade. The sprite
-        // is the source 1254×1254 art — drawn square (no stretching), so it is never smeared.
-        const sz = (150 + 12 * s.boost) * (0.9 + 0.1 * a);
+        // MAIN VISUAL — the real whip-sword sprite at its NATURAL (square) aspect, drawn LARGE and
+        // near-opaque along the strike so it clearly reads as a katana-whip blade (not a thin pink
+        // line). Source 1254×1254 art drawn square (no stretching), so it is never smeared.
+        const sz = (Math.min(280, Math.max(200, s.range * 0.62))) * (0.94 + 0.06 * a);
         ctx.save();
-        ctx.shadowColor = '#ff4dd2'; ctx.shadowBlur = 16;
-        ctx.globalAlpha = Math.min(1, 0.6 + a);
-        ctx.drawImage(spr, s.range * 0.42 - sz / 2, -sz / 2, sz, sz);
+        ctx.shadowColor = '#ff4dd2'; ctx.shadowBlur = 12;
+        ctx.globalAlpha = Math.min(1, a * 3);                  // opaque most of its life
+        ctx.drawImage(spr, s.range * 0.40 - sz / 2, -sz / 2, sz, sz);
         ctx.restore();
       } else {
         // Fallback (image not ready): brighter drawn segmented whip so it never blanks.
