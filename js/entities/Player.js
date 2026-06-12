@@ -145,6 +145,7 @@ export class Player {
       'skeleton_warrior': 'assets/effects/attacks/bone_shockwave.png',
       'taekwondo_girl':   'assets/effects/attacks/lightning_kick_arc.png',
       'cyber_arm_hero':   'assets/effects/attacks/cyber_arm_pulse_beam.png',
+      'assassin_clone':   'assets/weapons/arrow_assasin.png',   // ranged auto-shot = a thrown arrow (rotated to travel dir)
     };
     const attackPath = attackMap[this.selectedCharacter];
     if (attackPath) {

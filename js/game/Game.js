@@ -11,7 +11,7 @@ import { clamp, distance, safeNormalize, randomChoice, randomRange } from '../ut
 import { FloatingText }   from '../entities/FloatingText.js';
 import { DataCore, rollCoreType } from '../entities/DataCore.js?v=2';
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=13';
-import { Player }         from '../entities/Player.js?v=69';
+import { Player }         from '../entities/Player.js?v=70';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=3';
 import { Enemy }          from '../entities/Enemy.js?v=107';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=1';
@@ -140,10 +140,8 @@ export class Game {
       ['nexus_chakram',     'assets/weapons/nexus_chakram.png'],
       ['crescent_rift_claw','assets/weapons/crescent_rift_claw.png'],
       ['skyfall_lances',    'assets/weapons/skyfall_lances.png'],
-      // Assassin Clone weapons (Plasma Twin Daggers / Plasma Whip-Sword) — ?v bumped because the
-      // PNG ART was remade (compact/horizontal); forces browsers+CDN to fetch the new image.
-      ['assassin_clone_plasma_daggers',     'assets/weapons/assassin_clone_plasma_daggers.png?v=2'],
-      ['assassin_clone_plasma_whip_sword',  'assets/weapons/assassin_clone_plasma_whip_sword.png?v=2'],
+      // Assassin Clone bounce weapon — Shuriken (the Arrow base-shot uses Player.attackSprite, not this map).
+      ['suriken_assasin',   'assets/weapons/suriken_assasin.png'],
     ].forEach(([key, src]) => {
       const img = new Image();
       img.onerror = () => console.warn(`[Weapon] missing ${src} — drawn-shape fallback used`);
@@ -326,11 +324,10 @@ export class Game {
     this._crescentSlashes = [];    // short-lived crescent slash visuals
     this._skyfall         = null;  // Skyfall Lances ultimate state | null
     this._skyfallImpacts  = [];    // short-lived lance impact visuals
-    // Assassin Clone weapons (only active while selectedCharacter === 'assassin_clone')
-    this._daggerTimer     = 0;     // Plasma Twin Daggers auto-slash cadence
-    this._daggerSlashes   = [];    // short-lived twin-dagger slash visuals
-    this._whipTimer       = 0;     // Plasma Whip-Sword cadence
-    this._whipSlashes     = [];    // short-lived whip-sword strike visuals
+    // Assassin Clone weapons (only active while selectedCharacter === 'assassin_clone').
+    // Arrow = the base auto-shot (Player.attackSprite). Shuriken = bouncing thrown weapon.
+    this._shurikenTimer   = 0;     // Shuriken throw cadence
+    this._shurikens       = [];    // in-flight bouncing shurikens
     this._chromePhantom   = null;  // Chrome Phantom Protocol ultimate state | null
     this._chromeFx        = [];    // short-lived clone burst / slash-ring visuals
     this.empRings     = [];
@@ -500,8 +497,24 @@ export class Game {
     this._eliteWaveTimer   = ELITE_WAVE.firstDelay;
     this._eliteWaveElapsed = 0;
     this._applyEndlessProtocols();     // one-shot Achievement Protocol stat boosts (Endless only)
+    this._checkEndlessAchievements();  // grant FIRST ENDLESS RUN immediately on entering Endless
     this.audio?.startEndlessMusic();   // Endless-only track (dawn) replaces gameplay music
     this.triggerAnnouncement('STAGE 02 — NEON SHINJUKU PLAZA', CYAN);   // Endless Stage 02 visuals
+  }
+
+  // Live Endless-achievement evaluation — unlock + persist the INSTANT a milestone is crossed
+  // (not only at game-over), so progress survives a page refresh and the per-frame Achievement
+  // Protocols/Cards activate during the SAME run. Cheap: unlockEndlessAchievements only writes
+  // localStorage when a NEW flag is set. Combo uses the run peak (maxCombo).
+  _checkEndlessAchievements() {
+    if (!this.endless || !this.meta) return;
+    this.meta.unlockEndlessAchievements({
+      time:  this.timeAlive,
+      level: this.player.level,
+      score: Math.floor(this.score || 0),
+      combo: Math.max(this.comboCount || 0, this.maxCombo || 0),
+      cores: this.player.coresSecured,
+    });
   }
 
   // Achievement Protocols — passive Endless rewards that auto-activate from existing achievement
@@ -1785,8 +1798,7 @@ export class Game {
     this._updateNexusChakram(dt);   // Brawler primary (guards on character)
     this._updateCrescentClaw(dt);   // Brawler secondary
     this._updateSkyfall(dt);        // Brawler ultimate
-    this._updateTwinDaggers(dt);    // Assassin primary (guards on character)
-    this._updateWhipSword(dt);      // Assassin secondary
+    this._updateShuriken(dt);       // Assassin bounce weapon (guards on character)
     this._updateChromePhantom(dt);  // Assassin ultimate
     this._updateEnemies(dt);
     this._updateOverload(dt);
@@ -2522,10 +2534,12 @@ export class Game {
     const target = this._autoTarget(this.player.pos, 750); // wide, screen-aware detection
     if (!target) return;                                  // no enemy/boss/carrier in range → hold fire
     const proj = this.player.shoot(target.pos);
-    // Assassin Clone fights with her 2 plasma weapons + ultimate only. Her universal base shot
-    // still fires and deals its (unchanged) damage, but is drawn HIDDEN so there is no pink-orb
-    // projectile spam / "3rd weapon" look. Visual-only flag — no balance change.
-    if (this.player.selectedCharacter === 'assassin_clone') proj.hidden = true;
+    // Assassin Clone: her base auto-shot IS the Arrow (visible arrow sprite via Player.attackMap,
+    // rotated to its travel direction — no orb). Her retired Twin-Dagger mastery card now feeds the
+    // arrow (+1 damage/level), so the card is never a dead pick. Same projectile that always existed.
+    if (this.player.selectedCharacter === 'assassin_clone') {
+      proj.damage += this._cardLvl('assassin_clone_twin_dagger_mastery');
+    }
     this.projectiles.push(proj);
     this.audio?.playShoot();
   }
@@ -3313,144 +3327,81 @@ export class Game {
   // plumbing despite the name); bosses take reduced damage so nothing is one-shot.
   // ════════════════════════════════════════════════════════════════════════════
 
-  // ── Primary: Plasma Twin Daggers (close range) ──────────────────────────────
-  // Fast periodic dual-dagger slash in a small arc around the assassin. Only swings when an
-  // enemy is actually in reach (no empty swings). Pink slash arcs + hit sparks. NOT a projectile.
-  _updateTwinDaggers(dt) {
-    for (const s of this._daggerSlashes) s.life -= dt;
-    if (this._daggerSlashes.length) this._daggerSlashes = this._daggerSlashes.filter(s => s.life > 0);
+  // ── Bounce weapon: Plasma Shuriken ──────────────────────────────────────────
+  // Periodically throws a spinning shuriken at the nearest enemy; on each hit it ricochets to the
+  // next-nearest UNHIT enemy, hitting up to 3 enemies total, then expires. Reuses the shared
+  // _brawlerTargets/_brawlerHit helpers (boss damage reduced). Cadence (1.4s) + damage match the
+  // old secondary so power is unchanged; the assassin_clone_whip_sword_mastery card still scales it.
+  // Pure sprite visual — no glow/laser/orb.
+  _updateShuriken(dt) {
+    if (this._shurikens.length) this._advanceShurikens(dt);     // let in-flight shurikens finish
     if (this.player.selectedCharacter !== 'assassin_clone') return;
-    this._daggerTimer -= dt;
-    if (this._daggerTimer > 0) return;
+    this._shurikenTimer -= dt;
+    if (this._shurikenTimer > 0) return;
 
-    const dm = this._cardLvl('assassin_clone_twin_dagger_mastery');   // Twin Dagger Mastery
-    const p = this.player;
-    const RANGE = 124 * (1 + 0.10 * dm), DMG = 13 * (1 + 0.18 * dm);
-    // Hold (retry soon) unless a target is within close range — keeps the daggers melee.
-    let nearest = Infinity;
-    for (const t of this._brawlerTargets()) nearest = Math.min(nearest, distance(p.pos, t.obj.pos) - t.obj.radius);
-    if (nearest > RANGE) { this._daggerTimer = 0.18; return; }
-    this._daggerTimer = 0.55;   // fast cadence
-
-    let hits = 0;
-    for (const t of this._brawlerTargets()) {
-      if (hits >= 8) break;
-      if (distance(p.pos, t.obj.pos) > RANGE + t.obj.radius) continue;
-      hits++;
-      this._brawlerHit(t, (this._targetIsBoss(t) ? 0.5 : 1) * DMG, '#ff4dd2');
-    }
-    const dir = safeNormalize(p.lastFacingDir || new Vec2(1, 0));
-    // life is the VISUAL fade only (damage above is applied once on this tick) — kept well under
-    // the 0.55s cadence so it reads as a clear slash without stacking. No balance change.
-    this._daggerSlashes.push({ pos: p.pos.clone(), dir, range: RANGE, life: 0.35, maxLife: 0.35, boost: dm });
-  }
-
-  _drawDaggerSlashes(ctx) {
-    if (!this._daggerSlashes.length) return;
-    const spr = this._weaponImages?.assassin_clone_plasma_daggers;
-    const ready = spr && spr.complete && spr.naturalWidth > 0;
-    for (const s of this._daggerSlashes) {
-      const a = Math.max(0, s.life / s.maxLife);
-      ctx.save();
-      ctx.translate(s.pos.x, s.pos.y); ctx.rotate(Math.atan2(s.dir.y, s.dir.x));
-
-      if (ready) {
-        // MAIN VISUAL — the real twin-dagger sprite ONLY (compact, horizontal art; blades point
-        // along the attack dir, handle at the player). Small + sharp normal attack (~64–72px tall).
-        const h = Math.min(82, Math.max(64, s.range * 0.58)) * (0.92 + 0.08 * a);
-        const w = h * (spr.naturalWidth / spr.naturalHeight);
-        const sweep = (1 - a) * 0.5 - 0.25;                            // small wrist-flick during the slash
-        ctx.save();
-        ctx.rotate(sweep);
-        ctx.shadowColor = '#ff4dd2'; ctx.shadowBlur = 3;               // tight edge (asset already glows)
-        ctx.globalAlpha = Math.min(1, a * 3);                          // opaque most of its life
-        ctx.drawImage(spr, s.range * 0.02, -h / 2, w, h);
-        ctx.restore();
-      } else {
-        // Fallback (image not ready): brighter drawn dual-dagger arcs so it never blanks.
-        ctx.globalCompositeOperation = 'lighter';
-        ctx.globalAlpha = a;
-        ctx.strokeStyle = '#ff4dd2'; ctx.lineWidth = 5 + s.boost;
-        ctx.beginPath(); ctx.arc(0, 0, s.range * 0.78,        -0.7,            0.7); ctx.stroke();
-        ctx.beginPath(); ctx.arc(0, 0, s.range * 0.62, Math.PI - 0.7, Math.PI + 0.7); ctx.stroke();
-      }
-      ctx.restore();
-    }
-    ctx.globalAlpha = 1;
-  }
-
-  // ── Secondary: Plasma Whip-Sword (ranged / mid-range control) ───────────────
-  // Slower, longer reach than the daggers. Strikes in a line toward the nearest enemy, lightly
-  // piercing. Segmented pink plasma trail. Bosses take reduced damage.
-  _updateWhipSword(dt) {
-    for (const s of this._whipSlashes) s.life -= dt;
-    if (this._whipSlashes.length) this._whipSlashes = this._whipSlashes.filter(s => s.life > 0);
-    if (this.player.selectedCharacter !== 'assassin_clone') return;
-    this._whipTimer -= dt;
-    if (this._whipTimer > 0) return;
-
-    const wm = this._cardLvl('assassin_clone_whip_sword_mastery');   // Whip-Sword Mastery
+    const wm = this._cardLvl('assassin_clone_whip_sword_mastery');   // (card kept; now feeds shuriken)
     const p = this.player, RANGE = 460 * (1 + 0.12 * wm);
-    let target = null, bestD = RANGE;
-    for (const t of this._brawlerTargets()) {
-      const d = distance(p.pos, t.obj.pos);
-      if (d < bestD) { bestD = d; target = t.obj.pos; }
-    }
-    if (!target) { this._whipTimer = 0.25; return; }   // hold, retry soon
-    this._whipTimer = 1.4;
-
-    const dir = safeNormalize(new Vec2(target.x - p.pos.x, target.y - p.pos.y));
-    const HALF_W = 40, DMG = 26 * (1 + 0.16 * wm);
-    let pierceLeft = 2 + wm;   // light multi-hit, scales with card
-    const along = this._brawlerTargets()
-      .map(t => ({ t, proj: (t.obj.pos.x - p.pos.x) * dir.x + (t.obj.pos.y - p.pos.y) * dir.y }))
-      .filter(o => o.proj > 0 && o.proj < RANGE)
-      .sort((a, b) => a.proj - b.proj);
-    for (const o of along) {
-      if (pierceLeft <= 0) break;
-      const b = o.t.obj;
-      const perpX = (b.pos.x - p.pos.x) - dir.x * o.proj;
-      const perpY = (b.pos.y - p.pos.y) - dir.y * o.proj;
-      if (Math.hypot(perpX, perpY) > HALF_W + b.radius) continue;
-      pierceLeft--;
-      this._brawlerHit(o.t, (this._targetIsBoss(o.t) ? 0.55 : 1) * DMG, '#ff4dd2');
-    }
-    const vis = Math.min(RANGE, bestD + 70);
-    // life is the VISUAL fade only (damage applied once above) — kept under the 1.4s cadence.
-    this._whipSlashes.push({ pos: p.pos.clone(), dir, range: vis, life: 0.35, maxLife: 0.35, boost: wm });
+    const first = this._nearestTarget(p.pos, RANGE, null);
+    if (!first) { this._shurikenTimer = 0.25; return; }              // hold, retry soon
+    this._shurikenTimer = 1.4;                                       // unchanged cadence
+    this._shurikens.push({
+      pos: p.pos.clone(), target: first, hit: new Set(),
+      bouncesLeft: 3, dmg: 26 * (1 + 0.16 * wm), speed: 540, ang: 0, life: 2.5,
+    });
     this.audio?.playShoot?.();
   }
 
-  _drawWhipSlashes(ctx) {
-    if (!this._whipSlashes.length) return;
-    const spr = this._weaponImages?.assassin_clone_plasma_whip_sword;
-    const ready = spr && spr.complete && spr.naturalWidth > 0;
-    for (const s of this._whipSlashes) {
-      const a = Math.max(0, s.life / s.maxLife);
-      ctx.save();
-      ctx.translate(s.pos.x, s.pos.y); ctx.rotate(Math.atan2(s.dir.y, s.dir.x));
+  // Nearest damageable target wrapper ({obj,arr,die}) to `from` within `range`, excluding any
+  // enemy objects already in the `exclude` Set (or null). Reuses the generic _brawlerTargets list.
+  _nearestTarget(from, range, exclude) {
+    let best = null, bestD = range;
+    for (const t of this._brawlerTargets()) {
+      if (exclude && exclude.has(t.obj)) continue;
+      const d = distance(from, t.obj.pos);
+      if (d < bestD) { bestD = d; best = t; }
+    }
+    return best;
+  }
 
+  _advanceShurikens(dt) {
+    for (let i = this._shurikens.length - 1; i >= 0; i--) {
+      const s = this._shurikens[i];
+      s.ang  += dt * 22;          // fast spin
+      s.life -= dt;
+      // Re-acquire if the current target is gone/dead/already hit.
+      if (!s.target || s.hit.has(s.target.obj) || s.target.obj.hp <= 0) {
+        s.target = this._nearestTarget(s.pos, 380, s.hit);
+      }
+      if (!s.target || s.bouncesLeft <= 0 || s.life <= 0) { this._shurikens.splice(i, 1); continue; }
+      const tp  = s.target.obj.pos;
+      const dir = safeNormalize(new Vec2(tp.x - s.pos.x, tp.y - s.pos.y));
+      s.pos.addMut(dir.scale(s.speed * dt));
+      if (distance(s.pos, tp) <= s.target.obj.radius + 16) {        // ── hit → bounce
+        this._brawlerHit(s.target, (this._targetIsBoss(s.target) ? 0.55 : 1) * s.dmg, '#ff4dd2');
+        s.hit.add(s.target.obj);
+        s.bouncesLeft--;
+        s.target = s.bouncesLeft > 0 ? this._nearestTarget(s.pos, 380, s.hit) : null;
+        if (!s.target) { this._shurikens.splice(i, 1); continue; }
+      }
+    }
+  }
+
+  _drawShuriken(ctx) {
+    if (!this._shurikens.length) return;
+    const spr = this._weaponImages?.suriken_assasin;
+    const ready = spr && spr.complete && spr.naturalWidth > 0;
+    for (const s of this._shurikens) {
+      ctx.save();
+      ctx.translate(s.pos.x, s.pos.y); ctx.rotate(s.ang);
       if (ready) {
-        // MAIN VISUAL — the real whip-sword sprite ONLY (compact, horizontal art; aspect PRESERVED
-        // so it never smears). Small + sharp normal attack: ~115–140px long, handle at the player,
-        // blade extending along the strike dir.
-        const W = Math.min(140, Math.max(115, s.range * 0.32)) * (0.94 + 0.06 * a);
-        const H = W * (spr.naturalHeight / spr.naturalWidth);
-        ctx.save();
-        ctx.shadowColor = '#ff4dd2'; ctx.shadowBlur = 4;
-        ctx.globalAlpha = Math.min(1, a * 3);                  // opaque most of its life
-        ctx.drawImage(spr, 0, -H / 2, W, H);
-        ctx.restore();
+        const sz = 34;
+        ctx.drawImage(spr, -sz / 2, -sz / 2, sz, sz);   // spinning shuriken sprite (no glow/orb)
       } else {
-        // Fallback (image not ready): brighter drawn segmented whip so it never blanks.
-        ctx.globalCompositeOperation = 'lighter';
-        ctx.globalAlpha = a;
-        ctx.strokeStyle = '#ffaeec'; ctx.lineWidth = 6 + s.boost;
-        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(s.range, 0); ctx.stroke();
+        ctx.strokeStyle = '#ff4dd2'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(0, 0, 12, 0, Math.PI * 2); ctx.stroke();
       }
       ctx.restore();
     }
-    ctx.globalAlpha = 1;
   }
 
   // ── Ultimate: Chrome Phantom Protocol (SPACE, 100 mana) ─────────────────────
@@ -3940,16 +3891,26 @@ export class Game {
   _updateEliteWaves(dt) {
     if (!this.endless) return;            // hard gate — inert during Act 1
     this._eliteWaveElapsed += dt;
+
+    // Live Endless-achievement check (~1/s) so milestones unlock + persist mid-run.
+    this._achTimer = (this._achTimer || 0) - dt;
+    if (this._achTimer <= 0) { this._achTimer = 1.0; this._checkEndlessAchievements(); }
     // Brawler Warrior unlock: reaching 10:00 INSIDE Endless (not Act 1, not at Continue). One-shot.
     if (this._eliteWaveElapsed >= 600 && !this.meta.isUnlocked('brawler_warrior')) {
       this.meta.unlock('brawler_warrior');
       this.triggerAnnouncement('BRAWLER WARRIOR UNLOCKED', GREEN);
     }
-    // Brawler secret outfit unlock: surviving to 15:00 INSIDE Endless reveals SYSTEM LOG #1997.
-    // Endless-only (whole method is gated above), one-shot, persisted via the log_1997 flag.
-    if (this._eliteWaveElapsed >= 900 && !this.meta.isUnlocked('log_1997')) {
+    // Secret-outfit unlocks (Endless-only, one-shot, persisted; character-gated).
+    const sc = this.player.selectedCharacter;
+    // Brawler LOG #1997: survive 18:00 in Endless AS Brawler Warrior.
+    if (sc === 'brawler_warrior' && this._eliteWaveElapsed >= 1080 && !this.meta.isUnlocked('log_1997')) {
       this.meta.unlock('log_1997');
       this.triggerAnnouncement('SYSTEM LOG #1997 FOUND — BRAWLER SKIN', YELLOW);
+    }
+    // Assassin LOG #1998: survive 15:00 in Endless AS Assassin Clone.
+    if (sc === 'assassin_clone' && this._eliteWaveElapsed >= 900 && !this.meta.isUnlocked('log_1998')) {
+      this.meta.unlock('log_1998');
+      this.triggerAnnouncement('SYSTEM LOG #1998 FOUND — PHANTOM ASSASSIN', '#ff4dd2');
     }
     this._eliteWaveTimer   -= dt;
     if (this._eliteWaveTimer <= 0) {
@@ -4374,8 +4335,7 @@ export class Game {
     this._drawCrescentSlashes(ctx); // Brawler secondary
     this._drawChakrams(ctx);        // Brawler primary
     this._drawChromePhantom(ctx);   // Assassin ultimate (clone overlays + burst rings)
-    this._drawWhipSlashes(ctx);     // Assassin secondary
-    this._drawDaggerSlashes(ctx);   // Assassin primary
+    this._drawShuriken(ctx);        // Assassin bounce weapon
     for (const r of this.empRings)    r.draw(ctx);
     for (const r of this._specialRings) {
       const alpha = r.life / r.maxLife;
@@ -4883,9 +4843,9 @@ export class Game {
 
     if (!secretOk) {
       const hint = charId === 'brawler_warrior'
-        ? 'Secret outfit locked — find LOG #1997 (survive 15:00 in Endless)'
+        ? 'Secret outfit locked — LOG #1997: survive 18:00 in Endless as Brawler Warrior'
         : charId === 'assassin_clone'
-        ? 'Secret outfit locked — LOG #1998 (Phantom Assassin protocol)'
+        ? 'Secret outfit locked — LOG #1998: survive 15:00 in Endless as Assassin Clone'
         : 'Secret outfit locked — win a run to unlock it';
       ctx.font      = '12px Consolas, monospace';
       ctx.fillStyle = '#6a8090';
@@ -6007,7 +5967,7 @@ export class Game {
         );
         this.bossLavaZones.push({ pos, radius: 70, warn: 1.2, impact: 1.4, t: 0, dmgAccum: 0, dps: 16 });
       }
-      this.triggerAnnouncement('LAVA RAIN INCOMING', ORANGE);
+      this.triggerAnnouncement('⚠ WARNING: REACTOR PLASMA ACTIVE', ORANGE);
       this.audio?.playEventWarning();
     }
 
