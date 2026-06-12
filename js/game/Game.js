@@ -2176,6 +2176,116 @@ export class Game {
     ctx.restore();
   }
 
+  // ── Readability: a clear, always-on-top marker pinned above the player so they are never lost
+  // in the neon crowd. Drawn in WORLD space at the END of the camera block (above all effects).
+  // Visual only — no gameplay effect.
+  _drawPlayerMarker(ctx) {
+    const p = this.player;
+    if (!p || this.gameOver) return;
+    const x   = p.pos.x;
+    const bob = Math.sin(Date.now() / 380) * 2;
+    const y   = p.pos.y - 60 + bob;           // sits just above the HP/mana bars
+    ctx.save();
+    drawGlow(ctx, x, y + 5, 12, '#8fefff', 0.45);
+    ctx.fillStyle   = '#d6f7ff';
+    ctx.strokeStyle = 'rgba(0,8,16,0.7)';
+    ctx.lineWidth   = 1.5;
+    ctx.beginPath();                          // clean downward chevron pointing at the player
+    ctx.moveTo(x,     y + 9);
+    ctx.lineTo(x - 8, y - 4);
+    ctx.lineTo(x + 8, y - 4);
+    ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    ctx.restore();
+  }
+
+  // ── Readability/onboarding: contextual wayfinding arrow (screen-space). Carrying cores → points
+  // to the nearest Nexus (where to deposit). With no cores, only during the early game → points to
+  // the nearest ground core (what to grab). Reuses the grid-cache edge-arrow style. Visual only.
+  _drawObjectiveIndicators(ctx) {
+    if (this.gameOver || this.victory || this.upgradeUI) return;
+    const p = this.player; if (!p) return;
+    let target = null, label = '', col = CYAN;
+    if (p.carry > 0 && this.matrices.length) {
+      let best = Infinity;
+      for (const m of this.matrices) { const d = distance(p.pos, m.pos); if (d < best) { best = d; target = m.pos; } }
+      label = 'DEPOSIT'; col = '#7CFF8A';
+    } else if (p.carry === 0 && this.timeAlive < 80 && this.groundCores.length) {
+      let best = Infinity;
+      for (const c of this.groundCores) { const d = distance(p.pos, c.pos); if (d < best) { best = d; target = c.pos; } }
+      label = 'CORE'; col = YELLOW;
+    }
+    if (target) this._drawEdgeArrow(ctx, target, label, col);
+  }
+
+  // Small edge arrow toward a world target — only shown when the target is OFF-screen (on-screen
+  // targets need no arrow). Clamped to the screen edge and rotated toward the target.
+  _drawEdgeArrow(ctx, worldPos, label, color) {
+    const sx = (worldPos.x - this.camera.x) * VIEW_SCALE;
+    const sy = (worldPos.y - this.camera.y) * VIEW_SCALE;
+    const HUD_H = 44, M = 34;
+    if (sx >= M && sx <= WIDTH - M && sy >= HUD_H + M && sy <= HEIGHT - M) return;
+    const ex  = Math.max(M, Math.min(WIDTH - M, sx));
+    const ey  = Math.max(HUD_H + M, Math.min(HEIGHT - M, sy));
+    const ang = Math.atan2(sy - ey, sx - ex);
+    const blink = 0.7 + 0.3 * Math.sin(Date.now() / 300);
+    ctx.save();
+    ctx.globalAlpha = blink;
+    ctx.translate(ex, ey); ctx.rotate(ang);
+    ctx.fillStyle = color; ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(16, 0); ctx.lineTo(-10, -8); ctx.lineTo(-10, 8); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    ctx.restore();
+    ctx.save();
+    ctx.globalAlpha = blink; ctx.font = 'bold 10px Consolas, monospace'; ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillText(label, ex + 1, ey - 15);
+    ctx.fillStyle = color;             ctx.fillText(label, ex,     ey - 16);
+    ctx.restore();
+    ctx.globalAlpha = 1; ctx.textAlign = 'left';
+  }
+
+  // ── First-minute onboarding (Act 1 only): a clear objective callout + rotating core/Overload
+  // hints that fade out within the first minute. Screen-space, non-blocking (top band under the
+  // HUD bar). Purely informational — never blocks input or changes gameplay.
+  _drawOnboarding(ctx) {
+    if (this.endless || this.gameOver || this.victory || this.upgradeUI) return;
+    const t = this.timeAlive;
+    if (t > 62) return;
+    ctx.save();
+    ctx.textAlign = 'center';
+    // Objective title — bold for the first ~5s, then fades.
+    const titleA = t < 5 ? 1 : Math.max(0, 1 - (t - 5) / 2.5);
+    if (titleA > 0.01) {
+      ctx.globalAlpha = titleA;
+      ctx.font = 'bold 26px Consolas, monospace';
+      ctx.shadowColor = CYAN; ctx.shadowBlur = 12; ctx.fillStyle = CYAN;
+      ctx.fillText('DEFEND THE NEXUS GRID', WIDTH / 2, 92);
+      ctx.shadowBlur = 0;
+    }
+    // Rotating hints (after the title) — each fades in/out; all stop by ~26s.
+    const hints = [
+      'Recover Data-Cores and return them to a Nexus',
+      'Network Overload rises if the grid is left undefended',
+      'Keep Overload below 100% — hold the Nexus Grid',
+    ];
+    if (t > 6) {
+      const span = 6.5;
+      const idx  = Math.floor((t - 6) / span);
+      if (idx < hints.length) {
+        const lt = (t - 6) - idx * span;
+        const ha = Math.min(1, lt / 0.6) * Math.min(1, (span - lt) / 0.8);
+        if (ha > 0.01) {
+          ctx.globalAlpha = Math.max(0, ha);
+          ctx.font = '15px Consolas, monospace';
+          ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillText(hints[idx], WIDTH / 2 + 1, 119);
+          ctx.fillStyle = '#cfe8ff';         ctx.fillText(hints[idx], WIDTH / 2,     118);
+        }
+      }
+    }
+    ctx.restore();
+    ctx.globalAlpha = 1; ctx.textAlign = 'left';
+  }
+
   _updateStartMenu(input) {
     const { keys } = input;
     if (keys.has('arrowup') || keys.has('w')) {
@@ -4105,6 +4215,11 @@ export class Game {
     // 1 ── World Background
     this._drawWorldBackground(ctx);
 
+    // 1·5 ── Readability scrim: gently darken the busy neon map so the player, enemies, cores and
+    // Nexus (all drawn AFTER this) clearly pop. Covers only the visible view; no layout/bounds change.
+    ctx.fillStyle = 'rgba(2,6,16,0.30)';
+    ctx.fillRect(this.camera.x, this.camera.y, VIEW_W, VIEW_H);
+
     // 1a ── Boss Lava/Fire Rain zones (ground markers — under entities so they read as terrain)
     this._drawBossLava(ctx);
 
@@ -4175,7 +4290,18 @@ export class Game {
     this._drawAquaPuddles(ctx);
 
     // 4 ── Enemies
-    for (const e of this.enemies) e.draw(ctx);
+    for (const e of this.enemies) {
+      // Readability: a soft dark contour just outside each normal enemy so it separates from the
+      // bright neon background (the enemy body/sprite below covers the inside → thin dark outline).
+      // Cheap (no shadowBlur), bosses/mega keep their own framing. Visual only — no behavior change.
+      if (!e.isBoss() && !e.isMegaBoss) {
+        ctx.save();
+        ctx.strokeStyle = 'rgba(0,6,12,0.5)'; ctx.lineWidth = 3.5;
+        ctx.beginPath(); ctx.arc(e.pos.x, e.pos.y, e.radius + 1.5, 0, Math.PI * 2); ctx.stroke();
+        ctx.restore();
+      }
+      e.draw(ctx);
+    }
 
     // 4a ── Support drones (drawn between enemies and titan so they appear above enemies)
     for (const d of this.supportDrones) d.draw(ctx);
@@ -4443,6 +4569,8 @@ export class Game {
 
     this._drawComboPopups(ctx);        // combo milestone popups (world-space, on top of the action)
 
+    this._drawPlayerMarker(ctx);       // clear "you are here" marker — above every world effect
+
     ctx.restore();  // end camera-space block
 
     this._drawThunderSoloScreen(ctx);  // darken + fullscreen lightning flash (under HUD)
@@ -4454,6 +4582,8 @@ export class Game {
     ctx.fillRect(0, 0, WIDTH, 44);
 
     drawHUD(ctx, this);
+    this._drawObjectiveIndicators(ctx);   // wayfinding: arrow to nearest Nexus (carrying) / core (early)
+    this._drawOnboarding(ctx);            // first-minute objective callout + fading hints (Act 1)
     drawVignette(ctx, this.overload, this.timeAlive);
     drawDamagePulse(ctx, this.damageFlash, this.damageFlashIntensity, DMG_PULSE.duration);
     this._drawScanlines(ctx);
