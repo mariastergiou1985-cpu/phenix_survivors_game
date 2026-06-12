@@ -30,6 +30,7 @@ export const UNLOCK_KEYS = [
   'golden_skeleton_warrior',
   'dark_cyber_arm_hero',
   'grandmaster_dojang_girl',
+  'log_1997',   // Endless-only LOG that unlocks the Brawler Warrior secret outfit
 ];
 
 // Equippable outfits per base character. `default` is always available; `secret` reuses the
@@ -38,15 +39,21 @@ export const UNLOCK_KEYS = [
 export const CHARACTER_OUTFITS = {
   skeleton_warrior: {
     default: { name: 'Default', asset: 'assets/characters/skeleton_warrior.png' },
-    secret:  { name: 'Golden Skeleton Warrior', asset: 'assets/unlocks/secret_skins/golden_skeleton_warrior.png', unlockKey: 'golden_skeleton_warrior' },
+    secret:  { name: 'Cyber Skeleton Warrior', asset: 'assets/unlocks/secret_skins/cyber_skeleton_warrior_secret.png', unlockKey: 'golden_skeleton_warrior' },
   },
   taekwondo_girl: {
     default: { name: 'Default', asset: 'assets/characters/taekwondo_girl.png' },
-    secret:  { name: 'Grandmaster Dojang Girl', asset: 'assets/unlocks/secret_skins/grandmaster_dojang_girl.png', unlockKey: 'grandmaster_dojang_girl' },
+    secret:  { name: 'Grandmaster Dojang Girl', asset: 'assets/unlocks/secret_skins/cyber_dojang_girl_secret.png', unlockKey: 'grandmaster_dojang_girl' },
   },
   cyber_arm_hero: {
     default: { name: 'Default', asset: 'assets/characters/cyber_arm_hero.png' },
-    secret:  { name: 'Dark Cyber Arm Hero', asset: 'assets/unlocks/secret_skins/dark_cyber_arm_hero.png', unlockKey: 'dark_cyber_arm_hero' },
+    secret:  { name: 'Neon Cyber Arm Hero', asset: 'assets/unlocks/secret_skins/neon_cyber_arm_hero_secret.png', unlockKey: 'dark_cyber_arm_hero' },
+  },
+  // Brawler Warrior secret outfit — Endless-only, gated on the LOG #1997 flag (unlock key log_1997).
+  // Internal outfit identity is brawler_warrior_log1997; the unlock flag stays log_1997 for save clarity.
+  brawler_warrior: {
+    default: { name: 'Default', asset: 'assets/characters/brawler_warrior.png' },
+    secret:  { name: 'LOG #1997 Brawler', asset: 'assets/unlocks/secret_skins/brawler_warrior_log1997_secret.png', unlockKey: 'log_1997' },
   },
 };
 

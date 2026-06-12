@@ -21,7 +21,7 @@ import { SystemEventManager } from './Events.js?v=94';
 import { UpgradeUI }      from './UpgradeUI.js?v=5';
 import { weightedSample } from './Upgrades.js?v=6';
 import { drawHUD, drawEndScreen } from './HUD.js?v=45';
-import { MetaProgress, META_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS } from './MetaProgress.js?v=8';
+import { MetaProgress, META_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS } from './MetaProgress.js?v=9';
 
 // ── Thunder Solo sprite slices (cyan_lightning_rain_notes.png, 1254×1254) ──────
 // Strike variants: a clean bolt column + ripple base. (ax,ay) = ripple-centre as a
@@ -245,11 +245,13 @@ export class Game {
 
     // Preload secret-skin preview sprites (Character Select locked/unlocked + Victory screen).
     // Keyed by the same flags MetaProgress persists. Missing files degrade to a text fallback.
+    // Keyed by the outfit unlock flag; sources point at the CURRENT secret-skin files.
     this._skinImages = {};
     [
-      ['golden_skeleton_warrior', 'assets/unlocks/secret_skins/golden_skeleton_warrior.png'],
-      ['dark_cyber_arm_hero',     'assets/unlocks/secret_skins/dark_cyber_arm_hero.png'],
-      ['grandmaster_dojang_girl', 'assets/unlocks/secret_skins/grandmaster_dojang_girl.png'],
+      ['golden_skeleton_warrior', 'assets/unlocks/secret_skins/cyber_skeleton_warrior_secret.png'],
+      ['dark_cyber_arm_hero',     'assets/unlocks/secret_skins/neon_cyber_arm_hero_secret.png'],
+      ['grandmaster_dojang_girl', 'assets/unlocks/secret_skins/cyber_dojang_girl_secret.png'],
+      ['log_1997',                'assets/unlocks/secret_skins/brawler_warrior_log1997_secret.png'],
     ].forEach(([key, src]) => {
       const img = new Image();
       img.onerror = () => console.warn('[Skins] missing ' + src + ' — text fallback used');
@@ -3513,6 +3515,12 @@ export class Game {
       this.meta.unlock('brawler_warrior');
       this.triggerAnnouncement('BRAWLER WARRIOR UNLOCKED', GREEN);
     }
+    // Brawler secret outfit unlock: surviving to 15:00 INSIDE Endless reveals SYSTEM LOG #1997.
+    // Endless-only (whole method is gated above), one-shot, persisted via the log_1997 flag.
+    if (this._eliteWaveElapsed >= 900 && !this.meta.isUnlocked('log_1997')) {
+      this.meta.unlock('log_1997');
+      this.triggerAnnouncement('SYSTEM LOG #1997 FOUND — BRAWLER SKIN', YELLOW);
+    }
     this._eliteWaveTimer   -= dt;
     if (this._eliteWaveTimer <= 0) {
       this._spawnEliteWave();
@@ -4148,42 +4156,52 @@ export class Game {
       ctx.fillRect(0, 0, WIDTH, HEIGHT);
     }
 
-    // Dark tint so button text reads clearly over the image
-    ctx.fillStyle = 'rgba(0,0,0,0.45)';
+    // Light tint only — the background already carries the CYBER-GRID PROTOCOL logo, so we
+    // keep it readable without washing the art out. (No "PHENIX SURVIVORS" text — title is the logo.)
+    ctx.fillStyle = 'rgba(2,6,14,0.32)';
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
-    // Title
-    ctx.font      = 'bold 56px Consolas, monospace';
-    ctx.fillStyle = CYAN;
-    ctx.textAlign = 'center';
-    ctx.fillText('PHENIX SURVIVORS', WIDTH / 2, 130);
-
-    // Button labels — always drawn, no duplication possible since image has none
-    // Layout constants are mirrored in main.js start_menu click hit-test.
-    const startY = 250, spacing = 56, BW = 360;
+    // ── Menu zone — premium cyber-glass buttons, dropped BELOW the logo so START GAME never
+    // overlaps "PROTOCOL". Layout constants are mirrored in main.js start_menu click hit-test. ──
+    const startY = 300, spacing = 50, BW = 360, BH = 42;
+    const cx = WIDTH / 2;
     for (let i = 0; i < this.menuItems.length; i++) {
-      const y  = startY + i * spacing;
-      const bx = WIDTH / 2 - BW / 2;
-      if (i === this.menuIndex) {
-        ctx.fillStyle   = 'rgba(0,230,255,0.15)';
-        ctx.fillRect(bx, y - 30, BW, 52);
+      const yc  = startY + i * spacing;
+      const bx  = cx - BW / 2;
+      const by  = yc - BH / 2;
+      const sel = i === this.menuIndex;
+
+      ctx.save();
+      // Dark translucent glass panel
+      ctx.fillStyle = sel ? 'rgba(6,34,52,0.66)' : 'rgba(6,12,22,0.5)';
+      ctx.beginPath(); ctx.roundRect(bx, by, BW, BH, 9); ctx.fill();
+      // Thin neon border (cyan glow when selected, dim purple otherwise)
+      if (sel) {
+        ctx.shadowColor = CYAN; ctx.shadowBlur = 14;
         ctx.strokeStyle = CYAN; ctx.lineWidth = 2;
-        ctx.strokeRect(bx, y - 30, BW, 52);
-        ctx.font      = 'bold 30px Consolas, monospace';
-        ctx.fillStyle = CYAN;
       } else {
-        ctx.font      = 'bold 30px Consolas, monospace';
-        ctx.fillStyle = WHITE;
+        ctx.strokeStyle = 'rgba(140,110,210,0.42)'; ctx.lineWidth = 1;
       }
+      ctx.beginPath(); ctx.roundRect(bx, by, BW, BH, 9); ctx.stroke();
+      ctx.restore();
+
+      // Selected accent tick on the left edge
+      if (sel) {
+        ctx.fillStyle = CYAN;
+        ctx.fillRect(bx + 7, by + 9, 3, BH - 18);
+      }
+
+      ctx.font      = sel ? 'bold 22px Consolas, monospace' : '20px Consolas, monospace';
+      ctx.fillStyle = sel ? '#e9ffff' : 'rgba(214,226,238,0.9)';
       ctx.textAlign = 'center';
-      ctx.fillText(this.menuItems[i], WIDTH / 2, y);
+      ctx.fillText(this.menuItems[i], cx, yc + 7);
     }
 
-    // Navigation hint
+    // ── Help zone — navigation hint at the very bottom ──
     ctx.font      = '14px Consolas, monospace';
-    ctx.fillStyle = 'rgba(200,200,200,0.6)';
+    ctx.fillStyle = 'rgba(200,210,225,0.62)';
     ctx.textAlign = 'center';
-    ctx.fillText('↑↓ W/S  Navigate     ENTER / Click  Select', WIDTH / 2, HEIGHT - 22);
+    ctx.fillText('↑↓ W/S  Navigate     ENTER / Click  Select', WIDTH / 2, HEIGHT - 20);
     ctx.textAlign = 'left';
   }
 
@@ -4258,8 +4276,8 @@ export class Game {
   // the Victory screen and Character Select so the two never drift.
   _secretSkins() {
     return [
-      { key: 'golden_skeleton_warrior', name: 'Golden Skeleton Warrior' },
-      { key: 'dark_cyber_arm_hero',     name: 'Dark Cyber Arm Hero'     },
+      { key: 'golden_skeleton_warrior', name: 'Cyber Skeleton Warrior' },
+      { key: 'dark_cyber_arm_hero',     name: 'Neon Cyber Arm Hero'    },
       { key: 'grandmaster_dojang_girl', name: 'Grandmaster Dojang Girl' },
     ];
   }
@@ -4409,10 +4427,13 @@ export class Game {
     btn(secretRect, secretOk ? 'SECRET' : 'LOCKED', equipped === 'secret', secretOk);
 
     if (!secretOk) {
+      const hint = charId === 'brawler_warrior'
+        ? 'Secret outfit locked — find LOG #1997 (survive 15:00 in Endless)'
+        : 'Secret outfit locked — win a run to unlock it';
       ctx.font      = '12px Consolas, monospace';
       ctx.fillStyle = '#6a8090';
       ctx.textAlign = 'center';
-      ctx.fillText('Secret outfit locked — win a run to unlock it', WIDTH / 2, secretRect.y + secretRect.h + 16);
+      ctx.fillText(hint, WIDTH / 2, secretRect.y + secretRect.h + 16);
     }
     ctx.textAlign = 'left';
   }
@@ -4509,27 +4530,31 @@ export class Game {
       ctx.fillText('Reach 10:00 in Endless Mode to unlock Brawler Warrior.', WIDTH / 2, HEIGHT / 2 + cardHeight / 2 + 24);
     }
 
-    // ── Secret skins strip (locked silhouettes until earned via a victory) ──────
+    // ── Secret skins strip — each preview sits DIRECTLY under its matching character card.
+    // Positions are tied to character IDs (same card layout), never sorted by filename/alpha.
     ctx.font      = 'bold 15px Consolas, monospace';
     ctx.fillStyle = PURPLE;
     ctx.textAlign = 'center';
-    ctx.fillText('◆  SECRET SKINS  ◆', WIDTH / 2, 528);
+    ctx.fillText('◆  SECRET SKINS  ◆', WIDTH / 2, 524);
 
-    const skins = this._secretSkins();
-    const stW = 54, stH = 64, stTop = 536;
-    const stCenters = [WIDTH / 2 - 200, WIDTH / 2, WIDTH / 2 + 200];
-    for (let i = 0; i < skins.length; i++) {
-      const unlocked = this.meta?.isUnlocked(skins[i].key) === true;
-      this._drawSkinThumb(ctx, skins[i].key, stCenters[i], stTop, stW, stH, unlocked);
+    const stW = 54, stH = 64, stTop = 532;
+    for (let i = 0; i < this.characters.length; i++) {
+      const cid    = this.characters[i].id;
+      const secret = CHARACTER_OUTFITS[cid]?.secret;
+      if (!secret) continue;
+      const cx       = startX + i * (cardWidth + gap) + cardWidth / 2;   // matches card center
+      const key      = secret.unlockKey;
+      const unlocked = this.meta?.isUnlocked(key) === true;
+      this._drawSkinThumb(ctx, key, cx, stTop, stW, stH, unlocked);
 
       ctx.font      = '11px Consolas, monospace';
       ctx.fillStyle = unlocked ? WHITE : '#78919f';
       ctx.textAlign = 'center';
-      ctx.fillText(skins[i].name, stCenters[i], stTop + stH + 16);
+      ctx.fillText(secret.name, cx, stTop + stH + 15);
 
       ctx.font      = 'bold 12px Consolas, monospace';
       ctx.fillStyle = unlocked ? GREEN : '#5a7080';
-      ctx.fillText(unlocked ? 'UNLOCKED' : 'LOCKED', stCenters[i], stTop + stH + 32);
+      ctx.fillText(unlocked ? 'UNLOCKED' : 'LOCKED', cx, stTop + stH + 30);
     }
 
     ctx.font = '14px Consolas, monospace';
@@ -4606,52 +4631,66 @@ export class Game {
     ctx.beginPath(); ctx.moveTo(px + 50, py + 58); ctx.lineTo(px + pw - 50, py + 58); ctx.stroke();
 
     ctx.textAlign = 'left';
-    const lx = px + 28;
-    const y0 = py + 76;
-    const lh = 21;
+    const lx  = px + 28;
+    const lh  = 17;
+    let   cy  = py + 74;
+
+    // Premium section header — neon label + thin underline rule.
+    const header = (label) => {
+      ctx.font      = 'bold 15px Consolas, monospace';
+      ctx.fillStyle = CYAN;
+      ctx.fillText(label, lx, cy);
+      ctx.strokeStyle = 'rgba(0,230,255,0.30)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(lx, cy + 7); ctx.lineTo(lx + 520, cy + 7); ctx.stroke();
+      cy += 23;
+    };
+    const bullet = (text, color = WHITE) => {
+      ctx.font = '13px Consolas, monospace'; ctx.fillStyle = color;
+      ctx.fillText('• ' + text, lx + 6, cy); cy += lh;
+    };
 
     // ── OBJECTIVE ──────────────────────────────────────────────
-    ctx.font      = 'bold 15px Consolas, monospace';
-    ctx.fillStyle = CYAN;
-    ctx.fillText('OBJECTIVE', lx, y0);
-
-    const objectives = [
-      'Protect the Power Matrices.',
-      'Recover dropped Data-Cores.',
-      'Return Data-Cores to the Matrix bases.',
-      'Stop enemies from stealing cores.',
-      'Survive enemy attacks.',
-      'Prevent Network Overload from reaching 100%.',
-    ];
-    ctx.font      = '14px Consolas, monospace';
-    ctx.fillStyle = WHITE;
-    objectives.forEach((line, i) => ctx.fillText('• ' + line, lx + 8, y0 + 22 + i * lh));
+    header('OBJECTIVE — DEFEND THE NEXUS GRID');
+    bullet('Hold the Four Nexus matrices (8 cores each — 32 total).');
+    bullet('Recover dropped Data-Cores and return them to a Nexus.');
+    bullet('Stop raiders from stealing cores; keep the grid charged.');
+    bullet('Keep Network Overload below 100% or the grid is lost.');
+    cy += 8;
 
     // ── CONTROLS ───────────────────────────────────────────────
-    const ctrY = y0 + 22 + objectives.length * lh + 20;
-    ctx.font      = 'bold 15px Consolas, monospace';
-    ctx.fillStyle = CYAN;
-    ctx.fillText('CONTROLS', lx, ctrY);
-
+    header('CONTROLS');
     const controls = [
-      ['WASD / Arrow Keys', 'Move'],
-      ['Auto-Fire',         'Automatic — no mouse click'],
-      ['SHIFT',             'Dash'],
-      ['SPACE',             'Reserved — Special Ability (soon)'],
-      ['E',                 'Special Move'],
-      ['T',                 'Toggle Aim Assist'],
-      ['M',                 'Mute / Unmute Music'],
-      ['ESC',               'Back / Pause'],
+      ['WASD / Arrows', 'Move'],
+      ['Auto-Fire',     'Targets nearest enemy  (T toggles)'],
+      ['SHIFT',         'Dash'],
+      ['SPACE',         'Ultimate — per character (100 mana)'],
+      ['Q  /  E',       'Pulse Shield  /  EMP stun burst'],
+      ['M  /  F',       'Mute  /  Fullscreen'],
+      ['ESC',           'Pause / Back'],
     ];
-    controls.forEach(([key, action], i) => {
-      const ky = ctrY + 22 + i * lh;
-      ctx.font      = 'bold 13px Consolas, monospace';
-      ctx.fillStyle = YELLOW;
-      ctx.fillText(key, lx + 8, ky);
-      ctx.font      = '13px Consolas, monospace';
-      ctx.fillStyle = WHITE;
-      ctx.fillText('—  ' + action, lx + 192, ky);
+    controls.forEach(([k, a]) => {
+      ctx.font = 'bold 12px Consolas, monospace'; ctx.fillStyle = YELLOW;
+      ctx.fillText(k, lx + 6, cy);
+      ctx.font = '12px Consolas, monospace'; ctx.fillStyle = WHITE;
+      ctx.fillText('—  ' + a, lx + 150, cy);
+      cy += lh;
     });
+    cy += 8;
+
+    // ── COMBAT & UPGRADES ──────────────────────────────────────
+    header('COMBAT & UPGRADES');
+    bullet('Level up to pick upgrade cards & weapon mastery cards.');
+    bullet('Corrosive Payload adds damage-over-time to your attacks.');
+    bullet('Mana fuels your Ultimate; pickups & deposits refill it.');
+    bullet('Phoenix Revive: one automatic revive when you fall.');
+    bullet('Beware Acid Rain — a spreading area hazard.', '#b6ff8c');
+    cy += 8;
+
+    // ── ENDLESS & SECRETS ──────────────────────────────────────
+    header('ENDLESS & SECRETS');
+    bullet('Win Act 1, then Continue — Endless (Stage 02: Neon Shinjuku).');
+    bullet('Elite Waves escalate; reach 10:00 to unlock Brawler Warrior.');
+    bullet('Secret skins unlock from runs — LOG #1997 @15:00 = Brawler skin.', '#d9b6ff');
 
     // ── ANIMATED TUTORIAL PANELS (right column) ─────────────────
     const PANEL_DURATION = 3.5;

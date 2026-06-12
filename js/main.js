@@ -1,4 +1,4 @@
-import { Game } from './game/Game.js?v=176';
+import { Game } from './game/Game.js?v=177';
 import { AudioManager } from './audio/AudioManager.js?v=18';
 
 const canvas = document.getElementById('game');
@@ -171,10 +171,10 @@ canvas.addEventListener('mousedown', e => {
   } else if (game.gameState === 'start_menu') {
     // ── Start Menu ───────────────────────────────────────────────
     // Layout constants mirror Game.js _drawStartMenu (must stay in sync).
-    const BW = 360, BH = 52, startY = 250, spacing = 56;
+    const BW = 360, BH = 42, startY = 300, spacing = 50;
     for (let i = 0; i < game.menuItems.length; i++) {
       const bx = canvas.width / 2 - BW / 2;
-      const by = startY + i * spacing - 30;
+      const by = startY + i * spacing - BH / 2;
       if (mousePos.x >= bx && mousePos.x <= bx + BW &&
           mousePos.y >= by && mousePos.y <= by + BH) {
         game.menuIndex = i;
