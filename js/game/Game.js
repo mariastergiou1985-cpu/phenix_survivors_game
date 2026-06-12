@@ -21,7 +21,7 @@ import { SystemEventManager } from './Events.js?v=95';
 import { UpgradeUI }      from './UpgradeUI.js?v=7';
 import { weightedSample } from './Upgrades.js?v=8';
 import { drawHUD, drawEndScreen } from './HUD.js?v=47';
-import { MetaProgress, META_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS } from './MetaProgress.js?v=12';
+import { MetaProgress, META_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS } from './MetaProgress.js?v=13';
 
 // ── Thunder Solo sprite slices (cyan_lightning_rain_notes.png, 1254×1254) ──────
 // Strike variants: a clean bolt column + ripple base. (ax,ay) = ripple-centre as a
@@ -294,10 +294,17 @@ export class Game {
       { id: 'brawler_warrior',  name: 'Brawler Warrior',        fallbackColor: '#1fd6a6', fallbackAlt: '#0a9c78', role: 'Tank / Brawler' },
       { id: 'assassin_clone',   name: 'Assassin Clone',         fallbackColor: '#ff4dd2', fallbackAlt: '#9aa0aa', role: 'Stealth / Burst' },
     ];
-    // UPGRADES = the permanent Grid-Credit progression (spent between runs). Kept & fixed.
-    this.menuItems = ['START GAME', 'CHARACTER SELECT', 'UPGRADES', 'ACHIEVEMENTS', 'INSTRUCTIONS', 'AUDIO SETTINGS', 'CREDITS', 'EXIT'];
-
     this.reset();
+  }
+
+  // UPGRADES = the permanent Grid-Credit progression (spent between runs). ENDLESS MODE appears
+  // (right after START GAME) only once the player has entered Endless once — a persistent direct
+  // entry so they never replay Act 1 to reach it. Computed live so the unlock reflects instantly.
+  get menuItems() {
+    const items = ['START GAME'];
+    if (this.meta?.isEndlessUnlocked()) items.push('ENDLESS MODE');
+    items.push('CHARACTER SELECT', 'UPGRADES', 'ACHIEVEMENTS', 'INSTRUCTIONS', 'AUDIO SETTINGS', 'CREDITS', 'EXIT');
+    return items;
   }
 
   reset() {
@@ -491,8 +498,27 @@ export class Game {
   // keep scaling on absolute time, so the Rogue AI Overlord still arrives at 25:00.
   continueEndless() {
     if (!this.victory) return;
-    this.endless = true;
     this.victory = false;
+    this._enterEndless();
+  }
+
+  // Direct ENDLESS MODE start from the Main Menu (only offered once endlessUnlocked). Starts a
+  // FRESH Endless run with the currently selected character (defaults to the first character if
+  // none chosen yet): full reset → timer 0 → Endless setup. Same Endless map/camera/Nexus/
+  // achievements/secret-unlock systems as Continue — Endless, just without the Act 1 prelude.
+  startEndlessRun() {
+    if (!this.meta?.isEndlessUnlocked()) return;   // guard: never reachable while locked
+    this.selectedCharacter = this.selectedCharacter || this.characters[this.characterIndex]?.id || 'skeleton_warrior';
+    this.gameState = 'playing';
+    this.reset();                      // fresh run, timeAlive 0, matrices rebuilt, endless=false
+    this._enterEndless();              // flip to Endless + Endless-only setup
+  }
+
+  // Shared Endless-entry setup used by Continue — Endless and the Main-Menu ENDLESS MODE start.
+  // Assumes the run is already reset/in-progress; only flips on Endless state + Endless systems.
+  _enterEndless() {
+    this.meta?.unlockEndless();        // persist Endless access → Main Menu ENDLESS MODE entry
+    this.endless = true;
     this._repositionEndlessNexus();    // Endless-only: cleaner, symmetric, more-centered Nexus layout
     // Endless-local elite-wave clock: first wave after firstDelay, then every interval.
     this._eliteWaveTimer   = ELITE_WAVE.firstDelay;
@@ -2338,6 +2364,7 @@ export class Game {
   // Name-based menu dispatch (shared by keyboard + mouse) so item order can change safely.
   _selectMenuItem(item) {
     if (item === 'START GAME' || item === 'CHARACTER SELECT') this.goToCharacterSelect();
+    else if (item === 'ENDLESS MODE')   this.startEndlessRun();
     else if (item === 'UPGRADES')       this.goToUpgradesScreen();
     else if (item === 'ACHIEVEMENTS')   this.goToAchievementsScreen();
     else if (item === 'INSTRUCTIONS')   this.goToInstructions();
@@ -4603,7 +4630,9 @@ export class Game {
 
     // ── Menu zone — premium cyber-glass buttons, dropped BELOW the logo so START GAME never
     // overlaps "PROTOCOL". Layout constants are mirrored in main.js start_menu click hit-test. ──
-    const startY = 300, spacing = 50, BW = 360, BH = 42;
+    // spacing/startY sized so the full list (up to 9 items with ENDLESS MODE) clears the bottom
+    // nav-hint; mirrored in main.js start_menu click hit-test.
+    const startY = 292, spacing = 46, BW = 360, BH = 42;
     const cx = WIDTH / 2;
     for (let i = 0; i < this.menuItems.length; i++) {
       const yc  = startY + i * spacing;

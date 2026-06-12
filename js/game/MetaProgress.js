@@ -109,6 +109,10 @@ export class MetaProgress {
     // Equipped outfit per character: { [characterId]: 'default' | 'secret' }. Stored SEPARATELY
     // from `unlocks` (which gates availability). Cosmetic selection only.
     this.selectedOutfits = {};
+    // Endless Mode access flag. Set true the first time the player enters Endless (Continue —
+    // Endless after an Act 1 victory). Once set, the Main Menu shows a direct ENDLESS MODE entry
+    // so the player never has to replay Act 1. Persisted; fresh saves start false (locked).
+    this.endlessUnlocked = false;
     this._load();
   }
 
@@ -128,6 +132,7 @@ export class MetaProgress {
       };
       this.achievements = d.achievements || {};
       this.selectedOutfits = d.selectedOutfits || {};
+      this.endlessUnlocked = d.endlessUnlocked === true;
     } catch (_) {}
   }
 
@@ -140,6 +145,7 @@ export class MetaProgress {
         endlessRecords: this.endlessRecords,
         achievements: this.achievements,
         selectedOutfits: this.selectedOutfits,
+        endlessUnlocked: this.endlessUnlocked,
       }));
     } catch (_) {}
   }
@@ -220,6 +226,18 @@ export class MetaProgress {
     this.endlessRecords = { time: 0, score: 0, level: 0 };
     this.achievements   = {};
     this.selectedOutfits = {};
+    this.endlessUnlocked = false;
+    this._save();
+  }
+
+  // ─── Endless Mode access ────────────────────────────────────────────────────
+  // True once the player has entered Endless at least once. Read by the Main Menu to
+  // show/hide the ENDLESS MODE entry. Never gates achievements/outfits/balance.
+  isEndlessUnlocked() { return this.endlessUnlocked === true; }
+
+  unlockEndless() {
+    if (this.endlessUnlocked === true) return;
+    this.endlessUnlocked = true;
     this._save();
   }
 
