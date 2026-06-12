@@ -2238,18 +2238,24 @@ export class Game {
   _drawPlayerMarker(ctx) {
     const p = this.player;
     if (!p || this.gameOver) return;
-    const x   = p.pos.x;
-    const bob = Math.sin(Date.now() / 380) * 2;
-    const y   = p.pos.y - 60 + bob;           // sits just above the HP/mana bars
+    const now   = Date.now();
+    const x     = p.pos.x;                         // centered above the character
+    const bob   = Math.sin(now / 500) * 1.5;       // gentle vertical drift
+    const pulse = 0.55 + 0.45 * (0.5 + 0.5 * Math.sin(now / 420));  // soft 0.55→1.0 blink
+    // Small downward chevron sitting clearly ABOVE the head (sprite top ≈ pos.y - 32),
+    // its tip pointing down at the player. Visual only — no gameplay effect.
+    const halfW = 6, h = 10;
+    const tipY  = p.pos.y - 44 + bob;              // bottom tip (points down toward the head)
     ctx.save();
-    drawGlow(ctx, x, y + 5, 12, '#8fefff', 0.45);
-    ctx.fillStyle   = '#d6f7ff';
-    ctx.strokeStyle = 'rgba(0,8,16,0.7)';
-    ctx.lineWidth   = 1.5;
-    ctx.beginPath();                          // clean downward chevron pointing at the player
-    ctx.moveTo(x,     y + 9);
-    ctx.lineTo(x - 8, y - 4);
-    ctx.lineTo(x + 8, y - 4);
+    ctx.globalAlpha = pulse;
+    drawGlow(ctx, x, tipY - h / 2, 7, '#8fefff', 0.35);
+    ctx.fillStyle   = '#bdf4ff';
+    ctx.strokeStyle = 'rgba(0,10,20,0.6)';
+    ctx.lineWidth   = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(x,         tipY);                   // tip down
+    ctx.lineTo(x - halfW, tipY - h);
+    ctx.lineTo(x + halfW, tipY - h);
     ctx.closePath();
     ctx.fill(); ctx.stroke();
     ctx.restore();
