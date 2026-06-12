@@ -3239,25 +3239,16 @@ export class Game {
       ctx.save();
       ctx.translate(s.pos.x, s.pos.y); ctx.rotate(Math.atan2(s.dir.y, s.dir.x));
 
-      // Support glow only — faint pink slash arcs behind the blades (NOT the main visual).
-      ctx.save();
-      ctx.globalCompositeOperation = 'lighter';
-      ctx.globalAlpha = a * 0.45;
-      ctx.strokeStyle = '#ff4dd2'; ctx.lineWidth = 3 + s.boost;
-      ctx.beginPath(); ctx.arc(0, 0, s.range * 0.78,        -0.7,            0.7); ctx.stroke();
-      ctx.beginPath(); ctx.arc(0, 0, s.range * 0.62, Math.PI - 0.7, Math.PI + 0.7); ctx.stroke();
-      ctx.restore();
-
       if (ready) {
-        // MAIN VISUAL — the real twin-dagger sprite, near-opaque so it reads clearly, but sized
-        // as a NORMAL attack (~90–115px), not an ultimate-scale effect. Swept across the slash
-        // arc, oriented to the attack dir. Stays bold then fades only at the very end.
-        const h = Math.min(118, Math.max(95, s.range * 0.8)) * (0.92 + 0.08 * a);   // ~99px base, capped
+        // MAIN VISUAL — the real twin-dagger sprite ONLY (the extra pink slash arcs were removed so
+        // it no longer looks like extra weapons). Small + sharp like a normal attack (~77–84px base,
+        // hard-capped 95). Swept across the slash, oriented to the attack dir.
+        const h = Math.min(95, Math.max(80, s.range * 0.68)) * (0.92 + 0.08 * a);
         const w = h * (spr.naturalWidth / spr.naturalHeight);
         const sweep = (1 - a) * 0.5 - 0.25;                            // small wrist-flick during the slash
         ctx.save();
         ctx.rotate(sweep);
-        ctx.shadowColor = '#ff4dd2'; ctx.shadowBlur = 10;              // tight pink edge (not a soft wash)
+        ctx.shadowColor = '#ff4dd2'; ctx.shadowBlur = 6;               // tight, sharp pink edge
         ctx.globalAlpha = Math.min(1, a * 3);                          // opaque most of its life
         ctx.drawImage(spr, s.range * 0.02, -h / 2, w, h);
         ctx.restore();
@@ -3325,25 +3316,15 @@ export class Game {
       ctx.save();
       ctx.translate(s.pos.x, s.pos.y); ctx.rotate(Math.atan2(s.dir.y, s.dir.x));
 
-      // Plasma reach — a thin pink energy thread from the player to the strike end. SUPPORT only
-      // (kept subtle so the blade sprite below is the dominant visual), carries the "extends
-      // toward the target" read.
-      ctx.save();
-      ctx.globalCompositeOperation = 'lighter';
-      ctx.globalAlpha = a * 0.6;
-      ctx.strokeStyle = '#ff4dd2'; ctx.lineWidth = 4;
-      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(s.range, 0); ctx.stroke();
-      ctx.restore();
-
       if (ready) {
-        // MAIN VISUAL — the real whip-sword sprite at its NATURAL (square) aspect, near-opaque
-        // along the strike so it reads as a katana-whip blade (not a thin pink line), but sized as
-        // a NORMAL attack (~130–165px), not an ultimate-scale effect. Square art = never smeared.
-        const sz = Math.min(165, Math.max(140, s.range * 0.4)) * (0.94 + 0.06 * a);
+        // MAIN VISUAL — the real whip-sword sprite ONLY (the pink reach-line was removed so it no
+        // longer looks like an extra weapon). Natural square aspect, small + sharp like a normal
+        // attack (~105–135px), drawn just ahead of the player along the strike dir.
+        const sz = Math.min(135, Math.max(112, s.range * 0.32)) * (0.94 + 0.06 * a);
         ctx.save();
-        ctx.shadowColor = '#ff4dd2'; ctx.shadowBlur = 12;
+        ctx.shadowColor = '#ff4dd2'; ctx.shadowBlur = 8;
         ctx.globalAlpha = Math.min(1, a * 3);                  // opaque most of its life
-        ctx.drawImage(spr, s.range * 0.40 - sz / 2, -sz / 2, sz, sz);
+        ctx.drawImage(spr, sz * 0.1, -sz / 2, sz, sz);
         ctx.restore();
       } else {
         // Fallback (image not ready): brighter drawn segmented whip so it never blanks.
