@@ -1,4 +1,4 @@
-import { Vec2, WIDTH, HEIGHT, WORLD_MARGIN, WHITE, DARK_GREY } from './constants.js';
+import { Vec2, WORLD_W, WORLD_H, WORLD_MARGIN, WHITE, DARK_GREY } from './constants.js';
 
 export function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
 export function distance(a, b)   { return a.distanceTo(b); }
@@ -11,10 +11,12 @@ export function randomRange(a, b) { return a + Math.random() * (b - a); }
 export function randomInt(a, b)   { return Math.floor(a + Math.random() * (b - a + 1)); }
 export function randomChoice(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 
+// Uniform point across the FULL world (not the 1280×720 viewport) — using WIDTH/HEIGHT here
+// previously confined every "random" position to the top-left corner of the larger arena.
 export function randomPosition() {
   return new Vec2(
-    randomInt(WORLD_MARGIN, WIDTH - WORLD_MARGIN),
-    randomInt(WORLD_MARGIN + 40, HEIGHT - WORLD_MARGIN),
+    randomInt(WORLD_MARGIN, WORLD_W - WORLD_MARGIN),
+    randomInt(WORLD_MARGIN + 40, WORLD_H - WORLD_MARGIN),
   );
 }
 

@@ -13,14 +13,14 @@ import { DataCore, rollCoreType } from '../entities/DataCore.js?v=2';
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=13';
 import { Player }         from '../entities/Player.js?v=68';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=3';
-import { Enemy }          from '../entities/Enemy.js?v=105';
+import { Enemy }          from '../entities/Enemy.js?v=106';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=1';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow } from './Effects.js?v=5';
 import { SystemEventManager } from './Events.js?v=94';
 import { UpgradeUI }      from './UpgradeUI.js?v=5';
 import { weightedSample } from './Upgrades.js?v=6';
-import { drawHUD, drawEndScreen } from './HUD.js?v=45';
+import { drawHUD, drawEndScreen } from './HUD.js?v=46';
 import { MetaProgress, META_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS } from './MetaProgress.js?v=9';
 
 // ── Thunder Solo sprite slices (cyan_lightning_rain_notes.png, 1254×1254) ──────
@@ -3906,6 +3906,15 @@ export class Game {
     }
 
     // 5 ── Player (Thunder Solo guitar + aura drawn first so the skeleton sits in front of them)
+    // Endless-only contact shadow at the hero's feet — grounds the player on the flat Stage 02 arena.
+    if (this.endless) {
+      ctx.save();
+      ctx.fillStyle = 'rgba(0,0,0,0.34)';
+      ctx.beginPath();
+      ctx.ellipse(this.player.pos.x, this.player.pos.y + 22, 20, 7, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
     this._drawThunderSoloGuitar(ctx);
     this.player.draw(ctx, this._lastMousePos || { x: 0, y: 0 });
     this._drawUltAura(ctx);
@@ -4331,15 +4340,8 @@ export class Game {
     ctx.fillStyle = 'rgba(2,6,14,0.95)';
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
-    // Optional decorative logo — drawn small at the very top if the asset exists.
-    const logo = this._victoryLogo;
-    if (logo && logo.complete && logo.naturalWidth > 0) {
-      const lh = 64, lw = Math.round(logo.naturalWidth * (lh / logo.naturalHeight));
-      ctx.globalAlpha = 0.85;
-      ctx.drawImage(logo, Math.round(WIDTH / 2 - lw / 2), 6, lw, lh);
-      ctx.globalAlpha = 1;
-    }
-
+    // (Removed the small floating victory_logo thumbnail at the top — the screen now reads as a
+    // clean premium end card driven by the text hierarchy below, no misplaced image.)
     ctx.textAlign = 'center';
 
     const line = (text, y, size, color, bold = false) => {
@@ -6456,6 +6458,13 @@ export class Game {
     const img = this._endlessNexusImage;
     if (!(img && img.complete && img.naturalWidth > 0)) return;
     const D = 150;
+    // Soft elliptical contact shadow so the base reads as planted on the arena, not pasted on top.
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.38)';
+    ctx.beginPath();
+    ctx.ellipse(m.pos.x, m.pos.y + D * 0.30, D * 0.40, D * 0.15, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
     ctx.drawImage(img, m.pos.x - D / 2, m.pos.y - D / 2, D, D);
   }
 
@@ -6470,7 +6479,10 @@ export class Game {
       const scale = WORLD_W / img.naturalWidth;
       const drawH = img.naturalHeight * scale;
       ctx.drawImage(img, 0, 0, WORLD_W, drawH);
-      ctx.fillStyle = this.gridBlackoutActive ? 'rgba(0,0,0,0.65)' : 'rgba(0,0,0,0.38)';
+      // Endless map: a touch more dimming so the backdrop recedes and the gameplay plane reads flat.
+      ctx.fillStyle = this.gridBlackoutActive ? 'rgba(0,0,0,0.65)'
+                    : this.endless           ? 'rgba(0,0,0,0.46)'
+                    :                          'rgba(0,0,0,0.38)';
       ctx.fillRect(0, 0, WORLD_W, WORLD_H);
     } else {
       const spacing = 48;

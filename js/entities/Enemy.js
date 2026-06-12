@@ -2,7 +2,7 @@ import {
   Vec2, ENEMY_RADIUS, WIDTH, HEIGHT, WORLD_W, WORLD_H, WORLD_MARGIN,
   BLUE, MAGENTA, PURPLE, ORANGE, GREEN, RED, YELLOW, WHITE, CYAN, MATRIX_RADIUS,
 } from '../constants.js?v=51';
-import { clamp, distance, safeNormalize, randomPosition, randomRange, randomChoice, drawBar } from '../utils.js';
+import { clamp, distance, safeNormalize, randomRange, randomChoice, drawBar } from '../utils.js';
 import { DataCore } from './DataCore.js?v=2';
 import { FloatingText } from './FloatingText.js';
 import { drawGlow } from '../game/Effects.js?v=2';
@@ -281,20 +281,27 @@ export class Enemy {
   }
 
   _chooseDumpTarget(matrixPos, playerPos) {
+    // Uniform point across the FULL world. (Previously randomPosition()/clamp used the 1280×720
+    // viewport, confining every dump to the top-left arena corner — the top-left core-clustering
+    // bug, which also pulled carriers back to re-target the top-left Nexus.)
+    const worldRand = () => new Vec2(
+      randomRange(WORLD_MARGIN, WORLD_W - WORLD_MARGIN),
+      randomRange(WORLD_MARGIN + 40, WORLD_H - WORLD_MARGIN),
+    );
     let target;
     if (Math.random() < 0.35) {
       target = matrixPos.add(new Vec2(randomRange(-90, 90), randomRange(-90, 90)));
     } else {
-      target = randomPosition();
+      target = worldRand();
       for (let i = 0; i < 20; i++) {
-        const t = randomPosition();
+        const t = worldRand();
         if (distance(t, matrixPos) > 260 && distance(t, playerPos) > 170) {
           target = t; break;
         }
       }
     }
-    target.x = clamp(target.x, WORLD_MARGIN, WIDTH  - WORLD_MARGIN);
-    target.y = clamp(target.y, WORLD_MARGIN + 40, HEIGHT - WORLD_MARGIN);
+    target.x = clamp(target.x, WORLD_MARGIN, WORLD_W - WORLD_MARGIN);
+    target.y = clamp(target.y, WORLD_MARGIN + 40, WORLD_H - WORLD_MARGIN);
     return target;
   }
 

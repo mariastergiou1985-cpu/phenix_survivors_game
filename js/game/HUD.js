@@ -69,24 +69,30 @@ export function drawHUD(ctx, game) {
     drawText(ctx, '!! GRID BLACKOUT ACTIVE !!', WIDTH / 2, 96, RED, '16px Consolas, monospace');
   }
 
-  // ── Bottom-left: Q Pulse Shield + E EMP ─────────────────────────────────
+  // ── Bottom-left: Q Pulse Shield (magenta) + E EMP (cyan) ────────────────
   const by = HEIGHT - 62, bs = 44;
+  const Q_COLOR = '#ff4dd2';   // neon magenta — distinct from E
   const qFrac = 1 - clamp(p.pulseShieldCooldown / p.pulseShieldMaxCooldown, 0, 1);
   _drawAbilityBox(ctx, 16, by, bs, 'Q', qFrac, p.pulseShieldCooldown <= 0,
-    (cx, cy) => _glyphShield(ctx, cx, cy, bs));
+    (cx, cy) => _glyphShield(ctx, cx, cy, bs, Q_COLOR), Q_COLOR);
   const empMax = Math.max(8, 12 - p.upgrades['EMP Cloud']);
   const eFrac  = 1 - clamp(p.empCloudCooldown / empMax, 0, 1);
   _drawAbilityBox(ctx, 16 + bs + 18, by, bs, 'E', eFrac, p.empCloudCooldown <= 0,
-    (cx, cy) => _glyphEMP(ctx, cx, cy, bs));
+    (cx, cy) => _glyphEMP(ctx, cx, cy, bs, CYAN), CYAN);
 
-  // ── Bottom-right: SPACE ultimate (mana-fill) ────────────────────────────
+  // ── Bottom-right: SPACE ultimate (mana-fill, frame tinted to character identity) ──
   if (p.selectedCharacter === 'skeleton_warrior' || p.selectedCharacter === 'cyber_arm_hero' || p.selectedCharacter === 'taekwondo_girl' || p.selectedCharacter === 'brawler_warrior') {
     const icon = p.selectedCharacter === 'skeleton_warrior' ? game._thunderGuitarSprite
                : p.selectedCharacter === 'cyber_arm_hero'   ? game._chainsIcon
                : p.selectedCharacter === 'brawler_warrior'  ? game._weaponImages?.skyfall_lances
                : game._dojangFlagSprite;
+    // Frame/glow color by base character identity (outfits don't change selectedCharacter).
+    const ultColor = p.selectedCharacter === 'skeleton_warrior' ? '#9fd8ff'   // electric blue-white
+                   : p.selectedCharacter === 'cyber_arm_hero'   ? '#ff9b3c'   // hot amber
+                   : p.selectedCharacter === 'brawler_warrior'  ? '#3cffb0'   // emerald nexus
+                   : '#3cf0e6';                                                // aqua spirit
     const manaFrac = clamp(p.mana / 100, 0, 1);   // ultimate is ready at the fixed 100 cost, not maxMana (Mana Core safe)
-    _drawUltimateBox(ctx, WIDTH - 64, HEIGHT - 66, 48, 'SPACE', manaFrac, icon);
+    _drawUltimateBox(ctx, WIDTH - 64, HEIGHT - 66, 48, 'SPACE', manaFrac, icon, ultColor);
 
     // One-shot "ULTIMATE READY" cue — shown briefly the moment the ultimate becomes castable
     // (timer set in Game._updateUltReady). Holds, then fades over its final 0.6s. Not a loop.
@@ -250,53 +256,70 @@ function _drawPlayerMarker(ctx, game) {
   ctx.restore();
 }
 
+// Soft 0..1 pulse for "ready" cues — calm sine, never a hard blink.
+function _readyPulse() { return 0.6 + 0.4 * (0.5 + 0.5 * Math.sin(performance.now() / 320)); }
+
 // Rounded-square ability box with a circular ready/cooldown ring + key label + % readout.
-function _drawAbilityBox(ctx, x, y, s, label, frac, ready, glyphFn) {
+// `color` tints the frame/glyph/ring/label so Q (magenta) and E (cyan) read as distinct.
+function _drawAbilityBox(ctx, x, y, s, label, frac, ready, glyphFn, color = CYAN) {
   const cx = x + s / 2, cy = y + s / 2;
   ctx.fillStyle = 'rgba(6,18,32,0.85)';
   ctx.beginPath(); ctx.roundRect(x, y, s, s, 6); ctx.fill();
-  ctx.strokeStyle = ready ? CYAN : 'rgba(120,150,170,0.5)';
-  ctx.lineWidth = 1.5; ctx.beginPath(); ctx.roundRect(x, y, s, s, 6); ctx.stroke();
+  // Ready → colored border with a soft pulsing glow; not ready → dim, calm border.
+  ctx.save();
+  if (ready) {
+    ctx.globalAlpha = _readyPulse();
+    ctx.shadowColor = color; ctx.shadowBlur = 10;
+    ctx.strokeStyle = color; ctx.lineWidth = 2;
+  } else {
+    ctx.strokeStyle = 'rgba(120,150,170,0.45)'; ctx.lineWidth = 1.5;
+  }
+  ctx.beginPath(); ctx.roundRect(x, y, s, s, 6); ctx.stroke();
+  ctx.restore();
   ctx.save();
   ctx.globalAlpha = ready ? 1 : 0.5;
   glyphFn(cx, cy);
   ctx.restore();
-  _drawRing(ctx, cx, cy, s / 2 + 5, frac, ready);
+  _drawRing(ctx, cx, cy, s / 2 + 5, frac, ready, color);
   ctx.textAlign = 'center';
-  drawText(ctx, label, cx, y - 8, ready ? '#cfeaff' : '#90a4b4', 'bold 13px Consolas, monospace');
-  drawText(ctx, `${Math.round(frac * 100)}%`, cx, y + s + 16, ready ? CYAN : '#90a4b4', '11px Consolas, monospace');
+  drawText(ctx, label, cx, y - 8, ready ? color : '#90a4b4', 'bold 13px Consolas, monospace');
+  drawText(ctx, `${Math.round(frac * 100)}%`, cx, y + s + 16, ready ? color : '#90a4b4', '11px Consolas, monospace');
 }
 
-// Bottom-right ultimate box: icon image + circular mana-fill ring.
-function _drawUltimateBox(ctx, x, y, s, label, frac, icon) {
+// Bottom-right ultimate box: icon image + circular mana-fill ring. `color` = character identity.
+function _drawUltimateBox(ctx, x, y, s, label, frac, icon, color = CYAN) {
   const cx = x + s / 2, cy = y + s / 2;
   const ready = frac >= 1;
   ctx.fillStyle = 'rgba(6,18,32,0.85)';
   ctx.beginPath(); ctx.roundRect(x, y, s, s, 6); ctx.fill();
-  // Steady (non-animated) glow on the border while ready, so readiness stays readable
-  // after the one-shot banner fades — a calm indicator, never a flashing alarm.
+  // Ready → character-colored border with a soft pulsing glow; not ready → dim but readable.
   ctx.save();
-  if (ready) { ctx.shadowColor = CYAN; ctx.shadowBlur = 9; }
-  ctx.strokeStyle = ready ? CYAN : 'rgba(120,150,170,0.5)';
-  ctx.lineWidth = 1.5; ctx.beginPath(); ctx.roundRect(x, y, s, s, 6); ctx.stroke();
+  if (ready) {
+    ctx.globalAlpha = _readyPulse();
+    ctx.shadowColor = color; ctx.shadowBlur = 11;
+    ctx.strokeStyle = color; ctx.lineWidth = 2;
+  } else {
+    ctx.strokeStyle = 'rgba(120,150,170,0.5)'; ctx.lineWidth = 1.5;
+  }
+  ctx.beginPath(); ctx.roundRect(x, y, s, s, 6); ctx.stroke();
   ctx.restore();
   ctx.save();
   ctx.globalAlpha = 0.45 + 0.55 * frac;
-  _drawIcon(ctx, icon, x + 5, y + 5, s - 10, CYAN);
+  _drawIcon(ctx, icon, x + 5, y + 5, s - 10, color);
   ctx.restore();
-  _drawRing(ctx, cx, cy, s / 2 + 5, frac, ready);
+  _drawRing(ctx, cx, cy, s / 2 + 5, frac, ready, color);
   ctx.textAlign = 'center';
-  drawText(ctx, label, cx, y - 8, ready ? '#cfeaff' : '#90a4b4', 'bold 12px Consolas, monospace');
-  drawText(ctx, `${Math.round(frac * 100)}%`, cx, y + s + 16, ready ? CYAN : '#90a4b4', '11px Consolas, monospace');
+  drawText(ctx, label, cx, y - 8, ready ? color : '#90a4b4', 'bold 12px Consolas, monospace');
+  drawText(ctx, `${Math.round(frac * 100)}%`, cx, y + s + 16, ready ? color : '#90a4b4', '11px Consolas, monospace');
 }
 
 // Circular gauge: dim full ring + bright arc sweeping clockwise from the top by `frac`.
-function _drawRing(ctx, cx, cy, r, frac, ready) {
+function _drawRing(ctx, cx, cy, r, frac, ready, color = CYAN) {
   ctx.lineWidth = 3;
   ctx.strokeStyle = 'rgba(40,70,90,0.55)';
   ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
   if (frac > 0) {
-    ctx.strokeStyle = ready ? CYAN : '#3a86ff';
+    ctx.strokeStyle = ready ? color : 'rgba(120,150,170,0.7)';
     ctx.beginPath(); ctx.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + frac * Math.PI * 2); ctx.stroke();
   }
 }
@@ -310,10 +333,10 @@ function _drawIcon(ctx, img, x, y, size, fallbackColor) {
   }
 }
 
-function _glyphShield(ctx, cx, cy, s) {
+function _glyphShield(ctx, cx, cy, s, color = CYAN) {
   const w = s * 0.42, h = s * 0.52;
-  ctx.fillStyle = 'rgba(0,200,255,0.18)';
-  ctx.strokeStyle = CYAN; ctx.lineWidth = 2;
+  ctx.fillStyle = 'rgba(255,77,210,0.16)';
+  ctx.strokeStyle = color; ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.moveTo(cx, cy - h * 0.5);
   ctx.lineTo(cx + w * 0.5, cy - h * 0.28);
@@ -325,14 +348,14 @@ function _glyphShield(ctx, cx, cy, s) {
   ctx.fill(); ctx.stroke();
 }
 
-function _glyphEMP(ctx, cx, cy, s) {
-  ctx.strokeStyle = CYAN; ctx.lineWidth = 1.6;
+function _glyphEMP(ctx, cx, cy, s, color = CYAN) {
+  ctx.strokeStyle = color; ctx.lineWidth = 1.6;
   for (let i = 1; i <= 3; i++) {
     ctx.globalAlpha = 1 - i * 0.22;
     ctx.beginPath(); ctx.arc(cx, cy, s * 0.1 * i, 0, Math.PI * 2); ctx.stroke();
   }
   ctx.globalAlpha = 1;
-  ctx.fillStyle = CYAN;
+  ctx.fillStyle = color;
   ctx.beginPath(); ctx.arc(cx, cy, 2, 0, Math.PI * 2); ctx.fill();
 }
 
