@@ -11,17 +11,17 @@ import { clamp, distance, safeNormalize, randomChoice, randomRange } from '../ut
 import { FloatingText }   from '../entities/FloatingText.js';
 import { DataCore, rollCoreType } from '../entities/DataCore.js?v=2';
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=13';
-import { Player }         from '../entities/Player.js?v=67';
+import { Player }         from '../entities/Player.js?v=68';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=3';
 import { Enemy }          from '../entities/Enemy.js?v=105';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=1';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow } from './Effects.js?v=5';
 import { SystemEventManager } from './Events.js?v=94';
-import { UpgradeUI }      from './UpgradeUI.js?v=4';
-import { weightedSample } from './Upgrades.js?v=5';
+import { UpgradeUI }      from './UpgradeUI.js?v=5';
+import { weightedSample } from './Upgrades.js?v=6';
 import { drawHUD, drawEndScreen } from './HUD.js?v=45';
-import { MetaProgress, META_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS } from './MetaProgress.js?v=7';
+import { MetaProgress, META_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS } from './MetaProgress.js?v=8';
 
 // ── Thunder Solo sprite slices (cyan_lightning_rain_notes.png, 1254×1254) ──────
 // Strike variants: a clean bolt column + ripple base. (ax,ay) = ripple-centre as a
@@ -523,6 +523,12 @@ export class Game {
     // p.baseDamage field, so the old line was a no-op. Seed the dict so the meta upgrade applies.
     p.upgrades['Pulse Damage']        = (p.upgrades['Pulse Damage'] || 0) + m.getLevel('pulseDamage');
     p.upgrades['Firewall Protection'] = m.getLevel('firewall');
+
+    // ── Upgrade Economy phase metas ──
+    p.upgrades['Pulse Damage']  += m.getLevel('combatCalibration') * 0.5;          // global damage
+    p.contactDamageReduction     = Math.min(0.6, (p.contactDamageReduction || 0) + m.getLevel('armorPlating') * 0.03);
+    p.maxMana                   += m.getLevel('manaCapacitor') * 10;               // ultimate cost stays 100
+    p.xpMult                     = 1 + m.getLevel('xpUplink') * 0.05;
   }
 
   _grantRewards() {
@@ -642,17 +648,20 @@ export class Game {
   }
 
   _upgradeRects() {
-    const CW = 300, CH = 160, CGAP = 30, RGAP = 20;
-    const totalW = 3 * CW + 2 * CGAP;
+    const COLS = 4;
+    const CW = 280, CH = 150, CGAP = 22, RGAP = 16;
+    const totalW = COLS * CW + (COLS - 1) * CGAP;
     const x0     = Math.round((WIDTH - totalW) / 2);
-    const y0     = 110;
+    const y0     = 100;
     const rects  = META_UPGRADES.map((_, i) => ({
-      x: x0 + (i % 3) * (CW + CGAP),
-      y: y0 + Math.floor(i / 3) * (CH + RGAP),
+      x: x0 + (i % COLS) * (CW + CGAP),
+      y: y0 + Math.floor(i / COLS) * (CH + RGAP),
       w: CW, h: CH,
     }));
-    const backRect  = { x: x0,              y: y0 + 2*(CH+RGAP) + 20, w: 160, h: 40 };
-    const resetRect = { x: x0 + totalW - 160, y: backRect.y,            w: 160, h: 40 };
+    const rows = Math.ceil(META_UPGRADES.length / COLS);
+    const btnY = y0 + rows * (CH + RGAP) + 8;
+    const backRect  = { x: x0,                y: btnY, w: 160, h: 40 };
+    const resetRect = { x: x0 + totalW - 160, y: btnY, w: 160, h: 40 };
     return { rects, backRect, resetRect };
   }
 
@@ -891,6 +900,11 @@ export class Game {
       case 'coreCapacity': return `+${lvl} carry slot${lvl > 1 ? 's' : ''}`;
       case 'pulseDamage':  return `+${lvl} damage`;
       case 'firewall':     return `-${lvl * 5}% overload`;
+      case 'combatCalibration': return `+${(lvl * 0.5).toFixed(1)} damage`;
+      case 'armorPlating':      return `-${lvl * 3}% contact dmg`;
+      case 'manaCapacitor':     return `+${lvl * 10} max mana`;
+      case 'xpUplink':          return `+${lvl * 5}% XP`;
+      case 'cacheScanner':      return `+${lvl * 5}% cache bonus`;
       default:             return '';
     }
   }
@@ -1785,6 +1799,11 @@ export class Game {
         this.floatingTexts.push(new FloatingText('GRID CACHE COLLECTED', this.player.pos.clone(), CYAN, 1.2));
         this.particles.spawnCorePickup(this.gridCache.pos, CYAN);
         this._grantGridCacheBonus();
+        // Endless-only matrix refill: 50% (×Cache Scanner) chance to grant +8 cores. Act 1 unchanged.
+        if (this.endless && Math.random() < this._endlessCacheBonusChance()) {
+          this.addCarriedCoresSafe(8);
+          this.floatingTexts.push(new FloatingText('+8 CORES', this.player.pos.clone(), '#ffd23c', 1.6));
+        }
         this.gridCache = null;
         this.gridCacheSpawnTimer = 60;
         return;
@@ -1856,6 +1875,29 @@ export class Game {
         this.groundCores.push(new DataCore(this._clampPickupPos(p.pos.clone().add(off)), rollCoreType()));
       }
       this.floatingTexts.push(new FloatingText('+' + n + ' CORES', p.pos.clone(), YELLOW, 1.4));
+    }
+  }
+
+  // Endless Grid Cache +8-cores chance: base 50%, +5% per Cache Scanner meta level, capped 90%.
+  _endlessCacheBonusChance() {
+    return Math.min(0.9, 0.5 + this.meta.getLevel('cacheScanner') * 0.05);
+  }
+
+  // Safely grant cores toward the 4 Nexus matrices. Fills the player's carry slots first (up to
+  // maxCarry, neutral Silver value 3), then drops any remainder as a SMALL controlled ground
+  // cluster routed through the normal pickup→deposit pipeline. Never bypasses matrices, respects
+  // the carry cap, and the bounded count (≤ amount) prevents any ground-core flood.
+  addCarriedCoresSafe(amount) {
+    const p = this.player;
+    let added = 0;
+    while (added < amount && p.carry < p.maxCarry) {
+      p.carry++;
+      p.carriedCores.push(3);   // Silver value — keeps the gold/silver deposit mechanic intact
+      added++;
+    }
+    for (let i = added; i < amount; i++) {
+      const off = new Vec2(randomRange(-50, 50), randomRange(-50, 50));
+      this.groundCores.push(new DataCore(this._clampPickupPos(p.pos.clone().add(off)), rollCoreType()));
     }
   }
 

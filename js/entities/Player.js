@@ -189,8 +189,9 @@ export class Player {
   }
 
   gainXp(amount, floatingTexts) {
-    this.xp += amount;
-    floatingTexts.push(new FloatingText(`+${amount} TECH-XP`, this.pos.clone(), GREEN));
+    const gained = Math.max(1, Math.round(amount * (this.xpMult || 1)));   // XP Uplink meta
+    this.xp += gained;
+    floatingTexts.push(new FloatingText(`+${gained} TECH-XP`, this.pos.clone(), GREEN));
 
     while (this.xp >= this.xpToNext) {
       this.xp      -= this.xpToNext;

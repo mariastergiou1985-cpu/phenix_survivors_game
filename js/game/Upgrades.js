@@ -92,8 +92,8 @@ export const ALL_UPGRADES = [
     CYAN, 8, p => { p.speedBonus += 0.04; }, '»', 'common'
   ),
   new UpgradeDefinition(
-    'Tractor Beam', 'Magnet', '+10 pickup range',
-    BLUE, 6, p => { p.pickupRadius += 10; }, '◎', 'common'
+    'Tractor Beam', 'Magnet', '+24 pickup range',
+    BLUE, 6, p => { p.pickupRadius += 24; }, '◎', 'common'
   ),
   new UpgradeDefinition(
     'Memory Bank', 'Core Slots', '+1 core carry slot',

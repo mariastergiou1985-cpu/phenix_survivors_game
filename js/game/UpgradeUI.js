@@ -1,6 +1,6 @@
 import { WIDTH, HEIGHT, YELLOW, WHITE, GREY } from '../constants.js';
 import { drawText, wrapText, roundRect } from '../utils.js';
-import { RARITY_COLORS } from './Upgrades.js?v=4';
+import { RARITY_COLORS } from './Upgrades.js?v=6';
 
 export class UpgradeUI {
   constructor(choices) {
@@ -27,6 +27,19 @@ export class UpgradeUI {
 
   // Rebind choices after a reroll without recreating the layout (count is unchanged).
   setChoices(choices) { this.choices = choices; }
+
+  // Special cards get a bespoke neon accent so they read as premium; everything else keeps its
+  // rarity color. Corrosive = acid green; weapon-mastery cards inherit their character identity.
+  _accentFor(upg) {
+    if (upg.key === 'corrosive_payload') return '#7CFF3C';
+    switch (upg.char) {
+      case 'skeleton_warrior': return '#AEE3FF';   // blue-white electric
+      case 'cyber_arm_hero':   return '#FF9B3C';   // industrial orange
+      case 'taekwondo_girl':   return '#3CF0E6';   // aqua spirit
+      case 'brawler_warrior':  return '#3CFFB0';   // cyan-green energy
+      default:                 return null;
+    }
+  }
 
   handleClick(mousePos, game) {
     const rr = this.rerollRect;
@@ -61,16 +74,32 @@ export class UpgradeUI {
     this.choices.forEach((upg, i) => {
       const r      = this.cardRects[i];
       const rarity = RARITY_COLORS[upg.rarity] || upg.iconColor;
+      const accent = this._accentFor(upg) || rarity;   // special cards override the neon color
+      const special = accent !== rarity;
 
-      // Card background — dark panel with a rarity-colored neon border + soft outer glow
+      // Card background — dark glass panel with a neon accent border + soft outer glow
       ctx.save();
-      ctx.fillStyle = '#0b1220';
+      ctx.fillStyle = special ? '#0c1626' : '#0b1220';
       roundRect(ctx, r.x, r.y, r.w, r.h, 12);
       ctx.fill();
-      ctx.shadowColor = rarity;
-      ctx.shadowBlur  = 16;                  // soft neon glow around the border
-      ctx.strokeStyle = rarity;
-      ctx.lineWidth   = 2.5;
+
+      // Subtle clipped scanlines + a faint accent wash for a premium cyber-glass feel (lightweight)
+      ctx.save();
+      roundRect(ctx, r.x, r.y, r.w, r.h, 12);
+      ctx.clip();
+      ctx.fillStyle = accent + (special ? '14' : '0c');
+      ctx.fillRect(r.x, r.y, r.w, 26);                 // header tint band
+      ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+      ctx.lineWidth   = 1;
+      for (let sy = r.y + 6; sy < r.y + r.h; sy += 6) {
+        ctx.beginPath(); ctx.moveTo(r.x, sy); ctx.lineTo(r.x + r.w, sy); ctx.stroke();
+      }
+      ctx.restore();
+
+      ctx.shadowColor = accent;
+      ctx.shadowBlur  = special ? 20 : 16;             // soft neon glow around the border
+      ctx.strokeStyle = accent;
+      ctx.lineWidth   = special ? 3 : 2.5;
       roundRect(ctx, r.x, r.y, r.w, r.h, 12);
       ctx.stroke();
       ctx.restore();
@@ -79,12 +108,21 @@ export class UpgradeUI {
       const ix = r.x + (r.w - 80) / 2;
       const iy = r.y + 16;
       ctx.save();
-      ctx.fillStyle = rarity + '22';
+      ctx.fillStyle = accent + '22';
       roundRect(ctx, ix, iy, 80, 80, 10);
       ctx.fill();
-      ctx.shadowColor = rarity; ctx.shadowBlur = 8;
-      ctx.strokeStyle = rarity; ctx.lineWidth = 2;
+      ctx.shadowColor = accent; ctx.shadowBlur = 8;
+      ctx.strokeStyle = accent; ctx.lineWidth = 2;
       roundRect(ctx, ix, iy, 80, 80, 10);
+      ctx.stroke();
+      ctx.restore();
+
+      // Thin accent divider under the icon — separates title block, reinforces hierarchy
+      ctx.save();
+      ctx.strokeStyle = accent + '66';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(r.x + 18, r.y + 104); ctx.lineTo(r.x + r.w - 18, r.y + 104);
       ctx.stroke();
       ctx.restore();
 
@@ -101,7 +139,7 @@ export class UpgradeUI {
       ctx.save();
       ctx.font      = 'bold 19px Consolas, monospace';
       ctx.fillStyle = WHITE;
-      ctx.shadowColor = rarity; ctx.shadowBlur = 6;
+      ctx.shadowColor = accent; ctx.shadowBlur = 6;
       ctx.textAlign = 'center';
       ctx.fillText(upg.name, r.x + r.w / 2, r.y + 122);
       ctx.restore();
