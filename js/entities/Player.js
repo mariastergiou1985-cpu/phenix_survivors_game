@@ -54,6 +54,13 @@ export class Player {
       this.hp      = 125;
       this.baseSpeed = Math.round(230 * 0.95);   // 219
       this.contactDamageReduction = 0.08;
+    } else if (this.selectedCharacter === 'assassin_clone') {
+      // Fast, lethal, fragile. Lowest HP of the roster (no contact armor) — leans on speed +
+      // positioning + her close/ranged plasma weapons. Lethality comes from cards, not base stats.
+      this.maxHp        = 88;
+      this.hp           = 88;
+      this.baseSpeed    = Math.round(230 * 1.12); // 258 (fast; only Taekwondo is faster)
+      this.pickupRadius = 88;
     }
 
     this.carry        = 0;
@@ -152,6 +159,7 @@ export class Player {
       case 'taekwondo_girl': return { primary: '#00D9FF', secondary: '#0099CC' };
       case 'cyber_arm_hero': return { primary: '#FF6600', secondary: '#CC0000' };
       case 'brawler_warrior': return { primary: '#1fd6a6', secondary: '#0a9c78' };
+      case 'assassin_clone': return { primary: '#ff4dd2', secondary: '#9aa0aa' };
       default: return { primary: CYAN, secondary: WHITE };
     }
   }
@@ -169,6 +177,8 @@ export class Player {
         return { rim: '#14ebd2', innerGlow: 'rgba(20,235,210,0.30)', outerGlow: 'rgba(20,235,210,0)' };
       case 'brawler_warrior':
         return { rim: '#1fd6a6', innerGlow: 'rgba(31,214,166,0.30)', outerGlow: 'rgba(31,214,166,0)' };
+      case 'assassin_clone':
+        return { rim: '#ff4dd2', innerGlow: 'rgba(255,77,210,0.30)', outerGlow: 'rgba(255,77,210,0)' };
       default:
         return { rim: '#00e6ff', innerGlow: 'rgba(0,230,255,0.28)',  outerGlow: 'rgba(0,230,255,0)' };
     }

@@ -143,6 +143,13 @@ export const ALL_UPGRADES = [
     GREEN, 3, () => {}, '⟢', 'epic', 'brawler_warrior'),
   new UpgradeDefinition('brawler_skyfall_lances_mastery', 'Lance Storm', 'Skyfall Lances: extra lances & wider impact',
     CYAN, 3, () => {}, '⇣', 'legendary', 'brawler_warrior'),
+  // Assassin Clone — plasma daggers / whip-sword / chrome phantom identity (neon pink)
+  new UpgradeDefinition('assassin_clone_twin_dagger_mastery', 'Twin Dagger Mastery', 'Plasma Twin Daggers: +damage & wider slash arc',
+    MAGENTA, 3, () => {}, '🗡', 'rare', 'assassin_clone'),
+  new UpgradeDefinition('assassin_clone_whip_sword_mastery', 'Whip-Sword Mastery', 'Plasma Whip-Sword: +range, +damage & light pierce',
+    MAGENTA, 3, () => {}, '🌀', 'epic', 'assassin_clone'),
+  new UpgradeDefinition('assassin_clone_chrome_phantom_mastery', 'Chrome Phantom Mastery', 'Chrome Phantom Protocol: longer & larger clone assault',
+    PURPLE, 3, () => {}, '👥', 'legendary', 'assassin_clone'),
 ];
 
 // ─── Weighted sample: every card is useful; bias toward the player's current build ──

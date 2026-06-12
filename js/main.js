@@ -1,4 +1,4 @@
-import { Game } from './game/Game.js?v=178';
+import { Game } from './game/Game.js?v=179';
 import { AudioManager } from './audio/AudioManager.js?v=18';
 
 const canvas = document.getElementById('game');
@@ -56,7 +56,7 @@ window.addEventListener('keydown', e => {
   // One-shot abilities
   if (key === 'q') game.activatePulseShield();   // Pulse Shield (was Sonic Pulse)
   if (key === 'e') game.activateEMPCloud();   // EMP = stun only (no damage); Special unbound
-  if (key === ' ') { game.activateThunderSolo(); game.activateOverheatedChains(); game.activateSpiritDojang(); game.activateSkyfallLances(); }   // SPACE ultimate (per-character; each self-guards)
+  if (key === ' ') { game.activateThunderSolo(); game.activateOverheatedChains(); game.activateSpiritDojang(); game.activateSkyfallLances(); game.activateChromePhantomProtocol(); }   // SPACE ultimate (per-character; each self-guards)
   if (key === 'm') game.audio?.toggleMute();
   if (key === 'f') {
     if (!document.fullscreenElement) {

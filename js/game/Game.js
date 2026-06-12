@@ -11,17 +11,17 @@ import { clamp, distance, safeNormalize, randomChoice, randomRange } from '../ut
 import { FloatingText }   from '../entities/FloatingText.js';
 import { DataCore, rollCoreType } from '../entities/DataCore.js?v=2';
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=13';
-import { Player }         from '../entities/Player.js?v=68';
+import { Player }         from '../entities/Player.js?v=69';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=3';
 import { Enemy }          from '../entities/Enemy.js?v=106';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=1';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow } from './Effects.js?v=5';
 import { SystemEventManager } from './Events.js?v=94';
-import { UpgradeUI }      from './UpgradeUI.js?v=5';
-import { weightedSample } from './Upgrades.js?v=6';
-import { drawHUD, drawEndScreen } from './HUD.js?v=46';
-import { MetaProgress, META_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS } from './MetaProgress.js?v=9';
+import { UpgradeUI }      from './UpgradeUI.js?v=6';
+import { weightedSample } from './Upgrades.js?v=7';
+import { drawHUD, drawEndScreen } from './HUD.js?v=47';
+import { MetaProgress, META_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS } from './MetaProgress.js?v=10';
 
 // ── Thunder Solo sprite slices (cyan_lightning_rain_notes.png, 1254×1254) ──────
 // Strike variants: a clean bolt column + ripple base. (ax,ay) = ripple-centre as a
@@ -126,7 +126,7 @@ export class Game {
 
     // Preload character portraits for Character Select screen
     this._charImages = {};
-    ['skeleton_warrior', 'taekwondo_girl', 'cyber_arm_hero', 'brawler_warrior'].forEach(id => {
+    ['skeleton_warrior', 'taekwondo_girl', 'cyber_arm_hero', 'brawler_warrior', 'assassin_clone'].forEach(id => {
       const img = new Image();
       img.onerror = () => console.warn(`[Char] missing assets/characters/${id}.png — fallback circle used`);
       img.src = `assets/characters/${id}.png`;
@@ -140,12 +140,25 @@ export class Game {
       ['nexus_chakram',     'assets/weapons/nexus_chakram.png'],
       ['crescent_rift_claw','assets/weapons/crescent_rift_claw.png'],
       ['skyfall_lances',    'assets/weapons/skyfall_lances.png'],
+      // Assassin Clone weapons (Plasma Twin Daggers / Plasma Whip-Sword)
+      ['assassin_clone_plasma_daggers',     'assets/weapons/assassin_clone_plasma_daggers.png'],
+      ['assassin_clone_plasma_whip_sword',  'assets/weapons/assassin_clone_plasma_whip_sword.png'],
     ].forEach(([key, src]) => {
       const img = new Image();
       img.onerror = () => console.warn(`[Weapon] missing ${src} — drawn-shape fallback used`);
       img.src = src;
       this._weaponImages[key] = img;
     });
+
+    // Assassin Clone ultimate sprites (Chrome Phantom Protocol): pink phantom clone + chrome
+    // mirror clone. Drawn as clone overlays during the ultimate; phantom is also the HUD icon.
+    // Missing files degrade to drawn-shape fallbacks (never crash).
+    this._assassinPhantomSprite = new Image();
+    this._assassinPhantomSprite.onerror = () => console.warn('[Ultimate] assassin_clone_phantom_clone.png missing — drawn fallback used');
+    this._assassinPhantomSprite.src = 'assets/abilities/ultimates/assassin_clone_phantom_clone.png';
+    this._assassinChromeSprite = new Image();
+    this._assassinChromeSprite.onerror = () => console.warn('[Ultimate] assassin_clone_chrome_clone.png missing — drawn fallback used');
+    this._assassinChromeSprite.src = 'assets/abilities/ultimates/assassin_clone_chrome_clone.png';
 
     // Preload start-menu background image
     this._menuBg = new Image();
@@ -252,6 +265,7 @@ export class Game {
       ['dark_cyber_arm_hero',     'assets/unlocks/secret_skins/neon_cyber_arm_hero_secret.png'],
       ['grandmaster_dojang_girl', 'assets/unlocks/secret_skins/cyber_dojang_girl_secret.png'],
       ['log_1997',                'assets/unlocks/secret_skins/brawler_warrior_log1997_secret.png'],
+      ['log_2007',                'assets/unlocks/secret_skins/assassin_clone_log2007_secret.png'],
     ].forEach(([key, src]) => {
       const img = new Image();
       img.onerror = () => console.warn('[Skins] missing ' + src + ' — text fallback used');
@@ -279,6 +293,7 @@ export class Game {
       { id: 'taekwondo_girl',   name: 'Neon Taekwondo Girl',    fallbackColor: '#00D9FF', fallbackAlt: '#0099CC', role: 'Speed / AoE' },
       { id: 'cyber_arm_hero',   name: 'Cyber Arm Hero',         fallbackColor: '#FF6600', fallbackAlt: '#CC0000', role: 'Ranged / Damage' },
       { id: 'brawler_warrior',  name: 'Brawler Warrior',        fallbackColor: '#1fd6a6', fallbackAlt: '#0a9c78', role: 'Tank / Brawler' },
+      { id: 'assassin_clone',   name: 'Assassin Clone',         fallbackColor: '#ff4dd2', fallbackAlt: '#9aa0aa', role: 'Stealth / Burst' },
     ];
     // UPGRADES = the permanent Grid-Credit progression (spent between runs). Kept & fixed.
     this.menuItems = ['START GAME', 'CHARACTER SELECT', 'UPGRADES', 'ACHIEVEMENTS', 'INSTRUCTIONS', 'AUDIO SETTINGS', 'CREDITS', 'EXIT'];
@@ -310,6 +325,13 @@ export class Game {
     this._crescentSlashes = [];    // short-lived crescent slash visuals
     this._skyfall         = null;  // Skyfall Lances ultimate state | null
     this._skyfallImpacts  = [];    // short-lived lance impact visuals
+    // Assassin Clone weapons (only active while selectedCharacter === 'assassin_clone')
+    this._daggerTimer     = 0;     // Plasma Twin Daggers auto-slash cadence
+    this._daggerSlashes   = [];    // short-lived twin-dagger slash visuals
+    this._whipTimer       = 0;     // Plasma Whip-Sword cadence
+    this._whipSlashes     = [];    // short-lived whip-sword strike visuals
+    this._chromePhantom   = null;  // Chrome Phantom Protocol ultimate state | null
+    this._chromeFx        = [];    // short-lived clone burst / slash-ring visuals
     this.empRings     = [];
     this._specialRings    = [];
     this.thunderSolo      = null;   // Thunder Solo ultimate state while active
@@ -1727,6 +1749,9 @@ export class Game {
     this._updateNexusChakram(dt);   // Brawler primary (guards on character)
     this._updateCrescentClaw(dt);   // Brawler secondary
     this._updateSkyfall(dt);        // Brawler ultimate
+    this._updateTwinDaggers(dt);    // Assassin primary (guards on character)
+    this._updateWhipSword(dt);      // Assassin secondary
+    this._updateChromePhantom(dt);  // Assassin ultimate
     this._updateEnemies(dt);
     this._updateOverload(dt);
     this._updateSpawning(dt);
@@ -3131,6 +3156,228 @@ export class Game {
     ctx.globalAlpha = 1;
   }
 
+  // ════════════════════════════════════════════════════════════════════════════
+  // ASSASSIN CLONE weapons (Phase 1). Every per-frame method guards on
+  // selectedCharacter === 'assassin_clone', so the other 4 characters are unaffected.
+  // Damage routes through the shared _brawlerTargets/_brawlerHit helpers (generic target
+  // plumbing despite the name); bosses take reduced damage so nothing is one-shot.
+  // ════════════════════════════════════════════════════════════════════════════
+
+  // ── Primary: Plasma Twin Daggers (close range) ──────────────────────────────
+  // Fast periodic dual-dagger slash in a small arc around the assassin. Only swings when an
+  // enemy is actually in reach (no empty swings). Pink slash arcs + hit sparks. NOT a projectile.
+  _updateTwinDaggers(dt) {
+    for (const s of this._daggerSlashes) s.life -= dt;
+    if (this._daggerSlashes.length) this._daggerSlashes = this._daggerSlashes.filter(s => s.life > 0);
+    if (this.player.selectedCharacter !== 'assassin_clone') return;
+    this._daggerTimer -= dt;
+    if (this._daggerTimer > 0) return;
+
+    const dm = this._cardLvl('assassin_clone_twin_dagger_mastery');   // Twin Dagger Mastery
+    const p = this.player;
+    const RANGE = 124 * (1 + 0.10 * dm), DMG = 13 * (1 + 0.18 * dm);
+    // Hold (retry soon) unless a target is within close range — keeps the daggers melee.
+    let nearest = Infinity;
+    for (const t of this._brawlerTargets()) nearest = Math.min(nearest, distance(p.pos, t.obj.pos) - t.obj.radius);
+    if (nearest > RANGE) { this._daggerTimer = 0.18; return; }
+    this._daggerTimer = 0.55;   // fast cadence
+
+    let hits = 0;
+    for (const t of this._brawlerTargets()) {
+      if (hits >= 8) break;
+      if (distance(p.pos, t.obj.pos) > RANGE + t.obj.radius) continue;
+      hits++;
+      this._brawlerHit(t, (this._targetIsBoss(t) ? 0.5 : 1) * DMG, '#ff4dd2');
+    }
+    const dir = safeNormalize(p.lastFacingDir || new Vec2(1, 0));
+    this._daggerSlashes.push({ pos: p.pos.clone(), dir, range: RANGE, life: 0.18, maxLife: 0.18, boost: dm });
+  }
+
+  _drawDaggerSlashes(ctx) {
+    if (!this._daggerSlashes.length) return;
+    const spr = this._weaponImages?.assassin_clone_plasma_daggers;
+    const ready = spr && spr.complete && spr.naturalWidth > 0;
+    for (const s of this._daggerSlashes) {
+      const a = Math.max(0, s.life / s.maxLife);
+      ctx.save();
+      ctx.translate(s.pos.x, s.pos.y); ctx.rotate(Math.atan2(s.dir.y, s.dir.x));
+      // Twin crossing pink slash arcs (always drawn — reads as dual daggers, brighter per level)
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = a;
+      ctx.strokeStyle = '#ff4dd2'; ctx.lineWidth = 4 + s.boost;
+      ctx.beginPath(); ctx.arc(0, 0, s.range * 0.78,        -0.7,            0.7); ctx.stroke();
+      ctx.beginPath(); ctx.arc(0, 0, s.range * 0.62, Math.PI - 0.7, Math.PI + 0.7); ctx.stroke();
+      ctx.strokeStyle = '#ffd0f4'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(0, 0, s.range * 0.78, -0.55, 0.55); ctx.stroke();
+      if (ready) {   // small dagger sprite pointing forward for weapon identity
+        ctx.globalCompositeOperation = 'source-over';
+        const h = 46, w = h * (spr.naturalWidth / spr.naturalHeight);
+        ctx.drawImage(spr, s.range * 0.30, -h / 2, w, h);
+      }
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // ── Secondary: Plasma Whip-Sword (ranged / mid-range control) ───────────────
+  // Slower, longer reach than the daggers. Strikes in a line toward the nearest enemy, lightly
+  // piercing. Segmented pink plasma trail. Bosses take reduced damage.
+  _updateWhipSword(dt) {
+    for (const s of this._whipSlashes) s.life -= dt;
+    if (this._whipSlashes.length) this._whipSlashes = this._whipSlashes.filter(s => s.life > 0);
+    if (this.player.selectedCharacter !== 'assassin_clone') return;
+    this._whipTimer -= dt;
+    if (this._whipTimer > 0) return;
+
+    const wm = this._cardLvl('assassin_clone_whip_sword_mastery');   // Whip-Sword Mastery
+    const p = this.player, RANGE = 460 * (1 + 0.12 * wm);
+    let target = null, bestD = RANGE;
+    for (const t of this._brawlerTargets()) {
+      const d = distance(p.pos, t.obj.pos);
+      if (d < bestD) { bestD = d; target = t.obj.pos; }
+    }
+    if (!target) { this._whipTimer = 0.25; return; }   // hold, retry soon
+    this._whipTimer = 1.4;
+
+    const dir = safeNormalize(new Vec2(target.x - p.pos.x, target.y - p.pos.y));
+    const HALF_W = 40, DMG = 26 * (1 + 0.16 * wm);
+    let pierceLeft = 2 + wm;   // light multi-hit, scales with card
+    const along = this._brawlerTargets()
+      .map(t => ({ t, proj: (t.obj.pos.x - p.pos.x) * dir.x + (t.obj.pos.y - p.pos.y) * dir.y }))
+      .filter(o => o.proj > 0 && o.proj < RANGE)
+      .sort((a, b) => a.proj - b.proj);
+    for (const o of along) {
+      if (pierceLeft <= 0) break;
+      const b = o.t.obj;
+      const perpX = (b.pos.x - p.pos.x) - dir.x * o.proj;
+      const perpY = (b.pos.y - p.pos.y) - dir.y * o.proj;
+      if (Math.hypot(perpX, perpY) > HALF_W + b.radius) continue;
+      pierceLeft--;
+      this._brawlerHit(o.t, (this._targetIsBoss(o.t) ? 0.55 : 1) * DMG, '#ff4dd2');
+    }
+    const vis = Math.min(RANGE, bestD + 70);
+    this._whipSlashes.push({ pos: p.pos.clone(), dir, range: vis, life: 0.22, maxLife: 0.22, boost: wm });
+    this.audio?.playShoot?.();
+  }
+
+  _drawWhipSlashes(ctx) {
+    if (!this._whipSlashes.length) return;
+    const spr = this._weaponImages?.assassin_clone_plasma_whip_sword;
+    const ready = spr && spr.complete && spr.naturalWidth > 0;
+    for (const s of this._whipSlashes) {
+      const a = Math.max(0, s.life / s.maxLife);
+      ctx.save();
+      ctx.translate(s.pos.x, s.pos.y); ctx.rotate(Math.atan2(s.dir.y, s.dir.x));
+      // Segmented pink plasma whip reaching outward (bright nodes along the strike line)
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = a;
+      ctx.strokeStyle = '#ff4dd2'; ctx.lineWidth = 6 + s.boost;
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(s.range, 0); ctx.stroke();
+      ctx.fillStyle = '#ffd0f4';
+      const seg = 9;
+      for (let i = 1; i <= seg; i++) { const x = s.range * i / seg; ctx.beginPath(); ctx.arc(x, 0, 3, 0, Math.PI * 2); ctx.fill(); }
+      ctx.strokeStyle = '#ffaeec'; ctx.lineWidth = 2 + s.boost;
+      ctx.globalAlpha = a * 0.9;
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(s.range, 0); ctx.stroke();
+      if (ready) {   // small whip-sword sprite at the hilt for weapon identity
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = a;
+        const h = 44, w = h * (spr.naturalWidth / spr.naturalHeight);
+        ctx.drawImage(spr, 0, -h / 2, w, h);
+      }
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // ── Ultimate: Chrome Phantom Protocol (SPACE, 100 mana) ─────────────────────
+  // Dual-clone assault. Pink phantom + chrome mirror clones flank the assassin while pulsing
+  // burst slashes around her over a short duration, then a wider final chrome impact. Bosses
+  // take reduced damage so they are not one-shot. Same fixed 100-mana cost as other ultimates.
+  activateChromePhantomProtocol() {
+    if (this.gameState !== 'playing' || this.paused || this.gameOver || this.victory || this.upgradeUI) return;
+    const p = this.player;
+    if (p.selectedCharacter !== 'assassin_clone') return;       // Assassin Clone only
+    if (this._chromePhantom) return;                            // already running
+    if (p.mana < ULTIMATE_MANA_COST) {                          // same NOT-ENOUGH-MANA behavior as other ultimates
+      this.floatingTexts.push(new FloatingText('NOT ENOUGH MANA', p.pos.clone(), '#ff4dd2', 1.0));
+      return;
+    }
+    p.mana -= ULTIMATE_MANA_COST;                               // fixed 100 cost; Mana Core overflow banks toward next cast
+    this._chromePhantom = { t: 0, pulseTimer: 0, pulse: 0, finalDone: false };
+    this.screenShake.trigger(4, 0.3);
+    this.audio?.playEventWarning?.();
+    this.floatingTexts.push(new FloatingText('CHROME PHANTOM PROTOCOL!', p.pos.clone(), '#ff4dd2', 1.4));
+  }
+
+  _updateChromePhantom(dt) {
+    for (const f of this._chromeFx) { f.life -= dt; f.r += (f.dr || 0) * dt; }
+    if (this._chromeFx.length) this._chromeFx = this._chromeFx.filter(f => f.life > 0);
+    const cp = this._chromePhantom;
+    if (!cp) return;
+    const p = this.player;
+    const cm = this._cardLvl('assassin_clone_chrome_phantom_mastery');   // Chrome Phantom Mastery
+    const DURATION = 3.0 + 0.4 * cm, RADIUS = 200 * (1 + 0.12 * cm), PULSE_GAP = 0.4, DMG = 28;
+    cp.t += dt; cp.pulseTimer -= dt;
+    if (cp.pulseTimer <= 0 && cp.t < DURATION) {
+      cp.pulseTimer = PULSE_GAP; cp.pulse++;
+      for (const t of this._brawlerTargets()) {
+        if (distance(p.pos, t.obj.pos) > RADIUS + t.obj.radius) continue;
+        this._brawlerHit(t, (this._targetIsBoss(t) ? 0.6 : 1) * DMG, cp.pulse % 2 ? '#ff4dd2' : '#cfd6e0');
+      }
+      this._chromeFx.push({ pos: p.pos.clone(), r: RADIUS * 0.4, dr: RADIUS * 1.6, life: 0.4, maxLife: 0.4,
+                            color: cp.pulse % 2 ? '#ff4dd2' : '#cfd6e0' });
+      this.screenShake.trigger(2, 0.12);
+    }
+    if (!cp.finalDone && cp.t >= DURATION) {   // wider final chrome-mirror impact pulse
+      cp.finalDone = true;
+      const FR = RADIUS * 1.35;
+      for (const t of this._brawlerTargets()) {
+        if (distance(p.pos, t.obj.pos) > FR + t.obj.radius) continue;
+        this._brawlerHit(t, (this._targetIsBoss(t) ? 0.6 : 1) * DMG * 1.5, '#cfd6e0');
+      }
+      this._chromeFx.push({ pos: p.pos.clone(), r: FR * 0.5, dr: FR * 1.4, life: 0.5, maxLife: 0.5, color: '#ffd0f4' });
+      this.screenShake.trigger(4, 0.2);
+      this._chromePhantom = null;
+    }
+  }
+
+  _drawChromePhantom(ctx) {
+    for (const f of this._chromeFx) {   // expanding fade rings (burst / slash pulses)
+      const a = Math.max(0, f.life / f.maxLife);
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = a;
+      ctx.strokeStyle = f.color; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.arc(f.pos.x, f.pos.y, f.r, 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
+    }
+    const cp = this._chromePhantom;
+    if (!cp) { ctx.globalAlpha = 1; return; }
+    const p = this.player;
+    // Two orbiting clone overlays flanking the player: pink phantom + chrome mirror.
+    const orbit = 56, ang = cp.t * 6;
+    const clones = [
+      { spr: this._assassinPhantomSprite, ox: Math.cos(ang) * orbit,            oy: Math.sin(ang) * orbit,            tint: '#ff4dd2' },
+      { spr: this._assassinChromeSprite,  ox: Math.cos(ang + Math.PI) * orbit,  oy: Math.sin(ang + Math.PI) * orbit,  tint: '#cfd6e0' },
+    ];
+    for (const c of clones) {
+      const cx = p.pos.x + c.ox, cy = p.pos.y + c.oy;
+      ctx.save();
+      ctx.globalAlpha = 0.78;
+      if (c.spr && c.spr.complete && c.spr.naturalWidth > 0) {
+        const h = 72, w = h * (c.spr.naturalWidth / c.spr.naturalHeight);
+        ctx.drawImage(c.spr, cx - w / 2, cy - h, w, h);
+      } else {
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.fillStyle = c.tint;
+        ctx.beginPath(); ctx.ellipse(cx, cy - 18, 14, 30, 0, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+  }
+
   // ── Aqua Spirit Trail (Neon Taekwondo Girl secondary) ───────────────────────
   // Passive: while she MOVES she leaves cyan spirit-water puddles. Enemies standing in a
   // puddle take gradual, capped damage. Bosses take heavily reduced damage. No knockback,
@@ -3927,6 +4174,9 @@ export class Game {
     this._drawSkyfall(ctx);         // Brawler ultimate impacts
     this._drawCrescentSlashes(ctx); // Brawler secondary
     this._drawChakrams(ctx);        // Brawler primary
+    this._drawChromePhantom(ctx);   // Assassin ultimate (clone overlays + burst rings)
+    this._drawWhipSlashes(ctx);     // Assassin secondary
+    this._drawDaggerSlashes(ctx);   // Assassin primary
     for (const r of this.empRings)    r.draw(ctx);
     for (const r of this._specialRings) {
       const alpha = r.life / r.maxLife;
@@ -4431,6 +4681,8 @@ export class Game {
     if (!secretOk) {
       const hint = charId === 'brawler_warrior'
         ? 'Secret outfit locked — find LOG #1997 (survive 15:00 in Endless)'
+        : charId === 'assassin_clone'
+        ? 'Secret outfit locked — LOG #2007 (Phantom Assassin protocol)'
         : 'Secret outfit locked — win a run to unlock it';
       ctx.font      = '12px Consolas, monospace';
       ctx.fillStyle = '#6a8090';
@@ -5265,9 +5517,10 @@ export class Game {
     const hasUlt = p.selectedCharacter === 'skeleton_warrior'
                 || p.selectedCharacter === 'cyber_arm_hero'
                 || p.selectedCharacter === 'taekwondo_girl'
-                || p.selectedCharacter === 'brawler_warrior';
+                || p.selectedCharacter === 'brawler_warrior'
+                || p.selectedCharacter === 'assassin_clone';
     if (!hasUlt) return false;
-    if (this.thunderSolo || this.overChains || this.spiritDojang) return false;  // mid-cast
+    if (this.thunderSolo || this.overChains || this.spiritDojang || this._skyfall || this._chromePhantom) return false;  // mid-cast
     return p.mana >= ULTIMATE_MANA_COST;
   }
 

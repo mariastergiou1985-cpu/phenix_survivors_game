@@ -31,6 +31,7 @@ export const UNLOCK_KEYS = [
   'dark_cyber_arm_hero',
   'grandmaster_dojang_girl',
   'log_1997',   // Endless-only LOG that unlocks the Brawler Warrior secret outfit
+  'log_2007',   // Assassin Clone secret outfit (LOG #2007). Reserved key — stays LOCKED in Phase 1
 ];
 
 // Equippable outfits per base character. `default` is always available; `secret` reuses the
@@ -54,6 +55,13 @@ export const CHARACTER_OUTFITS = {
   brawler_warrior: {
     default: { name: 'Default', asset: 'assets/characters/brawler_warrior.png' },
     secret:  { name: 'LOG #1997 Brawler', asset: 'assets/unlocks/secret_skins/brawler_warrior_log1997_secret.png', unlockKey: 'log_1997' },
+  },
+  // Assassin Clone secret outfit — LOG #2007 (Phantom Assassin). Gated on the log_2007 flag,
+  // which has no in-game grant in Phase 1, so it stays LOCKED (preview only). A future Chaos
+  // Mode / Assassin condition may set log_2007.
+  assassin_clone: {
+    default: { name: 'Default', asset: 'assets/characters/assassin_clone.png' },
+    secret:  { name: 'LOG #2007 — Phantom Assassin', asset: 'assets/unlocks/secret_skins/assassin_clone_log2007_secret.png', unlockKey: 'log_2007' },
   },
 };
 
