@@ -40,6 +40,7 @@ export class AudioManager {
     this._menuAudio     = null;
     this._gameplayAudio = null;
     this._endlessAudio  = null;
+    this._currentMusic  = null;   // the single track that may be audible; gates _play retries
 
     this._setupTrack('assets/audio/music/menu_theme.mp3?v=10', 0.28, a => { this._menuAudio     = a; });
     this._setupTrack('assets/audio/music/gameplay_theme.mp3?v=2', 0.20, a => { this._gameplayAudio = a; });
@@ -112,6 +113,7 @@ export class AudioManager {
     // it actually starts. The `!audio.paused` guard makes every call idempotent, so this
     // never stacks duplicate playback and never restarts an already-playing track.
     const attempt = (n) => {
+      if (audio !== this._currentMusic) return;  // a newer track took over → abandon (prevents overlap)
       if (!audio.paused) return;                 // already playing → done (no duplicates)
       audio.play().catch(() => {
         if (n > 0) setTimeout(() => attempt(n - 1), 250);
@@ -130,27 +132,34 @@ export class AudioManager {
     audio.currentTime = 0;
   }
 
+  // Each start method makes its track the single CURRENT track: stop the other two, then
+  // record + play this one. _currentMusic gates _play's async retry so a stale track that
+  // was just stopped can never re-start on top of the new one (the overlap bug).
   startMenuMusic() {
     this._stop(this._gameplayAudio);
     this._stop(this._endlessAudio);
-    if (this._menuAudio?.paused) this._play(this._menuAudio);
+    this._currentMusic = this._menuAudio;
+    this._play(this._menuAudio);
   }
 
   startGameplayMusic() {
     this._stop(this._menuAudio);
     this._stop(this._endlessAudio);
-    if (this._gameplayAudio?.paused) this._play(this._gameplayAudio);
+    this._currentMusic = this._gameplayAudio;
+    this._play(this._gameplayAudio);
   }
 
-  // Endless-only music — plays solely after CONTINUE — ENDLESS (Game.continueEndless).
+  // Endless-only music — plays solely after CONTINUE — ENDLESS / direct ENDLESS MODE start.
   // Stops the menu/gameplay tracks first so only one track ever plays.
   startEndlessMusic() {
     this._stop(this._menuAudio);
     this._stop(this._gameplayAudio);
-    if (this._endlessAudio?.paused) this._play(this._endlessAudio);
+    this._currentMusic = this._endlessAudio;
+    this._play(this._endlessAudio);
   }
 
   stopAll() {
+    this._currentMusic = null;
     this._stop(this._menuAudio);
     this._stop(this._gameplayAudio);
     this._stop(this._endlessAudio);
