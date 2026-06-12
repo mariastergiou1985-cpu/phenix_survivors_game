@@ -4677,7 +4677,17 @@ export class Game {
     ctx.fillStyle = 'rgba(200,210,225,0.62)';
     ctx.textAlign = 'center';
     ctx.fillText('↑↓ W/S  Navigate     ENTER / Click  Select', WIDTH / 2, HEIGHT - 20);
+
+    // ── Recommended-age / content notice (subtle, secondary) ──
+    ctx.font      = '11px Consolas, monospace';
+    ctx.fillStyle = 'rgba(170,185,205,0.5)';
+    ctx.fillText('Recommended Age: 12+ · Fantasy Violence · Flashing Lights', WIDTH / 2, HEIGHT - 6);
+
+    // ── Early Demo / WIP label (subtle, top-left corner — clear of the centered logo) ──
     ctx.textAlign = 'left';
+    ctx.font      = '11px Consolas, monospace';
+    ctx.fillStyle = 'rgba(160,175,195,0.42)';
+    ctx.fillText('Early Demo / Work in Progress', 14, 22);
   }
 
   // ── Wave announcement system ──────────────────────────────────────────────
@@ -5260,6 +5270,12 @@ export class Game {
     ctx.fillStyle = CYAN;
     ctx.textAlign = 'center';
     ctx.fillText('◄  BACK', bx + bw / 2, by + 26);
+
+    // ── Safety / content note (in the clear area below the panel; subtle, two lines) ──
+    ctx.font      = '12px Consolas, monospace';
+    ctx.fillStyle = 'rgba(180,195,215,0.6)';
+    ctx.fillText('Recommended Age: 12+. This game contains fantasy combat, flashing neon effects, explosions,', WIDTH / 2, py + ph + 22);
+    ctx.fillText('enemy combat, and intense sci-fi action. Parental guidance is recommended for younger players.', WIDTH / 2, py + ph + 40);
 
     ctx.textAlign = 'left';
   }
