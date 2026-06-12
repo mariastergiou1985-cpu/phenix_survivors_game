@@ -13,15 +13,15 @@ import { DataCore, rollCoreType } from '../entities/DataCore.js?v=2';
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=13';
 import { Player }         from '../entities/Player.js?v=69';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=3';
-import { Enemy }          from '../entities/Enemy.js?v=106';
+import { Enemy }          from '../entities/Enemy.js?v=107';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=1';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow } from './Effects.js?v=5';
-import { SystemEventManager } from './Events.js?v=94';
-import { UpgradeUI }      from './UpgradeUI.js?v=6';
-import { weightedSample } from './Upgrades.js?v=7';
+import { SystemEventManager } from './Events.js?v=95';
+import { UpgradeUI }      from './UpgradeUI.js?v=7';
+import { weightedSample } from './Upgrades.js?v=8';
 import { drawHUD, drawEndScreen } from './HUD.js?v=47';
-import { MetaProgress, META_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS } from './MetaProgress.js?v=10';
+import { MetaProgress, META_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS } from './MetaProgress.js?v=11';
 
 // ── Thunder Solo sprite slices (cyan_lightning_rain_notes.png, 1254×1254) ──────
 // Strike variants: a clean bolt column + ripple base. (ax,ay) = ripple-centre as a
@@ -498,8 +498,38 @@ export class Game {
     // Endless-local elite-wave clock: first wave after firstDelay, then every interval.
     this._eliteWaveTimer   = ELITE_WAVE.firstDelay;
     this._eliteWaveElapsed = 0;
+    this._applyEndlessProtocols();     // one-shot Achievement Protocol stat boosts (Endless only)
     this.audio?.startEndlessMusic();   // Endless-only track (dawn) replaces gameplay music
     this.triggerAnnouncement('STAGE 02 — NEON SHINJUKU PLAZA', CYAN);   // Endless Stage 02 visuals
+  }
+
+  // Achievement Protocols — passive Endless rewards that auto-activate from existing achievement
+  // unlock state (no save migration). One-shot stat boosts applied here when entering Endless;
+  // the per-frame protocols (damage / overload / mastery weight) are read live elsewhere. Locked
+  // achievements grant nothing, and none of this runs in Act 1 (continueEndless is the sole entry).
+  _applyEndlessProtocols() {
+    const p = this.player, m = this.meta;
+    if (m.hasAchievement('first_endless')) p.xpMult = (p.xpMult || 1) * 1.05;          // Endless Initiate
+    if (m.hasAchievement('endless_survivor')) {                                         // Survivor Core
+      const add = Math.round(p.maxHp * 0.05);
+      p.maxHp += add; p.hp = Math.min(p.maxHp, p.hp + add);
+    }
+    if (m.hasAchievement('core_defender')) p.maxCarry += 1;                             // Nexus Defender
+  }
+
+  // Global damage multiplier from Achievement Protocols/Cards — Endless ONLY (returns 1 in Act 1,
+  // so Act 1 balance is unchanged). Applied to NORMAL enemies via Enemy.takeHit; bosses use a
+  // separate hp path and are intentionally NOT buffed (respects boss caps). Small/medium + capped.
+  _endlessDamageMult() {
+    if (!this.endless) return 1;
+    const m = this.meta, combo = this.comboCount || 0;
+    let mult = 1;
+    if (m.hasAchievement('score_hunter')) mult += 0.05;                                  // Damage Uplink Protocol
+    mult += 0.06 * this._cardLvl('achievement_damage_uplink');                           // Damage Uplink Card
+    if (m.hasAchievement('combo_master')) mult += combo >= 100 ? 0.08 : combo >= 50 ? 0.05 : 0;  // Combo Surge Protocol
+    const co = this._cardLvl('achievement_combo_overdrive');                             // Combo Overdrive Card
+    if (co > 0) mult += (combo >= 100 ? 0.05 : combo >= 50 ? 0.025 : 0) * co;
+    return mult;
   }
 
   // Permanent Grid-Credit progression screen (spent between runs).
@@ -860,8 +890,10 @@ export class Game {
     ctx.fillStyle = YELLOW;
     ctx.fillText(`${earned} / ${total} UNLOCKED`, WIDTH / 2, 82);
 
-    // Rows
-    const listW = 760, rowH = 54, gap = 8, x0 = Math.round((WIDTH - listW) / 2), y0 = 108;
+    // Rows — taller to surface each achievement's Achievement Protocol (passive) + Achievement
+    // Card reward. Reward lines read from the ENDLESS_ACHIEVEMENTS metadata; locked rows hide the
+    // names (??? ) to stay clean. All rewards are Endless-only.
+    const listW = 760, rowH = 72, gap = 6, x0 = Math.round((WIDTH - listW) / 2), y0 = 96;
     for (let i = 0; i < total; i++) {
       const a   = ENDLESS_ACHIEVEMENTS[i];
       const got = !!this.meta.achievements[a.id];
@@ -874,27 +906,30 @@ export class Game {
       ctx.lineWidth   = got ? 2 : 1;
       ctx.strokeRect(x0, ry, listW, rowH);
 
-      // Name
-      ctx.font      = 'bold 18px Consolas, monospace';
+      // Name + goal
+      ctx.font      = 'bold 16px Consolas, monospace';
       ctx.fillStyle = got ? WHITE : '#6a8090';
       ctx.textAlign = 'left';
-      ctx.fillText(a.name, x0 + 18, ry + 23);
-
-      // Description / goal
-      ctx.font      = '12px Consolas, monospace';
+      ctx.fillText(a.name, x0 + 16, ry + 20);
+      ctx.font      = '11px Consolas, monospace';
       ctx.fillStyle = got ? '#7fa8c8' : '#56707f';
-      ctx.fillText(a.desc, x0 + 18, ry + 42);
+      ctx.fillText(a.desc, x0 + 16, ry + 36);
 
-      // Status tag (right-aligned)
-      ctx.font      = 'bold 15px Consolas, monospace';
+      // Reward lines — Protocol (passive) + Card. Hidden behind ??? while locked.
+      ctx.font = '11px Consolas, monospace';
+      ctx.fillStyle = got ? '#c8a8ff' : '#4a5a6a';
+      ctx.fillText(got ? `Protocol: ${a.protocolName} — ${a.protocolEffect}` : 'Protocol: ???', x0 + 16, ry + 52);
+      ctx.fillStyle = got ? '#9fe0c0' : '#4a5a6a';
+      ctx.fillText(got ? `Card: ${a.cardName} — ${a.cardEffect}` : 'Card: ???', x0 + 16, ry + 66);
+
+      // Status tag + Endless-only marker (right-aligned)
       ctx.textAlign = 'right';
-      if (got) {
-        ctx.fillStyle = '#FFD700';
-        ctx.fillText('★ UNLOCKED', x0 + listW - 16, ry + 32);
-      } else {
-        ctx.fillStyle = '#5a7080';
-        ctx.fillText('🔒 LOCKED', x0 + listW - 16, ry + 32);
-      }
+      ctx.font      = 'bold 14px Consolas, monospace';
+      ctx.fillStyle = got ? '#FFD700' : '#5a7080';
+      ctx.fillText(got ? '★ UNLOCKED' : '🔒 LOCKED', x0 + listW - 14, ry + 20);
+      ctx.font      = '10px Consolas, monospace';
+      ctx.fillStyle = '#5a7a8a';
+      ctx.fillText('ENDLESS ONLY', x0 + listW - 14, ry + 38);
     }
 
     // Back button
@@ -1652,7 +1687,7 @@ export class Game {
   // One free reroll per level-up screen — re-samples the (already useful) card pool.
   rerollUpgrade() {
     if (!this.upgradeUI || !this.rerollAvailable) return;
-    const choices = weightedSample(this.player, 3);
+    const choices = weightedSample(this.player, 3, { meta: this.meta, endless: this.endless });
     if (choices.length === 0) return;
     this.upgradeUI.setChoices(choices);
     this.rerollAvailable = false;
@@ -1704,7 +1739,7 @@ export class Game {
     // Check for pending level-up to show upgrade cards (one at a time)
     if (this.player.pendingLevelupCount > 0) {
       this.player.pendingLevelupCount--;
-      const choices = weightedSample(this.player, 3);
+      const choices = weightedSample(this.player, 3, { meta: this.meta, endless: this.endless });
       if (choices.length > 0) {
         this.audio?.playLevelUp();
         this.upgradeUI = new UpgradeUI(choices);
@@ -3649,7 +3684,16 @@ export class Game {
     // Nexus retune (Four-Nexus layout): empty-slot weight 0.015 for 32 total slots (4×8). Scales
     // the per-slot pressure back toward the original ~0.012 regime now that the grid is larger than
     // the single 16-slot Nexus. The min(0.28) cap keeps a fully-drained grid survivable, not unfair.
-    const chaosGain = Math.min(0.28, groundCount * 0.020 + carriedCount * 0.050 + emptySlots * 0.015);
+    let chaosGain = Math.min(0.28, groundCount * 0.020 + carriedCount * 0.050 + emptySlots * 0.015);
+
+    // Grid Stabilizer Protocol (grid_legend) + Grid Stabilizer card: Endless only — reduce the
+    // Nexus-PRESSURE gain. Combined reduction hard-capped at 0.65 so it is NEVER immunity, and the
+    // time-based floor + MAX_OVERLOAD game-over below are untouched (Nexus defense still matters).
+    if (this.endless) {
+      const red = Math.min(0.65, (this.meta.hasAchievement('grid_legend') ? 0.5 : 0)
+                                  + 0.05 * this._cardLvl('achievement_grid_stabilizer'));
+      chaosGain *= (1 - red);
+    }
 
     if (chaosGain === 0) {
       // Grid fully secure — drain at 1.0% per second
@@ -4944,6 +4988,7 @@ export class Game {
     header('ENDLESS & SECRETS');
     bullet('Win Act 1, then Continue — Endless (Stage 02: Neon Shinjuku).');
     bullet('Elite Waves escalate; reach 10:00 to unlock Brawler Warrior.');
+    bullet('Achievements grant Endless-only Protocols & special Cards.', '#c8a8ff');
     bullet('Secret skins unlock from runs — LOG #1997 @15:00 = Brawler skin.', '#d9b6ff');
 
     // ── ANIMATED TUTORIAL PANELS (right column) ─────────────────

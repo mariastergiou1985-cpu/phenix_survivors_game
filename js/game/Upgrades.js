@@ -9,7 +9,8 @@ export const RARITY_COLORS = {
 };
 
 export class UpgradeDefinition {
-  constructor(key, name, description, iconColor, maxLevel, applyFn, icon = null, rarity = 'common', char = null) {
+  constructor(key, name, description, iconColor, maxLevel, applyFn, icon = null, rarity = 'common', char = null,
+              requiredAchievement = null, endlessOnly = false) {
     this.key         = key;
     this.name        = name;
     this.description = description;
@@ -19,6 +20,10 @@ export class UpgradeDefinition {
     this.icon        = icon || name[0];   // short symbol/emoji drawn on the card
     this.rarity      = rarity;
     this.char        = char;   // null = global; otherwise only offered for that character id
+    // Achievement Cards: only offered once the achievement is unlocked, and (endlessOnly) only
+    // while in Endless. null/false leave a card unrestricted, so every existing card is unchanged.
+    this.requiredAchievement = requiredAchievement;
+    this.endlessOnly         = endlessOnly;
   }
 
   apply(player) {
@@ -150,19 +155,51 @@ export const ALL_UPGRADES = [
     MAGENTA, 3, () => {}, '🌀', 'epic', 'assassin_clone'),
   new UpgradeDefinition('assassin_clone_chrome_phantom_mastery', 'Chrome Phantom Mastery', 'Chrome Phantom Protocol: longer & larger clone assault',
     PURPLE, 3, () => {}, '👥', 'legendary', 'assassin_clone'),
+
+  // ── Achievement Cards (Endless-only; only offered once their achievement is unlocked) ──
+  // Global (char=null) so they can roll for any character. Instant-stat cards apply in applyFn
+  // (safe — only ever offered in Endless); multiplier cards apply per-frame via _cardLvl in
+  // Game.js Endless-gated helpers. requiredAchievement = the unlock id from ENDLESS_ACHIEVEMENTS.
+  new UpgradeDefinition('achievement_endless_spark', 'Endless Spark', 'Endless: +8% XP gain per level',
+    MAGENTA, 3, p => { p.xpMult = (p.xpMult || 1) * 1.08; }, '✦', 'epic', null, 'first_endless', true),
+  new UpgradeDefinition('achievement_survivor_plating', 'Survivor Plating', 'Endless: +8% max HP per level',
+    GREEN, 3, p => { const add = Math.round(p.maxHp * 0.08); p.maxHp += add; p.hp = Math.min(p.maxHp, p.hp + add); }, '🛡', 'epic', null, 'endless_survivor', true),
+  new UpgradeDefinition('achievement_grid_stabilizer', 'Grid Stabilizer', 'Endless: further reduces Overload pressure (capped)',
+    CYAN, 2, () => {}, '◈', 'legendary', null, 'grid_legend', true),
+  new UpgradeDefinition('achievement_evolution_algorithm', 'Evolution Algorithm', 'Endless: your mastery cards appear more often',
+    BLUE, 2, () => {}, '⟳', 'epic', null, 'level_breaker', true),
+  new UpgradeDefinition('achievement_damage_uplink', 'Damage Uplink', 'Endless: +6% damage per level',
+    ORANGE, 3, () => {}, '⇑', 'epic', null, 'score_hunter', true),
+  new UpgradeDefinition('achievement_combo_overdrive', 'Combo Overdrive', 'Endless: stronger damage while combo is high',
+    YELLOW, 2, () => {}, '⚜', 'legendary', null, 'combo_master', true),
+  new UpgradeDefinition('achievement_core_magnetizer', 'Core Magnetizer', 'Endless: +1 carried-core capacity per level',
+    PURPLE, 2, p => { p.maxCarry += 1; }, '◉', 'epic', null, 'core_defender', true),
 ];
 
 // ─── Weighted sample: every card is useful; bias toward the player's current build ──
 // New cards stay common (weight 3); cards already invested in are weighted higher so
 // the offered set leans into the build the player is forming (and reroll does the same).
-export function weightedSample(player, n = 3) {
+export function weightedSample(player, n = 3, ctx = {}) {
+  const { meta = null, endless = false } = ctx;
   // Character mastery cards only offer for the matching character; global cards always eligible.
-  const eligible = ALL_UPGRADES.filter(u => u.canApply(player) && (!u.char || u.char === player.selectedCharacter));
+  // Achievement Cards additionally require their achievement unlocked + (endlessOnly) Endless.
+  const eligible = ALL_UPGRADES.filter(u =>
+    u.canApply(player) &&
+    (!u.char || u.char === player.selectedCharacter) &&
+    (!u.requiredAchievement || (meta && meta.hasAchievement(u.requiredAchievement))) &&
+    (!u.endlessOnly || endless));
   if (!eligible.length) return [];
 
+  // Weapon Evolution Protocol / Evolution Algorithm card: in Endless, nudge the current
+  // character's mastery cards to appear a little more often. Small — does not flood the pool.
+  const masteryBoost = (endless && meta && meta.hasAchievement('level_breaker'))
+    ? 1 + 0.25 + 0.15 * (player.upgrades['achievement_evolution_algorithm'] || 0)
+    : 1 + 0.15 * (endless ? (player.upgrades['achievement_evolution_algorithm'] || 0) : 0);
   const weightOf = u => {
-    const lvl = player.upgrades[u.key] || 0;
-    return lvl === 0 ? 3 : 2 + lvl;
+    const lvl  = player.upgrades[u.key] || 0;
+    let   w    = lvl === 0 ? 3 : 2 + lvl;
+    if (u.char && u.char === player.selectedCharacter) w *= masteryBoost;
+    return w;
   };
 
   const chosen = [];

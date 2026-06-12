@@ -68,14 +68,32 @@ export const CHARACTER_OUTFITS = {
 // Endless-only achievement milestones. Each `test` is a PURE read-only predicate over a
 // finished-run stats snapshot { time (s), level, score, combo, cores } — it never mutates
 // game state. Recognition only: no rewards, no stat bonuses. Persisted in `phenix_meta`.
+// Each entry also carries its Achievement Protocol (auto-active passive, Endless-only) and
+// Achievement Card (special Endless-only upgrade card) reward metadata. These strings are
+// DISPLAY ONLY — the actual effects live in Game.js (protocols) / Upgrades.js (cards), all
+// gated to Endless. Rewards derive from the same `achievements` unlock flag → no save migration.
 export const ENDLESS_ACHIEVEMENTS = [
-  { id: 'first_endless',   name: 'FIRST ENDLESS RUN', desc: 'Finish one Endless run',       test: ()  => true },
-  { id: 'endless_survivor', name: 'ENDLESS SURVIVOR',  desc: 'Survive 15:00 in Endless',     test: (s) => s.time  >= 15 * 60 },
-  { id: 'grid_legend',     name: 'GRID LEGEND',        desc: 'Survive 20:00 in Endless',     test: (s) => s.time  >= 20 * 60 },
-  { id: 'level_breaker',   name: 'LEVEL BREAKER',      desc: 'Reach Level 30 in Endless',    test: (s) => s.level >= 30 },
-  { id: 'score_hunter',    name: 'SCORE HUNTER',       desc: 'Reach 50,000 score in Endless', test: (s) => s.score >= 50000 },
-  { id: 'combo_master',    name: 'COMBO MASTER',       desc: 'Reach combo x100 in Endless',  test: (s) => s.combo >= 100 },
-  { id: 'core_defender',   name: 'CORE DEFENDER',      desc: 'Secure 25 cores in Endless',   test: (s) => s.cores >= 25 },
+  { id: 'first_endless',   name: 'FIRST ENDLESS RUN', desc: 'Finish one Endless run',       test: ()  => true,
+    protocolName: 'Endless Initiate Protocol', protocolEffect: '+5% XP gain',
+    cardName: 'Endless Spark', cardEffect: '+8% XP gain per level' },
+  { id: 'endless_survivor', name: 'ENDLESS SURVIVOR',  desc: 'Survive 15:00 in Endless',     test: (s) => s.time  >= 15 * 60,
+    protocolName: 'Survivor Core Protocol', protocolEffect: '+5% max HP',
+    cardName: 'Survivor Plating', cardEffect: '+8% max HP per level' },
+  { id: 'grid_legend',     name: 'GRID LEGEND',        desc: 'Survive 20:00 in Endless',     test: (s) => s.time  >= 20 * 60,
+    protocolName: 'Grid Stabilizer Protocol', protocolEffect: 'Nexus Overload pressure gain reduced 50%',
+    cardName: 'Grid Stabilizer', cardEffect: '-5% extra Overload pressure / level (capped)' },
+  { id: 'level_breaker',   name: 'LEVEL BREAKER',      desc: 'Reach Level 30 in Endless',    test: (s) => s.level >= 30,
+    protocolName: 'Weapon Evolution Protocol', protocolEffect: 'Your mastery cards appear more often',
+    cardName: 'Evolution Algorithm', cardEffect: 'Even better mastery-card odds / level' },
+  { id: 'score_hunter',    name: 'SCORE HUNTER',       desc: 'Reach 50,000 score in Endless', test: (s) => s.score >= 50000,
+    protocolName: 'Damage Uplink Protocol', protocolEffect: '+5% damage vs normal enemies',
+    cardName: 'Damage Uplink', cardEffect: '+6% damage per level' },
+  { id: 'combo_master',    name: 'COMBO MASTER',       desc: 'Reach combo x100 in Endless',  test: (s) => s.combo >= 100,
+    protocolName: 'Combo Surge Protocol', protocolEffect: '+5% dmg at combo x50, +8% at x100',
+    cardName: 'Combo Overdrive', cardEffect: 'Stronger high-combo damage / level' },
+  { id: 'core_defender',   name: 'CORE DEFENDER',      desc: 'Secure 25 cores in Endless',   test: (s) => s.cores >= 25,
+    protocolName: 'Nexus Defender Protocol', protocolEffect: '+1 carried-core capacity',
+    cardName: 'Core Magnetizer', cardEffect: '+1 carried-core capacity per level' },
 ];
 
 export class MetaProgress {
@@ -232,6 +250,11 @@ export class MetaProgress {
     this._save();
     return true;
   }
+
+  // True once an Endless achievement is earned. Achievement Protocols + Achievement Cards
+  // derive their active state directly from this flag, so existing saves light up with no
+  // migration. Read-only; never mutates state.
+  hasAchievement(id) { return !!this.achievements[id]; }
 
   // Character unlock gate. The 3 base characters are always available; Brawler Warrior is
   // unlocked by reaching 10:00 in Endless (flag set via unlock('brawler_warrior')).

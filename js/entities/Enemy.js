@@ -210,12 +210,16 @@ export class Enemy {
   }
 
   takeHit(damage, game) {
-    this.hp       -= damage;
+    // Achievement Protocol/Card global damage — Endless only (multiplier is 1 in Act 1, so Act 1
+    // is unchanged). Single chokepoint for player damage to NORMAL enemies; bosses use a separate
+    // hp path and stay unbuffed (respects boss caps). Display reflects the actual damage dealt.
+    const dmg      = damage * (game._endlessDamageMult ? game._endlessDamageMult() : 1);
+    this.hp       -= dmg;
     this.hitFlash  = FEEDBACK.flashDuration;
 
     // Floating damage number (render-only; short life avoids spam)
     const dmgPos = this.pos.add(new Vec2(randomRange(-6, 6), -this.radius - 4));
-    game.floatingTexts.push(new FloatingText('-' + damage, dmgPos, WHITE, 0.5));
+    game.floatingTexts.push(new FloatingText('-' + Math.round(dmg), dmgPos, WHITE, 0.5));
 
     if (this.carryingCore !== null) {
       const dropped = this.carryingCore;
