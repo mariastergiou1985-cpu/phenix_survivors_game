@@ -4,7 +4,7 @@ import {
   OVERLOAD_PICKUP_REDUCTION, OVERLOAD_SLOT_REDUCTION,
   MAX_OVERLOAD, PLAYER_RADIUS, CORE_RADIUS, MATRIX_RADIUS,
   DARK_BG, GRID_LINE, BLACK, CYAN, RED, GREEN, YELLOW, ORANGE, WHITE, PURPLE,
-  CORE_COLORS, VIEW_SCALE, VIEW_W, VIEW_H,
+  CORE_COLORS, VIEW_SCALE, VIEW_W, VIEW_H, ENDLESS_VIEW_SCALE,
 } from '../constants.js?v=53';
 import { clamp, distance, safeNormalize, randomChoice, randomRange } from '../utils.js';
 
@@ -493,6 +493,7 @@ export class Game {
     if (!this.victory) return;
     this.endless = true;
     this.victory = false;
+    this._repositionEndlessNexus();    // Endless-only: cleaner, symmetric, more-centered Nexus layout
     // Endless-local elite-wave clock: first wave after firstDelay, then every interval.
     this._eliteWaveTimer   = ELITE_WAVE.firstDelay;
     this._eliteWaveElapsed = 0;
@@ -999,6 +1000,23 @@ export class Game {
     }
   }
 
+  // Endless-only: nudge the 4 Nexus points inward to cleaner, symmetric, more-centered
+  // positions (Act 1 keeps the _createMatrices layout). Only pos moves — capacity, core
+  // values, deposit and collision radius are all untouched.
+  _repositionEndlessNexus() {
+    const endlessPositions = [
+      [360,           320],            // was [260, 230]
+      [WORLD_W - 360, 320],            // was [WORLD_W-260, 230]
+      [360,           WORLD_H - 320],  // was [280, WORLD_H-200]
+      [WORLD_W - 360, WORLD_H - 320],  // was [WORLD_W-280, WORLD_H-200]
+    ];
+    for (let i = 0; i < this.matrices.length && i < endlessPositions.length; i++) {
+      const [x, y] = endlessPositions[i];
+      this.matrices[i].pos.x = x;
+      this.matrices[i].pos.y = y;
+    }
+  }
+
   currentMinute()             { return Math.floor(this.timeAlive / 60); }
   coreVolatilityMultiplier()  { return 1 + (this.timeAlive / WIN_TIME_SECONDS) * 1.8; }
   overloadRateMultiplier()    { return 1 + Math.floor(this.timeAlive / 120) * 0.05; }
@@ -1481,12 +1499,12 @@ export class Game {
     if (enemies.length === 0) {
       // No normal enemies: favour a boss if present, else a random visible point (rare fallback)
       if (bosses.length) { const b = bosses[(Math.random() * bosses.length) | 0]; return { x: b.pos.x, y: b.pos.y }; }
-      return { x: this.camera.x + randomRange(40, VIEW_W - 40), y: this.camera.y + randomRange(60, VIEW_H - 40) };
+      return { x: this.camera.x + randomRange(40, this._viewW - 40), y: this.camera.y + randomRange(60, this._viewH - 40) };
     }
 
     // Small share of random spread so the storm reads as battlefield-wide, not laser-focused
     if (r > 0.93) {
-      return { x: this.camera.x + randomRange(40, VIEW_W - 40), y: this.camera.y + randomRange(60, VIEW_H - 40) };
+      return { x: this.camera.x + randomRange(40, this._viewW - 40), y: this.camera.y + randomRange(60, this._viewH - 40) };
     }
 
     // Sample a handful of enemies and pick the best target: dense clusters, close to the
@@ -2118,9 +2136,9 @@ export class Game {
   _drawGridCacheArrow(ctx) {
     if (!this.gridCache) return;
 
-    // Convert world position → screen position (account for the VIEW_SCALE zoom)
-    const sx = (this.gridCache.pos.x - this.camera.x) * VIEW_SCALE;
-    const sy = (this.gridCache.pos.y - this.camera.y) * VIEW_SCALE;
+    // Convert world position → screen position (account for the view zoom)
+    const sx = (this.gridCache.pos.x - this.camera.x) * this._viewScale;
+    const sy = (this.gridCache.pos.y - this.camera.y) * this._viewScale;
 
     const HUD_H  = 44;
     const MARGIN = 28;
@@ -2233,8 +2251,8 @@ export class Game {
   // Small edge arrow toward a world target — only shown when the target is OFF-screen (on-screen
   // targets need no arrow). Clamped to the screen edge and rotated toward the target.
   _drawEdgeArrow(ctx, worldPos, label, color) {
-    const sx = (worldPos.x - this.camera.x) * VIEW_SCALE;
-    const sy = (worldPos.y - this.camera.y) * VIEW_SCALE;
+    const sx = (worldPos.x - this.camera.x) * this._viewScale;
+    const sy = (worldPos.y - this.camera.y) * this._viewScale;
     const HUD_H = 44, M = 34;
     if (sx >= M && sx <= WIDTH - M && sy >= HUD_H + M && sy <= HEIGHT - M) return;
     const ex  = Math.max(M, Math.min(WIDTH - M, sx));
@@ -4168,9 +4186,9 @@ export class Game {
     }
 
     // ── Camera-space block (world entities) ─────────────────────────────────
-    // Zoom out slightly so more of the battlefield is visible (VIEW_SCALE < 1).
+    // Zoom out slightly so more of the battlefield is visible (Endless zooms out a touch more).
     ctx.save();
-    ctx.scale(VIEW_SCALE, VIEW_SCALE);
+    ctx.scale(this._viewScale, this._viewScale);
     ctx.translate(-this.camera.x, -this.camera.y);
 
     // 1 ── World Background
@@ -4179,7 +4197,7 @@ export class Game {
     // 1·5 ── Readability scrim: gently darken the busy neon map so the player, enemies, cores and
     // Nexus (all drawn AFTER this) clearly pop. Covers only the visible view; no layout/bounds change.
     ctx.fillStyle = 'rgba(2,6,16,0.30)';
-    ctx.fillRect(this.camera.x, this.camera.y, VIEW_W, VIEW_H);
+    ctx.fillRect(this.camera.x, this.camera.y, this._viewW, this._viewH);
 
     // 1a ── Boss Lava/Fire Rain zones (ground markers — under entities so they read as terrain)
     this._drawBossLava(ctx);
@@ -4414,7 +4432,7 @@ export class Game {
       ctx.save();
       ctx.globalAlpha = 0.6;
       ctx.fillStyle = tintRGBA;
-      ctx.fillRect(this.camera.x, this.camera.y, VIEW_W, VIEW_H);   // cover the zoomed-out view
+      ctx.fillRect(this.camera.x, this.camera.y, this._viewW, this._viewH);   // cover the zoomed-out view
       ctx.restore();
 
       // ── Layer 2: radial gradient burst ─────────────────────────────────
@@ -6924,18 +6942,24 @@ export class Game {
     ctx.restore();
   }
 
+  // Effective view scale / visible window. Endless zooms out slightly (ENDLESS_VIEW_SCALE);
+  // Act 1 returns the exact globals (WIDTH/VIEW_SCALE === VIEW_W), so Act 1 is byte-identical.
+  get _viewScale() { return this.endless ? ENDLESS_VIEW_SCALE : VIEW_SCALE; }
+  get _viewW()     { return this.endless ? WIDTH  / ENDLESS_VIEW_SCALE : VIEW_W; }
+  get _viewH()     { return this.endless ? HEIGHT / ENDLESS_VIEW_SCALE : VIEW_H; }
+
   _updateCamera() {
     // Center the player in the (larger, zoomed-out) visible world window.
-    const cx = this.player.pos.x - VIEW_W / 2;
-    const cy = this.player.pos.y - VIEW_H / 2;
-    this.camera.x = Math.max(0, Math.min(cx, WORLD_W - VIEW_W));
-    this.camera.y = Math.max(0, Math.min(cy, WORLD_H - VIEW_H));
+    const cx = this.player.pos.x - this._viewW / 2;
+    const cy = this.player.pos.y - this._viewH / 2;
+    this.camera.x = Math.max(0, Math.min(cx, WORLD_W - this._viewW));
+    this.camera.y = Math.max(0, Math.min(cy, WORLD_H - this._viewH));
   }
 
   _worldMouse(screenPos) {
     if (!screenPos) return null;
-    // Screen → world: undo the VIEW_SCALE zoom, then the camera offset.
-    return { x: screenPos.x / VIEW_SCALE + this.camera.x, y: screenPos.y / VIEW_SCALE + this.camera.y };
+    // Screen → world: undo the view zoom, then the camera offset.
+    return { x: screenPos.x / this._viewScale + this.camera.x, y: screenPos.y / this._viewScale + this.camera.y };
   }
 
   // Endless-only Nexus base sprite drawn UNDER a matrix. Clean fixed size so it doesn't cover
@@ -6943,7 +6967,7 @@ export class Game {
   _drawEndlessNexusBase(ctx, m) {
     const img = this._endlessNexusImage;
     if (!(img && img.complete && img.naturalWidth > 0)) return;
-    const D = 150;
+    const D = 120;   // Endless base visual (was 150) — smaller for readability; deposit/collision radius unchanged
     // Soft elliptical contact shadow so the base reads as planted on the arena, not pasted on top.
     ctx.save();
     ctx.fillStyle = 'rgba(0,0,0,0.38)';
