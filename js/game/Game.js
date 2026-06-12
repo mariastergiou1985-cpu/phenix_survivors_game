@@ -3225,7 +3225,9 @@ export class Game {
       this._brawlerHit(t, (this._targetIsBoss(t) ? 0.5 : 1) * DMG, '#ff4dd2');
     }
     const dir = safeNormalize(p.lastFacingDir || new Vec2(1, 0));
-    this._daggerSlashes.push({ pos: p.pos.clone(), dir, range: RANGE, life: 0.18, maxLife: 0.18, boost: dm });
+    // life is the VISUAL fade only (damage above is applied once on this tick) — kept well under
+    // the 0.55s cadence so it reads as a clear slash without stacking. No balance change.
+    this._daggerSlashes.push({ pos: p.pos.clone(), dir, range: RANGE, life: 0.35, maxLife: 0.35, boost: dm });
   }
 
   _drawDaggerSlashes(ctx) {
@@ -3308,7 +3310,8 @@ export class Game {
       this._brawlerHit(o.t, (this._targetIsBoss(o.t) ? 0.55 : 1) * DMG, '#ff4dd2');
     }
     const vis = Math.min(RANGE, bestD + 70);
-    this._whipSlashes.push({ pos: p.pos.clone(), dir, range: vis, life: 0.22, maxLife: 0.22, boost: wm });
+    // life is the VISUAL fade only (damage applied once above) — kept under the 1.4s cadence.
+    this._whipSlashes.push({ pos: p.pos.clone(), dir, range: vis, life: 0.35, maxLife: 0.35, boost: wm });
     this.audio?.playShoot?.();
   }
 
@@ -3321,24 +3324,28 @@ export class Game {
       ctx.save();
       ctx.translate(s.pos.x, s.pos.y); ctx.rotate(Math.atan2(s.dir.y, s.dir.x));
 
-      // Support trail only — a faint pink energy line + a few segment sparks under the blade.
+      // Plasma reach — a bright segmented pink energy whip from the player to the strike end.
+      // This carries the "extends toward the target" read; the sprite below is the blade itself.
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
-      ctx.globalAlpha = a * 0.5;
-      ctx.strokeStyle = '#ff4dd2'; ctx.lineWidth = 4 + s.boost;
+      ctx.globalAlpha = a * 0.9;
+      ctx.strokeStyle = '#ff4dd2'; ctx.lineWidth = 8 + s.boost;
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(s.range, 0); ctx.stroke();
+      ctx.strokeStyle = '#ffd9f4'; ctx.lineWidth = 3;
       ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(s.range, 0); ctx.stroke();
       ctx.fillStyle = '#ffd0f4';
-      for (let i = 1; i <= 6; i++) { const x = s.range * i / 6; ctx.beginPath(); ctx.arc(x, 0, 2.5, 0, Math.PI * 2); ctx.fill(); }
+      for (let i = 1; i <= 6; i++) { const x = s.range * i / 6; ctx.beginPath(); ctx.arc(x, 0, 3, 0, Math.PI * 2); ctx.fill(); }
       ctx.restore();
 
       if (ready) {
-        // MAIN VISUAL — the real whip-sword sprite stretched from the player along the strike,
-        // so it reads as a segmented katana-whip extending toward the target. Height kept modest.
-        const h = 40 + 6 * s.boost, w = Math.max(h, s.range);   // length follows the strike reach
+        // MAIN VISUAL — the real whip-sword sprite at its NATURAL (square) aspect, oriented along
+        // the strike and positioned forward so it clearly reads as a katana-whip blade. The sprite
+        // is the source 1254×1254 art — drawn square (no stretching), so it is never smeared.
+        const sz = (150 + 12 * s.boost) * (0.9 + 0.1 * a);
         ctx.save();
-        ctx.shadowColor = '#ff4dd2'; ctx.shadowBlur = 14;
-        ctx.globalAlpha = Math.min(1, 0.55 + a);
-        ctx.drawImage(spr, 0, -h / 2, w, h);
+        ctx.shadowColor = '#ff4dd2'; ctx.shadowBlur = 16;
+        ctx.globalAlpha = Math.min(1, 0.6 + a);
+        ctx.drawImage(spr, s.range * 0.42 - sz / 2, -sz / 2, sz, sz);
         ctx.restore();
       } else {
         // Fallback (image not ready): brighter drawn segmented whip so it never blanks.
