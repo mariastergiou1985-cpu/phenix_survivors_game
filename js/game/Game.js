@@ -21,7 +21,7 @@ import { SystemEventManager } from './Events.js?v=95';
 import { UpgradeUI }      from './UpgradeUI.js?v=7';
 import { weightedSample } from './Upgrades.js?v=8';
 import { drawHUD, drawEndScreen } from './HUD.js?v=47';
-import { MetaProgress, META_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS } from './MetaProgress.js?v=13';
+import { MetaProgress, META_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS } from './MetaProgress.js?v=14';
 
 // ── Thunder Solo sprite slices (cyan_lightning_rain_notes.png, 1254×1254) ──────
 // Strike variants: a clean bolt column + ripple base. (ax,ay) = ripple-centre as a

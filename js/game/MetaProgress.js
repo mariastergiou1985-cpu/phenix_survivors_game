@@ -133,7 +133,28 @@ export class MetaProgress {
       this.achievements = d.achievements || {};
       this.selectedOutfits = d.selectedOutfits || {};
       this.endlessUnlocked = d.endlessUnlocked === true;
+
+      // ── Backfill migration ──────────────────────────────────────────────────
+      // Saves from before the endlessUnlocked flag existed have no such field. If the
+      // save carries any proof the player already reached/played Endless, unlock it and
+      // persist — so returning players see ENDLESS MODE without replaying Act 1. A truly
+      // fresh save has none of these markers, so it stays locked.
+      if (!this.endlessUnlocked && this._hasEndlessHistory()) {
+        this.endlessUnlocked = true;
+        this._save();
+      }
     } catch (_) {}
+  }
+
+  // True if the loaded save shows any Endless activity: any Endless achievement earned, any
+  // Endless personal record set, or an Endless-only secret unlock (log_1997 Brawler skin /
+  // log_1998 / the Brawler Warrior unlock earned at 10:00 Endless).
+  _hasEndlessHistory() {
+    if (this.achievements && Object.keys(this.achievements).length > 0) return true;
+    const r = this.endlessRecords || {};
+    if ((r.time || 0) > 0 || (r.score || 0) > 0 || (r.level || 0) > 0) return true;
+    if (this.isUnlocked('log_1997') || this.isUnlocked('log_1998') || this.isUnlocked('brawler_warrior')) return true;
+    return false;
   }
 
   _save() {
