@@ -21,7 +21,7 @@ import { SystemEventManager } from './Events.js?v=95';
 import { UpgradeUI }      from './UpgradeUI.js?v=7';
 import { weightedSample } from './Upgrades.js?v=8';
 import { drawHUD, drawEndScreen } from './HUD.js?v=47';
-import { MetaProgress, META_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS } from './MetaProgress.js?v=11';
+import { MetaProgress, META_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS } from './MetaProgress.js?v=12';
 
 // ── Thunder Solo sprite slices (cyan_lightning_rain_notes.png, 1254×1254) ──────
 // Strike variants: a clean bolt column + ripple base. (ax,ay) = ripple-centre as a
@@ -265,7 +265,7 @@ export class Game {
       ['dark_cyber_arm_hero',     'assets/unlocks/secret_skins/neon_cyber_arm_hero_secret.png'],
       ['grandmaster_dojang_girl', 'assets/unlocks/secret_skins/cyber_dojang_girl_secret.png'],
       ['log_1997',                'assets/unlocks/secret_skins/brawler_warrior_log1997_secret.png'],
-      ['log_2007',                'assets/unlocks/secret_skins/assassin_clone_log2007_secret.png'],
+      ['log_1998',                'assets/unlocks/secret_skins/assassin_clone_log1998_secret.png'],
     ].forEach(([key, src]) => {
       const img = new Image();
       img.onerror = () => console.warn('[Skins] missing ' + src + ' — text fallback used');
@@ -3236,18 +3236,35 @@ export class Game {
       const a = Math.max(0, s.life / s.maxLife);
       ctx.save();
       ctx.translate(s.pos.x, s.pos.y); ctx.rotate(Math.atan2(s.dir.y, s.dir.x));
-      // Twin crossing pink slash arcs (always drawn — reads as dual daggers, brighter per level)
+
+      // Support glow only — faint pink slash arcs behind the blades (NOT the main visual).
+      ctx.save();
       ctx.globalCompositeOperation = 'lighter';
-      ctx.globalAlpha = a;
-      ctx.strokeStyle = '#ff4dd2'; ctx.lineWidth = 4 + s.boost;
+      ctx.globalAlpha = a * 0.45;
+      ctx.strokeStyle = '#ff4dd2'; ctx.lineWidth = 3 + s.boost;
       ctx.beginPath(); ctx.arc(0, 0, s.range * 0.78,        -0.7,            0.7); ctx.stroke();
       ctx.beginPath(); ctx.arc(0, 0, s.range * 0.62, Math.PI - 0.7, Math.PI + 0.7); ctx.stroke();
-      ctx.strokeStyle = '#ffd0f4'; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(0, 0, s.range * 0.78, -0.55, 0.55); ctx.stroke();
-      if (ready) {   // small dagger sprite pointing forward for weapon identity
-        ctx.globalCompositeOperation = 'source-over';
-        const h = 46, w = h * (spr.naturalWidth / spr.naturalHeight);
-        ctx.drawImage(spr, s.range * 0.30, -h / 2, w, h);
+      ctx.restore();
+
+      if (ready) {
+        // MAIN VISUAL — the real twin-dagger sprite, swept across the slash arc with a quick
+        // scale-pop. Big enough to read clearly at gameplay scale; oriented to the attack dir.
+        const h = s.range * 0.95 * (0.85 + 0.15 * a);          // ~110px at base range, pops on cast
+        const w = h * (spr.naturalWidth / spr.naturalHeight);
+        const sweep = (1 - a) * 0.6 - 0.3;                      // small wrist-flick rotation during the slash
+        ctx.save();
+        ctx.rotate(sweep);
+        ctx.shadowColor = '#ff4dd2'; ctx.shadowBlur = 16;        // pink energy edge
+        ctx.globalAlpha = Math.min(1, 0.5 + a);
+        ctx.drawImage(spr, s.range * 0.12, -h / 2, w, h);
+        ctx.restore();
+      } else {
+        // Fallback (image not ready): brighter drawn dual-dagger arcs so it never blanks.
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = a;
+        ctx.strokeStyle = '#ff4dd2'; ctx.lineWidth = 5 + s.boost;
+        ctx.beginPath(); ctx.arc(0, 0, s.range * 0.78,        -0.7,            0.7); ctx.stroke();
+        ctx.beginPath(); ctx.arc(0, 0, s.range * 0.62, Math.PI - 0.7, Math.PI + 0.7); ctx.stroke();
       }
       ctx.restore();
     }
@@ -3303,22 +3320,32 @@ export class Game {
       const a = Math.max(0, s.life / s.maxLife);
       ctx.save();
       ctx.translate(s.pos.x, s.pos.y); ctx.rotate(Math.atan2(s.dir.y, s.dir.x));
-      // Segmented pink plasma whip reaching outward (bright nodes along the strike line)
+
+      // Support trail only — a faint pink energy line + a few segment sparks under the blade.
+      ctx.save();
       ctx.globalCompositeOperation = 'lighter';
-      ctx.globalAlpha = a;
-      ctx.strokeStyle = '#ff4dd2'; ctx.lineWidth = 6 + s.boost;
+      ctx.globalAlpha = a * 0.5;
+      ctx.strokeStyle = '#ff4dd2'; ctx.lineWidth = 4 + s.boost;
       ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(s.range, 0); ctx.stroke();
       ctx.fillStyle = '#ffd0f4';
-      const seg = 9;
-      for (let i = 1; i <= seg; i++) { const x = s.range * i / seg; ctx.beginPath(); ctx.arc(x, 0, 3, 0, Math.PI * 2); ctx.fill(); }
-      ctx.strokeStyle = '#ffaeec'; ctx.lineWidth = 2 + s.boost;
-      ctx.globalAlpha = a * 0.9;
-      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(s.range, 0); ctx.stroke();
-      if (ready) {   // small whip-sword sprite at the hilt for weapon identity
-        ctx.globalCompositeOperation = 'source-over';
-        ctx.globalAlpha = a;
-        const h = 44, w = h * (spr.naturalWidth / spr.naturalHeight);
+      for (let i = 1; i <= 6; i++) { const x = s.range * i / 6; ctx.beginPath(); ctx.arc(x, 0, 2.5, 0, Math.PI * 2); ctx.fill(); }
+      ctx.restore();
+
+      if (ready) {
+        // MAIN VISUAL — the real whip-sword sprite stretched from the player along the strike,
+        // so it reads as a segmented katana-whip extending toward the target. Height kept modest.
+        const h = 40 + 6 * s.boost, w = Math.max(h, s.range);   // length follows the strike reach
+        ctx.save();
+        ctx.shadowColor = '#ff4dd2'; ctx.shadowBlur = 14;
+        ctx.globalAlpha = Math.min(1, 0.55 + a);
         ctx.drawImage(spr, 0, -h / 2, w, h);
+        ctx.restore();
+      } else {
+        // Fallback (image not ready): brighter drawn segmented whip so it never blanks.
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = a;
+        ctx.strokeStyle = '#ffaeec'; ctx.lineWidth = 6 + s.boost;
+        ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(s.range, 0); ctx.stroke();
       }
       ctx.restore();
     }
@@ -3398,15 +3425,26 @@ export class Game {
     ];
     for (const c of clones) {
       const cx = p.pos.x + c.ox, cy = p.pos.y + c.oy;
+      // Soft tinted glow behind the clone so both read clearly against late-game crowds.
       ctx.save();
-      ctx.globalAlpha = 0.78;
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = 0.30;
+      const glow = ctx.createRadialGradient(cx, cy - 30, 4, cx, cy - 30, 46);
+      glow.addColorStop(0, c.tint); glow.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath(); ctx.arc(cx, cy - 30, 46, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+
+      ctx.save();
+      ctx.globalAlpha = 0.9;
       if (c.spr && c.spr.complete && c.spr.naturalWidth > 0) {
-        const h = 72, w = h * (c.spr.naturalWidth / c.spr.naturalHeight);
+        const h = 80, w = h * (c.spr.naturalWidth / c.spr.naturalHeight);
+        ctx.shadowColor = c.tint; ctx.shadowBlur = 14;
         ctx.drawImage(c.spr, cx - w / 2, cy - h, w, h);
       } else {
         ctx.globalCompositeOperation = 'lighter';
         ctx.fillStyle = c.tint;
-        ctx.beginPath(); ctx.ellipse(cx, cy - 18, 14, 30, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(cx, cy - 18, 16, 34, 0, 0, Math.PI * 2); ctx.fill();
       }
       ctx.restore();
     }
@@ -4726,7 +4764,7 @@ export class Game {
       const hint = charId === 'brawler_warrior'
         ? 'Secret outfit locked — find LOG #1997 (survive 15:00 in Endless)'
         : charId === 'assassin_clone'
-        ? 'Secret outfit locked — LOG #2007 (Phantom Assassin protocol)'
+        ? 'Secret outfit locked — LOG #1998 (Phantom Assassin protocol)'
         : 'Secret outfit locked — win a run to unlock it';
       ctx.font      = '12px Consolas, monospace';
       ctx.fillStyle = '#6a8090';
@@ -4783,9 +4821,14 @@ export class Game {
         if (simg && simg.complete && simg.naturalWidth > 0) cimg = simg;
       }
       if (cimg && cimg.complete && cimg.naturalWidth > 0) {
-        const imgH = 180;
-        const imgW = Math.round(cimg.naturalWidth * (imgH / cimg.naturalHeight));
-        ctx.drawImage(cimg, x + (cardWidth - imgW) / 2, y + 8, imgW, imgH);
+        // Roster presentation normalization: all portraits render at a max height of 180 and are
+        // BOTTOM-aligned to a shared feet baseline. The two newest sprites read as oversized/tall,
+        // so they get a small per-character down-scale to match the first three. Presentation only.
+        const PORTRAIT_SCALE = { brawler_warrior: 0.88, assassin_clone: 0.88 };
+        const baseY  = y + 8 + 180;                                   // shared feet baseline
+        const imgH   = Math.round(180 * (PORTRAIT_SCALE[charData.id] || 1));
+        const imgW   = Math.round(cimg.naturalWidth * (imgH / cimg.naturalHeight));
+        ctx.drawImage(cimg, x + (cardWidth - imgW) / 2, baseY - imgH, imgW, imgH);
       } else {
         ctx.fillStyle = charData.fallbackColor;
         ctx.beginPath();
@@ -4910,36 +4953,51 @@ export class Game {
     const px = Math.round((WIDTH  - pw) / 2);
     const py = Math.round((HEIGHT - ph) / 2);
 
-    // Panel
-    ctx.fillStyle = 'rgba(0,10,24,0.96)';
+    // Dark-glass panel with vertical gradient + dual cyan/magenta neon frame.
+    const ig = ctx.createLinearGradient(0, py, 0, py + ph);
+    ig.addColorStop(0, 'rgba(6,18,34,0.97)'); ig.addColorStop(1, 'rgba(2,6,14,0.98)');
+    ctx.fillStyle = ig;
     ctx.fillRect(px, py, pw, ph);
     ctx.strokeStyle = CYAN; ctx.lineWidth = 2;
     ctx.strokeRect(px, py, pw, ph);
-    ctx.strokeStyle = 'rgba(0,230,255,0.15)'; ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(255,77,210,0.30)'; ctx.lineWidth = 1;
     ctx.strokeRect(px + 5, py + 5, pw - 10, ph - 10);
 
-    // Title
+    // Title with neon glow
     ctx.textAlign = 'center';
-    ctx.font      = 'bold 36px Consolas, monospace';
+    ctx.save();
+    ctx.font      = 'bold 38px Consolas, monospace';
+    ctx.shadowColor = CYAN; ctx.shadowBlur = 16;
     ctx.fillStyle = CYAN;
     ctx.fillText('HOW TO PLAY', WIDTH / 2, py + 46);
+    ctx.restore();
 
-    // Separator
-    ctx.strokeStyle = 'rgba(0,230,255,0.28)'; ctx.lineWidth = 1;
+    // Gradient separator
+    const isg = ctx.createLinearGradient(px + 50, 0, px + pw - 50, 0);
+    isg.addColorStop(0, 'rgba(0,230,255,0)'); isg.addColorStop(0.5, 'rgba(255,77,210,0.55)'); isg.addColorStop(1, 'rgba(0,230,255,0)');
+    ctx.strokeStyle = isg; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.moveTo(px + 50, py + 58); ctx.lineTo(px + pw - 50, py + 58); ctx.stroke();
 
     ctx.textAlign = 'left';
     const lx  = px + 28;
     const lh  = 17;
-    let   cy  = py + 74;
+    let   cy  = py + 80;
 
-    // Premium section header — neon label + thin underline rule.
+    // Left content sub-panel (dark glass) behind the text column — premium two-column feel.
+    ctx.fillStyle = 'rgba(0,12,26,0.55)';
+    ctx.fillRect(px + 16, py + 66, 552, ph - 92);
+    ctx.strokeStyle = 'rgba(0,230,255,0.12)'; ctx.lineWidth = 1;
+    ctx.strokeRect(px + 16, py + 66, 552, ph - 92);
+
+    // Premium section header — magenta accent block + neon label + underline rule.
     const header = (label) => {
+      ctx.fillStyle = '#ff4dd2';
+      ctx.fillRect(lx, cy - 11, 4, 15);
       ctx.font      = 'bold 15px Consolas, monospace';
       ctx.fillStyle = CYAN;
-      ctx.fillText(label, lx, cy);
+      ctx.fillText(label, lx + 12, cy);
       ctx.strokeStyle = 'rgba(0,230,255,0.30)'; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(lx, cy + 7); ctx.lineTo(lx + 520, cy + 7); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(lx + 12, cy + 7); ctx.lineTo(lx + 524, cy + 7); ctx.stroke();
       cy += 23;
     };
     const bullet = (text, color = WHITE) => {
@@ -4989,7 +5047,7 @@ export class Game {
     bullet('Win Act 1, then Continue — Endless (Stage 02: Neon Shinjuku).');
     bullet('Elite Waves escalate; reach 10:00 to unlock Brawler Warrior.');
     bullet('Achievements grant Endless-only Protocols & special Cards.', '#c8a8ff');
-    bullet('Secret skins unlock from runs — LOG #1997 @15:00 = Brawler skin.', '#d9b6ff');
+    bullet('Secret skins: LOG #1997 (Brawler) & LOG #1998 (Assassin) — locked.', '#d9b6ff');
 
     // ── ANIMATED TUTORIAL PANELS (right column) ─────────────────
     const PANEL_DURATION = 3.5;
@@ -5010,11 +5068,27 @@ export class Game {
     ctx.lineTo(px + 584, py + ph - 55);
     ctx.stroke();
 
-    // Tutorial area box
-    ctx.fillStyle = 'rgba(0,6,16,0.8)';
+    // Tutorial "help-monitor" — dark-glass screen with scanlines + dual neon frame + corner ticks.
+    const mg = ctx.createLinearGradient(0, tpY, 0, tpY + tpH);
+    mg.addColorStop(0, 'rgba(2,12,24,0.9)'); mg.addColorStop(1, 'rgba(0,4,12,0.92)');
+    ctx.fillStyle = mg;
     ctx.fillRect(tpX, tpY, tpW, tpH);
-    ctx.strokeStyle = 'rgba(0,200,255,0.25)'; ctx.lineWidth = 1;
+    ctx.save();
+    ctx.beginPath(); ctx.rect(tpX, tpY, tpW, tpH); ctx.clip();
+    ctx.strokeStyle = 'rgba(0,230,255,0.05)'; ctx.lineWidth = 1;
+    for (let sy = tpY + 3; sy < tpY + tpH; sy += 4) { ctx.beginPath(); ctx.moveTo(tpX, sy); ctx.lineTo(tpX + tpW, sy); ctx.stroke(); }
+    ctx.restore();
+    ctx.strokeStyle = 'rgba(0,200,255,0.45)'; ctx.lineWidth = 1.5;
     ctx.strokeRect(tpX, tpY, tpW, tpH);
+    ctx.strokeStyle = 'rgba(255,77,210,0.25)'; ctx.lineWidth = 1;
+    ctx.strokeRect(tpX + 4, tpY + 4, tpW - 8, tpH - 8);
+    const tc = 14;
+    ctx.strokeStyle = '#ff4dd2'; ctx.lineWidth = 2;
+    [[tpX, tpY, tc, 0, 0, tc], [tpX + tpW, tpY, -tc, 0, 0, tc],
+     [tpX, tpY + tpH, tc, 0, 0, -tc], [tpX + tpW, tpY + tpH, -tc, 0, 0, -tc]].forEach(([ox, oy, hx, hy, vx, vy]) => {
+      ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(ox + hx, oy + hy); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(ox + vx, oy + vy); ctx.stroke();
+    });
 
     // Panel title
     const panelTitles = [
@@ -5065,6 +5139,25 @@ export class Game {
     ctx.textAlign = 'center';
     ctx.font      = '13px Consolas, monospace';
 
+    // Helpers: draw a real game sprite (aspect-preserved) with a boolean "was it drawn" result,
+    // and a premium player token (cyan glow + ring). Used so the mini-tutorial reads game-like.
+    const drawSprite = (img, x, y, size) => {
+      if (img && img.complete && img.naturalWidth > 0) {
+        const w = size, h = size * (img.naturalHeight / img.naturalWidth);
+        ctx.drawImage(img, x - w / 2, y - h / 2, w, h);
+        return true;
+      }
+      return false;
+    };
+    const drawPlayerToken = (x, y) => {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.45;
+      ctx.fillStyle = CYAN; ctx.beginPath(); ctx.arc(x, y, 19, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+      ctx.fillStyle = CYAN; ctx.beginPath(); ctx.arc(x, y, 12, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = WHITE; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(x, y, 12, 0, Math.PI * 2); ctx.stroke();
+    };
+
     switch (idx) {
       case 0: { // COLLECT DATA-CORES
         const reached = t > 0.55;
@@ -5080,10 +5173,12 @@ export class Game {
           ctx.fillStyle   = YELLOW;
           ctx.beginPath(); ctx.arc(coreX, ey, 22, 0, Math.PI * 2); ctx.fill();
           ctx.restore();
-          ctx.fillStyle   = YELLOW;
-          ctx.beginPath(); ctx.arc(coreX, ey, 8, 0, Math.PI * 2); ctx.fill();
-          ctx.strokeStyle = WHITE; ctx.lineWidth = 1;
-          ctx.beginPath(); ctx.arc(coreX, ey, 8, 0, Math.PI * 2); ctx.stroke();
+          if (!drawSprite(this._coreSprite, coreX, ey, 30)) {   // real Data-Core sprite
+            ctx.fillStyle   = YELLOW;
+            ctx.beginPath(); ctx.arc(coreX, ey, 8, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = WHITE; ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.arc(coreX, ey, 8, 0, Math.PI * 2); ctx.stroke();
+          }
           const arrowA = 0.4 + 0.6 * Math.abs(Math.sin(Date.now() / 500));
           ctx.save();
           ctx.globalAlpha = arrowA;
@@ -5105,10 +5200,7 @@ export class Game {
           ctx.restore();
         }
 
-        ctx.fillStyle   = CYAN;
-        ctx.beginPath(); ctx.arc(playerX, ey, 12, 0, Math.PI * 2); ctx.fill();
-        ctx.strokeStyle = WHITE; ctx.lineWidth = 1.5;
-        ctx.beginPath(); ctx.arc(playerX, ey, 12, 0, Math.PI * 2); ctx.stroke();
+        drawPlayerToken(playerX, ey);
 
         ctx.fillStyle = WHITE;
         ctx.fillText('Enemies steal Data-Cores from Power Matrices.', cx, descY);
@@ -5125,20 +5217,21 @@ export class Game {
           : startX + (matX - 28 - startX) * (t / 0.6);
 
         const matFlash = arrived ? Math.max(0, 1 - (t - 0.6) * 5) : 0;
-        ctx.strokeStyle = matFlash > 0 ? WHITE : CYAN;
-        ctx.lineWidth   = 2 + matFlash * 2;
-        ctx.strokeRect(matX - 22, ey - 22, 44, 44);
-        ctx.fillStyle = `rgba(0,220,255,${(0.08 + matFlash * 0.3).toFixed(2)})`;
-        ctx.fillRect(matX - 22, ey - 22, 44, 44);
-        ctx.font      = 'bold 10px Consolas, monospace';
-        ctx.fillStyle = matFlash > 0 ? WHITE : CYAN;
-        ctx.fillText('MAT', matX, ey + 4);
-        ctx.font = '13px Consolas, monospace';
+        if (matFlash > 0) {   // bright pulse ring on deposit
+          ctx.save(); ctx.globalAlpha = matFlash; ctx.strokeStyle = WHITE; ctx.lineWidth = 3;
+          ctx.strokeRect(matX - 26, ey - 26, 52, 52); ctx.restore();
+        }
+        if (!drawSprite(this._matrixSprite, matX, ey, 56)) {   // real Power Matrix / Nexus sprite
+          ctx.strokeStyle = CYAN; ctx.lineWidth = 2;
+          ctx.strokeRect(matX - 22, ey - 22, 44, 44);
+          ctx.fillStyle = 'rgba(0,220,255,0.12)';
+          ctx.fillRect(matX - 22, ey - 22, 44, 44);
+          ctx.font = 'bold 10px Consolas, monospace'; ctx.fillStyle = CYAN;
+          ctx.fillText('NEXUS', matX, ey + 4);
+          ctx.font = '13px Consolas, monospace';
+        }
 
-        ctx.fillStyle   = CYAN;
-        ctx.beginPath(); ctx.arc(playerX, ey, 12, 0, Math.PI * 2); ctx.fill();
-        ctx.strokeStyle = WHITE; ctx.lineWidth = 1.5;
-        ctx.beginPath(); ctx.arc(playerX, ey, 12, 0, Math.PI * 2); ctx.stroke();
+        drawPlayerToken(playerX, ey);
 
         if (!arrived) {
           const angle = Date.now() / 400;
@@ -5212,10 +5305,7 @@ export class Game {
         ];
         const approachF = phase === 'approach' ? (t / 0.35) : 1;
 
-        ctx.fillStyle   = CYAN;
-        ctx.beginPath(); ctx.arc(cx, ey, 12, 0, Math.PI * 2); ctx.fill();
-        ctx.strokeStyle = WHITE; ctx.lineWidth = 1.5;
-        ctx.beginPath(); ctx.arc(cx, ey, 12, 0, Math.PI * 2); ctx.stroke();
+        drawPlayerToken(cx, ey);
 
         for (let i = 0; i < 3; i++) {
           const [eposX, eposY] = positions[i];
@@ -5316,10 +5406,7 @@ export class Game {
 
         ctx.save();
         ctx.globalAlpha = showBurst ? 0.3 : 1;
-        ctx.fillStyle   = CYAN;
-        ctx.beginPath(); ctx.arc(cx, pcy, 12, 0, Math.PI * 2); ctx.fill();
-        ctx.strokeStyle = WHITE; ctx.lineWidth = 1.5;
-        ctx.beginPath(); ctx.arc(cx, pcy, 12, 0, Math.PI * 2); ctx.stroke();
+        drawPlayerToken(cx, pcy);
         ctx.restore();
 
         ctx.fillStyle = WHITE;
@@ -5342,23 +5429,32 @@ export class Game {
     const px = WIDTH  / 2 - pw / 2;   // 250
     const py = HEIGHT / 2 - ph / 2 - 10; // 115
 
-    ctx.fillStyle = 'rgba(0,10,24,0.96)';
+    // Dark-glass panel with a subtle vertical gradient (deep cyber blue → near-black).
+    const pg = ctx.createLinearGradient(0, py, 0, py + ph);
+    pg.addColorStop(0, 'rgba(6,18,34,0.97)'); pg.addColorStop(1, 'rgba(2,6,14,0.98)');
+    ctx.fillStyle = pg;
     ctx.fillRect(px, py, pw, ph);
+    // Dual neon frame: cyan outer + magenta accent inner — premium cyber border.
     ctx.strokeStyle = CYAN; ctx.lineWidth = 2;
     ctx.strokeRect(px, py, pw, ph);
-    ctx.strokeStyle = 'rgba(0,230,255,0.15)'; ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(255,77,210,0.35)'; ctx.lineWidth = 1;
     ctx.strokeRect(px + 5, py + 5, pw - 10, ph - 10);
 
     ctx.textAlign = 'center';
 
-    // Title
-    ctx.font      = 'bold 42px Consolas, monospace';
+    // Title with neon glow
+    ctx.save();
+    ctx.font      = 'bold 44px Consolas, monospace';
+    ctx.shadowColor = CYAN; ctx.shadowBlur = 18;
     ctx.fillStyle = CYAN;
-    ctx.fillText('CREDITS', WIDTH / 2, py + 50);
+    ctx.fillText('CREDITS', WIDTH / 2, py + 52);
+    ctx.restore();
 
-    // Separator
-    ctx.strokeStyle = 'rgba(0,230,255,0.28)'; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(px + 50, py + 68); ctx.lineTo(px + pw - 50, py + 68); ctx.stroke();
+    // Gradient separator (cyan → magenta → cyan)
+    const sg = ctx.createLinearGradient(px + 50, 0, px + pw - 50, 0);
+    sg.addColorStop(0, 'rgba(0,230,255,0)'); sg.addColorStop(0.5, 'rgba(255,77,210,0.6)'); sg.addColorStop(1, 'rgba(0,230,255,0)');
+    ctx.strokeStyle = sg; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(px + 50, py + 70); ctx.lineTo(px + pw - 50, py + 70); ctx.stroke();
 
     // ── Two creator cards ───────────────────────────────────────────────────
     const cardW = 340, cardH = 300, cardY = py + 82;
@@ -5372,20 +5468,31 @@ export class Game {
     for (const card of cards) {
       const cx = card.x, cy = cardY;
 
-      // Card background + border
-      ctx.fillStyle = 'rgba(0,8,20,0.92)';
+      // Dark-glass card with a vertical gradient + faint scanlines (premium cyber monitor look).
+      const cg = ctx.createLinearGradient(0, cy, 0, cy + cardH);
+      cg.addColorStop(0, 'rgba(8,22,40,0.95)'); cg.addColorStop(1, 'rgba(2,8,18,0.95)');
+      ctx.fillStyle = cg;
       ctx.fillRect(cx, cy, cardW, cardH);
-      ctx.strokeStyle = 'rgba(0,230,255,0.55)'; ctx.lineWidth = 1.5;
+      ctx.save();
+      ctx.beginPath(); ctx.rect(cx, cy, cardW, cardH); ctx.clip();
+      ctx.strokeStyle = 'rgba(0,230,255,0.05)'; ctx.lineWidth = 1;
+      for (let sy = cy + 3; sy < cy + cardH; sy += 4) { ctx.beginPath(); ctx.moveTo(cx, sy); ctx.lineTo(cx + cardW, sy); ctx.stroke(); }
+      ctx.restore();
+      // Dual border: cyan outer + magenta accent inner.
+      ctx.strokeStyle = 'rgba(0,230,255,0.6)'; ctx.lineWidth = 1.5;
       ctx.strokeRect(cx, cy, cardW, cardH);
-      ctx.strokeStyle = 'rgba(0,230,255,0.12)'; ctx.lineWidth = 1;
+      ctx.strokeStyle = 'rgba(255,77,210,0.30)'; ctx.lineWidth = 1;
       ctx.strokeRect(cx + 4, cy + 4, cardW - 8, cardH - 8);
 
       const midX = cx + cardW / 2;
 
-      // Section label
-      ctx.font      = '13px Consolas, monospace';
+      // Section label — stronger, glowing header
+      ctx.save();
+      ctx.font      = 'bold 15px Consolas, monospace';
+      ctx.shadowColor = 'rgba(255,210,60,0.7)'; ctx.shadowBlur = 8;
       ctx.fillStyle = YELLOW;
-      ctx.fillText(card.label, midX, cy + 26);
+      ctx.fillText(card.label, midX, cy + 28);
+      ctx.restore();
 
       // Creator name (or track list for music card)
       if (card.tracks) {
