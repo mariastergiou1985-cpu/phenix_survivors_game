@@ -3249,10 +3249,10 @@ export class Game {
       ctx.restore();
 
       if (ready) {
-        // MAIN VISUAL — the real twin-dagger sprite, drawn LARGE and near-opaque so it is the
-        // dominant weapon visual at gameplay scale (not a faint pink shape). Swept across the
-        // slash arc, oriented to the attack dir. Stays bold then fades only at the very end.
-        const h = Math.max(165, s.range * 1.3) * (0.92 + 0.08 * a);   // big + clear at gameplay zoom
+        // MAIN VISUAL — the real twin-dagger sprite, near-opaque so it reads clearly, but sized
+        // as a NORMAL attack (~90–115px), not an ultimate-scale effect. Swept across the slash
+        // arc, oriented to the attack dir. Stays bold then fades only at the very end.
+        const h = Math.min(118, Math.max(95, s.range * 0.8)) * (0.92 + 0.08 * a);   // ~99px base, capped
         const w = h * (spr.naturalWidth / spr.naturalHeight);
         const sweep = (1 - a) * 0.5 - 0.25;                            // small wrist-flick during the slash
         ctx.save();
@@ -3336,10 +3336,10 @@ export class Game {
       ctx.restore();
 
       if (ready) {
-        // MAIN VISUAL — the real whip-sword sprite at its NATURAL (square) aspect, drawn LARGE and
-        // near-opaque along the strike so it clearly reads as a katana-whip blade (not a thin pink
-        // line). Source 1254×1254 art drawn square (no stretching), so it is never smeared.
-        const sz = (Math.min(280, Math.max(200, s.range * 0.62))) * (0.94 + 0.06 * a);
+        // MAIN VISUAL — the real whip-sword sprite at its NATURAL (square) aspect, near-opaque
+        // along the strike so it reads as a katana-whip blade (not a thin pink line), but sized as
+        // a NORMAL attack (~130–165px), not an ultimate-scale effect. Square art = never smeared.
+        const sz = Math.min(165, Math.max(140, s.range * 0.4)) * (0.94 + 0.06 * a);
         ctx.save();
         ctx.shadowColor = '#ff4dd2'; ctx.shadowBlur = 12;
         ctx.globalAlpha = Math.min(1, a * 3);                  // opaque most of its life
