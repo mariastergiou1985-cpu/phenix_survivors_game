@@ -80,10 +80,13 @@ const DMG_PULSE = { duration: 0.22, minGap: 0.40, bigHit: 3, base: 0.36, slope: 
 // castable (mana >= cost). Visual only: never changes charge rate, cost, or cooldowns.
 const ULT_CUE = { banner: 1.6, aura: 0.7 };
 
-const FINAL_BEAM_DMG     = 22;    // 20–25 band, hard-capped at 30 by _damagePlayer
+const FINAL_BEAM_HP_FRAC = 0.50;  // main beam deals ~50% of player max HP on a hit (telegraphed, once per beam)
 const FINAL_NOVA_WARN    = 1.0;   // s — radial-burst warning
 const FINAL_NOVA_RADIUS  = 155;   // px — medium burst radius
 const FINAL_NOVA_DMG     = 17;    // 15–20 band
+// Long-range STUN LANCE (final boss, phase 2+) — telegraphed aim line, then a locked stun bolt.
+const STUN_LANCE_CHARGE   = 0.8;  // s — telegraph tracks the player before firing
+const STUN_LANCE_DURATION = 1.1;  // s — player stagger/root on hit (2s anti-lock immunity follows)
 
 // ─── Endless Elite Waves (Phase 1) — tuning isolated here ───────────────────────
 // Endless-only recurring waves of EXISTING enemy types, buffed AFTER construction.
@@ -2861,8 +2864,8 @@ export class Game {
     return carrier || best;   // prefer an in-range core carrier, else nearest enemy/boss
   }
 
-  spawnEnemyBullet(pos, dir, speed, damage, radius, color) {
-    this.enemyBullets.push({ pos, dir: dir.clone(), speed, damage, radius, color, life: 4.0 });
+  spawnEnemyBullet(pos, dir, speed, damage, radius, color, opts = {}) {
+    this.enemyBullets.push({ pos, dir: dir.clone(), speed, damage, radius, color, life: 4.0, stun: opts.stun || 0 });
   }
 
   _updateEnemyBullets(dt) {
@@ -2882,6 +2885,7 @@ export class Game {
       // and passes through — a true dodge.
       if (distance(b.pos, this.player.pos) < b.radius + PLAYER_RADIUS) {
         if (this._damagePlayer(b.damage, { color: RED, shake: 5 })) {
+          if (b.stun) this.player.applyBite({ stagger: b.stun });   // telegraphed stun bolt — anti-lock immunity inside applyBite
           this.audio?.playEnemyProjectileImpact();
           this.enemyBullets.splice(i, 1);
         }
@@ -6214,10 +6218,13 @@ export class Game {
     }
   }
 
-  _damagePlayer(dmg, { color = RED, shake = 5 } = {}) {
+  // `cap` overrides the per-hit ceiling for specific telegraphed, fully-dodgeable boss attacks
+  // (e.g. the final-boss main beam). Defaults to BOSS_MAX_PLAYER_HIT so EVERY existing caller is
+  // unchanged. This never touches player stats/damage — it only lets a signalled boss hit land harder.
+  _damagePlayer(dmg, { color = RED, shake = 5, cap = BOSS_MAX_PLAYER_HIT } = {}) {
     if (this.player.dashTimer > 0 || this.phoenixReviveTimer > 0) return false;  // i-frames → dodged
     if (this.playerHitCooldown > 0) return false;                                // within 0.5s grace
-    const applied = Math.min(dmg, BOSS_MAX_PLAYER_HIT);
+    const applied = Math.min(dmg, cap);
     this.player.applyDamage(applied);
     this.playerHitCooldown = 0.5;
     this.screenShake.trigger(shake, 0.2);
@@ -6259,6 +6266,7 @@ export class Game {
   // it is a separate system from the player's Acid Rain.
 
   _updateBossAttacks(dt) {
+    if (this._plasmaWarnCd > 0) this._plasmaWarnCd -= dt;   // throttles the REACTOR PLASMA warning
     // Advance active lava zones (warning → impact → expire). Player-only damage.
     if (this.bossLavaZones.length) {
       for (const z of this.bossLavaZones) {
@@ -6338,14 +6346,19 @@ export class Game {
       const count = (phase === 3 ? 4 : 3) + Math.floor(Math.random() * 3);
       for (let i = 0; i < count; i++) {
         const ang  = Math.random() * Math.PI * 2;
-        const dist = randomRange(40, 260);   // reroute the player without being unavoidable
+        // One drop can land directly ON the player; the 1.2s warn ring still makes it dodgeable.
+        const dist = (i === 0 && Math.random() < 0.5) ? randomRange(0, 26) : randomRange(40, 260);
         const pos  = new Vec2(
           clamp(this.player.pos.x + Math.cos(ang) * dist, WORLD_MARGIN, WORLD_W - WORLD_MARGIN),
           clamp(this.player.pos.y + Math.sin(ang) * dist, WORLD_MARGIN, WORLD_H - WORLD_MARGIN)
         );
         this.bossLavaZones.push({ pos, radius: 70, warn: 1.2, impact: 1.4, t: 0, dmgAccum: 0, dps: 16 });
       }
-      this.triggerAnnouncement('⚠ WARNING: REACTOR PLASMA ACTIVE', ORANGE);
+      // One warning per plasma burst window (no per-volley spam).
+      if (!(this._plasmaWarnCd > 0)) {
+        this._plasmaWarnCd = 14;
+        this.triggerAnnouncement('⚠ REACTOR PLASMA', ORANGE);
+      }
       this.audio?.playEventWarning();
     }
 
@@ -6373,6 +6386,28 @@ export class Game {
       boss.novaCd = randomRange(8, 12);
       this._corruptionNovas.push({ pos: boss.pos.clone(), radius: FINAL_NOVA_RADIUS, warn: FINAL_NOVA_WARN, t: 0, hit: false });
       this.audio?.playEventWarning();
+    }
+
+    // ── STUN LANCE (phase 2+): telegraphed aim line tracks the player, then a locked stun bolt ──
+    // Dangerous but fair: 0.8s warning line, dodgeable, small damage, 2s anti-lock immunity on hit.
+    if (boss.stunCd === undefined) boss.stunCd = randomRange(7, 10);
+    if (boss._stunAim) {
+      boss._stunAim.t  += dt;
+      boss._stunAim.dir = safeNormalize(this.player.pos.sub(boss.pos));   // telegraph tracks the player while charging
+      if (boss._stunAim.t >= STUN_LANCE_CHARGE) {
+        const dir = boss._stunAim.dir;
+        if (dir.lengthSq() > 0)
+          this.spawnEnemyBullet(boss.pos.clone(), dir, 340, 8, 11, CYAN, { stun: STUN_LANCE_DURATION });
+        this.audio?.playEnemyShoot();
+        boss._stunAim = null;
+      }
+    } else {
+      boss.stunCd -= dt;
+      if (boss.stunCd <= 0) {
+        boss.stunCd = randomRange(9, 13) * late;
+        boss._stunAim = { t: 0, dir: safeNormalize(this.player.pos.sub(boss.pos)) };
+        this.audio?.playEventWarning();
+      }
     }
 
     // ── Summon a reinforcement (phase 2+, capped so it never floods) ──
@@ -6421,10 +6456,14 @@ export class Game {
     const o = beam.origin, d = beam.dir;
     const toP  = this.player.pos.sub(o);
     const proj = toP.dot(d);
-    if (proj > 0 && proj < FINAL_BEAM_LEN) {
+    // One heavy strike per beam (≈50% max HP) — a clip costs half your HP, but a single beam can
+    // never multi-tick you to death; the telegraph (charge tracks → locks) makes it fully dodgeable.
+    if (!beam.struck && proj > 0 && proj < FINAL_BEAM_LEN) {
       const perp = Math.abs(-d.y * toP.x + d.x * toP.y);
       if (perp < FINAL_BEAM_HALFW + PLAYER_RADIUS) {
-        if (this._damagePlayer(FINAL_BEAM_DMG, { color: PURPLE, shake: 6 })) {
+        const beamDmg = Math.round(this.player.maxHp * FINAL_BEAM_HP_FRAC);
+        if (this._damagePlayer(beamDmg, { color: PURPLE, shake: 7, cap: beamDmg })) {
+          beam.struck = true;
           this.player.staggerTimer = Math.max(this.player.staggerTimer, 1.0);   // 1s corruption slow (reuses stagger)
           this.floatingTexts.push(new FloatingText('CORRUPTED', new Vec2(this.player.pos.x, this.player.pos.y - 26), PURPLE, 0.7));
         }
@@ -6452,6 +6491,17 @@ export class Game {
 
   // Draws the signature beam (charge telegraph + fire) and nova telegraphs/bursts — world-space, on top of entities.
   _drawBossCorruption(ctx) {
+    // Stun-lance telegraph — a brightening dashed aim line from the boss toward the locked-on player.
+    const sb = this.megaBoss;
+    if (sb && sb._stunAim) {
+      const o = sb.pos, d = sb._stunAim.dir, k = Math.min(1, sb._stunAim.t / STUN_LANCE_CHARGE);
+      ctx.save();
+      ctx.globalAlpha = 0.30 + 0.55 * k;
+      ctx.strokeStyle = CYAN; ctx.lineWidth = 2 + 4 * k; ctx.setLineDash([14, 10]);
+      ctx.beginPath(); ctx.moveTo(o.x, o.y); ctx.lineTo(o.x + d.x * 900, o.y + d.y * 900); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
     for (const n of this._corruptionNovas) {
       ctx.save();
       if (n.t < n.warn) {
@@ -7096,8 +7146,18 @@ export class Game {
         this.screenShake.trigger(6, 0.2);
         this.particles.spawnExplosion(s.pos, [RED, ORANGE], 12);
         this.audio?.playBloodfangBite?.();
-        if (distance(this.player.pos, s.pos) < s.radius)
-          this._damagePlayer(18, { color: RED, shake: 6 }); // routed through fairness gate (dash/grace/30-cap)
+        if (distance(this.player.pos, s.pos) < s.radius) {
+          if (this.endless) {
+            // Endless: heavier, knockback slam (~20% max HP). Act 1 keeps the original 18 (below).
+            const slamDmg = Math.round(this.player.maxHp * 0.20);
+            if (this._damagePlayer(slamDmg, { color: RED, shake: 6, cap: slamDmg })) {
+              const kb = safeNormalize(this.player.pos.sub(s.pos));
+              if (kb.lengthSq() > 0) this.player.pos.addMut(kb.scale(70));   // knock the player back from the impact
+            }
+          } else {
+            this._damagePlayer(18, { color: RED, shake: 6 }); // routed through fairness gate (dash/grace/30-cap)
+          }
+        }
       }
       if (s.t >= s.warn + s.impact) this._bloodfangSlams.splice(i, 1);
     }
