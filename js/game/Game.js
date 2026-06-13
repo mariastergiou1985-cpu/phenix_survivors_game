@@ -3623,48 +3623,91 @@ export class Game {
     return true;
   }
 
-  // World-space red beam: optional asset muzzle at the arm + procedural red beam + origin glow.
+  // World-space red pierce beam — layered glow + white-hot core + electric forks,
+  // traveling energy pulse, muzzle flash with sparks, and an impact flare. Visual only.
   _drawNeonPierceBeam(ctx) {
     if (!this._neonBeams.length) return;
     const spr   = this._neonBeamSprite;
     const ready = spr && spr.complete && spr.naturalWidth > 0;
+    const now   = performance.now() * 0.001;
     ctx.save();
     ctx.lineCap = 'round';
     for (const b of this._neonBeams) {
-      const alpha = Math.max(0, b.life / b.maxLife);
-      const endX  = b.startPos.x + b.dir.x * b.length;
-      const endY  = b.startPos.y + b.dir.y * b.length;
-      const ang   = Math.atan2(b.dir.y, b.dir.x);
+      const alpha = Math.max(0, b.life / b.maxLife);              // 1 → 0
+      const sx = b.startPos.x, sy = b.startPos.y;
+      const ex = sx + b.dir.x * b.length, ey = sy + b.dir.y * b.length;
+      const ang = Math.atan2(b.dir.y, b.dir.x);
+      const px = -b.dir.y, py = b.dir.x;                          // perpendicular unit
+      const bw = 1 + 0.35 * (b.boost || 0);                       // Neon Lance widening
 
-      // Procedural red beam (additive). Neon Lance upgrade widens + brightens the streak.
-      const bw = 1 + 0.35 * (b.boost || 0);
       ctx.globalCompositeOperation = 'lighter';
+
+      // 1) wide soft outer glow
+      ctx.globalAlpha = 0.32 * alpha;
+      ctx.strokeStyle = '#ff1a1a'; ctx.lineWidth = 22 * bw * (0.6 + 0.4 * alpha);
+      ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(ex, ey); ctx.stroke();
+      // 2) red body
       ctx.globalAlpha = alpha;
-      ctx.strokeStyle = '#ff2a2a'; ctx.lineWidth = Math.max(1, 10 * alpha * bw);
-      ctx.beginPath(); ctx.moveTo(b.startPos.x, b.startPos.y); ctx.lineTo(endX, endY); ctx.stroke();
-      ctx.strokeStyle = '#ffd2d2'; ctx.lineWidth = Math.max(1, 3 * alpha * bw);
-      ctx.beginPath(); ctx.moveTo(b.startPos.x, b.startPos.y); ctx.lineTo(endX, endY); ctx.stroke();
+      ctx.strokeStyle = '#ff3030'; ctx.lineWidth = 10 * bw * alpha + 2;
+      ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(ex, ey); ctx.stroke();
+      // 3) white-hot core
+      ctx.strokeStyle = '#fff0f0'; ctx.lineWidth = Math.max(1.5, 3.5 * bw * alpha);
+      ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(ex, ey); ctx.stroke();
 
-      // Red muzzle glow at the cyber-arm origin
-      const g = ctx.createRadialGradient(b.startPos.x, b.startPos.y, 0, b.startPos.x, b.startPos.y, 26);
-      g.addColorStop(0, 'rgba(255,80,80,' + (0.9 * alpha) + ')');
+      // 4) electric forks branching off the beam
+      const forks = 5 + (b.boost || 0);
+      ctx.strokeStyle = '#ff8a8a'; ctx.lineWidth = 1.3; ctx.globalAlpha = 0.6 * alpha;
+      for (let i = 0; i < forks; i++) {
+        const f = ((i + (now * 7 % 1)) / forks);
+        const bxp = sx + (ex - sx) * f, byp = sy + (ey - sy) * f;
+        const side = (i % 2 ? 1 : -1), len = (8 + Math.random() * 18) * bw;
+        const mx = bxp + px * side * len * 0.5 + b.dir.x * (Math.random() * 10 - 5);
+        const my = byp + py * side * len * 0.5 + b.dir.y * (Math.random() * 10 - 5);
+        const tx = bxp + px * side * len + (Math.random() * 8 - 4);
+        const ty = byp + py * side * len + (Math.random() * 8 - 4);
+        ctx.beginPath(); ctx.moveTo(bxp, byp); ctx.lineTo(mx, my); ctx.lineTo(tx, ty); ctx.stroke();
+      }
+
+      // 5) traveling energy pulse (sweeps origin → tip as the beam ages)
+      const pt = 1 - alpha, pxp = sx + (ex - sx) * pt, pyp = sy + (ey - sy) * pt;
+      let g = ctx.createRadialGradient(pxp, pyp, 0, pxp, pyp, 18 * bw);
+      g.addColorStop(0, `rgba(255,230,230,${0.9 * alpha})`); g.addColorStop(1, 'rgba(255,40,40,0)');
+      ctx.globalAlpha = 1; ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(pxp, pyp, 18 * bw, 0, Math.PI * 2); ctx.fill();
+
+      // 6) muzzle flash + radiating sparks at the cyber arm
+      g = ctx.createRadialGradient(sx, sy, 0, sx, sy, 34 * bw);
+      g.addColorStop(0, `rgba(255,140,140,${0.95 * alpha})`);
+      g.addColorStop(0.5, `rgba(255,40,40,${0.5 * alpha})`);
       g.addColorStop(1, 'rgba(255,0,0,0)');
-      ctx.fillStyle = g;
-      ctx.beginPath(); ctx.arc(b.startPos.x, b.startPos.y, 26, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(sx, sy, 34 * bw, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 0.8 * alpha; ctx.strokeStyle = '#ffd2d2'; ctx.lineWidth = 1.5;
+      for (let i = 0; i < 6; i++) {
+        const sa = ang + (i / 6) * Math.PI * 2, rr = 14 + Math.random() * 14;
+        ctx.beginPath(); ctx.moveTo(sx + Math.cos(sa) * 6, sy + Math.sin(sa) * 6);
+        ctx.lineTo(sx + Math.cos(sa) * rr, sy + Math.sin(sa) * rr); ctx.stroke();
+      }
 
-      // Asset muzzle + near-beam (the barrel sits at the cyber arm), drawn on top in normal blend
+      // 7) impact flare at the far end + expanding ring
+      ctx.globalAlpha = 1;
+      g = ctx.createRadialGradient(ex, ey, 0, ex, ey, 26 * bw);
+      g.addColorStop(0, `rgba(255,210,210,${0.9 * alpha})`); g.addColorStop(1, 'rgba(255,30,30,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(ex, ey, 26 * bw, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 0.7 * alpha; ctx.strokeStyle = '#ff6a6a'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(ex, ey, (1 - alpha) * 40 * bw + 6, 0, Math.PI * 2); ctx.stroke();
+
+      // optional asset muzzle on top (kept)
       if (ready) {
-        const dh = 60;                                           // muzzle height
-        const dw = dh * (spr.naturalWidth / spr.naturalHeight);  // keep aspect (barrel + near-beam)
+        const dh = 60, dw = dh * (spr.naturalWidth / spr.naturalHeight);
         ctx.save();
         ctx.globalCompositeOperation = 'source-over';
         ctx.globalAlpha = alpha;
-        ctx.translate(b.startPos.x, b.startPos.y);
-        ctx.rotate(ang);
-        ctx.drawImage(spr, -dw * 0.15, -dh / 2, dw, dh);          // barrel just behind origin, beam forward
+        ctx.translate(sx, sy); ctx.rotate(ang);
+        ctx.drawImage(spr, -dw * 0.15, -dh / 2, dw, dh);
         ctx.restore();
       }
     }
+    ctx.globalAlpha = 1;
     ctx.restore();
   }
 
