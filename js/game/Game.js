@@ -11,7 +11,7 @@ import { clamp, distance, safeNormalize, randomChoice, randomRange } from '../ut
 import { FloatingText }   from '../entities/FloatingText.js';
 import { DataCore, rollCoreType } from '../entities/DataCore.js?v=2';
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=13';
-import { Player }         from '../entities/Player.js?v=71';
+import { Player }         from '../entities/Player.js?v=72';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=3';
 import { Enemy }          from '../entities/Enemy.js?v=107';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=1';
@@ -102,6 +102,10 @@ const ELITE_WAVE = {
   pool: ['Combat Hunter', 'Cyber Shooter', 'Heavy Mech', 'Overclocked Berserker', 'Stealth Infiltrator'],
 };
 
+// Endless-only: minimum gap (s) between boss/miniboss center-screen warnings (≈ one boss-rotation
+// loop) so a boss wave warns ONCE, not once per boss/respawn in the same loop. Act 1 is unaffected.
+const BOSS_WARN_COOLDOWN = 90;
+
 export class Game {
   constructor() {
     this.audio     = null;  // set from main.js on first user gesture
@@ -140,7 +144,7 @@ export class Game {
     // Japan Phasewalker portrait lives in the endless/ subfolder (Character Select + FX modules).
     this._phasewalkerSprite = new Image();
     this._phasewalkerSprite.onerror = () => console.warn('[Char] missing assets/characters/endless/japan_phasewalker.png');
-    this._phasewalkerSprite.src = 'assets/characters/endless/japan_phasewalker.png';
+    this._phasewalkerSprite.src = 'assets/characters/endless/japan_phasewalker.png?v=2';   // ?v bust: corrected transparency
     this._charImages['japan_phasewalker'] = this._phasewalkerSprite;
 
     // Brawler Warrior weapon sprites (Nexus Chakram / Crescent Rift Claw / Skyfall Lances).
@@ -412,6 +416,7 @@ export class Game {
     this._eliteWaveElapsed = 0;           // s elapsed in Endless — drives batch-size tiers
     this._endlessBossTimer = 25;          // Endless boss-rotation clock — first pressure ~25s in
     this._endlessBossIdx   = -1;          // rotation cursor (titan→annihilator→bloodfang→mech)
+    this._bossWarnCd       = 0;           // Endless: throttles boss/miniboss warnings (see BOSS_WARN_COOLDOWN)
 
     this.gameOver          = false;
     this.victory           = false;
@@ -791,10 +796,13 @@ export class Game {
 
   _upgradeRects() {
     const COLS = 4;
-    const CW = 280, CH = 150, CGAP = 22, RGAP = 16;
+    // Slightly smaller cards + wider gaps so more background shows; grid starts lower so the
+    // Grid Credits / Protocol Fragments header lines are not crowded. Click rects derive from
+    // these same values, so hit regions stay exactly in sync with the drawn cards.
+    const CW = 250, CH = 136, CGAP = 28, RGAP = 20;
     const totalW = COLS * CW + (COLS - 1) * CGAP;
     const x0     = Math.round((WIDTH - totalW) / 2);
-    const y0     = 100;
+    const y0     = 126;
     const rects  = META_UPGRADES.map((_, i) => ({
       x: x0 + (i % COLS) * (CW + CGAP),
       y: y0 + Math.floor(i / COLS) * (CH + RGAP),
@@ -882,20 +890,20 @@ export class Game {
       for (let d = 0; d < upg.maxLevel; d++) {
         ctx.fillStyle = d < lvl ? CYAN : '#1a2a3a';
         ctx.beginPath();
-        ctx.arc(r.x + 14 + d * 16, r.y + 82, 5, 0, Math.PI * 2);
+        ctx.arc(r.x + 14 + d * 16, r.y + 78, 5, 0, Math.PI * 2);
         ctx.fill();
       }
 
       // Cost / BUY button area
-      const btnY = r.y + 100;
-      const btnH = 38;
+      const btnY = r.y + 94;
+      const btnH = 32;
       if (maxed) {
         ctx.fillStyle   = '#1a2510';
         ctx.fillRect(r.x + 10, btnY, r.w - 20, btnH);
         ctx.font        = 'bold 15px Consolas, monospace';
         ctx.fillStyle   = YELLOW;
         ctx.textAlign   = 'center';
-        ctx.fillText('MAX', r.x + r.w / 2, btnY + 24);
+        ctx.fillText('MAX', r.x + r.w / 2, btnY + 21);
       } else {
         ctx.fillStyle   = can ? '#0a2030' : '#120a0a';
         ctx.fillRect(r.x + 10, btnY, r.w - 20, btnH);
@@ -905,7 +913,7 @@ export class Game {
         ctx.font        = 'bold 13px Consolas, monospace';
         ctx.fillStyle   = can ? CYAN : '#5a3030';
         ctx.textAlign   = 'center';
-        ctx.fillText(`BUY  —  ${cost} Credits`, r.x + r.w / 2, btnY + 24);
+        ctx.fillText(`BUY  —  ${cost} Credits`, r.x + r.w / 2, btnY + 21);
       }
     }
 
@@ -1101,6 +1109,7 @@ export class Game {
   // event is active or about to warn, so the two spectacles never start on the same moment.
   _updateEndlessBossRotation(dt) {
     if (!this.endless) return;
+    if (this._bossWarnCd > 0) this._bossWarnCd -= dt;   // age the boss-warning throttle (Endless only)
     this._endlessBossTimer -= dt;
     if (this._endlessBossTimer > 0) return;
     if (this.acidRain || this.acidRainTimer < 8) { this._endlessBossTimer = 8; return; }  // avoid overlap
@@ -1123,8 +1132,7 @@ export class Game {
     } else if (slot === 'mech') {
       if (this.enemies.length < this.enemyCap() && !this.enemies.some(e => e.enemyType === 'Security Defector Mech')) {
         this.enemies.push(new Enemy('Security Defector Mech', this.currentMinute() + 8));
-        this.audio?.playBossWarning();
-        this.triggerAnnouncement('DEFECTOR MECH BOSS DETECTED', YELLOW);
+        this._endlessBossAlert('DEFECTOR MECH BOSS DETECTED', YELLOW);
       }
     }
   }
@@ -1213,7 +1221,11 @@ export class Game {
     const mins = this.currentMinute() + (this.endless ? 8 : 0);
     const e = new Enemy(this.chooseEnemyType(), mins);
     this.enemies.push(e);
-    if (e.isBoss()) this.audio?.playBossWarning();
+    if (e.isBoss()) {
+      // Act 1: warn per boss spawn (unchanged). Endless: collapse to one warning per loop window.
+      if (!this.endless) this.audio?.playBossWarning();
+      else if (this._bossWarnCd <= 0) { this._bossWarnCd = BOSS_WARN_COOLDOWN; this.audio?.playBossWarning(); }
+    }
   }
 
   // ─── Ability activations ──────────────────────────────────────────────────
@@ -1311,7 +1323,6 @@ export class Game {
 
   activateEMPCloud() {
     const p = this.player;
-    if (p.selectedCharacter === 'japan_phasewalker') return;   // he uses EMP Shockwave instead (see activateEMPShockwave)
     if (p.empCloudCooldown > 0) return;   // baseline ability — no longer upgrade-gated
 
     const radius = 240 + p.upgrades['EMP Cloud'] * 40;   // base 200 +20%; upgrade still extends
@@ -1332,6 +1343,9 @@ export class Game {
                                life: 0.5, maxLife: 0.5, color1: CYAN, color2: '#ffffff' });
     p.empCloudCooldown = Math.max(8, 12 - p.upgrades['EMP Cloud']);   // 12s base, upgrade trims it
     this.floatingTexts.push(new FloatingText('STUN PULSE!', p.pos.clone(), CYAN, 0.9));
+    // Japan Phasewalker: layer his EMP Shockwave VFX on the SAME shared E ability (does not
+    // replace the global stun above; self-guards on character + its own VFX cooldown).
+    if (p.selectedCharacter === 'japan_phasewalker') this.activateEMPShockwave();
   }
 
   // ── Pulse Shield (Q): 7s cyan bubble, -60% incoming damage, 25s cooldown ──────
@@ -4938,6 +4952,25 @@ export class Game {
 
   // ── Wave announcement system ──────────────────────────────────────────────
 
+  // Boss/miniboss center-screen warning. In Endless, collapse repeats so a boss loop warns
+  // once (not once per boss/respawn in the loop); Act 1 keeps its original per-boss warning.
+  _bossAnnounce(text, color) {
+    if (this.endless) {
+      if (this._bossWarnCd > 0) return;
+      this._bossWarnCd = BOSS_WARN_COOLDOWN;
+    }
+    this.triggerAnnouncement(text, color);
+  }
+
+  // Endless boss/miniboss alert (warning sound + center text), throttled to once per loop window.
+  // Only called from Endless-gated paths (boss rotation), so no endless guard is needed here.
+  _endlessBossAlert(text, color) {
+    if (this._bossWarnCd > 0) return;
+    this._bossWarnCd = BOSS_WARN_COOLDOWN;
+    this.audio?.playBossWarning();
+    this.triggerAnnouncement(text, color);
+  }
+
   triggerAnnouncement(text, color) {
     this.announcement = { text, color, phase: 'fadein', timer: 0 };
     const WAVE_EVENTS = ['DRONE SWARM', 'CORE RAIDERS', 'SECURITY MECH', 'OVERLOAD SURGE', 'HUNTER SQUAD'];
@@ -6643,7 +6676,7 @@ export class Game {
       radius: R, speed: 60, contactDamage: 16, hitFlash: 0,
       shockwaveTimer: 4, beamTimer: 8,
     };
-    this.triggerAnnouncement('AI OVERLOAD TITAN DETECTED', PURPLE);
+    this._bossAnnounce('AI OVERLOAD TITAN DETECTED', PURPLE);
     this.audio?.playBossSpawn();
     this.screenShake.trigger(6, 0.5);
     this.floatingTexts.push(
@@ -6809,7 +6842,7 @@ export class Game {
       attackTimer: 3,
       shotTimer: 3,
     };
-    this.triggerAnnouncement('MATRIX ANNIHILATOR INBOUND', RED);
+    this._bossAnnounce('MATRIX ANNIHILATOR INBOUND', RED);
     this.audio?.playBossSpawn();
     this.screenShake.trigger(6, 0.5);
     this.floatingTexts.push(
@@ -7001,7 +7034,7 @@ export class Game {
       biteTimer: 2.0, lungeTimer: 0, lungeDir: new Vec2(1, 0),
       slamTimer: 4,
     };
-    this.triggerAnnouncement('BLOODFANG PACKMASTER DETECTED', RED);
+    this._bossAnnounce('BLOODFANG PACKMASTER DETECTED', RED);
     this.audio?.playBossSpawn();
     this.screenShake.trigger(7, 0.6);
     this.floatingTexts.push(new FloatingText('BLOODFANG PACKMASTER DETECTED', new Vec2(WIDTH / 2 - 240, HEIGHT / 2 - 70), RED,    3.0));
