@@ -1,4 +1,4 @@
-import { Game } from './game/Game.js?v=196';
+import { Game } from './game/Game.js?v=197';
 import { AudioManager } from './audio/AudioManager.js?v=19';
 
 const canvas = document.getElementById('game');
@@ -217,7 +217,10 @@ canvas.addEventListener('mousedown', e => {
     // highlighted character WITHOUT starting the run. Locked secret is a no-op.
     const ob   = game._outfitBtnRects();
     const ocid = game.characters[game.characterIndex].id;
-    if (game._inRect(mousePos, ob.defaultRect)) {
+    const pfBtn = game._pfUnlockBtnRect();
+    if (pfBtn && game._inRect(mousePos, pfBtn)) {
+      game.tryUnlockSelectedCharacterPF();          // spend Protocol Fragments to unlock the highlighted char
+    } else if (game._inRect(mousePos, ob.defaultRect)) {
       game.meta.setSelectedOutfit(ocid, 'default');
     } else if (game._inRect(mousePos, ob.secretRect)) {
       game.meta.setSelectedOutfit(ocid, 'secret');

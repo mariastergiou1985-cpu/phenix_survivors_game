@@ -96,6 +96,32 @@ export const ENDLESS_ACHIEVEMENTS = [
     cardName: 'Core Magnetizer', cardEffect: '+1 carried-core capacity per level' },
 ];
 
+// ─── Protocol Fragments (PF) — Phase 1 ──────────────────────────────────────────
+// A SEPARATE, rare Endless progression currency (NOT Grid Credits). Earned one-time from
+// Endless achievements; spent to unlock future Endless characters. All payout/cost numbers
+// live here (single source of truth — no scattered magic numbers).
+//
+// Payout per achievement, scaled by difficulty (intro/easy=1, medium/hard=2, elite=3):
+export const PF_PAYOUTS = {
+  first_endless:    1,   // finish one Endless run        (intro)
+  core_defender:    1,   // secure 25 cores               (easy)
+  endless_survivor: 2,   // survive 15:00                 (medium)
+  score_hunter:     2,   // 50,000 score                  (medium)
+  grid_legend:      2,   // survive 20:00                 (hard)
+  combo_master:     3,   // combo x100                    (hard)
+  level_breaker:    3,   // reach Level 30                (hard)
+};
+// Sum of all current payouts (14). Computed, not hard-coded, so it stays correct if the table changes.
+export const PF_TOTAL_OBTAINABLE = Object.values(PF_PAYOUTS).reduce((a, b) => a + b, 0);
+
+// Future Endless-character unlock costs. Progression targets (of the 14 total):
+//   Japan Phasewalker 8 = 57% · Euclid Vector 10 = 71% · Oni Cataclysm 14 = 100%.
+export const PF_CHARACTER_COSTS = {
+  japan_phasewalker:      8,
+  euclid_vector:          10,
+  oni_cataclysm_protocol: 14,
+};
+
 export class MetaProgress {
   constructor() {
     this.credits = 0;
@@ -113,6 +139,10 @@ export class MetaProgress {
     // Endless after an Act 1 victory). Once set, the Main Menu shows a direct ENDLESS MODE entry
     // so the player never has to replay Act 1. Persisted; fresh saves start false (locked).
     this.endlessUnlocked = false;
+    // ─── Protocol Fragments (Phase 1) — SEPARATE from Grid Credits (this.credits) ───
+    this.protocolFragments = 0;   // current PF balance
+    this.pfEarnedFrom      = {};  // { [achievementId]: true } — idempotent payout ledger
+    this.protocolUnlocks   = {};  // { [characterId]: true }   — PF-purchased character unlocks
     this._load();
   }
 
@@ -133,6 +163,12 @@ export class MetaProgress {
       this.achievements = d.achievements || {};
       this.selectedOutfits = d.selectedOutfits || {};
       this.endlessUnlocked = d.endlessUnlocked === true;
+      // Protocol Fragments — corruption-safe defaults (Number||0 / object-or-{}).
+      this.protocolFragments = Number(d.protocolFragments) || 0;
+      this.pfEarnedFrom    = (d.pfEarnedFrom    && typeof d.pfEarnedFrom    === 'object') ? d.pfEarnedFrom    : {};
+      this.protocolUnlocks = (d.protocolUnlocks && typeof d.protocolUnlocks === 'object') ? d.protocolUnlocks : {};
+      // One-time retroactive payout for already-earned Endless achievements (idempotent).
+      this._backfillProtocolFragments();
 
       // ── Backfill migration ──────────────────────────────────────────────────
       // Saves from before the endlessUnlocked flag existed have no such field. If the
@@ -167,6 +203,9 @@ export class MetaProgress {
         achievements: this.achievements,
         selectedOutfits: this.selectedOutfits,
         endlessUnlocked: this.endlessUnlocked,
+        protocolFragments: this.protocolFragments,
+        pfEarnedFrom: this.pfEarnedFrom,
+        protocolUnlocks: this.protocolUnlocks,
       }));
     } catch (_) {}
   }
@@ -203,8 +242,47 @@ export class MetaProgress {
         newly.push({ id: a.id, name: a.name });
       }
     }
-    if (newly.length) this._save();
+    if (newly.length) { this._backfillProtocolFragments(); this._save(); }   // pay PF for newly-earned (idempotent)
     return newly;
+  }
+
+  // ─── Protocol Fragments (PF) ────────────────────────────────────────────────
+  // One-time retroactive/idempotent payout: for every EARNED Endless achievement not yet paid,
+  // add its PF and record it in pfEarnedFrom so a reload never double-pays. Safe for fresh saves
+  // (no achievements → no payout) and corrupted ledgers (treated as empty). Persists if changed.
+  _backfillProtocolFragments() {
+    let changed = false;
+    for (const a of ENDLESS_ACHIEVEMENTS) {
+      if (this.achievements[a.id] && !this.pfEarnedFrom[a.id]) {
+        const pay = PF_PAYOUTS[a.id] || 0;
+        if (pay > 0) { this.protocolFragments += pay; this.pfEarnedFrom[a.id] = true; changed = true; }
+      }
+    }
+    if (changed) this._save();
+    return changed;
+  }
+
+  getProtocolFragments() { return this.protocolFragments; }
+
+  // PF-based future-character unlocks (separate from Grid Credits / secret-skin unlocks).
+  protocolUnlockCost(characterId) { return PF_CHARACTER_COSTS[characterId] || 0; }
+  isProtocolUnlocked(characterId) { return this.protocolUnlocks[characterId] === true; }
+  canAffordProtocolUnlock(characterId) {
+    const cost = this.protocolUnlockCost(characterId);
+    return cost > 0 && !this.isProtocolUnlocked(characterId) && this.protocolFragments >= cost;
+  }
+
+  // Spend PF to unlock a character. Returns 'ok' | 'owned' | 'invalid' | 'poor'. Idempotent:
+  // an already-owned character is never re-charged.
+  tryUnlockCharacterWithPF(characterId) {
+    if (this.isProtocolUnlocked(characterId)) return 'owned';
+    const cost = this.protocolUnlockCost(characterId);
+    if (cost <= 0) return 'invalid';
+    if (this.protocolFragments < cost) return 'poor';
+    this.protocolFragments -= cost;
+    this.protocolUnlocks[characterId] = true;
+    this._save();
+    return 'ok';
   }
 
   getLevel(key) { return Number(this.levels[key]) || 0; }
@@ -248,6 +326,9 @@ export class MetaProgress {
     this.achievements   = {};
     this.selectedOutfits = {};
     this.endlessUnlocked = false;
+    this.protocolFragments = 0;
+    this.pfEarnedFrom      = {};
+    this.protocolUnlocks   = {};
     this._save();
   }
 
@@ -299,11 +380,10 @@ export class MetaProgress {
   // unlocked by reaching 10:00 in Endless (flag set via unlock('brawler_warrior')).
   isCharacterUnlocked(characterId) {
     if (characterId === 'brawler_warrior') return this.isUnlocked('brawler_warrior');
-    // Endless unlockable — Japan Phasewalker. Locked by DEFAULT (flag unset → false); the future
-    // Protocol Fragments system will set unlock('japan_phasewalker'). Reading a flag (rather than a
-    // hard false) keeps him gated while allowing the eventual PF unlock — and a manual/dev unlock for
-    // local testing — WITHOUT shipping a free unlock. See memory phenix-protocol-fragments-design.
-    if (characterId === 'japan_phasewalker') return this.isUnlocked('japan_phasewalker');
+    // Any PF-gated Endless character (japan_phasewalker / euclid_vector / oni_cataclysm_protocol)
+    // is locked until purchased with Protocol Fragments — NO free default unlock. Future characters
+    // added to PF_CHARACTER_COSTS are automatically gated the same way.
+    if (PF_CHARACTER_COSTS[characterId]) return this.isProtocolUnlocked(characterId);
     return true;
   }
 

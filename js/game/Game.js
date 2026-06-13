@@ -21,7 +21,7 @@ import { SystemEventManager } from './Events.js?v=95';
 import { UpgradeUI }      from './UpgradeUI.js?v=7';
 import { weightedSample } from './Upgrades.js?v=8';
 import { drawHUD, drawEndScreen } from './HUD.js?v=47';
-import { MetaProgress, META_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS } from './MetaProgress.js?v=16';
+import { MetaProgress, META_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE } from './MetaProgress.js?v=17';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
 import { GlitchDash } from '../effects/glitch-dash.js?v=1';
@@ -499,6 +499,28 @@ export class Game {
     this.audio?.startMenuMusic();
   }
 
+  // Rect for the Character-Select Protocol-Fragments UNLOCK button — non-null only when the
+  // highlighted character is PF-lockable and still locked. Mirrored by main.js click hit-test.
+  _pfUnlockBtnRect() {
+    const sel = this.characters[this.characterIndex];
+    if (!sel || !PF_CHARACTER_COSTS[sel.id] || this.meta.isProtocolUnlocked(sel.id)) return null;
+    const w = 320, h = 38;
+    return { x: Math.round(WIDTH / 2 - w / 2), y: HEIGHT - 78, w, h };
+  }
+
+  // Spend Protocol Fragments to unlock the highlighted character (idempotent; shows a status msg).
+  tryUnlockSelectedCharacterPF() {
+    const sel = this.characters[this.characterIndex];
+    if (!sel || !PF_CHARACTER_COSTS[sel.id]) return;
+    const res = this.meta.tryUnlockCharacterWithPF(sel.id);
+    this._pfMsg = res === 'ok'    ? `${sel.name} UNLOCKED!`
+                : res === 'poor'  ? 'Not enough Protocol Fragments.'
+                : res === 'owned' ? 'Already unlocked.'
+                : 'Cannot unlock.';
+    this._pfMsgUntil = performance.now() + 2500;
+    if (res === 'ok') this.audio?.playEventWarning?.();
+  }
+
   goToMainMenu() {
     this.gameState = 'start_menu';
     this.menuIndex = 0;
@@ -808,6 +830,10 @@ export class Game {
     ctx.font      = '20px Consolas, monospace';
     ctx.fillStyle = YELLOW;
     ctx.fillText(`Grid Credits: ${this.meta.credits}`, WIDTH / 2, 82);
+    // Protocol Fragments — separate rare Endless currency (display only here; spent in Character Select)
+    ctx.font      = 'bold 15px Consolas, monospace';
+    ctx.fillStyle = '#7df9ff';
+    ctx.fillText(`◆ Protocol Fragments: ${this.meta.getProtocolFragments()} / ${PF_TOTAL_OBTAINABLE}`, WIDTH / 2, 104);
 
     const { rects, backRect, resetRect } = this._upgradeRects();
 
@@ -4834,8 +4860,11 @@ export class Game {
     if (bg && bg.complete && bg.naturalWidth > 0) {
       ctx.drawImage(bg, 0, 0, WIDTH, HEIGHT);
     } else {
-      this._drawBackground(ctx);
-      ctx.fillStyle = 'rgba(0,0,0,0.72)';
+      // Until the menu art loads, paint a plain dark backdrop — NOT _drawBackground(), which
+      // renders the city/grid world and reads as an Act 1 "map flash" on the first frame.
+      const g = ctx.createLinearGradient(0, 0, 0, HEIGHT);
+      g.addColorStop(0, '#05080f'); g.addColorStop(1, '#02040a');
+      ctx.fillStyle = g;
       ctx.fillRect(0, 0, WIDTH, HEIGHT);
     }
 
@@ -4898,6 +4927,13 @@ export class Game {
     ctx.font      = '11px Consolas, monospace';
     ctx.fillStyle = 'rgba(160,175,195,0.42)';
     ctx.fillText('Early Demo / Work in Progress', 14, 22);
+
+    // ── Protocol Fragments balance (rare Endless progression currency; subtle, top-right) ──
+    ctx.textAlign = 'right';
+    ctx.font      = 'bold 12px Consolas, monospace';
+    ctx.fillStyle = 'rgba(125,249,255,0.78)';
+    ctx.fillText('◆ Protocol Fragments: ' + this.meta.getProtocolFragments(), WIDTH - 14, 24);
+    ctx.textAlign = 'left';
   }
 
   // ── Wave announcement system ──────────────────────────────────────────────
@@ -5218,15 +5254,41 @@ export class Game {
     }
 
     // Unlock hint for the highlighted locked character.
+    // Protocol Fragments balance (top-right) — visible whenever choosing a character.
+    ctx.font = 'bold 13px Consolas, monospace';
+    ctx.fillStyle = 'rgba(125,249,255,0.82)';
+    ctx.textAlign = 'right';
+    ctx.fillText('◆ Protocol Fragments: ' + this.meta.getProtocolFragments(), WIDTH - 18, 40);
+
     const selChar = this.characters[this.characterIndex];
+    ctx.textAlign = 'center';
     if (!this.meta.isCharacterUnlocked(selChar.id)) {
-      const hint = selChar.id === 'japan_phasewalker'
-        ? 'Unlock with Protocol Fragments in Endless progression.'
-        : 'Reach 10:00 in Endless Mode to unlock Brawler Warrior.';
-      ctx.font = 'bold 14px Consolas, monospace';
-      ctx.fillStyle = '#ffcf6a';
-      ctx.textAlign = 'center';
-      ctx.fillText(hint, WIDTH / 2, HEIGHT / 2 + cardHeight / 2 + 24);
+      const pfCost = PF_CHARACTER_COSTS[selChar.id];
+      if (pfCost) {
+        // PF-locked Endless character — hint + clickable UNLOCK panel (per-character).
+        const have = this.meta.getProtocolFragments(), afford = have >= pfCost;
+        ctx.font = 'bold 13px Consolas, monospace';
+        ctx.fillStyle = '#ffcf6a';
+        ctx.fillText('Unlock with Protocol Fragments in Endless progression.', WIDTH / 2, HEIGHT / 2 + cardHeight / 2 + 16);
+        const r = this._pfUnlockBtnRect();
+        if (r) {
+          ctx.fillStyle   = afford ? 'rgba(6,40,52,0.82)' : 'rgba(20,14,22,0.7)';
+          ctx.beginPath(); ctx.roundRect(r.x, r.y, r.w, r.h, 8); ctx.fill();
+          ctx.strokeStyle = afford ? '#7df9ff' : '#5a4a55'; ctx.lineWidth = afford ? 2 : 1;
+          ctx.beginPath(); ctx.roundRect(r.x, r.y, r.w, r.h, 8); ctx.stroke();
+          ctx.font = 'bold 14px Consolas, monospace';
+          ctx.fillStyle = afford ? '#dffaff' : '#9a8fa0';
+          ctx.fillText(`UNLOCK — ${pfCost} ◆ PF   (have ${have})`, WIDTH / 2, r.y + 26);
+          if (this._pfMsg && performance.now() < this._pfMsgUntil) {
+            ctx.font = '12px Consolas, monospace'; ctx.fillStyle = '#ffd0e0';
+            ctx.fillText(this._pfMsg, WIDTH / 2, r.y + r.h + 18);
+          }
+        }
+      } else {
+        ctx.font = 'bold 14px Consolas, monospace';
+        ctx.fillStyle = '#ffcf6a';
+        ctx.fillText('Reach 10:00 in Endless Mode to unlock Brawler Warrior.', WIDTH / 2, HEIGHT / 2 + cardHeight / 2 + 24);
+      }
     }
 
     // ── Secret skins strip — each preview sits DIRECTLY under its matching character card.
