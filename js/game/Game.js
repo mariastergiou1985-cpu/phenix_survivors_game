@@ -2061,42 +2061,23 @@ export class Game {
     const p = this.player;
     const enemies = this.enemies;
     const bosses = [this.titanBoss, this.annihilatorBoss, this.bloodfangBoss].filter(b => b && b.hp > 0);
-    const r = Math.random();
 
-    // Occasionally hammer an active boss/mini-boss so they take steady (capped) pressure
-    if (bosses.length && r < 0.15) {
+    // occasionally pressure a boss
+    if (bosses.length && Math.random() < 0.12) {
       const b = bosses[(Math.random() * bosses.length) | 0];
-      return { x: b.pos.x + randomRange(-22, 22), y: b.pos.y + randomRange(-22, 22) };
+      return { x: b.pos.x + randomRange(-18, 18), y: b.pos.y + randomRange(-18, 18) };
     }
-
     if (enemies.length === 0) {
-      // No normal enemies: favour a boss if present, else a random visible point (rare fallback)
       if (bosses.length) { const b = bosses[(Math.random() * bosses.length) | 0]; return { x: b.pos.x, y: b.pos.y }; }
       return { x: this.camera.x + randomRange(40, this._viewW - 40), y: this.camera.y + randomRange(60, this._viewH - 40) };
     }
-
-    // Small share of random spread so the storm reads as battlefield-wide, not laser-focused
-    if (r > 0.93) {
-      return { x: this.camera.x + randomRange(40, this._viewW - 40), y: this.camera.y + randomRange(60, this._viewH - 40) };
-    }
-
-    // Sample a handful of enemies and pick the best target: dense clusters, close to the
-    // player, and core-carriers score highest. Target the cluster centroid for max AoE overlap.
-    let best = null, bestScore = -Infinity;
-    const samples = Math.min(enemies.length, 6);
-    for (let s = 0; s < samples; s++) {
-      const e = enemies[(Math.random() * enemies.length) | 0];
-      let cluster = 0, cx = 0, cy = 0;
-      for (const o of enemies) {
-        if (distance(o.pos, e.pos) < 100) { cluster++; cx += o.pos.x; cy += o.pos.y; }
-      }
-      cx /= cluster; cy /= cluster;   // centroid of the local cluster (cluster ≥ 1: includes e)
-      const closeBonus = Math.max(0, 1 - distance(e.pos, p.pos) / 620) * 3;  // nearer the player → higher
-      const coreBonus  = (e.carryingCore !== null) ? 5 : 0;
-      const score = cluster * 2 + closeBonus + coreBonus + Math.random() * 1.5;
-      if (score > bestScore) { bestScore = score; best = { x: cx, y: cy }; }
-    }
-    return best;
+    // NEAREST enemies to the player: sort by distance, pick among the closest few
+    const near = enemies.map(e => ({ e, d: distance(e.pos, p.pos) }))
+                        .sort((a, b) => a.d - b.d)
+                        .slice(0, Math.min(5, enemies.length));
+    const pick = near[(Math.random() * Math.min(near.length, 3)) | 0] || near[0];
+    const e = pick.e;
+    return { x: e.pos.x + randomRange(-10, 10), y: e.pos.y + randomRange(-10, 10) };
   }
 
   // Create a single falling bolt with a short wind-up; damage is applied later, on impact.
@@ -2127,20 +2108,16 @@ export class Game {
   _applyStrikeDamage(tx, ty) {
     const ts = this.thunderSolo;
     if (!ts) return;
-    // Per-second boss-damage budgets: strong vs mini-bosses, meaningful (reduced) vs the main boss,
-    // but never an instant melt over the ~6s storm.
-    const MINI_DPS_CAP = 45;   // ~270 dmg over the storm — kills a mini-boss in ~2 ultimates
-    const MEGA_DPS_CAP = 25;   // ~150 dmg over the storm — meaningful chunk of the main boss
+    const MINI_DPS_CAP = 45, MEGA_DPS_CAP = 25;
+    const FREEZE = 1.2;   // seconds normal enemies stay frozen by a lightning note (tunable)
     const bossHit = (perStrike, isMega) => {
-      const used   = isMega ? ts.megaDmgThisSec : ts.miniDmgThisSec;
+      const used = isMega ? ts.megaDmgThisSec : ts.miniDmgThisSec;
       const budget = (isMega ? MEGA_DPS_CAP : MINI_DPS_CAP) - used;
       if (budget <= 0) return 0;
       const dmg = Math.min(perStrike, budget);
       if (isMega) ts.megaDmgThisSec += dmg; else ts.miniDmgThisSec += dmg;
       return dmg;
     };
-
-    // AoE within ~110px — normal enemy crowds obliterated, bosses heavily but safely chunked
     const R = 110 * (1 + 0.12 * this._cardLvl('skeleton_thunder_solo_mastery'));
     const at = new Vec2(tx, ty);
     for (let i = this.enemies.length - 1; i >= 0; i--) {
@@ -2149,22 +2126,28 @@ export class Game {
         if (e.isBoss() || e.isMegaBoss) {
           const dmg = bossHit(16, e.isMegaBoss);
           if (dmg > 0) e.takeHit(dmg, this);
+          e.stunned = Math.max(e.stunned || 0, 0.4);      // bosses: brief safe interrupt
         } else {
           e.takeHit(80, this);
+          e.stunned = Math.max(e.stunned || 0, FREEZE);   // normal enemies: FROZEN
         }
       }
     }
-    const hitBoss = (boss, die) => {     // singleton mini-bosses always use the mini budget
+    const hitBoss = (boss, die) => {
       if (boss && boss.hp > 0 && distance(boss.pos, at) < R + boss.radius) {
         const dmg = bossHit(16, false);
         if (dmg <= 0) return;
         boss.hp -= dmg; boss.hitFlash = 0.08;
+        boss.stunned = Math.max(boss.stunned || 0, 0.4);
         if (boss.hp <= 0) die.call(this);
       }
     };
-    hitBoss(this.titanBoss,       this._titanDie);
+    hitBoss(this.titanBoss, this._titanDie);
     hitBoss(this.annihilatorBoss, this._annihilatorDie);
-    hitBoss(this.bloodfangBoss,   this._bloodfangDie);
+    hitBoss(this.bloodfangBoss, this._bloodfangDie);
+
+    // shattered-note burst at the impact
+    for (let k = 0; k < 2; k++) this._spawnThunderNote(tx + randomRange(-14, 14), ty - randomRange(4, 18));
   }
 
   // Guitar FX — drawn just BEFORE the player so the skeleton renders on top (source behind it)
@@ -2172,35 +2155,51 @@ export class Game {
     const ts = this.thunderSolo;
     if (!ts) return;
     const p = this.player;
-
-    // Visibility runs on total elapsed time (~7s): fade-in, hold, fade-out + gentle shimmer
     const gt = ts.totalT;
     if (gt >= 7.0) return;
-    let guitarAlpha = 0;
-    if (gt < 0.2)      guitarAlpha = gt / 0.2;
-    else if (gt < 6.5) guitarAlpha = 1;
-    else               guitarAlpha = 1 - (gt - 6.5) / 0.5;
-    guitarAlpha *= 0.9 + 0.1 * Math.sin(gt * 6);   // soft shimmer (no harsh strobe)
+    let guitarAlpha = (gt < 0.2) ? gt / 0.2 : (gt < 6.5) ? 1 : 1 - (gt - 6.5) / 0.5;
+    guitarAlpha *= 0.9 + 0.1 * Math.sin(gt * 6);
+    if (guitarAlpha <= 0) return;
 
-    // Guitar floats above-and-behind the skeleton so it clearly reads as the attack's source
-    const cx = p.pos.x + 6, cy = p.pos.y - 30;
-
-    // Soft cyan aura behind the skeleton while it "plays" the guitar (kept dim so the guitar pops)
+    // cyan aura behind the skeleton while it "plays"
     drawGlow(ctx, p.pos.x, p.pos.y - 8, 44, CYAN, 0.16 + 0.12 * Math.abs(Math.sin(gt * 9)));
 
-    const gspr = this._thunderGuitarSprite;
-    if (guitarAlpha <= 0) return;
+    const cx = p.pos.x + 10, cy = p.pos.y - 26;
+    const spr = this._thunderGuitarSprite;
+    const haveSpr = spr && spr.complete && spr.naturalWidth > 0;
+    const strum = Math.max(0, 1 - (ts.strikeTimer / 0.15));   // flashes right after each strike wave
+
     ctx.save();
     ctx.globalAlpha = guitarAlpha;
-    const gh = 58;   // smaller than the 64px character, raised so the full guitar is clearly visible
-    if (gspr && gspr.complete && gspr.naturalWidth > 0) {
-      // Bright halo right behind the guitar body to silhouette its dark, neon-edged shape
+    if (haveSpr) {
+      const gh = 58, gw = Math.round(spr.naturalWidth * (gh / spr.naturalHeight));
       drawGlow(ctx, cx, cy, 30, '#bfefff', 0.45 * guitarAlpha);
-      drawGlow(ctx, cx, cy, 40, CYAN,      0.30 * guitarAlpha);
-      const gw = Math.round(gspr.naturalWidth * (gh / gspr.naturalHeight));
-      ctx.drawImage(gspr, Math.round(cx - gw / 2), Math.round(cy - gh / 2), gw, gh);
+      drawGlow(ctx, cx, cy, 40, CYAN, 0.30 * guitarAlpha);
+      ctx.drawImage(spr, Math.round(cx - gw / 2), Math.round(cy - gh / 2), gw, gh);
     } else {
-      drawGlow(ctx, cx, cy, 38, CYAN, 0.6 * guitarAlpha);
+      // ── vector neon ELECTRIC GUITAR ──
+      ctx.translate(cx, cy);
+      ctx.rotate(-0.5);
+      const S = 26;
+      drawGlow(ctx, 0, S * 0.2, S * 1.2, CYAN, (0.35 + 0.25 * strum) * guitarAlpha);
+      ctx.lineJoin = 'round';
+      // body (two bouts)
+      ctx.fillStyle = '#06223a'; ctx.strokeStyle = CYAN; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.ellipse(0, S * 0.5, S * 0.64, S * 0.5, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(-S * 0.05, S * 0.05, S * 0.5, S * 0.42, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      // pickups / bridge (flash on strum)
+      ctx.fillStyle = '#0a3a5c'; ctx.fillRect(-S * 0.16, S * 0.12, S * 0.32, S * 0.52);
+      ctx.fillStyle = strum > 0.5 ? '#ffffff' : '#3ad0ff';
+      ctx.fillRect(-S * 0.16, S * 0.22, S * 0.32, S * 0.06);
+      ctx.fillRect(-S * 0.16, S * 0.46, S * 0.32, S * 0.06);
+      // neck + headstock
+      ctx.fillStyle = '#08283f'; ctx.strokeStyle = CYAN; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.rect(-S * 0.12, -S * 1.5, S * 0.24, S * 1.55); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#06223a';
+      ctx.beginPath(); ctx.rect(-S * 0.20, -S * 1.80, S * 0.40, S * 0.30); ctx.fill(); ctx.stroke();
+      // glowing strings (brighter on strum)
+      ctx.strokeStyle = `rgba(191,239,255,${0.55 + 0.45 * strum})`; ctx.lineWidth = 1;
+      for (let i = -1; i <= 1; i++) { ctx.beginPath(); ctx.moveTo(i * S * 0.07, S * 0.6); ctx.lineTo(i * S * 0.07, -S * 1.72); ctx.stroke(); }
     }
     ctx.restore();
   }
@@ -2211,61 +2210,104 @@ export class Game {
     if (!ts) return;
     const sheet = this._lightningRainSprite;
     const haveSheet = sheet && sheet.complete && sheet.naturalWidth > 0;
+    const time = performance.now() * 0.001;
 
-    // Lightning strikes: blit a sliced bolt+ripple sprite anchored on each impact point, additive
+    // glowing musical-note glyph (used as the lightning note + fallback notes)
+    const noteGlyph = (nx, ny, s, al) => {
+      ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = al;
+      const g = ctx.createRadialGradient(nx, ny, 0, nx, ny, s * 1.1);
+      g.addColorStop(0, `rgba(191,239,255,${al})`); g.addColorStop(1, 'rgba(58,208,255,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(nx, ny, s * 1.1, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#eaffff';
+      ctx.beginPath(); ctx.ellipse(nx - s * 0.18, ny + s * 0.28, s * 0.30, s * 0.22, -0.3, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#bfefff'; ctx.lineWidth = Math.max(1.5, s * 0.13);
+      ctx.beginPath(); ctx.moveTo(nx + s * 0.08, ny + s * 0.22); ctx.lineTo(nx + s * 0.08, ny - s * 0.55); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(nx + s * 0.08, ny - s * 0.55); ctx.lineTo(nx + s * 0.42, ny - s * 0.40); ctx.stroke();
+      ctx.restore();
+    };
+
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     for (const b of ts.bolts) {
-      const impactFrac = b.windup / b.maxLife;      // when the bolt lands within its lifetime
-      const prog = b.t / b.maxLife;                 // 0 → 1
+      const impactFrac = b.windup / b.maxLife;
+      const prog = b.t / b.maxLife;
+      const sc = b.scale || 1;
+      const H = 150 * sc, topY = b.y - H, topX = b.x + Math.sin((b.x + time) * 1.3) * 16;
       let alpha, fade = 0;
-      if (prog < impactFrac) {
-        alpha = 0.35 + 0.5 * (prog / impactFrac);   // telegraph: bolt forms & brightens as it falls
-      } else {
-        fade  = Math.max(0, 1 - (prog - impactFrac) / (1 - impactFrac));
-        alpha = fade;                               // bright flash at impact, then fade out
-      }
+      if (prog < impactFrac) alpha = 0.35 + 0.5 * (prog / impactFrac);
+      else { fade = Math.max(0, 1 - (prog - impactFrac) / (1 - impactFrac)); alpha = fade; }
       if (alpha <= 0) continue;
+
+      // the lightning bolt (sprite slice if present, else procedural)
       if (haveSheet) {
         const S = THUNDER_STRIKES[b.variant];
-        const dh = 132 * b.scale;                   // on-screen height ~115–150px (not full-screen)
-        const dw = dh * (S.sw / S.sh);
-        const dx = b.x - dw * S.ax;                 // anchor ripple-centre on the impact point
-        const dy = b.y - dh * S.ay;
+        const dh = 132 * sc, dw = dh * (S.sw / S.sh);
         ctx.globalAlpha = 0.9 * alpha;
-        ctx.drawImage(sheet, S.sx, S.sy, S.sw, S.sh, Math.round(dx), Math.round(dy), Math.round(dw), Math.round(dh));
+        ctx.drawImage(sheet, S.sx, S.sy, S.sw, S.sh, Math.round(b.x - dw * S.ax), Math.round(b.y - dh * S.ay), Math.round(dw), Math.round(dh));
+      } else {
+        if (!b._segs) { b._segN = 9; b._segs = []; for (let i = 0; i <= b._segN; i++) b._segs.push(Math.random() - 0.5); }
+        const N = b._segN, pts = [];
+        for (let i = 0; i <= N; i++) {
+          const f = i / N, env = Math.sin(Math.PI * f * 0.5 + 0.2);
+          const jit = (b._segs[i] * 26 + Math.sin(time * 30 + i) * 5 * (prog < impactFrac ? 0.4 : 1)) * env;
+          pts.push({ x: topX + (b.x - topX) * f + jit, y: topY + (b.y - topY) * f });
+        }
+        const strokeBolt = (w, col, al) => {
+          ctx.globalAlpha = al * alpha; ctx.strokeStyle = col; ctx.lineWidth = w; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+          ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y);
+          for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+          ctx.stroke();
+        };
+        strokeBolt(9 * sc, '#1f6bff', 0.35); strokeBolt(4.5, '#3ad0ff', 0.8); strokeBolt(1.8, '#ffffff', 1);
       }
-      // White impact spark only once the bolt has landed
+
+      // the LIGHTNING NOTE riding the bolt: travels down while falling, shatters on impact
+      if (prog < impactFrac) {
+        const f = prog / impactFrac;
+        noteGlyph(b.x, topY + (b.y - topY) * f, 14 * sc, alpha);
+      } else {
+        noteGlyph(b.x, b.y, 14 * sc * (1 + 0.6 * (1 - fade)), fade);   // shatter (grows + fades)
+      }
+
+      // impact: white flash + FREEZE ring + frost spikes + sparks
       if (b.struck && fade > 0) {
-        ctx.globalAlpha = fade;
-        ctx.fillStyle = '#ffffff';
-        ctx.beginPath(); ctx.arc(b.x, b.y, 3 * fade + 1.5, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = fade; ctx.fillStyle = '#ffffff';
+        ctx.beginPath(); ctx.arc(b.x, b.y, 4 * fade + 2, 0, Math.PI * 2); ctx.fill();
+        const fr = (1 - fade) * 44 * sc + 8;
+        ctx.globalAlpha = 0.85 * fade; ctx.strokeStyle = '#cfeeff'; ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.arc(b.x, b.y, fr, 0, Math.PI * 2); ctx.stroke();
+        ctx.strokeStyle = '#9fe6ff'; ctx.lineWidth = 1.5;
+        for (let s = 0; s < 8; s++) {
+          const a2 = (s / 8) * Math.PI * 2;
+          ctx.beginPath();
+          ctx.moveTo(b.x + Math.cos(a2) * fr * 0.7, b.y + Math.sin(a2) * fr * 0.7 * 0.6);
+          ctx.lineTo(b.x + Math.cos(a2) * fr, b.y + Math.sin(a2) * fr * 0.6);
+          ctx.stroke();
+        }
       }
     }
     ctx.restore();
 
-    // Ground impact halo — only after the bolt lands (soft, fades fast)
+    // ground halo after landing
     for (const b of ts.bolts) {
       if (!b.struck) continue;
       const impactFrac = b.windup / b.maxLife;
       const fade = Math.max(0, 1 - (b.t / b.maxLife - impactFrac) / (1 - impactFrac));
-      drawGlow(ctx, b.x, b.y, 8 + 18 * fade, CYAN, 0.55 * fade);
+      drawGlow(ctx, b.x, b.y, 8 + 22 * fade, CYAN, 0.55 * fade);
     }
 
-    // Musical-note energy accents — additive glyphs drifting up, swaying, spinning, fading
-    if (haveSheet) {
-      for (const n of ts.notes) {
-        const N = THUNDER_NOTES[n.glyph];
-        const a = Math.max(0, Math.min(1, Math.min(1, n.life / 0.4) * (n.life / n.maxLife + 0.15)));
-        const nh = n.size;
-        const nw = nh * (N.sw / N.sh);
-        ctx.save();   // preserves the enclosing camera + screen-shake transform
-        ctx.globalCompositeOperation = 'lighter';
-        ctx.globalAlpha = 0.95 * a;
-        ctx.translate(n.x, n.y);
-        ctx.rotate(n.rot);
+    // drifting notes (sprite if available, else the glowing glyph)
+    for (const n of ts.notes) {
+      const a = Math.max(0, Math.min(1, Math.min(1, n.life / 0.4) * (n.life / n.maxLife + 0.15)));
+      if (a <= 0) continue;
+      if (haveSheet) {
+        const N = THUNDER_NOTES[n.glyph], nh = n.size, nw = nh * (N.sw / N.sh);
+        ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.95 * a;
+        ctx.translate(n.x, n.y); ctx.rotate(n.rot);
         ctx.drawImage(sheet, N.sx, N.sy, N.sw, N.sh, -nw / 2, -nh / 2, nw, nh);
         ctx.restore();
+      } else {
+        noteGlyph(n.x, n.y, n.size * 0.45, 0.9 * a);
       }
     }
   }
