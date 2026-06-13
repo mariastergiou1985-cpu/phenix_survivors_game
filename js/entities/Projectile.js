@@ -26,6 +26,22 @@ export class Projectile {
   }
 
   draw(ctx) {
+    // Euclid Vector "Toxin Shard" — a green toxin data-needle (auto toxin weapon; not an orb).
+    if (this.style === 'toxin_shard') {
+      const a = Math.atan2(this.direction.y, this.direction.x);
+      ctx.save();
+      ctx.translate(this.pos.x, this.pos.y);
+      ctx.rotate(a);
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.fillStyle = '#0a9c44';   // outer toxic glow
+      ctx.beginPath(); ctx.moveTo(15, 0); ctx.lineTo(-6, 4.5); ctx.lineTo(-3, 0); ctx.lineTo(-6, -4.5); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#00ff33';   // bright toxin core
+      ctx.beginPath(); ctx.moveTo(11, 0); ctx.lineTo(-4, 2.6); ctx.lineTo(-2, 0); ctx.lineTo(-4, -2.6); ctx.closePath(); ctx.fill();
+      ctx.globalAlpha = 0.5; ctx.fillStyle = '#d6ffe0';   // venom flecks
+      ctx.fillRect(-3, -1, 5, 2);
+      ctx.restore();
+      return;
+    }
     // Japan Phasewalker "Phase Shard" — a cyan/blue glitch data-needle (not a generic orb).
     if (this.style === 'phase_shard') {
       const a = Math.atan2(this.direction.y, this.direction.x);

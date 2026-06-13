@@ -118,8 +118,8 @@ export const PF_TOTAL_OBTAINABLE = Object.values(PF_PAYOUTS).reduce((a, b) => a 
 //   Japan Phasewalker 8 = 57% · Euclid Vector 10 = 71% · Oni Cataclysm 14 = 100%.
 export const PF_CHARACTER_COSTS = {
   japan_phasewalker:      8,
-  euclid_vector:          10,
   oni_cataclysm_protocol: 14,
+  // euclid_vector is intentionally NOT listed → unlocked from the start (free). Oni stays PF-gated.
 };
 
 export class MetaProgress {

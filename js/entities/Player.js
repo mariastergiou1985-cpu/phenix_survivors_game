@@ -1,6 +1,6 @@
 import { Vec2, WIDTH, HEIGHT, WORLD_W, WORLD_H, WORLD_MARGIN, PLAYER_RADIUS, CYAN, WHITE, YELLOW, GREEN, BLUE, RED } from '../constants.js?v=51';
 import { clamp, safeNormalize } from '../utils.js';
-import { Projectile } from './Projectile.js?v=4';
+import { Projectile } from './Projectile.js?v=5';
 import { FloatingText } from './FloatingText.js';
 
 export class Player {
@@ -134,6 +134,7 @@ export class Player {
     const ENDLESS_SPRITES = {
       japan_phasewalker:      'assets/characters/endless/japan_phasewalker.png?v=2',   // ?v bust: corrected transparency
       oni_cataclysm_protocol: 'assets/characters/endless/oni_cataclysm_protocol.png',
+      euclid_vector:          'assets/characters/endless/euclid_vector.png',           // playable; auto toxin needle weapon
     };
     const defaultPath = ENDLESS_SPRITES[this.selectedCharacter] || `assets/characters/${this.selectedCharacter}.png`;
     const spritePath  = this._outfitSpritePath || defaultPath;
@@ -323,6 +324,7 @@ export class Player {
     proj.life  = projLife;
     proj.speed = 760 * (1 + this.projSpeedBonus);            // Shot Speed card
     if (this.selectedCharacter === 'japan_phasewalker') proj.style = 'phase_shard';   // cyan glitch needle, not an orb
+    else if (this.selectedCharacter === 'euclid_vector') proj.style = 'toxin_shard';  // green toxin needle (auto toxin weapon)
     return proj;
   }
 

@@ -11,19 +11,19 @@ import { clamp, distance, safeNormalize, randomChoice, randomRange } from '../ut
 import { FloatingText }   from '../entities/FloatingText.js';
 import { DataCore, rollCoreType } from '../entities/DataCore.js?v=2';
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=13';
-import { Player }         from '../entities/Player.js?v=74';
-import { Projectile, HomingDisc } from '../entities/Projectile.js?v=4';
+import { Player }         from '../entities/Player.js?v=75';
+import { Projectile, HomingDisc } from '../entities/Projectile.js?v=5';
 import { Enemy }          from '../entities/Enemy.js?v=107';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=1';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow } from './Effects.js?v=5';
 import { SystemEventManager } from './Events.js?v=95';
-import { UpgradeUI }      from './UpgradeUI.js?v=8';
-import { weightedSample } from './Upgrades.js?v=9';
+import { UpgradeUI }      from './UpgradeUI.js?v=9';
+import { weightedSample } from './Upgrades.js?v=10';
 import { MutationUI }      from './MutationUI.js?v=1';
 import { sampleMutations } from './Mutations.js?v=1';
 import { drawHUD, drawEndScreen } from './HUD.js?v=48';
-import { MetaProgress, META_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE } from './MetaProgress.js?v=17';
+import { MetaProgress, META_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE } from './MetaProgress.js?v=18';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
 import { GlitchDash } from '../effects/glitch-dash.js?v=1';
@@ -155,6 +155,11 @@ export class Game {
     this._phasewalkerSprite.onerror = () => console.warn('[Char] missing assets/characters/endless/japan_phasewalker.png');
     this._phasewalkerSprite.src = 'assets/characters/endless/japan_phasewalker.png?v=2';   // ?v bust: corrected transparency
     this._charImages['japan_phasewalker'] = this._phasewalkerSprite;
+    // Euclid Vector portrait (endless/ subfolder; unlocked from the start — see roster + free unlock).
+    this._euclidSprite = new Image();
+    this._euclidSprite.onerror = () => console.warn('[Char] missing assets/characters/endless/euclid_vector.png');
+    this._euclidSprite.src = 'assets/characters/endless/euclid_vector.png';
+    this._charImages['euclid_vector'] = this._euclidSprite;
 
     // Brawler Warrior weapon sprites (Nexus Chakram / Crescent Rift Claw / Skyfall Lances).
     // Missing files degrade to drawn-shape fallbacks (never crash).
@@ -319,6 +324,8 @@ export class Game {
       // Endless unlockable — locked until the Protocol Fragments system ships (isCharacterUnlocked
       // reads the 'japan_phasewalker' flag, default false). Abilities = the js/effects/ modules.
       { id: 'japan_phasewalker', name: 'Japan Phasewalker',     fallbackColor: '#7df9ff', fallbackAlt: '#3b6cff', role: 'Phase / Burst' },
+      // Euclid Vector — unlocked from the start (NOT PF-gated; see MetaProgress free-unlock).
+      { id: 'euclid_vector',    name: 'Euclid Vector',         fallbackColor: '#00ff66', fallbackAlt: '#0a9c44', role: 'Toxin / Ranged' },
     ];
     this.reset();
   }
@@ -521,8 +528,29 @@ export class Game {
   _pfUnlockBtnRect() {
     const sel = this.characters[this.characterIndex];
     if (!sel || !PF_CHARACTER_COSTS[sel.id] || this.meta.isProtocolUnlocked(sel.id)) return null;
-    const w = 320, h = 38;
-    return { x: Math.round(WIDTH / 2 - w / 2), y: HEIGHT - 78, w, h };
+    const w = 320, h = 36;
+    return { x: Math.round(WIDTH / 2 - w / 2), y: HEIGHT - 86, w, h };
+  }
+
+  // 2-row character grid — the SINGLE source of card rects, consumed by _drawCharacterSelect, the
+  // secret-skin strip, and the main.js click hit-test (so clicks always match the drawn cards).
+  // Top row holds the extra card when the count is odd. Scales cleanly to 8+ characters.
+  _charCardLayout() {
+    const n = this.characters.length;
+    const cardW = 164, cardH = 140, gapX = 18, gapY = 12, gridTop = 212;
+    const perRow = Math.ceil(n / 2);
+    const cards = [];
+    for (let i = 0; i < n; i++) {
+      const row   = Math.floor(i / perRow);
+      const col   = i % perRow;
+      const inRow = row === 0 ? perRow : (n - perRow);
+      const rowW  = inRow * cardW + (inRow - 1) * gapX;
+      const rowX  = Math.round(WIDTH / 2 - rowW / 2);
+      const x = rowX + col * (cardW + gapX);
+      const y = gridTop + row * (cardH + gapY);
+      cards.push({ x, y, w: cardW, h: cardH, cx: x + cardW / 2 });
+    }
+    return { cards, cardW, cardH };
   }
 
   // Spend Protocol Fragments to unlock the highlighted character (idempotent; shows a status msg).
@@ -2900,6 +2928,10 @@ export class Game {
     // Japan Phasewalker — Phase Shard Mastery feeds his automatic phase-needle (+1 dmg/level).
     if (this.player.selectedCharacter === 'japan_phasewalker') {
       proj.damage += this._cardLvl('phasewalker_phase_shard_mastery');
+    }
+    // Euclid Vector — Toxin Shot Mastery (+1 dmg) & Corrosive Spread (+1 dmg) feed his auto toxin needle.
+    if (this.player.selectedCharacter === 'euclid_vector') {
+      proj.damage += this._cardLvl('euclid_toxin_shot_mastery') + this._cardLvl('euclid_corrosive_spread');
     }
     this.projectiles.push(proj);
     this.audio?.playShoot();
@@ -5294,79 +5326,55 @@ export class Game {
     // Outfit toggle for the highlighted character (cosmetic equip).
     this._drawOutfitBar(ctx);
 
-    ctx.font = 'bold 32px Consolas, monospace';
-    // Centered N-card layout (mirrored in main.js click hit-test — keep both in sync).
-    // Sized so 6 cards fit within 1280px (6×184 + 5×20 = 1204).
-    const cardWidth = 184;
-    const cardHeight = 280;
-    const gap = 20;
-    const n = this.characters.length;
-    const startX = Math.round(WIDTH / 2 - (n * cardWidth + (n - 1) * gap) / 2);
+    // 2-row character grid (see _charCardLayout — mirrored by main.js hit-test + the secret strip).
+    const _lay = this._charCardLayout();
+    const cardHeight = _lay.cardH;   // reused by the PF-hint / secret-strip positioning below
+    const PORTRAIT_SCALE = { brawler_warrior: 0.88, assassin_clone: 0.88, japan_phasewalker: 0.88, euclid_vector: 0.88 };
 
     for (let i = 0; i < this.characters.length; i++) {
       const char = this.characters[i];
-      const x = startX + i * (cardWidth + gap);
-      const y = HEIGHT / 2 - cardHeight / 2;
+      const r = _lay.cards[i];
+      const x = r.x, y = r.y, cardWidth = r.w;
       const unlocked = this.meta.isCharacterUnlocked(char.id);
 
-      // Draw card border
-      if (i === this.characterIndex) {
-        ctx.strokeStyle = YELLOW;
-        ctx.lineWidth = 4;
-      } else {
-        ctx.strokeStyle = unlocked ? WHITE : '#4a5a68';
-        ctx.lineWidth = 2;
-      }
+      if (i === this.characterIndex) { ctx.strokeStyle = YELLOW; ctx.lineWidth = 4; }
+      else { ctx.strokeStyle = unlocked ? WHITE : '#4a5a68'; ctx.lineWidth = 2; }
       ctx.strokeRect(x, y, cardWidth, cardHeight);
 
-      // Character portrait — reflects the equipped outfit (secret skin if equipped & loaded),
-      // otherwise the default portrait, otherwise a fallback circle.
-      const charData = this.characters[i];
-      let cimg = this._charImages[charData.id];
-      if (this.meta?.getSelectedOutfit(charData.id) === 'secret') {
-        const sk   = CHARACTER_OUTFITS[charData.id]?.secret?.unlockKey;
+      // Portrait — equipped secret skin if loaded, else default, else fallback circle. Height-locked
+      // to a shared feet baseline so all portraits read consistently in the smaller 2-row card.
+      let cimg = this._charImages[char.id];
+      if (this.meta?.getSelectedOutfit(char.id) === 'secret') {
+        const sk   = CHARACTER_OUTFITS[char.id]?.secret?.unlockKey;
         const simg = sk && this._skinImages[sk];
         if (simg && simg.complete && simg.naturalWidth > 0) cimg = simg;
       }
       if (cimg && cimg.complete && cimg.naturalWidth > 0) {
-        // Roster presentation normalization: all portraits render at a max height of 180 and are
-        // BOTTOM-aligned to a shared feet baseline. The two newest sprites read as oversized/tall,
-        // so they get a small per-character down-scale to match the first three. Presentation only.
-        const PORTRAIT_SCALE = { brawler_warrior: 0.88, assassin_clone: 0.88, japan_phasewalker: 0.88 };
-        const baseY  = y + 8 + 180;                                   // shared feet baseline
-        const imgH   = Math.round(180 * (PORTRAIT_SCALE[charData.id] || 1));
-        const imgW   = Math.round(cimg.naturalWidth * (imgH / cimg.naturalHeight));
+        const baseY = y + 6 + 96;                                       // shared feet baseline
+        const imgH  = Math.round(96 * (PORTRAIT_SCALE[char.id] || 1));
+        const imgW  = Math.round(cimg.naturalWidth * (imgH / cimg.naturalHeight));
         ctx.drawImage(cimg, x + (cardWidth - imgW) / 2, baseY - imgH, imgW, imgH);
       } else {
-        ctx.fillStyle = charData.fallbackColor;
-        ctx.beginPath();
-        ctx.arc(x + cardWidth / 2, y + 90, 60, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = charData.fallbackAlt;
-        ctx.lineWidth = 3;
-        ctx.stroke();
+        ctx.fillStyle = char.fallbackColor;
+        ctx.beginPath(); ctx.arc(x + cardWidth / 2, y + 54, 40, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = char.fallbackAlt; ctx.lineWidth = 3; ctx.stroke();
       }
 
-      // Draw character name
-      ctx.font = 'bold 16px Consolas, monospace';
-      ctx.fillStyle = WHITE;
-      ctx.textAlign = 'center';
-      ctx.fillText(char.name, x + cardWidth / 2, y + cardHeight - 30);
-
-      ctx.font      = 'italic 12px Consolas, monospace';
+      ctx.font = 'bold 12px Consolas, monospace';
+      ctx.fillStyle = WHITE; ctx.textAlign = 'center';
+      ctx.fillText(char.name, x + cardWidth / 2, y + cardHeight - 22);
+      ctx.font = 'italic 10px Consolas, monospace';
       ctx.fillStyle = '#AAAAAA';
-      ctx.fillText(char.role, x + cardWidth / 2, y + cardHeight - 12);
+      ctx.fillText(char.role, x + cardWidth / 2, y + cardHeight - 8);
 
-      // Locked overlay (e.g. Brawler Warrior until unlocked): dim the card + padlock glyph.
       if (!unlocked) {
-        ctx.fillStyle = 'rgba(4,10,18,0.72)';
-        ctx.fillRect(x, y, cardWidth, cardHeight);
+        ctx.fillStyle = 'rgba(4,10,18,0.72)'; ctx.fillRect(x, y, cardWidth, cardHeight);
         const lx = x + cardWidth / 2, ly = y + cardHeight / 2;
         ctx.strokeStyle = '#9fb0c0'; ctx.fillStyle = '#9fb0c0'; ctx.lineWidth = 4;
-        ctx.beginPath(); ctx.arc(lx, ly - 10, 12, Math.PI, 0); ctx.stroke();
-        ctx.fillRect(lx - 16, ly - 2, 32, 24);
-        ctx.font = 'bold 13px Consolas, monospace'; ctx.fillStyle = '#c8d6e2'; ctx.textAlign = 'center';
-        ctx.fillText('LOCKED', lx, ly + 44);
+        ctx.beginPath(); ctx.arc(lx, ly - 8, 10, Math.PI, 0); ctx.stroke();
+        ctx.fillRect(lx - 13, ly, 26, 18);
+        ctx.font = 'bold 11px Consolas, monospace'; ctx.fillStyle = '#c8d6e2'; ctx.textAlign = 'center';
+        ctx.fillText('LOCKED', lx, ly + 34);
       }
     }
 
@@ -5386,7 +5394,7 @@ export class Game {
         const have = this.meta.getProtocolFragments(), afford = have >= pfCost;
         ctx.font = 'bold 13px Consolas, monospace';
         ctx.fillStyle = '#ffcf6a';
-        ctx.fillText('Unlock with Protocol Fragments in Endless progression.', WIDTH / 2, HEIGHT / 2 + cardHeight / 2 + 16);
+        ctx.fillText('Unlock with Protocol Fragments in Endless progression.', WIDTH / 2, 620);
         const r = this._pfUnlockBtnRect();
         if (r) {
           ctx.fillStyle   = afford ? 'rgba(6,40,52,0.82)' : 'rgba(20,14,22,0.7)';
@@ -5404,7 +5412,7 @@ export class Game {
       } else {
         ctx.font = 'bold 14px Consolas, monospace';
         ctx.fillStyle = '#ffcf6a';
-        ctx.fillText('Reach 10:00 in Endless Mode to unlock Brawler Warrior.', WIDTH / 2, HEIGHT / 2 + cardHeight / 2 + 24);
+        ctx.fillText('Reach 10:00 in Endless Mode to unlock Brawler Warrior.', WIDTH / 2, 620);
       }
     }
 
@@ -5413,26 +5421,24 @@ export class Game {
     ctx.font      = 'bold 15px Consolas, monospace';
     ctx.fillStyle = PURPLE;
     ctx.textAlign = 'center';
-    ctx.fillText('◆  SECRET SKINS  ◆', WIDTH / 2, 524);
+    ctx.fillText('◆  SECRET SKINS  ◆', WIDTH / 2, 508);
 
-    const stW = 54, stH = 64, stTop = 532;
-    for (let i = 0; i < this.characters.length; i++) {
-      const cid    = this.characters[i].id;
-      const secret = CHARACTER_OUTFITS[cid]?.secret;
-      if (!secret) continue;
-      const cx       = startX + i * (cardWidth + gap) + cardWidth / 2;   // matches card center
+    // Secret skins — their OWN centered row (decoupled from the 2-row card grid). Only characters
+    // that actually have a secret outfit appear, so there is never an empty slot or overlap.
+    const secretChars = this.characters.filter(c => CHARACTER_OUTFITS[c.id]?.secret);
+    const stW = 52, stH = 50, stGap = 28, stTop = 518;
+    const stRowW = secretChars.length * stW + (secretChars.length - 1) * stGap;
+    let stCx = Math.round(WIDTH / 2 - stRowW / 2) + stW / 2;
+    for (const c of secretChars) {
+      const secret   = CHARACTER_OUTFITS[c.id].secret;
       const key      = secret.unlockKey;
       const unlocked = this.meta?.isUnlocked(key) === true;
-      this._drawSkinThumb(ctx, key, cx, stTop, stW, stH, unlocked);
-
-      ctx.font      = '11px Consolas, monospace';
-      ctx.fillStyle = unlocked ? WHITE : '#78919f';
-      ctx.textAlign = 'center';
-      ctx.fillText(secret.name, cx, stTop + stH + 15);
-
-      ctx.font      = 'bold 12px Consolas, monospace';
-      ctx.fillStyle = unlocked ? GREEN : '#5a7080';
-      ctx.fillText(unlocked ? 'UNLOCKED' : 'LOCKED', cx, stTop + stH + 30);
+      this._drawSkinThumb(ctx, key, stCx, stTop, stW, stH, unlocked);
+      ctx.font = '11px Consolas, monospace'; ctx.fillStyle = unlocked ? WHITE : '#78919f'; ctx.textAlign = 'center';
+      ctx.fillText(secret.name, stCx, stTop + stH + 13);
+      ctx.font = 'bold 11px Consolas, monospace'; ctx.fillStyle = unlocked ? GREEN : '#5a7080';
+      ctx.fillText(unlocked ? 'UNLOCKED' : 'LOCKED', stCx, stTop + stH + 27);
+      stCx += stW + stGap;
     }
 
     ctx.font = '14px Consolas, monospace';

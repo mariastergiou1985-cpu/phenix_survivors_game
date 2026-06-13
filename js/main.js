@@ -1,4 +1,4 @@
-import { Game } from './game/Game.js?v=202';
+import { Game } from './game/Game.js?v=203';
 import { AudioManager } from './audio/AudioManager.js?v=19';
 
 const canvas = document.getElementById('game');
@@ -236,15 +236,12 @@ canvas.addEventListener('mousedown', e => {
     } else if (game._inRect(mousePos, ob.secretRect)) {
       game.meta.setSelectedOutfit(ocid, 'secret');
     } else {
-      // Layout mirrors Game._drawCharacterSelect (cardWidth 184, gap 20, centered N cards).
-      const cardW = 184, cardH = 280, gap = 20;
-      const n = game.characters.length;
-      const startX = Math.round(canvas.width / 2 - (n * cardW + (n - 1) * gap) / 2);
-      for (let i = 0; i < n; i++) {
-        const cx = startX + i * (cardW + gap);
-        const cy = canvas.height / 2 - cardH / 2;
-        if (mousePos.x >= cx && mousePos.x <= cx + cardW &&
-            mousePos.y >= cy && mousePos.y <= cy + cardH) {
+      // Hit-test the SAME 2-row grid the screen draws (Game._charCardLayout) — always in sync.
+      const lay = game._charCardLayout();
+      for (let i = 0; i < lay.cards.length; i++) {
+        const r = lay.cards[i];
+        if (mousePos.x >= r.x && mousePos.x <= r.x + r.w &&
+            mousePos.y >= r.y && mousePos.y <= r.y + r.h) {
           game.characterIndex = i;                       // highlight (shows unlock hint if locked)
           game.selectCharacter(game.characters[i].id);   // self-guards: locked characters don't start
           break;

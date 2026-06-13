@@ -162,6 +162,14 @@ export const ALL_UPGRADES = [
     BLUE, 3, () => {}, '◌', 'epic', 'japan_phasewalker'),
   new UpgradeDefinition('phasewalker_singularity_mastery', 'Digital Singularity Mastery', 'Digital Singularity: stronger laser strikes',
     PURPLE, 3, () => {}, '✦', 'legendary', 'japan_phasewalker'),
+  // Euclid Vector — automatic toxin needle (toxin-kit weapons/ultimate wired in a later pass). Levels
+  // read in Game._handleAutoShooting; Vector Overdose applies a fire-rate boost now (safe, no dead pick).
+  new UpgradeDefinition('euclid_toxin_shot_mastery', 'Toxin Shot Mastery', 'Toxin needle: +damage per shot',
+    GREEN, 3, () => {}, '☣', 'rare', 'euclid_vector'),
+  new UpgradeDefinition('euclid_corrosive_spread', 'Corrosive Spread', 'Toxin needle: extra corrosive bite',
+    GREEN, 3, () => {}, '☠', 'epic', 'euclid_vector'),
+  new UpgradeDefinition('euclid_vector_overdose', 'Vector Overdose', 'Toxin barrage: +8% fire rate',
+    PURPLE, 3, p => { p.fireRateBonus += 0.08; }, '⚗', 'legendary', 'euclid_vector'),
 
   // ── Achievement Cards (Endless-only; only offered once their achievement is unlocked) ──
   // Global (char=null) so they can roll for any character. Instant-stat cards apply in applyFn
