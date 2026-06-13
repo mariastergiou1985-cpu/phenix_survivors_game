@@ -11,7 +11,7 @@ import { clamp, distance, safeNormalize, randomChoice, randomRange } from '../ut
 import { FloatingText }   from '../entities/FloatingText.js';
 import { DataCore, rollCoreType } from '../entities/DataCore.js?v=2';
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=13';
-import { Player }         from '../entities/Player.js?v=75';
+import { Player }         from '../entities/Player.js?v=76';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=5';
 import { Enemy }          from '../entities/Enemy.js?v=107';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=1';
@@ -29,6 +29,9 @@ import { MetaProgress, META_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACT
 import { GlitchDash } from '../effects/glitch-dash.js?v=1';
 import { EMPShockwave } from '../effects/emp-shockwave.js?v=1';
 import { DigitalSingularity } from '../effects/digital-singularity.js?v=1';
+import { Protocol0 } from '../effects/protocol-0.js?v=1';
+import { LaserEyes } from '../effects/laser-eyes.js?v=1';
+import { MeteorRain } from '../effects/meteor-rain.js?v=1';
 // Euclid Vector toxin kit — used ONLY when selectedCharacter === 'euclid_vector' (world-space).
 import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=1';
 
@@ -162,6 +165,10 @@ export class Game {
     this._euclidSprite.onerror = () => console.warn('[Char] missing assets/characters/endless/euclid_vector.png');
     this._euclidSprite.src = 'assets/characters/endless/euclid_vector.png';
     this._charImages['euclid_vector'] = this._euclidSprite;
+    this._oniSprite = new Image();
+    this._oniSprite.onerror = () => console.warn('[Char] missing assets/characters/endless/oni_cataclysm_protocol.png');
+    this._oniSprite.src = 'assets/characters/endless/oni_cataclysm_protocol.png';
+    this._charImages['oni_cataclysm_protocol'] = this._oniSprite;
 
     // Brawler Warrior weapon sprites (Nexus Chakram / Crescent Rift Claw / Skyfall Lances).
     // Missing files degrade to drawn-shape fallbacks (never crash).
@@ -328,6 +335,8 @@ export class Game {
       { id: 'japan_phasewalker', name: 'Japan Phasewalker',     fallbackColor: '#7df9ff', fallbackAlt: '#3b6cff', role: 'Phase / Burst' },
       // Euclid Vector — unlocked from the start (NOT PF-gated; see MetaProgress free-unlock).
       { id: 'euclid_vector',    name: 'Euclid Vector',         fallbackColor: '#00ff66', fallbackAlt: '#0a9c44', role: 'Toxin / Ranged' },
+      // TEST: Oni Cataclysm Protocol — προσωρινά στο roster για playtest του kit.
+      { id: 'oni_cataclysm_protocol', name: 'Oni Cataclysm Protocol', fallbackColor: '#ff3750', fallbackAlt: '#780f23', role: 'Tank / Cataclysm' },
     ];
     this.reset();
   }
@@ -380,6 +389,15 @@ export class Game {
     this._pwDashing           = false;
     this._pwDashStart         = null;
     this._empShockCooldown    = 0;
+    // Oni Cataclysm Protocol FX (only built/used while selectedCharacter === 'oni_cataclysm_protocol').
+    this._protocol0      = null;
+    this._laserEyes      = null;
+    this._meteorRain     = null;
+    this._oniFxBuilt     = false;
+    this._oniSpeedBuff   = 0;     // Protocol 0: tracks the exact speedBonus we add, so we remove exactly it
+    this._oniLaserCd     = 0;     // Laser Eyes auto-weapon cooldown (s)
+    this._oniMeteorCd    = 0;     // Meteor Rain auto-weapon cooldown (s)
+    this._oniMeteorWorld = null;  // world anchor for the active meteor field
     // Euclid Vector toxin kit (only built/used while selectedCharacter === 'euclid_vector').
     this._euclidKitBuilt = false;
     this._euclidSniper   = null;
@@ -520,7 +538,7 @@ export class Game {
   }
 
   selectCharacter(charId) {
-    if (!this.meta.isCharacterUnlocked(charId)) return;   // locked characters can't be started
+    if (charId !== 'oni_cataclysm_protocol' && !this.meta.isCharacterUnlocked(charId)) return;   // TEST: Oni always selectable
     this.selectedCharacter = charId;
     this.audio?.startGameplayMusic();
     this.gameState = 'playing';
@@ -1560,6 +1578,126 @@ export class Game {
     } catch (err) { console.warn('[Phasewalker FX render]', err); }
   }
 
+  // ════════════════════════════════════════════════════════════════════════════
+  // Oni "Protocol 0: Total Cataclysm" — SPACE ultimate. Mirrors the Phasewalker kit:
+  // module runs in SCREEN space (world→screen via camera + _viewScale). Self-guards on
+  // selectedCharacter === 'oni_cataclysm_protocol', so every other character is untouched.
+  // ════════════════════════════════════════════════════════════════════════════
+  _ensureOniFx() {
+    if (this.player?.selectedCharacter !== 'oni_cataclysm_protocol') return;
+    if (this._oniFxBuilt || !this._canvas) return;
+    this._protocol0  = new Protocol0(this._canvas);
+    this._laserEyes  = new LaserEyes(this._canvas);
+    this._meteorRain = new MeteorRain(this._canvas, { area: { radius: 170 } });
+    this._oniFxBuilt = true;
+  }
+
+  activateProtocol0Cataclysm() {
+    if (this.gameState !== 'playing' || this.paused || this.gameOver || this.victory || this.upgradeUI) return;
+    const p = this.player;
+    if (p.selectedCharacter !== 'oni_cataclysm_protocol') return;
+    this._ensureOniFx();
+    if (!this._protocol0 || this._protocol0.isRunning()) return;
+    if (p.mana < ULTIMATE_MANA_COST) {
+      this.floatingTexts.push(new FloatingText('NOT ENOUGH MANA', p.pos.clone(), RED, 1.0));
+      return;
+    }
+    p.mana -= ULTIMATE_MANA_COST;
+    const vs = this._viewScale, cam = this.camera;
+    const s  = this._playerScreenPos();
+    this._protocol0.trigger(s.cx, s.footY, this.enemies, {
+      getX: e => ((e?.pos?.x ?? cam.x) - cam.x) * vs,
+      getY: e => ((e?.pos?.y ?? cam.y) - cam.y) * vs,
+      onBuffStart: b => {
+        this._oniSpeedBuff = b.speedMult - 1;   // +40% move speed
+        p.speedBonus += this._oniSpeedBuff;
+        p._tankTimer  = 8.0;                     // 50% damage reduction window (read in Player.applyDamage)
+      },
+      onBuffEnd: () => {
+        p.speedBonus -= this._oniSpeedBuff; this._oniSpeedBuff = 0;
+        p._tankTimer  = 0;
+      },
+      onCollide: e => { if (e?.takeHit) e.takeHit(18, this); if (e) e.stunned = Math.max(e.stunned || 0, 0.4); },
+      onDetonate: () => {
+        this.screenShake.trigger(14, 0.6);
+        for (const e of this.enemies) if (e?.takeHit) e.takeHit(220, this);
+        this.enemyBullets.length = 0;            // clear all enemy projectiles
+      },
+    });
+    this.screenShake.trigger(7, 0.3);
+    this.floatingTexts.push(new FloatingText('PROTOCOL 0: TOTAL CATACLYSM!', p.pos.clone(), RED, 1.6));
+  }
+
+  _updateOniFx(dt) {
+    if (this.player?.selectedCharacter !== 'oni_cataclysm_protocol') return;
+    this._ensureOniFx();
+    if (!this._protocol0) return;
+    const now = performance.now();
+    const vs = this._viewScale, cam = this.camera, p = this.player;
+    const toX = e => ((e?.pos?.x ?? cam.x) - cam.x) * vs;
+    const toY = e => ((e?.pos?.y ?? cam.y) - cam.y) * vs;
+    const nearest = () => { let b = null, bd = Infinity; for (const e of this.enemies) { if (!e?.pos) continue; const d = distance(e.pos, p.pos); if (d < bd) { bd = d; b = e; } } return b; };
+
+    // Tank-buff timer (50% DR) ticks down during the ultimate
+    if ((p._tankTimer || 0) > 0) p._tankTimer = Math.max(0, p._tankTimer - dt);
+
+    // ── Protocol 0 ultimate (SPACE) ──
+    try {
+      const s = this._playerScreenPos();
+      this._protocol0.update(now, s.cx, s.footY, this.enemies);
+    } catch (err) { console.warn('[Oni Protocol0]', err); }
+
+    // ── Laser Eyes (auto-weapon 1) — charged piercing beam, auto-fires on cooldown ──
+    if (this._oniLaserCd > 0) this._oniLaserCd -= dt;
+    if (this._laserEyes && !this._laserEyes.isActive() && this._oniLaserCd <= 0) {
+      const tgt = nearest();
+      if (tgt && distance(tgt.pos, p.pos) < 560) {
+        this._laserEyes.cast({
+          getEyes: () => { const s = this._playerScreenPos(), top = s.footY - s.spriteH;
+            return [ { x: s.cx - 6, y: top + s.spriteH * 0.30 }, { x: s.cx + 6, y: top + s.spriteH * 0.30 },
+                     { x: s.cx - 12, y: top + s.spriteH * 0.12 }, { x: s.cx + 12, y: top + s.spriteH * 0.12 } ]; },
+          getAim:  () => { const t = nearest(); return t ? { x: toX(t), y: toY(t) } : { x: this._playerScreenPos().cx, y: 0 }; },
+          enemies: this.enemies, getX: toX, getY: toY,
+          onTick:  e => { if (e?.takeHit) e.takeHit(6, this); },   // damage per 0.1s tick (tunable)
+        });
+        this._oniLaserCd = 3.5;   // seconds between beams (tunable)
+      }
+    }
+    if (this._laserEyes) { try { this._laserEyes.update(now, this.enemies); } catch (err) { console.warn('[Oni Laser]', err); } }
+
+    // ── Meteor Rain (auto-weapon 2, AoE) — 5s field, auto-fires on cooldown ──
+    if (this._oniMeteorCd > 0) this._oniMeteorCd -= dt;
+    if (this._meteorRain && !this._meteorRain.isActive() && this._oniMeteorCd <= 0) {
+      const tgt = nearest();
+      if (tgt && distance(tgt.pos, p.pos) < 620) {
+        this._oniMeteorWorld = { x: tgt.pos.x, y: tgt.pos.y };   // anchor the field in WORLD space
+        this._meteorRain.cast(toX(tgt), toY(tgt), this.enemies, {
+          getX: toX, getY: toY,
+          onImpact: e => { if (e?.takeHit) e.takeHit(30, this); },   // per-meteor AoE damage (tunable)
+        });
+        this._oniMeteorCd = 9.0;   // seconds between fields (tunable)
+      }
+    }
+    if (this._meteorRain) {
+      if (this._meteorRain.isActive() && this._oniMeteorWorld) {   // keep the circle pinned to its world spot
+        this._meteorRain.cx = (this._oniMeteorWorld.x - cam.x) * vs;
+        this._meteorRain.cy = (this._oniMeteorWorld.y - cam.y) * vs;
+      }
+      try { this._meteorRain.update(now, this.enemies); } catch (err) { console.warn('[Oni Meteor]', err); }
+    }
+  }
+
+  _drawOniFx(ctx) {
+    this._canvas = ctx.canvas;
+    if (this.player?.selectedCharacter !== 'oni_cataclysm_protocol') return;
+    this._ensureOniFx();
+    try {
+      if (this._meteorRain) this._meteorRain.render(ctx);   // ground grid + falling meteors (behind)
+      if (this._protocol0)  this._protocol0.render(ctx);    // ult aura / lava / detonation
+      if (this._laserEyes)  this._laserEyes.render(ctx);    // beams (on top)
+    } catch (err) { console.warn('[Oni FX render]', err); }
+  }
+
   // ── Euclid Vector toxin kit (world-space; built lazily when he is selected) ─────────────────
   // Minimal, defensive adapter: the kit reads {x,y,radius,dead,dying} + calls takeDamage/
   // applyKnockback/beginMelt on enemies and reads {x,y,height,facing} on the player. We proxy to the
@@ -2282,6 +2420,7 @@ export class Game {
     this._updateShuriken(dt);       // Assassin bounce weapon (guards on character)
     this._updateChromePhantom(dt);  // Assassin ultimate
     this._updatePhasewalkerFx(dt);  // Japan Phasewalker kit (guards on character)
+    this._updateOniFx(dt);          // Oni Protocol 0 (guards on character)
     this._updateEuclidKit(dt);      // Euclid Vector toxin kit (guards on character)
     this._updateEnemies(dt);
     this._updateOverload(dt);
@@ -5056,6 +5195,7 @@ export class Game {
     ctx.restore();  // end camera-space block
 
     this._drawPhasewalkerFx(ctx);      // Japan Phasewalker glitch-dash / EMP / singularity (screen-space; guards on character)
+    this._drawOniFx(ctx);           // Oni Protocol 0 (screen-space; guards on character)
     this._drawThunderSoloScreen(ctx);  // darken + fullscreen lightning flash (under HUD)
 
     // ── Screen-space block (HUD, overlays) ───────────────────────────────────

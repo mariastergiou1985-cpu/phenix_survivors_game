@@ -121,7 +121,8 @@ export class Player {
   // Single chokepoint for incoming combat damage so Pulse Shield can scale it (60% reduction).
   // When the shield is inactive this is identical to a plain hp subtraction (no balance change).
   applyDamage(amount) {
-    const mult = this.shieldTimer > 0 ? 0.4 : 1;
+    let mult = this.shieldTimer > 0 ? 0.4 : 1;
+    if ((this._tankTimer || 0) > 0) mult *= 0.5;   // Oni Protocol 0: 50% damage reduction
     this.hp = Math.max(0, this.hp - amount * mult);
   }
 
