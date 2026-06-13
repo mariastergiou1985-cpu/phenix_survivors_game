@@ -126,7 +126,9 @@ export class Player {
   }
 
   _loadCharacterSprite() {
-    const defaultPath = `assets/characters/${this.selectedCharacter}.png`;
+    // Endless roster sprites live in a subfolder; map them here (others use the root path).
+    const ENDLESS_SPRITES = { japan_phasewalker: 'assets/characters/endless/japan_phasewalker.png' };
+    const defaultPath = ENDLESS_SPRITES[this.selectedCharacter] || `assets/characters/${this.selectedCharacter}.png`;
     const spritePath  = this._outfitSpritePath || defaultPath;
     this.characterSprite = new Image();
     if (spritePath !== defaultPath) {

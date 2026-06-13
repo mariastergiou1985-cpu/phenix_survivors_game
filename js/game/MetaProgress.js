@@ -299,10 +299,11 @@ export class MetaProgress {
   // unlocked by reaching 10:00 in Endless (flag set via unlock('brawler_warrior')).
   isCharacterUnlocked(characterId) {
     if (characterId === 'brawler_warrior') return this.isUnlocked('brawler_warrior');
-    // Future Endless unlockable — Japan Phasewalker. HARD-LOCKED placeholder until the Protocol
-    // Fragments system ships (see memory phenix-protocol-fragments-design). No free unlock; he is
-    // NOT on the visible roster yet, so this gate is currently inert (nothing references the id).
-    if (characterId === 'japan_phasewalker') return false;
+    // Endless unlockable — Japan Phasewalker. Locked by DEFAULT (flag unset → false); the future
+    // Protocol Fragments system will set unlock('japan_phasewalker'). Reading a flag (rather than a
+    // hard false) keeps him gated while allowing the eventual PF unlock — and a manual/dev unlock for
+    // local testing — WITHOUT shipping a free unlock. See memory phenix-protocol-fragments-design.
+    if (characterId === 'japan_phasewalker') return this.isUnlocked('japan_phasewalker');
     return true;
   }
 

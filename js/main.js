@@ -1,4 +1,4 @@
-import { Game } from './game/Game.js?v=195';
+import { Game } from './game/Game.js?v=196';
 import { AudioManager } from './audio/AudioManager.js?v=19';
 
 const canvas = document.getElementById('game');
@@ -55,8 +55,8 @@ window.addEventListener('keydown', e => {
 
   // One-shot abilities
   if (key === 'q') game.activatePulseShield();   // Pulse Shield (was Sonic Pulse)
-  if (key === 'e') game.activateEMPCloud();   // EMP = stun only (no damage); Special unbound
-  if (key === ' ') { game.activateThunderSolo(); game.activateOverheatedChains(); game.activateSpiritDojang(); game.activateSkyfallLances(); game.activateChromePhantomProtocol(); }   // SPACE ultimate (per-character; each self-guards)
+  if (key === 'e') { game.activateEMPCloud(); game.activateEMPShockwave(); }   // EMP stun (others) / Phasewalker electric AoE — each self-guards
+  if (key === ' ') { game.activateThunderSolo(); game.activateOverheatedChains(); game.activateSpiritDojang(); game.activateSkyfallLances(); game.activateChromePhantomProtocol(); game.activateDigitalSingularity(); }   // SPACE ultimate (per-character; each self-guards)
   if (key === 'm') game.audio?.toggleMute();
   if (key === 'f') {
     if (!document.fullscreenElement) {
@@ -222,8 +222,8 @@ canvas.addEventListener('mousedown', e => {
     } else if (game._inRect(mousePos, ob.secretRect)) {
       game.meta.setSelectedOutfit(ocid, 'secret');
     } else {
-      // Layout mirrors Game._drawCharacterSelect (cardWidth 200, gap 28, centered N cards).
-      const cardW = 200, cardH = 280, gap = 28;
+      // Layout mirrors Game._drawCharacterSelect (cardWidth 184, gap 20, centered N cards).
+      const cardW = 184, cardH = 280, gap = 20;
       const n = game.characters.length;
       const startX = Math.round(canvas.width / 2 - (n * cardW + (n - 1) * gap) / 2);
       for (let i = 0; i < n; i++) {

@@ -11,7 +11,7 @@ import { clamp, distance, safeNormalize, randomChoice, randomRange } from '../ut
 import { FloatingText }   from '../entities/FloatingText.js';
 import { DataCore, rollCoreType } from '../entities/DataCore.js?v=2';
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=13';
-import { Player }         from '../entities/Player.js?v=70';
+import { Player }         from '../entities/Player.js?v=71';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=3';
 import { Enemy }          from '../entities/Enemy.js?v=107';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=1';
@@ -21,7 +21,12 @@ import { SystemEventManager } from './Events.js?v=95';
 import { UpgradeUI }      from './UpgradeUI.js?v=7';
 import { weightedSample } from './Upgrades.js?v=8';
 import { drawHUD, drawEndScreen } from './HUD.js?v=47';
-import { MetaProgress, META_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS } from './MetaProgress.js?v=15';
+import { MetaProgress, META_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS } from './MetaProgress.js?v=16';
+// Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
+// files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
+import { GlitchDash } from '../effects/glitch-dash.js?v=1';
+import { EMPShockwave } from '../effects/emp-shockwave.js?v=1';
+import { DigitalSingularity } from '../effects/digital-singularity.js?v=1';
 
 // ── Thunder Solo sprite slices (cyan_lightning_rain_notes.png, 1254×1254) ──────
 // Strike variants: a clean bolt column + ripple base. (ax,ay) = ripple-centre as a
@@ -132,6 +137,11 @@ export class Game {
       img.src = `assets/characters/${id}.png`;
       this._charImages[id] = img;
     });
+    // Japan Phasewalker portrait lives in the endless/ subfolder (Character Select + FX modules).
+    this._phasewalkerSprite = new Image();
+    this._phasewalkerSprite.onerror = () => console.warn('[Char] missing assets/characters/endless/japan_phasewalker.png');
+    this._phasewalkerSprite.src = 'assets/characters/endless/japan_phasewalker.png';
+    this._charImages['japan_phasewalker'] = this._phasewalkerSprite;
 
     // Brawler Warrior weapon sprites (Nexus Chakram / Crescent Rift Claw / Skyfall Lances).
     // Missing files degrade to drawn-shape fallbacks (never crash).
@@ -293,6 +303,9 @@ export class Game {
       { id: 'cyber_arm_hero',   name: 'Cyber Arm Hero',         fallbackColor: '#FF6600', fallbackAlt: '#CC0000', role: 'Ranged / Damage' },
       { id: 'brawler_warrior',  name: 'Brawler Warrior',        fallbackColor: '#1fd6a6', fallbackAlt: '#0a9c78', role: 'Tank / Brawler' },
       { id: 'assassin_clone',   name: 'Assassin Clone',         fallbackColor: '#ff4dd2', fallbackAlt: '#9aa0aa', role: 'Stealth / Burst' },
+      // Endless unlockable — locked until the Protocol Fragments system ships (isCharacterUnlocked
+      // reads the 'japan_phasewalker' flag, default false). Abilities = the js/effects/ modules.
+      { id: 'japan_phasewalker', name: 'Japan Phasewalker',     fallbackColor: '#7df9ff', fallbackAlt: '#3b6cff', role: 'Phase / Burst' },
     ];
     this.reset();
   }
@@ -337,6 +350,14 @@ export class Game {
     this._shurikens       = [];    // in-flight bouncing shurikens
     this._chromePhantom   = null;  // Chrome Phantom Protocol ultimate state | null
     this._chromeFx        = [];    // short-lived clone burst / slash-ring visuals
+    // Japan Phasewalker FX modules (only built/used while selectedCharacter === 'japan_phasewalker').
+    this._glitchDash          = null;
+    this._empShock            = null;
+    this._digitalSingularity  = null;
+    this._pwFxBuilt           = false;
+    this._pwDashing           = false;
+    this._pwDashStart         = null;
+    this._empShockCooldown    = 0;
     this.empRings     = [];
     this._specialRings    = [];
     this.thunderSolo      = null;   // Thunder Solo ultimate state while active
@@ -1264,6 +1285,7 @@ export class Game {
 
   activateEMPCloud() {
     const p = this.player;
+    if (p.selectedCharacter === 'japan_phasewalker') return;   // he uses EMP Shockwave instead (see activateEMPShockwave)
     if (p.empCloudCooldown > 0) return;   // baseline ability — no longer upgrade-gated
 
     const radius = 240 + p.upgrades['EMP Cloud'] * 40;   // base 200 +20%; upgrade still extends
@@ -1299,6 +1321,134 @@ export class Game {
     this._specialRings.push({ pos: p.pos.clone(), radius: 0, maxRadius: 60,
                                life: 0.45, maxLife: 0.45, color1: CYAN, color2: '#bfefff' });
     this.floatingTexts.push(new FloatingText('PULSE SHIELD!', p.pos.clone(), CYAN, 1.0));
+  }
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // Japan Phasewalker kit — drives the three js/effects/ modules. ALL self-guard on
+  // selectedCharacter === 'japan_phasewalker', so existing characters are untouched.
+  // The modules work in SCREEN space, so positions/enemy coords are converted from
+  // world → screen via the camera + _viewScale (matches how the player is drawn).
+  // ════════════════════════════════════════════════════════════════════════════
+
+  // Player center-x / foot-y / sprite height in SCREEN pixels (player sprite is 64 world-units tall).
+  _playerScreenPos() {
+    const p = this.player, vs = this._viewScale;
+    const cx = (p.pos.x - this.camera.x) * vs;
+    const cyc = (p.pos.y - this.camera.y) * vs;
+    const spriteH = 64 * vs;
+    return { cx, footY: cyc + spriteH / 2, spriteH };
+  }
+
+  // Lazily build the three modules once the canvas + sprite are ready (Endless/Act 1 agnostic).
+  _ensurePhasewalkerFx() {
+    if (this.player?.selectedCharacter !== 'japan_phasewalker') return;
+    if (this._pwFxBuilt || !this._canvas) return;
+    const spr = this._phasewalkerSprite;
+    if (!spr || !spr.complete || !spr.naturalWidth) return;
+    const h = Math.max(24, Math.round(64 * this._viewScale));
+    const w = Math.max(12, Math.round(spr.naturalWidth * (h / spr.naturalHeight)));
+    this._glitchDash         = new GlitchDash(this._canvas, spr, { spriteW: w, spriteH: h });
+    this._empShock           = new EMPShockwave(this._canvas, {});
+    this._digitalSingularity = new DigitalSingularity(this._canvas, spr, { spriteW: w, spriteH: h });
+    this._pwFxBuilt = true;
+  }
+
+  // EMP Shockwave (E) — electric AoE; hit detection + stun applied via the module's onHit hook.
+  activateEMPShockwave() {
+    if (this.gameState !== 'playing' || this.paused || this.gameOver || this.victory || this.upgradeUI) return;
+    const p = this.player;
+    if (p.selectedCharacter !== 'japan_phasewalker') return;
+    if (this._empShockCooldown > 0) return;
+    this._ensurePhasewalkerFx();
+    if (!this._empShock) return;
+    const s = this._playerScreenPos();
+    this._empShock.trigger(s.cx, s.footY);
+    this._empShockCooldown = 10;   // his AoE cooldown (kit-local; no global balance change)
+    this.screenShake.trigger(4, 0.2);
+    this.floatingTexts.push(new FloatingText('EMP SHOCKWAVE!', p.pos.clone(), CYAN, 1.0));
+  }
+
+  // Digital Singularity (SPACE) — 4-phase ultimate; per-laser damage via the module's onStrike hook.
+  activateDigitalSingularity() {
+    if (this.gameState !== 'playing' || this.paused || this.gameOver || this.victory || this.upgradeUI) return;
+    const p = this.player;
+    if (p.selectedCharacter !== 'japan_phasewalker') return;
+    this._ensurePhasewalkerFx();
+    if (!this._digitalSingularity || this._digitalSingularity.isActive()) return;
+    if (p.mana < ULTIMATE_MANA_COST) {
+      this.floatingTexts.push(new FloatingText('NOT ENOUGH MANA', p.pos.clone(), CYAN, 1.0));
+      return;
+    }
+    p.mana -= ULTIMATE_MANA_COST;
+    const s = this._playerScreenPos();
+    this._digitalSingularity.trigger(s.cx, s.footY);
+    this.screenShake.trigger(6, 0.3);
+    this.floatingTexts.push(new FloatingText('DIGITAL SINGULARITY!', p.pos.clone(), '#7df9ff', 1.4));
+  }
+
+  // Per-frame: build if needed, tick cooldown, fire GlitchDash on the dash rising→falling edge,
+  // and run the EMP / Singularity module updates with world→screen enemy hooks. No-op for others.
+  _updatePhasewalkerFx(dt) {
+    if (this.player?.selectedCharacter !== 'japan_phasewalker') return;
+    this._ensurePhasewalkerFx();
+    const now = performance.now();
+    const vs  = this._viewScale, cam = this.camera;
+    if (this._empShockCooldown > 0) this._empShockCooldown -= dt;
+
+    // GlitchDash — trigger when the player's SHIFT dash ends (trail from start → end).
+    const dashing = this.player.dashTimer > 0;
+    if (this._glitchDash) {
+      if (dashing && !this._pwDashing) this._pwDashStart = this.player.pos.clone();
+      if (!dashing && this._pwDashing && this._pwDashStart) {
+        const fromX = (this._pwDashStart.x - cam.x) * vs;
+        const toX   = (this.player.pos.x - cam.x) * vs;
+        const s = this._playerScreenPos();
+        this._glitchDash.trigger(fromX, toX, s.footY, toX >= fromX ? 1 : -1);
+      }
+      this._pwDashing = dashing;
+      this._glitchDash.update(now);
+    }
+
+    if (this._empShock) {
+      this._empShock.update(now, this.enemies, {
+        getX: e => (e.pos.x - cam.x) * vs,
+        getY: e => (e.pos.y - cam.y) * vs,
+        onHit: e => {
+          if (e.isBoss?.() || e.isMegaBoss) e.stunned = Math.max(e.stunned || 0, 0.5);  // bosses: brief interrupt
+          else { e.stunned = 5.0; this.particles.spawnHitSparks(e.pos, CYAN); }           // normals: 5s (same as EMP cloud)
+        },
+      });
+    }
+
+    if (this._digitalSingularity) {
+      if (this._digitalSingularity.isActive()) {   // keep the dissolving sprite pinned to the player
+        const s = this._playerScreenPos();
+        this._digitalSingularity.cx = s.cx;
+        this._digitalSingularity.footY = s.footY;
+      }
+      this._digitalSingularity.update(now, this.enemies, {
+        getX: e => (e.pos.x - cam.x) * vs,
+        getY: e => (e.pos.y - cam.y) * vs,
+        onStrike: e => { if (e.takeHit) e.takeHit(36, this); },   // per-laser damage (his ultimate)
+      });
+    }
+  }
+
+  // Screen-space render of all three modules (called after the camera block, before the HUD).
+  _drawPhasewalkerFx(ctx) {
+    this._canvas = ctx.canvas;   // capture for the lazy module builder (used by update too)
+    if (this.player?.selectedCharacter !== 'japan_phasewalker') return;
+    this._ensurePhasewalkerFx();
+    if (this._glitchDash) { this._glitchDash.renderBehind(ctx); this._glitchDash.renderFront(ctx); }
+    if (this._empShock) this._empShock.render(ctx);
+    if (this._digitalSingularity && this._digitalSingularity.isActive()) {
+      const sh = this._digitalSingularity.getShake();
+      ctx.save(); ctx.translate(sh.x, sh.y);
+      this._digitalSingularity.render(ctx);
+      ctx.restore();
+    } else if (this._digitalSingularity) {
+      this._digitalSingularity.render(ctx);   // lingering reform flash after isActive() clears
+    }
   }
 
   // ── Thunder Solo ultimate (Cyber Skeleton Warrior, SPACE, 100 mana) ──────────
@@ -1895,6 +2045,7 @@ export class Game {
     this._updateSkyfall(dt);        // Brawler ultimate
     this._updateShuriken(dt);       // Assassin bounce weapon (guards on character)
     this._updateChromePhantom(dt);  // Assassin ultimate
+    this._updatePhasewalkerFx(dt);  // Japan Phasewalker kit (guards on character)
     this._updateEnemies(dt);
     this._updateOverload(dt);
     this._updateSpawning(dt);
@@ -4428,7 +4579,11 @@ export class Game {
       ctx.restore();
     }
     this._drawThunderSoloGuitar(ctx);
-    this.player.draw(ctx, this._lastMousePos || { x: 0, y: 0 });
+    // Digital Singularity OWNS the player while active (it draws the dissolving/reforming sprite
+    // in screen space), so skip the normal world-space player draw during the ultimate.
+    if (!(this.player.selectedCharacter === 'japan_phasewalker' && this._digitalSingularity?.isActive())) {
+      this.player.draw(ctx, this._lastMousePos || { x: 0, y: 0 });
+    }
     this._drawUltAura(ctx);
 
     // 6 ── Projectiles, homing discs, EMP rings, particles
@@ -4638,6 +4793,7 @@ export class Game {
 
     ctx.restore();  // end camera-space block
 
+    this._drawPhasewalkerFx(ctx);      // Japan Phasewalker glitch-dash / EMP / singularity (screen-space; guards on character)
     this._drawThunderSoloScreen(ctx);  // darken + fullscreen lightning flash (under HUD)
 
     // ── Screen-space block (HUD, overlays) ───────────────────────────────────
@@ -4987,9 +5143,10 @@ export class Game {
 
     ctx.font = 'bold 32px Consolas, monospace';
     // Centered N-card layout (mirrored in main.js click hit-test — keep both in sync).
-    const cardWidth = 200;
+    // Sized so 6 cards fit within 1280px (6×184 + 5×20 = 1204).
+    const cardWidth = 184;
     const cardHeight = 280;
-    const gap = 28;
+    const gap = 20;
     const n = this.characters.length;
     const startX = Math.round(WIDTH / 2 - (n * cardWidth + (n - 1) * gap) / 2);
 
@@ -5022,7 +5179,7 @@ export class Game {
         // Roster presentation normalization: all portraits render at a max height of 180 and are
         // BOTTOM-aligned to a shared feet baseline. The two newest sprites read as oversized/tall,
         // so they get a small per-character down-scale to match the first three. Presentation only.
-        const PORTRAIT_SCALE = { brawler_warrior: 0.88, assassin_clone: 0.88 };
+        const PORTRAIT_SCALE = { brawler_warrior: 0.88, assassin_clone: 0.88, japan_phasewalker: 0.88 };
         const baseY  = y + 8 + 180;                                   // shared feet baseline
         const imgH   = Math.round(180 * (PORTRAIT_SCALE[charData.id] || 1));
         const imgW   = Math.round(cimg.naturalWidth * (imgH / cimg.naturalHeight));
@@ -5063,10 +5220,13 @@ export class Game {
     // Unlock hint for the highlighted locked character.
     const selChar = this.characters[this.characterIndex];
     if (!this.meta.isCharacterUnlocked(selChar.id)) {
+      const hint = selChar.id === 'japan_phasewalker'
+        ? 'Unlock with Protocol Fragments in Endless progression.'
+        : 'Reach 10:00 in Endless Mode to unlock Brawler Warrior.';
       ctx.font = 'bold 14px Consolas, monospace';
       ctx.fillStyle = '#ffcf6a';
       ctx.textAlign = 'center';
-      ctx.fillText('Reach 10:00 in Endless Mode to unlock Brawler Warrior.', WIDTH / 2, HEIGHT / 2 + cardHeight / 2 + 24);
+      ctx.fillText(hint, WIDTH / 2, HEIGHT / 2 + cardHeight / 2 + 24);
     }
 
     // ── Secret skins strip — each preview sits DIRECTLY under its matching character card.
