@@ -389,6 +389,8 @@ export class Game {
     this.endlessNewAchievements = null;   // [{id,name}] newly earned this run (end-screen only)
     this._eliteWaveTimer   = 0;           // Endless elite-wave clock (armed by continueEndless)
     this._eliteWaveElapsed = 0;           // s elapsed in Endless — drives batch-size tiers
+    this._endlessBossTimer = 25;          // Endless boss-rotation clock — first pressure ~25s in
+    this._endlessBossIdx   = -1;          // rotation cursor (titan→annihilator→bloodfang→mech)
 
     this.gameOver          = false;
     this.victory           = false;
@@ -523,6 +525,8 @@ export class Game {
     // Endless-local elite-wave clock: first wave after firstDelay, then every interval.
     this._eliteWaveTimer   = ELITE_WAVE.firstDelay;
     this._eliteWaveElapsed = 0;
+    this._endlessBossTimer = 25;           // arm the repeating boss/miniboss rotation (~25s → ~2 min)
+    this._endlessBossIdx   = -1;
     this._applyEndlessProtocols();     // one-shot Achievement Protocol stat boosts (Endless only)
     this._checkEndlessAchievements();  // grant FIRST ENDLESS RUN immediately on entering Endless
     this.audio?.startEndlessMusic();   // Endless-only track (dawn) replaces gameplay music
@@ -1043,6 +1047,41 @@ export class Game {
     }
   }
 
+  // Endless-only boss/miniboss pressure rotation. Reuses the Act 1 minibosses (AI Overload Titan,
+  // Matrix Annihilator, Bloodfang Packmaster) and the heavy Security Defector Mech boss, cycling
+  // roughly every 2 minutes (first pressure ~25s in) so Endless stays a real boss-chaos survival
+  // mode. Gated on this.endless → Act 1 is untouched. Defers when an Acid Rain / Reactor Plasma
+  // event is active or about to warn, so the two spectacles never start on the same moment.
+  _updateEndlessBossRotation(dt) {
+    if (!this.endless) return;
+    this._endlessBossTimer -= dt;
+    if (this._endlessBossTimer > 0) return;
+    if (this.acidRain || this.acidRainTimer < 8) { this._endlessBossTimer = 8; return; }  // avoid overlap
+    const slots = ['titan', 'annihilator', 'bloodfang', 'mech'];
+    this._endlessBossIdx = (this._endlessBossIdx + 1) % slots.length;
+    this._endlessRearmBoss(slots[this._endlessBossIdx]);
+    this._endlessBossTimer = 120;          // ~2 min cadence
+  }
+
+  // Re-arm one boss slot (only when that boss is dead/absent) by clearing its spawn flag so the
+  // existing _update*/_spawn* path brings it back. The Security Defector Mech is a heavy boss-type
+  // ENEMY (no mega-boss conversion), so it is spawned directly. No stats/Overload/core changes.
+  _endlessRearmBoss(slot) {
+    if (slot === 'titan') {
+      if (!this.titanBoss || this.titanBoss.hp <= 0) { this.titanSpawned = false; this.titanSpawnTimer = 0; }
+    } else if (slot === 'annihilator') {
+      if (!this.annihilatorBoss || this.annihilatorBoss.hp <= 0) { this.annihilatorSpawned = false; this.annihilatorSpawnTimer = 0; }
+    } else if (slot === 'bloodfang') {
+      if (!this.bloodfangBoss || this.bloodfangBoss.hp <= 0) { this.bloodfangSpawned = false; this.bloodfangSpawnTimer = 0; }
+    } else if (slot === 'mech') {
+      if (this.enemies.length < this.enemyCap() && !this.enemies.some(e => e.enemyType === 'Security Defector Mech')) {
+        this.enemies.push(new Enemy('Security Defector Mech', this.currentMinute() + 8));
+        this.audio?.playBossWarning();
+        this.triggerAnnouncement('DEFECTOR MECH BOSS DETECTED', YELLOW);
+      }
+    }
+  }
+
   currentMinute()             { return Math.floor(this.timeAlive / 60); }
   coreVolatilityMultiplier()  { return 1 + (this.timeAlive / WIN_TIME_SECONDS) * 1.8; }
   overloadRateMultiplier()    { return 1 + Math.floor(this.timeAlive / 120) * 0.05; }
@@ -1050,13 +1089,22 @@ export class Game {
   //   0–2 light · 2–5 constant · 5–10 mini-hordes · 10–20 continuous · 20+ heavy chaos.
   enemyCap() {
     const m = this.currentMinute();
-    if (m < 2)  return 28 + m * 8;               // 28 → 36   (light, but always populated)
-    if (m < 5)  return 44 + (m - 2) * 12;        // 44 → 80   (constant presence)
-    if (m < 10) return 80 + (m - 5) * 14;        // 80 → 150  (visible groups / mini-hordes)
-    if (m < 20) return 150 + (m - 10) * 10;      // 150 → 250 (continuous pressure)
-    return Math.min(280, 250 + (m - 20) * 5);    // heavy survivor chaos, perf-capped
+    let cap;
+    if (m < 2)       cap = 28 + m * 8;               // 28 → 36   (light, but always populated)
+    else if (m < 5)  cap = 44 + (m - 2) * 12;        // 44 → 80   (constant presence)
+    else if (m < 10) cap = 80 + (m - 5) * 14;        // 80 → 150  (visible groups / mini-hordes)
+    else if (m < 20) cap = 150 + (m - 10) * 10;      // 150 → 250 (continuous pressure)
+    else             cap = Math.min(280, 250 + (m - 20) * 5);  // heavy survivor chaos, perf-capped
+    // Endless: much denser from the start (×1.4 + 30), perf-capped a touch higher. Act 1 untouched.
+    if (this.endless) cap = Math.min(320, Math.round(cap * 1.4) + 30);
+    return cap;
   }
-  enemySpawnInterval()        { return Math.max(0.16, 0.5 - this.currentMinute() * 0.025); }
+  // Endless spawns roughly twice as fast from the start (lower floor too). Act 1 unchanged.
+  enemySpawnInterval() {
+    let iv = Math.max(0.16, 0.5 - this.currentMinute() * 0.025);
+    if (this.endless) iv = Math.max(0.08, iv * 0.5);
+    return iv;
+  }
 
   chooseEnemyType() {
     const t      = this.timeAlive;
@@ -1113,7 +1161,10 @@ export class Game {
 
   spawnEnemy() {
     if (this.enemies.length >= this.enemyCap()) return;
-    const e = new Enemy(this.chooseEnemyType(), this.currentMinute());
+    // Endless: enemies are stronger from the start by treating them as ~8 minutes further along
+    // (drives Enemy HP/speed scaling; damage stays conservative). Act 1 uses the real minute.
+    const mins = this.currentMinute() + (this.endless ? 8 : 0);
+    const e = new Enemy(this.chooseEnemyType(), mins);
     this.enemies.push(e);
     if (e.isBoss()) this.audio?.playBossWarning();
   }
@@ -1860,6 +1911,7 @@ export class Game {
     this._updateAbilityTimers(dt);
     this._updateQuantumOverhaul(dt);
     this._updateAcidRain(dt);
+    this._updateEndlessBossRotation(dt);   // Endless-only: repeating miniboss/boss pressure
     this._updateTitan(dt);
     this._updateAnnihilator(dt);
     this._updateBloodfang(dt);
@@ -2266,6 +2318,7 @@ export class Game {
   // the nearest ground core (what to grab). Reuses the grid-cache edge-arrow style. Visual only.
   _drawObjectiveIndicators(ctx) {
     if (this.gameOver || this.victory || this.upgradeUI) return;
+    if (this.endless) return;   // Endless: drop the wayfinding side-arrow (kept for Act 1 onboarding)
     const p = this.player; if (!p) return;
     let target = null, label = '', col = CYAN;
     if (p.carry > 0 && this.matrices.length) {
