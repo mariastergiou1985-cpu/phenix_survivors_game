@@ -412,6 +412,7 @@ export class Game {
     this.overChains       = null;   // Overheated Heavy Chains ultimate (Cyber Arm Hero) while active
     this._aquaPuddles     = [];   // Aqua Spirit Trail puddles (Neon Taekwondo Girl movement secondary)
     this._aquaTrailTimer  = 0;    // spawn cadence while moving
+    this._spiritKicks = { timer: 0, blades: [] };   // Spirit Crescent Kicks (new auto-weapon)
     this.spiritDojang     = null; // Spirit Dojang Flag ultimate (Neon Taekwondo Girl) while active
     this._cyberBike       = null; // Cyber Ride ultimate (Neon Taekwondo Girl) while active
     this._specialBeams    = [];
@@ -2458,6 +2459,7 @@ export class Game {
     this._updateChainLightning(dt);
     this._updateNeonPierceBeam(dt);
     this._updateAquaTrail(dt);
+    this._updateSpiritKicks(dt);
     this._updateNexusChakram(dt);   // Brawler primary (guards on character)
     this._updateCrescentClaw(dt);   // Brawler secondary
     this._updateSkyfall(dt);        // Brawler ultimate
@@ -4279,6 +4281,7 @@ export class Game {
     }
 
     if (this.player.selectedCharacter !== 'taekwondo_girl') return;
+    return;   // Aqua Spirit Trail disabled — replaced by Spirit Crescent Kicks
 
     // Spawn only while actually moving (ignore tiny jitter) — never while standing still.
     if (this.player.vel.lengthSq() < 25 * 25) return;
@@ -4360,6 +4363,99 @@ export class Game {
       }
     }
     ctx.restore();
+  }
+
+  // ── Spirit Crescent Kicks (Neon Taekwondo Girl auto-weapon) ──────────────────
+  // Auto-fires spinning cyan crescents at the NEAREST enemies; they fly out and pierce
+  // several foes. Fire rate + extra crescents scale with her primary mastery card.
+  _updateSpiritKicks(dt) {
+    const sk = this._spiritKicks;
+    const p = this.player;
+
+    // advance live crescents: move, spin, trail, collide, expire
+    for (let i = sk.blades.length - 1; i >= 0; i--) {
+      const b = sk.blades[i];
+      b.t += dt; b.rot += b.spin * dt;
+      b.pos.x += b.vel.x * dt; b.pos.y += b.vel.y * dt;
+      b.trail.push({ x: b.pos.x, y: b.pos.y }); if (b.trail.length > 6) b.trail.shift();
+      for (const e of this.enemies) {
+        if (b.hits.has(e)) continue;
+        if (distance(e.pos, b.pos) < b.radius + e.radius) {
+          const boss = e.isBoss() || e.isMegaBoss;
+          e.takeHit(boss ? b.bossDmg : b.dmg, this);
+          this.particles.spawnHitSparks(e.pos, CYAN);
+          b.hits.add(e);
+          if (b.hits.size >= b.pierce) { b.dead = true; break; }
+        }
+      }
+      if (b.dead || b.t >= b.life) sk.blades.splice(i, 1);
+    }
+
+    if (p.selectedCharacter !== 'taekwondo_girl') return;
+    if (this.gameState !== 'playing' || this.paused || this.upgradeUI) return;
+
+    // auto-fire at the nearest enemies
+    sk.timer -= dt;
+    if (sk.timer > 0) return;
+    const lvl = this._cardLvl('taekwondo_primary_mastery');
+    sk.timer = 0.70 / (1 + 0.12 * lvl);                       // faster with mastery (tunable)
+    if (this.enemies.length === 0) { sk.timer = 0.12; return; }
+
+    const count = 1 + (lvl >= 3 ? 1 : 0) + (lvl >= 6 ? 1 : 0); // extra crescents at higher mastery
+    const near = this.enemies.map(e => ({ e, d: distance(e.pos, p.pos) }))
+                             .sort((a, b) => a.d - b.d).slice(0, count);
+    const SPEED = 540, DMG = 26, BOSSDMG = 6, PIERCE = 4, LIFE = 0.9, HITR = 30;   // all tunable
+    for (let k = 0; k < count; k++) {
+      const tgt = (near[k] || near[0]).e;
+      let dir = safeNormalize(tgt.pos.sub(p.pos));
+      if (dir.lengthSq() < 0.001) dir = (p.lastFacingDir && p.lastFacingDir.lengthSq() > 0.001)
+        ? safeNormalize(p.lastFacingDir.clone()) : new Vec2(1, 0);
+      sk.blades.push({
+        pos: p.pos.clone(), vel: dir.scale(SPEED),
+        rot: Math.atan2(dir.y, dir.x), spin: 16, t: 0, life: LIFE,
+        radius: HITR, dmg: DMG, bossDmg: BOSSDMG, pierce: PIERCE,
+        hits: new Set(), trail: [], dead: false,
+      });
+    }
+  }
+
+  _drawSpiritKicks(ctx) {
+    const sk = this._spiritKicks;
+    if (!sk.blades.length) return;
+    ctx.save();
+    ctx.lineCap = 'round';
+    for (const b of sk.blades) {
+      const a = Math.max(0, Math.min(1, (b.life - b.t) / 0.18));
+      // trail
+      ctx.globalCompositeOperation = 'lighter';
+      for (let i = 0; i < b.trail.length; i++) {
+        const tp = b.trail[i], ta = (i + 1) / b.trail.length * 0.3 * a;
+        ctx.globalAlpha = ta; ctx.fillStyle = CYAN;
+        ctx.beginPath(); ctx.arc(tp.x, tp.y, b.radius * 0.5 * (0.4 + 0.6 * (i / b.trail.length)), 0, Math.PI * 2); ctx.fill();
+      }
+      // crescent blade
+      ctx.save();
+      ctx.translate(b.pos.x, b.pos.y);
+      ctx.rotate(b.rot);
+      const R = b.radius * 0.7, a0 = -2.3, a1 = 2.3;
+      const arc = (w, col, al) => { ctx.globalAlpha = al * a; ctx.strokeStyle = col; ctx.lineWidth = w;
+        ctx.beginPath(); ctx.arc(0, 0, R, a0, a1); ctx.stroke(); };
+      arc(9, '#1fd0ff', 0.40);   // glow
+      arc(5, '#3ad0ff', 0.85);   // body
+      arc(2, '#eaffff', 1);      // core
+      ctx.globalAlpha = a; ctx.fillStyle = '#eaffff';
+      for (const aa of [a0, a1]) {                 // sharp tips
+        const tx = Math.cos(aa) * R, ty = Math.sin(aa) * R;
+        const nx = Math.cos(aa + Math.PI / 2), ny = Math.sin(aa + Math.PI / 2);
+        ctx.beginPath();
+        ctx.moveTo(tx + Math.cos(aa) * 6, ty + Math.sin(aa) * 6);
+        ctx.lineTo(tx + nx * 3, ty + ny * 3); ctx.lineTo(tx - nx * 3, ty - ny * 3);
+        ctx.closePath(); ctx.fill();
+      }
+      ctx.restore();
+    }
+    ctx.restore();
+    ctx.globalAlpha = 1;
   }
 
   // ── Spirit Dojang Flag ultimate (Neon Taekwondo Girl, SPACE, 100 mana) ───────
@@ -5161,6 +5257,7 @@ export class Game {
 
     // 3b ── Aqua Spirit Trail puddles (ground terrain — under entities so they read as footprints)
     this._drawAquaPuddles(ctx);
+    this._drawSpiritKicks(ctx);
 
     // 4 ── Enemies
     for (const e of this.enemies) {
