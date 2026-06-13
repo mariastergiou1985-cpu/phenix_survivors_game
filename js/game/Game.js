@@ -22,7 +22,7 @@ import { UpgradeUI }      from './UpgradeUI.js?v=10';
 import { weightedSample } from './Upgrades.js?v=11';
 import { MutationUI }      from './MutationUI.js?v=1';
 import { sampleMutations } from './Mutations.js?v=1';
-import { drawHUD, drawEndScreen } from './HUD.js?v=49';
+import { drawHUD, drawEndScreen } from './HUD.js?v=50';
 import { MetaProgress, META_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE } from './MetaProgress.js?v=18';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
@@ -33,7 +33,7 @@ import { Protocol0 } from '../effects/protocol-0.js?v=1';
 import { LaserEyes } from '../effects/laser-eyes.js?v=1';
 import { MeteorRain } from '../effects/meteor-rain.js?v=1';
 // Euclid Vector toxin kit — used ONLY when selectedCharacter === 'euclid_vector' (world-space).
-import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=1';
+import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=2';
 
 // ── Thunder Solo sprite slices (cyan_lightning_rain_notes.png, 1254×1254) ──────
 // Strike variants: a clean bolt column + ripple base. (ax,ay) = ripple-centre as a
@@ -1746,6 +1746,7 @@ export class Game {
     try {
       // Sync world into the adapter (same array the kit holds by reference; persistent wrappers).
       this._euclidPlayer.x = p.pos.x; this._euclidPlayer.y = p.pos.y;
+      if (p.vel && (p.vel.x || p.vel.y)) this._euclidPlayer.facing = Math.atan2(p.vel.y, p.vel.x);   // kit v2: Plague dash lunges toward movement
       const arr = this._euclidEnemies; arr.length = 0;
       const live = new Set();
       for (const e of this.enemies) if (e && e.pos) { arr.push(this._euclidWrap(e)); live.add(e); }

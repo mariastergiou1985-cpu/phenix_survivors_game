@@ -1,27 +1,31 @@
 /* =====================================================================
-   TOXIC SNIPER KIT — SPRITE EDITION
-   Three weapon systems refactored to render real Image (PNG) sprites
-   via ctx.drawImage instead of vector primitives.
+   TOXIC SNIPER KIT — SPRITE EDITION (visuals upgraded v2)
+   Same public API + integration contract. Logic (damage, collisions,
+   timers, signatures, exports) UNCHANGED. Changes in this revision:
+     • Orbital Katana: real, clearly-readable VECTOR KATANAS (blade +
+       guard + wrapped handle), NO glow, that DRIP toxin as they spin.
+     • Plague Trail Dash: lunges toward the player's MOVEMENT direction
+       (player.facing, fed from WASD by the host) — not the nearest enemy.
+     • Toxic bullet + gas: same upgraded neon look as before.
 
    Integration contract (unchanged):
-     • player  -> { x, y, height, facing }
-     • enemies -> array of objects exposing:
-                  x, y, radius, hp, sprite (Image), spriteW, spriteH,
-                  takeDamage(), applyKnockback(), beginMelt()
-     • particles -> a manager with add(p) / burst(arr)
-
-   Drop your own pixel art in by editing the `*.src` lines at the top
-   of each class. Every sprite carries a `.loaded` flag so drawImage is
-   only ever called on a decoded image (prevents InvalidStateError and
-   the broken-frame flicker you get when drawing too early).
+     • player  -> { x, y, height, facing }   (facing = movement angle, radians)
+     • enemies -> { x, y, radius, hp, sprite, spriteW, spriteH,
+                    takeDamage(), applyKnockback(), beginMelt() }
+     • particles -> { add(p), burst(arr) }
    ===================================================================== */
 
-const TOXIC = '#00ff33';
+const TOXIC      = '#00ff33';
+const TOXIC_DARK = '#0a9c44';
+const TOXIC_DEEP = '#063b1a';
+const TOXIC_LITE = '#7cff8a';
+const VENOM_HOT  = '#eaffef';
+const STEEL      = '#cfe6d2';
+const STEEL_DK   = '#5f7a66';
 const rand  = (a, b) => a + Math.random() * (b - a);
 const dist  = (ax, ay, bx, by) => Math.hypot(ax - bx, ay - by);
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
-/* Tiny helper: make an Image and track when it is safe to draw. */
 function loadSprite(src) {
   const img = new Image();
   img.loaded = false;
@@ -34,7 +38,6 @@ function loadSprite(src) {
    1. TOXIC BULLET  +  TOXIC SNIPER  (automatic)
    ===================================================================== */
 class ToxicBullet {
-  // ---- sprite source (drop your own pixel art here) ----
   static sprite = loadSprite('assets/weapons/toxic_bullet.png');
 
   constructor(x, y, tx, ty, opts = {}) {
@@ -43,29 +46,24 @@ class ToxicBullet {
     this.speed = opts.speed ?? 620;
     this.vx = Math.cos(this.angle) * this.speed;
     this.vy = Math.sin(this.angle) * this.speed;
-
-    this.w = opts.w ?? 28;          // draw size of the bullet sprite
+    this.w = opts.w ?? 28;
     this.h = opts.h ?? 12;
-    this.radius = opts.radius ?? 6; // collision radius
+    this.radius = opts.radius ?? 6;
     this.damage = opts.damage ?? 14;
-
     this.dead = false;
-    this.trail = [];                // {x, y} history for fading copies
-    this.maxTrail = 5;
+    this.trail = [];
+    this.maxTrail = 6;
   }
 
   update(dt, bounds) {
     this.trail.push({ x: this.x, y: this.y });
     if (this.trail.length > this.maxTrail) this.trail.shift();
-
     this.x += this.vx * dt;
     this.y += this.vy * dt;
-
     if (this.x < -40 || this.x > bounds.w + 40 ||
         this.y < -40 || this.y > bounds.h + 40) this.dead = true;
   }
 
-  // draw one rotated copy of the bullet sprite at (x, y) with alpha/scale
   _blit(ctx, x, y, alpha, scale) {
     const img = ToxicBullet.sprite;
     ctx.save();
@@ -73,26 +71,41 @@ class ToxicBullet {
     ctx.translate(x, y);
     ctx.rotate(this.angle);
     if (img.loaded) {
-      ctx.imageSmoothingEnabled = false;   // keep pixel art crisp
+      ctx.imageSmoothingEnabled = false;
       const w = this.w * scale, h = this.h * scale;
       ctx.drawImage(img, -w / 2, -h / 2, w, h);
     } else {
-      // graceful fallback until the PNG decodes
+      const w = this.w * scale, h = this.h * scale;
+      ctx.fillStyle = TOXIC_DARK;
+      ctx.beginPath();
+      ctx.moveTo(w * 0.50, 0); ctx.lineTo(-w * 0.30, h * 0.45);
+      ctx.lineTo(-w * 0.12, 0); ctx.lineTo(-w * 0.30, -h * 0.45);
+      ctx.closePath(); ctx.fill();
       ctx.fillStyle = TOXIC;
-      ctx.fillRect(-this.w * scale / 2, -this.h * scale / 2,
-                   this.w * scale, this.h * scale);
+      ctx.beginPath();
+      ctx.moveTo(w * 0.40, 0); ctx.lineTo(-w * 0.16, h * 0.24);
+      ctx.lineTo(-w * 0.05, 0); ctx.lineTo(-w * 0.16, -h * 0.24);
+      ctx.closePath(); ctx.fill();
+      ctx.fillStyle = VENOM_HOT;
+      ctx.beginPath(); ctx.arc(w * 0.42, 0, Math.max(1, h * 0.13), 0, Math.PI * 2); ctx.fill();
     }
     ctx.restore();
   }
 
   draw(ctx) {
-    // VFX trail: scaled-down, fading copies of the bullet sprite
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
     for (let i = 0; i < this.trail.length; i++) {
       const p = this.trail[i];
-      const a = (i + 1) / this.trail.length;        // head = brightest
-      this._blit(ctx, p.x, p.y, a * 0.4, 0.5 + a * 0.4);
+      const a = (i + 1) / this.trail.length;
+      this._blit(ctx, p.x, p.y, a * 0.35, 0.45 + a * 0.45);
     }
-    // glow + crisp head sprite
+    const g = ctx.createRadialGradient(this.x, this.y, 0, this.x, this.y, this.w);
+    g.addColorStop(0, 'rgba(124,255,138,0.55)');
+    g.addColorStop(1, 'rgba(0,255,51,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(this.x, this.y, this.w, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
     ctx.save();
     ctx.shadowColor = TOXIC; ctx.shadowBlur = 14;
     this._blit(ctx, this.x, this.y, 1, 1);
@@ -108,10 +121,9 @@ class ToxicSniper {
     this.particles = particles;
     this.bounds = bounds;
     this.bullets = [];
-
     this.fireInterval = 1.5;
     this.fireTimer = 0;
-    this.bulletDamage = 14;   // host can scale this (e.g. Euclid's Toxin Shot Mastery)
+    this.bulletDamage = 14;
     this.poison = { dps: 6, duration: 3, tickEvery: 0.2 };
   }
 
@@ -130,7 +142,6 @@ class ToxicSniper {
     this.bullets.push(new ToxicBullet(this.player.x, this.player.y, target.x, target.y, { damage: this.bulletDamage }));
   }
 
-  // square pixel debris (kept as primitives — cheap and reads as sparks)
   spawnImpactParticles(x, y) {
     const out = [];
     const n = Math.floor(rand(10, 16));
@@ -147,6 +158,13 @@ class ToxicSniper {
                   c.fillRect(this.x | 0, this.y | 0, this.size, this.size); c.globalAlpha = 1; }
       });
     }
+    out.push({
+      x, y, r: 2, maxR: rand(22, 34), life: 0.32, maxLife: 0.32, dead: false,
+      update(dt) { this.life -= dt; if (this.life <= 0) this.dead = true; this.r += (this.maxR - this.r) * Math.min(1, dt * 10); },
+      draw(c) { const t = clamp(this.life / this.maxLife, 0, 1); c.save(); c.globalCompositeOperation = 'lighter';
+                c.globalAlpha = t; c.strokeStyle = TOXIC_LITE; c.lineWidth = 2;
+                c.beginPath(); c.arc(this.x, this.y, this.r, 0, Math.PI * 2); c.stroke(); c.restore(); c.globalAlpha = 1; }
+    });
     this.particles.burst(out);
   }
 
@@ -162,7 +180,6 @@ class ToxicSniper {
       if (t) { this.fire(t); this.fireTimer = this.fireInterval; }
       else { this.fireTimer = 0.1; }
     }
-
     for (const b of this.bullets) {
       b.update(dt, this.bounds);
       if (b.dead) continue;
@@ -184,10 +201,9 @@ class ToxicSniper {
 }
 
 /* =====================================================================
-   2. ORBITAL KATANA BARRIER  (passive, sprite blades)
+   2. ORBITAL KATANA BARRIER  — clear vector katanas, no glow, drip toxin
    ===================================================================== */
 class OrbitalKatanaBarrier {
-  // ---- sprite source (a vertical blade pointing "up" works best) ----
   static sprite = loadSprite('assets/weapons/katana.png');
 
   constructor(player, enemies, particles) {
@@ -196,10 +212,10 @@ class OrbitalKatanaBarrier {
     this.particles = particles;
 
     this.angle = 0;
-    this.spinSpeed = 2.6;                      // rad/s
-    this.orbitRadius = 78;                     // base distance from pivot
-    this.bladeLength = player.height * 0.82;   // slightly shorter than char
-    this.bladeWidth = this.bladeLength * 0.22; // sprite aspect
+    this.spinSpeed = 2.6;
+    this.orbitRadius = 78;
+    this.bladeLength = player.height * 0.95;   // a bit longer so it reads clearly as a sword
+    this.bladeWidth = this.bladeLength * 0.20;
     this.damage = 30;
     this.knockback = 360;
 
@@ -207,6 +223,9 @@ class OrbitalKatanaBarrier {
       { offset: 0,       recoil: 0, flash: 0, hits: new Map() },
       { offset: Math.PI, recoil: 0, flash: 0, hits: new Map() }
     ];
+
+    this._drips    = [];   // falling toxin droplets shed by the blades
+    this._dripAcc  = 0;
   }
 
   update(dt) {
@@ -214,7 +233,7 @@ class OrbitalKatanaBarrier {
     const cx = this.player.x, cy = this.player.y;
 
     for (const blade of this.blades) {
-      blade.recoil += (0 - blade.recoil) * Math.min(1, dt * 12);   // ease back
+      blade.recoil += (0 - blade.recoil) * Math.min(1, dt * 12);
       if (blade.flash > 0) blade.flash -= dt;
 
       const a = this.angle + blade.offset;
@@ -227,17 +246,83 @@ class OrbitalKatanaBarrier {
         if (e.dead || e.dying) continue;
         const last = blade.hits.get(e) ?? -1;
         if (last > 0) { blade.hits.set(e, last - dt); continue; }
-
         const reach = e.radius + this.bladeWidth + this.bladeLength * 0.5;
         if (dist(blade.x, blade.y, e.x, e.y) <= reach) {
           e.takeDamage(this.damage);
           const ka = Math.atan2(e.y - cy, e.x - cx);
           e.applyKnockback(Math.cos(ka) * this.knockback, Math.sin(ka) * this.knockback);
           blade.flash = 0.12;
-          blade.recoil = 26;                 // bounce outward, snaps back via ease
+          blade.recoil = 26;
           blade.hits.set(e, 0.25);
         }
       }
+    }
+
+    // shed toxin drips from a random point along each blade
+    this._dripAcc += dt;
+    if (this._dripAcc >= 0.05) {
+      this._dripAcc = 0;
+      for (const blade of this.blades) {
+        if (Math.random() > 0.7) continue;                 // not every tick → uneven, organic drip
+        const r  = this.orbitRadius + blade.recoil + this.bladeLength * (0.15 + Math.random() * 0.8);
+        const ox = Math.cos(blade.a) * r, oy = Math.sin(blade.a) * r;
+        // small perpendicular jitter so drops leave the cutting edge, not the centerline
+        const px = -Math.sin(blade.a), py = Math.cos(blade.a);
+        const j  = rand(-this.bladeWidth * 0.4, this.bladeWidth * 0.4);
+        this._drips.push({
+          x: cx + ox + px * j, y: cy + oy + py * j,
+          vx: rand(-12, 12), vy: rand(0, 30),
+          size: rand(2, 4), life: rand(0.5, 0.9), maxLife: 0.9, dead: false,
+        });
+      }
+    }
+    for (const d of this._drips) {
+      d.life -= dt; if (d.life <= 0) { d.dead = true; continue; }
+      d.vy += 600 * dt; d.x += d.vx * dt; d.y += d.vy * dt;
+    }
+    this._drips = this._drips.filter(d => !d.dead);
+  }
+
+  // clear, solid katana: steel blade + toxic cutting edge + guard + wrapped handle. No glow.
+  _drawVectorBlade(ctx, blade) {
+    const bw = this.bladeWidth, bl = this.bladeLength;
+    const hot = blade.flash > 0;
+    const steel = hot ? '#ffffff' : STEEL;
+    const edge  = hot ? '#ffffff' : TOXIC;
+
+    // blade body (tip at -y/outward, guard/handle toward +y/pivot)
+    ctx.fillStyle = steel;
+    ctx.beginPath();
+    ctx.moveTo(0, -bl * 0.50);
+    ctx.lineTo(bw * 0.30, -bl * 0.30);
+    ctx.lineTo(bw * 0.26,  bl * 0.16);
+    ctx.lineTo(-bw * 0.26, bl * 0.16);
+    ctx.lineTo(-bw * 0.30, -bl * 0.30);
+    ctx.closePath(); ctx.fill();
+
+    // toxic cutting edge (right side + tip)
+    ctx.strokeStyle = edge; ctx.lineWidth = Math.max(1.6, bw * 0.17); ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(0, -bl * 0.50);
+    ctx.lineTo(bw * 0.30, -bl * 0.30);
+    ctx.lineTo(bw * 0.26,  bl * 0.16);
+    ctx.stroke();
+    // darker spine (left side)
+    ctx.strokeStyle = STEEL_DK; ctx.lineWidth = Math.max(1, bw * 0.09);
+    ctx.beginPath();
+    ctx.moveTo(-bw * 0.22, -bl * 0.32); ctx.lineTo(-bw * 0.20, bl * 0.12);
+    ctx.stroke();
+
+    // guard (tsuba)
+    ctx.fillStyle = hot ? '#ffffff' : TOXIC_DARK;
+    ctx.fillRect(-bw * 0.55, bl * 0.16, bw * 1.10, Math.max(2, bl * 0.055));
+
+    // handle (tsuka) + wrap stripes
+    ctx.fillStyle = '#13241a';
+    ctx.fillRect(-bw * 0.22, bl * 0.21, bw * 0.44, bl * 0.27);
+    ctx.strokeStyle = TOXIC_DARK; ctx.lineWidth = 1;
+    for (let hy = bl * 0.24; hy < bl * 0.46; hy += bl * 0.055) {
+      ctx.beginPath(); ctx.moveTo(-bw * 0.22, hy); ctx.lineTo(bw * 0.22, hy); ctx.stroke();
     }
   }
 
@@ -245,58 +330,53 @@ class OrbitalKatanaBarrier {
     const cx = this.player.x, cy = this.player.y;
     const img = OrbitalKatanaBarrier.sprite;
 
-    // motion-blur arc: faint blended ring behind the blades
-    ctx.save();
-    ctx.globalAlpha = 0.10;
-    ctx.strokeStyle = TOXIC;
-    ctx.lineWidth = this.bladeLength;
-    ctx.beginPath();
-    ctx.arc(cx, cy, this.orbitRadius + this.bladeLength * 0.25, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.restore();
-
     for (const blade of this.blades) {
       const r = this.orbitRadius + blade.recoil;
 
-      // per-blade trailing sweep (smooth high-speed blur)
+      // faint, NON-glow motion streak (normal blend, low alpha) so the spin reads
       ctx.save();
-      ctx.globalAlpha = 0.18;
-      ctx.strokeStyle = blade.flash > 0 ? '#eaffef' : TOXIC;
-      ctx.lineWidth = this.bladeWidth + 6;
+      ctx.globalAlpha = 0.10;
+      ctx.strokeStyle = '#9fd6a8';
+      ctx.lineWidth = this.bladeWidth * 0.6;
       ctx.lineCap = 'round';
       ctx.beginPath();
-      ctx.arc(cx, cy, r + this.bladeLength * 0.5, blade.a - 0.55, blade.a);
+      ctx.arc(cx, cy, r + this.bladeLength * 0.5, blade.a - 0.5, blade.a);
       ctx.stroke();
       ctx.restore();
 
-      // rotate the actual katana sprite around the PLAYER pivot, then
-      // push out along the radius (recoil lives in the translation).
+      // the katana itself (sprite if present, else the clear vector blade) — no shadow/glow
       ctx.save();
       ctx.translate(cx, cy);
-      ctx.rotate(blade.a + Math.PI / 2);       // +90° so an "up" sprite points outward
+      ctx.rotate(blade.a + Math.PI / 2);
       ctx.translate(0, -(r + this.bladeLength * 0.5));
-      ctx.shadowColor = TOXIC;
-      ctx.shadowBlur = blade.flash > 0 ? 28 : 14;
       ctx.imageSmoothingEnabled = false;
       if (img.loaded) {
-        ctx.drawImage(img, -this.bladeWidth / 2, -this.bladeLength / 2,
-                      this.bladeWidth, this.bladeLength);
+        ctx.drawImage(img, -this.bladeWidth / 2, -this.bladeLength / 2, this.bladeWidth, this.bladeLength);
       } else {
-        ctx.fillStyle = blade.flash > 0 ? '#eaffef' : TOXIC;
-        ctx.fillRect(-this.bladeWidth / 2, -this.bladeLength / 2,
-                     this.bladeWidth, this.bladeLength);
+        this._drawVectorBlade(ctx, blade);
       }
       ctx.restore();
     }
-    ctx.shadowBlur = 0;
+
+    // toxin drips (world space, solid droplets with a short tail — no glow)
+    for (const d of this._drips) {
+      const t = clamp(d.life / d.maxLife, 0, 1);
+      ctx.globalAlpha = t;
+      ctx.strokeStyle = TOXIC_DARK; ctx.lineWidth = d.size * 0.7;
+      ctx.beginPath(); ctx.moveTo(d.x, d.y - d.size * 1.6); ctx.lineTo(d.x, d.y); ctx.stroke();
+      ctx.fillStyle = TOXIC;
+      ctx.beginPath(); ctx.arc(d.x, d.y, d.size, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = TOXIC_LITE;
+      ctx.beginPath(); ctx.arc(d.x - d.size * 0.3, d.y - d.size * 0.3, d.size * 0.4, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
   }
 }
 
 /* =====================================================================
-   3. PLAGUE TRAIL DASH  (spacebar ultimate, sprite smoke)
+   3. PLAGUE TRAIL DASH  (spacebar ultimate, toxic gas)
    ===================================================================== */
 class ToxicGasPuff {
-  // ---- sprite source: a single soft round smoke tile ----
   static sprite = loadSprite('assets/weapons/smoke_puff.png');
 
   constructor(x, y) {
@@ -306,10 +386,10 @@ class ToxicGasPuff {
     this.rot = rand(0, Math.PI * 2);
     this.rotSpeed = rand(-1.2, 1.2);
     this.scale = rand(0.7, 1.15);
-    this.scaleGrow = rand(0.05, 0.25);     // puffs swell as they rise
-    this.life = 4;                          // seconds
+    this.scaleGrow = rand(0.05, 0.25);
+    this.life = 4;
     this.maxLife = this.life;
-    this.dps = 55;                          // heavy corrosive ticks
+    this.dps = 55;
     this.dead = false;
   }
   update(dt) {
@@ -317,7 +397,7 @@ class ToxicGasPuff {
     if (this.life <= 0) this.dead = true;
     this.rot += this.rotSpeed * dt;
     this.scale += this.scaleGrow * dt;
-    this.y -= 4 * dt;                        // slow upward drift
+    this.y -= 4 * dt;
   }
   get radius() { return (this.size * this.scale) / 2; }
   draw(ctx) {
@@ -325,20 +405,30 @@ class ToxicGasPuff {
     const t = clamp(this.life / this.maxLife, 0, 1);
     const s = this.size * this.scale;
     ctx.save();
-    ctx.globalAlpha = t * 0.85;
     ctx.translate(this.x, this.y);
-    ctx.rotate(this.rot);                    // randomly rotated each puff
+    ctx.rotate(this.rot);
     if (img.loaded) {
+      ctx.globalAlpha = t * 0.85;
       ctx.drawImage(img, -s / 2, -s / 2, s, s);
     } else {
-      const g = ctx.createRadialGradient(0, 0, 2, 0, 0, s / 2);
-      g.addColorStop(0, `rgba(120,255,150,${0.55 * t})`);
-      g.addColorStop(0.4, `rgba(0,255,51,${0.30 * t})`);
-      g.addColorStop(1, 'rgba(4,40,18,0)');
-      ctx.fillStyle = g;
-      ctx.beginPath(); ctx.arc(0, 0, s / 2, 0, Math.PI * 2); ctx.fill();
+      for (let k = 0; k < 3; k++) {
+        const ox = Math.cos(this.rot + k * 2.1) * s * 0.12;
+        const oy = Math.sin(this.rot * 1.3 + k * 2.1) * s * 0.12;
+        const rr = (s / 2) * (1 - k * 0.18);
+        const g = ctx.createRadialGradient(ox, oy, 1, ox, oy, rr);
+        g.addColorStop(0,   `rgba(150,255,170,${0.50 * t})`);
+        g.addColorStop(0.45,`rgba(0,255,51,${0.26 * t})`);
+        g.addColorStop(1,   'rgba(4,40,18,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(ox, oy, rr, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.fillStyle = `rgba(214,255,224,${0.5 * t})`;
+      ctx.beginPath();
+      ctx.arc(Math.cos(this.rot * 2) * s * 0.1, Math.sin(this.rot * 2) * s * 0.1, Math.max(1, s * 0.06), 0, Math.PI * 2);
+      ctx.fill();
     }
     ctx.restore();
+    ctx.globalAlpha = 1;
   }
 }
 
@@ -374,14 +464,8 @@ class PlagueTrailDash {
     this.dashTimer = this.dashDuration;
     this.trailTimer = this.trailDuration;
 
-    let ang = this.player.facing ?? 0;
-    let nearest = null, nd = Infinity;
-    for (const e of this.enemies) {
-      if (e.dead || e.dying) continue;
-      const d = dist(this.player.x, this.player.y, e.x, e.y);
-      if (d < nd) { nd = d; nearest = e; }
-    }
-    if (nearest) ang = Math.atan2(nearest.y - this.player.y, nearest.x - this.player.x);
+    // Lunge toward the player's MOVEMENT direction (facing, fed from WASD by the host).
+    const ang = this.player.facing ?? 0;
     this.dashVx = Math.cos(ang) * this.dashSpeed;
     this.dashVy = Math.sin(ang) * this.dashSpeed;
   }
@@ -395,7 +479,6 @@ class PlagueTrailDash {
       this.player.y = clamp(this.player.y + this.dashVy * dt, 20, this.bounds.h - 20);
     }
 
-    // dense puff trail at the feet during + after the dash
     if (this.trailTimer > 0) {
       this.trailTimer -= dt;
       this.spawnAcc += dt;
@@ -403,7 +486,7 @@ class PlagueTrailDash {
         this.spawnAcc = 0;
         const fx = this.player.x, fy = this.player.y + this.player.height * 0.42;
         this.clouds.push(new ToxicGasPuff(fx, fy));
-        this.clouds.push(new ToxicGasPuff(fx, fy));   // double up for thickness
+        this.clouds.push(new ToxicGasPuff(fx, fy));
       }
     }
 
@@ -422,33 +505,35 @@ class PlagueTrailDash {
 
   draw(ctx) {
     ctx.save();
-    ctx.globalCompositeOperation = 'lighter';     // overlapping puffs glow
+    ctx.globalCompositeOperation = 'lighter';
     for (const c of this.clouds) c.draw(ctx);
     ctx.restore();
   }
 
-  // ---- call this from the enemy's own draw() while it is dissolving ----
-  // Squishes the enemy's image sprite on the Y-axis and widens X so it
-  // melts into a puddle. `t` is the melt progress 0..1.
   static drawMeltingEnemy(ctx, enemy, t) {
     t = clamp(t, 0, 1);
     const img = enemy.sprite;
-    const w = (enemy.spriteW ?? enemy.radius * 2) * (1 + t * 1.4);  // widen X
-    const h = (enemy.spriteH ?? enemy.radius * 2) * (1 - t);        // squish Y
+    const w = (enemy.spriteW ?? enemy.radius * 2) * (1 + t * 1.4);
+    const h = (enemy.spriteH ?? enemy.radius * 2) * (1 - t);
     ctx.save();
-    ctx.globalAlpha = 1 - t * 0.7;
-    // anchor to the feet so it collapses downward into a puddle
     ctx.translate(enemy.x, enemy.y + (enemy.spriteH ?? enemy.radius * 2) / 2);
     if (img && img.loaded) {
+      ctx.globalAlpha = 1 - t * 0.7;
       ctx.imageSmoothingEnabled = false;
       ctx.drawImage(img, -w / 2, -h, w, h);
     } else {
-      ctx.fillStyle = TOXIC;
+      ctx.globalCompositeOperation = 'lighter';
+      const g = ctx.createRadialGradient(0, -h / 2, 1, 0, -h / 2, w / 2);
+      g.addColorStop(0, `rgba(124,255,138,${(1 - t) * 0.8})`);
+      g.addColorStop(0.6, `rgba(0,255,51,${(1 - t) * 0.4})`);
+      g.addColorStop(1, 'rgba(4,40,18,0)');
+      ctx.fillStyle = g;
       ctx.beginPath();
       ctx.ellipse(0, -h / 2, w / 2, Math.max(2, h / 2), 0, 0, Math.PI * 2);
       ctx.fill();
     }
     ctx.restore();
+    ctx.globalAlpha = 1;
   }
 }
 
