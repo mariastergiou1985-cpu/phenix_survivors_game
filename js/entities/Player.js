@@ -127,7 +127,14 @@ export class Player {
 
   _loadCharacterSprite() {
     // Endless roster sprites live in a subfolder; map them here (others use the root path).
-    const ENDLESS_SPRITES = { japan_phasewalker: 'assets/characters/endless/japan_phasewalker.png?v=2' };   // ?v bust: corrected transparency
+    // oni_cataclysm_protocol is DATA-READY ONLY (locked @14 PF, NOT in the Character-Select roster yet,
+    // so this entry is inert until he's wired). Confirmed future kit (js/effects/ canvas modules):
+    //   laser-eyes.js = auto-weapon 1 · meteor-rain.js = auto-weapon 2 (AoE) · protocol-0.js = SPACE ult.
+    //   Q/E stay shared global utilities; SPACE is his ultimate only. (euclid_vector intentionally NOT wired.)
+    const ENDLESS_SPRITES = {
+      japan_phasewalker:      'assets/characters/endless/japan_phasewalker.png?v=2',   // ?v bust: corrected transparency
+      oni_cataclysm_protocol: 'assets/characters/endless/oni_cataclysm_protocol.png',
+    };
     const defaultPath = ENDLESS_SPRITES[this.selectedCharacter] || `assets/characters/${this.selectedCharacter}.png`;
     const spritePath  = this._outfitSpritePath || defaultPath;
     this.characterSprite = new Image();
