@@ -18,17 +18,19 @@ import { SupportDrone }   from '../entities/SupportDrone.js?v=1';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow } from './Effects.js?v=5';
 import { SystemEventManager } from './Events.js?v=95';
-import { UpgradeUI }      from './UpgradeUI.js?v=9';
-import { weightedSample } from './Upgrades.js?v=10';
+import { UpgradeUI }      from './UpgradeUI.js?v=10';
+import { weightedSample } from './Upgrades.js?v=11';
 import { MutationUI }      from './MutationUI.js?v=1';
 import { sampleMutations } from './Mutations.js?v=1';
-import { drawHUD, drawEndScreen } from './HUD.js?v=48';
+import { drawHUD, drawEndScreen } from './HUD.js?v=49';
 import { MetaProgress, META_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE } from './MetaProgress.js?v=18';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
 import { GlitchDash } from '../effects/glitch-dash.js?v=1';
 import { EMPShockwave } from '../effects/emp-shockwave.js?v=1';
 import { DigitalSingularity } from '../effects/digital-singularity.js?v=1';
+// Euclid Vector toxin kit — used ONLY when selectedCharacter === 'euclid_vector' (world-space).
+import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=1';
 
 // ── Thunder Solo sprite slices (cyan_lightning_rain_notes.png, 1254×1254) ──────
 // Strike variants: a clean bolt column + ripple base. (ax,ay) = ripple-centre as a
@@ -378,6 +380,14 @@ export class Game {
     this._pwDashing           = false;
     this._pwDashStart         = null;
     this._empShockCooldown    = 0;
+    // Euclid Vector toxin kit (only built/used while selectedCharacter === 'euclid_vector').
+    this._euclidKitBuilt = false;
+    this._euclidSniper   = null;
+    this._euclidKatana   = null;
+    this._euclidPlague   = null;
+    this._euclidEnemies  = [];                 // adapter array (kit holds this by reference)
+    this._euclidWraps    = new Map();          // gameEnemy → persistent adapter wrapper
+    this._euclidPlayer   = { x: 0, y: 0, height: 64, facing: 0 };
     this.empRings     = [];
     this._specialRings    = [];
     this.thunderSolo      = null;   // Thunder Solo ultimate state while active
@@ -1550,6 +1560,104 @@ export class Game {
     } catch (err) { console.warn('[Phasewalker FX render]', err); }
   }
 
+  // ── Euclid Vector toxin kit (world-space; built lazily when he is selected) ─────────────────
+  // Minimal, defensive adapter: the kit reads {x,y,radius,dead,dying} + calls takeDamage/
+  // applyKnockback/beginMelt on enemies and reads {x,y,height,facing} on the player. We proxy to the
+  // game's pos/takeHit and route damage through _capBossDamage so bosses are never instantly melted.
+  _euclidWrap(e) {
+    let w = this._euclidWraps.get(e);
+    if (w) return w;
+    const game = this;
+    w = {
+      _e: e, dying: false, poison: null,
+      get x() { return e.pos.x; },
+      get y() { return e.pos.y; },
+      get radius() { return e.radius || 14; },
+      get hp() { return e.hp; },
+      get dead() { return e.hp <= 0; },
+      takeDamage(d) {
+        if (!(d > 0)) return;
+        const capped = (e.isBoss?.() || e.isMegaBoss) ? game._capBossDamage(e, d) : d;   // boss-cap, then route through takeHit
+        if (e.takeHit) e.takeHit(capped, game); else e.hp -= capped;
+      },
+      applyKnockback(kx, ky) { if (e.vel) { e.vel.x += kx * 0.03; e.vel.y += ky * 0.03; } },   // modest impulse
+      beginMelt() {},   // cosmetic in the kit; the enemy already dies via takeHit
+    };
+    this._euclidWraps.set(e, w);
+    return w;
+  }
+
+  _ensureEuclidKit() {
+    if (this._euclidKitBuilt || this.player?.selectedCharacter !== 'euclid_vector') return;
+    const bounds = { w: WORLD_W, h: WORLD_H };
+    const noFx = { add() {}, burst() {} };   // kit's optional impact debris — skipped (no-op, defensive)
+    this._euclidSniper = new ToxicSniper(this._euclidPlayer, this._euclidEnemies, noFx, bounds);
+    this._euclidSniper.fireInterval = 0.7;           // main weapon (sniper default 1.5s is too slow)
+    this._euclidKatana = new OrbitalKatanaBarrier(this._euclidPlayer, this._euclidEnemies, noFx);
+    this._euclidKatana.damage = 12;                  // close-range secondary; boss-capped per hit
+    this._euclidPlague = new PlagueTrailDash(this._euclidPlayer, this._euclidEnemies, noFx, bounds);
+    this._euclidPlague.destroy();                    // REMOVE its self-installed global SPACE listener — we drive it
+    this._euclidPlague.cooldown = 0;                 // mana-gated by the game instead of an internal cd
+    this._euclidKitBuilt = true;
+  }
+
+  _updateEuclidKit(dt) {
+    if (this.player?.selectedCharacter !== 'euclid_vector') return;
+    this._ensureEuclidKit();
+    const p = this.player;
+    try {
+      // Sync world into the adapter (same array the kit holds by reference; persistent wrappers).
+      this._euclidPlayer.x = p.pos.x; this._euclidPlayer.y = p.pos.y;
+      const arr = this._euclidEnemies; arr.length = 0;
+      const live = new Set();
+      for (const e of this.enemies) if (e && e.pos) { arr.push(this._euclidWrap(e)); live.add(e); }
+      for (const e of this._euclidWraps.keys()) if (!live.has(e)) this._euclidWraps.delete(e);
+
+      // Card scaling — read live so it works in Act 1 + Endless.
+      this._euclidSniper.bulletDamage    = 14 + 4 * this._cardLvl('euclid_toxin_shot_mastery');
+      this._euclidSniper.poison.dps      = 6 + 3 * this._cardLvl('euclid_corrosive_spread');
+      this._euclidSniper.poison.duration = 3 + 0.5 * this._cardLvl('euclid_corrosive_spread');
+
+      this._euclidSniper.update(dt);
+      this._euclidKatana.update(dt);
+      this._euclidPlague.update(dt);
+      p.pos.x = this._euclidPlayer.x; p.pos.y = this._euclidPlayer.y;   // apply the plague-dash lunge
+
+      // Tick the toxin DoT the sniper applied (the kit only SETS enemy.poison; the host ticks it).
+      for (const w of this._euclidWraps.values()) {
+        const pz = w.poison; if (!pz || pz.timeLeft <= 0) continue;
+        pz.timeLeft -= dt; pz.tickTimer -= dt;
+        if (pz.tickTimer <= 0) { pz.tickTimer = pz.tickEvery; w.takeDamage(pz.dps * pz.tickEvery); }
+      }
+    } catch (err) { console.warn('[Euclid kit]', err); }
+  }
+
+  _drawEuclidKit(ctx) {
+    if (this.player?.selectedCharacter !== 'euclid_vector' || !this._euclidKitBuilt) return;
+    try {
+      this._euclidKatana.draw(ctx);
+      this._euclidSniper.draw(ctx);
+      this._euclidPlague.draw(ctx);
+    } catch (err) { console.warn('[Euclid kit draw]', err); }
+  }
+
+  // Euclid SPACE ultimate — Plague Trail Dash (mana-gated; Vector Overdose trims the cost). The kit's
+  // own global SPACE listener was removed in _ensureEuclidKit, so this is the only trigger path.
+  activateEuclidPlague() {
+    if (this.gameState !== 'playing' || this.paused || this.gameOver || this.victory || this.upgradeUI || this.mutationUI) return;
+    const p = this.player;
+    if (p.selectedCharacter !== 'euclid_vector') return;
+    this._ensureEuclidKit();
+    if (!this._euclidPlague) return;
+    const cost = Math.max(60, ULTIMATE_MANA_COST - 12 * (p.upgrades['euclid_vector_overdose'] || 0));
+    if (p.mana < cost) { this.floatingTexts.push(new FloatingText('NOT ENOUGH MANA', p.pos.clone(), '#00ff66', 1.0)); return; }
+    this._euclidPlayer.x = p.pos.x; this._euclidPlayer.y = p.pos.y;
+    this._euclidPlague.trigger();
+    p.mana -= cost;
+    this.screenShake.trigger(5, 0.25);
+    this.floatingTexts.push(new FloatingText('PLAGUE TRAIL!', p.pos.clone(), '#00ff66', 1.2));
+  }
+
   // ── Thunder Solo ultimate (Cyber Skeleton Warrior, SPACE, 100 mana) ──────────
   activateThunderSolo() {
     if (this.gameState !== 'playing' || this.paused || this.gameOver || this.victory || this.upgradeUI) return;
@@ -2174,6 +2282,7 @@ export class Game {
     this._updateShuriken(dt);       // Assassin bounce weapon (guards on character)
     this._updateChromePhantom(dt);  // Assassin ultimate
     this._updatePhasewalkerFx(dt);  // Japan Phasewalker kit (guards on character)
+    this._updateEuclidKit(dt);      // Euclid Vector toxin kit (guards on character)
     this._updateEnemies(dt);
     this._updateOverload(dt);
     this._updateSpawning(dt);
@@ -2914,6 +3023,7 @@ export class Game {
 
   _handleAutoShooting() {
     // Auto-fire at the existing cadence — only when a valid target exists (never into empty space).
+    if (this.player.selectedCharacter === 'euclid_vector') return;   // his weapon IS the toxin kit (ToxicSniper), not the base shot
     if (!this.player.canShoot()) return;
     if (!this.aimAssist) return;                          // T still toggles auto-fire on/off
     const target = this._autoTarget(this.player.pos, 750); // wide, screen-aware detection
@@ -2928,10 +3038,6 @@ export class Game {
     // Japan Phasewalker — Phase Shard Mastery feeds his automatic phase-needle (+1 dmg/level).
     if (this.player.selectedCharacter === 'japan_phasewalker') {
       proj.damage += this._cardLvl('phasewalker_phase_shard_mastery');
-    }
-    // Euclid Vector — Toxin Shot Mastery (+1 dmg) & Corrosive Spread (+1 dmg) feed his auto toxin needle.
-    if (this.player.selectedCharacter === 'euclid_vector') {
-      proj.damage += this._cardLvl('euclid_toxin_shot_mastery') + this._cardLvl('euclid_corrosive_spread');
     }
     this.projectiles.push(proj);
     this.audio?.playShoot();
@@ -4743,6 +4849,7 @@ export class Game {
 
     // 6 ── Projectiles, homing discs, EMP rings, particles
     for (const p of this.projectiles) { if (!p.hidden) p.draw(ctx); }   // keep character-specific attack sprite identity (assassin base shot drawn hidden)
+    this._drawEuclidKit(ctx);       // Euclid Vector toxin sniper / katanas / plague (world-space)
     for (const d of this.homingDiscs) d.draw(ctx);
     this._drawChainLightning(ctx);
     this._drawNeonPierceBeam(ctx);

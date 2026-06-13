@@ -1,4 +1,4 @@
-import { Game } from './game/Game.js?v=203';
+import { Game } from './game/Game.js?v=204';
 import { AudioManager } from './audio/AudioManager.js?v=19';
 
 const canvas = document.getElementById('game');
@@ -63,7 +63,7 @@ window.addEventListener('keydown', e => {
   // One-shot abilities
   if (key === 'q') game.activatePulseShield();   // Pulse Shield — shared by ALL characters
   if (key === 'e') game.activateEMPCloud();       // EMP stun — shared by ALL (Phasewalker layers his Shockwave VFX inside)
-  if (key === ' ') { game.activateThunderSolo(); game.activateOverheatedChains(); game.activateSpiritDojang(); game.activateSkyfallLances(); game.activateChromePhantomProtocol(); game.activateDigitalSingularity(); }   // SPACE ultimate (per-character; each self-guards)
+  if (key === ' ') { game.activateThunderSolo(); game.activateOverheatedChains(); game.activateSpiritDojang(); game.activateSkyfallLances(); game.activateChromePhantomProtocol(); game.activateDigitalSingularity(); game.activateEuclidPlague(); }   // SPACE ultimate (per-character; each self-guards)
   if (key === 'm') game.audio?.toggleMute();
   if (key === 'f') {
     if (!document.fullscreenElement) {

@@ -162,13 +162,14 @@ export const ALL_UPGRADES = [
     BLUE, 3, () => {}, '◌', 'epic', 'japan_phasewalker'),
   new UpgradeDefinition('phasewalker_singularity_mastery', 'Digital Singularity Mastery', 'Digital Singularity: stronger laser strikes',
     PURPLE, 3, () => {}, '✦', 'legendary', 'japan_phasewalker'),
-  // Euclid Vector — automatic toxin needle (toxin-kit weapons/ultimate wired in a later pass). Levels
-  // read in Game._handleAutoShooting; Vector Overdose applies a fire-rate boost now (safe, no dead pick).
-  new UpgradeDefinition('euclid_toxin_shot_mastery', 'Toxin Shot Mastery', 'Toxin needle: +damage per shot',
+  // Euclid Vector — real toxin kit. Toxin Shot Mastery / Corrosive Spread levels are read live in
+  // Game._updateEuclidKit (ToxicSniper bullet damage / poison potency); Vector Overdose trims the
+  // Plague Trail ult mana cost (read in activateEuclidPlague) AND gives +8% fire rate — no dead pick.
+  new UpgradeDefinition('euclid_toxin_shot_mastery', 'Toxin Shot Mastery', 'Toxic Sniper: +bullet damage',
     GREEN, 3, () => {}, '☣', 'rare', 'euclid_vector'),
-  new UpgradeDefinition('euclid_corrosive_spread', 'Corrosive Spread', 'Toxin needle: extra corrosive bite',
+  new UpgradeDefinition('euclid_corrosive_spread', 'Corrosive Spread', 'Toxin poison: +damage & duration',
     GREEN, 3, () => {}, '☠', 'epic', 'euclid_vector'),
-  new UpgradeDefinition('euclid_vector_overdose', 'Vector Overdose', 'Toxin barrage: +8% fire rate',
+  new UpgradeDefinition('euclid_vector_overdose', 'Vector Overdose', 'Plague Trail ult: cheaper cast; +8% fire rate',
     PURPLE, 3, p => { p.fireRateBonus += 0.08; }, '⚗', 'legendary', 'euclid_vector'),
 
   // ── Achievement Cards (Endless-only; only offered once their achievement is unlocked) ──
