@@ -2213,6 +2213,7 @@ export class Game {
 
   _drawGridCacheArrow(ctx) {
     if (!this.gridCache) return;
+    if (this.endless) return;   // Endless: drop the grid-cache side-arrow (crate pickup unchanged; Act 1 keeps it)
 
     // Convert world position → screen position (account for the view zoom)
     const sx = (this.gridCache.pos.x - this.camera.x) * this._viewScale;
