@@ -413,6 +413,7 @@ export class Game {
     this._aquaPuddles     = [];   // Aqua Spirit Trail puddles (Neon Taekwondo Girl movement secondary)
     this._aquaTrailTimer  = 0;    // spawn cadence while moving
     this.spiritDojang     = null; // Spirit Dojang Flag ultimate (Neon Taekwondo Girl) while active
+    this._cyberBike       = null; // Cyber Ride ultimate (Neon Taekwondo Girl) while active
     this._specialBeams    = [];
     this._specialTrail    = [];
     this._taekwondoDmgSet = new Set();
@@ -2476,6 +2477,7 @@ export class Game {
     this._updateThunderSolo(dt);
     this._updateOverheatedChains(dt);
     this._updateSpiritDojang(dt);
+    this._updateCyberBikeRush(dt);
     this._checkPlayerEnemyCollisions(dt);
     this._updateEnemyBullets(dt);
     this._updateAbilityTimers(dt);
@@ -4501,6 +4503,148 @@ export class Game {
     }
   }
 
+  // ── CYBER RIDE ultimate (Neon Taekwondo Girl, SPACE, 100 mana) ───────────────
+  // She summons a neon speeder: steer with normal movement (WASD/arrows) at huge speed,
+  // ram enemies, and twin headlight LASERS fire forward. Reverts to normal when it ends.
+  activateCyberBikeRush() {
+    if (this.gameState !== 'playing' || this.paused || this.gameOver || this.victory || this.upgradeUI) return;
+    const p = this.player;
+    if (p.selectedCharacter !== 'taekwondo_girl') return;
+    if (this._cyberBike) return;
+    if (p.mana < ULTIMATE_MANA_COST) {
+      this.floatingTexts.push(new FloatingText('NOT ENOUGH MANA', p.pos.clone(), CYAN, 1.0));
+      return;
+    }
+    p.mana -= ULTIMATE_MANA_COST;
+    const dir = (p.lastFacingDir && p.lastFacingDir.lengthSq() > 0.001) ? safeNormalize(p.lastFacingDir.clone()) : new Vec2(1, 0);
+    const speedAdded = 1.2;                       // +120% move speed while riding (tunable)
+    p.speedBonus = (p.speedBonus || 0) + speedAdded;
+    this._cyberBike = { t: 0, fireTimer: 0, dir, beams: [], hits: new Map(), speedAdded };
+    this.screenShake.trigger(5, 0.25);
+    this.audio?.playEventWarning?.();
+    this.floatingTexts.push(new FloatingText('CYBER RIDE!', p.pos.clone(), CYAN, 1.4));
+  }
+
+  _updateCyberBikeRush(dt) {
+    const bk = this._cyberBike;
+    if (!bk) return;
+    const p = this.player;
+    const DURATION = 5.0;                                            // ride length (tunable)
+    const RAM_R = 46, RAM_DMG = 42, RAM_BOSS = 7, KNOCK = 430;       // ram values (tunable)
+    const FIRE_EVERY = 0.42, RANGE = 620, WIDTH = 24, LASER_DMG = 22, LASER_BOSS = 5;
+    bk.t += dt;
+
+    // steer with the player's current movement direction (WASD / arrows)
+    if (p.lastFacingDir && p.lastFacingDir.lengthSq() > 0.001) bk.dir = safeNormalize(p.lastFacingDir.clone());
+    const dir = bk.dir;
+
+    // ram enemies the bike drives through (per-enemy re-hit cooldown)
+    for (const [e, cd] of bk.hits) { const n = cd - dt; if (n <= 0) bk.hits.delete(e); else bk.hits.set(e, n); }
+    for (const e of this.enemies) {
+      if (bk.hits.has(e)) continue;
+      if (distance(e.pos, p.pos) < RAM_R + e.radius) {
+        const boss = e.isBoss() || e.isMegaBoss;
+        e.takeHit(boss ? RAM_BOSS : RAM_DMG, this);
+        if (!boss) e.vel.addMut(safeNormalize(e.pos.sub(p.pos)).scale(KNOCK));
+        this.particles.spawnHitSparks(e.pos, CYAN);
+        bk.hits.set(e, 0.45);
+      }
+    }
+
+    // twin headlight lasers fire forward on a short cycle (hitscan pierce)
+    bk.fireTimer -= dt;
+    if (bk.fireTimer <= 0) {
+      bk.fireTimer = FIRE_EVERY;
+      const ox = p.pos.x + dir.x * 24, oy = (p.pos.y - 4) + dir.y * 24;
+      for (const e of this.enemies) {
+        const tx = e.pos.x - ox, ty = e.pos.y - oy;
+        const along = tx * dir.x + ty * dir.y;
+        if (along < 0 || along > RANGE) continue;
+        const pX = tx - dir.x * along, pY = ty - dir.y * along;
+        if (pX * pX + pY * pY < (WIDTH + e.radius) ** 2) {
+          const boss = e.isBoss() || e.isMegaBoss;
+          e.takeHit(boss ? LASER_BOSS : LASER_DMG, this);
+          this.particles.spawnHitSparks(e.pos, CYAN);
+        }
+      }
+      bk.beams.push({ x: ox, y: oy, dx: dir.x, dy: dir.y, len: RANGE, life: 0.18, maxLife: 0.18 });
+      this.audio?.playHit?.();
+    }
+    for (const b of bk.beams) b.life -= dt;
+    bk.beams = bk.beams.filter(b => b.life > 0);
+
+    // end: remove the speed buff and revert to normal
+    if (bk.t >= DURATION) {
+      p.speedBonus = Math.max(0, (p.speedBonus || 0) - bk.speedAdded);
+      this._cyberBike = null;
+      this.floatingTexts.push(new FloatingText('RIDE OVER', p.pos.clone(), CYAN, 0.8));
+    }
+  }
+
+  // Drawn BEFORE the player so she sits on the bike. Beams + neon speeder oriented to travel dir.
+  _drawCyberBikeRush(ctx) {
+    const bk = this._cyberBike;
+    if (!bk) return;
+    const p = this.player;
+    const DURATION = 5.0;
+    const a = Math.max(0, Math.min(bk.t / 0.25, (DURATION - bk.t) / 0.4, 1));
+    const ang = Math.atan2(bk.dir.y, bk.dir.x);
+
+    // headlight laser beams (world space)
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.lineCap = 'round';
+    for (const b of bk.beams) {
+      const al = (b.life / b.maxLife) * a;
+      const ex = b.x + b.dx * b.len, ey = b.y + b.dy * b.len;
+      ctx.globalAlpha = 0.30 * al; ctx.strokeStyle = '#1fd0ff'; ctx.lineWidth = 22;
+      ctx.beginPath(); ctx.moveTo(b.x, b.y); ctx.lineTo(ex, ey); ctx.stroke();
+      ctx.globalAlpha = 0.85 * al; ctx.strokeStyle = CYAN; ctx.lineWidth = 9 * al + 2;
+      ctx.beginPath(); ctx.moveTo(b.x, b.y); ctx.lineTo(ex, ey); ctx.stroke();
+      ctx.globalAlpha = al; ctx.strokeStyle = '#eaffff'; ctx.lineWidth = 3 * al + 1;
+      ctx.beginPath(); ctx.moveTo(b.x, b.y); ctx.lineTo(ex, ey); ctx.stroke();
+      const mg = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, 26);
+      mg.addColorStop(0, `rgba(190,240,255,${0.9 * al})`); mg.addColorStop(1, 'rgba(31,208,255,0)');
+      ctx.globalAlpha = 1; ctx.fillStyle = mg; ctx.beginPath(); ctx.arc(b.x, b.y, 26, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
+
+    // neon speeder under the rider, oriented to travel direction
+    ctx.save();
+    ctx.translate(p.pos.x, p.pos.y + 10);
+    ctx.rotate(ang);
+    ctx.globalAlpha = a;
+    // underglow
+    let g = ctx.createRadialGradient(0, 0, 4, 0, 0, 52);
+    g.addColorStop(0, 'rgba(31,208,255,0.45)'); g.addColorStop(1, 'rgba(31,208,255,0)');
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(0, 0, 52, 26, 0, 0, Math.PI * 2); ctx.fill();
+    // speed streaks behind
+    ctx.strokeStyle = 'rgba(120,240,255,0.5)'; ctx.lineWidth = 2;
+    for (let i = -2; i <= 2; i++) {
+      ctx.globalAlpha = a * (0.5 - Math.abs(i) * 0.12);
+      ctx.beginPath(); ctx.moveTo(-26, i * 5); ctx.lineTo(-26 - (34 + Math.random() * 18), i * 6); ctx.stroke();
+    }
+    ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = a;
+    // wheels
+    ctx.fillStyle = '#04161e'; ctx.strokeStyle = CYAN; ctx.lineWidth = 2;
+    for (const wx of [-22, 24]) { ctx.beginPath(); ctx.ellipse(wx, 0, 6, 12, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); }
+    // chassis (nose at +x = travel dir)
+    ctx.fillStyle = '#06222e'; ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(34, 0); ctx.lineTo(16, -9); ctx.lineTo(-20, -8); ctx.lineTo(-30, 0);
+    ctx.lineTo(-20, 8); ctx.lineTo(16, 9); ctx.closePath();
+    ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = '#8af3ff'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(-24, 0); ctx.lineTo(30, 0); ctx.stroke();
+    // headlight glow at the nose
+    ctx.globalCompositeOperation = 'lighter';
+    g = ctx.createRadialGradient(32, 0, 0, 32, 0, 14);
+    g.addColorStop(0, 'rgba(234,255,255,0.95)'); g.addColorStop(1, 'rgba(31,208,255,0)');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(32, 0, 14, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+
   _updateEnemies(dt) {
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       const e = this.enemies[i];
@@ -5091,6 +5235,7 @@ export class Game {
       ctx.restore();
     }
     this._drawThunderSoloGuitar(ctx);
+    this._drawCyberBikeRush(ctx);   // Cyber Ride speeder sits under the rider (Neon Taekwondo Girl)
     // Digital Singularity OWNS the player while active (it draws the dissolving/reforming sprite
     // in screen space), so skip the normal world-space player draw during the ultimate.
     if (!(this.player.selectedCharacter === 'japan_phasewalker' && this._digitalSingularity?.isActive())) {
@@ -6580,7 +6725,7 @@ export class Game {
                 || p.selectedCharacter === 'brawler_warrior'
                 || p.selectedCharacter === 'assassin_clone';
     if (!hasUlt) return false;
-    if (this.thunderSolo || this.overChains || this.spiritDojang || this._skyfall || this._chromePhantom) return false;  // mid-cast
+    if (this.thunderSolo || this.overChains || this.spiritDojang || this._cyberBike || this._skyfall || this._chromePhantom) return false;  // mid-cast
     return p.mana >= ULTIMATE_MANA_COST;
   }
 
