@@ -11,15 +11,15 @@ import { clamp, distance, safeNormalize, randomChoice, randomRange } from '../ut
 import { FloatingText }   from '../entities/FloatingText.js';
 import { DataCore, rollCoreType } from '../entities/DataCore.js?v=2';
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=13';
-import { Player }         from '../entities/Player.js?v=76';
+import { Player }         from '../entities/Player.js?v=77';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=5';
 import { Enemy }          from '../entities/Enemy.js?v=108';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=1';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow } from './Effects.js?v=5';
 import { SystemEventManager } from './Events.js?v=96';
-import { UpgradeUI }      from './UpgradeUI.js?v=10';
-import { weightedSample } from './Upgrades.js?v=11';
+import { UpgradeUI }      from './UpgradeUI.js?v=11';
+import { weightedSample } from './Upgrades.js?v=12';
 import { MutationUI }      from './MutationUI.js?v=1';
 import { sampleMutations } from './Mutations.js?v=1';
 import { drawHUD, drawEndScreen } from './HUD.js?v=51';
@@ -4404,7 +4404,10 @@ export class Game {
     const count = 1 + (lvl >= 3 ? 1 : 0) + (lvl >= 6 ? 1 : 0); // extra crescents at higher mastery
     const near = this.enemies.map(e => ({ e, d: distance(e.pos, p.pos) }))
                              .sort((a, b) => a.d - b.d).slice(0, count);
-    const SPEED = 540, DMG = 26, BOSSDMG = 6, PIERCE = 4, LIFE = 0.9, HITR = 30;   // all tunable
+    const km = this._cardLvl('taekwondo_aqua_trail_mastery');        // Spirit Pierce (0..3)
+    const SPEED = 540, DMG = 26, BOSSDMG = 6, LIFE = 0.9;
+    const PIERCE = 4 + km;                                            // +1 pierce / level (4 → 7)
+    const HITR = 30 * (1 + 0.08 * km);                               // +8% hit arc / level
     for (let k = 0; k < count; k++) {
       const tgt = (near[k] || near[0]).e;
       let dir = safeNormalize(tgt.pos.sub(p.pos));

@@ -137,8 +137,9 @@ export const ALL_UPGRADES = [
   // Neon Taekwondo Girl — aqua spirit trail / dojang flag identity
   new UpgradeDefinition('taekwondo_primary_mastery', 'Tidal Kicks', '+12% primary damage & cyan kick arc',
     CYAN, 3, () => {}, '🌊', 'rare', 'taekwondo_girl'),
-  new UpgradeDefinition('taekwondo_aqua_trail_mastery', 'Spirit Current', 'Aqua Spirit Trail: hits harder',
-    CYAN, 3, () => {}, '💧', 'epic', 'taekwondo_girl'),
+  // id unchanged (save compat); retargeted from the retired Aqua Trail to the live auto-weapon.
+  new UpgradeDefinition('taekwondo_aqua_trail_mastery', 'Spirit Pierce', 'Spirit Crescent Kicks: +1 pierce & wider arc per level',
+    CYAN, 3, () => {}, '🌀', 'epic', 'taekwondo_girl'),
   new UpgradeDefinition('taekwondo_dojang_flag_mastery', 'Greater Dojang', 'Spirit Dojang Flag: larger aura',
     BLUE, 3, () => {}, '⚑', 'legendary', 'taekwondo_girl'),
   // Brawler Warrior — chakram / crescent claw / skyfall lances identity
