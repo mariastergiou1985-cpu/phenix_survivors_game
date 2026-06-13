@@ -20,6 +20,8 @@ import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, dr
 import { SystemEventManager } from './Events.js?v=95';
 import { UpgradeUI }      from './UpgradeUI.js?v=7';
 import { weightedSample } from './Upgrades.js?v=8';
+import { MutationUI }      from './MutationUI.js?v=1';
+import { sampleMutations } from './Mutations.js?v=1';
 import { drawHUD, drawEndScreen } from './HUD.js?v=47';
 import { MetaProgress, META_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE } from './MetaProgress.js?v=17';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
@@ -108,6 +110,10 @@ const ELITE_WAVE = {
 // Endless-only: minimum gap (s) between boss/miniboss center-screen warnings (≈ one boss-rotation
 // loop) so a boss wave warns ONCE, not once per boss/respawn in the same loop. Act 1 is unaffected.
 const BOSS_WARN_COOLDOWN = 90;
+
+// Forced Endless Mutation Cards (Phase 1) — run-scoped negative mutations only (never saved).
+const MUTATION_INTERVAL   = 180;  // s — first forced pick at 3:00, then every 3:00
+const MUTATION_MAX_STACKS = 6;    // Phase 1 cap on total forced picks per run
 
 export class Game {
   constructor() {
@@ -381,6 +387,9 @@ export class Game {
     this.screenShake  = new ScreenShake();
     this.events       = new SystemEventManager();
     this.upgradeUI    = null;
+    this.mutationUI   = null;                    // forced Endless mutation picker (null = none open)
+    this.mutations    = this._freshMutations();  // run-scoped negative-mutation multipliers (neutral in Act 1)
+    this._mutationTimer = MUTATION_INTERVAL;
     this.rerollAvailable = false;
     this.megaBoss     = null;
     this.bossLavaZones = [];   // telegraphed lava/fire-rain zones cast by the main boss (player-only)
@@ -536,6 +545,9 @@ export class Game {
     this.victory   = false;
     this.paused    = false;
     this.upgradeUI     = null;
+    this.mutationUI    = null;                    // reset forced-mutation state every new run
+    this.mutations     = this._freshMutations();
+    this._mutationTimer = MUTATION_INTERVAL;
     this.supportDrones = [];
     this.allyDrones    = [];
     this.audio?.startMenuMusic();
@@ -578,6 +590,9 @@ export class Game {
     this._eliteWaveElapsed = 0;
     this._endlessBossTimer = 25;           // arm the repeating boss/miniboss rotation (~25s → ~2 min)
     this._endlessBossIdx   = -1;
+    this.mutations         = this._freshMutations();   // fresh forced-mutation state for THIS Endless run
+    this.mutationUI        = null;
+    this._mutationTimer    = MUTATION_INTERVAL;         // first forced mutation at 3:00 into Endless
     this._applyEndlessProtocols();     // one-shot Achievement Protocol stat boosts (Endless only)
     this._checkEndlessAchievements();  // grant FIRST ENDLESS RUN immediately on entering Endless
     this.audio?.startEndlessMusic();   // Endless-only track (dawn) replaces gameplay music
@@ -1161,7 +1176,7 @@ export class Game {
   enemySpawnInterval() {
     let iv = Math.max(0.16, 0.5 - this.currentMinute() * 0.025);
     if (this.endless) iv = Math.max(0.08, iv * 0.5);
-    return iv;
+    return iv * this.mutations.spawnRateMult;   // SWARM PROTOCOL (1.0 outside Endless)
   }
 
   chooseEnemyType() {
@@ -1986,6 +2001,35 @@ export class Game {
     this.upgradeUI = null;
   }
 
+  // Neutral (no-effect) forced-mutation run-state. All multipliers default to 1 so Act 1 and any
+  // pre-Endless frame are completely unaffected; only Endless picks push these off 1.
+  _freshMutations() {
+    return {
+      spawnRateMult: 1, pickupRadiusMult: 1, manaGainMult: 1,
+      enemyBulletSpeedMult: 1, plasmaOnPlayerChanceBonus: 0, eliteIntervalMult: 1,
+      stacks: 0, taken: {},
+    };
+  }
+
+  // Open the forced 3-card mutation picker (Endless only). The world freezes via the update gate.
+  _openMutationChoice() {
+    this.mutationUI = new MutationUI(sampleMutations(3, this.mutations));
+    this.audio?.playEventWarning?.();
+    this.triggerAnnouncement('⚠ FORCED MUTATION', '#ff5a3c');
+  }
+
+  // Apply the chosen mutation and resume. No skip path exists — a valid index must be picked.
+  selectMutation(index) {
+    if (!this.mutationUI) return;
+    const choices = this.mutationUI.choices;
+    if (index < 0 || index >= choices.length) return;
+    const card = choices[index];
+    card.apply(this.mutations);
+    this.mutations.stacks += 1;
+    this.mutations.taken[card.key] = (this.mutations.taken[card.key] || 0) + 1;
+    this.mutationUI = null;
+  }
+
   // One free reroll per level-up screen — re-samples the (already useful) card pool.
   rerollUpgrade() {
     if (!this.upgradeUI || !this.rerollAvailable) return;
@@ -2035,8 +2079,8 @@ export class Game {
 
     if (this.paused || this.gameOver || this.victory) return;
 
-    // If upgrade UI is active, freeze everything but allow UI interaction
-    if (this.upgradeUI) return;
+    // If an upgrade OR forced-mutation card is active, freeze everything but allow UI interaction
+    if (this.upgradeUI || this.mutationUI) return;
 
     // Check for pending level-up to show upgrade cards (one at a time)
     if (this.player.pendingLevelupCount > 0) {
@@ -2227,7 +2271,7 @@ export class Game {
       p.hp = p.hp >= p.maxHp ? p.hp : Math.min(p.maxHp, p.hp + heal);   // never clip overheal
       this.floatingTexts.push(new FloatingText('+' + heal + ' HP', p.pos.clone(), RED, 1.4));
     } else if (r < 0.55) {
-      const m = Math.random() < 0.5 ? 25 : 50;
+      const m = Math.round((Math.random() < 0.5 ? 25 : 50) * this.mutations.manaGainMult);   // MANA DROUGHT (×1 outside Endless)
       p.mana = Math.min(p.maxMana, p.mana + m);
       this.floatingTexts.push(new FloatingText('+' + m + ' MANA', p.pos.clone(), CYAN, 1.4));
     } else if (r < 0.80) {
@@ -2303,8 +2347,9 @@ export class Game {
     for (let i = this.manaPickups.length - 1; i >= 0; i--) {
       const m = this.manaPickups[i];
       if (distance(this.player.pos, m.pos) < PLAYER_RADIUS + PICKUP_R) {
-        this.player.mana = Math.min(this.player.maxMana, this.player.mana + 25);
-        this.floatingTexts.push(new FloatingText('+25 MANA', this.player.pos.clone(), CYAN, 1.2));
+        const mg = Math.round(25 * this.mutations.manaGainMult);   // MANA DROUGHT (×1 outside Endless)
+        this.player.mana = Math.min(this.player.maxMana, this.player.mana + mg);
+        this.floatingTexts.push(new FloatingText('+' + mg + ' MANA', this.player.pos.clone(), CYAN, 1.2));
         this.particles.spawnCorePickup(m.pos, CYAN);
         this.audio?.playCorePickup();
         this.manaPickups.splice(i, 1);
@@ -2865,6 +2910,7 @@ export class Game {
   }
 
   spawnEnemyBullet(pos, dir, speed, damage, radius, color, opts = {}) {
+    speed *= this.mutations.enemyBulletSpeedMult;   // ACCELERATED ROUNDS (1.0 outside Endless)
     this.enemyBullets.push({ pos, dir: dir.clone(), speed, damage, radius, color, life: 4.0, stun: opts.stun || 0 });
   }
 
@@ -2898,7 +2944,7 @@ export class Game {
       const core = this.groundCores[i];
       const d    = distance(core.pos, this.player.pos);
 
-      if (d < this.player.pickupRadius && this.player.carry < this.player.maxCarry) {
+      if (d < this.player.pickupRadius * this.mutations.pickupRadiusMult && this.player.carry < this.player.maxCarry) {   // MAGNET DECAY (read-site only; never mutates player.pickupRadius)
         const pull = safeNormalize(this.player.pos.sub(core.pos));
         core.pos.addMut(pull.scale(360 * dt));
 
@@ -4192,6 +4238,21 @@ export class Game {
     if (!this.endless) return;            // hard gate — inert during Act 1
     this._eliteWaveElapsed += dt;
 
+    // ── Forced Mutation cadence (Phase 1): first at 3:00, then every 3:00, max 6 picks. ──
+    // Defer while a level-up card is open or a boss warning / corruption-beam telegraph is live so
+    // the forced choice never stacks over another UI or pops during an unavoidable damage moment.
+    if (!this.mutationUI && this.mutations.stacks < MUTATION_MAX_STACKS) {
+      this._mutationTimer -= dt;
+      if (this._mutationTimer <= 0) {
+        if (this.upgradeUI || this._bossWarnCd > 0 || this._corruptionBeam) {
+          this._mutationTimer = 3;                 // busy/dangerous → retry shortly
+        } else {
+          this._openMutationChoice();
+          this._mutationTimer = MUTATION_INTERVAL;
+        }
+      }
+    }
+
     // Live Endless-achievement check (~1/s) so milestones unlock + persist mid-run.
     this._achTimer = (this._achTimer || 0) - dt;
     if (this._achTimer <= 0) { this._achTimer = 1.0; this._checkEndlessAchievements(); }
@@ -4215,7 +4276,7 @@ export class Game {
     this._eliteWaveTimer   -= dt;
     if (this._eliteWaveTimer <= 0) {
       this._spawnEliteWave();
-      this._eliteWaveTimer = ELITE_WAVE.interval;
+      this._eliteWaveTimer = ELITE_WAVE.interval * this.mutations.eliteIntervalMult;   // EARLY ELITES (1.0 outside Endless)
     }
   }
 
@@ -4411,9 +4472,10 @@ export class Game {
     }
 
     // Every Phoenix Revive also restores +25 mana (capped at max).
-    this.player.mana = Math.min(this.player.maxMana, this.player.mana + 25);
+    const revMana = Math.round(25 * this.mutations.manaGainMult);   // MANA DROUGHT (×1 outside Endless)
+    this.player.mana = Math.min(this.player.maxMana, this.player.mana + revMana);
     this.floatingTexts.push(
-      new FloatingText('+25 MANA', new Vec2(this.player.pos.x, this.player.pos.y + 18), CYAN, 2.0)
+      new FloatingText('+' + revMana + ' MANA', new Vec2(this.player.pos.x, this.player.pos.y + 18), CYAN, 2.0)
     );
 
     this.audio?.playPhoenixRevive(this.phoenixReviveType);
@@ -4855,6 +4917,7 @@ export class Game {
     this._drawAnnouncement(ctx);
 
     if (this.upgradeUI) this.upgradeUI.draw(ctx, this.player, this);
+    if (this.mutationUI) this.mutationUI.draw(ctx, this.player, this);
     if (this.victory)        this._drawVictoryScreen(ctx);
     else if (this.gameOver)  drawEndScreen(ctx, this);
 
@@ -6347,7 +6410,8 @@ export class Game {
       for (let i = 0; i < count; i++) {
         const ang  = Math.random() * Math.PI * 2;
         // One drop can land directly ON the player; the 1.2s warn ring still makes it dodgeable.
-        const dist = (i === 0 && Math.random() < 0.5) ? randomRange(0, 26) : randomRange(40, 260);
+        const onPlayerChance = 0.5 + this.mutations.plasmaOnPlayerChanceBonus;   // TARGETED PLASMA
+        const dist = (i === 0 && Math.random() < onPlayerChance) ? randomRange(0, 26) : randomRange(40, 260);
         const pos  = new Vec2(
           clamp(this.player.pos.x + Math.cos(ang) * dist, WORLD_MARGIN, WORLD_W - WORLD_MARGIN),
           clamp(this.player.pos.y + Math.sin(ang) * dist, WORLD_MARGIN, WORLD_H - WORLD_MARGIN)

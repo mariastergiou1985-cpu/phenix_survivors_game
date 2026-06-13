@@ -1,4 +1,4 @@
-import { Game } from './game/Game.js?v=199';
+import { Game } from './game/Game.js?v=200';
 import { AudioManager } from './audio/AudioManager.js?v=19';
 
 const canvas = document.getElementById('game');
@@ -43,6 +43,13 @@ window.addEventListener('keydown', e => {
     } else if (game.gameState === 'start_menu' || game.gameState === 'character_select') {
       game.audio.startMenuMusic();
     }
+  }
+
+  // Forced mutation card selection (1/2/3 only — NO skip, NO reroll; ESC cannot close it)
+  if (game.mutationUI) {
+    const midx = { '1': 0, '2': 1, '3': 2 }[e.key];
+    if (midx !== undefined) game.selectMutation(midx);
+    return;
   }
 
   // Upgrade card selection (1/2/3) + reroll (R)
@@ -134,7 +141,11 @@ canvas.addEventListener('mousedown', e => {
   // Each block is else-if so only ONE handler fires per click,
   // even if a handler changes game.gameState mid-event.
 
-  if (game.upgradeUI) {
+  if (game.mutationUI) {
+    // ── Forced mutation card (Endless) — click selects; no skip/reroll ─
+    game.mutationUI.handleClick(mousePos, game);
+
+  } else if (game.upgradeUI) {
     // ── In-game upgrade card (level-up choice) ────────────────────
     game.upgradeUI.handleClick(mousePos, game);
 
@@ -256,7 +267,7 @@ canvas.addEventListener('contextmenu', e => e.preventDefault());
 let _lastCursor = '';
 function applyContextualCursor() {
   const inCombat = game.gameState === 'playing'
-    && !game.paused && !game.gameOver && !game.victory && !game.upgradeUI;
+    && !game.paused && !game.gameOver && !game.victory && !game.upgradeUI && !game.mutationUI;
   const want = inCombat ? 'none' : 'default';
   if (want !== _lastCursor) { canvas.style.cursor = want; _lastCursor = want; }
 }
