@@ -4787,16 +4787,20 @@ export class Game {
       this.overload  = clamp(this.overload + chaosGain * diffMult * dt, 0, MAX_OVERLOAD);
     }
 
-    // Time-based minimum floor — phased so a secured grid still feels increasingly dangerous late-game:
-    //   0–10 min: gentle ramp, caps 35% (~7:00) — early pace unchanged.
-    //   10–15 min: 35% → 55%.   15+ min: 55% → 80% (@20:00), hard-capped 85% so it's never auto-loss.
-    // Falling behind on cores still pushes overload ABOVE the floor via chaosGain above.
-    const mins = this.timeAlive / 60;
-    let floorPct;
-    if      (mins <= 10) floorPct = Math.min(35, mins * 5.0);
-    else if (mins <= 15) floorPct = 35 + (mins - 10) * 4.0;
-    else                 floorPct = Math.min(85, 55 + (mins - 15) * 5.0);
-    this.overload  = Math.max(this.overload, floorPct);
+    // Time-based minimum floor — applies ONLY while the grid is SECURED (chaosGain === 0), so a
+    // fully-defended grid still hovers dangerously but never auto-loses (capped 85%). When the grid
+    // is COMPROMISED (chaosGain > 0 — loose/stolen cores or empty Nexus slots, i.e. the "Nexus down"
+    // state), the floor must NOT pin overload: it then keeps climbing via chaosGain all the way to
+    // 100 so the Overload failure / Game-Over condition stays reachable instead of stalling at ~85.
+    //   0–10 min: gentle ramp, caps 35% (~7:00).  10–15 min: 35% → 55%.  15+ min: 55% → 80% (@20:00), capped 85%.
+    if (chaosGain === 0) {
+      const mins = this.timeAlive / 60;
+      let floorPct;
+      if      (mins <= 10) floorPct = Math.min(35, mins * 5.0);
+      else if (mins <= 15) floorPct = 35 + (mins - 10) * 4.0;
+      else                 floorPct = Math.min(85, 55 + (mins - 15) * 5.0);
+      this.overload = Math.max(this.overload, floorPct);
+    }
 
     if (this.audio) this.audio.updateAlarm(this.overload);
   }
