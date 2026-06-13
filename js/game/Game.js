@@ -13,11 +13,11 @@ import { DataCore, rollCoreType } from '../entities/DataCore.js?v=2';
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=13';
 import { Player }         from '../entities/Player.js?v=76';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=5';
-import { Enemy }          from '../entities/Enemy.js?v=107';
+import { Enemy }          from '../entities/Enemy.js?v=108';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=1';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow } from './Effects.js?v=5';
-import { SystemEventManager } from './Events.js?v=95';
+import { SystemEventManager } from './Events.js?v=96';
 import { UpgradeUI }      from './UpgradeUI.js?v=10';
 import { weightedSample } from './Upgrades.js?v=11';
 import { MutationUI }      from './MutationUI.js?v=1';
@@ -1227,7 +1227,7 @@ export class Game {
     else if (m < 20) cap = 150 + (m - 10) * 10;      // 150 → 250 (continuous pressure)
     else             cap = Math.min(280, 250 + (m - 20) * 5);  // heavy survivor chaos, perf-capped
     // Endless: much denser from the start (×1.4 + 30), perf-capped a touch higher. Act 1 untouched.
-    if (this.endless) cap = Math.min(320, Math.round(cap * 1.4) + 30);
+    if (this.endless) cap = Math.min(210, Math.round(cap * 1.15) + 20);
     return cap;
   }
   // Endless spawns roughly twice as fast from the start (lower floor too). Act 1 unchanged.
@@ -4955,6 +4955,7 @@ export class Game {
       this.floatingTexts[i].update(dt);
       if (this.floatingTexts[i].timer <= 0) this.floatingTexts.splice(i, 1);
     }
+    if (this.floatingTexts.length > 90) this.floatingTexts.splice(0, this.floatingTexts.length - 90);
   }
 
   _updateEffects(dt) {

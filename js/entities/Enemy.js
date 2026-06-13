@@ -217,9 +217,11 @@ export class Enemy {
     this.hp       -= dmg;
     this.hitFlash  = FEEDBACK.flashDuration;
 
-    // Floating damage number (render-only; short life avoids spam)
-    const dmgPos = this.pos.add(new Vec2(randomRange(-6, 6), -this.radius - 4));
-    game.floatingTexts.push(new FloatingText('-' + Math.round(dmg), dmgPos, WHITE, 0.5));
+    // Floating damage number — throttled so heavy crowds/DoT can't flood the renderer (perf).
+    if (game.floatingTexts.length < 70 && (dmg >= 20 || Math.random() < 0.25)) {
+      const dmgPos = this.pos.add(new Vec2(randomRange(-6, 6), -this.radius - 4));
+      game.floatingTexts.push(new FloatingText('-' + Math.round(dmg), dmgPos, WHITE, 0.5));
+    }
 
     if (this.carryingCore !== null) {
       const dropped = this.carryingCore;
