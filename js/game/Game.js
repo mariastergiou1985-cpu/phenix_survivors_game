@@ -11,18 +11,18 @@ import { clamp, distance, safeNormalize, randomChoice, randomRange } from '../ut
 import { FloatingText }   from '../entities/FloatingText.js';
 import { DataCore, rollCoreType } from '../entities/DataCore.js?v=2';
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=13';
-import { Player }         from '../entities/Player.js?v=73';
-import { Projectile, HomingDisc } from '../entities/Projectile.js?v=3';
+import { Player }         from '../entities/Player.js?v=74';
+import { Projectile, HomingDisc } from '../entities/Projectile.js?v=4';
 import { Enemy }          from '../entities/Enemy.js?v=107';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=1';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow } from './Effects.js?v=5';
 import { SystemEventManager } from './Events.js?v=95';
-import { UpgradeUI }      from './UpgradeUI.js?v=7';
-import { weightedSample } from './Upgrades.js?v=8';
+import { UpgradeUI }      from './UpgradeUI.js?v=8';
+import { weightedSample } from './Upgrades.js?v=9';
 import { MutationUI }      from './MutationUI.js?v=1';
 import { sampleMutations } from './Mutations.js?v=1';
-import { drawHUD, drawEndScreen } from './HUD.js?v=47';
+import { drawHUD, drawEndScreen } from './HUD.js?v=48';
 import { MetaProgress, META_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE } from './MetaProgress.js?v=17';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
@@ -1361,9 +1361,8 @@ export class Game {
                                life: 0.5, maxLife: 0.5, color1: CYAN, color2: '#ffffff' });
     p.empCloudCooldown = Math.max(8, 12 - p.upgrades['EMP Cloud']);   // 12s base, upgrade trims it
     this.floatingTexts.push(new FloatingText('STUN PULSE!', p.pos.clone(), CYAN, 0.9));
-    // Japan Phasewalker: layer his EMP Shockwave VFX on the SAME shared E ability (does not
-    // replace the global stun above; self-guards on character + its own VFX cooldown).
-    if (p.selectedCharacter === 'japan_phasewalker') this.activateEMPShockwave();
+    // (Japan Phasewalker's EMP Shockwave is now AUTOMATIC/passive — see _updatePhasewalkerFx —
+    //  so E stays purely the shared global EMP stun for every character.)
   }
 
   // ── Pulse Shield (Q): 7s cyan bubble, -60% incoming damage, 25s cooldown ──────
@@ -1406,14 +1405,14 @@ export class Game {
     const h = Math.max(24, Math.round(64 * this._viewScale));
     const w = Math.max(12, Math.round(spr.naturalWidth * (h / spr.naturalHeight)));
     this._glitchDash         = new GlitchDash(this._canvas, spr, { spriteW: w, spriteH: h });
-    this._empShock           = new EMPShockwave(this._canvas, {});
+    this._empShock           = new EMPShockwave(this._canvas, { distortion: { strength: 0 } });   // disable canvas self-draw (crash/perf-safe)
     this._digitalSingularity = new DigitalSingularity(this._canvas, spr, { spriteW: w, spriteH: h });
     this._pwFxBuilt = true;
   }
 
   // EMP Shockwave (E) — electric AoE; hit detection + stun applied via the module's onHit hook.
   activateEMPShockwave() {
-    if (this.gameState !== 'playing' || this.paused || this.gameOver || this.victory || this.upgradeUI) return;
+    if (this.gameState !== 'playing' || this.paused || this.gameOver || this.victory || this.upgradeUI || this.mutationUI) return;
     const p = this.player;
     if (p.selectedCharacter !== 'japan_phasewalker') return;
     if (this._empShockCooldown > 0) return;
@@ -1421,7 +1420,8 @@ export class Game {
     if (!this._empShock) return;
     const s = this._playerScreenPos();
     this._empShock.trigger(s.cx, s.footY);
-    this._empShockCooldown = 10;   // his AoE cooldown (kit-local; no global balance change)
+    // Shockwave Protocol mastery trims the cooldown (10s → 7s at L3); kit-local, no global balance change.
+    this._empShockCooldown = Math.max(7, 10 - (p.upgrades['phasewalker_shockwave_mastery'] || 0));
     this.screenShake.trigger(4, 0.2);
     this.floatingTexts.push(new FloatingText('EMP SHOCKWAVE!', p.pos.clone(), CYAN, 1.0));
   }
@@ -1467,28 +1467,39 @@ export class Game {
       this._glitchDash.update(now);
     }
 
+    // Automatic EMP Shockwave (passive — NOT bound to E). Fires on its own cooldown when foes are near.
+    if (this._empShock && this._empShockCooldown <= 0 &&
+        this.enemies.some(e => e?.pos && distance(e.pos, this.player.pos) < 240)) {
+      this.activateEMPShockwave();
+    }
     if (this._empShock) {
-      this._empShock.update(now, this.enemies, {
-        getX: e => (e.pos.x - cam.x) * vs,
-        getY: e => (e.pos.y - cam.y) * vs,
-        onHit: e => {
-          if (e.isBoss?.() || e.isMegaBoss) e.stunned = Math.max(e.stunned || 0, 0.5);  // bosses: brief interrupt
-          else { e.stunned = 5.0; this.particles.spawnHitSparks(e.pos, CYAN); }           // normals: 5s (same as EMP cloud)
-        },
-      });
+      try {
+        this._empShock.update(now, this.enemies, {
+          getX: e => ((e?.pos?.x ?? this.camera.x) - cam.x) * vs,   // pos-guarded so a stale/destroyed enemy can't crash it
+          getY: e => ((e?.pos?.y ?? this.camera.y) - cam.y) * vs,
+          onHit: e => {
+            if (!e?.pos) return;
+            if (e.isBoss?.() || e.isMegaBoss) e.stunned = Math.max(e.stunned || 0, 0.5);  // bosses: brief interrupt
+            else { e.stunned = 5.0; this.particles.spawnHitSparks(e.pos, CYAN); }           // normals: 5s (same as EMP cloud)
+          },
+        });
+      } catch (err) { console.warn('[Phasewalker EMP]', err); }   // one VFX error must not kill the run
     }
 
     if (this._digitalSingularity) {
-      if (this._digitalSingularity.isActive()) {   // keep the dissolving sprite pinned to the player
-        const s = this._playerScreenPos();
-        this._digitalSingularity.cx = s.cx;
-        this._digitalSingularity.footY = s.footY;
-      }
-      this._digitalSingularity.update(now, this.enemies, {
-        getX: e => (e.pos.x - cam.x) * vs,
-        getY: e => (e.pos.y - cam.y) * vs,
-        onStrike: e => { if (e.takeHit) e.takeHit(36, this); },   // per-laser damage (his ultimate)
-      });
+      try {
+        if (this._digitalSingularity.isActive()) {   // keep the dissolving sprite pinned to the player
+          const s = this._playerScreenPos();
+          this._digitalSingularity.cx = s.cx;
+          this._digitalSingularity.footY = s.footY;
+        }
+        const ultDmg = 36 + 6 * (this.player.upgrades['phasewalker_singularity_mastery'] || 0);   // Digital Singularity Mastery
+        this._digitalSingularity.update(now, this.enemies, {
+          getX: e => ((e?.pos?.x ?? this.camera.x) - cam.x) * vs,
+          getY: e => ((e?.pos?.y ?? this.camera.y) - cam.y) * vs,
+          onStrike: e => { if (e?.takeHit) e.takeHit(ultDmg, this); },   // per-laser damage (his ultimate)
+        });
+      } catch (err) { console.warn('[Phasewalker Singularity]', err); }
     }
   }
 
@@ -1497,16 +1508,18 @@ export class Game {
     this._canvas = ctx.canvas;   // capture for the lazy module builder (used by update too)
     if (this.player?.selectedCharacter !== 'japan_phasewalker') return;
     this._ensurePhasewalkerFx();
-    if (this._glitchDash) { this._glitchDash.renderBehind(ctx); this._glitchDash.renderFront(ctx); }
-    if (this._empShock) this._empShock.render(ctx);
-    if (this._digitalSingularity && this._digitalSingularity.isActive()) {
-      const sh = this._digitalSingularity.getShake();
-      ctx.save(); ctx.translate(sh.x, sh.y);
-      this._digitalSingularity.render(ctx);
-      ctx.restore();
-    } else if (this._digitalSingularity) {
-      this._digitalSingularity.render(ctx);   // lingering reform flash after isActive() clears
-    }
+    try {   // VFX-only render: never let a module draw error abort the frame / kill the run
+      if (this._glitchDash) { this._glitchDash.renderBehind(ctx); this._glitchDash.renderFront(ctx); }
+      if (this._empShock) this._empShock.render(ctx);
+      if (this._digitalSingularity && this._digitalSingularity.isActive()) {
+        const sh = this._digitalSingularity.getShake();
+        ctx.save(); ctx.translate(sh.x, sh.y);
+        this._digitalSingularity.render(ctx);
+        ctx.restore();
+      } else if (this._digitalSingularity) {
+        this._digitalSingularity.render(ctx);   // lingering reform flash after isActive() clears
+      }
+    } catch (err) { console.warn('[Phasewalker FX render]', err); }
   }
 
   // ── Thunder Solo ultimate (Cyber Skeleton Warrior, SPACE, 100 mana) ──────────
@@ -2883,6 +2896,10 @@ export class Game {
     // arrow (+1 damage/level), so the card is never a dead pick. Same projectile that always existed.
     if (this.player.selectedCharacter === 'assassin_clone') {
       proj.damage += this._cardLvl('assassin_clone_twin_dagger_mastery');
+    }
+    // Japan Phasewalker — Phase Shard Mastery feeds his automatic phase-needle (+1 dmg/level).
+    if (this.player.selectedCharacter === 'japan_phasewalker') {
+      proj.damage += this._cardLvl('phasewalker_phase_shard_mastery');
     }
     this.projectiles.push(proj);
     this.audio?.playShoot();

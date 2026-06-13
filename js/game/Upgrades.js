@@ -155,6 +155,13 @@ export const ALL_UPGRADES = [
     MAGENTA, 3, () => {}, '🌀', 'epic', 'assassin_clone'),
   new UpgradeDefinition('assassin_clone_chrome_phantom_mastery', 'Chrome Phantom Mastery', 'Chrome Phantom Protocol: longer & larger clone assault',
     PURPLE, 3, () => {}, '👥', 'legendary', 'assassin_clone'),
+  // Japan Phasewalker — phase-shard auto-shot / passive EMP shockwave / Digital Singularity ult (levels read in Game.js)
+  new UpgradeDefinition('phasewalker_phase_shard_mastery', 'Phase Shard Mastery', 'Phase Shard: +damage & sharper glitch needle',
+    CYAN, 3, () => {}, '◆', 'rare', 'japan_phasewalker'),
+  new UpgradeDefinition('phasewalker_shockwave_mastery', 'Shockwave Protocol', 'Auto EMP Shockwave: faster cooldown & wider stun',
+    BLUE, 3, () => {}, '◌', 'epic', 'japan_phasewalker'),
+  new UpgradeDefinition('phasewalker_singularity_mastery', 'Digital Singularity Mastery', 'Digital Singularity: stronger laser strikes',
+    PURPLE, 3, () => {}, '✦', 'legendary', 'japan_phasewalker'),
 
   // ── Achievement Cards (Endless-only; only offered once their achievement is unlocked) ──
   // Global (char=null) so they can roll for any character. Instant-stat cards apply in applyFn

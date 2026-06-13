@@ -1,6 +1,6 @@
 import { Vec2, WIDTH, HEIGHT, WORLD_W, WORLD_H, WORLD_MARGIN, PLAYER_RADIUS, CYAN, WHITE, YELLOW, GREEN, BLUE, RED } from '../constants.js?v=51';
 import { clamp, safeNormalize } from '../utils.js';
-import { Projectile } from './Projectile.js?v=3';
+import { Projectile } from './Projectile.js?v=4';
 import { FloatingText } from './FloatingText.js';
 
 export class Player {
@@ -322,6 +322,7 @@ export class Player {
     const proj = new Projectile(this.pos.clone(), dir, damage, this.attackSprite);
     proj.life  = projLife;
     proj.speed = 760 * (1 + this.projSpeedBonus);            // Shot Speed card
+    if (this.selectedCharacter === 'japan_phasewalker') proj.style = 'phase_shard';   // cyan glitch needle, not an orb
     return proj;
   }
 

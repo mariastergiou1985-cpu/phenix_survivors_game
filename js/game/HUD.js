@@ -81,17 +81,19 @@ export function drawHUD(ctx, game) {
     (cx, cy) => _glyphEMP(ctx, cx, cy, bs, CYAN), CYAN);
 
   // ── Bottom-right: SPACE ultimate (mana-fill, frame tinted to character identity) ──
-  if (p.selectedCharacter === 'skeleton_warrior' || p.selectedCharacter === 'cyber_arm_hero' || p.selectedCharacter === 'taekwondo_girl' || p.selectedCharacter === 'brawler_warrior' || p.selectedCharacter === 'assassin_clone') {
+  if (p.selectedCharacter === 'skeleton_warrior' || p.selectedCharacter === 'cyber_arm_hero' || p.selectedCharacter === 'taekwondo_girl' || p.selectedCharacter === 'brawler_warrior' || p.selectedCharacter === 'assassin_clone' || p.selectedCharacter === 'japan_phasewalker') {
     const icon = p.selectedCharacter === 'skeleton_warrior' ? game._thunderGuitarSprite
                : p.selectedCharacter === 'cyber_arm_hero'   ? game._chainsIcon
                : p.selectedCharacter === 'brawler_warrior'  ? game._weaponImages?.skyfall_lances
                : p.selectedCharacter === 'assassin_clone'   ? game._assassinPhantomSprite  // Chrome Phantom Protocol (pink phantom clone)
+               : p.selectedCharacter === 'japan_phasewalker' ? game._phasewalkerSprite      // Digital Singularity ultimate
                : game._dojangFlagSprite;
     // Frame/glow color by base character identity (outfits don't change selectedCharacter).
     const ultColor = p.selectedCharacter === 'skeleton_warrior' ? '#9fd8ff'   // electric blue-white
                    : p.selectedCharacter === 'cyber_arm_hero'   ? '#ff9b3c'   // hot amber
                    : p.selectedCharacter === 'brawler_warrior'  ? '#3cffb0'   // emerald nexus
                    : p.selectedCharacter === 'assassin_clone'   ? '#ff4dd2'   // neon pink / magenta
+                   : p.selectedCharacter === 'japan_phasewalker' ? '#7df9ff'  // phase cyan (Digital Singularity)
                    : '#3cf0e6';                                                // aqua spirit
     const manaFrac = clamp(p.mana / 100, 0, 1);   // ultimate is ready at the fixed 100 cost, not maxMana (Mana Core safe)
     _drawUltimateBox(ctx, WIDTH - 64, HEIGHT - 66, 48, 'SPACE', manaFrac, icon, ultColor);

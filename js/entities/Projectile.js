@@ -1,4 +1,4 @@
-import { Vec2, WORLD_W, WORLD_H, MAGENTA, WHITE, GREEN } from '../constants.js';
+import { Vec2, WORLD_W, WORLD_H, MAGENTA, WHITE, GREEN, CYAN, BLUE } from '../constants.js';
 import { safeNormalize, distance } from '../utils.js';
 
 export class Projectile {
@@ -26,6 +26,22 @@ export class Projectile {
   }
 
   draw(ctx) {
+    // Japan Phasewalker "Phase Shard" — a cyan/blue glitch data-needle (not a generic orb).
+    if (this.style === 'phase_shard') {
+      const a = Math.atan2(this.direction.y, this.direction.x);
+      ctx.save();
+      ctx.translate(this.pos.x, this.pos.y);
+      ctx.rotate(a);
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.fillStyle = BLUE;   // outer glow needle
+      ctx.beginPath(); ctx.moveTo(15, 0); ctx.lineTo(-6, 4.5); ctx.lineTo(-3, 0); ctx.lineTo(-6, -4.5); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = CYAN;   // bright core
+      ctx.beginPath(); ctx.moveTo(11, 0); ctx.lineTo(-4, 2.6); ctx.lineTo(-2, 0); ctx.lineTo(-4, -2.6); ctx.closePath(); ctx.fill();
+      ctx.globalAlpha = 0.5; ctx.fillStyle = '#bfefff';   // glitch echo flecks
+      ctx.fillRect(-3, -1, 5, 2);
+      ctx.restore();
+      return;
+    }
     const spr = this.sprite;
     if (spr && spr.complete && spr.naturalWidth > 0) {
       const angle = Math.atan2(this.direction.y, this.direction.x);
