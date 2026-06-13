@@ -81,15 +81,14 @@ export function drawHUD(ctx, game) {
     (cx, cy) => _glyphEMP(ctx, cx, cy, bs, CYAN), CYAN);
 
   // ── Bottom-right: SPACE ultimate (mana-fill, frame tinted to character identity) ──
-  if (p.selectedCharacter === 'skeleton_warrior' || p.selectedCharacter === 'cyber_arm_hero' || p.selectedCharacter === 'taekwondo_girl' || p.selectedCharacter === 'brawler_warrior' || p.selectedCharacter === 'assassin_clone' || p.selectedCharacter === 'japan_phasewalker' || p.selectedCharacter === 'euclid_vector' || p.selectedCharacter === 'oni_cataclysm_protocol') {
+  if (p.selectedCharacter === 'skeleton_warrior' || p.selectedCharacter === 'cyber_arm_hero' || p.selectedCharacter === 'taekwondo_girl' || p.selectedCharacter === 'brawler_warrior' || p.selectedCharacter === 'assassin_clone' || p.selectedCharacter === 'japan_phasewalker' || p.selectedCharacter === 'euclid_vector') {
     const icon = p.selectedCharacter === 'skeleton_warrior' ? game._thunderGuitarSprite
                : p.selectedCharacter === 'cyber_arm_hero'   ? game._chainsIcon
                : p.selectedCharacter === 'brawler_warrior'  ? game._weaponImages?.skyfall_lances
                : p.selectedCharacter === 'assassin_clone'   ? game._assassinPhantomSprite  // Chrome Phantom Protocol (pink phantom clone)
                : p.selectedCharacter === 'japan_phasewalker' ? game._phasewalkerSprite      // Digital Singularity ultimate
                : p.selectedCharacter === 'euclid_vector'    ? game._euclidSprite            // Plague Trail Dash ultimate
-               : p.selectedCharacter === 'oni_cataclysm_protocol' ? game._oniSprite          // Protocol 0: Total Cataclysm
-               : game._dojangFlagSprite;
+               : 'bike';  // taekwondo_girl → Cyber Ride (canvas-drawn bike glyph; no sprite asset)
     // Frame/glow color by base character identity (outfits don't change selectedCharacter).
     const ultColor = p.selectedCharacter === 'skeleton_warrior' ? '#9fd8ff'   // electric blue-white
                    : p.selectedCharacter === 'cyber_arm_hero'   ? '#ff9b3c'   // hot amber
@@ -97,7 +96,6 @@ export function drawHUD(ctx, game) {
                    : p.selectedCharacter === 'assassin_clone'   ? '#ff4dd2'   // neon pink / magenta
                    : p.selectedCharacter === 'japan_phasewalker' ? '#7df9ff'  // phase cyan (Digital Singularity)
                    : p.selectedCharacter === 'euclid_vector'    ? '#00ff66'   // toxic green (Plague Trail)
-                   : p.selectedCharacter === 'oni_cataclysm_protocol' ? '#ff3750'   // cataclysm red (Protocol 0)
                    : '#3cf0e6';                                                // aqua spirit
     const manaFrac = clamp(p.mana / 100, 0, 1);   // ultimate is ready at the fixed 100 cost, not maxMana (Mana Core safe)
     _drawUltimateBox(ctx, WIDTH - 64, HEIGHT - 66, 48, 'SPACE', manaFrac, icon, ultColor);
@@ -333,12 +331,32 @@ function _drawRing(ctx, cx, cy, r, frac, ready, color = CYAN) {
 }
 
 function _drawIcon(ctx, img, x, y, size, fallbackColor) {
+  if (img === 'bike') { _glyphBike(ctx, x, y, size, fallbackColor); return; }
   if (img && img.complete && img.naturalWidth > 0) {
     ctx.drawImage(img, x, y, size, size);
   } else {
     ctx.fillStyle = fallbackColor;
     ctx.beginPath(); ctx.arc(x + size / 2, y + size / 2, size / 2, 0, Math.PI * 2); ctx.fill();
   }
+}
+
+// Lightweight Cyber Ride bike glyph (two wheels + frame + handlebar/seat) in the character color.
+function _glyphBike(ctx, x, y, size, color = CYAN) {
+  const cx = x + size / 2, r = size * 0.16;
+  const wy = y + size * 0.66;
+  const lwx = cx - size * 0.24, rwx = cx + size * 0.24;
+  const hub = cx - size * 0.02, top = y + size * 0.40;
+  ctx.save();
+  ctx.strokeStyle = color; ctx.lineWidth = Math.max(1.5, size * 0.06);
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.beginPath(); ctx.arc(lwx, wy, r, 0, Math.PI * 2); ctx.stroke();   // rear wheel
+  ctx.beginPath(); ctx.arc(rwx, wy, r, 0, Math.PI * 2); ctx.stroke();   // front wheel
+  ctx.beginPath();
+  ctx.moveTo(lwx, wy); ctx.lineTo(hub, top); ctx.lineTo(rwx, wy);       // frame triangle
+  ctx.lineTo(rwx + size * 0.10, top);                                   // fork up to bars
+  ctx.moveTo(hub, top); ctx.lineTo(hub - size * 0.05, top - size * 0.12); // seat post
+  ctx.stroke();
+  ctx.restore();
 }
 
 function _glyphShield(ctx, cx, cy, s, color = CYAN) {

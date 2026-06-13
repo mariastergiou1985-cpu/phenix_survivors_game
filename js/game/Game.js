@@ -22,7 +22,7 @@ import { UpgradeUI }      from './UpgradeUI.js?v=10';
 import { weightedSample } from './Upgrades.js?v=11';
 import { MutationUI }      from './MutationUI.js?v=1';
 import { sampleMutations } from './Mutations.js?v=1';
-import { drawHUD, drawEndScreen } from './HUD.js?v=50';
+import { drawHUD, drawEndScreen } from './HUD.js?v=51';
 import { MetaProgress, META_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE } from './MetaProgress.js?v=18';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
