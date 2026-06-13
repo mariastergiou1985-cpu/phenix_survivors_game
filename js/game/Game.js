@@ -3510,44 +3510,70 @@ export class Game {
 
   _drawChainLightning(ctx) {
     if (this._chainBolts.length === 0 && this._chainLinks.length === 0) return;
+    const time = performance.now() * 0.001;
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
-    ctx.lineCap = 'round';
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
 
-    // Lead bolts — small fast electric-blue projectile with a short trail
+    // Lead bolts — electric-blue projectile: wide glow + cyan core + white head + halo
     for (const b of this._chainBolts) {
       const dx = b.toX - b.fromX, dy = b.toY - b.fromY;
       const len = Math.hypot(dx, dy) || 1;
-      const tailX = b.x - (dx / len) * 14, tailY = b.y - (dy / len) * 14;
-      ctx.globalAlpha = 0.6;  ctx.strokeStyle = '#3aa0ff'; ctx.lineWidth = 8;
+      const ux = dx / len, uy = dy / len;
+      const tailX = b.x - ux * 20, tailY = b.y - uy * 20;
+      ctx.globalAlpha = 0.4; ctx.strokeStyle = '#1f6bff'; ctx.lineWidth = 12;
       ctx.beginPath(); ctx.moveTo(tailX, tailY); ctx.lineTo(b.x, b.y); ctx.stroke();
-      ctx.globalAlpha = 1;    ctx.strokeStyle = CYAN;      ctx.lineWidth = 3.5;
+      ctx.globalAlpha = 0.8; ctx.strokeStyle = '#3ad0ff'; ctx.lineWidth = 5;
       ctx.beginPath(); ctx.moveTo(tailX, tailY); ctx.lineTo(b.x, b.y); ctx.stroke();
-      ctx.globalAlpha = 1;    ctx.fillStyle = '#ffffff';
-      ctx.beginPath(); ctx.arc(b.x, b.y, 3.5, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1;   ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(b.x - ux * 8, b.y - uy * 8); ctx.lineTo(b.x, b.y); ctx.stroke();
+      const g = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, 10);
+      g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(1, 'rgba(58,160,255,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(b.x, b.y, 10, 0, Math.PI * 2); ctx.fill();
     }
 
-    // Chain links — thin jagged cyan lightning between targets, drawn only once struck, fading out
+    // Chain links — animated jagged lightning with glow + white core + branch forks + node flash
     for (const L of this._chainLinks) {
       if (!L.struck) continue;
-      const a  = L.life / 0.10;
-      const dx = L.bx - L.ax, dy = L.by - L.ay;
-      const nlen = Math.hypot(dx, dy) || 1;
-      const px = -dy / nlen, py = dx / nlen;   // unit perpendicular for the jagged offsets
-      const pts = [{ x: L.ax, y: L.ay }];
-      for (let i = 1; i <= L.offsets.length; i++) {
-        const f = i / (L.offsets.length + 1), off = L.offsets[i - 1];
+      const a   = Math.max(0, L.life / 0.10);
+      const dx  = L.bx - L.ax, dy = L.by - L.ay;
+      const nl  = Math.hypot(dx, dy) || 1;
+      const px  = -dy / nl, py = dx / nl;
+      const SEG = 8, pts = [];
+      for (let i = 0; i <= SEG; i++) {
+        const f  = i / SEG;
+        const oi = f * (L.offsets.length - 1), lo = Math.floor(oi), fr = oi - lo;
+        const base = L.offsets[Math.min(lo, L.offsets.length - 1)] * (1 - fr)
+                   + L.offsets[Math.min(lo + 1, L.offsets.length - 1)] * fr;
+        const env  = Math.sin(Math.PI * f);                       // 0 at ends, 1 mid
+        const jit  = Math.sin(time * 40 + i * 1.7) * 6 * env;
+        const off  = (base + jit);
         pts.push({ x: L.ax + dx * f + px * off, y: L.ay + dy * f + py * off });
       }
-      pts.push({ x: L.bx, y: L.by });
-      const stroke = (w, col, al) => {
+      const strokeChain = (w, col, al) => {
         ctx.globalAlpha = al * a; ctx.strokeStyle = col; ctx.lineWidth = w;
         ctx.beginPath(); ctx.moveTo(pts[0].x, pts[0].y);
         for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
         ctx.stroke();
       };
-      stroke(7, '#3aa0ff', 0.60);   // blue glow
-      stroke(3, CYAN,      1.00);   // cyan core
+      strokeChain(9, '#1f6bff', 0.35);   // outer glow
+      strokeChain(4.5, '#3ad0ff', 0.8);  // blue body
+      strokeChain(1.8, '#ffffff', 1);    // white core
+      // short branch forks off the middle
+      ctx.globalAlpha = 0.5 * a; ctx.strokeStyle = '#9fe6ff'; ctx.lineWidth = 1.4;
+      for (let k = 2; k < SEG - 1; k += 3) {
+        const o = pts[k], dir = (L.offsets[0] > 0 ? 1 : -1);
+        ctx.beginPath(); ctx.moveTo(o.x, o.y);
+        ctx.lineTo(o.x + px * dir * 14, o.y + py * dir * 14);
+        ctx.stroke();
+      }
+      // node flashes at both ends
+      for (const nd of [pts[0], pts[pts.length - 1]]) {
+        const ng = ctx.createRadialGradient(nd.x, nd.y, 0, nd.x, nd.y, 12);
+        ng.addColorStop(0, `rgba(255,255,255,${a})`); ng.addColorStop(1, 'rgba(58,208,255,0)');
+        ctx.globalAlpha = 1; ctx.fillStyle = ng;
+        ctx.beginPath(); ctx.arc(nd.x, nd.y, 12, 0, Math.PI * 2); ctx.fill();
+      }
     }
     ctx.restore();
   }
