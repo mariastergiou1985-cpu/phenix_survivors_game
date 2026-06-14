@@ -1,5 +1,5 @@
-import { Game } from './game/Game.js?v=20260614113122';
-import { AudioManager } from './audio/AudioManager.js?v=20260614113122';
+import { Game } from './game/Game.js?v=20260614115651';
+import { AudioManager } from './audio/AudioManager.js?v=20260614115651';
 
 const canvas = document.getElementById('game');
 const ctx    = canvas.getContext('2d');
@@ -276,16 +276,22 @@ function loop(timestamp) {
   const dt = Math.min((timestamp - lastTime) / 1000, 0.05);  // cap at 50ms
   lastTime = timestamp;
 
-  game.setMousePos(mousePos);
-  game.update(dt, { keys, mousePos, mouseDown });
-  applyContextualCursor();
+  // Crash-resilient: a single transient error in update/draw must NOT stop the rAF loop
+  // (that was a hard-freeze with the timer stuck). We always reschedule, keep the canvas
+  // save-stack balanced via finally, and log the first error so the cause stays visible.
+  try {
+    game.setMousePos(mousePos);
+    game.update(dt, { keys, mousePos, mouseDown });
+    applyContextualCursor();
 
-  // Apply screen shake offset
-  const [ox, oy] = game.screenShake.getOffset();
-  ctx.save();
-  ctx.translate(ox, oy);
-  game.draw(ctx);
-  ctx.restore();
+    // Apply screen shake offset
+    const [ox, oy] = game.screenShake.getOffset();
+    ctx.save();
+    try { ctx.translate(ox, oy); game.draw(ctx); }
+    finally { ctx.restore(); }
+  } catch (err) {
+    if (!loop._errLogged) { console.error('[game loop]', err); loop._errLogged = true; }
+  }
 
   requestAnimationFrame(loop);
 }
