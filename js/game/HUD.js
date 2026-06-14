@@ -116,6 +116,12 @@ export function drawHUD(ctx, game) {
     }
   }
 
+  // ── Controller-connected indicator (small, bottom-left; only when a pad is active) ──
+  if (game._controllerConnected) {
+    ctx.textAlign = 'left';
+    drawText(ctx, '🎮 Controller', 16, HEIGHT - 8, '#7CFF8A', 'bold 11px "Segoe UI Emoji", Consolas, monospace');
+  }
+
   // ── Bottom-center: HP / Mana numeric readout (display-only; reflects card/upgrade max increases) ──
   ctx.textAlign = 'center';
   drawText(ctx, `HP ${Math.ceil(p.hp)} / ${Math.round(p.maxHp)}`,    WIDTH / 2 - 80, HEIGHT - 14, '#ff8a98', 'bold 14px Consolas, monospace');

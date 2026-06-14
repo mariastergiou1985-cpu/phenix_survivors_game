@@ -1,5 +1,6 @@
-import { Game } from './game/Game.js?v=20260614201408';
-import { AudioManager } from './audio/AudioManager.js?v=20260614201408';
+import { Game } from './game/Game.js?v=20260614204914';
+import { AudioManager } from './audio/AudioManager.js?v=20260614204914';
+import { GamepadInput } from './Gamepad.js?v=20260614204914';
 
 const canvas = document.getElementById('game');
 const ctx    = canvas.getContext('2d');
@@ -270,6 +271,70 @@ function applyContextualCursor() {
   if (want !== _lastCursor) { canvas.style.cursor = want; _lastCursor = want; }
 }
 
+// ─── Controller support (Gamepad API) ──────────────────────────────────────────
+// Maps a connected controller onto the EXISTING keyboard paths: held keys are injected into the
+// `keys` Set (movement/dash, read by game.update); one-shot actions are dispatched as synthetic
+// keydown events so the real keydown handler runs (abilities, ESC/pause, menu select, cards). This
+// keeps all game logic unchanged and leaves keyboard/mouse fully working when no pad is present.
+const pad         = new GamepadInput();
+const padHeld     = new Set();   // keys this controller is currently injecting (so we only clear ours)
+const padTapUp    = [];          // synthetic keydowns to release next frame (one press = one action)
+const prevDir     = { up: false, down: false, left: false, right: false };
+
+function padSetHeld(key, on) {
+  if (on) { if (!padHeld.has(key)) { keys.add(key);    padHeld.add(key); } }
+  else    { if (padHeld.has(key)) { keys.delete(key); padHeld.delete(key); } }
+}
+function padClearHeld() { for (const k of padHeld) keys.delete(k); padHeld.clear(); }
+function padTap(key) { window.dispatchEvent(new KeyboardEvent('keydown', { key })); padTapUp.push(key); }
+function padDirEdge(name, now) { const was = prevDir[name]; prevDir[name] = now; return now && !was; }
+
+function applyGamepad() {
+  // Release last frame's taps so a held button still fires only once.
+  for (const k of padTapUp) window.dispatchEvent(new KeyboardEvent('keyup', { key: k }));
+  padTapUp.length = 0;
+
+  const s = pad.poll();
+  game._controllerConnected = pad.connected;
+  game._controllerType      = pad.type;
+  game._controllerActivated = pad.activated;
+  if (!s || !s.activated) { padClearHeld(); prevDir.up = prevDir.down = prevDir.left = prevDir.right = false; return; }
+
+  const up = s.axes.ly < 0 || s.btn.up.held, down = s.axes.ly > 0 || s.btn.down.held;
+  const left = s.axes.lx < 0 || s.btn.left.held, right = s.axes.lx > 0 || s.btn.right.held;
+  const eUp = padDirEdge('up', up), eDown = padDirEdge('down', down);
+  const eLeft = padDirEdge('left', left), eRight = padDirEdge('right', right);
+
+  const inGameplay = game.gameState === 'playing' && !game.paused && !game.gameOver &&
+                     !game.victory && !game.upgradeUI && !game.mutationUI;
+  const cardUI = game.upgradeUI || game.mutationUI;
+
+  if (inGameplay) {
+    padSetHeld('w', up); padSetHeld('s', down); padSetHeld('a', left); padSetHeld('d', right);
+    padSetHeld('shift', s.btn.rt.held || s.btn.lt.held);   // RT/R2 (or LT) = dash
+    if (s.btn.lb.pressed)    padTap('q');        // LB / L1 → Pulse Shield
+    if (s.btn.rb.pressed)    padTap('e');        // RB / R1 → EMP
+    if (s.btn.y.pressed)     padTap(' ');        // Y / Triangle → Ultimate
+    if (s.btn.start.pressed || s.btn.b.pressed) padTap('Escape');   // Start/Options or B/Circle → pause
+  } else {
+    padClearHeld();                              // no held movement outside gameplay
+    if (eUp)    padTap('ArrowUp');
+    if (eDown)  padTap('ArrowDown');
+    if (eLeft)  padTap('ArrowLeft');
+    if (eRight) padTap('ArrowRight');
+    if (cardUI) {                                // forced/level-up card screens use 1/2/3 (+ reroll)
+      if (s.btn.a.pressed) padTap('1');
+      if (s.btn.x.pressed) padTap('2');
+      if (s.btn.y.pressed) padTap('3');
+      if (s.btn.b.pressed) padTap('r');
+    } else {
+      if (s.btn.a.pressed)     padTap('Enter');  // A / Cross → confirm/select
+      if (s.btn.b.pressed)     padTap('Escape'); // B / Circle → back
+      if (s.btn.start.pressed) padTap('Escape'); // Start/Options → back/menu
+    }
+  }
+}
+
 // ─── Game loop ────────────────────────────────────────────────────────────────
 let lastTime = 0;
 
@@ -282,6 +347,7 @@ function loop(timestamp) {
   // save-stack balanced via finally, and log the first error so the cause stays visible.
   const _fStart = performance.now();
   try {
+    applyGamepad();   // inject controller input into keys/handlers before the update reads them
     game.setMousePos(mousePos);
     game.update(dt, { keys, mousePos, mouseDown });
     applyContextualCursor();

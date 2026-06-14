@@ -5,35 +5,35 @@ import {
   MAX_OVERLOAD, PLAYER_RADIUS, CORE_RADIUS, MATRIX_RADIUS,
   DARK_BG, GRID_LINE, BLACK, CYAN, RED, GREEN, YELLOW, ORANGE, WHITE, PURPLE,
   CORE_COLORS, VIEW_SCALE, VIEW_W, VIEW_H, ENDLESS_VIEW_SCALE,
-} from '../constants.js?v=20260614201408';
+} from '../constants.js?v=20260614204914';
 import { clamp, distance, safeNormalize, randomChoice, randomRange } from '../utils.js';
 
 import { FloatingText }   from '../entities/FloatingText.js';
-import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260614201408';
-import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260614201408';
-import { Player }         from '../entities/Player.js?v=20260614201408';
-import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260614201408';
-import { Enemy }          from '../entities/Enemy.js?v=20260614201408';
-import { SupportDrone }   from '../entities/SupportDrone.js?v=20260614201408';
+import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260614204914';
+import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260614204914';
+import { Player }         from '../entities/Player.js?v=20260614204914';
+import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260614204914';
+import { Enemy }          from '../entities/Enemy.js?v=20260614204914';
+import { SupportDrone }   from '../entities/SupportDrone.js?v=20260614204914';
 
-import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow } from './Effects.js?v=20260614201408';
-import { SystemEventManager } from './Events.js?v=20260614201408';
-import { UpgradeUI }      from './UpgradeUI.js?v=20260614201408';
-import { weightedSample } from './Upgrades.js?v=20260614201408';
-import { MutationUI }      from './MutationUI.js?v=20260614201408';
-import { sampleMutations } from './Mutations.js?v=20260614201408';
-import { drawHUD, drawEndScreen } from './HUD.js?v=20260614201408';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE } from './MetaProgress.js?v=20260614201408';
+import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow } from './Effects.js?v=20260614204914';
+import { SystemEventManager } from './Events.js?v=20260614204914';
+import { UpgradeUI }      from './UpgradeUI.js?v=20260614204914';
+import { weightedSample } from './Upgrades.js?v=20260614204914';
+import { MutationUI }      from './MutationUI.js?v=20260614204914';
+import { sampleMutations } from './Mutations.js?v=20260614204914';
+import { drawHUD, drawEndScreen } from './HUD.js?v=20260614204914';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE } from './MetaProgress.js?v=20260614204914';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
-import { GlitchDash } from '../effects/glitch-dash.js?v=20260614201408';
-import { EMPShockwave } from '../effects/emp-shockwave.js?v=20260614201408';
-import { DigitalSingularity } from '../effects/digital-singularity.js?v=20260614201408';
-import { Protocol0 } from '../effects/protocol-0.js?v=20260614201408';
-import { LaserEyes } from '../effects/laser-eyes.js?v=20260614201408';
-import { MeteorRain } from '../effects/meteor-rain.js?v=20260614201408';
+import { GlitchDash } from '../effects/glitch-dash.js?v=20260614204914';
+import { EMPShockwave } from '../effects/emp-shockwave.js?v=20260614204914';
+import { DigitalSingularity } from '../effects/digital-singularity.js?v=20260614204914';
+import { Protocol0 } from '../effects/protocol-0.js?v=20260614204914';
+import { LaserEyes } from '../effects/laser-eyes.js?v=20260614204914';
+import { MeteorRain } from '../effects/meteor-rain.js?v=20260614204914';
 // Euclid Vector toxin kit — used ONLY when selectedCharacter === 'euclid_vector' (world-space).
-import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=20260614201408';
+import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=20260614204914';
 
 // ── Thunder Solo sprite slices (cyan_lightning_rain_notes.png, 1254×1254) ──────
 // Strike variants: a clean bolt column + ripple base. (ax,ay) = ripple-centre as a
@@ -149,16 +149,16 @@ export class Game {
       fallback.src = 'assets/backgrounds/cyberpunk_city_background.png';
       this._bgImage = fallback;
     };
-    this._bgImage.src = 'assets/backgrounds/cyber_city_bg_clean.png?v=20260614201408';
+    this._bgImage.src = 'assets/backgrounds/cyber_city_bg_clean.png?v=20260614204914';
 
     // Endless Stage 02 visuals (only used while this.endless — Act 1 keeps default visuals).
     // Missing files degrade to the default background / default Nexus visual (warn, no crash).
     this._endlessBgImage = new Image();
     this._endlessBgImage.onerror = () => console.warn('[Stage] missing assets/maps/endless/stage_02_neon_shinjuku_plaza.png — using default background');
-    this._endlessBgImage.src = 'assets/maps/endless/stage_02_neon_shinjuku_plaza.png?v=20260614201408';
+    this._endlessBgImage.src = 'assets/maps/endless/stage_02_neon_shinjuku_plaza.png?v=20260614204914';
     this._endlessNexusImage = new Image();
     this._endlessNexusImage.onerror = () => console.warn('[Nexus] missing assets/nexus/endless_nexus_base_8cores.png — using default Nexus visual');
-    this._endlessNexusImage.src = 'assets/nexus/endless_nexus_base_8cores.png?v=20260614201408';
+    this._endlessNexusImage.src = 'assets/nexus/endless_nexus_base_8cores.png?v=20260614204914';
 
     // Preload character portraits for Character Select screen
     this._charImages = {};
@@ -171,7 +171,7 @@ export class Game {
     // Japan Phasewalker portrait lives in the endless/ subfolder (Character Select + FX modules).
     this._phasewalkerSprite = new Image();
     this._phasewalkerSprite.onerror = () => console.warn('[Char] missing assets/characters/endless/japan_phasewalker.png');
-    this._phasewalkerSprite.src = 'assets/characters/endless/japan_phasewalker.png?v=20260614201408';   // ?v bust: corrected transparency
+    this._phasewalkerSprite.src = 'assets/characters/endless/japan_phasewalker.png?v=20260614204914';   // ?v bust: corrected transparency
     this._charImages['japan_phasewalker'] = this._phasewalkerSprite;
     // Euclid Vector portrait (endless/ subfolder; unlocked from the start — see roster + free unlock).
     this._euclidSprite = new Image();
@@ -211,7 +211,7 @@ export class Game {
 
     // Preload start-menu background image
     this._menuBg = new Image();
-    this._menuBg.src = 'assets/ui/start_menu_background.png?v=20260614201408';
+    this._menuBg.src = 'assets/ui/start_menu_background.png?v=20260614204914';
 
     // Preload phoenix revive effect images (orange / blue / gold tiers)
     this._phoenixImage = new Image();
@@ -219,11 +219,11 @@ export class Game {
 
     this._phoenixBlueImage = new Image();
     this._phoenixBlueImage.onerror = () => console.warn('[Assets] Failed to load: assets/effects/phoenix/blue_phoenix_revive.png');
-    this._phoenixBlueImage.src = 'assets/effects/phoenix/blue_phoenix_revive.png?v=20260614201408';
+    this._phoenixBlueImage.src = 'assets/effects/phoenix/blue_phoenix_revive.png?v=20260614204914';
 
     this._phoenixGoldImage = new Image();
     this._phoenixGoldImage.onerror = () => console.warn('[Assets] Failed to load: assets/effects/phoenix/gold_phoenix_revive.png');
-    this._phoenixGoldImage.src = 'assets/effects/phoenix/gold_phoenix_revive.png?v=20260614201408';
+    this._phoenixGoldImage.src = 'assets/effects/phoenix/gold_phoenix_revive.png?v=20260614204914';
 
     // Preload credits photos
     this._creditImgInk = new Image();
@@ -241,10 +241,10 @@ export class Game {
     // Preload core and matrix sprites
     this._coreSprite = new Image();
     this._coreSprite.onerror = () => console.warn('[Assets] Failed to load: assets/cores/data_core.png');
-    this._coreSprite.src = 'assets/cores/data_core.png?v=20260614201408';
+    this._coreSprite.src = 'assets/cores/data_core.png?v=20260614204914';
     this._matrixSprite = new Image();
     this._matrixSprite.onerror = () => console.warn('[Assets] Failed to load: assets/bases/matrix_base.png');
-    this._matrixSprite.src = 'assets/bases/matrix_base.png?v=20260614201408';
+    this._matrixSprite.src = 'assets/bases/matrix_base.png?v=20260614204914';
 
     // Preload grid cache supply drop sprite
     this._gridCacheSprite = new Image();
@@ -292,25 +292,25 @@ export class Game {
     // Preload acid rain weather sprites
     this._acidRainFallImg = new Image();
     this._acidRainFallImg.onerror = () => console.warn('[Weather] acid_rain_fall.png not found — using line fallback');
-    this._acidRainFallImg.src = 'assets/events/weather/acid_rain_fall.png?v=20260614201408';
+    this._acidRainFallImg.src = 'assets/events/weather/acid_rain_fall.png?v=20260614204914';
     this._acidRainSplashImg = new Image();
     this._acidRainSplashImg.onerror = () => console.warn('[Weather] acid_rain_splash.png not found — using ellipse fallback');
-    this._acidRainSplashImg.src = 'assets/events/weather/acid_rain_splash.png?v=20260614201408';
+    this._acidRainSplashImg.src = 'assets/events/weather/acid_rain_splash.png?v=20260614204914';
 
     // Preload AI Overload Titan boss sprite
     this._titanSprite = new Image();
     this._titanSprite.onerror = () => console.warn('[Boss] ai_overload_titan.png failed to load — using fallback');
-    this._titanSprite.src = 'assets/enemies/bosses/ai_overload_titan.png?v=20260614201408';
+    this._titanSprite.src = 'assets/enemies/bosses/ai_overload_titan.png?v=20260614204914';
 
     // Preload Matrix Annihilator mini-boss sprite (existing asset)
     this._annihilatorSprite = new Image();
     this._annihilatorSprite.onerror = () => console.warn('[Boss] assets/enemies/bosses/matrix_annihilator.png failed to load — using fallback');
-    this._annihilatorSprite.src = 'assets/enemies/bosses/matrix_annihilator.png?v=20260614201408';
+    this._annihilatorSprite.src = 'assets/enemies/bosses/matrix_annihilator.png?v=20260614204914';
 
     // Preload Bloodfang Packmaster mini-boss sprite (existing asset)
     this._bloodfangSprite = new Image();
     this._bloodfangSprite.onerror = () => console.warn('[Boss] assets/enemies/bosses/bloodfang_packmaster.png failed to load — using fallback');
-    this._bloodfangSprite.src = 'assets/enemies/bosses/bloodfang_packmaster.png?v=20260614201408';
+    this._bloodfangSprite.src = 'assets/enemies/bosses/bloodfang_packmaster.png?v=20260614204914';
 
     // Preload secret-skin preview sprites (Character Select locked/unlocked + Victory screen).
     // Keyed by the same flags MetaProgress persists. Missing files degrade to a text fallback.
@@ -1195,6 +1195,11 @@ export class Game {
     ctx.font      = 'bold 20px Consolas, monospace';
     ctx.fillStyle = YELLOW;
     ctx.fillText(`${earned} / ${total} UNLOCKED`, WIDTH / 2, 82);
+    // Protocol Fragments — moved here from the Main Menu (where it cluttered the top-right). PF is a
+    // separate rare Endless currency from Grid Credits; this is display-only (earning/spend unchanged).
+    ctx.font      = 'bold 14px Consolas, monospace';
+    ctx.fillStyle = '#7df9ff';
+    ctx.fillText(`◆ Protocol Fragments: ${this.meta.getProtocolFragments()} / ${PF_TOTAL_OBTAINABLE}`, WIDTH / 2, 104);
 
     // Rows — taller to surface each achievement's Achievement Protocol (passive) + Achievement
     // Card reward. Reward lines read from the ENDLESS_ACHIEVEMENTS metadata; locked rows hide the
@@ -6090,10 +6095,8 @@ export class Game {
     ctx.textAlign = 'center';
     ctx.fillText('↑↓ W/S  Navigate     ENTER / Click  Select', WIDTH / 2, HEIGHT - 20);
 
-    // ── Recommended-age / content notice (subtle, secondary) ──
-    ctx.font      = '11px Consolas, monospace';
-    ctx.fillStyle = 'rgba(170,185,205,0.5)';
-    ctx.fillText('Recommended Age: 12+ · Fantasy Violence · Flashing Lights', WIDTH / 2, HEIGHT - 6);
+    // ── Compact content-rating badge (bottom-left corner) ──
+    this._drawAgeBadge(ctx, 16, HEIGHT - 52);
 
     // ── Early Demo / WIP label (subtle, top-left corner — clear of the centered logo) ──
     ctx.textAlign = 'left';
@@ -6101,11 +6104,8 @@ export class Game {
     ctx.fillStyle = 'rgba(160,175,195,0.42)';
     ctx.fillText('Early Demo / Work in Progress', 14, 22);
 
-    // ── Protocol Fragments balance (rare Endless progression currency; subtle, top-right) ──
-    ctx.textAlign = 'right';
-    ctx.font      = 'bold 12px Consolas, monospace';
-    ctx.fillStyle = 'rgba(125,249,255,0.78)';
-    ctx.fillText('◆ Protocol Fragments: ' + this.meta.getProtocolFragments(), WIDTH - 14, 24);
+    // ── Controller-support badge + live status (top-right). PF moved to Upgrades/Achievements. ──
+    this._drawControllerBadge(ctx, WIDTH - 14, 22);
     ctx.textAlign = 'left';
   }
 
@@ -6530,6 +6530,38 @@ export class Game {
     }
   }
 
+  // Compact content-rating badge — rounded square with "12+" (replaces the old plain-text notice).
+  _drawAgeBadge(ctx, x, y, size = 38) {
+    ctx.save();
+    ctx.fillStyle = 'rgba(8,16,28,0.85)';
+    ctx.strokeStyle = '#7fd0ff'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.roundRect(x, y, size, size, 8); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#dff2ff';
+    ctx.font = 'bold ' + Math.round(size * 0.42) + 'px Consolas, monospace';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('12+', x + size / 2, y + size / 2 + 1);
+    ctx.restore();
+    ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left';
+  }
+
+  // Controller-support badge + live status (right-aligned at x,y). Small, premium, unobtrusive.
+  _drawControllerBadge(ctx, x, y) {
+    ctx.save();
+    ctx.textAlign = 'right';
+    ctx.font = 'bold 12px "Segoe UI Emoji", Consolas, monospace';
+    ctx.fillStyle = 'rgba(190,210,230,0.72)';
+    ctx.fillText('🎮 Controller Supported · Xbox · PS5 · PS4 · PC', x, y);
+    if (this._controllerConnected) {
+      ctx.fillStyle = '#7CFF8A';
+      ctx.fillText('● Controller Connected', x, y + 16);
+    } else {
+      ctx.fillStyle = 'rgba(150,170,190,0.55)';
+      ctx.fillText('Press any controller button to activate', x, y + 16);
+    }
+    ctx.restore();
+    ctx.textAlign = 'left';
+  }
+
   _drawInstructionsScreen(ctx) {
     this._drawBackground(ctx);
     ctx.fillStyle = 'rgba(0,0,0,0.85)';
@@ -6600,24 +6632,30 @@ export class Game {
     cy += 8;
 
     // ── CONTROLS ───────────────────────────────────────────────
-    header('CONTROLS');
-    const controls = [
-      ['WASD / Arrows', 'Move'],
-      ['Auto-Fire',     'Targets nearest enemy  (T toggles)'],
-      ['SHIFT',         'Dash'],
-      ['SPACE',         'Ultimate — per character (100 mana)'],
-      ['Q  /  E',       'Pulse Shield  /  EMP stun burst'],
-      ['M  /  F',       'Mute  /  Fullscreen'],
-      ['ESC',           'Pause / Back'],
+    // ── CONTROLS — keyboard + controller (auto-detected USB/Bluetooth: Xbox/PS/PC) ──
+    header('CONTROLS — KEYBOARD & CONTROLLER');
+    const colA = lx + 6, colK = lx + 132, colX = lx + 268, colP = lx + 396;
+    ctx.font = 'bold 10px Consolas, monospace'; ctx.fillStyle = CYAN;
+    ctx.fillText('ACTION', colA, cy); ctx.fillText('KEYBOARD', colK, cy);
+    ctx.fillText('XBOX / PC', colX, cy); ctx.fillText('PLAYSTATION', colP, cy);
+    cy += 15;
+    const ctrlRows = [
+      ['Move',      'WASD / Arrows', 'L-Stick/D-Pad', 'L-Stick/D-Pad'],
+      ['Confirm',   'Enter',         'A',             '✕ Cross'],
+      ['Back',      'ESC',           'B',             '○ Circle'],
+      ['Pause',     'ESC',           'Menu / Start',  'Options'],
+      ['Q ability', 'Q',             'LB',            'L1'],
+      ['E ability', 'E',             'RB',            'R1'],
+      ['Dash',      'SHIFT',         'RT',            'R2'],
+      ['Ultimate',  'SPACE',         'Y',             '△ Triangle'],
     ];
-    controls.forEach(([k, a]) => {
-      ctx.font = 'bold 12px Consolas, monospace'; ctx.fillStyle = YELLOW;
-      ctx.fillText(k, lx + 6, cy);
-      ctx.font = '12px Consolas, monospace'; ctx.fillStyle = WHITE;
-      ctx.fillText('—  ' + a, lx + 150, cy);
-      cy += lh;
+    ctrlRows.forEach(([a, k, xb, ps]) => {
+      ctx.font = 'bold 11px Consolas, monospace'; ctx.fillStyle = YELLOW; ctx.fillText(a, colA, cy);
+      ctx.font = '11px Consolas, monospace'; ctx.fillStyle = WHITE;
+      ctx.fillText(k, colK, cy); ctx.fillText(xb, colX, cy); ctx.fillText(ps, colP, cy);
+      cy += 15;
     });
-    cy += 8;
+    cy += 6;
 
     // ── COMBAT & UPGRADES ──────────────────────────────────────
     header('COMBAT & UPGRADES');
@@ -6713,11 +6751,8 @@ export class Game {
     ctx.textAlign = 'center';
     ctx.fillText('◄  BACK', bx + bw / 2, by + 26);
 
-    // ── Safety / content note (in the clear area below the panel; subtle, two lines) ──
-    ctx.font      = '12px Consolas, monospace';
-    ctx.fillStyle = 'rgba(180,195,215,0.6)';
-    ctx.fillText('Recommended Age: 12+. This game contains fantasy combat, flashing neon effects, explosions,', WIDTH / 2, py + ph + 22);
-    ctx.fillText('enemy combat, and intense sci-fi action. Parental guidance is recommended for younger players.', WIDTH / 2, py + ph + 40);
+    // ── Compact content-rating badge (below the panel, left) — replaces the old plain-text notice ──
+    this._drawAgeBadge(ctx, px + 6, py + ph + 12, 34);
 
     ctx.textAlign = 'left';
   }
