@@ -57,6 +57,21 @@ export const FUSION_FX = {
   cataclysm:        { name: 'CATACLYSM BURN',   c1: '#c6ff3a', c2: '#ff6a1a', kind: 'aoe',   radius: 96, dmg: 18 },
 };
 
+// Element-pair → fusion id (keyed by fusionKey(a,b), i.e. the two element names sorted + joined).
+// Phase 3 resolves a character's PRIMARY element + a card-granted SECONDARY element through this map.
+export const FUSION_PAIRS = {
+  'electric+fire':      'plasma',
+  'electric+radiation': 'ionstorm',
+  'ice+magnetic':       'cryofield',
+  'electric+toxin':     'electrorot',
+  'fire+ice':           'thermal',
+  'ice+toxin':          'blight',
+  'gas+toxin':          'viral',
+  'electric+ice':       'frost_arc',
+  'fire+magnetic':      'magnetic_furnace',
+  'fire+radiation':     'cataclysm',
+};
+
 // Which fusion each playable character triggers once Fusion Catalyst is active. Single-element
 // characters (Skeleton=Electric, Brawler=Magnetic) have NO entry → they keep pure elemental VFX.
 // Oni is included but only ever active while actually played (he stays locked/PF-gated elsewhere).

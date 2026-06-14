@@ -126,7 +126,9 @@ export function drawHUD(ctx, game) {
   if (game._activeElement && game._elementColors) {
     const col = game._elementColors[game._activeElement] || CYAN;
     ctx.textAlign = 'left';
-    drawText(ctx, '◆ ' + game._activeElement.toUpperCase(), 16, HEIGHT - 70, col, 'bold 11px Consolas, monospace');
+    const secs = (game._secondaryElements && game._secondaryElements.length)
+      ? ' + ' + game._secondaryElements.map(s => s.toUpperCase()).join(' + ') : '';
+    drawText(ctx, '◆ ' + game._activeElement.toUpperCase() + secs, 16, HEIGHT - 70, col, 'bold 11px Consolas, monospace');
     // Brief fusion-name flash when a fusion procs (fades over its last moment).
     if (game._fusionName && game._fusionNameT > 0) {
       ctx.globalAlpha = Math.min(1, game._fusionNameT);

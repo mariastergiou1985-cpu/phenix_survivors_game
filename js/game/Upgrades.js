@@ -255,6 +255,24 @@ export const ALL_UPGRADES = [
     '#7df9ff', 3, () => {}, '✦', 'legendary', null, null, true, false, null, true),
   new UpgradeDefinition('reward_ult_infusion', 'Forbidden Ultimate Infusion', 'GIFT: your ultimate erupts with an elemental / fusion nova',
     '#ffd23c', 1, () => {}, '☢', 'legendary', null, null, true, false, null, true),
+
+  // ── Second-Element Infusion cards (Phase 3) — Endless-only. Each adds a run-only SECONDARY element
+  // to player.secondaryElements; with Fusion Catalyst, primary+secondary triggers the matching fusion.
+  // Premium reward styling. applyFn dedupes so re-rolls/duplicates stay clean.
+  new UpgradeDefinition('infuse_fire', 'Flame Infusion', 'Adds FIRE element. With Fusion Catalyst, attacks can trigger Plasma / Thermal / Cataclysm Burn.',
+    '#ff6a1a', 1, p => { (p.secondaryElements ||= []).includes('fire')      || p.secondaryElements.push('fire'); },      '🔥', 'legendary', null, null, true, false, null, true),
+  new UpgradeDefinition('infuse_electric', 'Electric Infusion', 'Adds ELECTRIC element. With Fusion Catalyst, attacks can trigger Plasma / Ion Storm / Electro-Rot.',
+    '#9fd8ff', 1, p => { (p.secondaryElements ||= []).includes('electric')  || p.secondaryElements.push('electric'); },  '⚡', 'legendary', null, null, true, false, null, true),
+  new UpgradeDefinition('infuse_ice', 'Frost Infusion', 'Adds ICE element. With Fusion Catalyst, attacks can trigger Cryo Field / Thermal Shock / Frost Blight / Frost Arc.',
+    '#7fe0ff', 1, p => { (p.secondaryElements ||= []).includes('ice')       || p.secondaryElements.push('ice'); },       '❄', 'legendary', null, null, true, false, null, true),
+  new UpgradeDefinition('infuse_magnetic', 'Magnetic Infusion', 'Adds MAGNETIC element. With Fusion Catalyst, attacks can trigger Cryo Field / Magnetic Furnace.',
+    '#9b6bff', 1, p => { (p.secondaryElements ||= []).includes('magnetic')  || p.secondaryElements.push('magnetic'); },  '🧲', 'legendary', null, null, true, false, null, true),
+  new UpgradeDefinition('infuse_toxin', 'Toxin Infusion', 'Adds TOXIN element. With Fusion Catalyst, attacks can trigger Electro-Rot / Frost Blight / Viral Cloud.',
+    '#7CFF4D', 1, p => { (p.secondaryElements ||= []).includes('toxin')     || p.secondaryElements.push('toxin'); },     '☣', 'legendary', null, null, true, false, null, true),
+  new UpgradeDefinition('infuse_radiation', 'Radiation Infusion', 'Adds RADIATION element. With Fusion Catalyst, attacks can trigger Ion Storm / Cataclysm Burn.',
+    '#c6ff3a', 1, p => { (p.secondaryElements ||= []).includes('radiation') || p.secondaryElements.push('radiation'); }, '☢', 'legendary', null, null, true, false, null, true),
+  new UpgradeDefinition('infuse_gas', 'Gas Infusion', 'Adds GAS element. With Fusion Catalyst, Toxin attacks can trigger Viral Cloud.',
+    '#8fdf7f', 1, p => { (p.secondaryElements ||= []).includes('gas')       || p.secondaryElements.push('gas'); },       '🌫', 'legendary', null, null, true, false, null, true),
 ];
 
 // ─── Weighted sample: every card is useful; bias toward the player's current build ──

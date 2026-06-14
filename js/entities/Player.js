@@ -1,6 +1,6 @@
-import { Vec2, WIDTH, HEIGHT, WORLD_W, WORLD_H, WORLD_MARGIN, PLAYER_RADIUS, CYAN, WHITE, YELLOW, GREEN, BLUE, RED } from '../constants.js?v=20260614221304';
+import { Vec2, WIDTH, HEIGHT, WORLD_W, WORLD_H, WORLD_MARGIN, PLAYER_RADIUS, CYAN, WHITE, YELLOW, GREEN, BLUE, RED } from '../constants.js?v=20260615003202';
 import { clamp, safeNormalize } from '../utils.js';
-import { Projectile } from './Projectile.js?v=20260614221304';
+import { Projectile } from './Projectile.js?v=20260615003202';
 import { FloatingText } from './FloatingText.js';
 
 export class Player {
@@ -105,6 +105,10 @@ export class Player {
       'Glacial Shatter': 0, 'Auto-Forge Drone': 0,
     };
 
+    // Elemental Phase 3 — run-only secondary elements granted by Infusion cards (reset each new run,
+    // since a fresh Player is built on reset). Never persisted to save data.
+    this.secondaryElements = [];
+
     // Ability cooldown timers
     this.sonicPulseCooldown  = 0.0;
     this.empCloudCooldown    = 0.0;
@@ -133,7 +137,7 @@ export class Player {
     //   laser-eyes.js = auto-weapon 1 · meteor-rain.js = auto-weapon 2 (AoE) · protocol-0.js = SPACE ult.
     //   Q/E stay shared global utilities; SPACE is his ultimate only. (euclid_vector intentionally NOT wired.)
     const ENDLESS_SPRITES = {
-      japan_phasewalker:      'assets/characters/endless/japan_phasewalker.png?v=20260614221304',   // ?v bust: corrected transparency
+      japan_phasewalker:      'assets/characters/endless/japan_phasewalker.png?v=20260615003202',   // ?v bust: corrected transparency
       oni_cataclysm_protocol: 'assets/characters/endless/oni_cataclysm_protocol.png',
       euclid_vector:          'assets/characters/endless/euclid_vector.png',           // playable; auto toxin needle weapon
     };
