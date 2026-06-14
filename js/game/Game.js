@@ -5,35 +5,35 @@ import {
   MAX_OVERLOAD, PLAYER_RADIUS, CORE_RADIUS, MATRIX_RADIUS,
   DARK_BG, GRID_LINE, BLACK, CYAN, RED, GREEN, YELLOW, ORANGE, WHITE, PURPLE,
   CORE_COLORS, VIEW_SCALE, VIEW_W, VIEW_H, ENDLESS_VIEW_SCALE,
-} from '../constants.js?v=20260614183305';
+} from '../constants.js?v=20260614185423';
 import { clamp, distance, safeNormalize, randomChoice, randomRange } from '../utils.js';
 
 import { FloatingText }   from '../entities/FloatingText.js';
-import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260614183305';
-import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260614183305';
-import { Player }         from '../entities/Player.js?v=20260614183305';
-import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260614183305';
-import { Enemy }          from '../entities/Enemy.js?v=20260614183305';
-import { SupportDrone }   from '../entities/SupportDrone.js?v=20260614183305';
+import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260614185423';
+import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260614185423';
+import { Player }         from '../entities/Player.js?v=20260614185423';
+import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260614185423';
+import { Enemy }          from '../entities/Enemy.js?v=20260614185423';
+import { SupportDrone }   from '../entities/SupportDrone.js?v=20260614185423';
 
-import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow } from './Effects.js?v=20260614183305';
-import { SystemEventManager } from './Events.js?v=20260614183305';
-import { UpgradeUI }      from './UpgradeUI.js?v=20260614183305';
-import { weightedSample } from './Upgrades.js?v=20260614183305';
-import { MutationUI }      from './MutationUI.js?v=20260614183305';
-import { sampleMutations } from './Mutations.js?v=20260614183305';
-import { drawHUD, drawEndScreen } from './HUD.js?v=20260614183305';
-import { MetaProgress, META_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE } from './MetaProgress.js?v=20260614183305';
+import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow } from './Effects.js?v=20260614185423';
+import { SystemEventManager } from './Events.js?v=20260614185423';
+import { UpgradeUI }      from './UpgradeUI.js?v=20260614185423';
+import { weightedSample } from './Upgrades.js?v=20260614185423';
+import { MutationUI }      from './MutationUI.js?v=20260614185423';
+import { sampleMutations } from './Mutations.js?v=20260614185423';
+import { drawHUD, drawEndScreen } from './HUD.js?v=20260614185423';
+import { MetaProgress, META_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE } from './MetaProgress.js?v=20260614185423';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
-import { GlitchDash } from '../effects/glitch-dash.js?v=20260614183305';
-import { EMPShockwave } from '../effects/emp-shockwave.js?v=20260614183305';
-import { DigitalSingularity } from '../effects/digital-singularity.js?v=20260614183305';
-import { Protocol0 } from '../effects/protocol-0.js?v=20260614183305';
-import { LaserEyes } from '../effects/laser-eyes.js?v=20260614183305';
-import { MeteorRain } from '../effects/meteor-rain.js?v=20260614183305';
+import { GlitchDash } from '../effects/glitch-dash.js?v=20260614185423';
+import { EMPShockwave } from '../effects/emp-shockwave.js?v=20260614185423';
+import { DigitalSingularity } from '../effects/digital-singularity.js?v=20260614185423';
+import { Protocol0 } from '../effects/protocol-0.js?v=20260614185423';
+import { LaserEyes } from '../effects/laser-eyes.js?v=20260614185423';
+import { MeteorRain } from '../effects/meteor-rain.js?v=20260614185423';
 // Euclid Vector toxin kit — used ONLY when selectedCharacter === 'euclid_vector' (world-space).
-import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=20260614183305';
+import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=20260614185423';
 
 // ── Thunder Solo sprite slices (cyan_lightning_rain_notes.png, 1254×1254) ──────
 // Strike variants: a clean bolt column + ripple base. (ax,ay) = ripple-centre as a
@@ -136,16 +136,16 @@ export class Game {
       fallback.src = 'assets/backgrounds/cyberpunk_city_background.png';
       this._bgImage = fallback;
     };
-    this._bgImage.src = 'assets/backgrounds/cyber_city_bg_clean.png?v=20260614183305';
+    this._bgImage.src = 'assets/backgrounds/cyber_city_bg_clean.png?v=20260614185423';
 
     // Endless Stage 02 visuals (only used while this.endless — Act 1 keeps default visuals).
     // Missing files degrade to the default background / default Nexus visual (warn, no crash).
     this._endlessBgImage = new Image();
     this._endlessBgImage.onerror = () => console.warn('[Stage] missing assets/maps/endless/stage_02_neon_shinjuku_plaza.png — using default background');
-    this._endlessBgImage.src = 'assets/maps/endless/stage_02_neon_shinjuku_plaza.png?v=20260614183305';
+    this._endlessBgImage.src = 'assets/maps/endless/stage_02_neon_shinjuku_plaza.png?v=20260614185423';
     this._endlessNexusImage = new Image();
     this._endlessNexusImage.onerror = () => console.warn('[Nexus] missing assets/nexus/endless_nexus_base_8cores.png — using default Nexus visual');
-    this._endlessNexusImage.src = 'assets/nexus/endless_nexus_base_8cores.png?v=20260614183305';
+    this._endlessNexusImage.src = 'assets/nexus/endless_nexus_base_8cores.png?v=20260614185423';
 
     // Preload character portraits for Character Select screen
     this._charImages = {};
@@ -158,7 +158,7 @@ export class Game {
     // Japan Phasewalker portrait lives in the endless/ subfolder (Character Select + FX modules).
     this._phasewalkerSprite = new Image();
     this._phasewalkerSprite.onerror = () => console.warn('[Char] missing assets/characters/endless/japan_phasewalker.png');
-    this._phasewalkerSprite.src = 'assets/characters/endless/japan_phasewalker.png?v=20260614183305';   // ?v bust: corrected transparency
+    this._phasewalkerSprite.src = 'assets/characters/endless/japan_phasewalker.png?v=20260614185423';   // ?v bust: corrected transparency
     this._charImages['japan_phasewalker'] = this._phasewalkerSprite;
     // Euclid Vector portrait (endless/ subfolder; unlocked from the start — see roster + free unlock).
     this._euclidSprite = new Image();
@@ -198,7 +198,7 @@ export class Game {
 
     // Preload start-menu background image
     this._menuBg = new Image();
-    this._menuBg.src = 'assets/ui/start_menu_background.png?v=20260614183305';
+    this._menuBg.src = 'assets/ui/start_menu_background.png?v=20260614185423';
 
     // Preload phoenix revive effect images (orange / blue / gold tiers)
     this._phoenixImage = new Image();
@@ -206,11 +206,11 @@ export class Game {
 
     this._phoenixBlueImage = new Image();
     this._phoenixBlueImage.onerror = () => console.warn('[Assets] Failed to load: assets/effects/phoenix/blue_phoenix_revive.png');
-    this._phoenixBlueImage.src = 'assets/effects/phoenix/blue_phoenix_revive.png?v=20260614183305';
+    this._phoenixBlueImage.src = 'assets/effects/phoenix/blue_phoenix_revive.png?v=20260614185423';
 
     this._phoenixGoldImage = new Image();
     this._phoenixGoldImage.onerror = () => console.warn('[Assets] Failed to load: assets/effects/phoenix/gold_phoenix_revive.png');
-    this._phoenixGoldImage.src = 'assets/effects/phoenix/gold_phoenix_revive.png?v=20260614183305';
+    this._phoenixGoldImage.src = 'assets/effects/phoenix/gold_phoenix_revive.png?v=20260614185423';
 
     // Preload credits photos
     this._creditImgInk = new Image();
@@ -228,10 +228,10 @@ export class Game {
     // Preload core and matrix sprites
     this._coreSprite = new Image();
     this._coreSprite.onerror = () => console.warn('[Assets] Failed to load: assets/cores/data_core.png');
-    this._coreSprite.src = 'assets/cores/data_core.png?v=20260614183305';
+    this._coreSprite.src = 'assets/cores/data_core.png?v=20260614185423';
     this._matrixSprite = new Image();
     this._matrixSprite.onerror = () => console.warn('[Assets] Failed to load: assets/bases/matrix_base.png');
-    this._matrixSprite.src = 'assets/bases/matrix_base.png?v=20260614183305';
+    this._matrixSprite.src = 'assets/bases/matrix_base.png?v=20260614185423';
 
     // Preload grid cache supply drop sprite
     this._gridCacheSprite = new Image();
@@ -249,6 +249,13 @@ export class Game {
     this._lavaRainSprite = new Image();
     this._lavaRainSprite.onerror = () => console.warn('[Boss] lava_fire_rain.png not found — drawn fallback will be used');
     this._lavaRainSprite.src = 'assets/enemies/bosses/lava_fire_rain.png';
+    // Endless hazard art (single-frame transparent PNGs).
+    this._airstrikeSprite = new Image();
+    this._airstrikeSprite.onerror = () => console.warn('[Endless] airstrike_sheet.png not found — drawn fallback used');
+    this._airstrikeSprite.src = 'assets/enemies/event_airstrike/airstrike_sheet.png';
+    this._cycloneSprite = new Image();
+    this._cycloneSprite.onerror = () => console.warn('[Endless] cyber_cyclone_sheet.png not found — drawn fallback used');
+    this._cycloneSprite.src = 'assets/events/weather/cyber_cyclone_sheet.png';
 
     // HUD icons: Data-Core (top-right credits) + chains (Cyber Arm SPACE ultimate icon)
     this._dataCoreIcon = new Image();
@@ -272,25 +279,25 @@ export class Game {
     // Preload acid rain weather sprites
     this._acidRainFallImg = new Image();
     this._acidRainFallImg.onerror = () => console.warn('[Weather] acid_rain_fall.png not found — using line fallback');
-    this._acidRainFallImg.src = 'assets/events/weather/acid_rain_fall.png?v=20260614183305';
+    this._acidRainFallImg.src = 'assets/events/weather/acid_rain_fall.png?v=20260614185423';
     this._acidRainSplashImg = new Image();
     this._acidRainSplashImg.onerror = () => console.warn('[Weather] acid_rain_splash.png not found — using ellipse fallback');
-    this._acidRainSplashImg.src = 'assets/events/weather/acid_rain_splash.png?v=20260614183305';
+    this._acidRainSplashImg.src = 'assets/events/weather/acid_rain_splash.png?v=20260614185423';
 
     // Preload AI Overload Titan boss sprite
     this._titanSprite = new Image();
     this._titanSprite.onerror = () => console.warn('[Boss] ai_overload_titan.png failed to load — using fallback');
-    this._titanSprite.src = 'assets/enemies/bosses/ai_overload_titan.png?v=20260614183305';
+    this._titanSprite.src = 'assets/enemies/bosses/ai_overload_titan.png?v=20260614185423';
 
     // Preload Matrix Annihilator mini-boss sprite (existing asset)
     this._annihilatorSprite = new Image();
     this._annihilatorSprite.onerror = () => console.warn('[Boss] assets/enemies/bosses/matrix_annihilator.png failed to load — using fallback');
-    this._annihilatorSprite.src = 'assets/enemies/bosses/matrix_annihilator.png?v=20260614183305';
+    this._annihilatorSprite.src = 'assets/enemies/bosses/matrix_annihilator.png?v=20260614185423';
 
     // Preload Bloodfang Packmaster mini-boss sprite (existing asset)
     this._bloodfangSprite = new Image();
     this._bloodfangSprite.onerror = () => console.warn('[Boss] assets/enemies/bosses/bloodfang_packmaster.png failed to load — using fallback');
-    this._bloodfangSprite.src = 'assets/enemies/bosses/bloodfang_packmaster.png?v=20260614183305';
+    this._bloodfangSprite.src = 'assets/enemies/bosses/bloodfang_packmaster.png?v=20260614185423';
 
     // Preload secret-skin preview sprites (Character Select locked/unlocked + Victory screen).
     // Keyed by the same flags MetaProgress persists. Missing files degrade to a text fallback.
@@ -427,6 +434,10 @@ export class Game {
     this.rerollAvailable = false;
     this.megaBoss     = null;
     this.bossLavaZones = [];   // telegraphed lava/fire-rain zones cast by the main boss (player-only)
+    // Endless-only high-threat hazards (inert in Act 1; armed/reset in _enterEndless).
+    this.airstrikeShips   = [];   // loitering airstrike ships that fire aimed rockets
+    this.airstrikeRockets = [];   // aimed rockets with impact telegraph
+    this.cyclones         = [];   // forming → active storm hazard (DoT + CC), max 1
 
     this.timeAlive          = 0;
     this.overload           = 0;
@@ -646,6 +657,11 @@ export class Game {
     this._endlessBossTimer = 25;           // arm the repeating boss/miniboss rotation (~25s → ~2 min)
     this._endlessBossIdx   = -1;
     this._endlessLavaCd    = randomRange(18, 26);   // arm ambient Endless Lava Rain (boss-independent)
+    this._airstrikeTimer   = 90;            // first AIRSTRIKE ~1.5 min in, then every ~2 min
+    this._cycloneTimer     = 70;            // first CYBER CYCLONE ~1.2 min in, then every ~2 min
+    this.airstrikeShips    = [];            // clear any carryover hazards on (re)entry
+    this.airstrikeRockets  = [];
+    this.cyclones          = [];
     this.mutations         = this._freshMutations();   // fresh forced-mutation state for THIS Endless run
     this.mutationUI        = null;
     this._mutationTimer    = MUTATION_INTERVAL;         // first forced mutation at 3:00 into Endless
@@ -2498,6 +2514,7 @@ export class Game {
     this._updateAnnihilator(dt);
     this._updateBloodfang(dt);
     this._updateBossAttacks(dt);
+    this._updateEndlessHazards(dt);   // Endless-only: airstrike ships/rockets + cyber cyclone
     this._updateSupportDrones(dt);
     this._updateCorrosive(dt);   // centralized corrosive DoT (drone + Corrosive Payload card)
     this._updateAllyDrones(dt);
@@ -4978,6 +4995,175 @@ export class Game {
     if (spawned > 0) this.triggerAnnouncement('⚠ ELITE WAVE', '#FFD700');
   }
 
+  // ── Endless-only high-threat hazards: AIRSTRIKE ships (aimed rockets) + CYBER CYCLONE storm. ──
+  // Endless-gated, additive layer. Never touches Act 1, bosses, Overload, pickups, or the economy.
+  // Hard active caps (1 ship, 1 cyclone) keep clutter/perf bounded.
+  _updateEndlessHazards(dt) {
+    if (!this.endless) return;
+    this._updateAirstrike(dt);
+    this._updateCyclones(dt);
+  }
+
+  _updateAirstrike(dt) {
+    // Cadence: first ~1.5 min, then ~every 2 min — but never more than 1 ship at a time.
+    this._airstrikeTimer -= dt;
+    if (this._airstrikeTimer <= 0) {
+      if (this.airstrikeShips.length < 1) { this._airstrikeTimer = 120; this._spawnAirstrike(); }
+      else                                  this._airstrikeTimer = 20;   // still airborne → retry soon
+    }
+
+    // Ships loiter/strafe around the player and fire aimed rockets until a safety timeout.
+    for (let i = this.airstrikeShips.length - 1; i >= 0; i--) {
+      const s = this.airstrikeShips[i];
+      s.life  -= dt;
+      s.angle += dt * 0.5;
+      const tgt = new Vec2(this.player.pos.x + Math.cos(s.angle) * 360,
+                           this.player.pos.y + Math.sin(s.angle) * 300);
+      const mv = safeNormalize(tgt.sub(s.pos));
+      s.pos.addMut(mv.scale(220 * dt));
+      s.pos.x = clamp(s.pos.x, WORLD_MARGIN, WORLD_W - WORLD_MARGIN);
+      s.pos.y = clamp(s.pos.y, WORLD_MARGIN, WORLD_H - WORLD_MARGIN);
+      s.fireCd -= dt;
+      if (s.fireCd <= 0) { s.fireCd = randomRange(2.0, 2.6); this._fireRocket(s); }
+      if (s.life <= 0) this.airstrikeShips.splice(i, 1);   // long safety timeout
+    }
+    this._updateRockets(dt);
+  }
+
+  _spawnAirstrike() {
+    const edge = Math.random() < 0.5 ? -60 : WORLD_W + 60;
+    this.airstrikeShips.push({
+      pos: new Vec2(edge, randomRange(WORLD_MARGIN, WORLD_H - WORLD_MARGIN)),
+      angle: Math.random() * Math.PI * 2, fireCd: 1.5, life: 45,
+    });
+    this.triggerAnnouncement('AIRSTRIKE INBOUND', ORANGE);
+    this.audio?.playEventWarning();
+  }
+
+  _fireRocket(s) {
+    if (this.airstrikeRockets.length >= 30) return;   // safety cap on in-flight rockets
+    const base = safeNormalize(this.player.pos.sub(s.pos));
+    if (base.lengthSq() === 0) return;
+    const j = randomRange(-0.3, 0.3);   // ~70% aim assist / 30% spread → dangerous but dodgeable
+    const c = Math.cos(j), sn = Math.sin(j);
+    const dir = new Vec2(base.x * c - base.y * sn, base.x * sn + base.y * c);
+    this.airstrikeRockets.push({ pos: s.pos.clone(), dir, speed: 240, life: 5, radius: 7, blast: 46 });
+    this.audio?.playEnemyShoot();
+  }
+
+  _updateRockets(dt) {
+    for (let i = this.airstrikeRockets.length - 1; i >= 0; i--) {
+      const r = this.airstrikeRockets[i];
+      r.life -= dt;
+      r.pos.addMut(r.dir.scale(r.speed * dt));
+      const hit = distance(r.pos, this.player.pos) < PLAYER_RADIUS + r.blast;
+      const out = r.pos.x < -80 || r.pos.x > WORLD_W + 80 || r.pos.y < -80 || r.pos.y > WORLD_H + 80;
+      if (hit || r.life <= 0 || out) {
+        if (hit && this.phoenixReviveTimer <= 0 && this.player.dashTimer <= 0) {
+          const dmg = Math.round(this.player.maxHp * randomRange(0.40, 0.50));   // heavy clean hit
+          this.player.applyBite({ hp: dmg, stagger: 0.8 });   // damage + short stun (anti-chain inside)
+          this.screenShake.trigger(9, 0.4);
+          this.particles.spawnDeathBurst(r.pos, ORANGE, 18, 2.4);
+          this.floatingTexts.push(new FloatingText('-' + dmg + ' HP', this.player.pos.clone(), RED, 1.2));
+        } else {
+          this.particles.spawnHitSparks(r.pos, ORANGE);
+        }
+        this.airstrikeRockets.splice(i, 1);
+      }
+    }
+  }
+
+  _updateCyclones(dt) {
+    this._cycloneTimer -= dt;
+    if (this._cycloneTimer <= 0) {
+      if (this.cyclones.length < 1) { this._cycloneTimer = 120; this._spawnCyclone(); }
+      else                          this._cycloneTimer = 20;   // one at a time
+    }
+    for (let i = this.cyclones.length - 1; i >= 0; i--) {
+      const cy = this.cyclones[i];
+      cy.t += dt;
+      const toP = safeNormalize(this.player.pos.sub(cy.pos));   // drift slowly toward player
+      cy.pos.addMut(toP.scale(38 * dt));
+      cy.pos.x = clamp(cy.pos.x, WORLD_MARGIN, WORLD_W - WORLD_MARGIN);
+      cy.pos.y = clamp(cy.pos.y, WORLD_MARGIN, WORLD_H - WORLD_MARGIN);
+      if (cy.t >= cy.warn) {   // ACTIVE phase: DoT + pull + periodic stun while inside the funnel
+        const d = distance(this.player.pos, cy.pos);
+        if (d < cy.radius && this.phoenixReviveTimer <= 0 && this.player.dashTimer <= 0) {
+          this.player.pos.addMut(safeNormalize(cy.pos.sub(this.player.pos)).scale(70 * dt));   // pull-in
+          cy.dmgAccum += dt;
+          if (cy.dmgAccum >= 0.5) {
+            cy.dmgAccum -= 0.5;
+            this.player.applyDamage(6 * (1 - this.player.contactDamageReduction));
+            this.floatingTexts.push(new FloatingText('-6 HP', this.player.pos.clone(), CYAN, 0.6));
+          }
+          cy.stunCd -= dt;
+          if (cy.stunCd <= 0) { cy.stunCd = 2.5; this.player.applyBite({ stagger: 0.5 }); }
+        }
+      }
+      if (cy.t >= cy.warn + cy.active) this.cyclones.splice(i, 1);
+    }
+  }
+
+  _spawnCyclone() {
+    const ang  = Math.random() * Math.PI * 2;
+    const dist = randomRange(260, 420);
+    const pos  = new Vec2(
+      clamp(this.player.pos.x + Math.cos(ang) * dist, WORLD_MARGIN, WORLD_W - WORLD_MARGIN),
+      clamp(this.player.pos.y + Math.sin(ang) * dist, WORLD_MARGIN, WORLD_H - WORLD_MARGIN));
+    this.cyclones.push({ pos, t: 0, warn: 2.5, active: 14, radius: 120, dmgAccum: 0, stunCd: 0 });
+    this.triggerAnnouncement('CYBER CYCLONE FORMING', '#4db8ff');
+    this.audio?.playEventWarning();
+  }
+
+  // Drawn in world space (after boss lava). Gated on Endless so leftover hazards never paint in Act 1.
+  _drawEndlessHazards(ctx) {
+    if (!this.endless) return;
+    // Cyclones — telegraph ring while forming, then the funnel sprite (anchored at its base).
+    for (const cy of this.cyclones) {
+      const forming = cy.t < cy.warn;
+      if (forming) {
+        const p = 0.5 + 0.4 * Math.sin(performance.now() * 0.012);
+        ctx.save();
+        ctx.globalAlpha = 0.4 + 0.4 * p;
+        ctx.strokeStyle = '#4db8ff'; ctx.lineWidth = 4; ctx.setLineDash([14, 10]);
+        ctx.beginPath(); ctx.arc(cy.pos.x, cy.pos.y, cy.radius, 0, Math.PI * 2); ctx.stroke();
+        ctx.restore();
+      }
+      const spr   = this._cycloneSprite;
+      const scale = forming ? 0.5 + 0.5 * (cy.t / cy.warn) : 1.0;
+      const h = cy.radius * 2.6 * scale, w = h * (510 / 804);
+      ctx.save();
+      ctx.globalAlpha = forming ? 0.6 : 0.92;
+      if (spr.complete && spr.naturalWidth) {
+        ctx.drawImage(spr, cy.pos.x - w / 2, cy.pos.y - h * 0.78, w, h);
+      } else {
+        ctx.fillStyle = '#4db8ff'; ctx.globalAlpha = 0.3;
+        ctx.beginPath(); ctx.arc(cy.pos.x, cy.pos.y, cy.radius, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.restore();
+    }
+    // Airstrike ships.
+    const ship = this._airstrikeSprite;
+    for (const s of this.airstrikeShips) {
+      const sz = 110;
+      if (ship.complete && ship.naturalWidth) ctx.drawImage(ship, s.pos.x - sz / 2, s.pos.y - sz / 2, sz, sz);
+      else { ctx.save(); ctx.fillStyle = '#dfe9f5'; ctx.beginPath(); ctx.arc(s.pos.x, s.pos.y, 22, 0, Math.PI * 2); ctx.fill(); ctx.restore(); }
+    }
+    // Rockets — trail, body, and a pulsing blast-radius danger ring (impact telegraph).
+    for (const r of this.airstrikeRockets) {
+      ctx.save();
+      ctx.globalAlpha = 0.5; ctx.strokeStyle = ORANGE; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(r.pos.x, r.pos.y);
+      ctx.lineTo(r.pos.x - r.dir.x * 18, r.pos.y - r.dir.y * 18); ctx.stroke();
+      ctx.globalAlpha = 1; ctx.fillStyle = '#ffd27f';
+      ctx.beginPath(); ctx.arc(r.pos.x, r.pos.y, r.radius, 0, Math.PI * 2); ctx.fill();
+      const p = 0.5 + 0.5 * Math.sin(performance.now() * 0.02);
+      ctx.globalAlpha = 0.35 + 0.35 * p; ctx.strokeStyle = RED; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(r.pos.x, r.pos.y, r.blast, 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
+    }
+  }
+
   _updateFloatingTexts(dt) {
     for (let i = this.floatingTexts.length - 1; i >= 0; i--) {
       this.floatingTexts[i].update(dt);
@@ -5220,6 +5406,7 @@ export class Game {
 
     // 1a ── Boss Lava/Fire Rain zones (ground markers — under entities so they read as terrain)
     this._drawBossLava(ctx);
+    this._drawEndlessHazards(ctx);   // Endless-only: cyclone funnel + airstrike ships/rockets
 
     // 2 ── Power Matrices (fill-based glow + counter owned by PowerMatrix; overload drives danger blink)
     for (const m of this.matrices) {

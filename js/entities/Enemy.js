@@ -1,11 +1,11 @@
 import {
   Vec2, ENEMY_RADIUS, WIDTH, HEIGHT, WORLD_W, WORLD_H, WORLD_MARGIN,
   BLUE, MAGENTA, PURPLE, ORANGE, GREEN, RED, YELLOW, WHITE, CYAN, MATRIX_RADIUS,
-} from '../constants.js?v=20260614183305';
+} from '../constants.js?v=20260614185423';
 import { clamp, distance, safeNormalize, randomRange, randomChoice, drawBar } from '../utils.js';
-import { DataCore } from './DataCore.js?v=20260614183305';
+import { DataCore } from './DataCore.js?v=20260614185423';
 import { FloatingText } from './FloatingText.js';
-import { drawGlow } from '../game/Effects.js?v=20260614183305';
+import { drawGlow } from '../game/Effects.js?v=20260614185423';
 
 // ─── Hit/death feedback tuning (visual only — no balance impact) ────────────────
 // One place to dial the juice. Particle counts stay small and the ParticleSystem
@@ -159,7 +159,7 @@ export class Enemy {
     if (spriteFile) {
       this.sprite = new Image();
       this.sprite.onerror = () => console.warn(`[Enemy] Sprite failed: assets/enemies/${spriteFile}.png`);
-      this.sprite.src = `assets/enemies/${spriteFile}.png?v=20260614183305`;
+      this.sprite.src = `assets/enemies/${spriteFile}.png?v=20260614185423`;
     } else {
       console.warn(`[Enemy] No sprite mapped for: ${this.enemyType}`);
     }
