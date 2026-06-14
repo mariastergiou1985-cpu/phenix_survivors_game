@@ -180,6 +180,17 @@ export const ALL_UPGRADES = [
   new UpgradeDefinition('euclid_vector_overdose', 'Vector Overdose', 'Plague Trail ult: cheaper cast; +8% fire rate',
     PURPLE, 3, p => { p.fireRateBonus += 0.08; }, '⚗', 'legendary', 'euclid_vector'),
 
+  // ── Oni Cataclysm Protocol — Endless-locked boss character (PF-unlocked) ─────────────────────
+  // Char-gated to 'oni_cataclysm_protocol' so they ONLY roll while playing Oni (never for the other
+  // characters, and never while Oni is locked since Oni can't be selected then). Levels are read live
+  // in Game._updateOniFx (laser/meteor) and activateProtocol0Cataclysm (Protocol 0). New unique IDs.
+  new UpgradeDefinition('oni_laser_mastery', 'Laser Overload', 'Laser Eyes: +damage & faster beams',
+    '#ff5a3c', 3, () => {}, '👁', 'rare', 'oni_cataclysm_protocol'),
+  new UpgradeDefinition('oni_meteor_mastery', 'Meteor Cataclysm', 'Meteor Rain: +damage & faster fields',
+    '#ff8a3c', 3, () => {}, '☄', 'epic', 'oni_cataclysm_protocol'),
+  new UpgradeDefinition('oni_protocol0_mastery', 'Total Cataclysm', 'Protocol 0: stronger detonation',
+    '#ff3030', 3, () => {}, '☢', 'legendary', 'oni_cataclysm_protocol'),
+
   // ── Achievement Cards (Endless-only; only offered once their achievement is unlocked) ──
   // Global (char=null) so they can roll for any character. Instant-stat cards apply in applyFn
   // (safe — only ever offered in Endless); multiplier cards apply per-frame via _cardLvl in
