@@ -98,7 +98,8 @@ export function drawHUD(ctx, game) {
                    : p.selectedCharacter === 'euclid_vector'    ? '#00ff66'   // toxic green (Plague Trail)
                    : '#3cf0e6';                                                // aqua spirit
     const manaFrac = clamp(p.mana / 100, 0, 1);   // ultimate is ready at the fixed 100 cost, not maxMana (Mana Core safe)
-    _drawUltimateBox(ctx, WIDTH - 64, HEIGHT - 66, 48, 'SPACE', manaFrac, icon, ultColor);
+    const ultCasts = Math.floor(p.mana / 100);     // how many casts the current mana affords (display-only)
+    _drawUltimateBox(ctx, WIDTH - 64, HEIGHT - 66, 48, 'SPACE', manaFrac, icon, ultColor, ultCasts);
 
     // One-shot "ULTIMATE READY" cue — shown briefly the moment the ultimate becomes castable
     // (timer set in Game._updateUltReady). Holds, then fades over its final 0.6s. Not a loop.
@@ -114,6 +115,12 @@ export function drawHUD(ctx, game) {
       ctx.globalAlpha = 1;
     }
   }
+
+  // ── Bottom-center: HP / Mana numeric readout (display-only; reflects card/upgrade max increases) ──
+  ctx.textAlign = 'center';
+  drawText(ctx, `HP ${Math.ceil(p.hp)} / ${Math.round(p.maxHp)}`,    WIDTH / 2 - 80, HEIGHT - 14, '#ff8a98', 'bold 14px Consolas, monospace');
+  drawText(ctx, `MP ${Math.ceil(p.mana)} / ${Math.round(p.maxMana)}`, WIDTH / 2 + 80, HEIGHT - 14, '#7fe0ff', 'bold 14px Consolas, monospace');
+  ctx.textAlign = 'left';
 
   // First-run loop hint — teaches the core → matrix → overload loop without opening
   // Instructions. Auto-dismisses (fades out over its last 1.5s); upper third, never covers
@@ -293,7 +300,7 @@ function _drawAbilityBox(ctx, x, y, s, label, frac, ready, glyphFn, color = CYAN
 }
 
 // Bottom-right ultimate box: icon image + circular mana-fill ring. `color` = character identity.
-function _drawUltimateBox(ctx, x, y, s, label, frac, icon, color = CYAN) {
+function _drawUltimateBox(ctx, x, y, s, label, frac, icon, color = CYAN, casts = 0) {
   const cx = x + s / 2, cy = y + s / 2;
   const ready = frac >= 1;
   ctx.fillStyle = 'rgba(6,18,32,0.85)';
@@ -317,6 +324,29 @@ function _drawUltimateBox(ctx, x, y, s, label, frac, icon, color = CYAN) {
   ctx.textAlign = 'center';
   drawText(ctx, label, cx, y - 8, ready ? color : '#90a4b4', 'bold 12px Consolas, monospace');
   drawText(ctx, `${Math.round(frac * 100)}%`, cx, y + s + 16, ready ? color : '#90a4b4', '11px Consolas, monospace');
+
+  // Multi-cast stock indicator (display-only): casts = floor(mana / 100), so it drops immediately
+  // after a cast spends 100 mana. 2+ adds a brighter second-color border; the badge shows the count.
+  if (casts >= 1) {
+    if (casts >= 2) {
+      ctx.save();
+      ctx.strokeStyle = '#fff2a8'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.roundRect(x - 2, y - 2, s + 4, s + 4, 7); ctx.stroke();
+      ctx.restore();
+    }
+    const badge = casts >= 3 ? 'ULT x3+' : 'ULT x' + casts;
+    ctx.save();
+    ctx.font = 'bold 11px Consolas, monospace';
+    const bw  = ctx.measureText(badge).width + 12;
+    const bx  = x - bw - 6, byb = cy - 9;        // sits just left of the ult box (screen-edge safe)
+    ctx.fillStyle = '#0b1626';
+    ctx.strokeStyle = color; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.roundRect(bx, byb, bw, 18, 4); ctx.fill(); ctx.stroke();
+    ctx.textAlign = 'center';
+    drawText(ctx, badge, bx + bw / 2, byb + 13, color, 'bold 11px Consolas, monospace');
+    ctx.restore();
+    ctx.textAlign = 'left';
+  }
 }
 
 // Circular gauge: dim full ring + bright arc sweeping clockwise from the top by `frac`.
