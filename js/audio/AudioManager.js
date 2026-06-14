@@ -42,10 +42,10 @@ export class AudioManager {
     this._endlessAudio  = null;
     this._currentMusic  = null;   // the single track that may be audible; gates _play retries
 
-    this._setupTrack('assets/audio/music/menu_theme.mp3?v=20260614194205', 0.28, a => { this._menuAudio     = a; });
-    this._setupTrack('assets/audio/music/gameplay_theme.mp3?v=20260614194205', 0.20, a => { this._gameplayAudio = a; });
+    this._setupTrack('assets/audio/music/menu_theme.mp3?v=20260614195611', 0.28, a => { this._menuAudio     = a; });
+    this._setupTrack('assets/audio/music/gameplay_theme.mp3?v=20260614195611', 0.20, a => { this._gameplayAudio = a; });
     // Endless-only track (dawn). Missing/failed load degrades safely (onerror warn).
-    this._setupTrack('assets/audio/music/endless/dawn.wav?v=20260614194205', 0.20, a => { this._endlessAudio = a; });
+    this._setupTrack('assets/audio/music/endless/dawn.wav?v=20260614195611', 0.20, a => { this._endlessAudio = a; });
   }
 
   // ─── Volume persistence ─────────────────────────────────────────────────────
