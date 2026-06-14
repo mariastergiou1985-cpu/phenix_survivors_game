@@ -137,11 +137,14 @@ export const ALL_UPGRADES = [
   // Neon Taekwondo Girl — aqua spirit trail / dojang flag identity
   new UpgradeDefinition('taekwondo_primary_mastery', 'Tidal Kicks', '+12% primary damage & cyan kick arc',
     CYAN, 3, () => {}, '🌊', 'rare', 'taekwondo_girl'),
-  // id unchanged (save compat); retargeted from the retired Aqua Trail to the live auto-weapon.
+  // Repurposed from the retired Aqua Spirit Trail → now buffs her Spirit Crescent Kicks.
+  // ID kept unchanged for save compatibility; effect target moved to the live auto-weapon.
   new UpgradeDefinition('taekwondo_aqua_trail_mastery', 'Spirit Pierce', 'Spirit Crescent Kicks: +1 pierce & wider arc per level',
     CYAN, 3, () => {}, '🌀', 'epic', 'taekwondo_girl'),
-  new UpgradeDefinition('taekwondo_dojang_flag_mastery', 'Greater Dojang', 'Spirit Dojang Flag: larger aura',
-    BLUE, 3, () => {}, '⚑', 'legendary', 'taekwondo_girl'),
+  // Repurposed from the retired Spirit Dojang ultimate → now buffs her Cyber Ride ultimate.
+  // ID kept unchanged so existing saves / references stay valid; only display + effect target changed.
+  new UpgradeDefinition('taekwondo_dojang_flag_mastery', 'Cyber Ride Mastery', 'Cyber Ride: stronger headlight lasers & wider ram per level',
+    BLUE, 3, () => {}, '🏍️', 'legendary', 'taekwondo_girl'),
   // Brawler Warrior — chakram / crescent claw / skyfall lances identity
   new UpgradeDefinition('brawler_chakram_mastery', 'Razor Chakram', 'Nexus Chakram: +1 pierce & stronger return',
     GREEN, 3, () => {}, '◎', 'rare', 'brawler_warrior'),
@@ -191,6 +194,19 @@ export const ALL_UPGRADES = [
     YELLOW, 2, () => {}, '⚜', 'legendary', null, 'combo_master', true),
   new UpgradeDefinition('achievement_core_magnetizer', 'Core Magnetizer', 'Endless: +1 carried-core capacity per level',
     PURPLE, 2, p => { p.maxCarry += 1; }, '◉', 'epic', null, 'core_defender', true),
+
+  // ── Phase 2: WEIGHTY Endless cards. Gated to the new high-milestone achievements + Endless only.
+  // All effects use existing Player stat hooks (no Player/Game changes), so they're fully additive. ──
+  new UpgradeDefinition('achievement_overclocked_core', 'Overclocked Core', 'Endless: +20% fire rate & +10% projectile speed per level',
+    ORANGE, 2, p => { p.fireRateBonus += 0.20; p.projSpeedBonus += 0.10; }, '⚡', 'legendary', null, 'endless_titan', true),
+  new UpgradeDefinition('achievement_titan_plating', 'Titan Plating', 'Endless: +60 max HP per level',
+    RED, 2, p => { p.maxHp += 60; p.hp = Math.min(p.maxHp, p.hp + 60); }, '🛡', 'legendary', null, 'score_legend', true),
+  new UpgradeDefinition('achievement_nexus_capacitor', 'Nexus Capacitor', 'Endless: +40 max mana per level (faster ultimates)',
+    CYAN, 2, p => { p.maxMana += 40; p.mana = Math.min(p.maxMana, p.mana + 40); }, '💙', 'legendary', null, 'level_ascendant', true),
+  new UpgradeDefinition('achievement_hyper_mobility', 'Hyper Mobility', 'Endless: +12% move speed per level',
+    CYAN, 2, p => { p.speedBonus += 0.12; }, '»', 'epic', null, 'combo_god', true),
+  new UpgradeDefinition('achievement_core_hoarder', 'Core Hoarder', 'Endless: +2 carried-core capacity',
+    PURPLE, 1, p => { p.maxCarry += 2; }, '◉', 'epic', null, 'core_warden', true),
 ];
 
 // ─── Weighted sample: every card is useful; bias toward the player's current build ──

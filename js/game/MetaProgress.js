@@ -94,6 +94,24 @@ export const ENDLESS_ACHIEVEMENTS = [
   { id: 'core_defender',   name: 'CORE DEFENDER',      desc: 'Secure 25 cores in Endless',   test: (s) => s.cores >= 25,
     protocolName: 'Nexus Defender Protocol', protocolEffect: '+1 carried-core capacity',
     cardName: 'Core Magnetizer', cardEffect: '+1 carried-core capacity per level' },
+
+  // ── Phase 2: extended high-milestone ladder. Purely additive — unknown ids default to false on
+  // load and the idempotent PF backfill pays them out automatically, so existing saves are safe. ──
+  { id: 'endless_titan',   name: 'ENDLESS TITAN',     desc: 'Survive 25:00 in Endless',       test: (s) => s.time  >= 25 * 60,
+    protocolName: 'Titan Reactor Protocol', protocolEffect: '+10% fire rate',
+    cardName: 'Overclocked Core', cardEffect: '+20% fire rate & +10% projectile speed / level' },
+  { id: 'score_legend',    name: 'SCORE LEGEND',      desc: 'Reach 150,000 score in Endless',  test: (s) => s.score >= 150000,
+    protocolName: 'Titan Plating Protocol', protocolEffect: '+10% max HP',
+    cardName: 'Titan Plating', cardEffect: '+60 max HP / level' },
+  { id: 'level_ascendant', name: 'LEVEL ASCENDANT',   desc: 'Reach Level 45 in Endless',       test: (s) => s.level >= 45,
+    protocolName: 'Nexus Capacitor Protocol', protocolEffect: '+15% max mana',
+    cardName: 'Nexus Capacitor', cardEffect: '+40 max mana / level (faster ultimates)' },
+  { id: 'combo_god',       name: 'COMBO GOD',         desc: 'Reach combo x250 in Endless',     test: (s) => s.combo >= 250,
+    protocolName: 'Hyper Mobility Protocol', protocolEffect: '+8% move speed',
+    cardName: 'Hyper Mobility', cardEffect: '+12% move speed / level' },
+  { id: 'core_warden',     name: 'CORE WARDEN',       desc: 'Secure 60 cores in Endless',      test: (s) => s.cores >= 60,
+    protocolName: 'Core Hoarder Protocol', protocolEffect: '+1 carried-core capacity',
+    cardName: 'Core Hoarder', cardEffect: '+2 carried-core capacity' },
 ];
 
 // ─── Protocol Fragments (PF) — Phase 1 ──────────────────────────────────────────
@@ -110,6 +128,13 @@ export const PF_PAYOUTS = {
   grid_legend:      2,   // survive 20:00                 (hard)
   combo_master:     3,   // combo x100                    (hard)
   level_breaker:    3,   // reach Level 30                (hard)
+  // Phase 2 high-milestone payouts — kept at 1 PF each so PF stays a RARE currency and existing
+  // character-unlock pacing is barely shifted (the weighty Endless cards are the main reward).
+  endless_titan:    1,   // survive 25:00                 (hard)
+  score_legend:     1,   // 150,000 score                 (hard)
+  level_ascendant:  1,   // reach Level 45                (elite)
+  combo_god:        1,   // combo x250                    (elite)
+  core_warden:      1,   // secure 60 cores               (medium-hard)
 };
 // Sum of all current payouts (14). Computed, not hard-coded, so it stays correct if the table changes.
 export const PF_TOTAL_OBTAINABLE = Object.values(PF_PAYOUTS).reduce((a, b) => a + b, 0);

@@ -18,12 +18,12 @@ import { SupportDrone }   from '../entities/SupportDrone.js?v=1';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow } from './Effects.js?v=5';
 import { SystemEventManager } from './Events.js?v=96';
-import { UpgradeUI }      from './UpgradeUI.js?v=11';
-import { weightedSample } from './Upgrades.js?v=12';
+import { UpgradeUI }      from './UpgradeUI.js?v=12';
+import { weightedSample } from './Upgrades.js?v=13';
 import { MutationUI }      from './MutationUI.js?v=1';
 import { sampleMutations } from './Mutations.js?v=1';
 import { drawHUD, drawEndScreen } from './HUD.js?v=51';
-import { MetaProgress, META_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE } from './MetaProgress.js?v=18';
+import { MetaProgress, META_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE } from './MetaProgress.js?v=19';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
 import { GlitchDash } from '../effects/glitch-dash.js?v=1';
