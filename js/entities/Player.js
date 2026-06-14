@@ -1,6 +1,6 @@
-import { Vec2, WIDTH, HEIGHT, WORLD_W, WORLD_H, WORLD_MARGIN, PLAYER_RADIUS, CYAN, WHITE, YELLOW, GREEN, BLUE, RED } from '../constants.js?v=20260614192139';
+import { Vec2, WIDTH, HEIGHT, WORLD_W, WORLD_H, WORLD_MARGIN, PLAYER_RADIUS, CYAN, WHITE, YELLOW, GREEN, BLUE, RED } from '../constants.js?v=20260614194205';
 import { clamp, safeNormalize } from '../utils.js';
-import { Projectile } from './Projectile.js?v=20260614192139';
+import { Projectile } from './Projectile.js?v=20260614194205';
 import { FloatingText } from './FloatingText.js';
 
 export class Player {
@@ -133,7 +133,7 @@ export class Player {
     //   laser-eyes.js = auto-weapon 1 · meteor-rain.js = auto-weapon 2 (AoE) · protocol-0.js = SPACE ult.
     //   Q/E stay shared global utilities; SPACE is his ultimate only. (euclid_vector intentionally NOT wired.)
     const ENDLESS_SPRITES = {
-      japan_phasewalker:      'assets/characters/endless/japan_phasewalker.png?v=20260614192139',   // ?v bust: corrected transparency
+      japan_phasewalker:      'assets/characters/endless/japan_phasewalker.png?v=20260614194205',   // ?v bust: corrected transparency
       oni_cataclysm_protocol: 'assets/characters/endless/oni_cataclysm_protocol.png',
       euclid_vector:          'assets/characters/endless/euclid_vector.png',           // playable; auto toxin needle weapon
     };

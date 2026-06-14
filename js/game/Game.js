@@ -5,35 +5,35 @@ import {
   MAX_OVERLOAD, PLAYER_RADIUS, CORE_RADIUS, MATRIX_RADIUS,
   DARK_BG, GRID_LINE, BLACK, CYAN, RED, GREEN, YELLOW, ORANGE, WHITE, PURPLE,
   CORE_COLORS, VIEW_SCALE, VIEW_W, VIEW_H, ENDLESS_VIEW_SCALE,
-} from '../constants.js?v=20260614192139';
+} from '../constants.js?v=20260614194205';
 import { clamp, distance, safeNormalize, randomChoice, randomRange } from '../utils.js';
 
 import { FloatingText }   from '../entities/FloatingText.js';
-import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260614192139';
-import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260614192139';
-import { Player }         from '../entities/Player.js?v=20260614192139';
-import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260614192139';
-import { Enemy }          from '../entities/Enemy.js?v=20260614192139';
-import { SupportDrone }   from '../entities/SupportDrone.js?v=20260614192139';
+import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260614194205';
+import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260614194205';
+import { Player }         from '../entities/Player.js?v=20260614194205';
+import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260614194205';
+import { Enemy }          from '../entities/Enemy.js?v=20260614194205';
+import { SupportDrone }   from '../entities/SupportDrone.js?v=20260614194205';
 
-import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow } from './Effects.js?v=20260614192139';
-import { SystemEventManager } from './Events.js?v=20260614192139';
-import { UpgradeUI }      from './UpgradeUI.js?v=20260614192139';
-import { weightedSample } from './Upgrades.js?v=20260614192139';
-import { MutationUI }      from './MutationUI.js?v=20260614192139';
-import { sampleMutations } from './Mutations.js?v=20260614192139';
-import { drawHUD, drawEndScreen } from './HUD.js?v=20260614192139';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE } from './MetaProgress.js?v=20260614192139';
+import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow } from './Effects.js?v=20260614194205';
+import { SystemEventManager } from './Events.js?v=20260614194205';
+import { UpgradeUI }      from './UpgradeUI.js?v=20260614194205';
+import { weightedSample } from './Upgrades.js?v=20260614194205';
+import { MutationUI }      from './MutationUI.js?v=20260614194205';
+import { sampleMutations } from './Mutations.js?v=20260614194205';
+import { drawHUD, drawEndScreen } from './HUD.js?v=20260614194205';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE } from './MetaProgress.js?v=20260614194205';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
-import { GlitchDash } from '../effects/glitch-dash.js?v=20260614192139';
-import { EMPShockwave } from '../effects/emp-shockwave.js?v=20260614192139';
-import { DigitalSingularity } from '../effects/digital-singularity.js?v=20260614192139';
-import { Protocol0 } from '../effects/protocol-0.js?v=20260614192139';
-import { LaserEyes } from '../effects/laser-eyes.js?v=20260614192139';
-import { MeteorRain } from '../effects/meteor-rain.js?v=20260614192139';
+import { GlitchDash } from '../effects/glitch-dash.js?v=20260614194205';
+import { EMPShockwave } from '../effects/emp-shockwave.js?v=20260614194205';
+import { DigitalSingularity } from '../effects/digital-singularity.js?v=20260614194205';
+import { Protocol0 } from '../effects/protocol-0.js?v=20260614194205';
+import { LaserEyes } from '../effects/laser-eyes.js?v=20260614194205';
+import { MeteorRain } from '../effects/meteor-rain.js?v=20260614194205';
 // Euclid Vector toxin kit — used ONLY when selectedCharacter === 'euclid_vector' (world-space).
-import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=20260614192139';
+import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=20260614194205';
 
 // ── Thunder Solo sprite slices (cyan_lightning_rain_notes.png, 1254×1254) ──────
 // Strike variants: a clean bolt column + ripple base. (ax,ay) = ripple-centre as a
@@ -149,16 +149,16 @@ export class Game {
       fallback.src = 'assets/backgrounds/cyberpunk_city_background.png';
       this._bgImage = fallback;
     };
-    this._bgImage.src = 'assets/backgrounds/cyber_city_bg_clean.png?v=20260614192139';
+    this._bgImage.src = 'assets/backgrounds/cyber_city_bg_clean.png?v=20260614194205';
 
     // Endless Stage 02 visuals (only used while this.endless — Act 1 keeps default visuals).
     // Missing files degrade to the default background / default Nexus visual (warn, no crash).
     this._endlessBgImage = new Image();
     this._endlessBgImage.onerror = () => console.warn('[Stage] missing assets/maps/endless/stage_02_neon_shinjuku_plaza.png — using default background');
-    this._endlessBgImage.src = 'assets/maps/endless/stage_02_neon_shinjuku_plaza.png?v=20260614192139';
+    this._endlessBgImage.src = 'assets/maps/endless/stage_02_neon_shinjuku_plaza.png?v=20260614194205';
     this._endlessNexusImage = new Image();
     this._endlessNexusImage.onerror = () => console.warn('[Nexus] missing assets/nexus/endless_nexus_base_8cores.png — using default Nexus visual');
-    this._endlessNexusImage.src = 'assets/nexus/endless_nexus_base_8cores.png?v=20260614192139';
+    this._endlessNexusImage.src = 'assets/nexus/endless_nexus_base_8cores.png?v=20260614194205';
 
     // Preload character portraits for Character Select screen
     this._charImages = {};
@@ -171,7 +171,7 @@ export class Game {
     // Japan Phasewalker portrait lives in the endless/ subfolder (Character Select + FX modules).
     this._phasewalkerSprite = new Image();
     this._phasewalkerSprite.onerror = () => console.warn('[Char] missing assets/characters/endless/japan_phasewalker.png');
-    this._phasewalkerSprite.src = 'assets/characters/endless/japan_phasewalker.png?v=20260614192139';   // ?v bust: corrected transparency
+    this._phasewalkerSprite.src = 'assets/characters/endless/japan_phasewalker.png?v=20260614194205';   // ?v bust: corrected transparency
     this._charImages['japan_phasewalker'] = this._phasewalkerSprite;
     // Euclid Vector portrait (endless/ subfolder; unlocked from the start — see roster + free unlock).
     this._euclidSprite = new Image();
@@ -211,7 +211,7 @@ export class Game {
 
     // Preload start-menu background image
     this._menuBg = new Image();
-    this._menuBg.src = 'assets/ui/start_menu_background.png?v=20260614192139';
+    this._menuBg.src = 'assets/ui/start_menu_background.png?v=20260614194205';
 
     // Preload phoenix revive effect images (orange / blue / gold tiers)
     this._phoenixImage = new Image();
@@ -219,11 +219,11 @@ export class Game {
 
     this._phoenixBlueImage = new Image();
     this._phoenixBlueImage.onerror = () => console.warn('[Assets] Failed to load: assets/effects/phoenix/blue_phoenix_revive.png');
-    this._phoenixBlueImage.src = 'assets/effects/phoenix/blue_phoenix_revive.png?v=20260614192139';
+    this._phoenixBlueImage.src = 'assets/effects/phoenix/blue_phoenix_revive.png?v=20260614194205';
 
     this._phoenixGoldImage = new Image();
     this._phoenixGoldImage.onerror = () => console.warn('[Assets] Failed to load: assets/effects/phoenix/gold_phoenix_revive.png');
-    this._phoenixGoldImage.src = 'assets/effects/phoenix/gold_phoenix_revive.png?v=20260614192139';
+    this._phoenixGoldImage.src = 'assets/effects/phoenix/gold_phoenix_revive.png?v=20260614194205';
 
     // Preload credits photos
     this._creditImgInk = new Image();
@@ -241,10 +241,10 @@ export class Game {
     // Preload core and matrix sprites
     this._coreSprite = new Image();
     this._coreSprite.onerror = () => console.warn('[Assets] Failed to load: assets/cores/data_core.png');
-    this._coreSprite.src = 'assets/cores/data_core.png?v=20260614192139';
+    this._coreSprite.src = 'assets/cores/data_core.png?v=20260614194205';
     this._matrixSprite = new Image();
     this._matrixSprite.onerror = () => console.warn('[Assets] Failed to load: assets/bases/matrix_base.png');
-    this._matrixSprite.src = 'assets/bases/matrix_base.png?v=20260614192139';
+    this._matrixSprite.src = 'assets/bases/matrix_base.png?v=20260614194205';
 
     // Preload grid cache supply drop sprite
     this._gridCacheSprite = new Image();
@@ -292,25 +292,25 @@ export class Game {
     // Preload acid rain weather sprites
     this._acidRainFallImg = new Image();
     this._acidRainFallImg.onerror = () => console.warn('[Weather] acid_rain_fall.png not found — using line fallback');
-    this._acidRainFallImg.src = 'assets/events/weather/acid_rain_fall.png?v=20260614192139';
+    this._acidRainFallImg.src = 'assets/events/weather/acid_rain_fall.png?v=20260614194205';
     this._acidRainSplashImg = new Image();
     this._acidRainSplashImg.onerror = () => console.warn('[Weather] acid_rain_splash.png not found — using ellipse fallback');
-    this._acidRainSplashImg.src = 'assets/events/weather/acid_rain_splash.png?v=20260614192139';
+    this._acidRainSplashImg.src = 'assets/events/weather/acid_rain_splash.png?v=20260614194205';
 
     // Preload AI Overload Titan boss sprite
     this._titanSprite = new Image();
     this._titanSprite.onerror = () => console.warn('[Boss] ai_overload_titan.png failed to load — using fallback');
-    this._titanSprite.src = 'assets/enemies/bosses/ai_overload_titan.png?v=20260614192139';
+    this._titanSprite.src = 'assets/enemies/bosses/ai_overload_titan.png?v=20260614194205';
 
     // Preload Matrix Annihilator mini-boss sprite (existing asset)
     this._annihilatorSprite = new Image();
     this._annihilatorSprite.onerror = () => console.warn('[Boss] assets/enemies/bosses/matrix_annihilator.png failed to load — using fallback');
-    this._annihilatorSprite.src = 'assets/enemies/bosses/matrix_annihilator.png?v=20260614192139';
+    this._annihilatorSprite.src = 'assets/enemies/bosses/matrix_annihilator.png?v=20260614194205';
 
     // Preload Bloodfang Packmaster mini-boss sprite (existing asset)
     this._bloodfangSprite = new Image();
     this._bloodfangSprite.onerror = () => console.warn('[Boss] assets/enemies/bosses/bloodfang_packmaster.png failed to load — using fallback');
-    this._bloodfangSprite.src = 'assets/enemies/bosses/bloodfang_packmaster.png?v=20260614192139';
+    this._bloodfangSprite.src = 'assets/enemies/bosses/bloodfang_packmaster.png?v=20260614194205';
 
     // Preload secret-skin preview sprites (Character Select locked/unlocked + Victory screen).
     // Keyed by the same flags MetaProgress persists. Missing files degrade to a text fallback.
@@ -677,6 +677,7 @@ export class Game {
     this.airstrikeShips    = [];            // clear any carryover hazards on (re)entry
     this.airstrikeRockets  = [];
     this.cyclones          = [];
+    this._annihNexusKills  = 0;             // Annihilator Nexus-erase count this run (hard max 2)
     this.mutations         = this._freshMutations();   // fresh forced-mutation state for THIS Endless run
     this.mutationUI        = null;
     this._mutationTimer    = MUTATION_INTERVAL;         // first forced mutation at 3:00 into Endless
@@ -5136,7 +5137,7 @@ export class Game {
       s.pos.x = clamp(s.pos.x, WORLD_MARGIN, WORLD_W - WORLD_MARGIN);
       s.pos.y = clamp(s.pos.y, WORLD_MARGIN, WORLD_H - WORLD_MARGIN);
       s.fireCd -= dt;
-      if (s.fireCd <= 0) { s.fireCd = randomRange(2.0, 2.6); this._fireRocket(s); }
+      if (s.fireCd <= 0) { s.fireCd = randomRange(3.0, 4.2); this._fireSalvo(s); }   // grouped bombardment
       if (s.life <= 0) this.airstrikeShips.splice(i, 1);   // long safety timeout
     }
     this._updateRockets(dt);
@@ -5152,15 +5153,21 @@ export class Game {
     this.audio?.playEventWarning();
   }
 
-  _fireRocket(s) {
-    if (this.airstrikeRockets.length >= 30) return;   // safety cap on in-flight rockets
-    const base = safeNormalize(this.player.pos.sub(s.pos));
-    if (base.lengthSq() === 0) return;
-    const j = randomRange(-0.3, 0.3);   // ~70% aim assist / 30% spread → dangerous but dodgeable
-    const c = Math.cos(j), sn = Math.sin(j);
-    const dir = new Vec2(base.x * c - base.y * sn, base.x * sn + base.y * c);
-    this.airstrikeRockets.push({ pos: s.pos.clone(), dir, speed: 240, life: 5, radius: 7, blast: 46 });
-    this.audio?.playEnemyShoot();
+  // Rocket-rain SALVO: 3–6 rockets fanned across multiple impact zones around the player.
+  _fireSalvo(s) {
+    const n = 3 + Math.floor(Math.random() * 4);   // 3–6 rockets per burst (bombardment)
+    let fired = 0;
+    for (let i = 0; i < n; i++) {
+      if (this.airstrikeRockets.length >= 40) break;   // hard cap on in-flight rockets
+      const base = safeNormalize(this.player.pos.sub(s.pos));
+      if (base.lengthSq() === 0) break;
+      const j = randomRange(-0.45, 0.45);   // ~70% aim assist / 30% spread → multiple impact zones
+      const c = Math.cos(j), sn = Math.sin(j);
+      const dir = new Vec2(base.x * c - base.y * sn, base.x * sn + base.y * c);
+      this.airstrikeRockets.push({ pos: s.pos.clone(), dir, speed: randomRange(220, 285), life: 5.5, radius: 7, blast: 46 });
+      fired++;
+    }
+    if (fired > 0) this.audio?.playEnemyShoot();
   }
 
   _updateRockets(dt) {
@@ -5188,41 +5195,50 @@ export class Game {
   _updateCyclones(dt) {
     this._cycloneTimer -= dt;
     if (this._cycloneTimer <= 0) {
-      if (this.cyclones.length < 1) { this._cycloneTimer = 120; this._spawnCyclone(); }
-      else                          this._cycloneTimer = 20;   // one at a time
+      if (this.cyclones.length === 0) { this._cycloneTimer = 120; this._spawnCycloneStorm(); }
+      else                            this._cycloneTimer = 20;   // wait out the current storm
     }
     for (let i = this.cyclones.length - 1; i >= 0; i--) {
       const cy = this.cyclones[i];
       cy.t += dt;
-      const toP = safeNormalize(this.player.pos.sub(cy.pos));   // drift slowly toward player
-      cy.pos.addMut(toP.scale(38 * dt));
+      const toP = safeNormalize(this.player.pos.sub(cy.pos));   // drift toward player so it engages
+      cy.pos.addMut(toP.scale(46 * dt));
       cy.pos.x = clamp(cy.pos.x, WORLD_MARGIN, WORLD_W - WORLD_MARGIN);
       cy.pos.y = clamp(cy.pos.y, WORLD_MARGIN, WORLD_H - WORLD_MARGIN);
       if (cy.t >= cy.warn) {   // ACTIVE phase: DoT + pull + periodic stun while inside the funnel
         const d = distance(this.player.pos, cy.pos);
         if (d < cy.radius && this.phoenixReviveTimer <= 0 && this.player.dashTimer <= 0) {
-          this.player.pos.addMut(safeNormalize(cy.pos.sub(this.player.pos)).scale(70 * dt));   // pull-in
+          this.player.pos.addMut(safeNormalize(cy.pos.sub(this.player.pos)).scale(90 * dt));   // pull-in
           cy.dmgAccum += dt;
-          if (cy.dmgAccum >= 0.5) {
-            cy.dmgAccum -= 0.5;
-            this.player.applyDamage(6 * (1 - this.player.contactDamageReduction));
-            this.floatingTexts.push(new FloatingText('-6 HP', this.player.pos.clone(), CYAN, 0.6));
+          if (cy.dmgAccum >= 0.4) {
+            cy.dmgAccum -= 0.4;
+            this.player.applyDamage(7 * (1 - this.player.contactDamageReduction));   // ~17.5 dps inside
+            if (this.playerHitCooldown <= 0) {   // throttle shake/text (damage always applies)
+              this.playerHitCooldown = 0.4;
+              this.screenShake.trigger(3, 0.15);
+              this.floatingTexts.push(new FloatingText('-7 HP', this.player.pos.clone(), CYAN, 0.6));
+            }
           }
           cy.stunCd -= dt;
-          if (cy.stunCd <= 0) { cy.stunCd = 2.5; this.player.applyBite({ stagger: 0.5 }); }
+          if (cy.stunCd <= 0) { cy.stunCd = 2.0; this.player.applyBite({ stagger: 0.4 }); }
         }
       }
       if (cy.t >= cy.warn + cy.active) this.cyclones.splice(i, 1);
     }
   }
 
-  _spawnCyclone() {
-    const ang  = Math.random() * Math.PI * 2;
-    const dist = randomRange(260, 420);
-    const pos  = new Vec2(
-      clamp(this.player.pos.x + Math.cos(ang) * dist, WORLD_MARGIN, WORLD_W - WORLD_MARGIN),
-      clamp(this.player.pos.y + Math.sin(ang) * dist, WORLD_MARGIN, WORLD_H - WORLD_MARGIN));
-    this.cyclones.push({ pos, t: 0, warn: 2.5, active: 14, radius: 120, dmgAccum: 0, stunCd: 0 });
+  // One storm event = 2–4 funnels formed together (hard cap 4). None spawn on top of the player.
+  _spawnCycloneStorm() {
+    const n = 2 + Math.floor(Math.random() * 3);   // 2–4 funnels
+    for (let i = 0; i < n; i++) {
+      if (this.cyclones.length >= 4) break;          // safety cap
+      const ang  = Math.random() * Math.PI * 2;
+      const dist = randomRange(240, 460);            // never instantly on the player
+      const pos  = new Vec2(
+        clamp(this.player.pos.x + Math.cos(ang) * dist, WORLD_MARGIN, WORLD_W - WORLD_MARGIN),
+        clamp(this.player.pos.y + Math.sin(ang) * dist, WORLD_MARGIN, WORLD_H - WORLD_MARGIN));
+      this.cyclones.push({ pos, t: 0, warn: 2.5, active: 16, radius: 120, dmgAccum: 0, stunCd: 0 });
+    }
     this.triggerAnnouncement('CYBER CYCLONE FORMING', '#4db8ff');
     this.audio?.playEventWarning();
   }
@@ -5261,16 +5277,19 @@ export class Game {
       if (ship.complete && ship.naturalWidth) ctx.drawImage(ship, s.pos.x - sz / 2, s.pos.y - sz / 2, sz, sz);
       else { ctx.save(); ctx.fillStyle = '#dfe9f5'; ctx.beginPath(); ctx.arc(s.pos.x, s.pos.y, 22, 0, Math.PI * 2); ctx.fill(); ctx.restore(); }
     }
-    // Rockets — trail, body, and a pulsing blast-radius danger ring (impact telegraph).
+    // Rockets — dramatic dual-layer flame trail, glowing body, and a pulsing red blast telegraph.
     for (const r of this.airstrikeRockets) {
       ctx.save();
-      ctx.globalAlpha = 0.5; ctx.strokeStyle = ORANGE; ctx.lineWidth = 3;
+      ctx.globalAlpha = 0.30; ctx.strokeStyle = '#ff5a1a'; ctx.lineWidth = 7; ctx.lineCap = 'round';
       ctx.beginPath(); ctx.moveTo(r.pos.x, r.pos.y);
-      ctx.lineTo(r.pos.x - r.dir.x * 18, r.pos.y - r.dir.y * 18); ctx.stroke();
-      ctx.globalAlpha = 1; ctx.fillStyle = '#ffd27f';
+      ctx.lineTo(r.pos.x - r.dir.x * 40, r.pos.y - r.dir.y * 40); ctx.stroke();
+      ctx.globalAlpha = 0.7; ctx.strokeStyle = '#ffd27f'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(r.pos.x, r.pos.y);
+      ctx.lineTo(r.pos.x - r.dir.x * 22, r.pos.y - r.dir.y * 22); ctx.stroke();
+      ctx.globalAlpha = 1; ctx.fillStyle = '#fff0c0';
       ctx.beginPath(); ctx.arc(r.pos.x, r.pos.y, r.radius, 0, Math.PI * 2); ctx.fill();
       const p = 0.5 + 0.5 * Math.sin(performance.now() * 0.02);
-      ctx.globalAlpha = 0.35 + 0.35 * p; ctx.strokeStyle = RED; ctx.lineWidth = 2;
+      ctx.globalAlpha = 0.45 + 0.45 * p; ctx.strokeStyle = RED; ctx.lineWidth = 2.5;
       ctx.beginPath(); ctx.arc(r.pos.x, r.pos.y, r.blast, 0, Math.PI * 2); ctx.stroke();
       ctx.restore();
     }
@@ -7332,7 +7351,11 @@ export class Game {
   // window so it works for both Enemy bosses and the plain mini-boss objects. Ultimates and DoT
   // have their own caps and intentionally do NOT route through here. Returns the effective damage.
   _capBossDamage(boss, rawDmg) {
-    const cap = boss.isMegaBoss ? BOSS_DPS_CAP_MEGA : BOSS_DPS_CAP_MINI;
+    // Endless raises the per-second cap so sustained DPS actually kills bosses (no HP-sponge feel);
+    // Act 1 keeps its original, slower caps untouched.
+    const cap = boss.isMegaBoss
+      ? (this.endless ? 85  : BOSS_DPS_CAP_MEGA)
+      : (this.endless ? 120 : BOSS_DPS_CAP_MINI);
     const now = this.timeAlive;
     if (boss._dpsWindowStart === undefined || now - boss._dpsWindowStart >= 1.0) {
       boss._dpsWindowStart = now;
@@ -7846,8 +7869,9 @@ export class Game {
       WORLD_W / 2 + side * (WORLD_W / 2 - WORLD_MARGIN - R - 30),
       WORLD_H / 2
     );
+    const titanHp = this.endless ? 460 : 600;   // Endless: killable range (Act 1 keeps 600)
     this.titanBoss = {
-      pos, hp: 600, maxHp: 600,                 // survival pass: 480 → 600 (+25%)
+      pos, hp: titanHp, maxHp: titanHp,
       radius: R, speed: 60, contactDamage: 16, hitFlash: 0,
       shockwaveTimer: 4, beamTimer: 8,
     };
@@ -8010,8 +8034,9 @@ export class Game {
       WORLD_W / 2 + side * (WORLD_W / 2 - WORLD_MARGIN - R - 30),
       WORLD_H / 2
     );
+    const annHp = this.endless ? 460 : 600;     // Endless: killable range (Act 1 keeps 600)
     this.annihilatorBoss = {
-      pos, hp: 600, maxHp: 600,                 // survival pass: 480 → 600 (+25%)
+      pos, hp: annHp, maxHp: annHp,
       radius: R, speed: 52, contactDamage: 16, hitFlash: 0,
       targetMatrix: this._nearestMatrix(pos),
       attackTimer: 3,
@@ -8023,6 +8048,10 @@ export class Game {
     this.floatingTexts.push(
       new FloatingText('MATRIX ANNIHILATOR INBOUND', new Vec2(WIDTH / 2 - 230, HEIGHT / 2 - 60), RED, 3.0)
     );
+    // Endless objective pressure: warn the player of the Nexus-erase override (max 2 erases/run).
+    if (this.endless && (this._annihNexusKills || 0) < 2) {
+      this.triggerAnnouncement('ANNIHILATOR OVERRIDE — DESTROY IT BEFORE IT ERASES A NEXUS', RED);
+    }
   }
 
   // Ejects cores from the targeted Matrix (threatens it — never permanently destroys it).
@@ -8059,6 +8088,25 @@ export class Game {
     if (!a || a.hp <= 0) return;
 
     if (a.hitFlash > 0) a.hitFlash -= dt;
+
+    // ── Endless Nexus-erase countdown (objective pressure, not HP inflation) ──
+    // A live Annihilator runs a ~3-min timer; on expiry it erases one Nexus and spikes Overload.
+    // Hard-capped at 2 erases per run, and never if it would leave zero bases. Killing the
+    // Annihilator before 0 cancels it (the timer lives on the boss object and dies with it).
+    if (this.endless && (this._annihNexusKills || 0) < 2) {
+      if (a.nexusCountdown === undefined) a.nexusCountdown = 180;
+      a.nexusCountdown -= dt;
+      if (!a._warned60 && a.nexusCountdown <= 60) {
+        a._warned60 = true;
+        this.triggerAnnouncement('ANNIHILATOR OVERRIDE — 60s TO NEXUS ERASE', ORANGE);
+      }
+      if (a.nexusCountdown <= 0) {
+        this._annihNexusKills = (this._annihNexusKills || 0) + 1;
+        a.nexusCountdown = 180;     // re-arm for a possible 2nd (final) erase
+        a._warned60 = false;
+        this._annihilatorDestroyNexus();
+      }
+    }
 
     // Re-acquire a target Matrix if the current one is gone or drained
     if (!a.targetMatrix || !this.matrices.includes(a.targetMatrix) || !a.targetMatrix.hasCore()) {
@@ -8130,10 +8178,42 @@ export class Game {
     this.annihilatorBoss = null;
   }
 
+  // Endless objective consequence: erase one Nexus and spike Overload +30. Always leaves at least
+  // one base standing; the per-run cap (2) is enforced by the caller.
+  _annihilatorDestroyNexus() {
+    if (this.matrices.length <= 1) return;   // never erase the last base
+    const target = this.matrices[Math.floor(Math.random() * this.matrices.length)];
+    let core;
+    while ((core = target.stealCore())) {    // eject stored cores to the ground (conserved)
+      const ang = Math.random() * Math.PI * 2, rad = randomRange(40, 120);
+      core.pos = target.pos.add(new Vec2(Math.cos(ang) * rad, Math.sin(ang) * rad));
+      this.groundCores.push(core);
+    }
+    const idx = this.matrices.indexOf(target);
+    if (idx !== -1) this.matrices.splice(idx, 1);
+    this.overload = Math.min(100, this.overload + 30);
+    this.particles.spawnExplosion(target.pos, [RED, ORANGE, YELLOW], 36);
+    this.screenShake.trigger(16, 1.2);
+    this.audio?.playMatrixCritical?.();
+    this.triggerAnnouncement('NEXUS ERASED — NETWORK OVERLOAD +30', RED);
+    this.floatingTexts.push(new FloatingText('NEXUS ERASED', target.pos.clone(), RED, 3));
+  }
+
   _drawAnnihilator(ctx) {
     const a = this.annihilatorBoss;
     if (!a || a.hp <= 0) return;
     const R = a.radius;
+
+    // Endless Nexus-erase countdown — drawn above the boss so the objective pressure is clear.
+    if (this.endless && (this._annihNexusKills || 0) < 2 && a.nexusCountdown !== undefined) {
+      ctx.save();
+      ctx.font = 'bold 14px Consolas, monospace';
+      ctx.fillStyle = a.nexusCountdown <= 60 ? RED : ORANGE;
+      ctx.textAlign = 'center';
+      ctx.fillText('NEXUS ERASE: ' + Math.ceil(Math.max(0, a.nexusCountdown)) + 's', a.pos.x, a.pos.y - R - 18);
+      ctx.restore();
+      ctx.textAlign = 'left';
+    }
 
     // Targeting line to the Matrix it is threatening
     if (a.targetMatrix && this.matrices.includes(a.targetMatrix)) {
@@ -8203,8 +8283,9 @@ export class Game {
       WORLD_W / 2 + side * (WORLD_W / 2 - WORLD_MARGIN - R - 30),
       WORLD_H / 2
     );
+    const bfHp = this.endless ? 540 : 700;      // Endless: killable range (Act 1 keeps 700)
     this.bloodfangBoss = {
-      pos, hp: 700, maxHp: 700,                 // survival pass: 560 → 700 (+25%)
+      pos, hp: bfHp, maxHp: bfHp,
       radius: R, speed: 112, hitFlash: 0,
       biteTimer: 2.0, lungeTimer: 0, lungeDir: new Vec2(1, 0),
       slamTimer: 4,

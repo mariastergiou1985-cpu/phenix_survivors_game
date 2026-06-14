@@ -1,11 +1,11 @@
 import {
   Vec2, ENEMY_RADIUS, WIDTH, HEIGHT, WORLD_W, WORLD_H, WORLD_MARGIN,
   BLUE, MAGENTA, PURPLE, ORANGE, GREEN, RED, YELLOW, WHITE, CYAN, MATRIX_RADIUS,
-} from '../constants.js?v=20260614192139';
+} from '../constants.js?v=20260614194205';
 import { clamp, distance, safeNormalize, randomRange, randomChoice, drawBar } from '../utils.js';
-import { DataCore } from './DataCore.js?v=20260614192139';
+import { DataCore } from './DataCore.js?v=20260614194205';
 import { FloatingText } from './FloatingText.js';
-import { drawGlow } from '../game/Effects.js?v=20260614192139';
+import { drawGlow } from '../game/Effects.js?v=20260614194205';
 
 // ─── Hit/death feedback tuning (visual only — no balance impact) ────────────────
 // One place to dial the juice. Particle counts stay small and the ParticleSystem
@@ -159,7 +159,7 @@ export class Enemy {
     if (spriteFile) {
       this.sprite = new Image();
       this.sprite.onerror = () => console.warn(`[Enemy] Sprite failed: assets/enemies/${spriteFile}.png`);
-      this.sprite.src = `assets/enemies/${spriteFile}.png?v=20260614192139`;
+      this.sprite.src = `assets/enemies/${spriteFile}.png?v=20260614194205`;
     } else {
       console.warn(`[Enemy] No sprite mapped for: ${this.enemyType}`);
     }
@@ -257,12 +257,12 @@ export class Enemy {
     game.player.kills++;
     game.addKillScore?.(this.pos, this.isElite);
 
-    // Elite reward (Endless): sparse, biased toward mana over health so elite waves stop
-    // flooding the grid with HP cells. 10% health, 30% mana, 60% nothing — useful, not excessive.
+    // Elite reward (Endless): sparse but visible. 18% health, 32% mana, 50% nothing — restores
+    // useful HP cells without flooding the grid, and mana stays a strong elite reward.
     if (this.isElite) {
       const r = Math.random();
-      if (r < 0.10)      game.healthPickups.push({ pos: this.pos.clone(), timer: 25 });
-      else if (r < 0.40) game.manaPickups.push({ pos: this.pos.clone() });
+      if (r < 0.18)      game.healthPickups.push({ pos: this.pos.clone(), timer: 25 });
+      else if (r < 0.50) game.manaPickups.push({ pos: this.pos.clone() });
     }
     // Normal-enemy XP scales with elapsed time (+1 every 2 min) so dense late-game
     // crowds still feed steady level-ups; bosses keep their flat high values.
