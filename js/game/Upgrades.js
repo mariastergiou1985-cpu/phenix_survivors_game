@@ -276,7 +276,7 @@ export const ALL_UPGRADES = [
     ['taekwondo_girl', 'cyber_arm_hero', 'euclid_vector', 'oni_cataclysm_protocol']),
   new UpgradeDefinition('infuse_ice', 'Frost Infusion', 'Adds ICE element. With Fusion Catalyst, attacks can trigger Cryo Field / Thermal Shock / Frost Blight / Frost Arc.',
     '#7fe0ff', 1, p => { (p.secondaryElements ||= []).includes('ice')       || p.secondaryElements.push('ice'); },       '❄', 'legendary', null, null, true, false, null, true,
-    ['skeleton_warrior', 'taekwondo_girl', 'cyber_arm_hero', 'brawler_warrior', 'euclid_vector']),
+    ['skeleton_warrior', 'taekwondo_girl', 'cyber_arm_hero', 'brawler_warrior']),   // NOT Euclid (poison/gas identity)
   new UpgradeDefinition('infuse_magnetic', 'Magnetic Infusion', 'Adds MAGNETIC element. With Fusion Catalyst, attacks can trigger Cryo Field / Magnetic Furnace.',
     '#9b6bff', 1, p => { (p.secondaryElements ||= []).includes('magnetic')  || p.secondaryElements.push('magnetic'); },  '🧲', 'legendary', null, null, true, false, null, true,
     ['cyber_arm_hero', 'taekwondo_girl']),
