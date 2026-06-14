@@ -122,6 +122,13 @@ export function drawHUD(ctx, game) {
     drawText(ctx, '🎮 Controller', 16, HEIGHT - 8, '#7CFF8A', 'bold 11px "Segoe UI Emoji", Consolas, monospace');
   }
 
+  // ── Active elemental identity indicator (small, above the Q/E ability boxes) ──
+  if (game._activeElement && game._elementColors) {
+    const col = game._elementColors[game._activeElement] || CYAN;
+    ctx.textAlign = 'left';
+    drawText(ctx, '◆ ' + game._activeElement.toUpperCase(), 16, HEIGHT - 70, col, 'bold 11px Consolas, monospace');
+  }
+
   // ── Bottom-center: HP / Mana numeric readout (display-only; reflects card/upgrade max increases) ──
   ctx.textAlign = 'center';
   drawText(ctx, `HP ${Math.ceil(p.hp)} / ${Math.round(p.maxHp)}`,    WIDTH / 2 - 80, HEIGHT - 14, '#ff8a98', 'bold 14px Consolas, monospace');

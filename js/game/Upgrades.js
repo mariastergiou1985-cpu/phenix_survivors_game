@@ -10,7 +10,7 @@ export const RARITY_COLORS = {
 
 export class UpgradeDefinition {
   constructor(key, name, description, iconColor, maxLevel, applyFn, icon = null, rarity = 'common', char = null,
-              requiredAchievement = null, endlessOnly = false, synergy = false, prereq = null) {
+              requiredAchievement = null, endlessOnly = false, synergy = false, prereq = null, reward = false) {
     this.key         = key;
     this.name        = name;
     this.description = description;
@@ -28,6 +28,8 @@ export class UpgradeDefinition {
     // them behind having leveled the relevant base weapon, so they only appear once they're useful.
     this.synergy = synergy;
     this.prereq  = prereq;
+    // Reward / gift cards: premium "overdrive" bonuses with distinct styling (drawn in UpgradeUI).
+    this.reward  = reward;
   }
 
   apply(player) {
@@ -239,6 +241,20 @@ export const ALL_UPGRADES = [
     '#ff5cd2', 1, () => {}, '✖', 'legendary', 'assassin_clone', null, false, true, p => (p.upgrades['assassin_clone_twin_dagger_mastery'] || 0) >= 1),
   new UpgradeDefinition('synergy_toxic_geometry', 'Toxic Geometry', 'Toxin shots MARK foes; marks pulse extra poison',
     '#7CFF4D', 1, () => {}, '▲', 'legendary', 'euclid_vector', null, false, true, p => (p.upgrades['euclid_toxin_shot_mastery'] || 0) >= 1),
+
+  // ── Reward / Gift cards (Phase 1) — Endless-only premium "overdrive" rewards (global, char=null).
+  // Endless-gated so Act 1's card pool/balance is untouched. Distinct REWARD styling in UpgradeUI.
+  // Positional tail: (char, requiredAchievement, endlessOnly, synergy, prereq, reward).
+  new UpgradeDefinition('reward_overclock_arsenal', 'Overclock Arsenal', 'GIFT: +20% fire rate for the whole run',
+    '#ff7a2a', 1, p => { p.fireRateBonus += 0.20; }, '⚡', 'legendary', null, null, true, false, null, true),
+  new UpgradeDefinition('reward_storm_execution', 'Storm Execution Protocol', 'GIFT: a storm periodically zaps normal enemies (not bosses or you)',
+    '#9fd8ff', 1, () => {}, '🌩', 'legendary', null, null, true, false, null, true),
+  new UpgradeDefinition('reward_elemental_core', 'Elemental Core', 'GIFT: infuse your element — stronger elemental hits',
+    '#b66bff', 1, () => {}, '◆', 'legendary', null, null, true, false, null, true),
+  new UpgradeDefinition('reward_fusion_catalyst', 'Fusion Catalyst', 'GIFT: elemental procs hit harder & bigger (per level)',
+    '#7df9ff', 3, () => {}, '✦', 'legendary', null, null, true, false, null, true),
+  new UpgradeDefinition('reward_ult_infusion', 'Forbidden Ultimate Infusion', 'GIFT: your ultimate erupts with your element',
+    '#ffd23c', 1, () => {}, '☢', 'legendary', null, null, true, false, null, true),
 ];
 
 // ─── Weighted sample: every card is useful; bias toward the player's current build ──
