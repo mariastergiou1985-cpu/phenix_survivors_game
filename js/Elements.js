@@ -17,7 +17,7 @@ export const ELEMENTS = {
 
 // Symbol/icon per element — used for compact icon-based badges (HUD, cards) instead of long words.
 export const ELEMENT_ICON = {
-  fire: '🔥', electric: '⚡', radiation: '☢', ice: '❄', magnetic: '🧲', toxin: '☣', gas: '🌫',
+  fire: '🔥', electric: '⚡', radiation: '☢', ice: '❄', magnetic: '🧲', toxin: '☣', gas: '☁',
 };
 
 // Primary elemental identity per active character. Oni is included but stays locked/PF-gated

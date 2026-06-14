@@ -1,6 +1,6 @@
-import { Game } from './game/Game.js?v=20260615012114';
-import { AudioManager } from './audio/AudioManager.js?v=20260615012114';
-import { GamepadInput } from './Gamepad.js?v=20260615012114';
+import { Game } from './game/Game.js?v=20260615013234';
+import { AudioManager } from './audio/AudioManager.js?v=20260615013234';
+import { GamepadInput } from './Gamepad.js?v=20260615013234';
 
 const canvas = document.getElementById('game');
 const ctx    = canvas.getContext('2d');

@@ -273,21 +273,21 @@ export const ALL_UPGRADES = [
     ['skeleton_warrior', 'taekwondo_girl', 'assassin_clone', 'brawler_warrior', 'oni_cataclysm_protocol']),
   new UpgradeDefinition('infuse_electric', 'Electric Infusion', 'Adds ELECTRIC element. With Fusion Catalyst, attacks can trigger Plasma / Ion Storm / Electro-Rot.',
     '#9fd8ff', 1, p => { (p.secondaryElements ||= []).includes('electric')  || p.secondaryElements.push('electric'); },  '⚡', 'legendary', null, null, true, false, null, true,
-    ['taekwondo_girl', 'cyber_arm_hero', 'euclid_vector', 'oni_cataclysm_protocol']),
+    ['taekwondo_girl', 'cyber_arm_hero', 'oni_cataclysm_protocol']),   // NOT Euclid (toxin/gas identity)
   new UpgradeDefinition('infuse_ice', 'Frost Infusion', 'Adds ICE element. With Fusion Catalyst, attacks can trigger Cryo Field / Thermal Shock / Frost Blight / Frost Arc.',
     '#7fe0ff', 1, p => { (p.secondaryElements ||= []).includes('ice')       || p.secondaryElements.push('ice'); },       '❄', 'legendary', null, null, true, false, null, true,
     ['skeleton_warrior', 'taekwondo_girl', 'cyber_arm_hero', 'brawler_warrior']),   // NOT Euclid (poison/gas identity)
   new UpgradeDefinition('infuse_magnetic', 'Magnetic Infusion', 'Adds MAGNETIC element. With Fusion Catalyst, attacks can trigger Cryo Field / Magnetic Furnace.',
     '#9b6bff', 1, p => { (p.secondaryElements ||= []).includes('magnetic')  || p.secondaryElements.push('magnetic'); },  '🧲', 'legendary', null, null, true, false, null, true,
     ['cyber_arm_hero', 'taekwondo_girl']),
-  new UpgradeDefinition('infuse_toxin', 'Toxin Infusion', 'Adds TOXIN element. With Fusion Catalyst, attacks can trigger Electro-Rot / Frost Blight / Viral Cloud.',
+  new UpgradeDefinition('infuse_toxin', 'Toxin Infusion', 'Empowers corrosive attacks. With Fusion Catalyst, enables corrosive fusions (Electro-Rot / Viral Cloud).',
     '#7CFF4D', 1, p => { (p.secondaryElements ||= []).includes('toxin')     || p.secondaryElements.push('toxin'); },     '☣', 'legendary', null, null, true, false, null, true,
     ['assassin_clone', 'euclid_vector']),
   new UpgradeDefinition('infuse_radiation', 'Radiation Infusion', 'Adds RADIATION element. With Fusion Catalyst, attacks can trigger Ion Storm / Cataclysm Burn.',
     '#c6ff3a', 1, p => { (p.secondaryElements ||= []).includes('radiation') || p.secondaryElements.push('radiation'); }, '☢', 'legendary', null, null, true, false, null, true,
     ['skeleton_warrior', 'oni_cataclysm_protocol']),
   new UpgradeDefinition('infuse_gas', 'Gas Infusion', 'Adds GAS element. With Fusion Catalyst, Toxin attacks can trigger Viral Cloud.',
-    '#8fdf7f', 1, p => { (p.secondaryElements ||= []).includes('gas')       || p.secondaryElements.push('gas'); },       '🌫', 'legendary', null, null, true, false, null, true,
+    '#8fdf7f', 1, p => { (p.secondaryElements ||= []).includes('gas')       || p.secondaryElements.push('gas'); },       '☁', 'legendary', null, null, true, false, null, true,
     ['euclid_vector']),
 ];
 
