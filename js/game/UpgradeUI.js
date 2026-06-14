@@ -1,6 +1,6 @@
 import { WIDTH, HEIGHT, YELLOW, WHITE, GREY } from '../constants.js';
 import { drawText, wrapText, roundRect } from '../utils.js';
-import { RARITY_COLORS } from './Upgrades.js?v=20260614185423';
+import { RARITY_COLORS } from './Upgrades.js?v=20260614192139';
 
 export class UpgradeUI {
   constructor(choices) {
@@ -31,6 +31,7 @@ export class UpgradeUI {
   // Special cards get a bespoke neon accent so they read as premium; everything else keeps its
   // rarity color. Corrosive = acid green; weapon-mastery cards inherit their character identity.
   _accentFor(upg) {
+    if (upg.synergy) return upg.iconColor;   // synergy cards: bright per-character premium accent
     if (upg.key === 'corrosive_payload') return '#7CFF3C';
     switch (upg.char) {
       case 'skeleton_warrior': return '#AEE3FF';   // blue-white electric
@@ -144,11 +145,11 @@ export class UpgradeUI {
       ctx.fillText(upg.name, r.x + r.w / 2, r.y + 122);
       ctx.restore();
 
-      // Rarity label
+      // Rarity label — synergy cards get a premium ★ SYNERGY ★ badge in the accent color
       ctx.font      = 'bold 11px Consolas, monospace';
-      ctx.fillStyle = rarity;
+      ctx.fillStyle = upg.synergy ? accent : rarity;
       ctx.textAlign = 'center';
-      ctx.fillText(upg.rarity.toUpperCase(), r.x + r.w / 2, r.y + 140);
+      ctx.fillText(upg.synergy ? '★ SYNERGY ★' : upg.rarity.toUpperCase(), r.x + r.w / 2, r.y + 140);
       ctx.textAlign = 'left';
 
       // Description (word-wrapped)

@@ -18,9 +18,26 @@ const COST_5 = [25, 50, 90, 140, 220];  // 5-level upgrades
 const COST_3 = [35, 90, 180];           // 3-level upgrades (e.g. Core Capacity)
 
 export function upgradeCost(upg, level) {
+  if (upg.flatCost) return upg.flatCost;   // synergy upgrades: flat cost per star (1000)
   const table = upg.maxLevel <= 3 ? COST_3 : COST_5;
   return table[Math.min(level, table.length - 1)];
 }
+
+// ─── Character Weapon Synergy meta-upgrades (5★, flat 1000 Grid Cores per star) ───────────────
+// A deep late-game Grid-Core sink, rendered on a separate SYNERGY tab of the Upgrades screen.
+// Save-compatible: levels live in the SAME `levels` dict as META_UPGRADES; unknown keys default to
+// 0 on load, so old saves are untouched. `char`/`charName` tie each synergy to a playable character;
+// `lockedUntil` (a protocolUnlock id) keeps a synergy LOCKED until that character is unlocked (Oni),
+// so this never exposes or free-unlocks a locked character.
+export const SYNERGY_UPGRADES = [
+  { key: 'syn_storm_conductor',   name: 'Storm Conductor ★',        char: 'skeleton_warrior',        charName: 'Skeleton Warrior', desc: '+mark duration & burst damage',   maxLevel: 5, flatCost: 1000 },
+  { key: 'syn_furnace_chains',    name: 'Furnace Chains ★',         char: 'cyber_arm_hero',          charName: 'Cyber Arm Hero',   desc: '+burn duration & bonus damage',   maxLevel: 5, flatCost: 1000 },
+  { key: 'syn_crescent_tide',     name: 'Crescent Tide Combo ★',    char: 'taekwondo_girl',          charName: 'Neon Taekwondo',   desc: '+splash radius & mana gain',      maxLevel: 5, flatCost: 1000 },
+  { key: 'syn_rift_rebound',      name: 'Rift Rebound ★',           char: 'brawler_warrior',         charName: 'Brawler Warrior',  desc: '+rift burst radius & damage',     maxLevel: 5, flatCost: 1000 },
+  { key: 'syn_plasma_execution',  name: 'Plasma Execution Loop ★',  char: 'assassin_clone',          charName: 'Assassin Clone',   desc: '+execution damage & uptime',      maxLevel: 5, flatCost: 1000 },
+  { key: 'syn_toxic_geometry',    name: 'Toxic Geometry ★',         char: 'euclid_vector',           charName: 'Euclid Vector',    desc: '+poison tick & mark duration',    maxLevel: 5, flatCost: 1000 },
+  { key: 'syn_cataclysm_chain',   name: 'Cataclysm Chain Reaction ★', char: 'oni_cataclysm_protocol', charName: 'Oni Cataclysm',  desc: 'Unlock Oni to access',            maxLevel: 5, flatCost: 1000, lockedUntil: 'oni_cataclysm_protocol' },
+];
 
 // Secret unlock flags — set on a victory, persisted in localStorage, read by the
 // Victory screen and Character Select. Additive: never gates existing progression.

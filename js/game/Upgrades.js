@@ -10,7 +10,7 @@ export const RARITY_COLORS = {
 
 export class UpgradeDefinition {
   constructor(key, name, description, iconColor, maxLevel, applyFn, icon = null, rarity = 'common', char = null,
-              requiredAchievement = null, endlessOnly = false) {
+              requiredAchievement = null, endlessOnly = false, synergy = false, prereq = null) {
     this.key         = key;
     this.name        = name;
     this.description = description;
@@ -24,6 +24,10 @@ export class UpgradeDefinition {
     // while in Endless. null/false leave a card unrestricted, so every existing card is unchanged.
     this.requiredAchievement = requiredAchievement;
     this.endlessOnly         = endlessOnly;
+    // Synergy cards: premium-styled, character-gated combo cards. `prereq(player)` (optional) gates
+    // them behind having leveled the relevant base weapon, so they only appear once they're useful.
+    this.synergy = synergy;
+    this.prereq  = prereq;
   }
 
   apply(player) {
@@ -207,6 +211,23 @@ export const ALL_UPGRADES = [
     CYAN, 2, p => { p.speedBonus += 0.12; }, '»', 'epic', null, 'combo_god', true),
   new UpgradeDefinition('achievement_core_hoarder', 'Core Hoarder', 'Endless: +2 carried-core capacity',
     PURPLE, 1, p => { p.maxCarry += 2; }, '◉', 'epic', null, 'core_warden', true),
+
+  // ── Character Weapon Synergy CARDS (premium, char-gated, one-time pick) ─────────────────────
+  // Appear only for the matching character AND once its base weapon is leveled (prereq). Picking one
+  // sets player.upgrades[key] = 1, which Game.js reads to activate that character's synergy mark-layer
+  // (distinct mark glyph/color + a boss-capped burst). Meta stars (SYNERGY_UPGRADES) scale the effect.
+  new UpgradeDefinition('synergy_storm_conductor', 'Storm Conductor', 'Chain Lightning MARKS foes; marks erupt in a lightning burst',
+    '#9fdcff', 1, () => {}, '⚡', 'legendary', 'skeleton_warrior', null, false, true, p => (p.upgrades['skeleton_chain_lightning_mastery'] || 0) >= 1),
+  new UpgradeDefinition('synergy_furnace_chains', 'Furnace Chains', 'Heavy Chains BURN foes; hits on burning foes erupt',
+    '#ff8a3c', 1, () => {}, '♨', 'legendary', 'cyber_arm_hero', null, false, true, p => (p.upgrades['cyber_heavy_chains_mastery'] || 0) >= 1),
+  new UpgradeDefinition('synergy_crescent_tide', 'Crescent Tide Combo', 'Spirit Crescent MARKS foes; kicks splash marked foes',
+    '#46e6ff', 1, () => {}, '≈', 'legendary', 'taekwondo_girl', null, false, true, p => (p.upgrades['taekwondo_aqua_trail_mastery'] || 0) >= 1),
+  new UpgradeDefinition('synergy_rift_rebound', 'Rift Rebound', 'Chakram returns crack the rift — marked foes burst',
+    '#5effc8', 1, () => {}, '◎', 'legendary', 'brawler_warrior', null, false, true, p => (p.upgrades['brawler_chakram_mastery'] || 0) >= 1),
+  new UpgradeDefinition('synergy_plasma_execution', 'Plasma Execution Loop', 'Arrow hits on MARKED foes trigger an execution burst',
+    '#ff5cd2', 1, () => {}, '✖', 'legendary', 'assassin_clone', null, false, true, p => (p.upgrades['assassin_clone_twin_dagger_mastery'] || 0) >= 1),
+  new UpgradeDefinition('synergy_toxic_geometry', 'Toxic Geometry', 'Toxin shots MARK foes; marks pulse extra poison',
+    '#7CFF4D', 1, () => {}, '▲', 'legendary', 'euclid_vector', null, false, true, p => (p.upgrades['euclid_toxin_shot_mastery'] || 0) >= 1),
 ];
 
 // ─── Weighted sample: every card is useful; bias toward the player's current build ──
@@ -220,7 +241,8 @@ export function weightedSample(player, n = 3, ctx = {}) {
     u.canApply(player) &&
     (!u.char || u.char === player.selectedCharacter) &&
     (!u.requiredAchievement || (meta && meta.hasAchievement(u.requiredAchievement))) &&
-    (!u.endlessOnly || endless));
+    (!u.endlessOnly || endless) &&
+    (!u.prereq || u.prereq(player)));
   if (!eligible.length) return [];
 
   // Weapon Evolution Protocol / Evolution Algorithm card: in Endless, nudge the current

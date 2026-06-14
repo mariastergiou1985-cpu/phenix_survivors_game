@@ -5,35 +5,35 @@ import {
   MAX_OVERLOAD, PLAYER_RADIUS, CORE_RADIUS, MATRIX_RADIUS,
   DARK_BG, GRID_LINE, BLACK, CYAN, RED, GREEN, YELLOW, ORANGE, WHITE, PURPLE,
   CORE_COLORS, VIEW_SCALE, VIEW_W, VIEW_H, ENDLESS_VIEW_SCALE,
-} from '../constants.js?v=20260614185423';
+} from '../constants.js?v=20260614192139';
 import { clamp, distance, safeNormalize, randomChoice, randomRange } from '../utils.js';
 
 import { FloatingText }   from '../entities/FloatingText.js';
-import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260614185423';
-import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260614185423';
-import { Player }         from '../entities/Player.js?v=20260614185423';
-import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260614185423';
-import { Enemy }          from '../entities/Enemy.js?v=20260614185423';
-import { SupportDrone }   from '../entities/SupportDrone.js?v=20260614185423';
+import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260614192139';
+import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260614192139';
+import { Player }         from '../entities/Player.js?v=20260614192139';
+import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260614192139';
+import { Enemy }          from '../entities/Enemy.js?v=20260614192139';
+import { SupportDrone }   from '../entities/SupportDrone.js?v=20260614192139';
 
-import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow } from './Effects.js?v=20260614185423';
-import { SystemEventManager } from './Events.js?v=20260614185423';
-import { UpgradeUI }      from './UpgradeUI.js?v=20260614185423';
-import { weightedSample } from './Upgrades.js?v=20260614185423';
-import { MutationUI }      from './MutationUI.js?v=20260614185423';
-import { sampleMutations } from './Mutations.js?v=20260614185423';
-import { drawHUD, drawEndScreen } from './HUD.js?v=20260614185423';
-import { MetaProgress, META_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE } from './MetaProgress.js?v=20260614185423';
+import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow } from './Effects.js?v=20260614192139';
+import { SystemEventManager } from './Events.js?v=20260614192139';
+import { UpgradeUI }      from './UpgradeUI.js?v=20260614192139';
+import { weightedSample } from './Upgrades.js?v=20260614192139';
+import { MutationUI }      from './MutationUI.js?v=20260614192139';
+import { sampleMutations } from './Mutations.js?v=20260614192139';
+import { drawHUD, drawEndScreen } from './HUD.js?v=20260614192139';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE } from './MetaProgress.js?v=20260614192139';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
-import { GlitchDash } from '../effects/glitch-dash.js?v=20260614185423';
-import { EMPShockwave } from '../effects/emp-shockwave.js?v=20260614185423';
-import { DigitalSingularity } from '../effects/digital-singularity.js?v=20260614185423';
-import { Protocol0 } from '../effects/protocol-0.js?v=20260614185423';
-import { LaserEyes } from '../effects/laser-eyes.js?v=20260614185423';
-import { MeteorRain } from '../effects/meteor-rain.js?v=20260614185423';
+import { GlitchDash } from '../effects/glitch-dash.js?v=20260614192139';
+import { EMPShockwave } from '../effects/emp-shockwave.js?v=20260614192139';
+import { DigitalSingularity } from '../effects/digital-singularity.js?v=20260614192139';
+import { Protocol0 } from '../effects/protocol-0.js?v=20260614192139';
+import { LaserEyes } from '../effects/laser-eyes.js?v=20260614192139';
+import { MeteorRain } from '../effects/meteor-rain.js?v=20260614192139';
 // Euclid Vector toxin kit — used ONLY when selectedCharacter === 'euclid_vector' (world-space).
-import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=20260614185423';
+import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=20260614192139';
 
 // ── Thunder Solo sprite slices (cyan_lightning_rain_notes.png, 1254×1254) ──────
 // Strike variants: a clean bolt column + ripple base. (ax,ay) = ripple-centre as a
@@ -112,6 +112,19 @@ const ELITE_WAVE = {
   pool: ['Combat Hunter', 'Cyber Shooter', 'Heavy Mech', 'Overclocked Berserker', 'Stealth Infiltrator'],
 };
 
+// ─── Character Weapon Synergy mark-layer (modular) ──────────────────────────────────────────
+// Per-character visual identity for the synergy mark + burst. Active ONLY when the player picked the
+// matching synergy card (player.upgrades[card] >= 1) for the character they're playing. Meta stars
+// (SYNERGY_UPGRADES key) scale the effect. Oni has no entry here (locked → no in-run synergy).
+const SYNERGY_FX = {
+  skeleton_warrior: { card: 'synergy_storm_conductor',  meta: 'syn_storm_conductor',  color: '#9fdcff', glyph: '⚡' },
+  cyber_arm_hero:   { card: 'synergy_furnace_chains',   meta: 'syn_furnace_chains',   color: '#ff8a3c', glyph: '♨' },
+  taekwondo_girl:   { card: 'synergy_crescent_tide',    meta: 'syn_crescent_tide',    color: '#46e6ff', glyph: '≈' },
+  brawler_warrior:  { card: 'synergy_rift_rebound',     meta: 'syn_rift_rebound',     color: '#5effc8', glyph: '◎' },
+  assassin_clone:   { card: 'synergy_plasma_execution', meta: 'syn_plasma_execution', color: '#ff5cd2', glyph: '✖' },
+  euclid_vector:    { card: 'synergy_toxic_geometry',   meta: 'syn_toxic_geometry',   color: '#7CFF4D', glyph: '▲' },
+};
+
 // Endless-only: minimum gap (s) between boss/miniboss center-screen warnings (≈ one boss-rotation
 // loop) so a boss wave warns ONCE, not once per boss/respawn in the same loop. Act 1 is unaffected.
 const BOSS_WARN_COOLDOWN = 90;
@@ -136,16 +149,16 @@ export class Game {
       fallback.src = 'assets/backgrounds/cyberpunk_city_background.png';
       this._bgImage = fallback;
     };
-    this._bgImage.src = 'assets/backgrounds/cyber_city_bg_clean.png?v=20260614185423';
+    this._bgImage.src = 'assets/backgrounds/cyber_city_bg_clean.png?v=20260614192139';
 
     // Endless Stage 02 visuals (only used while this.endless — Act 1 keeps default visuals).
     // Missing files degrade to the default background / default Nexus visual (warn, no crash).
     this._endlessBgImage = new Image();
     this._endlessBgImage.onerror = () => console.warn('[Stage] missing assets/maps/endless/stage_02_neon_shinjuku_plaza.png — using default background');
-    this._endlessBgImage.src = 'assets/maps/endless/stage_02_neon_shinjuku_plaza.png?v=20260614185423';
+    this._endlessBgImage.src = 'assets/maps/endless/stage_02_neon_shinjuku_plaza.png?v=20260614192139';
     this._endlessNexusImage = new Image();
     this._endlessNexusImage.onerror = () => console.warn('[Nexus] missing assets/nexus/endless_nexus_base_8cores.png — using default Nexus visual');
-    this._endlessNexusImage.src = 'assets/nexus/endless_nexus_base_8cores.png?v=20260614185423';
+    this._endlessNexusImage.src = 'assets/nexus/endless_nexus_base_8cores.png?v=20260614192139';
 
     // Preload character portraits for Character Select screen
     this._charImages = {};
@@ -158,7 +171,7 @@ export class Game {
     // Japan Phasewalker portrait lives in the endless/ subfolder (Character Select + FX modules).
     this._phasewalkerSprite = new Image();
     this._phasewalkerSprite.onerror = () => console.warn('[Char] missing assets/characters/endless/japan_phasewalker.png');
-    this._phasewalkerSprite.src = 'assets/characters/endless/japan_phasewalker.png?v=20260614185423';   // ?v bust: corrected transparency
+    this._phasewalkerSprite.src = 'assets/characters/endless/japan_phasewalker.png?v=20260614192139';   // ?v bust: corrected transparency
     this._charImages['japan_phasewalker'] = this._phasewalkerSprite;
     // Euclid Vector portrait (endless/ subfolder; unlocked from the start — see roster + free unlock).
     this._euclidSprite = new Image();
@@ -198,7 +211,7 @@ export class Game {
 
     // Preload start-menu background image
     this._menuBg = new Image();
-    this._menuBg.src = 'assets/ui/start_menu_background.png?v=20260614185423';
+    this._menuBg.src = 'assets/ui/start_menu_background.png?v=20260614192139';
 
     // Preload phoenix revive effect images (orange / blue / gold tiers)
     this._phoenixImage = new Image();
@@ -206,11 +219,11 @@ export class Game {
 
     this._phoenixBlueImage = new Image();
     this._phoenixBlueImage.onerror = () => console.warn('[Assets] Failed to load: assets/effects/phoenix/blue_phoenix_revive.png');
-    this._phoenixBlueImage.src = 'assets/effects/phoenix/blue_phoenix_revive.png?v=20260614185423';
+    this._phoenixBlueImage.src = 'assets/effects/phoenix/blue_phoenix_revive.png?v=20260614192139';
 
     this._phoenixGoldImage = new Image();
     this._phoenixGoldImage.onerror = () => console.warn('[Assets] Failed to load: assets/effects/phoenix/gold_phoenix_revive.png');
-    this._phoenixGoldImage.src = 'assets/effects/phoenix/gold_phoenix_revive.png?v=20260614185423';
+    this._phoenixGoldImage.src = 'assets/effects/phoenix/gold_phoenix_revive.png?v=20260614192139';
 
     // Preload credits photos
     this._creditImgInk = new Image();
@@ -228,10 +241,10 @@ export class Game {
     // Preload core and matrix sprites
     this._coreSprite = new Image();
     this._coreSprite.onerror = () => console.warn('[Assets] Failed to load: assets/cores/data_core.png');
-    this._coreSprite.src = 'assets/cores/data_core.png?v=20260614185423';
+    this._coreSprite.src = 'assets/cores/data_core.png?v=20260614192139';
     this._matrixSprite = new Image();
     this._matrixSprite.onerror = () => console.warn('[Assets] Failed to load: assets/bases/matrix_base.png');
-    this._matrixSprite.src = 'assets/bases/matrix_base.png?v=20260614185423';
+    this._matrixSprite.src = 'assets/bases/matrix_base.png?v=20260614192139';
 
     // Preload grid cache supply drop sprite
     this._gridCacheSprite = new Image();
@@ -279,25 +292,25 @@ export class Game {
     // Preload acid rain weather sprites
     this._acidRainFallImg = new Image();
     this._acidRainFallImg.onerror = () => console.warn('[Weather] acid_rain_fall.png not found — using line fallback');
-    this._acidRainFallImg.src = 'assets/events/weather/acid_rain_fall.png?v=20260614185423';
+    this._acidRainFallImg.src = 'assets/events/weather/acid_rain_fall.png?v=20260614192139';
     this._acidRainSplashImg = new Image();
     this._acidRainSplashImg.onerror = () => console.warn('[Weather] acid_rain_splash.png not found — using ellipse fallback');
-    this._acidRainSplashImg.src = 'assets/events/weather/acid_rain_splash.png?v=20260614185423';
+    this._acidRainSplashImg.src = 'assets/events/weather/acid_rain_splash.png?v=20260614192139';
 
     // Preload AI Overload Titan boss sprite
     this._titanSprite = new Image();
     this._titanSprite.onerror = () => console.warn('[Boss] ai_overload_titan.png failed to load — using fallback');
-    this._titanSprite.src = 'assets/enemies/bosses/ai_overload_titan.png?v=20260614185423';
+    this._titanSprite.src = 'assets/enemies/bosses/ai_overload_titan.png?v=20260614192139';
 
     // Preload Matrix Annihilator mini-boss sprite (existing asset)
     this._annihilatorSprite = new Image();
     this._annihilatorSprite.onerror = () => console.warn('[Boss] assets/enemies/bosses/matrix_annihilator.png failed to load — using fallback');
-    this._annihilatorSprite.src = 'assets/enemies/bosses/matrix_annihilator.png?v=20260614185423';
+    this._annihilatorSprite.src = 'assets/enemies/bosses/matrix_annihilator.png?v=20260614192139';
 
     // Preload Bloodfang Packmaster mini-boss sprite (existing asset)
     this._bloodfangSprite = new Image();
     this._bloodfangSprite.onerror = () => console.warn('[Boss] assets/enemies/bosses/bloodfang_packmaster.png failed to load — using fallback');
-    this._bloodfangSprite.src = 'assets/enemies/bosses/bloodfang_packmaster.png?v=20260614185423';
+    this._bloodfangSprite.src = 'assets/enemies/bosses/bloodfang_packmaster.png?v=20260614192139';
 
     // Preload secret-skin preview sprites (Character Select locked/unlocked + Victory screen).
     // Keyed by the same flags MetaProgress persists. Missing files degrade to a text fallback.
@@ -438,6 +451,8 @@ export class Game {
     this.airstrikeShips   = [];   // loitering airstrike ships that fire aimed rockets
     this.airstrikeRockets = [];   // aimed rockets with impact telegraph
     this.cyclones         = [];   // forming → active storm hazard (DoT + CC), max 1
+    this.synergyBursts    = [];   // transient synergy-burst rings (visual; hard-capped, auto-expire)
+    this._upgradeTab      = 'core';   // Upgrades screen tab: 'core' | 'synergy'
 
     this.timeAlive          = 0;
     this.overload           = 0;
@@ -839,7 +854,11 @@ export class Game {
 
   // ─── Upgrades screen interaction ─────────────────────────────────────────────
   handleUpgradesClick(mousePos) {
-    const { rects, backRect, resetRect } = this._upgradeRects();
+    const { rects, backRect, resetRect, coreTab, synTab } = this._upgradeRects();
+
+    // Tab toggle
+    if (this._inRect(mousePos, coreTab)) { this._upgradeTab = 'core';    this._confirmReset = false; return; }
+    if (this._inRect(mousePos, synTab))  { this._upgradeTab = 'synergy'; this._confirmReset = false; return; }
 
     // Back button
     if (this._inRect(mousePos, backRect)) {
@@ -862,19 +881,27 @@ export class Game {
       return;
     }
 
-    // Upgrade cards
-    for (let i = 0; i < META_UPGRADES.length; i++) {
+    // Upgrade cards (active tab list)
+    const list = this._upgradeList();
+    for (let i = 0; i < list.length; i++) {
       if (!this._inRect(mousePos, rects[i])) continue;
-      const upg    = META_UPGRADES[i];
+      const upg = list[i];
+      // Locked synergy (Oni) — cannot be purchased until the character is unlocked.
+      if (upg.lockedUntil && !this.meta.isProtocolUnlocked(upg.lockedUntil)) {
+        this._upgradeMsg = `${upg.charName} must be unlocked first.`;
+        this._upgradeMsgTimer = 2.2;
+        this._confirmReset = false;
+        break;
+      }
       const result = this.meta.tryBuy(upg);
       if (result === 'ok') {
         this._upgradeMsg = `${upg.name} upgraded!`;
         this._upgradeMsgTimer = 2.0;
       } else if (result === 'poor') {
-        this._upgradeMsg = 'Not enough Grid Credits.';
+        this._upgradeMsg = `Not enough Grid Cores (need ${upgradeCost(upg, this.meta.getLevel(upg.key))}).`;
         this._upgradeMsgTimer = 2.0;
       } else {
-        this._upgradeMsg = `${upg.name} is already at MAX level.`;
+        this._upgradeMsg = `${upg.name} is already at MAX.`;
         this._upgradeMsgTimer = 2.0;
       }
       this._confirmReset = false;
@@ -886,26 +913,36 @@ export class Game {
     return pos.x >= r.x && pos.x <= r.x + r.w && pos.y >= r.y && pos.y <= r.y + r.h;
   }
 
+  // Active Upgrades-screen list — CORE (META_UPGRADES) or the SYNERGY 5★ Grid-Core sink.
+  _upgradeList() { return (this._upgradeTab === 'synergy') ? SYNERGY_UPGRADES : META_UPGRADES; }
+
   _upgradeRects() {
     const COLS = 4;
-    // Slightly smaller cards + wider gaps so more background shows; grid starts lower so the
-    // Grid Credits / Protocol Fragments header lines are not crowded. Click rects derive from
-    // these same values, so hit regions stay exactly in sync with the drawn cards.
+    // Slightly smaller cards + wider gaps so more background shows; grid starts below the tab row +
+    // currency header. Click rects derive from these same values, so hit regions stay in sync.
     const CW = 250, CH = 136, CGAP = 28, RGAP = 20;
     const totalW = COLS * CW + (COLS - 1) * CGAP;
     const x0     = Math.round((WIDTH - totalW) / 2);
-    const y0     = 126;
-    const rects  = META_UPGRADES.map((_, i) => ({
+    const y0     = 150;
+    const list   = this._upgradeList();
+    const rects  = list.map((_, i) => ({
       x: x0 + (i % COLS) * (CW + CGAP),
       y: y0 + Math.floor(i / COLS) * (CH + RGAP),
       w: CW, h: CH,
     }));
-    const rows = Math.ceil(META_UPGRADES.length / COLS);
+    const rows = Math.ceil(list.length / COLS);
     const btnY = y0 + rows * (CH + RGAP) + 8;
     const backRect  = { x: x0,                y: btnY, w: 160, h: 40 };
     const resetRect = { x: x0 + totalW - 160, y: btnY, w: 160, h: 40 };
-    return { rects, backRect, resetRect };
+    // Tab toggle row (above the grid).
+    const tabW = 200, tabH = 30, tabY = 112;
+    const coreTab = { x: x0,             y: tabY, w: tabW, h: tabH };
+    const synTab  = { x: x0 + tabW + 18, y: tabY, w: tabW, h: tabH };
+    return { rects, backRect, resetRect, coreTab, synTab };
   }
+
+  // ★★★☆☆ / MAX star strip for synergy upgrades.
+  _starString(lvl, max) { return '★'.repeat(lvl) + '☆'.repeat(Math.max(0, max - lvl)); }
 
   _updateUpgradesScreen(input) {
     if (this._upgradeMsgTimer > 0) this._upgradeMsgTimer -= 1/60;
@@ -935,16 +972,34 @@ export class Game {
     ctx.fillStyle = '#7df9ff';
     ctx.fillText(`◆ Protocol Fragments: ${this.meta.getProtocolFragments()} / ${PF_TOTAL_OBTAINABLE}`, WIDTH / 2, 104);
 
-    const { rects, backRect, resetRect } = this._upgradeRects();
+    const { rects, backRect, resetRect, coreTab, synTab } = this._upgradeRects();
 
-    // Upgrade cards
-    for (let i = 0; i < META_UPGRADES.length; i++) {
-      const upg  = META_UPGRADES[i];
+    // Tab toggle (CORE upgrades vs SYNERGY 5★ sink)
+    const drawTab = (rect, label, active, accent) => {
+      ctx.fillStyle   = active ? '#0a2030' : '#0a1018';
+      ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+      ctx.strokeStyle = active ? accent : '#2a4060';
+      ctx.lineWidth   = active ? 2 : 1;
+      ctx.strokeRect(rect.x, rect.y, rect.w, rect.h);
+      ctx.font        = 'bold 14px Consolas, monospace';
+      ctx.fillStyle   = active ? accent : '#5a7080';
+      ctx.textAlign   = 'center';
+      ctx.fillText(label, rect.x + rect.w / 2, rect.y + 20);
+    };
+    drawTab(coreTab, 'CORE UPGRADES', this._upgradeTab !== 'synergy', CYAN);
+    drawTab(synTab,  '★ WEAPON SYNERGIES', this._upgradeTab === 'synergy', '#ffd23c');
+
+    // Upgrade cards (active tab list)
+    const list = this._upgradeList();
+    for (let i = 0; i < list.length; i++) {
+      const upg  = list[i];
       const lvl  = this.meta.getLevel(upg.key);
       const cost = upgradeCost(upg, lvl);
       const maxed = lvl >= upg.maxLevel;
       const can   = !maxed && this.meta.credits >= cost;
       const r     = rects[i];
+
+      if (this._upgradeTab === 'synergy') { this._drawSynergyUpgradeCard(ctx, upg, r, lvl, cost, maxed); continue; }
 
       // Card bg + border
       ctx.fillStyle   = '#0a0f20';
@@ -1043,6 +1098,62 @@ export class Game {
     ctx.fillStyle = '#3a5060';
     ctx.textAlign = 'center';
     ctx.fillText('Click an upgrade to purchase  •  ESC = Back to menu', WIDTH / 2, HEIGHT - 16);
+    ctx.textAlign = 'left';
+  }
+
+  // Premium synergy upgrade card: name + character + ★ strip + flat 1000-Core cost / MAX / LOCKED.
+  _drawSynergyUpgradeCard(ctx, upg, r, lvl, cost, maxed) {
+    const locked = !!(upg.lockedUntil && !this.meta.isProtocolUnlocked(upg.lockedUntil));
+    const accent = locked ? '#5a5a6a' : '#ffd23c';
+    const can    = !maxed && !locked && this.meta.credits >= cost;
+
+    // Card bg + premium accent border
+    ctx.fillStyle   = '#120e06';
+    ctx.fillRect(r.x, r.y, r.w, r.h);
+    ctx.strokeStyle = maxed ? '#7CFF4D' : accent;
+    ctx.lineWidth   = locked ? 1 : 2;
+    ctx.strokeRect(r.x, r.y, r.w, r.h);
+
+    // SYNERGY tag (top-right)
+    ctx.font = 'bold 10px Consolas, monospace';
+    ctx.fillStyle = accent; ctx.textAlign = 'right';
+    ctx.fillText('★ SYNERGY', r.x + r.w - 10, r.y + 16);
+
+    // Name + character
+    ctx.font = 'bold 15px Consolas, monospace';
+    ctx.fillStyle = locked ? '#8a8a96' : WHITE; ctx.textAlign = 'left';
+    ctx.fillText(upg.name, r.x + 12, r.y + 22);
+    ctx.font = '11px Consolas, monospace';
+    ctx.fillStyle = locked ? '#5a5a6a' : '#7da0c0';
+    ctx.fillText(upg.charName, r.x + 12, r.y + 40);
+    ctx.font = '11px Consolas, monospace';
+    ctx.fillStyle = '#6a8090';
+    ctx.fillText(upg.desc, r.x + 12, r.y + 58);
+
+    // Star strip
+    ctx.font = '18px "Segoe UI Symbol", Consolas, monospace';
+    ctx.fillStyle = maxed ? '#7CFF4D' : accent;
+    ctx.fillText(this._starString(lvl, upg.maxLevel), r.x + 12, r.y + 84);
+
+    // Buy / MAX / LOCKED button
+    const btnY = r.y + 94, btnH = 32;
+    if (locked) {
+      ctx.fillStyle = '#15151c'; ctx.fillRect(r.x + 10, btnY, r.w - 20, btnH);
+      ctx.font = 'bold 13px Consolas, monospace'; ctx.fillStyle = '#7a7a88'; ctx.textAlign = 'center';
+      ctx.fillText('🔒 LOCKED', r.x + r.w / 2, btnY + 21);
+    } else if (maxed) {
+      ctx.fillStyle = '#1a2510'; ctx.fillRect(r.x + 10, btnY, r.w - 20, btnH);
+      ctx.font = 'bold 15px Consolas, monospace'; ctx.fillStyle = '#7CFF4D'; ctx.textAlign = 'center';
+      ctx.fillText('MAX', r.x + r.w / 2, btnY + 21);
+    } else {
+      ctx.fillStyle   = can ? '#2a2008' : '#1a0a0a';
+      ctx.fillRect(r.x + 10, btnY, r.w - 20, btnH);
+      ctx.strokeStyle = can ? accent : '#3a2020'; ctx.lineWidth = 1;
+      ctx.strokeRect(r.x + 10, btnY, r.w - 20, btnH);
+      ctx.font = 'bold 13px Consolas, monospace';
+      ctx.fillStyle = can ? accent : '#5a3030'; ctx.textAlign = 'center';
+      ctx.fillText(`BUY  —  ${cost} Cores`, r.x + r.w / 2, btnY + 21);
+    }
     ctx.textAlign = 'left';
   }
 
@@ -2515,6 +2626,7 @@ export class Game {
     this._updateBloodfang(dt);
     this._updateBossAttacks(dt);
     this._updateEndlessHazards(dt);   // Endless-only: airstrike ships/rockets + cyber cyclone
+    this._updateSynergyMarks(dt);     // character synergy mark/burst lifetimes (inert without card)
     this._updateSupportDrones(dt);
     this._updateCorrosive(dt);   // centralized corrosive DoT (drone + Corrosive Payload card)
     this._updateAllyDrones(dt);
@@ -5164,6 +5276,77 @@ export class Game {
     }
   }
 
+  // ─── Character Weapon Synergy mark-layer ────────────────────────────────────────────────────
+  // Modular & safe: a single hook in Enemy.takeHit calls _onSynergyHit. When the player's active
+  // character has its synergy card, hits MARK enemies (distinct glyph/color) and, on a throttled
+  // cadence, ERUPT in a small boss-capped burst. Marks live on the enemy object (auto-freed on
+  // death); bursts are a hard-capped, auto-expiring visual array. Inert without the card.
+  _synergyFx() { return SYNERGY_FX[this.player.selectedCharacter]; }
+
+  _onSynergyHit(e) {
+    if (this._inSynergyBurst) return;                 // re-entrancy guard (burst calls takeHit)
+    const fx = this._synergyFx();
+    if (!fx || !((this.player.upgrades[fx.card] || 0) >= 1)) return;
+    const stars = this.meta?.getLevel(fx.meta) || 0;
+    const dur   = 3 + stars * 0.6;                    // meta stars extend mark duration
+    if (!e._synMark) e._synMark = { color: fx.color, glyph: fx.glyph, t: dur, cd: 0 };
+    else             e._synMark.t = dur;              // refresh
+    if (e._synMark.cd <= 0) { e._synMark.cd = 1.2; this._synergyBurst(e, fx, stars); }
+  }
+
+  _synergyBurst(src, fx, stars) {
+    const radius  = 58 + stars * 6;
+    const baseDmg = 8 + stars * 3;                    // 8 → 23 across 0–5 stars
+    this._inSynergyBurst = true;                      // prevent burst→takeHit→burst cascades
+    for (const e of this.enemies) {
+      if (distance(e.pos, src.pos) > radius) continue;
+      const d = (e.isBoss?.() || e.isMegaBoss) ? this._capBossDamage(e, baseDmg) : baseDmg;
+      e.takeHit(d, this);
+    }
+    this._inSynergyBurst = false;
+    if (this.synergyBursts.length < 24)
+      this.synergyBursts.push({ pos: src.pos.clone(), color: fx.color, r: radius, t: 0, life: 0.4 });
+    this.particles?.spawnHitSparks(src.pos, fx.color);
+  }
+
+  _updateSynergyMarks(dt) {
+    for (let i = this.synergyBursts.length - 1; i >= 0; i--) {
+      const b = this.synergyBursts[i];
+      b.t += dt;
+      if (b.t >= b.life) this.synergyBursts.splice(i, 1);
+    }
+    for (const e of this.enemies) {
+      if (!e._synMark) continue;
+      e._synMark.t  -= dt;
+      e._synMark.cd -= dt;
+      if (e._synMark.t <= 0) e._synMark = null;
+    }
+  }
+
+  _drawSynergyFx(ctx) {
+    for (const e of this.enemies) {
+      const mk = e._synMark;
+      if (!mk) continue;
+      const pulse = 0.6 + 0.4 * Math.sin(performance.now() * 0.01);
+      ctx.save();
+      ctx.globalAlpha = pulse;
+      ctx.font = 'bold 15px "Segoe UI Emoji", Consolas, monospace';
+      ctx.fillStyle = mk.color;
+      ctx.textAlign = 'center';
+      ctx.fillText(mk.glyph, e.pos.x, e.pos.y - e.radius - 12);
+      ctx.restore();
+    }
+    for (const b of this.synergyBursts) {
+      const k = b.t / b.life;
+      ctx.save();
+      ctx.globalAlpha = (1 - k) * 0.8;
+      ctx.strokeStyle = b.color; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(b.pos.x, b.pos.y, b.r * (0.4 + 0.6 * k), 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
+    }
+    ctx.textAlign = 'left';
+  }
+
   _updateFloatingTexts(dt) {
     for (let i = this.floatingTexts.length - 1; i >= 0; i--) {
       this.floatingTexts[i].update(dt);
@@ -5407,6 +5590,7 @@ export class Game {
     // 1a ── Boss Lava/Fire Rain zones (ground markers — under entities so they read as terrain)
     this._drawBossLava(ctx);
     this._drawEndlessHazards(ctx);   // Endless-only: cyclone funnel + airstrike ships/rockets
+    this._drawSynergyFx(ctx);        // character synergy marks above enemies + burst rings
 
     // 2 ── Power Matrices (fill-based glow + counter owned by PowerMatrix; overload drives danger blink)
     for (const m of this.matrices) {
