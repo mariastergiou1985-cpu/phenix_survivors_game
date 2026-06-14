@@ -122,17 +122,19 @@ export function drawHUD(ctx, game) {
     drawText(ctx, '🎮 Controller', 16, HEIGHT - 8, '#7CFF8A', 'bold 11px "Segoe UI Emoji", Consolas, monospace');
   }
 
-  // ── Active elemental identity indicator (small, above the Q/E ability boxes) ──
+  // ── Active elemental identity indicator — ICON-based (primary + secondary), above the Q/E boxes ──
   if (game._activeElement && game._elementColors) {
-    const col = game._elementColors[game._activeElement] || CYAN;
+    const col   = game._elementColors[game._activeElement] || CYAN;
+    const icons = game._elementIcons || {};
+    const prim  = icons[game._activeElement] || '◆';
+    const secs  = (game._secondaryElements && game._secondaryElements.length)
+      ? ' + ' + game._secondaryElements.map(s => icons[s] || '◆').join(' + ') : '';
     ctx.textAlign = 'left';
-    const secs = (game._secondaryElements && game._secondaryElements.length)
-      ? ' + ' + game._secondaryElements.map(s => s.toUpperCase()).join(' + ') : '';
-    drawText(ctx, '◆ ' + game._activeElement.toUpperCase() + secs, 16, HEIGHT - 70, col, 'bold 11px Consolas, monospace');
+    drawText(ctx, 'ELEMENT ' + prim + secs, 16, HEIGHT - 70, col, 'bold 13px "Segoe UI Emoji", Consolas, monospace');
     // Brief fusion-name flash when a fusion procs (fades over its last moment).
     if (game._fusionName && game._fusionNameT > 0) {
       ctx.globalAlpha = Math.min(1, game._fusionNameT);
-      drawText(ctx, '⚡ ' + game._fusionName, 16, HEIGHT - 84, '#ffd23c', 'bold 11px Consolas, monospace');
+      drawText(ctx, '⚡ ' + game._fusionName, 16, HEIGHT - 86, '#ffd23c', 'bold 11px Consolas, monospace');
       ctx.globalAlpha = 1;
     }
   }

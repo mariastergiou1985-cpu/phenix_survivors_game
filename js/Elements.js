@@ -15,6 +15,11 @@ export const ELEMENTS = {
   gas:       { name: 'GAS',       c1: '#8fdf7f', c2: '#d8ffcf', spokes: 0, style: 'cloud', life: 0.90 },
 };
 
+// Symbol/icon per element — used for compact icon-based badges (HUD, cards) instead of long words.
+export const ELEMENT_ICON = {
+  fire: '🔥', electric: '⚡', radiation: '☢', ice: '❄', magnetic: '🧲', toxin: '☣', gas: '🌫',
+};
+
 // Primary elemental identity per active character. Oni is included but stays locked/PF-gated
 // elsewhere — having a hook here never unlocks or exposes him. No Phasewalker entry (disabled).
 export const CHARACTER_ELEMENT = {

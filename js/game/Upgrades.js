@@ -181,6 +181,11 @@ export const ALL_UPGRADES = [
     GREEN, 3, () => {}, '☠', 'epic', 'euclid_vector'),
   new UpgradeDefinition('euclid_vector_overdose', 'Vector Overdose', 'Plague Trail ult: cheaper cast; +8% fire rate',
     PURPLE, 3, p => { p.fireRateBonus += 0.08; }, '⚗', 'legendary', 'euclid_vector'),
+  // Euclid auto-weapon cards (Phase 3) — char-gated; levels read live in Game._updateEuclidAutoWeapons.
+  new UpgradeDefinition('euclid_vector_ricochet', 'Vector Ricochet Matrix', 'Toxin Vector Bolt: +1 bounce per level (max 5 targets)',
+    GREEN, 3, () => {}, '⮌', 'epic', 'euclid_vector'),
+  new UpgradeDefinition('euclid_corrosive_multishot', 'Corrosive Multishot Protocol', 'Gas Needle: +1 pierce/level & +1 shard every 2 levels',
+    GREEN, 3, () => {}, '⋔', 'epic', 'euclid_vector'),
 
   // ── Oni Cataclysm Protocol — Endless-locked boss character (PF-unlocked) ─────────────────────
   // Char-gated to 'oni_cataclysm_protocol' so they ONLY roll while playing Oni (never for the other
