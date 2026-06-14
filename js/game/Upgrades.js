@@ -249,11 +249,11 @@ export const ALL_UPGRADES = [
     '#ff7a2a', 1, p => { p.fireRateBonus += 0.20; }, '⚡', 'legendary', null, null, true, false, null, true),
   new UpgradeDefinition('reward_storm_execution', 'Storm Execution Protocol', 'GIFT: a storm periodically zaps normal enemies (not bosses or you)',
     '#9fd8ff', 1, () => {}, '🌩', 'legendary', null, null, true, false, null, true),
-  new UpgradeDefinition('reward_elemental_core', 'Elemental Core', 'GIFT: infuse your element — stronger elemental hits',
+  new UpgradeDefinition('reward_elemental_core', 'Elemental Core', 'GIFT: empower your element — bigger, more reliable elemental & fusion procs',
     '#b66bff', 1, () => {}, '◆', 'legendary', null, null, true, false, null, true),
-  new UpgradeDefinition('reward_fusion_catalyst', 'Fusion Catalyst', 'GIFT: elemental procs hit harder & bigger (per level)',
+  new UpgradeDefinition('reward_fusion_catalyst', 'Fusion Catalyst', 'GIFT: UNLOCKS your element FUSION combo; each level boosts its power & radius',
     '#7df9ff', 3, () => {}, '✦', 'legendary', null, null, true, false, null, true),
-  new UpgradeDefinition('reward_ult_infusion', 'Forbidden Ultimate Infusion', 'GIFT: your ultimate erupts with your element',
+  new UpgradeDefinition('reward_ult_infusion', 'Forbidden Ultimate Infusion', 'GIFT: your ultimate erupts with an elemental / fusion nova',
     '#ffd23c', 1, () => {}, '☢', 'legendary', null, null, true, false, null, true),
 ];
 

@@ -39,6 +39,35 @@ export const FUSIONS = {
 };
 export function fusionKey(a, b) { return [a, b].sort().join('+'); }
 
+// ─── Fusion behavior table (Phase 2) ───────────────────────────────────────────────────────────
+// Each fusion has a two-color identity + an effect `kind` consumed by Game._fusionProc:
+//   'aoe'   → bounded burst damage to nearby NORMAL enemies (bosses capped + halved)
+//   'field' → light damage + short SLOW on normals only (never slows bosses)
+//   'cloud' → spawns a short-lived damaging gas cloud (hard-capped count)
+export const FUSION_FX = {
+  plasma:           { name: 'PLASMA BURN',      c1: '#ff6a1a', c2: '#9fd8ff', kind: 'aoe',   radius: 78, dmg: 14 },
+  ionstorm:         { name: 'ION STORM',        c1: '#c6ff3a', c2: '#9fd8ff', kind: 'aoe',   radius: 82, dmg: 12 },
+  cryofield:        { name: 'CRYO FIELD',       c1: '#7fe0ff', c2: '#9b6bff', kind: 'field', radius: 92, dmg: 6,  slow: 1.2 },
+  electrorot:       { name: 'ELECTRO-ROT',      c1: '#7CFF4D', c2: '#9fd8ff', kind: 'aoe',   radius: 84, dmg: 11 },
+  thermal:          { name: 'THERMAL SHOCK',    c1: '#ff6a1a', c2: '#7fe0ff', kind: 'aoe',   radius: 88, dmg: 16 },
+  blight:           { name: 'FROST BLIGHT',     c1: '#7CFF4D', c2: '#7fe0ff', kind: 'field', radius: 80, dmg: 8,  slow: 1.0 },
+  viral:            { name: 'VIRAL CLOUD',      c1: '#7CFF4D', c2: '#8fdf7f', kind: 'cloud', radius: 72, dmg: 8 },
+  frost_arc:        { name: 'FROST ARC',        c1: '#7fe0ff', c2: '#9fd8ff', kind: 'aoe',   radius: 76, dmg: 12 },
+  magnetic_furnace: { name: 'MAGNETIC FURNACE', c1: '#ff6a1a', c2: '#9b6bff', kind: 'field', radius: 84, dmg: 12, slow: 0.8 },
+  cataclysm:        { name: 'CATACLYSM BURN',   c1: '#c6ff3a', c2: '#ff6a1a', kind: 'aoe',   radius: 96, dmg: 18 },
+};
+
+// Which fusion each playable character triggers once Fusion Catalyst is active. Single-element
+// characters (Skeleton=Electric, Brawler=Magnetic) have NO entry → they keep pure elemental VFX.
+// Oni is included but only ever active while actually played (he stays locked/PF-gated elsewhere).
+export const CHARACTER_FUSION = {
+  taekwondo_girl:         'frost_arc',        // Ice + Electric
+  cyber_arm_hero:         'magnetic_furnace', // Fire + Magnetic
+  assassin_clone:         'plasma',           // Electric / Plasma
+  euclid_vector:          'viral',            // Toxin + Gas
+  oni_cataclysm_protocol: 'cataclysm',        // Radiation + Fire
+};
+
 const MAX_BURSTS = 56;   // hard cap on concurrent element bursts
 
 export class ElementFx {
@@ -48,6 +77,12 @@ export class ElementFx {
     if (!ELEMENTS[element]) return;
     if (this.bursts.length >= MAX_BURSTS) this.bursts.shift();   // drop oldest — never unbounded
     this.bursts.push({ x, y, t: 0, life: ELEMENTS[element].life, element, scale, rot: Math.random() * Math.PI });
+  }
+
+  // Premium two-color fusion burst (impact flash + dual expanding rings + alternating spokes).
+  spawnFusion(x, y, c1, c2, scale = 1) {
+    if (this.bursts.length >= MAX_BURSTS) this.bursts.shift();
+    this.bursts.push({ x, y, t: 0, life: 0.55, fusion: true, c1, c2, scale, rot: Math.random() * Math.PI });
   }
 
   update(dt) {
@@ -62,6 +97,25 @@ export class ElementFx {
   // World-space draw (caller is inside the camera transform). Additive blend so bursts glow.
   draw(ctx) {
     for (const b of this.bursts) {
+      if (b.fusion) {                          // premium two-color fusion burst
+        const k = b.t / b.life, a = 1 - k, r = (12 + 34 * k) * b.scale;
+        ctx.save();
+        ctx.translate(b.x, b.y);
+        ctx.globalCompositeOperation = 'lighter';
+        if (k < 0.4) { ctx.globalAlpha = (0.4 - k) * 2; ctx.fillStyle = b.c2;
+          ctx.beginPath(); ctx.arc(0, 0, 8 * b.scale * (1 - k), 0, Math.PI * 2); ctx.fill(); }
+        ctx.globalAlpha = a * 0.85; ctx.strokeStyle = b.c1; ctx.lineWidth = 3 * b.scale;
+        ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.stroke();
+        ctx.globalAlpha = a * 0.7; ctx.strokeStyle = b.c2; ctx.lineWidth = 2 * b.scale;
+        ctx.beginPath(); ctx.arc(0, 0, r * 0.6, 0, Math.PI * 2); ctx.stroke();
+        for (let i = 0; i < 8; i++) {          // alternating-color spokes
+          const ang = b.rot + i * (Math.PI / 4), dx = Math.cos(ang), dy = Math.sin(ang);
+          ctx.globalAlpha = a; ctx.strokeStyle = (i % 2) ? b.c1 : b.c2; ctx.lineWidth = 2 * b.scale;
+          ctx.beginPath(); ctx.moveTo(dx * 8, dy * 8); ctx.lineTo(dx * r, dy * r); ctx.stroke();
+        }
+        ctx.restore();
+        continue;
+      }
       const def = ELEMENTS[b.element]; if (!def) continue;
       const k = b.t / b.life;                 // 0..1 progress
       const a = 1 - k;                         // fade out

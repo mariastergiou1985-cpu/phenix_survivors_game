@@ -5,36 +5,36 @@ import {
   MAX_OVERLOAD, PLAYER_RADIUS, CORE_RADIUS, MATRIX_RADIUS,
   DARK_BG, GRID_LINE, BLACK, CYAN, RED, GREEN, YELLOW, ORANGE, WHITE, PURPLE,
   CORE_COLORS, VIEW_SCALE, VIEW_W, VIEW_H, ENDLESS_VIEW_SCALE,
-} from '../constants.js?v=20260614215751';
+} from '../constants.js?v=20260614221304';
 import { clamp, distance, safeNormalize, randomChoice, randomRange } from '../utils.js';
 
 import { FloatingText }   from '../entities/FloatingText.js';
-import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260614215751';
-import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260614215751';
-import { Player }         from '../entities/Player.js?v=20260614215751';
-import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260614215751';
-import { Enemy }          from '../entities/Enemy.js?v=20260614215751';
-import { SupportDrone }   from '../entities/SupportDrone.js?v=20260614215751';
+import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260614221304';
+import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260614221304';
+import { Player }         from '../entities/Player.js?v=20260614221304';
+import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260614221304';
+import { Enemy }          from '../entities/Enemy.js?v=20260614221304';
+import { SupportDrone }   from '../entities/SupportDrone.js?v=20260614221304';
 
-import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow } from './Effects.js?v=20260614215751';
-import { SystemEventManager } from './Events.js?v=20260614215751';
-import { UpgradeUI }      from './UpgradeUI.js?v=20260614215751';
-import { weightedSample } from './Upgrades.js?v=20260614215751';
-import { MutationUI }      from './MutationUI.js?v=20260614215751';
-import { sampleMutations } from './Mutations.js?v=20260614215751';
-import { drawHUD, drawEndScreen } from './HUD.js?v=20260614215751';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE } from './MetaProgress.js?v=20260614215751';
-import { ElementFx, CHARACTER_ELEMENT, ELEMENTS } from '../Elements.js?v=20260614215751';
+import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow } from './Effects.js?v=20260614221304';
+import { SystemEventManager } from './Events.js?v=20260614221304';
+import { UpgradeUI }      from './UpgradeUI.js?v=20260614221304';
+import { weightedSample } from './Upgrades.js?v=20260614221304';
+import { MutationUI }      from './MutationUI.js?v=20260614221304';
+import { sampleMutations } from './Mutations.js?v=20260614221304';
+import { drawHUD, drawEndScreen } from './HUD.js?v=20260614221304';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE } from './MetaProgress.js?v=20260614221304';
+import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, FUSION_FX, CHARACTER_FUSION } from '../Elements.js?v=20260614221304';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
-import { GlitchDash } from '../effects/glitch-dash.js?v=20260614215751';
-import { EMPShockwave } from '../effects/emp-shockwave.js?v=20260614215751';
-import { DigitalSingularity } from '../effects/digital-singularity.js?v=20260614215751';
-import { Protocol0 } from '../effects/protocol-0.js?v=20260614215751';
-import { LaserEyes } from '../effects/laser-eyes.js?v=20260614215751';
-import { MeteorRain } from '../effects/meteor-rain.js?v=20260614215751';
+import { GlitchDash } from '../effects/glitch-dash.js?v=20260614221304';
+import { EMPShockwave } from '../effects/emp-shockwave.js?v=20260614221304';
+import { DigitalSingularity } from '../effects/digital-singularity.js?v=20260614221304';
+import { Protocol0 } from '../effects/protocol-0.js?v=20260614221304';
+import { LaserEyes } from '../effects/laser-eyes.js?v=20260614221304';
+import { MeteorRain } from '../effects/meteor-rain.js?v=20260614221304';
 // Euclid Vector toxin kit — used ONLY when selectedCharacter === 'euclid_vector' (world-space).
-import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=20260614215751';
+import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=20260614221304';
 
 // ── Thunder Solo sprite slices (cyan_lightning_rain_notes.png, 1254×1254) ──────
 // Strike variants: a clean bolt column + ripple base. (ax,ay) = ripple-centre as a
@@ -150,16 +150,16 @@ export class Game {
       fallback.src = 'assets/backgrounds/cyberpunk_city_background.png';
       this._bgImage = fallback;
     };
-    this._bgImage.src = 'assets/backgrounds/cyber_city_bg_clean.png?v=20260614215751';
+    this._bgImage.src = 'assets/backgrounds/cyber_city_bg_clean.png?v=20260614221304';
 
     // Endless Stage 02 visuals (only used while this.endless — Act 1 keeps default visuals).
     // Missing files degrade to the default background / default Nexus visual (warn, no crash).
     this._endlessBgImage = new Image();
     this._endlessBgImage.onerror = () => console.warn('[Stage] missing assets/maps/endless/stage_02_neon_shinjuku_plaza.png — using default background');
-    this._endlessBgImage.src = 'assets/maps/endless/stage_02_neon_shinjuku_plaza.png?v=20260614215751';
+    this._endlessBgImage.src = 'assets/maps/endless/stage_02_neon_shinjuku_plaza.png?v=20260614221304';
     this._endlessNexusImage = new Image();
     this._endlessNexusImage.onerror = () => console.warn('[Nexus] missing assets/nexus/endless_nexus_base_8cores.png — using default Nexus visual');
-    this._endlessNexusImage.src = 'assets/nexus/endless_nexus_base_8cores.png?v=20260614215751';
+    this._endlessNexusImage.src = 'assets/nexus/endless_nexus_base_8cores.png?v=20260614221304';
 
     // Preload character portraits for Character Select screen
     this._charImages = {};
@@ -172,7 +172,7 @@ export class Game {
     // Japan Phasewalker portrait lives in the endless/ subfolder (Character Select + FX modules).
     this._phasewalkerSprite = new Image();
     this._phasewalkerSprite.onerror = () => console.warn('[Char] missing assets/characters/endless/japan_phasewalker.png');
-    this._phasewalkerSprite.src = 'assets/characters/endless/japan_phasewalker.png?v=20260614215751';   // ?v bust: corrected transparency
+    this._phasewalkerSprite.src = 'assets/characters/endless/japan_phasewalker.png?v=20260614221304';   // ?v bust: corrected transparency
     this._charImages['japan_phasewalker'] = this._phasewalkerSprite;
     // Euclid Vector portrait (endless/ subfolder; unlocked from the start — see roster + free unlock).
     this._euclidSprite = new Image();
@@ -212,7 +212,7 @@ export class Game {
 
     // Preload start-menu background image
     this._menuBg = new Image();
-    this._menuBg.src = 'assets/ui/start_menu_background.png?v=20260614215751';
+    this._menuBg.src = 'assets/ui/start_menu_background.png?v=20260614221304';
 
     // Preload phoenix revive effect images (orange / blue / gold tiers)
     this._phoenixImage = new Image();
@@ -220,11 +220,11 @@ export class Game {
 
     this._phoenixBlueImage = new Image();
     this._phoenixBlueImage.onerror = () => console.warn('[Assets] Failed to load: assets/effects/phoenix/blue_phoenix_revive.png');
-    this._phoenixBlueImage.src = 'assets/effects/phoenix/blue_phoenix_revive.png?v=20260614215751';
+    this._phoenixBlueImage.src = 'assets/effects/phoenix/blue_phoenix_revive.png?v=20260614221304';
 
     this._phoenixGoldImage = new Image();
     this._phoenixGoldImage.onerror = () => console.warn('[Assets] Failed to load: assets/effects/phoenix/gold_phoenix_revive.png');
-    this._phoenixGoldImage.src = 'assets/effects/phoenix/gold_phoenix_revive.png?v=20260614215751';
+    this._phoenixGoldImage.src = 'assets/effects/phoenix/gold_phoenix_revive.png?v=20260614221304';
 
     // Preload credits photos
     this._creditImgInk = new Image();
@@ -242,10 +242,10 @@ export class Game {
     // Preload core and matrix sprites
     this._coreSprite = new Image();
     this._coreSprite.onerror = () => console.warn('[Assets] Failed to load: assets/cores/data_core.png');
-    this._coreSprite.src = 'assets/cores/data_core.png?v=20260614215751';
+    this._coreSprite.src = 'assets/cores/data_core.png?v=20260614221304';
     this._matrixSprite = new Image();
     this._matrixSprite.onerror = () => console.warn('[Assets] Failed to load: assets/bases/matrix_base.png');
-    this._matrixSprite.src = 'assets/bases/matrix_base.png?v=20260614215751';
+    this._matrixSprite.src = 'assets/bases/matrix_base.png?v=20260614221304';
 
     // Preload grid cache supply drop sprite
     this._gridCacheSprite = new Image();
@@ -269,7 +269,7 @@ export class Game {
     this._airstrikeSprite.src = 'assets/enemies/event_airstrike/airstrike_sheet.png';
     this._lightningStormSprite = new Image();
     this._lightningStormSprite.onerror = () => console.warn('[Endless] lights_storm_rain.png not found — drawn fallback used');
-    this._lightningStormSprite.src = 'assets/events/weather/lights_storm_rain.png?v=20260614215751';
+    this._lightningStormSprite.src = 'assets/events/weather/lights_storm_rain.png?v=20260614221304';
 
     // HUD icons: Data-Core (top-right credits) + chains (Cyber Arm SPACE ultimate icon)
     this._dataCoreIcon = new Image();
@@ -293,25 +293,25 @@ export class Game {
     // Preload acid rain weather sprites
     this._acidRainFallImg = new Image();
     this._acidRainFallImg.onerror = () => console.warn('[Weather] acid_rain_fall.png not found — using line fallback');
-    this._acidRainFallImg.src = 'assets/events/weather/acid_rain_fall.png?v=20260614215751';
+    this._acidRainFallImg.src = 'assets/events/weather/acid_rain_fall.png?v=20260614221304';
     this._acidRainSplashImg = new Image();
     this._acidRainSplashImg.onerror = () => console.warn('[Weather] acid_rain_splash.png not found — using ellipse fallback');
-    this._acidRainSplashImg.src = 'assets/events/weather/acid_rain_splash.png?v=20260614215751';
+    this._acidRainSplashImg.src = 'assets/events/weather/acid_rain_splash.png?v=20260614221304';
 
     // Preload AI Overload Titan boss sprite
     this._titanSprite = new Image();
     this._titanSprite.onerror = () => console.warn('[Boss] ai_overload_titan.png failed to load — using fallback');
-    this._titanSprite.src = 'assets/enemies/bosses/ai_overload_titan.png?v=20260614215751';
+    this._titanSprite.src = 'assets/enemies/bosses/ai_overload_titan.png?v=20260614221304';
 
     // Preload Matrix Annihilator mini-boss sprite (existing asset)
     this._annihilatorSprite = new Image();
     this._annihilatorSprite.onerror = () => console.warn('[Boss] assets/enemies/bosses/matrix_annihilator.png failed to load — using fallback');
-    this._annihilatorSprite.src = 'assets/enemies/bosses/matrix_annihilator.png?v=20260614215751';
+    this._annihilatorSprite.src = 'assets/enemies/bosses/matrix_annihilator.png?v=20260614221304';
 
     // Preload Bloodfang Packmaster mini-boss sprite (existing asset)
     this._bloodfangSprite = new Image();
     this._bloodfangSprite.onerror = () => console.warn('[Boss] assets/enemies/bosses/bloodfang_packmaster.png failed to load — using fallback');
-    this._bloodfangSprite.src = 'assets/enemies/bosses/bloodfang_packmaster.png?v=20260614215751';
+    this._bloodfangSprite.src = 'assets/enemies/bosses/bloodfang_packmaster.png?v=20260614221304';
 
     // Preload secret-skin preview sprites (Character Select locked/unlocked + Victory screen).
     // Keyed by the same flags MetaProgress persists. Missing files degrade to a text fallback.
@@ -459,6 +459,7 @@ export class Game {
     this.synergyBursts    = [];   // transient synergy-burst rings (visual; hard-capped, auto-expire)
     this.elementFx        = new ElementFx();   // Phase-1 elemental VFX (bounded, auto-expiring)
     this._elementColors   = Object.fromEntries(Object.entries(ELEMENTS).map(([k, v]) => [k, v.c1]));   // HUD indicator colors
+    this.fusionClouds     = [];   // Phase-2 fusion gas clouds (hard-capped 12, auto-expire)
     this._prevMana        = 100;  // for the ultimate-infusion element nova trigger
     this._stormExecCd     = 0;
     this._upgradeTab      = 'core';   // Upgrades screen tab: 'core' | 'synergy'
@@ -2652,6 +2653,7 @@ export class Game {
     this._updateSynergyMarks(dt);     // character synergy mark/burst lifetimes (inert without card)
     this.elementFx.update(dt);        // elemental VFX lifetimes (bounded, auto-expire)
     this._updateStormExecution(dt);   // Storm Execution reward (normal-enemy-only zaps)
+    this._updateFusionClouds(dt);     // Phase-2 fusion gas clouds (bounded, auto-expire)
     this._updateUltInfusion(dt);      // Forbidden Ultimate Infusion element nova on ult cast
     this._activeElement = CHARACTER_ELEMENT[this.player.selectedCharacter] || null;   // HUD indicator
     this._updateSupportDrones(dt);
@@ -5403,6 +5405,7 @@ export class Game {
     }
     for (const e of this.enemies) {
       if (e._elemCd > 0) e._elemCd -= dt;   // elemental-hit throttle (per enemy)
+      if (e._fuseCd > 0) e._fuseCd -= dt;   // fusion-proc throttle (per enemy)
       if (!e._synMark) continue;
       e._synMark.t  -= dt;
       e._synMark.cd -= dt;
@@ -5423,13 +5426,92 @@ export class Game {
     const fus  = (this.player.upgrades['reward_fusion_catalyst'] || 0);
     const scale = (core ? 1.15 : 0.85) + 0.12 * fus;
     this.elementFx.spawn(e.pos.x, e.pos.y, el, scale);
-    if (fus > 0) {                                   // Fusion Catalyst: real boss-capped bonus proc
+
+    if (fus <= 0) return;                            // fusion behavior needs Fusion Catalyst
+    const fid = CHARACTER_FUSION[this.player.selectedCharacter];
+    if (fid && (e._fuseCd || 0) <= 0) {             // ── real FUSION proc (Phase 2) ──
+      e._fuseCd = 0.35;
+      this._fusionProc(e, fid, fus, core);
+    } else if (!fid) {                               // single-element char: small boss-capped bonus
       this._inElementHit = true;
       const raw = 2 + 2 * fus;
       const d = (e.isBoss?.() || e.isMegaBoss) ? this._capBossDamage(e, raw) : raw;
       e.takeHit(d, this);
       this._inElementHit = false;
     }
+  }
+
+  // ─── Fusion proc (Phase 2) ───────────────────────────────────────────────────────────────────
+  // Powerful vs normal enemies, controlled vs elites (×0.5), boss-capped (×0.5 then _capBossDamage).
+  // Never hard-freezes/permanently-slows bosses (slow applies to normals only). Bounded everywhere:
+  // ≤6 affected enemies/proc, ≤12 active clouds, ElementFx-capped VFX, re-entrancy-guarded.
+  _fusionProc(src, fid, fus, core) {
+    const def = FUSION_FX[fid]; if (!def) return;
+    const scale = 1 + 0.15 * fus + (core ? 0.2 : 0);
+    this.elementFx.spawnFusion(src.pos.x, src.pos.y, def.c1, def.c2, 1.2 * scale);
+    this._fusionName = def.name; this._fusionNameT = 1.2;          // brief HUD label
+
+    if (def.kind === 'cloud') {                                    // lingering damaging gas cloud
+      if (this.fusionClouds.length < 12)
+        this.fusionClouds.push({ x: src.pos.x, y: src.pos.y, t: 0, life: 3.5, fid, dmgCd: 0 });
+      return;
+    }
+
+    const R = (def.radius || 70) * scale;
+    let n = 0;
+    this._inElementHit = true;                                     // guard: burst takeHit won't re-proc
+    for (const e of this.enemies) {
+      if (n >= 6) break;                                           // cap affected enemies per proc
+      if (distance(e.pos, src.pos) > R) continue;
+      const isBoss = e.isBoss?.() || e.isMegaBoss;
+      let dmg = def.dmg || 10;
+      if (e.isElite) dmg *= 0.5;                                   // controlled vs elites
+      const d = isBoss ? this._capBossDamage(e, dmg * 0.5) : dmg;  // bosses: halved + capped
+      if (e?.takeHit) e.takeHit(d, this);
+      if (def.slow && !isBoss) e.slowTimer = Math.max(e.slowTimer || 0, def.slow);   // normals only
+      n++;
+    }
+    this._inElementHit = false;
+  }
+
+  _updateFusionClouds(dt) {
+    for (let i = this.fusionClouds.length - 1; i >= 0; i--) {
+      const c = this.fusionClouds[i];
+      c.t += dt; c.dmgCd -= dt;
+      if (c.dmgCd <= 0) {
+        c.dmgCd = 0.5;
+        const def = FUSION_FX[c.fid] || {}; const R = def.radius || 70;
+        let n = 0;
+        for (const e of this.enemies) {
+          if (n >= 6) break;
+          if (distance(e.pos, { x: c.x, y: c.y }) > R) continue;
+          const isBoss = e.isBoss?.() || e.isMegaBoss;
+          let dmg = def.dmg || 8; if (e.isElite) dmg *= 0.5;
+          if (e?.takeHit) e.takeHit(isBoss ? this._capBossDamage(e, dmg * 0.5) : dmg, this);
+          n++;
+        }
+      }
+      if (c.t >= c.life) this.fusionClouds.splice(i, 1);
+    }
+    if (this._fusionNameT > 0) this._fusionNameT -= dt;
+  }
+
+  _drawFusionClouds(ctx) {
+    for (const c of this.fusionClouds) {
+      const def = FUSION_FX[c.fid] || {}; const R = (def.radius || 70);
+      const k = c.t / c.life, a = (1 - k) * 0.5;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      for (let i = 0; i < 5; i++) {
+        const ang = i * 1.25 + c.t * 0.6;
+        ctx.globalAlpha = a; ctx.fillStyle = i % 2 ? (def.c2 || '#8fdf7f') : (def.c1 || '#7CFF4D');
+        ctx.beginPath();
+        ctx.arc(c.x + Math.cos(ang) * R * 0.5, c.y + Math.sin(ang) * R * 0.5, R * 0.42 * (0.7 + 0.3 * k), 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; ctx.shadowBlur = 0; ctx.filter = 'none';
   }
 
   // Storm Execution Protocol reward — a battlefield storm that periodically zaps NORMAL enemies only.
@@ -5458,9 +5540,19 @@ export class Game {
   _updateUltInfusion(dt) {
     const m = this.player.mana;
     if ((this.player.upgrades['reward_ult_infusion'] || 0) >= 1 && (this._prevMana - m) >= 90) {
-      const el = CHARACTER_ELEMENT[this.player.selectedCharacter];
-      if (el) for (let i = 0; i < 8; i++) { const ang = i * Math.PI / 4;
-        this.elementFx.spawn(this.player.pos.x + Math.cos(ang) * 40, this.player.pos.y + Math.sin(ang) * 40, el, 1.8); }
+      const char = this.player.selectedCharacter;
+      const fid  = (this.player.upgrades['reward_fusion_catalyst'] || 0) > 0 ? CHARACTER_FUSION[char] : null;
+      const px = this.player.pos.x, py = this.player.pos.y;
+      if (fid && FUSION_FX[fid]) {                    // FUSION nova (8 fusion bursts) when eligible
+        const def = FUSION_FX[fid];
+        for (let i = 0; i < 8; i++) { const ang = i * Math.PI / 4;
+          this.elementFx.spawnFusion(px + Math.cos(ang) * 44, py + Math.sin(ang) * 44, def.c1, def.c2, 1.9); }
+        this._fusionName = def.name; this._fusionNameT = 1.4;
+      } else {                                         // else plain element nova
+        const el = CHARACTER_ELEMENT[char];
+        if (el) for (let i = 0; i < 8; i++) { const ang = i * Math.PI / 4;
+          this.elementFx.spawn(px + Math.cos(ang) * 40, py + Math.sin(ang) * 40, el, 1.8); }
+      }
     }
     this._prevMana = m;
   }
@@ -5733,6 +5825,7 @@ export class Game {
     this._drawBossLava(ctx);
     this._drawEndlessHazards(ctx);   // Endless-only: lightning storm + airstrike ships/rockets
     this._drawSynergyFx(ctx);        // character synergy marks above enemies + burst rings
+    this._drawFusionClouds(ctx);     // Phase-2 fusion gas clouds (world-space, bounded)
     this.elementFx.draw(ctx);        // elemental hit bursts (world-space, additive, bounded)
 
     // 2 ── Power Matrices (fill-based glow + counter owned by PowerMatrix; overload drives danger blink)

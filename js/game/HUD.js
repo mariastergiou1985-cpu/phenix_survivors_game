@@ -127,6 +127,12 @@ export function drawHUD(ctx, game) {
     const col = game._elementColors[game._activeElement] || CYAN;
     ctx.textAlign = 'left';
     drawText(ctx, '◆ ' + game._activeElement.toUpperCase(), 16, HEIGHT - 70, col, 'bold 11px Consolas, monospace');
+    // Brief fusion-name flash when a fusion procs (fades over its last moment).
+    if (game._fusionName && game._fusionNameT > 0) {
+      ctx.globalAlpha = Math.min(1, game._fusionNameT);
+      drawText(ctx, '⚡ ' + game._fusionName, 16, HEIGHT - 84, '#ffd23c', 'bold 11px Consolas, monospace');
+      ctx.globalAlpha = 1;
+    }
   }
 
   // ── Bottom-center: HP / Mana numeric readout (display-only; reflects card/upgrade max increases) ──
