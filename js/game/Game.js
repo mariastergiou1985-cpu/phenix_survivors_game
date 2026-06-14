@@ -5,36 +5,36 @@ import {
   MAX_OVERLOAD, PLAYER_RADIUS, CORE_RADIUS, MATRIX_RADIUS,
   DARK_BG, GRID_LINE, BLACK, CYAN, RED, GREEN, YELLOW, ORANGE, WHITE, PURPLE,
   CORE_COLORS, VIEW_SCALE, VIEW_W, VIEW_H, ENDLESS_VIEW_SCALE,
-} from '../constants.js?v=20260615004029';
+} from '../constants.js?v=20260615005122';
 import { clamp, distance, safeNormalize, randomChoice, randomRange } from '../utils.js';
 
 import { FloatingText }   from '../entities/FloatingText.js';
-import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260615004029';
-import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260615004029';
-import { Player }         from '../entities/Player.js?v=20260615004029';
-import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260615004029';
-import { Enemy }          from '../entities/Enemy.js?v=20260615004029';
-import { SupportDrone }   from '../entities/SupportDrone.js?v=20260615004029';
+import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260615005122';
+import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260615005122';
+import { Player }         from '../entities/Player.js?v=20260615005122';
+import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260615005122';
+import { Enemy }          from '../entities/Enemy.js?v=20260615005122';
+import { SupportDrone }   from '../entities/SupportDrone.js?v=20260615005122';
 
-import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow } from './Effects.js?v=20260615004029';
-import { SystemEventManager } from './Events.js?v=20260615004029';
-import { UpgradeUI }      from './UpgradeUI.js?v=20260615004029';
-import { weightedSample } from './Upgrades.js?v=20260615004029';
-import { MutationUI }      from './MutationUI.js?v=20260615004029';
-import { sampleMutations } from './Mutations.js?v=20260615004029';
-import { drawHUD, drawEndScreen } from './HUD.js?v=20260615004029';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE } from './MetaProgress.js?v=20260615004029';
-import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260615004029';
+import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow } from './Effects.js?v=20260615005122';
+import { SystemEventManager } from './Events.js?v=20260615005122';
+import { UpgradeUI }      from './UpgradeUI.js?v=20260615005122';
+import { weightedSample } from './Upgrades.js?v=20260615005122';
+import { MutationUI }      from './MutationUI.js?v=20260615005122';
+import { sampleMutations } from './Mutations.js?v=20260615005122';
+import { drawHUD, drawEndScreen } from './HUD.js?v=20260615005122';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE } from './MetaProgress.js?v=20260615005122';
+import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260615005122';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
-import { GlitchDash } from '../effects/glitch-dash.js?v=20260615004029';
-import { EMPShockwave } from '../effects/emp-shockwave.js?v=20260615004029';
-import { DigitalSingularity } from '../effects/digital-singularity.js?v=20260615004029';
-import { Protocol0 } from '../effects/protocol-0.js?v=20260615004029';
-import { LaserEyes } from '../effects/laser-eyes.js?v=20260615004029';
-import { MeteorRain } from '../effects/meteor-rain.js?v=20260615004029';
+import { GlitchDash } from '../effects/glitch-dash.js?v=20260615005122';
+import { EMPShockwave } from '../effects/emp-shockwave.js?v=20260615005122';
+import { DigitalSingularity } from '../effects/digital-singularity.js?v=20260615005122';
+import { Protocol0 } from '../effects/protocol-0.js?v=20260615005122';
+import { LaserEyes } from '../effects/laser-eyes.js?v=20260615005122';
+import { MeteorRain } from '../effects/meteor-rain.js?v=20260615005122';
 // Euclid Vector toxin kit — used ONLY when selectedCharacter === 'euclid_vector' (world-space).
-import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=20260615004029';
+import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=20260615005122';
 
 // ── Thunder Solo sprite slices (cyan_lightning_rain_notes.png, 1254×1254) ──────
 // Strike variants: a clean bolt column + ripple base. (ax,ay) = ripple-centre as a
@@ -150,16 +150,16 @@ export class Game {
       fallback.src = 'assets/backgrounds/cyberpunk_city_background.png';
       this._bgImage = fallback;
     };
-    this._bgImage.src = 'assets/backgrounds/cyber_city_bg_clean.png?v=20260615004029';
+    this._bgImage.src = 'assets/backgrounds/cyber_city_bg_clean.png?v=20260615005122';
 
     // Endless Stage 02 visuals (only used while this.endless — Act 1 keeps default visuals).
     // Missing files degrade to the default background / default Nexus visual (warn, no crash).
     this._endlessBgImage = new Image();
     this._endlessBgImage.onerror = () => console.warn('[Stage] missing assets/maps/endless/stage_02_neon_shinjuku_plaza.png — using default background');
-    this._endlessBgImage.src = 'assets/maps/endless/stage_02_neon_shinjuku_plaza.png?v=20260615004029';
+    this._endlessBgImage.src = 'assets/maps/endless/stage_02_neon_shinjuku_plaza.png?v=20260615005122';
     this._endlessNexusImage = new Image();
     this._endlessNexusImage.onerror = () => console.warn('[Nexus] missing assets/nexus/endless_nexus_base_8cores.png — using default Nexus visual');
-    this._endlessNexusImage.src = 'assets/nexus/endless_nexus_base_8cores.png?v=20260615004029';
+    this._endlessNexusImage.src = 'assets/nexus/endless_nexus_base_8cores.png?v=20260615005122';
 
     // Preload character portraits for Character Select screen
     this._charImages = {};
@@ -172,7 +172,7 @@ export class Game {
     // Japan Phasewalker portrait lives in the endless/ subfolder (Character Select + FX modules).
     this._phasewalkerSprite = new Image();
     this._phasewalkerSprite.onerror = () => console.warn('[Char] missing assets/characters/endless/japan_phasewalker.png');
-    this._phasewalkerSprite.src = 'assets/characters/endless/japan_phasewalker.png?v=20260615004029';   // ?v bust: corrected transparency
+    this._phasewalkerSprite.src = 'assets/characters/endless/japan_phasewalker.png?v=20260615005122';   // ?v bust: corrected transparency
     this._charImages['japan_phasewalker'] = this._phasewalkerSprite;
     // Euclid Vector portrait (endless/ subfolder; unlocked from the start — see roster + free unlock).
     this._euclidSprite = new Image();
@@ -212,7 +212,7 @@ export class Game {
 
     // Preload start-menu background image
     this._menuBg = new Image();
-    this._menuBg.src = 'assets/ui/start_menu_background.png?v=20260615004029';
+    this._menuBg.src = 'assets/ui/start_menu_background.png?v=20260615005122';
 
     // Preload phoenix revive effect images (orange / blue / gold tiers)
     this._phoenixImage = new Image();
@@ -220,11 +220,11 @@ export class Game {
 
     this._phoenixBlueImage = new Image();
     this._phoenixBlueImage.onerror = () => console.warn('[Assets] Failed to load: assets/effects/phoenix/blue_phoenix_revive.png');
-    this._phoenixBlueImage.src = 'assets/effects/phoenix/blue_phoenix_revive.png?v=20260615004029';
+    this._phoenixBlueImage.src = 'assets/effects/phoenix/blue_phoenix_revive.png?v=20260615005122';
 
     this._phoenixGoldImage = new Image();
     this._phoenixGoldImage.onerror = () => console.warn('[Assets] Failed to load: assets/effects/phoenix/gold_phoenix_revive.png');
-    this._phoenixGoldImage.src = 'assets/effects/phoenix/gold_phoenix_revive.png?v=20260615004029';
+    this._phoenixGoldImage.src = 'assets/effects/phoenix/gold_phoenix_revive.png?v=20260615005122';
 
     // Preload credits photos
     this._creditImgInk = new Image();
@@ -242,10 +242,10 @@ export class Game {
     // Preload core and matrix sprites
     this._coreSprite = new Image();
     this._coreSprite.onerror = () => console.warn('[Assets] Failed to load: assets/cores/data_core.png');
-    this._coreSprite.src = 'assets/cores/data_core.png?v=20260615004029';
+    this._coreSprite.src = 'assets/cores/data_core.png?v=20260615005122';
     this._matrixSprite = new Image();
     this._matrixSprite.onerror = () => console.warn('[Assets] Failed to load: assets/bases/matrix_base.png');
-    this._matrixSprite.src = 'assets/bases/matrix_base.png?v=20260615004029';
+    this._matrixSprite.src = 'assets/bases/matrix_base.png?v=20260615005122';
 
     // Preload grid cache supply drop sprite
     this._gridCacheSprite = new Image();
@@ -269,7 +269,7 @@ export class Game {
     this._airstrikeSprite.src = 'assets/enemies/event_airstrike/airstrike_sheet.png';
     this._lightningStormSprite = new Image();
     this._lightningStormSprite.onerror = () => console.warn('[Endless] lights_storm_rain.png not found — drawn fallback used');
-    this._lightningStormSprite.src = 'assets/events/weather/lights_storm_rain.png?v=20260615004029';
+    this._lightningStormSprite.src = 'assets/events/weather/lights_storm_rain.png?v=20260615005122';
 
     // HUD icons: Data-Core (top-right credits) + chains (Cyber Arm SPACE ultimate icon)
     this._dataCoreIcon = new Image();
@@ -293,25 +293,25 @@ export class Game {
     // Preload acid rain weather sprites
     this._acidRainFallImg = new Image();
     this._acidRainFallImg.onerror = () => console.warn('[Weather] acid_rain_fall.png not found — using line fallback');
-    this._acidRainFallImg.src = 'assets/events/weather/acid_rain_fall.png?v=20260615004029';
+    this._acidRainFallImg.src = 'assets/events/weather/acid_rain_fall.png?v=20260615005122';
     this._acidRainSplashImg = new Image();
     this._acidRainSplashImg.onerror = () => console.warn('[Weather] acid_rain_splash.png not found — using ellipse fallback');
-    this._acidRainSplashImg.src = 'assets/events/weather/acid_rain_splash.png?v=20260615004029';
+    this._acidRainSplashImg.src = 'assets/events/weather/acid_rain_splash.png?v=20260615005122';
 
     // Preload AI Overload Titan boss sprite
     this._titanSprite = new Image();
     this._titanSprite.onerror = () => console.warn('[Boss] ai_overload_titan.png failed to load — using fallback');
-    this._titanSprite.src = 'assets/enemies/bosses/ai_overload_titan.png?v=20260615004029';
+    this._titanSprite.src = 'assets/enemies/bosses/ai_overload_titan.png?v=20260615005122';
 
     // Preload Matrix Annihilator mini-boss sprite (existing asset)
     this._annihilatorSprite = new Image();
     this._annihilatorSprite.onerror = () => console.warn('[Boss] assets/enemies/bosses/matrix_annihilator.png failed to load — using fallback');
-    this._annihilatorSprite.src = 'assets/enemies/bosses/matrix_annihilator.png?v=20260615004029';
+    this._annihilatorSprite.src = 'assets/enemies/bosses/matrix_annihilator.png?v=20260615005122';
 
     // Preload Bloodfang Packmaster mini-boss sprite (existing asset)
     this._bloodfangSprite = new Image();
     this._bloodfangSprite.onerror = () => console.warn('[Boss] assets/enemies/bosses/bloodfang_packmaster.png failed to load — using fallback');
-    this._bloodfangSprite.src = 'assets/enemies/bosses/bloodfang_packmaster.png?v=20260615004029';
+    this._bloodfangSprite.src = 'assets/enemies/bosses/bloodfang_packmaster.png?v=20260615005122';
 
     // Preload secret-skin preview sprites (Character Select locked/unlocked + Victory screen).
     // Keyed by the same flags MetaProgress persists. Missing files degrade to a text fallback.
@@ -1953,34 +1953,66 @@ export class Game {
   // ── Euclid auto-weapons (Phase 3) — Toxin Vector Bolt (bounces ≤5) + Viral Gas Needle (pierce/multishot).
   // Both respect fireRateBonus, are hard-capped, auto-clean, boss-capped, and route damage through
   // takeHit so the Elemental/Fusion hooks fire automatically (toxin element + Euclid fusions).
-  _euclidNearest(from, exclude) {
+  // Combined live targets: normal/elite enemies + the singleton mini-bosses (titan/annihilator/
+  // bloodfang) which are NOT in this.enemies — so Euclid's guns actually hit bosses too.
+  _euclidCandidates() {
+    const bosses = [];
+    if (this.titanBoss && this.titanBoss.hp > 0)             bosses.push(this.titanBoss);
+    if (this.annihilatorBoss && this.annihilatorBoss.hp > 0) bosses.push(this.annihilatorBoss);
+    if (this.bloodfangBoss && this.bloodfangBoss.hp > 0)     bosses.push(this.bloodfangBoss);
+    return bosses.length ? this.enemies.concat(bosses) : this.enemies;
+  }
+
+  _euclidNearest(from, exclude, cand) {
     let best = null, bd = Infinity;
-    for (const e of this.enemies) {
-      if (!e?.pos || (exclude && exclude.has(e))) continue;
+    for (const e of (cand || this._euclidCandidates())) {
+      if (!e?.pos || e.hp <= 0 || (exclude && exclude.has(e))) continue;
       const d = distance(e.pos, from);
       if (d < bd) { bd = d; best = e; }
     }
     return best;
   }
 
-  _euclidHit(e, dmg) {
-    const d = (e.isBoss?.() || e.isMegaBoss) ? this._capBossDamage(e, dmg) : dmg;
-    if (e?.takeHit) e.takeHit(d, this);   // triggers _onElementHit (toxin) + fusion proc
-    this.elementFx?.spawn(e.pos.x, e.pos.y, 'toxin', 0.9);
+  // Unified damage: Enemy instances route through takeHit (auto element/fusion hooks); singleton
+  // mini-bosses use their hp path + die check. Both boss-capped, both get a visible toxin splash.
+  _euclidDamage(e, dmg) {
+    if (!e || e.hp <= 0) return;
+    const isBoss = e.isBoss?.() || e.isMegaBoss || e === this.titanBoss || e === this.annihilatorBoss || e === this.bloodfangBoss;
+    const d = isBoss ? this._capBossDamage(e, dmg) : dmg;
+    if (e.takeHit) {
+      e.takeHit(d, this);
+    } else {                                  // singleton mini-boss hp path (non-zero, capped)
+      e.hp -= d; e.hitFlash = 0.08;
+      this.floatingTexts.push(new FloatingText('-' + Math.round(d), e.pos.add(new Vec2(0, -(e.radius || 20) - 6)), WHITE, 0.5));
+      if (e === this.titanBoss && e.hp <= 0)            this._titanDie();
+      else if (e === this.annihilatorBoss && e.hp <= 0) this._annihilatorDie();
+      else if (e === this.bloodfangBoss && e.hp <= 0)   this._bloodfangDie();
+    }
+    this.elementFx?.spawn(e.pos.x, e.pos.y, 'toxin', 1.0);   // visible corrosive splash on every hit
   }
 
   _updateEuclidAutoWeapons(dt) {
     const p = this.player;
     const fr = 1 + (p.fireRateBonus || 0);
+    const cand = this._euclidCandidates();
 
-    // ── Weapon 1: Toxin Vector Bolt (bouncing) ──
+    // Two compact toxic auto-guns hovering above Euclid's shoulders; aim at nearest target.
+    const bob = Math.sin(performance.now() * 0.006) * 3;
+    const gl = new Vec2(p.pos.x - 24, p.pos.y - 34 + bob);   // left gun
+    const gr = new Vec2(p.pos.x + 24, p.pos.y - 34 - bob);   // right gun
+    const aimT = this._euclidNearest(p.pos, null, cand);
+    this._euclidGuns = [
+      { x: gl.x, y: gl.y, ang: aimT ? Math.atan2(aimT.pos.y - gl.y, aimT.pos.x - gl.x) : 0 },
+      { x: gr.x, y: gr.y, ang: aimT ? Math.atan2(aimT.pos.y - gr.y, aimT.pos.x - gr.x) : 0 },
+    ];
+
+    // ── Weapon 1: Toxin Vector Bolt (bouncing) — fires from the LEFT gun ──
     this._euclidBoltCd -= dt;
     if (this._euclidBoltCd <= 0) {
       this._euclidBoltCd = Math.max(0.28, 0.85 / fr);
-      const tgt = this._euclidNearest(p.pos, null);
-      if (tgt && distance(tgt.pos, p.pos) < 720 && this._euclidBolts.length < 40) {
+      if (aimT && distance(aimT.pos, p.pos) < 720 && this._euclidBolts.length < 40) {
         const bounces = Math.min(5, 2 + this._cardLvl('euclid_vector_ricochet'));
-        this._euclidBolts.push({ pos: p.pos.clone(), target: tgt, prev: p.pos.clone(),
+        this._euclidBolts.push({ pos: gl.clone(), target: aimT, prev: gl.clone(),
           dmg: 16 + 3 * this._cardLvl('euclid_toxin_shot_mastery'), bounces, hit: new Set(), t: 0 });
       }
     }
@@ -1988,40 +2020,39 @@ export class Game {
       const b = this._euclidBolts[i];
       b.t += dt;
       const tg = b.target;
-      if (!tg || tg.hp <= 0 || !this.enemies.includes(tg)) {   // target gone → retarget or expire
-        b.target = this._euclidNearest(b.pos, b.hit);
-        if (!b.target || b.t > 3) { this._euclidBolts.splice(i, 1); continue; }
+      if (!tg || tg.hp <= 0) {                                 // target gone → retarget or expire
+        b.target = this._euclidNearest(b.pos, b.hit, cand);
+        if (!b.target || b.t > 3) this._euclidBolts.splice(i, 1);
         continue;
       }
       const dir = safeNormalize(tg.pos.sub(b.pos));
       b.prev = b.pos.clone();
       b.pos.addMut(dir.scale(520 * dt));
-      if (distance(b.pos, tg.pos) < tg.radius + 10) {          // impact
-        this._euclidHit(tg, b.dmg);
+      if (distance(b.pos, tg.pos) < (tg.radius || 16) + 10) {  // impact
+        this._euclidDamage(tg, b.dmg);
         b.hit.add(tg);
         b.bounces -= 1;
         if (b.bounces <= 0) { this._euclidBolts.splice(i, 1); continue; }
-        const next = this._euclidNearest(tg.pos, b.hit);       // bounce to a NEW nearest enemy
+        const next = this._euclidNearest(tg.pos, b.hit, cand); // bounce to a NEW nearest target
         if (!next || distance(next.pos, tg.pos) > 280) { this._euclidBolts.splice(i, 1); continue; }
         b.target = next; b.pos = tg.pos.clone();
       }
     }
 
-    // ── Weapon 2: Viral Gas Needle / Corrosive Shard (multishot + pierce + gas puff) ──
+    // ── Weapon 2: Viral Gas Needle / Corrosive Shard — fires from the RIGHT gun ──
     this._euclidNeedleCd -= dt;
     if (this._euclidNeedleCd <= 0) {
       this._euclidNeedleCd = Math.max(0.4, 1.1 / fr);
       const ml    = this._cardLvl('euclid_corrosive_multishot');
       const shots = 1 + Math.floor(ml / 2);                    // +1 projectile every 2 levels
       const pierce = 1 + ml;                                    // +1 pierce per level
-      const tgt = this._euclidNearest(p.pos, null);
-      if (tgt && distance(tgt.pos, p.pos) < 680) {
-        const base = safeNormalize(tgt.pos.sub(p.pos));
+      if (aimT && distance(aimT.pos, p.pos) < 680) {
+        const base = safeNormalize(aimT.pos.sub(gr));
         for (let s = 0; s < shots && this._euclidNeedles.length < 48; s++) {
           const spread = (s - (shots - 1) / 2) * 0.18;
           const c = Math.cos(spread), sn = Math.sin(spread);
           const dir = new Vec2(base.x * c - base.y * sn, base.x * sn + base.y * c);
-          this._euclidNeedles.push({ pos: p.pos.clone(), dir, prev: p.pos.clone(),
+          this._euclidNeedles.push({ pos: gr.clone(), dir, prev: gr.clone(),
             dmg: 12 + 3 * this._cardLvl('euclid_corrosive_spread'), pierceLeft: pierce, hit: new Set(), t: 0 });
         }
       }
@@ -2033,21 +2064,35 @@ export class Game {
       n.pos.addMut(n.dir.scale(640 * dt));
       const out = n.pos.x < -60 || n.pos.x > WORLD_W + 60 || n.pos.y < -60 || n.pos.y > WORLD_H + 60;
       if (out || n.t > 2.2) { this._euclidNeedles.splice(i, 1); continue; }
-      for (const e of this.enemies) {
-        if (!e?.pos || n.hit.has(e)) continue;
-        if (distance(e.pos, n.pos) > e.radius + 8) continue;
-        this._euclidHit(e, n.dmg);
+      let removed = false;
+      for (const e of cand) {
+        if (!e?.pos || e.hp <= 0 || n.hit.has(e)) continue;
+        if (distance(e.pos, n.pos) > (e.radius || 16) + 8) continue;
+        this._euclidDamage(e, n.dmg);
         n.hit.add(e);
         if (this.fusionClouds.length < 12)                     // small gas puff (reuses bounded cloud cap)
           this.fusionClouds.push({ x: e.pos.x, y: e.pos.y, t: 0, life: 1.6, fid: 'viral', dmgCd: 0.4 });
         n.pierceLeft -= 1;
-        if (n.pierceLeft <= 0) { this._euclidNeedles.splice(i, 1); break; }
+        if (n.pierceLeft <= 0) { this._euclidNeedles.splice(i, 1); removed = true; break; }
       }
+      if (removed) continue;
     }
   }
 
   _drawEuclidAutoWeapons(ctx) {
     ctx.save();
+    // Floating guns (compact ~18px) — drawn so the shots read as coming from them.
+    for (const g of (this._euclidGuns || [])) {
+      ctx.save(); ctx.translate(g.x, g.y); ctx.rotate(g.ang);
+      ctx.fillStyle = '#3a4654'; ctx.fillRect(-6, -4, 16, 8);          // body
+      ctx.fillStyle = '#2a323c'; ctx.fillRect(6, -2, 7, 4);            // barrel
+      ctx.fillStyle = '#7CFF4D'; ctx.fillRect(-4, -2, 6, 4);          // toxic energy cell
+      ctx.strokeStyle = '#caffae'; ctx.lineWidth = 1; ctx.strokeRect(-6, -4, 16, 8);
+      ctx.restore();
+      ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.45;   // toxic glow
+      ctx.fillStyle = '#7CFF4D'; ctx.beginPath(); ctx.arc(g.x, g.y, 6, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
     ctx.globalCompositeOperation = 'lighter';
     // Toxin Vector Bolts — glowing green/cyan orb + bounce trail
     for (const b of this._euclidBolts) {
@@ -5556,7 +5601,7 @@ export class Game {
     e._elemCd = 0.18;
     const core = (this.player.upgrades['reward_elemental_core'] || 0) >= 1;
     const fus  = (this.player.upgrades['reward_fusion_catalyst'] || 0);
-    const scale = (core ? 1.15 : 0.85) + 0.12 * fus;
+    const scale = (core ? 1.4 : 1.05) + 0.12 * fus;   // larger = clearly visible per-character identity
     this.elementFx.spawn(e.pos.x, e.pos.y, el, scale);
 
     if (fus <= 0) return;                            // fusion behavior needs Fusion Catalyst
@@ -5596,7 +5641,7 @@ export class Game {
   _fusionProc(src, fid, fus, core) {
     const def = FUSION_FX[fid]; if (!def) return;
     const scale = 1 + 0.15 * fus + (core ? 0.2 : 0);
-    this.elementFx.spawnFusion(src.pos.x, src.pos.y, def.c1, def.c2, 1.2 * scale);
+    this.elementFx.spawnFusion(src.pos.x, src.pos.y, def.c1, def.c2, 1.5 * scale);   // bold, clearly visible
     this._fusionName = def.name; this._fusionNameT = 1.2;          // brief HUD label
 
     if (def.kind === 'cloud') {                                    // lingering damaging gas cloud

@@ -139,19 +139,19 @@ export class ElementFx {
       const def = ELEMENTS[b.element]; if (!def) continue;
       const k = b.t / b.life;                 // 0..1 progress
       const a = 1 - k;                         // fade out
-      const r = (10 + 26 * k) * b.scale;       // expanding ring
+      const r = (12 + 32 * k) * b.scale;       // expanding ring (bigger = more readable)
       ctx.save();
       ctx.translate(b.x, b.y);
       ctx.globalCompositeOperation = 'lighter';
 
       // Impact flash (first 40%)
       if (k < 0.4) {
-        ctx.globalAlpha = (0.4 - k) * 1.8;
+        ctx.globalAlpha = (0.4 - k) * 2;
         ctx.fillStyle = def.c2;
-        ctx.beginPath(); ctx.arc(0, 0, 6 * b.scale * (1 - k), 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(0, 0, 8 * b.scale * (1 - k), 0, Math.PI * 2); ctx.fill();
       }
       // Burst ring
-      ctx.globalAlpha = a * 0.85; ctx.strokeStyle = def.c1; ctx.lineWidth = 2.5 * b.scale;
+      ctx.globalAlpha = a * 0.9; ctx.strokeStyle = def.c1; ctx.lineWidth = 3 * b.scale;
       ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.stroke();
 
       // Element-specific flourish (procedural — fixed small loops, no arrays)
