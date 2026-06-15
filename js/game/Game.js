@@ -3105,6 +3105,17 @@ export class Game {
       hitSingle(this.titanBoss,       this._titanDie);
       hitSingle(this.annihilatorBoss, this._annihilatorDie);
       hitSingle(this.bloodfangBoss,   this._bloodfangDie);
+      if (this.doubleDemonsBoss && this.doubleDemonsBoss.hp > 0) {
+        const _dd = this.doubleDemonsBoss;
+        for (const _body of [_dd.gunner, _dd.claw]) {
+          if (distance(_body.pos, p.pos) <= RADIUS + _body.radius) {
+            const _d = bossHit(false); if (_d > 0) {
+              _dd.hp -= this._resistDot(_dd, _d); _body.hitFlash = 0.08;
+              if (_dd.hp <= 0) { this._doubleDemonsDie(); break; }
+            }
+          }
+        }
+      }
     }
 
     if (oc.t >= DURATION) this.overChains = null;
@@ -3254,6 +3265,9 @@ export class Game {
     const p = this.player;
     const enemies = this.enemies;
     const bosses = [this.titanBoss, this.annihilatorBoss, this.bloodfangBoss].filter(b => b && b.hp > 0);
+    if (this.doubleDemonsBoss && this.doubleDemonsBoss.hp > 0) {
+      bosses.push(this.doubleDemonsBoss.gunner, this.doubleDemonsBoss.claw);
+    }
 
     // occasionally pressure a boss
     if (bosses.length && Math.random() < 0.12) {
@@ -3338,6 +3352,17 @@ export class Game {
     hitBoss(this.titanBoss, this._titanDie);
     hitBoss(this.annihilatorBoss, this._annihilatorDie);
     hitBoss(this.bloodfangBoss, this._bloodfangDie);
+    if (this.doubleDemonsBoss && this.doubleDemonsBoss.hp > 0) {
+      const _dd = this.doubleDemonsBoss;
+      for (const _body of [_dd.gunner, _dd.claw]) {
+        if (distance(_body.pos, at) < R + _body.radius) {
+          const _dmg = bossHit(16, false); if (_dmg <= 0) continue;
+          _dd.hp -= _dmg; _body.hitFlash = 0.08;
+          _body.stunned = Math.max(_body.stunned || 0, 0.4);
+          if (_dd.hp <= 0) { this._doubleDemonsDie(); break; }
+        }
+      }
+    }
 
     // shattered-note burst at the impact
     for (let k = 0; k < 2; k++) this._spawnThunderNote(tx + randomRange(-14, 14), ty - randomRange(4, 18));
@@ -5099,6 +5124,11 @@ export class Game {
       [this.bloodfangBoss,   this._bloodfangDie],
     ];
     for (const [b, die] of singles) if (b && b.hp > 0) list.push({ obj: b, arr: false, die });
+    const _dd = this.doubleDemonsBoss;
+    if (_dd && _dd.hp > 0) {
+      for (const _body of [_dd.gunner, _dd.claw])
+        list.push({ obj: _body, arr: false, die: this._doubleDemonsDie, ddParent: _dd });
+    }
     return list;
   }
 
@@ -5111,8 +5141,9 @@ export class Game {
       b.takeHit(dmg, this);
       this._tryCorrode(b);
     } else {
-      b.hp -= dmg; b.hitFlash = 0.08;
-      if (b.hp <= 0) t.die.call(this);
+      const _hpObj = t.ddParent || b;
+      _hpObj.hp -= dmg; b.hitFlash = 0.08;
+      if (_hpObj.hp <= 0) t.die.call(this);
     }
     this.particles.spawnHitSparks(b.pos, color);
   }
@@ -5157,6 +5188,16 @@ export class Game {
     };
     for (const e of this.enemies) tick(e);
     tick(this.titanBoss); tick(this.annihilatorBoss); tick(this.bloodfangBoss);
+    if (this.doubleDemonsBoss && this.doubleDemonsBoss.hp > 0) {
+      const _dd = this.doubleDemonsBoss;
+      for (const _body of [_dd.gunner, _dd.claw]) {
+        if (!(_body._corrosiveTimer > 0)) continue;
+        _body._corrosiveTimer -= dt;
+        _dd.hp -= this._resistDot(_dd, dps * dt);
+        if (Math.random() < dt * 5) this.particles?.spawnHitSparks?.(_body.pos, '#7CFF3C');
+      }
+      if (_dd.hp <= 0) this._doubleDemonsDie();
+    }
     if (this.titanBoss       && this.titanBoss.hp       <= 0) this._titanDie();
     if (this.annihilatorBoss && this.annihilatorBoss.hp <= 0) this._annihilatorDie();
     if (this.bloodfangBoss   && this.bloodfangBoss.hp   <= 0) this._bloodfangDie();
@@ -5627,6 +5668,15 @@ export class Game {
       if (!b || b.hp <= 0) continue;
       hitOne(b, false, true, (d) => { b.hp -= this._resistDot(b, d); b.hitFlash = 0.08; if (b.hp <= 0) die.call(this); });
     }
+    if (this.doubleDemonsBoss && this.doubleDemonsBoss.hp > 0) {
+      const _dd = this.doubleDemonsBoss;
+      for (const _body of [_dd.gunner, _dd.claw]) {
+        hitOne(_body, false, true, (d) => {
+          _dd.hp -= this._resistDot(_dd, d); _body.hitFlash = 0.08;
+          if (_dd.hp <= 0) this._doubleDemonsDie();
+        });
+      }
+    }
   }
 
   // Ground-layer puddles: translucent cyan/teal spirit-water with the asset texture on top.
@@ -5843,6 +5893,17 @@ export class Game {
       hitSingle(this.titanBoss,       this._titanDie);
       hitSingle(this.annihilatorBoss, this._annihilatorDie);
       hitSingle(this.bloodfangBoss,   this._bloodfangDie);
+      if (this.doubleDemonsBoss && this.doubleDemonsBoss.hp > 0) {
+        const _dd = this.doubleDemonsBoss;
+        for (const _body of [_dd.gunner, _dd.claw]) {
+          if (distance(_body.pos, sd.pos) <= RADIUS + _body.radius) {
+            const _d = bossHit(false); if (_d > 0) {
+              _dd.hp -= _d; _body.hitFlash = 0.08;
+              if (_dd.hp <= 0) { this._doubleDemonsDie(); break; }
+            }
+          }
+        }
+      }
     }
 
     if (sd.t >= DURATION) this.spiritDojang = null;
