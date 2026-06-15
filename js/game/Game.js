@@ -387,6 +387,14 @@ export class Game {
     } catch (err) {
       console.error('[CGM Settings] _initSettingsOverlay failed:', err);
     }
+
+    this._charSelectOverlayEl      = null;   // root #cgm-charselect div
+    this._charSelectOverlayVisible = false;
+    try {
+      this._initCharSelectOverlay();
+    } catch (err) {
+      console.error('[CGM CharSelect] _initCharSelectOverlay failed:', err);
+    }
   }
 
   // UPGRADES = the permanent Grid-Credit progression (spent between runs). ENDLESS MODE appears
@@ -617,6 +625,7 @@ export class Game {
   selectCharacter(charId) {
     if (!this.meta.isCharacterUnlocked(charId)) return;   // locked characters can't be started
     this._hideMenuOverlay();
+    this._hideCharSelectOverlay();
     this.selectedCharacter = charId;
     this.audio?.startGameplayMusic();
     this.gameState = 'playing';
@@ -628,6 +637,7 @@ export class Game {
     this.gameState = 'character_select';
     this.characterIndex = 0;
     this.audio?.startMenuMusic();
+    this._showCharSelectOverlay();
   }
 
   // Highlight a character card WITHOUT starting a run (mouse preview). Sets the live selection so the
@@ -707,6 +717,7 @@ export class Game {
                 : 'Cannot unlock.';
     this._pfMsgUntil = performance.now() + 2500;
     if (res === 'ok') this.audio?.playEventWarning?.();
+    this._syncCharSelectOverlay();
   }
 
   goToMainMenu() {
@@ -723,6 +734,7 @@ export class Game {
     this.allyDrones    = [];
     this.audio?.startMenuMusic();
     this._hideSettingsOverlay();
+    this._hideCharSelectOverlay();
     this._showMenuOverlay();
   }
 
@@ -748,6 +760,7 @@ export class Game {
   startEndlessRun() {
     if (!this.meta?.isEndlessUnlocked()) return;   // guard: never reachable while locked
     this._hideMenuOverlay();
+    this._hideCharSelectOverlay();
     this.selectedCharacter = this.selectedCharacter || this.characters[this.characterIndex]?.id || 'skeleton_warrior';
     this.gameState = 'playing';
     this.reset();                      // fresh run, timeAlive 0, matrices rebuilt, endless=false
@@ -3597,11 +3610,13 @@ export class Game {
       this.characterIndex = (this.characterIndex - 1 + this.characters.length) % this.characters.length;
       keys.delete('arrowleft');
       keys.delete('a');
+      this._syncCharSelectOverlay();
     }
     if (keys.has('arrowright') || keys.has('d')) {
       this.characterIndex = (this.characterIndex + 1) % this.characters.length;
       keys.delete('arrowright');
       keys.delete('d');
+      this._syncCharSelectOverlay();
     }
     // Up/Down (or W/S) toggle the equipped outfit for the highlighted character.
     // setSelectedOutfit is a no-op when the secret outfit is still locked.
@@ -3610,6 +3625,7 @@ export class Game {
       const next   = this.meta.getSelectedOutfit(charId) === 'default' ? 'secret' : 'default';
       this.meta.setSelectedOutfit(charId, next);
       ['arrowup', 'arrowdown', 'w', 's'].forEach(k => keys.delete(k));
+      this._syncCharSelectOverlay();
     }
     if (keys.has('enter') || keys.has(' ')) {
       const charId = this.characters[this.characterIndex].id;
@@ -8002,7 +8018,439 @@ export class Game {
     ctx.textAlign = 'left';
   }
 
+  // ─── CHARACTER SELECT DOM overlay ────────────────────────────────────────────
+  _initCharSelectOverlay() {
+    if (this._charSelectOverlayEl) return;
+
+    if (!document.getElementById('cgm-csc-style')) {
+      const style = document.createElement('style');
+      style.id = 'cgm-csc-style';
+      style.textContent = `
+        #cgm-charselect {
+          position:fixed; inset:0; z-index:120; display:none;
+          align-items:flex-start; justify-content:center;
+          overflow-y:auto; padding:18px 16px 24px;
+          font-family:'Share Tech Mono',ui-monospace,monospace; color:#cfe9ff;
+          background:
+            radial-gradient(1200px 700px at 50% -10%,rgba(168,85,247,.18),transparent 60%),
+            radial-gradient(900px 600px at 12% 30%,rgba(46,230,246,.10),transparent 60%),
+            radial-gradient(900px 600px at 88% 70%,rgba(255,45,149,.10),transparent 60%),
+            linear-gradient(180deg,#0b1030,#070a1c);
+          --cyan:#2ee6f6; --cyan-dim:#1aa9bd; --magenta:#ff2d95; --purple:#a855f7;
+          --amber:#fbbf24; --green:#34d399; --txt:#cfe9ff; --txt-dim:#6f86b8;
+          --txt-faint:#46588a; --panel:rgba(10,16,46,.62); --panel-edge:rgba(46,230,246,.10);
+          --glow-cyan:0 0 8px rgba(46,230,246,.55),0 0 22px rgba(46,230,246,.22);
+          --glow-amb:0 0 8px rgba(251,191,36,.55),0 0 20px rgba(251,191,36,.2);
+          --radius:14px;
+        }
+        #cgm-charselect::before {
+          content:""; position:fixed; inset:0; pointer-events:none; z-index:0;
+          background-image:linear-gradient(rgba(46,230,246,.05) 1px,transparent 1px),
+            linear-gradient(90deg,rgba(46,230,246,.05) 1px,transparent 1px);
+          background-size:46px 46px;
+          mask-image:radial-gradient(circle at 50% 40%,#000 0%,transparent 78%);
+        }
+        #cgm-charselect::after {
+          content:""; position:fixed; inset:0; pointer-events:none; z-index:9999;
+          background:repeating-linear-gradient(0deg,rgba(0,0,0,.10) 0 2px,transparent 2px 4px);
+          opacity:.35; mix-blend-mode:overlay;
+        }
+        #cgm-charselect * { box-sizing:border-box; margin:0; padding:0; }
+        #cgm-charselect .csc-stage {
+          position:relative; z-index:1; width:100%; max-width:900px;
+          border:1px solid var(--panel-edge); border-radius:20px;
+          padding:24px 28px 22px;
+          background:linear-gradient(180deg,rgba(168,85,247,.05),transparent 30%),rgba(7,10,28,.78);
+          box-shadow:inset 0 0 60px rgba(46,230,246,.05),0 30px 80px rgba(0,0,0,.55);
+          display:flex; flex-direction:column; align-items:center; gap:16px;
+        }
+        #cgm-charselect .corner { position:absolute;width:34px;height:34px;border:2px solid var(--cyan);opacity:.8;filter:drop-shadow(var(--glow-cyan)); }
+        #cgm-charselect .corner.tl{top:-2px;left:-2px;border-right:0;border-bottom:0;border-radius:18px 0 0 0;}
+        #cgm-charselect .corner.tr{top:-2px;right:-2px;border-left:0;border-bottom:0;border-radius:0 18px 0 0;}
+        #cgm-charselect .corner.bl{bottom:-2px;left:-2px;border-right:0;border-top:0;border-radius:0 0 0 18px;}
+        #cgm-charselect .corner.br{bottom:-2px;right:-2px;border-left:0;border-top:0;border-radius:0 0 18px 0;}
+        #cgm-charselect .csc-header {
+          width:100%; display:flex; align-items:center; justify-content:space-between;
+        }
+        #cgm-charselect .csc-title {
+          font-family:'Orbitron',sans-serif; font-weight:800; font-size:16px;
+          letter-spacing:3px; color:var(--cyan); text-shadow:var(--glow-cyan);
+          display:flex; align-items:center; gap:10px;
+        }
+        #cgm-charselect .csc-title svg { width:20px; height:20px; }
+        #cgm-charselect .csc-pf-badge {
+          display:flex; align-items:center; gap:7px;
+          padding:6px 14px; border-radius:999px;
+          border:1px solid rgba(168,85,247,.35); background:rgba(168,85,247,.08);
+          font-family:'Orbitron',sans-serif; font-weight:700; font-size:13px;
+          color:var(--purple);
+        }
+        #cgm-charselect .csc-pf-badge svg { width:15px;height:15px;color:var(--purple); }
+        #cgm-charselect .csc-sep { width:100%; height:1px; background:linear-gradient(90deg,transparent,var(--cyan),transparent); opacity:.3; }
+        #cgm-charselect .csc-outfit-bar {
+          display:flex; align-items:center; gap:10px;
+          font-size:11px; letter-spacing:2px; color:var(--txt-dim);
+        }
+        #cgm-charselect .csc-outfit-bar span { text-transform:uppercase; }
+        #cgm-charselect .csc-obtn {
+          padding:6px 18px; border-radius:8px; cursor:pointer; font-size:11px;
+          letter-spacing:2px; text-transform:uppercase; border:1px solid rgba(46,230,246,.22);
+          background:rgba(10,16,46,.4); color:var(--txt-dim); transition:.14s;
+          font-family:'Share Tech Mono',monospace;
+        }
+        #cgm-charselect .csc-obtn.active { border-color:var(--cyan); color:var(--cyan); background:rgba(46,230,246,.1); box-shadow:var(--glow-cyan); }
+        #cgm-charselect .csc-obtn:disabled { opacity:.4; cursor:not-allowed; }
+        #cgm-charselect .csc-grid { display:flex; flex-wrap:wrap; gap:14px; justify-content:center; width:100%; }
+        #cgm-charselect .csc-card {
+          position:relative; width:116px; flex:0 0 116px;
+          border:1px solid rgba(46,230,246,.22); border-radius:10px;
+          background:rgba(10,16,46,.55); overflow:hidden;
+          cursor:pointer; transition:.15s ease;
+          display:flex; flex-direction:column; align-items:center;
+        }
+        #cgm-charselect .csc-card:hover { border-color:rgba(46,230,246,.55); }
+        #cgm-charselect .csc-card.active {
+          border-color:var(--amber); border-width:2px;
+          box-shadow:0 0 18px rgba(251,191,36,.35),inset 0 0 14px rgba(251,191,36,.07);
+        }
+        #cgm-charselect .csc-portrait {
+          width:100%; height:104px; overflow:hidden;
+          display:flex; align-items:flex-end; justify-content:center;
+          position:relative;
+        }
+        #cgm-charselect .csc-portrait img {
+          width:100%; height:100%; object-fit:contain; object-position:bottom center;
+          display:block;
+        }
+        #cgm-charselect .csc-portrait .csc-fallback {
+          width:68px; height:68px; border-radius:50%;
+          margin-bottom:8px; border:3px solid; flex:none;
+        }
+        #cgm-charselect .csc-card-name {
+          font-size:9.5px; text-align:center; padding:5px 6px 2px; color:#dff0ff;
+          line-height:1.2; font-weight:600; letter-spacing:.3px;
+        }
+        #cgm-charselect .csc-card-role {
+          font-size:8.5px; color:var(--txt-dim); text-align:center;
+          padding:0 4px 6px; letter-spacing:.5px;
+        }
+        #cgm-charselect .csc-lock-overlay {
+          position:absolute; inset:0; background:rgba(4,10,18,.72);
+          display:flex; flex-direction:column; align-items:center; justify-content:center;
+          gap:4px;
+        }
+        #cgm-charselect .csc-lock-overlay svg { width:22px;height:22px;color:#9fb0c0; }
+        #cgm-charselect .csc-lock-label { font-size:9px; letter-spacing:2px; color:#9fb0c0; }
+        #cgm-charselect .csc-unlock-area {
+          width:100%; border:1px solid rgba(251,191,36,.28); border-radius:10px;
+          background:rgba(251,191,36,.04); padding:12px 16px; display:none;
+          flex-direction:column; align-items:center; gap:8px;
+        }
+        #cgm-charselect .csc-unlock-hint { font-size:12px; color:#ffcf6a; text-align:center; }
+        #cgm-charselect .csc-pf-btn {
+          padding:9px 28px; border-radius:9px; cursor:pointer;
+          border:1px solid rgba(46,230,246,.4); background:rgba(6,40,52,.82);
+          font-family:'Orbitron',sans-serif; font-weight:700; font-size:12px;
+          letter-spacing:1.5px; color:#dffaff; transition:.15s;
+        }
+        #cgm-charselect .csc-pf-btn:hover:not(:disabled) { border-color:var(--cyan); box-shadow:var(--glow-cyan); }
+        #cgm-charselect .csc-pf-btn:disabled { opacity:.45; cursor:not-allowed; border-color:rgba(90,74,85,.5); color:#9a8fa0; background:rgba(20,14,22,.7); }
+        #cgm-charselect .csc-pf-msg { font-size:11px; color:#ffd0e0; min-height:14px; text-align:center; }
+        #cgm-charselect .csc-skins-section { width:100%; display:none; flex-direction:column; align-items:center; gap:10px; }
+        #cgm-charselect .csc-skins-label {
+          font-family:'Orbitron',sans-serif; font-weight:700; font-size:11px;
+          letter-spacing:3px; color:var(--purple);
+        }
+        #cgm-charselect .csc-skins-row { display:flex; gap:20px; flex-wrap:wrap; justify-content:center; }
+        #cgm-charselect .csc-skin-thumb {
+          display:flex; flex-direction:column; align-items:center; gap:5px; cursor:pointer;
+        }
+        #cgm-charselect .csc-skin-img {
+          width:52px; height:52px; border-radius:8px; overflow:hidden;
+          border:1px solid rgba(168,85,247,.3); background:rgba(10,16,46,.6);
+          display:flex; align-items:center; justify-content:center;
+        }
+        #cgm-charselect .csc-skin-img img { width:100%; height:100%; object-fit:contain; }
+        #cgm-charselect .csc-skin-img.unlocked { border-color:var(--purple); box-shadow:0 0 10px rgba(168,85,247,.4); }
+        #cgm-charselect .csc-skin-name { font-size:9px; color:var(--txt-dim); text-align:center; max-width:64px; }
+        #cgm-charselect .csc-skin-state { font-size:9px; font-weight:700; letter-spacing:1px; }
+        #cgm-charselect .csc-skin-state.unlocked { color:var(--green); }
+        #cgm-charselect .csc-skin-state.locked { color:#5a7080; }
+        #cgm-charselect .csc-actions { display:flex; gap:12px; flex-wrap:wrap; justify-content:center; }
+        #cgm-charselect .csc-abtn {
+          padding:14px 28px; border-radius:11px; cursor:pointer;
+          border:1px solid rgba(46,230,246,.28);
+          background:linear-gradient(180deg,rgba(46,230,246,.05),rgba(10,16,46,.35));
+          color:var(--txt); font-family:'Orbitron',sans-serif; font-weight:700;
+          font-size:13px; letter-spacing:2px; text-transform:uppercase; transition:.15s;
+        }
+        #cgm-charselect .csc-abtn:hover:not(:disabled) { border-color:var(--cyan); color:#fff; background:linear-gradient(180deg,rgba(46,230,246,.16),rgba(46,230,246,.04)); box-shadow:var(--glow-cyan); }
+        #cgm-charselect .csc-abtn:disabled { opacity:.38; cursor:not-allowed; }
+        #cgm-charselect .csc-abtn.back-btn { border-color:rgba(111,134,184,.22); color:var(--txt-dim); font-size:12px; }
+        #cgm-charselect .csc-abtn.back-btn:hover { border-color:var(--txt-dim); color:#fff; background:rgba(111,134,184,.08); box-shadow:none; }
+        #cgm-charselect .csc-abtn.start-btn:not(:disabled) { border-color:rgba(46,230,246,.5); }
+        #cgm-charselect .csc-abtn.endless-btn:not(:disabled) { border-color:rgba(124,255,77,.4); color:#7CFF4D; }
+        #cgm-charselect .csc-abtn.endless-btn:not(:disabled):hover { border-color:#7CFF4D; box-shadow:0 0 10px rgba(124,255,77,.4); }
+        #cgm-charselect .csc-hints { color:var(--txt-faint); font-size:11px; letter-spacing:1px; display:flex; gap:16px; flex-wrap:wrap; justify-content:center; }
+        #cgm-charselect .csc-hints b { color:var(--cyan); font-weight:400; }
+      `;
+      document.head.appendChild(style);
+    }
+
+    const el = document.createElement('div');
+    el.id = 'cgm-charselect';
+    el.setAttribute('role', 'dialog');
+    el.setAttribute('aria-label', 'Select Character');
+
+    // Build character card HTML
+    const cardHtml = this.characters.map((c, i) => {
+      const img = this._charImages[c.id];
+      const imgSrc = img ? img.src : '';
+      return `<div class="csc-card" data-idx="${i}" data-id="${c.id}" title="${c.name}">
+        <div class="csc-portrait">
+          ${imgSrc
+            ? `<img src="${imgSrc}" alt="${c.name}" loading="eager">`
+            : `<div class="csc-fallback" style="background:${c.fallbackColor};border-color:${c.fallbackAlt}"></div>`
+          }
+        </div>
+        <div class="csc-card-name">${c.name}</div>
+        <div class="csc-card-role">${c.role}</div>
+        <div class="csc-lock-overlay">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+            <use href="#i-shield"/>
+          </svg>
+          <span class="csc-lock-label">LOCKED</span>
+        </div>
+      </div>`;
+    }).join('');
+
+    // Build secret skins HTML
+    const secretChars = this.characters.filter(c => CHARACTER_OUTFITS[c.id]?.secret);
+    const skinsHtml = secretChars.map(c => {
+      const secret = CHARACTER_OUTFITS[c.id].secret;
+      const key = secret.unlockKey;
+      const skinImg = this._skinImages[key];
+      return `<div class="csc-skin-thumb" data-char="${c.id}" data-skin="${key}">
+        <div class="csc-skin-img" data-key="${key}">
+          ${skinImg ? `<img src="${skinImg.src}" alt="${secret.name}">` : ''}
+        </div>
+        <div class="csc-skin-name">${secret.name}</div>
+        <div class="csc-skin-state" data-key="${key}">?</div>
+      </div>`;
+    }).join('');
+
+    el.innerHTML = `
+      <div class="csc-stage">
+        <span class="corner tl"></span><span class="corner tr"></span>
+        <span class="corner bl"></span><span class="corner br"></span>
+
+        <div class="csc-header">
+          <div class="csc-title">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><use href="#i-user"/></svg>
+            SELECT YOUR CHARACTER
+          </div>
+          <div class="csc-pf-badge">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><use href="#i-diamond"/></svg>
+            <span id="csc-pf-count">0</span>&nbsp;PF
+          </div>
+        </div>
+        <div class="csc-sep"></div>
+
+        <div class="csc-outfit-bar" id="csc-outfit-bar" style="display:none">
+          <span>OUTFIT</span>
+          <button class="csc-obtn active" data-outfit="default">DEFAULT</button>
+          <button class="csc-obtn" data-outfit="secret" id="csc-secret-btn">SECRET SKIN</button>
+        </div>
+
+        <div class="csc-grid" id="csc-grid">${cardHtml}</div>
+
+        <div class="csc-unlock-area" id="csc-unlock-area">
+          <div class="csc-unlock-hint" id="csc-unlock-hint"></div>
+          <button class="csc-pf-btn" id="csc-pf-btn"></button>
+          <div class="csc-pf-msg" id="csc-pf-msg"></div>
+        </div>
+
+        <div class="csc-skins-section" id="csc-skins-section">
+          <div class="csc-skins-label">◆ SECRET SKINS ◆</div>
+          <div class="csc-skins-row">${skinsHtml}</div>
+        </div>
+        <div class="csc-sep"></div>
+
+        <div class="csc-actions">
+          <button class="csc-abtn back-btn" id="csc-back-btn">BACK</button>
+          <button class="csc-abtn start-btn" id="csc-start-btn">START GAME</button>
+          <button class="csc-abtn endless-btn" id="csc-endless-btn">START ENDLESS</button>
+        </div>
+
+        <div class="csc-hints">
+          <span><b>← →</b> Select</span>
+          <span><b>↑ ↓</b> Outfit</span>
+          <span><b>ENTER</b> Start</span>
+          <span><b>ESC</b> Back</span>
+        </div>
+      </div>
+    `;
+
+    // ── Click handlers ────────────────────────────────────────────────────────
+    el.querySelectorAll('.csc-card').forEach(card => {
+      card.addEventListener('click', () => {
+        const idx = parseInt(card.dataset.idx, 10);
+        this.previewCharacter(idx);
+        this._syncCharSelectOverlay();
+      });
+      card.addEventListener('dblclick', () => {
+        const idx = parseInt(card.dataset.idx, 10);
+        this.characterIndex = idx;
+        this.selectCharacter(this.characters[idx].id);
+      });
+    });
+
+    el.querySelectorAll('.csc-obtn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const charId = this.characters[this.characterIndex].id;
+        const outfit = btn.dataset.outfit;
+        const secretOk = this.meta?.isOutfitUnlocked?.(charId, 'secret') === true;
+        if (outfit === 'secret' && !secretOk) return;
+        this.meta.setSelectedOutfit(charId, outfit);
+        this._syncCharSelectOverlay();
+      });
+    });
+
+    el.querySelector('#csc-back-btn')?.addEventListener('click', () => this.goToMainMenu());
+    el.querySelector('#csc-start-btn')?.addEventListener('click', () => {
+      const c = this.characters[this.characterIndex];
+      if (c) this.selectCharacter(c.id);
+    });
+    el.querySelector('#csc-endless-btn')?.addEventListener('click', () => this.startSelectedEndless());
+    el.querySelector('#csc-pf-btn')?.addEventListener('click', () => this.tryUnlockSelectedCharacterPF());
+
+    document.body.appendChild(el);
+    this._charSelectOverlayEl = el;
+  }
+
+  _showCharSelectOverlay() {
+    if (!this._charSelectOverlayEl) return;
+    this._charSelectOverlayEl.style.display = 'flex';
+    this._charSelectOverlayVisible = true;
+    this._syncCharSelectOverlay();
+  }
+
+  _hideCharSelectOverlay() {
+    if (!this._charSelectOverlayEl) return;
+    this._charSelectOverlayEl.style.display = 'none';
+    this._charSelectOverlayVisible = false;
+  }
+
+  _syncCharSelectOverlay() {
+    const el = this._charSelectOverlayEl;
+    if (!el) return;
+    const idx = this.characterIndex;
+    const sel = this.characters[idx];
+    if (!sel) return;
+
+    // PF badge
+    const pfEl = el.querySelector('#csc-pf-count');
+    if (pfEl) pfEl.textContent = this.meta.getProtocolFragments();
+
+    // Cards: active highlight + portrait (default vs secret skin) + lock overlay
+    el.querySelectorAll('.csc-card').forEach((card, i) => {
+      const c = this.characters[i];
+      const unlocked = this.meta.isCharacterUnlocked(c.id);
+      card.classList.toggle('active', i === idx);
+      card.querySelector('.csc-lock-overlay').style.display = unlocked ? 'none' : 'flex';
+      // Update portrait img src (may change on outfit toggle)
+      const imgEl = card.querySelector('img');
+      if (imgEl) {
+        const equipped = this.meta.getSelectedOutfit(c.id);
+        let src = this._charImages[c.id]?.src || '';
+        if (equipped === 'secret') {
+          const key = CHARACTER_OUTFITS[c.id]?.secret?.unlockKey;
+          const skinImg = key && this._skinImages[key];
+          const secretOk = key && this.meta?.isOutfitUnlocked?.(c.id, 'secret') === true;
+          if (skinImg && skinImg.complete && skinImg.naturalWidth > 0 && secretOk) {
+            src = skinImg.src;
+          }
+        }
+        if (imgEl.src !== src) imgEl.src = src;
+      }
+    });
+
+    // Outfit bar: only show when selected char has a secret outfit
+    const outfitBar = el.querySelector('#csc-outfit-bar');
+    const hasSecret = !!CHARACTER_OUTFITS[sel.id]?.secret;
+    if (outfitBar) outfitBar.style.display = hasSecret ? 'flex' : 'none';
+    if (hasSecret) {
+      const equipped  = this.meta.getSelectedOutfit(sel.id);
+      const secretOk  = this.meta?.isOutfitUnlocked?.(sel.id, 'secret') === true;
+      el.querySelectorAll('.csc-obtn').forEach(b => b.classList.toggle('active', b.dataset.outfit === equipped));
+      const secretBtn = el.querySelector('#csc-secret-btn');
+      if (secretBtn) {
+        secretBtn.disabled = !secretOk;
+        secretBtn.textContent = secretOk ? 'SECRET SKIN' : 'SECRET SKIN 🔒';
+      }
+    }
+
+    // Unlock area: show when selected char is locked
+    const unlockArea = el.querySelector('#csc-unlock-area');
+    const selLocked = !this.meta.isCharacterUnlocked(sel.id);
+    const pfCost = PF_CHARACTER_COSTS[sel.id];
+    if (unlockArea) {
+      if (selLocked && pfCost) {
+        const have   = this.meta.getProtocolFragments();
+        const afford = have >= pfCost;
+        unlockArea.style.display = 'flex';
+        const hintEl = el.querySelector('#csc-unlock-hint');
+        if (hintEl) hintEl.textContent = 'Unlock with Protocol Fragments in Endless progression.';
+        const pfBtn = el.querySelector('#csc-pf-btn');
+        if (pfBtn) {
+          pfBtn.textContent = `UNLOCK — ${pfCost} ◆ PF  (have ${have})`;
+          pfBtn.disabled = !afford;
+        }
+        const msgEl = el.querySelector('#csc-pf-msg');
+        if (msgEl) {
+          msgEl.textContent = (this._pfMsg && performance.now() < (this._pfMsgUntil || 0))
+            ? this._pfMsg : '';
+        }
+      } else if (selLocked) {
+        unlockArea.style.display = 'flex';
+        const hintEl = el.querySelector('#csc-unlock-hint');
+        if (hintEl) hintEl.textContent = 'Reach 10:00 in Endless Mode to unlock this character.';
+        const pfBtn = el.querySelector('#csc-pf-btn');
+        if (pfBtn) { pfBtn.textContent = ''; pfBtn.style.display = 'none'; }
+      } else {
+        unlockArea.style.display = 'none';
+        const pfBtn = el.querySelector('#csc-pf-btn');
+        if (pfBtn) pfBtn.style.display = '';
+      }
+    }
+
+    // Secret skins section — always visible
+    const skinsSection = el.querySelector('#csc-skins-section');
+    if (skinsSection) skinsSection.style.display = 'flex';
+    el.querySelectorAll('.csc-skin-thumb').forEach(thumb => {
+      const charId = thumb.dataset.char;
+      const skinKey = thumb.dataset.skin;
+      const unlocked = this.meta?.isUnlocked(skinKey) === true;
+      const imgBox = thumb.querySelector('.csc-skin-img');
+      if (imgBox) imgBox.classList.toggle('unlocked', unlocked);
+      const stateEl = thumb.querySelector('.csc-skin-state');
+      if (stateEl) {
+        stateEl.textContent = unlocked ? 'UNLOCKED' : 'LOCKED';
+        stateEl.className = 'csc-skin-state ' + (unlocked ? 'unlocked' : 'locked');
+      }
+    });
+
+    // Action buttons
+    const selUnlocked = this.meta.isCharacterUnlocked(sel.id);
+    const endlessOk   = selUnlocked && !!this.meta?.isEndlessUnlocked();
+    const startBtn    = el.querySelector('#csc-start-btn');
+    const endlessBtn  = el.querySelector('#csc-endless-btn');
+    if (startBtn)   startBtn.disabled   = !selUnlocked;
+    if (endlessBtn) endlessBtn.disabled = !endlessOk;
+  }
+
   _drawCharacterSelect(ctx) {
+    if (this._charSelectOverlayVisible) return;   // DOM overlay takes over
     this._drawBackground(ctx);
     ctx.fillStyle = 'rgba(0,0,0,0.7)';
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
