@@ -12084,7 +12084,7 @@ export class Game {
     if (_g.barragePhase?.phase === 'telegraph') {
       const bp     = _g.barragePhase;
       const prog   = bp.t / bp.telegraphT;
-      const toP    = p.pos.sub(_g.pos);
+      const toP    = this.player.pos.sub(_g.pos);
       const baseA  = Math.atan2(toP.y, toP.x);
       const nBarrels = 5;
       ctx.save();
@@ -12239,6 +12239,10 @@ export class Game {
     }
 
     // ââ Shared HP bar (bottom-center, above HUD strip) ────────────────────────
+    // HP bar — must draw in screen space (identity transform)
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);  // screen space
+
     const barW  = 340;
     const barH  = 10;
     const barX  = WIDTH / 2 - barW / 2;
@@ -12274,6 +12278,8 @@ export class Game {
     ctx.textAlign = 'center';
     ctx.fillText(Math.ceil(dd.hp) + ' / ' + dd.maxHp, WIDTH / 2, barY + barH + 10);
     ctx.restore();
+
+    ctx.restore();  // back to camera (world) space
   }
 
   _drawAcidRain(ctx) {
