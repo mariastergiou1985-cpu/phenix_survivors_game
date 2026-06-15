@@ -51,10 +51,13 @@ export class AudioManager {
     this._menuAudio     = null;
     this._gameplayAudio = null;
     this._endlessAudio  = null;
+    this._chaosAudio    = null;
     this._currentMusic  = null;   // the single track that may be audible; gates _play retries
 
     this._setupTrack('assets/audio/music/menu_theme.mp3?v=20260615210000', 0.28, a => { this._menuAudio     = a; });
     this._setupTrack('assets/audio/music/gameplay_theme.mp3?v=20260615210000', 0.20, a => { this._gameplayAudio = a; });
+    // Chaos Mode track. Double underscore in filename is intentional. Degrades safely if missing.
+    this._setupTrack('assets/audio/chaos/Golden__Override__Protocol.wav?v=20260615210000', 0.20, a => { this._chaosAudio = a; });
     // Endless-only track (dawn). Missing/failed load degrades safely (onerror warn).
     this._setupTrack('assets/audio/music/endless/dawn.wav?v=20260615210000', 0.20, a => { this._endlessAudio = a; });
   }
@@ -149,6 +152,7 @@ export class AudioManager {
   startMenuMusic() {
     this._stop(this._gameplayAudio);
     this._stop(this._endlessAudio);
+    this._stop(this._chaosAudio);
     this._currentMusic = this._menuAudio;
     this.currentTrackTitle = 'Hope';
     this._play(this._menuAudio);
@@ -157,6 +161,7 @@ export class AudioManager {
   startGameplayMusic() {
     this._stop(this._menuAudio);
     this._stop(this._endlessAudio);
+    this._stop(this._chaosAudio);
     this._currentMusic = this._gameplayAudio;
     this.currentTrackTitle = 'CYBER-GRID OST';
     this._play(this._gameplayAudio);
@@ -167,9 +172,21 @@ export class AudioManager {
   startEndlessMusic() {
     this._stop(this._menuAudio);
     this._stop(this._gameplayAudio);
+    this._stop(this._chaosAudio);
     this._currentMusic = this._endlessAudio;
     this.currentTrackTitle = 'NYX';
     this._play(this._endlessAudio);
+  }
+
+  // Chaos Mode music — replaces the Endless track at 31:00. Loops continuously.
+  // Routes through musicGain → AnalyserNode so the equalizer reacts to it.
+  startChaosMusic() {
+    this._stop(this._menuAudio);
+    this._stop(this._gameplayAudio);
+    this._stop(this._endlessAudio);
+    this._currentMusic = this._chaosAudio;
+    this.currentTrackTitle = 'Golden Override Protocol';
+    this._play(this._chaosAudio);
   }
 
   stopAll() {
@@ -177,6 +194,7 @@ export class AudioManager {
     this._stop(this._menuAudio);
     this._stop(this._gameplayAudio);
     this._stop(this._endlessAudio);
+    this._stop(this._chaosAudio);
   }
 
   toggleMute() {

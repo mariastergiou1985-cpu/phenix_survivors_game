@@ -3605,7 +3605,7 @@ export class Game {
       if (this._chaosTransTimer >= 0.8) {   // transition complete
         this._chaosTransTimer = -1;
         this._chaosMode       = true;
-        if (this.audio) this.audio.currentTrackTitle = 'Golden Override Protocol';
+        this.audio?.startChaosMusic();   // switch to Chaos track (sets currentTrackTitle too)
         this.triggerAnnouncement('⚡ CHAOS MODE ⚡', '#ff2d95');
         // Rearm all boss slots immediately so they arrive together
         this.titanSpawned       = false; this.titanSpawnTimer       = 0;
