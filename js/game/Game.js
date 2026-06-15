@@ -395,6 +395,22 @@ export class Game {
     } catch (err) {
       console.error('[CGM CharSelect] _initCharSelectOverlay failed:', err);
     }
+
+    this._upgradesOverlayEl      = null;   // root #cgm-upgrades div
+    this._upgradesOverlayVisible = false;
+    try {
+      this._initUpgradesOverlay();
+    } catch (err) {
+      console.error('[CGM Upgrades] _initUpgradesOverlay failed:', err);
+    }
+
+    this._achievementsOverlayEl      = null;   // root #cgm-achievements div
+    this._achievementsOverlayVisible = false;
+    try {
+      this._initAchievementsOverlay();
+    } catch (err) {
+      console.error('[CGM Achievements] _initAchievementsOverlay failed:', err);
+    }
   }
 
   // UPGRADES = the permanent Grid-Credit progression (spent between runs). ENDLESS MODE appears
@@ -735,6 +751,8 @@ export class Game {
     this.audio?.startMenuMusic();
     this._hideSettingsOverlay();
     this._hideCharSelectOverlay();
+    this._hideUpgradesOverlay();
+    this._hideAchievementsOverlay();
     this._showMenuOverlay();
   }
 
@@ -847,12 +865,14 @@ export class Game {
     this._upgradeMsg      = '';
     this._upgradeMsgTimer = 0;
     this._confirmReset    = false;
+    this._upgradeTab      = 'core';
+    this._showUpgradesOverlay();
   }
 
   goToCredits() { this._hideMenuOverlay(); this._hideSettingsOverlay(); this.gameState = 'credits'; }
 
   // Read-only Endless achievements gallery (display only — never unlocks/resets anything).
-  goToAchievementsScreen() { this._hideMenuOverlay(); this.gameState = 'achievements'; }
+  goToAchievementsScreen() { this._hideMenuOverlay(); this.gameState = 'achievements'; this._showAchievementsOverlay(); }
 
   goToAudioSettings() {
     this._hideMenuOverlay();
@@ -1159,14 +1179,561 @@ export class Game {
   }
 
   _updateUpgradesScreen(input) {
-    if (this._upgradeMsgTimer > 0) this._upgradeMsgTimer -= 1/60;
+    if (this._upgradeMsgTimer > 0) { this._upgradeMsgTimer -= 1/60; this._syncUpgradeMsg(); }
     if (input.keys.has('escape')) {
       this.goToMainMenu();
       input.keys.delete('escape');
     }
   }
 
+  // ─── UPGRADES DOM overlay ──────────────────────────────────────────────────
+  _initUpgradesOverlay() {
+    if (this._upgradesOverlayEl) return;
+
+    if (!document.getElementById('cgm-upg-style')) {
+      const style = document.createElement('style');
+      style.id = 'cgm-upg-style';
+      style.textContent = `
+        #cgm-upgrades {
+          position:fixed; inset:0; z-index:130; display:none;
+          align-items:flex-start; justify-content:center;
+          overflow-y:auto; padding:16px 14px 24px;
+          font-family:'Share Tech Mono',ui-monospace,monospace; color:#cfe9ff;
+          background:
+            radial-gradient(1200px 700px at 50% -10%,rgba(168,85,247,.18),transparent 60%),
+            radial-gradient(900px 600px at 12% 30%,rgba(46,230,246,.10),transparent 60%),
+            radial-gradient(900px 600px at 88% 70%,rgba(255,45,149,.10),transparent 60%),
+            linear-gradient(180deg,#0b1030,#070a1c);
+          --cyan:#2ee6f6; --cyan-dim:#1aa9bd; --magenta:#ff2d95; --purple:#a855f7;
+          --amber:#fbbf24; --green:#34d399; --yellow:#7CFF4D; --txt:#cfe9ff;
+          --txt-dim:#6f86b8; --txt-faint:#46588a;
+          --panel-edge:rgba(46,230,246,.10);
+          --glow-cyan:0 0 8px rgba(46,230,246,.55),0 0 22px rgba(46,230,246,.22);
+          --glow-amb:0 0 8px rgba(251,191,36,.5),0 0 18px rgba(251,191,36,.18);
+          --glow-mag:0 0 10px rgba(255,45,149,.55),0 0 26px rgba(255,45,149,.22);
+          --radius:12px;
+        }
+        #cgm-upgrades::before {
+          content:""; position:fixed; inset:0; pointer-events:none; z-index:0;
+          background-image:linear-gradient(rgba(46,230,246,.05) 1px,transparent 1px),
+            linear-gradient(90deg,rgba(46,230,246,.05) 1px,transparent 1px);
+          background-size:46px 46px;
+          mask-image:radial-gradient(circle at 50% 40%,#000 0%,transparent 78%);
+        }
+        #cgm-upgrades::after {
+          content:""; position:fixed; inset:0; pointer-events:none; z-index:9999;
+          background:repeating-linear-gradient(0deg,rgba(0,0,0,.10) 0 2px,transparent 2px 4px);
+          opacity:.35; mix-blend-mode:overlay;
+        }
+        #cgm-upgrades * { box-sizing:border-box; margin:0; padding:0; }
+        #cgm-upgrades .cgu-stage {
+          position:relative; z-index:1; width:100%; max-width:1140px;
+          border:1px solid var(--panel-edge); border-radius:20px;
+          padding:22px 26px 20px;
+          background:linear-gradient(180deg,rgba(168,85,247,.05),transparent 30%),rgba(7,10,28,.78);
+          box-shadow:inset 0 0 60px rgba(46,230,246,.05),0 30px 80px rgba(0,0,0,.55);
+          display:flex; flex-direction:column; align-items:stretch; gap:14px;
+        }
+        #cgm-upgrades .corner{position:absolute;width:34px;height:34px;border:2px solid var(--cyan);opacity:.8;filter:drop-shadow(0 0 6px rgba(46,230,246,.55));}
+        #cgm-upgrades .corner.tl{top:-2px;left:-2px;border-right:0;border-bottom:0;border-radius:18px 0 0 0;}
+        #cgm-upgrades .corner.tr{top:-2px;right:-2px;border-left:0;border-bottom:0;border-radius:0 18px 0 0;}
+        #cgm-upgrades .corner.bl{bottom:-2px;left:-2px;border-right:0;border-top:0;border-radius:0 0 0 18px;}
+        #cgm-upgrades .corner.br{bottom:-2px;right:-2px;border-left:0;border-top:0;border-radius:0 0 18px 0;}
+        #cgm-upgrades .cgu-header { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; }
+        #cgm-upgrades .cgu-title { font-family:'Orbitron',sans-serif; font-weight:800; font-size:16px; letter-spacing:3px; color:var(--cyan); text-shadow:var(--glow-cyan); display:flex; align-items:center; gap:10px; }
+        #cgm-upgrades .cgu-currency { display:flex; align-items:center; gap:16px; flex-wrap:wrap; }
+        #cgm-upgrades .cgu-credits { display:flex; align-items:center; gap:7px; padding:6px 14px; border-radius:999px; border:1px solid rgba(251,191,36,.35); background:rgba(251,191,36,.07); font-family:'Orbitron',sans-serif; font-weight:700; font-size:13px; color:var(--amber); }
+        #cgm-upgrades .cgu-pf { display:flex; align-items:center; gap:7px; padding:6px 14px; border-radius:999px; border:1px solid rgba(168,85,247,.35); background:rgba(168,85,247,.07); font-family:'Orbitron',sans-serif; font-weight:700; font-size:13px; color:var(--purple); }
+        #cgm-upgrades .cgu-sep { width:100%; height:1px; background:linear-gradient(90deg,transparent,var(--cyan),transparent); opacity:.3; }
+        #cgm-upgrades .cgu-tabs { display:flex; gap:10px; }
+        #cgm-upgrades .cgu-tab { padding:8px 20px; border-radius:8px; cursor:pointer; font-size:12px; letter-spacing:1.5px; text-transform:uppercase; border:1px solid rgba(46,230,246,.2); background:rgba(10,16,46,.4); color:var(--txt-dim); transition:.14s; font-family:'Share Tech Mono',monospace; }
+        #cgm-upgrades .cgu-tab:hover { border-color:rgba(46,230,246,.4); color:var(--txt); }
+        #cgm-upgrades .cgu-tab.active-core  { border-color:var(--cyan);   color:var(--cyan);   background:rgba(46,230,246,.1);  box-shadow:var(--glow-cyan); }
+        #cgm-upgrades .cgu-tab.active-syn   { border-color:var(--amber);  color:var(--amber);  background:rgba(251,191,36,.08); box-shadow:var(--glow-amb); }
+        #cgm-upgrades .cgu-tab.active-proto { border-color:var(--purple); color:var(--purple); background:rgba(168,85,247,.08); }
+        #cgm-upgrades .cgu-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:14px; }
+        #cgm-upgrades .cgu-card { position:relative; border-radius:var(--radius); background:rgba(10,16,46,.55); border:1px solid rgba(46,230,246,.2); padding:14px 14px 12px; display:flex; flex-direction:column; gap:7px; transition:.15s; }
+        #cgm-upgrades .cgu-card.can-afford  { border-color:rgba(46,230,246,.5); }
+        #cgm-upgrades .cgu-card.maxed       { border-color:rgba(124,255,77,.4); background:rgba(0,20,10,.45); }
+        #cgm-upgrades .cgu-card.syn-card    { border-color:rgba(251,191,36,.25); background:rgba(18,14,6,.55); }
+        #cgm-upgrades .cgu-card.syn-card.can-afford { border-color:rgba(251,191,36,.55); }
+        #cgm-upgrades .cgu-card.syn-card.maxed      { border-color:rgba(124,255,77,.5); }
+        #cgm-upgrades .cgu-card.locked-card { border-color:rgba(90,90,106,.3); background:rgba(12,12,20,.55); opacity:.7; }
+        #cgm-upgrades .cgu-card.proto-card  { border-color:rgba(184,139,255,.25); background:rgba(10,8,22,.55); }
+        #cgm-upgrades .cgu-card.proto-owned { border-color:rgba(86,224,138,.5);   background:rgba(8,22,10,.55); }
+        #cgm-upgrades .cgu-card.proto-soon  { border-color:rgba(58,64,80,.3); opacity:.6; }
+        #cgm-upgrades .cgu-card-header { display:flex; align-items:baseline; justify-content:space-between; gap:8px; }
+        #cgm-upgrades .cgu-card-name   { font-family:'Orbitron',sans-serif; font-weight:700; font-size:12px; letter-spacing:.5px; color:#dff0ff; }
+        #cgm-upgrades .cgu-card-level  { font-family:'Orbitron',sans-serif; font-weight:700; font-size:11px; color:var(--cyan); white-space:nowrap; }
+        #cgm-upgrades .cgu-card-level.maxed { color:var(--yellow); }
+        #cgm-upgrades .cgu-char-tag { font-size:10px; color:var(--txt-dim); letter-spacing:1px; }
+        #cgm-upgrades .cgu-syn-tag  { font-size:9px;  color:var(--amber);   letter-spacing:2px; text-transform:uppercase; }
+        #cgm-upgrades .cgu-card-desc   { font-size:11px; color:var(--txt-faint); line-height:1.4; }
+        #cgm-upgrades .cgu-card-effect { font-size:11px; color:var(--green); }
+        #cgm-upgrades .cgu-dots { display:flex; gap:5px; flex-wrap:wrap; margin-top:2px; }
+        #cgm-upgrades .cgu-dot { width:8px; height:8px; border-radius:50%; background:rgba(46,230,246,.18); }
+        #cgm-upgrades .cgu-dot.filled     { background:var(--cyan);  box-shadow:0 0 6px rgba(46,230,246,.6); }
+        #cgm-upgrades .cgu-dot.syn-filled { background:var(--amber); box-shadow:0 0 6px rgba(251,191,36,.5); }
+        #cgm-upgrades .cgu-proto-top  { display:flex; align-items:center; justify-content:space-between; }
+        #cgm-upgrades .cgu-proto-cat  { font-size:9px; letter-spacing:2px; text-transform:uppercase; padding:2px 7px; border-radius:4px; background:rgba(184,139,255,.15); color:var(--purple); }
+        #cgm-upgrades .cgu-proto-cat.enemy   { background:rgba(255,106,106,.15); color:#ff6a6a; }
+        #cgm-upgrades .cgu-proto-cat.weather { background:rgba(127,208,255,.15); color:#7fd0ff; }
+        #cgm-upgrades .cgu-proto-state        { font-size:11px; font-weight:700; }
+        #cgm-upgrades .cgu-proto-state.owned  { color:var(--green);     }
+        #cgm-upgrades .cgu-proto-state.afford { color:var(--purple);    }
+        #cgm-upgrades .cgu-proto-state.soon   { color:var(--txt-faint); }
+        #cgm-upgrades .cgu-proto-state.poor   { color:#a05868;          }
+        #cgm-upgrades .cgu-buy-btn { margin-top:auto; padding:8px 0; border-radius:8px; cursor:pointer; font-family:'Orbitron',sans-serif; font-weight:700; font-size:11px; letter-spacing:1px; text-transform:uppercase; border:1px solid rgba(46,230,246,.3); background:rgba(46,230,246,.07); color:var(--txt-dim); transition:.14s; width:100%; }
+        #cgm-upgrades .cgu-buy-btn:hover:not(:disabled) { border-color:var(--cyan); color:#fff; background:rgba(46,230,246,.14); }
+        #cgm-upgrades .cgu-buy-btn.maxed        { border-color:rgba(124,255,77,.3);    color:var(--yellow);  background:rgba(26,37,16,.6);      cursor:default; }
+        #cgm-upgrades .cgu-buy-btn.can-afford   { border-color:var(--cyan);            color:var(--cyan);    background:rgba(46,230,246,.1);    }
+        #cgm-upgrades .cgu-buy-btn.syn-afford   { border-color:var(--amber);           color:var(--amber);   background:rgba(251,191,36,.08);   }
+        #cgm-upgrades .cgu-buy-btn.proto-owned  { border-color:rgba(86,224,138,.4);    color:var(--green);   cursor:default;                    }
+        #cgm-upgrades .cgu-buy-btn.proto-afford { border-color:var(--purple);          color:var(--purple);  background:rgba(168,85,247,.1);    }
+        #cgm-upgrades .cgu-buy-btn.locked       { border-color:rgba(90,90,106,.3);     color:#7a7a88;        cursor:not-allowed;                }
+        #cgm-upgrades .cgu-buy-btn:disabled { cursor:default; }
+        #cgm-upgrades .cgu-msg { min-height:22px; text-align:center; font-size:13px; letter-spacing:1px; color:#ffd0a0; }
+        #cgm-upgrades .cgu-footer { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; }
+        #cgm-upgrades .cgu-foot-left { display:flex; gap:12px; }
+        #cgm-upgrades .cgu-foot-btn { padding:11px 26px; border-radius:10px; cursor:pointer; border:1px solid rgba(46,230,246,.28); background:linear-gradient(180deg,rgba(46,230,246,.05),rgba(10,16,46,.35)); color:var(--txt); font-family:'Orbitron',sans-serif; font-weight:700; font-size:12px; letter-spacing:2px; text-transform:uppercase; transition:.15s; }
+        #cgm-upgrades .cgu-foot-btn:hover { border-color:var(--cyan); color:#fff; background:linear-gradient(180deg,rgba(46,230,246,.14),rgba(46,230,246,.04)); box-shadow:var(--glow-cyan); }
+        #cgm-upgrades .cgu-foot-btn.back-btn  { border-color:rgba(111,134,184,.22); color:var(--txt-dim); }
+        #cgm-upgrades .cgu-foot-btn.back-btn:hover  { border-color:var(--txt-dim); background:rgba(111,134,184,.08); box-shadow:none; }
+        #cgm-upgrades .cgu-foot-btn.reset-btn { border-color:rgba(255,45,149,.25); color:var(--magenta); background:rgba(255,45,149,.05); }
+        #cgm-upgrades .cgu-foot-btn.reset-btn:hover  { border-color:var(--magenta); box-shadow:var(--glow-mag); }
+        #cgm-upgrades .cgu-foot-btn.reset-confirm { border-color:var(--magenta); background:rgba(255,45,149,.18); color:#fff; animation:cgu-pulse .6s infinite alternate; }
+        @keyframes cgu-pulse { to { box-shadow:0 0 18px rgba(255,45,149,.7); } }
+        #cgm-upgrades .cgu-hints { color:var(--txt-faint); font-size:11px; letter-spacing:1px; display:flex; gap:14px; flex-wrap:wrap; align-items:center; }
+        #cgm-upgrades .cgu-hints b { color:var(--cyan); font-weight:400; }
+      `;
+      document.head.appendChild(style);
+    }
+
+    const el = document.createElement('div');
+    el.id = 'cgm-upgrades';
+    el.setAttribute('role', 'dialog');
+    el.setAttribute('aria-label', 'Grid Upgrades');
+
+    el.innerHTML = `
+      <div class="cgu-stage">
+        <span class="corner tl"></span><span class="corner tr"></span>
+        <span class="corner bl"></span><span class="corner br"></span>
+
+        <div class="cgu-header">
+          <div class="cgu-title">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><use href="#i-cpu"/></svg>
+            GRID UPGRADES
+          </div>
+          <div class="cgu-currency">
+            <div class="cgu-credits">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><use href="#i-bolt"/></svg>
+              <span id="cgu-credits">0</span>&nbsp;CREDITS
+            </div>
+            <div class="cgu-pf">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><use href="#i-diamond"/></svg>
+              <span id="cgu-pf-count">0</span>&nbsp;/&nbsp;<span id="cgu-pf-total">?</span>&nbsp;PF
+            </div>
+          </div>
+        </div>
+        <div class="cgu-sep"></div>
+
+        <div class="cgu-tabs">
+          <button class="cgu-tab" data-tab="core">CORE UPGRADES</button>
+          <button class="cgu-tab" data-tab="synergy">★ WEAPON SYNERGIES</button>
+          <button class="cgu-tab" data-tab="protocols">🧩 PROTOCOLS</button>
+        </div>
+
+        <div class="cgu-grid" id="cgu-grid"></div>
+
+        <div class="cgu-msg" id="cgu-msg"></div>
+        <div class="cgu-sep"></div>
+
+        <div class="cgu-footer">
+          <div class="cgu-foot-left">
+            <button class="cgu-foot-btn back-btn"  id="cgu-back-btn">BACK</button>
+            <button class="cgu-foot-btn reset-btn" id="cgu-reset-btn">RESET PROGRESS</button>
+          </div>
+          <div class="cgu-hints">
+            <span><b>Click</b> card to buy</span>
+            <span><b>ESC</b> Back</span>
+          </div>
+        </div>
+      </div>
+    `;
+
+    el.querySelectorAll('.cgu-tab').forEach(btn => {
+      btn.addEventListener('click', () => {
+        this._upgradeTab   = btn.dataset.tab;
+        this._confirmReset = false;
+        this._syncUpgradesOverlay();
+      });
+    });
+
+    el.querySelector('#cgu-back-btn')?.addEventListener('click', () => this.goToMainMenu());
+
+    el.querySelector('#cgu-reset-btn')?.addEventListener('click', () => {
+      if (this._confirmReset) {
+        this.meta.reset();
+        this._confirmReset = false;
+        this._upgradeMsg      = 'Progress reset.';
+        this._upgradeMsgTimer = 2.5;
+      } else {
+        this._confirmReset    = true;
+        this._upgradeMsg      = 'Click RESET again to confirm.';
+        this._upgradeMsgTimer = 3.0;
+      }
+      this._syncUpgradesOverlay();
+    });
+
+    el.querySelector('#cgu-grid')?.addEventListener('click', e => {
+      const btn = e.target.closest('.cgu-buy-btn');
+      if (!btn || btn.disabled) return;
+      const card = btn.closest('.cgu-card');
+      if (!card) return;
+      const idx = parseInt(card.dataset.idx, 10);
+      const tab = this._upgradeTab;
+      if (tab === 'protocols') {
+        const pc  = PROTOCOL_CARDS[idx];
+        if (!pc) return;
+        const res = this.meta.tryBuyProtocolCard(pc.id);
+        if      (res === 'ok')    this._upgradeMsg = `${pc.name} unlocked!`;
+        else if (res === 'owned') this._upgradeMsg = `${pc.name} already unlocked.`;
+        else if (res === 'soon')  this._upgradeMsg = `${pc.name}: COMING SOON.`;
+        else if (res === 'poor')  this._upgradeMsg = `Not enough Fragments (need ${pc.cost}).`;
+        this._upgradeMsgTimer = 2.2;
+      } else {
+        const list = tab === 'synergy' ? SYNERGY_UPGRADES : META_UPGRADES;
+        const upg  = list[idx];
+        if (!upg) return;
+        if (upg.lockedUntil && !this.meta.isProtocolUnlocked(upg.lockedUntil)) {
+          this._upgradeMsg      = `${upg.charName || upg.name} must be unlocked first.`;
+          this._upgradeMsgTimer = 2.2;
+        } else {
+          const res = this.meta.tryBuy(upg);
+          if      (res === 'ok')   { this._upgradeMsg = `${upg.name} upgraded!`; }
+          else if (res === 'poor') { this._upgradeMsg = `Need ${upgradeCost(upg, this.meta.getLevel(upg.key))} Grid Cores.`; }
+          else if (res === 'max')  { this._upgradeMsg = `${upg.name} is already MAX.`; }
+          this._upgradeMsgTimer = 2.0;
+        }
+      }
+      this._confirmReset = false;
+      this._syncUpgradesOverlay();
+    });
+
+    document.body.appendChild(el);
+    this._upgradesOverlayEl = el;
+  }
+
+  _showUpgradesOverlay() {
+    if (!this._upgradesOverlayEl) return;
+    this._upgradesOverlayEl.style.display = 'flex';
+    this._upgradesOverlayVisible = true;
+    this._syncUpgradesOverlay();
+  }
+
+  _hideUpgradesOverlay() {
+    if (!this._upgradesOverlayEl) return;
+    this._upgradesOverlayEl.style.display = 'none';
+    this._upgradesOverlayVisible = false;
+  }
+
+  _syncUpgradeMsg() {
+    const el = this._upgradesOverlayEl;
+    if (!el) return;
+    const msgEl = el.querySelector('#cgu-msg');
+    if (msgEl) msgEl.textContent = (this._upgradeMsgTimer > 0 && this._upgradeMsg) ? this._upgradeMsg : '';
+  }
+
+  _syncUpgradesOverlay() {
+    const el = this._upgradesOverlayEl;
+    if (!el) return;
+    const tab = this._upgradeTab || 'core';
+
+    const credEl = el.querySelector('#cgu-credits');
+    if (credEl) credEl.textContent = this.meta.credits;
+    const pfEl = el.querySelector('#cgu-pf-count');
+    if (pfEl) pfEl.textContent = this.meta.getProtocolFragments();
+    const pfTotEl = el.querySelector('#cgu-pf-total');
+    if (pfTotEl) pfTotEl.textContent = PF_TOTAL_OBTAINABLE;
+
+    el.querySelectorAll('.cgu-tab').forEach(btn => {
+      btn.classList.remove('active-core','active-syn','active-proto');
+      if (btn.dataset.tab === tab) {
+        btn.classList.add(tab === 'core' ? 'active-core' : tab === 'synergy' ? 'active-syn' : 'active-proto');
+      }
+    });
+
+    const grid    = el.querySelector('#cgu-grid');
+    if (!grid) return;
+    const credits = this.meta.credits;
+    const pf      = this.meta.getProtocolFragments();
+
+    if (tab === 'core' || tab === 'synergy') {
+      const list  = tab === 'synergy' ? SYNERGY_UPGRADES : META_UPGRADES;
+      const isSyn = tab === 'synergy';
+      grid.innerHTML = list.map((upg, i) => {
+        const lvl    = this.meta.getLevel(upg.key);
+        const cost   = upgradeCost(upg, lvl);
+        const maxed  = lvl >= upg.maxLevel;
+        const locked = !!(upg.lockedUntil && !this.meta.isProtocolUnlocked(upg.lockedUntil));
+        const can    = !maxed && !locked && credits >= cost;
+        const dots   = Array.from({length: upg.maxLevel}, (_, d) =>
+          `<span class="cgu-dot${d < lvl ? (isSyn ? ' syn-filled' : ' filled') : ''}"></span>`
+        ).join('');
+        const effectText = (!isSyn && lvl > 0) ? `<div class="cgu-card-effect">▸ ${this._metaEffectText(upg.key, lvl)}</div>` : '';
+        const charTag    = (isSyn && upg.charName) ? `<div class="cgu-char-tag">${upg.charName}</div>` : '';
+        const synTag     = isSyn ? `<div class="cgu-syn-tag">★ Synergy</div>` : '';
+        let btnClass = '', btnLabel = '', btnDis = '';
+        if (locked)   { btnClass = 'locked';      btnLabel = '🔒 LOCKED';        btnDis = 'disabled'; }
+        else if (maxed){ btnClass = 'maxed';       btnLabel = 'MAX';              btnDis = 'disabled'; }
+        else if (can)  { btnClass = isSyn ? 'syn-afford' : 'can-afford'; btnLabel = `BUY — ${cost} Cores`; }
+        else           { btnClass = '';            btnLabel = `${cost} Cores needed`; }
+        const cardCls = `cgu-card${isSyn?' syn-card':''}${maxed?' maxed':''}${can?' can-afford':''}${locked?' locked-card':''}`;
+        return `<div class="${cardCls}" data-idx="${i}">
+          <div class="cgu-card-header">
+            <div class="cgu-card-name">${upg.name}</div>
+            <div class="cgu-card-level${maxed?' maxed':''}">${lvl} / ${upg.maxLevel}</div>
+          </div>
+          ${synTag}${charTag}
+          <div class="cgu-card-desc">${upg.desc || ''}</div>
+          ${effectText}
+          <div class="cgu-dots">${dots}</div>
+          <button class="cgu-buy-btn ${btnClass}" ${btnDis}>${btnLabel}</button>
+        </div>`;
+      }).join('');
+    } else {
+      grid.innerHTML = PROTOCOL_CARDS.map((card, i) => {
+        const owned  = this.meta.hasProtocolCard(card.id);
+        const soon   = !!card.comingSoon;
+        const afford = !owned && !soon && pf >= card.cost;
+        const catCls = card.cat === 'ENEMY' ? 'enemy' : card.cat === 'WEATHER' ? 'weather' : '';
+        let cardCls = 'cgu-card proto-card';
+        if (owned) cardCls += ' proto-owned';
+        else if (soon) cardCls += ' proto-soon';
+        let btnClass = '', btnLabel = '', btnDis = '';
+        if (owned)    { btnClass = 'proto-owned';  btnLabel = '✓ UNLOCKED';    btnDis = 'disabled'; }
+        else if (soon){ btnClass = 'soon';          btnLabel = 'COMING SOON';   btnDis = 'disabled'; }
+        else if (afford){ btnClass = 'proto-afford'; btnLabel = `BUY — ${card.cost} 🧩`; }
+        else          { btnClass = '';              btnLabel = `NEED ${card.cost} 🧩`; }
+        const stateClass = owned ? 'owned' : soon ? 'soon' : afford ? 'afford' : 'poor';
+        return `<div class="${cardCls}" data-idx="${i}">
+          <div class="cgu-proto-top">
+            <span class="cgu-proto-cat ${catCls}">${card.cat}</span>
+            <span class="cgu-proto-state ${stateClass}">${owned ? '✓ UNLOCKED' : soon ? 'SOON' : `🧩 ${card.cost}`}</span>
+          </div>
+          <div class="cgu-card-name" style="margin-top:6px">${card.name}</div>
+          <div class="cgu-card-desc">${card.desc || ''}</div>
+          <button class="cgu-buy-btn ${btnClass}" ${btnDis}>${btnLabel}</button>
+        </div>`;
+      }).join('');
+    }
+
+    this._syncUpgradeMsg();
+
+    const resetBtn = el.querySelector('#cgu-reset-btn');
+    if (resetBtn) {
+      resetBtn.classList.toggle('reset-confirm', !!this._confirmReset);
+      resetBtn.textContent = this._confirmReset ? 'CONFIRM RESET?' : 'RESET PROGRESS';
+    }
+  }
+
+  // ─── ACHIEVEMENTS DOM overlay ────────────────────────────────────────────────
+  _initAchievementsOverlay() {
+    if (this._achievementsOverlayEl) return;
+
+    if (!document.getElementById('cgm-ach-style')) {
+      const style = document.createElement('style');
+      style.id = 'cgm-ach-style';
+      style.textContent = `
+        #cgm-achievements {
+          position:fixed; inset:0; z-index:140; display:none;
+          align-items:flex-start; justify-content:center;
+          overflow-y:auto; padding:16px 14px 24px;
+          font-family:'Share Tech Mono',ui-monospace,monospace; color:#cfe9ff;
+          background:
+            radial-gradient(1200px 700px at 50% -10%,rgba(168,85,247,.18),transparent 60%),
+            radial-gradient(900px 600px at 12% 30%,rgba(46,230,246,.10),transparent 60%),
+            radial-gradient(900px 600px at 88% 70%,rgba(255,45,149,.10),transparent 60%),
+            linear-gradient(180deg,#0b1030,#070a1c);
+          --cyan:#2ee6f6; --cyan-dim:#1aa9bd; --purple:#a855f7;
+          --amber:#fbbf24; --green:#34d399; --yellow:#7CFF4D; --txt:#cfe9ff;
+          --txt-dim:#6f86b8; --txt-faint:#46588a;
+          --panel-edge:rgba(46,230,246,.10);
+          --glow-cyan:0 0 8px rgba(46,230,246,.55),0 0 22px rgba(46,230,246,.22);
+          --radius:12px;
+        }
+        #cgm-achievements::before {
+          content:""; position:fixed; inset:0; pointer-events:none; z-index:0;
+          background-image:linear-gradient(rgba(46,230,246,.05) 1px,transparent 1px),
+            linear-gradient(90deg,rgba(46,230,246,.05) 1px,transparent 1px);
+          background-size:46px 46px;
+          mask-image:radial-gradient(circle at 50% 40%,#000 0%,transparent 78%);
+        }
+        #cgm-achievements::after {
+          content:""; position:fixed; inset:0; pointer-events:none; z-index:9999;
+          background:repeating-linear-gradient(0deg,rgba(0,0,0,.10) 0 2px,transparent 2px 4px);
+          opacity:.35; mix-blend-mode:overlay;
+        }
+        #cgm-achievements * { box-sizing:border-box; margin:0; padding:0; }
+        #cgm-achievements .ca-stage {
+          position:relative; z-index:1; width:100%; max-width:1140px;
+          border:1px solid var(--panel-edge); border-radius:20px;
+          padding:22px 26px 20px;
+          background:linear-gradient(180deg,rgba(168,85,247,.05),transparent 30%),rgba(7,10,28,.78);
+          box-shadow:inset 0 0 60px rgba(46,230,246,.05),0 30px 80px rgba(0,0,0,.55);
+          display:flex; flex-direction:column; align-items:stretch; gap:14px;
+        }
+        #cgm-achievements .corner{position:absolute;width:34px;height:34px;border:2px solid var(--cyan);opacity:.8;filter:drop-shadow(0 0 6px rgba(46,230,246,.55));}
+        #cgm-achievements .corner.tl{top:-2px;left:-2px;border-right:0;border-bottom:0;border-radius:18px 0 0 0;}
+        #cgm-achievements .corner.tr{top:-2px;right:-2px;border-left:0;border-bottom:0;border-radius:0 18px 0 0;}
+        #cgm-achievements .corner.bl{bottom:-2px;left:-2px;border-right:0;border-top:0;border-radius:0 0 0 18px;}
+        #cgm-achievements .corner.br{bottom:-2px;right:-2px;border-left:0;border-top:0;border-radius:0 0 18px 0;}
+        #cgm-achievements .ca-header { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; }
+        #cgm-achievements .ca-title  { font-family:'Orbitron',sans-serif; font-weight:800; font-size:16px; letter-spacing:3px; color:var(--cyan); text-shadow:var(--glow-cyan); display:flex; align-items:center; gap:10px; }
+        #cgm-achievements .ca-badges { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+        #cgm-achievements .ca-badge  { display:flex; align-items:center; gap:7px; padding:6px 14px; border-radius:999px; border:1px solid rgba(251,191,36,.35); background:rgba(251,191,36,.07); font-family:'Orbitron',sans-serif; font-weight:700; font-size:13px; color:var(--amber); }
+        #cgm-achievements .ca-pf     { display:flex; align-items:center; gap:7px; padding:6px 14px; border-radius:999px; border:1px solid rgba(46,230,246,.25); background:rgba(46,230,246,.05); font-family:'Orbitron',sans-serif; font-weight:700; font-size:12px; color:var(--cyan-dim); }
+        #cgm-achievements .ca-bar-wrap { height:6px; border-radius:3px; background:rgba(255,255,255,.07); flex:1; min-width:120px; }
+        #cgm-achievements .ca-bar     { height:6px; border-radius:3px; background:linear-gradient(90deg,var(--cyan),var(--purple)); transition:.4s; }
+        #cgm-achievements .ca-progress { display:flex; align-items:center; gap:12px; }
+        #cgm-achievements .ca-sep  { width:100%; height:1px; background:linear-gradient(90deg,transparent,var(--cyan),transparent); opacity:.3; }
+        #cgm-achievements .ca-grid {
+          display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:14px;
+        }
+        #cgm-achievements .ca-card { position:relative; border-radius:var(--radius); border:1px solid rgba(46,90,100,.3); background:rgba(10,16,46,.55); padding:14px 14px 12px; display:flex; flex-direction:column; gap:6px; }
+        #cgm-achievements .ca-card.unlocked { border-color:rgba(52,211,153,.5); background:rgba(0,18,12,.55); }
+        #cgm-achievements .ca-card-top   { display:flex; align-items:flex-start; justify-content:space-between; gap:8px; }
+        #cgm-achievements .ca-card-name  { font-family:'Orbitron',sans-serif; font-weight:700; font-size:12px; letter-spacing:.5px; color:#dff0ff; }
+        #cgm-achievements .ca-card-name.locked { color:#4a6070; }
+        #cgm-achievements .ca-card-goal  { font-size:11px; color:var(--txt-faint); line-height:1.4; }
+        #cgm-achievements .ca-card-goal.locked { color:#364050; }
+        #cgm-achievements .ca-tag     { font-size:9px; letter-spacing:2px; text-transform:uppercase; color:var(--txt-faint); }
+        #cgm-achievements .ca-status  { font-family:'Orbitron',sans-serif; font-weight:700; font-size:10px; letter-spacing:1px; white-space:nowrap; }
+        #cgm-achievements .ca-status.unlocked { color:var(--yellow); }
+        #cgm-achievements .ca-status.locked   { color:#3a5060; }
+        #cgm-achievements .ca-rewards { display:flex; flex-direction:column; gap:3px; margin-top:4px; padding-top:6px; border-top:1px solid rgba(255,255,255,.06); }
+        #cgm-achievements .ca-reward-line  { display:flex; align-items:baseline; gap:6px; font-size:10px; line-height:1.35; }
+        #cgm-achievements .ca-reward-label { font-family:'Orbitron',sans-serif; font-weight:700; font-size:9px; letter-spacing:1px; white-space:nowrap; }
+        #cgm-achievements .ca-reward-label.proto { color:var(--purple); }
+        #cgm-achievements .ca-reward-label.card  { color:var(--green); }
+        #cgm-achievements .ca-reward-val        { color:var(--txt-dim); }
+        #cgm-achievements .ca-reward-val.hidden { color:#2a3a45; font-style:italic; }
+        #cgm-achievements .ca-footer   { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; }
+        #cgm-achievements .ca-foot-btn { padding:11px 26px; border-radius:10px; cursor:pointer; border:1px solid rgba(111,134,184,.22); background:linear-gradient(180deg,rgba(10,16,46,.4),rgba(10,16,46,.25)); color:var(--txt-dim); font-family:'Orbitron',sans-serif; font-weight:700; font-size:12px; letter-spacing:2px; text-transform:uppercase; transition:.15s; }
+        #cgm-achievements .ca-foot-btn:hover { border-color:var(--txt-dim); color:var(--txt); background:rgba(111,134,184,.08); }
+        #cgm-achievements .ca-hints { color:var(--txt-faint); font-size:11px; letter-spacing:1px; display:flex; gap:14px; flex-wrap:wrap; align-items:center; }
+        #cgm-achievements .ca-hints b { color:var(--cyan); font-weight:400; }
+      `;
+      document.head.appendChild(style);
+    }
+
+    const el = document.createElement('div');
+    el.id = 'cgm-achievements';
+    el.setAttribute('role', 'dialog');
+    el.setAttribute('aria-label', 'Achievements');
+
+    el.innerHTML = `
+      <div class="ca-stage">
+        <span class="corner tl"></span><span class="corner tr"></span>
+        <span class="corner bl"></span><span class="corner br"></span>
+
+        <div class="ca-header">
+          <div class="ca-title">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+            </svg>
+            ACHIEVEMENTS
+          </div>
+          <div class="ca-badges">
+            <div class="ca-badge">★ <span id="ca-earned">0</span>&nbsp;/&nbsp;<span id="ca-total">0</span>&nbsp;UNLOCKED</div>
+            <div class="ca-pf">🧩 <span id="ca-pf-earned">0</span>&nbsp;/&nbsp;<span id="ca-pf-total">0</span>&nbsp;FRAGMENTS</div>
+          </div>
+        </div>
+        <div class="ca-progress">
+          <div class="ca-bar-wrap"><div class="ca-bar" id="ca-bar" style="width:0%"></div></div>
+        </div>
+        <div class="ca-sep"></div>
+
+        <div class="ca-grid" id="ca-grid"></div>
+
+        <div class="ca-sep"></div>
+        <div class="ca-footer">
+          <button class="ca-foot-btn" id="ca-back-btn">◀ BACK</button>
+          <div class="ca-hints">
+            <span><b>ESC</b> Back to menu</span>
+            <span>Complete Endless runs to unlock</span>
+          </div>
+        </div>
+      </div>
+    `;
+
+    el.querySelector('#ca-back-btn')?.addEventListener('click', () => this.goToMainMenu());
+    document.body.appendChild(el);
+    this._achievementsOverlayEl = el;
+  }
+
+  _showAchievementsOverlay() {
+    if (!this._achievementsOverlayEl) return;
+    this._achievementsOverlayEl.style.display = 'flex';
+    this._achievementsOverlayVisible = true;
+    this._syncAchievementsOverlay();
+  }
+
+  _hideAchievementsOverlay() {
+    if (!this._achievementsOverlayEl) return;
+    this._achievementsOverlayEl.style.display = 'none';
+    this._achievementsOverlayVisible = false;
+  }
+
+  _syncAchievementsOverlay() {
+    const el = this._achievementsOverlayEl;
+    if (!el) return;
+    const total  = ENDLESS_ACHIEVEMENTS.length;
+    const earned = ENDLESS_ACHIEVEMENTS.reduce((n, a) => n + (this.meta.achievements[a.id] ? 1 : 0), 0);
+    const pct    = total > 0 ? Math.round((earned / total) * 100) : 0;
+
+    const earnedEl = el.querySelector('#ca-earned'); if (earnedEl) earnedEl.textContent = earned;
+    const totalEl  = el.querySelector('#ca-total');  if (totalEl)  totalEl.textContent  = total;
+    const barEl    = el.querySelector('#ca-bar');    if (barEl)    barEl.style.width    = pct + '%';
+    const pfEarnedEl = el.querySelector('#ca-pf-earned');
+    if (pfEarnedEl) pfEarnedEl.textContent = this.meta.getProtocolFragmentsEarned();
+    const pfTotalEl  = el.querySelector('#ca-pf-total');
+    if (pfTotalEl)  pfTotalEl.textContent  = PF_TOTAL_OBTAINABLE;
+
+    const grid = el.querySelector('#ca-grid');
+    if (!grid) return;
+    grid.innerHTML = ENDLESS_ACHIEVEMENTS.map(a => {
+      const got      = !!this.meta.achievements[a.id];
+      const cardCls  = got ? 'ca-card unlocked' : 'ca-card';
+      const nameCls  = got ? 'ca-card-name'     : 'ca-card-name locked';
+      const goalCls  = got ? 'ca-card-goal'     : 'ca-card-goal locked';
+      const statuCls = got ? 'ca-status unlocked' : 'ca-status locked';
+      const statuLbl = got ? '★ UNLOCKED' : '🔒 LOCKED';
+      const protoVal = got
+        ? `<span class="ca-reward-val">${a.protocolName} — ${a.protocolEffect}</span>`
+        : `<span class="ca-reward-val hidden">???</span>`;
+      const cardVal  = got
+        ? `<span class="ca-reward-val">${a.cardName} — ${a.cardEffect}</span>`
+        : `<span class="ca-reward-val hidden">???</span>`;
+      return `<div class="${cardCls}">
+        <div class="ca-card-top">
+          <div>
+            <div class="${nameCls}">${got ? a.name : '???'}</div>
+            <div class="ca-tag">ENDLESS ONLY</div>
+          </div>
+          <div class="${statuCls}">${statuLbl}</div>
+        </div>
+        <div class="${goalCls}">${a.desc}</div>
+        <div class="ca-rewards">
+          <div class="ca-reward-line"><span class="ca-reward-label proto">PROTOCOL</span>${protoVal}</div>
+          <div class="ca-reward-line"><span class="ca-reward-label card">CARD</span>${cardVal}</div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
   _drawUpgradesScreen(ctx) {
+    if (this._upgradesOverlayVisible) return;   // DOM overlay takes over
     this._drawBackground(ctx);
     ctx.fillStyle = 'rgba(0,0,0,0.82)';
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
@@ -1402,6 +1969,7 @@ export class Game {
   }
 
   _drawAchievementsScreen(ctx) {
+    if (this._achievementsOverlayVisible) return;   // DOM overlay takes over
     this._drawBackground(ctx);
     ctx.fillStyle = 'rgba(0,0,0,0.82)';
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
