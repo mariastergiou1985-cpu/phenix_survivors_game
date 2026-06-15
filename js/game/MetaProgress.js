@@ -208,6 +208,7 @@ export class MetaProgress {
     this.pfEarnedFrom      = {};  // { [achievementId]: true } — idempotent payout ledger
     this.protocolUnlocks   = {};  // { [characterId]: true }   — PF-purchased character unlocks
     this.protocolCards     = {};  // { [cardId]: true }        — PF-purchased permanent Protocol cards
+    this.profileName       = null;// optional custom player profile name (fallback 'PLAYER_01' in UI)
     this._load();
   }
 
@@ -233,6 +234,7 @@ export class MetaProgress {
       this.pfEarnedFrom    = (d.pfEarnedFrom    && typeof d.pfEarnedFrom    === 'object') ? d.pfEarnedFrom    : {};
       this.protocolUnlocks = (d.protocolUnlocks && typeof d.protocolUnlocks === 'object') ? d.protocolUnlocks : {};
       this.protocolCards   = (d.protocolCards   && typeof d.protocolCards   === 'object') ? d.protocolCards   : {};
+      this.profileName     = (typeof d.profileName === 'string' && d.profileName.trim()) ? d.profileName.slice(0, 16) : null;
       // One-time retroactive payout for already-earned Endless achievements (idempotent).
       this._backfillProtocolFragments();
 
@@ -273,6 +275,7 @@ export class MetaProgress {
         pfEarnedFrom: this.pfEarnedFrom,
         protocolUnlocks: this.protocolUnlocks,
         protocolCards: this.protocolCards,
+        profileName: this.profileName,
       }));
     } catch (_) {}
   }
@@ -408,6 +411,10 @@ export class MetaProgress {
     this.protocolCards     = {};
     this._save();
   }
+
+  // Custom profile name (optional; UI falls back to 'PLAYER_01'). Capped + persisted.
+  getProfileName() { return this.profileName; }
+  setProfileName(n) { this.profileName = (typeof n === 'string' && n.trim()) ? n.trim().slice(0, 16) : null; this._save(); }
 
   // ─── Protocol Fragment unlock cards (permanent meta-upgrades) ────────────────
   hasProtocolCard(id) { return this.protocolCards[id] === true; }
