@@ -1,6 +1,6 @@
-import { Game } from './game/Game.js?v=20260615131736';
-import { AudioManager } from './audio/AudioManager.js?v=20260615131736';
-import { GamepadInput } from './Gamepad.js?v=20260615131736';
+import { Game } from './game/Game.js?v=20260615133740';
+import { AudioManager } from './audio/AudioManager.js?v=20260615133740';
+import { GamepadInput } from './Gamepad.js?v=20260615133740';
 
 const canvas = document.getElementById('game');
 const ctx    = canvas.getContext('2d');
@@ -248,12 +248,19 @@ canvas.addEventListener('mousedown', e => {
     const ob   = game._outfitBtnRects();
     const ocid = game.characters[game.characterIndex].id;
     const pfBtn = game._pfUnlockBtnRect();
+    const act = game._charSelectActionRects();
     if (pfBtn && game._inRect(mousePos, pfBtn)) {
       game.tryUnlockSelectedCharacterPF();          // spend Protocol Fragments to unlock the highlighted char
     } else if (game._inRect(mousePos, ob.defaultRect)) {
       game.meta.setSelectedOutfit(ocid, 'default');
     } else if (game._inRect(mousePos, ob.secretRect)) {
       game.meta.setSelectedOutfit(ocid, 'secret');
+    } else if (game._inRect(mousePos, act.back)) {
+      game.goToMainMenu();                              // BACK — preserves selected character
+    } else if (game._inRect(mousePos, act.start)) {
+      game.selectCharacter(game.characters[game.characterIndex].id);   // START GAME (Act 1); self-guards locked
+    } else if (game._inRect(mousePos, act.endless)) {
+      game.startSelectedEndless();                      // START ENDLESS (guards: char + Endless unlocked)
     } else {
       // Hit-test the SAME 2-row grid the screen draws (Game._charCardLayout) — always in sync.
       const lay = game._charCardLayout();
@@ -261,11 +268,18 @@ canvas.addEventListener('mousedown', e => {
         const r = lay.cards[i];
         if (mousePos.x >= r.x && mousePos.x <= r.x + r.w &&
             mousePos.y >= r.y && mousePos.y <= r.y + r.h) {
-          game.characterIndex = i;                       // highlight (shows unlock hint if locked)
-          game.selectCharacter(game.characters[i].id);   // self-guards: locked characters don't start
+          game.previewCharacter(i);                     // highlight + preview only (no auto-start)
           break;
         }
       }
+    }
+
+  } else if (game.gameState === 'playing' && game.paused && !game.gameOver && !game.victory) {
+    // ── Pause menu — RESUME / RETURN TO MAIN MENU ──
+    if (game._inRect(mousePos, game._pauseButtonRect(0))) {
+      game.paused = false;
+    } else if (game._inRect(mousePos, game._pauseButtonRect(1))) {
+      game.goToMainMenu();                              // clean abandon: gameState leaves 'playing', menu music resumes
     }
   }
 });

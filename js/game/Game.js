@@ -5,36 +5,36 @@ import {
   MAX_OVERLOAD, PLAYER_RADIUS, CORE_RADIUS, MATRIX_RADIUS,
   DARK_BG, GRID_LINE, BLACK, CYAN, RED, GREEN, YELLOW, ORANGE, WHITE, PURPLE,
   CORE_COLORS, VIEW_SCALE, VIEW_W, VIEW_H, ENDLESS_VIEW_SCALE,
-} from '../constants.js?v=20260615131736';
+} from '../constants.js?v=20260615133740';
 import { clamp, distance, safeNormalize, randomChoice, randomRange } from '../utils.js';
 
 import { FloatingText }   from '../entities/FloatingText.js';
-import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260615131736';
-import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260615131736';
-import { Player }         from '../entities/Player.js?v=20260615131736';
-import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260615131736';
-import { Enemy }          from '../entities/Enemy.js?v=20260615131736';
-import { SupportDrone }   from '../entities/SupportDrone.js?v=20260615131736';
+import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260615133740';
+import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260615133740';
+import { Player }         from '../entities/Player.js?v=20260615133740';
+import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260615133740';
+import { Enemy }          from '../entities/Enemy.js?v=20260615133740';
+import { SupportDrone }   from '../entities/SupportDrone.js?v=20260615133740';
 
-import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow } from './Effects.js?v=20260615131736';
-import { SystemEventManager } from './Events.js?v=20260615131736';
-import { UpgradeUI }      from './UpgradeUI.js?v=20260615131736';
-import { weightedSample } from './Upgrades.js?v=20260615131736';
-import { MutationUI }      from './MutationUI.js?v=20260615131736';
-import { sampleMutations } from './Mutations.js?v=20260615131736';
-import { drawHUD, drawEndScreen } from './HUD.js?v=20260615131736';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS } from './MetaProgress.js?v=20260615131736';
-import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260615131736';
+import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow } from './Effects.js?v=20260615133740';
+import { SystemEventManager } from './Events.js?v=20260615133740';
+import { UpgradeUI }      from './UpgradeUI.js?v=20260615133740';
+import { weightedSample } from './Upgrades.js?v=20260615133740';
+import { MutationUI }      from './MutationUI.js?v=20260615133740';
+import { sampleMutations } from './Mutations.js?v=20260615133740';
+import { drawHUD, drawEndScreen } from './HUD.js?v=20260615133740';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS } from './MetaProgress.js?v=20260615133740';
+import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260615133740';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
-import { GlitchDash } from '../effects/glitch-dash.js?v=20260615131736';
-import { EMPShockwave } from '../effects/emp-shockwave.js?v=20260615131736';
-import { DigitalSingularity } from '../effects/digital-singularity.js?v=20260615131736';
-import { Protocol0 } from '../effects/protocol-0.js?v=20260615131736';
-import { LaserEyes } from '../effects/laser-eyes.js?v=20260615131736';
-import { MeteorRain } from '../effects/meteor-rain.js?v=20260615131736';
+import { GlitchDash } from '../effects/glitch-dash.js?v=20260615133740';
+import { EMPShockwave } from '../effects/emp-shockwave.js?v=20260615133740';
+import { DigitalSingularity } from '../effects/digital-singularity.js?v=20260615133740';
+import { Protocol0 } from '../effects/protocol-0.js?v=20260615133740';
+import { LaserEyes } from '../effects/laser-eyes.js?v=20260615133740';
+import { MeteorRain } from '../effects/meteor-rain.js?v=20260615133740';
 // Euclid Vector toxin kit — used ONLY when selectedCharacter === 'euclid_vector' (world-space).
-import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=20260615131736';
+import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=20260615133740';
 
 // ── Thunder Solo sprite slices (cyan_lightning_rain_notes.png, 1254×1254) ──────
 // Strike variants: a clean bolt column + ripple base. (ax,ay) = ripple-centre as a
@@ -150,16 +150,16 @@ export class Game {
       fallback.src = 'assets/backgrounds/cyberpunk_city_background.png';
       this._bgImage = fallback;
     };
-    this._bgImage.src = 'assets/backgrounds/cyber_city_bg_clean.png?v=20260615131736';
+    this._bgImage.src = 'assets/backgrounds/cyber_city_bg_clean.png?v=20260615133740';
 
     // Endless Stage 02 visuals (only used while this.endless — Act 1 keeps default visuals).
     // Missing files degrade to the default background / default Nexus visual (warn, no crash).
     this._endlessBgImage = new Image();
     this._endlessBgImage.onerror = () => console.warn('[Stage] missing assets/maps/endless/stage_02_neon_shinjuku_plaza.png — using default background');
-    this._endlessBgImage.src = 'assets/maps/endless/stage_02_neon_shinjuku_plaza.png?v=20260615131736';
+    this._endlessBgImage.src = 'assets/maps/endless/stage_02_neon_shinjuku_plaza.png?v=20260615133740';
     this._endlessNexusImage = new Image();
     this._endlessNexusImage.onerror = () => console.warn('[Nexus] missing assets/nexus/endless_nexus_base_8cores.png — using default Nexus visual');
-    this._endlessNexusImage.src = 'assets/nexus/endless_nexus_base_8cores.png?v=20260615131736';
+    this._endlessNexusImage.src = 'assets/nexus/endless_nexus_base_8cores.png?v=20260615133740';
 
     // Preload character portraits for Character Select screen
     this._charImages = {};
@@ -172,7 +172,7 @@ export class Game {
     // Japan Phasewalker portrait lives in the endless/ subfolder (Character Select + FX modules).
     this._phasewalkerSprite = new Image();
     this._phasewalkerSprite.onerror = () => console.warn('[Char] missing assets/characters/endless/japan_phasewalker.png');
-    this._phasewalkerSprite.src = 'assets/characters/endless/japan_phasewalker.png?v=20260615131736';   // ?v bust: corrected transparency
+    this._phasewalkerSprite.src = 'assets/characters/endless/japan_phasewalker.png?v=20260615133740';   // ?v bust: corrected transparency
     this._charImages['japan_phasewalker'] = this._phasewalkerSprite;
     // Euclid Vector portrait (endless/ subfolder; unlocked from the start — see roster + free unlock).
     this._euclidSprite = new Image();
@@ -213,7 +213,7 @@ export class Game {
     // Preload start-menu background image (new premium theme; falls back to dark gradient if missing)
     this._menuBg = new Image();
     this._menuBg.onerror = () => console.warn('[Menu] main_menu_theme.png not found — dark fallback used');
-    this._menuBg.src = 'assets/ui/new_main_menu_theme/main_menu_theme.png?v=20260615131736';
+    this._menuBg.src = 'assets/ui/new_main_menu_theme/main_menu_theme.png?v=20260615133740';
 
     // Preload phoenix revive effect images (orange / blue / gold tiers)
     this._phoenixImage = new Image();
@@ -221,11 +221,11 @@ export class Game {
 
     this._phoenixBlueImage = new Image();
     this._phoenixBlueImage.onerror = () => console.warn('[Assets] Failed to load: assets/effects/phoenix/blue_phoenix_revive.png');
-    this._phoenixBlueImage.src = 'assets/effects/phoenix/blue_phoenix_revive.png?v=20260615131736';
+    this._phoenixBlueImage.src = 'assets/effects/phoenix/blue_phoenix_revive.png?v=20260615133740';
 
     this._phoenixGoldImage = new Image();
     this._phoenixGoldImage.onerror = () => console.warn('[Assets] Failed to load: assets/effects/phoenix/gold_phoenix_revive.png');
-    this._phoenixGoldImage.src = 'assets/effects/phoenix/gold_phoenix_revive.png?v=20260615131736';
+    this._phoenixGoldImage.src = 'assets/effects/phoenix/gold_phoenix_revive.png?v=20260615133740';
 
     // Preload credits photos
     this._creditImgInk = new Image();
@@ -243,10 +243,10 @@ export class Game {
     // Preload core and matrix sprites
     this._coreSprite = new Image();
     this._coreSprite.onerror = () => console.warn('[Assets] Failed to load: assets/cores/data_core.png');
-    this._coreSprite.src = 'assets/cores/data_core.png?v=20260615131736';
+    this._coreSprite.src = 'assets/cores/data_core.png?v=20260615133740';
     this._matrixSprite = new Image();
     this._matrixSprite.onerror = () => console.warn('[Assets] Failed to load: assets/bases/matrix_base.png');
-    this._matrixSprite.src = 'assets/bases/matrix_base.png?v=20260615131736';
+    this._matrixSprite.src = 'assets/bases/matrix_base.png?v=20260615133740';
 
     // Preload grid cache supply drop sprite
     this._gridCacheSprite = new Image();
@@ -270,7 +270,7 @@ export class Game {
     this._airstrikeSprite.src = 'assets/enemies/event_airstrike/airstrike_sheet.png';
     this._lightningStormSprite = new Image();
     this._lightningStormSprite.onerror = () => console.warn('[Endless] lights_storm_rain.png not found — drawn fallback used');
-    this._lightningStormSprite.src = 'assets/events/weather/lights_storm_rain.png?v=20260615131736';
+    this._lightningStormSprite.src = 'assets/events/weather/lights_storm_rain.png?v=20260615133740';
 
     // HUD icons: Data-Core (top-right credits) + chains (Cyber Arm SPACE ultimate icon)
     this._dataCoreIcon = new Image();
@@ -294,25 +294,25 @@ export class Game {
     // Preload acid rain weather sprites
     this._acidRainFallImg = new Image();
     this._acidRainFallImg.onerror = () => console.warn('[Weather] acid_rain_fall.png not found — using line fallback');
-    this._acidRainFallImg.src = 'assets/events/weather/acid_rain_fall.png?v=20260615131736';
+    this._acidRainFallImg.src = 'assets/events/weather/acid_rain_fall.png?v=20260615133740';
     this._acidRainSplashImg = new Image();
     this._acidRainSplashImg.onerror = () => console.warn('[Weather] acid_rain_splash.png not found — using ellipse fallback');
-    this._acidRainSplashImg.src = 'assets/events/weather/acid_rain_splash.png?v=20260615131736';
+    this._acidRainSplashImg.src = 'assets/events/weather/acid_rain_splash.png?v=20260615133740';
 
     // Preload AI Overload Titan boss sprite
     this._titanSprite = new Image();
     this._titanSprite.onerror = () => console.warn('[Boss] ai_overload_titan.png failed to load — using fallback');
-    this._titanSprite.src = 'assets/enemies/bosses/ai_overload_titan.png?v=20260615131736';
+    this._titanSprite.src = 'assets/enemies/bosses/ai_overload_titan.png?v=20260615133740';
 
     // Preload Matrix Annihilator mini-boss sprite (existing asset)
     this._annihilatorSprite = new Image();
     this._annihilatorSprite.onerror = () => console.warn('[Boss] assets/enemies/bosses/matrix_annihilator.png failed to load — using fallback');
-    this._annihilatorSprite.src = 'assets/enemies/bosses/matrix_annihilator.png?v=20260615131736';
+    this._annihilatorSprite.src = 'assets/enemies/bosses/matrix_annihilator.png?v=20260615133740';
 
     // Preload Bloodfang Packmaster mini-boss sprite (existing asset)
     this._bloodfangSprite = new Image();
     this._bloodfangSprite.onerror = () => console.warn('[Boss] assets/enemies/bosses/bloodfang_packmaster.png failed to load — using fallback');
-    this._bloodfangSprite.src = 'assets/enemies/bosses/bloodfang_packmaster.png?v=20260615131736';
+    this._bloodfangSprite.src = 'assets/enemies/bosses/bloodfang_packmaster.png?v=20260615133740';
 
     // Preload secret-skin preview sprites (Character Select locked/unlocked + Victory screen).
     // Keyed by the same flags MetaProgress persists. Missing files degrade to a text fallback.
@@ -371,7 +371,7 @@ export class Game {
     // Lean main nav only. Exit/Credits/Instructions/Audio moved into the SETTINGS screen.
     const items = ['START GAME'];
     if (this.meta?.isEndlessUnlocked()) items.push('ENDLESS MODE');
-    items.push('CHARACTER SELECT', 'UPGRADES', 'ACHIEVEMENTS', 'SETTINGS');
+    items.push('CHARACTER SELECT', 'UPGRADES', 'ACHIEVEMENTS', 'SETTINGS', 'EXIT');
     return items;
   }
 
@@ -600,6 +600,42 @@ export class Game {
     this.gameState = 'character_select';
     this.characterIndex = 0;
     this.audio?.startMenuMusic();
+  }
+
+  // Highlight a character card WITHOUT starting a run (mouse preview). Sets the live selection so the
+  // menu/equipment panels reflect it; locked characters highlight but never become the selection.
+  previewCharacter(i) {
+    this.characterIndex = i;
+    const c = this.characters[i];
+    if (c && this.meta.isCharacterUnlocked(c.id)) this.selectedCharacter = c.id;
+  }
+
+  // Start Endless directly from Character Select with the highlighted character (guards: char unlocked
+  // + Endless unlocked). Never bypasses locked characters or the Endless gate.
+  startSelectedEndless() {
+    const c = this.characters[this.characterIndex];
+    if (!c || !this.meta.isCharacterUnlocked(c.id)) return;
+    if (!this.meta?.isEndlessUnlocked()) return;
+    this.selectedCharacter = c.id;
+    this.startEndlessRun();
+  }
+
+  // Character-Select bottom action buttons (mirrored by main.js click hit-test).
+  _charSelectActionRects() {
+    const w = 200, h = 34, gap = 16, y = HEIGHT - 46;
+    const x0 = Math.round(WIDTH / 2 - (3 * w + 2 * gap) / 2);
+    return {
+      back:    { x: x0,                 y, w, h },
+      start:   { x: x0 + (w + gap),     y, w, h },
+      endless: { x: x0 + 2 * (w + gap), y, w, h },
+    };
+  }
+
+  // In-game pause-menu buttons (RESUME / MAIN MENU). Mirrored by main.js click hit-test.
+  _pauseButtonRect(i) {
+    const w = 320, h = 46, gap = 16;
+    const y = HEIGHT / 2 + 24 + i * (h + gap);
+    return { x: Math.round(WIDTH / 2 - w / 2), y, w, h };
   }
 
   // Rect for the Character-Select Protocol-Fragments UNLOCK button — non-null only when the
@@ -3490,6 +3526,7 @@ export class Game {
     else if (item === 'UPGRADES')       this.goToUpgradesScreen();
     else if (item === 'ACHIEVEMENTS')   this.goToAchievementsScreen();
     else if (item === 'SETTINGS')       this.goToSettings();
+    else if (item === 'EXIT') { try { window.close(); } catch (e) {} this.goToExitScreen(); }   // browser-safe: close if allowed, else friendly exit screen
   }
 
   goToSettings() { this.gameState = 'settings'; this._settingsIndex = 0; }
@@ -3510,11 +3547,9 @@ export class Game {
     else                         this.goToInstructions();   // CONTROLS / HOW TO PLAY
   }
 
-  // Shared button rect for the SETTINGS sub-menu (mouse hit-test + draw read the same geometry).
-  _settingsButtonRect(i) {
-    const BW = 420, BH = 52, startY = 250, spacing = 70;
-    return { x: WIDTH / 2 - BW / 2, y: startY + i * spacing, w: BW, h: BH };
-  }
+  // SETTINGS options reuse the baked central button slots (overlay over the live menu), so the
+  // theme stays visible and click geometry matches the main menu exactly.
+  _settingsButtonRect(i) { return this._menuButtonRect(i); }
 
   // Top-right gear shortcut on the main menu → opens the SAME Settings screen (no duplicate logic).
   _menuGearRect() { return { x: WIDTH - 40, y: 14, w: 28, h: 28 }; }
@@ -6602,10 +6637,12 @@ export class Game {
       ctx.font      = '46px Consolas, monospace';
       ctx.fillStyle = YELLOW;
       ctx.textAlign = 'center';
-      ctx.fillText('PAUSED', WIDTH / 2, HEIGHT / 2);
-      ctx.font      = '22px Consolas, monospace';
-      ctx.fillStyle = WHITE;
-      ctx.fillText('Press ESC to resume', WIDTH / 2, HEIGHT / 2 + 50);
+      ctx.fillText('PAUSED', WIDTH / 2, HEIGHT / 2 - 18);
+      // RESUME / RETURN TO MAIN MENU buttons (mouse + ESC). Rects from _pauseButtonRect.
+      const labels = ['RESUME', 'RETURN TO MAIN MENU'];
+      for (let i = 0; i < 2; i++) this._drawSlotLabel(ctx, this._pauseButtonRect(i), labels[i], false, i === 0 ? CYAN : '#ff8a8a');
+      ctx.font = '13px Consolas, monospace'; ctx.fillStyle = 'rgba(200,210,225,0.6)'; ctx.textAlign = 'center';
+      ctx.fillText('ESC Resume', WIDTH / 2, this._pauseButtonRect(1).y + 78);
       ctx.textAlign = 'left';
     }
   }
@@ -6699,7 +6736,26 @@ export class Game {
   // labels land inside the baked central button-stack slots at any canvas size.
   _menuButtonRect(i) {
     const W = WIDTH, H = HEIGHT;
-    return { x: W * 0.447, y: H * 0.352 + i * (H * 0.063), w: W * 0.206, h: H * 0.050 };
+    return { x: W * 0.447, y: H * 0.345 + i * (H * 0.0665), w: W * 0.206, h: H * 0.052 };
+  }
+
+  // Draw a label centered inside a baked button slot — only a subtle selection glow is added (the
+  // slot plate itself is part of the theme art). Shared by the main menu + Settings overlay.
+  _drawSlotLabel(ctx, r, label, sel, accent) {
+    accent = accent || CYAN;
+    if (sel) {
+      ctx.save();
+      ctx.fillStyle = accent + '1f'; ctx.beginPath(); ctx.roundRect(r.x, r.y, r.w, r.h, 7); ctx.fill();
+      ctx.shadowColor = accent; ctx.shadowBlur = 12; ctx.strokeStyle = accent; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.roundRect(r.x, r.y, r.w, r.h, 7); ctx.stroke();
+      ctx.fillStyle = accent; ctx.fillRect(r.x + 8, r.y + r.h / 2 - 8, 3, 16);
+      ctx.restore();
+    }
+    ctx.font = sel ? 'bold 20px Consolas, monospace' : '18px Consolas, monospace';
+    ctx.fillStyle = sel ? '#eaffff' : 'rgba(220,232,244,0.92)';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(label, r.x + r.w / 2, r.y + r.h / 2 + 1);
+    ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left';
   }
 
   // Ultra-light readability tint for a baked theme box (the box BORDER is already in the art, so we
@@ -6803,13 +6859,14 @@ export class Game {
     // ── NOW PLAYING (right lower) — real audio status ──
     this._drawNowPlaying(ctx, S.nowPlaying);
 
-    // ── CONTROLLER / INPUT HELP (right bottom wide) ──
-    s = S.controllerHelp; this._slotPanel(ctx, s, '#7df9ff', 'INPUT');
-    ctx.textAlign = 'left'; ctx.font = '11px Consolas, monospace'; ctx.fillStyle = 'rgba(205,216,228,0.85)';
-    ctx.fillText('Controller Supported · Xbox · PS5 · PS4 · PC', s.x + 12, s.y + 42);
-    ctx.fillStyle = 'rgba(160,180,200,0.7)';
-    ctx.fillText('Press any controller button to activate', s.x + 12, s.y + 62);
-    ctx.fillText('WASD / Arrows · Q E SHIFT SPACE · ENTER Select', s.x + 12, s.y + 82);
+    // ── BUILD / INPUT (right bottom wide) — selected-character build identity + compact input ──
+    s = S.controllerHelp; this._slotPanel(ctx, s, '#7df9ff', 'BUILD');
+    const bx2 = s.x + 12, bw2 = s.w - 24;
+    this._slotRow(ctx, bx2, bw2, s.y + 40, 'BUILD',   ch.role, '#9fffe6');
+    this._slotRow(ctx, bx2, bw2, s.y + 58, 'ELEMENT', elIcon + ' ' + (el ? el.toUpperCase() : '—'), this._elementColors?.[el] || '#7df9ff');
+    this._slotRow(ctx, bx2, bw2, s.y + 76, 'WEAPON',  this._charWeaponLabel(ch.id), '#ffe0b0');
+    ctx.textAlign = 'left'; ctx.font = '10px Consolas, monospace'; ctx.fillStyle = 'rgba(160,180,200,0.7)';
+    ctx.fillText('INPUT: Enter / ESC · Controller (Xbox · PS · PC)', bx2, s.y + 98);
 
     // ── BOTTOM-CENTRE quick slots (Save / Best Run / Build) ──
     s = S.bottomSlots; const bsW = (s.w - 16) / 3;
@@ -6930,21 +6987,7 @@ export class Game {
     // drawn inside the slot — the slot plate itself is part of the theme art. Rects centralised in
     // _menuButtonRect (mirrored by main.js click hit-test). ──
     for (let i = 0; i < this.menuItems.length; i++) {
-      const r = this._menuButtonRect(i);
-      const sel = i === this.menuIndex;
-      if (sel) {
-        ctx.save();
-        ctx.fillStyle = 'rgba(60,240,230,0.12)'; ctx.beginPath(); ctx.roundRect(r.x, r.y, r.w, r.h, 7); ctx.fill();
-        ctx.shadowColor = CYAN; ctx.shadowBlur = 12; ctx.strokeStyle = CYAN; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.roundRect(r.x, r.y, r.w, r.h, 7); ctx.stroke();
-        ctx.fillStyle = CYAN; ctx.fillRect(r.x + 8, r.y + r.h / 2 - 8, 3, 16);
-        ctx.restore();
-      }
-      ctx.font = sel ? 'bold 20px Consolas, monospace' : '18px Consolas, monospace';
-      ctx.fillStyle = sel ? '#eaffff' : 'rgba(220,232,244,0.92)';
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(this.menuItems[i], r.x + r.w / 2, r.y + r.h / 2 + 1);
-      ctx.textBaseline = 'alphabetic';
+      this._drawSlotLabel(ctx, this._menuButtonRect(i), this.menuItems[i], i === this.menuIndex, CYAN);
     }
     ctx.textAlign = 'left';
 
@@ -6962,33 +7005,33 @@ export class Game {
     ctx.textAlign = 'left';
   }
 
-  // ─── SETTINGS screen — single home for Audio / Controls / Credits ────────────
+  // ─── SETTINGS overlay — clean, keeps the theme/logo/protagonists visible ─────
+  // Renders the live main-menu background + a LIGHT glass dim, then the settings options inside the
+  // same baked central button slots. No giant title block, no near-black wash.
   _drawSettings(ctx) {
     const bg = this._menuBg;
     if (bg && bg.complete && bg.naturalWidth > 0) ctx.drawImage(bg, 0, 0, WIDTH, HEIGHT);
     else { const g = ctx.createLinearGradient(0, 0, 0, HEIGHT); g.addColorStop(0, '#05080f'); g.addColorStop(1, '#02040a'); ctx.fillStyle = g; ctx.fillRect(0, 0, WIDTH, HEIGHT); }
-    ctx.fillStyle = 'rgba(2,6,14,0.62)'; ctx.fillRect(0, 0, WIDTH, HEIGHT);   // stronger dim for a focused sub-menu
+    ctx.fillStyle = 'rgba(3,7,15,0.30)'; ctx.fillRect(0, 0, WIDTH, HEIGHT);   // light glass only — theme stays visible
 
-    ctx.font = 'bold 40px Consolas, monospace'; ctx.fillStyle = CYAN; ctx.textAlign = 'center';
-    ctx.fillText('SETTINGS', WIDTH / 2, 150);
-    ctx.font = '13px Consolas, monospace'; ctx.fillStyle = 'rgba(190,205,220,0.65)';
-    ctx.fillText('System configuration · audio · controls · credits', WIDTH / 2, 178);
+    // Keep the resource strip + gear visible for continuity.
+    this._drawTopResources(ctx);
+    this._drawMenuGear(ctx);
 
-    // Framing panel behind the buttons
+    // Small label above the central slots (no logo-covering title).
+    const r0 = this._menuButtonRect(0);
+    ctx.font = 'bold 13px Consolas, monospace'; ctx.fillStyle = '#7df9ff'; ctx.textAlign = 'center';
+    ctx.fillText('— CONFIGURATION —', WIDTH / 2, r0.y - 12);
+
     const items = this.settingsItems;
-    const r0 = this._settingsButtonRect(0), rN = this._settingsButtonRect(items.length - 1);
-    this._premiumPanel(ctx, WIDTH / 2 - 250, r0.y - 30, 500, (rN.y + rN.h) - (r0.y) + 60, '#7df9ff', 'CONFIGURATION');
-
     for (let i = 0; i < items.length; i++) {
-      const r = this._settingsButtonRect(i);
       const accent = items[i] === 'BACK' ? '#9aa4b0' : CYAN;
-      this._premiumButton(ctx, r.x, r.y, r.w, r.h, items[i], i === this._settingsIndex, accent);
+      this._drawSlotLabel(ctx, this._menuButtonRect(i), items[i], i === this._settingsIndex, accent);
     }
 
-    ctx.font = '14px Consolas, monospace'; ctx.fillStyle = 'rgba(200,210,225,0.62)'; ctx.textAlign = 'center';
-    ctx.fillText('↑↓ W/S  Navigate     ENTER / Click  Select     ESC  Back', WIDTH / 2, HEIGHT - 22);
-    this._drawAgeBadge(ctx, 16, HEIGHT - 52);
-    this._drawControllerBadge(ctx, WIDTH - 14, 22);
+    ctx.font = '13px Consolas, monospace'; ctx.fillStyle = 'rgba(200,210,225,0.6)'; ctx.textAlign = 'center';
+    ctx.fillText('↑↓ Navigate    ENTER / Click Select    ESC Back', WIDTH / 2, HEIGHT - 14);
+    this._drawAgeBadge(ctx, WIDTH * 0.018, HEIGHT * 0.918);
     ctx.textAlign = 'left';
   }
 
@@ -7367,10 +7410,16 @@ export class Game {
       stCx += stW + stGap;
     }
 
-    ctx.font = '14px Consolas, monospace';
-    ctx.fillStyle = WHITE;
-    ctx.textAlign = 'center';
-    ctx.fillText('← → Select • ↑ ↓ Outfit • ENTER Confirm • ESC Back', WIDTH / 2, HEIGHT - 12);
+    // ── Bottom action buttons: BACK · START GAME (Act 1) · START ENDLESS (if unlocked) ──
+    const A = this._charSelectActionRects();
+    const selUnlocked = this.meta.isCharacterUnlocked(selChar.id);
+    const endlessOk = selUnlocked && this.meta?.isEndlessUnlocked();
+    this._drawSlotLabel(ctx, A.back,  'BACK', false, '#9aa4b0');
+    this._drawSlotLabel(ctx, A.start, 'START GAME', selUnlocked, selUnlocked ? CYAN : '#5a6470');
+    this._drawSlotLabel(ctx, A.endless, endlessOk ? 'START ENDLESS' : 'ENDLESS LOCKED', endlessOk, endlessOk ? '#7CFF4D' : '#5a6470');
+    ctx.font = '12px Consolas, monospace'; ctx.fillStyle = 'rgba(190,200,215,0.55)'; ctx.textAlign = 'center';
+    ctx.fillText('← → Select • ↑ ↓ Outfit • ENTER Start • ESC Back', WIDTH / 2, HEIGHT - 54);
+    ctx.textAlign = 'left';
   }
 
   _drawExitScreen(ctx) {
