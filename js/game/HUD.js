@@ -34,13 +34,38 @@ export function drawHUD(ctx, game) {
   ctx.textAlign = 'left';
   drawText(ctx, `KILLS ${p.kills}`, WIDTH / 2 - 24, 65, '#d7dee6', 'bold 15px Consolas, monospace');
 
-  // Endless-mode marker (shown after a player chooses CONTINUE — ENDLESS)
+  // Endless-mode marker — swaps to Chaos badge when _chaosMode is active
   if (game.endless) {
     ctx.textAlign = 'center';
-    const pulse = 0.6 + 0.4 * Math.abs(Math.sin(Date.now() / 500));
-    ctx.globalAlpha = pulse;
-    drawText(ctx, '◆ ENDLESS ◆', WIDTH / 2, 84, GREEN, 'bold 13px Consolas, monospace');
-    ctx.globalAlpha = 1;
+    if (game._chaosMode) {
+      // ⚡ CHAOS MODE badge: magenta pill with fast pulse
+      const t     = Date.now();
+      const pulse = 0.72 + 0.28 * Math.abs(Math.sin(t / 220));
+      const label = '⚡ CHAOS MODE ⚡';
+      ctx.font = 'bold 13px Consolas, monospace';
+      const tw = ctx.measureText(label).width;
+      const bx = WIDTH / 2 - tw / 2 - 10, by = 71, bw = tw + 20, bh = 18;
+      // pill background
+      ctx.globalAlpha = pulse * 0.55;
+      ctx.fillStyle = '#ff2d95';
+      ctx.beginPath();
+      ctx.roundRect(bx, by, bw, bh, 5);
+      ctx.fill();
+      // border flash
+      ctx.globalAlpha = pulse * 0.9;
+      ctx.strokeStyle = '#ff8fd4';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      // text
+      ctx.globalAlpha = pulse;
+      drawText(ctx, label, WIDTH / 2, 84, '#fff0f8', 'bold 13px Consolas, monospace');
+      ctx.globalAlpha = 1;
+    } else {
+      const pulse = 0.6 + 0.4 * Math.abs(Math.sin(Date.now() / 500));
+      ctx.globalAlpha = pulse;
+      drawText(ctx, '◆ ENDLESS ◆', WIDTH / 2, 84, GREEN, 'bold 13px Consolas, monospace');
+      ctx.globalAlpha = 1;
+    }
     ctx.textAlign = 'left';
   }
 

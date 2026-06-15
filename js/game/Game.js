@@ -538,7 +538,6 @@ export class Game {
     // ── Chaos Mode (unlocks at 31:00 Endless) ─────────────────────────────
     this._chaosMode         = false;   // true after transition completes
     this._chaosTransTimer   = -1;      // >=0 while glitch transition is playing
-    this.forceChaos         = false;   // DEBUG: set true in console to skip 31-min wait
     this._chaosCoreCd       = 0;       // cooldown for bonus gold-core spawns
     this.overload           = 0;
     this.overloadTickTimer  = 0;
@@ -3593,10 +3592,9 @@ export class Game {
     this.timeAlive += dt;
     this.score += dt;
 
-    // ── Chaos Mode trigger (31:00 Endless OR forceChaos debug) ──────────────
+    // ── Chaos Mode trigger (31:00 Endless) ──────────────
     if (this.endless && !this._chaosMode && this._chaosTransTimer < 0) {
-      if (this.timeAlive >= 1860 || this.forceChaos) {
-        this.forceChaos       = false;
+      if (this.timeAlive >= 1860) {
         this._chaosTransTimer = 0;   // kick off glitch transition
       }
     }
