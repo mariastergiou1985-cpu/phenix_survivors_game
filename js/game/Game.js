@@ -3594,7 +3594,8 @@ export class Game {
 
     // ── Chaos Mode trigger (31:00 Endless) ──────────────
     if (this.endless && !this._chaosMode && this._chaosTransTimer < 0) {
-      if (this.timeAlive >= 1860) {
+      if (this.timeAlive >= 1860 || this.forceChaos) {
+        this.forceChaos       = false;
         this._chaosTransTimer = 0;   // kick off glitch transition
       }
     }

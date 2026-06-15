@@ -66,6 +66,10 @@ window.addEventListener('keydown', e => {
   if (key === 't' && game.gameState === 'playing' && !game.gameOver && !game.victory) {
     game.aimAssist = !game.aimAssist;
   }
+  // F9 — DEBUG: trigger Chaos Mode immediately (Endless only, removed before final release)
+  if (e.key === 'F9' && game.endless && !game._chaosMode) {
+    game.forceChaos = true;
+  }
 
   // Restart after game over / victory
   if (key === 'r' && (game.gameOver || game.victory)) {
