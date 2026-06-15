@@ -161,6 +161,11 @@ export class Game {
     this._endlessNexusImage.onerror = () => console.warn('[Nexus] missing assets/nexus/endless_nexus_base_8cores.png — using default Nexus visual');
     this._endlessNexusImage.src = 'assets/nexus/endless_nexus_base_8cores.png?v=20260615210000';
 
+    // Chaos Mode background (unlocks at 31:00 Endless)
+    this._chaosBgImage = new Image();
+    this._chaosBgImage.onerror = () => console.warn('[Chaos] missing assets/ui/CHAOS_mode.png');
+    this._chaosBgImage.src = 'assets/ui/CHAOS_mode.png?v=20260615210000';
+
     // Preload character portraits for Character Select screen
     this._charImages = {};
     ['skeleton_warrior', 'taekwondo_girl', 'cyber_arm_hero', 'brawler_warrior', 'assassin_clone'].forEach(id => {
@@ -530,6 +535,11 @@ export class Game {
     this._upgradeTab      = 'core';   // Upgrades screen tab: 'core' | 'synergy'
 
     this.timeAlive          = 0;
+    // ── Chaos Mode (unlocks at 31:00 Endless) ─────────────────────────────
+    this._chaosMode         = false;   // true after transition completes
+    this._chaosTransTimer   = -1;      // >=0 while glitch transition is playing
+    this.forceChaos         = false;   // DEBUG: set true in console to skip 31-min wait
+    this._chaosCoreCd       = 0;       // cooldown for bonus gold-core spawns
     this.overload           = 0;
     this.overloadTickTimer  = 0;
     this.spawnTimer         = 0;
@@ -3557,6 +3567,32 @@ export class Game {
 
     this.timeAlive += dt;
     this.score += dt;
+
+    // ── Chaos Mode trigger (31:00 Endless OR forceChaos debug) ──────────────
+    if (this.endless && !this._chaosMode && this._chaosTransTimer < 0) {
+      if (this.timeAlive >= 1860 || this.forceChaos) {
+        this.forceChaos       = false;
+        this._chaosTransTimer = 0;   // kick off glitch transition
+      }
+    }
+    if (this._chaosTransTimer >= 0) {
+      this._chaosTransTimer += dt;
+      if (this._chaosTransTimer >= 0.8) {   // transition complete
+        this._chaosTransTimer = -1;
+        this._chaosMode       = true;
+        this.triggerAnnouncement('⚡ CHAOS MODE ⚡', '#ff2d95');
+      }
+    }
+    // Chaos Mode: spawn a gold core near the player every ~5 s
+    if (this._chaosMode && !this.gameOver && !this.victory) {
+      this._chaosCoreCd -= dt;
+      if (this._chaosCoreCd <= 0) {
+        this._chaosCoreCd = 5.0;
+        const off = new Vec2((Math.random() - 0.5) * 220, (Math.random() - 0.5) * 220);
+        this.groundCores.push(new DataCore(this._clampPickupPos(this.player.pos.clone().add(off)), 'gold'));
+      }
+    }
+
     if (this.comboTimer > 0) {
       this.comboTimer -= dt;
       if (this.comboTimer <= 0) this.comboCount = 0;
@@ -7245,6 +7281,67 @@ export class Game {
     drawVignette(ctx, this.overload, this.timeAlive);
     drawDamagePulse(ctx, this.damageFlash, this.damageFlashIntensity, DMG_PULSE.duration);
     this._drawScanlines(ctx);
+
+    // ── Chaos glitch transition overlay ─────────────────────────────────────
+    if (this._chaosTransTimer >= 0) {
+      const t   = this._chaosTransTimer / 0.8;   // 0→1 progress
+      const rng = (s) => { let x = Math.sin(s) * 43758.5453; return x - Math.floor(x); };
+      const now = performance.now();
+
+      // Slice displacement: split canvas into horizontal strips, shift each randomly
+      const slices = 14;
+      const sliceH = Math.ceil(HEIGHT / slices);
+      ctx.save();
+      for (let i = 0; i < slices; i++) {
+        const seed  = Math.floor(now / 60) * slices + i;
+        const shift = (rng(seed) - 0.5) * 80 * t;   // max ±40px, scales with progress
+        if (Math.abs(shift) < 2) continue;           // skip near-zero slices
+        const sy = i * sliceH;
+        const sh = Math.min(sliceH, HEIGHT - sy);
+        ctx.drawImage(
+          ctx.canvas,
+          0, sy, WIDTH, sh,
+          shift, sy, WIDTH, sh
+        );
+      }
+      ctx.restore();
+
+      // Silver scanline flashes
+      const flashAlpha = 0.18 + 0.22 * Math.abs(Math.sin(now * 0.05)) * t;
+      ctx.fillStyle = `rgba(200,220,255,${flashAlpha.toFixed(3)})`;
+      for (let i = 0; i < HEIGHT; i += 4) {
+        if (rng(i + Math.floor(now / 30)) > 0.72) {
+          ctx.fillRect(0, i, WIDTH, 2);
+        }
+      }
+
+      // Red/magenta colour bleed overlay
+      ctx.save();
+      ctx.globalCompositeOperation = 'screen';
+      ctx.globalAlpha = 0.10 * t;
+      ctx.fillStyle = '#ff0055';
+      ctx.fillRect(3, 0, WIDTH, HEIGHT);
+      ctx.globalAlpha = 0.08 * t;
+      ctx.fillStyle = '#00ffee';
+      ctx.fillRect(-3, 0, WIDTH, HEIGHT);
+      ctx.restore();
+
+      // "CHAOS MODE" text flash — appears only in the last 40% of the transition
+      if (t > 0.6) {
+        const txtAlpha = (t - 0.6) / 0.4;
+        ctx.save();
+        ctx.globalAlpha = txtAlpha;
+        ctx.font        = 'bold 72px "Orbitron", "Share Tech Mono", monospace';
+        ctx.textAlign   = 'center';
+        ctx.fillStyle   = '#ff2d95';
+        ctx.shadowColor = '#ff2d95';
+        ctx.shadowBlur  = 32;
+        ctx.fillText('CHAOS MODE', WIDTH / 2, HEIGHT / 2);
+        ctx.shadowBlur  = 0;
+        ctx.restore();
+      }
+    }
+
     this._drawAnnouncement(ctx);
 
     if (this.upgradeUI) this.upgradeUI.draw(ctx, this.player, this);
@@ -11427,8 +11524,11 @@ export class Game {
     ctx.fillRect(0, 0, WORLD_W, WORLD_H);
 
     // Endless-only Stage 02 map; falls back to the default background if not loaded / not endless.
+    const cb  = this._chaosBgImage;
     const eb  = this._endlessBgImage;
-    const img = (this.endless && eb && eb.complete && eb.naturalWidth > 0) ? eb : this._bgImage;
+    const img = (this._chaosMode && cb && cb.complete && cb.naturalWidth > 0)
+              ? cb
+              : (this.endless && eb && eb.complete && eb.naturalWidth > 0) ? eb : this._bgImage;
     if (img.complete && img.naturalWidth > 0) {
       const scale = WORLD_W / img.naturalWidth;
       const drawH = img.naturalHeight * scale;
