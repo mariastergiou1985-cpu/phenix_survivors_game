@@ -3609,6 +3609,9 @@ export class Game {
         this.annihilatorSpawned = false; this.annihilatorSpawnTimer = 0;
         this.bloodfangSpawned   = false; this.bloodfangSpawnTimer   = 0;
         this._endlessBossTimer  = 5;   // first Chaos boss rotation: 5 s from now
+        this.acidRainTimer      = 30;  // Phase 4: first acid rain 30 s into Chaos
+        this._airstrikeTimer    = 15;  // Phase 4: first airstrike 15 s into Chaos
+        this._lightningTimer    = 20;  // Phase 4: first lightning storm 20 s into Chaos
       }
     }
     // Chaos Mode: spawn a gold core near the player every ~5 s
@@ -6210,7 +6213,7 @@ export class Game {
     // Cadence: first ~1.5 min, then ~every 2 min — but never more than 1 ship at a time.
     this._airstrikeTimer -= dt;
     if (this._airstrikeTimer <= 0) {
-      if (this.airstrikeShips.length < 1) { this._airstrikeTimer = 120; this._spawnAirstrike(); }
+      if (this.airstrikeShips.length < 1) { this._airstrikeTimer = this._chaosMode ? 60 : 120; this._spawnAirstrike(); }
       else                                  this._airstrikeTimer = 20;   // still airborne → retry soon
     }
 
@@ -6288,7 +6291,7 @@ export class Game {
   _updateLightningStorm(dt) {
     this._lightningTimer -= dt;
     if (this._lightningTimer <= 0) {
-      this._lightningTimer = 120;            // ~every 2 minutes
+      this._lightningTimer = this._chaosMode ? 60 : 120;  // ~every 2 min (60s in Chaos)
       this._stormActive    = this._hasProto('lightning_plus') ? 18 : 12;   // threat pass doubled; Lightning Storm+ extends further
       this._stormSpawnCd   = 0;
       this.triggerAnnouncement('⚠ LIGHTNING STORM HAZARD', '#9fd0ff');
@@ -10034,7 +10037,7 @@ export class Game {
 
       if (ar.timer <= 0) {
         this.acidRain      = null;
-        this.acidRainTimer = 138; // 138 = 150s start-to-start − 12s event duration → rains 2.5 min apart
+        this.acidRainTimer = this._chaosMode ? 60 : 138; // Chaos: 60s apart; Normal: 2.5 min
       }
       return;
     }
