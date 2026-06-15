@@ -5,36 +5,36 @@ import {
   MAX_OVERLOAD, PLAYER_RADIUS, CORE_RADIUS, MATRIX_RADIUS,
   DARK_BG, GRID_LINE, BLACK, CYAN, RED, GREEN, YELLOW, ORANGE, WHITE, PURPLE,
   CORE_COLORS, VIEW_SCALE, VIEW_W, VIEW_H, ENDLESS_VIEW_SCALE,
-} from '../constants.js?v=20260615105338';
+} from '../constants.js?v=20260615113009';
 import { clamp, distance, safeNormalize, randomChoice, randomRange } from '../utils.js';
 
 import { FloatingText }   from '../entities/FloatingText.js';
-import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260615105338';
-import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260615105338';
-import { Player }         from '../entities/Player.js?v=20260615105338';
-import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260615105338';
-import { Enemy }          from '../entities/Enemy.js?v=20260615105338';
-import { SupportDrone }   from '../entities/SupportDrone.js?v=20260615105338';
+import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260615113009';
+import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260615113009';
+import { Player }         from '../entities/Player.js?v=20260615113009';
+import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260615113009';
+import { Enemy }          from '../entities/Enemy.js?v=20260615113009';
+import { SupportDrone }   from '../entities/SupportDrone.js?v=20260615113009';
 
-import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow } from './Effects.js?v=20260615105338';
-import { SystemEventManager } from './Events.js?v=20260615105338';
-import { UpgradeUI }      from './UpgradeUI.js?v=20260615105338';
-import { weightedSample } from './Upgrades.js?v=20260615105338';
-import { MutationUI }      from './MutationUI.js?v=20260615105338';
-import { sampleMutations } from './Mutations.js?v=20260615105338';
-import { drawHUD, drawEndScreen } from './HUD.js?v=20260615105338';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS } from './MetaProgress.js?v=20260615105338';
-import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260615105338';
+import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow } from './Effects.js?v=20260615113009';
+import { SystemEventManager } from './Events.js?v=20260615113009';
+import { UpgradeUI }      from './UpgradeUI.js?v=20260615113009';
+import { weightedSample } from './Upgrades.js?v=20260615113009';
+import { MutationUI }      from './MutationUI.js?v=20260615113009';
+import { sampleMutations } from './Mutations.js?v=20260615113009';
+import { drawHUD, drawEndScreen } from './HUD.js?v=20260615113009';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS } from './MetaProgress.js?v=20260615113009';
+import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260615113009';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
-import { GlitchDash } from '../effects/glitch-dash.js?v=20260615105338';
-import { EMPShockwave } from '../effects/emp-shockwave.js?v=20260615105338';
-import { DigitalSingularity } from '../effects/digital-singularity.js?v=20260615105338';
-import { Protocol0 } from '../effects/protocol-0.js?v=20260615105338';
-import { LaserEyes } from '../effects/laser-eyes.js?v=20260615105338';
-import { MeteorRain } from '../effects/meteor-rain.js?v=20260615105338';
+import { GlitchDash } from '../effects/glitch-dash.js?v=20260615113009';
+import { EMPShockwave } from '../effects/emp-shockwave.js?v=20260615113009';
+import { DigitalSingularity } from '../effects/digital-singularity.js?v=20260615113009';
+import { Protocol0 } from '../effects/protocol-0.js?v=20260615113009';
+import { LaserEyes } from '../effects/laser-eyes.js?v=20260615113009';
+import { MeteorRain } from '../effects/meteor-rain.js?v=20260615113009';
 // Euclid Vector toxin kit — used ONLY when selectedCharacter === 'euclid_vector' (world-space).
-import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=20260615105338';
+import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=20260615113009';
 
 // ── Thunder Solo sprite slices (cyan_lightning_rain_notes.png, 1254×1254) ──────
 // Strike variants: a clean bolt column + ripple base. (ax,ay) = ripple-centre as a
@@ -150,16 +150,16 @@ export class Game {
       fallback.src = 'assets/backgrounds/cyberpunk_city_background.png';
       this._bgImage = fallback;
     };
-    this._bgImage.src = 'assets/backgrounds/cyber_city_bg_clean.png?v=20260615105338';
+    this._bgImage.src = 'assets/backgrounds/cyber_city_bg_clean.png?v=20260615113009';
 
     // Endless Stage 02 visuals (only used while this.endless — Act 1 keeps default visuals).
     // Missing files degrade to the default background / default Nexus visual (warn, no crash).
     this._endlessBgImage = new Image();
     this._endlessBgImage.onerror = () => console.warn('[Stage] missing assets/maps/endless/stage_02_neon_shinjuku_plaza.png — using default background');
-    this._endlessBgImage.src = 'assets/maps/endless/stage_02_neon_shinjuku_plaza.png?v=20260615105338';
+    this._endlessBgImage.src = 'assets/maps/endless/stage_02_neon_shinjuku_plaza.png?v=20260615113009';
     this._endlessNexusImage = new Image();
     this._endlessNexusImage.onerror = () => console.warn('[Nexus] missing assets/nexus/endless_nexus_base_8cores.png — using default Nexus visual');
-    this._endlessNexusImage.src = 'assets/nexus/endless_nexus_base_8cores.png?v=20260615105338';
+    this._endlessNexusImage.src = 'assets/nexus/endless_nexus_base_8cores.png?v=20260615113009';
 
     // Preload character portraits for Character Select screen
     this._charImages = {};
@@ -172,7 +172,7 @@ export class Game {
     // Japan Phasewalker portrait lives in the endless/ subfolder (Character Select + FX modules).
     this._phasewalkerSprite = new Image();
     this._phasewalkerSprite.onerror = () => console.warn('[Char] missing assets/characters/endless/japan_phasewalker.png');
-    this._phasewalkerSprite.src = 'assets/characters/endless/japan_phasewalker.png?v=20260615105338';   // ?v bust: corrected transparency
+    this._phasewalkerSprite.src = 'assets/characters/endless/japan_phasewalker.png?v=20260615113009';   // ?v bust: corrected transparency
     this._charImages['japan_phasewalker'] = this._phasewalkerSprite;
     // Euclid Vector portrait (endless/ subfolder; unlocked from the start — see roster + free unlock).
     this._euclidSprite = new Image();
@@ -210,9 +210,10 @@ export class Game {
     this._assassinChromeSprite.onerror = () => console.warn('[Ultimate] assassin_clone_chrome_clone.png missing — drawn fallback used');
     this._assassinChromeSprite.src = 'assets/abilities/ultimates/assassin_clone_chrome_clone.png';
 
-    // Preload start-menu background image
+    // Preload start-menu background image (new premium theme; falls back to dark gradient if missing)
     this._menuBg = new Image();
-    this._menuBg.src = 'assets/ui/start_menu_background.png?v=20260615105338';
+    this._menuBg.onerror = () => console.warn('[Menu] main_menu_theme.png not found — dark fallback used');
+    this._menuBg.src = 'assets/ui/new_main_menu_theme/main_menu_theme.png?v=20260615113009';
 
     // Preload phoenix revive effect images (orange / blue / gold tiers)
     this._phoenixImage = new Image();
@@ -220,11 +221,11 @@ export class Game {
 
     this._phoenixBlueImage = new Image();
     this._phoenixBlueImage.onerror = () => console.warn('[Assets] Failed to load: assets/effects/phoenix/blue_phoenix_revive.png');
-    this._phoenixBlueImage.src = 'assets/effects/phoenix/blue_phoenix_revive.png?v=20260615105338';
+    this._phoenixBlueImage.src = 'assets/effects/phoenix/blue_phoenix_revive.png?v=20260615113009';
 
     this._phoenixGoldImage = new Image();
     this._phoenixGoldImage.onerror = () => console.warn('[Assets] Failed to load: assets/effects/phoenix/gold_phoenix_revive.png');
-    this._phoenixGoldImage.src = 'assets/effects/phoenix/gold_phoenix_revive.png?v=20260615105338';
+    this._phoenixGoldImage.src = 'assets/effects/phoenix/gold_phoenix_revive.png?v=20260615113009';
 
     // Preload credits photos
     this._creditImgInk = new Image();
@@ -242,10 +243,10 @@ export class Game {
     // Preload core and matrix sprites
     this._coreSprite = new Image();
     this._coreSprite.onerror = () => console.warn('[Assets] Failed to load: assets/cores/data_core.png');
-    this._coreSprite.src = 'assets/cores/data_core.png?v=20260615105338';
+    this._coreSprite.src = 'assets/cores/data_core.png?v=20260615113009';
     this._matrixSprite = new Image();
     this._matrixSprite.onerror = () => console.warn('[Assets] Failed to load: assets/bases/matrix_base.png');
-    this._matrixSprite.src = 'assets/bases/matrix_base.png?v=20260615105338';
+    this._matrixSprite.src = 'assets/bases/matrix_base.png?v=20260615113009';
 
     // Preload grid cache supply drop sprite
     this._gridCacheSprite = new Image();
@@ -269,7 +270,7 @@ export class Game {
     this._airstrikeSprite.src = 'assets/enemies/event_airstrike/airstrike_sheet.png';
     this._lightningStormSprite = new Image();
     this._lightningStormSprite.onerror = () => console.warn('[Endless] lights_storm_rain.png not found — drawn fallback used');
-    this._lightningStormSprite.src = 'assets/events/weather/lights_storm_rain.png?v=20260615105338';
+    this._lightningStormSprite.src = 'assets/events/weather/lights_storm_rain.png?v=20260615113009';
 
     // HUD icons: Data-Core (top-right credits) + chains (Cyber Arm SPACE ultimate icon)
     this._dataCoreIcon = new Image();
@@ -293,25 +294,25 @@ export class Game {
     // Preload acid rain weather sprites
     this._acidRainFallImg = new Image();
     this._acidRainFallImg.onerror = () => console.warn('[Weather] acid_rain_fall.png not found — using line fallback');
-    this._acidRainFallImg.src = 'assets/events/weather/acid_rain_fall.png?v=20260615105338';
+    this._acidRainFallImg.src = 'assets/events/weather/acid_rain_fall.png?v=20260615113009';
     this._acidRainSplashImg = new Image();
     this._acidRainSplashImg.onerror = () => console.warn('[Weather] acid_rain_splash.png not found — using ellipse fallback');
-    this._acidRainSplashImg.src = 'assets/events/weather/acid_rain_splash.png?v=20260615105338';
+    this._acidRainSplashImg.src = 'assets/events/weather/acid_rain_splash.png?v=20260615113009';
 
     // Preload AI Overload Titan boss sprite
     this._titanSprite = new Image();
     this._titanSprite.onerror = () => console.warn('[Boss] ai_overload_titan.png failed to load — using fallback');
-    this._titanSprite.src = 'assets/enemies/bosses/ai_overload_titan.png?v=20260615105338';
+    this._titanSprite.src = 'assets/enemies/bosses/ai_overload_titan.png?v=20260615113009';
 
     // Preload Matrix Annihilator mini-boss sprite (existing asset)
     this._annihilatorSprite = new Image();
     this._annihilatorSprite.onerror = () => console.warn('[Boss] assets/enemies/bosses/matrix_annihilator.png failed to load — using fallback');
-    this._annihilatorSprite.src = 'assets/enemies/bosses/matrix_annihilator.png?v=20260615105338';
+    this._annihilatorSprite.src = 'assets/enemies/bosses/matrix_annihilator.png?v=20260615113009';
 
     // Preload Bloodfang Packmaster mini-boss sprite (existing asset)
     this._bloodfangSprite = new Image();
     this._bloodfangSprite.onerror = () => console.warn('[Boss] assets/enemies/bosses/bloodfang_packmaster.png failed to load — using fallback');
-    this._bloodfangSprite.src = 'assets/enemies/bosses/bloodfang_packmaster.png?v=20260615105338';
+    this._bloodfangSprite.src = 'assets/enemies/bosses/bloodfang_packmaster.png?v=20260615113009';
 
     // Preload secret-skin preview sprites (Character Select locked/unlocked + Victory screen).
     // Keyed by the same flags MetaProgress persists. Missing files degrade to a text fallback.
@@ -367,11 +368,15 @@ export class Game {
   // (right after START GAME) only once the player has entered Endless once — a persistent direct
   // entry so they never replay Act 1 to reach it. Computed live so the unlock reflects instantly.
   get menuItems() {
+    // Lean main nav only. Exit/Credits/Instructions/Audio moved into the SETTINGS screen.
     const items = ['START GAME'];
     if (this.meta?.isEndlessUnlocked()) items.push('ENDLESS MODE');
-    items.push('CHARACTER SELECT', 'UPGRADES', 'ACHIEVEMENTS', 'INSTRUCTIONS', 'AUDIO SETTINGS', 'CREDITS', 'EXIT');
+    items.push('CHARACTER SELECT', 'UPGRADES', 'ACHIEVEMENTS', 'SETTINGS');
     return items;
   }
+
+  // SETTINGS sub-menu — the single home for Audio, Controls/How-To-Play, Credits.
+  get settingsItems() { return ['AUDIO', 'CONTROLS / HOW TO PLAY', 'CREDITS', 'BACK']; }
 
   reset() {
     // Resolve the equipped (cosmetic) outfit sprite for this character, if any.
@@ -2868,6 +2873,10 @@ export class Game {
       this._updateAudioSettings(input);
       return;
     }
+    if (this.gameState === 'settings') {
+      this._updateSettings(input);
+      return;
+    }
     if (this.gameState !== 'playing') return;
 
     if (this.paused || this.gameOver || this.victory) return;
@@ -3480,11 +3489,35 @@ export class Game {
     else if (item === 'ENDLESS MODE')   this.startEndlessRun();
     else if (item === 'UPGRADES')       this.goToUpgradesScreen();
     else if (item === 'ACHIEVEMENTS')   this.goToAchievementsScreen();
-    else if (item === 'INSTRUCTIONS')   this.goToInstructions();
-    else if (item === 'AUDIO SETTINGS') this.goToAudioSettings();
-    else if (item === 'CREDITS')        this.goToCredits();
-    else if (item === 'EXIT') { try { window.close(); } catch (e) {} this.goToExitScreen(); }
+    else if (item === 'SETTINGS')       this.goToSettings();
   }
+
+  goToSettings() { this.gameState = 'settings'; this._settingsIndex = 0; }
+
+  _updateSettings(input) {
+    const { keys } = input;
+    const n = this.settingsItems.length;
+    if (keys.has('arrowup') || keys.has('w'))   { this._settingsIndex = (this._settingsIndex - 1 + n) % n; keys.delete('arrowup'); keys.delete('w'); }
+    if (keys.has('arrowdown') || keys.has('s')) { this._settingsIndex = (this._settingsIndex + 1) % n;     keys.delete('arrowdown'); keys.delete('s'); }
+    if (keys.has('enter') || keys.has(' '))     { this._selectSettingsItem(this.settingsItems[this._settingsIndex]); keys.delete('enter'); keys.delete(' '); }
+    if (keys.has('escape'))                      { this.goToMainMenu(); keys.delete('escape'); }
+  }
+
+  _selectSettingsItem(item) {
+    if      (item === 'AUDIO')   this.goToAudioSettings();
+    else if (item === 'CREDITS') this.goToCredits();
+    else if (item === 'BACK')    this.goToMainMenu();
+    else                         this.goToInstructions();   // CONTROLS / HOW TO PLAY
+  }
+
+  // Shared button rect for the SETTINGS sub-menu (mouse hit-test + draw read the same geometry).
+  _settingsButtonRect(i) {
+    const BW = 420, BH = 52, startY = 250, spacing = 70;
+    return { x: WIDTH / 2 - BW / 2, y: startY + i * spacing, w: BW, h: BH };
+  }
+
+  // Top-right gear shortcut on the main menu → opens the SAME Settings screen (no duplicate logic).
+  _menuGearRect() { return { x: WIDTH - 132, y: 12, w: 26, h: 26 }; }
 
   _updateCharacterSelect(input) {
     const { keys } = input;
@@ -6145,6 +6178,10 @@ export class Game {
       this._drawAudioSettings(ctx);
       return;
     }
+    if (this.gameState === 'settings') {
+      this._drawSettings(ctx);
+      return;
+    }
     if (this.gameState !== 'playing') {
       this._drawBackground(ctx);
       return;
@@ -6573,6 +6610,182 @@ export class Game {
     }
   }
 
+  // ─── Premium UI primitives (brushed metal + frosted glass + neon, Canvas 2D) ────────────────
+  _premiumPanel(ctx, x, y, w, h, accent, title) {
+    ctx.save();
+    const g = ctx.createLinearGradient(x, y, x, y + h);
+    g.addColorStop(0, 'rgba(16,22,32,0.90)'); g.addColorStop(0.5, 'rgba(10,15,24,0.88)'); g.addColorStop(1, 'rgba(7,11,18,0.93)');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.roundRect(x, y, w, h, 10); ctx.fill();
+    // inner textures (clipped): brushed-metal streaks + faint accent grid
+    ctx.save(); ctx.beginPath(); ctx.roundRect(x, y, w, h, 10); ctx.clip();
+    ctx.globalAlpha = 0.045; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1;
+    for (let yy = y + 3; yy < y + h; yy += 4) { ctx.beginPath(); ctx.moveTo(x, yy); ctx.lineTo(x + w, yy); ctx.stroke(); }
+    ctx.globalAlpha = 0.06; ctx.strokeStyle = accent;
+    for (let xx = x + 14; xx < x + w; xx += 24) { ctx.beginPath(); ctx.moveTo(xx, y); ctx.lineTo(xx, y + h); ctx.stroke(); }
+    ctx.globalAlpha = 1;
+    const hb = ctx.createLinearGradient(x, y, x + w, y); hb.addColorStop(0, accent + '33'); hb.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = hb; ctx.fillRect(x, y, w, 24);
+    ctx.globalAlpha = 0.5; ctx.strokeStyle = accent; ctx.lineWidth = 2;   // tactical corner ticks
+    ctx.beginPath(); ctx.moveTo(x + 2, y + 12); ctx.lineTo(x + 2, y + 2); ctx.lineTo(x + 12, y + 2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x + w - 12, y + h - 2); ctx.lineTo(x + w - 2, y + h - 2); ctx.lineTo(x + w - 2, y + h - 12); ctx.stroke();
+    ctx.restore();
+    ctx.shadowColor = accent; ctx.shadowBlur = 12; ctx.strokeStyle = accent; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.roundRect(x, y, w, h, 10); ctx.stroke(); ctx.shadowBlur = 0;
+    ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(x + 2, y + 2, w - 4, h - 4, 8); ctx.stroke();
+    if (title) { ctx.font = 'bold 12px Consolas, monospace'; ctx.fillStyle = accent; ctx.textAlign = 'left'; ctx.fillText('▍' + title, x + 10, y + 17); }
+    ctx.restore();
+  }
+
+  _statCapsule(ctx, x, y, w, h, label, value, accent) {
+    ctx.save();
+    const g = ctx.createLinearGradient(x, y, x, y + h);
+    g.addColorStop(0, 'rgba(255,255,255,0.06)'); g.addColorStop(1, 'rgba(0,0,0,0.28)');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.roundRect(x, y, w, h, 7); ctx.fill();
+    ctx.strokeStyle = accent + '99'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(x, y, w, h, 7); ctx.stroke();
+    ctx.fillStyle = accent; ctx.fillRect(x, y + 6, 3, h - 12);   // accent edge
+    ctx.fillStyle = 'rgba(186,200,214,0.72)'; ctx.font = '9px Consolas, monospace'; ctx.textAlign = 'left';
+    ctx.fillText(label, x + 9, y + 13);
+    ctx.fillStyle = '#eaffff'; ctx.font = 'bold 13px "Segoe UI Emoji", Consolas, monospace';
+    ctx.fillText(value, x + 9, y + h - 7);
+    ctx.restore();
+  }
+
+  _premiumButton(ctx, x, y, w, h, label, sel, accent) {
+    ctx.save();
+    const g = ctx.createLinearGradient(x, y, x, y + h);
+    if (sel) { g.addColorStop(0, 'rgba(10,42,60,0.92)'); g.addColorStop(1, 'rgba(6,22,36,0.92)'); }
+    else     { g.addColorStop(0, 'rgba(15,21,31,0.82)'); g.addColorStop(1, 'rgba(8,12,20,0.84)'); }
+    ctx.fillStyle = g; ctx.beginPath(); ctx.roundRect(x, y, w, h, 9); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,' + (sel ? 0.10 : 0.05) + ')'; ctx.beginPath(); ctx.roundRect(x + 2, y + 2, w - 4, h * 0.42, 7); ctx.fill();   // top sheen
+    ctx.save(); ctx.beginPath(); ctx.roundRect(x, y, w, h, 9); ctx.clip();
+    ctx.globalAlpha = 0.05; ctx.strokeStyle = accent;
+    for (let yy = y + 4; yy < y + h; yy += 4) { ctx.beginPath(); ctx.moveTo(x, yy); ctx.lineTo(x + w, yy); ctx.stroke(); }
+    ctx.restore();
+    if (sel) { ctx.shadowColor = accent; ctx.shadowBlur = 14; ctx.strokeStyle = accent; ctx.lineWidth = 2; }
+    else     { ctx.strokeStyle = 'rgba(150,120,210,0.42)'; ctx.lineWidth = 1; }
+    ctx.beginPath(); ctx.roundRect(x, y, w, h, 9); ctx.stroke(); ctx.shadowBlur = 0;
+    if (sel) { ctx.fillStyle = accent; ctx.fillRect(x + 7, y + 9, 3, h - 18); }
+    ctx.font = sel ? 'bold 21px Consolas, monospace' : '19px Consolas, monospace';
+    ctx.fillStyle = sel ? '#eaffff' : 'rgba(214,226,238,0.92)'; ctx.textAlign = 'center';
+    ctx.fillText(label, x + w / 2, y + h / 2 + 7);
+    ctx.restore();
+  }
+
+  _fmtClock(s) { s = Math.max(0, Math.floor(s || 0)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
+
+  // ─── Main-menu right/left dashboard panels (summary only — reads existing state, no new systems) ──
+  _drawMenuDashboard(ctx) {
+    const m = this.meta;
+    const LX = 18, RX = WIDTH - 318, PW = 300;
+
+    // ── PROGRESSION (left top) — cyber profile / dossier ──
+    this._premiumPanel(ctx, LX, 96, PW, 150, '#3CF0E6', 'PROGRESSION');
+    const ach = m ? Object.keys(m.achievements || {}).length : 0;
+    const pf  = m ? m.getProtocolFragmentsEarned() : 0;
+    const best = (m && m.endlessRecords) || { time: 0, score: 0, level: 0 };
+    const cw = (PW - 30) / 2;
+    this._statCapsule(ctx, LX + 10, 126, cw, 34, 'GRID CREDITS', String(m ? m.credits : 0), '#ffd23c');
+    this._statCapsule(ctx, LX + 20 + cw, 126, cw, 34, 'FRAGMENTS', `🧩 ${pf}/${PF_TOTAL_OBTAINABLE}`, '#7df9ff');
+    this._statCapsule(ctx, LX + 10, 166, cw, 34, 'ACHIEVEMENTS', `${ach}/${ENDLESS_ACHIEVEMENTS.length}`, '#3CF0E6');
+    this._statCapsule(ctx, LX + 20 + cw, 166, cw, 34, 'BEST TIME', this._fmtClock(best.time), '#9fff9f');
+    // achievement progress bar
+    ctx.fillStyle = 'rgba(0,0,0,0.4)'; ctx.beginPath(); ctx.roundRect(LX + 10, 210, PW - 20, 9, 4); ctx.fill();
+    ctx.fillStyle = '#3CF0E6'; ctx.beginPath(); ctx.roundRect(LX + 10, 210, (PW - 20) * Math.min(1, ach / ENDLESS_ACHIEVEMENTS.length), 9, 4); ctx.fill();
+    ctx.fillStyle = 'rgba(190,205,220,0.6)'; ctx.font = '9px Consolas, monospace'; ctx.textAlign = 'left';
+    ctx.fillText('OPERATIVE DOSSIER · ENDLESS RECORD', LX + 10, 234);
+
+    // ── EQUIPMENT (left mid) — loadout bay ──
+    this._premiumPanel(ctx, LX, 258, PW, 120, '#FF9B3C', 'EQUIPMENT');
+    const ch = this.characters.find(c => c.id === (this.selectedCharacter || this.characters[this.characterIndex]?.id)) || this.characters[0];
+    const el = CHARACTER_ELEMENT[ch.id]; const elIcon = ELEMENT_ICON[el] || '◆';
+    // character module slot
+    const mx = LX + 12, my = 290, ms = 60;
+    const mg = ctx.createLinearGradient(mx, my, mx, my + ms); mg.addColorStop(0, ch.fallbackColor); mg.addColorStop(1, ch.fallbackAlt || '#101820');
+    ctx.fillStyle = mg; ctx.beginPath(); ctx.roundRect(mx, my, ms, ms, 8); ctx.fill();
+    ctx.strokeStyle = '#FF9B3C'; ctx.lineWidth = 2; ctx.beginPath(); ctx.roundRect(mx, my, ms, ms, 8); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.font = '11px Consolas, monospace'; ctx.textAlign = 'center';
+    ctx.fillText('UNIT', mx + ms / 2, my + ms - 7);
+    ctx.textAlign = 'left'; ctx.fillStyle = '#eaffff'; ctx.font = 'bold 14px Consolas, monospace';
+    ctx.fillText(ch.name.length > 20 ? ch.name.slice(0, 19) + '…' : ch.name, mx + ms + 12, my + 16);
+    ctx.fillStyle = 'rgba(200,212,226,0.8)'; ctx.font = '11px Consolas, monospace';
+    ctx.fillText('CLASS: ' + ch.role, mx + ms + 12, my + 36);
+    ctx.font = '12px "Segoe UI Emoji", Consolas, monospace'; ctx.fillStyle = this._elementColors?.[el] || '#7df9ff';
+    ctx.fillText('ELEMENT: ' + elIcon + ' ' + (el ? el.toUpperCase() : '—'), mx + ms + 12, my + 56);
+
+    // ── ACTIVE PROTOCOLS (right top) — neural modules ──
+    this._premiumPanel(ctx, RX, 96, PW, 150, '#b88bff', 'ACTIVE PROTOCOLS');
+    const owned = (m && m.protocolCards) ? Object.keys(m.protocolCards).filter(k => m.protocolCards[k]) : [];
+    ctx.textAlign = 'left'; ctx.fillStyle = '#d8c7ff'; ctx.font = 'bold 12px Consolas, monospace';
+    ctx.fillText(`UNLOCKED  ${owned.length} / ${PROTOCOL_CARDS.length}`, RX + 12, 142);
+    if (owned.length === 0) {
+      ctx.fillStyle = 'rgba(190,200,215,0.6)'; ctx.font = '11px Consolas, monospace';
+      ctx.fillText('No protocols online.', RX + 12, 168);
+      ctx.fillText('Unlock in UPGRADES › PROTOCOLS', RX + 12, 186);
+    } else {
+      let ry = 160;
+      for (const id of owned.slice(0, 4)) {
+        const card = PROTOCOL_CARDS.find(c => c.id === id);
+        ctx.fillStyle = 'rgba(184,139,255,0.16)'; ctx.beginPath(); ctx.roundRect(RX + 12, ry - 12, PW - 24, 20, 5); ctx.fill();
+        ctx.strokeStyle = '#b88bff'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(RX + 12, ry - 12, PW - 24, 20, 5); ctx.stroke();
+        ctx.fillStyle = '#eee6ff'; ctx.font = '11px Consolas, monospace';
+        ctx.fillText('◈ ' + (card ? card.name : id), RX + 20, ry + 3); ry += 24;
+      }
+      if (owned.length > 4) { ctx.fillStyle = 'rgba(190,200,215,0.6)'; ctx.fillText('+' + (owned.length - 4) + ' more…', RX + 20, ry + 2); }
+    }
+
+    // ── SYSTEM FEED (right mid) — challenges / hints (no new daily system) ──
+    this._premiumPanel(ctx, RX, 258, PW, 120, '#3CF0E6', 'SYSTEM FEED');
+    ctx.fillStyle = '#9fe8ff'; ctx.font = '11px Consolas, monospace'; ctx.textAlign = 'left';
+    ctx.fillText('› DAILY MISSIONS: COMING SOON', RX + 12, 290);
+    const next = ENDLESS_ACHIEVEMENTS.filter(a => !(m && m.achievements && m.achievements[a.id])).slice(0, 2);
+    let fy = 312;
+    if (next.length === 0) { ctx.fillStyle = 'rgba(190,255,200,0.8)'; ctx.fillText('› ALL MILESTONES CLEARED ✓', RX + 12, fy); }
+    else for (const a of next) { ctx.fillStyle = 'rgba(200,212,226,0.78)'; ctx.fillText('› ' + a.desc, RX + 12, fy); fy += 20; }
+
+    // ── NOW PLAYING (right bottom) — music status / equalizer ──
+    this._drawNowPlaying(ctx, RX, 390, PW, 110);
+
+    // ── QUICK STATS (left bottom) — compact HUD capsules ──
+    this._premiumPanel(ctx, LX, 390, PW, 110, '#9fff6a', 'QUICK STATS');
+    const revives = 3 + (this._hasProto('phoenix_revival') ? 1 : 0);
+    const protos  = owned.length;
+    const qcw = (PW - 30) / 2;
+    this._statCapsule(ctx, LX + 10, 420, qcw, 32, 'ELEMENT', elIcon + ' ' + (el ? el.toUpperCase() : '—'), '#7df9ff');
+    this._statCapsule(ctx, LX + 20 + qcw, 420, qcw, 32, 'CLASS', ch.role.split(' ')[0], '#9fff6a');
+    this._statCapsule(ctx, LX + 10, 458, qcw, 32, 'REVIVES', '✦ ' + revives, '#ff9b3c');
+    this._statCapsule(ctx, LX + 20 + qcw, 458, qcw, 32, 'PROTOCOLS', '◈ ' + protos, '#b88bff');
+  }
+
+  _drawNowPlaying(ctx, x, y, w, h) {
+    this._premiumPanel(ctx, x, y, w, h, '#3CF0E6', 'NOW PLAYING');
+    const muted = !!(this.audio && this.audio.muted);
+    const t = performance.now() * 0.004;
+    ctx.font = '16px "Segoe UI Emoji", Consolas, monospace'; ctx.textAlign = 'left';
+    ctx.fillStyle = muted ? '#7a8290' : '#3CF0E6';
+    ctx.fillText(muted ? '🔇' : '🎵', x + 12, y + h - 16);
+    const bars = 11, bw = 6, gap = 4; let bx = x + 42; const baseY = y + h - 14; const maxH = h - 46;
+    for (let i = 0; i < bars; i++) {
+      const hh = muted ? 3 : 4 + (Math.sin(t + i * 0.7) * 0.5 + 0.5) * maxH;
+      const grad = ctx.createLinearGradient(0, baseY - hh, 0, baseY);
+      grad.addColorStop(0, muted ? '#3a4048' : '#9fffe6'); grad.addColorStop(1, muted ? '#202428' : '#1fa898');
+      ctx.fillStyle = grad; ctx.fillRect(bx, baseY - hh, bw, hh); bx += bw + gap;
+    }
+    ctx.font = '10px Consolas, monospace'; ctx.textAlign = 'right';
+    ctx.fillStyle = muted ? '#9aa4b0' : 'rgba(180,255,245,0.85)';
+    ctx.fillText(muted ? 'MUTED' : 'CYBER-GRID OST', x + w - 10, y + 17);
+  }
+
+  _drawMenuGear(ctx) {
+    const r = this._menuGearRect();
+    const cx = r.x + r.w / 2, cy = r.y + r.h / 2;
+    ctx.save();
+    ctx.font = '20px "Segoe UI Emoji", Consolas, monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = 'rgba(180,200,220,0.85)';
+    ctx.fillText('⚙', cx, cy + 1);
+    ctx.textBaseline = 'alphabetic';
+    ctx.restore();
+  }
+
   _drawStartMenu(ctx) {
     // Background — use the new clean background image, fall back to city bg
     const bg = this._menuBg;
@@ -6592,42 +6805,16 @@ export class Game {
     ctx.fillStyle = 'rgba(2,6,14,0.32)';
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
-    // ── Menu zone — premium cyber-glass buttons, dropped BELOW the logo so START GAME never
-    // overlaps "PROTOCOL". Layout constants are mirrored in main.js start_menu click hit-test. ──
-    // spacing/startY sized so the full list (up to 9 items with ENDLESS MODE) clears the bottom
-    // nav-hint; mirrored in main.js start_menu click hit-test.
+    // ── Dashboard summary panels (left + right margins; never overlap the centered buttons) ──
+    this._drawMenuDashboard(ctx);
+
+    // ── Menu zone — premium layered cyber buttons, centered, clear of the side panels. Layout
+    // constants are mirrored in main.js start_menu click hit-test (must stay in sync). ──
     const startY = 292, spacing = 46, BW = 360, BH = 42;
     const cx = WIDTH / 2;
     for (let i = 0; i < this.menuItems.length; i++) {
-      const yc  = startY + i * spacing;
-      const bx  = cx - BW / 2;
-      const by  = yc - BH / 2;
-      const sel = i === this.menuIndex;
-
-      ctx.save();
-      // Dark translucent glass panel
-      ctx.fillStyle = sel ? 'rgba(6,34,52,0.66)' : 'rgba(6,12,22,0.5)';
-      ctx.beginPath(); ctx.roundRect(bx, by, BW, BH, 9); ctx.fill();
-      // Thin neon border (cyan glow when selected, dim purple otherwise)
-      if (sel) {
-        ctx.shadowColor = CYAN; ctx.shadowBlur = 14;
-        ctx.strokeStyle = CYAN; ctx.lineWidth = 2;
-      } else {
-        ctx.strokeStyle = 'rgba(140,110,210,0.42)'; ctx.lineWidth = 1;
-      }
-      ctx.beginPath(); ctx.roundRect(bx, by, BW, BH, 9); ctx.stroke();
-      ctx.restore();
-
-      // Selected accent tick on the left edge
-      if (sel) {
-        ctx.fillStyle = CYAN;
-        ctx.fillRect(bx + 7, by + 9, 3, BH - 18);
-      }
-
-      ctx.font      = sel ? 'bold 22px Consolas, monospace' : '20px Consolas, monospace';
-      ctx.fillStyle = sel ? '#e9ffff' : 'rgba(214,226,238,0.9)';
-      ctx.textAlign = 'center';
-      ctx.fillText(this.menuItems[i], cx, yc + 7);
+      const by = startY + i * spacing - BH / 2;
+      this._premiumButton(ctx, cx - BW / 2, by, BW, BH, this.menuItems[i], i === this.menuIndex, CYAN);
     }
 
     // ── Help zone — navigation hint at the very bottom ──
@@ -6646,6 +6833,38 @@ export class Game {
     ctx.fillText('Early Demo / Work in Progress', 14, 22);
 
     // ── Controller-support badge + live status (top-right). PF moved to Upgrades/Achievements. ──
+    this._drawControllerBadge(ctx, WIDTH - 14, 22);
+    // Gear shortcut → same SETTINGS screen as the central button (decorative-safe; click in main.js).
+    this._drawMenuGear(ctx);
+    ctx.textAlign = 'left';
+  }
+
+  // ─── SETTINGS screen — single home for Audio / Controls / Credits ────────────
+  _drawSettings(ctx) {
+    const bg = this._menuBg;
+    if (bg && bg.complete && bg.naturalWidth > 0) ctx.drawImage(bg, 0, 0, WIDTH, HEIGHT);
+    else { const g = ctx.createLinearGradient(0, 0, 0, HEIGHT); g.addColorStop(0, '#05080f'); g.addColorStop(1, '#02040a'); ctx.fillStyle = g; ctx.fillRect(0, 0, WIDTH, HEIGHT); }
+    ctx.fillStyle = 'rgba(2,6,14,0.62)'; ctx.fillRect(0, 0, WIDTH, HEIGHT);   // stronger dim for a focused sub-menu
+
+    ctx.font = 'bold 40px Consolas, monospace'; ctx.fillStyle = CYAN; ctx.textAlign = 'center';
+    ctx.fillText('SETTINGS', WIDTH / 2, 150);
+    ctx.font = '13px Consolas, monospace'; ctx.fillStyle = 'rgba(190,205,220,0.65)';
+    ctx.fillText('System configuration · audio · controls · credits', WIDTH / 2, 178);
+
+    // Framing panel behind the buttons
+    const items = this.settingsItems;
+    const r0 = this._settingsButtonRect(0), rN = this._settingsButtonRect(items.length - 1);
+    this._premiumPanel(ctx, WIDTH / 2 - 250, r0.y - 30, 500, (rN.y + rN.h) - (r0.y) + 60, '#7df9ff', 'CONFIGURATION');
+
+    for (let i = 0; i < items.length; i++) {
+      const r = this._settingsButtonRect(i);
+      const accent = items[i] === 'BACK' ? '#9aa4b0' : CYAN;
+      this._premiumButton(ctx, r.x, r.y, r.w, r.h, items[i], i === this._settingsIndex, accent);
+    }
+
+    ctx.font = '14px Consolas, monospace'; ctx.fillStyle = 'rgba(200,210,225,0.62)'; ctx.textAlign = 'center';
+    ctx.fillText('↑↓ W/S  Navigate     ENTER / Click  Select     ESC  Back', WIDTH / 2, HEIGHT - 22);
+    this._drawAgeBadge(ctx, 16, HEIGHT - 52);
     this._drawControllerBadge(ctx, WIDTH - 14, 22);
     ctx.textAlign = 'left';
   }

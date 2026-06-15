@@ -1,6 +1,6 @@
 import { Vec2, MATRIX_RADIUS, CYAN_DARK, BLACK, RED, ORANGE, CYAN, WHITE } from '../constants.js';
 import { randomRange } from '../utils.js';
-import { DataCore, rollCoreType } from './DataCore.js?v=20260615105338';
+import { DataCore, rollCoreType } from './DataCore.js?v=20260615113009';
 
 export class PowerMatrix {
   constructor(pos, color, capacity = 8) {
@@ -18,7 +18,7 @@ export class PowerMatrix {
 
     this._sprite = new Image();
     this._sprite.onerror = () => console.warn('[Assets] Failed to load: assets/bases/matrix_base.png');
-    this._sprite.src = 'assets/bases/matrix_base.png?v=20260615105338';
+    this._sprite.src = 'assets/bases/matrix_base.png?v=20260615113009';
   }
 
   hasCore()  { return this.stored > 0; }

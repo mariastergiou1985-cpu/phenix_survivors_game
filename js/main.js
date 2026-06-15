@@ -1,6 +1,6 @@
-import { Game } from './game/Game.js?v=20260615105338';
-import { AudioManager } from './audio/AudioManager.js?v=20260615105338';
-import { GamepadInput } from './Gamepad.js?v=20260615105338';
+import { Game } from './game/Game.js?v=20260615113009';
+import { AudioManager } from './audio/AudioManager.js?v=20260615113009';
+import { GamepadInput } from './Gamepad.js?v=20260615113009';
 
 const canvas = document.getElementById('game');
 const ctx    = canvas.getContext('2d');
@@ -183,15 +183,34 @@ canvas.addEventListener('mousedown', e => {
 
   } else if (game.gameState === 'start_menu') {
     // ── Start Menu ───────────────────────────────────────────────
-    // Layout constants mirror Game.js _drawStartMenu (must stay in sync).
-    const BW = 360, BH = 42, startY = 292, spacing = 46;
-    for (let i = 0; i < game.menuItems.length; i++) {
-      const bx = canvas.width / 2 - BW / 2;
-      const by = startY + i * spacing - BH / 2;
-      if (mousePos.x >= bx && mousePos.x <= bx + BW &&
-          mousePos.y >= by && mousePos.y <= by + BH) {
-        game.menuIndex = i;
-        game._selectMenuItem(game.menuItems[i]);
+    // Top-right gear icon → shortcut to the SAME Settings screen (no duplicate logic).
+    const gr = game._menuGearRect();
+    if (mousePos.x >= gr.x && mousePos.x <= gr.x + gr.w &&
+        mousePos.y >= gr.y && mousePos.y <= gr.y + gr.h) {
+      game.goToSettings();
+    } else {
+      // Layout constants mirror Game.js _drawStartMenu (must stay in sync).
+      const BW = 360, BH = 42, startY = 292, spacing = 46;
+      for (let i = 0; i < game.menuItems.length; i++) {
+        const bx = canvas.width / 2 - BW / 2;
+        const by = startY + i * spacing - BH / 2;
+        if (mousePos.x >= bx && mousePos.x <= bx + BW &&
+            mousePos.y >= by && mousePos.y <= by + BH) {
+          game.menuIndex = i;
+          game._selectMenuItem(game.menuItems[i]);
+          break;
+        }
+      }
+    }
+
+  } else if (game.gameState === 'settings') {
+    // ── Settings sub-menu — buttons use Game._settingsButtonRect (shared geometry) ─
+    for (let i = 0; i < game.settingsItems.length; i++) {
+      const r = game._settingsButtonRect(i);
+      if (mousePos.x >= r.x && mousePos.x <= r.x + r.w &&
+          mousePos.y >= r.y && mousePos.y <= r.y + r.h) {
+        game._settingsIndex = i;
+        game._selectSettingsItem(game.settingsItems[i]);
         break;
       }
     }
