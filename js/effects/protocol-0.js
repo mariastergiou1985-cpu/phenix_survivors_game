@@ -66,10 +66,12 @@ export class Protocol0 {
       // STAGE 2: lava trail + collision while moving
       const dx = this.x - this._lastPos.x, dy = this.y - this._lastPos.y, moved = Math.hypot(dx, dy);
       this._dropAcc += moved;
-      while (this._dropAcc >= this.cfg.trail.dropEveryPx) {
+      let _tg = 0;
+      while (this._dropAcc >= this.cfg.trail.dropEveryPx && _tg++ < 16) {
         this._dropAcc -= this.cfg.trail.dropEveryPx;
         this._trail.push({ x: this.x, y: this.y, born: now });
       }
+      if (this._dropAcc > this.cfg.trail.dropEveryPx * 4) this._dropAcc = 0;   // perf: no burst on teleport/large move
       if (moved > 0.1) {
         const r2 = this.cfg.collide.radius * this.cfg.collide.radius;
         for (const en of this.enemies) {
@@ -88,6 +90,7 @@ export class Protocol0 {
       if (now - this._gridBorn >= this.cfg.detonate.gridMs) this.state = 'idle';
     }
     this._trail = this._trail.filter(s => now - s.born < this.cfg.trail.lifeMs);
+      if (this._trail.length > 140) this._trail.splice(0, this._trail.length - 140);   // hard cap
   }
 
   _detonate(now) {

@@ -5,36 +5,36 @@ import {
   MAX_OVERLOAD, PLAYER_RADIUS, CORE_RADIUS, MATRIX_RADIUS,
   DARK_BG, GRID_LINE, BLACK, CYAN, RED, GREEN, YELLOW, ORANGE, WHITE, PURPLE,
   CORE_COLORS, VIEW_SCALE, VIEW_W, VIEW_H, ENDLESS_VIEW_SCALE,
-} from '../constants.js?v=20260615160104';
+} from '../constants.js?v=20260615210000';
 import { clamp, distance, safeNormalize, randomChoice, randomRange } from '../utils.js';
 
 import { FloatingText }   from '../entities/FloatingText.js';
-import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260615160104';
-import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260615160104';
-import { Player }         from '../entities/Player.js?v=20260615160104';
-import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260615160104';
-import { Enemy }          from '../entities/Enemy.js?v=20260615160104';
-import { SupportDrone }   from '../entities/SupportDrone.js?v=20260615160104';
+import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260615210000';
+import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260615210000';
+import { Player }         from '../entities/Player.js?v=20260615210000';
+import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260615210000';
+import { Enemy }          from '../entities/Enemy.js?v=20260615210000';
+import { SupportDrone }   from '../entities/SupportDrone.js?v=20260615210000';
 
-import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow } from './Effects.js?v=20260615160104';
-import { SystemEventManager } from './Events.js?v=20260615160104';
-import { UpgradeUI }      from './UpgradeUI.js?v=20260615160104';
-import { weightedSample } from './Upgrades.js?v=20260615160104';
-import { MutationUI }      from './MutationUI.js?v=20260615160104';
-import { sampleMutations } from './Mutations.js?v=20260615160104';
-import { drawHUD, drawEndScreen } from './HUD.js?v=20260615160104';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS } from './MetaProgress.js?v=20260615160104';
-import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260615160104';
+import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow } from './Effects.js?v=20260615210000';
+import { SystemEventManager } from './Events.js?v=20260615210000';
+import { UpgradeUI }      from './UpgradeUI.js?v=20260615210000';
+import { weightedSample } from './Upgrades.js?v=20260615210000';
+import { MutationUI }      from './MutationUI.js?v=20260615210000';
+import { sampleMutations } from './Mutations.js?v=20260615210000';
+import { drawHUD, drawEndScreen } from './HUD.js?v=20260615210000';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS } from './MetaProgress.js?v=20260615210000';
+import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260615210000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
-import { GlitchDash } from '../effects/glitch-dash.js?v=20260615160104';
-import { EMPShockwave } from '../effects/emp-shockwave.js?v=20260615160104';
-import { DigitalSingularity } from '../effects/digital-singularity.js?v=20260615160104';
-import { Protocol0 } from '../effects/protocol-0.js?v=20260615160104';
-import { LaserEyes } from '../effects/laser-eyes.js?v=20260615160104';
-import { MeteorRain } from '../effects/meteor-rain.js?v=20260615160104';
+import { GlitchDash } from '../effects/glitch-dash.js?v=20260615210000';
+import { EMPShockwave } from '../effects/emp-shockwave.js?v=20260615210000';
+import { DigitalSingularity } from '../effects/digital-singularity.js?v=20260615210000';
+import { Protocol0 } from '../effects/protocol-0.js?v=20260615210000';
+import { LaserEyes } from '../effects/laser-eyes.js?v=20260615210000';
+import { MeteorRain } from '../effects/meteor-rain.js?v=20260615210000';
 // Euclid Vector toxin kit — used ONLY when selectedCharacter === 'euclid_vector' (world-space).
-import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=20260615160104';
+import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=20260615210000';
 
 // ── Thunder Solo sprite slices (cyan_lightning_rain_notes.png, 1254×1254) ──────
 // Strike variants: a clean bolt column + ripple base. (ax,ay) = ripple-centre as a
@@ -150,16 +150,16 @@ export class Game {
       fallback.src = 'assets/backgrounds/cyberpunk_city_background.png';
       this._bgImage = fallback;
     };
-    this._bgImage.src = 'assets/backgrounds/cyber_city_bg_clean.png?v=20260615160104';
+    this._bgImage.src = 'assets/backgrounds/cyber_city_bg_clean.png?v=20260615210000';
 
     // Endless Stage 02 visuals (only used while this.endless — Act 1 keeps default visuals).
     // Missing files degrade to the default background / default Nexus visual (warn, no crash).
     this._endlessBgImage = new Image();
     this._endlessBgImage.onerror = () => console.warn('[Stage] missing assets/maps/endless/stage_02_neon_shinjuku_plaza.png — using default background');
-    this._endlessBgImage.src = 'assets/maps/endless/stage_02_neon_shinjuku_plaza.png?v=20260615160104';
+    this._endlessBgImage.src = 'assets/maps/endless/stage_02_neon_shinjuku_plaza.png?v=20260615210000';
     this._endlessNexusImage = new Image();
     this._endlessNexusImage.onerror = () => console.warn('[Nexus] missing assets/nexus/endless_nexus_base_8cores.png — using default Nexus visual');
-    this._endlessNexusImage.src = 'assets/nexus/endless_nexus_base_8cores.png?v=20260615160104';
+    this._endlessNexusImage.src = 'assets/nexus/endless_nexus_base_8cores.png?v=20260615210000';
 
     // Preload character portraits for Character Select screen
     this._charImages = {};
@@ -172,7 +172,7 @@ export class Game {
     // Japan Phasewalker portrait lives in the endless/ subfolder (Character Select + FX modules).
     this._phasewalkerSprite = new Image();
     this._phasewalkerSprite.onerror = () => console.warn('[Char] missing assets/characters/endless/japan_phasewalker.png');
-    this._phasewalkerSprite.src = 'assets/characters/endless/japan_phasewalker.png?v=20260615160104';   // ?v bust: corrected transparency
+    this._phasewalkerSprite.src = 'assets/characters/endless/japan_phasewalker.png?v=20260615210000';   // ?v bust: corrected transparency
     this._charImages['japan_phasewalker'] = this._phasewalkerSprite;
     // Euclid Vector portrait (endless/ subfolder; unlocked from the start — see roster + free unlock).
     this._euclidSprite = new Image();
@@ -213,13 +213,13 @@ export class Game {
     // Preload start-menu background image (new premium theme; falls back to dark gradient if missing)
     this._menuBg = new Image();
     this._menuBg.onerror = () => console.warn('[Menu] main_menu_theme.png not found — dark fallback used');
-    this._menuBg.src = 'assets/ui/new_main_menu_theme/main_menu_theme.png?v=20260615160104';
+    this._menuBg.src = 'assets/ui/new_main_menu_theme/main_menu_theme.png?v=20260615210000';
 
     // Menu character cut-out (transparent two-character art) — code-positioned layer over the theme's
     // character zone, so the protagonists are crisp + code-controlled. Graceful if missing.
     this._menuChars = new Image();
     this._menuChars.onerror = () => console.warn('[Menu] cyber-grid-menu.png not found — theme art used');
-    this._menuChars.src = 'assets/ui/cyber-grid-menu.png?v=20260615160104';
+    this._menuChars.src = 'assets/ui/cyber-grid-menu.png?v=20260615210000';
 
     // Preload phoenix revive effect images (orange / blue / gold tiers)
     this._phoenixImage = new Image();
@@ -227,11 +227,11 @@ export class Game {
 
     this._phoenixBlueImage = new Image();
     this._phoenixBlueImage.onerror = () => console.warn('[Assets] Failed to load: assets/effects/phoenix/blue_phoenix_revive.png');
-    this._phoenixBlueImage.src = 'assets/effects/phoenix/blue_phoenix_revive.png?v=20260615160104';
+    this._phoenixBlueImage.src = 'assets/effects/phoenix/blue_phoenix_revive.png?v=20260615210000';
 
     this._phoenixGoldImage = new Image();
     this._phoenixGoldImage.onerror = () => console.warn('[Assets] Failed to load: assets/effects/phoenix/gold_phoenix_revive.png');
-    this._phoenixGoldImage.src = 'assets/effects/phoenix/gold_phoenix_revive.png?v=20260615160104';
+    this._phoenixGoldImage.src = 'assets/effects/phoenix/gold_phoenix_revive.png?v=20260615210000';
 
     // Preload credits photos
     this._creditImgInk = new Image();
@@ -249,10 +249,10 @@ export class Game {
     // Preload core and matrix sprites
     this._coreSprite = new Image();
     this._coreSprite.onerror = () => console.warn('[Assets] Failed to load: assets/cores/data_core.png');
-    this._coreSprite.src = 'assets/cores/data_core.png?v=20260615160104';
+    this._coreSprite.src = 'assets/cores/data_core.png?v=20260615210000';
     this._matrixSprite = new Image();
     this._matrixSprite.onerror = () => console.warn('[Assets] Failed to load: assets/bases/matrix_base.png');
-    this._matrixSprite.src = 'assets/bases/matrix_base.png?v=20260615160104';
+    this._matrixSprite.src = 'assets/bases/matrix_base.png?v=20260615210000';
 
     // Preload grid cache supply drop sprite
     this._gridCacheSprite = new Image();
@@ -276,7 +276,7 @@ export class Game {
     this._airstrikeSprite.src = 'assets/enemies/event_airstrike/airstrike_sheet.png';
     this._lightningStormSprite = new Image();
     this._lightningStormSprite.onerror = () => console.warn('[Endless] lights_storm_rain.png not found — drawn fallback used');
-    this._lightningStormSprite.src = 'assets/events/weather/lights_storm_rain.png?v=20260615160104';
+    this._lightningStormSprite.src = 'assets/events/weather/lights_storm_rain.png?v=20260615210000';
 
     // HUD icons: Data-Core (top-right credits) + chains (Cyber Arm SPACE ultimate icon)
     this._dataCoreIcon = new Image();
@@ -300,25 +300,25 @@ export class Game {
     // Preload acid rain weather sprites
     this._acidRainFallImg = new Image();
     this._acidRainFallImg.onerror = () => console.warn('[Weather] acid_rain_fall.png not found — using line fallback');
-    this._acidRainFallImg.src = 'assets/events/weather/acid_rain_fall.png?v=20260615160104';
+    this._acidRainFallImg.src = 'assets/events/weather/acid_rain_fall.png?v=20260615210000';
     this._acidRainSplashImg = new Image();
     this._acidRainSplashImg.onerror = () => console.warn('[Weather] acid_rain_splash.png not found — using ellipse fallback');
-    this._acidRainSplashImg.src = 'assets/events/weather/acid_rain_splash.png?v=20260615160104';
+    this._acidRainSplashImg.src = 'assets/events/weather/acid_rain_splash.png?v=20260615210000';
 
     // Preload AI Overload Titan boss sprite
     this._titanSprite = new Image();
     this._titanSprite.onerror = () => console.warn('[Boss] ai_overload_titan.png failed to load — using fallback');
-    this._titanSprite.src = 'assets/enemies/bosses/ai_overload_titan.png?v=20260615160104';
+    this._titanSprite.src = 'assets/enemies/bosses/ai_overload_titan.png?v=20260615210000';
 
     // Preload Matrix Annihilator mini-boss sprite (existing asset)
     this._annihilatorSprite = new Image();
     this._annihilatorSprite.onerror = () => console.warn('[Boss] assets/enemies/bosses/matrix_annihilator.png failed to load — using fallback');
-    this._annihilatorSprite.src = 'assets/enemies/bosses/matrix_annihilator.png?v=20260615160104';
+    this._annihilatorSprite.src = 'assets/enemies/bosses/matrix_annihilator.png?v=20260615210000';
 
     // Preload Bloodfang Packmaster mini-boss sprite (existing asset)
     this._bloodfangSprite = new Image();
     this._bloodfangSprite.onerror = () => console.warn('[Boss] assets/enemies/bosses/bloodfang_packmaster.png failed to load — using fallback');
-    this._bloodfangSprite.src = 'assets/enemies/bosses/bloodfang_packmaster.png?v=20260615160104';
+    this._bloodfangSprite.src = 'assets/enemies/bosses/bloodfang_packmaster.png?v=20260615210000';
 
     // Preload secret-skin preview sprites (Character Select locked/unlocked + Victory screen).
     // Keyed by the same flags MetaProgress persists. Missing files degrade to a text fallback.
@@ -368,6 +368,17 @@ export class Game {
       { id: 'oni_cataclysm_protocol', name: 'Oni Cataclysm Protocol', fallbackColor: '#ff3030', fallbackAlt: '#ff8a3c', role: 'Endless / Cataclysm' },
     ];
     this.reset();
+
+    // HTML menu overlay — created once after reset() so meta/characters are ready.
+    this._menuOverlayEl      = null;   // root #cgm-overlay div
+    this._menuOverlayVisible = false;
+    try {
+      this._initMenuOverlay();
+      // Show overlay immediately (initial state is start_menu)
+      this._showMenuOverlay();
+    } catch (err) {
+      console.error('[CGM Overlay] _initMenuOverlay failed:', err);
+    }
   }
 
   // UPGRADES = the permanent Grid-Credit progression (spent between runs). ENDLESS MODE appears
@@ -585,6 +596,7 @@ export class Game {
   }
 
   startGame() {
+    this._hideMenuOverlay();
     if (!this.selectedCharacter) {
       this.gameState = 'character_select';
     } else {
@@ -596,6 +608,7 @@ export class Game {
 
   selectCharacter(charId) {
     if (!this.meta.isCharacterUnlocked(charId)) return;   // locked characters can't be started
+    this._hideMenuOverlay();
     this.selectedCharacter = charId;
     this.audio?.startGameplayMusic();
     this.gameState = 'playing';
@@ -603,6 +616,7 @@ export class Game {
   }
 
   goToCharacterSelect() {
+    this._hideMenuOverlay();
     this.gameState = 'character_select';
     this.characterIndex = 0;
     this.audio?.startMenuMusic();
@@ -700,9 +714,11 @@ export class Game {
     this.supportDrones = [];
     this.allyDrones    = [];
     this.audio?.startMenuMusic();
+    this._showMenuOverlay();
   }
 
   goToExitScreen() {
+    this._hideMenuOverlay();
     this.gameState = 'exit_screen';
   }
 
@@ -722,6 +738,7 @@ export class Game {
   // achievements/secret-unlock systems as Continue — Endless, just without the Act 1 prelude.
   startEndlessRun() {
     if (!this.meta?.isEndlessUnlocked()) return;   // guard: never reachable while locked
+    this._hideMenuOverlay();
     this.selectedCharacter = this.selectedCharacter || this.characters[this.characterIndex]?.id || 'skeleton_warrior';
     this.gameState = 'playing';
     this.reset();                      // fresh run, timeAlive 0, matrices rebuilt, endless=false
@@ -803,18 +820,20 @@ export class Game {
 
   // Permanent Grid-Credit progression screen (spent between runs).
   goToUpgradesScreen() {
+    this._hideMenuOverlay();
     this.gameState        = 'upgrades';
     this._upgradeMsg      = '';
     this._upgradeMsgTimer = 0;
     this._confirmReset    = false;
   }
 
-  goToCredits() { this.gameState = 'credits'; }
+  goToCredits() { this._hideMenuOverlay(); this.gameState = 'credits'; }
 
   // Read-only Endless achievements gallery (display only — never unlocks/resets anything).
-  goToAchievementsScreen() { this.gameState = 'achievements'; }
+  goToAchievementsScreen() { this._hideMenuOverlay(); this.gameState = 'achievements'; }
 
   goToAudioSettings() {
+    this._hideMenuOverlay();
     this.gameState      = 'audio_settings';
     this._audioSelIndex = 0;
     // Assume the button is still held from the click that opened this screen,
@@ -823,7 +842,7 @@ export class Game {
     this._prevMouseDown = true;
   }
 
-  goToInstructions() { this.gameState = 'instructions'; }
+  goToInstructions() { this._hideMenuOverlay(); this.gameState = 'instructions'; }
 
   // ─── Meta upgrades ──────────────────────────────────────────────────────────
   _applyMetaUpgrades() {
@@ -3512,11 +3531,13 @@ export class Game {
       this.menuIndex = (this.menuIndex - 1 + this.menuItems.length) % this.menuItems.length;
       keys.delete('arrowup');
       keys.delete('w');
+      this._syncMenuOverlayActive();
     }
     if (keys.has('arrowdown') || keys.has('s')) {
       this.menuIndex = (this.menuIndex + 1) % this.menuItems.length;
       keys.delete('arrowdown');
       keys.delete('s');
+      this._syncMenuOverlayActive();
     }
     if (keys.has('enter') || keys.has(' ')) {
       this._selectMenuItem(this.menuItems[this.menuIndex]);
@@ -3535,7 +3556,7 @@ export class Game {
     else if (item === 'EXIT') { try { window.close(); } catch (e) {} this.goToExitScreen(); }   // browser-safe: close if allowed, else friendly exit screen
   }
 
-  goToSettings() { this.gameState = 'settings'; this._settingsIndex = 0; }
+  goToSettings() { this._hideMenuOverlay(); this.gameState = 'settings'; this._settingsIndex = 0; }
 
   _updateSettings(input) {
     const { keys } = input;
@@ -6964,6 +6985,488 @@ export class Game {
     ctx.restore();
   }
 
+  // ─── HTML menu overlay — cyber-grid-menu.html injected as DOM overlay ──────
+  //
+  //  _initMenuOverlay()       — create once (constructor); injects CSS + HTML into document
+  //  _showMenuOverlay()       — refresh live data, make visible; called by goToMainMenu()
+  //  _hideMenuOverlay()       — hide; called by every method that exits start_menu
+  //  _syncMenuOverlayActive() — update only the active .mbtn; called by _updateStartMenu()
+  //
+  _initMenuOverlay() {
+    if (this._menuOverlayEl) return;   // idempotent
+
+    // ── Google Fonts (Press Start 2P · Orbitron · Share Tech Mono) ──────────
+    if (!document.getElementById('cgm-fonts')) {
+      const _lnk = (rel, href, xo) => { const l = document.createElement('link'); l.rel = rel; l.href = href; if (xo) l.crossOrigin = ''; document.head.appendChild(l); return l; };
+      _lnk('preconnect', 'https://fonts.googleapis.com');
+      _lnk('preconnect', 'https://fonts.gstatic.com', true);
+      const lf = _lnk('stylesheet', 'https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Orbitron:wght@500;600;700;800;900&family=Share+Tech+Mono&display=swap');
+      lf.id = 'cgm-fonts';
+    }
+
+    // ── Scoped CSS ───────────────────────────────────────────────────────────
+    const style = document.createElement('style');
+    style.id = 'cgm-style';
+    style.textContent = `
+      #cgm-overlay {
+        position:fixed; inset:0; z-index:100;
+        font-family:'Share Tech Mono',ui-monospace,monospace;
+        color:#cfe9ff;
+        background:
+          radial-gradient(1200px 700px at 50% -10%,rgba(168,85,247,.18),transparent 60%),
+          radial-gradient(900px 600px at 12% 30%,rgba(46,230,246,.10),transparent 60%),
+          radial-gradient(900px 600px at 88% 70%,rgba(255,45,149,.10),transparent 60%),
+          linear-gradient(180deg,#0b1030,#070a1c);
+        display:flex; align-items:flex-start; justify-content:center;
+        padding:22px; overflow-x:hidden; overflow-y:auto;
+      }
+      #cgm-overlay::before{
+        content:""; position:fixed; inset:0; pointer-events:none; z-index:0;
+        background-image:
+          linear-gradient(rgba(46,230,246,.05) 1px,transparent 1px),
+          linear-gradient(90deg,rgba(46,230,246,.05) 1px,transparent 1px);
+        background-size:46px 46px;
+        mask-image:radial-gradient(circle at 50% 40%,#000 0%,transparent 78%);
+      }
+      #cgm-overlay::after{
+        content:""; position:fixed; inset:0; pointer-events:none; z-index:9999;
+        background:repeating-linear-gradient(0deg,rgba(0,0,0,.10) 0 2px,transparent 2px 4px);
+        opacity:.35; mix-blend-mode:overlay;
+      }
+      #cgm-overlay *{box-sizing:border-box;margin:0;padding:0;}
+      #cgm-overlay :root{
+        --bg-0:#070a1c;--bg-1:#0b1030;
+        --panel:rgba(10,16,46,.62);--panel-edge:rgba(46,230,246,.10);
+        --cyan:#2ee6f6;--cyan-dim:#1aa9bd;--magenta:#ff2d95;--purple:#a855f7;--amber:#fbbf24;--green:#34d399;
+        --txt:#cfe9ff;--txt-dim:#6f86b8;--txt-faint:#46588a;
+        --glow-cyan:0 0 8px rgba(46,230,246,.55),0 0 22px rgba(46,230,246,.22);
+        --glow-mag:0 0 10px rgba(255,45,149,.55),0 0 26px rgba(255,45,149,.22);
+        --radius:14px;--gap:16px;
+      }
+      /* inject :root vars onto overlay itself */
+      #cgm-overlay{
+        --bg-0:#070a1c;--bg-1:#0b1030;
+        --panel:rgba(10,16,46,.62);--panel-edge:rgba(46,230,246,.10);
+        --cyan:#2ee6f6;--cyan-dim:#1aa9bd;--magenta:#ff2d95;--purple:#a855f7;--amber:#fbbf24;--green:#34d399;
+        --txt:#cfe9ff;--txt-dim:#6f86b8;--txt-faint:#46588a;
+        --glow-cyan:0 0 8px rgba(46,230,246,.55),0 0 22px rgba(46,230,246,.22);
+        --glow-mag:0 0 10px rgba(255,45,149,.55),0 0 26px rgba(255,45,149,.22);
+        --radius:14px;--gap:16px;
+      }
+      #cgm-overlay .stage{
+        position:relative;z-index:1;width:100%;max-width:1480px;
+        border:1px solid var(--panel-edge);border-radius:20px;
+        padding:22px 26px 18px;
+        background:linear-gradient(180deg,rgba(168,85,247,.05),transparent 30%),rgba(7,10,28,.45);
+        box-shadow:inset 0 0 60px rgba(46,230,246,.05),0 30px 80px rgba(0,0,0,.55);
+      }
+      #cgm-overlay .corner{position:absolute;width:34px;height:34px;border:2px solid var(--cyan);opacity:.8;filter:drop-shadow(var(--glow-cyan));}
+      #cgm-overlay .corner.tl{top:-2px;left:-2px;border-right:0;border-bottom:0;border-radius:18px 0 0 0;}
+      #cgm-overlay .corner.tr{top:-2px;right:-2px;border-left:0;border-bottom:0;border-radius:0 18px 0 0;}
+      #cgm-overlay .corner.bl{bottom:-2px;left:-2px;border-right:0;border-top:0;border-radius:0 0 0 18px;}
+      #cgm-overlay .corner.br{bottom:-2px;right:-2px;border-left:0;border-top:0;border-radius:0 0 18px 0;}
+      #cgm-overlay .topbar{display:flex;justify-content:flex-end;align-items:center;gap:14px;margin-bottom:14px;}
+      #cgm-overlay .chip{display:inline-flex;align-items:center;gap:8px;padding:7px 14px;border-radius:999px;border:1px solid rgba(46,230,246,.25);background:rgba(46,230,246,.06);font-size:14px;letter-spacing:.5px;}
+      #cgm-overlay .chip.pink{border-color:rgba(255,45,149,.3);background:rgba(255,45,149,.07);}
+      #cgm-overlay .chip svg{width:16px;height:16px;}
+      #cgm-overlay .chip.cyan svg{color:var(--cyan);filter:drop-shadow(var(--glow-cyan));}
+      #cgm-overlay .chip.pink svg{color:var(--magenta);filter:drop-shadow(var(--glow-mag));}
+      #cgm-overlay .chip b{font-family:'Orbitron',sans-serif;font-weight:700;}
+      #cgm-overlay .icon-btn{width:38px;height:38px;display:grid;place-items:center;border-radius:999px;border:1px solid rgba(207,233,255,.18);background:rgba(207,233,255,.04);cursor:pointer;color:var(--txt-dim);transition:.2s;}
+      #cgm-overlay .icon-btn:hover{color:var(--cyan);border-color:var(--cyan);box-shadow:var(--glow-cyan);}
+      #cgm-overlay .icon-btn svg{width:20px;height:20px;}
+      #cgm-overlay .grid{display:grid;grid-template-columns:300px 1fr 308px;gap:var(--gap);align-items:start;}
+      #cgm-overlay .col{display:flex;flex-direction:column;gap:var(--gap);}
+      #cgm-overlay .panel{position:relative;border:1px solid var(--accent,var(--cyan));border-radius:var(--radius);background:var(--panel);padding:14px 16px;box-shadow:inset 0 0 22px rgba(0,0,0,.35),0 0 0 1px rgba(0,0,0,.25);backdrop-filter:blur(3px);}
+      #cgm-overlay .panel::before{content:"";position:absolute;left:14px;right:14px;top:0;height:1px;background:linear-gradient(90deg,transparent,var(--accent,var(--cyan)),transparent);opacity:.6;}
+      #cgm-overlay .panel-title{display:flex;align-items:center;gap:8px;font-family:'Orbitron',sans-serif;font-weight:800;font-size:12px;letter-spacing:2.5px;color:var(--accent,var(--cyan));text-shadow:0 0 10px var(--accent-glow,rgba(46,230,246,.5));margin-bottom:12px;}
+      #cgm-overlay .panel-title .dot{width:6px;height:6px;border-radius:50%;background:var(--accent,var(--cyan));box-shadow:0 0 8px var(--accent,var(--cyan));}
+      #cgm-overlay .row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:5px 0;font-size:13.5px;border-bottom:1px dashed rgba(111,134,184,.14);}
+      #cgm-overlay .row:last-child{border-bottom:0;}
+      #cgm-overlay .row .k{color:var(--txt-dim);letter-spacing:1px;text-transform:uppercase;font-size:12px;white-space:nowrap;}
+      #cgm-overlay .row .v{color:var(--txt);font-family:'Orbitron',sans-serif;font-weight:600;text-align:right;display:inline-flex;align-items:center;gap:6px;max-width:60%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+      #cgm-overlay .v svg{width:14px;height:14px;flex:none;}
+      #cgm-overlay .v.cyan{color:var(--cyan);}  #cgm-overlay .v.amber{color:var(--amber);}
+      #cgm-overlay .v.green{color:var(--green);} #cgm-overlay .v.mag{color:var(--magenta);}
+      #cgm-overlay .v.amber svg{color:var(--amber);filter:drop-shadow(0 0 6px rgba(251,191,36,.5));}
+      #cgm-overlay .player{font-family:'Orbitron',sans-serif;font-weight:800;font-size:18px;letter-spacing:1px;color:#fff;}
+      #cgm-overlay .rank{color:var(--cyan);font-size:11px;letter-spacing:2px;margin:2px 0 10px;}
+      #cgm-overlay .bar{height:8px;border-radius:6px;background:rgba(46,230,246,.12);overflow:hidden;margin-bottom:12px;border:1px solid rgba(46,230,246,.2);}
+      #cgm-overlay .bar>i{display:block;height:100%;border-radius:6px;background:linear-gradient(90deg,var(--cyan),var(--purple));box-shadow:0 0 12px rgba(46,230,246,.6);}
+      #cgm-overlay .equip-name{font-family:'Orbitron',sans-serif;font-weight:700;font-size:15px;color:var(--amber);text-shadow:0 0 10px rgba(251,191,36,.4);margin-bottom:10px;display:flex;align-items:center;gap:8px;}
+      #cgm-overlay .equip-name span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+      #cgm-overlay .equip-name svg{width:18px;height:18px;flex:none;}
+      #cgm-overlay .feed-item{display:flex;align-items:flex-start;gap:8px;padding:6px 0;font-size:13.5px;}
+      #cgm-overlay .feed-item.done{color:var(--green);} #cgm-overlay .feed-item.soon{color:var(--txt-faint);}
+      #cgm-overlay .feed-item svg{width:15px;height:15px;margin-top:2px;flex:none;}
+      #cgm-overlay .proto{display:flex;align-items:center;gap:9px;padding:7px 0;font-size:13.5px;color:var(--txt);}
+      #cgm-overlay .proto svg{width:16px;height:16px;color:var(--purple);flex:none;filter:drop-shadow(0 0 6px rgba(168,85,247,.5));}
+      #cgm-overlay .unlocked{font-family:'Orbitron',sans-serif;font-weight:700;color:var(--cyan);letter-spacing:2px;font-size:12px;margin-bottom:10px;}
+      #cgm-overlay .unlocked b{color:#fff;}
+      #cgm-overlay .eq{display:flex;align-items:flex-end;gap:4px;height:64px;margin-top:6px;}
+      #cgm-overlay .eq>i{flex:1;background:linear-gradient(180deg,var(--cyan),var(--cyan-dim));border-radius:2px 2px 0 0;box-shadow:0 0 8px rgba(46,230,246,.4);animation:cgm-eq 1.1s ease-in-out infinite;transform-origin:bottom;}
+      #cgm-overlay .eq>i:nth-child(2){animation-delay:.15s} #cgm-overlay .eq>i:nth-child(3){animation-delay:.30s}
+      #cgm-overlay .eq>i:nth-child(4){animation-delay:.45s} #cgm-overlay .eq>i:nth-child(5){animation-delay:.60s}
+      #cgm-overlay .eq>i:nth-child(6){animation-delay:.20s} #cgm-overlay .eq>i:nth-child(7){animation-delay:.50s}
+      #cgm-overlay .eq>i:nth-child(8){animation-delay:.35s} #cgm-overlay .eq>i:nth-child(9){animation-delay:.10s}
+      #cgm-overlay .eq>i:nth-child(10){animation-delay:.40s} #cgm-overlay .eq>i:nth-child(11){animation-delay:.25s}
+      @keyframes cgm-eq{0%,100%{transform:scaleY(.25)} 50%{transform:scaleY(1)}}
+      #cgm-overlay .now-row{display:flex;align-items:center;justify-content:space-between;}
+      #cgm-overlay .now-row .label{font-family:'Orbitron',sans-serif;font-weight:600;color:var(--cyan);font-size:11px;letter-spacing:2px;}
+      #cgm-overlay .now-row svg{width:16px;height:16px;color:var(--cyan);}
+      #cgm-overlay .center{display:flex;flex-direction:column;align-items:center;gap:18px;}
+      #cgm-overlay .title{text-align:center;line-height:1;padding-top:4px;}
+      #cgm-overlay .title .l1{font-family:'Press Start 2P',monospace;font-size:clamp(28px,4.4vw,62px);background:linear-gradient(90deg,var(--magenta),var(--purple) 55%,var(--cyan));-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 0 14px rgba(255,45,149,.35));letter-spacing:2px;}
+      #cgm-overlay .title .l2{font-family:'Press Start 2P',monospace;font-size:clamp(18px,2.6vw,36px);color:var(--cyan);text-shadow:var(--glow-cyan);margin-top:14px;letter-spacing:6px;}
+      #cgm-overlay .stage-mid{display:flex;align-items:stretch;gap:22px;width:100%;justify-content:center;}
+      #cgm-overlay .stage-art{flex:0 0 320px;position:relative;min-height:480px;border-radius:var(--radius);display:grid;place-items:end center;overflow:visible;}
+      #cgm-overlay .stage-art:not(.has-art){border:1px dashed rgba(46,230,246,.28);background:radial-gradient(120% 80% at 50% 100%,rgba(46,230,246,.08),transparent 70%);}
+      #cgm-overlay .stage-art img{display:none;width:auto;height:auto;max-width:100%;max-height:600px;object-position:bottom center;filter:drop-shadow(0 8px 26px rgba(0,0,0,.55)) drop-shadow(0 0 28px rgba(46,230,246,.18));}
+      #cgm-overlay .stage-art.has-art img{display:block;}
+      #cgm-overlay .stage-art.has-art .art-hint,#cgm-overlay .stage-art.has-art .art-corner{display:none;}
+      #cgm-overlay .art-hint{text-align:center;color:var(--txt-faint);font-size:12px;letter-spacing:1px;padding:14px;}
+      #cgm-overlay .art-hint b{display:block;color:var(--cyan);font-family:'Orbitron',sans-serif;letter-spacing:3px;margin-bottom:8px;}
+      #cgm-overlay .art-corner{position:absolute;width:18px;height:18px;border:2px solid var(--cyan);opacity:.6;}
+      #cgm-overlay .art-corner.a{top:8px;left:8px;border-right:0;border-bottom:0;}
+      #cgm-overlay .art-corner.b{top:8px;right:8px;border-left:0;border-bottom:0;}
+      #cgm-overlay .art-corner.c{bottom:8px;left:8px;border-right:0;border-top:0;}
+      #cgm-overlay .art-corner.d{bottom:8px;right:8px;border-left:0;border-top:0;}
+      #cgm-overlay .menu{flex:0 0 360px;display:flex;flex-direction:column;gap:12px;justify-content:center;}
+      #cgm-overlay .mbtn{position:relative;width:100%;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:12px;padding:16px 20px;border-radius:12px;border:1px solid rgba(46,230,246,.28);background:linear-gradient(180deg,rgba(46,230,246,.05),rgba(10,16,46,.35));color:var(--txt);font-family:'Orbitron',sans-serif;font-weight:700;font-size:16px;letter-spacing:3px;text-transform:uppercase;transition:.16s ease;}
+      #cgm-overlay .mbtn svg{width:18px;height:18px;opacity:0;transform:translateX(-6px);transition:.16s;color:var(--cyan);}
+      #cgm-overlay .mbtn:hover,#cgm-overlay .mbtn.active{color:#fff;border-color:var(--cyan);background:linear-gradient(180deg,rgba(46,230,246,.16),rgba(46,230,246,.04));box-shadow:var(--glow-cyan),inset 0 0 18px rgba(46,230,246,.12);}
+      #cgm-overlay .mbtn:hover svg,#cgm-overlay .mbtn.active svg{opacity:1;transform:translateX(0);}
+      #cgm-overlay .mbtn.active::before{content:"";position:absolute;left:0;top:14%;bottom:14%;width:4px;background:var(--cyan);border-radius:4px;box-shadow:var(--glow-cyan);}
+      #cgm-overlay .profile{width:100%;max-width:560px;margin:2px auto 0;display:grid;grid-template-columns:repeat(3,1fr);gap:12px;}
+      #cgm-overlay .pcell{border:1px solid rgba(46,230,246,.22);border-radius:12px;background:var(--panel);padding:10px 14px;text-align:center;}
+      #cgm-overlay .pcell .pk{font-size:10px;letter-spacing:2px;color:var(--txt-dim);text-transform:uppercase;}
+      #cgm-overlay .pcell .pv{font-family:'Orbitron',sans-serif;font-weight:700;font-size:18px;margin-top:4px;display:flex;align-items:center;justify-content:center;gap:6px;}
+      #cgm-overlay .pcell .pv.green{color:var(--green);} #cgm-overlay .pcell .pv svg{width:16px;height:16px;}
+      #cgm-overlay .pcell .pv .amber{color:var(--amber);} #cgm-overlay .pcell .pv .cyan{color:var(--cyan);}
+      #cgm-overlay .footer{display:flex;align-items:center;justify-content:space-between;margin-top:16px;}
+      #cgm-overlay .age{font-family:'Orbitron',sans-serif;font-weight:800;font-size:15px;color:var(--cyan);border:1.5px solid var(--cyan);border-radius:10px;padding:8px 14px;box-shadow:var(--glow-cyan);}
+      #cgm-overlay .hints{color:var(--txt-faint);font-size:13px;letter-spacing:1px;display:flex;gap:22px;flex-wrap:wrap;}
+      #cgm-overlay .hints b{color:var(--cyan);font-weight:400;}
+      #cgm-overlay .input-note{color:var(--txt-faint);font-size:11px;letter-spacing:1px;margin-top:8px;}
+      #cgm-overlay .svgdefs{position:absolute;width:0;height:0;overflow:hidden;}
+      #cgm-overlay .muted-eq .eq>i{animation:none;transform:scaleY(.25);}
+      @media(max-width:1080px){
+        #cgm-overlay .grid{grid-template-columns:1fr;}
+        #cgm-overlay .stage-mid{flex-direction:column;align-items:center;}
+        #cgm-overlay .stage-art{flex:0 0 auto;width:100%;max-width:340px;min-height:320px;}
+        #cgm-overlay .menu{flex:0 0 auto;width:100%;max-width:440px;}
+      }
+      @media(prefers-reduced-motion:reduce){#cgm-overlay .eq>i{animation:none;transform:scaleY(.6);}}
+    `;
+    document.head.appendChild(style);
+
+    // ── Hidden SVG icon defs (appended once to body) ─────────────────────────
+    if (!document.getElementById('cgm-svgdefs')) {
+      const svgns = 'http://www.w3.org/2000/svg';
+      const defs = document.createElementNS(svgns, 'svg');
+      defs.id = 'cgm-svgdefs';
+      defs.setAttribute('aria-hidden','true');
+      defs.style.cssText = 'position:absolute;width:0;height:0;overflow:hidden;';
+      defs.innerHTML = `<defs>
+        <g id="i-diamond" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M6 3h12l4 6-10 12L2 9z"/><path d="M2 9h20M12 3 8 9l4 12 4-12-3-6"/></g>
+        <g id="i-heart" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M19 14c1.5-1.46 3-3.2 3-5.5A5.5 5.5 0 0 0 12 5.36 5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.04 3 5.5l7 7Z"/></g>
+        <g id="i-gear" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-2.9 1.2V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 6.9 19.8l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1A1.7 1.7 0 0 0 3 14a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.2 7.1L4.1 7a2 2 0 1 1 2.8-2.8l.1.1A1.7 1.7 0 0 0 10 3.6V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 2.9 1.2l.1-.1A2 2 0 1 1 19.9 7l-.1.1A1.7 1.7 0 0 0 21 10a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></g>
+        <g id="i-bolt" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9z"/></g>
+        <g id="i-shield" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></g>
+        <g id="i-sword" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 17.5 3 6V3h3l11.5 11.5"/><path d="m13 19 6-6M16 16l4 4M19 21l2-2"/></g>
+        <g id="i-cpu" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="5" width="14" height="14" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 2v3M15 2v3M9 19v3M15 19v3M2 9h3M2 15h3M19 9h3M19 15h3"/></g>
+        <g id="i-activity" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></g>
+        <g id="i-node" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M12 2 21 7v10l-9 5-9-5V7z"/><circle cx="12" cy="12" r="2.4" fill="currentColor" stroke="none"/></g>
+        <g id="i-user" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></g>
+        <g id="i-check" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></g>
+        <g id="i-clock" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></g>
+        <g id="i-music" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></g>
+        <g id="i-chev" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></g>
+        <g id="i-flame" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.4-.5-2-1-3-1.07-2.14-.6-4 1-6 .14 1.9 1.1 3.7 2.5 5 1.3 1.2 2.5 2.6 2.5 4.5a5 5 0 1 1-10 0c0-.8.3-1.6.8-2.2a2.5 2.5 0 0 0 1.2 2.2Z"/></g>
+        <g id="i-star" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="m12 2 2.9 6.3 6.6.6-5 4.4 1.5 6.6L12 17l-5.9 3.5L7.5 13.9l-5-4.4 6.6-.6z"/></g>
+        <g id="i-zapplus" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 13h7l-1 9 9-12h-7z"/></g>
+      </defs>`;
+      document.body.appendChild(defs);
+    }
+
+    // ── Build menu items HTML (ENDLESS MODE shown only if unlocked) ──────────
+    const _buildMenuItemsHTML = (items, activeIdx) => items.map((label, i) =>
+      `<button class="mbtn${i === activeIdx ? ' active' : ''}" data-cgm-item="${label}">` +
+      `<svg><use href="#i-chev"/></svg>${label}</button>`
+    ).join('');
+
+    // ── Create the overlay div ────────────────────────────────────────────────
+    const el = document.createElement('div');
+    el.id = 'cgm-overlay';
+    el.style.display = 'none';
+    el.innerHTML = `
+<main class="stage">
+  <span class="corner tl"></span><span class="corner tr"></span>
+  <span class="corner bl"></span><span class="corner br"></span>
+
+  <!-- TOP BAR -->
+  <div class="topbar">
+    <span class="chip cyan"><svg><use href="#i-diamond"/></svg><b data-cgm="credits-chip">0</b></span>
+    <span class="chip pink"><svg><use href="#i-heart"/></svg><b data-cgm="pf-chip">0</b></span>
+    <button class="icon-btn" data-cgm-action="settings" aria-label="Settings"><svg><use href="#i-gear"/></svg></button>
+  </div>
+
+  <!-- MAIN GRID -->
+  <div class="grid">
+    <!-- LEFT COLUMN -->
+    <div class="col">
+      <section class="panel" style="--accent:var(--cyan);--accent-glow:rgba(46,230,246,.5)">
+        <div class="panel-title"><span class="dot"></span>PROGRESSION</div>
+        <div class="player" data-cgm="player-name">PLAYER_01</div>
+        <div class="rank" data-cgm="player-rank">ROOKIE</div>
+        <div class="bar"><i data-cgm="xp-bar" style="width:0%"></i></div>
+        <div class="row"><span class="k">Credits</span><span class="v cyan"><svg><use href="#i-diamond"/></svg><span data-cgm="credits-row">0</span></span></div>
+        <div class="row"><span class="k">PF Avail</span><span class="v mag"><svg><use href="#i-heart"/></svg><span data-cgm="pf-avail">0</span></span></div>
+        <div class="row"><span class="k">Earned</span><span class="v green"><span data-cgm="pf-earned">0 / 0</span></span></div>
+        <div class="row"><span class="k">Best</span><span class="v cyan"><svg><use href="#i-clock"/></svg><span data-cgm="best-time">—</span></span></div>
+      </section>
+
+      <section class="panel" style="--accent:var(--amber);--accent-glow:rgba(251,191,36,.5)">
+        <div class="panel-title" style="color:var(--amber)"><span class="dot" style="background:var(--amber)"></span>EQUIPMENT</div>
+        <div class="equip-name"><svg><use href="#i-cpu"/></svg><span data-cgm="equip-name">—</span></div>
+        <div class="row"><span class="k">Class</span><span class="v amber"><svg><use href="#i-shield"/></svg><span data-cgm="equip-class">—</span></span></div>
+        <div class="row"><span class="k">Element</span><span class="v amber"><svg><use href="#i-bolt"/></svg><span data-cgm="equip-element">—</span></span></div>
+        <div class="row"><span class="k">Weapon</span><span class="v amber"><svg><use href="#i-sword"/></svg><span data-cgm="equip-weapon">—</span></span></div>
+      </section>
+
+      <section class="panel" style="--accent:var(--green);--accent-glow:rgba(52,211,153,.5)">
+        <div class="panel-title" style="color:var(--green)"><span class="dot" style="background:var(--green)"></span>QUICK STATS</div>
+        <div class="row"><span class="k">Element</span><span class="v amber"><svg><use href="#i-bolt"/></svg><span data-cgm="qs-element">—</span></span></div>
+        <div class="row"><span class="k">Class</span><span class="v green"><span data-cgm="qs-class">—</span></span></div>
+        <div class="row"><span class="k">Revives</span><span class="v amber"><svg><use href="#i-activity"/></svg><span data-cgm="qs-revives">3</span></span></div>
+        <div class="row"><span class="k">Protocols</span><span class="v" style="color:var(--purple)"><svg style="color:var(--purple)"><use href="#i-node"/></svg><span data-cgm="qs-protocols">0</span></span></div>
+        <div class="row"><span class="k">HP / Mana</span><span class="v" style="color:var(--txt-dim)">—</span></div>
+      </section>
+    </div>
+
+    <!-- CENTER STAGE -->
+    <div class="col center">
+      <div class="title"><div class="l1">CYBER-GRID</div><div class="l2">PROTOCOL</div></div>
+
+      <div class="stage-mid">
+        <div class="stage-art">
+          <span class="art-corner a"></span><span class="art-corner b"></span>
+          <span class="art-corner c"></span><span class="art-corner d"></span>
+          <img src="assets/ui/cyber-grid-menu.png" alt="Character art">
+        </div>
+        <nav class="menu" id="cgm-menu-nav">
+          <!-- populated by _syncMenuOverlayItems() -->
+        </nav>
+      </div>
+
+      <div class="profile">
+        <div class="pcell"><div class="pk">Profile</div><div class="pv"><svg style="color:var(--cyan)"><use href="#i-user"/></svg><span data-cgm="profile-name">PLAYER_01</span></div></div>
+        <div class="pcell"><div class="pk">Best Run</div><div class="pv green"><span data-cgm="profile-best">—</span></div></div>
+        <div class="pcell"><div class="pk">Build</div><div class="pv"><svg class="amber" style="color:var(--amber)"><use href="#i-bolt"/></svg><svg class="cyan" style="color:var(--cyan)"><use href="#i-node"/></svg><span data-cgm="profile-build">0</span></div></div>
+      </div>
+    </div>
+
+    <!-- RIGHT COLUMN -->
+    <div class="col">
+      <section class="panel" style="--accent:var(--cyan)">
+        <div class="panel-title"><span class="dot"></span>SYSTEM FEED</div>
+        <div id="cgm-feed-list">
+          <div class="feed-item soon"><svg><use href="#i-clock"/></svg>Loading…</div>
+        </div>
+      </section>
+
+      <section class="panel" style="--accent:var(--purple);--accent-glow:rgba(168,85,247,.5)">
+        <div class="panel-title" style="color:var(--purple)"><span class="dot" style="background:var(--purple)"></span>ACTIVE PROTOCOLS</div>
+        <div class="unlocked">UNLOCKED <b data-cgm="proto-count">0</b> / <span data-cgm="proto-total">0</span></div>
+        <div id="cgm-proto-list"></div>
+      </section>
+
+      <section class="panel" style="--accent:var(--cyan)">
+        <div class="now-row"><span class="label">NOW PLAYING</span><svg><use href="#i-music"/></svg></div>
+        <div class="now-row" style="margin-top:6px"><span style="font-size:12px;color:var(--txt-dim);letter-spacing:1px" data-cgm="now-playing">CYBER-GRID OST</span></div>
+        <div class="eq" id="cgm-eq-bars"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+      </section>
+
+      <section class="panel" style="--accent:var(--cyan)">
+        <div class="panel-title"><span class="dot"></span>BUILD</div>
+        <div class="row"><span class="k">Build</span><span class="v cyan"><span data-cgm="build-class">—</span></span></div>
+        <div class="row"><span class="k">Element</span><span class="v amber"><svg><use href="#i-bolt"/></svg><span data-cgm="build-element">—</span></span></div>
+        <div class="row"><span class="k">Weapon</span><span class="v cyan"><svg><use href="#i-sword"/></svg><span data-cgm="build-weapon">—</span></span></div>
+        <div class="input-note">INPUT: Enter / ESC · Controller (Xbox · PS · PC)</div>
+      </section>
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <div class="footer">
+    <span class="age">12+</span>
+    <div class="hints"><span><b>↑↓</b> Navigate</span><span><b>ENTER</b> / Click Select</span><span><b>ESC</b> Back</span></div>
+  </div>
+</main>`;
+    document.body.appendChild(el);
+    this._menuOverlayEl = el;
+
+    // ── character art: reveal when image loads ───────────────────────────────
+    const slot = el.querySelector('.stage-art');
+    const img  = slot && slot.querySelector('img');
+    if (img) {
+      const show = () => slot.classList.add('has-art');
+      img.addEventListener('load', show);
+      if (img.complete && img.naturalWidth) show();
+    }
+
+    // ── Settings gear button ─────────────────────────────────────────────────
+    const gearBtn = el.querySelector('[data-cgm-action="settings"]');
+    if (gearBtn) gearBtn.addEventListener('click', () => this.goToSettings());
+  }
+
+  // Rebuild the nav buttons to match current menuItems (Endless may appear/disappear).
+  _syncMenuOverlayItems() {
+    const nav = this._menuOverlayEl && this._menuOverlayEl.querySelector('#cgm-menu-nav');
+    if (!nav) return;
+    const items = this.menuItems;
+    nav.innerHTML = items.map((label, i) =>
+      `<button class="mbtn${i === this.menuIndex ? ' active' : ''}" data-cgm-item="${label}">` +
+      `<svg><use href="#i-chev"/></svg>${label}</button>`
+    ).join('');
+    // Attach click listeners
+    nav.querySelectorAll('.mbtn').forEach((btn, i) => {
+      btn.addEventListener('click', () => {
+        this.menuIndex = i;
+        this._syncMenuOverlayActive();
+        this._selectMenuItem(items[i]);
+      });
+    });
+  }
+
+  // Only update the .active class without rebuilding DOM (called on keyboard nav).
+  _syncMenuOverlayActive() {
+    const nav = this._menuOverlayEl && this._menuOverlayEl.querySelector('#cgm-menu-nav');
+    if (!nav) return;
+    nav.querySelectorAll('.mbtn').forEach((btn, i) => btn.classList.toggle('active', i === this.menuIndex));
+    const active = nav.querySelectorAll('.mbtn')[this.menuIndex];
+    if (active) active.focus({ preventScroll: true });
+  }
+
+  // Set a single data-cgm element's text content.
+  _cgmSet(key, value) {
+    const el = this._menuOverlayEl && this._menuOverlayEl.querySelector(`[data-cgm="${key}"]`);
+    if (el) el.textContent = String(value ?? '—');
+  }
+
+  // Refresh all live data in the overlay. Called once per _showMenuOverlay().
+  _refreshMenuOverlay() {
+    const m   = this.meta;
+    const ch  = this._menuSelectedChar();
+    const el  = CHARACTER_ELEMENT[ch.id];
+    const elIcon = ELEMENT_ICON[el] || '◆';
+    const owned  = (m && m.protocolCards) ? Object.keys(m.protocolCards).filter(k => m.protocolCards[k]) : [];
+    const pfEarned = m ? m.getProtocolFragmentsEarned() : 0;
+    const pfAvail  = m ? m.getProtocolFragments()        : 0;
+    const credits  = m ? m.credits                       : 0;
+    const best     = (m && m.endlessRecords) || { time: 0 };
+    const bestStr  = best.time > 0 ? this._fmtClock(best.time) : '—';
+    const ach      = m ? Object.keys(m.achievements || {}).length : 0;
+    const achTotal = ENDLESS_ACHIEVEMENTS.length;
+    const pct      = achTotal ? ach / achTotal : 0;
+    const rank     = pct >= 1 ? 'GRID MASTER' : pct >= 0.66 ? 'OVERRIDE' : pct >= 0.33 ? 'OPERATIVE' : 'ROOKIE';
+    const name     = (m && m.getProfileName && m.getProfileName()) || 'PLAYER_01';
+    const revives  = 3 + (this._hasProto('phoenix_revival') ? 1 : 0);
+    const weapon   = this._charWeaponLabel(ch.id);
+    const elStr    = (el ? el.toUpperCase() : '—');
+    const muted    = !!(this.audio && this.audio.muted);
+
+    // Top bar chips
+    this._cgmSet('credits-chip', credits);
+    this._cgmSet('pf-chip', pfAvail);
+
+    // Progression panel
+    this._cgmSet('player-name', name);
+    this._cgmSet('player-rank', rank);
+    const barEl = this._menuOverlayEl.querySelector('[data-cgm="xp-bar"]');
+    if (barEl) barEl.style.width = Math.round(pct * 100) + '%';
+    this._cgmSet('credits-row', credits);
+    this._cgmSet('pf-avail', pfAvail);
+    this._cgmSet('pf-earned', `${pfEarned} / ${PF_TOTAL_OBTAINABLE}`);
+    this._cgmSet('best-time', bestStr);
+
+    // Equipment panel
+    const shortName = ch.name.length > 22 ? ch.name.slice(0, 21) + '…' : ch.name;
+    this._cgmSet('equip-name', shortName);
+    this._cgmSet('equip-class', ch.role);
+    this._cgmSet('equip-element', elIcon + ' ' + elStr);
+    this._cgmSet('equip-weapon', weapon);
+
+    // Quick Stats panel
+    this._cgmSet('qs-element', elIcon + ' ' + elStr);
+    this._cgmSet('qs-class', ch.role.split(' ')[0]);
+    this._cgmSet('qs-revives', revives);
+    this._cgmSet('qs-protocols', owned.length);
+
+    // System Feed
+    const feedEl = this._menuOverlayEl.querySelector('#cgm-feed-list');
+    if (feedEl) {
+      const next = ENDLESS_ACHIEVEMENTS.filter(a => !(m && m.achievements && m.achievements[a.id])).slice(0, 2);
+      let html = '';
+      if (next.length === 0) {
+        html += `<div class="feed-item done"><svg><use href="#i-check"/></svg>All milestones cleared</div>`;
+      } else {
+        for (const a of next) {
+          html += `<div class="feed-item soon"><svg><use href="#i-clock"/></svg>${a.desc.slice(0, 32)}</div>`;
+        }
+      }
+      html += `<div class="feed-item soon"><svg><use href="#i-clock"/></svg>Daily Missions: Coming Soon</div>`;
+      feedEl.innerHTML = html;
+    }
+
+    // Active Protocols
+    this._cgmSet('proto-count', owned.length);
+    this._cgmSet('proto-total', PROTOCOL_CARDS.length);
+    const protoEl = this._menuOverlayEl.querySelector('#cgm-proto-list');
+    if (protoEl) {
+      if (owned.length === 0) {
+        protoEl.innerHTML = `<div class="proto" style="color:var(--txt-faint)">No active protocols — visit UPGRADES</div>`;
+      } else {
+        protoEl.innerHTML = owned.slice(0, 5).map(id => {
+          const card = PROTOCOL_CARDS.find(c => c.id === id);
+          const iconId = id === 'phoenix_revival' ? 'i-flame' : id.includes('lightning') ? 'i-bolt' : id.includes('ult') ? 'i-star' : 'i-zapplus';
+          return `<div class="proto"><svg><use href="#${iconId}"/></svg>${(card ? card.name : id).slice(0, 28)}</div>`;
+        }).join('') + (owned.length > 5 ? `<div class="proto" style="color:var(--txt-faint)">+${owned.length - 5} more…</div>` : '');
+      }
+    }
+
+    // Now Playing
+    const nowStr = muted ? 'MUTED' : 'CYBER-GRID OST';
+    this._cgmSet('now-playing', nowStr);
+    const eqEl = this._menuOverlayEl.querySelector('#cgm-eq-bars');
+    if (eqEl) eqEl.classList.toggle('muted-eq', muted);
+
+    // Build panel
+    this._cgmSet('build-class', ch.role);
+    this._cgmSet('build-element', elIcon + ' ' + elStr);
+    this._cgmSet('build-weapon', weapon);
+
+    // Bottom profile bar
+    const shortProfile = name.length > 10 ? name.slice(0, 9) + '…' : name;
+    this._cgmSet('profile-name', shortProfile);
+    this._cgmSet('profile-best', bestStr);
+    this._cgmSet('profile-build', elIcon + ' ◈' + owned.length);
+  }
+
+  _showMenuOverlay() {
+    if (!this._menuOverlayEl) return;
+    this._syncMenuOverlayItems();   // rebuild nav (Endless unlock may have changed)
+    this._refreshMenuOverlay();     // push live data
+    this._menuOverlayEl.style.display = 'flex';
+    this._menuOverlayVisible = true;
+  }
+
+  _hideMenuOverlay() {
+    if (!this._menuOverlayEl) return;
+    this._menuOverlayEl.style.display = 'none';
+    this._menuOverlayVisible = false;
+  }
+
   _drawStartMenu(ctx) {
     // Background — use the new clean background image, fall back to city bg
     const bg = this._menuBg;
@@ -9788,6 +10291,4 @@ export class Game {
     ctx.fillRect(0, 0, WIDTH, 44);
   }
 
-  // Called by main.js to pass current mouse pos to the draw call
-  setMousePos(pos) { this._lastMousePos = pos; }
-}
+  // C

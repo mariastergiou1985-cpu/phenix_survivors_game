@@ -119,10 +119,12 @@ export class EMPShockwave {
       }
     }
     this._emitters = this._emitters.filter(em => now < em.until);
+    if (this._emitters.length > 48) this._emitters.length = 48;     // hard cap
 
     // advance + cull sparks
     for (const s of this._sparks) { s.x += s.vx; s.y += s.vy; s.vy += 0.05; s.vx *= 0.95; }
     this._sparks = this._sparks.filter(s => now - s.born < s.life);
+    if (this._sparks.length > 240) this._sparks.length = 240;       // hard cap
   }
 
   /** True if a world point is currently inside the swept radius (for manual gameplay checks). */

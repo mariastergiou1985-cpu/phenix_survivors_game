@@ -139,7 +139,7 @@ export class DigitalSingularity {
     // ── storm spawning (phases 2 & 3) ──
     if (phase === PHASE.STORM || phase === PHASE.STRIKE) {
       const want = this.cfg.storm.max;
-      while (this._particles.length < want) this._spawnStorm(now);
+      let _sg = 0; while (this._particles.length < want && _sg++ < want + 8) this._spawnStorm(now);
     }
 
     // ── PHASE 3: laser strikes + shake ──
@@ -296,7 +296,7 @@ export class DigitalSingularity {
     }
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
-    ctx.shadowColor = this._neon(1); ctx.shadowBlur = 6;
+    ctx.shadowColor = this._neon(1); ctx.shadowBlur = 0;   // perf: shadowBlur over ~170 text particles was a major per-frame cost
     ctx.textBaseline = 'middle';
     const baseA = Math.max(this._stormAlpha, this.phase === PHASE.DISSOLVE ? 0.6 : 0);
     for (const p of this._particles) {

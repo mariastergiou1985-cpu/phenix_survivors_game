@@ -75,7 +75,8 @@ export class MeteorRain {
       if (elapsed < this.cfg.duration.ms) {
         this._acc += dt;
         const every = 1000 / this.cfg.spawn.perSec;
-        while (this._acc >= every) { this._spawnMeteor(); this._acc -= every; }
+        let _mg = 0; while (this._acc >= every && _mg++ < 6) { this._spawnMeteor(); this._acc -= every; }
+        if (this._acc > every * 3) this._acc = every;   // perf: never let a frame spike burst-spawn meteors
       }
       // move + impact
       for (const m of this._meteors) {
@@ -83,11 +84,13 @@ export class MeteorRain {
         if (m.y >= this.cy) { m.dead = true; this._impact(m.x, this.cy, now); }
       }
       this._meteors = this._meteors.filter(m => !m.dead);
+      if (this._meteors.length > 80) this._meteors.length = 80;   // hard cap
       if (elapsed >= this.cfg.duration.ms && this._meteors.length === 0) this.state = 'idle';
     }
     // debris
     for (const d of this._debris) { d.x += d.vx; d.y += d.vy; d.vy += 0.25; d.vx *= 0.96; d.rot += d.vr; }
     this._debris = this._debris.filter(d => now - d.born < d.life);
+    if (this._debris.length > 240) this._debris.length = 240;   // hard cap
   }
 
   _impact(x, y, now) {

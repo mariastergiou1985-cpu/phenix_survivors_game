@@ -1,6 +1,6 @@
-import { Game } from './game/Game.js?v=20260615160104';
-import { AudioManager } from './audio/AudioManager.js?v=20260615160104';
-import { GamepadInput } from './Gamepad.js?v=20260615160104';
+import { Game } from './game/Game.js?v=20260615210000';
+import { AudioManager } from './audio/AudioManager.js?v=20260615210000';
+import { GamepadInput } from './Gamepad.js?v=20260615210000';
 
 const canvas = document.getElementById('game');
 const ctx    = canvas.getContext('2d');
@@ -24,7 +24,7 @@ let mouseDown = false;
 
 // ─── Game instance ────────────────────────────────────────────────────────────
 const game = new Game();
-console.log('BUILD 20260614115651 freeze-diagnostic active');
+console.log('BUILD 20260615210000 cgm-overlay active');
 
 // ─── Keyboard handling ────────────────────────────────────────────────────────
 const SCROLL_KEYS = new Set(['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' ']);
@@ -34,18 +34,7 @@ window.addEventListener('keydown', e => {
   if (SCROLL_KEYS.has(key)) e.preventDefault();
 
   keys.add(key);
-
-  // Unlock audio on first keypress (browsers block autoplay until user gesture)
-  if (!game.audio) {
-    game.audio = new AudioManager();
-    const hint = document.getElementById('click-to-start');
-    if (hint) hint.style.display = 'none';
-    if (game.gameState === 'playing') {
-      game.audio.startGameplayMusic();
-    } else if (game.gameState === 'start_menu' || game.gameState === 'character_select') {
-      game.audio.startMenuMusic();
-    }
-  }
+  // (Audio init handled by _initAudioOnGesture on document — covers overlay clicks too)
 
   // Forced mutation card selection (1/2/3 only — NO skip, NO reroll; ESC cannot close it)
   if (game.mutationUI) {
@@ -123,22 +112,25 @@ canvas.addEventListener('mousemove', e => {
   };
 });
 
+// ─── Web Audio init on FIRST user gesture anywhere (overlay OR canvas) ───────
+function _initAudioOnGesture() {
+  if (game.audio) return;
+  game.audio = new AudioManager();
+  const hint = document.getElementById('click-to-start');
+  if (hint) hint.style.display = 'none';
+  if (game.gameState === 'playing') {
+    game.audio.startGameplayMusic();
+  } else if (game.gameState === 'start_menu' || game.gameState === 'character_select') {
+    game.audio.startMenuMusic();
+  }
+}
+document.addEventListener('mousedown', _initAudioOnGesture, { once: true });
+document.addEventListener('keydown',   _initAudioOnGesture, { once: true });
+document.addEventListener('touchstart',_initAudioOnGesture, { once: true });
+
 canvas.addEventListener('mousedown', e => {
   if (e.button !== 0) return;
   mouseDown = true;
-
-  // Initialize Web Audio on first user gesture (browser requirement)
-  if (!game.audio) {
-    game.audio = new AudioManager();
-    const hint = document.getElementById('click-to-start');
-    if (hint) hint.style.display = 'none';
-    // Start the right music for the current state
-    if (game.gameState === 'playing') {
-      game.audio.startGameplayMusic();
-    } else if (game.gameState === 'start_menu' || game.gameState === 'character_select') {
-      game.audio.startMenuMusic();
-    }
-  }
 
   // Each block is else-if so only ONE handler fires per click,
   // even if a handler changes game.gameState mid-event.
