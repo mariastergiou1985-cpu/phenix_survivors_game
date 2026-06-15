@@ -10291,4 +10291,6 @@ export class Game {
     ctx.fillRect(0, 0, WIDTH, 44);
   }
 
-  // C
+  // Called by main.js to pass current mouse pos to the draw call
+  setMousePos(pos) { this._lastMousePos = pos; }
+}
