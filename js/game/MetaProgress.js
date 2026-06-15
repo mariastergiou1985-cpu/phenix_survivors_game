@@ -165,6 +165,26 @@ export const PF_CHARACTER_COSTS = {
   // euclid_vector is intentionally NOT listed → unlocked from the start (free). Oni stays PF-gated.
 };
 
+// ─── Protocol Fragment unlock cards (permanent meta-upgrades, bought with spendable PF) ─────────
+// SEPARATE from Oni character unlock (PF_CHARACTER_COSTS) and from the PF payout ledger. Each card
+// is a one-time permanent purchase saved in MetaProgress.protocolCards. `comingSoon` cards are shown
+// but cannot be bought (no spend path) until their system is wired. Runtime effects live in Game.js.
+export const PROTOCOL_CARDS = [
+  { id: 'elite_arsenal',        name: 'Elite Arsenal Protocol',     cat: 'ENEMY',   cost: 2, desc: 'Endless elites gain stronger projectile pressure.' },
+  { id: 'blood_path',           name: 'Blood Path Protocol',        cat: 'ENEMY',   cost: 3, desc: 'Boss corruption trails hit harder & linger longer.' },
+  { id: 'predator_aim',         name: 'Predator Aim Protocol',      cat: 'ENEMY',   cost: 2, desc: 'Enemy & boss aim improves (still dodgeable).' },
+  { id: 'armored_swarm',        name: 'Armored Swarm Protocol',     cat: 'ENEMY',   cost: 2, desc: 'Endless enemy HP scaling is slightly tougher.' },
+  { id: 'lightning_plus',       name: 'Lightning Storm+',           cat: 'WEATHER', cost: 2, desc: 'Lightning Storm lasts longer.' },
+  { id: 'lava_plus',            name: 'Lava Rain+',                 cat: 'WEATHER', cost: 2, desc: 'Lava Rain lasts longer.' },
+  { id: 'airstrike_plus',       name: 'Airstrike+',                 cat: 'WEATHER', cost: 2, desc: 'Airstrike fires a larger salvo (fair aim kept).' },
+  { id: 'frozen_sleet',         name: 'Frozen Sleet Storm',         cat: 'WEATHER', cost: 2, desc: 'A freezing weather hazard.', comingSoon: true },
+  { id: 'elemental_mastery',    name: 'Elemental Mastery',          cat: 'PLAYER',  cost: 3, desc: 'Stronger elemental bursts (boss-capped).' },
+  { id: 'fusion_mastery',       name: 'Fusion Mastery',             cat: 'PLAYER',  cost: 4, desc: 'Stronger fusion damage & radius (boss-capped).' },
+  { id: 'ult_infusion_mastery', name: 'Ult Infusion Mastery',       cat: 'PLAYER',  cost: 4, desc: 'Bigger Forbidden Ultimate Infusion nova.' },
+  { id: 'synergy_mastery',      name: 'Character Synergy Mastery',  cat: 'PLAYER',  cost: 3, desc: 'Stronger synergy bursts (boss-capped).' },
+];
+export const PROTOCOL_CARD_BY_ID = Object.fromEntries(PROTOCOL_CARDS.map(c => [c.id, c]));
+
 export class MetaProgress {
   constructor() {
     this.credits = 0;
@@ -186,6 +206,7 @@ export class MetaProgress {
     this.protocolFragments = 0;   // current PF balance
     this.pfEarnedFrom      = {};  // { [achievementId]: true } — idempotent payout ledger
     this.protocolUnlocks   = {};  // { [characterId]: true }   — PF-purchased character unlocks
+    this.protocolCards     = {};  // { [cardId]: true }        — PF-purchased permanent Protocol cards
     this._load();
   }
 
@@ -210,6 +231,7 @@ export class MetaProgress {
       this.protocolFragments = Number(d.protocolFragments) || 0;
       this.pfEarnedFrom    = (d.pfEarnedFrom    && typeof d.pfEarnedFrom    === 'object') ? d.pfEarnedFrom    : {};
       this.protocolUnlocks = (d.protocolUnlocks && typeof d.protocolUnlocks === 'object') ? d.protocolUnlocks : {};
+      this.protocolCards   = (d.protocolCards   && typeof d.protocolCards   === 'object') ? d.protocolCards   : {};
       // One-time retroactive payout for already-earned Endless achievements (idempotent).
       this._backfillProtocolFragments();
 
@@ -249,6 +271,7 @@ export class MetaProgress {
         protocolFragments: this.protocolFragments,
         pfEarnedFrom: this.pfEarnedFrom,
         protocolUnlocks: this.protocolUnlocks,
+        protocolCards: this.protocolCards,
       }));
     } catch (_) {}
   }
@@ -381,7 +404,26 @@ export class MetaProgress {
     this.protocolFragments = 0;
     this.pfEarnedFrom      = {};
     this.protocolUnlocks   = {};
+    this.protocolCards     = {};
     this._save();
+  }
+
+  // ─── Protocol Fragment unlock cards (permanent meta-upgrades) ────────────────
+  hasProtocolCard(id) { return this.protocolCards[id] === true; }
+
+  // Spend spendable PF on a permanent Protocol card. Returns 'ok' | 'owned' | 'soon' | 'invalid' | 'poor'.
+  // Idempotent (owned cards never re-charge); deducts the spendable balance once. Lifetime-earned PF
+  // (getProtocolFragmentsEarned) is unaffected, so progress never regresses on the menu.
+  tryBuyProtocolCard(id) {
+    const card = PROTOCOL_CARD_BY_ID[id];
+    if (!card)                       return 'invalid';
+    if (card.comingSoon)             return 'soon';
+    if (this.protocolCards[id])      return 'owned';
+    if (this.protocolFragments < card.cost) return 'poor';
+    this.protocolFragments -= card.cost;
+    this.protocolCards[id]  = true;
+    this._save();
+    return 'ok';
   }
 
   // ─── Endless Mode access ────────────────────────────────────────────────────

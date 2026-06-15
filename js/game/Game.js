@@ -5,36 +5,36 @@ import {
   MAX_OVERLOAD, PLAYER_RADIUS, CORE_RADIUS, MATRIX_RADIUS,
   DARK_BG, GRID_LINE, BLACK, CYAN, RED, GREEN, YELLOW, ORANGE, WHITE, PURPLE,
   CORE_COLORS, VIEW_SCALE, VIEW_W, VIEW_H, ENDLESS_VIEW_SCALE,
-} from '../constants.js?v=20260615100941';
+} from '../constants.js?v=20260615103949';
 import { clamp, distance, safeNormalize, randomChoice, randomRange } from '../utils.js';
 
 import { FloatingText }   from '../entities/FloatingText.js';
-import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260615100941';
-import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260615100941';
-import { Player }         from '../entities/Player.js?v=20260615100941';
-import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260615100941';
-import { Enemy }          from '../entities/Enemy.js?v=20260615100941';
-import { SupportDrone }   from '../entities/SupportDrone.js?v=20260615100941';
+import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260615103949';
+import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260615103949';
+import { Player }         from '../entities/Player.js?v=20260615103949';
+import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260615103949';
+import { Enemy }          from '../entities/Enemy.js?v=20260615103949';
+import { SupportDrone }   from '../entities/SupportDrone.js?v=20260615103949';
 
-import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow } from './Effects.js?v=20260615100941';
-import { SystemEventManager } from './Events.js?v=20260615100941';
-import { UpgradeUI }      from './UpgradeUI.js?v=20260615100941';
-import { weightedSample } from './Upgrades.js?v=20260615100941';
-import { MutationUI }      from './MutationUI.js?v=20260615100941';
-import { sampleMutations } from './Mutations.js?v=20260615100941';
-import { drawHUD, drawEndScreen } from './HUD.js?v=20260615100941';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE } from './MetaProgress.js?v=20260615100941';
-import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260615100941';
+import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow } from './Effects.js?v=20260615103949';
+import { SystemEventManager } from './Events.js?v=20260615103949';
+import { UpgradeUI }      from './UpgradeUI.js?v=20260615103949';
+import { weightedSample } from './Upgrades.js?v=20260615103949';
+import { MutationUI }      from './MutationUI.js?v=20260615103949';
+import { sampleMutations } from './Mutations.js?v=20260615103949';
+import { drawHUD, drawEndScreen } from './HUD.js?v=20260615103949';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS } from './MetaProgress.js?v=20260615103949';
+import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260615103949';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
-import { GlitchDash } from '../effects/glitch-dash.js?v=20260615100941';
-import { EMPShockwave } from '../effects/emp-shockwave.js?v=20260615100941';
-import { DigitalSingularity } from '../effects/digital-singularity.js?v=20260615100941';
-import { Protocol0 } from '../effects/protocol-0.js?v=20260615100941';
-import { LaserEyes } from '../effects/laser-eyes.js?v=20260615100941';
-import { MeteorRain } from '../effects/meteor-rain.js?v=20260615100941';
+import { GlitchDash } from '../effects/glitch-dash.js?v=20260615103949';
+import { EMPShockwave } from '../effects/emp-shockwave.js?v=20260615103949';
+import { DigitalSingularity } from '../effects/digital-singularity.js?v=20260615103949';
+import { Protocol0 } from '../effects/protocol-0.js?v=20260615103949';
+import { LaserEyes } from '../effects/laser-eyes.js?v=20260615103949';
+import { MeteorRain } from '../effects/meteor-rain.js?v=20260615103949';
 // Euclid Vector toxin kit — used ONLY when selectedCharacter === 'euclid_vector' (world-space).
-import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=20260615100941';
+import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=20260615103949';
 
 // ── Thunder Solo sprite slices (cyan_lightning_rain_notes.png, 1254×1254) ──────
 // Strike variants: a clean bolt column + ripple base. (ax,ay) = ripple-centre as a
@@ -150,16 +150,16 @@ export class Game {
       fallback.src = 'assets/backgrounds/cyberpunk_city_background.png';
       this._bgImage = fallback;
     };
-    this._bgImage.src = 'assets/backgrounds/cyber_city_bg_clean.png?v=20260615100941';
+    this._bgImage.src = 'assets/backgrounds/cyber_city_bg_clean.png?v=20260615103949';
 
     // Endless Stage 02 visuals (only used while this.endless — Act 1 keeps default visuals).
     // Missing files degrade to the default background / default Nexus visual (warn, no crash).
     this._endlessBgImage = new Image();
     this._endlessBgImage.onerror = () => console.warn('[Stage] missing assets/maps/endless/stage_02_neon_shinjuku_plaza.png — using default background');
-    this._endlessBgImage.src = 'assets/maps/endless/stage_02_neon_shinjuku_plaza.png?v=20260615100941';
+    this._endlessBgImage.src = 'assets/maps/endless/stage_02_neon_shinjuku_plaza.png?v=20260615103949';
     this._endlessNexusImage = new Image();
     this._endlessNexusImage.onerror = () => console.warn('[Nexus] missing assets/nexus/endless_nexus_base_8cores.png — using default Nexus visual');
-    this._endlessNexusImage.src = 'assets/nexus/endless_nexus_base_8cores.png?v=20260615100941';
+    this._endlessNexusImage.src = 'assets/nexus/endless_nexus_base_8cores.png?v=20260615103949';
 
     // Preload character portraits for Character Select screen
     this._charImages = {};
@@ -172,7 +172,7 @@ export class Game {
     // Japan Phasewalker portrait lives in the endless/ subfolder (Character Select + FX modules).
     this._phasewalkerSprite = new Image();
     this._phasewalkerSprite.onerror = () => console.warn('[Char] missing assets/characters/endless/japan_phasewalker.png');
-    this._phasewalkerSprite.src = 'assets/characters/endless/japan_phasewalker.png?v=20260615100941';   // ?v bust: corrected transparency
+    this._phasewalkerSprite.src = 'assets/characters/endless/japan_phasewalker.png?v=20260615103949';   // ?v bust: corrected transparency
     this._charImages['japan_phasewalker'] = this._phasewalkerSprite;
     // Euclid Vector portrait (endless/ subfolder; unlocked from the start — see roster + free unlock).
     this._euclidSprite = new Image();
@@ -212,7 +212,7 @@ export class Game {
 
     // Preload start-menu background image
     this._menuBg = new Image();
-    this._menuBg.src = 'assets/ui/start_menu_background.png?v=20260615100941';
+    this._menuBg.src = 'assets/ui/start_menu_background.png?v=20260615103949';
 
     // Preload phoenix revive effect images (orange / blue / gold tiers)
     this._phoenixImage = new Image();
@@ -220,11 +220,11 @@ export class Game {
 
     this._phoenixBlueImage = new Image();
     this._phoenixBlueImage.onerror = () => console.warn('[Assets] Failed to load: assets/effects/phoenix/blue_phoenix_revive.png');
-    this._phoenixBlueImage.src = 'assets/effects/phoenix/blue_phoenix_revive.png?v=20260615100941';
+    this._phoenixBlueImage.src = 'assets/effects/phoenix/blue_phoenix_revive.png?v=20260615103949';
 
     this._phoenixGoldImage = new Image();
     this._phoenixGoldImage.onerror = () => console.warn('[Assets] Failed to load: assets/effects/phoenix/gold_phoenix_revive.png');
-    this._phoenixGoldImage.src = 'assets/effects/phoenix/gold_phoenix_revive.png?v=20260615100941';
+    this._phoenixGoldImage.src = 'assets/effects/phoenix/gold_phoenix_revive.png?v=20260615103949';
 
     // Preload credits photos
     this._creditImgInk = new Image();
@@ -242,10 +242,10 @@ export class Game {
     // Preload core and matrix sprites
     this._coreSprite = new Image();
     this._coreSprite.onerror = () => console.warn('[Assets] Failed to load: assets/cores/data_core.png');
-    this._coreSprite.src = 'assets/cores/data_core.png?v=20260615100941';
+    this._coreSprite.src = 'assets/cores/data_core.png?v=20260615103949';
     this._matrixSprite = new Image();
     this._matrixSprite.onerror = () => console.warn('[Assets] Failed to load: assets/bases/matrix_base.png');
-    this._matrixSprite.src = 'assets/bases/matrix_base.png?v=20260615100941';
+    this._matrixSprite.src = 'assets/bases/matrix_base.png?v=20260615103949';
 
     // Preload grid cache supply drop sprite
     this._gridCacheSprite = new Image();
@@ -269,7 +269,7 @@ export class Game {
     this._airstrikeSprite.src = 'assets/enemies/event_airstrike/airstrike_sheet.png';
     this._lightningStormSprite = new Image();
     this._lightningStormSprite.onerror = () => console.warn('[Endless] lights_storm_rain.png not found — drawn fallback used');
-    this._lightningStormSprite.src = 'assets/events/weather/lights_storm_rain.png?v=20260615100941';
+    this._lightningStormSprite.src = 'assets/events/weather/lights_storm_rain.png?v=20260615103949';
 
     // HUD icons: Data-Core (top-right credits) + chains (Cyber Arm SPACE ultimate icon)
     this._dataCoreIcon = new Image();
@@ -293,25 +293,25 @@ export class Game {
     // Preload acid rain weather sprites
     this._acidRainFallImg = new Image();
     this._acidRainFallImg.onerror = () => console.warn('[Weather] acid_rain_fall.png not found — using line fallback');
-    this._acidRainFallImg.src = 'assets/events/weather/acid_rain_fall.png?v=20260615100941';
+    this._acidRainFallImg.src = 'assets/events/weather/acid_rain_fall.png?v=20260615103949';
     this._acidRainSplashImg = new Image();
     this._acidRainSplashImg.onerror = () => console.warn('[Weather] acid_rain_splash.png not found — using ellipse fallback');
-    this._acidRainSplashImg.src = 'assets/events/weather/acid_rain_splash.png?v=20260615100941';
+    this._acidRainSplashImg.src = 'assets/events/weather/acid_rain_splash.png?v=20260615103949';
 
     // Preload AI Overload Titan boss sprite
     this._titanSprite = new Image();
     this._titanSprite.onerror = () => console.warn('[Boss] ai_overload_titan.png failed to load — using fallback');
-    this._titanSprite.src = 'assets/enemies/bosses/ai_overload_titan.png?v=20260615100941';
+    this._titanSprite.src = 'assets/enemies/bosses/ai_overload_titan.png?v=20260615103949';
 
     // Preload Matrix Annihilator mini-boss sprite (existing asset)
     this._annihilatorSprite = new Image();
     this._annihilatorSprite.onerror = () => console.warn('[Boss] assets/enemies/bosses/matrix_annihilator.png failed to load — using fallback');
-    this._annihilatorSprite.src = 'assets/enemies/bosses/matrix_annihilator.png?v=20260615100941';
+    this._annihilatorSprite.src = 'assets/enemies/bosses/matrix_annihilator.png?v=20260615103949';
 
     // Preload Bloodfang Packmaster mini-boss sprite (existing asset)
     this._bloodfangSprite = new Image();
     this._bloodfangSprite.onerror = () => console.warn('[Boss] assets/enemies/bosses/bloodfang_packmaster.png failed to load — using fallback');
-    this._bloodfangSprite.src = 'assets/enemies/bosses/bloodfang_packmaster.png?v=20260615100941';
+    this._bloodfangSprite.src = 'assets/enemies/bosses/bloodfang_packmaster.png?v=20260615103949';
 
     // Preload secret-skin preview sprites (Character Select locked/unlocked + Victory screen).
     // Keyed by the same flags MetaProgress persists. Missing files degrade to a text fallback.
@@ -876,11 +876,12 @@ export class Game {
 
   // ─── Upgrades screen interaction ─────────────────────────────────────────────
   handleUpgradesClick(mousePos) {
-    const { rects, backRect, resetRect, coreTab, synTab } = this._upgradeRects();
+    const { rects, backRect, resetRect, coreTab, synTab, protoTab } = this._upgradeRects();
 
     // Tab toggle
-    if (this._inRect(mousePos, coreTab)) { this._upgradeTab = 'core';    this._confirmReset = false; return; }
-    if (this._inRect(mousePos, synTab))  { this._upgradeTab = 'synergy'; this._confirmReset = false; return; }
+    if (this._inRect(mousePos, coreTab))  { this._upgradeTab = 'core';      this._confirmReset = false; return; }
+    if (this._inRect(mousePos, synTab))   { this._upgradeTab = 'synergy';   this._confirmReset = false; return; }
+    if (this._inRect(mousePos, protoTab)) { this._upgradeTab = 'protocols'; this._confirmReset = false; return; }
 
     // Back button
     if (this._inRect(mousePos, backRect)) {
@@ -899,6 +900,24 @@ export class Game {
         this._confirmReset = true;
         this._upgradeMsg = 'Click RESET again to confirm.';
         this._upgradeMsgTimer = 3.0;
+      }
+      return;
+    }
+
+    // PROTOCOLS tab — permanent PF-purchased Protocol cards (separate spend path from Grid Cores).
+    if (this._upgradeTab === 'protocols') {
+      const cards = PROTOCOL_CARDS;
+      for (let i = 0; i < cards.length; i++) {
+        if (!this._inRect(mousePos, rects[i])) continue;
+        const card = cards[i];
+        const res  = this.meta.tryBuyProtocolCard(card.id);
+        if      (res === 'ok')    this._upgradeMsg = `${card.name} unlocked!`;
+        else if (res === 'owned') this._upgradeMsg = `${card.name} already unlocked.`;
+        else if (res === 'soon')  this._upgradeMsg = `${card.name}: COMING SOON.`;
+        else if (res === 'poor')  this._upgradeMsg = `Not enough Fragments (need ${card.cost} 🧩).`;
+        this._upgradeMsgTimer = 2.2;
+        this._confirmReset = false;
+        break;
       }
       return;
     }
@@ -935,8 +954,15 @@ export class Game {
     return pos.x >= r.x && pos.x <= r.x + r.w && pos.y >= r.y && pos.y <= r.y + r.h;
   }
 
+  // True if a permanent Protocol card has been purchased (cheap object lookup; safe in hot loops).
+  _hasProto(id) { return !!(this.meta && this.meta.protocolCards && this.meta.protocolCards[id]); }
+
   // Active Upgrades-screen list — CORE (META_UPGRADES) or the SYNERGY 5★ Grid-Core sink.
-  _upgradeList() { return (this._upgradeTab === 'synergy') ? SYNERGY_UPGRADES : META_UPGRADES; }
+  _upgradeList() {
+    if (this._upgradeTab === 'synergy')   return SYNERGY_UPGRADES;
+    if (this._upgradeTab === 'protocols') return PROTOCOL_CARDS;
+    return META_UPGRADES;
+  }
 
   _upgradeRects() {
     const COLS = 4;
@@ -958,13 +984,76 @@ export class Game {
     const resetRect = { x: x0 + totalW - 160, y: btnY, w: 160, h: 40 };
     // Tab toggle row (above the grid).
     const tabW = 200, tabH = 30, tabY = 112;
-    const coreTab = { x: x0,             y: tabY, w: tabW, h: tabH };
-    const synTab  = { x: x0 + tabW + 18, y: tabY, w: tabW, h: tabH };
-    return { rects, backRect, resetRect, coreTab, synTab };
+    const coreTab  = { x: x0,                   y: tabY, w: tabW, h: tabH };
+    const synTab   = { x: x0 + (tabW + 18),     y: tabY, w: tabW, h: tabH };
+    const protoTab = { x: x0 + 2 * (tabW + 18), y: tabY, w: tabW, h: tabH };
+    return { rects, backRect, resetRect, coreTab, synTab, protoTab };
   }
 
   // ★★★☆☆ / MAX star strip for synergy upgrades.
   _starString(lvl, max) { return '★'.repeat(lvl) + '☆'.repeat(Math.max(0, max - lvl)); }
+
+  // Permanent Protocol unlock card (PROTOCOLS tab). Category-accented, premium styling, clear
+  // LOCKED / UNLOCKED / affordable / COMING-SOON states. Bought with spendable PF (idempotent).
+  _drawProtocolCard(ctx, card, r) {
+    const owned  = this.meta.hasProtocolCard(card.id);
+    const soon   = !!card.comingSoon;
+    const avail  = this.meta.getProtocolFragments();
+    const afford = !owned && !soon && avail >= card.cost;
+    const accent = card.cat === 'ENEMY' ? '#ff6a6a' : card.cat === 'WEATHER' ? '#7fd0ff' : '#b88bff';
+
+    ctx.fillStyle = owned ? '#0c1810' : '#0a0f1e';
+    ctx.fillRect(r.x, r.y, r.w, r.h);
+    ctx.save();
+    ctx.shadowColor = owned ? '#56e08a' : afford ? accent : 'transparent';
+    ctx.shadowBlur  = owned || afford ? 12 : 0;
+    ctx.strokeStyle = owned ? '#56e08a' : soon ? '#3a4050' : afford ? accent : '#2a3550';
+    ctx.lineWidth   = owned || afford ? 2 : 1;
+    ctx.strokeRect(r.x, r.y, r.w, r.h);
+    ctx.restore();
+
+    // Category badge (left) + cost/state (right)
+    ctx.textAlign = 'left';
+    ctx.font = 'bold 10px Consolas, monospace';
+    ctx.fillStyle = accent;
+    ctx.fillText(`▍${card.cat}`, r.x + 12, r.y + 20);
+    ctx.textAlign = 'right';
+    ctx.font = 'bold 13px "Segoe UI Emoji", Consolas, monospace';
+    ctx.fillStyle = owned ? '#56e08a' : soon ? '#7a8290' : '#7df9ff';
+    ctx.fillText(owned ? '✓ UNLOCKED' : soon ? 'SOON' : `🧩 ${card.cost}`, r.x + r.w - 10, r.y + 20);
+
+    // Name
+    ctx.textAlign = 'left';
+    ctx.font = 'bold 15px Consolas, monospace';
+    ctx.fillStyle = soon ? '#8090a0' : WHITE;
+    ctx.fillText(card.name, r.x + 12, r.y + 44);
+
+    // Description — inline word-wrap (no wrapText import in this module)
+    ctx.font = '11px Consolas, monospace';
+    ctx.fillStyle = '#7a90a0';
+    const words = card.desc.split(' ');
+    let line = '', yy = r.y + 64;
+    for (const w of words) {
+      const test = line ? line + ' ' + w : w;
+      if (ctx.measureText(test).width > r.w - 24 && line) { ctx.fillText(line, r.x + 12, yy); line = w; yy += 14; }
+      else line = test;
+    }
+    if (line) ctx.fillText(line, r.x + 12, yy);
+
+    // Buy / state button
+    const btnY = r.y + r.h - 34, btnH = 26;
+    let bg, bdr, txt, tcol;
+    if      (owned)  { bg = '#0c2014'; bdr = '#56e08a'; txt = 'UNLOCKED';            tcol = '#56e08a'; }
+    else if (soon)   { bg = '#12161e'; bdr = '#3a4050'; txt = 'COMING SOON';         tcol = '#6a7686'; }
+    else if (afford) { bg = '#16182a'; bdr = accent;    txt = `BUY  —  ${card.cost} 🧩`; tcol = accent; }
+    else             { bg = '#1a0e12'; bdr = '#5a3040'; txt = `NEED ${card.cost} 🧩`;    tcol = '#a05868'; }
+    ctx.fillStyle = bg; ctx.fillRect(r.x + 10, btnY, r.w - 20, btnH);
+    ctx.strokeStyle = bdr; ctx.lineWidth = 1; ctx.strokeRect(r.x + 10, btnY, r.w - 20, btnH);
+    ctx.font = 'bold 12px "Segoe UI Emoji", Consolas, monospace';
+    ctx.fillStyle = tcol; ctx.textAlign = 'center';
+    ctx.fillText(txt, r.x + r.w / 2, btnY + 18);
+    ctx.textAlign = 'left';
+  }
 
   _updateUpgradesScreen(input) {
     if (this._upgradeMsgTimer > 0) this._upgradeMsgTimer -= 1/60;
@@ -990,13 +1079,23 @@ export class Game {
     ctx.fillStyle = YELLOW;
     ctx.fillText(`Grid Credits: ${this.meta.credits}`, WIDTH / 2, 82);
     // Protocol Fragments — separate rare Endless currency (display only here; spent in Character Select)
-    ctx.font      = 'bold 15px "Segoe UI Emoji", Consolas, monospace';
-    ctx.fillStyle = '#7df9ff';
-    ctx.fillText(`🧩 Fragments: ${this.meta.getProtocolFragmentsEarned()} / ${PF_TOTAL_OBTAINABLE}`, WIDTH / 2, 104);
+    if (this._upgradeTab !== 'protocols') {
+      ctx.font      = 'bold 15px "Segoe UI Emoji", Consolas, monospace';
+      ctx.fillStyle = '#7df9ff';
+      ctx.fillText(`🧩 Fragments: ${this.meta.getProtocolFragmentsEarned()} / ${PF_TOTAL_OBTAINABLE}`, WIDTH / 2, 104);
+    }
 
-    const { rects, backRect, resetRect, coreTab, synTab } = this._upgradeRects();
+    const { rects, backRect, resetRect, coreTab, synTab, protoTab } = this._upgradeRects();
 
-    // Tab toggle (CORE upgrades vs SYNERGY 5★ sink)
+    // PROTOCOLS tab header: show spendable PF + lifetime-earned progress (no regression on spend).
+    if (this._upgradeTab === 'protocols') {
+      ctx.font      = 'bold 15px "Segoe UI Emoji", Consolas, monospace';
+      ctx.fillStyle = '#7df9ff';
+      ctx.textAlign = 'center';
+      ctx.fillText(`🧩 Available: ${this.meta.getProtocolFragments()}     Earned: ${this.meta.getProtocolFragmentsEarned()} / ${PF_TOTAL_OBTAINABLE}`, WIDTH / 2, 104);
+    }
+
+    // Tab toggle (CORE upgrades vs SYNERGY 5★ sink vs PROTOCOLS)
     const drawTab = (rect, label, active, accent) => {
       ctx.fillStyle   = active ? '#0a2030' : '#0a1018';
       ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
@@ -1008,8 +1107,9 @@ export class Game {
       ctx.textAlign   = 'center';
       ctx.fillText(label, rect.x + rect.w / 2, rect.y + 20);
     };
-    drawTab(coreTab, 'CORE UPGRADES', this._upgradeTab !== 'synergy', CYAN);
-    drawTab(synTab,  '★ WEAPON SYNERGIES', this._upgradeTab === 'synergy', '#ffd23c');
+    drawTab(coreTab,  'CORE UPGRADES',      this._upgradeTab === 'core',      CYAN);
+    drawTab(synTab,   '★ WEAPON SYNERGIES', this._upgradeTab === 'synergy',   '#ffd23c');
+    drawTab(protoTab, '🧩 PROTOCOLS',       this._upgradeTab === 'protocols', '#b88bff');
 
     // Upgrade cards (active tab list)
     const list = this._upgradeList();
@@ -1021,6 +1121,7 @@ export class Game {
       const can   = !maxed && this.meta.credits >= cost;
       const r     = rects[i];
 
+      if (this._upgradeTab === 'protocols') { this._drawProtocolCard(ctx, upg, r); continue; }
       if (this._upgradeTab === 'synergy') { this._drawSynergyUpgradeCard(ctx, upg, r, lvl, cost, maxed); continue; }
 
       // Card bg + border
@@ -1456,6 +1557,9 @@ export class Game {
     // (drives Enemy HP/speed scaling; damage stays conservative). Act 1 uses the real minute.
     const mins = this.currentMinute() + (this.endless ? 8 : 0);
     const e = new Enemy(this.chooseEnemyType(), mins);
+    // Armored Swarm Protocol — Endless-only extra HP scaling (modest; never touches Act 1 or bosses,
+    // which are already tuned). Applied once at spawn so it can't compound or double-apply.
+    if (this.endless && !e.isBoss() && this._hasProto('armored_swarm')) e.hp = Math.round(e.hp * 1.18);
     this.enemies.push(e);
     if (e.isBoss()) {
       // Act 1: warn per boss spawn (unchanged). Endless: collapse to one warning per loop window.
@@ -5307,6 +5411,7 @@ export class Game {
       const e = new Enemy(randomChoice(ELITE_WAVE.pool), m);
       e.isElite        = true;
       e.hp            *= ELITE_WAVE.hpMult;
+      if (this._hasProto('armored_swarm')) e.hp = Math.round(e.hp * 1.18);   // Armored Swarm Protocol (Endless elites)
       e._baseSpeedFull *= ELITE_WAVE.speedMult;        // canonical speed (baseSpeed recomputed per frame)
       e.baseSpeed     *= ELITE_WAVE.speedMult;
       e.radius        *= ELITE_WAVE.radiusMult;
@@ -5364,7 +5469,7 @@ export class Game {
 
   // Rocket-rain SALVO: 3–6 rockets fanned across multiple impact zones around the player.
   _fireSalvo(s) {
-    const n = 3 + Math.floor(Math.random() * 4);   // 3–6 rockets per burst (bombardment)
+    const n = 3 + Math.floor(Math.random() * 4) + (this._hasProto('airstrike_plus') ? 2 : 0);   // 3–6 (+2 with Airstrike+); aim unchanged, pool still capped at 40
     let fired = 0;
     for (let i = 0; i < n; i++) {
       if (this.airstrikeRockets.length >= 40) break;   // hard cap on in-flight rockets
@@ -5409,7 +5514,7 @@ export class Game {
     this._lightningTimer -= dt;
     if (this._lightningTimer <= 0) {
       this._lightningTimer = 120;            // ~every 2 minutes
-      this._stormActive    = 12;             // threat pass: ~12s of strikes per storm (doubled)
+      this._stormActive    = this._hasProto('lightning_plus') ? 18 : 12;   // threat pass doubled; Lightning Storm+ extends further
       this._stormSpawnCd   = 0;
       this.triggerAnnouncement('⚠ LIGHTNING STORM HAZARD', '#9fd0ff');
       this.audio?.playEventWarning();
@@ -5564,8 +5669,9 @@ export class Game {
   }
 
   _synergyBurst(src, fx, stars) {
-    const radius  = 58 + stars * 6;
-    const baseDmg = 8 + stars * 3;                    // 8 → 23 across 0–5 stars
+    const sm      = this._hasProto('synergy_mastery') ? 1.25 : 1;   // Character Synergy Mastery (boss-capped below)
+    const radius  = (58 + stars * 6) * (sm > 1 ? 1.12 : 1);
+    const baseDmg = (8 + stars * 3) * sm;             // 8 → 23 across 0–5 stars
     this._inSynergyBurst = true;                      // prevent burst→takeHit→burst cascades
     for (const e of this.enemies) {
       if (distance(e.pos, src.pos) > radius) continue;
@@ -5605,7 +5711,8 @@ export class Game {
     e._elemCd = 0.18;
     const core = (this.player.upgrades['reward_elemental_core'] || 0) >= 1;
     const fus  = (this.player.upgrades['reward_fusion_catalyst'] || 0);
-    const scale = (core ? 1.4 : 1.05) + 0.12 * fus;   // larger = clearly visible per-character identity
+    const em   = this._hasProto('elemental_mastery') ? 1.25 : 1;   // Elemental Mastery Protocol (boss-capped below)
+    const scale = ((core ? 1.4 : 1.05) + 0.12 * fus) * em;   // larger = clearly visible per-character identity
     this.elementFx.spawn(e.pos.x, e.pos.y, el, scale);
 
     if (fus <= 0) return;                            // fusion behavior needs Fusion Catalyst
@@ -5615,7 +5722,7 @@ export class Game {
       this._fusionProc(e, fid, fus, core);
     } else if (!fid) {                               // single-element char: small boss-capped bonus
       this._inElementHit = true;
-      const raw = 2 + 2 * fus;
+      const raw = (2 + 2 * fus) * em;
       const d = (e.isBoss?.() || e.isMegaBoss) ? this._capBossDamage(e, raw) : raw;
       e.takeHit(d, this);
       this._inElementHit = false;
@@ -5644,7 +5751,8 @@ export class Game {
   // ≤6 affected enemies/proc, ≤12 active clouds, ElementFx-capped VFX, re-entrancy-guarded.
   _fusionProc(src, fid, fus, core) {
     const def = FUSION_FX[fid]; if (!def) return;
-    const scale = 1 + 0.15 * fus + (core ? 0.2 : 0);
+    const fm = this._hasProto('fusion_mastery') ? 1.2 : 1;        // Fusion Mastery Protocol (boss-capped below)
+    const scale = (1 + 0.15 * fus + (core ? 0.2 : 0)) * fm;
     this.elementFx.spawnFusion(src.pos.x, src.pos.y, def.c1, def.c2, 1.5 * scale);   // bold, clearly visible
     this._fusionName = def.name; this._fusionNameT = 1.2;          // brief HUD label
 
@@ -5661,7 +5769,7 @@ export class Game {
       if (n >= 6) break;                                           // cap affected enemies per proc
       if (distance(e.pos, src.pos) > R) continue;
       const isBoss = e.isBoss?.() || e.isMegaBoss;
-      let dmg = def.dmg || 10;
+      let dmg = (def.dmg || 10) * fm;
       if (e.isElite) dmg *= 0.5;                                   // controlled vs elites
       const d = isBoss ? this._capBossDamage(e, dmg * 0.5) : dmg;  // bosses: halved + capped
       if (e?.takeHit) e.takeHit(d, this);
@@ -5740,15 +5848,16 @@ export class Game {
       const char = this.player.selectedCharacter;
       const fid  = (this.player.upgrades['reward_fusion_catalyst'] || 0) > 0 ? this._selectFusion(char) : null;
       const px = this.player.pos.x, py = this.player.pos.y;
+      const um = this._hasProto('ult_infusion_mastery') ? 1.25 : 1;   // Ult Infusion Mastery (bigger nova; VFX-only)
       if (fid && FUSION_FX[fid]) {                    // FUSION nova (8 fusion bursts) when eligible
         const def = FUSION_FX[fid];
         for (let i = 0; i < 8; i++) { const ang = i * Math.PI / 4;
-          this.elementFx.spawnFusion(px + Math.cos(ang) * 44, py + Math.sin(ang) * 44, def.c1, def.c2, 1.9); }
+          this.elementFx.spawnFusion(px + Math.cos(ang) * 44, py + Math.sin(ang) * 44, def.c1, def.c2, 1.9 * um); }
         this._fusionName = def.name; this._fusionNameT = 1.4;
       } else {                                         // else plain element nova
         const el = CHARACTER_ELEMENT[char];
         if (el) for (let i = 0; i < 8; i++) { const ang = i * Math.PI / 4;
-          this.elementFx.spawn(px + Math.cos(ang) * 40, py + Math.sin(ang) * 40, el, 1.8); }
+          this.elementFx.spawn(px + Math.cos(ang) * 40, py + Math.sin(ang) * 40, el, 1.8 * um); }
       }
     }
     this._prevMana = m;
@@ -7833,7 +7942,8 @@ export class Game {
   // damage only ticks while the player stands inside (telegraphed dark-red pool). Never hits enemies.
   _spawnBossTrail(pos) {
     if (this.bossTrails.length >= 36) return;            // hard cap on active trail pools
-    this.bossTrails.push({ pos: pos.clone(), t: 0, life: 3.5, radius: 32, dps: 16, dmgAccum: 0 });
+    const bp = this._hasProto('blood_path');             // Blood Path Protocol: harder + longer-lived
+    this.bossTrails.push({ pos: pos.clone(), t: 0, life: bp ? 4.5 : 3.5, radius: bp ? 38 : 32, dps: bp ? 22 : 16, dmgAccum: 0 });
   }
 
   _updateBossTrails(dt) {
@@ -7917,7 +8027,7 @@ export class Game {
       // on the player (min 60px), and active zones are hard-capped → fair and dodgeable.
       if (this._endlessLavaCd <= 0 && this._lavaRainActive <= 0) {
         this._endlessLavaCd  = randomRange(16, 24);
-        this._lavaRainActive = 5.0;
+        this._lavaRainActive = this._hasProto('lava_plus') ? 7.5 : 5.0;   // Lava Rain+ extends the storm window
         this._lavaSpawnCd    = 0;
         this.triggerAnnouncement('⚠ LAVA RAIN', ORANGE);
         this.audio?.playEventWarning();

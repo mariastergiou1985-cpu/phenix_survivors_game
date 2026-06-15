@@ -1,11 +1,11 @@
 import {
   Vec2, ENEMY_RADIUS, WIDTH, HEIGHT, WORLD_W, WORLD_H, WORLD_MARGIN,
   BLUE, MAGENTA, PURPLE, ORANGE, GREEN, RED, YELLOW, WHITE, CYAN, MATRIX_RADIUS,
-} from '../constants.js?v=20260615100941';
+} from '../constants.js?v=20260615103949';
 import { clamp, distance, safeNormalize, randomRange, randomChoice, drawBar } from '../utils.js';
-import { DataCore } from './DataCore.js?v=20260615100941';
+import { DataCore } from './DataCore.js?v=20260615103949';
 import { FloatingText } from './FloatingText.js';
-import { drawGlow } from '../game/Effects.js?v=20260615100941';
+import { drawGlow } from '../game/Effects.js?v=20260615103949';
 
 // ─── Hit/death feedback tuning (visual only — no balance impact) ────────────────
 // One place to dial the juice. Particle counts stay small and the ParticleSystem
@@ -138,7 +138,8 @@ export class Enemy {
     const boss = this.isBoss() || this.isMegaBoss;
     // Aim assist — lead the player by a fraction of their velocity (readable, still dodgeable):
     // normal ~45%, elite ~55%, boss ~65%.
-    const aim  = boss ? 0.65 : this.isElite ? 0.55 : 0.45;
+    let aim    = boss ? 0.65 : this.isElite ? 0.55 : 0.45;
+    if (game._hasProto?.('predator_aim')) aim = Math.min(0.85, aim + 0.12);   // Predator Aim Protocol
     const pv   = game.player.vel || new Vec2();
     const lead = game.player.pos.add(pv.scale(aim * 0.28));
     const dir  = safeNormalize(lead.sub(this.pos));
@@ -146,7 +147,8 @@ export class Enemy {
 
     // Multishot — elites/bosses fire a small readable spread (the bullet pool is hard-capped in
     // spawnEnemyBullet, so this can never become an unbounded bullet wall).
-    const shots   = boss ? 3 : this.isElite ? 3 : 1;
+    let shots     = boss ? 3 : this.isElite ? 3 : 1;
+    if (this.isElite && game.endless && game._hasProto?.('elite_arsenal')) shots += 1;   // Elite Arsenal Protocol (+1 controlled shot; pool stays capped)
     const spread  = boss ? 0.16 : 0.20;
     const baseAng = Math.atan2(dir.y, dir.x);
     const start   = -(shots - 1) / 2;
@@ -180,7 +182,7 @@ export class Enemy {
     if (spriteFile) {
       this.sprite = new Image();
       this.sprite.onerror = () => console.warn(`[Enemy] Sprite failed: assets/enemies/${spriteFile}.png`);
-      this.sprite.src = `assets/enemies/${spriteFile}.png?v=20260615100941`;
+      this.sprite.src = `assets/enemies/${spriteFile}.png?v=20260615103949`;
     } else {
       console.warn(`[Enemy] No sprite mapped for: ${this.enemyType}`);
     }
