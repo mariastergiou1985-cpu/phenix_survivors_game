@@ -68,7 +68,19 @@ const BOSS_DPS_CAP_MEGA   = 40;   // promoted main boss (isMegaBoss)
 // Bosses shrug off a slice of damage-over-time and support-drone fire so their
 // mechanics have time to play out. Primary-fire DPS cap & fairness are untouched.
 const BOSS_DOT_RESIST   = 0.28;   // −28% from DoT (aqua trail / burn / corrosive)  [20–35% band]
-const BOSS_DRONE_RESIST = 0.20;   // −20% from support drones                       [15–25% band]
+const BOSS_DRONE_RESIST = 0.20;
+
+// ── Double Demons (Chaos Mode dual-body boss) ── tuning constants (all in one place) ─
+const DD_HP           = 900;   // shared HP pool (both bodies, one bar)
+const DD_GUNNER_R     = 36;    // gunner body radius
+const DD_CLAW_R       = 42;    // claw body radius
+const DD_GUNNER_SPEED = 85;    // gunner strafe movement speed
+const DD_CLAW_SPEED   = 145;   // claw closing speed
+const DD_GUNNER_RANGE = 270;   // preferred distance from player (gunner)
+const DD_CONTACT_DMG  = 14;    // contact damage per second (both bodies)
+const DD_ENRAGE_PCT   = 0.50;  // enrage at 50% shared HP
+const DD_ENRAGE_SPD   = 1.40;  // speed multiplier on enrage
+const DD_SPAWN_DELAY  = 0;     // seconds after rearming before boss appears   // −20% from support drones                       [15–25% band]
 
 // ── Final-boss (mega-boss) multi-phase encounter ───────────────────────────────
 // All player damage routes through _damagePlayer (dash i-frames / hit grace / 30-HP ceiling),
@@ -325,6 +337,14 @@ export class Game {
     this._bloodfangSprite.onerror = () => console.warn('[Boss] assets/enemies/bosses/bloodfang_packmaster.png failed to load — using fallback');
     this._bloodfangSprite.src = 'assets/enemies/bosses/bloodfang_packmaster.png?v=20260615210000';
 
+    // Preload Double Demons boss sprites (note: space in filename is intentional)
+    this._doubleDemonsSprite = new Image();
+    this._doubleDemonsSprite.onerror = () => console.warn('[Boss] double_ demons.png not found — drawn fallback used');
+    this._doubleDemonsSprite.src = 'assets/enemies/bosses/double_ demons.png?v=20260615210000';
+    this._rocketRainSprite = new Image();
+    this._rocketRainSprite.onerror = () => console.warn('[Boss] rocket_rain.png not found — drawn fallback used');
+    this._rocketRainSprite.src = 'assets/enemies/bosses/rocket_rain.png?v=20260615210000';
+
     // Preload secret-skin preview sprites (Character Select locked/unlocked + Victory screen).
     // Keyed by the same flags MetaProgress persists. Missing files degrade to a text fallback.
     // Keyed by the outfit unlock flag; sources point at the CURRENT secret-skin files.
@@ -537,7 +557,8 @@ export class Game {
     this.timeAlive          = 0;
     // ── Chaos Mode (unlocks at 31:00 Endless) ─────────────────────────────
     this._chaosMode         = false;   // true after transition completes
-    this._chaosTransTimer   = -1;      // >=0 while glitch transition is playing
+    this._chaosTransTimer   = -1;
+    this.forceDoubleDemon   = false;   // DEBUG: F8 in Endless or game.forceDoubleDemon=true      // >=0 while glitch transition is playing
     this._chaosCoreCd       = 0;       // cooldown for bonus gold-core spawns
     this._eqRafId           = null;    // rAF handle for the menu equalizer loop
     this.overload           = 0;
@@ -628,6 +649,14 @@ export class Game {
     this.bloodfangSpawned    = false;
     this.bloodfangBoss       = null;
     this.bloodfangSpawnTimer = 600;
+
+    // Double Demons — Chaos Mode dual-body boss (Gunner + Claw, shared HP)
+    this.doubleDemonsSpawned    = false;
+    this.doubleDemonsBoss       = null;   // { hp, maxHp, enraged, gunner:{...}, claw:{...} }
+    this.doubleDemonsSpawnTimer = 0;
+    this._ddClawShockwaves      = [];     // Claw Slam shockwave rings
+    this._ddLightningTrails     = [];     // Claw Dash electric trails
+    this._ddRocketShadows       = [];     // Rocket Rain telegraph shadows
 
     this.supportDrones     = [];
     this.allyDrones        = [];   // Auto-Forge Drone card: persistent allies (NOT cleared by boss logic)
@@ -2131,7 +2160,7 @@ export class Game {
     this._endlessBossTimer -= dt;
     if (this._endlessBossTimer > 0) return;
     if (this.acidRain || this.acidRainTimer < 8) { this._endlessBossTimer = 8; return; }  // avoid overlap
-    const slots = ['titan', 'annihilator', 'bloodfang', 'mech'];
+    const slots = ['titan', 'annihilator', 'bloodfang', 'mech', 'doubleDemon'];
     this._endlessBossIdx = (this._endlessBossIdx + 1) % slots.length;
     this._endlessRearmBoss(slots[this._endlessBossIdx]);
     // Phase 3: In Chaos Mode rearm a second slot immediately and use shorter cadence
@@ -2158,6 +2187,11 @@ export class Game {
       if (this.enemies.length < this.enemyCap() && !this.enemies.some(e => e.enemyType === 'Security Defector Mech')) {
         this.enemies.push(new Enemy('Security Defector Mech', this.currentMinute() + 8));
         this._endlessBossAlert('DEFECTOR MECH BOSS DETECTED', YELLOW);
+      }
+    } else if (slot === 'doubleDemon') {
+      if (!this.doubleDemonsBoss || this.doubleDemonsBoss.hp <= 0) {
+        this.doubleDemonsSpawned    = false;
+        this.doubleDemonsSpawnTimer = DD_SPAWN_DELAY;
       }
     }
   }
@@ -3610,7 +3644,8 @@ export class Game {
         // Rearm all boss slots immediately so they arrive together
         this.titanSpawned       = false; this.titanSpawnTimer       = 0;
         this.annihilatorSpawned = false; this.annihilatorSpawnTimer = 0;
-        this.bloodfangSpawned   = false; this.bloodfangSpawnTimer   = 0;
+        this.bloodfangSpawned    = false; this.bloodfangSpawnTimer    = 0;
+        this.doubleDemonsSpawned = false; this.doubleDemonsSpawnTimer = 0;
         this._endlessBossTimer  = 5;   // first Chaos boss rotation: 5 s from now
         this.acidRainTimer      = 30;  // Phase 4: first acid rain 30 s into Chaos
         this._airstrikeTimer    = 15;  // Phase 4: first airstrike 15 s into Chaos
@@ -3688,6 +3723,7 @@ export class Game {
     this._updateTitan(dt);
     this._updateAnnihilator(dt);
     this._updateBloodfang(dt);
+    this._updateDoubleDemonsBoss(dt);
     this._updateBossAttacks(dt);
     this._updateBossTrails(dt);
     this._updateEndlessHazards(dt);   // Endless-only: airstrike ships/rockets + lightning storm
@@ -4478,7 +4514,9 @@ export class Game {
       if (e.carryingCore && d < carrierDist) { carrierDist = d; carrier = e; }
     }
     // Include live bosses / mini-bosses if closer than current best
-    for (const boss of [this.titanBoss, this.annihilatorBoss, this.bloodfangBoss]) {
+    const _ddBodies = this.doubleDemonsBoss && this.doubleDemonsBoss.hp > 0
+      ? [this.doubleDemonsBoss.gunner, this.doubleDemonsBoss.claw] : [];
+    for (const boss of [this.titanBoss, this.annihilatorBoss, this.bloodfangBoss, ..._ddBodies]) {
       if (boss && boss.hp > 0) {
         const d = distance(from, boss.pos);
         if (d < bestDist) { bestDist = d; best = boss; }
@@ -4634,6 +4672,25 @@ export class Game {
         this.projectiles.splice(i, 1);
         hit = true;
         if (this.bloodfangBoss.hp <= 0) this._bloodfangDie();
+      }
+
+      // Check Double Demons hit (Gunner or Claw body — damage goes to shared HP)
+      if (!hit && this.doubleDemonsBoss && this.doubleDemonsBoss.hp > 0) {
+        const _dd = this.doubleDemonsBoss;
+        for (const _body of [_dd.gunner, _dd.claw]) {
+          if (distance(p.pos, _body.pos) < p.radius + _body.radius) {
+            const _ddDmg = this._capBossDamage(_dd, p.damage);
+            _dd.hp        -= _ddDmg;
+            _body.hitFlash = 0.08;
+            this.floatingTexts.push(new FloatingText('-' + Math.round(_ddDmg),
+              _body.pos.add(new Vec2(randomRange(-10, 10), -_body.radius - 6)), WHITE, 0.5));
+            this.particles.spawnHitSparks(p.pos, '#ff2d95');
+            this.projectiles.splice(i, 1);
+            hit = true;
+            if (_dd.hp <= 0) this._doubleDemonsDie();
+            break;
+          }
+        }
       }
 
       if (!hit && !p.alive()) this.projectiles.splice(i, 1);
@@ -7029,6 +7086,7 @@ export class Game {
     this._drawTitan(ctx);
     this._drawAnnihilator(ctx);
     this._drawBloodfang(ctx);
+    this._drawDoubleDemonsBoss(ctx);
 
     // 4b ── Grid Cache supply drop crate
     if (this.gridCache) {
@@ -11462,6 +11520,305 @@ export class Game {
     ctx.textAlign = 'center';
     ctx.fillText('BLOODFANG PACKMASTER', a.pos.x, by - 3);
     ctx.textAlign = 'left';
+  }
+
+
+  // ── Double Demons — Chaos Mode dual-body boss ─────────────────────────────────────────────────
+  // Gunner keeps medium range and strafes; Claw closes in for melee. Both bodies share
+  // a single HP pool drawn as one bar. Attacks added in Phases (b)/(c)/(d).
+  // DEBUG: game.forceDoubleDemon = true  (or F8 in Endless) spawns them immediately.
+
+  _spawnDoubleDemonsBoss() {
+    const hp   = DD_HP;
+    const mid  = new Vec2(WORLD_W / 2, WORLD_H / 2);
+    const dx   = WORLD_W * 0.28;
+    const dy   = WORLD_H * 0.18;
+    const flip = Math.random() < 0.5 ? -1 : 1;
+    const gPos = mid.add(new Vec2(-dx * flip, -dy));
+    const cPos = mid.add(new Vec2( dx * flip,  dy));
+
+    this.doubleDemonsBoss = {
+      hp, maxHp: hp, enraged: false,
+      // Gunner Demon — ranged, strafes at medium distance
+      gunner: {
+        pos: gPos.clone(), radius: DD_GUNNER_R, hitFlash: 0,
+        strafeDir: 1, strafeTimer: 2.0,
+        barrageCd: 4.5, suppressCd: 2.8,
+        barragePhase: null, suppressState: null,
+      },
+      // Claw Demon — melee, closes in on the player
+      claw: {
+        pos: cPos.clone(), radius: DD_CLAW_R, hitFlash: 0,
+        dashCd: 3.5, slamCd: 5.0,
+        dashState: null, slamState: null,
+      },
+    };
+
+    this._ddClawShockwaves  = [];
+    this._ddLightningTrails = [];
+    this._ddRocketShadows   = [];
+
+    this._bossAnnounce('\u26a1 DOUBLE DEMONS UNLEASHED \u26a1', '#ff2d95');
+    this.audio?.playBossSpawn();
+    this.screenShake.trigger(8, 0.6);
+    this.floatingTexts.push(new FloatingText('\u26a1 DOUBLE DEMONS UNLEASHED \u26a1',
+      new Vec2(WIDTH / 2 - 210, HEIGHT / 2 - 66), '#ff2d95', 3.2));
+    this.floatingTexts.push(new FloatingText('GUNNER + CLAW \u2014 ONE SHARED HP',
+      new Vec2(WIDTH / 2 - 185, HEIGHT / 2 - 36), '#ff8fd4', 2.6));
+  }
+
+  _updateDoubleDemonsBoss(dt) {
+    // DEBUG shortcut — force-spawn immediately (F8 in main.js, or set game.forceDoubleDemon=true)
+    if (this.forceDoubleDemon && this.endless && !this.doubleDemonsBoss) {
+      this.forceDoubleDemon    = false;
+      this.doubleDemonsSpawned = true;
+      this._spawnDoubleDemonsBoss();
+    }
+
+    if (!this.doubleDemonsSpawned) {
+      this.doubleDemonsSpawnTimer -= dt;
+      if (this.doubleDemonsSpawnTimer > 0) return;
+      this.doubleDemonsSpawned = true;
+      this._spawnDoubleDemonsBoss();
+    }
+
+    const dd = this.doubleDemonsBoss;
+    if (!dd || dd.hp <= 0) return;
+
+    const p    = this.player;
+    const spdM = dd.enraged ? DD_ENRAGE_SPD : 1.0;
+    const cdMult = dd.enraged ? 0.70 : 1.0;   // enrage: 30% shorter cooldowns
+
+    // ── Enrage trigger at 50% shared HP ──────────────────────────────────────
+    if (!dd.enraged && dd.hp / dd.maxHp <= DD_ENRAGE_PCT) {
+      dd.enraged = true;
+      this.triggerAnnouncement('\u26a1 DOUBLE DEMONS ENRAGED \u26a1', '#ff0000');
+      this.screenShake.trigger(10, 0.5);
+      this.floatingTexts.push(new FloatingText('\u26a1 ENRAGE! SPEED & RATE UP \u26a1',
+        new Vec2(WIDTH / 2 - 160, HEIGHT / 2), '#ff0000', 2.0));
+    }
+
+    // ── Gunner movement: strafe laterally, keep preferred range ──────────────
+    const g = dd.gunner;
+    if (g.hitFlash > 0) g.hitFlash -= dt;
+
+    if (!g.barragePhase && !g.suppressState) {
+      const toP      = p.pos.sub(g.pos);
+      const dist     = toP.length();
+      const toPNorm  = safeNormalize(toP);
+
+      if (dist > DD_GUNNER_RANGE + 40) {
+        g.pos.addMut(toPNorm.scale(DD_GUNNER_SPEED * spdM * dt));
+      } else if (dist < DD_GUNNER_RANGE - 60) {
+        g.pos.addMut(toPNorm.scale(-DD_GUNNER_SPEED * 0.7 * spdM * dt));
+      }
+
+      g.strafeTimer -= dt;
+      if (g.strafeTimer <= 0) {
+        g.strafeDir   = -g.strafeDir;
+        g.strafeTimer = 1.6 + Math.random() * 1.4;
+      }
+      const perp = new Vec2(-toPNorm.y, toPNorm.x).scale(g.strafeDir);
+      g.pos.addMut(perp.scale(DD_GUNNER_SPEED * 0.75 * spdM * dt));
+    }
+
+    g.pos.x = clamp(g.pos.x, WORLD_MARGIN + g.radius, WORLD_W - WORLD_MARGIN - g.radius);
+    g.pos.y = clamp(g.pos.y, WORLD_MARGIN + 40 + g.radius, WORLD_H - WORLD_MARGIN - g.radius);
+
+    // Gunner contact push (light — it prefers range)
+    if (distance(g.pos, p.pos) < g.radius + PLAYER_RADIUS) {
+      const push = safeNormalize(p.pos.sub(g.pos));
+      p.pos.addMut(push.scale(50 * dt));
+      if (p.dashTimer <= 0 && this.phoenixReviveTimer <= 0) {
+        p.applyDamage(DD_CONTACT_DMG * 0.5 * dt * (1 - p.contactDamageReduction));
+      }
+    }
+
+    // Cooldown ticks (attacks implemented in Phase b/c/d)
+    g.barrageCd  -= dt * cdMult;
+    g.suppressCd -= dt * cdMult;
+
+    // ── Claw movement: close in on the player ────────────────────────────────
+    const c = dd.claw;
+    if (c.hitFlash > 0) c.hitFlash -= dt;
+
+    const isDashing = c.dashState?.phase === 'dash';
+    if (!isDashing) {
+      const toClaw = p.pos.sub(c.pos);
+      if (toClaw.length() > c.radius + PLAYER_RADIUS + 2) {
+        c.pos.addMut(safeNormalize(toClaw).scale(DD_CLAW_SPEED * spdM * dt));
+      }
+    }
+
+    c.pos.x = clamp(c.pos.x, WORLD_MARGIN + c.radius, WORLD_W - WORLD_MARGIN - c.radius);
+    c.pos.y = clamp(c.pos.y, WORLD_MARGIN + 40 + c.radius, WORLD_H - WORLD_MARGIN - c.radius);
+
+    // Claw contact damage (heavy melee threat)
+    if (distance(c.pos, p.pos) < c.radius + PLAYER_RADIUS &&
+        p.dashTimer <= 0 && this.phoenixReviveTimer <= 0 &&
+        this.playerHitCooldown <= 0) {
+      this.playerHitCooldown = 0.5;
+      const dmg = DD_CONTACT_DMG * (1 - p.contactDamageReduction);
+      p.applyDamage(dmg);
+      this.screenShake.trigger(4, 0.15);
+      p.pos.addMut(safeNormalize(p.pos.sub(c.pos)).scale(28));
+      this.floatingTexts.push(new FloatingText(
+        '-' + Math.ceil(dmg) + ' HP', p.pos.clone(), RED, 0.6));
+    }
+
+    // Cooldown ticks (attacks implemented in Phase c)
+    c.dashCd -= dt * cdMult;
+    c.slamCd -= dt * cdMult;
+
+    if (dd.hp <= 0) this._doubleDemonsDie();
+  }
+
+  _doubleDemonsDie() {
+    const dd = this.doubleDemonsBoss;
+    if (!dd) return;
+
+    this.particles.spawnExplosion(dd.gunner.pos, ['#ff2d95', ORANGE, YELLOW], 22);
+    this.particles.spawnExplosion(dd.claw.pos,   [RED, '#ff2d95', WHITE],     22);
+    this.screenShake.trigger(16, 1.2);
+
+    this.score = (this.score ?? 0) + 600;
+    this.player.gainXp(55, this.floatingTexts);
+    const ddCredits = this._awardCredits(30 + Math.floor(Math.random() * 21));  // 30-50
+    this.overload = Math.max(0, this.overload - 12);
+
+    // Extra cores: 3 gold + 2 silver scatter from both bodies
+    const drops = [
+      [dd.gunner.pos.add(new Vec2(-30,   0)), 'gold'],
+      [dd.gunner.pos.add(new Vec2( 30, -20)), 'gold'],
+      [dd.claw.pos.add(  new Vec2(  0,  30)), 'gold'],
+      [dd.claw.pos.add(  new Vec2(-28, -15)), 'silver'],
+      [dd.claw.pos.add(  new Vec2( 28,  15)), 'silver'],
+    ];
+    for (const [dpos, dtype] of drops) {
+      this.groundCores.push(new DataCore(this._clampPickupPos(dpos), dtype));
+    }
+
+    this.floatingTexts.push(new FloatingText('\u26a1 DOUBLE DEMONS DEFEATED \u26a1',
+      dd.gunner.pos.clone(), '#ff2d95', 2.8));
+    this.floatingTexts.push(new FloatingText('+' + ddCredits + ' GRID CREDITS',
+      new Vec2(dd.claw.pos.x, dd.claw.pos.y - 32), GREEN, 2.5));
+    this.floatingTexts.push(new FloatingText('+5 CORES DROPPED',
+      new Vec2(dd.gunner.pos.x, dd.gunner.pos.y - 32), YELLOW, 2.2));
+
+    this.triggerAnnouncement('\u26a1 DOUBLE DEMONS DEFEATED \u26a1', '#ff2d95');
+    this.doubleDemonsBoss    = null;
+    this._ddClawShockwaves   = [];
+    this._ddLightningTrails  = [];
+    this._ddRocketShadows    = [];
+  }
+
+  _drawDoubleDemonsBoss(ctx) {
+    const dd = this.doubleDemonsBoss;
+    if (!dd || dd.hp <= 0) return;
+
+    const now   = Date.now();
+    const enragePulse = dd.enraged ? 0.6 + 0.4 * Math.abs(Math.sin(now / 150)) : 1.0;
+    const spr   = this._doubleDemonsSprite;
+    const hasSpr = spr && spr.complete && spr.naturalWidth > 0;
+
+    // ── Draw each body ────────────────────────────────────────────────────────
+    const bodies = [
+      { body: dd.gunner, label: 'GUNNER', aura: '#ff2d95', half: 'left'  },
+      { body: dd.claw,   label: 'CLAW',   aura: RED,       half: 'right' },
+    ];
+
+    for (const { body, label, aura, half } of bodies) {
+      const { pos, radius } = body;
+
+      // Enrage aura ring
+      if (dd.enraged) {
+        ctx.save();
+        ctx.globalAlpha = enragePulse * 0.55;
+        ctx.strokeStyle = '#ff4400';
+        ctx.lineWidth   = 5;
+        ctx.beginPath(); ctx.arc(pos.x, pos.y, radius + 9, 0, Math.PI * 2); ctx.stroke();
+        ctx.restore();
+      }
+
+      drawGlow(ctx, pos.x, pos.y, radius, aura, 0.30);
+
+      // Sprite (left/right half of shared sheet) or fallback circle
+      ctx.save();
+      if (hasSpr) {
+        const hw = Math.floor(spr.naturalWidth / 2);
+        const sx = half === 'left' ? 0 : hw;
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(spr, sx, 0, hw, spr.naturalHeight,
+          pos.x - radius, pos.y - radius, radius * 2, radius * 2);
+        ctx.imageSmoothingEnabled = true;
+      } else {
+        ctx.fillStyle   = aura;
+        ctx.strokeStyle = WHITE;
+        ctx.lineWidth   = 3;
+        ctx.beginPath(); ctx.arc(pos.x, pos.y, radius, 0, Math.PI * 2);
+        ctx.fill(); ctx.stroke();
+        // Fallback label inside circle so it's clear which is which
+        ctx.font      = 'bold 9px Consolas, monospace';
+        ctx.fillStyle = WHITE;
+        ctx.textAlign = 'center';
+        ctx.fillText(label[0], pos.x, pos.y + 3);   // G or C
+      }
+      ctx.restore();
+
+      // Hit flash
+      if (body.hitFlash > 0) {
+        ctx.save();
+        ctx.globalAlpha = 0.65;
+        ctx.fillStyle   = WHITE;
+        ctx.beginPath(); ctx.arc(pos.x, pos.y, radius, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+      }
+
+      // Body label
+      ctx.save();
+      ctx.font      = 'bold 10px Consolas, monospace';
+      ctx.fillStyle = dd.enraged ? '#ff6600' : aura;
+      ctx.textAlign = 'center';
+      ctx.fillText(label, pos.x, pos.y - radius - 5);
+      ctx.restore();
+    }
+
+    // ── Shared HP bar (bottom-center, above HUD strip) ────────────────────────
+    const barW  = 340;
+    const barH  = 10;
+    const barX  = WIDTH / 2 - barW / 2;
+    const barY  = HEIGHT - 46;
+    const hpPct = Math.max(0, dd.hp / dd.maxHp);
+
+    ctx.fillStyle = 'rgba(0,0,0,0.70)';
+    ctx.fillRect(barX - 2, barY - 14, barW + 4, barH + 20);
+
+    const grad = ctx.createLinearGradient(barX, 0, barX + barW, 0);
+    grad.addColorStop(0, dd.enraged ? '#ff0000' : '#cc1166');
+    grad.addColorStop(1, dd.enraged ? '#ff8800' : '#ff2d95');
+    ctx.fillStyle = grad;
+    ctx.fillRect(barX, barY, Math.round(barW * hpPct), barH);
+
+    // 50% enrage marker
+    ctx.fillStyle = 'rgba(255,220,0,0.8)';
+    ctx.fillRect(barX + barW * DD_ENRAGE_PCT - 1, barY - 1, 2, barH + 2);
+
+    // Name
+    ctx.save();
+    ctx.font      = 'bold 11px Consolas, monospace';
+    ctx.fillStyle = dd.enraged ? '#ff6600' : '#ff2d95';
+    ctx.textAlign = 'center';
+    ctx.fillText('\u26a1 DOUBLE DEMONS' + (dd.enraged ? ' [ENRAGED]' : '') + ' \u26a1',
+      WIDTH / 2, barY - 4);
+    ctx.restore();
+
+    // HP text
+    ctx.save();
+    ctx.font      = '10px Consolas, monospace';
+    ctx.fillStyle = WHITE;
+    ctx.textAlign = 'center';
+    ctx.fillText(Math.ceil(dd.hp) + ' / ' + dd.maxHp, WIDTH / 2, barY + barH + 10);
+    ctx.restore();
   }
 
   _drawAcidRain(ctx) {

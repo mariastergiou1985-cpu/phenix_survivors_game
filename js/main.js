@@ -70,6 +70,10 @@ window.addEventListener('keydown', e => {
   if (e.key === 'F9' && game.endless && !game._chaosMode) {
     game.forceChaos = true;
   }
+  // F8 — DEBUG: spawn Double Demons immediately (Endless only)
+  if (e.key === 'F8' && game.endless) {
+    game.forceDoubleDemon = true;
+  }
 
   // Restart after game over / victory
   if (key === 'r' && (game.gameOver || game.victory)) {
@@ -403,11 +407,4 @@ function loop(timestamp) {
     if (_fMs > 120) console.warn(`[slowframe] ${_fMs|0}ms ` + counts());
   }
 
-  requestAnimationFrame(loop);
-}
-
-// Kick off with two rAF calls so lastTime is initialized before the first real frame
-requestAnimationFrame(ts => {
-  lastTime = ts;
-  requestAnimationFrame(loop);
-});
+  requestAnimationF
