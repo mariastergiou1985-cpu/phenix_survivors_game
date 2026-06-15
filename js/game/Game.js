@@ -379,6 +379,14 @@ export class Game {
     } catch (err) {
       console.error('[CGM Overlay] _initMenuOverlay failed:', err);
     }
+
+    this._settingsOverlayEl      = null;   // root #cgm-settings div
+    this._settingsOverlayVisible = false;
+    try {
+      this._initSettingsOverlay();
+    } catch (err) {
+      console.error('[CGM Settings] _initSettingsOverlay failed:', err);
+    }
   }
 
   // UPGRADES = the permanent Grid-Credit progression (spent between runs). ENDLESS MODE appears
@@ -714,6 +722,7 @@ export class Game {
     this.supportDrones = [];
     this.allyDrones    = [];
     this.audio?.startMenuMusic();
+    this._hideSettingsOverlay();
     this._showMenuOverlay();
   }
 
@@ -827,13 +836,14 @@ export class Game {
     this._confirmReset    = false;
   }
 
-  goToCredits() { this._hideMenuOverlay(); this.gameState = 'credits'; }
+  goToCredits() { this._hideMenuOverlay(); this._hideSettingsOverlay(); this.gameState = 'credits'; }
 
   // Read-only Endless achievements gallery (display only — never unlocks/resets anything).
   goToAchievementsScreen() { this._hideMenuOverlay(); this.gameState = 'achievements'; }
 
   goToAudioSettings() {
     this._hideMenuOverlay();
+    this._hideSettingsOverlay();
     this.gameState      = 'audio_settings';
     this._audioSelIndex = 0;
     // Assume the button is still held from the click that opened this screen,
@@ -842,7 +852,7 @@ export class Game {
     this._prevMouseDown = true;
   }
 
-  goToInstructions() { this._hideMenuOverlay(); this.gameState = 'instructions'; }
+  goToInstructions() { this._hideMenuOverlay(); this._hideSettingsOverlay(); this.gameState = 'instructions'; }
 
   // ─── Meta upgrades ──────────────────────────────────────────────────────────
   _applyMetaUpgrades() {
@@ -3556,13 +3566,13 @@ export class Game {
     else if (item === 'EXIT') { try { window.close(); } catch (e) {} this.goToExitScreen(); }   // browser-safe: close if allowed, else friendly exit screen
   }
 
-  goToSettings() { this._hideMenuOverlay(); this.gameState = 'settings'; this._settingsIndex = 0; }
+  goToSettings() { this._hideMenuOverlay(); this.gameState = 'settings'; this._settingsIndex = 0; this._showSettingsOverlay(); }
 
   _updateSettings(input) {
     const { keys } = input;
     const n = this.settingsItems.length;
-    if (keys.has('arrowup') || keys.has('w'))   { this._settingsIndex = (this._settingsIndex - 1 + n) % n; keys.delete('arrowup'); keys.delete('w'); }
-    if (keys.has('arrowdown') || keys.has('s')) { this._settingsIndex = (this._settingsIndex + 1) % n;     keys.delete('arrowdown'); keys.delete('s'); }
+    if (keys.has('arrowup') || keys.has('w'))   { this._settingsIndex = (this._settingsIndex - 1 + n) % n; keys.delete('arrowup'); keys.delete('w'); this._syncSettingsOverlayActive(); }
+    if (keys.has('arrowdown') || keys.has('s')) { this._settingsIndex = (this._settingsIndex + 1) % n;     keys.delete('arrowdown'); keys.delete('s'); this._syncSettingsOverlayActive(); }
     if (keys.has('enter') || keys.has(' '))     { this._selectSettingsItem(this.settingsItems[this._settingsIndex]); keys.delete('enter'); keys.delete(' '); }
     if (keys.has('escape'))                      { this.goToMainMenu(); keys.delete('escape'); }
   }
@@ -7526,10 +7536,199 @@ export class Game {
     ctx.textAlign = 'left';
   }
 
+  // ─── SETTINGS DOM overlay ────────────────────────────────────────────────────
+  //  _initSettingsOverlay()       — create once (constructor); injects CSS + HTML
+  //  _showSettingsOverlay()       — make visible, sync active button
+  //  _hideSettingsOverlay()       — hide; called by every exit from settings
+  //  _syncSettingsOverlayActive() — update only the .active .cgs-mbtn
+  //
+  _initSettingsOverlay() {
+    if (this._settingsOverlayEl) return;   // idempotent
+
+    // ── Scoped CSS ───────────────────────────────────────────────────────────
+    if (!document.getElementById('cgm-settings-style')) {
+      const style = document.createElement('style');
+      style.id = 'cgm-settings-style';
+      style.textContent = `
+        #cgm-settings {
+          position:fixed; inset:0; z-index:110; display:none;
+          align-items:center; justify-content:center;
+          font-family:'Share Tech Mono',ui-monospace,monospace;
+          color:#cfe9ff;
+          background:
+            radial-gradient(1200px 700px at 50% -10%,rgba(168,85,247,.18),transparent 60%),
+            radial-gradient(900px 600px at 12% 30%,rgba(46,230,246,.10),transparent 60%),
+            radial-gradient(900px 600px at 88% 70%,rgba(255,45,149,.10),transparent 60%),
+            linear-gradient(180deg,#0b1030,#070a1c);
+          --bg-0:#070a1c; --bg-1:#0b1030;
+          --panel:rgba(10,16,46,.62); --panel-edge:rgba(46,230,246,.10);
+          --cyan:#2ee6f6; --cyan-dim:#1aa9bd; --magenta:#ff2d95; --purple:#a855f7; --amber:#fbbf24; --green:#34d399;
+          --txt:#cfe9ff; --txt-dim:#6f86b8; --txt-faint:#46588a;
+          --glow-cyan:0 0 8px rgba(46,230,246,.55),0 0 22px rgba(46,230,246,.22);
+          --radius:14px;
+        }
+        #cgm-settings::before {
+          content:""; position:fixed; inset:0; pointer-events:none; z-index:0;
+          background-image:
+            linear-gradient(rgba(46,230,246,.05) 1px,transparent 1px),
+            linear-gradient(90deg,rgba(46,230,246,.05) 1px,transparent 1px);
+          background-size:46px 46px;
+          mask-image:radial-gradient(circle at 50% 40%,#000 0%,transparent 78%);
+        }
+        #cgm-settings::after {
+          content:""; position:fixed; inset:0; pointer-events:none; z-index:9999;
+          background:repeating-linear-gradient(0deg,rgba(0,0,0,.10) 0 2px,transparent 2px 4px);
+          opacity:.35; mix-blend-mode:overlay;
+        }
+        #cgm-settings * { box-sizing:border-box; margin:0; padding:0; }
+        #cgm-settings .cgs-stage {
+          position:relative; z-index:1;
+          width:100%; max-width:460px;
+          border:1px solid var(--panel-edge); border-radius:20px;
+          padding:36px 40px 30px;
+          background:linear-gradient(180deg,rgba(168,85,247,.05),transparent 30%),rgba(7,10,28,.82);
+          box-shadow:inset 0 0 60px rgba(46,230,246,.05),0 30px 80px rgba(0,0,0,.55);
+          display:flex; flex-direction:column; align-items:center; gap:24px;
+        }
+        #cgm-settings .corner { position:absolute;width:34px;height:34px;border:2px solid var(--cyan);opacity:.8;filter:drop-shadow(var(--glow-cyan)); }
+        #cgm-settings .corner.tl{top:-2px;left:-2px;border-right:0;border-bottom:0;border-radius:18px 0 0 0;}
+        #cgm-settings .corner.tr{top:-2px;right:-2px;border-left:0;border-bottom:0;border-radius:0 18px 0 0;}
+        #cgm-settings .corner.bl{bottom:-2px;left:-2px;border-right:0;border-top:0;border-radius:0 0 0 18px;}
+        #cgm-settings .corner.br{bottom:-2px;right:-2px;border-left:0;border-top:0;border-radius:0 0 18px 0;}
+        #cgm-settings .cgs-header {
+          display:flex; align-items:center; gap:12px;
+          font-family:'Orbitron',sans-serif; font-weight:800; font-size:13px;
+          letter-spacing:3px; color:var(--cyan); text-shadow:var(--glow-cyan);
+        }
+        #cgm-settings .cgs-header svg { width:22px; height:22px; color:var(--cyan); filter:drop-shadow(var(--glow-cyan)); }
+        #cgm-settings .cgs-sep { width:100%; height:1px; background:linear-gradient(90deg,transparent,var(--cyan),transparent); opacity:.4; }
+        #cgm-settings .cgs-menu { width:100%; display:flex; flex-direction:column; gap:11px; }
+        #cgm-settings .cgs-mbtn {
+          position:relative; width:100%; cursor:pointer;
+          display:flex; align-items:center; justify-content:center; gap:12px;
+          padding:15px 20px; border-radius:12px;
+          border:1px solid rgba(46,230,246,.28);
+          background:linear-gradient(180deg,rgba(46,230,246,.05),rgba(10,16,46,.35));
+          color:var(--txt); font-family:'Orbitron',sans-serif; font-weight:700;
+          font-size:13px; letter-spacing:2.5px; text-transform:uppercase;
+          transition:.16s ease; outline:none;
+        }
+        #cgm-settings .cgs-mbtn svg { width:17px; height:17px; opacity:0; transform:translateX(-6px); transition:.16s; color:var(--cyan); flex:none; }
+        #cgm-settings .cgs-mbtn:hover,
+        #cgm-settings .cgs-mbtn.active {
+          color:#fff; border-color:var(--cyan);
+          background:linear-gradient(180deg,rgba(46,230,246,.16),rgba(46,230,246,.04));
+          box-shadow:var(--glow-cyan),inset 0 0 18px rgba(46,230,246,.12);
+        }
+        #cgm-settings .cgs-mbtn:hover svg,
+        #cgm-settings .cgs-mbtn.active svg { opacity:1; transform:translateX(0); }
+        #cgm-settings .cgs-mbtn.active::before {
+          content:""; position:absolute; left:0; top:14%; bottom:14%;
+          width:4px; background:var(--cyan); border-radius:4px; box-shadow:var(--glow-cyan);
+        }
+        #cgm-settings .cgs-mbtn.back-btn {
+          border-color:rgba(111,134,184,.22); color:var(--txt-dim);
+          font-size:12px; letter-spacing:2px; padding:12px 20px;
+          background:rgba(10,16,46,.25);
+        }
+        #cgm-settings .cgs-mbtn.back-btn:hover,
+        #cgm-settings .cgs-mbtn.back-btn.active {
+          border-color:var(--txt-dim); color:#fff;
+          background:rgba(111,134,184,.08); box-shadow:none;
+        }
+        #cgm-settings .cgs-mbtn.back-btn.active::before { background:var(--txt-dim); box-shadow:none; }
+        #cgm-settings .cgs-hints {
+          color:var(--txt-faint); font-size:12px; letter-spacing:1px;
+          display:flex; gap:18px; flex-wrap:wrap; justify-content:center;
+        }
+        #cgm-settings .cgs-hints b { color:var(--cyan); font-weight:400; }
+      `;
+      document.head.appendChild(style);
+    }
+
+    // ── Build DOM ─────────────────────────────────────────────────────────────
+    const el = document.createElement('div');
+    el.id = 'cgm-settings';
+    el.setAttribute('role', 'dialog');
+    el.setAttribute('aria-label', 'Configuration');
+
+    el.innerHTML = `
+      <div class="cgs-stage">
+        <span class="corner tl"></span><span class="corner tr"></span>
+        <span class="corner bl"></span><span class="corner br"></span>
+
+        <div class="cgs-header">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><use href="#i-gear"/></svg>
+          CONFIGURATION
+        </div>
+        <div class="cgs-sep"></div>
+
+        <div class="cgs-menu">
+          <button class="cgs-mbtn" data-idx="0">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><use href="#i-music"/></svg>
+            AUDIO
+          </button>
+          <button class="cgs-mbtn" data-idx="1">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><use href="#i-bolt"/></svg>
+            CONTROLS / HOW TO PLAY
+          </button>
+          <button class="cgs-mbtn" data-idx="2">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><use href="#i-star"/></svg>
+            CREDITS
+          </button>
+          <div class="cgs-sep" style="margin:4px 0;"></div>
+          <button class="cgs-mbtn back-btn" data-idx="3">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><use href="#i-chev"/></svg>
+            BACK
+          </button>
+        </div>
+
+        <div class="cgs-hints">
+          <span><b>\u2191\u2193</b>\u00a0Navigate</span>
+          <span><b>ENTER</b>\u00a0Select</span>
+          <span><b>ESC</b>\u00a0Back</span>
+        </div>
+      </div>
+    `;
+
+    // ── Click handlers ────────────────────────────────────────────────────────
+    el.querySelectorAll('.cgs-mbtn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = parseInt(btn.dataset.idx, 10);
+        this._settingsIndex = idx;
+        this._selectSettingsItem(this.settingsItems[idx]);
+      });
+    });
+
+    document.body.appendChild(el);
+    this._settingsOverlayEl = el;
+  }
+
+  _showSettingsOverlay() {
+    if (!this._settingsOverlayEl) return;
+    this._settingsOverlayEl.style.display = 'flex';
+    this._settingsOverlayVisible = true;
+    this._syncSettingsOverlayActive();
+  }
+
+  _hideSettingsOverlay() {
+    if (!this._settingsOverlayEl) return;
+    this._settingsOverlayEl.style.display = 'none';
+    this._settingsOverlayVisible = false;
+  }
+
+  _syncSettingsOverlayActive() {
+    if (!this._settingsOverlayEl) return;
+    this._settingsOverlayEl.querySelectorAll('.cgs-mbtn').forEach((btn, i) =>
+      btn.classList.toggle('active', i === this._settingsIndex)
+    );
+  }
+
   // ─── SETTINGS overlay — clean, keeps the theme/logo/protagonists visible ─────
   // Renders the live main-menu background + a LIGHT glass dim, then the settings options inside the
   // same baked central button slots. No giant title block, no near-black wash.
   _drawSettings(ctx) {
+    if (this._settingsOverlayVisible) return;   // DOM overlay takes over
     const bg = this._menuBg;
     if (bg && bg.complete && bg.naturalWidth > 0) ctx.drawImage(bg, 0, 0, WIDTH, HEIGHT);
     else { const g = ctx.createLinearGradient(0, 0, 0, HEIGHT); g.addColorStop(0, '#05080f'); g.addColorStop(1, '#02040a'); ctx.fillStyle = g; ctx.fillRect(0, 0, WIDTH, HEIGHT); }
