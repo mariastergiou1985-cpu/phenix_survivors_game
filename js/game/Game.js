@@ -539,6 +539,7 @@ export class Game {
     this._chaosMode         = false;   // true after transition completes
     this._chaosTransTimer   = -1;      // >=0 while glitch transition is playing
     this._chaosCoreCd       = 0;       // cooldown for bonus gold-core spawns
+    this._eqRafId           = null;    // rAF handle for the menu equalizer loop
     this.overload           = 0;
     this.overloadTickTimer  = 0;
     this.spawnTimer         = 0;
@@ -3604,6 +3605,7 @@ export class Game {
       if (this._chaosTransTimer >= 0.8) {   // transition complete
         this._chaosTransTimer = -1;
         this._chaosMode       = true;
+        if (this.audio) this.audio.currentTrackTitle = 'Golden Override Protocol';
         this.triggerAnnouncement('⚡ CHAOS MODE ⚡', '#ff2d95');
         // Rearm all boss slots immediately so they arrive together
         this.titanSpawned       = false; this.titanSpawnTimer       = 0;
@@ -7834,6 +7836,7 @@ export class Game {
       #cgm-overlay .eq>i:nth-child(8){animation-delay:.35s} #cgm-overlay .eq>i:nth-child(9){animation-delay:.10s}
       #cgm-overlay .eq>i:nth-child(10){animation-delay:.40s} #cgm-overlay .eq>i:nth-child(11){animation-delay:.25s}
       @keyframes cgm-eq{0%,100%{transform:scaleY(.25)} 50%{transform:scaleY(1)}}
+      #cgm-eq-bars.live>i{animation:none;transition:transform 0.06s linear;}
       #cgm-overlay .now-row{display:flex;align-items:center;justify-content:space-between;}
       #cgm-overlay .now-row .label{font-family:'Orbitron',sans-serif;font-weight:600;color:var(--cyan);font-size:11px;letter-spacing:2px;}
       #cgm-overlay .now-row svg{width:16px;height:16px;color:var(--cyan);}
@@ -8159,7 +8162,8 @@ export class Game {
     }
 
     // Now Playing
-    const nowStr = muted ? 'MUTED' : 'CYBER-GRID OST';
+    const audioTitle = this.audio?.currentTrackTitle || 'CYBER-GRID OST';
+    const nowStr = muted ? 'MUTED' : audioTitle;
     this._cgmSet('now-playing', nowStr);
     const eqEl = this._menuOverlayEl.querySelector('#cgm-eq-bars');
     if (eqEl) eqEl.classList.toggle('muted-eq', muted);
@@ -8182,12 +8186,46 @@ export class Game {
     this._refreshMenuOverlay();     // push live data
     this._menuOverlayEl.style.display = 'flex';
     this._menuOverlayVisible = true;
+    this._startEqLoop();
   }
 
   _hideMenuOverlay() {
     if (!this._menuOverlayEl) return;
+    this._stopEqLoop();
     this._menuOverlayEl.style.display = 'none';
     this._menuOverlayVisible = false;
+  }
+
+  // Equalizer rAF loop: runs ONLY while menu overlay is visible
+  _startEqLoop() {
+    if (this._eqRafId != null) return;
+    const eqEl = this._menuOverlayEl?.querySelector('#cgm-eq-bars');
+    if (!eqEl) return;
+    const bars = eqEl.querySelectorAll('i');
+    if (!bars.length) return;
+    const analyser = this.audio?.analyser;
+    const data     = this.audio?.analyserData;
+    const n        = bars.length;
+    const loop = () => {
+      if (!this._menuOverlayVisible) { this._eqRafId = null; eqEl.classList.remove('live'); return; }
+      this._eqRafId = requestAnimationFrame(loop);
+      if (!analyser || !data) return;
+      analyser.getByteFrequencyData(data);
+      const hasSignal = data.some(v => v > 4);
+      eqEl.classList.toggle('live', hasSignal);
+      if (!hasSignal) return;
+      const step = Math.max(1, Math.floor(data.length / n));
+      for (let i = 0; i < n; i++) {
+        const v = data[Math.min(i * step, data.length - 1)] / 255;
+        bars[i].style.transform = 'scaleY(' + Math.max(0.08, v).toFixed(3) + ')';
+      }
+    };
+    this._eqRafId = requestAnimationFrame(loop);
+  }
+
+  _stopEqLoop() {
+    if (this._eqRafId != null) { cancelAnimationFrame(this._eqRafId); this._eqRafId = null; }
+    this._menuOverlayEl?.querySelector('#cgm-eq-bars')?.classList.remove('live');
   }
 
   _drawStartMenu(ctx) {

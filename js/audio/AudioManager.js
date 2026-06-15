@@ -26,6 +26,17 @@ export class AudioManager {
     this.musicGain.gain.value = this.musicVolume;
     this.musicGain.connect(this.masterGain);
 
+    // Analyser tap — connected once to musicGain as a parallel sink (no audio output).
+    // fftSize 64 → 32 frequency bins, lightweight. Used by the menu equalizer UI.
+    this.analyser = this.actx.createAnalyser();
+    this.analyser.fftSize = 64;
+    this.analyser.smoothingTimeConstant = 0.75;
+    this.analyserData = new Uint8Array(this.analyser.frequencyBinCount); // 32 bins
+    this.musicGain.connect(this.analyser);
+
+    // Human-readable title of the currently playing track (updated by start* methods).
+    this.currentTrackTitle = '';
+
     // SFX bus — scaled by sfxVolume. Routed through masterGain so mute (M),
     // which zeroes masterGain, silences SFX too while keeping its level
     // independent of music. Final music = master×music×trackBase;
@@ -139,6 +150,7 @@ export class AudioManager {
     this._stop(this._gameplayAudio);
     this._stop(this._endlessAudio);
     this._currentMusic = this._menuAudio;
+    this.currentTrackTitle = 'Hope';
     this._play(this._menuAudio);
   }
 
@@ -146,6 +158,7 @@ export class AudioManager {
     this._stop(this._menuAudio);
     this._stop(this._endlessAudio);
     this._currentMusic = this._gameplayAudio;
+    this.currentTrackTitle = 'CYBER-GRID OST';
     this._play(this._gameplayAudio);
   }
 
@@ -155,6 +168,7 @@ export class AudioManager {
     this._stop(this._menuAudio);
     this._stop(this._gameplayAudio);
     this._currentMusic = this._endlessAudio;
+    this.currentTrackTitle = 'NYX';
     this._play(this._endlessAudio);
   }
 
