@@ -80,7 +80,12 @@ const DD_GUNNER_RANGE = 270;   // preferred distance from player (gunner)
 const DD_CONTACT_DMG  = 14;    // contact damage per second (both bodies)
 const DD_ENRAGE_PCT   = 0.50;  // enrage at 50% shared HP
 const DD_ENRAGE_SPD   = 1.40;  // speed multiplier on enrage
-const DD_SPAWN_DELAY  = 0;     // seconds after rearming before boss appears   // −20% from support drones                       [15–25% band]
+const DD_SPAWN_DELAY  = 0;     // seconds after rearming before boss appears
+const DD_ROCKET_COUNT  = 8;    // max rockets per Rocket Rain wave (perf cap)
+const DD_ROCKET_WARN   = 1.2;  // s of shadow telegraph before rocket hits
+const DD_ROCKET_RADIUS = 55;   // AoE impact radius
+const DD_ROCKET_DMG    = 14;   // damage on impact
+const DD_ROCKET_CD     = 11;   // base cooldown between Rocket Rain waves   // −20% from support drones                       [15–25% band]
 
 // ── Final-boss (mega-boss) multi-phase encounter ───────────────────────────────
 // All player damage routes through _damagePlayer (dash i-frames / hit grace / 30-HP ceiling),
@@ -11543,7 +11548,7 @@ export class Game {
       gunner: {
         pos: gPos.clone(), radius: DD_GUNNER_R, hitFlash: 0,
         strafeDir: 1, strafeTimer: 2.0,
-        barrageCd: 4.5, suppressCd: 2.8,
+        barrageCd: 4.5, suppressCd: 2.8, rocketRainCd: 999,  // 999 = disabled until enrage
         barragePhase: null, suppressState: null,
       },
       // Claw Demon — melee, closes in on the player
@@ -11592,6 +11597,7 @@ export class Game {
     // ── Enrage trigger at 50% shared HP ──────────────────────────────────────
     if (!dd.enraged && dd.hp / dd.maxHp <= DD_ENRAGE_PCT) {
       dd.enraged = true;
+      dd.gunner.rocketRainCd = 4.0;   // first Rocket Rain 4s after enrage
       this.triggerAnnouncement('\u26a1 DOUBLE DEMONS ENRAGED \u26a1', '#ff0000');
       this.screenShake.trigger(10, 0.5);
       this.floatingTexts.push(new FloatingText('\u26a1 ENRAGE! SPEED & RATE UP \u26a1',
@@ -11706,6 +11712,46 @@ export class Game {
           if (ss.shotsLeft <= 0 && ss._nextShot <= -0.05) g.suppressState = null;
         }
       }
+    }
+
+    // ── Gunner attack: Rocket Rain (enraged only) ──────────────────────────────────────────────
+    // Shadow telegraphs appear on the ground (1.2s each) then rockets impact with AoE blast.
+    // Capped at DD_ROCKET_COUNT per wave to protect browser performance.
+    if (dd.enraged && !g.barragePhase && !g.suppressState) {
+      g.rocketRainCd -= dt;
+      if (g.rocketRainCd <= 0 && this._ddRocketShadows.length === 0) {
+        for (let ri = 0; ri < DD_ROCKET_COUNT; ri++) {
+          const angle = Math.random() * Math.PI * 2;
+          const dist  = 35 + Math.random() * 190;
+          const rpos  = p.pos.add(new Vec2(Math.cos(angle) * dist, Math.sin(angle) * dist));
+          rpos.x = clamp(rpos.x, WORLD_MARGIN + 30, WORLD_W - WORLD_MARGIN - 30);
+          rpos.y = clamp(rpos.y, WORLD_MARGIN + 60, WORLD_H - WORLD_MARGIN - 30);
+          this._ddRocketShadows.push({
+            pos: rpos, delay: ri * 0.10,
+            t: 0, warnT: DD_ROCKET_WARN, hit: false,
+          });
+        }
+        g.rocketRainCd = DD_ROCKET_CD + Math.random() * 3;
+        this.floatingTexts.push(new FloatingText(
+          'ROCKET RAIN!', new Vec2(g.pos.x, g.pos.y - 55), '#ff4400', 1.2));
+      }
+    }
+
+    // Update active rocket shadows (warnings + impacts)
+    for (let ri = this._ddRocketShadows.length - 1; ri >= 0; ri--) {
+      const sh    = this._ddRocketShadows[ri];
+      sh.t       += dt;
+      const activeT = sh.t - sh.delay;
+      if (activeT < 0) continue;
+      if (!sh.hit && activeT >= sh.warnT) {
+        sh.hit = true;
+        this.screenShake.trigger(3, 0.10);
+        this.particles.spawnExplosion(sh.pos, [RED, ORANGE, YELLOW], 10);
+        if (distance(sh.pos, p.pos) < DD_ROCKET_RADIUS) {
+          this._damagePlayer(DD_ROCKET_DMG, { color: ORANGE, shake: 5 });
+        }
+      }
+      if (activeT >= sh.warnT + 0.25) this._ddRocketShadows.splice(ri, 1);
     }
 
     // ── Claw movement: close in on the player ────────────────────────────────
@@ -12085,7 +12131,50 @@ export class Game {
       ctx.restore();
     }
 
-    // ── Shared HP bar (bottom-center, above HUD strip) ────────────────────────
+    // ── Rocket Rain: shadow telegraphs + falling rocket sprites ──────────────────────────
+    const rktSpr  = this._rocketRainSprite;
+    const hasRkt  = rktSpr && rktSpr.complete && rktSpr.naturalWidth > 0;
+    for (const sh of this._ddRocketShadows) {
+      const activeT = sh.t - sh.delay;
+      if (activeT < 0) continue;
+      const prog  = Math.min(1, activeT / sh.warnT);
+      const { pos } = sh;
+
+      // Ground shadow: pulsing orange circle
+      ctx.save();
+      ctx.globalAlpha = 0.10 + 0.25 * prog;
+      ctx.fillStyle   = ORANGE;
+      ctx.beginPath(); ctx.arc(pos.x, pos.y, DD_ROCKET_RADIUS, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 0.35 + 0.55 * prog;
+      ctx.strokeStyle = RED;
+      ctx.lineWidth   = 2;
+      ctx.setLineDash([8, 6]);
+      ctx.beginPath(); ctx.arc(pos.x, pos.y, DD_ROCKET_RADIUS, 0, Math.PI * 2); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+
+      // Rocket falling from above (visible in last 40% of warn time)
+      if (prog > 0.60) {
+        const fallProg = (prog - 0.60) / 0.40;   // 0..1 during fall phase
+        const startY   = pos.y - 120;
+        const rocketY  = startY + fallProg * 120;
+        ctx.save();
+        ctx.globalAlpha = 0.5 + 0.5 * fallProg;
+        if (hasRkt) {
+          const rs = 24;
+          ctx.drawImage(rktSpr, pos.x - rs, rocketY - rs * 1.5, rs * 2, rs * 3);
+        } else {
+          ctx.fillStyle   = ORANGE;
+          ctx.shadowColor = RED;
+          ctx.shadowBlur  = 12;
+          ctx.beginPath(); ctx.arc(pos.x, rocketY, 7, 0, Math.PI * 2); ctx.fill();
+          ctx.shadowBlur = 0;
+        }
+        ctx.restore();
+      }
+    }
+
+    // ââ Shared HP bar (bottom-center, above HUD strip) ────────────────────────
     const barW  = 340;
     const barH  = 10;
     const barX  = WIDTH / 2 - barW / 2;
