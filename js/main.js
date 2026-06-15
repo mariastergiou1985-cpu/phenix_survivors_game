@@ -407,4 +407,6 @@ function loop(timestamp) {
     if (_fMs > 120) console.warn(`[slowframe] ${_fMs|0}ms ` + counts());
   }
 
-  requestAnimationF
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
