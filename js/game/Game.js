@@ -562,8 +562,9 @@ export class Game {
     this.timeAlive          = 0;
     // ── Chaos Mode (unlocks at 31:00 Endless) ─────────────────────────────
     this._chaosMode         = false;   // true after transition completes
-    this._chaosTransTimer   = -1;
-    this.forceDoubleDemon   = false;   // DEBUG: F8 in Endless or game.forceDoubleDemon=true      // >=0 while glitch transition is playing
+    this._chaosTransTimer   = -1;      // >=0 while glitch transition is playing
+    this.forceChaos         = false;   // defensive: prevent stale debug-key state leaking into the next run
+    this.forceDoubleDemon   = false;   // DEBUG: F8 in Endless or game.forceDoubleDemon=true
     this._chaosCoreCd       = 0;       // cooldown for bonus gold-core spawns
     this._eqRafId           = null;    // rAF handle for the menu equalizer loop
     this.overload           = 0;
@@ -7465,6 +7466,7 @@ export class Game {
       ctx.restore();
 
       // Silver scanline flashes
+      ctx.save();
       const flashAlpha = 0.18 + 0.22 * Math.abs(Math.sin(now * 0.05)) * t;
       ctx.fillStyle = `rgba(200,220,255,${flashAlpha.toFixed(3)})`;
       for (let i = 0; i < HEIGHT; i += 4) {
@@ -7472,6 +7474,7 @@ export class Game {
           ctx.fillRect(0, i, WIDTH, 2);
         }
       }
+      ctx.restore();
 
       // Red/magenta colour bleed overlay
       ctx.save();
