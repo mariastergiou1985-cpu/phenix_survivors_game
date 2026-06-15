@@ -153,7 +153,8 @@ export const PF_PAYOUTS = {
   combo_god:        1,   // combo x250                    (elite)
   core_warden:      1,   // secure 60 cores               (medium-hard)
 };
-// Sum of all current payouts (14). Computed, not hard-coded, so it stays correct if the table changes.
+// Sum of ALL payouts (currently 19 = Phase 1 [14] + Phase 2 [5]). Computed, not hard-coded, so it
+// stays correct if the table changes. This is the denominator for the "X / 19" progression display.
 export const PF_TOTAL_OBTAINABLE = Object.values(PF_PAYOUTS).reduce((a, b) => a + b, 0);
 
 // Future Endless-character unlock costs. Progression targets (of the 14 total):
@@ -305,6 +306,15 @@ export class MetaProgress {
   }
 
   getProtocolFragments() { return this.protocolFragments; }
+
+  // LIFETIME PF earned (sum of payouts for every achievement in the idempotent ledger). Unlike the
+  // spendable balance, this never decreases when PF is spent — so the "X / 19" progression display
+  // stays honest after unlocking a character. Falls back to balance if the ledger is empty/legacy.
+  getProtocolFragmentsEarned() {
+    let earned = 0;
+    for (const id in this.pfEarnedFrom) if (this.pfEarnedFrom[id]) earned += (PF_PAYOUTS[id] || 0);
+    return Math.max(earned, this.protocolFragments);
+  }
 
   // PF-based future-character unlocks (separate from Grid Credits / secret-skin unlocks).
   protocolUnlockCost(characterId) { return PF_CHARACTER_COSTS[characterId] || 0; }
