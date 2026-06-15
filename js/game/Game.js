@@ -2177,12 +2177,14 @@ export class Game {
     else             cap = Math.min(280, 250 + (m - 20) * 5);  // heavy survivor chaos, perf-capped
     // Endless: much denser from the start (×1.4 + 30), perf-capped a touch higher. Act 1 untouched.
     if (this.endless) cap = Math.min(210, Math.round(cap * 1.15) + 20);
+    if (this._chaosMode) cap = Math.min(280, Math.round(cap * 1.3)); // Phase 5: +30% cap
     return cap;
   }
   // Endless spawns roughly twice as fast from the start (lower floor too). Act 1 unchanged.
   enemySpawnInterval() {
     let iv = Math.max(0.16, 0.5 - this.currentMinute() * 0.025);
     if (this.endless) iv = Math.max(0.08, iv * 0.5);
+    if (this._chaosMode) iv = Math.max(0.06, iv / 1.5); // Phase 5: 1.5x faster spawn
     return iv * this.mutations.spawnRateMult;   // SWARM PROTOCOL (1.0 outside Endless)
   }
 
