@@ -1,6 +1,6 @@
-import { Game } from './game/Game.js?v=20260615121005';
-import { AudioManager } from './audio/AudioManager.js?v=20260615121005';
-import { GamepadInput } from './Gamepad.js?v=20260615121005';
+import { Game } from './game/Game.js?v=20260615130629';
+import { AudioManager } from './audio/AudioManager.js?v=20260615130629';
+import { GamepadInput } from './Gamepad.js?v=20260615130629';
 
 const canvas = document.getElementById('game');
 const ctx    = canvas.getContext('2d');
@@ -189,13 +189,11 @@ canvas.addEventListener('mousedown', e => {
         mousePos.y >= gr.y && mousePos.y <= gr.y + gr.h) {
       game.goToSettings();
     } else {
-      // Layout constants mirror Game.js _drawStartMenu (must stay in sync).
-      const BW = 360, BH = 42, startY = 292, spacing = 46;
+      // Hit-test the baked central button slots via the shared Game._menuButtonRect geometry.
       for (let i = 0; i < game.menuItems.length; i++) {
-        const bx = canvas.width / 2 - BW / 2;
-        const by = startY + i * spacing - BH / 2;
-        if (mousePos.x >= bx && mousePos.x <= bx + BW &&
-            mousePos.y >= by && mousePos.y <= by + BH) {
+        const r = game._menuButtonRect(i);
+        if (mousePos.x >= r.x && mousePos.x <= r.x + r.w &&
+            mousePos.y >= r.y && mousePos.y <= r.y + r.h) {
           game.menuIndex = i;
           game._selectMenuItem(game.menuItems[i]);
           break;
