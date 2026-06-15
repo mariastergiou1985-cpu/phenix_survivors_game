@@ -63,6 +63,13 @@ export function drawHUD(ctx, game) {
   const cw = ctx.measureText(credits).width;
   _drawIcon(ctx, game._dataCoreIcon, WIDTH - 14 - cw - 26, 38, 20, '#3fd0ff');
 
+  // Endless only: Protocol Fragments under the Grid Credits strip (separate currency, shown even at 0).
+  if (game.endless) {
+    ctx.textAlign = 'right';
+    const pf = game.meta?.getProtocolFragments?.() ?? 0;
+    drawText(ctx, `🧩 ${pf}`, WIDTH - 14, 74, 'rgba(125,249,255,0.92)', 'bold 14px "Segoe UI Emoji", Consolas, monospace');
+  }
+
   // Grid Blackout warning (overload mechanic — kept)
   if (game.gridBlackoutActive && (Math.floor(Date.now() / 400) % 2 === 0)) {
     ctx.textAlign = 'center';
