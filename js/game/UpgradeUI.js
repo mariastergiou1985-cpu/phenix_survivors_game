@@ -1,6 +1,6 @@
 import { WIDTH, HEIGHT, YELLOW, WHITE, GREY } from '../constants.js';
 import { drawText, wrapText, roundRect } from '../utils.js';
-import { RARITY_COLORS } from './Upgrades.js?v=20260615103949';
+import { RARITY_COLORS } from './Upgrades.js?v=20260615105338';
 
 export class UpgradeUI {
   constructor(choices) {
@@ -193,7 +193,8 @@ export class UpgradeUI {
     ctx.font      = 'bold 16px Consolas, monospace';
     ctx.fillStyle = available ? YELLOW : GREY;
     ctx.textAlign = 'center';
-    ctx.fillText(available ? '↻ REROLL  [R]' : '↻ REROLL USED', rr.x + rr.w / 2, rr.y + 26);
+    const rerollsLeft = game ? (game.rerollsLeft ?? 0) : 0;
+    ctx.fillText(available ? `↻ REROLL (${rerollsLeft})  [R]` : '↻ REROLL USED', rr.x + rr.w / 2, rr.y + 26);
     ctx.textAlign = 'left';
   }
 }

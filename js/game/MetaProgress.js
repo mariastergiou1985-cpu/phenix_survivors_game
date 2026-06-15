@@ -182,6 +182,7 @@ export const PROTOCOL_CARDS = [
   { id: 'fusion_mastery',       name: 'Fusion Mastery',             cat: 'PLAYER',  cost: 4, desc: 'Stronger fusion damage & radius (boss-capped).' },
   { id: 'ult_infusion_mastery', name: 'Ult Infusion Mastery',       cat: 'PLAYER',  cost: 4, desc: 'Bigger Forbidden Ultimate Infusion nova.' },
   { id: 'synergy_mastery',      name: 'Character Synergy Mastery',  cat: 'PLAYER',  cost: 3, desc: 'Stronger synergy bursts (boss-capped).' },
+  { id: 'phoenix_revival',      name: 'Phoenix Revival Protocol',   cat: 'PLAYER',  cost: 5, desc: '+1 Phoenix revive per run with massive HP/mana recovery.', icon: 'assets/ui/protocols/phoenix_revival_protocol.png' },
 ];
 export const PROTOCOL_CARD_BY_ID = Object.fromEntries(PROTOCOL_CARDS.map(c => [c.id, c]));
 

@@ -5,36 +5,36 @@ import {
   MAX_OVERLOAD, PLAYER_RADIUS, CORE_RADIUS, MATRIX_RADIUS,
   DARK_BG, GRID_LINE, BLACK, CYAN, RED, GREEN, YELLOW, ORANGE, WHITE, PURPLE,
   CORE_COLORS, VIEW_SCALE, VIEW_W, VIEW_H, ENDLESS_VIEW_SCALE,
-} from '../constants.js?v=20260615103949';
+} from '../constants.js?v=20260615105338';
 import { clamp, distance, safeNormalize, randomChoice, randomRange } from '../utils.js';
 
 import { FloatingText }   from '../entities/FloatingText.js';
-import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260615103949';
-import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260615103949';
-import { Player }         from '../entities/Player.js?v=20260615103949';
-import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260615103949';
-import { Enemy }          from '../entities/Enemy.js?v=20260615103949';
-import { SupportDrone }   from '../entities/SupportDrone.js?v=20260615103949';
+import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260615105338';
+import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260615105338';
+import { Player }         from '../entities/Player.js?v=20260615105338';
+import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260615105338';
+import { Enemy }          from '../entities/Enemy.js?v=20260615105338';
+import { SupportDrone }   from '../entities/SupportDrone.js?v=20260615105338';
 
-import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow } from './Effects.js?v=20260615103949';
-import { SystemEventManager } from './Events.js?v=20260615103949';
-import { UpgradeUI }      from './UpgradeUI.js?v=20260615103949';
-import { weightedSample } from './Upgrades.js?v=20260615103949';
-import { MutationUI }      from './MutationUI.js?v=20260615103949';
-import { sampleMutations } from './Mutations.js?v=20260615103949';
-import { drawHUD, drawEndScreen } from './HUD.js?v=20260615103949';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS } from './MetaProgress.js?v=20260615103949';
-import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260615103949';
+import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow } from './Effects.js?v=20260615105338';
+import { SystemEventManager } from './Events.js?v=20260615105338';
+import { UpgradeUI }      from './UpgradeUI.js?v=20260615105338';
+import { weightedSample } from './Upgrades.js?v=20260615105338';
+import { MutationUI }      from './MutationUI.js?v=20260615105338';
+import { sampleMutations } from './Mutations.js?v=20260615105338';
+import { drawHUD, drawEndScreen } from './HUD.js?v=20260615105338';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS } from './MetaProgress.js?v=20260615105338';
+import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260615105338';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
-import { GlitchDash } from '../effects/glitch-dash.js?v=20260615103949';
-import { EMPShockwave } from '../effects/emp-shockwave.js?v=20260615103949';
-import { DigitalSingularity } from '../effects/digital-singularity.js?v=20260615103949';
-import { Protocol0 } from '../effects/protocol-0.js?v=20260615103949';
-import { LaserEyes } from '../effects/laser-eyes.js?v=20260615103949';
-import { MeteorRain } from '../effects/meteor-rain.js?v=20260615103949';
+import { GlitchDash } from '../effects/glitch-dash.js?v=20260615105338';
+import { EMPShockwave } from '../effects/emp-shockwave.js?v=20260615105338';
+import { DigitalSingularity } from '../effects/digital-singularity.js?v=20260615105338';
+import { Protocol0 } from '../effects/protocol-0.js?v=20260615105338';
+import { LaserEyes } from '../effects/laser-eyes.js?v=20260615105338';
+import { MeteorRain } from '../effects/meteor-rain.js?v=20260615105338';
 // Euclid Vector toxin kit — used ONLY when selectedCharacter === 'euclid_vector' (world-space).
-import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=20260615103949';
+import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=20260615105338';
 
 // ── Thunder Solo sprite slices (cyan_lightning_rain_notes.png, 1254×1254) ──────
 // Strike variants: a clean bolt column + ripple base. (ax,ay) = ripple-centre as a
@@ -150,16 +150,16 @@ export class Game {
       fallback.src = 'assets/backgrounds/cyberpunk_city_background.png';
       this._bgImage = fallback;
     };
-    this._bgImage.src = 'assets/backgrounds/cyber_city_bg_clean.png?v=20260615103949';
+    this._bgImage.src = 'assets/backgrounds/cyber_city_bg_clean.png?v=20260615105338';
 
     // Endless Stage 02 visuals (only used while this.endless — Act 1 keeps default visuals).
     // Missing files degrade to the default background / default Nexus visual (warn, no crash).
     this._endlessBgImage = new Image();
     this._endlessBgImage.onerror = () => console.warn('[Stage] missing assets/maps/endless/stage_02_neon_shinjuku_plaza.png — using default background');
-    this._endlessBgImage.src = 'assets/maps/endless/stage_02_neon_shinjuku_plaza.png?v=20260615103949';
+    this._endlessBgImage.src = 'assets/maps/endless/stage_02_neon_shinjuku_plaza.png?v=20260615105338';
     this._endlessNexusImage = new Image();
     this._endlessNexusImage.onerror = () => console.warn('[Nexus] missing assets/nexus/endless_nexus_base_8cores.png — using default Nexus visual');
-    this._endlessNexusImage.src = 'assets/nexus/endless_nexus_base_8cores.png?v=20260615103949';
+    this._endlessNexusImage.src = 'assets/nexus/endless_nexus_base_8cores.png?v=20260615105338';
 
     // Preload character portraits for Character Select screen
     this._charImages = {};
@@ -172,7 +172,7 @@ export class Game {
     // Japan Phasewalker portrait lives in the endless/ subfolder (Character Select + FX modules).
     this._phasewalkerSprite = new Image();
     this._phasewalkerSprite.onerror = () => console.warn('[Char] missing assets/characters/endless/japan_phasewalker.png');
-    this._phasewalkerSprite.src = 'assets/characters/endless/japan_phasewalker.png?v=20260615103949';   // ?v bust: corrected transparency
+    this._phasewalkerSprite.src = 'assets/characters/endless/japan_phasewalker.png?v=20260615105338';   // ?v bust: corrected transparency
     this._charImages['japan_phasewalker'] = this._phasewalkerSprite;
     // Euclid Vector portrait (endless/ subfolder; unlocked from the start — see roster + free unlock).
     this._euclidSprite = new Image();
@@ -212,7 +212,7 @@ export class Game {
 
     // Preload start-menu background image
     this._menuBg = new Image();
-    this._menuBg.src = 'assets/ui/start_menu_background.png?v=20260615103949';
+    this._menuBg.src = 'assets/ui/start_menu_background.png?v=20260615105338';
 
     // Preload phoenix revive effect images (orange / blue / gold tiers)
     this._phoenixImage = new Image();
@@ -220,11 +220,11 @@ export class Game {
 
     this._phoenixBlueImage = new Image();
     this._phoenixBlueImage.onerror = () => console.warn('[Assets] Failed to load: assets/effects/phoenix/blue_phoenix_revive.png');
-    this._phoenixBlueImage.src = 'assets/effects/phoenix/blue_phoenix_revive.png?v=20260615103949';
+    this._phoenixBlueImage.src = 'assets/effects/phoenix/blue_phoenix_revive.png?v=20260615105338';
 
     this._phoenixGoldImage = new Image();
     this._phoenixGoldImage.onerror = () => console.warn('[Assets] Failed to load: assets/effects/phoenix/gold_phoenix_revive.png');
-    this._phoenixGoldImage.src = 'assets/effects/phoenix/gold_phoenix_revive.png?v=20260615103949';
+    this._phoenixGoldImage.src = 'assets/effects/phoenix/gold_phoenix_revive.png?v=20260615105338';
 
     // Preload credits photos
     this._creditImgInk = new Image();
@@ -242,10 +242,10 @@ export class Game {
     // Preload core and matrix sprites
     this._coreSprite = new Image();
     this._coreSprite.onerror = () => console.warn('[Assets] Failed to load: assets/cores/data_core.png');
-    this._coreSprite.src = 'assets/cores/data_core.png?v=20260615103949';
+    this._coreSprite.src = 'assets/cores/data_core.png?v=20260615105338';
     this._matrixSprite = new Image();
     this._matrixSprite.onerror = () => console.warn('[Assets] Failed to load: assets/bases/matrix_base.png');
-    this._matrixSprite.src = 'assets/bases/matrix_base.png?v=20260615103949';
+    this._matrixSprite.src = 'assets/bases/matrix_base.png?v=20260615105338';
 
     // Preload grid cache supply drop sprite
     this._gridCacheSprite = new Image();
@@ -269,7 +269,7 @@ export class Game {
     this._airstrikeSprite.src = 'assets/enemies/event_airstrike/airstrike_sheet.png';
     this._lightningStormSprite = new Image();
     this._lightningStormSprite.onerror = () => console.warn('[Endless] lights_storm_rain.png not found — drawn fallback used');
-    this._lightningStormSprite.src = 'assets/events/weather/lights_storm_rain.png?v=20260615103949';
+    this._lightningStormSprite.src = 'assets/events/weather/lights_storm_rain.png?v=20260615105338';
 
     // HUD icons: Data-Core (top-right credits) + chains (Cyber Arm SPACE ultimate icon)
     this._dataCoreIcon = new Image();
@@ -293,25 +293,25 @@ export class Game {
     // Preload acid rain weather sprites
     this._acidRainFallImg = new Image();
     this._acidRainFallImg.onerror = () => console.warn('[Weather] acid_rain_fall.png not found — using line fallback');
-    this._acidRainFallImg.src = 'assets/events/weather/acid_rain_fall.png?v=20260615103949';
+    this._acidRainFallImg.src = 'assets/events/weather/acid_rain_fall.png?v=20260615105338';
     this._acidRainSplashImg = new Image();
     this._acidRainSplashImg.onerror = () => console.warn('[Weather] acid_rain_splash.png not found — using ellipse fallback');
-    this._acidRainSplashImg.src = 'assets/events/weather/acid_rain_splash.png?v=20260615103949';
+    this._acidRainSplashImg.src = 'assets/events/weather/acid_rain_splash.png?v=20260615105338';
 
     // Preload AI Overload Titan boss sprite
     this._titanSprite = new Image();
     this._titanSprite.onerror = () => console.warn('[Boss] ai_overload_titan.png failed to load — using fallback');
-    this._titanSprite.src = 'assets/enemies/bosses/ai_overload_titan.png?v=20260615103949';
+    this._titanSprite.src = 'assets/enemies/bosses/ai_overload_titan.png?v=20260615105338';
 
     // Preload Matrix Annihilator mini-boss sprite (existing asset)
     this._annihilatorSprite = new Image();
     this._annihilatorSprite.onerror = () => console.warn('[Boss] assets/enemies/bosses/matrix_annihilator.png failed to load — using fallback');
-    this._annihilatorSprite.src = 'assets/enemies/bosses/matrix_annihilator.png?v=20260615103949';
+    this._annihilatorSprite.src = 'assets/enemies/bosses/matrix_annihilator.png?v=20260615105338';
 
     // Preload Bloodfang Packmaster mini-boss sprite (existing asset)
     this._bloodfangSprite = new Image();
     this._bloodfangSprite.onerror = () => console.warn('[Boss] assets/enemies/bosses/bloodfang_packmaster.png failed to load — using fallback');
-    this._bloodfangSprite.src = 'assets/enemies/bosses/bloodfang_packmaster.png?v=20260615103949';
+    this._bloodfangSprite.src = 'assets/enemies/bosses/bloodfang_packmaster.png?v=20260615105338';
 
     // Preload secret-skin preview sprites (Character Select locked/unlocked + Victory screen).
     // Keyed by the same flags MetaProgress persists. Missing files degrade to a text fallback.
@@ -455,6 +455,8 @@ export class Game {
     this.mutations    = this._freshMutations();  // run-scoped negative-mutation multipliers (neutral in Act 1)
     this._mutationTimer = MUTATION_INTERVAL;
     this.rerollAvailable = false;
+    this.rerollsLeft     = 0;     // rerolls remaining on the current level-up screen (refilled to 2 per screen)
+    this._nextCardLevel  = 1;     // card-pacing: next player level that will OFFER an upgrade card
     this.megaBoss     = null;
     this.bossLavaZones = [];   // telegraphed lava/fire-rain zones cast by the main boss (player-only)
     this.bossTrails    = [];   // boss/mini-boss corruption blood trails — player-only DoT (capped, auto-expire)
@@ -1039,6 +1041,18 @@ export class Game {
       else line = test;
     }
     if (line) ctx.fillText(line, r.x + 12, yy);
+
+    // Optional card art (e.g. Phoenix Revival Protocol emblem) — lazily loaded, graceful if missing.
+    if (card.icon) {
+      this._protoIcons = this._protoIcons || {};
+      let img = this._protoIcons[card.id];
+      if (!img) { img = new Image(); img.onerror = () => {}; img.src = card.icon; this._protoIcons[card.id] = img; }
+      if (img.complete && img.naturalWidth > 0) {
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(img, r.x + r.w - 46, r.y + r.h - 64, 36, 36);
+        ctx.imageSmoothingEnabled = true;
+      }
+    }
 
     // Buy / state button
     const btnY = r.y + r.h - 34, btnH = 26;
@@ -2810,11 +2824,12 @@ export class Game {
 
   // One free reroll per level-up screen — re-samples the (already useful) card pool.
   rerollUpgrade() {
-    if (!this.upgradeUI || !this.rerollAvailable) return;
+    if (!this.upgradeUI || this.rerollsLeft <= 0) return;
     const choices = weightedSample(this.player, 3, { meta: this.meta, endless: this.endless });
     if (choices.length === 0) return;
     this.upgradeUI.setChoices(choices);
-    this.rerollAvailable = false;
+    this.rerollsLeft--;
+    this.rerollAvailable = this.rerollsLeft > 0;   // false once both rerolls are spent
     this.audio?.playLevelUp?.();
   }
 
@@ -2860,15 +2875,22 @@ export class Game {
     // If an upgrade OR forced-mutation card is active, freeze everything but allow UI interaction
     if (this.upgradeUI || this.mutationUI) return;
 
-    // Check for pending level-up to show upgrade cards (one at a time)
+    // Check for pending level-up. Card PACING: cards no longer appear on EVERY level. Early levels
+    // (≤6) still offer one per level for a quick build start; from level 7 on, offers space out to
+    // every 2nd level so the full pool spreads across a ~30-min run instead of being exhausted by ~10.
+    // Levels that don't hit the schedule are still consumed (no card) — they just don't interrupt play.
     if (this.player.pendingLevelupCount > 0) {
       this.player.pendingLevelupCount--;
-      const choices = weightedSample(this.player, 3, { meta: this.meta, endless: this.endless });
-      if (choices.length > 0) {
-        this.audio?.playLevelUp();
-        this.upgradeUI = new UpgradeUI(choices);
-        this.rerollAvailable = true;   // one free reroll per level-up screen
-        return;
+      if (this.player.level >= this._nextCardLevel) {
+        this._nextCardLevel = this.player.level + (this.player.level >= 6 ? 2 : 1);   // schedule next offer
+        const choices = weightedSample(this.player, 3, { meta: this.meta, endless: this.endless });
+        if (choices.length > 0) {
+          this.audio?.playLevelUp();
+          this.upgradeUI = new UpgradeUI(choices);
+          this.rerollsLeft     = 2;     // two free rerolls per level-up screen
+          this.rerollAvailable = true;
+          return;
+        }
       }
     }
 
@@ -2974,7 +2996,7 @@ export class Game {
     } else if (this.player.hp <= 0 && this.phoenixReviveTimer <= 0 && !this.gameOver && !this.victory) {
       // Phoenix revive is DEATH-ONLY: it fires solely when HP has reached 0,
       // never from a timer/cooldown/visual schedule.
-      if (this.phoenixReviveCount < 3) {
+      if (this.phoenixReviveCount < (3 + (this._hasProto('phoenix_revival') ? 1 : 0))) {
         this._triggerPhoenixRevive();
       } else {
         this.gameOver     = true;
@@ -6043,7 +6065,7 @@ export class Game {
       );
       this.screenShake.trigger(12, 0.7);
 
-    } else {
+    } else if (this.phoenixReviveCount === 3) {
       // ── Gold — 125 % HP (overheal), −75 % overload ───────────────────────
       this.phoenixReviveType = 'gold';
       this.player.hp = Math.round(this.player.maxHp * 1.25);   // overheal: gold segment on HP bar
@@ -6053,6 +6075,21 @@ export class Game {
         new FloatingText('GOLD PHOENIX REVIVE', this.player.pos.clone(), YELLOW, 3.0)
       );
       this.screenShake.trigger(16, 1.0);
+
+    } else {
+      // ── Phoenix Revival Protocol (4th, PF-unlocked) — massive recovery ─────
+      // HP 200 % overheal (same overheal mechanic as gold), Mana to FULL (no overcap in this engine),
+      // and ~50 % grid-pressure relief (overload halved — the survival resource). Strong but rare:
+      // requires the 5 🧩 unlock and is the LAST revive, so it can't make the player immortal.
+      this.phoenixReviveType = 'gold';
+      this.player.hp   = Math.round(this.player.maxHp * 2.0);
+      this.player.mana = this.player.maxMana;
+      this.overload    = Math.max(0, this.overload * 0.5);
+      this.triggerAnnouncement('✦ PHOENIX PROTOCOL REVIVE ✦', '#ff9b3c');
+      this.floatingTexts.push(
+        new FloatingText('PHOENIX PROTOCOL REVIVE', this.player.pos.clone(), '#ff9b3c', 3.2)
+      );
+      this.screenShake.trigger(18, 1.1);
     }
 
     // Every Phoenix Revive also restores +25 mana (capped at max).
