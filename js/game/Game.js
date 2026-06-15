@@ -11736,9 +11736,123 @@ export class Game {
         '-' + Math.ceil(dmg) + ' HP', p.pos.clone(), RED, 0.6));
     }
 
-    // Cooldown ticks (attacks implemented in Phase c)
+    // ── Claw attack: Lightning Dash ─────────────────────────────────────────────────────────────
+    // telegraph 0.7s (red line from claw to player) → fast dash through the player → electric trail
     c.dashCd -= dt * cdMult;
+    if (!c.dashState) {
+      if (c.dashCd <= 0) {
+        const toP = p.pos.sub(c.pos);
+        if (toP.length() < 400) {   // only dash when in range
+          c.dashState = {
+            phase:        'telegraph',
+            t:            0,
+            telegraphT:   0.70,
+            targetPos:    p.pos.clone(),
+            dir:          safeNormalize(toP),
+            dashSpeed:    780,
+            dashDuration: 0.22,
+            trailPts:     [],
+            hit:          false,
+          };
+          c.dashCd = 4.5 + Math.random() * 1.5;
+        }
+      }
+    } else {
+      const ds = c.dashState;
+      ds.t += dt;
+
+      if (ds.phase === 'telegraph') {
+        // Track the player during telegraph so it always aims at where they are
+        ds.targetPos = p.pos.clone();
+        ds.dir       = safeNormalize(ds.targetPos.sub(c.pos));
+        if (ds.t >= ds.telegraphT) {
+          ds.phase = 'dash';
+          ds.t     = 0;
+          ds.hit   = false;
+          // Lock direction at fire moment
+          ds.dir = safeNormalize(ds.targetPos.sub(c.pos));
+        }
+      } else if (ds.phase === 'dash') {
+        // Store trail point every few frames
+        if (ds.trailPts.length === 0 || distance(c.pos, ds.trailPts[ds.trailPts.length - 1]) > 12) {
+          ds.trailPts.push(c.pos.clone());
+          if (ds.trailPts.length > 18) ds.trailPts.shift();
+        }
+        c.pos.addMut(ds.dir.scale(ds.dashSpeed * dt));
+
+        // Hit detection during dash (once only)
+        if (!ds.hit && distance(c.pos, p.pos) < c.radius + PLAYER_RADIUS + 8) {
+          ds.hit = true;
+          this._damagePlayer(18, { color: '#00ffff', shake: 6 });
+          this.screenShake.trigger(5, 0.18);
+          this.particles.spawnHitSparks(p.pos, '#00ffff');
+        }
+
+        if (ds.t >= ds.dashDuration) {
+          ds.phase   = 'trail';
+          ds.t       = 0;
+          ds.trailLife = 0.55;   // trail fades over 0.55s
+        }
+      } else if (ds.phase === 'trail') {
+        ds.t += dt;
+        if (ds.t >= ds.trailLife) c.dashState = null;
+      }
+    }
+
+    // ── Claw attack: Claw Slam ─────────────────────────────────────────────────────────────────
+    // AoE circle telegraph (1.0s) at player position → shockwave ring expands outward on impact
     c.slamCd -= dt * cdMult;
+    if (!c.slamState) {
+      if (c.slamCd <= 0 && (!c.dashState || c.dashState.phase === 'trail')) {
+        c.slamState = {
+          phase:      'telegraph',
+          t:          0,
+          telegraphT: 1.0,
+          pos:        p.pos.clone(),
+          radius:     85,
+          hit:        false,
+        };
+        c.slamCd = 5.5 + Math.random() * 2.0;
+        this.audio?.playEventWarning?.();
+      }
+    } else {
+      const ss = c.slamState;
+      ss.t += dt;
+      if (ss.phase === 'telegraph' && ss.t >= ss.telegraphT) {
+        ss.phase = 'impact';
+        ss.t     = 0;
+        // Shockwave ring
+        this._ddClawShockwaves.push({ pos: ss.pos.clone(), radius: c.radius, maxR: 220, alpha: 1.0, hit: false });
+        this.screenShake.trigger(7, 0.22);
+        this.particles.spawnExplosion(ss.pos, [RED, ORANGE], 14);
+        this.audio?.playBloodfangBite?.();
+        // Slam damage if player inside AoE
+        if (!ss.hit && distance(p.pos, ss.pos) < ss.radius) {
+          ss.hit = true;
+          this._damagePlayer(16, { color: RED, shake: 7 });
+          if (this.player.dashTimer <= 0) {
+            const kb = safeNormalize(p.pos.sub(ss.pos));
+            p.pos.addMut(kb.scale(60));
+          }
+        }
+      }
+      if (ss.phase === 'impact' && ss.t >= 0.3) c.slamState = null;
+    }
+
+    // Update shockwave rings
+    for (let i = this._ddClawShockwaves.length - 1; i >= 0; i--) {
+      const sw = this._ddClawShockwaves[i];
+      sw.radius += 260 * dt;
+      sw.alpha   = Math.max(0, 1.0 - sw.radius / sw.maxR);
+      if (!sw.hit) {
+        const d = distance(sw.pos, p.pos);
+        if (sw.radius >= d - PLAYER_RADIUS - 4) {
+          sw.hit = true;
+          this._damagePlayer(10, { color: RED, shake: 4 });
+        }
+      }
+      if (sw.alpha <= 0) this._ddClawShockwaves.splice(i, 1);
+    }
 
     if (dd.hp <= 0) this._doubleDemonsDie();
   }
@@ -11886,6 +12000,88 @@ export class Game {
       ctx.save();
       ctx.globalAlpha = prog * 0.75;
       drawGlow(ctx, _g.pos.x, _g.pos.y, _g.radius + 10, ORANGE, 0.8);
+      ctx.restore();
+    }
+
+    // ── Claw attack visuals ──────────────────────────────────────────────────────────────
+    const _c = dd.claw;
+
+    // Lightning Dash telegraph: red line from claw toward target
+    if (_c.dashState?.phase === 'telegraph') {
+      const ds   = _c.dashState;
+      const prog = ds.t / ds.telegraphT;
+      ctx.save();
+      ctx.globalAlpha  = 0.35 + 0.55 * prog;
+      ctx.strokeStyle  = '#ff3333';
+      ctx.lineWidth    = 2 + prog * 3;
+      ctx.shadowColor  = '#ff3333';
+      ctx.shadowBlur   = 10 * prog;
+      ctx.setLineDash([8, 6]);
+      ctx.beginPath();
+      ctx.moveTo(_c.pos.x, _c.pos.y);
+      ctx.lineTo(ds.targetPos.x, ds.targetPos.y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.shadowBlur = 0;
+      // Claw glow intensifies
+      ctx.globalAlpha = prog * 0.7;
+      drawGlow(ctx, _c.pos.x, _c.pos.y, _c.radius + 10, '#ff3333', 0.8);
+      ctx.restore();
+    }
+
+    // Lightning Dash trail: electric sparks along path
+    if (_c.dashState?.phase === 'trail' || _c.dashState?.phase === 'dash') {
+      const ds    = _c.dashState;
+      const pts   = ds.trailPts;
+      const alpha = ds.phase === 'trail' ? Math.max(0, 1 - ds.t / ds.trailLife) : 0.9;
+      if (pts.length > 1) {
+        ctx.save();
+        ctx.globalAlpha = alpha * 0.85;
+        ctx.strokeStyle = '#00ffff';
+        ctx.lineWidth   = 3;
+        ctx.shadowColor = '#00ffff';
+        ctx.shadowBlur  = 14;
+        ctx.beginPath();
+        ctx.moveTo(pts[0].x, pts[0].y);
+        for (let ti = 1; ti < pts.length; ti++) {
+          // Jitter for electric feel
+          const jx = pts[ti].x + (Math.random() - 0.5) * 5;
+          const jy = pts[ti].y + (Math.random() - 0.5) * 5;
+          ctx.lineTo(jx, jy);
+        }
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.restore();
+      }
+    }
+
+    // Claw Slam telegraph: pulsing dashed circle at target position
+    if (_c.slamState?.phase === 'telegraph') {
+      const ss   = _c.slamState;
+      const prog = ss.t / ss.telegraphT;
+      ctx.save();
+      ctx.globalAlpha = 0.12 + 0.22 * prog;
+      ctx.fillStyle   = RED;
+      ctx.beginPath(); ctx.arc(ss.pos.x, ss.pos.y, ss.radius, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 0.4 + 0.5 * prog;
+      ctx.strokeStyle = ORANGE;
+      ctx.lineWidth   = 2 + prog * 2;
+      ctx.setLineDash([10, 7]);
+      ctx.beginPath(); ctx.arc(ss.pos.x, ss.pos.y, ss.radius, 0, Math.PI * 2); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
+
+    // Claw Slam shockwave rings
+    for (const sw of this._ddClawShockwaves) {
+      ctx.save();
+      ctx.globalAlpha = sw.alpha * 0.85;
+      ctx.strokeStyle = RED;
+      ctx.lineWidth   = 3;
+      ctx.shadowColor = ORANGE;
+      ctx.shadowBlur  = 8;
+      ctx.beginPath(); ctx.arc(sw.pos.x, sw.pos.y, sw.radius, 0, Math.PI * 2); ctx.stroke();
+      ctx.shadowBlur = 0;
       ctx.restore();
     }
 
