@@ -3658,19 +3658,13 @@ export class Game {
     this.timeAlive += dt;
     this.score += dt;
 
-    // ── Chaos Mode trigger (31:00 Endless) ──────────────
-    if (this.endless && !this._chaosMode && this._chaosTransTimer < 0) {
+    // ── Chaos Mode trigger (31:00 Endless) — instant, no glitch transition ──
+    if (this.endless && !this._chaosMode) {
       if (this.timeAlive >= 1860 || this.forceChaos) {
-        this.forceChaos       = false;
-        this._chaosTransTimer = 0;   // kick off glitch transition
-      }
-    }
-    if (this._chaosTransTimer >= 0) {
-      this._chaosTransTimer += dt;
-      if (this._chaosTransTimer >= 0.8) {   // transition complete
-        this._chaosTransTimer = -1;
-        this._chaosMode       = true;
-        this.audio?.startChaosMusic();   // switch to Chaos track (sets currentTrackTitle too)
+        this.forceChaos         = false;
+        this._chaosTransTimer   = -1;    // no transition timer
+        this._chaosMode         = true;
+        this.audio?.startChaosMusic();   // switch to Chaos track
         this.triggerAnnouncement('⚡ CHAOS MODE ⚡', '#ff2d95');
         // Rearm all boss slots immediately so they arrive together
         this.titanSpawned       = false; this.titanSpawnTimer       = 0;
@@ -7440,68 +7434,6 @@ export class Game {
     drawVignette(ctx, this.overload, this.timeAlive);
     drawDamagePulse(ctx, this.damageFlash, this.damageFlashIntensity, DMG_PULSE.duration);
     this._drawScanlines(ctx);
-
-    // ── Chaos glitch transition overlay ─────────────────────────────────────
-    if (this._chaosTransTimer >= 0) {
-      const t   = this._chaosTransTimer / 0.8;   // 0→1 progress
-      const rng = (s) => { let x = Math.sin(s) * 43758.5453; return x - Math.floor(x); };
-      const now = performance.now();
-
-      // Slice displacement: split canvas into horizontal strips, shift each randomly
-      const slices = 14;
-      const sliceH = Math.ceil(HEIGHT / slices);
-      ctx.save();
-      for (let i = 0; i < slices; i++) {
-        const seed  = Math.floor(now / 60) * slices + i;
-        const shift = (rng(seed) - 0.5) * 80 * t;   // max ±40px, scales with progress
-        if (Math.abs(shift) < 2) continue;           // skip near-zero slices
-        const sy = i * sliceH;
-        const sh = Math.min(sliceH, HEIGHT - sy);
-        ctx.drawImage(
-          ctx.canvas,
-          0, sy, WIDTH, sh,
-          shift, sy, WIDTH, sh
-        );
-      }
-      ctx.restore();
-
-      // Silver scanline flashes
-      ctx.save();
-      const flashAlpha = 0.18 + 0.22 * Math.abs(Math.sin(now * 0.05)) * t;
-      ctx.fillStyle = `rgba(200,220,255,${flashAlpha.toFixed(3)})`;
-      for (let i = 0; i < HEIGHT; i += 4) {
-        if (rng(i + Math.floor(now / 30)) > 0.72) {
-          ctx.fillRect(0, i, WIDTH, 2);
-        }
-      }
-      ctx.restore();
-
-      // Red/magenta colour bleed overlay
-      ctx.save();
-      ctx.globalCompositeOperation = 'screen';
-      ctx.globalAlpha = 0.10 * t;
-      ctx.fillStyle = '#ff0055';
-      ctx.fillRect(3, 0, WIDTH, HEIGHT);
-      ctx.globalAlpha = 0.08 * t;
-      ctx.fillStyle = '#00ffee';
-      ctx.fillRect(-3, 0, WIDTH, HEIGHT);
-      ctx.restore();
-
-      // "CHAOS MODE" text flash — appears only in the last 40% of the transition
-      if (t > 0.6) {
-        const txtAlpha = (t - 0.6) / 0.4;
-        ctx.save();
-        ctx.globalAlpha = txtAlpha;
-        ctx.font        = 'bold 72px "Orbitron", "Share Tech Mono", monospace';
-        ctx.textAlign   = 'center';
-        ctx.fillStyle   = '#ff2d95';
-        ctx.shadowColor = '#ff2d95';
-        ctx.shadowBlur  = 32;
-        ctx.fillText('CHAOS MODE', WIDTH / 2, HEIGHT / 2);
-        ctx.shadowBlur  = 0;
-        ctx.restore();
-      }
-    }
 
     this._drawAnnouncement(ctx);
 
