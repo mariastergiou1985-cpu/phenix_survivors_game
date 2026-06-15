@@ -11634,9 +11634,79 @@ export class Game {
       }
     }
 
-    // Cooldown ticks (attacks implemented in Phase b/c/d)
-    g.barrageCd  -= dt * cdMult;
-    g.suppressCd -= dt * cdMult;
+    // ── Gunner attack: Spin-up Barrage ───────────────────────────────────────────────────────────────────
+    // telegraph 1s (visuals in _drawDoubleDemonsBoss) then sweep arc of bullets across player
+    if (!g.suppressState) {
+      g.barrageCd -= dt * cdMult;
+      if (g.barrageCd <= 0 && !g.barragePhase) {
+        g.barragePhase = { phase: 'telegraph', t: 0, telegraphT: 1.0 };
+        g.barrageCd    = 6.5 + Math.random() * 2.0;
+      }
+      if (g.barragePhase) {
+        const bp = g.barragePhase;
+        bp.t += dt;
+        if (bp.phase === 'telegraph' && bp.t >= bp.telegraphT) {
+          const toP  = p.pos.sub(g.pos);
+          bp.phase      = 'fire';
+          bp.t          = 0;
+          bp.baseAngle  = Math.atan2(toP.y, toP.x);
+          bp.sweepSpan  = Math.PI * 0.70;
+          bp.sweepDir   = Math.random() < 0.5 ? 1 : -1;
+          bp.totalFireT = 0.90;
+          bp._nextShot  = 0;
+        }
+        if (bp.phase === 'fire') {
+          bp.t        += dt;
+          bp._nextShot -= dt;
+          if (bp._nextShot <= 0) {
+            bp._nextShot = 0.075;
+            const prog  = Math.min(1, bp.t / bp.totalFireT);
+            const sweep = (prog - 0.5) * bp.sweepSpan * bp.sweepDir;
+            const angle = bp.baseAngle + sweep;
+            this.spawnEnemyBullet(
+              g.pos.clone(),
+              new Vec2(Math.cos(angle), Math.sin(angle)),
+              290, 8, 7, '#ff2d95');
+          }
+          if (bp.t >= bp.totalFireT) g.barragePhase = null;
+        }
+      }
+    }
+
+    // ── Gunner attack: Suppress (short aimed burst) ──────────────────────────────────────────────
+    // 0.25s telegraph flash then 4 bullets with light lead prediction
+    if (!g.barragePhase) {
+      g.suppressCd -= dt * cdMult;
+      if (g.suppressCd <= 0 && !g.suppressState) {
+        g.suppressState = { phase: 'telegraph', t: 0, telegraphT: 0.25 };
+        g.suppressCd    = 3.2 + Math.random() * 1.5;
+      }
+      if (g.suppressState) {
+        const ss = g.suppressState;
+        ss.t += dt;
+        if (ss.phase === 'telegraph' && ss.t >= ss.telegraphT) {
+          ss.phase     = 'fire';
+          ss.t         = 0;
+          ss.shotsLeft = 4;
+          ss._nextShot = 0;
+        }
+        if (ss.phase === 'fire') {
+          ss._nextShot -= dt;
+          if (ss._nextShot <= 0 && ss.shotsLeft > 0) {
+            ss._nextShot = 0.085;
+            ss.shotsLeft--;
+            const lead   = p.vel ? p.vel.scale(0.12) : new Vec2(0, 0);
+            const target = p.pos.add(lead);
+            const dir    = safeNormalize(target.sub(g.pos));
+            const spread = (Math.random() - 0.5) * (Math.PI / 22);
+            const cs = Math.cos(spread), sn = Math.sin(spread);
+            const sdir = new Vec2(dir.x * cs - dir.y * sn, dir.x * sn + dir.y * cs);
+            this.spawnEnemyBullet(g.pos.clone(), sdir, 340, 6, 6, ORANGE);
+          }
+          if (ss.shotsLeft <= 0 && ss._nextShot <= -0.05) g.suppressState = null;
+        }
+      }
+    }
 
     // ── Claw movement: close in on the player ────────────────────────────────
     const c = dd.claw;
@@ -11780,6 +11850,42 @@ export class Game {
       ctx.fillStyle = dd.enraged ? '#ff6600' : aura;
       ctx.textAlign = 'center';
       ctx.fillText(label, pos.x, pos.y - radius - 5);
+      ctx.restore();
+    }
+
+    // ── Gunner attack visuals ───────────────────────────────────────────────────────────
+    const _g = dd.gunner;
+
+    // Spin-up Barrage telegraph: glowing barrel dots arc toward the player
+    if (_g.barragePhase?.phase === 'telegraph') {
+      const bp     = _g.barragePhase;
+      const prog   = bp.t / bp.telegraphT;
+      const toP    = p.pos.sub(_g.pos);
+      const baseA  = Math.atan2(toP.y, toP.x);
+      const nBarrels = 5;
+      ctx.save();
+      for (let bi = 0; bi < nBarrels; bi++) {
+        const frac  = (bi / (nBarrels - 1)) - 0.5;
+        const angle = baseA + frac * Math.PI * 0.70;
+        const blen  = _g.radius + 6 + prog * 14;
+        const bx = _g.pos.x + Math.cos(angle) * blen;
+        const by = _g.pos.y + Math.sin(angle) * blen;
+        ctx.globalAlpha  = 0.35 + 0.65 * prog;
+        ctx.fillStyle    = '#ff2d95';
+        ctx.shadowColor  = '#ff2d95';
+        ctx.shadowBlur   = 10 * prog;
+        ctx.beginPath(); ctx.arc(bx, by, 4 + 3 * prog, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.shadowBlur = 0;
+      ctx.restore();
+    }
+
+    // Suppress telegraph: orange muzzle-flash glow
+    if (_g.suppressState?.phase === 'telegraph') {
+      const prog = _g.suppressState.t / _g.suppressState.telegraphT;
+      ctx.save();
+      ctx.globalAlpha = prog * 0.75;
+      drawGlow(ctx, _g.pos.x, _g.pos.y, _g.radius + 10, ORANGE, 0.8);
       ctx.restore();
     }
 
