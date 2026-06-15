@@ -2134,7 +2134,14 @@ export class Game {
     const slots = ['titan', 'annihilator', 'bloodfang', 'mech'];
     this._endlessBossIdx = (this._endlessBossIdx + 1) % slots.length;
     this._endlessRearmBoss(slots[this._endlessBossIdx]);
-    this._endlessBossTimer = 120;          // ~2 min cadence
+    // Phase 3: In Chaos Mode rearm a second slot immediately and use shorter cadence
+    if (this._chaosMode) {
+      const nextIdx = (this._endlessBossIdx + 1) % slots.length;
+      this._endlessRearmBoss(slots[nextIdx]);
+      this._endlessBossTimer = 90;        // 90s cadence in Chaos (vs 120s normal)
+    } else {
+      this._endlessBossTimer = 120;       // ~2 min cadence
+    }
   }
 
   // Re-arm one boss slot (only when that boss is dead/absent) by clearing its spawn flag so the
