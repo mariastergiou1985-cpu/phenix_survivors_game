@@ -2184,6 +2184,22 @@ export class Game {
     const minute = this.currentMinute();
     let pool;
 
+    // ── Chaos Mode: full late-game enemy pool from minute 0 ─────────────
+    if (this._chaosMode) {
+      if (!this.megaBoss && !this.enemies.some(e => e.enemyType === 'Rogue AI Overlord'))
+        return 'Rogue AI Overlord';
+      if (!this.enemies.some(e => e.enemyType === 'Security Defector Mech') && Math.random() < 0.12)
+        return 'Security Defector Mech';
+      return randomChoice([
+        'Overclocked Berserker', 'Overclocked Berserker',
+        'Combat Hunter',         'Combat Hunter',
+        'Cyber Shooter',         'Cyber Shooter',
+        'Heavy Mech',            'Heavy Mech',
+        'Cyber-Net Junkie',      'Stealth Infiltrator',
+        'Scrap Scavenger',
+      ]);
+    }
+
     // 0:00-1:00 — gentle intro: core stealers + first hunters
     if (t < 60)
       pool = ['Scrap Scavenger', 'Scrap Scavenger', 'Combat Hunter', 'Glitch Drone'];
@@ -3581,6 +3597,11 @@ export class Game {
         this._chaosTransTimer = -1;
         this._chaosMode       = true;
         this.triggerAnnouncement('⚡ CHAOS MODE ⚡', '#ff2d95');
+        // Rearm all boss slots immediately so they arrive together
+        this.titanSpawned       = false; this.titanSpawnTimer       = 0;
+        this.annihilatorSpawned = false; this.annihilatorSpawnTimer = 0;
+        this.bloodfangSpawned   = false; this.bloodfangSpawnTimer   = 0;
+        this._endlessBossTimer  = 5;   // first Chaos boss rotation: 5 s from now
       }
     }
     // Chaos Mode: spawn a gold core near the player every ~5 s
