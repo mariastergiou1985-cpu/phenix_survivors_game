@@ -1,11 +1,11 @@
 import {
   Vec2, ENEMY_RADIUS, WIDTH, HEIGHT, WORLD_W, WORLD_H, WORLD_MARGIN,
   BLUE, MAGENTA, PURPLE, ORANGE, GREEN, RED, YELLOW, WHITE, CYAN, MATRIX_RADIUS,
-} from '../constants.js?v=20260615095451';
+} from '../constants.js?v=20260615100941';
 import { clamp, distance, safeNormalize, randomRange, randomChoice, drawBar } from '../utils.js';
-import { DataCore } from './DataCore.js?v=20260615095451';
+import { DataCore } from './DataCore.js?v=20260615100941';
 import { FloatingText } from './FloatingText.js';
-import { drawGlow } from '../game/Effects.js?v=20260615095451';
+import { drawGlow } from '../game/Effects.js?v=20260615100941';
 
 // ─── Hit/death feedback tuning (visual only — no balance impact) ────────────────
 // One place to dial the juice. Particle counts stay small and the ParticleSystem
@@ -97,16 +97,16 @@ export class Enemy {
         this.bulletColor   = CYAN;
         break;
       case 'Security Defector Mech':
-        this.shootInterval = 3.5;
-        this.bulletSpeed   = 250;
-        this.bulletDamage  = 11;
+        this.shootInterval = 2.6;   // threat pass: faster cadence (3.5 → 2.6)
+        this.bulletSpeed   = 280;
+        this.bulletDamage  = 20;    // ~2x (11 → 20)
         this.bulletRadius  = 9;
         this.bulletColor   = ORANGE;
         break;
       case 'Rogue AI Overlord':
-        this.shootInterval = 2.5;
-        this.bulletSpeed   = 300;
-        this.bulletDamage  = 20;
+        this.shootInterval = 1.9;   // threat pass: faster cadence (2.5 → 1.9)
+        this.bulletSpeed   = 320;
+        this.bulletDamage  = 38;    // ~2x (20 → 38)
         this.bulletRadius  = 11;
         this.bulletColor   = RED;
         break;
@@ -128,12 +128,33 @@ export class Enemy {
   }
 
   _tryShoot(game) {
+    // Lazily arm melee elites with a modest ranged attack so EVERY elite has real projectile threat.
+    if (this.isElite && !this.shootInterval) {
+      this.shootInterval = 2.6; this.bulletSpeed = 300; this.bulletDamage = 8; this.bulletRadius = 7; this.bulletColor = ORANGE;
+    }
     if (!this.shootInterval || this.shootTimer > 0) return;
     this.shootTimer = this.shootInterval;
-    const dir = safeNormalize(game.player.pos.sub(this.pos));
+
+    const boss = this.isBoss() || this.isMegaBoss;
+    // Aim assist — lead the player by a fraction of their velocity (readable, still dodgeable):
+    // normal ~45%, elite ~55%, boss ~65%.
+    const aim  = boss ? 0.65 : this.isElite ? 0.55 : 0.45;
+    const pv   = game.player.vel || new Vec2();
+    const lead = game.player.pos.add(pv.scale(aim * 0.28));
+    const dir  = safeNormalize(lead.sub(this.pos));
     if (dir.lengthSq() === 0) return;
-    game.spawnEnemyBullet(this.pos.clone(), dir,
-      this.bulletSpeed, this.bulletDamage, this.bulletRadius, this.bulletColor);
+
+    // Multishot — elites/bosses fire a small readable spread (the bullet pool is hard-capped in
+    // spawnEnemyBullet, so this can never become an unbounded bullet wall).
+    const shots   = boss ? 3 : this.isElite ? 3 : 1;
+    const spread  = boss ? 0.16 : 0.20;
+    const baseAng = Math.atan2(dir.y, dir.x);
+    const start   = -(shots - 1) / 2;
+    for (let s = 0; s < shots; s++) {
+      const ang = baseAng + (start + s) * spread;
+      game.spawnEnemyBullet(this.pos.clone(), new Vec2(Math.cos(ang), Math.sin(ang)),
+        this.bulletSpeed, this.bulletDamage, this.bulletRadius, this.bulletColor);
+    }
     game.audio?.playEnemyShoot();
   }
 
@@ -159,7 +180,7 @@ export class Enemy {
     if (spriteFile) {
       this.sprite = new Image();
       this.sprite.onerror = () => console.warn(`[Enemy] Sprite failed: assets/enemies/${spriteFile}.png`);
-      this.sprite.src = `assets/enemies/${spriteFile}.png?v=20260615095451`;
+      this.sprite.src = `assets/enemies/${spriteFile}.png?v=20260615100941`;
     } else {
       console.warn(`[Enemy] No sprite mapped for: ${this.enemyType}`);
     }
@@ -187,21 +208,24 @@ export class Enemy {
     // also multiplies HP ×3 in Events.js afterward).
     const gB = 1 + minute * 0.03;
 
+    // Threat pass — durability bump by category (small ×1.3 / medium ×1.4 / large ×1.6 / boss ×1.6).
+    // Multiplies the time-scaled hp so early Act 1 only rises a fraction of an HP while late-game /
+    // Endless (large g) gets the full survivability lift. Bosses move ~+20% faster + hit harder.
     // [speed, hp, color, stealTime, contactDamage (HP/sec)]
     switch (type) {
-      case 'Glitch Drone':          return [95 * d,  2 * g,  BLUE,    2.00,  6 * g];
-      case 'Rogue Punk':            return [125 * d, 3 * g,  MAGENTA, 1.65, 10 * g];
-      case 'Stealth Infiltrator':   return [155 * d, 2 * g,  PURPLE,  1.20, 12 * g];
-      case 'Scrap Scavenger':       return [105 * d, 5 * g,  ORANGE,  1.55,  8 * g];
-      case 'Cyber-Net Junkie':      return [135 * d, 4 * g,  GREEN,   1.45, 10 * g];
-      case 'Overclocked Berserker': return [210 * d, 3 * g,  RED,     1.00, 14 * g];
-      case 'Security Defector Mech':return [90 * d,  50 * gB, YELLOW, 0.75, 22 * gB];   // survival pass: 40 → 50 (+25%)
-      case 'Rogue AI Overlord':     return [75 * d,  187.5 * gB, RED,  0.55, 28 * gB];  // survival pass: 150 → 187.5 (+25%); mega-boss ×3 inherits it
-      case 'Combat Hunter':         return [168 * d, 3 * g,  MAGENTA, 9999, 12 * g];
-      case 'Cyber Shooter':         return [108 * d, 4 * g,  CYAN,    9999,  6 * g];
-      case 'Heavy Mech':            return [58  * d, 20 * g, ORANGE,  9999, 20 * g];
-      case 'Razorhound':            return [200 * d, 14 * g, RED,     9999,  6 * g];
-      default:                      return [100,      2,   WHITE,   1.80,  6];
+      case 'Glitch Drone':          return [95 * d,  2.6 * g,  BLUE,    2.00,  6 * g];   // small ×1.3
+      case 'Rogue Punk':            return [125 * d, 4.2 * g,  MAGENTA, 1.65, 10 * g];   // medium ×1.4
+      case 'Stealth Infiltrator':   return [155 * d, 2.6 * g,  PURPLE,  1.20, 12 * g];   // small ×1.3
+      case 'Scrap Scavenger':       return [105 * d, 7 * g,    ORANGE,  1.55,  8 * g];   // medium ×1.4
+      case 'Cyber-Net Junkie':      return [135 * d, 5.6 * g,  GREEN,   1.45, 10 * g];   // medium ×1.4
+      case 'Overclocked Berserker': return [210 * d, 4.2 * g,  RED,     1.00, 14 * g];   // medium ×1.4
+      case 'Security Defector Mech':return [108 * d, 80 * gB, YELLOW,  0.75, 33 * gB];   // mini-boss: hp ×1.6, dmg ×1.5, spd ×1.2
+      case 'Rogue AI Overlord':     return [90 * d,  300 * gB, RED,     0.55, 42 * gB];  // boss: hp ×1.6, dmg ×1.5, spd ×1.2; mega-boss ×3 inherits hp
+      case 'Combat Hunter':         return [168 * d, 4.2 * g,  MAGENTA, 9999, 12 * g];   // medium ×1.4
+      case 'Cyber Shooter':         return [108 * d, 5.6 * g,  CYAN,    9999,  6 * g];   // medium ×1.4
+      case 'Heavy Mech':            return [58  * d, 32 * g,   ORANGE,  9999, 20 * g];   // large ×1.6
+      case 'Razorhound':            return [200 * d, 21 * g,   RED,     9999,  6 * g];   // large ×1.5
+      default:                      return [100,      2.6,     WHITE,   1.80,  6];
     }
   }
 
@@ -334,6 +358,13 @@ export class Enemy {
       : this._baseSpeedFull;
     if (this.stunned > 0)  { this.stunned -= dt; return; }
 
+    // Boss / mini-boss corruption blood-trail — drop a damaging pool periodically while alive
+    // (player-only DoT, hard-capped + auto-expiring in Game._spawnBossTrail/_updateBossTrails).
+    if (this.isBoss() || this.isMegaBoss) {
+      this._trailCd = (this._trailCd || 0) - dt;
+      if (this._trailCd <= 0) { this._trailCd = 0.45; game._spawnBossTrail?.(this.pos); }
+    }
+
     const { player, matrices } = game;
 
     // Bodyguard: path toward the mega-boss while alive
@@ -381,6 +412,9 @@ export class Enemy {
 
     // ── Role-based targeting ──────────────────────────────────────────────
     if (this.shootTimer > 0) this.shootTimer -= dt;
+
+    // Elites always have projectile threat regardless of role (lazily armed in _tryShoot).
+    if (this.isElite) this._tryShoot(game);
 
     if (this.role === 'hunter' || this.role === 'assassin') {
       // Always chase player — bypass repel aura
