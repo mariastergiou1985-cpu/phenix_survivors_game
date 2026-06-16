@@ -11,6 +11,7 @@ export class MutationUI {
     const startX = (WIDTH  - totalW) / 2;
     const startY = (HEIGHT - cardH)  / 2 - 4;
     this.cardRects = choices.map((_, i) => ({ x: startX + i * (cardW + gap), y: startY, w: cardW, h: cardH }));
+    this.selectedIndex = 0;   // controller cursor
   }
 
   handleClick(mousePos, game) {
@@ -64,6 +65,17 @@ export class MutationUI {
         ctx.fillStyle = '#ffd24d';
         ctx.font = 'bold 12px Consolas, monospace';
         ctx.fillText(`STACK ×${taken}`, r.x + r.w / 2, r.y + r.h - 16);
+      }
+
+      // Controller cursor highlight — orange outer ring when this card is selected via gamepad
+      if (game?._controllerActivated && i === this.selectedIndex) {
+        ctx.save();
+        ctx.strokeStyle = '#ffb070';
+        ctx.lineWidth   = 4;
+        ctx.shadowColor = '#ffb070';
+        ctx.shadowBlur  = 20;
+        ctx.strokeRect(r.x - 4, r.y - 4, r.w + 8, r.h + 8);
+        ctx.restore();
       }
     }
     ctx.restore();

@@ -37,17 +37,42 @@ window.addEventListener('keydown', e => {
   // (Audio init handled by _initAudioOnGesture on document — covers overlay clicks too)
 
   // Forced mutation card selection (1/2/3 only — NO skip, NO reroll; ESC cannot close it)
+  // ArrowLeft/ArrowRight move the controller cursor; Enter confirms it (dispatched by gamepad A/Cross).
   if (game.mutationUI) {
     const midx = { '1': 0, '2': 1, '3': 2 }[e.key];
-    if (midx !== undefined) game.selectMutation(midx);
+    if (midx !== undefined) {
+      game.mutationUI.selectedIndex = midx;
+      game.selectMutation(midx);
+    } else if (e.key === 'ArrowLeft') {
+      const n = game.mutationUI.choices.length;
+      game.mutationUI.selectedIndex = (game.mutationUI.selectedIndex - 1 + n) % n;
+    } else if (e.key === 'ArrowRight') {
+      const n = game.mutationUI.choices.length;
+      game.mutationUI.selectedIndex = (game.mutationUI.selectedIndex + 1) % n;
+    } else if (e.key === 'Enter') {
+      game.selectMutation(game.mutationUI.selectedIndex);
+    }
     return;
   }
 
   // Upgrade card selection (1/2/3) + reroll (R)
+  // ArrowLeft/ArrowRight move the controller cursor; Enter confirms it (dispatched by gamepad A/Cross).
   if (game.upgradeUI) {
     const idx = { '1': 0, '2': 1, '3': 2 }[e.key];
-    if (idx !== undefined) game.selectUpgrade(idx);
-    else if (key === 'r') game.rerollUpgrade();
+    if (idx !== undefined) {
+      game.upgradeUI.selectedIndex = idx;
+      game.selectUpgrade(idx);
+    } else if (key === 'r') {
+      game.rerollUpgrade();
+    } else if (e.key === 'ArrowLeft') {
+      const n = game.upgradeUI.choices.length;
+      game.upgradeUI.selectedIndex = (game.upgradeUI.selectedIndex - 1 + n) % n;
+    } else if (e.key === 'ArrowRight') {
+      const n = game.upgradeUI.choices.length;
+      game.upgradeUI.selectedIndex = (game.upgradeUI.selectedIndex + 1) % n;
+    } else if (e.key === 'Enter') {
+      game.selectUpgrade(game.upgradeUI.selectedIndex);
+    }
     return;
   }
 
@@ -344,8 +369,12 @@ function applyGamepad() {
     if (eDown)  padTap('ArrowDown');
     if (eLeft)  padTap('ArrowLeft');
     if (eRight) padTap('ArrowRight');
-    if (cardUI) {                                // forced/level-up card screens use 1/2/3 (+ reroll)
-      if (s.btn.a.pressed) padTap('1');
+    if (cardUI) {                                // forced/level-up card screens
+      // A/Cross confirms the cursor-highlighted card (cursor starts at 0 = card 1, same as before).
+      // X/Square and Y/Triangle remain direct shortcuts for cards 2 and 3.
+      // Left/Right (D-pad + analog) move the cursor via the ArrowLeft/ArrowRight events already
+      // dispatched above; the keydown handler updates selectedIndex and the draw method highlights it.
+      if (s.btn.a.pressed) padTap('Enter');    // confirm cursor
       if (s.btn.x.pressed) padTap('2');
       if (s.btn.y.pressed) padTap('3');
       if (s.btn.b.pressed) padTap('r');

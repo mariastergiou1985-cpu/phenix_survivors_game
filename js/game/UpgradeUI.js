@@ -20,6 +20,8 @@ export class UpgradeUI {
       h: cardH,
     }));
 
+    this.selectedIndex = 0;   // controller cursor — highlighted when a gamepad is active
+
     // Reroll button centered below the cards
     const rbW = 240, rbH = 40;
     this.rerollRect = { x: (WIDTH - rbW) / 2, y: startY + cardH + 22, w: rbW, h: rbH };
@@ -105,6 +107,18 @@ export class UpgradeUI {
       roundRect(ctx, r.x, r.y, r.w, r.h, 12);
       ctx.stroke();
       ctx.restore();
+
+      // Controller cursor highlight — white outer ring when this card is selected via gamepad
+      if (game?._controllerActivated && i === this.selectedIndex) {
+        ctx.save();
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth   = 4;
+        ctx.shadowColor = '#ffffff';
+        ctx.shadowBlur  = 28;
+        roundRect(ctx, r.x - 4, r.y - 4, r.w + 8, r.h + 8, 15);
+        ctx.stroke();
+        ctx.restore();
+      }
 
       // Icon box — tinted by rarity with a thin glowing frame
       const ix = r.x + (r.w - 80) / 2;
