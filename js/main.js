@@ -398,4 +398,35 @@ function loop(timestamp) {
   // save-stack balanced via finally, and log the first error so the cause stays visible.
   const _fStart = performance.now();
   try {
-    applyGamepad();   // inject co
+    applyGamepad();   // inject controller input into keys/handlers before the update reads them
+    game.setMousePos(mousePos);
+    game.update(dt, { keys, mousePos, mouseDown });
+    applyContextualCursor();
+
+    // Apply screen shake offset
+    const [ox, oy] = game.screenShake.getOffset();
+    ctx.save();
+    try { ctx.translate(ox, oy); game.draw(ctx); }
+    finally { ctx.restore(); }
+  } catch (err) {
+    if (!loop._errLogged) { console.error('[game loop]', err); loop._errLogged = true; }
+  }
+
+  // ── Freeze diagnostic (throttled; safe to leave, near-zero cost) ──────────────
+  // Heartbeat every 15 in-game seconds + a slow-frame warning, both with key object
+  // counts so the LAST line before a freeze pinpoints what grew/stalled.
+  if (game.gameState === 'playing' && !game.gameOver && !game.victory) {
+    const counts = () => {
+      const emp = game._empShock, gd = game._glitchDash;
+      return `t=${game.timeAlive|0}s char=${game.player?.selectedCharacter} en=${game.enemies.length} proj=${game.projectiles.length} bul=${game.enemyBullets.length} ft=${game.floatingTexts.length}`
+           + ` empSpark=${emp?._sparks?.length??'-'} empEmit=${emp?._emitters?.length??'-'} gdPart=${gd?.particles?.length??'-'}`;
+    };
+    const _ts = game.timeAlive | 0;
+    if (_ts !== loop._lastDiag && _ts % 15 === 0) { loop._lastDiag = _ts; console.log('[diag] ' + counts()); }
+    const _fMs = performance.now() - _fStart;
+    if (_fMs > 120) console.warn(`[slowframe] ${_fMs|0}ms ` + counts());
+  }
+
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
