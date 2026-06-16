@@ -56,6 +56,11 @@ const THUNDER_NOTES = [
 // never delay them. Base maxMana is 100, so a player with no Mana Core is unaffected.
 const ULTIMATE_MANA_COST = 100;
 
+// ── Boss kill reward — Protocol Fragments ─────────────────────
+// Each Endless/Chaos boss awards this many Protocol Fragments on death.
+// Tune here; 0 disables the drop entirely.
+const BOSS_KILL_PF = 1;
+
 // ── Boss-combat fairness (Boss Threat audit, Steps 1–2) ────────────────────────
 // Per-hit ceiling so no single boss/enemy blow can one-shot (≈⅓ of Taekwondo's 90 HP),
 // and per-second soft caps on how fast the player's PRIMARY/auto-weapons can burn a boss
@@ -11049,6 +11054,13 @@ export class Game {
     this.particles.spawnHitSparks(t.pos, PURPLE);
     this.particles.spawnExplosion(t.pos, [PURPLE, CYAN, YELLOW], 28);
     this.supportDrones    = [];
+    // Protocol Fragment reward
+    if (this.meta && this.endless) {
+      this.meta.protocolFragments += BOSS_KILL_PF;
+      this.meta._save();
+      this.floatingTexts.push(new FloatingText('+' + BOSS_KILL_PF + ' 🧩 FRAGMENT',
+        new Vec2(t.pos.x, t.pos.y - 90), '#ff5ea8', 2.5));
+    }
     this.titanBoss        = null;
     this._titanShockwaves = [];
     this._titanBeams      = [];
@@ -11291,6 +11303,13 @@ export class Game {
     this.triggerAnnouncement('MATRIX ANNIHILATOR DESTROYED', GREEN);
     this.screenShake.trigger(14, 1.0);
     this.particles.spawnExplosion(a.pos, [RED, ORANGE, YELLOW], 28);
+    // Protocol Fragment reward
+    if (this.meta && this.endless) {
+      this.meta.protocolFragments += BOSS_KILL_PF;
+      this.meta._save();
+      this.floatingTexts.push(new FloatingText('+' + BOSS_KILL_PF + ' 🧩 FRAGMENT',
+        new Vec2(a.pos.x, a.pos.y - 60), '#ff5ea8', 2.5));
+    }
     this.annihilatorBoss = null;
   }
 
@@ -11524,6 +11543,13 @@ export class Game {
     this.screenShake.trigger(14, 1.0);
     this.particles.spawnExplosion(a.pos, [RED, ORANGE, YELLOW], 30);
     this._bloodfangSlams = [];   // drop any pending telegraph so it never outlives the boss
+    // Protocol Fragment reward
+    if (this.meta && this.endless) {
+      this.meta.protocolFragments += BOSS_KILL_PF;
+      this.meta._save();
+      this.floatingTexts.push(new FloatingText('+' + BOSS_KILL_PF + ' 🧩 FRAGMENT',
+        new Vec2(a.pos.x, a.pos.y - 90), '#ff5ea8', 2.5));
+    }
     this.bloodfangBoss = null;
   }
 
@@ -12004,6 +12030,13 @@ export class Game {
       new Vec2(dd.gunner.pos.x, dd.gunner.pos.y - 32), YELLOW, 2.2));
 
     this.triggerAnnouncement('\u26a1 DOUBLE DEMONS DEFEATED \u26a1', '#ff2d95');
+    // Protocol Fragment reward
+    if (this.meta && this.endless) {
+      this.meta.protocolFragments += BOSS_KILL_PF;
+      this.meta._save();
+      this.floatingTexts.push(new FloatingText('+' + BOSS_KILL_PF + ' 🧩 FRAGMENT',
+        new Vec2(dd.gunner.pos.x, dd.gunner.pos.y - 68), '#ff5ea8', 2.5));
+    }
     this.doubleDemonsBoss    = null;
     this._ddClawShockwaves   = [];
     this._ddLightningTrails  = [];
