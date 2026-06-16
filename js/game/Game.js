@@ -4156,26 +4156,74 @@ export class Game {
   _drawPlayerMarker(ctx) {
     const p = this.player;
     if (!p || this.gameOver) return;
-    const now   = Date.now();
-    const x     = p.pos.x;                         // centered above the character
-    const bob   = Math.sin(now / 500) * 1.5;       // gentle vertical drift
-    const pulse = 0.55 + 0.45 * (0.5 + 0.5 * Math.sin(now / 420));  // soft 0.55→1.0 blink
-    // Small downward chevron sitting clearly ABOVE the head (sprite top ≈ pos.y - 32),
-    // its tip pointing down at the player. Visual only — no gameplay effect.
-    const halfW = 6, h = 10;
-    const tipY  = p.pos.y - 44 + bob;              // bottom tip (points down toward the head)
+
+    // ── Tunable constants ────────────────────────────────────────────────────
+    const PM_HALF_W      = 11;      // half-width of arrow base (px, world-space)
+    const PM_HEIGHT      = 18;      // arrow height (px, world-space)
+    const PM_OFFSET_Y    = 54;      // distance above pos.y to the arrow tip (px)
+    const PM_BOB_AMP     = 4;       // vertical bob amplitude (px)
+    const PM_BOB_SPEED   = 480;     // bob period (ms, smaller = faster)
+    const PM_PULSE_MIN   = 0.55;    // minimum opacity (calm)
+    const PM_PULSE_MAX   = 1.0;     // maximum opacity
+    const PM_PULSE_SPEED = 400;     // pulse period (ms)
+    const PM_COLOR_FILL  = '#e8ffff';  // bright fill (cyan-white)
+    const PM_COLOR_GLOW  = '#50d8ff';  // outer glow colour
+    const PM_GLOW_R      = 18;      // glow radius (px)
+    const PM_GLOW_A      = 0.45;    // glow base alpha
+    const PM_CHAOS_RANGE = 180;     // enemy-detection radius for chaos boost (px)
+    const PM_CHAOS_MAX   = 8;       // enemy count that maxes out the boost
+    // ────────────────────────────────────────────────────────────────────────
+
+    const now  = Date.now();
+    const bob  = Math.sin(now / PM_BOB_SPEED) * PM_BOB_AMP;
+    const pRaw = PM_PULSE_MIN + (PM_PULSE_MAX - PM_PULSE_MIN) * (0.5 + 0.5 * Math.sin(now / PM_PULSE_SPEED));
+
+    // Adaptive intensity: count nearby enemies → boost alpha + glow in chaos
+    let nearCount = 0;
+    if (this.enemies) {
+      for (const e of this.enemies) {
+        if (!e?.pos) continue;
+        const dx = e.pos.x - p.pos.x, dy = e.pos.y - p.pos.y;
+        if (dx * dx + dy * dy < PM_CHAOS_RANGE * PM_CHAOS_RANGE) nearCount++;
+      }
+    }
+    const chaosT   = Math.min(1, nearCount / PM_CHAOS_MAX);   // 0 (calm) → 1 (full chaos)
+    const pulse    = pRaw + (1 - pRaw) * chaosT * 0.5;        // alpha boosts toward 1 in chaos
+    const glowR    = PM_GLOW_R * (1 + 0.6 * chaosT);          // glow grows in chaos
+    const glowA    = PM_GLOW_A * (1 + 0.8 * chaosT);          // glow brightens in chaos
+
+    const x    = p.pos.x;
+    const tipY = p.pos.y - PM_OFFSET_Y + bob;   // bottom tip points down toward the head
+
     ctx.save();
     ctx.globalAlpha = pulse;
-    drawGlow(ctx, x, tipY - h / 2, 7, '#8fefff', 0.35);
-    ctx.fillStyle   = '#bdf4ff';
-    ctx.strokeStyle = 'rgba(0,10,20,0.6)';
-    ctx.lineWidth   = 1.2;
+
+    // Outer soft glow
+    drawGlow(ctx, x, tipY - PM_HEIGHT * 0.5, glowR, PM_COLOR_GLOW, glowA);
+
+    // Arrow fill — bright cyan-white body
+    ctx.fillStyle   = PM_COLOR_FILL;
+    ctx.strokeStyle = 'rgba(0,12,24,0.55)';
+    ctx.lineWidth   = 1.5;
     ctx.beginPath();
-    ctx.moveTo(x,         tipY);                   // tip down
-    ctx.lineTo(x - halfW, tipY - h);
-    ctx.lineTo(x + halfW, tipY - h);
+    ctx.moveTo(x,              tipY);               // tip (pointing down)
+    ctx.lineTo(x - PM_HALF_W,  tipY - PM_HEIGHT);
+    ctx.lineTo(x + PM_HALF_W,  tipY - PM_HEIGHT);
     ctx.closePath();
-    ctx.fill(); ctx.stroke();
+    ctx.fill();
+    ctx.stroke();
+
+    // Inner bright highlight stripe (top third of arrow, slightly narrower)
+    ctx.globalAlpha = pulse * 0.6;
+    ctx.fillStyle   = '#ffffff';
+    const hx = PM_HALF_W * 0.55, hy = PM_HEIGHT * 0.35;
+    ctx.beginPath();
+    ctx.moveTo(x,       tipY - PM_HEIGHT + 2);
+    ctx.lineTo(x - hx,  tipY - PM_HEIGHT + hy);
+    ctx.lineTo(x + hx,  tipY - PM_HEIGHT + hy);
+    ctx.closePath();
+    ctx.fill();
+
     ctx.restore();
   }
 
@@ -12431,4 +12479,25 @@ export class Game {
       const offset  = Math.floor(performance.now() * 0.025) % spacing;
       ctx.strokeStyle = GRID_LINE;
       ctx.lineWidth   = 1;
-      for (le
+      for (let x = -spacing; x < WIDTH + spacing; x += spacing) {
+        ctx.beginPath();
+        ctx.moveTo(x + offset, 44);
+        ctx.lineTo(x + offset, HEIGHT);
+        ctx.stroke();
+      }
+      for (let y = 44; y < HEIGHT + spacing; y += spacing) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(WIDTH, y);
+        ctx.stroke();
+      }
+    }
+
+    // ── Dark HUD strip (always on top of background) ─────────────────────────
+    ctx.fillStyle = BLACK;
+    ctx.fillRect(0, 0, WIDTH, 44);
+  }
+
+  // Called by main.js to pass current mouse pos to the draw call
+  setMousePos(pos) { this._lastMousePos = pos; }
+}
