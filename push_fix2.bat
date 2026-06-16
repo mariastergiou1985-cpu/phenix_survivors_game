@@ -1,0 +1,16 @@
+@echo off
+cd /d "%~dp0"
+echo Closing GitHub Desktop...
+taskkill /IM GitHubDesktop.exe /F >nul 2>&1
+timeout /t 2 /nobreak >nul
+echo Removing lock...
+if exist .git\index.lock del /f /q .git\index.lock
+echo Adding files...
+git add js/main.js js/audio/AudioManager.js js/game/HUD.js
+echo Committing...
+git commit -m "fix: restore truncated requestAnimationFrame in game loop + audio/equalizer patches"
+echo Pushing...
+git push
+echo.
+echo === Done! ===
+pause
