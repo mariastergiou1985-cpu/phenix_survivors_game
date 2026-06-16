@@ -79,6 +79,20 @@ const ICE_FIELD_BOSS_BURST_PCT = 0.22; // fraction of boss maxHp dealt on first 
 const EUCLID_DASH_SPEED    = 2200;   // px/s  (default 1500)
 const EUCLID_DASH_DURATION = 0.44;   // s     (default 0.35)
 
+// ── Overload (Network Stability) — Act 1 + Endless only; Chaos Mode skips entirely ──────────
+// Primary pressure is GAMEPLAY-DRIVEN: each stolen core dumped to ground = +DUMP_HIT% instantly.
+// Passive chaosGain scales with ongoing grid state (carried/ground/empty). Drain is slow so
+// gained overload doesn't immediately vanish when the player recovers. Floor is very gentle
+// (1.5%/min, max 20%) — exists only to ensure the bar never feels completely dead on a secure grid.
+const OVERLOAD_DRAIN_RATE      = 0.12;   // %/s drain when grid FULLY secured (was 1.0 — wiped gains instantly)
+const OVERLOAD_CARRY_RATE      = 0.060;  // %/s per enemy carrying a stolen core
+const OVERLOAD_GROUND_RATE     = 0.025;  // %/s per stolen core lying on the ground
+const OVERLOAD_SLOT_RATE       = 0.018;  // %/s per empty Nexus slot
+const OVERLOAD_CHAOS_GAIN_CAP  = 0.30;   // max passive chaosGain/s (pre-diffMult)
+const OVERLOAD_DUMP_HIT        = 2.0;    // +% overload each time an enemy dumps a stolen core to the ground
+const OVERLOAD_ACT1_FLOOR_RATE = 1.5;    // %/min gentle passive floor in Act 1 (was 5.0 %/min — too fast)
+const OVERLOAD_ACT1_FLOOR_MAX  = 20;     // % — max overload from passive floor alone
+
 // ── Boss-combat fairness (Boss Threat audit, Steps 1–2) ────────────────────────
 // Per-hit ceiling so no single boss/enemy blow can one-shot (≈⅓ of Taekwondo's 90 HP),
 // and per-second soft caps on how fast the player's PRIMARY/auto-weapons can burn a boss
@@ -591,8 +605,9 @@ export class Game {
     this.forceDoubleDemon   = false;   // DEBUG: F8 in Endless or game.forceDoubleDemon=true
     this._chaosCoreCd       = 0;       // cooldown for bonus gold-core spawns
     this._eqRafId           = null;    // rAF handle for the menu equalizer loop
-    this.overload           = 0;
-    this.overloadTickTimer  = 0;
+    this.overload             = 0;
+    this.overloadTickTimer    = 0;
+    this._prevGroundCoreCount = 0;   // tracks ground-core count frame-to-frame for dump-hit detection
     this.spawnTimer         = 0;
     this.spawnPauseTimer    = 0;
     this.stealSpeedMultiplier = 1.0;
@@ -6361,27 +6376,37 @@ export class Game {
   }
 
   _updateOverload(dt) {
+    // Chaos Mode has no Nexus — the overload system is Nexus-based, so skip it entirely.
+    if (this._chaosMode) return;
+
     const groundCount  = this.groundCores.length;
     const carriedCount = this.enemies.filter(e => e.carryingCore !== null).length;
     const emptySlots   = this.matrices.reduce((sum, m) => sum + (m.capacity - m.stored), 0);
 
-    // Capped so falling behind on cores ramps pressure GRADUALLY instead of spiking.
-    // Nexus retune (Four-Nexus layout): empty-slot weight 0.015 for 32 total slots (4×8). Scales
-    // the per-slot pressure back toward the original ~0.012 regime now that the grid is larger than
-    // the single 16-slot Nexus. The min(0.28) cap keeps a fully-drained grid survivable, not unfair.
-    let chaosGain = Math.min(0.28, groundCount * 0.020 + carriedCount * 0.050 + emptySlots * 0.015);
+    // ── Event-based dump hit: each newly dumped core gives an immediate overload spike ──
+    // Detected by comparing groundCores.length to last frame. This is the primary gameplay
+    // signal — the bar jumps visibly when enemies win (dump cores), giving clear feedback.
+    const newDumps = Math.max(0, groundCount - this._prevGroundCoreCount);
+    if (newDumps > 0) {
+      this.overload = Math.min(MAX_OVERLOAD, this.overload + newDumps * OVERLOAD_DUMP_HIT);
+    }
+    this._prevGroundCoreCount = groundCount;
 
-    // Endless: gentle live-threat pressure so ignoring objectives becomes a real Overload threat by
-    // ~20–30 min. Scales with enemies on the grid + an active boss (capped; never instantly lethal).
-    // Active play keeps enemy counts down → less pressure, so this rewards managing the grid.
+    // ── Passive chaosGain — scales with ongoing grid pressure ──────────────────────────
+    // groundCores already on the ground + enemies still carrying + empty Nexus slots.
+    let chaosGain = Math.min(OVERLOAD_CHAOS_GAIN_CAP,
+      groundCount * OVERLOAD_GROUND_RATE +
+      carriedCount * OVERLOAD_CARRY_RATE +
+      emptySlots   * OVERLOAD_SLOT_RATE);
+
+    // Endless: gentle live-threat pressure so ignoring objectives becomes a real threat by
+    // ~20–30 min. Scales with enemies on screen + active boss (capped; never instantly lethal).
     if (this.endless) {
       const bossAlive = (this.megaBoss && this.megaBoss.hp > 0) || this.titanBoss || this.annihilatorBoss || this.bloodfangBoss;
       chaosGain += Math.min(0.06, this.enemies.length * 0.0006) + (bossAlive ? 0.03 : 0);
     }
 
-    // Grid Stabilizer Protocol (grid_legend) + Grid Stabilizer card: Endless only — reduce the
-    // Nexus-PRESSURE gain. Combined reduction hard-capped at 0.65 so it is NEVER immunity, and the
-    // time-based floor + MAX_OVERLOAD game-over below are untouched (Nexus defense still matters).
+    // Grid Stabilizer Protocol (grid_legend) + Grid Stabilizer card: Endless only.
     if (this.endless) {
       const red = Math.min(0.65, (this.meta.hasAchievement('grid_legend') ? 0.5 : 0)
                                   + 0.05 * this._cardLvl('achievement_grid_stabilizer'));
@@ -6389,28 +6414,25 @@ export class Game {
     }
 
     if (chaosGain === 0) {
-      // Grid fully secure — drain at 1.0% per second
-      this.overload = Math.max(0, this.overload - 1.0 * dt);
+      // Grid fully secure — drain slowly. OVERLOAD_DRAIN_RATE is 0.12/s (was 1.0/s — that
+      // was wiping gains within seconds and making the bar feel stuck at 0).
+      this.overload = Math.max(0, this.overload - OVERLOAD_DRAIN_RATE * dt);
     } else {
-      // Scale with time: ramps faster mid/late so falling behind on cores bites after 10 min.
+      // Scale with time: ramps faster mid/late so sustained grid neglect bites after 10 min.
       const minutes  = this.timeAlive / 60;
       const diffMult = Math.min(2.6, 1.0 + minutes * 0.05) * (1 - this.player.overloadDampening);
       this.overload  = clamp(this.overload + chaosGain * diffMult * dt, 0, MAX_OVERLOAD);
     }
 
-    // Time-based minimum floor — applies ONLY while the grid is SECURED (chaosGain === 0), so a
-    // fully-defended grid still hovers dangerously but never auto-loses (capped 85%). When the grid
-    // is COMPROMISED (chaosGain > 0 — loose/stolen cores or empty Nexus slots, i.e. the "Nexus down"
-    // state), the floor must NOT pin overload: it then keeps climbing via chaosGain all the way to
-    // 100 so the Overload failure / Game-Over condition stays reachable instead of stalling at ~85.
-    //   0–10 min: gentle ramp, caps 35% (~7:00).  10–15 min: 35% → 55%.  15+ min: 55% → 80% (@20:00), capped 85%.
-    if (chaosGain === 0) {
-      const mins = this.timeAlive / 60;
-      let floorPct;
-      if      (mins <= 10) floorPct = Math.min(35, mins * 5.0);
-      else if (mins <= 15) floorPct = 35 + (mins - 10) * 4.0;
-      else                 floorPct = Math.min(85, 55 + (mins - 15) * 5.0);
-      this.overload = Math.max(this.overload, floorPct);
+    // ── Gentle Act 1 passive floor — very light background tension on a fully secure grid ──
+    // OVERLOAD_ACT1_FLOOR_RATE = 1.5 %/min (was 5 %/min), max OVERLOAD_ACT1_FLOOR_MAX = 20%.
+    // Primary pressure is gameplay-driven (dump hits + passive chaosGain). The floor just
+    // prevents the bar from feeling completely dead even when the player plays perfectly.
+    // Not applied in Endless (Endless has its own chaosGain pressure from enemy count + boss).
+    if (!this.endless && chaosGain === 0) {
+      const mins     = this.timeAlive / 60;
+      const floorPct = Math.min(OVERLOAD_ACT1_FLOOR_MAX, mins * OVERLOAD_ACT1_FLOOR_RATE);
+      this.overload  = Math.max(this.overload, floorPct);
     }
 
     if (this.audio) this.audio.updateAlarm(this.overload);
