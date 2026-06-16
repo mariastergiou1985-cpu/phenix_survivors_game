@@ -66,11 +66,6 @@ window.addEventListener('keydown', e => {
   if (key === 't' && game.gameState === 'playing' && !game.gameOver && !game.victory) {
     game.aimAssist = !game.aimAssist;
   }
-  // F8 — DEBUG: spawn Double Demons immediately (Endless only)
-  if (e.key === 'F8' && game.endless) {
-    game.forceDoubleDemon = true;
-  }
-
   // Restart after game over / victory
   if (key === 'r' && (game.gameOver || game.victory)) {
     game.reset();
