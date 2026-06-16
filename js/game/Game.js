@@ -7659,7 +7659,9 @@ export class Game {
     this._slotRow(ctx, qx, qw, s.y + 56,  'CLASS',     ch.role.split(' ')[0], '#9fff6a');
     this._slotRow(ctx, qx, qw, s.y + 74,  'REVIVES',   '✦ ' + revives, '#ff9b3c');
     this._slotRow(ctx, qx, qw, s.y + 92,  'PROTOCOLS', '◈ ' + owned.length, '#b88bff');
-    this._slotRow(ctx, qx, qw, s.y + 110, 'HP / MANA', '—', '#7fd0ff');
+    const _qStats = { skeleton_warrior:{hp:130,mana:100}, taekwondo_girl:{hp:90,mana:100}, cyber_arm_hero:{hp:100,mana:100}, brawler_warrior:{hp:125,mana:100}, assassin_clone:{hp:88,mana:100}, japan_phasewalker:{hp:100,mana:100}, euclid_vector:{hp:100,mana:100}, oni_cataclysm_protocol:{hp:100,mana:100} };
+    const _qs = _qStats[ch.id] || { hp: 100, mana: 100 };
+    this._slotRow(ctx, qx, qw, s.y + 110, 'HP / MANA', _qs.hp + ' / ' + _qs.mana, '#7fd0ff');
 
     // ── SYSTEM FEED (right top) — real hints, no fake daily system ──
     s = S.systemFeed; this._slotPanel(ctx, s, '#7fd0ff', 'SYSTEM FEED');
@@ -8045,7 +8047,7 @@ export class Game {
         <div class="row"><span class="k">Class</span><span class="v green"><span data-cgm="qs-class">—</span></span></div>
         <div class="row"><span class="k">Revives</span><span class="v amber"><svg><use href="#i-activity"/></svg><span data-cgm="qs-revives">3</span></span></div>
         <div class="row"><span class="k">Protocols</span><span class="v" style="color:var(--purple)"><svg style="color:var(--purple)"><use href="#i-node"/></svg><span data-cgm="qs-protocols">0</span></span></div>
-        <div class="row"><span class="k">HP / Mana</span><span class="v" style="color:var(--txt-dim)">—</span></div>
+        <div class="row"><span class="k">HP / Mana</span><span class="v" style="color:var(--txt-dim)"><span data-cgm="qs-hp-mana">—</span></span></div>
       </section>
     </div>
 
@@ -8207,6 +8209,8 @@ export class Game {
     this._cgmSet('qs-class', ch.role.split(' ')[0]);
     this._cgmSet('qs-revives', revives);
     this._cgmSet('qs-protocols', owned.length);
+    const _qsMap = { skeleton_warrior:130, taekwondo_girl:90, cyber_arm_hero:100, brawler_warrior:125, assassin_clone:88, japan_phasewalker:100, euclid_vector:100, oni_cataclysm_protocol:100 };
+    this._cgmSet('qs-hp-mana', (_qsMap[ch.id] || 100) + ' / 100');
 
     // System Feed
     const feedEl = this._menuOverlayEl.querySelector('#cgm-feed-list');
@@ -12427,25 +12431,4 @@ export class Game {
       const offset  = Math.floor(performance.now() * 0.025) % spacing;
       ctx.strokeStyle = GRID_LINE;
       ctx.lineWidth   = 1;
-      for (let x = -spacing; x < WIDTH + spacing; x += spacing) {
-        ctx.beginPath();
-        ctx.moveTo(x + offset, 44);
-        ctx.lineTo(x + offset, HEIGHT);
-        ctx.stroke();
-      }
-      for (let y = 44; y < HEIGHT + spacing; y += spacing) {
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(WIDTH, y);
-        ctx.stroke();
-      }
-    }
-
-    // ── Dark HUD strip (always on top of background) ─────────────────────────
-    ctx.fillStyle = BLACK;
-    ctx.fillRect(0, 0, WIDTH, 44);
-  }
-
-  // Called by main.js to pass current mouse pos to the draw call
-  setMousePos(pos) { this._lastMousePos = pos; }
-}
+      for (le
