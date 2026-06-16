@@ -3067,12 +3067,21 @@ export class Game {
     if (this.titanBoss && this.titanBoss.hp > 0)             bosses.push(this.titanBoss);
     if (this.annihilatorBoss && this.annihilatorBoss.hp > 0) bosses.push(this.annihilatorBoss);
     if (this.bloodfangBoss && this.bloodfangBoss.hp > 0)     bosses.push(this.bloodfangBoss);
-    // Double Demons: add both bodies — each has its own pos/radius so bolts can track and hit them.
-    // Damage is routed to shared _dd.hp in _euclidDamage (not to the individual body).
+    // Double Demons: proxy objects expose live pos/radius from each body and live hp from the
+    // shared parent — so bolt targeting and _euclidNearest hp-checks work correctly without
+    // raw-object identity. _ddParent / _ddBody tags let _euclidDamage route damage explicitly.
     if (this.doubleDemonsBoss && this.doubleDemonsBoss.hp > 0) {
       const _dd = this.doubleDemonsBoss;
-      if (_dd.gunner) bosses.push(_dd.gunner);
-      if (_dd.claw)   bosses.push(_dd.claw);
+      for (const body of [_dd.gunner, _dd.claw]) {
+        if (!body) continue;
+        bosses.push({
+          pos:       body.pos,           // live Vec2 reference — moves with the body every frame
+          radius:    body.radius,
+          get hp()   { return _dd.hp; }, // reads shared HP so e.hp <= 0 is accurate
+          _ddParent: _dd,
+          _ddBody:   body,
+        });
+      }
     }
     return bosses.length ? this.enemies.concat(bosses) : this.enemies;
   }
@@ -3091,12 +3100,13 @@ export class Game {
   // mini-bosses use their hp path + die check. Both boss-capped, both get a visible toxin splash.
   _euclidDamage(e, dmg) {
     if (!e) return;
-    // Double Demons: gunner/claw bodies share hp on the parent object.
-    // Must be handled FIRST — the bodies have no individual hp field.
-    const _dd = this.doubleDemonsBoss;
-    if (_dd && _dd.hp > 0 && (e === _dd.gunner || e === _dd.claw)) {
+    // Double Demons proxy (from _euclidCandidates): _ddParent tag is the canonical route.
+    // Avoids raw-object identity checks that silently fail if doubleDemonsBoss is null mid-frame.
+    if (e._ddParent) {
+      const _dd = e._ddParent;
+      if (_dd.hp <= 0) return;
       const eff = this._capBossDamage(_dd, dmg);
-      _dd.hp -= eff; e.hitFlash = 0.08;
+      _dd.hp -= eff; e._ddBody.hitFlash = 0.08;
       this.floatingTexts.push(new FloatingText('-' + Math.round(eff), e.pos.add(new Vec2(0, -(e.radius || 20) - 6)), WHITE, 0.5));
       if (_dd.hp <= 0) this._doubleDemonsDie();
       this.elementFx?.spawn(e.pos.x, e.pos.y, 'toxin', 1.0);
