@@ -92,6 +92,7 @@ const OVERLOAD_CHAOS_GAIN_CAP  = 0.30;   // max passive chaosGain/s (pre-diffMul
 const OVERLOAD_DUMP_HIT        = 2.0;    // +% overload each time an enemy dumps a stolen core to the ground
 const OVERLOAD_ACT1_FLOOR_RATE = 1.5;    // %/min gentle passive floor in Act 1 (was 5.0 %/min — too fast)
 const OVERLOAD_ACT1_FLOOR_MAX  = 20;     // % — max overload from passive floor alone
+const OVERLOAD_CAP             = 99;     // hard cap — overload never reaches 100, player can never lose from overload
 
 // ── Boss-combat fairness (Boss Threat audit, Steps 1–2) ────────────────────────
 // Per-hit ceiling so no single boss/enemy blow can one-shot (≈⅓ of Taekwondo's 90 HP),
@@ -6470,7 +6471,7 @@ export class Game {
     // signal — the bar jumps visibly when enemies win (dump cores), giving clear feedback.
     const newDumps = Math.max(0, groundCount - this._prevGroundCoreCount);
     if (newDumps > 0) {
-      this.overload = Math.min(MAX_OVERLOAD, this.overload + newDumps * OVERLOAD_DUMP_HIT);
+      this.overload = Math.min(OVERLOAD_CAP, this.overload + newDumps * OVERLOAD_DUMP_HIT);
     }
     this._prevGroundCoreCount = groundCount;
 
@@ -6503,7 +6504,7 @@ export class Game {
       // Scale with time: ramps faster mid/late so sustained grid neglect bites after 10 min.
       const minutes  = this.timeAlive / 60;
       const diffMult = Math.min(2.6, 1.0 + minutes * 0.05) * (1 - this.player.overloadDampening);
-      this.overload  = clamp(this.overload + chaosGain * diffMult * dt, 0, MAX_OVERLOAD);
+      this.overload  = clamp(this.overload + chaosGain * diffMult * dt, 0, OVERLOAD_CAP);
     }
 
     // ── Gentle Act 1 passive floor — very light background tension on a fully secure grid ──
@@ -6514,7 +6515,7 @@ export class Game {
     if (!this.endless && chaosGain === 0) {
       const mins     = this.timeAlive / 60;
       const floorPct = Math.min(OVERLOAD_ACT1_FLOOR_MAX, mins * OVERLOAD_ACT1_FLOOR_RATE);
-      this.overload  = Math.max(this.overload, floorPct);
+      this.overload  = Math.min(OVERLOAD_CAP, Math.max(this.overload, floorPct));
     }
 
     if (this.audio) this.audio.updateAlarm(this.overload);
