@@ -61,6 +61,12 @@ const ULTIMATE_MANA_COST = 100;
 // Tune here; 0 disables the drop entirely.
 const BOSS_KILL_PF = 1;
 
+// ── Euclid Plague Trail Dash — tunable speed / distance ──────────────────────────
+// dashSpeed overrides the PlagueTrailDash default (1500 px/s); dashDuration overrides 0.35s.
+// Distance ≈ speed × duration. Raise both to make the lunge feel snappier and reach farther.
+const EUCLID_DASH_SPEED    = 2200;   // px/s  (default 1500)
+const EUCLID_DASH_DURATION = 0.44;   // s     (default 0.35)
+
 // ── Boss-combat fairness (Boss Threat audit, Steps 1–2) ────────────────────────
 // Per-hit ceiling so no single boss/enemy blow can one-shot (≈⅓ of Taekwondo's 90 HP),
 // and per-second soft caps on how fast the player's PRIMARY/auto-weapons can burn a boss
@@ -3018,6 +3024,8 @@ export class Game {
     const cost = Math.max(60, ULTIMATE_MANA_COST - 12 * (p.upgrades['euclid_vector_overdose'] || 0));
     if (p.mana < cost) { this.floatingTexts.push(new FloatingText('NOT ENOUGH MANA', p.pos.clone(), '#00ff66', 1.0)); return; }
     this._euclidPlayer.x = p.pos.x; this._euclidPlayer.y = p.pos.y;
+    this._euclidPlague.dashSpeed    = EUCLID_DASH_SPEED;    // tunable — faster lunge
+    this._euclidPlague.dashDuration = EUCLID_DASH_DURATION; // tunable — longer lunge
     this._euclidPlague.trigger();
     p.mana -= cost;
     this.screenShake.trigger(5, 0.25);
