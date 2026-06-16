@@ -2652,7 +2652,27 @@ export class Game {
     const vs = this._viewScale, cam = this.camera, p = this.player;
     const toX = e => ((e?.pos?.x ?? cam.x) - cam.x) * vs;
     const toY = e => ((e?.pos?.y ?? cam.y) - cam.y) * vs;
-    const nearest = () => { let b = null, bd = Infinity; for (const e of this.enemies) { if (!e?.pos) continue; const d = distance(e.pos, p.pos); if (d < bd) { bd = d; b = e; } } return b; };
+    // Boss-first target finder: nearest boss in range, then nearest enemy
+    const nearestLaserTarget = () => {
+      const bossCandidates = [];
+      if (this.titanBoss?.hp > 0)       bossCandidates.push(this.titanBoss);
+      if (this.annihilatorBoss?.hp > 0) bossCandidates.push(this.annihilatorBoss);
+      if (this.bloodfangBoss?.hp > 0)   bossCandidates.push(this.bloodfangBoss);
+      const _ddL = this.doubleDemonsBoss;
+      if (_ddL?.hp > 0) {
+        const dg = distance(_ddL.gunner.pos, p.pos), dc = distance(_ddL.claw.pos, p.pos);
+        bossCandidates.push(dg < dc ? _ddL.gunner : _ddL.claw);
+      }
+      if (bossCandidates.length) {
+        let b = null, bd = Infinity;
+        for (const c of bossCandidates) { const d = distance(c.pos, p.pos); if (d < 560 && d < bd) { bd = d; b = c; } }
+        if (b) return b;
+      }
+      let b = null, bd = Infinity;
+      for (const e of this.enemies) { if (!e?.pos) continue; const d = distance(e.pos, p.pos); if (d < bd) { bd = d; b = e; } }
+      return b;
+    };
+    const nearest = nearestLaserTarget;  // used by meteor/other below
 
     // Tank-buff timer (50% DR) ticks down during the ultimate
     if ((p._tankTimer || 0) > 0) p._tankTimer = Math.max(0, p._tankTimer - dt);
@@ -2663,10 +2683,10 @@ export class Game {
       this._protocol0.update(now, s.cx, s.footY, this.enemies);
     } catch (err) { console.warn('[Oni Protocol0]', err); }
 
-    // ── Laser Eyes (auto-weapon 1) — charged piercing beam, auto-fires on cooldown ──
+    // ── Laser Eyes (auto-weapon 1) — charged piercing beam, boss lock-on ──
     if (this._oniLaserCd > 0) this._oniLaserCd -= dt;
     if (this._laserEyes && !this._laserEyes.isActive() && this._oniLaserCd <= 0) {
-      const tgt = nearest();
+      const tgt = nearestLaserTarget();
       if (tgt && distance(tgt.pos, p.pos) < 560) {
         const ll      = p.upgrades['oni_laser_mastery'] || 0;   // Laser Overload mastery
         const laserDmg = 6 + 2 * ll;                            // 6 → 12 per tick
@@ -2674,7 +2694,7 @@ export class Game {
           getEyes: () => { const s = this._playerScreenPos(), top = s.footY - s.spriteH;
             return [ { x: s.cx - 6, y: top + s.spriteH * 0.30 }, { x: s.cx + 6, y: top + s.spriteH * 0.30 },
                      { x: s.cx - 12, y: top + s.spriteH * 0.12 }, { x: s.cx + 12, y: top + s.spriteH * 0.12 } ]; },
-          getAim:  () => { const t = nearest(); return t ? { x: toX(t), y: toY(t) } : { x: this._playerScreenPos().cx, y: 0 }; },
+          getAim:  () => { const t = nearestLaserTarget(); return t ? { x: toX(t), y: toY(t) } : { x: this._playerScreenPos().cx, y: 0 }; },
           enemies: this.enemies, getX: toX, getY: toY,
           onTick:  e => { if (e?.takeHit) e.takeHit(laserDmg, this); },   // damage per 0.1s tick
         });

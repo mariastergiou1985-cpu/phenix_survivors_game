@@ -22,7 +22,7 @@
 export const LASER_DEFAULTS = {
   charge: { ms: 300 },
   beam:   { durationMs: 1500, width: 2.6, maxLen: 1500, hitWidth: 16, tickMs: 100 },
-  burn:   { sparkRate: 3, disruptRate: 2, fireRate: 0.5, fireLifeMs: 900 },
+  burn:   { sparkRate: 1, disruptRate: 0, fireRate: 0.1, fireLifeMs: 600 },  // reduced for performance
   color:  { hue: 2, sat: 100, light: 56 },
 };
 
@@ -65,7 +65,7 @@ export class LaserEyes {
     if (enemies) this.enemies = enemies;
     if (this.state === 'charge') {
       const eyes = this.opts.getEyes();
-      for (const e of eyes) if (Math.random() < 0.5)
+      for (const e of eyes) if (Math.random() < 0.2)
         this._smoke.push({ x: e.x + (Math.random() - 0.5) * 6, y: e.y, vx: (Math.random() - 0.5) * 0.3, vy: -0.6 - Math.random() * 0.6, size: 3 + Math.random() * 4, born: now, life: 500 });
       if (now - this.born >= this.cfg.charge.ms) { this.state = 'fire'; this.fireBorn = now; this._lastTick = now; }
     } else if (this.state === 'fire') {
@@ -105,8 +105,9 @@ export class LaserEyes {
     return false;
   }
   _spark(x, y, n) {
+    if (this._sparks.length > 60) return;  // cap for performance
     for (let i = 0; i < n; i++) { const a = Math.random() * Math.PI * 2, s = 1 + Math.random() * 3.5;
-      this._sparks.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 0.6, size: 2 + Math.random() * 3, born: this._now, life: 380, ember: Math.random() < 0.5 }); }
+      this._sparks.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 0.6, size: 2 + Math.random() * 3, born: this._now, life: 280, ember: Math.random() < 0.5 }); }
   }
   _step(now) {
     for (const p of this._smoke) { p.x += p.vx; p.y += p.vy; p.vy *= 0.99; }
@@ -132,9 +133,9 @@ export class LaserEyes {
     if (this.state === 'fire') {
       const dir = this._dir(), eyes = this.opts.getEyes(), ends = eyes.map(e => this._endpoint(e, dir));
       const flick = 0.7 + Math.random() * 0.3;
-      ctx.shadowColor = this._c(1); ctx.shadowBlur = 14;
+      // No shadowBlur on beams (performance) — two-pass: glow layer + bright core
       for (let i = 0; i < eyes.length; i++) {
-        ctx.strokeStyle = this._c(0.5 * flick, 50); ctx.lineWidth = this.cfg.beam.width * 3;
+        ctx.strokeStyle = this._c(0.4 * flick, 50); ctx.lineWidth = this.cfg.beam.width * 2.5;
         ctx.beginPath(); ctx.moveTo(eyes[i].x, eyes[i].y); ctx.lineTo(ends[i].x, ends[i].y); ctx.stroke();
         ctx.strokeStyle = this._c(flick, 92); ctx.lineWidth = this.cfg.beam.width;
         ctx.beginPath(); ctx.moveTo(eyes[i].x, eyes[i].y); ctx.lineTo(ends[i].x, ends[i].y); ctx.stroke();
