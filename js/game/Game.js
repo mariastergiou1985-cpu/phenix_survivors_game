@@ -12796,4 +12796,18 @@ export class Game {
         ctx.stroke();
       }
       for (let y = 44; y < HEIGHT + spacing; y += spacing) {
-        c
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(WIDTH, y);
+        ctx.stroke();
+      }
+    }
+
+    // ── Dark HUD strip (always on top of background) ─────────────────────────
+    ctx.fillStyle = BLACK;
+    ctx.fillRect(0, 0, WIDTH, 44);
+  }
+
+  // Called by main.js to pass current mouse pos to the draw call
+  setMousePos(pos) { this._lastMousePos = pos; }
+}
