@@ -7782,7 +7782,7 @@ export class Game {
     drawHUD(ctx, this);
     this._drawObjectiveIndicators(ctx);   // wayfinding: arrow to nearest Nexus (carrying) / core (early)
     this._drawOnboarding(ctx);            // first-minute objective callout + fading hints (Act 1)
-    drawVignette(ctx, this.overload, this.timeAlive);
+    // drawVignette(ctx, this.overload, this.timeAlive);  // disabled: overload capped at 99 → constant pulse at high overload
     drawDamagePulse(ctx, this.damageFlash, this.damageFlashIntensity, DMG_PULSE.duration);
     this._drawScanlines(ctx);
 
