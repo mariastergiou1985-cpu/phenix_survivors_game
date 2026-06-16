@@ -190,6 +190,8 @@ export const ALL_UPGRADES = [
     GREEN, 3, () => {}, '⮌', 'epic', 'euclid_vector'),
   new UpgradeDefinition('euclid_corrosive_multishot', 'Corrosive Multishot Protocol', 'Gas Needle: +1 pierce/level & +1 shard every 2 levels',
     GREEN, 3, () => {}, '⋔', 'epic', 'euclid_vector'),
+  new UpgradeDefinition('euclid_bolt_multishot', 'Dual Vector Burst', 'Toxin Bolt: +1 bolt per level in spread formation',
+    GREEN, 3, () => {}, '⫸', 'epic', 'euclid_vector'),
 
   // ── Oni Cataclysm Protocol — Endless-locked boss character (PF-unlocked) ─────────────────────
   // Char-gated to 'oni_cataclysm_protocol' so they ONLY roll while playing Oni (never for the other

@@ -2889,9 +2889,17 @@ export class Game {
     if (this._euclidBoltCd <= 0) {
       this._euclidBoltCd = Math.max(0.28, 0.85 / fr);
       if (aimT && distance(aimT.pos, p.pos) < 720 && this._euclidBolts.length < 40) {
-        const bounces = Math.min(5, 2 + this._cardLvl('euclid_vector_ricochet'));
-        this._euclidBolts.push({ pos: gl.clone(), target: aimT, prev: gl.clone(),
-          dmg: 16 + 3 * this._cardLvl('euclid_toxin_shot_mastery'), bounces, hit: new Set(), t: 0 });
+        const bounces   = Math.min(5, 2 + this._cardLvl('euclid_vector_ricochet'));
+        const boltDmg   = 16 + 3 * this._cardLvl('euclid_toxin_shot_mastery');
+        const boltCount = 1 + this._cardLvl('euclid_bolt_multishot');
+        const baseAng   = aimT ? Math.atan2(aimT.pos.y - gl.y, aimT.pos.x - gl.x) : 0;
+        for (let _bi = 0; _bi < boltCount && this._euclidBolts.length < 40; _bi++) {
+          const angOff = (_bi - (boltCount - 1) / 2) * 0.22;
+          const sOff   = new Vec2(-Math.sin(baseAng) * angOff * 28, Math.cos(baseAng) * angOff * 28);
+          const sPos   = gl.add(sOff);
+          this._euclidBolts.push({ pos: sPos, target: aimT, prev: sPos.clone(),
+            dmg: boltDmg, bounces, hit: new Set(), t: 0 });
+        }
       }
     }
     for (let i = this._euclidBolts.length - 1; i >= 0; i--) {
