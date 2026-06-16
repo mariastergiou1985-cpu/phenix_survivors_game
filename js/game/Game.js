@@ -18,9 +18,9 @@ import { SupportDrone }   from '../entities/SupportDrone.js?v=20260615210000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow } from './Effects.js?v=20260615210000';
 import { SystemEventManager } from './Events.js?v=20260615210000';
-import { UpgradeUI }      from './UpgradeUI.js?v=20260615210000';
+import { UpgradeUI }      from './UpgradeUI.js?v=20260616080000';
 import { weightedSample } from './Upgrades.js?v=20260615210000';
-import { MutationUI }      from './MutationUI.js?v=20260615210000';
+import { MutationUI }      from './MutationUI.js?v=20260616080000';
 import { sampleMutations } from './Mutations.js?v=20260615210000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260615210000';
 import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS } from './MetaProgress.js?v=20260615210000';
@@ -12796,18 +12796,4 @@ export class Game {
         ctx.stroke();
       }
       for (let y = 44; y < HEIGHT + spacing; y += spacing) {
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(WIDTH, y);
-        ctx.stroke();
-      }
-    }
-
-    // ── Dark HUD strip (always on top of background) ─────────────────────────
-    ctx.fillStyle = BLACK;
-    ctx.fillRect(0, 0, WIDTH, 44);
-  }
-
-  // Called by main.js to pass current mouse pos to the draw call
-  setMousePos(pos) { this._lastMousePos = pos; }
-}
+        c
