@@ -2973,6 +2973,59 @@ export class Game {
       for (const e of this.enemies) if (e && e.pos) { arr.push(this._euclidWrap(e)); live.add(e); }
       for (const e of this._euclidWraps.keys()) if (!live.has(e)) this._euclidWraps.delete(e);
 
+      // ── Singleton boss wrappers — let sniper/katana/plague target all bosses ──
+      // Normal enemies route through _euclidWrap; bosses (not in this.enemies) need thin
+      // custom wrappers with boss-capped damage + the correct die() call. DoubleDemonsBosnns
+      // bodies also get wrappers, routing damage to the shared _dd.hp.
+      const _eg = this;
+      for (const [boss, dieFn] of [
+        [this.titanBoss,       () => _eg._titanDie()],
+        [this.annihilatorBoss, () => _eg._annihilatorDie()],
+        [this.bloodfangBoss,   () => _eg._bloodfangDie()],
+      ]) {
+        if (!boss || boss.hp <= 0) continue;
+        arr.push({
+          get x()      { return boss.pos.x; },
+          get y()      { return boss.pos.y; },
+          get radius() { return boss.radius || 40; },
+          get hp()     { return boss.hp; },
+          get dead()   { return boss.hp <= 0; },
+          takeDamage(d) {
+            if (!(d > 0) || boss.hp <= 0) return;
+            const eff = _eg._capBossDamage(boss, d);
+            boss.hp -= eff; boss.hitFlash = 0.08;
+            _eg.floatingTexts.push(new FloatingText('-' + Math.round(eff),
+              boss.pos.add(new Vec2(0, -(boss.radius || 40) - 6)), WHITE, 0.5));
+            if (boss.hp <= 0) dieFn();
+          },
+          applyKnockback() {},
+          beginMelt() {},
+        });
+      }
+      if (this.doubleDemonsBoss && this.doubleDemonsBoss.hp > 0) {
+        const _dd = this.doubleDemonsBoss;
+        for (const body of [_dd.gunner, _dd.claw]) {
+          if (!body) continue;
+          arr.push({
+            get x()      { return body.pos.x; },
+            get y()      { return body.pos.y; },
+            get radius() { return body.radius || 32; },
+            get hp()     { return _dd.hp; },
+            get dead()   { return _dd.hp <= 0; },
+            takeDamage(d) {
+              if (!(d > 0) || _dd.hp <= 0) return;
+              const eff = _eg._capBossDamage(_dd, d);
+              _dd.hp -= eff; body.hitFlash = 0.08;
+              _eg.floatingTexts.push(new FloatingText('-' + Math.round(eff),
+                body.pos.add(new Vec2(0, -(body.radius || 32) - 6)), WHITE, 0.5));
+              if (_dd.hp <= 0) _eg._doubleDemonsDie();
+            },
+            applyKnockback() {},
+            beginMelt() {},
+          });
+        }
+      }
+
       // Card scaling — read live so it works in Act 1 + Endless.
       this._euclidSniper.bulletDamage    = 14 + 4 * this._cardLvl('euclid_toxin_shot_mastery');
       this._euclidSniper.poison.dps      = 6 + 3 * this._cardLvl('euclid_corrosive_spread');
@@ -3014,6 +3067,13 @@ export class Game {
     if (this.titanBoss && this.titanBoss.hp > 0)             bosses.push(this.titanBoss);
     if (this.annihilatorBoss && this.annihilatorBoss.hp > 0) bosses.push(this.annihilatorBoss);
     if (this.bloodfangBoss && this.bloodfangBoss.hp > 0)     bosses.push(this.bloodfangBoss);
+    // Double Demons: add both bodies — each has its own pos/radius so bolts can track and hit them.
+    // Damage is routed to shared _dd.hp in _euclidDamage (not to the individual body).
+    if (this.doubleDemonsBoss && this.doubleDemonsBoss.hp > 0) {
+      const _dd = this.doubleDemonsBoss;
+      if (_dd.gunner) bosses.push(_dd.gunner);
+      if (_dd.claw)   bosses.push(_dd.claw);
+    }
     return bosses.length ? this.enemies.concat(bosses) : this.enemies;
   }
 
@@ -3030,7 +3090,19 @@ export class Game {
   // Unified damage: Enemy instances route through takeHit (auto element/fusion hooks); singleton
   // mini-bosses use their hp path + die check. Both boss-capped, both get a visible toxin splash.
   _euclidDamage(e, dmg) {
-    if (!e || e.hp <= 0) return;
+    if (!e) return;
+    // Double Demons: gunner/claw bodies share hp on the parent object.
+    // Must be handled FIRST — the bodies have no individual hp field.
+    const _dd = this.doubleDemonsBoss;
+    if (_dd && _dd.hp > 0 && (e === _dd.gunner || e === _dd.claw)) {
+      const eff = this._capBossDamage(_dd, dmg);
+      _dd.hp -= eff; e.hitFlash = 0.08;
+      this.floatingTexts.push(new FloatingText('-' + Math.round(eff), e.pos.add(new Vec2(0, -(e.radius || 20) - 6)), WHITE, 0.5));
+      if (_dd.hp <= 0) this._doubleDemonsDie();
+      this.elementFx?.spawn(e.pos.x, e.pos.y, 'toxin', 1.0);
+      return;
+    }
+    if (e.hp <= 0) return;
     const isBoss = e.isBoss?.() || e.isMegaBoss || e === this.titanBoss || e === this.annihilatorBoss || e === this.bloodfangBoss;
     const d = isBoss ? this._capBossDamage(e, dmg) : dmg;
     if (e.takeHit) {
