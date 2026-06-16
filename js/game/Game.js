@@ -61,6 +61,18 @@ const ULTIMATE_MANA_COST = 100;
 // Tune here; 0 disables the drop entirely.
 const BOSS_KILL_PF = 1;
 
+// ── Taekwondo Crystal Ice Field (replaces Lightning Dash Strike) ───────────────
+// All numbers tunable here. Duration/radius control the field footprint; freeze
+// durations are SHORT for bosses (never a full lock) but FULL for normal enemies.
+// Boss burst fires ONCE per cast when the boss first steps into the field.
+const ICE_FIELD_RADIUS        = 115;   // px — field circle radius
+const ICE_FIELD_DURATION      = 4.0;   // s  — how long the field lingers
+const ICE_FIELD_FREEZE_NORMAL = 3.5;   // s  — stun applied to normal enemies each frame inside
+const ICE_FIELD_FREEZE_BOSS   = 2.5;   // s  — shorter stun for bosses (anti-lock safety)
+const ICE_FIELD_DOT_DMG       = 8;     // dmg per tick to enemies/bosses inside
+const ICE_FIELD_DOT_INTERVAL  = 0.55;  // s  — seconds between DoT ticks
+const ICE_FIELD_BOSS_BURST_PCT = 0.22; // fraction of boss maxHp dealt on first entry (once per cast)
+
 // ── Euclid Plague Trail Dash — tunable speed / distance ──────────────────────────
 // dashSpeed overrides the PlagueTrailDash default (1500 px/s); dashDuration overrides 0.35s.
 // Distance ≈ speed × duration. Raise both to make the lunge feel snappier and reach farther.
@@ -540,6 +552,7 @@ export class Game {
     this._specialBeams    = [];
     this._specialTrail    = [];
     this._taekwondoDmgSet = new Set();
+    this._iceFields        = [];   // active Crystal Ice Field instances (Taekwondo ultimate)
     this.enemyBullets = [];
     this.floatingTexts = [];
     this.particles    = new ParticleSystem();
@@ -2379,17 +2392,159 @@ export class Game {
   }
 
   _activateLightningDashStrike() {
+    // ── Crystal Ice Field (replaces Lightning Dash Strike) ──────────────────────
+    // Drops a persistent ice field at the player's feet. Normal enemies inside are
+    // frozen + take DoT; bosses get a shorter freeze + burst damage once per cast.
     const p = this.player;
-    const wm = this._worldMouse(this._lastMousePos);
-    const aimDir = wm
-      ? safeNormalize(new Vec2(wm.x - p.pos.x, wm.y - p.pos.y))
-      : p.lastFacingDir.clone();
-    p.specialDashDir   = aimDir;
-    p.specialDashTimer = 0.28;
-    p.specialCooldown  = p.specialMaxCooldown;
+    p.specialCooldown     = p.specialMaxCooldown;
     this._taekwondoDmgSet = new Set();
-    this.floatingTexts.push(new FloatingText('LIGHTNING STRIKE!', p.pos.clone(), CYAN, 1.0));
-    this.screenShake.trigger(3, 0.15);
+    this._iceFields.push({
+      pos:         p.pos.clone(),
+      radius:      ICE_FIELD_RADIUS,
+      life:        ICE_FIELD_DURATION,
+      maxLife:     ICE_FIELD_DURATION,
+      dotTimer:    ICE_FIELD_DOT_INTERVAL,
+      bossDmgDone: new Set(),   // bosses already hit with burst this cast
+    });
+    // Frost burst ring visual
+    this._specialRings.push({
+      pos: p.pos.clone(), radius: 0, maxRadius: ICE_FIELD_RADIUS,
+      life: 0.5, maxLife: 0.5, color1: '#b0f0ff', color2: '#ffffff',
+    });
+    this.floatingTexts.push(new FloatingText('CRYSTAL ICE FIELD!', p.pos.clone(), '#b0f0ff', 1.2));
+    this.screenShake.trigger(3, 0.12);
+  }
+
+  // ── Crystal Ice Field — frame update ────────────────────────────────────────
+  _updateIceFields(dt) {
+    // Collect singleton mini-bosses (not in this.enemies array).
+    const singletons = [];
+    if (this.titanBoss?.hp > 0)
+      singletons.push({ boss: this.titanBoss,       die: () => this._titanDie() });
+    if (this.annihilatorBoss?.hp > 0)
+      singletons.push({ boss: this.annihilatorBoss, die: () => this._annihilatorDie() });
+    if (this.bloodfangBoss?.hp > 0)
+      singletons.push({ boss: this.bloodfangBoss,   die: () => this._bloodfangDie() });
+
+    for (let fi = this._iceFields.length - 1; fi >= 0; fi--) {
+      const f = this._iceFields[fi];
+      f.life -= dt;
+      if (f.life <= 0) { this._iceFields.splice(fi, 1); continue; }
+
+      f.dotTimer -= dt;
+      const doDot = f.dotTimer <= 0;
+      if (doDot) f.dotTimer = ICE_FIELD_DOT_INTERVAL;
+
+      // ── Enemies in this.enemies (normal + enemy-type bosses) ──
+      for (const e of this.enemies) {
+        if (!e?.pos || e.hp <= 0) continue;
+        if (distance(e.pos, f.pos) > f.radius + (e.radius || 16)) continue;
+        const isBoss = e.isBoss?.() || e.isMegaBoss;
+        if (isBoss) {
+          e.stunned = Math.max(e.stunned || 0, ICE_FIELD_FREEZE_BOSS);
+          if (!f.bossDmgDone.has(e)) {
+            f.bossDmgDone.add(e);
+            const burst = this._capBossDamage(e, Math.floor((e.maxHp || e.hp) * ICE_FIELD_BOSS_BURST_PCT));
+            e.takeHit(burst, this);
+            this.floatingTexts.push(new FloatingText(
+              '❄ ' + Math.round(burst),
+              e.pos.add(new Vec2(0, -(e.radius || 20) - 8)), '#b0f0ff', 1.2));
+          }
+          if (doDot) e.takeHit(this._capBossDamage(e, ICE_FIELD_DOT_DMG), this);
+        } else {
+          e.stunned = Math.max(e.stunned || 0, ICE_FIELD_FREEZE_NORMAL);
+          if (doDot) e.takeHit(ICE_FIELD_DOT_DMG, this);
+        }
+      }
+
+      // ── Singleton mini-bosses (titan / annihilator / bloodfang) ──
+      for (const { boss, die } of singletons) {
+        if (!boss.pos || distance(boss.pos, f.pos) > f.radius + (boss.radius || 30)) continue;
+        boss.stunned = Math.max(boss.stunned || 0, ICE_FIELD_FREEZE_BOSS);
+        if (!f.bossDmgDone.has(boss)) {
+          f.bossDmgDone.add(boss);
+          const burst = this._capBossDamage(boss,
+            Math.floor((boss.maxHp || boss.hp) * ICE_FIELD_BOSS_BURST_PCT));
+          boss.hp -= burst; boss.hitFlash = 0.1;
+          this.floatingTexts.push(new FloatingText(
+            '❄ ' + Math.round(burst),
+            boss.pos.add(new Vec2(0, -(boss.radius || 30) - 8)), '#b0f0ff', 1.2));
+          if (boss.hp <= 0) die();
+        }
+        if (doDot && boss.hp > 0) {
+          const d = this._capBossDamage(boss, ICE_FIELD_DOT_DMG);
+          boss.hp -= d; boss.hitFlash = 0.06;
+          if (boss.hp <= 0) die();
+        }
+      }
+
+      // ── Double Demons — two bodies share one HP pool ──
+      if (this.doubleDemonsBoss?.hp > 0) {
+        const dd = this.doubleDemonsBoss;
+        for (const body of [dd.gunner, dd.claw]) {
+          if (!body?.pos || distance(body.pos, f.pos) > f.radius + (body.radius || 30)) continue;
+          body.stunned = Math.max(body.stunned || 0, ICE_FIELD_FREEZE_BOSS);
+          if (!f.bossDmgDone.has(body)) {
+            f.bossDmgDone.add(body);
+            const burst = this._capBossDamage(dd,
+              Math.floor(dd.maxHp * ICE_FIELD_BOSS_BURST_PCT));
+            dd.hp -= burst; body.hitFlash = 0.1;
+            this.floatingTexts.push(new FloatingText(
+              '❄ ' + Math.round(burst),
+              body.pos.add(new Vec2(0, -(body.radius || 30) - 8)), '#b0f0ff', 1.2));
+            if (dd.hp <= 0) this._doubleDemonsDie();
+          }
+          if (doDot && dd.hp > 0) {
+            const d = this._capBossDamage(dd, ICE_FIELD_DOT_DMG);
+            dd.hp -= d; body.hitFlash = 0.06;
+            if (dd.hp <= 0) this._doubleDemonsDie();
+          }
+        }
+      }
+    }
+  }
+
+  // ── Crystal Ice Field — draw (world-space ctx, called before entities) ──────
+  _drawIceFields(ctx) {
+    if (!this._iceFields.length) return;
+    const now = performance.now() / 1000;
+    for (const f of this._iceFields) {
+      const fade  = Math.min(1, f.life / 0.45) * Math.min(1, (f.maxLife - f.life + 0.35) / 0.35);
+      const pulse = 0.58 + 0.18 * Math.sin(now * 3.8);
+      ctx.save();
+      // Ground radial fill — flattened ellipse so it reads as floor-level
+      const grad = ctx.createRadialGradient(
+        f.pos.x, f.pos.y, 0, f.pos.x, f.pos.y, f.radius);
+      grad.addColorStop(0,   `rgba(180,238,255,${0.22 * fade})`);
+      grad.addColorStop(0.55,`rgba(100,200,255,${0.14 * fade})`);
+      grad.addColorStop(1,   `rgba(50,160,255,${0.04 * fade})`);
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.ellipse(f.pos.x, f.pos.y, f.radius, f.radius * 0.40, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // Pulsing edge ring
+      ctx.strokeStyle = `rgba(160,232,255,${pulse * fade * 0.72})`;
+      ctx.lineWidth   = 2;
+      ctx.beginPath();
+      ctx.ellipse(f.pos.x, f.pos.y, f.radius, f.radius * 0.40, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      // Crystal shards — 8 small triangles orbiting the edge
+      const shards = 8;
+      for (let k = 0; k < shards; k++) {
+        const a  = (k / shards) * Math.PI * 2 + now * 0.38;
+        const rr = f.radius * (0.52 + 0.28 * ((k % 3) / 3));
+        const sx = f.pos.x + Math.cos(a) * rr;
+        const sy = f.pos.y + Math.sin(a) * rr * 0.40;
+        ctx.fillStyle = `rgba(210,248,255,${fade * 0.70})`;
+        ctx.beginPath();
+        ctx.moveTo(sx, sy - 6);
+        ctx.lineTo(sx + 3, sy + 5);
+        ctx.lineTo(sx - 3, sy + 5);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.restore();
+    }
   }
 
   _activateOverdriveBeam() {
@@ -3776,6 +3931,7 @@ export class Game {
     this._updateFloatingTexts(dt);
     this._updateEffects(dt);
     this._updateSpecialEffects(dt);
+    this._updateIceFields(dt);        // Crystal Ice Field (Taekwondo ultimate)
     this._updateThunderSolo(dt);
     this._updateOverheatedChains(dt);
     this._updateSpiritDojang(dt);
@@ -7140,6 +7296,7 @@ export class Game {
     this._drawEndlessHazards(ctx);   // Endless-only: lightning storm + airstrike ships/rockets
     this._drawSynergyFx(ctx);        // character synergy marks above enemies + burst rings
     this._drawFusionClouds(ctx);     // Phase-2 fusion gas clouds (world-space, bounded)
+    this._drawIceFields(ctx);          // Crystal Ice Field zones (Taekwondo ultimate)
     this.elementFx.draw(ctx);        // elemental hit bursts (world-space, additive, bounded)
 
     // 2 ── Power Matrices (fill-based glow + counter owned by PowerMatrix; overload drives danger blink)
