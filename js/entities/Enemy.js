@@ -272,7 +272,7 @@ export class Enemy {
   }
 
   _die(game) {
-    game.audio?.playDeath();
+    game.audio?.playEnemyDeath?.();
     // Tiered death feedback (visual only). Heavy/elite/boss-type enemies get a larger
     // burst plus an expanding neon shock-ring so big kills read weightier than trash.
     const heavy = this.isBoss() || this.isMegaBoss || this.isElite || this.radius >= FEEDBACK.heavyRadius;

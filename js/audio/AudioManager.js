@@ -48,6 +48,11 @@ export class AudioManager {
     // Per-sound timestamps for rate-limiting (avoids machine-gun stacking).
     this._lastPlay = {};
 
+    // File-based SFX: decoded AudioBuffers cached here after first fetch.
+    // _sfxLoading guards against duplicate in-flight fetches.
+    this._sfxBuffers = {};
+    this._sfxLoading = new Set();
+
     this._menuAudio     = null;
     this._gameplayAudio = null;
     this._endlessAudio  = null;
@@ -425,4 +430,104 @@ export class AudioManager {
 
   // Stub kept so existing game.audio?.updateAlarm() calls don't crash (out of scope).
   updateAlarm() {}
+
+  // ─── File-based SFX loader (fetch → decodeAudioData → cached AudioBuffer) ──
+  // Tries each src in order; silently skips missing files. On first call the buffer
+  // is still loading (returns null) — the sound is skipped that frame; subsequent
+  // calls play from cache. All file SFX route through sfxGain → masterGain so they
+  // respect mute (M key) and SFX volume exactly like the synthesized sounds above.
+
+  _loadSfxFile(key, ...srcs) {
+    if (this._sfxBuffers[key] || this._sfxLoading.has(key)) return;
+    this._sfxLoading.add(key);
+    const tryNext = (i) => {
+      if (i >= srcs.length) {
+        console.warn('[SFX] Not found:', srcs);
+        return;
+      }
+      fetch(srcs[i])
+        .then(r => { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); })
+        .then(ab => this.actx.decodeAudioData(ab))
+        .then(buf => { this._sfxBuffers[key] = buf; })
+        .catch(() => tryNext(i + 1));
+    };
+    tryNext(0);
+  }
+
+  _playSfxBuffer(key, minGap, vol = 0.9) {
+    if (this.muted) return;
+    if (!this._canPlay(key, minGap)) return;
+    const buf = this._sfxBuffers[key];
+    if (!buf) return;
+    if (this.actx.state === 'suspended') this.actx.resume();
+    const src = this.actx.createBufferSource();
+    src.buffer = buf;
+    const g = this.actx.createGain();
+    g.gain.value = vol;
+    src.connect(g);
+    g.connect(this.sfxGain);
+    src.start();
+  }
+
+  // ─── File-backed SFX — each method preloads on first call, plays from cache ─
+
+  // Enemy / boss death — throttled: at most one sound per 80 ms so mass-kill chaos
+  // doesn't stack dozens of instances and bog down the audio thread.
+  playEnemyDeath() {
+    this._loadSfxFile('sfxEnemyDeath',
+      'assets/audio/sfx/enemy-death.ogg',
+      'assets/audio/sfx/enemy-death.mp3',
+      'assets/audio/sfx/enemy-death.wav');
+    if (this._sfxBuffers['sfxEnemyDeath']) {
+      this._playSfxBuffer('sfxEnemyDeath', 0.08, 0.85);
+    } else {
+      // Buffer still loading — fall back to synthesized glitch burst this frame.
+      this.playDeath();
+    }
+  }
+
+  // Player death / game over — fires once per run; no throttle needed.
+  playPlayerDeath() {
+    this._loadSfxFile('sfxPlayerDeath',
+      'assets/audio/sfx/player-death.ogg',
+      'assets/audio/sfx/player-death.mp3',
+      'assets/audio/sfx/player-death.wav');
+    this._playSfxBuffer('sfxPlayerDeath', 0, 1.0);
+  }
+
+  // Airstrike rocket impact — throttled 300 ms; many rockets land close together.
+  playAirstrikeBomb() {
+    this._loadSfxFile('sfxAirstrike',
+      'assets/audio/sfx/airstrike-bomb.ogg',
+      'assets/audio/sfx/airstrike-bomb.mp3',
+      'assets/audio/sfx/airstrike-bomb.wav');
+    this._playSfxBuffer('sfxAirstrike', 0.30, 0.90);
+  }
+
+  // Acid rain — throttled 4 s; plays once when the event activates.
+  playAcidRain() {
+    this._loadSfxFile('sfxAcidRain',
+      'assets/audio/sfx/acid-rain.ogg',
+      'assets/audio/sfx/acid-rain.mp3',
+      'assets/audio/sfx/acid-rain.wav');
+    this._playSfxBuffer('sfxAcidRain', 4.0, 0.85);
+  }
+
+  // Lava rain — throttled 1.5 s; one hit per spawn wave (not per drop).
+  playLavaRain() {
+    this._loadSfxFile('sfxLavaRain',
+      'assets/audio/sfx/lava-rain.ogg',
+      'assets/audio/sfx/lava-rain.mp3',
+      'assets/audio/sfx/lava-rain.wav');
+    this._playSfxBuffer('sfxLavaRain', 1.5, 0.88);
+  }
+
+  // Double Demons Rocket Rain — throttled 3 s; one sound per wave, not per rocket.
+  playRocketRain() {
+    this._loadSfxFile('sfxRocketRain',
+      'assets/audio/sfx/rocket-rain.ogg',
+      'assets/audio/sfx/rocket-rain.mp3',
+      'assets/audio/sfx/rocket-rain.wav');
+    this._playSfxBuffer('sfxRocketRain', 3.0, 0.90);
+  }
 }

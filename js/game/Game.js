@@ -4078,6 +4078,7 @@ export class Game {
     if (this.overload >= MAX_OVERLOAD) {
       this.gameOver     = true;
       this.finalMessage = 'CITY GRID TOTAL BLACKOUT';
+      this.audio?.playPlayerDeath?.();
       this.audio?.stopAll();
       this._grantRewards();
     } else if (this.player.hp <= 0 && this.phoenixReviveTimer <= 0 && !this.gameOver && !this.victory) {
@@ -4088,6 +4089,7 @@ export class Game {
       } else {
         this.gameOver     = true;
         this.finalMessage = 'CYBER-HERO OFFLINE';
+        this.audio?.playPlayerDeath?.();
         this.audio?.stopAll();
         this._grantRewards();
       }
@@ -6750,6 +6752,7 @@ export class Game {
         } else {
           this.particles.spawnHitSparks(r.pos, ORANGE);
         }
+        this.audio?.playAirstrikeBomb?.();   // throttled 300 ms — one sound per salvo, not per rocket
         this.airstrikeRockets.splice(i, 1);
       }
     }
@@ -10503,6 +10506,7 @@ export class Game {
         new FloatingText('TOXIC RAIN PURGE', new Vec2(WIDTH / 2 - 120, HEIGHT / 2 - 70), GREEN, 2.5)
       );
       this.audio?.playEventWarning();
+      this.audio?.playAcidRain?.();   // file SFX — throttled 4 s (one per activation)
     }
   }
 
@@ -10776,6 +10780,7 @@ export class Game {
         this._lavaSpawnCd    = 0;
         this.triggerAnnouncement('⚠ LAVA RAIN', ORANGE);
         this.audio?.playEventWarning();
+        this.audio?.playLavaRain?.();   // file SFX — throttled 1.5 s (one per storm wave)
       }
       if (this._lavaRainActive > 0) {
         this._lavaRainActive -= dt;
@@ -12104,6 +12109,7 @@ export class Game {
           });
         }
         g.rocketRainCd = DD_ROCKET_CD + Math.random() * 3;
+        this.audio?.playRocketRain?.();   // file SFX — throttled 3 s, one sound per wave
         this.floatingTexts.push(new FloatingText(
           'ROCKET RAIN!', new Vec2(g.pos.x, g.pos.y - 55), '#ff4400', 1.2));
       }
