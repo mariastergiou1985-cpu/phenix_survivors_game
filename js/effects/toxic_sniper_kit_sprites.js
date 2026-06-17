@@ -22,6 +22,14 @@ const TOXIC_DEEP = '#063b1a';
 const TOXIC_LITE = '#7cff8a';
 const STEEL      = '#cfe6d2';
 const STEEL_DK   = '#5f7a66';
+
+// ── Euclid Toxin Nerf — tunable constants ────────────────────────────────────
+// Raise intervals to spawn puffs/slicks less often; lower DPS for lighter DoT.
+const PLAGUE_PUFF_INTERVAL  = 0.10;  // s between gas-puff spawns (was 0.06)
+const PLAGUE_SLICK_INTERVAL = 0.30;  // s between ground-slick spawns (was 0.18)
+const PLAGUE_PUFF_DPS       = 47;    // gas puff DPS (was 55, ~-15%)
+const PLAGUE_SLICK_DPS      = 19;    // ground slick DPS (was 22, ~-14%)
+// ─────────────────────────────────────────────────────────────────────────────
 const rand  = (a, b) => a + Math.random() * (b - a);
 const dist  = (ax, ay, bx, by) => Math.hypot(ax - bx, ay - by);
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
@@ -373,7 +381,7 @@ class ToxicGasPuff {
     this.scaleGrow = rand(0.04, 0.18);
     this.life = 7;                              // ⬅ lingers much longer (was 4)
     this.maxLife = this.life;
-    this.dps = 55;
+    this.dps = PLAGUE_PUFF_DPS;
     this.dead = false;
   }
   update(dt) {
@@ -418,7 +426,7 @@ class ToxicSlick {
     this.r = rand(40, 64);
     this.life = 9;            // lingers a long time
     this.maxLife = this.life;
-    this.dps = 22;
+    this.dps = PLAGUE_SLICK_DPS;
     this.rot = rand(0, Math.PI * 2);
     this.dead = false;
   }
@@ -496,14 +504,14 @@ class PlagueTrailDash {
       this.trailTimer -= dt;
       const fx = this.player.x, fy = this.player.y + this.player.height * 0.42;
       this.spawnAcc += dt;
-      if (this.spawnAcc >= 0.06) {
+      if (this.spawnAcc >= PLAGUE_PUFF_INTERVAL) {
         this.spawnAcc = 0;
         this.clouds.push(new ToxicGasPuff(fx, fy));
         this.clouds.push(new ToxicGasPuff(fx, fy));
       }
       // drop lingering ground slicks along the trail (the "toxic rain")
       this.slickAcc += dt;
-      if (this.slickAcc >= 0.18) { this.slickAcc = 0; this.slicks.push(new ToxicSlick(fx, fy)); }
+      if (this.slickAcc >= PLAGUE_SLICK_INTERVAL) { this.slickAcc = 0; this.slicks.push(new ToxicSlick(fx, fy)); }
     }
 
     // clouds damage
