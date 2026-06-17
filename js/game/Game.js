@@ -889,6 +889,11 @@ export class Game {
     this.airstrikeShips    = [];            // clear any carryover hazards on (re)entry
     this.airstrikeRockets  = [];
     this.lightningZones    = [];
+    // Phoenix revives reset on Endless entry: Act 1 uses must not consume the Endless pool.
+    // (startEndlessRun already calls reset() which zeroes these; this guard covers continueEndless.)
+    this.phoenixReviveCount = 0;
+    this.phoenixReviveTimer = 0;
+    this.phoenixUsed        = false;
     this._annihNexusKills  = 0;             // Annihilator Nexus-erase count this run (hard max 2)
     this.mutations         = this._freshMutations();   // fresh forced-mutation state for THIS Endless run
     this.mutationUI        = null;
@@ -10290,7 +10295,7 @@ export class Game {
 
         ctx.fillStyle = WHITE;
         ctx.fillText('When HP hits 0, Phoenix Revive activates.', cx, descY);
-        ctx.fillText('Up to 3 revives are available per run.', cx, descY + 20);
+        ctx.fillText('Up to ' + (3 + (this._hasProto('phoenix_revival') ? 1 : 0)) + ' revives are available per run.', cx, descY + 20);
         break;
       }
     }
