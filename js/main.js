@@ -22,8 +22,13 @@ window.addEventListener('resize', resizeCanvas);
 window.addEventListener('orientationchange', () => { resizeCanvas(); setTimeout(resizeCanvas, 250); });
 window.visualViewport?.addEventListener('resize', resizeCanvas);
 document.addEventListener('fullscreenchange', resizeCanvas);
+if (window.visualViewport) window.visualViewport.addEventListener('resize', resizeCanvas);
 // Mobile reports its final viewport only after the address bar settles — re-fit shortly after load.
-window.addEventListener('load', () => setTimeout(resizeCanvas, 300));
+window.addEventListener('load', () => {
+  setTimeout(resizeCanvas, 300);
+  setTimeout(resizeCanvas, 750);
+  setTimeout(resizeCanvas, 1500);
+});
 
 // ─── Input state ──────────────────────────────────────────────────────────────
 const keys    = new Set();
@@ -449,3 +454,4 @@ function loop(timestamp) {
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
+console.log('BUILD 20260624210000 mobile-canvas-fit active');
