@@ -2819,7 +2819,8 @@ export class Game {
         p.speedBonus -= this._oniSpeedBuff; this._oniSpeedBuff = 0;
         p._tankTimer  = 0;
       },
-      onCollide: e => { if (e?.takeHit) e.takeHit(18 + 4 * cl, this); if (e) e.stunned = Math.max(e.stunned || 0, 0.4); },
+      // STAGE-2 contact damage is driven world-space in _updateOniFx (the module's own
+      // screen-space onCollide never fires under the player-centred camera). No onCollide here.
       onDetonate: () => {
         this.screenShake.trigger(14, 0.6);
         const det = 220 + 40 * cl;               // Total Cataclysm mastery: stronger detonation (boss-capped)
@@ -2869,6 +2870,30 @@ export class Game {
       const s = this._playerScreenPos();
       this._protocol0.update(now, s.cx, s.footY, this.enemies);
     } catch (err) { console.warn('[Oni Protocol0]', err); }
+
+    // ── STAGE-2 contact damage (world-space) ──
+    // The Protocol0 module detects collisions in SCREEN space, but the player-centred
+    // camera keeps the on-screen player ~stationary, so its onCollide never fires mid-arena.
+    // Drive the same hit here in world space: throttled ~0.4s (anti-multihit), full vs
+    // normals, _capBossDamage vs bosses, mirroring the module's 18+4·cl dmg + 0.4s stun.
+    if (this._protocol0.isActive()) {
+      this._oniContactCd = (this._oniContactCd || 0) - dt;
+      if (this._oniContactCd <= 0) {
+        this._oniContactCd = 0.4;
+        const cl  = p.upgrades['oni_protocol0_mastery'] || 0;
+        const dmg = 18 + 4 * cl;
+        const R   = 40 / vs;   // mirror the module's 40px collide radius in world units
+        for (const e of this.enemies) {
+          if (!e?.pos || !e.takeHit) continue;
+          if (distance(e.pos, p.pos) > R) continue;
+          const boss = e.isBoss?.() || e.isMegaBoss;
+          e.takeHit(boss ? this._capBossDamage(e, dmg) : dmg, this);
+          e.stunned = Math.max(e.stunned || 0, 0.4);
+        }
+      }
+    } else {
+      this._oniContactCd = 0;
+    }
 
     // ── Laser Eyes (auto-weapon 1) — charged piercing beam, boss lock-on ──
     if (this._oniLaserCd > 0) this._oniLaserCd -= dt;
