@@ -8,15 +8,22 @@ const ctx    = canvas.getContext('2d');
 
 // Scale canvas to fill the window while preserving 16:9
 function resizeCanvas() {
-  const scaleX = window.innerWidth  / canvas.width;
-  const scaleY = window.innerHeight / canvas.height;
-  const scale  = Math.min(scaleX, scaleY);
+  // Use the VISUAL viewport when available — on mobile this is the actually-visible area
+  // (excludes the browser address bar), so the menu/canvas fits the real landscape space.
+  const vv = window.visualViewport;
+  const vw = (vv && vv.width)  || window.innerWidth;
+  const vh = (vv && vv.height) || window.innerHeight;
+  const scale = Math.min(vw / canvas.width, vh / canvas.height);
   canvas.style.width  = `${Math.floor(canvas.width  * scale)}px`;
   canvas.style.height = `${Math.floor(canvas.height * scale)}px`;
 }
 resizeCanvas();
 window.addEventListener('resize', resizeCanvas);
+window.addEventListener('orientationchange', () => { resizeCanvas(); setTimeout(resizeCanvas, 250); });
+window.visualViewport?.addEventListener('resize', resizeCanvas);
 document.addEventListener('fullscreenchange', resizeCanvas);
+// Mobile reports its final viewport only after the address bar settles — re-fit shortly after load.
+window.addEventListener('load', () => setTimeout(resizeCanvas, 300));
 
 // ─── Input state ──────────────────────────────────────────────────────────────
 const keys    = new Set();

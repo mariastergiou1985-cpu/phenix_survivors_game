@@ -24,6 +24,7 @@ export function initTouchControls({ canvas, keys, game, setAim }) {
   // ── styles ──────────────────────────────────────────────────────────────
   const style = document.createElement('style');
   style.textContent = `
+    html, body { touch-action: none; overscroll-behavior: none; }
     #touch-overlay { position: fixed; inset: 0; z-index: 50; pointer-events: none;
       touch-action: none; -webkit-user-select: none; user-select: none; }
     #touch-overlay .tc { pointer-events: auto; touch-action: none;
@@ -93,12 +94,16 @@ export function initTouchControls({ canvas, keys, game, setAim }) {
   }
 
   // ── virtual joystick → w/a/s/d held ───────────────────────────────────────
+  // Pointer Events + setPointerCapture: on real mobile this guarantees the joystick keeps
+  // receiving move events even when the finger leaves the pad, and (with touch-action:none)
+  // stops the browser from hijacking the drag as a scroll/refresh gesture — the actual cause
+  // of "joystick does not move the character" on hardware (plain touch events get stolen).
   const DEAD = 16, MAXR = 46;
-  let joyId = null;
+  let joyPid = null;
   function joyCenter() { const r = joy.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; }
-  function joyMove(touch) {
+  function joyMove(pt) {
     const c = joyCenter();
-    let dx = touch.clientX - c.x, dy = touch.clientY - c.y;
+    let dx = pt.clientX - c.x, dy = pt.clientY - c.y;
     const dist = Math.hypot(dx, dy);
     if (dist > MAXR) { dx *= MAXR / dist; dy *= MAXR / dist; }
     knob.style.transform = `translate(${dx}px, ${dy}px)`;
@@ -106,33 +111,42 @@ export function initTouchControls({ canvas, keys, game, setAim }) {
     setKey('a', dx < -DEAD); setKey('d', dx > DEAD);
   }
   function joyReset() {
-    joyId = null; knob.style.transform = '';
+    joyPid = null; knob.style.transform = '';
     setKey('w', false); setKey('s', false); setKey('a', false); setKey('d', false);
   }
-  joy.addEventListener('touchstart', e => {
+  joy.addEventListener('pointerdown', e => {
+    if (joyPid !== null) return;
+    joyPid = e.pointerId;
+    try { joy.setPointerCapture(e.pointerId); } catch (_) {}
     e.preventDefault();
-    if (joyId === null) { joyId = e.changedTouches[0].identifier; joyMove(e.changedTouches[0]); }
-  }, { passive: false });
-  joy.addEventListener('touchmove', e => {
+    joyMove(e);
+  });
+  joy.addEventListener('pointermove', e => {
+    if (e.pointerId !== joyPid) return;
     e.preventDefault();
-    for (const t of e.changedTouches) if (t.identifier === joyId) joyMove(t);
-  }, { passive: false });
-  const joyEnd = e => { for (const t of e.changedTouches) if (t.identifier === joyId) joyReset(); };
-  joy.addEventListener('touchend', joyEnd);
-  joy.addEventListener('touchcancel', joyEnd);
+    joyMove(e);
+  });
+  const joyUp = e => {
+    if (e.pointerId !== joyPid) return;
+    try { joy.releasePointerCapture(e.pointerId); } catch (_) {}
+    joyReset();
+  };
+  joy.addEventListener('pointerup', joyUp);
+  joy.addEventListener('pointercancel', joyUp);
 
   // ── action buttons (Dash held; Q/E/ULT/Pause one-shot) ────────────────────
   function bindButton(el) {
     const key = el.dataset.key, hold = el.dataset.hold === '1';
-    el.addEventListener('touchstart', e => {
+    el.addEventListener('pointerdown', e => {
       e.preventDefault();                       // no 300ms delay / no synthetic mouse
+      try { el.setPointerCapture(e.pointerId); } catch (_) {}
       if (hold) setKey(key, true);              // Dash → held 'shift' in keys Set
       else      tapKey(key);                    // Q/E/ULT/Pause → synthetic keydown+keyup
-    }, { passive: false });
+    });
     if (hold) {
       const up = e => { e.preventDefault(); setKey(key, false); };
-      el.addEventListener('touchend', up, { passive: false });
-      el.addEventListener('touchcancel', up, { passive: false });
+      el.addEventListener('pointerup', up);
+      el.addEventListener('pointercancel', up);
     }
   }
   btns.querySelectorAll('button').forEach(bindButton);
@@ -148,24 +162,23 @@ export function initTouchControls({ canvas, keys, game, setAim }) {
   // pointer-events:none overlay, and document reliably receives it across browsers. Touches
   // that start on our controls are ignored here (they handle themselves).
   const onControl = el => !!(el && el.closest && el.closest('#touch-joy, #touch-btns, #touch-pause'));
-  let tapStart = null;
-  document.addEventListener('touchstart', e => {
-    if (onControl(e.target)) return;            // joystick / buttons handle their own touches
+  let tapId = null;
+  document.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'mouse') return;       // let native mouse path handle desktop-style clicks
+    if (onControl(e.target)) return;             // joystick / buttons handle their own pointers
     e.preventDefault();                          // stop scroll/zoom on canvas + menus
-    const t = e.changedTouches[0]; tapStart = t;
-    const p = toCanvas(t); setAim(p.x, p.y);
+    tapId = e.pointerId;
+    const p = toCanvas(e); setAim(p.x, p.y);
   }, { passive: false });
-  document.addEventListener('touchend', e => {
-    if (tapStart === null || onControl(e.target)) return;
-    let t = null; for (const c of e.changedTouches) if (c.identifier === tapStart.identifier) t = c;
-    if (!t) t = e.changedTouches[0];
-    const p = toCanvas(t); setAim(p.x, p.y);
+  document.addEventListener('pointerup', e => {
+    if (e.pointerId !== tapId || onControl(e.target)) return;
+    tapId = null;
+    const p = toCanvas(e); setAim(p.x, p.y);
     // Drive the EXISTING canvas mousedown/mouseup handlers (unchanged hit-testing).
-    canvas.dispatchEvent(new MouseEvent('mousedown', { button: 0, clientX: t.clientX, clientY: t.clientY, bubbles: true }));
-    canvas.dispatchEvent(new MouseEvent('mouseup',   { button: 0, clientX: t.clientX, clientY: t.clientY, bubbles: true }));
-    tapStart = null;
+    canvas.dispatchEvent(new MouseEvent('mousedown', { button: 0, clientX: e.clientX, clientY: e.clientY, bubbles: true }));
+    canvas.dispatchEvent(new MouseEvent('mouseup',   { button: 0, clientX: e.clientX, clientY: e.clientY, bubbles: true }));
   }, { passive: false });
-  document.addEventListener('touchcancel', () => { tapStart = null; });
+  document.addEventListener('pointercancel', () => { tapId = null; });
 
   // ── landscape hint + show controls only during active gameplay ────────────
   function updateRotate() {
