@@ -2,77 +2,27 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Phenix Survivors — Cyber-Grid Protocol</title>
-
-  <!-- SEO -->
-  <meta name="description" content="Phenix Survivors / Grid Protocol — a free browser-based indie action survival game by InkSpireM Visuals. Pick your character, survive the cyber-grid. No download needed.">
-  <meta name="keywords" content="indie game, Greek indie game, cyber survival game, browser game, mobile browser game, InkSpireM Visuals, Phenix Survivors, Grid Protocol">
-  <meta name="author" content="InkSpireM Visuals">
-
-  <!-- Open Graph -->
-  <meta property="og:type" content="website">
-  <meta property="og:site_name" content="Phenix Survivors / Grid Protocol">
-  <meta property="og:title" content="Phenix Survivors / Grid Protocol — Indie Cyber-Survival Demo">
-  <meta property="og:description" content="A free browser-playable indie action survival game by InkSpireM Visuals, made in Greece. Multiple characters, boss encounters, upgrade system. No download needed.">
-  <meta property="og:url" content="https://mariastergiou1985-cpu.github.io/phenix_survivors_game/">
-  <meta property="og:image" content="https://mariastergiou1985-cpu.github.io/phenix_survivors_game/assets/ui/new_main_menu_theme/main_menu_theme.png">
-  <meta property="og:image:alt" content="Phenix Survivors / Grid Protocol — cyber-grid action survival game">
-  <meta property="og:locale" content="en_US">
-
-  <!-- Twitter / X Card -->
-  <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="Phenix Survivors / Grid Protocol — Greek Indie Game Demo">
-  <meta name="twitter:description" content="Cyber-survival browser game by InkSpireM Visuals. Made in Naousa, Imathia. Play free — no download. Early demo, actively evolving. 🎮">
-  <meta name="twitter:image" content="https://mariastergiou1985-cpu.github.io/phenix_survivors_game/assets/ui/new_main_menu_theme/main_menu_theme.png">
-
-  <!-- Canonical -->
-  <link rel="canonical" href="https://mariastergiou1985-cpu.github.io/phenix_survivors_game/">
-
-  <!-- Press page link -->
-  <link rel="alternate" type="text/html" href="press.html" title="Press & Announcement — InkSpireM Visuals">
-
-  <!-- JSON-LD: VideoGame schema -->
-  <script type="application/ld+json">
-  {
-    "@context": "https://schema.org",
-    "@type": "VideoGame",
-    "name": "Phenix Survivors / Grid Protocol",
-    "description": "A browser-playable indie action survival game by InkSpireM Visuals. Choose your character and survive in a cyber-grid world. Active demo, continuously evolving.",
-    "url": "https://mariastergiou1985-cpu.github.io/phenix_survivors_game/",
-    "genre": ["Action", "Survival", "Indie"],
-    "gamePlatform": "Web Browser",
-    "operatingSystem": "Any (browser-based)",
-    "applicationCategory": "Game",
-    "author": {
-      "@type": "Organization",
-      "name": "InkSpireM Visuals",
-      "location": "Naousa, Imathia, Greece"
-    },
-    "offers": {
-      "@type": "Offer",
-      "price": "0",
-      "priceCurrency": "EUR",
-      "availability": "https://schema.org/InStock"
-    }
-  }
-  </script>
-
   <!-- Preload menu theme so it's cached before the first click (no autoplay) -->
-  <link rel="preload" as="audio" href="assets/audio/music/menu_theme.mp3?v=20260615210000" type="audio/mpeg">
-  <link rel="preload" as="audio" href="assets/audio/music/gameplay_theme.mp3?v=20260615210000" type="audio/mpeg">
+  <link rel="preload" as="audio" href="assets/audio/music/menu_theme.mp3?v=10" type="audio/mpeg">
+  <link rel="preload" as="audio" href="assets/audio/music/gameplay_theme.mp3?v=2" type="audio/mpeg">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
+    html {
+      height: 100%;
+      overscroll-behavior: none;   /* prevent pull-to-refresh / elastic overscroll */
+    }
     body {
       background: #05080f;
       display: flex;
-      flex-direction: column;
       justify-content: center;
       align-items: center;
-      height: 100vh;
-      height: 100dvh;            /* dynamic viewport: excludes mobile address bar so the
-                                    centred canvas/menu isn't pushed below the fold (desktop = 100vh) */
+      width: 100%;
+      height: 100vh;               /* fallback for older browsers */
+      height: 100dvh;              /* dynamic viewport: excludes mobile address bar */
       overflow: hidden;
+      overscroll-behavior: none;
       font-family: Consolas, monospace;
     }
     canvas {
@@ -94,6 +44,6 @@
 <body>
   <canvas id="game" width="1280" height="720"></canvas>
   <div id="click-to-start">Click or press any key to enable music &nbsp;|&nbsp; M = mute &nbsp;|&nbsp; ESC = pause</div>
-  <script type="module" src="js/main.js?v=20260616080000"></script>
+  <script type="module" src="js/main.js?v=20260624210000"></script>
 </body>
 </html>
