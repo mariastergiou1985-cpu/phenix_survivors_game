@@ -336,6 +336,51 @@
     .lang-el { display: block; }
     .lang-en { display: none; }
 
+    /* ── SCREENSHOTS GALLERY ── */
+    .screenshots-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin-top: 24px;
+    }
+    .screenshot-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      transition: border-color 0.25s, box-shadow 0.25s;
+    }
+    .screenshot-card:hover {
+      border-color: rgba(60, 240, 230, 0.45);
+      box-shadow: 0 0 24px rgba(60, 240, 230, 0.12);
+    }
+    .screenshot-card a {
+      display: block;
+      line-height: 0;
+    }
+    .screenshot-card img {
+      width: 100%;
+      height: auto;
+      display: block;
+      aspect-ratio: 16 / 9;
+      object-fit: cover;
+    }
+    .screenshot-card figcaption {
+      padding: 10px 14px;
+      font-size: 11px;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--dim);
+      text-align: center;
+      border-top: 1px solid var(--border);
+    }
+    @media (max-width: 540px) {
+      .screenshots-grid { grid-template-columns: 1fr; }
+    }
+    @media (min-width: 541px) and (max-width: 720px) {
+      .screenshots-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+
     /* ── FOOTER ── */
     .site-footer {
       border-top: 1px solid var(--border);
@@ -396,6 +441,38 @@
         <button class="lang-btn" onclick="setLang('en')">🇬🇧 English</button>
       </div>
     </div>
+
+    <!-- SCREENSHOTS GALLERY -->
+    <section class="section" id="screenshots">
+      <div class="section-label">Screenshots</div>
+      <h2>Στιγμιότυπα &middot; Screenshots</h2>
+      <div class="screenshots-grid">
+        <figure class="screenshot-card">
+          <a href="assets/press/press_main_menu.jpg" target="_blank" rel="noopener">
+            <img src="assets/press/press_main_menu.jpg"
+                 alt="Phenix Survivors — Main Menu · Κεντρικό Μενού"
+                 loading="lazy" width="960" height="540">
+          </a>
+          <figcaption>Κεντρικό Μενού &middot; Main Menu</figcaption>
+        </figure>
+        <figure class="screenshot-card">
+          <a href="assets/press/press_character_select.jpg" target="_blank" rel="noopener">
+            <img src="assets/press/press_character_select.jpg"
+                 alt="Phenix Survivors — Character Select · Επιλογή Χαρακτήρα"
+                 loading="lazy" width="960" height="540">
+          </a>
+          <figcaption>Επιλογή Χαρακτήρα &middot; Character Select</figcaption>
+        </figure>
+        <figure class="screenshot-card">
+          <a href="assets/press/press_gameplay_endless.jpg" target="_blank" rel="noopener">
+            <img src="assets/press/press_gameplay_endless.jpg"
+                 alt="Phenix Survivors — Endless Mode Gameplay"
+                 loading="lazy" width="960" height="540">
+          </a>
+          <figcaption>Gameplay &middot; Endless Mode</figcaption>
+        </figure>
+      </div>
+    </section>
 
     <!-- ══════════ GREEK ══════════ -->
     <div class="lang-el" id="content-el">
