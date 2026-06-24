@@ -25,6 +25,9 @@ export function initTouchControls({ canvas, keys, game, setAim }) {
   const style = document.createElement('style');
   style.textContent = `
     html, body { touch-action: none; overscroll-behavior: none; }
+    /* Lock the page to the visible viewport (touch only) so in-app/mobile browsers don't
+       add scroll/bounce margins around the centred canvas. Desktop is never touched. */
+    body { position: fixed; inset: 0; }
     #touch-overlay { position: fixed; inset: 0; z-index: 50; pointer-events: none;
       touch-action: none; -webkit-user-select: none; user-select: none; }
     #touch-overlay .tc { pointer-events: auto; touch-action: none;
@@ -37,11 +40,11 @@ export function initTouchControls({ canvas, keys, game, setAim }) {
       background: rgba(150,210,255,0.30); border: 2px solid rgba(180,230,255,0.6);
       box-shadow: 0 0 14px rgba(120,200,255,0.5); }
     #touch-btns { position: absolute; right: 4%; bottom: 7%; width: 210px; height: 150px; }
-    #touch-btns button, #touch-pause { position: absolute; border-radius: 50%;
+    #touch-btns button, #touch-pause, #touch-fs { position: absolute; border-radius: 50%;
       font: bold 14px Consolas, monospace; color: #dff2ff;
       background: rgba(20,40,70,0.45); border: 2px solid rgba(150,200,255,0.5);
       box-shadow: 0 0 10px rgba(80,150,220,0.35); }
-    #touch-btns button:active, #touch-pause:active { background: rgba(60,120,200,0.6); }
+    #touch-btns button:active, #touch-pause:active, #touch-fs:active { background: rgba(60,120,200,0.6); }
     #touch-btns button { width: 70px; height: 70px; }
     #btn-ult   { right: 0;   bottom: 78px; width: 80px; height: 80px; color: #ffd9a8;
       border-color: rgba(255,140,60,0.7); }
@@ -49,6 +52,7 @@ export function initTouchControls({ canvas, keys, game, setAim }) {
     #btn-q     { right: 96px; bottom: 0; }
     #btn-e     { right: 4px;  bottom: 0; }
     #touch-pause { top: 12px; right: 12px; width: 50px; height: 50px; font-size: 18px; }
+    #touch-fs { top: 12px; left: 12px; width: 50px; height: 50px; font-size: 20px; }
     #touch-rotate { position: fixed; inset: 0; z-index: 60; pointer-events: none;
       display: none; align-items: center; justify-content: center; text-align: center;
       background: rgba(5,8,15,0.82); color: #8fd0ff; font: bold 22px Consolas, monospace;
@@ -68,7 +72,8 @@ export function initTouchControls({ canvas, keys, game, setAim }) {
       <button id="btn-q"    data-hold="0" data-key="q">Q</button>
       <button id="btn-e"    data-hold="0" data-key="e">E</button>
     </div>
-    <button id="touch-pause" class="tc" data-hold="0" data-key="Escape">⏸</button>`;
+    <button id="touch-pause" class="tc" data-hold="0" data-key="Escape">⏸</button>
+    <button id="touch-fs" class="tc" title="Fullscreen">⛶</button>`;
   document.body.appendChild(overlay);
 
   const rotate = document.createElement('div');
@@ -80,6 +85,24 @@ export function initTouchControls({ canvas, keys, game, setAim }) {
   const knob   = overlay.querySelector('#touch-joy-knob');
   const btns   = overlay.querySelector('#touch-btns');
   const pauseB = overlay.querySelector('#touch-pause');
+  const fsBtn  = overlay.querySelector('#touch-fs');
+
+  // ── Fullscreen helper (Android Chrome etc.) — user-initiated, non-spammy. Hidden where the
+  // Fullscreen API is unavailable (e.g. iOS Safari / some in-app browsers). Going fullscreen
+  // hides browser chrome so the canvas gets the whole screen; resizeCanvas() refits on the
+  // fullscreenchange event already wired in main.js. Desktop keeps its existing F-key toggle.
+  const fsRoot = document.documentElement;
+  if (!fsRoot.requestFullscreen) {
+    fsBtn.style.display = 'none';
+  } else {
+    fsBtn.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      try {
+        const r = document.fullscreenElement ? document.exitFullscreen() : fsRoot.requestFullscreen();
+        if (r && r.catch) r.catch(() => {});
+      } catch (_) {}
+    });
+  }
 
   // ── helpers: inject into the same input the keyboard/controller use ───────
   const heldMove = new Set();   // movement/dash keys WE injected (clear only ours)
@@ -161,7 +184,7 @@ export function initTouchControls({ canvas, keys, game, setAim }) {
   // Listen at document level (not on the canvas): a touch on the canvas passes through the
   // pointer-events:none overlay, and document reliably receives it across browsers. Touches
   // that start on our controls are ignored here (they handle themselves).
-  const onControl = el => !!(el && el.closest && el.closest('#touch-joy, #touch-btns, #touch-pause'));
+  const onControl = el => !!(el && el.closest && el.closest('#touch-joy, #touch-btns, #touch-pause, #touch-fs'));
   let tapId = null;
   document.addEventListener('pointerdown', e => {
     if (e.pointerType === 'mouse') return;       // let native mouse path handle desktop-style clicks
