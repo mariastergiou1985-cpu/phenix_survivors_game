@@ -61,8 +61,8 @@ export class AudioManager {
 
     this._setupTrack('assets/audio/music/menu_theme.mp3?v=20260615210000', 0.28, a => { this._menuAudio     = a; });
     this._setupTrack('assets/audio/music/gameplay_theme.mp3?v=20260615210000', 0.20, a => { this._gameplayAudio = a; });
-    // Chaos Mode track. Double underscore in filename is intentional. Degrades safely if missing.
-    this._setupTrack('assets/audio/chaos/Golden__Override__Protocol.wav?v=20260615210000', 0.20, a => { this._chaosAudio = a; });
+    // Chaos Mode track (Winter of the Blade). Degrades safely if missing.
+    this._setupTrack('assets/audio/music/Chaos/Winter_of_the_Blade.mp3?v=20260615210000', 0.20, a => { this._chaosAudio = a; });
     // Endless-only track (dawn). Missing/failed load degrades safely (onerror warn).
     this._setupTrack('assets/audio/music/endless/dawn.wav?v=20260615210000', 0.20, a => { this._endlessAudio = a; });
   }
@@ -190,7 +190,7 @@ export class AudioManager {
     this._stop(this._gameplayAudio);
     this._stop(this._endlessAudio);
     this._currentMusic = this._chaosAudio;
-    this.currentTrackTitle = 'Golden Override Protocol';
+    this.currentTrackTitle = 'Winter of the Blade';
     this._play(this._chaosAudio);
   }
 
