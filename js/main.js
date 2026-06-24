@@ -1,6 +1,7 @@
 import { Game } from './game/Game.js?v=20260616080000';
 import { AudioManager } from './audio/AudioManager.js?v=20260615210000';
 import { GamepadInput } from './Gamepad.js?v=20260615210000';
+import { initTouchControls } from './TouchInput.js?v=20260616080000';
 
 const canvas = document.getElementById('game');
 const ctx    = canvas.getContext('2d');
@@ -385,6 +386,17 @@ function applyGamepad() {
     }
   }
 }
+
+// ─── Mobile touch controls ──────────────────────────────────────────────────
+// Touch-device-gated (no-op on desktop). Injects into the SAME `keys` Set + synthetic
+// KeyboardEvents as the gamepad bridge; canvas taps update mousePos then drive the
+// existing mousedown hit-testing. setAim mirrors the mousemove scaling.
+initTouchControls({
+  canvas,
+  keys,
+  game,
+  setAim: (x, y) => { mousePos = { x, y }; game.setMousePos(mousePos); },
+});
 
 // ─── Game loop ────────────────────────────────────────────────────────────────
 let lastTime = 0;
