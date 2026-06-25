@@ -12877,4 +12877,598 @@ export class Game {
       }
     }
 
-    // ── Claw attack: Claw Slam ─────────────────────────────────────�
+    // ── Claw attack: Claw Slam ─────────────────────────────────────────────────────────────────
+    // AoE circle telegraph (1.0s) at player position → shockwave ring expands outward on impact
+    c.slamCd -= dt * cdMult;
+    if (!c.slamState) {
+      if (c.slamCd <= 0 && (!c.dashState || c.dashState.phase === 'trail')) {
+        c.slamState = {
+          phase:      'telegraph',
+          t:          0,
+          telegraphT: 1.0,
+          pos:        p.pos.clone(),
+          radius:     85,
+          hit:        false,
+        };
+        c.slamCd = 5.5 + Math.random() * 2.0;
+        this.audio?.playEventWarning?.();
+      }
+    } else {
+      const ss = c.slamState;
+      ss.t += dt;
+      if (ss.phase === 'telegraph' && ss.t >= ss.telegraphT) {
+        ss.phase = 'impact';
+        ss.t     = 0;
+        // Shockwave ring
+        this._ddClawShockwaves.push({ pos: ss.pos.clone(), radius: c.radius, maxR: 220, alpha: 1.0, hit: false });
+        this.screenShake.trigger(7, 0.22);
+        this.particles.spawnExplosion(ss.pos, [RED, ORANGE], 14);
+        this.audio?.playBloodfangBite?.();
+        // Slam damage if player inside AoE
+        if (!ss.hit && distance(p.pos, ss.pos) < ss.radius) {
+          ss.hit = true;
+          this._damagePlayer(16, { color: RED, shake: 7 });
+          if (this.player.dashTimer <= 0) {
+            const kb = safeNormalize(p.pos.sub(ss.pos));
+            p.pos.addMut(kb.scale(60));
+          }
+        }
+      }
+      if (ss.phase === 'impact' && ss.t >= 0.3) c.slamState = null;
+    }
+
+    // Update shockwave rings
+    for (let i = this._ddClawShockwaves.length - 1; i >= 0; i--) {
+      const sw = this._ddClawShockwaves[i];
+      sw.radius += 260 * dt;
+      sw.alpha   = Math.max(0, 1.0 - sw.radius / sw.maxR);
+      if (!sw.hit) {
+        const d = distance(sw.pos, p.pos);
+        if (sw.radius >= d - PLAYER_RADIUS - 4) {
+          sw.hit = true;
+          this._damagePlayer(10, { color: RED, shake: 4 });
+        }
+      }
+      if (sw.alpha <= 0) this._ddClawShockwaves.splice(i, 1);
+    }
+
+    if (dd.hp <= 0) this._doubleDemonsDie();
+  }
+
+  _doubleDemonsDie() {
+    const dd = this.doubleDemonsBoss;
+    if (!dd) return;
+
+    this.particles.spawnExplosion(dd.gunner.pos, ['#ff2d95', ORANGE, YELLOW], 22);
+    this.particles.spawnExplosion(dd.claw.pos,   [RED, '#ff2d95', WHITE],     22);
+    this.screenShake.trigger(16, 1.2);
+
+    this.score = (this.score ?? 0) + 600;
+    this.player.gainXp(55, this.floatingTexts);
+    const ddCredits = this._awardCredits(30 + Math.floor(Math.random() * 21));  // 30-50
+    this.overload = Math.max(0, this.overload - 12);
+
+    // Extra cores: 3 gold + 2 silver scatter from both bodies
+    const drops = [
+      [dd.gunner.pos.add(new Vec2(-30,   0)), 'gold'],
+      [dd.gunner.pos.add(new Vec2( 30, -20)), 'gold'],
+      [dd.claw.pos.add(  new Vec2(  0,  30)), 'gold'],
+      [dd.claw.pos.add(  new Vec2(-28, -15)), 'silver'],
+      [dd.claw.pos.add(  new Vec2( 28,  15)), 'silver'],
+    ];
+    for (const [dpos, dtype] of drops) {
+      this.groundCores.push(new DataCore(this._clampPickupPos(dpos), dtype));
+    }
+
+    this.floatingTexts.push(new FloatingText('\u26a1 DOUBLE DEMONS DEFEATED \u26a1',
+      dd.gunner.pos.clone(), '#ff2d95', 2.8));
+    this.floatingTexts.push(new FloatingText('+' + ddCredits + ' GRID CREDITS',
+      new Vec2(dd.claw.pos.x, dd.claw.pos.y - 32), GREEN, 2.5));
+    this.floatingTexts.push(new FloatingText('+5 CORES DROPPED',
+      new Vec2(dd.gunner.pos.x, dd.gunner.pos.y - 32), YELLOW, 2.2));
+
+    this.triggerAnnouncement('\u26a1 DOUBLE DEMONS DEFEATED \u26a1', '#ff2d95');
+    // Protocol Fragment reward
+    if (this.meta && this.endless) {
+      this.meta.protocolFragments += BOSS_KILL_PF;
+      this.meta._save();
+      this.floatingTexts.push(new FloatingText('+' + BOSS_KILL_PF + ' 🧩 FRAGMENT',
+        new Vec2(dd.gunner.pos.x, dd.gunner.pos.y - 68), '#ff5ea8', 2.5));
+    }
+    this.doubleDemonsBoss    = null;
+    this._ddClawShockwaves   = [];
+    this._ddLightningTrails  = [];
+    this._ddRocketShadows    = [];
+  }
+
+  _drawDoubleDemonsBoss(ctx) {
+    const dd = this.doubleDemonsBoss;
+    if (!dd || dd.hp <= 0) return;
+
+    const now   = Date.now();
+    const enragePulse = dd.enraged ? 0.6 + 0.4 * Math.abs(Math.sin(now / 150)) : 1.0;
+    const spr   = this._doubleDemonsSprite;
+    const hasSpr = spr && spr.complete && spr.naturalWidth > 0;
+
+    // ── Draw each body ────────────────────────────────────────────────────────
+    const bodies = [
+      { body: dd.gunner, label: 'GUNNER', aura: '#ff2d95', half: 'left'  },
+      { body: dd.claw,   label: 'CLAW',   aura: RED,       half: 'right' },
+    ];
+
+    for (const { body, label, aura, half } of bodies) {
+      const { pos, radius } = body;
+
+      // Enrage aura ring
+      if (dd.enraged) {
+        ctx.save();
+        ctx.globalAlpha = enragePulse * 0.55;
+        ctx.strokeStyle = '#ff4400';
+        ctx.lineWidth   = 5;
+        ctx.beginPath(); ctx.arc(pos.x, pos.y, radius + 9, 0, Math.PI * 2); ctx.stroke();
+        ctx.restore();
+      }
+
+      drawGlow(ctx, pos.x, pos.y, radius, aura, 0.30);
+
+      // Sprite (left/right half of shared sheet) or fallback circle
+      ctx.save();
+      if (hasSpr) {
+        const hw = Math.floor(spr.naturalWidth / 2);
+        const sx = half === 'left' ? 0 : hw;
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(spr, sx, 0, hw, spr.naturalHeight,
+          pos.x - radius, pos.y - radius, radius * 2, radius * 2);
+        ctx.imageSmoothingEnabled = true;
+      } else {
+        ctx.fillStyle   = aura;
+        ctx.strokeStyle = WHITE;
+        ctx.lineWidth   = 3;
+        ctx.beginPath(); ctx.arc(pos.x, pos.y, radius, 0, Math.PI * 2);
+        ctx.fill(); ctx.stroke();
+        // Fallback label inside circle so it's clear which is which
+        ctx.font      = 'bold 9px Consolas, monospace';
+        ctx.fillStyle = WHITE;
+        ctx.textAlign = 'center';
+        ctx.fillText(label[0], pos.x, pos.y + 3);   // G or C
+      }
+      ctx.restore();
+
+      // Hit flash
+      if (body.hitFlash > 0) {
+        ctx.save();
+        ctx.globalAlpha = 0.65;
+        ctx.fillStyle   = WHITE;
+        ctx.beginPath(); ctx.arc(pos.x, pos.y, radius, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+      }
+
+      // Body label
+      ctx.save();
+      ctx.font      = 'bold 10px Consolas, monospace';
+      ctx.fillStyle = dd.enraged ? '#ff6600' : aura;
+      ctx.textAlign = 'center';
+      ctx.fillText(label, pos.x, pos.y - radius - 5);
+      ctx.restore();
+    }
+
+    // ── Gunner attack visuals ───────────────────────────────────────────────────────────
+    const _g = dd.gunner;
+
+    // Spin-up Barrage telegraph: glowing barrel dots arc toward the player
+    if (_g.barragePhase?.phase === 'telegraph') {
+      const bp     = _g.barragePhase;
+      const prog   = bp.t / bp.telegraphT;
+      const toP    = this.player.pos.sub(_g.pos);
+      const baseA  = Math.atan2(toP.y, toP.x);
+      const nBarrels = 5;
+      ctx.save();
+      for (let bi = 0; bi < nBarrels; bi++) {
+        const frac  = (bi / (nBarrels - 1)) - 0.5;
+        const angle = baseA + frac * Math.PI * 0.70;
+        const blen  = _g.radius + 6 + prog * 14;
+        const bx = _g.pos.x + Math.cos(angle) * blen;
+        const by = _g.pos.y + Math.sin(angle) * blen;
+        ctx.globalAlpha  = 0.35 + 0.65 * prog;
+        ctx.fillStyle    = '#ff2d95';
+        ctx.shadowColor  = '#ff2d95';
+        ctx.shadowBlur   = 10 * prog;
+        ctx.beginPath(); ctx.arc(bx, by, 4 + 3 * prog, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.shadowBlur = 0;
+      ctx.restore();
+    }
+
+    // Suppress telegraph: orange muzzle-flash glow
+    if (_g.suppressState?.phase === 'telegraph') {
+      const prog = _g.suppressState.t / _g.suppressState.telegraphT;
+      ctx.save();
+      ctx.globalAlpha = prog * 0.75;
+      drawGlow(ctx, _g.pos.x, _g.pos.y, _g.radius + 10, ORANGE, 0.8);
+      ctx.restore();
+    }
+
+    // ── Claw attack visuals ──────────────────────────────────────────────────────────────
+    const _c = dd.claw;
+
+    // Lightning Dash telegraph: red line from claw toward target
+    if (_c.dashState?.phase === 'telegraph') {
+      const ds   = _c.dashState;
+      const prog = ds.t / ds.telegraphT;
+      ctx.save();
+      ctx.globalAlpha  = 0.35 + 0.55 * prog;
+      ctx.strokeStyle  = '#ff3333';
+      ctx.lineWidth    = 2 + prog * 3;
+      ctx.shadowColor  = '#ff3333';
+      ctx.shadowBlur   = 10 * prog;
+      ctx.setLineDash([8, 6]);
+      ctx.beginPath();
+      ctx.moveTo(_c.pos.x, _c.pos.y);
+      ctx.lineTo(ds.targetPos.x, ds.targetPos.y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.shadowBlur = 0;
+      // Claw glow intensifies
+      ctx.globalAlpha = prog * 0.7;
+      drawGlow(ctx, _c.pos.x, _c.pos.y, _c.radius + 10, '#ff3333', 0.8);
+      ctx.restore();
+    }
+
+    // Lightning Dash trail: electric sparks along path
+    if (_c.dashState?.phase === 'trail' || _c.dashState?.phase === 'dash') {
+      const ds    = _c.dashState;
+      const pts   = ds.trailPts;
+      const alpha = ds.phase === 'trail' ? Math.max(0, 1 - ds.t / ds.trailLife) : 0.9;
+      if (pts.length > 1) {
+        ctx.save();
+        ctx.globalAlpha = alpha * 0.85;
+        ctx.strokeStyle = '#00ffff';
+        ctx.lineWidth   = 3;
+        ctx.shadowColor = '#00ffff';
+        ctx.shadowBlur  = 14;
+        ctx.beginPath();
+        ctx.moveTo(pts[0].x, pts[0].y);
+        for (let ti = 1; ti < pts.length; ti++) {
+          // Jitter for electric feel
+          const jx = pts[ti].x + (Math.random() - 0.5) * 5;
+          const jy = pts[ti].y + (Math.random() - 0.5) * 5;
+          ctx.lineTo(jx, jy);
+        }
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.restore();
+      }
+    }
+
+    // Claw Slam telegraph: pulsing dashed circle at target position
+    if (_c.slamState?.phase === 'telegraph') {
+      const ss   = _c.slamState;
+      const prog = ss.t / ss.telegraphT;
+      ctx.save();
+      ctx.globalAlpha = 0.12 + 0.22 * prog;
+      ctx.fillStyle   = RED;
+      ctx.beginPath(); ctx.arc(ss.pos.x, ss.pos.y, ss.radius, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 0.4 + 0.5 * prog;
+      ctx.strokeStyle = ORANGE;
+      ctx.lineWidth   = 2 + prog * 2;
+      ctx.setLineDash([10, 7]);
+      ctx.beginPath(); ctx.arc(ss.pos.x, ss.pos.y, ss.radius, 0, Math.PI * 2); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
+
+    // Claw Slam shockwave rings
+    for (const sw of this._ddClawShockwaves) {
+      ctx.save();
+      ctx.globalAlpha = sw.alpha * 0.85;
+      ctx.strokeStyle = RED;
+      ctx.lineWidth   = 3;
+      ctx.shadowColor = ORANGE;
+      ctx.shadowBlur  = 8;
+      ctx.beginPath(); ctx.arc(sw.pos.x, sw.pos.y, sw.radius, 0, Math.PI * 2); ctx.stroke();
+      ctx.shadowBlur = 0;
+      ctx.restore();
+    }
+
+    // ── Rocket Rain: shadow telegraphs + falling rocket sprites ──────────────────────────
+    const rktSpr  = this._rocketRainSprite;
+    const hasRkt  = rktSpr && rktSpr.complete && rktSpr.naturalWidth > 0;
+    for (const sh of this._ddRocketShadows) {
+      const activeT = sh.t - sh.delay;
+      if (activeT < 0) continue;
+      const prog  = Math.min(1, activeT / sh.warnT);
+      const { pos } = sh;
+
+      // Ground shadow: pulsing orange circle
+      ctx.save();
+      ctx.globalAlpha = 0.10 + 0.25 * prog;
+      ctx.fillStyle   = ORANGE;
+      ctx.beginPath(); ctx.arc(pos.x, pos.y, DD_ROCKET_RADIUS, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 0.35 + 0.55 * prog;
+      ctx.strokeStyle = RED;
+      ctx.lineWidth   = 2;
+      ctx.setLineDash([8, 6]);
+      ctx.beginPath(); ctx.arc(pos.x, pos.y, DD_ROCKET_RADIUS, 0, Math.PI * 2); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+
+      // Rocket falling from above (visible in last 40% of warn time)
+      if (prog > 0.60) {
+        const fallProg = (prog - 0.60) / 0.40;   // 0..1 during fall phase
+        const startY   = pos.y - 120;
+        const rocketY  = startY + fallProg * 120;
+        ctx.save();
+        ctx.globalAlpha = 0.5 + 0.5 * fallProg;
+        if (hasRkt) {
+          const rs = 24;
+          ctx.drawImage(rktSpr, pos.x - rs, rocketY - rs * 1.5, rs * 2, rs * 3);
+        } else {
+          ctx.fillStyle   = ORANGE;
+          ctx.shadowColor = RED;
+          ctx.shadowBlur  = 12;
+          ctx.beginPath(); ctx.arc(pos.x, rocketY, 7, 0, Math.PI * 2); ctx.fill();
+          ctx.shadowBlur = 0;
+        }
+        ctx.restore();
+      }
+    }
+
+    // ââ Shared HP bar (bottom-center, above HUD strip) ────────────────────────
+    // HP bar — must draw in screen space (identity transform)
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);  // screen space
+
+    const barW  = 340;
+    const barH  = 10;
+    const barX  = WIDTH / 2 - barW / 2;
+    const barY  = HEIGHT - 46;
+    const hpPct = Math.max(0, dd.hp / dd.maxHp);
+
+    ctx.fillStyle = 'rgba(0,0,0,0.70)';
+    ctx.fillRect(barX - 2, barY - 14, barW + 4, barH + 20);
+
+    const grad = ctx.createLinearGradient(barX, 0, barX + barW, 0);
+    grad.addColorStop(0, dd.enraged ? '#ff0000' : '#cc1166');
+    grad.addColorStop(1, dd.enraged ? '#ff8800' : '#ff2d95');
+    ctx.fillStyle = grad;
+    ctx.fillRect(barX, barY, Math.round(barW * hpPct), barH);
+
+    // 50% enrage marker
+    ctx.fillStyle = 'rgba(255,220,0,0.8)';
+    ctx.fillRect(barX + barW * DD_ENRAGE_PCT - 1, barY - 1, 2, barH + 2);
+
+    // Name
+    ctx.save();
+    ctx.font      = 'bold 11px Consolas, monospace';
+    ctx.fillStyle = dd.enraged ? '#ff6600' : '#ff2d95';
+    ctx.textAlign = 'center';
+    ctx.fillText('\u26a1 DOUBLE DEMONS' + (dd.enraged ? ' [ENRAGED]' : '') + ' \u26a1',
+      WIDTH / 2, barY - 4);
+    ctx.restore();
+
+    // HP text
+    ctx.save();
+    ctx.font      = '10px Consolas, monospace';
+    ctx.fillStyle = WHITE;
+    ctx.textAlign = 'center';
+    ctx.fillText(Math.ceil(dd.hp) + ' / ' + dd.maxHp, WIDTH / 2, barY + barH + 10);
+    ctx.restore();
+
+    ctx.restore();  // back to camera (world) space
+  }
+
+  _drawAcidRain(ctx) {
+    if (!this.acidRain) return;
+
+    const now = performance.now() / 1000;
+
+    ctx.save();
+
+    // Subtle green screen tint
+    ctx.fillStyle = 'rgba(0,60,0,0.09)';
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+    const fallImg   = this._acidRainFallImg;
+    const splashImg = this._acidRainSplashImg;
+    const hasFall   = fallImg   && fallImg.complete   && fallImg.naturalWidth   > 0;
+    const hasSplash = splashImg && splashImg.complete && splashImg.naturalWidth > 0;
+
+    const ACID_COLOR  = '#44ff88';
+    const DROP_SPEED  = 300;
+    const DIAGONAL    = 0.24;
+    const TOTAL_H     = HEIGHT + 60;
+    const COUNT       = 50;
+
+    // Sprite sheet layout: fall = 6 frames side by side (732×492 → 122×492 each)
+    const FALL_FRAMES = 6;
+    const FALL_FW     = hasFall   ? Math.floor(fallImg.naturalWidth   / FALL_FRAMES) : 0;
+    const FALL_FH     = hasFall   ? fallImg.naturalHeight : 0;
+
+    // Sprite sheet layout: splash = 2×2 grid (714×363 → 357×181 each)
+    const SPLASH_FW   = hasSplash ? Math.floor(splashImg.naturalWidth  / 2) : 0;
+    const SPLASH_FH   = hasSplash ? Math.floor(splashImg.naturalHeight / 2) : 0;
+
+    // On-screen draw sizes (pixel art, keeps aspect ratio)
+    const DRAW_DROP_W   = 18;
+    const DRAW_DROP_H   = 72;
+    const DRAW_SPLASH_W = 52;
+    const DRAW_SPLASH_H = 26;
+
+    ctx.imageSmoothingEnabled = false;
+
+    for (let i = 0; i < COUNT; i++) {
+      const seedX     = ((i * 23.4 + i * i * 0.71) % (WIDTH + 80)) - 40;
+      const seedPhase = (i * 17.13) % 1;
+      const alpha     = 0.72 + 0.20 * ((i * 7 % 3) / 3);
+      const progress  = ((now * DROP_SPEED / TOTAL_H) + seedPhase) % 1;
+      const x         = seedX + progress * TOTAL_H * DIAGONAL;
+      const y         = progress * TOTAL_H - 30;
+
+      ctx.globalAlpha = alpha;
+
+      if (y > HEIGHT - 28 && y <= HEIGHT + 10) {
+        // Ground splash
+        if (hasSplash) {
+          // Alternate top-left (big splash) and top-right (smaller) per drop
+          const sFrameX = (i % 2) * SPLASH_FW;
+          ctx.drawImage(splashImg,
+            sFrameX, 0, SPLASH_FW, SPLASH_FH,
+            Math.round(x - DRAW_SPLASH_W / 2), HEIGHT - DRAW_SPLASH_H,
+            DRAW_SPLASH_W, DRAW_SPLASH_H);
+        } else {
+          ctx.strokeStyle = ACID_COLOR;
+          ctx.lineWidth   = 1;
+          ctx.beginPath();
+          ctx.ellipse(Math.round(x + 5), HEIGHT - 3, 5, 2, 0, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      } else if (y < HEIGHT - 28) {
+        // Falling drop — animate through 6 frames at ~10 fps, offset per drop
+        if (hasFall) {
+          const frameIdx = (Math.floor(now * 10) + i) % FALL_FRAMES;
+          ctx.drawImage(fallImg,
+            frameIdx * FALL_FW, 0, FALL_FW, FALL_FH,
+            Math.round(x - DRAW_DROP_W / 2), Math.round(y),
+            DRAW_DROP_W, DRAW_DROP_H);
+        } else {
+          ctx.strokeStyle = ACID_COLOR;
+          ctx.lineWidth   = 2;
+          ctx.beginPath();
+          ctx.moveTo(Math.round(x),     Math.round(y));
+          ctx.lineTo(Math.round(x + 4), Math.round(y + 14));
+          ctx.stroke();
+        }
+      }
+    }
+
+    ctx.globalAlpha           = 1;
+    ctx.imageSmoothingEnabled = true;
+    ctx.restore();
+  }
+
+  // Effective view scale / visible window. Endless zooms out slightly (ENDLESS_VIEW_SCALE);
+  // Act 1 returns the exact globals (WIDTH/VIEW_SCALE === VIEW_W), so Act 1 is byte-identical.
+  get _viewScale() { return this.endless ? ENDLESS_VIEW_SCALE : VIEW_SCALE; }
+  get _viewW()     { return this.endless ? WIDTH  / ENDLESS_VIEW_SCALE : VIEW_W; }
+  get _viewH()     { return this.endless ? HEIGHT / ENDLESS_VIEW_SCALE : VIEW_H; }
+
+  _updateCamera() {
+    // Center the player in the (larger, zoomed-out) visible world window.
+    const cx = this.player.pos.x - this._viewW / 2;
+    const cy = this.player.pos.y - this._viewH / 2;
+    this.camera.x = Math.max(0, Math.min(cx, WORLD_W - this._viewW));
+    this.camera.y = Math.max(0, Math.min(cy, WORLD_H - this._viewH));
+  }
+
+  _worldMouse(screenPos) {
+    if (!screenPos) return null;
+    // Screen → world: undo the view zoom, then the camera offset.
+    return { x: screenPos.x / this._viewScale + this.camera.x, y: screenPos.y / this._viewScale + this.camera.y };
+  }
+
+  // Endless-only Nexus base sprite drawn UNDER a matrix. Clean fixed size so it doesn't cover
+  // too much play space; if the image is missing, draw nothing (the matrix renders itself).
+  _drawEndlessNexusBase(ctx, m) {
+    const img = this._endlessNexusImage;
+    if (!(img && img.complete && img.naturalWidth > 0)) return;
+    const D = 120;   // Endless base visual (was 150) — smaller for readability; deposit/collision radius unchanged
+    // Soft elliptical contact shadow so the base reads as planted on the arena, not pasted on top.
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.38)';
+    ctx.beginPath();
+    ctx.ellipse(m.pos.x, m.pos.y + D * 0.30, D * 0.40, D * 0.15, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    ctx.drawImage(img, m.pos.x - D / 2, m.pos.y - D / 2, D, D);
+  }
+
+  _drawWorldBackground(ctx) {
+    ctx.fillStyle = DARK_BG;
+    ctx.fillRect(0, 0, WORLD_W, WORLD_H);
+
+    // Endless-only Stage 02 map; falls back to the default background if not loaded / not endless.
+    const cb  = this._chaosBgImage;
+    const eb  = this._endlessBgImage;
+    const img = (this._chaosMode && cb && cb.complete && cb.naturalWidth > 0)
+              ? cb
+              : (this.endless && eb && eb.complete && eb.naturalWidth > 0) ? eb : this._bgImage;
+    if (img.complete && img.naturalWidth > 0) {
+      const scale = WORLD_W / img.naturalWidth;
+      const drawH = img.naturalHeight * scale;
+      ctx.drawImage(img, 0, 0, WORLD_W, drawH);
+      // Endless map: a touch more dimming so the backdrop recedes and the gameplay plane reads flat.
+      ctx.fillStyle = this.gridBlackoutActive ? 'rgba(0,0,0,0.65)'
+                    : this.endless           ? 'rgba(0,0,0,0.46)'
+                    :                          'rgba(0,0,0,0.38)';
+      ctx.fillRect(0, 0, WORLD_W, WORLD_H);
+    } else {
+      const spacing = 48;
+      const offset  = Math.floor(performance.now() * 0.025) % spacing;
+      ctx.strokeStyle = GRID_LINE;
+      ctx.lineWidth   = 1;
+      for (let x = -spacing; x < WORLD_W + spacing; x += spacing) {
+        ctx.beginPath();
+        ctx.moveTo(x + offset, 44);
+        ctx.lineTo(x + offset, WORLD_H);
+        ctx.stroke();
+      }
+      for (let y = 44; y < WORLD_H + spacing; y += spacing) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(WORLD_W, y);
+        ctx.stroke();
+      }
+    }
+  }
+
+  _drawBackground(ctx) {
+    // ── Dark base fill (shown while image loads or on very old browsers) ──────
+    ctx.fillStyle = DARK_BG;
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+    // ── Cyberpunk city image ─────────────────────────────────────────────────
+    const img = this._bgImage;
+    if (img.complete && img.naturalWidth > 0) {
+      // "cover" scaling: fill the entire canvas, crop excess.
+      // The image is portrait (tall); we fit its width to the canvas and
+      // anchor the top so the city streets are visible.
+      const imgW = img.naturalWidth;
+      const imgH = img.naturalHeight;
+      const scale = WIDTH / imgW;          // scale so width fills 1280px
+      const drawH = imgH * scale;          // resulting height (will exceed 720)
+
+      ctx.drawImage(img, 0, 0, WIDTH, drawH);
+
+      // Semi-transparent dark overlay so neon game entities pop clearly
+      ctx.fillStyle = this.gridBlackoutActive
+        ? 'rgba(0,0,0,0.65)'   // extra dim during Grid Blackout event
+        : 'rgba(0,0,0,0.38)';
+      ctx.fillRect(0, 0, WIDTH, HEIGHT);
+    } else {
+      // Fallback: scrolling neon grid while image loads
+      const spacing = 48;
+      const offset  = Math.floor(performance.now() * 0.025) % spacing;
+      ctx.strokeStyle = GRID_LINE;
+      ctx.lineWidth   = 1;
+      for (let x = -spacing; x < WIDTH + spacing; x += spacing) {
+        ctx.beginPath();
+        ctx.moveTo(x + offset, 44);
+        ctx.lineTo(x + offset, HEIGHT);
+        ctx.stroke();
+      }
+      for (let y = 44; y < HEIGHT + spacing; y += spacing) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(WIDTH, y);
+        ctx.stroke();
+      }
+    }
+
+    // ── Dark HUD strip (always on top of background) ─────────────────────────
+    ctx.fillStyle = BLACK;
+    ctx.fillRect(0, 0, WIDTH, 44);
+  }
+
+  // Called by main.js to pass current mouse pos to the draw call
+  setMousePos(pos) { this._lastMousePos = pos; }
+}
