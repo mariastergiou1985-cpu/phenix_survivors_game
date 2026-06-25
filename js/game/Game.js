@@ -388,6 +388,16 @@ export class Game {
     this._rocketRainSprite.onerror = () => console.warn('[Boss] rocket_rain.png not found — drawn fallback used');
     this._rocketRainSprite.src = 'assets/enemies/bosses/rocket_rain.png?v=20260615210000';
 
+    // Preload Cyber Serpent mid-run mini-boss sprite
+    this._cyberSerpentSprite = new Image();
+    this._cyberSerpentSprite.onerror = () => console.warn('[Boss] cyber_serpent_boss.png not found — drawn fallback used');
+    this._cyberSerpentSprite.src = 'assets/enemies/bosses/cyber_serpent_boss.png?v=20260625';
+
+    // Preload Cyber Dragon mid-run boss sprite
+    this._cyberDragonSprite = new Image();
+    this._cyberDragonSprite.onerror = () => console.warn('[Boss] cyber_dragon_boss.png not found — drawn fallback used');
+    this._cyberDragonSprite.src = 'assets/enemies/bosses/cyber_dragon_boss.png?v=20260625';
+
     // Preload secret-skin preview sprites (Character Select locked/unlocked + Victory screen).
     // Keyed by the same flags MetaProgress persists. Missing files degrade to a text fallback.
     // Keyed by the outfit unlock flag; sources point at the CURRENT secret-skin files.
@@ -695,6 +705,18 @@ export class Game {
     this.bloodfangSpawned    = false;
     this.bloodfangBoss       = null;
     this.bloodfangSpawnTimer = 600;
+
+    // Cyber Serpent — mid-run mini-boss at 10:30 (Inferno Smoke Trail floor hazard)
+    this.cyberSerpentSpawned    = false;
+    this.cyberSerpentBoss       = null;
+    this.cyberSerpentSpawnTimer = 630;   // 10:30 — just after Bloodfang to stagger pressure
+    this._serpentTrails         = [];   // fire trail segments left during dash phases (max 20, auto-expire 10s)
+
+    // Cyber Dragon — mid-run boss at 16:00 (Cryo Storm Protocol ice rain)
+    this.cyberDragonSpawned    = false;
+    this.cyberDragonBoss       = null;
+    this.cyberDragonSpawnTimer = 960;   // 16:00
+    this._dragonIceShards      = [];   // falling ice shards with telegraph warning circles (max 15)
 
     // Double Demons — Chaos Mode dual-body boss (Gunner + Claw, shared HP)
     this.doubleDemonsSpawned    = false;
@@ -2446,6 +2468,10 @@ export class Game {
       singletons.push({ boss: this.annihilatorBoss, die: () => this._annihilatorDie() });
     if (this.bloodfangBoss?.hp > 0)
       singletons.push({ boss: this.bloodfangBoss,   die: () => this._bloodfangDie() });
+    if (this.cyberSerpentBoss?.hp > 0)
+      singletons.push({ boss: this.cyberSerpentBoss, die: () => this._cyberSerpentDie() });
+    if (this.cyberDragonBoss?.hp > 0)
+      singletons.push({ boss: this.cyberDragonBoss,  die: () => this._cyberDragonDie() });
 
     for (let fi = this._iceFields.length - 1; fi >= 0; fi--) {
       const f = this._iceFields[fi];
@@ -2845,7 +2871,9 @@ export class Game {
       const bossCandidates = [];
       if (this.titanBoss?.hp > 0)       bossCandidates.push(this.titanBoss);
       if (this.annihilatorBoss?.hp > 0) bossCandidates.push(this.annihilatorBoss);
-      if (this.bloodfangBoss?.hp > 0)   bossCandidates.push(this.bloodfangBoss);
+      if (this.bloodfangBoss?.hp > 0)    bossCandidates.push(this.bloodfangBoss);
+      if (this.cyberSerpentBoss?.hp > 0) bossCandidates.push(this.cyberSerpentBoss);
+      if (this.cyberDragonBoss?.hp > 0)  bossCandidates.push(this.cyberDragonBoss);
       const _ddL = this.doubleDemonsBoss;
       if (_ddL?.hp > 0) {
         const dg = distance(_ddL.gunner.pos, p.pos), dc = distance(_ddL.claw.pos, p.pos);
@@ -3013,6 +3041,8 @@ export class Game {
         [this.titanBoss,       () => _eg._titanDie()],
         [this.annihilatorBoss, () => _eg._annihilatorDie()],
         [this.bloodfangBoss,   () => _eg._bloodfangDie()],
+        [this.cyberSerpentBoss, () => _eg._cyberSerpentDie()],
+        [this.cyberDragonBoss,  () => _eg._cyberDragonDie()],
       ]) {
         if (!boss || boss.hp <= 0) continue;
         arr.push({
@@ -3095,9 +3125,11 @@ export class Game {
   // bloodfang) which are NOT in this.enemies — so Euclid's guns actually hit bosses too.
   _euclidCandidates() {
     const bosses = [];
-    if (this.titanBoss && this.titanBoss.hp > 0)             bosses.push(this.titanBoss);
-    if (this.annihilatorBoss && this.annihilatorBoss.hp > 0) bosses.push(this.annihilatorBoss);
-    if (this.bloodfangBoss && this.bloodfangBoss.hp > 0)     bosses.push(this.bloodfangBoss);
+    if (this.titanBoss && this.titanBoss.hp > 0)               bosses.push(this.titanBoss);
+    if (this.annihilatorBoss && this.annihilatorBoss.hp > 0)   bosses.push(this.annihilatorBoss);
+    if (this.bloodfangBoss && this.bloodfangBoss.hp > 0)       bosses.push(this.bloodfangBoss);
+    if (this.cyberSerpentBoss && this.cyberSerpentBoss.hp > 0) bosses.push(this.cyberSerpentBoss);
+    if (this.cyberDragonBoss && this.cyberDragonBoss.hp > 0)   bosses.push(this.cyberDragonBoss);
     // Double Demons: proxy objects expose live pos/radius from each body and live hp from the
     // shared parent — so bolt targeting and _euclidNearest hp-checks work correctly without
     // raw-object identity. _ddParent / _ddBody tags let _euclidDamage route damage explicitly.
@@ -3151,9 +3183,11 @@ export class Game {
     } else {                                  // singleton mini-boss hp path (non-zero, capped)
       e.hp -= d; e.hitFlash = 0.08;
       this.floatingTexts.push(new FloatingText('-' + Math.round(d), e.pos.add(new Vec2(0, -(e.radius || 20) - 6)), WHITE, 0.5));
-      if (e === this.titanBoss && e.hp <= 0)            this._titanDie();
-      else if (e === this.annihilatorBoss && e.hp <= 0) this._annihilatorDie();
-      else if (e === this.bloodfangBoss && e.hp <= 0)   this._bloodfangDie();
+      if (e === this.titanBoss && e.hp <= 0)              this._titanDie();
+      else if (e === this.annihilatorBoss && e.hp <= 0)   this._annihilatorDie();
+      else if (e === this.bloodfangBoss && e.hp <= 0)     this._bloodfangDie();
+      else if (e === this.cyberSerpentBoss && e.hp <= 0)  this._cyberSerpentDie();
+      else if (e === this.cyberDragonBoss && e.hp <= 0)   this._cyberDragonDie();
     }
     this.elementFx?.spawn(e.pos.x, e.pos.y, 'toxin', 1.0);   // visible corrosive splash on every hit
   }
@@ -3427,9 +3461,11 @@ export class Game {
         b.hp -= this._resistDot(b, d); b.hitFlash = 0.08;
         if (b.hp <= 0) die.call(this);
       };
-      hitSingle(this.titanBoss,       this._titanDie);
-      hitSingle(this.annihilatorBoss, this._annihilatorDie);
-      hitSingle(this.bloodfangBoss,   this._bloodfangDie);
+      hitSingle(this.titanBoss,        this._titanDie);
+      hitSingle(this.annihilatorBoss,  this._annihilatorDie);
+      hitSingle(this.bloodfangBoss,    this._bloodfangDie);
+      hitSingle(this.cyberSerpentBoss, this._cyberSerpentDie);
+      hitSingle(this.cyberDragonBoss,  this._cyberDragonDie);
       if (this.doubleDemonsBoss && this.doubleDemonsBoss.hp > 0) {
         const _dd = this.doubleDemonsBoss;
         for (const _body of [_dd.gunner, _dd.claw]) {
@@ -3677,6 +3713,8 @@ export class Game {
     hitBoss(this.titanBoss, this._titanDie);
     hitBoss(this.annihilatorBoss, this._annihilatorDie);
     hitBoss(this.bloodfangBoss, this._bloodfangDie);
+    hitBoss(this.cyberSerpentBoss, this._cyberSerpentDie);
+    hitBoss(this.cyberDragonBoss,  this._cyberDragonDie);
     if (this.doubleDemonsBoss && this.doubleDemonsBoss.hp > 0) {
       const _dd = this.doubleDemonsBoss;
       for (const _body of [_dd.gunner, _dd.claw]) {
@@ -3994,6 +4032,8 @@ export class Game {
         this.titanSpawned       = false; this.titanSpawnTimer       = 0;
         this.annihilatorSpawned = false; this.annihilatorSpawnTimer = 0;
         this.bloodfangSpawned    = false; this.bloodfangSpawnTimer    = 0;
+        this.cyberSerpentSpawned = false; this.cyberSerpentSpawnTimer = 0;
+        this.cyberDragonSpawned  = false; this.cyberDragonSpawnTimer  = 0;
         this.doubleDemonsSpawned = false; this.doubleDemonsSpawnTimer = 0;
         this._endlessBossTimer  = 5;   // first Chaos boss rotation: 5 s from now
         this.acidRainTimer      = 30;  // Phase 4: first acid rain 30 s into Chaos
@@ -4073,6 +4113,8 @@ export class Game {
     this._updateTitan(dt);
     this._updateAnnihilator(dt);
     this._updateBloodfang(dt);
+    this._updateCyberSerpent(dt);
+    this._updateCyberDragon(dt);
     this._updateDoubleDemonsBoss(dt);
     this._updateBossAttacks(dt);
     this._updateBossTrails(dt);
@@ -4916,7 +4958,7 @@ export class Game {
     // Include live bosses / mini-bosses if closer than current best
     const _ddBodies = this.doubleDemonsBoss && this.doubleDemonsBoss.hp > 0
       ? [this.doubleDemonsBoss.gunner, this.doubleDemonsBoss.claw] : [];
-    for (const boss of [this.titanBoss, this.annihilatorBoss, this.bloodfangBoss, ..._ddBodies]) {
+    for (const boss of [this.titanBoss, this.annihilatorBoss, this.bloodfangBoss, this.cyberSerpentBoss, this.cyberDragonBoss, ..._ddBodies]) {
       if (boss && boss.hp > 0) {
         const d = distance(from, boss.pos);
         if (d < bestDist) { bestDist = d; best = boss; }
@@ -5072,6 +5114,32 @@ export class Game {
         this.projectiles.splice(i, 1);
         hit = true;
         if (this.bloodfangBoss.hp <= 0) this._bloodfangDie();
+      }
+
+      // Check Cyber Serpent hit
+      if (!hit && this.cyberSerpentBoss && this.cyberSerpentBoss.hp > 0 &&
+          distance(p.pos, this.cyberSerpentBoss.pos) < p.radius + this.cyberSerpentBoss.radius) {
+        const serpDmg = this._capBossDamage(this.cyberSerpentBoss, p.damage);
+        this.cyberSerpentBoss.hp      -= serpDmg;
+        this.cyberSerpentBoss.hitFlash = 0.08;
+        this.floatingTexts.push(new FloatingText('-' + Math.round(serpDmg), this.cyberSerpentBoss.pos.add(new Vec2(randomRange(-10, 10), -this.cyberSerpentBoss.radius - 6)), WHITE, 0.5));
+        this.particles.spawnHitSparks(p.pos, ORANGE);
+        this.projectiles.splice(i, 1);
+        hit = true;
+        if (this.cyberSerpentBoss.hp <= 0) this._cyberSerpentDie();
+      }
+
+      // Check Cyber Dragon hit
+      if (!hit && this.cyberDragonBoss && this.cyberDragonBoss.hp > 0 &&
+          distance(p.pos, this.cyberDragonBoss.pos) < p.radius + this.cyberDragonBoss.radius) {
+        const dragonDmg = this._capBossDamage(this.cyberDragonBoss, p.damage);
+        this.cyberDragonBoss.hp      -= dragonDmg;
+        this.cyberDragonBoss.hitFlash = 0.08;
+        this.floatingTexts.push(new FloatingText('-' + Math.round(dragonDmg), this.cyberDragonBoss.pos.add(new Vec2(randomRange(-10, 10), -this.cyberDragonBoss.radius - 6)), WHITE, 0.5));
+        this.particles.spawnHitSparks(p.pos, '#00ccff');
+        this.projectiles.splice(i, 1);
+        hit = true;
+        if (this.cyberDragonBoss.hp <= 0) this._cyberDragonDie();
       }
 
       // Check Double Demons hit (Gunner or Claw body — damage goes to shared HP)
@@ -5341,9 +5409,11 @@ export class Game {
 
     // Candidates: array enemies + any present singleton mini-boss object
     const singles = [
-      this.titanBoss       && this.titanBoss.hp       > 0 ? { obj: this.titanBoss,       die: this._titanDie }       : null,
-      this.annihilatorBoss && this.annihilatorBoss.hp > 0 ? { obj: this.annihilatorBoss, die: this._annihilatorDie } : null,
-      this.bloodfangBoss   && this.bloodfangBoss.hp   > 0 ? { obj: this.bloodfangBoss,   die: this._bloodfangDie }   : null,
+      this.titanBoss        && this.titanBoss.hp        > 0 ? { obj: this.titanBoss,        die: this._titanDie }        : null,
+      this.annihilatorBoss  && this.annihilatorBoss.hp  > 0 ? { obj: this.annihilatorBoss,  die: this._annihilatorDie }  : null,
+      this.bloodfangBoss    && this.bloodfangBoss.hp    > 0 ? { obj: this.bloodfangBoss,    die: this._bloodfangDie }    : null,
+      this.cyberSerpentBoss && this.cyberSerpentBoss.hp > 0 ? { obj: this.cyberSerpentBoss, die: this._cyberSerpentDie } : null,
+      this.cyberDragonBoss  && this.cyberDragonBoss.hp  > 0 ? { obj: this.cyberDragonBoss,  die: this._cyberDragonDie }  : null,
     ].filter(Boolean);
 
     // Nearest valid target within range sets the beam direction
@@ -5489,9 +5559,11 @@ export class Game {
     const list = [];
     for (const e of this.enemies) list.push({ obj: e, arr: true });
     const singles = [
-      [this.titanBoss,       this._titanDie],
-      [this.annihilatorBoss, this._annihilatorDie],
-      [this.bloodfangBoss,   this._bloodfangDie],
+      [this.titanBoss,        this._titanDie],
+      [this.annihilatorBoss,  this._annihilatorDie],
+      [this.bloodfangBoss,    this._bloodfangDie],
+      [this.cyberSerpentBoss, this._cyberSerpentDie],
+      [this.cyberDragonBoss,  this._cyberDragonDie],
     ];
     for (const [b, die] of singles) if (b && b.hp > 0) list.push({ obj: b, arr: false, die });
     const _dd = this.doubleDemonsBoss;
@@ -5568,9 +5640,11 @@ export class Game {
       }
       if (_dd.hp <= 0) this._doubleDemonsDie();
     }
-    if (this.titanBoss       && this.titanBoss.hp       <= 0) this._titanDie();
-    if (this.annihilatorBoss && this.annihilatorBoss.hp <= 0) this._annihilatorDie();
-    if (this.bloodfangBoss   && this.bloodfangBoss.hp   <= 0) this._bloodfangDie();
+    if (this.titanBoss        && this.titanBoss.hp        <= 0) this._titanDie();
+    if (this.annihilatorBoss  && this.annihilatorBoss.hp  <= 0) this._annihilatorDie();
+    if (this.bloodfangBoss    && this.bloodfangBoss.hp    <= 0) this._bloodfangDie();
+    if (this.cyberSerpentBoss && this.cyberSerpentBoss.hp <= 0) this._cyberSerpentDie();
+    if (this.cyberDragonBoss  && this.cyberDragonBoss.hp  <= 0) this._cyberDragonDie();
   }
 
   // ── Primary: Nexus Chakram ──────────────────────────────────────────────────
@@ -6030,9 +6104,11 @@ export class Game {
     }
     // Singleton mini-bosses (reduced damage, safe death routing) — same pattern as the beam/chains
     const singles = [
-      [this.titanBoss,       this._titanDie],
-      [this.annihilatorBoss, this._annihilatorDie],
-      [this.bloodfangBoss,   this._bloodfangDie],
+      [this.titanBoss,        this._titanDie],
+      [this.annihilatorBoss,  this._annihilatorDie],
+      [this.bloodfangBoss,    this._bloodfangDie],
+      [this.cyberSerpentBoss, this._cyberSerpentDie],
+      [this.cyberDragonBoss,  this._cyberDragonDie],
     ];
     for (const [b, die] of singles) {
       if (!b || b.hp <= 0) continue;
@@ -6260,9 +6336,11 @@ export class Game {
         b.hp -= d; b.hitFlash = 0.08;
         if (b.hp <= 0) die.call(this);
       };
-      hitSingle(this.titanBoss,       this._titanDie);
-      hitSingle(this.annihilatorBoss, this._annihilatorDie);
-      hitSingle(this.bloodfangBoss,   this._bloodfangDie);
+      hitSingle(this.titanBoss,        this._titanDie);
+      hitSingle(this.annihilatorBoss,  this._annihilatorDie);
+      hitSingle(this.bloodfangBoss,    this._bloodfangDie);
+      hitSingle(this.cyberSerpentBoss, this._cyberSerpentDie);
+      hitSingle(this.cyberDragonBoss,  this._cyberDragonDie);
       if (this.doubleDemonsBoss && this.doubleDemonsBoss.hp > 0) {
         const _dd = this.doubleDemonsBoss;
         for (const _body of [_dd.gunner, _dd.claw]) {
@@ -7531,6 +7609,8 @@ export class Game {
     this._drawTitan(ctx);
     this._drawAnnihilator(ctx);
     this._drawBloodfang(ctx);
+    this._drawCyberSerpent(ctx);
+    this._drawCyberDragon(ctx);
     this._drawDoubleDemonsBoss(ctx);
 
     // 4b ── Grid Cache supply drop crate
@@ -10513,12 +10593,14 @@ export class Game {
         }
 
         // Separate mini-boss objects take strong-but-survivable chip (killable over time)
-        for (const b of [this.titanBoss, this.annihilatorBoss, this.bloodfangBoss]) {
+        for (const b of [this.titanBoss, this.annihilatorBoss, this.bloodfangBoss, this.cyberSerpentBoss, this.cyberDragonBoss]) {
           if (b && b.hp > 0) b.hp = Math.max(0, b.hp - ACID_DPS * MINI_VULN);
         }
-        if (this.titanBoss && this.titanBoss.hp <= 0)             this._titanDie();
-        if (this.annihilatorBoss && this.annihilatorBoss.hp <= 0) this._annihilatorDie();
-        if (this.bloodfangBoss && this.bloodfangBoss.hp <= 0)     this._bloodfangDie();
+        if (this.titanBoss && this.titanBoss.hp <= 0)                   this._titanDie();
+        if (this.annihilatorBoss && this.annihilatorBoss.hp <= 0)       this._annihilatorDie();
+        if (this.bloodfangBoss && this.bloodfangBoss.hp <= 0)           this._bloodfangDie();
+        if (this.cyberSerpentBoss && this.cyberSerpentBoss.hp <= 0)     this._cyberSerpentDie();
+        if (this.cyberDragonBoss && this.cyberDragonBoss.hp <= 0)       this._cyberDragonDie();
       }
 
       if (ar.timer <= 0) {
@@ -11935,6 +12017,548 @@ export class Game {
   }
 
 
+  // ── Cyber Serpent — mid-run mini-boss at ~10:30 (Inferno Smoke Trail) ────────────────────────
+
+  _spawnCyberSerpent() {
+    if (this.cyberSerpentSpawned) return;
+    this.cyberSerpentSpawned = true;
+    const edge   = Math.floor(Math.random() * 4);
+    const margin = WORLD_MARGIN + 60;
+    let sx, sy;
+    if      (edge === 0) { sx = randomRange(margin, WORLD_W - margin); sy = margin; }
+    else if (edge === 1) { sx = randomRange(margin, WORLD_W - margin); sy = WORLD_H - margin; }
+    else if (edge === 2) { sx = margin;            sy = randomRange(margin, WORLD_H - margin); }
+    else                 { sx = WORLD_W - margin;  sy = randomRange(margin, WORLD_H - margin); }
+    const isEndless = !!this.endless;
+    const hp        = isEndless ? 460 : 580;
+    this.cyberSerpentBoss = {
+      pos:        new Vec2(sx, sy),
+      hp,
+      maxHp:      hp,
+      radius:     38,
+      speed:      135,
+      hitFlash:   0,
+      dashTimer:  0,      // countdown to next dash phase
+      dashCd:     randomRange(3.0, 4.0),
+      dashing:    false,
+      dashDir:    new Vec2(0, 0),
+      dashTimeLeft: 0,
+    };
+    this._serpentTrails = [];
+    this._bossAnnounce('⚠ CYBER SERPENT DETECTED', ORANGE);
+    triggerAnnouncement('CYBER SERPENT DETECTED', ORANGE);
+  }
+
+  _updateCyberSerpent(dt) {
+    // Countdown timer — spawn when elapsed
+    if (!this.cyberSerpentSpawned) {
+      this.cyberSerpentSpawnTimer -= dt;
+      if (this.cyberSerpentSpawnTimer <= 0) this._spawnCyberSerpent();
+      return;
+    }
+    const s = this.cyberSerpentBoss;
+    if (!s || s.hp <= 0) return;
+
+    const pp = this.player.pos;
+
+    // ── Dash phase ──
+    if (s.dashing) {
+      s.dashTimeLeft -= dt;
+      // Move in dash direction
+      const dashSpeed = s.speed * 2.8;
+      s.pos.x += s.dashDir.x * dashSpeed * dt;
+      s.pos.y += s.dashDir.y * dashSpeed * dt;
+      s.pos.x = clamp(s.pos.x, WORLD_MARGIN, WORLD_W - WORLD_MARGIN);
+      s.pos.y = clamp(s.pos.y, WORLD_MARGIN, WORLD_H - WORLD_MARGIN);
+
+      // Leave fire trail segments (max 20, trim oldest)
+      if (this._serpentTrails.length < 20) {
+        this._serpentTrails.push({
+          pos:    new Vec2(s.pos.x, s.pos.y),
+          life:   10.0,    // 10s duration
+          maxLife: 10.0,
+          tickCd: 0,       // 0.5s tick damage cooldown
+        });
+      } else {
+        // Replace oldest
+        this._serpentTrails.shift();
+        this._serpentTrails.push({
+          pos:    new Vec2(s.pos.x, s.pos.y),
+          life:   10.0,
+          maxLife: 10.0,
+          tickCd: 0,
+        });
+      }
+
+      if (s.dashTimeLeft <= 0) {
+        s.dashing     = false;
+        s.dashCd      = randomRange(3.0, 4.5);
+        s.dashTimer   = 0;
+      }
+    } else {
+      // ── Normal chase ──
+      const dir = safeNormalize(pp.sub(s.pos));
+      s.pos.x += dir.x * s.speed * dt;
+      s.pos.y += dir.y * s.speed * dt;
+
+      // Dash cooldown
+      s.dashTimer += dt;
+      if (s.dashTimer >= s.dashCd) {
+        s.dashing     = true;
+        s.dashDir     = safeNormalize(pp.sub(s.pos));
+        s.dashTimeLeft = 0.55;
+        s.dashTimer   = 0;
+      }
+    }
+
+    // ── Trail damage ticks ──
+    for (let i = this._serpentTrails.length - 1; i >= 0; i--) {
+      const t = this._serpentTrails[i];
+      t.life  -= dt;
+      if (t.life <= 0) { this._serpentTrails.splice(i, 1); continue; }
+      if (t.tickCd > 0) { t.tickCd -= dt; continue; }
+      if (distance(pp, t.pos) < this.player.radius + 22) {
+        this._damagePlayer(12, { color: ORANGE, shake: 3 });
+        t.tickCd = 0.5;
+      }
+    }
+
+    // ── Contact damage ──
+    if (distance(pp, s.pos) < this.player.radius + s.radius) {
+      this._damagePlayer(18, { color: ORANGE, shake: 5, cap: BOSS_MAX_PLAYER_HIT });
+    }
+
+    // ── Hit flash decay ──
+    if (s.hitFlash > 0) s.hitFlash = Math.max(0, s.hitFlash - dt);
+
+    // ── Death check ──
+    if (s.hp <= 0) this._cyberSerpentDie();
+  }
+
+  _cyberSerpentDie() {
+    const s = this.cyberSerpentBoss;
+    if (!s) return;
+    const pos = s.pos.clone();
+    this.cyberSerpentBoss = null;
+    this._serpentTrails   = [];
+
+    // Rewards
+    this.score += 1800;
+    this.xp    += 120;
+    this.credits = (this.credits || 0) + 3;
+    if (typeof this.protocolFragments !== 'undefined') this.protocolFragments += BOSS_KILL_PF;
+
+    // VFX
+    this.particles.spawnExplosion(pos, ORANGE, 32);
+    this.particles.spawnExplosion(pos, RED,    20);
+
+    // Announcement
+    triggerAnnouncement('CYBER SERPENT ELIMINATED', ORANGE);
+    this._bossAnnounce('CYBER SERPENT ELIMINATED', ORANGE);
+  }
+
+  _drawCyberSerpent(ctx) {
+    // ── Draw trail segments ──
+    for (const t of this._serpentTrails) {
+      const alpha = clamp(t.life / t.maxLife, 0, 1);
+      const r     = 22;
+      // Dark smoke base
+      ctx.save();
+      ctx.globalAlpha = alpha * 0.45;
+      ctx.beginPath();
+      ctx.arc(t.pos.x, t.pos.y, r, 0, Math.PI * 2);
+      ctx.fillStyle = '#1a0a00';
+      ctx.fill();
+      ctx.restore();
+
+      // Orange/red fire glow
+      ctx.save();
+      ctx.globalAlpha = alpha * 0.55;
+      const fireGrad = ctx.createRadialGradient(t.pos.x, t.pos.y, 0, t.pos.x, t.pos.y, r);
+      fireGrad.addColorStop(0, 'rgba(255,160,40,0.9)');
+      fireGrad.addColorStop(0.5, 'rgba(220,60,0,0.55)');
+      fireGrad.addColorStop(1, 'rgba(80,20,0,0)');
+      ctx.beginPath();
+      ctx.arc(t.pos.x, t.pos.y, r, 0, Math.PI * 2);
+      ctx.fillStyle = fireGrad;
+      ctx.fill();
+      ctx.restore();
+
+      // Cyber ember ring
+      ctx.save();
+      ctx.globalAlpha = alpha * 0.6;
+      ctx.strokeStyle = '#ff6600';
+      ctx.lineWidth   = 1.5;
+      ctx.shadowColor = '#ff4400';
+      ctx.shadowBlur  = 6;
+      ctx.beginPath();
+      ctx.arc(t.pos.x, t.pos.y, r * 0.65, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // ── Draw boss body ──
+    const s = this.cyberSerpentBoss;
+    if (!s || s.hp <= 0) return;
+
+    ctx.save();
+    if (s.hitFlash > 0) {
+      ctx.filter = 'brightness(3) saturate(0)';
+    }
+
+    const sp = this._cyberSerpentSprite;
+    if (sp && sp.complete && sp.naturalWidth > 0) {
+      const size = s.radius * 2.4;
+      ctx.drawImage(sp, s.pos.x - size / 2, s.pos.y - size / 2, size, size);
+    } else {
+      // Fallback: drawn coil shape
+      ctx.beginPath();
+      ctx.arc(s.pos.x, s.pos.y, s.radius, 0, Math.PI * 2);
+      ctx.fillStyle = '#1a0f00';
+      ctx.fill();
+      ctx.strokeStyle = ORANGE;
+      ctx.lineWidth   = 2.5;
+      ctx.shadowColor = ORANGE;
+      ctx.shadowBlur  = 12;
+      ctx.stroke();
+      // Inner glow
+      ctx.beginPath();
+      ctx.arc(s.pos.x, s.pos.y, s.radius * 0.55, 0, Math.PI * 2);
+      ctx.fillStyle = '#ff6600';
+      ctx.globalAlpha = 0.5;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      // Label
+      ctx.font      = 'bold 9px Consolas, monospace';
+      ctx.fillStyle = ORANGE;
+      ctx.textAlign = 'center';
+      ctx.fillText('C.SERPENT', s.pos.x, s.pos.y + 3);
+      ctx.textAlign = 'left';
+    }
+    ctx.restore();
+
+    // ── HP bar ──
+    const bw = 80;
+    const bx = s.pos.x - bw / 2;
+    const by = s.pos.y - s.radius - 14;
+    ctx.fillStyle = '#111';
+    ctx.fillRect(bx - 1, by - 1, bw + 2, 8);
+    ctx.fillStyle = ORANGE;
+    ctx.fillRect(bx, by, Math.round(bw * (s.hp / s.maxHp)), 6);
+    ctx.font      = 'bold 10px Consolas, monospace';
+    ctx.fillStyle = ORANGE;
+    ctx.textAlign = 'center';
+    ctx.fillText('CYBER SERPENT', s.pos.x, by - 3);
+    ctx.textAlign = 'left';
+  }
+
+
+  // ── Cyber Dragon — mid-run boss at 16:00 (Cryo Storm Protocol) ───────────────────────────────
+
+  _spawnCyberDragon() {
+    if (this.cyberDragonSpawned) return;
+    this.cyberDragonSpawned = true;
+    const edge   = Math.floor(Math.random() * 4);
+    const margin = WORLD_MARGIN + 80;
+    let sx, sy;
+    if      (edge === 0) { sx = randomRange(margin, WORLD_W - margin); sy = margin; }
+    else if (edge === 1) { sx = randomRange(margin, WORLD_W - margin); sy = WORLD_H - margin; }
+    else if (edge === 2) { sx = margin;            sy = randomRange(margin, WORLD_H - margin); }
+    else                 { sx = WORLD_W - margin;  sy = randomRange(margin, WORLD_H - margin); }
+    const isEndless = !!this.endless;
+    const hp        = isEndless ? 600 : 750;
+    this.cyberDragonBoss = {
+      pos:        new Vec2(sx, sy),
+      hp,
+      maxHp:      hp,
+      radius:     44,
+      speed:      75,
+      hitFlash:   0,
+      orbitAngle: 0,
+      orbitRadius: 340,
+      // Cryo Storm state
+      stormCd:    randomRange(5.0, 7.0),  // first storm delay
+      stormTimer: 0,
+      storming:   false,
+      stormLife:  0,
+    };
+    this._dragonIceShards = [];
+    this._bossAnnounce('⚠ CYBER DRAGON APPROACHING', '#00ccff');
+    triggerAnnouncement('CYBER DRAGON APPROACHING', '#00ccff');
+  }
+
+  _updateCyberDragon(dt) {
+    // Countdown timer — spawn when elapsed
+    if (!this.cyberDragonSpawned) {
+      this.cyberDragonSpawnTimer -= dt;
+      if (this.cyberDragonSpawnTimer <= 0) this._spawnCyberDragon();
+      return;
+    }
+    const d = this.cyberDragonBoss;
+    if (!d || d.hp <= 0) return;
+
+    const pp = this.player.pos;
+
+    // ── Orbit around arena center with slow drift toward player ──
+    d.orbitAngle += dt * 0.55;
+    const cx  = WORLD_W / 2;
+    const cy  = WORLD_H / 2;
+    const tx  = cx + Math.cos(d.orbitAngle) * d.orbitRadius;
+    const ty  = cy + Math.sin(d.orbitAngle) * d.orbitRadius;
+    const orbitDir = safeNormalize(new Vec2(tx - d.pos.x, ty - d.pos.y));
+    // Mix orbit pull with slight player pull
+    const playerDir = safeNormalize(pp.sub(d.pos));
+    d.pos.x += (orbitDir.x * 0.7 + playerDir.x * 0.3) * d.speed * dt;
+    d.pos.y += (orbitDir.y * 0.7 + playerDir.y * 0.3) * d.speed * dt;
+    d.pos.x = clamp(d.pos.x, WORLD_MARGIN + d.radius, WORLD_W - WORLD_MARGIN - d.radius);
+    d.pos.y = clamp(d.pos.y, WORLD_MARGIN + d.radius, WORLD_H - WORLD_MARGIN - d.radius);
+
+    // ── Cryo Storm cooldown ──
+    if (!d.storming) {
+      d.stormCd -= dt;
+      if (d.stormCd <= 0) {
+        d.storming  = true;
+        d.stormLife = randomRange(8.0, 11.0);
+        d.stormCd   = randomRange(6.0, 9.0);
+        this._bossAnnounce('CRYO STORM INCOMING', '#00ccff');
+        // Spawn initial shard wave
+        this._spawnCryoShards();
+      }
+    } else {
+      d.stormLife -= dt;
+      // Spawn additional shards periodically during storm
+      d.stormTimer += dt;
+      if (d.stormTimer >= 1.4 && this._dragonIceShards.length < 15) {
+        this._spawnCryoShards();
+        d.stormTimer = 0;
+      }
+      if (d.stormLife <= 0) {
+        d.storming   = false;
+        d.stormTimer = 0;
+      }
+    }
+
+    // ── Update ice shards ──
+    for (let i = this._dragonIceShards.length - 1; i >= 0; i--) {
+      const sh = this._dragonIceShards[i];
+      sh.t    += dt;
+
+      if (!sh.hit && sh.t >= sh.warnTime) {
+        // Impact!
+        sh.hit = true;
+        if (distance(pp, sh.targetPos) < this.player.radius + 30) {
+          this._damagePlayer(16, { color: '#00ccff', shake: 5, cap: BOSS_MAX_PLAYER_HIT });
+        }
+        // Linger a moment for burst VFX, then remove
+        sh.burstTimer = 0.35;
+      }
+
+      if (sh.hit) {
+        sh.burstTimer -= dt;
+        if (sh.burstTimer <= 0) {
+          this._dragonIceShards.splice(i, 1);
+        }
+      }
+    }
+
+    // ── Contact damage ──
+    if (distance(pp, d.pos) < this.player.radius + d.radius) {
+      this._damagePlayer(20, { color: '#00ccff', shake: 6, cap: BOSS_MAX_PLAYER_HIT });
+    }
+
+    // ── Hit flash decay ──
+    if (d.hitFlash > 0) d.hitFlash = Math.max(0, d.hitFlash - dt);
+
+    // ── Death check ──
+    if (d.hp <= 0) this._cyberDragonDie();
+  }
+
+  _spawnCryoShards() {
+    const pp        = this.player.pos;
+    const count     = Math.min(randomRange(3, 5) | 0, 15 - this._dragonIceShards.length);
+    for (let i = 0; i < count; i++) {
+      const trackPlayer = Math.random() < 0.7;
+      let tx, ty;
+      if (trackPlayer) {
+        // 70% player-tracking with random spread offset
+        const spread = 120;
+        tx = pp.x + randomRange(-spread, spread);
+        ty = pp.y + randomRange(-spread, spread);
+      } else {
+        // 30% fully random arena position
+        tx = randomRange(WORLD_MARGIN + 60, WORLD_W - WORLD_MARGIN - 60);
+        ty = randomRange(WORLD_MARGIN + 60, WORLD_H - WORLD_MARGIN - 60);
+      }
+      tx = clamp(tx, WORLD_MARGIN + 40, WORLD_W - WORLD_MARGIN - 40);
+      ty = clamp(ty, WORLD_MARGIN + 40, WORLD_H - WORLD_MARGIN - 40);
+      this._dragonIceShards.push({
+        targetPos:  new Vec2(tx, ty),
+        warnTime:   1.2,
+        t:          0,
+        hit:        false,
+        burstTimer: 0,
+      });
+    }
+  }
+
+  _cyberDragonDie() {
+    const d = this.cyberDragonBoss;
+    if (!d) return;
+    const pos = d.pos.clone();
+    this.cyberDragonBoss  = null;
+    this._dragonIceShards = [];
+
+    // Rewards
+    this.score += 2800;
+    this.xp    += 180;
+    this.credits = (this.credits || 0) + 5;
+    if (typeof this.protocolFragments !== 'undefined') this.protocolFragments += BOSS_KILL_PF;
+
+    // VFX
+    this.particles.spawnExplosion(pos, '#00ccff', 32);
+    this.particles.spawnExplosion(pos, '#ffffff', 20);
+
+    // Announcement
+    triggerAnnouncement('CYBER DRAGON ELIMINATED', '#00ccff');
+    this._bossAnnounce('CYBER DRAGON ELIMINATED', '#00ccff');
+  }
+
+  _drawCyberDragon(ctx) {
+    // ── Draw ice shards and warning circles ──
+    const now = Date.now() / 1000;
+    for (const sh of this._dragonIceShards) {
+      const tp = sh.targetPos;
+
+      if (!sh.hit) {
+        // Warning phase — pulsing cyan ring
+        const progress = sh.t / sh.warnTime;            // 0→1
+        const pulse    = 0.5 + 0.5 * Math.sin(now * 8); // fast pulse
+        const ringR    = 30 + (1 - progress) * 14;
+
+        ctx.save();
+        ctx.globalAlpha = (0.3 + pulse * 0.4) * (1 - progress * 0.3);
+        ctx.strokeStyle = '#00ccff';
+        ctx.lineWidth   = 2.5;
+        ctx.shadowColor = '#00ccff';
+        ctx.shadowBlur  = 10;
+        ctx.beginPath();
+        ctx.arc(tp.x, tp.y, ringR, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+
+        // Danger fill (fades in)
+        ctx.save();
+        ctx.globalAlpha = progress * 0.18;
+        ctx.fillStyle   = '#00ccff';
+        ctx.beginPath();
+        ctx.arc(tp.x, tp.y, ringR - 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+
+        // Shard indicator falling from above
+        ctx.save();
+        ctx.globalAlpha = 0.7 + pulse * 0.3;
+        ctx.strokeStyle = '#aaeeff';
+        ctx.lineWidth   = 2;
+        ctx.shadowColor = '#00ccff';
+        ctx.shadowBlur  = 8;
+        ctx.beginPath();
+        ctx.moveTo(tp.x, tp.y - 40 * (1 - progress) - 10);
+        ctx.lineTo(tp.x, tp.y - 8);
+        ctx.stroke();
+        ctx.restore();
+      } else {
+        // Burst VFX — icy explosion ring
+        const bAlpha = sh.burstTimer / 0.35;
+        ctx.save();
+        ctx.globalAlpha = bAlpha * 0.85;
+        const burstR = 38 * (1 - bAlpha * 0.5);
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth   = 3;
+        ctx.shadowColor = '#00ccff';
+        ctx.shadowBlur  = 18;
+        ctx.beginPath();
+        ctx.arc(tp.x, tp.y, burstR, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+
+        ctx.save();
+        ctx.globalAlpha = bAlpha * 0.45;
+        ctx.fillStyle   = '#00ccff';
+        ctx.beginPath();
+        ctx.arc(tp.x, tp.y, burstR * 0.6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    // ── Draw boss body ──
+    const d = this.cyberDragonBoss;
+    if (!d || d.hp <= 0) return;
+
+    ctx.save();
+    if (d.hitFlash > 0) {
+      ctx.filter = 'brightness(3) saturate(0)';
+    }
+
+    const sp = this._cyberDragonSprite;
+    if (sp && sp.complete && sp.naturalWidth > 0) {
+      const size = d.radius * 2.4;
+      ctx.drawImage(sp, d.pos.x - size / 2, d.pos.y - size / 2, size, size);
+    } else {
+      // Fallback: drawn dragon shape
+      ctx.beginPath();
+      ctx.arc(d.pos.x, d.pos.y, d.radius, 0, Math.PI * 2);
+      ctx.fillStyle = '#00111a';
+      ctx.fill();
+      ctx.strokeStyle = '#00ccff';
+      ctx.lineWidth   = 2.5;
+      ctx.shadowColor = '#00ccff';
+      ctx.shadowBlur  = 16;
+      ctx.stroke();
+      // Inner glow
+      ctx.beginPath();
+      ctx.arc(d.pos.x, d.pos.y, d.radius * 0.5, 0, Math.PI * 2);
+      ctx.fillStyle   = '#0066aa';
+      ctx.globalAlpha = 0.6;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      // Wing lines
+      ctx.strokeStyle = '#00ccff';
+      ctx.lineWidth   = 1.5;
+      ctx.globalAlpha = 0.7;
+      ctx.beginPath();
+      ctx.moveTo(d.pos.x - d.radius, d.pos.y);
+      ctx.lineTo(d.pos.x - d.radius - 22, d.pos.y - 18);
+      ctx.moveTo(d.pos.x + d.radius, d.pos.y);
+      ctx.lineTo(d.pos.x + d.radius + 22, d.pos.y - 18);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      // Label
+      ctx.font      = 'bold 9px Consolas, monospace';
+      ctx.fillStyle = '#00ccff';
+      ctx.textAlign = 'center';
+      ctx.fillText('C.DRAGON', d.pos.x, d.pos.y + 3);
+      ctx.textAlign = 'left';
+    }
+    ctx.restore();
+
+    // ── HP bar ──
+    const bw = 90;
+    const bx = d.pos.x - bw / 2;
+    const by = d.pos.y - d.radius - 14;
+    ctx.fillStyle = '#111';
+    ctx.fillRect(bx - 1, by - 1, bw + 2, 8);
+    ctx.fillStyle = '#00ccff';
+    ctx.fillRect(bx, by, Math.round(bw * (d.hp / d.maxHp)), 6);
+    ctx.font      = 'bold 10px Consolas, monospace';
+    ctx.fillStyle = '#00ccff';
+    ctx.textAlign = 'center';
+    ctx.fillText('CYBER DRAGON', d.pos.x, by - 3);
+    ctx.textAlign = 'left';
+  }
+
+
   // ── Double Demons — Chaos Mode dual-body boss ─────────────────────────────────────────────────
   // Gunner keeps medium range and strafes; Claw closes in for melee. Both bodies share
   // a single HP pool drawn as one bar. Attacks added in Phases (b)/(c)/(d).
@@ -12253,598 +12877,4 @@ export class Game {
       }
     }
 
-    // ── Claw attack: Claw Slam ─────────────────────────────────────────────────────────────────
-    // AoE circle telegraph (1.0s) at player position → shockwave ring expands outward on impact
-    c.slamCd -= dt * cdMult;
-    if (!c.slamState) {
-      if (c.slamCd <= 0 && (!c.dashState || c.dashState.phase === 'trail')) {
-        c.slamState = {
-          phase:      'telegraph',
-          t:          0,
-          telegraphT: 1.0,
-          pos:        p.pos.clone(),
-          radius:     85,
-          hit:        false,
-        };
-        c.slamCd = 5.5 + Math.random() * 2.0;
-        this.audio?.playEventWarning?.();
-      }
-    } else {
-      const ss = c.slamState;
-      ss.t += dt;
-      if (ss.phase === 'telegraph' && ss.t >= ss.telegraphT) {
-        ss.phase = 'impact';
-        ss.t     = 0;
-        // Shockwave ring
-        this._ddClawShockwaves.push({ pos: ss.pos.clone(), radius: c.radius, maxR: 220, alpha: 1.0, hit: false });
-        this.screenShake.trigger(7, 0.22);
-        this.particles.spawnExplosion(ss.pos, [RED, ORANGE], 14);
-        this.audio?.playBloodfangBite?.();
-        // Slam damage if player inside AoE
-        if (!ss.hit && distance(p.pos, ss.pos) < ss.radius) {
-          ss.hit = true;
-          this._damagePlayer(16, { color: RED, shake: 7 });
-          if (this.player.dashTimer <= 0) {
-            const kb = safeNormalize(p.pos.sub(ss.pos));
-            p.pos.addMut(kb.scale(60));
-          }
-        }
-      }
-      if (ss.phase === 'impact' && ss.t >= 0.3) c.slamState = null;
-    }
-
-    // Update shockwave rings
-    for (let i = this._ddClawShockwaves.length - 1; i >= 0; i--) {
-      const sw = this._ddClawShockwaves[i];
-      sw.radius += 260 * dt;
-      sw.alpha   = Math.max(0, 1.0 - sw.radius / sw.maxR);
-      if (!sw.hit) {
-        const d = distance(sw.pos, p.pos);
-        if (sw.radius >= d - PLAYER_RADIUS - 4) {
-          sw.hit = true;
-          this._damagePlayer(10, { color: RED, shake: 4 });
-        }
-      }
-      if (sw.alpha <= 0) this._ddClawShockwaves.splice(i, 1);
-    }
-
-    if (dd.hp <= 0) this._doubleDemonsDie();
-  }
-
-  _doubleDemonsDie() {
-    const dd = this.doubleDemonsBoss;
-    if (!dd) return;
-
-    this.particles.spawnExplosion(dd.gunner.pos, ['#ff2d95', ORANGE, YELLOW], 22);
-    this.particles.spawnExplosion(dd.claw.pos,   [RED, '#ff2d95', WHITE],     22);
-    this.screenShake.trigger(16, 1.2);
-
-    this.score = (this.score ?? 0) + 600;
-    this.player.gainXp(55, this.floatingTexts);
-    const ddCredits = this._awardCredits(30 + Math.floor(Math.random() * 21));  // 30-50
-    this.overload = Math.max(0, this.overload - 12);
-
-    // Extra cores: 3 gold + 2 silver scatter from both bodies
-    const drops = [
-      [dd.gunner.pos.add(new Vec2(-30,   0)), 'gold'],
-      [dd.gunner.pos.add(new Vec2( 30, -20)), 'gold'],
-      [dd.claw.pos.add(  new Vec2(  0,  30)), 'gold'],
-      [dd.claw.pos.add(  new Vec2(-28, -15)), 'silver'],
-      [dd.claw.pos.add(  new Vec2( 28,  15)), 'silver'],
-    ];
-    for (const [dpos, dtype] of drops) {
-      this.groundCores.push(new DataCore(this._clampPickupPos(dpos), dtype));
-    }
-
-    this.floatingTexts.push(new FloatingText('\u26a1 DOUBLE DEMONS DEFEATED \u26a1',
-      dd.gunner.pos.clone(), '#ff2d95', 2.8));
-    this.floatingTexts.push(new FloatingText('+' + ddCredits + ' GRID CREDITS',
-      new Vec2(dd.claw.pos.x, dd.claw.pos.y - 32), GREEN, 2.5));
-    this.floatingTexts.push(new FloatingText('+5 CORES DROPPED',
-      new Vec2(dd.gunner.pos.x, dd.gunner.pos.y - 32), YELLOW, 2.2));
-
-    this.triggerAnnouncement('\u26a1 DOUBLE DEMONS DEFEATED \u26a1', '#ff2d95');
-    // Protocol Fragment reward
-    if (this.meta && this.endless) {
-      this.meta.protocolFragments += BOSS_KILL_PF;
-      this.meta._save();
-      this.floatingTexts.push(new FloatingText('+' + BOSS_KILL_PF + ' 🧩 FRAGMENT',
-        new Vec2(dd.gunner.pos.x, dd.gunner.pos.y - 68), '#ff5ea8', 2.5));
-    }
-    this.doubleDemonsBoss    = null;
-    this._ddClawShockwaves   = [];
-    this._ddLightningTrails  = [];
-    this._ddRocketShadows    = [];
-  }
-
-  _drawDoubleDemonsBoss(ctx) {
-    const dd = this.doubleDemonsBoss;
-    if (!dd || dd.hp <= 0) return;
-
-    const now   = Date.now();
-    const enragePulse = dd.enraged ? 0.6 + 0.4 * Math.abs(Math.sin(now / 150)) : 1.0;
-    const spr   = this._doubleDemonsSprite;
-    const hasSpr = spr && spr.complete && spr.naturalWidth > 0;
-
-    // ── Draw each body ────────────────────────────────────────────────────────
-    const bodies = [
-      { body: dd.gunner, label: 'GUNNER', aura: '#ff2d95', half: 'left'  },
-      { body: dd.claw,   label: 'CLAW',   aura: RED,       half: 'right' },
-    ];
-
-    for (const { body, label, aura, half } of bodies) {
-      const { pos, radius } = body;
-
-      // Enrage aura ring
-      if (dd.enraged) {
-        ctx.save();
-        ctx.globalAlpha = enragePulse * 0.55;
-        ctx.strokeStyle = '#ff4400';
-        ctx.lineWidth   = 5;
-        ctx.beginPath(); ctx.arc(pos.x, pos.y, radius + 9, 0, Math.PI * 2); ctx.stroke();
-        ctx.restore();
-      }
-
-      drawGlow(ctx, pos.x, pos.y, radius, aura, 0.30);
-
-      // Sprite (left/right half of shared sheet) or fallback circle
-      ctx.save();
-      if (hasSpr) {
-        const hw = Math.floor(spr.naturalWidth / 2);
-        const sx = half === 'left' ? 0 : hw;
-        ctx.imageSmoothingEnabled = false;
-        ctx.drawImage(spr, sx, 0, hw, spr.naturalHeight,
-          pos.x - radius, pos.y - radius, radius * 2, radius * 2);
-        ctx.imageSmoothingEnabled = true;
-      } else {
-        ctx.fillStyle   = aura;
-        ctx.strokeStyle = WHITE;
-        ctx.lineWidth   = 3;
-        ctx.beginPath(); ctx.arc(pos.x, pos.y, radius, 0, Math.PI * 2);
-        ctx.fill(); ctx.stroke();
-        // Fallback label inside circle so it's clear which is which
-        ctx.font      = 'bold 9px Consolas, monospace';
-        ctx.fillStyle = WHITE;
-        ctx.textAlign = 'center';
-        ctx.fillText(label[0], pos.x, pos.y + 3);   // G or C
-      }
-      ctx.restore();
-
-      // Hit flash
-      if (body.hitFlash > 0) {
-        ctx.save();
-        ctx.globalAlpha = 0.65;
-        ctx.fillStyle   = WHITE;
-        ctx.beginPath(); ctx.arc(pos.x, pos.y, radius, 0, Math.PI * 2); ctx.fill();
-        ctx.restore();
-      }
-
-      // Body label
-      ctx.save();
-      ctx.font      = 'bold 10px Consolas, monospace';
-      ctx.fillStyle = dd.enraged ? '#ff6600' : aura;
-      ctx.textAlign = 'center';
-      ctx.fillText(label, pos.x, pos.y - radius - 5);
-      ctx.restore();
-    }
-
-    // ── Gunner attack visuals ───────────────────────────────────────────────────────────
-    const _g = dd.gunner;
-
-    // Spin-up Barrage telegraph: glowing barrel dots arc toward the player
-    if (_g.barragePhase?.phase === 'telegraph') {
-      const bp     = _g.barragePhase;
-      const prog   = bp.t / bp.telegraphT;
-      const toP    = this.player.pos.sub(_g.pos);
-      const baseA  = Math.atan2(toP.y, toP.x);
-      const nBarrels = 5;
-      ctx.save();
-      for (let bi = 0; bi < nBarrels; bi++) {
-        const frac  = (bi / (nBarrels - 1)) - 0.5;
-        const angle = baseA + frac * Math.PI * 0.70;
-        const blen  = _g.radius + 6 + prog * 14;
-        const bx = _g.pos.x + Math.cos(angle) * blen;
-        const by = _g.pos.y + Math.sin(angle) * blen;
-        ctx.globalAlpha  = 0.35 + 0.65 * prog;
-        ctx.fillStyle    = '#ff2d95';
-        ctx.shadowColor  = '#ff2d95';
-        ctx.shadowBlur   = 10 * prog;
-        ctx.beginPath(); ctx.arc(bx, by, 4 + 3 * prog, 0, Math.PI * 2); ctx.fill();
-      }
-      ctx.shadowBlur = 0;
-      ctx.restore();
-    }
-
-    // Suppress telegraph: orange muzzle-flash glow
-    if (_g.suppressState?.phase === 'telegraph') {
-      const prog = _g.suppressState.t / _g.suppressState.telegraphT;
-      ctx.save();
-      ctx.globalAlpha = prog * 0.75;
-      drawGlow(ctx, _g.pos.x, _g.pos.y, _g.radius + 10, ORANGE, 0.8);
-      ctx.restore();
-    }
-
-    // ── Claw attack visuals ──────────────────────────────────────────────────────────────
-    const _c = dd.claw;
-
-    // Lightning Dash telegraph: red line from claw toward target
-    if (_c.dashState?.phase === 'telegraph') {
-      const ds   = _c.dashState;
-      const prog = ds.t / ds.telegraphT;
-      ctx.save();
-      ctx.globalAlpha  = 0.35 + 0.55 * prog;
-      ctx.strokeStyle  = '#ff3333';
-      ctx.lineWidth    = 2 + prog * 3;
-      ctx.shadowColor  = '#ff3333';
-      ctx.shadowBlur   = 10 * prog;
-      ctx.setLineDash([8, 6]);
-      ctx.beginPath();
-      ctx.moveTo(_c.pos.x, _c.pos.y);
-      ctx.lineTo(ds.targetPos.x, ds.targetPos.y);
-      ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.shadowBlur = 0;
-      // Claw glow intensifies
-      ctx.globalAlpha = prog * 0.7;
-      drawGlow(ctx, _c.pos.x, _c.pos.y, _c.radius + 10, '#ff3333', 0.8);
-      ctx.restore();
-    }
-
-    // Lightning Dash trail: electric sparks along path
-    if (_c.dashState?.phase === 'trail' || _c.dashState?.phase === 'dash') {
-      const ds    = _c.dashState;
-      const pts   = ds.trailPts;
-      const alpha = ds.phase === 'trail' ? Math.max(0, 1 - ds.t / ds.trailLife) : 0.9;
-      if (pts.length > 1) {
-        ctx.save();
-        ctx.globalAlpha = alpha * 0.85;
-        ctx.strokeStyle = '#00ffff';
-        ctx.lineWidth   = 3;
-        ctx.shadowColor = '#00ffff';
-        ctx.shadowBlur  = 14;
-        ctx.beginPath();
-        ctx.moveTo(pts[0].x, pts[0].y);
-        for (let ti = 1; ti < pts.length; ti++) {
-          // Jitter for electric feel
-          const jx = pts[ti].x + (Math.random() - 0.5) * 5;
-          const jy = pts[ti].y + (Math.random() - 0.5) * 5;
-          ctx.lineTo(jx, jy);
-        }
-        ctx.stroke();
-        ctx.shadowBlur = 0;
-        ctx.restore();
-      }
-    }
-
-    // Claw Slam telegraph: pulsing dashed circle at target position
-    if (_c.slamState?.phase === 'telegraph') {
-      const ss   = _c.slamState;
-      const prog = ss.t / ss.telegraphT;
-      ctx.save();
-      ctx.globalAlpha = 0.12 + 0.22 * prog;
-      ctx.fillStyle   = RED;
-      ctx.beginPath(); ctx.arc(ss.pos.x, ss.pos.y, ss.radius, 0, Math.PI * 2); ctx.fill();
-      ctx.globalAlpha = 0.4 + 0.5 * prog;
-      ctx.strokeStyle = ORANGE;
-      ctx.lineWidth   = 2 + prog * 2;
-      ctx.setLineDash([10, 7]);
-      ctx.beginPath(); ctx.arc(ss.pos.x, ss.pos.y, ss.radius, 0, Math.PI * 2); ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.restore();
-    }
-
-    // Claw Slam shockwave rings
-    for (const sw of this._ddClawShockwaves) {
-      ctx.save();
-      ctx.globalAlpha = sw.alpha * 0.85;
-      ctx.strokeStyle = RED;
-      ctx.lineWidth   = 3;
-      ctx.shadowColor = ORANGE;
-      ctx.shadowBlur  = 8;
-      ctx.beginPath(); ctx.arc(sw.pos.x, sw.pos.y, sw.radius, 0, Math.PI * 2); ctx.stroke();
-      ctx.shadowBlur = 0;
-      ctx.restore();
-    }
-
-    // ── Rocket Rain: shadow telegraphs + falling rocket sprites ──────────────────────────
-    const rktSpr  = this._rocketRainSprite;
-    const hasRkt  = rktSpr && rktSpr.complete && rktSpr.naturalWidth > 0;
-    for (const sh of this._ddRocketShadows) {
-      const activeT = sh.t - sh.delay;
-      if (activeT < 0) continue;
-      const prog  = Math.min(1, activeT / sh.warnT);
-      const { pos } = sh;
-
-      // Ground shadow: pulsing orange circle
-      ctx.save();
-      ctx.globalAlpha = 0.10 + 0.25 * prog;
-      ctx.fillStyle   = ORANGE;
-      ctx.beginPath(); ctx.arc(pos.x, pos.y, DD_ROCKET_RADIUS, 0, Math.PI * 2); ctx.fill();
-      ctx.globalAlpha = 0.35 + 0.55 * prog;
-      ctx.strokeStyle = RED;
-      ctx.lineWidth   = 2;
-      ctx.setLineDash([8, 6]);
-      ctx.beginPath(); ctx.arc(pos.x, pos.y, DD_ROCKET_RADIUS, 0, Math.PI * 2); ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.restore();
-
-      // Rocket falling from above (visible in last 40% of warn time)
-      if (prog > 0.60) {
-        const fallProg = (prog - 0.60) / 0.40;   // 0..1 during fall phase
-        const startY   = pos.y - 120;
-        const rocketY  = startY + fallProg * 120;
-        ctx.save();
-        ctx.globalAlpha = 0.5 + 0.5 * fallProg;
-        if (hasRkt) {
-          const rs = 24;
-          ctx.drawImage(rktSpr, pos.x - rs, rocketY - rs * 1.5, rs * 2, rs * 3);
-        } else {
-          ctx.fillStyle   = ORANGE;
-          ctx.shadowColor = RED;
-          ctx.shadowBlur  = 12;
-          ctx.beginPath(); ctx.arc(pos.x, rocketY, 7, 0, Math.PI * 2); ctx.fill();
-          ctx.shadowBlur = 0;
-        }
-        ctx.restore();
-      }
-    }
-
-    // ââ Shared HP bar (bottom-center, above HUD strip) ────────────────────────
-    // HP bar — must draw in screen space (identity transform)
-    ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0);  // screen space
-
-    const barW  = 340;
-    const barH  = 10;
-    const barX  = WIDTH / 2 - barW / 2;
-    const barY  = HEIGHT - 46;
-    const hpPct = Math.max(0, dd.hp / dd.maxHp);
-
-    ctx.fillStyle = 'rgba(0,0,0,0.70)';
-    ctx.fillRect(barX - 2, barY - 14, barW + 4, barH + 20);
-
-    const grad = ctx.createLinearGradient(barX, 0, barX + barW, 0);
-    grad.addColorStop(0, dd.enraged ? '#ff0000' : '#cc1166');
-    grad.addColorStop(1, dd.enraged ? '#ff8800' : '#ff2d95');
-    ctx.fillStyle = grad;
-    ctx.fillRect(barX, barY, Math.round(barW * hpPct), barH);
-
-    // 50% enrage marker
-    ctx.fillStyle = 'rgba(255,220,0,0.8)';
-    ctx.fillRect(barX + barW * DD_ENRAGE_PCT - 1, barY - 1, 2, barH + 2);
-
-    // Name
-    ctx.save();
-    ctx.font      = 'bold 11px Consolas, monospace';
-    ctx.fillStyle = dd.enraged ? '#ff6600' : '#ff2d95';
-    ctx.textAlign = 'center';
-    ctx.fillText('\u26a1 DOUBLE DEMONS' + (dd.enraged ? ' [ENRAGED]' : '') + ' \u26a1',
-      WIDTH / 2, barY - 4);
-    ctx.restore();
-
-    // HP text
-    ctx.save();
-    ctx.font      = '10px Consolas, monospace';
-    ctx.fillStyle = WHITE;
-    ctx.textAlign = 'center';
-    ctx.fillText(Math.ceil(dd.hp) + ' / ' + dd.maxHp, WIDTH / 2, barY + barH + 10);
-    ctx.restore();
-
-    ctx.restore();  // back to camera (world) space
-  }
-
-  _drawAcidRain(ctx) {
-    if (!this.acidRain) return;
-
-    const now = performance.now() / 1000;
-
-    ctx.save();
-
-    // Subtle green screen tint
-    ctx.fillStyle = 'rgba(0,60,0,0.09)';
-    ctx.fillRect(0, 0, WIDTH, HEIGHT);
-
-    const fallImg   = this._acidRainFallImg;
-    const splashImg = this._acidRainSplashImg;
-    const hasFall   = fallImg   && fallImg.complete   && fallImg.naturalWidth   > 0;
-    const hasSplash = splashImg && splashImg.complete && splashImg.naturalWidth > 0;
-
-    const ACID_COLOR  = '#44ff88';
-    const DROP_SPEED  = 300;
-    const DIAGONAL    = 0.24;
-    const TOTAL_H     = HEIGHT + 60;
-    const COUNT       = 50;
-
-    // Sprite sheet layout: fall = 6 frames side by side (732×492 → 122×492 each)
-    const FALL_FRAMES = 6;
-    const FALL_FW     = hasFall   ? Math.floor(fallImg.naturalWidth   / FALL_FRAMES) : 0;
-    const FALL_FH     = hasFall   ? fallImg.naturalHeight : 0;
-
-    // Sprite sheet layout: splash = 2×2 grid (714×363 → 357×181 each)
-    const SPLASH_FW   = hasSplash ? Math.floor(splashImg.naturalWidth  / 2) : 0;
-    const SPLASH_FH   = hasSplash ? Math.floor(splashImg.naturalHeight / 2) : 0;
-
-    // On-screen draw sizes (pixel art, keeps aspect ratio)
-    const DRAW_DROP_W   = 18;
-    const DRAW_DROP_H   = 72;
-    const DRAW_SPLASH_W = 52;
-    const DRAW_SPLASH_H = 26;
-
-    ctx.imageSmoothingEnabled = false;
-
-    for (let i = 0; i < COUNT; i++) {
-      const seedX     = ((i * 23.4 + i * i * 0.71) % (WIDTH + 80)) - 40;
-      const seedPhase = (i * 17.13) % 1;
-      const alpha     = 0.72 + 0.20 * ((i * 7 % 3) / 3);
-      const progress  = ((now * DROP_SPEED / TOTAL_H) + seedPhase) % 1;
-      const x         = seedX + progress * TOTAL_H * DIAGONAL;
-      const y         = progress * TOTAL_H - 30;
-
-      ctx.globalAlpha = alpha;
-
-      if (y > HEIGHT - 28 && y <= HEIGHT + 10) {
-        // Ground splash
-        if (hasSplash) {
-          // Alternate top-left (big splash) and top-right (smaller) per drop
-          const sFrameX = (i % 2) * SPLASH_FW;
-          ctx.drawImage(splashImg,
-            sFrameX, 0, SPLASH_FW, SPLASH_FH,
-            Math.round(x - DRAW_SPLASH_W / 2), HEIGHT - DRAW_SPLASH_H,
-            DRAW_SPLASH_W, DRAW_SPLASH_H);
-        } else {
-          ctx.strokeStyle = ACID_COLOR;
-          ctx.lineWidth   = 1;
-          ctx.beginPath();
-          ctx.ellipse(Math.round(x + 5), HEIGHT - 3, 5, 2, 0, 0, Math.PI * 2);
-          ctx.stroke();
-        }
-      } else if (y < HEIGHT - 28) {
-        // Falling drop — animate through 6 frames at ~10 fps, offset per drop
-        if (hasFall) {
-          const frameIdx = (Math.floor(now * 10) + i) % FALL_FRAMES;
-          ctx.drawImage(fallImg,
-            frameIdx * FALL_FW, 0, FALL_FW, FALL_FH,
-            Math.round(x - DRAW_DROP_W / 2), Math.round(y),
-            DRAW_DROP_W, DRAW_DROP_H);
-        } else {
-          ctx.strokeStyle = ACID_COLOR;
-          ctx.lineWidth   = 2;
-          ctx.beginPath();
-          ctx.moveTo(Math.round(x),     Math.round(y));
-          ctx.lineTo(Math.round(x + 4), Math.round(y + 14));
-          ctx.stroke();
-        }
-      }
-    }
-
-    ctx.globalAlpha           = 1;
-    ctx.imageSmoothingEnabled = true;
-    ctx.restore();
-  }
-
-  // Effective view scale / visible window. Endless zooms out slightly (ENDLESS_VIEW_SCALE);
-  // Act 1 returns the exact globals (WIDTH/VIEW_SCALE === VIEW_W), so Act 1 is byte-identical.
-  get _viewScale() { return this.endless ? ENDLESS_VIEW_SCALE : VIEW_SCALE; }
-  get _viewW()     { return this.endless ? WIDTH  / ENDLESS_VIEW_SCALE : VIEW_W; }
-  get _viewH()     { return this.endless ? HEIGHT / ENDLESS_VIEW_SCALE : VIEW_H; }
-
-  _updateCamera() {
-    // Center the player in the (larger, zoomed-out) visible world window.
-    const cx = this.player.pos.x - this._viewW / 2;
-    const cy = this.player.pos.y - this._viewH / 2;
-    this.camera.x = Math.max(0, Math.min(cx, WORLD_W - this._viewW));
-    this.camera.y = Math.max(0, Math.min(cy, WORLD_H - this._viewH));
-  }
-
-  _worldMouse(screenPos) {
-    if (!screenPos) return null;
-    // Screen → world: undo the view zoom, then the camera offset.
-    return { x: screenPos.x / this._viewScale + this.camera.x, y: screenPos.y / this._viewScale + this.camera.y };
-  }
-
-  // Endless-only Nexus base sprite drawn UNDER a matrix. Clean fixed size so it doesn't cover
-  // too much play space; if the image is missing, draw nothing (the matrix renders itself).
-  _drawEndlessNexusBase(ctx, m) {
-    const img = this._endlessNexusImage;
-    if (!(img && img.complete && img.naturalWidth > 0)) return;
-    const D = 120;   // Endless base visual (was 150) — smaller for readability; deposit/collision radius unchanged
-    // Soft elliptical contact shadow so the base reads as planted on the arena, not pasted on top.
-    ctx.save();
-    ctx.fillStyle = 'rgba(0,0,0,0.38)';
-    ctx.beginPath();
-    ctx.ellipse(m.pos.x, m.pos.y + D * 0.30, D * 0.40, D * 0.15, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-    ctx.drawImage(img, m.pos.x - D / 2, m.pos.y - D / 2, D, D);
-  }
-
-  _drawWorldBackground(ctx) {
-    ctx.fillStyle = DARK_BG;
-    ctx.fillRect(0, 0, WORLD_W, WORLD_H);
-
-    // Endless-only Stage 02 map; falls back to the default background if not loaded / not endless.
-    const cb  = this._chaosBgImage;
-    const eb  = this._endlessBgImage;
-    const img = (this._chaosMode && cb && cb.complete && cb.naturalWidth > 0)
-              ? cb
-              : (this.endless && eb && eb.complete && eb.naturalWidth > 0) ? eb : this._bgImage;
-    if (img.complete && img.naturalWidth > 0) {
-      const scale = WORLD_W / img.naturalWidth;
-      const drawH = img.naturalHeight * scale;
-      ctx.drawImage(img, 0, 0, WORLD_W, drawH);
-      // Endless map: a touch more dimming so the backdrop recedes and the gameplay plane reads flat.
-      ctx.fillStyle = this.gridBlackoutActive ? 'rgba(0,0,0,0.65)'
-                    : this.endless           ? 'rgba(0,0,0,0.46)'
-                    :                          'rgba(0,0,0,0.38)';
-      ctx.fillRect(0, 0, WORLD_W, WORLD_H);
-    } else {
-      const spacing = 48;
-      const offset  = Math.floor(performance.now() * 0.025) % spacing;
-      ctx.strokeStyle = GRID_LINE;
-      ctx.lineWidth   = 1;
-      for (let x = -spacing; x < WORLD_W + spacing; x += spacing) {
-        ctx.beginPath();
-        ctx.moveTo(x + offset, 44);
-        ctx.lineTo(x + offset, WORLD_H);
-        ctx.stroke();
-      }
-      for (let y = 44; y < WORLD_H + spacing; y += spacing) {
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(WORLD_W, y);
-        ctx.stroke();
-      }
-    }
-  }
-
-  _drawBackground(ctx) {
-    // ── Dark base fill (shown while image loads or on very old browsers) ──────
-    ctx.fillStyle = DARK_BG;
-    ctx.fillRect(0, 0, WIDTH, HEIGHT);
-
-    // ── Cyberpunk city image ─────────────────────────────────────────────────
-    const img = this._bgImage;
-    if (img.complete && img.naturalWidth > 0) {
-      // "cover" scaling: fill the entire canvas, crop excess.
-      // The image is portrait (tall); we fit its width to the canvas and
-      // anchor the top so the city streets are visible.
-      const imgW = img.naturalWidth;
-      const imgH = img.naturalHeight;
-      const scale = WIDTH / imgW;          // scale so width fills 1280px
-      const drawH = imgH * scale;          // resulting height (will exceed 720)
-
-      ctx.drawImage(img, 0, 0, WIDTH, drawH);
-
-      // Semi-transparent dark overlay so neon game entities pop clearly
-      ctx.fillStyle = this.gridBlackoutActive
-        ? 'rgba(0,0,0,0.65)'   // extra dim during Grid Blackout event
-        : 'rgba(0,0,0,0.38)';
-      ctx.fillRect(0, 0, WIDTH, HEIGHT);
-    } else {
-      // Fallback: scrolling neon grid while image loads
-      const spacing = 48;
-      const offset  = Math.floor(performance.now() * 0.025) % spacing;
-      ctx.strokeStyle = GRID_LINE;
-      ctx.lineWidth   = 1;
-      for (let x = -spacing; x < WIDTH + spacing; x += spacing) {
-        ctx.beginPath();
-        ctx.moveTo(x + offset, 44);
-        ctx.lineTo(x + offset, HEIGHT);
-        ctx.stroke();
-      }
-      for (let y = 44; y < HEIGHT + spacing; y += spacing) {
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(WIDTH, y);
-        ctx.stroke();
-      }
-    }
-
-    // ── Dark HUD strip (always on top of background) ─────────────────────────
-    ctx.fillStyle = BLACK;
-    ctx.fillRect(0, 0, WIDTH, 44);
-  }
-
-  // Called by main.js to pass current mouse pos to the draw call
-  setMousePos(pos) { this._lastMousePos = pos; }
-}
+    // ── Claw attack: Claw Slam ─────────────────────────────────────�
