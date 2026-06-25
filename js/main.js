@@ -1,7 +1,7 @@
 import { Game } from './game/Game.js?v=20260616080000';
 import { AudioManager } from './audio/AudioManager.js?v=20260615210000';
 import { GamepadInput } from './Gamepad.js?v=20260615210000';
-import { initTouchControls } from './TouchInput.js?v=20260625140000';
+import { initTouchControls } from './TouchInput.js?v=20260625160000';
 
 const canvas = document.getElementById('game');
 const ctx    = canvas.getContext('2d');
@@ -454,4 +454,4 @@ function loop(timestamp) {
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
-console.log('BUILD 20260625140000 touch-fix active');
+console.log('BUILD 20260625160000 blackfix active');
