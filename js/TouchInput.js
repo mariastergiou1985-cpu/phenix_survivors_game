@@ -220,4 +220,23 @@ export function initTouchControls({ canvas, keys, game, setAim }) {
   window.addEventListener('orientationchange', updateRotate);
   updateRotate();
 
-  let _shown = null,
+  let _shown = null, _pauseShown = null, _lastState = null;
+  function tick() {
+    const g = game;
+    const inPlay = g.gameState === 'playing' && !g.paused && !g.gameOver && !g.victory
+                   && !g.upgradeUI && !g.mutationUI;
+    const showPause = g.gameState === 'playing' && !g.gameOver && !g.victory;
+    if (inPlay !== _shown) {
+      _shown = inPlay;
+      joy.style.display  = inPlay ? '' : 'none';
+      btns.style.display = inPlay ? '' : 'none';
+      if (!inPlay) { joyReset(); clearHeld(); }
+    }
+    if (showPause !== _pauseShown) { _pauseShown = showPause; pauseB.style.display = showPause ? '' : 'none'; }
+    if (g.gameState !== _lastState) { _lastState = g.gameState; updateRotate(); }
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+
+  return { overlay };
+}
