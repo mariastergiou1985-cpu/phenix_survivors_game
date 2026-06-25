@@ -1,7 +1,7 @@
 import { Game } from './game/Game.js?v=20260616080000';
 import { AudioManager } from './audio/AudioManager.js?v=20260615210000';
 import { GamepadInput } from './Gamepad.js?v=20260615210000';
-import { initTouchControls } from './TouchInput.js?v=20260625160000';
+import { initTouchControls } from './TouchInput.js?v=20260625200000';
 
 const canvas = document.getElementById('game');
 const ctx    = canvas.getContext('2d');
@@ -21,7 +21,7 @@ resizeCanvas();
 window.addEventListener('resize', resizeCanvas);
 window.addEventListener('orientationchange', () => { resizeCanvas(); setTimeout(resizeCanvas, 250); });
 window.visualViewport?.addEventListener('resize', resizeCanvas);
-document.addEventListener('fullscreenchange', resizeCanvas);
+document.addEventListener('fullscreenchange', () => { resizeCanvas(); [100, 300, 750].forEach(ms => setTimeout(resizeCanvas, ms)); });
 if (window.visualViewport) window.visualViewport.addEventListener('resize', resizeCanvas);
 // Mobile reports its final viewport only after the address bar settles — re-fit shortly after load.
 window.addEventListener('load', () => {
@@ -408,6 +408,9 @@ initTouchControls({
   keys,
   game,
   setAim: (x, y) => { mousePos = { x, y }; game.setMousePos(mousePos); },
+  onQ:   () => game.activatePulseShield(),
+  onE:   () => game.activateEMPCloud(),
+  onUlt: () => { game.activateThunderSolo(); game.activateOverheatedChains(); game.activateCyberBikeRush(); game.activateSkyfallLances(); game.activateChromePhantomProtocol(); game.activateDigitalSingularity(); game.activateEuclidPlague(); game.activateProtocol0Cataclysm(); },
 });
 
 // ─── Game loop ────────────────────────────────────────────────────────────────
@@ -454,4 +457,4 @@ function loop(timestamp) {
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
-console.log('BUILD 20260625160000 blackfix active');
+console.log('BUILD 20260625200000 mobile-stabilize active');

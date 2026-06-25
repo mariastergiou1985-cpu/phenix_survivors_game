@@ -18,7 +18,7 @@ function isTouchDevice() {
       || (window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
 }
 
-export function initTouchControls({ canvas, keys, game, setAim }) {
+export function initTouchControls({ canvas, keys, game, setAim, onQ, onE, onUlt }) {
   if (!isTouchDevice()) return null;   // desktop: do nothing at all
 
   // ── styles ──────────────────────────────────────────────────────────────
@@ -101,6 +101,8 @@ export function initTouchControls({ canvas, keys, game, setAim }) {
       try {
         const r = document.fullscreenElement ? document.exitFullscreen() : fsRoot.requestFullscreen();
         if (r && r.catch) r.catch(() => {});
+        // Re-fit canvas after browser chrome animates away (covers slow Android renderers)
+        [100, 300, 750].forEach(ms => setTimeout(() => window.dispatchEvent(new Event('resize')), ms));
       } catch (_) {}
     });
   }
@@ -158,14 +160,15 @@ export function initTouchControls({ canvas, keys, game, setAim }) {
   joy.addEventListener('pointerup', joyUp);
   joy.addEventListener('pointercancel', joyUp);
 
-  // ── action buttons (Dash held; Q/E/ULT/Pause one-shot) ────────────────────
-  function bindButton(el) {
+  // ── action buttons (Dash held; Q/E/ULT direct callbacks; Pause one-shot) ─
+  function bindButton(el, cb) {
     const key = el.dataset.key, hold = el.dataset.hold === '1';
     el.addEventListener('pointerdown', e => {
       e.preventDefault();                       // no 300ms delay / no synthetic mouse
       try { el.setPointerCapture(e.pointerId); } catch (_) {}
-      if (hold) setKey(key, true);              // Dash → held 'shift' in keys Set
-      else      tapKey(key);                    // Q/E/ULT/Pause → synthetic keydown+keyup
+      if (hold)    setKey(key, true);           // Dash → held 'shift' in keys Set
+      else if (cb) cb();                        // Q/E/ULT → direct action (avoids synthetic event quirks on mobile)
+      else         tapKey(key);                 // Pause → synthetic 'Escape' keydown+keyup
     });
     if (hold) {
       const up = e => { e.preventDefault(); setKey(key, false); };
@@ -173,7 +176,8 @@ export function initTouchControls({ canvas, keys, game, setAim }) {
       el.addEventListener('pointercancel', up);
     }
   }
-  btns.querySelectorAll('button').forEach(bindButton);
+  const _btnCbs = { q: onQ || null, e: onE || null, ' ': onUlt || null };
+  btns.querySelectorAll('button').forEach(el => bindButton(el, _btnCbs[el.dataset.key] || null));
   bindButton(pauseB);
 
   // ── canvas taps → existing mousedown hit-testing (menus / cards / screens) ─
@@ -219,6 +223,22 @@ export function initTouchControls({ canvas, keys, game, setAim }) {
   window.addEventListener('resize', updateRotate);
   window.addEventListener('orientationchange', updateRotate);
   updateRotate();
+
+  // ── Portrait layout: scale by viewport HEIGHT so menu buttons fill the phone vertically.
+  // Registered AFTER main.js resizeCanvas listener so it runs second and can override.
+  // In landscape this is a no-op; resizeCanvas already produced the correct scale.
+  function applyPortraitLayout() {
+    const vv = window.visualViewport;
+    const vw = (vv && vv.width)  || window.innerWidth;
+    const vh = (vv && vv.height) || window.innerHeight;
+    if (vh <= vw) return;                        // landscape — leave resizeCanvas result unchanged
+    const scale = vh / 720;                      // fill the portrait height; canvas overflows sides (clipped+centred)
+    canvas.style.width  = `${Math.floor(1280 * scale)}px`;
+    canvas.style.height = `${Math.floor(720  * scale)}px`;
+  }
+  window.addEventListener('resize', applyPortraitLayout);
+  window.addEventListener('orientationchange', () => setTimeout(applyPortraitLayout, 250));
+  applyPortraitLayout();
 
   let _shown = null, _pauseShown = null, _lastState = null;
   function tick() {
