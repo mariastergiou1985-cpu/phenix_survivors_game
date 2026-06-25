@@ -454,4 +454,4 @@ function loop(timestamp) {
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
-console.log('BUILD 20260624210000 mobile-canvas-fit active');
+console.log('BUILD 20260625120000 mobile-touch-polish active');

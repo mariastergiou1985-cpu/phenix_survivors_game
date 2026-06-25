@@ -32,27 +32,28 @@ export function initTouchControls({ canvas, keys, game, setAim }) {
       touch-action: none; -webkit-user-select: none; user-select: none; }
     #touch-overlay .tc { pointer-events: auto; touch-action: none;
       -webkit-tap-highlight-color: transparent; }
-    #touch-joy { position: absolute; left: 4%; bottom: 8%; width: 132px; height: 132px;
-      border-radius: 50%; background: rgba(120,160,200,0.10);
-      border: 2px solid rgba(150,200,255,0.35); }
-    #touch-joy-knob { position: absolute; left: 50%; top: 50%; width: 58px; height: 58px;
-      margin: -29px 0 0 -29px; border-radius: 50%;
-      background: rgba(150,210,255,0.30); border: 2px solid rgba(180,230,255,0.6);
-      box-shadow: 0 0 14px rgba(120,200,255,0.5); }
-    #touch-btns { position: absolute; right: 4%; bottom: 7%; width: 210px; height: 150px; }
-    #touch-btns button, #touch-pause, #touch-fs { position: absolute; border-radius: 50%;
-      font: bold 14px Consolas, monospace; color: #dff2ff;
-      background: rgba(20,40,70,0.45); border: 2px solid rgba(150,200,255,0.5);
-      box-shadow: 0 0 10px rgba(80,150,220,0.35); }
-    #touch-btns button:active, #touch-pause:active, #touch-fs:active { background: rgba(60,120,200,0.6); }
-    #touch-btns button { width: 70px; height: 70px; }
-    #btn-ult   { right: 0;   bottom: 78px; width: 80px; height: 80px; color: #ffd9a8;
-      border-color: rgba(255,140,60,0.7); }
-    #btn-dash  { right: 92px; bottom: 70px; color: #bfe9ff; }
-    #btn-q     { right: 96px; bottom: 0; }
-    #btn-e     { right: 4px;  bottom: 0; }
-    #touch-pause { top: 12px; right: 12px; width: 50px; height: 50px; font-size: 18px; }
-    #touch-fs { top: 12px; left: 12px; width: 50px; height: 50px; font-size: 20px; }
+    #touch-joy { position: absolute; left: 4%; bottom: 8%; width: 90px; height: 90px;
+      border-radius: 50%; background: rgba(120,160,200,0.08);
+      border: 1.5px solid rgba(150,200,255,0.28); }
+    #touch-joy-knob { position: absolute; left: 50%; top: 50%; width: 36px; height: 36px;
+      margin: -18px 0 0 -18px; border-radius: 50%;
+      background: rgba(150,210,255,0.25); border: 1.5px solid rgba(180,230,255,0.55);
+      box-shadow: 0 0 10px rgba(120,200,255,0.4); }
+    #touch-btns { position: absolute; right: 3%; bottom: 7%; width: 160px; height: 118px; }
+    #touch-btns button, #touch-pause, #touch-fs { position: absolute; border-radius: 7px;
+      font: bold 11px Consolas, monospace; color: #dff2ff;
+      background: rgba(20,40,70,0.52); border: 1.5px solid rgba(150,200,255,0.45);
+      box-shadow: 0 0 8px rgba(80,150,220,0.28); cursor: pointer; }
+    #touch-btns button:active, #touch-pause:active, #touch-fs:active { background: rgba(60,120,200,0.62); }
+    #touch-btns button { width: 50px; height: 50px; }
+    #btn-ult   { right: 0; bottom: 60px; width: 55px; height: 55px; color: #ffd9a8;
+      border-color: rgba(255,140,60,0.65); font-size: 12px;
+      box-shadow: 0 0 10px rgba(255,140,60,0.25); }
+    #btn-dash  { right: 62px; bottom: 56px; color: #bfe9ff; }
+    #btn-q     { right: 62px; bottom: 2px; }
+    #btn-e     { right: 4px;  bottom: 2px; }
+    #touch-pause { top: 12px; right: 12px; width: 40px; height: 40px; font-size: 15px; border-radius: 7px; }
+    #touch-fs { top: 12px; left: 12px; width: 40px; height: 40px; font-size: 17px; border-radius: 7px; }
     #touch-rotate { position: fixed; inset: 0; z-index: 60; pointer-events: none;
       display: none; align-items: center; justify-content: center; text-align: center;
       background: rgba(5,8,15,0.82); color: #8fd0ff; font: bold 22px Consolas, monospace;
@@ -121,7 +122,7 @@ export function initTouchControls({ canvas, keys, game, setAim }) {
   // receiving move events even when the finger leaves the pad, and (with touch-action:none)
   // stops the browser from hijacking the drag as a scroll/refresh gesture — the actual cause
   // of "joystick does not move the character" on hardware (plain touch events get stolen).
-  const DEAD = 16, MAXR = 46;
+  const DEAD = 8, MAXR = 30;   // smaller deadzone → better diagonal feel; MAXR matched to 90px joy
   let joyPid = null;
   function joyCenter() { const r = joy.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; }
   function joyMove(pt) {
@@ -184,7 +185,10 @@ export function initTouchControls({ canvas, keys, game, setAim }) {
   // Listen at document level (not on the canvas): a touch on the canvas passes through the
   // pointer-events:none overlay, and document reliably receives it across browsers. Touches
   // that start on our controls are ignored here (they handle themselves).
-  const onControl = el => !!(el && el.closest && el.closest('#touch-joy, #touch-btns, #touch-pause, #touch-fs'));
+  // '#cgm-charselect' is the DOM character-select overlay — taps inside it must fire native
+  // click events (card select / start buttons). Intercepting them with preventDefault here
+  // cancelled those clicks on mobile; treating it like a control zone lets them pass through.
+  const onControl = el => !!(el && el.closest && el.closest('#touch-joy, #touch-btns, #touch-pause, #touch-fs, #cgm-charselect'));
   let tapId = null;
   document.addEventListener('pointerdown', e => {
     if (e.pointerType === 'mouse') return;       // let native mouse path handle desktop-style clicks
@@ -203,32 +207,17 @@ export function initTouchControls({ canvas, keys, game, setAim }) {
   }, { passive: false });
   document.addEventListener('pointercancel', () => { tapId = null; });
 
-  // ── landscape hint + show controls only during active gameplay ────────────
+  // ── landscape hint — only shown during active gameplay in portrait mode ──────
+  // On menus (start_menu, character_select, etc.) portrait is usable: the canvas scales down
+  // but is tappable. Showing the overlay on menus blocked menu interaction; hide it there.
   function updateRotate() {
     const portrait = (window.matchMedia && window.matchMedia('(orientation: portrait)').matches)
                      || window.innerHeight > window.innerWidth;
-    rotate.style.display = portrait ? 'flex' : 'none';
+    const inGameplay = game.gameState === 'playing';
+    rotate.style.display = (portrait && inGameplay) ? 'flex' : 'none';
   }
   window.addEventListener('resize', updateRotate);
   window.addEventListener('orientationchange', updateRotate);
   updateRotate();
 
-  let _shown = null, _pauseShown = null;
-  function tick() {
-    const g = game;
-    const inPlay = g.gameState === 'playing' && !g.paused && !g.gameOver && !g.victory
-                   && !g.upgradeUI && !g.mutationUI;
-    const showPause = g.gameState === 'playing' && !g.gameOver && !g.victory;
-    if (inPlay !== _shown) {
-      _shown = inPlay;
-      joy.style.display  = inPlay ? '' : 'none';
-      btns.style.display = inPlay ? '' : 'none';
-      if (!inPlay) { joyReset(); clearHeld(); }   // never leave movement/dash stuck on a menu/card
-    }
-    if (showPause !== _pauseShown) { _pauseShown = showPause; pauseB.style.display = showPause ? '' : 'none'; }
-    requestAnimationFrame(tick);
-  }
-  requestAnimationFrame(tick);
-
-  return { overlay };
-}
+  let _shown = null,
