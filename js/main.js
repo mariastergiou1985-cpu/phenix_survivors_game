@@ -455,4 +455,3 @@ function loop(timestamp) {
 }
 requestAnimationFrame(loop);
 console.log('BUILD 20260625140000 touch-fix active');
-          
