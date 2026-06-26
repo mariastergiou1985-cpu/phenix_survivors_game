@@ -186,42 +186,6 @@ export const PROTOCOL_CARDS = [
 ];
 export const PROTOCOL_CARD_BY_ID = Object.fromEntries(PROTOCOL_CARDS.map(c => [c.id, c]));
 
-
-// ─── NULL RELICS V1 — relic unlock definitions ──────────────────────────────
-// id must match assets/relics/<id>.png. req = bossKills key requirement. reqChar = character.
-export const RELIC_DEFS = [
-  { id:'eden_core_fragment',   name:'Eden Core Fragment',  type:'universal',  cost:5,
-    effect:'The first boss defeated each run drops +1 extra Fragment. Once per run.',
-    req:null, reqChar:null, reqLabel:null, charLabel:null },
-  { id:'null_battery',         name:'Null Battery',        type:'universal',  cost:4,
-    effect:'Q and E ability cooldowns recharge 8% faster.',
-    req:null, reqChar:null, reqLabel:null, charLabel:null },
-  { id:'broken_halo',          name:'Broken Halo',         type:'universal',  cost:5,
-    effect:'Once per run, when HP drops below 25%, gain a 2-second shield and push enemies away.',
-    req:null, reqChar:null, reqLabel:null, charLabel:null },
-  { id:'blacknet_coupon',      name:'Blacknet Coupon',     type:'universal',  cost:4,
-    effect:'First level-up screen each run grants 1 extra reroll.',
-    req:null, reqChar:null, reqLabel:null, charLabel:null },
-  { id:'serpent_ember_coil',   name:'Serpent Ember Coil',  type:'boss',       cost:6,
-    effect:'Dash leaves a 1.5s ember trail. Enemies touching it take burn damage. Cooldown: 8s.',
-    req:'cyberSerpent', reqChar:null, reqLabel:'Defeat Cyber Serpent once', charLabel:null },
-  { id:'dragon_cryo_heart',    name:'Dragon Cryo Heart',   type:'boss',       cost:8,
-    effect:'Every 30s, your next hit calls a cryo shard on the target, dealing damage and slowing.',
-    req:'cyberDragon',  reqChar:null, reqLabel:'Defeat Cyber Dragon once',  charLabel:null },
-  { id:'oni_blood_circuit',    name:'Oni Blood Circuit',   type:'character',  cost:6,
-    effect:'When Oni uses Ultimate, nearby enemies are marked for 5s: +15% damage (+7% on bosses).',
-    req:null, reqChar:'oni_cataclysm_protocol', reqLabel:null, charLabel:'Only active for Oni Cataclysm' },
-  { id:'crescent_soul_bead',   name:'Crescent Soul Bead',  type:'character',  cost:6,
-    effect:'Every 7th Spirit Kick pierces +2 extra enemies and creates a small shockwave.',
-    req:null, reqChar:'taekwondo_girl', reqLabel:null, charLabel:'Only active for Neon Taekwondo Girl' },
-  { id:'null_venom_chamber',   name:'Null Venom Chamber',  type:'character',  cost:7,
-    effect:'Poisoned enemies that die have a 25% chance to spread poison. Boss poison +1s.',
-    req:null, reqChar:'euclid_vector',  reqLabel:null, charLabel:'Only active for Euclid Vector' },
-  { id:'mirror_kill_protocol', name:'Mirror Kill Protocol',type:'character',  cost:8,
-    effect:'When a clone expires, it releases a shadow slash. 3+ hits refunds 20 mana.',
-    req:null, reqChar:'assassin_clone', reqLabel:null, charLabel:'Only active for Assassin Clone' },
-];
-
 export class MetaProgress {
   constructor() {
     this.credits = 0;
@@ -245,8 +209,6 @@ export class MetaProgress {
     this.protocolUnlocks   = {};  // { [characterId]: true }   — PF-purchased character unlocks
     this.protocolCards     = {};  // { [cardId]: true }        — PF-purchased permanent Protocol cards
     this.profileName       = null;// optional custom player profile name (fallback 'PLAYER_01' in UI)
-    this.relics    = {};  // { [relicId]: true } — permanently unlocked relics
-    this.bossKills = {};  // { [bossId]: true }  — boss defeat tracking for relic requirements
     this._load();
   }
 
@@ -273,8 +235,6 @@ export class MetaProgress {
       this.protocolUnlocks = (d.protocolUnlocks && typeof d.protocolUnlocks === 'object') ? d.protocolUnlocks : {};
       this.protocolCards   = (d.protocolCards   && typeof d.protocolCards   === 'object') ? d.protocolCards   : {};
       this.profileName     = (typeof d.profileName === 'string' && d.profileName.trim()) ? d.profileName.slice(0, 16) : null;
-      this.relics    = (d.relics    && typeof d.relics    === 'object') ? d.relics    : {};
-      this.bossKills = (d.bossKills && typeof d.bossKills === 'object') ? d.bossKills : {};
       // One-time retroactive payout for already-earned Endless achievements (idempotent).
       this._backfillProtocolFragments();
 
@@ -316,8 +276,6 @@ export class MetaProgress {
         protocolUnlocks: this.protocolUnlocks,
         protocolCards: this.protocolCards,
         profileName: this.profileName,
-        relics:    this.relics,
-        bossKills: this.bossKills,
       }));
     } catch (_) {}
   }
@@ -383,6 +341,41 @@ export class MetaProgress {
     let earned = 0;
     for (const id in this.pfEarnedFrom) if (this.pfEarnedFrom[id]) earned += (PF_PAYOUTS[id] || 0);
     return Math.max(earned, this.protocolFragments);
+  }
+
+  // Menu-only player progression. Derived from existing save data so old saves keep working
+  // and PF/relic/achievement balances are not migrated or re-awarded.
+  getPlayerProgression() {
+    const pfEarned = Math.max(0, Math.floor(this.getProtocolFragmentsEarned() || 0));
+    const achievementCount = this.achievements ? Object.keys(this.achievements).filter((id) => this.achievements[id]).length : 0;
+    const records = this.endlessRecords || {};
+    const bestLevel = Math.max(0, Math.floor(records.level || 0));
+    const bestMinutes = Math.max(0, Math.floor((records.time || 0) / 60));
+    const points = Math.max(pfEarned, achievementCount, bestLevel, bestMinutes);
+    const level = Math.max(1, points);
+    const step = 5;
+    const next = Math.max(step, Math.ceil((level + 1) / step) * step);
+    const progress = Math.max(0, Math.min(0.98, level / next));
+    const rank = this._rankForPlayerLevel(level, achievementCount);
+    return {
+      level,
+      rank,
+      current: level,
+      next,
+      progress,
+      label: `${level} / ${next} TO NEXT LEVEL`,
+    };
+  }
+
+  _rankForPlayerLevel(level, achievementCount) {
+    const allAchievements = ENDLESS_ACHIEVEMENTS.length > 0 && achievementCount >= ENDLESS_ACHIEVEMENTS.length;
+    if (level >= 50) return 'NULL EDEN LEGEND';
+    if (level >= 40) return 'RELIC HUNTER';
+    if (level >= 30) return 'BOSS SLAYER';
+    if (allAchievements || level >= Math.max(20, PF_TOTAL_OBTAINABLE)) return 'GRID MASTER';
+    if (level >= 14) return 'OVERRIDE';
+    if (level >= 7) return 'OPERATIVE';
+    return 'ROOKIE';
   }
 
   // PF-based future-character unlocks (separate from Grid Credits / secret-skin unlocks).
@@ -451,8 +444,6 @@ export class MetaProgress {
     this.pfEarnedFrom      = {};
     this.protocolUnlocks   = {};
     this.protocolCards     = {};
-    this.relics    = {};
-    this.bossKills = {};
     this._save();
   }
 
@@ -539,27 +530,4 @@ export class MetaProgress {
     if (!c) return `assets/characters/${characterId}.png`;
     return (c[outfitId] || c.default).asset;
   }
-  // ─── Relic system ────────────────────────────────────────────────────────
-  isRelicUnlocked(id) { return this.relics[id] === true; }
-
-  // Attempt to unlock a relic. Returns 'ok'|'owned'|'req'|'invalid'|'poor'.
-  tryUnlockRelic(id) {
-    const def = RELIC_DEFS.find(r => r.id === id);
-    if (!def)                                 return 'invalid';
-    if (this.relics[id])                      return 'owned';
-    if (def.req && !this.bossKills[def.req])  return 'req';
-    if (this.protocolFragments < def.cost)    return 'poor';
-    this.protocolFragments -= def.cost;
-    this.relics[id] = true;
-    this._save();
-    return 'ok';
-  }
-
-  recordBossKill(id) {
-    if (!this.bossKills[id]) { this.bossKills[id] = true; this._save(); }
-  }
-
-  hasBossKill(id) { return this.bossKills[id] === true; }
-
-
 }
