@@ -1,4 +1,6 @@
-# Phenix Survivors — Cyber-Grid Protocol
+# PHENIX: NULL EDEN
+
+A cyber-survival roguelite set inside a corrupted digital sanctuary.
 
 A cyberpunk HTML5 Canvas survival game where the player protects Power Matrices, recovers Data-Cores, fights enemy waves, survives events, defeats the AI Overload Titan and Matrix Annihilator mini-bosses, earns Grid Credits, and upgrades characters.
 
@@ -90,4 +92,4 @@ Then open: http://localhost:8000
 
 ## Tech
 
-Vanilla HTML5 Canvas / JavaScript browser game. No external game engine. ES Modules, Web Audio API.
+Vanilla HTML5 Canvas / JavaScript browser game. No e
