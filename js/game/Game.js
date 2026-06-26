@@ -8189,7 +8189,7 @@ export class Game {
     }
     ctx.font = '10px Consolas, monospace'; ctx.textAlign = 'right';
     ctx.fillStyle = muted ? '#9aa4b0' : 'rgba(180,255,245,0.85)';
-    ctx.fillText(muted ? 'MUTED' : 'CYBER-GRID OST', s.x + s.w - 12, s.y + 36);
+    ctx.fillText(muted ? 'MUTED' : 'NULL EDEN OST', s.x + s.w - 12, s.y + 36);
     ctx.textAlign = 'left';
   }
 
@@ -8535,7 +8535,7 @@ export class Game {
 
       <section class="panel" style="--accent:var(--cyan)">
         <div class="now-row"><span class="label">NOW PLAYING</span><svg><use href="#i-music"/></svg></div>
-        <div class="now-row" style="margin-top:6px"><span style="font-size:12px;color:var(--txt-dim);letter-spacing:1px" data-cgm="now-playing">CYBER-GRID OST</span></div>
+        <div class="now-row" style="margin-top:6px"><span style="font-size:12px;color:var(--txt-dim);letter-spacing:1px" data-cgm="now-playing">NULL EDEN OST</span></div>
         <div class="eq" id="cgm-eq-bars"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
       </section>
 
@@ -8690,7 +8690,7 @@ export class Game {
     }
 
     // Now Playing
-    const audioTitle = this.audio?.currentTrackTitle || 'CYBER-GRID OST';
+    const audioTitle = this.audio?.currentTrackTitle || 'NULL EDEN OST';
     const nowStr = muted ? 'MUTED' : audioTitle;
     this._cgmSet('now-playing', nowStr);
     const eqEl = this._menuOverlayEl.querySelector('#cgm-eq-bars');

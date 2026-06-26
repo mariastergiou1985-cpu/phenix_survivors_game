@@ -168,7 +168,7 @@ export class AudioManager {
     this._stop(this._endlessAudio);
     this._stop(this._chaosAudio);
     this._currentMusic = this._gameplayAudio;
-    this.currentTrackTitle = 'CYBER-GRID OST';
+    this.currentTrackTitle = 'NULL EDEN OST';
     this._play(this._gameplayAudio);
   }
 
