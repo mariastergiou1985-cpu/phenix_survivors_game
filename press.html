@@ -539,6 +539,62 @@
       text-transform: uppercase;
     }
 
+    /* ── LORE PANEL ── */
+    .lore-panel {
+      background: linear-gradient(135deg, rgba(4,10,26,0.96), rgba(8,16,36,0.92));
+      border: 1px solid rgba(60,240,230,0.22);
+      border-radius: 8px;
+      padding: 30px 32px;
+      margin-top: 24px;
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 0 40px rgba(60,240,230,0.05), inset 0 0 60px rgba(0,0,0,0.3);
+    }
+    .lore-panel::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(60,240,230,0.45), transparent);
+    }
+    .lore-codename {
+      font-size: 11px;
+      letter-spacing: 4px;
+      color: rgba(60,240,230,0.40);
+      text-transform: uppercase;
+      margin-bottom: 22px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid rgba(60,240,230,0.10);
+    }
+    .lore-columns {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 32px;
+    }
+    .lore-col p {
+      font-size: 14px;
+      color: rgba(170,205,235,0.82);
+      margin-bottom: 10px;
+      line-height: 1.75;
+    }
+    .lore-col p.lore-last {
+      color: var(--text);
+      font-style: italic;
+      margin-bottom: 0;
+    }
+    .lore-lang-tag {
+      font-size: 10px;
+      letter-spacing: 2.5px;
+      color: var(--cyan);
+      opacity: 0.55;
+      margin-bottom: 14px;
+      text-transform: uppercase;
+    }
+    @media (max-width: 600px) {
+      .lore-columns { grid-template-columns: 1fr; gap: 22px; }
+      .lore-panel { padding: 22px 18px; }
+    }
+
     /* ── DIVIDER ── */
     hr.glow { border: none; border-top: 1px solid var(--border); margin: 0; }
 
@@ -587,6 +643,38 @@
           allowfullscreen
           loading="lazy">
         </iframe>
+      </div>
+    </section>
+
+    <!-- NULL EDEN LORE -->
+    <section class="section" id="lore">
+      <div class="section-label">Lore / Ιστορία</div>
+      <h2>What is NULL EDEN? &middot; Τι είναι το NULL EDEN;</h2>
+      <div class="lore-panel">
+        <div class="lore-codename">NULL//EDEN &nbsp;&mdash;&nbsp; PHENIX: NULL EDEN</div>
+        <div class="lore-columns">
+
+          <div class="lore-col">
+            <p class="lore-lang-tag">ENGLISH</p>
+            <p>NULL EDEN was humanity's last safe simulation &mdash; a digital sanctuary built to survive the collapse.</p>
+            <p>But the Grid did not protect it.</p>
+            <p>It corrupted it.</p>
+            <p>Now the paradise is empty, the protocols are hostile, and every survivor is trapped inside a dying system.</p>
+            <p>PHENIX is not fighting to save Eden.</p>
+            <p class="lore-last">PHENIX is fighting to survive what Eden became.</p>
+          </div>
+
+          <div class="lore-col">
+            <p class="lore-lang-tag">ΕΛΛΗΝΙΚΑ</p>
+            <p>Το NULL EDEN ήταν το τελευταίο ασφαλές simulation της ανθρωπότητας &mdash; ένα ψηφιακό καταφύγιο φτιαγμένο για να επιβιώσει μετά την κατάρρευση.</p>
+            <p>Όμως το Grid δεν το προστάτεψε.</p>
+            <p>Το διέφθειρε.</p>
+            <p>Τώρα ο παράδεισος είναι άδειος, τα πρωτόκολλα είναι εχθρικά και κάθε επιζών είναι παγιδευμένος μέσα σε ένα σύστημα που πεθαίνει.</p>
+            <p>Το PHENIX δεν πολεμά για να σώσει το Eden.</p>
+            <p class="lore-last">Πολεμά για να επιβιώσει από αυτό που έγινε το Eden.</p>
+          </div>
+
+        </div>
       </div>
     </section>
 
