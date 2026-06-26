@@ -13465,4 +13465,11 @@ export class Game {
       }
     }
 
-    // ── Dark HUD strip (always on top of background) ────────────────────�
+    // ── Dark HUD strip (always on top of background) ─────────────────────────
+    ctx.fillStyle = BLACK;
+    ctx.fillRect(0, 0, WIDTH, 44);
+  }
+
+  // Called by main.js to pass current mouse pos to the draw call
+  setMousePos(pos) { this._lastMousePos = pos; }
+}
