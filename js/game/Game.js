@@ -8368,7 +8368,8 @@ export class Game {
       #cgm-overlay .center{display:flex;flex-direction:column;align-items:center;gap:18px;}
       #cgm-overlay .title{text-align:center;line-height:1;padding-top:4px;}
       #cgm-overlay .title .l1{font-family:'Press Start 2P',monospace;font-size:clamp(28px,4.4vw,62px);background:linear-gradient(90deg,var(--magenta),var(--purple) 55%,var(--cyan));-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 0 14px rgba(255,45,149,.35));letter-spacing:2px;}
-      #cgm-overlay .title .l2{font-family:'Press Start 2P',monospace;font-size:clamp(18px,2.6vw,36px);color:var(--cyan);text-shadow:var(--glow-cyan);margin-top:14px;letter-spacing:6px;}
+      #cgm-overlay .title .l2{font-family:'Press Start 2P',monospace;font-size:clamp(18px,2.6vw,36px);color:var(--cyan);text-shadow:var(--glow-cyan);margin-top:14px;letter-spacing:5px;}
+      #cgm-overlay .title .l3{font-size:clamp(9px,0.85vw,12px);color:var(--txt-dim);letter-spacing:3px;text-transform:uppercase;margin-top:10px;opacity:0.6;}
       #cgm-overlay .stage-mid{display:flex;align-items:stretch;gap:22px;width:100%;justify-content:center;}
       #cgm-overlay .stage-art{flex:0 0 320px;position:relative;min-height:480px;border-radius:var(--radius);display:grid;place-items:end center;overflow:visible;}
       #cgm-overlay .stage-art:not(.has-art){border:1px dashed rgba(46,230,246,.28);background:radial-gradient(120% 80% at 50% 100%,rgba(46,230,246,.08),transparent 70%);}
@@ -8497,7 +8498,7 @@ export class Game {
 
     <!-- CENTER STAGE -->
     <div class="col center">
-      <div class="title"><div class="l1">CYBER-GRID</div><div class="l2">PROTOCOL</div></div>
+      <div class="title"><div class="l1">PHENIX</div><div class="l2">NULL EDEN</div><div class="l3">A cyber-survival roguelite</div></div>
 
       <div class="stage-mid">
         <div class="stage-art">
@@ -13464,11 +13465,4 @@ export class Game {
       }
     }
 
-    // ── Dark HUD strip (always on top of background) ─────────────────────────
-    ctx.fillStyle = BLACK;
-    ctx.fillRect(0, 0, WIDTH, 44);
-  }
-
-  // Called by main.js to pass current mouse pos to the draw call
-  setMousePos(pos) { this._lastMousePos = pos; }
-}
+    // ── Dark HUD strip (always on top of background) ────────────────────�
