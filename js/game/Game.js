@@ -23,7 +23,7 @@ import { weightedSample } from './Upgrades.js?v=20260615210000';
 import { MutationUI }      from './MutationUI.js?v=20260616080000';
 import { sampleMutations } from './Mutations.js?v=20260615210000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260615210000';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS } from './MetaProgress.js?v=20260615210000';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS } from './MetaProgress.js?v=20260626130000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260615210000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
@@ -489,6 +489,14 @@ export class Game {
     } catch (err) {
       console.error('[CGM Achievements] _initAchievementsOverlay failed:', err);
     }
+
+    this._relicsOverlayEl      = null;   // root #cgm-relics div
+    this._relicsOverlayVisible = false;
+    try {
+      this._initRelicsOverlay();
+    } catch (err) {
+      console.error('[CGM Relics] _initRelicsOverlay failed:', err);
+    }
   }
 
   // UPGRADES = the permanent Grid-Credit progression (spent between runs). ENDLESS MODE appears
@@ -498,7 +506,7 @@ export class Game {
     // Lean main nav only. Exit/Credits/Instructions/Audio moved into the SETTINGS screen.
     const items = ['START GAME'];
     if (this.meta?.isEndlessUnlocked()) items.push('ENDLESS MODE');
-    items.push('CHARACTER SELECT', 'UPGRADES', 'ACHIEVEMENTS', 'SETTINGS', 'EXIT');
+    items.push('CHARACTER SELECT', 'UPGRADES', 'ACHIEVEMENTS', 'RELICS', 'SETTINGS', 'EXIT');
     return items;
   }
 
@@ -565,6 +573,16 @@ export class Game {
     this._euclidNeedles  = [];   // Viral Gas Needle / Corrosive Shard projectiles (cap 48)
     this._euclidBoltCd   = 0;
     this._euclidNeedleCd = 0;
+    // ── Relic run-state (cleared each run) ──────────────────────────────
+    this._firstBossKilledRun = false; // Eden Core Fragment: bonus fragment on first boss kill
+    this._brokenHaloUsed     = false; // Broken Halo: once per run shield trigger
+    this._blacknetCouponUsed = false; // Blacknet Coupon: once per run bonus reroll
+    this._emberTrail         = [];    // Serpent Ember Coil: active ember trail segments
+    this._emberTrailCd       = 0;    // Serpent Ember Coil: cooldown between dashes
+    this._cryoChargeCd       = 0;    // Dragon Cryo Heart: countdown to next charge (starts 0=ready after 30s)
+    this._cryoChargeReady    = false; // Dragon Cryo Heart: true = next proximity fires cryo
+    this._kickFireCount      = 0;    // Crescent Soul Bead: kick fire counter
+    this._oniBloodMarks      = new Map(); // Oni Blood Circuit: enemy -> timerLeft
     this.empRings     = [];
     this._specialRings    = [];
     this.thunderSolo      = null;   // Thunder Solo ultimate state while active
@@ -860,6 +878,7 @@ export class Game {
     this._hideCharSelectOverlay();
     this._hideUpgradesOverlay();
     this._hideAchievementsOverlay();
+    this._hideRelicsOverlay();
     this._showMenuOverlay();
   }
 
@@ -985,6 +1004,9 @@ export class Game {
 
   // Read-only Endless achievements gallery (display only — never unlocks/resets anything).
   goToAchievementsScreen() { this._hideMenuOverlay(); this.gameState = 'achievements'; this._showAchievementsOverlay(); }
+
+  goToRelicsScreen() { this._hideMenuOverlay(); this.gameState = 'relics'; this._showRelicsOverlay(); }
+
 
   goToAudioSettings() {
     this._hideMenuOverlay();
@@ -1649,6 +1671,97 @@ export class Game {
     }
   }
 
+  // ─── Per-frame relic effects ──────────────────────────────────────────────
+  _updateRelicEffects(dt) {
+    if (!this.meta) return;
+
+    // Dragon Cryo Heart: 30s charge timer → cryo proximity burst
+    if (this.meta.isRelicUnlocked('dragon_cryo_heart')) {
+      if (!this._cryoChargeReady) {
+        this._cryoChargeCd += dt;
+        if (this._cryoChargeCd >= 30) { this._cryoChargeReady = true; this._cryoChargeCd = 0; }
+      } else if (this.gameState === 'playing' && !this.paused) {
+        // Fire cryo shard at nearest enemy when ready
+        let nearest = null, nearestD = 400;
+        for (const e of this.enemies) {
+          const d = distance(this.player.pos, e.pos);
+          if (d < nearestD) { nearestD = d; nearest = e; }
+        }
+        if (nearest) {
+          this._cryoChargeReady = false; this._cryoChargeCd = 0;
+          const cryoDmg = nearest.isBoss?.() || nearest.isMegaBoss ? 15 : 40;
+          nearest.takeHit(cryoDmg, this);
+          nearest.stunned = Math.max(nearest.stunned, nearest.isBoss?.() ? 0.3 : 1.5);
+          this._dragonIceShards = this._dragonIceShards || [];
+          this._dragonIceShards.push({ pos: nearest.pos.clone(), t: 0, maxT: 0.6, r: 0, maxR: 35, color: '#00ccff' });
+          this.floatingTexts.push(new FloatingText('CRYO SHARD!', nearest.pos.clone(), '#00ccff', 1.0));
+          this.particles.spawnHitSparks(nearest.pos, '#00ccff');
+        }
+      }
+    }
+
+    // Serpent Ember Coil: tick ember trail segments + damage enemies touching them
+    if (this._emberTrail.length) {
+      if (this._emberTrailCd > 0) this._emberTrailCd -= dt;
+      for (let i = this._emberTrail.length - 1; i >= 0; i--) {
+        const seg = this._emberTrail[i];
+        seg.life -= dt;
+        if (seg.life <= 0) { this._emberTrail.splice(i, 1); continue; }
+        // Damage enemies standing in ember (avoid per-frame loops: tick each 0.25s via phase)
+        if (!seg.dmgTick) seg.dmgTick = 0;
+        seg.dmgTick -= dt;
+        if (seg.dmgTick <= 0) {
+          seg.dmgTick = 0.25;
+          for (const e of this.enemies) {
+            if (distance(e.pos, seg.pos) < 28) {
+              const dmg = (e.isBoss?.() || e.isMegaBoss) ? 4 : 8;
+              e.takeHit(dmg, this);
+            }
+          }
+        }
+      }
+      // Keep adding trail while still dashing
+      if (this.player.dashTimer > 0 && this._emberTrailCd < 7.5) {
+        if (!this._emberSegTimer) this._emberSegTimer = 0;
+        this._emberSegTimer -= dt;
+        if (this._emberSegTimer <= 0) {
+          this._emberSegTimer = 0.05;
+          if (this._emberTrail.length < 40) this._emberTrail.push({ pos: this.player.pos.clone(), life: 1.5, maxLife: 1.5, dmgTick: 0 });
+        }
+      }
+    }
+
+    // Oni Blood Circuit: tick marks down
+    if (this._oniBloodMarks.size) {
+      for (const [e, tl] of this._oniBloodMarks) {
+        const newTl = tl - dt;
+        if (newTl <= 0) { this._oniBloodMarks.delete(e); if (e) e._bloodCircuit = 0; }
+        else { this._oniBloodMarks.set(e, newTl); }
+      }
+    }
+    // Sync enemy-level marks from map
+    for (const e of this.enemies) {
+      if (this._oniBloodMarks.has(e)) e._bloodCircuit = this._oniBloodMarks.get(e);
+    }
+  }
+
+  _drawEmberTrail(ctx) {
+    if (!this._emberTrail?.length) return;
+    ctx.save();
+    for (const seg of this._emberTrail) {
+      const a = Math.max(0, (seg.life / seg.maxLife) * 0.7);
+      const r = 22;
+      ctx.globalAlpha = a * 0.55;
+      ctx.beginPath(); ctx.arc(seg.pos.x, seg.pos.y, r, 0, Math.PI * 2);
+      ctx.fillStyle = '#ff6600'; ctx.fill();
+      ctx.globalAlpha = a * 0.35;
+      ctx.beginPath(); ctx.arc(seg.pos.x, seg.pos.y, r * 0.55, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffdd44'; ctx.fill();
+    }
+    ctx.restore();
+  }
+
+
   // ─── ACHIEVEMENTS DOM overlay ────────────────────────────────────────────────
   _initAchievementsOverlay() {
     if (this._achievementsOverlayEl) return;
@@ -1783,6 +1896,183 @@ export class Game {
     document.body.appendChild(el);
     this._achievementsOverlayEl = el;
   }
+
+  // ─── RELICS DOM overlay ───────────────────────────────────────────────────
+  _initRelicsOverlay() {
+    if (this._relicsOverlayEl) return;
+
+    if (!document.getElementById('cgm-rel-style')) {
+      const style = document.createElement('style');
+      style.id = 'cgm-rel-style';
+      style.textContent = `
+        #cgm-relics {
+          position:fixed; inset:0; z-index:140; display:none;
+          align-items:flex-start; justify-content:center;
+          overflow-y:auto; padding:16px 14px 24px;
+          font-family:'Share Tech Mono',ui-monospace,monospace; color:#cfe9ff;
+          background:
+            radial-gradient(1200px 700px at 50% -10%,rgba(255,100,40,.15),transparent 60%),
+            radial-gradient(900px 600px at 15% 30%,rgba(255,200,50,.08),transparent 60%),
+            linear-gradient(180deg,#0f0a05,#070a1c);
+          --amber:#fbbf24; --orange:#f97316; --cyan:#2ee6f6; --green:#34d399;
+          --red:#ff4444; --txt:#cfe9ff; --txt-dim:#8a7a60; --txt-faint:#5a4a30;
+          --panel-edge:rgba(255,150,40,.12); --radius:12px;
+          --glow-amber:0 0 8px rgba(251,191,36,.55),0 0 22px rgba(251,191,36,.22);
+        }
+        #cgm-relics * { box-sizing:border-box; margin:0; padding:0; }
+        #cgm-relics .cr-stage {
+          position:relative; z-index:1; width:100%; max-width:1140px;
+          border:1px solid var(--panel-edge); border-radius:20px;
+          padding:22px 26px 20px;
+          background:rgba(10,6,2,.82);
+          display:flex; flex-direction:column; align-items:stretch; gap:14px;
+        }
+        #cgm-relics .cr-header { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; }
+        #cgm-relics .cr-title  { font-family:'Orbitron',sans-serif; font-weight:800; font-size:16px; letter-spacing:3px; color:var(--amber); text-shadow:var(--glow-amber); }
+        #cgm-relics .cr-frag   { padding:6px 14px; border-radius:999px; border:1px solid rgba(251,191,36,.35); background:rgba(251,191,36,.07); font-family:'Orbitron',sans-serif; font-weight:700; font-size:13px; color:var(--amber); }
+        #cgm-relics .cr-tagline { font-size:11px; color:var(--txt-dim); letter-spacing:1px; }
+        #cgm-relics .cr-sep    { width:100%; height:1px; background:linear-gradient(90deg,transparent,var(--amber),transparent); opacity:.3; }
+        #cgm-relics .cr-grid   { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:14px; }
+        #cgm-relics .cr-card   { border-radius:var(--radius); border:1px solid rgba(80,50,20,.4); background:rgba(14,8,2,.7); padding:14px; display:flex; flex-direction:column; gap:8px; }
+        #cgm-relics .cr-card.unlocked { border-color:rgba(251,191,36,.45); background:rgba(20,12,0,.7); }
+        #cgm-relics .cr-card.locked-req { border-color:rgba(180,30,30,.3); }
+        #cgm-relics .cr-card-top { display:flex; align-items:center; gap:12px; }
+        #cgm-relics .cr-icon    { width:48px; height:48px; border-radius:10px; border:1px solid rgba(251,191,36,.2); background:rgba(0,0,0,.4); display:flex; align-items:center; justify-content:center; flex-shrink:0; overflow:hidden; }
+        #cgm-relics .cr-icon img { width:100%; height:100%; object-fit:contain; }
+        #cgm-relics .cr-icon-fallback { font-size:22px; }
+        #cgm-relics .cr-info    { flex:1; min-width:0; }
+        #cgm-relics .cr-name    { font-family:'Orbitron',sans-serif; font-weight:700; font-size:11px; letter-spacing:.5px; color:#e8d09a; }
+        #cgm-relics .cr-type    { font-size:9px; letter-spacing:2px; text-transform:uppercase; color:var(--txt-faint); margin-top:2px; }
+        #cgm-relics .cr-effect  { font-size:10px; color:var(--txt-dim); line-height:1.45; }
+        #cgm-relics .cr-req     { font-size:9px; color:#cc4444; letter-spacing:1px; }
+        #cgm-relics .cr-char    { font-size:9px; color:#2ee6f6; letter-spacing:1px; }
+        #cgm-relics .cr-footer  { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:4px; padding-top:8px; border-top:1px solid rgba(255,255,255,.06); }
+        #cgm-relics .cr-cost    { font-family:'Orbitron',sans-serif; font-weight:700; font-size:11px; color:var(--amber); }
+        #cgm-relics .cr-status  { font-family:'Orbitron',sans-serif; font-weight:700; font-size:10px; letter-spacing:1px; }
+        #cgm-relics .cr-status.owned  { color:var(--green); }
+        #cgm-relics .cr-status.locked { color:#5a4030; }
+        #cgm-relics .cr-btn     { padding:7px 14px; border-radius:8px; cursor:pointer; border:1px solid rgba(251,191,36,.35); background:rgba(251,191,36,.08); color:var(--amber); font-family:'Orbitron',sans-serif; font-weight:700; font-size:10px; letter-spacing:1px; transition:.15s; }
+        #cgm-relics .cr-btn:hover:not(:disabled) { background:rgba(251,191,36,.18); border-color:var(--amber); }
+        #cgm-relics .cr-btn:disabled { opacity:.35; cursor:not-allowed; }
+        #cgm-relics .cr-foot { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; }
+        #cgm-relics .cr-foot-btn { padding:11px 26px; border-radius:10px; cursor:pointer; border:1px solid rgba(111,134,184,.22); background:rgba(10,6,2,.5); color:var(--txt-dim); font-family:'Orbitron',sans-serif; font-weight:700; font-size:12px; letter-spacing:2px; }
+        #cgm-relics .cr-foot-btn:hover { border-color:var(--txt-dim); color:var(--txt); }
+        #cgm-relics .cr-msg { font-family:'Orbitron',sans-serif; font-size:11px; min-height:18px; letter-spacing:1px; }
+        #cgm-relics .cr-msg.ok   { color:var(--green); }
+        #cgm-relics .cr-msg.err  { color:var(--red); }
+      `;
+      document.head.appendChild(style);
+    }
+
+    const el = document.createElement('div');
+    el.id = 'cgm-relics';
+    el.setAttribute('role','dialog');
+    el.setAttribute('aria-label','Relics');
+    el.innerHTML = `
+      <div class="cr-stage">
+        <div class="cr-header">
+          <div class="cr-title">⬡ NULL RELICS</div>
+          <div class="cr-frag">🧩 <span id="cr-frags">0</span> NULL FRAGMENTS</div>
+        </div>
+        <div class="cr-tagline">Spend NULL FRAGMENTS to decode relics from the broken Eden Core.
+Unlocked relics can appear in future runs. Character relics only activate for their matching survivor.</div>
+        <div class="cr-sep"></div>
+        <div class="cr-grid" id="cr-grid"></div>
+        <div class="cr-sep"></div>
+        <div class="cr-foot">
+          <button class="cr-foot-btn" id="cr-back-btn">◀ BACK</button>
+          <div class="cr-msg" id="cr-msg"></div>
+        </div>
+      </div>
+    `;
+    el.querySelector('#cr-back-btn')?.addEventListener('click', () => this.goToMainMenu());
+    document.body.appendChild(el);
+    this._relicsOverlayEl = el;
+  }
+
+  _showRelicsOverlay() {
+    if (!this._relicsOverlayEl) return;
+    this._relicsOverlayEl.style.display = 'flex';
+    this._relicsOverlayVisible = true;
+    this._syncRelicsOverlay();
+  }
+
+  _hideRelicsOverlay() {
+    if (!this._relicsOverlayEl) return;
+    this._relicsOverlayEl.style.display = 'none';
+    this._relicsOverlayVisible = false;
+  }
+
+  _syncRelicsOverlay() {
+    const el = this._relicsOverlayEl;
+    if (!el || !this.meta) return;
+    const pf = this.meta.protocolFragments;
+    const fragsEl = el.querySelector('#cr-frags');
+    if (fragsEl) fragsEl.textContent = pf;
+    const grid = el.querySelector('#cr-grid');
+    if (!grid) return;
+
+    const typeLabel = { universal:'UNIVERSAL', boss:'BOSS RELIC', character:'CHARACTER RELIC' };
+    const iconFallback = {
+      eden_core_fragment:'🌐', null_battery:'🔋', broken_halo:'🔆', blacknet_coupon:'🎟',
+      serpent_ember_coil:'🔥', dragon_cryo_heart:'❄', oni_blood_circuit:'⚡',
+      crescent_soul_bead:'🌊', null_venom_chamber:'☠', mirror_kill_protocol:'🪞',
+    };
+
+    grid.innerHTML = RELIC_DEFS.map(r => {
+      const owned   = this.meta.isRelicUnlocked(r.id);
+      const reqMet  = !r.req || this.meta.hasBossKill(r.req);
+      const canAfford = pf >= r.cost;
+      const canBuy  = !owned && reqMet && canAfford;
+      const cls     = owned ? 'cr-card unlocked' : (!reqMet ? 'cr-card locked-req' : 'cr-card');
+      const icon    = `<div class="cr-icon"><img src="assets/relics/${r.id}.png" alt="${r.name}" onerror="this.style.display='none';this.parentNode.innerHTML='<span class=cr-icon-fallback>${iconFallback[r.id]||'◈'}</span>'"/></div>`;
+      const reqLine = r.req && !this.meta.hasBossKill(r.req)
+        ? `<div class="cr-req">🔒 Requires: ${r.reqLabel}</div>` : '';
+      const charLine = r.reqChar ? `<div class="cr-char">◈ ${r.charLabel}</div>` : '';
+      const statusText = owned ? '✓ DECODED' : `${r.cost} 🧩`;
+      const statusCls  = owned ? 'cr-status owned' : 'cr-status locked';
+      const btnHtml = owned
+        ? ''
+        : `<button class="cr-btn" data-id="${r.id}" ${canBuy ? '' : 'disabled'}>${canAfford ? 'DECODE' : 'NEED '+r.cost+'🧩'}</button>`;
+      return `<div class="${cls}">
+        <div class="cr-card-top">
+          ${icon}
+          <div class="cr-info">
+            <div class="cr-name">${r.name}</div>
+            <div class="cr-type">${typeLabel[r.type]||r.type}</div>
+          </div>
+        </div>
+        <div class="cr-effect">${r.effect}</div>
+        ${reqLine}${charLine}
+        <div class="cr-footer">
+          <span class="${statusCls}">${statusText}</span>
+          ${btnHtml}
+        </div>
+      </div>`;
+    }).join('');
+
+    // Wire decode buttons
+    grid.querySelectorAll('.cr-btn[data-id]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.id;
+        const result = this.meta.tryUnlockRelic(id);
+        const msgEl = el.querySelector('#cr-msg');
+        if (result === 'ok') {
+          const def = RELIC_DEFS.find(r => r.id === id);
+          if (msgEl) { msgEl.className='cr-msg ok'; msgEl.textContent=`Relic decoded: ${def?.name||id}`; }
+          this._syncRelicsOverlay();
+        } else if (result === 'poor') {
+          if (msgEl) { msgEl.className='cr-msg err'; msgEl.textContent='Not enough NULL FRAGMENTS.'; }
+        } else if (result === 'req') {
+          if (msgEl) { msgEl.className='cr-msg err'; msgEl.textContent='Boss requirement not met.'; }
+        } else if (result === 'owned') {
+          if (msgEl) { msgEl.className='cr-msg ok'; msgEl.textContent='Already decoded.'; }
+        }
+        setTimeout(() => { if (msgEl) msgEl.textContent=''; }, 3000);
+      });
+    });
+  }
+
 
   _showAchievementsOverlay() {
     if (!this._achievementsOverlayEl) return;
@@ -2640,7 +2930,7 @@ export class Game {
     // Cyan electric pulse ring around the player
     this._specialRings.push({ pos: p.pos.clone(), radius: 0, maxRadius: radius,
                                life: 0.5, maxLife: 0.5, color1: CYAN, color2: '#ffffff' });
-    p.empCloudCooldown = Math.max(8, 12 - p.upgrades['EMP Cloud']);   // 12s base, upgrade trims it
+    p.empCloudCooldown = Math.max(8, 12 - p.upgrades['EMP Cloud']) * (this.meta?.isRelicUnlocked('null_battery') ? 0.92 : 1.0);   // 12s base; Null Battery -8%
     this.floatingTexts.push(new FloatingText('STUN PULSE!', p.pos.clone(), CYAN, 0.9));
     // (Japan Phasewalker's EMP Shockwave is now AUTOMATIC/passive — see _updatePhasewalkerFx —
     //  so E stays purely the shared global EMP stun for every character.)
@@ -2655,7 +2945,7 @@ export class Game {
       return;
     }
     p.shieldTimer         = p.shieldDuration;          // 7s active
-    p.pulseShieldCooldown = p.pulseShieldMaxCooldown;  // 25s cooldown
+    p.pulseShieldCooldown = p.pulseShieldMaxCooldown * (this.meta?.isRelicUnlocked('null_battery') ? 0.92 : 1.0);  // 25s cooldown (Null Battery: -8%)
     this._specialRings.push({ pos: p.pos.clone(), radius: 0, maxRadius: 60,
                                life: 0.45, maxLife: 0.45, color1: CYAN, color2: '#bfefff' });
     this.floatingTexts.push(new FloatingText('PULSE SHIELD!', p.pos.clone(), CYAN, 1.0));
@@ -2856,6 +3146,13 @@ export class Game {
     });
     this.screenShake.trigger(7, 0.3);
     this.floatingTexts.push(new FloatingText('PROTOCOL 0: TOTAL CATACLYSM!', p.pos.clone(), RED, 1.6));
+    // Oni Blood Circuit relic: mark nearby enemies for 5s
+    if (this.meta?.isRelicUnlocked('oni_blood_circuit')) {
+      for (const e of this.enemies) {
+        if (distance(e.pos, p.pos) < 350) e._bloodCircuit = 5.0;
+      }
+      this.floatingTexts.push(new FloatingText('BLOOD CIRCUIT!', p.pos.clone(), '#ff4444', 1.0));
+    }
   }
 
   _updateOniFx(dt) {
@@ -3103,7 +3400,21 @@ export class Game {
       for (const w of this._euclidWraps.values()) {
         const pz = w.poison; if (!pz || pz.timeLeft <= 0) continue;
         pz.timeLeft -= dt; pz.tickTimer -= dt;
-        if (pz.tickTimer <= 0) { pz.tickTimer = pz.tickEvery; w.takeDamage(pz.dps * pz.tickEvery); }
+        if (pz.tickTimer <= 0) { pz.tickTimer = pz.tickEvery; w.takeDamage(pz.dps * pz.tickEvery);
+          // Null Venom Chamber: 25% spread on poison-killed enemy
+          if (pz.timeLeft > 0 && pz.timeLeft <= dt * 2 + 0.001 && Math.random() < 0.25
+              && this.meta?.isRelicUnlocked('null_venom_chamber')) {
+            const ep = w._e?.pos; if (ep) for (const ne of this.enemies) {
+              if (ne !== w._e && distance(ne.pos, ep) < 120) {
+                const nw = this._euclidWrap?.(ne); if (nw && !nw.poison?.timeLeft) {
+                  nw.poison = { dps: pz.dps * 0.7, duration: pz.duration * 0.6,
+                    timeLeft: pz.duration * 0.6, tickEvery: pz.tickEvery, tickTimer: pz.tickEvery };
+                  this.floatingTexts.push(new FloatingText('VENOM SPREAD!', ne.pos.clone(), '#44ff44', 0.7));
+                }
+              }
+            }
+          }
+        }
       }
     } catch (err) { console.warn('[Euclid kit]', err); }
   }
@@ -4010,8 +4321,8 @@ export class Game {
         if (choices.length > 0) {
           this.audio?.playLevelUp();
           this.upgradeUI = new UpgradeUI(choices);
-          this.rerollsLeft     = 2;     // two free rerolls per level-up screen
-          this.rerollAvailable = true;
+          this.rerollsLeft     = 2 + (this.meta?.isRelicUnlocked('blacknet_coupon') && !this._blacknetCouponUsed ? (this._blacknetCouponUsed = true, 1) : 0);
+          this.rerollAvailable = this.rerollsLeft > 0;
           return;
         }
       }
@@ -4073,7 +4384,17 @@ export class Game {
     this.player.update(dt, input);
     // Dash SFX — fire once on the frame a dash begins (rising edge of dashTimer).
     const dashing = this.player.dashTimer > 0;
-    if (dashing && !this._wasDashing) this.audio?.playDash();
+    if (dashing && !this._wasDashing) {
+      this.audio?.playDash();
+      // Serpent Ember Coil relic: spawn ember trail on dash start
+      if (this.meta?.isRelicUnlocked('serpent_ember_coil') && this._emberTrailCd <= 0) {
+        this._emberTrailCd = 8.0;
+        // Seed trail with a burst of segments at player position
+        for (let _i = 0; _i < 4; _i++) {
+          this._emberTrail.push({ pos: this.player.pos.clone(), life: 1.5, maxLife: 1.5 });
+        }
+      }
+    }
     this._wasDashing = dashing;
     this._handleAutoShooting();
     this._handleCorePickupAndSlotting(dt);
@@ -4091,6 +4412,7 @@ export class Game {
     this._updatePhasewalkerFx(dt);  // Japan Phasewalker kit (guards on character)
     this._updateOniFx(dt);          // Oni Protocol 0 (guards on character)
     this._updateEuclidKit(dt);      // Euclid Vector toxin kit (guards on character)
+    this._updateRelicEffects(dt);   // Relic per-frame effects
     this._updateEnemies(dt);
     this._updateOverload(dt);
     this._updateSpawning(dt);
@@ -4691,6 +5013,7 @@ export class Game {
     else if (item === 'ENDLESS MODE')   this.startEndlessRun();
     else if (item === 'UPGRADES')       this.goToUpgradesScreen();
     else if (item === 'ACHIEVEMENTS')   this.goToAchievementsScreen();
+    else if (item === 'RELICS')         this.goToRelicsScreen();
     else if (item === 'SETTINGS')       this.goToSettings();
     else if (item === 'EXIT') { try { window.close(); } catch (e) {} this.goToExitScreen(); }   // browser-safe: close if allowed, else friendly exit screen
   }
@@ -5993,6 +6316,22 @@ export class Game {
       this._chromeFx.push({ pos: p.pos.clone(), r: FR * 0.5, dr: FR * 1.4, life: 0.5, maxLife: 0.5, color: '#ffd0f4' });
       this.screenShake.trigger(4, 0.2);
       this._chromePhantom = null;
+      // Mirror Kill Protocol relic: shadow slash on clone expiry
+      if (this.meta?.isRelicUnlocked('mirror_kill_protocol') && p.selectedCharacter === 'assassin_clone') {
+        const slashR = 160, slashDmg = 22;
+        let slashHits = 0;
+        for (const e of this.enemies) {
+          if (distance(p.pos, e.pos) < slashR) {
+            e.takeHit(slashDmg * (e.isBoss?.() || e.isMegaBoss ? 0.5 : 1), this);
+            slashHits++;
+          }
+        }
+        this._chromeFx.push({ pos: p.pos.clone(), r: slashR * 0.2, dr: slashR * 1.8, life: 0.4, maxLife: 0.4, color: '#880088' });
+        if (slashHits >= 3) {
+          p.mana = Math.min(p.maxMana, p.mana + 20);
+          this.floatingTexts.push(new FloatingText('MIRROR KILL! +20 MANA', p.pos.clone(), '#ff88ff', 1.0));
+        }
+      }
     }
   }
 
@@ -6214,6 +6553,14 @@ export class Game {
         radius: HITR, dmg: DMG, bossDmg: BOSSDMG, pierce: PIERCE,
         hits: new Set(), trail: [], dead: false,
       });
+      // Crescent Soul Bead relic: every 7th kick pierces +2 more + shockwave
+      if (this.meta?.isRelicUnlocked('crescent_soul_bead') && p.selectedCharacter === 'taekwondo_girl') {
+        this._kickFireCount++;
+        if (this._kickFireCount % 7 === 0) {
+          sk.blades[sk.blades.length - 1].pierce += 2;
+          this._specialRings.push({ pos: p.pos.clone(), radius: 0, maxRadius: 80, life: 0.35, maxLife: 0.35, color1: CYAN, color2: '#bdfff0' });
+        }
+      }
     }
   }
 
@@ -7678,6 +8025,7 @@ export class Game {
     this._drawChainLightning(ctx);
     this._drawNeonPierceBeam(ctx);
     this._drawSkyfall(ctx);         // Brawler ultimate impacts
+    this._drawEmberTrail(ctx);
     this._drawCrescentSlashes(ctx); // Brawler secondary
     this._drawChakrams(ctx);        // Brawler primary
     this._drawChromePhantom(ctx);   // Assassin ultimate (clone overlays + burst rings)
@@ -10756,6 +11104,19 @@ export class Game {
     if (this.playerHitCooldown > 0) return false;                                // within 0.5s grace
     const applied = Math.min(dmg, cap);
     this.player.applyDamage(applied);
+    // Broken Halo relic: once per run when HP drops below 25%
+    if (!this._brokenHaloUsed && this.meta?.isRelicUnlocked('broken_halo') &&
+        this.player.hp > 0 && this.player.hp < this.player.maxHp * 0.25) {
+      this._brokenHaloUsed = true;
+      this.player.shieldTimer = Math.max(this.player.shieldTimer, 2.0);
+      for (const e of this.enemies) {
+        const d = distance(e.pos, this.player.pos);
+        if (d < 200) e.vel.addMut(safeNormalize(new Vec2(e.pos.x - this.player.pos.x, e.pos.y - this.player.pos.y)).scale(400));
+      }
+      this._specialRings.push({ pos: this.player.pos.clone(), radius: 0, maxRadius: 200, life: 0.5, maxLife: 0.5, color1: '#ffffff', color2: '#ffdd44' });
+      this.floatingTexts.push(new FloatingText('BROKEN HALO!', this.player.pos.clone(), '#ffdd44', 1.2));
+      this.screenShake.trigger(8, 0.3);
+    }
     this.playerHitCooldown = 0.5;
     this.screenShake.trigger(shake, 0.2);
     this.particles.spawnHitSparks(this.player.pos, color);
@@ -11453,6 +11814,10 @@ export class Game {
     // Protocol Fragment reward
     if (this.meta && this.endless) {
       this.meta.protocolFragments += BOSS_KILL_PF;
+      if (this.meta.isRelicUnlocked('eden_core_fragment') && !this._firstBossKilledRun) {
+        this.meta.protocolFragments += 1; this._firstBossKilledRun = true;
+        this.floatingTexts.push(new FloatingText('+1 🧩 EDEN CORE', new Vec2(t.pos.x, t.pos.y - 110), '#ffdd44', 2.2));
+      }
       this.meta._save();
       this.floatingTexts.push(new FloatingText('+' + BOSS_KILL_PF + ' 🧩 FRAGMENT',
         new Vec2(t.pos.x, t.pos.y - 90), '#ff5ea8', 2.5));
@@ -11702,6 +12067,10 @@ export class Game {
     // Protocol Fragment reward
     if (this.meta && this.endless) {
       this.meta.protocolFragments += BOSS_KILL_PF;
+      if (this.meta.isRelicUnlocked('eden_core_fragment') && !this._firstBossKilledRun) {
+        this.meta.protocolFragments += 1; this._firstBossKilledRun = true;
+        this.floatingTexts.push(new FloatingText('+1 🧩 EDEN CORE', new Vec2(a.pos.x, a.pos.y - 80), '#ffdd44', 2.2));
+      }
       this.meta._save();
       this.floatingTexts.push(new FloatingText('+' + BOSS_KILL_PF + ' 🧩 FRAGMENT',
         new Vec2(a.pos.x, a.pos.y - 60), '#ff5ea8', 2.5));
@@ -11942,6 +12311,10 @@ export class Game {
     // Protocol Fragment reward
     if (this.meta && this.endless) {
       this.meta.protocolFragments += BOSS_KILL_PF;
+      if (this.meta.isRelicUnlocked('eden_core_fragment') && !this._firstBossKilledRun) {
+        this.meta.protocolFragments += 1; this._firstBossKilledRun = true;
+        this.floatingTexts.push(new FloatingText('+1 🧩 EDEN CORE', new Vec2(a.pos.x, a.pos.y - 110), '#ffdd44', 2.2));
+      }
       this.meta._save();
       this.floatingTexts.push(new FloatingText('+' + BOSS_KILL_PF + ' 🧩 FRAGMENT',
         new Vec2(a.pos.x, a.pos.y - 90), '#ff5ea8', 2.5));
@@ -12148,6 +12521,11 @@ export class Game {
     this.xp    += 120;
     this.credits = (this.credits || 0) + 3;
     if (typeof this.protocolFragments !== 'undefined') this.protocolFragments += BOSS_KILL_PF;
+    if (this.meta) { this.meta.recordBossKill('cyberSerpent');
+      if (this.endless && this.meta.isRelicUnlocked('eden_core_fragment') && !this._firstBossKilledRun) {
+        this.meta.protocolFragments += 1; this._firstBossKilledRun = true;
+        this.floatingTexts.push(new FloatingText('+1 🧩 EDEN CORE', new Vec2(pos.x, pos.y - 70), '#ffdd44', 2.2));
+      } }
 
     // VFX
     this.particles.spawnExplosion(pos, ORANGE, 32);
@@ -12414,6 +12792,11 @@ export class Game {
     this.xp    += 180;
     this.credits = (this.credits || 0) + 5;
     if (typeof this.protocolFragments !== 'undefined') this.protocolFragments += BOSS_KILL_PF;
+    if (this.meta) { this.meta.recordBossKill('cyberDragon');
+      if (this.endless && this.meta.isRelicUnlocked('eden_core_fragment') && !this._firstBossKilledRun) {
+        this.meta.protocolFragments += 1; this._firstBossKilledRun = true;
+        this.floatingTexts.push(new FloatingText('+1 🧩 EDEN CORE', new Vec2(pos.x, pos.y - 70), '#ffdd44', 2.2));
+      } }
 
     // VFX
     this.particles.spawnExplosion(pos, '#00ccff', 32);
