@@ -524,6 +524,21 @@ export class MetaProgress {
     this._save();
   }
 
+  // ─── Safe upgrade respec ──────────────────────────────────────────────────
+  // Refunds all Grid Cores spent on purchased meta/synergy upgrades and clears
+  // upgrade levels. Does NOT touch: achievements, records, unlocks, relics,
+  // protocol cards/fragments, boss echoes, run history, or any other progress.
+  respec() {
+    let refund = 0;
+    for (const upg of [...META_UPGRADES, ...SYNERGY_UPGRADES]) {
+      const lvl = this.levels[upg.key] || 0;
+      for (let l = 0; l < lvl; l++) refund += upgradeCost(upg, l);
+    }
+    this.credits += refund;
+    this.levels = {};
+    this._save();
+  }
+
   // Custom profile name (optional; UI falls back to 'PLAYER_01'). Capped + persisted.
   getProfileName() { return this.profileName; }
   setProfileName(n) { this.profileName = (typeof n === 'string' && n.trim()) ? n.trim().slice(0, 16) : null; this._save(); }

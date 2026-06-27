@@ -1,4 +1,4 @@
-import { Game } from './game/Game.js?v=20260627380000';
+import { Game } from './game/Game.js?v=20260627390000';
 import { AudioManager } from './audio/AudioManager.js?v=20260627230000';
 import { GamepadInput } from './Gamepad.js?v=20260615210000';
 import { initTouchControls } from './TouchInput.js?v=20260625200000';
@@ -268,6 +268,28 @@ canvas.addEventListener('mousedown', e => {
     if (mousePos.x >= bx && mousePos.x <= bx + bw &&
         mousePos.y >= by && mousePos.y <= by + bh) {
       game.goToMainMenu();
+    }
+
+  } else if (game.gameState === 'lore_archive') {
+    // Left nav section click — navX=50+16=66, navY=55+66=121, navW=206, sH=floor(490/7)=70
+    const navX = 66, navY = 121, navW = 206, navH = 490;
+    const SECTION_COUNT = 7;
+    const sH = Math.floor(navH / SECTION_COUNT);
+    for (let i = 0; i < SECTION_COUNT; i++) {
+      const sy = navY + i * sH;
+      if (mousePos.x >= navX && mousePos.x <= navX + navW &&
+          mousePos.y >= sy   && mousePos.y <= sy + sH) {
+        game._loreSection = i;
+        break;
+      }
+    }
+    // BACK button: bw=160,bh=38 centered, by=py+ph-48 where ph=610,py=55
+    const bw = 160, bh = 38;
+    const bx = Math.round(canvas.width / 2 - bw / 2);
+    const by = Math.round((canvas.height - 610) / 2) + 610 - 48;
+    if (mousePos.x >= bx && mousePos.x <= bx + bw &&
+        mousePos.y >= by && mousePos.y <= by + bh) {
+      game.goToSettings();
     }
 
   } else if (game.gameState === 'character_select') {

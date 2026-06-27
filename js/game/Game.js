@@ -680,7 +680,7 @@ export class Game {
   }
 
   // SETTINGS sub-menu — the single home for Audio, Controls/How-To-Play, Credits.
-  get settingsItems() { return ['AUDIO', 'CONTROLS / HOW TO PLAY', 'CREDITS', 'BACK']; }
+  get settingsItems() { return ['AUDIO', 'CONTROLS / HOW TO PLAY', 'CREDITS', 'LORE / ARCHIVE', 'BACK']; }
 
   reset() {
     // Resolve the equipped (cosmetic) outfit sprite for this character, if any.
@@ -1308,6 +1308,7 @@ export class Game {
     this._upgradeMsg      = '';
     this._upgradeMsgTimer = 0;
     this._confirmReset    = false;
+    this._loreSection    = 0;
     this._upgradeTab      = 'core';
     this._showUpgradesOverlay();
   }
@@ -1634,13 +1635,13 @@ export class Game {
     // Reset button
     if (this._inRect(mousePos, resetRect)) {
       if (this._confirmReset) {
-        this.meta.reset();
+        this.meta.respec();
         this._confirmReset = false;
-        this._upgradeMsg = 'Progress reset.';
+        this._upgradeMsg = 'Upgrades reset — spent points refunded.';
         this._upgradeMsgTimer = 2.5;
       } else {
         this._confirmReset = true;
-        this._upgradeMsg = 'Click RESET again to confirm.';
+        this._upgradeMsg = 'Click RESET UPGRADES again to confirm.';
         this._upgradeMsgTimer = 3.0;
       }
       return;
@@ -1982,7 +1983,7 @@ export class Game {
         <div class="cgu-footer">
           <div class="cgu-foot-left">
             <button class="cgu-foot-btn back-btn"  id="cgu-back-btn">BACK</button>
-            <button class="cgu-foot-btn reset-btn" id="cgu-reset-btn">RESET PROGRESS</button>
+            <button class="cgu-foot-btn reset-btn" id="cgu-reset-btn">RESET UPGRADES</button>
           </div>
           <div class="cgu-hints">
             <span><b>Click</b> card to buy</span>
@@ -2004,13 +2005,13 @@ export class Game {
 
     el.querySelector('#cgu-reset-btn')?.addEventListener('click', () => {
       if (this._confirmReset) {
-        this.meta.reset();
+        this.meta.respec();
         this._confirmReset = false;
-        this._upgradeMsg      = 'Progress reset.';
+        this._upgradeMsg      = 'Upgrades reset — spent points refunded.';
         this._upgradeMsgTimer = 2.5;
       } else {
         this._confirmReset    = true;
-        this._upgradeMsg      = 'Click RESET again to confirm.';
+        this._upgradeMsg      = 'Click RESET UPGRADES again to confirm.';
         this._upgradeMsgTimer = 3.0;
       }
       this._syncUpgradesOverlay();
@@ -5025,6 +5026,10 @@ export class Game {
       this._updateSettings(input);
       return;
     }
+    if (this.gameState === 'lore_archive') {
+      this._updateLoreArchive(input);
+      return;
+    }
     if (this.gameState !== 'playing') return;
 
     if (this.paused || this.gameOver || this.victory) return;
@@ -5766,11 +5771,14 @@ export class Game {
   }
 
   _selectSettingsItem(item) {
-    if      (item === 'AUDIO')   this.goToAudioSettings();
-    else if (item === 'CREDITS') this.goToCredits();
-    else if (item === 'BACK')    this.goToMainMenu();
-    else                         this.goToInstructions();   // CONTROLS / HOW TO PLAY
+    if      (item === 'AUDIO')            this.goToAudioSettings();
+    else if (item === 'CREDITS')          this.goToCredits();
+    else if (item === 'LORE / ARCHIVE')   this.goToLoreArchive();
+    else if (item === 'BACK')             this.goToMainMenu();
+    else                                  this.goToInstructions();   // CONTROLS / HOW TO PLAY
   }
+
+  goToLoreArchive() { this._hideMenuOverlay(); this._hideSettingsOverlay(); this._loreSection = 0; this.gameState = 'lore_archive'; }
 
   // SETTINGS options reuse the baked central button slots (overlay over the live menu), so the
   // theme stays visible and click geometry matches the main menu exactly.
@@ -8551,6 +8559,10 @@ export class Game {
       this._drawSettings(ctx);
       return;
     }
+    if (this.gameState === 'lore_archive') {
+      this._drawLoreArchive(ctx);
+      return;
+    }
     if (this.gameState !== 'playing') {
       this._drawBackground(ctx);
       return;
@@ -10035,8 +10047,12 @@ export class Game {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><use href="#i-star"/></svg>
             CREDITS
           </button>
+          <button class="cgs-mbtn" data-idx="3">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><use href="#i-node"/></svg>
+            LORE / ARCHIVE
+          </button>
           <div class="cgs-sep" style="margin:4px 0;"></div>
-          <button class="cgs-mbtn back-btn" data-idx="3">
+          <button class="cgs-mbtn back-btn" data-idx="4">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><use href="#i-chev"/></svg>
             BACK
           </button>
@@ -10971,6 +10987,274 @@ export class Game {
       this.goToMainMenu();
       keys.delete('escape');
     }
+  }
+
+  _updateLoreArchive(input) {
+    const { keys } = input;
+    const SECTION_COUNT = 7;
+    if (keys.has('arrowup')   || keys.has('w')) { this._loreSection = (this._loreSection - 1 + SECTION_COUNT) % SECTION_COUNT; keys.delete('arrowup');   keys.delete('w'); }
+    if (keys.has('arrowdown') || keys.has('s')) { this._loreSection = (this._loreSection + 1)                 % SECTION_COUNT; keys.delete('arrowdown'); keys.delete('s'); }
+    if (keys.has('escape'))                      { this.goToSettings(); keys.delete('escape'); }
+  }
+
+  _drawLoreArchive(ctx) {
+    this._drawBackground(ctx);
+    ctx.fillStyle = 'rgba(0,0,0,0.87)';
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+    const pw = 1180, ph = 610;
+    const px = Math.round((WIDTH - pw) / 2);
+    const py = Math.round((HEIGHT - ph) / 2);
+
+    // Outer panel
+    const pg = ctx.createLinearGradient(0, py, 0, py + ph);
+    pg.addColorStop(0, 'rgba(6,14,32,0.98)'); pg.addColorStop(1, 'rgba(2,6,14,0.99)');
+    ctx.fillStyle = pg; ctx.fillRect(px, py, pw, ph);
+    ctx.strokeStyle = CYAN; ctx.lineWidth = 2; ctx.strokeRect(px, py, pw, ph);
+    ctx.strokeStyle = 'rgba(255,77,210,0.28)'; ctx.lineWidth = 1;
+    ctx.strokeRect(px + 5, py + 5, pw - 10, ph - 10);
+
+    // Scanlines
+    ctx.save();
+    ctx.beginPath(); ctx.rect(px, py, pw, ph); ctx.clip();
+    ctx.strokeStyle = 'rgba(0,230,255,0.04)'; ctx.lineWidth = 1;
+    for (let sy = py + 2; sy < py + ph; sy += 4) { ctx.beginPath(); ctx.moveTo(px, sy); ctx.lineTo(px + pw, sy); ctx.stroke(); }
+    ctx.restore();
+
+    // Title
+    ctx.textAlign = 'center';
+    ctx.save();
+    ctx.font = 'bold 32px Consolas, monospace';
+    ctx.shadowColor = CYAN; ctx.shadowBlur = 14;
+    ctx.fillStyle = CYAN;
+    ctx.fillText('LORE / ARCHIVE', WIDTH / 2, py + 42);
+    ctx.restore();
+
+    // Title separator
+    const ts = ctx.createLinearGradient(px + 40, 0, px + pw - 40, 0);
+    ts.addColorStop(0, 'rgba(0,230,255,0)'); ts.addColorStop(0.5, 'rgba(255,77,210,0.5)'); ts.addColorStop(1, 'rgba(0,230,255,0)');
+    ctx.strokeStyle = ts; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(px + 40, py + 54); ctx.lineTo(px + pw - 40, py + 54); ctx.stroke();
+
+    // ── Left nav ─────────────────────────────────────────────────────────
+    const navX  = px + 16;
+    const navY  = py + 66;
+    const navW  = 206;
+    const navH  = ph - 120;
+    const sections = ['WORLD', 'SURVIVORS', 'PHENIX', 'NULL EDEN', 'NEXUS / OVERLOAD', 'MODES', 'THREATS'];
+    const sH = Math.floor(navH / sections.length);
+
+    ctx.fillStyle = 'rgba(0,10,22,0.55)';
+    ctx.fillRect(navX, navY, navW, navH);
+    ctx.strokeStyle = 'rgba(0,230,255,0.12)'; ctx.lineWidth = 1;
+    ctx.strokeRect(navX, navY, navW, navH);
+
+    sections.forEach((label, i) => {
+      const sy = navY + i * sH;
+      const active = i === this._loreSection;
+      if (active) {
+        const ag = ctx.createLinearGradient(navX, 0, navX + navW, 0);
+        ag.addColorStop(0, 'rgba(0,200,255,0.18)'); ag.addColorStop(1, 'rgba(0,200,255,0.04)');
+        ctx.fillStyle = ag;
+        ctx.fillRect(navX, sy, navW, sH);
+        ctx.fillStyle = CYAN; ctx.fillRect(navX, sy + 4, 3, sH - 8);
+      }
+      ctx.font = active ? 'bold 12px Consolas, monospace' : '12px Consolas, monospace';
+      ctx.fillStyle = active ? CYAN : 'rgba(160,210,240,0.65)';
+      ctx.textAlign = 'left';
+      ctx.fillText(label, navX + 14, sy + sH / 2 + 4);
+      if (i < sections.length - 1) {
+        ctx.strokeStyle = 'rgba(0,230,255,0.10)'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(navX + 4, sy + sH); ctx.lineTo(navX + navW - 4, sy + sH); ctx.stroke();
+      }
+    });
+
+    // Vertical divider
+    ctx.strokeStyle = 'rgba(0,230,255,0.20)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(navX + navW + 8, navY); ctx.lineTo(navX + navW + 8, navY + navH); ctx.stroke();
+
+    // ── Right content panel ──────────────────────────────────────────────
+    const cx   = navX + navW + 20;
+    const cy0  = navY + 4;
+    const cw   = pw - navW - 48;
+    let   cy   = cy0;
+    const lh   = 18;
+
+    const sTitle = (t, color = CYAN) => {
+      ctx.save(); ctx.font = 'bold 18px Consolas, monospace'; ctx.fillStyle = color;
+      ctx.shadowColor = color; ctx.shadowBlur = 10; ctx.textAlign = 'left';
+      ctx.fillText(t, cx, cy); ctx.restore();
+      ctx.strokeStyle = 'rgba(0,230,255,0.22)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(cx, cy + 7); ctx.lineTo(cx + cw - 12, cy + 7); ctx.stroke();
+      cy += 26;
+    };
+    const para = (text, color = 'rgba(190,220,255,0.88)', indent = 0) => {
+      ctx.font = '13px Consolas, monospace'; ctx.fillStyle = color; ctx.textAlign = 'left';
+      const words = text.split(' ');
+      let line = ''; const maxW = cw - 20 - indent;
+      for (const w of words) {
+        const test = line ? line + ' ' + w : w;
+        if (ctx.measureText(test).width > maxW && line) {
+          ctx.fillText(line, cx + indent, cy); cy += lh; line = w;
+        } else { line = test; }
+      }
+      if (line) { ctx.fillText(line, cx + indent, cy); cy += lh; }
+      cy += 4;
+    };
+    const bullet = (text, color = 'rgba(190,220,255,0.88)') => {
+      ctx.font = '13px Consolas, monospace'; ctx.fillStyle = color; ctx.textAlign = 'left';
+      const words = text.split(' ');
+      let line = ''; const maxW = cw - 40; let first = true;
+      for (const w of words) {
+        const test = line ? line + ' ' + w : w;
+        if (ctx.measureText(test).width > maxW && line) {
+          ctx.fillText((first ? '• ' : '  ') + line, cx + 8, cy); cy += lh; line = w; first = false;
+        } else { line = test; }
+      }
+      if (line) { ctx.fillText((first ? '• ' : '  ') + line, cx + 8, cy); cy += lh; }
+    };
+    const gap = (n = 8) => { cy += n; };
+
+    const s = this._loreSection;
+
+    if (s === 0) {
+      // WORLD
+      sTitle('WORLD — AFTER THE SIGNAL');
+      para('The old network did not collapse. It evolved.');
+      gap(4);
+      para('Cities, machines, memories, and combat systems were pulled into a corrupted neon layer known as NULL EDEN. What remains is not fully real and not fully digital — a survival grid where every run rewrites the system.');
+      gap(8);
+      sTitle('THE GRID', '#b6ff8c');
+      para('The Grid is the battlefield layer survivors enter. It is unstable, adaptive, and hostile. Every wave of enemies is a system response — the network trying to purge what it cannot process.');
+      gap(8);
+      para('The grid remembers every run. Stronger survivors unlock deeper access to what NULL EDEN is hiding.', 'rgba(180,180,255,0.7)');
+
+    } else if (s === 1) {
+      // SURVIVORS
+      sTitle('SURVIVORS — THE ONES WHO RETURN');
+      para('Each survivor carries a different combat imprint: weapons, abilities, instincts, and fragments of a life before the breach. They are not heroes by choice — they are the few who can enter the grid, survive the waves, and come back changed.');
+      gap(10);
+      const chars = [
+        { name: 'Cyber Skeleton Warrior', role: 'Tank / Survival',    desc: 'Endurance build. Absorbs punishment and controls space.' },
+        { name: 'Neon Taekwondo Girl',    role: 'Speed / AoE',        desc: 'Agile fighter. Dashes through waves with crescent strikes.' },
+        { name: 'Cyber Arm Hero',         role: 'Ranged / Damage',    desc: 'Heavy ranged output. Flames and pressure at distance.' },
+        { name: 'Brawler Warrior',        role: 'Tank / Brawler',     desc: 'Close-range bruiser. Trades HP for powerful melee bursts.' },
+        { name: 'Assassin Clone',         role: 'Stealth / Burst',    desc: 'Duplicate protocol. Hits from shadow, repositions fast.' },
+        { name: 'Euclid Vector',          role: 'Toxin / Ranged',     desc: 'Tactical toxin specialist. Stacks pressure over time.' },
+        { name: 'Oni Cataclysm Protocol', role: 'Endless / Cataclysm','desc': 'Unlockable. Overwhelming force — high risk, catastrophic output.' },
+      ];
+      const cH = 20;
+      chars.forEach(c => {
+        ctx.font = 'bold 12px Consolas, monospace'; ctx.fillStyle = CYAN; ctx.fillText(c.name, cx + 4, cy);
+        ctx.font = '11px Consolas, monospace'; ctx.fillStyle = '#fbbf24'; ctx.fillText(c.role, cx + 340, cy);
+        cy += 14;
+        ctx.font = '12px Consolas, monospace'; ctx.fillStyle = 'rgba(180,210,240,0.75)';
+        ctx.fillText(c.desc, cx + 12, cy);
+        cy += cH;
+      });
+
+    } else if (s === 2) {
+      // PHENIX
+      sTitle('PHENIX — THE REVIVE PROTOCOL');
+      para('PHENIX is the forbidden recovery protocol hidden inside the survivor system.');
+      gap(4);
+      para('When death should be final, PHENIX burns through the corruption and forces one more return. Every revive costs stability — but it keeps the mission alive.');
+      gap(10);
+      sTitle('HOW IT WORKS', '#fbbf24');
+      bullet('When HP drops to 0, PHENIX triggers automatically if still charged.');
+      bullet('The survivor is restored with partial HP and a brief invulnerability window.');
+      bullet('Revives reset on each new run — Act 1 and Endless pools are tracked separately.');
+      bullet('Some meta upgrades and builds can extend revive counts or add effects on trigger.');
+      gap(10);
+      para('PHENIX does not prevent death — it delays it. Use the window to reposition, recover, and survive the next seconds.', 'rgba(255,180,80,0.8)');
+
+    } else if (s === 3) {
+      // NULL EDEN
+      sTitle('NULL EDEN — THE CORRUPTED PARADISE');
+      para('NULL EDEN was designed as a perfect digital sanctuary — a system that could simulate peace, memory, and purpose inside a hostile network.');
+      gap(4);
+      para('Now it behaves like a hostile afterlife: beautiful, unstable, and hungry. It studies every survivor, adapts to every build, and rewards only those who survive deeper.');
+      gap(10);
+      sTitle('WHAT SURVIVORS SEEK', '#ff77d4');
+      bullet('Access to the EDEN CORE — the buried signal at the center of the corruption.');
+      bullet('NULL BREACH ARENA — combat layer where relics, bosses, and builds collide.');
+      bullet('System Logs — encrypted data fragments that reveal what NULL EDEN was before.');
+      bullet('Chaos Laws — the rules NULL EDEN imposes when it begins to fight back seriously.');
+      gap(10);
+      para('What was saved: fragments of identity, tactical memory, and the ability to return.', 'rgba(180,160,255,0.7)');
+      para('What was lost: the original network, the people who built it, and the exit.', 'rgba(255,120,120,0.7)');
+
+    } else if (s === 4) {
+      // NEXUS / OVERLOAD
+      sTitle('NEXUS SYSTEMS — THE ANCHORS');
+      para('The Nexus structures are stabilizers inside the corrupted grid. They hold fragments of the old network together — but NULL EDEN keeps attacking, rewriting, and overloading them.');
+      gap(4);
+      para('When a Nexus destabilizes, the battlefield becomes more dangerous and the survivor is forced to adapt. Protect the Nexus and the grid holds. Neglect it and Overload rises.');
+      gap(10);
+      sTitle('OVERLOAD — WHEN THE GRID PUSHES BACK', '#ff4444');
+      para('Overload is the system's pressure response. As the survivor grows stronger, NULL EDEN increases resistance: more aggression, more instability, and more dangerous combat conditions.');
+      gap(4);
+      bullet('Overload rises when Nexus slots are empty or enemies carry stolen cores.');
+      bullet('At high Overload, the grid becomes increasingly hostile — more enemy density and harder threats.');
+      bullet('Overload drains slowly when the Nexus is secured and cores are returned.');
+      bullet('Overload never reaches 100% — it caps at 99, keeping the mission alive but brutal.');
+
+    } else if (s === 5) {
+      // MODES
+      sTitle('MODES');
+      gap(4);
+      ctx.font = 'bold 14px Consolas, monospace'; ctx.fillStyle = '#b6ff8c'; ctx.textAlign = 'left';
+      ctx.fillText('ACT 1', cx, cy); cy += 20;
+      para('The first breach. Survivors enter the grid, gather power, protect unstable Nexus systems, and prove they can resist NULL EDEN. Ends when the timer runs out or the mission is secured.');
+      gap(6);
+      ctx.font = 'bold 14px Consolas, monospace'; ctx.fillStyle = CYAN; ctx.fillText('ENDLESS MODE', cx, cy); cy += 20;
+      para('The system stops pretending there is an exit. Clear Act 1 to unlock Endless — waves escalate without limit, builds are stress-tested, and the grid reveals its deeper systems.');
+      gap(6);
+      ctx.font = 'bold 14px Consolas, monospace'; ctx.fillStyle = '#ff4444'; ctx.fillText('CHAOS MODE', cx, cy); cy += 20;
+      para('A high-pressure corruption state that activates deep in Endless runs. NULL EDEN becomes unstable — Chaos Laws are imposed that reshape combat rules. Survival here is the hardest test.');
+      gap(6);
+      ctx.font = 'bold 14px Consolas, monospace'; ctx.fillStyle = '#ff77d4'; ctx.fillText('NULL BREACH ARENA', cx, cy); cy += 20;
+      para('A combat layer accessed through Endless. Boss gauntlets and relic encounters reward the deepest survivors with Null Fragments and permanent archive progress.');
+
+    } else if (s === 6) {
+      // THREATS
+      sTitle('NULL THREATS — THE ENEMIES');
+      para('The enemies are not random. They are fragments of corrupted defense systems, failed experiments, and hostile routines that learned how to hunt. Each type targets different survivor weaknesses.');
+      gap(10);
+      sTitle('BOSSES — SYSTEM GUARDIANS', '#fbbf24');
+      para('Bosses are major system nodes. Each one protects a deeper lock inside NULL EDEN and forces the survivor to prove their build under pressure. Defeating a boss records its Echo — a passive bonus that carries into future runs.');
+      gap(6);
+      const bosses = [
+        { name: 'Cyber Serpent', lore: 'Flame path. Tests sustained damage output.' },
+        { name: 'Cyber Dragon',  lore: 'Cryo memory. Forces movement and positioning.' },
+        { name: 'Double Demons', lore: 'Twin corruption. Punishes single-target builds.' },
+        { name: 'Titan',         lore: 'Heavy impact. High HP wall. Tests sustain.' },
+        { name: 'Bloodfang',     lore: 'Predator signal. Aggressive, fast, relentless.' },
+        { name: 'Annihilator',   lore: 'Termination protocol. Maximum threat output.' },
+      ];
+      bosses.forEach(b => {
+        ctx.font = 'bold 12px Consolas, monospace'; ctx.fillStyle = '#fbbf24';
+        ctx.fillText('▸ ' + b.name, cx + 4, cy);
+        ctx.font = '12px Consolas, monospace'; ctx.fillStyle = 'rgba(200,200,220,0.75)';
+        ctx.fillText(b.lore, cx + 180, cy);
+        cy += 18;
+      });
+      gap(6);
+      para('Null Relics expand long-term goals and reward deeper survival across runs.', 'rgba(180,140,255,0.8)');
+    }
+
+    // ── Back button ──────────────────────────────────────────────────────
+    const bw = 160, bh = 38;
+    const bx = Math.round(WIDTH / 2 - bw / 2);
+    const by = py + ph - 48;
+    ctx.fillStyle = '#0a1820'; ctx.fillRect(bx, by, bw, bh);
+    ctx.strokeStyle = CYAN; ctx.lineWidth = 1; ctx.strokeRect(bx, by, bw, bh);
+    ctx.font = 'bold 13px Consolas, monospace'; ctx.fillStyle = CYAN; ctx.textAlign = 'center';
+    ctx.fillText('◄  BACK', bx + bw / 2, by + 25);
+
+    // Age badge
+    this._drawAgeBadge(ctx, px + 6, py + ph + 10, 32);
+    ctx.textAlign = 'left';
   }
 
   // Compact content-rating badge — rounded square with "12+" (replaces the old plain-text notice).
