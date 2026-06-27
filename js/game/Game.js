@@ -12210,11 +12210,17 @@ export class Game {
   _enterNullBreachArena() {
     this._nullBreachActive = true;
     this._nullBreachArena  = {
-      timer:          120,      // 2-minute countdown
-      spawnCd:        8,        // first boss rearm in 8s
-      phase:          0,        // 0=early / 1=mid / 2=late
-      midTransmitted: false,
-      bossesSpawnedThisPhase: 0,
+      timer:              120,    // 2-minute countdown
+      spawnCd:            5,      // first mini-boss rearm in 5s
+      airCd:              8,      // first airstrike in 8s
+      majorCd:            0,      // major boss cooldown (starts ready — first one at elapsed≥30)
+      miniBossIdx:        0,      // round-robin index for titan/bloodfang/annihilator
+      majorIdx:           0,      // round-robin index for serpent/dragon/doubleDemon
+      phase:              0,
+      kills:              0,      // bosses/elites killed inside arena (for reward calc)
+      phase1Transmitted:  false,
+      midTransmitted:     false,
+      finalTransmitted:   false,
     };
 
     // Track for end screen
@@ -12228,13 +12234,13 @@ export class Game {
     this.triggerAnnouncement('⚠ NULL BREACH DETECTED', '#ff44cc');
     this.audio?.playEventWarning?.();
 
-    // EDEN CORE transmission (entry message 2s later so announcement clears first)
+    // EDEN CORE transmissions
     this._queueEdenTransmission('NULL BREACH DETECTED.', { priority: 2, duration: 5 });
     const _self = this;
     setTimeout(() => {
       if (_self._nullBreachArena) {
         _self._queueEdenTransmission(
-          'EDEN CORE: Entering unstable memory pocket.', { priority: 2, duration: 5 }
+          'EDEN CORE: Only elite signals can enter the breach.', { priority: 2, duration: 6 }
         );
       }
     }, 2800);
@@ -12245,70 +12251,109 @@ export class Game {
     }
   }
 
-  // Per-frame update: tick timer, spawn arena pressure, handle completion.
+  // Per-frame update: continuous boss/elite/aircraft gauntlet for the full 2 minutes.
+  // Pressure never stops — when a boss dies, a new one queues up after a short delay.
   _updateNullBreachArena(dt) {
     const arena = this._nullBreachArena;
     if (!arena) return;
 
     arena.timer   -= dt;
     arena.spawnCd -= dt;
+    arena.airCd   -= dt;
+    arena.majorCd -= dt;
 
-    // Phase transitions (elapsed time into arena)
-    const elapsed    = 120 - arena.timer;
-    const newPhase   = elapsed < 40 ? 0 : elapsed < 80 ? 1 : 2;
-    if (newPhase !== arena.phase) {
-      arena.phase = newPhase;
-      arena.bossesSpawnedThisPhase = 0;
-      arena.spawnCd = Math.max(arena.spawnCd, 5);  // brief gap on phase change
-    }
+    const elapsed = 120 - arena.timer;
+    const ARENA_HP_MULT = 1.6;  // arena bosses are 60% tankier
 
-    // Enemy pressure per phase
-    if (arena.spawnCd <= 0) {
-      if (arena.phase === 0) {
-        // Early (0–40s): airstrike + Titan mini-boss
-        if (this.airstrikeShips.length < 1) { this._spawnAirstrike(); arena.spawnCd = 38; }
-        if ((!this.titanBoss || this.titanBoss.hp <= 0) && arena.bossesSpawnedThisPhase < 1) {
-          this.titanSpawned = false; this.titanSpawnTimer = 0;
-          arena.bossesSpawnedThisPhase++;
-          arena.spawnCd = Math.max(arena.spawnCd, 7);
-        }
-      } else if (arena.phase === 1) {
-        // Mid (40–80s): airstrike + Bloodfang, then Annihilator if Bloodfang is dead
-        if (this.airstrikeShips.length < 1) { this._spawnAirstrike(); arena.spawnCd = 32; }
-        if ((!this.bloodfangBoss || this.bloodfangBoss.hp <= 0) && arena.bossesSpawnedThisPhase < 1) {
-          this.bloodfangSpawned = false; this.bloodfangSpawnTimer = 0;
-          arena.bossesSpawnedThisPhase++;
-          arena.spawnCd = Math.max(arena.spawnCd, 7);
-        } else if (arena.bossesSpawnedThisPhase >= 1 &&
-                   (!this.annihilatorBoss || this.annihilatorBoss.hp <= 0) &&
-                   arena.bossesSpawnedThisPhase < 2) {
-          this.annihilatorSpawned = false; this.annihilatorSpawnTimer = 0;
-          arena.bossesSpawnedThisPhase++;
-          arena.spawnCd = Math.max(arena.spawnCd, 10);
-        }
-      } else {
-        // Late (80–120s): airstrike + up to 2 simultaneous mini-bosses for max pressure
-        if (this.airstrikeShips.length < 1) { this._spawnAirstrike(); arena.spawnCd = 28; }
-        const activeBosses = [this.titanBoss, this.bloodfangBoss, this.annihilatorBoss]
-          .filter(b => b && b.hp > 0).length;
-        if (activeBosses < 2 && arena.bossesSpawnedThisPhase < 2) {
-          if (!this.titanBoss || this.titanBoss.hp <= 0) {
-            this.titanSpawned = false; this.titanSpawnTimer = 0;
-            arena.bossesSpawnedThisPhase++;
-          } else if (!this.bloodfangBoss || this.bloodfangBoss.hp <= 0) {
-            this.bloodfangSpawned = false; this.bloodfangSpawnTimer = 0;
-            arena.bossesSpawnedThisPhase++;
-          }
-          arena.spawnCd = Math.max(arena.spawnCd, 8);
-        }
+    // ── Boost freshly-spawned arena bosses (once per boss instance) ──
+    for (const b of [this.titanBoss, this.bloodfangBoss, this.annihilatorBoss,
+                      this.cyberSerpentBoss, this.cyberDragonBoss]) {
+      if (b && b.hp > 0 && !b._arenaHpBoosted) {
+        b._arenaHpBoosted = true;
+        b.hp    = Math.round(b.hp    * ARENA_HP_MULT);
+        b.maxHp = Math.round(b.maxHp * ARENA_HP_MULT);
       }
     }
+    const _dd = this.doubleDemonsBoss;
+    if (_dd && _dd.hp > 0 && !_dd._arenaHpBoosted) {
+      _dd._arenaHpBoosted = true;
+      _dd.hp    = Math.round(_dd.hp    * ARENA_HP_MULT);
+      _dd.maxHp = Math.round(_dd.maxHp * ARENA_HP_MULT);
+    }
 
-    // Mid-arena EDEN CORE taunt (at 60s in)
+    // ── Aircraft pressure: keep ships in the air the whole arena ──
+    if (arena.airCd <= 0 && this.airstrikeShips.length < 2) {
+      this._spawnAirstrike();
+      arena.airCd = 25 + Math.random() * 10;
+    }
+
+    // Count currently active bosses
+    const activeMinis = [this.titanBoss, this.bloodfangBoss, this.annihilatorBoss]
+      .filter(b => b && b.hp > 0).length;
+    const activeMajors = [this.cyberSerpentBoss, this.cyberDragonBoss]
+      .filter(b => b && b.hp > 0).length +
+      (this.doubleDemonsBoss && this.doubleDemonsBoss.hp > 0 ? 1 : 0);
+
+    // ── Mini-boss pressure: keep at least 1 mini-boss alive at all times ──
+    // After one dies, spawnCd creates a ~6-10s gap before the next arrives.
+    if (arena.spawnCd <= 0 && activeMinis < 1) {
+      const slot = arena.miniBossIdx % 3;
+      arena.miniBossIdx++;
+      if (slot === 0) {
+        this.titanSpawned = false; this.titanSpawnTimer = 0;
+      } else if (slot === 1) {
+        this.bloodfangSpawned = false; this.bloodfangSpawnTimer = 0;
+      } else {
+        this.annihilatorSpawned = false; this.annihilatorSpawnTimer = 0;
+      }
+      arena.spawnCd = 8 + Math.random() * 4;   // 8–12s until next recheck
+    }
+
+    // ── Major boss rotation: Serpent → Dragon → Double Demons → repeat ──
+    // First major boss enters at 30s elapsed; subsequents after a 20s cooldown.
+    if (elapsed >= 30 && activeMajors < 1 && arena.majorCd <= 0) {
+      const slot = arena.majorIdx % 3;
+      arena.majorIdx++;
+      if (slot === 0) {
+        // Cyber Serpent
+        this.cyberSerpentSpawned    = false;
+        this.cyberSerpentSpawnTimer = 0;
+        this._queueEdenTransmission(
+          'SERPENT ECHO: Flame path reopened.', { priority: 2, duration: 5 }
+        );
+      } else if (slot === 1) {
+        // Cyber Dragon
+        this.cyberDragonSpawned    = false;
+        this.cyberDragonSpawnTimer = 0;
+        this._queueEdenTransmission(
+          'DRAGON ECHO: Cryo memory has breached containment.', { priority: 2, duration: 5 }
+        );
+      } else {
+        // Double Demons
+        this.doubleDemonsSpawned    = false;
+        this.doubleDemonsSpawnTimer = 0;
+        this._queueEdenTransmission(
+          'DEMON ECHO: Twin corruption entering the breach.', { priority: 2, duration: 5 }
+        );
+      }
+      arena.majorCd = 20;   // 20s before we try another major after this one dies
+    }
+
+    // ── Phase-milestone EDEN CORE messages ──
+    if (!arena.phase1Transmitted && elapsed >= 30) {
+      arena.phase1Transmitted = true;
+      this._queueEdenTransmission('BOSS TRACE INCOMING.', { priority: 2, duration: 5 });
+    }
     if (!arena.midTransmitted && elapsed >= 60) {
       arena.midTransmitted = true;
       this._queueEdenTransmission(
-        'Only elite signals can enter the breach.', { priority: 1, duration: 5 }
+        'EDEN CORE: Only elite signals can enter the breach.', { priority: 1, duration: 5 }
+      );
+    }
+    if (!arena.finalTransmitted && elapsed >= 90) {
+      arena.finalTransmitted = true;
+      this._queueEdenTransmission(
+        'EDEN CORE: The breach is collapsing. Survive the pressure.', { priority: 2, duration: 6 }
       );
     }
 
@@ -12316,8 +12361,9 @@ export class Game {
     if (arena.timer <= 0) this._completeNullBreachArena();
   }
 
-  // Arena timer reached zero — success, grant rewards, resume Endless.
+  // Arena timer reached zero — success. Performance-based fragment reward (capped at 4).
   _completeNullBreachArena() {
+    const arenaKills = this._nullBreachArena?.kills || 0;
     this._nullBreachArena  = null;
     this._nullBreachActive = false;
     this._endlessBossTimer = Math.max(this._endlessBossTimer, 30);  // breathing room after arena
@@ -12328,17 +12374,23 @@ export class Game {
 
     if (this.meta) {
       this.meta.addEdenMemory(1);
-      // Credits: more if player never needed rescue
-      this.meta.addCredits(this._arenaRescueUsed ? 3 : 6);
-      // Null Fragment (Protocol Fragment): 20% chance if perfect clear, 0% if rescued
-      if (!this._arenaRescueUsed && Math.random() < 0.20) {
-        if (typeof this.meta.addProtocolFragment === 'function') {
-          this.meta.addProtocolFragment(1);
-        }
+      this.meta.addCredits(6);
+
+      // Performance-based NULL Fragment reward (max 4):
+      //   +2 survived full arena
+      //   +1 killed ≥3 arena bosses/majors
+      //   +1 no EDEN CORE rescue used
+      let frags = 2;                              // baseline: survived
+      if (arenaKills >= 3) frags += 1;            // aggressive clear
+      if (!this._arenaRescueUsed) frags += 1;     // clean run (always true here, rescue ends arena)
+      frags = Math.min(frags, 4);                 // hard cap
+
+      if (frags > 0 && typeof this.meta.addProtocolFragment === 'function') {
+        this.meta.addProtocolFragment(frags);
         this.floatingTexts.push(
-          new FloatingText('NULL FRAGMENT +1', this.player.pos.clone(), '#ff66ff', 2.0)
+          new FloatingText('NULL FRAGMENT +' + frags, this.player.pos.clone(), '#ff66ff', 2.2)
         );
-        this.meta.addSystemMessage('NULL FRAGMENT SECURED. PROTOCOL FRAGMENTS +1.');
+        this.meta.addSystemMessage('NULL FRAGMENT SECURED. PROTOCOL FRAGMENTS +' + frags + '.');
       }
       this.meta.addSystemMessage('NULL BREACH CLEARED. ARENA TRACE ARCHIVED.');
     }
@@ -12347,7 +12399,7 @@ export class Game {
 
     // EDEN CORE
     this._queueEdenTransmission(
-      'EDEN CORE: Breach survived. Memory stabilized.', { priority: 3, duration: 7 }
+      'EDEN CORE: Arena trace archived.', { priority: 3, duration: 7 }
     );
     this.triggerAnnouncement('NULL BREACH CLEARED', '#00e6ff');
     this.floatingTexts.push(
@@ -12370,7 +12422,7 @@ export class Game {
 
     // EDEN CORE transmissions
     this._queueEdenTransmission(
-      'NULL BREACH FAILED. PHENIX TRACE RESTORED.', { priority: 3, duration: 6, clipId: 'extract' }
+      'EXTRACTION COMPLETE. Reward sequence denied.', { priority: 3, duration: 6, clipId: 'extract' }
     );
     const _self = this;
     setTimeout(() => {
@@ -12553,8 +12605,10 @@ export class Game {
     this.particles.spawnHitSparks(t.pos, PURPLE);
     this.particles.spawnExplosion(t.pos, [PURPLE, CYAN, YELLOW], 28);
     this.supportDrones    = [];
-    // Protocol Fragment reward
-    if (this.meta && this.endless) {
+    // Protocol Fragment reward (suppressed inside arena — capped reward on completion)
+    if (this._nullBreachActive) {
+      if (this._nullBreachArena) this._nullBreachArena.kills = (this._nullBreachArena.kills || 0) + 1;
+    } else if (this.meta && this.endless) {
       this.meta.protocolFragments += BOSS_KILL_PF;
       this.meta._save();
       this.floatingTexts.push(new FloatingText('+' + BOSS_KILL_PF + ' 🧩 FRAGMENT',
@@ -12802,8 +12856,10 @@ export class Game {
     this.triggerAnnouncement('MATRIX ANNIHILATOR DESTROYED', GREEN);
     this.screenShake.trigger(14, 1.0);
     this.particles.spawnExplosion(a.pos, [RED, ORANGE, YELLOW], 28);
-    // Protocol Fragment reward
-    if (this.meta && this.endless) {
+    // Protocol Fragment reward (suppressed inside arena)
+    if (this._nullBreachActive) {
+      if (this._nullBreachArena) this._nullBreachArena.kills = (this._nullBreachArena.kills || 0) + 1;
+    } else if (this.meta && this.endless) {
       this.meta.protocolFragments += BOSS_KILL_PF;
       this.meta._save();
       this.floatingTexts.push(new FloatingText('+' + BOSS_KILL_PF + ' 🧩 FRAGMENT',
@@ -13042,8 +13098,10 @@ export class Game {
     this.screenShake.trigger(14, 1.0);
     this.particles.spawnExplosion(a.pos, [RED, ORANGE, YELLOW], 30);
     this._bloodfangSlams = [];   // drop any pending telegraph so it never outlives the boss
-    // Protocol Fragment reward
-    if (this.meta && this.endless) {
+    // Protocol Fragment reward (suppressed inside arena)
+    if (this._nullBreachActive) {
+      if (this._nullBreachArena) this._nullBreachArena.kills = (this._nullBreachArena.kills || 0) + 1;
+    } else if (this.meta && this.endless) {
       this.meta.protocolFragments += BOSS_KILL_PF;
       this.meta._save();
       this.floatingTexts.push(new FloatingText('+' + BOSS_KILL_PF + ' 🧩 FRAGMENT',
@@ -13265,7 +13323,10 @@ export class Game {
     this.score += 1800;
     this.xp    += 120;
     this.credits = (this.credits || 0) + 3;
-    if (typeof this.protocolFragments !== 'undefined') this.protocolFragments += BOSS_KILL_PF;
+    if (!this._nullBreachActive && typeof this.protocolFragments !== 'undefined') {
+      this.protocolFragments += BOSS_KILL_PF;
+    }
+    if (this._nullBreachArena) this._nullBreachArena.kills = (this._nullBreachArena.kills || 0) + 1;
 
     // VFX
     this.particles.spawnExplosion(pos, ORANGE, 32);
@@ -13566,7 +13627,10 @@ export class Game {
     this.score += 2800;
     this.xp    += 180;
     this.credits = (this.credits || 0) + 5;
-    if (typeof this.protocolFragments !== 'undefined') this.protocolFragments += BOSS_KILL_PF;
+    if (!this._nullBreachActive && typeof this.protocolFragments !== 'undefined') {
+      this.protocolFragments += BOSS_KILL_PF;
+    }
+    if (this._nullBreachArena) this._nullBreachArena.kills = (this._nullBreachArena.kills || 0) + 1;
 
     // VFX
     this.particles.spawnExplosion(pos, '#00ccff', 32);
@@ -14152,8 +14216,10 @@ export class Game {
       new Vec2(dd.gunner.pos.x, dd.gunner.pos.y - 32), YELLOW, 2.2));
 
     this.triggerAnnouncement('\u26a1 DOUBLE DEMONS DEFEATED \u26a1', '#ff2d95');
-    // Protocol Fragment reward
-    if (this.meta && this.endless) {
+    // Protocol Fragment reward (suppressed inside arena)
+    if (this._nullBreachActive) {
+      if (this._nullBreachArena) this._nullBreachArena.kills = (this._nullBreachArena.kills || 0) + 1;
+    } else if (this.meta && this.endless) {
       this.meta.protocolFragments += BOSS_KILL_PF;
       this.meta._save();
       this.floatingTexts.push(new FloatingText('+' + BOSS_KILL_PF + ' 🧩 FRAGMENT',
