@@ -23,7 +23,7 @@ import { weightedSample } from './Upgrades.js?v=20260615210000';
 import { MutationUI }      from './MutationUI.js?v=20260616080000';
 import { sampleMutations } from './Mutations.js?v=20260615210000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260615210000';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS } from './MetaProgress.js?v=20260626140000';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS } from './MetaProgress.js?v=20260627170000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260615210000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
@@ -489,6 +489,22 @@ export class Game {
     } catch (err) {
       console.error('[CGM Achievements] _initAchievementsOverlay failed:', err);
     }
+
+    this._relicsOverlayEl      = null;   // root #cgm-relics div
+    this._relicsOverlayVisible = false;
+    try {
+      this._initRelicsOverlay();
+    } catch (err) {
+      console.error('[CGM Relics] _initRelicsOverlay failed:', err);
+    }
+
+    // Preload relic icon images for HUD display
+    this._relicIconCache = {};
+    RELIC_DEFS.forEach(r => {
+      const img = new Image();
+      img.src = `assets/relics/${r.id}.png?v=20260627150000`;
+      this._relicIconCache[r.id] = img;
+    });
   }
 
   // UPGRADES = the permanent Grid-Credit progression (spent between runs). ENDLESS MODE appears
@@ -498,7 +514,7 @@ export class Game {
     // Lean main nav only. Exit/Credits/Instructions/Audio moved into the SETTINGS screen.
     const items = ['START GAME'];
     if (this.meta?.isEndlessUnlocked()) items.push('ENDLESS MODE');
-    items.push('CHARACTER SELECT', 'UPGRADES', 'ACHIEVEMENTS', 'SETTINGS', 'EXIT');
+    items.push('CHARACTER SELECT', 'UPGRADES', 'ACHIEVEMENTS', 'RELICS', 'SETTINGS', 'EXIT');
     return items;
   }
 
@@ -860,6 +876,7 @@ export class Game {
     this._hideCharSelectOverlay();
     this._hideUpgradesOverlay();
     this._hideAchievementsOverlay();
+    this._hideRelicsOverlay();
     this._showMenuOverlay();
   }
 
@@ -986,6 +1003,8 @@ export class Game {
   // Read-only Endless achievements gallery (display only — never unlocks/resets anything).
   goToAchievementsScreen() { this._hideMenuOverlay(); this.gameState = 'achievements'; this._showAchievementsOverlay(); }
 
+  goToRelicsScreen() { this._hideMenuOverlay(); this.gameState = 'relics'; this._showRelicsOverlay(); }
+
   goToAudioSettings() {
     this._hideMenuOverlay();
     this._hideSettingsOverlay();
@@ -1069,6 +1088,15 @@ export class Game {
         cores: this.player.coresSecured,
       });
     }
+
+    // Record this run in local leaderboard history
+    this.meta.recordRun({
+      time:  Math.floor(this.timeAlive),
+      score: finalScore,
+      level: this.player.level,
+      char:  this.player.characterId || 'unknown',
+      mode:  this.endless ? 'Endless' : (this.victory ? 'Act 1 Win' : 'Act 1'),
+    });
   }
 
   addKillScore(pos, isElite = false) {
@@ -1844,7 +1872,185 @@ export class Game {
     }).join('');
   }
 
-  _drawUpgradesScreen(ctx) {
+  _initRelicsOverlay() {
+    if (this._relicsOverlayEl) return;
+
+    if (!document.getElementById('cgm-rel-style')) {
+      const style = document.createElement('style');
+      style.id = 'cgm-rel-style';
+      style.textContent = `
+        #cgm-relics {
+          position:fixed; inset:0; z-index:140; display:none;
+          align-items:flex-start; justify-content:center;
+          overflow-y:auto; padding:16px 14px 24px;
+          font-family:'Share Tech Mono',ui-monospace,monospace; color:#cfe9ff;
+          background:
+            radial-gradient(1200px 700px at 50% -10%,rgba(255,120,30,.15),transparent 60%),
+            radial-gradient(900px 600px at 12% 30%,rgba(46,230,246,.08),transparent 60%),
+            linear-gradient(180deg,#0d0b18,#070a1c);
+          --amber:#fbbf24; --cyan:#2ee6f6; --green:#34d399; --orange:#ff9900;
+          --txt:#cfe9ff; --txt-dim:#6f86b8; --panel-edge:rgba(255,153,0,.15);
+          --glow-amber:0 0 8px rgba(251,191,36,.55),0 0 22px rgba(251,191,36,.22);
+          --radius:12px;
+        }
+        #cgm-relics * { box-sizing:border-box; margin:0; padding:0; }
+        #cgm-relics .cr-stage {
+          position:relative; z-index:1; width:100%; max-width:1100px;
+          border:1px solid var(--panel-edge); border-radius:20px;
+          padding:22px 26px 20px;
+          background:rgba(10,8,22,.82);
+          box-shadow:inset 0 0 60px rgba(255,153,0,.05),0 30px 80px rgba(0,0,0,.55);
+          display:flex; flex-direction:column; align-items:stretch; gap:14px;
+        }
+        #cgm-relics .cr-header { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; }
+        #cgm-relics .cr-title  { font-family:'Orbitron',sans-serif; font-weight:800; font-size:16px; letter-spacing:3px; color:var(--amber); text-shadow:var(--glow-amber); }
+        #cgm-relics .cr-pf     { padding:6px 14px; border-radius:999px; border:1px solid rgba(46,230,246,.25); background:rgba(46,230,246,.05); font-family:'Orbitron',sans-serif; font-weight:700; font-size:12px; color:var(--cyan); }
+        #cgm-relics .cr-sep    { width:100%; height:1px; background:linear-gradient(90deg,transparent,var(--amber),transparent); opacity:.3; }
+        #cgm-relics .cr-tabs   { display:flex; gap:8px; flex-wrap:wrap; }
+        #cgm-relics .cr-tab    { padding:7px 18px; border-radius:8px; cursor:pointer; border:1px solid rgba(255,153,0,.2); background:rgba(10,8,22,.5); color:var(--txt-dim); font-family:'Orbitron',sans-serif; font-size:11px; letter-spacing:1px; font-weight:700; transition:.15s; }
+        #cgm-relics .cr-tab.active, #cgm-relics .cr-tab:hover { border-color:var(--amber); color:var(--amber); background:rgba(255,153,0,.07); }
+        #cgm-relics .cr-grid   { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:14px; }
+        #cgm-relics .cr-card   { position:relative; border-radius:var(--radius); border:1px solid rgba(46,90,100,.25); background:rgba(10,16,46,.55); padding:14px; display:flex; flex-direction:column; gap:8px; }
+        #cgm-relics .cr-card.owned  { border-color:rgba(52,211,153,.5); background:rgba(0,14,10,.6); }
+        #cgm-relics .cr-card.locked { opacity:.65; }
+        #cgm-relics .cr-card-top  { display:flex; align-items:flex-start; justify-content:space-between; gap:8px; }
+        #cgm-relics .cr-card-name { font-family:'Orbitron',sans-serif; font-weight:700; font-size:12px; color:#dff0ff; }
+        #cgm-relics .cr-card-type { font-size:9px; letter-spacing:2px; text-transform:uppercase; color:var(--txt-dim); margin-top:2px; }
+        #cgm-relics .cr-card-fx   { font-size:11px; color:#8aa0c0; line-height:1.45; }
+        #cgm-relics .cr-card-req  { font-size:10px; color:#a855f7; }
+        #cgm-relics .cr-card-foot { display:flex; align-items:center; justify-content:space-between; margin-top:4px; }
+        #cgm-relics .cr-cost      { font-family:'Orbitron',sans-serif; font-weight:700; font-size:11px; color:var(--cyan); }
+        #cgm-relics .cr-badge     { font-family:'Orbitron',sans-serif; font-weight:700; font-size:10px; letter-spacing:1px; padding:4px 10px; border-radius:6px; }
+        #cgm-relics .cr-badge.owned   { background:rgba(52,211,153,.15); color:#34d399; border:1px solid rgba(52,211,153,.35); }
+        #cgm-relics .cr-badge.req     { background:rgba(168,85,247,.1); color:#a855f7; border:1px solid rgba(168,85,247,.3); }
+        #cgm-relics .cr-badge.poor    { background:rgba(255,100,30,.08); color:#f87171; border:1px solid rgba(248,113,113,.3); }
+        #cgm-relics .cr-badge.buy-btn { background:rgba(251,191,36,.1); color:var(--amber); border:1px solid rgba(251,191,36,.35); cursor:pointer; }
+        #cgm-relics .cr-badge.buy-btn:hover { background:rgba(251,191,36,.2); }
+        #cgm-relics .cr-footer { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; }
+        #cgm-relics .cr-foot-btn { padding:11px 26px; border-radius:10px; cursor:pointer; border:1px solid rgba(111,134,184,.22); background:rgba(10,16,46,.3); color:var(--txt-dim); font-family:'Orbitron',sans-serif; font-weight:700; font-size:12px; letter-spacing:2px; transition:.15s; }
+        #cgm-relics .cr-foot-btn:hover { border-color:var(--txt-dim); color:var(--txt); }
+        #cgm-relics .cr-hint { color:var(--txt-dim); font-size:11px; letter-spacing:1px; }
+      `;
+      document.head.appendChild(style);
+    }
+
+    const el = document.createElement('div');
+    el.id = 'cgm-relics';
+    el.setAttribute('role', 'dialog');
+    el.setAttribute('aria-label', 'Relics');
+    el.innerHTML = `
+      <div class="cr-stage">
+        <div class="cr-header">
+          <div class="cr-title">⬡ NULL RELICS</div>
+          <div class="cr-pf">🧩 <span id="cr-pf">0</span> FRAGMENTS</div>
+        </div>
+        <div class="cr-sep"></div>
+        <div class="cr-tabs">
+          <div class="cr-tab active" data-tab="all">ALL</div>
+          <div class="cr-tab" data-tab="universal">UNIVERSAL</div>
+          <div class="cr-tab" data-tab="boss">BOSS</div>
+          <div class="cr-tab" data-tab="character">CHARACTER</div>
+        </div>
+        <div class="cr-grid" id="cr-grid"></div>
+        <div class="cr-sep"></div>
+        <div class="cr-footer">
+          <button class="cr-foot-btn" id="cr-back-btn">◀ BACK</button>
+          <div class="cr-hint">Unlock relics by spending Protocol Fragments — active each run automatically.</div>
+        </div>
+      </div>
+    `;
+
+    el.querySelectorAll('.cr-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        el.querySelectorAll('.cr-tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        this._relicsFilter = tab.dataset.tab;
+        this._syncRelicsOverlay();
+      });
+    });
+    el.querySelector('#cr-back-btn')?.addEventListener('click', () => this.goToMainMenu());
+    document.body.appendChild(el);
+    this._relicsOverlayEl = el;
+    this._relicsFilter = 'all';
+  }
+
+  _showRelicsOverlay() {
+    if (!this._relicsOverlayEl) return;
+    this._relicsOverlayEl.style.display = 'flex';
+    this._relicsOverlayVisible = true;
+    this._syncRelicsOverlay();
+  }
+
+  _hideRelicsOverlay() {
+    if (!this._relicsOverlayEl) return;
+    this._relicsOverlayEl.style.display = 'none';
+    this._relicsOverlayVisible = false;
+  }
+
+  _syncRelicsOverlay() {
+    const el = this._relicsOverlayEl;
+    if (!el) return;
+
+    const pfEl = el.querySelector('#cr-pf');
+    if (pfEl) pfEl.textContent = this.meta.protocolFragments;
+
+    const filter = this._relicsFilter || 'all';
+    const defs   = filter === 'all' ? RELIC_DEFS : RELIC_DEFS.filter(r => r.type === filter);
+
+    const grid = el.querySelector('#cr-grid');
+    if (!grid) return;
+
+    grid.innerHTML = defs.map(r => {
+      const owned   = this.meta.isRelicUnlocked(r.id);
+      const hasReq  = !r.req || this.meta.hasBossKill(r.req);
+      const canAfford = this.meta.protocolFragments >= r.cost;
+      const cardCls = owned ? 'cr-card owned' : (hasReq ? 'cr-card' : 'cr-card locked');
+
+      let badgeHtml;
+      if (owned) {
+        badgeHtml = `<span class="cr-badge owned">✓ OWNED</span>`;
+      } else if (!hasReq) {
+        const reqName = r.req ? r.req.replace(/_/g,' ').toUpperCase() : '';
+        badgeHtml = `<span class="cr-badge req">REQ: DEFEAT ${reqName}</span>`;
+      } else if (!canAfford) {
+        badgeHtml = `<span class="cr-badge poor">NEED ${r.cost}🧩</span>`;
+      } else {
+        badgeHtml = `<span class="cr-badge buy-btn" data-relic-id="${r.id}">BUY ${r.cost}🧩</span>`;
+      }
+
+      const typeLabel = r.type.toUpperCase();
+      const reqLine   = r.reqChar ? `<div class="cr-card-req">Character: ${r.reqChar.replace(/_/g,' ')}</div>` : '';
+
+      return `<div class="${cardCls}">
+        <div class="cr-card-top">
+          <div>
+            <div class="cr-card-name">${r.name}</div>
+            <div class="cr-card-type">${typeLabel}</div>
+          </div>
+        </div>
+        <div class="cr-card-fx">${r.effect}</div>
+        ${reqLine}
+        <div class="cr-card-foot">
+          <span class="cr-cost">${owned ? '' : r.cost + ' 🧩'}</span>
+          ${badgeHtml}
+        </div>
+      </div>`;
+    }).join('');
+
+    // Wire buy buttons
+    grid.querySelectorAll('.buy-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const result = this.meta.tryUnlockRelic(btn.dataset.relicId);
+        if (result === 'ok') this._syncRelicsOverlay();
+      });
+    });
+  }
+
+  _drawRelicsScreen(ctx) {
+    if (this._relicsOverlayVisible) return;   // DOM overlay takes over
+  }
+
+    _drawUpgradesScreen(ctx) {
     if (this._upgradesOverlayVisible) return;   // DOM overlay takes over
     this._drawBackground(ctx);
     ctx.fillStyle = 'rgba(0,0,0,0.82)';
@@ -2641,6 +2847,15 @@ export class Game {
     this._specialRings.push({ pos: p.pos.clone(), radius: 0, maxRadius: radius,
                                life: 0.5, maxLife: 0.5, color1: CYAN, color2: '#ffffff' });
     p.empCloudCooldown = Math.max(8, 12 - p.upgrades['EMP Cloud']);   // 12s base, upgrade trims it
+    // ── Relic run-state ──────────────────────────────────────────
+    this._firstBossKilledRun  = false;   // Eden Core Fragment — once per run
+    this._brokenHaloUsed      = false;   // Broken Halo — once per run
+    this._emberTrail          = [];      // Serpent Ember Coil trail segments
+    this._emberTrailCd        = 0;
+    this._cryoChargeCd        = 0;       // Dragon Cryo Heart cooldown
+    this._cryoChargeReady     = false;
+    this._kickFireCount       = 0;       // Crescent Soul Bead kick counter
+    this._oniBloodMarks       = new Map();// Oni Blood Circuit marked enemies
     this.floatingTexts.push(new FloatingText('STUN PULSE!', p.pos.clone(), CYAN, 0.9));
     // (Japan Phasewalker's EMP Shockwave is now AUTOMATIC/passive — see _updatePhasewalkerFx —
     //  so E stays purely the shared global EMP stun for every character.)
@@ -4011,6 +4226,7 @@ export class Game {
           this.audio?.playLevelUp();
           this.upgradeUI = new UpgradeUI(choices);
           this.rerollsLeft     = 2;     // two free rerolls per level-up screen
+          this._blacknetCouponUsed = false;
           this.rerollAvailable = true;
           return;
         }
@@ -4691,6 +4907,7 @@ export class Game {
     else if (item === 'ENDLESS MODE')   this.startEndlessRun();
     else if (item === 'UPGRADES')       this.goToUpgradesScreen();
     else if (item === 'ACHIEVEMENTS')   this.goToAchievementsScreen();
+    else if (item === 'RELICS')         this.goToRelicsScreen();
     else if (item === 'SETTINGS')       this.goToSettings();
     else if (item === 'EXIT') { try { window.close(); } catch (e) {} this.goToExitScreen(); }   // browser-safe: close if allowed, else friendly exit screen
   }
@@ -7471,6 +7688,10 @@ export class Game {
       this._drawAchievementsScreen(ctx);
       return;
     }
+    if (this.gameState === 'relics') {
+      this._drawRelicsScreen(ctx);
+      return;
+    }
     if (this.gameState === 'credits') {
       this._drawCreditsScreen(ctx);
       return;
@@ -7893,6 +8114,7 @@ export class Game {
     ctx.fillRect(0, 0, WIDTH, 44);
 
     drawHUD(ctx, this);
+    this._drawActiveRelicHUD(ctx);
     this._drawObjectiveIndicators(ctx);   // wayfinding: arrow to nearest Nexus (carrying) / core (early)
     this._drawOnboarding(ctx);            // first-minute objective callout + fading hints (Act 1)
     // drawVignette(ctx, this.overload, this.timeAlive);  // disabled: overload capped at 99 → constant pulse at high overload
@@ -11394,7 +11616,52 @@ export class Game {
   }
 
   // Subtle CRT scanline overlay (screen space). Pattern built + cached once.
-  _drawScanlines(ctx) {
+  _drawActiveRelicHUD(ctx) {
+    if (!this.meta) return;
+    const ownedRelics = RELIC_DEFS.filter(r => this.meta.isRelicUnlocked(r.id));
+    if (!ownedRelics.length) return;
+    // Draw compact icon strip — top-left, below the main HUD bar (y=50)
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    const startX = 8;
+    const startY = 50;
+    const iconW  = 26;
+    const iconH  = 26;
+    const gap    = 3;
+    const cols   = Math.min(ownedRelics.length, 8);
+    const totalW = cols * (iconW + gap) - gap + 4;
+    // Background pill
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.beginPath();
+    ctx.roundRect(startX - 2, startY - 1, totalW, iconH + 2, 5);
+    ctx.fill();
+    ownedRelics.slice(0, 8).forEach((r, i) => {
+      const ix = startX + i * (iconW + gap);
+      const iy = startY;
+      // Try to draw relic icon image; fall back to colored letter
+      const img = this._relicIconCache && this._relicIconCache[r.id];
+      if (img && img.complete && img.naturalWidth > 0) {
+        ctx.drawImage(img, ix, iy, iconW, iconH);
+      } else {
+        // Colored background tile by type
+        const bgColor = r.type === 'boss' ? '#1a0a00' : r.type === 'character' ? '#0a0820' : '#061218';
+        const fgColor = r.type === 'boss' ? '#ff9900' : r.type === 'character' ? '#a855f7' : '#2ee6f6';
+        ctx.fillStyle = bgColor;
+        ctx.fillRect(ix, iy, iconW, iconH);
+        ctx.strokeStyle = fgColor;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(ix + 0.5, iy + 0.5, iconW - 1, iconH - 1);
+        ctx.font      = 'bold 11px Consolas, monospace';
+        ctx.fillStyle = fgColor;
+        ctx.textAlign = 'center';
+        ctx.fillText(r.name[0], ix + iconW / 2, iy + iconH / 2 + 4);
+        ctx.textAlign = 'left';
+      }
+    });
+    ctx.restore();
+  }
+
+    _drawScanlines(ctx) {
     if (!this._scanlineBuilt) {
       this._scanlineBuilt = true;
       const c = document.createElement('canvas');
@@ -12023,7 +12290,7 @@ export class Game {
     else if (edge === 2) { sx = margin;            sy = randomRange(margin, WORLD_H - margin); }
     else                 { sx = WORLD_W - margin;  sy = randomRange(margin, WORLD_H - margin); }
     const isEndless = !!this.endless;
-    const hp        = isEndless ? 460 : 580;
+    const hp        = 1500;
     this.cyberSerpentBoss = {
       pos:        new Vec2(sx, sy),
       hp,
@@ -12230,19 +12497,39 @@ export class Game {
     }
     ctx.restore();
 
-    // ── HP bar ──
-    const bw = 80;
-    const bx = s.pos.x - bw / 2;
-    const by = s.pos.y - s.radius - 14;
-    ctx.fillStyle = '#111';
-    ctx.fillRect(bx - 1, by - 1, bw + 2, 8);
-    ctx.fillStyle = ORANGE;
-    ctx.fillRect(bx, by, Math.round(bw * (s.hp / s.maxHp)), 6);
-    ctx.font      = 'bold 10px Consolas, monospace';
-    ctx.fillStyle = ORANGE;
-    ctx.textAlign = 'center';
-    ctx.fillText('CYBER SERPENT', s.pos.x, by - 3);
-    ctx.textAlign = 'left';
+    // ── HP bar (screen-space) ──
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    {
+      const barW  = 340;
+      const barH  = 10;
+      const barX  = WIDTH / 2 - barW / 2;
+      const barY  = HEIGHT - 46;
+      const hpPct = Math.max(0, s.hp / s.maxHp);
+      // Background
+      ctx.fillStyle = 'rgba(0,0,0,0.75)';
+      ctx.fillRect(barX - 2, barY - 18, barW + 4, barH + 24);
+      // Empty track
+      ctx.fillStyle = '#222';
+      ctx.fillRect(barX, barY, barW, barH);
+      // Health fill — orange gradient
+      const grad = ctx.createLinearGradient(barX, 0, barX + barW, 0);
+      grad.addColorStop(0, '#ff4400');
+      grad.addColorStop(1, '#ff9900');
+      ctx.fillStyle = grad;
+      ctx.fillRect(barX, barY, Math.round(barW * hpPct), barH);
+      // Label
+      ctx.font      = 'bold 11px Consolas, monospace';
+      ctx.fillStyle = '#ffaa44';
+      ctx.textAlign = 'center';
+      ctx.fillText('⚠ CYBER SERPENT', WIDTH / 2, barY - 5);
+      // HP numbers
+      ctx.font      = 'bold 9px Consolas, monospace';
+      ctx.fillStyle = '#ffddaa';
+      ctx.fillText(Math.ceil(s.hp) + ' / ' + s.maxHp, WIDTH / 2, barY + barH + 11);
+      ctx.textAlign = 'left';
+    }
+    ctx.restore();
   }
 
 
@@ -12259,7 +12546,7 @@ export class Game {
     else if (edge === 2) { sx = margin;            sy = randomRange(margin, WORLD_H - margin); }
     else                 { sx = WORLD_W - margin;  sy = randomRange(margin, WORLD_H - margin); }
     const isEndless = !!this.endless;
-    const hp        = isEndless ? 600 : 750;
+    const hp        = 1500;
     this.cyberDragonBoss = {
       pos:        new Vec2(sx, sy),
       hp,
@@ -12536,19 +12823,39 @@ export class Game {
     }
     ctx.restore();
 
-    // ── HP bar ──
-    const bw = 90;
-    const bx = d.pos.x - bw / 2;
-    const by = d.pos.y - d.radius - 14;
-    ctx.fillStyle = '#111';
-    ctx.fillRect(bx - 1, by - 1, bw + 2, 8);
-    ctx.fillStyle = '#00ccff';
-    ctx.fillRect(bx, by, Math.round(bw * (d.hp / d.maxHp)), 6);
-    ctx.font      = 'bold 10px Consolas, monospace';
-    ctx.fillStyle = '#00ccff';
-    ctx.textAlign = 'center';
-    ctx.fillText('CYBER DRAGON', d.pos.x, by - 3);
-    ctx.textAlign = 'left';
+    // ── HP bar (screen-space) ──
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    {
+      const barW  = 340;
+      const barH  = 10;
+      const barX  = WIDTH / 2 - barW / 2;
+      const barY  = HEIGHT - 46;
+      const hpPct = Math.max(0, d.hp / d.maxHp);
+      // Background
+      ctx.fillStyle = 'rgba(0,0,0,0.75)';
+      ctx.fillRect(barX - 2, barY - 18, barW + 4, barH + 24);
+      // Empty track
+      ctx.fillStyle = '#001833';
+      ctx.fillRect(barX, barY, barW, barH);
+      // Health fill — cyan gradient
+      const grad = ctx.createLinearGradient(barX, 0, barX + barW, 0);
+      grad.addColorStop(0, '#0044ff');
+      grad.addColorStop(1, '#00eeff');
+      ctx.fillStyle = grad;
+      ctx.fillRect(barX, barY, Math.round(barW * hpPct), barH);
+      // Label
+      ctx.font      = 'bold 11px Consolas, monospace';
+      ctx.fillStyle = '#44ddff';
+      ctx.textAlign = 'center';
+      ctx.fillText('⚠ CYBER DRAGON', WIDTH / 2, barY - 5);
+      // HP numbers
+      ctx.font      = 'bold 9px Consolas, monospace';
+      ctx.fillStyle = '#aaeeff';
+      ctx.fillText(Math.ceil(d.hp) + ' / ' + d.maxHp, WIDTH / 2, barY + barH + 11);
+      ctx.textAlign = 'left';
+    }
+    ctx.restore();
   }
 
 

@@ -576,6 +576,9 @@ export function drawEndScreen(ctx, game) {
   ctx.lineTo(rx, y);
   ctx.stroke();
 
+  // ── Local leaderboard (Personal Records) ─────────────────────────────────
+  _drawPersonalRecords(ctx, game, lx, rx);
+
   // Buttons: RETRY / UPGRADES / MAIN MENU
   const BW = 200, BH = 46, BY = 440;
   const btns = [
@@ -710,3 +713,60 @@ function _drawEndlessAchievements(ctx, game, startY) {
   ctx.textAlign = 'left';
   return y + rows * lineH;
 }
+
+// Local leaderboard — last 5 runs stored in meta.runHistory. Shown on both
+// Act 1 and Endless end screens as a compact table at bottom of end screen.
+function _drawPersonalRecords(ctx, game, lx, rx) {
+  const history = game.meta?.getRunHistory?.() || [];
+  if (!history.length) return;
+  const rows = history.slice(0, 5);
+
+  const y0 = 358;
+  const lineH = 18;
+
+  ctx.font      = 'bold 12px Consolas, monospace';
+  ctx.fillStyle = '#fbbf24';
+  ctx.textAlign = 'center';
+  ctx.fillText('— PERSONAL RECORDS (LAST ' + rows.length + ' RUNS) —', (lx + rx) / 2, y0);
+
+  ctx.font = '11px Consolas, monospace';
+  const colX = [lx, lx + 60, lx + 140, lx + 210, lx + 280, rx];
+  const headers = ['DATE', 'MODE', 'CHAR', 'LVL', 'SCORE', 'TIME'];
+  ctx.fillStyle = '#4a6080';
+  ctx.textAlign = 'left';
+  headers.forEach((h, i) => {
+    if (i === headers.length - 1) {
+      ctx.textAlign = 'right';
+      ctx.fillText(h, colX[i], y0 + lineH);
+    } else {
+      ctx.textAlign = 'left';
+      ctx.fillText(h, colX[i], y0 + lineH);
+    }
+  });
+
+  rows.forEach((run, idx) => {
+    const ry = y0 + lineH * (idx + 2);
+    const isLatest = idx === 0;
+    ctx.fillStyle = isLatest ? '#cfe9ff' : '#5a7090';
+    const fmtTime = (s) => {
+      const m = Math.floor((s || 0) / 60).toString().padStart(2, '0');
+      const c = Math.floor((s || 0) % 60).toString().padStart(2, '0');
+      return `${m}:${c}`;
+    };
+    const charShort = (run.char || 'UNK').replace(/_/g,' ').slice(0, 10);
+    const modeShort = (run.mode || '').slice(0, 8);
+    const values = [run.date || '', modeShort, charShort, run.level || 0, run.score || 0, fmtTime(run.time)];
+    values.forEach((v, i) => {
+      if (i === values.length - 1) {
+        ctx.textAlign = 'right';
+        ctx.fillText(v, colX[i], ry);
+      } else {
+        ctx.textAlign = 'left';
+        ctx.fillText(v, colX[i], ry);
+      }
+    });
+  });
+
+  ctx.textAlign = 'left';
+}
+

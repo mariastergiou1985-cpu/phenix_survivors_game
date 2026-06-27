@@ -186,6 +186,41 @@ export const PROTOCOL_CARDS = [
 ];
 export const PROTOCOL_CARD_BY_ID = Object.fromEntries(PROTOCOL_CARDS.map(c => [c.id, c]));
 
+
+// ─── Null Relics V1 ─────────────────────────────────────────────────────────
+export const RELIC_DEFS = [
+  { id:'eden_core_fragment',   name:'Eden Core Fragment',   type:'universal',  cost:5,
+    effect:'The first boss defeated each run drops +1 extra Fragment.',
+    req:null, reqChar:null },
+  { id:'null_battery',         name:'Null Battery',         type:'universal',  cost:4,
+    effect:'Q and E ability cooldowns recharge 8% faster.',
+    req:null, reqChar:null },
+  { id:'broken_halo',          name:'Broken Halo',          type:'universal',  cost:5,
+    effect:'Once per run, when HP drops below 25%, gain a 2-second shield and push enemies away.',
+    req:null, reqChar:null },
+  { id:'blacknet_coupon',      name:'Blacknet Coupon',      type:'universal',  cost:4,
+    effect:'First level-up screen each run grants 1 extra reroll.',
+    req:null, reqChar:null },
+  { id:'serpent_ember_coil',   name:'Serpent Ember Coil',   type:'boss',       cost:6,
+    effect:'Dash leaves a 1.5s ember trail. Enemies touching it take burn damage.',
+    req:'cyberSerpent', reqChar:null },
+  { id:'dragon_cryo_heart',    name:'Dragon Cryo Heart',    type:'boss',       cost:8,
+    effect:'Every 30s, your next hit calls a cryo shard on the target.',
+    req:'cyberDragon', reqChar:null },
+  { id:'oni_blood_circuit',    name:'Oni Blood Circuit',    type:'character',  cost:6,
+    effect:'When Oni uses Ultimate, nearby enemies are marked for 5s: +15% damage.',
+    req:null, reqChar:'oni_cataclysm_protocol' },
+  { id:'crescent_soul_bead',   name:'Crescent Soul Bead',   type:'character',  cost:6,
+    effect:'Every 7th Spirit Kick pierces +2 extra enemies and creates a shockwave.',
+    req:null, reqChar:'taekwondo_girl' },
+  { id:'null_venom_chamber',   name:'Null Venom Chamber',   type:'character',  cost:7,
+    effect:'Poisoned enemies that die have a 25% chance to spread poison.',
+    req:null, reqChar:'euclid_vector' },
+  { id:'mirror_kill_protocol', name:'Mirror Kill Protocol', type:'character',  cost:8,
+    effect:'When a clone expires, it releases a shadow slash. 3+ hits refunds 20 mana.',
+    req:null, reqChar:'assassin_clone' },
+];
+
 export class MetaProgress {
   constructor() {
     this.credits = 0;
@@ -209,6 +244,9 @@ export class MetaProgress {
     this.protocolUnlocks   = {};  // { [characterId]: true }   — PF-purchased character unlocks
     this.protocolCards     = {};  // { [cardId]: true }        — PF-purchased permanent Protocol cards
     this.profileName       = null;// optional custom player profile name (fallback 'PLAYER_01' in UI)
+    this.relics       = {};  // { [relicId]: true }  — purchased relics
+    this.bossKills    = {};  // { [bossKey]: true }  — required boss kills for boss relics
+    this.runHistory   = [];  // last 20 runs { time, score, level, char, mode, date }
     this._load();
   }
 
@@ -235,6 +273,9 @@ export class MetaProgress {
       this.protocolUnlocks = (d.protocolUnlocks && typeof d.protocolUnlocks === 'object') ? d.protocolUnlocks : {};
       this.protocolCards   = (d.protocolCards   && typeof d.protocolCards   === 'object') ? d.protocolCards   : {};
       this.profileName     = (typeof d.profileName === 'string' && d.profileName.trim()) ? d.profileName.slice(0, 16) : null;
+      this.relics      = (d.relics     && typeof d.relics    === 'object') ? d.relics    : {};
+      this.bossKills   = (d.bossKills  && typeof d.bossKills === 'object') ? d.bossKills : {};
+      this.runHistory  = Array.isArray(d.runHistory) ? d.runHistory.slice(-20) : [];
       // One-time retroactive payout for already-earned Endless achievements (idempotent).
       this._backfillProtocolFragments();
 
@@ -276,6 +317,9 @@ export class MetaProgress {
         protocolUnlocks: this.protocolUnlocks,
         protocolCards: this.protocolCards,
         profileName: this.profileName,
+        relics:    this.relics,
+        bossKills: this.bossKills,
+        runHistory: this.runHistory,
       }));
     } catch (_) {}
   }
@@ -444,6 +488,9 @@ export class MetaProgress {
     this.pfEarnedFrom      = {};
     this.protocolUnlocks   = {};
     this.protocolCards     = {};
+    this.relics    = {};
+    this.bossKills = {};
+    this.runHistory = [];
     this._save();
   }
 
@@ -530,4 +577,37 @@ export class MetaProgress {
     if (!c) return `assets/characters/${characterId}.png`;
     return (c[outfitId] || c.default).asset;
   }
+  // ─── Relic helpers ───────────────────────────────────────────────────────────
+  isRelicUnlocked(id)  { return this.relics[id] === true; }
+  recordBossKill(id)   { if (!this.bossKills[id]) { this.bossKills[id] = true; this._save(); } }
+  hasBossKill(id)      { return this.bossKills[id] === true; }
+
+  tryUnlockRelic(id) {
+    const def = RELIC_DEFS.find(r => r.id === id);
+    if (!def)                                  return 'invalid';
+    if (this.relics[id])                       return 'owned';
+    if (def.req && !this.bossKills[def.req])   return 'req';
+    if (this.protocolFragments < def.cost)     return 'poor';
+    this.protocolFragments -= def.cost;
+    this.relics[id] = true;
+    this._save();
+    return 'ok';
+  }
+
+  // ─── Run history ─────────────────────────────────────────────────────────────
+  // Records { time, score, level, char, mode, date } (up to 20, newest first)
+  recordRun(entry) {
+    this.runHistory.unshift({
+      time:  Math.floor(entry.time  || 0),
+      score: Math.floor(entry.score || 0),
+      level: Math.floor(entry.level || 0),
+      char:  entry.char  || 'Unknown',
+      mode:  entry.mode  || 'Act 1',
+      date:  new Date().toLocaleDateString(),
+    });
+    if (this.runHistory.length > 20) this.runHistory.length = 20;
+    this._save();
+  }
+  getRunHistory() { return this.runHistory || []; }
+
 }
