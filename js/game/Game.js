@@ -5695,14 +5695,14 @@ export class Game {
       ctx.globalAlpha = titleA;
       ctx.font = 'bold 26px Consolas, monospace';
       ctx.shadowColor = CYAN; ctx.shadowBlur = 12; ctx.fillStyle = CYAN;
-      ctx.fillText('DEFEND THE NEXUS GRID', WIDTH / 2, 92);
+      ctx.fillText('SURVIVE NULL EDEN', WIDTH / 2, 92);
       ctx.shadowBlur = 0;
     }
     // Rotating hints (after the title) — each fades in/out; all stop by ~26s.
     const hints = [
-      'Recover Data-Cores and return them to a Nexus',
-      'Network Overload rises if the grid is left undefended',
-      'Keep Overload below 100% — hold the Nexus Grid',
+      'Survive long enough to push beyond Act 1 into NULL EDEN',
+      'Collect Null Relics to unlock deeper progression and secrets',
+      'Chaos Mode escalates the run — stay sharp and build wisely',
     ];
     if (t > 6) {
       const span = 6.5;
@@ -9252,7 +9252,7 @@ export class Game {
     }
     ctx.font = '10px Consolas, monospace'; ctx.textAlign = 'right';
     ctx.fillStyle = muted ? '#9aa4b0' : 'rgba(180,255,245,0.85)';
-    ctx.fillText(muted ? 'MUTED' : 'CYBER-GRID OST', s.x + s.w - 12, s.y + 36);
+    ctx.fillText(muted ? 'MUTED' : 'NULL EDEN OST', s.x + s.w - 12, s.y + 36);
     ctx.textAlign = 'left';
   }
 
@@ -9615,7 +9615,7 @@ export class Game {
 
       <section class="panel" style="--accent:var(--cyan)">
         <div class="now-row"><span class="label">NOW PLAYING</span><svg><use href="#i-music"/></svg></div>
-        <div class="now-row" style="margin-top:6px"><span style="font-size:12px;color:var(--txt-dim);letter-spacing:1px" data-cgm="now-playing">CYBER-GRID OST</span></div>
+        <div class="now-row" style="margin-top:6px"><span style="font-size:12px;color:var(--txt-dim);letter-spacing:1px" data-cgm="now-playing">NULL EDEN OST</span></div>
         <div class="eq" id="cgm-eq-bars"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
       </section>
 
@@ -9770,7 +9770,7 @@ export class Game {
     }
 
     // Now Playing
-    const audioTitle = this.audio?.currentTrackTitle || 'CYBER-GRID OST';
+    const audioTitle = this.audio?.currentTrackTitle || 'NULL EDEN OST';
     const nowStr = muted ? 'MUTED' : audioTitle;
     this._cgmSet('now-playing', nowStr);
     const eqEl = this._menuOverlayEl.querySelector('#cgm-eq-bars');
@@ -9850,7 +9850,7 @@ export class Game {
       ctx.fillRect(0, 0, WIDTH, HEIGHT);
     }
 
-    // Light tint only — the background already carries the CYBER-GRID PROTOCOL logo, so we
+    // Light tint only — the background already carries the PHENIX: NULL EDEN logo, so we
     // keep it readable without washing the art out. (No "PHENIX SURVIVORS" text — title is the logo.)
     ctx.fillStyle = 'rgba(2,6,14,0.32)';
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
@@ -10270,7 +10270,7 @@ export class Game {
     };
 
     line('THANK YOU FOR PLAYING',          80,  38, GREEN, true);
-    line('THE CYBER GRID HAS BEEN SAVED',  116, 24, CYAN);
+    line('NULL EDEN — PROTOCOL SECURED',   116, 24, CYAN);
     line('MADE BY InkSpireM Visuals',      150, 18, WHITE);
     line('MUSIC BY Tsali',                 174, 18, WHITE);
     line('SYSTEM LOG #1985 FOUND',         210, 18, YELLOW);
@@ -11067,11 +11067,11 @@ export class Game {
     };
 
     // ── OBJECTIVE ──────────────────────────────────────────────
-    header('OBJECTIVE — DEFEND THE NEXUS GRID');
-    bullet('Hold the Four Nexus matrices (8 cores each — 32 total).');
-    bullet('Recover dropped Data-Cores and return them to a Nexus.');
-    bullet('Stop raiders from stealing cores; keep the grid charged.');
-    bullet('Keep Network Overload below 100% or the grid is lost.');
+    header('OBJECTIVE — SURVIVE NULL EDEN');
+    bullet('Choose a survivor and fight through escalating cyber-waves.');
+    bullet('Collect XP, upgrade cards, credits, and dropped resources.');
+    bullet('Build your run through weapons, abilities, relics, and market choices.');
+    bullet('Push beyond Act 1 into Endless survival and deeper NULL EDEN systems.');
     cy += 8;
 
     // ── CONTROLS ───────────────────────────────────────────────
@@ -11100,26 +11100,32 @@ export class Game {
     });
     cy += 6;
 
-    // ── COMBAT & UPGRADES ──────────────────────────────────────
-    header('COMBAT & UPGRADES');
-    bullet('Level up to pick upgrade cards & weapon mastery cards.');
-    bullet('Corrosive Payload adds damage-over-time to your attacks.');
-    bullet('Mana fuels your Ultimate; pickups & deposits refill it.');
-    bullet('Phoenix Revive: one automatic revive when you fall.');
-    bullet('Beware Acid Rain — a spreading area hazard.', '#b6ff8c');
+    // ── COMBAT & BUILDS ────────────────────────────────────────
+    header('COMBAT & BUILDS');
+    bullet('Level up to choose upgrade and mastery cards for your build.');
+    bullet('Weapons, abilities, and passives stack into powerful combinations.');
+    bullet('Mana fuels your Ultimate — pickups and credits help you recover.');
+    bullet('Phenix Revive triggers when HP hits 0 — use the extra life wisely.');
+    bullet('Dash with Shift and use Q / E abilities to survive elite waves.', '#b6ff8c');
     cy += 8;
 
-    // ── ENDLESS & SECRETS ──────────────────────────────────────
-    header('ENDLESS & SECRETS');
-    bullet('Win Act 1, then Continue — Endless (Stage 02: Neon Shinjuku).');
-    bullet('Elite Waves escalate; reach 10:00 to unlock Brawler Warrior.');
-    bullet('Achievements grant Endless-only Protocols & special Cards.', '#c8a8ff');
-    bullet('Secret skins: LOG #1997 (Brawler) & LOG #1998 (Assassin) — locked.', '#d9b6ff');
+    // ── PROGRESSION & NULL RELICS ─────────────────────────────
+    header('PROGRESSION & NULL RELICS');
+    bullet('Runs feed permanent progression: levels, ranks, unlocks, and achievements.');
+    bullet('Null Relics expand long-term goals and reward deeper survival.');
+    bullet('Stronger runs unlock characters, secrets, lore, and archive entries.', '#c8a8ff');
+    cy += 8;
+
+    // ── ENDLESS · CHAOS · BLACKNET ─────────────────────────────
+    header('ENDLESS · CHAOS MODE · BLACKNET');
+    bullet('Clear Act 1 to push into Endless Mode — deeper and more dangerous.');
+    bullet('Survive long enough and the run escalates toward Chaos Mode.');
+    bullet('Blacknet Market choices can reshape your build between danger spikes.', '#b6ff8c');
 
     // ── ANIMATED TUTORIAL PANELS (right column) ─────────────────
-    const PANEL_DURATION = 3.5;
+    const PANEL_DURATION = 4.0;
     const now      = Date.now() / 1000;
-    const panelIdx = Math.floor(now / PANEL_DURATION) % 5;
+    const panelIdx = Math.floor(now / PANEL_DURATION) % 4;
     const t        = (now % PANEL_DURATION) / PANEL_DURATION;
 
     const tpX  = px + 596;
@@ -11159,11 +11165,10 @@ export class Game {
 
     // Panel title
     const panelTitles = [
-      'COLLECT DATA-CORES',
-      'RETURN TO POWER MATRIX',
-      'STOP NETWORK OVERLOAD',
-      'SURVIVE ENEMY WAVES',
-      'PHOENIX REVIVE',
+      'PHENIX REVIVE',
+      'NULL RELICS',
+      'CHAOS MODE',
+      'BLACKNET MARKET',
     ];
     ctx.font      = 'bold 14px Consolas, monospace';
     ctx.fillStyle = CYAN;
@@ -11172,11 +11177,11 @@ export class Game {
 
     this._drawTutorialPanel(ctx, panelIdx, t, tpX, tpY, tpW, tpH);
 
-    // Dot indicators
-    for (let i = 0; i < 5; i++) {
+    // Dot indicators (4 panels)
+    for (let i = 0; i < 4; i++) {
       ctx.fillStyle = i === panelIdx ? CYAN : 'rgba(0,200,255,0.25)';
       ctx.beginPath();
-      ctx.arc(tpCX - 32 + i * 16, tpY + tpH + 16, 5, 0, Math.PI * 2);
+      ctx.arc(tpCX - 24 + i * 16, tpY + tpH + 16, 5, 0, Math.PI * 2);
       ctx.fill();
     }
 
@@ -11201,287 +11206,168 @@ export class Game {
   }
 
   _drawTutorialPanel(ctx, idx, t, tpX, tpY, tpW, tpH) {
-    const cx    = tpX + tpW / 2;
-    const ey    = tpY + 200;
-    const descY = tpY + 355;
+    const cx   = tpX + tpW / 2;
+    const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 600);
 
     ctx.save();
     ctx.textAlign = 'center';
-    ctx.font      = '13px Consolas, monospace';
 
-    // Helpers: draw a real game sprite (aspect-preserved) with a boolean "was it drawn" result,
-    // and a premium player token (cyan glow + ring). Used so the mini-tutorial reads game-like.
-    const drawSprite = (img, x, y, size) => {
-      if (img && img.complete && img.naturalWidth > 0) {
-        const w = size, h = size * (img.naturalHeight / img.naturalWidth);
-        ctx.drawImage(img, x - w / 2, y - h / 2, w, h);
-        return true;
-      }
-      return false;
+    // Card draw helper — draws a titled info card with bullet lines
+    const drawCard = (icon, title, lines, iconColor, y0) => {
+      const cardH = 26 + lines.length * 22 + 14;
+      const cardX = tpX + 14;
+      const cardW = tpW - 28;
+
+      // Card glass background
+      ctx.fillStyle = 'rgba(0,12,28,0.70)';
+      ctx.fillRect(cardX, y0, cardW, cardH);
+
+      // Pulsing neon border
+      ctx.strokeStyle = `rgba(0,${Math.round(180 + 50 * pulse)},255,${0.35 + 0.25 * pulse})`;
+      ctx.lineWidth = 1.2;
+      ctx.strokeRect(cardX, y0, cardW, cardH);
+
+      // Left accent strip
+      ctx.fillStyle = iconColor;
+      ctx.fillRect(cardX, y0, 3, cardH);
+
+      // Icon + title
+      ctx.font = 'bold 13px Consolas, monospace';
+      ctx.fillStyle = iconColor;
+      ctx.shadowColor = iconColor; ctx.shadowBlur = 8;
+      ctx.textAlign = 'left';
+      ctx.fillText(icon + '  ' + title, cardX + 12, y0 + 18);
+      ctx.shadowBlur = 0;
+
+      // Bullets
+      ctx.font = '11px Consolas, monospace';
+      ctx.fillStyle = 'rgba(200,225,255,0.90)';
+      lines.forEach((ln, i) => {
+        ctx.fillText('▸  ' + ln, cardX + 14, y0 + 32 + i * 22);
+      });
+      ctx.textAlign = 'center';
     };
-    const drawPlayerToken = (x, y) => {
-      ctx.save();
-      ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.45;
-      ctx.fillStyle = CYAN; ctx.beginPath(); ctx.arc(x, y, 19, 0, Math.PI * 2); ctx.fill();
-      ctx.restore();
-      ctx.fillStyle = CYAN; ctx.beginPath(); ctx.arc(x, y, 12, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = WHITE; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(x, y, 12, 0, Math.PI * 2); ctx.stroke();
-    };
+
+    const gapY = 8;
+    const topY = tpY + 36;
 
     switch (idx) {
-      case 0: { // COLLECT DATA-CORES
-        const reached = t > 0.55;
-        const playerX = reached
-          ? cx + 60
-          : cx - 90 + 150 * (t / 0.55);
-        const coreX = cx + 60;
-
-        if (!reached) {
-          const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 300);
-          ctx.save();
-          ctx.globalAlpha = 0.35 * pulse;
-          ctx.fillStyle   = YELLOW;
-          ctx.beginPath(); ctx.arc(coreX, ey, 22, 0, Math.PI * 2); ctx.fill();
-          ctx.restore();
-          if (!drawSprite(this._coreSprite, coreX, ey, 30)) {   // real Data-Core sprite
-            ctx.fillStyle   = YELLOW;
-            ctx.beginPath(); ctx.arc(coreX, ey, 8, 0, Math.PI * 2); ctx.fill();
-            ctx.strokeStyle = WHITE; ctx.lineWidth = 1;
-            ctx.beginPath(); ctx.arc(coreX, ey, 8, 0, Math.PI * 2); ctx.stroke();
-          }
-          const arrowA = 0.4 + 0.6 * Math.abs(Math.sin(Date.now() / 500));
-          ctx.save();
-          ctx.globalAlpha = arrowA;
-          ctx.strokeStyle = CYAN; ctx.lineWidth = 2;
-          ctx.beginPath();
-          ctx.moveTo(playerX + 17, ey);
-          ctx.lineTo(playerX + 29, ey);
-          ctx.moveTo(playerX + 25, ey - 5);
-          ctx.lineTo(playerX + 29, ey);
-          ctx.lineTo(playerX + 25, ey + 5);
-          ctx.stroke();
-          ctx.restore();
-        } else {
-          const flashA = Math.max(0, 1 - (t - 0.55) * 6);
-          ctx.save();
-          ctx.globalAlpha = flashA;
-          ctx.fillStyle   = YELLOW;
-          ctx.beginPath(); ctx.arc(coreX, ey, 20, 0, Math.PI * 2); ctx.fill();
-          ctx.restore();
-        }
-
-        drawPlayerToken(playerX, ey);
-
-        ctx.fillStyle = WHITE;
-        ctx.fillText('Enemies steal Data-Cores from Power Matrices.', cx, descY);
-        ctx.fillText('Walk over them to pick them up.', cx, descY + 20);
-        break;
-      }
-
-      case 1: { // RETURN TO POWER MATRIX
-        const matX   = cx + 110;
-        const startX = cx - 100;
-        const arrived = t > 0.6;
-        const playerX = arrived
-          ? matX - 28
-          : startX + (matX - 28 - startX) * (t / 0.6);
-
-        const matFlash = arrived ? Math.max(0, 1 - (t - 0.6) * 5) : 0;
-        if (matFlash > 0) {   // bright pulse ring on deposit
-          ctx.save(); ctx.globalAlpha = matFlash; ctx.strokeStyle = WHITE; ctx.lineWidth = 3;
-          ctx.strokeRect(matX - 26, ey - 26, 52, 52); ctx.restore();
-        }
-        if (!drawSprite(this._matrixSprite, matX, ey, 56)) {   // real Power Matrix / Nexus sprite
-          ctx.strokeStyle = CYAN; ctx.lineWidth = 2;
-          ctx.strokeRect(matX - 22, ey - 22, 44, 44);
-          ctx.fillStyle = 'rgba(0,220,255,0.12)';
-          ctx.fillRect(matX - 22, ey - 22, 44, 44);
-          ctx.font = 'bold 10px Consolas, monospace'; ctx.fillStyle = CYAN;
-          ctx.fillText('NEXUS', matX, ey + 4);
-          ctx.font = '13px Consolas, monospace';
-        }
-
-        drawPlayerToken(playerX, ey);
-
-        if (!arrived) {
-          const angle = Date.now() / 400;
-          ctx.fillStyle = YELLOW;
-          ctx.beginPath();
-          ctx.arc(playerX + Math.cos(angle) * 18, ey + Math.sin(angle) * 18, 5, 0, Math.PI * 2);
-          ctx.fill();
-        }
-
-        if (arrived) {
-          const popA = Math.max(0, 1 - (t - 0.6) * 4);
-          ctx.save();
-          ctx.globalAlpha = popA;
-          ctx.fillStyle   = GREEN;
-          ctx.font        = 'bold 14px Consolas, monospace';
-          ctx.fillText('+25', matX, ey - 38);
-          ctx.font        = '13px Consolas, monospace';
-          ctx.restore();
-        }
-
-        ctx.fillStyle = WHITE;
-        ctx.fillText('Return carried cores to a Power Matrix', cx, descY);
-        ctx.fillText('to stabilize the grid and earn score.', cx, descY + 20);
-        break;
-      }
-
-      case 2: { // STOP NETWORK OVERLOAD
-        const rising = t < 0.5;
-        const overloadPct = rising
-          ? t * 2 * 0.85
-          : 0.85 - (t - 0.5) * 2 * 0.65;
-
-        const barW = 320, barH = 28;
-        const barX = cx - barW / 2;
-        const barY = ey - 14;
-
-        ctx.fillStyle = 'rgba(0,0,0,0.6)';
-        ctx.fillRect(barX, barY, barW, barH);
-
-        const barColor = overloadPct > 0.6 ? RED : overloadPct > 0.35 ? ORANGE : CYAN;
-        ctx.fillStyle  = barColor;
-        ctx.fillRect(barX, barY, Math.round(barW * overloadPct), barH);
-        ctx.strokeStyle = WHITE; ctx.lineWidth = 1;
-        ctx.strokeRect(barX, barY, barW, barH);
-
-        ctx.font      = 'bold 13px Consolas, monospace';
-        ctx.fillStyle = WHITE;
-        ctx.textAlign = 'left';
-        ctx.fillText('NETWORK OVERLOAD', barX, barY - 10);
-        ctx.fillStyle = barColor;
-        ctx.textAlign = 'right';
-        ctx.fillText(`${Math.round(overloadPct * 100)}%`, barX + barW, barY - 10);
+      case 0: { // PHENIX REVIVE
+        const burstA = t > 0.35 && t < 0.75 ? Math.max(0, 1 - Math.abs(t - 0.55) / 0.2) : 0;
+        // Animated HP bar
+        const barW = tpW - 60; const barX = tpX + 30; const barY = topY + 2;
+        const hpPct = t < 0.4 ? 1 - t / 0.4 * 0.98 : t > 0.7 ? (t - 0.7) / 0.3 * 0.45 : 0.02;
+        ctx.fillStyle = 'rgba(0,0,0,0.55)';
+        ctx.fillRect(barX, barY, barW, 18);
+        ctx.fillStyle = hpPct > 0.5 ? '#30e060' : hpPct > 0.2 ? '#e08830' : '#e03030';
+        ctx.fillRect(barX, barY, Math.round(barW * hpPct), 18);
+        ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.lineWidth = 1;
+        ctx.strokeRect(barX, barY, barW, 18);
+        ctx.font = 'bold 10px Consolas, monospace'; ctx.fillStyle = WHITE;
+        ctx.textAlign = 'left'; ctx.fillText('HP', barX - 22, barY + 13);
         ctx.textAlign = 'center';
-        ctx.font      = '13px Consolas, monospace';
-        ctx.fillStyle = rising ? RED : GREEN;
-        ctx.fillText(
-          rising ? '▲ Cores stolen — Overload rising!' : '▼ Cores returned — Overload dropping!',
-          cx, barY + barH + 22
-        );
-
-        ctx.fillStyle = WHITE;
-        ctx.fillText('If Overload reaches 100% the run ends.', cx, descY);
-        ctx.fillText('Slot cores into the Matrix to keep it low.', cx, descY + 20);
-        break;
-      }
-
-      case 3: { // SURVIVE ENEMY WAVES
-        const phase = t < 0.35 ? 'approach' : t < 0.6 ? 'fire' : t < 0.8 ? 'hit' : 'reset';
-        const positions = [
-          [cx - 140, ey - 45], [cx + 150, ey + 25], [cx + 15, ey - 85],
-        ];
-        const approachF = phase === 'approach' ? (t / 0.35) : 1;
-
-        drawPlayerToken(cx, ey);
-
-        for (let i = 0; i < 3; i++) {
-          const [eposX, eposY] = positions[i];
-          const offX  = eposX < cx ? tpX - 20 : tpX + tpW + 20;
-          const drawX = offX + (eposX - offX) * approachF;
-          const drawY = eposY;
-          const dead  = (phase === 'hit' || phase === 'reset') && i === 1;
-
-          if (!dead) {
-            ctx.fillStyle   = '#CC2244';
-            ctx.beginPath(); ctx.arc(drawX, drawY, 10, 0, Math.PI * 2); ctx.fill();
-            ctx.strokeStyle = '#FF4466'; ctx.lineWidth = 1;
-            ctx.beginPath(); ctx.arc(drawX, drawY, 10, 0, Math.PI * 2); ctx.stroke();
-          } else if (phase === 'hit') {
-            const explodeT = (t - 0.6) / 0.2;
-            ctx.save();
-            ctx.globalAlpha = Math.max(0, 1 - explodeT);
-            ctx.fillStyle   = ORANGE;
-            for (let s = 0; s < 6; s++) {
-              const ang  = (s / 6) * Math.PI * 2;
-              const dist = explodeT * 22;
-              ctx.beginPath();
-              ctx.arc(eposX + Math.cos(ang) * dist, eposY + Math.sin(ang) * dist, 3, 0, Math.PI * 2);
-              ctx.fill();
-            }
-            ctx.restore();
-          }
-        }
-
-        if (phase === 'fire' || phase === 'hit') {
-          const fireT = phase === 'fire' ? (t - 0.35) / 0.25 : 1;
-          const [tx2, ty2] = positions[1];
-          const projX = cx + (tx2 - cx) * Math.min(1, fireT * 1.4);
-          const projY = ey + (ty2 - ey) * Math.min(1, fireT * 1.4);
-          if (fireT < 1) {
-            ctx.fillStyle = CYAN;
-            ctx.beginPath(); ctx.arc(projX, projY, 4, 0, Math.PI * 2); ctx.fill();
-          }
-        }
-
-        ctx.fillStyle = WHITE;
-        ctx.fillText('Auto-fire at enemies, dash with SHIFT, and use specials to survive.', cx, descY);
-        ctx.fillText('Killing enemies earns XP and score.', cx, descY + 20);
-        break;
-      }
-
-      case 4: { // PHOENIX REVIVE
-        let hpPct, showBurst;
-        if (t < 0.35) {
-          hpPct     = 1 - (t / 0.35);
-          showBurst = false;
-        } else if (t < 0.65) {
-          hpPct     = 0;
-          showBurst = true;
-        } else {
-          hpPct     = (t - 0.65) / 0.35 * 0.5;
-          showBurst = false;
-        }
-
-        const barW = 280, barH = 22;
-        const barX = cx - barW / 2;
-        const barY = ey - 75;
-        const pcy  = ey + 15;
-
-        ctx.fillStyle = 'rgba(0,0,0,0.6)';
-        ctx.fillRect(barX, barY, barW, barH);
-        const hpColor = hpPct > 0.5 ? GREEN : hpPct > 0.25 ? ORANGE : RED;
-        if (hpPct > 0) {
-          ctx.fillStyle = hpColor;
-          ctx.fillRect(barX, barY, Math.round(barW * hpPct), barH);
-        }
-        ctx.strokeStyle = WHITE; ctx.lineWidth = 1;
-        ctx.strokeRect(barX, barY, barW, barH);
-        ctx.font      = 'bold 12px Consolas, monospace';
-        ctx.fillStyle = WHITE;
-        ctx.textAlign = 'left';
-        ctx.fillText('HP', barX - 30, barY + 15);
-        ctx.textAlign = 'center';
-        ctx.font = '13px Consolas, monospace';
-
-        if (showBurst) {
-          const burstT = (t - 0.35) / 0.3;
-          const radius = burstT * 75;
-          const alpha  = Math.max(0, 1 - burstT);
-          ctx.save();
-          ctx.globalAlpha = alpha * 0.55;
-          ctx.fillStyle   = ORANGE;
-          ctx.beginPath(); ctx.arc(cx, pcy, radius, 0, Math.PI * 2); ctx.fill();
-          ctx.globalAlpha = alpha;
-          ctx.strokeStyle = YELLOW; ctx.lineWidth = 3;
-          ctx.beginPath(); ctx.arc(cx, pcy, radius, 0, Math.PI * 2); ctx.stroke();
-          ctx.restore();
+        if (burstA > 0) {
+          ctx.save(); ctx.globalAlpha = burstA * 0.7;
           ctx.fillStyle = ORANGE;
-          ctx.font      = 'bold 14px Consolas, monospace';
-          ctx.fillText('❆ PHOENIX REVIVE ❆', cx, pcy + 5);
-          ctx.font = '13px Consolas, monospace';
+          ctx.beginPath(); ctx.arc(cx, barY + 50, burstA * 55, 0, Math.PI * 2); ctx.fill();
+          ctx.restore();
+          ctx.fillStyle = YELLOW; ctx.font = 'bold 15px Consolas, monospace';
+          ctx.shadowColor = ORANGE; ctx.shadowBlur = 12;
+          ctx.fillText('❆ PHENIX REVIVE ❆', cx, barY + 54);
+          ctx.shadowBlur = 0; ctx.font = '11px Consolas, monospace';
         }
+        const cardY0 = topY + 82;
+        drawCard('⚡', 'PHENIX REVIVE', [
+          'HP reaches 0 — revive triggers automatically',
+          'Multiple revive charges available per run',
+          'Use the second chance wisely — stay mobile',
+        ], ORANGE, cardY0);
+        break;
+      }
 
-        ctx.save();
-        ctx.globalAlpha = showBurst ? 0.3 : 1;
-        drawPlayerToken(cx, pcy);
-        ctx.restore();
+      case 1: { // NULL RELICS
+        // Animated orbiting relic dots
+        const orbitR = 38; const orbitCY = topY + 50;
+        const numRelics = 5;
+        for (let i = 0; i < numRelics; i++) {
+          const angle = (i / numRelics) * Math.PI * 2 + t * Math.PI * 2 * 0.4;
+          const rx = cx + Math.cos(angle) * orbitR;
+          const ry = orbitCY + Math.sin(angle) * orbitR * 0.45;
+          const glow = 0.55 + 0.45 * Math.sin(angle + t * 5);
+          ctx.save();
+          ctx.fillStyle = `rgba(${Math.round(140 + 80*glow)},0,255,${0.6 + 0.4 * glow})`;
+          ctx.shadowColor = '#c840ff'; ctx.shadowBlur = 8 * glow;
+          ctx.beginPath(); ctx.arc(rx, ry, 5 + 2 * glow, 0, Math.PI * 2); ctx.fill();
+          ctx.restore();
+        }
+        // Center glyph
+        ctx.font = 'bold 22px Consolas, monospace';
+        ctx.fillStyle = '#c840ff'; ctx.shadowColor = '#c840ff'; ctx.shadowBlur = 14;
+        ctx.fillText('◈', cx, orbitCY + 8);
+        ctx.shadowBlur = 0;
+        drawCard('◈', 'NULL RELICS', [
+          'Permanent discovery layer — survives between runs',
+          'Reward deeper survival and rare achievements',
+          'Inspect from Relics / Archive in the main menu',
+        ], '#c840ff', topY + 108);
+        break;
+      }
 
-        ctx.fillStyle = WHITE;
-        ctx.fillText('When HP hits 0, Phoenix Revive activates.', cx, descY);
-        ctx.fillText('Up to ' + (3 + (this._hasProto('phoenix_revival') ? 1 : 0)) + ' revives are available per run.', cx, descY + 20);
+      case 2: { // CHAOS MODE
+        // Animated escalating bar
+        const barW2 = tpW - 60; const barX2 = tpX + 30; const barY2 = topY + 4;
+        const fillPct = 0.3 + 0.5 * (0.5 + 0.5 * Math.sin(t * Math.PI * 2 - Math.PI / 2));
+        const barCol = fillPct > 0.7 ? RED : fillPct > 0.45 ? ORANGE : YELLOW;
+        ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(barX2, barY2, barW2, 18);
+        ctx.fillStyle = barCol; ctx.fillRect(barX2, barY2, Math.round(barW2 * fillPct), 18);
+        ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.lineWidth = 1;
+        ctx.strokeRect(barX2, barY2, barW2, 18);
+        ctx.font = 'bold 10px Consolas, monospace'; ctx.textAlign = 'left';
+        ctx.fillStyle = barCol; ctx.fillText('CHAOS', barX2, barY2 - 4);
+        ctx.textAlign = 'right'; ctx.fillText(`${Math.round(fillPct * 100)}%`, barX2 + barW2, barY2 - 4);
+        ctx.textAlign = 'center';
+        const label = fillPct > 0.7 ? '▲ CHAOS MODE INCOMING' : fillPct > 0.45 ? '◆ Pressure escalating' : '◇ Survive deeper...';
+        ctx.font = '11px Consolas, monospace'; ctx.fillStyle = barCol;
+        ctx.fillText(label, cx, barY2 + 34);
+        drawCard('◆', 'CHAOS MODE', [
+          'Survive long enough — the run escalates',
+          'Stronger enemies, higher pressure, greater reward',
+          'Premium endgame — only the prepared reach it',
+        ], RED, topY + 80);
+        break;
+      }
+
+      case 3: { // BLACKNET MARKET
+        // Animated credit/market icons
+        const iconY = topY + 55;
+        const items = ['[UPGRADE]', '[PASSIVE]', '[RELIC]', '[UTILITY]'];
+        const spacing = (tpW - 30) / items.length;
+        items.forEach((label, i) => {
+          const ix = tpX + 15 + spacing * i + spacing / 2;
+          const highlightI = Math.floor(t * items.length * 1.5) % items.length;
+          const isActive = i === highlightI;
+          ctx.save();
+          if (isActive) {
+            ctx.shadowColor = '#00e5ff'; ctx.shadowBlur = 10;
+          }
+          ctx.fillStyle = isActive ? CYAN : 'rgba(0,180,220,0.35)';
+          ctx.strokeStyle = isActive ? CYAN : 'rgba(0,180,220,0.25)';
+          ctx.lineWidth = 1;
+          const bx = ix - spacing * 0.4; const bw = spacing * 0.8; const bh = 22;
+          ctx.fillRect(bx, iconY - 14, bw, bh);
+          ctx.strokeRect(bx, iconY - 14, bw, bh);
+          ctx.restore();
+          ctx.font = `${isActive ? 'bold ' : ''}10px Consolas, monospace`;
+          ctx.fillStyle = isActive ? '#001822' : 'rgba(0,200,230,0.7)';
+          ctx.fillText(label, ix, iconY + 2);
+        });
+        ctx.font = '11px Consolas, monospace'; ctx.fillStyle = 'rgba(180,220,255,0.7)';
+        ctx.fillText('Credits unlock build options between danger spikes', cx, iconY + 34);
+        drawCard('▣', 'BLACKNET MARKET', [
+          'Spend credits on upgrades, passives, and utilities',
+          'Risk / reward decisions that shape every run',
+          'Explore build options — some unlock deeper systems',
+        ], '#00e5ff', topY + 102);
         break;
       }
     }

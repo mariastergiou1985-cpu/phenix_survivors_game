@@ -1,8 +1,6 @@
 # PHENIX: NULL EDEN
 
-A cyber-survival roguelite set inside a corrupted digital sanctuary.
-
-A cyberpunk HTML5 Canvas survival game where the player protects Power Matrices, recovers Data-Cores, fights enemy waves, survives events, defeats the AI Overload Titan and Matrix Annihilator mini-bosses, earns Grid Credits, and upgrades characters.
+A fast cyber-survival roguelite set inside a corrupted digital system.
 
 ## Play Online
 
@@ -10,86 +8,50 @@ https://mariastergiou1985-cpu.github.io/phenix_survivors_game/
 
 No install required. Runs in any modern browser.
 
+## About
+
+PHENIX: NULL EDEN is a browser-based HTML5 Canvas 2D cyber-survival roguelite. Choose a survivor, fight through escalating waves of cyber enemies, collect Null Relics, build your run through upgrades and Blacknet Market choices, and push beyond Act 1 into Endless Mode — where Chaos Mode waits for the bold.
+
+EDEN CORE observes every run and records your legacy in the Boss Echo Archive, Eden Memory, and System Logs.
+
 ## Controls
 
 | Key / Action | Effect |
 |---|---|
 | WASD / Arrow Keys | Move |
-| Auto-Fire | Automatic — no mouse click |
+| Mouse / Right Stick | Aim (where supported) |
+| Auto-Fire | Automatic |
 | SHIFT | Dash |
-| SPACE | Ultimate — per-character special (Thunder Solo / Overheated Chains / Spirit Dojang) |
+| SPACE | Ultimate |
 | Q | Pulse Shield |
-| E | EMP Cloud (stun burst) |
-| T | Toggle Aim Assist |
+| E | EMP Cloud |
 | M | Mute / Unmute Music |
 | ESC | Back / Pause |
 
-## Gameplay
+Controller support: Xbox / PS4 / PS5 / PC controllers supported for core gameplay. Some menu/card navigation may still be improved.
 
-- Protect the Power Matrices
-- Recover dropped Data-Cores
-- Return Data-Cores to the Matrix bases
-- Stop enemies from stealing cores
-- Survive enemy attacks and waves
-- Prevent Network Overload from reaching 100%
-- Collect Grid Cache supply events (follow the blinking arrow)
-- Defeat the AI Overload Titan mini-boss
-- Defend a Power Matrix from the Matrix Annihilator mid-game mini-boss (rush to stop it before it drains the Matrix)
-- Earn Grid Credits after each run
-- Spend credits on permanent upgrades from the Upgrades menu
-
-## Characters
-
-- Cyber Skeleton Warrior
-- Neon Taekwondo Girl
-- Cyber Arm Hero
-
-Each character has different stats, attacks, and a unique special move.
+Mobile: landscape touch controls supported.
 
 ## Features
 
-- Online playable via GitHub Pages
-- Start Menu
-- Character Select
-- Character differentiation
-- Instructions screen with animated tutorial panels
-- Permanent Upgrades (Grid Credits)
-- Grid Credits earned per run
-- Score / High Score / Combo system
-- Data-Core / Power Matrix objective
-- Network Overload system
-- Enemy waves and events
-- Grid Cache supply drop event with arrow indicator
-- Acid Rain weather event
-- AI Overload Titan mini-boss
-- Matrix Annihilator mini-boss (mid-game second boss beat — targets and drains a Power Matrix)
-- Bloodfang Packmaster mini-boss (10:00 third boss beat — fast cyber-beast pack leader with 3 Razorhounds; bite/lunge stagger)
-- Boss support drones
-- Phoenix Revive tiers
-- Auto-fire (no mouse click required)
-- Dash with SHIFT
-- Special Move with E
-- Aim Assist toggle
-- Game Over / Run Summary
-- Custom music by TSALI
+- Multiple playable survivors with distinct combat styles
+- Fast cyber-survival combat with enemies, elites, and bosses
+- Null Relic system: universal, boss, character, and arena-exclusive relics
+- Active relic HUD — see your equipped passive stack at a glance
+- Permanent meta-progression: levels, ranks, unlocks, achievements
+- NULL BREACH ARENA: endgame boss gauntlet at 5:00 and 12:00 in Endless Mode
+- EDEN CORE narrative system: Boss Echo Archive, Eden Memory, System Logs
+- Chaos Laws: emergent run-modifier system
+- Blacknet Market: upgrade and build utility choices
+- Mobile touch controls (virtual joystick + action buttons)
+- Keyboard, mouse, and controller support
+- No install required on browser builds
+
+## Status
+
+Playable public demo — work in progress. Balance, content, and polish are actively evolving.
 
 ## Credits
 
-**Game, Art, Design & Code:** InkSpireM Visuals
-**Project Assistance & Music:** TSALI
-
-**Music:**
-- Menu Theme: "HOPE" by TSALI
-- Gameplay Theme: "PHENIX OVERDRIVE" by TSALI
-
-## Run Locally
-
-```bash
-python -m http.server 8000
-```
-
-Then open: http://localhost:8000
-
-## Tech
-
-Vanilla HTML5 Canvas / JavaScript browser game. No e
+Game / direction / visuals / implementation: Maria Papananou — InkSpireM Visuals
+Music / orchestration: Georgios Litsas
