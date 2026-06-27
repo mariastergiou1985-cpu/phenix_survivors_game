@@ -161,6 +161,14 @@ const BOSS_ECHOES = [
   { id: 'annihilator',  name: 'Annihilator Echo',     color: '#fbbf24', lore: 'Termination protocol indexed.' },
 ];
 
+const EDEN_MILESTONES = [
+  { pct: 10,  label: 'BOSS ECHO ARCHIVE STABILIZED',  lore: 'Echo resonance confirmed. Archive integrity verified.' },
+  { pct: 25,  label: 'NULL BREACH STATUS UNLOCKED',    lore: 'Breach signal detected. Null protocol handshake complete.' },
+  { pct: 50,  label: 'CHAOS LAWS PREVIEW DETECTED',    lore: 'Chaos law fragments leaking through memory barrier.' },
+  { pct: 75,  label: 'HIDDEN SYSTEM LOGS UNSEALED',    lore: 'Encrypted system logs decrypted. Phenix origin data exposed.' },
+  { pct: 100, label: 'TRUE NULL EDEN SIGNAL DETECTED', lore: 'Full memory reconstruction achieved. EDEN CORE fully awakened.' },
+];
+
 // ── Taekwondo Crystal Ice Field (replaces Lightning Dash Strike) ───────────────
 // All numbers tunable here. Duration/radius control the field footprint; freeze
 // durations are SHORT for bosses (never a full lock) but FULL for normal enemies.
@@ -2063,6 +2071,28 @@ export class Game {
         #cgm-achievements .ce-status  { font-family:'Orbitron',sans-serif; font-weight:700; font-size:9px; letter-spacing:1.5px; white-space:nowrap; }
         #cgm-achievements .ce-status.archived { color:#a855f7; }
         #cgm-achievements .ce-status.locked   { color:#3a5060; }
+
+        /* ── Eden Memory Milestones ── */
+        #cgm-achievements .em-section { display:flex; flex-direction:column; gap:10px; }
+        #cgm-achievements .em-title   { font-family:'Orbitron',sans-serif; font-weight:800; font-size:14px; letter-spacing:3px; color:#2ee6f6; text-shadow:0 0 8px rgba(46,230,246,.55),0 0 22px rgba(46,230,246,.22); display:flex; align-items:center; gap:10px; }
+        #cgm-achievements .em-header  { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; }
+        #cgm-achievements .em-pct     { font-family:'Orbitron',sans-serif; font-weight:700; font-size:12px; color:#2ee6f6; padding:5px 14px; border-radius:999px; border:1px solid rgba(46,230,246,.35); background:rgba(46,230,246,.07); }
+        #cgm-achievements .em-list    { display:flex; flex-direction:column; gap:8px; }
+        #cgm-achievements .em-row     { border-radius:10px; border:1px solid rgba(46,60,80,.35); background:rgba(8,12,36,.6); padding:11px 14px; display:flex; align-items:center; gap:12px; }
+        #cgm-achievements .em-row.reached { border-color:rgba(46,230,246,.45); background:rgba(4,16,28,.7); }
+        #cgm-achievements .em-badge   { font-family:'Orbitron',sans-serif; font-weight:800; font-size:11px; min-width:36px; text-align:center; padding:4px 8px; border-radius:6px; flex-shrink:0; border:1px solid rgba(255,255,255,.08); background:rgba(0,0,0,.4); color:#3a5060; }
+        #cgm-achievements .em-badge.reached { color:#2ee6f6; border-color:rgba(46,230,246,.45); box-shadow:0 0 8px rgba(46,230,246,.4); }
+        #cgm-achievements .em-info    { display:flex; flex-direction:column; gap:3px; flex:1; min-width:0; }
+        #cgm-achievements .em-label   { font-family:'Orbitron',sans-serif; font-weight:700; font-size:10px; letter-spacing:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        #cgm-achievements .em-label.reached { color:#2ee6f6; }
+        #cgm-achievements .em-label.locked  { color:#3a5060; }
+        #cgm-achievements .em-lore    { font-size:10px; color:var(--txt-faint); line-height:1.4; font-style:italic; }
+        #cgm-achievements .em-lore.locked   { color:#283040; }
+        #cgm-achievements .em-status  { font-family:'Orbitron',sans-serif; font-weight:700; font-size:9px; letter-spacing:1.5px; white-space:nowrap; }
+        #cgm-achievements .em-status.reached { color:#2ee6f6; }
+        #cgm-achievements .em-status.locked  { color:#3a5060; }
+        #cgm-achievements .em-bar-wrap { height:3px; border-radius:2px; background:rgba(46,230,246,.12); margin-top:6px; overflow:hidden; }
+        #cgm-achievements .em-bar     { height:100%; border-radius:2px; background:linear-gradient(90deg,#0ff,#2ee6f6); transition:width .5s; }
       `;
       document.head.appendChild(style);
     }
@@ -2112,6 +2142,22 @@ export class Game {
             </div>
           </div>
           <div class="ce-grid" id="ce-grid"></div>
+        </div>
+
+        <div class="ca-sep"></div>
+
+        <div class="em-section" id="em-section">
+          <div class="em-header">
+            <div class="em-title">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18" aria-hidden="true">
+                <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
+              </svg>
+              EDEN MEMORY MILESTONES
+            </div>
+            <div class="em-pct" id="em-pct">MEMORY: 0%</div>
+          </div>
+          <div class="em-bar-wrap"><div class="em-bar" id="em-bar" style="width:0%"></div></div>
+          <div class="em-list" id="em-list"></div>
         </div>
 
         <div class="ca-sep"></div>
@@ -2182,6 +2228,39 @@ export class Game {
             <div class="${loreCls}">${archived ? echo.lore : 'Kill this boss in Endless to archive.'}</div>
           </div>
           <div class="${statCls}">${archived ? '✓ ARCHIVED' : '✕ LOCKED'}</div>
+        </div>`;
+      }).join('');
+    }
+
+    // Sync Eden Memory Milestones
+    const emPct  = el.querySelector('#em-pct');
+    const emBar  = el.querySelector('#em-bar');
+    const emList = el.querySelector('#em-list');
+    if (emPct && emBar && emList && this.meta) {
+      const mem = Math.round(this.meta.getEdenMemory());
+      emPct.textContent  = 'MEMORY: ' + mem + '%';
+      emBar.style.width  = mem + '%';
+      // Check and fire milestones once each
+      for (const ms of EDEN_MILESTONES) {
+        if (this.meta.checkAndRecordMilestone(ms.pct)) {
+          this._queueEdenTransmission('EDEN MEMORY ' + ms.pct + '%: ' + ms.label, { priority: 2, duration: 6 });
+          this.meta.addSystemMessage('EDEN MEMORY ' + ms.pct + '%: ' + ms.label);
+        }
+      }
+      emList.innerHTML = EDEN_MILESTONES.map(ms => {
+        const reached  = this.meta.hasMilestone(ms.pct);
+        const rowCls   = reached ? 'em-row reached' : 'em-row';
+        const badgeCls = reached ? 'em-badge reached' : 'em-badge';
+        const labCls   = reached ? 'em-label reached' : 'em-label locked';
+        const lorCls   = reached ? 'em-lore' : 'em-lore locked';
+        const statCls  = reached ? 'em-status reached' : 'em-status locked';
+        return `<div class="${rowCls}">
+          <div class="${badgeCls}">${ms.pct}%</div>
+          <div class="em-info">
+            <div class="${labCls}">${reached ? ms.label : '??? MILESTONE LOCKED'}</div>
+            <div class="${lorCls}">${reached ? ms.lore : 'Accumulate EDEN MEMORY to unlock.'}</div>
+          </div>
+          <div class="${statCls}">${reached ? '✓ REACHED' : '✕ LOCKED'}</div>
         </div>`;
       }).join('');
     }

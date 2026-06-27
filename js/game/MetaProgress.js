@@ -251,6 +251,7 @@ export class MetaProgress {
     this.edenMemoryPercent  = 0;   // 0–100, persisted
     this.systemFeedMessages = [];  // last 8 { text, ts } entries, newest first
     this.bossEchoes         = {};  // { [bossKey]: true } first-time echo archives
+    this.edenMilestonesSeen = {};  // { [threshold]: true } milestone one-fire guard
     this._load();
   }
 
@@ -284,6 +285,7 @@ export class MetaProgress {
       this.edenMemoryPercent  = Math.min(100, Math.max(0, Number(d.edenMemoryPercent) || 0));
       this.systemFeedMessages = Array.isArray(d.systemFeedMessages) ? d.systemFeedMessages.slice(0, 8) : [];
       this.bossEchoes         = (d.bossEchoes && typeof d.bossEchoes === 'object') ? d.bossEchoes : {};
+      this.edenMilestonesSeen = (d.edenMilestonesSeen && typeof d.edenMilestonesSeen === 'object') ? d.edenMilestonesSeen : {};
       // One-time retroactive payout for already-earned Endless achievements (idempotent).
       this._backfillProtocolFragments();
 
@@ -331,6 +333,7 @@ export class MetaProgress {
         edenMemoryPercent:  this.edenMemoryPercent,
         systemFeedMessages: this.systemFeedMessages,
         bossEchoes:         this.bossEchoes,
+        edenMilestonesSeen: this.edenMilestonesSeen,
       }));
     } catch (_) {}
   }
@@ -662,5 +665,19 @@ export class MetaProgress {
   }
 
   hasBossEcho(id) { return !!(this.bossEchoes && this.bossEchoes[id]); }
+
+  // Returns true the FIRST time this threshold is crossed, false on repeats.
+  checkAndRecordMilestone(threshold) {
+    if (!this.edenMilestonesSeen) this.edenMilestonesSeen = {};
+    if (this.edenMilestonesSeen[threshold]) return false;
+    if (this.getEdenMemory() >= threshold) {
+      this.edenMilestonesSeen[threshold] = true;
+      this._save();
+      return true;
+    }
+    return false;
+  }
+
+  hasMilestone(threshold) { return !!(this.edenMilestonesSeen && this.edenMilestonesSeen[threshold]); }
 
 }
