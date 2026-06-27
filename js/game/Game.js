@@ -4501,7 +4501,7 @@ export class Game {
           this.meta.addSystemMessage(cmsg);
           this._chaosEdenAwarded = true;
           // In-run popup for Chaos
-          this._queueEdenTransmission(cmsg, { title: 'EDEN CORE', priority: 2, duration: 7 });
+          this._queueEdenTransmission(cmsg, { title: 'EDEN CORE', priority: 2, duration: 7, clipId: 'chaos' });
         }
         // Rearm all boss slots immediately so they arrive together
         this.titanSpawned       = false; this.titanSpawnTimer       = 0;
@@ -11906,7 +11906,7 @@ export class Game {
    *   priority: 1=normal 2=high(boss/chaos) 3=critical(low-hp)
    *             Higher priority replaces active lower-priority transmission.
    */
-  _queueEdenTransmission(message, { title = 'EDEN CORE', priority = 1, duration = 5, auto = false } = {}) {
+  _queueEdenTransmission(message, { title = 'EDEN CORE', priority = 1, duration = 5, auto = false, clipId = null } = {}) {
     const now = this.timeAlive || 0;
     // Auto-milestone cooldown: enforce 50 s gap
     if (auto && (now - this._edenLastAutoAt) < 50) return;
@@ -11915,6 +11915,8 @@ export class Game {
     if (ex && now < ex.expiresAt && priority < ex.priority) return;
     this._edenTransmission = { message, title, priority, expiresAt: now + duration };
     if (auto) this._edenLastAutoAt = now;
+    // Optional audio hook — synthesized glitch if no clip, silent if muted
+    this.audio?.playEdenTransmission(clipId);
   }
 
   /**
@@ -12930,7 +12932,7 @@ export class Game {
       this.meta.addEdenMemory(1);
     }
     // Eden Core in-run popup on boss kill
-    this._queueEdenTransmission('SERPENT ECHO: signal terminated.', { title: 'EDEN CORE', priority: 2, duration: 5 });
+    this._queueEdenTransmission('SERPENT ECHO: signal terminated.', { title: 'EDEN CORE', priority: 2, duration: 5, clipId: 'signal_down' });
     const s = this.cyberSerpentBoss;
     if (!s) return;
     const pos = s.pos.clone();
@@ -13231,7 +13233,7 @@ export class Game {
       this.meta.addEdenMemory(1);
     }
     // Eden Core in-run popup on boss kill
-    this._queueEdenTransmission('DRAGON ECHO: cryo trace terminated.', { title: 'EDEN CORE', priority: 2, duration: 5 });
+    this._queueEdenTransmission('DRAGON ECHO: cryo trace terminated.', { title: 'EDEN CORE', priority: 2, duration: 5, clipId: 'signal_down' });
     const d = this.cyberDragonBoss;
     if (!d) return;
     const pos = d.pos.clone();

@@ -530,4 +530,51 @@ export class AudioManager {
       'assets/audio/sfx/rocket-rain.wav');
     this._playSfxBuffer('sfxRocketRain', 3.0, 0.90);
   }
+  // ─── EDEN CORE transmission audio (V1) ──────────────────────────────────────
+  // Clip IDs map to files under assets/audio/eden_core/.
+  // If the file hasn't loaded yet (or doesn't exist), falls back to a synthesized
+  // cyber-glitch tone so the transmission never crashes and never blocks music.
+  // All paths respect mute and sfxGain — no special-casing needed.
+
+  // Future clip IDs → filenames (add entries here as voice clips are produced).
+  // Null value = no file planned yet; use synthesized fallback always.
+  static _EDEN_CLIP_MAP = {
+    chaos:          'chaos_signal_detected',
+    null_breach:    'null_breach_detected',
+    signal_down:    'signal_collapsed',
+    extract:        'extract_you_once',
+    return_grid:    'return_to_grid',
+    grid_memory:    'grid_remembers',
+  };
+
+  /**
+   * Play audio for an EDEN CORE transmission.
+   * @param {string|null} clipId  Key from _EDEN_CLIP_MAP, or null for synthesized glitch.
+   */
+  playEdenTransmission(clipId = null) {
+    if (this.muted) return;
+    if (!this._canPlay('edenTx', 3.5)) return;   // hard-limit: never more than once per 3.5 s
+
+    const filename = clipId ? AudioManager._EDEN_CLIP_MAP[clipId] : null;
+    if (filename) {
+      const key = 'sfxEden_' + clipId;
+      this._loadSfxFile(key,
+        `assets/audio/eden_core/${filename}.ogg`,
+        `assets/audio/eden_core/${filename}.mp3`);
+      if (this._sfxBuffers[key]) {
+        // File loaded — play at 0.72 gain (below music, above ambient SFX)
+        this._playSfxBuffer(key, 3.5, 0.72);
+        return;
+      }
+      // Buffer still loading this frame — fall through to synthesized glitch
+    }
+
+    // Synthesized glitch fallback: two descending pulses + bandpass noise burst.
+    // Sounds like a digital stutter / cyber voice crackle — distinct from other SFX.
+    this._tone({ type: 'square',    freqStart: 660, freqEnd: 220, dur: 0.14, gain: 0.09 });
+    this._tone({ type: 'sawtooth',  freqStart: 440, freqEnd: 110, dur: 0.12, gain: 0.07, delay: 0.08 });
+    this._noiseBurst({ dur: 0.18, gain: 0.06, filterType: 'bandpass', freq: 900 });
+  }
+
+
 }
