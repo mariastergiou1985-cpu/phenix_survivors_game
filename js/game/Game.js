@@ -153,12 +153,12 @@ const BOSS_KILL_PF = 1;
 // ── Boss Echo Archive — ordered list for UI display ───────────────────────
 // id must match the key passed to meta.recordBossEcho()
 const BOSS_ECHOES = [
-  { id: 'cyberSerpent', name: 'Cyber Serpent Echo',  color: '#ff7733', lore: 'Flame path remembered.' },
-  { id: 'cyberDragon',  name: 'Cyber Dragon Echo',   color: '#00ccff', lore: 'Cryo memory stabilized.' },
-  { id: 'doubleDemon',  name: 'Double Demons Echo',  color: '#ff2d95', lore: 'Twin corruption recorded.' },
-  { id: 'titan',        name: 'Titan Echo',           color: '#a855f7', lore: 'Heavy impact pattern stored.' },
-  { id: 'bloodfang',    name: 'Bloodfang Echo',       color: '#ef4444', lore: 'Predator signal contained.' },
-  { id: 'annihilator',  name: 'Annihilator Echo',     color: '#fbbf24', lore: 'Termination protocol indexed.' },
+  { id: 'cyberSerpent', name: 'Cyber Serpent Echo',  color: '#ff7733', lore: 'Flame path remembered.',         passive: '+0.2 Shot Damage' },
+  { id: 'cyberDragon',  name: 'Cyber Dragon Echo',   color: '#00ccff', lore: 'Cryo memory stabilized.',        passive: '+2% Fire Rate' },
+  { id: 'doubleDemon',  name: 'Double Demons Echo',  color: '#ff2d95', lore: 'Twin corruption recorded.',      passive: '+2% Fire Rate' },
+  { id: 'titan',        name: 'Titan Echo',           color: '#a855f7', lore: 'Heavy impact pattern stored.',  passive: '+3% Max HP' },
+  { id: 'bloodfang',    name: 'Bloodfang Echo',       color: '#ef4444', lore: 'Predator signal contained.',    passive: '+2% Move Speed' },
+  { id: 'annihilator',  name: 'Annihilator Echo',     color: '#fbbf24', lore: 'Termination protocol indexed.', passive: '+0.2 Shot Damage' },
 ];
 
 const EDEN_MILESTONES = [
@@ -672,6 +672,8 @@ export class Game {
     const _outfitPath = _outfit === 'default' ? null : this.meta.getOutfitAsset(_char, _outfit);
     this.player       = new Player(this.selectedCharacter, _outfitPath);
     this._applyMetaUpgrades();
+    this._echoPassiveMsgFired = false;
+    this._applyBossEchoPassives();
     this.matrices     = [];
     this.groundCores  = [];
     this.enemies      = [];
@@ -1213,6 +1215,42 @@ export class Game {
     p.contactDamageReduction     = Math.min(0.6, (p.contactDamageReduction || 0) + m.getLevel('armorPlating') * 0.03);
     p.maxMana                   += m.getLevel('manaCapacitor') * 10;               // ultimate cost stays 100
     p.xpMult                     = 1 + m.getLevel('xpUplink') * 0.05;
+  }
+
+  // Returns per-echo passive bonus scalars based on current archive state.
+  // All values default to identity (1 or 0) for missing echoes — safe with old saves.
+  _getBossEchoPassiveBonuses() {
+    if (!this.meta) return { maxHpMult: 1, moveSpeedBonus: 0, pulseDamageBonus: 0, fireRateBonus: 0 };
+    const h = id => this.meta.hasBossEcho(id);
+    return {
+      maxHpMult:        h('titan')        ? 1.03 : 1,
+      moveSpeedBonus:   h('bloodfang')    ? 0.02 : 0,
+      pulseDamageBonus: (h('annihilator') ? 0.2  : 0) + (h('cyberSerpent') ? 0.2 : 0),
+      fireRateBonus:    (h('cyberDragon') ? 0.02 : 0) + (h('doubleDemon')  ? 0.02 : 0),
+    };
+  }
+
+  // Apply boss echo passives to the player once per run (called from reset() after _applyMetaUpgrades).
+  // Only archived echoes (meta.hasBossEcho) apply. Repeat kills cannot increase these — the
+  // hasBossEcho flag is set exactly once per boss. Old saves that have no bossEchoes default
+  // to {} via MetaProgress._load(), so all calls to hasBossEcho return false → no bonus.
+  _applyBossEchoPassives() {
+    if (!this.meta || !this.player) return;
+    const b = this._getBossEchoPassiveBonuses();
+    const p = this.player;
+    if (b.maxHpMult > 1) {
+      p.maxHp = Math.round(p.maxHp * b.maxHpMult);
+      p.hp    = Math.min(p.hp, p.maxHp);
+    }
+    if (b.moveSpeedBonus  > 0) p.speedBonus              = (p.speedBonus              || 0) + b.moveSpeedBonus;
+    if (b.pulseDamageBonus > 0) p.upgrades['Pulse Damage'] = (p.upgrades['Pulse Damage'] || 0) + b.pulseDamageBonus;
+    if (b.fireRateBonus   > 0) p.fireRateBonus            = (p.fireRateBonus           || 0) + b.fireRateBonus;
+    // One-time per-run EDEN CORE message when any passive is active
+    const activeCount = BOSS_ECHOES.filter(e => this.meta.hasBossEcho(e.id)).length;
+    if (activeCount > 0 && !this._echoPassiveMsgFired) {
+      this._echoPassiveMsgFired = true;
+      try { this._queueEdenTransmission('EDEN CORE: Hostile echo converted into passive signal.', { priority: 1, duration: 5 }); } catch (_) {}
+    }
   }
 
   _grantRewards() {
@@ -2092,6 +2130,9 @@ export class Game {
         #cgm-achievements .ce-status  { font-family:'Orbitron',sans-serif; font-weight:700; font-size:9px; letter-spacing:1.5px; white-space:nowrap; }
         #cgm-achievements .ce-status.archived { color:#a855f7; }
         #cgm-achievements .ce-status.locked   { color:#3a5060; }
+        #cgm-achievements .ce-passive          { font-family:'Orbitron',sans-serif; font-weight:700; font-size:8px; letter-spacing:1px; margin-top:3px; }
+        #cgm-achievements .ce-passive.archived { color:#a855f7; opacity:.85; }
+        #cgm-achievements .ce-passive.locked   { color:#2a3a45; }
 
         /* ── Eden Memory Milestones ── */
         #cgm-achievements .em-section { display:flex; flex-direction:column; gap:10px; }
@@ -2268,22 +2309,24 @@ export class Game {
     const ceGrid   = el.querySelector('#ce-grid');
     if (ceCount && ceMemory && ceGrid) {
       const archivedN = BOSS_ECHOES.filter(e => this.meta.hasBossEcho(e.id)).length;
-      ceCount.textContent  = archivedN + ' / ' + BOSS_ECHOES.length + ' ARCHIVED';
+      ceCount.textContent  = 'PASSIVES ACTIVE: ' + archivedN + ' / ' + BOSS_ECHOES.length;
       ceMemory.textContent = 'EDEN MEMORY: ' + Math.round(this.meta.getEdenMemory()) + '%';
       ceGrid.innerHTML = BOSS_ECHOES.map(echo => {
-        const archived = this.meta.hasBossEcho(echo.id);
-        const cardCls  = archived ? 'ce-card archived' : 'ce-card';
-        const iconCls  = archived ? 'ce-icon archived' : 'ce-icon';
-        const nameCls  = archived ? 'ce-name' : 'ce-name locked';
-        const loreCls  = archived ? 'ce-lore' : 'ce-lore locked';
-        const statCls  = archived ? 'ce-status archived' : 'ce-status locked';
-        const iconStyle = archived ? `color:${echo.color}` : 'color:#3a5060';
-        const nameStyle = archived ? `color:${echo.color}` : '';
+        const archived   = this.meta.hasBossEcho(echo.id);
+        const cardCls    = archived ? 'ce-card archived' : 'ce-card';
+        const iconCls    = archived ? 'ce-icon archived' : 'ce-icon';
+        const nameCls    = archived ? 'ce-name' : 'ce-name locked';
+        const loreCls    = archived ? 'ce-lore' : 'ce-lore locked';
+        const statCls    = archived ? 'ce-status archived' : 'ce-status locked';
+        const passiveCls = archived ? 'ce-passive archived' : 'ce-passive locked';
+        const iconStyle  = archived ? `color:${echo.color}` : 'color:#3a5060';
+        const nameStyle  = archived ? `color:${echo.color}` : '';
         return `<div class="${cardCls}">
           <div class="${iconCls}" style="${iconStyle}">⬡</div>
           <div class="ce-info">
             <div class="${nameCls}" style="${nameStyle}">${archived ? echo.name : '??? ECHO LOCKED'}</div>
             <div class="${loreCls}">${archived ? echo.lore : 'Kill this boss in Endless to archive.'}</div>
+            <div class="${passiveCls}">Passive: ${archived ? echo.passive : '???'}</div>
           </div>
           <div class="${statCls}">${archived ? '✓ ARCHIVED' : '✕ LOCKED'}</div>
         </div>`;
