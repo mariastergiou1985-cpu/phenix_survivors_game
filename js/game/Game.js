@@ -169,6 +169,27 @@ const EDEN_MILESTONES = [
   { pct: 100, label: 'TRUE NULL EDEN SIGNAL DETECTED', lore: 'Full memory reconstruction achieved. EDEN CORE fully awakened.' },
 ];
 
+const CHAOS_LAWS = [
+  { id: 'blood_grid',        name: 'Blood Grid',           color: '#ef4444',
+    desc: 'Enemies accelerate. Rewards intensify.',
+    future: 'Future: enemy speed up, score/reward multiplier.' },
+  { id: 'frozen_eden',       name: 'Frozen Eden',          color: '#00ccff',
+    desc: 'Cryo hazards bleed through the Grid.',
+    future: 'Future: ice storms, slow fields, bonus XP.' },
+  { id: 'serpent_law',       name: 'Serpent Law',          color: '#ff7733',
+    desc: 'Fire paths reopen across NULL EDEN.',
+    future: 'Future: ember trails, burn hazards, Serpent pressure.' },
+  { id: 'dragon_law',        name: 'Dragon Law',           color: '#a855f7',
+    desc: 'Cryo memory begins to fall from above.',
+    future: 'Future: periodic cryo rain and Dragon Echo pressure.' },
+  { id: 'no_mercy_protocol', name: 'No Mercy Protocol',    color: '#fbbf24',
+    desc: 'Bosses stabilize beyond safe limits.',
+    future: 'Future: boss HP/damage up, score multiplier.' },
+  { id: 'broken_signal',     name: 'Broken Signal',        color: '#ff2d95',
+    desc: 'EDEN CORE transmissions become unreliable.',
+    future: 'Future: corrupted messages, altered event warnings.' },
+];
+
 // ── Taekwondo Crystal Ice Field (replaces Lightning Dash Strike) ───────────────
 // All numbers tunable here. Duration/radius control the field footprint; freeze
 // durations are SHORT for bosses (never a full lock) but FULL for normal enemies.
@@ -2093,6 +2114,28 @@ export class Game {
         #cgm-achievements .em-status.locked  { color:#3a5060; }
         #cgm-achievements .em-bar-wrap { height:3px; border-radius:2px; background:rgba(46,230,246,.12); margin-top:6px; overflow:hidden; }
         #cgm-achievements .em-bar     { height:100%; border-radius:2px; background:linear-gradient(90deg,#0ff,#2ee6f6); transition:width .5s; }
+
+        /* ── Chaos Laws Preview ── */
+        #cgm-achievements .cl-section  { display:flex; flex-direction:column; gap:10px; }
+        #cgm-achievements .cl-header   { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; }
+        #cgm-achievements .cl-title    { font-family:'Orbitron',sans-serif; font-weight:800; font-size:14px; letter-spacing:3px; color:#ef4444; text-shadow:0 0 8px rgba(239,68,68,.55),0 0 22px rgba(239,68,68,.22); display:flex; align-items:center; gap:10px; }
+        #cgm-achievements .cl-subtitle { font-family:'Orbitron',sans-serif; font-weight:700; font-size:10px; letter-spacing:2px; padding:5px 14px; border-radius:999px; border:1px solid rgba(239,68,68,.35); background:rgba(239,68,68,.07); color:#ef4444; }
+        #cgm-achievements .cl-locked-banner { border-radius:10px; border:1px solid rgba(239,68,68,.22); background:rgba(10,4,4,.7); padding:14px 18px; text-align:center; }
+        #cgm-achievements .cl-locked-banner .cl-lock-icon { font-size:22px; margin-bottom:6px; }
+        #cgm-achievements .cl-locked-banner .cl-lock-msg  { font-family:'Orbitron',sans-serif; font-weight:700; font-size:11px; color:#6b2020; letter-spacing:2px; }
+        #cgm-achievements .cl-locked-banner .cl-lock-req  { font-size:10px; color:#4a2020; margin-top:4px; font-style:italic; }
+        #cgm-achievements .cl-grid     { display:grid; grid-template-columns:repeat(auto-fill,minmax(270px,1fr)); gap:10px; }
+        #cgm-achievements .cl-card     { border-radius:10px; border:1px solid rgba(239,68,68,.2); background:rgba(10,4,4,.65); padding:13px 15px; display:flex; flex-direction:column; gap:6px; }
+        #cgm-achievements .cl-card.detected { border-color:rgba(239,68,68,.5); background:rgba(14,2,2,.8); }
+        #cgm-achievements .cl-card.locked   { border-color:rgba(46,40,40,.35); background:rgba(6,4,4,.5); filter:blur(.4px); }
+        #cgm-achievements .cl-card-top { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+        #cgm-achievements .cl-name     { font-family:'Orbitron',sans-serif; font-weight:800; font-size:11px; letter-spacing:1px; }
+        #cgm-achievements .cl-badge    { font-family:'Orbitron',sans-serif; font-weight:700; font-size:8px; letter-spacing:1.5px; padding:3px 8px; border-radius:6px; white-space:nowrap; }
+        #cgm-achievements .cl-badge.detected { color:#ef4444; border:1px solid rgba(239,68,68,.5); background:rgba(239,68,68,.08); }
+        #cgm-achievements .cl-badge.locked   { color:#4a2020; border:1px solid rgba(70,20,20,.35); background:rgba(20,4,4,.4); }
+        #cgm-achievements .cl-desc     { font-size:10px; color:var(--txt-dim); line-height:1.45; }
+        #cgm-achievements .cl-future   { font-size:9px; color:#6b2020; line-height:1.4; font-style:italic; border-top:1px solid rgba(239,68,68,.12); padding-top:5px; margin-top:2px; }
+        #cgm-achievements .cl-future.detected { color:#a84040; }
       `;
       document.head.appendChild(style);
     }
@@ -2158,6 +2201,21 @@ export class Game {
           </div>
           <div class="em-bar-wrap"><div class="em-bar" id="em-bar" style="width:0%"></div></div>
           <div class="em-list" id="em-list"></div>
+        </div>
+
+        <div class="ca-sep"></div>
+
+        <div class="cl-section" id="cl-section">
+          <div class="cl-header">
+            <div class="cl-title">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18" aria-hidden="true">
+                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+              </svg>
+              CHAOS LAWS
+            </div>
+            <div class="cl-subtitle" id="cl-subtitle">PREVIEW LOCKED</div>
+          </div>
+          <div id="cl-body"></div>
         </div>
 
         <div class="ca-sep"></div>
@@ -2263,6 +2321,44 @@ export class Game {
           <div class="${statCls}">${reached ? '✓ REACHED' : '✕ LOCKED'}</div>
         </div>`;
       }).join('');
+    }
+
+    // Sync Chaos Laws preview
+    const clSubtitle = el.querySelector('#cl-subtitle');
+    const clBody     = el.querySelector('#cl-body');
+    if (clSubtitle && clBody && this.meta) {
+      const mem = this.meta.getEdenMemory();
+      const detected = mem >= 50;
+      if (detected) {
+        clSubtitle.textContent = 'ENDGAME PROTOCOLS DETECTED';
+        clSubtitle.style.color = '#ef4444';
+        clBody.innerHTML = `<div class="cl-grid">${CHAOS_LAWS.map(law => `
+          <div class="cl-card detected">
+            <div class="cl-card-top">
+              <div class="cl-name" style="color:${law.color}">${law.name}</div>
+              <div class="cl-badge detected">⚡ DETECTED</div>
+            </div>
+            <div class="cl-desc">${law.desc}</div>
+            <div class="cl-future detected">${law.future} <span style="color:#ef4444;font-style:normal">— PREVIEW ONLY · NOT ACTIVE</span></div>
+          </div>`).join('')}</div>`;
+      } else {
+        clSubtitle.textContent = 'PREVIEW LOCKED BY EDEN MEMORY';
+        clSubtitle.style.color = '#6b2020';
+        clBody.innerHTML = `
+          <div class="cl-locked-banner">
+            <div class="cl-lock-icon">🔒</div>
+            <div class="cl-lock-msg">CHAOS LAWS ENCRYPTED</div>
+            <div class="cl-lock-req">Requires EDEN MEMORY 50% — currently ${Math.round(mem)}%</div>
+          </div>
+          <div class="cl-grid" style="opacity:.35;pointer-events:none">${CHAOS_LAWS.map(law => `
+            <div class="cl-card locked">
+              <div class="cl-card-top">
+                <div class="cl-name" style="color:#4a2020">??? LAW</div>
+                <div class="cl-badge locked">✕ LOCKED</div>
+              </div>
+              <div class="cl-desc" style="color:#3a2020">ENCRYPTED DATA</div>
+            </div>`).join('')}</div>`;
+      }
     }
 
     const grid = el.querySelector('#ca-grid');
