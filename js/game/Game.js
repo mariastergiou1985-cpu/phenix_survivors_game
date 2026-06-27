@@ -2213,7 +2213,7 @@ export class Game {
         #cgm-achievements .sl-status   { font-family:'Orbitron',sans-serif; font-weight:700; font-size:9px; letter-spacing:1.5px; white-space:nowrap; flex-shrink:0; }
         #cgm-achievements .sl-status.readable { color:#38bdf8; }
         #cgm-achievements .sl-status.locked   { color:#1e3a4a; }
-      \`;
+      `;
       document.head.appendChild(style);
     }
 
