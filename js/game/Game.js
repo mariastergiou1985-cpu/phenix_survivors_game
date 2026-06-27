@@ -11373,7 +11373,7 @@ export class Game {
       ['Pause',     'ESC',           'Menu / Start',  'Options'],
       ['Q ability', 'Q',             'LB',            'L1'],
       ['E ability', 'E',             'RB',            'R1'],
-      ['Dash',      'SHIFT',         'RT',            'R2'],
+      ['Dash',      'SHIFT',         'B / RT',        'Circle / R2'],
       ['Ultimate',  'SPACE',         'Y',             '△ Triangle'],
     ];
     ctrlRows.forEach(([a, k, xb, ps]) => {

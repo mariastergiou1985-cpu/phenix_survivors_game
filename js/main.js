@@ -1,4 +1,4 @@
-import { Game } from './game/Game.js?v=20260627390000';
+import { Game } from './game/Game.js?v=20260627400000';
 import { AudioManager } from './audio/AudioManager.js?v=20260627230000';
 import { GamepadInput } from './Gamepad.js?v=20260615210000';
 import { initTouchControls } from './TouchInput.js?v=20260625200000';
@@ -393,11 +393,11 @@ function applyGamepad() {
 
   if (inGameplay) {
     padSetHeld('w', up); padSetHeld('s', down); padSetHeld('a', left); padSetHeld('d', right);
-    padSetHeld('shift', s.btn.rt.held || s.btn.lt.held);   // RT/R2 (or LT) = dash
+    padSetHeld('shift', s.btn.rt.held || s.btn.lt.held || s.btn.b.held);   // RT/R2 / LT/L2 / B/Circle = dash
     if (s.btn.lb.pressed)    padTap('q');        // LB / L1 → Pulse Shield
     if (s.btn.rb.pressed)    padTap('e');        // RB / R1 → EMP
     if (s.btn.y.pressed)     padTap(' ');        // Y / Triangle → Ultimate
-    if (s.btn.start.pressed || s.btn.b.pressed) padTap('Escape');   // Start/Options or B/Circle → pause
+    if (s.btn.start.pressed) padTap('Escape');   // Start/Options → pause (B/Circle is now gameplay dash)
   } else {
     padClearHeld();                              // no held movement outside gameplay
     if (eUp)    padTap('ArrowUp');
