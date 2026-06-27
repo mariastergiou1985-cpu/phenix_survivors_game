@@ -22,8 +22,8 @@ import { UpgradeUI }      from './UpgradeUI.js?v=20260616080000';
 import { weightedSample } from './Upgrades.js?v=20260615210000';
 import { MutationUI }      from './MutationUI.js?v=20260616080000';
 import { sampleMutations } from './Mutations.js?v=20260615210000';
-import { drawHUD, drawEndScreen } from './HUD.js?v=20260615210000';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS } from './MetaProgress.js?v=20260627190000';
+import { drawHUD, drawEndScreen } from './HUD.js?v=20260627200000';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS } from './MetaProgress.js?v=20260627200000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260615210000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
@@ -505,6 +505,13 @@ export class Game {
       img.src = `assets/relics/${r.id}.png?v=20260627150000`;
       this._relicIconCache[r.id] = img;
     });
+
+    // Preload Eden Core portrait for canvas transmission panels
+    this._edenPortraitLoaded = false;
+    this._edenPortraitImg    = new Image();
+    this._edenPortraitImg.onload  = () => { this._edenPortraitLoaded = true; };
+    this._edenPortraitImg.onerror = () => { this._edenPortraitLoaded = false; };
+    this._edenPortraitImg.src = 'assets/ui/eden_core_portrait.png?v=20260627200000';
   }
 
   // UPGRADES = the permanent Grid-Credit progression (spent between runs). ENDLESS MODE appears
@@ -8721,6 +8728,12 @@ export class Game {
       #cgm-overlay .feed-item{display:flex;align-items:flex-start;gap:8px;padding:6px 0;font-size:13.5px;}
       #cgm-overlay .feed-item.done{color:var(--green);} #cgm-overlay .feed-item.soon{color:var(--txt-faint);}
       #cgm-overlay .feed-item svg{width:15px;height:15px;margin-top:2px;flex:none;}
+      #cgm-overlay .eden-portrait-header{display:flex;align-items:center;gap:8px;padding:5px 0 8px 0;border-bottom:1px solid rgba(46,230,246,.12);margin-bottom:4px;}
+      #cgm-overlay .eden-portrait-frame{width:38px;height:46px;border:1px solid rgba(46,230,246,.65);border-radius:2px;background:rgba(0,5,18,.9);flex:none;overflow:hidden;box-shadow:0 0 7px rgba(46,230,246,.25);position:relative;}
+      #cgm-overlay .eden-portrait-frame img{width:100%;height:100%;object-fit:cover;object-position:top center;display:block;}
+      #cgm-overlay .eden-portrait-frame .eden-fallback-icon{display:none;width:100%;height:100%;align-items:center;justify-content:center;color:#3fd0ff;font-size:15px;font-weight:bold;}
+      #cgm-overlay .eden-portrait-info .eden-pname{font-size:10px;letter-spacing:1.5px;color:#3fd0ff;font-weight:700;text-transform:uppercase;font-family:'Orbitron',sans-serif;}
+      #cgm-overlay .eden-portrait-info .eden-psub{font-size:8.5px;letter-spacing:1px;color:rgba(63,208,255,.45);margin-top:2px;}
       #cgm-overlay .proto{display:flex;align-items:center;gap:9px;padding:7px 0;font-size:13.5px;color:var(--txt);}
       #cgm-overlay .proto svg{width:16px;height:16px;color:var(--purple);flex:none;filter:drop-shadow(0 0 6px rgba(168,85,247,.5));}
       #cgm-overlay .unlocked{font-family:'Orbitron',sans-serif;font-weight:700;color:var(--cyan);letter-spacing:2px;font-size:12px;margin-bottom:10px;}
@@ -8894,6 +8907,17 @@ export class Game {
     <div class="col">
       <section class="panel" style="--accent:var(--cyan)">
         <div class="panel-title"><span class="dot"></span>SYSTEM FEED</div>
+        <div class="eden-portrait-header">
+          <div class="eden-portrait-frame">
+            <img id="cgm-eden-portrait-img" src="assets/ui/eden_core_portrait.png?v=20260627200000" alt="EDEN CORE"
+              onerror="this.style.display='none';var f=document.getElementById('cgm-eden-fallback-icon');if(f)f.style.display='flex';">
+            <div class="eden-fallback-icon" id="cgm-eden-fallback-icon">◈</div>
+          </div>
+          <div class="eden-portrait-info">
+            <div class="eden-pname">EDEN CORE</div>
+            <div class="eden-psub">THE SYSTEM · ONLINE</div>
+          </div>
+        </div>
         <div id="cgm-feed-list">
           <div class="feed-item soon"><svg><use href="#i-clock"/></svg>Loading…</div>
         </div>
@@ -11774,7 +11798,115 @@ export class Game {
   }
 
   // Subtle CRT scanline overlay (screen space). Pattern built + cached once.
-  _drawActiveRelicHUD(ctx) {
+  /**
+   * Reusable Eden Core framed transmission panel (canvas, screen-space).
+   * Called from HUD end screen and future arena second-chance mechanic.
+   * opts: { x, y, w, h, messages[], edenMem, title }
+   */
+  _drawEdenTransmission(ctx, { x, y, w, h, messages = [], edenMem = 0, title = null }) {
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+    // ── outer box ──────────────────────────────────────────────────────────
+    ctx.fillStyle   = 'rgba(0,8,22,0.93)';
+    ctx.strokeStyle = '#1a4a70';
+    ctx.lineWidth   = 1;
+    ctx.beginPath(); ctx.roundRect(x, y, w, h, 4); ctx.fill(); ctx.stroke();
+
+    // ── neon gradient top border ───────────────────────────────────────────
+    const gbrd = ctx.createLinearGradient(x, y, x + w, y);
+    gbrd.addColorStop(0,   'transparent');
+    gbrd.addColorStop(0.25,'#3fd0ff');
+    gbrd.addColorStop(0.75,'#a855f7');
+    gbrd.addColorStop(1,   'transparent');
+    ctx.strokeStyle = gbrd;
+    ctx.lineWidth   = 1.5;
+    ctx.beginPath(); ctx.moveTo(x + 10, y); ctx.lineTo(x + w - 10, y); ctx.stroke();
+
+    // ── corner accents ─────────────────────────────────────────────────────
+    const CA = 7;
+    ctx.strokeStyle = 'rgba(46,230,246,0.65)';
+    ctx.lineWidth   = 1;
+    for (const [cx,cy,sx,sy] of [[x,y,1,1],[x+w,y,-1,1],[x,y+h,1,-1],[x+w,y+h,-1,-1]]) {
+      ctx.beginPath();
+      ctx.moveTo(cx + sx*CA, cy); ctx.lineTo(cx, cy); ctx.lineTo(cx, cy + sy*CA);
+      ctx.stroke();
+    }
+
+    // ── portrait area (left side) ──────────────────────────────────────────
+    const portW  = Math.min(56, Math.floor(w * 0.16));
+    const portH  = Math.round(portW / 0.841);  // match 941x1119 aspect ratio
+    const portX  = x + 8;
+    const portY  = y + Math.max(4, Math.floor((h - portH) / 2));
+
+    ctx.strokeStyle = '#3fd0ff';
+    ctx.lineWidth   = 1;
+    ctx.strokeRect(portX - 1, portY - 1, portW + 2, portH + 2);
+
+    const pimg = this._edenPortraitImg;
+    if (pimg && this._edenPortraitLoaded && pimg.naturalWidth > 0) {
+      ctx.fillStyle = 'rgba(0,5,15,.95)';
+      ctx.fillRect(portX, portY, portW, portH);
+      ctx.save();
+      ctx.beginPath(); ctx.rect(portX, portY, portW, portH); ctx.clip();
+      const aspect = pimg.naturalWidth / pimg.naturalHeight;
+      const dw = portW, dh = Math.round(dw / aspect);
+      ctx.drawImage(pimg, portX, portY, dw, dh);
+      ctx.restore();
+    } else {
+      // Fallback: glowing AI circle
+      ctx.fillStyle = 'rgba(0,10,26,.95)';
+      ctx.fillRect(portX, portY, portW, portH);
+      const fcx = portX + portW / 2, fcy = portY + portH * 0.5;
+      const fr  = portW * 0.28;
+      ctx.strokeStyle = 'rgba(46,230,246,0.6)';
+      ctx.lineWidth   = 1;
+      ctx.beginPath(); ctx.arc(fcx, fcy, fr, 0, Math.PI * 2); ctx.stroke();
+      ctx.font      = `bold ${Math.round(portW * 0.3)}px Consolas,monospace`;
+      ctx.fillStyle = '#3fd0ff';
+      ctx.textAlign = 'center';
+      ctx.fillText('◈', fcx, fcy + portW * 0.11);
+      ctx.textAlign = 'left';
+    }
+
+    // ── text area (right of portrait) ─────────────────────────────────────
+    const textX   = portX + portW + 10;
+    const maxCols = Math.floor((w - portW - 28) / 6.2);
+    let ty = y + 14;
+
+    // Header line
+    const hdr = title || `EDEN CORE  ·  MEM ${edenMem}%`;
+    ctx.font      = 'bold 10px Consolas,monospace';
+    ctx.fillStyle = '#3fd0ff';
+    ctx.textAlign = 'left';
+    ctx.fillText(hdr.slice(0, maxCols), textX, ty);
+    ty += 15;
+
+    // Separator dot-line
+    ctx.fillStyle = 'rgba(46,230,246,0.25)';
+    ctx.font      = '8px Consolas,monospace';
+    ctx.fillText('· · · · · · · · · · · · · · · · · · · ·'.slice(0, maxCols + 4), textX, ty);
+    ty += 13;
+
+    // Messages
+    if (messages.length > 0) {
+      ctx.font      = '10px Consolas,monospace';
+      ctx.fillStyle = 'rgba(150,210,255,0.82)';
+      for (const line of messages.slice(0, 3)) {
+        if (ty + 12 > y + h - 4) break;
+        ctx.fillText(String(line).slice(0, maxCols), textX, ty);
+        ty += 13;
+      }
+    } else {
+      ctx.font      = '10px Consolas,monospace';
+      ctx.fillStyle = 'rgba(63,208,255,0.4)';
+      ctx.fillText('NULL EDEN is listening.', textX, ty);
+    }
+
+    ctx.restore();
+  }
+
+    _drawActiveRelicHUD(ctx) {
     if (!this.meta) return;
     const _charId      = this.player?.characterId || '';
     const ownedRelics = RELIC_DEFS.filter(r => {
