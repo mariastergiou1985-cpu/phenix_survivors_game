@@ -23,7 +23,7 @@ import { weightedSample } from './Upgrades.js?v=20260615210000';
 import { MutationUI }      from './MutationUI.js?v=20260616080000';
 import { sampleMutations } from './Mutations.js?v=20260615210000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260615210000';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS } from './MetaProgress.js?v=20260627180000';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS } from './MetaProgress.js?v=20260627190000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260615210000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
@@ -11776,7 +11776,12 @@ export class Game {
   // Subtle CRT scanline overlay (screen space). Pattern built + cached once.
   _drawActiveRelicHUD(ctx) {
     if (!this.meta) return;
-    const ownedRelics = RELIC_DEFS.filter(r => this.meta.isRelicUnlocked(r.id));
+    const _charId      = this.player?.characterId || '';
+    const ownedRelics = RELIC_DEFS.filter(r => {
+      if (!this.meta.isRelicUnlocked(r.id)) return false;       // must be unlocked
+      if (r.reqChar && r.reqChar !== _charId) return false;     // character relic: wrong hero
+      return true;
+    });
     if (!ownedRelics.length) return;
     // Draw compact icon strip — top-left, below the main HUD bar (y=50)
     ctx.save();
