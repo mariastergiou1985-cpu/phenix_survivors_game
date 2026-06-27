@@ -150,6 +150,17 @@ const ULTIMATE_MANA_COST = 100;
 // Tune here; 0 disables the drop entirely.
 const BOSS_KILL_PF = 1;
 
+// ── Boss Echo Archive — ordered list for UI display ───────────────────────
+// id must match the key passed to meta.recordBossEcho()
+const BOSS_ECHOES = [
+  { id: 'cyberSerpent', name: 'Cyber Serpent Echo',  color: '#ff7733', lore: 'Flame path remembered.' },
+  { id: 'cyberDragon',  name: 'Cyber Dragon Echo',   color: '#00ccff', lore: 'Cryo memory stabilized.' },
+  { id: 'doubleDemon',  name: 'Double Demons Echo',  color: '#ff2d95', lore: 'Twin corruption recorded.' },
+  { id: 'titan',        name: 'Titan Echo',           color: '#a855f7', lore: 'Heavy impact pattern stored.' },
+  { id: 'bloodfang',    name: 'Bloodfang Echo',       color: '#ef4444', lore: 'Predator signal contained.' },
+  { id: 'annihilator',  name: 'Annihilator Echo',     color: '#fbbf24', lore: 'Termination protocol indexed.' },
+];
+
 // ── Taekwondo Crystal Ice Field (replaces Lightning Dash Strike) ───────────────
 // All numbers tunable here. Duration/radius control the field footprint; freeze
 // durations are SHORT for bosses (never a full lock) but FULL for normal enemies.
@@ -2032,6 +2043,26 @@ export class Game {
         #cgm-achievements .ca-foot-btn:hover { border-color:var(--txt-dim); color:var(--txt); background:rgba(111,134,184,.08); }
         #cgm-achievements .ca-hints { color:var(--txt-faint); font-size:11px; letter-spacing:1px; display:flex; gap:14px; flex-wrap:wrap; align-items:center; }
         #cgm-achievements .ca-hints b { color:var(--cyan); font-weight:400; }
+
+        /* ── Boss Echo Archive ── */
+        #cgm-achievements .ce-section { display:flex; flex-direction:column; gap:10px; }
+        #cgm-achievements .ce-title   { font-family:'Orbitron',sans-serif; font-weight:800; font-size:14px; letter-spacing:3px; color:var(--purple); text-shadow:0 0 8px rgba(168,85,247,.55),0 0 22px rgba(168,85,247,.22); display:flex; align-items:center; gap:10px; }
+        #cgm-achievements .ce-header  { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; }
+        #cgm-achievements .ce-count   { font-family:'Orbitron',sans-serif; font-weight:700; font-size:12px; color:#a855f7; padding:5px 14px; border-radius:999px; border:1px solid rgba(168,85,247,.35); background:rgba(168,85,247,.07); }
+        #cgm-achievements .ce-memory  { font-family:'Orbitron',sans-serif; font-weight:700; font-size:12px; color:#2ee6f6; padding:5px 14px; border-radius:999px; border:1px solid rgba(46,230,246,.25); background:rgba(46,230,246,.05); }
+        #cgm-achievements .ce-grid    { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:10px; }
+        #cgm-achievements .ce-card    { border-radius:10px; border:1px solid rgba(46,60,80,.35); background:rgba(8,12,36,.6); padding:12px 14px; display:flex; align-items:center; gap:12px; }
+        #cgm-achievements .ce-card.archived { border-color:rgba(168,85,247,.55); background:rgba(10,4,24,.7); }
+        #cgm-achievements .ce-icon    { width:32px; height:32px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:15px; flex-shrink:0; border:1px solid rgba(255,255,255,.08); background:rgba(0,0,0,.4); }
+        #cgm-achievements .ce-icon.archived { box-shadow:0 0 10px currentColor; }
+        #cgm-achievements .ce-info    { display:flex; flex-direction:column; gap:3px; flex:1; min-width:0; }
+        #cgm-achievements .ce-name    { font-family:'Orbitron',sans-serif; font-weight:700; font-size:11px; letter-spacing:.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        #cgm-achievements .ce-name.locked  { color:#3a5060; }
+        #cgm-achievements .ce-lore    { font-size:10px; color:var(--txt-faint); line-height:1.4; font-style:italic; }
+        #cgm-achievements .ce-lore.locked  { color:#283040; }
+        #cgm-achievements .ce-status  { font-family:'Orbitron',sans-serif; font-weight:700; font-size:9px; letter-spacing:1.5px; white-space:nowrap; }
+        #cgm-achievements .ce-status.archived { color:#a855f7; }
+        #cgm-achievements .ce-status.locked   { color:#3a5060; }
       `;
       document.head.appendChild(style);
     }
@@ -2064,6 +2095,24 @@ export class Game {
         <div class="ca-sep"></div>
 
         <div class="ca-grid" id="ca-grid"></div>
+
+        <div class="ca-sep"></div>
+
+        <div class="ce-section" id="ce-section">
+          <div class="ce-header">
+            <div class="ce-title">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18" aria-hidden="true">
+                <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+              </svg>
+              BOSS ECHO ARCHIVE
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+              <div class="ce-count" id="ce-count">0 / 6 ARCHIVED</div>
+              <div class="ce-memory" id="ce-memory">EDEN MEMORY: 0%</div>
+            </div>
+          </div>
+          <div class="ce-grid" id="ce-grid"></div>
+        </div>
 
         <div class="ca-sep"></div>
         <div class="ca-footer">
@@ -2108,6 +2157,34 @@ export class Game {
     if (pfEarnedEl) pfEarnedEl.textContent = this.meta.getProtocolFragmentsEarned();
     const pfTotalEl  = el.querySelector('#ca-pf-total');
     if (pfTotalEl)  pfTotalEl.textContent  = PF_TOTAL_OBTAINABLE;
+
+    // Sync Boss Echo Archive
+    const ceCount  = el.querySelector('#ce-count');
+    const ceMemory = el.querySelector('#ce-memory');
+    const ceGrid   = el.querySelector('#ce-grid');
+    if (ceCount && ceMemory && ceGrid) {
+      const archivedN = BOSS_ECHOES.filter(e => this.meta.hasBossEcho(e.id)).length;
+      ceCount.textContent  = archivedN + ' / ' + BOSS_ECHOES.length + ' ARCHIVED';
+      ceMemory.textContent = 'EDEN MEMORY: ' + Math.round(this.meta.getEdenMemory()) + '%';
+      ceGrid.innerHTML = BOSS_ECHOES.map(echo => {
+        const archived = this.meta.hasBossEcho(echo.id);
+        const cardCls  = archived ? 'ce-card archived' : 'ce-card';
+        const iconCls  = archived ? 'ce-icon archived' : 'ce-icon';
+        const nameCls  = archived ? 'ce-name' : 'ce-name locked';
+        const loreCls  = archived ? 'ce-lore' : 'ce-lore locked';
+        const statCls  = archived ? 'ce-status archived' : 'ce-status locked';
+        const iconStyle = archived ? `color:${echo.color}` : 'color:#3a5060';
+        const nameStyle = archived ? `color:${echo.color}` : '';
+        return `<div class="${cardCls}">
+          <div class="${iconCls}" style="${iconStyle}">⬡</div>
+          <div class="ce-info">
+            <div class="${nameCls}" style="${nameStyle}">${archived ? echo.name : '??? ECHO LOCKED'}</div>
+            <div class="${loreCls}">${archived ? echo.lore : 'Kill this boss in Endless to archive.'}</div>
+          </div>
+          <div class="${statCls}">${archived ? '✓ ARCHIVED' : '✕ LOCKED'}</div>
+        </div>`;
+      }).join('');
+    }
 
     const grid = el.querySelector('#ca-grid');
     if (!grid) return;
@@ -12614,6 +12691,15 @@ export class Game {
       this.floatingTexts.push(new FloatingText('+' + BOSS_KILL_PF + ' 🧩 FRAGMENT',
         new Vec2(t.pos.x, t.pos.y - 90), '#ff5ea8', 2.5));
     }
+    // Boss Echo Archive (first kill only — no farming)
+    if (this.meta && this.endless) {
+      const firstEcho = this.meta.recordBossEcho('titan');
+      if (firstEcho) {
+        this.meta.addEdenMemory(1);
+        this._queueEdenTransmission('TITAN ECHO ARCHIVED. Heavy impact pattern stored.', { priority: 2, duration: 5 });
+        this.meta.addSystemMessage('TITAN ECHO ARCHIVED. HEAVY IMPACT PATTERN STORED.');
+      }
+    }
     this.titanBoss        = null;
     this._titanShockwaves = [];
     this._titanBeams      = [];
@@ -12865,6 +12951,15 @@ export class Game {
       this.floatingTexts.push(new FloatingText('+' + BOSS_KILL_PF + ' 🧩 FRAGMENT',
         new Vec2(a.pos.x, a.pos.y - 60), '#ff5ea8', 2.5));
     }
+    // Boss Echo Archive (first kill only)
+    if (this.meta && this.endless) {
+      const firstEcho = this.meta.recordBossEcho('annihilator');
+      if (firstEcho) {
+        this.meta.addEdenMemory(1);
+        this._queueEdenTransmission('ANNIHILATOR ECHO ARCHIVED. Termination protocol indexed.', { priority: 2, duration: 5 });
+        this.meta.addSystemMessage('ANNIHILATOR ECHO ARCHIVED. TERMINATION PROTOCOL INDEXED.');
+      }
+    }
     this.annihilatorBoss = null;
   }
 
@@ -13106,6 +13201,15 @@ export class Game {
       this.meta._save();
       this.floatingTexts.push(new FloatingText('+' + BOSS_KILL_PF + ' 🧩 FRAGMENT',
         new Vec2(a.pos.x, a.pos.y - 90), '#ff5ea8', 2.5));
+    }
+    // Boss Echo Archive (first kill only)
+    if (this.meta && this.endless) {
+      const firstEcho = this.meta.recordBossEcho('bloodfang');
+      if (firstEcho) {
+        this.meta.addEdenMemory(1);
+        this._queueEdenTransmission('BLOODFANG ECHO ARCHIVED. Predator signal contained.', { priority: 2, duration: 5 });
+        this.meta.addSystemMessage('BLOODFANG ECHO ARCHIVED. PREDATOR SIGNAL CONTAINED.');
+      }
     }
     this.bloodfangBoss = null;
   }
