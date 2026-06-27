@@ -1126,7 +1126,10 @@ export class Game {
     this._nullBreach2Done   = false;
     this._arenaRescueUsed   = false;
     this._arenaResult       = null;
-    this._endlessStartedAt  = this.timeAlive;   // snapshot so endlessElapsed = timeAlive - _endlessStartedAt
+    this._endlessStartedAt  = this.timeAlive;
+    // Arena-specific relic run-state
+    this._breachCrownActive  = false;   // Breach Crown — armed on clean arena complete
+    this._secondDebtFired    = false;   // Second Signal Debt — once per rescue   // snapshot so endlessElapsed = timeAlive - _endlessStartedAt
   }
 
   // Live Endless-achievement evaluation — unlock + persist the INSTANT a milestone is crossed
@@ -2610,6 +2613,7 @@ export class Game {
           <div class="cr-tab" data-tab="universal">UNIVERSAL</div>
           <div class="cr-tab" data-tab="boss">BOSS</div>
           <div class="cr-tab" data-tab="character">CHARACTER</div>
+          <div class="cr-tab" data-tab="arena">ARENA</div>
         </div>
         <div class="cr-grid" id="cr-grid"></div>
         <div class="cr-sep"></div>
@@ -12789,6 +12793,36 @@ export class Game {
     if (this._arenaResult) this._arenaResult.completed++;
 
     // EDEN CORE
+    // ── Arena relic effects (fire before announcements) ──────────────────────
+    if (this.meta) {
+      // Unlock prereq: completed arena (gates Breach Crown purchase)
+      this.meta.recordBossKill('null_breach_cleared');
+      // Unlock prereq: 3+ arena kills (gates Elite Signal Core purchase)
+      if (arenaKills >= 3) this.meta.recordBossKill('arena_elite_3');
+    }
+    // Breach Crown: clean arena (no rescue) → +0.5 Pulse Damage rest of run
+    if (this.meta && !this._arenaRescueUsed && !this._breachCrownActive
+        && this.meta.isRelicUnlocked('breach_crown')) {
+      this._breachCrownActive = true;
+      this.player.upgrades['Pulse Damage'] = (this.player.upgrades['Pulse Damage'] || 0) + 0.5;
+      this.floatingTexts.push(
+        new FloatingText('BREACH CROWN: +DMG', this.player.pos.clone(), '#ff88ff', 2.2)
+      );
+      try { this._queueEdenTransmission(
+        'BREACH CROWN STABILIZED. Arena dominance recorded.', { priority: 2, duration: 5 }
+      ); } catch(_) {}
+    }
+    // Elite Signal Core: +30 score per arena boss kill at completion
+    if (this.meta && arenaKills > 0 && this.meta.isRelicUnlocked('elite_signal_core')) {
+      const eliteBonus = arenaKills * 30;
+      this.score += eliteBonus;
+      this.floatingTexts.push(
+        new FloatingText('ELITE CORE: +' + eliteBonus, this.player.pos.clone(), '#ffcc44', 1.8)
+      );
+      try { this._queueEdenTransmission(
+        'ELITE SIGNAL CORE INDEXED. Arena pressure converted.', { priority: 1, duration: 5 }
+      ); } catch(_) {}
+    }
     this._queueEdenTransmission(
       'EDEN CORE: Arena trace archived.', { priority: 3, duration: 7 }
     );
@@ -12810,6 +12844,20 @@ export class Game {
     // Restore player at 30% HP with brief phoenix i-frames
     this.player.hp          = Math.ceil(this.player.maxHp * 0.30);
     this.phoenixReviveTimer = 2.5;
+
+    // Arena relic: Second Signal Debt — rescue grants a 6s protective shield
+    if (this.meta) this.meta.recordBossKill('arena_rescue_used');
+    if (this.meta && !this._secondDebtFired
+        && this.meta.isRelicUnlocked('second_signal_debt')) {
+      this._secondDebtFired = true;
+      this.player.shieldTimer = Math.max(this.player.shieldTimer, 6.0);
+      this.floatingTexts.push(
+        new FloatingText('SIGNAL DEBT: SHIELD', this.player.pos.clone(), '#00e6ff', 2.0)
+      );
+      try { this._queueEdenTransmission(
+        'SECOND SIGNAL DEBT RECORDED. Survival was borrowed.', { priority: 2, duration: 5 }
+      ); } catch(_) {}
+    }
 
     // EDEN CORE transmissions
     this._queueEdenTransmission(

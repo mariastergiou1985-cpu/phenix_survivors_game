@@ -219,6 +219,16 @@ export const RELIC_DEFS = [
   { id:'mirror_kill_protocol', name:'Mirror Kill Protocol', type:'character',  cost:8,
     effect:'When a clone expires, it releases a shadow slash. 3+ hits refunds 20 mana.',
     req:null, reqChar:'assassin_clone' },
+  // ─── Arena-Specific Relics (NULL BREACH ARENA) ───────────────────────────
+  { id:'breach_crown',       name:'Breach Crown',       type:'arena',     cost:7,
+    effect:'Complete NULL BREACH ARENA without EDEN CORE rescue: gain +0.5 Pulse Damage for the rest of the run.',
+    req:'null_breach_cleared', reqChar:null },
+  { id:'second_signal_debt', name:'Second Signal Debt', type:'arena',     cost:5,
+    effect:'If EDEN CORE rescues you inside NULL BREACH ARENA: gain a 6-second protective shield on extraction.',
+    req:'arena_rescue_used',   reqChar:null },
+  { id:'elite_signal_core',  name:'Elite Signal Core',  type:'arena',     cost:6,
+    effect:'During NULL BREACH ARENA: surviving with 3+ boss kills grants bonus score at arena completion.',
+    req:'arena_elite_3',       reqChar:null },
 ];
 
 export class MetaProgress {
