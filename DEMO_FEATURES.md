@@ -94,11 +94,15 @@ All bosses drop Grid Credits on defeat and record to the Boss Echo Archive.
 
 ## Relics
 
-- 10 relic artifacts available in the current build
+- 13 relic artifacts available in the current build (10 standard + 3 arena-specific)
 - Relics are acquired mid-run and persist for the duration of that run
 - Each relic has a unique passive or triggered effect (e.g., dash empowerment, shield interaction, HP recovery, damage amplification)
-- Relics are displayed in an in-game HUD strip during gameplay
-- The **RELICS** screen in the main menu shows all discovered relics and their effects
+- **Arena-specific relics** unlock exclusively through NULL BREACH ARENA performance:
+  - **Breach Crown** — clean arena clear (no rescue): +0.5 Pulse Damage for the run
+  - **Second Signal Debt** — if rescued by EDEN CORE: gain a 6-second protective shield on extraction
+  - **Elite Signal Core** — 3+ boss kills in arena: bonus score at arena completion
+- Relics are displayed in a polished cyber HUD strip (top-left, 8 glowing slots with type-colored borders) during gameplay
+- The **RELICS** screen in the main menu shows all discovered relics across CHARACTER, BOSS, and ARENA tabs
 
 ---
 
@@ -126,16 +130,4 @@ All bosses drop Grid Credits on defeat and record to the Boss Echo Archive.
 - **Browser-based**: No download, no install — Chrome / Firefox / Edge
 - **Keyboard**: Full support (WASD / Arrow Keys + ability keys)
 - **Controller**: Xbox · PlayStation · PC — gameplay and core navigation
-- **Mobile**: Touch controls in landscape orientation (virtual joystick + action buttons)
-- **Fullscreen**: Supported — toggle via browser fullscreen (F11) or in-game button
-
----
-
-## Planned Next Features
-
-- Arena-specific relics (designed to drop exclusively from NULL BREACH ARENA encounters)
-- Real Chaos Law selection V1 (player chooses active Chaos Laws pre-run)
-- Additional lore content and System Log expansions
-- Trailer and press screenshot pass
-- Additional enemy types and event variety
-- Potential new character
+- **Mobile**: Touch controls in landscape orientati
