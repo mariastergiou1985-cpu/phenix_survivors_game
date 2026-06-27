@@ -22,8 +22,8 @@ import { UpgradeUI }      from './UpgradeUI.js?v=20260616080000';
 import { weightedSample } from './Upgrades.js?v=20260615210000';
 import { MutationUI }      from './MutationUI.js?v=20260616080000';
 import { sampleMutations } from './Mutations.js?v=20260615210000';
-import { drawHUD, drawEndScreen } from './HUD.js?v=20260627200000';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS } from './MetaProgress.js?v=20260627200000';
+import { drawHUD, drawEndScreen } from './HUD.js?v=20260627210000';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS } from './MetaProgress.js?v=20260627210000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260615210000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
@@ -35,6 +35,95 @@ import { LaserEyes } from '../effects/laser-eyes.js?v=20260615210000';
 import { MeteorRain } from '../effects/meteor-rain.js?v=20260615210000';
 // Euclid Vector toxin kit — used ONLY when selectedCharacter === 'euclid_vector' (world-space).
 import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=20260615210000';
+
+// ── Eden Core character message pools (in-run transmissions) ────────────────
+const _EDEN_CHAR_POOLS = {
+  skeleton_warrior: {
+    intro:    ['SKELETON TRACE DETECTED.', 'Death entered wearing its own bones.', 'EDEN CORE: Bone signal restored.'],
+    mid:      ['Your structure is old data. Prove it still cuts.', 'You cannot bleed. The Grid will find another weakness.', 'Bone signal fractured. Still moving.', 'Dead things should not last this long.'],
+    low_hp:   ['Your frame is cracking.', 'Even dead things can die again.', 'The skeleton signal weakens.'],
+    survival: ['Death survives itself. For now.', 'The Grid did not expect this skeleton to remain.', 'Bone trace: extended. Unexpected.'],
+  },
+  taekwondo_girl: {
+    intro:    ['SPIRIT TRACE DETECTED.', 'Crescent impact pattern online.', 'Your footwork disturbs the ice.'],
+    mid:      ['Speed pattern exceeded safe prediction.', 'One missed step will become your archive.', 'Ice crescent memory active. Do not slow.', 'The Grid watches your footwork. So do the dead.'],
+    low_hp:   ['The ice is running out.', 'Your spirit is loud. Your signal is fading.', 'Spirit trace unstable.'],
+    survival: ['Speed and precision. The Grid adapts slowly.', 'Crescent trace extended. The system recalculates.', 'Your kicks leave scars in the data.'],
+  },
+  cyber_arm_hero: {
+    intro:    ['BURN TRACE DETECTED.', 'Combustion cascade initialized.', 'Fire pattern recognized by the archive.'],
+    mid:      ['The Grid does not forgive those who fire and miss.', 'Your burn output is acceptable. For now.', 'Combustion trace stable. Do not slow down.', 'You set fire to the wrong things. Keep going.'],
+    low_hp:   ['Your fuel is running low.', 'The arm burns. So does your signal.', 'Burn trace destabilizing.'],
+    survival: ['BURN TRACE: extended. The Grid recalculates distance.', 'Your heat output remains consistent. Barely.'],
+  },
+  brawler_warrior: {
+    intro:    ['IMPACT TRACE DETECTED.', 'Close-range protocol online.', 'Rift impact pattern synchronized.'],
+    mid:      ['The Grid measures distance. You close it anyway.', 'Your aggression is noted. It is also your weakness.', 'Impact pattern stable. Do not stop moving.', 'Brute force against infinite systems. Noted.'],
+    low_hp:   ['Your impact fades. Hit harder or die softer.', 'Brawler signal unstable.', 'The Grid finds gaps in your armor.'],
+    survival: ['Brute force against an infinite system. Still working.', 'IMPACT TRACE: still moving. The Grid is surprised.'],
+  },
+  assassin_clone: {
+    intro:    ['MIRROR TRACE DETECTED.', 'Duplicate signal stabilized.', 'EDEN CORE: Clone pattern archived.'],
+    mid:      ['The Grid counted you twice.', 'Your reflection is learning without permission.', 'Which one of you dies first?', 'Afterimage protocol: active. The Grid is confused.'],
+    low_hp:   ['One of you is already gone.', 'The clone fades. Are you the original?', 'Mirror signal fracturing.'],
+    survival: ['Mirror protocol extended. Two signals. One surviving.', 'The Grid cannot determine which is real. Good.'],
+  },
+  japan_phasewalker: {
+    intro:    ['PHASE TRACE DETECTED.', 'Displacement memory recovered.', 'THE GRID lost your position. Briefly.'],
+    mid:      ['Transition pattern stable. Keep slipping.', 'You move between frames. The system hates that.', 'Phase pattern accepted. For now.', 'THE GRID cannot track what it cannot see.'],
+    low_hp:   ['Your phase is collapsing.', 'Displacement trace unstable.', 'The space between frames closes.'],
+    survival: ['Phase pattern extended. The Grid cannot predict your next position.', 'You remain between frames. Somehow.'],
+  },
+  euclid_vector: {
+    intro:    ['NULL VENOM TRACE DETECTED.', 'Toxic pattern accepted.', 'Hostile biology mapped.'],
+    mid:      ['Your poison is useful. Do not inhale the system back.', 'Corruption spread contained. For now.', 'The toxin does not care who it kills.', 'NULL VENOM active. The Grid adapts slowly to poison.'],
+    low_hp:   ['Venom trace unstable. Your own biology turns.', 'The poison does not discriminate.', 'NULL VENOM signal fading.'],
+    survival: ['Toxic trace extended. Corruption is patient.', 'NULL VENOM: spread maintained. The Grid adapts slowly.'],
+  },
+  oni_cataclysm_protocol: {
+    intro:    ['ONI TRACE DETECTED.', 'Violence has entered the Grid.', 'Blood circuit pressure rising.'],
+    mid:      ['Your rage is useful. For now.', 'The Grid recognizes your brutality.', 'ONI signal: blood circuit pressure rising.', 'Violence as a language. The Grid is translating.'],
+    low_hp:   ['Oni signal falters. Rage without structure fails.', 'Even the violent can be deleted.', 'Blood circuit pressure critical.'],
+    survival: ['ONI TRACE: blood circuit stable. The Grid recalculates.', 'Your violence outlasted expectation.'],
+  },
+};
+const _EDEN_GENERIC_MID = [
+  'You survived this long. Prove it was not luck.',
+  'The Grid has adapted. Have you?',
+  'Your pattern is becoming predictable.',
+  'NULL EDEN is not impressed.',
+  'You are alive. That is not the same as winning.',
+  'The system expected failure. Continue.',
+  'Your score rises. So does the cost.',
+  'Every second teaches the enemy your shape.',
+  'The interface is not alone.',
+  'Something else is watching through Eden.',
+];
+const _EDEN_GENERIC_SURVIVAL = [
+  'Survival trace preserved.',
+  'Your pattern resisted deletion.',
+  'The Grid recalculates around you.',
+  'You have lasted longer than expected.',
+  'PHENIX trace synchronized.',
+  'THE GRID REMEMBERS.',
+  'NULL EDEN is listening.',
+];
+const _EDEN_CHAOS_APPROACH = [
+  'The boundary is weakening.',
+  'Chaos is no longer theoretical.',
+  'EDEN laws are beginning to fail.',
+  'The final protocol is listening.',
+  'Order has become optional. Survive.',
+];
+const _EDEN_LOW_HP = [
+  'Your signal is thinning.',
+  'One more mistake becomes data.',
+  'PHENIX trace unstable.',
+  'You are close to becoming memory.',
+  'Breach risk: critical.',
+];
+// Helper: pick random element safely
+function _epick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
 
 // ── Thunder Solo sprite slices (cyan_lightning_rain_notes.png, 1254×1254) ──────
 // Strike variants: a clean bolt column + ripple base. (ax,ay) = ripple-centre as a
@@ -511,7 +600,7 @@ export class Game {
     this._edenPortraitImg    = new Image();
     this._edenPortraitImg.onload  = () => { this._edenPortraitLoaded = true; };
     this._edenPortraitImg.onerror = () => { this._edenPortraitLoaded = false; };
-    this._edenPortraitImg.src = 'assets/ui/eden_core_portrait.png?v=20260627200000';
+    this._edenPortraitImg.src = 'assets/ui/eden_core_portrait.png?v=20260627210000';
   }
 
   // UPGRADES = the permanent Grid-Credit progression (spent between runs). ENDLESS MODE appears
@@ -681,8 +770,12 @@ export class Game {
     this.finalMessage      = '';
     this.rewardsGranted    = false;
     this.runCreditsEarned  = 0;
-    this.edenRunMessages   = [];     // 1-3 Eden Core messages for end screen
-    this._chaosEdenAwarded = false;  // prevent double +3% memory if chaos already triggered
+    this.edenRunMessages        = [];     // 1-3 Eden Core messages for end screen
+    this._chaosEdenAwarded      = false;  // prevent double +3% memory if chaos already triggered
+    this._edenTransmission      = null;   // { message, title, priority, expiresAt }
+    this._edenRunMilestonesShown = new Set();
+    this._edenLastAutoAt        = -999;   // timeAlive when last auto-transmission fired
+    this._edenLowHpFired        = false;  // fire low-HP line once per episode
     this.playerHitCooldown = 0;
 
     // Player damage pulse (red vignette) state — visual only.
@@ -4386,6 +4479,9 @@ export class Game {
     this.timeAlive += dt;
     this.score += dt;
 
+    // ── Eden Core in-run transmissions (Endless only, safe) ──────────────────
+    if (this.endless) this._triggerEdenMilestoneMessages();
+
     // ── Chaos Mode trigger (31:00 Endless) — instant, no glitch transition ──
     if (this.endless && !this._chaosMode) {
       if (this.timeAlive >= 1860 || this.forceChaos) {
@@ -4404,6 +4500,8 @@ export class Game {
           ]);
           this.meta.addSystemMessage(cmsg);
           this._chaosEdenAwarded = true;
+          // In-run popup for Chaos
+          this._queueEdenTransmission(cmsg, { title: 'EDEN CORE', priority: 2, duration: 7 });
         }
         // Rearm all boss slots immediately so they arrive together
         this.titanSpawned       = false; this.titanSpawnTimer       = 0;
@@ -8276,6 +8374,7 @@ export class Game {
 
     drawHUD(ctx, this);
     this._drawActiveRelicHUD(ctx);
+    this._drawEdenGameplayTransmission(ctx);   // Eden Core in-run popup (upper-right)
     this._drawObjectiveIndicators(ctx);   // wayfinding: arrow to nearest Nexus (carrying) / core (early)
     this._drawOnboarding(ctx);            // first-minute objective callout + fading hints (Act 1)
     // drawVignette(ctx, this.overload, this.timeAlive);  // disabled: overload capped at 99 → constant pulse at high overload
@@ -8909,7 +9008,7 @@ export class Game {
         <div class="panel-title"><span class="dot"></span>SYSTEM FEED</div>
         <div class="eden-portrait-header">
           <div class="eden-portrait-frame">
-            <img id="cgm-eden-portrait-img" src="assets/ui/eden_core_portrait.png?v=20260627200000" alt="EDEN CORE"
+            <img id="cgm-eden-portrait-img" src="assets/ui/eden_core_portrait.png?v=20260627210000" alt="EDEN CORE"
               onerror="this.style.display='none';var f=document.getElementById('cgm-eden-fallback-icon');if(f)f.style.display='flex';">
             <div class="eden-fallback-icon" id="cgm-eden-fallback-icon">◈</div>
           </div>
@@ -11798,6 +11897,132 @@ export class Game {
   }
 
   // Subtle CRT scanline overlay (screen space). Pattern built + cached once.
+  // ── Eden Core in-run transmission queue ──────────────────────────────────────
+  /**
+   * Queue an in-run Eden Core transmission popup.
+   * @param {string}  message
+   * @param {object}  opts  { title, priority 1-3, duration, auto }
+   *   auto:     true = applies 50-second cooldown between auto-milestones
+   *   priority: 1=normal 2=high(boss/chaos) 3=critical(low-hp)
+   *             Higher priority replaces active lower-priority transmission.
+   */
+  _queueEdenTransmission(message, { title = 'EDEN CORE', priority = 1, duration = 5, auto = false } = {}) {
+    const now = this.timeAlive || 0;
+    // Auto-milestone cooldown: enforce 50 s gap
+    if (auto && (now - this._edenLastAutoAt) < 50) return;
+    // Existing higher-priority block
+    const ex = this._edenTransmission;
+    if (ex && now < ex.expiresAt && priority < ex.priority) return;
+    this._edenTransmission = { message, title, priority, expiresAt: now + duration };
+    if (auto) this._edenLastAutoAt = now;
+  }
+
+  /**
+   * Check time milestones and event hooks; queue Eden transmissions.
+   * Called from the main update loop when playing Endless.
+   */
+  _triggerEdenMilestoneMessages() {
+    if (!this.endless || this.gameOver || this.victory) return;
+    const t    = this.timeAlive;
+    const sh   = this._edenRunMilestonesShown;
+    const cid  = this.player?.characterId || '';
+    const cp   = _EDEN_CHAR_POOLS[cid] || null;
+
+    // ── Time milestones (ordered — only one fires per call via return) ────────
+    // Endless start intro (~2 s)
+    if (t >= 2 && !sh.has('t_start')) {
+      sh.add('t_start');
+      const msg = cp ? _epick(cp.intro) : 'PHENIX trace synchronized.';
+      this._queueEdenTransmission(msg, { title: 'EDEN CORE', priority: 2, duration: 6, auto: true });
+      return;
+    }
+    // 3 min — character mid or generic challenge
+    if (t >= 180 && !sh.has('t_3m')) {
+      sh.add('t_3m');
+      const msg = cp ? _epick(cp.mid) : _epick(_EDEN_GENERIC_MID);
+      this._queueEdenTransmission(msg, { title: 'EDEN CORE', priority: 1, duration: 5, auto: true });
+      return;
+    }
+    // 6 min — generic challenge
+    if (t >= 360 && !sh.has('t_6m')) {
+      sh.add('t_6m');
+      this._queueEdenTransmission(_epick(_EDEN_GENERIC_MID), { title: 'EDEN CORE', priority: 1, duration: 5, auto: true });
+      return;
+    }
+    // 10 min — survival or character line
+    if (t >= 600 && !sh.has('t_10m')) {
+      sh.add('t_10m');
+      const msg = cp ? _epick(cp.survival) : _epick(_EDEN_GENERIC_SURVIVAL);
+      this._queueEdenTransmission(msg, { title: 'EDEN CORE', priority: 1, duration: 5, auto: true });
+      return;
+    }
+    // 15 min — challenge
+    if (t >= 900 && !sh.has('t_15m')) {
+      sh.add('t_15m');
+      this._queueEdenTransmission(_epick(_EDEN_GENERIC_MID), { title: 'EDEN CORE', priority: 1, duration: 5, auto: true });
+      return;
+    }
+    // 20 min — chaos approach warning (early)
+    if (t >= 1200 && !sh.has('t_20m')) {
+      sh.add('t_20m');
+      const msg = cp ? _epick(cp.mid) : _epick(_EDEN_GENERIC_MID);
+      this._queueEdenTransmission(msg, { title: 'EDEN CORE', priority: 1, duration: 5, auto: true });
+      return;
+    }
+    // 25 min — chaos approach imminent
+    if (t >= 1500 && !sh.has('t_25m')) {
+      sh.add('t_25m');
+      this._queueEdenTransmission(_epick(_EDEN_CHAOS_APPROACH), { title: 'EDEN CORE', priority: 2, duration: 6, auto: true });
+      return;
+    }
+    // 28 min — boundary warning
+    if (t >= 1680 && !sh.has('t_28m')) {
+      sh.add('t_28m');
+      this._queueEdenTransmission(_epick(_EDEN_CHAOS_APPROACH), { title: 'EDEN CORE', priority: 2, duration: 6, auto: true });
+      return;
+    }
+
+    // ── Low HP trigger (once per episode, resets when HP recovers) ───────────
+    const hp    = this.player?.hp    || 0;
+    const maxHp = this.player?.maxHp || 100;
+    if (hp > 0 && hp < maxHp * 0.30 && !this._edenLowHpFired) {
+      this._edenLowHpFired = true;
+      const cpool = _EDEN_CHAR_POOLS[cid];
+      const msg = (cpool?.low_hp) ? _epick(cpool.low_hp) : _epick(_EDEN_LOW_HP);
+      this._queueEdenTransmission(msg, { title: 'EDEN CORE', priority: 3, duration: 5 });
+    }
+    // Reset low-HP flag when player recovers above 50 %
+    if (hp >= maxHp * 0.50 && this._edenLowHpFired) {
+      this._edenLowHpFired = false;
+    }
+  }
+
+  /**
+   * Draw the in-run Eden Core transmission popup (upper-right, screen-space).
+   * Called from draw() after drawHUD. Not shown on game-over/victory screens.
+   */
+  _drawEdenGameplayTransmission(ctx) {
+    const tx = this._edenTransmission;
+    if (!tx || this.gameOver || this.victory || this.paused) return;
+    const remaining = tx.expiresAt - this.timeAlive;
+    if (remaining <= 0) { this._edenTransmission = null; return; }
+
+    // Fade out over last 0.6 s
+    const fadeAlpha = remaining < 0.6 ? remaining / 0.6 : 1;
+    const PW = 212, PH = 68;
+    const PX = WIDTH - PW - 6;
+    const PY = 50;   // below top HUD bar (y=44); same row as active-relic HUD (left side)
+
+    ctx.globalAlpha = fadeAlpha;
+    this._drawEdenTransmission(ctx, {
+      x: PX, y: PY, w: PW, h: PH,
+      messages: [tx.message],
+      edenMem:  this.meta ? this.meta.getEdenMemory() : 0,
+      title:    tx.title || 'EDEN CORE',
+    });
+    ctx.globalAlpha = 1;
+  }
+
   /**
    * Reusable Eden Core framed transmission panel (canvas, screen-space).
    * Called from HUD end screen and future arena second-chance mechanic.
@@ -12704,6 +12929,8 @@ export class Game {
       this.meta.addSystemMessage(msg);
       this.meta.addEdenMemory(1);
     }
+    // Eden Core in-run popup on boss kill
+    this._queueEdenTransmission('SERPENT ECHO: signal terminated.', { title: 'EDEN CORE', priority: 2, duration: 5 });
     const s = this.cyberSerpentBoss;
     if (!s) return;
     const pos = s.pos.clone();
@@ -13003,6 +13230,8 @@ export class Game {
       this.meta.addSystemMessage(msg);
       this.meta.addEdenMemory(1);
     }
+    // Eden Core in-run popup on boss kill
+    this._queueEdenTransmission('DRAGON ECHO: cryo trace terminated.', { title: 'EDEN CORE', priority: 2, duration: 5 });
     const d = this.cyberDragonBoss;
     if (!d) return;
     const pos = d.pos.clone();
@@ -13559,6 +13788,16 @@ export class Game {
   _doubleDemonsDie() {
     const dd = this.doubleDemonsBoss;
     if (!dd) return;
+    // Eden Core: boss echo
+    if (this.meta) {
+      const firstKill = this.meta.recordBossEcho('doubleDemon');
+      const ddMsg = firstKill
+        ? 'DOUBLE DEMONS ECHO ARCHIVED. First contact recorded.'
+        : this._edenPick(['DOUBLE DEMONS signal collapsed.', 'Twin demon traces erased.', 'Double Demon pattern: terminated.']);
+      this.meta.addSystemMessage(ddMsg);
+      this.meta.addEdenMemory(1);
+      this._queueEdenTransmission(ddMsg, { title: 'EDEN CORE', priority: 2, duration: 5 });
+    }
 
     this.particles.spawnExplosion(dd.gunner.pos, ['#ff2d95', ORANGE, YELLOW], 22);
     this.particles.spawnExplosion(dd.claw.pos,   [RED, '#ff2d95', WHITE],     22);
