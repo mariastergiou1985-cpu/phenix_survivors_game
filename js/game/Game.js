@@ -11041,7 +11041,7 @@ export class Game {
 
     ctx.textAlign = 'left';
     const lx  = px + 28;
-    const lh  = 17;
+    const lh  = 14;
     let   cy  = py + 80;
 
     // Left content sub-panel (dark glass) behind the text column — premium two-column feel.
@@ -11053,13 +11053,13 @@ export class Game {
     // Premium section header — magenta accent block + neon label + underline rule.
     const header = (label) => {
       ctx.fillStyle = '#ff4dd2';
-      ctx.fillRect(lx, cy - 11, 4, 15);
+      ctx.fillRect(lx, cy - 9, 4, 13);
       ctx.font      = 'bold 15px Consolas, monospace';
       ctx.fillStyle = CYAN;
       ctx.fillText(label, lx + 12, cy);
       ctx.strokeStyle = 'rgba(0,230,255,0.30)'; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(lx + 12, cy + 7); ctx.lineTo(lx + 524, cy + 7); ctx.stroke();
-      cy += 23;
+      cy += 20;
     };
     const bullet = (text, color = WHITE) => {
       ctx.font = '13px Consolas, monospace'; ctx.fillStyle = color;
@@ -11072,7 +11072,7 @@ export class Game {
     bullet('Collect XP, upgrade cards, credits, and dropped resources.');
     bullet('Build your run through weapons, abilities, relics, and market choices.');
     bullet('Push beyond Act 1 into Endless survival and deeper NULL EDEN systems.');
-    cy += 8;
+    cy += 5;
 
     // ── CONTROLS ───────────────────────────────────────────────
     // ── CONTROLS — keyboard + controller (auto-detected USB/Bluetooth: Xbox/PS/PC) ──
@@ -11081,7 +11081,7 @@ export class Game {
     ctx.font = 'bold 10px Consolas, monospace'; ctx.fillStyle = CYAN;
     ctx.fillText('ACTION', colA, cy); ctx.fillText('KEYBOARD', colK, cy);
     ctx.fillText('XBOX / PC', colX, cy); ctx.fillText('PLAYSTATION', colP, cy);
-    cy += 15;
+    cy += 12;
     const ctrlRows = [
       ['Move',      'WASD / Arrows', 'L-Stick/D-Pad', 'L-Stick/D-Pad'],
       ['Confirm',   'Enter',         'A',             '✕ Cross'],
@@ -11096,9 +11096,9 @@ export class Game {
       ctx.font = 'bold 11px Consolas, monospace'; ctx.fillStyle = YELLOW; ctx.fillText(a, colA, cy);
       ctx.font = '11px Consolas, monospace'; ctx.fillStyle = WHITE;
       ctx.fillText(k, colK, cy); ctx.fillText(xb, colX, cy); ctx.fillText(ps, colP, cy);
-      cy += 15;
+      cy += 13;
     });
-    cy += 6;
+    cy += 4;
 
     // ── COMBAT & BUILDS ────────────────────────────────────────
     header('COMBAT & BUILDS');
@@ -11106,15 +11106,14 @@ export class Game {
     bullet('Weapons, abilities, and passives stack into powerful combinations.');
     bullet('Mana fuels your Ultimate — pickups and credits help you recover.');
     bullet('Phenix Revive triggers when HP hits 0 — use the extra life wisely.');
-    bullet('Dash with Shift and use Q / E abilities to survive elite waves.', '#b6ff8c');
-    cy += 8;
+    cy += 5;
 
     // ── PROGRESSION & NULL RELICS ─────────────────────────────
     header('PROGRESSION & NULL RELICS');
     bullet('Runs feed permanent progression: levels, ranks, unlocks, and achievements.');
     bullet('Null Relics expand long-term goals and reward deeper survival.');
     bullet('Stronger runs unlock characters, secrets, lore, and archive entries.', '#c8a8ff');
-    cy += 8;
+    cy += 5;
 
     // ── ENDLESS · CHAOS · BLACKNET ─────────────────────────────
     header('ENDLESS · CHAOS MODE · BLACKNET');
