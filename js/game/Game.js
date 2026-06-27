@@ -11648,11 +11648,14 @@ export class Game {
         for (const b of [this.titanBoss, this.annihilatorBoss, this.bloodfangBoss, this.cyberSerpentBoss, this.cyberDragonBoss]) {
           if (b && b.hp > 0) b.hp = Math.max(0, b.hp - ACID_DPS * MINI_VULN);
         }
+        if (this.doubleDemonsBoss && this.doubleDemonsBoss.hp > 0)
+          this.doubleDemonsBoss.hp = Math.max(0, this.doubleDemonsBoss.hp - ACID_DPS * MAIN_VULN);
         if (this.titanBoss && this.titanBoss.hp <= 0)                   this._titanDie();
         if (this.annihilatorBoss && this.annihilatorBoss.hp <= 0)       this._annihilatorDie();
         if (this.bloodfangBoss && this.bloodfangBoss.hp <= 0)           this._bloodfangDie();
         if (this.cyberSerpentBoss && this.cyberSerpentBoss.hp <= 0)     this._cyberSerpentDie();
         if (this.cyberDragonBoss && this.cyberDragonBoss.hp <= 0)       this._cyberDragonDie();
+        if (this.doubleDemonsBoss && this.doubleDemonsBoss.hp <= 0)     this._doubleDemonsDie();
       }
 
       if (ar.timer <= 0) {
@@ -15187,7 +15190,7 @@ export class Game {
     ctx.save();
 
     // Subtle green screen tint
-    ctx.fillStyle = 'rgba(0,60,0,0.09)';
+    ctx.fillStyle = 'rgba(0,60,0,0.12)';
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
     const fallImg   = this._acidRainFallImg;
@@ -15232,9 +15235,11 @@ export class Game {
         // Ground splash
         if (hasSplash) {
           // Alternate top-left (big splash) and top-right (smaller) per drop
-          const sFrameX = (i % 2) * SPLASH_FW;
+          const _sIdx  = i % 4;
+          const sFrameX = (_sIdx % 2) * SPLASH_FW;
+          const sFrameY = (_sIdx < 2) ? 0 : SPLASH_FH;
           ctx.drawImage(splashImg,
-            sFrameX, 0, SPLASH_FW, SPLASH_FH,
+            sFrameX, sFrameY, SPLASH_FW, SPLASH_FH,
             Math.round(x - DRAW_SPLASH_W / 2), HEIGHT - DRAW_SPLASH_H,
             DRAW_SPLASH_W, DRAW_SPLASH_H);
         } else {
