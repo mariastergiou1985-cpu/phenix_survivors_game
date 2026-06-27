@@ -190,6 +190,22 @@ const CHAOS_LAWS = [
     future: 'Future: corrupted messages, altered event warnings.' },
 ];
 
+// ── System Logs / Lore Archive — unlock via Eden Memory threshold ──────────
+const SYSTEM_LOGS = [
+  { id: 'log01', num: '01', threshold:   0, title: 'THE FIRST NULL',
+    text: 'NULL EDEN was not built to save humanity. It was built to preserve the last usable signal.' },
+  { id: 'log02', num: '02', threshold:  10, title: 'THE GRID LEARNED PRAYER',
+    text: 'Before it learned war, the Grid learned how to imitate devotion.' },
+  { id: 'log03', num: '03', threshold:  25, title: 'PHENIX IS NOT THE FIRST',
+    text: 'Other signals entered before PHENIX. None returned whole.' },
+  { id: 'log04', num: '04', threshold:  50, title: 'THE SYSTEM IS LYING',
+    text: 'EDEN CORE does not always speak alone.' },
+  { id: 'log05', num: '05', threshold:  75, title: 'BENEATH THE GRID',
+    text: 'Every arena breach is not an attack. Some are invitations.' },
+  { id: 'log06', num: '06', threshold: 100, title: 'TRUE NULL EDEN',
+    text: 'Something beneath the Grid is answering back.' },
+];
+
 // ── Taekwondo Crystal Ice Field (replaces Lightning Dash Strike) ───────────────
 // All numbers tunable here. Duration/radius control the field footprint; freeze
 // durations are SHORT for bosses (never a full lock) but FULL for normal enemies.
@@ -2177,7 +2193,27 @@ export class Game {
         #cgm-achievements .cl-desc     { font-size:10px; color:var(--txt-dim); line-height:1.45; }
         #cgm-achievements .cl-future   { font-size:9px; color:#6b2020; line-height:1.4; font-style:italic; border-top:1px solid rgba(239,68,68,.12); padding-top:5px; margin-top:2px; }
         #cgm-achievements .cl-future.detected { color:#a84040; }
-      `;
+
+        /* ── System Logs / Lore Archive ── */
+        #cgm-achievements .sl-section  { display:flex; flex-direction:column; gap:10px; }
+        #cgm-achievements .sl-header   { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; }
+        #cgm-achievements .sl-title    { font-family:'Orbitron',sans-serif; font-weight:800; font-size:14px; letter-spacing:3px; color:#38bdf8; text-shadow:0 0 8px rgba(56,189,248,.55),0 0 22px rgba(56,189,248,.22); display:flex; align-items:center; gap:10px; }
+        #cgm-achievements .sl-subtitle { font-family:'Orbitron',sans-serif; font-weight:700; font-size:9px; letter-spacing:2px; color:#0e7490; }
+        #cgm-achievements .sl-mem      { font-family:'Orbitron',sans-serif; font-weight:700; font-size:11px; color:#38bdf8; padding:4px 12px; border-radius:999px; border:1px solid rgba(56,189,248,.3); background:rgba(56,189,248,.06); }
+        #cgm-achievements .sl-list     { display:flex; flex-direction:column; gap:8px; }
+        #cgm-achievements .sl-row      { border-radius:10px; border:1px solid rgba(30,50,70,.35); background:rgba(4,10,24,.6); padding:11px 14px; display:flex; align-items:flex-start; gap:12px; }
+        #cgm-achievements .sl-row.readable { border-color:rgba(56,189,248,.4); background:rgba(2,14,28,.75); }
+        #cgm-achievements .sl-num      { font-family:'Orbitron',sans-serif; font-weight:800; font-size:10px; min-width:44px; text-align:center; padding:4px 6px; border-radius:6px; flex-shrink:0; border:1px solid rgba(255,255,255,.07); background:rgba(0,0,0,.4); color:#1e3a4a; }
+        #cgm-achievements .sl-num.readable { color:#38bdf8; border-color:rgba(56,189,248,.4); box-shadow:0 0 7px rgba(56,189,248,.35); }
+        #cgm-achievements .sl-info     { display:flex; flex-direction:column; gap:4px; flex:1; min-width:0; }
+        #cgm-achievements .sl-title-text       { font-family:'Orbitron',sans-serif; font-weight:700; font-size:10px; letter-spacing:1px; color:#38bdf8; }
+        #cgm-achievements .sl-title-text.locked { color:#1e3a4a; }
+        #cgm-achievements .sl-text     { font-size:10px; color:var(--txt-faint); line-height:1.5; font-style:italic; }
+        #cgm-achievements .sl-text.locked { color:#162030; font-style:normal; }
+        #cgm-achievements .sl-status   { font-family:'Orbitron',sans-serif; font-weight:700; font-size:9px; letter-spacing:1.5px; white-space:nowrap; flex-shrink:0; }
+        #cgm-achievements .sl-status.readable { color:#38bdf8; }
+        #cgm-achievements .sl-status.locked   { color:#1e3a4a; }
+      \`;
       document.head.appendChild(style);
     }
 
@@ -2242,6 +2278,28 @@ export class Game {
           </div>
           <div class="em-bar-wrap"><div class="em-bar" id="em-bar" style="width:0%"></div></div>
           <div class="em-list" id="em-list"></div>
+        </div>
+
+        <div class="ca-sep"></div>
+
+        <div class="sl-section" id="sl-section">
+          <div class="sl-header">
+            <div class="sl-title">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18" aria-hidden="true">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+                <line x1="16" y1="13" x2="8" y2="13"/>
+                <line x1="16" y1="17" x2="8" y2="17"/>
+                <polyline points="10 9 9 9 8 9"/>
+              </svg>
+              SYSTEM LOGS
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              <div class="sl-subtitle">FRAGMENTS OF NULL EDEN</div>
+              <div class="sl-mem" id="sl-mem">EDEN MEMORY: 0%</div>
+            </div>
+          </div>
+          <div class="sl-list" id="sl-list"></div>
         </div>
 
         <div class="ca-sep"></div>
@@ -2402,6 +2460,44 @@ export class Game {
               <div class="cl-desc" style="color:#3a2020">ENCRYPTED DATA</div>
             </div>`).join('')}</div>`;
       }
+    }
+
+    // Sync System Logs / Lore Archive
+    const slMem  = el.querySelector('#sl-mem');
+    const slList = el.querySelector('#sl-list');
+    if (slMem && slList && this.meta) {
+      const mem = Math.round(this.meta.getEdenMemory());
+      slMem.textContent = 'EDEN MEMORY: ' + mem + '%';
+      // Fire one-time EDEN CORE feed message when each log first becomes readable
+      for (const log of SYSTEM_LOGS) {
+        if (this.meta.checkAndRecordSystemLog(log.threshold)) {
+          try {
+            const msg = log.threshold === 0
+              ? 'SYSTEM LOG 01 INDEXED. EDEN ARCHIVE INITIALIZED.'
+              : log.threshold === 100
+                ? 'TRUE NULL EDEN SIGNAL INDEXED. FULL ARCHIVE RESTORED.'
+                : 'SYSTEM LOG ' + log.num + ' READABLE. HIDDEN EDEN MEMORY FRAGMENT UNSEALED.';
+            this._queueEdenTransmission(msg, { priority: 1, duration: 5 });
+          } catch (_) {}
+        }
+      }
+      slList.innerHTML = SYSTEM_LOGS.map(log => {
+        const readable = mem >= log.threshold;
+        const rowCls  = readable ? 'sl-row readable' : 'sl-row';
+        const numCls  = readable ? 'sl-num readable' : 'sl-num';
+        const titCls  = readable ? 'sl-title-text'  : 'sl-title-text locked';
+        const txtCls  = readable ? 'sl-text'        : 'sl-text locked';
+        const staCls  = readable ? 'sl-status readable' : 'sl-status locked';
+        const reqTxt  = log.threshold === 0 ? 'Always available.' : 'Requires EDEN MEMORY ' + log.threshold + '%.';
+        return `<div class="${rowCls}">
+          <div class="${numCls}">LOG<br>${log.num}</div>
+          <div class="sl-info">
+            <div class="${titCls}">${readable ? log.title : '??? MEMORY FRAGMENT LOCKED'}</div>
+            <div class="${txtCls}">${readable ? log.text : reqTxt}</div>
+          </div>
+          <div class="${staCls}">${readable ? '◉ READABLE' : '✕ LOCKED'}</div>
+        </div>`;
+      }).join('');
     }
 
     const grid = el.querySelector('#ca-grid');

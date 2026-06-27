@@ -252,6 +252,7 @@ export class MetaProgress {
     this.systemFeedMessages = [];  // last 8 { text, ts } entries, newest first
     this.bossEchoes         = {};  // { [bossKey]: true } first-time echo archives
     this.edenMilestonesSeen = {};  // { [threshold]: true } milestone one-fire guard
+    this.systemLogsSeen    = {};  // { [threshold]: true } system log one-fire feed guard
     this._load();
   }
 
@@ -286,6 +287,7 @@ export class MetaProgress {
       this.systemFeedMessages = Array.isArray(d.systemFeedMessages) ? d.systemFeedMessages.slice(0, 8) : [];
       this.bossEchoes         = (d.bossEchoes && typeof d.bossEchoes === 'object') ? d.bossEchoes : {};
       this.edenMilestonesSeen = (d.edenMilestonesSeen && typeof d.edenMilestonesSeen === 'object') ? d.edenMilestonesSeen : {};
+      this.systemLogsSeen    = (d.systemLogsSeen    && typeof d.systemLogsSeen    === 'object') ? d.systemLogsSeen    : {};
       // One-time retroactive payout for already-earned Endless achievements (idempotent).
       this._backfillProtocolFragments();
 
@@ -334,6 +336,7 @@ export class MetaProgress {
         systemFeedMessages: this.systemFeedMessages,
         bossEchoes:         this.bossEchoes,
         edenMilestonesSeen: this.edenMilestonesSeen,
+        systemLogsSeen:     this.systemLogsSeen,
       }));
     } catch (_) {}
   }
@@ -679,5 +682,17 @@ export class MetaProgress {
   }
 
   hasMilestone(threshold) { return !!(this.edenMilestonesSeen && this.edenMilestonesSeen[threshold]); }
+
+  // One-fire guard: returns true the first time Eden Memory >= threshold.
+  // Subsequent calls return false. Safe with old saves (defaults to {}).
+  checkAndRecordSystemLog(threshold) {
+    if (!this.systemLogsSeen) this.systemLogsSeen = {};
+    if (this.systemLogsSeen[threshold]) return false;
+    if (this.getEdenMemory() < threshold) return false;
+    this.systemLogsSeen[threshold] = true;
+    this._save();
+    return true;
+  }
+  hasSystemLog(threshold) { return !!(this.systemLogsSeen && this.systemLogsSeen[threshold]); }
 
 }
