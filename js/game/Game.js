@@ -3819,7 +3819,7 @@ export class Game {
     if (this.player?.selectedCharacter !== 'oni_cataclysm_protocol') return;
     if (this._oniFxBuilt || !this._canvas) return;
     this._protocol0  = new Protocol0(this._canvas);
-    this._laserEyes  = new LaserEyes(this._canvas);
+    this._laserEyes  = new LaserEyes(this._canvas, { charge: { ms: 150 }, beam: { durationMs: 1100 } });
     this._meteorRain = new MeteorRain(this._canvas, { area: { radius: 170 } });
     this._oniFxBuilt = true;
   }
@@ -3929,24 +3929,53 @@ export class Game {
     }
 
     // ── Laser Eyes (auto-weapon 1) — charged piercing beam, boss lock-on ──
+    // Build laser target list: regular enemies + live boss objects so beams can damage bosses
+    const _allLaserTargets = [...this.enemies];
+    if (this.titanBoss?.hp > 0)        _allLaserTargets.push(this.titanBoss);
+    if (this.annihilatorBoss?.hp > 0)  _allLaserTargets.push(this.annihilatorBoss);
+    if (this.bloodfangBoss?.hp > 0)    _allLaserTargets.push(this.bloodfangBoss);
+    if (this.cyberSerpentBoss?.hp > 0) _allLaserTargets.push(this.cyberSerpentBoss);
+    if (this.cyberDragonBoss?.hp > 0)  _allLaserTargets.push(this.cyberDragonBoss);
+    const _ddL2 = this.doubleDemonsBoss;
+    if (_ddL2?.hp > 0 && _ddL2.gunner) _allLaserTargets.push(_ddL2.gunner);
+    if (_ddL2?.hp > 0 && _ddL2.claw)   _allLaserTargets.push(_ddL2.claw);
+
     if (this._oniLaserCd > 0) this._oniLaserCd -= dt;
     if (this._laserEyes && !this._laserEyes.isActive() && this._oniLaserCd <= 0) {
       const tgt = nearestLaserTarget();
-      if (tgt && distance(tgt.pos, p.pos) < 560) {
-        const ll      = p.upgrades['oni_laser_mastery'] || 0;   // Laser Overload mastery
-        const laserDmg = 6 + 2 * ll;                            // 6 → 12 per tick
+      if (tgt && distance(tgt.pos, p.pos) < 640) {
+        const ll        = p.upgrades['oni_laser_mastery'] || 0;   // Laser Overload mastery
+        const laserDmg  = 8 + 3 * ll;                              // 8 → 17 per tick (boosted)
+        const splashDmg = Math.max(1, Math.round(laserDmg * 0.5)); // 50% of primary for burst
+        const _targetsSnap = _allLaserTargets.slice();             // snapshot at cast time
         this._laserEyes.cast({
           getEyes: () => { const s = this._playerScreenPos(), top = s.footY - s.spriteH;
             return [ { x: s.cx - 6, y: top + s.spriteH * 0.30 }, { x: s.cx + 6, y: top + s.spriteH * 0.30 },
                      { x: s.cx - 12, y: top + s.spriteH * 0.12 }, { x: s.cx + 12, y: top + s.spriteH * 0.12 } ]; },
           getAim:  () => { const t = nearestLaserTarget(); return t ? { x: toX(t), y: toY(t) } : { x: this._playerScreenPos().cx, y: 0 }; },
-          enemies: this.enemies, getX: toX, getY: toY,
-          onTick:  e => { if (e?.takeHit) e.takeHit(laserDmg, this); },   // damage per 0.1s tick
+          enemies: _allLaserTargets, getX: toX, getY: toY,
+          onTick:  e => {
+            if (!e?.takeHit || !(e.hp > 0)) return;
+            const isBoss = e.isBoss?.() || e.isMegaBoss;
+            const dmg = isBoss ? this._capBossDamage(e, laserDmg) : laserDmg;
+            e.takeHit(dmg, this);
+            // Secondary burst: up to 2 nearby targets within 80 world-units, no chain
+            if (!e.pos) return;
+            let splashCount = 0;
+            for (const nb of _targetsSnap) {
+              if (splashCount >= 2) break;
+              if (!nb?.takeHit || nb === e || !(nb.hp > 0) || !nb.pos) continue;
+              if (distance(nb.pos, e.pos) > 80) continue;
+              const nbBoss = nb.isBoss?.() || nb.isMegaBoss;
+              nb.takeHit(nbBoss ? this._capBossDamage(nb, splashDmg) : splashDmg, this);
+              splashCount++;
+            }
+          },
         });
-        this._oniLaserCd = 3.5 - 0.4 * ll;   // faster beams with mastery (3.5 → 2.3s)
+        this._oniLaserCd = 2.5 - 0.3 * ll;   // faster: 2.5s → 1.6s with mastery
       }
     }
-    if (this._laserEyes) { try { this._laserEyes.update(now, this.enemies); } catch (err) { console.warn('[Oni Laser]', err); } }
+    if (this._laserEyes) { try { this._laserEyes.update(now, _allLaserTargets); } catch (err) { console.warn('[Oni Laser]', err); } }
 
     // ── Meteor Rain (auto-weapon 2, AoE) — 5s field, auto-fires on cooldown ──
     if (this._oniMeteorCd > 0) this._oniMeteorCd -= dt;
