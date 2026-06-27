@@ -633,6 +633,13 @@ export class MetaProgress {
     this._save();
   }
 
+  // Add Protocol Fragments (e.g. Null Fragment from arena clear). Safe — clamps negative to 0.
+  addProtocolFragment(n) {
+    if (!n || n <= 0) return;
+    this.protocolFragments = Math.max(0, (this.protocolFragments || 0) + n);
+    this._save();
+  }
+
   addSystemMessage(text) {
     if (!text) return;
     if (!Array.isArray(this.systemFeedMessages)) this.systemFeedMessages = [];

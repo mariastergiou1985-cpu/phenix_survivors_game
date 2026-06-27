@@ -606,6 +606,25 @@ export function drawEndScreen(ctx, game) {
   ctx.textAlign = 'center';
   ctx.fillText('R = Retry   •   ESC = Main Menu', WIDTH / 2, 500);
 
+  // ── Null Breach Arena run result ────────────────────────────────────────
+  if (game.endless && game._arenaResult && game._arenaResult.entered > 0) {
+    const ar = game._arenaResult;
+    const arLine1 = ar.completed > 0
+      ? `NULL BREACH: ${ar.completed}/${ar.entered} CLEARED`
+      : `NULL BREACH: ENTERED — FAILED`;
+    const arLine2 = ar.rescueUsed
+      ? 'EDEN CORE: Rescue used · No fragment'
+      : ar.completed > 0 ? 'Perfect clear · Fragment chance applied' : '';
+    ctx.font      = '12px Consolas, monospace';
+    ctx.fillStyle = ar.completed > 0 ? '#00e6ff' : '#ff88cc';
+    ctx.textAlign = 'center';
+    ctx.fillText('⬡  ' + arLine1, WIDTH / 2, 505);
+    if (arLine2) {
+      ctx.fillStyle = 'rgba(160,200,220,0.65)';
+      ctx.fillText(arLine2, WIDTH / 2, 520);
+    }
+  }
+
   // ── Eden Core Transmission block (framed portrait + messages) ─────────────
   const edenMsgs = (game.edenRunMessages && game.edenRunMessages.length)
     ? game.edenRunMessages

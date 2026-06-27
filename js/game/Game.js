@@ -22,8 +22,8 @@ import { UpgradeUI }      from './UpgradeUI.js?v=20260616080000';
 import { weightedSample } from './Upgrades.js?v=20260615210000';
 import { MutationUI }      from './MutationUI.js?v=20260616080000';
 import { sampleMutations } from './Mutations.js?v=20260615210000';
-import { drawHUD, drawEndScreen } from './HUD.js?v=20260627210000';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS } from './MetaProgress.js?v=20260627210000';
+import { drawHUD, drawEndScreen } from './HUD.js?v=20260627230000';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS } from './MetaProgress.js?v=20260627230000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260615210000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
@@ -601,6 +601,14 @@ export class Game {
     this._edenPortraitImg.onload  = () => { this._edenPortraitLoaded = true; };
     this._edenPortraitImg.onerror = () => { this._edenPortraitLoaded = false; };
     this._edenPortraitImg.src = 'assets/ui/eden_core_portrait.png?v=20260627210000';
+
+    // Null Breach Arena atmospheric image
+    this._nullBreachImgLoaded = false;
+    this._nullBreachImg       = null;
+    const _nbaImg = new Image();
+    _nbaImg.onload  = () => { this._nullBreachImgLoaded = true; this._nullBreachImg = _nbaImg; };
+    _nbaImg.onerror = () => console.warn('[Arena] NULL BREACH ARENA.png not found — fallback used');
+    _nbaImg.src = 'assets/ui/NULL BREACH ARENA.png';
   }
 
   // UPGRADES = the permanent Grid-Credit progression (spent between runs). ENDLESS MODE appears
@@ -849,6 +857,14 @@ export class Game {
     this._droneFlameLast   = null;
     this._droneElectroLast = null;
 
+    // Null Breach Arena run-state (defaults — armed properly in _enterEndless)
+    this._nullBreachActive  = false;
+    this._nullBreachArena   = null;
+    this._nullBreach1Done   = false;
+    this._nullBreach2Done   = false;
+    this._arenaRescueUsed   = false;
+    this._arenaResult       = null;
+
     this._createMatrices();
   }
 
@@ -1043,6 +1059,14 @@ export class Game {
     this._checkEndlessAchievements();  // grant FIRST ENDLESS RUN immediately on entering Endless
     this.audio?.startEndlessMusic();   // Endless-only track (dawn) replaces gameplay music
     this.triggerAnnouncement('STAGE 02 — NEON SHINJUKU PLAZA', CYAN);   // Endless Stage 02 visuals
+
+    // Null Breach Arena — arm fresh triggers for this Endless run
+    this._nullBreachActive  = false;
+    this._nullBreachArena   = null;
+    this._nullBreach1Done   = false;
+    this._nullBreach2Done   = false;
+    this._arenaRescueUsed   = false;
+    this._arenaResult       = null;
   }
 
   // Live Endless-achievement evaluation — unlock + persist the INSTANT a milestone is crossed
@@ -2678,6 +2702,7 @@ export class Game {
   // event is active or about to warn, so the two spectacles never start on the same moment.
   _updateEndlessBossRotation(dt) {
     if (!this.endless) return;
+    if (this._nullBreachActive) { this._endlessBossTimer = Math.max(this._endlessBossTimer, 15); return; }
     if (this._bossWarnCd > 0) this._bossWarnCd -= dt;   // age the boss-warning throttle (Endless only)
     this._endlessBossTimer -= dt;
     if (this._endlessBossTimer > 0) return;
@@ -4482,6 +4507,10 @@ export class Game {
     // ── Eden Core in-run transmissions (Endless only, safe) ──────────────────
     if (this.endless) this._triggerEdenMilestoneMessages();
 
+    // ── Null Breach Arena ────────────────────────────────────────────────────
+    if (this.endless) this._checkNullBreachArena();
+    if (this._nullBreachArena) this._updateNullBreachArena(dt);
+
     // ── Chaos Mode trigger (31:00 Endless) — instant, no glitch transition ──
     if (this.endless && !this._chaosMode) {
       if (this.timeAlive >= 1860 || this.forceChaos) {
@@ -4629,9 +4658,12 @@ export class Game {
       this.audio?.stopAll();
       this._grantRewards();
     } else if (this.player.hp <= 0 && this.phoenixReviveTimer <= 0 && !this.gameOver && !this.victory) {
+      // Null Breach Arena rescue (EDEN CORE extraction) — fires once per run, before Phoenix.
+      if (this._nullBreachActive && !this._arenaRescueUsed) {
+        this._triggerArenaRescue();
       // Phoenix revive is DEATH-ONLY: it fires solely when HP has reached 0,
       // never from a timer/cooldown/visual schedule.
-      if (this.phoenixReviveCount < (3 + (this._hasProto('phoenix_revival') ? 1 : 0))) {
+      } else if (this.phoenixReviveCount < (3 + (this._hasProto('phoenix_revival') ? 1 : 0))) {
         this._triggerPhoenixRevive();
       } else {
         this.gameOver     = true;
@@ -7165,6 +7197,7 @@ export class Game {
   }
 
   _updateSpawning(dt) {
+    if (this._nullBreachActive) return;          // arena manages its own pressure
     if (this.spawnPauseTimer > 0) { this.spawnPauseTimer -= dt; return; }
     this.spawnTimer += dt;
     // During Thunder Solo, keep waves arriving fast so the 7s ultimate always has targets
@@ -8374,6 +8407,7 @@ export class Game {
 
     drawHUD(ctx, this);
     this._drawActiveRelicHUD(ctx);
+    this._drawNullBreachArena(ctx);            // Null Breach Arena overlay + timer
     this._drawEdenGameplayTransmission(ctx);   // Eden Core in-run popup (upper-right)
     this._drawObjectiveIndicators(ctx);   // wayfinding: arrow to nearest Nexus (carrying) / core (early)
     this._drawOnboarding(ctx);            // first-minute objective callout + fading hints (Act 1)
@@ -12133,7 +12167,285 @@ export class Game {
     ctx.restore();
   }
 
-    _drawActiveRelicHUD(ctx) {
+  
+  // ═══════════════════════════════════════════════════════════════════════════
+  // NULL BREACH ARENA — Endless-only 2-minute elite pressure event.
+  // Triggers at 8:00 (first) and 16:00 (second), max 2 per run. Suppresses
+  // normal spawns; runs mini-bosses + airstrike ships as arena pressure.
+  // EDEN CORE extraction rescues the player from death inside the arena once.
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // Check trigger windows each frame (Endless-only, gated on _checkNullBreachArena call).
+  _checkNullBreachArena() {
+    if (this._chaosMode || this.gameOver || this.victory || this.paused) return;
+    if (this._nullBreachArena) return;
+    if (this.upgradeUI || this.mutationUI) return;
+
+    const t = this.timeAlive;
+    // Defer if active hazard would stack badly
+    const hazardActive = !!(this.acidRain || this.airstrikeShips.length > 0);
+
+    if (!this._nullBreach1Done && t >= 480) {      // 8:00
+      this._nullBreach1Done = true;
+      if (!hazardActive) this._enterNullBreachArena();
+      return;
+    }
+    if (!this._nullBreach2Done && t >= 960) {      // 16:00
+      this._nullBreach2Done = true;
+      if (!hazardActive) this._enterNullBreachArena();
+    }
+  }
+
+  // Activate the Null Breach Arena.
+  _enterNullBreachArena() {
+    this._nullBreachActive = true;
+    this._nullBreachArena  = {
+      timer:          120,      // 2-minute countdown
+      spawnCd:        8,        // first boss rearm in 8s
+      phase:          0,        // 0=early / 1=mid / 2=late
+      midTransmitted: false,
+      bossesSpawnedThisPhase: 0,
+    };
+
+    // Track for end screen
+    if (!this._arenaResult) {
+      this._arenaResult = { entered: 1, completed: 0, rescueUsed: 0 };
+    } else {
+      this._arenaResult.entered++;
+    }
+
+    // Announcement + audio
+    this.triggerAnnouncement('⚠ NULL BREACH DETECTED', '#ff44cc');
+    this.audio?.playEventWarning?.();
+
+    // EDEN CORE transmission (entry message 2s later so announcement clears first)
+    this._queueEdenTransmission('NULL BREACH DETECTED.', { priority: 2, duration: 5 });
+    const _self = this;
+    setTimeout(() => {
+      if (_self._nullBreachArena) {
+        _self._queueEdenTransmission(
+          'EDEN CORE: Entering unstable memory pocket.', { priority: 2, duration: 5 }
+        );
+      }
+    }, 2800);
+
+    // System Feed
+    if (this.meta) {
+      this.meta.addSystemMessage('NULL BREACH DETECTED. ENTERING UNSTABLE MEMORY POCKET.');
+    }
+  }
+
+  // Per-frame update: tick timer, spawn arena pressure, handle completion.
+  _updateNullBreachArena(dt) {
+    const arena = this._nullBreachArena;
+    if (!arena) return;
+
+    arena.timer   -= dt;
+    arena.spawnCd -= dt;
+
+    // Phase transitions (elapsed time into arena)
+    const elapsed    = 120 - arena.timer;
+    const newPhase   = elapsed < 40 ? 0 : elapsed < 80 ? 1 : 2;
+    if (newPhase !== arena.phase) {
+      arena.phase = newPhase;
+      arena.bossesSpawnedThisPhase = 0;
+      arena.spawnCd = Math.max(arena.spawnCd, 5);  // brief gap on phase change
+    }
+
+    // Enemy pressure per phase
+    if (arena.spawnCd <= 0) {
+      if (arena.phase === 0) {
+        // Early (0–40s): airstrike + Titan mini-boss
+        if (this.airstrikeShips.length < 1) { this._spawnAirstrike(); arena.spawnCd = 38; }
+        if ((!this.titanBoss || this.titanBoss.hp <= 0) && arena.bossesSpawnedThisPhase < 1) {
+          this.titanSpawned = false; this.titanSpawnTimer = 0;
+          arena.bossesSpawnedThisPhase++;
+          arena.spawnCd = Math.max(arena.spawnCd, 7);
+        }
+      } else if (arena.phase === 1) {
+        // Mid (40–80s): airstrike + Bloodfang, then Annihilator if Bloodfang is dead
+        if (this.airstrikeShips.length < 1) { this._spawnAirstrike(); arena.spawnCd = 32; }
+        if ((!this.bloodfangBoss || this.bloodfangBoss.hp <= 0) && arena.bossesSpawnedThisPhase < 1) {
+          this.bloodfangSpawned = false; this.bloodfangSpawnTimer = 0;
+          arena.bossesSpawnedThisPhase++;
+          arena.spawnCd = Math.max(arena.spawnCd, 7);
+        } else if (arena.bossesSpawnedThisPhase >= 1 &&
+                   (!this.annihilatorBoss || this.annihilatorBoss.hp <= 0) &&
+                   arena.bossesSpawnedThisPhase < 2) {
+          this.annihilatorSpawned = false; this.annihilatorSpawnTimer = 0;
+          arena.bossesSpawnedThisPhase++;
+          arena.spawnCd = Math.max(arena.spawnCd, 10);
+        }
+      } else {
+        // Late (80–120s): airstrike + up to 2 simultaneous mini-bosses for max pressure
+        if (this.airstrikeShips.length < 1) { this._spawnAirstrike(); arena.spawnCd = 28; }
+        const activeBosses = [this.titanBoss, this.bloodfangBoss, this.annihilatorBoss]
+          .filter(b => b && b.hp > 0).length;
+        if (activeBosses < 2 && arena.bossesSpawnedThisPhase < 2) {
+          if (!this.titanBoss || this.titanBoss.hp <= 0) {
+            this.titanSpawned = false; this.titanSpawnTimer = 0;
+            arena.bossesSpawnedThisPhase++;
+          } else if (!this.bloodfangBoss || this.bloodfangBoss.hp <= 0) {
+            this.bloodfangSpawned = false; this.bloodfangSpawnTimer = 0;
+            arena.bossesSpawnedThisPhase++;
+          }
+          arena.spawnCd = Math.max(arena.spawnCd, 8);
+        }
+      }
+    }
+
+    // Mid-arena EDEN CORE taunt (at 60s in)
+    if (!arena.midTransmitted && elapsed >= 60) {
+      arena.midTransmitted = true;
+      this._queueEdenTransmission(
+        'Only elite signals can enter the breach.', { priority: 1, duration: 5 }
+      );
+    }
+
+    // Arena complete
+    if (arena.timer <= 0) this._completeNullBreachArena();
+  }
+
+  // Arena timer reached zero — success, grant rewards, resume Endless.
+  _completeNullBreachArena() {
+    this._nullBreachArena  = null;
+    this._nullBreachActive = false;
+    this._endlessBossTimer = Math.max(this._endlessBossTimer, 30);  // breathing room after arena
+
+    // Rewards
+    this.score += 2000;
+    this.player.gainXp(40, this.floatingTexts);
+
+    if (this.meta) {
+      this.meta.addEdenMemory(1);
+      // Credits: more if player never needed rescue
+      this.meta.addCredits(this._arenaRescueUsed ? 3 : 6);
+      // Null Fragment (Protocol Fragment): 20% chance if perfect clear, 0% if rescued
+      if (!this._arenaRescueUsed && Math.random() < 0.20) {
+        if (typeof this.meta.addProtocolFragment === 'function') {
+          this.meta.addProtocolFragment(1);
+        }
+        this.floatingTexts.push(
+          new FloatingText('NULL FRAGMENT +1', this.player.pos.clone(), '#ff66ff', 2.0)
+        );
+        this.meta.addSystemMessage('NULL FRAGMENT SECURED. PROTOCOL FRAGMENTS +1.');
+      }
+      this.meta.addSystemMessage('NULL BREACH CLEARED. ARENA TRACE ARCHIVED.');
+    }
+
+    if (this._arenaResult) this._arenaResult.completed++;
+
+    // EDEN CORE
+    this._queueEdenTransmission(
+      'EDEN CORE: Breach survived. Memory stabilized.', { priority: 3, duration: 7 }
+    );
+    this.triggerAnnouncement('NULL BREACH CLEARED', '#00e6ff');
+    this.floatingTexts.push(
+      new FloatingText('✓ BREACH SURVIVED', this.player.pos.clone(), '#00e6ff', 2.0)
+    );
+    this.screenShake.trigger(6, 0.4);
+  }
+
+  // Player died inside the arena — EDEN CORE extracts them (once per run).
+  _triggerArenaRescue() {
+    this._arenaRescueUsed  = true;
+    this._nullBreachArena  = null;
+    this._nullBreachActive = false;
+    if (this._arenaResult) this._arenaResult.rescueUsed = 1;
+    this._endlessBossTimer = Math.max(this._endlessBossTimer, 30);
+
+    // Restore player at 30% HP with brief phoenix i-frames
+    this.player.hp          = Math.ceil(this.player.maxHp * 0.30);
+    this.phoenixReviveTimer = 2.5;
+
+    // EDEN CORE transmissions
+    this._queueEdenTransmission(
+      'NULL BREACH FAILED. PHENIX TRACE RESTORED.', { priority: 3, duration: 6, clipId: 'extract' }
+    );
+    const _self = this;
+    setTimeout(() => {
+      _self._queueEdenTransmission(
+        'EDEN CORE: Do not waste the second signal.', { priority: 2, duration: 5 }
+      );
+    }, 4000);
+
+    if (this.meta) {
+      this.meta.addSystemMessage('NULL BREACH FAILED. PHENIX TRACE RESTORED.');
+    }
+
+    this.triggerAnnouncement('EDEN CORE: EXTRACTION COMPLETE', '#00e6ff');
+    this.floatingTexts.push(
+      new FloatingText('EDEN CORE: EXTRACTED', this.player.pos.clone(), '#00e6ff', 2.5)
+    );
+    this.screenShake.trigger(10, 0.7);
+  }
+
+  // Draw the arena atmospheric overlay (image wash + neon ring + timer bar).
+  _drawNullBreachArena(ctx) {
+    const arena = this._nullBreachArena;
+    if (!arena) return;
+
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+    // ── Atmospheric image wash ───────────────────────────────────────────────
+    if (this._nullBreachImgLoaded && this._nullBreachImg) {
+      const img  = this._nullBreachImg;
+      const iw   = img.naturalWidth  || WIDTH;
+      const ih   = img.naturalHeight || (HEIGHT - 44);
+      const sc   = Math.max(WIDTH / iw, (HEIGHT - 44) / ih);
+      const dw   = iw * sc, dh = ih * sc;
+      ctx.globalAlpha = 0.13;
+      ctx.drawImage(img, (WIDTH - dw) / 2, 44 + ((HEIGHT - 44) - dh) / 2, dw, dh);
+      ctx.globalAlpha = 1;
+    } else {
+      // Fallback tint
+      ctx.fillStyle = 'rgba(50,0,70,0.09)';
+      ctx.fillRect(0, 44, WIDTH, HEIGHT - 44);
+    }
+
+    // ── Neon arena border ────────────────────────────────────────────────────
+    const pulse = 0.7 + 0.3 * Math.sin(performance.now() / 420);
+    ctx.strokeStyle = `rgba(0,230,255,${(0.45 * pulse).toFixed(2)})`;
+    ctx.lineWidth   = 2;
+    ctx.strokeRect(4, 48, WIDTH - 8, HEIGHT - 56);
+    ctx.strokeStyle = `rgba(200,0,255,${(0.22 * pulse).toFixed(2)})`;
+    ctx.lineWidth   = 1;
+    ctx.strokeRect(8, 52, WIDTH - 16, HEIGHT - 64);
+
+    // ── Timer bar (just below the HUD bar, centered horizontally) ────────────
+    const remSecs = Math.max(0, Math.ceil(arena.timer));
+    const mm      = Math.floor(remSecs / 60).toString().padStart(2, '0');
+    const ss      = (remSecs % 60).toString().padStart(2, '0');
+    const urgent  = arena.timer < 30;
+
+    const panW = 510, panH = 22, panX = Math.round((WIDTH - panW) / 2), panY = 46;
+    const bg = ctx.createLinearGradient(panX, panY, panX + panW, panY);
+    bg.addColorStop(0,    'rgba(0,0,0,0)');
+    bg.addColorStop(0.07, 'rgba(0,6,18,0.90)');
+    bg.addColorStop(0.93, 'rgba(0,6,18,0.90)');
+    bg.addColorStop(1,    'rgba(0,0,0,0)');
+    ctx.fillStyle = bg;
+    ctx.fillRect(panX, panY, panW, panH);
+
+    // Label left
+    ctx.font      = 'bold 11px Consolas, monospace';
+    ctx.fillStyle = '#ff44cc';
+    ctx.textAlign = 'left';
+    ctx.fillText('⬡ NULL BREACH ARENA', panX + 12, panY + 15);
+
+    // Timer right
+    const tAlpha  = urgent ? (0.6 + 0.4 * pulse) : 1;
+    ctx.font      = 'bold 12px Consolas, monospace';
+    ctx.fillStyle = urgent ? `rgba(255,60,60,${tAlpha.toFixed(2)})` : '#00e6ff';
+    ctx.textAlign = 'right';
+    ctx.fillText(`SURVIVE: ${mm}:${ss}`, panX + panW - 12, panY + 15);
+
+    ctx.textAlign = 'left';
+    ctx.restore();
+  }
+
+  _drawActiveRelicHUD(ctx) {
     if (!this.meta) return;
     const _charId      = this.player?.characterId || '';
     const ownedRelics = RELIC_DEFS.filter(r => {
