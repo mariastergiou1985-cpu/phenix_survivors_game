@@ -342,6 +342,7 @@ export class Game {
     this.meta      = new MetaProgress();
     this.bestScore      = parseInt(localStorage.getItem('phenix_best_score') || '0', 10);
     this.isNewHighScore = false;
+    this.runChaosLaw    = null;   // set by Chaos Law selection overlay; null = no law active
 
     // Load background image — new clean bg, fallback to old
     this._bgImage = new Image();
@@ -1081,6 +1082,12 @@ export class Game {
     this._hideMenuOverlay();
     this._hideCharSelectOverlay();
     this.selectedCharacter = this.selectedCharacter || this.characters[this.characterIndex]?.id || 'skeleton_warrior';
+    // Chaos Law gate: Eden Memory >= 50% → offer law selection before entering Endless
+    if ((this.meta?.getEdenMemory() ?? 0) >= 50) {
+      this._showChaosLawSelectionOverlay();
+      return;
+    }
+    this.runChaosLaw = null;
     this.gameState = 'playing';
     this.reset();                      // fresh run, timeAlive 0, matrices rebuilt, endless=false
     this._enterEndless();              // flip to Endless + Endless-only setup
@@ -1115,6 +1122,9 @@ export class Game {
     this.mutationUI        = null;
     this._mutationTimer    = MUTATION_INTERVAL;         // first forced mutation at 3:00 into Endless
     this._applyEndlessProtocols();     // one-shot Achievement Protocol stat boosts (Endless only)
+    // Chaos Law — xpMult boost (applied after protocols so stacking is clean)
+    { const _clm = this._getActiveChaosLawModifiers();
+      if (_clm.xpMult !== 1 && this.player) this.player.xpMult = (this.player.xpMult || 1) * _clm.xpMult; }
     this._checkEndlessAchievements();  // grant FIRST ENDLESS RUN immediately on entering Endless
     this.audio?.startEndlessMusic();   // Endless-only track (dawn) replaces gameplay music
     this.triggerAnnouncement('STAGE 02 — NEON SHINJUKU PLAZA', CYAN);   // Endless Stage 02 visuals
@@ -1130,6 +1140,121 @@ export class Game {
     // Arena-specific relic run-state
     this._breachCrownActive  = false;   // Breach Crown — armed on clean arena complete
     this._secondDebtFired    = false;   // Second Signal Debt — once per rescue   // snapshot so endlessElapsed = timeAlive - _endlessStartedAt
+
+    // Chaos Law — one-fire EDEN CORE transmission on run start
+    if (this.runChaosLaw === 'blood_grid') {
+      this._queueEdenTransmission('BLOOD GRID ACTIVE. Score multiplier armed.', { title: 'CHAOS LAW', priority: 2, duration: 6 });
+    } else if (this.runChaosLaw === 'frozen_eden') {
+      this._queueEdenTransmission('FROZEN EDEN ACTIVE. XP absorption amplified.', { title: 'CHAOS LAW', priority: 2, duration: 6 });
+    } else if (this.runChaosLaw === 'no_mercy_protocol') {
+      this._queueEdenTransmission('NO MERCY PROTOCOL ACTIVE. Boss containment exceeded.', { title: 'CHAOS LAW', priority: 2, duration: 6 });
+    }
+  }
+
+
+  // ─── Chaos Law Selection Overlay ─────────────────────────────────────────────
+  _showChaosLawSelectionOverlay() {
+    const existing = document.getElementById('cgm-chaos-law-sel');
+    if (existing) existing.remove();
+
+    if (!document.getElementById('cgm-cls-style')) {
+      const style = document.createElement('style');
+      style.id = 'cgm-cls-style';
+      style.textContent = [
+        '#cgm-chaos-law-sel{position:fixed;inset:0;z-index:200;display:flex;',
+        'align-items:center;justify-content:center;background:rgba(2,4,14,0.93);',
+        "font-family:'Share Tech Mono',ui-monospace,monospace;color:#cfe9ff;}",
+        '#cgm-chaos-law-sel .cls-box{width:min(580px,93vw);',
+        'background:linear-gradient(180deg,#0b0e2a,#070a1c);',
+        'border:1px solid rgba(46,230,246,0.22);border-radius:14px;',
+        'padding:28px 22px 22px;display:flex;flex-direction:column;gap:18px;}',
+        '#cgm-chaos-law-sel .cls-header{text-align:center;}',
+        '#cgm-chaos-law-sel .cls-header h2{',
+        "font-family:'Orbitron',sans-serif;font-weight:900;",
+        'font-size:14px;letter-spacing:4px;color:#2ee6f6;margin:0 0 7px;',
+        'text-shadow:0 0 12px rgba(46,230,246,.55);}',
+        '#cgm-chaos-law-sel .cls-header p{',
+        'font-size:10px;color:rgba(180,210,240,0.5);letter-spacing:1.5px;margin:0;}',
+        '#cgm-chaos-law-sel .cls-cards{display:flex;flex-direction:column;gap:9px;}',
+        '#cgm-chaos-law-sel .cls-card{border-radius:10px;padding:13px 15px;',
+        'border:1px solid rgba(46,230,246,0.12);background:rgba(6,12,28,0.7);',
+        'cursor:pointer;transition:border-color .18s,background .18s;',
+        'display:flex;flex-direction:column;gap:5px;}',
+        '#cgm-chaos-law-sel .cls-card:hover{background:rgba(10,20,44,0.92);}',
+        '#cgm-chaos-law-sel .cls-card-name{',
+        "font-family:'Orbitron',sans-serif;font-weight:800;",
+        'font-size:11px;letter-spacing:3px;}',
+        '#cgm-chaos-law-sel .cls-card-effect{',
+        'font-size:10px;color:rgba(180,220,255,0.65);letter-spacing:1px;}',
+        '#cgm-chaos-law-sel .cls-skip{text-align:center;}',
+        '#cgm-chaos-law-sel .cls-skip button{',
+        'background:transparent;border:1px solid rgba(46,230,246,0.18);',
+        'border-radius:6px;color:rgba(120,160,200,0.55);',
+        "font-family:'Share Tech Mono',monospace;font-size:10px;",
+        'letter-spacing:2px;padding:7px 22px;cursor:pointer;',
+        'transition:border-color .15s,color .15s;}',
+        '#cgm-chaos-law-sel .cls-skip button:hover{',
+        'border-color:rgba(46,230,246,0.38);color:rgba(180,220,255,0.8);}',
+      ].join('');
+      document.head.appendChild(style);
+    }
+
+    const V1_LAWS = [
+      { id: 'blood_grid',        name: 'BLOOD GRID',        color: '#ef4444',
+        effect: '+10% score multiplier for this run.' },
+      { id: 'frozen_eden',       name: 'FROZEN EDEN',       color: '#00ccff',
+        effect: '+10% XP gain for this run.' },
+      { id: 'no_mercy_protocol', name: 'NO MERCY PROTOCOL', color: '#fbbf24',
+        effect: '+10% boss HP \u00b7 +15% score multiplier for this run.' },
+    ];
+
+    const el = document.createElement('div');
+    el.id = 'cgm-chaos-law-sel';
+    el.innerHTML = '<div class="cls-box">'
+      + '<div class="cls-header"><h2>CHAOS LAW SELECTION</h2>'
+      + '<p>EDEN MEMORY \u2265 50% \u2014 CHOOSE THE INSTABILITY RULE FOR THIS RUN</p></div>'
+      + '<div class="cls-cards">'
+      + V1_LAWS.map(l =>
+          '<div class="cls-card" data-law="' + l.id + '" style="border-color:' + l.color + '33;">'
+          + '<div class="cls-card-name" style="color:' + l.color + ';text-shadow:0 0 8px ' + l.color + '88;">' + l.name + '</div>'
+          + '<div class="cls-card-effect">' + l.effect + '</div>'
+          + '</div>'
+        ).join('')
+      + '</div>'
+      + '<div class="cls-skip"><button id="cls-skip-btn">SKIP \u2014 STANDARD ENDLESS</button></div>'
+      + '</div>';
+    document.body.appendChild(el);
+
+    el.querySelectorAll('.cls-card').forEach(card => {
+      card.addEventListener('click', () => {
+        this.runChaosLaw = card.dataset.law;
+        this._hideChaosLawSelectionOverlay();
+        this.gameState = 'playing';
+        this.reset();
+        this._enterEndless();
+      });
+    });
+    document.getElementById('cls-skip-btn').addEventListener('click', () => {
+      this.runChaosLaw = null;
+      this._hideChaosLawSelectionOverlay();
+      this.gameState = 'playing';
+      this.reset();
+      this._enterEndless();
+    });
+  }
+
+  _hideChaosLawSelectionOverlay() {
+    const el = document.getElementById('cgm-chaos-law-sel');
+    if (el) el.remove();
+  }
+
+  /** Returns active Chaos Law multipliers for this run. All fields default to 1 (no effect). */
+  _getActiveChaosLawModifiers() {
+    const mods = { scoreMult: 1, xpMult: 1, bossHpMult: 1, enemySpeedMult: 1 };
+    if (this.runChaosLaw === 'blood_grid')        { mods.scoreMult  = 1.10; }
+    if (this.runChaosLaw === 'frozen_eden')       { mods.xpMult     = 1.10; }
+    if (this.runChaosLaw === 'no_mercy_protocol') { mods.scoreMult  = 1.15; mods.bossHpMult = 1.10; }
+    return mods;
   }
 
   // Live Endless-achievement evaluation — unlock + persist the INSTANT a milestone is crossed
@@ -1478,7 +1603,7 @@ export class Game {
     if      (this.comboCount >= 10) bonus = 20;
     else if (this.comboCount >= 5)  bonus = 10;
     else if (this.comboCount >= 2)  bonus = 5;
-    this.score += 10 + bonus;
+    this.score += Math.round((10 + bonus) * this._getActiveChaosLawModifiers().scoreMult);
 
     // HP CELL drop: guaranteed one healing pickup every 40 kills, near the defeated enemy.
     // Does not touch overload / credits / score / combo, and never replaces Phoenix revives.
@@ -12312,7 +12437,7 @@ export class Game {
       WORLD_W / 2 + side * (WORLD_W / 2 - WORLD_MARGIN - R - 30),
       WORLD_H / 2
     );
-    const titanHp = this.endless ? 460 : 600;   // Endless: killable range (Act 1 keeps 600)
+    const titanHp = Math.round((this.endless ? 460 : 600) * this._getActiveChaosLawModifiers().bossHpMult);   // Endless: killable range (Act 1 keeps 600)
     this.titanBoss = {
       pos, hp: titanHp, maxHp: titanHp,
       radius: R, speed: 60, contactDamage: 16, hitFlash: 0,
@@ -13058,6 +13183,22 @@ export class Game {
       ctx.fill();
     }
 
+    // ── Active Chaos Law indicator ──────────────────────────────────────────────
+    if (this.runChaosLaw) {
+      const _lawLabel = this.runChaosLaw === 'blood_grid'        ? 'BLOOD GRID'
+                      : this.runChaosLaw === 'frozen_eden'       ? 'FROZEN EDEN'
+                      : this.runChaosLaw === 'no_mercy_protocol' ? 'NO MERCY'
+                      : this.runChaosLaw.toUpperCase().replace(/_/g, ' ');
+      const _lawColor = this.runChaosLaw === 'blood_grid'        ? '#ef4444'
+                      : this.runChaosLaw === 'frozen_eden'       ? '#00ccff'
+                      : this.runChaosLaw === 'no_mercy_protocol' ? '#fbbf24'
+                      : '#2ee6f6';
+      ctx.font      = 'bold 7px Consolas, monospace';
+      ctx.fillStyle = _lawColor + '99';
+      ctx.textAlign = 'left';
+      ctx.fillText('CHAOS: ' + _lawLabel, startX + 1, dotsY + dotR * 2 + 10);
+    }
+
     ctx.restore();
   }
 
@@ -13096,7 +13237,7 @@ export class Game {
   _titanDie() {
     const t = this.titanBoss;
     if (!t) return;
-    this.score = (this.score ?? 0) + 300;
+    this.score = (this.score ?? 0) + Math.round(300 * this._getActiveChaosLawModifiers().scoreMult);
     this.player.gainXp(25, this.floatingTexts);
     const titanCredits = this._awardCredits(12 + Math.floor(Math.random() * 9));   // 12..20 (×Grid Investor)
     this.overload = Math.max(0, this.overload - 10);
@@ -13228,7 +13369,7 @@ export class Game {
       WORLD_W / 2 + side * (WORLD_W / 2 - WORLD_MARGIN - R - 30),
       WORLD_H / 2
     );
-    const annHp = this.endless ? 460 : 600;     // Endless: killable range (Act 1 keeps 600)
+    const annHp = Math.round((this.endless ? 460 : 600) * this._getActiveChaosLawModifiers().bossHpMult);     // Endless: killable range (Act 1 keeps 600)
     this.annihilatorBoss = {
       pos, hp: annHp, maxHp: annHp,
       radius: R, speed: 52, contactDamage: 16, hitFlash: 0,
@@ -13360,7 +13501,7 @@ export class Game {
   _annihilatorDie() {
     const a = this.annihilatorBoss;
     if (!a) return;
-    this.score = (this.score ?? 0) + 300;
+    this.score = (this.score ?? 0) + Math.round(300 * this._getActiveChaosLawModifiers().scoreMult);
     this.player.gainXp(25, this.floatingTexts);
     const annihilatorCredits = this._awardCredits(12 + Math.floor(Math.random() * 9));   // 12..20 (×Grid Investor)
     this.overload = Math.max(0, this.overload - 10);
@@ -13495,7 +13636,7 @@ export class Game {
       WORLD_W / 2 + side * (WORLD_W / 2 - WORLD_MARGIN - R - 30),
       WORLD_H / 2
     );
-    const bfHp = this.endless ? 540 : 700;      // Endless: killable range (Act 1 keeps 700)
+    const bfHp = Math.round((this.endless ? 540 : 700) * this._getActiveChaosLawModifiers().bossHpMult);      // Endless: killable range (Act 1 keeps 700)
     this.bloodfangBoss = {
       pos, hp: bfHp, maxHp: bfHp,
       radius: R, speed: 112, hitFlash: 0,
@@ -13609,7 +13750,7 @@ export class Game {
     // Break the pack — remaining Razorhounds die with their master; clear ally drones
     this.enemies = this.enemies.filter(e => e.enemyType !== 'Razorhound');
     this.supportDrones = [];
-    this.score = (this.score ?? 0) + 500;
+    this.score = (this.score ?? 0) + Math.round(500 * this._getActiveChaosLawModifiers().scoreMult);
     this.player.gainXp(45, this.floatingTexts);
     const bloodfangCredits = this._awardCredits(25 + Math.floor(Math.random() * 16));   // 25..40 (×Grid Investor)
     this.overload = Math.max(0, this.overload - 10);
