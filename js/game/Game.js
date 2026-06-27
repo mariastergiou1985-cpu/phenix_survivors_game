@@ -864,6 +864,7 @@ export class Game {
     this._nullBreach2Done   = false;
     this._arenaRescueUsed   = false;
     this._arenaResult       = null;
+    this._endlessStartedAt  = 0;      // timeAlive when Endless began (direct=0, Act1→Endless=nonzero)
 
     this._createMatrices();
   }
@@ -1067,6 +1068,7 @@ export class Game {
     this._nullBreach2Done   = false;
     this._arenaRescueUsed   = false;
     this._arenaResult       = null;
+    this._endlessStartedAt  = this.timeAlive;   // snapshot so endlessElapsed = timeAlive - _endlessStartedAt
   }
 
   // Live Endless-achievement evaluation — unlock + persist the INSTANT a milestone is crossed
@@ -12176,23 +12178,31 @@ export class Game {
   // ═══════════════════════════════════════════════════════════════════════════
 
   // Check trigger windows each frame (Endless-only, gated on _checkNullBreachArena call).
+  // Uses endlessElapsed (time since Endless began) — NOT total timeAlive — so direct Endless
+  // and Act1→Endless both trigger at exactly 5:00 and 12:00 of Endless time.
+  // Done flags are set ONLY when the arena actually starts, so hazard-blocked windows retry
+  // every frame instead of being permanently skipped.
   _checkNullBreachArena() {
     if (this._chaosMode || this.gameOver || this.victory || this.paused) return;
     if (this._nullBreachArena) return;
     if (this.upgradeUI || this.mutationUI) return;
 
-    const t = this.timeAlive;
-    // Defer if active hazard would stack badly
+    const endlessElapsed = this.timeAlive - this._endlessStartedAt;
+    // Defer (but do NOT permanently skip) if a hazard would stack badly.
     const hazardActive = !!(this.acidRain || this.airstrikeShips.length > 0);
 
-    if (!this._nullBreach1Done && t >= 480) {      // 8:00
-      this._nullBreach1Done = true;
-      if (!hazardActive) this._enterNullBreachArena();
-      return;
+    if (!this._nullBreach1Done && endlessElapsed >= 300) {   // 5:00 Endless
+      if (!hazardActive) {
+        this._nullBreach1Done = true;
+        this._enterNullBreachArena();
+      }
+      return;   // stay in window — retry next frame if hazard blocked it
     }
-    if (!this._nullBreach2Done && t >= 960) {      // 16:00
-      this._nullBreach2Done = true;
-      if (!hazardActive) this._enterNullBreachArena();
+    if (!this._nullBreach2Done && endlessElapsed >= 720) {   // 12:00 Endless
+      if (!hazardActive) {
+        this._nullBreach2Done = true;
+        this._enterNullBreachArena();
+      }
     }
   }
 
