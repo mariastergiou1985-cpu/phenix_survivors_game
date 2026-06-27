@@ -12948,51 +12948,116 @@ export class Game {
 
   _drawActiveRelicHUD(ctx) {
     if (!this.meta) return;
-    const _charId      = this.player?.characterId || '';
+    const _charId     = this.player?.characterId || '';
     const ownedRelics = RELIC_DEFS.filter(r => {
-      if (!this.meta.isRelicUnlocked(r.id)) return false;       // must be unlocked
-      if (r.reqChar && r.reqChar !== _charId) return false;     // character relic: wrong hero
+      if (!this.meta.isRelicUnlocked(r.id)) return false;
+      if (r.reqChar && r.reqChar !== _charId) return false;
       return true;
     });
-    if (!ownedRelics.length) return;
-    // Draw compact icon strip — top-left, below the main HUD bar (y=50)
+
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    const startX = 8;
-    const startY = 50;
-    const iconW  = 26;
-    const iconH  = 26;
-    const gap    = 3;
-    const cols   = Math.min(ownedRelics.length, 8);
-    const totalW = cols * (iconW + gap) - gap + 4;
-    // Background pill
-    ctx.fillStyle = 'rgba(0,0,0,0.55)';
-    ctx.beginPath();
-    ctx.roundRect(startX - 2, startY - 1, totalW, iconH + 2, 5);
-    ctx.fill();
-    ownedRelics.slice(0, 8).forEach((r, i) => {
-      const ix = startX + i * (iconW + gap);
-      const iy = startY;
-      // Try to draw relic icon image; fall back to colored letter
-      const img = this._relicIconCache && this._relicIconCache[r.id];
-      if (img && img.complete && img.naturalWidth > 0) {
-        ctx.drawImage(img, ix, iy, iconW, iconH);
-      } else {
-        // Colored background tile by type
-        const bgColor = r.type === 'boss' ? '#1a0a00' : r.type === 'character' ? '#0a0820' : '#061218';
-        const fgColor = r.type === 'boss' ? '#ff9900' : r.type === 'character' ? '#a855f7' : '#2ee6f6';
-        ctx.fillStyle = bgColor;
-        ctx.fillRect(ix, iy, iconW, iconH);
-        ctx.strokeStyle = fgColor;
-        ctx.lineWidth = 1;
-        ctx.strokeRect(ix + 0.5, iy + 0.5, iconW - 1, iconH - 1);
-        ctx.font      = 'bold 11px Consolas, monospace';
-        ctx.fillStyle = fgColor;
-        ctx.textAlign = 'center';
-        ctx.fillText(r.name[0], ix + iconW / 2, iy + iconH / 2 + 4);
-        ctx.textAlign = 'left';
+
+    const MAX_SLOTS = 8;
+    const SLOT      = 32;     // outer slot size (px)
+    const PAD       = 5;      // icon padding inside slot
+    const GAP       = 5;      // gap between slots
+    const startX    = 8;
+    const labelH    = 12;     // height of "RELICS" label row
+    const startY    = 50;
+    const iconSz    = SLOT - PAD * 2;
+    const t         = performance.now() / 1000;
+    const pulse     = 0.65 + 0.35 * Math.sin(t * 2.2);
+    const active    = Math.min(ownedRelics.length, MAX_SLOTS);
+
+    // ── "RELICS" label ────────────────────────────────────────────────────────
+    ctx.font      = 'bold 9px Consolas, monospace';
+    ctx.fillStyle = 'rgba(46,230,246,0.4)';
+    ctx.textAlign = 'left';
+    ctx.fillText('RELICS', startX + 1, startY + labelH - 1);
+
+    const slotY = startY + labelH + 2;
+
+    // ── Slot helpers ──────────────────────────────────────────────────────────
+    function _slotColors(r) {
+      if (!r) return { border:'rgba(30,60,70,0.3)', bg:'rgba(2,5,10,0.35)', glow:'rgba(0,0,0,0)', fg:'#2ee6f6' };
+      if (r.type === 'boss')      return { border:`rgba(255,153,0,${(0.5+0.3*pulse).toFixed(2)})`,   bg:'rgba(18,7,0,0.82)',  glow:`rgba(255,153,0,${(0.10*pulse).toFixed(2)})`,   fg:'#ff9900' };
+      if (r.type === 'character') return { border:`rgba(168,85,247,${(0.5+0.3*pulse).toFixed(2)})`,  bg:'rgba(10,3,18,0.82)', glow:`rgba(168,85,247,${(0.10*pulse).toFixed(2)})`,  fg:'#a855f7' };
+      if (r.type === 'arena')     return { border:`rgba(255,80,200,${(0.5+0.3*pulse).toFixed(2)})`,  bg:'rgba(18,0,10,0.82)', glow:`rgba(255,80,200,${(0.10*pulse).toFixed(2)})`,  fg:'#ff55cc' };
+      return                             { border:`rgba(46,230,246,${(0.5+0.3*pulse).toFixed(2)})`,  bg:'rgba(2,10,18,0.82)', glow:`rgba(46,230,246,${(0.10*pulse).toFixed(2)})`,   fg:'#2ee6f6' };
+    }
+
+    // Rounded-rect helper (safe: Canvas roundRect widely supported; fallback via rect)
+    function _rr(cx, x, y, w, h, r2) {
+      if (cx.roundRect) { cx.beginPath(); cx.roundRect(x, y, w, h, r2); }
+      else              { cx.beginPath(); cx.rect(x, y, w, h); }
+    }
+
+    // ── Draw slots ────────────────────────────────────────────────────────────
+    for (let i = 0; i < MAX_SLOTS; i++) {
+      const sx = startX + i * (SLOT + GAP);
+      const sy = slotY;
+      const r  = i < active ? ownedRelics[i] : null;
+      const c  = _slotColors(r);
+
+      // Outer glow (filled slots only)
+      if (r) {
+        ctx.fillStyle = c.glow;
+        _rr(ctx, sx - 2, sy - 2, SLOT + 4, SLOT + 4, 6);
+        ctx.fill();
       }
-    });
+      // Slot background
+      ctx.fillStyle = c.bg;
+      _rr(ctx, sx, sy, SLOT, SLOT, 4);
+      ctx.fill();
+      // Slot border
+      ctx.strokeStyle = c.border;
+      ctx.lineWidth   = r ? 1.2 : 0.6;
+      _rr(ctx, sx + 0.5, sy + 0.5, SLOT - 1, SLOT - 1, 4);
+      ctx.stroke();
+
+      // Icon / fallback letter
+      if (r) {
+        const ix  = sx + PAD;
+        const iy  = sy + PAD;
+        const img = this._relicIconCache?.[r.id];
+        if (img && img.complete && img.naturalWidth > 0) {
+          ctx.drawImage(img, ix, iy, iconSz, iconSz);
+        } else {
+          ctx.font      = 'bold 13px Consolas, monospace';
+          ctx.fillStyle = c.fg;
+          ctx.textAlign = 'center';
+          ctx.fillText(r.name[0].toUpperCase(), sx + SLOT / 2, sy + SLOT / 2 + 5);
+          ctx.textAlign = 'left';
+        }
+      }
+    }
+
+    // ── Capacity dots ─────────────────────────────────────────────────────────
+    const dotsY  = slotY + SLOT + 5;
+    const dotR   = 2;
+    const dotStep= 9;
+    const dotsTotal = MAX_SLOTS * dotStep - (dotStep - dotR * 2);
+    const dotX0  = startX + Math.round(((MAX_SLOTS * (SLOT + GAP) - GAP) - dotsTotal) / 2);
+
+    for (let i = 0; i < MAX_SLOTS; i++) {
+      const dx = dotX0 + i * dotStep + dotR;
+      const dy = dotsY + dotR;
+      const r  = i < active ? ownedRelics[i] : null;
+      ctx.beginPath();
+      ctx.arc(dx, dy, dotR, 0, Math.PI * 2);
+      if (r) {
+        const a  = (0.7 + 0.3 * pulse).toFixed(2);
+        ctx.fillStyle = r.type === 'boss'      ? `rgba(255,153,0,${a})`
+          : r.type === 'character' ? `rgba(168,85,247,${a})`
+          : r.type === 'arena'     ? `rgba(255,80,200,${a})`
+          :                          `rgba(46,230,246,${a})`;
+      } else {
+        ctx.fillStyle = 'rgba(30,60,70,0.35)';
+      }
+      ctx.fill();
+    }
+
     ctx.restore();
   }
 
