@@ -11192,7 +11192,7 @@ export class Game {
       para('When a Nexus destabilizes, the battlefield becomes more dangerous and the survivor is forced to adapt. Protect the Nexus and the grid holds. Neglect it and Overload rises.');
       gap(10);
       sTitle('OVERLOAD — WHEN THE GRID PUSHES BACK', '#ff4444');
-      para('Overload is the system's pressure response. As the survivor grows stronger, NULL EDEN increases resistance: more aggression, more instability, and more dangerous combat conditions.');
+      para('Overload is the system’s pressure response. As the survivor grows stronger, NULL EDEN increases resistance: more aggression, more instability, and more dangerous combat conditions.');
       gap(4);
       bullet('Overload rises when Nexus slots are empty or enemies carry stolen cores.');
       bullet('At high Overload, the grid becomes increasingly hostile — more enemy density and harder threats.');
