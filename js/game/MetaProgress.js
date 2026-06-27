@@ -247,6 +247,10 @@ export class MetaProgress {
     this.relics       = {};  // { [relicId]: true }  — purchased relics
     this.bossKills    = {};  // { [bossKey]: true }  — required boss kills for boss relics
     this.runHistory   = [];  // last 20 runs { time, score, level, char, mode, date }
+    // ── Eden Core narrative system ──────────────────────────────────────────
+    this.edenMemoryPercent  = 0;   // 0–100, persisted
+    this.systemFeedMessages = [];  // last 8 { text, ts } entries, newest first
+    this.bossEchoes         = {};  // { [bossKey]: true } first-time echo archives
     this._load();
   }
 
@@ -276,6 +280,10 @@ export class MetaProgress {
       this.relics      = (d.relics     && typeof d.relics    === 'object') ? d.relics    : {};
       this.bossKills   = (d.bossKills  && typeof d.bossKills === 'object') ? d.bossKills : {};
       this.runHistory  = Array.isArray(d.runHistory) ? d.runHistory.slice(-20) : [];
+      // Eden Core — safe defaults for old saves
+      this.edenMemoryPercent  = Math.min(100, Math.max(0, Number(d.edenMemoryPercent) || 0));
+      this.systemFeedMessages = Array.isArray(d.systemFeedMessages) ? d.systemFeedMessages.slice(0, 8) : [];
+      this.bossEchoes         = (d.bossEchoes && typeof d.bossEchoes === 'object') ? d.bossEchoes : {};
       // One-time retroactive payout for already-earned Endless achievements (idempotent).
       this._backfillProtocolFragments();
 
@@ -320,6 +328,9 @@ export class MetaProgress {
         relics:    this.relics,
         bossKills: this.bossKills,
         runHistory: this.runHistory,
+        edenMemoryPercent:  this.edenMemoryPercent,
+        systemFeedMessages: this.systemFeedMessages,
+        bossEchoes:         this.bossEchoes,
       }));
     } catch (_) {}
   }
@@ -491,6 +502,9 @@ export class MetaProgress {
     this.relics    = {};
     this.bossKills = {};
     this.runHistory = [];
+    this.edenMemoryPercent  = 0;
+    this.systemFeedMessages = [];
+    this.bossEchoes         = {};
     this._save();
   }
 
@@ -609,5 +623,37 @@ export class MetaProgress {
     this._save();
   }
   getRunHistory() { return this.runHistory || []; }
+
+  // ─── Eden Core narrative methods ────────────────────────────────────────────
+  getEdenMemory()  { return Math.min(100, Math.max(0, this.edenMemoryPercent || 0)); }
+
+  addEdenMemory(amount) {
+    if (!amount || amount <= 0) return;
+    this.edenMemoryPercent = Math.min(100, (this.edenMemoryPercent || 0) + amount);
+    this._save();
+  }
+
+  addSystemMessage(text) {
+    if (!text) return;
+    if (!Array.isArray(this.systemFeedMessages)) this.systemFeedMessages = [];
+    // Deduplicate — don't store same message twice in a row
+    if (this.systemFeedMessages.length > 0 && this.systemFeedMessages[0].text === text) return;
+    this.systemFeedMessages.unshift({ text, ts: Date.now() });
+    if (this.systemFeedMessages.length > 8) this.systemFeedMessages.length = 8;
+    this._save();
+  }
+
+  getSystemFeed() {
+    if (!Array.isArray(this.systemFeedMessages)) return [];
+    return this.systemFeedMessages.slice(0, 5);
+  }
+
+  recordBossEcho(id) {
+    if (!this.bossEchoes) this.bossEchoes = {};
+    if (!this.bossEchoes[id]) { this.bossEchoes[id] = true; this._save(); return true; }
+    return false; // already archived
+  }
+
+  hasBossEcho(id) { return !!(this.bossEchoes && this.bossEchoes[id]); }
 
 }

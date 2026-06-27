@@ -23,7 +23,7 @@ import { weightedSample } from './Upgrades.js?v=20260615210000';
 import { MutationUI }      from './MutationUI.js?v=20260616080000';
 import { sampleMutations } from './Mutations.js?v=20260615210000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260615210000';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS } from './MetaProgress.js?v=20260627170000';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS } from './MetaProgress.js?v=20260627180000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260615210000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
@@ -674,6 +674,8 @@ export class Game {
     this.finalMessage      = '';
     this.rewardsGranted    = false;
     this.runCreditsEarned  = 0;
+    this.edenRunMessages   = [];     // 1-3 Eden Core messages for end screen
+    this._chaosEdenAwarded = false;  // prevent double +3% memory if chaos already triggered
     this.playerHitCooldown = 0;
 
     // Player damage pulse (red vignette) state — visual only.
@@ -1097,9 +1099,150 @@ export class Game {
       char:  this.player.characterId || 'unknown',
       mode:  this.endless ? 'Endless' : (this.victory ? 'Act 1 Win' : 'Act 1'),
     });
+
+    // Eden Core: generate end-of-run narrative messages + accrue Eden Memory
+    try { this._generateEdenRunMessages(); } catch(e) { console.warn('[Eden] _generateEdenRunMessages error:', e); }
   }
 
-  addKillScore(pos, isElite = false) {
+  // ── Eden Core narrative helpers ─────────────────────────────────────────────
+  // Pick a random item from an array safely.
+  _edenPick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+
+  // Character-specific Eden Core lines. Returns null if no specific line.
+  _edenCharLine(charId) {
+    const lines = {
+      skeleton_warrior: [
+        'STORM TRACE: Electric mark synchronized.',
+        'EDEN CORE: Heavy charge detected.',
+        'Tank signal refused deletion.',
+        'THE GRID recognizes your endurance.',
+      ],
+      taekwondo_girl: [
+        'EDEN CORE: Spirit impact pattern synchronized.',
+        'ICE TRACE: Motion temperature stable.',
+        'CRESCENT SIGNAL: Footwork memory recovered.',
+        'Speed pattern exceeded safe prediction.',
+      ],
+      cyber_arm_hero: [
+        'EDEN CORE: Burn cascade protocol active.',
+        'FLAME TRACE: Ranged signal optimized.',
+        'Combustion memory stabilized.',
+        'Fire pattern recognized by the archive.',
+      ],
+      brawler_warrior: [
+        'RIFT TRACE: Impact radius recorded.',
+        'EDEN CORE: Brawl pattern archived.',
+        'Close-range signal persisted.',
+        'The Grid felt the impact.',
+      ],
+      assassin_clone: [
+        'MIRROR TRACE: Duplicate signal stabilized.',
+        'EDEN CORE: Clone pattern archived.',
+        'Afterimage protocol accepted.',
+        'The Grid counted you twice.',
+      ],
+      japan_phasewalker: [
+        'PHASE TRACE: Displacement memory recovered.',
+        'EDEN CORE: Phasewalker signal archived.',
+        'Transition pattern stable.',
+        'THE GRID lost your position. Briefly.',
+      ],
+      euclid_vector: [
+        'NULL VENOM: Corruption spread contained.',
+        'EDEN CORE: Venom trace stabilized.',
+        'Toxic pattern accepted.',
+        'Hostile biology mapped.',
+      ],
+      oni_cataclysm_protocol: [
+        'ONI TRACE: Blood circuit pressure rising.',
+        'EDEN CORE: Heavy signal detected.',
+        'Oni protocol refused deletion.',
+        'The Grid recognizes your violence.',
+      ],
+    };
+    const pool = lines[charId];
+    if (!pool) return null;
+    return this._edenPick(pool);
+  }
+
+  // Generate end-of-run Eden Core messages and accumulate Eden Memory.
+  // Called from _grantRewards(). Sets this.edenRunMessages for end screen.
+  _generateEdenRunMessages() {
+    if (!this.meta) return;
+    const msgs = [];
+    const addMem = (n) => this.meta.addEdenMemory(n);
+    const push   = (t) => { msgs.push(t); this.meta.addSystemMessage(t); };
+
+    const time    = Math.floor(this.timeAlive);
+    const charId  = this.player?.characterId || '';
+    const isNewRecord = !!(this.endlessNewBest && (this.endlessNewBest.time || this.endlessNewBest.score || this.endlessNewBest.level));
+    const isChaos  = !!(this._chaosMode);
+
+    // Eden Memory: survival milestones
+    if (time >= 5  * 60) addMem(1);
+    if (time >= 10 * 60) addMem(1);
+    if (time >= 20 * 60) addMem(2);
+
+    // Eden Memory: new personal record
+    if (isNewRecord) addMem(1);
+
+    // Eden Memory: chaos reached this run
+    if (isChaos && !this._chaosEdenAwarded) { addMem(3); this._chaosEdenAwarded = true; }
+
+    // Pick main run message
+    if (isNewRecord) {
+      push(this._edenPick([
+        'EDEN CORE: New survival pattern recorded.',
+        'Personal record archived.',
+        'The system recognizes improvement.',
+        'PHENIX signal exceeded previous limits.',
+      ]));
+    } else if (time >= 10 * 60) {
+      push(this._edenPick([
+        'EDEN CORE: Survival trace preserved.',
+        'Your pattern resisted deletion.',
+        'Null Eden shifted around your signal.',
+        'Combat memory stabilized.',
+      ]));
+    } else {
+      push(this._edenPick([
+        'EDEN CORE: Signal collapsed before stabilization.',
+        'THE GRID recorded your failure.',
+        'Death is data. Return stronger.',
+        'PHENIX trace damaged, not erased.',
+      ]));
+    }
+
+    // Chaos message
+    if (isChaos) {
+      push(this._edenPick([
+        'CHAOS SIGNAL DETECTED.',
+        "Eden no longer follows its own laws.",
+        'The system boundary has failed.',
+        'Order has become optional.',
+      ]));
+    }
+
+    // Character-aware line (optional, 40% chance to avoid spam)
+    if (Math.random() < 0.4) {
+      const charLine = this._edenCharLine(charId);
+      if (charLine) push(charLine);
+    }
+
+    // Rare corrupted line (5% chance)
+    if (Math.random() < 0.05) {
+      push(this._edenPick([
+        'THE SYSTEM IS LYING TO YOU.',
+        'Do not trust the clean signal.',
+        'Something else is speaking through Eden.',
+        'The interface is not alone.',
+      ]));
+    }
+
+    this.edenRunMessages = msgs.slice(0, 3);
+  }
+
+    addKillScore(pos, isElite = false) {
     this.comboCount++;
     this.comboTimer = 3.0;
     if (this.comboCount > this.maxCombo) this.maxCombo = this.comboCount;
@@ -4244,6 +4387,17 @@ export class Game {
         this._chaosMode         = true;
         this.audio?.startChaosMusic();   // switch to Chaos track
         this.triggerAnnouncement('⚡ CHAOS MODE ⚡', '#ff2d95');
+        // Eden Core: chaos reached
+        if (this.meta) {
+          const cmsg = this._edenPick([
+            'CHAOS SIGNAL DETECTED. The boundary has failed.',
+            "Eden no longer follows its own laws.",
+            'THE SYSTEM BOUNDARY: BREACHED.',
+            'Order has become optional. Survive.',
+          ]);
+          this.meta.addSystemMessage(cmsg);
+          this._chaosEdenAwarded = true;
+        }
         // Rearm all boss slots immediately so they arrive together
         this.titanSpawned       = false; this.titanSpawnTimer       = 0;
         this.annihilatorSpawned = false; this.annihilatorSpawnTimer = 0;
@@ -8871,19 +9025,23 @@ export class Game {
     const _qsMap = { skeleton_warrior:130, taekwondo_girl:90, cyber_arm_hero:100, brawler_warrior:125, assassin_clone:88, japan_phasewalker:100, euclid_vector:100, oni_cataclysm_protocol:100 };
     this._cgmSet('qs-hp-mana', (_qsMap[ch.id] || 100) + ' / 100');
 
-    // System Feed
+    // System Feed — Eden Core messages + Eden Memory %
     const feedEl = this._menuOverlayEl.querySelector('#cgm-feed-list');
     if (feedEl) {
-      const next = ENDLESS_ACHIEVEMENTS.filter(a => !(m && m.achievements && m.achievements[a.id])).slice(0, 2);
       let html = '';
-      if (next.length === 0) {
-        html += `<div class="feed-item done"><svg><use href="#i-check"/></svg>All milestones cleared</div>`;
-      } else {
-        for (const a of next) {
-          html += `<div class="feed-item soon"><svg><use href="#i-clock"/></svg>${a.desc.slice(0, 32)}</div>`;
+      const edenMem = m ? m.getEdenMemory() : 0;
+      const feedMsgs = m ? m.getSystemFeed() : [];
+      // Eden Memory header
+      html += `<div class="feed-item done"><svg><use href="#i-bolt"/></svg>EDEN MEMORY: ${edenMem}%</div>`;
+      if (feedMsgs.length > 0) {
+        for (const entry of feedMsgs.slice(0, 4)) {
+          const txt = typeof entry === 'string' ? entry : entry.text || '';
+          html += `<div class="feed-item soon"><svg><use href="#i-clock"/></svg>${txt.slice(0, 40)}</div>`;
         }
+      } else {
+        html += `<div class="feed-item soon"><svg><use href="#i-clock"/></svg>THE SYSTEM IS WATCHING.</div>`;
+        html += `<div class="feed-item soon"><svg><use href="#i-clock"/></svg>Play to populate the archive.</div>`;
       }
-      html += `<div class="feed-item soon"><svg><use href="#i-clock"/></svg>Daily Missions: Coming Soon</div>`;
       feedEl.innerHTML = html;
     }
 
@@ -12396,6 +12554,19 @@ export class Game {
   }
 
   _cyberSerpentDie() {
+    // Eden Core: boss echo
+    if (this.meta) {
+      const firstKill = this.meta.recordBossEcho('cyberSerpent');
+      const msg = firstKill
+        ? 'CYBER SERPENT ECHO ARCHIVED. First contact recorded.'
+        : this._edenPick([
+            'CYBER SERPENT signal collapsed.',
+            'SERPENT pattern erased from the feed.',
+            'Cyber Serpent trace: terminated.',
+          ]);
+      this.meta.addSystemMessage(msg);
+      this.meta.addEdenMemory(1);
+    }
     const s = this.cyberSerpentBoss;
     if (!s) return;
     const pos = s.pos.clone();
@@ -12682,6 +12853,19 @@ export class Game {
   }
 
   _cyberDragonDie() {
+    // Eden Core: boss echo
+    if (this.meta) {
+      const firstKill = this.meta.recordBossEcho('cyberDragon');
+      const msg = firstKill
+        ? 'CYBER DRAGON ECHO ARCHIVED. First contact recorded.'
+        : this._edenPick([
+            'CYBER DRAGON signal collapsed.',
+            'DRAGON pattern erased from the feed.',
+            'Cyber Dragon trace: terminated.',
+          ]);
+      this.meta.addSystemMessage(msg);
+      this.meta.addEdenMemory(1);
+    }
     const d = this.cyberDragonBoss;
     if (!d) return;
     const pos = d.pos.clone();

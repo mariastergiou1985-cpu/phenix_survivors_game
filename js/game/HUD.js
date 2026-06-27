@@ -604,7 +604,44 @@ export function drawEndScreen(ctx, game) {
   ctx.font      = '16px Consolas, monospace';
   ctx.fillStyle = '#5a7080';
   ctx.textAlign = 'center';
-  ctx.fillText('R = Retry   •   ESC = Main Menu', WIDTH / 2, 510);
+  ctx.fillText('R = Retry   •   ESC = Main Menu', WIDTH / 2, 500);
+
+  // ── Eden Core Transmission block ─────────────────────────────────────────
+  const edenMsgs = (game.edenRunMessages && game.edenRunMessages.length)
+    ? game.edenRunMessages
+    : null;
+  const edenMem  = game.meta ? game.meta.getEdenMemory() : 0;
+  if (edenMsgs || edenMem > 0) {
+    const EX = WIDTH / 2 - 300, EW = 600;
+    let ey = 520;
+
+    // Box background
+    ctx.fillStyle   = 'rgba(0,10,25,0.85)';
+    ctx.strokeStyle = '#1a3a60';
+    ctx.lineWidth   = 1;
+    const boxH = 22 + (edenMsgs ? edenMsgs.length * 20 : 0) + 22;
+    ctx.beginPath();
+    ctx.roundRect(EX, ey - 4, EW, boxH, 3);
+    ctx.fill();
+    ctx.stroke();
+
+    // Header
+    ctx.font      = 'bold 13px Consolas, monospace';
+    ctx.fillStyle = '#3fd0ff';
+    ctx.textAlign = 'center';
+    ctx.fillText(`── EDEN CORE TRANSMISSION  ·  MEMORY ${edenMem}% ──`, WIDTH / 2, ey + 12);
+    ey += 24;
+
+    // Messages
+    if (edenMsgs) {
+      ctx.font      = '12px Consolas, monospace';
+      ctx.fillStyle = 'rgba(150,210,255,0.80)';
+      for (const line of edenMsgs) {
+        ctx.fillText(line.slice(0, 60), WIDTH / 2, ey + 12);
+        ey += 20;
+      }
+    }
+  }
 
   ctx.textAlign = 'left';
 }
