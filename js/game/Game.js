@@ -18,8 +18,8 @@ import { SupportDrone }   from '../entities/SupportDrone.js?v=20260615210000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow } from './Effects.js?v=20260615210000';
 import { SystemEventManager } from './Events.js?v=20260615210000';
-import { UpgradeUI }      from './UpgradeUI.js?v=20260628380000';
-import { weightedSample } from './Upgrades.js?v=20260628380000';
+import { UpgradeUI }      from './UpgradeUI.js?v=20260628390000';
+import { weightedSample } from './Upgrades.js?v=20260628390000';
 import { MutationUI }      from './MutationUI.js?v=20260616080000';
 import { sampleMutations } from './Mutations.js?v=20260615210000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260627230000';
@@ -33,7 +33,7 @@ import { DigitalSingularity } from '../effects/digital-singularity.js?v=20260615
 import { Protocol0 } from '../effects/protocol-0.js?v=20260615210000';
 import { LaserEyes } from '../effects/laser-eyes.js?v=20260615210000';
 import { MeteorRain } from '../effects/meteor-rain.js?v=20260615210000';
-import { NpcWalker } from './NpcWalker.js?v=20260628380000';
+import { NpcWalker } from './NpcWalker.js?v=20260628390000';
 
 // Euclid Vector toxin kit — used ONLY when selectedCharacter === 'euclid_vector' (world-space).
 import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=20260615210000';
@@ -5276,12 +5276,10 @@ export class Game {
     if (this.phoenixReviveTimer > 0) this.phoenixReviveTimer -= dt;
 
     if (this.overload >= MAX_OVERLOAD) {
-      this.gameOver     = true;
-      this.finalMessage = 'CITY GRID TOTAL BLACKOUT';
-      this.audio?.playPlayerDeath?.();
-      this.audio?.stopAll();
-      this._grantRewards();
-    } else if (this.player.hp <= 0 && this.phoenixReviveTimer <= 0 && !this.gameOver && !this.victory) {
+      // Overload is hard-capped at OVERLOAD_CAP (99) — never triggers game over.
+      this.overload = OVERLOAD_CAP;
+    }
+    if (this.player.hp <= 0 && this.phoenixReviveTimer <= 0 && !this.gameOver && !this.victory) {
       // Null Breach Arena rescue (EDEN CORE extraction) — fires once per run, before Phoenix.
       if (this._nullBreachActive && !this._arenaRescueUsed) {
         this._triggerArenaRescue();
@@ -8686,7 +8684,7 @@ export class Game {
     // 2 ── Power Matrices (fill-based glow + counter owned by PowerMatrix; overload drives danger blink)
     for (const m of this.matrices) {
       if (this.endless) this._drawEndlessNexusBase(ctx, m);   // sprite UNDER the matrix (Endless only)
-      m.draw(ctx, this.overload / MAX_OVERLOAD);              // core indicators/status stay on top
+      m.draw(ctx, this.overload / OVERLOAD_CAP);              // core indicators/status stay on top
     }
 
     // 3 ── Data-Cores: GOLD and SILVER only, each a distinct SILHOUETTE in a distinct HUE
@@ -13169,7 +13167,7 @@ _drawLoreArchive(ctx) {
       if (!b.hit && distance(b.pos, this.player.pos) < b.radius + PLAYER_RADIUS) {
         if (this._damagePlayer(15, { color: PURPLE, shake: 4 })) {   // false while dashing → beam passes through
           b.hit = true;
-          this.overload = clamp(this.overload + 3, 0, MAX_OVERLOAD);  // relay the pre-existing overload spike only on a real hit
+          this.overload = clamp(this.overload + 3, 0, OVERLOAD_CAP);  // relay the pre-existing overload spike only on a real hit
           this.floatingTexts.push(new FloatingText('+3% OVERLOAD', new Vec2(this.player.pos.x, this.player.pos.y - 24), RED, 0.8));
         }
       }
