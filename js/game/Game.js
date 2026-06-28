@@ -18,8 +18,8 @@ import { SupportDrone }   from '../entities/SupportDrone.js?v=20260615210000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow } from './Effects.js?v=20260615210000';
 import { SystemEventManager } from './Events.js?v=20260615210000';
-import { UpgradeUI }      from './UpgradeUI.js?v=20260628340000';
-import { weightedSample } from './Upgrades.js?v=20260628340000';
+import { UpgradeUI }      from './UpgradeUI.js?v=20260628350000';
+import { weightedSample } from './Upgrades.js?v=20260628350000';
 import { MutationUI }      from './MutationUI.js?v=20260616080000';
 import { sampleMutations } from './Mutations.js?v=20260615210000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260627230000';
@@ -675,6 +675,7 @@ export class Game {
     // Lean main nav only. Exit/Credits/Instructions/Audio moved into the SETTINGS screen.
     const items = ['START GAME'];
     if (this.meta?.isEndlessUnlocked()) items.push('ENDLESS MODE');
+    items.push('CHAOS MODE');   // always visible; locked if !endlessUnlocked — handled in draw/click
     items.push('CHARACTER SELECT', 'UPGRADES', 'ACHIEVEMENTS', 'RELICS', 'SETTINGS', 'EXIT');
     return items;
   }
@@ -5000,7 +5001,7 @@ export class Game {
 
   update(dt, input) {
     if (this.gameState === 'start_menu') {
-      this._updateStartMenu(input);
+      this._updateStartMenu(dt, input);
       return;
     }
     if (this.gameState === 'character_select') {
@@ -5760,7 +5761,8 @@ export class Game {
     ctx.globalAlpha = 1; ctx.textAlign = 'left';
   }
 
-  _updateStartMenu(input) {
+  _updateStartMenu(dt, input) {
+    this._updateAnnouncement(dt);
     const { keys } = input;
     if (keys.has('arrowup') || keys.has('w')) {
       this.menuIndex = (this.menuIndex - 1 + this.menuItems.length) % this.menuItems.length;
@@ -5785,11 +5787,34 @@ export class Game {
   _selectMenuItem(item) {
     if (item === 'START GAME' || item === 'CHARACTER SELECT') this.goToCharacterSelect();
     else if (item === 'ENDLESS MODE')   this.startEndlessRun();
+    else if (item === 'CHAOS MODE')    this._selectChaosMode();
     else if (item === 'UPGRADES')       this.goToUpgradesScreen();
     else if (item === 'ACHIEVEMENTS')   this.goToAchievementsScreen();
     else if (item === 'RELICS')         this.goToRelicsScreen();
     else if (item === 'SETTINGS')       this.goToSettings();
     else if (item === 'EXIT') { try { window.close(); } catch (e) {} this.goToExitScreen(); }   // browser-safe: close if allowed, else friendly exit screen
+  }
+
+  _selectChaosMode() {
+    if (!this.meta?.isEndlessUnlocked()) {
+      this.triggerAnnouncement('REACH ENDLESS FIRST', '#888888');
+      return;
+    }
+    this.startChaosRun();
+  }
+
+  startChaosRun() {
+    this._hideMenuOverlay();
+    this._hideCharSelectOverlay?.();
+    this.selectedCharacter = this.selectedCharacter || this.characters[this.characterIndex]?.id || 'skeleton_warrior';
+    this.runChaosLaw = null;          // skip Chaos Law selection overlay for direct Chaos start
+    this.gameState = 'playing';
+    this.reset();
+    this._enterEndless();             // set up all Endless infrastructure
+    this._chaosMode       = true;     // engage Chaos immediately
+    this._chaosTransTimer = -1;
+    this.audio?.startChaosMusic();    // override the Endless track started by _enterEndless()
+    this.triggerAnnouncement('⚡ CHAOS MODE ⚡', '#ff2d95');
   }
 
   goToSettings() { this._hideMenuOverlay(); this.gameState = 'settings'; this._settingsIndex = 0; this._showSettingsOverlay(); }
@@ -9923,7 +9948,16 @@ export class Game {
     // drawn inside the slot — the slot plate itself is part of the theme art. Rects centralised in
     // _menuButtonRect (mirrored by main.js click hit-test). ──
     for (let i = 0; i < this.menuItems.length; i++) {
-      this._drawSlotLabel(ctx, this._menuButtonRect(i), this.menuItems[i], i === this.menuIndex, CYAN);
+      const _mi = this.menuItems[i];
+      if (_mi === 'CHAOS MODE') {
+        const _cu = this.meta?.isEndlessUnlocked();
+        this._drawSlotLabel(ctx, this._menuButtonRect(i),
+          _cu ? '⚡ CHAOS MODE' : 'CHAOS MODE 🔒',
+          i === this.menuIndex,
+          _cu ? '#ff2d95' : '#4a4a5a');
+      } else {
+        this._drawSlotLabel(ctx, this._menuButtonRect(i), _mi, i === this.menuIndex, CYAN);
+      }
     }
     ctx.textAlign = 'left';
 
@@ -9939,6 +9973,9 @@ export class Game {
     // Gear shortcut (top-right corner) → same SETTINGS screen; click handled in main.js.
     this._drawMenuGear(ctx);
     ctx.textAlign = 'left';
+
+    // Announcements (e.g. REACH ENDLESS FIRST feedback) rendered last so they appear on top.
+    this._drawAnnouncement(ctx);
   }
 
   // ─── SETTINGS DOM overlay ────────────────────────────────────────────────────
