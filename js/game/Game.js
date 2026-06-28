@@ -577,19 +577,19 @@ export class Game {
     this.menuIndex = 0;
     this.characterIndex = 0;
     this.characters = [
-      { id: 'skeleton_warrior', name: 'Cyber Skeleton Warrior', fallbackColor: '#8B0050', fallbackAlt: '#FF0080', role: 'Tank / Survival' },
-      { id: 'taekwondo_girl',   name: 'Neon Taekwondo Girl',    fallbackColor: '#00D9FF', fallbackAlt: '#0099CC', role: 'Speed / AoE' },
-      { id: 'cyber_arm_hero',   name: 'Cyber Arm Hero',         fallbackColor: '#FF6600', fallbackAlt: '#CC0000', role: 'Ranged / Damage' },
-      { id: 'brawler_warrior',  name: 'Brawler Warrior',        fallbackColor: '#1fd6a6', fallbackAlt: '#0a9c78', role: 'Tank / Brawler' },
-      { id: 'assassin_clone',   name: 'Assassin Clone',         fallbackColor: '#ff4dd2', fallbackAlt: '#9aa0aa', role: 'Stealth / Burst' },
+      { id: 'skeleton_warrior',        name: 'Cyber Skeleton Warrior',  fallbackColor: '#8B0050', fallbackAlt: '#FF0080', role: 'Tank / Survival',      specialty: 'Bone shockwave pulse — ultimate clears nearby enemies' },
+      { id: 'taekwondo_girl',          name: 'Neon Taekwondo Girl',     fallbackColor: '#00D9FF', fallbackAlt: '#0099CC', role: 'Speed / AoE',          specialty: 'Crescent arc dash — chains lightning hits on clusters' },
+      { id: 'cyber_arm_hero',          name: 'Cyber Arm Hero',          fallbackColor: '#FF6600', fallbackAlt: '#CC0000', role: 'Ranged / Damage',      specialty: 'Overdrive beam — sustained flame pressure at distance' },
+      { id: 'brawler_warrior',         name: 'Brawler Warrior',         fallbackColor: '#1fd6a6', fallbackAlt: '#0a9c78', role: 'Tank / Brawler',       specialty: 'Rage melee burst — damage escalates when surrounded' },
+      { id: 'assassin_clone',          name: 'Assassin Clone',          fallbackColor: '#ff4dd2', fallbackAlt: '#9aa0aa', role: 'Stealth / Burst',      specialty: 'Shadow reposition — instant teleport strike burst' },
       // Japan Phasewalker TEMPORARILY DISABLED (black-screen freeze ~3–4 min in Endless). Removed
       // from the selectable roster until his kit is rebuilt; code/assets/cards kept for future re-add.
       // Euclid Vector — unlocked from the start (NOT PF-gated; see MetaProgress free-unlock).
-      { id: 'euclid_vector',    name: 'Euclid Vector',         fallbackColor: '#00ff66', fallbackAlt: '#0a9c44', role: 'Toxin / Ranged' },
+      { id: 'euclid_vector',           name: 'Euclid Vector',           fallbackColor: '#00ff66', fallbackAlt: '#0a9c44', role: 'Toxin / Ranged',       specialty: 'Toxin sniper + orbital katana + plague trail dash' },
       // Oni Cataclysm Protocol — Endless boss character, LOCKED until purchased with Protocol Fragments
       // (PF_CHARACTER_COSTS). Shown as locked/unlockable; selectCharacter() guards on isCharacterUnlocked,
       // so it is never freely selectable and needs no TEST bypass.
-      { id: 'oni_cataclysm_protocol', name: 'Oni Cataclysm Protocol', fallbackColor: '#ff3030', fallbackAlt: '#ff8a3c', role: 'Endless / Cataclysm' },
+      { id: 'oni_cataclysm_protocol',  name: 'Oni Cataclysm Protocol', fallbackColor: '#ff3030', fallbackAlt: '#ff8a3c', role: 'Endless / Cataclysm', specialty: 'Quad laser array — overwhelming cataclysm output' },
     ];
     this.reset();
 
@@ -10464,13 +10464,57 @@ export class Game {
           position:relative; width:116px; flex:0 0 116px;
           border:1px solid rgba(46,230,246,.22); border-radius:10px;
           background:rgba(10,16,46,.55); overflow:hidden;
-          cursor:pointer; transition:.15s ease;
+          cursor:pointer;
+          transition:border-color .15s ease, box-shadow .18s ease, transform .18s cubic-bezier(.22,1,.36,1);
           display:flex; flex-direction:column; align-items:center;
         }
-        #cgm-charselect .csc-card:hover { border-color:rgba(46,230,246,.55); }
+        #cgm-charselect .csc-card:hover { border-color:rgba(46,230,246,.55); transform:scale(1.03); }
         #cgm-charselect .csc-card.active {
           border-color:var(--amber); border-width:2px;
-          box-shadow:0 0 18px rgba(251,191,36,.35),inset 0 0 14px rgba(251,191,36,.07);
+          box-shadow:0 0 28px rgba(251,191,36,.55),0 0 8px rgba(251,191,36,.3),inset 0 0 18px rgba(251,191,36,.10);
+          transform:scale(1.08); z-index:2;
+        }
+        #cgm-charselect .csc-card.active .csc-portrait img { transform:scale(1.10); transition:transform .3s ease; }
+        @keyframes csc-pop {
+          from { opacity:.4; transform:translateY(6px) scale(.97); }
+          to   { opacity:1;  transform:translateY(0)   scale(1); }
+        }
+        #cgm-charselect .csc-preview-panel {
+          width:100%; display:flex; align-items:center; gap:18px;
+          padding:14px 18px; border-radius:12px;
+          background:linear-gradient(135deg,rgba(46,230,246,.07),rgba(168,85,247,.04),transparent);
+          border:1px solid rgba(46,230,246,.18);
+        }
+        #cgm-charselect .csc-preview-panel.pv-animate { animation:csc-pop .35s cubic-bezier(.22,1,.36,1); }
+        #cgm-charselect .csc-pv-portrait {
+          flex:0 0 76px; height:108px; overflow:hidden;
+          background:rgba(6,12,30,.7); border-radius:10px;
+          border:1px solid rgba(46,230,246,.22);
+          display:flex; align-items:flex-end; justify-content:center;
+        }
+        #cgm-charselect .csc-pv-portrait img {
+          width:100%; height:100%; object-fit:contain; object-position:bottom center;
+        }
+        #cgm-charselect .csc-pv-portrait .csc-pv-fallback {
+          width:52px; height:52px; border-radius:50%; margin-bottom:8px; border:3px solid; flex:none;
+        }
+        #cgm-charselect .csc-pv-info { flex:1; display:flex; flex-direction:column; gap:5px; min-width:0; }
+        #cgm-charselect .csc-pv-name {
+          font-family:'Orbitron',sans-serif; font-weight:800; font-size:13px;
+          color:#fff; letter-spacing:.5px;
+          text-shadow:0 0 14px rgba(46,230,246,.6);
+          white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+        }
+        #cgm-charselect .csc-pv-role {
+          font-size:10px; color:var(--cyan); letter-spacing:2.5px;
+          text-transform:uppercase; font-weight:700;
+        }
+        #cgm-charselect .csc-pv-divider {
+          height:1px; background:linear-gradient(90deg,rgba(46,230,246,.35),transparent); margin:2px 0;
+        }
+        #cgm-charselect .csc-pv-spec { font-size:11px; color:var(--txt-dim); line-height:1.5; }
+        #cgm-charselect .csc-pv-label {
+          font-size:9px; letter-spacing:2px; color:var(--txt-faint); text-transform:uppercase; margin-top:2px;
         }
         #cgm-charselect .csc-portrait {
           width:100%; height:104px; overflow:hidden;
@@ -10479,7 +10523,7 @@ export class Game {
         }
         #cgm-charselect .csc-portrait img {
           width:100%; height:100%; object-fit:contain; object-position:bottom center;
-          display:block;
+          display:block; transition:transform .3s ease;
         }
         #cgm-charselect .csc-portrait .csc-fallback {
           width:68px; height:68px; border-radius:50%;
@@ -10622,6 +10666,20 @@ export class Game {
         </div>
 
         <div class="csc-grid" id="csc-grid">${cardHtml}</div>
+
+        <div class="csc-preview-panel" id="csc-preview-panel">
+          <div class="csc-pv-portrait">
+            <img id="csc-pv-img" src="" alt="" style="display:none">
+            <div class="csc-pv-fallback" id="csc-pv-fallback" style="display:none"></div>
+          </div>
+          <div class="csc-pv-info">
+            <div class="csc-pv-name" id="csc-pv-name"></div>
+            <div class="csc-pv-role" id="csc-pv-role"></div>
+            <div class="csc-pv-divider"></div>
+            <div class="csc-pv-label">COMBAT SPECIALTY</div>
+            <div class="csc-pv-spec" id="csc-pv-spec"></div>
+          </div>
+        </div>
 
         <div class="csc-unlock-area" id="csc-unlock-area">
           <div class="csc-unlock-hint" id="csc-unlock-hint"></div>
@@ -10806,6 +10864,39 @@ export class Game {
     const endlessBtn  = el.querySelector('#csc-endless-btn');
     if (startBtn)   startBtn.disabled   = !selUnlocked;
     if (endlessBtn) endlessBtn.disabled = !endlessOk;
+
+    // Preview panel — portrait + name + role + specialty
+    const pvPanel = el.querySelector('#csc-preview-panel');
+    const pvImg   = el.querySelector('#csc-pv-img');
+    const pvFB    = el.querySelector('#csc-pv-fallback');
+    const pvName  = el.querySelector('#csc-pv-name');
+    const pvRole  = el.querySelector('#csc-pv-role');
+    const pvSpec  = el.querySelector('#csc-pv-spec');
+    if (pvPanel && pvImg && pvName && pvRole && pvSpec) {
+      let pvSrc = this._charImages[sel.id]?.src || '';
+      if (this.meta.getSelectedOutfit(sel.id) === 'secret') {
+        const pvKey  = CHARACTER_OUTFITS[sel.id]?.secret?.unlockKey;
+        const pvSkin = pvKey && this._skinImages[pvKey];
+        const pvOk   = pvKey && this.meta?.isOutfitUnlocked?.(sel.id, 'secret') === true;
+        if (pvSkin && pvSkin.complete && pvSkin.naturalWidth > 0 && pvOk) pvSrc = pvSkin.src;
+      }
+      if (pvSrc) {
+        pvImg.src = pvSrc;
+        pvImg.style.display = '';
+        if (pvFB) pvFB.style.display = 'none';
+      } else {
+        pvImg.style.display = 'none';
+        if (pvFB) {
+          pvFB.style.cssText = 'display:block;width:52px;height:52px;border-radius:50%;margin-bottom:8px;border:3px solid;flex:none;background:' + (sel.fallbackColor || '#333') + ';border-color:' + (sel.fallbackAlt || '#666');
+        }
+      }
+      pvName.textContent = sel.name || '';
+      pvRole.textContent = sel.role || '';
+      pvSpec.textContent = sel.specialty || '';
+      pvPanel.classList.remove('pv-animate');
+      void pvPanel.offsetWidth;
+      pvPanel.classList.add('pv-animate');
+    }
   }
 
   _drawCharacterSelect(ctx) {
