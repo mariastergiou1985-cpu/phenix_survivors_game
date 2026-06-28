@@ -788,7 +788,11 @@ export class Game {
     this._upgradeTab      = 'core';   // Upgrades screen tab: 'core' | 'synergy'
 
     this.timeAlive          = 0;
-    // ── Chaos Mode (unlocks at 31:00 Endless) ─────────────────────────────
+    this._postArenaChoice   = false;   // true while post-Arena NULL decision panel is showing
+    this._pacIdx            = 0;       // 0=Continue Endless  1=Enter Chaos  2=Return Main Menu
+    this._pacMsgStep        = 0;       // staged NULL dialogue line index
+    this._pacMsgAt          = 0;       // timeAlive when panel appeared
+    // ── Chaos Mode (unlocks at 21:00 Endless) ─────────────────────────────
     this._chaosMode         = false;   // true after transition completes
     this._chaosTransTimer   = -1;      // >=0 while glitch transition is playing
     this.forceChaos         = false;   // defensive: prevent stale debug-key state leaking into the next run
@@ -1038,6 +1042,11 @@ export class Game {
   }
 
   goToMainMenu() {
+    // Save Endless records if leaving mid-run (before any game-over/victory grant)
+    if (this.endless && !this.rewardsGranted && this.timeAlive > 5) {
+      this._grantRewards();
+    }
+    this._postArenaChoice = false;   // close panel if open
     this.gameState = 'start_menu';
     this.menuIndex = 0;
     this.gameOver  = false;
@@ -5032,6 +5041,29 @@ export class Game {
     }
     if (this.gameState !== 'playing') return;
 
+    // ── Post-Arena NULL decision panel: intercept all input, freeze gameplay ──
+    if (this._postArenaChoice) {
+      const { keys } = input;
+      const _n = 3;
+      if (keys.has('arrowup') || keys.has('w')) {
+        this._pacIdx = (this._pacIdx - 1 + _n) % _n;
+        keys.delete('arrowup'); keys.delete('w');
+      }
+      if (keys.has('arrowdown') || keys.has('s')) {
+        this._pacIdx = (this._pacIdx + 1) % _n;
+        keys.delete('arrowdown'); keys.delete('s');
+      }
+      if (keys.has('enter') || keys.has(' ')) {
+        keys.delete('enter'); keys.delete(' ');
+        this._selectPostArenaChoice(this._pacIdx);
+      }
+      if (keys.has('escape')) {
+        keys.delete('escape');
+        this._selectPostArenaChoice(0);   // ESC = CONTINUE ENDLESS
+      }
+      return;
+    }
+
     if (this.paused || this.gameOver || this.victory) return;
 
     // If an upgrade OR forced-mutation card is active, freeze everything but allow UI interaction
@@ -5067,9 +5099,10 @@ export class Game {
     if (this.endless) this._checkNullBreachArena();
     if (this._nullBreachArena) this._updateNullBreachArena(dt);
 
-    // ── Chaos Mode trigger (31:00 Endless) — instant, no glitch transition ──
+    // ── Chaos Mode trigger (21:00 Endless) — instant, no glitch transition ──
     if (this.endless && !this._chaosMode) {
-      if (this.timeAlive >= 1860 || this.forceChaos) {
+      const _chaosEndlessEl = this.timeAlive - this._endlessStartedAt;
+      if (_chaosEndlessEl >= 1260 || this.forceChaos) {
         this.forceChaos         = false;
         this._chaosTransTimer   = -1;    // no transition timer
         this._chaosMode         = true;
@@ -8972,6 +9005,7 @@ export class Game {
     this._drawActiveRelicHUD(ctx);
     this._drawNullBreachArena(ctx);            // Null Breach Arena overlay + timer
     this._drawEdenGameplayTransmission(ctx);   // Eden Core in-run popup (upper-right)
+    if (this._postArenaChoice) this._drawPostArenaChoice(ctx);   // post-Arena NULL decision panel
     this._drawObjectiveIndicators(ctx);   // wayfinding: arrow to nearest Nexus (carrying) / core (early)
     this._drawOnboarding(ctx);            // first-minute objective callout + fading hints (Act 1)
     // drawVignette(ctx, this.overload, this.timeAlive);  // disabled: overload capped at 99 → constant pulse at high overload
@@ -13221,6 +13255,154 @@ _drawLoreArchive(ctx) {
     ctx.globalAlpha = 1;
   }
 
+  // ── Post-Arena NULL decision panel ─────────────────────────────────────────
+  // Shown when the player completes the NULL Breach Arena. Freezes gameplay.
+  // Options: CONTINUE ENDLESS / ENTER CHAOS MODE / RETURN MAIN MENU
+  _drawPostArenaChoice(ctx) {
+    if (!this._postArenaChoice) return;
+    const et = this.timeAlive - this._pacMsgAt;
+
+    // Stage NULL dialogue lines as time elapses
+    if (et > 0.3 && this._pacMsgStep < 1) this._pacMsgStep = 1;
+    if (et > 1.3 && this._pacMsgStep < 2) this._pacMsgStep = 2;
+    if (et > 2.2 && this._pacMsgStep < 3) this._pacMsgStep = 3;
+    if (et > 3.0 && this._pacMsgStep < 4) this._pacMsgStep = 4;
+    if (et > 3.7 && this._pacMsgStep < 5) this._pacMsgStep = 5;
+
+    const dialogueLines = [
+      'You reached the breach layer.',
+      'The Arena was not an exit. It was a test.',
+      'Endless survival keeps the system open.',
+      'Chaos Mode will force NULL EDEN to answer.',
+      'Choose your route.',
+    ];
+    const options    = ['CONTINUE ENDLESS', 'ENTER CHAOS MODE', 'RETURN MAIN MENU'];
+    const optColors  = ['#2ee6f6', '#ff2d95', '#ff8a8a'];
+    const chaosAvail = !this._chaosMode;
+
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+    // Semi-transparent backdrop
+    ctx.fillStyle = 'rgba(0,4,14,0.82)';
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+    // Panel geometry
+    const PW = 560, PH = 390;
+    const PX = Math.round((WIDTH  - PW) / 2);
+    const PY = Math.round((HEIGHT - PH) / 2);
+
+    // Panel background
+    ctx.fillStyle = 'rgba(2,8,26,0.97)';
+    ctx.strokeStyle = '#2ee6f6';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.roundRect(PX, PY, PW, PH, 8); ctx.fill(); ctx.stroke();
+
+    // Neon gradient top border
+    const _tg = ctx.createLinearGradient(PX, PY, PX + PW, PY);
+    _tg.addColorStop(0, 'transparent'); _tg.addColorStop(0.3, '#2ee6f6');
+    _tg.addColorStop(0.7, '#ff2d95');   _tg.addColorStop(1, 'transparent');
+    ctx.strokeStyle = _tg; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(PX + 16, PY); ctx.lineTo(PX + PW - 16, PY); ctx.stroke();
+
+    // Corner accents
+    const _CA = 10;
+    ctx.strokeStyle = 'rgba(46,230,246,0.65)'; ctx.lineWidth = 1.5;
+    for (const [_cx, _cy, _sx, _sy] of [[PX,PY,1,1],[PX+PW,PY,-1,1],[PX,PY+PH,1,-1],[PX+PW,PY+PH,-1,-1]]) {
+      ctx.beginPath(); ctx.moveTo(_cx+_sx*_CA,_cy); ctx.lineTo(_cx,_cy); ctx.lineTo(_cx,_cy+_sy*_CA); ctx.stroke();
+    }
+
+    // Blinking signal indicator
+    const _blink = Math.sin(this.timeAlive * 4) > 0;
+    ctx.fillStyle = _blink ? '#ff2d95' : 'rgba(255,45,149,0.25)';
+    ctx.beginPath(); ctx.arc(PX + 18, PY + 22, 4, 0, Math.PI * 2); ctx.fill();
+
+    // NULL TRANSMISSION header
+    ctx.font = 'bold 11px Consolas,monospace'; ctx.fillStyle = '#2ee6f6'; ctx.textAlign = 'left';
+    ctx.fillText('NULL TRANSMISSION', PX + 32, PY + 26);
+    ctx.font = '9px Consolas,monospace'; ctx.fillStyle = 'rgba(46,230,246,0.4)';
+    ctx.fillText('- - - - - - - - - - - - - - - - - - - - - -', PX + 32, PY + 40);
+
+    // Staged dialogue lines
+    let _ty = PY + 65;
+    ctx.textAlign = 'center';
+    for (let _i = 0; _i < this._pacMsgStep && _i < dialogueLines.length; _i++) {
+      const _line = dialogueLines[_i];
+      if (_i === 0) { ctx.font = 'bold 14px Consolas,monospace'; ctx.fillStyle = '#e0f8ff'; }
+      else if (_i === dialogueLines.length - 1 && this._pacMsgStep >= 5) { ctx.font = 'bold 13px Consolas,monospace'; ctx.fillStyle = '#ffd23c'; }
+      else { ctx.font = '12px Consolas,monospace'; ctx.fillStyle = 'rgba(180,220,240,0.82)'; }
+      ctx.fillText(_line, PX + PW / 2, _ty);
+      _ty += 21;
+    }
+
+    // Option cards (shown after all dialogue appears)
+    if (this._pacMsgStep >= 5) {
+      const _OW = 480, _OH = 46, _OX = PX + (PW - _OW) / 2;
+      let _oy = PY + 200;
+      for (let _i = 0; _i < options.length; _i++) {
+        const _sel     = _i === this._pacIdx;
+        const _dis     = _i === 1 && !chaosAvail;
+        const _col     = _dis ? '#666' : optColors[_i];
+        ctx.fillStyle   = _sel && !_dis ? 'rgba(46,230,246,0.09)' : 'rgba(0,10,28,0.75)';
+        ctx.strokeStyle = _sel && !_dis ? _col : (_dis ? '#333' : 'rgba(100,120,140,0.35)');
+        ctx.lineWidth   = _sel && !_dis ? 2 : 1;
+        ctx.beginPath(); ctx.roundRect(_OX, _oy, _OW, _OH, 6); ctx.fill(); ctx.stroke();
+        if (_sel && !_dis) { ctx.shadowBlur = 14; ctx.shadowColor = _col; }
+        ctx.font        = (_sel && !_dis ? 'bold ' : '') + '16px Consolas,monospace';
+        ctx.fillStyle   = _dis ? '#555' : (_sel ? _col : 'rgba(175,200,220,0.72)');
+        ctx.textAlign   = 'center';
+        ctx.fillText(options[_i] + (_dis ? '  [ACTIVE]' : ''), _OX + _OW / 2, _oy + _OH / 2 + 6);
+        ctx.shadowBlur  = 0; ctx.shadowColor = 'transparent';
+        _oy += _OH + 8;
+      }
+    }
+
+    // Footer hint
+    ctx.font = '10px Consolas,monospace'; ctx.fillStyle = 'rgba(130,155,175,0.6)'; ctx.textAlign = 'center';
+    ctx.fillText('UP/DOWN SELECT   ENTER CONFIRM   ESC = CONTINUE ENDLESS', PX + PW / 2, PY + PH - 14);
+    ctx.restore();
+  }
+
+  // Execute the chosen post-arena option.
+  _selectPostArenaChoice(idx) {
+    this._postArenaChoice = false;
+    this._pacIdx          = 0;
+    this._pacMsgStep      = 0;
+    if (idx === 0) {
+      // CONTINUE ENDLESS
+      this.triggerAnnouncement('ENDLESS SURVIVAL CONTINUING', '#2ee6f6');
+      this._queueEdenTransmission('EDEN CORE: Signal stabilized. Survival continues.', { priority: 2, duration: 5 });
+    } else if (idx === 1 && !this._chaosMode) {
+      // ENTER CHAOS MODE — force immediate Chaos
+      this._chaosMode       = true;
+      this._chaosTransTimer = -1;
+      this.forceChaos       = false;
+      this.audio?.startChaosMusic();
+      this.triggerAnnouncement('CHAOS MODE ENGAGED', '#ff2d95');
+      if (this.meta) {
+        const _cmsg = 'NULL EDEN BOUNDARY BREACHED. Chaos signal accepted.';
+        this.meta.addSystemMessage(_cmsg);
+        this._queueEdenTransmission(_cmsg, { title: 'NULL TRANSMISSION', priority: 3, duration: 7 });
+        this._chaosEdenAwarded = true;
+      }
+      // Rearm all boss rotation slots for Chaos
+      this.titanSpawned        = false; this.titanSpawnTimer        = 0;
+      this.annihilatorSpawned  = false; this.annihilatorSpawnTimer  = 0;
+      this.bloodfangSpawned    = false; this.bloodfangSpawnTimer    = 0;
+      this.cyberSerpentSpawned = false; this.cyberSerpentSpawnTimer = 0;
+      this.cyberDragonSpawned  = false; this.cyberDragonSpawnTimer  = 0;
+      this.doubleDemonsSpawned = false; this.doubleDemonsSpawnTimer = 0;
+      this._endlessBossTimer   = 5;
+      this.acidRainTimer       = 30;
+      this._airstrikeTimer     = 15;
+      this._lightningTimer     = 20;
+    } else {
+      // RETURN MAIN MENU — save Endless records first
+      if (this.endless && !this.rewardsGranted) this._grantRewards();
+      this.goToMainMenu();
+    }
+  }
+
   /**
    * Reusable Eden Core framed transmission panel (canvas, screen-space).
    * Called from HUD end screen and future arena second-chance mechanic.
@@ -13596,6 +13778,17 @@ _drawLoreArchive(ctx) {
       new FloatingText('✓ BREACH SURVIVED', this.player.pos.clone(), '#00e6ff', 2.0)
     );
     this.screenShake.trigger(6, 0.4);
+
+    // ── Post-Arena NULL decision panel ───────────────────────────────────────
+    this._postArenaChoice = true;
+    this._pacIdx          = 0;
+    this._pacMsgStep      = 0;
+    this._pacMsgAt        = this.timeAlive;
+    // Kick off the NULL transmission sequence via the upper-right popup too
+    this._queueEdenTransmission(
+      'NULL TRANSMISSION: You reached the breach layer. Choose your route.',
+      { title: 'NULL TRANSMISSION', priority: 3, duration: 9 }
+    );
   }
 
   // Player died inside the arena — EDEN CORE extracts them (once per run).

@@ -1,4 +1,4 @@
-import { Game } from './game/Game.js?v=20260628310000';
+import { Game } from './game/Game.js?v=20260628320000';
 import { AudioManager } from './audio/AudioManager.js?v=20260627230000';
 import { GamepadInput } from './Gamepad.js?v=20260615210000';
 import { initTouchControls } from './TouchInput.js?v=20260625200000';
@@ -180,6 +180,21 @@ canvas.addEventListener('mousedown', e => {
     // ── In-game upgrade card (level-up choice) ────────────────────
     game.upgradeUI.handleClick(mousePos, game);
 
+  } else if (game._postArenaChoice && game._pacMsgStep >= 5) {
+    // ── Post-Arena NULL decision panel — click on option cards ───
+    // Panel: PW=560,PH=390,PX=(1280-560)/2=360,PY=(720-390)/2=165
+    // Options OW=480,OH=46,OX=360+(560-480)/2=400, start oy=PY+200=365
+    const _pac_OW = 480, _pac_OH = 46, _pac_OX = 400;
+    let _pac_oy = 365;
+    for (let _pi = 0; _pi < 3; _pi++) {
+      if (mousePos.x >= _pac_OX && mousePos.x <= _pac_OX + _pac_OW &&
+          mousePos.y >= _pac_oy  && mousePos.y <= _pac_oy + _pac_OH) {
+        game._selectPostArenaChoice(_pi);
+        break;
+      }
+      _pac_oy += _pac_OH + 8;
+    }
+
   } else if (game.victory) {
     // ── Victory screen — two buttons ─────────────────────────────
     // Rects kept in sync with Game._drawVictoryScreen (BW=300, BH=50, BY=540).
@@ -348,7 +363,8 @@ canvas.addEventListener('contextmenu', e => e.preventDefault());
 let _lastCursor = '';
 function applyContextualCursor() {
   const inCombat = game.gameState === 'playing'
-    && !game.paused && !game.gameOver && !game.victory && !game.upgradeUI && !game.mutationUI;
+    && !game.paused && !game.gameOver && !game.victory && !game.upgradeUI && !game.mutationUI
+    && !game._postArenaChoice;
   const want = inCombat ? 'none' : 'default';
   if (want !== _lastCursor) { canvas.style.cursor = want; _lastCursor = want; }
 }
