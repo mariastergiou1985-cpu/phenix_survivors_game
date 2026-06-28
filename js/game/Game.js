@@ -18,8 +18,8 @@ import { SupportDrone }   from '../entities/SupportDrone.js?v=20260615210000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow } from './Effects.js?v=20260615210000';
 import { SystemEventManager } from './Events.js?v=20260615210000';
-import { UpgradeUI }      from './UpgradeUI.js?v=20260628350000';
-import { weightedSample } from './Upgrades.js?v=20260628350000';
+import { UpgradeUI }      from './UpgradeUI.js?v=20260628360000';
+import { weightedSample } from './Upgrades.js?v=20260628360000';
 import { MutationUI }      from './MutationUI.js?v=20260616080000';
 import { sampleMutations } from './Mutations.js?v=20260615210000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260627230000';
@@ -33,6 +33,8 @@ import { DigitalSingularity } from '../effects/digital-singularity.js?v=20260615
 import { Protocol0 } from '../effects/protocol-0.js?v=20260615210000';
 import { LaserEyes } from '../effects/laser-eyes.js?v=20260615210000';
 import { MeteorRain } from '../effects/meteor-rain.js?v=20260615210000';
+import { NpcWalker } from './NpcWalker.js?v=20260628360000';
+
 // Euclid Vector toxin kit — used ONLY when selectedCharacter === 'euclid_vector' (world-space).
 import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=20260615210000';
 
@@ -918,6 +920,7 @@ export class Game {
 
     this.supportDrones     = [];
     this.allyDrones        = [];   // Auto-Forge Drone card: persistent allies (NOT cleared by boss logic)
+    this._npcWalker        = null;   // KIROSHI WALKER autonomous ally
     this._droneFlameLast   = null;
     this._droneElectroLast = null;
 
@@ -931,6 +934,9 @@ export class Game {
     this._endlessStartedAt  = 0;      // timeAlive when Endless began (direct=0, Act1→Endless=nonzero)
 
     this._createMatrices();
+    // KIROSHI WALKER — spawn fresh ally for every new run
+    this._npcWalker = new NpcWalker();
+    this._npcWalker.reset(this.player.pos);
   }
 
   startGame() {
@@ -1059,6 +1065,7 @@ export class Game {
     this._mutationTimer = MUTATION_INTERVAL;
     this.supportDrones = [];
     this.allyDrones    = [];
+    this._npcWalker    = null;   // clear on menu return
     this.audio?.startMenuMusic();
     this._hideSettingsOverlay();
     this._hideCharSelectOverlay();
@@ -1081,6 +1088,8 @@ export class Game {
     if (!this.victory) return;
     this.victory = false;
     this._enterEndless();
+    // NpcWalker persists from Act 1; re-spawn only if somehow null
+    if (!this._npcWalker) { this._npcWalker = new NpcWalker(); this._npcWalker.reset(this.player.pos); }
   }
 
   // Direct ENDLESS MODE start from the Main Menu (only offered once endlessUnlocked). Starts a
@@ -5223,6 +5232,7 @@ export class Game {
     this._updateSupportDrones(dt);
     this._updateCorrosive(dt);   // centralized corrosive DoT (drone + Corrosive Payload card)
     this._updateAllyDrones(dt);
+    if (this._npcWalker && this.player) this._npcWalker.update(dt, this.player.pos, this);
     this.events.update(dt, this.timeAlive, this);
     this._updateGridCache(dt);
     this._updateHealthPickups(dt);
@@ -8738,6 +8748,7 @@ export class Game {
     // 4a ── Support drones (drawn between enemies and titan so they appear above enemies)
     for (const d of this.supportDrones) d.draw(ctx);
     for (const d of this.allyDrones)    d.draw(ctx);   // persistent Auto-Forge Drone allies
+    if (this._npcWalker) this._npcWalker.draw(ctx);   // KIROSHI WALKER ally
 
     // 4b ── AI Overload Titan mini-boss
     this._drawTitan(ctx);
@@ -9028,6 +9039,7 @@ export class Game {
 
     drawHUD(ctx, this);
     this._drawActiveRelicHUD(ctx);
+    this._drawNpcWalkerHUD(ctx);   // KIROSHI WALKER status panel
     this._drawNullBreachArena(ctx);            // Null Breach Arena overlay + timer
     this._drawEdenGameplayTransmission(ctx);   // Eden Core in-run popup (upper-right)
     if (this._postArenaChoice) this._drawPostArenaChoice(ctx);   // post-Arena NULL decision panel
@@ -13938,6 +13950,20 @@ _drawLoreArchive(ctx) {
     ctx.fillText(`SURVIVE: ${mm}:${ss}`, panX + panW - 12, panY + 15);
 
     ctx.textAlign = 'left';
+    ctx.restore();
+  }
+
+  _drawNpcWalkerHUD(ctx) {
+    if (!this._npcWalker) return;
+    if (this.gameOver || this.victory) return;
+    if (this.upgradeUI || this.mutationUI) return;
+    // Position: right side, below Eden transmission area (y=90+), above ultimate (HEIGHT-66)
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    const panelW = 172;
+    const panelX = WIDTH - panelW - 8;
+    const panelY = 92;
+    this._npcWalker.drawHUDPanel(ctx, panelX, panelY, panelW);
     ctx.restore();
   }
 
