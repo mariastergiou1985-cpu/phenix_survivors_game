@@ -1,6 +1,6 @@
 import { WIDTH, HEIGHT, YELLOW, WHITE, GREY } from '../constants.js';
 import { drawText, wrapText, roundRect } from '../utils.js';
-import { RARITY_COLORS } from './Upgrades.js?v=20260615210000';
+import { RARITY_COLORS } from './Upgrades.js?v=20260628340000';
 
 export class UpgradeUI {
   constructor(choices) {
@@ -35,6 +35,7 @@ export class UpgradeUI {
   _accentFor(upg) {
     if (upg.reward)  return upg.iconColor;   // reward/gift cards: bright premium accent
     if (upg.synergy) return upg.iconColor;   // synergy cards: bright per-character premium accent
+    if (upg.chaosOnly) return upg.iconColor; // chaos cards: bright per-card chaos accent
     if (upg.key === 'corrosive_payload') return '#7CFF3C';
     switch (upg.char) {
       case 'skeleton_warrior': return '#AEE3FF';   // blue-white electric
@@ -162,9 +163,9 @@ export class UpgradeUI {
 
       // Rarity label — synergy cards get a premium ★ SYNERGY ★ badge in the accent color
       ctx.font      = 'bold 11px Consolas, monospace';
-      ctx.fillStyle = (upg.reward || upg.synergy) ? accent : rarity;
+      ctx.fillStyle = (upg.reward || upg.synergy || upg.chaosOnly) ? accent : rarity;
       ctx.textAlign = 'center';
-      ctx.fillText(upg.reward ? '★ REWARD ★' : upg.synergy ? '★ SYNERGY ★' : upg.rarity.toUpperCase(), r.x + r.w / 2, r.y + 140);
+      ctx.fillText(upg.reward ? '★ REWARD ★' : upg.synergy ? '★ SYNERGY ★' : upg.chaosOnly ? '★ CHAOS ★' : upg.rarity.toUpperCase(), r.x + r.w / 2, r.y + 140);
       ctx.textAlign = 'left';
 
       // Description (word-wrapped)

@@ -18,8 +18,8 @@ import { SupportDrone }   from '../entities/SupportDrone.js?v=20260615210000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow } from './Effects.js?v=20260615210000';
 import { SystemEventManager } from './Events.js?v=20260615210000';
-import { UpgradeUI }      from './UpgradeUI.js?v=20260616080000';
-import { weightedSample } from './Upgrades.js?v=20260615210000';
+import { UpgradeUI }      from './UpgradeUI.js?v=20260628340000';
+import { weightedSample } from './Upgrades.js?v=20260628340000';
 import { MutationUI }      from './MutationUI.js?v=20260616080000';
 import { sampleMutations } from './Mutations.js?v=20260615210000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260627230000';
@@ -4988,7 +4988,7 @@ export class Game {
   // One free reroll per level-up screen — re-samples the (already useful) card pool.
   rerollUpgrade() {
     if (!this.upgradeUI || this.rerollsLeft <= 0) return;
-    const choices = weightedSample(this.player, 3, { meta: this.meta, endless: this.endless });
+    const choices = weightedSample(this.player, 3, { meta: this.meta, endless: this.endless, chaos: this._chaosMode });
     if (choices.length === 0) return;
     this.upgradeUI.setChoices(choices);
     this.rerollsLeft--;
@@ -5077,7 +5077,7 @@ export class Game {
       this.player.pendingLevelupCount--;
       if (this.player.level >= this._nextCardLevel) {
         this._nextCardLevel = this.player.level + (this.player.level >= 6 ? 2 : 1);   // schedule next offer
-        const choices = weightedSample(this.player, 3, { meta: this.meta, endless: this.endless });
+        const choices = weightedSample(this.player, 3, { meta: this.meta, endless: this.endless, chaos: this._chaosMode });
         if (choices.length > 0) {
           this.audio?.playLevelUp();
           this.upgradeUI = new UpgradeUI(choices);

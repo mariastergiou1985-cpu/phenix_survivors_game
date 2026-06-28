@@ -11,7 +11,7 @@ export const RARITY_COLORS = {
 export class UpgradeDefinition {
   constructor(key, name, description, iconColor, maxLevel, applyFn, icon = null, rarity = 'common', char = null,
               requiredAchievement = null, endlessOnly = false, synergy = false, prereq = null, reward = false,
-              allowedChars = null) {
+              allowedChars = null, chaosOnly = false) {
     this.key         = key;
     this.name        = name;
     this.description = description;
@@ -34,6 +34,8 @@ export class UpgradeDefinition {
     // Optional character allow-list (array of character ids). When set, the card only rolls for those
     // characters — used to keep element Infusion cards identity-appropriate (e.g. no Radiation for Euclid).
     this.allowedChars = allowedChars;
+    // chaosOnly: only offered when Chaos Mode is active (this._chaosMode in Game.js).
+    this.chaosOnly = chaosOnly;
   }
 
   apply(player) {
@@ -291,13 +293,55 @@ export const ALL_UPGRADES = [
   new UpgradeDefinition('infuse_gas', 'Gas Infusion', 'Adds GAS element. With Fusion Catalyst, Toxin attacks can trigger Viral Cloud.',
     '#8fdf7f', 1, p => { (p.secondaryElements ||= []).includes('gas')       || p.secondaryElements.push('gas'); },       '☁', 'legendary', null, null, true, false, null, true,
     ['euclid_vector']),
+
+  // ── Chaos Mode Cards (V1) — only offered when this._chaosMode is active ────────────────────
+  // All effects use existing Player stat hooks. chaosOnly=true + endlessOnly=true prevents
+  // these appearing outside Chaos. Constructor tail:
+  // (char, requiredAchievement, endlessOnly, synergy, prereq, reward, allowedChars, chaosOnly)
+
+  new UpgradeDefinition('chaos_claw', 'Chaos Claw',
+    'CHAOS: +8% fire rate & +1 shot damage',
+    '#ff2d78', 3,
+    p => { p.fireRateBonus += 0.08; p.upgrades['Pulse Damage'] = (p.upgrades['Pulse Damage'] || 0) + 1; },
+    '⚔', 'rare', null, null, true, false, null, false, null, true),
+
+  new UpgradeDefinition('null_overclock', 'NULL Overclock',
+    'CHAOS: +12% fire rate & +8% proj speed',
+    '#ff7aff', 3,
+    p => { p.fireRateBonus += 0.12; p.projSpeedBonus += 0.08; },
+    '⚡', 'epic', null, null, true, false, null, false, null, true),
+
+  new UpgradeDefinition('breach_aegis', 'Breach Aegis',
+    'CHAOS: +30 max HP (shields you from the pressure)',
+    '#ff5a8a', 3,
+    p => { p.maxHp += 30; p.hp = Math.min(p.maxHp, p.hp + 30); },
+    '🛡', 'rare', null, null, true, false, null, false, null, true),
+
+  new UpgradeDefinition('entropy_rounds', 'Entropy Rounds',
+    'CHAOS: +1 shot damage & +6% proj speed',
+    '#c462ff', 3,
+    p => { p.upgrades['Pulse Damage'] = (p.upgrades['Pulse Damage'] || 0) + 1; p.projSpeedBonus += 0.06; },
+    '◈', 'epic', null, null, true, false, null, false, null, true),
+
+  new UpgradeDefinition('glitch_step', 'Glitch Step',
+    'CHAOS: +6% move speed per level',
+    '#3cf0e6', 3,
+    p => { p.speedBonus += 0.06; },
+    '»', 'common', null, null, true, false, null, false, null, true),
+
+  new UpgradeDefinition('eden_fracture', 'Eden Fracture',
+    'CHAOS: +20 max mana & +8% fire rate',
+    '#ff9900', 2,
+    p => { p.maxMana += 20; p.mana = Math.min(p.maxMana, p.mana + 20); p.fireRateBonus += 0.08; },
+    '✦', 'legendary', null, null, true, false, null, false, null, true),
+
 ];
 
 // ─── Weighted sample: every card is useful; bias toward the player's current build ──
 // New cards stay common (weight 3); cards already invested in are weighted higher so
 // the offered set leans into the build the player is forming (and reroll does the same).
 export function weightedSample(player, n = 3, ctx = {}) {
-  const { meta = null, endless = false } = ctx;
+  const { meta = null, endless = false, chaos = false } = ctx;
   // Character mastery cards only offer for the matching character; global cards always eligible.
   // Achievement Cards additionally require their achievement unlocked + (endlessOnly) Endless.
   const eligible = ALL_UPGRADES.filter(u =>
@@ -306,6 +350,7 @@ export function weightedSample(player, n = 3, ctx = {}) {
     (!u.requiredAchievement || (meta && meta.hasAchievement(u.requiredAchievement))) &&
     (!u.endlessOnly || endless) &&
     (!u.allowedChars || u.allowedChars.includes(player.selectedCharacter)) &&
+    (!u.chaosOnly || chaos) &&
     (!u.prereq || u.prereq(player)));
   if (!eligible.length) return [];
 
