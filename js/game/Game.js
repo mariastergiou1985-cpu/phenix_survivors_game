@@ -13982,10 +13982,18 @@ _drawLoreArchive(ctx) {
         if (img && img.complete && img.naturalWidth > 0) {
           ctx.drawImage(img, ix, iy, iconSz, iconSz);
         } else {
-          ctx.font      = 'bold 13px Consolas, monospace';
+          // Fallback: icon PNG missing — show 3-char abbreviation so a single letter
+          // (e.g. "S" for Second Signal Debt) never confuses the player.
+          const _abbr = (r.abbr || r.name.slice(0, 3)).toUpperCase();
+          ctx.font      = 'bold 9px Consolas, monospace';
           ctx.fillStyle = c.fg;
           ctx.textAlign = 'center';
-          ctx.fillText(r.name[0].toUpperCase(), sx + SLOT / 2, sy + SLOT / 2 + 5);
+          ctx.fillText(_abbr, sx + SLOT / 2, sy + SLOT / 2 + 3);
+          // Tiny type tag (ARENA / BOSS / etc.) for additional context
+          ctx.font      = '7px Consolas, monospace';
+          ctx.globalAlpha = 0.55;
+          ctx.fillText(r.type.slice(0, 5).toUpperCase(), sx + SLOT / 2, sy + SLOT - 4);
+          ctx.globalAlpha = 1;
           ctx.textAlign = 'left';
         }
       }
