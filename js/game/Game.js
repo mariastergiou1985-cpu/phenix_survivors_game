@@ -5,38 +5,38 @@ import {
   MAX_OVERLOAD, PLAYER_RADIUS, CORE_RADIUS, MATRIX_RADIUS,
   DARK_BG, GRID_LINE, BLACK, CYAN, RED, GREEN, YELLOW, ORANGE, WHITE, PURPLE,
   CORE_COLORS, VIEW_SCALE, VIEW_W, VIEW_H, ENDLESS_VIEW_SCALE,
-} from '../constants.js?v=20260615210000';
+} from '../constants.js?v=20260628400000';
 import { clamp, distance, safeNormalize, randomChoice, randomRange } from '../utils.js';
 
 import { FloatingText }   from '../entities/FloatingText.js';
-import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260615210000';
-import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260615210000';
-import { Player }         from '../entities/Player.js?v=20260615210000';
-import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260615210000';
-import { Enemy }          from '../entities/Enemy.js?v=20260615210000';
-import { SupportDrone }   from '../entities/SupportDrone.js?v=20260615210000';
+import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260628400000';
+import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260628400000';
+import { Player }         from '../entities/Player.js?v=20260628400000';
+import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260628400000';
+import { Enemy }          from '../entities/Enemy.js?v=20260628400000';
+import { SupportDrone }   from '../entities/SupportDrone.js?v=20260628400000';
 
-import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow } from './Effects.js?v=20260615210000';
-import { SystemEventManager } from './Events.js?v=20260615210000';
-import { UpgradeUI }      from './UpgradeUI.js?v=20260628390000';
-import { weightedSample } from './Upgrades.js?v=20260628390000';
-import { MutationUI }      from './MutationUI.js?v=20260616080000';
-import { sampleMutations } from './Mutations.js?v=20260615210000';
-import { drawHUD, drawEndScreen } from './HUD.js?v=20260627230000';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS } from './MetaProgress.js?v=20260627230000';
-import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260615210000';
+import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow } from './Effects.js?v=20260628400000';
+import { SystemEventManager } from './Events.js?v=20260628400000';
+import { UpgradeUI }      from './UpgradeUI.js?v=20260628400000';
+import { weightedSample } from './Upgrades.js?v=20260628400000';
+import { MutationUI }      from './MutationUI.js?v=20260628400000';
+import { sampleMutations } from './Mutations.js?v=20260628400000';
+import { drawHUD, drawEndScreen } from './HUD.js?v=20260628400000';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS } from './MetaProgress.js?v=20260628400000';
+import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260628400000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
-import { GlitchDash } from '../effects/glitch-dash.js?v=20260615210000';
-import { EMPShockwave } from '../effects/emp-shockwave.js?v=20260615210000';
-import { DigitalSingularity } from '../effects/digital-singularity.js?v=20260615210000';
-import { Protocol0 } from '../effects/protocol-0.js?v=20260615210000';
-import { LaserEyes } from '../effects/laser-eyes.js?v=20260615210000';
-import { MeteorRain } from '../effects/meteor-rain.js?v=20260615210000';
-import { NpcWalker } from './NpcWalker.js?v=20260628390000';
+import { GlitchDash } from '../effects/glitch-dash.js?v=20260628400000';
+import { EMPShockwave } from '../effects/emp-shockwave.js?v=20260628400000';
+import { DigitalSingularity } from '../effects/digital-singularity.js?v=20260628400000';
+import { Protocol0 } from '../effects/protocol-0.js?v=20260628400000';
+import { LaserEyes } from '../effects/laser-eyes.js?v=20260628400000';
+import { MeteorRain } from '../effects/meteor-rain.js?v=20260628400000';
+import { NpcWalker } from './NpcWalker.js?v=20260628400000';
 
 // Euclid Vector toxin kit — used ONLY when selectedCharacter === 'euclid_vector' (world-space).
-import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=20260615210000';
+import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=20260628400000';
 
 // ── Eden Core character message pools (in-run transmissions) ────────────────
 const _EDEN_CHAR_POOLS = {
@@ -353,21 +353,21 @@ export class Game {
       fallback.src = 'assets/backgrounds/cyberpunk_city_background.png';
       this._bgImage = fallback;
     };
-    this._bgImage.src = 'assets/backgrounds/cyber_city_bg_clean.png?v=20260615210000';
+    this._bgImage.src = 'assets/backgrounds/cyber_city_bg_clean.png?v=20260628400000';
 
     // Endless Stage 02 visuals (only used while this.endless — Act 1 keeps default visuals).
     // Missing files degrade to the default background / default Nexus visual (warn, no crash).
     this._endlessBgImage = new Image();
     this._endlessBgImage.onerror = () => console.warn('[Stage] missing assets/maps/endless/stage_02_neon_shinjuku_plaza.png — using default background');
-    this._endlessBgImage.src = 'assets/maps/endless/stage_02_neon_shinjuku_plaza.png?v=20260615210000';
+    this._endlessBgImage.src = 'assets/maps/endless/stage_02_neon_shinjuku_plaza.png?v=20260628400000';
     this._endlessNexusImage = new Image();
     this._endlessNexusImage.onerror = () => console.warn('[Nexus] missing assets/nexus/endless_nexus_base_8cores.png — using default Nexus visual');
-    this._endlessNexusImage.src = 'assets/nexus/endless_nexus_base_8cores.png?v=20260615210000';
+    this._endlessNexusImage.src = 'assets/nexus/endless_nexus_base_8cores.png?v=20260628400000';
 
     // Chaos Mode background (unlocks at 31:00 Endless)
     this._chaosBgImage = new Image();
     this._chaosBgImage.onerror = () => console.warn('[Chaos] missing assets/ui/CHAOS_mode.png');
-    this._chaosBgImage.src = 'assets/ui/CHAOS_mode.png?v=20260615210000';
+    this._chaosBgImage.src = 'assets/ui/CHAOS_mode.png?v=20260628400000';
 
     // Preload character portraits for Character Select screen
     this._charImages = {};
@@ -380,7 +380,7 @@ export class Game {
     // Japan Phasewalker portrait lives in the endless/ subfolder (Character Select + FX modules).
     this._phasewalkerSprite = new Image();
     this._phasewalkerSprite.onerror = () => console.warn('[Char] missing assets/characters/endless/japan_phasewalker.png');
-    this._phasewalkerSprite.src = 'assets/characters/endless/japan_phasewalker.png?v=20260615210000';   // ?v bust: corrected transparency
+    this._phasewalkerSprite.src = 'assets/characters/endless/japan_phasewalker.png?v=20260628400000';   // ?v bust: corrected transparency
     this._charImages['japan_phasewalker'] = this._phasewalkerSprite;
     // Euclid Vector portrait (endless/ subfolder; unlocked from the start — see roster + free unlock).
     this._euclidSprite = new Image();
@@ -421,13 +421,13 @@ export class Game {
     // Preload start-menu background image (new premium theme; falls back to dark gradient if missing)
     this._menuBg = new Image();
     this._menuBg.onerror = () => console.warn('[Menu] main_menu_theme.png not found — dark fallback used');
-    this._menuBg.src = 'assets/ui/new_main_menu_theme/main_menu_theme.png?v=20260615210000';
+    this._menuBg.src = 'assets/ui/new_main_menu_theme/main_menu_theme.png?v=20260628400000';
 
     // Menu character cut-out (transparent two-character art) — code-positioned layer over the theme's
     // character zone, so the protagonists are crisp + code-controlled. Graceful if missing.
     this._menuChars = new Image();
     this._menuChars.onerror = () => console.warn('[Menu] cyber-grid-menu.png not found — theme art used');
-    this._menuChars.src = 'assets/ui/cyber-grid-menu.png?v=20260615210000';
+    this._menuChars.src = 'assets/ui/cyber-grid-menu.png?v=20260628400000';
 
     // Preload phoenix revive effect images (orange / blue / gold tiers)
     this._phoenixImage = new Image();
@@ -435,11 +435,11 @@ export class Game {
 
     this._phoenixBlueImage = new Image();
     this._phoenixBlueImage.onerror = () => console.warn('[Assets] Failed to load: assets/effects/phoenix/blue_phoenix_revive.png');
-    this._phoenixBlueImage.src = 'assets/effects/phoenix/blue_phoenix_revive.png?v=20260615210000';
+    this._phoenixBlueImage.src = 'assets/effects/phoenix/blue_phoenix_revive.png?v=20260628400000';
 
     this._phoenixGoldImage = new Image();
     this._phoenixGoldImage.onerror = () => console.warn('[Assets] Failed to load: assets/effects/phoenix/gold_phoenix_revive.png');
-    this._phoenixGoldImage.src = 'assets/effects/phoenix/gold_phoenix_revive.png?v=20260615210000';
+    this._phoenixGoldImage.src = 'assets/effects/phoenix/gold_phoenix_revive.png?v=20260628400000';
 
     // Preload credits photos
     this._creditImgInk = new Image();
@@ -457,10 +457,10 @@ export class Game {
     // Preload core and matrix sprites
     this._coreSprite = new Image();
     this._coreSprite.onerror = () => console.warn('[Assets] Failed to load: assets/cores/data_core.png');
-    this._coreSprite.src = 'assets/cores/data_core.png?v=20260615210000';
+    this._coreSprite.src = 'assets/cores/data_core.png?v=20260628400000';
     this._matrixSprite = new Image();
     this._matrixSprite.onerror = () => console.warn('[Assets] Failed to load: assets/bases/matrix_base.png');
-    this._matrixSprite.src = 'assets/bases/matrix_base.png?v=20260615210000';
+    this._matrixSprite.src = 'assets/bases/matrix_base.png?v=20260628400000';
 
     // Preload grid cache supply drop sprite
     this._gridCacheSprite = new Image();
@@ -484,7 +484,7 @@ export class Game {
     this._airstrikeSprite.src = 'assets/enemies/event_airstrike/airstrike_sheet.png';
     this._lightningStormSprite = new Image();
     this._lightningStormSprite.onerror = () => console.warn('[Endless] lights_storm_rain.png not found — drawn fallback used');
-    this._lightningStormSprite.src = 'assets/events/weather/lights_storm_rain.png?v=20260615210000';
+    this._lightningStormSprite.src = 'assets/events/weather/lights_storm_rain.png?v=20260628400000';
 
     // HUD icons: Data-Core (top-right credits) + chains (Cyber Arm SPACE ultimate icon)
     this._dataCoreIcon = new Image();
@@ -508,43 +508,43 @@ export class Game {
     // Preload acid rain weather sprites
     this._acidRainFallImg = new Image();
     this._acidRainFallImg.onerror = () => console.warn('[Weather] acid_rain_fall.png not found — using line fallback');
-    this._acidRainFallImg.src = 'assets/events/weather/acid_rain_fall.png?v=20260615210000';
+    this._acidRainFallImg.src = 'assets/events/weather/acid_rain_fall.png?v=20260628400000';
     this._acidRainSplashImg = new Image();
     this._acidRainSplashImg.onerror = () => console.warn('[Weather] acid_rain_splash.png not found — using ellipse fallback');
-    this._acidRainSplashImg.src = 'assets/events/weather/acid_rain_splash.png?v=20260615210000';
+    this._acidRainSplashImg.src = 'assets/events/weather/acid_rain_splash.png?v=20260628400000';
 
     // Preload AI Overload Titan boss sprite
     this._titanSprite = new Image();
     this._titanSprite.onerror = () => console.warn('[Boss] ai_overload_titan.png failed to load — using fallback');
-    this._titanSprite.src = 'assets/enemies/bosses/ai_overload_titan.png?v=20260615210000';
+    this._titanSprite.src = 'assets/enemies/bosses/ai_overload_titan.png?v=20260628400000';
 
     // Preload Matrix Annihilator mini-boss sprite (existing asset)
     this._annihilatorSprite = new Image();
     this._annihilatorSprite.onerror = () => console.warn('[Boss] assets/enemies/bosses/matrix_annihilator.png failed to load — using fallback');
-    this._annihilatorSprite.src = 'assets/enemies/bosses/matrix_annihilator.png?v=20260615210000';
+    this._annihilatorSprite.src = 'assets/enemies/bosses/matrix_annihilator.png?v=20260628400000';
 
     // Preload Bloodfang Packmaster mini-boss sprite (existing asset)
     this._bloodfangSprite = new Image();
     this._bloodfangSprite.onerror = () => console.warn('[Boss] assets/enemies/bosses/bloodfang_packmaster.png failed to load — using fallback');
-    this._bloodfangSprite.src = 'assets/enemies/bosses/bloodfang_packmaster.png?v=20260615210000';
+    this._bloodfangSprite.src = 'assets/enemies/bosses/bloodfang_packmaster.png?v=20260628400000';
 
     // Preload Double Demons boss sprites (note: space in filename is intentional)
     this._doubleDemonsSprite = new Image();
     this._doubleDemonsSprite.onerror = () => console.warn('[Boss] double_ demons.png not found — drawn fallback used');
-    this._doubleDemonsSprite.src = 'assets/enemies/bosses/double_ demons.png?v=20260615210000';
+    this._doubleDemonsSprite.src = 'assets/enemies/bosses/double_ demons.png?v=20260628400000';
     this._rocketRainSprite = new Image();
     this._rocketRainSprite.onerror = () => console.warn('[Boss] rocket_rain.png not found — drawn fallback used');
-    this._rocketRainSprite.src = 'assets/enemies/bosses/rocket_rain.png?v=20260615210000';
+    this._rocketRainSprite.src = 'assets/enemies/bosses/rocket_rain.png?v=20260628400000';
 
     // Preload Cyber Serpent mid-run mini-boss sprite
     this._cyberSerpentSprite = new Image();
     this._cyberSerpentSprite.onerror = () => console.warn('[Boss] cyber_serpent_boss.png not found — drawn fallback used');
-    this._cyberSerpentSprite.src = 'assets/enemies/bosses/cyber_serpent_boss.png?v=20260625';
+    this._cyberSerpentSprite.src = 'assets/enemies/bosses/cyber_serpent_boss.png?v=20260628400000';
 
     // Preload Cyber Dragon mid-run boss sprite
     this._cyberDragonSprite = new Image();
     this._cyberDragonSprite.onerror = () => console.warn('[Boss] cyber_dragon_boss.png not found — drawn fallback used');
-    this._cyberDragonSprite.src = 'assets/enemies/bosses/cyber_dragon_boss.png?v=20260625';
+    this._cyberDragonSprite.src = 'assets/enemies/bosses/cyber_dragon_boss.png?v=20260628400000';
 
     // Preload secret-skin preview sprites (Character Select locked/unlocked + Victory screen).
     // Keyed by the same flags MetaProgress persists. Missing files degrade to a text fallback.
@@ -650,7 +650,7 @@ export class Game {
     this._relicIconCache = {};
     RELIC_DEFS.forEach(r => {
       const img = new Image();
-      img.src = `assets/relics/${r.id}.png?v=20260627150000`;
+      img.src = `assets/relics/${r.id}.png?v=20260628400000`;
       this._relicIconCache[r.id] = img;
     });
 
@@ -659,7 +659,7 @@ export class Game {
     this._edenPortraitImg    = new Image();
     this._edenPortraitImg.onload  = () => { this._edenPortraitLoaded = true; };
     this._edenPortraitImg.onerror = () => { this._edenPortraitLoaded = false; };
-    this._edenPortraitImg.src = 'assets/ui/eden_core_portrait.png?v=20260627210000';
+    this._edenPortraitImg.src = 'assets/ui/eden_core_portrait.png?v=20260628400000';
 
     // Null Breach Arena atmospheric image
     this._nullBreachImgLoaded = false;
@@ -872,6 +872,9 @@ export class Game {
 
     this.acidRain      = null;  // { timer, damageAccum } | null
     this.acidRainTimer = 600;   // first event at 10:00
+
+    this._frozenSleet      = null;  // { phase, t, particles } | null — Chaos Mode only
+    this._frozenSleetTimer = 9999; // first trigger on Chaos start (overridden in chaos block)
 
     this.killsSinceHealthDrop = 0;   // counts toward the next HP CELL drop
     this.healthPickups        = [];  // [{ pos: Vec2, timer: number }] — heals 25% maxHp on touch
@@ -5144,6 +5147,7 @@ export class Game {
         this.acidRainTimer      = 30;  // Phase 4: first acid rain 30 s into Chaos
         this._airstrikeTimer    = 15;  // Phase 4: first airstrike 15 s into Chaos
         this._lightningTimer    = 20;  // Phase 4: first lightning storm 20 s into Chaos
+        this._frozenSleetTimer  = 55;  // Phase 4: first Frozen Sleet Storm 55 s into Chaos
       }
     }
     // Chaos Mode: spawn a gold core near the player every ~5 s
@@ -5175,7 +5179,10 @@ export class Game {
       return;
     }
 
-    this.player.update(dt, input);
+    // Frozen Sleet Storm: disable player movement + dash during the hold phase
+    const _sleetFrozen = !!(this._frozenSleet && this._frozenSleet.phase === 'hold');
+    const _frozenInput = _sleetFrozen ? { ...input, keys: new Set() } : input;
+    this.player.update(dt, _frozenInput);
     // Dash SFX — fire once on the frame a dash begins (rising edge of dashTimer).
     const dashing = this.player.dashTimer > 0;
     if (dashing && !this._wasDashing) this.audio?.playDash();
@@ -5214,6 +5221,7 @@ export class Game {
     this._updateAbilityTimers(dt);
     this._updateQuantumOverhaul(dt);
     this._updateAcidRain(dt);
+    this._updateFrozenSleet(dt);          // Chaos Mode: Frozen Sleet Storm
     this._updateEndlessBossRotation(dt);   // Endless-only: repeating miniboss/boss pressure
     this._updateTitan(dt);
     this._updateAnnihilator(dt);
@@ -5843,8 +5851,9 @@ export class Game {
     this.gameState = 'playing';
     this.reset();
     this._enterEndless();             // set up all Endless infrastructure
-    this._chaosMode       = true;     // engage Chaos immediately
-    this._chaosTransTimer = -1;
+    this._chaosMode          = true;     // engage Chaos immediately
+    this._chaosTransTimer    = -1;
+    this._frozenSleetTimer   = 55;  // first Frozen Sleet Storm 55 s into Chaos
     this.audio?.startChaosMusic();    // override the Endless track started by _enterEndless()
     this.triggerAnnouncement('⚡ CHAOS MODE ⚡', '#ff2d95');
   }
@@ -9055,6 +9064,7 @@ export class Game {
 
     // ── Screen-space block (HUD, overlays) ───────────────────────────────────
     this._drawAcidRain(ctx);
+    this._drawFrozenSleet(ctx);            // Chaos Mode: Frozen Sleet Storm overlay
     this._drawGridCacheArrow(ctx);
     ctx.fillStyle = BLACK;
     ctx.fillRect(0, 0, WIDTH, 44);
@@ -9698,7 +9708,7 @@ export class Game {
         <div class="panel-title"><span class="dot"></span>SYSTEM FEED</div>
         <div class="eden-portrait-header">
           <div class="eden-portrait-frame">
-            <img id="cgm-eden-portrait-img" src="assets/ui/eden_core_portrait.png?v=20260627210000" alt="EDEN CORE"
+            <img id="cgm-eden-portrait-img" src="assets/ui/eden_core_portrait.png?v=20260628400000" alt="EDEN CORE"
               onerror="this.style.display='none';var f=document.getElementById('cgm-eden-fallback-icon');if(f)f.style.display='flex';">
             <div class="eden-fallback-icon" id="cgm-eden-fallback-icon">◈</div>
           </div>
@@ -12360,6 +12370,234 @@ _drawLoreArchive(ctx) {
   }
 
   // ─── Acid Rain weather event ──────────────────────────────────────────────
+
+
+  // ─── Frozen Sleet Storm — Chaos Mode weather event ────────────────────────
+  // Chaos-only. Never triggers in Act 1, shop, character select, or non-Chaos states.
+  // Phase 1 ONSET (0.6s): frost grows inward from screen edges.
+  // Phase 2 HOLD (5.5s):  full freeze overlay, player movement disabled.
+  // Phase 3 RECOVERY (1.0s): frost melts outward, player regains control.
+  _updateFrozenSleet(dt) {
+    // Gate: only in active Chaos Mode gameplay, not during menus/gameover/victory
+    if (!this._chaosMode || this.gameOver || this.victory) {
+      // Drain timer but do not trigger
+      if (this._frozenSleetTimer > 0) this._frozenSleetTimer -= dt;
+      return;
+    }
+    // Update active event
+    if (this._frozenSleet) {
+      const fs = this._frozenSleet;
+      fs.t += dt;
+      // Advance sleet particles
+      for (const p of fs.particles) {
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        if (p.y > 720) { p.y = -8; p.x = Math.random() * 1280; }
+      }
+      const ONSET_DUR    = 0.65;
+      const HOLD_DUR     = 5.5;
+      const RECOVERY_DUR = 1.1;
+      if (fs.phase === 'onset' && fs.t >= ONSET_DUR) {
+        fs.phase = 'hold';
+        fs.t     = 0;
+        this.triggerAnnouncement('❄ FROZEN SLEET STORM ❄', '#88ddff');
+      } else if (fs.phase === 'hold' && fs.t >= HOLD_DUR) {
+        fs.phase = 'recovery';
+        fs.t     = 0;
+      } else if (fs.phase === 'recovery' && fs.t >= RECOVERY_DUR) {
+        this._frozenSleet      = null;
+        this._frozenSleetTimer = 110 + Math.random() * 30; // next event in ~110-140s
+        return;
+      }
+      return;
+    }
+    // Count down to next trigger
+    this._frozenSleetTimer -= dt;
+    if (this._frozenSleetTimer > 0) return;
+    // Spawn the event — build particles
+    const particles = [];
+    for (let i = 0; i < 90; i++) {
+      particles.push({
+        x: Math.random() * 1280, y: Math.random() * 720,
+        vx: (Math.random() - 0.5) * 28,
+        vy: 90 + Math.random() * 120,
+        len: 5 + Math.random() * 12,
+        alpha: 0.4 + Math.random() * 0.5,
+        w: 1 + Math.random() * 1.5,
+      });
+    }
+    this._frozenSleet = { phase: 'onset', t: 0, particles };
+    this.audio?.playEventWarning?.();
+  }
+
+  _drawFrozenSleet(ctx) {
+    if (!this._frozenSleet) return;
+    const fs = this._frozenSleet;
+    const W  = 1280, H = 720;
+    const CX = W / 2, CY = H / 2;
+
+    const ONSET_DUR    = 0.65;
+    const HOLD_DUR     = 5.5;
+    const RECOVERY_DUR = 1.1;
+
+    // Progress within each phase (0→1)
+    let freezeProgress = 0; // 0 = no frost, 1 = full frost
+    if (fs.phase === 'onset') {
+      freezeProgress = fs.t / ONSET_DUR;
+    } else if (fs.phase === 'hold') {
+      freezeProgress = 1.0;
+    } else if (fs.phase === 'recovery') {
+      freezeProgress = 1.0 - fs.t / RECOVERY_DUR;
+    }
+    freezeProgress = Math.max(0, Math.min(1, freezeProgress));
+
+    // The "unfrozen center radius" shrinks to 0 as freezeProgress increases.
+    // At fp=0: inner radius = max (no frost). At fp=1: inner radius = 0 (full coverage).
+    const maxInner = Math.sqrt(CX * CX + CY * CY) * 1.12; // diagonal = full screen clear
+    const innerR   = maxInner * (1 - freezeProgress);
+
+    ctx.save();
+
+    // ── Layer 1: Dark navy base via radial gradient from edges inward ─────────
+    const grad = ctx.createRadialGradient(CX, CY, Math.max(0, innerR - 30), CX, CY, maxInner * 1.1);
+    grad.addColorStop(0,   'rgba(0,0,0,0)');
+    grad.addColorStop(0.25, 'rgba(2,6,22,0.55)');
+    grad.addColorStop(0.55, 'rgba(4,12,38,0.80)');
+    grad.addColorStop(0.80, 'rgba(3,15,50,0.92)');
+    grad.addColorStop(1,   'rgba(2,8,28,0.97)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+
+    // ── Layer 2: Cyan icy glow at the freeze frontier ─────────────────────────
+    if (freezeProgress > 0.05 && freezeProgress < 0.99) {
+      const glowR = innerR + 18;
+      const glowG = ctx.createRadialGradient(CX, CY, Math.max(0, innerR - 10), CX, CY, glowR + 25);
+      glowG.addColorStop(0,   'rgba(0,0,0,0)');
+      glowG.addColorStop(0.3, 'rgba(80,220,255,0.18)');
+      glowG.addColorStop(0.7, 'rgba(140,230,255,0.35)');
+      glowG.addColorStop(1,   'rgba(80,200,240,0.0)');
+      ctx.fillStyle = glowG;
+      ctx.fillRect(0, 0, W, H);
+    }
+
+    // ── Layer 3: Frost crystal dendrite lines radiating from corners ──────────
+    const crystalAlpha = freezeProgress * 0.75;
+    if (crystalAlpha > 0.02) {
+      ctx.globalAlpha = crystalAlpha;
+      ctx.strokeStyle = '#a8e8ff';
+      ctx.lineWidth   = 0.8;
+      const corners = [[0,0],[W,0],[0,H],[W,H],[CX,0],[CX,H],[0,CY],[W,CY]];
+      const rng = (seed) => {
+        // Deterministic pseudo-random based on seed to avoid flicker
+        const x = Math.sin(seed * 127.1) * 43758.5453;
+        return x - Math.floor(x);
+      };
+      for (let ci = 0; ci < corners.length; ci++) {
+        const [ox, oy] = corners[ci];
+        // Number of dendrite branches scales with freeze progress
+        const branches = Math.floor(3 + freezeProgress * 5);
+        for (let b = 0; b < branches; b++) {
+          const baseAngle = Math.atan2(CY - oy, CX - ox);
+          const spread    = (Math.PI / 3);
+          const angle     = baseAngle + (rng(ci * 17 + b) - 0.5) * spread;
+          const length    = (60 + rng(ci * 31 + b) * 100) * freezeProgress;
+          ctx.beginPath();
+          ctx.moveTo(ox, oy);
+          const ex = ox + Math.cos(angle) * length;
+          const ey = oy + Math.sin(angle) * length;
+          ctx.lineTo(ex, ey);
+          ctx.stroke();
+          // Sub-branches
+          const sub = Math.floor(2 + rng(ci * 7 + b + 1) * 3);
+          for (let s = 0; s < sub; s++) {
+            const t       = 0.3 + rng(ci * 11 + b * 5 + s) * 0.5;
+            const bx      = ox + Math.cos(angle) * length * t;
+            const by      = oy + Math.sin(angle) * length * t;
+            const subLen  = length * (0.25 + rng(ci * 13 + s) * 0.2);
+            const subAng  = angle + (rng(ci * 19 + s + b) - 0.5) * (Math.PI / 2);
+            ctx.beginPath();
+            ctx.moveTo(bx, by);
+            ctx.lineTo(bx + Math.cos(subAng) * subLen, by + Math.sin(subAng) * subLen);
+            ctx.stroke();
+          }
+        }
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    // ── Layer 4: Glass crack lines from corners ───────────────────────────────
+    const crackAlpha = Math.max(0, (freezeProgress - 0.3) / 0.7) * 0.6;
+    if (crackAlpha > 0.01) {
+      ctx.globalAlpha = crackAlpha;
+      ctx.strokeStyle = '#cceeff';
+      ctx.lineWidth   = 1.0;
+      // Pre-defined crack patterns (deterministic, no flicker)
+      const cracks = [
+        [[0,0],[80,60],[120,140],[95,200]],
+        [[W,0],[W-60,80],[W-130,110],[W-80,200]],
+        [[0,H],[70,H-70],[140,H-120],[100,H-200]],
+        [[W,H],[W-90,H-60],[W-160,H-130]],
+        [[CX-20,0],[CX+15,55],[CX-10,100]],
+        [[0,CY-10],[55,CY+20],[110,CY-15]],
+        [[W,CY+10],[W-55,CY-15],[W-120,CY+20]],
+      ];
+      for (const crack of cracks) {
+        ctx.beginPath();
+        ctx.moveTo(crack[0][0], crack[0][1]);
+        for (let i = 1; i < crack.length; i++) ctx.lineTo(crack[i][0], crack[i][1]);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    // ── Layer 5: Falling sleet particles ─────────────────────────────────────
+    const particleAlpha = freezeProgress * 0.8;
+    if (particleAlpha > 0.02) {
+      ctx.save();
+      ctx.strokeStyle = '#e0f6ff';
+      for (const p of fs.particles) {
+        ctx.globalAlpha = p.alpha * particleAlpha;
+        ctx.lineWidth   = p.w;
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y);
+        ctx.lineTo(p.x + p.vx * 0.04, p.y + p.len);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
+
+    // ── Layer 6: Subtle scanline shimmer (cyber-ice digital effect) ───────────
+    if (fs.phase === 'hold' || (fs.phase === 'onset' && freezeProgress > 0.7)) {
+      const scanAlpha = 0.07 + 0.04 * Math.sin(Date.now() / 200);
+      ctx.globalAlpha = scanAlpha;
+      ctx.fillStyle   = '#44aaff';
+      for (let y = 0; y < H; y += 4) {
+        ctx.fillRect(0, y, W, 1);
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    // ── Layer 7: FROZEN title text during hold phase ──────────────────────────
+    if (fs.phase === 'hold') {
+      const textAlpha = Math.min(1, fs.t / 0.5) * 0.9;
+      ctx.globalAlpha = textAlpha;
+      ctx.font        = 'bold 22px Consolas, monospace';
+      ctx.textAlign   = 'center';
+      // Shadow
+      ctx.fillStyle   = 'rgba(0,20,60,0.8)';
+      ctx.fillText('❄ FROZEN SLEET STORM ❄', CX + 1, 110 + 1);
+      // Glow text
+      ctx.fillStyle   = '#88ddff';
+      ctx.fillText('❄ FROZEN SLEET STORM ❄', CX, 110);
+      ctx.font        = '12px Consolas, monospace';
+      ctx.fillStyle   = 'rgba(180,230,255,0.7)';
+      ctx.fillText('MOVEMENT DISABLED', CX, 130);
+      ctx.globalAlpha = 1;
+    }
+
+    ctx.restore();
+  }
 
   _updateAcidRain(dt) {
     const ACID_DPS   = 10;    // damage per second to normal enemies (kills weak, hurts strong)

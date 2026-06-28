@@ -1,29 +1,44 @@
 // NpcWalker.js — KIROSHI WALKER autonomous ally V2
 // Summoned every 120s of active gameplay; active for 60s per window.
-// Has a basic electric wave attack (every 3.5s) and an electric body shockwave ultimate (every 45s).
+// Weapons: (1) basic electric wave (every 3.5s), (2) AoE shockwave pulse (every 45s, multi-pulse),
+//          (3) Mind Glitch / Neural Override (every 10s, applies glitch status → self-destruct).
 // Takes damage from enemy/boss proximity. Character-specific synergy VFX and damage bonuses.
 // Does NOT trigger game-over when downed. Revives after 20s within the same active window.
 
 const WALKER_FOLLOW_DIST  = 72;    // target gap from player (px)
 const WALKER_FOLLOW_SPEED = 115;   // px/s approach speed
-const WALKER_MANA_REGEN   = 8;    // mana/s — allows 45s ability once per 60s window
+const WALKER_MANA_REGEN   = 10;   // mana/s — buffed to support 3 weapons
 const WALKER_DOWNED_DUR   = 20;   // seconds until revive (within same active window)
 const WALKER_REVIVE_PCT   = 0.4;  // revive at 40% HP
 
 const BASIC_ATTACK_CD     = 3.5;  // seconds between basic electric wave casts
-const BASIC_ATTACK_DMG    = 12;   // base damage per basic hit
-const BASIC_ATTACK_MANA   = 10;   // mana cost for basic wave
+const BASIC_ATTACK_DMG    = 18;   // base damage per basic hit (buffed from 12)
+const BASIC_ATTACK_MANA   = 8;    // mana cost for basic wave
 
-const ABILITY_CD          = 45;   // seconds between electric body shockwave ultimates
-const ABILITY_MANA_COST   = 60;   // mana cost for the ultimate
-const SHOCKWAVE_DMG       = 35;   // base ultimate damage per hit
+// ── Shockwave AoE Ultimate (reworked) ────────────────────────────────────────
+const ABILITY_CD          = 45;   // seconds between shockwave ultimates
+const ABILITY_MANA_COST   = 60;   // mana cost
+const SHOCKWAVE_DMG       = 75;   // damage per pulse per enemy (was 35 single-target)
+const SHOCKWAVE_RADIUS    = 280;  // AoE radius in px — real range, not cosmetic
+const SHOCKWAVE_PULSES    = 3;    // number of expanding pulses per activation
+const SHOCKWAVE_PULSE_GAP = 0.20; // seconds between pulses
 
+// ── Mind Glitch / Neural Override ─────────────────────────────────────────────
+const GLITCH_CD           = 10;   // seconds between Mind Glitch casts
+const GLITCH_MANA_COST    = 20;   // mana cost
+const GLITCH_RANGE        = 220;  // px — range to select targets
+const GLITCH_MAX_TARGETS  = 5;    // max enemies to glitch at once
+const GLITCH_DELAY        = 1.1;  // seconds until self-destruct / heavy damage fires
+const GLITCH_DAMAGE       = 130;  // heavy damage applied at end of glitch delay (bosses use _capBossDamage)
+const GLITCH_BOSS_DAMAGE  = 200;  // large hit applied to bosses via _capBossDamage
+
+// ── Misc ─────────────────────────────────────────────────────────────────────
 const ENEMY_HIT_RANGE     = 40;   // px — enemy proximity range that damages Walker
 const ENEMY_HIT_DAMAGE    = 7;    // damage from normal enemy contact
 const BOSS_HIT_DAMAGE     = 14;   // damage from boss contact
 const ENEMY_DMG_COOLDOWN  = 0.5;  // global hit cooldown to prevent spam (seconds)
 
-const MAX_VFX             = 64;   // hard cap on VFX particle count
+const MAX_VFX             = 96;   // hard cap on VFX particle count (raised for new effects)
 const SPRITE_W            = 48;   // display width (px)
 const SPRITE_H            = Math.round(SPRITE_W * (1537 / 1023)); // aspect ~72px
 
@@ -56,9 +71,15 @@ export class NpcWalker {
     this.downed       = false;
     this.downedTimer  = 0;
 
-    this.abilityCd    = 5;        // warm-up before first ult cast
+    this.abilityCd    = 5;        // warm-up before first shockwave
     this._basicCd     = 2;        // warm-up before first basic attack
+    this._glitchCd    = 4;        // warm-up before first mind glitch
     this._dmgCooldown = 0;        // global enemy contact cooldown
+
+    // Pending shockwave pulses: [{delay, pulseIndex}]
+    this._pendingPulses = [];
+    // Active glitch targets: [{target, timer, isDone, isDD}]
+    this._glitchedTargets = [];
 
     this._vfx         = [];
     this._img         = null;
@@ -79,7 +100,6 @@ export class NpcWalker {
 
   get isActive() { return this._active; }
 
-  // Called by Game.js when the summon timer fires
   summon(playerPos, synergyId, activeDur, maxHpBonus) {
     const _synId  = synergyId || 'default';
     const _actDur = (typeof activeDur === 'number' && activeDur > 0) ? activeDur : 60;
@@ -89,9 +109,12 @@ export class NpcWalker {
     this.pos         = { x: playerPos.x - 60, y: playerPos.y + 16 };
     this.downed      = false;
     this.downedTimer = 0;
-    this.abilityCd   = 5;    // 5s warm-up before first ult
-    this._basicCd    = 1;    // 1s before first basic wave
+    this.abilityCd   = 5;
+    this._basicCd    = 1;
+    this._glitchCd   = 4;
     this._dmgCooldown = 0;
+    this._pendingPulses   = [];
+    this._glitchedTargets = [];
     this._active     = true;
     this._activeDur  = _actDur;
     this._synergyId  = _synId;
@@ -102,22 +125,22 @@ export class NpcWalker {
   dismiss() {
     this._active    = false;
     this._activeDur = 0;
-    // keep _vfx so particles fade out naturally
   }
 
   // ── Update ────────────────────────────────────────────────────────────────
   update(dt, playerPos, game) {
     this._updateVfx(dt);
+    this._updatePendingPulses(dt, game);
+    this._updateGlitchedTargets(dt, game);
+
     if (!this._active) return;
 
-    // Count down active window
     this._activeDur -= dt;
     if (this._activeDur <= 0) {
       this.dismiss();
       return;
     }
 
-    // Global hit cooldown
     if (this._dmgCooldown > 0) this._dmgCooldown -= dt;
 
     if (this.downed) {
@@ -126,7 +149,6 @@ export class NpcWalker {
       return;
     }
 
-    // Mana regen (base + card bonus)
     const manaRegen = WALKER_MANA_REGEN + (game.player ? (game.player.walkerManaRegenBonus || 0) : 0);
     this.mana = Math.min(this.maxMana, this.mana + manaRegen * dt);
 
@@ -141,34 +163,42 @@ export class NpcWalker {
       this.pos.y += dy * inv * speed * dt;
     }
 
-    // Enemy proximity damage on Walker
     this._updateEnemyDamage(game);
     if (!this._active || this.downed) return;
 
-    // Basic electric wave (frequent, low damage)
+    const dmgBonus = game.player ? (game.player.walkerDmgBonus || 0) : 0;
+
+    // ── Basic electric wave ───────────────────────────────────────────────
     this._basicCd -= dt;
     if (this._basicCd <= 0 && this.mana >= BASIC_ATTACK_MANA) {
       const target = this._nearestTarget(game);
       if (target) {
         this._castBasicWave(target, game);
-        this.mana     -= BASIC_ATTACK_MANA;
-        const cdRed    = game.player ? (game.player.walkerBasicCdReduce || 0) : 0;
-        this._basicCd  = Math.max(1.5, BASIC_ATTACK_CD - cdRed);
+        this.mana    -= BASIC_ATTACK_MANA;
+        const cdRed   = game.player ? (game.player.walkerBasicCdReduce || 0) : 0;
+        this._basicCd = Math.max(1.5, BASIC_ATTACK_CD - cdRed);
       } else {
         this._basicCd = 0.5;
       }
     }
 
-    // Electric body shockwave ultimate (45s ability)
+    // ── Shockwave AoE ultimate ────────────────────────────────────────────
     const ultCd = Math.max(20, ABILITY_CD - (game.player ? (game.player.walkerAbilCdReduce || 0) : 0));
     this.abilityCd -= dt;
     if (this.abilityCd <= 0 && this.mana >= ABILITY_MANA_COST) {
-      const target = this._nearestTarget(game);
-      if (target) {
-        const dmgBonus = game.player ? (game.player.walkerDmgBonus || 0) : 0;
-        this._castShockwave(target, game, dmgBonus);
-        this.mana      -= ABILITY_MANA_COST;
-        this.abilityCd  = ultCd;
+      this._castShockwave(game, dmgBonus);
+      this.mana      -= ABILITY_MANA_COST;
+      this.abilityCd  = ultCd;
+    }
+
+    // ── Mind Glitch / Neural Override ────────────────────────────────────
+    this._glitchCd -= dt;
+    if (this._glitchCd <= 0 && this.mana >= GLITCH_MANA_COST) {
+      if (this._castMindGlitch(game)) {
+        this.mana      -= GLITCH_MANA_COST;
+        this._glitchCd  = GLITCH_CD;
+      } else {
+        this._glitchCd = 1.5; // retry sooner if no targets
       }
     }
   }
@@ -184,7 +214,6 @@ export class NpcWalker {
   _updateEnemyDamage(game) {
     if (this.downed || !this._active) return;
     if (this._dmgCooldown > 0) return;
-    // Normal enemies
     for (const e of (game.enemies || [])) {
       if (e.dead || e.dying) continue;
       if (!e.pos) continue;
@@ -195,7 +224,6 @@ export class NpcWalker {
         return;
       }
     }
-    // Boss proximity
     const bosses = [
       game.titanBoss, game.annihilatorBoss, game.bloodfangBoss,
       game.cyberSerpentBoss, game.cyberDragonBoss,
@@ -209,7 +237,6 @@ export class NpcWalker {
         return;
       }
     }
-    // DoubleDemonsBoss
     const dd = game.doubleDemonsBoss;
     if (dd && dd.hp > 0 && dd.gunner && dd.gunner.pos) {
       if (Math.hypot(dd.gunner.pos.x - this.pos.x, dd.gunner.pos.y - this.pos.y) < ENEMY_HIT_RANGE + 40) {
@@ -244,7 +271,7 @@ export class NpcWalker {
     return best;
   }
 
-  // Basic electric wave — short arc, small damage, frequent
+  // ── Basic electric wave ────────────────────────────────────────────────────
   _castBasicWave(target, game) {
     const syn    = this._synergy;
     const rawDmg = Math.round(BASIC_ATTACK_DMG * (syn.dmgMult || 1.0));
@@ -274,7 +301,6 @@ export class NpcWalker {
       }
     }
 
-    // Lightweight VFX: small arc + tiny burst
     if (tp) {
       this._vfx.push({ type: 'arc', x1: this.pos.x, y1: this.pos.y, x2: tp.x, y2: tp.y, life: 0.16, maxLife: 0.16, color: syn.col1, lw: 1.5, jitter: [] });
       this._vfx.push({ type: 'burst', x: tp.x, y: tp.y, r: 0, maxR: 14, life: 0.18, maxLife: 0.18, color: syn.col2, lw: 1.5 });
@@ -282,66 +308,296 @@ export class NpcWalker {
     if (this._vfx.length > MAX_VFX) this._vfx.splice(0, this._vfx.length - MAX_VFX);
   }
 
-  // Electric body shockwave — ULTIMATE, large VFX, every 45s
-  _castShockwave(target, game, dmgBonus) {
-    const syn    = this._synergy;
-    const rawDmg = Math.round((SHOCKWAVE_DMG + (dmgBonus || 0)) * (syn.dmgMult || 1.0));
-
-    if (target._isDD) {
-      if (game.doubleDemonsBoss && game.doubleDemonsBoss.hp > 0) {
-        const eff = typeof game._capBossDamage === 'function'
-          ? game._capBossDamage(game.doubleDemonsBoss, rawDmg) : rawDmg;
-        game.doubleDemonsBoss.hp -= eff;
-      }
-      this._spawnUltVfx(target.pos, syn);
-      return;
+  // ── Shockwave AoE Ultimate ─────────────────────────────────────────────────
+  // Emits from Walker position, expands outward, hits ALL enemies in radius.
+  // Multi-pulse: 3 expanding rings, each does full damage.
+  _castShockwave(game, dmgBonus) {
+    const syn = this._synergy;
+    // Queue 3 pulses with staggered delays
+    for (let i = 0; i < SHOCKWAVE_PULSES; i++) {
+      this._pendingPulses.push({
+        delay:      i * SHOCKWAVE_PULSE_GAP,
+        game,
+        dmgBonus:   dmgBonus || 0,
+        syn,
+        pulseIdx:   i,
+        // Track which enemies were already hit this activation to prevent double-dip
+        hitSet:     new Set(),
+      });
     }
-
-    const isBoss = (typeof target.isBoss === 'function' && target.isBoss()) || !!target.isMegaBoss;
-    if (isBoss) {
-      const eff = typeof game._capBossDamage === 'function'
-        ? game._capBossDamage(target, rawDmg) : rawDmg;
-      target.hp -= eff;
-      if (target.hitFlash !== undefined) target.hitFlash = 0.12;
-    } else {
-      if (typeof target.takeHit === 'function') {
-        target.takeHit(rawDmg, game);
-      } else {
-        target.hp -= rawDmg;
-        if (target.hp <= 0 && !target.dead) target.dead = true;
-        if (target.hitFlash !== undefined) target.hitFlash = 0.12;
-      }
-    }
-    this._spawnUltVfx(target.pos, syn);
+    // Spawn large expanding ring VFX immediately (visual lead)
+    this._spawnShockwaveVfx(syn);
   }
 
-  _spawnUltVfx(targetPos, syn) {
-    if (!targetPos) return;
-    // Three expanding rings from Walker body
-    this._vfx.push({ type: 'ring', x: this.pos.x, y: this.pos.y, r: 8, maxR: 72, life: 0.60, maxLife: 0.60, color: syn.col1, lw: 3 });
-    this._vfx.push({ type: 'ring', x: this.pos.x, y: this.pos.y, r: 4, maxR: 48, life: 0.45, maxLife: 0.45, color: syn.col2, lw: 2 });
-    this._vfx.push({ type: 'ring', x: this.pos.x, y: this.pos.y, r: 2, maxR: 28, life: 0.28, maxLife: 0.28, color: '#ffffff', lw: 1.5 });
-    // Jagged lightning arc to target
-    this._vfx.push({ type: 'arc', x1: this.pos.x, y1: this.pos.y, x2: targetPos.x, y2: targetPos.y, life: 0.32, maxLife: 0.32, color: syn.col1, lw: 2.5, jitter: this._makeJitter(targetPos) });
-    // Impact burst at target
-    this._vfx.push({ type: 'burst', x: targetPos.x, y: targetPos.y, r: 0, maxR: 40, life: 0.40, maxLife: 0.40, color: syn.col2, lw: 2 });
+  _updatePendingPulses(dt, game) {
+    for (let i = this._pendingPulses.length - 1; i >= 0; i--) {
+      const p = this._pendingPulses[i];
+      p.delay -= dt;
+      if (p.delay <= 0) {
+        this._fireShockwavePulse(p, game);
+        this._pendingPulses.splice(i, 1);
+      }
+    }
+  }
+
+  _fireShockwavePulse(pulse, game) {
+    const syn    = pulse.syn;
+    const rawDmg = Math.round((SHOCKWAVE_DMG + (pulse.dmgBonus || 0)) * (syn.dmgMult || 1.0));
+    const wx     = this.pos.x;
+    const wy     = this.pos.y;
+    const radius = SHOCKWAVE_RADIUS;
+    let hitCount = 0;
+
+    // Hit all normal enemies in radius
+    for (const e of (game.enemies || [])) {
+      if (e.dead || e.dying) continue;
+      if (!e.pos) continue;
+      const d = Math.hypot(e.pos.x - wx, e.pos.y - wy);
+      if (d > radius) continue;
+      if (pulse.hitSet && pulse.hitSet.has(e)) continue;
+      if (pulse.hitSet) pulse.hitSet.add(e);
+
+      if (typeof e.takeHit === 'function') {
+        e.takeHit(rawDmg, game);
+      } else {
+        e.hp -= rawDmg;
+        if (e.hp <= 0 && !e.dead) e.dead = true;
+        if (e.hitFlash !== undefined) e.hitFlash = 0.14;
+      }
+      // Impact spark at enemy position
+      this._vfx.push({ type: 'burst', x: e.pos.x, y: e.pos.y, r: 0, maxR: 18, life: 0.22, maxLife: 0.22, color: syn.col1, lw: 2 });
+      hitCount++;
+    }
+
+    // Hit singleton bosses in radius
+    const singleBosses = [
+      game.titanBoss, game.annihilatorBoss, game.bloodfangBoss,
+      game.cyberSerpentBoss, game.cyberDragonBoss,
+    ];
+    for (const b of singleBosses) {
+      if (!b || b.hp <= 0 || !b.pos) continue;
+      if (pulse.hitSet && pulse.hitSet.has(b)) continue;
+      const d = Math.hypot(b.pos.x - wx, b.pos.y - wy);
+      if (d > radius + (b.radius || 60)) continue; // generous radius for big bosses
+      if (pulse.hitSet) pulse.hitSet.add(b);
+
+      const eff = typeof game._capBossDamage === 'function'
+        ? game._capBossDamage(b, rawDmg) : rawDmg;
+      b.hp -= eff;
+      if (b.hitFlash !== undefined) b.hitFlash = 0.15;
+      // Trigger boss death handlers if HP reached 0
+      if (b.hp <= 0) {
+        if (b === game.titanBoss      && typeof game._titanDie      === 'function') game._titanDie();
+        if (b === game.annihilatorBoss && typeof game._annihilatorDie === 'function') game._annihilatorDie();
+        if (b === game.bloodfangBoss  && typeof game._bloodfangDie  === 'function') game._bloodfangDie();
+        if (b === game.cyberSerpentBoss && typeof game._cyberSerpentDie === 'function') game._cyberSerpentDie();
+        if (b === game.cyberDragonBoss  && typeof game._cyberDragonDie  === 'function') game._cyberDragonDie();
+      }
+      this._vfx.push({ type: 'burst', x: b.pos.x, y: b.pos.y, r: 0, maxR: 28, life: 0.28, maxLife: 0.28, color: syn.col1, lw: 2.5 });
+      hitCount++;
+    }
+
+    // DoubleDemonsBoss
+    const dd = game.doubleDemonsBoss;
+    if (dd && dd.hp > 0 && dd.gunner && dd.gunner.pos) {
+      if (!(pulse.hitSet && pulse.hitSet.has(dd))) {
+        const d = Math.hypot(dd.gunner.pos.x - wx, dd.gunner.pos.y - wy);
+        if (d <= radius + 50) {
+          if (pulse.hitSet) pulse.hitSet.add(dd);
+          const eff = typeof game._capBossDamage === 'function'
+            ? game._capBossDamage(dd, rawDmg) : rawDmg;
+          dd.hp -= eff;
+          if (dd.hp <= 0 && typeof game._doubleDemonsDie === 'function') game._doubleDemonsDie();
+          this._vfx.push({ type: 'burst', x: dd.gunner.pos.x, y: dd.gunner.pos.y, r: 0, maxR: 28, life: 0.28, maxLife: 0.28, color: syn.col1, lw: 2.5 });
+          hitCount++;
+        }
+      }
+    }
+
+    // Per-pulse secondary ring VFX
+    if (pulse.pulseIdx > 0) {
+      const ringAlpha = 1 - pulse.pulseIdx * 0.25;
+      this._vfx.push({ type: 'ring', x: wx, y: wy, r: pulse.pulseIdx * 40, maxR: SHOCKWAVE_RADIUS, life: 0.55, maxLife: 0.55, color: syn.col2, lw: 2, alpha: ringAlpha });
+    }
+
     if (this._vfx.length > MAX_VFX) this._vfx.splice(0, this._vfx.length - MAX_VFX);
   }
 
-  _makeJitter(targetPos) {
-    const pts = [];
-    const dx  = targetPos.x - this.pos.x;
-    const dy  = targetPos.y - this.pos.y;
-    const len = Math.sqrt(dx * dx + dy * dy) || 1;
-    const nx  = -dy / len;
-    const ny  = dx / len;
-    const steps = 3 + Math.floor(Math.random() * 3);
-    for (let i = 1; i < steps; i++) {
-      const t   = i / steps;
-      const off = (Math.random() - 0.5) * 38;
-      pts.push({ t, ox: nx * off, oy: ny * off });
+  _spawnShockwaveVfx(syn) {
+    // Three large expanding rings from Walker body — much bigger than before
+    this._vfx.push({ type: 'ring', x: this.pos.x, y: this.pos.y, r: 8,  maxR: SHOCKWAVE_RADIUS,       life: 0.75, maxLife: 0.75, color: syn.col1, lw: 4 });
+    this._vfx.push({ type: 'ring', x: this.pos.x, y: this.pos.y, r: 6,  maxR: SHOCKWAVE_RADIUS * 0.7, life: 0.60, maxLife: 0.60, color: syn.col2, lw: 3 });
+    this._vfx.push({ type: 'ring', x: this.pos.x, y: this.pos.y, r: 4,  maxR: SHOCKWAVE_RADIUS * 0.4, life: 0.40, maxLife: 0.40, color: '#ffffff', lw: 2 });
+    // Inner flash burst at Walker
+    this._vfx.push({ type: 'burst', x: this.pos.x, y: this.pos.y, r: 0, maxR: 60, life: 0.30, maxLife: 0.30, color: syn.col1, lw: 3 });
+    // Second and third pulse rings (staggered VFX)
+    this._vfx.push({ type: 'ring', x: this.pos.x, y: this.pos.y, r: 12, maxR: SHOCKWAVE_RADIUS * 0.85, life: 0.65, maxLife: 0.65, color: syn.col1, lw: 2.5 });
+    this._vfx.push({ type: 'ring', x: this.pos.x, y: this.pos.y, r: 20, maxR: SHOCKWAVE_RADIUS * 0.60, life: 0.50, maxLife: 0.50, color: '#aaeeff', lw: 2 });
+  }
+
+  // ── Mind Glitch / Neural Override ─────────────────────────────────────────
+  // Targets up to 5 enemies/bosses in range, applies glitch status,
+  // destroys/damages them after GLITCH_DELAY seconds.
+  _castMindGlitch(game) {
+    const wx = this.pos.x, wy = this.pos.y;
+    const syn = this._synergy;
+    const targets = [];
+
+    // Collect normal enemies in range
+    for (const e of (game.enemies || [])) {
+      if (e.dead || e.dying) continue;
+      if (!e.pos) continue;
+      // Skip already-glitched enemies
+      if (this._glitchedTargets.some(g => g.target === e)) continue;
+      const d = Math.hypot(e.pos.x - wx, e.pos.y - wy);
+      if (d <= GLITCH_RANGE) targets.push({ target: e, dist: d, isBoss: false, isDD: false });
     }
-    return pts;
+
+    // Collect singleton bosses in range
+    const singleBosses = [
+      game.titanBoss, game.annihilatorBoss, game.bloodfangBoss,
+      game.cyberSerpentBoss, game.cyberDragonBoss,
+    ];
+    for (const b of singleBosses) {
+      if (!b || b.hp <= 0 || !b.pos) continue;
+      if (this._glitchedTargets.some(g => g.target === b)) continue;
+      const d = Math.hypot(b.pos.x - wx, b.pos.y - wy);
+      if (d <= GLITCH_RANGE + (b.radius || 60)) targets.push({ target: b, dist: d, isBoss: true, isDD: false });
+    }
+
+    // DoubleDemonsBoss
+    const dd = game.doubleDemonsBoss;
+    if (dd && dd.hp > 0 && dd.gunner && dd.gunner.pos && !this._glitchedTargets.some(g => g.isDD)) {
+      const d = Math.hypot(dd.gunner.pos.x - wx, dd.gunner.pos.y - wy);
+      if (d <= GLITCH_RANGE + 60) targets.push({ target: dd, dist: d, isBoss: true, isDD: true });
+    }
+
+    if (targets.length === 0) return false;
+
+    // Sort by distance, pick closest GLITCH_MAX_TARGETS
+    targets.sort((a, b) => a.dist - b.dist);
+    const selected = targets.slice(0, GLITCH_MAX_TARGETS);
+
+    for (const t of selected) {
+      this._glitchedTargets.push({
+        target:  t.target,
+        timer:   GLITCH_DELAY,
+        isDone:  false,
+        isBoss:  t.isBoss,
+        isDD:    t.isDD,
+        syn,
+      });
+      // Mark visual glitch on target
+      if (t.target.hitFlash !== undefined) t.target.hitFlash = 0.1;
+      // Spawn glitch VFX around the target's position
+      const tp = t.isDD ? (t.target.gunner?.pos || { x: wx, y: wy }) : t.target.pos;
+      this._spawnGlitchVfx(tp, syn, 'onset');
+    }
+
+    // Walker cast VFX
+    this._vfx.push({ type: 'burst', x: wx, y: wy, r: 0, maxR: 30, life: 0.22, maxLife: 0.22, color: '#cc44ff', lw: 2 });
+    return true;
+  }
+
+  _updateGlitchedTargets(dt, game) {
+    for (let i = this._glitchedTargets.length - 1; i >= 0; i--) {
+      const g = this._glitchedTargets[i];
+      if (g.isDone) { this._glitchedTargets.splice(i, 1); continue; }
+
+      g.timer -= dt;
+
+      // Flickering glitch VFX while the target lives
+      if (Math.random() < 0.35 && g.timer > 0.15) {
+        const tp = g.isDD
+          ? (g.target.gunner?.pos || null)
+          : (g.target.pos || null);
+        if (tp) {
+          // Random glitch sparks
+          const angle = Math.random() * Math.PI * 2;
+          const off   = 8 + Math.random() * 20;
+          this._vfx.push({
+            type: 'glitchSpark', x: tp.x + Math.cos(angle) * off, y: tp.y + Math.sin(angle) * off,
+            life: 0.12, maxLife: 0.12, color: Math.random() < 0.5 ? g.syn.col2 : '#cc44ff', lw: 1.5,
+          });
+          // Periodic strong flash on target
+          if (g.target.hitFlash !== undefined && Math.random() < 0.5) g.target.hitFlash = 0.08;
+        }
+      }
+
+      if (g.timer <= 0) {
+        g.isDone = true;
+        this._resolveGlitch(g, game);
+      }
+    }
+  }
+
+  _resolveGlitch(g, game) {
+    const tp = g.isDD
+      ? (g.target.gunner?.pos || null)
+      : (g.target.pos || null);
+
+    if (g.isDD) {
+      // DoubleDemonsBoss
+      const dd = g.target;
+      if (dd && dd.hp > 0) {
+        const eff = typeof game._capBossDamage === 'function'
+          ? game._capBossDamage(dd, GLITCH_BOSS_DAMAGE) : GLITCH_BOSS_DAMAGE;
+        dd.hp -= eff;
+        if (dd.hp <= 0 && typeof game._doubleDemonsDie === 'function') game._doubleDemonsDie();
+      }
+    } else if (g.isBoss) {
+      const b = g.target;
+      if (b && b.hp > 0) {
+        const eff = typeof game._capBossDamage === 'function'
+          ? game._capBossDamage(b, GLITCH_BOSS_DAMAGE) : GLITCH_BOSS_DAMAGE;
+        b.hp -= eff;
+        if (b.hitFlash !== undefined) b.hitFlash = 0.18;
+        if (b.hp <= 0) {
+          if (b === game.titanBoss      && typeof game._titanDie      === 'function') game._titanDie();
+          if (b === game.annihilatorBoss && typeof game._annihilatorDie === 'function') game._annihilatorDie();
+          if (b === game.bloodfangBoss  && typeof game._bloodfangDie  === 'function') game._bloodfangDie();
+          if (b === game.cyberSerpentBoss && typeof game._cyberSerpentDie === 'function') game._cyberSerpentDie();
+          if (b === game.cyberDragonBoss  && typeof game._cyberDragonDie  === 'function') game._cyberDragonDie();
+        }
+      }
+    } else {
+      // Normal enemy — kill via takeHit with large damage or direct
+      const e = g.target;
+      if (!e.dead && !e.dying) {
+        if (typeof e.takeHit === 'function') {
+          e.takeHit(GLITCH_DAMAGE, game);
+        } else {
+          e.hp -= GLITCH_DAMAGE;
+          if (e.hp <= 0 && !e.dead) e.dead = true;
+        }
+      }
+    }
+
+    // Implosion/explosion burst VFX at target position
+    if (tp) {
+      this._spawnGlitchVfx(tp, g.syn, 'explode');
+    }
+  }
+
+  _spawnGlitchVfx(pos, syn, phase) {
+    if (!pos) return;
+    if (phase === 'onset') {
+      // Initial glitch ring + sparks
+      this._vfx.push({ type: 'ring',  x: pos.x, y: pos.y, r: 0, maxR: 32, life: 0.30, maxLife: 0.30, color: '#cc44ff', lw: 2 });
+      this._vfx.push({ type: 'burst', x: pos.x, y: pos.y, r: 0, maxR: 20, life: 0.20, maxLife: 0.20, color: syn.col2,   lw: 1.5 });
+    } else if (phase === 'explode') {
+      // Final implosion burst
+      this._vfx.push({ type: 'burst', x: pos.x, y: pos.y, r: 0, maxR: 48, life: 0.40, maxLife: 0.40, color: '#cc44ff', lw: 3 });
+      this._vfx.push({ type: 'ring',  x: pos.x, y: pos.y, r: 4, maxR: 55, life: 0.35, maxLife: 0.35, color: syn.col1,   lw: 2.5 });
+      this._vfx.push({ type: 'burst', x: pos.x, y: pos.y, r: 0, maxR: 28, life: 0.25, maxLife: 0.25, color: '#ffffff',  lw: 2 });
+      // Scatter sparks
+      for (let k = 0; k < 5; k++) {
+        const angle = (k / 5) * Math.PI * 2;
+        const r2    = 20 + Math.random() * 28;
+        this._vfx.push({ type: 'glitchSpark', x: pos.x + Math.cos(angle) * r2, y: pos.y + Math.sin(angle) * r2, life: 0.20, maxLife: 0.20, color: '#cc44ff', lw: 1.5 });
+      }
+    }
+    if (this._vfx.length > MAX_VFX) this._vfx.splice(0, this._vfx.length - MAX_VFX);
   }
 
   _updateVfx(dt) {
@@ -368,10 +624,42 @@ export class NpcWalker {
   // ── Draw (world-space, camera-transformed) ────────────────────────────────
   draw(ctx) {
     this._drawVfx(ctx);
+    // Draw glitch halos on targeted enemies (world-space)
+    this._drawGlitchedTargets(ctx);
     if (!this._active) return;
     if (this.downed) { this._drawDowned(ctx); return; }
     this._drawSprite(ctx);
     this._drawWorldBars(ctx);
+  }
+
+  _drawGlitchedTargets(ctx) {
+    if (this._glitchedTargets.length === 0) return;
+    ctx.save();
+    for (const g of this._glitchedTargets) {
+      if (g.isDone) continue;
+      const tp = g.isDD
+        ? (g.target.gunner?.pos || null)
+        : (g.target.pos || null);
+      if (!tp) continue;
+      const pulse = 0.4 + 0.6 * Math.abs(Math.sin(Date.now() / 130));
+      // Glitch ring halo
+      ctx.globalAlpha = pulse * 0.8;
+      ctx.strokeStyle = '#cc44ff';
+      ctx.lineWidth   = 2.5;
+      const r = (g.target.radius || 14) + 6;
+      ctx.beginPath();
+      ctx.arc(tp.x, tp.y, r, 0, Math.PI * 2);
+      ctx.stroke();
+      // Timer text above target
+      ctx.globalAlpha = 0.9;
+      ctx.fillStyle   = '#ee88ff';
+      ctx.font        = 'bold 9px Consolas, monospace';
+      ctx.textAlign   = 'center';
+      ctx.fillText('⚡ GLITCH', tp.x, tp.y - r - 6);
+      ctx.fillText(g.timer.toFixed(1) + 's', tp.x, tp.y - r + 4);
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
   }
 
   _drawSprite(ctx) {
@@ -428,7 +716,7 @@ export class NpcWalker {
     ctx.save();
     for (const v of this._vfx) {
       const alpha = Math.max(0, v.life / v.maxLife);
-      ctx.globalAlpha = alpha;
+      ctx.globalAlpha = alpha * (v.alpha !== undefined ? v.alpha : 1);
       ctx.strokeStyle = v.color;
       ctx.lineWidth   = v.lw || 2;
       if (v.type === 'ring' || v.type === 'burst') {
@@ -444,14 +732,19 @@ export class NpcWalker {
         }
         ctx.lineTo(v.x2, v.y2);
         ctx.stroke();
+      } else if (v.type === 'glitchSpark') {
+        // Small cross spark
+        ctx.beginPath();
+        ctx.moveTo(v.x - 3, v.y); ctx.lineTo(v.x + 3, v.y);
+        ctx.moveTo(v.x, v.y - 3); ctx.lineTo(v.x, v.y + 3);
+        ctx.stroke();
       }
     }
     ctx.globalAlpha = 1;
     ctx.restore();
   }
 
-  // ── Screen-space HUD panel (called by Game._drawNpcWalkerHUD) ─────────────
-  // walkerSummonCd: seconds until next summon (shown only when inactive)
+  // ── Screen-space HUD panel ────────────────────────────────────────────────
   drawHUDPanel(ctx, x, y, width, walkerSummonCd) {
     const W   = width;
     const PAD = 8;
@@ -459,11 +752,13 @@ export class NpcWalker {
     const BH  = 6;
     const syn = this._synergy;
 
+    const hasGlitch = this._glitchedTargets.filter(g => !g.isDone).length > 0;
+    const activeH   = PAD + ROW + 4 + BH + 3 + BH + 4 + ROW + 4 + ROW + (hasGlitch ? ROW + 2 : 0) + PAD;
     const H = !this._active
       ? PAD + ROW + 4 + ROW + PAD
       : this.downed
         ? PAD + ROW + 4 + BH + PAD
-        : PAD + ROW + 4 + BH + 3 + BH + 4 + ROW + 4 + ROW + PAD;
+        : activeH;
 
     ctx.save();
     ctx.fillStyle = 'rgba(2,5,14,0.82)';
@@ -531,7 +826,7 @@ export class NpcWalker {
       ctx.font = '7px Consolas, monospace'; ctx.fillStyle = 'rgba(200,200,230,0.55)';
       ctx.fillText('MP ' + Math.ceil(this.mana) + '/' + this.maxMana, barX, cy - 1);
       cy += BH + 4;
-      // Active duration remaining
+      // Active duration
       const actSec = Math.ceil(this._activeDur);
       const aMins  = Math.floor(actSec / 60).toString().padStart(1, '0');
       const aSecs  = (actSec % 60).toString().padStart(2, '0');
@@ -539,7 +834,7 @@ export class NpcWalker {
       ctx.fillStyle = 'rgba(160,220,200,0.55)';
       ctx.fillText('ACTIVE ' + aMins + ':' + aSecs, barX, cy + ROW - 2);
       cy += ROW + 4;
-      // Ability CD
+      // Shockwave status
       if (this.abilityCd <= 0 && this.mana >= ABILITY_MANA_COST) {
         ctx.fillStyle = '#aaff88';
         ctx.fillText('⚡ SHOCKWAVE  READY', barX, cy);
@@ -552,6 +847,13 @@ export class NpcWalker {
         const cs  = (cdL % 60).toString().padStart(2, '0');
         ctx.fillStyle = 'rgba(120,160,200,0.5)';
         ctx.fillText('⚡ SHOCKWAVE  ' + cm + ':' + cs, barX, cy);
+      }
+      // Mind Glitch status
+      if (hasGlitch) {
+        cy += ROW + 2;
+        const gc = this._glitchedTargets.filter(g => !g.isDone).length;
+        ctx.fillStyle = '#ee88ff';
+        ctx.fillText('⚙ GLITCH  x' + gc + '  ACTIVE', barX, cy);
       }
     }
 
