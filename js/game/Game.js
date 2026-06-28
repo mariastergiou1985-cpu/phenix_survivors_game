@@ -338,6 +338,7 @@ export class Game {
   constructor() {
     this.audio     = null;  // set from main.js on first user gesture
     this.paused    = false;
+    this._pauseIndex   = 0;       // 0=RESUME, 1=RETURN TO MAIN MENU
     this.aimAssist = true;
     this.meta      = new MetaProgress();
     this.bestScore      = parseInt(localStorage.getItem('phenix_best_score') || '0', 10);
@@ -5032,6 +5033,17 @@ export class Game {
     }
     if (this.gameState !== 'playing') return;
 
+    if (this.paused && !this.gameOver && !this.victory) {
+      const { keys } = input;
+      if (keys.has('arrowup') || keys.has('w')) { this._pauseIndex = (this._pauseIndex - 1 + 2) % 2; keys.delete('arrowup'); keys.delete('w'); }
+      if (keys.has('arrowdown') || keys.has('s')) { this._pauseIndex = (this._pauseIndex + 1) % 2; keys.delete('arrowdown'); keys.delete('s'); }
+      if (keys.has('enter') || keys.has(' ')) {
+        if (this._pauseIndex === 0) { this.paused = false; } else { this.goToMainMenu(); }
+        keys.delete('enter'); keys.delete(' ');
+      }
+      if (keys.has('escape')) { this.paused = false; keys.delete('escape'); }
+      return;
+    }
     if (this.paused || this.gameOver || this.victory) return;
 
     // If an upgrade OR forced-mutation card is active, freeze everything but allow UI interaction
@@ -8986,17 +8998,36 @@ export class Game {
     else if (this.gameOver)  drawEndScreen(ctx, this);
 
     if (this.paused && !this.gameOver && !this.victory) {
-      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      // Dim background
+      ctx.fillStyle = 'rgba(0,0,0,0.68)';
       ctx.fillRect(0, 0, WIDTH, HEIGHT);
-      ctx.font      = '46px Consolas, monospace';
+      // Use _pauseButtonRect to stay aligned with the mouse-click handler in main.js
+      const r0 = this._pauseButtonRect(0);
+      const r1 = this._pauseButtonRect(1);
+      // Premium panel encompassing title + both buttons
+      const panW = r0.w + 60;
+      const panX = Math.round(WIDTH / 2 - panW / 2);
+      const panY = r0.y - 84;
+      const panH = r1.y + r1.h - panY + 28;
+      this._premiumPanel(ctx, panX, panY, panW, panH, CYAN, 'PAUSED');
+      // Title
+      ctx.save();
+      ctx.font      = 'bold 34px Consolas, monospace';
       ctx.fillStyle = YELLOW;
       ctx.textAlign = 'center';
-      ctx.fillText('PAUSED', WIDTH / 2, HEIGHT / 2 - 18);
-      // RESUME / RETURN TO MAIN MENU buttons (mouse + ESC). Rects from _pauseButtonRect.
-      const labels = ['RESUME', 'RETURN TO MAIN MENU'];
-      for (let i = 0; i < 2; i++) this._drawSlotLabel(ctx, this._pauseButtonRect(i), labels[i], false, i === 0 ? CYAN : '#ff8a8a');
-      ctx.font = '13px Consolas, monospace'; ctx.fillStyle = 'rgba(200,210,225,0.6)'; ctx.textAlign = 'center';
-      ctx.fillText('ESC Resume', WIDTH / 2, this._pauseButtonRect(1).y + 78);
+      ctx.shadowColor = YELLOW; ctx.shadowBlur = 12;
+      ctx.fillText('// PAUSED //', WIDTH / 2, r0.y - 24);
+      ctx.restore();
+      // Buttons — premium style, selection highlighted
+      this._premiumButton(ctx, r0.x, r0.y, r0.w, r0.h, 'RESUME',              this._pauseIndex === 0, CYAN);
+      this._premiumButton(ctx, r1.x, r1.y, r1.w, r1.h, 'RETURN TO MAIN MENU', this._pauseIndex === 1, '#ff8a8a');
+      // Navigation hint
+      ctx.save();
+      ctx.font      = '11px Consolas, monospace';
+      ctx.fillStyle = 'rgba(160,190,210,0.55)';
+      ctx.textAlign = 'center';
+      ctx.fillText('↑↓ Navigate  ·  ENTER Confirm  ·  ESC Resume', WIDTH / 2, r1.y + r1.h + 18);
+      ctx.restore();
       ctx.textAlign = 'left';
     }
   }
@@ -10951,25 +10982,32 @@ export class Game {
 
   _drawExitScreen(ctx) {
     this._drawBackground(ctx);
-    // Semi-transparent overlay
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+    ctx.fillStyle = 'rgba(0,0,0,0.82)';
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
-    // Main message
-    ctx.font = 'bold 48px Consolas, monospace';
-    ctx.fillStyle = CYAN;
+    const panW = 580, panH = 210;
+    const panX = Math.round(WIDTH / 2 - panW / 2);
+    const panY = Math.round(HEIGHT / 2 - panH / 2 - 20);
+    this._premiumPanel(ctx, panX, panY, panW, panH, CYAN, 'SESSION TERMINATED');
+
+    ctx.save();
     ctx.textAlign = 'center';
-    ctx.fillText('Game stopped.', WIDTH / 2, HEIGHT / 2 - 80);
 
-    ctx.font = '36px Consolas, monospace';
+    ctx.font      = 'bold 36px Consolas, monospace';
+    ctx.fillStyle = CYAN;
+    ctx.shadowColor = CYAN; ctx.shadowBlur = 18;
+    ctx.fillText('SIMULATION ENDED', WIDTH / 2, panY + 58);
+    ctx.shadowBlur = 0;
+
+    ctx.font      = '22px Consolas, monospace';
     ctx.fillStyle = WHITE;
-    ctx.fillText('You can close this tab now.', WIDTH / 2, HEIGHT / 2 - 20);
+    ctx.fillText('You can close this tab now.', WIDTH / 2, panY + 100);
 
-    // Instructions
-    ctx.font = '22px Consolas, monospace';
-    ctx.fillStyle = 'rgba(200, 200, 200, 0.8)';
-    ctx.fillText('Press ENTER or ESC to return to Start Menu', WIDTH / 2, HEIGHT / 2 + 80);
+    ctx.font      = '14px Consolas, monospace';
+    ctx.fillStyle = 'rgba(140,200,220,0.70)';
+    ctx.fillText('[ ENTER / ESC — Return to Start Menu ]', WIDTH / 2, panY + panH - 22);
 
+    ctx.restore();
     ctx.textAlign = 'left';
   }
 
@@ -12924,6 +12962,17 @@ export class Game {
         this._nullBreach2Done = true;
         this._enterNullBreachArena();
       }
+      return;
+    }
+    // Repeating arenas every 10 minutes after the 12:00 window
+    if (this._nullBreach1Done && this._nullBreach2Done) {
+      if (!this._nullBreachRepeatAt) this._nullBreachRepeatAt = 1320;  // first repeat at 22:00 Endless
+      if (endlessElapsed >= this._nullBreachRepeatAt) {
+        if (!hazardActive) {
+          this._nullBreachRepeatAt += 600;   // schedule next 10 minutes later
+          this._enterNullBreachArena();
+        }
+      }
     }
   }
 
@@ -13232,13 +13281,33 @@ export class Game {
     }
 
     // ── Neon arena border ────────────────────────────────────────────────────
-    const pulse = 0.7 + 0.3 * Math.sin(performance.now() / 420);
-    ctx.strokeStyle = `rgba(0,230,255,${(0.45 * pulse).toFixed(2)})`;
-    ctx.lineWidth   = 2;
+    const pulse  = 0.7 + 0.3 * Math.sin(performance.now() / 420);
+    const pulse2 = 0.5 + 0.5 * Math.sin(performance.now() / 200);
+    // Outer cyan glow (fat, soft)
+    ctx.shadowColor = '#00e6ff';
+    ctx.shadowBlur  = 16 + 10 * pulse2;
+    ctx.strokeStyle = `rgba(0,230,255,${(0.60 * pulse).toFixed(2)})`;
+    ctx.lineWidth   = 4;
     ctx.strokeRect(4, 48, WIDTH - 8, HEIGHT - 56);
-    ctx.strokeStyle = `rgba(200,0,255,${(0.22 * pulse).toFixed(2)})`;
-    ctx.lineWidth   = 1;
+    ctx.shadowBlur  = 0;
+    // Inner magenta accent line
+    ctx.strokeStyle = `rgba(200,0,255,${(0.40 * pulse).toFixed(2)})`;
+    ctx.lineWidth   = 2;
     ctx.strokeRect(8, 52, WIDTH - 16, HEIGHT - 64);
+    // Corner bracket accents (TL / TR / BL / BR)
+    const CL = 24;
+    const bx1 = 4, by1 = 48, bx2 = WIDTH - 4, by2 = HEIGHT - 8;
+    ctx.strokeStyle = `rgba(255,100,220,${(0.75 + 0.25 * pulse2).toFixed(2)})`;
+    ctx.lineWidth   = 3;
+    ctx.shadowColor = '#ff55cc';
+    ctx.shadowBlur  = 12;
+    ctx.beginPath();
+    ctx.moveTo(bx1, by1 + CL); ctx.lineTo(bx1, by1); ctx.lineTo(bx1 + CL, by1);
+    ctx.moveTo(bx2 - CL, by1); ctx.lineTo(bx2, by1); ctx.lineTo(bx2, by1 + CL);
+    ctx.moveTo(bx1, by2 - CL); ctx.lineTo(bx1, by2); ctx.lineTo(bx1 + CL, by2);
+    ctx.moveTo(bx2 - CL, by2); ctx.lineTo(bx2, by2); ctx.lineTo(bx2, by2 - CL);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
 
     // ── Timer bar (just below the HUD bar, centered horizontally) ────────────
     const remSecs = Math.max(0, Math.ceil(arena.timer));
@@ -14290,6 +14359,28 @@ export class Game {
     }
     ctx.restore();
 
+    // ── Pre-dash charge telegraph (glow ring appears in final 30% of dash cooldown) ──
+    if (!s.dashing && s.dashCd > 0 && s.dashTimer / s.dashCd > 0.70) {
+      const chargeT = (s.dashTimer / s.dashCd - 0.70) / 0.30;   // 0→1 in final 30%
+      ctx.save();
+      ctx.globalAlpha = chargeT * 0.90;
+      ctx.beginPath();
+      ctx.arc(s.pos.x, s.pos.y, s.radius + 10 + chargeT * 10, 0, Math.PI * 2);
+      ctx.strokeStyle = '#ffaa00';
+      ctx.lineWidth   = 3 + chargeT * 2;
+      ctx.shadowColor = '#ff6600';
+      ctx.shadowBlur  = 22 + chargeT * 18;
+      ctx.stroke();
+      // Fast inner flicker
+      const flicker = 0.6 + 0.4 * Math.sin(performance.now() / 45);
+      ctx.globalAlpha = chargeT * 0.45 * flicker;
+      ctx.beginPath();
+      ctx.arc(s.pos.x, s.pos.y, s.radius * 0.65, 0, Math.PI * 2);
+      ctx.fillStyle = '#ff8800';
+      ctx.fill();
+      ctx.restore();
+    }
+
     // ── HP bar (screen-space) ──
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -14546,16 +14637,24 @@ export class Game {
         ctx.fill();
         ctx.restore();
 
-        // Shard indicator falling from above
+        // Shard indicator — crosshair (vertical + horizontal arms) for clear targeting
         ctx.save();
         ctx.globalAlpha = 0.7 + pulse * 0.3;
         ctx.strokeStyle = '#aaeeff';
         ctx.lineWidth   = 2;
         ctx.shadowColor = '#00ccff';
         ctx.shadowBlur  = 8;
+        // Vertical arm (falling-from-above indicator)
         ctx.beginPath();
         ctx.moveTo(tp.x, tp.y - 40 * (1 - progress) - 10);
         ctx.lineTo(tp.x, tp.y - 8);
+        ctx.stroke();
+        // Horizontal crosshair arms
+        const armLen = 12 + progress * 8;
+        ctx.globalAlpha = (0.5 + pulse * 0.4) * progress;
+        ctx.beginPath();
+        ctx.moveTo(tp.x - armLen, tp.y); ctx.lineTo(tp.x - 6, tp.y);
+        ctx.moveTo(tp.x + 6, tp.y);      ctx.lineTo(tp.x + armLen, tp.y);
         ctx.stroke();
         ctx.restore();
       } else {
