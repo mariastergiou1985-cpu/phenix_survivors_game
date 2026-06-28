@@ -18,8 +18,8 @@ import { SupportDrone }   from '../entities/SupportDrone.js?v=20260628400000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow } from './Effects.js?v=20260628400000';
 import { SystemEventManager } from './Events.js?v=20260628400000';
-import { UpgradeUI }      from './UpgradeUI.js?v=20260628400000';
-import { weightedSample } from './Upgrades.js?v=20260628400000';
+import { UpgradeUI }      from './UpgradeUI.js?v=20260628410000';
+import { weightedSample } from './Upgrades.js?v=20260628410000';
 import { MutationUI }      from './MutationUI.js?v=20260628400000';
 import { sampleMutations } from './Mutations.js?v=20260628400000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260628400000';
@@ -33,7 +33,7 @@ import { DigitalSingularity } from '../effects/digital-singularity.js?v=20260628
 import { Protocol0 } from '../effects/protocol-0.js?v=20260628400000';
 import { LaserEyes } from '../effects/laser-eyes.js?v=20260628400000';
 import { MeteorRain } from '../effects/meteor-rain.js?v=20260628400000';
-import { NpcWalker } from './NpcWalker.js?v=20260628400000';
+import { NpcWalker } from './NpcWalker.js?v=20260628410000';
 
 // Euclid Vector toxin kit — used ONLY when selectedCharacter === 'euclid_vector' (world-space).
 import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=20260628400000';
@@ -5256,7 +5256,7 @@ export class Game {
         this._walkerSummonCd -= dt;
         if (this._walkerSummonCd <= 0) {
           this._walkerSummonCd = 999;   // prevent re-trigger until next interval is set
-          const _wActiveDur = 60 + (this.player.walkerActiveDurBonus || 0);
+          const _wActiveDur = 120 + (this.player.walkerActiveDurBonus || 0);
           const _wMaxHpBonus = this.player.walkerMaxHpBonus || 0;
           this._npcWalker.summon(this.player.pos, this.player.selectedCharacter || 'default', _wActiveDur, _wMaxHpBonus);
           const _wTxt = this._chaosMode ? '⚡ KIROSHI — CHAOS LINK ACTIVE' : 'ELECTRIC SUPPORT ONLINE';

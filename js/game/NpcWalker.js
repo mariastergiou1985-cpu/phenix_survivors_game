@@ -1,7 +1,8 @@
-// NpcWalker.js — KIROSHI WALKER autonomous ally V2
-// Summoned every 120s of active gameplay; active for 60s per window.
-// Weapons: (1) basic electric wave (every 3.5s), (2) AoE shockwave pulse (every 45s, multi-pulse),
-//          (3) Mind Glitch / Neural Override (every 10s, applies glitch status → self-destruct).
+// NpcWalker.js — KIROSHI WALKER autonomous ally V4
+// Summoned every 120s of active gameplay; active for 120s per window.
+// Weapons: (1) basic electric wave (every 5s), (2) AoE shockwave ultimate (every 10s, multi-pulse),
+//          (3) Mind Glitch / Neural Override (every 5s, applies glitch status → self-destruct).
+// Support: autonomous dash every 10s → 10s player shield + 5% HP heal.
 // Takes damage from enemy/boss proximity. Character-specific synergy VFX and damage bonuses.
 // Does NOT trigger game-over when downed. Revives after 20s within the same active window.
 
@@ -11,26 +12,30 @@ const WALKER_MANA_REGEN   = 10;   // mana/s — buffed to support 3 weapons
 const WALKER_DOWNED_DUR   = 20;   // seconds until revive (within same active window)
 const WALKER_REVIVE_PCT   = 0.4;  // revive at 40% HP
 
-const BASIC_ATTACK_CD     = 3.5;  // seconds between basic electric wave casts
+const BASIC_ATTACK_CD     = 5.0;  // seconds between basic electric wave casts
 const BASIC_ATTACK_DMG    = 18;   // base damage per basic hit (buffed from 12)
-const BASIC_ATTACK_MANA   = 8;    // mana cost for basic wave
+const BASIC_ATTACK_MANA   = 5;    // mana cost for basic wave
 
 // ── Shockwave AoE Ultimate (reworked) ────────────────────────────────────────
-const ABILITY_CD          = 45;   // seconds between shockwave ultimates
-const ABILITY_MANA_COST   = 60;   // mana cost
+const ABILITY_CD          = 10;   // seconds between shockwave ultimates
+const ABILITY_MANA_COST   = 20;   // mana cost
 const SHOCKWAVE_DMG       = 75;   // damage per pulse per enemy (was 35 single-target)
 const SHOCKWAVE_RADIUS    = 280;  // AoE radius in px — real range, not cosmetic
 const SHOCKWAVE_PULSES    = 3;    // number of expanding pulses per activation
 const SHOCKWAVE_PULSE_GAP = 0.20; // seconds between pulses
 
 // ── Mind Glitch / Neural Override ─────────────────────────────────────────────
-const GLITCH_CD           = 10;   // seconds between Mind Glitch casts
-const GLITCH_MANA_COST    = 20;   // mana cost
+const GLITCH_CD           = 5;    // seconds between Mind Glitch casts
+const GLITCH_MANA_COST    = 10;   // mana cost
 const GLITCH_RANGE        = 220;  // px — range to select targets
 const GLITCH_MAX_TARGETS  = 5;    // max enemies to glitch at once
 const GLITCH_DELAY        = 1.1;  // seconds until self-destruct / heavy damage fires
 const GLITCH_DAMAGE       = 130;  // heavy damage applied at end of glitch delay (bosses use _capBossDamage)
 const GLITCH_BOSS_DAMAGE  = 200;  // large hit applied to bosses via _capBossDamage
+
+// ── Autonomous Dash ─────────────────────────────────────────────────────────────
+const WALKER_DASH_CD      = 10;   // seconds between autonomous dashes
+const WALKER_DASH_DIST    = 90;   // px — distance of each dash toward nearest target
 
 // ── Misc ─────────────────────────────────────────────────────────────────────
 const ENEMY_HIT_RANGE     = 40;   // px — enemy proximity range that damages Walker
@@ -81,6 +86,10 @@ export class NpcWalker {
     // Active glitch targets: [{target, timer, isDone, isDD}]
     this._glitchedTargets = [];
 
+    // Dash state
+    this._dashCd           = 6;     // warm-up before first dash
+    this._shieldAppliedTimer = 0;  // tracks recently applied shield (for HUD display)
+
     this._vfx         = [];
     this._img         = null;
     this._imgLoaded   = false;
@@ -115,6 +124,8 @@ export class NpcWalker {
     this._dmgCooldown = 0;
     this._pendingPulses   = [];
     this._glitchedTargets = [];
+    this._dashCd           = 6;
+    this._shieldAppliedTimer = 0;
     this._active     = true;
     this._activeDur  = _actDur;
     this._synergyId  = _synId;
@@ -183,7 +194,7 @@ export class NpcWalker {
     }
 
     // ── Shockwave AoE ultimate ────────────────────────────────────────────
-    const ultCd = Math.max(20, ABILITY_CD - (game.player ? (game.player.walkerAbilCdReduce || 0) : 0));
+    const ultCd = Math.max(5, ABILITY_CD - (game.player ? (game.player.walkerAbilCdReduce || 0) : 0));
     this.abilityCd -= dt;
     if (this.abilityCd <= 0 && this.mana >= ABILITY_MANA_COST) {
       this._castShockwave(game, dmgBonus);
@@ -200,6 +211,14 @@ export class NpcWalker {
       } else {
         this._glitchCd = 1.5; // retry sooner if no targets
       }
+    }
+
+    // ── Autonomous dash ───────────────────────────────────────────────────
+    if (this._shieldAppliedTimer > 0) this._shieldAppliedTimer -= dt;
+    this._dashCd -= dt;
+    if (this._dashCd <= 0) {
+      this._doDash(game);
+      this._dashCd = WALKER_DASH_CD;
     }
   }
 
@@ -247,13 +266,8 @@ export class NpcWalker {
   }
 
   _nearestTarget(game) {
-    let best = null, bestD = Infinity;
-    for (const e of (game.enemies || [])) {
-      if (e.dead || e.dying) continue;
-      if (!e.pos) continue;
-      const d = Math.hypot(e.pos.x - this.pos.x, e.pos.y - this.pos.y);
-      if (d < bestD) { bestD = d; best = e; }
-    }
+    // Boss priority — always prefer any active boss over normal enemies
+    let bestBoss = null, bestBossD = Infinity;
     const singles = [
       game.titanBoss, game.annihilatorBoss, game.bloodfangBoss,
       game.cyberSerpentBoss, game.cyberDragonBoss,
@@ -261,14 +275,74 @@ export class NpcWalker {
     for (const b of singles) {
       if (!b || b.hp <= 0 || !b.pos) continue;
       const d = Math.hypot(b.pos.x - this.pos.x, b.pos.y - this.pos.y);
-      if (d < bestD) { bestD = d; best = b; }
+      if (d < bestBossD) { bestBossD = d; bestBoss = b; }
     }
     const dd = game.doubleDemonsBoss;
     if (dd && dd.hp > 0 && dd.gunner && dd.gunner.pos) {
       const d = Math.hypot(dd.gunner.pos.x - this.pos.x, dd.gunner.pos.y - this.pos.y);
-      if (d < bestD) { bestD = d; best = { pos: dd.gunner.pos, _isDD: true }; }
+      if (d < bestBossD) { bestBossD = d; bestBoss = { pos: dd.gunner.pos, _isDD: true }; }
     }
-    return best;
+    if (bestBoss) return bestBoss;  // always lock onto boss when present
+
+    // Fallback — nearest normal enemy
+    let bestEnemy = null, bestEnemyD = Infinity;
+    for (const e of (game.enemies || [])) {
+      if (e.dead || e.dying) continue;
+      if (!e.pos) continue;
+      const d = Math.hypot(e.pos.x - this.pos.x, e.pos.y - this.pos.y);
+      if (d < bestEnemyD) { bestEnemyD = d; bestEnemy = e; }
+    }
+    return bestEnemy;
+  }
+
+  // ── Autonomous Dash ───────────────────────────────────────────────────────────
+  _doDash(game) {
+    const target = this._nearestTarget(game);
+    const syn    = this._synergy;
+    let tx = this.pos.x, ty = this.pos.y;
+    if (target && target.pos) {
+      const dx  = target.pos.x - this.pos.x;
+      const dy  = target.pos.y - this.pos.y;
+      const len = Math.hypot(dx, dy) || 1;
+      tx = this.pos.x + (dx / len) * WALKER_DASH_DIST;
+      ty = this.pos.y + (dy / len) * WALKER_DASH_DIST;
+    } else {
+      // No target — dash sideways
+      tx = this.pos.x + (Math.random() > 0.5 ? 1 : -1) * 55;
+    }
+    // Trail VFX at origin
+    this._spawnDashVfx(this.pos.x, this.pos.y, syn, 6);
+    // Reposition
+    this.pos.x = tx;
+    this.pos.y = ty;
+    // Burst VFX at destination
+    this._spawnDashVfx(this.pos.x, this.pos.y, syn, 10);
+    // Apply player benefits
+    if (game.player) {
+      game.player.shieldTimer = 10;
+      game.player.hp = Math.min(game.player.maxHp, game.player.hp + game.player.maxHp * 0.05);
+      this._shieldAppliedTimer = 10;
+      // Floating texts
+      if (Array.isArray(game._floatingTexts)) {
+        game._floatingTexts.push({ text: '+SHIELD', x: game.player.pos.x - 20, y: game.player.pos.y - 34, timer: 1.3, color: '#00ccff', size: 13 });
+        game._floatingTexts.push({ text: '+HEAL',   x: game.player.pos.x + 22, y: game.player.pos.y - 20, timer: 1.3, color: '#88ff88', size: 13 });
+      }
+    }
+  }
+
+  _spawnDashVfx(cx, cy, syn, count) {
+    if (this._vfx.length >= MAX_VFX - count) return;
+    for (let i = 0; i < count; i++) {
+      const ang   = (Math.PI * 2 * i) / count;
+      const speed = 70 + Math.random() * 110;
+      this._vfx.push({
+        type: 'particle', x: cx, y: cy,
+        vx: Math.cos(ang) * speed, vy: Math.sin(ang) * speed,
+        life: 0.3 + Math.random() * 0.2, maxLife: 0.5,
+        r: 2.5 + Math.random() * 2.5,
+        col: i % 2 === 0 ? syn.col1 : syn.col2,
+      });
+    }
   }
 
   // ── Basic electric wave ────────────────────────────────────────────────────
@@ -753,7 +827,9 @@ export class NpcWalker {
     const syn = this._synergy;
 
     const hasGlitch = this._glitchedTargets.filter(g => !g.isDone).length > 0;
-    const activeH   = PAD + ROW + 4 + BH + 3 + BH + 4 + ROW + 4 + ROW + (hasGlitch ? ROW + 2 : 0) + PAD;
+    const hasDashReady  = this._dashCd <= 0;
+    const hasShield     = this._shieldAppliedTimer > 0;
+    const activeH   = PAD + ROW + 4 + BH + 3 + BH + 4 + ROW + 4 + ROW + (hasGlitch ? ROW + 2 : 0) + ROW + 2 + (hasShield ? ROW + 2 : 0) + PAD;
     const H = !this._active
       ? PAD + ROW + 4 + ROW + PAD
       : this.downed
@@ -854,6 +930,21 @@ export class NpcWalker {
         const gc = this._glitchedTargets.filter(g => !g.isDone).length;
         ctx.fillStyle = '#ee88ff';
         ctx.fillText('⚙ GLITCH  x' + gc + '  ACTIVE', barX, cy);
+      }
+      // Dash status
+      cy += ROW + 2;
+      if (this._dashCd <= 0) {
+        ctx.fillStyle = '#88ffcc';
+        ctx.fillText('» DASH  READY', barX, cy);
+      } else {
+        ctx.fillStyle = 'rgba(120,200,170,0.45)';
+        ctx.fillText('» DASH  ' + Math.ceil(this._dashCd) + 's', barX, cy);
+      }
+      // Shield active indicator
+      if (this._shieldAppliedTimer > 0) {
+        cy += ROW + 2;
+        ctx.fillStyle = '#44ccff';
+        ctx.fillText('🛡 SHIELD  ' + Math.ceil(this._shieldAppliedTimer) + 's', barX, cy);
       }
     }
 
