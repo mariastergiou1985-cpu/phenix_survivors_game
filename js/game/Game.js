@@ -5,38 +5,38 @@ import {
   MAX_OVERLOAD, PLAYER_RADIUS, CORE_RADIUS, MATRIX_RADIUS,
   DARK_BG, GRID_LINE, BLACK, CYAN, RED, GREEN, YELLOW, ORANGE, WHITE, PURPLE,
   CORE_COLORS, VIEW_SCALE, VIEW_W, VIEW_H, ENDLESS_VIEW_SCALE,
-} from '../constants.js?v=20260628400000';
+} from '../constants.js?v=20260628420000';
 import { clamp, distance, safeNormalize, randomChoice, randomRange } from '../utils.js';
 
 import { FloatingText }   from '../entities/FloatingText.js';
-import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260628400000';
-import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260628400000';
-import { Player }         from '../entities/Player.js?v=20260628400000';
-import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260628400000';
-import { Enemy }          from '../entities/Enemy.js?v=20260628400000';
-import { SupportDrone }   from '../entities/SupportDrone.js?v=20260628400000';
+import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260628420000';
+import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260628420000';
+import { Player }         from '../entities/Player.js?v=20260628420000';
+import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260628420000';
+import { Enemy }          from '../entities/Enemy.js?v=20260628420000';
+import { SupportDrone }   from '../entities/SupportDrone.js?v=20260628420000';
 
-import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow } from './Effects.js?v=20260628400000';
-import { SystemEventManager } from './Events.js?v=20260628400000';
-import { UpgradeUI }      from './UpgradeUI.js?v=20260628410000';
-import { weightedSample } from './Upgrades.js?v=20260628410000';
-import { MutationUI }      from './MutationUI.js?v=20260628400000';
-import { sampleMutations } from './Mutations.js?v=20260628400000';
-import { drawHUD, drawEndScreen } from './HUD.js?v=20260628400000';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS } from './MetaProgress.js?v=20260628400000';
-import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260628400000';
+import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow } from './Effects.js?v=20260628420000';
+import { SystemEventManager } from './Events.js?v=20260628420000';
+import { UpgradeUI }      from './UpgradeUI.js?v=20260628420000';
+import { weightedSample } from './Upgrades.js?v=20260628420000';
+import { MutationUI }      from './MutationUI.js?v=20260628420000';
+import { sampleMutations } from './Mutations.js?v=20260628420000';
+import { drawHUD, drawEndScreen } from './HUD.js?v=20260628420000';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS } from './MetaProgress.js?v=20260628420000';
+import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260628420000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
-import { GlitchDash } from '../effects/glitch-dash.js?v=20260628400000';
-import { EMPShockwave } from '../effects/emp-shockwave.js?v=20260628400000';
-import { DigitalSingularity } from '../effects/digital-singularity.js?v=20260628400000';
-import { Protocol0 } from '../effects/protocol-0.js?v=20260628400000';
-import { LaserEyes } from '../effects/laser-eyes.js?v=20260628400000';
-import { MeteorRain } from '../effects/meteor-rain.js?v=20260628400000';
-import { NpcWalker } from './NpcWalker.js?v=20260628410000';
+import { GlitchDash } from '../effects/glitch-dash.js?v=20260628420000';
+import { EMPShockwave } from '../effects/emp-shockwave.js?v=20260628420000';
+import { DigitalSingularity } from '../effects/digital-singularity.js?v=20260628420000';
+import { Protocol0 } from '../effects/protocol-0.js?v=20260628420000';
+import { LaserEyes } from '../effects/laser-eyes.js?v=20260628420000';
+import { MeteorRain } from '../effects/meteor-rain.js?v=20260628420000';
+import { NpcWalker } from './NpcWalker.js?v=20260628420000';
 
 // Euclid Vector toxin kit — used ONLY when selectedCharacter === 'euclid_vector' (world-space).
-import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=20260628400000';
+import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=20260628420000';
 
 // ── Eden Core character message pools (in-run transmissions) ────────────────
 const _EDEN_CHAR_POOLS = {
@@ -939,7 +939,9 @@ export class Game {
     this._createMatrices();
     // KIROSHI WALKER — timer-based summon; first arrival at 2:00 of active gameplay
     this._npcWalker = new NpcWalker();
-    this._walkerSummonCd = 120;   // countdown to first summon (seconds)
+    this._walkerCycleIdx    = -1;         // current 5-min cycle index (300s per cycle)
+    this._walkerFiredSet    = new Set();  // trigger offsets already fired this cycle
+    this._walkerSummonCd    = 120;        // HUD display: seconds until next trigger (derived)
   }
 
   startGame() {
@@ -1068,8 +1070,10 @@ export class Game {
     this._mutationTimer = MUTATION_INTERVAL;
     this.supportDrones = [];
     this.allyDrones    = [];
-    this._npcWalker      = null;   // clear on menu return
-    this._walkerSummonCd = 120;    // reset summon timer
+    this._npcWalker         = null;   // clear on menu return
+    this._walkerCycleIdx    = -1;
+    this._walkerFiredSet    = new Set();
+    this._walkerSummonCd    = 120;
     this.audio?.startMenuMusic();
     this._hideSettingsOverlay();
     this._hideCharSelectOverlay();
@@ -1094,7 +1098,7 @@ export class Game {
     this._enterEndless();
     // NpcWalker: ensure instance exists; reset summon timer for Endless continuation
     if (!this._npcWalker) this._npcWalker = new NpcWalker();
-    if (!this._npcWalker.isActive) this._walkerSummonCd = 60;  // shorter first summon in Endless
+    // Walker cycle is driven by timeAlive; no manual cd reset needed
   }
 
   // Direct ENDLESS MODE start from the Main Menu (only offered once endlessUnlocked). Starts a
@@ -5242,28 +5246,36 @@ export class Game {
     this._updateSupportDrones(dt);
     this._updateCorrosive(dt);   // centralized corrosive DoT (drone + Corrosive Payload card)
     this._updateAllyDrones(dt);
-    // KIROSHI WALKER — summon interval management + active update
+    // KIROSHI WALKER — 5-minute cycle: triggers at 2:00, 3:00, 4:00 of each 5-min window
+    // Cycle: 0:00–5:00, 5:00–10:00, 10:00–15:00, ... Walker fires at offsets 120/180/240s.
+    // Each trigger calls summon(), which refreshes/replaces Walker (lifetime 120s, no stacking).
     if (this._npcWalker && this.player) {
-      const _wWasActive = this._npcWalker.isActive;
       this._npcWalker.update(dt, this.player.pos, this);
-      const _wIsActive  = this._npcWalker.isActive;
-      if (_wWasActive && !_wIsActive) {
-        // Walker just finished its active window — start next summon interval
-        const _wInterval = Math.max(60, 120 - (this.player.walkerSummonCdReduce || 0));
-        this._walkerSummonCd = _wInterval;
-      } else if (!_wIsActive) {
-        // Inactive — count down to next summon
-        this._walkerSummonCd -= dt;
-        if (this._walkerSummonCd <= 0) {
-          this._walkerSummonCd = 999;   // prevent re-trigger until next interval is set
-          const _wActiveDur = 120 + (this.player.walkerActiveDurBonus || 0);
+      const _wCycleIdx  = Math.floor(this.timeAlive / 300);
+      const _wCycleTime = this.timeAlive % 300;
+      // New cycle — reset fired-offset tracking
+      if (_wCycleIdx !== this._walkerCycleIdx) {
+        this._walkerCycleIdx = _wCycleIdx;
+        this._walkerFiredSet = new Set();
+      }
+      // Fire each offset exactly once per cycle
+      for (const _wOff of [120, 180, 240]) {
+        if (_wCycleTime >= _wOff && !this._walkerFiredSet.has(_wOff)) {
+          this._walkerFiredSet.add(_wOff);
+          const _wActiveDur  = 120 + (this.player.walkerActiveDurBonus || 0);
           const _wMaxHpBonus = this.player.walkerMaxHpBonus || 0;
+          // summon() safely refreshes lifetime if Walker is already active (no stacking)
           this._npcWalker.summon(this.player.pos, this.player.selectedCharacter || 'default', _wActiveDur, _wMaxHpBonus);
           const _wTxt = this._chaosMode ? '⚡ KIROSHI — CHAOS LINK ACTIVE' : 'ELECTRIC SUPPORT ONLINE';
           const _wCol = this._chaosMode ? '#ff2d95' : '#44ffff';
           this.triggerAnnouncement(_wTxt, _wCol);
         }
       }
+      // HUD: seconds until next trigger (or next cycle start after 240s)
+      this._walkerSummonCd = [120, 180, 240].reduce(
+        (acc, _off) => (_wCycleTime < _off ? Math.min(acc, _off - _wCycleTime) : acc),
+        300 - _wCycleTime
+      );
     }
     this.events.update(dt, this.timeAlive, this);
     this._updateGridCache(dt);
