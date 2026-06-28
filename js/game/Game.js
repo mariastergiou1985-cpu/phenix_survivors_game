@@ -18,8 +18,8 @@ import { SupportDrone }   from '../entities/SupportDrone.js?v=20260615210000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow } from './Effects.js?v=20260615210000';
 import { SystemEventManager } from './Events.js?v=20260615210000';
-import { UpgradeUI }      from './UpgradeUI.js?v=20260628360000';
-import { weightedSample } from './Upgrades.js?v=20260628360000';
+import { UpgradeUI }      from './UpgradeUI.js?v=20260628370000';
+import { weightedSample } from './Upgrades.js?v=20260628370000';
 import { MutationUI }      from './MutationUI.js?v=20260616080000';
 import { sampleMutations } from './Mutations.js?v=20260615210000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260627230000';
@@ -33,7 +33,7 @@ import { DigitalSingularity } from '../effects/digital-singularity.js?v=20260615
 import { Protocol0 } from '../effects/protocol-0.js?v=20260615210000';
 import { LaserEyes } from '../effects/laser-eyes.js?v=20260615210000';
 import { MeteorRain } from '../effects/meteor-rain.js?v=20260615210000';
-import { NpcWalker } from './NpcWalker.js?v=20260628360000';
+import { NpcWalker } from './NpcWalker.js?v=20260628370000';
 
 // Euclid Vector toxin kit — used ONLY when selectedCharacter === 'euclid_vector' (world-space).
 import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=20260615210000';
@@ -934,9 +934,9 @@ export class Game {
     this._endlessStartedAt  = 0;      // timeAlive when Endless began (direct=0, Act1→Endless=nonzero)
 
     this._createMatrices();
-    // KIROSHI WALKER — spawn fresh ally for every new run
+    // KIROSHI WALKER — timer-based summon; first arrival at 2:00 of active gameplay
     this._npcWalker = new NpcWalker();
-    this._npcWalker.reset(this.player.pos);
+    this._walkerSummonCd = 120;   // countdown to first summon (seconds)
   }
 
   startGame() {
@@ -1065,7 +1065,8 @@ export class Game {
     this._mutationTimer = MUTATION_INTERVAL;
     this.supportDrones = [];
     this.allyDrones    = [];
-    this._npcWalker    = null;   // clear on menu return
+    this._npcWalker      = null;   // clear on menu return
+    this._walkerSummonCd = 120;    // reset summon timer
     this.audio?.startMenuMusic();
     this._hideSettingsOverlay();
     this._hideCharSelectOverlay();
@@ -1088,8 +1089,9 @@ export class Game {
     if (!this.victory) return;
     this.victory = false;
     this._enterEndless();
-    // NpcWalker persists from Act 1; re-spawn only if somehow null
-    if (!this._npcWalker) { this._npcWalker = new NpcWalker(); this._npcWalker.reset(this.player.pos); }
+    // NpcWalker: ensure instance exists; reset summon timer for Endless continuation
+    if (!this._npcWalker) this._npcWalker = new NpcWalker();
+    if (!this._npcWalker.isActive) this._walkerSummonCd = 60;  // shorter first summon in Endless
   }
 
   // Direct ENDLESS MODE start from the Main Menu (only offered once endlessUnlocked). Starts a
@@ -5232,7 +5234,29 @@ export class Game {
     this._updateSupportDrones(dt);
     this._updateCorrosive(dt);   // centralized corrosive DoT (drone + Corrosive Payload card)
     this._updateAllyDrones(dt);
-    if (this._npcWalker && this.player) this._npcWalker.update(dt, this.player.pos, this);
+    // KIROSHI WALKER — summon interval management + active update
+    if (this._npcWalker && this.player) {
+      const _wWasActive = this._npcWalker.isActive;
+      this._npcWalker.update(dt, this.player.pos, this);
+      const _wIsActive  = this._npcWalker.isActive;
+      if (_wWasActive && !_wIsActive) {
+        // Walker just finished its active window — start next summon interval
+        const _wInterval = Math.max(60, 120 - (this.player.walkerSummonCdReduce || 0));
+        this._walkerSummonCd = _wInterval;
+      } else if (!_wIsActive) {
+        // Inactive — count down to next summon
+        this._walkerSummonCd -= dt;
+        if (this._walkerSummonCd <= 0) {
+          this._walkerSummonCd = 999;   // prevent re-trigger until next interval is set
+          const _wActiveDur = 60 + (this.player.walkerActiveDurBonus || 0);
+          const _wMaxHpBonus = this.player.walkerMaxHpBonus || 0;
+          this._npcWalker.summon(this.player.pos, this.player.selectedCharacter || 'default', _wActiveDur, _wMaxHpBonus);
+          const _wTxt = this._chaosMode ? '⚡ KIROSHI — CHAOS LINK ACTIVE' : 'ELECTRIC SUPPORT ONLINE';
+          const _wCol = this._chaosMode ? '#ff2d95' : '#44ffff';
+          this.triggerAnnouncement(_wTxt, _wCol);
+        }
+      }
+    }
     this.events.update(dt, this.timeAlive, this);
     this._updateGridCache(dt);
     this._updateHealthPickups(dt);
@@ -13963,7 +13987,7 @@ _drawLoreArchive(ctx) {
     const panelW = 172;
     const panelX = WIDTH - panelW - 8;
     const panelY = 92;
-    this._npcWalker.drawHUDPanel(ctx, panelX, panelY, panelW);
+    this._npcWalker.drawHUDPanel(ctx, panelX, panelY, panelW, this._walkerSummonCd);
     ctx.restore();
   }
 

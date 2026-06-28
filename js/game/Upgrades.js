@@ -335,6 +335,93 @@ export const ALL_UPGRADES = [
     p => { p.maxMana += 20; p.mana = Math.min(p.maxMana, p.mana + 20); p.fireRateBonus += 0.08; },
     '✦', 'legendary', null, null, true, false, null, false, null, true),
 
+  // ── KIROSHI WALKER synergy cards (2 per character; char-gated; affect Walker bonuses) ──────────
+  // Effects set player.walkerXxx properties read by Game.js summon logic and NpcWalker.update.
+  // skeleton_warrior — Thunder resonance bond (electric + electric = amplified chain)
+  new UpgradeDefinition('walker_sync_skeleton_i', 'Thunder Bond',
+    'KIROSHI WALKER: summon interval -20s; electric waves hit harder',
+    '#4488ff', 2,
+    p => { p.walkerSummonCdReduce = (p.walkerSummonCdReduce || 0) + 20; p.walkerDmgBonus = (p.walkerDmgBonus || 0) + 8; },
+    '⚡', 'rare', 'skeleton_warrior'),
+  new UpgradeDefinition('walker_sync_skeleton_ii', 'Thunder Chain',
+    'KIROSHI WALKER: active window +12s; shockwave damage +15 per level',
+    '#88ffff', 2,
+    p => { p.walkerActiveDurBonus = (p.walkerActiveDurBonus || 0) + 12; p.walkerDmgBonus = (p.walkerDmgBonus || 0) + 15; },
+    '🔗', 'epic', 'skeleton_warrior'),
+
+  // taekwondo_girl — Flow state sync (speed + electric = extended presence)
+  new UpgradeDefinition('walker_sync_taekwondo_i', 'Aqua Circuit',
+    'KIROSHI WALKER: active window +15s; basic wave cooldown -0.5s per level',
+    '#00ccff', 2,
+    p => { p.walkerActiveDurBonus = (p.walkerActiveDurBonus || 0) + 15; p.walkerBasicCdReduce = (p.walkerBasicCdReduce || 0) + 0.5; },
+    '🌊', 'rare', 'taekwondo_girl'),
+  new UpgradeDefinition('walker_sync_taekwondo_ii', 'Crescent Sync',
+    'KIROSHI WALKER: mana regen +4/s; summon interval -15s per level',
+    '#00ffee', 2,
+    p => { p.walkerManaRegenBonus = (p.walkerManaRegenBonus || 0) + 4; p.walkerSummonCdReduce = (p.walkerSummonCdReduce || 0) + 15; },
+    '🌀', 'epic', 'taekwondo_girl'),
+
+  // cyber_arm_hero — Overdrive amplification link (fire + electric = surge)
+  new UpgradeDefinition('walker_sync_cyber_i', 'Overdrive Link',
+    'KIROSHI WALKER: basic wave damage +10; ability cooldown -8s per level',
+    '#ff8800', 2,
+    p => { p.walkerDmgBonus = (p.walkerDmgBonus || 0) + 10; p.walkerAbilCdReduce = (p.walkerAbilCdReduce || 0) + 8; },
+    '🦾', 'rare', 'cyber_arm_hero'),
+  new UpgradeDefinition('walker_sync_cyber_ii', 'Surge Protocol',
+    'KIROSHI WALKER: active window +10s; shockwave damage +20 per level',
+    '#ffcc44', 2,
+    p => { p.walkerActiveDurBonus = (p.walkerActiveDurBonus || 0) + 10; p.walkerDmgBonus = (p.walkerDmgBonus || 0) + 20; },
+    '⛓', 'epic', 'cyber_arm_hero'),
+
+  // brawler_warrior — Rage signal bond (tank + electric = iron HP)
+  new UpgradeDefinition('walker_sync_brawler_i', 'Rage Signal',
+    'KIROSHI WALKER: +30 max HP; takes less damage from enemies per level',
+    '#44ff88', 2,
+    p => { p.walkerMaxHpBonus = (p.walkerMaxHpBonus || 0) + 30; },
+    '◎', 'rare', 'brawler_warrior'),
+  new UpgradeDefinition('walker_sync_brawler_ii', 'Iron Circuit',
+    'KIROSHI WALKER: summon interval -20s; shockwave damage +12 per level',
+    '#00ff66', 2,
+    p => { p.walkerSummonCdReduce = (p.walkerSummonCdReduce || 0) + 20; p.walkerDmgBonus = (p.walkerDmgBonus || 0) + 12; },
+    '⟢', 'epic', 'brawler_warrior'),
+
+  // assassin_clone — Shadow net sync (stealth + electric = ghost current)
+  new UpgradeDefinition('walker_sync_assassin_i', 'Shadow Net',
+    'KIROSHI WALKER: mana regen +5/s; basic wave cooldown -0.8s per level',
+    '#ff44cc', 2,
+    p => { p.walkerManaRegenBonus = (p.walkerManaRegenBonus || 0) + 5; p.walkerBasicCdReduce = (p.walkerBasicCdReduce || 0) + 0.8; },
+    '🗡', 'rare', 'assassin_clone'),
+  new UpgradeDefinition('walker_sync_assassin_ii', 'Dark Sync',
+    'KIROSHI WALKER: ability cooldown -10s; active window +12s per level',
+    '#cc44ff', 2,
+    p => { p.walkerAbilCdReduce = (p.walkerAbilCdReduce || 0) + 10; p.walkerActiveDurBonus = (p.walkerActiveDurBonus || 0) + 12; },
+    '👥', 'epic', 'assassin_clone'),
+
+  // euclid_vector — Vector resonance bond (toxin + electric = charged pulse)
+  new UpgradeDefinition('walker_sync_euclid_i', 'Vector Signal',
+    'KIROSHI WALKER: summon interval -20s; damage +8 per level',
+    '#66ff44', 2,
+    p => { p.walkerSummonCdReduce = (p.walkerSummonCdReduce || 0) + 20; p.walkerDmgBonus = (p.walkerDmgBonus || 0) + 8; },
+    '☣', 'rare', 'euclid_vector'),
+  new UpgradeDefinition('walker_sync_euclid_ii', 'Toxin Resonance',
+    'KIROSHI WALKER: active window +15s; mana regen +3/s; ability cooldown -5s per level',
+    '#88ff22', 2,
+    p => { p.walkerActiveDurBonus = (p.walkerActiveDurBonus || 0) + 15; p.walkerManaRegenBonus = (p.walkerManaRegenBonus || 0) + 3; p.walkerAbilCdReduce = (p.walkerAbilCdReduce || 0) + 5; },
+    '⚗', 'epic', 'euclid_vector'),
+
+  // oni_cataclysm_protocol — Protocol link (cataclysm + electric = maximum output)
+  new UpgradeDefinition('walker_sync_oni_i', 'Protocol Link',
+    'KIROSHI WALKER: shockwave damage +20; active window +10s per level',
+    '#ff5533', 2,
+    p => { p.walkerDmgBonus = (p.walkerDmgBonus || 0) + 20; p.walkerActiveDurBonus = (p.walkerActiveDurBonus || 0) + 10; },
+    '☢', 'rare', 'oni_cataclysm_protocol'),
+  new UpgradeDefinition('walker_sync_oni_ii', 'Cataclysm Sync',
+    'KIROSHI WALKER: ability cooldown -12s; summon interval -20s per level',
+    '#ff9933', 2,
+    p => { p.walkerAbilCdReduce = (p.walkerAbilCdReduce || 0) + 12; p.walkerSummonCdReduce = (p.walkerSummonCdReduce || 0) + 20; },
+    '☄', 'epic', 'oni_cataclysm_protocol'),
+
+];
 ];
 
 // ─── Weighted sample: every card is useful; bias toward the player's current build ──
