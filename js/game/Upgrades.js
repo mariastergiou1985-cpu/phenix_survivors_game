@@ -422,7 +422,6 @@ export const ALL_UPGRADES = [
     '☄', 'epic', 'oni_cataclysm_protocol'),
 
 ];
-];
 
 // ─── Weighted sample: every card is useful; bias toward the player's current build ──
 // New cards stay common (weight 3); cards already invested in are weighted higher so

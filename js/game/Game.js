@@ -18,8 +18,8 @@ import { SupportDrone }   from '../entities/SupportDrone.js?v=20260615210000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow } from './Effects.js?v=20260615210000';
 import { SystemEventManager } from './Events.js?v=20260615210000';
-import { UpgradeUI }      from './UpgradeUI.js?v=20260628370000';
-import { weightedSample } from './Upgrades.js?v=20260628370000';
+import { UpgradeUI }      from './UpgradeUI.js?v=20260628380000';
+import { weightedSample } from './Upgrades.js?v=20260628380000';
 import { MutationUI }      from './MutationUI.js?v=20260616080000';
 import { sampleMutations } from './Mutations.js?v=20260615210000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260627230000';
@@ -33,7 +33,7 @@ import { DigitalSingularity } from '../effects/digital-singularity.js?v=20260615
 import { Protocol0 } from '../effects/protocol-0.js?v=20260615210000';
 import { LaserEyes } from '../effects/laser-eyes.js?v=20260615210000';
 import { MeteorRain } from '../effects/meteor-rain.js?v=20260615210000';
-import { NpcWalker } from './NpcWalker.js?v=20260628370000';
+import { NpcWalker } from './NpcWalker.js?v=20260628380000';
 
 // Euclid Vector toxin kit — used ONLY when selectedCharacter === 'euclid_vector' (world-space).
 import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=20260615210000';
