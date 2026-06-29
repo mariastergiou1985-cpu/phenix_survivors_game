@@ -3496,6 +3496,21 @@ export class Game {
     });
     this.floatingTexts.push(new FloatingText('CRYSTAL ICE FIELD!', p.pos.clone(), '#b0f0ff', 1.2));
     this.screenShake.trigger(3, 0.12);
+
+    // ── Spirit Dojang Flag — legacy component fires alongside the ice field ──────
+    // Plants the traditional dojo banner + 205 px cyan field zone at the same cast
+    // position. Handled entirely by _updateSpiritDojang / _drawSpiritDojang which are
+    // already wired in the game loop. Boss damage bounded by per-second caps there.
+    if (!this.spiritDojang) {
+      this.spiritDojang = { pos: p.pos.clone(), t: 0, dmgTimer: 0,
+                            miniDmgThisSec: 0, megaDmgThisSec: 0, bossDmgTimer: 1.0,
+                            particles: [], partTimer: 0 };
+      // Second expanding ring for the outer dojang boundary — wider, slower fade
+      this._specialRings.push({
+        pos: p.pos.clone(), radius: 0, maxRadius: 205,
+        life: 0.7, maxLife: 0.7, color1: '#46e6ff', color2: '#0099cc',
+      });
+    }
   }
 
   // ── Crystal Ice Field — frame update ────────────────────────────────────────
