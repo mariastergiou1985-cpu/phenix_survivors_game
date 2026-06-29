@@ -880,6 +880,11 @@ export class Game {
     this._frozenSleet      = null;  // { phase, t, particles } | null — Chaos Mode only
     this._frozenSleetTimer = 9999; // first trigger on Chaos start (overridden in chaos block)
 
+    // Chaos Mode pylons — danger (damage player) + buff (shield / heal). No speed buff.
+    this._chaosPylons    = [];   // { pos, type:'danger'|'shield'|'heal', life, maxLife, radius }
+    this._chaosPylonCd   = 0;   // spawn cooldown
+    this._chaosPylonBuff = null; // active pylon buff: { type:'shield'|'heal', timer } | null
+
     this.killsSinceHealthDrop = 0;   // counts toward the next HP CELL drop
     this.healthPickups        = [];  // [{ pos: Vec2, timer: number }] — heals 25% maxHp on touch
 
@@ -5214,6 +5219,8 @@ export class Game {
         const off = new Vec2((Math.random() - 0.5) * 220, (Math.random() - 0.5) * 220);
         this.groundCores.push(new DataCore(this._clampPickupPos(this.player.pos.clone().add(off)), 'gold'));
       }
+      // Chaos pylons: bounded danger/buff objects (gameplay: damage + shield/heal)
+      this._updateChaosPylons(dt);
     }
 
     if (this.comboTimer > 0) {
@@ -8758,6 +8765,8 @@ export class Game {
     this._drawBossTrails(ctx);
     // Chaos Mode ambient particle field (world-space, additive blend, bounded)
     if (this._chaosMode) this._chaosAmbient.draw(ctx);
+    // Chaos Mode pylons + procedural debris (world-space, visual + gameplay)
+    if (this._chaosMode) { this._drawChaosPylons(ctx); this._drawChaosDebris(ctx); }
     this._drawEndlessHazards(ctx);   // Endless-only: lightning storm + airstrike ships/rockets
     this._drawSynergyFx(ctx);        // character synergy marks above enemies + burst rings
     this._drawFusionClouds(ctx);     // Phase-2 fusion gas clouds (world-space, bounded)
@@ -9149,6 +9158,8 @@ export class Game {
     // ── Screen-space block (HUD, overlays) ───────────────────────────────────
     this._drawAcidRain(ctx);
     this._drawFrozenSleet(ctx);            // Chaos Mode: Frozen Sleet Storm overlay
+    // Chaos Mode: screen-edge rim glow + player-centred vignette (readability polish)
+    if (this._chaosMode) { this._drawChaosRimGlow(ctx); this._drawChaosVignette(ctx); }
     this._drawGridCacheArrow(ctx);
     ctx.fillStyle = BLACK;
     ctx.fillRect(0, 0, WIDTH, 44);
@@ -16564,6 +16575,187 @@ _drawLoreArchive(ctx) {
     ctx.drawImage(img, m.pos.x - D / 2, m.pos.y - D / 2, D, D);
   }
 
+  // ─── Chaos Mode: pylon system ───────────────────────────────────────────────
+  _updateChaosPylons(dt) {
+    const player = this.player;
+    if (!player || player.dead) return;
+
+    // Spawn cooldown
+    this._chaosPylonCd -= dt;
+    if (this._chaosPylonCd <= 0) {
+      this._chaosPylonCd = 4.5 + Math.random() * 3.5;
+      // Spawn 1-2 pylons near player, world-space, not on top of them
+      const count = Math.random() < 0.4 ? 2 : 1;
+      for (let i = 0; i < count; i++) {
+        const angle  = Math.random() * Math.PI * 2;
+        const dist   = 180 + Math.random() * 220;
+        const px     = Math.max(40, Math.min(WORLD_W - 40, player.pos.x + Math.cos(angle) * dist));
+        const py     = Math.max(40, Math.min(WORLD_H - 40, player.pos.y + Math.sin(angle) * dist));
+        // Danger pylons more common than buff pylons (2:1:1)
+        const roll   = Math.random();
+        const type   = roll < 0.50 ? 'danger' : roll < 0.75 ? 'shield' : 'heal';
+        this._chaosPylons.push({
+          pos: new Vec2(px, py), type, life: 6.0, maxLife: 6.0, radius: 28,
+          triggered: false,
+        });
+      }
+    }
+
+    // Update existing pylons
+    const TRIGGER_R = 48;
+    for (let i = this._chaosPylons.length - 1; i >= 0; i--) {
+      const p = this._chaosPylons[i];
+      p.life -= dt;
+      if (p.life <= 0) { this._chaosPylons.splice(i, 1); continue; }
+
+      if (!p.triggered) {
+        const d = player.pos.distanceTo(p.pos);
+        if (d < TRIGGER_R) {
+          p.triggered = true;
+          p.life      = Math.min(p.life, 0.6); // flash then remove
+          if (p.type === 'danger') {
+            this._damagePlayer(15, { color: '#ff4400', shake: 4 });
+            this._spawnFloatingText('CHAOS PULSE', p.pos.clone(), '#ff4400', 1.2);
+          } else if (p.type === 'shield') {
+            this.player.shieldTimer = Math.max(this.player.shieldTimer, 5.0);
+            this._chaosPylonBuff    = { type: 'shield', timer: 3.0 };
+            this._spawnFloatingText('SHIELD PULSE', p.pos.clone(), '#00eeff', 1.1);
+          } else { // heal
+            const heal = Math.round(this.player.maxHp * 0.08);
+            this.player.hp = Math.min(this.player.maxHp, this.player.hp + heal);
+            this._chaosPylonBuff = { type: 'heal', timer: 3.0 };
+            this._spawnFloatingText('+' + heal + ' HP', p.pos.clone(), '#44ff88', 1.1);
+          }
+        }
+      }
+    }
+
+    // Decay active buff indicator
+    if (this._chaosPylonBuff) {
+      this._chaosPylonBuff.timer -= dt;
+      if (this._chaosPylonBuff.timer <= 0) this._chaosPylonBuff = null;
+    }
+  }
+
+  _spawnFloatingText(text, pos, color, intensity) {
+    if (this._floatingTexts) {
+      this._floatingTexts.push(new FloatingText(text, pos, color, intensity));
+    }
+  }
+
+  _drawChaosPylons(ctx) {
+    const now = performance.now();
+    for (const p of this._chaosPylons) {
+      const lifeFrac = p.life / p.maxLife;
+      const pulse    = 0.7 + 0.3 * Math.sin(now * 0.005 + p.pos.x);
+      const alpha    = Math.min(1, lifeFrac * 3) * pulse;
+      const r        = p.radius;
+
+      // Colour by type
+      let core, glow;
+      if (p.type === 'danger') { core = '#ff4400'; glow = '#ff220088'; }
+      else if (p.type === 'shield') { core = '#00eeff'; glow = '#00bbff66'; }
+      else { core = '#44ff88'; glow = '#22cc6644'; }
+
+      ctx.save();
+      ctx.globalAlpha = alpha;
+
+      // Outer glow ring
+      const grad = ctx.createRadialGradient(p.pos.x, p.pos.y, r * 0.3, p.pos.x, p.pos.y, r * 1.6);
+      grad.addColorStop(0, glow);
+      grad.addColorStop(1, 'transparent');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(p.pos.x, p.pos.y, r * 1.6, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Hexagon body
+      ctx.strokeStyle = core;
+      ctx.lineWidth   = 2;
+      ctx.beginPath();
+      for (let s = 0; s < 6; s++) {
+        const a = (s / 6) * Math.PI * 2 - Math.PI / 6 + now * 0.0008;
+        s === 0 ? ctx.moveTo(p.pos.x + Math.cos(a) * r, p.pos.y + Math.sin(a) * r)
+                : ctx.lineTo(p.pos.x + Math.cos(a) * r, p.pos.y + Math.sin(a) * r);
+      }
+      ctx.closePath();
+      ctx.stroke();
+
+      // Inner core dot
+      ctx.fillStyle = core;
+      ctx.beginPath();
+      ctx.arc(p.pos.x, p.pos.y, 4 + 2 * pulse, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.restore();
+    }
+  }
+
+  _drawChaosDebris(ctx) {
+    // Procedural visual debris — stateless, seeded per position, world-space
+    // No collision, no gameplay effect
+    const now  = performance.now() * 0.001;
+    const seed = [137, 251, 373, 419, 523, 617, 709, 811];
+    ctx.save();
+    ctx.globalAlpha = 0.18;
+    for (let i = 0; i < 32; i++) {
+      const s  = seed[i % seed.length];
+      const bx = ((s * (i + 7) * 97) % WORLD_W);
+      const by = ((s * (i + 3) * 113) % WORLD_H);
+      const sz = 3 + (i % 5);
+      const a  = (now * 0.3 + i * 1.1) % (Math.PI * 2);
+      const ox = Math.cos(a) * 6;
+      const oy = Math.sin(a * 0.7) * 4;
+      ctx.fillStyle = i % 3 === 0 ? '#ff2d95' : i % 3 === 1 ? '#00eeff' : '#ff6600';
+      ctx.fillRect(bx + ox - sz / 2, by + oy - sz / 2, sz, sz);
+    }
+    ctx.restore();
+  }
+
+  _drawChaosRimGlow(ctx) {
+    // Screen-edge magenta rim — readability polish, purely visual
+    const W = this._canvas.width, H = this._canvas.height;
+    const t = performance.now();
+    const a = 0.18 + 0.07 * Math.sin(t * 0.0009);
+
+    // Top edge
+    let g = ctx.createLinearGradient(0, 0, 0, 60);
+    g.addColorStop(0, `rgba(180,0,120,${a})`); g.addColorStop(1, 'transparent');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, 60);
+
+    // Bottom edge
+    g = ctx.createLinearGradient(0, H - 60, 0, H);
+    g.addColorStop(0, 'transparent'); g.addColorStop(1, `rgba(180,0,120,${a})`);
+    ctx.fillStyle = g; ctx.fillRect(0, H - 60, W, 60);
+
+    // Left edge
+    g = ctx.createLinearGradient(0, 0, 60, 0);
+    g.addColorStop(0, `rgba(180,0,120,${a})`); g.addColorStop(1, 'transparent');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, 60, H);
+
+    // Right edge
+    g = ctx.createLinearGradient(W - 60, 0, W, 0);
+    g.addColorStop(0, 'transparent'); g.addColorStop(1, `rgba(180,0,120,${a})`);
+    ctx.fillStyle = g; ctx.fillRect(W - 60, 0, 60, H);
+  }
+
+  _drawChaosVignette(ctx) {
+    // Dark radial vignette centred on player — focuses attention, visual only
+    if (!this.player) return;
+    const W  = this._canvas.width, H = this._canvas.height;
+    // Convert player world-pos → screen-pos via camera
+    const cam = this._camera || { x: 0, y: 0 };
+    const sx  = this.player.pos.x - cam.x;
+    const sy  = this.player.pos.y - cam.y;
+    const rad = Math.min(W, H) * 0.65;
+    const g   = ctx.createRadialGradient(sx, sy, rad * 0.3, sx, sy, rad);
+    g.addColorStop(0, 'transparent');
+    g.addColorStop(1, 'rgba(0,0,0,0.38)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+  }
+  // ────────────────────────────────────────────────────────────────────────────
+
   _drawWorldBackground(ctx) {
     ctx.fillStyle = DARK_BG;
     ctx.fillRect(0, 0, WORLD_W, WORLD_H);
@@ -16580,9 +16772,26 @@ _drawLoreArchive(ctx) {
       ctx.drawImage(img, 0, 0, WORLD_W, drawH);
       // Endless map: a touch more dimming so the backdrop recedes and the gameplay plane reads flat.
       ctx.fillStyle = this.gridBlackoutActive ? 'rgba(0,0,0,0.65)'
-                    : this.endless           ? 'rgba(0,0,0,0.46)'
-                    :                          'rgba(0,0,0,0.38)';
+                    : this._chaosMode          ? 'rgba(0,0,8,0.54)'
+                    : this.endless             ? 'rgba(0,0,0,0.46)'
+                    :                            'rgba(0,0,0,0.38)';
       ctx.fillRect(0, 0, WORLD_W, WORLD_H);
+      // Chaos Mode: faint magenta grid overlay — textures the battlefield, visual only
+      if (this._chaosMode) {
+        const _gs = 80;
+        const _gt = performance.now() * 0.0003;
+        ctx.save();
+        ctx.globalAlpha = 0.05 + 0.02 * Math.sin(_gt);
+        ctx.strokeStyle = '#ff2d95';
+        ctx.lineWidth   = 0.5;
+        for (let _gx = 0; _gx < WORLD_W; _gx += _gs) {
+          ctx.beginPath(); ctx.moveTo(_gx, 0); ctx.lineTo(_gx, WORLD_H); ctx.stroke();
+        }
+        for (let _gy = 0; _gy < WORLD_H; _gy += _gs) {
+          ctx.beginPath(); ctx.moveTo(0, _gy); ctx.lineTo(WORLD_W, _gy); ctx.stroke();
+        }
+        ctx.restore();
+      }
     } else {
       const spacing = 48;
       const offset  = Math.floor(performance.now() * 0.025) % spacing;
@@ -16646,4 +16855,11 @@ _drawLoreArchive(ctx) {
       }
     }
 
-    // ── Dark HUD strip (always on top of background) ─────────�
+    // ── Dark HUD strip (always on top of background) ─────────────────────────
+    ctx.fillStyle = BLACK;
+    ctx.fillRect(0, 0, WIDTH, 44);
+  }
+
+  // Called by main.js to pass current mouse pos to the draw call
+  setMousePos(pos) { this._lastMousePos = pos; }
+}
