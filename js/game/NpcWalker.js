@@ -376,8 +376,27 @@ export class NpcWalker {
     }
 
     if (tp) {
-      this._vfx.push({ type: 'arc', x1: this.pos.x, y1: this.pos.y, x2: tp.x, y2: tp.y, life: 0.16, maxLife: 0.16, color: syn.col1, lw: 1.5, jitter: [] });
-      this._vfx.push({ type: 'burst', x: tp.x, y: tp.y, r: 0, maxR: 14, life: 0.18, maxLife: 0.18, color: syn.col2, lw: 1.5 });
+      // Multi-strand electric arc: 3 overlapping strands with jitter for glow effect
+      const _dx = tp.x - this.pos.x, _dy = tp.y - this.pos.y;
+      const _len = Math.hypot(_dx, _dy) || 1;
+      const _px  = -_dy / _len, _py = _dx / _len;   // perpendicular unit
+      // Strand 1: main (bright, thicker)
+      this._vfx.push({ type: 'arc', x1: this.pos.x, y1: this.pos.y, x2: tp.x, y2: tp.y, life: 0.18, maxLife: 0.18, color: syn.col1, lw: 2.0,
+        jitter: [{ t: 0.33, ox: _px * (4 + Math.random() * 8),  oy: _py * (4 + Math.random() * 8) },
+                 { t: 0.66, ox: _px * (-3 - Math.random() * 7), oy: _py * (-3 - Math.random() * 7) }] });
+      // Strand 2: secondary (col2, thinner, offset)
+      this._vfx.push({ type: 'arc', x1: this.pos.x + _px * 2, y1: this.pos.y + _py * 2,
+                                     x2: tp.x + _px * 2, y2: tp.y + _py * 2,
+        life: 0.14, maxLife: 0.14, color: syn.col2, lw: 1.2,
+        jitter: [{ t: 0.50, ox: _px * (6 + Math.random() * 10), oy: _py * (6 + Math.random() * 10) }] });
+      // Strand 3: outer glow arc (col1, very thin, wide offset)
+      this._vfx.push({ type: 'arc', x1: this.pos.x - _px * 3, y1: this.pos.y - _py * 3,
+                                     x2: tp.x - _px * 3, y2: tp.y - _py * 3,
+        life: 0.12, maxLife: 0.12, color: syn.col1, lw: 0.8,
+        jitter: [{ t: 0.45, ox: _px * (-5 - Math.random() * 9), oy: _py * (-5 - Math.random() * 9) }] });
+      // Impact burst (larger for readability)
+      this._vfx.push({ type: 'burst', x: tp.x, y: tp.y, r: 0, maxR: 18, life: 0.20, maxLife: 0.20, color: syn.col2, lw: 2.0 });
+      this._vfx.push({ type: 'burst', x: tp.x, y: tp.y, r: 0, maxR: 10, life: 0.14, maxLife: 0.14, color: '#ffffff', lw: 1.5 });
     }
     if (this._vfx.length > MAX_VFX) this._vfx.splice(0, this._vfx.length - MAX_VFX);
   }

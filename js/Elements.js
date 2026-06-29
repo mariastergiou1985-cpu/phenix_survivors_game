@@ -6,10 +6,10 @@
 // boss caps are handled by the caller in Game.js.
 
 export const ELEMENTS = {
-  fire:      { name: 'FIRE',      c1: '#ff6a1a', c2: '#ffd27f', spokes: 7, style: 'ember', life: 0.45 },
-  electric:  { name: 'ELECTRIC',  c1: '#9fd8ff', c2: '#ffffff', spokes: 6, style: 'arc',   life: 0.40 },
+  fire:      { name: 'FIRE',      c1: '#ff6a1a', c2: '#ffd27f', spokes: 7, style: 'ember', life: 0.50 },
+  electric:  { name: 'ELECTRIC',  c1: '#9fd8ff', c2: '#ffffff', spokes: 6, style: 'arc',   life: 0.45 },
   radiation: { name: 'RADIATION', c1: '#c6ff3a', c2: '#eaffa0', spokes: 3, style: 'pulse', life: 0.55 },
-  ice:       { name: 'ICE',       c1: '#7fe0ff', c2: '#e6fbff', spokes: 6, style: 'shard', life: 0.45 },
+  ice:       { name: 'ICE',       c1: '#7fe0ff', c2: '#e6fbff', spokes: 6, style: 'shard', life: 0.52 },
   magnetic:  { name: 'MAGNETIC',  c1: '#9b6bff', c2: '#cdb6ff', spokes: 5, style: 'pull',  life: 0.45 },
   toxin:     { name: 'TOXIN',     c1: '#7CFF4D', c2: '#caffae', spokes: 5, style: 'splat', life: 0.55 },
   gas:       { name: 'GAS',       c1: '#8fdf7f', c2: '#d8ffcf', spokes: 0, style: 'cloud', life: 0.90 },
@@ -102,7 +102,7 @@ export class ElementFx {
   // Premium two-color fusion burst (impact flash + dual expanding rings + alternating spokes).
   spawnFusion(x, y, c1, c2, scale = 1) {
     if (this.bursts.length >= MAX_BURSTS) this.bursts.shift();
-    this.bursts.push({ x, y, t: 0, life: 0.55, fusion: true, c1, c2, scale, rot: Math.random() * Math.PI });
+    this.bursts.push({ x, y, t: 0, life: 0.65, fusion: true, c1, c2, scale, rot: Math.random() * Math.PI });
   }
 
   update(dt) {
@@ -123,7 +123,7 @@ export class ElementFx {
         ctx.translate(b.x, b.y);
         ctx.globalCompositeOperation = 'lighter';
         if (k < 0.4) { ctx.globalAlpha = (0.4 - k) * 2; ctx.fillStyle = b.c2;
-          ctx.beginPath(); ctx.arc(0, 0, 8 * b.scale * (1 - k), 0, Math.PI * 2); ctx.fill(); }
+          ctx.beginPath(); ctx.arc(0, 0, 10 * b.scale * (1 - k), 0, Math.PI * 2); ctx.fill(); }
         ctx.globalAlpha = a * 0.85; ctx.strokeStyle = b.c1; ctx.lineWidth = 3 * b.scale;
         ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.stroke();
         ctx.globalAlpha = a * 0.7; ctx.strokeStyle = b.c2; ctx.lineWidth = 2 * b.scale;
@@ -139,19 +139,19 @@ export class ElementFx {
       const def = ELEMENTS[b.element]; if (!def) continue;
       const k = b.t / b.life;                 // 0..1 progress
       const a = 1 - k;                         // fade out
-      const r = (12 + 32 * k) * b.scale;       // expanding ring (bigger = more readable)
+      const r = (14 + 40 * k) * b.scale;       // expanding ring (bigger = more readable)
       ctx.save();
       ctx.translate(b.x, b.y);
       ctx.globalCompositeOperation = 'lighter';
 
-      // Impact flash (first 40%)
-      if (k < 0.4) {
+      // Impact flash (first 50%)
+      if (k < 0.50) {
         ctx.globalAlpha = (0.4 - k) * 2;
         ctx.fillStyle = def.c2;
         ctx.beginPath(); ctx.arc(0, 0, 8 * b.scale * (1 - k), 0, Math.PI * 2); ctx.fill();
       }
       // Burst ring
-      ctx.globalAlpha = a * 0.9; ctx.strokeStyle = def.c1; ctx.lineWidth = 3 * b.scale;
+      ctx.globalAlpha = a * 0.95; ctx.strokeStyle = def.c1; ctx.lineWidth = 3 * b.scale;
       ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.stroke();
 
       // Element-specific flourish (procedural — fixed small loops, no arrays)
@@ -178,6 +178,13 @@ export class ElementFx {
         } else {
           ctx.beginPath(); ctx.moveTo(dx * 8, dy * 8); ctx.lineTo(dx * r, dy * r); ctx.stroke();
         }
+      }
+      // Extra inner ring for ice/crystal — adds depth (after spokes, before style extras)
+      if (def.style === 'shard') {
+        ctx.globalAlpha  = a * 0.55;
+        ctx.strokeStyle  = def.c2;
+        ctx.lineWidth    = 1.5 * b.scale;
+        ctx.beginPath(); ctx.arc(0, 0, r * 0.45, 0, Math.PI * 2); ctx.stroke();
       }
       // Style extras
       if (def.style === 'pulse') {              // radiation: concentric contamination ring

@@ -10,9 +10,13 @@ export class Projectile {
     this.radius    = 5;
     this.life      = 0.9;
     this.sprite    = sprite;
+    this.trail     = [];   // motion trail — max 8 points, expire naturally with life
   }
 
   update(dt) {
+    // Record trail point before moving (cap to 8)
+    this.trail.push({ x: this.pos.x, y: this.pos.y, a: Math.min(1, this.life / 0.9) });
+    if (this.trail.length > 8) this.trail.shift();
     this.pos.addMut(this.direction.scale(this.speed * dt));
     this.life -= dt;
   }
@@ -26,6 +30,26 @@ export class Projectile {
   }
 
   draw(ctx) {
+    // Motion trail — fading line segments behind the projectile
+    if (this.trail.length > 1) {
+      ctx.save();
+      for (let i = 1; i < this.trail.length; i++) {
+        const t0 = this.trail[i - 1], t1 = this.trail[i];
+        const frac  = i / this.trail.length;
+        const alpha = frac * t1.a * 0.55;
+        if (alpha < 0.01) continue;
+        ctx.globalAlpha  = alpha;
+        ctx.strokeStyle  = MAGENTA;
+        ctx.lineWidth    = Math.max(0.5, this.radius * frac * 0.6);
+        ctx.lineCap      = 'round';
+        ctx.beginPath();
+        ctx.moveTo(t0.x, t0.y);
+        ctx.lineTo(t1.x, t1.y);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
     // Euclid Vector "Toxin Shard" — a green toxin data-needle (auto toxin weapon; not an orb).
     if (this.style === 'toxin_shard') {
       const a = Math.atan2(this.direction.y, this.direction.x);

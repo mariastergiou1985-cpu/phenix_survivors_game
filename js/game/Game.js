@@ -5,38 +5,38 @@ import {
   MAX_OVERLOAD, PLAYER_RADIUS, CORE_RADIUS, MATRIX_RADIUS,
   DARK_BG, GRID_LINE, BLACK, CYAN, RED, GREEN, YELLOW, ORANGE, WHITE, PURPLE,
   CORE_COLORS, VIEW_SCALE, VIEW_W, VIEW_H, ENDLESS_VIEW_SCALE,
-} from '../constants.js?v=20260629430000';
+} from '../constants.js?v=20260629440000';
 import { clamp, distance, safeNormalize, randomChoice, randomRange } from '../utils.js';
 
 import { FloatingText }   from '../entities/FloatingText.js';
-import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260629430000';
-import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260629430000';
-import { Player }         from '../entities/Player.js?v=20260629430000';
-import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260629430000';
-import { Enemy }          from '../entities/Enemy.js?v=20260629430000';
-import { SupportDrone }   from '../entities/SupportDrone.js?v=20260629430000';
+import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260629440000';
+import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260629440000';
+import { Player }         from '../entities/Player.js?v=20260629440000';
+import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260629440000';
+import { Enemy }          from '../entities/Enemy.js?v=20260629440000';
+import { SupportDrone }   from '../entities/SupportDrone.js?v=20260629440000';
 
-import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow } from './Effects.js?v=20260629430000';
-import { SystemEventManager } from './Events.js?v=20260629430000';
-import { UpgradeUI }      from './UpgradeUI.js?v=20260629430000';
-import { weightedSample } from './Upgrades.js?v=20260629430000';
-import { MutationUI }      from './MutationUI.js?v=20260629430000';
-import { sampleMutations } from './Mutations.js?v=20260629430000';
-import { drawHUD, drawEndScreen } from './HUD.js?v=20260629430000';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS } from './MetaProgress.js?v=20260629430000';
-import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260629430000';
+import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem } from './Effects.js?v=20260629440000';
+import { SystemEventManager } from './Events.js?v=20260629440000';
+import { UpgradeUI }      from './UpgradeUI.js?v=20260629440000';
+import { weightedSample } from './Upgrades.js?v=20260629440000';
+import { MutationUI }      from './MutationUI.js?v=20260629440000';
+import { sampleMutations } from './Mutations.js?v=20260629440000';
+import { drawHUD, drawEndScreen } from './HUD.js?v=20260629440000';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS } from './MetaProgress.js?v=20260629440000';
+import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260629440000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
-import { GlitchDash } from '../effects/glitch-dash.js?v=20260629430000';
-import { EMPShockwave } from '../effects/emp-shockwave.js?v=20260629430000';
-import { DigitalSingularity } from '../effects/digital-singularity.js?v=20260629430000';
-import { Protocol0 } from '../effects/protocol-0.js?v=20260629430000';
-import { LaserEyes } from '../effects/laser-eyes.js?v=20260629430000';
-import { MeteorRain } from '../effects/meteor-rain.js?v=20260629430000';
-import { NpcWalker } from './NpcWalker.js?v=20260629430000';
+import { GlitchDash } from '../effects/glitch-dash.js?v=20260629440000';
+import { EMPShockwave } from '../effects/emp-shockwave.js?v=20260629440000';
+import { DigitalSingularity } from '../effects/digital-singularity.js?v=20260629440000';
+import { Protocol0 } from '../effects/protocol-0.js?v=20260629440000';
+import { LaserEyes } from '../effects/laser-eyes.js?v=20260629440000';
+import { MeteorRain } from '../effects/meteor-rain.js?v=20260629440000';
+import { NpcWalker } from './NpcWalker.js?v=20260629440000';
 
 // Euclid Vector toxin kit — used ONLY when selectedCharacter === 'euclid_vector' (world-space).
-import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=20260629430000';
+import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=20260629440000';
 
 // ── Eden Core character message pools (in-run transmissions) ────────────────
 const _EDEN_CHAR_POOLS = {
@@ -757,6 +757,10 @@ export class Game {
     this.spiritDojang     = null; // Spirit Dojang Flag ultimate (Neon Taekwondo Girl) while active
     this._cyberBike       = null; // Cyber Ride ultimate (Neon Taekwondo Girl) while active
     this._specialBeams    = [];
+    this._chaosAmbient      = new ChaosAmbientSystem();  // Chaos Mode neon ambient field
+    this._chaosAmbientCd    = 0;   // spawn cooldown
+    this._hitFlashOverlayTimer = 0; // brief white flash on heavy boss hit
+    this._hitFlashOverlayCd    = 0; // throttle: min 0.5s between flashes
     this._specialTrail    = [];
     this._taekwondoDmgSet = new Set();
     this._iceFields        = [];   // active Crystal Ice Field instances (Taekwondo ultimate)
@@ -1620,6 +1624,10 @@ export class Game {
   }
 
     addKillScore(pos, isElite = false) {
+    // Improved death burst for normal enemies (pos may be null for some boss-kill calls)
+    if (pos && !isElite) {
+      this.particles.spawnDeathBurstImproved(pos, '#44ddff');
+    }
     this.comboCount++;
     this.comboTimer = 3.0;
     if (this.comboCount > this.maxCombo) this.maxCombo = this.comboCount;
@@ -3474,6 +3482,7 @@ export class Game {
       maxLife:     ICE_FIELD_DURATION,
       dotTimer:    ICE_FIELD_DOT_INTERVAL,
       bossDmgDone: new Set(),   // bosses already hit with burst this cast
+      rot:         Math.random() * Math.PI * 2,   // stable crack orientation per field
     });
     // Frost burst ring visual
     this._specialRings.push({
@@ -3538,7 +3547,7 @@ export class Game {
           f.bossDmgDone.add(boss);
           const burst = this._capBossDamage(boss,
             Math.floor((boss.maxHp || boss.hp) * ICE_FIELD_BOSS_BURST_PCT));
-          boss.hp -= burst; boss.hitFlash = 0.1;
+          boss.hp -= burst; boss.hitFlash = 0.1; this._triggerHeavyHitFlash();
           this.floatingTexts.push(new FloatingText(
             '❄ ' + Math.round(burst),
             boss.pos.add(new Vec2(0, -(boss.radius || 30) - 8)), '#b0f0ff', 1.2));
@@ -3561,7 +3570,7 @@ export class Game {
             f.bossDmgDone.add(body);
             const burst = this._capBossDamage(dd,
               Math.floor(dd.maxHp * ICE_FIELD_BOSS_BURST_PCT));
-            dd.hp -= burst; body.hitFlash = 0.1;
+            dd.hp -= burst; body.hitFlash = 0.1; this._triggerHeavyHitFlash();
             this.floatingTexts.push(new FloatingText(
               '❄ ' + Math.round(burst),
               body.pos.add(new Vec2(0, -(body.radius || 30) - 8)), '#b0f0ff', 1.2));
@@ -3616,6 +3625,20 @@ export class Game {
         ctx.closePath();
         ctx.fill();
       }
+      // Crystal crack lines — 6 thin radial fractures from center
+      ctx.save();
+      ctx.globalAlpha = fade * 0.55;
+      ctx.strokeStyle = 'rgba(200,248,255,0.85)';
+      ctx.lineWidth   = 1;
+      for (let k = 0; k < 6; k++) {
+        const ca = (k / 6) * Math.PI * 2 + (f.rot || 0);
+        const crLen = f.radius * (0.55 + 0.3 * ((k % 2) ? 0.6 : 1.0));
+        ctx.beginPath();
+        ctx.moveTo(f.pos.x, f.pos.y);
+        ctx.lineTo(f.pos.x + Math.cos(ca) * crLen, f.pos.y + Math.sin(ca) * crLen * 0.40);
+        ctx.stroke();
+      }
+      ctx.restore();
       ctx.restore();
     }
   }
@@ -3641,6 +3664,10 @@ export class Game {
     }
     this._specialBeams.push({ startPos: p.pos.clone(), dir: aimDir,
                                length: beamLength, life: 0.4, maxLife: 0.4 });
+    // Wind-up spiral burst — 10 radial orange sparks before beam fires
+    for (let _i = 0; _i < 10; _i++) {
+      this.particles.spawnWindupSpark(p.pos, (_i / 10) * Math.PI * 2, ORANGE, 100 + _i * 7);
+    }
     p.specialCooldown = p.specialMaxCooldown;
     this.floatingTexts.push(new FloatingText('OVERDRIVE BEAM!', p.pos.clone(), ORANGE, 1.0));
     this.screenShake.trigger(4, 0.2);
@@ -3693,7 +3720,18 @@ export class Game {
     p.pulseShieldCooldown = p.pulseShieldMaxCooldown;  // 25s cooldown
     this._specialRings.push({ pos: p.pos.clone(), radius: 0, maxRadius: 60,
                                life: 0.45, maxLife: 0.45, color1: CYAN, color2: '#bfefff' });
+    // Wind-up spiral burst — 12 radial sparks collapse inward → shield snaps on
+    for (let _i = 0; _i < 12; _i++) {
+      this.particles.spawnWindupSpark(p.pos, (_i / 12) * Math.PI * 2, CYAN, 90 + _i * 6);
+    }
     this.floatingTexts.push(new FloatingText('PULSE SHIELD!', p.pos.clone(), CYAN, 1.0));
+  }
+
+  // ── VFX: brief white overlay on heavy boss hit (visual hit-stop surrogate) ──
+  _triggerHeavyHitFlash() {
+    if (this._hitFlashOverlayCd > 0) return;
+    this._hitFlashOverlayTimer = 0.07;   // 70ms white flash
+    this._hitFlashOverlayCd    = 0.55;   // minimum 550ms between flashes
   }
 
   // ════════════════════════════════════════════════════════════════════════════
@@ -5159,6 +5197,17 @@ export class Game {
     }
     // Chaos Mode: spawn a gold core near the player every ~5 s
     if (this._chaosMode && !this.gameOver && !this.victory) {
+      // Chaos ambient particle field — spawn near player, bounded, Chaos-only
+      if (this.player && this.player.pos) {
+        this._chaosAmbientCd -= dt;
+        if (this._chaosAmbientCd <= 0) {
+          this._chaosAmbientCd = 0.12;  // spawn ~8 particles/sec
+          const _ox = (Math.random() - 0.5) * 320;
+          const _oy = (Math.random() - 0.5) * 220;
+          this._chaosAmbient.spawn(this.player.pos.x + _ox, this.player.pos.y + _oy);
+        }
+        this._chaosAmbient.update(dt);
+      }
       this._chaosCoreCd -= dt;
       if (this._chaosCoreCd <= 0) {
         this._chaosCoreCd = 5.0;
@@ -5172,6 +5221,9 @@ export class Game {
       if (this.comboTimer <= 0) this.comboCount = 0;
     }
     this.screenShake.update(dt);
+    // Hit-stop overlay timers
+    if (this._hitFlashOverlayTimer > 0) this._hitFlashOverlayTimer = Math.max(0, this._hitFlashOverlayTimer - dt);
+    if (this._hitFlashOverlayCd    > 0) this._hitFlashOverlayCd    = Math.max(0, this._hitFlashOverlayCd    - dt);
 
     if (!this.endless && this.timeAlive >= ACT1_WIN_SECONDS) {
       this.victory      = true;
@@ -8702,6 +8754,8 @@ export class Game {
     // 1a ── Boss Lava/Fire Rain zones (ground markers — under entities so they read as terrain)
     this._drawBossLava(ctx);
     this._drawBossTrails(ctx);
+    // Chaos Mode ambient particle field (world-space, additive blend, bounded)
+    if (this._chaosMode) this._chaosAmbient.draw(ctx);
     this._drawEndlessHazards(ctx);   // Endless-only: lightning storm + airstrike ships/rockets
     this._drawSynergyFx(ctx);        // character synergy marks above enemies + burst rings
     this._drawFusionClouds(ctx);     // Phase-2 fusion gas clouds (world-space, bounded)
@@ -8896,10 +8950,20 @@ export class Game {
       const alpha = b.life / b.maxLife;
       const endX = b.startPos.x + b.dir.x * b.length;
       const endY = b.startPos.y + b.dir.y * b.length;
-      ctx.save(); ctx.globalAlpha = alpha; ctx.lineCap = 'round';
-      ctx.strokeStyle = '#ff6600'; ctx.lineWidth = Math.round(12 * alpha);
+      ctx.save(); ctx.lineCap = 'round';
+      // Outer glow halo (additive blend)
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = alpha * 0.35; ctx.strokeStyle = '#ff6600'; ctx.lineWidth = Math.round(32 * alpha);
       ctx.beginPath(); ctx.moveTo(b.startPos.x, b.startPos.y); ctx.lineTo(endX, endY); ctx.stroke();
-      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = Math.round(4 * alpha);
+      // Mid beam
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.globalAlpha = alpha; ctx.strokeStyle = '#ff6600'; ctx.lineWidth = Math.round(12 * alpha);
+      ctx.beginPath(); ctx.moveTo(b.startPos.x, b.startPos.y); ctx.lineTo(endX, endY); ctx.stroke();
+      // Bright core
+      ctx.strokeStyle = '#ffe0aa'; ctx.lineWidth = Math.round(5 * alpha);
+      ctx.beginPath(); ctx.moveTo(b.startPos.x, b.startPos.y); ctx.lineTo(endX, endY); ctx.stroke();
+      // White hot center
+      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = Math.round(2 * alpha);
       ctx.beginPath(); ctx.moveTo(b.startPos.x, b.startPos.y); ctx.lineTo(endX, endY); ctx.stroke();
       ctx.restore();
     }
@@ -9097,6 +9161,15 @@ export class Game {
     this._drawOnboarding(ctx);            // first-minute objective callout + fading hints (Act 1)
     // drawVignette(ctx, this.overload, this.timeAlive);  // disabled: overload capped at 99 → constant pulse at high overload
     drawDamagePulse(ctx, this.damageFlash, this.damageFlashIntensity, DMG_PULSE.duration);
+    // Brief white overlay on heavy boss hit (visual hit-stop surrogate)
+    if (this._hitFlashOverlayTimer > 0) {
+      ctx.save();
+      ctx.globalAlpha = (this._hitFlashOverlayTimer / 0.07) * 0.28;
+      ctx.fillStyle   = '#ffffff';
+      ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
     this._drawScanlines(ctx);
 
     this._drawAnnouncement(ctx);

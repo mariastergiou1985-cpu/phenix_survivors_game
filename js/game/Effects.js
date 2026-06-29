@@ -109,6 +109,39 @@ export class ParticleSystem {
     }
   }
 
+  // Layered normal-enemy death pop: colored burst ring + white core flash + scatter.
+  // Better visual weight than basic spawnDeathBurst — intended for all normal enemy deaths.
+  spawnDeathBurstImproved(pos, color, count = 10, size = 2.2) {
+    // Scatter burst
+    for (let i = 0; i < count; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 70 + Math.random() * 130;
+      const vel   = new Vec2(Math.cos(angle) * speed, Math.sin(angle) * speed);
+      this._add(new Particle(pos, vel, i % 4 === 0 ? '#e6f5ff' : color, size + Math.random() * 2.5, 0.35));
+    }
+    // Evenly-spaced ring (reads as an expanding circle)
+    const ringCount = 10;
+    for (let i = 0; i < ringCount; i++) {
+      const angle = (i / ringCount) * Math.PI * 2;
+      const speed = 140 + Math.random() * 30;
+      const vel   = new Vec2(Math.cos(angle) * speed, Math.sin(angle) * speed);
+      this._add(new Particle(pos, vel, color, 1.8, 0.28));
+    }
+    // Bright core flash (3 white sparks outward)
+    for (let i = 0; i < 3; i++) {
+      const angle = (i / 3) * Math.PI * 2;
+      const vel   = new Vec2(Math.cos(angle) * 55, Math.sin(angle) * 55);
+      this._add(new Particle(pos, vel, '#ffffff', 2.5, 0.18));
+    }
+  }
+
+  // Pre-ability spiral spark — spawn multiple calls with varied angles for a spiral burst.
+  // Each call adds one outward radial particle. Caller loops 8-12 times with evenly spaced angles.
+  spawnWindupSpark(pos, angle, color, speed = 110) {
+    const vel = new Vec2(Math.cos(angle) * speed, Math.sin(angle) * speed);
+    this._add(new Particle(pos, vel, color, 2.5, 0.22));
+  }
+
   update(dt) {
     this.particles = this.particles.filter(p => {
       p.update(dt);
@@ -225,4 +258,57 @@ export class EMPRing {
   }
 
   alive() { return this.life > 0; }
+}
+
+// ─── ChaosAmbientSystem ───────────────────────────────────────────────────────
+// Bounded (MAX=40) slowly-drifting neon particle field for Chaos Mode atmosphere.
+// Spawn at world-space positions near the player, draw in world-space camera ctx.
+export class ChaosAmbientSystem {
+  constructor() {
+    this.MAX       = 40;
+    this.particles = [];
+  }
+
+  spawn(x, y) {
+    if (this.particles.length >= this.MAX) this.particles.shift();
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 8 + Math.random() * 18;
+    this.particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: 1.2 + Math.random() * 1.2,
+      maxLife: 2.4,
+      r: 1.8 + Math.random() * 2.0,
+      color: Math.random() < 0.55 ? '#ff2d95' : (Math.random() < 0.5 ? '#9b6bff' : '#ff5533'),
+    });
+  }
+
+  update(dt) {
+    for (let i = this.particles.length - 1; i >= 0; i--) {
+      const p = this.particles[i];
+      p.x    += p.vx * dt;
+      p.y    += p.vy * dt;
+      p.life -= dt;
+      if (p.life <= 0) this.particles.splice(i, 1);
+    }
+  }
+
+  draw(ctx) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (const p of this.particles) {
+      const a = clamp(p.life / p.maxLife, 0, 1) * 0.55;
+      ctx.globalAlpha = a;
+      ctx.fillStyle   = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.restore();
+  }
+
+  clear() { this.particles.length = 0; }
 }
