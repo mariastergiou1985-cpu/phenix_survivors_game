@@ -1,7 +1,7 @@
-import { Game } from './game/Game.js?v=20260629540000';
-import { AudioManager } from './audio/AudioManager.js?v=20260629540000';
-import { GamepadInput } from './Gamepad.js?v=20260629540000';
-import { initTouchControls } from './TouchInput.js?v=20260629540000';
+import { Game } from './game/Game.js?v=20260629520000';
+import { AudioManager } from './audio/AudioManager.js?v=20260629520000';
+import { GamepadInput } from './Gamepad.js?v=20260629520000';
+import { initTouchControls } from './TouchInput.js?v=20260629520000';
 
 const canvas = document.getElementById('game');
 const ctx    = canvas.getContext('2d');
@@ -127,7 +127,7 @@ window.addEventListener('keydown', e => {
   // One-shot abilities
   if (key === 'q') game.activatePulseShield();   // Pulse Shield — shared by ALL characters
   if (key === 'e') game.activateEMPCloud();       // EMP stun — shared by ALL (Phasewalker layers his Shockwave VFX inside)
-  if (key === ' ') { game.activateThunderSolo(); game.activateOverheatedChains(); game.activateCyberBikeRush(); game.activateSpiritDojang(); game.activateSkyfallLances(); game.activateChromePhantomProtocol(); game.activateDigitalSingularity(); game.activateEuclidPlague(); game.activateProtocol0Cataclysm(); }   // SPACE ultimate (per-character; each self-guards)
+  if (key === ' ') { game.activateThunderSolo(); game.activateOverheatedChains(); game.activateCyberBikeRush(); game.activateSkyfallLances(); game.activateChromePhantomProtocol(); game.activateDigitalSingularity(); game.activateEuclidPlague(); game.activateProtocol0Cataclysm(); }   // SPACE ultimate (per-character; each self-guards)
   if (key === 'm') game.audio?.toggleMute();
   if (key === 'f') {
     if (!document.fullscreenElement) {
@@ -483,7 +483,7 @@ initTouchControls({
   setAim: (x, y) => { mousePos = { x, y }; game.setMousePos(mousePos); },
   onQ:   () => game.activatePulseShield(),
   onE:   () => game.activateEMPCloud(),
-  onUlt: () => { game.activateThunderSolo(); game.activateOverheatedChains(); game.activateCyberBikeRush(); game.activateSpiritDojang(); game.activateSkyfallLances(); game.activateChromePhantomProtocol(); game.activateDigitalSingularity(); game.activateEuclidPlague(); game.activateProtocol0Cataclysm(); },
+  onUlt: () => { game.activateThunderSolo(); game.activateOverheatedChains(); game.activateCyberBikeRush(); game.activateSkyfallLances(); game.activateChromePhantomProtocol(); game.activateDigitalSingularity(); game.activateEuclidPlague(); game.activateProtocol0Cataclysm(); },
 });
 
 // ─── Game loop ────────────────────────────────────────────────────────────────
@@ -496,4 +496,21 @@ function loop(timestamp) {
   // Crash-resilient: a single transient error in update/draw must NOT stop the rAF loop
   // (that was a hard-freeze with the timer stuck). We always reschedule, keep the canvas
   // save-stack balanced via finally, and log the first error so the cause stays visible.
-  const _fStart = performance.
+  const _fStart = performance.now();
+  try {
+    applyGamepad();   // inject controller input into keys/handlers before the update reads them
+    game.setMousePos(mousePos);
+    game.update(dt, { keys, mousePos, mouseDown });
+    applyContextualCursor();
+
+    // Apply screen shake offset
+    const [ox, oy] = game.screenShake.getOffset();
+    ctx.save();
+    try { ctx.translate(ox, oy); game.draw(ctx); }
+    finally { ctx.restore(); }
+  } catch (err) {
+    if (!loop._errLogged) { console.error('[game loop]', err); loop._errLogged = true; }
+  }
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
