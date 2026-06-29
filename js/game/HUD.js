@@ -101,20 +101,6 @@ export function drawHUD(ctx, game) {
     drawText(ctx, '!! GRID BLACKOUT ACTIVE !!', WIDTH / 2, 96, RED, '16px Consolas, monospace');
   }
 
-  // Chaos pylon buff indicator (real buffs only — no speed, display only)
-  if (game._chaosMode && game._chaosPylonBuff) {
-    const buff    = game._chaosPylonBuff;
-    const isShield = buff.type === 'shield';
-    const color   = isShield ? CYAN : '#44ff88';
-    const label   = isShield ? 'S SHIELD PULSE ACTIVE' : '+ HEAL PULSE ACTIVE';
-    const fade    = Math.min(1, buff.timer);
-    ctx.save();
-    ctx.globalAlpha = fade * (0.75 + 0.25 * Math.abs(Math.sin(Date.now() / 200)));
-    ctx.textAlign = 'center';
-    drawText(ctx, label, WIDTH / 2, 112, color, 'bold 11px Consolas, monospace');
-    ctx.restore();
-  }
-
   // ── Bottom-left: Q Pulse Shield (magenta) + E EMP (cyan) ────────────────
   const by = HEIGHT - 62, bs = 44;
   const Q_COLOR = '#ff4dd2';   // neon magenta — distinct from E

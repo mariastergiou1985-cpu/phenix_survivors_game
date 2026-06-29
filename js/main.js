@@ -1,7 +1,7 @@
-import { Game } from './game/Game.js?v=20260629460000';
-import { AudioManager } from './audio/AudioManager.js?v=20260629460000';
-import { GamepadInput } from './Gamepad.js?v=20260629460000';
-import { initTouchControls } from './TouchInput.js?v=20260629460000';
+import { Game } from './game/Game.js?v=20260629450000';
+import { AudioManager } from './audio/AudioManager.js?v=20260629450000';
+import { GamepadInput } from './Gamepad.js?v=20260629450000';
+import { initTouchControls } from './TouchInput.js?v=20260629450000';
 
 const canvas = document.getElementById('game');
 const ctx    = canvas.getContext('2d');
