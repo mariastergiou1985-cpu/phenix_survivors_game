@@ -16772,7 +16772,7 @@ _drawLoreArchive(ctx) {
       ctx.drawImage(img, 0, 0, WORLD_W, drawH);
       // Endless map: a touch more dimming so the backdrop recedes and the gameplay plane reads flat.
       ctx.fillStyle = this.gridBlackoutActive ? 'rgba(0,0,0,0.65)'
-                    : this._chaosMode          ? 'rgba(0,0,8,0.54)'
+                    : this._chaosMode          ? 'rgba(0,0,8,0.44)'
                     : this.endless             ? 'rgba(0,0,0,0.46)'
                     :                            'rgba(0,0,0,0.38)';
       ctx.fillRect(0, 0, WORLD_W, WORLD_H);

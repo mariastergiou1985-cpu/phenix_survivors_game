@@ -761,25 +761,72 @@ export class NpcWalker {
 
     // Synergy-colored pulsing aura glow ring — readability in busy scenes
     {
-      const syn   = this._synergy;
-      const pulse = 0.45 + 0.55 * Math.abs(Math.sin(Date.now() / 380));
+      const syn    = this._synergy;
+      const pulse  = 0.45 + 0.55 * Math.abs(Math.sin(Date.now() / 380));
+      const pulse2 = 0.5  + 0.5  * Math.abs(Math.sin(Date.now() / 900));   // slow outer beacon
+      const cx     = this.pos.x;
+      const cy     = this.pos.y - SPRITE_H / 2 + 12;
       ctx.save();
-      ctx.globalAlpha  = 0.55 * pulse;
-      ctx.shadowColor  = syn.col1;
-      ctx.shadowBlur   = 22;
-      ctx.strokeStyle  = syn.col1;
-      ctx.lineWidth    = 2.5;
+
+      // Outer slow-pulsing beacon ring — large, unmistakable at a glance
+      ctx.globalAlpha = 0.38 * pulse2;
+      ctx.shadowColor = syn.col1;
+      ctx.shadowBlur  = 28;
+      ctx.strokeStyle = syn.col1;
+      ctx.lineWidth   = 3;
       ctx.beginPath();
-      ctx.arc(this.pos.x, this.pos.y - SPRITE_H / 2 + 12, SPRITE_W * 0.52, 0, Math.PI * 2);
+      ctx.arc(cx, cy, SPRITE_W * 0.82, 0, Math.PI * 2);
       ctx.stroke();
+
+      // Main inner aura ring — boosted alpha + blur vs. before
+      ctx.globalAlpha = 0.82 * pulse;
+      ctx.shadowColor = syn.col1;
+      ctx.shadowBlur  = 36;
+      ctx.strokeStyle = syn.col1;
+      ctx.lineWidth   = 3.5;
+      ctx.beginPath();
+      ctx.arc(cx, cy, SPRITE_W * 0.52, 0, Math.PI * 2);
+      ctx.stroke();
+
       // Inner tighter ring for crispness
-      ctx.globalAlpha  = 0.28 * pulse;
-      ctx.shadowBlur   = 8;
-      ctx.strokeStyle  = syn.col2;
-      ctx.lineWidth    = 1.5;
+      ctx.globalAlpha = 0.45 * pulse;
+      ctx.shadowBlur  = 10;
+      ctx.strokeStyle = syn.col2;
+      ctx.lineWidth   = 2;
       ctx.beginPath();
-      ctx.arc(this.pos.x, this.pos.y - SPRITE_H / 2 + 12, SPRITE_W * 0.38, 0, Math.PI * 2);
+      ctx.arc(cx, cy, SPRITE_W * 0.38, 0, Math.PI * 2);
       ctx.stroke();
+
+      // Overhead downward-pointing chevron beacon
+      const labelY = this.pos.y - SPRITE_H - 6;
+      const chevX  = cx;
+      const chevY  = labelY - 6;
+      ctx.globalAlpha = 0.72 + 0.28 * pulse;
+      ctx.shadowColor = syn.col1;
+      ctx.shadowBlur  = 14;
+      ctx.strokeStyle = syn.col1;
+      ctx.lineWidth   = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(chevX - 8, chevY - 8);
+      ctx.lineTo(chevX,     chevY);
+      ctx.lineTo(chevX + 8, chevY - 8);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(chevX - 6, chevY - 16);
+      ctx.lineTo(chevX,     chevY - 8);
+      ctx.lineTo(chevX + 6, chevY - 16);
+      ctx.stroke();
+
+      // "ALLY" label above chevron
+      ctx.globalAlpha  = 0.85;
+      ctx.shadowColor  = syn.col1;
+      ctx.shadowBlur   = 10;
+      ctx.fillStyle    = syn.col1;
+      ctx.font         = 'bold 9px monospace';
+      ctx.textAlign    = 'center';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText('ALLY', chevX, chevY - 18);
+
       ctx.restore();
     }
 
