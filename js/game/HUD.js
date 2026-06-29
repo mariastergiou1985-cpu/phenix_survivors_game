@@ -799,4 +799,39 @@ function _drawPersonalRecords(ctx, game, lx, rx) {
   const headers = ['DATE', 'MODE', 'CHAR', 'LVL', 'SCORE', 'TIME'];
   ctx.fillStyle = '#4a6080';
   ctx.textAlign = 'left';
-  headers.forEach(
+  headers.forEach((h, i) => {
+    if (i === headers.length - 1) {
+      ctx.textAlign = 'right';
+      ctx.fillText(h, colX[i], y0 + lineH);
+    } else {
+      ctx.textAlign = 'left';
+      ctx.fillText(h, colX[i], y0 + lineH);
+    }
+  });
+
+  rows.forEach((run, idx) => {
+    const ry = y0 + lineH * (idx + 2);
+    const isLatest = idx === 0;
+    ctx.fillStyle = isLatest ? '#cfe9ff' : '#5a7090';
+    const fmtTime = (s) => {
+      const m = Math.floor((s || 0) / 60).toString().padStart(2, '0');
+      const c = Math.floor((s || 0) % 60).toString().padStart(2, '0');
+      return `${m}:${c}`;
+    };
+    const charShort = (run.char || 'UNK').replace(/_/g,' ').slice(0, 10);
+    const modeShort = (run.mode || '').slice(0, 8);
+    const values = [run.date || '', modeShort, charShort, run.level || 0, run.score || 0, fmtTime(run.time)];
+    values.forEach((v, i) => {
+      if (i === values.length - 1) {
+        ctx.textAlign = 'right';
+        ctx.fillText(v, colX[i], ry);
+      } else {
+        ctx.textAlign = 'left';
+        ctx.fillText(v, colX[i], ry);
+      }
+    });
+  });
+
+  ctx.textAlign = 'left';
+}
+
