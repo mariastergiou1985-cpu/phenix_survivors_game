@@ -1,4 +1,6 @@
 // NpcWalker.js — KIROSHI WALKER autonomous ally V4
+import { Vec2 } from '../constants.js';
+import { FloatingText } from '../entities/FloatingText.js';
 // Summoned every 120s of active gameplay; active for 120s per window.
 // Weapons: (1) basic electric wave (every 5s), (2) AoE shockwave ultimate (every 10s, multi-pulse),
 //          (3) Mind Glitch / Neural Override (every 5s, applies glitch status → self-destruct).
@@ -90,6 +92,8 @@ export class NpcWalker {
     this._dashCd           = 6;     // warm-up before first dash
     this._shieldAppliedTimer = 0;  // tracks recently applied shield (for HUD display)
 
+    this._chaosHealCd  = 18;    // Chaos-only heal pulse: 6% maxHP every 18s
+
     this._vfx         = [];
     this._img         = null;
     this._imgLoaded   = false;
@@ -109,10 +113,10 @@ export class NpcWalker {
 
   get isActive() { return this._active; }
 
-  summon(playerPos, synergyId, activeDur, maxHpBonus) {
+  summon(playerPos, synergyId, activeDur, maxHpBonus, chaosMode) {
     const _synId  = synergyId || 'default';
     const _actDur = (typeof activeDur === 'number' && activeDur > 0) ? activeDur : 60;
-    this.maxHp       = 120 + Math.max(0, (maxHpBonus || 0));
+    this.maxHp       = chaosMode ? 2000 : 120 + Math.max(0, (maxHpBonus || 0));
     this.hp          = this.maxHp;
     this.mana        = Math.floor(this.maxMana * 0.4);
     this.pos         = { x: playerPos.x - 60, y: playerPos.y + 16 };
@@ -160,7 +164,8 @@ export class NpcWalker {
       return;
     }
 
-    const manaRegen = WALKER_MANA_REGEN + (game.player ? (game.player.walkerManaRegenBonus || 0) : 0);
+    // Chaos Mode: Walker mana regen doubled (Chaos-only; non-Chaos unchanged)
+    const manaRegen = WALKER_MANA_REGEN * (game._chaosMode ? 2.0 : 1.0) + (game.player ? (game.player.walkerManaRegenBonus || 0) : 0);
     this.mana = Math.min(this.maxMana, this.mana + manaRegen * dt);
 
     // Follow player
@@ -176,6 +181,20 @@ export class NpcWalker {
 
     this._updateEnemyDamage(game);
     if (!this._active || this.downed) return;
+
+    // ── Chaos Mode: periodic heal pulse (Chaos only; all characters; bounded +6% maxHP) ──
+    if (game._chaosMode && game.player) {
+      this._chaosHealCd -= dt;
+      if (this._chaosHealCd <= 0) {
+        this._chaosHealCd = 18;   // 18s between pulses
+        const _chHeal = Math.round(game.player.maxHp * 0.06);
+        game.player.hp = Math.min(game.player.maxHp, game.player.hp + _chHeal);
+        if (Array.isArray(game.floatingTexts)) {
+          const _ftPos = new Vec2(game.player.pos.x - 10, game.player.pos.y - 48);
+          game.floatingTexts.push(new FloatingText('+' + _chHeal + ' WALKER HEAL', _ftPos, '#88ff88', 1.4));
+        }
+      }
+    }
 
     const dmgBonus = game.player ? (game.player.walkerDmgBonus || 0) : 0;
 

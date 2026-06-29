@@ -33,7 +33,7 @@ import { DigitalSingularity } from '../effects/digital-singularity.js?v=20260629
 import { Protocol0 } from '../effects/protocol-0.js?v=20260629440000';
 import { LaserEyes } from '../effects/laser-eyes.js?v=20260629440000';
 import { MeteorRain } from '../effects/meteor-rain.js?v=20260629440000';
-import { NpcWalker } from './NpcWalker.js?v=20260629440000';
+import { NpcWalker } from './NpcWalker.js?v=20260629560000';
 
 // Euclid Vector toxin kit — used ONLY when selectedCharacter === 'euclid_vector' (world-space).
 import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=20260629440000';
@@ -3277,7 +3277,7 @@ export class Game {
     this._endlessBossTimer -= dt;
     if (this._endlessBossTimer > 0) return;
     if (this.acidRain || this.acidRainTimer < 8) { this._endlessBossTimer = 8; return; }  // avoid overlap
-    const slots = ['titan', 'annihilator', 'bloodfang', 'mech', 'doubleDemon'];
+    const slots = ['titan', 'annihilator', 'bloodfang', 'mech', 'doubleDemon', 'cyberSerpent', 'cyberDragon'];
     this._endlessBossIdx = (this._endlessBossIdx + 1) % slots.length;
     this._endlessRearmBoss(slots[this._endlessBossIdx]);
     // Phase 3: In Chaos Mode rearm a second slot immediately and use shorter cadence
@@ -3309,6 +3309,18 @@ export class Game {
       if (!this.doubleDemonsBoss || this.doubleDemonsBoss.hp <= 0) {
         this.doubleDemonsSpawned    = false;
         this.doubleDemonsSpawnTimer = DD_SPAWN_DELAY;
+      }
+    } else if (slot === 'cyberSerpent') {
+      // Rearm Cyber Serpent if dead — 20s spawn delay to avoid immediate overlap
+      if (!this.cyberSerpentBoss || this.cyberSerpentBoss.hp <= 0) {
+        this.cyberSerpentSpawned    = false;
+        this.cyberSerpentSpawnTimer = 20;
+      }
+    } else if (slot === 'cyberDragon') {
+      // Rearm Cyber Dragon if dead — 25s spawn delay
+      if (!this.cyberDragonBoss || this.cyberDragonBoss.hp <= 0) {
+        this.cyberDragonSpawned    = false;
+        this.cyberDragonSpawnTimer = 25;
       }
     }
   }
@@ -5220,6 +5232,11 @@ export class Game {
         this.cyberDragonSpawned  = false; this.cyberDragonSpawnTimer  = 0;
         this.doubleDemonsSpawned = false; this.doubleDemonsSpawnTimer = 0;
         this._endlessBossTimer  = 5;   // first Chaos boss rotation: 5 s from now
+        // Walker: upgrade HP to 2000 if already active when Chaos starts
+        if (this._npcWalker && this._npcWalker.isActive && !this._npcWalker.downed) {
+          this._npcWalker.maxHp = 2000;
+          this._npcWalker.hp    = Math.max(this._npcWalker.hp, Math.round(2000 * 0.5));
+        }
         this.acidRainTimer      = 30;  // Phase 4: first acid rain 30 s into Chaos
         this._airstrikeTimer    = 15;  // Phase 4: first airstrike 15 s into Chaos
         this._lightningTimer    = 20;  // Phase 4: first lightning storm 20 s into Chaos
@@ -5354,7 +5371,7 @@ export class Game {
           const _wActiveDur  = 120 + (this.player.walkerActiveDurBonus || 0);
           const _wMaxHpBonus = this.player.walkerMaxHpBonus || 0;
           // summon() safely refreshes lifetime if Walker is already active (no stacking)
-          this._npcWalker.summon(this.player.pos, this.player.selectedCharacter || 'default', _wActiveDur, _wMaxHpBonus);
+          this._npcWalker.summon(this.player.pos, this.player.selectedCharacter || 'default', _wActiveDur, _wMaxHpBonus, this._chaosMode);
           const _wTxt = this._chaosMode ? '⚡ KIROSHI — CHAOS LINK ACTIVE' : 'ELECTRIC SUPPORT ONLINE';
           const _wCol = this._chaosMode ? '#ff2d95' : '#44ffff';
           this.triggerAnnouncement(_wTxt, _wCol);
@@ -5572,7 +5589,7 @@ export class Game {
     // Time-based spawn — one every 30s, only while mana < 100 and none already present (no spam/dupes)
     this.manaPickupTimer -= dt;
     if (this.manaPickupTimer <= 0) {
-      this.manaPickupTimer = 30;
+      this.manaPickupTimer = this._chaosMode ? 12 : 30;   // Chaos: mana pickup every 12s (vs 30s normal)
       if (this.player.mana < this.player.maxMana && this.manaPickups.length === 0) {
         const ang = Math.random() * Math.PI * 2;
         const r   = randomRange(140, 240);
