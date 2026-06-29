@@ -265,17 +265,17 @@ export class AudioManager {
     src.stop(t0 + dur + 0.02);
   }
 
-  // 1. Shoot — short cyber laser blip (descending square).
+  // 1. Shoot — short cyber laser blip (descending triangle; softer than square).
   playShoot() {
-    if (!this._canPlay('shoot', 0.05)) return;
-    this._tone({ type: 'square', freqStart: 880, freqEnd: 240, dur: 0.08, gain: 0.11 });
+    if (!this._canPlay('shoot', 0.09)) return;
+    this._tone({ type: 'triangle', freqStart: 660, freqEnd: 200, dur: 0.08, gain: 0.065 });
   }
 
   // 2. Enemy hit — small electric zap (saw + tiny noise tick).
   playHit() {
-    if (!this._canPlay('hit', 0.04)) return;
-    this._tone({ type: 'sawtooth', freqStart: 320, freqEnd: 140, dur: 0.06, gain: 0.10 });
-    this._noiseBurst({ dur: 0.05, gain: 0.05, filterType: 'highpass', freq: 1600 });
+    if (!this._canPlay('hit', 0.07)) return;
+    this._tone({ type: 'sawtooth', freqStart: 320, freqEnd: 140, dur: 0.06, gain: 0.07 });
+    this._noiseBurst({ dur: 0.05, gain: 0.04, filterType: 'highpass', freq: 1600 });
   }
 
   // 3. Enemy death — glitch burst / digital crack.
@@ -576,5 +576,40 @@ export class AudioManager {
     this._noiseBurst({ dur: 0.18, gain: 0.06, filterType: 'bandpass', freq: 900 });
   }
 
+
+
+  // ─── Element SFX (synthesized — no asset files required) ────────────────────
+
+  // Lightning storm strike — sharp electric crack + low thunder rumble.
+  // Distinct from the generic playEventWarning() alarm. Throttled 0.3 s per strike.
+  playLightningStrike() {
+    if (!this._canPlay('lightningStrike', 0.30)) return;
+    // High crack: brief sawtooth pop
+    this._tone({ type: 'sawtooth', freqStart: 2200, freqEnd: 400, dur: 0.07, gain: 0.11 });
+    // Thunder roll: low sine rumble
+    this._tone({ type: 'sine',     freqStart: 80,   freqEnd: 28,  dur: 0.45, gain: 0.13 });
+    // Sizzle texture
+    this._noiseBurst({ dur: 0.12, gain: 0.09, filterType: 'bandpass', freq: 1800 });
+  }
+
+  // Toxic gas cloud — hiss burst + low bubbling undertone. Throttled 0.8 s (clouds spawn in bursts).
+  playToxicGas() {
+    if (!this._canPlay('toxicGas', 0.80)) return;
+    // Gas hiss: highpass noise
+    this._noiseBurst({ dur: 0.22, gain: 0.08, filterType: 'highpass', freq: 900 });
+    // Bubbling: low modulated sine
+    this._tone({ type: 'sine', freqStart: 90, freqEnd: 65, dur: 0.28, gain: 0.07 });
+  }
+
+  // Ice / crystal / freeze — cold wind sweep + high shimmer. Used for Frozen Sleet onset + ice fields.
+  playIceSweep() {
+    if (!this._canPlay('iceSweep', 0.60)) return;
+    // Cold wind: bandpass noise sweep
+    this._noiseBurst({ dur: 0.35, gain: 0.09, filterType: 'bandpass', freq: 1400 });
+    // High shimmer: descending triangle
+    this._tone({ type: 'triangle', freqStart: 1800, freqEnd: 900, dur: 0.30, gain: 0.07 });
+    // Low crack: short sine thud
+    this._tone({ type: 'sine', freqStart: 140, freqEnd: 50, dur: 0.18, gain: 0.08, delay: 0.05 });
+  }
 
 }

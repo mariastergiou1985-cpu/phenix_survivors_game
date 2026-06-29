@@ -5,38 +5,38 @@ import {
   MAX_OVERLOAD, PLAYER_RADIUS, CORE_RADIUS, MATRIX_RADIUS,
   DARK_BG, GRID_LINE, BLACK, CYAN, RED, GREEN, YELLOW, ORANGE, WHITE, PURPLE,
   CORE_COLORS, VIEW_SCALE, VIEW_W, VIEW_H, ENDLESS_VIEW_SCALE,
-} from '../constants.js?v=20260628420000';
+} from '../constants.js?v=20260629430000';
 import { clamp, distance, safeNormalize, randomChoice, randomRange } from '../utils.js';
 
 import { FloatingText }   from '../entities/FloatingText.js';
-import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260628420000';
-import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260628420000';
-import { Player }         from '../entities/Player.js?v=20260628420000';
-import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260628420000';
-import { Enemy }          from '../entities/Enemy.js?v=20260628420000';
-import { SupportDrone }   from '../entities/SupportDrone.js?v=20260628420000';
+import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260629430000';
+import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260629430000';
+import { Player }         from '../entities/Player.js?v=20260629430000';
+import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260629430000';
+import { Enemy }          from '../entities/Enemy.js?v=20260629430000';
+import { SupportDrone }   from '../entities/SupportDrone.js?v=20260629430000';
 
-import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow } from './Effects.js?v=20260628420000';
-import { SystemEventManager } from './Events.js?v=20260628420000';
-import { UpgradeUI }      from './UpgradeUI.js?v=20260628420000';
-import { weightedSample } from './Upgrades.js?v=20260628420000';
-import { MutationUI }      from './MutationUI.js?v=20260628420000';
-import { sampleMutations } from './Mutations.js?v=20260628420000';
-import { drawHUD, drawEndScreen } from './HUD.js?v=20260628420000';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS } from './MetaProgress.js?v=20260628420000';
-import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260628420000';
+import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow } from './Effects.js?v=20260629430000';
+import { SystemEventManager } from './Events.js?v=20260629430000';
+import { UpgradeUI }      from './UpgradeUI.js?v=20260629430000';
+import { weightedSample } from './Upgrades.js?v=20260629430000';
+import { MutationUI }      from './MutationUI.js?v=20260629430000';
+import { sampleMutations } from './Mutations.js?v=20260629430000';
+import { drawHUD, drawEndScreen } from './HUD.js?v=20260629430000';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS } from './MetaProgress.js?v=20260629430000';
+import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260629430000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
-import { GlitchDash } from '../effects/glitch-dash.js?v=20260628420000';
-import { EMPShockwave } from '../effects/emp-shockwave.js?v=20260628420000';
-import { DigitalSingularity } from '../effects/digital-singularity.js?v=20260628420000';
-import { Protocol0 } from '../effects/protocol-0.js?v=20260628420000';
-import { LaserEyes } from '../effects/laser-eyes.js?v=20260628420000';
-import { MeteorRain } from '../effects/meteor-rain.js?v=20260628420000';
-import { NpcWalker } from './NpcWalker.js?v=20260628420000';
+import { GlitchDash } from '../effects/glitch-dash.js?v=20260629430000';
+import { EMPShockwave } from '../effects/emp-shockwave.js?v=20260629430000';
+import { DigitalSingularity } from '../effects/digital-singularity.js?v=20260629430000';
+import { Protocol0 } from '../effects/protocol-0.js?v=20260629430000';
+import { LaserEyes } from '../effects/laser-eyes.js?v=20260629430000';
+import { MeteorRain } from '../effects/meteor-rain.js?v=20260629430000';
+import { NpcWalker } from './NpcWalker.js?v=20260629430000';
 
 // Euclid Vector toxin kit — used ONLY when selectedCharacter === 'euclid_vector' (world-space).
-import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=20260628420000';
+import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=20260629430000';
 
 // ── Eden Core character message pools (in-run transmissions) ────────────────
 const _EDEN_CHAR_POOLS = {
@@ -3466,6 +3466,7 @@ export class Game {
     const p = this.player;
     p.specialCooldown     = p.specialMaxCooldown;
     this._taekwondoDmgSet = new Set();
+    this.audio?.playIceSweep?.();   // crystal field onset
     this._iceFields.push({
       pos:         p.pos.clone(),
       radius:      ICE_FIELD_RADIUS,
@@ -4342,8 +4343,10 @@ export class Game {
         if (distance(e.pos, n.pos) > (e.radius || 16) + 8) continue;
         this._euclidDamage(e, n.dmg);
         n.hit.add(e);
-        if (this.fusionClouds.length < 12)                     // small gas puff (reuses bounded cloud cap)
+        if (this.fusionClouds.length < 12) {                   // small gas puff (reuses bounded cloud cap)
           this.fusionClouds.push({ x: e.pos.x, y: e.pos.y, t: 0, life: 1.6, fid: 'viral', dmgCd: 0.4 });
+          this.audio?.playToxicGas?.();   // gas cloud spawn sound (throttled)
+        }
         n.pierceLeft -= 1;
         if (n.pierceLeft <= 0) { this._euclidNeedles.splice(i, 1); removed = true; break; }
       }
@@ -8057,6 +8060,7 @@ export class Game {
       this._stormSpawnCd   = 0;
       this.triggerAnnouncement('⚠ LIGHTNING STORM HAZARD', '#9fd0ff');
       this.audio?.playEventWarning();
+      this.audio?.playLightningStrike?.();  // thunder crack on storm start
     }
 
     if (this._stormActive > 0) {
@@ -8079,7 +8083,7 @@ export class Game {
           this.floatingTexts.push(new FloatingText('-' + dmg + ' HP', this.player.pos.clone(), '#9fd0ff', 1.2));
         }
         this.particles?.spawnDeathBurst?.(z.pos, '#bfe0ff', 8, 1.8);
-        this.audio?.playEventWarning?.();
+        this.audio?.playLightningStrike?.();  // thunder crack per strike (throttled 0.3s)
       }
       if (z.t >= z.warn + z.flash) this.lightningZones.splice(i, 1);
     }
@@ -8296,8 +8300,10 @@ export class Game {
     this._fusionName = def.name; this._fusionNameT = 1.2;          // brief HUD label
 
     if (def.kind === 'cloud') {                                    // lingering damaging gas cloud
-      if (this.fusionClouds.length < 12)
+      if (this.fusionClouds.length < 12) {
         this.fusionClouds.push({ x: src.pos.x, y: src.pos.y, t: 0, life: 3.5, fid, dmgCd: 0 });
+        this.audio?.playToxicGas?.();   // gas cloud spawn (throttled 0.8s)
+      }
       return;
     }
 
@@ -12439,7 +12445,7 @@ _drawLoreArchive(ctx) {
       });
     }
     this._frozenSleet = { phase: 'onset', t: 0, particles };
-    this.audio?.playEventWarning?.();
+    this.audio?.playIceSweep?.();   // ice sweep replaces generic warning for sleet storm
   }
 
   _drawFrozenSleet(ctx) {

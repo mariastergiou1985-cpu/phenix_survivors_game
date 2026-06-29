@@ -194,8 +194,11 @@ export function initTouchControls({ canvas, keys, game, setAim, onQ, onE, onUlt 
   // cancelled those clicks on mobile; treating it like a control zone lets them pass through.
   const onControl = el => !!(el && el.closest && el.closest('#touch-joy, #touch-btns, #touch-pause, #touch-fs, #cgm-charselect'));
   let tapId = null;
+  let _lastTouchTime = 0;   // timestamp of most-recent real touch (used to re-show controls briefly)
+
   document.addEventListener('pointerdown', e => {
     if (e.pointerType === 'mouse') return;       // let native mouse path handle desktop-style clicks
+    _lastTouchTime = Date.now();                 // user touched screen — re-show touch controls briefly
     if (onControl(e.target)) return;             // joystick / buttons handle their own pointers
     e.preventDefault();                          // stop scroll/zoom on canvas + menus
     tapId = e.pointerId;
@@ -243,9 +246,12 @@ export function initTouchControls({ canvas, keys, game, setAim, onQ, onE, onUlt 
   let _shown = null, _pauseShown = null, _lastState = null;
   function tick() {
     const g = game;
+    // Hide touch controls when a physical controller is active, unless the user touched
+    // the screen recently (within 3 s). Touching restores touch controls temporarily.
+    const ctrlActive = !!(g._controllerConnected) && (Date.now() - _lastTouchTime > 3000);
     const inPlay = g.gameState === 'playing' && !g.paused && !g.gameOver && !g.victory
-                   && !g.upgradeUI && !g.mutationUI;
-    const showPause = g.gameState === 'playing' && !g.gameOver && !g.victory;
+                   && !g.upgradeUI && !g.mutationUI && !ctrlActive;
+    const showPause = g.gameState === 'playing' && !g.gameOver && !g.victory && !ctrlActive;
     if (inPlay !== _shown) {
       _shown = inPlay;
       joy.style.display  = inPlay ? '' : 'none';

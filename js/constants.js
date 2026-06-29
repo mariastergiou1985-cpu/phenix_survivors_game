@@ -26,7 +26,7 @@ export const WIN_TIME_SECONDS = 30 * 60;
 // Reachable primary victory ("Act 1") — climaxes just after the Bloodfang Packmaster (10:00).
 // Used ONLY by the win check; kept separate from WIN_TIME_SECONDS so the core economy is
 // untouched. Endless mode (CONTINUE) lifts this so the run keeps scaling on absolute time.
-export const ACT1_WIN_SECONDS = 12 * 60;
+export const ACT1_WIN_SECONDS = 8 * 60;
 
 export const CORE_OVERLOAD_TICK_TIME  = 2.0;
 export const BASE_OVERLOAD_PER_CORE   = 1.0;

@@ -319,9 +319,9 @@ export class NpcWalker {
     this._spawnDashVfx(this.pos.x, this.pos.y, syn, 10);
     // Apply player benefits
     if (game.player) {
-      game.player.shieldTimer = 10;
+      game.player.walkerShieldTimer = 5;   // support shield — separate from Q
       game.player.hp = Math.min(game.player.maxHp, game.player.hp + game.player.maxHp * 0.05);
-      this._shieldAppliedTimer = 10;
+      this._shieldAppliedTimer = 5;
       // Floating texts
       if (Array.isArray(game._floatingTexts)) {
         game._floatingTexts.push({ text: '+SHIELD', x: game.player.pos.x - 20, y: game.player.pos.y - 34, timer: 1.3, color: '#00ccff', size: 13 });
@@ -739,6 +739,31 @@ export class NpcWalker {
   _drawSprite(ctx) {
     const x = Math.round(this.pos.x - SPRITE_W / 2);
     const y = Math.round(this.pos.y - SPRITE_H + 12);
+
+    // Synergy-colored pulsing aura glow ring — readability in busy scenes
+    {
+      const syn   = this._synergy;
+      const pulse = 0.45 + 0.55 * Math.abs(Math.sin(Date.now() / 380));
+      ctx.save();
+      ctx.globalAlpha  = 0.55 * pulse;
+      ctx.shadowColor  = syn.col1;
+      ctx.shadowBlur   = 22;
+      ctx.strokeStyle  = syn.col1;
+      ctx.lineWidth    = 2.5;
+      ctx.beginPath();
+      ctx.arc(this.pos.x, this.pos.y - SPRITE_H / 2 + 12, SPRITE_W * 0.52, 0, Math.PI * 2);
+      ctx.stroke();
+      // Inner tighter ring for crispness
+      ctx.globalAlpha  = 0.28 * pulse;
+      ctx.shadowBlur   = 8;
+      ctx.strokeStyle  = syn.col2;
+      ctx.lineWidth    = 1.5;
+      ctx.beginPath();
+      ctx.arc(this.pos.x, this.pos.y - SPRITE_H / 2 + 12, SPRITE_W * 0.38, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
     if (this._imgLoaded && this._img) {
       ctx.drawImage(this._img, x, y, SPRITE_W, SPRITE_H);
     } else {
