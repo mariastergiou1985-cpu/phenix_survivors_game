@@ -1180,7 +1180,7 @@ export class Game {
 
     // Chaos Law — one-fire EDEN CORE transmission on run start
     if (this.runChaosLaw === 'blood_grid') {
-      this._queueEdenTransmission('BLOOD GRID ACTIVE. Score multiplier armed.', { title: 'CHAOS LAW', priority: 2, duration: 6 });
+      this._queueEdenTransmission('BLOOD GRID ACTIVE. Enemy acceleration +7%. Score multiplier +10%.', { title: 'CHAOS LAW', priority: 2, duration: 6 });
     } else if (this.runChaosLaw === 'frozen_eden') {
       this._queueEdenTransmission('FROZEN EDEN ACTIVE. XP absorption amplified.', { title: 'CHAOS LAW', priority: 2, duration: 6 });
     } else if (this.runChaosLaw === 'no_mercy_protocol') {
@@ -1288,7 +1288,7 @@ export class Game {
   /** Returns active Chaos Law multipliers for this run. All fields default to 1 (no effect). */
   _getActiveChaosLawModifiers() {
     const mods = { scoreMult: 1, xpMult: 1, bossHpMult: 1, enemySpeedMult: 1 };
-    if (this.runChaosLaw === 'blood_grid')        { mods.scoreMult  = 1.10; }
+    if (this.runChaosLaw === 'blood_grid')        { mods.scoreMult  = 1.10; mods.enemySpeedMult = 1.07; }
     if (this.runChaosLaw === 'frozen_eden')       { mods.xpMult     = 1.10; }
     if (this.runChaosLaw === 'no_mercy_protocol') { mods.scoreMult  = 1.15; mods.bossHpMult = 1.10; }
     return mods;
@@ -2359,6 +2359,7 @@ export class Game {
         #cgm-achievements .cl-name     { font-family:'Orbitron',sans-serif; font-weight:800; font-size:11px; letter-spacing:1px; }
         #cgm-achievements .cl-badge    { font-family:'Orbitron',sans-serif; font-weight:700; font-size:8px; letter-spacing:1.5px; padding:3px 8px; border-radius:6px; white-space:nowrap; }
         #cgm-achievements .cl-badge.detected { color:#ef4444; border:1px solid rgba(239,68,68,.5); background:rgba(239,68,68,.08); }
+        #cgm-achievements .cl-badge.active   { color:#ff6b6b; border:1px solid rgba(239,68,68,.85); background:rgba(239,68,68,.18); text-shadow:0 0 6px rgba(239,68,68,.45); }
         #cgm-achievements .cl-badge.locked   { color:#4a2020; border:1px solid rgba(70,20,20,.35); background:rgba(20,4,4,.4); }
         #cgm-achievements .cl-desc     { font-size:10px; color:var(--txt-dim); line-height:1.45; }
         #cgm-achievements .cl-future   { font-size:9px; color:#6b2020; line-height:1.4; font-style:italic; border-top:1px solid rgba(239,68,68,.12); padding-top:5px; margin-top:2px; }
@@ -2603,15 +2604,20 @@ export class Game {
       if (detected) {
         clSubtitle.textContent = 'ENDGAME PROTOCOLS DETECTED';
         clSubtitle.style.color = '#ef4444';
-        clBody.innerHTML = `<div class="cl-grid">${CHAOS_LAWS.map(law => `
-          <div class="cl-card detected">
+        clBody.innerHTML = `<div class="cl-grid">${CHAOS_LAWS.map(law => {
+          const _bgAct = law.id === 'blood_grid';
+          return `<div class="cl-card detected" style="${_bgAct ? 'border-color:rgba(239,68,68,.75);background:rgba(20,4,4,.92);box-shadow:0 0 10px rgba(239,68,68,.12);' : ''}">
             <div class="cl-card-top">
-              <div class="cl-name" style="color:${law.color}">${law.name}</div>
-              <div class="cl-badge detected">⚡ DETECTED</div>
+              <div class="cl-name" style="color:${law.color}${_bgAct ? ';text-shadow:0 0 8px ' + law.color + '55' : ''}">${law.name}</div>
+              <div class="cl-badge ${_bgAct ? 'active' : 'detected'}">${_bgAct ? '✦ ONLINE' : '⚡ DETECTED'}</div>
             </div>
             <div class="cl-desc">${law.desc}</div>
-            <div class="cl-future detected">${law.future} <span style="color:#ef4444;font-style:normal">— PREVIEW ONLY · NOT ACTIVE</span></div>
-          </div>`).join('')}</div>`;
+            ${_bgAct
+              ? `<div class="cl-future" style="color:#ef8888;font-style:normal;border-top:1px solid rgba(239,68,68,.18);padding-top:5px;margin-top:2px;">Enemy speed +7% · Score +10% — <span style="color:#ef4444;font-weight:700">ACTIVE</span></div>`
+              : `<div class="cl-future detected">${law.future} <span style="color:#ef4444;font-style:normal">— PREVIEW ONLY · NOT ACTIVE</span></div>`
+            }
+          </div>`;
+        }).join('')}</div>`;
       } else {
         clSubtitle.textContent = 'PREVIEW LOCKED BY EDEN MEMORY';
         clSubtitle.style.color = '#6b2020';
@@ -3411,6 +3417,11 @@ export class Game {
     // Armored Swarm Protocol — Endless-only extra HP scaling (modest; never touches Act 1 or bosses,
     // which are already tuned). Applied once at spawn so it can't compound or double-apply.
     if (this.endless && !e.isBoss() && this._hasProto('armored_swarm')) e.hp = Math.round(e.hp * 1.18);
+    // Blood Grid — enemy speed boost (Chaos only; non-boss; bounded +7%)
+    if (this._chaosMode && !e.isBoss()) {
+      const _esm = this._getActiveChaosLawModifiers().enemySpeedMult;
+      if (_esm !== 1) { e._baseSpeedFull *= _esm; e.baseSpeed *= _esm; }
+    }
     this.enemies.push(e);
     if (e.isBoss()) {
       // Act 1: warn per boss spawn (unchanged). Endless: collapse to one warning per loop window.
