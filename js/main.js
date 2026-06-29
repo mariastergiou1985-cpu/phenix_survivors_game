@@ -1,7 +1,7 @@
-import { Game } from './game/Game.js?v=20260629440000';
-import { AudioManager } from './audio/AudioManager.js?v=20260629440000';
-import { GamepadInput } from './Gamepad.js?v=20260629440000';
-import { initTouchControls } from './TouchInput.js?v=20260629440000';
+import { Game } from './game/Game.js?v=20260629450000';
+import { AudioManager } from './audio/AudioManager.js?v=20260629450000';
+import { GamepadInput } from './Gamepad.js?v=20260629450000';
+import { initTouchControls } from './TouchInput.js?v=20260629450000';
 
 const canvas = document.getElementById('game');
 const ctx    = canvas.getContext('2d');
@@ -87,6 +87,41 @@ window.addEventListener('keydown', e => {
       game.selectUpgrade(game.upgradeUI.selectedIndex);
     }
     return;
+  }
+
+  // ── End-screen controller navigation (ArrowLeft/Right cycle buttons, Enter confirms) ──
+  if (game.gameOver && !game.upgradeUI) {
+    if (e.key === 'ArrowLeft') {
+      game._endScreenBtnIndex = ((game._endScreenBtnIndex ?? 0) - 1 + 3) % 3;
+      return;
+    }
+    if (e.key === 'ArrowRight') {
+      game._endScreenBtnIndex = ((game._endScreenBtnIndex ?? 0) + 1) % 3;
+      return;
+    }
+    if (e.key === 'Enter') {
+      const idx = game._endScreenBtnIndex ?? 0;
+      if (idx === 0) { game.reset(); game.audio?.startGameplayMusic(); }
+      else if (idx === 1) { game.audio?.startMenuMusic(); game.goToUpgradesScreen(); }
+      else { game.goToMainMenu(); }
+      return;
+    }
+  }
+  if (game.victory && !game.upgradeUI) {
+    if (e.key === 'ArrowLeft') {
+      game._endScreenBtnIndex = ((game._endScreenBtnIndex ?? 0) - 1 + 2) % 2;
+      return;
+    }
+    if (e.key === 'ArrowRight') {
+      game._endScreenBtnIndex = ((game._endScreenBtnIndex ?? 0) + 1) % 2;
+      return;
+    }
+    if (e.key === 'Enter') {
+      const idx = game._endScreenBtnIndex ?? 0;
+      if (idx === 0) { game.goToMainMenu(); }
+      else { game.continueEndless(); }
+      return;
+    }
   }
 
   // One-shot abilities
@@ -474,25 +509,4 @@ function loop(timestamp) {
     try { ctx.translate(ox, oy); game.draw(ctx); }
     finally { ctx.restore(); }
   } catch (err) {
-    if (!loop._errLogged) { console.error('[game loop]', err); loop._errLogged = true; }
-  }
-
-  // ── Freeze diagnostic (throttled; safe to leave, near-zero cost) ──────────────
-  // Heartbeat every 15 in-game seconds + a slow-frame warning, both with key object
-  // counts so the LAST line before a freeze pinpoints what grew/stalled.
-  if (game.gameState === 'playing' && !game.gameOver && !game.victory) {
-    const counts = () => {
-      const emp = game._empShock, gd = game._glitchDash;
-      return `t=${game.timeAlive|0}s char=${game.player?.selectedCharacter} en=${game.enemies.length} proj=${game.projectiles.length} bul=${game.enemyBullets.length} ft=${game.floatingTexts.length}`
-           + ` empSpark=${emp?._sparks?.length??'-'} empEmit=${emp?._emitters?.length??'-'} gdPart=${gd?.particles?.length??'-'}`;
-    };
-    const _ts = game.timeAlive | 0;
-    if (_ts !== loop._lastDiag && _ts % 15 === 0) { loop._lastDiag = _ts; console.log('[diag] ' + counts()); }
-    const _fMs = performance.now() - _fStart;
-    if (_fMs > 120) console.warn(`[slowframe] ${_fMs|0}ms ` + counts());
-  }
-
-  requestAnimationFrame(loop);
-}
-requestAnimationFrame(loop);
-console.log('BUILD 20260625200000 mobile-stabilize active');
+    if (!loop._errLogged) { console.error('[game loop]', err); loop._err

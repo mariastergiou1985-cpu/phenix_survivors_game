@@ -5226,7 +5226,8 @@ export class Game {
     if (this._hitFlashOverlayCd    > 0) this._hitFlashOverlayCd    = Math.max(0, this._hitFlashOverlayCd    - dt);
 
     if (!this.endless && this.timeAlive >= ACT1_WIN_SECONDS) {
-      this.victory      = true;
+      this.victory            = true;
+      this._endScreenBtnIndex = 0;   // controller nav: start on first button
       this.finalMessage = 'CITY GRID STABILIZED — VICTORY';
       // Persist the secret unlocks revealed on the Victory screen.
       this.meta?.unlockMany([
@@ -5363,7 +5364,8 @@ export class Game {
       } else if (this.phoenixReviveCount < (3 + (this._hasProto('phoenix_revival') ? 1 : 0))) {
         this._triggerPhoenixRevive();
       } else {
-        this.gameOver     = true;
+        this.gameOver           = true;
+        this._endScreenBtnIndex = 0;   // controller nav: start on RETRY
         this.finalMessage = 'CYBER-HERO OFFLINE';
         this.audio?.playPlayerDeath?.();
         this.audio?.stopAll();
@@ -9457,8 +9459,9 @@ export class Game {
       ctx.fillStyle = grad; ctx.fillRect(bx, baseY - hh, bw, hh); bx += bw + gap;
     }
     ctx.font = '10px Consolas, monospace'; ctx.textAlign = 'right';
+    const trackLabel = this.audio?.currentTrackTitle || 'NULL EDEN OST';
     ctx.fillStyle = muted ? '#9aa4b0' : 'rgba(180,255,245,0.85)';
-    ctx.fillText(muted ? 'MUTED' : 'NULL EDEN OST', s.x + s.w - 12, s.y + 36);
+    ctx.fillText(muted ? 'MUTED' : trackLabel, s.x + s.w - 12, s.y + 36);
     ctx.textAlign = 'left';
   }
 
@@ -16643,11 +16646,4 @@ _drawLoreArchive(ctx) {
       }
     }
 
-    // ── Dark HUD strip (always on top of background) ─────────────────────────
-    ctx.fillStyle = BLACK;
-    ctx.fillRect(0, 0, WIDTH, 44);
-  }
-
-  // Called by main.js to pass current mouse pos to the draw call
-  setMousePos(pos) { this._lastMousePos = pos; }
-}
+    // ── Dark HUD strip (always on top of background) ─────────�

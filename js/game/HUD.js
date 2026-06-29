@@ -581,30 +581,51 @@ export function drawEndScreen(ctx, game) {
 
   // Buttons: RETRY / UPGRADES / MAIN MENU
   const BW = 200, BH = 46, BY = 440;
+  const focusIdx = game._endScreenBtnIndex ?? 0;
+  const hasPad   = !!game._controllerConnected;
   const btns = [
     { label: 'RETRY',     x: 316, border: CYAN     },
     { label: 'UPGRADES',  x: 540, border: YELLOW   },
     { label: 'MAIN MENU', x: 764, border: '#ff4444' },
   ];
-  for (const btn of btns) {
-    ctx.fillStyle   = 'rgba(0, 20, 40, 0.9)';
-    ctx.strokeStyle = btn.border;
-    ctx.lineWidth   = 2;
+  for (let bi = 0; bi < btns.length; bi++) {
+    const btn     = btns[bi];
+    const focused = hasPad && bi === focusIdx;
+    ctx.fillStyle = focused ? 'rgba(0, 30, 60, 0.97)' : 'rgba(0, 20, 40, 0.9)';
+    ctx.strokeStyle = focused ? WHITE : btn.border;
+    ctx.lineWidth   = focused ? 3 : 2;
+    if (focused) { ctx.shadowColor = WHITE; ctx.shadowBlur = 14; }
     ctx.beginPath();
     ctx.roundRect(btn.x, BY, BW, BH, 4);
     ctx.fill();
     ctx.stroke();
-    ctx.font      = '20px Consolas, monospace';
-    ctx.fillStyle = WHITE;
+    ctx.shadowBlur = 0;
+    ctx.font      = focused ? 'bold 20px Consolas, monospace' : '20px Consolas, monospace';
+    ctx.fillStyle = focused ? WHITE : WHITE;
     ctx.textAlign = 'center';
     ctx.fillText(btn.label, btn.x + BW / 2, BY + BH / 2 + 7);
+    // controller focus triangle above selected button
+    if (focused) {
+      const cx = btn.x + BW / 2;
+      ctx.fillStyle = WHITE;
+      ctx.beginPath();
+      ctx.moveTo(cx, BY - 8);
+      ctx.lineTo(cx - 7, BY - 18);
+      ctx.lineTo(cx + 7, BY - 18);
+      ctx.closePath();
+      ctx.fill();
+    }
   }
 
-  // Keyboard hint
-  ctx.font      = '16px Consolas, monospace';
+  // Keyboard / controller hint
+  ctx.font      = '14px Consolas, monospace';
   ctx.fillStyle = '#5a7080';
   ctx.textAlign = 'center';
-  ctx.fillText('R = Retry   •   ESC = Main Menu', WIDTH / 2, 500);
+  if (hasPad) {
+    ctx.fillText('◄ ► Navigate   ·   A = Select   ·   ESC / B = Menu   ·   R = Retry', WIDTH / 2, 500);
+  } else {
+    ctx.fillText('R = Retry   •   ESC = Main Menu', WIDTH / 2, 500);
+  }
 
   // ── Null Breach Arena run result ────────────────────────────────────────
   if (game.endless && game._arenaResult && game._arenaResult.entered > 0) {
@@ -761,6 +782,13 @@ function _drawPersonalRecords(ctx, game, lx, rx) {
   const y0 = 358;
   const lineH = 18;
 
+  // Dark panel background for readability
+  const panH = lineH * (rows.length + 2) + 8;
+  ctx.fillStyle = 'rgba(0, 8, 18, 0.72)';
+  ctx.beginPath();
+  ctx.roundRect(lx - 8, y0 - 16, rx - lx + 16, panH, 4);
+  ctx.fill();
+
   ctx.font      = 'bold 12px Consolas, monospace';
   ctx.fillStyle = '#fbbf24';
   ctx.textAlign = 'center';
@@ -771,39 +799,4 @@ function _drawPersonalRecords(ctx, game, lx, rx) {
   const headers = ['DATE', 'MODE', 'CHAR', 'LVL', 'SCORE', 'TIME'];
   ctx.fillStyle = '#4a6080';
   ctx.textAlign = 'left';
-  headers.forEach((h, i) => {
-    if (i === headers.length - 1) {
-      ctx.textAlign = 'right';
-      ctx.fillText(h, colX[i], y0 + lineH);
-    } else {
-      ctx.textAlign = 'left';
-      ctx.fillText(h, colX[i], y0 + lineH);
-    }
-  });
-
-  rows.forEach((run, idx) => {
-    const ry = y0 + lineH * (idx + 2);
-    const isLatest = idx === 0;
-    ctx.fillStyle = isLatest ? '#cfe9ff' : '#5a7090';
-    const fmtTime = (s) => {
-      const m = Math.floor((s || 0) / 60).toString().padStart(2, '0');
-      const c = Math.floor((s || 0) % 60).toString().padStart(2, '0');
-      return `${m}:${c}`;
-    };
-    const charShort = (run.char || 'UNK').replace(/_/g,' ').slice(0, 10);
-    const modeShort = (run.mode || '').slice(0, 8);
-    const values = [run.date || '', modeShort, charShort, run.level || 0, run.score || 0, fmtTime(run.time)];
-    values.forEach((v, i) => {
-      if (i === values.length - 1) {
-        ctx.textAlign = 'right';
-        ctx.fillText(v, colX[i], ry);
-      } else {
-        ctx.textAlign = 'left';
-        ctx.fillText(v, colX[i], ry);
-      }
-    });
-  });
-
-  ctx.textAlign = 'left';
-}
-
+  headers.forEach(
