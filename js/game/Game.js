@@ -802,6 +802,7 @@ export class Game {
     this._pacMsgAt          = 0;       // timeAlive when panel appeared
     // ── Chaos Mode (unlocks at 21:00 Endless) ─────────────────────────────
     this._chaosMode         = false;   // true after transition completes
+    this._chaosStartedAt    = -1;         // timeAlive when Chaos engaged; -1 = not yet reached this run
     this._chaosTransTimer   = -1;      // >=0 while glitch transition is playing
     this.forceChaos         = false;   // defensive: prevent stale debug-key state leaking into the next run
     this.forceDoubleDemon   = false;   // DEBUG: F8 in Endless or game.forceDoubleDemon=true
@@ -1508,6 +1509,19 @@ export class Game {
     });
 
     // Eden Core: generate end-of-run narrative messages + accrue Eden Memory
+
+    // ── Phase B: Chaos Survival Rank ─────────────────────────────────────────
+    // Computed for any run that reached Chaos Mode. Null if Chaos never started.
+    this.chaosRank     = null;
+    this.chaosTimeSecs = 0;
+    if (this._chaosStartedAt >= 0) {
+      this.chaosTimeSecs = Math.max(0, Math.floor(this.timeAlive - this._chaosStartedAt));
+      const _cMins = Math.floor(this.chaosTimeSecs / 60);
+      this.chaosRank = _cMins >= 30 ? 'PLATINUM' : _cMins >= 20 ? 'GOLD' : _cMins >= 10 ? 'SILVER' : 'BRONZE';
+      try { if (this.meta && this.selectedCharacter) this.meta.submitChaosRun(this.selectedCharacter, this.chaosTimeSecs); }
+      catch(_e) { console.warn('[Chaos Rank] submitChaosRun error', _e); }
+    }
+
     try { this._generateEdenRunMessages(); } catch(e) { console.warn('[Eden] _generateEdenRunMessages error:', e); }
   }
 
@@ -5230,6 +5244,7 @@ export class Game {
         this.forceChaos         = false;
         this._chaosTransTimer   = -1;    // no transition timer
         this._chaosMode         = true;
+        if (this._chaosStartedAt < 0) this._chaosStartedAt = this.timeAlive; // Phase B: chaos timer
         this.audio?.startChaosMusic();   // switch to Chaos track
         this.triggerAnnouncement('⚡ CHAOS MODE ⚡', '#ff2d95');
         // Eden Core: chaos reached
@@ -5992,6 +6007,7 @@ export class Game {
     this.reset();
     this._enterEndless();             // set up all Endless infrastructure
     this._chaosMode          = true;     // engage Chaos immediately
+    if (this._chaosStartedAt < 0) this._chaosStartedAt = this.timeAlive; // Phase B: chaos timer
     this._chaosTransTimer    = -1;
     this._frozenSleetTimer   = 55;  // first Frozen Sleet Storm 55 s into Chaos
     this.audio?.startChaosMusic();    // override the Endless track started by _enterEndless()
@@ -13876,6 +13892,7 @@ _drawLoreArchive(ctx) {
     } else if (idx === 1 && !this._chaosMode) {
       // ENTER CHAOS MODE — force immediate Chaos
       this._chaosMode       = true;
+      if (this._chaosStartedAt < 0) this._chaosStartedAt = this.timeAlive; // Phase B: chaos timer
       this._chaosTransTimer = -1;
       this.forceChaos       = false;
       this.audio?.startChaosMusic();
@@ -16864,89 +16881,4 @@ _drawLoreArchive(ctx) {
                     :                            'rgba(0,0,0,0.38)';
       ctx.fillRect(0, 0, WORLD_W, WORLD_H);
       // Chaos Mode: faint magenta grid overlay — textures the battlefield, visual only
-      if (this._chaosMode) {
-        const _gs = 80;
-        const _gt = performance.now() * 0.0003;
-        ctx.save();
-        ctx.globalAlpha = 0.05 + 0.02 * Math.sin(_gt);
-        ctx.strokeStyle = '#ff2d95';
-        ctx.lineWidth   = 0.5;
-        for (let _gx = 0; _gx < WORLD_W; _gx += _gs) {
-          ctx.beginPath(); ctx.moveTo(_gx, 0); ctx.lineTo(_gx, WORLD_H); ctx.stroke();
-        }
-        for (let _gy = 0; _gy < WORLD_H; _gy += _gs) {
-          ctx.beginPath(); ctx.moveTo(0, _gy); ctx.lineTo(WORLD_W, _gy); ctx.stroke();
-        }
-        ctx.restore();
-      }
-    } else {
-      const spacing = 48;
-      const offset  = Math.floor(performance.now() * 0.025) % spacing;
-      ctx.strokeStyle = GRID_LINE;
-      ctx.lineWidth   = 1;
-      for (let x = -spacing; x < WORLD_W + spacing; x += spacing) {
-        ctx.beginPath();
-        ctx.moveTo(x + offset, 44);
-        ctx.lineTo(x + offset, WORLD_H);
-        ctx.stroke();
-      }
-      for (let y = 44; y < WORLD_H + spacing; y += spacing) {
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(WORLD_W, y);
-        ctx.stroke();
-      }
-    }
-  }
-
-  _drawBackground(ctx) {
-    // ── Dark base fill (shown while image loads or on very old browsers) ──────
-    ctx.fillStyle = DARK_BG;
-    ctx.fillRect(0, 0, WIDTH, HEIGHT);
-
-    // ── Cyberpunk city image ─────────────────────────────────────────────────
-    const img = this._bgImage;
-    if (img.complete && img.naturalWidth > 0) {
-      // "cover" scaling: fill the entire canvas, crop excess.
-      // The image is portrait (tall); we fit its width to the canvas and
-      // anchor the top so the city streets are visible.
-      const imgW = img.naturalWidth;
-      const imgH = img.naturalHeight;
-      const scale = WIDTH / imgW;          // scale so width fills 1280px
-      const drawH = imgH * scale;          // resulting height (will exceed 720)
-
-      ctx.drawImage(img, 0, 0, WIDTH, drawH);
-
-      // Semi-transparent dark overlay so neon game entities pop clearly
-      ctx.fillStyle = this.gridBlackoutActive
-        ? 'rgba(0,0,0,0.65)'   // extra dim during Grid Blackout event
-        : 'rgba(0,0,0,0.38)';
-      ctx.fillRect(0, 0, WIDTH, HEIGHT);
-    } else {
-      // Fallback: scrolling neon grid while image loads
-      const spacing = 48;
-      const offset  = Math.floor(performance.now() * 0.025) % spacing;
-      ctx.strokeStyle = GRID_LINE;
-      ctx.lineWidth   = 1;
-      for (let x = -spacing; x < WIDTH + spacing; x += spacing) {
-        ctx.beginPath();
-        ctx.moveTo(x + offset, 44);
-        ctx.lineTo(x + offset, HEIGHT);
-        ctx.stroke();
-      }
-      for (let y = 44; y < HEIGHT + spacing; y += spacing) {
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(WIDTH, y);
-        ctx.stroke();
-      }
-    }
-
-    // ── Dark HUD strip (always on top of background) ─────────────────────────
-    ctx.fillStyle = BLACK;
-    ctx.fillRect(0, 0, WIDTH, 44);
-  }
-
-  // Called by main.js to pass current mouse pos to the draw call
-  setMousePos(pos) { this._lastMousePos = pos; }
-}
+      if (this._ch

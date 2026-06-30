@@ -220,13 +220,13 @@ export const RELIC_DEFS = [
     effect:'When a clone expires, it releases a shadow slash. 3+ hits refunds 20 mana.',
     req:null, reqChar:'assassin_clone' },
   // ─── Arena-Specific Relics (NULL BREACH ARENA) ───────────────────────────
-  { id:'breach_crown',       name:'Breach Crown',       abbr:'BCR', type:'arena',     cost:7,
+  { id:'breach_crown',       name:'Breach Crown',       type:'arena',     cost:7,
     effect:'Complete NULL BREACH ARENA without EDEN CORE rescue: gain +0.5 Pulse Damage for the rest of the run.',
     req:'null_breach_cleared', reqChar:null },
-  { id:'second_signal_debt', name:'Second Signal Debt', abbr:'SSD', type:'arena',     cost:5,
+  { id:'second_signal_debt', name:'Second Signal Debt', type:'arena',     cost:5,
     effect:'If EDEN CORE rescues you inside NULL BREACH ARENA: gain a 6-second protective shield on extraction.',
     req:'arena_rescue_used',   reqChar:null },
-  { id:'elite_signal_core',  name:'Elite Signal Core',  abbr:'ESC', type:'arena',     cost:6,
+  { id:'elite_signal_core',  name:'Elite Signal Core',  type:'arena',     cost:6,
     effect:'During NULL BREACH ARENA: surviving with 3+ boss kills grants bonus score at arena completion.',
     req:'arena_elite_3',       reqChar:null },
 ];
@@ -263,6 +263,7 @@ export class MetaProgress {
     this.bossEchoes         = {};  // { [bossKey]: true } first-time echo archives
     this.edenMilestonesSeen = {};  // { [threshold]: true } milestone one-fire guard
     this.systemLogsSeen    = {};  // { [threshold]: true } system log one-fire feed guard
+    this.chaosRanks    = {};  // Phase B: { [charId]: { bestSecs, bestRank } } — Chaos Survival Rank per character
     this._load();
   }
 
@@ -298,6 +299,7 @@ export class MetaProgress {
       this.bossEchoes         = (d.bossEchoes && typeof d.bossEchoes === 'object') ? d.bossEchoes : {};
       this.edenMilestonesSeen = (d.edenMilestonesSeen && typeof d.edenMilestonesSeen === 'object') ? d.edenMilestonesSeen : {};
       this.systemLogsSeen    = (d.systemLogsSeen    && typeof d.systemLogsSeen    === 'object') ? d.systemLogsSeen    : {};
+      this.chaosRanks    = (d.chaosRanks    && typeof d.chaosRanks    === 'object') ? d.chaosRanks    : {}; // Phase B
       // One-time retroactive payout for already-earned Endless achievements (idempotent).
       this._backfillProtocolFragments();
 
@@ -347,6 +349,7 @@ export class MetaProgress {
         bossEchoes:         this.bossEchoes,
         edenMilestonesSeen: this.edenMilestonesSeen,
         systemLogsSeen:     this.systemLogsSeen,
+        chaosRanks:         this.chaosRanks,           // Phase B: Chaos Survival Rank per character
       }));
     } catch (_) {}
   }
@@ -366,6 +369,21 @@ export class MetaProgress {
     if (beat.level) r.level = Math.floor(run.level || 0);
     if (beat.time || beat.score || beat.level) this._save();
     return beat;
+  }
+
+  // Phase B — Chaos Survival Rank persistence.
+  // Records the best Chaos survival time per character; safe to call with any secs value.
+  submitChaosRun(charId, secs) {
+    if (!charId || typeof secs !== 'number' || secs <= 0) return;
+    const cur = this.chaosRanks[charId] || { bestSecs: 0, bestRank: 'BRONZE' };
+    if (secs > cur.bestSecs) {
+      const mins = Math.floor(secs / 60);
+      this.chaosRanks[charId] = {
+        bestSecs: secs,
+        bestRank: mins >= 30 ? 'PLATINUM' : mins >= 20 ? 'GOLD' : mins >= 10 ? 'SILVER' : 'BRONZE',
+      };
+      this._save();
+    }
   }
 
   // Evaluate Endless achievements against a finished-run stats snapshot
@@ -521,21 +539,6 @@ export class MetaProgress {
     this.edenMemoryPercent  = 0;
     this.systemFeedMessages = [];
     this.bossEchoes         = {};
-    this._save();
-  }
-
-  // ─── Safe upgrade respec ──────────────────────────────────────────────────
-  // Refunds all Grid Cores spent on purchased meta/synergy upgrades and clears
-  // upgrade levels. Does NOT touch: achievements, records, unlocks, relics,
-  // protocol cards/fragments, boss echoes, run history, or any other progress.
-  respec() {
-    let refund = 0;
-    for (const upg of [...META_UPGRADES, ...SYNERGY_UPGRADES]) {
-      const lvl = this.levels[upg.key] || 0;
-      for (let l = 0; l < lvl; l++) refund += upgradeCost(upg, l);
-    }
-    this.credits += refund;
-    this.levels = {};
     this._save();
   }
 

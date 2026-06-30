@@ -101,6 +101,20 @@ export function drawHUD(ctx, game) {
     drawText(ctx, '!! GRID BLACKOUT ACTIVE !!', WIDTH / 2, 96, RED, '16px Consolas, monospace');
   }
 
+  // Chaos pylon buff indicator (real buffs only — no speed, display only)
+  if (game._chaosMode && game._chaosPylonBuff) {
+    const buff    = game._chaosPylonBuff;
+    const isShield = buff.type === 'shield';
+    const color   = isShield ? CYAN : '#44ff88';
+    const label   = isShield ? 'S SHIELD PULSE ACTIVE' : '+ HEAL PULSE ACTIVE';
+    const fade    = Math.min(1, buff.timer);
+    ctx.save();
+    ctx.globalAlpha = fade * (0.75 + 0.25 * Math.abs(Math.sin(Date.now() / 200)));
+    ctx.textAlign = 'center';
+    drawText(ctx, label, WIDTH / 2, 112, color, 'bold 11px Consolas, monospace');
+    ctx.restore();
+  }
+
   // ── Bottom-left: Q Pulse Shield (magenta) + E EMP (cyan) ────────────────
   const by = HEIGHT - 62, bs = 44;
   const Q_COLOR = '#ff4dd2';   // neon magenta — distinct from E
@@ -541,6 +555,8 @@ export function drawEndScreen(ctx, game) {
     if (game.endlessNewAchievements && game.endlessNewAchievements.length) {
       y = _drawEndlessAchievements(ctx, game, y);
     }
+    // Phase B: Chaos Survival Rank badge (only shown when chaos was reached this run)
+    if (game.chaosRank) { y = _drawChaosRankBadge(ctx, game, y); }
   } else {
     // Run stats
     const runStats = [
@@ -774,6 +790,43 @@ function _drawEndlessAchievements(ctx, game, startY) {
 
 // Local leaderboard — last 5 runs stored in meta.runHistory. Shown on both
 // Act 1 and Endless end screens as a compact table at bottom of end screen.
+// Phase B: Chaos Survival Rank badge drawn on Endless end screen.
+// Called only when game.chaosRank is set.
+function _drawChaosRankBadge(ctx, game, startY) {
+  const RANK_COLOR = { BRONZE: '#cd7f32', SILVER: '#c0c0c0', GOLD: '#FFD700', PLATINUM: '#e0e0f8' };
+  const RANK_GLOW  = { BRONZE: '#7a4010', SILVER: '#606060', GOLD: '#aa7700', PLATINUM: '#7070aa' };
+  const rank  = game.chaosRank;
+  const secs  = game.chaosTimeSecs || 0;
+  const cM    = Math.floor(secs / 60).toString().padStart(2, '0');
+  const cS    = (secs % 60).toString().padStart(2, '0');
+  const color = RANK_COLOR[rank] || '#ffffff';
+  const glow  = RANK_GLOW[rank]  || '#888888';
+  let y = startY + 10;
+  ctx.save();
+  ctx.textAlign   = 'center';
+  ctx.fillStyle   = 'rgba(255,45,149,0.08)';
+  ctx.strokeStyle = color;
+  ctx.lineWidth   = 1.5;
+  ctx.shadowColor = glow;
+  ctx.shadowBlur  = 6;
+  ctx.beginPath();
+  ctx.roundRect(WIDTH / 2 - 220, y - 4, 440, 42, 5);
+  ctx.fill();
+  ctx.stroke();
+  ctx.font      = 'bold 12px Consolas, monospace';
+  ctx.fillStyle = '#ff2d95';
+  ctx.shadowBlur = 4;
+  ctx.fillText('⚡ CHAOS SURVIVAL RANK', WIDTH / 2, y + 12);
+  ctx.font      = 'bold 16px Consolas, monospace';
+  ctx.fillStyle = color;
+  ctx.shadowColor = glow;
+  ctx.shadowBlur  = 8;
+  ctx.fillText(rank + '   ·   ' + cM + ':' + cS + ' IN CHAOS', WIDTH / 2, y + 30);
+  ctx.shadowBlur = 0;
+  ctx.restore();
+  return y + 48;
+}
+
 function _drawPersonalRecords(ctx, game, lx, rx) {
   const history = game.meta?.getRunHistory?.() || [];
   if (!history.length) return;
