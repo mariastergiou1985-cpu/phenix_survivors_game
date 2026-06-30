@@ -584,8 +584,9 @@ export class Game {
       { id: 'cyber_arm_hero',          name: 'Cyber Arm Hero',          fallbackColor: '#FF6600', fallbackAlt: '#CC0000', role: 'Ranged / Damage',      specialty: 'Overdrive beam — sustained flame pressure at distance' },
       { id: 'brawler_warrior',         name: 'Brawler Warrior',         fallbackColor: '#1fd6a6', fallbackAlt: '#0a9c78', role: 'Tank / Brawler',       specialty: 'Rage melee burst — damage escalates when surrounded' },
       { id: 'assassin_clone',          name: 'Assassin Clone',          fallbackColor: '#ff4dd2', fallbackAlt: '#9aa0aa', role: 'Stealth / Burst',      specialty: 'Shadow reposition — instant teleport strike burst' },
-      // Japan Phasewalker TEMPORARILY DISABLED (black-screen freeze ~3–4 min in Endless). Removed
-      // from the selectable roster until his kit is rebuilt; code/assets/cards kept for future re-add.
+      // Japan Phasewalker — COMING SOON. Shown in roster as a locked preview; comingSoon:true
+      // prevents selection and suppresses the PF-unlock path until the freeze bug is resolved.
+      { id: 'japan_phasewalker', name: 'Japan Phasewalker', fallbackColor: '#00b8d9', fallbackAlt: '#0077a8', role: 'Phase / Displace', specialty: 'Glitch dash + EMP shockwave + Digital Singularity ult', comingSoon: true },
       // Euclid Vector — unlocked from the start (NOT PF-gated; see MetaProgress free-unlock).
       { id: 'euclid_vector',           name: 'Euclid Vector',           fallbackColor: '#00ff66', fallbackAlt: '#0a9c44', role: 'Toxin / Ranged',       specialty: 'Toxin sniper + orbital katana + plague trail dash' },
       // Oni Cataclysm Protocol — Endless boss character, LOCKED until purchased with Protocol Fragments
@@ -965,6 +966,8 @@ export class Game {
   }
 
   selectCharacter(charId) {
+    const _comingSoonChar = this.characters?.find(c => c.id === charId && c.comingSoon);
+    if (_comingSoonChar) return;                           // coming-soon characters can't be started
     if (!this.meta.isCharacterUnlocked(charId)) return;   // locked characters can't be started
     this._hideMenuOverlay();
     this._hideCharSelectOverlay();
@@ -1232,6 +1235,14 @@ export class Game {
         'transition:border-color .15s,color .15s;}',
         '#cgm-chaos-law-sel .cls-skip button:hover{',
         'border-color:rgba(46,230,246,0.38);color:rgba(180,220,255,0.8);}',
+        '#cgm-chaos-law-sel .cls-card.coming-soon{',
+        'cursor:default;opacity:0.55;pointer-events:none;}',
+        '#cgm-chaos-law-sel .cls-card.coming-soon:hover{background:rgba(6,12,28,0.7);}',
+        '#cgm-chaos-law-sel .cls-cs-tag{',
+        'font-size:7.5px;letter-spacing:2px;color:#ff9f0a;font-weight:700;',
+        'background:rgba(255,159,10,.12);border:1px solid rgba(255,159,10,.30);',
+        'border-radius:4px;padding:2px 5px;margin-top:2px;',
+        'text-transform:uppercase;align-self:flex-start;}',
       ].join('');
       document.head.appendChild(style);
     }
@@ -1243,6 +1254,10 @@ export class Game {
         effect: '+10% XP gain for this run.' },
       { id: 'no_mercy_protocol', name: 'NO MERCY PROTOCOL', color: '#fbbf24',
         effect: '+10% boss HP \u00b7 +15% score multiplier for this run.' },
+      // Preview-only \u2014 not yet active. Shown non-selectable so players see future content.
+      { id: 'serpent_law',   name: 'SERPENT LAW',   color: '#ff7733', comingSoon: true },
+      { id: 'dragon_law',    name: 'DRAGON LAW',    color: '#a855f7', comingSoon: true },
+      { id: 'broken_signal', name: 'BROKEN SIGNAL', color: '#ff2d95', comingSoon: true },
     ];
 
     const el = document.createElement('div');
@@ -1252,10 +1267,16 @@ export class Game {
       + '<p>EDEN MEMORY \u2265 50% \u2014 CHOOSE THE INSTABILITY RULE FOR THIS RUN</p></div>'
       + '<div class="cls-cards">'
       + V1_LAWS.map(l =>
-          '<div class="cls-card" data-law="' + l.id + '" style="border-color:' + l.color + '33;">'
-          + '<div class="cls-card-name" style="color:' + l.color + ';text-shadow:0 0 8px ' + l.color + '88;">' + l.name + '</div>'
-          + '<div class="cls-card-effect">' + l.effect + '</div>'
-          + '</div>'
+          l.comingSoon
+          ? '<div class="cls-card coming-soon" style="border-color:' + l.color + '22;">'
+            + '<div class="cls-card-name" style="color:' + l.color + ';text-shadow:none;">' + l.name + '</div>'
+            + '<div class="cls-card-effect">Details classified — not yet active.</div>'
+            + '<div class="cls-cs-tag">COMING SOON</div>'
+            + '</div>'
+          : '<div class="cls-card" data-law="' + l.id + '" style="border-color:' + l.color + '33;">'
+            + '<div class="cls-card-name" style="color:' + l.color + ';text-shadow:0 0 8px ' + l.color + '88;">' + l.name + '</div>'
+            + '<div class="cls-card-effect">' + l.effect + '</div>'
+            + '</div>'
         ).join('')
       + '</div>'
       + '<div class="cls-skip"><button id="cls-skip-btn">SKIP \u2014 STANDARD ENDLESS</button></div>'
@@ -3520,9 +3541,20 @@ export class Game {
     this.floatingTexts.push(new FloatingText('CRYSTAL ICE FIELD!', p.pos.clone(), '#b0f0ff', 1.2));
     this.screenShake.trigger(3, 0.12);
 
-    // ── Spirit Dojang Flag — DISABLED ──────────────────────────────────────────
-    // (Removed to fix problematic AoE behavior; kept system available for future fixes)
-    // if (!this.spiritDojang) { ... }
+    // ── Spirit Dojang Flag — legacy component fires alongside the ice field ──────
+    // Plants the traditional dojo banner + 205 px cyan field zone at the same cast
+    // position. Handled entirely by _updateSpiritDojang / _drawSpiritDojang which are
+    // already wired in the game loop. Boss damage bounded by per-second caps there.
+    if (!this.spiritDojang) {
+      this.spiritDojang = { pos: p.pos.clone(), t: 0, dmgTimer: 0,
+                            miniDmgThisSec: 0, megaDmgThisSec: 0, bossDmgTimer: 1.0,
+                            particles: [], partTimer: 0 };
+      // Second expanding ring for the outer dojang boundary — wider, slower fade
+      this._specialRings.push({
+        pos: p.pos.clone(), radius: 0, maxRadius: 205,
+        life: 0.7, maxLife: 0.7, color1: '#46e6ff', color2: '#0099cc',
+      });
+    }
   }
 
   // ── Crystal Ice Field — frame update ────────────────────────────────────────
@@ -5224,7 +5256,7 @@ export class Game {
         // Walker: upgrade HP to 2000 if already active when Chaos starts
         if (this._npcWalker && this._npcWalker.isActive && !this._npcWalker.downed) {
           this._npcWalker.maxHp = 2000;
-          this._npcWalker.hp    = Math.max(this._npcWalker.hp, Math.round(2000 * 0.5));
+          this._npcWalker.hp    = Math.max(this._npcWalker.hp, Math.round(2000 * 0.5)); // keep current HP but ensure at least 50% of new pool
         }
         this.acidRainTimer      = 30;  // Phase 4: first acid rain 30 s into Chaos
         this._airstrikeTimer    = 15;  // Phase 4: first airstrike 15 s into Chaos
@@ -5282,17 +5314,6 @@ export class Game {
     const _sleetFrozen = !!(this._frozenSleet && this._frozenSleet.phase === 'hold');
     const _frozenInput = _sleetFrozen ? { ...input, keys: new Set() } : input;
     this.player.update(dt, _frozenInput);
-    // Freeze enemies during hold phase (fairness)
-    if (_sleetFrozen) {
-      for (const e of this.enemies) {
-        if (e?.pos && e.hp > 0) e.velocity = e.velocity || new Vec2(0, 0);  // prevent movement
-      }
-      // Freeze enemy projectiles
-      for (const proj of this.enemyBullets) {
-        if (proj?.velocity) proj.velocity.x = 0;
-        if (proj?.velocity) proj.velocity.y = 0;
-      }
-    }
     // Dash SFX — fire once on the frame a dash begins (rising edge of dashTimer).
     const dashing = this.player.dashTimer > 0;
     if (dashing && !this._wasDashing) this.audio?.playDash();
@@ -8112,9 +8133,9 @@ export class Game {
     this.audio?.playEventWarning();
   }
 
-  // Rocket-rain SALVO: 2 rockets with safe spawn distance from player (reduced from 3–6).
+  // Rocket-rain SALVO: 3–6 rockets fanned across multiple impact zones around the player.
   _fireSalvo(s) {
-    const n = 2;   // Fixed to 2 rockets per salvo (reduced from 3–6 for fairness)
+    const n = 3 + Math.floor(Math.random() * 4) + (this._hasProto('airstrike_plus') ? 2 : 0);   // 3–6 (+2 with Airstrike+); aim unchanged, pool still capped at 40
     let fired = 0;
     for (let i = 0; i < n; i++) {
       if (this.airstrikeRockets.length >= 40) break;   // hard cap on in-flight rockets
@@ -8123,15 +8144,7 @@ export class Game {
       const j = randomRange(-0.7, 0.7);   // ~50% aim assist / 50% spread → fairer dodge window
       const c = Math.cos(j), sn = Math.sin(j);
       const dir = new Vec2(base.x * c - base.y * sn, base.x * sn + base.y * c);
-      // Ensure rockets spawn at safe distance from player (not directly on them)
-      let spawnPos = s.pos.clone();
-      const distToPlayer = distance(spawnPos, this.player.pos);
-      if (distToPlayer < 180) {
-        // If ship is too close, spawn rocket further away from player
-        const safeDir = safeNormalize(s.pos.sub(this.player.pos));
-        spawnPos = this.player.pos.add(safeDir.scale(180));
-      }
-      this.airstrikeRockets.push({ pos: spawnPos, dir, speed: randomRange(220, 285), life: 5.5, radius: 7, blast: 46 });
+      this.airstrikeRockets.push({ pos: s.pos.clone(), dir, speed: randomRange(220, 285), life: 5.5, radius: 7, blast: 46 });
       fired++;
     }
     if (fired > 0) this.audio?.playEnemyShoot();
@@ -10815,6 +10828,14 @@ export class Game {
         }
         #cgm-charselect .csc-lock-overlay svg { width:22px;height:22px;color:#9fb0c0; }
         #cgm-charselect .csc-lock-label { font-size:9px; letter-spacing:2px; color:#9fb0c0; }
+        #cgm-charselect .csc-lock-overlay.coming-soon { background:rgba(0,30,44,.80); }
+        #cgm-charselect .csc-lock-overlay.coming-soon svg { color:#00b8d9; }
+        #cgm-charselect .csc-lock-overlay.coming-soon .csc-lock-label { color:#00b8d9; font-size:8px; letter-spacing:1.5px; }
+        #cgm-charselect .csc-cs-badge {
+          font-size:7.5px; letter-spacing:1.5px; color:#ff9f0a; font-weight:700;
+          background:rgba(255,159,10,.14); border:1px solid rgba(255,159,10,.35);
+          border-radius:4px; padding:2px 5px; margin-top:2px; text-transform:uppercase;
+        }
         #cgm-charselect .csc-unlock-area {
           width:100%; border:1px solid rgba(251,191,36,.28); border-radius:10px;
           background:rgba(251,191,36,.04); padding:12px 16px; display:none;
@@ -10889,12 +10910,21 @@ export class Game {
         </div>
         <div class="csc-card-name">${c.name}</div>
         <div class="csc-card-role">${c.role}</div>
-        <div class="csc-lock-overlay">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
-            <use href="#i-shield"/>
-          </svg>
-          <span class="csc-lock-label">LOCKED</span>
-        </div>
+        ${c.comingSoon
+          ? `<div class="csc-lock-overlay coming-soon">
+               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+                 <use href="#i-shield"/>
+               </svg>
+               <span class="csc-lock-label">PATCH INCOMING</span>
+               <span class="csc-cs-badge">COMING SOON</span>
+             </div>`
+          : `<div class="csc-lock-overlay">
+               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
+                 <use href="#i-shield"/>
+               </svg>
+               <span class="csc-lock-label">LOCKED</span>
+             </div>`
+        }
       </div>`;
     }).join('');
 
@@ -11043,7 +11073,7 @@ export class Game {
     // Cards: active highlight + portrait (default vs secret skin) + lock overlay
     el.querySelectorAll('.csc-card').forEach((card, i) => {
       const c = this.characters[i];
-      const unlocked = this.meta.isCharacterUnlocked(c.id);
+      const unlocked = !c.comingSoon && this.meta.isCharacterUnlocked(c.id);
       card.classList.toggle('active', i === idx);
       card.querySelector('.csc-lock-overlay').style.display = unlocked ? 'none' : 'flex';
       // Update portrait img src (may change on outfit toggle)
@@ -11078,10 +11108,10 @@ export class Game {
       }
     }
 
-    // Unlock area: show when selected char is locked
+    // Unlock area: show when selected char is locked (never for comingSoon — no PF spend path)
     const unlockArea = el.querySelector('#csc-unlock-area');
-    const selLocked = !this.meta.isCharacterUnlocked(sel.id);
-    const pfCost = PF_CHARACTER_COSTS[sel.id];
+    const selLocked = sel.comingSoon || !this.meta.isCharacterUnlocked(sel.id);
+    const pfCost = sel.comingSoon ? 0 : PF_CHARACTER_COSTS[sel.id];
     if (unlockArea) {
       if (selLocked && pfCost) {
         const have   = this.meta.getProtocolFragments();
@@ -11099,6 +11129,12 @@ export class Game {
           msgEl.textContent = (this._pfMsg && performance.now() < (this._pfMsgUntil || 0))
             ? this._pfMsg : '';
         }
+      } else if (selLocked && sel.comingSoon) {
+        unlockArea.style.display = 'flex';
+        const hintEl = el.querySelector('#csc-unlock-hint');
+        if (hintEl) hintEl.textContent = 'Character temporarily unavailable — patch incoming. Stay tuned.';
+        const pfBtn = el.querySelector('#csc-pf-btn');
+        if (pfBtn) { pfBtn.textContent = ''; pfBtn.style.display = 'none'; }
       } else if (selLocked) {
         unlockArea.style.display = 'flex';
         const hintEl = el.querySelector('#csc-unlock-hint');
@@ -16823,7 +16859,7 @@ _drawLoreArchive(ctx) {
       ctx.drawImage(img, 0, 0, WORLD_W, drawH);
       // Endless map: a touch more dimming so the backdrop recedes and the gameplay plane reads flat.
       ctx.fillStyle = this.gridBlackoutActive ? 'rgba(0,0,0,0.65)'
-                    : this._chaosMode          ? 'rgba(0,0,0,0.38)'
+                    : this._chaosMode          ? 'rgba(0,0,8,0.44)'
                     : this.endless             ? 'rgba(0,0,0,0.46)'
                     :                            'rgba(0,0,0,0.38)';
       ctx.fillRect(0, 0, WORLD_W, WORLD_H);

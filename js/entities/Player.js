@@ -55,10 +55,10 @@ export class Player {
       this.baseSpeed = Math.round(230 * 0.95);   // 219
       this.contactDamageReduction = 0.08;
     } else if (this.selectedCharacter === 'assassin_clone') {
-      // Fast, lethal, fragile. Lowest HP of the roster (no contact armor) — leans on speed +
-      // positioning + her close/ranged plasma weapons. Lethality comes from cards, not base stats.
-      this.maxHp        = 88;
-      this.hp           = 88;
+      // Fast, lethal, fragile. Leans on speed + positioning + plasma weapons.
+      // HP raised 88→96 (Chaos survivability pass) — speed/damage/dash unchanged.
+      this.maxHp        = 96;
+      this.hp           = 96;
       this.baseSpeed    = Math.round(230 * 1.12); // 258 (fast; only Taekwondo is faster)
       this.pickupRadius = 88;
     }
@@ -116,9 +116,8 @@ export class Player {
     this.quantumOverhaulTimer = 0.0;
 
     // Pulse Shield (Q): cyan bubble, cuts incoming damage 60% for 7s, 25s cooldown
-    this.shieldTimer            = 0.0;   // seconds of active shield remaining (Q ability)
+    this.shieldTimer            = 0.0;   // seconds of active shield remaining
     this.shieldDuration         = 7.0;
-    this.walkerShieldTimer      = 0.0;   // seconds of Walker support shield remaining (separate from Q)
     this.pulseShieldCooldown    = 0.0;
     this.pulseShieldMaxCooldown = 25.0;
   }
@@ -126,7 +125,7 @@ export class Player {
   // Single chokepoint for incoming combat damage so Pulse Shield can scale it (60% reduction).
   // When the shield is inactive this is identical to a plain hp subtraction (no balance change).
   applyDamage(amount) {
-    let mult = (this.shieldTimer > 0 || this.walkerShieldTimer > 0) ? 0.4 : 1;
+    let mult = this.shieldTimer > 0 ? 0.4 : 1;
     if ((this._tankTimer || 0) > 0) mult *= 0.5;   // Oni Protocol 0: 50% damage reduction
     this.hp = Math.max(0, this.hp - amount * mult);
   }
@@ -248,7 +247,6 @@ export class Player {
     this.sonicPulseCooldown = Math.max(0, this.sonicPulseCooldown - dt);
     this.empCloudCooldown   = Math.max(0, this.empCloudCooldown - dt);
     this.shieldTimer         = Math.max(0, this.shieldTimer - dt);
-    this.walkerShieldTimer   = Math.max(0, this.walkerShieldTimer - dt);
     this.pulseShieldCooldown = Math.max(0, this.pulseShieldCooldown - dt);
 
     // Bite debuff timers + bleed tick (1 HP/s)
@@ -457,23 +455,6 @@ export class Player {
       ctx.strokeStyle = CYAN; ctx.lineWidth = 2;
       ctx.shadowColor = CYAN; ctx.shadowBlur = 8;
       ctx.beginPath(); ctx.arc(this.pos.x, this.pos.y, r, 0, Math.PI * 2); ctx.stroke();
-      ctx.restore();
-    }
-
-    // Walker support shield — teal dashed ring (separate from Q shield bubble)
-    if (this.walkerShieldTimer > 0 && this.shieldTimer <= 0) {
-      const fade  = Math.min(1, this.walkerShieldTimer / 0.6);
-      const pulse = 0.4 + 0.5 * Math.abs(Math.sin(performance.now() / 220));
-      const r     = PLAYER_RADIUS + 20;
-      ctx.save();
-      ctx.globalAlpha = (0.5 + 0.3 * pulse) * fade;
-      ctx.strokeStyle = '#44ffcc';
-      ctx.lineWidth   = 2;
-      ctx.setLineDash([6, 5]);
-      ctx.shadowColor = '#44ffcc';
-      ctx.shadowBlur  = 10;
-      ctx.beginPath(); ctx.arc(this.pos.x, this.pos.y, r, 0, Math.PI * 2); ctx.stroke();
-      ctx.setLineDash([]);
       ctx.restore();
     }
   }
