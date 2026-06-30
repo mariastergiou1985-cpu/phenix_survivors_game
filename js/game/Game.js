@@ -3520,20 +3520,9 @@ export class Game {
     this.floatingTexts.push(new FloatingText('CRYSTAL ICE FIELD!', p.pos.clone(), '#b0f0ff', 1.2));
     this.screenShake.trigger(3, 0.12);
 
-    // ── Spirit Dojang Flag — legacy component fires alongside the ice field ──────
-    // Plants the traditional dojo banner + 205 px cyan field zone at the same cast
-    // position. Handled entirely by _updateSpiritDojang / _drawSpiritDojang which are
-    // already wired in the game loop. Boss damage bounded by per-second caps there.
-    if (!this.spiritDojang) {
-      this.spiritDojang = { pos: p.pos.clone(), t: 0, dmgTimer: 0,
-                            miniDmgThisSec: 0, megaDmgThisSec: 0, bossDmgTimer: 1.0,
-                            particles: [], partTimer: 0 };
-      // Second expanding ring for the outer dojang boundary — wider, slower fade
-      this._specialRings.push({
-        pos: p.pos.clone(), radius: 0, maxRadius: 205,
-        life: 0.7, maxLife: 0.7, color1: '#46e6ff', color2: '#0099cc',
-      });
-    }
+    // ── Spirit Dojang Flag — DISABLED ──────────────────────────────────────────
+    // (Removed to fix problematic AoE behavior; kept system available for future fixes)
+    // if (!this.spiritDojang) { ... }
   }
 
   // ── Crystal Ice Field — frame update ────────────────────────────────────────
@@ -5293,6 +5282,17 @@ export class Game {
     const _sleetFrozen = !!(this._frozenSleet && this._frozenSleet.phase === 'hold');
     const _frozenInput = _sleetFrozen ? { ...input, keys: new Set() } : input;
     this.player.update(dt, _frozenInput);
+    // Freeze enemies during hold phase (fairness)
+    if (_sleetFrozen) {
+      for (const e of this.enemies) {
+        if (e?.pos && e.hp > 0) e.velocity = e.velocity || new Vec2(0, 0);  // prevent movement
+      }
+      // Freeze enemy projectiles
+      for (const proj of this.enemyBullets) {
+        if (proj?.velocity) proj.velocity.x = 0;
+        if (proj?.velocity) proj.velocity.y = 0;
+      }
+    }
     // Dash SFX — fire once on the frame a dash begins (rising edge of dashTimer).
     const dashing = this.player.dashTimer > 0;
     if (dashing && !this._wasDashing) this.audio?.playDash();
@@ -8112,9 +8112,9 @@ export class Game {
     this.audio?.playEventWarning();
   }
 
-  // Rocket-rain SALVO: 3–6 rockets fanned across multiple impact zones around the player.
+  // Rocket-rain SALVO: 2 rockets with safe spawn distance from player (reduced from 3–6).
   _fireSalvo(s) {
-    const n = 3 + Math.floor(Math.random() * 4) + (this._hasProto('airstrike_plus') ? 2 : 0);   // 3–6 (+2 with Airstrike+); aim unchanged, pool still capped at 40
+    const n = 2;   // Fixed to 2 rockets per salvo (reduced from 3–6 for fairness)
     let fired = 0;
     for (let i = 0; i < n; i++) {
       if (this.airstrikeRockets.length >= 40) break;   // hard cap on in-flight rockets
@@ -8123,7 +8123,15 @@ export class Game {
       const j = randomRange(-0.7, 0.7);   // ~50% aim assist / 50% spread → fairer dodge window
       const c = Math.cos(j), sn = Math.sin(j);
       const dir = new Vec2(base.x * c - base.y * sn, base.x * sn + base.y * c);
-      this.airstrikeRockets.push({ pos: s.pos.clone(), dir, speed: randomRange(220, 285), life: 5.5, radius: 7, blast: 46 });
+      // Ensure rockets spawn at safe distance from player (not directly on them)
+      let spawnPos = s.pos.clone();
+      const distToPlayer = distance(spawnPos, this.player.pos);
+      if (distToPlayer < 180) {
+        // If ship is too close, spawn rocket further away from player
+        const safeDir = safeNormalize(s.pos.sub(this.player.pos));
+        spawnPos = this.player.pos.add(safeDir.scale(180));
+      }
+      this.airstrikeRockets.push({ pos: spawnPos, dir, speed: randomRange(220, 285), life: 5.5, radius: 7, blast: 46 });
       fired++;
     }
     if (fired > 0) this.audio?.playEnemyShoot();
@@ -16815,7 +16823,7 @@ _drawLoreArchive(ctx) {
       ctx.drawImage(img, 0, 0, WORLD_W, drawH);
       // Endless map: a touch more dimming so the backdrop recedes and the gameplay plane reads flat.
       ctx.fillStyle = this.gridBlackoutActive ? 'rgba(0,0,0,0.65)'
-                    : this._chaosMode          ? 'rgba(0,0,8,0.44)'
+                    : this._chaosMode          ? 'rgba(0,0,0,0.38)'
                     : this.endless             ? 'rgba(0,0,0,0.46)'
                     :                            'rgba(0,0,0,0.38)';
       ctx.fillRect(0, 0, WORLD_W, WORLD_H);
