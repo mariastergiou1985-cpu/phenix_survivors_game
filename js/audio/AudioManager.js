@@ -61,7 +61,7 @@ export class AudioManager {
 
     this._setupTrack('assets/audio/music/menu_theme.mp3?v=20260615210000', 0.28, a => { this._menuAudio     = a; });
     this._setupTrack('assets/audio/music/gameplay_theme.mp3?v=20260615210000', 0.20, a => { this._gameplayAudio = a; });
-    // Chaos Mode track (Golden Override Protocol). Degrades safely if missing.
+    // Chaos Mode track (Winter of the Blade). Degrades safely if missing.
     this._setupTrack('assets/audio/music/Chaos/Golden_ Override _Protocol.wav?v=20260615210000', 0.20, a => { this._chaosAudio = a; });
     // Endless-only track (dawn). Missing/failed load degrades safely (onerror warn).
     this._setupTrack('assets/audio/music/endless/dawn.wav?v=20260615210000', 0.20, a => { this._endlessAudio = a; });
@@ -168,7 +168,7 @@ export class AudioManager {
     this._stop(this._endlessAudio);
     this._stop(this._chaosAudio);
     this._currentMusic = this._gameplayAudio;
-    this.currentTrackTitle = 'CYBER-GRID OST';
+    this.currentTrackTitle = 'NULL EDEN OST';
     this._play(this._gameplayAudio);
   }
 
@@ -265,17 +265,17 @@ export class AudioManager {
     src.stop(t0 + dur + 0.02);
   }
 
-  // 1. Shoot — short cyber laser blip (descending square).
+  // 1. Shoot — short cyber laser blip (descending triangle; softer than square).
   playShoot() {
-    if (!this._canPlay('shoot', 0.05)) return;
-    this._tone({ type: 'square', freqStart: 880, freqEnd: 240, dur: 0.08, gain: 0.11 });
+    if (!this._canPlay('shoot', 0.09)) return;
+    this._tone({ type: 'triangle', freqStart: 660, freqEnd: 200, dur: 0.08, gain: 0.065 });
   }
 
   // 2. Enemy hit — small electric zap (saw + tiny noise tick).
   playHit() {
-    if (!this._canPlay('hit', 0.04)) return;
-    this._tone({ type: 'sawtooth', freqStart: 320, freqEnd: 140, dur: 0.06, gain: 0.10 });
-    this._noiseBurst({ dur: 0.05, gain: 0.05, filterType: 'highpass', freq: 1600 });
+    if (!this._canPlay('hit', 0.07)) return;
+    this._tone({ type: 'sawtooth', freqStart: 320, freqEnd: 140, dur: 0.06, gain: 0.07 });
+    this._noiseBurst({ dur: 0.05, gain: 0.04, filterType: 'highpass', freq: 1600 });
   }
 
   // 3. Enemy death — glitch burst / digital crack.
@@ -528,4 +528,88 @@ export class AudioManager {
       'assets/audio/sfx/rocket-rain.ogg',
       'assets/audio/sfx/rocket-rain.mp3',
       'assets/audio/sfx/rocket-rain.wav');
-    this._playSfxBuffer('sfxRocketRain', 3.0,
+    this._playSfxBuffer('sfxRocketRain', 3.0, 0.90);
+  }
+  // ─── EDEN CORE transmission audio (V1) ──────────────────────────────────────
+  // Clip IDs map to files under assets/audio/eden_core/.
+  // If the file hasn't loaded yet (or doesn't exist), falls back to a synthesized
+  // cyber-glitch tone so the transmission never crashes and never blocks music.
+  // All paths respect mute and sfxGain — no special-casing needed.
+
+  // Future clip IDs → filenames (add entries here as voice clips are produced).
+  // Null value = no file planned yet; use synthesized fallback always.
+  static _EDEN_CLIP_MAP = {
+    chaos:          'chaos_signal_detected',
+    null_breach:    'null_breach_detected',
+    signal_down:    'signal_collapsed',
+    extract:        'extract_you_once',
+    return_grid:    'return_to_grid',
+    grid_memory:    'grid_remembers',
+  };
+
+  /**
+   * Play audio for an EDEN CORE transmission.
+   * @param {string|null} clipId  Key from _EDEN_CLIP_MAP, or null for synthesized glitch.
+   */
+  playEdenTransmission(clipId = null) {
+    if (this.muted) return;
+    if (!this._canPlay('edenTx', 3.5)) return;   // hard-limit: never more than once per 3.5 s
+
+    const filename = clipId ? AudioManager._EDEN_CLIP_MAP[clipId] : null;
+    if (filename) {
+      const key = 'sfxEden_' + clipId;
+      this._loadSfxFile(key,
+        `assets/audio/eden_core/${filename}.ogg`,
+        `assets/audio/eden_core/${filename}.mp3`);
+      if (this._sfxBuffers[key]) {
+        // File loaded — play at 0.72 gain (below music, above ambient SFX)
+        this._playSfxBuffer(key, 3.5, 0.72);
+        return;
+      }
+      // Buffer still loading this frame — fall through to synthesized glitch
+    }
+
+    // Synthesized glitch fallback: two descending pulses + bandpass noise burst.
+    // Sounds like a digital stutter / cyber voice crackle — distinct from other SFX.
+    this._tone({ type: 'square',    freqStart: 660, freqEnd: 220, dur: 0.14, gain: 0.09 });
+    this._tone({ type: 'sawtooth',  freqStart: 440, freqEnd: 110, dur: 0.12, gain: 0.07, delay: 0.08 });
+    this._noiseBurst({ dur: 0.18, gain: 0.06, filterType: 'bandpass', freq: 900 });
+  }
+
+
+
+  // ─── Element SFX (synthesized — no asset files required) ────────────────────
+
+  // Lightning storm strike — sharp electric crack + low thunder rumble.
+  // Distinct from the generic playEventWarning() alarm. Throttled 0.3 s per strike.
+  playLightningStrike() {
+    if (!this._canPlay('lightningStrike', 0.30)) return;
+    // High crack: brief sawtooth pop
+    this._tone({ type: 'sawtooth', freqStart: 2200, freqEnd: 400, dur: 0.07, gain: 0.11 });
+    // Thunder roll: low sine rumble
+    this._tone({ type: 'sine',     freqStart: 80,   freqEnd: 28,  dur: 0.45, gain: 0.13 });
+    // Sizzle texture
+    this._noiseBurst({ dur: 0.12, gain: 0.09, filterType: 'bandpass', freq: 1800 });
+  }
+
+  // Toxic gas cloud — hiss burst + low bubbling undertone. Throttled 0.8 s (clouds spawn in bursts).
+  playToxicGas() {
+    if (!this._canPlay('toxicGas', 0.80)) return;
+    // Gas hiss: highpass noise
+    this._noiseBurst({ dur: 0.22, gain: 0.08, filterType: 'highpass', freq: 900 });
+    // Bubbling: low modulated sine
+    this._tone({ type: 'sine', freqStart: 90, freqEnd: 65, dur: 0.28, gain: 0.07 });
+  }
+
+  // Ice / crystal / freeze — cold wind sweep + high shimmer. Used for Frozen Sleet onset + ice fields.
+  playIceSweep() {
+    if (!this._canPlay('iceSweep', 0.60)) return;
+    // Cold wind: bandpass noise sweep
+    this._noiseBurst({ dur: 0.35, gain: 0.09, filterType: 'bandpass', freq: 1400 });
+    // High shimmer: descending triangle
+    this._tone({ type: 'triangle', freqStart: 1800, freqEnd: 900, dur: 0.30, gain: 0.07 });
+    // Low crack: short sine thud
+    this._tone({ type: 'sine', freqStart: 140, freqEnd: 50, dur: 0.18, gain: 0.08, delay: 0.05 });
+  }
+
+}
