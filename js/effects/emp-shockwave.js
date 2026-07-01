@@ -34,9 +34,9 @@
  */
 
 export const DEFAULT_CONFIG = {
-  ring:       { maxRadius: 260, expandMs: 480, width: 14, ease: 0.5 }, // ease<1 = fast start, slow finish
-  distortion: { strength: 0.09 },           // background-bend amount at the wavefront. 0 = off (and skipped)
-  tendrils:   { count: 7, jitter: 46, segments: 4 }, // lightning arcs center→edge
+  ring:       { maxRadius: 180, expandMs: 480, width: 14, ease: 0.5 }, // ease<1 = fast start, slow finish
+  distortion: { strength: 0.04 },           // background-bend amount at the wavefront. 0 = off (and skipped)
+  tendrils:   { count: 4, jitter: 46, segments: 4 }, // lightning arcs center→edge
   enemy:      { flashMs: 100, stunMs: 1200, sparkRate: 2, sparkLifeMs: 420,
                 sparkSpeed: 1.8, sparkMin: 2, sparkMax: 5 },
   color:      { hue: 200, sat: 100, light: 62 }, // electric blue. Raise hue for cyan/violet.

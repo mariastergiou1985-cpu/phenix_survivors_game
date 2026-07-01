@@ -312,6 +312,16 @@ export class MetaProgress {
         this.endlessUnlocked = true;
         this._save();
       }
+
+      // Backfill brawler_warrior character unlock for saves that earned it before
+      // the unlock flag existed (threshold: survived 10:00+ in Endless mode = 600s).
+      if (!this.isUnlocked('brawler_warrior')) {
+        const er = this.endlessRecords || {};
+        if ((er.time || 0) >= 600) {
+          this.unlocks['brawler_warrior'] = true;
+          this._save();
+        }
+      }
     } catch (_) {}
   }
 
@@ -712,15 +722,4 @@ export class MetaProgress {
   hasMilestone(threshold) { return !!(this.edenMilestonesSeen && this.edenMilestonesSeen[threshold]); }
 
   // One-fire guard: returns true the first time Eden Memory >= threshold.
-  // Subsequent calls return false. Safe with old saves (defaults to {}).
-  checkAndRecordSystemLog(threshold) {
-    if (!this.systemLogsSeen) this.systemLogsSeen = {};
-    if (this.systemLogsSeen[threshold]) return false;
-    if (this.getEdenMemory() < threshold) return false;
-    this.systemLogsSeen[threshold] = true;
-    this._save();
-    return true;
-  }
-  hasSystemLog(threshold) { return !!(this.systemLogsSeen && this.systemLogsSeen[threshold]); }
-
-}
+  // Subsequent calls return false. Safe with old saves (defaults

@@ -917,12 +917,14 @@ export class Game {
     this.cyberSerpentBoss       = null;
     this.cyberSerpentSpawnTimer = 630;   // 10:30 — just after Bloodfang to stagger pressure
     this._serpentTrails         = [];   // fire trail segments left during dash phases (max 20, auto-expire 10s)
+    this._serpentLastTrailPos   = null; // last trail segment position for distance-based spawning
 
     // Cyber Dragon — mid-run boss at 16:00 (Cryo Storm Protocol ice rain)
     this.cyberDragonSpawned    = false;
     this.cyberDragonBoss       = null;
     this.cyberDragonSpawnTimer = 960;   // 16:00
     this._dragonIceShards      = [];   // falling ice shards with telegraph warning circles (max 15)
+    this._dragonBolts          = [];   // slow cryo bolts fired during non-storm phases
 
     // Double Demons — Chaos Mode dual-body boss (Gunner + Claw, shared HP)
     this.doubleDemonsSpawned    = false;
@@ -957,7 +959,8 @@ export class Game {
 
   startGame() {
     this._hideMenuOverlay();
-    if (!this.selectedCharacter) {
+    const _selDef = this.characters?.find(c => c.id === this.selectedCharacter);
+    if (!this.selectedCharacter || _selDef?.comingSoon) {
       this.gameState = 'character_select';
     } else {
       this.audio?.startGameplayMusic();
@@ -991,6 +994,7 @@ export class Game {
   previewCharacter(i) {
     this.characterIndex = i;
     const c = this.characters[i];
+    if (c?.comingSoon) return;             // comingSoon: must never become selectedCharacter
     if (c && this.meta.isCharacterUnlocked(c.id)) this.selectedCharacter = c.id;
   }
 
@@ -998,7 +1002,7 @@ export class Game {
   // + Endless unlocked). Never bypasses locked characters or the Endless gate.
   startSelectedEndless() {
     const c = this.characters[this.characterIndex];
-    if (!c || !this.meta.isCharacterUnlocked(c.id)) return;
+    if (!c || c.comingSoon || !this.meta.isCharacterUnlocked(c.id)) return;  // comingSoon gate
     if (!this.meta?.isEndlessUnlocked()) return;
     this.selectedCharacter = c.id;
     this.startEndlessRun();
@@ -1123,6 +1127,10 @@ export class Game {
     this._hideMenuOverlay();
     this._hideCharSelectOverlay();
     this.selectedCharacter = this.selectedCharacter || this.characters[this.characterIndex]?.id || 'skeleton_warrior';
+    // comingSoon safety: if resolved character is coming-soon, fall back to first valid playable
+    if (this.characters?.find(c => c.id === this.selectedCharacter && c.comingSoon)) {
+      this.selectedCharacter = this.characters.find(c => !c.comingSoon && this.meta.isCharacterUnlocked(c.id))?.id || 'skeleton_warrior';
+    }
     // Chaos Law gate: Eden Memory >= 50% → offer law selection before entering Endless
     if ((this.meta?.getEdenMemory() ?? 0) >= 50) {
       this._showChaosLawSelectionOverlay();
@@ -5264,6 +5272,7 @@ export class Game {
         this.bloodfangSpawned    = false; this.bloodfangSpawnTimer    = 0;
         this.cyberSerpentSpawned = false; this.cyberSerpentSpawnTimer = 0;
         this.cyberDragonSpawned  = false; this.cyberDragonSpawnTimer  = 0;
+        this._dragonBolts        = [];
         this.doubleDemonsSpawned = false; this.doubleDemonsSpawnTimer = 0;
         this._endlessBossTimer  = 5;   // first Chaos boss rotation: 5 s from now
         // Walker: upgrade HP to 2000 if already active when Chaos starts
@@ -6000,6 +6009,10 @@ export class Game {
     this._hideMenuOverlay();
     this._hideCharSelectOverlay?.();
     this.selectedCharacter = this.selectedCharacter || this.characters[this.characterIndex]?.id || 'skeleton_warrior';
+    // comingSoon safety: if resolved character is coming-soon, fall back to first valid playable
+    if (this.characters?.find(c => c.id === this.selectedCharacter && c.comingSoon)) {
+      this.selectedCharacter = this.characters.find(c => !c.comingSoon && this.meta.isCharacterUnlocked(c.id))?.id || 'skeleton_warrior';
+    }
     this.runChaosLaw = null;          // skip Chaos Law selection overlay for direct Chaos start
     this.gameState = 'playing';
     this.reset();
@@ -12669,8 +12682,8 @@ _drawLoreArchive(ctx) {
     grad.addColorStop(0,   'rgba(0,0,0,0)');
     grad.addColorStop(0.25, 'rgba(2,6,22,0.55)');
     grad.addColorStop(0.55, 'rgba(4,12,38,0.80)');
-    grad.addColorStop(0.80, 'rgba(3,15,50,0.92)');
-    grad.addColorStop(1,   'rgba(2,8,28,0.97)');
+    grad.addColorStop(0.80, 'rgba(3,15,50,0.86)');
+    grad.addColorStop(1,   'rgba(2,8,28,0.75)');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, W, H);
 
@@ -13907,6 +13920,7 @@ _drawLoreArchive(ctx) {
       this.bloodfangSpawned    = false; this.bloodfangSpawnTimer    = 0;
       this.cyberSerpentSpawned = false; this.cyberSerpentSpawnTimer = 0;
       this.cyberDragonSpawned  = false; this.cyberDragonSpawnTimer  = 0;
+      this._dragonBolts        = [];
       this.doubleDemonsSpawned = false; this.doubleDemonsSpawnTimer = 0;
       this._endlessBossTimer   = 5;
       this.acidRainTimer       = 30;
@@ -15249,7 +15263,8 @@ _drawLoreArchive(ctx) {
       dashDir:    new Vec2(0, 0),
       dashTimeLeft: 0,
     };
-    this._serpentTrails = [];
+    this._serpentTrails       = [];
+    this._serpentLastTrailPos = null;
     this._bossAnnounce('⚠ CYBER SERPENT DETECTED', ORANGE);
     triggerAnnouncement('CYBER SERPENT DETECTED', ORANGE);
   }
@@ -15276,29 +15291,21 @@ _drawLoreArchive(ctx) {
       s.pos.x = clamp(s.pos.x, WORLD_MARGIN, WORLD_W - WORLD_MARGIN);
       s.pos.y = clamp(s.pos.y, WORLD_MARGIN, WORLD_H - WORLD_MARGIN);
 
-      // Leave fire trail segments (max 20, trim oldest)
-      if (this._serpentTrails.length < 20) {
-        this._serpentTrails.push({
-          pos:    new Vec2(s.pos.x, s.pos.y),
-          life:   10.0,    // 10s duration
-          maxLife: 10.0,
-          tickCd: 0,       // 0.5s tick damage cooldown
-        });
-      } else {
-        // Replace oldest
-        this._serpentTrails.shift();
-        this._serpentTrails.push({
-          pos:    new Vec2(s.pos.x, s.pos.y),
-          life:   10.0,
-          maxLife: 10.0,
-          tickCd: 0,
-        });
+      // Leave fire trail segments every 40px — distance-based, cleaner spacing (max 20)
+      const canPlace = !this._serpentLastTrailPos ||
+        distance(s.pos, this._serpentLastTrailPos) >= 40;
+      if (canPlace) {
+        const seg = { pos: new Vec2(s.pos.x, s.pos.y), life: 8.0, maxLife: 8.0, tickCd: 0 };
+        if (this._serpentTrails.length >= 20) this._serpentTrails.shift();
+        this._serpentTrails.push(seg);
+        this._serpentLastTrailPos = new Vec2(s.pos.x, s.pos.y);
       }
 
       if (s.dashTimeLeft <= 0) {
-        s.dashing     = false;
-        s.dashCd      = randomRange(3.0, 4.5);
-        s.dashTimer   = 0;
+        s.dashing                 = false;
+        s.dashCd                  = randomRange(3.0, 4.5);
+        s.dashTimer               = 0;
+        this._serpentLastTrailPos = null;  // reset for next dash
       }
     } else {
       // ── Normal chase ──
@@ -15322,7 +15329,7 @@ _drawLoreArchive(ctx) {
       t.life  -= dt;
       if (t.life <= 0) { this._serpentTrails.splice(i, 1); continue; }
       if (t.tickCd > 0) { t.tickCd -= dt; continue; }
-      if (distance(pp, t.pos) < this.player.radius + 22) {
+      if (distance(pp, t.pos) < this.player.radius + 30) {
         this._damagePlayer(12, { color: ORANGE, shake: 3 });
         t.tickCd = 0.5;
       }
@@ -15359,8 +15366,9 @@ _drawLoreArchive(ctx) {
     const s = this.cyberSerpentBoss;
     if (!s) return;
     const pos = s.pos.clone();
-    this.cyberSerpentBoss = null;
-    this._serpentTrails   = [];
+    this.cyberSerpentBoss     = null;
+    this._serpentTrails       = [];
+    this._serpentLastTrailPos = null;
 
     // Rewards
     this.score += 1800;
@@ -15384,10 +15392,10 @@ _drawLoreArchive(ctx) {
     // ── Draw trail segments ──
     for (const t of this._serpentTrails) {
       const alpha = clamp(t.life / t.maxLife, 0, 1);
-      const r     = 22;
+      const r     = 26;
       // Dark smoke base
       ctx.save();
-      ctx.globalAlpha = alpha * 0.45;
+      ctx.globalAlpha = alpha * 0.50;
       ctx.beginPath();
       ctx.arc(t.pos.x, t.pos.y, r, 0, Math.PI * 2);
       ctx.fillStyle = '#1a0a00';
@@ -15396,10 +15404,10 @@ _drawLoreArchive(ctx) {
 
       // Orange/red fire glow
       ctx.save();
-      ctx.globalAlpha = alpha * 0.55;
+      ctx.globalAlpha = alpha * 0.65;
       const fireGrad = ctx.createRadialGradient(t.pos.x, t.pos.y, 0, t.pos.x, t.pos.y, r);
-      fireGrad.addColorStop(0, 'rgba(255,160,40,0.9)');
-      fireGrad.addColorStop(0.5, 'rgba(220,60,0,0.55)');
+      fireGrad.addColorStop(0, 'rgba(255,180,40,1.0)');
+      fireGrad.addColorStop(0.4, 'rgba(240,70,0,0.7)');
       fireGrad.addColorStop(1, 'rgba(80,20,0,0)');
       ctx.beginPath();
       ctx.arc(t.pos.x, t.pos.y, r, 0, Math.PI * 2);
@@ -15407,16 +15415,39 @@ _drawLoreArchive(ctx) {
       ctx.fill();
       ctx.restore();
 
-      // Cyber ember ring
+      // Cyber ember ring (danger indicator)
       ctx.save();
-      ctx.globalAlpha = alpha * 0.6;
+      ctx.globalAlpha = alpha * 0.75;
       ctx.strokeStyle = '#ff6600';
-      ctx.lineWidth   = 1.5;
+      ctx.lineWidth   = 2;
       ctx.shadowColor = '#ff4400';
-      ctx.shadowBlur  = 6;
+      ctx.shadowBlur  = 8;
+      ctx.setLineDash([4, 3]);
       ctx.beginPath();
-      ctx.arc(t.pos.x, t.pos.y, r * 0.65, 0, Math.PI * 2);
+      ctx.arc(t.pos.x, t.pos.y, r * 0.85, 0, Math.PI * 2);
       ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+
+      // Flame flicker tongues (3 upward triangular jabs — Issue 5 VFX)
+      ctx.save();
+      ctx.globalAlpha = alpha * 0.70;
+      ctx.shadowColor = '#ff8800';
+      ctx.shadowBlur  = 6;
+      ctx.fillStyle   = '#ffaa22';
+      const flameT    = performance.now() * 0.003;
+      for (let fi = 0; fi < 3; fi++) {
+        const ang    = (fi / 3) * Math.PI * 2 + flameT;
+        const fx     = t.pos.x + Math.cos(ang) * r * 0.5;
+        const fy     = t.pos.y + Math.sin(ang) * r * 0.5;
+        const fh     = 7 + 4 * Math.sin(flameT * 2.3 + fi);
+        ctx.beginPath();
+        ctx.moveTo(fx - 4, fy + 3);
+        ctx.lineTo(fx,     fy - fh);
+        ctx.lineTo(fx + 4, fy + 3);
+        ctx.closePath();
+        ctx.fill();
+      }
       ctx.restore();
     }
 
@@ -15520,12 +15551,14 @@ _drawLoreArchive(ctx) {
       orbitAngle: 0,
       orbitRadius: 340,
       // Cryo Storm state
-      stormCd:    randomRange(5.0, 7.0),  // first storm delay
+      stormCd:    randomRange(2.5, 4.0),  // first storm delay (faster opener)
       stormTimer: 0,
       storming:   false,
       stormLife:  0,
+      boltCd:     randomRange(1.5, 2.5),  // first cryo bolt delay
     };
     this._dragonIceShards = [];
+    this._dragonBolts     = [];
     this._bossAnnounce('⚠ CYBER DRAGON APPROACHING', '#00ccff');
     triggerAnnouncement('CYBER DRAGON APPROACHING', '#00ccff');
   }
@@ -15562,7 +15595,7 @@ _drawLoreArchive(ctx) {
       if (d.stormCd <= 0) {
         d.storming  = true;
         d.stormLife = randomRange(8.0, 11.0);
-        d.stormCd   = randomRange(6.0, 9.0);
+        d.stormCd   = randomRange(4.0, 6.5);
         this._bossAnnounce('CRYO STORM INCOMING', '#00ccff');
         // Spawn initial shard wave
         this._spawnCryoShards();
@@ -15607,6 +15640,33 @@ _drawLoreArchive(ctx) {
     // ── Contact damage ──
     if (distance(pp, d.pos) < this.player.radius + d.radius) {
       this._damagePlayer(20, { color: '#00ccff', shake: 6, cap: BOSS_MAX_PLAYER_HIT });
+    }
+
+    // ── Cryo bolt attack during quiet (non-storm) phase ──
+    if (!d.storming) {
+      d.boltCd = (d.boltCd || 0) - dt;
+      if (d.boltCd <= 0) {
+        d.boltCd = randomRange(3.0, 4.5);
+        const bDir = safeNormalize(pp.sub(d.pos));
+        this._dragonBolts.push({
+          pos:    new Vec2(d.pos.x, d.pos.y),
+          vel:    new Vec2(bDir.x * 110, bDir.y * 110),
+          life:   3.2,
+          radius: 13,
+        });
+      }
+    }
+    // Update cryo bolts
+    for (let i = this._dragonBolts.length - 1; i >= 0; i--) {
+      const b = this._dragonBolts[i];
+      b.pos.x += b.vel.x * dt;
+      b.pos.y += b.vel.y * dt;
+      b.life   -= dt;
+      if (b.life <= 0) { this._dragonBolts.splice(i, 1); continue; }
+      if (distance(pp, b.pos) < this.player.radius + b.radius) {
+        this._damagePlayer(14, { color: '#00ccff', shake: 4, cap: BOSS_MAX_PLAYER_HIT });
+        this._dragonBolts.splice(i, 1);
+      }
     }
 
     // ── Hit flash decay ──
@@ -15665,6 +15725,7 @@ _drawLoreArchive(ctx) {
     const pos = d.pos.clone();
     this.cyberDragonBoss  = null;
     this._dragonIceShards = [];
+    this._dragonBolts     = [];
 
     // Rewards
     this.score += 2800;
@@ -15691,19 +15752,42 @@ _drawLoreArchive(ctx) {
       const tp = sh.targetPos;
 
       if (!sh.hit) {
-        // Warning phase — pulsing cyan ring
+        // Warning phase — targeting reticle (Issue 5: shaped telegraph)
         const progress = sh.t / sh.warnTime;            // 0→1
         const pulse    = 0.5 + 0.5 * Math.sin(now * 8); // fast pulse
         const ringR    = 30 + (1 - progress) * 14;
 
+        // Crosshair lines (4 short dashes pointing inward)
         ctx.save();
-        ctx.globalAlpha = (0.3 + pulse * 0.4) * (1 - progress * 0.3);
+        ctx.globalAlpha = (0.5 + pulse * 0.5) * (0.4 + progress * 0.6);
         ctx.strokeStyle = '#00ccff';
-        ctx.lineWidth   = 2.5;
+        ctx.lineWidth   = 1.5;
         ctx.shadowColor = '#00ccff';
-        ctx.shadowBlur  = 10;
+        ctx.shadowBlur  = 8;
+        for (let ci = 0; ci < 4; ci++) {
+          const ca  = (ci / 4) * Math.PI * 2;
+          const in1 = ringR + 6;
+          const in2 = ringR + 14;
+          ctx.beginPath();
+          ctx.moveTo(tp.x + Math.cos(ca) * in1, tp.y + Math.sin(ca) * in1);
+          ctx.lineTo(tp.x + Math.cos(ca) * in2, tp.y + Math.sin(ca) * in2);
+          ctx.stroke();
+        }
+        ctx.restore();
+
+        // Diamond warning ring (rotates slightly)
+        ctx.save();
+        ctx.globalAlpha = (0.3 + pulse * 0.35) * (1 - progress * 0.2);
+        ctx.translate(tp.x, tp.y);
+        ctx.rotate(now * 0.6 + sh.t);
+        ctx.strokeStyle = '#00ccff';
+        ctx.lineWidth   = 2;
+        ctx.shadowColor = '#00ccff';
+        ctx.shadowBlur  = 12;
         ctx.beginPath();
-        ctx.arc(tp.x, tp.y, ringR, 0, Math.PI * 2);
+        ctx.moveTo(0, -ringR); ctx.lineTo(ringR * 0.7, 0);
+        ctx.lineTo(0, ringR);  ctx.lineTo(-ringR * 0.7, 0);
+        ctx.closePath();
         ctx.stroke();
         ctx.restore();
 
@@ -15729,13 +15813,14 @@ _drawLoreArchive(ctx) {
         ctx.stroke();
         ctx.restore();
       } else {
-        // Burst VFX — icy explosion ring
+        // Burst VFX — ice crystal spike spray (Issue 5: shaped effect)
         const bAlpha = sh.burstTimer / 0.35;
+        const burstR = 38 * (1 - bAlpha * 0.5);
+        // Outer ring
         ctx.save();
         ctx.globalAlpha = bAlpha * 0.85;
-        const burstR = 38 * (1 - bAlpha * 0.5);
         ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth   = 3;
+        ctx.lineWidth   = 2.5;
         ctx.shadowColor = '#00ccff';
         ctx.shadowBlur  = 18;
         ctx.beginPath();
@@ -15743,14 +15828,53 @@ _drawLoreArchive(ctx) {
         ctx.stroke();
         ctx.restore();
 
+        // Crystal spikes (6 outward lines)
         ctx.save();
-        ctx.globalAlpha = bAlpha * 0.45;
+        ctx.globalAlpha = bAlpha * 0.9;
+        ctx.strokeStyle = '#aaeeff';
+        ctx.lineWidth   = 2;
+        ctx.shadowColor = '#00ccff';
+        ctx.shadowBlur  = 10;
+        for (let si = 0; si < 6; si++) {
+          const sa = (si / 6) * Math.PI * 2;
+          const sr = burstR * 1.4;
+          ctx.beginPath();
+          ctx.moveTo(tp.x + Math.cos(sa) * burstR * 0.3, tp.y + Math.sin(sa) * burstR * 0.3);
+          ctx.lineTo(tp.x + Math.cos(sa) * sr,           tp.y + Math.sin(sa) * sr);
+          ctx.stroke();
+        }
+        ctx.restore();
+
+        ctx.save();
+        ctx.globalAlpha = bAlpha * 0.40;
         ctx.fillStyle   = '#00ccff';
         ctx.beginPath();
-        ctx.arc(tp.x, tp.y, burstR * 0.6, 0, Math.PI * 2);
+        ctx.arc(tp.x, tp.y, burstR * 0.5, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
       }
+    }
+
+    // ── Draw cryo bolts ──
+    for (const b of this._dragonBolts) {
+      const lifeRatio = Math.min(b.life / 3.2, 1);
+      ctx.save();
+      ctx.globalAlpha = lifeRatio * 0.9;
+      ctx.shadowColor = '#00ccff';
+      ctx.shadowBlur  = 12;
+      // Diamond/crystal shape
+      ctx.beginPath();
+      ctx.moveTo(b.pos.x,            b.pos.y - b.radius);
+      ctx.lineTo(b.pos.x + b.radius * 0.55, b.pos.y);
+      ctx.lineTo(b.pos.x,            b.pos.y + b.radius);
+      ctx.lineTo(b.pos.x - b.radius * 0.55, b.pos.y);
+      ctx.closePath();
+      ctx.fillStyle   = '#aaeeff';
+      ctx.fill();
+      ctx.strokeStyle = '#00ccff';
+      ctx.lineWidth   = 1.5;
+      ctx.stroke();
+      ctx.restore();
     }
 
     // ── Draw boss body ──
@@ -16852,11 +16976,10 @@ _drawLoreArchive(ctx) {
     const rad = Math.min(W, H) * 0.65;
     const g   = ctx.createRadialGradient(sx, sy, rad * 0.3, sx, sy, rad);
     g.addColorStop(0, 'transparent');
-    g.addColorStop(1, 'rgba(0,0,0,0.38)');
+    g.addColorStop(1, 'rgba(0,0,0,0.18)');
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, W, H);
   }
-  // ────────────────────────────────────────────────────────────────────────────
 
   _drawWorldBackground(ctx) {
     ctx.fillStyle = DARK_BG;
@@ -16874,7 +16997,7 @@ _drawLoreArchive(ctx) {
       ctx.drawImage(img, 0, 0, WORLD_W, drawH);
       // Endless map: a touch more dimming so the backdrop recedes and the gameplay plane reads flat.
       ctx.fillStyle = this.gridBlackoutActive ? 'rgba(0,0,0,0.65)'
-                    : this._chaosMode          ? 'rgba(0,0,8,0.44)'
+                    : this._chaosMode          ? 'rgba(0,0,8,0.28)'
                     : this.endless             ? 'rgba(0,0,0,0.46)'
                     :                            'rgba(0,0,0,0.38)';
       ctx.fillRect(0, 0, WORLD_W, WORLD_H);

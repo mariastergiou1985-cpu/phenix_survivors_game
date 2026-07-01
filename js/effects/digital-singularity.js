@@ -35,9 +35,9 @@
 export const DEFAULT_CONFIG = {
   phases:   { dissolveMs: 600, stormMs: 1400, strikeMs: 1200, reformMs: 750 },
   dissolve: { cell: 7, edgeBand: 0.10, shardChance: 0.18 }, // grid cell px, glowing edge width, % cells that fly off
-  storm:    { max: 170, darken: 0.4, sizeMin: 2, sizeMax: 6, speed: 3.4, codeChance: 0.5 },
-  strike:   { intervalMs: 130, life: 90, shake: 15 },        // laser cadence, laser lifetime, shake impulse
-  flash:    { maxRadius: 360, burst: 64, shake: 22 },        // reform blast
+  storm:    { max: 80, darken: 0.4, sizeMin: 2, sizeMax: 6, speed: 3.4, codeChance: 0.5 },
+  strike:   { intervalMs: 200, life: 90, shake: 15 },        // laser cadence, laser lifetime, shake impulse
+  flash:    { maxRadius: 360, burst: 30, shake: 22 },        // reform blast
   color:    { hue: 200, sat: 100, light: 62 },               // electric blue; one dial recolors everything
 };
 
@@ -358,3 +358,4 @@ function mergeConfig(base, opts) {
   for (const k of Object.keys(base)) if (opts[k]) Object.assign(out[k], opts[k]);
   return out;
 }
+ 
