@@ -16,7 +16,7 @@ import { Projectile, HomingDisc } from '../entities/Projectile.js?v=202606294400
 import { Enemy }          from '../entities/Enemy.js?v=20260629440000';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=20260629440000';
 
-import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem } from './Effects.js?v=20260629440000';
+import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration } from './Effects.js?v=20260701370000';
 import { SystemEventManager } from './Events.js?v=20260629440000';
 import { UpgradeUI }      from './UpgradeUI.js?v=20260629440000';
 import { weightedSample } from './Upgrades.js?v=20260629440000';
@@ -9399,6 +9399,7 @@ export class Game {
       ctx.globalAlpha = 1;
       ctx.restore();
     }
+    drawChromaticAberration(ctx, this.damageFlash, this.damageFlashIntensity, DMG_PULSE.duration);
     this._drawScanlines(ctx);
 
     this._drawAnnouncement(ctx);
@@ -9407,6 +9408,8 @@ export class Game {
     if (this.mutationUI) this.mutationUI.draw(ctx, this.player, this);
     if (this.victory)        this._drawVictoryScreen(ctx);
     else if (this.gameOver)  drawEndScreen(ctx, this);
+
+    drawCRTVignette(ctx);
 
     if (this.paused && !this.gameOver && !this.victory) {
       ctx.fillStyle = 'rgba(0,0,0,0.55)';
@@ -14724,7 +14727,7 @@ _drawLoreArchive(ctx) {
     }
     if (!this._scanlinePattern) return;
     ctx.save();
-    ctx.globalAlpha = 0.07;
+    ctx.globalAlpha = 0.12;
     ctx.fillStyle = this._scanlinePattern;
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
     ctx.restore();

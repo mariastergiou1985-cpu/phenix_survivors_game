@@ -340,3 +340,56 @@ export class ChaosAmbientSystem {
 
   clear() { this.particles.length = 0; }
 }
+
+// ─── CRT Vignette ─────────────────────────────────────────────────────────────
+// Permanent always-on corner darkening — transparent center, dark corners.
+// Drawn last over world + HUD so the entire screen reads like a curved CRT monitor.
+export function drawCRTVignette(ctx) {
+  ctx.save();
+  const grad = ctx.createRadialGradient(
+    WIDTH / 2, HEIGHT / 2, HEIGHT * 0.28,
+    WIDTH / 2, HEIGHT / 2, HEIGHT * 0.76
+  );
+  grad.addColorStop(0,    'rgba(0,0,0,0)');
+  grad.addColorStop(0.55, 'rgba(0,0,0,0.06)');
+  grad.addColorStop(1,    'rgba(0,0,0,0.48)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, WIDTH, HEIGHT);
+  ctx.restore();
+}
+
+// ─── Chromatic Aberration ─────────────────────────────────────────────────────
+// RGB edge-channel split on player damage — red fringe left, cyan fringe right.
+// Fades together with the damage pulse for a premium "display malfunction" feel.
+export function drawChromaticAberration(ctx, flash, intensity, duration) {
+  if (flash <= 0 || intensity <= 0) return;
+  const t     = clamp(flash / duration, 0, 1);
+  const alpha = t * intensity * 0.32;
+  if (alpha < 0.01) return;
+
+  ctx.save();
+
+  // Red fringe — left edge
+  const rg = ctx.createLinearGradient(0, 0, 100, 0);
+  rg.addColorStop(0, `rgba(255,30,60,${(alpha * 0.9).toFixed(3)})`);
+  rg.addColorStop(1, 'rgba(255,30,60,0)');
+  ctx.fillStyle = rg;
+  ctx.fillRect(0, 0, 100, HEIGHT);
+
+  // Cyan fringe — right edge
+  const cg = ctx.createLinearGradient(WIDTH, 0, WIDTH - 100, 0);
+  cg.addColorStop(0, `rgba(0,220,255,${(alpha * 0.9).toFixed(3)})`);
+  cg.addColorStop(1, 'rgba(0,220,255,0)');
+  ctx.fillStyle = cg;
+  ctx.fillRect(WIDTH - 100, 0, 100, HEIGHT);
+
+  // Thin scan-distortion band (drifts near screen centre on heavy hits)
+  const by = (HEIGHT / 2) + (t - 0.5) * 80;
+  const bg = ctx.createLinearGradient(0, by, 0, by + 3);
+  bg.addColorStop(0, `rgba(255,255,255,${(alpha * 0.18).toFixed(3)})`);
+  bg.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, by, WIDTH, 3);
+
+  ctx.restore();
+}
