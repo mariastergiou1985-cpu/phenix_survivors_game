@@ -764,6 +764,7 @@ export class Game {
     this._shardRingAngle     = 0;          // Shard Ring orbit angle (radians)
     this._shardRingHitCds    = new Map();  // per-enemy hit cooldown map
     this._p1SentryDrones     = [];         // Sentry Drone companion state list
+    this._voidNeedleRecentTargets = new Map(); // alternate targeting memory (ttl per enemy)
     this.empRings     = [];
     this._specialRings    = [];
     this.thunderSolo      = null;   // Thunder Solo ultimate state while active
@@ -6426,6 +6427,7 @@ export class Game {
           if (pm > 0) this.particles.spawnHitSparks(e.pos, this._primarySparkColor());  // char-matched primary spark
           this._tryCorrode(e);
           if (wasSlowed) this._glacialShatter(shatterPos, e);
+          if (p.sentryShot) this.audio?.playSentryDroneHit?.();
           this.projectiles.splice(i, 1);
           hit = true;
           break;
@@ -17135,7 +17137,7 @@ _drawLoreArchive(ctx) {
 
     const p      = this.player;
     const dmg    = DMGS[Math.min(lvl - 1, DMGS.length - 1)];
-    const range  = 120 + 15 * lvl;
+    const range  = 160 + 20 * lvl;
     const half   = ((50 + 12 * (lvl - 1)) * Math.PI / 180) / 2;
     const aimDir = safeNormalize(p.lastFacingDir || new Vec2(1, 0));
 
@@ -17155,7 +17157,8 @@ _drawLoreArchive(ctx) {
       range, half,
       life: 0.20, maxLife: 0.20,
     });
-    this.audio?.playHit?.();
+    this.audio?.playPlasmaBladeSwing?.();
+    if (hits > 0) this.audio?.playPlasmaBladeHit?.();
   }
 
   _drawPlasmaBladeSlashes(ctx) {
@@ -17188,6 +17191,13 @@ _drawLoreArchive(ctx) {
   // ── VOID NEEDLE (PROJECTILE) — fast piercing shot toward nearest enemy ───────
 
   _updateVoidNeedle(dt) {
+    // Tick down recent-target memory
+    for (const [e, ttl] of this._voidNeedleRecentTargets) {
+      const next = ttl - dt;
+      if (next <= 0) this._voidNeedleRecentTargets.delete(e);
+      else           this._voidNeedleRecentTargets.set(e, next);
+    }
+
     // Advance in-flight needles (runs regardless of card level)
     for (let i = this._voidNeedles.length - 1; i >= 0; i--) {
       const n   = this._voidNeedles[i];
@@ -17207,6 +17217,7 @@ _drawLoreArchive(ctx) {
         e.takeHit(n.dmg, this);
         this._tryCorrode(e);
         this.particles.spawnHitSparks(e.pos, '#00e6ff');
+        this.audio?.playVoidNeedleHit?.();
         n.hit.add(e);
         n.pierceLeft -= 1;
         if (n.pierceLeft <= 0) { this._voidNeedles.splice(i, 1); removed = true; break; }
@@ -17220,6 +17231,7 @@ _drawLoreArchive(ctx) {
         if (n.hit.has(b)) continue;
         if (distance(b.pos, n.pos) > (b.radius || 32) + 7) continue;
         this._brawlerHit(t, 0.55 * n.dmg, '#00e6ff');
+        this.audio?.playVoidNeedleHit?.();
         n.hit.add(b);
         n.pierceLeft -= 1;
         if (n.pierceLeft <= 0) { this._voidNeedles.splice(i, 1); removed = true; break; }
@@ -17236,10 +17248,37 @@ _drawLoreArchive(ctx) {
     const DMGS = [14, 17, 20, 23];
     this._voidNeedleCd = CDS[Math.min(lvl - 1, CDS.length - 1)];
 
-    const p   = this.player;
-    const tgt = this._autoTarget(p.pos, 800);
+    const p = this.player;
+
+    // Alternate targeting — prefer enemies not recently targeted for better spread
+    let tgt = null;
+    {
+      let bestFreshDist = Infinity, bestFresh = null;
+      let bestAnyDist   = Infinity, bestAny   = null;
+      for (const e of this.enemies) {
+        if (e.hp <= 0) continue;
+        const d = distance(e.pos, p.pos);
+        if (d > 800) continue;
+        if (d < bestAnyDist) { bestAny = e; bestAnyDist = d; }
+        if (!this._voidNeedleRecentTargets.has(e) && d < bestFreshDist) {
+          bestFresh = e; bestFreshDist = d;
+        }
+      }
+      for (const t of this._brawlerTargets()) {
+        if (t.arr) continue;
+        const b = t.obj;
+        const d = distance(b.pos, p.pos);
+        if (d > 800) continue;
+        if (d < bestAnyDist) { bestAny = b; bestAnyDist = d; }
+        if (!this._voidNeedleRecentTargets.has(b) && d < bestFreshDist) {
+          bestFresh = b; bestFreshDist = d;
+        }
+      }
+      tgt = bestFresh || bestAny;
+    }
     if (!tgt) return;
 
+    this._voidNeedleRecentTargets.set(tgt, 3.0);   // remember for 3 seconds
     const dir = safeNormalize(tgt.pos.sub(p.pos));
     this._voidNeedles.push({
       pos:        p.pos.clone(),
@@ -17250,7 +17289,7 @@ _drawLoreArchive(ctx) {
       hit:        new Set(),
       t:          0,
     });
-    this.audio?.playShoot?.();
+    this.audio?.playVoidNeedleFire?.();
   }
 
   _drawVoidNeedles(ctx) {
@@ -17305,6 +17344,7 @@ _drawLoreArchive(ctx) {
         this._tryCorrode(e);
         this.particles.spawnHitSparks(e.pos, '#00e6ff');
         this.screenShake?.trigger(3, 0.12);
+        this.audio?.playRailSpikeImpact?.();
         n.hit.add(e);
         n.pierceLeft -= 1;
         if (n.pierceLeft <= 0) { this._railSpikes.splice(i, 1); removed = true; break; }
@@ -17319,6 +17359,7 @@ _drawLoreArchive(ctx) {
         if (distance(b.pos, n.pos) > (b.radius || 32) + 9) continue;
         this._brawlerHit(t, 0.6 * n.dmg, '#00e6ff');
         this.screenShake?.trigger(3, 0.12);
+        this.audio?.playRailSpikeImpact?.();
         n.hit.add(b);
         n.pierceLeft -= 1;
         if (n.pierceLeft <= 0) { this._railSpikes.splice(i, 1); removed = true; break; }
@@ -17350,7 +17391,7 @@ _drawLoreArchive(ctx) {
       t:          0,
     });
     this.screenShake?.trigger(2, 0.08);
-    this.audio?.playShoot?.();
+    this.audio?.playRailSpikeFire?.();
   }
 
   _drawRailSpikes(ctx) {
@@ -17428,8 +17469,9 @@ _drawLoreArchive(ctx) {
           const proj = new Projectile(drone.worldPos, dir, projDmg);
           proj.speed = 640;
           proj.life  = 1.6;
+          proj.sentryShot = true;
           this.projectiles.push(proj);
-          this.audio?.playShoot?.();
+          this.audio?.playSentryDroneFire?.();
         }
       }
     }
@@ -17483,58 +17525,4 @@ _drawLoreArchive(ctx) {
 
     // Normal enemy contact
     for (const e of this.enemies) {
-      if (e.hp <= 0 || this._shardRingHitCds.has(e)) continue;
-      if (distance(e.pos, p.pos) < R + (e.radius || 16)) {
-        e.takeHit(dmg, this);
-        this._tryCorrode(e);
-        this.particles.spawnHitSparks(e.pos, '#9650ff');
-        this._shardRingHitCds.set(e, 0.6);
-      }
-    }
-
-    // Boss contact
-    for (const t of this._brawlerTargets()) {
-      if (t.arr) continue;
-      const b = t.obj;
-      if (this._shardRingHitCds.has(b)) continue;
-      if (distance(b.pos, p.pos) < R + (b.radius || 32)) {
-        this._brawlerHit(t, 0.5 * dmg, '#9650ff');
-        this._shardRingHitCds.set(b, 0.6);
-      }
-    }
-  }
-
-  _drawShardRing(ctx) {
-    const lvl = this._cardLvl('shard_ring');
-    if (lvl < 1) return;
-
-    const RADII = [100, 110, 125, 140];
-    const R     = RADII[Math.min(lvl - 1, RADII.length - 1)];
-    const p     = this.player;
-    const spr   = this._weaponImages?.shard_ring;
-    const ready = spr && spr.complete && spr.naturalWidth > 0;
-    const sz    = R * 2.4;
-
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.translate(p.pos.x, p.pos.y);
-    ctx.rotate(this._shardRingAngle);
-
-    if (ready) {
-      ctx.globalAlpha = 0.85;
-      ctx.drawImage(spr, -sz / 2, -sz / 2, sz, sz);
-    } else {
-      ctx.globalAlpha = 0.5;
-      ctx.strokeStyle = '#9650ff'; ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2); ctx.stroke();
-      ctx.strokeStyle = '#c480ff'; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.arc(0, 0, R - 6, 0, Math.PI * 2); ctx.stroke();
-    }
-
-    ctx.restore();
-    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
-  }
-
-  // Called by main.js to pass current mouse pos to the draw call
-  setMousePos(pos) { this._lastMousePos = pos; }
-}
+      if (e.hp <= 0 || thi
