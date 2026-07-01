@@ -393,3 +393,36 @@ export function drawChromaticAberration(ctx, flash, intensity, duration) {
 
   ctx.restore();
 }
+
+// ─── Bloom / neon glow pass ───────────────────────────────────────────────────
+// Canvas 2D post-process bloom.  Snapshots the rendered frame into an
+// OffscreenCanvas (created once, reused every frame), then composites it back
+// blurred with 'screen' blending so bright neon pixels spread a soft halo
+// without darkening anything.  alpha 0.22 = subtle premium look.
+// ctx.filter blur: Chrome 51+, Firefox 49+, Safari 18+ (Sep 2024).
+let _bloomOff = null;   // OffscreenCanvas — lazy-init, resized on canvas change
+let _bloomOC  = null;   // 2d context for the offscreen canvas
+
+export function drawBloom(ctx) {
+  const w = ctx.canvas.width;
+  const h = ctx.canvas.height;
+
+  // Lazy-init / resize offscreen canvas
+  if (!_bloomOff || _bloomOff.width !== w || _bloomOff.height !== h) {
+    _bloomOff = new OffscreenCanvas(w, h);
+    _bloomOC  = _bloomOff.getContext('2d');
+  }
+
+  // Snapshot current frame into offscreen (source ≠ dest — safe)
+  _bloomOC.clearRect(0, 0, w, h);
+  _bloomOC.drawImage(ctx.canvas, 0, 0);
+
+  // Blur + screen blend → neon bloom pass
+  ctx.save();
+  ctx.filter                   = 'blur(14px)';
+  ctx.globalCompositeOperation = 'screen';
+  ctx.globalAlpha              = 0.22;
+  ctx.drawImage(_bloomOff, 0, 0);
+  ctx.restore();
+  ctx.filter = 'none';           // always reset — filter is sticky on ctx
+}
