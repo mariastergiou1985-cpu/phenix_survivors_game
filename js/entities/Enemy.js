@@ -35,6 +35,13 @@ export class Enemy {
     this.slowTimer  = 0;     // Cryo Rounds debuff: reduced movement speed while > 0
     this.slowFactor = 0.55;  // speed multiplier while slowed (Suppression lowers it)
 
+    // ── Game Feel ──────────────────────────────────────────────────────────────
+    // Knockback impulse (px/s). Decays exponentially each frame; applied before movement AI.
+    this._kbx = 0;
+    this._kby = 0;
+    // Last weapon color that hit this enemy — drives element-specific death particles.
+    this._lastHitColor = null;
+
     const [spd, hp, color, stealTime, contactDamage] = this._statsForType(enemyType, minute);
     this.baseSpeed     = spd;
     this._baseSpeedFull = spd;   // canonical speed; baseSpeed is recomputed each frame with slow
@@ -241,17 +248,40 @@ export class Enemy {
     // hp path and stay unbuffed (respects boss caps). Display reflects the actual damage dealt.
     const dmg      = damage * (game._endlessDamageMult ? game._endlessDamageMult() : 1);
     this.hp       -= dmg;
-    this.hitFlash  = FEEDBACK.flashDuration;
+
+    // ── Game Feel: hit weight classification ─────────────────────────────────
+    const isBossEnemy = this.isBoss() || this.isMegaBoss;
+    const isHeavyHit  = dmg >= 40;                       // heavy/crit-level threshold
+    const isCritHit   = dmg >= 70;                       // crit-tier (even larger numbers)
+
+    // Hit flash — extend duration for heavy hits so they read even behind sprites
+    this.hitFlash = isHeavyHit ? FEEDBACK.flashDuration * 2.2 : FEEDBACK.flashDuration;
+
+    // Knockback impulse — normal enemies only; bosses are immune; elites get half.
+    if (!isBossEnemy && game.player) {
+      const dx  = this.pos.x - game.player.pos.x;
+      const dy  = this.pos.y - game.player.pos.y;
+      const len = Math.sqrt(dx * dx + dy * dy) || 1;
+      const str = isHeavyHit ? 290 : 150;
+      const kbMult = this.isElite ? 0.45 : 1.0;
+      this._kbx = (dx / len) * str * kbMult;
+      this._kby = (dy / len) * str * kbMult;
+    }
 
     // Character Weapon Synergy mark-layer hook (no-op unless the matching synergy card is active).
     game._onSynergyHit?.(this);
     // Elemental VFX hook — visible per-character element burst on hit (throttled, bounded).
     game._onElementHit?.(this);
 
-    // Floating damage number — throttled so heavy crowds/DoT can't flood the renderer (perf).
-    if (game.floatingTexts.length < 70 && (dmg >= 20 || Math.random() < 0.25)) {
-      const dmgPos = this.pos.add(new Vec2(randomRange(-6, 6), -this.radius - 4));
-      game.floatingTexts.push(new FloatingText('-' + Math.round(dmg), dmgPos, WHITE, 0.5));
+    // Floating damage number — tiered by weight for readability.
+    // Normal: small white. Heavy: larger yellow. Crit: even larger + faster rise.
+    if (game.floatingTexts.length < 70 && (dmg >= 15 || Math.random() < 0.25)) {
+      const dmgPos  = this.pos.add(new Vec2(randomRange(-6, 6), -this.radius - 4));
+      const numSize = isCritHit ? 22 : isHeavyHit ? 17 : 14;
+      const numRise = isCritHit ? 65 : isHeavyHit ? 52 : 35;
+      const numClr  = isCritHit ? '#ff4400' : isHeavyHit ? '#ffdd00' : WHITE;
+      const numLife = isCritHit ? 0.8 : isHeavyHit ? 0.65 : 0.5;
+      game.floatingTexts.push(new FloatingText('-' + Math.round(dmg), dmgPos, numClr, numLife, numSize, numRise));
     }
 
     if (this.carryingCore !== null) {
@@ -267,7 +297,12 @@ export class Enemy {
     if (this.hp <= 0) {
       this._die(game);
     } else {
-      game.audio?.playHit();
+      // ── Audio: tier by hit weight ──────────────────────────────────────────
+      if (isBossEnemy && isHeavyHit)   game.audio?.playBossHit?.();
+      else if (isHeavyHit)             game.audio?.playHeavyHit?.();
+      else                             game.audio?.playHit?.();
+      // ── Screen shake: light on heavy non-boss hits ──────────────────────────
+      if (isHeavyHit && !isBossEnemy)  game.screenShake?.trigger(2, 0.08);
     }
   }
 
@@ -282,6 +317,10 @@ export class Enemy {
     } else {
       game.particles.spawnDeathBurst(this.pos, this.color, FEEDBACK.normalDeathParticles, FEEDBACK.burstSize);
     }
+    // Element death burst — uses last weapon hit color so each weapon leaves a distinct
+    // visual signature on kill (fire=orange, void=cyan, gravity=purple, etc).
+    // spawnElementDeath is capped by the shared particle pool — no extra overhead.
+    game.particles.spawnElementDeath?.(this.pos, this._lastHitColor || this.color);
     game.player.kills++;
     game.addKillScore?.(this.pos, this.isElite);
 
@@ -352,6 +391,19 @@ export class Enemy {
 
   update(dt, game) {
     if (this.hitFlash > 0) this.hitFlash -= dt;
+
+    // ── Knockback decay (applied before movement AI, independent of role) ────
+    // Exponential decay to zero; bosses not displaced (immune). Clamp so micro-drift
+    // doesn't persist indefinitely.
+    if (this._kbx !== 0 || this._kby !== 0) {
+      this.pos.x += this._kbx * dt;
+      this.pos.y += this._kby * dt;
+      const decay = Math.pow(0.03, dt); // ≈ 0 by ~0.3 s at 60 fps
+      this._kbx *= decay;
+      this._kby *= decay;
+      if (Math.abs(this._kbx) < 1 && Math.abs(this._kby) < 1) { this._kbx = 0; this._kby = 0; }
+    }
+
     // Cryo Rounds slow — recompute effective speed each frame (all movement branches
     // read this.baseSpeed). Bosses are immune so they stay threatening.
     if (this.slowTimer > 0) this.slowTimer -= dt;

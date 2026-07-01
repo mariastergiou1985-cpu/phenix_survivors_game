@@ -803,6 +803,14 @@ export class Game {
     this.floatingTexts = [];
     this.particles    = new ParticleSystem();
     this.screenShake  = new ScreenShake();
+
+    // ── Game Feel state ────────────────────────────────────────────────────────
+    // Hit stop: reduces enemy dt to near-zero for 2-4 frames on powerful hits.
+    this._hitStopTimer = 0;
+    // Combat juice: tracks recent kill timestamps; fires a multi-kill burst at threshold.
+    this._juiceKills   = [];   // array of performance.now()/1000 timestamps
+    this._juiceCd      = 0;   // cooldown so juice can't spam
+
     this.events       = new SystemEventManager();
     this.upgradeUI    = null;
     this.mutationUI   = null;                    // forced Endless mutation picker (null = none open)
@@ -1703,11 +1711,45 @@ export class Game {
     this.edenRunMessages = msgs.slice(0, 3);
   }
 
-    addKillScore(pos, isElite = false) {
+  // ── Game Feel helpers ────────────────────────────────────────────────────────
+
+  // Brief hit stop: scales enemy dt to ~8% for `dur` seconds.
+  // Safe to call multiple times — keeps the longest remaining window.
+  _triggerHitStop(dur) {
+    if ((this._hitStopTimer || 0) < dur) this._hitStopTimer = dur;
+  }
+
+  // Combat Juice burst — fires when 3+ enemies die within a 2-second rolling window.
+  // 3-second cooldown prevents spam in dense Endless waves.
+  _triggerJuice(pos) {
+    this._juiceCd = 3.0;
+    this.screenShake.trigger(7, 0.28);
+    this._triggerHitStop(0.06);
+    if (pos) {
+      this.particles.spawnExplosion(pos, ['#ffdd00', '#ff8800', '#ff4400', '#ffffff', '#00ffff'], 20);
+    }
+    this.audio?.playJuiceBurst?.();
+    if (pos && this.floatingTexts.length < 70) {
+      this.floatingTexts.push(new FloatingText('MULTI-KILL!', pos.clone(), '#ffdd00', 1.2, 18, 50));
+    }
+  }
+
+  addKillScore(pos, isElite = false) {
     // Improved death burst for normal enemies (pos may be null for some boss-kill calls)
     if (pos && !isElite) {
       this.particles.spawnDeathBurstImproved(pos, '#44ddff');
     }
+
+    // ── Combat Juice — rolling kill-window tracker ─────────────────────────────
+    const nowSec = performance.now() / 1000;
+    this._juiceKills = (this._juiceKills || []).filter(t => nowSec - t < 2.0);
+    this._juiceKills.push(nowSec);
+    this._juiceCd = (this._juiceCd || 0) - 0;   // no-op tick; real decrement is in update()
+    if (this._juiceKills.length >= 3 && (this._juiceCd || 0) <= 0) {
+      this._triggerJuice(pos || null);
+      this._juiceKills = [];   // reset window after burst
+    }
+
     this.comboCount++;
     this.comboTimer = 3.0;
     if (this.comboCount > this.maxCombo) this.maxCombo = this.comboCount;
@@ -5348,6 +5390,9 @@ export class Game {
       if (this.comboTimer <= 0) this.comboCount = 0;
     }
     this.screenShake.update(dt);
+    // Game Feel timers — tick at real dt so they're not affected by hit stop themselves
+    if (this._hitStopTimer > 0) this._hitStopTimer = Math.max(0, this._hitStopTimer - dt);
+    if (this._juiceCd      > 0) this._juiceCd      = Math.max(0, this._juiceCd      - dt);
     // Hit-stop overlay timers
     if (this._hitFlashOverlayTimer > 0) this._hitFlashOverlayTimer = Math.max(0, this._hitFlashOverlayTimer - dt);
     if (this._hitFlashOverlayCd    > 0) this._hitFlashOverlayCd    = Math.max(0, this._hitFlashOverlayCd    - dt);
@@ -6959,15 +7004,32 @@ export class Game {
   // Apply a hit (array enemy via takeHit; singleton mini-boss via hp + death routing).
   _brawlerHit(t, dmg, color) {
     const b = t.obj;
+    // Game Feel: pass element color to enemy so _die() can spawn element death particles.
+    b._lastHitColor = color;
+
     if (t.arr) {
       b.takeHit(dmg, this);
       this._tryCorrode(b);
     } else {
+      // Boss / singleton mini-boss path
       const _hpObj = t.ddParent || b;
-      _hpObj.hp -= dmg; b.hitFlash = 0.08;
+      _hpObj.hp -= dmg;
+      // Heavy boss hit: stronger flash, bass shake, hit stop
+      if (dmg >= 30) {
+        b.hitFlash = 0.18;
+        this.screenShake.trigger(3, 0.13);
+        this._triggerHitStop(0.05);
+        this.audio?.playBossHit?.();
+      } else {
+        b.hitFlash = 0.08;
+      }
       if (_hpObj.hp <= 0) t.die.call(this);
     }
-    this.particles.spawnHitSparks(b.pos, color);
+    // Scale spark count by damage weight (capped by ParticleSystem.MAX internally).
+    const sparkCount = dmg >= 50 ? 8 : dmg >= 25 ? 5 : 3;
+    this.particles.spawnHitSparks(b.pos, color, sparkCount);
+    // Hit stop for powerful non-boss hits (2-3 frames at 60 fps)
+    if (t.arr && dmg >= 50) this._triggerHitStop(0.04);
   }
 
   // ── Upgrade-card helpers + corrosive (Phase 1) ──────────────────────────────
@@ -7933,9 +7995,13 @@ export class Game {
   }
 
   _updateEnemies(dt) {
+    // Hit stop: briefly near-freeze enemies on powerful impacts (2-4 frames at 60 fps).
+    // Enemies still receive knockback (applied in update() before movement AI) but their
+    // AI/movement/shooting is paused for the duration. Player is unaffected.
+    const enemyDt = (this._hitStopTimer > 0) ? dt * 0.08 : dt;
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       const e = this.enemies[i];
-      e.update(dt, this);
+      e.update(enemyDt, this);
       e.keepInBounds();
 
       // Dash intercept: dashing into a carrying enemy forces core drop

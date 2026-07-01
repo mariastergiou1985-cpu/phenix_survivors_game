@@ -142,6 +142,34 @@ export class ParticleSystem {
     this._add(new Particle(pos, vel, color, 2.5, 0.22));
   }
 
+  // Element-tagged death burst — reads the weapon hit color to pick an element palette.
+  // Adds a scatter burst + a small radial ring so element kills feel distinct from generic deaths.
+  // Capped by the shared MAX pool — no extra overhead. Called from Enemy._die() when _lastHitColor set.
+  spawnElementDeath(pos, hitColor) {
+    const hc = (hitColor || '').toLowerCase();
+    let palette;
+    if      (/ff[46][04a]|ff[89]/.test(hc))   palette = ['#ff6600','#ffaa00','#ff2200','#ffddaa']; // fire/orange
+    else if (/00ff[cf]|0af|9650|b35c/.test(hc)) palette = ['#cc44ff','#9933ff','#ff44cc','#cc00ff']; // void/gravity/purple
+    else if (/00ff[e-f]|#0[0a]f|00cc|cyan/.test(hc)) palette = ['#00ffff','#00aaff','#0066ff','#aaffff']; // cyan/beam/ice
+    else if (/00ff4|44ff|88ff/.test(hc))       palette = ['#00ff44','#44ff00','#88ff44','#00cc33']; // poison/green
+    else if (/ff4dd|ff00ff|magent/.test(hc))   palette = ['#ff44cc','#ff00ff','#ffaaff','#cc00aa']; // magenta
+    else                                        palette = ['#44ccff','#ffffff','#aaddff','#66eeff']; // generic cyber
+
+    // Scatter burst (12 sparks)
+    for (let i = 0; i < 12; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 75 + Math.random() * 115;
+      const vel   = new Vec2(Math.cos(angle) * speed, Math.sin(angle) * speed);
+      this._add(new Particle(pos, vel, palette[i % palette.length], 2 + Math.random() * 2.5, 0.35));
+    }
+    // Element ring (8 evenly spaced)
+    for (let i = 0; i < 8; i++) {
+      const angle = (i / 8) * Math.PI * 2;
+      const vel   = new Vec2(Math.cos(angle) * 100, Math.sin(angle) * 100);
+      this._add(new Particle(pos, vel, palette[0], 1.5, 0.25));
+    }
+  }
+
   update(dt) {
     this.particles = this.particles.filter(p => {
       p.update(dt);

@@ -779,4 +779,28 @@ export class AudioManager {
     this._noiseBurst({ dur: 0.20, gain: 0.07, filterType: 'bandpass', freq: 350, delay: 0.05 });
   }
 
+  // ─── Game Feel SFX ──────────────────────────────────────────────────────────
+
+  // Heavy enemy hit — deeper impact for significant damage (dmg >= 40).
+  playHeavyHit() {
+    if (!this._canPlay('heavyHit', 0.08)) return;
+    this._tone({ type: 'sawtooth', freqStart: 180, freqEnd: 55, dur: 0.14, gain: 0.13 });
+    this._noiseBurst({ dur: 0.10, gain: 0.09, filterType: 'lowpass', freq: 350 });
+  }
+
+  // Boss hit — low bass thump for boss impacts.
+  playBossHit() {
+    if (!this._canPlay('bossHit', 0.12)) return;
+    this._tone({ type: 'sine', freqStart: 100, freqEnd: 35, dur: 0.30, gain: 0.16 });
+    this._noiseBurst({ dur: 0.20, gain: 0.08, filterType: 'lowpass', freq: 180 });
+  }
+
+  // Combat juice multi-kill burst — layered ascending tones + bandpass noise.
+  playJuiceBurst() {
+    if (!this._canPlay('juiceBurst', 3.0)) return;
+    this._tone({ type: 'sawtooth', freqStart: 220, freqEnd: 660, dur: 0.20, gain: 0.14 });
+    this._tone({ type: 'sine', freqStart: 440, freqEnd: 1320, dur: 0.25, gain: 0.09, delay: 0.04 });
+    this._noiseBurst({ dur: 0.18, gain: 0.10, filterType: 'bandpass', freq: 800 });
+  }
+
 }
