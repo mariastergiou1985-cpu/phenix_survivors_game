@@ -28,8 +28,8 @@ import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARAC
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
 import { GlitchDash } from '../effects/glitch-dash.js?v=20260629440000';
-import { EMPShockwave } from '../effects/emp-shockwave.js?v=20260629440000';
-import { DigitalSingularity } from '../effects/digital-singularity.js?v=20260629440000';
+import { EMPShockwave } from '../effects/emp-shockwave.js?v=20260701100000';
+import { DigitalSingularity } from '../effects/digital-singularity.js?v=20260701100000';
 import { Protocol0 } from '../effects/protocol-0.js?v=20260629440000';
 import { LaserEyes } from '../effects/laser-eyes.js?v=20260629440000';
 import { MeteorRain } from '../effects/meteor-rain.js?v=20260629440000';
