@@ -431,6 +431,70 @@ export class AudioManager {
   // Stub kept so existing game.audio?.updateAlarm() calls don't crash (out of scope).
   updateAlarm() {}
 
+  // ─── Phase 1 Weapon SFX ───────────────────────────────────────────────────
+
+  // Plasma Blade — broad energy arc swing.
+  playPlasmaBladeSwing() {
+    if (!this._canPlay("plasmaSwing", 0.25)) return;
+    this._tone({ type: "sawtooth", freqStart: 500, freqEnd: 150, dur: 0.15, gain: 0.07 });
+    this._noiseBurst({ dur: 0.12, gain: 0.04, filterType: "bandpass", freq: 600 });
+  }
+
+  // Plasma Blade — impact crackle on successful hit.
+  playPlasmaBladeHit() {
+    if (!this._canPlay("plasmaHit", 0.10)) return;
+    this._tone({ type: "sawtooth", freqStart: 380, freqEnd: 120, dur: 0.07, gain: 0.08 });
+    this._noiseBurst({ dur: 0.05, gain: 0.05, filterType: "highpass", freq: 1800 });
+  }
+
+  // Void Needle — sharp piercing shot.
+  playVoidNeedleFire() {
+    if (!this._canPlay("voidFire", 0.08)) return;
+    this._tone({ type: "triangle", freqStart: 800, freqEnd: 300, dur: 0.06, gain: 0.06 });
+  }
+
+  // Void Needle — soft impact on hit.
+  playVoidNeedleHit() {
+    if (!this._canPlay("voidHit", 0.08)) return;
+    this._tone({ type: "sawtooth", freqStart: 250, freqEnd: 80, dur: 0.05, gain: 0.055 });
+    this._noiseBurst({ dur: 0.04, gain: 0.03, filterType: "highpass", freq: 2200 });
+  }
+
+  // Sentry Drone — light blaster pop on fire.
+  playSentryDroneFire() {
+    if (!this._canPlay("sentryFire", 0.12)) return;
+    this._tone({ type: "triangle", freqStart: 1100, freqEnd: 600, dur: 0.07, gain: 0.05 });
+  }
+
+  // Sentry Drone — small impact on hit.
+  playSentryDroneHit() {
+    if (!this._canPlay("sentryHit", 0.10)) return;
+    this._noiseBurst({ dur: 0.04, gain: 0.04, filterType: "highpass", freq: 2000 });
+    this._tone({ type: "sine", freqStart: 500, freqEnd: 200, dur: 0.04, gain: 0.04 });
+  }
+
+  // Shard Ring — resonant contact hum on enemy hit (global throttle keeps it from spamming).
+  playShardRingHit() {
+    if (!this._canPlay("shardHit", 0.15)) return;
+    this._tone({ type: "sine", freqStart: 180, freqEnd: 240, dur: 0.10, gain: 0.06 });
+    this._noiseBurst({ dur: 0.06, gain: 0.025, filterType: "bandpass", freq: 900 });
+  }
+
+  // Rail Spike — heavy magnetic launch thump.
+  playRailSpikeFire() {
+    if (!this._canPlay("railFire", 0.40)) return;
+    this._tone({ type: "sawtooth", freqStart: 80, freqEnd: 300, dur: 0.18, gain: 0.10 });
+    this._noiseBurst({ dur: 0.14, gain: 0.07, filterType: "lowpass", freq: 400 });
+  }
+
+  // Rail Spike — deep bass impact on hit.
+  playRailSpikeImpact() {
+    if (!this._canPlay("railImpact", 0.15)) return;
+    this._tone({ type: "sine", freqStart: 120, freqEnd: 30, dur: 0.25, gain: 0.09 });
+    this._noiseBurst({ dur: 0.12, gain: 0.06, filterType: "bandpass", freq: 300 });
+  }
+
+
   // ─── File-based SFX loader (fetch → decodeAudioData → cached AudioBuffer) ──
   // Tries each src in order; silently skips missing files. On first call the buffer
   // is still loading (returns null) — the sound is skipped that frame; subsequent
@@ -610,6 +674,109 @@ export class AudioManager {
     this._tone({ type: 'triangle', freqStart: 1800, freqEnd: 900, dur: 0.30, gain: 0.07 });
     // Low crack: short sine thud
     this._tone({ type: 'sine', freqStart: 140, freqEnd: 50, dur: 0.18, gain: 0.08, delay: 0.05 });
+  }
+
+  // ─── Phase 2 Weapon SFX ──────────────────────────────────────────────────
+
+  // Void Beam — sharp high-pitched laser discharge. Throttled 0.08 s.
+  playVoidBeamFire() {
+    if (!this._canPlay('voidBeamFire', 0.08)) return;
+    this._tone({ type: 'triangle', freqStart: 2400, freqEnd: 900, dur: 0.10, gain: 0.12 });
+    this._noiseBurst({ dur: 0.08, gain: 0.06, filterType: 'highpass', freq: 2200 });
+  }
+
+  // Void Beam — crack on impact. Throttled 0.08 s.
+  playVoidBeamHit() {
+    if (!this._canPlay('voidBeamHit', 0.08)) return;
+    this._tone({ type: 'sawtooth', freqStart: 1400, freqEnd: 300, dur: 0.07, gain: 0.10 });
+    this._noiseBurst({ dur: 0.06, gain: 0.07, filterType: 'highpass', freq: 1800 });
+  }
+
+  // Void Beam — charge-up hum. Throttled 0.50 s.
+  playVoidBeamCharge() {
+    if (!this._canPlay('voidBeamCharge', 0.50)) return;
+    this._tone({ type: 'sine', freqStart: 400, freqEnd: 1800, dur: 0.22, gain: 0.09 });
+  }
+
+  // Gravity Core — deep thud pulse on field activation. Throttled 0.30 s.
+  playGravityCoreActivate() {
+    if (!this._canPlay('gravityCoreActivate', 0.30)) return;
+    this._tone({ type: 'sine', freqStart: 90, freqEnd: 30, dur: 0.35, gain: 0.16 });
+    this._noiseBurst({ dur: 0.28, gain: 0.07, filterType: 'lowpass', freq: 160 });
+    this._tone({ type: 'triangle', freqStart: 900, freqEnd: 300, dur: 0.20, gain: 0.06, delay: 0.04 });
+  }
+
+  // Gravity Core — enemy hit crunch inside field. Throttled 0.10 s.
+  playGravityCoreHit() {
+    if (!this._canPlay('gravityCoreHit', 0.10)) return;
+    this._tone({ type: 'sawtooth', freqStart: 300, freqEnd: 80, dur: 0.10, gain: 0.10 });
+    this._noiseBurst({ dur: 0.08, gain: 0.06, filterType: 'bandpass', freq: 220 });
+  }
+
+  // Gravity Core — outward pulse whoosh. Throttled 0.25 s.
+  playGravityCorePulse() {
+    if (!this._canPlay('gravityCorePulse', 0.25)) return;
+    this._noiseBurst({ dur: 0.30, gain: 0.08, filterType: 'lowpass', freq: 400 });
+  }
+
+  // Nano Mine — dropped to ground soft click. Throttled 0.20 s.
+  playNanoMineDrop() {
+    if (!this._canPlay('nanoMineDrop', 0.20)) return;
+    this._tone({ type: 'sine', freqStart: 280, freqEnd: 120, dur: 0.08, gain: 0.10 });
+    this._noiseBurst({ dur: 0.05, gain: 0.05, filterType: 'highpass', freq: 1200 });
+  }
+
+  // Nano Mine — arming beep. Throttled 0.40 s.
+  playNanoMineArmed() {
+    if (!this._canPlay('nanoMineArmed', 0.40)) return;
+    this._tone({ type: 'square', freqStart: 1600, freqEnd: 1600, dur: 0.06, gain: 0.08 });
+  }
+
+  // Nano Mine — proximity detonation. Throttled 0.12 s.
+  playNanoMineExplode() {
+    if (!this._canPlay('nanoMineExplode', 0.12)) return;
+    this._tone({ type: 'sawtooth', freqStart: 220, freqEnd: 35, dur: 0.28, gain: 0.18 });
+    this._noiseBurst({ dur: 0.22, gain: 0.12, filterType: 'highpass', freq: 600 });
+    this._noiseBurst({ dur: 0.18, gain: 0.08, filterType: 'bandpass', freq: 280, delay: 0.04 });
+  }
+
+  // Blacknet Swarm Drone — micro-shot fired. Throttled 0.06 s.
+  playBlacknetSwarmLaunch() {
+    if (!this._canPlay('blacknetLaunch', 0.06)) return;
+    this._tone({ type: 'triangle', freqStart: 1100, freqEnd: 500, dur: 0.07, gain: 0.08 });
+  }
+
+  // Blacknet Swarm Drone — micro-shot hits enemy. Throttled 0.06 s.
+  playBlacknetSwarmHit() {
+    if (!this._canPlay('blacknetHit', 0.06)) return;
+    this._noiseBurst({ dur: 0.05, gain: 0.07, filterType: 'highpass', freq: 1600 });
+  }
+
+  // Blacknet Swarm Drone — idle swarm hum. Throttled 1.50 s.
+  playBlacknetSwarmIdle() {
+    if (!this._canPlay('blacknetIdle', 1.50)) return;
+    this._tone({ type: 'square', freqStart: 80, freqEnd: 95, dur: 0.40, gain: 0.04 });
+  }
+
+  // Homing Missile — launch burst. Throttled 0.15 s.
+  playHomingMissileFire() {
+    if (!this._canPlay('homingFire', 0.15)) return;
+    this._tone({ type: 'sawtooth', freqStart: 600, freqEnd: 180, dur: 0.18, gain: 0.13 });
+    this._noiseBurst({ dur: 0.15, gain: 0.08, filterType: 'lowpass', freq: 500 });
+  }
+
+  // Homing Missile — target-lock chirp. Throttled 0.30 s.
+  playHomingMissileLock() {
+    if (!this._canPlay('homingLock', 0.30)) return;
+    this._tone({ type: 'triangle', freqStart: 700, freqEnd: 1400, dur: 0.12, gain: 0.08 });
+  }
+
+  // Homing Missile — direct impact explosion. Throttled 0.12 s.
+  playHomingMissileImpact() {
+    if (!this._canPlay('homingImpact', 0.12)) return;
+    this._tone({ type: 'sine', freqStart: 180, freqEnd: 32, dur: 0.32, gain: 0.18 });
+    this._noiseBurst({ dur: 0.25, gain: 0.13, filterType: 'highpass', freq: 500 });
+    this._noiseBurst({ dur: 0.20, gain: 0.07, filterType: 'bandpass', freq: 350, delay: 0.05 });
   }
 
 }

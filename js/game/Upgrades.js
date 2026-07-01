@@ -147,6 +147,29 @@ export const ALL_UPGRADES = [
     CYAN, 4, () => {}, '⇥', 'epic'
   ),
 
+  // ── Phase 2 Weapons — global (all characters), gated on card level ────────
+  // Levels are read live in Game._updateVoidBeam / _updateGravityCore / etc.
+  new UpgradeDefinition(
+    'void_beam', 'Void Beam', 'Sustained energy beam — cuts through enemies in a line',
+    CYAN, 4, () => {}, '▬', 'epic'
+  ),
+  new UpgradeDefinition(
+    'gravity_core', 'Gravity Core', 'Gravity pulse field — pulls and damages nearby enemies',
+    PURPLE, 4, () => {}, '◉', 'epic'
+  ),
+  new UpgradeDefinition(
+    'nano_mine', 'Nano Mine', 'Auto-drop proximity mines — detonate on enemy contact',
+    ORANGE, 4, () => {}, '💣', 'epic'
+  ),
+  new UpgradeDefinition(
+    'blacknet_swarm_drone', 'Blacknet Swarm', 'Orbital swarm drones — fire at nearby enemies',
+    PURPLE, 4, () => {}, '⬡', 'epic'
+  ),
+  new UpgradeDefinition(
+    'homing_missile_launcher', 'Homing Missile', 'Smart-tracking missiles — home in on targets',
+    ORANGE, 4, () => {}, '⤞', 'epic'
+  ),
+
   // ── Corrosive (global) — reuses the existing _corrosiveTimer DoT (Game._updateCorrosive) ──
   new UpgradeDefinition(
     'corrosive_payload', 'Corrosive Payload', 'Attacks may apply corrosive damage over time',
