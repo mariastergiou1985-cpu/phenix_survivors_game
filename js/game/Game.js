@@ -401,6 +401,12 @@ export class Game {
       ['skyfall_lances',    'assets/weapons/skyfall_lances.png'],
       // Assassin Clone bounce weapon — Shuriken (the Arrow base-shot uses Player.attackSprite, not this map).
       ['suriken_assasin',   'assets/weapons/suriken_assasin.png'],
+      // Phase 1 weapons — global (all characters). Missing files use drawn fallbacks.
+      ['plasma_blade',      'assets/weapons/plasma-blade.png'],
+      ['void_needle',       'assets/weapons/void-needle.png'],
+      ['sentry_drone',      'assets/weapons/sentry-drone.png'],
+      ['shard_ring',        'assets/weapons/shard-ring.png'],
+      ['rail_spike',        'assets/weapons/rail-spike.png'],
     ].forEach(([key, src]) => {
       const img = new Image();
       img.onerror = () => console.warn(`[Weapon] missing ${src} — drawn-shape fallback used`);
@@ -748,6 +754,16 @@ export class Game {
     this._euclidNeedles  = [];   // Viral Gas Needle / Corrosive Shard projectiles (cap 48)
     this._euclidBoltCd   = 0;
     this._euclidNeedleCd = 0;
+    // ── Phase 1 Weapons — global (all characters), gated on upgrade card level ─
+    this._plasmaBladeCd      = 0;          // Plasma Blade melee slash cooldown
+    this._plasmaBladeSlashes = [];         // active slash visuals
+    this._voidNeedleCd       = 0;          // Void Needle projectile cooldown
+    this._voidNeedles        = [];         // active Void Needle projectiles (separate array for pierce)
+    this._railSpikeCd        = 0;          // Rail Spike projectile cooldown
+    this._railSpikes         = [];         // active Rail Spike projectiles
+    this._shardRingAngle     = 0;          // Shard Ring orbit angle (radians)
+    this._shardRingHitCds    = new Map();  // per-enemy hit cooldown map
+    this._p1SentryDrones     = [];         // Sentry Drone companion state list
     this.empRings     = [];
     this._specialRings    = [];
     this.thunderSolo      = null;   // Thunder Solo ultimate state while active
@@ -5352,6 +5368,12 @@ export class Game {
     this._updateCrescentClaw(dt);   // Brawler secondary
     this._updateSkyfall(dt);        // Brawler ultimate
     this._updateShuriken(dt);       // Assassin bounce weapon (guards on character)
+    // ── Phase 1 Weapons — global (all characters), gated on upgrade card level ─
+    this._updatePlasmaBlade(dt);    // Phase 1 MELEE  — arc slash
+    this._updateVoidNeedle(dt);     // Phase 1 PROJECTILE — piercing fast shot
+    this._updateRailSpike(dt);      // Phase 1 PROJECTILE — heavy high-damage shot
+    this._updateP1SentryDrone(dt);  // Phase 1 DRONE — orbiting companion
+    this._updateShardRing(dt);      // Phase 1 ORBIT — contact damage ring
     this._updateChromePhantom(dt);  // Assassin ultimate
     this._updatePhasewalkerFx(dt);  // Japan Phasewalker kit (guards on character)
     this._updateOniFx(dt);          // Oni Protocol 0 (guards on character)
@@ -9032,6 +9054,12 @@ export class Game {
     this._drawChakrams(ctx);        // Brawler primary
     this._drawChromePhantom(ctx);   // Assassin ultimate (clone overlays + burst rings)
     this._drawShuriken(ctx);        // Assassin bounce weapon
+    // ── Phase 1 Weapons draw ──────────────────────────────────────────────────
+    this._drawShardRing(ctx);            // Phase 1 ORBIT ring (below player)
+    this._drawP1SentryDrones(ctx);       // Phase 1 DRONE companions
+    this._drawPlasmaBladeSlashes(ctx);   // Phase 1 MELEE slash arc
+    this._drawVoidNeedles(ctx);          // Phase 1 PROJECTILE piercing shots
+    this._drawRailSpikes(ctx);           // Phase 1 PROJECTILE heavy shots
     for (const r of this.empRings)    r.draw(ctx);
     for (const r of this._specialRings) {
       const alpha = r.life / r.maxLife;
@@ -17083,6 +17111,428 @@ _drawLoreArchive(ctx) {
     // ── Dark HUD strip (always on top of background) ─────────────────────────
     ctx.fillStyle = BLACK;
     ctx.fillRect(0, 0, WIDTH, 44);
+  }
+
+  // ── Phase 1 Weapons — 5 global weapons, gated on upgrade card level ────────
+  // Each weapon follows: update (advance + spawn) then draw (sprite or fallback).
+
+  // ── PLASMA BLADE (MELEE) — arc slash in facing direction, per-CD ────────────
+
+  _updatePlasmaBlade(dt) {
+    // Advance + expire slash visuals (runs regardless of card level so they fade out cleanly)
+    for (const s of this._plasmaBladeSlashes) s.life -= dt;
+    this._plasmaBladeSlashes = this._plasmaBladeSlashes.filter(s => s.life > 0);
+
+    const lvl = this._cardLvl('plasma_blade');
+    if (lvl < 1) return;
+
+    this._plasmaBladeCd -= dt;
+    if (this._plasmaBladeCd > 0) return;
+
+    const CDS  = [2.8, 2.4, 2.0, 1.7];
+    const DMGS = [28, 33, 38, 43];
+    this._plasmaBladeCd = CDS[Math.min(lvl - 1, CDS.length - 1)];
+
+    const p      = this.player;
+    const dmg    = DMGS[Math.min(lvl - 1, DMGS.length - 1)];
+    const range  = 120 + 15 * lvl;
+    const half   = ((50 + 12 * (lvl - 1)) * Math.PI / 180) / 2;
+    const aimDir = safeNormalize(p.lastFacingDir || new Vec2(1, 0));
+
+    let hits = 0;
+    for (const t of this._brawlerTargets()) {
+      if (hits >= 12) break;
+      const b  = t.obj;
+      const to = new Vec2(b.pos.x - p.pos.x, b.pos.y - p.pos.y);
+      if (to.length() > range + (b.radius || 16)) continue;
+      const dot = aimDir.dot(safeNormalize(to));
+      if (Math.acos(clamp(dot, -1, 1)) > half) continue;
+      hits++;
+      this._brawlerHit(t, (this._targetIsBoss(t) ? 0.6 : 1) * dmg, '#00e6ff');
+    }
+    this._plasmaBladeSlashes.push({
+      pos: p.pos.clone(), dir: aimDir,
+      range, half,
+      life: 0.20, maxLife: 0.20,
+    });
+    this.audio?.playHit?.();
+  }
+
+  _drawPlasmaBladeSlashes(ctx) {
+    if (!this._plasmaBladeSlashes.length) return;
+    const spr   = this._weaponImages?.plasma_blade;
+    const ready = spr && spr.complete && spr.naturalWidth > 0;
+    for (const s of this._plasmaBladeSlashes) {
+      const a = Math.max(0, s.life / s.maxLife);
+      ctx.save();
+      ctx.translate(s.pos.x, s.pos.y);
+      ctx.rotate(Math.atan2(s.dir.y, s.dir.x));
+      ctx.globalAlpha = a;
+      if (ready) {
+        const h = s.range * 1.6, w = h * (spr.naturalWidth / spr.naturalHeight);
+        ctx.drawImage(spr, -w * 0.12, -h / 2, w, h);
+      } else {
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.strokeStyle = '#00e6ff'; ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(0, 0, s.range, -s.half, s.half);
+        ctx.lineTo(0, 0);
+        ctx.closePath();
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  }
+
+  // ── VOID NEEDLE (PROJECTILE) — fast piercing shot toward nearest enemy ───────
+
+  _updateVoidNeedle(dt) {
+    // Advance in-flight needles (runs regardless of card level)
+    for (let i = this._voidNeedles.length - 1; i >= 0; i--) {
+      const n   = this._voidNeedles[i];
+      n.t      += dt;
+      n.prev    = n.pos.clone();
+      n.pos.addMut(n.dir.scale(880 * dt));
+      const out = n.pos.x < -80 || n.pos.x > WORLD_W + 80 ||
+                  n.pos.y < -80 || n.pos.y > WORLD_H + 80;
+      if (out || n.t > 3.0) { this._voidNeedles.splice(i, 1); continue; }
+
+      let removed = false;
+
+      // Normal enemy pierce hits
+      for (const e of this.enemies) {
+        if (e.hp <= 0 || n.hit.has(e)) continue;
+        if (distance(e.pos, n.pos) > (e.radius || 16) + 7) continue;
+        e.takeHit(n.dmg, this);
+        this._tryCorrode(e);
+        this.particles.spawnHitSparks(e.pos, '#00e6ff');
+        n.hit.add(e);
+        n.pierceLeft -= 1;
+        if (n.pierceLeft <= 0) { this._voidNeedles.splice(i, 1); removed = true; break; }
+      }
+      if (removed) continue;
+
+      // Boss pierce hits (one per boss type; no hp guard needed — _brawlerTargets filters dead bosses)
+      for (const t of this._brawlerTargets()) {
+        if (t.arr) continue;
+        const b = t.obj;
+        if (n.hit.has(b)) continue;
+        if (distance(b.pos, n.pos) > (b.radius || 32) + 7) continue;
+        this._brawlerHit(t, 0.55 * n.dmg, '#00e6ff');
+        n.hit.add(b);
+        n.pierceLeft -= 1;
+        if (n.pierceLeft <= 0) { this._voidNeedles.splice(i, 1); removed = true; break; }
+      }
+    }
+
+    const lvl = this._cardLvl('void_needle');
+    if (lvl < 1) return;
+
+    this._voidNeedleCd -= dt;
+    if (this._voidNeedleCd > 0) return;
+
+    const CDS  = [1.8, 1.5, 1.2, 1.0];
+    const DMGS = [14, 17, 20, 23];
+    this._voidNeedleCd = CDS[Math.min(lvl - 1, CDS.length - 1)];
+
+    const p   = this.player;
+    const tgt = this._autoTarget(p.pos, 800);
+    if (!tgt) return;
+
+    const dir = safeNormalize(tgt.pos.sub(p.pos));
+    this._voidNeedles.push({
+      pos:        p.pos.clone(),
+      dir,
+      prev:       p.pos.clone(),
+      dmg:        DMGS[Math.min(lvl - 1, DMGS.length - 1)],
+      pierceLeft: lvl <= 2 ? 1 : 2,
+      hit:        new Set(),
+      t:          0,
+    });
+    this.audio?.playShoot?.();
+  }
+
+  _drawVoidNeedles(ctx) {
+    if (!this._voidNeedles.length) return;
+    const spr   = this._weaponImages?.void_needle;
+    const ready = spr && spr.complete && spr.naturalWidth > 0;
+    for (const n of this._voidNeedles) {
+      const ang = Math.atan2(n.dir.y, n.dir.x);
+      ctx.save();
+      ctx.translate(n.pos.x, n.pos.y);
+      ctx.rotate(ang);
+      if (ready) {
+        ctx.globalAlpha = 0.92;
+        ctx.drawImage(spr, -20, -12, 40, 24);
+      } else {
+        // Trail
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha   = 0.45; ctx.strokeStyle = '#00e6ff'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(n.prev.x - n.pos.x, n.prev.y - n.pos.y);
+        ctx.lineTo(0, 0);
+        ctx.stroke();
+        // Arrow tip
+        ctx.globalAlpha = 1; ctx.fillStyle = '#b0ffff';
+        ctx.beginPath(); ctx.moveTo(16, 0); ctx.lineTo(-8, 5); ctx.lineTo(-8, -5); ctx.closePath(); ctx.fill();
+      }
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  }
+
+  // ── RAIL SPIKE (PROJECTILE) — heavy hypersonic spike, high damage ────────────
+
+  _updateRailSpike(dt) {
+    // Advance in-flight spikes (runs regardless of card level)
+    for (let i = this._railSpikes.length - 1; i >= 0; i--) {
+      const n   = this._railSpikes[i];
+      n.t      += dt;
+      n.prev    = n.pos.clone();
+      n.pos.addMut(n.dir.scale(820 * dt));
+      const out = n.pos.x < -80 || n.pos.x > WORLD_W + 80 ||
+                  n.pos.y < -80 || n.pos.y > WORLD_H + 80;
+      if (out || n.t > 3.0) { this._railSpikes.splice(i, 1); continue; }
+
+      let removed = false;
+
+      // Normal enemy hits (pierce = 1 so first hit removes spike)
+      for (const e of this.enemies) {
+        if (e.hp <= 0 || n.hit.has(e)) continue;
+        if (distance(e.pos, n.pos) > (e.radius || 16) + 9) continue;
+        e.takeHit(n.dmg, this);
+        this._tryCorrode(e);
+        this.particles.spawnHitSparks(e.pos, '#00e6ff');
+        this.screenShake?.trigger(3, 0.12);
+        n.hit.add(e);
+        n.pierceLeft -= 1;
+        if (n.pierceLeft <= 0) { this._railSpikes.splice(i, 1); removed = true; break; }
+      }
+      if (removed) continue;
+
+      // Boss hits
+      for (const t of this._brawlerTargets()) {
+        if (t.arr) continue;
+        const b = t.obj;
+        if (n.hit.has(b)) continue;
+        if (distance(b.pos, n.pos) > (b.radius || 32) + 9) continue;
+        this._brawlerHit(t, 0.6 * n.dmg, '#00e6ff');
+        this.screenShake?.trigger(3, 0.12);
+        n.hit.add(b);
+        n.pierceLeft -= 1;
+        if (n.pierceLeft <= 0) { this._railSpikes.splice(i, 1); removed = true; break; }
+      }
+    }
+
+    const lvl = this._cardLvl('rail_spike');
+    if (lvl < 1) return;
+
+    this._railSpikeCd -= dt;
+    if (this._railSpikeCd > 0) return;
+
+    const CDS  = [3.5, 3.0, 2.5, 2.0];
+    const DMGS = [40, 55, 70, 85];
+    this._railSpikeCd = CDS[Math.min(lvl - 1, CDS.length - 1)];
+
+    const p   = this.player;
+    const tgt = this._autoTarget(p.pos, 900);
+    if (!tgt) return;
+
+    const dir = safeNormalize(tgt.pos.sub(p.pos));
+    this._railSpikes.push({
+      pos:        p.pos.clone(),
+      dir,
+      prev:       p.pos.clone(),
+      dmg:        DMGS[Math.min(lvl - 1, DMGS.length - 1)],
+      pierceLeft: 1,
+      hit:        new Set(),
+      t:          0,
+    });
+    this.screenShake?.trigger(2, 0.08);
+    this.audio?.playShoot?.();
+  }
+
+  _drawRailSpikes(ctx) {
+    if (!this._railSpikes.length) return;
+    const spr   = this._weaponImages?.rail_spike;
+    const ready = spr && spr.complete && spr.naturalWidth > 0;
+    for (const n of this._railSpikes) {
+      const ang = Math.atan2(n.dir.y, n.dir.x);
+      ctx.save();
+      ctx.translate(n.pos.x, n.pos.y);
+      ctx.rotate(ang);
+      if (ready) {
+        ctx.globalAlpha = 0.95;
+        ctx.drawImage(spr, -28, -14, 56, 28);
+      } else {
+        // Trail
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha   = 0.5; ctx.strokeStyle = '#00e6ff'; ctx.lineWidth = 4; ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(n.prev.x - n.pos.x, n.prev.y - n.pos.y);
+        ctx.lineTo(0, 0);
+        ctx.stroke();
+        // Heavy spike body
+        ctx.globalAlpha = 1; ctx.fillStyle = '#1a1a22';
+        ctx.beginPath(); ctx.moveTo(22, 0); ctx.lineTo(-12, 7); ctx.lineTo(-10, 0); ctx.lineTo(-12, -7); ctx.closePath(); ctx.fill();
+        // Energy core line
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.fillStyle = '#00e6ff'; ctx.globalAlpha = 0.9;
+        ctx.fillRect(-10, -2, 28, 4);
+      }
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  }
+
+  // ── P1 SENTRY DRONE (DRONE) — orbiting companion that fires at enemies ────────
+
+  _updateP1SentryDrone(dt) {
+    const lvl = this._cardLvl('sentry_drone');
+    if (lvl < 1) { this._p1SentryDrones = []; return; }
+
+    // Sync drone count: 1 at levels 1-2, 2 at levels 3-4
+    const targetCount = lvl >= 3 ? 2 : 1;
+    while (this._p1SentryDrones.length < targetCount) {
+      this._p1SentryDrones.push({
+        angle:     this._p1SentryDrones.length * Math.PI,  // spread drones evenly
+        fireTimer: 0.8 + this._p1SentryDrones.length * 0.4,  // stagger initial shots
+        worldPos:  null,
+      });
+    }
+    while (this._p1SentryDrones.length > targetCount) {
+      this._p1SentryDrones.pop();
+    }
+
+    const ORBIT_R    = 90;
+    const ORBIT_SPD  = 1.4;   // rad/s
+    const FIRE_CDS   = [2.0, 1.7, 1.4, 1.1];
+    const fireCd     = FIRE_CDS[Math.min(lvl - 1, FIRE_CDS.length - 1)];
+    const projDmg    = 10 + 3 * lvl;
+    const p          = this.player;
+
+    for (const drone of this._p1SentryDrones) {
+      drone.angle    += ORBIT_SPD * dt;
+      drone.fireTimer -= dt;
+
+      const wx = p.pos.x + Math.cos(drone.angle) * ORBIT_R;
+      const wy = p.pos.y + Math.sin(drone.angle) * ORBIT_R;
+      drone.worldPos = new Vec2(wx, wy);
+
+      if (drone.fireTimer <= 0) {
+        drone.fireTimer = fireCd;
+        const tgt = this._autoTarget(drone.worldPos, 700);
+        if (tgt) {
+          const dir  = safeNormalize(tgt.pos.sub(drone.worldPos));
+          const proj = new Projectile(drone.worldPos, dir, projDmg);
+          proj.speed = 640;
+          proj.life  = 1.6;
+          this.projectiles.push(proj);
+          this.audio?.playShoot?.();
+        }
+      }
+    }
+  }
+
+  _drawP1SentryDrones(ctx) {
+    if (!this._p1SentryDrones.length) return;
+    const spr   = this._weaponImages?.sentry_drone;
+    const ready = spr && spr.complete && spr.naturalWidth > 0;
+    const sz    = 44;
+    for (const drone of this._p1SentryDrones) {
+      if (!drone.worldPos) continue;
+      const wp = drone.worldPos;
+      ctx.save();
+      ctx.translate(wp.x, wp.y);
+      ctx.rotate(drone.angle + Math.PI / 2);   // keep drone "upright" as it orbits
+      if (ready) {
+        ctx.drawImage(spr, -sz / 2, -sz / 2, sz, sz);
+      } else {
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.strokeStyle = '#ff9100'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(0, 0, 16, 0, Math.PI * 2); ctx.stroke();
+        ctx.fillStyle = '#ff9100';
+        ctx.beginPath(); ctx.arc(0, 0, 6, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  }
+
+  // ── SHARD RING (ORBIT) — contact-damage energy ring orbiting the player ──────
+
+  _updateShardRing(dt) {
+    const lvl = this._cardLvl('shard_ring');
+    if (lvl < 1) { this._shardRingHitCds.clear(); return; }
+
+    this._shardRingAngle += 1.8 * dt;   // orbit spin speed (rad/s)
+
+    const RADII = [100, 110, 125, 140];
+    const DMGS  = [12, 16, 20, 24];
+    const R     = RADII[Math.min(lvl - 1, RADII.length - 1)];
+    const dmg   = DMGS[Math.min(lvl - 1, DMGS.length - 1)];
+    const p     = this.player;
+
+    // Tick down per-enemy hit cooldowns
+    for (const [e, cd] of this._shardRingHitCds) {
+      const next = cd - dt;
+      if (next <= 0) this._shardRingHitCds.delete(e);
+      else           this._shardRingHitCds.set(e, next);
+    }
+
+    // Normal enemy contact
+    for (const e of this.enemies) {
+      if (e.hp <= 0 || this._shardRingHitCds.has(e)) continue;
+      if (distance(e.pos, p.pos) < R + (e.radius || 16)) {
+        e.takeHit(dmg, this);
+        this._tryCorrode(e);
+        this.particles.spawnHitSparks(e.pos, '#9650ff');
+        this._shardRingHitCds.set(e, 0.6);
+      }
+    }
+
+    // Boss contact
+    for (const t of this._brawlerTargets()) {
+      if (t.arr) continue;
+      const b = t.obj;
+      if (this._shardRingHitCds.has(b)) continue;
+      if (distance(b.pos, p.pos) < R + (b.radius || 32)) {
+        this._brawlerHit(t, 0.5 * dmg, '#9650ff');
+        this._shardRingHitCds.set(b, 0.6);
+      }
+    }
+  }
+
+  _drawShardRing(ctx) {
+    const lvl = this._cardLvl('shard_ring');
+    if (lvl < 1) return;
+
+    const RADII = [100, 110, 125, 140];
+    const R     = RADII[Math.min(lvl - 1, RADII.length - 1)];
+    const p     = this.player;
+    const spr   = this._weaponImages?.shard_ring;
+    const ready = spr && spr.complete && spr.naturalWidth > 0;
+    const sz    = R * 2.4;
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.translate(p.pos.x, p.pos.y);
+    ctx.rotate(this._shardRingAngle);
+
+    if (ready) {
+      ctx.globalAlpha = 0.85;
+      ctx.drawImage(spr, -sz / 2, -sz / 2, sz, sz);
+    } else {
+      ctx.globalAlpha = 0.5;
+      ctx.strokeStyle = '#9650ff'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = '#c480ff'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(0, 0, R - 6, 0, Math.PI * 2); ctx.stroke();
+    }
+
+    ctx.restore();
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
   }
 
   // Called by main.js to pass current mouse pos to the draw call

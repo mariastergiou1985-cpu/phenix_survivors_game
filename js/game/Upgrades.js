@@ -11,7 +11,7 @@ export const RARITY_COLORS = {
 export class UpgradeDefinition {
   constructor(key, name, description, iconColor, maxLevel, applyFn, icon = null, rarity = 'common', char = null,
               requiredAchievement = null, endlessOnly = false, synergy = false, prereq = null, reward = false,
-              allowedChars = null, chaosOnly = false) {
+              allowedChars = null) {
     this.key         = key;
     this.name        = name;
     this.description = description;
@@ -34,8 +34,6 @@ export class UpgradeDefinition {
     // Optional character allow-list (array of character ids). When set, the card only rolls for those
     // characters — used to keep element Infusion cards identity-appropriate (e.g. no Radiation for Euclid).
     this.allowedChars = allowedChars;
-    // chaosOnly: only offered when Chaos Mode is active (this._chaosMode in Game.js).
-    this.chaosOnly = chaosOnly;
   }
 
   apply(player) {
@@ -123,6 +121,30 @@ export const ALL_UPGRADES = [
   new UpgradeDefinition(
     'Auto-Forge Drone', 'Auto-Forge Drone', 'Deploys a persistent combat drone',
     ORANGE, 2, () => {}, '🛸', 'legendary'  // persistent ally drones spawned/updated in Game._updateAllyDrones
+  ),
+
+  // ── Phase 1 Weapons — global (all characters), activated at level 1, scale to level 4 ────────
+  // Levels are read live in Game._updatePlasmaBlade / _updateVoidNeedle / _updateRailSpike /
+  // _updateP1SentryDrone / _updateShardRing. Each weapon activates at level 1; no char gate.
+  new UpgradeDefinition(
+    'plasma_blade', 'Plasma Blade', 'Melee slash arc — damages nearby enemies',
+    CYAN, 4, () => {}, '⚔', 'epic'
+  ),
+  new UpgradeDefinition(
+    'void_needle', 'Void Needle', 'Fast piercing projectile — fires toward enemies',
+    CYAN, 4, () => {}, '➤', 'rare'
+  ),
+  new UpgradeDefinition(
+    'sentry_drone', 'Sentry Drone', 'Autonomous drone — orbits and fires at enemies',
+    ORANGE, 4, () => {}, '🤖', 'epic'
+  ),
+  new UpgradeDefinition(
+    'shard_ring', 'Shard Ring', 'Orbiting energy ring — damages enemies on contact',
+    PURPLE, 4, () => {}, '◎', 'epic'
+  ),
+  new UpgradeDefinition(
+    'rail_spike', 'Rail Spike', 'Heavy hypersonic spike — high damage single shot',
+    CYAN, 4, () => {}, '⇥', 'epic'
   ),
 
   // ── Corrosive (global) — reuses the existing _corrosiveTimer DoT (Game._updateCorrosive) ──
@@ -293,141 +315,13 @@ export const ALL_UPGRADES = [
   new UpgradeDefinition('infuse_gas', 'Gas Infusion', 'Adds GAS element. With Fusion Catalyst, Toxin attacks can trigger Viral Cloud.',
     '#8fdf7f', 1, p => { (p.secondaryElements ||= []).includes('gas')       || p.secondaryElements.push('gas'); },       '☁', 'legendary', null, null, true, false, null, true,
     ['euclid_vector']),
-
-  // ── Chaos Mode Cards (V1) — only offered when this._chaosMode is active ────────────────────
-  // All effects use existing Player stat hooks. chaosOnly=true + endlessOnly=true prevents
-  // these appearing outside Chaos. Constructor tail:
-  // (char, requiredAchievement, endlessOnly, synergy, prereq, reward, allowedChars, chaosOnly)
-
-  new UpgradeDefinition('chaos_claw', 'Chaos Claw',
-    'CHAOS: +8% fire rate & +1 shot damage',
-    '#ff2d78', 3,
-    p => { p.fireRateBonus += 0.08; p.upgrades['Pulse Damage'] = (p.upgrades['Pulse Damage'] || 0) + 1; },
-    '⚔', 'rare', null, null, true, false, null, false, null, true),
-
-  new UpgradeDefinition('null_overclock', 'NULL Overclock',
-    'CHAOS: +12% fire rate & +8% proj speed',
-    '#ff7aff', 3,
-    p => { p.fireRateBonus += 0.12; p.projSpeedBonus += 0.08; },
-    '⚡', 'epic', null, null, true, false, null, false, null, true),
-
-  new UpgradeDefinition('breach_aegis', 'Breach Aegis',
-    'CHAOS: +30 max HP (shields you from the pressure)',
-    '#ff5a8a', 3,
-    p => { p.maxHp += 30; p.hp = Math.min(p.maxHp, p.hp + 30); },
-    '🛡', 'rare', null, null, true, false, null, false, null, true),
-
-  new UpgradeDefinition('entropy_rounds', 'Entropy Rounds',
-    'CHAOS: +1 shot damage & +6% proj speed',
-    '#c462ff', 3,
-    p => { p.upgrades['Pulse Damage'] = (p.upgrades['Pulse Damage'] || 0) + 1; p.projSpeedBonus += 0.06; },
-    '◈', 'epic', null, null, true, false, null, false, null, true),
-
-  new UpgradeDefinition('glitch_step', 'Glitch Step',
-    'CHAOS: +6% move speed per level',
-    '#3cf0e6', 3,
-    p => { p.speedBonus += 0.06; },
-    '»', 'common', null, null, true, false, null, false, null, true),
-
-  new UpgradeDefinition('eden_fracture', 'Eden Fracture',
-    'CHAOS: +20 max mana & +8% fire rate',
-    '#ff9900', 2,
-    p => { p.maxMana += 20; p.mana = Math.min(p.maxMana, p.mana + 20); p.fireRateBonus += 0.08; },
-    '✦', 'legendary', null, null, true, false, null, false, null, true),
-
-  // ── KIROSHI WALKER synergy cards (2 per character; char-gated; affect Walker bonuses) ──────────
-  // Effects set player.walkerXxx properties read by Game.js summon logic and NpcWalker.update.
-  // skeleton_warrior — Thunder resonance bond (electric + electric = amplified chain)
-  new UpgradeDefinition('walker_sync_skeleton_i', 'Thunder Bond',
-    'KIROSHI WALKER: summon interval -20s; electric waves hit harder',
-    '#4488ff', 2,
-    p => { p.walkerSummonCdReduce = (p.walkerSummonCdReduce || 0) + 20; p.walkerDmgBonus = (p.walkerDmgBonus || 0) + 8; },
-    '⚡', 'rare', 'skeleton_warrior'),
-  new UpgradeDefinition('walker_sync_skeleton_ii', 'Thunder Chain',
-    'KIROSHI WALKER: active window +12s; shockwave damage +15 per level',
-    '#88ffff', 2,
-    p => { p.walkerActiveDurBonus = (p.walkerActiveDurBonus || 0) + 12; p.walkerDmgBonus = (p.walkerDmgBonus || 0) + 15; },
-    '🔗', 'epic', 'skeleton_warrior'),
-
-  // taekwondo_girl — Flow state sync (speed + electric = extended presence)
-  new UpgradeDefinition('walker_sync_taekwondo_i', 'Aqua Circuit',
-    'KIROSHI WALKER: active window +15s; basic wave cooldown -0.5s per level',
-    '#00ccff', 2,
-    p => { p.walkerActiveDurBonus = (p.walkerActiveDurBonus || 0) + 15; p.walkerBasicCdReduce = (p.walkerBasicCdReduce || 0) + 0.5; },
-    '🌊', 'rare', 'taekwondo_girl'),
-  new UpgradeDefinition('walker_sync_taekwondo_ii', 'Crescent Sync',
-    'KIROSHI WALKER: mana regen +4/s; summon interval -15s per level',
-    '#00ffee', 2,
-    p => { p.walkerManaRegenBonus = (p.walkerManaRegenBonus || 0) + 4; p.walkerSummonCdReduce = (p.walkerSummonCdReduce || 0) + 15; },
-    '🌀', 'epic', 'taekwondo_girl'),
-
-  // cyber_arm_hero — Overdrive amplification link (fire + electric = surge)
-  new UpgradeDefinition('walker_sync_cyber_i', 'Overdrive Link',
-    'KIROSHI WALKER: basic wave damage +10; ability cooldown -8s per level',
-    '#ff8800', 2,
-    p => { p.walkerDmgBonus = (p.walkerDmgBonus || 0) + 10; p.walkerAbilCdReduce = (p.walkerAbilCdReduce || 0) + 8; },
-    '🦾', 'rare', 'cyber_arm_hero'),
-  new UpgradeDefinition('walker_sync_cyber_ii', 'Surge Protocol',
-    'KIROSHI WALKER: active window +10s; shockwave damage +20 per level',
-    '#ffcc44', 2,
-    p => { p.walkerActiveDurBonus = (p.walkerActiveDurBonus || 0) + 10; p.walkerDmgBonus = (p.walkerDmgBonus || 0) + 20; },
-    '⛓', 'epic', 'cyber_arm_hero'),
-
-  // brawler_warrior — Rage signal bond (tank + electric = iron HP)
-  new UpgradeDefinition('walker_sync_brawler_i', 'Rage Signal',
-    'KIROSHI WALKER: +30 max HP; takes less damage from enemies per level',
-    '#44ff88', 2,
-    p => { p.walkerMaxHpBonus = (p.walkerMaxHpBonus || 0) + 30; },
-    '◎', 'rare', 'brawler_warrior'),
-  new UpgradeDefinition('walker_sync_brawler_ii', 'Iron Circuit',
-    'KIROSHI WALKER: summon interval -20s; shockwave damage +12 per level',
-    '#00ff66', 2,
-    p => { p.walkerSummonCdReduce = (p.walkerSummonCdReduce || 0) + 20; p.walkerDmgBonus = (p.walkerDmgBonus || 0) + 12; },
-    '⟢', 'epic', 'brawler_warrior'),
-
-  // assassin_clone — Shadow net sync (stealth + electric = ghost current)
-  new UpgradeDefinition('walker_sync_assassin_i', 'Shadow Net',
-    'KIROSHI WALKER: mana regen +5/s; basic wave cooldown -0.8s per level',
-    '#ff44cc', 2,
-    p => { p.walkerManaRegenBonus = (p.walkerManaRegenBonus || 0) + 5; p.walkerBasicCdReduce = (p.walkerBasicCdReduce || 0) + 0.8; },
-    '🗡', 'rare', 'assassin_clone'),
-  new UpgradeDefinition('walker_sync_assassin_ii', 'Dark Sync',
-    'KIROSHI WALKER: ability cooldown -10s; active window +12s per level',
-    '#cc44ff', 2,
-    p => { p.walkerAbilCdReduce = (p.walkerAbilCdReduce || 0) + 10; p.walkerActiveDurBonus = (p.walkerActiveDurBonus || 0) + 12; },
-    '👥', 'epic', 'assassin_clone'),
-
-  // euclid_vector — Vector resonance bond (toxin + electric = charged pulse)
-  new UpgradeDefinition('walker_sync_euclid_i', 'Vector Signal',
-    'KIROSHI WALKER: summon interval -20s; damage +8 per level',
-    '#66ff44', 2,
-    p => { p.walkerSummonCdReduce = (p.walkerSummonCdReduce || 0) + 20; p.walkerDmgBonus = (p.walkerDmgBonus || 0) + 8; },
-    '☣', 'rare', 'euclid_vector'),
-  new UpgradeDefinition('walker_sync_euclid_ii', 'Toxin Resonance',
-    'KIROSHI WALKER: active window +15s; mana regen +3/s; ability cooldown -5s per level',
-    '#88ff22', 2,
-    p => { p.walkerActiveDurBonus = (p.walkerActiveDurBonus || 0) + 15; p.walkerManaRegenBonus = (p.walkerManaRegenBonus || 0) + 3; p.walkerAbilCdReduce = (p.walkerAbilCdReduce || 0) + 5; },
-    '⚗', 'epic', 'euclid_vector'),
-
-  // oni_cataclysm_protocol — Protocol link (cataclysm + electric = maximum output)
-  new UpgradeDefinition('walker_sync_oni_i', 'Protocol Link',
-    'KIROSHI WALKER: shockwave damage +20; active window +10s per level',
-    '#ff5533', 2,
-    p => { p.walkerDmgBonus = (p.walkerDmgBonus || 0) + 20; p.walkerActiveDurBonus = (p.walkerActiveDurBonus || 0) + 10; },
-    '☢', 'rare', 'oni_cataclysm_protocol'),
-  new UpgradeDefinition('walker_sync_oni_ii', 'Cataclysm Sync',
-    'KIROSHI WALKER: ability cooldown -12s; summon interval -20s per level',
-    '#ff9933', 2,
-    p => { p.walkerAbilCdReduce = (p.walkerAbilCdReduce || 0) + 12; p.walkerSummonCdReduce = (p.walkerSummonCdReduce || 0) + 20; },
-    '☄', 'epic', 'oni_cataclysm_protocol'),
-
 ];
 
 // ─── Weighted sample: every card is useful; bias toward the player's current build ──
 // New cards stay common (weight 3); cards already invested in are weighted higher so
 // the offered set leans into the build the player is forming (and reroll does the same).
 export function weightedSample(player, n = 3, ctx = {}) {
-  const { meta = null, endless = false, chaos = false } = ctx;
+  const { meta = null, endless = false } = ctx;
   // Character mastery cards only offer for the matching character; global cards always eligible.
   // Achievement Cards additionally require their achievement unlocked + (endlessOnly) Endless.
   const eligible = ALL_UPGRADES.filter(u =>
@@ -436,7 +330,6 @@ export function weightedSample(player, n = 3, ctx = {}) {
     (!u.requiredAchievement || (meta && meta.hasAchievement(u.requiredAchievement))) &&
     (!u.endlessOnly || endless) &&
     (!u.allowedChars || u.allowedChars.includes(player.selectedCharacter)) &&
-    (!u.chaosOnly || chaos) &&
     (!u.prereq || u.prereq(player)));
   if (!eligible.length) return [];
 
