@@ -722,4 +722,15 @@ export class MetaProgress {
   hasMilestone(threshold) { return !!(this.edenMilestonesSeen && this.edenMilestonesSeen[threshold]); }
 
   // One-fire guard: returns true the first time Eden Memory >= threshold.
-  // Subsequent calls return false. Safe with old saves (defaults
+  // Subsequent calls return false. Safe with old saves (defaults to {}).
+  checkAndRecordSystemLog(threshold) {
+    if (!this.systemLogsSeen) this.systemLogsSeen = {};
+    if (this.systemLogsSeen[threshold]) return false;
+    if (this.getEdenMemory() < threshold) return false;
+    this.systemLogsSeen[threshold] = true;
+    this._save();
+    return true;
+  }
+  hasSystemLog(threshold) { return !!(this.systemLogsSeen && this.systemLogsSeen[threshold]); }
+
+}
