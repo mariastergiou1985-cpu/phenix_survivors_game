@@ -17635,8 +17635,7 @@ _drawLoreArchive(ctx) {
 
     const p = this.player;
     let best = null, bestDist = rng;
-    for (const t of this.enemies) {
-      if (t.arr) continue;
+    for (const t of this._brawlerTargets()) {
       const d = distance(t.obj.pos, p.pos);
       if (d < bestDist) { bestDist = d; best = t; }
     }
@@ -17650,13 +17649,12 @@ _drawLoreArchive(ctx) {
     const nx = dy / len, ny = -dx / len;
 
     let hits = 0;
-    for (const t of this.enemies) {
-      if (t.arr) continue;
+    for (const t of this._brawlerTargets()) {
       const ex = t.obj.pos.x - p.pos.x, ey = t.obj.pos.y - p.pos.y;
       const proj = ex * (dx / len) + ey * (dy / len);
       const perp = Math.abs(ex * nx + ey * ny);
       if (proj > 0 && proj < rng + 40 && perp < BEAM_W + (t.obj.radius || 28)) {
-        this._brawlerHit(t, dmg, '#00ffff');
+        this._brawlerHit(t, (this._targetIsBoss(t) ? 0.55 : 1) * dmg, '#00ffff');
         hits++;
       }
     }
@@ -17739,8 +17737,7 @@ _drawLoreArchive(ctx) {
 
     const p = this.player;
     let hits = 0;
-    for (const t of this.enemies) {
-      if (t.arr) continue;
+    for (const t of this._brawlerTargets()) {
       const b = t.obj;
       const d = distance(b.pos, p.pos);
       if (d > R + (b.radius || 28)) continue;
@@ -17751,7 +17748,7 @@ _drawLoreArchive(ctx) {
         b.pos.x += ((p.pos.x - b.pos.x) / d) * pullStrength;
         b.pos.y += ((p.pos.y - b.pos.y) / d) * pullStrength;
       }
-      this._brawlerHit(t, dmg, '#b35cff');
+      this._brawlerHit(t, (this._targetIsBoss(t) ? 0.55 : 1) * dmg, '#b35cff');
       this._gravityCoreHitCds.set(b, 0.9);
       hits++;
     }
@@ -17827,10 +17824,9 @@ _drawLoreArchive(ctx) {
 
       // Check enemy proximity
       let detonated = false;
-      for (const t of this.enemies) {
-        if (t.arr) continue;
+      for (const t of this._brawlerTargets()) {
         if (distance(t.obj.pos, { x: m.x, y: m.y }) < R + (t.obj.radius || 28)) {
-          this._brawlerHit(t, dmg, '#ff6a00');
+          this._brawlerHit(t, (this._targetIsBoss(t) ? 0.55 : 1) * dmg, '#ff6a00');
           detonated = true;
         }
       }
@@ -17916,13 +17912,12 @@ _drawLoreArchive(ctx) {
 
       // Find nearest enemy in range
       let best = null, bestDist = 420;
-      for (const t of this.enemies) {
-        if (t.arr) continue;
+      for (const t of this._brawlerTargets()) {
         const dist = distance(t.obj.pos, { x: d.x, y: d.y });
         if (dist < bestDist) { bestDist = dist; best = t; }
       }
       if (best) {
-        this._brawlerHit(best, dmg, '#9650ff');
+        this._brawlerHit(best, (this._targetIsBoss(best) ? 0.55 : 1) * dmg, '#9650ff');
         this.audio?.playBlacknetSwarmHit?.();
       }
       this.audio?.playBlacknetSwarmLaunch?.();
@@ -17979,8 +17974,7 @@ _drawLoreArchive(ctx) {
 
       // Find nearest enemy to home on
       let best = null, bestDist = Infinity;
-      for (const t of this.enemies) {
-        if (t.arr) continue;
+      for (const t of this._brawlerTargets()) {
         const d = distance(t.obj.pos, { x: m.x, y: m.y });
         if (d < bestDist) { bestDist = d; best = t; }
       }
@@ -18005,10 +17999,9 @@ _drawLoreArchive(ctx) {
 
       // Hit detection
       let hit = false;
-      for (const t of this.enemies) {
-        if (t.arr) continue;
+      for (const t of this._brawlerTargets()) {
         if (distance(t.obj.pos, { x: m.x, y: m.y }) < (t.obj.radius || 28) + 10) {
-          this._brawlerHit(t, dmg, '#ff4400');
+          this._brawlerHit(t, (this._targetIsBoss(t) ? 0.55 : 1) * dmg, '#ff4400');
           this._specialRings.push({
             pos: { x: m.x, y: m.y },
             radius: 0, maxRadius: 55,
@@ -18029,8 +18022,7 @@ _drawLoreArchive(ctx) {
       this._homingMissileCd = cd;
       const p = this.player;
       let best = null, bestDist = 650;
-      for (const t of this.enemies) {
-        if (t.arr) continue;
+      for (const t of this._brawlerTargets()) {
         const d = distance(t.obj.pos, p.pos);
         if (d < bestDist) { bestDist = d; best = t; }
       }
