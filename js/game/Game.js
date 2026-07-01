@@ -17525,4 +17525,60 @@ _drawLoreArchive(ctx) {
 
     // Normal enemy contact
     for (const e of this.enemies) {
-      if (e.hp <= 0 || thi
+      if (e.hp <= 0 || this._shardRingHitCds.has(e)) continue;
+      if (distance(e.pos, p.pos) < R + (e.radius || 16)) {
+        e.takeHit(dmg, this);
+        this._tryCorrode(e);
+        this.particles.spawnHitSparks(e.pos, '#9650ff');
+        this.audio?.playShardRingHit?.();
+        this._shardRingHitCds.set(e, 0.6);
+      }
+    }
+
+    // Boss contact
+    for (const t of this._brawlerTargets()) {
+      if (t.arr) continue;
+      const b = t.obj;
+      if (this._shardRingHitCds.has(b)) continue;
+      if (distance(b.pos, p.pos) < R + (b.radius || 32)) {
+        this._brawlerHit(t, 0.5 * dmg, '#9650ff');
+        this.audio?.playShardRingHit?.();
+        this._shardRingHitCds.set(b, 0.6);
+      }
+    }
+  }
+
+  _drawShardRing(ctx) {
+    const lvl = this._cardLvl('shard_ring');
+    if (lvl < 1) return;
+
+    const RADII = [100, 110, 125, 140];
+    const R     = RADII[Math.min(lvl - 1, RADII.length - 1)];
+    const p     = this.player;
+    const spr   = this._weaponImages?.shard_ring;
+    const ready = spr && spr.complete && spr.naturalWidth > 0;
+    const sz    = R * 2.4;
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.translate(p.pos.x, p.pos.y);
+    ctx.rotate(this._shardRingAngle);
+
+    if (ready) {
+      ctx.globalAlpha = 0.85;
+      ctx.drawImage(spr, -sz / 2, -sz / 2, sz, sz);
+    } else {
+      ctx.globalAlpha = 0.5;
+      ctx.strokeStyle = '#9650ff'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = '#c480ff'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(0, 0, R - 6, 0, Math.PI * 2); ctx.stroke();
+    }
+
+    ctx.restore();
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  }
+
+  // Called by main.js to pass current mouse pos to the draw call
+  setMousePos(pos) { this._lastMousePos = pos; }
+}
