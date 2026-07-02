@@ -5421,8 +5421,10 @@ export class Game {
     this._wasDashing = dashing;
     this._handleAutoShooting();
     this._handleCorePickupAndSlotting(dt);
-    this._updateProjectiles(dt);
-    this._updateHomingDiscs(dt);
+    // Hit stop: slow projectiles + discs to ~10% during freeze window (bullet-time feel)
+    const _hsDt = this._hitStopTimer > 0 ? dt * 0.10 : dt;
+    this._updateProjectiles(_hsDt);
+    this._updateHomingDiscs(_hsDt);
     this._updateChainLightning(dt);
     this._updateNeonPierceBeam(dt);
     this._updateAquaTrail(dt);
@@ -5522,7 +5524,7 @@ export class Game {
     this._updateHealthPickups(dt);
     this._updateManaPickups(dt);
     this._updateAnnouncement(dt);
-    this.particles.update(dt);
+    this.particles.update(this._hitStopTimer > 0 ? dt * 0.10 : dt);  // slow sparks/particles during hit stop
     this._updateCamera();
     this._updateDamagePulse(dt);
     this._updateUltReady(dt);
@@ -7018,18 +7020,22 @@ export class Game {
       if (dmg >= 30) {
         b.hitFlash = 0.18;
         this.screenShake.trigger(3, 0.13);
-        this._triggerHitStop(0.05);
+        this._triggerHitStop(0.06);   // ~3.6 frames — noticeably punchy
         this.audio?.playBossHit?.();
       } else {
-        b.hitFlash = 0.08;
+        b.hitFlash = 0.10;
+        this._triggerHitStop(0.022);  // light boss hit — ~1 frame freeze
       }
       if (_hpObj.hp <= 0) t.die.call(this);
     }
     // Scale spark count by damage weight (capped by ParticleSystem.MAX internally).
     const sparkCount = dmg >= 50 ? 8 : dmg >= 25 ? 5 : 3;
     this.particles.spawnHitSparks(b.pos, color, sparkCount);
-    // Hit stop for powerful non-boss hits (2-3 frames at 60 fps)
-    if (t.arr && dmg >= 50) this._triggerHitStop(0.04);
+    // Tiered hit stop for normal-enemy hits (kept safe: threshold >=25 avoids rapid-fire spam)
+    if (t.arr) {
+      if      (dmg >= 50) this._triggerHitStop(0.055);  // 3+ frames — heavy hit
+      else if (dmg >= 25) this._triggerHitStop(0.030);  // ~2 frames — standard hit
+    }
   }
 
   // ── Upgrade-card helpers + corrosive (Phase 1) ──────────────────────────────
@@ -8698,8 +8704,9 @@ export class Game {
   }
 
   _updateFloatingTexts(dt) {
+    const _ftDt = this._hitStopTimer > 0 ? dt * 0.10 : dt;  // damage numbers hang in air during hit stop
     for (let i = this.floatingTexts.length - 1; i >= 0; i--) {
-      this.floatingTexts[i].update(dt);
+      this.floatingTexts[i].update(_ftDt);
       if (this.floatingTexts[i].timer <= 0) this.floatingTexts.splice(i, 1);
     }
     if (this.floatingTexts.length > 90) this.floatingTexts.splice(0, this.floatingTexts.length - 90);
@@ -18125,22 +18132,4 @@ _drawLoreArchive(ctx) {
       // Draw missile body
       ctx.save();
       ctx.translate(m.x, m.y);
-      ctx.rotate(m.ang);
-      if (ready) {
-        ctx.globalAlpha = 0.92;
-        ctx.drawImage(spr, -sz / 2, -sz / 2, sz, sz);
-      } else {
-        ctx.fillStyle = '#ff4400';
-        ctx.beginPath();
-        ctx.moveTo(16, 0); ctx.lineTo(-12, 8); ctx.lineTo(-8, 0); ctx.lineTo(-12, -8);
-        ctx.closePath(); ctx.fill();
-        ctx.globalCompositeOperation = 'lighter';
-        ctx.globalAlpha = 0.55;
-        ctx.fillStyle = '#ff8800';
-        ctx.beginPath(); ctx.arc(-12, 0, 6, 0, Math.PI * 2); ctx.fill();
-      }
-      ctx.restore();
-    }
-    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
-  }
-}
+      c
