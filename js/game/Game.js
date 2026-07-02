@@ -3501,6 +3501,13 @@ export class Game {
     // (drives Enemy HP/speed scaling; damage stays conservative). Act 1 uses the real minute.
     const mins = this.currentMinute() + (this.endless ? 8 : 0);
     const e = new Enemy(this.chooseEnemyType(), mins);
+    // Endless/Chaos: spawn enemies just offscreen from the camera instead of at the
+    // distant world-bounds edges (which are 3840px away on a 7680px active grid).
+    if (this.chunkManager?.enabled) {
+      const sp = this.chunkManager.getSpawnEdge(this.camera, this._viewW, this._viewH, 60);
+      e.pos.x = sp.x;
+      e.pos.y = sp.y;
+    }
     // Armored Swarm Protocol — Endless-only extra HP scaling (modest; never touches Act 1 or bosses,
     // which are already tuned). Applied once at spawn so it can't compound or double-apply.
     if (this.endless && !e.isBoss() && this._hasProto('armored_swarm')) e.hp = Math.round(e.hp * 1.18);
@@ -6391,8 +6398,11 @@ export class Game {
       b.pos.addMut(b.dir.scale(b.speed * dt));
       b.life -= dt;
 
-      if (b.life <= 0 || b.pos.x < -60 || b.pos.x > WIDTH + 60 ||
-          b.pos.y < -60 || b.pos.y > HEIGHT + 60) {
+      // OOB check: use camera-relative coords so bullets survive in the larger Endless world.
+      // In Act 1, camera starts at (0,0) so this is equivalent to the old WIDTH/HEIGHT check.
+      const bx = b.pos.x - this.camera.x, by = b.pos.y - this.camera.y;
+      if (b.life <= 0 || bx < -120 || bx > this._viewW + 120 ||
+          by < -120 || by > this._viewH + 120) {
         this.enemyBullets.splice(i, 1);
         continue;
       }

@@ -504,8 +504,17 @@ export class Enemy {
       return;
     }
 
-    if (this.role === 'hybrid' || this.role === 'boss') {
-      this._tryShoot(game);  // falls through to existing matrix behavior
+    if (this.role === 'boss') {
+      // Bosses aggressively chase the player and shoot — never seek matrices.
+      this._tryShoot(game);
+      let dir = safeNormalize(player.pos.sub(this.pos));
+      this.vel = dir.scale(this.baseSpeed);
+      this.pos.addMut(this.vel.scale(dt));
+      return;
+    }
+
+    if (this.role === 'hybrid') {
+      this._tryShoot(game);  // falls through to chase/steal behavior below
     }
 
     // ── Repel aura ───────────────────────────────────────────────────────
@@ -517,17 +526,15 @@ export class Enemy {
       return;
     }
 
-    // ── Seek nearest matrix ──────────────────────────────────────────────
-    const target = this._chooseTargetMatrix(matrices);
-    if (target === null) {
-      const wander = safeNormalize(player.pos.sub(this.pos));
-      this.pos.addMut(wander.scale(this.baseSpeed * 0.3 * dt));
-      return;
-    }
+    // ── Chase player (all remaining roles: stealer, hybrid, default) ────
+    // Enemies chase the player instead of seeking distant Nexus stations.
+    // Stealers still steal from nearby matrices they pass on the way.
+    const nearMatrix = this._chooseTargetMatrix(matrices);
+    const matrixInRange = nearMatrix && nearMatrix.pos.sub(this.pos).length() <= MATRIX_RADIUS + this.radius + 4;
 
-    const toMatrix = target.pos.sub(this.pos);
-    if (toMatrix.length() > MATRIX_RADIUS + this.radius + 4) {
-      let dir = safeNormalize(toMatrix);
+    if (!matrixInRange) {
+      // Chase player
+      let dir = safeNormalize(player.pos.sub(this.pos));
 
       // Stealth burst
       let burst = 1;
