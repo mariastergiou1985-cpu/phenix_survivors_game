@@ -8146,8 +8146,8 @@ export class Game {
                            this.player.pos.y + Math.sin(s.angle) * 300);
       const mv = safeNormalize(tgt.sub(s.pos));
       s.pos.addMut(mv.scale(220 * dt));
-      s.pos.x = clamp(s.pos.x, WORLD_MARGIN, WORLD_W - WORLD_MARGIN);
-      s.pos.y = clamp(s.pos.y, WORLD_MARGIN, WORLD_H - WORLD_MARGIN);
+      s.pos.x = clamp(s.pos.x, WORLD_BOUNDS.left + WORLD_BOUNDS.margin, WORLD_BOUNDS.right - WORLD_BOUNDS.margin);
+      s.pos.y = clamp(s.pos.y, WORLD_BOUNDS.top + WORLD_BOUNDS.margin, WORLD_BOUNDS.bottom - WORLD_BOUNDS.margin);
       s.fireCd -= dt;
       if (s.fireCd <= 0) { s.fireCd = randomRange(3.0, 4.2); this._fireSalvo(s); }   // grouped bombardment
       if (s.life <= 0) this.airstrikeShips.splice(i, 1);   // long safety timeout
@@ -8156,9 +8156,9 @@ export class Game {
   }
 
   _spawnAirstrike() {
-    const edge = Math.random() < 0.5 ? -60 : WORLD_W + 60;
+    const edge = Math.random() < 0.5 ? WORLD_BOUNDS.left - 60 : WORLD_BOUNDS.right + 60;
     this.airstrikeShips.push({
-      pos: new Vec2(edge, randomRange(WORLD_MARGIN, WORLD_H - WORLD_MARGIN)),
+      pos: new Vec2(edge, randomRange(WORLD_BOUNDS.top + WORLD_BOUNDS.margin, WORLD_BOUNDS.bottom - WORLD_BOUNDS.margin)),
       angle: Math.random() * Math.PI * 2, fireCd: 1.5, life: 45,
     });
     this.triggerAnnouncement('AIRSTRIKE INBOUND', ORANGE);
@@ -8188,16 +8188,18 @@ export class Game {
       r.life -= dt;
       r.pos.addMut(r.dir.scale(r.speed * dt));
       const hit = distance(r.pos, this.player.pos) < PLAYER_RADIUS + r.blast;
-      const out = r.pos.x < -80 || r.pos.x > WORLD_W + 80 || r.pos.y < -80 || r.pos.y > WORLD_H + 80;
+      const out = r.pos.x < WORLD_BOUNDS.left - 80 || r.pos.x > WORLD_BOUNDS.right + 80 || r.pos.y < WORLD_BOUNDS.top - 80 || r.pos.y > WORLD_BOUNDS.bottom + 80;
       if (hit || r.life <= 0 || out) {
         if (hit && this.phoenixReviveTimer <= 0 && this.player.dashTimer <= 0) {
           const dmg = Math.round(this.player.maxHp * randomRange(0.40, 0.50));   // heavy clean hit
           this.player.applyBite({ hp: dmg, stagger: 0.8 });   // damage + short stun (anti-chain inside)
           this.screenShake.trigger(9, 0.4);
-          this.particles.spawnDeathBurst(r.pos, ORANGE, 18, 2.4);
+          this.particles.spawnExplosion(r.pos, ['#ff6600', '#ffaa22', '#ff3300', '#ffe088', '#ffffff'], 22);
+          this.particles.spawnDeathRing(r.pos, '#ff8844', 12, 180, 2.2);
           this.floatingTexts.push(new FloatingText('-' + dmg + ' HP', this.player.pos.clone(), RED, 1.2));
         } else {
-          this.particles.spawnHitSparks(r.pos, ORANGE);
+          this.particles.spawnExplosion(r.pos, ['#ff6600', '#ffaa22', '#cc2200'], 10);
+          this.particles.spawnDeathRing(r.pos, '#ff6600', 8, 120, 1.5);
         }
         this.audio?.playAirstrikeBomb?.();   // throttled 300 ms — one sound per salvo, not per rocket
         this.airstrikeRockets.splice(i, 1);
@@ -8255,8 +8257,8 @@ export class Game {
       const off   = aimed ? randomRange(0, 70) : randomRange(120, 340);
       const ang   = Math.random() * Math.PI * 2;
       const pos   = new Vec2(
-        clamp(this.player.pos.x + Math.cos(ang) * off, WORLD_MARGIN, WORLD_W - WORLD_MARGIN),
-        clamp(this.player.pos.y + Math.sin(ang) * off, WORLD_MARGIN, WORLD_H - WORLD_MARGIN));
+        clamp(this.player.pos.x + Math.cos(ang) * off, WORLD_BOUNDS.left + WORLD_BOUNDS.margin, WORLD_BOUNDS.right - WORLD_BOUNDS.margin),
+        clamp(this.player.pos.y + Math.sin(ang) * off, WORLD_BOUNDS.top + WORLD_BOUNDS.margin, WORLD_BOUNDS.bottom - WORLD_BOUNDS.margin));
       this.lightningZones.push({ pos, radius: 64, warn: 1.1, flash: 0.35, t: 0, struck: false });
     }
   }
@@ -8306,20 +8308,60 @@ export class Game {
       if (ship.complete && ship.naturalWidth) ctx.drawImage(ship, s.pos.x - sz / 2, s.pos.y - sz / 2, sz, sz);
       else { ctx.save(); ctx.fillStyle = '#dfe9f5'; ctx.beginPath(); ctx.arc(s.pos.x, s.pos.y, 22, 0, Math.PI * 2); ctx.fill(); ctx.restore(); }
     }
-    // Rockets — dramatic dual-layer flame trail, glowing body, and a pulsing red blast telegraph.
+    // Rockets — premium cyberpunk missile with multi-layer exhaust, sharp silhouette, pulsing blast ring.
+    const _rNow = performance.now();
     for (const r of this.airstrikeRockets) {
       ctx.save();
-      ctx.globalAlpha = 0.30; ctx.strokeStyle = '#ff5a1a'; ctx.lineWidth = 7; ctx.lineCap = 'round';
-      ctx.beginPath(); ctx.moveTo(r.pos.x, r.pos.y);
-      ctx.lineTo(r.pos.x - r.dir.x * 40, r.pos.y - r.dir.y * 40); ctx.stroke();
-      ctx.globalAlpha = 0.7; ctx.strokeStyle = '#ffd27f'; ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.moveTo(r.pos.x, r.pos.y);
-      ctx.lineTo(r.pos.x - r.dir.x * 22, r.pos.y - r.dir.y * 22); ctx.stroke();
-      ctx.globalAlpha = 1; ctx.fillStyle = '#fff0c0';
-      ctx.beginPath(); ctx.arc(r.pos.x, r.pos.y, r.radius, 0, Math.PI * 2); ctx.fill();
-      const p = 0.5 + 0.5 * Math.sin(performance.now() * 0.02);
-      ctx.globalAlpha = 0.45 + 0.45 * p; ctx.strokeStyle = RED; ctx.lineWidth = 2.5;
+      const tx = -r.dir.x, ty = -r.dir.y;  // trail direction (opposite of travel)
+
+      // Layer 1: wide outer exhaust plume (orange-red, faint)
+      ctx.globalAlpha = 0.22;
+      ctx.strokeStyle = '#ff3300'; ctx.lineWidth = 10; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(r.pos.x + tx * 6, r.pos.y + ty * 6);
+      ctx.lineTo(r.pos.x + tx * 50, r.pos.y + ty * 50); ctx.stroke();
+
+      // Layer 2: mid exhaust (orange glow)
+      ctx.globalAlpha = 0.45;
+      ctx.strokeStyle = '#ff7722'; ctx.lineWidth = 5;
+      ctx.beginPath(); ctx.moveTo(r.pos.x + tx * 4, r.pos.y + ty * 4);
+      ctx.lineTo(r.pos.x + tx * 36, r.pos.y + ty * 36); ctx.stroke();
+
+      // Layer 3: hot core trail (bright yellow-white)
+      ctx.globalAlpha = 0.75;
+      ctx.strokeStyle = '#ffe088'; ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.moveTo(r.pos.x + tx * 2, r.pos.y + ty * 2);
+      ctx.lineTo(r.pos.x + tx * 22, r.pos.y + ty * 22); ctx.stroke();
+
+      // Missile body — elongated shape along travel direction
+      ctx.globalAlpha = 1;
+      const bLen = 12, bWid = 3.5;
+      const perpX = -r.dir.y, perpY = r.dir.x;  // perpendicular
+      ctx.fillStyle = '#dde8ff';
+      ctx.beginPath();
+      ctx.moveTo(r.pos.x + r.dir.x * bLen, r.pos.y + r.dir.y * bLen);           // nose
+      ctx.lineTo(r.pos.x + perpX * bWid + tx * 4, r.pos.y + perpY * bWid + ty * 4);  // left tail
+      ctx.lineTo(r.pos.x - perpX * bWid + tx * 4, r.pos.y - perpY * bWid + ty * 4);  // right tail
+      ctx.closePath(); ctx.fill();
+
+      // Nose glow point
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = 0.8;
+      ctx.fillStyle = '#ffffcc';
+      ctx.beginPath(); ctx.arc(r.pos.x + r.dir.x * 6, r.pos.y + r.dir.y * 6, 3, 0, Math.PI * 2); ctx.fill();
+
+      // Blast radius telegraph (pulsing dashed ring)
+      ctx.globalCompositeOperation = 'source-over';
+      const rp = 0.5 + 0.5 * Math.sin(_rNow * 0.018);
+      ctx.globalAlpha = 0.35 + 0.45 * rp;
+      ctx.strokeStyle = '#ff3333'; ctx.lineWidth = 2; ctx.setLineDash([8, 6]);
       ctx.beginPath(); ctx.arc(r.pos.x, r.pos.y, r.blast, 0, Math.PI * 2); ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Inner solid ring (danger read)
+      ctx.globalAlpha = 0.18 + 0.12 * rp;
+      ctx.strokeStyle = '#ff6600'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(r.pos.x, r.pos.y, r.blast * 0.6, 0, Math.PI * 2); ctx.stroke();
+
       ctx.restore();
     }
   }
@@ -8842,6 +8884,8 @@ export class Game {
     ctx.fillStyle = 'rgba(2,6,16,0.30)';
     ctx.fillRect(this.camera.x, this.camera.y, this._viewW, this._viewH);
 
+    // 1a ── Null Breach Arena containment field (world-space, under everything else)
+    this._drawArenaContainment(ctx);
     // 1a ── Boss Lava/Fire Rain zones (ground markers — under entities so they read as terrain)
     this._drawBossLava(ctx);
     this._drawBossTrails(ctx);
@@ -13338,8 +13382,8 @@ _drawLoreArchive(ctx) {
             const ang  = Math.random() * Math.PI * 2;
             const dist = randomRange(60, 280);                // never guaranteed on the player
             const pos  = new Vec2(
-              clamp(this.player.pos.x + Math.cos(ang) * dist, WORLD_MARGIN, WORLD_W - WORLD_MARGIN),
-              clamp(this.player.pos.y + Math.sin(ang) * dist, WORLD_MARGIN, WORLD_H - WORLD_MARGIN)
+              clamp(this.player.pos.x + Math.cos(ang) * dist, WORLD_BOUNDS.left + WORLD_BOUNDS.margin, WORLD_BOUNDS.right - WORLD_BOUNDS.margin),
+              clamp(this.player.pos.y + Math.sin(ang) * dist, WORLD_BOUNDS.top + WORLD_BOUNDS.margin, WORLD_BOUNDS.bottom - WORLD_BOUNDS.margin)
             );
             this.bossLavaZones.push({ pos, radius: 70, warn: 1.4, impact: 1.3, t: 0, dmgAccum: 0, dps: 14 });
           }
@@ -13408,8 +13452,8 @@ _drawLoreArchive(ctx) {
         const onPlayerChance = 0.5 + this.mutations.plasmaOnPlayerChanceBonus;   // TARGETED PLASMA
         const dist = (i === 0 && Math.random() < onPlayerChance) ? randomRange(0, 26) : randomRange(40, 260);
         const pos  = new Vec2(
-          clamp(this.player.pos.x + Math.cos(ang) * dist, WORLD_MARGIN, WORLD_W - WORLD_MARGIN),
-          clamp(this.player.pos.y + Math.sin(ang) * dist, WORLD_MARGIN, WORLD_H - WORLD_MARGIN)
+          clamp(this.player.pos.x + Math.cos(ang) * dist, WORLD_BOUNDS.left + WORLD_BOUNDS.margin, WORLD_BOUNDS.right - WORLD_BOUNDS.margin),
+          clamp(this.player.pos.y + Math.sin(ang) * dist, WORLD_BOUNDS.top + WORLD_BOUNDS.margin, WORLD_BOUNDS.bottom - WORLD_BOUNDS.margin)
         );
         this.bossLavaZones.push({ pos, radius: 70, warn: 1.2, impact: 1.4, t: 0, dmgAccum: 0, dps: 16 });
       }
@@ -13609,47 +13653,95 @@ _drawLoreArchive(ctx) {
     ctx.restore();
   }
 
-  // Lava/Fire-Rain zones: pulsing telegraph ring during warning, then the eruption sheet on impact.
+  // Lava/Fire-Rain zones: premium procedural cyber-volcanic VFX.
+  // Warning phase: pulsing telegraph ring + shrinking inner ring + molten grid.
+  // Impact phase: radial eruption gradient + falling ember streaks + expanding shock rings.
   _drawBossLava(ctx) {
     if (!this.bossLavaZones.length) return;
-    const spr   = this._lavaRainSprite;
-    const ready = spr && spr.complete && spr.naturalWidth > 0;
-    const FW = 512, FH = 384, COLS = 2, FRAMES = 8;
+    const now = performance.now();
 
     for (const z of this.bossLavaZones) {
       if (z.t < z.warn) {
-        const k     = z.t / z.warn;
-        const pulse = 0.35 + 0.25 * Math.sin(this.timeAlive * 12);
+        // ── WARNING PHASE: telegraph ring + shrinking inner + molten grid ──
+        const k     = z.t / z.warn;               // 0→1 as strike approaches
+        const pulse = 0.35 + 0.25 * Math.sin(now * 0.012);
         ctx.save();
-        ctx.globalAlpha = 0.16 + 0.18 * k;
-        ctx.fillStyle = ORANGE;
+
+        // Molten ground fill (growing)
+        ctx.globalAlpha = 0.12 + 0.22 * k;
+        const gf = ctx.createRadialGradient(z.pos.x, z.pos.y, 0, z.pos.x, z.pos.y, z.radius);
+        gf.addColorStop(0, '#ff6600'); gf.addColorStop(0.5, '#ff3300'); gf.addColorStop(1, 'rgba(80,10,0,0)');
+        ctx.fillStyle = gf;
         ctx.beginPath(); ctx.arc(z.pos.x, z.pos.y, z.radius, 0, Math.PI * 2); ctx.fill();
-        ctx.globalAlpha = Math.min(1, pulse + 0.3 * k);
-        ctx.strokeStyle = RED; ctx.lineWidth = 3; ctx.setLineDash([10, 8]);
+
+        // Outer dashed ring (danger telegraph)
+        ctx.globalAlpha = Math.min(1, pulse + 0.35 * k);
+        ctx.strokeStyle = '#ff4422'; ctx.lineWidth = 3; ctx.setLineDash([10, 8]);
         ctx.beginPath(); ctx.arc(z.pos.x, z.pos.y, z.radius, 0, Math.PI * 2); ctx.stroke();
         ctx.setLineDash([]);
+
+        // Shrinking inner ring (imminence indicator)
+        ctx.globalAlpha = 0.5 + 0.4 * k;
+        ctx.strokeStyle = '#ffaa33'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(z.pos.x, z.pos.y, z.radius * (1 - k * 0.85), 0, Math.PI * 2); ctx.stroke();
+
+        // Cross-hair lines (tactical read)
+        ctx.globalAlpha = 0.20 + 0.15 * k;
+        ctx.strokeStyle = '#ff6600'; ctx.lineWidth = 1;
+        const cr = z.radius * 0.6;
+        ctx.beginPath();
+        ctx.moveTo(z.pos.x - cr, z.pos.y); ctx.lineTo(z.pos.x + cr, z.pos.y);
+        ctx.moveTo(z.pos.x, z.pos.y - cr); ctx.lineTo(z.pos.x, z.pos.y + cr);
+        ctx.stroke();
         ctx.restore();
       } else {
-        const it   = (z.t - z.warn) / z.impact;            // 0→1 over impact
-        const fade = it > 0.8 ? (1 - it) / 0.2 : 1;        // fade the last 20%
+        // ── IMPACT PHASE: eruption + embers + shock rings ──
+        const it   = (z.t - z.warn) / z.impact;   // 0→1 over impact duration
+        const fade = it > 0.75 ? (1 - it) / 0.25 : 1;
         ctx.save();
         ctx.globalAlpha = Math.max(0, fade);
-        if (ready) {
-          const fi = Math.min(FRAMES - 1, Math.floor(it * FRAMES));
-          const sx = (fi % COLS) * FW, sy = Math.floor(fi / COLS) * FH;
-          const dw = z.radius * 2.6, dh = dw * (FH / FW);
-          ctx.drawImage(spr, sx, sy, FW, FH, z.pos.x - dw / 2, z.pos.y - dh * 0.78, dw, dh);
-        } else {
-          const g = ctx.createRadialGradient(z.pos.x, z.pos.y, 4, z.pos.x, z.pos.y, z.radius);
-          g.addColorStop(0, '#fff2a0'); g.addColorStop(0.4, ORANGE); g.addColorStop(1, 'rgba(120,10,0,0.12)');
-          ctx.fillStyle = g;
-          ctx.beginPath(); ctx.arc(z.pos.x, z.pos.y, z.radius, 0, Math.PI * 2); ctx.fill();
-        }
-        // Molten shock ring — bright expanding ring on impact (premium hit read)
+
+        // Core eruption gradient (bright center → orange → dark edge)
+        const ge = ctx.createRadialGradient(z.pos.x, z.pos.y, 0, z.pos.x, z.pos.y, z.radius * 1.1);
+        ge.addColorStop(0, '#fff8e0');
+        ge.addColorStop(0.15, '#ffcc44');
+        ge.addColorStop(0.4, '#ff6600');
+        ge.addColorStop(0.7, '#cc2200');
+        ge.addColorStop(1, 'rgba(60,5,0,0)');
+        ctx.fillStyle = ge;
+        ctx.beginPath(); ctx.arc(z.pos.x, z.pos.y, z.radius * 1.1, 0, Math.PI * 2); ctx.fill();
+
+        // Falling molten streaks (8 seeded from zone position — deterministic per zone)
         ctx.globalCompositeOperation = 'lighter';
-        ctx.globalAlpha = Math.max(0, 1 - it) * 0.8;
+        const seedBase = (z.pos.x * 7 + z.pos.y * 13) | 0;
+        for (let si = 0; si < 8; si++) {
+          const seed  = ((seedBase + si * 31) & 0xFFFF) / 0xFFFF;
+          const ang   = seed * Math.PI * 2;
+          const dist  = z.radius * (0.2 + seed * 0.7);
+          const sx    = z.pos.x + Math.cos(ang) * dist * it;
+          const sy    = z.pos.y + Math.sin(ang) * dist * it + it * 30;
+          const sLen  = 8 + seed * 12;
+          const sAlph = Math.max(0, (1 - it) * (0.6 + seed * 0.4));
+          ctx.globalAlpha = sAlph * fade;
+          ctx.strokeStyle = si % 3 === 0 ? '#ffdd66' : '#ff6600';
+          ctx.lineWidth = 1.5 + seed;
+          ctx.beginPath();
+          ctx.moveTo(sx, sy);
+          ctx.lineTo(sx - Math.cos(ang) * sLen * 0.3, sy - sLen);
+          ctx.stroke();
+        }
+
+        // Expanding shock ring 1 (fast, bright)
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = Math.max(0, (1 - it) * 0.85) * fade;
         ctx.strokeStyle = '#ffd27f'; ctx.lineWidth = 3;
-        ctx.beginPath(); ctx.arc(z.pos.x, z.pos.y, z.radius * (0.5 + 0.6 * it), 0, Math.PI * 2); ctx.stroke();
+        ctx.beginPath(); ctx.arc(z.pos.x, z.pos.y, z.radius * (0.3 + 0.8 * it), 0, Math.PI * 2); ctx.stroke();
+
+        // Expanding shock ring 2 (slower, thinner)
+        ctx.globalAlpha = Math.max(0, (1 - it * 0.8)) * 0.4 * fade;
+        ctx.strokeStyle = '#ff8844'; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(z.pos.x, z.pos.y, z.radius * (0.15 + 1.1 * it), 0, Math.PI * 2); ctx.stroke();
+
         ctx.restore();
       }
     }
@@ -14270,6 +14362,9 @@ _drawLoreArchive(ctx) {
       phase1Transmitted:  false,
       midTransmitted:     false,
       finalTransmitted:   false,
+      // World-space arena center (player's position at activation) and containment radius
+      center:             this.player.pos.clone(),
+      radius:             680,    // containment field radius in world pixels
     };
 
     // Track for end screen
@@ -14547,6 +14642,72 @@ _drawLoreArchive(ctx) {
   }
 
   // Draw the arena atmospheric overlay (image wash + neon ring + timer bar).
+  // World-space containment field ring — drawn in camera-transformed context so the boundary
+  // is visible as a physical wall in the world. Premium cyber containment: triple-ring with
+  // pulsing glow, scan-line segments, and corner glyphs.
+  _drawArenaContainment(ctx) {
+    const arena = this._nullBreachArena;
+    if (!arena || !arena.center) return;
+    const cx = arena.center.x, cy = arena.center.y, R = arena.radius;
+    const now = performance.now();
+    const pulse = 0.6 + 0.4 * Math.sin(now * 0.004);
+    const elapsed = 120 - arena.timer;
+    const urgency = arena.timer < 30 ? 1.0 : 0.0;
+
+    ctx.save();
+
+    // Outer dark zone — dim everything outside the arena
+    ctx.globalAlpha = 0.18 + urgency * 0.08;
+    ctx.fillStyle = '#08001a';
+    ctx.beginPath();
+    ctx.rect(cx - R - 400, cy - R - 400, (R + 400) * 2, (R + 400) * 2);
+    ctx.arc(cx, cy, R, 0, Math.PI * 2, true);  // cut-out
+    ctx.fill();
+
+    // Ring 1: outer containment (thick, pulsing magenta-cyan)
+    ctx.globalAlpha = 0.55 + 0.25 * pulse;
+    ctx.strokeStyle = `rgba(255,68,204,${(0.6 + 0.3 * pulse).toFixed(2)})`;
+    ctx.lineWidth = 4;
+    ctx.setLineDash([20, 12]);
+    ctx.lineDashOffset = -now * 0.03;
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Ring 2: mid containment (cyan solid)
+    ctx.globalAlpha = 0.40 + 0.20 * pulse;
+    ctx.strokeStyle = '#00e6ff';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(cx, cy, R - 6, 0, Math.PI * 2); ctx.stroke();
+
+    // Ring 3: inner glow (additive, faint)
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = 0.12 + 0.08 * pulse;
+    ctx.strokeStyle = '#ff44cc';
+    ctx.lineWidth = 8;
+    ctx.beginPath(); ctx.arc(cx, cy, R + 2, 0, Math.PI * 2); ctx.stroke();
+    ctx.globalCompositeOperation = 'source-over';
+
+    // Cardinal markers (N/S/E/W glyphs on the ring)
+    ctx.globalAlpha = 0.65 + 0.25 * pulse;
+    ctx.font = 'bold 14px Consolas, monospace';
+    ctx.fillStyle = '#ff44cc';
+    ctx.textAlign = 'center';
+    ctx.fillText('◈', cx, cy - R - 10);
+    ctx.fillText('◈', cx, cy + R + 18);
+    ctx.fillText('◈', cx - R - 14, cy + 5);
+    ctx.fillText('◈', cx + R + 14, cy + 5);
+
+    // Corner scan-lines (4 short radial ticks at 45°)
+    ctx.strokeStyle = '#00e6ff'; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.35;
+    for (let a = Math.PI / 4; a < Math.PI * 2; a += Math.PI / 2) {
+      const ix = cx + Math.cos(a) * (R - 12), iy = cy + Math.sin(a) * (R - 12);
+      const ox = cx + Math.cos(a) * (R + 10), oy = cy + Math.sin(a) * (R + 10);
+      ctx.beginPath(); ctx.moveTo(ix, iy); ctx.lineTo(ox, oy); ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
   _drawNullBreachArena(ctx) {
     const arena = this._nullBreachArena;
     if (!arena) return;
