@@ -439,7 +439,6 @@ export class AudioManager {
     this._tone({ type: "sawtooth", freqStart: 280, freqEnd: 60,  dur: 0.22, gain: 0.16 });
     this._tone({ type: "sine",     freqStart: 900, freqEnd: 220, dur: 0.18, gain: 0.10 });
     this._noiseBurst({ dur: 0.20, gain: 0.09, filterType: "bandpass", freq: 400 });
-  });
     this._noiseBurst({ dur: 0.12, gain: 0.04, filterType: "bandpass", freq: 600 });
   }
 
@@ -449,7 +448,6 @@ export class AudioManager {
     this._tone({ type: "sawtooth", freqStart: 220, freqEnd: 55,  dur: 0.14, gain: 0.18 });
     this._tone({ type: "square",   freqStart: 600, freqEnd: 180, dur: 0.08, gain: 0.12 });
     this._noiseBurst({ dur: 0.07, gain: 0.11, filterType: "highpass", freq: 2000 });
-  });
     this._noiseBurst({ dur: 0.05, gain: 0.05, filterType: "highpass", freq: 1800 });
   }
 
@@ -458,7 +456,6 @@ export class AudioManager {
     if (!this._canPlay("voidFire", 0.08)) return;
     this._tone({ type: "triangle", freqStart: 1200, freqEnd: 400, dur: 0.09, gain: 0.13 });
     this._noiseBurst({ dur: 0.07, gain: 0.06, filterType: "highpass", freq: 3000 });
-  });
   }
 
   // Void Needle — soft impact on hit.
@@ -467,7 +464,6 @@ export class AudioManager {
     this._tone({ type: "sawtooth", freqStart: 320, freqEnd: 90,  dur: 0.09, gain: 0.14 });
     this._tone({ type: "square",   freqStart: 700, freqEnd: 200, dur: 0.05, gain: 0.09 });
     this._noiseBurst({ dur: 0.05, gain: 0.08, filterType: "highpass", freq: 2500 });
-  });
     this._noiseBurst({ dur: 0.04, gain: 0.03, filterType: "highpass", freq: 2200 });
   }
 
@@ -476,7 +472,6 @@ export class AudioManager {
     if (!this._canPlay("sentryFire", 0.12)) return;
     this._tone({ type: "triangle", freqStart: 1400, freqEnd: 500, dur: 0.09, gain: 0.12 });
     this._tone({ type: "sawtooth", freqStart: 600,  freqEnd: 200, dur: 0.06, gain: 0.07 });
-  });
   }
 
   // Sentry Drone — small impact on hit.
@@ -484,7 +479,6 @@ export class AudioManager {
     if (!this._canPlay("sentryHit", 0.10)) return;
     this._tone({ type: "sine",     freqStart: 420, freqEnd: 120, dur: 0.08, gain: 0.12 });
     this._noiseBurst({ dur: 0.05, gain: 0.08, filterType: "highpass", freq: 2400 });
-  });
     this._tone({ type: "sine", freqStart: 500, freqEnd: 200, dur: 0.04, gain: 0.04 });
   }
 
@@ -494,7 +488,6 @@ export class AudioManager {
     this._tone({ type: "sine",     freqStart: 160, freqEnd: 280, dur: 0.14, gain: 0.14 });
     this._tone({ type: "sawtooth", freqStart: 320, freqEnd: 160, dur: 0.08, gain: 0.09 });
     this._noiseBurst({ dur: 0.06, gain: 0.06, filterType: "bandpass", freq: 1200 });
-  });
     this._noiseBurst({ dur: 0.06, gain: 0.025, filterType: "bandpass", freq: 900 });
   }
 
@@ -504,7 +497,6 @@ export class AudioManager {
     this._tone({ type: "sawtooth", freqStart: 55,  freqEnd: 380, dur: 0.22, gain: 0.20 });
     this._tone({ type: "triangle", freqStart: 900, freqEnd: 300, dur: 0.14, gain: 0.12 });
     this._noiseBurst({ dur: 0.18, gain: 0.14, filterType: "lowpass", freq: 600 });
-  });
     this._noiseBurst({ dur: 0.14, gain: 0.07, filterType: "lowpass", freq: 400 });
   }
 
@@ -514,7 +506,6 @@ export class AudioManager {
     this._tone({ type: "sine",     freqStart: 100, freqEnd: 25,  dur: 0.30, gain: 0.20 });
     this._tone({ type: "sawtooth", freqStart: 280, freqEnd: 80,  dur: 0.12, gain: 0.12 });
     this._noiseBurst({ dur: 0.15, gain: 0.12, filterType: "bandpass", freq: 400 });
-  });
     this._noiseBurst({ dur: 0.12, gain: 0.06, filterType: "bandpass", freq: 300 });
   }
 
