@@ -1,8 +1,7 @@
 import {
   Vec2, WIDTH, HEIGHT, WORLD_W, WORLD_H, WORLD_MARGIN, WORLD_BOUNDS,
-  WIN_TIME_SECONDS, ACT1_WIN_SECONDS, CORE_OVERLOAD_TICK_TIME, BASE_OVERLOAD_PER_CORE,
-  OVERLOAD_PICKUP_REDUCTION, OVERLOAD_SLOT_REDUCTION,
-  MAX_OVERLOAD, PLAYER_RADIUS, CORE_RADIUS, MATRIX_RADIUS,
+  WIN_TIME_SECONDS, ACT1_WIN_SECONDS,
+  PLAYER_RADIUS, CORE_RADIUS, MATRIX_RADIUS,
   DARK_BG, GRID_LINE, BLACK, CYAN, RED, GREEN, YELLOW, ORANGE, WHITE, PURPLE,
   CORE_COLORS, VIEW_SCALE, VIEW_W, VIEW_H, ENDLESS_VIEW_SCALE,
 } from '../constants.js';
@@ -38,8 +37,8 @@ import { MapManager, BIOME_ID, BIOME_DEFS } from './MapManager.js?v=202607033000
 import { EventBus, EVENTS } from './EventBus.js?v=20260702700000';
 import { EnemySpawner, ELITE_WAVE as ELITE_WAVE_CFG, BOSS_WARN_COOLDOWN as BOSS_WARN_CD } from './EnemySpawner.js?v=20260703400000';
 import { StateManager, GAME_STATES } from './StateManager.js?v=20260702900000';
-import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260703800000';
-import { NexusManager } from './NexusManager.js?v=20260703800000';
+import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260703900000';
+import { NexusManager } from './NexusManager.js?v=20260703900000';
 
 // Euclid Vector toxin kit — used ONLY when selectedCharacter === 'euclid_vector' (world-space).
 import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=20260629440000';
@@ -232,20 +231,10 @@ const ICE_FIELD_BOSS_BURST_PCT = 0.22; // fraction of boss maxHp dealt on first 
 const EUCLID_DASH_SPEED    = 2200;   // px/s  (default 1500)
 const EUCLID_DASH_DURATION = 0.44;   // s     (default 0.35)
 
-// ── Overload (Network Stability) — Act 1 + Endless only; Chaos Mode skips entirely ──────────
-// Primary pressure is GAMEPLAY-DRIVEN: each stolen core dumped to ground = +DUMP_HIT% instantly.
-// Passive chaosGain scales with ongoing grid state (carried/ground/empty). Drain is slow so
-// gained overload doesn't immediately vanish when the player recovers. Floor is very gentle
-// (1.5%/min, max 20%) — exists only to ensure the bar never feels completely dead on a secure grid.
-const OVERLOAD_DRAIN_RATE      = 0.12;   // %/s drain when grid FULLY secured (was 1.0 — wiped gains instantly)
-const OVERLOAD_CARRY_RATE      = 0.060;  // %/s per enemy carrying a stolen core
-const OVERLOAD_GROUND_RATE     = 0.025;  // %/s per stolen core lying on the ground
-const OVERLOAD_SLOT_RATE       = 0.018;  // %/s per empty Nexus slot
-const OVERLOAD_CHAOS_GAIN_CAP  = 0.30;   // max passive chaosGain/s (pre-diffMult)
-const OVERLOAD_DUMP_HIT        = 2.0;    // +% overload each time an enemy dumps a stolen core to the ground
-const OVERLOAD_ACT1_FLOOR_RATE = 1.5;    // %/min gentle passive floor in Act 1 (was 5.0 %/min — too fast)
-const OVERLOAD_ACT1_FLOOR_MAX  = 20;     // % — max overload from passive floor alone
-const OVERLOAD_CAP             = 99;     // hard cap — overload never reaches 100, player can never lose from overload
+// ── Nexus Recharge Meter (replaces old Overload danger system) ───────────────
+// Every enemy kill = +1 point. At 100 points, +1 stored charge to closest
+// depleted/non-full Nexus. Positive utility loop, no danger/punishment.
+const NEXUS_RECHARGE_THRESHOLD = 100;    // kills needed to add +1 Nexus charge
 
 // ── Boss-combat fairness (Boss Threat audit, Steps 1–2) ────────────────────────
 // Per-hit ceiling so no single boss/enemy blow can one-shot (≈⅓ of Taekwondo's 90 HP),
@@ -5521,7 +5510,7 @@ export class Game {
         if (r.type === 'xp')       { this.player.gainXp(8 + Math.floor(this.timeAlive / 30), this.floatingTexts); }
         else if (r.type === 'credits')  { this._awardCredits(2 + Math.floor(Math.random() * 3)); }
         else if (r.type === 'heal')     { this.player.hp = Math.min(this.player.maxHp, this.player.hp + 5); }
-        else if (r.type === 'overload') { this.overload = Math.max(0, this.overload - 3); }
+        else if (r.type === 'mana')     { this.player.mana = Math.min(this.player.maxMana, this.player.mana + 8); }
         this.floatingTexts.push(new FloatingText(r.label, this.player.pos.clone(), r.color, 0.8));
       }
     }
@@ -5529,10 +5518,8 @@ export class Game {
     // Tick down phoenix animation
     if (this.phoenixReviveTimer > 0) this.phoenixReviveTimer -= dt;
 
-    if (this.overload >= MAX_OVERLOAD) {
-      // Overload is hard-capped at OVERLOAD_CAP (99) — never triggers game over.
-      this.overload = OVERLOAD_CAP;
-    }
+    // Nexus recharge meter: clamped at threshold (100), never triggers game over
+    this.overload = clamp(this.overload, 0, NEXUS_RECHARGE_THRESHOLD);
     if (this.player.hp <= 0 && this.phoenixReviveTimer <= 0 && !this.gameOver && !this.victory) {
       // Null Breach Arena rescue (EDEN CORE extraction) — fires once per run, before Phoenix.
       if (this._nullBreachActive && !this._arenaRescueUsed) {
@@ -5559,9 +5546,8 @@ export class Game {
     if (this.gridCache) {
       // Check player pickup
       if (distance(this.player.pos, this.gridCache.pos) < PLAYER_RADIUS + CRATE_R) {
-        // Base reward (always): a little XP + overload relief + score
+        // Base reward (always): a little XP + score
         this.player.gainXp(10, this.floatingTexts);
-        this.overload = Math.max(0, this.overload - 5);
         this.score += 50;
         this.floatingTexts.push(new FloatingText('GRID CACHE COLLECTED', this.player.pos.clone(), CYAN, 1.2));
         this.particles.spawnCorePickup(this.gridCache.pos, CYAN);
@@ -7964,66 +7950,27 @@ export class Game {
   }
 
   _updateOverload(dt) {
-    // Chaos Mode has no Nexus — the overload system is Nexus-based, so skip it entirely.
+    // Nexus Recharge Meter: overload is now a positive kill-based counter (0–100).
+    // Every enemy kill adds +1 (via addNexusChargePoint). At 100, convert to +1 Nexus charge.
+    // No danger, no punishment, no enemy scaling.
     if (this._chaosMode) return;
 
-    const groundCount  = this.groundCores.length;
-    const carriedCount = this.enemies.filter(e => e.carryingCore !== null).length;
-    const emptySlots   = this.matrices.reduce((sum, m) => sum + (m.capacity - m.stored), 0);
-
-    // ── Event-based dump hit: each newly dumped core gives an immediate overload spike ──
-    // Detected by comparing groundCores.length to last frame. This is the primary gameplay
-    // signal — the bar jumps visibly when enemies win (dump cores), giving clear feedback.
-    const newDumps = Math.max(0, groundCount - this._prevGroundCoreCount);
-    if (newDumps > 0) {
-      this.overload = Math.min(OVERLOAD_CAP, this.overload + newDumps * OVERLOAD_DUMP_HIT);
+    while (this.overload >= NEXUS_RECHARGE_THRESHOLD) {
+      this.overload -= NEXUS_RECHARGE_THRESHOLD;
+      // Add +1 stored charge to closest depleted/non-full Nexus
+      const recharged = this.nexusManager.rechargeNexus(this.player.pos);
+      if (recharged) {
+        this.floatingTexts.push(new FloatingText('+1 NEXUS CHARGE', recharged.pos.clone(), '#7fe0ff', 1.5));
+        this.particles.spawnCoreSlot?.(recharged.pos, '#7fe0ff');
+      }
+      // If all Nexus full, excess points are harmlessly lost (overload stays at remainder)
     }
-    this._prevGroundCoreCount = groundCount;
+  }
 
-    // ── Passive chaosGain — scales with ongoing grid pressure ──────────────────────────
-    // groundCores already on the ground + enemies still carrying + empty Nexus slots.
-    let chaosGain = Math.min(OVERLOAD_CHAOS_GAIN_CAP,
-      groundCount * OVERLOAD_GROUND_RATE +
-      carriedCount * OVERLOAD_CARRY_RATE +
-      emptySlots   * OVERLOAD_SLOT_RATE);
-
-    // Endless: gentle live-threat pressure so ignoring objectives becomes a real threat by
-    // ~20–30 min. Scales with enemies on screen + active boss (capped; never instantly lethal).
-    if (this.endless) {
-      const bossAlive = (this.megaBoss && this.megaBoss.hp > 0) || this.titanBoss || this.annihilatorBoss || this.bloodfangBoss;
-      chaosGain += Math.min(0.06, this.enemies.length * 0.0006) + (bossAlive ? 0.03 : 0);
-    }
-
-    // Grid Stabilizer Protocol (grid_legend) + Grid Stabilizer card: Endless only.
-    if (this.endless) {
-      const red = Math.min(0.65, (this.meta.hasAchievement('grid_legend') ? 0.5 : 0)
-                                  + 0.05 * this._cardLvl('achievement_grid_stabilizer'));
-      chaosGain *= (1 - red);
-    }
-
-    if (chaosGain === 0) {
-      // Grid fully secure — drain slowly. OVERLOAD_DRAIN_RATE is 0.12/s (was 1.0/s — that
-      // was wiping gains within seconds and making the bar feel stuck at 0).
-      this.overload = Math.max(0, this.overload - OVERLOAD_DRAIN_RATE * dt);
-    } else {
-      // Scale with time: ramps faster mid/late so sustained grid neglect bites after 10 min.
-      const minutes  = this.timeAlive / 60;
-      const diffMult = Math.min(2.6, 1.0 + minutes * 0.05) * (1 - this.player.overloadDampening);
-      this.overload  = clamp(this.overload + chaosGain * diffMult * dt, 0, OVERLOAD_CAP);
-    }
-
-    // ── Gentle Act 1 passive floor — very light background tension on a fully secure grid ──
-    // OVERLOAD_ACT1_FLOOR_RATE = 1.5 %/min (was 5 %/min), max OVERLOAD_ACT1_FLOOR_MAX = 20%.
-    // Primary pressure is gameplay-driven (dump hits + passive chaosGain). The floor just
-    // prevents the bar from feeling completely dead even when the player plays perfectly.
-    // Not applied in Endless (Endless has its own chaosGain pressure from enemy count + boss).
-    if (!this.endless && chaosGain === 0) {
-      const mins     = this.timeAlive / 60;
-      const floorPct = Math.min(OVERLOAD_ACT1_FLOOR_MAX, mins * OVERLOAD_ACT1_FLOOR_RATE);
-      this.overload  = Math.min(OVERLOAD_CAP, Math.max(this.overload, floorPct));
-    }
-
-    if (this.audio) this.audio.updateAlarm(this.overload);
+  /** Called by Enemy._die() — every kill adds exactly +1 nexus charge point. */
+  addNexusChargePoint() {
+    if (this._chaosMode) return;
+    this.overload = Math.min(NEXUS_RECHARGE_THRESHOLD, this.overload + 1);
   }
 
   // World cores are tied to Matrix state — never unlimited. The number of recoverable
@@ -8757,7 +8704,6 @@ export class Game {
       this.groundCores.splice(idx, 1);
       bestMatrix.slotCore(bestCore.value ?? 3);   // honor Gold (+5) / Silver (+3)
       this.player.coresSecured++;
-      this.overload = Math.max(0, this.overload - OVERLOAD_SLOT_REDUCTION);
       this.floatingTexts.push(new FloatingText('QUANTUM BEAM!', bestCore.pos.clone(), ORANGE, 1.2));
       this.particles.spawnCoreSlot(bestMatrix.pos, bestMatrix.color);
     }
@@ -8770,20 +8716,18 @@ export class Game {
     this.phoenixReviveTimer = 3.0;
 
     if (this.phoenixReviveCount === 1) {
-      // ── Orange — 33.3 % HP, −25 % overload ────────────────────────────────
+      // ── Orange — 33.3 % HP ────────────────────────────────────────────────
       this.phoenixReviveType = 'orange';
       this.player.hp = Math.ceil(this.player.maxHp * 0.333);
-      this.overload  = Math.max(0, this.overload * 0.75);
       this.floatingTexts.push(
         new FloatingText('✦ PHOENIX REVIVE ✦', this.player.pos.clone(), ORANGE, 2.5)
       );
       this.screenShake.trigger(8, 0.5);
 
     } else if (this.phoenixReviveCount === 2) {
-      // ── Blue — 55.5 % HP, −50 % overload ─────────────────────────────────
+      // ── Blue — 55.5 % HP ─────────────────────────────────────────────────
       this.phoenixReviveType = 'blue';
       this.player.hp = Math.ceil(this.player.maxHp * 0.555);
-      this.overload  = Math.max(0, this.overload * 0.5);
       this.triggerAnnouncement('✦ BLUE PHOENIX REVIVE ✦', CYAN);
       this.floatingTexts.push(
         new FloatingText('BLUE PHOENIX REVIVE', this.player.pos.clone(), CYAN, 3.0)
@@ -8791,10 +8735,9 @@ export class Game {
       this.screenShake.trigger(12, 0.7);
 
     } else if (this.phoenixReviveCount === 3) {
-      // ── Gold — 125 % HP (overheal), −75 % overload ───────────────────────
+      // ── Gold — 125 % HP (overheal) ────────────────────────────────────────
       this.phoenixReviveType = 'gold';
       this.player.hp = Math.round(this.player.maxHp * 1.25);   // overheal: gold segment on HP bar
-      this.overload  = Math.max(0, this.overload * 0.25);
       this.triggerAnnouncement('✦ GOLD PHOENIX REVIVE ✦', YELLOW);
       this.floatingTexts.push(
         new FloatingText('GOLD PHOENIX REVIVE', this.player.pos.clone(), YELLOW, 3.0)
@@ -8803,13 +8746,11 @@ export class Game {
 
     } else {
       // ── Phoenix Revival Protocol (4th, PF-unlocked) — massive recovery ─────
-      // HP 200 % overheal (same overheal mechanic as gold), Mana to FULL (no overcap in this engine),
-      // and ~50 % grid-pressure relief (overload halved — the survival resource). Strong but rare:
-      // requires the 5 🧩 unlock and is the LAST revive, so it can't make the player immortal.
+      // HP 200 % overheal, Mana to FULL. Strong but rare: requires the 5 🧩 unlock
+      // and is the LAST revive, so it can't make the player immortal.
       this.phoenixReviveType = 'gold';
       this.player.hp   = Math.round(this.player.maxHp * 2.0);
       this.player.mana = this.player.maxMana;
-      this.overload    = Math.max(0, this.overload * 0.5);
       this.triggerAnnouncement('✦ PHOENIX PROTOCOL REVIVE ✦', '#ff9b3c');
       this.floatingTexts.push(
         new FloatingText('PHOENIX PROTOCOL REVIVE', this.player.pos.clone(), '#ff9b3c', 3.2)
@@ -8917,7 +8858,7 @@ export class Game {
     // 2 ── Power Matrices (fill-based glow + counter owned by PowerMatrix; overload drives danger blink)
     for (const m of this.matrices) {
       if (this.endless) this._drawEndlessNexusBase(ctx, m);   // sprite UNDER the matrix (Endless only)
-      m.draw(ctx, this.overload / OVERLOAD_CAP);              // core indicators/status stay on top
+      m.draw(ctx, 0);              // no danger blink — overload is now a positive recharge meter
     }
     // 2b ── Nexus reward orbs (homing XP/credit/heal pulses from charged Nexus)
     this.nexusManager.drawRewardOrbs(ctx);
@@ -13862,8 +13803,6 @@ _drawLoreArchive(ctx) {
       if (!b.hit && distance(b.pos, this.player.pos) < b.radius + PLAYER_RADIUS) {
         if (this._damagePlayer(15, { color: PURPLE, shake: 4 })) {   // false while dashing → beam passes through
           b.hit = true;
-          this.overload = clamp(this.overload + 3, 0, OVERLOAD_CAP);  // relay the pre-existing overload spike only on a real hit
-          this.floatingTexts.push(new FloatingText('+3% OVERLOAD', new Vec2(this.player.pos.x, this.player.pos.y - 24), RED, 0.8));
         }
       }
       if (b.hit || b.life <= 0) this._titanBeams.splice(i, 1);
@@ -14863,7 +14802,6 @@ _drawLoreArchive(ctx) {
     this.score = (this.score ?? 0) + Math.round(300 * this._getActiveChaosLawModifiers().scoreMult);
     this.player.gainXp(25, this.floatingTexts);
     const titanCredits = this._awardCredits(12 + Math.floor(Math.random() * 9));   // 12..20 (×Grid Investor)
-    this.overload = Math.max(0, this.overload - 10);
     this.floatingTexts.push(new FloatingText('TITAN DEFEATED',     t.pos.clone(),                            YELLOW, 2.5));
     this.floatingTexts.push(new FloatingText('+' + titanCredits + ' GRID CREDITS',   new Vec2(t.pos.x, t.pos.y - 30),         GREEN,  2.5));
     this.floatingTexts.push(new FloatingText('NETWORK STABILIZED', new Vec2(t.pos.x, t.pos.y - 60),         CYAN,   2.5));
@@ -15114,7 +15052,6 @@ _drawLoreArchive(ctx) {
     this.score = (this.score ?? 0) + Math.round(300 * this._getActiveChaosLawModifiers().scoreMult);
     this.player.gainXp(25, this.floatingTexts);
     const annihilatorCredits = this._awardCredits(12 + Math.floor(Math.random() * 9));   // 12..20 (×Grid Investor)
-    this.overload = Math.max(0, this.overload - 10);
     this.floatingTexts.push(new FloatingText('MATRIX ANNIHILATOR DESTROYED', a.pos.clone(),                    YELLOW, 2.5));
     this.floatingTexts.push(new FloatingText('+' + annihilatorCredits + ' GRID CREDITS',            new Vec2(a.pos.x, a.pos.y - 30),  GREEN,  2.5));
     this.triggerAnnouncement('MATRIX ANNIHILATOR DESTROYED', GREEN);
@@ -15149,11 +15086,10 @@ _drawLoreArchive(ctx) {
     const target = this.matrices[Math.floor(Math.random() * this.matrices.length)];
     const idx = this.matrices.indexOf(target);
     if (idx !== -1) this.matrices.splice(idx, 1);
-    this.overload = Math.min(100, this.overload + 30);
     this.particles.spawnExplosion(target.pos, [RED, ORANGE, YELLOW], 36);
     this.screenShake.trigger(16, 1.2);
     this.audio?.playMatrixCritical?.();
-    this.triggerAnnouncement('NEXUS ERASED — NETWORK OVERLOAD +30', RED);
+    this.triggerAnnouncement('NEXUS ERASED', RED);
     this.floatingTexts.push(new FloatingText('NEXUS ERASED', target.pos.clone(), RED, 3));
   }
 
@@ -15358,7 +15294,6 @@ _drawLoreArchive(ctx) {
     this.score = (this.score ?? 0) + Math.round(500 * this._getActiveChaosLawModifiers().scoreMult);
     this.player.gainXp(45, this.floatingTexts);
     const bloodfangCredits = this._awardCredits(25 + Math.floor(Math.random() * 16));   // 25..40 (×Grid Investor)
-    this.overload = Math.max(0, this.overload - 10);
     this.floatingTexts.push(new FloatingText('BLOODFANG PACKMASTER DEFEATED', a.pos.clone(),                   YELLOW, 2.5));
     this.floatingTexts.push(new FloatingText('RAZORHOUND PACK BROKEN',         new Vec2(a.pos.x, a.pos.y - 28), ORANGE, 2.5));
     this.floatingTexts.push(new FloatingText('+' + bloodfangCredits + ' GRID CREDITS',               new Vec2(a.pos.x, a.pos.y - 56), GREEN,  2.5));
@@ -16581,7 +16516,6 @@ _drawLoreArchive(ctx) {
     this.score = (this.score ?? 0) + 600;
     this.player.gainXp(55, this.floatingTexts);
     const ddCredits = this._awardCredits(30 + Math.floor(Math.random() * 21));  // 30-50
-    this.overload = Math.max(0, this.overload - 12);
 
     // Extra cores: 3 gold + 2 silver scatter from both bodies
     const drops = [

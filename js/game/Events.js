@@ -127,7 +127,7 @@ export class SystemEventManager {
   }
 
   _firewallPurge(game) {
-    game.overload = Math.max(0, game.overload - 25);
+    // Old overload reduction removed — overload is now a positive kill-based recharge meter
     for (const e of game.enemies) e.stunned = 1.0;
     game.floatingTexts.push(
       new FloatingText('FIREWALL PURGE — SYSTEM CLEANSED!', new Vec2(WIDTH / 2 - 220, HEIGHT / 2), GREEN, 3)

@@ -1,5 +1,5 @@
 import {
-  WIDTH, HEIGHT, MAX_OVERLOAD, VIEW_SCALE,
+  WIDTH, HEIGHT, VIEW_SCALE,
   CYAN, ORANGE, RED, GREEN, WHITE, GREY, YELLOW, BLACK,
 } from '../constants.js';
 import { drawText, drawBar, clamp } from '../utils.js';
@@ -69,16 +69,18 @@ export function drawHUD(ctx, game) {
     ctx.textAlign = 'left';
   }
 
-  // ── Top-left: compact Network Overload (kept — drives the blackout mechanic) ──
-  let oc = CYAN;
-  if (game.overload > 60) oc = ORANGE;
-  if (game.overload > 82) oc = RED;
+  // ── Top-left: Nexus Charge meter (kill-based recharge for Nexus stations) ──
+  const ncMax = 100;  // NEXUS_RECHARGE_THRESHOLD
+  const ncVal = Math.min(game.overload, ncMax);
+  const ncPct = ncVal / ncMax;
+  let nc = '#7fe0ff';                          // calm cyan
+  if (ncPct > 0.6) nc = '#50ffb0';             // green — almost there
+  if (ncPct > 0.9) nc = '#ffd23c';             // gold — about to recharge
   ctx.textAlign = 'left';
-  drawText(ctx, 'OVERLOAD', 12, 22, '#7fa8c8', '11px Consolas, monospace');
-  drawBar(ctx, 12, 28, 150, 8, game.overload, MAX_OVERLOAD, oc);
-  drawText(ctx, `${game.overload.toFixed(0)}%`, 168, 37, oc, '11px Consolas, monospace');
-  // Plain-language reminder of what the meter means (display-only).
-  drawText(ctx, 'GRID COLLAPSE RISK', 12, 47, 'rgba(150,180,200,0.5)', '9px Consolas, monospace');
+  drawText(ctx, 'NEXUS CHARGE', 12, 22, '#7fa8c8', '11px Consolas, monospace');
+  drawBar(ctx, 12, 28, 150, 8, ncVal, ncMax, nc);
+  drawText(ctx, `${Math.floor(ncVal)}/${ncMax}`, 168, 37, nc, '11px Consolas, monospace');
+  drawText(ctx, 'KILLS RECHARGE NEXUS', 12, 47, 'rgba(150,180,200,0.5)', '9px Consolas, monospace');
 
   // ── Top-right: Data-Core icon + live Grid Credits ───────────────────────
   const credits = (game.meta?.credits ?? 0).toLocaleString();
@@ -95,7 +97,7 @@ export function drawHUD(ctx, game) {
     drawText(ctx, `🧩 ${pf}`, WIDTH - 14, 74, 'rgba(125,249,255,0.92)', 'bold 14px "Segoe UI Emoji", Consolas, monospace');
   }
 
-  // Grid Blackout warning (overload mechanic — kept)
+  // Grid Blackout warning (event-based, not overload-triggered)
   if (game.gridBlackoutActive && (Math.floor(Date.now() / 400) % 2 === 0)) {
     ctx.textAlign = 'center';
     drawText(ctx, '!! GRID BLACKOUT ACTIVE !!', WIDTH / 2, 96, RED, '16px Consolas, monospace');
@@ -193,8 +195,8 @@ export function drawHUD(ctx, game) {
   drawText(ctx, `MP ${Math.ceil(p.mana)} / ${Math.round(p.maxMana)}`, WIDTH / 2 + 80, HEIGHT - 14, '#7fe0ff', 'bold 14px Consolas, monospace');
   ctx.textAlign = 'left';
 
-  // First-run loop hint — teaches the core → matrix → overload loop without opening
-  // Instructions. Auto-dismisses (fades out over its last 1.5s); upper third, never covers
+  // First-run hint — teaches the kill → Nexus recharge loop.
+  // Auto-dismisses (fades out over its last 1.5s); upper third, never covers
   // the player at screen-centre. Skipped in Endless. Display-only (reads game.timeAlive).
   if (game.timeAlive < 6.5 && !game.endless && !game.gameOver && !game.victory) {
     const a = clamp((6.5 - game.timeAlive) / 1.5, 0, 1);
@@ -202,7 +204,7 @@ export function drawHUD(ctx, game) {
     ctx.globalAlpha = a;
     ctx.textAlign = 'center';
     drawText(ctx, 'PROTECT THE GRID', WIDTH / 2, 146, CYAN, 'bold 15px Consolas, monospace');
-    drawText(ctx, 'Collect cores  →  return them to a Matrix  →  keep Overload under 100%',
+    drawText(ctx, 'Destroy enemies to recharge Nexus stations and earn rewards',
              WIDTH / 2, 168, '#cfe6f5', '12px Consolas, monospace');
     ctx.restore();
     ctx.globalAlpha = 1;
@@ -253,7 +255,7 @@ function _drawMatrixWarning(ctx, game) {
   const now   = performance.now();
   const pulse = 0.6 + 0.4 * (0.5 + 0.5 * Math.sin(now * 0.006));   // gentle, not a hard blink
 
-  // ── On-screen banner (top-center, below the timer/overload row) ──
+  // ── On-screen banner (top-center, below the timer/nexus-charge row) ──
   ctx.save();
   ctx.globalAlpha = pulse;
   ctx.shadowColor = RED; ctx.shadowBlur = 8;
@@ -537,8 +539,8 @@ export function drawEndScreen(ctx, game) {
     // "why you lost" line + a matching tip. Does not affect any game logic.
     let cause = '', hint = '';
     if (game.finalMessage === 'CITY GRID TOTAL BLACKOUT') {
-      cause = 'CAUSE: OVERLOAD REACHED 100%';
-      hint  = 'DEFEND THE NEXUS · DESTROY ENEMIES TO REDUCE OVERLOAD';
+      cause = 'CAUSE: ALL NEXUS DEPLETED';
+      hint  = 'DESTROY ENEMIES TO RECHARGE NEXUS STATIONS';
     } else if (game.finalMessage === 'CYBER-HERO OFFLINE') {
       cause = 'CAUSE: HERO DEFEATED';
       hint  = 'UPGRADE HP · USE PHENIX REVIVES WISELY';

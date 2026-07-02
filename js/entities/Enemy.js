@@ -323,6 +323,7 @@ export class Enemy {
     // spawnElementDeath is capped by the shared particle pool — no extra overhead.
     game.particles.spawnElementDeath?.(this.pos, this._lastHitColor || this.color);
     game.player.kills++;
+    game.addNexusChargePoint?.();   // +1 nexus recharge point per kill (no multipliers)
     game.addKillScore?.(this.pos, this.isElite);
 
     // Elite reward (Endless): sparse but visible. 18% health, 32% mana, 50% nothing — restores

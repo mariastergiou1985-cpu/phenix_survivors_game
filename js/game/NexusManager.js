@@ -2,15 +2,15 @@
 // Manages all Nexus (PowerMatrix) stations across biomes for PHENIX: NULL EDEN 2.0.
 // Owns:
 //   • Nexus creation per biome (4 per biome in Endless, 4 total in Act 1)
-//   • Per-biome health tracking (overload zones)
-//   • Reward pulse system (XP, credits, heal, overload relief every 30s)
-//   • Enemy → nearest Nexus targeting
-//   • Biome buff/debuff based on Nexus health
+//   • Per-biome health tracking (charge levels)
+//   • Reward pulse system (XP, credits, heal, mana every 18s — spends 1 charge)
+//   • Kill-based recharge: 100 enemy kills = +1 stored charge to depleted/non-full Nexus
+//   • Biome-aware Nexus colors + visual states (full/partial/depleted)
 // ────────────────────────────────────────────────────────────────────────────
 
 import { Vec2, CORE_COLORS } from '../constants.js';
-import { PowerMatrix } from '../entities/PowerMatrix.js?v=20260703500000';
-import { BIOME_ID, CHUNK_SIZE } from './MapManager.js?v=20260703500000';
+import { PowerMatrix } from '../entities/PowerMatrix.js?v=20260703900000';
+import { BIOME_ID, CHUNK_SIZE } from './MapManager.js?v=20260703900000';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 const NEXUS_PER_BIOME    = 4;
@@ -23,13 +23,25 @@ const REWARD_TYPES = [
   { type: 'xp',       weight: 35, color: '#a0d8ef', label: '+XP' },
   { type: 'credits',  weight: 25, color: '#7CFF8A', label: '+CREDITS' },
   { type: 'heal',     weight: 20, color: '#ff7eb3', label: '+HEAL' },
-  { type: 'overload', weight: 20, color: '#ffd23c', label: '-OVERLOAD' },
+  { type: 'mana',     weight: 20, color: '#7fe0ff', label: '+MANA' },
 ];
 const TOTAL_REWARD_WEIGHT = REWARD_TYPES.reduce((s, r) => s + r.weight, 0);
 
-// Per-biome overload thresholds
+// Per-biome charge thresholds
 const BIOME_DEPLETED_THRESHOLD = 0.25; // below 25% → biome is "depleted" (harder enemies)
 const BIOME_CHARGED_THRESHOLD  = 0.75; // above 75% → biome is "charged" (player buff)
+
+// ─── Biome-specific Nexus Colors ──────────────────────────────────────────
+// Each biome has a primary glow and a depleted (powered-down) tone.
+// Full Nexus uses the primary; partial blends toward depleted; empty uses depleted.
+const BIOME_NEXUS_COLORS = {
+  [BIOME_ID.NEON_DISTRICT]:   { full: '#00e6ff', mid: '#ff00b4', depleted: '#1a2a5a' },  // cyan/magenta
+  [BIOME_ID.INDUSTRIAL_CORE]: { full: '#ff6a00', mid: '#ffb830', depleted: '#3a1a08' },  // orange/ember
+  [BIOME_ID.ORBITAL_NEXUS]:   { full: '#8060ff', mid: '#3a8aff', depleted: '#0a1a40' },  // violet/blue
+  [BIOME_ID.ABYSSAL_TRENCH]:  { full: '#4040cc', mid: '#00d4c8', depleted: '#0a2038' },  // deep blue/aqua
+  [BIOME_ID.GLACIAL_EXPANSE]: { full: '#70c8ff', mid: '#c0e8ff', depleted: '#1a2a3a' },  // ice blue/white
+  [BIOME_ID.DATA_WASTES]:     { full: '#30c8a0', mid: '#80ffcc', depleted: '#1a2a20' },  // teal/green
+};
 
 // ─── Biome Layout for Endless ──────────────────────────────────────────────
 // Neon District stays at center. Each outer biome gets 4 Nexus placed in a
@@ -122,10 +134,12 @@ export class NexusManager {
       [worldW - 280,  worldH - 200],
     ];
     const neonArr = this.biomeNexus.get(BIOME_ID.NEON_DISTRICT);
+    const neonColors = BIOME_NEXUS_COLORS[BIOME_ID.NEON_DISTRICT];
     for (let i = 0; i < positions.length; i++) {
       const [x, y] = positions[i];
-      const m = new PowerMatrix(new Vec2(x, y), CORE_COLORS[i % CORE_COLORS.length], NEXUS_CAPACITY);
+      const m = new PowerMatrix(new Vec2(x, y), neonColors.full, NEXUS_CAPACITY);
       m.biomeId = BIOME_ID.NEON_DISTRICT;
+      m.biomeColors = neonColors;
       this.matrices.push(m);
       neonArr.push(m);
     }
@@ -144,10 +158,12 @@ export class NexusManager {
       [CHUNK_SIZE * 0.65,  CHUNK_SIZE * 0.65],
     ];
     const neonArr = this.biomeNexus.get(BIOME_ID.NEON_DISTRICT);
+    const neonColors = BIOME_NEXUS_COLORS[BIOME_ID.NEON_DISTRICT];
     for (let i = 0; i < neonPositions.length; i++) {
       const [x, y] = neonPositions[i];
-      const m = new PowerMatrix(new Vec2(x, y), CORE_COLORS[i % CORE_COLORS.length], NEXUS_CAPACITY);
+      const m = new PowerMatrix(new Vec2(x, y), neonColors.full, NEXUS_CAPACITY);
       m.biomeId = BIOME_ID.NEON_DISTRICT;
+      m.biomeColors = neonColors;
       this.matrices.push(m);
       neonArr.push(m);
     }
@@ -171,9 +187,10 @@ export class NexusManager {
         const x = Math.round(r * Math.cos(angle));
         const y = Math.round(r * Math.sin(angle));
 
-        const colorIdx = s * NEXUS_PER_BIOME + n;
-        const m = new PowerMatrix(new Vec2(x, y), CORE_COLORS[colorIdx % CORE_COLORS.length], NEXUS_CAPACITY);
+        const bColors = BIOME_NEXUS_COLORS[biomeId] || BIOME_NEXUS_COLORS[BIOME_ID.NEON_DISTRICT];
+        const m = new PowerMatrix(new Vec2(x, y), bColors.full, NEXUS_CAPACITY);
         m.biomeId = biomeId;
+        m.biomeColors = bColors;
         this.matrices.push(m);
         biomeArr.push(m);
       }
@@ -201,7 +218,7 @@ export class NexusManager {
 
     // Spawn outer-biome Nexus
     this.endless = true;
-    const ringDist = CHUNK_SIZE * 3.5;
+    const ringDist = CHUNK_SIZE * 2.0; // compact biomes (matches _createEndlessNexus)
     const sectorCount = BIOME_RING_ORDER.length;
 
     for (let s = 0; s < sectorCount; s++) {
@@ -218,9 +235,10 @@ export class NexusManager {
         const x = Math.round(r * Math.cos(angle));
         const y = Math.round(r * Math.sin(angle));
 
-        const colorIdx = s * NEXUS_PER_BIOME + n;
-        const m = new PowerMatrix(new Vec2(x, y), CORE_COLORS[colorIdx % CORE_COLORS.length], NEXUS_CAPACITY);
+        const bColors = BIOME_NEXUS_COLORS[biomeId] || BIOME_NEXUS_COLORS[BIOME_ID.NEON_DISTRICT];
+        const m = new PowerMatrix(new Vec2(x, y), bColors.full, NEXUS_CAPACITY);
         m.biomeId = biomeId;
+        m.biomeColors = bColors;
         this.matrices.push(m);
         biomeArr.push(m);
       }
@@ -260,10 +278,13 @@ export class NexusManager {
   _emitRewards(player) {
     if (!player) return;
     for (const m of this.matrices) {
-      // Only charged Nexus emit rewards (at least 50% stored)
-      if (m.stored < m.capacity * 0.5) continue;
+      // Only Nexus with stored > 0 can emit rewards
+      if (m.stored <= 0) continue;
       // Only emit if player is within range
       if (dist(m.pos, player.pos) > REWARD_PULSE_RADIUS) continue;
+
+      // Spend 1 stored charge per reward pulse
+      m.stored = Math.max(0, m.stored - 1);
 
       const reward = pickWeightedReward();
       const angle = Math.atan2(player.pos.y - m.pos.y, player.pos.x - m.pos.x);
@@ -391,6 +412,32 @@ export class NexusManager {
       return { speedBoost: 1.1, xpMult: 1.15 };
     }
     return { speedBoost: 1.0, xpMult: 1.0 };
+  }
+
+  // ─── Nexus Recharge (called by Game.js when overload meter hits 100) ───
+  /**
+   * Add +1 stored charge to the closest depleted or non-full Nexus.
+   * Priority: closest depleted (stored===0) to player, then closest non-full.
+   * @param {Vec2} playerPos
+   * @returns {PowerMatrix|null} the Nexus that was recharged, or null if all full
+   */
+  rechargeNexus(playerPos) {
+    // 1. Closest depleted Nexus to player
+    const depleted = this.matrices.filter(m => m.stored <= 0);
+    if (depleted.length) {
+      const target = depleted.reduce((a, b) => dist(playerPos, a.pos) < dist(playerPos, b.pos) ? a : b);
+      target.stored = Math.min(target.capacity, target.stored + 1);
+      return target;
+    }
+    // 2. Closest non-full Nexus
+    const nonFull = this.matrices.filter(m => m.stored < m.capacity);
+    if (nonFull.length) {
+      const target = nonFull.reduce((a, b) => dist(playerPos, a.pos) < dist(playerPos, b.pos) ? a : b);
+      target.stored = Math.min(target.capacity, target.stored + 1);
+      return target;
+    }
+    // 3. All full — nothing to recharge
+    return null;
   }
 
   // ─── Enemy Targeting ────────────────────────────────────────────────────

@@ -55,33 +55,37 @@ export class PowerMatrix {
     this._prevStored = this.stored;
   }
 
-  // overloadPct (0–1): only read for danger-blink intensity; never modified here.
-  draw(ctx, overloadPct = 0) {
+  // Biome-aware glow: uses this.biomeColors when set by NexusManager,
+  // otherwise falls back to legacy CYAN/WHITE palette.
+  draw(ctx) {
     const f    = this.stored / this.capacity;   // fill ratio 0..1
     const now  = performance.now();
     const sz   = 72;
 
+    // Biome color palette (fallback to legacy if not assigned)
+    const bc = this.biomeColors || { full: CYAN, mid: CYAN, depleted: ORANGE };
+
     // ── 1. Fill-based glow UNDER the sprite (additive radial gradient) ──
     let glowColor, glowAlpha, glowRadius;
     if (this.stored === 0) {
-      // Empty / unsafe: very dim, with a red/orange danger blink that intensifies with overload.
-      const blink = 0.5 + 0.5 * Math.sin(now * 0.006);
-      glowColor   = (Math.sin(now * 0.006) > 0) ? RED : ORANGE;
-      glowAlpha   = (0.10 + 0.22 * overloadPct) * blink;
+      // Depleted: dim biome depleted tone with slow pulse
+      const blink = 0.5 + 0.5 * Math.sin(now * 0.004);
+      glowColor   = bc.depleted;
+      glowAlpha   = 0.12 * blink;
       glowRadius  = MATRIX_RADIUS + 6;
     } else if (f < 0.5) {
-      // 1–3/8: weak cyan/blue, base active but low.
-      glowColor  = CYAN;
+      // Low charge: mid biome color, weak glow
+      glowColor  = bc.mid;
       glowAlpha  = 0.18 + 0.14 * (f / 0.5);          // ~0.18 → 0.32
       glowRadius = MATRIX_RADIUS + 10;
     } else if (this.stored < this.capacity) {
-      // 4–7/8: stronger cyan, powered.
-      glowColor  = CYAN;
+      // Partial charge: mid→full blend region, stronger glow
+      glowColor  = bc.mid;
       glowAlpha  = 0.40 + 0.20 * ((f - 0.5) / 0.5);  // ~0.40 → 0.60
       glowRadius = MATRIX_RADIUS + 18;
     } else {
-      // 8/8: bright cyan→white with a subtle pulse — clearly full/protected.
-      glowColor  = WHITE;
+      // Full: bright biome primary with subtle pulse
+      glowColor  = bc.full;
       glowAlpha  = 0.65 + 0.12 * Math.sin(now * 0.005);
       glowRadius = MATRIX_RADIUS + 22;
     }
@@ -124,7 +128,7 @@ export class PowerMatrix {
       const p = r.t / r.life;
       ctx.save();
       ctx.globalAlpha = Math.max(0, 1 - p);
-      ctx.strokeStyle = CYAN;
+      ctx.strokeStyle = bc.full;
       ctx.lineWidth   = 2;
       ctx.beginPath();
       ctx.arc(this.pos.x, this.pos.y, MATRIX_RADIUS + p * 22, 0, Math.PI * 2);
@@ -136,8 +140,8 @@ export class PowerMatrix {
     const label = `${this.stored}/${this.capacity}`;
     const ly    = this.pos.y - sz / 2 - 8;
     let fill    = 'white';
-    if (this.stored === 0)            fill = '#ff7a3c';   // orange/red danger
-    else if (this.stored >= this.capacity) fill = '#bffcff'; // cyan-white when full
+    if (this.stored === 0)            fill = bc.depleted;
+    else if (this.stored >= this.capacity) fill = bc.full;
     ctx.font      = '15px Consolas, monospace';
     ctx.textAlign = 'center';
     ctx.fillStyle = 'rgba(0,0,0,0.8)';
