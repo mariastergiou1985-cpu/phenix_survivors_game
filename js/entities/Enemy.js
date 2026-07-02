@@ -1,7 +1,7 @@
 import {
   Vec2, ENEMY_RADIUS, WIDTH, HEIGHT, WORLD_W, WORLD_H, WORLD_MARGIN, WORLD_BOUNDS,
   BLUE, MAGENTA, PURPLE, ORANGE, GREEN, RED, YELLOW, WHITE, CYAN, MATRIX_RADIUS,
-} from '../constants.js?v=20260615210000';
+} from '../constants.js';
 import { clamp, distance, safeNormalize, randomRange, randomChoice, drawBar } from '../utils.js';
 import { DataCore } from './DataCore.js?v=20260615210000';
 import { FloatingText } from './FloatingText.js';

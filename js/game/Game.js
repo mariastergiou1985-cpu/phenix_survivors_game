@@ -5,7 +5,7 @@ import {
   MAX_OVERLOAD, PLAYER_RADIUS, CORE_RADIUS, MATRIX_RADIUS,
   DARK_BG, GRID_LINE, BLACK, CYAN, RED, GREEN, YELLOW, ORANGE, WHITE, PURPLE,
   CORE_COLORS, VIEW_SCALE, VIEW_W, VIEW_H, ENDLESS_VIEW_SCALE,
-} from '../constants.js?v=20260629440000';
+} from '../constants.js';
 import { clamp, distance, safeNormalize, randomChoice, randomRange } from '../utils.js';
 
 import { FloatingText }   from '../entities/FloatingText.js';
