@@ -455,17 +455,24 @@ export class AudioManager {
     this._noiseBurst({ dur: 0.07, gain: 0.11, filterType: "highpass", freq: 2000 });
   }
 
-  // Void Needle — sharp piercing shot.
+  // Void Needle — sharp high-velocity "pew" with energy hiss.
   playVoidNeedleFire() {
     if (!this._canPlay("voidFire", 0.08)) return;
-    this._tone({ type: "triangle", freqStart: 800, freqEnd: 300, dur: 0.06, gain: 0.06 });
+    // Sharp rising needle tone
+    this._tone({ type: "triangle", freqStart: 1200, freqEnd: 400, dur: 0.09, gain: 0.13 });
+    // Thin air-slice hiss
+    this._noiseBurst({ dur: 0.07, gain: 0.06, filterType: "highpass", freq: 3000 });
   }
 
-  // Void Needle — soft impact on hit.
+  // Void Needle — punchy electric pierce crack on hit.
   playVoidNeedleHit() {
     if (!this._canPlay("voidHit", 0.08)) return;
-    this._tone({ type: "sawtooth", freqStart: 250, freqEnd: 80, dur: 0.05, gain: 0.055 });
-    this._noiseBurst({ dur: 0.04, gain: 0.03, filterType: "highpass", freq: 2200 });
+    // Low thud impact
+    this._tone({ type: "sawtooth", freqStart: 320, freqEnd: 90,  dur: 0.09, gain: 0.14 });
+    // Electric pop
+    this._tone({ type: "square",   freqStart: 700, freqEnd: 200, dur: 0.05, gain: 0.09 });
+    // Sharp snap
+    this._noiseBurst({ dur: 0.05, gain: 0.08, filterType: "highpass", freq: 2500 });
   }
 
   // Sentry Drone — light blaster pop on fire.
@@ -796,11 +803,4 @@ export class AudioManager {
     this._noiseBurst({ dur: 0.10, gain: 0.09, filterType: 'lowpass', freq: 350 });
   }
 
-  // Boss hit — low bass thump for boss impacts.
-  playBossHit() {
-    if (!this._canPlay('bossHit', 0.12)) return;
-    this._tone({ type: 'sine', freqStart: 100, freqEnd: 35, dur: 0.30, gain: 0.16 });
-    this._noiseBurst({ dur: 0.20, gain: 0.08, filterType: 'lowpass', freq: 180 });
-  }
-
-  // Combat juice multi-kill burst — layered ascending tones + 
+  // Boss hit — lo

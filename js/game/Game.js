@@ -17490,7 +17490,7 @@ _drawLoreArchive(ctx) {
       const n   = this._voidNeedles[i];
       n.t      += dt;
       n.prev    = n.pos.clone();
-      n.pos.addMut(n.dir.scale(880 * dt));
+      n.pos.addMut(n.dir.scale(1050 * dt));
       const out = n.pos.x < -80 || n.pos.x > WORLD_W + 80 ||
                   n.pos.y < -80 || n.pos.y > WORLD_H + 80;
       if (out || n.t > 3.0) { this._voidNeedles.splice(i, 1); continue; }
@@ -17531,8 +17531,8 @@ _drawLoreArchive(ctx) {
     this._voidNeedleCd -= dt;
     if (this._voidNeedleCd > 0) return;
 
-    const CDS  = [1.8, 1.5, 1.2, 1.0];
-    const DMGS = [14, 17, 20, 23];
+    const CDS  = [1.6, 1.3, 1.0, 0.8];
+    const DMGS = [18, 22, 27, 32];
     this._voidNeedleCd = CDS[Math.min(lvl - 1, CDS.length - 1)];
 
     const p = this.player;
@@ -17572,7 +17572,7 @@ _drawLoreArchive(ctx) {
       dir,
       prev:       p.pos.clone(),
       dmg:        DMGS[Math.min(lvl - 1, DMGS.length - 1)],
-      pierceLeft: lvl <= 2 ? 1 : 2,
+      pierceLeft: lvl === 1 ? 1 : lvl <= 3 ? 2 : 3,
       hit:        new Set(),
       t:          0,
     });
@@ -18320,5 +18320,4 @@ _drawLoreArchive(ctx) {
       } else {
         ctx.fillStyle = '#ff4400';
         ctx.beginPath();
-        ctx.moveTo(16, 0); ctx.lineTo(-12, 8); ctx.lineTo(-8, 0); ctx.lineTo(-12, -8);
-        ctx.clo
+        ctx.moveTo(16, 0); ctx.lineTo(-12, 8); ctx.lineTo(-8, 0); ctx.lineTo(-12, -8)
