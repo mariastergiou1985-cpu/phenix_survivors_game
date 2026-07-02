@@ -10365,7 +10365,8 @@ export class Game {
   _drawMenuParticles(ctx) {
     const t = performance.now() * 0.001;
     ctx.save();
-    // ── Cyan drifting specks (22)
+    ctx.globalCompositeOperation = 'lighter'; // additive blend — glows against dark bg
+    // ── Cyan drifting specks (22) — clearly visible neon dots
     for (let i = 0; i < 22; i++) {
       const phi   = i * 2.3999632;
       const baseX = ((Math.sin(phi) * 0.5 + 0.5) * 0.85 + 0.075) * WIDTH;
@@ -10373,13 +10374,13 @@ export class Game {
       const drift = 0.018 + (i % 7) * 0.006;
       const y     = ((baseY - (t * drift * HEIGHT) % HEIGHT) + HEIGHT * 2) % HEIGHT;
       const x     = baseX + Math.sin(t * 0.28 + phi) * 20;
-      const size  = 1.2 + Math.sin(t * 0.7 + phi * 2.1) * 0.5;
-      const alpha = 0.13 + Math.sin(t * 0.45 + phi) * 0.06;
+      const size  = 2.2 + Math.sin(t * 0.7 + phi * 2.1) * 0.9;
+      const alpha = 0.42 + Math.sin(t * 0.45 + phi) * 0.14;
       ctx.globalAlpha = Math.max(0, alpha);
       ctx.fillStyle = '#00e6ff';
-      ctx.beginPath(); ctx.arc(x, y, Math.max(0.5, size), 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(x, y, Math.max(0.8, size), 0, Math.PI * 2); ctx.fill();
     }
-    // ── Purple/magenta twinkle specks (10)
+    // ── Purple/magenta twinkle specks (10) — accent layer
     for (let i = 0; i < 10; i++) {
       const phi   = (i + 100) * 2.3999632;
       const baseX = ((Math.sin(phi * 0.9) * 0.5 + 0.5) * 0.85 + 0.075) * WIDTH;
@@ -10387,13 +10388,14 @@ export class Game {
       const drift = 0.011 + (i % 5) * 0.005;
       const y     = ((baseY - (t * drift * HEIGHT) % HEIGHT) + HEIGHT * 2) % HEIGHT;
       const x     = baseX + Math.sin(t * 0.22 + phi) * 28;
-      const size  = 1.8 + Math.sin(t * 0.55 + phi * 1.8) * 0.7;
-      const alpha = 0.09 + Math.sin(t * 0.38 + phi) * 0.05;
+      const size  = 2.8 + Math.sin(t * 0.55 + phi * 1.8) * 1.1;
+      const alpha = 0.32 + Math.sin(t * 0.38 + phi) * 0.12;
       ctx.globalAlpha = Math.max(0, alpha);
       ctx.fillStyle = '#cc44ff';
-      ctx.beginPath(); ctx.arc(x, y, Math.max(0.5, size), 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(x, y, Math.max(0.8, size), 0, Math.PI * 2); ctx.fill();
     }
     ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
     ctx.restore();
   }
 
