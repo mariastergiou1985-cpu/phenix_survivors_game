@@ -16,7 +16,7 @@ import { Projectile, HomingDisc } from '../entities/Projectile.js?v=202606294400
 import { Enemy }          from '../entities/Enemy.js?v=20260629440000';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=20260629440000';
 
-import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260701400000';
+import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260701430000';
 import { SystemEventManager } from './Events.js?v=20260629440000';
 import { UpgradeUI }      from './UpgradeUI.js?v=20260629440000';
 import { weightedSample } from './Upgrades.js?v=20260629440000';
