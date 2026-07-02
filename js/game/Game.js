@@ -17659,8 +17659,8 @@ _drawLoreArchive(ctx) {
     this._railSpikeCd -= dt;
     if (this._railSpikeCd > 0) return;
 
-    const CDS  = [3.5, 3.0, 2.5, 2.0];
-    const DMGS = [40, 55, 70, 85];
+    const CDS  = [3.0, 2.5, 2.0, 1.6];
+    const DMGS = [45, 62, 80, 100];
     this._railSpikeCd = CDS[Math.min(lvl - 1, CDS.length - 1)];
 
     const p   = this.player;
@@ -17673,11 +17673,11 @@ _drawLoreArchive(ctx) {
       dir,
       prev:       p.pos.clone(),
       dmg:        DMGS[Math.min(lvl - 1, DMGS.length - 1)],
-      pierceLeft: 1,
+      pierceLeft: lvl >= 4 ? 2 : 1,  // lvl4 gets 2-pierce
       hit:        new Set(),
       t:          0,
     });
-    this.screenShake?.trigger(2, 0.08);
+    this.screenShake?.trigger(5, 0.14);  // heavy cannon launch shake
     this.audio?.playRailSpikeFire?.();
   }
 
@@ -18317,7 +18317,4 @@ _drawLoreArchive(ctx) {
       if (ready) {
         ctx.globalAlpha = 0.92;
         ctx.drawImage(spr, -sz / 2, -sz / 2, sz, sz);
-      } else {
-        ctx.fillStyle = '#ff4400';
-        ctx.beginPath();
- 
+      }

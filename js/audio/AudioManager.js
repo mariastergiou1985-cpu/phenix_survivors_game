@@ -504,18 +504,26 @@ export class AudioManager {
     this._noiseBurst({ dur: 0.06, gain: 0.06, filterType: "bandpass", freq: 1200 });
   }
 
-  // Rail Spike — heavy magnetic launch thump.
+  // Rail Spike — cinematic heavy cannon launch: magnetic charge + explosive burst.
   playRailSpikeFire() {
     if (!this._canPlay("railFire", 0.40)) return;
-    this._tone({ type: "sawtooth", freqStart: 80, freqEnd: 300, dur: 0.18, gain: 0.10 });
-    this._noiseBurst({ dur: 0.14, gain: 0.07, filterType: "lowpass", freq: 400 });
+    // Sub-bass power charge
+    this._tone({ type: "sawtooth", freqStart: 55,  freqEnd: 380, dur: 0.22, gain: 0.20 });
+    // High magnetic whine
+    this._tone({ type: "triangle", freqStart: 900, freqEnd: 300, dur: 0.14, gain: 0.12 });
+    // Cannon explosion burst
+    this._noiseBurst({ dur: 0.18, gain: 0.14, filterType: "lowpass", freq: 600 });
   }
 
-  // Rail Spike — deep bass impact on hit.
+  // Rail Spike — massive bass impact + explosion on hit.
   playRailSpikeImpact() {
     if (!this._canPlay("railImpact", 0.15)) return;
-    this._tone({ type: "sine", freqStart: 120, freqEnd: 30, dur: 0.25, gain: 0.09 });
-    this._noiseBurst({ dur: 0.12, gain: 0.06, filterType: "bandpass", freq: 300 });
+    // Deep bass thud
+    this._tone({ type: "sine",     freqStart: 100, freqEnd: 25,  dur: 0.30, gain: 0.20 });
+    // Mid crunch layer
+    this._tone({ type: "sawtooth", freqStart: 280, freqEnd: 80,  dur: 0.12, gain: 0.12 });
+    // Shockwave burst
+    this._noiseBurst({ dur: 0.15, gain: 0.12, filterType: "bandpass", freq: 400 });
   }
 
 
@@ -798,9 +806,4 @@ export class AudioManager {
   // Homing Missile — direct impact explosion. Throttled 0.12 s.
   playHomingMissileImpact() {
     if (!this._canPlay('homingImpact', 0.12)) return;
-    this._tone({ type: 'sine', freqStart: 180, freqEnd: 32, dur: 0.32, gain: 0.18 });
-    this._noiseBurst({ dur: 0.25, gain: 0.13, filterType: 'highpass', freq: 500 });
-    this._noiseBurst({ dur: 0.20, gain: 0.07, filterType: 'bandpass', freq: 350, delay: 0.05 });
-  }
-
-  // ─── Game Feel SFX ──────────────────────────────────────────────────
+    this._tone({ type: 'sine', freqStart: 180, freqEnd: 
