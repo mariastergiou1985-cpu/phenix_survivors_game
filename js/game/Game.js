@@ -10303,9 +10303,6 @@ export class Game {
     ctx.fillStyle = 'rgba(2,6,14,0.32)';
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
-    // ── Ambient particle field — drifting holographic specks over background ──
-    this._drawMenuParticles(ctx);
-
     // ── Character cut-out (code-positioned layer over the theme's character zone) ──
     const ci = this._menuChars;
     if (ci && ci.complete && ci.naturalWidth > 0) {
@@ -10355,6 +10352,9 @@ export class Game {
     ctx.textAlign = 'left';
 
     // Announcements (e.g. REACH ENDLESS FIRST feedback) rendered last so they appear on top.
+    // ── Holographic particle field — floats over all UI panels
+    this._drawMenuParticles(ctx);
+
     this._drawAnnouncement(ctx);
   }
 
