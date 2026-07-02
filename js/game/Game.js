@@ -17411,19 +17411,19 @@ _drawLoreArchive(ctx) {
     this._plasmaBladeCd -= dt;
     if (this._plasmaBladeCd > 0) return;
 
-    const CDS  = [2.8, 2.4, 2.0, 1.7];
-    const DMGS = [28, 33, 38, 43];
+    const CDS  = [2.6, 2.2, 1.8, 1.5];
+    const DMGS = [32, 38, 45, 52];
     this._plasmaBladeCd = CDS[Math.min(lvl - 1, CDS.length - 1)];
 
     const p      = this.player;
     const dmg    = DMGS[Math.min(lvl - 1, DMGS.length - 1)];
-    const range  = 200 + 30 * lvl;
-    const half   = ((70 + 12 * (lvl - 1)) * Math.PI / 180) / 2;
+    const range  = 260 + 45 * lvl;                               // lvl1:305 lvl2:350 lvl3:395 lvl4:440
+    const half   = ((90 + 15 * (lvl - 1)) * Math.PI / 180) / 2; // lvl1:90° lvl2:105° lvl3:120° lvl4:135°
     const aimDir = safeNormalize(p.lastFacingDir || new Vec2(1, 0));
 
     let hits = 0;
     for (const t of this._brawlerTargets()) {
-      if (hits >= 12) break;
+      if (hits >= 18) break;
       const b  = t.obj;
       const to = new Vec2(b.pos.x - p.pos.x, b.pos.y - p.pos.y);
       if (to.length() > range + (b.radius || 16)) continue;
@@ -17431,14 +17431,18 @@ _drawLoreArchive(ctx) {
       if (Math.acos(clamp(dot, -1, 1)) > half) continue;
       hits++;
       this._brawlerHit(t, (this._targetIsBoss(t) ? 0.6 : 1) * dmg, '#00e6ff');
+      this.particles?.spawnHitSparks?.(b.pos, '#00e6ff');        // cyan spark burst per hit
     }
     this._plasmaBladeSlashes.push({
       pos: p.pos.clone(), dir: aimDir,
       range, half,
-      life: 0.20, maxLife: 0.20,
+      life: 0.22, maxLife: 0.22,
     });
     this.audio?.playPlasmaBladeSwing?.();
-    if (hits > 0) this.audio?.playPlasmaBladeHit?.();
+    if (hits > 0) {
+      this.audio?.playPlasmaBladeHit?.();
+      if (hits >= 3) this.screenShake?.trigger?.(3 + Math.min(hits, 8), 0.12); // shake on multi-hit
+    }
   }
 
   _drawPlasmaBladeSlashes(ctx) {
@@ -18317,14 +18321,4 @@ _drawLoreArchive(ctx) {
         ctx.fillStyle = '#ff4400';
         ctx.beginPath();
         ctx.moveTo(16, 0); ctx.lineTo(-12, 8); ctx.lineTo(-8, 0); ctx.lineTo(-12, -8);
-        ctx.closePath(); ctx.fill();
-        ctx.globalCompositeOperation = 'lighter';
-        ctx.globalAlpha = 0.55;
-        ctx.fillStyle = '#ff8800';
-        ctx.beginPath(); ctx.arc(-12, 0, 6, 0, Math.PI * 2); ctx.fill();
-      }
-      ctx.restore();
-    }
-    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
-  }
-}
+        ctx.clo

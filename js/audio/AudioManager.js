@@ -433,18 +433,26 @@ export class AudioManager {
 
   // ─── Phase 1 Weapon SFX ───────────────────────────────────────────────────
 
-  // Plasma Blade — broad energy arc swing.
+  // Plasma Blade — cinematic low whoosh with high-energy sizzle.
   playPlasmaBladeSwing() {
     if (!this._canPlay("plasmaSwing", 0.25)) return;
-    this._tone({ type: "sawtooth", freqStart: 500, freqEnd: 150, dur: 0.15, gain: 0.07 });
-    this._noiseBurst({ dur: 0.12, gain: 0.04, filterType: "bandpass", freq: 600 });
+    // Deep power-up rumble
+    this._tone({ type: "sawtooth", freqStart: 280, freqEnd: 60,  dur: 0.22, gain: 0.16 });
+    // Bright blade-edge hiss
+    this._tone({ type: "sine",     freqStart: 900, freqEnd: 220, dur: 0.18, gain: 0.10 });
+    // Airy whoosh body
+    this._noiseBurst({ dur: 0.20, gain: 0.09, filterType: "bandpass", freq: 400 });
   }
 
-  // Plasma Blade — impact crackle on successful hit.
+  // Plasma Blade — satisfying electric crack + low thud on hit.
   playPlasmaBladeHit() {
     if (!this._canPlay("plasmaHit", 0.10)) return;
-    this._tone({ type: "sawtooth", freqStart: 380, freqEnd: 120, dur: 0.07, gain: 0.08 });
-    this._noiseBurst({ dur: 0.05, gain: 0.05, filterType: "highpass", freq: 1800 });
+    // Low impact thud
+    this._tone({ type: "sawtooth", freqStart: 220, freqEnd: 55,  dur: 0.14, gain: 0.18 });
+    // Electric crackle high end
+    this._tone({ type: "square",   freqStart: 600, freqEnd: 180, dur: 0.08, gain: 0.12 });
+    // Snap burst
+    this._noiseBurst({ dur: 0.07, gain: 0.11, filterType: "highpass", freq: 2000 });
   }
 
   // Void Needle — sharp piercing shot.
@@ -795,12 +803,4 @@ export class AudioManager {
     this._noiseBurst({ dur: 0.20, gain: 0.08, filterType: 'lowpass', freq: 180 });
   }
 
-  // Combat juice multi-kill burst — layered ascending tones + bandpass noise.
-  playJuiceBurst() {
-    if (!this._canPlay('juiceBurst', 3.0)) return;
-    this._tone({ type: 'sawtooth', freqStart: 220, freqEnd: 660, dur: 0.20, gain: 0.14 });
-    this._tone({ type: 'sine', freqStart: 440, freqEnd: 1320, dur: 0.25, gain: 0.09, delay: 0.04 });
-    this._noiseBurst({ dur: 0.18, gain: 0.10, filterType: 'bandpass', freq: 800 });
-  }
-
-}
+  // Combat juice multi-kill burst — layered ascending tones + 
