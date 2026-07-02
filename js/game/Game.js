@@ -17243,8 +17243,8 @@ _drawLoreArchive(ctx) {
 
     const p      = this.player;
     const dmg    = DMGS[Math.min(lvl - 1, DMGS.length - 1)];
-    const range  = 160 + 20 * lvl;
-    const half   = ((50 + 12 * (lvl - 1)) * Math.PI / 180) / 2;
+    const range  = 200 + 30 * lvl;
+    const half   = ((70 + 12 * (lvl - 1)) * Math.PI / 180) / 2;
     const aimDir = safeNormalize(p.lastFacingDir || new Vec2(1, 0));
 
     let hits = 0;
