@@ -6058,6 +6058,8 @@ export class Game {
 
   _updateStartMenu(dt, input) {
     this._updateAnnouncement(dt);
+    this._initMenuCodeRain();
+    this._updateMenuCodeRain(dt);
     const { keys } = input;
     if (keys.has('arrowup') || keys.has('w')) {
       this.menuIndex = (this.menuIndex - 1 + this.menuItems.length) % this.menuItems.length;
@@ -10303,6 +10305,9 @@ export class Game {
     ctx.fillStyle = 'rgba(2,6,14,0.32)';
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
+    // ── Code rain (drawn early, behind everything)
+    this._drawMenuCodeRain(ctx);
+
     // ── Character cut-out (code-positioned layer over the theme's character zone) ──
     const ci = this._menuChars;
     if (ci && ci.complete && ci.naturalWidth > 0) {
@@ -10338,6 +10343,9 @@ export class Game {
     }
     ctx.textAlign = 'left';
 
+    // ── Premium button icons (drawn after labels so they composite on top)
+    this._drawMenuButtonIcons(ctx);
+
     // ── Footer — nav hint (centre) + WIP label; 12+ badge in its baked corner box; controller help
     // lives in its right-bottom panel (drawn in the dashboard), so no duplicate badge here. ──
     ctx.font      = '13px Consolas, monospace';
@@ -10352,9 +10360,6 @@ export class Game {
     ctx.textAlign = 'left';
 
     // Announcements (e.g. REACH ENDLESS FIRST feedback) rendered last so they appear on top.
-    // ── Holographic particle field — floats over all UI panels
-    this._drawMenuParticles(ctx);
-
     this._drawAnnouncement(ctx);
   }
 
@@ -10362,45 +10367,138 @@ export class Game {
   // Purely procedural — no state array. Uses performance.now() + golden-ratio
   // distribution to scatter 32 slowly-drifting specks over the menu background.
   // Cyan layer = digital data stream feel; purple layer = depth/mystique.
-  _drawMenuParticles(ctx) {
-    const t = performance.now() * 0.001;
+
+  // ─── Menu Code Rain ──────────────────────────────────────────────────────────
+
+  _initMenuCodeRain() {
+    if (this._codeRainCols) return; // lazy-init guard
+    const G = '01ABCDEF01abcdef01ABCDEF01∆≡01AB'.split('');
+    this._codeRainGlyphSet = G;
+    this._codeRainCols = [];
+    for (let i = 0; i < 30; i++) {
+      const len = 6 + Math.floor(Math.random() * 9);
+      this._codeRainCols.push({
+        x     : Math.round(30 + Math.random() * 1220),
+        y     : -Math.random() * 720,
+        speed : 44 + Math.random() * 54,
+        len,
+        alpha : 0.10 + Math.random() * 0.12,
+        col   : ['#00c8e6','#0088bb','#00bb99','#1144aa'][Math.floor(Math.random()*4)],
+        flicker: Math.random() * 3,
+        glyphs: Array.from({length: len}, () => G[Math.floor(Math.random()*G.length)]),
+        gTimer: Math.random() * 0.2
+      });
+    }
+  }
+
+  _updateMenuCodeRain(dt) {
+    if (!this._codeRainCols) return;
+    const G = this._codeRainGlyphSet;
+    const FSIZE = 13;
+    for (const c of this._codeRainCols) {
+      c.y += c.speed * dt;
+      c.flicker -= dt;
+      if (c.flicker <= 0) c.flicker = 0.6 + Math.random() * 2.4;
+      c.gTimer -= dt;
+      if (c.gTimer <= 0) {
+        c.gTimer = 0.07 + Math.random() * 0.18;
+        c.glyphs[Math.floor(Math.random() * c.glyphs.length)] =
+          G[Math.floor(Math.random() * G.length)];
+      }
+      if (c.y - c.len * FSIZE > 720) {
+        c.x     = Math.round(30 + Math.random() * 1220);
+        c.y     = -(FSIZE + Math.random() * 180);
+        c.speed = 44 + Math.random() * 54;
+        c.len   = 6 + Math.floor(Math.random() * 9);
+        c.alpha = 0.10 + Math.random() * 0.12;
+        c.col   = ['#00c8e6','#0088bb','#00bb99','#1144aa'][Math.floor(Math.random()*4)];
+        c.glyphs = Array.from({length: c.len}, () => G[Math.floor(Math.random()*G.length)]);
+      }
+    }
+  }
+
+  _drawMenuCodeRain(ctx) {
+    if (!this._codeRainCols) return;
+    // Exclusion zones [x1,y1,x2,y2] — skip glyphs inside these areas
+    const EX = [
+      [430, 40,  870, 215],   // logo / title zone
+      [545, 220, 865, 650],   // center button column
+      [310, 220, 710, 720],   // character art zone
+      [0,   0,   1280, 34],   // top HUD / resource counters
+    ];
+    const FSIZE = 13;
     ctx.save();
-    ctx.globalCompositeOperation = 'source-over';
-    // ── Cyan drifting orbs (22)
-    for (let i = 0; i < 22; i++) {
-      const phi   = i * 2.3999632;
-      const baseX = ((Math.sin(phi) * 0.5 + 0.5) * 0.85 + 0.075) * WIDTH;
-      const baseY = ((Math.cos(phi * 1.3) * 0.5 + 0.5)) * HEIGHT;
-      const drift = 0.018 + (i % 7) * 0.006;
-      const y     = ((baseY - (t * drift * HEIGHT) % HEIGHT) + HEIGHT * 2) % HEIGHT;
-      const x     = baseX + Math.sin(t * 0.28 + phi) * 20;
-      const size  = 6.0 + Math.sin(t * 0.7 + phi * 2.1) * 2.0;
-      const alpha = 0.85 + Math.sin(t * 0.45 + phi) * 0.10;
-      ctx.globalAlpha = Math.min(1, Math.max(0, alpha));
-      ctx.fillStyle = '#00e6ff';
-      ctx.shadowColor = '#00e6ff';
-      ctx.shadowBlur = 14;
-      ctx.beginPath(); ctx.arc(x, y, Math.max(3, size), 0, Math.PI * 2); ctx.fill();
+    ctx.font = FSIZE + 'px Consolas, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    for (const c of this._codeRainCols) {
+      const flickering = c.flicker < 0.08;
+      for (let j = 0; j < c.len; j++) {
+        const gy = c.y - j * FSIZE;
+        if (gy < -FSIZE || gy > 724) continue;
+        const gx = c.x;
+        let skip = false;
+        for (const [x1, y1, x2, y2] of EX) {
+          if (gx >= x1 && gx <= x2 && gy >= y1 && gy <= y2) { skip = true; break; }
+        }
+        if (skip) continue;
+        const fade   = 1 - j / c.len;
+        const head   = j === 0 ? 2.0 : 1.0;
+        const flkMul = (flickering && j < 2) ? 0.18 : 1.0;
+        const a = Math.min(0.90, c.alpha * fade * head * flkMul);
+        if (a < 0.01) continue;
+        ctx.globalAlpha = a;
+        ctx.fillStyle   = j === 0 ? '#88ffff' : c.col;
+        ctx.fillText(c.glyphs[j] || '0', gx, gy);
+      }
     }
-    // ── Purple/magenta twinkle orbs (10)
-    for (let i = 0; i < 10; i++) {
-      const phi   = (i + 100) * 2.3999632;
-      const baseX = ((Math.sin(phi * 0.9) * 0.5 + 0.5) * 0.85 + 0.075) * WIDTH;
-      const baseY = ((Math.cos(phi * 1.7) * 0.5 + 0.5)) * HEIGHT;
-      const drift = 0.011 + (i % 5) * 0.005;
-      const y     = ((baseY - (t * drift * HEIGHT) % HEIGHT) + HEIGHT * 2) % HEIGHT;
-      const x     = baseX + Math.sin(t * 0.22 + phi) * 28;
-      const size  = 7.0 + Math.sin(t * 0.55 + phi * 1.8) * 2.2;
-      const alpha = 0.80 + Math.sin(t * 0.38 + phi) * 0.12;
-      ctx.globalAlpha = Math.min(1, Math.max(0, alpha));
-      ctx.fillStyle = '#cc44ff';
-      ctx.shadowColor = '#cc44ff';
-      ctx.shadowBlur = 16;
-      ctx.beginPath(); ctx.arc(x, y, Math.max(3, size), 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha   = 1;
+    ctx.textBaseline  = 'alphabetic';
+    ctx.textAlign     = 'left';
+    ctx.restore();
+  }
+
+  _drawMenuButtonIcons(ctx) {
+    // Icon glyph map — unicode chars that render cleanly in Consolas
+    const ICON_MAP = {
+      'START GAME':       '▶',
+      'ENDLESS MODE':     '∞',
+      'CHAOS MODE':       '✦',
+      'CHARACTER SELECT': '◈',
+      'UPGRADES':         '▲',
+      'ACHIEVEMENTS':     '★',
+      'RELICS':           '◆',
+      'SETTINGS':         '≡',
+      'EXIT':             '×',
+    };
+    ctx.save();
+    ctx.font = 'bold 15px Consolas, monospace';
+    ctx.textAlign   = 'center';
+    ctx.textBaseline = 'middle';
+    const items = this.menuItems;
+    for (let i = 0; i < items.length; i++) {
+      const label = items[i];
+      const r     = this._menuButtonRect(i);
+      const sel   = i === this.menuIndex;
+      const icon  = ICON_MAP[label] || '›';
+      const iconX = r.x + 22;
+      const iconY = r.y + r.h / 2;
+      if (sel) {
+        ctx.shadowColor = '#00e6ff';
+        ctx.shadowBlur  = 12;
+        ctx.globalAlpha = 1.0;
+        ctx.fillStyle   = '#aaffff';
+      } else {
+        ctx.shadowBlur  = 0;
+        ctx.globalAlpha = 0.50;
+        ctx.fillStyle   = '#00ccee';
+      }
+      ctx.fillText(icon, iconX, iconY);
     }
-    ctx.shadowBlur = 0;
-    ctx.globalAlpha = 1;
-    ctx.globalCompositeOperation = 'source-over';
+    ctx.shadowBlur   = 0;
+    ctx.globalAlpha  = 1;
+    ctx.textBaseline = 'alphabetic';
+    ctx.textAlign    = 'left';
     ctx.restore();
   }
 
