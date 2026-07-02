@@ -493,11 +493,15 @@ export class AudioManager {
     this._noiseBurst({ dur: 0.05, gain: 0.08, filterType: "highpass", freq: 2400 });
   }
 
-  // Shard Ring — resonant contact hum on enemy hit (global throttle keeps it from spamming).
+  // Shard Ring — resonant purple energy crunch on contact (throttled to prevent spam).
   playShardRingHit() {
     if (!this._canPlay("shardHit", 0.15)) return;
-    this._tone({ type: "sine", freqStart: 180, freqEnd: 240, dur: 0.10, gain: 0.06 });
-    this._noiseBurst({ dur: 0.06, gain: 0.025, filterType: "bandpass", freq: 900 });
+    // Deep resonant hum
+    this._tone({ type: "sine",     freqStart: 160, freqEnd: 280, dur: 0.14, gain: 0.14 });
+    // Mid crunch layer
+    this._tone({ type: "sawtooth", freqStart: 320, freqEnd: 160, dur: 0.08, gain: 0.09 });
+    // Crystalline high tick
+    this._noiseBurst({ dur: 0.06, gain: 0.06, filterType: "bandpass", freq: 1200 });
   }
 
   // Rail Spike — heavy magnetic launch thump.
@@ -799,8 +803,4 @@ export class AudioManager {
     this._noiseBurst({ dur: 0.20, gain: 0.07, filterType: 'bandpass', freq: 350, delay: 0.05 });
   }
 
-  // ─── Game Feel SFX ──────────────────────────────────────────────────────────
-
-  // Heavy enemy hit — deeper impact for significant damage (dmg >= 40).
-  playHeavyHit() {
-    if (!this._canPlay('heavyHit', 0.08)) retur
+  // ─── Game Feel SFX ──────────────────────────────────────────────────

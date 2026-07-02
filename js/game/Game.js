@@ -17795,10 +17795,10 @@ _drawLoreArchive(ctx) {
     const lvl = this._cardLvl('shard_ring');
     if (lvl < 1) { this._shardRingHitCds.clear(); return; }
 
-    this._shardRingAngle += 1.8 * dt;   // orbit spin speed (rad/s)
+    this._shardRingAngle += 2.4 * dt;   // orbit spin speed (rad/s) — more dynamic
 
-    const RADII = [100, 110, 125, 140];
-    const DMGS  = [12, 16, 20, 24];
+    const RADII = [110, 125, 142, 162];
+    const DMGS  = [16, 22, 28, 35];
     const R     = RADII[Math.min(lvl - 1, RADII.length - 1)];
     const dmg   = DMGS[Math.min(lvl - 1, DMGS.length - 1)];
     const p     = this.player;
@@ -17818,7 +17818,7 @@ _drawLoreArchive(ctx) {
         this._tryCorrode(e);
         this.particles.spawnHitSparks(e.pos, '#9650ff');
         this.audio?.playShardRingHit?.();
-        this._shardRingHitCds.set(e, 0.6);
+        this._shardRingHitCds.set(e, 0.45);
       }
     }
 
@@ -17828,9 +17828,9 @@ _drawLoreArchive(ctx) {
       const b = t.obj;
       if (this._shardRingHitCds.has(b)) continue;
       if (distance(b.pos, p.pos) < R + (b.radius || 32)) {
-        this._brawlerHit(t, 0.5 * dmg, '#9650ff');
+        this._brawlerHit(t, 0.6 * dmg, '#9650ff');
         this.audio?.playShardRingHit?.();
-        this._shardRingHitCds.set(b, 0.6);
+        this._shardRingHitCds.set(b, 0.45);
       }
     }
   }
@@ -17839,7 +17839,7 @@ _drawLoreArchive(ctx) {
     const lvl = this._cardLvl('shard_ring');
     if (lvl < 1) return;
 
-    const RADII = [100, 110, 125, 140];
+    const RADII = [110, 125, 142, 162];
     const R     = RADII[Math.min(lvl - 1, RADII.length - 1)];
     const p     = this.player;
     const spr   = this._weaponImages?.shard_ring;
@@ -18320,4 +18320,4 @@ _drawLoreArchive(ctx) {
       } else {
         ctx.fillStyle = '#ff4400';
         ctx.beginPath();
-        ctx.moveTo(1
+ 
