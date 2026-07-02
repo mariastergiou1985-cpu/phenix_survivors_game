@@ -130,4 +130,15 @@ All bosses drop Grid Credits on defeat and record to the Boss Echo Archive.
 - **Browser-based**: No download, no install — Chrome / Firefox / Edge
 - **Keyboard**: Full support (WASD / Arrow Keys + ability keys)
 - **Controller**: Xbox · PlayStation · PC — gameplay and core navigation
-- **Mobile**: Touch controls in landscape orientati
+- **Mobile**: Touch controls in landscape orientation (virtual joystick + action buttons)
+- **Fullscreen**: Supported — toggle via browser fullscreen (F11) or in-game button
+
+---
+
+## Planned Next Features
+
+- Real Chaos Law selection V1 (player chooses active Chaos Laws pre-run)
+- Additional lore content and System Log expansions
+- Trailer and press screenshot pass
+- Additional enemy types and event variety
+- Potential new character
