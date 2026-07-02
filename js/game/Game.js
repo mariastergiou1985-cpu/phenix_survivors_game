@@ -34,11 +34,11 @@ import { Protocol0 } from '../effects/protocol-0.js?v=20260629440000';
 import { LaserEyes } from '../effects/laser-eyes.js?v=20260629440000';
 import { MeteorRain } from '../effects/meteor-rain.js?v=20260629440000';
 import { NpcWalker } from './NpcWalker.js?v=20260629560000';
-import { MapManager, BIOME_ID, BIOME_DEFS } from './MapManager.js?v=20260702700000';
+import { MapManager, BIOME_ID, BIOME_DEFS } from './MapManager.js?v=20260703300000';
 import { EventBus, EVENTS } from './EventBus.js?v=20260702700000';
 import { EnemySpawner, ELITE_WAVE as ELITE_WAVE_CFG, BOSS_WARN_COOLDOWN as BOSS_WARN_CD } from './EnemySpawner.js?v=20260702800000';
 import { StateManager, GAME_STATES } from './StateManager.js?v=20260702900000';
-import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260703100000';
+import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260703300000';
 
 // Euclid Vector toxin kit — used ONLY when selectedCharacter === 'euclid_vector' (world-space).
 import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=20260629440000';
@@ -1004,12 +1004,11 @@ export class Game {
     this._walkerFiredSet    = new Set();  // trigger offsets already fired this cycle
     this._walkerSummonCd    = 120;        // HUD display: seconds until next trigger (derived)
 
-    // ── Chunk streaming activation ───────────────────────────────────────────
-    // Enable the infinite-world chunk system.  ChunkManager generates a 3×3
-    // active grid around the player and WORLD_BOUNDS is updated every frame
-    // so entities clamp/spawn relative to the live area, not the old fixed box.
-    this.chunkManager.enable();
-    this.mapManager.chunkStreamingEnabled = true;
+    // ── Chunk streaming ────────────────────────────────────────────────────
+    // Disabled by default in reset(). Enabled in _enterEndless() for
+    // Endless + Chaos modes only — Act 1 stays on the fixed Neon District map.
+    this.chunkManager.disable();
+    this.mapManager.chunkStreamingEnabled = false;
   }
 
   startGame() {
@@ -1202,6 +1201,10 @@ export class Game {
   _enterEndless() {
     this.meta?.unlockEndless();        // persist Endless access → Main Menu ENDLESS MODE entry
     this.endless = true;
+
+    // ── Activate chunk streaming (Endless + Chaos only) ─────────────────
+    this.chunkManager.enable();
+    this.mapManager.chunkStreamingEnabled = true;
     this._repositionEndlessNexus();    // Endless-only: cleaner, symmetric, more-centered Nexus layout
     // Endless-local elite-wave clock: first wave after firstDelay, then every interval.
     this._eliteWaveTimer   = ELITE_WAVE.firstDelay;

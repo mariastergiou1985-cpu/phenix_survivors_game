@@ -12,112 +12,146 @@ import { Vec2, WORLD_W, WORLD_H, DARK_BG, GRID_LINE } from '../constants.js';
 
 export const BIOME_ID = {
   NEON_DISTRICT:   'neon_district',
-  DATA_WASTES:     'data_wastes',
-  VOID_RIFT:       'void_rift',
   INDUSTRIAL_CORE: 'industrial_core',
-  BIOLAB_SECTOR:   'biolab_sector',
-  THE_NULL:        'the_null',
+  ORBITAL_NEXUS:   'orbital_nexus',
+  ABYSSAL_TRENCH:  'abyssal_trench',
+  GLACIAL_EXPANSE: 'glacial_expanse',
+  DATA_WASTES:     'data_wastes',
+  THE_NULL:        'the_null',       // special endgame biome — not in ring
 };
 
 export const BIOME_DEFS = {
+  // ── 1. Neon District — center biome, magenta/cyan cyber metropolis ──────
   [BIOME_ID.NEON_DISTRICT]: {
     name: 'Neon District',
-    description: 'Glowing city streets with holographic signs and neon rain',
+    description: 'Electric cyber metropolis — neon rain, holograms, dense city-tech',
+    mapImage: 'assets/maps/biomes/neon-district-map.jpg',
     palette: {
       bg:        '#0a0e1f',
-      grid:      '#1a3a5a',
+      grid:      '#1a2a5a',
       accent1:   '#00e6ff',   // cyan
       accent2:   '#ff00b4',   // magenta
       ambient:   '#0d1530',
       hazard:    '#ff3750',
     },
-    gridStyle: 'neon',          // grid rendering style
-    hazards: ['neon_overload', 'hologram_decoy'],
+    gridStyle: 'neon',
+    hazards: ['grid_blackout', 'signal_hijack', 'adstorm_riot', 'overcharge_riot'],
     enemyModifiers: { speedMult: 1.0, hpMult: 1.0 },
     music: 'neon_district',
-    fogColor: 'rgba(0, 40, 80, 0.15)',
+    fogColor: 'rgba(10, 0, 40, 0.15)',
     particleColors: ['#00e6ff', '#ff00b4', '#9650ff'],
   },
 
-  [BIOME_ID.DATA_WASTES]: {
-    name: 'Data Wastes',
-    description: 'Corrupted data landscapes with glitch storms and static fields',
-    palette: {
-      bg:        '#0c0a08',
-      grid:      '#2a2010',
-      accent1:   '#ff9100',   // orange
-      accent2:   '#ffe650',   // yellow
-      ambient:   '#1a1408',
-      hazard:    '#ff5500',
-    },
-    gridStyle: 'corrupted',
-    hazards: ['data_corruption', 'static_field'],
-    enemyModifiers: { speedMult: 0.9, hpMult: 1.2 },
-    music: 'data_wastes',
-    fogColor: 'rgba(40, 30, 0, 0.20)',
-    particleColors: ['#ff9100', '#ffe650', '#ff5500'],
-  },
-
-  [BIOME_ID.VOID_RIFT]: {
-    name: 'Void Rift Zone',
-    description: 'Unstable dimensional tears with gravity anomalies',
-    palette: {
-      bg:        '#08040f',
-      grid:      '#2a1050',
-      accent1:   '#9650ff',   // purple
-      accent2:   '#ff2d95',   // pink
-      ambient:   '#0f0820',
-      hazard:    '#c030ff',
-    },
-    gridStyle: 'rift',
-    hazards: ['gravity_well', 'void_tear'],
-    enemyModifiers: { speedMult: 1.1, hpMult: 1.1 },
-    music: 'void_rift',
-    fogColor: 'rgba(30, 0, 60, 0.25)',
-    particleColors: ['#9650ff', '#ff2d95', '#c030ff'],
-  },
-
+  // ── 2. Industrial Core — furnace hell, orange/black ember, molten channels ─
   [BIOME_ID.INDUSTRIAL_CORE]: {
     name: 'Industrial Core',
-    description: 'Heavy machinery, conveyor belts, and molten metal hazards',
+    description: 'Furnace megafactory — molten channels, smoke stacks, heavy machine',
+    mapImage: 'assets/maps/biomes/industrial-core-map.jpg',
     palette: {
-      bg:        '#0a0808',
-      grid:      '#3a2020',
-      accent1:   '#ff3750',   // red
-      accent2:   '#ff9100',   // orange
-      ambient:   '#1a0c0c',
+      bg:        '#0a0604',
+      grid:      '#3a1a08',
+      accent1:   '#ff6a00',   // orange ember
+      accent2:   '#ffb830',   // molten gold
+      ambient:   '#1a0a04',
       hazard:    '#ff2200',
     },
     gridStyle: 'industrial',
-    hazards: ['conveyor_belt', 'molten_zone'],
+    hazards: ['furnace_overload', 'molten_rupture', 'steam_hammer_surge', 'scrapfall_collapse'],
     enemyModifiers: { speedMult: 0.85, hpMult: 1.4 },
     music: 'industrial_core',
-    fogColor: 'rgba(40, 10, 0, 0.18)',
-    particleColors: ['#ff3750', '#ff9100', '#ff6600'],
+    fogColor: 'rgba(40, 15, 0, 0.20)',
+    particleColors: ['#ff6a00', '#ffb830', '#ff2200'],
   },
 
-  [BIOME_ID.BIOLAB_SECTOR]: {
-    name: 'Biolab Sector',
-    description: 'Overgrown labs with toxic pools and mutant spawning vats',
+  // ── 3. Orbital Nexus — blue/white starlight, orbital cyber station ─────
+  [BIOME_ID.ORBITAL_NEXUS]: {
+    name: 'Orbital Nexus',
+    description: 'High-orbit cyber station — starfield void, advanced energy relays',
+    mapImage: 'assets/maps/biomes/orbital-nexus-map.jpg',
     palette: {
-      bg:        '#040f08',
-      grid:      '#0a3a1a',
-      accent1:   '#28ff8c',   // green
-      accent2:   '#00e6ff',   // cyan
-      ambient:   '#081a0c',
-      hazard:    '#50ff00',
+      bg:        '#020610',
+      grid:      '#0a1a40',
+      accent1:   '#3a8aff',   // station blue
+      accent2:   '#80d0ff',   // starlight
+      ambient:   '#040a18',
+      hazard:    '#60a0ff',
+    },
+    gridStyle: 'neon',
+    hazards: ['solar_flare_surge', 'hull_breach_cascade', 'satellite_debris_storm', 'reactor_sync_failure'],
+    enemyModifiers: { speedMult: 1.1, hpMult: 1.1 },
+    music: 'orbital_nexus',
+    fogColor: 'rgba(0, 10, 40, 0.18)',
+    particleColors: ['#3a8aff', '#80d0ff', '#ffffff'],
+  },
+
+  // ── 4. Abyssal Trench — deep blue/cyan/aqua, underwater cyber civilization ─
+  [BIOME_ID.ABYSSAL_TRENCH]: {
+    name: 'Abyssal Trench',
+    description: 'Underwater cyber civilization — domes, bioluminescence, trench darkness',
+    mapImage: 'assets/maps/biomes/abyssal-trench-map.jpg',
+    palette: {
+      bg:        '#020a14',
+      grid:      '#0a2038',
+      accent1:   '#00d4c8',   // aqua
+      accent2:   '#30a0ff',   // deep cyan
+      ambient:   '#041018',
+      hazard:    '#00ffb0',
     },
     gridStyle: 'organic',
-    hazards: ['toxic_pool', 'spore_burst'],
-    enemyModifiers: { speedMult: 1.05, hpMult: 1.0, regenRate: 0.5 },
-    music: 'biolab_sector',
-    fogColor: 'rgba(0, 40, 10, 0.20)',
-    particleColors: ['#28ff8c', '#00e6ff', '#50ff00'],
+    hazards: ['pressure_crush', 'bio_lum_bloom', 'leviathan_wake', 'dome_fracture_emergency'],
+    enemyModifiers: { speedMult: 0.9, hpMult: 1.2, regenRate: 0.5 },
+    music: 'abyssal_trench',
+    fogColor: 'rgba(0, 20, 40, 0.25)',
+    particleColors: ['#00d4c8', '#30a0ff', '#a060ff'],
   },
 
+  // ── 5. Glacial Expanse — ice blue/white/steel, frozen cryo frontier ────
+  [BIOME_ID.GLACIAL_EXPANSE]: {
+    name: 'Glacial Expanse',
+    description: 'Frozen techno-frontier — ice formations, cryo machinery, blizzard',
+    mapImage: 'assets/maps/biomes/glacial-expanse-map.jpg',
+    palette: {
+      bg:        '#080e14',
+      grid:      '#1a2a3a',
+      accent1:   '#70c8ff',   // ice blue
+      accent2:   '#c0e8ff',   // frost white
+      ambient:   '#0c1420',
+      hazard:    '#40a0d0',
+    },
+    gridStyle: 'neon',
+    hazards: ['whiteout_protocol', 'ice_growth_surge', 'cryoquakes', 'frozen_core_venting'],
+    enemyModifiers: { speedMult: 0.8, hpMult: 1.3 },
+    music: 'glacial_expanse',
+    fogColor: 'rgba(20, 30, 50, 0.22)',
+    particleColors: ['#70c8ff', '#c0e8ff', '#ffffff'],
+  },
+
+  // ── 6. Data Wastes — ashen gray/cyan/teal, corrupted dead wasteland ────
+  [BIOME_ID.DATA_WASTES]: {
+    name: 'Data Wastes',
+    description: 'Corrupted dead techno-wasteland — data residue, ghost-energy ruins',
+    mapImage: 'assets/maps/biomes/data-wastes-map.jpg',
+    palette: {
+      bg:        '#0a0c0a',
+      grid:      '#1a2a20',
+      accent1:   '#30c8a0',   // teal
+      accent2:   '#80ffcc',   // bright cyan-green
+      ambient:   '#0c100c',
+      hazard:    '#20d0a0',
+    },
+    gridStyle: 'corrupted',
+    hazards: ['data_storm', 'reality_decay', 'scrap_surge', 'null_seepage'],
+    enemyModifiers: { speedMult: 0.9, hpMult: 1.2 },
+    music: 'data_wastes',
+    fogColor: 'rgba(10, 20, 15, 0.22)',
+    particleColors: ['#30c8a0', '#80ffcc', '#40ffff'],
+  },
+
+  // ── 7. The Null — special endgame biome, not in biome ring ─────────────
   [BIOME_ID.THE_NULL]: {
     name: 'The Null',
     description: 'The final void — reality dissolving, maximum danger',
+    mapImage: null,            // procedural only
     palette: {
       bg:        '#020204',
       grid:      '#101020',
@@ -205,6 +239,28 @@ export class MapManager {
     this._chaosBgImage.onerror = () =>
       console.warn('[MapManager] missing chaos bg');
     this._chaosBgImage.src = `assets/ui/CHAOS_mode.png${v}`;
+
+    // ── Biome map images (for chunk streaming) ───────────────────────────
+    this.biomeImages = {};   // { biomeId: Image }
+    for (const [id, def] of Object.entries(BIOME_DEFS)) {
+      if (!def.mapImage) continue;           // THE_NULL has no map image
+      const img = new Image();
+      img.onerror = () =>
+        console.warn(`[MapManager] biome image failed: ${def.mapImage}`);
+      img.src = `${def.mapImage}${v}`;
+      this.biomeImages[id] = img;
+    }
+  }
+
+  /**
+   * Get a preloaded biome map image (or null if not loaded / not available).
+   * @param {string} biomeId
+   * @returns {HTMLImageElement|null}
+   */
+  getBiomeImage(biomeId) {
+    const img = this.biomeImages?.[biomeId];
+    if (!img || !img.complete || img.naturalWidth === 0) return null;
+    return img;
   }
 
   // ── Biome Management ────────────────────────────────────────────────────────

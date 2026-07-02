@@ -10,7 +10,7 @@
 // ────────────────────────────────────────────────────────────────────────────
 
 import { EVENTS } from './EventBus.js?v=20260702700000';
-import { BIOME_ID, BIOME_DEFS, CHUNK_SIZE, ACTIVE_GRID } from './MapManager.js?v=20260702700000';
+import { BIOME_ID, BIOME_DEFS, CHUNK_SIZE, ACTIVE_GRID } from './MapManager.js?v=20260703300000';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 const UNLOAD_DISTANCE = 2;   // chunks beyond active grid before unload
@@ -116,13 +116,14 @@ export class ChunkManager {
     /** Whether chunk streaming is active */
     this.enabled = false;
 
-    // Biome assignment ring — controls which biomes appear in which directions
+    // Biome assignment ring — 5 sectors radiating from Neon District center
+    // Neon District stays center-only (dist <= 2), not in this ring
     this._biomeRing = [
-      BIOME_ID.NEON_DISTRICT,
-      BIOME_ID.DATA_WASTES,
       BIOME_ID.INDUSTRIAL_CORE,
-      BIOME_ID.BIOLAB_SECTOR,
-      BIOME_ID.VOID_RIFT,
+      BIOME_ID.ORBITAL_NEXUS,
+      BIOME_ID.ABYSSAL_TRENCH,
+      BIOME_ID.GLACIAL_EXPANSE,
+      BIOME_ID.DATA_WASTES,
     ];
   }
 
@@ -474,19 +475,33 @@ export class ChunkManager {
 
   /**
    * Draw a single chunk's background.
-   * Uses the biome palette for procedural grid/fill.
+   * Priority: biome map image → palette bg color fallback.
+   * Adds a subtle dark overlay + grid for gameplay readability.
    */
   _drawChunkBg(ctx, chunk) {
     const pal = chunk.biome.palette;
+    const mapMgr = this.game.mapManager;
 
-    // Fill with biome background color
-    ctx.fillStyle = pal.bg;
-    ctx.fillRect(chunk.worldX, chunk.worldY, CHUNK_SIZE, CHUNK_SIZE);
+    // Try to draw the biome map image (1024→2560 scale)
+    const img = mapMgr ? mapMgr.getBiomeImage(chunk.biomeId) : null;
 
-    // Draw biome-specific grid
+    if (img) {
+      // Draw scaled biome image to fill the chunk
+      ctx.drawImage(img, chunk.worldX, chunk.worldY, CHUNK_SIZE, CHUNK_SIZE);
+
+      // Dark overlay for gameplay readability (keeps enemies/items visible)
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+      ctx.fillRect(chunk.worldX, chunk.worldY, CHUNK_SIZE, CHUNK_SIZE);
+    } else {
+      // Fallback: solid palette background
+      ctx.fillStyle = pal.bg;
+      ctx.fillRect(chunk.worldX, chunk.worldY, CHUNK_SIZE, CHUNK_SIZE);
+    }
+
+    // Draw biome-specific grid (over both image and fallback)
     this._drawChunkGrid(ctx, chunk, pal);
 
-    // Chunk border (subtle, for debug/visual separation)
+    // Chunk border (subtle visual separation)
     ctx.strokeStyle = pal.grid;
     ctx.lineWidth = 1;
     ctx.globalAlpha = 0.15;
