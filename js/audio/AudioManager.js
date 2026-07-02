@@ -433,97 +433,89 @@ export class AudioManager {
 
   // ─── Phase 1 Weapon SFX ───────────────────────────────────────────────────
 
-  // Plasma Blade — cinematic low whoosh with high-energy sizzle.
+  // Plasma Blade — broad energy arc swing.
   playPlasmaBladeSwing() {
     if (!this._canPlay("plasmaSwing", 0.25)) return;
-    // Deep power-up rumble
     this._tone({ type: "sawtooth", freqStart: 280, freqEnd: 60,  dur: 0.22, gain: 0.16 });
-    // Bright blade-edge hiss
     this._tone({ type: "sine",     freqStart: 900, freqEnd: 220, dur: 0.18, gain: 0.10 });
-    // Airy whoosh body
     this._noiseBurst({ dur: 0.20, gain: 0.09, filterType: "bandpass", freq: 400 });
+  });
+    this._noiseBurst({ dur: 0.12, gain: 0.04, filterType: "bandpass", freq: 600 });
   }
 
-  // Plasma Blade — satisfying electric crack + low thud on hit.
+  // Plasma Blade — impact crackle on successful hit.
   playPlasmaBladeHit() {
     if (!this._canPlay("plasmaHit", 0.10)) return;
-    // Low impact thud
     this._tone({ type: "sawtooth", freqStart: 220, freqEnd: 55,  dur: 0.14, gain: 0.18 });
-    // Electric crackle high end
     this._tone({ type: "square",   freqStart: 600, freqEnd: 180, dur: 0.08, gain: 0.12 });
-    // Snap burst
     this._noiseBurst({ dur: 0.07, gain: 0.11, filterType: "highpass", freq: 2000 });
+  });
+    this._noiseBurst({ dur: 0.05, gain: 0.05, filterType: "highpass", freq: 1800 });
   }
 
-  // Void Needle — sharp high-velocity "pew" with energy hiss.
+  // Void Needle — sharp piercing shot.
   playVoidNeedleFire() {
     if (!this._canPlay("voidFire", 0.08)) return;
-    // Sharp rising needle tone
     this._tone({ type: "triangle", freqStart: 1200, freqEnd: 400, dur: 0.09, gain: 0.13 });
-    // Thin air-slice hiss
     this._noiseBurst({ dur: 0.07, gain: 0.06, filterType: "highpass", freq: 3000 });
+  });
   }
 
-  // Void Needle — punchy electric pierce crack on hit.
+  // Void Needle — soft impact on hit.
   playVoidNeedleHit() {
     if (!this._canPlay("voidHit", 0.08)) return;
-    // Low thud impact
     this._tone({ type: "sawtooth", freqStart: 320, freqEnd: 90,  dur: 0.09, gain: 0.14 });
-    // Electric pop
     this._tone({ type: "square",   freqStart: 700, freqEnd: 200, dur: 0.05, gain: 0.09 });
-    // Sharp snap
     this._noiseBurst({ dur: 0.05, gain: 0.08, filterType: "highpass", freq: 2500 });
+  });
+    this._noiseBurst({ dur: 0.04, gain: 0.03, filterType: "highpass", freq: 2200 });
   }
 
   // Sentry Drone — light blaster pop on fire.
   playSentryDroneFire() {
     if (!this._canPlay("sentryFire", 0.12)) return;
-    // Sharp energy bolt "pew"
     this._tone({ type: "triangle", freqStart: 1400, freqEnd: 500, dur: 0.09, gain: 0.12 });
-    // Laser buzz undertone
     this._tone({ type: "sawtooth", freqStart: 600,  freqEnd: 200, dur: 0.06, gain: 0.07 });
+  });
   }
 
-  // Sentry Drone — punchy impact crack on hit.
+  // Sentry Drone — small impact on hit.
   playSentryDroneHit() {
     if (!this._canPlay("sentryHit", 0.10)) return;
-    // Mid thud
     this._tone({ type: "sine",     freqStart: 420, freqEnd: 120, dur: 0.08, gain: 0.12 });
-    // Electrical snap
     this._noiseBurst({ dur: 0.05, gain: 0.08, filterType: "highpass", freq: 2400 });
+  });
+    this._tone({ type: "sine", freqStart: 500, freqEnd: 200, dur: 0.04, gain: 0.04 });
   }
 
-  // Shard Ring — resonant purple energy crunch on contact (throttled to prevent spam).
+  // Shard Ring — resonant contact hum on enemy hit (global throttle keeps it from spamming).
   playShardRingHit() {
     if (!this._canPlay("shardHit", 0.15)) return;
-    // Deep resonant hum
     this._tone({ type: "sine",     freqStart: 160, freqEnd: 280, dur: 0.14, gain: 0.14 });
-    // Mid crunch layer
     this._tone({ type: "sawtooth", freqStart: 320, freqEnd: 160, dur: 0.08, gain: 0.09 });
-    // Crystalline high tick
     this._noiseBurst({ dur: 0.06, gain: 0.06, filterType: "bandpass", freq: 1200 });
+  });
+    this._noiseBurst({ dur: 0.06, gain: 0.025, filterType: "bandpass", freq: 900 });
   }
 
-  // Rail Spike — cinematic heavy cannon launch: magnetic charge + explosive burst.
+  // Rail Spike — heavy magnetic launch thump.
   playRailSpikeFire() {
     if (!this._canPlay("railFire", 0.40)) return;
-    // Sub-bass power charge
     this._tone({ type: "sawtooth", freqStart: 55,  freqEnd: 380, dur: 0.22, gain: 0.20 });
-    // High magnetic whine
     this._tone({ type: "triangle", freqStart: 900, freqEnd: 300, dur: 0.14, gain: 0.12 });
-    // Cannon explosion burst
     this._noiseBurst({ dur: 0.18, gain: 0.14, filterType: "lowpass", freq: 600 });
+  });
+    this._noiseBurst({ dur: 0.14, gain: 0.07, filterType: "lowpass", freq: 400 });
   }
 
-  // Rail Spike — massive bass impact + explosion on hit.
+  // Rail Spike — deep bass impact on hit.
   playRailSpikeImpact() {
     if (!this._canPlay("railImpact", 0.15)) return;
-    // Deep bass thud
     this._tone({ type: "sine",     freqStart: 100, freqEnd: 25,  dur: 0.30, gain: 0.20 });
-    // Mid crunch layer
     this._tone({ type: "sawtooth", freqStart: 280, freqEnd: 80,  dur: 0.12, gain: 0.12 });
-    // Shockwave burst
     this._noiseBurst({ dur: 0.15, gain: 0.12, filterType: "bandpass", freq: 400 });
+  });
+    this._noiseBurst({ dur: 0.12, gain: 0.06, filterType: "bandpass", freq: 300 });
   }
 
 
@@ -806,4 +798,33 @@ export class AudioManager {
   // Homing Missile — direct impact explosion. Throttled 0.12 s.
   playHomingMissileImpact() {
     if (!this._canPlay('homingImpact', 0.12)) return;
-    this._tone({ type: 'sine', freqStart: 180, freqEnd: 
+    this._tone({ type: 'sine', freqStart: 180, freqEnd: 32, dur: 0.32, gain: 0.18 });
+    this._noiseBurst({ dur: 0.25, gain: 0.13, filterType: 'highpass', freq: 500 });
+    this._noiseBurst({ dur: 0.20, gain: 0.07, filterType: 'bandpass', freq: 350, delay: 0.05 });
+  }
+
+  // ─── Game Feel SFX ──────────────────────────────────────────────────────────
+
+  // Heavy enemy hit — deeper impact for significant damage (dmg >= 40).
+  playHeavyHit() {
+    if (!this._canPlay('heavyHit', 0.08)) return;
+    this._tone({ type: 'sawtooth', freqStart: 180, freqEnd: 55, dur: 0.14, gain: 0.13 });
+    this._noiseBurst({ dur: 0.10, gain: 0.09, filterType: 'lowpass', freq: 350 });
+  }
+
+  // Boss hit — low bass thump for boss impacts.
+  playBossHit() {
+    if (!this._canPlay('bossHit', 0.12)) return;
+    this._tone({ type: 'sine', freqStart: 100, freqEnd: 35, dur: 0.30, gain: 0.16 });
+    this._noiseBurst({ dur: 0.20, gain: 0.08, filterType: 'lowpass', freq: 180 });
+  }
+
+  // Combat juice multi-kill burst — layered ascending tones + bandpass noise.
+  playJuiceBurst() {
+    if (!this._canPlay('juiceBurst', 3.0)) return;
+    this._tone({ type: 'sawtooth', freqStart: 220, freqEnd: 660, dur: 0.20, gain: 0.14 });
+    this._tone({ type: 'sine', freqStart: 440, freqEnd: 1320, dur: 0.25, gain: 0.09, delay: 0.04 });
+    this._noiseBurst({ dur: 0.18, gain: 0.10, filterType: 'bandpass', freq: 800 });
+  }
+
+}
