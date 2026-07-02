@@ -15,8 +15,8 @@ import { BIOME_ID, CHUNK_SIZE } from './MapManager.js?v=20260703500000';
 // ─── Constants ──────────────────────────────────────────────────────────────
 const NEXUS_PER_BIOME    = 4;
 const NEXUS_CAPACITY     = 6;     // was 8 — smaller per-nexus, but 24 total in Endless (144 cores)
-const REWARD_PULSE_INTERVAL = 30; // seconds between reward emissions from charged Nexus
-const REWARD_PULSE_RADIUS   = 600; // max distance for reward to home toward player
+const REWARD_PULSE_INTERVAL = 18; // seconds between reward emissions from charged Nexus (was 30)
+const REWARD_PULSE_RADIUS   = 900; // max distance for reward to home toward player (was 600)
 
 // Reward types and their weights
 const REWARD_TYPES = [
@@ -311,7 +311,7 @@ export class NexusManager {
       orb.pos.y += orb.vel.y * dt;
 
       // Mark for collection when close to player (Game.js applies the reward and splices)
-      if (d < 30) {
+      if (d < 50) {
         orb._collected = true;
       }
     }

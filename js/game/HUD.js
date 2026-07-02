@@ -208,23 +208,19 @@ export function drawHUD(ctx, game) {
     ctx.globalAlpha = 1;
   }
 
-  // Contextual: while carrying cores, spell out where they go (appears only when relevant).
-  if (p.carry > 0) {
-    ctx.textAlign = 'center';
-    drawText(ctx, `CARRYING ${p.carry} CORE${p.carry === 1 ? '' : 'S'} → RETURN TO A NEXUS`,
-             WIDTH / 2, HEIGHT - 30, '#ffd23c', 'bold 12px Consolas, monospace');
-  }
+  // Carry text removed — carry/return economy disabled.
+  // (p.carry is always 0; no "CARRYING X CORES" banner needed.)
 
   // Nexus-under-attack warning (banner + off-screen arrow) + objective reminder.
   _drawMatrixWarning(ctx, game);
   ctx.textAlign = 'center';
-  // Aggregate cores across ALL Nexus points (not just matrices[0]) → "CORES X/32".
+  // Aggregate cores across ALL Nexus points → "NEXUS GRID X/Y".
   const _mx = game.matrices || [];
-  let _obj = 'DEFEND THE NEXUS GRID · RETURN CORES';
+  let _obj = 'DEFEND THE NEXUS GRID';
   if (_mx.length) {
     let _stored = 0, _cap = 0;
     for (const m of _mx) { _stored += m.stored; _cap += m.capacity; }
-    _obj = `DEFEND THE NEXUS GRID · CORES ${Math.round(_stored)}/${_cap}`;
+    _obj = `NEXUS GRID ONLINE · CHARGE ${Math.round(_stored)}/${_cap}`;
   }
   drawText(ctx, _obj, WIDTH / 2, HEIGHT - 14, 'rgba(150,180,200,0.5)', '12px Consolas, monospace');
 
@@ -542,7 +538,7 @@ export function drawEndScreen(ctx, game) {
     let cause = '', hint = '';
     if (game.finalMessage === 'CITY GRID TOTAL BLACKOUT') {
       cause = 'CAUSE: OVERLOAD REACHED 100%';
-      hint  = 'DEFEND THE NEXUS · RETURN CORES TO REDUCE OVERLOAD';
+      hint  = 'DEFEND THE NEXUS · DESTROY ENEMIES TO REDUCE OVERLOAD';
     } else if (game.finalMessage === 'CYBER-HERO OFFLINE') {
       cause = 'CAUSE: HERO DEFEATED';
       hint  = 'UPGRADE HP · USE PHENIX REVIVES WISELY';

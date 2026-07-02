@@ -10,10 +10,10 @@ import { clamp, distance, safeNormalize, randomChoice, randomRange } from '../ut
 
 import { FloatingText }   from '../entities/FloatingText.js';
 import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260629440000';
-import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260703500000';
-import { Player }         from '../entities/Player.js?v=20260629440000';
+import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260703700000';
+import { Player }         from '../entities/Player.js?v=20260703700000';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260629440000';
-import { Enemy }          from '../entities/Enemy.js?v=20260702440000';
+import { Enemy }          from '../entities/Enemy.js?v=20260703700000';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=20260629440000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260702440000';
@@ -22,7 +22,7 @@ import { UpgradeUI }      from './UpgradeUI.js?v=20260629440000';
 import { weightedSample } from './Upgrades.js?v=20260629440000';
 import { MutationUI }      from './MutationUI.js?v=20260629440000';
 import { sampleMutations } from './Mutations.js?v=20260629440000';
-import { drawHUD, drawEndScreen } from './HUD.js?v=20260702450000';
+import { drawHUD, drawEndScreen } from './HUD.js?v=20260703700000';
 import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS } from './MetaProgress.js?v=20260629440000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260629440000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
@@ -39,7 +39,7 @@ import { EventBus, EVENTS } from './EventBus.js?v=20260702700000';
 import { EnemySpawner, ELITE_WAVE as ELITE_WAVE_CFG, BOSS_WARN_COOLDOWN as BOSS_WARN_CD } from './EnemySpawner.js?v=20260703400000';
 import { StateManager, GAME_STATES } from './StateManager.js?v=20260702900000';
 import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260703300000';
-import { NexusManager } from './NexusManager.js?v=20260703500000';
+import { NexusManager } from './NexusManager.js?v=20260703700000';
 
 // Euclid Vector toxin kit — used ONLY when selectedCharacter === 'euclid_vector' (world-space).
 import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=20260629440000';
@@ -5650,22 +5650,9 @@ export class Game {
     return Math.min(0.9, 0.5 + this.meta.getLevel('cacheScanner') * 0.05);
   }
 
-  // Safely grant cores toward the 4 Nexus matrices. Fills the player's carry slots first (up to
-  // maxCarry, neutral Silver value 3), then drops any remainder as a SMALL controlled ground
-  // cluster routed through the normal pickup→deposit pipeline. Never bypasses matrices, respects
-  // the carry cap, and the bounded count (≤ amount) prevents any ground-core flood.
+  // DISABLED — carry/return economy removed. Matrices stay full; rewards come from Nexus orbs.
   addCarriedCoresSafe(amount) {
-    const p = this.player;
-    let added = 0;
-    while (added < amount && p.carry < p.maxCarry) {
-      p.carry++;
-      p.carriedCores.push(3);   // Silver value — keeps the gold/silver deposit mechanic intact
-      added++;
-    }
-    for (let i = added; i < amount; i++) {
-      const off = new Vec2(randomRange(-50, 50), randomRange(-50, 50));
-      this.groundCores.push(new DataCore(this._clampPickupPos(p.pos.clone().add(off)), rollCoreType()));
-    }
+    // no-op
   }
 
   // Keep a pickup comfortably inside the reachable play area (well away from edges so
@@ -6421,51 +6408,10 @@ export class Game {
   }
 
   _handleCorePickupAndSlotting(dt) {
-    for (let i = this.groundCores.length - 1; i >= 0; i--) {
-      const core = this.groundCores[i];
-      const d    = distance(core.pos, this.player.pos);
-
-      if (d < this.player.pickupRadius * this.mutations.pickupRadiusMult * 1.7 + 48 && this.player.carry < this.player.maxCarry) {   // wider magnet (Tractor Beam scales pickupRadius); MAGNET DECAY read-site only
-        const pull = safeNormalize(this.player.pos.sub(core.pos));
-        core.pos.addMut(pull.scale(460 * dt));   // pull is enemy-independent (never stops near foes)
-
-        if (d < PLAYER_RADIUS + CORE_RADIUS + 8) {
-          this.groundCores.splice(i, 1);
-          this.player.carry++;
-          this.player.carriedCores.push(core.value ?? 3);   // remember gold/silver value
-          this.overload = Math.max(0, this.overload - OVERLOAD_PICKUP_REDUCTION);
-          this.floatingTexts.push(new FloatingText('CORE VACUUMED', this.player.pos.clone(), core.color || CYAN, 0.8));
-          this.particles.spawnCorePickup(core.pos, core.color);
-          this.audio?.playCorePickup();
-        }
-      }
-    }
-
-    if (this.player.carry > 0) {
-      for (const matrix of this.matrices) {
-        if (this.player.carry <= 0) break;
-        if (matrix.hasSpace() && distance(this.player.pos, matrix.pos) < this.player.returnRadius) {
-          const value = this.player.carriedCores.shift() ?? 3;   // Gold = 5, Silver = 3
-          matrix.slotCore(value);
-          this.player.carry--;
-          this.player.coresSecured++;
-          this.overload = Math.max(0, this.overload - OVERLOAD_SLOT_REDUCTION);
-          this.player.gainXp(2, this.floatingTexts);
-          const isGold = value >= 5;
-          this.floatingTexts.push(new FloatingText('+' + value + ' MATRIX',
-            matrix.pos.clone(), isGold ? '#ffd23c' : GREEN, 0.9));
-          this.particles.spawnCoreSlot(matrix.pos, isGold ? '#ffd23c' : matrix.color);
-          this.audio?.playCoreSlot();
-          this.score += 25;
-          // Matrix RNG bonus: ~22% of deposits award a variable Grid Credit cache (2–5).
-          if (Math.random() < 0.22) {
-            const c = this._awardCredits(2 + Math.floor(Math.random() * 4));   // 2..5
-            this.floatingTexts.push(new FloatingText('+' + c + ' GRID CREDITS',
-              new Vec2(matrix.pos.x, matrix.pos.y - 22), GREEN, 1.4));
-          }
-        }
-      }
-    }
+    // DISABLED — old carry/return economy removed.
+    // Matrices stay full. Rewards come from Nexus reward orbs that magnetize to the player.
+    // Ground cores from Chaos mode or legacy sources are simply cleaned up.
+    if (this.groundCores.length > 0) this.groundCores.length = 0;
   }
 
   _updateProjectiles(dt) {
@@ -8769,16 +8715,7 @@ export class Game {
           e.takeHit(15, this);
         }
       }
-      for (let i = this.groundCores.length - 1; i >= 0; i--) {
-        const core = this.groundCores[i];
-        if (p.carry < p.maxCarry && distance(p.pos, core.pos) < 60) {
-          this.groundCores.splice(i, 1);
-          p.carry++;
-          p.carriedCores.push(core.value ?? 3);
-          this.overload = Math.max(0, this.overload - OVERLOAD_PICKUP_REDUCTION);
-          this.particles.spawnCorePickup(core.pos, core.color);
-        }
-      }
+      // Taekwondo core pickup — disabled (carry/return economy removed).
     }
     for (const t of this._specialTrail) t.alpha -= 3.5 * dt;
     this._specialTrail = this._specialTrail.filter(t => t.alpha > 0);
@@ -15075,26 +15012,13 @@ _drawLoreArchive(ctx) {
     }
   }
 
-  // Ejects cores from the targeted Matrix (threatens it — never permanently destroys it).
+  // Annihilator threatens a Matrix — visual warning only, no core ejection.
+  // (stealCore is disabled; matrices stay at full charge.)
   _annihilatorStrike(a, target) {
-    let ejected = 0;
-    for (let i = 0; i < 2; i++) {
-      // Eject via stealCore so removed charge == ejected core value (conserved, no inflation).
-      const core = target.stealCore();
-      if (!core) break;
-      const angle  = Math.random() * Math.PI * 2;
-      const radius = randomRange(50, 110);
-      core.pos = target.pos.add(new Vec2(Math.cos(angle) * radius, Math.sin(angle) * radius));
-      this.groundCores.push(core);
-      ejected++;
-    }
     target.hackTimer = 0.6;  // flash the Matrix warning ring
-    if (ejected > 0) {
-      this.floatingTexts.push(new FloatingText('MATRIX BREACH!', target.pos.clone(), RED, 1.2));
-      this.screenShake.trigger(4, 0.2);
-      this.audio?.playMatrixBreach();
-      if (target.stored <= 0) this.audio?.playMatrixCritical();
-    }
+    this.floatingTexts.push(new FloatingText('MATRIX THREAT!', target.pos.clone(), RED, 1.2));
+    this.screenShake.trigger(4, 0.2);
+    this.audio?.playMatrixBreach();
   }
 
   _updateAnnihilator(dt) {
@@ -15219,15 +15143,10 @@ _drawLoreArchive(ctx) {
 
   // Endless objective consequence: erase one Nexus and spike Overload +30. Always leaves at least
   // one base standing; the per-run cap (2) is enforced by the caller.
+  // No core ejection — matrices stay full. The Nexus is simply removed from the array.
   _annihilatorDestroyNexus() {
     if (this.matrices.length <= 1) return;   // never erase the last base
     const target = this.matrices[Math.floor(Math.random() * this.matrices.length)];
-    let core;
-    while ((core = target.stealCore())) {    // eject stored cores to the ground (conserved)
-      const ang = Math.random() * Math.PI * 2, rad = randomRange(40, 120);
-      core.pos = target.pos.add(new Vec2(Math.cos(ang) * rad, Math.sin(ang) * rad));
-      this.groundCores.push(core);
-    }
     const idx = this.matrices.indexOf(target);
     if (idx !== -1) this.matrices.splice(idx, 1);
     this.overload = Math.min(100, this.overload + 30);

@@ -438,32 +438,7 @@ export class Enemy {
     if (this.enemyType === 'Overclocked Berserker') repelStrength = 0.25;
     else if (this.isBoss())                          repelStrength = 0.0;
 
-    // ── Carrying state: flee to dump target ──────────────────────────────
-    if (this.carryingCore !== null) {
-      if (this.dumpTarget === null)
-        this.dumpTarget = this._chooseDumpTarget(this.pos, player.pos);
-
-      let dir = safeNormalize(this.dumpTarget.sub(this.pos));
-
-      if (playerDist < player.repelRadius * 1.2) {
-        const flee = safeNormalize(this.pos.sub(player.pos));
-        dir = safeNormalize(dir.add(flee.scale(1.7)));
-      }
-
-      const stealMult = game.stealSpeedMultiplier || 1;
-      this.vel = dir.scale(this.baseSpeed * 1.15 * stealMult);
-      this.pos.addMut(this.vel.scale(dt));
-      this.carryingCore.pos = this.pos.add(new Vec2(0, -22));
-
-      if (distance(this.pos, this.dumpTarget) < 22) {
-        this.carryingCore.pos = this.pos.clone();
-        game.groundCores.push(this.carryingCore);
-        game.floatingTexts.push(new FloatingText('CORE DUMPED!', this.pos.clone(), RED, 0.9));
-        this.carryingCore = null;
-        this.dumpTarget   = null;
-      }
-      return;
-    }
+    // (Carrying state removed — enemies no longer steal or carry cores)
 
     // ── Role-based targeting ──────────────────────────────────────────────
     if (this.shootTimer > 0) this.shootTimer -= dt;
@@ -522,78 +497,24 @@ export class Enemy {
       const flee = safeNormalize(this.pos.sub(player.pos));
       this.vel = flee.scale(this.baseSpeed * (1.05 + repelStrength));
       this.pos.addMut(this.vel.scale(dt));
-      this.stealTimer = Math.max(0, this.stealTimer - dt * 2);
       return;
     }
 
     // ── Chase player (all remaining roles: stealer, hybrid, default) ────
-    // Enemies chase the player instead of seeking distant Nexus stations.
-    // Stealers still steal from nearby matrices they pass on the way.
-    const nearMatrix = this._chooseTargetMatrix(matrices);
-    const matrixInRange = nearMatrix && nearMatrix.pos.sub(this.pos).length() <= MATRIX_RADIUS + this.radius + 4;
+    // All enemies chase the player. No enemy steals from Nexus/PowerMatrix.
+    let dir = safeNormalize(player.pos.sub(this.pos));
 
-    if (!matrixInRange) {
-      // Chase player
-      let dir = safeNormalize(player.pos.sub(this.pos));
+    // Stealth burst
+    let burst = 1;
+    if (this.enemyType === 'Stealth Infiltrator' && Math.random() < 0.01) burst = 2;
 
-      // Stealth burst
-      let burst = 1;
-      if (this.enemyType === 'Stealth Infiltrator' && Math.random() < 0.01) burst = 2;
-
-      // Berserker jitter
-      if (this.enemyType === 'Overclocked Berserker') {
-        dir = safeNormalize(dir.add(new Vec2(randomRange(-1, 1), randomRange(-1, 1)).scale(0.75)));
-      }
-
-      this.vel = dir.scale(this.baseSpeed * burst);
-      this.pos.addMut(this.vel.scale(dt));
-      this.stealTimer = 0;
-    } else {
-      // ── Steal from matrix (gradual) ──────────────────────────────────
-      // Each steal now removes a WHOLE core of charge (3–5), so steals are slower: ~3.5s
-      // each → one enemy drains a full 12-charge Matrix in ~10s, leaving time to react.
-      // Per-type flavor kept as a mild factor; no time-based acceleration.
-      const stealMult      = game.stealSpeedMultiplier || 1;
-      const SECONDS_PER_CORE = 3.5;
-      const typeFactor     = Math.min(1.2, Math.max(0.7, this.stealTime / 1.5));
-      const effectiveTime  = Math.max(0.9, (SECONDS_PER_CORE * typeFactor) / stealMult);
-      this.stealTimer += dt;
-      target.hackTimer = 0.15;
-
-      if (this.stealTimer >= effectiveTime) {
-        this.stealTimer = 0;
-        const stolen = target.stealCore();
-
-        if (stolen !== null) {
-          this.carryingCore = stolen;
-          this.dumpTarget   = this._chooseDumpTarget(target.pos, player.pos);
-          game.floatingTexts.push(new FloatingText('CORE STOLEN!', target.pos.clone(), RED, 1));
-
-          // Stealth Infiltrator steals an extra core to scatter
-          if (this.enemyType === 'Stealth Infiltrator' && target.hasCore()) {
-            const extra = target.stealCore();
-            if (extra) {
-              extra.pos = target.pos.add(new Vec2(randomRange(-40, 40), randomRange(-40, 40)));
-              game.groundCores.push(extra);
-            }
-          }
-
-          // Security Defector Mech plunders nearby matrices
-          if (this.enemyType === 'Security Defector Mech') {
-            for (let i = 0; i < 5; i++) {
-              const nearby = randomChoice(matrices);
-              if (nearby.hasCore()) {
-                const extra = nearby.stealCore();
-                if (extra) {
-                  extra.pos = nearby.pos.add(new Vec2(randomRange(-80, 80), randomRange(-80, 80)));
-                  game.groundCores.push(extra);
-                }
-              }
-            }
-          }
-        }
-      }
+    // Berserker jitter
+    if (this.enemyType === 'Overclocked Berserker') {
+      dir = safeNormalize(dir.add(new Vec2(randomRange(-1, 1), randomRange(-1, 1)).scale(0.75)));
     }
+
+    this.vel = dir.scale(this.baseSpeed * burst);
+    this.pos.addMut(this.vel.scale(dt));
   }
 
   keepInBounds() {
@@ -636,26 +557,7 @@ export class Enemy {
   draw(ctx) {
     const drawColor = this.hitFlash > 0 ? WHITE : this.color;
 
-    // Pulsing glow for carrying enemies
-    if (this.carryingCore !== null) {
-      const t     = performance.now() * 0.008;
-      const glowR = Math.round(this.radius + 10 + 5 * Math.sin(t));
-      ctx.strokeStyle = RED;    ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.arc(this.pos.x, this.pos.y, glowR, 0, Math.PI * 2); ctx.stroke();
-      ctx.strokeStyle = ORANGE; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(this.pos.x, this.pos.y, glowR + 5, 0, Math.PI * 2); ctx.stroke();
-      ctx.strokeStyle = YELLOW; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.arc(this.pos.x, this.pos.y, glowR + 10, 0, Math.PI * 2); ctx.stroke();
-
-      // Line from enemy to carried core
-      if (this.carryingCore.pos) {
-        ctx.strokeStyle = RED; ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(this.pos.x, this.pos.y);
-        ctx.lineTo(this.carryingCore.pos.x, this.carryingCore.pos.y);
-        ctx.stroke();
-      }
-    }
+    // (Carrying glow removed — enemies no longer carry cores)
 
     // Try to draw sprite if loaded
     const spritePath = this.sprite && this.sprite.complete && this.sprite.naturalWidth > 0;
@@ -729,10 +631,6 @@ export class Enemy {
       drawBar(ctx, this.pos.x - bw / 2, this.pos.y - this.radius - 12, bw, 4, this.hp, Math.max(this.hp, 5), RED);
     }
 
-    // Steal progress ring
-    if (this.stealTimer > 0) {
-      ctx.strokeStyle = RED; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.arc(this.pos.x, this.pos.y, this.radius + 6, 0, Math.PI * 2); ctx.stroke();
-    }
+    // (Steal progress ring removed — enemies no longer steal)
   }
 }

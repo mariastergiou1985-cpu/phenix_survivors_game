@@ -388,15 +388,8 @@ export class Player {
       ctx.beginPath(); ctx.arc(this.pos.x, this.pos.y, PLAYER_RADIUS, 0, Math.PI * 2); ctx.stroke();
     }
 
-    // Carried cores orbiting around player
-    for (let i = 0; i < this.carry; i++) {
-      const angle = i * 0.7;
-      const dist  = 24 + (i % 2) * 5;
-      const ox = this.pos.x + Math.cos(angle) * dist;
-      const oy = this.pos.y + Math.sin(angle) * dist;
-      ctx.fillStyle = YELLOW;
-      ctx.beginPath(); ctx.arc(ox, oy, 4, 0, Math.PI * 2); ctx.fill();
-    }
+    // Carried cores visual — DISABLED (carry/return economy removed)
+    // carry is always 0 now; no orbiting dots to draw.
 
     // HP (red) + Mana (cyan) bars above the sprite — world-space, follow the player.
     // Both stay visible even when empty: dark track + colored fill + bright bordered frame.

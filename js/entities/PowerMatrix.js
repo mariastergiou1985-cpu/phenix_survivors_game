@@ -26,21 +26,10 @@ export class PowerMatrix {
   hasSpace() { return this.stored < this.capacity; }
 
   stealCore() {
-    if (this.stored <= 0) return null;
-    // ROOT-CAUSE FIX: take a whole core's worth of CHARGE out of the matrix. Previously this
-    // removed only 1 charge but dropped a 3–5 value core — so every steal MINTED 2–4 extra
-    // charge of loot, and at high enemy density that flooded the map with cores. Now the charge
-    // removed equals the dropped core's value, so total world-core value can never exceed the
-    // matrix deficit. Gold is rarer than silver; the last dregs drop a partial silver.
-    let type, value;
-    if (this.stored >= 5 && Math.random() < 0.18 + this.goldChanceBonus) { type = 'gold';   value = 5; }
-    else if (this.stored >= 3)                     { type = 'silver'; value = 3; }
-    else                                           { type = 'silver'; value = this.stored; }
-    this.stored -= value;
-    const offset = new Vec2(randomRange(-18, 18), randomRange(-18, 18));
-    const core   = new DataCore(this.pos.add(offset), type);
-    core.value   = value;   // deposit returns exactly the charge taken → economy is conserved
-    return core;
+    // DISABLED — no enemy or system is allowed to remove cores from matrices.
+    // Matrices stay at full charge. The old steal/carry/return economy is replaced
+    // by automatic Nexus reward orbs that magnetize to the player.
+    return null;
   }
 
   // Deposit a core worth `amount` Matrix-cores (Gold = 5, Silver = 3), capped at capacity.
