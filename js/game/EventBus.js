@@ -111,6 +111,7 @@ export const EVENTS = {
   ENEMY_KILLED:       'enemy:killed',              // { enemy, killer, pos }
   WAVE_STARTED:       'wave:started',              // { waveNum }
   WAVE_CLEARED:       'wave:cleared',              // { waveNum }
+  ENEMIES_THAW:       'enemy:thaw',                 // { enemies, chunkKey }
   ELITE_SPAWNED:      'enemy:eliteSpawned',        // { enemy, type }
   BOSS_SPAWNED:       'boss:spawned',              // { boss, name }
   BOSS_KILLED:        'boss:killed',               // { boss, name }
