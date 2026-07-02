@@ -168,6 +168,12 @@ export class ParticleSystem {
       const vel   = new Vec2(Math.cos(angle) * 100, Math.sin(angle) * 100);
       this._add(new Particle(pos, vel, palette[0], 1.5, 0.25));
     }
+    // White pop-flash — 3 large sparks, very short life for the "pop" on kill
+    for (let i = 0; i < 3; i++) {
+      const angle = (i / 3) * Math.PI * 2;
+      const vel   = new Vec2(Math.cos(angle) * 65, Math.sin(angle) * 65);
+      this._add(new Particle(pos, vel, '#ffffff', 8, 0.10));
+    }
   }
 
   update(dt) {
@@ -372,7 +378,7 @@ export function drawCRTVignette(ctx) {
   );
   grad.addColorStop(0,    'rgba(0,0,0,0)');
   grad.addColorStop(0.55, 'rgba(0,0,0,0.06)');
-  grad.addColorStop(1,    'rgba(0,0,0,0.48)');
+  grad.addColorStop(1,    'rgba(0,0,0,0.28)');
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, WIDTH, HEIGHT);
   ctx.restore();
@@ -448,7 +454,7 @@ export function drawBloom(ctx) {
   ctx.save();
   ctx.filter                   = 'blur(14px)';
   ctx.globalCompositeOperation = 'screen';
-  ctx.globalAlpha              = 0.22;
+  ctx.globalAlpha              = 0.35;
   ctx.drawImage(_bloomOff, 0, 0);
   ctx.restore();
   ctx.filter = 'none';           // always reset — filter is sticky on ctx

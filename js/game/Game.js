@@ -13,10 +13,10 @@ import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260629440000
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260629440000';
 import { Player }         from '../entities/Player.js?v=20260629440000';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260629440000';
-import { Enemy }          from '../entities/Enemy.js?v=20260629440000';
+import { Enemy }          from '../entities/Enemy.js?v=20260702440000';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=20260629440000';
 
-import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260701430000';
+import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260702440000';
 import { SystemEventManager } from './Events.js?v=20260629440000';
 import { UpgradeUI }      from './UpgradeUI.js?v=20260629440000';
 import { weightedSample } from './Upgrades.js?v=20260629440000';
@@ -9137,6 +9137,7 @@ export class Game {
     // Digital Singularity OWNS the player while active (it draws the dissolving/reforming sprite
     // in screen space), so skip the normal world-space player draw during the ultimate.
     if (!(this.player.selectedCharacter === 'japan_phasewalker' && this._digitalSingularity?.isActive())) {
+      drawGlow(ctx, this.player.pos.x, this.player.pos.y, 48, CYAN, 0.28); // player hero glow
       this.player.draw(ctx, this._lastMousePos || { x: 0, y: 0 });
     }
     this._drawUltAura(ctx);
@@ -17282,12 +17283,15 @@ _drawLoreArchive(ctx) {
         ctx.drawImage(spr, -w * 0.12, -h / 2, w, h);
       } else {
         ctx.globalCompositeOperation = 'lighter';
-        ctx.strokeStyle = '#00e6ff'; ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.arc(0, 0, s.range, -s.half, s.half);
-        ctx.lineTo(0, 0);
-        ctx.closePath();
-        ctx.stroke();
+        // Outer glow halo
+        ctx.strokeStyle = '#00e6ff'; ctx.lineWidth = 18; ctx.globalAlpha = a * 0.12;
+        ctx.beginPath(); ctx.arc(0, 0, s.range, -s.half, s.half); ctx.lineTo(0, 0); ctx.closePath(); ctx.stroke();
+        // Mid glow
+        ctx.lineWidth = 7; ctx.globalAlpha = a * 0.32;
+        ctx.beginPath(); ctx.arc(0, 0, s.range, -s.half, s.half); ctx.lineTo(0, 0); ctx.closePath(); ctx.stroke();
+        // Bright core
+        ctx.strokeStyle = '#aaffff'; ctx.lineWidth = 2; ctx.globalAlpha = a;
+        ctx.beginPath(); ctx.arc(0, 0, s.range, -s.half, s.half); ctx.lineTo(0, 0); ctx.closePath(); ctx.stroke();
       }
       ctx.restore();
     }

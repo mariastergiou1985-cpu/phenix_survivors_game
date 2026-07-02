@@ -12,11 +12,11 @@ import { drawGlow } from '../game/Effects.js?v=20260615210000';
 // has a hard global cap (MAX), so crowded fights never flood.
 const FEEDBACK = {
   flashDuration:        0.08,  // seconds an enemy tints white after a hit
-  normalDeathParticles: 10,    // spark burst on a normal enemy death
+  normalDeathParticles: 16,    // spark burst on a normal enemy death
   heavyDeathParticles:  18,    // spark burst on a heavy/elite/boss-type death
-  burstSize:            2.0,    // base particle size for the death burst
+  burstSize:            2.8,    // base particle size for the death burst
   heavyRingCount:       16,     // particles forming the heavy-death shock-ring
-  heavyRingSpeed:       175,    // outward speed of the heavy-death ring
+  heavyRingSpeed:       220,    // outward speed of the heavy-death ring
   heavyRadius:          20,     // enemy radius at/above which a death counts as "heavy"
 };
 
@@ -315,7 +315,7 @@ export class Enemy {
       game.particles.spawnDeathBurst(this.pos, this.color, FEEDBACK.heavyDeathParticles, FEEDBACK.burstSize + 0.8);
       game.particles.spawnDeathRing(this.pos, this.color, FEEDBACK.heavyRingCount, FEEDBACK.heavyRingSpeed, FEEDBACK.burstSize);
     } else {
-      game.particles.spawnDeathBurst(this.pos, this.color, FEEDBACK.normalDeathParticles, FEEDBACK.burstSize);
+      game.particles.spawnDeathBurstImproved(this.pos, this.color, FEEDBACK.normalDeathParticles, FEEDBACK.burstSize);
     }
     // Element death burst — uses last weapon hit color so each weapon leaves a distinct
     // visual signature on kill (fire=orange, void=cyan, gravity=purple, etc).
