@@ -36,6 +36,7 @@ import { MeteorRain } from '../effects/meteor-rain.js?v=20260629440000';
 import { NpcWalker } from './NpcWalker.js?v=20260629560000';
 import { MapManager, BIOME_ID, BIOME_DEFS } from './MapManager.js?v=20260702700000';
 import { EventBus, EVENTS } from './EventBus.js?v=20260702700000';
+import { EnemySpawner, ELITE_WAVE as ELITE_WAVE_CFG, BOSS_WARN_COOLDOWN as BOSS_WARN_CD } from './EnemySpawner.js?v=20260702800000';
 
 // Euclid Vector toxin kit — used ONLY when selectedCharacter === 'euclid_vector' (world-space).
 import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=20260629440000';
@@ -304,18 +305,8 @@ const STUN_LANCE_DURATION = 1.1;  // s — player stagger/root on hit (2s anti-l
 // Endless-only recurring waves of EXISTING enemy types, buffed AFTER construction.
 // Tankier + slightly faster, NOT deadlier (damage ×1.0) so the _damagePlayer fairness
 // invariant is untouched. Gated entirely on Game.endless — never fires in Act 1.
-const ELITE_WAVE = {
-  firstDelay:   90,    // s after CONTINUE — ENDLESS before the first wave
-  interval:    110,    // s between waves
-  baseBatch:     3,    // elites per wave
-  batch10min:    4,    // max elites once 10 min into Endless
-  batch20min:    5,    // max elites once 20 min into Endless
-  hpMult:      2.0,
-  speedMult:   1.10,
-  radiusMult:  1.20,
-  // Late-game existing types only — no bosses, no new types.
-  pool: ['Combat Hunter', 'Cyber Shooter', 'Heavy Mech', 'Overclocked Berserker', 'Stealth Infiltrator'],
-};
+// ELITE_WAVE config now lives in EnemySpawner.js — aliased here for backward compat.
+const ELITE_WAVE = ELITE_WAVE_CFG;
 
 // ─── Character Weapon Synergy mark-layer (modular) ──────────────────────────────────────────
 // Per-character visual identity for the synergy mark + burst. Active ONLY when the player picked the
@@ -330,9 +321,8 @@ const SYNERGY_FX = {
   euclid_vector:    { card: 'synergy_toxic_geometry',   meta: 'syn_toxic_geometry',   color: '#7CFF4D', glyph: '▲' },
 };
 
-// Endless-only: minimum gap (s) between boss/miniboss center-screen warnings (≈ one boss-rotation
-// loop) so a boss wave warns ONCE, not once per boss/respawn in the same loop. Act 1 is unaffected.
-const BOSS_WARN_COOLDOWN = 90;
+// BOSS_WARN_COOLDOWN now lives in EnemySpawner.js — aliased here.
+const BOSS_WARN_COOLDOWN = BOSS_WARN_CD;
 
 // Forced Endless Mutation Cards (Phase 1) — run-scoped negative mutations only (never saved).
 const MUTATION_INTERVAL   = 180;  // s — first forced pick at 3:00, then every 3:00
@@ -352,6 +342,7 @@ export class Game {
     this.events = new EventBus();
     this.mapManager = new MapManager({ game: this });
     this.mapManager.loadBackgrounds('20260702700000');
+    this.spawner = new EnemySpawner({ game: this, events: this.events });
 
     // Legacy aliases — keep these so existing code that reads _bgImage still works.
     // They're backed by MapManager now; the getters delegate.
@@ -3456,96 +3447,29 @@ export class Game {
   currentMinute()             { return Math.floor(this.timeAlive / 60); }
   coreVolatilityMultiplier()  { return 1 + (this.timeAlive / WIN_TIME_SECONDS) * 1.8; }
   overloadRateMultiplier()    { return 1 + Math.floor(this.timeAlive / 120) * 0.05; }
-  // Population caps tuned to five pressure tiers so the map is never empty for long:
-  //   0–2 light · 2–5 constant · 5–10 mini-hordes · 10–20 continuous · 20+ heavy chaos.
+  // Population caps — delegated to EnemySpawner (Phase 0 decoupling).
   enemyCap() {
-    const m = this.currentMinute();
-    let cap;
-    if (m < 2)       cap = 28 + m * 8;               // 28 → 36   (light, but always populated)
-    else if (m < 5)  cap = 44 + (m - 2) * 12;        // 44 → 80   (constant presence)
-    else if (m < 10) cap = 80 + (m - 5) * 14;        // 80 → 150  (visible groups / mini-hordes)
-    else if (m < 20) cap = 150 + (m - 10) * 10;      // 150 → 250 (continuous pressure)
-    else             cap = Math.min(280, 250 + (m - 20) * 5);  // heavy survivor chaos, perf-capped
-    // Endless: much denser from the start (×1.4 + 30), perf-capped a touch higher. Act 1 untouched.
-    if (this.endless) cap = Math.min(210, Math.round(cap * 1.15) + 20);
-    if (this._chaosMode) cap = Math.min(280, Math.round(cap * 1.3)); // Phase 5: +30% cap
-    return cap;
+    return this.spawner.enemyCap(this.currentMinute(), {
+      endless: this.endless,
+      chaos:   this._chaosMode,
+    });
   }
-  // Endless spawns roughly twice as fast from the start (lower floor too). Act 1 unchanged.
+  // Spawn interval — delegated to EnemySpawner (Phase 0 decoupling).
   enemySpawnInterval() {
-    let iv = Math.max(0.16, 0.5 - this.currentMinute() * 0.025);
-    if (this.endless) iv = Math.max(0.08, iv * 0.5);
-    if (this._chaosMode) iv = Math.max(0.06, iv / 1.5); // Phase 5: 1.5x faster spawn
-    return iv * this.mutations.spawnRateMult;   // SWARM PROTOCOL (1.0 outside Endless)
+    return this.spawner.spawnInterval(this.currentMinute(), {
+      endless:       this.endless,
+      chaos:         this._chaosMode,
+      spawnRateMult: this.mutations.spawnRateMult,
+    });
   }
 
+  // Enemy type selection — delegated to EnemySpawner (Phase 0 decoupling).
   chooseEnemyType() {
-    const t      = this.timeAlive;
-    const minute = this.currentMinute();
-    let pool;
-
-    // ── Chaos Mode: full late-game enemy pool from minute 0 ─────────────
-    if (this._chaosMode) {
-      if (!this.megaBoss && !this.enemies.some(e => e.enemyType === 'Rogue AI Overlord'))
-        return 'Rogue AI Overlord';
-      if (!this.enemies.some(e => e.enemyType === 'Security Defector Mech') && Math.random() < 0.12)
-        return 'Security Defector Mech';
-      return randomChoice([
-        'Overclocked Berserker', 'Overclocked Berserker',
-        'Combat Hunter',         'Combat Hunter',
-        'Cyber Shooter',         'Cyber Shooter',
-        'Heavy Mech',            'Heavy Mech',
-        'Cyber-Net Junkie',      'Stealth Infiltrator',
-        'Scrap Scavenger',
-      ]);
-    }
-
-    // 0:00-1:00 — gentle intro: core stealers + first hunters
-    if (t < 60)
-      pool = ['Scrap Scavenger', 'Scrap Scavenger', 'Combat Hunter', 'Glitch Drone'];
-
-    // 1:00-1:30 — ramp up: first Cyber Shooters appear
-    else if (t < 90)
-      pool = ['Combat Hunter', 'Cyber Shooter', 'Scrap Scavenger', 'Scrap Scavenger'];
-
-    // 1:30-3:00 — 60% combat hunters/shooters, 40% saboteurs
-    else if (t < 180)
-      pool = ['Combat Hunter', 'Combat Hunter', 'Cyber Shooter', 'Scrap Scavenger', 'Scrap Scavenger'];
-
-    // 3:00-6:00 — 67% combat, 33% saboteurs
-    else if (t < 360)
-      pool = ['Combat Hunter', 'Combat Hunter', 'Cyber Shooter', 'Cyber Shooter', 'Scrap Scavenger', 'Cyber-Net Junkie'];
-
-    // 6:00-10:00 min — 60% combat, more variety
-    else if (minute < 10)
-      pool = ['Combat Hunter', 'Cyber Shooter', 'Stealth Infiltrator', 'Scrap Scavenger', 'Cyber-Net Junkie'];
-
-    // 10:00-15:00 min — introduce Heavy Mechs
-    else if (minute < 15) {
-      pool = ['Combat Hunter', 'Cyber Shooter', 'Overclocked Berserker', 'Scrap Scavenger', 'Cyber-Net Junkie'];
-      if (!this.enemies.some(e => e.enemyType === 'Heavy Mech'))
-        return 'Heavy Mech';
-    }
-
-    // 15:00-20:00 min — heavy pressure + boss
-    else if (minute < 20) {
-      pool = ['Combat Hunter', 'Cyber Shooter', 'Heavy Mech', 'Overclocked Berserker', 'Scrap Scavenger'];
-      if (!this.enemies.some(e => e.enemyType === 'Security Defector Mech'))
-        return 'Security Defector Mech';
-    }
-
-    // 20:00-25:00 min — near endgame
-    else if (minute < 25)
-      pool = ['Combat Hunter', 'Cyber Shooter', 'Heavy Mech', 'Overclocked Berserker', 'Cyber-Net Junkie'];
-
-    // 25:00+ — endgame with boss
-    else {
-      pool = ['Overclocked Berserker', 'Combat Hunter', 'Cyber Shooter', 'Heavy Mech', 'Cyber-Net Junkie'];
-      if (!this.enemies.some(e => e.enemyType === 'Rogue AI Overlord') && !this.megaBoss)
-        return 'Rogue AI Overlord';
-    }
-
-    return randomChoice(pool);
+    return this.spawner.chooseEnemyType(this.timeAlive, {
+      chaos:    this._chaosMode,
+      enemies:  this.enemies,
+      megaBoss: this.megaBoss,
+    });
   }
 
   spawnEnemy() {
@@ -8165,12 +8089,8 @@ export class Game {
     const interval = this.thunderSolo ? Math.min(this.enemySpawnInterval(), 0.3) : this.enemySpawnInterval();
     if (this.spawnTimer >= interval) {
       this.spawnTimer = 0;
-      const m = this.currentMinute();
-      // Per-tick batch grows with the tiers so the cap actually FILLS (and stays filled vs kills).
-      let count = m < 2 ? 3 : m < 5 ? 4 : m < 10 ? 5 : 6;
-      // Catch-up surge: if the battlefield is below 70% of the cap, spawn extra so it never
-      // sits empty (kills early were outpacing spawns and leaving the map sparse).
-      if (this.enemies.length < this.enemyCap() * 0.7) count += 4;
+      // Batch size delegated to EnemySpawner (Phase 0 decoupling).
+      const count = this.spawner.spawnBatchSize(this.currentMinute(), this.enemies.length, this.enemyCap());
       for (let i = 0; i < count; i++) this.spawnEnemy();   // spawnEnemy() still enforces enemyCap
     }
   }
