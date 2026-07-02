@@ -13661,86 +13661,136 @@ _drawLoreArchive(ctx) {
     const now = performance.now();
 
     for (const z of this.bossLavaZones) {
+      const px = z.pos.x, py = z.pos.y, R = z.radius;
+      // Per-zone deterministic seed for consistent blobs
+      const zSeed = ((px * 7 + py * 13) | 0) & 0xFFFF;
+
       if (z.t < z.warn) {
-        // ── WARNING PHASE: telegraph ring + shrinking inner + molten grid ──
+        // ── WARNING PHASE: molten pool forming + danger telegraph ──
         const k     = z.t / z.warn;               // 0→1 as strike approaches
-        const pulse = 0.35 + 0.25 * Math.sin(now * 0.012);
+        const pulse = 0.5 + 0.5 * Math.sin(now * 0.008);
         ctx.save();
 
-        // Molten ground fill (growing)
-        ctx.globalAlpha = 0.12 + 0.22 * k;
-        const gf = ctx.createRadialGradient(z.pos.x, z.pos.y, 0, z.pos.x, z.pos.y, z.radius);
-        gf.addColorStop(0, '#ff6600'); gf.addColorStop(0.5, '#ff3300'); gf.addColorStop(1, 'rgba(80,10,0,0)');
-        ctx.fillStyle = gf;
-        ctx.beginPath(); ctx.arc(z.pos.x, z.pos.y, z.radius, 0, Math.PI * 2); ctx.fill();
+        // Irregular molten pool (6 overlapping blobs that grow in)
+        const blobR = R * (0.3 + 0.7 * k);
+        for (let bi = 0; bi < 6; bi++) {
+          const bSeed = ((zSeed + bi * 47) & 0xFFFF) / 0xFFFF;
+          const bAng  = bSeed * Math.PI * 2 + now * 0.0003 * (bi % 2 === 0 ? 1 : -1);
+          const bDist = R * 0.25 * bSeed;
+          const bx    = px + Math.cos(bAng) * bDist;
+          const by    = py + Math.sin(bAng) * bDist;
+          const br    = blobR * (0.5 + bSeed * 0.6);
+          const g = ctx.createRadialGradient(bx, by, 0, bx, by, br);
+          g.addColorStop(0, 'rgba(255,120,20,' + (0.25 + 0.35 * k) + ')');
+          g.addColorStop(0.4, 'rgba(200,40,0,' + (0.15 + 0.25 * k) + ')');
+          g.addColorStop(1, 'rgba(80,5,0,0)');
+          ctx.fillStyle = g;
+          ctx.beginPath(); ctx.arc(bx, by, br, 0, Math.PI * 2); ctx.fill();
+        }
 
-        // Outer dashed ring (danger telegraph)
-        ctx.globalAlpha = Math.min(1, pulse + 0.35 * k);
-        ctx.strokeStyle = '#ff4422'; ctx.lineWidth = 3; ctx.setLineDash([10, 8]);
-        ctx.beginPath(); ctx.arc(z.pos.x, z.pos.y, z.radius, 0, Math.PI * 2); ctx.stroke();
-        ctx.setLineDash([]);
+        // Molten cracks (flowing lines from center outward)
+        ctx.globalAlpha = 0.3 + 0.5 * k;
+        ctx.globalCompositeOperation = 'lighter';
+        for (let ci = 0; ci < 5; ci++) {
+          const cSeed = ((zSeed + ci * 83) & 0xFFFF) / 0xFFFF;
+          const cAng  = cSeed * Math.PI * 2 + now * 0.001;
+          const cLen  = R * (0.3 + 0.6 * k) * (0.6 + cSeed * 0.4);
+          ctx.strokeStyle = ci % 2 === 0 ? '#ff8833' : '#ffcc44';
+          ctx.lineWidth = 1.5 + cSeed * 2;
+          ctx.beginPath();
+          ctx.moveTo(px + Math.cos(cAng) * 8, py + Math.sin(cAng) * 8);
+          // Jagged crack via midpoint offset
+          const mx = px + Math.cos(cAng) * cLen * 0.5 + Math.sin(cAng) * 12 * (cSeed - 0.5);
+          const my = py + Math.sin(cAng) * cLen * 0.5 - Math.cos(cAng) * 12 * (cSeed - 0.5);
+          ctx.quadraticCurveTo(mx, my, px + Math.cos(cAng) * cLen, py + Math.sin(cAng) * cLen);
+          ctx.stroke();
+        }
+        ctx.globalCompositeOperation = 'source-over';
 
-        // Shrinking inner ring (imminence indicator)
-        ctx.globalAlpha = 0.5 + 0.4 * k;
-        ctx.strokeStyle = '#ffaa33'; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.arc(z.pos.x, z.pos.y, z.radius * (1 - k * 0.85), 0, Math.PI * 2); ctx.stroke();
+        // Thin danger ring (subtle telegraph, not dominant)
+        ctx.globalAlpha = 0.25 + 0.35 * k * pulse;
+        ctx.strokeStyle = '#ff3311'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(px, py, R, 0, Math.PI * 2); ctx.stroke();
 
-        // Cross-hair lines (tactical read)
-        ctx.globalAlpha = 0.20 + 0.15 * k;
-        ctx.strokeStyle = '#ff6600'; ctx.lineWidth = 1;
-        const cr = z.radius * 0.6;
-        ctx.beginPath();
-        ctx.moveTo(z.pos.x - cr, z.pos.y); ctx.lineTo(z.pos.x + cr, z.pos.y);
-        ctx.moveTo(z.pos.x, z.pos.y - cr); ctx.lineTo(z.pos.x, z.pos.y + cr);
-        ctx.stroke();
+        // Converging heat shimmer dots (approach center as k→1)
+        ctx.globalAlpha = 0.4 + 0.4 * k;
+        for (let di = 0; di < 8; di++) {
+          const dSeed = ((zSeed + di * 61) & 0xFFFF) / 0xFFFF;
+          const dAng  = dSeed * Math.PI * 2 + now * 0.002;
+          const dDist = R * (1 - k * 0.85) * (0.7 + dSeed * 0.3);
+          ctx.fillStyle = di % 3 === 0 ? '#ffdd44' : '#ff6600';
+          ctx.beginPath();
+          ctx.arc(px + Math.cos(dAng) * dDist, py + Math.sin(dAng) * dDist, 2 + dSeed * 2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+
         ctx.restore();
       } else {
-        // ── IMPACT PHASE: eruption + embers + shock rings ──
+        // ── IMPACT PHASE: volcanic eruption — magma burst + flying lava blobs ──
         const it   = (z.t - z.warn) / z.impact;   // 0→1 over impact duration
         const fade = it > 0.75 ? (1 - it) / 0.25 : 1;
         ctx.save();
-        ctx.globalAlpha = Math.max(0, fade);
 
-        // Core eruption gradient (bright center → orange → dark edge)
-        const ge = ctx.createRadialGradient(z.pos.x, z.pos.y, 0, z.pos.x, z.pos.y, z.radius * 1.1);
-        ge.addColorStop(0, '#fff8e0');
-        ge.addColorStop(0.15, '#ffcc44');
-        ge.addColorStop(0.4, '#ff6600');
-        ge.addColorStop(0.7, '#cc2200');
-        ge.addColorStop(1, 'rgba(60,5,0,0)');
-        ctx.fillStyle = ge;
-        ctx.beginPath(); ctx.arc(z.pos.x, z.pos.y, z.radius * 1.1, 0, Math.PI * 2); ctx.fill();
-
-        // Falling molten streaks (8 seeded from zone position — deterministic per zone)
-        ctx.globalCompositeOperation = 'lighter';
-        const seedBase = (z.pos.x * 7 + z.pos.y * 13) | 0;
-        for (let si = 0; si < 8; si++) {
-          const seed  = ((seedBase + si * 31) & 0xFFFF) / 0xFFFF;
-          const ang   = seed * Math.PI * 2;
-          const dist  = z.radius * (0.2 + seed * 0.7);
-          const sx    = z.pos.x + Math.cos(ang) * dist * it;
-          const sy    = z.pos.y + Math.sin(ang) * dist * it + it * 30;
-          const sLen  = 8 + seed * 12;
-          const sAlph = Math.max(0, (1 - it) * (0.6 + seed * 0.4));
-          ctx.globalAlpha = sAlph * fade;
-          ctx.strokeStyle = si % 3 === 0 ? '#ffdd66' : '#ff6600';
-          ctx.lineWidth = 1.5 + seed;
-          ctx.beginPath();
-          ctx.moveTo(sx, sy);
-          ctx.lineTo(sx - Math.cos(ang) * sLen * 0.3, sy - sLen);
-          ctx.stroke();
+        // Massive molten core — layered blobs for irregular lava pool
+        ctx.globalAlpha = Math.max(0, fade) * 0.9;
+        for (let bi = 0; bi < 8; bi++) {
+          const bSeed = ((zSeed + bi * 37) & 0xFFFF) / 0xFFFF;
+          const bAng  = bSeed * Math.PI * 2 + now * 0.002 * (bi % 2 === 0 ? 1 : -1);
+          const bDist = R * 0.2 * bSeed * (1 + it * 0.3);
+          const bx    = px + Math.cos(bAng) * bDist;
+          const by    = py + Math.sin(bAng) * bDist;
+          const br    = R * (0.4 + bSeed * 0.5) * (1 + it * 0.15);
+          const g = ctx.createRadialGradient(bx, by, 0, bx, by, br);
+          if (bi < 3) {
+            g.addColorStop(0, '#fffbe0'); g.addColorStop(0.2, '#ffcc33');
+            g.addColorStop(0.5, '#ff6600'); g.addColorStop(1, 'rgba(120,10,0,0)');
+          } else {
+            g.addColorStop(0, '#ffaa22'); g.addColorStop(0.3, '#dd3300');
+            g.addColorStop(0.7, '#881100'); g.addColorStop(1, 'rgba(40,2,0,0)');
+          }
+          ctx.fillStyle = g;
+          ctx.beginPath(); ctx.arc(bx, by, br, 0, Math.PI * 2); ctx.fill();
         }
 
-        // Expanding shock ring 1 (fast, bright)
+        // Flying lava globs (irregular shapes flung outward)
         ctx.globalCompositeOperation = 'lighter';
-        ctx.globalAlpha = Math.max(0, (1 - it) * 0.85) * fade;
-        ctx.strokeStyle = '#ffd27f'; ctx.lineWidth = 3;
-        ctx.beginPath(); ctx.arc(z.pos.x, z.pos.y, z.radius * (0.3 + 0.8 * it), 0, Math.PI * 2); ctx.stroke();
+        for (let gi = 0; gi < 12; gi++) {
+          const gSeed = ((zSeed + gi * 53) & 0xFFFF) / 0xFFFF;
+          const gAng  = gSeed * Math.PI * 2;
+          const gDist = R * (0.15 + 0.95 * it) * (0.5 + gSeed * 0.5);
+          const gx    = px + Math.cos(gAng) * gDist;
+          const gy    = py + Math.sin(gAng) * gDist + it * 20 * gSeed; // gravity droop
+          const gr    = (3 + gSeed * 6) * Math.max(0, 1 - it * 0.8);
+          const gAlph = Math.max(0, (1 - it) * (0.5 + gSeed * 0.5)) * fade;
+          ctx.globalAlpha = gAlph;
+          // Irregular blob shape (ellipse + rotation)
+          ctx.fillStyle = gi % 4 === 0 ? '#ffee66' : gi % 4 === 1 ? '#ff8822' : gi % 4 === 2 ? '#ff4400' : '#dd2200';
+          ctx.beginPath();
+          ctx.ellipse(gx, gy, gr, gr * (0.5 + gSeed * 0.5), gAng, 0, Math.PI * 2);
+          ctx.fill();
+        }
 
-        // Expanding shock ring 2 (slower, thinner)
-        ctx.globalAlpha = Math.max(0, (1 - it * 0.8)) * 0.4 * fade;
-        ctx.strokeStyle = '#ff8844'; ctx.lineWidth = 1.5;
-        ctx.beginPath(); ctx.arc(z.pos.x, z.pos.y, z.radius * (0.15 + 1.1 * it), 0, Math.PI * 2); ctx.stroke();
+        // Heat glow (additive radial)
+        ctx.globalAlpha = Math.max(0, (1 - it * 0.6)) * 0.5 * fade;
+        const hg = ctx.createRadialGradient(px, py, 0, px, py, R * 1.3);
+        hg.addColorStop(0, '#ffcc66'); hg.addColorStop(0.3, '#ff6600');
+        hg.addColorStop(0.7, '#aa1100'); hg.addColorStop(1, 'rgba(40,0,0,0)');
+        ctx.fillStyle = hg;
+        ctx.beginPath(); ctx.arc(px, py, R * 1.3, 0, Math.PI * 2); ctx.fill();
+
+        // Smoke wisps (dark, rising)
+        ctx.globalCompositeOperation = 'source-over';
+        for (let si = 0; si < 5; si++) {
+          const sSeed = ((zSeed + si * 71) & 0xFFFF) / 0xFFFF;
+          const sAng  = sSeed * Math.PI * 2;
+          const sDist = R * 0.3 * sSeed;
+          const sx    = px + Math.cos(sAng) * sDist;
+          const sy    = py + Math.sin(sAng) * sDist - it * 40 * (0.5 + sSeed);
+          const sr    = 8 + sSeed * 14;
+          ctx.globalAlpha = Math.max(0, (0.15 + 0.1 * sSeed) * (1 - it * 0.7)) * fade;
+          ctx.fillStyle = '#221100';
+          ctx.beginPath(); ctx.arc(sx, sy, sr, 0, Math.PI * 2); ctx.fill();
+        }
 
         ctx.restore();
       }
@@ -13838,8 +13888,13 @@ _drawLoreArchive(ctx) {
     if (toPlayer.length() > t.radius + PLAYER_RADIUS + 4) {
       t.pos.addMut(safeNormalize(toPlayer).scale(t.speed * dt));
     }
-    t.pos.x = clamp(t.pos.x, WORLD_MARGIN + t.radius, WORLD_W - WORLD_MARGIN - t.radius);
-    t.pos.y = clamp(t.pos.y, WORLD_MARGIN + 40 + t.radius, WORLD_H - WORLD_MARGIN - t.radius);
+    if (this.endless) {
+      t.pos.x = clamp(t.pos.x, WORLD_BOUNDS.left + WORLD_BOUNDS.margin + t.radius, WORLD_BOUNDS.right - WORLD_BOUNDS.margin - t.radius);
+      t.pos.y = clamp(t.pos.y, WORLD_BOUNDS.top + WORLD_BOUNDS.margin + t.radius, WORLD_BOUNDS.bottom - WORLD_BOUNDS.margin - t.radius);
+    } else {
+      t.pos.x = clamp(t.pos.x, WORLD_MARGIN + t.radius, WORLD_W - WORLD_MARGIN - t.radius);
+      t.pos.y = clamp(t.pos.y, WORLD_MARGIN + 40 + t.radius, WORLD_H - WORLD_MARGIN - t.radius);
+    }
 
     if (t.hitFlash > 0) t.hitFlash -= dt;
 
@@ -13904,14 +13959,19 @@ _drawLoreArchive(ctx) {
   _spawnTitan() {
     const R    = 50;
     const side = Math.random() < 0.5 ? -1 : 1;
-    const pos  = new Vec2(
-      WORLD_W / 2 + side * (WORLD_W / 2 - WORLD_MARGIN - R - 30),
-      WORLD_H / 2
-    );
+    // Endless: spawn near player; Act 1: use fixed world center
+    const cx = this.endless ? this.player.pos.x : WORLD_W / 2;
+    const cy = this.endless ? this.player.pos.y : WORLD_H / 2;
+    const spawnOff = 500 + Math.random() * 200;
+    const pos = this.endless
+      ? new Vec2(
+          clamp(cx + side * spawnOff, WORLD_BOUNDS.left + WORLD_BOUNDS.margin + R, WORLD_BOUNDS.right - WORLD_BOUNDS.margin - R),
+          clamp(cy, WORLD_BOUNDS.top + WORLD_BOUNDS.margin + R, WORLD_BOUNDS.bottom - WORLD_BOUNDS.margin - R))
+      : new Vec2(WORLD_W / 2 + side * (WORLD_W / 2 - WORLD_MARGIN - R - 30), WORLD_H / 2);
     const titanHp = Math.round((this.endless ? 460 : 600) * this._getActiveChaosLawModifiers().bossHpMult);   // Endless: killable range (Act 1 keeps 600)
     this.titanBoss = {
       pos, hp: titanHp, maxHp: titanHp,
-      radius: R, speed: 60, contactDamage: 16, hitFlash: 0,
+      radius: R, speed: this.endless ? 140 : 60, contactDamage: 16, hitFlash: 0,
       shockwaveTimer: 4, beamTimer: 8,
     };
     this._bossAnnounce('AI OVERLOAD TITAN DETECTED', PURPLE);
@@ -15087,14 +15147,19 @@ _drawLoreArchive(ctx) {
   _spawnAnnihilator() {
     const R    = 46;
     const side = Math.random() < 0.5 ? -1 : 1;
-    const pos  = new Vec2(
-      WORLD_W / 2 + side * (WORLD_W / 2 - WORLD_MARGIN - R - 30),
-      WORLD_H / 2
-    );
+    // Endless: spawn near player; Act 1: use fixed world center
+    const cx = this.endless ? this.player.pos.x : WORLD_W / 2;
+    const cy = this.endless ? this.player.pos.y : WORLD_H / 2;
+    const spawnOff = 500 + Math.random() * 200;
+    const pos = this.endless
+      ? new Vec2(
+          clamp(cx + side * spawnOff, WORLD_BOUNDS.left + WORLD_BOUNDS.margin + R, WORLD_BOUNDS.right - WORLD_BOUNDS.margin - R),
+          clamp(cy, WORLD_BOUNDS.top + WORLD_BOUNDS.margin + R, WORLD_BOUNDS.bottom - WORLD_BOUNDS.margin - R))
+      : new Vec2(WORLD_W / 2 + side * (WORLD_W / 2 - WORLD_MARGIN - R - 30), WORLD_H / 2);
     const annHp = Math.round((this.endless ? 460 : 600) * this._getActiveChaosLawModifiers().bossHpMult);     // Endless: killable range (Act 1 keeps 600)
     this.annihilatorBoss = {
       pos, hp: annHp, maxHp: annHp,
-      radius: R, speed: 52, contactDamage: 16, hitFlash: 0,
+      radius: R, speed: this.endless ? 130 : 52, contactDamage: 16, hitFlash: 0,
       targetMatrix: this._nearestMatrix(pos),
       attackTimer: 3,
       shotTimer: 3,
@@ -15174,8 +15239,13 @@ _drawLoreArchive(ctx) {
       }
     }
 
-    a.pos.x = clamp(a.pos.x, WORLD_MARGIN + a.radius, WORLD_W - WORLD_MARGIN - a.radius);
-    a.pos.y = clamp(a.pos.y, WORLD_MARGIN + 40 + a.radius, WORLD_H - WORLD_MARGIN - a.radius);
+    if (this.endless) {
+      a.pos.x = clamp(a.pos.x, WORLD_BOUNDS.left + WORLD_BOUNDS.margin + a.radius, WORLD_BOUNDS.right - WORLD_BOUNDS.margin - a.radius);
+      a.pos.y = clamp(a.pos.y, WORLD_BOUNDS.top + WORLD_BOUNDS.margin + a.radius, WORLD_BOUNDS.bottom - WORLD_BOUNDS.margin - a.radius);
+    } else {
+      a.pos.x = clamp(a.pos.x, WORLD_MARGIN + a.radius, WORLD_W - WORLD_MARGIN - a.radius);
+      a.pos.y = clamp(a.pos.y, WORLD_MARGIN + 40 + a.radius, WORLD_H - WORLD_MARGIN - a.radius);
+    }
 
     // Aimed energy shot — ranged pressure while it harasses the Matrix (fully dodgeable,
     // routed through the shared enemy-bullet → _damagePlayer fairness gate)
@@ -15334,14 +15404,19 @@ _drawLoreArchive(ctx) {
   _spawnBloodfang() {
     const R    = 40;
     const side = Math.random() < 0.5 ? -1 : 1;
-    const pos  = new Vec2(
-      WORLD_W / 2 + side * (WORLD_W / 2 - WORLD_MARGIN - R - 30),
-      WORLD_H / 2
-    );
+    // Endless: spawn near player; Act 1: use fixed world center
+    const cx = this.endless ? this.player.pos.x : WORLD_W / 2;
+    const cy = this.endless ? this.player.pos.y : WORLD_H / 2;
+    const spawnOff = 500 + Math.random() * 200;
+    const pos = this.endless
+      ? new Vec2(
+          clamp(cx + side * spawnOff, WORLD_BOUNDS.left + WORLD_BOUNDS.margin + R, WORLD_BOUNDS.right - WORLD_BOUNDS.margin - R),
+          clamp(cy, WORLD_BOUNDS.top + WORLD_BOUNDS.margin + R, WORLD_BOUNDS.bottom - WORLD_BOUNDS.margin - R))
+      : new Vec2(WORLD_W / 2 + side * (WORLD_W / 2 - WORLD_MARGIN - R - 30), WORLD_H / 2);
     const bfHp = Math.round((this.endless ? 540 : 700) * this._getActiveChaosLawModifiers().bossHpMult);      // Endless: killable range (Act 1 keeps 700)
     this.bloodfangBoss = {
       pos, hp: bfHp, maxHp: bfHp,
-      radius: R, speed: 112, hitFlash: 0,
+      radius: R, speed: this.endless ? 160 : 112, hitFlash: 0,
       biteTimer: 2.0, lungeTimer: 0, lungeDir: new Vec2(1, 0),
       slamTimer: 4,
     };
@@ -15388,8 +15463,13 @@ _drawLoreArchive(ctx) {
       }
     }
 
-    a.pos.x = clamp(a.pos.x, WORLD_MARGIN + a.radius, WORLD_W - WORLD_MARGIN - a.radius);
-    a.pos.y = clamp(a.pos.y, WORLD_MARGIN + 40 + a.radius, WORLD_H - WORLD_MARGIN - a.radius);
+    if (this.endless) {
+      a.pos.x = clamp(a.pos.x, WORLD_BOUNDS.left + WORLD_BOUNDS.margin + a.radius, WORLD_BOUNDS.right - WORLD_BOUNDS.margin - a.radius);
+      a.pos.y = clamp(a.pos.y, WORLD_BOUNDS.top + WORLD_BOUNDS.margin + a.radius, WORLD_BOUNDS.bottom - WORLD_BOUNDS.margin - a.radius);
+    } else {
+      a.pos.x = clamp(a.pos.x, WORLD_MARGIN + a.radius, WORLD_W - WORLD_MARGIN - a.radius);
+      a.pos.y = clamp(a.pos.y, WORLD_MARGIN + 40 + a.radius, WORLD_H - WORLD_MARGIN - a.radius);
+    }
 
     // Telegraphed pounce slam — clearly warned, single heavy hit, dodgeable by moving/dashing out.
     // Threatens a kiting player who out-ranges the lunge; mirrors the Lava-zone warn→impact pattern.
@@ -15558,12 +15638,20 @@ _drawLoreArchive(ctx) {
     if (this.cyberSerpentSpawned) return;
     this.cyberSerpentSpawned = true;
     const edge   = Math.floor(Math.random() * 4);
-    const margin = WORLD_MARGIN + 60;
     let sx, sy;
-    if      (edge === 0) { sx = randomRange(margin, WORLD_W - margin); sy = margin; }
-    else if (edge === 1) { sx = randomRange(margin, WORLD_W - margin); sy = WORLD_H - margin; }
-    else if (edge === 2) { sx = margin;            sy = randomRange(margin, WORLD_H - margin); }
-    else                 { sx = WORLD_W - margin;  sy = randomRange(margin, WORLD_H - margin); }
+    if (this.endless) {
+      const m = WORLD_BOUNDS.margin + 60;
+      if      (edge === 0) { sx = randomRange(WORLD_BOUNDS.left + m, WORLD_BOUNDS.right - m); sy = WORLD_BOUNDS.top + m; }
+      else if (edge === 1) { sx = randomRange(WORLD_BOUNDS.left + m, WORLD_BOUNDS.right - m); sy = WORLD_BOUNDS.bottom - m; }
+      else if (edge === 2) { sx = WORLD_BOUNDS.left + m;  sy = randomRange(WORLD_BOUNDS.top + m, WORLD_BOUNDS.bottom - m); }
+      else                 { sx = WORLD_BOUNDS.right - m; sy = randomRange(WORLD_BOUNDS.top + m, WORLD_BOUNDS.bottom - m); }
+    } else {
+      const margin = WORLD_MARGIN + 60;
+      if      (edge === 0) { sx = randomRange(margin, WORLD_W - margin); sy = margin; }
+      else if (edge === 1) { sx = randomRange(margin, WORLD_W - margin); sy = WORLD_H - margin; }
+      else if (edge === 2) { sx = margin;            sy = randomRange(margin, WORLD_H - margin); }
+      else                 { sx = WORLD_W - margin;  sy = randomRange(margin, WORLD_H - margin); }
+    }
     const isEndless = !!this.endless;
     const hp        = 1500;
     this.cyberSerpentBoss = {
@@ -15571,7 +15659,7 @@ _drawLoreArchive(ctx) {
       hp,
       maxHp:      hp,
       radius:     38,
-      speed:      135,
+      speed:      isEndless ? 175 : 135,
       hitFlash:   0,
       dashTimer:  0,      // countdown to next dash phase
       dashCd:     randomRange(3.0, 4.0),
@@ -15604,8 +15692,13 @@ _drawLoreArchive(ctx) {
       const dashSpeed = s.speed * 2.8;
       s.pos.x += s.dashDir.x * dashSpeed * dt;
       s.pos.y += s.dashDir.y * dashSpeed * dt;
-      s.pos.x = clamp(s.pos.x, WORLD_MARGIN, WORLD_W - WORLD_MARGIN);
-      s.pos.y = clamp(s.pos.y, WORLD_MARGIN, WORLD_H - WORLD_MARGIN);
+      if (this.endless) {
+        s.pos.x = clamp(s.pos.x, WORLD_BOUNDS.left + WORLD_BOUNDS.margin, WORLD_BOUNDS.right - WORLD_BOUNDS.margin);
+        s.pos.y = clamp(s.pos.y, WORLD_BOUNDS.top + WORLD_BOUNDS.margin, WORLD_BOUNDS.bottom - WORLD_BOUNDS.margin);
+      } else {
+        s.pos.x = clamp(s.pos.x, WORLD_MARGIN, WORLD_W - WORLD_MARGIN);
+        s.pos.y = clamp(s.pos.y, WORLD_MARGIN, WORLD_H - WORLD_MARGIN);
+      }
 
       // Leave fire trail segments every 40px — distance-based, cleaner spacing (max 20)
       const canPlace = !this._serpentLastTrailPos ||
@@ -15849,12 +15942,20 @@ _drawLoreArchive(ctx) {
     if (this.cyberDragonSpawned) return;
     this.cyberDragonSpawned = true;
     const edge   = Math.floor(Math.random() * 4);
-    const margin = WORLD_MARGIN + 80;
     let sx, sy;
-    if      (edge === 0) { sx = randomRange(margin, WORLD_W - margin); sy = margin; }
-    else if (edge === 1) { sx = randomRange(margin, WORLD_W - margin); sy = WORLD_H - margin; }
-    else if (edge === 2) { sx = margin;            sy = randomRange(margin, WORLD_H - margin); }
-    else                 { sx = WORLD_W - margin;  sy = randomRange(margin, WORLD_H - margin); }
+    if (this.endless) {
+      const m = WORLD_BOUNDS.margin + 80;
+      if      (edge === 0) { sx = randomRange(WORLD_BOUNDS.left + m, WORLD_BOUNDS.right - m); sy = WORLD_BOUNDS.top + m; }
+      else if (edge === 1) { sx = randomRange(WORLD_BOUNDS.left + m, WORLD_BOUNDS.right - m); sy = WORLD_BOUNDS.bottom - m; }
+      else if (edge === 2) { sx = WORLD_BOUNDS.left + m;  sy = randomRange(WORLD_BOUNDS.top + m, WORLD_BOUNDS.bottom - m); }
+      else                 { sx = WORLD_BOUNDS.right - m; sy = randomRange(WORLD_BOUNDS.top + m, WORLD_BOUNDS.bottom - m); }
+    } else {
+      const margin = WORLD_MARGIN + 80;
+      if      (edge === 0) { sx = randomRange(margin, WORLD_W - margin); sy = margin; }
+      else if (edge === 1) { sx = randomRange(margin, WORLD_W - margin); sy = WORLD_H - margin; }
+      else if (edge === 2) { sx = margin;            sy = randomRange(margin, WORLD_H - margin); }
+      else                 { sx = WORLD_W - margin;  sy = randomRange(margin, WORLD_H - margin); }
+    }
     const isEndless = !!this.endless;
     const hp        = 1500;
     this.cyberDragonBoss = {
@@ -15862,7 +15963,7 @@ _drawLoreArchive(ctx) {
       hp,
       maxHp:      hp,
       radius:     44,
-      speed:      75,
+      speed:      isEndless ? 130 : 75,
       hitFlash:   0,
       orbitAngle: 0,
       orbitRadius: 340,
@@ -15891,10 +15992,10 @@ _drawLoreArchive(ctx) {
 
     const pp = this.player.pos;
 
-    // ── Orbit around arena center with slow drift toward player ──
+    // ── Orbit around player (Endless) or arena center (Act 1) with drift toward player ──
     d.orbitAngle += dt * 0.55;
-    const cx  = WORLD_W / 2;
-    const cy  = WORLD_H / 2;
+    const cx  = this.endless ? pp.x : WORLD_W / 2;
+    const cy  = this.endless ? pp.y : WORLD_H / 2;
     const tx  = cx + Math.cos(d.orbitAngle) * d.orbitRadius;
     const ty  = cy + Math.sin(d.orbitAngle) * d.orbitRadius;
     const orbitDir = safeNormalize(new Vec2(tx - d.pos.x, ty - d.pos.y));
@@ -15902,8 +16003,13 @@ _drawLoreArchive(ctx) {
     const playerDir = safeNormalize(pp.sub(d.pos));
     d.pos.x += (orbitDir.x * 0.7 + playerDir.x * 0.3) * d.speed * dt;
     d.pos.y += (orbitDir.y * 0.7 + playerDir.y * 0.3) * d.speed * dt;
-    d.pos.x = clamp(d.pos.x, WORLD_MARGIN + d.radius, WORLD_W - WORLD_MARGIN - d.radius);
-    d.pos.y = clamp(d.pos.y, WORLD_MARGIN + d.radius, WORLD_H - WORLD_MARGIN - d.radius);
+    if (this.endless) {
+      d.pos.x = clamp(d.pos.x, WORLD_BOUNDS.left + WORLD_BOUNDS.margin + d.radius, WORLD_BOUNDS.right - WORLD_BOUNDS.margin - d.radius);
+      d.pos.y = clamp(d.pos.y, WORLD_BOUNDS.top + WORLD_BOUNDS.margin + d.radius, WORLD_BOUNDS.bottom - WORLD_BOUNDS.margin - d.radius);
+    } else {
+      d.pos.x = clamp(d.pos.x, WORLD_MARGIN + d.radius, WORLD_W - WORLD_MARGIN - d.radius);
+      d.pos.y = clamp(d.pos.y, WORLD_MARGIN + d.radius, WORLD_H - WORLD_MARGIN - d.radius);
+    }
 
     // ── Cryo Storm cooldown ──
     if (!d.storming) {
@@ -16287,9 +16393,11 @@ _drawLoreArchive(ctx) {
 
   _spawnDoubleDemonsBoss() {
     const hp   = DD_HP;
-    const mid  = new Vec2(WORLD_W / 2, WORLD_H / 2);
-    const dx   = WORLD_W * 0.28;
-    const dy   = WORLD_H * 0.18;
+    const mid  = this.endless ? this.player.pos.clone() : new Vec2(WORLD_W / 2, WORLD_H / 2);
+    const halfW = this.endless ? (WORLD_BOUNDS.right - WORLD_BOUNDS.left) / 2 : WORLD_W / 2;
+    const halfH = this.endless ? (WORLD_BOUNDS.bottom - WORLD_BOUNDS.top) / 2 : WORLD_H / 2;
+    const dx   = halfW * 0.28;
+    const dy   = halfH * 0.18;
     const flip = Math.random() < 0.5 ? -1 : 1;
     const gPos = mid.add(new Vec2(-dx * flip, -dy));
     const cPos = mid.add(new Vec2( dx * flip,  dy));
@@ -16380,8 +16488,13 @@ _drawLoreArchive(ctx) {
       g.pos.addMut(perp.scale(DD_GUNNER_SPEED * 0.75 * spdM * dt));
     }
 
-    g.pos.x = clamp(g.pos.x, WORLD_MARGIN + g.radius, WORLD_W - WORLD_MARGIN - g.radius);
-    g.pos.y = clamp(g.pos.y, WORLD_MARGIN + 40 + g.radius, WORLD_H - WORLD_MARGIN - g.radius);
+    if (this.endless) {
+      g.pos.x = clamp(g.pos.x, WORLD_BOUNDS.left + WORLD_BOUNDS.margin + g.radius, WORLD_BOUNDS.right - WORLD_BOUNDS.margin - g.radius);
+      g.pos.y = clamp(g.pos.y, WORLD_BOUNDS.top + WORLD_BOUNDS.margin + g.radius, WORLD_BOUNDS.bottom - WORLD_BOUNDS.margin - g.radius);
+    } else {
+      g.pos.x = clamp(g.pos.x, WORLD_MARGIN + g.radius, WORLD_W - WORLD_MARGIN - g.radius);
+      g.pos.y = clamp(g.pos.y, WORLD_MARGIN + 40 + g.radius, WORLD_H - WORLD_MARGIN - g.radius);
+    }
 
     // Gunner contact push (light — it prefers range)
     if (distance(g.pos, p.pos) < g.radius + PLAYER_RADIUS) {
@@ -16519,8 +16632,13 @@ _drawLoreArchive(ctx) {
       }
     }
 
-    c.pos.x = clamp(c.pos.x, WORLD_MARGIN + c.radius, WORLD_W - WORLD_MARGIN - c.radius);
-    c.pos.y = clamp(c.pos.y, WORLD_MARGIN + 40 + c.radius, WORLD_H - WORLD_MARGIN - c.radius);
+    if (this.endless) {
+      c.pos.x = clamp(c.pos.x, WORLD_BOUNDS.left + WORLD_BOUNDS.margin + c.radius, WORLD_BOUNDS.right - WORLD_BOUNDS.margin - c.radius);
+      c.pos.y = clamp(c.pos.y, WORLD_BOUNDS.top + WORLD_BOUNDS.margin + c.radius, WORLD_BOUNDS.bottom - WORLD_BOUNDS.margin - c.radius);
+    } else {
+      c.pos.x = clamp(c.pos.x, WORLD_MARGIN + c.radius, WORLD_W - WORLD_MARGIN - c.radius);
+      c.pos.y = clamp(c.pos.y, WORLD_MARGIN + 40 + c.radius, WORLD_H - WORLD_MARGIN - c.radius);
+    }
 
     // Claw contact damage (heavy melee threat)
     if (distance(c.pos, p.pos) < c.radius + PLAYER_RADIUS &&
