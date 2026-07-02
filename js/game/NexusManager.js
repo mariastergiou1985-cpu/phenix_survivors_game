@@ -153,7 +153,7 @@ export class NexusManager {
     }
 
     // ── Outer biomes: 4 Nexus each at deterministic ring positions ──
-    const ringDist = CHUNK_SIZE * 3.5; // ~3.5 chunks from origin
+    const ringDist = CHUNK_SIZE * 2.0; // ~2 chunks from origin (compact biomes)
     const sectorCount = BIOME_RING_ORDER.length;
 
     for (let s = 0; s < sectorCount; s++) {

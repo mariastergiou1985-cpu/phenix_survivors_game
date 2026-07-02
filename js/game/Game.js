@@ -38,8 +38,8 @@ import { MapManager, BIOME_ID, BIOME_DEFS } from './MapManager.js?v=202607033000
 import { EventBus, EVENTS } from './EventBus.js?v=20260702700000';
 import { EnemySpawner, ELITE_WAVE as ELITE_WAVE_CFG, BOSS_WARN_COOLDOWN as BOSS_WARN_CD } from './EnemySpawner.js?v=20260703400000';
 import { StateManager, GAME_STATES } from './StateManager.js?v=20260702900000';
-import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260703300000';
-import { NexusManager } from './NexusManager.js?v=20260703700000';
+import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260703800000';
+import { NexusManager } from './NexusManager.js?v=20260703800000';
 
 // Euclid Vector toxin kit — used ONLY when selectedCharacter === 'euclid_vector' (world-space).
 import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=20260629440000';

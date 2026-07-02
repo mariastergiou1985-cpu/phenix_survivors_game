@@ -300,8 +300,8 @@ export class ChunkManager {
   _getBiomeForCoords(cx, cy) {
     const dist = Math.max(Math.abs(cx), Math.abs(cy));
 
-    // Starting area: always Neon District
-    if (dist <= 2) return BIOME_ID.NEON_DISTRICT;
+    // Starting area: always Neon District (3×3 chunks)
+    if (dist <= 1) return BIOME_ID.NEON_DISTRICT;
 
     // Use angle from origin to pick biome sector
     const angle = Math.atan2(cy, cx);                          // -PI to PI
