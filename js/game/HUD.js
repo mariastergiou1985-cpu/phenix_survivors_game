@@ -498,8 +498,25 @@ function _drawSkull(ctx, cx, cy, color) {
 }
 
 export function drawEndScreen(ctx, game) {
-  ctx.fillStyle = 'rgba(0,0,0,0.88)';
-  ctx.fillRect(0, 0, WIDTH, HEIGHT);
+  // Cinematic overlay — pure black for victory, dark-red gradient + scanlines for death
+  if (game.victory) {
+    ctx.fillStyle = 'rgba(0,0,0,0.88)';
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+  } else {
+    const _dg = ctx.createRadialGradient(WIDTH / 2, HEIGHT / 2, 60, WIDTH / 2, HEIGHT / 2, HEIGHT * 0.8);
+    _dg.addColorStop(0,   'rgba(10,0,0,0.90)');
+    _dg.addColorStop(0.6, 'rgba(24,0,0,0.93)');
+    _dg.addColorStop(1,   'rgba(50,0,8,0.97)');
+    ctx.fillStyle = _dg;
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+    // Horizontal scan-lines for CRT death feel
+    ctx.save();
+    for (let _sy = 0; _sy < HEIGHT; _sy += 4) {
+      ctx.fillStyle = 'rgba(0,0,0,0.13)';
+      ctx.fillRect(0, _sy, WIDTH, 2);
+    }
+    ctx.restore();
+  }
 
   // Title
   if (game.victory) {
@@ -508,9 +525,16 @@ export function drawEndScreen(ctx, game) {
     ctx.textAlign = 'center';
     ctx.fillText(game.finalMessage, WIDTH / 2, 80);
   } else {
+    const _gx = Math.sin(performance.now() * 0.004) * 3;
     ctx.font      = '48px Consolas, monospace';
-    ctx.fillStyle = '#ff2244';
     ctx.textAlign = 'center';
+    // Chromatic glitch layers
+    ctx.fillStyle = 'rgba(255,0,60,0.45)';
+    ctx.fillText('CITY GRID BLACKOUT', WIDTH / 2 + _gx + 3, 80);
+    ctx.fillStyle = 'rgba(0,230,255,0.30)';
+    ctx.fillText('CITY GRID BLACKOUT', WIDTH / 2 - _gx - 2, 80);
+    // Main title
+    ctx.fillStyle = '#ff2244';
     ctx.fillText('CITY GRID BLACKOUT', WIDTH / 2, 80);
 
     // Death-cause clarity (display only): translate finalMessage into a plain

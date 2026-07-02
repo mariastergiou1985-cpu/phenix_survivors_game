@@ -22,7 +22,7 @@ import { UpgradeUI }      from './UpgradeUI.js?v=20260629440000';
 import { weightedSample } from './Upgrades.js?v=20260629440000';
 import { MutationUI }      from './MutationUI.js?v=20260629440000';
 import { sampleMutations } from './Mutations.js?v=20260629440000';
-import { drawHUD, drawEndScreen } from './HUD.js?v=20260629440000';
+import { drawHUD, drawEndScreen } from './HUD.js?v=20260702450000';
 import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS } from './MetaProgress.js?v=20260629440000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260629440000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
@@ -10303,6 +10303,9 @@ export class Game {
     ctx.fillStyle = 'rgba(2,6,14,0.32)';
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
+    // ── Ambient particle field — drifting holographic specks over background ──
+    this._drawMenuParticles(ctx);
+
     // ── Character cut-out (code-positioned layer over the theme's character zone) ──
     const ci = this._menuChars;
     if (ci && ci.complete && ci.naturalWidth > 0) {
@@ -10353,6 +10356,45 @@ export class Game {
 
     // Announcements (e.g. REACH ENDLESS FIRST feedback) rendered last so they appear on top.
     this._drawAnnouncement(ctx);
+  }
+
+  // ─── Menu ambient particle field ─────────────────────────────────────────────
+  // Purely procedural — no state array. Uses performance.now() + golden-ratio
+  // distribution to scatter 32 slowly-drifting specks over the menu background.
+  // Cyan layer = digital data stream feel; purple layer = depth/mystique.
+  _drawMenuParticles(ctx) {
+    const t = performance.now() * 0.001;
+    ctx.save();
+    // ── Cyan drifting specks (22)
+    for (let i = 0; i < 22; i++) {
+      const phi   = i * 2.3999632;
+      const baseX = ((Math.sin(phi) * 0.5 + 0.5) * 0.85 + 0.075) * WIDTH;
+      const baseY = ((Math.cos(phi * 1.3) * 0.5 + 0.5)) * HEIGHT;
+      const drift = 0.018 + (i % 7) * 0.006;
+      const y     = ((baseY - (t * drift * HEIGHT) % HEIGHT) + HEIGHT * 2) % HEIGHT;
+      const x     = baseX + Math.sin(t * 0.28 + phi) * 20;
+      const size  = 1.2 + Math.sin(t * 0.7 + phi * 2.1) * 0.5;
+      const alpha = 0.13 + Math.sin(t * 0.45 + phi) * 0.06;
+      ctx.globalAlpha = Math.max(0, alpha);
+      ctx.fillStyle = '#00e6ff';
+      ctx.beginPath(); ctx.arc(x, y, Math.max(0.5, size), 0, Math.PI * 2); ctx.fill();
+    }
+    // ── Purple/magenta twinkle specks (10)
+    for (let i = 0; i < 10; i++) {
+      const phi   = (i + 100) * 2.3999632;
+      const baseX = ((Math.sin(phi * 0.9) * 0.5 + 0.5) * 0.85 + 0.075) * WIDTH;
+      const baseY = ((Math.cos(phi * 1.7) * 0.5 + 0.5)) * HEIGHT;
+      const drift = 0.011 + (i % 5) * 0.005;
+      const y     = ((baseY - (t * drift * HEIGHT) % HEIGHT) + HEIGHT * 2) % HEIGHT;
+      const x     = baseX + Math.sin(t * 0.22 + phi) * 28;
+      const size  = 1.8 + Math.sin(t * 0.55 + phi * 1.8) * 0.7;
+      const alpha = 0.09 + Math.sin(t * 0.38 + phi) * 0.05;
+      ctx.globalAlpha = Math.max(0, alpha);
+      ctx.fillStyle = '#cc44ff';
+      ctx.beginPath(); ctx.arc(x, y, Math.max(0.5, size), 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
   }
 
   // ─── SETTINGS DOM overlay ────────────────────────────────────────────────────
