@@ -10383,7 +10383,7 @@ export class Game {
         speed : 44 + Math.random() * 54,
         len,
         alpha : 0.40 + Math.random() * 0.35,
-        col   : ['#00c8e6','#0088bb','#00bb99','#1144aa'][Math.floor(Math.random()*4)],
+        col   : ['#00ffff','#00e8ff','#00ffcc','#44ddff'][Math.floor(Math.random()*4)],
         flicker: Math.random() * 3,
         glyphs: Array.from({length: len}, () => G[Math.floor(Math.random()*G.length)]),
         gTimer: Math.random() * 0.2
@@ -10394,7 +10394,7 @@ export class Game {
   _updateMenuCodeRain(dt) {
     if (!this._codeRainCols) return;
     const G = this._codeRainGlyphSet;
-    const FSIZE = 13;
+    const FSIZE = 16;
     for (const c of this._codeRainCols) {
       c.y += c.speed * dt;
       c.flicker -= dt;
@@ -10411,7 +10411,7 @@ export class Game {
         c.speed = 44 + Math.random() * 54;
         c.len   = 6 + Math.floor(Math.random() * 9);
         c.alpha = 0.40 + Math.random() * 0.35;
-        c.col   = ['#00c8e6','#0088bb','#00bb99','#1144aa'][Math.floor(Math.random()*4)];
+        c.col   = ['#00ffff','#00e8ff','#00ffcc','#44ddff'][Math.floor(Math.random()*4)];
         c.glyphs = Array.from({length: c.len}, () => G[Math.floor(Math.random()*G.length)]);
       }
     }
@@ -10426,7 +10426,7 @@ export class Game {
       [310, 220, 710, 720],   // character art zone
       [0,   0,   1280, 34],   // top HUD / resource counters
     ];
-    const FSIZE = 13;
+    const FSIZE = 16;
     ctx.save();
     ctx.font = FSIZE + 'px Consolas, monospace';
     ctx.textAlign = 'center';
@@ -10445,10 +10445,10 @@ export class Game {
         const fade   = 1 - j / c.len;
         const head   = j === 0 ? 2.0 : 1.0;
         const flkMul = (flickering && j < 2) ? 0.18 : 1.0;
-        const a = Math.min(0.90, c.alpha * fade * head * flkMul);
+        const a = Math.min(1.0,  c.alpha * fade * head * flkMul);
         if (a < 0.01) continue;
         ctx.globalAlpha = a;
-        ctx.fillStyle   = j === 0 ? '#88ffff' : c.col;
+        ctx.fillStyle   = j === 0 ? '#ffffff' : c.col;
         ctx.fillText(c.glyphs[j] || '0', gx, gy);
       }
     }
