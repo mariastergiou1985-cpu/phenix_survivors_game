@@ -37,6 +37,7 @@ import { NpcWalker } from './NpcWalker.js?v=20260629560000';
 import { MapManager, BIOME_ID, BIOME_DEFS } from './MapManager.js?v=20260702700000';
 import { EventBus, EVENTS } from './EventBus.js?v=20260702700000';
 import { EnemySpawner, ELITE_WAVE as ELITE_WAVE_CFG, BOSS_WARN_COOLDOWN as BOSS_WARN_CD } from './EnemySpawner.js?v=20260702800000';
+import { StateManager, GAME_STATES } from './StateManager.js?v=20260702900000';
 
 // Euclid Vector toxin kit — used ONLY when selectedCharacter === 'euclid_vector' (world-space).
 import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=20260629440000';
@@ -343,6 +344,7 @@ export class Game {
     this.mapManager = new MapManager({ game: this });
     this.mapManager.loadBackgrounds('20260702700000');
     this.spawner = new EnemySpawner({ game: this, events: this.events });
+    this.stateManager = new StateManager({ game: this, events: this.events });
 
     // Legacy aliases — keep these so existing code that reads _bgImage still works.
     // They're backed by MapManager now; the getters delegate.
