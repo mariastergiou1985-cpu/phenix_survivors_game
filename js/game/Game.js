@@ -10375,14 +10375,14 @@ export class Game {
     const G = '01ABCDEF01abcdef01ABCDEF01∆≡01AB'.split('');
     this._codeRainGlyphSet = G;
     this._codeRainCols = [];
-    for (let i = 0; i < 30; i++) {
+    for (let i = 0; i < 55; i++) {
       const len = 6 + Math.floor(Math.random() * 9);
       this._codeRainCols.push({
         x     : Math.round(30 + Math.random() * 1220),
         y     : -Math.random() * 720,
         speed : 44 + Math.random() * 54,
         len,
-        alpha : 0.10 + Math.random() * 0.12,
+        alpha : 0.40 + Math.random() * 0.35,
         col   : ['#00c8e6','#0088bb','#00bb99','#1144aa'][Math.floor(Math.random()*4)],
         flicker: Math.random() * 3,
         glyphs: Array.from({length: len}, () => G[Math.floor(Math.random()*G.length)]),
@@ -10410,7 +10410,7 @@ export class Game {
         c.y     = -(FSIZE + Math.random() * 180);
         c.speed = 44 + Math.random() * 54;
         c.len   = 6 + Math.floor(Math.random() * 9);
-        c.alpha = 0.10 + Math.random() * 0.12;
+        c.alpha = 0.40 + Math.random() * 0.35;
         c.col   = ['#00c8e6','#0088bb','#00bb99','#1144aa'][Math.floor(Math.random()*4)];
         c.glyphs = Array.from({length: c.len}, () => G[Math.floor(Math.random()*G.length)]);
       }
