@@ -610,6 +610,8 @@ export class Game {
 
     // HTML menu overlay — created once after reset() so meta/characters are ready.
     this._menuOverlayEl      = null;   // root #cgm-overlay div
+    this._codeRainCanvas     = null;   // overlay canvas for code rain (z-index > #cgm-overlay)
+    this._codeRainCtx        = null;
     this._menuOverlayVisible = false;
     try {
       this._initMenuOverlay();
@@ -9771,6 +9773,12 @@ export class Game {
     const style = document.createElement('style');
     style.id = 'cgm-style';
     style.textContent = `
+      #cgm-code-rain-canvas {
+        position:fixed; inset:0; z-index:101;
+        pointer-events:none;
+        width:100vw; height:100vh;
+        display:none;
+      }
       #cgm-overlay {
         position:fixed; inset:0; z-index:100;
         font-family:'Share Tech Mono',ui-monospace,monospace;
@@ -10088,6 +10096,15 @@ export class Game {
     document.body.appendChild(el);
     this._menuOverlayEl = el;
 
+    // ── Code rain overlay canvas (sits ABOVE #cgm-overlay so rain is visible) ──
+    const crCanvas = document.createElement('canvas');
+    crCanvas.id = 'cgm-code-rain-canvas';
+    crCanvas.width  = 1280;
+    crCanvas.height = 720;
+    document.body.appendChild(crCanvas);
+    this._codeRainCanvas = crCanvas;
+    this._codeRainCtx    = crCanvas.getContext('2d');
+
     // ── character art: reveal when image loads ───────────────────────────────
     const slot = el.querySelector('.stage-art');
     const img  = slot && slot.querySelector('img');
@@ -10243,6 +10260,7 @@ export class Game {
     this._syncMenuOverlayItems();   // rebuild nav (Endless unlock may have changed)
     this._refreshMenuOverlay();     // push live data
     this._menuOverlayEl.style.display = 'flex';
+    if (this._codeRainCanvas) this._codeRainCanvas.style.display = 'block';
     this._menuOverlayVisible = true;
     this._startEqLoop();
   }
@@ -10251,6 +10269,7 @@ export class Game {
     if (!this._menuOverlayEl) return;
     this._stopEqLoop();
     this._menuOverlayEl.style.display = 'none';
+    if (this._codeRainCanvas) this._codeRainCanvas.style.display = 'none';
     this._menuOverlayVisible = false;
   }
 
@@ -10305,8 +10324,8 @@ export class Game {
     ctx.fillStyle = 'rgba(2,6,14,0.32)';
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
-    // ── Code rain (drawn early, behind everything)
-    this._drawMenuCodeRain(ctx);
+    // ── Code rain (drawn on dedicated overlay canvas above #cgm-overlay)
+    this._drawMenuCodeRainOverlay();
 
     // ── Character cut-out (code-positioned layer over the theme's character zone) ──
     const ci = this._menuChars;
@@ -10456,6 +10475,13 @@ export class Game {
     ctx.textBaseline  = 'alphabetic';
     ctx.textAlign     = 'left';
     ctx.restore();
+  }
+
+  _drawMenuCodeRainOverlay() {
+    const ctx = this._codeRainCtx;
+    if (!ctx) return;
+    ctx.clearRect(0, 0, 1280, 720);
+    this._drawMenuCodeRain(ctx);
   }
 
   _drawMenuButtonIcons(ctx) {
