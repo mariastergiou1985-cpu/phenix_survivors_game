@@ -187,21 +187,41 @@ export class ScreenShake {
   constructor() {
     this.intensity = 0;
     this.timer     = 0;
+    this._maxTimer = 0.001;  // duration at last intensity update — used for decay curve
     this._ox = 0;
     this._oy = 0;
   }
 
+  // Keep the strongest active shake — never let a weaker trigger cut a heavy one short
   trigger(intensity, duration) {
-    this.intensity = intensity;
-    this.timer     = duration;
+    if (intensity > this.intensity) {
+      this.intensity = intensity;
+      this._maxTimer = Math.max(duration, 0.001);
+    }
+    if (duration > this.timer) this.timer = duration;
   }
 
   update(dt) {
-    if (this.timer <= 0) { this._ox = 0; this._oy = 0; return; }
+    if (this.timer <= 0) {
+      // Smooth settle: drift back to zero rather than snapping (avoids sudden pop)
+      this._ox *= 0.65;
+      this._oy *= 0.65;
+      if (Math.abs(this._ox) < 0.05) this._ox = 0;
+      if (Math.abs(this._oy) < 0.05) this._oy = 0;
+      // Decay intensity so the next trigger starts clean
+      this.intensity *= 0.5;
+      if (this.intensity < 0.1) this.intensity = 0;
+      return;
+    }
     this.timer -= dt;
-    const i  = this.intensity * clamp(this.timer, 0, 1);
-    this._ox = (Math.random() - 0.5) * i * 2;
-    this._oy = (Math.random() - 0.5) * i * 2;
+    // Proper linear decay: full intensity when triggered, fades to 0 as timer reaches 0
+    const decay = Math.max(0, this.timer / this._maxTimer);
+    const i     = this.intensity * decay;
+    // Smoothed noise: lerp toward a random target each frame — feels cinematic, not jittery
+    const tx = (Math.random() - 0.5) * i * 2;
+    const ty = (Math.random() - 0.5) * i * 2;
+    this._ox = this._ox * 0.35 + tx * 0.65;
+    this._oy = this._oy * 0.35 + ty * 0.65;
   }
 
   getOffset() { return [this._ox, this._oy]; }
@@ -399,30 +419,4 @@ export function drawChromaticAberration(ctx, flash, intensity, duration) {
 // OffscreenCanvas (created once, reused every frame), then composites it back
 // blurred with 'screen' blending so bright neon pixels spread a soft halo
 // without darkening anything.  alpha 0.22 = subtle premium look.
-// ctx.filter blur: Chrome 51+, Firefox 49+, Safari 18+ (Sep 2024).
-let _bloomOff = null;   // OffscreenCanvas — lazy-init, resized on canvas change
-let _bloomOC  = null;   // 2d context for the offscreen canvas
-
-export function drawBloom(ctx) {
-  const w = ctx.canvas.width;
-  const h = ctx.canvas.height;
-
-  // Lazy-init / resize offscreen canvas
-  if (!_bloomOff || _bloomOff.width !== w || _bloomOff.height !== h) {
-    _bloomOff = new OffscreenCanvas(w, h);
-    _bloomOC  = _bloomOff.getContext('2d');
-  }
-
-  // Snapshot current frame into offscreen (source ≠ dest — safe)
-  _bloomOC.clearRect(0, 0, w, h);
-  _bloomOC.drawImage(ctx.canvas, 0, 0);
-
-  // Blur + screen blend → neon bloom pass
-  ctx.save();
-  ctx.filter                   = 'blur(14px)';
-  ctx.globalCompositeOperation = 'screen';
-  ctx.globalAlpha              = 0.22;
-  ctx.drawImage(_bloomOff, 0, 0);
-  ctx.restore();
-  ctx.filter = 'none';           // always reset — filter is sticky on ctx
-}
+// ct
