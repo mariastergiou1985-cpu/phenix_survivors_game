@@ -10,7 +10,7 @@ import { clamp, distance, safeNormalize, randomChoice, randomRange } from '../ut
 
 import { FloatingText }   from '../entities/FloatingText.js';
 import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260629440000';
-import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260629440000';
+import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260703500000';
 import { Player }         from '../entities/Player.js?v=20260629440000';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260629440000';
 import { Enemy }          from '../entities/Enemy.js?v=20260702440000';
@@ -39,6 +39,7 @@ import { EventBus, EVENTS } from './EventBus.js?v=20260702700000';
 import { EnemySpawner, ELITE_WAVE as ELITE_WAVE_CFG, BOSS_WARN_COOLDOWN as BOSS_WARN_CD } from './EnemySpawner.js?v=20260703400000';
 import { StateManager, GAME_STATES } from './StateManager.js?v=20260702900000';
 import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260703300000';
+import { NexusManager } from './NexusManager.js?v=20260703500000';
 
 // Euclid Vector toxin kit — used ONLY when selectedCharacter === 'euclid_vector' (world-space).
 import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=20260629440000';
@@ -713,7 +714,13 @@ export class Game {
     this._applyMetaUpgrades();
     this._echoPassiveMsgFired = false;
     this._applyBossEchoPassives();
-    this.matrices     = [];
+    // ── NexusManager: manages all Nexus stations, per-biome health, rewards ──
+    if (!this.nexusManager) {
+      this.nexusManager = new NexusManager({ endless: false });
+    } else {
+      this.nexusManager.endless = false;
+    }
+    this.matrices     = [];  // will be set to nexusManager.matrices after init()
     this.groundCores  = [];
     this.enemies      = [];
     this.projectiles  = [];
@@ -997,7 +1004,8 @@ export class Game {
     this._arenaResult       = null;
     this._endlessStartedAt  = 0;      // timeAlive when Endless began (direct=0, Act1→Endless=nonzero)
 
-    this._createMatrices();
+    this.nexusManager.init(WORLD_W, WORLD_H);
+    this.matrices = this.nexusManager.matrices;  // alias — all existing code uses this.matrices unchanged
     // KIROSHI WALKER — timer-based summon; first arrival at 2:00 of active gameplay
     this._npcWalker = new NpcWalker();
     this._walkerCycleIdx    = -1;         // current 5-min cycle index (300s per cycle)
@@ -1205,7 +1213,8 @@ export class Game {
     // ── Activate chunk streaming (Endless + Chaos only) ─────────────────
     this.chunkManager.enable();
     this.mapManager.chunkStreamingEnabled = true;
-    this._repositionEndlessNexus();    // Endless-only: cleaner, symmetric, more-centered Nexus layout
+    this.nexusManager.repositionForEndless();    // Expand to 24 Nexus across all biomes
+    this.matrices = this.nexusManager.matrices;   // re-alias after expansion
     // Endless-local elite-wave clock: first wave after firstDelay, then every interval.
     this._eliteWaveTimer   = ELITE_WAVE.firstDelay;
     this._eliteWaveElapsed = 0;
@@ -5494,7 +5503,21 @@ export class Game {
 
     // Grid Investor card: +2% Gold Core chance per level on stolen cores (read in PowerMatrix.stealCore).
     const gridGoldBonus = (this.player.upgrades['Grid Investor'] || 0) * 0.02;
-    for (const m of this.matrices) { m.update(dt); m.goldChanceBonus = gridGoldBonus; }
+    this.nexusManager.update(dt, this.player, gridGoldBonus);
+
+    // ── Collect reward orbs that reached the player ──
+    for (let i = this.nexusManager.rewardOrbs.length - 1; i >= 0; i--) {
+      const orb = this.nexusManager.rewardOrbs[i];
+      if (orb._collected) {
+        this.nexusManager.rewardOrbs.splice(i, 1);
+        const r = orb.reward;
+        if (r.type === 'xp')       { this.player.gainXp(8 + Math.floor(this.timeAlive / 30), this.floatingTexts); }
+        else if (r.type === 'credits')  { this._awardCredits(2 + Math.floor(Math.random() * 3)); }
+        else if (r.type === 'heal')     { this.player.hp = Math.min(this.player.maxHp, this.player.hp + 5); }
+        else if (r.type === 'overload') { this.overload = Math.max(0, this.overload - 3); }
+        this.floatingTexts.push(new FloatingText(r.label, this.player.pos.clone(), r.color, 0.8));
+      }
+    }
 
     // Tick down phoenix animation
     if (this.phoenixReviveTimer > 0) this.phoenixReviveTimer -= dt;
@@ -8949,6 +8972,8 @@ export class Game {
       if (this.endless) this._drawEndlessNexusBase(ctx, m);   // sprite UNDER the matrix (Endless only)
       m.draw(ctx, this.overload / OVERLOAD_CAP);              // core indicators/status stay on top
     }
+    // 2b ── Nexus reward orbs (homing XP/credit/heal pulses from charged Nexus)
+    this.nexusManager.drawRewardOrbs(ctx);
 
     // 3 ── Data-Cores: GOLD and SILVER only, each a distinct SILHOUETTE in a distinct HUE
     // so they never read as generic white particles. GOLD = warm amber spinning starburst

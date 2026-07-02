@@ -3,13 +3,14 @@ import { randomRange } from '../utils.js';
 import { DataCore, rollCoreType } from './DataCore.js?v=20260615210000';
 
 export class PowerMatrix {
-  constructor(pos, color, capacity = 8) {
+  constructor(pos, color, capacity = 6) {
     this.pos      = pos;
     this.color    = color;
     this.capacity = capacity;
     this.stored   = capacity;
     this.hackTimer = 0.0;
     this.goldChanceBonus = 0;   // Grid Investor card: extra Gold Core chance, set by Game each frame
+    this.biomeId  = null;       // assigned by NexusManager — which biome this Nexus belongs to
 
     // Visual-feedback state (no gameplay impact)
     this.flashTimer  = 0;            // brief cyan/white flash after a core is inserted
