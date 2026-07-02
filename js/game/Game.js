@@ -18132,4 +18132,22 @@ _drawLoreArchive(ctx) {
       // Draw missile body
       ctx.save();
       ctx.translate(m.x, m.y);
-      c
+      ctx.rotate(m.ang);
+      if (ready) {
+        ctx.globalAlpha = 0.92;
+        ctx.drawImage(spr, -sz / 2, -sz / 2, sz, sz);
+      } else {
+        ctx.fillStyle = '#ff4400';
+        ctx.beginPath();
+        ctx.moveTo(16, 0); ctx.lineTo(-12, 8); ctx.lineTo(-8, 0); ctx.lineTo(-12, -8);
+        ctx.closePath(); ctx.fill();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.55;
+        ctx.fillStyle = '#ff8800';
+        ctx.beginPath(); ctx.arc(-12, 0, 6, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  }
+}
