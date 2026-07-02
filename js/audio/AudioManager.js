@@ -478,14 +478,19 @@ export class AudioManager {
   // Sentry Drone — light blaster pop on fire.
   playSentryDroneFire() {
     if (!this._canPlay("sentryFire", 0.12)) return;
-    this._tone({ type: "triangle", freqStart: 1100, freqEnd: 600, dur: 0.07, gain: 0.05 });
+    // Sharp energy bolt "pew"
+    this._tone({ type: "triangle", freqStart: 1400, freqEnd: 500, dur: 0.09, gain: 0.12 });
+    // Laser buzz undertone
+    this._tone({ type: "sawtooth", freqStart: 600,  freqEnd: 200, dur: 0.06, gain: 0.07 });
   }
 
-  // Sentry Drone — small impact on hit.
+  // Sentry Drone — punchy impact crack on hit.
   playSentryDroneHit() {
     if (!this._canPlay("sentryHit", 0.10)) return;
-    this._noiseBurst({ dur: 0.04, gain: 0.04, filterType: "highpass", freq: 2000 });
-    this._tone({ type: "sine", freqStart: 500, freqEnd: 200, dur: 0.04, gain: 0.04 });
+    // Mid thud
+    this._tone({ type: "sine",     freqStart: 420, freqEnd: 120, dur: 0.08, gain: 0.12 });
+    // Electrical snap
+    this._noiseBurst({ dur: 0.05, gain: 0.08, filterType: "highpass", freq: 2400 });
   }
 
   // Shard Ring — resonant contact hum on enemy hit (global throttle keeps it from spamming).
@@ -798,9 +803,4 @@ export class AudioManager {
 
   // Heavy enemy hit — deeper impact for significant damage (dmg >= 40).
   playHeavyHit() {
-    if (!this._canPlay('heavyHit', 0.08)) return;
-    this._tone({ type: 'sawtooth', freqStart: 180, freqEnd: 55, dur: 0.14, gain: 0.13 });
-    this._noiseBurst({ dur: 0.10, gain: 0.09, filterType: 'lowpass', freq: 350 });
-  }
-
-  // Boss hit — lo
+    if (!this._canPlay('heavyHit', 0.08)) retur

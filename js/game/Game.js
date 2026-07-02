@@ -17733,11 +17733,11 @@ _drawLoreArchive(ctx) {
       this._p1SentryDrones.pop();
     }
 
-    const ORBIT_R    = 90;
-    const ORBIT_SPD  = 1.4;   // rad/s
-    const FIRE_CDS   = [2.0, 1.7, 1.4, 1.1];
+    const ORBIT_R    = 105;
+    const ORBIT_SPD  = 1.8;   // rad/s — more dynamic orbit feel
+    const FIRE_CDS   = [1.5, 1.2, 0.9, 0.7];
     const fireCd     = FIRE_CDS[Math.min(lvl - 1, FIRE_CDS.length - 1)];
-    const projDmg    = 10 + 3 * lvl;
+    const projDmg    = 14 + 5 * lvl;  // lvl1:19 lvl2:24 lvl3:29 lvl4:34
     const p          = this.player;
 
     for (const drone of this._p1SentryDrones) {
@@ -17754,7 +17754,7 @@ _drawLoreArchive(ctx) {
         if (tgt) {
           const dir  = safeNormalize(tgt.pos.sub(drone.worldPos));
           const proj = new Projectile(drone.worldPos, dir, projDmg);
-          proj.speed = 640;
+          proj.speed = 780;
           proj.life  = 1.6;
           proj.sentryShot = true;
           this.projectiles.push(proj);
@@ -18320,4 +18320,4 @@ _drawLoreArchive(ctx) {
       } else {
         ctx.fillStyle = '#ff4400';
         ctx.beginPath();
-        ctx.moveTo(16, 0); ctx.lineTo(-12, 8); ctx.lineTo(-8, 0); ctx.lineTo(-12, -8)
+        ctx.moveTo(1
