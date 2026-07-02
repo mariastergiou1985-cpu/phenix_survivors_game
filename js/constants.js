@@ -30,7 +30,7 @@ export const VIEW_H = HEIGHT / VIEW_SCALE;   // ≈ 847.1  world-units shown ver
 // Endless-only zoom: render a touch smaller so the arena breathes and more map is
 // visible around the player (Act 1 keeps VIEW_SCALE). Applied only when this.endless
 // via Game's _viewScale/_viewW/_viewH getters — WORLD_W/H and spawns are unchanged.
-export const ENDLESS_VIEW_SCALE = 0.70;   // ≈ 1828.6 × 1028.6 world-units shown
+export const ENDLESS_VIEW_SCALE = 0.55;   // ≈ 2327.3 × 1309.1 world-units shown
 
 // Full target is 30 minutes. Change to 180 for quick testing.
 // NOTE: WIN_TIME_SECONDS also normalizes coreVolatilityMultiplier() — do NOT repurpose

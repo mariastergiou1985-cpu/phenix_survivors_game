@@ -92,7 +92,7 @@ export class EnemySpawner {
     else if (minute < 20) cap = 150 + (minute - 10) * 10;
     else                  cap = Math.min(280, 250 + (minute - 20) * 5);
 
-    if (mode.endless) cap = Math.min(210, Math.round(cap * 1.15) + 20);
+    if (mode.endless) cap = Math.min(400, Math.round(cap * 2.5) + 50);
     if (mode.chaos)   cap = Math.min(280, Math.round(cap * 1.3));
     return cap;
   }
@@ -106,7 +106,7 @@ export class EnemySpawner {
    */
   spawnInterval(minute, mode = {}) {
     let iv = Math.max(0.16, 0.5 - minute * 0.025);
-    if (mode.endless) iv = Math.max(0.08, iv * 0.5);
+    if (mode.endless) iv = Math.max(0.04, iv * 0.30);
     if (mode.chaos)   iv = Math.max(0.06, iv / 1.5);
     return iv * (mode.spawnRateMult || 1);
   }
@@ -119,8 +119,10 @@ export class EnemySpawner {
    * @param {number} cap - current enemy cap
    * @returns {number}
    */
-  spawnBatchSize(minute, currentCount, cap) {
+  spawnBatchSize(minute, currentCount, cap, mode = {}) {
     let count = minute < 2 ? 3 : minute < 5 ? 4 : minute < 10 ? 5 : 6;
+    // Endless: bigger batches to fill the larger visible area
+    if (mode.endless) count += 3;
     // Catch-up surge if battlefield is below 70% cap
     if (currentCount < cap * 0.7) count += 4;
     return count;

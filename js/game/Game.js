@@ -36,7 +36,7 @@ import { MeteorRain } from '../effects/meteor-rain.js?v=20260629440000';
 import { NpcWalker } from './NpcWalker.js?v=20260629560000';
 import { MapManager, BIOME_ID, BIOME_DEFS } from './MapManager.js?v=20260703300000';
 import { EventBus, EVENTS } from './EventBus.js?v=20260702700000';
-import { EnemySpawner, ELITE_WAVE as ELITE_WAVE_CFG, BOSS_WARN_COOLDOWN as BOSS_WARN_CD } from './EnemySpawner.js?v=20260702800000';
+import { EnemySpawner, ELITE_WAVE as ELITE_WAVE_CFG, BOSS_WARN_COOLDOWN as BOSS_WARN_CD } from './EnemySpawner.js?v=20260703400000';
 import { StateManager, GAME_STATES } from './StateManager.js?v=20260702900000';
 import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260703300000';
 
@@ -8114,7 +8114,7 @@ export class Game {
     if (this.spawnTimer >= interval) {
       this.spawnTimer = 0;
       // Batch size delegated to EnemySpawner (Phase 0 decoupling).
-      const count = this.spawner.spawnBatchSize(this.currentMinute(), this.enemies.length, this.enemyCap());
+      const count = this.spawner.spawnBatchSize(this.currentMinute(), this.enemies.length, this.enemyCap(), { endless: this.endless, chaos: this._chaosMode });
       for (let i = 0; i < count; i++) this.spawnEnemy();   // spawnEnemy() still enforces enemyCap
     }
   }
