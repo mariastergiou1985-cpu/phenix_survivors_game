@@ -34,6 +34,8 @@ import { Protocol0 } from '../effects/protocol-0.js?v=20260629440000';
 import { LaserEyes } from '../effects/laser-eyes.js?v=20260629440000';
 import { MeteorRain } from '../effects/meteor-rain.js?v=20260629440000';
 import { NpcWalker } from './NpcWalker.js?v=20260629560000';
+import { MapManager, BIOME_ID, BIOME_DEFS } from './MapManager.js?v=20260702700000';
+import { EventBus, EVENTS } from './EventBus.js?v=20260702700000';
 
 // Euclid Vector toxin kit — used ONLY when selectedCharacter === 'euclid_vector' (world-space).
 import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=20260629440000';
@@ -346,28 +348,35 @@ export class Game {
     this.isNewHighScore = false;
     this.runChaosLaw    = null;   // set by Chaos Law selection overlay; null = no law active
 
-    // Load background image — new clean bg, fallback to old
-    this._bgImage = new Image();
-    this._bgImage.onerror = () => {
-      const fallback = new Image();
-      fallback.src = 'assets/backgrounds/cyberpunk_city_background.png';
-      this._bgImage = fallback;
-    };
-    this._bgImage.src = 'assets/backgrounds/cyber_city_bg_clean.png?v=20260628400000';
+    // ── Core Systems (Phase 0: new decoupled modules) ──────────────────────
+    this.events = new EventBus();
+    this.mapManager = new MapManager({ game: this });
+    this.mapManager.loadBackgrounds('20260702700000');
 
-    // Endless Stage 02 visuals (only used while this.endless — Act 1 keeps default visuals).
-    // Missing files degrade to the default background / default Nexus visual (warn, no crash).
-    this._endlessBgImage = new Image();
-    this._endlessBgImage.onerror = () => console.warn('[Stage] missing assets/maps/endless/stage_02_neon_shinjuku_plaza.png — using default background');
-    this._endlessBgImage.src = 'assets/maps/endless/stage_02_neon_shinjuku_plaza.png?v=20260628400000';
+    // Legacy aliases — keep these so existing code that reads _bgImage still works.
+    // They're backed by MapManager now; the getters delegate.
+    Object.defineProperty(this, '_bgImage', {
+      get: () => this.mapManager._bgImage,
+      set: (v) => { this.mapManager._bgImage = v; },
+      configurable: true,
+    });
+    Object.defineProperty(this, '_endlessBgImage', {
+      get: () => this.mapManager._endlessBgImage,
+      set: (v) => { this.mapManager._endlessBgImage = v; },
+      configurable: true,
+    });
+    Object.defineProperty(this, '_chaosBgImage', {
+      get: () => this.mapManager._chaosBgImage,
+      set: (v) => { this.mapManager._chaosBgImage = v; },
+      configurable: true,
+    });
+
+    // Endless Nexus image (not part of MapManager — it's a Nexus sprite)
     this._endlessNexusImage = new Image();
     this._endlessNexusImage.onerror = () => console.warn('[Nexus] missing assets/nexus/endless_nexus_base_8cores.png — using default Nexus visual');
-    this._endlessNexusImage.src = 'assets/nexus/endless_nexus_base_8cores.png?v=20260628400000';
+    this._endlessNexusImage.src = 'assets/nexus/endless_nexus_base_8cores.png?v=20260702700000';
 
-    // Chaos Mode background (unlocks at 31:00 Endless)
-    this._chaosBgImage = new Image();
-    this._chaosBgImage.onerror = () => console.warn('[Chaos] missing assets/ui/CHAOS_mode.png');
-    this._chaosBgImage.src = 'assets/ui/CHAOS_mode.png?v=20260628400000';
+    // Chaos Mode background — loaded by MapManager.loadBackgrounds()
 
     // Preload character portraits for Character Select screen
     this._charImages = {};
@@ -5313,6 +5322,9 @@ export class Game {
 
     this.timeAlive += dt;
     this.score += dt;
+
+    // ── MapManager update (biome transitions, chunk streaming) ───────────────
+    this.mapManager.update(dt);
 
     // ── Eden Core in-run transmissions (Endless only, safe) ──────────────────
     if (this.endless) this._triggerEdenMilestoneMessages();
@@ -17292,59 +17304,12 @@ _drawLoreArchive(ctx) {
   }
 
   _drawWorldBackground(ctx) {
-    ctx.fillStyle = DARK_BG;
-    ctx.fillRect(0, 0, WORLD_W, WORLD_H);
-
-    // Endless-only Stage 02 map; falls back to the default background if not loaded / not endless.
-    const cb  = this._chaosBgImage;
-    const eb  = this._endlessBgImage;
-    const img = (this._chaosMode && cb && cb.complete && cb.naturalWidth > 0)
-              ? cb
-              : (this.endless && eb && eb.complete && eb.naturalWidth > 0) ? eb : this._bgImage;
-    if (img.complete && img.naturalWidth > 0) {
-      const scale = WORLD_W / img.naturalWidth;
-      const drawH = img.naturalHeight * scale;
-      ctx.drawImage(img, 0, 0, WORLD_W, drawH);
-      // Endless map: a touch more dimming so the backdrop recedes and the gameplay plane reads flat.
-      ctx.fillStyle = this.gridBlackoutActive ? 'rgba(0,0,0,0.65)'
-                    : this._chaosMode          ? 'rgba(0,0,8,0.28)'
-                    : this.endless             ? 'rgba(0,0,0,0.46)'
-                    :                            'rgba(0,0,0,0.38)';
-      ctx.fillRect(0, 0, WORLD_W, WORLD_H);
-      // Chaos Mode: faint magenta grid overlay — textures the battlefield, visual only
-      if (this._chaosMode) {
-        const _gs = 80;
-        const _gt = performance.now() * 0.0003;
-        ctx.save();
-        ctx.globalAlpha = 0.05 + 0.02 * Math.sin(_gt);
-        ctx.strokeStyle = '#ff2d95';
-        ctx.lineWidth   = 0.5;
-        for (let _gx = 0; _gx < WORLD_W; _gx += _gs) {
-          ctx.beginPath(); ctx.moveTo(_gx, 0); ctx.lineTo(_gx, WORLD_H); ctx.stroke();
-        }
-        for (let _gy = 0; _gy < WORLD_H; _gy += _gs) {
-          ctx.beginPath(); ctx.moveTo(0, _gy); ctx.lineTo(WORLD_W, _gy); ctx.stroke();
-        }
-        ctx.restore();
-      }
-    } else {
-      const spacing = 48;
-      const offset  = Math.floor(performance.now() * 0.025) % spacing;
-      ctx.strokeStyle = GRID_LINE;
-      ctx.lineWidth   = 1;
-      for (let x = -spacing; x < WORLD_W + spacing; x += spacing) {
-        ctx.beginPath();
-        ctx.moveTo(x + offset, 44);
-        ctx.lineTo(x + offset, WORLD_H);
-        ctx.stroke();
-      }
-      for (let y = 44; y < WORLD_H + spacing; y += spacing) {
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(WORLD_W, y);
-        ctx.stroke();
-      }
-    }
+    // Delegates to MapManager — supports biome-specific backgrounds + chunk streaming
+    this.mapManager.drawWorldBackground(ctx, {
+      chaosMode: this._chaosMode,
+      endless: this.endless,
+      gridBlackoutActive: this.gridBlackoutActive,
+    });
   }
 
   _drawBackground(ctx) {
