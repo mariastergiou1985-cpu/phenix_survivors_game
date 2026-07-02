@@ -592,9 +592,14 @@ export class MapManager {
   }
 
   _drawChunkWorld(ctx, opts) {
-    // TODO Phase 1: render active chunks with biome backgrounds
-    // For now, fall through to legacy
-    this.drawWorldBackground(ctx, { ...opts });
+    // Phase 1: delegate to ChunkManager for biome-colored chunk rendering.
+    const cm = this.game?.chunkManager;
+    if (cm && cm.enabled) {
+      const cam  = this.game.camera;
+      const vw   = this.game._viewW;
+      const vh   = this.game._viewH;
+      cm.drawChunkBackgrounds(ctx, cam, vw, vh);
+    }
   }
 
   // ── Utility ─────────────────────────────────────────────────────────────────

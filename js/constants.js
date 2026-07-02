@@ -6,6 +6,20 @@ export const WORLD_H = 1260;   // enlarged from 1008 (keeps 16:9); matrices/came
 export const FPS    = 60;
 export const WORLD_MARGIN = 40;
 
+// ─── Dynamic world bounds ────────────────────────────────────────────────────
+// Mutable bounds object updated by Game.js each frame when chunk streaming is
+// active. All entity position-clamping and OOB checks should reference this
+// instead of the fixed WORLD_W / WORLD_H constants so the infinite-world
+// system works transparently.  When chunk streaming is OFF the values stay
+// identical to the fixed constants (zero behaviour change).
+export const WORLD_BOUNDS = {
+  left:   0,
+  top:    0,
+  right:  WORLD_W,
+  bottom: WORLD_H,
+  margin: WORLD_MARGIN,
+};
+
 // Camera zoom-out: render the world slightly smaller so more of the battlefield
 // is visible (late-game crowds read better). The visible world window is
 // WIDTH/VIEW_SCALE × HEIGHT/VIEW_SCALE world-units inside the fixed 1280×720 canvas.

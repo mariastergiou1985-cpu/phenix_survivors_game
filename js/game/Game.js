@@ -1,5 +1,5 @@
 import {
-  Vec2, WIDTH, HEIGHT, WORLD_W, WORLD_H, WORLD_MARGIN,
+  Vec2, WIDTH, HEIGHT, WORLD_W, WORLD_H, WORLD_MARGIN, WORLD_BOUNDS,
   WIN_TIME_SECONDS, ACT1_WIN_SECONDS, CORE_OVERLOAD_TICK_TIME, BASE_OVERLOAD_PER_CORE,
   OVERLOAD_PICKUP_REDUCTION, OVERLOAD_SLOT_REDUCTION,
   MAX_OVERLOAD, PLAYER_RADIUS, CORE_RADIUS, MATRIX_RADIUS,
@@ -1003,6 +1003,13 @@ export class Game {
     this._walkerCycleIdx    = -1;         // current 5-min cycle index (300s per cycle)
     this._walkerFiredSet    = new Set();  // trigger offsets already fired this cycle
     this._walkerSummonCd    = 120;        // HUD display: seconds until next trigger (derived)
+
+    // ── Chunk streaming activation ───────────────────────────────────────────
+    // Enable the infinite-world chunk system.  ChunkManager generates a 3×3
+    // active grid around the player and WORLD_BOUNDS is updated every frame
+    // so entities clamp/spawn relative to the live area, not the old fixed box.
+    this.chunkManager.enable();
+    this.mapManager.chunkStreamingEnabled = true;
   }
 
   startGame() {
@@ -5254,6 +5261,15 @@ export class Game {
     // ── MapManager + ChunkManager update (biome transitions, chunk streaming) ─
     this.mapManager.update(dt);
     this.chunkManager.update(dt);
+
+    // Sync WORLD_BOUNDS to the active chunk area so entities clamp/spawn correctly.
+    if (this.chunkManager.enabled) {
+      const ab = this.chunkManager.getActiveBounds();
+      WORLD_BOUNDS.left   = ab.x;
+      WORLD_BOUNDS.top    = ab.y;
+      WORLD_BOUNDS.right  = ab.right;
+      WORLD_BOUNDS.bottom = ab.bottom;
+    }
 
     // ── Eden Core in-run transmissions (Endless only, safe) ──────────────────
     if (this.endless) this._triggerEdenMilestoneMessages();
@@ -17022,8 +17038,8 @@ _drawLoreArchive(ctx) {
     // Center the player in the (larger, zoomed-out) visible world window.
     const cx = this.player.pos.x - this._viewW / 2;
     const cy = this.player.pos.y - this._viewH / 2;
-    this.camera.x = Math.max(0, Math.min(cx, WORLD_W - this._viewW));
-    this.camera.y = Math.max(0, Math.min(cy, WORLD_H - this._viewH));
+    this.camera.x = Math.max(WORLD_BOUNDS.left, Math.min(cx, WORLD_BOUNDS.right - this._viewW));
+    this.camera.y = Math.max(WORLD_BOUNDS.top,  Math.min(cy, WORLD_BOUNDS.bottom - this._viewH));
   }
 
   _worldMouse(screenPos) {
@@ -17062,8 +17078,8 @@ _drawLoreArchive(ctx) {
       for (let i = 0; i < count; i++) {
         const angle  = Math.random() * Math.PI * 2;
         const dist   = 180 + Math.random() * 220;
-        const px     = Math.max(40, Math.min(WORLD_W - 40, player.pos.x + Math.cos(angle) * dist));
-        const py     = Math.max(40, Math.min(WORLD_H - 40, player.pos.y + Math.sin(angle) * dist));
+        const px     = Math.max(WORLD_BOUNDS.left + 40, Math.min(WORLD_BOUNDS.right - 40, player.pos.x + Math.cos(angle) * dist));
+        const py     = Math.max(WORLD_BOUNDS.top + 40, Math.min(WORLD_BOUNDS.bottom - 40, player.pos.y + Math.sin(angle) * dist));
         // Danger pylons more common than buff pylons (2:1:1)
         const roll   = Math.random();
         const type   = roll < 0.50 ? 'danger' : roll < 0.75 ? 'shield' : 'heal';

@@ -1,4 +1,4 @@
-import { Vec2, WIDTH, HEIGHT, WORLD_W, WORLD_H, WORLD_MARGIN, PLAYER_RADIUS, CYAN, WHITE, YELLOW, GREEN, BLUE, RED } from '../constants.js?v=20260615210000';
+import { Vec2, WIDTH, HEIGHT, WORLD_W, WORLD_H, WORLD_MARGIN, WORLD_BOUNDS, PLAYER_RADIUS, CYAN, WHITE, YELLOW, GREEN, BLUE, RED } from '../constants.js?v=20260615210000';
 import { clamp, safeNormalize } from '../utils.js';
 import { Projectile } from './Projectile.js?v=20260615210000';
 import { FloatingText } from './FloatingText.js';
@@ -291,8 +291,8 @@ export class Player {
     }
 
     this.pos.addMut(this.vel.scale(dt));
-    this.pos.x = clamp(this.pos.x, WORLD_MARGIN, WORLD_W - WORLD_MARGIN);
-    this.pos.y = clamp(this.pos.y, WORLD_MARGIN + 40, WORLD_H - WORLD_MARGIN);
+    this.pos.x = clamp(this.pos.x, WORLD_BOUNDS.left + WORLD_BOUNDS.margin, WORLD_BOUNDS.right - WORLD_BOUNDS.margin);
+    this.pos.y = clamp(this.pos.y, WORLD_BOUNDS.top + WORLD_BOUNDS.margin + 40, WORLD_BOUNDS.bottom - WORLD_BOUNDS.margin);
   }
 
   // Bite from Bloodfang/Razorhound. HP is always applied; stagger/knockback/bleed are

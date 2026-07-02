@@ -1,4 +1,4 @@
-import { Vec2, WORLD_W, WORLD_H, MAGENTA, WHITE, GREEN, CYAN, BLUE } from '../constants.js';
+import { Vec2, WORLD_W, WORLD_H, WORLD_BOUNDS, MAGENTA, WHITE, GREEN, CYAN, BLUE } from '../constants.js';
 import { safeNormalize, distance } from '../utils.js';
 
 export class Projectile {
@@ -24,8 +24,8 @@ export class Projectile {
   alive() {
     return (
       this.life > 0 &&
-      this.pos.x >= -40 && this.pos.x <= WORLD_W + 40 &&
-      this.pos.y >= -40 && this.pos.y <= WORLD_H + 40
+      this.pos.x >= WORLD_BOUNDS.left - 40 && this.pos.x <= WORLD_BOUNDS.right + 40 &&
+      this.pos.y >= WORLD_BOUNDS.top - 40 && this.pos.y <= WORLD_BOUNDS.bottom + 40
     );
   }
 
@@ -134,8 +134,8 @@ export class HomingDisc {
   alive() {
     return (
       this.life > 0 &&
-      this.pos.x >= -80 && this.pos.x <= WORLD_W + 80 &&
-      this.pos.y >= -80 && this.pos.y <= WORLD_H + 80
+      this.pos.x >= WORLD_BOUNDS.left - 80 && this.pos.x <= WORLD_BOUNDS.right + 80 &&
+      this.pos.y >= WORLD_BOUNDS.top - 80 && this.pos.y <= WORLD_BOUNDS.bottom + 80
     );
   }
 

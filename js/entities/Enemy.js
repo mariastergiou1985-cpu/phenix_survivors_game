@@ -1,5 +1,5 @@
 import {
-  Vec2, ENEMY_RADIUS, WIDTH, HEIGHT, WORLD_W, WORLD_H, WORLD_MARGIN,
+  Vec2, ENEMY_RADIUS, WIDTH, HEIGHT, WORLD_W, WORLD_H, WORLD_MARGIN, WORLD_BOUNDS,
   BLUE, MAGENTA, PURPLE, ORANGE, GREEN, RED, YELLOW, WHITE, CYAN, MATRIX_RADIUS,
 } from '../constants.js?v=20260615210000';
 import { clamp, distance, safeNormalize, randomRange, randomChoice, drawBar } from '../utils.js';
@@ -196,11 +196,12 @@ export class Enemy {
   }
 
   _spawnEdge() {
+    const B = WORLD_BOUNDS;
     const side = randomChoice(['top', 'bottom', 'left', 'right']);
-    if (side === 'top')    return new Vec2(Math.random() * WORLD_W, -20);
-    if (side === 'bottom') return new Vec2(Math.random() * WORLD_W, WORLD_H + 20);
-    if (side === 'left')   return new Vec2(-20, 70 + Math.random() * (WORLD_H - 70));
-    return new Vec2(WORLD_W + 20, 70 + Math.random() * (WORLD_H - 70));
+    if (side === 'top')    return new Vec2(B.left + Math.random() * (B.right - B.left), B.top - 20);
+    if (side === 'bottom') return new Vec2(B.left + Math.random() * (B.right - B.left), B.bottom + 20);
+    if (side === 'left')   return new Vec2(B.left - 20, B.top + 70 + Math.random() * (B.bottom - B.top - 70));
+    return new Vec2(B.right + 20, B.top + 70 + Math.random() * (B.bottom - B.top - 70));
   }
 
   _statsForType(type, minute) {
@@ -369,8 +370,8 @@ export class Enemy {
     // viewport, confining every dump to the top-left arena corner — the top-left core-clustering
     // bug, which also pulled carriers back to re-target the top-left Nexus.)
     const worldRand = () => new Vec2(
-      randomRange(WORLD_MARGIN, WORLD_W - WORLD_MARGIN),
-      randomRange(WORLD_MARGIN + 40, WORLD_H - WORLD_MARGIN),
+      randomRange(WORLD_BOUNDS.left + WORLD_BOUNDS.margin, WORLD_BOUNDS.right - WORLD_BOUNDS.margin),
+      randomRange(WORLD_BOUNDS.top + WORLD_BOUNDS.margin + 40, WORLD_BOUNDS.bottom - WORLD_BOUNDS.margin),
     );
     let target;
     if (Math.random() < 0.35) {
@@ -384,8 +385,8 @@ export class Enemy {
         }
       }
     }
-    target.x = clamp(target.x, WORLD_MARGIN, WORLD_W - WORLD_MARGIN);
-    target.y = clamp(target.y, WORLD_MARGIN + 40, WORLD_H - WORLD_MARGIN);
+    target.x = clamp(target.x, WORLD_BOUNDS.left + WORLD_BOUNDS.margin, WORLD_BOUNDS.right - WORLD_BOUNDS.margin);
+    target.y = clamp(target.y, WORLD_BOUNDS.top + WORLD_BOUNDS.margin + 40, WORLD_BOUNDS.bottom - WORLD_BOUNDS.margin);
     return target;
   }
 
@@ -589,8 +590,8 @@ export class Enemy {
   }
 
   keepInBounds() {
-    this.pos.x = clamp(this.pos.x, -30, WORLD_W + 30);
-    this.pos.y = clamp(this.pos.y, 40,  WORLD_H + 30);
+    this.pos.x = clamp(this.pos.x, WORLD_BOUNDS.left - 30, WORLD_BOUNDS.right + 30);
+    this.pos.y = clamp(this.pos.y, WORLD_BOUNDS.top + 40,   WORLD_BOUNDS.bottom + 30);
   }
 
   // Role → distinct shape + outline color (read at a glance, no shadowBlur → cheap at 280 enemies).
