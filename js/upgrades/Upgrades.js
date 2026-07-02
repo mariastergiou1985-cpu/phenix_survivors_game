@@ -80,7 +80,7 @@ export const ALL_UPGRADES = [
     CYAN, 5, p => { p.maxMana += 15; p.mana += 15; }, '💙', 'rare'
   ),
   new UpgradeDefinition(
-    'Firewall Protection', 'Firewall', '-2% overload rate',
+    'Firewall Protection', 'Firewall', '-2% Nexus charge decay',
     PURPLE, 5, () => {}, 'F', 'common'   // overload dampening computed from upgrades dict
   ),
   new UpgradeDefinition(
@@ -101,7 +101,7 @@ export const ALL_UPGRADES = [
     BLUE, 6, p => { p.pickupRadius += 24; }, '◎', 'common'
   ),
   new UpgradeDefinition(
-    'Memory Bank', 'Core Slots', '+1 core carry slot',
+    'Memory Bank', 'Nexus Storage', '+1 Nexus charge capacity',
     YELLOW, 8, p => { p.maxCarry++; }, '▣', 'common'
   ),
   new UpgradeDefinition(
@@ -182,7 +182,7 @@ export const ALL_UPGRADES = [
     MAGENTA, 3, p => { p.xpMult = (p.xpMult || 1) * 1.08; }, '✦', 'epic', null, 'first_endless', true),
   new UpgradeDefinition('achievement_survivor_plating', 'Survivor Plating', 'Endless: +8% max HP per level',
     GREEN, 3, p => { const add = Math.round(p.maxHp * 0.08); p.maxHp += add; p.hp = Math.min(p.maxHp, p.hp + add); }, '🛡', 'epic', null, 'endless_survivor', true),
-  new UpgradeDefinition('achievement_grid_stabilizer', 'Grid Stabilizer', 'Endless: further reduces Overload pressure (capped)',
+  new UpgradeDefinition('achievement_grid_stabilizer', 'Grid Stabilizer', 'Endless: reduces Nexus charge decay (capped)',
     CYAN, 2, () => {}, '◈', 'legendary', null, 'grid_legend', true),
   new UpgradeDefinition('achievement_evolution_algorithm', 'Evolution Algorithm', 'Endless: your mastery cards appear more often',
     BLUE, 2, () => {}, '⟳', 'epic', null, 'level_breaker', true),
@@ -190,7 +190,7 @@ export const ALL_UPGRADES = [
     ORANGE, 3, () => {}, '⇑', 'epic', null, 'score_hunter', true),
   new UpgradeDefinition('achievement_combo_overdrive', 'Combo Overdrive', 'Endless: stronger damage while combo is high',
     YELLOW, 2, () => {}, '⚜', 'legendary', null, 'combo_master', true),
-  new UpgradeDefinition('achievement_core_magnetizer', 'Core Magnetizer', 'Endless: +1 carried-core capacity per level',
+  new UpgradeDefinition('achievement_core_magnetizer', 'Core Magnetizer', 'Endless: +1 Nexus charge capacity per level',
     PURPLE, 2, p => { p.maxCarry += 1; }, '◉', 'epic', null, 'core_defender', true),
 ];
 

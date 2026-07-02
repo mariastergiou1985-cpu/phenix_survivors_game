@@ -3350,9 +3350,9 @@ export class Game {
       case 'maxHp':        return `+${lvl * 10} HP`;
       case 'moveSpeed':    return `+${lvl * 5}% speed`;
       case 'coreMagnet':   return `+${Math.round((Math.pow(1.10, lvl) - 1) * 100)}% pickup radius`;
-      case 'coreCapacity': return `+${lvl} carry slot${lvl > 1 ? 's' : ''}`;
+      case 'coreCapacity': return `+${lvl} Nexus charge`;
       case 'pulseDamage':  return `+${lvl} damage`;
-      case 'firewall':     return `-${lvl * 5}% overload`;
+      case 'firewall':     return `-${lvl * 5}% Nexus decay`;
       case 'combatCalibration': return `+${(lvl * 0.5).toFixed(1)} damage`;
       case 'armorPlating':      return `-${lvl * 3}% contact dmg`;
       case 'manaCapacitor':     return `+${lvl * 10} max mana`;

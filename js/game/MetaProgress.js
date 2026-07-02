@@ -2,9 +2,9 @@ export const META_UPGRADES = [
   { key: 'maxHp',        name: 'Max HP',        desc: '+10 max HP per level',              maxLevel: 5, baseCost: 10 },
   { key: 'moveSpeed',    name: 'Move Speed',     desc: '+5% movement speed per level',       maxLevel: 5, baseCost: 10 },
   { key: 'coreMagnet',   name: 'Core Magnet',    desc: '+10% pickup radius per level',       maxLevel: 5, baseCost: 10 },
-  { key: 'coreCapacity', name: 'Core Capacity',  desc: '+1 carry slot per level',            maxLevel: 3, baseCost: 20 },
+  { key: 'coreCapacity', name: 'Nexus Capacity',  desc: '+1 Nexus charge capacity per level',  maxLevel: 3, baseCost: 20 },
   { key: 'pulseDamage',  name: 'Pulse Damage',   desc: '+1 projectile damage per level',     maxLevel: 5, baseCost: 10 },
-  { key: 'firewall',     name: 'Firewall',       desc: '-5% Network Overload per level',     maxLevel: 5, baseCost: 10 },
+  { key: 'firewall',     name: 'Firewall',       desc: '-5% Nexus charge decay per level',   maxLevel: 5, baseCost: 10 },
   // ── Upgrade Economy phase additions (save-compatible: unknown keys default to level 0) ──
   { key: 'combatCalibration', name: 'Combat Calibration', desc: '+0.5 shot damage per level',        maxLevel: 5, baseCost: 12 },
   { key: 'armorPlating',      name: 'Armor Plating',      desc: '-3% contact damage per level',       maxLevel: 5, baseCost: 12 },
@@ -97,8 +97,8 @@ export const ENDLESS_ACHIEVEMENTS = [
     protocolName: 'Survivor Core Protocol', protocolEffect: '+5% max HP',
     cardName: 'Survivor Plating', cardEffect: '+8% max HP per level' },
   { id: 'grid_legend',     name: 'GRID LEGEND',        desc: 'Survive 20:00 in Endless',     test: (s) => s.time  >= 20 * 60,
-    protocolName: 'Grid Stabilizer Protocol', protocolEffect: 'Nexus Overload pressure gain reduced 50%',
-    cardName: 'Grid Stabilizer', cardEffect: '-5% extra Overload pressure / level (capped)' },
+    protocolName: 'Grid Stabilizer Protocol', protocolEffect: 'Nexus charge decay reduced 50%',
+    cardName: 'Grid Stabilizer', cardEffect: '-5% Nexus charge decay / level (capped)' },
   { id: 'level_breaker',   name: 'LEVEL BREAKER',      desc: 'Reach Level 30 in Endless',    test: (s) => s.level >= 30,
     protocolName: 'Weapon Evolution Protocol', protocolEffect: 'Your mastery cards appear more often',
     cardName: 'Evolution Algorithm', cardEffect: 'Even better mastery-card odds / level' },
@@ -109,8 +109,8 @@ export const ENDLESS_ACHIEVEMENTS = [
     protocolName: 'Combo Surge Protocol', protocolEffect: '+5% dmg at combo x50, +8% at x100',
     cardName: 'Combo Overdrive', cardEffect: 'Stronger high-combo damage / level' },
   { id: 'core_defender',   name: 'CORE DEFENDER',      desc: 'Secure 25 cores in Endless',   test: (s) => s.cores >= 25,
-    protocolName: 'Nexus Defender Protocol', protocolEffect: '+1 carried-core capacity',
-    cardName: 'Core Magnetizer', cardEffect: '+1 carried-core capacity per level' },
+    protocolName: 'Nexus Defender Protocol', protocolEffect: '+1 Nexus charge capacity',
+    cardName: 'Core Magnetizer', cardEffect: '+1 Nexus charge capacity per level' },
 
   // ── Phase 2: extended high-milestone ladder. Purely additive — unknown ids default to false on
   // load and the idempotent PF backfill pays them out automatically, so existing saves are safe. ──
@@ -127,8 +127,8 @@ export const ENDLESS_ACHIEVEMENTS = [
     protocolName: 'Hyper Mobility Protocol', protocolEffect: '+8% move speed',
     cardName: 'Hyper Mobility', cardEffect: '+12% move speed / level' },
   { id: 'core_warden',     name: 'CORE WARDEN',       desc: 'Secure 60 cores in Endless',      test: (s) => s.cores >= 60,
-    protocolName: 'Core Hoarder Protocol', protocolEffect: '+1 carried-core capacity',
-    cardName: 'Core Hoarder', cardEffect: '+2 carried-core capacity' },
+    protocolName: 'Core Hoarder Protocol', protocolEffect: '+1 Nexus charge capacity',
+    cardName: 'Core Hoarder', cardEffect: '+2 Nexus charge capacity' },
 ];
 
 // ─── Protocol Fragments (PF) — Phase 1 ──────────────────────────────────────────
