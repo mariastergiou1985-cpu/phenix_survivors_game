@@ -45,6 +45,22 @@ import { PETS, getPetById } from './PetCatalog.js?v=20260703999100';
 // Euclid Vector toxin kit — used ONLY when selectedCharacter === 'euclid_vector' (world-space).
 import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=20260703990000';
 
+// ── Vessel companion placement (Ally-Walker-style escort) ───────────────────
+// The vessel flies BESIDE the player like the Kiroshi Walker ally, never on top
+// of the player sprite. Offset chosen so the 72px vessel clears the 64px player.
+const VESSEL_COMPANION_OFF  = { x: 46, y: -38 };   // px, relative to player center
+const VESSEL_COMPANION_SIZE = 72;                  // sprite height (was 96 when it covered the player)
+
+// Pet slot offsets — player-relative companion anchors (slot order = selection order).
+// Slots 1–2 per designer spec; 3–4 mirror below the player. Firewall Sentinel ignores
+// these and orbits instead (its own ally behavior).
+const PET_SLOT_OFFSETS = [
+  { x: -42, y: -28 },   // slot 1 — upper-left escort
+  { x:  42, y: -24 },   // slot 2 — upper-right escort
+  { x: -46, y:  26 },   // slot 3 — lower-left escort
+  { x:  46, y:  28 },   // slot 4 — lower-right escort
+];
+
 // ── Eden Core character message pools (in-run transmissions) ────────────────
 const _EDEN_CHAR_POOLS = {
   skeleton_warrior: {
@@ -1599,6 +1615,28 @@ export class Game {
     this._activeVesselPassive = vDef.passive;       // null | 'grid_erase_pulse' | 'singularity_aura' | 'glitch_dodge' | 'overclocked_assault'
     this._vesselEnemySpeedMult = vDef.statMods.enemySpeedMult || 1;
     this._vesselPulseTimer     = 0;                 // grid_erase_pulse countdown
+
+    // Vessel companion visual state — Ally-Walker-style escort beside the player,
+    // NOT an overlay on the player sprite. Offset keeps the player fully readable.
+    this._vesselCompanion = {
+      x: p.pos.x + VESSEL_COMPANION_OFF.x,
+      y: p.pos.y + VESSEL_COMPANION_OFF.y,
+      bobPhase: 0,
+    };
+  }
+
+  // Ally-Walker-style follow tick for the vessel companion (see NpcWalker.update):
+  // seek a player-relative offset point each frame with smooth catch-up, so the
+  // vessel escorts the player everywhere without ever sitting on top of them.
+  _tickVesselCompanion(dt) {
+    if (!this.player || !this._vesselCompanion) return;
+    const c = this._vesselCompanion;
+    c.bobPhase += dt * 2.2;
+    const targetX = this.player.pos.x + VESSEL_COMPANION_OFF.x;
+    const targetY = this.player.pos.y + VESSEL_COMPANION_OFF.y + Math.sin(c.bobPhase) * 4;
+    const lerp = 1 - Math.pow(0.02, dt);   // same smooth companion follow as pets
+    c.x += (targetX - c.x) * lerp;
+    c.y += (targetY - c.y) * lerp;
   }
 
   _tickVesselPassives(dt) {
@@ -1647,32 +1685,34 @@ export class Game {
 
   // ── Draw selected vessel sprite behind the player during gameplay ──────────
   _drawActiveVessel(ctx) {
-    if (!this.player || !this._activeVesselId) return;
+    if (!this.player || !this._activeVesselId || !this._vesselCompanion) return;
     const spr = this._vesselSpriteCache?.[this._activeVesselId];
     if (!spr || !spr.complete || spr.naturalWidth <= 0) return;
 
-    const px = this.player.pos.x;
-    const py = this.player.pos.y;
-    const sprH = 96;   // vessel is the player's ship — larger than the 64px character to read as the ship
+    // Companion escort position (Ally-Walker-style) — beside/above the player,
+    // never on top of the player sprite. Player stays fully readable.
+    const vx = this._vesselCompanion.x;
+    const vy = this._vesselCompanion.y;
+    const sprH = VESSEL_COMPANION_SIZE;
     const sprW = Math.round(spr.naturalWidth * (sprH / spr.naturalHeight));
 
     // Soft engine/thruster glow under the vessel — shows it's a powered ship
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     ctx.globalAlpha = 0.18;
-    const vg = ctx.createRadialGradient(px, py + sprH * 0.18, sprH * 0.08, px, py + sprH * 0.18, sprH * 0.38);
+    const vg = ctx.createRadialGradient(vx, vy + sprH * 0.18, sprH * 0.08, vx, vy + sprH * 0.18, sprH * 0.38);
     vg.addColorStop(0, '#00e6ff');
     vg.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = vg;
     ctx.beginPath();
-    ctx.arc(px, py + sprH * 0.18, sprH * 0.38, 0, Math.PI * 2);
+    ctx.arc(vx, vy + sprH * 0.18, sprH * 0.38, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
 
     ctx.save();
     ctx.globalAlpha = 1.0;
-    // Vessel IS the player ship — centered on the character
-    ctx.drawImage(spr, px - sprW / 2, py - sprH / 2, sprW, sprH);
+    // Vessel escorts the player as a companion — offset, not covering the character
+    ctx.drawImage(spr, vx - sprW / 2, vy - sprH / 2, sprW, sprH);
     ctx.restore();
   }
 
@@ -1687,9 +1727,11 @@ export class Game {
       const def = getPetById(selectedIds[i]);
       if (!def) continue;
       const angle = (i / Math.max(selectedIds.length, 1)) * Math.PI * 2;
+      const off   = PET_SLOT_OFFSETS[this._activePets.length % PET_SLOT_OFFSETS.length];
       this._activePets.push({
         def,
-        x: px, y: py,                     // start at player position (companion spawn)
+        slot: this._activePets.length,     // selection-order slot → PET_SLOT_OFFSETS index
+        x: px + off.x, y: py + off.y,      // spawn already at the companion offset (never on the player)
         angle,                             // orbit angle (Firewall) / hover angle
         timer: 0,                          // type-specific cooldown
         bobPhase: Math.random() * Math.PI * 2, // floating bob animation
@@ -1764,9 +1806,10 @@ export class Game {
   }
 
   _tickPetAttack(pet, dt, px, py, bobY) {
-    // Byte-Mite: player-relative offset — visible companion drone
-    const targetX = px - 38;
-    const targetY = py - 24 + bobY;
+    // Byte-Mite: slot-based player-relative offset — Ally-Walker-style escort
+    const off = PET_SLOT_OFFSETS[(pet.slot ?? 0) % PET_SLOT_OFFSETS.length];
+    const targetX = px + off.x;
+    const targetY = py + off.y + bobY;
     const lerp = 1 - Math.pow(0.02, dt);  // smooth companion follow
     pet.x += (targetX - pet.x) * lerp;
     pet.y += (targetY - pet.y) * lerp;
@@ -1801,9 +1844,10 @@ export class Game {
   }
 
   _tickPetUtility(pet, dt, px, py, bobY) {
-    // Data Miner Drone: player-relative offset — visible companion drone
-    const targetX = px + 42;
-    const targetY = py + 18 + bobY;
+    // Data Miner Drone: slot-based player-relative offset — Ally-Walker-style escort
+    const off = PET_SLOT_OFFSETS[(pet.slot ?? 1) % PET_SLOT_OFFSETS.length];
+    const targetX = px + off.x;
+    const targetY = py + off.y + bobY;
     const lerp = 1 - Math.pow(0.02, dt);  // smooth companion follow
     pet.x += (targetX - pet.x) * lerp;
     pet.y += (targetY - pet.y) * lerp;
@@ -1858,9 +1902,10 @@ export class Game {
   }
 
   _tickPetControl(pet, dt, px, py, bobY) {
-    // Error-Code Bomber: player-relative offset — visible companion drone
-    const targetX = px - 46;
-    const targetY = py + 22 + bobY;
+    // Error-Code Bomber: slot-based player-relative offset — Ally-Walker-style escort
+    const off = PET_SLOT_OFFSETS[(pet.slot ?? 2) % PET_SLOT_OFFSETS.length];
+    const targetX = px + off.x;
+    const targetY = py + off.y + bobY;
     const lerp = 1 - Math.pow(0.02, dt);  // smooth companion follow
     pet.x += (targetX - pet.x) * lerp;
     pet.y += (targetY - pet.y) * lerp;
@@ -6060,6 +6105,7 @@ export class Game {
 
     // ── Vessel passive runtime tick ──────────────────────────────────────────
     this._tickVesselPassives(dt);
+    this._tickVesselCompanion(dt);   // Ally-Walker-style escort follow (visual only)
     // ── Cyber-Pet AI tick ─────────────────────────────────────────────────────
     this._tickPets(dt);
 
@@ -9902,12 +9948,12 @@ export class Game {
     // Digital Singularity OWNS the player while active (it draws the dissolving/reforming sprite
     // in screen space), so skip the normal world-space player draw during the ultimate.
     if (!(this.player.selectedCharacter === 'japan_phasewalker' && this._digitalSingularity?.isActive())) {
-      // ── Player character (under vessel — vessel IS the main visual) ──
+      // ── Player character — always fully visible, companions never cover it ──
       drawGlow(ctx, this.player.pos.x, this.player.pos.y, 48, CYAN, 0.28); // player hero glow
       this.player.draw(ctx, this._lastMousePos || { x: 0, y: 0 });
-      // ── Vessel sprite ON TOP of player — this is the player ship ──
+      // ── Vessel companion — Ally-Walker-style escort BESIDE the player (offset, smaller) ──
       this._drawActiveVessel(ctx);
-      // ── Cyber-pets near the player (drawn after vessel) ──
+      // ── Cyber-pets — slot-offset escorts around the player (drawn after vessel) ──
       this._drawPets(ctx);
     }
     this._drawUltAura(ctx);
