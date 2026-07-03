@@ -317,7 +317,7 @@ export class Player {
   canShoot() { return this.shootCooldown <= 0; }
 
   shoot(mousePos) {
-    this.shootCooldown = 0.18 / (1 + this.fireRateBonus);   // Fire Rate card
+    this.shootCooldown = 0.18 / ((1 + this.fireRateBonus) * (this._vesselFireRateMult || 1));   // Fire Rate card + Vessel passive
     const dir    = safeNormalize(new Vec2(mousePos.x - this.pos.x, mousePos.y - this.pos.y));
     const base   = 1 + this.upgrades['Pulse Damage'];
     let damage   = base;

@@ -536,9 +536,10 @@ export class Enemy {
     // Cryo Rounds slow — recompute effective speed each frame (all movement branches
     // read this.baseSpeed). Bosses are immune so they stay threatening.
     if (this.slowTimer > 0) this.slowTimer -= dt;
+    const _vesselSpeedMult = (game && game._vesselEnemySpeedMult) || 1;
     this.baseSpeed = (this.slowTimer > 0 && !this.isBoss() && !this.isMegaBoss)
-      ? this._baseSpeedFull * (this.slowFactor || 0.55)
-      : this._baseSpeedFull;
+      ? this._baseSpeedFull * (this.slowFactor || 0.55) * _vesselSpeedMult
+      : this._baseSpeedFull * _vesselSpeedMult;
     if (this.stunned > 0)  { this.stunned -= dt; return; }
 
     // Boss / mini-boss corruption blood-trail — drop a damaging pool periodically while alive

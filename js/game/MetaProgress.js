@@ -264,6 +264,9 @@ export class MetaProgress {
     this.edenMilestonesSeen = {};  // { [threshold]: true } milestone one-fire guard
     this.systemLogsSeen    = {};  // { [threshold]: true } system log one-fire feed guard
     this.chaosRanks    = {};  // Phase B: { [charId]: { bestSecs, bestRank } } — Chaos Survival Rank per character
+    // ── Vessel system ──────────────────────────────────────────────────────
+    this.selectedVessel   = 'alpha_phoenix';   // currently equipped vessel id
+    this.unlockedVessels  = { alpha_phoenix: true };  // { [vesselId]: true }
     this._load();
   }
 
@@ -300,6 +303,10 @@ export class MetaProgress {
       this.edenMilestonesSeen = (d.edenMilestonesSeen && typeof d.edenMilestonesSeen === 'object') ? d.edenMilestonesSeen : {};
       this.systemLogsSeen    = (d.systemLogsSeen    && typeof d.systemLogsSeen    === 'object') ? d.systemLogsSeen    : {};
       this.chaosRanks    = (d.chaosRanks    && typeof d.chaosRanks    === 'object') ? d.chaosRanks    : {}; // Phase B
+      // Vessel system — safe defaults for old saves (alpha_phoenix always unlocked)
+      this.selectedVessel  = (typeof d.selectedVessel === 'string' && d.selectedVessel) ? d.selectedVessel : 'alpha_phoenix';
+      this.unlockedVessels = (d.unlockedVessels && typeof d.unlockedVessels === 'object') ? d.unlockedVessels : { alpha_phoenix: true };
+      if (!this.unlockedVessels.alpha_phoenix) this.unlockedVessels.alpha_phoenix = true; // always available
       // One-time retroactive payout for already-earned Endless achievements (idempotent).
       this._backfillProtocolFragments();
 
@@ -360,6 +367,8 @@ export class MetaProgress {
         edenMilestonesSeen: this.edenMilestonesSeen,
         systemLogsSeen:     this.systemLogsSeen,
         chaosRanks:         this.chaosRanks,           // Phase B: Chaos Survival Rank per character
+        selectedVessel:     this.selectedVessel,
+        unlockedVessels:    this.unlockedVessels,
       }));
     } catch (_) {}
   }
@@ -543,6 +552,8 @@ export class MetaProgress {
     this.pfEarnedFrom      = {};
     this.protocolUnlocks   = {};
     this.protocolCards     = {};
+    this.selectedVessel   = 'alpha_phoenix';
+    this.unlockedVessels  = { alpha_phoenix: true };
     this.relics    = {};
     this.bossKills = {};
     this.runHistory = [];
@@ -732,5 +743,28 @@ export class MetaProgress {
     return true;
   }
   hasSystemLog(threshold) { return !!(this.systemLogsSeen && this.systemLogsSeen[threshold]); }
+
+  // ─── Vessel system ─────────────────────────────────────────────────────────
+  isVesselUnlocked(id) { return this.unlockedVessels[id] === true; }
+
+  getSelectedVessel() { return this.selectedVessel || 'alpha_phoenix'; }
+
+  selectVessel(id) {
+    if (!this.isVesselUnlocked(id)) return false;
+    this.selectedVessel = id;
+    this._save();
+    return true;
+  }
+
+  // Purchase a vessel. Deducts Grids + Fragments. Returns 'ok'|'owned'|'poor'.
+  tryBuyVessel(id, costGrids, costFragments) {
+    if (this.isVesselUnlocked(id)) return 'owned';
+    if (this.credits < costGrids || this.protocolFragments < costFragments) return 'poor';
+    this.credits -= costGrids;
+    this.protocolFragments -= costFragments;
+    this.unlockedVessels[id] = true;
+    this._save();
+    return 'ok';
+  }
 
 }

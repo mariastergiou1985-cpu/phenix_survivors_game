@@ -39,6 +39,7 @@ import { EnemySpawner, ELITE_WAVE as ELITE_WAVE_CFG, BOSS_WARN_COOLDOWN as BOSS_
 import { StateManager, GAME_STATES } from './StateManager.js?v=20260703990000';
 import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260703990000';
 import { NexusManager } from './NexusManager.js?v=20260703990000';
+import { VESSELS, getVesselById, getDefaultVesselId } from './VesselCatalog.js?v=20260703992000';
 
 // Euclid Vector toxin kit — used ONLY when selectedCharacter === 'euclid_vector' (world-space).
 import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=20260703990000';
@@ -662,6 +663,22 @@ export class Game {
       console.error('[CGM Relics] _initRelicsOverlay failed:', err);
     }
 
+    this._hangarOverlayEl      = null;
+    this._hangarOverlayVisible = false;
+    try {
+      this._initHangarOverlay();
+    } catch (err) {
+      console.error('[CGM Hangar] _initHangarOverlay failed:', err);
+    }
+
+    // Preload vessel sprite images for hangar
+    this._vesselSpriteCache = {};
+    VESSELS.forEach(v => {
+      const img = new Image();
+      img.src = v.spritePath + '?v=20260703992000';
+      this._vesselSpriteCache[v.id] = img;
+    });
+
     // Preload relic icon images for HUD display
     this._relicIconCache = {};
     RELIC_DEFS.forEach(r => {
@@ -694,7 +711,7 @@ export class Game {
     const items = ['START GAME'];
     if (this.meta?.isEndlessUnlocked()) items.push('ENDLESS MODE');
     items.push('CHAOS MODE');   // always visible; locked if !endlessUnlocked — handled in draw/click
-    items.push('CHARACTER SELECT', 'UPGRADES', 'ACHIEVEMENTS', 'RELICS', 'SETTINGS', 'EXIT');
+    items.push('CHARACTER SELECT', 'UPGRADES', 'ACHIEVEMENTS', 'RELICS', 'HANGAR', 'SETTINGS', 'EXIT');
     return items;
   }
 
@@ -708,6 +725,7 @@ export class Game {
     const _outfitPath = _outfit === 'default' ? null : this.meta.getOutfitAsset(_char, _outfit);
     this.player       = new Player(this.selectedCharacter, _outfitPath);
     this._applyMetaUpgrades();
+    this._applyVesselPassives();
     this._echoPassiveMsgFired = false;
     this._applyBossEchoPassives();
     // ── NexusManager: manages all Nexus stations, per-biome health, rewards ──
@@ -1192,6 +1210,7 @@ export class Game {
       this._hideUpgradesOverlay();
       this._hideAchievementsOverlay();
       this._hideRelicsOverlay();
+      this._hideHangarOverlay();
       this._showMenuOverlay();
     });
   }
@@ -1528,6 +1547,74 @@ export class Game {
     p.contactDamageReduction     = Math.min(0.6, (p.contactDamageReduction || 0) + m.getLevel('armorPlating') * 0.03);
     p.maxMana                   += m.getLevel('manaCapacitor') * 10;               // ultimate cost stays 100
     p.xpMult                     = 1 + m.getLevel('xpUplink') * 0.05;
+  }
+
+  // ── Vessel passives ──────────────────────────────────────────────────────────
+  _applyVesselPassives() {
+    if (!this.meta || !this.player) return;
+    const vid  = this.meta.getSelectedVessel();
+    const vDef = getVesselById(vid);
+    if (!vDef) return;
+
+    const p = this.player;
+
+    // Stat mods
+    if (vDef.statMods.maxHpMult) {
+      p.maxHp = Math.round(p.maxHp * vDef.statMods.maxHpMult);
+      p.hp    = Math.min(p.hp, p.maxHp);
+    }
+    if (vDef.statMods.fireRateMult) {
+      p._vesselFireRateMult = vDef.statMods.fireRateMult;
+    }
+
+    // Set vessel passive id for runtime checks
+    this._activeVesselPassive = vDef.passive;       // null | 'grid_erase_pulse' | 'singularity_aura' | 'glitch_dodge' | 'overclocked_assault'
+    this._vesselEnemySpeedMult = vDef.statMods.enemySpeedMult || 1;
+    this._vesselPulseTimer     = 0;                 // grid_erase_pulse countdown
+  }
+
+  _tickVesselPassives(dt) {
+    if (!this._activeVesselPassive) return;
+    const p = this.player;
+    if (!p) return;
+
+    // ── Grid Eraser: pulse every 10s kills small enemies in 250px radius ──
+    if (this._activeVesselPassive === 'grid_erase_pulse') {
+      this._vesselPulseTimer = (this._vesselPulseTimer || 0) + dt;
+      if (this._vesselPulseTimer >= 10) {
+        this._vesselPulseTimer -= 10;
+        const R = 250;
+        for (let i = this.enemies.length - 1; i >= 0; i--) {
+          const e = this.enemies[i];
+          if (e.isBoss || e.isMegaBoss) continue;
+          const dx = e.pos.x - p.pos.x, dy = e.pos.y - p.pos.y;
+          if (dx * dx + dy * dy <= R * R) {
+            e.hp = 0;
+          }
+        }
+        // VFX: expanding cyan ring
+        this.empRings.push({ x: p.pos.x, y: p.pos.y, r: 0, maxR: R, t: 0, duration: 0.4, color: 'rgba(46,230,246,0.35)', update(dt) { this.t += dt; this.r = this.maxR * Math.min(1, this.t / this.duration); }, draw(ctx) { ctx.beginPath(); ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2); ctx.strokeStyle = this.color; ctx.lineWidth = 3; ctx.stroke(); } });
+      }
+    }
+
+    // ── Null Singularity: permanent pull aura + 5 dps to enemies in 200px ──
+    if (this._activeVesselPassive === 'singularity_aura') {
+      const R = 200, PULL = 40, DPS = 5;
+      for (let i = 0; i < this.enemies.length; i++) {
+        const e = this.enemies[i];
+        const dx = e.pos.x - p.pos.x, dy = e.pos.y - p.pos.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < R && dist > 10) {
+          const pull = PULL * dt / dist;
+          e.pos.x -= dx * pull;
+          e.pos.y -= dy * pull;
+          e.hp -= DPS * dt;
+        }
+      }
+    }
+
+    // ── Overclocked Vanguard: fire rate mult is already applied via _vesselFireRateMult on player
+    //    Enemy speed mult is applied at spawn time in _vesselEnemySpeedMult — no per-tick needed.
   }
 
   // Returns per-echo passive bonus scalars based on current archive state.
@@ -3061,6 +3148,192 @@ export class Game {
 
   _drawRelicsScreen(ctx) {
     if (this._relicsOverlayVisible) return;   // DOM overlay takes over
+  }
+
+  // ─── HANGAR OVERLAY ─────────────────────────────────────────────────────────
+  goToHangar() { this._hideMenuOverlay(); this.gameState = 'hangar'; this._showHangarOverlay(); }
+
+  _initHangarOverlay() {
+    if (this._hangarOverlayEl) return;
+
+    if (!document.getElementById('cgm-hangar-style')) {
+      const style = document.createElement('style');
+      style.id = 'cgm-hangar-style';
+      style.textContent = `
+        #cgm-hangar {
+          position:fixed; inset:0; z-index:140; display:none;
+          align-items:flex-start; justify-content:center;
+          overflow-y:auto; padding:16px 14px 24px;
+          font-family:'Share Tech Mono',ui-monospace,monospace; color:#cfe9ff;
+          background:
+            radial-gradient(1200px 700px at 50% -10%,rgba(46,230,246,.12),transparent 60%),
+            radial-gradient(900px 600px at 80% 40%,rgba(168,85,247,.08),transparent 60%),
+            linear-gradient(180deg,#0d0b18,#070a1c);
+          --amber:#fbbf24; --cyan:#2ee6f6; --green:#34d399; --orange:#ff9900; --purple:#a855f7;
+          --txt:#cfe9ff; --txt-dim:#6f86b8; --panel-edge:rgba(46,230,246,.15);
+          --glow-cyan:0 0 8px rgba(46,230,246,.55),0 0 22px rgba(46,230,246,.22);
+          --radius:12px;
+        }
+        #cgm-hangar * { box-sizing:border-box; margin:0; padding:0; }
+        #cgm-hangar .ch-stage {
+          position:relative; z-index:1; width:100%; max-width:1100px;
+          border:1px solid var(--panel-edge); border-radius:20px;
+          padding:22px 26px 20px;
+          background:rgba(10,8,22,.82);
+          box-shadow:inset 0 0 60px rgba(46,230,246,.05),0 30px 80px rgba(0,0,0,.55);
+          display:flex; flex-direction:column; align-items:stretch; gap:14px;
+        }
+        #cgm-hangar .ch-header { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; }
+        #cgm-hangar .ch-title  { font-family:'Orbitron',sans-serif; font-weight:800; font-size:16px; letter-spacing:3px; color:var(--cyan); text-shadow:var(--glow-cyan); }
+        #cgm-hangar .ch-wallet { display:flex; gap:12px; }
+        #cgm-hangar .ch-currency { padding:6px 14px; border-radius:999px; border:1px solid rgba(46,230,246,.25); background:rgba(46,230,246,.05); font-family:'Orbitron',sans-serif; font-weight:700; font-size:12px; color:var(--cyan); }
+        #cgm-hangar .ch-sep    { width:100%; height:1px; background:linear-gradient(90deg,transparent,var(--cyan),transparent); opacity:.3; }
+        #cgm-hangar .ch-grid   { display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:14px; }
+        #cgm-hangar .ch-card   { position:relative; border-radius:var(--radius); border:1px solid rgba(46,90,100,.25); background:rgba(10,16,46,.55); padding:16px; display:flex; gap:14px; transition:.2s; cursor:pointer; }
+        #cgm-hangar .ch-card:hover { border-color:var(--cyan); background:rgba(10,16,46,.7); }
+        #cgm-hangar .ch-card.selected { border-color:var(--cyan); box-shadow:0 0 12px rgba(46,230,246,.3); background:rgba(10,30,50,.7); }
+        #cgm-hangar .ch-card.locked   { opacity:.55; cursor:default; }
+        #cgm-hangar .ch-card-img  { width:90px; height:90px; object-fit:contain; flex-shrink:0; border-radius:8px; background:rgba(0,0,0,.3); }
+        #cgm-hangar .ch-card-body { flex:1; display:flex; flex-direction:column; gap:4px; }
+        #cgm-hangar .ch-card-name { font-family:'Orbitron',sans-serif; font-weight:700; font-size:13px; color:#dff0ff; }
+        #cgm-hangar .ch-card-role { font-size:10px; letter-spacing:2px; text-transform:uppercase; color:var(--purple); }
+        #cgm-hangar .ch-card-desc { font-size:11px; color:#8aa0c0; line-height:1.4; }
+        #cgm-hangar .ch-card-passive { font-size:11px; color:var(--cyan); margin-top:2px; }
+        #cgm-hangar .ch-card-foot { display:flex; align-items:center; justify-content:flex-end; gap:8px; margin-top:6px; }
+        #cgm-hangar .ch-badge     { font-family:'Orbitron',sans-serif; font-weight:700; font-size:10px; letter-spacing:1px; padding:5px 12px; border-radius:6px; }
+        #cgm-hangar .ch-badge.selected-badge { background:rgba(46,230,246,.15); color:var(--cyan); border:1px solid rgba(46,230,246,.4); }
+        #cgm-hangar .ch-badge.buy-btn { background:rgba(251,191,36,.1); color:var(--amber); border:1px solid rgba(251,191,36,.35); cursor:pointer; }
+        #cgm-hangar .ch-badge.buy-btn:hover { background:rgba(251,191,36,.2); }
+        #cgm-hangar .ch-badge.poor    { background:rgba(255,100,30,.08); color:#f87171; border:1px solid rgba(248,113,113,.3); }
+        #cgm-hangar .ch-badge.locked-badge { background:rgba(111,134,184,.08); color:var(--txt-dim); border:1px solid rgba(111,134,184,.2); }
+        #cgm-hangar .ch-badge.equip-btn { background:rgba(52,211,153,.1); color:var(--green); border:1px solid rgba(52,211,153,.35); cursor:pointer; }
+        #cgm-hangar .ch-badge.equip-btn:hover { background:rgba(52,211,153,.2); }
+        #cgm-hangar .ch-footer { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; }
+        #cgm-hangar .ch-foot-btn { padding:11px 26px; border-radius:10px; cursor:pointer; border:1px solid rgba(111,134,184,.22); background:rgba(10,16,46,.3); color:var(--txt-dim); font-family:'Orbitron',sans-serif; font-weight:700; font-size:12px; letter-spacing:2px; transition:.15s; }
+        #cgm-hangar .ch-foot-btn:hover { border-color:var(--txt-dim); color:var(--txt); }
+        #cgm-hangar .ch-hint { color:var(--txt-dim); font-size:11px; letter-spacing:1px; }
+      `;
+      document.head.appendChild(style);
+    }
+
+    const el = document.createElement('div');
+    el.id = 'cgm-hangar';
+    el.setAttribute('role', 'dialog');
+    el.setAttribute('aria-label', 'Hangar');
+    el.innerHTML = `
+      <div class="ch-stage">
+        <div class="ch-header">
+          <div class="ch-title">⬢ HANGAR</div>
+          <div class="ch-wallet">
+            <div class="ch-currency" id="ch-grids">⬡ <span>0</span> GRIDS</div>
+            <div class="ch-currency" id="ch-frags">🧩 <span>0</span> FRAGMENTS</div>
+          </div>
+        </div>
+        <div class="ch-sep"></div>
+        <div class="ch-grid" id="ch-grid"></div>
+        <div class="ch-sep"></div>
+        <div class="ch-footer">
+          <button class="ch-foot-btn" id="ch-back-btn">◀ BACK</button>
+          <div class="ch-hint">Select a vessel before starting a run. Passives apply automatically.</div>
+        </div>
+      </div>
+    `;
+
+    el.querySelector('#ch-back-btn')?.addEventListener('click', () => this.goToMainMenu());
+    document.body.appendChild(el);
+    this._hangarOverlayEl = el;
+  }
+
+  _showHangarOverlay() {
+    if (!this._hangarOverlayEl) return;
+    this._hangarOverlayEl.style.display = 'flex';
+    this._hangarOverlayVisible = true;
+    this._syncHangarOverlay();
+  }
+
+  _hideHangarOverlay() {
+    if (!this._hangarOverlayEl) return;
+    this._hangarOverlayEl.style.display = 'none';
+    this._hangarOverlayVisible = false;
+  }
+
+  _syncHangarOverlay() {
+    const el = this._hangarOverlayEl;
+    if (!el) return;
+
+    const gridsEl = el.querySelector('#ch-grids span');
+    const fragsEl = el.querySelector('#ch-frags span');
+    if (gridsEl) gridsEl.textContent = this.meta.credits;
+    if (fragsEl) fragsEl.textContent = this.meta.protocolFragments;
+
+    const grid = el.querySelector('#ch-grid');
+    if (!grid) return;
+
+    const selectedId = this.meta.getSelectedVessel();
+
+    grid.innerHTML = VESSELS.map(v => {
+      const owned    = this.meta.isVesselUnlocked(v.id);
+      const selected = v.id === selectedId;
+      const canAfford = this.meta.credits >= v.costGrids && this.meta.protocolFragments >= v.costFragments;
+
+      let cls = 'ch-card';
+      if (selected) cls += ' selected';
+      if (!owned) cls += ' locked';
+
+      let badgeHtml;
+      if (selected) {
+        badgeHtml = '<span class="ch-badge selected-badge">◈ EQUIPPED</span>';
+      } else if (owned) {
+        badgeHtml = `<span class="ch-badge equip-btn" data-vessel-id="${v.id}">SELECT</span>`;
+      } else if (v.unlockCondition) {
+        badgeHtml = `<span class="ch-badge locked-badge">${v.unlockCondition}</span>`;
+      } else if (!canAfford) {
+        const costParts = [];
+        if (v.costGrids > 0)    costParts.push(v.costGrids + ' ⬡');
+        if (v.costFragments > 0) costParts.push(v.costFragments + ' 🧩');
+        badgeHtml = `<span class="ch-badge poor">${costParts.join(' + ')}</span>`;
+      } else {
+        const costParts = [];
+        if (v.costGrids > 0)    costParts.push(v.costGrids + ' ⬡');
+        if (v.costFragments > 0) costParts.push(v.costFragments + ' 🧩');
+        badgeHtml = `<span class="ch-badge buy-btn" data-vessel-buy="${v.id}">BUY ${costParts.join(' + ')}</span>`;
+      }
+
+      return `<div class="${cls}" data-vid="${v.id}">
+        <img class="ch-card-img" src="${v.spritePath}?v=20260703992000" alt="${v.name}">
+        <div class="ch-card-body">
+          <div class="ch-card-name">${v.name}</div>
+          <div class="ch-card-role">${v.role}</div>
+          <div class="ch-card-desc">${v.desc}</div>
+          <div class="ch-card-passive">⚡ ${v.passiveDesc}</div>
+          <div class="ch-card-foot">${badgeHtml}</div>
+        </div>
+      </div>`;
+    }).join('');
+
+    // Wire buy buttons
+    grid.querySelectorAll('.buy-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const vid = btn.dataset.vesselBuy;
+        const vDef = getVesselById(vid);
+        const result = this.meta.tryBuyVessel(vid, vDef.costGrids, vDef.costFragments);
+        if (result === 'ok') this._syncHangarOverlay();
+      });
+    });
+
+    // Wire equip buttons
+    grid.querySelectorAll('.equip-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.meta.selectVessel(btn.dataset.vesselId);
+        this._syncHangarOverlay();
+      });
+    });
+  }
+
+  _drawHangarScreen(ctx) {
+    if (this._hangarOverlayVisible) return;   // DOM overlay takes over
   }
 
     _drawUpgradesScreen(ctx) {
@@ -5261,6 +5534,10 @@ export class Game {
       this._updateLoreArchive(input);
       return;
     }
+    if (this.gameState === 'hangar') {
+      if (input.keys && input.keys.has('Escape')) this.goToMainMenu();
+      return;
+    }
     if (this.gameState !== 'playing') return;
 
     // ── Post-Arena NULL decision panel: intercept all input, freeze gameplay ──
@@ -5313,6 +5590,9 @@ export class Game {
 
     this.timeAlive += dt;
     this.score += dt;
+
+    // ── Vessel passive runtime tick ──────────────────────────────────────────
+    this._tickVesselPassives(dt);
 
     // ── MapManager + ChunkManager update (biome transitions, chunk streaming) ─
     this.mapManager.update(dt);
@@ -6117,6 +6397,7 @@ export class Game {
     else if (item === 'UPGRADES')       this.goToUpgradesScreen();
     else if (item === 'ACHIEVEMENTS')   this.goToAchievementsScreen();
     else if (item === 'RELICS')         this.goToRelicsScreen();
+    else if (item === 'HANGAR')         this.goToHangar();
     else if (item === 'SETTINGS')       this.goToSettings();
     else if (item === 'EXIT') { try { window.close(); } catch (e) {} this.goToExitScreen(); }   // browser-safe: close if allowed, else friendly exit screen
   }
@@ -8958,6 +9239,11 @@ export class Game {
       this._drawFade(ctx);
       return;
     }
+    if (this.gameState === 'hangar') {
+      this._drawHangarScreen(ctx);
+      this._drawFade(ctx);
+      return;
+    }
     if (this.gameState !== 'playing') {
       this._drawBackground(ctx);
       return;
@@ -10552,6 +10838,7 @@ export class Game {
       'UPGRADES':         '▲',
       'ACHIEVEMENTS':     '★',
       'RELICS':           '◆',
+      'HANGAR':           '⬢',
       'SETTINGS':         '≡',
       'EXIT':             '×',
     };
@@ -13379,6 +13666,12 @@ _drawLoreArchive(ctx) {
   _damagePlayer(dmg, { color = RED, shake = 5, cap = BOSS_MAX_PLAYER_HIT } = {}) {
     if (this.player.dashTimer > 0 || this.phoenixReviveTimer > 0) return false;  // i-frames → dodged
     if (this.playerHitCooldown > 0) return false;                                // within 0.5s grace
+    // ── Glitch Phantom vessel: 50% chance to dodge any hit ──
+    if (this._activeVesselPassive === 'glitch_dodge' && Math.random() < 0.5) {
+      this.floatingTexts.push(new FloatingText('GLITCH DODGE', this.player.pos.clone(), '#a855f7', 0.6));
+      this.playerHitCooldown = 0.25;   // short grace so it doesn't re-roll every frame
+      return false;
+    }
     const applied = Math.min(dmg, cap);
     this.player.applyDamage(applied);
     this.playerHitCooldown = 0.5;
