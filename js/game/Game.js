@@ -9847,6 +9847,9 @@ export class Game {
     ctx.fillStyle = 'rgba(2,6,16,0.30)';
     ctx.fillRect(this.camera.x, this.camera.y, this._viewW, this._viewH);
 
+    // 1b ── World boundary neon grid wall (proximity fade-in, flicker, warning text)
+    this._drawWorldBoundaries(ctx);
+
     // 1a ── Null Breach Arena containment field (world-space, under everything else)
     this._drawArenaContainment(ctx);
     // 1a ── Boss Lava/Fire Rain zones (ground markers — under entities so they read as terrain)
@@ -18484,6 +18487,238 @@ _drawLoreArchive(ctx) {
       endless: this.endless,
       gridBlackoutActive: this.gridBlackoutActive,
     });
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // WORLD BOUNDARY VFX — Cyberpunk neon grid wall with proximity fade-in,
+  // flicker/glitch, and warning text.  Drawn in camera-space (world coords).
+  // Performance: layered lines only — NO shadowBlur, NO per-pixel ops.
+  // ═══════════════════════════════════════════════════════════════════════════
+  _drawWorldBoundaries(ctx) {
+    const wb = this.chunkManager.getWorldBounds();
+    const px = this.player.pos.x;
+    const py = this.player.pos.y;
+
+    // ── Proximity distances (adapted to 3840px world) ────────────────────────
+    const FADE_START = 700;   // px from boundary edge: effect starts fading in
+    const FADE_FULL  = 120;   // px from boundary edge: full intensity
+    const WALL_DEPTH = 180;   // how far outside the boundary the glow/grid extends
+    const GRID_STEP  = 80;    // grid line spacing
+
+    // ── Per-edge distance from player ────────────────────────────────────────
+    const distL = px - wb.left;
+    const distR = wb.right - px;
+    const distT = py - wb.top;
+    const distB = wb.bottom - py;
+
+    // Quick out: player far from all edges → nothing to draw
+    if (distL > FADE_START && distR > FADE_START &&
+        distT > FADE_START && distB > FADE_START) return;
+
+    const now = performance.now() / 1000;
+
+    // ── Helper: proximity alpha (0 = far, 1 = close) ────────────────────────
+    const proxAlpha = (dist) => {
+      if (dist >= FADE_START) return 0;
+      if (dist <= FADE_FULL)  return 1;
+      return 1 - (dist - FADE_FULL) / (FADE_START - FADE_FULL);
+    };
+
+    // ── Helper: flicker multiplier (sin + random jitter) ─────────────────────
+    const flicker = (seed) => {
+      const base = 0.7 + 0.3 * Math.sin(now * 3.2 + seed * 1.7);
+      const glitch = Math.random() < 0.06 ? 0.3 + Math.random() * 0.4 : 1;
+      return base * glitch;
+    };
+
+    // ── Visible viewport for culling ─────────────────────────────────────────
+    const vx = this.camera.x;
+    const vy = this.camera.y;
+    const vw = this._viewW;
+    const vh = this._viewH;
+
+    ctx.save();
+    ctx.lineCap = 'round';
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Draw each edge: LEFT, RIGHT, TOP, BOTTOM
+    // Each edge = layered neon glow lines (outer→inner) + grid pattern
+    // ═══════════════════════════════════════════════════════════════════════
+    const edges = [
+      { dist: distL, axis: 'v', pos: wb.left,   dir: -1, min: wb.top, max: wb.bottom },  // left
+      { dist: distR, axis: 'v', pos: wb.right,  dir:  1, min: wb.top, max: wb.bottom },  // right
+      { dist: distT, axis: 'h', pos: wb.top,    dir: -1, min: wb.left, max: wb.right },  // top
+      { dist: distB, axis: 'h', pos: wb.bottom, dir:  1, min: wb.left, max: wb.right },  // bottom
+    ];
+
+    for (const edge of edges) {
+      const alpha = proxAlpha(edge.dist);
+      if (alpha <= 0) continue;
+
+      const fl = flicker(edge.pos);
+      const a  = alpha * fl;
+
+      // ── Neon glow layers (outer to inner) ────────────────────────────────
+      // 5 layers at varying offsets from the boundary line, thickest & faintest
+      // on the outside, thinnest & brightest on the boundary itself.
+      const layers = [
+        { off:  48 * edge.dir, w: 28, color: '#00e5ff', opacity: 0.04 },
+        { off:  28 * edge.dir, w: 18, color: '#00e5ff', opacity: 0.08 },
+        { off:  12 * edge.dir, w: 10, color: '#00e5ff', opacity: 0.14 },
+        { off:   0,            w:  5, color: '#00ffff', opacity: 0.45 },
+        { off:  -6 * edge.dir, w:  2, color: '#ffffff', opacity: 0.55 },
+      ];
+
+      for (const L of layers) {
+        ctx.globalAlpha = a * L.opacity;
+        ctx.strokeStyle = L.color;
+        ctx.lineWidth   = L.w;
+        ctx.beginPath();
+        if (edge.axis === 'v') {
+          // Vertical edge (left/right) — draw vertical line
+          const x = edge.pos + L.off;
+          const y0 = Math.max(edge.min - WALL_DEPTH, vy - 100);
+          const y1 = Math.min(edge.max + WALL_DEPTH, vy + vh + 100);
+          ctx.moveTo(x, y0);
+          ctx.lineTo(x, y1);
+        } else {
+          // Horizontal edge (top/bottom) — draw horizontal line
+          const y = edge.pos + L.off;
+          const x0 = Math.max(edge.min - WALL_DEPTH, vx - 100);
+          const x1 = Math.min(edge.max + WALL_DEPTH, vx + vw + 100);
+          ctx.moveTo(x0, y);
+          ctx.lineTo(x1, y);
+        }
+        ctx.stroke();
+      }
+
+      // ── Grid lines perpendicular to the boundary ─────────────────────────
+      // Short "fence post" lines radiating inward from the boundary
+      const gridAlpha = a * 0.18;
+      if (gridAlpha > 0.01) {
+        ctx.globalAlpha = gridAlpha;
+        ctx.strokeStyle = '#00e5ff';
+        ctx.lineWidth   = 1.5;
+
+        if (edge.axis === 'v') {
+          // Vertical edge → horizontal grid rungs
+          const x0 = edge.pos;
+          const x1 = edge.pos + WALL_DEPTH * edge.dir;
+          const yStart = Math.max(edge.min, vy - 100);
+          const yEnd   = Math.min(edge.max, vy + vh + 100);
+          const firstY  = Math.ceil(yStart / GRID_STEP) * GRID_STEP;
+          for (let gy = firstY; gy <= yEnd; gy += GRID_STEP) {
+            // Glitch: randomly skip some rungs
+            if (Math.random() < 0.12) continue;
+            ctx.beginPath();
+            ctx.moveTo(x0, gy);
+            ctx.lineTo(x1, gy);
+            ctx.stroke();
+          }
+          // Parallel vertical sub-lines inside the wall depth
+          ctx.lineWidth = 1;
+          ctx.globalAlpha = gridAlpha * 0.5;
+          for (let gx = GRID_STEP; gx < WALL_DEPTH; gx += GRID_STEP) {
+            const lx = edge.pos + gx * edge.dir;
+            ctx.beginPath();
+            ctx.moveTo(lx, yStart);
+            ctx.lineTo(lx, yEnd);
+            ctx.stroke();
+          }
+        } else {
+          // Horizontal edge → vertical grid rungs
+          const y0 = edge.pos;
+          const y1 = edge.pos + WALL_DEPTH * edge.dir;
+          const xStart = Math.max(edge.min, vx - 100);
+          const xEnd   = Math.min(edge.max, vx + vw + 100);
+          const firstX  = Math.ceil(xStart / GRID_STEP) * GRID_STEP;
+          for (let gx = firstX; gx <= xEnd; gx += GRID_STEP) {
+            if (Math.random() < 0.12) continue;
+            ctx.beginPath();
+            ctx.moveTo(gx, y0);
+            ctx.lineTo(gx, y1);
+            ctx.stroke();
+          }
+          // Parallel horizontal sub-lines inside the wall depth
+          ctx.lineWidth = 1;
+          ctx.globalAlpha = gridAlpha * 0.5;
+          for (let gy = GRID_STEP; gy < WALL_DEPTH; gy += GRID_STEP) {
+            const ly = edge.pos + gy * edge.dir;
+            ctx.beginPath();
+            ctx.moveTo(xStart, ly);
+            ctx.lineTo(xEnd,   ly);
+            ctx.stroke();
+          }
+        }
+      }
+
+      // ── Scanline noise band near boundary ────────────────────────────────
+      // Thin horizontal noise lines that flicker near the wall for extra grit
+      if (a > 0.3) {
+        const scanCount = Math.floor(6 * a);
+        ctx.lineWidth = 1;
+        for (let s = 0; s < scanCount; s++) {
+          const noise = Math.random();
+          ctx.globalAlpha = a * 0.12 * noise;
+          ctx.strokeStyle = noise > 0.5 ? '#ff0055' : '#00e5ff';
+          const offset = (Math.random() - 0.5) * 80;
+          ctx.beginPath();
+          if (edge.axis === 'v') {
+            const sy = py + offset;
+            ctx.moveTo(edge.pos - 40, sy);
+            ctx.lineTo(edge.pos + 40, sy);
+          } else {
+            const sx = px + offset;
+            ctx.moveTo(sx, edge.pos - 40);
+            ctx.lineTo(sx, edge.pos + 40);
+          }
+          ctx.stroke();
+        }
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // WARNING TEXT — blinking cyberpunk warning near closest boundary
+    // ═══════════════════════════════════════════════════════════════════════
+    const minDist = Math.min(distL, distR, distT, distB);
+    const textAlpha = proxAlpha(minDist);
+
+    if (textAlpha > 0.15) {
+      const textBlink = 0.5 + 0.5 * Math.sin(now * 5.5);
+      const glitchShift = Math.random() < 0.08 ? (Math.random() - 0.5) * 8 : 0;
+
+      // Position text between player and nearest boundary
+      let tx = px, ty = py;
+      if (minDist === distL)      tx = Math.max(wb.left + 60, px - distL * 0.5);
+      else if (minDist === distR) tx = Math.min(wb.right - 60, px + distR * 0.5);
+      if (minDist === distT)      ty = Math.max(wb.top + 40, py - distT * 0.5);
+      else if (minDist === distB) ty = Math.min(wb.bottom - 40, py + distB * 0.5);
+
+      ctx.globalAlpha = textAlpha * textBlink * 0.85;
+      ctx.font = 'bold 14px Consolas, monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      // Red glitch shadow
+      ctx.fillStyle = '#ff0033';
+      ctx.fillText('CRITICAL ERROR: GRID LIMIT REACHED', tx + glitchShift + 1.5, ty + 1);
+
+      // Cyan main text
+      ctx.fillStyle = '#00ffff';
+      ctx.fillText('CRITICAL ERROR: GRID LIMIT REACHED', tx + glitchShift, ty);
+
+      // Second line — distance warning
+      if (minDist < 200) {
+        const urgency = Math.floor(Math.random() * 9000 + 1000);
+        ctx.globalAlpha = textAlpha * textBlink * 0.65;
+        ctx.font = 'bold 11px Consolas, monospace';
+        ctx.fillStyle = '#ff4466';
+        ctx.fillText('// BREACH PROXIMITY: ' + urgency + ' — TURN BACK', tx + glitchShift, ty + 20);
+      }
+    }
+
+    ctx.globalAlpha = 1;
+    ctx.restore();
   }
 
   _drawBackground(ctx) {
