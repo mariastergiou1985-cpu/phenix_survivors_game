@@ -21,7 +21,7 @@ import { UpgradeUI }      from './UpgradeUI.js?v=20260703940000';
 import { weightedSample } from './Upgrades.js?v=20260703940000';
 import { MutationUI }      from './MutationUI.js?v=20260629440000';
 import { sampleMutations } from './Mutations.js?v=20260629440000';
-import { drawHUD, drawEndScreen } from './HUD.js?v=20260703700000';
+import { drawHUD, drawEndScreen } from './HUD.js?v=20260703950000';
 import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS } from './MetaProgress.js?v=20260629440000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260629440000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
@@ -577,6 +577,13 @@ export class Game {
     this._victoryLogsBadge.onerror = () => console.warn('[Victory] secret_logs_badge.png missing — text used');
     this._victoryLogsBadge.src = 'assets/ui/victory/secret_logs_badge.png';
 
+    // Screen transition fade overlay
+    this._fadeAlpha = 0;       // 0 = fully visible, 1 = fully black
+    this._fadeDir   = 0;       // 0 = idle, 1 = fading out, -1 = fading in
+    this._fadeSpeed = 3.5;     // alpha per second (fast, snappy)
+    this._fadeCb    = null;    // callback when fade-out completes (state swap)
+    this._fadeIn    = false;   // true = currently fading back in after swap
+
     // Game state management
     this.gameState = 'start_menu'; // 'start_menu' | 'character_select' | 'playing' | 'game_over' | 'victory' | 'exit_screen'
     this.selectedCharacter = null; // 'skeleton_warrior' | 'taekwondo_girl' | 'cyber_arm_hero'
@@ -1024,20 +1031,24 @@ export class Game {
     const _comingSoonChar = this.characters?.find(c => c.id === charId && c.comingSoon);
     if (_comingSoonChar) return;                           // coming-soon characters can't be started
     if (!this.meta.isCharacterUnlocked(charId)) return;   // locked characters can't be started
-    this._hideMenuOverlay();
-    this._hideCharSelectOverlay();
-    this.selectedCharacter = charId;
-    this.audio?.startGameplayMusic();
-    this.gameState = 'playing';
-    this.reset();
+    this._transition(() => {
+      this._hideMenuOverlay();
+      this._hideCharSelectOverlay();
+      this.selectedCharacter = charId;
+      this.audio?.startGameplayMusic();
+      this.gameState = 'playing';
+      this.reset();
+    });
   }
 
   goToCharacterSelect() {
-    this._hideMenuOverlay();
-    this.gameState = 'character_select';
-    this.characterIndex = 0;
-    this.audio?.startMenuMusic();
-    this._showCharSelectOverlay();
+    this._transition(() => {
+      this._hideMenuOverlay();
+      this.gameState = 'character_select';
+      this.characterIndex = 0;
+      this.audio?.startMenuMusic();
+      this._showCharSelectOverlay();
+    });
   }
 
   // Highlight a character card WITHOUT starting a run (mouse preview). Sets the live selection so the
@@ -1121,34 +1132,68 @@ export class Game {
     this._syncCharSelectOverlay();
   }
 
+  // ── Screen transition: fade out → run callback (state swap) → fade in ──────
+  _transition(cb) {
+    if (this._fadeDir !== 0) return;   // already transitioning
+    this._fadeDir = 1;                 // start fading to black
+    this._fadeAlpha = 0;
+    this._fadeCb = cb;
+  }
+
+  _updateFade(dt) {
+    if (this._fadeDir === 0) return;
+    this._fadeAlpha += this._fadeDir * this._fadeSpeed * dt;
+    if (this._fadeDir === 1 && this._fadeAlpha >= 1) {
+      // Fully black — run the state swap callback, then fade back in
+      this._fadeAlpha = 1;
+      if (this._fadeCb) { this._fadeCb(); this._fadeCb = null; }
+      this._fadeDir = -1;   // fade in
+    } else if (this._fadeDir === -1 && this._fadeAlpha <= 0) {
+      // Fully visible — done
+      this._fadeAlpha = 0;
+      this._fadeDir = 0;
+    }
+  }
+
+  _drawFade(ctx) {
+    if (this._fadeAlpha <= 0) return;
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, Math.max(0, this._fadeAlpha));
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+    ctx.restore();
+  }
+
   goToMainMenu() {
-    // Save Endless records if leaving mid-run (before any game-over/victory grant)
+    // Save Endless records before fading (must happen synchronously)
     if (this.endless && !this.rewardsGranted && this.timeAlive > 5) {
       this._grantRewards();
     }
-    this._postArenaChoice = false;   // close panel if open
-    this.gameState = 'start_menu';
-    this.menuIndex = 0;
-    this.gameOver  = false;
-    this.victory   = false;
-    this.paused    = false;
-    this.upgradeUI     = null;
-    this.mutationUI    = null;                    // reset forced-mutation state every new run
-    this.mutations     = this._freshMutations();
-    this._mutationTimer = MUTATION_INTERVAL;
-    this.supportDrones = [];
-    this.allyDrones    = [];
-    this._npcWalker         = null;   // clear on menu return
-    this._walkerCycleIdx    = -1;
-    this._walkerFiredSet    = new Set();
-    this._walkerSummonCd    = 120;
-    this.audio?.startMenuMusic();
-    this._hideSettingsOverlay();
-    this._hideCharSelectOverlay();
-    this._hideUpgradesOverlay();
-    this._hideAchievementsOverlay();
-    this._hideRelicsOverlay();
-    this._showMenuOverlay();
+    this._transition(() => {
+      this._postArenaChoice = false;
+      this.gameState = 'start_menu';
+      this.menuIndex = 0;
+      this.gameOver  = false;
+      this.victory   = false;
+      this.paused    = false;
+      this.upgradeUI     = null;
+      this.mutationUI    = null;
+      this.mutations     = this._freshMutations();
+      this._mutationTimer = MUTATION_INTERVAL;
+      this.supportDrones = [];
+      this.allyDrones    = [];
+      this._npcWalker         = null;
+      this._walkerCycleIdx    = -1;
+      this._walkerFiredSet    = new Set();
+      this._walkerSummonCd    = 120;
+      this.audio?.startMenuMusic();
+      this._hideSettingsOverlay();
+      this._hideCharSelectOverlay();
+      this._hideUpgradesOverlay();
+      this._hideAchievementsOverlay();
+      this._hideRelicsOverlay();
+      this._showMenuOverlay();
+    });
   }
 
   goToExitScreen() {
@@ -5491,6 +5536,7 @@ export class Game {
     this._updateHealthPickups(dt);
     this._updateManaPickups(dt);
     this._updateAnnouncement(dt);
+    this._updateFade(dt);
     this.particles.update(this._hitStopTimer > 0 ? dt * 0.10 : dt);  // slow sparks/particles during hit stop
     this._updateCamera();
     this._updateDamagePulse(dt);
@@ -6039,6 +6085,7 @@ export class Game {
 
   _updateStartMenu(dt, input) {
     this._updateAnnouncement(dt);
+    this._updateFade(dt);
     this._initMenuCodeRain();
     this._updateMenuCodeRain(dt);
     const { keys } = input;
@@ -6270,12 +6317,22 @@ export class Game {
     ctx.fillStyle = 'rgba(0,0,0,0.82)';
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
-    ctx.font      = 'bold 40px Consolas, monospace';
+    // Title with glow
+    ctx.font      = 'bold 34px Consolas, monospace';
     ctx.fillStyle = CYAN;
     ctx.textAlign = 'center';
-    ctx.fillText('AUDIO SETTINGS', WIDTH / 2, 120);
+    ctx.shadowColor = CYAN; ctx.shadowBlur = 14;
+    ctx.fillText('AUDIO SETTINGS', WIDTH / 2, 110);
+    ctx.shadowBlur = 0;
 
     const { sliders, backRect } = this._audioRects();
+
+    // Premium panel behind sliders
+    const _aPanX = sliders[0].tx - 20;
+    const _aPanY = sliders[0].ty - 36;
+    const _aPanW = sliders[0].tw + 40;
+    const _aPanH = (sliders[sliders.length - 1].ty - sliders[0].ty) + 50;
+    this._premiumPanel(ctx, _aPanX, _aPanY, _aPanW, _aPanH, CYAN, 'VOLUME CONTROLS');
 
     for (let i = 0; i < sliders.length; i++) {
       const s        = sliders[i];
@@ -6284,49 +6341,49 @@ export class Game {
       const th       = 8;
 
       // Label + percent readout
-      ctx.font      = 'bold 18px Consolas, monospace';
-      ctx.fillStyle = selected ? CYAN : WHITE;
+      ctx.font      = 'bold 16px Consolas, monospace';
+      ctx.fillStyle = selected ? CYAN : 'rgba(220,230,240,0.85)';
       ctx.textAlign = 'left';
       ctx.fillText(s.label, s.tx, s.ty - 16);
       ctx.textAlign = 'right';
-      ctx.fillStyle = YELLOW;
+      ctx.fillStyle = selected ? YELLOW : 'rgba(255,215,0,0.7)';
       ctx.fillText(`${Math.round(v * 100)}%`, s.tx + s.tw, s.ty - 16);
 
-      // Track + filled portion + border
+      // Track (rounded)
       ctx.fillStyle = '#1a2a3a';
-      ctx.fillRect(s.tx, s.ty - th / 2, s.tw, th);
-      ctx.fillStyle = selected ? CYAN : '#2a6a8a';
-      ctx.fillRect(s.tx, s.ty - th / 2, s.tw * v, th);
+      ctx.beginPath(); ctx.roundRect(s.tx, s.ty - th / 2, s.tw, th, 4); ctx.fill();
+      const sliderGrad = ctx.createLinearGradient(s.tx, 0, s.tx + s.tw * v, 0);
+      sliderGrad.addColorStop(0, selected ? '#1e90ff' : '#1a5a7a');
+      sliderGrad.addColorStop(1, selected ? CYAN : '#2a8aaa');
+      ctx.fillStyle = sliderGrad;
+      ctx.beginPath(); ctx.roundRect(s.tx, s.ty - th / 2, s.tw * v, th, 4); ctx.fill();
+      if (selected) {
+        ctx.shadowColor = CYAN; ctx.shadowBlur = 8;
+      }
       ctx.strokeStyle = selected ? CYAN : '#2a4060';
-      ctx.lineWidth   = selected ? 2 : 1;
-      ctx.strokeRect(s.tx, s.ty - th / 2, s.tw, th);
+      ctx.lineWidth   = selected ? 1.5 : 1;
+      ctx.beginPath(); ctx.roundRect(s.tx, s.ty - th / 2, s.tw, th, 4); ctx.stroke();
+      ctx.shadowBlur = 0;
 
-      // Handle
+      // Handle (rounded capsule)
       const hx = s.tx + s.tw * v;
       ctx.fillStyle = selected ? CYAN : WHITE;
-      ctx.fillRect(hx - 5, s.ty - 12, 10, 24);
+      ctx.beginPath(); ctx.roundRect(hx - 5, s.ty - 10, 10, 20, 5); ctx.fill();
     }
 
     // Mute status / hint
-    ctx.font      = '14px Consolas, monospace';
+    ctx.font      = '13px Consolas, monospace';
     ctx.textAlign = 'center';
     if (this.audio?.muted) {
       ctx.fillStyle = '#ff6a6a';
       ctx.fillText('MUTED — press M to unmute', WIDTH / 2, backRect.y - 22);
     } else {
-      ctx.fillStyle = 'rgba(200,200,200,0.6)';
+      ctx.fillStyle = 'rgba(200,200,200,0.55)';
       ctx.fillText('Press M to mute      Drag sliders, or ↑↓ select / ← → adjust', WIDTH / 2, backRect.y - 22);
     }
 
-    // BACK button
-    ctx.fillStyle = '#0a0f20';
-    ctx.fillRect(backRect.x, backRect.y, backRect.w, backRect.h);
-    ctx.strokeStyle = CYAN; ctx.lineWidth = 2;
-    ctx.strokeRect(backRect.x, backRect.y, backRect.w, backRect.h);
-    ctx.font      = 'bold 18px Consolas, monospace';
-    ctx.fillStyle = CYAN;
-    ctx.textAlign = 'center';
-    ctx.fillText('BACK', backRect.x + backRect.w / 2, backRect.y + 28);
+    // Premium BACK button
+    this._premiumButton(ctx, backRect.x, backRect.y, backRect.w, backRect.h, 'BACK', false, CYAN);
 
     ctx.textAlign = 'left';
   }
@@ -8839,46 +8896,57 @@ export class Game {
   draw(ctx) {
     if (this.gameState === 'start_menu') {
       this._drawStartMenu(ctx);
+      this._drawFade(ctx);
       return;
     }
     if (this.gameState === 'character_select') {
       this._drawCharacterSelect(ctx);
+      this._drawFade(ctx);
       return;
     }
     if (this.gameState === 'exit_screen') {
       this._drawExitScreen(ctx);
+      this._drawFade(ctx);
       return;
     }
     if (this.gameState === 'upgrades') {
       this._drawUpgradesScreen(ctx);
+      this._drawFade(ctx);
       return;
     }
     if (this.gameState === 'achievements') {
       this._drawAchievementsScreen(ctx);
+      this._drawFade(ctx);
       return;
     }
     if (this.gameState === 'relics') {
       this._drawRelicsScreen(ctx);
+      this._drawFade(ctx);
       return;
     }
     if (this.gameState === 'credits') {
       this._drawCreditsScreen(ctx);
+      this._drawFade(ctx);
       return;
     }
     if (this.gameState === 'instructions') {
       this._drawInstructionsScreen(ctx);
+      this._drawFade(ctx);
       return;
     }
     if (this.gameState === 'audio_settings') {
       this._drawAudioSettings(ctx);
+      this._drawFade(ctx);
       return;
     }
     if (this.gameState === 'settings') {
       this._drawSettings(ctx);
+      this._drawFade(ctx);
       return;
     }
     if (this.gameState === 'lore_archive') {
       this._drawLoreArchive(ctx);
+      this._drawFade(ctx);
       return;
     }
     if (this.gameState !== 'playing') {
@@ -9354,19 +9422,56 @@ export class Game {
     drawCRTVignette(ctx);
 
     if (this.paused && !this.gameOver && !this.victory) {
-      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.fillStyle = 'rgba(0,0,0,0.62)';
       ctx.fillRect(0, 0, WIDTH, HEIGHT);
-      ctx.font      = '46px Consolas, monospace';
-      ctx.fillStyle = YELLOW;
+
+      // Premium pause panel
+      const _pw = 420, _ph = 320;
+      const _px = Math.round(WIDTH / 2 - _pw / 2);
+      const _py = Math.round(HEIGHT / 2 - _ph / 2) - 10;
+      this._premiumPanel(ctx, _px, _py, _pw, _ph, CYAN, 'SYSTEM PAUSED');
+
+      // Title
+      ctx.font      = 'bold 34px Consolas, monospace';
+      ctx.fillStyle = CYAN;
       ctx.textAlign = 'center';
-      ctx.fillText('PAUSED', WIDTH / 2, HEIGHT / 2 - 18);
-      // RESUME / RETURN TO MAIN MENU buttons (mouse + ESC). Rects from _pauseButtonRect.
-      const labels = ['RESUME', 'RETURN TO MAIN MENU'];
-      for (let i = 0; i < 2; i++) this._drawSlotLabel(ctx, this._pauseButtonRect(i), labels[i], false, i === 0 ? CYAN : '#ff8a8a');
-      ctx.font = '13px Consolas, monospace'; ctx.fillStyle = 'rgba(200,210,225,0.6)'; ctx.textAlign = 'center';
-      ctx.fillText('ESC Resume', WIDTH / 2, this._pauseButtonRect(1).y + 78);
+      ctx.shadowColor = CYAN; ctx.shadowBlur = 16;
+      ctx.fillText('PAUSED', WIDTH / 2, _py + 54);
+      ctx.shadowBlur = 0;
+
+      // Live stats inside pause panel
+      const _capW = 180, _capH = 36;
+      const _capLx = _px + 16, _capRx = _px + _pw / 2 + 8;
+      const _capY1 = _py + 72, _capY2 = _capY1 + _capH + 6;
+      const _pmins = Math.floor(this.timeAlive / 60).toString().padStart(2, '0');
+      const _psecs = Math.floor(this.timeAlive % 60).toString().padStart(2, '0');
+      this._statCapsule(ctx, _capLx, _capY1, _capW, _capH, 'TIME', _pmins + ':' + _psecs, CYAN);
+      this._statCapsule(ctx, _capRx, _capY1, _capW, _capH, 'KILLS', '' + this.player.kills, '#ff6a7a');
+      this._statCapsule(ctx, _capLx, _capY2, _capW, _capH, 'LEVEL', '' + this.player.level, YELLOW);
+      this._statCapsule(ctx, _capRx, _capY2, _capW, _capH, 'SCORE', '' + Math.floor(this.score ?? 0), '#FFD700');
+
+      // Premium buttons
+      const _btnW = 280, _btnH = 44;
+      const _btnX = Math.round(WIDTH / 2 - _btnW / 2);
+      const _btnY1 = _capY2 + _capH + 20;
+      const _btnY2 = _btnY1 + _btnH + 10;
+      this._premiumButton(ctx, _btnX, _btnY1, _btnW, _btnH, 'RESUME', false, CYAN);
+      this._premiumButton(ctx, _btnX, _btnY2, _btnW, _btnH, 'RETURN TO MAIN MENU', false, '#ff6a7a');
+
+      // Store rects for click hit-testing
+      this._pauseBtnRects = [
+        { x: _btnX, y: _btnY1, w: _btnW, h: _btnH },
+        { x: _btnX, y: _btnY2, w: _btnW, h: _btnH },
+      ];
+
+      // Hint
+      ctx.font = '12px Consolas, monospace'; ctx.fillStyle = 'rgba(200,210,225,0.55)'; ctx.textAlign = 'center';
+      ctx.fillText('ESC Resume   •   Click to select', WIDTH / 2, _btnY2 + _btnH + 22);
       ctx.textAlign = 'left';
     }
+
+    // Screen transition fade overlay — always on top of everything
+    this._drawFade(ctx);
   }
 
   // ─── Premium UI primitives (brushed metal + frosted glass + neon, Canvas 2D) ────────────────
@@ -10856,23 +10961,13 @@ export class Game {
       ctx.fillText(skins[i].name, centers[i], topY + th + 20);
     }
 
-    // Two buttons — rects kept in sync with main.js click handler.
+    // Two premium buttons — rects kept in sync with main.js click handler.
     // RETURN TO MAIN MENU (left, x 328–628) • CONTINUE — ENDLESS (right, x 652–952).
     const BW = 300, BH = 50, BY = 540, GAP = 24;
     const LBX = Math.round(WIDTH / 2 - BW - GAP / 2);   // 328
     const RBX = Math.round(WIDTH / 2 + GAP / 2);        // 652
-    const btn = (bx, label, border) => {
-      ctx.fillStyle   = 'rgba(0,20,40,0.92)';
-      ctx.strokeStyle = border;
-      ctx.lineWidth   = 2;
-      ctx.beginPath(); ctx.roundRect(bx, BY, BW, BH, 6); ctx.fill(); ctx.stroke();
-      ctx.font      = 'bold 19px Consolas, monospace';
-      ctx.fillStyle = WHITE;
-      ctx.textAlign = 'center';
-      ctx.fillText(label, bx + BW / 2, BY + BH / 2 + 7);
-    };
-    btn(LBX, 'RETURN TO MAIN MENU', CYAN);
-    btn(RBX, 'CONTINUE — ENDLESS', GREEN);
+    this._premiumButton(ctx, LBX, BY, BW, BH, 'RETURN TO MAIN MENU', false, CYAN);
+    this._premiumButton(ctx, RBX, BY, BW, BH, 'CONTINUE — ENDLESS', false, GREEN);
 
     ctx.font      = '15px Consolas, monospace';
     ctx.fillStyle = '#5a7080';
@@ -11478,10 +11573,12 @@ export class Game {
     ctx.fillStyle = 'rgba(0,0,0,0.7)';
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
-    ctx.font = 'bold 48px Consolas, monospace';
+    ctx.font = 'bold 38px Consolas, monospace';
     ctx.fillStyle = CYAN;
     ctx.textAlign = 'center';
-    ctx.fillText('SELECT YOUR CHARACTER', WIDTH / 2, 100);
+    ctx.shadowColor = CYAN; ctx.shadowBlur = 14;
+    ctx.fillText('SELECT YOUR CHARACTER', WIDTH / 2, 90);
+    ctx.shadowBlur = 0;
 
     // Outfit toggle for the highlighted character (cosmetic equip).
     this._drawOutfitBar(ctx);
@@ -11497,9 +11594,21 @@ export class Game {
       const x = r.x, y = r.y, cardWidth = r.w;
       const unlocked = this.meta.isCharacterUnlocked(char.id);
 
-      if (i === this.characterIndex) { ctx.strokeStyle = YELLOW; ctx.lineWidth = 4; }
-      else { ctx.strokeStyle = unlocked ? WHITE : '#4a5a68'; ctx.lineWidth = 2; }
-      ctx.strokeRect(x, y, cardWidth, cardHeight);
+      if (i === this.characterIndex) {
+        // Selected card: premium glow border
+        ctx.save();
+        ctx.shadowColor = YELLOW; ctx.shadowBlur = 16;
+        ctx.strokeStyle = YELLOW; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.roundRect(x, y, cardWidth, cardHeight, 6); ctx.stroke();
+        ctx.shadowBlur = 0;
+        // Inner sheen
+        ctx.fillStyle = 'rgba(255,215,0,0.06)';
+        ctx.beginPath(); ctx.roundRect(x, y, cardWidth, cardHeight, 6); ctx.fill();
+        ctx.restore();
+      } else {
+        ctx.strokeStyle = unlocked ? 'rgba(255,255,255,0.5)' : '#3a4a58'; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.roundRect(x, y, cardWidth, cardHeight, 6); ctx.stroke();
+      }
 
       // Portrait — equipped secret skin if loaded, else default, else fallback circle. Height-locked
       // to a shared feet baseline so all portraits read consistently in the smaller 2-row card.

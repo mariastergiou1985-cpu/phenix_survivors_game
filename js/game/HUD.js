@@ -1,6 +1,6 @@
 import {
   WIDTH, HEIGHT, VIEW_SCALE,
-  CYAN, ORANGE, RED, GREEN, WHITE, GREY, YELLOW, BLACK,
+  CYAN, ORANGE, RED, GREEN, WHITE, GREY, YELLOW, BLACK, PURPLE,
 } from '../constants.js';
 import { drawText, drawBar, clamp } from '../utils.js';
 
@@ -496,7 +496,7 @@ function _drawSkull(ctx, cx, cy, color) {
 }
 
 export function drawEndScreen(ctx, game) {
-  // Cinematic overlay — pure black for victory, dark-red gradient + scanlines for death
+  // ── Cinematic overlay ────────────────────────────────────────────────────
   if (game.victory) {
     ctx.fillStyle = 'rgba(0,0,0,0.88)';
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
@@ -507,7 +507,7 @@ export function drawEndScreen(ctx, game) {
     _dg.addColorStop(1,   'rgba(50,0,8,0.97)');
     ctx.fillStyle = _dg;
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
-    // Horizontal scan-lines for CRT death feel
+    // CRT scanlines
     ctx.save();
     for (let _sy = 0; _sy < HEIGHT; _sy += 4) {
       ctx.fillStyle = 'rgba(0,0,0,0.13)';
@@ -516,27 +516,26 @@ export function drawEndScreen(ctx, game) {
     ctx.restore();
   }
 
-  // Title
-  if (game.victory) {
-    ctx.font      = '44px Consolas, monospace';
+  // ── Title ────────────────────────────────────────────────────────────────
+  const isVictory = game.victory;
+  if (isVictory) {
+    ctx.font      = 'bold 38px Consolas, monospace';
     ctx.fillStyle = GREEN;
     ctx.textAlign = 'center';
-    ctx.fillText(game.finalMessage, WIDTH / 2, 80);
+    ctx.shadowColor = GREEN; ctx.shadowBlur = 18;
+    ctx.fillText(game.finalMessage, WIDTH / 2, 52);
+    ctx.shadowBlur = 0;
   } else {
     const _gx = Math.sin(performance.now() * 0.004) * 3;
-    ctx.font      = '48px Consolas, monospace';
+    ctx.font      = 'bold 40px Consolas, monospace';
     ctx.textAlign = 'center';
-    // Chromatic glitch layers
     ctx.fillStyle = 'rgba(255,0,60,0.45)';
-    ctx.fillText('CITY GRID BLACKOUT', WIDTH / 2 + _gx + 3, 80);
+    ctx.fillText('CITY GRID BLACKOUT', WIDTH / 2 + _gx + 3, 52);
     ctx.fillStyle = 'rgba(0,230,255,0.30)';
-    ctx.fillText('CITY GRID BLACKOUT', WIDTH / 2 - _gx - 2, 80);
-    // Main title
+    ctx.fillText('CITY GRID BLACKOUT', WIDTH / 2 - _gx - 2, 52);
     ctx.fillStyle = '#ff2244';
-    ctx.fillText('CITY GRID BLACKOUT', WIDTH / 2, 80);
+    ctx.fillText('CITY GRID BLACKOUT', WIDTH / 2, 52);
 
-    // Death-cause clarity (display only): translate finalMessage into a plain
-    // "why you lost" line + a matching tip. Does not affect any game logic.
     let cause = '', hint = '';
     if (game.finalMessage === 'CITY GRID TOTAL BLACKOUT') {
       cause = 'CAUSE: ALL NEXUS DEPLETED';
@@ -546,123 +545,140 @@ export function drawEndScreen(ctx, game) {
       hint  = 'UPGRADE HP · USE PHENIX REVIVES WISELY';
     }
     if (cause) {
-      ctx.font      = 'bold 20px Consolas, monospace';
+      ctx.font      = 'bold 16px Consolas, monospace';
       ctx.fillStyle = '#ff6a7a';
-      ctx.fillText(cause, WIDTH / 2, 112);
-      ctx.font      = '13px Consolas, monospace';
+      ctx.fillText(cause, WIDTH / 2, 78);
+      ctx.font      = '12px Consolas, monospace';
       ctx.fillStyle = 'rgba(150,180,200,0.75)';
-      ctx.fillText(hint, WIDTH / 2, 134);
+      ctx.fillText(hint, WIDTH / 2, 94);
     }
   }
 
-  const mins = Math.floor(game.timeAlive / 60).toString().padStart(2, '0');
-  const secs = Math.floor(game.timeAlive % 60).toString().padStart(2, '0');
-  const lx = WIDTH / 2 - 280;
-  const rx = WIDTH / 2 + 280;
-  let y = game.victory ? 130 : 158;
+  // ── HERO SCORE — big, glowing, impossible to miss ────────────────────────
+  const heroY   = isVictory ? 82 : 108;
+  const score   = Math.floor(game.score ?? 0);
+  const scoreTxt = score.toLocaleString();
+  const scoreAccent = isVictory ? '#4eff9f' : '#FFD700';
 
-  // New high score banner (suppressed in Endless — Endless shows per-record ★ NEW BEST below)
+  // New high score burst (non-Endless only)
   if (game.isNewHighScore && !game.endless) {
-    ctx.font      = 'bold 26px Consolas, monospace';
+    ctx.font      = 'bold 14px Consolas, monospace';
     ctx.fillStyle = '#FFD700';
     ctx.textAlign = 'center';
-    ctx.fillText('★  NEW HIGH SCORE!  ★', WIDTH / 2, y);
-    y += 38;
+    ctx.fillText('★  NEW HIGH SCORE  ★', WIDTH / 2, heroY + 4);
   }
 
+  // Score label
+  ctx.font      = 'bold 11px Consolas, monospace';
+  ctx.fillStyle = 'rgba(180,200,220,0.65)';
+  ctx.textAlign = 'center';
+  ctx.fillText('SCORE', WIDTH / 2, heroY + 20);
+
+  // Score number — triple glow for premium neon effect
+  ctx.font = 'bold 46px Consolas, monospace';
+  ctx.textAlign = 'center';
+  ctx.save();
+  ctx.shadowColor = scoreAccent; ctx.shadowBlur = 28;
+  ctx.fillStyle = scoreAccent + '55';
+  ctx.fillText(scoreTxt, WIDTH / 2, heroY + 58);
+  ctx.shadowBlur = 14;
+  ctx.fillStyle = scoreAccent;
+  ctx.fillText(scoreTxt, WIDTH / 2, heroY + 58);
+  ctx.shadowBlur = 0;
+  ctx.restore();
+
+  // Best score underneath
+  ctx.font = '13px Consolas, monospace';
+  ctx.fillStyle = 'rgba(180,200,220,0.7)';
+  ctx.fillText('BEST: ' + (game.bestScore ?? 0).toLocaleString(), WIDTH / 2, heroY + 76);
+
+  // ── Stats panel ──────────────────────────────────────────────────────────
+  const panelW = 580;
+  const panelX = WIDTH / 2 - panelW / 2;
+  let y = heroY + 90;
+
   if (game.endless && game.endlessRun) {
-    // ── Endless mode: THIS RUN vs BEST personal records ──────────────────────
-    y = _drawEndlessRecords(ctx, game, y, lx, rx);
-    // Newly-earned Endless achievements (this run only) — under the records panel.
+    // Endless mode: THIS RUN vs BEST records inside a premium panel
+    const endPanelH = 130;
+    game._premiumPanel(ctx, panelX, y, panelW, endPanelH, CYAN, 'ENDLESS RECORDS');
+    y = _drawEndlessRecords(ctx, game, y + 30, panelX + 14, panelX + panelW - 14);
+    // Endless achievements
     if (game.endlessNewAchievements && game.endlessNewAchievements.length) {
       y = _drawEndlessAchievements(ctx, game, y);
     }
-    // Phase B: Chaos Survival Rank badge (only shown when chaos was reached this run)
     if (game.chaosRank) { y = _drawChaosRankBadge(ctx, game, y); }
   } else {
-    // Run stats
-    const runStats = [
-      ['Score',               `${Math.floor(game.score ?? 0)}`],
-      ['Best Score',          `${game.bestScore ?? 0}`],
-      ['Max Combo',           `x${game.maxCombo ?? 0}`],
-      ['Survival Time',       `${mins}:${secs}`],
-      ['Enemies Defeated',    `${game.player.kills}`],
-      ['Data-Cores Secured',  `${game.player.coresSecured}`],
-      ['Grid Credits Earned', `+${game.runCreditsEarned ?? 0}`],
-      ['Total Grid Credits',  `${game.meta?.credits ?? 0}`],
-    ];
+    // Standard mode: 2-column stat grid inside a premium panel
+    const mins = Math.floor(game.timeAlive / 60).toString().padStart(2, '0');
+    const secs = Math.floor(game.timeAlive % 60).toString().padStart(2, '0');
+    const statPanelH = 118;
+    game._premiumPanel(ctx, panelX, y, panelW, statPanelH, isVictory ? GREEN : CYAN, 'MISSION DEBRIEF');
 
-    ctx.font      = '22px Consolas, monospace';
-    ctx.textAlign = 'left';
-    for (const [label, value] of runStats) {
-      ctx.fillStyle = CYAN;
-      ctx.fillText(label, lx, y);
-      ctx.fillStyle = YELLOW;
-      ctx.textAlign = 'right';
-      ctx.fillText(value, rx, y);
-      ctx.textAlign = 'left';
-      y += 28;
-    }
+    // 2-column stat layout using _statCapsule
+    const capW = 260, capH = 38, gap = 14, colL = panelX + 16, colR = panelX + panelW / 2 + 8;
+    const row1 = y + 24;
+    const row2 = row1 + capH + 6;
+    game._statCapsule(ctx, colL, row1, capW, capH, 'MAX COMBO',           'x' + (game.maxCombo ?? 0), YELLOW);
+    game._statCapsule(ctx, colR, row1, capW, capH, 'SURVIVAL TIME',       mins + ':' + secs, CYAN);
+    game._statCapsule(ctx, colL, row2, capW, capH, 'ENEMIES DEFEATED',    '' + game.player.kills, '#ff6a7a');
+    game._statCapsule(ctx, colR, row2, capW, capH, 'DATA-CORES SECURED',  '' + game.player.coresSecured, GREEN);
+
+    y += statPanelH + 8;
+
+    // Credits sub-panel
+    const credH = 44;
+    game._premiumPanel(ctx, panelX, y, panelW, credH, YELLOW, 'GRID CREDITS');
+    game._statCapsule(ctx, panelX + 16, y + 2, capW, capH, 'EARNED THIS RUN', '+' + (game.runCreditsEarned ?? 0), YELLOW);
+    game._statCapsule(ctx, panelX + panelW / 2 + 8, y + 2, capW, capH, 'TOTAL CREDITS', '' + (game.meta?.credits ?? 0), '#FFD700');
+    y += credH + 6;
   }
 
-  // Separator
-  y += 6;
-  ctx.strokeStyle = '#2a4060';
-  ctx.lineWidth   = 1;
-  ctx.beginPath();
-  ctx.moveTo(lx, y);
-  ctx.lineTo(rx, y);
-  ctx.stroke();
+  // ── Personal Records (dynamic y, no overlap) ────────────────────────────
+  _drawPersonalRecords(ctx, game, panelX, panelX + panelW, y);
 
-  // ── Local leaderboard (Personal Records) ─────────────────────────────────
-  _drawPersonalRecords(ctx, game, lx, rx);
-
-  // Buttons: RETRY / UPGRADES / MAIN MENU
-  const BW = 200, BH = 46, BY = 440;
+  // ── Buttons: RETRY / UPGRADES / MAIN MENU (premium styled) ──────────────
+  const BW = 186, BH = 44;
+  const BY = Math.max(y + 92, 540);
   const focusIdx = game._endScreenBtnIndex ?? 0;
   const hasPad   = !!game._controllerConnected;
+  const totalBtnsW = BW * 3 + 24;
+  const btnStartX  = WIDTH / 2 - totalBtnsW / 2;
   const btns = [
-    { label: 'RETRY',     x: 316, border: CYAN     },
-    { label: 'UPGRADES',  x: 540, border: YELLOW   },
-    { label: 'MAIN MENU', x: 764, border: '#ff4444' },
+    { label: 'RETRY',     accent: CYAN     },
+    { label: 'UPGRADES',  accent: YELLOW   },
+    { label: 'MAIN MENU', accent: '#ff4466' },
   ];
   for (let bi = 0; bi < btns.length; bi++) {
     const btn     = btns[bi];
+    const bx      = btnStartX + bi * (BW + 12);
     const focused = hasPad && bi === focusIdx;
-    ctx.fillStyle = focused ? 'rgba(0, 30, 60, 0.97)' : 'rgba(0, 20, 40, 0.9)';
-    ctx.strokeStyle = focused ? WHITE : btn.border;
-    ctx.lineWidth   = focused ? 3 : 2;
-    if (focused) { ctx.shadowColor = WHITE; ctx.shadowBlur = 14; }
-    ctx.beginPath();
-    ctx.roundRect(btn.x, BY, BW, BH, 4);
-    ctx.fill();
-    ctx.stroke();
-    ctx.shadowBlur = 0;
-    ctx.font      = focused ? 'bold 20px Consolas, monospace' : '20px Consolas, monospace';
-    ctx.fillStyle = focused ? WHITE : WHITE;
-    ctx.textAlign = 'center';
-    ctx.fillText(btn.label, btn.x + BW / 2, BY + BH / 2 + 7);
+    game._premiumButton(ctx, bx, BY, BW, BH, btn.label, focused, btn.accent);
     // controller focus triangle above selected button
     if (focused) {
-      const cx = btn.x + BW / 2;
+      const cx = bx + BW / 2;
       ctx.fillStyle = WHITE;
       ctx.beginPath();
-      ctx.moveTo(cx, BY - 8);
-      ctx.lineTo(cx - 7, BY - 18);
-      ctx.lineTo(cx + 7, BY - 18);
+      ctx.moveTo(cx, BY - 6);
+      ctx.lineTo(cx - 6, BY - 14);
+      ctx.lineTo(cx + 6, BY - 14);
       ctx.closePath();
       ctx.fill();
     }
   }
 
+  // Store button rects for click hit-testing (same shape used by main.js)
+  game._endBtnRects = btns.map((b, i) => ({
+    x: btnStartX + i * (BW + 12), y: BY, w: BW, h: BH
+  }));
+
   // Keyboard / controller hint
-  ctx.font      = '14px Consolas, monospace';
-  ctx.fillStyle = '#5a7080';
+  ctx.font      = '13px Consolas, monospace';
+  ctx.fillStyle = 'rgba(90,112,128,0.8)';
   ctx.textAlign = 'center';
   if (hasPad) {
-    ctx.fillText('◄ ► Navigate   ·   A = Select   ·   ESC / B = Menu   ·   R = Retry', WIDTH / 2, 500);
+    ctx.fillText('◄ ► Navigate   ·   A = Select   ·   ESC / B = Menu   ·   R = Retry', WIDTH / 2, BY + BH + 18);
   } else {
-    ctx.fillText('R = Retry   •   ESC = Main Menu', WIDTH / 2, 500);
+    ctx.fillText('R = Retry   •   ESC = Main Menu', WIDTH / 2, BY + BH + 18);
   }
 
   // ── Null Breach Arena run result ────────────────────────────────────────
@@ -677,23 +693,24 @@ export function drawEndScreen(ctx, game) {
     ctx.font      = '12px Consolas, monospace';
     ctx.fillStyle = ar.completed > 0 ? '#00e6ff' : '#ff88cc';
     ctx.textAlign = 'center';
-    ctx.fillText('⬡  ' + arLine1, WIDTH / 2, 505);
+    ctx.fillText('⬡  ' + arLine1, WIDTH / 2, BY + BH + 34);
     if (arLine2) {
       ctx.fillStyle = 'rgba(160,200,220,0.65)';
-      ctx.fillText(arLine2, WIDTH / 2, 520);
+      ctx.fillText(arLine2, WIDTH / 2, BY + BH + 48);
     }
   }
 
-  // ── Eden Core Transmission block (framed portrait + messages) ─────────────
+  // ── Eden Core Transmission block ─────────────────────────────────────────
   const edenMsgs = (game.edenRunMessages && game.edenRunMessages.length)
     ? game.edenRunMessages
     : null;
   const edenMem  = game.meta ? game.meta.getEdenMemory() : 0;
   if ((edenMsgs || edenMem > 0) && typeof game._drawEdenTransmission === 'function') {
+    const edenY  = BY + BH + 54;
     const panelH = Math.max(68, 14 + (edenMsgs ? edenMsgs.length * 14 : 0) + 28);
     game._drawEdenTransmission(ctx, {
       x:        WIDTH / 2 - 310,
-      y:        514,
+      y:        edenY,
       w:        620,
       h:        panelH,
       messages: edenMsgs || [],
@@ -849,12 +866,12 @@ function _drawChaosRankBadge(ctx, game, startY) {
   return y + 48;
 }
 
-function _drawPersonalRecords(ctx, game, lx, rx) {
+function _drawPersonalRecords(ctx, game, lx, rx, dynamicY) {
   const history = game.meta?.getRunHistory?.() || [];
   if (!history.length) return;
   const rows = history.slice(0, 5);
 
-  const y0 = 358;
+  const y0 = (dynamicY != null) ? dynamicY + 8 : 358;
   const lineH = 18;
 
   // Dark panel background for readability

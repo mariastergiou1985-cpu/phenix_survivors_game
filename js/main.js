@@ -1,4 +1,4 @@
-import { Game } from './game/Game.js?v=20260703940000';
+import { Game } from './game/Game.js?v=20260703950000';
 import { AudioManager } from './audio/AudioManager.js?v=20260702700000';
 import { GamepadInput } from './Gamepad.js?v=20260701100000';
 import { initTouchControls } from './TouchInput.js?v=20260701100000';
@@ -243,20 +243,17 @@ canvas.addEventListener('mousedown', e => {
     }
 
   } else if (game.gameOver) {
-    // ── Game Over screen buttons ─────────────────────────────────
-    // RETRY  (x 316–516, y 440–486)
-    if (mousePos.x >= 316 && mousePos.x <= 516 &&
-        mousePos.y >= 440 && mousePos.y <= 486) {
+    // ── Game Over screen buttons (dynamic rects from drawEndScreen) ──
+    const ebr = game._endBtnRects;
+    const _hit = (r) => r && mousePos.x >= r.x && mousePos.x <= r.x + r.w &&
+                         mousePos.y >= r.y && mousePos.y <= r.y + r.h;
+    if (ebr && _hit(ebr[0])) {
       game.reset();
       game.audio?.startGameplayMusic();
-    // UPGRADES  (x 540–740, y 440–486)
-    } else if (mousePos.x >= 540 && mousePos.x <= 740 &&
-               mousePos.y >= 440 && mousePos.y <= 486) {
+    } else if (ebr && _hit(ebr[1])) {
       game.audio?.startMenuMusic();
       game.goToUpgradesScreen();
-    // MAIN MENU  (x 764–964, y 440–486)
-    } else if (mousePos.x >= 764 && mousePos.x <= 964 &&
-               mousePos.y >= 440 && mousePos.y <= 486) {
+    } else if (ebr && _hit(ebr[2])) {
       game.goToMainMenu();
     }
 
@@ -376,11 +373,14 @@ canvas.addEventListener('mousedown', e => {
     }
 
   } else if (game.gameState === 'playing' && game.paused && !game.gameOver && !game.victory) {
-    // ── Pause menu — RESUME / RETURN TO MAIN MENU ──
-    if (game._inRect(mousePos, game._pauseButtonRect(0))) {
+    // ── Pause menu — RESUME / RETURN TO MAIN MENU (dynamic rects) ──
+    const pbr = game._pauseBtnRects;
+    const _pHit = (r) => r && mousePos.x >= r.x && mousePos.x <= r.x + r.w &&
+                          mousePos.y >= r.y && mousePos.y <= r.y + r.h;
+    if (pbr && _pHit(pbr[0])) {
       game.paused = false;
-    } else if (game._inRect(mousePos, game._pauseButtonRect(1))) {
-      game.goToMainMenu();                              // clean abandon: gameState leaves 'playing', menu music resumes
+    } else if (pbr && _pHit(pbr[1])) {
+      game.goToMainMenu();
     }
   }
 });
