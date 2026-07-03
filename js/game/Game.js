@@ -877,7 +877,7 @@ export class Game {
     this._juiceKills   = [];   // array of performance.now()/1000 timestamps
     this._juiceCd      = 0;   // cooldown so juice can't spam
 
-    this.events       = new SystemEventManager();
+    this._sysEvents   = new SystemEventManager();
     this.upgradeUI    = null;
     this.mutationUI   = null;                    // forced Endless mutation picker (null = none open)
     this.mutations    = this._freshMutations();  // run-scoped negative-mutation multipliers (neutral in Act 1)
@@ -6393,7 +6393,7 @@ export class Game {
         300 - _wCycleTime
       );
     }
-    this.events.update(dt, this.timeAlive, this);
+    this._sysEvents.update(dt, this.timeAlive, this);
     this._updateGridCache(dt);
     this._updateHealthPickups(dt);
     this._updateManaPickups(dt);
