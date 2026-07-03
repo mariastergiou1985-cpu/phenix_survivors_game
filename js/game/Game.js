@@ -40,7 +40,7 @@ import { StateManager, GAME_STATES } from './StateManager.js?v=20260703990000';
 import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260703990000';
 import { NexusManager } from './NexusManager.js?v=20260703997000';
 import { VESSELS, getVesselById, getDefaultVesselId } from './VesselCatalog.js?v=20260703996000';
-import { PETS, getPetById } from './PetCatalog.js?v=20260703996000';
+import { PETS, getPetById } from './PetCatalog.js?v=20260703998000';
 
 // Euclid Vector toxin kit — used ONLY when selectedCharacter === 'euclid_vector' (world-space).
 import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=20260703990000';
@@ -1653,8 +1653,21 @@ export class Game {
 
     const px = this.player.pos.x;
     const py = this.player.pos.y;
-    const sprH = 64;   // vessel is the player's ship — render prominently
+    const sprH = 96;   // vessel is the player's ship — larger than the 64px character to read as the ship
     const sprW = Math.round(spr.naturalWidth * (sprH / spr.naturalHeight));
+
+    // Soft engine/thruster glow under the vessel — shows it's a powered ship
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = 0.18;
+    const vg = ctx.createRadialGradient(px, py + sprH * 0.18, sprH * 0.08, px, py + sprH * 0.18, sprH * 0.38);
+    vg.addColorStop(0, '#00e6ff');
+    vg.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = vg;
+    ctx.beginPath();
+    ctx.arc(px, py + sprH * 0.18, sprH * 0.38, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
 
     ctx.save();
     ctx.globalAlpha = 1.0;
@@ -1693,7 +1706,7 @@ export class Game {
 
     for (const pet of this._activePets) {
       pet.bobPhase += dt * 2.5;
-      const bobY = Math.sin(pet.bobPhase) * 3;
+      const bobY = Math.sin(pet.bobPhase) * 5;  // visible companion hover bob
 
       switch (pet.def.type) {
         case 'attack':   this._tickPetAttack(pet, dt, px, py, bobY); break;
@@ -1751,11 +1764,11 @@ export class Game {
   }
 
   _tickPetAttack(pet, dt, px, py, bobY) {
-    // Hover beside/behind the player — smooth follow
+    // Hover beside/behind the player — clearly visible companion
     const idx = this._activePets.indexOf(pet);
-    const offX = idx === 0 ? 40 : -40;
+    const offX = idx === 0 ? 52 : -52;
     const targetX = px + offX;
-    const targetY = py - 30 + bobY;
+    const targetY = py - 36 + bobY;
     const lerp = 1 - Math.pow(0.02, dt);  // smooth companion follow
     pet.x += (targetX - pet.x) * lerp;
     pet.y += (targetY - pet.y) * lerp;
@@ -1790,11 +1803,11 @@ export class Game {
   }
 
   _tickPetUtility(pet, dt, px, py, bobY) {
-    // Hover near player — smooth follow
+    // Hover near player — clearly visible companion
     const idx = this._activePets.indexOf(pet);
-    const offX = idx === 0 ? -45 : 45;
+    const offX = idx === 0 ? -56 : 56;
     const targetX = px + offX;
-    const targetY = py - 20 + bobY;
+    const targetY = py - 26 + bobY;
     const lerp = 1 - Math.pow(0.02, dt);  // smooth companion follow
     pet.x += (targetX - pet.x) * lerp;
     pet.y += (targetY - pet.y) * lerp;
@@ -1849,11 +1862,11 @@ export class Game {
   }
 
   _tickPetControl(pet, dt, px, py, bobY) {
-    // Hover near player — smooth follow
+    // Hover near player — clearly visible companion
     const idx = this._activePets.indexOf(pet);
-    const offX = idx === 0 ? 35 : -35;
+    const offX = idx === 0 ? 48 : -48;
     const targetX = px + offX;
-    const targetY = py + 20 + bobY;
+    const targetY = py + 26 + bobY;
     const lerp = 1 - Math.pow(0.02, dt);  // smooth companion follow
     pet.x += (targetX - pet.x) * lerp;
     pet.y += (targetY - pet.y) * lerp;
@@ -1918,24 +1931,47 @@ export class Game {
       ctx.restore();
     }
 
+    // Per-pet visual scale (% of player's 64px sprite) — makes each pet readable as a companion
+    const _petScale = {
+      byte_mite:          44,   // 69% — small agile attack drone
+      data_miner_drone:   48,   // 75% — medium utility drone
+      firewall_sentinel:  52,   // 81% — large shield orbiter
+      error_code_bomber:  56,   // 88% — bulky bomb launcher
+    };
+
     // Draw pet sprites
     for (const pet of this._activePets) {
+      const teamColor = pet.def.boltColor || pet.def.bombColor || '#00e6ff';
+
+      // Companion glow underneath — shows ownership / team affiliation
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = 0.14;
+      const pg = ctx.createRadialGradient(pet.x, pet.y + 4, 4, pet.x, pet.y + 4, 22);
+      pg.addColorStop(0, teamColor);
+      pg.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = pg;
+      ctx.beginPath();
+      ctx.arc(pet.x, pet.y + 4, 22, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
       const spr = this._petSpriteCache?.[pet.def.id];
       if (!spr || !spr.complete || spr.naturalWidth <= 0) {
-        // Fallback: colored circle
+        // Fallback: colored circle — visible companion size
         ctx.save();
-        ctx.fillStyle = pet.def.boltColor || pet.def.bombColor || '#00e6ff';
-        ctx.globalAlpha = 0.7;
+        ctx.fillStyle = teamColor;
+        ctx.globalAlpha = 0.8;
         ctx.beginPath();
-        ctx.arc(pet.x, pet.y, 10, 0, Math.PI * 2);
+        ctx.arc(pet.x, pet.y, 16, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
         continue;
       }
-      const sprH = 32;
+      const sprH = _petScale[pet.def.id] || 48;
       const sprW = Math.round(spr.naturalWidth * (sprH / spr.naturalHeight));
       ctx.save();
-      ctx.globalAlpha = 0.85;
+      ctx.globalAlpha = 0.95;   // near-full opacity — pets are player-owned, not ghostly
       ctx.drawImage(spr, pet.x - sprW / 2, pet.y - sprH / 2, sprW, sprH);
       ctx.restore();
     }
