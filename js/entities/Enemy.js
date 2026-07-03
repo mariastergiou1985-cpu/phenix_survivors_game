@@ -591,10 +591,9 @@ export class Enemy {
       }
     }
 
-    // Role silhouette marker — a shape + colored outline so roles read INSTANTLY at high
-    // density (not by base color alone). Color language: boss=purple, tank=red, runner=orange,
-    // core-stealer=gold, shooter=magenta, basic=steel.
-    this._drawRoleMarker(ctx);
+    // Role silhouette marker — only when sprite is missing so we can still tell roles apart.
+    // When a proper sprite is loaded, the sprite IS the visual identity — no overlay needed.
+    if (!spritePath) this._drawRoleMarker(ctx);
 
     // Elite marker (Endless elite waves) — pulsing gold glow + ring so elites read
     // instantly against the normal horde. Purely visual; no balance impact.
