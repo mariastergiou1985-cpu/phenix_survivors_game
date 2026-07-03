@@ -171,7 +171,7 @@ export class NexusManager {
     // Placed at ~1.5 chunks from origin in each biome's angular sector center.
     // Angle formula matches ChunkManager._getBiomeForCoords so each Nexus
     // lands inside its own biome territory.
-    const ringDist = CHUNK_SIZE * 1.5; // ~1.5 chunks — in the biome ring (dist 1–3)
+    const ringDist = CHUNK_SIZE * 0.8; // ~0.8 chunks — compact arena (3×3 world)
     const sectorCount = BIOME_RING_ORDER.length;
 
     for (let s = 0; s < sectorCount; s++) {

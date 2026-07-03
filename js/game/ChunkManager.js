@@ -288,24 +288,21 @@ export class ChunkManager {
   // ─── Biome Assignment ───────────────────────────────────────────────────
   /**
    * Determine which biome a chunk belongs to based on its position.
-   * Compact layout (post-compaction):
-   *   • dist === 0 : Neon District (center chunk only)
-   *   • dist 1–2   : 3 outer biomes as angular sectors (each biome once)
-   *   • dist >= 3   : The Null (world edge — discourages infinite wandering)
+   * Compact arena layout (v2):
+   *   • dist === 0 : Neon District (center chunk)
+   *   • dist >= 1  : 3 outer biomes by angular sector — extends infinitely
+   *     so any visible chunk has a real biome (no black void ever).
+   * Player is hard-clamped to dist 0–1 by getWorldBounds().
+   * Chunks beyond dist 1 are visual padding only (camera overflow).
    * @param {number} cx
    * @param {number} cy
    * @returns {string} BIOME_ID
    */
   _getBiomeForCoords(cx, cy) {
-    const dist = Math.max(Math.abs(cx), Math.abs(cy));
+    // Center chunk: Neon District
+    if (cx === 0 && cy === 0) return BIOME_ID.NEON_DISTRICT;
 
-    // Center chunk only: Neon District
-    if (dist === 0) return BIOME_ID.NEON_DISTRICT;
-
-    // World edge: The Null at dist 3+ (compact map — 5×5 playable area)
-    if (dist >= 3) return BIOME_ID.THE_NULL;
-
-    // Outer biome ring (dist 1–2): 3 sectors by angle, each biome appears once
+    // ALL other chunks: angular sector biome (no Null — no black void)
     const angle = Math.atan2(cy, cx);                          // -PI to PI
     const normalizedAngle = (angle + Math.PI) / (2 * Math.PI); // 0 to 1
     const sectorIndex = Math.floor(normalizedAngle * this._biomeRing.length) % this._biomeRing.length;
@@ -420,12 +417,12 @@ export class ChunkManager {
   /**
    * Returns the fixed bounding box of the entire playable area (dist 0–2).
    * Player and entities are hard-clamped to this region to prevent wandering
-   * into The Null (black void at dist 3+).
-   * Chunks: cx,cy in [-2, 2] → 5×5 grid.
+   * Compact arena: chunks [-1,1] → 3×3 grid = 3840×3840px.
+   * Player is hard-clamped to this area. Chunks beyond are visual padding only.
    */
   getWorldBounds() {
-    const minChunk = -2;
-    const maxChunk =  2;
+    const minChunk = -1;
+    const maxChunk =  1;
     return {
       left:   minChunk * CHUNK_SIZE,
       top:    minChunk * CHUNK_SIZE,
@@ -445,17 +442,20 @@ export class ChunkManager {
    * @returns {{ x: number, y: number }}
    */
   getSpawnEdge(camera, viewW, viewH, margin = 40) {
-    const side = Math.floor(Math.random() * 4);
-    switch (side) {
-      case 0: // top
-        return { x: camera.x + Math.random() * viewW, y: camera.y - margin };
-      case 1: // bottom
-        return { x: camera.x + Math.random() * viewW, y: camera.y + viewH + margin };
-      case 2: // left
-        return { x: camera.x - margin, y: camera.y + Math.random() * viewH };
-      default: // right
-        return { x: camera.x + viewW + margin, y: camera.y + Math.random() * viewH };
-    }
+    // 360° circular spawn around viewport center
+    const cx = camera.x + viewW / 2;
+    const cy = camera.y + viewH / 2;
+    const spawnRadius = Math.max(viewW, viewH) / 2 + margin;
+    const angle = Math.random() * Math.PI * 2;
+    const x = cx + Math.cos(angle) * spawnRadius;
+    const y = cy + Math.sin(angle) * spawnRadius;
+
+    // Clamp to world bounds so spawns don't appear in void
+    const wb = this.getWorldBounds();
+    return {
+      x: Math.max(wb.left, Math.min(wb.right, x)),
+      y: Math.max(wb.top, Math.min(wb.bottom, y)),
+    };
   }
 
   /**
@@ -473,23 +473,40 @@ export class ChunkManager {
 
   // ─── Rendering Helpers ──────────────────────────────────────────────────
   /**
-   * Draw all active chunk backgrounds.
-   * Called by MapManager when chunk streaming is enabled.
+   * Draw ALL camera-visible chunk backgrounds (not just activeKeys).
+   * Computes chunk range from camera viewport so no black gaps appear.
    * @param {CanvasRenderingContext2D} ctx
    * @param {object} camera - { x, y }
    * @param {number} viewW
    * @param {number} viewH
    */
   drawChunkBackgrounds(ctx, camera, viewW, viewH) {
-    for (const key of this.activeKeys) {
-      const chunk = this.chunks.get(key);
-      if (!chunk) continue;
+    // Compute which chunk coords the camera can see (+ 1 chunk padding)
+    const minCX = Math.floor(camera.x / CHUNK_SIZE) - 1;
+    const maxCX = Math.floor((camera.x + viewW) / CHUNK_SIZE) + 1;
+    const minCY = Math.floor(camera.y / CHUNK_SIZE) - 1;
+    const maxCY = Math.floor((camera.y + viewH) / CHUNK_SIZE) + 1;
 
-      // Skip chunks fully outside viewport (frustum cull)
-      if (chunk.worldRight < camera.x || chunk.worldX > camera.x + viewW) continue;
-      if (chunk.worldBottom < camera.y || chunk.worldY > camera.y + viewH) continue;
+    for (let cy = minCY; cy <= maxCY; cy++) {
+      for (let cx = minCX; cx <= maxCX; cx++) {
+        const key = `${cx},${cy}`;
+        let chunk = this.chunks.get(key);
 
-      this._drawChunkBg(ctx, chunk);
+        // Create temporary visual-only chunk data for rendering
+        if (!chunk) {
+          const biomeId = this._getBiomeForCoords(cx, cy);
+          const biome   = BIOME_DEFS[biomeId];
+          chunk = {
+            cx, cy, biomeId, biome,
+            worldX:      cx * CHUNK_SIZE,
+            worldY:      cy * CHUNK_SIZE,
+            worldRight:  (cx + 1) * CHUNK_SIZE,
+            worldBottom: (cy + 1) * CHUNK_SIZE,
+          };
+        }
+
+        this._drawChunkBg(ctx, chunk, cx, cy);
+      }
     }
   }
 
@@ -498,7 +515,7 @@ export class ChunkManager {
    * Priority: biome map image → palette bg color fallback.
    * Adds a subtle dark overlay + grid for gameplay readability.
    */
-  _drawChunkBg(ctx, chunk) {
+  _drawChunkBg(ctx, chunk, cx, cy) {
     const pal = chunk.biome.palette;
     const mapMgr = this.game.mapManager;
 
@@ -506,10 +523,8 @@ export class ChunkManager {
     const img = mapMgr ? mapMgr.getBiomeImage(chunk.biomeId) : null;
 
     if (img) {
-      // Draw scaled biome image to fill the chunk
       ctx.drawImage(img, chunk.worldX, chunk.worldY, CHUNK_SIZE, CHUNK_SIZE);
-
-      // Dark overlay for gameplay readability (keeps enemies/items visible)
+      // Dark overlay for gameplay readability
       ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
       ctx.fillRect(chunk.worldX, chunk.worldY, CHUNK_SIZE, CHUNK_SIZE);
     } else {
@@ -518,15 +533,18 @@ export class ChunkManager {
       ctx.fillRect(chunk.worldX, chunk.worldY, CHUNK_SIZE, CHUNK_SIZE);
     }
 
-    // Draw biome-specific grid (over both image and fallback)
+    // Draw biome-specific grid
     this._drawChunkGrid(ctx, chunk, pal);
 
-    // Chunk border (subtle visual separation)
-    ctx.strokeStyle = pal.grid;
-    ctx.lineWidth = 1;
-    ctx.globalAlpha = 0.15;
-    ctx.strokeRect(chunk.worldX, chunk.worldY, CHUNK_SIZE, CHUNK_SIZE);
-    ctx.globalAlpha = 1;
+    // Edge darkening: chunks beyond playable area (dist >= 2) get progressive fade
+    const dist = Math.max(Math.abs(cx !== undefined ? cx : chunk.cx),
+                          Math.abs(cy !== undefined ? cy : chunk.cy));
+    if (dist >= 2) {
+      const fade = Math.min(0.7, 0.3 + (dist - 2) * 0.2);
+      ctx.fillStyle = `rgba(0, 0, 0, ${fade})`;
+      ctx.fillRect(chunk.worldX, chunk.worldY, CHUNK_SIZE, CHUNK_SIZE);
+    }
+    // No strokeRect — eliminates ugly square biome seams
   }
 
   /**

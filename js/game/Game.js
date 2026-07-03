@@ -8821,7 +8821,7 @@ export class Game {
     const enemyDt = (this._hitStopTimer > 0) ? dt * 0.08 : dt;
     // Distance cull threshold — enemies beyond this from the player are recycled
     // so they can respawn closer. Keeps all enemies actively chasing the player.
-    const CULL_DIST = 3200; // ~2.5 chunks — well beyond viewport but not too aggressive
+    const CULL_DIST = 2000; // compact 3×3 arena — recycle enemies beyond ~1.5 chunks
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       const e = this.enemies[i];
       e.update(enemyDt, this);
