@@ -115,6 +115,11 @@ export const EVENTS = {
   ELITE_SPAWNED:      'enemy:eliteSpawned',        // { enemy, type }
   BOSS_SPAWNED:       'boss:spawned',              // { boss, name }
   BOSS_KILLED:        'boss:killed',               // { boss, name }
+  ULTIMATE_USED:      'player:ultimateUsed',       // { character }
+
+  // Arena
+  ARENA_STARTED:      'arena:started',             // { center, radius }
+  ARENA_COMPLETED:    'arena:completed',            // { kills, rescued }
 
   // Weapons
   WEAPON_FIRED:       'weapon:fired',              // { weapon, pos }

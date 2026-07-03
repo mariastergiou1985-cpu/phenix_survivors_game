@@ -1710,9 +1710,15 @@ export class Game {
       }
     }
 
-    // ── Null Singularity: permanent pull aura + 5 dps to enemies in 200px ──
-    if (this._activeVesselPassive === 'singularity_aura') {
-      const R = 200, PULL = 40, DPS = 5;
+    // ── Null Singularity: permanent pull aura + DPS to enemies ──────────
+    // Vessel passive grants base aura; relic unlock enhances radius + damage.
+    // Both sources stack: vessel=base, relic=bonus, both=full power.
+    const _hasVesselAura = this._activeVesselPassive === 'singularity_aura';
+    const _hasRelicAura  = this.meta?.isRelicUnlocked('null_singularity');
+    if (_hasVesselAura || _hasRelicAura) {
+      const R    = _hasVesselAura && _hasRelicAura ? 280 : (_hasRelicAura ? 220 : 200);
+      const PULL = _hasVesselAura && _hasRelicAura ? 55  : (_hasRelicAura ? 35  : 40);
+      const DPS  = _hasVesselAura && _hasRelicAura ? 9   : (_hasRelicAura ? 6   : 5);
       for (let i = 0; i < this.enemies.length; i++) {
         const e = this.enemies[i];
         const dx = e.pos.x - p.pos.x, dy = e.pos.y - p.pos.y;
@@ -6140,8 +6146,12 @@ export class Game {
           this.audio?.playLevelUp();
           this.upgradeUI = new UpgradeUI(choices);
           this.rerollsLeft     = 2;     // two free rerolls per level-up screen
+          // ── Relic: Blacknet Coupon — +1 bonus reroll per level-up ────────
+          if (this.meta?.isRelicUnlocked('blacknet_coupon')) this.rerollsLeft += 1;
           this._blacknetCouponUsed = false;
           this.rerollAvailable = true;
+          // EventBus emit
+          this.events?.emit('player:levelUp', { level: this.player.level });
           return;
         }
       }
@@ -6421,6 +6431,15 @@ export class Game {
       // Null Breach Arena rescue (EDEN CORE extraction) — fires once per run, before Phoenix.
       if (this._nullBreachActive && !this._arenaRescueUsed) {
         this._triggerArenaRescue();
+      // ── Relic: Broken Halo — one-time revive at 25% HP (fires before Phoenix) ──
+      } else if (!this._brokenHaloUsed && this.meta?.isRelicUnlocked('broken_halo')) {
+        this._brokenHaloUsed = true;
+        this.player.hp = Math.ceil(this.player.maxHp * 0.25);
+        this.phoenixReviveTimer = 2.5;   // i-frames
+        this.floatingTexts.push(new FloatingText('BROKEN HALO: REVIVE', this.player.pos.clone(), '#ff88ff', 2.0));
+        this.triggerAnnouncement('BROKEN HALO ACTIVATED', '#ff88ff');
+        this.screenShake.trigger(8, 0.5);
+        this._queueEdenTransmission('BROKEN HALO: A fractured signal restores you.', { priority: 2, duration: 5 });
       // Phoenix revive is DEATH-ONLY: it fires solely when HP has reached 0,
       // never from a timer/cooldown/visual schedule.
       } else if (this.phoenixReviveCount < (3 + (this._hasProto('phoenix_revival') ? 1 : 0))) {
@@ -8871,6 +8890,16 @@ export class Game {
     const CULL_DIST = 2000; // compact 3×3 arena — recycle enemies beyond ~1.5 chunks
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       const e = this.enemies[i];
+      // ── Relic: Null Venom Chamber — per-enemy poison DoT tick ──────────
+      if (e._venomDur > 0) {
+        e._venomDur -= dt;
+        e._venomTick = (e._venomTick || 0) + dt;
+        if (e._venomTick >= 0.5) {
+          e._venomTick -= 0.5;
+          e.hp -= (e._venomDps || 8) * 0.5;
+          if (e.hp <= 0) { e.hp = 0; e._die(this); continue; }
+        }
+      }
       e.update(enemyDt, this);
       e.keepInBounds();
 
@@ -8917,6 +8946,8 @@ export class Game {
   addNexusChargePoint() {
     if (this._chaosMode) return;
     this.overload = Math.min(NEXUS_RECHARGE_THRESHOLD, this.overload + 1);
+    // EventBus emit for relic/system hooks
+    this.events?.emit('enemy:killed', { pos: this.player.pos });
   }
 
   // World cores are tied to Matrix state — never unlimited. The number of recoverable
@@ -8977,7 +9008,7 @@ export class Game {
   }
 
   _updateSpawning(dt) {
-    if (this._nullBreachActive) return;          // arena manages its own pressure
+    // Arena: normal enemies still spawn but inside the arena circle (no camera-edge spawning)
     if (this.spawnPauseTimer > 0) { this.spawnPauseTimer -= dt; return; }
     this.spawnTimer += dt;
     // During Thunder Solo, keep waves arriving fast so the 7s ultimate always has targets
@@ -8987,7 +9018,20 @@ export class Game {
       this.spawnTimer = 0;
       // Batch size delegated to EnemySpawner (Phase 0 decoupling).
       const count = this.spawner.spawnBatchSize(this.currentMinute(), this.enemies.length, this.enemyCap(), { endless: this.endless, chaos: this._chaosMode });
+      const prevLen = this.enemies.length;
       for (let i = 0; i < count; i++) this.spawnEnemy();   // spawnEnemy() still enforces enemyCap
+      // ── Arena-constrained spawn positions: place new enemies inside circle ──
+      if (this._nullBreachActive && this._nullBreachArena) {
+        const _ac = this._nullBreachArena.center;
+        const _aR = this._nullBreachArena.radius;
+        for (let j = prevLen; j < this.enemies.length; j++) {
+          const _ae = this.enemies[j];
+          const _ang = Math.random() * Math.PI * 2;
+          const _dist = _aR * (0.5 + Math.random() * 0.45);   // 0.5R–0.95R
+          _ae.pos.x = _ac.x + Math.cos(_ang) * _dist;
+          _ae.pos.y = _ac.y + Math.sin(_ang) * _dist;
+        }
+      }
     }
   }
 
@@ -14301,6 +14345,21 @@ _drawLoreArchive(ctx) {
     this.screenShake.trigger(shake, 0.2);
     this.particles.spawnHitSparks(this.player.pos, color);
     this.floatingTexts.push(new FloatingText(`-${Math.ceil(applied)} HP`, this.player.pos.clone(), color, 0.7));
+
+    // ── Relic: Null Venom Chamber — on-hit poison AoE ──────────────────────
+    if (this.meta?.isRelicUnlocked('null_venom_chamber')) {
+      const NV_R = 160, NV_DPS = 8, NV_DUR = 3;
+      for (const e of this.enemies) {
+        const dx = e.pos.x - this.player.pos.x, dy = e.pos.y - this.player.pos.y;
+        if (dx * dx + dy * dy < NV_R * NV_R) {
+          e._venomTick = (e._venomTick || 0);
+          e._venomDur  = NV_DUR;
+          e._venomDps  = NV_DPS;
+        }
+      }
+    }
+    // EventBus emit
+    this.events?.emit('player:damaged', { amount: applied });
     return true;
   }
 
@@ -15489,8 +15548,10 @@ _drawLoreArchive(ctx) {
       finalTransmitted:   false,
       // World-space arena center (player's position at activation) and containment radius
       center:             this.player.pos.clone(),
-      radius:             680,    // containment field radius in world pixels
+      radius:             1100,   // containment field radius in world pixels (expanded Null Breach)
     };
+    // EventBus emit
+    this.events?.emit('arena:started', { center: this._nullBreachArena.center, radius: 1100 });
 
     // Track for end screen
     if (!this._arenaResult) {
@@ -15530,6 +15591,17 @@ _drawLoreArchive(ctx) {
     arena.spawnCd -= dt;
     arena.airCd   -= dt;
     arena.majorCd -= dt;
+
+    // ── Hard vector clamp: player cannot leave the arena circle ──────────
+    const _adx = this.player.pos.x - arena.center.x;
+    const _ady = this.player.pos.y - arena.center.y;
+    const _adist = Math.sqrt(_adx * _adx + _ady * _ady);
+    const _apad = 24;  // inset so player stays visually inside the ring
+    if (_adist > arena.radius - _apad) {
+      const _aang = Math.atan2(_ady, _adx);
+      this.player.pos.x = arena.center.x + Math.cos(_aang) * (arena.radius - _apad);
+      this.player.pos.y = arena.center.y + Math.sin(_aang) * (arena.radius - _apad);
+    }
 
     const elapsed = 120 - arena.timer;
     const ARENA_HP_MULT = 1.6;  // arena bosses are 60% tankier
@@ -15705,6 +15777,7 @@ _drawLoreArchive(ctx) {
       new FloatingText('✓ BREACH SURVIVED', this.player.pos.clone(), '#00e6ff', 2.0)
     );
     this.screenShake.trigger(6, 0.4);
+    this.events?.emit('arena:completed', { kills: arenaKills, rescued: !!this._arenaRescueUsed });
 
     // ── Post-Arena NULL decision panel ───────────────────────────────────────
     this._postArenaChoice = true;
@@ -15776,58 +15849,84 @@ _drawLoreArchive(ctx) {
     const cx = arena.center.x, cy = arena.center.y, R = arena.radius;
     const now = performance.now();
     const pulse = 0.6 + 0.4 * Math.sin(now * 0.004);
-    const elapsed = 120 - arena.timer;
+    const fastPulse = 0.5 + 0.5 * Math.sin(now * 0.012);
     const urgency = arena.timer < 30 ? 1.0 : 0.0;
+    // Glitch flicker — random offset jitter that makes the forcefield feel unstable
+    const glitchX = (Math.random() - 0.5) * (2 + urgency * 4);
+    const glitchY = (Math.random() - 0.5) * (2 + urgency * 4);
 
     ctx.save();
 
     // Outer dark zone — dim everything outside the arena
-    ctx.globalAlpha = 0.18 + urgency * 0.08;
+    ctx.globalAlpha = 0.22 + urgency * 0.12;
     ctx.fillStyle = '#08001a';
     ctx.beginPath();
-    ctx.rect(cx - R - 400, cy - R - 400, (R + 400) * 2, (R + 400) * 2);
-    ctx.arc(cx, cy, R, 0, Math.PI * 2, true);  // cut-out
+    ctx.rect(cx - R - 600, cy - R - 600, (R + 600) * 2, (R + 600) * 2);
+    ctx.arc(cx, cy, R, 0, Math.PI * 2, true);
     ctx.fill();
 
-    // Ring 1: outer containment (thick, pulsing magenta-cyan)
-    ctx.globalAlpha = 0.55 + 0.25 * pulse;
-    ctx.strokeStyle = `rgba(255,68,204,${(0.6 + 0.3 * pulse).toFixed(2)})`;
-    ctx.lineWidth = 4;
-    ctx.setLineDash([20, 12]);
-    ctx.lineDashOffset = -now * 0.03;
-    ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.stroke();
+    // ── Stacked neon containment rings (glitching forcefield) ─────────────
+    // Ring 1: outer magenta (thick, dashed, glitch-offset)
+    ctx.globalAlpha = 0.55 + 0.30 * pulse;
+    ctx.strokeStyle = `rgba(255,68,204,${(0.65 + 0.3 * pulse).toFixed(2)})`;
+    ctx.lineWidth = 5 + urgency * 2;
+    ctx.setLineDash([22, 10]);
+    ctx.lineDashOffset = -now * 0.04;
+    ctx.beginPath(); ctx.arc(cx + glitchX, cy + glitchY, R, 0, Math.PI * 2); ctx.stroke();
     ctx.setLineDash([]);
 
-    // Ring 2: mid containment (cyan solid)
-    ctx.globalAlpha = 0.40 + 0.20 * pulse;
+    // Ring 2: mid cyan (solid, slightly inset)
+    ctx.globalAlpha = 0.45 + 0.25 * pulse;
     ctx.strokeStyle = '#00e6ff';
-    ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.arc(cx, cy, R - 6, 0, Math.PI * 2); ctx.stroke();
+    ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.arc(cx - glitchX * 0.5, cy - glitchY * 0.5, R - 6, 0, Math.PI * 2); ctx.stroke();
 
-    // Ring 3: inner glow (additive, faint)
+    // Ring 3: inner glow (additive, wider)
     ctx.globalCompositeOperation = 'lighter';
-    ctx.globalAlpha = 0.12 + 0.08 * pulse;
+    ctx.globalAlpha = 0.14 + 0.10 * pulse + urgency * 0.08;
     ctx.strokeStyle = '#ff44cc';
-    ctx.lineWidth = 8;
-    ctx.beginPath(); ctx.arc(cx, cy, R + 2, 0, Math.PI * 2); ctx.stroke();
+    ctx.lineWidth = 10 + urgency * 4;
+    ctx.beginPath(); ctx.arc(cx, cy, R + 3, 0, Math.PI * 2); ctx.stroke();
+
+    // Ring 4: fast-pulse white spark ring (urgency intensifies)
+    ctx.globalAlpha = (0.06 + urgency * 0.12) * fastPulse;
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([3, 28]);
+    ctx.lineDashOffset = now * 0.08;
+    ctx.beginPath(); ctx.arc(cx, cy, R - 2, 0, Math.PI * 2); ctx.stroke();
+    ctx.setLineDash([]);
     ctx.globalCompositeOperation = 'source-over';
 
-    // Cardinal markers (N/S/E/W glyphs on the ring)
+    // ── 8 cardinal/diagonal glyphs on the ring ──────────────────────────────
     ctx.globalAlpha = 0.65 + 0.25 * pulse;
-    ctx.font = 'bold 14px Consolas, monospace';
+    ctx.font = 'bold 16px Consolas, monospace';
     ctx.fillStyle = '#ff44cc';
-    ctx.textAlign = 'center';
-    ctx.fillText('◈', cx, cy - R - 10);
-    ctx.fillText('◈', cx, cy + R + 18);
-    ctx.fillText('◈', cx - R - 14, cy + 5);
-    ctx.fillText('◈', cx + R + 14, cy + 5);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2;
+      ctx.fillText('◈', cx + Math.cos(a) * (R + 16), cy + Math.sin(a) * (R + 16));
+    }
 
-    // Corner scan-lines (4 short radial ticks at 45°)
-    ctx.strokeStyle = '#00e6ff'; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.35;
-    for (let a = Math.PI / 4; a < Math.PI * 2; a += Math.PI / 2) {
-      const ix = cx + Math.cos(a) * (R - 12), iy = cy + Math.sin(a) * (R - 12);
-      const ox = cx + Math.cos(a) * (R + 10), oy = cy + Math.sin(a) * (R + 10);
+    // ── Radial scan ticks (8 at 22.5deg offsets) ─────────────────────────────
+    ctx.strokeStyle = '#00e6ff'; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.30 + urgency * 0.15;
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2 + Math.PI / 8;
+      const ix = cx + Math.cos(a) * (R - 14), iy = cy + Math.sin(a) * (R - 14);
+      const ox = cx + Math.cos(a) * (R + 12), oy = cy + Math.sin(a) * (R + 12);
       ctx.beginPath(); ctx.moveTo(ix, iy); ctx.lineTo(ox, oy); ctx.stroke();
+    }
+
+    // ── Glitch segments — random arc highlights that flicker each frame ──────
+    if (Math.random() < 0.6 + urgency * 0.3) {
+      const gAngle = Math.random() * Math.PI * 2;
+      const gLen   = 0.15 + Math.random() * 0.35;
+      ctx.globalAlpha = 0.35 + Math.random() * 0.3;
+      ctx.strokeStyle = Math.random() < 0.5 ? '#ff44cc' : '#00e6ff';
+      ctx.lineWidth = 3 + Math.random() * 3;
+      ctx.beginPath();
+      ctx.arc(cx + glitchX * 2, cy + glitchY * 2, R - 1, gAngle, gAngle + gLen);
+      ctx.stroke();
     }
 
     ctx.restore();
@@ -15886,12 +15985,12 @@ _drawLoreArchive(ctx) {
     ctx.textAlign = 'left';
     ctx.fillText('⬡ NULL BREACH ARENA', panX + 12, panY + 15);
 
-    // Timer right
+    // Timer right — "BREACH STABILIZATION: Xs" countdown
     const tAlpha  = urgent ? (0.6 + 0.4 * pulse) : 1;
     ctx.font      = 'bold 12px Consolas, monospace';
     ctx.fillStyle = urgent ? `rgba(255,60,60,${tAlpha.toFixed(2)})` : '#00e6ff';
     ctx.textAlign = 'right';
-    ctx.fillText(`SURVIVE: ${mm}:${ss}`, panX + panW - 12, panY + 15);
+    ctx.fillText(`BREACH STABILIZATION: ${remSecs}s`, panX + panW - 12, panY + 15);
 
     ctx.textAlign = 'left';
     ctx.restore();
@@ -16082,11 +16181,26 @@ _drawLoreArchive(ctx) {
     this.audio?.playTitanBeam();
   }
 
+  // ── Relic helper: Eden Core Fragment — boss kill bonus XP + EventBus emit ──
+  _onBossKilledRelicHook(bossPos, bossName) {
+    // Eden Core Fragment: +15 bonus XP per boss kill (once per run flag skipped — always active)
+    if (this.meta?.isRelicUnlocked('eden_core_fragment') && !this._firstBossKilledRun) {
+      this._firstBossKilledRun = true;
+      this.player.gainXp(15, this.floatingTexts);
+      this.floatingTexts.push(new FloatingText('EDEN CORE: +XP', bossPos.clone(), '#ff88ff', 1.5));
+    } else if (this.meta?.isRelicUnlocked('eden_core_fragment')) {
+      this.player.gainXp(15, this.floatingTexts);
+    }
+    // EventBus emit
+    this.events?.emit('boss:killed', { name: bossName, pos: bossPos });
+  }
+
   _titanDie() {
     const t = this.titanBoss;
     if (!t) return;
     this.score = (this.score ?? 0) + Math.round(300 * this._getActiveChaosLawModifiers().scoreMult);
     this.player.gainXp(25, this.floatingTexts);
+    this._onBossKilledRelicHook(t.pos, 'titan');
     const titanCredits = this._awardCredits(12 + Math.floor(Math.random() * 9));   // 12..20 (×Grid Investor)
     this.floatingTexts.push(new FloatingText('TITAN DEFEATED',     t.pos.clone(),                            YELLOW, 2.5));
     this.floatingTexts.push(new FloatingText('+' + titanCredits + ' GRID CREDITS',   new Vec2(t.pos.x, t.pos.y - 30),         GREEN,  2.5));
@@ -16347,6 +16461,7 @@ _drawLoreArchive(ctx) {
     if (!a) return;
     this.score = (this.score ?? 0) + Math.round(300 * this._getActiveChaosLawModifiers().scoreMult);
     this.player.gainXp(25, this.floatingTexts);
+    this._onBossKilledRelicHook(a.pos, 'annihilator');
     const annihilatorCredits = this._awardCredits(12 + Math.floor(Math.random() * 9));   // 12..20 (×Grid Investor)
     this.floatingTexts.push(new FloatingText('MATRIX ANNIHILATOR DESTROYED', a.pos.clone(),                    YELLOW, 2.5));
     this.floatingTexts.push(new FloatingText('+' + annihilatorCredits + ' GRID CREDITS',            new Vec2(a.pos.x, a.pos.y - 30),  GREEN,  2.5));
@@ -16599,6 +16714,7 @@ _drawLoreArchive(ctx) {
     this.supportDrones = [];
     this.score = (this.score ?? 0) + Math.round(500 * this._getActiveChaosLawModifiers().scoreMult);
     this.player.gainXp(45, this.floatingTexts);
+    this._onBossKilledRelicHook(a.pos, 'bloodfang');
     const bloodfangCredits = this._awardCredits(25 + Math.floor(Math.random() * 16));   // 25..40 (×Grid Investor)
     this.floatingTexts.push(new FloatingText('BLOODFANG PACKMASTER DEFEATED', a.pos.clone(),                   YELLOW, 2.5));
     this.floatingTexts.push(new FloatingText('RAZORHOUND PACK BROKEN',         new Vec2(a.pos.x, a.pos.y - 28), ORANGE, 2.5));
@@ -16852,6 +16968,7 @@ _drawLoreArchive(ctx) {
       this.protocolFragments += BOSS_KILL_PF;
     }
     if (this._nullBreachArena) this._nullBreachArena.kills = (this._nullBreachArena.kills || 0) + 1;
+    this._onBossKilledRelicHook(pos, 'cyberSerpent');
 
     // VFX
     this.particles.spawnExplosion(pos, ORANGE, 32);
@@ -17222,6 +17339,7 @@ _drawLoreArchive(ctx) {
       this.protocolFragments += BOSS_KILL_PF;
     }
     if (this._nullBreachArena) this._nullBreachArena.kills = (this._nullBreachArena.kills || 0) + 1;
+    this._onBossKilledRelicHook(pos, 'cyberDragon');
 
     // VFX
     this.particles.spawnExplosion(pos, '#00ccff', 32);
@@ -17890,6 +18008,7 @@ _drawLoreArchive(ctx) {
       this.floatingTexts.push(new FloatingText('+' + BOSS_KILL_PF + ' 🧩 FRAGMENT',
         new Vec2(dd.gunner.pos.x, dd.gunner.pos.y - 68), '#ff5ea8', 2.5));
     }
+    this._onBossKilledRelicHook(dd.gunner.pos, 'doubleDemons');
     this.doubleDemonsBoss    = null;
     this._ddClawShockwaves   = [];
     this._ddLightningTrails  = [];
