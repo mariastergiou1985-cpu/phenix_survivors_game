@@ -10,7 +10,7 @@
 // ────────────────────────────────────────────────────────────────────────────
 
 import { EVENTS } from './EventBus.js?v=20260702700000';
-import { BIOME_ID, BIOME_DEFS, CHUNK_SIZE, ACTIVE_GRID } from './MapManager.js?v=20260703300000';
+import { BIOME_ID, BIOME_DEFS, CHUNK_SIZE, ACTIVE_GRID } from './MapManager.js?v=20260703999000';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 const UNLOAD_DISTANCE = 2;   // chunks beyond active grid before unload
@@ -289,10 +289,10 @@ export class ChunkManager {
   // ─── Biome Assignment ───────────────────────────────────────────────────
   /**
    * Determine which biome a chunk belongs to based on its position.
-   * Uses distance-based rings from the origin:
-   *   • Ring 0 (distance 0-2): Neon District (starting area)
-   *   • Ring 1+ : rotate through biome ring based on angle from origin
-   * The Null is never procedurally assigned — it's a special unlock.
+   * Compact layout (post-compaction):
+   *   • dist === 0 : Neon District (center chunk only)
+   *   • dist 1–3   : 5 outer biomes as angular sectors (each biome once)
+   *   • dist >= 4   : The Null (world edge — discourages infinite wandering)
    * @param {number} cx
    * @param {number} cy
    * @returns {string} BIOME_ID
@@ -300,10 +300,13 @@ export class ChunkManager {
   _getBiomeForCoords(cx, cy) {
     const dist = Math.max(Math.abs(cx), Math.abs(cy));
 
-    // Starting area: always Neon District (3×3 chunks)
-    if (dist <= 1) return BIOME_ID.NEON_DISTRICT;
+    // Center chunk only: Neon District (was 3×3 — now 1 chunk for tighter map)
+    if (dist === 0) return BIOME_ID.NEON_DISTRICT;
 
-    // Use angle from origin to pick biome sector
+    // World edge: The Null beyond dist 3 (keeps world finite, not infinite wandering)
+    if (dist >= 4) return BIOME_ID.THE_NULL;
+
+    // Outer biome ring (dist 1–3): 5 sectors by angle, each biome appears once
     const angle = Math.atan2(cy, cx);                          // -PI to PI
     const normalizedAngle = (angle + Math.PI) / (2 * Math.PI); // 0 to 1
     const sectorIndex = Math.floor(normalizedAngle * this._biomeRing.length) % this._biomeRing.length;

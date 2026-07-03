@@ -33,12 +33,12 @@ import { Protocol0 } from '../effects/protocol-0.js?v=20260703990000';
 import { LaserEyes } from '../effects/laser-eyes.js?v=20260703990000';
 import { MeteorRain } from '../effects/meteor-rain.js?v=20260703990000';
 import { NpcWalker } from './NpcWalker.js?v=20260703990000';
-import { MapManager, BIOME_ID, BIOME_DEFS } from './MapManager.js?v=20260703990000';
+import { MapManager, BIOME_ID, BIOME_DEFS } from './MapManager.js?v=20260703999000';
 import { EventBus, EVENTS } from './EventBus.js?v=20260703990000';
 import { EnemySpawner, ELITE_WAVE as ELITE_WAVE_CFG, BOSS_WARN_COOLDOWN as BOSS_WARN_CD } from './EnemySpawner.js?v=20260703990000';
 import { StateManager, GAME_STATES } from './StateManager.js?v=20260703990000';
-import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260703990000';
-import { NexusManager } from './NexusManager.js?v=20260703997000';
+import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260703999000';
+import { NexusManager } from './NexusManager.js?v=20260703999000';
 import { VESSELS, getVesselById, getDefaultVesselId } from './VesselCatalog.js?v=20260703996000';
 import { PETS, getPetById } from './PetCatalog.js?v=20260703998000';
 

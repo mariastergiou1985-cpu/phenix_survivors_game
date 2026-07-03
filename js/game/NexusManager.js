@@ -10,7 +10,7 @@
 
 import { Vec2, CORE_COLORS } from '../constants.js';
 import { PowerMatrix } from '../entities/PowerMatrix.js?v=20260703900000';
-import { BIOME_ID, CHUNK_SIZE } from './MapManager.js?v=20260703900000';
+import { BIOME_ID, CHUNK_SIZE } from './MapManager.js?v=20260703999000';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 const NEXUS_PER_BIOME    = 1;     // 1 per outer biome — placed near active area, not far away
@@ -169,16 +169,21 @@ export class NexusManager {
     }
 
     // ── Outer biomes: 1 Nexus each, placed near the active gameplay area ──
-    // Nexus are world support stations — they must be reachable during normal play,
-    // not thousands of pixels away.  Placed at ~1.4 chunks from origin in each
-    // biome's angular sector so the player discovers them when exploring outward.
-    const ringDist = CHUNK_SIZE * 1.4; // ~1.4 chunks from center — reachable, not far away
+    // Nexus are world support stations — reachable during normal play.
+    // Placed at ~1.5 chunks from origin in each biome's angular sector center.
+    // Angle formula matches ChunkManager._getBiomeForCoords so each Nexus
+    // lands inside its own biome territory.
+    const ringDist = CHUNK_SIZE * 1.5; // ~1.5 chunks — in the biome ring (dist 1–3)
     const sectorCount = BIOME_RING_ORDER.length;
 
     for (let s = 0; s < sectorCount; s++) {
       const biomeId = BIOME_RING_ORDER[s];
       const biomeArr = this.biomeNexus.get(biomeId);
-      const sectorAngle = (s / sectorCount) * Math.PI * 2;
+      // Match ChunkManager's angle mapping: normalizedAngle = (atan2+PI)/(2*PI)
+      // Sector s covers normalized range [s/5, (s+1)/5), so center = (s+0.5)/5
+      // Convert back: angle = center * 2*PI - PI
+      const sectorCenter = (s + 0.5) / sectorCount;
+      const sectorAngle = sectorCenter * Math.PI * 2 - Math.PI;
 
       for (let n = 0; n < NEXUS_PER_BIOME; n++) {
         const angle = sectorAngle;
@@ -218,13 +223,15 @@ export class NexusManager {
 
     // Spawn outer-biome Nexus (matches _createEndlessNexus layout)
     this.endless = true;
-    const ringDist = CHUNK_SIZE * 1.4; // ~1.4 chunks — near active area
+    const ringDist = CHUNK_SIZE * 1.5; // ~1.5 chunks — in biome ring
     const sectorCount = BIOME_RING_ORDER.length;
 
     for (let s = 0; s < sectorCount; s++) {
       const biomeId = BIOME_RING_ORDER[s];
       const biomeArr = this.biomeNexus.get(biomeId);
-      const sectorAngle = (s / sectorCount) * Math.PI * 2;
+      // Angle matches ChunkManager sector mapping
+      const sectorCenter = (s + 0.5) / sectorCount;
+      const sectorAngle = sectorCenter * Math.PI * 2 - Math.PI;
 
       for (let n = 0; n < NEXUS_PER_BIOME; n++) {
         const angle = sectorAngle;

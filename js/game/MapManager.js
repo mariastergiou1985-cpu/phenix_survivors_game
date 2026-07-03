@@ -170,7 +170,7 @@ export const BIOME_DEFS = {
 };
 
 // ─── Chunk Constants ─────────────────────────────────────────────────────────
-export const CHUNK_SIZE = 2560;       // pixels per chunk (square)
+export const CHUNK_SIZE = 1280;       // pixels per chunk — halved from 2560 for tighter world
 export const ACTIVE_GRID = 3;         // 3×3 active chunks around player
 export const CHUNK_TYPES = ['empty', 'normal', 'dense', 'elite', 'treasure', 'boss'];
 
