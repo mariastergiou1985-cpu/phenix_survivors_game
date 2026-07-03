@@ -1632,6 +1632,9 @@ export class Game {
     p.contactDamageReduction     = Math.min(0.6, (p.contactDamageReduction || 0) + m.getLevel('armorPlating') * 0.03);
     p.maxMana                   += m.getLevel('manaCapacitor') * 10;               // ultimate cost stays 100
     p.xpMult                     = 1 + m.getLevel('xpUplink') * 0.05;
+
+    // ── Null Battery relic: 8% faster Q/E ability cooldowns ──
+    if (m.isRelicUnlocked('null_battery')) p.abilityCdMult = 1.08;
   }
 
   // ── Vessel passives ──────────────────────────────────────────────────────────
@@ -1706,14 +1709,10 @@ export class Game {
     }
 
     // ── Null Singularity: permanent pull aura + DPS to enemies ──────────
-    // Vessel passive grants base aura; relic unlock enhances radius + damage.
-    // Both sources stack: vessel=base, relic=bonus, both=full power.
+    // Vessel passive only (null_singularity is a vessel, not a relic).
     const _hasVesselAura = this._activeVesselPassive === 'singularity_aura';
-    const _hasRelicAura  = this.meta?.isRelicUnlocked('null_singularity');
-    if (_hasVesselAura || _hasRelicAura) {
-      const R    = _hasVesselAura && _hasRelicAura ? 280 : (_hasRelicAura ? 220 : 200);
-      const PULL = _hasVesselAura && _hasRelicAura ? 55  : (_hasRelicAura ? 35  : 40);
-      const DPS  = _hasVesselAura && _hasRelicAura ? 9   : (_hasRelicAura ? 6   : 5);
+    if (_hasVesselAura) {
+      const R = 200, PULL = 40, DPS = 5;
       for (let i = 0; i < this.enemies.length; i++) {
         const e = this.enemies[i];
         const dx = e.pos.x - p.pos.x, dy = e.pos.y - p.pos.y;
@@ -4917,6 +4916,13 @@ export class Game {
         const det = 220 + 40 * cl;               // Total Cataclysm mastery: stronger detonation (boss-capped)
         for (const e of this.enemies) if (e?.takeHit) e.takeHit((e.isBoss?.() || e.isMegaBoss) ? this._capBossDamage(e, det) : det, this);
         this.enemyBullets.length = 0;            // clear all enemy projectiles
+        // ── Oni Blood Circuit relic: mark nearby enemies +15% damage taken for 5s ──
+        if (this.meta?.isRelicUnlocked('oni_blood_circuit')) {
+          for (const e of this.enemies) {
+            if (distance(e.pos, this.player.pos) < 350) this._oniBloodMarks.set(e, 5);
+          }
+          this.floatingTexts.push(new FloatingText('BLOOD CIRCUIT!', this.player.pos.clone(), '#ff2200', 1.2));
+        }
       },
     });
     this.screenShake.trigger(7, 0.3);
@@ -6287,7 +6293,38 @@ export class Game {
     // Dash SFX — fire once on the frame a dash begins (rising edge of dashTimer).
     const dashing = this.player.dashTimer > 0;
     if (dashing && !this._wasDashing) this.audio?.playDash();
+    // ── Serpent Ember Coil relic: dash leaves burn trail ──────────────
+    if (dashing && this.meta?.isRelicUnlocked('serpent_ember_coil')) {
+      this._emberTrailCd -= dt;
+      if (this._emberTrailCd <= 0) {
+        this._emberTrailCd = 0.04; // spawn ember every 40ms during dash
+        this._emberTrail.push({ x: p.pos.x, y: p.pos.y, ttl: 1.5 });
+      }
+    }
+    // Tick ember trail zones — burn enemies, remove expired
+    for (let i = this._emberTrail.length - 1; i >= 0; i--) {
+      const em = this._emberTrail[i];
+      em.ttl -= dt;
+      if (em.ttl <= 0) { this._emberTrail.splice(i, 1); continue; }
+      for (const e of this.enemies) {
+        const dx = e.pos.x - em.x, dy = e.pos.y - em.y;
+        if (dx * dx + dy * dy < 1600) e.hp -= 18 * dt; // 18 DPS in 40px radius
+      }
+    }
     this._wasDashing = dashing;
+    // ── Dragon Cryo Heart relic: charge a cryo shard every 30s ───────
+    if (this.meta?.isRelicUnlocked('dragon_cryo_heart')) {
+      this._cryoChargeCd += dt;
+      if (this._cryoChargeCd >= 30) { this._cryoChargeReady = true; this._cryoChargeCd = 0; }
+    }
+    // ── Oni Blood Circuit relic: tick marked enemies, remove expired ──
+    if (this._oniBloodMarks.size > 0) {
+      for (const [e, ttl] of this._oniBloodMarks) {
+        const newTtl = ttl - dt;
+        if (newTtl <= 0 || e.hp <= 0) this._oniBloodMarks.delete(e);
+        else this._oniBloodMarks.set(e, newTtl);
+      }
+    }
     this._handleAutoShooting();
     // Hit stop: slow projectiles + discs to ~10% during freeze window (bullet-time feel)
     const _hsDt = this._hitStopTimer > 0 ? dt * 0.10 : dt;
@@ -7348,11 +7385,21 @@ export class Game {
           // Primary-fire soft cap: bosses/mega bosses absorb only capped DPS (normal enemies unaffected).
           const pm = this._primaryMasteryLvl();
           const baseDmg = (e.isBoss() || e.isMegaBoss) ? this._capBossDamage(e, p.damage) : p.damage;
-          e.takeHit(baseDmg * (1 + 0.12 * pm), this);
+          const bloodMark = this._oniBloodMarks.has(e) ? 1.15 : 1;
+          e.takeHit(baseDmg * (1 + 0.12 * pm) * bloodMark, this);
           if (pm > 0) this.particles.spawnHitSparks(e.pos, this._primarySparkColor());  // char-matched primary spark
           this._tryCorrode(e);
           if (wasSlowed) this._glacialShatter(shatterPos, e);
           if (p.sentryShot) this.audio?.playSentryDroneHit?.();
+          // ── Dragon Cryo Heart: charged cryo shard on first hit ────────
+          if (this._cryoChargeReady) {
+            this._cryoChargeReady = false;
+            e.slowTimer  = Math.max(e.slowTimer, 2.5);
+            e.slowFactor = 0.30;
+            e.takeHit(e.isBoss() ? this._capBossDamage(e, 45) : 45, this);
+            this.floatingTexts.push(new FloatingText('CRYO SHARD!', e.pos.clone(), '#00ccff', 1.0));
+            this.particles.spawnHitSparks(e.pos, '#00ccff');
+          }
           this.projectiles.splice(i, 1);
           hit = true;
           break;
@@ -8297,6 +8344,22 @@ export class Game {
       }
       this._chromeFx.push({ pos: p.pos.clone(), r: FR * 0.5, dr: FR * 1.4, life: 0.5, maxLife: 0.5, color: '#ffd0f4' });
       this.screenShake.trigger(4, 0.2);
+      // ── Mirror Kill Protocol relic: shadow slash on clone expire, 3+ hits refunds 20 mana ──
+      if (this.meta?.isRelicUnlocked('mirror_kill_protocol')) {
+        let slashHits = 0;
+        const slashR = FR * 1.2, slashDmg = 35;
+        for (const e of this.enemies) {
+          if (distance(e.pos, p.pos) < slashR) {
+            e.takeHit(e.isBoss() ? this._capBossDamage(e, slashDmg) : slashDmg, this);
+            slashHits++;
+          }
+        }
+        this._chromeFx.push({ pos: p.pos.clone(), r: slashR * 0.3, dr: slashR * 1.8, life: 0.35, maxLife: 0.35, color: '#aa00ff' });
+        if (slashHits >= 3) {
+          p.mana = Math.min(p.maxMana, p.mana + 20);
+          this.floatingTexts.push(new FloatingText('+20 MANA', p.pos.clone(), '#aa00ff', 0.9));
+        }
+      }
       this._chromePhantom = null;
     }
   }
@@ -8508,7 +8571,11 @@ export class Game {
     const SPEED = 540, DMG = 26, BOSSDMG = 6, LIFE = 0.9;
     const PIERCE = 4 + km;                                            // +1 pierce / level (4 → 7)
     const HITR = 30 * (1 + 0.08 * km);                               // +8% hit arc / level
+    // ── Crescent Soul Bead relic: every 7th kick gets +2 pierce + shockwave ──
+    const _soulBead = this.meta?.isRelicUnlocked('crescent_soul_bead');
     for (let k = 0; k < count; k++) {
+      this._kickFireCount++;
+      const empowered = _soulBead && (this._kickFireCount % 7 === 0);
       const tgt = (near[k] || near[0]).e;
       let dir = safeNormalize(tgt.pos.sub(p.pos));
       if (dir.lengthSq() < 0.001) dir = (p.lastFacingDir && p.lastFacingDir.lengthSq() > 0.001)
@@ -8516,9 +8583,19 @@ export class Game {
       sk.blades.push({
         pos: p.pos.clone(), vel: dir.scale(SPEED),
         rot: Math.atan2(dir.y, dir.x), spin: 16, t: 0, life: LIFE,
-        radius: HITR, dmg: DMG, bossDmg: BOSSDMG, pierce: PIERCE,
+        radius: HITR, dmg: empowered ? DMG * 1.5 : DMG, bossDmg: BOSSDMG,
+        pierce: empowered ? PIERCE + 2 : PIERCE,
         hits: new Set(), trail: [], dead: false,
       });
+      if (empowered) {
+        // Shockwave: AoE damage around player
+        for (const e of this.enemies) {
+          if (distance(e.pos, p.pos) < 160) e.takeHit(e.isBoss() ? 8 : 30, this);
+        }
+        this._specialRings.push({ pos: p.pos.clone(), radius: 0, maxRadius: 160,
+          life: 0.4, maxLife: 0.4, color1: CYAN, color2: '#ffffff' });
+        this.floatingTexts.push(new FloatingText('SOUL BEAD!', p.pos.clone(), CYAN, 0.8));
+      }
     }
   }
 

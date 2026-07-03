@@ -65,6 +65,7 @@ export class Player {
 
     this._tankTimer   = 0;     // Oni Protocol 0: damage-reduction window
     this.xpMult       = 1;     // XP Uplink meta multiplier
+    this.abilityCdMult = 1;    // Null Battery relic: 1.08 = 8% faster Q/E cooldowns
 
     this.dashTimer    = 0.0;
     this.dashCooldown = 0.0;
@@ -242,9 +243,9 @@ export class Player {
     if (this.specialCooldown > 0) this.specialCooldown -= dt;
     this.shootCooldown    = Math.max(0, this.shootCooldown - dt);
     this.sonicPulseCooldown = Math.max(0, this.sonicPulseCooldown - dt);
-    this.empCloudCooldown   = Math.max(0, this.empCloudCooldown - dt);
+    this.empCloudCooldown   = Math.max(0, this.empCloudCooldown - dt * this.abilityCdMult);
     this.shieldTimer         = Math.max(0, this.shieldTimer - dt);
-    this.pulseShieldCooldown = Math.max(0, this.pulseShieldCooldown - dt);
+    this.pulseShieldCooldown = Math.max(0, this.pulseShieldCooldown - dt * this.abilityCdMult);
 
     // Bite debuff timers + bleed tick (1 HP/s)
     if (this.staggerTimer > 0)      this.staggerTimer      -= dt;
