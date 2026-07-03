@@ -21,7 +21,7 @@ import { UpgradeUI }      from './UpgradeUI.js?v=20260703940000';
 import { weightedSample } from './Upgrades.js?v=20260703940000';
 import { MutationUI }      from './MutationUI.js?v=20260629440000';
 import { sampleMutations } from './Mutations.js?v=20260629440000';
-import { drawHUD, drawEndScreen } from './HUD.js?v=20260703950000';
+import { drawHUD, drawEndScreen } from './HUD.js?v=20260703960000';
 import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS } from './MetaProgress.js?v=20260629440000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260629440000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
@@ -5218,6 +5218,9 @@ export class Game {
   // ─── Main update ──────────────────────────────────────────────────────────
 
   update(dt, input) {
+    // Fade system must tick in ALL states so screen transitions always complete.
+    this._updateFade(dt);
+
     if (this.gameState === 'start_menu') {
       this._updateStartMenu(dt, input);
       return;
@@ -5536,7 +5539,6 @@ export class Game {
     this._updateHealthPickups(dt);
     this._updateManaPickups(dt);
     this._updateAnnouncement(dt);
-    this._updateFade(dt);
     this.particles.update(this._hitStopTimer > 0 ? dt * 0.10 : dt);  // slow sparks/particles during hit stop
     this._updateCamera();
     this._updateDamagePulse(dt);
@@ -6085,7 +6087,6 @@ export class Game {
 
   _updateStartMenu(dt, input) {
     this._updateAnnouncement(dt);
-    this._updateFade(dt);
     this._initMenuCodeRain();
     this._updateMenuCodeRain(dt);
     const { keys } = input;
@@ -6329,9 +6330,9 @@ export class Game {
 
     // Premium panel behind sliders
     const _aPanX = sliders[0].tx - 20;
-    const _aPanY = sliders[0].ty - 36;
+    const _aPanY = sliders[0].ty - 56;
     const _aPanW = sliders[0].tw + 40;
-    const _aPanH = (sliders[sliders.length - 1].ty - sliders[0].ty) + 50;
+    const _aPanH = (sliders[sliders.length - 1].ty - sliders[0].ty) + 70;
     this._premiumPanel(ctx, _aPanX, _aPanY, _aPanW, _aPanH, CYAN, 'VOLUME CONTROLS');
 
     for (let i = 0; i < sliders.length; i++) {
