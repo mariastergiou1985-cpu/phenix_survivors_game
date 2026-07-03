@@ -6,6 +6,18 @@ import { clamp, distance, safeNormalize, randomRange, randomChoice, drawBar } fr
 import { DataCore } from './DataCore.js?v=20260615210000';
 import { FloatingText } from './FloatingText.js';
 import { drawGlow } from '../game/Effects.js?v=20260615210000';
+import { MINI_WEAPON_MAP, BOSS_WEAPON_MAP, getWeaponById } from '../game/EnemyWeaponCatalog.js?v=20260703990000';
+
+// ─── Weapon sprite cache (shared across all enemies — each PNG loads once) ──────
+const _weaponSpriteCache = new Map();
+function _getWeaponSprite(weaponDef) {
+  if (!weaponDef || !weaponDef.spritePath) return null;
+  if (_weaponSpriteCache.has(weaponDef.id)) return _weaponSpriteCache.get(weaponDef.id);
+  const img = new Image();
+  img.src = weaponDef.spritePath + '?v=20260703990000';
+  _weaponSpriteCache.set(weaponDef.id, img);
+  return img;
+}
 
 // ─── Hit/death feedback tuning (visual only — no balance impact) ────────────────
 // One place to dial the juice. Particle counts stay small and the ParticleSystem
@@ -215,6 +227,15 @@ export class Enemy {
         this.bulletColor   = CYAN;
         break;
     }
+
+    // ── Weapon sprite lookup — preload primary weapon sprite for this enemy ──
+    const catalogKey = this.enemyType.toLowerCase().replace(/ /g, '-');
+    const weaponIds  = MINI_WEAPON_MAP[catalogKey] || BOSS_WEAPON_MAP[catalogKey];
+    if (weaponIds && weaponIds.length > 0) {
+      const wDef = getWeaponById(weaponIds[0]);   // primary weapon
+      this._weaponSprite = _getWeaponSprite(wDef);
+      this._weaponSize   = Math.max(18, this.bulletRadius * 3.2);  // render size (px)
+    }
   }
 
   _tryShoot(game) {
@@ -245,7 +266,8 @@ export class Enemy {
     for (let s = 0; s < shots; s++) {
       const ang = baseAng + (start + s) * spread;
       game.spawnEnemyBullet(this.pos.clone(), new Vec2(Math.cos(ang), Math.sin(ang)),
-        this.bulletSpeed, this.bulletDamage, this.bulletRadius, this.bulletColor);
+        this.bulletSpeed, this.bulletDamage, this.bulletRadius, this.bulletColor,
+        { stun: 0, weaponSprite: this._weaponSprite || null, weaponSize: this._weaponSize || 0 });
     }
     game.audio?.playEnemyShoot();
   }

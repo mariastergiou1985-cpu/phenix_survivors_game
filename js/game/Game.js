@@ -12,7 +12,7 @@ import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260703990000
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260703990000';
 import { Player }         from '../entities/Player.js?v=20260703990000';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260703990000';
-import { Enemy }          from '../entities/Enemy.js?v=20260703990000';
+import { Enemy }          from '../entities/Enemy.js?v=20260703991000';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=20260703990000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260703990000';
@@ -6436,7 +6436,14 @@ export class Game {
 
   spawnEnemyBullet(pos, dir, speed, damage, radius, color, opts = {}) {
     speed *= this.mutations.enemyBulletSpeedMult;   // ACCELERATED ROUNDS (1.0 outside Endless)
-    this.enemyBullets.push({ pos, dir: dir.clone(), speed, damage, radius, color, life: 4.0, stun: opts.stun || 0 });
+    const angle = Math.atan2(dir.y, dir.x);
+    this.enemyBullets.push({
+      pos, dir: dir.clone(), speed, damage, radius, color, life: 4.0,
+      stun: opts.stun || 0,
+      weaponSprite: opts.weaponSprite || null,
+      weaponSize:   opts.weaponSize   || 0,
+      angle,
+    });
   }
 
   _updateEnemyBullets(dt) {
@@ -9207,14 +9214,29 @@ export class Game {
     }
     this.particles.draw(ctx);
 
-    // 6c ── Enemy bullets
+    // 6c ── Enemy bullets (weapon sprites or colored circles)
     for (const b of this.enemyBullets) {
       if (_off(b.pos)) continue;   // offscreen — skip draw
-      drawGlow(ctx, b.pos.x, b.pos.y, b.radius * 2, b.color, 0.5);
-      ctx.fillStyle   = b.color;
-      ctx.beginPath(); ctx.arc(b.pos.x, b.pos.y, b.radius, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = WHITE; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.arc(b.pos.x, b.pos.y, b.radius, 0, Math.PI * 2); ctx.stroke();
+      // Try weapon sprite first — fall back to colored circle if not loaded
+      if (b.weaponSprite && b.weaponSprite.complete && b.weaponSprite.naturalWidth > 0) {
+        const sz = b.weaponSize || b.radius * 3.2;
+        ctx.save();
+        ctx.translate(b.pos.x, b.pos.y);
+        ctx.rotate(b.angle || 0);
+        // Additive blend for glowing VFX feel
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.92;
+        ctx.drawImage(b.weaponSprite, -sz / 2, -sz / 2, sz, sz);
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = 1;
+        ctx.restore();
+      } else {
+        drawGlow(ctx, b.pos.x, b.pos.y, b.radius * 2, b.color, 0.5);
+        ctx.fillStyle   = b.color;
+        ctx.beginPath(); ctx.arc(b.pos.x, b.pos.y, b.radius, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = WHITE; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(b.pos.x, b.pos.y, b.radius, 0, Math.PI * 2); ctx.stroke();
+      }
     }
 
     // 6d ── Final-boss CORRUPTION beam + novas (on top of entities for readability)
