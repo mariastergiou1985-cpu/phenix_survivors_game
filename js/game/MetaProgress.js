@@ -267,6 +267,10 @@ export class MetaProgress {
     // ── Vessel system ──────────────────────────────────────────────────────
     this.selectedVessel   = 'alpha_phoenix';   // currently equipped vessel id
     this.unlockedVessels  = { alpha_phoenix: true };  // { [vesselId]: true }
+    // ── Cyber-Pet system ────────────────────────────────────────────────
+    this.selectedPets    = ['byte_mite'];       // equipped pet ids (1-2 slots)
+    this.unlockedPets    = { byte_mite: true }; // { [petId]: true }
+    this.petSlots        = 1;                   // max pet slots (1 default, 2nd unlockable)
     this._load();
   }
 
@@ -307,6 +311,11 @@ export class MetaProgress {
       this.selectedVessel  = (typeof d.selectedVessel === 'string' && d.selectedVessel) ? d.selectedVessel : 'alpha_phoenix';
       this.unlockedVessels = (d.unlockedVessels && typeof d.unlockedVessels === 'object') ? d.unlockedVessels : { alpha_phoenix: true };
       if (!this.unlockedVessels.alpha_phoenix) this.unlockedVessels.alpha_phoenix = true; // always available
+      // Cyber-Pet system — safe defaults for old saves (byte_mite always unlocked)
+      this.selectedPets  = Array.isArray(d.selectedPets) ? d.selectedPets : ['byte_mite'];
+      this.unlockedPets  = (d.unlockedPets && typeof d.unlockedPets === 'object') ? d.unlockedPets : { byte_mite: true };
+      this.petSlots      = Math.max(1, Math.min(2, Number(d.petSlots) || 1));
+      if (!this.unlockedPets.byte_mite) this.unlockedPets.byte_mite = true;
       // One-time retroactive payout for already-earned Endless achievements (idempotent).
       this._backfillProtocolFragments();
 
@@ -369,6 +378,9 @@ export class MetaProgress {
         chaosRanks:         this.chaosRanks,           // Phase B: Chaos Survival Rank per character
         selectedVessel:     this.selectedVessel,
         unlockedVessels:    this.unlockedVessels,
+        selectedPets:       this.selectedPets,
+        unlockedPets:       this.unlockedPets,
+        petSlots:           this.petSlots,
       }));
     } catch (_) {}
   }
@@ -554,6 +566,9 @@ export class MetaProgress {
     this.protocolCards     = {};
     this.selectedVessel   = 'alpha_phoenix';
     this.unlockedVessels  = { alpha_phoenix: true };
+    this.selectedPets     = ['byte_mite'];
+    this.unlockedPets     = { byte_mite: true };
+    this.petSlots         = 1;
     this.relics    = {};
     this.bossKills = {};
     this.runHistory = [];
@@ -763,6 +778,57 @@ export class MetaProgress {
     this.credits -= costGrids;
     this.protocolFragments -= costFragments;
     this.unlockedVessels[id] = true;
+    this._save();
+    return 'ok';
+  }
+
+  // ─── Cyber-Pet system ─────────────────────────────────────────────────────
+  isPetUnlocked(id) { return this.unlockedPets[id] === true; }
+  getSelectedPets() { return (this.selectedPets || ['byte_mite']).slice(0, this.petSlots || 1); }
+  getPetSlots() { return this.petSlots || 1; }
+
+  selectPet(slotIndex, petId) {
+    if (!this.isPetUnlocked(petId)) return false;
+    if (slotIndex < 0 || slotIndex >= this.petSlots) return false;
+    if (!Array.isArray(this.selectedPets)) this.selectedPets = [];
+    // Prevent duplicate: if pet is in another slot, swap
+    const existingIdx = this.selectedPets.indexOf(petId);
+    if (existingIdx >= 0 && existingIdx !== slotIndex) {
+      this.selectedPets[existingIdx] = this.selectedPets[slotIndex] || null;
+    }
+    this.selectedPets[slotIndex] = petId;
+    // Clean up nulls at end
+    while (this.selectedPets.length > this.petSlots) this.selectedPets.pop();
+    this._save();
+    return true;
+  }
+
+  deselectPet(slotIndex) {
+    if (!Array.isArray(this.selectedPets)) return;
+    if (slotIndex >= 0 && slotIndex < this.selectedPets.length) {
+      this.selectedPets.splice(slotIndex, 1);
+      this._save();
+    }
+  }
+
+  // Unlock 2nd pet slot. Costs Fragments. Returns 'ok'|'owned'|'poor'.
+  tryUnlockPetSlot() {
+    if (this.petSlots >= 2) return 'owned';
+    const cost = 6; // 6 Protocol Fragments for 2nd slot
+    if (this.protocolFragments < cost) return 'poor';
+    this.protocolFragments -= cost;
+    this.petSlots = 2;
+    this._save();
+    return 'ok';
+  }
+
+  // Purchase a pet. Returns 'ok'|'owned'|'poor'.
+  tryBuyPet(id, costGrids, costFragments) {
+    if (this.isPetUnlocked(id)) return 'owned';
+    if (this.credits < costGrids || this.protocolFragments < costFragments) return 'poor';
+    this.credits -= costGrids;
+    this.protocolFragments -= costFragments;
+    this.unlockedPets[id] = true;
     this._save();
     return 'ok';
   }

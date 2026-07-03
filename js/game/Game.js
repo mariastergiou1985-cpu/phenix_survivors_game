@@ -40,6 +40,7 @@ import { StateManager, GAME_STATES } from './StateManager.js?v=20260703990000';
 import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260703990000';
 import { NexusManager } from './NexusManager.js?v=20260703990000';
 import { VESSELS, getVesselById, getDefaultVesselId } from './VesselCatalog.js?v=20260703992000';
+import { PETS, getPetById } from './PetCatalog.js?v=20260703995000';
 
 // Euclid Vector toxin kit — used ONLY when selectedCharacter === 'euclid_vector' (world-space).
 import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=20260703990000';
@@ -679,6 +680,17 @@ export class Game {
       this._vesselSpriteCache[v.id] = img;
     });
 
+    // Preload pet sprite images
+    this._petSpriteCache = {};
+    PETS.forEach(p => {
+      const img = new Image();
+      img.src = p.spritePath + '?v=20260703995000';
+      this._petSpriteCache[p.id] = img;
+    });
+
+    // Active pets runtime state (populated at run start)
+    this._activePets = [];  // [{ def, x, y, timer, angle, ... }]
+
     // Preload relic icon images for HUD display
     this._relicIconCache = {};
     RELIC_DEFS.forEach(r => {
@@ -726,6 +738,7 @@ export class Game {
     this.player       = new Player(this.selectedCharacter, _outfitPath);
     this._applyMetaUpgrades();
     this._applyVesselPassives();
+    this._initActivePets();
     this._echoPassiveMsgFired = false;
     this._applyBossEchoPassives();
     // ── NexusManager: manages all Nexus stations, per-biome health, rewards ──
@@ -1634,6 +1647,273 @@ export class Game {
     // Vessel sits slightly below + behind the character
     ctx.drawImage(spr, px - sprW / 2, py - sprH / 2 + 12, sprW, sprH);
     ctx.restore();
+  }
+
+  // ─── Cyber-Pet System ────────────────────────────────────────────────────────
+
+  _initActivePets() {
+    this._activePets = [];
+    const selectedIds = this.meta?.getSelectedPets() || ['byte_mite'];
+    for (let i = 0; i < selectedIds.length; i++) {
+      const def = getPetById(selectedIds[i]);
+      if (!def) continue;
+      const angle = (i / Math.max(selectedIds.length, 1)) * Math.PI * 2;
+      this._activePets.push({
+        def,
+        x: 0, y: 0,                       // world position (updated each tick)
+        angle,                             // orbit angle (Firewall) / hover angle
+        timer: 0,                          // type-specific cooldown
+        bobPhase: Math.random() * Math.PI * 2, // floating bob animation
+      });
+    }
+    this._petBolts = [];  // active pet projectiles [{x, y, vx, vy, dmg, color, life}]
+    this._petBombs = [];  // active freeze bombs [{x, y, targetX, targetY, timer, radius, color}]
+  }
+
+  _tickPets(dt) {
+    if (!this.player || !this._activePets || this._activePets.length === 0) return;
+    const px = this.player.pos.x;
+    const py = this.player.pos.y;
+
+    for (const pet of this._activePets) {
+      pet.bobPhase += dt * 2.5;
+      const bobY = Math.sin(pet.bobPhase) * 3;
+
+      switch (pet.def.type) {
+        case 'attack':   this._tickPetAttack(pet, dt, px, py, bobY); break;
+        case 'utility':  this._tickPetUtility(pet, dt, px, py, bobY); break;
+        case 'defense':  this._tickPetDefense(pet, dt, px, py, bobY); break;
+        case 'control':  this._tickPetControl(pet, dt, px, py, bobY); break;
+      }
+    }
+
+    // Tick pet bolts
+    for (let i = this._petBolts.length - 1; i >= 0; i--) {
+      const b = this._petBolts[i];
+      b.x += b.vx * dt;
+      b.y += b.vy * dt;
+      b.life -= dt;
+      if (b.life <= 0) { this._petBolts.splice(i, 1); continue; }
+      // Hit detection vs enemies
+      for (let j = this.enemies.length - 1; j >= 0; j--) {
+        const e = this.enemies[j];
+        const dx = b.x - e.pos.x;
+        const dy = b.y - e.pos.y;
+        if (dx * dx + dy * dy < (e.radius + 6) * (e.radius + 6)) {
+          e.hp -= b.dmg;
+          this._petBolts.splice(i, 1);
+          break;
+        }
+      }
+    }
+
+    // Tick pet bombs
+    for (let i = this._petBombs.length - 1; i >= 0; i--) {
+      const bomb = this._petBombs[i];
+      bomb.timer -= dt;
+      // Move toward target
+      const dx = bomb.targetX - bomb.x;
+      const dy = bomb.targetY - bomb.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist > 8 && bomb.timer > 0.1) {
+        const spd = 250 * dt;
+        bomb.x += (dx / dist) * spd;
+        bomb.y += (dy / dist) * spd;
+      } else if (bomb.timer <= 0.1 && !bomb.detonated) {
+        // Detonate — freeze enemies in radius
+        bomb.detonated = true;
+        for (const e of this.enemies) {
+          const edx = bomb.x - e.pos.x;
+          const edy = bomb.y - e.pos.y;
+          if (edx * edx + edy * edy < bomb.radius * bomb.radius) {
+            e.stunned = Math.max(e.stunned || 0, bomb.freezeDur);
+          }
+        }
+      }
+      if (bomb.timer <= 0) this._petBombs.splice(i, 1);
+    }
+  }
+
+  _tickPetAttack(pet, dt, px, py, bobY) {
+    // Float near player (offset to upper-right)
+    const idx = this._activePets.indexOf(pet);
+    const offX = idx === 0 ? 40 : -40;
+    pet.x = px + offX;
+    pet.y = py - 30 + bobY;
+
+    pet.timer -= dt;
+    if (pet.timer > 0) return;
+
+    // Find nearest enemy in range
+    let nearest = null;
+    let nearDist = pet.def.boltRange * pet.def.boltRange;
+    for (const e of this.enemies) {
+      const dx = e.pos.x - pet.x;
+      const dy = e.pos.y - pet.y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < nearDist) { nearDist = d2; nearest = e; }
+    }
+    if (!nearest) return;
+
+    pet.timer = pet.def.fireRate;
+    const dx = nearest.pos.x - pet.x;
+    const dy = nearest.pos.y - pet.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist <= 0) return;
+    this._petBolts.push({
+      x: pet.x, y: pet.y,
+      vx: (dx / dist) * pet.def.boltSpeed,
+      vy: (dy / dist) * pet.def.boltSpeed,
+      dmg: pet.def.boltDamage,
+      color: pet.def.boltColor,
+      life: 1.5,
+    });
+  }
+
+  _tickPetUtility(pet, dt, px, py, bobY) {
+    // Float near player (left side)
+    const idx = this._activePets.indexOf(pet);
+    const offX = idx === 0 ? -45 : 45;
+    pet.x = px + offX;
+    pet.y = py - 20 + bobY;
+
+    pet.timer -= dt;
+    if (pet.timer > 0) return;
+    pet.timer = pet.def.scanInterval;
+
+    // Pull distant pickups toward player (XP orbs + ground cores)
+    const r2 = pet.def.collectRadius * pet.def.collectRadius;
+    for (const orb of (this.xpOrbs || [])) {
+      const dx = orb.pos.x - px;
+      const dy = orb.pos.y - py;
+      if (dx * dx + dy * dy < r2) {
+        // Nudge toward player
+        const d = Math.sqrt(dx * dx + dy * dy);
+        if (d > 10) {
+          orb.pos.x -= (dx / d) * pet.def.collectSpeed * pet.def.scanInterval;
+          orb.pos.y -= (dy / d) * pet.def.collectSpeed * pet.def.scanInterval;
+        }
+      }
+    }
+    for (const core of (this.groundCores || [])) {
+      const dx = core.pos.x - px;
+      const dy = core.pos.y - py;
+      if (dx * dx + dy * dy < r2) {
+        const d = Math.sqrt(dx * dx + dy * dy);
+        if (d > 10) {
+          core.pos.x -= (dx / d) * pet.def.collectSpeed * pet.def.scanInterval;
+          core.pos.y -= (dy / d) * pet.def.collectSpeed * pet.def.scanInterval;
+        }
+      }
+    }
+  }
+
+  _tickPetDefense(pet, dt, px, py, _bobY) {
+    // Orbit around player
+    pet.angle += pet.def.orbitSpeed * dt;
+    pet.x = px + Math.cos(pet.angle) * pet.def.orbitRadius;
+    pet.y = py + Math.sin(pet.angle) * pet.def.orbitRadius;
+
+    // Destroy enemy projectiles on collision
+    const br2 = pet.def.blockRadius * pet.def.blockRadius;
+    for (let i = this.enemyBullets.length - 1; i >= 0; i--) {
+      const eb = this.enemyBullets[i];
+      const dx = eb.pos.x - pet.x;
+      const dy = eb.pos.y - pet.y;
+      if (dx * dx + dy * dy < br2) {
+        this.enemyBullets.splice(i, 1);
+      }
+    }
+  }
+
+  _tickPetControl(pet, dt, px, py, bobY) {
+    // Float near player (below-right)
+    const idx = this._activePets.indexOf(pet);
+    const offX = idx === 0 ? 35 : -35;
+    pet.x = px + offX;
+    pet.y = py + 20 + bobY;
+
+    pet.timer -= dt;
+    if (pet.timer > 0) return;
+    pet.timer = pet.def.bombInterval;
+
+    // Find nearest enemy cluster center
+    if (this.enemies.length === 0) return;
+    let bestE = this.enemies[0];
+    let bestD = Infinity;
+    for (const e of this.enemies) {
+      const dx = e.pos.x - px;
+      const dy = e.pos.y - py;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < bestD) { bestD = d2; bestE = e; }
+    }
+
+    this._petBombs.push({
+      x: pet.x, y: pet.y,
+      targetX: bestE.pos.x, targetY: bestE.pos.y,
+      timer: 0.6,  // travel time before detonation
+      radius: pet.def.blastRadius,
+      freezeDur: pet.def.freezeDuration,
+      color: pet.def.bombColor,
+      detonated: false,
+    });
+  }
+
+  _drawPets(ctx) {
+    if (!this._activePets || this._activePets.length === 0) return;
+
+    // Draw pet bolts
+    for (const b of this._petBolts) {
+      ctx.save();
+      ctx.fillStyle = b.color;
+      ctx.shadowColor = b.color;
+      ctx.shadowBlur = 6;
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, 3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Draw pet bombs
+    for (const bomb of this._petBombs) {
+      ctx.save();
+      ctx.globalAlpha = 0.8;
+      ctx.fillStyle = bomb.color;
+      ctx.shadowColor = bomb.color;
+      ctx.shadowBlur = 10;
+      ctx.beginPath();
+      ctx.arc(bomb.x, bomb.y, bomb.detonated ? bomb.radius * 0.5 : 6, 0, Math.PI * 2);
+      ctx.fill();
+      if (bomb.detonated) {
+        ctx.globalAlpha = 0.15;
+        ctx.beginPath();
+        ctx.arc(bomb.x, bomb.y, bomb.radius, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    // Draw pet sprites
+    for (const pet of this._activePets) {
+      const spr = this._petSpriteCache?.[pet.def.id];
+      if (!spr || !spr.complete || spr.naturalWidth <= 0) {
+        // Fallback: colored circle
+        ctx.save();
+        ctx.fillStyle = pet.def.boltColor || pet.def.bombColor || '#00e6ff';
+        ctx.globalAlpha = 0.7;
+        ctx.beginPath();
+        ctx.arc(pet.x, pet.y, 10, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        continue;
+      }
+      const sprH = 32;
+      const sprW = Math.round(spr.naturalWidth * (sprH / spr.naturalHeight));
+      ctx.save();
+      ctx.globalAlpha = 0.85;
+      ctx.drawImage(spr, pet.x - sprW / 2, pet.y - sprH / 2, sprW, sprH);
+      ctx.restore();
+    }
   }
 
   // Returns per-echo passive bonus scalars based on current archive state.
@@ -3251,9 +3531,19 @@ export class Game {
         <div class="ch-sep"></div>
         <div class="ch-grid" id="ch-grid"></div>
         <div class="ch-sep"></div>
+        <div class="ch-header" style="margin-top:4px">
+          <div class="ch-title">⬢ CYBER-PETS</div>
+          <div class="ch-wallet">
+            <div class="ch-currency" id="ch-pet-slots">SLOTS: <span>1</span>/2</div>
+          </div>
+        </div>
+        <div class="ch-sep"></div>
+        <div class="ch-grid" id="ch-pet-grid"></div>
+        <div id="ch-pet-slot-btn-wrap" style="text-align:center;margin-top:4px"></div>
+        <div class="ch-sep"></div>
         <div class="ch-footer">
           <button class="ch-foot-btn" id="ch-back-btn">◀ BACK</button>
-          <div class="ch-hint">Select a vessel before starting a run. Passives apply automatically.</div>
+          <div class="ch-hint">Vessels + pets apply automatically each run.</div>
         </div>
       </div>
     `;
@@ -3347,6 +3637,109 @@ export class Game {
         e.stopPropagation();
         this.meta.selectVessel(btn.dataset.vesselId);
         this._syncHangarOverlay();
+      });
+    });
+
+    // ── Cyber-Pet Grid ──────────────────────────────────────────────────────
+    const petGrid = el.querySelector('#ch-pet-grid');
+    const petSlotsEl = el.querySelector('#ch-pet-slots span');
+    const petSlotBtnWrap = el.querySelector('#ch-pet-slot-btn-wrap');
+    if (!petGrid) return;
+
+    const slots = this.meta.getPetSlots();
+    const equippedPets = this.meta.getSelectedPets();
+    if (petSlotsEl) petSlotsEl.textContent = slots;
+
+    // Slot unlock button
+    if (petSlotBtnWrap) {
+      if (slots < 2) {
+        const canAffordSlot = this.meta.protocolFragments >= 6;
+        petSlotBtnWrap.innerHTML = canAffordSlot
+          ? '<span class="ch-badge buy-btn" id="ch-buy-pet-slot">UNLOCK 2ND SLOT — 6 🧩</span>'
+          : '<span class="ch-badge poor">2ND SLOT — 6 🧩 (NOT ENOUGH)</span>';
+        petSlotBtnWrap.querySelector('#ch-buy-pet-slot')?.addEventListener('click', () => {
+          if (this.meta.tryUnlockPetSlot() === 'ok') this._syncHangarOverlay();
+        });
+      } else {
+        petSlotBtnWrap.innerHTML = '<span class="ch-badge selected-badge">2 SLOTS UNLOCKED</span>';
+      }
+    }
+
+    const roleColors = { attack: '#00e6ff', utility: '#28ff8c', defense: '#ff9100', control: '#9650ff' };
+
+    petGrid.innerHTML = PETS.map(p => {
+      const owned    = this.meta.isPetUnlocked(p.id);
+      const equipped = equippedPets.includes(p.id);
+      const canAfford = this.meta.credits >= p.costGrids && this.meta.protocolFragments >= p.costFragments;
+      const rc = roleColors[p.type] || '#cfe9ff';
+
+      let cls = 'ch-card';
+      if (equipped) cls += ' selected';
+      if (!owned) cls += ' locked';
+
+      let badgeHtml;
+      if (equipped) {
+        badgeHtml = `<span class="ch-badge selected-badge">◈ SLOT ${equippedPets.indexOf(p.id) + 1}</span>
+                     <span class="ch-badge equip-btn" data-pet-remove="${p.id}" style="color:#f87171;border-color:rgba(248,113,113,.35)">REMOVE</span>`;
+      } else if (owned) {
+        if (equippedPets.length < slots) {
+          badgeHtml = `<span class="ch-badge equip-btn" data-pet-equip="${p.id}">EQUIP</span>`;
+        } else {
+          badgeHtml = '<span class="ch-badge locked-badge">SLOTS FULL</span>';
+        }
+      } else if (!canAfford) {
+        const costParts = [];
+        if (p.costGrids > 0)    costParts.push(p.costGrids + ' ⬡');
+        if (p.costFragments > 0) costParts.push(p.costFragments + ' 🧩');
+        badgeHtml = `<span class="ch-badge poor">${costParts.join(' + ')}</span>`;
+      } else {
+        const costParts = [];
+        if (p.costGrids > 0)    costParts.push(p.costGrids + ' ⬡');
+        if (p.costFragments > 0) costParts.push(p.costFragments + ' 🧩');
+        badgeHtml = `<span class="ch-badge buy-btn" data-pet-buy="${p.id}">BUY ${costParts.join(' + ')}</span>`;
+      }
+
+      return `<div class="${cls}">
+        <img class="ch-card-img" src="${p.spritePath}?v=20260703995000" alt="${p.name}">
+        <div class="ch-card-body">
+          <div class="ch-card-name">${p.name}</div>
+          <div class="ch-card-role" style="color:${rc}">${p.role}</div>
+          <div class="ch-card-desc">${p.desc}</div>
+          <div class="ch-card-foot">${badgeHtml}</div>
+        </div>
+      </div>`;
+    }).join('');
+
+    // Wire pet buy buttons
+    petGrid.querySelectorAll('[data-pet-buy]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const pid = btn.dataset.petBuy;
+        const pDef = getPetById(pid);
+        if (pDef && this.meta.tryBuyPet(pid, pDef.costGrids, pDef.costFragments) === 'ok') {
+          this._syncHangarOverlay();
+        }
+      });
+    });
+
+    // Wire pet equip buttons
+    petGrid.querySelectorAll('[data-pet-equip]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const pid = btn.dataset.petEquip;
+        const nextSlot = equippedPets.length;
+        this.meta.selectPet(nextSlot, pid);
+        this._syncHangarOverlay();
+      });
+    });
+
+    // Wire pet remove buttons
+    petGrid.querySelectorAll('[data-pet-remove]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const pid = btn.dataset.petRemove;
+        const idx = equippedPets.indexOf(pid);
+        if (idx >= 0) { this.meta.deselectPet(idx); this._syncHangarOverlay(); }
       });
     });
   }
@@ -5612,6 +6005,8 @@ export class Game {
 
     // ── Vessel passive runtime tick ──────────────────────────────────────────
     this._tickVesselPassives(dt);
+    // ── Cyber-Pet AI tick ─────────────────────────────────────────────────────
+    this._tickPets(dt);
 
     // ── MapManager + ChunkManager update (biome transitions, chunk streaming) ─
     this.mapManager.update(dt);
@@ -9456,6 +9851,8 @@ export class Game {
       this._drawActiveVessel(ctx);
       drawGlow(ctx, this.player.pos.x, this.player.pos.y, 48, CYAN, 0.28); // player hero glow
       this.player.draw(ctx, this._lastMousePos || { x: 0, y: 0 });
+      // ── Draw cyber-pets near the player ──
+      this._drawPets(ctx);
     }
     this._drawUltAura(ctx);
 
