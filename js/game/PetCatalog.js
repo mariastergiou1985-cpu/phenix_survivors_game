@@ -50,7 +50,7 @@ export const PETS = Object.freeze([
     costFragments: 3,
     unlockByDefault: false,
     // Behavior params
-    orbitRadius: 82,       // orbit distance from player — close enough to feel attached, far enough to block
+    orbitRadius: 56,       // orbit distance from player — tight 48–64 range, visibly attached
     orbitSpeed: 1.8,       // radians/sec
     blockRadius: 24,       // collision radius vs enemy projectiles (scaled with larger sprite)
   },

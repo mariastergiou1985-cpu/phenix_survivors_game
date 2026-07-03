@@ -40,7 +40,7 @@ import { StateManager, GAME_STATES } from './StateManager.js?v=20260703990000';
 import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260703999000';
 import { NexusManager } from './NexusManager.js?v=20260703999000';
 import { VESSELS, getVesselById, getDefaultVesselId } from './VesselCatalog.js?v=20260703996000';
-import { PETS, getPetById } from './PetCatalog.js?v=20260703998000';
+import { PETS, getPetById } from './PetCatalog.js?v=20260703999100';
 
 // Euclid Vector toxin kit — used ONLY when selectedCharacter === 'euclid_vector' (world-space).
 import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=20260703990000';
@@ -1764,11 +1764,9 @@ export class Game {
   }
 
   _tickPetAttack(pet, dt, px, py, bobY) {
-    // Hover beside/behind the player — clearly visible companion
-    const idx = this._activePets.indexOf(pet);
-    const offX = idx === 0 ? 52 : -52;
-    const targetX = px + offX;
-    const targetY = py - 36 + bobY;
+    // Byte-Mite: player-relative offset — visible companion drone
+    const targetX = px - 38;
+    const targetY = py - 24 + bobY;
     const lerp = 1 - Math.pow(0.02, dt);  // smooth companion follow
     pet.x += (targetX - pet.x) * lerp;
     pet.y += (targetY - pet.y) * lerp;
@@ -1803,11 +1801,9 @@ export class Game {
   }
 
   _tickPetUtility(pet, dt, px, py, bobY) {
-    // Hover near player — clearly visible companion
-    const idx = this._activePets.indexOf(pet);
-    const offX = idx === 0 ? -56 : 56;
-    const targetX = px + offX;
-    const targetY = py - 26 + bobY;
+    // Data Miner Drone: player-relative offset — visible companion drone
+    const targetX = px + 42;
+    const targetY = py + 18 + bobY;
     const lerp = 1 - Math.pow(0.02, dt);  // smooth companion follow
     pet.x += (targetX - pet.x) * lerp;
     pet.y += (targetY - pet.y) * lerp;
@@ -1862,11 +1858,9 @@ export class Game {
   }
 
   _tickPetControl(pet, dt, px, py, bobY) {
-    // Hover near player — clearly visible companion
-    const idx = this._activePets.indexOf(pet);
-    const offX = idx === 0 ? 48 : -48;
-    const targetX = px + offX;
-    const targetY = py + 26 + bobY;
+    // Error-Code Bomber: player-relative offset — visible companion drone
+    const targetX = px - 46;
+    const targetY = py + 22 + bobY;
     const lerp = 1 - Math.pow(0.02, dt);  // smooth companion follow
     pet.x += (targetX - pet.x) * lerp;
     pet.y += (targetY - pet.y) * lerp;
@@ -9908,11 +9902,12 @@ export class Game {
     // Digital Singularity OWNS the player while active (it draws the dissolving/reforming sprite
     // in screen space), so skip the normal world-space player draw during the ultimate.
     if (!(this.player.selectedCharacter === 'japan_phasewalker' && this._digitalSingularity?.isActive())) {
-      // ── Draw vessel sprite behind the player character ──
-      this._drawActiveVessel(ctx);
+      // ── Player character (under vessel — vessel IS the main visual) ──
       drawGlow(ctx, this.player.pos.x, this.player.pos.y, 48, CYAN, 0.28); // player hero glow
       this.player.draw(ctx, this._lastMousePos || { x: 0, y: 0 });
-      // ── Draw cyber-pets near the player ──
+      // ── Vessel sprite ON TOP of player — this is the player ship ──
+      this._drawActiveVessel(ctx);
+      // ── Cyber-pets near the player (drawn after vessel) ──
       this._drawPets(ctx);
     }
     this._drawUltAura(ctx);
