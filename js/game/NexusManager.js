@@ -338,17 +338,8 @@ export class NexusManager {
     }
   }
 
-  /**
-   * Apply collected reward effects. Called by Game.js after update.
-   * @returns {Array<{type:string, label:string, color:string}>} collected rewards
-   */
-  collectRewards() {
-    const collected = [];
-    // Check for orbs that were marked as collected
-    // (They were already spliced from rewardOrbs — we track via the _collected flag)
-    // Actually, let's use a different approach: collect buffer
-    return collected;
-  }
+  // collectRewards() — removed (dead code). Reward orbs are collected directly
+  // in Game.js via the _collected flag + splice loop (lines 5552-5564).
 
   // ─── Biome Health ───────────────────────────────────────────────────────
   _updateBiomeHealth() {

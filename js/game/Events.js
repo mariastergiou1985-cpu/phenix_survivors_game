@@ -1,8 +1,8 @@
-import { Vec2, WIDTH, HEIGHT, ORANGE, GREEN, RED, YELLOW, CYAN, PURPLE } from '../constants.js';
-import { randomChoice, randomRange } from '../utils.js';
-import { FloatingText } from '../entities/FloatingText.js';
-import { DataCore } from '../entities/DataCore.js?v=20260615210000';
-import { Enemy } from '../entities/Enemy.js?v=20260615210000';
+import { Vec2, WIDTH, HEIGHT, ORANGE, GREEN, RED, YELLOW, CYAN, PURPLE } from '../constants.js?v=20260703990000';
+import { randomChoice, randomRange } from '../utils.js?v=20260703990000';
+import { FloatingText } from '../entities/FloatingText.js?v=20260703990000';
+import { DataCore } from '../entities/DataCore.js?v=20260703990000';
+import { Enemy } from '../entities/Enemy.js?v=20260703990000';
 
 const EVENT_LABELS = {
   drone_swarm:    'DRONE SWARM INCOMING',
@@ -44,7 +44,7 @@ export class SystemEventManager {
         w.warned = true;
         const label = EVENT_LABELS[w.type];
         game.floatingTexts.push(
-          new FloatingText(`!! ${label} IN 30s !!`, new Vec2(WIDTH / 2 - 180, HEIGHT / 2 - 80), ORANGE, 30)
+          new FloatingText(`!! ${label} IN 30s !!`, game.player.pos.add(new Vec2(-180, -80)), ORANGE, 30)
         );
       }
 
@@ -122,7 +122,7 @@ export class SystemEventManager {
     game.stealSpeedMultiplier = 2.0;
     this.activeEvent          = { type: 'grid_blackout', timer: 15 };
     game.floatingTexts.push(
-      new FloatingText('!! GRID BLACKOUT — CORES UNPROTECTED !!', new Vec2(WIDTH / 2 - 280, HEIGHT / 2), RED, 4)
+      new FloatingText('!! GRID BLACKOUT — CORES UNPROTECTED !!', game.player.pos.add(new Vec2(-280, 0)), RED, 4)
     );
   }
 
@@ -130,7 +130,7 @@ export class SystemEventManager {
     // Old overload reduction removed — overload is now a positive kill-based recharge meter
     for (const e of game.enemies) e.stunned = 1.0;
     game.floatingTexts.push(
-      new FloatingText('FIREWALL PURGE — SYSTEM CLEANSED!', new Vec2(WIDTH / 2 - 220, HEIGHT / 2), GREEN, 3)
+      new FloatingText('FIREWALL PURGE — SYSTEM CLEANSED!', game.player.pos.add(new Vec2(-220, 0)), GREEN, 3)
     );
   }
 
@@ -138,6 +138,7 @@ export class SystemEventManager {
     const minute = game.currentMinute();
     const boss   = new Enemy('Rogue AI Overlord', minute);
     boss.hp      *= 3;
+    boss.maxHp    = boss.hp;
     boss.isMegaBoss = true;
     game.enemies.push(boss);
     game.megaBoss = boss;
@@ -151,7 +152,7 @@ export class SystemEventManager {
     }
 
     game.floatingTexts.push(
-      new FloatingText('!! MEGA-BOSS HACKER ATTACK !!', new Vec2(WIDTH / 2 - 200, HEIGHT / 2 + 40), RED, 3)
+      new FloatingText('!! MEGA-BOSS HACKER ATTACK !!', game.player.pos.add(new Vec2(-200, 40)), RED, 3)
     );
     game.screenShake.trigger(5, 0.5);
   }
@@ -170,7 +171,7 @@ export class SystemEventManager {
     target.stored = 0;
 
     game.floatingTexts.push(
-      new FloatingText('MATRIX MELTDOWN — CORES EJECTED!', new Vec2(WIDTH / 2 - 220, HEIGHT / 2 - 40), RED, 3)
+      new FloatingText('MATRIX MELTDOWN — CORES EJECTED!', game.player.pos.add(new Vec2(-220, -40)), RED, 3)
     );
     game.screenShake.trigger(8, 1.5);
   }

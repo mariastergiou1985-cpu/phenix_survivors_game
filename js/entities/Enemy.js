@@ -46,6 +46,7 @@ export class Enemy {
     this.baseSpeed     = spd;
     this._baseSpeedFull = spd;   // canonical speed; baseSpeed is recomputed each frame with slow
     this.hp            = hp;
+    this.maxHp         = hp;
     this.color         = color;
     this.stealTime     = stealTime;
     this.contactDamage = contactDamage;
@@ -126,6 +127,20 @@ export class Enemy {
         this.bulletSpeed   = 320;
         this.bulletDamage  = 38;    // ~2x (20 → 38)
         this.bulletRadius  = 11;
+        this.bulletColor   = RED;
+        break;
+      case 'Rogue Punk':
+        this.shootInterval = 2.4;
+        this.bulletSpeed   = 360;
+        this.bulletDamage  = 7;
+        this.bulletRadius  = 5;
+        this.bulletColor   = MAGENTA;
+        break;
+      case 'Overclocked Berserker':
+        this.shootInterval = 3.2;
+        this.bulletSpeed   = 280;
+        this.bulletDamage  = 12;
+        this.bulletRadius  = 8;
         this.bulletColor   = RED;
         break;
       case 'Cyber Shooter':
@@ -718,7 +733,7 @@ export class Enemy {
     // Small HP bar
     if (this.hp > 1) {
       const bw = this.radius * 2;
-      drawBar(ctx, this.pos.x - bw / 2, this.pos.y - this.radius - 12, bw, 4, this.hp, Math.max(this.hp, 5), RED);
+      drawBar(ctx, this.pos.x - bw / 2, this.pos.y - this.radius - 12, bw, 4, this.hp, this.maxHp, RED);
     }
 
     // (Steal progress ring removed — enemies no longer steal)

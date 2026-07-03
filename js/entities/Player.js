@@ -63,6 +63,9 @@ export class Player {
       this.pickupRadius = 88;
     }
 
+    this._tankTimer   = 0;     // Oni Protocol 0: damage-reduction window
+    this.xpMult       = 1;     // XP Uplink meta multiplier
+
     this.carry        = 0;
     this.maxCarry     = 5;
     this.carriedCores = [];   // values of carried cores (3 = silver, 5 = gold), FIFO on deposit

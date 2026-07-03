@@ -11,7 +11,7 @@
 // Game.js until Phase 2 when each boss gets its own class.
 // ──────────────────────────────────────────────────────────────────────────
 
-import { EventBus, EVENTS } from './EventBus.js?v=20260702700000';
+import { EventBus, EVENTS } from './EventBus.js?v=20260703990000';
 
 // ─── Enemy Pool Tables ──────────────────────────────────────────────────────
 // Each tier: { from: seconds, pool: string[] }

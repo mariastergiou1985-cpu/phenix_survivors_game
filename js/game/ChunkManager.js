@@ -447,7 +447,7 @@ export class ChunkManager {
     const b = this.getActiveBounds();
     return {
       x: b.x + margin + Math.random() * (b.w - margin * 2),
-      y: b.y + margin + Math.random() * (b.w - margin * 2),
+      y: b.y + margin + Math.random() * (b.h - margin * 2),
     };
   }
 

@@ -4,44 +4,44 @@ import {
   PLAYER_RADIUS, CORE_RADIUS, MATRIX_RADIUS,
   DARK_BG, GRID_LINE, BLACK, CYAN, RED, GREEN, YELLOW, ORANGE, WHITE, PURPLE,
   CORE_COLORS, VIEW_SCALE, VIEW_W, VIEW_H, ENDLESS_VIEW_SCALE,
-} from '../constants.js';
-import { clamp, distance, safeNormalize, randomChoice, randomRange } from '../utils.js';
+} from '../constants.js?v=20260703990000';
+import { clamp, distance, safeNormalize, randomChoice, randomRange } from '../utils.js?v=20260703990000';
 
-import { FloatingText }   from '../entities/FloatingText.js';
-import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260629440000';
-import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260703700000';
-import { Player }         from '../entities/Player.js?v=20260703700000';
-import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260629440000';
-import { Enemy }          from '../entities/Enemy.js?v=20260703970000';
-import { SupportDrone }   from '../entities/SupportDrone.js?v=20260703940000';
+import { FloatingText }   from '../entities/FloatingText.js?v=20260703990000';
+import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260703990000';
+import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260703990000';
+import { Player }         from '../entities/Player.js?v=20260703990000';
+import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260703990000';
+import { Enemy }          from '../entities/Enemy.js?v=20260703990000';
+import { SupportDrone }   from '../entities/SupportDrone.js?v=20260703990000';
 
-import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260702440000';
-import { SystemEventManager } from './Events.js?v=20260629440000';
-import { UpgradeUI }      from './UpgradeUI.js?v=20260703940000';
-import { weightedSample } from './Upgrades.js?v=20260703940000';
-import { MutationUI }      from './MutationUI.js?v=20260629440000';
-import { sampleMutations } from './Mutations.js?v=20260629440000';
-import { drawHUD, drawEndScreen } from './HUD.js?v=20260703960000';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS } from './MetaProgress.js?v=20260629440000';
-import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260629440000';
+import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260703990000';
+import { SystemEventManager } from './Events.js?v=20260703990000';
+import { UpgradeUI }      from './UpgradeUI.js?v=20260703990000';
+import { weightedSample } from './Upgrades.js?v=20260703990000';
+import { MutationUI }      from './MutationUI.js?v=20260703990000';
+import { sampleMutations } from './Mutations.js?v=20260703990000';
+import { drawHUD, drawEndScreen } from './HUD.js?v=20260703990000';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS } from './MetaProgress.js?v=20260703990000';
+import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260703990000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
-import { GlitchDash } from '../effects/glitch-dash.js?v=20260629440000';
-import { EMPShockwave } from '../effects/emp-shockwave.js?v=20260701100000';
-import { DigitalSingularity } from '../effects/digital-singularity.js?v=20260701100000';
-import { Protocol0 } from '../effects/protocol-0.js?v=20260629440000';
-import { LaserEyes } from '../effects/laser-eyes.js?v=20260629440000';
-import { MeteorRain } from '../effects/meteor-rain.js?v=20260629440000';
-import { NpcWalker } from './NpcWalker.js?v=20260629560000';
-import { MapManager, BIOME_ID, BIOME_DEFS } from './MapManager.js?v=20260703300000';
-import { EventBus, EVENTS } from './EventBus.js?v=20260702700000';
-import { EnemySpawner, ELITE_WAVE as ELITE_WAVE_CFG, BOSS_WARN_COOLDOWN as BOSS_WARN_CD } from './EnemySpawner.js?v=20260703980000';
-import { StateManager, GAME_STATES } from './StateManager.js?v=20260702900000';
-import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260703900000';
-import { NexusManager } from './NexusManager.js?v=20260703900000';
+import { GlitchDash } from '../effects/glitch-dash.js?v=20260703990000';
+import { EMPShockwave } from '../effects/emp-shockwave.js?v=20260703990000';
+import { DigitalSingularity } from '../effects/digital-singularity.js?v=20260703990000';
+import { Protocol0 } from '../effects/protocol-0.js?v=20260703990000';
+import { LaserEyes } from '../effects/laser-eyes.js?v=20260703990000';
+import { MeteorRain } from '../effects/meteor-rain.js?v=20260703990000';
+import { NpcWalker } from './NpcWalker.js?v=20260703990000';
+import { MapManager, BIOME_ID, BIOME_DEFS } from './MapManager.js?v=20260703990000';
+import { EventBus, EVENTS } from './EventBus.js?v=20260703990000';
+import { EnemySpawner, ELITE_WAVE as ELITE_WAVE_CFG, BOSS_WARN_COOLDOWN as BOSS_WARN_CD } from './EnemySpawner.js?v=20260703990000';
+import { StateManager, GAME_STATES } from './StateManager.js?v=20260703990000';
+import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260703990000';
+import { NexusManager } from './NexusManager.js?v=20260703990000';
 
 // Euclid Vector toxin kit — used ONLY when selectedCharacter === 'euclid_vector' (world-space).
-import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=20260629440000';
+import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=20260703990000';
 
 // ── Eden Core character message pools (in-run transmissions) ────────────────
 const _EDEN_CHAR_POOLS = {
@@ -359,7 +359,7 @@ export class Game {
     // Endless Nexus image (not part of MapManager — it's a Nexus sprite)
     this._endlessNexusImage = new Image();
     this._endlessNexusImage.onerror = () => console.warn('[Nexus] missing assets/nexus/endless_nexus_base_8cores.png — using default Nexus visual');
-    this._endlessNexusImage.src = 'assets/nexus/endless_nexus_base_8cores.png?v=20260702700000';
+    this._endlessNexusImage.src = 'assets/nexus/endless_nexus_base_8cores.png?v=20260703990000';
 
     // Chaos Mode background — loaded by MapManager.loadBackgrounds()
 
@@ -3544,7 +3544,7 @@ export class Game {
     }
     // Armored Swarm Protocol — Endless-only extra HP scaling (modest; never touches Act 1 or bosses,
     // which are already tuned). Applied once at spawn so it can't compound or double-apply.
-    if (this.endless && !e.isBoss() && this._hasProto('armored_swarm')) e.hp = Math.round(e.hp * 1.18);
+    if (this.endless && !e.isBoss() && this._hasProto('armored_swarm')) { e.hp = Math.round(e.hp * 1.18); e.maxHp = e.hp; }
     // Blood Grid — enemy speed boost (Chaos only; non-boss; bounded +7%)
     if (this._chaosMode && !e.isBoss()) {
       const _esm = this._getActiveChaosLawModifiers().enemySpeedMult;
@@ -8184,6 +8184,7 @@ export class Game {
       e.isElite        = true;
       e.hp            *= ELITE_WAVE.hpMult;
       if (this._hasProto('armored_swarm')) e.hp = Math.round(e.hp * 1.18);   // Armored Swarm Protocol (Endless elites)
+      e.maxHp          = e.hp;   // sync maxHp after all multipliers
       e._baseSpeedFull *= ELITE_WAVE.speedMult;        // canonical speed (baseSpeed recomputed per frame)
       e.baseSpeed     *= ELITE_WAVE.speedMult;
       e.radius        *= ELITE_WAVE.radiusMult;
