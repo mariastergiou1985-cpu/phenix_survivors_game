@@ -1,5 +1,5 @@
-import { Vec2, WIDTH, HEIGHT, ORANGE, GREEN, RED, YELLOW, CYAN, PURPLE } from '../constants.js?v=20260703990000';
-import { randomChoice, randomRange } from '../utils.js?v=20260703990000';
+import { Vec2, WIDTH, HEIGHT, ORANGE, GREEN, RED, YELLOW, CYAN, PURPLE } from '../constants.js';
+import { randomChoice, randomRange } from '../utils.js';
 import { FloatingText } from '../entities/FloatingText.js?v=20260703990000';
 import { DataCore } from '../entities/DataCore.js?v=20260703990000';
 import { Enemy } from '../entities/Enemy.js?v=20260703990000';

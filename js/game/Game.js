@@ -4,8 +4,8 @@ import {
   PLAYER_RADIUS, CORE_RADIUS, MATRIX_RADIUS,
   DARK_BG, GRID_LINE, BLACK, CYAN, RED, GREEN, YELLOW, ORANGE, WHITE, PURPLE,
   CORE_COLORS, VIEW_SCALE, VIEW_W, VIEW_H, ENDLESS_VIEW_SCALE,
-} from '../constants.js?v=20260703990000';
-import { clamp, distance, safeNormalize, randomChoice, randomRange } from '../utils.js?v=20260703990000';
+} from '../constants.js';
+import { clamp, distance, safeNormalize, randomChoice, randomRange } from '../utils.js';
 
 import { FloatingText }   from '../entities/FloatingText.js?v=20260703990000';
 import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260703990000';
@@ -1568,6 +1568,7 @@ export class Game {
     }
 
     // Set vessel passive id for runtime checks
+    this._activeVesselId       = vid;               // used to draw the vessel sprite during gameplay
     this._activeVesselPassive = vDef.passive;       // null | 'grid_erase_pulse' | 'singularity_aura' | 'glitch_dodge' | 'overclocked_assault'
     this._vesselEnemySpeedMult = vDef.statMods.enemySpeedMult || 1;
     this._vesselPulseTimer     = 0;                 // grid_erase_pulse countdown
@@ -1615,6 +1616,24 @@ export class Game {
 
     // ── Overclocked Vanguard: fire rate mult is already applied via _vesselFireRateMult on player
     //    Enemy speed mult is applied at spawn time in _vesselEnemySpeedMult — no per-tick needed.
+  }
+
+  // ── Draw selected vessel sprite behind the player during gameplay ──────────
+  _drawActiveVessel(ctx) {
+    if (!this.player || !this._activeVesselId) return;
+    const spr = this._vesselSpriteCache?.[this._activeVesselId];
+    if (!spr || !spr.complete || spr.naturalWidth <= 0) return;
+
+    const px = this.player.pos.x;
+    const py = this.player.pos.y;
+    const sprH = 48;   // vessel rendered at 48px height (ships are big sprites, keep it sleek)
+    const sprW = Math.round(spr.naturalWidth * (sprH / spr.naturalHeight));
+
+    ctx.save();
+    ctx.globalAlpha = 0.75;
+    // Vessel sits slightly below + behind the character
+    ctx.drawImage(spr, px - sprW / 2, py - sprH / 2 + 12, sprW, sprH);
+    ctx.restore();
   }
 
   // Returns per-echo passive bonus scalars based on current archive state.
@@ -9433,6 +9452,8 @@ export class Game {
     // Digital Singularity OWNS the player while active (it draws the dissolving/reforming sprite
     // in screen space), so skip the normal world-space player draw during the ultimate.
     if (!(this.player.selectedCharacter === 'japan_phasewalker' && this._digitalSingularity?.isActive())) {
+      // ── Draw vessel sprite behind the player character ──
+      this._drawActiveVessel(ctx);
       drawGlow(ctx, this.player.pos.x, this.player.pos.y, 48, CYAN, 0.28); // player hero glow
       this.player.draw(ctx, this._lastMousePos || { x: 0, y: 0 });
     }
