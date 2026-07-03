@@ -116,14 +116,13 @@ export class ChunkManager {
     /** Whether chunk streaming is active */
     this.enabled = false;
 
-    // Biome assignment ring — 5 sectors radiating from Neon District center
-    // Neon District stays center-only (dist <= 2), not in this ring
+    // Biome assignment ring — 3 sectors radiating from Neon District center
+    // Neon District stays center-only (dist 0), not in this ring.
+    // Compact layout: 4 practical biomes total (center + 3 outer).
     this._biomeRing = [
       BIOME_ID.INDUSTRIAL_CORE,
-      BIOME_ID.ORBITAL_NEXUS,
       BIOME_ID.ABYSSAL_TRENCH,
       BIOME_ID.GLACIAL_EXPANSE,
-      BIOME_ID.DATA_WASTES,
     ];
   }
 
@@ -291,8 +290,8 @@ export class ChunkManager {
    * Determine which biome a chunk belongs to based on its position.
    * Compact layout (post-compaction):
    *   • dist === 0 : Neon District (center chunk only)
-   *   • dist 1–3   : 5 outer biomes as angular sectors (each biome once)
-   *   • dist >= 4   : The Null (world edge — discourages infinite wandering)
+   *   • dist 1–2   : 3 outer biomes as angular sectors (each biome once)
+   *   • dist >= 3   : The Null (world edge — discourages infinite wandering)
    * @param {number} cx
    * @param {number} cy
    * @returns {string} BIOME_ID
@@ -300,13 +299,13 @@ export class ChunkManager {
   _getBiomeForCoords(cx, cy) {
     const dist = Math.max(Math.abs(cx), Math.abs(cy));
 
-    // Center chunk only: Neon District (was 3×3 — now 1 chunk for tighter map)
+    // Center chunk only: Neon District
     if (dist === 0) return BIOME_ID.NEON_DISTRICT;
 
-    // World edge: The Null beyond dist 3 (keeps world finite, not infinite wandering)
-    if (dist >= 4) return BIOME_ID.THE_NULL;
+    // World edge: The Null at dist 3+ (compact map — 5×5 playable area)
+    if (dist >= 3) return BIOME_ID.THE_NULL;
 
-    // Outer biome ring (dist 1–3): 5 sectors by angle, each biome appears once
+    // Outer biome ring (dist 1–2): 3 sectors by angle, each biome appears once
     const angle = Math.atan2(cy, cx);                          // -PI to PI
     const normalizedAngle = (angle + Math.PI) / (2 * Math.PI); // 0 to 1
     const sectorIndex = Math.floor(normalizedAngle * this._biomeRing.length) % this._biomeRing.length;
@@ -414,6 +413,24 @@ export class ChunkManager {
       w: size, h: size,
       right: x + size,
       bottom: y + size,
+    };
+  }
+
+  // ─── Fixed World Bounds (playable area, not camera-relative) ─────────────
+  /**
+   * Returns the fixed bounding box of the entire playable area (dist 0–2).
+   * Player and entities are hard-clamped to this region to prevent wandering
+   * into The Null (black void at dist 3+).
+   * Chunks: cx,cy in [-2, 2] → 5×5 grid.
+   */
+  getWorldBounds() {
+    const minChunk = -2;
+    const maxChunk =  2;
+    return {
+      left:   minChunk * CHUNK_SIZE,
+      top:    minChunk * CHUNK_SIZE,
+      right:  (maxChunk + 1) * CHUNK_SIZE,
+      bottom: (maxChunk + 1) * CHUNK_SIZE,
     };
   }
 

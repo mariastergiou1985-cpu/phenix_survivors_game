@@ -122,49 +122,49 @@ export class Enemy {
     switch (type) {
       case 'Glitch Drone':
         this.shootInterval = 2.5;
-        this.bulletSpeed   = 380;
+        this.bulletSpeed   = 480;   // speed pass: 380 → 480
         this.bulletDamage  = 4;
         this.bulletRadius  = 5;
         this.bulletColor   = CYAN;
         break;
       case 'Security Defector Mech':
-        this.shootInterval = 2.6;   // threat pass: faster cadence (3.5 → 2.6)
-        this.bulletSpeed   = 280;
-        this.bulletDamage  = 20;    // ~2x (11 → 20)
+        this.shootInterval = 2.6;
+        this.bulletSpeed   = 400;   // speed pass: 280 → 400
+        this.bulletDamage  = 20;
         this.bulletRadius  = 9;
         this.bulletColor   = ORANGE;
         break;
       case 'Rogue AI Overlord':
-        this.shootInterval = 1.9;   // threat pass: faster cadence (2.5 → 1.9)
-        this.bulletSpeed   = 320;
-        this.bulletDamage  = 38;    // ~2x (20 → 38)
+        this.shootInterval = 1.9;
+        this.bulletSpeed   = 440;   // speed pass: 320 → 440
+        this.bulletDamage  = 38;
         this.bulletRadius  = 11;
         this.bulletColor   = RED;
         break;
       case 'Rogue Punk':
         this.shootInterval = 2.4;
-        this.bulletSpeed   = 360;
+        this.bulletSpeed   = 460;   // speed pass: 360 → 460
         this.bulletDamage  = 7;
         this.bulletRadius  = 5;
         this.bulletColor   = MAGENTA;
         break;
       case 'Overclocked Berserker':
         this.shootInterval = 3.2;
-        this.bulletSpeed   = 280;
+        this.bulletSpeed   = 400;   // speed pass: 280 → 400
         this.bulletDamage  = 12;
         this.bulletRadius  = 8;
         this.bulletColor   = RED;
         break;
       case 'Cyber Shooter':
         this.shootInterval = 2.2;
-        this.bulletSpeed   = 340;
+        this.bulletSpeed   = 440;   // speed pass: 340 → 440
         this.bulletDamage  = 6;
         this.bulletRadius  = 6;
         this.bulletColor   = CYAN;
         break;
       case 'Heavy Mech':
         this.shootInterval = 4.5;
-        this.bulletSpeed   = 180;
+        this.bulletSpeed   = 300;   // speed pass: 180 → 300
         this.bulletDamage  = 11;
         this.bulletRadius  = 9;
         this.bulletColor   = ORANGE;
@@ -172,56 +172,56 @@ export class Enemy {
       // ── New mini enemies — weapon-catalog-derived shooting stats ──
       case 'Abyss Maw':
         this.shootInterval = 4.5;
-        this.bulletSpeed   = 200;
+        this.bulletSpeed   = 340;   // speed pass: 200 → 340
         this.bulletDamage  = 20;
         this.bulletRadius  = 10;
         this.bulletColor   = PURPLE;
         break;
       case 'Amethyst Fang':
         this.shootInterval = 2.2;
-        this.bulletSpeed   = 720;
+        this.bulletSpeed   = 720;   // already fast — unchanged
         this.bulletDamage  = 14;
         this.bulletRadius  = 4;
         this.bulletColor   = PURPLE;
         break;
       case 'Ember Scarab':
         this.shootInterval = 2.8;
-        this.bulletSpeed   = 380;
+        this.bulletSpeed   = 480;   // speed pass: 380 → 480
         this.bulletDamage  = 10;
         this.bulletRadius  = 8;
         this.bulletColor   = ORANGE;
         break;
       case 'Pulse Burrower':
         this.shootInterval = 3.5;
-        this.bulletSpeed   = 300;
+        this.bulletSpeed   = 420;   // speed pass: 300 → 420
         this.bulletDamage  = 5;
         this.bulletRadius  = 6;
         this.bulletColor   = CYAN;
         break;
       case 'Rift Eye':
         this.shootInterval = 4.0;
-        this.bulletSpeed   = 340;
+        this.bulletSpeed   = 440;   // speed pass: 340 → 440
         this.bulletDamage  = 6;
         this.bulletRadius  = 7;
         this.bulletColor   = PURPLE;
         break;
       case 'Solar Stinger':
         this.shootInterval = 1.6;
-        this.bulletSpeed   = 520;
+        this.bulletSpeed   = 580;   // speed pass: 520 → 580
         this.bulletDamage  = 8;
         this.bulletRadius  = 5;
         this.bulletColor   = YELLOW;
         break;
       case 'Void Widow':
         this.shootInterval = 2.8;
-        this.bulletSpeed   = 400;
+        this.bulletSpeed   = 500;   // speed pass: 400 → 500
         this.bulletDamage  = 15;
         this.bulletRadius  = 7;
         this.bulletColor   = PURPLE;
         break;
       case 'Volt Rat':
         this.shootInterval = 3.5;
-        this.bulletSpeed   = 300;
+        this.bulletSpeed   = 420;   // speed pass: 300 → 420
         this.bulletDamage  = 5;
         this.bulletRadius  = 5;
         this.bulletColor   = CYAN;
@@ -241,15 +241,15 @@ export class Enemy {
   _tryShoot(game) {
     // Lazily arm melee elites with a modest ranged attack so EVERY elite has real projectile threat.
     if (this.isElite && !this.shootInterval) {
-      this.shootInterval = 2.6; this.bulletSpeed = 300; this.bulletDamage = 8; this.bulletRadius = 7; this.bulletColor = ORANGE;
+      this.shootInterval = 2.6; this.bulletSpeed = 420; this.bulletDamage = 8; this.bulletRadius = 7; this.bulletColor = ORANGE;
     }
     if (!this.shootInterval || this.shootTimer > 0) return;
     this.shootTimer = this.shootInterval;
 
     const boss = this.isBoss() || this.isMegaBoss;
     // Aim assist — lead the player by a fraction of their velocity (readable, still dodgeable):
-    // normal ~45%, elite ~55%, boss ~65%.
-    let aim    = boss ? 0.65 : this.isElite ? 0.55 : 0.45;
+    // normal ~50%, elite ~58%, boss ~68%.
+    let aim    = boss ? 0.68 : this.isElite ? 0.58 : 0.50;
     if (game._hasProto?.('predator_aim')) aim = Math.min(0.85, aim + 0.12);   // Predator Aim Protocol
     const pv   = game.player.vel || new Vec2();
     const lead = game.player.pos.add(pv.scale(aim * 0.28));

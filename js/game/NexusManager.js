@@ -49,10 +49,8 @@ const BIOME_NEXUS_COLORS = {
 // These are world-pixel positions relative to the chunk grid.
 const BIOME_RING_ORDER = [
   BIOME_ID.INDUSTRIAL_CORE,
-  BIOME_ID.ORBITAL_NEXUS,
   BIOME_ID.ABYSSAL_TRENCH,
   BIOME_ID.GLACIAL_EXPANSE,
-  BIOME_ID.DATA_WASTES,
 ];
 
 // ─── Helper ────────────────────────────────────────────────────────────────
@@ -146,8 +144,8 @@ export class NexusManager {
   }
 
   /**
-   * Endless: 4 Nexus per biome. Neon District Nexus near center, outer biomes
-   * placed in a ring ~3–4 chunks from origin in their angular sector.
+   * Endless: 4 Neon District Nexus near center + 1 Nexus per outer biome
+   * placed in a ring ~1.5 chunks from origin in their angular sector.
    */
   _createEndlessNexus() {
     // ── Neon District (center): 4 Nexus in a tighter diamond ──
@@ -180,7 +178,7 @@ export class NexusManager {
       const biomeId = BIOME_RING_ORDER[s];
       const biomeArr = this.biomeNexus.get(biomeId);
       // Match ChunkManager's angle mapping: normalizedAngle = (atan2+PI)/(2*PI)
-      // Sector s covers normalized range [s/5, (s+1)/5), so center = (s+0.5)/5
+      // Sector s covers normalized range [s/N, (s+1)/N), so center = (s+0.5)/N
       // Convert back: angle = center * 2*PI - PI
       const sectorCenter = (s + 0.5) / sectorCount;
       const sectorAngle = sectorCenter * Math.PI * 2 - Math.PI;

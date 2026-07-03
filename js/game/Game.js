@@ -989,7 +989,7 @@ export class Game {
     this._coreSpawnTimer = 0;         // rate-limit for matrix-deficit core replenishment
 
     this.acidRain      = null;  // { timer, damageAccum } | null
-    this.acidRainTimer = 600;   // first event at 10:00
+    this.acidRainTimer = 120;   // first acid rain at 2:00 (was 10:00 — too late to ever see)
 
     this._frozenSleet      = null;  // { phase, t, particles } | null — Chaos Mode only
     this._frozenSleetTimer = 9999; // first trigger on Chaos start (overridden in chaos block)
@@ -6120,6 +6120,13 @@ export class Game {
       WORLD_BOUNDS.top    = ab.y;
       WORLD_BOUNDS.right  = ab.right;
       WORLD_BOUNDS.bottom = ab.bottom;
+
+      // Hard-clamp player to the fixed playable area (dist 0–2 chunks) so they
+      // never wander into The Null (black void at dist 3+).
+      const wb = this.chunkManager.getWorldBounds();
+      const pad = 20; // small inset so player stays visually inside
+      this.player.pos.x = Math.max(wb.left + pad, Math.min(wb.right - pad, this.player.pos.x));
+      this.player.pos.y = Math.max(wb.top + pad,  Math.min(wb.bottom - pad, this.player.pos.y));
     }
 
     // ── Eden Core in-run transmissions (Endless only, safe) ──────────────────
@@ -7249,10 +7256,11 @@ export class Game {
       b.life -= dt;
 
       // OOB check: use camera-relative coords so bullets survive in the larger Endless world.
-      // In Act 1, camera starts at (0,0) so this is equivalent to the old WIDTH/HEIGHT check.
+      // Margin of 400px keeps bullets alive long enough to reach distant targets with
+      // faster projectile speeds while still culling off-screen bullets eventually.
       const bx = b.pos.x - this.camera.x, by = b.pos.y - this.camera.y;
-      if (b.life <= 0 || bx < -120 || bx > this._viewW + 120 ||
-          by < -120 || by > this._viewH + 120) {
+      if (b.life <= 0 || bx < -400 || bx > this._viewW + 400 ||
+          by < -400 || by > this._viewH + 400) {
         this.enemyBullets.splice(i, 1);
         continue;
       }
@@ -8811,10 +8819,24 @@ export class Game {
     // Enemies still receive knockback (applied in update() before movement AI) but their
     // AI/movement/shooting is paused for the duration. Player is unaffected.
     const enemyDt = (this._hitStopTimer > 0) ? dt * 0.08 : dt;
+    // Distance cull threshold — enemies beyond this from the player are recycled
+    // so they can respawn closer. Keeps all enemies actively chasing the player.
+    const CULL_DIST = 3200; // ~2.5 chunks — well beyond viewport but not too aggressive
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       const e = this.enemies[i];
       e.update(enemyDt, this);
       e.keepInBounds();
+
+      // Distance cull: recycle enemies that fell too far behind the player (Endless only).
+      // Bosses and elites are exempt — they should always persist.
+      if (this.endless && !e.isBoss() && !e.isMegaBoss && !e.isElite) {
+        const dx = e.pos.x - this.player.pos.x;
+        const dy = e.pos.y - this.player.pos.y;
+        if (dx * dx + dy * dy > CULL_DIST * CULL_DIST) {
+          this.enemies.splice(i, 1);
+          continue;
+        }
+      }
 
       // Dash intercept: dashing into a carrying enemy forces core drop
       if (e.carryingCore !== null && this.player.dashTimer > 0) {
@@ -11665,37 +11687,68 @@ export class Game {
     alpha = Math.max(0, Math.min(1, alpha));
 
     const panelW = Math.min(820, WIDTH - 60);
-    const panelH = 76;
+    const panelH = 84;
     const panelX = Math.round(WIDTH  / 2 - panelW / 2);
     const panelY = Math.round(HEIGHT / 2 - 100);
 
     ctx.save();
     ctx.globalAlpha = alpha;
 
-    // Dark backing panel
-    ctx.fillStyle = 'rgba(0,0,12,0.84)';
+    // Dark backing panel with gradient
+    const grad = ctx.createLinearGradient(panelX, panelY, panelX + panelW, panelY);
+    grad.addColorStop(0,   'rgba(0,0,12,0.92)');
+    grad.addColorStop(0.5, 'rgba(0,0,20,0.96)');
+    grad.addColorStop(1,   'rgba(0,0,12,0.92)');
+    ctx.fillStyle = grad;
     ctx.fillRect(panelX, panelY, panelW, panelH);
 
-    // Colored border top + bottom
+    // Outer colored border
     ctx.strokeStyle = a.color;
     ctx.lineWidth   = 2;
     ctx.strokeRect(panelX, panelY, panelW, panelH);
 
-    // Subtle inner glow line at top
-    ctx.strokeStyle = a.color;
-    ctx.lineWidth   = 1;
-    ctx.globalAlpha = alpha * 0.35;
+    // Top accent glow bar
+    const glowGrad = ctx.createLinearGradient(panelX, panelY, panelX + panelW, panelY);
+    glowGrad.addColorStop(0,   'transparent');
+    glowGrad.addColorStop(0.3, a.color);
+    glowGrad.addColorStop(0.7, a.color);
+    glowGrad.addColorStop(1,   'transparent');
+    ctx.strokeStyle = glowGrad;
+    ctx.lineWidth   = 3;
+    ctx.globalAlpha = alpha * 0.6;
     ctx.beginPath();
-    ctx.moveTo(panelX + 4, panelY + 4);
-    ctx.lineTo(panelX + panelW - 4, panelY + 4);
+    ctx.moveTo(panelX, panelY);
+    ctx.lineTo(panelX + panelW, panelY);
     ctx.stroke();
     ctx.globalAlpha = alpha;
 
-    // Event text
-    ctx.font      = 'bold 30px Consolas, monospace';
+    // Corner accent marks
+    const cm = 14;
+    ctx.strokeStyle = a.color;
+    ctx.lineWidth   = 2;
+    ctx.globalAlpha = alpha * 0.7;
+    // Top-left
+    ctx.beginPath(); ctx.moveTo(panelX, panelY + cm); ctx.lineTo(panelX, panelY); ctx.lineTo(panelX + cm, panelY); ctx.stroke();
+    // Top-right
+    ctx.beginPath(); ctx.moveTo(panelX + panelW - cm, panelY); ctx.lineTo(panelX + panelW, panelY); ctx.lineTo(panelX + panelW, panelY + cm); ctx.stroke();
+    // Bottom-left
+    ctx.beginPath(); ctx.moveTo(panelX, panelY + panelH - cm); ctx.lineTo(panelX, panelY + panelH); ctx.lineTo(panelX + cm, panelY + panelH); ctx.stroke();
+    // Bottom-right
+    ctx.beginPath(); ctx.moveTo(panelX + panelW - cm, panelY + panelH); ctx.lineTo(panelX + panelW, panelY + panelH); ctx.lineTo(panelX + panelW, panelY + panelH - cm); ctx.stroke();
+    ctx.globalAlpha = alpha;
+
+    // Small sub-label above main text
+    ctx.font      = 'bold 11px Consolas, monospace';
     ctx.fillStyle = a.color;
     ctx.textAlign = 'center';
-    ctx.fillText(a.text, WIDTH / 2, panelY + 47);
+    ctx.globalAlpha = alpha * 0.55;
+    ctx.fillText('[ SYSTEM EVENT ]', WIDTH / 2, panelY + 20);
+    ctx.globalAlpha = alpha;
+
+    // Main event text
+    ctx.font      = 'bold 30px Consolas, monospace';
+    ctx.fillStyle = a.color;
+    ctx.fillText(a.text, WIDTH / 2, panelY + 54);
 
     ctx.restore();
   }
