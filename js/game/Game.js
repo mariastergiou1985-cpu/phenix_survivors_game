@@ -766,11 +766,7 @@ export class Game {
     const _outfit     = this.meta.getSelectedOutfit(_char);
     const _outfitPath = _outfit === 'default' ? null : this.meta.getOutfitAsset(_char, _outfit);
     this.player       = new Player(this.selectedCharacter, _outfitPath);
-    this._applyMetaUpgrades();
-    this._applyVesselPassives();
-    this._initActivePets();
-    this._echoPassiveMsgFired = false;
-    this._applyBossEchoPassives();
+    this._initializeRunStats();           // consolidated stat stacking (grid + vessel + pets + echoes)
     // ── NexusManager: manages all Nexus stations, per-biome health, rewards ──
     if (!this.nexusManager) {
       this.nexusManager = new NexusManager({ endless: false });
@@ -1333,11 +1329,7 @@ export class Game {
     this.mutations         = this._freshMutations();   // fresh forced-mutation state for THIS Endless run
     this.mutationUI        = null;
     this._mutationTimer    = MUTATION_INTERVAL;         // first forced mutation at 3:00 into Endless
-    this._applyEndlessProtocols();     // one-shot Achievement Protocol stat boosts (Endless only)
-    // Chaos Law — xpMult boost (applied after protocols so stacking is clean)
-    { const _clm = this._getActiveChaosLawModifiers();
-      if (_clm.xpMult !== 1 && this.player) this.player.xpMult = (this.player.xpMult || 1) * _clm.xpMult; }
-    this._checkEndlessAchievements();  // grant FIRST ENDLESS RUN immediately on entering Endless
+    this._initializeEndlessStats();    // consolidated Endless stat stacking (protocols + chaos laws)
     this.audio?.startEndlessMusic();   // Endless-only track (dawn) replaces gameplay music
     this.triggerAnnouncement('STAGE 02 — NEON SHINJUKU PLAZA', CYAN);   // Endless Stage 02 visuals
 
@@ -1502,6 +1494,28 @@ export class Game {
     });
   }
 
+  // ─── Endless Stat Initializer ─────────────────────────────────────────────
+  // Single entry point for Endless-only stat boosts. Called once from
+  // startEndlessRun() / continueEndless() AFTER the base _initializeRunStats().
+  // Stacking order: Achievement Protocols (additive) → Chaos Law xpMult (multiplicative).
+  _initializeEndlessStats() {
+    this._applyEndlessProtocols();          // one-shot Achievement Protocol stat boosts
+    // Chaos Law — xpMult boost (applied after protocols so stacking is clean)
+    { const _clm = this._getActiveChaosLawModifiers();
+      if (_clm.xpMult !== 1 && this.player) this.player.xpMult = (this.player.xpMult || 1) * _clm.xpMult; }
+    this._checkEndlessAchievements();       // grant FIRST ENDLESS RUN immediately on entering Endless
+
+    // Update debug runConfig with Endless-specific boosts
+    if (this._runConfig && this.player) {
+      this._runConfig.endless      = true;
+      this._runConfig.xpMult       = this.player.xpMult;
+      this._runConfig.maxHp        = this.player.maxHp;
+      this._runConfig.maxCarry     = this.player.maxCarry;
+      this._runConfig.chaosLaw     = this._getActiveChaosLawModifiers();
+      this._runConfig.achievements = this.meta ? Object.keys(this.meta.achievements || {}).filter(k => this.meta.achievements[k]).length : 0;
+    }
+  }
+
   // Achievement Protocols — passive Endless rewards that auto-activate from existing achievement
   // unlock state (no save migration). One-shot stat boosts applied here when entering Endless;
   // the per-frame protocols (damage / overload / mastery weight) are read live elsewhere. Locked
@@ -1562,6 +1576,39 @@ export class Game {
   }
 
   goToInstructions() { this._hideMenuOverlay(); this._hideSettingsOverlay(); this.gameState = 'instructions'; }
+
+  // ─── Run Stat Initializer ─────────────────────────────────────────────────
+  // Single entry point that stacks ALL permanent bonuses before a run begins.
+  // Order matters: additive grid upgrades → multiplicative vessel → pets → boss echoes.
+  // Called once from reset() for every run type (Act 1 + Endless).
+  // Endless-only boosts (Achievement Protocols, Chaos Laws) are applied separately
+  // in _initializeEndlessStats() after the Endless entry setup.
+  _initializeRunStats() {
+    this._applyMetaUpgrades();            // Grid upgrades (additive)
+    this._applyVesselPassives();          // Vessel stat mods (multiplicative)
+    this._initActivePets();               // Pet companions
+    this._echoPassiveMsgFired = false;
+    this._applyBossEchoPassives();        // Boss echo bonuses
+
+    // Debug summary — final player stats after all stacking
+    if (this.player) {
+      this._runConfig = {
+        maxHp:      this.player.maxHp,
+        speedBonus: this.player.speedBonus,
+        xpMult:     this.player.xpMult,
+        maxMana:    this.player.maxMana,
+        maxCarry:   this.player.maxCarry,
+        pickupRadius: this.player.pickupRadius,
+        pulseDamage:  this.player.upgrades?.['Pulse Damage'] || 0,
+        firewall:     this.player.upgrades?.['Firewall Protection'] || 0,
+        contactDmgReduction: this.player.contactDamageReduction || 0,
+        vesselId:     this._activeVesselId || 'none',
+        vesselPassive: this._activeVesselPassive || 'none',
+        bossEchoes:   this.meta ? Object.keys(this.meta.bossEchoes || {}).filter(k => this.meta.bossEchoes[k]).length : 0,
+        petCount:     this._activePets?.length || 0,
+      };
+    }
+  }
 
   // ─── Meta upgrades ──────────────────────────────────────────────────────────
   _applyMetaUpgrades() {
