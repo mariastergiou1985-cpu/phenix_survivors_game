@@ -6302,6 +6302,7 @@ export class Game {
       }
     }
     // Tick ember trail zones — burn enemies, remove expired
+    if (!this._emberTrail) this._emberTrail = [];
     for (let i = this._emberTrail.length - 1; i >= 0; i--) {
       const em = this._emberTrail[i];
       em.ttl -= dt;
@@ -6318,6 +6319,7 @@ export class Game {
       if (this._cryoChargeCd >= 30) { this._cryoChargeReady = true; this._cryoChargeCd = 0; }
     }
     // ── Oni Blood Circuit relic: tick marked enemies, remove expired ──
+    if (!this._oniBloodMarks) this._oniBloodMarks = new Map();
     if (this._oniBloodMarks.size > 0) {
       for (const [e, ttl] of this._oniBloodMarks) {
         const newTtl = ttl - dt;
@@ -7385,7 +7387,7 @@ export class Game {
           // Primary-fire soft cap: bosses/mega bosses absorb only capped DPS (normal enemies unaffected).
           const pm = this._primaryMasteryLvl();
           const baseDmg = (e.isBoss() || e.isMegaBoss) ? this._capBossDamage(e, p.damage) : p.damage;
-          const bloodMark = this._oniBloodMarks.has(e) ? 1.15 : 1;
+          const bloodMark = this._oniBloodMarks?.has(e) ? 1.15 : 1;
           e.takeHit(baseDmg * (1 + 0.12 * pm) * bloodMark, this);
           if (pm > 0) this.particles.spawnHitSparks(e.pos, this._primarySparkColor());  // char-matched primary spark
           this._tryCorrode(e);
