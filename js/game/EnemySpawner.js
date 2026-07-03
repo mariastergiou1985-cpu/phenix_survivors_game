@@ -17,15 +17,15 @@ import { EventBus, EVENTS } from './EventBus.js?v=20260702700000';
 // Each tier: { from: seconds, pool: string[] }
 // Pool is passed to randomChoice() — duplicates = higher weight.
 const ACT1_POOLS = [
-  { from: 0,   pool: ['Scrap Scavenger', 'Scrap Scavenger', 'Combat Hunter', 'Glitch Drone', 'Volt Rat', 'Cryo Claw'] },
-  { from: 60,  pool: ['Combat Hunter', 'Cyber Shooter', 'Scrap Scavenger', 'Volt Rat', 'Cryo Claw', 'Toxin Leech'] },
-  { from: 90,  pool: ['Combat Hunter', 'Combat Hunter', 'Cyber Shooter', 'Scrap Scavenger', 'Volt Rat', 'Solar Stinger', 'Ember Scarab'] },
-  { from: 180, pool: ['Combat Hunter', 'Cyber Shooter', 'Cyber Shooter', 'Scrap Scavenger', 'Cyber-Net Junkie', 'Rogue Punk', 'Solar Stinger', 'Amethyst Fang', 'Ember Scarab', 'Volt Rat'] },
-  { from: 360, pool: ['Combat Hunter', 'Cyber Shooter', 'Stealth Infiltrator', 'Scrap Scavenger', 'Cyber-Net Junkie', 'Rogue Punk', 'Pulse Burrower', 'Rift Eye', 'Void Widow', 'Solar Stinger'] },
-  { from: 600, pool: ['Combat Hunter', 'Cyber Shooter', 'Overclocked Berserker', 'Scrap Scavenger', 'Cyber-Net Junkie', 'Rogue Punk', 'Abyss Maw', 'Void Widow', 'Amethyst Fang', 'Pulse Burrower'] },
-  { from: 900, pool: ['Combat Hunter', 'Cyber Shooter', 'Heavy Mech', 'Overclocked Berserker', 'Scrap Scavenger', 'Rogue Punk', 'Abyss Maw', 'Rift Eye', 'Ember Scarab', 'Void Widow', 'Volt Rat'] },
-  { from: 1200, pool: ['Combat Hunter', 'Cyber Shooter', 'Heavy Mech', 'Overclocked Berserker', 'Cyber-Net Junkie', 'Rogue Punk', 'Abyss Maw', 'Amethyst Fang', 'Solar Stinger', 'Pulse Burrower', 'Toxin Leech', 'Cryo Claw'] },
-  { from: 1500, pool: ['Overclocked Berserker', 'Combat Hunter', 'Cyber Shooter', 'Heavy Mech', 'Cyber-Net Junkie', 'Rogue Punk', 'Abyss Maw', 'Void Widow', 'Rift Eye', 'Ember Scarab', 'Amethyst Fang', 'Solar Stinger', 'Volt Rat', 'Pulse Burrower', 'Toxin Leech', 'Cryo Claw'] },
+  { from: 0,   pool: ['Scrap Scavenger', 'Combat Hunter', 'Glitch Drone', 'Rogue Punk', 'Volt Rat', 'Cryo Claw', 'Cyber Shooter', 'Stealth Infiltrator'] },
+  { from: 60,  pool: ['Combat Hunter', 'Cyber Shooter', 'Scrap Scavenger', 'Glitch Drone', 'Rogue Punk', 'Stealth Infiltrator', 'Volt Rat', 'Cryo Claw', 'Toxin Leech'] },
+  { from: 90,  pool: ['Combat Hunter', 'Cyber Shooter', 'Scrap Scavenger', 'Glitch Drone', 'Rogue Punk', 'Stealth Infiltrator', 'Overclocked Berserker', 'Volt Rat', 'Solar Stinger', 'Ember Scarab'] },
+  { from: 180, pool: ['Combat Hunter', 'Cyber Shooter', 'Scrap Scavenger', 'Glitch Drone', 'Rogue Punk', 'Stealth Infiltrator', 'Overclocked Berserker', 'Cyber-Net Junkie', 'Solar Stinger', 'Amethyst Fang', 'Ember Scarab', 'Volt Rat'] },
+  { from: 360, pool: ['Combat Hunter', 'Cyber Shooter', 'Scrap Scavenger', 'Glitch Drone', 'Rogue Punk', 'Stealth Infiltrator', 'Overclocked Berserker', 'Cyber-Net Junkie', 'Heavy Mech', 'Pulse Burrower', 'Rift Eye', 'Void Widow', 'Solar Stinger'] },
+  { from: 600, pool: ['Combat Hunter', 'Cyber Shooter', 'Scrap Scavenger', 'Glitch Drone', 'Rogue Punk', 'Stealth Infiltrator', 'Overclocked Berserker', 'Cyber-Net Junkie', 'Heavy Mech', 'Abyss Maw', 'Void Widow', 'Amethyst Fang', 'Pulse Burrower'] },
+  { from: 900, pool: ['Combat Hunter', 'Cyber Shooter', 'Scrap Scavenger', 'Glitch Drone', 'Rogue Punk', 'Stealth Infiltrator', 'Overclocked Berserker', 'Heavy Mech', 'Cyber-Net Junkie', 'Abyss Maw', 'Rift Eye', 'Ember Scarab', 'Void Widow', 'Volt Rat'] },
+  { from: 1200, pool: ['Combat Hunter', 'Cyber Shooter', 'Scrap Scavenger', 'Glitch Drone', 'Rogue Punk', 'Stealth Infiltrator', 'Overclocked Berserker', 'Heavy Mech', 'Cyber-Net Junkie', 'Abyss Maw', 'Amethyst Fang', 'Solar Stinger', 'Pulse Burrower', 'Toxin Leech', 'Cryo Claw'] },
+  { from: 1500, pool: ['Combat Hunter', 'Cyber Shooter', 'Scrap Scavenger', 'Glitch Drone', 'Rogue Punk', 'Stealth Infiltrator', 'Overclocked Berserker', 'Heavy Mech', 'Cyber-Net Junkie', 'Abyss Maw', 'Void Widow', 'Rift Eye', 'Ember Scarab', 'Amethyst Fang', 'Solar Stinger', 'Volt Rat', 'Pulse Burrower', 'Toxin Leech', 'Cryo Claw'] },
 ];
 
 const CHAOS_POOL = [
@@ -34,7 +34,8 @@ const CHAOS_POOL = [
   'Cyber Shooter',         'Cyber Shooter',
   'Heavy Mech',            'Heavy Mech',
   'Cyber-Net Junkie',      'Stealth Infiltrator',
-  'Scrap Scavenger',
+  'Scrap Scavenger',       'Glitch Drone',
+  'Rogue Punk',            'Rogue Punk',
   'Abyss Maw',             'Void Widow',
   'Amethyst Fang',         'Solar Stinger',
   'Ember Scarab',          'Rift Eye',
@@ -52,7 +53,7 @@ export const ELITE_WAVE = {
   hpMult:      2.0,
   speedMult:   1.10,
   radiusMult:  1.20,
-  pool: ['Combat Hunter', 'Cyber Shooter', 'Heavy Mech', 'Overclocked Berserker', 'Stealth Infiltrator', 'Abyss Maw', 'Void Widow', 'Ember Scarab', 'Amethyst Fang'],
+  pool: ['Combat Hunter', 'Cyber Shooter', 'Heavy Mech', 'Overclocked Berserker', 'Stealth Infiltrator', 'Glitch Drone', 'Rogue Punk', 'Abyss Maw', 'Void Widow', 'Ember Scarab', 'Amethyst Fang'],
 };
 
 // ─── Population Cap Curve ───────────────────────────────────────────────────
