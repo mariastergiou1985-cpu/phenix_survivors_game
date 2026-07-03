@@ -39,8 +39,8 @@ import { EnemySpawner, ELITE_WAVE as ELITE_WAVE_CFG, BOSS_WARN_COOLDOWN as BOSS_
 import { StateManager, GAME_STATES } from './StateManager.js?v=20260703990000';
 import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260703990000';
 import { NexusManager } from './NexusManager.js?v=20260703990000';
-import { VESSELS, getVesselById, getDefaultVesselId } from './VesselCatalog.js?v=20260703992000';
-import { PETS, getPetById } from './PetCatalog.js?v=20260703995000';
+import { VESSELS, getVesselById, getDefaultVesselId } from './VesselCatalog.js?v=20260703996000';
+import { PETS, getPetById } from './PetCatalog.js?v=20260703996000';
 
 // Euclid Vector toxin kit — used ONLY when selectedCharacter === 'euclid_vector' (world-space).
 import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=20260703990000';
@@ -1639,13 +1639,13 @@ export class Game {
 
     const px = this.player.pos.x;
     const py = this.player.pos.y;
-    const sprH = 48;   // vessel rendered at 48px height (ships are big sprites, keep it sleek)
+    const sprH = 64;   // vessel is the player's ship — render prominently
     const sprW = Math.round(spr.naturalWidth * (sprH / spr.naturalHeight));
 
     ctx.save();
-    ctx.globalAlpha = 0.75;
-    // Vessel sits slightly below + behind the character
-    ctx.drawImage(spr, px - sprW / 2, py - sprH / 2 + 12, sprW, sprH);
+    ctx.globalAlpha = 1.0;
+    // Vessel IS the player ship — centered on the character
+    ctx.drawImage(spr, px - sprW / 2, py - sprH / 2, sprW, sprH);
     ctx.restore();
   }
 
@@ -1654,13 +1654,15 @@ export class Game {
   _initActivePets() {
     this._activePets = [];
     const selectedIds = this.meta?.getSelectedPets() || ['byte_mite'];
+    const px = this.player ? this.player.pos.x : 0;
+    const py = this.player ? this.player.pos.y : 0;
     for (let i = 0; i < selectedIds.length; i++) {
       const def = getPetById(selectedIds[i]);
       if (!def) continue;
       const angle = (i / Math.max(selectedIds.length, 1)) * Math.PI * 2;
       this._activePets.push({
         def,
-        x: 0, y: 0,                       // world position (updated each tick)
+        x: px, y: py,                     // start at player position (companion spawn)
         angle,                             // orbit angle (Firewall) / hover angle
         timer: 0,                          // type-specific cooldown
         bobPhase: Math.random() * Math.PI * 2, // floating bob animation
@@ -1735,11 +1737,14 @@ export class Game {
   }
 
   _tickPetAttack(pet, dt, px, py, bobY) {
-    // Float near player (offset to upper-right)
+    // Hover beside/behind the player — smooth follow
     const idx = this._activePets.indexOf(pet);
     const offX = idx === 0 ? 40 : -40;
-    pet.x = px + offX;
-    pet.y = py - 30 + bobY;
+    const targetX = px + offX;
+    const targetY = py - 30 + bobY;
+    const lerp = 1 - Math.pow(0.02, dt);  // smooth companion follow
+    pet.x += (targetX - pet.x) * lerp;
+    pet.y += (targetY - pet.y) * lerp;
 
     pet.timer -= dt;
     if (pet.timer > 0) return;
@@ -1771,11 +1776,14 @@ export class Game {
   }
 
   _tickPetUtility(pet, dt, px, py, bobY) {
-    // Float near player (left side)
+    // Hover near player — smooth follow
     const idx = this._activePets.indexOf(pet);
     const offX = idx === 0 ? -45 : 45;
-    pet.x = px + offX;
-    pet.y = py - 20 + bobY;
+    const targetX = px + offX;
+    const targetY = py - 20 + bobY;
+    const lerp = 1 - Math.pow(0.02, dt);  // smooth companion follow
+    pet.x += (targetX - pet.x) * lerp;
+    pet.y += (targetY - pet.y) * lerp;
 
     pet.timer -= dt;
     if (pet.timer > 0) return;
@@ -1827,11 +1835,14 @@ export class Game {
   }
 
   _tickPetControl(pet, dt, px, py, bobY) {
-    // Float near player (below-right)
+    // Hover near player — smooth follow
     const idx = this._activePets.indexOf(pet);
     const offX = idx === 0 ? 35 : -35;
-    pet.x = px + offX;
-    pet.y = py + 20 + bobY;
+    const targetX = px + offX;
+    const targetY = py + 20 + bobY;
+    const lerp = 1 - Math.pow(0.02, dt);  // smooth companion follow
+    pet.x += (targetX - pet.x) * lerp;
+    pet.y += (targetY - pet.y) * lerp;
 
     pet.timer -= dt;
     if (pet.timer > 0) return;
