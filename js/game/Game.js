@@ -18499,11 +18499,14 @@ _drawLoreArchive(ctx) {
     const px = this.player.pos.x;
     const py = this.player.pos.y;
 
+    // ── Scale compensation: Endless zooms out to 0.55 — boost all sizes ──────
+    const sc = 1 / this._viewScale;   // ~1.82 in Endless, ~1.18 in Act 1
+
     // ── Proximity distances (adapted to 3840px world) ────────────────────────
-    const FADE_START = 700;   // px from boundary edge: effect starts fading in
-    const FADE_FULL  = 120;   // px from boundary edge: full intensity
-    const WALL_DEPTH = 180;   // how far outside the boundary the glow/grid extends
-    const GRID_STEP  = 80;    // grid line spacing
+    const FADE_START = 900;   // px from boundary edge: effect starts fading in
+    const FADE_FULL  = 150;   // px from boundary edge: full intensity
+    const WALL_DEPTH = 260;   // how far outside the boundary the glow/grid extends
+    const GRID_STEP  = 100;   // grid line spacing
 
     // ── Per-edge distance from player ────────────────────────────────────────
     const distL = px - wb.left;
@@ -18526,8 +18529,8 @@ _drawLoreArchive(ctx) {
 
     // ── Helper: flicker multiplier (sin + random jitter) ─────────────────────
     const flicker = (seed) => {
-      const base = 0.7 + 0.3 * Math.sin(now * 3.2 + seed * 1.7);
-      const glitch = Math.random() < 0.06 ? 0.3 + Math.random() * 0.4 : 1;
+      const base = 0.75 + 0.25 * Math.sin(now * 3.2 + seed * 1.7);
+      const glitch = Math.random() < 0.07 ? 0.2 + Math.random() * 0.5 : 1;
       return base * glitch;
     };
 
@@ -18542,13 +18545,13 @@ _drawLoreArchive(ctx) {
 
     // ═══════════════════════════════════════════════════════════════════════
     // Draw each edge: LEFT, RIGHT, TOP, BOTTOM
-    // Each edge = layered neon glow lines (outer→inner) + grid pattern
+    // Each edge = dark fog band + layered neon glow lines + grid pattern
     // ═══════════════════════════════════════════════════════════════════════
     const edges = [
-      { dist: distL, axis: 'v', pos: wb.left,   dir: -1, min: wb.top, max: wb.bottom },  // left
-      { dist: distR, axis: 'v', pos: wb.right,  dir:  1, min: wb.top, max: wb.bottom },  // right
-      { dist: distT, axis: 'h', pos: wb.top,    dir: -1, min: wb.left, max: wb.right },  // top
-      { dist: distB, axis: 'h', pos: wb.bottom, dir:  1, min: wb.left, max: wb.right },  // bottom
+      { dist: distL, axis: 'v', pos: wb.left,   dir: -1, min: wb.top, max: wb.bottom },
+      { dist: distR, axis: 'v', pos: wb.right,  dir:  1, min: wb.top, max: wb.bottom },
+      { dist: distT, axis: 'h', pos: wb.top,    dir: -1, min: wb.left, max: wb.right },
+      { dist: distB, axis: 'h', pos: wb.bottom, dir:  1, min: wb.left, max: wb.right },
     ];
 
     for (const edge of edges) {
@@ -18558,15 +18561,28 @@ _drawLoreArchive(ctx) {
       const fl = flicker(edge.pos);
       const a  = alpha * fl;
 
+      // ── Dark fog band behind the wall (contrast booster) ─────────────────
+      // Solid dark strip along the boundary so neon lines pop against any bg
+      ctx.globalAlpha = a * 0.55;
+      ctx.fillStyle = '#000a14';
+      if (edge.axis === 'v') {
+        const fogW = WALL_DEPTH + 60;
+        const fx = edge.dir < 0 ? edge.pos - fogW : edge.pos;
+        ctx.fillRect(fx, vy - 100, fogW, vh + 200);
+      } else {
+        const fogH = WALL_DEPTH + 60;
+        const fy = edge.dir < 0 ? edge.pos - fogH : edge.pos;
+        ctx.fillRect(vx - 100, fy, vw + 200, fogH);
+      }
+
       // ── Neon glow layers (outer to inner) ────────────────────────────────
-      // 5 layers at varying offsets from the boundary line, thickest & faintest
-      // on the outside, thinnest & brightest on the boundary itself.
+      // All sizes × sc so they read properly at Endless zoom-out
       const layers = [
-        { off:  48 * edge.dir, w: 28, color: '#00e5ff', opacity: 0.04 },
-        { off:  28 * edge.dir, w: 18, color: '#00e5ff', opacity: 0.08 },
-        { off:  12 * edge.dir, w: 10, color: '#00e5ff', opacity: 0.14 },
-        { off:   0,            w:  5, color: '#00ffff', opacity: 0.45 },
-        { off:  -6 * edge.dir, w:  2, color: '#ffffff', opacity: 0.55 },
+        { off:  80 * edge.dir, w: 60 * sc, color: '#00e5ff', opacity: 0.08 },
+        { off:  45 * edge.dir, w: 36 * sc, color: '#00e5ff', opacity: 0.15 },
+        { off:  20 * edge.dir, w: 20 * sc, color: '#00e5ff', opacity: 0.28 },
+        { off:   0,            w: 10 * sc, color: '#00ffff', opacity: 0.70 },
+        { off: -10 * edge.dir, w:  4 * sc, color: '#ffffff', opacity: 0.85 },
       ];
 
       for (const L of layers) {
@@ -18575,17 +18591,15 @@ _drawLoreArchive(ctx) {
         ctx.lineWidth   = L.w;
         ctx.beginPath();
         if (edge.axis === 'v') {
-          // Vertical edge (left/right) — draw vertical line
           const x = edge.pos + L.off;
-          const y0 = Math.max(edge.min - WALL_DEPTH, vy - 100);
-          const y1 = Math.min(edge.max + WALL_DEPTH, vy + vh + 100);
+          const y0 = Math.max(edge.min - WALL_DEPTH, vy - 200);
+          const y1 = Math.min(edge.max + WALL_DEPTH, vy + vh + 200);
           ctx.moveTo(x, y0);
           ctx.lineTo(x, y1);
         } else {
-          // Horizontal edge (top/bottom) — draw horizontal line
           const y = edge.pos + L.off;
-          const x0 = Math.max(edge.min - WALL_DEPTH, vx - 100);
-          const x1 = Math.min(edge.max + WALL_DEPTH, vx + vw + 100);
+          const x0 = Math.max(edge.min - WALL_DEPTH, vx - 200);
+          const x1 = Math.min(edge.max + WALL_DEPTH, vx + vw + 200);
           ctx.moveTo(x0, y);
           ctx.lineTo(x1, y);
         }
@@ -18593,30 +18607,26 @@ _drawLoreArchive(ctx) {
       }
 
       // ── Grid lines perpendicular to the boundary ─────────────────────────
-      // Short "fence post" lines radiating inward from the boundary
-      const gridAlpha = a * 0.18;
+      const gridAlpha = a * 0.35;
       if (gridAlpha > 0.01) {
         ctx.globalAlpha = gridAlpha;
         ctx.strokeStyle = '#00e5ff';
-        ctx.lineWidth   = 1.5;
+        ctx.lineWidth   = 2.5 * sc;
 
         if (edge.axis === 'v') {
-          // Vertical edge → horizontal grid rungs
           const x0 = edge.pos;
           const x1 = edge.pos + WALL_DEPTH * edge.dir;
-          const yStart = Math.max(edge.min, vy - 100);
-          const yEnd   = Math.min(edge.max, vy + vh + 100);
+          const yStart = Math.max(edge.min, vy - 200);
+          const yEnd   = Math.min(edge.max, vy + vh + 200);
           const firstY  = Math.ceil(yStart / GRID_STEP) * GRID_STEP;
           for (let gy = firstY; gy <= yEnd; gy += GRID_STEP) {
-            // Glitch: randomly skip some rungs
-            if (Math.random() < 0.12) continue;
+            if (Math.random() < 0.10) continue;
             ctx.beginPath();
             ctx.moveTo(x0, gy);
             ctx.lineTo(x1, gy);
             ctx.stroke();
           }
-          // Parallel vertical sub-lines inside the wall depth
-          ctx.lineWidth = 1;
+          ctx.lineWidth = 1.5 * sc;
           ctx.globalAlpha = gridAlpha * 0.5;
           for (let gx = GRID_STEP; gx < WALL_DEPTH; gx += GRID_STEP) {
             const lx = edge.pos + gx * edge.dir;
@@ -18626,21 +18636,19 @@ _drawLoreArchive(ctx) {
             ctx.stroke();
           }
         } else {
-          // Horizontal edge → vertical grid rungs
           const y0 = edge.pos;
           const y1 = edge.pos + WALL_DEPTH * edge.dir;
-          const xStart = Math.max(edge.min, vx - 100);
-          const xEnd   = Math.min(edge.max, vx + vw + 100);
+          const xStart = Math.max(edge.min, vx - 200);
+          const xEnd   = Math.min(edge.max, vx + vw + 200);
           const firstX  = Math.ceil(xStart / GRID_STEP) * GRID_STEP;
           for (let gx = firstX; gx <= xEnd; gx += GRID_STEP) {
-            if (Math.random() < 0.12) continue;
+            if (Math.random() < 0.10) continue;
             ctx.beginPath();
             ctx.moveTo(gx, y0);
             ctx.lineTo(gx, y1);
             ctx.stroke();
           }
-          // Parallel horizontal sub-lines inside the wall depth
-          ctx.lineWidth = 1;
+          ctx.lineWidth = 1.5 * sc;
           ctx.globalAlpha = gridAlpha * 0.5;
           for (let gy = GRID_STEP; gy < WALL_DEPTH; gy += GRID_STEP) {
             const ly = edge.pos + gy * edge.dir;
@@ -18653,27 +18661,43 @@ _drawLoreArchive(ctx) {
       }
 
       // ── Scanline noise band near boundary ────────────────────────────────
-      // Thin horizontal noise lines that flicker near the wall for extra grit
-      if (a > 0.3) {
-        const scanCount = Math.floor(6 * a);
-        ctx.lineWidth = 1;
+      if (a > 0.25) {
+        const scanCount = Math.floor(10 * a);
+        ctx.lineWidth = 2 * sc;
         for (let s = 0; s < scanCount; s++) {
           const noise = Math.random();
-          ctx.globalAlpha = a * 0.12 * noise;
+          ctx.globalAlpha = a * 0.22 * noise;
           ctx.strokeStyle = noise > 0.5 ? '#ff0055' : '#00e5ff';
-          const offset = (Math.random() - 0.5) * 80;
+          const offset = (Math.random() - 0.5) * 160;
           ctx.beginPath();
           if (edge.axis === 'v') {
             const sy = py + offset;
-            ctx.moveTo(edge.pos - 40, sy);
-            ctx.lineTo(edge.pos + 40, sy);
+            ctx.moveTo(edge.pos - 60, sy);
+            ctx.lineTo(edge.pos + 60, sy);
           } else {
             const sx = px + offset;
-            ctx.moveTo(sx, edge.pos - 40);
-            ctx.lineTo(sx, edge.pos + 40);
+            ctx.moveTo(sx, edge.pos - 60);
+            ctx.lineTo(sx, edge.pos + 60);
           }
           ctx.stroke();
         }
+      }
+
+      // ── Red danger stripe (extra visual punch at very close range) ────────
+      if (alpha > 0.6) {
+        const dangerPulse = 0.5 + 0.5 * Math.sin(now * 6);
+        ctx.globalAlpha = (alpha - 0.6) * 2.5 * dangerPulse * 0.4;
+        ctx.strokeStyle = '#ff0033';
+        ctx.lineWidth   = 14 * sc;
+        ctx.beginPath();
+        if (edge.axis === 'v') {
+          ctx.moveTo(edge.pos, vy - 200);
+          ctx.lineTo(edge.pos, vy + vh + 200);
+        } else {
+          ctx.moveTo(vx - 200, edge.pos);
+          ctx.lineTo(vx + vw + 200, edge.pos);
+        }
+        ctx.stroke();
       }
     }
 
@@ -18683,37 +18707,38 @@ _drawLoreArchive(ctx) {
     const minDist = Math.min(distL, distR, distT, distB);
     const textAlpha = proxAlpha(minDist);
 
-    if (textAlpha > 0.15) {
+    if (textAlpha > 0.1) {
       const textBlink = 0.5 + 0.5 * Math.sin(now * 5.5);
-      const glitchShift = Math.random() < 0.08 ? (Math.random() - 0.5) * 8 : 0;
+      const glitchShift = Math.random() < 0.10 ? (Math.random() - 0.5) * 14 : 0;
+      const fontSize = Math.round(26 * sc);
 
       // Position text between player and nearest boundary
       let tx = px, ty = py;
-      if (minDist === distL)      tx = Math.max(wb.left + 60, px - distL * 0.5);
-      else if (minDist === distR) tx = Math.min(wb.right - 60, px + distR * 0.5);
-      if (minDist === distT)      ty = Math.max(wb.top + 40, py - distT * 0.5);
-      else if (minDist === distB) ty = Math.min(wb.bottom - 40, py + distB * 0.5);
+      if (minDist === distL)      tx = Math.max(wb.left + 80, px - distL * 0.45);
+      else if (minDist === distR) tx = Math.min(wb.right - 80, px + distR * 0.45);
+      if (minDist === distT)      ty = Math.max(wb.top + 60, py - distT * 0.45);
+      else if (minDist === distB) ty = Math.min(wb.bottom - 60, py + distB * 0.45);
 
-      ctx.globalAlpha = textAlpha * textBlink * 0.85;
-      ctx.font = 'bold 14px Consolas, monospace';
+      ctx.globalAlpha = textAlpha * textBlink * 0.92;
+      ctx.font = 'bold ' + fontSize + 'px Consolas, monospace';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
 
-      // Red glitch shadow
+      // Red glitch shadow (offset for chromatic aberration feel)
       ctx.fillStyle = '#ff0033';
-      ctx.fillText('CRITICAL ERROR: GRID LIMIT REACHED', tx + glitchShift + 1.5, ty + 1);
+      ctx.fillText('CRITICAL ERROR: GRID LIMIT REACHED', tx + glitchShift + 2, ty + 2);
 
       // Cyan main text
       ctx.fillStyle = '#00ffff';
       ctx.fillText('CRITICAL ERROR: GRID LIMIT REACHED', tx + glitchShift, ty);
 
       // Second line — distance warning
-      if (minDist < 200) {
+      if (minDist < 300) {
         const urgency = Math.floor(Math.random() * 9000 + 1000);
-        ctx.globalAlpha = textAlpha * textBlink * 0.65;
-        ctx.font = 'bold 11px Consolas, monospace';
+        ctx.globalAlpha = textAlpha * textBlink * 0.75;
+        ctx.font = 'bold ' + Math.round(18 * sc) + 'px Consolas, monospace';
         ctx.fillStyle = '#ff4466';
-        ctx.fillText('// BREACH PROXIMITY: ' + urgency + ' — TURN BACK', tx + glitchShift, ty + 20);
+        ctx.fillText('// BREACH PROXIMITY: ' + urgency + ' — TURN BACK', tx + glitchShift, ty + 36 * sc);
       }
     }
 
@@ -19226,7 +19251,6 @@ _drawLoreArchive(ctx) {
     ctx.rotate(this._shardRingAngle);
 
     if (ready) {
-      ctx.globalAlpha = 0.85;
       ctx.drawImage(spr, -sz / 2, -sz / 2, sz, sz);
     } else {
       ctx.globalAlpha = 0.5;
