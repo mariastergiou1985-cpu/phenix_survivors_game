@@ -59,7 +59,7 @@ export const ELITE_WAVE = {
 // ─── Population Cap Curve ───────────────────────────────────────────────────
 // Five pressure tiers so the map is never empty for long.
 export const CAP_TIERS = [
-  { from: 0,  base: 28,  perMin: 8  },   // 28 → 36   light
+  { from: 0,  base: 38,  perMin: 10 },   // 38 → 58   light
   { from: 2,  base: 44,  perMin: 12 },   // 44 → 80   constant
   { from: 5,  base: 80,  perMin: 14 },   // 80 → 150  groups
   { from: 10, base: 150, perMin: 10 },   // 150 → 250 continuous
@@ -92,7 +92,7 @@ export class EnemySpawner {
    */
   enemyCap(minute, mode = {}) {
     let cap;
-    if (minute < 2)       cap = 28 + minute * 8;
+    if (minute < 2)       cap = 38 + minute * 10;
     else if (minute < 5)  cap = 44 + (minute - 2) * 12;
     else if (minute < 10) cap = 80 + (minute - 5) * 14;
     else if (minute < 20) cap = 150 + (minute - 10) * 10;
@@ -126,7 +126,7 @@ export class EnemySpawner {
    * @returns {number}
    */
   spawnBatchSize(minute, currentCount, cap, mode = {}) {
-    let count = minute < 2 ? 3 : minute < 5 ? 4 : minute < 10 ? 5 : 6;
+    let count = minute < 2 ? 5 : minute < 5 ? 4 : minute < 10 ? 5 : 6;
     // Endless: bigger batches to fill the larger visible area
     if (mode.endless) count += 3;
     // Catch-up surge if battlefield is below 70% cap

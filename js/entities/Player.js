@@ -66,10 +66,6 @@ export class Player {
     this._tankTimer   = 0;     // Oni Protocol 0: damage-reduction window
     this.xpMult       = 1;     // XP Uplink meta multiplier
 
-    this.carry        = 0;
-    this.maxCarry     = 5;
-    this.carriedCores = [];   // values of carried cores (3 = silver, 5 = gold), FIFO on deposit
-
     this.dashTimer    = 0.0;
     this.dashCooldown = 0.0;
     this.dashDuration = 0.16;
@@ -97,8 +93,6 @@ export class Player {
 
     this.kills             = 0;
     this.coresSecured      = 0;
-    this.coresIntercepted  = 0;
-
     this.upgrades = {
       'Cyber-Legs': 0, 'Memory Bank': 0, 'Tractor Beam': 0,
       'Firewall Protection': 0, 'Pulse Damage': 0, 'Homing Disc': 0,
@@ -390,9 +384,6 @@ export class Player {
       ctx.strokeStyle = colors.secondary; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(this.pos.x, this.pos.y, PLAYER_RADIUS, 0, Math.PI * 2); ctx.stroke();
     }
-
-    // Carried cores visual — DISABLED (carry/return economy removed)
-    // carry is always 0 now; no orbiting dots to draw.
 
     // HP (red) + Mana (cyan) bars above the sprite — world-space, follow the player.
     // Both stay visible even when empty: dark track + colored fill + bright bordered frame.

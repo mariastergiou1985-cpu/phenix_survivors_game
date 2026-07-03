@@ -913,7 +913,6 @@ export class Game {
     this._chaosStartedAt    = -1;         // timeAlive when Chaos engaged; -1 = not yet reached this run
     this._chaosTransTimer   = -1;      // >=0 while glitch transition is playing
     this.forceChaos         = false;   // defensive: prevent stale debug-key state leaking into the next run
-    this.forceDoubleDemon   = false;   // DEBUG: F8 in Endless or game.forceDoubleDemon=true
     this._chaosCoreCd       = 0;       // cooldown for bonus gold-core spawns
     this._eqRafId           = null;    // rAF handle for the menu equalizer loop
     this.overload             = 0;
@@ -1510,7 +1509,6 @@ export class Game {
       this._runConfig.endless      = true;
       this._runConfig.xpMult       = this.player.xpMult;
       this._runConfig.maxHp        = this.player.maxHp;
-      this._runConfig.maxCarry     = this.player.maxCarry;
       this._runConfig.chaosLaw     = this._getActiveChaosLawModifiers();
       this._runConfig.achievements = this.meta ? Object.keys(this.meta.achievements || {}).filter(k => this.meta.achievements[k]).length : 0;
     }
@@ -1527,7 +1525,6 @@ export class Game {
       const add = Math.round(p.maxHp * 0.05);
       p.maxHp += add; p.hp = Math.min(p.maxHp, p.hp + add);
     }
-    if (m.hasAchievement('core_defender')) p.maxCarry += 1;                             // Nexus Defender
   }
 
   // Global damage multiplier from Achievement Protocols/Cards — Endless ONLY (returns 1 in Act 1,
@@ -1597,7 +1594,6 @@ export class Game {
         speedBonus: this.player.speedBonus,
         xpMult:     this.player.xpMult,
         maxMana:    this.player.maxMana,
-        maxCarry:   this.player.maxCarry,
         pickupRadius: this.player.pickupRadius,
         pulseDamage:  this.player.upgrades?.['Pulse Damage'] || 0,
         firewall:     this.player.upgrades?.['Firewall Protection'] || 0,
@@ -1626,7 +1622,6 @@ export class Game {
     for (let i = 0; i < m.getLevel('coreMagnet'); i++) pickup = Math.round(pickup * 1.10);
     p.pickupRadius = pickup;
 
-    p.maxCarry  += m.getLevel('coreCapacity');
     // Player damage is read from upgrades['Pulse Damage'] in Player.shoot() — there is no
     // p.baseDamage field, so the old line was a no-op. Seed the dict so the meta upgrade applies.
     p.upgrades['Pulse Damage']        = (p.upgrades['Pulse Damage'] || 0) + m.getLevel('pulseDamage');
@@ -6294,7 +6289,6 @@ export class Game {
     if (dashing && !this._wasDashing) this.audio?.playDash();
     this._wasDashing = dashing;
     this._handleAutoShooting();
-    this._handleCorePickupAndSlotting(dt);
     // Hit stop: slow projectiles + discs to ~10% during freeze window (bullet-time feel)
     const _hsDt = this._hitStopTimer > 0 ? dt * 0.10 : dt;
     this._updateProjectiles(_hsDt);
@@ -6468,11 +6462,6 @@ export class Game {
         this.floatingTexts.push(new FloatingText('GRID CACHE COLLECTED', this.player.pos.clone(), CYAN, 1.2));
         this.particles.spawnCorePickup(this.gridCache.pos, CYAN);
         this._grantGridCacheBonus();
-        // Endless-only matrix refill: 50% (×Cache Scanner) chance to grant +8 cores. Act 1 unchanged.
-        if (this.endless && Math.random() < this._endlessCacheBonusChance()) {
-          this.addCarriedCoresSafe(8);
-          this.floatingTexts.push(new FloatingText('+8 CORES', this.player.pos.clone(), '#ffd23c', 1.6));
-        }
         this.gridCache = null;
         this.gridCacheSpawnTimer = 60;
         return;
@@ -6550,11 +6539,6 @@ export class Game {
   // Endless Grid Cache +8-cores chance: base 50%, +5% per Cache Scanner meta level, capped 90%.
   _endlessCacheBonusChance() {
     return Math.min(0.9, 0.5 + this.meta.getLevel('cacheScanner') * 0.05);
-  }
-
-  // DISABLED — carry/return economy removed. Matrices stay full; rewards come from Nexus orbs.
-  addCarriedCoresSafe(amount) {
-    // no-op
   }
 
   // Keep a pickup comfortably inside the reachable play area (well away from edges so
@@ -7284,12 +7268,10 @@ export class Game {
     // Nearest valid target (enemy or live boss) within range, preferring an in-range Data-Core
     // carrier (same priority the Homing Disc uses) so core theft is punished. Not global damage —
     // this only selects ONE aim target; projectiles still travel and hit normally.
-    let best = null,    bestDist = range;
-    let carrier = null, carrierDist = range;
+    let best = null, bestDist = range;
     for (const e of this.enemies) {
       const d = distance(from, e.pos);
       if (d < bestDist) { bestDist = d; best = e; }
-      if (e.carryingCore && d < carrierDist) { carrierDist = d; carrier = e; }
     }
     // Include live bosses / mini-bosses if closer than current best
     const _ddBodies = this.doubleDemonsBoss && this.doubleDemonsBoss.hp > 0
@@ -7300,7 +7282,7 @@ export class Game {
         if (d < bestDist) { bestDist = d; best = boss; }
       }
     }
-    return carrier || best;   // prefer an in-range core carrier, else nearest enemy/boss
+    return best;
   }
 
   spawnEnemyBullet(pos, dir, speed, damage, radius, color, opts = {}) {
@@ -7342,13 +7324,6 @@ export class Game {
         }
       }
     }
-  }
-
-  _handleCorePickupAndSlotting(dt) {
-    // DISABLED — old carry/return economy removed.
-    // Matrices stay full. Rewards come from Nexus reward orbs that magnetize to the player.
-    // Ground cores from Chaos mode or legacy sources are simply cleaned up.
-    if (this.groundCores.length > 0) this.groundCores.length = 0;
   }
 
   _updateProjectiles(dt) {
@@ -7505,12 +7480,14 @@ export class Game {
     this.player.homingDiscTimer -= dt;
     if (this.player.homingDiscTimer <= 0) {
       this.player.homingDiscTimer = Math.max(1.5, 4.0 - this.player.upgrades['Homing Disc'] * 0.5);
-      const carriers = this.enemies.filter(e => e.carryingCore);
-      if (carriers.length > 0) {
-        const target = carriers.reduce((a, b) =>
-          distance(this.player.pos, a.pos) < distance(this.player.pos, b.pos) ? a : b
-        );
-        this.homingDiscs.push(new HomingDisc(this.player.pos.clone(), target));
+      // Target nearest enemy within range
+      let nearest = null, nearDist = 600;
+      for (const e of this.enemies) {
+        const d = distance(this.player.pos, e.pos);
+        if (d < nearDist) { nearDist = d; nearest = e; }
+      }
+      if (nearest) {
+        this.homingDiscs.push(new HomingDisc(this.player.pos.clone(), nearest));
       }
     }
 
@@ -8914,13 +8891,6 @@ export class Game {
         }
       }
 
-      // Dash intercept: dashing into a carrying enemy forces core drop
-      if (e.carryingCore !== null && this.player.dashTimer > 0) {
-        if (distance(e.pos, this.player.pos) < e.radius + PLAYER_RADIUS + 3) {
-          e.takeHit(2, this);
-          this.floatingTexts.push(new FloatingText('DASH INTERCEPT!', e.pos.clone(), CYAN, 1.0));
-        }
-      }
     }
   }
 
@@ -8975,17 +8945,10 @@ export class Game {
     let deficit = 0;
     for (const m of this.matrices) deficit += (m.capacity - m.stored);
 
-    // Value already on its way back to a Matrix (player carry + enemy-carried). That slice of the
-    // deficit is spoken for, so GROUND cores may only fill the REMAINING deficit — no buffer.
-    let inTransit = 0;
-    for (const v of this.player.carriedCores) inTransit += v;
-    for (const e of this.enemies) if (e.carryingCore) inTransit += coreVal(e.carryingCore);
-
-    // (1)+(3) COUNT cap: at most 10 ground cores normally; a nearly-full grid (deficit <= 4)
-    // keeps at most 1 straggler. (2) VALUE cap: ground value may not exceed the outstanding
-    // deficit not already covered in-transit. The stricter of the two governs.
+    // COUNT cap: at most 10 ground cores normally; a nearly-full grid (deficit <= 4)
+    // keeps at most 1 straggler.
     const countCap = deficit <= 4 ? 1 : MAX_GROUND_CORES;
-    const valueCap = Math.max(0, deficit - inTransit);
+    const valueCap = Math.max(0, deficit);
 
     let groundValue = 0;
     for (const c of this.groundCores) groundValue += coreVal(c);
@@ -16433,7 +16396,7 @@ _drawLoreArchive(ctx) {
       a.shotTimer = 3.2 + Math.random() * 0.8;            // 3.2–4.0s cadence
       const dir = safeNormalize(this.player.pos.sub(a.pos));
       if (dir.lengthSq() > 0) {
-        this.spawnEnemyBullet(a.pos.clone(), dir, 260, 10, 9, PURPLE);
+        this.spawnEnemyBullet(a.pos.clone(), dir, 360, 10, 9, PURPLE);
         this.audio?.playEnemyShoot();
       }
     }
@@ -17254,7 +17217,7 @@ _drawLoreArchive(ctx) {
         const bDir = safeNormalize(pp.sub(d.pos));
         this._dragonBolts.push({
           pos:    new Vec2(d.pos.x, d.pos.y),
-          vel:    new Vec2(bDir.x * 110, bDir.y * 110),
+          vel:    new Vec2(bDir.x * 290, bDir.y * 290),
           life:   3.2,
           radius: 13,
         });
@@ -17616,13 +17579,6 @@ _drawLoreArchive(ctx) {
   }
 
   _updateDoubleDemonsBoss(dt) {
-    // DEBUG shortcut — force-spawn immediately (F8 in main.js, or set game.forceDoubleDemon=true)
-    if (this.forceDoubleDemon && this.endless && !this.doubleDemonsBoss) {
-      this.forceDoubleDemon    = false;
-      this.doubleDemonsSpawned = true;
-      this._spawnDoubleDemonsBoss();
-    }
-
     if (!this.doubleDemonsSpawned) {
       this.doubleDemonsSpawnTimer -= dt;
       if (this.doubleDemonsSpawnTimer > 0) return;
