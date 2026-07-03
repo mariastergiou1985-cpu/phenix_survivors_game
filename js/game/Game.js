@@ -47,18 +47,18 @@ import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/t
 
 // ── Vessel companion placement (Ally-Walker-style escort) ───────────────────
 // The vessel flies BESIDE the player like the Kiroshi Walker ally, never on top
-// of the player sprite. Offset chosen so the 72px vessel clears the 64px player.
-const VESSEL_COMPANION_OFF  = { x: 46, y: -38 };   // px, relative to player center
-const VESSEL_COMPANION_SIZE = 72;                  // sprite height (was 96 when it covered the player)
+// of the player sprite. Offset chosen so the 64px vessel fully clears the 64px player.
+const VESSEL_COMPANION_OFF  = { x: 72, y: -52 };   // px, relative to player center — must clear the 64px player sprite fully
+const VESSEL_COMPANION_SIZE = 64;                  // sprite height — same scale as player, no overlap
 
 // Pet slot offsets — player-relative companion anchors (slot order = selection order).
 // Slots 1–2 per designer spec; 3–4 mirror below the player. Firewall Sentinel ignores
 // these and orbits instead (its own ally behavior).
 const PET_SLOT_OFFSETS = [
-  { x: -42, y: -28 },   // slot 1 — upper-left escort
-  { x:  42, y: -24 },   // slot 2 — upper-right escort
-  { x: -46, y:  26 },   // slot 3 — lower-left escort
-  { x:  46, y:  28 },   // slot 4 — lower-right escort
+  { x: -62, y: -46 },   // slot 1 — upper-left escort (clears 64px player)
+  { x:  62, y: -42 },   // slot 2 — upper-right escort
+  { x: -66, y:  44 },   // slot 3 — lower-left escort
+  { x:  66, y:  46 },   // slot 4 — lower-right escort
 ];
 
 // ── Eden Core character message pools (in-run transmissions) ────────────────
@@ -7111,7 +7111,7 @@ export class Game {
 
   _drawAudioSettings(ctx) {
     this._drawBackground(ctx);
-    ctx.fillStyle = 'rgba(0,0,0,0.82)';
+    ctx.fillStyle = 'rgba(0,0,0,0.94)';
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
     // Title with glow
@@ -12401,7 +12401,7 @@ export class Game {
   _drawCharacterSelect(ctx) {
     if (this._charSelectOverlayVisible) return;   // DOM overlay takes over
     this._drawBackground(ctx);
-    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.fillStyle = 'rgba(0,0,0,0.92)';
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
     ctx.font = 'bold 38px Consolas, monospace';
