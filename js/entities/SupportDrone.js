@@ -26,6 +26,8 @@ export class SupportDrone {
     this._beamTimer = 0;
 
     this._burns = [];  // [{ target, timer }] — flame DOT tracking
+    this._age   = 0;   // total lifetime — drives bob + pulse
+    this._summonFlash = 0.5;  // bright spawn flash
   }
 
   _findTarget(game) {
@@ -43,8 +45,10 @@ export class SupportDrone {
     this.pos.x += (playerPos.x + this.offsetX - this.pos.x) * Math.min(1, dt * 8);
     this.pos.y += (playerPos.y + this.offsetY - this.pos.y) * Math.min(1, dt * 8);
 
-    // Decay beam flash
-    if (this._beamTimer > 0) this._beamTimer -= dt;
+    // Decay beam flash + age + summon flash
+    this._age += dt;
+    if (this._summonFlash > 0) this._summonFlash -= dt;
+    if (this._beamTimer > 0)   this._beamTimer -= dt;
 
     // Flame burn DOT
     for (let i = this._burns.length - 1; i >= 0; i--) {
@@ -127,38 +131,65 @@ export class SupportDrone {
 
   draw(ctx) {
     const color = this.type === 'flame' ? FLAME_COLOR : ELECTRO_COLOR;
+    const pulse = 0.8 + 0.2 * Math.sin(this._age * 3.5);   // gentle pulsate
 
-    // Beam flash toward target
-    if (this._beamTimer > 0 && this._beamTo) {
+    // Summon flash — bright ring expanding outward on spawn
+    if (this._summonFlash > 0) {
+      const t = 1 - this._summonFlash / 0.5;   // 0→1 over 0.5s
       ctx.save();
-      ctx.globalAlpha = (this._beamTimer / 0.12) * 0.85;
+      ctx.globalAlpha = (1 - t) * 0.7;
       ctx.strokeStyle = color;
-      ctx.lineWidth   = this.type === 'flame' ? 3 : 2;
+      ctx.lineWidth   = 3 * (1 - t);
+      ctx.beginPath();
+      ctx.arc(this.pos.x, this.pos.y, 16 + t * 30, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Beam flash toward target — dual-layer: wide dim + thin bright core
+    if (this._beamTimer > 0 && this._beamTo) {
+      const alpha = (this._beamTimer / 0.12) * 0.85;
+      ctx.save();
+      // Outer wide beam
+      ctx.globalAlpha = alpha * 0.45;
+      ctx.strokeStyle = color;
+      ctx.lineWidth   = this.type === 'flame' ? 6 : 5;
       if (this.type === 'electro') ctx.setLineDash([5, 4]);
       ctx.beginPath();
       ctx.moveTo(this.pos.x, this.pos.y);
       ctx.lineTo(this._beamTo.x, this._beamTo.y);
       ctx.stroke();
       ctx.setLineDash([]);
+      // Inner bright core
+      ctx.globalAlpha = alpha;
+      ctx.strokeStyle = '#FFFFFF';
+      ctx.lineWidth   = this.type === 'flame' ? 2 : 1.5;
+      ctx.beginPath();
+      ctx.moveTo(this.pos.x, this.pos.y);
+      ctx.lineTo(this._beamTo.x, this._beamTo.y);
+      ctx.stroke();
       ctx.restore();
     }
 
-    // Soft glow
+    // Pulsating glow — outer ring + soft fill
     ctx.save();
-    ctx.globalAlpha = 0.22;
+    ctx.globalAlpha = 0.12 * pulse;
     ctx.fillStyle   = color;
-    ctx.beginPath(); ctx.arc(this.pos.x, this.pos.y, 18, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(this.pos.x, this.pos.y, 24 * pulse, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 0.25 * pulse;
+    ctx.beginPath(); ctx.arc(this.pos.x, this.pos.y, 16, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
 
-    // Sprite (32×32) or fallback circle
+    // Sprite (32x32) or fallback circle — with subtle bob
+    const bob = Math.sin(this._age * 2.2) * 2;
     const spr = this._sprite;
     if (spr && spr.complete && spr.naturalWidth > 0) {
-      ctx.drawImage(spr, this.pos.x - 16, this.pos.y - 16, 32, 32);
+      ctx.drawImage(spr, this.pos.x - 16, this.pos.y - 16 + bob, 32, 32);
     } else {
       ctx.fillStyle   = color;
-      ctx.beginPath(); ctx.arc(this.pos.x, this.pos.y, 10, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(this.pos.x, this.pos.y + bob, 10, 0, Math.PI * 2); ctx.fill();
       ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 1.5;
-      ctx.beginPath(); ctx.arc(this.pos.x, this.pos.y, 10, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(this.pos.x, this.pos.y + bob, 10, 0, Math.PI * 2); ctx.stroke();
     }
   }
 }

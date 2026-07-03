@@ -12,13 +12,13 @@ import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260629440000
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260703700000';
 import { Player }         from '../entities/Player.js?v=20260703700000';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260629440000';
-import { Enemy }          from '../entities/Enemy.js?v=20260703700000';
-import { SupportDrone }   from '../entities/SupportDrone.js?v=20260629440000';
+import { Enemy }          from '../entities/Enemy.js?v=20260703940000';
+import { SupportDrone }   from '../entities/SupportDrone.js?v=20260703940000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260702440000';
 import { SystemEventManager } from './Events.js?v=20260629440000';
-import { UpgradeUI }      from './UpgradeUI.js?v=20260629440000';
-import { weightedSample } from './Upgrades.js?v=20260629440000';
+import { UpgradeUI }      from './UpgradeUI.js?v=20260703940000';
+import { weightedSample } from './Upgrades.js?v=20260703940000';
 import { MutationUI }      from './MutationUI.js?v=20260629440000';
 import { sampleMutations } from './Mutations.js?v=20260629440000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260703700000';
@@ -35,7 +35,7 @@ import { MeteorRain } from '../effects/meteor-rain.js?v=20260629440000';
 import { NpcWalker } from './NpcWalker.js?v=20260629560000';
 import { MapManager, BIOME_ID, BIOME_DEFS } from './MapManager.js?v=20260703300000';
 import { EventBus, EVENTS } from './EventBus.js?v=20260702700000';
-import { EnemySpawner, ELITE_WAVE as ELITE_WAVE_CFG, BOSS_WARN_COOLDOWN as BOSS_WARN_CD } from './EnemySpawner.js?v=20260703400000';
+import { EnemySpawner, ELITE_WAVE as ELITE_WAVE_CFG, BOSS_WARN_COOLDOWN as BOSS_WARN_CD } from './EnemySpawner.js?v=20260703940000';
 import { StateManager, GAME_STATES } from './StateManager.js?v=20260702900000';
 import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260703900000';
 import { NexusManager } from './NexusManager.js?v=20260703900000';
@@ -935,7 +935,7 @@ export class Game {
     this.healthPickups        = [];  // [{ pos: Vec2, timer: number }] — heals 25% maxHp on touch
 
     this.manaPickups     = [];   // [{ pos: Vec2 }] — restores +25 mana on touch
-    this.manaPickupTimer = 30;   // time-based: one every 30s while mana < 100
+    this.manaPickupTimer = 20;   // time-based: one every 20s while mana < max
 
     this.titanSpawned     = false;
     this.titanBoss        = null;
@@ -1782,7 +1782,7 @@ export class Game {
     // Does not touch overload / credits / score / combo, and never replaces Phoenix revives.
     // Elite kills are excluded — they grant their own sparse reward roll in Enemy._die, so dense
     // elite waves no longer accelerate the generic HP-drop cadence (Endless health-drop spam fix).
-    if (pos && !isElite && ++this.killsSinceHealthDrop >= 40) {
+    if (pos && !isElite && ++this.killsSinceHealthDrop >= 25) {
       this.killsSinceHealthDrop = 0;
       const dropPos = this._clampPickupPos(pos.clone().add(new Vec2(randomRange(-10, 10), -8)));
       this.healthPickups.push({ pos: dropPos, timer: 25 });
@@ -5651,10 +5651,18 @@ export class Game {
   }
 
   _updateHealthPickups(dt) {
-    const PICKUP_R = 18;   // walk-over only — NO magnet pull; player must move onto the HP cell
+    const PICKUP_R = 18;
+    const MAGNET_R = 90;   // gentle magnet pull range so pickups are easier to collect
     for (let i = this.healthPickups.length - 1; i >= 0; i--) {
       const hp = this.healthPickups[i];
       const d = distance(this.player.pos, hp.pos);
+
+      // Gentle magnet pull when within range
+      if (d < MAGNET_R && d > PLAYER_RADIUS + PICKUP_R) {
+        const pull = Math.min(1, dt * 3.5);
+        hp.pos.x += (this.player.pos.x - hp.pos.x) * pull;
+        hp.pos.y += (this.player.pos.y - hp.pos.y) * pull;
+      }
 
       if (d < PLAYER_RADIUS + PICKUP_R) {
         const heal = this.player.maxHp * 0.25;
@@ -5674,11 +5682,19 @@ export class Game {
   }
 
   _updateManaPickups(dt) {
-    const PICKUP_R = 18;   // walk-over only — NO magnet pull; player must move onto the mana cell
+    const PICKUP_R = 18;
+    const MAGNET_R = 90;   // gentle magnet pull range
     // Collect
     for (let i = this.manaPickups.length - 1; i >= 0; i--) {
       const m = this.manaPickups[i];
-      if (distance(this.player.pos, m.pos) < PLAYER_RADIUS + PICKUP_R) {
+      const d = distance(this.player.pos, m.pos);
+      // Gentle magnet pull
+      if (d < MAGNET_R && d > PLAYER_RADIUS + PICKUP_R) {
+        const pull = Math.min(1, dt * 3.5);
+        m.pos.x += (this.player.pos.x - m.pos.x) * pull;
+        m.pos.y += (this.player.pos.y - m.pos.y) * pull;
+      }
+      if (d < PLAYER_RADIUS + PICKUP_R) {
         const mg = Math.round(25 * this.mutations.manaGainMult);   // MANA DROUGHT (×1 outside Endless)
         this.player.mana = Math.min(this.player.maxMana, this.player.mana + mg);
         this.floatingTexts.push(new FloatingText('+' + mg + ' MANA', this.player.pos.clone(), CYAN, 1.2));
@@ -5690,7 +5706,7 @@ export class Game {
     // Time-based spawn — one every 30s, only while mana < 100 and none already present (no spam/dupes)
     this.manaPickupTimer -= dt;
     if (this.manaPickupTimer <= 0) {
-      this.manaPickupTimer = this._chaosMode ? 12 : 30;   // Chaos: mana pickup every 12s (vs 30s normal)
+      this.manaPickupTimer = this._chaosMode ? 12 : 20;   // Chaos: mana pickup every 12s (vs 20s normal)
       if (this.player.mana < this.player.maxMana && this.manaPickups.length === 0) {
         const ang = Math.random() * Math.PI * 2;
         const r   = randomRange(140, 240);

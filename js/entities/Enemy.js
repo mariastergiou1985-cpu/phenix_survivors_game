@@ -175,13 +175,13 @@ export class Enemy {
       'Stealth Infiltrator':     'stealth_infiltrator',
       'Security Defector Mech':  'security_defector_mech',
       'Rogue AI Overlord':       'ai_overlord',
-      // Secondary types — mapped to closest existing sprite
-      'Combat Hunter':           'glitch_drone',
-      'Scrap Scavenger':         'rogue_punk',
-      'Cyber-Net Junkie':        'stealth_infiltrator',
-      'Overclocked Berserker':   'rogue_punk',
-      'Cyber Shooter':           'glitch_drone',
-      'Heavy Mech':              'security_defector_mech',
+      // Secondary types — unique mini sprites for visual diversity
+      'Combat Hunter':           'minis/forge-mauler',
+      'Scrap Scavenger':         'minis/cryo-warden',
+      'Cyber-Net Junkie':        'minis/null-hierophant',
+      'Overclocked Berserker':   'minis/pale-bloodknight',
+      'Cyber Shooter':           'minis/rail-reaper',
+      'Heavy Mech':              'minis/reactor-colossus',
       // Bloodfang pack minion — dedicated sprite in minions/ subfolder
       'Razorhound':              'minions/razorhound',
     };

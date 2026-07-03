@@ -119,7 +119,7 @@ export const ALL_UPGRADES = [
     ORANGE, 4, () => {}, '↻', 'rare'
   ),
   new UpgradeDefinition(
-    'Auto-Forge Drone', 'Auto-Forge Drone', 'Deploys a persistent combat drone',
+    'Auto-Forge Drone', 'Auto-Forge Drone', 'Forges twin combat drones that fight alongside you',
     ORANGE, 2, () => {}, '🛸', 'legendary'  // persistent ally drones spawned/updated in Game._updateAllyDrones
   ),
 
@@ -135,7 +135,7 @@ export const ALL_UPGRADES = [
     CYAN, 4, () => {}, '➤', 'rare'
   ),
   new UpgradeDefinition(
-    'sentry_drone', 'Sentry Drone', 'Autonomous drone — orbits and fires at enemies',
+    'sentry_drone', 'Sentry Drone', 'Orbiting sentry — auto-targets and eliminates hostiles',
     ORANGE, 4, () => {}, '🤖', 'epic'
   ),
   new UpgradeDefinition(
@@ -162,7 +162,7 @@ export const ALL_UPGRADES = [
     ORANGE, 4, () => {}, '💣', 'epic'
   ),
   new UpgradeDefinition(
-    'blacknet_swarm_drone', 'Blacknet Swarm', 'Orbital swarm drones — fire at nearby enemies',
+    'blacknet_swarm_drone', 'Blacknet Swarm', 'Deploys a vicious drone swarm that hunts nearby foes',
     PURPLE, 4, () => {}, '⬡', 'epic'
   ),
   new UpgradeDefinition(

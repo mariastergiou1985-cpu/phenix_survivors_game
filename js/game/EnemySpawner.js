@@ -20,12 +20,12 @@ const ACT1_POOLS = [
   { from: 0,   pool: ['Scrap Scavenger', 'Scrap Scavenger', 'Combat Hunter', 'Glitch Drone'] },
   { from: 60,  pool: ['Combat Hunter', 'Cyber Shooter', 'Scrap Scavenger', 'Scrap Scavenger'] },
   { from: 90,  pool: ['Combat Hunter', 'Combat Hunter', 'Cyber Shooter', 'Scrap Scavenger', 'Scrap Scavenger'] },
-  { from: 180, pool: ['Combat Hunter', 'Combat Hunter', 'Cyber Shooter', 'Cyber Shooter', 'Scrap Scavenger', 'Cyber-Net Junkie'] },
-  { from: 360, pool: ['Combat Hunter', 'Cyber Shooter', 'Stealth Infiltrator', 'Scrap Scavenger', 'Cyber-Net Junkie'] },
-  { from: 600, pool: ['Combat Hunter', 'Cyber Shooter', 'Overclocked Berserker', 'Scrap Scavenger', 'Cyber-Net Junkie'] },
-  { from: 900, pool: ['Combat Hunter', 'Cyber Shooter', 'Heavy Mech', 'Overclocked Berserker', 'Scrap Scavenger'] },
-  { from: 1200, pool: ['Combat Hunter', 'Cyber Shooter', 'Heavy Mech', 'Overclocked Berserker', 'Cyber-Net Junkie'] },
-  { from: 1500, pool: ['Overclocked Berserker', 'Combat Hunter', 'Cyber Shooter', 'Heavy Mech', 'Cyber-Net Junkie'] },
+  { from: 180, pool: ['Combat Hunter', 'Combat Hunter', 'Cyber Shooter', 'Cyber Shooter', 'Scrap Scavenger', 'Cyber-Net Junkie', 'Rogue Punk'] },
+  { from: 360, pool: ['Combat Hunter', 'Cyber Shooter', 'Stealth Infiltrator', 'Scrap Scavenger', 'Cyber-Net Junkie', 'Rogue Punk'] },
+  { from: 600, pool: ['Combat Hunter', 'Cyber Shooter', 'Overclocked Berserker', 'Scrap Scavenger', 'Cyber-Net Junkie', 'Rogue Punk'] },
+  { from: 900, pool: ['Combat Hunter', 'Cyber Shooter', 'Heavy Mech', 'Overclocked Berserker', 'Scrap Scavenger', 'Rogue Punk'] },
+  { from: 1200, pool: ['Combat Hunter', 'Cyber Shooter', 'Heavy Mech', 'Overclocked Berserker', 'Cyber-Net Junkie', 'Rogue Punk'] },
+  { from: 1500, pool: ['Overclocked Berserker', 'Combat Hunter', 'Cyber Shooter', 'Heavy Mech', 'Cyber-Net Junkie', 'Rogue Punk'] },
 ];
 
 const CHAOS_POOL = [
