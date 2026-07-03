@@ -1,0 +1,27 @@
+Cowork, add Enemy Weapon Sprites + Enemy Weapon Catalog V1 for PHENIX: NULL EDEN.
+
+Use only:
+C:\Dev\phenix_survivors_game
+
+Copy/import the provided zip so the weapon sprites land in:
+assets/enemies/weapons/sprites/
+
+Do not put these weapon assets in refs. Do not put them inside bosses/minis folders.
+Boss and mini enemy sprites stay in:
+assets/enemies/bosses/
+assets/enemies/minis/
+
+Use ENEMY_WEAPON_MAPPING_V1.md and EnemyWeaponCatalogV1.json as the source of truth for which weapon belongs to which boss/mini and what impact it has on the player.
+
+Safety:
+- do not wire all weapons at once if unsafe
+- no invisible damage
+- no instant unavoidable heavy hits
+- strong attacks need telegraph
+- hitbox must match visual
+- do not reintroduce core stealing
+- do not reintroduce player carry/return
+- do not break active-area enemy spawning
+- syntax check touched JS files
+- cache-bust if imported JS changes
+- targeted staging only via GitHub Desktop

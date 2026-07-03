@@ -1,0 +1,27 @@
+STEAM VERTICAL LIBRARY CAPSULE — NEEDS CUSTOM ART
+Target size: 600×900 px (portrait 2:3)
+==============================================
+The approved master cover is 1672×941 landscape (16:9).
+A portrait 2:3 crop from this master would yield only a narrow
+center strip, losing both boss arms and most of the background.
+The result would be compositionally broken.
+
+REQUIRED: One of the following options:
+  Option A — AI Outpainting (recommended fastest):
+    Open phenix_null_eden_master_cover.png in Adobe Firefly.
+    Use Generative Fill to extend the canvas UPWARD by ~600px
+    and DOWNWARD by ~200px. Keep the center composition unchanged.
+    This produces a taller image that can be portrait-cropped cleanly.
+
+  Option B — Dedicated Portrait Generation:
+    Use the vertical prompt from COVER_IMAGE_BRIEF.md Section 9.
+    Request a 600×900 or 1200×1800 image in the same style.
+    Same characters, same palette, vertical layout:
+      hero in lower 40%, boss looming in upper 60%, title in top third.
+
+  Option C — Tight center strip fallback:
+    Crop master at x=536–1136 (600px wide) × full height 941px.
+    Scale to 600×941, then crop to 600×900 from center.
+    Loses boss arms — minimal but functional fallback.
+
+DO NOT force a landscape crop into portrait format.

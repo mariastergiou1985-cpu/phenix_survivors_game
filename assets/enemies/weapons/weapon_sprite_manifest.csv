@@ -1,0 +1,16 @@
+order,id,display_name,file,source_file,processed,width,height
+1,void_ember_comet,Void Ember Comet,assets/enemies/weapons/sprites/void_ember_comet.png,"ChatGPT Image 3 Ιουλ 2026, 09_16_48 π.μ. (1).png","black background converted to alpha, cropped with glow padding",1590,700
+2,null_sigil_beam,Null Sigil Beam,assets/enemies/weapons/sprites/null_sigil_beam.png,"ChatGPT Image 3 Ιουλ 2026, 09_16_48 π.μ. (2).png","black background converted to alpha, cropped with glow padding",1670,877
+3,violet_spectral_needle,Violet Spectral Needle,assets/enemies/weapons/sprites/violet_spectral_needle.png,"ChatGPT Image 3 Ιουλ 2026, 09_16_49 π.μ. (3).png","black background converted to alpha, cropped with glow padding",1585,457
+4,eden_star_lance,Eden Star Lance,assets/enemies/weapons/sprites/eden_star_lance.png,"ChatGPT Image 3 Ιουλ 2026, 09_16_49 π.μ. (4).png","black background converted to alpha, cropped with glow padding",1672,455
+5,abyss_rift_blade,Abyss Rift Blade,assets/enemies/weapons/sprites/abyss_rift_blade.png,"ChatGPT Image 3 Ιουλ 2026, 09_16_49 π.μ. (5).png","black background converted to alpha, cropped with glow padding",1632,626
+6,cryo_shard_lance,Cryo Shard Lance,assets/enemies/weapons/sprites/cryo_shard_lance.png,"ChatGPT Image 3 Ιουλ 2026, 09_18_40 π.μ. (1).png","black background converted to alpha, cropped with glow padding",1342,852
+7,solar_halo_bolt,Solar Halo Bolt,assets/enemies/weapons/sprites/solar_halo_bolt.png,"ChatGPT Image 3 Ιουλ 2026, 09_18_40 π.μ. (2).png","black background converted to alpha, cropped with glow padding",1671,655
+8,toxic_data_spear,Toxic Data Spear,assets/enemies/weapons/sprites/toxic_data_spear.png,"ChatGPT Image 3 Ιουλ 2026, 09_18_41 π.μ. (3).png","black background converted to alpha, cropped with glow padding",1537,707
+9,magma_reaver_lance,Magma Reaver Lance,assets/enemies/weapons/sprites/magma_reaver_lance.png,"ChatGPT Image 3 Ιουλ 2026, 09_18_41 π.μ. (4).png","black background converted to alpha, cropped with glow padding",1136,941
+10,arc_circuit_beam,Arc Circuit Beam,assets/enemies/weapons/sprites/arc_circuit_beam.png,"ChatGPT Image 3 Ιουλ 2026, 09_18_41 π.μ. (5).png","black background converted to alpha, cropped with glow padding",1640,702
+11,aether_crescent_chakram,Aether Crescent Chakram,assets/enemies/weapons/sprites/aether_crescent_chakram.png,"ChatGPT Image 3 Ιουλ 2026, 09_21_03 π.μ. (1).png","black background converted to alpha, cropped with glow padding",1524,617
+12,prism_wing_bolt,Prism Wing Bolt,assets/enemies/weapons/sprites/prism_wing_bolt.png,"ChatGPT Image 3 Ιουλ 2026, 09_21_03 π.μ. (2).png","black background converted to alpha, cropped with glow padding",1592,672
+13,blacknet_scythe_arc,Blacknet Scythe Arc,assets/enemies/weapons/sprites/blacknet_scythe_arc.png,"ChatGPT Image 3 Ιουλ 2026, 09_21_03 π.μ. (3).png","black background converted to alpha, cropped with glow padding",1594,866
+14,seraph_vector_javelin,Seraph Vector Javelin,assets/enemies/weapons/sprites/seraph_vector_javelin.png,"ChatGPT Image 3 Ιουλ 2026, 09_21_04 π.μ. (4).png","black background converted to alpha, cropped with glow padding",1665,539
+15,null_rupture_orb,Null Rupture Orb,assets/enemies/weapons/sprites/null_rupture_orb.png,"ChatGPT Image 3 Ιουλ 2026, 09_21_04 π.μ. (5).png","black background converted to alpha, cropped with glow padding",1639,867

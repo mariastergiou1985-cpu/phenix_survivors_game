@@ -1,0 +1,341 @@
+{
+  "schema": "PHENIX_NULL_EDEN_ENEMY_WEAPON_CATALOG_V1",
+  "asset_folder": "assets/enemies/weapons/sprites/",
+  "global_rules": [
+    "No invisible damage.",
+    "No instant unavoidable heavy hits.",
+    "Strong attacks need telegraph.",
+    "Hitbox must match visual.",
+    "Do not reintroduce core stealing.",
+    "Do not reintroduce player carry/return logic.",
+    "Keep enemy spawn active-area relative."
+  ],
+  "weapons": [
+    {
+      "id": "void_ember_comet",
+      "displayName": "Void Ember Comet",
+      "sprite": "assets/enemies/weapons/sprites/void_ember_comet.png",
+      "behavior": "projectile_or_arc_projectile",
+      "owners": "fire/elite enemy, Forge Mauler, Ember Scarab",
+      "impactOnPlayer": "medium AoE impact, ember burst, small knockback/screen shake only for boss version",
+      "telegraphRequired": false,
+      "notes": "Use this sprite from assets/enemies/weapons/sprites/. If black remnants appear, render additively or refine alpha cutoff."
+    },
+    {
+      "id": "null_sigil_beam",
+      "displayName": "Null Sigil Beam",
+      "sprite": "assets/enemies/weapons/sprites/null_sigil_beam.png",
+      "behavior": "beam",
+      "owners": "Null Hierophant, Rift Eye, Orbital caster",
+      "impactOnPlayer": "telegraph line/circle first, then continuous tick damage",
+      "telegraphRequired": true,
+      "notes": "Use this sprite from assets/enemies/weapons/sprites/. If black remnants appear, render additively or refine alpha cutoff."
+    },
+    {
+      "id": "violet_spectral_needle",
+      "displayName": "Violet Spectral Needle",
+      "sprite": "assets/enemies/weapons/sprites/violet_spectral_needle.png",
+      "behavior": "fast_projectile",
+      "owners": "Rail Reaper, Amethyst Fang, Void Widow",
+      "impactOnPlayer": "fast thin shot, high/medium damage, small hitbox, warning line for boss version",
+      "telegraphRequired": false,
+      "notes": "Use this sprite from assets/enemies/weapons/sprites/. If black remnants appear, render additively or refine alpha cutoff."
+    },
+    {
+      "id": "eden_star_lance",
+      "displayName": "Eden Star Lance",
+      "sprite": "assets/enemies/weapons/sprites/eden_star_lance.png",
+      "behavior": "piercing_projectile",
+      "owners": "Solar Tyrant / premium gold elite",
+      "impactOnPlayer": "rare heavy star-lance, piercing, bright impact",
+      "telegraphRequired": true,
+      "notes": "Use this sprite from assets/enemies/weapons/sprites/. If black remnants appear, render additively or refine alpha cutoff."
+    },
+    {
+      "id": "abyss_rift_blade",
+      "displayName": "Abyss Rift Blade",
+      "sprite": "assets/enemies/weapons/sprites/abyss_rift_blade.png",
+      "behavior": "slash_wave",
+      "owners": "Pale Bloodknight, Abyss Maw",
+      "impactOnPlayer": "blade wave / cone slash damage, red-purple impact",
+      "telegraphRequired": true,
+      "notes": "Use this sprite from assets/enemies/weapons/sprites/. If black remnants appear, render additively or refine alpha cutoff."
+    },
+    {
+      "id": "cryo_shard_lance",
+      "displayName": "Cryo Shard Lance",
+      "sprite": "assets/enemies/weapons/sprites/cryo_shard_lance.png",
+      "behavior": "projectile",
+      "owners": "Cryo Warden, Cryo Claw",
+      "impactOnPlayer": "frost damage, icy burst, optional slow only if existing slow system",
+      "telegraphRequired": false,
+      "notes": "Use this sprite from assets/enemies/weapons/sprites/. If black remnants appear, render additively or refine alpha cutoff."
+    },
+    {
+      "id": "solar_halo_bolt",
+      "displayName": "Solar Halo Bolt",
+      "sprite": "assets/enemies/weapons/sprites/solar_halo_bolt.png",
+      "behavior": "projectile",
+      "owners": "Solar Tyrant, Solar Stinger, Forge Mauler ember variant",
+      "impactOnPlayer": "readable golden shot, medium/light damage",
+      "telegraphRequired": false,
+      "notes": "Use this sprite from assets/enemies/weapons/sprites/. If black remnants appear, render additively or refine alpha cutoff."
+    },
+    {
+      "id": "toxic_data_spear",
+      "displayName": "Toxic Data Spear",
+      "sprite": "assets/enemies/weapons/sprites/toxic_data_spear.png",
+      "behavior": "projectile",
+      "owners": "Rail Reaper, Toxin Leech, AI Rogue-style enemies",
+      "impactOnPlayer": "green glitch burst, no poison/drain unless existing system",
+      "telegraphRequired": false,
+      "notes": "Use this sprite from assets/enemies/weapons/sprites/. If black remnants appear, render additively or refine alpha cutoff."
+    },
+    {
+      "id": "magma_reaver_lance",
+      "displayName": "Magma Reaver Lance",
+      "sprite": "assets/enemies/weapons/sprites/magma_reaver_lance.png",
+      "behavior": "heavy_projectile",
+      "owners": "Forge Mauler, Reactor Colossus, Ember Scarab",
+      "impactOnPlayer": "heavy fire hit, ember burst, small screen shake for boss version",
+      "telegraphRequired": true,
+      "notes": "Use this sprite from assets/enemies/weapons/sprites/. If black remnants appear, render additively or refine alpha cutoff."
+    },
+    {
+      "id": "arc_circuit_beam",
+      "displayName": "Arc Circuit Beam",
+      "sprite": "assets/enemies/weapons/sprites/arc_circuit_beam.png",
+      "behavior": "beam_or_short_pulse",
+      "owners": "Null Hierophant, Reactor Colossus, Cryo Warden ice variant, Pulse Burrower, Volt Rat",
+      "impactOnPlayer": "telegraphed beam/pulse, continuous or short tick damage",
+      "telegraphRequired": true,
+      "notes": "Use this sprite from assets/enemies/weapons/sprites/. If black remnants appear, render additively or refine alpha cutoff."
+    },
+    {
+      "id": "aether_crescent_chakram",
+      "displayName": "Aether Crescent Chakram",
+      "sprite": "assets/enemies/weapons/sprites/aether_crescent_chakram.png",
+      "behavior": "boomerang_projectile",
+      "owners": "Cryo Warden optional, Pulse Burrower optional, ally/future reward",
+      "impactOnPlayer": "curving/returning projectile, light-medium damage",
+      "telegraphRequired": false,
+      "notes": "Use this sprite from assets/enemies/weapons/sprites/. If black remnants appear, render additively or refine alpha cutoff."
+    },
+    {
+      "id": "prism_wing_bolt",
+      "displayName": "Prism Wing Bolt",
+      "sprite": "assets/enemies/weapons/sprites/prism_wing_bolt.png",
+      "behavior": "projectile",
+      "owners": "Amethyst Fang optional, ally/future support",
+      "impactOnPlayer": "fast elegant bolt, light-medium damage",
+      "telegraphRequired": false,
+      "notes": "Use this sprite from assets/enemies/weapons/sprites/. If black remnants appear, render additively or refine alpha cutoff."
+    },
+    {
+      "id": "blacknet_scythe_arc",
+      "displayName": "Blacknet Scythe Arc",
+      "sprite": "assets/enemies/weapons/sprites/blacknet_scythe_arc.png",
+      "behavior": "slash_arc",
+      "owners": "Pale Bloodknight, Void Widow, Stealth Aberration-style enemies",
+      "impactOnPlayer": "telegraphed arc slash, medium/heavy damage",
+      "telegraphRequired": true,
+      "notes": "Use this sprite from assets/enemies/weapons/sprites/. If black remnants appear, render additively or refine alpha cutoff."
+    },
+    {
+      "id": "seraph_vector_javelin",
+      "displayName": "Seraph Vector Javelin",
+      "sprite": "assets/enemies/weapons/sprites/seraph_vector_javelin.png",
+      "behavior": "piercing_projectile",
+      "owners": "Rail Reaper rail variant, Solar Tyrant, Solar Stinger",
+      "impactOnPlayer": "piercing line attack, warning line for boss version",
+      "telegraphRequired": true,
+      "notes": "Use this sprite from assets/enemies/weapons/sprites/. If black remnants appear, render additively or refine alpha cutoff."
+    },
+    {
+      "id": "null_rupture_orb",
+      "displayName": "Null Rupture Orb",
+      "sprite": "assets/enemies/weapons/sprites/null_rupture_orb.png",
+      "behavior": "orb_explosion",
+      "owners": "Null Hierophant, Pale Bloodknight, Abyss Maw, Rift Eye",
+      "impactOnPlayer": "slow orb, warning ring, circular AoE explosion",
+      "telegraphRequired": true,
+      "notes": "Use this sprite from assets/enemies/weapons/sprites/. If black remnants appear, render additively or refine alpha cutoff."
+    }
+  ],
+  "boss_assignments": {
+    "cryo_warden": {
+      "asset": "assets/enemies/bosses/cryo-warden.png",
+      "biome": "Glacial Expanse",
+      "identity": "ice tank / defensive frost boss",
+      "weapons": [
+        "cryo_shard_lance",
+        "arc_circuit_beam",
+        "aether_crescent_chakram"
+      ],
+      "behavior": "Rixnei Cryo Shard Lance eu8eia pros ton player. Fortizei ice beam me telegraph grammh. Se low HP mporei na petaksei 1-2 frost chakrams.",
+      "impact": "Medium frost damage, icy burst, optional slow mono an yparxei hdh slow system. Beam kanei continuous damage mono meta apo warning."
+    },
+    "forge_mauler": {
+      "asset": "assets/enemies/bosses/forge-mauler.png",
+      "biome": "Industrial Core",
+      "identity": "heavy forge/mech brute",
+      "weapons": [
+        "magma_reaver_lance",
+        "void_ember_comet",
+        "solar_halo_bolt"
+      ],
+      "behavior": "Plhsiazei arga kai varia. Rixnei Magma Reaver Lance san molten shot kai Void Ember Comet se arc/meteor path.",
+      "impact": "Heavy fire damage, ember burst, small screen shake sta heavy hits. Warning circle prin apo comet AoE."
+    },
+    "null_hierophant": {
+      "asset": "assets/enemies/bosses/null-hierophant.png",
+      "biome": "Orbital Nexus / Null-type",
+      "identity": "caster / ritual boss",
+      "weapons": [
+        "null_sigil_beam",
+        "arc_circuit_beam",
+        "null_rupture_orb"
+      ],
+      "behavior": "Anoigei sigil kyklous, kanei beam meta apo telegraph kai stelnei slow rupture orb pros ton player.",
+      "impact": "Continuous beam damage meta apo warning, rupture orb me warning ring kai heavy AoE explosion. No invisible radius."
+    },
+    "pale_bloodknight": {
+      "asset": "assets/enemies/bosses/pale-bloodknight.png",
+      "biome": "Abyssal / Blood elite",
+      "identity": "melee slasher boss",
+      "weapons": [
+        "abyss_rift_blade",
+        "blacknet_scythe_arc",
+        "null_rupture_orb"
+      ],
+      "behavior": "Kynhgaei epithetika, kanei telegraphed scythe arc konta kai stelnei dark blade waves.",
+      "impact": "Heavy slash damage, red/purple blade impact, optional knockback mono an yparxei. Small rupture AoE as phase attack."
+    },
+    "rail_reaper": {
+      "asset": "assets/enemies/bosses/rail-reaper.png",
+      "biome": "Data Wastes / AI Rogue elite",
+      "identity": "sniper / railgun assassin",
+      "weapons": [
+        "violet_spectral_needle",
+        "toxic_data_spear",
+        "seraph_vector_javelin"
+      ],
+      "behavior": "Paizei san sniper. Deixnei lepth warning line prin apo fast needle/rail shot. Den spamarei.",
+      "impact": "High damage fast projectile me mikro hitbox kai warning line. Toxic spear kanei green glitch burst; no poison unless existing system."
+    },
+    "reactor_colossus": {
+      "asset": "assets/enemies/bosses/reactor-colossus.png",
+      "biome": "Industrial Core / Reactor zone",
+      "identity": "massive energy reactor boss",
+      "weapons": [
+        "arc_circuit_beam",
+        "magma_reaver_lance",
+        "solar_halo_bolt"
+      ],
+      "behavior": "Fortizei chest core, rixnei Arc Circuit Beam kai overheat Magma Reaver Lance.",
+      "impact": "Beam tick damage after telegraph, heavy projectile impact, reactor pulse with clear warning."
+    },
+    "solar_tyrant": {
+      "asset": "assets/enemies/bosses/solar-tyrant.png",
+      "biome": "Solar / Gold elite / premium boss",
+      "identity": "golden flying elite boss",
+      "weapons": [
+        "solar_halo_bolt",
+        "seraph_vector_javelin",
+        "eden_star_lance"
+      ],
+      "behavior": "Petai golden bolts, chargearei piercing javelin kai se elite phase xrhsimopoiei Eden Star Lance.",
+      "impact": "Medium readable golden shots, high damage piercing javelin with telegraph, rare heavy star impact."
+    }
+  },
+  "mini_assignments": {
+    "abyss_maw": {
+      "asset": "assets/enemies/minis/abyss-maw.png",
+      "identity": "close-range abyss creature",
+      "weapons": [
+        "null_rupture_orb",
+        "abyss_rift_blade"
+      ],
+      "impact": "Small rupture orb AoE kai bite-wave cone damage."
+    },
+    "amethyst_fang": {
+      "asset": "assets/enemies/minis/amethyst-fang.png",
+      "identity": "fast purple predator",
+      "weapons": [
+        "violet_spectral_needle",
+        "prism_wing_bolt"
+      ],
+      "impact": "Fast small/medium projectile hits. Small hitbox, readable trail."
+    },
+    "cryo_claw": {
+      "asset": "assets/enemies/minis/cryo-claw.png",
+      "identity": "small frost melee/ranged hybrid",
+      "weapons": [
+        "cryo_shard_lance"
+      ],
+      "impact": "Light/medium frost shard damage; slow only if existing system."
+    },
+    "ember_scarab": {
+      "asset": "assets/enemies/minis/ember-scarab.png",
+      "identity": "small fire insect/mech",
+      "weapons": [
+        "void_ember_comet",
+        "magma_reaver_lance"
+      ],
+      "impact": "Light fire shots, small ember impact, no screen clutter."
+    },
+    "pulse_burrower": {
+      "asset": "assets/enemies/minis/pulse-burrower.png",
+      "identity": "underground/electric pulse enemy",
+      "weapons": [
+        "arc_circuit_beam",
+        "aether_crescent_chakram"
+      ],
+      "impact": "Short electric pulse with small circle telegraph; light/medium shock damage."
+    },
+    "rift_eye": {
+      "asset": "assets/enemies/minis/rift-eye.png",
+      "identity": "floating caster eye",
+      "weapons": [
+        "null_sigil_beam",
+        "null_rupture_orb"
+      ],
+      "impact": "Mini beam tick damage or small rupture AoE."
+    },
+    "solar_stinger": {
+      "asset": "assets/enemies/minis/solar-stinger.png",
+      "identity": "fast flying solar insect",
+      "weapons": [
+        "solar_halo_bolt",
+        "seraph_vector_javelin"
+      ],
+      "impact": "Fast golden shots, small javelin, light/medium damage."
+    },
+    "toxin_leech": {
+      "asset": "assets/enemies/minis/toxin-leech.png",
+      "identity": "toxic crawling/mech leech",
+      "weapons": [
+        "toxic_data_spear"
+      ],
+      "impact": "Medium green glitch splash. No core/resource drain."
+    },
+    "void_widow": {
+      "asset": "assets/enemies/minis/void-widow.png",
+      "identity": "stealth spider/assassin",
+      "weapons": [
+        "blacknet_scythe_arc",
+        "violet_spectral_needle"
+      ],
+      "impact": "Telegraphed scythe slash medium damage and fast needle if ranged."
+    },
+    "volt_rat": {
+      "asset": "assets/enemies/minis/volt-rat.png",
+      "identity": "fast electric rat/mech",
+      "weapons": [
+        "arc_circuit_beam",
+        "toxic_data_spear"
+      ],
+      "impact": "Tiny zap/electric bolt, light shock damage; stun only if existing system."
+    }
+  }
+}
