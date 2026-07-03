@@ -90,6 +90,17 @@ export class Enemy {
       case 'Cyber Shooter':          return 'shooter';
       case 'Heavy Mech':             return 'hunter';
       case 'Razorhound':             return 'hunter';  // fast melee chaser, never steals
+      // ── New mini enemies (weapon pack) ──
+      case 'Abyss Maw':              return 'mixed';
+      case 'Amethyst Fang':          return 'shooter';
+      case 'Cryo Claw':              return 'hunter';
+      case 'Ember Scarab':           return 'mixed';
+      case 'Pulse Burrower':         return 'mixed';
+      case 'Rift Eye':               return 'shooter';
+      case 'Solar Stinger':          return 'shooter';
+      case 'Toxin Leech':            return 'hunter';
+      case 'Void Widow':             return 'shooter';
+      case 'Volt Rat':               return 'hunter';
       default:                       return 'scavenger';
     }
   }
@@ -130,6 +141,63 @@ export class Enemy {
         this.bulletDamage  = 11;
         this.bulletRadius  = 9;
         this.bulletColor   = ORANGE;
+        break;
+      // ── New mini enemies — weapon-catalog-derived shooting stats ──
+      case 'Abyss Maw':
+        this.shootInterval = 4.5;
+        this.bulletSpeed   = 200;
+        this.bulletDamage  = 20;
+        this.bulletRadius  = 10;
+        this.bulletColor   = PURPLE;
+        break;
+      case 'Amethyst Fang':
+        this.shootInterval = 2.2;
+        this.bulletSpeed   = 720;
+        this.bulletDamage  = 14;
+        this.bulletRadius  = 4;
+        this.bulletColor   = PURPLE;
+        break;
+      case 'Ember Scarab':
+        this.shootInterval = 2.8;
+        this.bulletSpeed   = 380;
+        this.bulletDamage  = 10;
+        this.bulletRadius  = 8;
+        this.bulletColor   = ORANGE;
+        break;
+      case 'Pulse Burrower':
+        this.shootInterval = 3.5;
+        this.bulletSpeed   = 300;
+        this.bulletDamage  = 5;
+        this.bulletRadius  = 6;
+        this.bulletColor   = CYAN;
+        break;
+      case 'Rift Eye':
+        this.shootInterval = 4.0;
+        this.bulletSpeed   = 340;
+        this.bulletDamage  = 6;
+        this.bulletRadius  = 7;
+        this.bulletColor   = PURPLE;
+        break;
+      case 'Solar Stinger':
+        this.shootInterval = 1.6;
+        this.bulletSpeed   = 520;
+        this.bulletDamage  = 8;
+        this.bulletRadius  = 5;
+        this.bulletColor   = YELLOW;
+        break;
+      case 'Void Widow':
+        this.shootInterval = 2.8;
+        this.bulletSpeed   = 400;
+        this.bulletDamage  = 15;
+        this.bulletRadius  = 7;
+        this.bulletColor   = PURPLE;
+        break;
+      case 'Volt Rat':
+        this.shootInterval = 3.5;
+        this.bulletSpeed   = 300;
+        this.bulletDamage  = 5;
+        this.bulletRadius  = 5;
+        this.bulletColor   = CYAN;
         break;
     }
   }
@@ -184,6 +252,17 @@ export class Enemy {
       'Heavy Mech':              'minis/reactor-colossus',
       // Bloodfang pack minion — dedicated sprite in minions/ subfolder
       'Razorhound':              'minions/razorhound',
+      // ── New mini enemies (weapon pack) ──
+      'Abyss Maw':               'minis/mini_enemy_abyss-maw_candidate',
+      'Amethyst Fang':           'minis/mini_enemy_amethyst-fang_candidate',
+      'Cryo Claw':               'minis/mini_enemy_cryo-claw_candidate',
+      'Ember Scarab':            'minis/mini_enemy_ember-scarab_candidate',
+      'Pulse Burrower':          'minis/mini_enemy_pulse-burrower_candidate',
+      'Rift Eye':                'minis/mini_enemy_rift-eye_candidate',
+      'Solar Stinger':           'minis/mini_enemy_solar-stinger_candidate',
+      'Toxin Leech':             'minis/mini_enemy_toxin-leech_candidate',
+      'Void Widow':              'minis/mini_enemy_void-widow_candidate',
+      'Volt Rat':                'minis/mini_enemy_volt-rat_candidate',
     };
     const spriteFile = spriteMap[this.enemyType];
     if (spriteFile) {
@@ -235,6 +314,17 @@ export class Enemy {
       case 'Cyber Shooter':         return [108 * d, 5.6 * g,  CYAN,    9999,  6 * g];   // medium ×1.4
       case 'Heavy Mech':            return [58  * d, 32 * g,   ORANGE,  9999, 20 * g];   // large ×1.6
       case 'Razorhound':            return [200 * d, 21 * g,   RED,     9999,  6 * g];   // large ×1.5
+      // ── New mini enemies (weapon pack) ──
+      case 'Abyss Maw':            return [75  * d, 28 * g,   PURPLE,  9999, 18 * g];   // large, slow, tanky
+      case 'Amethyst Fang':        return [165 * d, 3.5 * g,  PURPLE,  9999, 10 * g];   // small-med, fast sniper
+      case 'Cryo Claw':            return [140 * d, 5 * g,    CYAN,    9999, 10 * g];   // medium, melee frost
+      case 'Ember Scarab':         return [120 * d, 8 * g,    ORANGE,  9999, 12 * g];   // medium, fire AoE
+      case 'Pulse Burrower':       return [100 * d, 10 * g,   CYAN,    9999,  8 * g];   // medium, beam/boomerang
+      case 'Rift Eye':             return [60  * d, 14 * g,   PURPLE,  9999,  4 * g];   // slow, fragile ranged
+      case 'Solar Stinger':        return [175 * d, 3 * g,    YELLOW,  9999,  8 * g];   // fast, light shooter
+      case 'Toxin Leech':          return [145 * d, 4 * g,    GREEN,   9999, 12 * g];   // fast melee, poison
+      case 'Void Widow':           return [90  * d, 12 * g,   PURPLE,  9999, 14 * g];   // slow-med, heavy ranged
+      case 'Volt Rat':             return [220 * d, 2 * g,    CYAN,    9999,  6 * g];   // very fast, fragile swarm
       default:                      return [100,      2.6,     WHITE,   1.80,  6];
     }
   }

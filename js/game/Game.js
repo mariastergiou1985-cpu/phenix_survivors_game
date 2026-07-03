@@ -12,7 +12,7 @@ import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260629440000
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260703700000';
 import { Player }         from '../entities/Player.js?v=20260703700000';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260629440000';
-import { Enemy }          from '../entities/Enemy.js?v=20260703940000';
+import { Enemy }          from '../entities/Enemy.js?v=20260703970000';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=20260703940000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260702440000';
@@ -35,7 +35,7 @@ import { MeteorRain } from '../effects/meteor-rain.js?v=20260629440000';
 import { NpcWalker } from './NpcWalker.js?v=20260629560000';
 import { MapManager, BIOME_ID, BIOME_DEFS } from './MapManager.js?v=20260703300000';
 import { EventBus, EVENTS } from './EventBus.js?v=20260702700000';
-import { EnemySpawner, ELITE_WAVE as ELITE_WAVE_CFG, BOSS_WARN_COOLDOWN as BOSS_WARN_CD } from './EnemySpawner.js?v=20260703940000';
+import { EnemySpawner, ELITE_WAVE as ELITE_WAVE_CFG, BOSS_WARN_COOLDOWN as BOSS_WARN_CD } from './EnemySpawner.js?v=20260703970000';
 import { StateManager, GAME_STATES } from './StateManager.js?v=20260702900000';
 import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260703900000';
 import { NexusManager } from './NexusManager.js?v=20260703900000';
