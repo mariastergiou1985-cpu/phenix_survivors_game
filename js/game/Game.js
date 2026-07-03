@@ -38,7 +38,7 @@ import { EventBus, EVENTS } from './EventBus.js?v=20260703990000';
 import { EnemySpawner, ELITE_WAVE as ELITE_WAVE_CFG, BOSS_WARN_COOLDOWN as BOSS_WARN_CD } from './EnemySpawner.js?v=20260703990000';
 import { StateManager, GAME_STATES } from './StateManager.js?v=20260703990000';
 import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260703990000';
-import { NexusManager } from './NexusManager.js?v=20260703990000';
+import { NexusManager } from './NexusManager.js?v=20260703997000';
 import { VESSELS, getVesselById, getDefaultVesselId } from './VesselCatalog.js?v=20260703996000';
 import { PETS, getPetById } from './PetCatalog.js?v=20260703996000';
 
@@ -358,10 +358,24 @@ export class Game {
       configurable: true,
     });
 
-    // Endless Nexus image (not part of MapManager — it's a Nexus sprite)
-    this._endlessNexusImage = new Image();
-    this._endlessNexusImage.onerror = () => console.warn('[Nexus] missing assets/nexus/endless_nexus_base_8cores.png — using default Nexus visual');
-    this._endlessNexusImage.src = 'assets/nexus/endless_nexus_base_8cores.png?v=20260703990000';
+    // Biome-specific Nexus sprites — each biome gets its own station architecture
+    this._nexusSpriteCache = {};
+    const _nexusSpriteMap = {
+      industrial_core:  'assets/nexus/nexus_industrial_forge_core.png',
+      orbital_nexus:    'assets/nexus/nexus_orbital_seraph_gate.png',
+      glacial_expanse:  'assets/nexus/nexus_glacial_crystal_bastion.png',
+      data_wastes:      'assets/nexus/nexus_toxic_data_hive.png',
+    };
+    for (const [biomeId, src] of Object.entries(_nexusSpriteMap)) {
+      const img = new Image();
+      img.onerror = () => console.warn(`[Nexus] missing ${src}`);
+      img.src = src + '?v=20260703997000';
+      this._nexusSpriteCache[biomeId] = img;
+    }
+    // Fallback for biomes without a dedicated sprite (Neon District, Abyssal Trench)
+    this._nexusFallbackImage = new Image();
+    this._nexusFallbackImage.onerror = () => console.warn('[Nexus] missing assets/nexus/endless_nexus_base_8cores.png');
+    this._nexusFallbackImage.src = 'assets/nexus/endless_nexus_base_8cores.png?v=20260703997000';
 
     // Chaos Mode background — loaded by MapManager.loadBackgrounds()
 
@@ -9703,9 +9717,9 @@ export class Game {
     this._drawIceFields(ctx);          // Crystal Ice Field zones (Taekwondo ultimate)
     this.elementFx.draw(ctx);        // elemental hit bursts (world-space, additive, bounded)
 
-    // 2 ── Power Matrices (fill-based glow + counter owned by PowerMatrix; overload drives danger blink)
+    // 2 ── Nexus stations (world/static/interactable layer — NOT enemy/bullet/pet/UI)
     for (const m of this.matrices) {
-      if (this.endless) this._drawEndlessNexusBase(ctx, m);   // sprite UNDER the matrix (Endless only)
+      this._drawEndlessNexusBase(ctx, m);   // biome-specific sprite UNDER the matrix glow
       m.draw(ctx, 0);              // no danger blink — overload is now a positive recharge meter
     }
     // 2b ── Nexus reward orbs (homing XP/credit/heal pulses from charged Nexus)
@@ -18089,17 +18103,18 @@ _drawLoreArchive(ctx) {
     return { x: screenPos.x / this._viewScale + this.camera.x, y: screenPos.y / this._viewScale + this.camera.y };
   }
 
-  // Endless-only Nexus base sprite drawn UNDER a matrix. Clean fixed size so it doesn't cover
-  // too much play space; if the image is missing, draw nothing (the matrix renders itself).
+  // Endless Nexus base sprite drawn UNDER a matrix — biome-specific architecture.
+  // World/static layer, NOT enemy/bullet/pet/UI layer.
   _drawEndlessNexusBase(ctx, m) {
-    const img = this._endlessNexusImage;
+    // Pick biome-specific sprite, or fallback for Neon District / Abyssal Trench
+    const img = this._nexusSpriteCache?.[m.biomeId] || this._nexusFallbackImage;
     if (!(img && img.complete && img.naturalWidth > 0)) return;
-    const D = 120;   // Endless base visual (was 150) — smaller for readability; deposit/collision radius unchanged
-    // Soft elliptical contact shadow so the base reads as planted on the arena, not pasted on top.
+    const D = 128;   // readable but not gigantic
+    // Soft elliptical contact shadow — Nexus reads as planted in the world
     ctx.save();
     ctx.fillStyle = 'rgba(0,0,0,0.38)';
     ctx.beginPath();
-    ctx.ellipse(m.pos.x, m.pos.y + D * 0.30, D * 0.40, D * 0.15, 0, 0, Math.PI * 2);
+    ctx.ellipse(m.pos.x, m.pos.y + D * 0.30, D * 0.44, D * 0.16, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
     ctx.drawImage(img, m.pos.x - D / 2, m.pos.y - D / 2, D, D);

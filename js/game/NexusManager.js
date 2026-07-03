@@ -13,7 +13,7 @@ import { PowerMatrix } from '../entities/PowerMatrix.js?v=20260703900000';
 import { BIOME_ID, CHUNK_SIZE } from './MapManager.js?v=20260703900000';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
-const NEXUS_PER_BIOME    = 4;
+const NEXUS_PER_BIOME    = 1;     // 1 per outer biome — placed near active area, not far away
 const NEXUS_CAPACITY     = 6;     // was 8 — smaller per-nexus, but 24 total in Endless (144 cores)
 const REWARD_PULSE_INTERVAL = 18; // seconds between reward emissions from charged Nexus (was 30)
 const REWARD_PULSE_RADIUS   = 900; // max distance for reward to home toward player (was 600)
@@ -168,8 +168,11 @@ export class NexusManager {
       neonArr.push(m);
     }
 
-    // ── Outer biomes: 4 Nexus each at deterministic ring positions ──
-    const ringDist = CHUNK_SIZE * 2.0; // ~2 chunks from origin (compact biomes)
+    // ── Outer biomes: 1 Nexus each, placed near the active gameplay area ──
+    // Nexus are world support stations — they must be reachable during normal play,
+    // not thousands of pixels away.  Placed at ~1.4 chunks from origin in each
+    // biome's angular sector so the player discovers them when exploring outward.
+    const ringDist = CHUNK_SIZE * 1.4; // ~1.4 chunks from center — reachable, not far away
     const sectorCount = BIOME_RING_ORDER.length;
 
     for (let s = 0; s < sectorCount; s++) {
@@ -178,11 +181,8 @@ export class NexusManager {
       const sectorAngle = (s / sectorCount) * Math.PI * 2;
 
       for (let n = 0; n < NEXUS_PER_BIOME; n++) {
-        // Fan 4 Nexus across the sector with slight radial variation
-        const angleOffset = ((n - 1.5) / NEXUS_PER_BIOME) * (Math.PI * 2 / sectorCount) * 0.6;
-        const radialJitter = CHUNK_SIZE * (0.8 + (n % 2) * 0.5);
-        const angle = sectorAngle + angleOffset;
-        const r = ringDist + radialJitter;
+        const angle = sectorAngle;
+        const r = ringDist;
 
         const x = Math.round(r * Math.cos(angle));
         const y = Math.round(r * Math.sin(angle));
@@ -216,9 +216,9 @@ export class NexusManager {
       neonArr[i].pos.y = neonPositions[i][1];
     }
 
-    // Spawn outer-biome Nexus
+    // Spawn outer-biome Nexus (matches _createEndlessNexus layout)
     this.endless = true;
-    const ringDist = CHUNK_SIZE * 2.0; // compact biomes (matches _createEndlessNexus)
+    const ringDist = CHUNK_SIZE * 1.4; // ~1.4 chunks — near active area
     const sectorCount = BIOME_RING_ORDER.length;
 
     for (let s = 0; s < sectorCount; s++) {
@@ -227,10 +227,8 @@ export class NexusManager {
       const sectorAngle = (s / sectorCount) * Math.PI * 2;
 
       for (let n = 0; n < NEXUS_PER_BIOME; n++) {
-        const angleOffset = ((n - 1.5) / NEXUS_PER_BIOME) * (Math.PI * 2 / sectorCount) * 0.6;
-        const radialJitter = CHUNK_SIZE * (0.8 + (n % 2) * 0.5);
-        const angle = sectorAngle + angleOffset;
-        const r = ringDist + radialJitter;
+        const angle = sectorAngle;
+        const r = ringDist;
 
         const x = Math.round(r * Math.cos(angle));
         const y = Math.round(r * Math.sin(angle));
