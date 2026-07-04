@@ -32,6 +32,11 @@ export class VFXSpritePlayer {
     this.angle = 0;        // rotation in radians (aim direction)
     this.scale = 1.0;      // render scale multiplier
     this.alpha = 1.0;      // opacity (can fade toward end)
+
+    // Nexus wielder-variant single-image mode: when set to a preloaded Image,
+    // draw() renders this illustration (centered, capped, fading) instead of
+    // the sheet frame, and update() adds a slow spin. Timing/alpha unchanged.
+    this.overrideImg = null;
   }
 
   /** Start (or restart) animation from frame 0. */
@@ -49,6 +54,9 @@ export class VFXSpritePlayer {
    */
   update(dt) {
     if (!this._playing) return;
+
+    // Single-image override: slow spin replaces frame-by-frame motion
+    if (this.overrideImg) this.angle += dt * 2;
 
     this.frameTimer += dt;
     const frameDuration = 1.0 / this.fps;
@@ -79,6 +87,25 @@ export class VFXSpritePlayer {
    */
   draw(ctx) {
     if (!this._playing && !this._done) return;
+
+    // Nexus wielder-variant single-image mode — draw the override illustration
+    // (respecting the 320px cap and alpha fade) instead of the sheet frame.
+    if (this.overrideImg) {
+      const oi = this.overrideImg;
+      if (!oi.complete || oi.naturalWidth === 0) return;
+      let odw = oi.naturalWidth * this.scale;
+      let odh = oi.naturalHeight * this.scale;
+      const _om = Math.max(odw, odh);
+      if (_om > 320) { const _ok = 320 / _om; odw *= _ok; odh *= _ok; }
+      ctx.save();
+      ctx.globalAlpha = this.alpha;
+      ctx.globalCompositeOperation = 'lighter';   // additive blend for energy VFX
+      ctx.translate(this.x, this.y);
+      if (this.angle !== 0) ctx.rotate(this.angle);
+      ctx.drawImage(oi, -odw / 2, -odh / 2, odw, odh);
+      ctx.restore();
+      return;
+    }
     if (!this.spriteSheet || !this.spriteSheet.complete) return;
     if (this.spriteSheet.naturalWidth === 0) return;
 

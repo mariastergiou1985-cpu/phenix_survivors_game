@@ -20,6 +20,12 @@ export const TACTICAL_ID = Object.freeze({
   GRAVITY_WELL:      'tac_gravity_well',
   RAIL_STRIKE:       'tac_rail_strike',
   MISSILE_BARRAGE:   'tac_missile_barrage',
+  HEAVY_IMPACT_BURST: 'tac_heavy_impact_burst',
+  // Tactical Fusions (Nexus Weapon Visual Pack) — parents must both deploy first
+  FUSION_CHAKRAM_KINETIC: 'fusion_chakram_kinetic',
+  FUSION_OVERDRIVE_VOID:  'fusion_overdrive_void',
+  FUSION_TOXIC_INFERNO:   'fusion_toxic_inferno',
+  FUSION_IMPACT_STORM:    'fusion_impact_storm',
 });
 
 // ── FX Module Types (from master VFX sheet) ─────────────────────────────────
@@ -122,17 +128,17 @@ export const TACTICAL_DEFS = Object.freeze({
   },
 
   // ╔═══════════════════════════════════════════════════════════════════╗
-  // ║ 3. CYBER ARM HERO — Heavy Void Turret                           ║
+  // ║ 3. CYBER SKELETON — Heavy Void Turret (Nexus pack reassignment) ║
   // ║    Module E: Cyber Arm Hyper Beam                                ║
   // ╚═══════════════════════════════════════════════════════════════════╝
   [TACTICAL_ID.VOID_TURRET]: {
     id:          TACTICAL_ID.VOID_TURRET,
     name:        'Heavy Void Turret',
     description: 'Linear mechanical beam cannon projecting code debris with heavy RGB color bleeding',
-    character:   'cyber_arm_hero',
+    character:   'skeleton_warrior',
     fxModule:    FX_MODULE.E_HYPER_BEAM,
     behavior:    TACTICAL_BEHAVIOR.LINEAR_BEAM,
-    sprite:      'assets/weapons/tactical/tac_void_turret.png',
+    sprite:      'assets/weapons/nexus/skeleton_nexus_heavy_void_turret.png',
     baseDamage:  95,
     beamLength:  500,
     beamWidth:   24,
@@ -154,17 +160,17 @@ export const TACTICAL_DEFS = Object.freeze({
   },
 
   // ╔═══════════════════════════════════════════════════════════════════╗
-  // ║ 4. BRAWLER WARRIOR — Thermal Kinetic Wave                       ║
+  // ║ 4. NEON TAEKWONDO — Thermal Kinetic Wave (Nexus pack reassignment) ║
   // ║    Module F: Brawler Impact Slash                                ║
   // ╚═══════════════════════════════════════════════════════════════════╝
   [TACTICAL_ID.KINETIC_WAVE]: {
     id:          TACTICAL_ID.KINETIC_WAVE,
     name:        'Thermal Kinetic Wave',
     description: 'Horizontal slicing wave with blade smear frames, vertical floor spikes, and 0.05s hit-stops',
-    character:   'brawler_warrior',
+    character:   'taekwondo_girl',
     fxModule:    FX_MODULE.F_IMPACT_SLASH,
     behavior:    TACTICAL_BEHAVIOR.HORIZONTAL_SLASH,
-    sprite:      'assets/weapons/tactical/tac_kinetic_wave.png',
+    sprite:      'assets/weapons/nexus/taekwondo_thermal_kinetic_wave.png',
     baseDamage:  85,
     slashWidth:  400,
     slashHeight: 60,
@@ -179,6 +185,39 @@ export const TACTICAL_DEFS = Object.freeze({
     particles: {
       type:       'slash_smear',
       spikes:     true,   // vertical floor spike explosions
+      count:      10,
+      speed:      5.0,
+      color1:     '#66ddff',
+      color2:     '#ffffff',
+    },
+  },
+
+  // ╔═══════════════════════════════════════════════════════════════════╗
+  // ║ 4b. BRAWLER WARRIOR — Heavy Impact Burst (Nexus pack)           ║
+  // ║     Clone of Thermal Kinetic Wave — same behavior & numbers.     ║
+  // ╚═══════════════════════════════════════════════════════════════════╝
+  [TACTICAL_ID.HEAVY_IMPACT_BURST]: {
+    id:          TACTICAL_ID.HEAVY_IMPACT_BURST,
+    name:        'Heavy Impact Burst',
+    description: 'Horizontal slicing impact wave with blade smear frames, vertical floor spikes, and 0.05s hit-stops',
+    character:   'brawler_warrior',
+    fxModule:    FX_MODULE.F_IMPACT_SLASH,
+    behavior:    TACTICAL_BEHAVIOR.HORIZONTAL_SLASH,
+    sprite:      'assets/weapons/nexus/brawler_heavy_impact_burst.png',
+    baseDamage:  85,
+    slashWidth:  400,
+    slashHeight: 60,
+    tickRate:     1.0,
+    duration:    11,
+    color:       '#44ccff',
+    hitStopMs:   50,
+    glitchFx: {
+      frameDrop:   true,
+      vectorFlash: true,
+    },
+    particles: {
+      type:       'slash_smear',
+      spikes:     true,
       count:      10,
       speed:      5.0,
       color1:     '#66ddff',
@@ -328,7 +367,7 @@ export const TACTICAL_DEFS = Object.freeze({
     character:   null,     // GLOBAL — any character can receive
     fxModule:    null,     // Uses Universal Flare Flashes
     behavior:    TACTICAL_BEHAVIOR.HOMING_VOLLEY,
-    sprite:      'assets/weapons/tactical/tac_missile_barrage.png',
+    sprite:      'assets/weapons/nexus/arm_missile_barrage_overdrive.png',
     baseDamage:  65,
     missileCount: 8,
     missileSpeed: 5.5,
@@ -348,7 +387,108 @@ export const TACTICAL_DEFS = Object.freeze({
       color2:     '#ff8800',
     },
   },
+
+  // ╔═══════════════════════════════════════════════════════════════════╗
+  // ║ TACTICAL FUSIONS — Nexus Weapon Visual Pack                      ║
+  // ║ Offered only when BOTH parent tacticals were deployed this run.  ║
+  // ║ character '__fusion__' + exclusive keep them out of the normal   ║
+  // ║ getAvailableTactical() pool. Stats derived from parents:         ║
+  // ║ dmg = round((A+B)*0.75), duration = max, tickRate = min of the   ║
+  // ║ parents that define one. Behaviors inherited — zero new mechanics.║
+  // ╚═══════════════════════════════════════════════════════════════════╝
+  [TACTICAL_ID.FUSION_CHAKRAM_KINETIC]: {
+    id:          TACTICAL_ID.FUSION_CHAKRAM_KINETIC,
+    name:        'Chakram Kinetic Storm',
+    description: 'Kinetic slash wave supercharged by barrage overdrive cadence',
+    character:   '__fusion__',
+    exclusive:   true,
+    fusion:      true,
+    parents:     [TACTICAL_ID.KINETIC_WAVE, TACTICAL_ID.MISSILE_BARRAGE],
+    fxModule:    FX_MODULE.F_IMPACT_SLASH,
+    behavior:    TACTICAL_BEHAVIOR.HORIZONTAL_SLASH,
+    sprite:      'assets/weapons/nexus/evolution/nexus_taekwondo_evol_chakram_kinetic_wave.png',
+    baseDamage:  113,     // Math.round((85 + 65) * 0.75)
+    slashWidth:  400,
+    slashHeight: 60,
+    tickRate:     0.5,    // min(1.0, 0.5)
+    duration:    11,      // max(11, 10)
+    color:       '#44ccff',
+    hitStopMs:   50,
+    glitchFx: { frameDrop: true, vectorFlash: true },
+    particles: { type: 'slash_smear', spikes: true, count: 10, speed: 5.0, color1: '#66ddff', color2: '#ffffff' },
+  },
+
+  [TACTICAL_ID.FUSION_OVERDRIVE_VOID]: {
+    id:          TACTICAL_ID.FUSION_OVERDRIVE_VOID,
+    name:        'Overdrive Void Barrage',
+    description: 'Homing barrage volley charged with void-turret firepower',
+    character:   '__fusion__',
+    exclusive:   true,
+    fusion:      true,
+    parents:     [TACTICAL_ID.MISSILE_BARRAGE, TACTICAL_ID.VOID_TURRET],
+    fxModule:    null,
+    behavior:    TACTICAL_BEHAVIOR.HOMING_VOLLEY,
+    sprite:      'assets/weapons/nexus/evolution/arm_nexus_evol_overdrive_void_barrage.png',
+    baseDamage:  120,     // Math.round((65 + 95) * 0.75)
+    missileCount: 8,
+    missileSpeed: 5.5,
+    homingForce:  0.08,
+    tickRate:     0.5,    // min(0.5, 1.5)
+    duration:    14,      // max(10, 14)
+    color:       '#ffcc00',
+    glitchFx: { flareFlash: true },
+    particles: { type: 'missile_trail', flare: true, count: 8, speed: 5.5, color1: '#ffcc00', color2: '#ff8800' },
+  },
+
+  [TACTICAL_ID.FUSION_TOXIC_INFERNO]: {
+    id:          TACTICAL_ID.FUSION_TOXIC_INFERNO,
+    name:        'Toxic Inferno Fangs',
+    description: 'Autonomous hunter drone burning with cataclysm venom',
+    character:   '__fusion__',
+    exclusive:   true,
+    fusion:      true,
+    parents:     [TACTICAL_ID.HUNTER_SENTRY, TACTICAL_ID.GRAVITY_WELL],
+    fxModule:    FX_MODULE.C_PLASMA_EXECUTION,
+    behavior:    TACTICAL_BEHAVIOR.AUTONOMOUS_DRONE,
+    sprite:      'assets/weapons/nexus/evolution/oni_assassin_evol_toxic_inferno_fangs.png',
+    baseDamage:  137,     // Math.round((72 + 110) * 0.75)
+    patrolRadius: 280,
+    flySpeed:    3.0,
+    tickRate:     0.6,    // min of parents defining one (GRAVITY_WELL has none)
+    duration:    15,      // max(15, 8)
+    color:       '#cc44ff',
+    glitchFx: { ghostTrail: true, pixelShred: true },
+    particles: { type: 'comet_trail', afterimage: true, count: 5, speed: 2.0, color1: '#bb44ff', color2: '#ff66ff' },
+  },
+
+  [TACTICAL_ID.FUSION_IMPACT_STORM]: {
+    id:          TACTICAL_ID.FUSION_IMPACT_STORM,
+    name:        'Magnetic Impact Storm',
+    description: 'Expanding impact shockwaves seeded with proximity charge bursts',
+    character:   '__fusion__',
+    exclusive:   true,
+    fusion:      true,
+    parents:     [TACTICAL_ID.HEAVY_IMPACT_BURST, TACTICAL_ID.PROXIMITY_GRID],
+    fxModule:    FX_MODULE.G_TOXIC_PROTOCOL,
+    behavior:    TACTICAL_BEHAVIOR.GROUND_SHOCKWAVE,
+    sprite:      'assets/weapons/nexus/evolution/brawler_euclid_evol_magnetic_impact_storm.png',
+    baseDamage:  109,     // Math.round((85 + 60) * 0.75)
+    aoeRadius:   240,     // neither parent defines aoeRadius — engine default for ground_shockwave
+    tickRate:     1.0,    // min of parents defining one (PROXIMITY_GRID has none)
+    duration:    20,      // max(11, 20)
+    color:       '#44ccff',
+    glitchFx: { frameDrop: true, vectorFlash: true },
+    particles: { type: 'binary_burst', dataSmoke: true, count: 16, speed: 2.0, color1: '#00ff44', color2: '#88ff88' },
+  },
 });
+
+// ── Tactical Fusions (Nexus pack) — offered by Game when both parents deployed ──
+export const FUSION_TACTICALS = Object.freeze([
+  TACTICAL_DEFS[TACTICAL_ID.FUSION_CHAKRAM_KINETIC],
+  TACTICAL_DEFS[TACTICAL_ID.FUSION_OVERDRIVE_VOID],
+  TACTICAL_DEFS[TACTICAL_ID.FUSION_TOXIC_INFERNO],
+  TACTICAL_DEFS[TACTICAL_ID.FUSION_IMPACT_STORM],
+]);
 
 // ── Helper Functions ────────────────────────────────────────────────────────
 

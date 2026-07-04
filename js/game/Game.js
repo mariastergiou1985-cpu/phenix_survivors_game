@@ -17,7 +17,7 @@ import { SupportDrone }   from '../entities/SupportDrone.js?v=20260703990000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260703990000';
 import { SystemEventManager } from './Events.js?v=20260705110000';
-import { UpgradeUI }      from './UpgradeUI.js?v=20260705040000';
+import { UpgradeUI }      from './UpgradeUI.js?v=20260705120000';
 import { weightedSample } from './Upgrades.js?v=20260705040000';
 import { MutationUI }      from './MutationUI.js?v=20260703990000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
@@ -42,8 +42,8 @@ import { NexusManager } from './NexusManager.js?v=20260705040000';
 import { VESSELS, getVesselById, getDefaultVesselId } from './VesselCatalog.js?v=20260705040000';
 import { PETS, getPetById } from './PetCatalog.js?v=20260705000000';
 import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons, isEvolutionOwnedBy, getCardDisplayName } from './WeaponCatalog.js?v=20260704230000';
-import { TACTICAL_ID, TACTICAL_DEFS, getTacticalDef, getTacticalForCharacter, getAvailableTactical, preloadTacticalSprites } from './TacticalWeaponCatalog.js?v=20260704230000';
-import { VFXSpritePlayer } from './VFXSpritePlayer.js?v=20260705020000';
+import { TACTICAL_ID, TACTICAL_DEFS, getTacticalDef, getTacticalForCharacter, getAvailableTactical, preloadTacticalSprites, FUSION_TACTICALS } from './TacticalWeaponCatalog.js?v=20260705120000';
+import { VFXSpritePlayer } from './VFXSpritePlayer.js?v=20260705120000';
 
 // ── Mastery card → base weapon mapping (for evolution level tracking) ──
 const MASTERY_TO_WEAPON = Object.freeze({
@@ -88,6 +88,30 @@ const WEAPON_VFX_META = Object.freeze({
   cataclysm_chain:  { cols: 8, frameW: 256, frameH: 256, totalFrames: 32, fps: 24 },
   frozen_eden:      { cols: 5, frameW: 256, frameH: 256, totalFrames: 20, fps: 20 },
 });
+
+// ── Nexus Weapon Visual Pack: per-wielder VFX variants (single illustrations,
+// NOT frame sheets). Keyed by weaponId|selectedCharacter. When a combo matches,
+// _spawnWeaponVFX keeps the sheet-based timing but draws the override image
+// (VFXSpritePlayer.overrideImg single-image mode). Same files double as card icons.
+const WIELDER_VFX_OVERRIDES = Object.freeze({
+  'magnetic_arc|euclid_vector':         'assets/weapons/nexus/euclid_toxic_arc_burst.png',
+  'magnetic_arc|assassin_clone':        'assets/weapons/nexus/assassin_toxic_arc_burst.png',
+  'magnetic_arc|brawler_warrior':       'assets/weapons/nexus/brawler_heavy_impact_burst.png',
+  'storm_saber|oni_cataclysm_protocol': 'assets/weapons/nexus/oni_inferno_saber_slash.png',
+});
+
+// Lazy one-time Image cache for Nexus pack illustrations (VFX overrides + card icons).
+const _nexusImgCache = new Map();
+function _getNexusImage(src) {
+  let img = _nexusImgCache.get(src);
+  if (!img) {
+    img = new Image();
+    img.onerror = () => console.warn('[NexusPack] missing ' + src);
+    img.src = src;
+    _nexusImgCache.set(src, img);
+  }
+  return img;
+}
 
 // Euclid Vector toxin kit — used ONLY when selectedCharacter === 'euclid_vector' (world-space).
 import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=20260703990000';
@@ -968,6 +992,7 @@ export class Game {
 
     // ── Tactical Cache Weapons — independent map objects, 100% decoupled from player ──
     this.tacticalCacheWeapons = [];
+    this._tacticalDeployedIds = new Set();   // every tactical id deployed this run (fusion unlock tracking)
     this._tacticalSpriteCache = preloadTacticalSprites();
 
     this.enemyBullets = [];
@@ -8789,6 +8814,10 @@ export class Game {
     vfx.y     = y;
     vfx.angle = angle || 0;
     vfx.scale = scale || 1.0;
+    // Nexus pack: wielder-flavored single-image variant replaces the sheet frames
+    // for matching weapon+character combos (timing/alpha/homing unchanged).
+    const _ovSrc = WIELDER_VFX_OVERRIDES[weaponId + '|' + (this.player ? this.player.selectedCharacter : '')];
+    if (_ovSrc) vfx.overrideImg = _getNexusImage(_ovSrc);
     vfx.play();
     this._activeWeaponVFX.push(vfx);
     return vfx;
@@ -8850,6 +8879,13 @@ export class Game {
 
     const pick = pool[Math.floor(Math.random() * pool.length)];
 
+    // Nexus pack card icons: chakram illustration for ALL wielders; wielder-
+    // flavored art where a WIELDER_VFX_OVERRIDES combo exists. Glyph fallback otherwise.
+    const _nexusIconSrc = pick.id === 'nexus_chakram'
+      ? 'assets/weapons/nexus/nexus_nexus_chakram.png'
+      : (WIELDER_VFX_OVERRIDES[pick.id + '|' + charId] || null);
+    const _nexusIcon = _nexusIconSrc ? _getNexusImage(_nexusIconSrc) : null;
+
     if (pick.type === 'acquire') {
       const def = getWeaponDef(pick.id);
       if (!def) return null;
@@ -8859,6 +8895,7 @@ export class Game {
         description: 'NEW WEAPON — auto-fires independently',
         iconColor:   def.color || '#ffcc00',
         icon:        '⚔',                 // ⚔
+        iconImg:     _nexusIcon,          // Nexus pack illustration (glyph fallback if null)
         rarity:      'epic',
         maxLevel:    1,
         _isWeaponCard: true,
@@ -8885,6 +8922,7 @@ export class Game {
       description: 'Upgrade to Level ' + newLvl + (newLvl >= 5 ? ' — EVOLUTION READY' : ''),
       iconColor:   def.color || '#ffcc00',
       icon:        '⬆',                   // ⬆
+      iconImg:     _nexusIcon,            // Nexus pack illustration (glyph fallback if null)
       rarity:      newLvl >= 5 ? 'legendary' : newLvl >= 4 ? 'epic' : 'rare',
       maxLevel:    5,
       _isWeaponCard: true,
@@ -8909,20 +8947,36 @@ export class Game {
     if (this.tacticalCacheWeapons.length >= MAX_TACTICAL) return null;
 
     const charId = this.player.selectedCharacter;
-    const pool   = getAvailableTactical(charId).filter(
-      d => !d.exclusive || d.character === charId
-    );
-    if (pool.length === 0) return null;
 
-    const pick = pool[Math.floor(Math.random() * pool.length)];
+    // ── TACTICAL FUSION (Nexus pack): if BOTH parents of a fusion were deployed
+    // this run and the fusion itself hasn't been, offer the fusion card instead.
+    // Fusion defs carry character '__fusion__' so getAvailableTactical never
+    // surfaces them in the normal pool. ──
+    let pick = null, _isFusion = false;
+    const _deployed = this._tacticalDeployedIds || new Set();
+    for (const fdef of FUSION_TACTICALS) {
+      if (_deployed.has(fdef.parents[0]) && _deployed.has(fdef.parents[1]) &&
+          !_deployed.has(fdef.id)) { pick = fdef; _isFusion = true; break; }
+    }
+
+    if (!pick) {
+      const pool = getAvailableTactical(charId).filter(
+        d => !d.exclusive || d.character === charId
+      );
+      if (pool.length === 0) return null;
+      pick = pool[Math.floor(Math.random() * pool.length)];
+    }
     const game = this;
 
     return {
       key:            '_tac_' + pick.id,
       name:           pick.name,
-      description:    'GRID CACHE — deploys at current position',
+      description:    _isFusion ? 'TACTICAL FUSION — deploys at current position'
+                                : 'GRID CACHE — deploys at current position',
       iconColor:      pick.color || '#00ffaa',
       icon:           '✦',                  // ✦
+      iconImg:        (pick.sprite && pick.sprite.indexOf('assets/weapons/nexus/') === 0)
+                        ? _getNexusImage(pick.sprite) : null,   // Nexus pack card art
       rarity:         'legendary',
       maxLevel:       99,                        // always re-offerable
       _isTacticalCard: true,
@@ -9072,6 +9126,7 @@ export class Game {
   _spawnTacticalWeapon(tacId, worldX, worldY) {
     const def = getTacticalDef(tacId);
     if (!def) { console.warn('[Tactical] Unknown weapon:', tacId); return; }
+    if (this._tacticalDeployedIds) this._tacticalDeployedIds.add(tacId);   // fusion unlock tracking
 
     const entity = {
       id:        tacId,

@@ -143,14 +143,27 @@ export class UpgradeUI {
       ctx.stroke();
       ctx.restore();
 
-      // Icon symbol/emoji (large, centered)
-      ctx.font      = (upg.icon.length > 1 ? '34px' : '42px') + ' "Segoe UI Emoji", Consolas, monospace';
-      ctx.fillStyle = upg.iconColor;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(upg.icon, ix + 40, iy + 42);
-      ctx.textBaseline = 'alphabetic';
-      ctx.textAlign = 'left';
+      // Icon — IMAGE art when the card carries a loaded iconImg (Nexus pack
+      // illustrations), otherwise the classic symbol/emoji glyph.
+      if (upg.iconImg && upg.iconImg.complete && upg.iconImg.naturalWidth > 0) {
+        const iw = upg.iconImg.naturalWidth, ih = upg.iconImg.naturalHeight;
+        const fit = Math.min(72 / iw, 72 / ih);          // fit inside the 80×80 box w/ 4px pad
+        const dw = iw * fit, dh = ih * fit;
+        ctx.save();
+        roundRect(ctx, ix, iy, 80, 80, 10);
+        ctx.clip();                                      // keep art inside the rounded frame
+        ctx.drawImage(upg.iconImg, ix + (80 - dw) / 2, iy + (80 - dh) / 2, dw, dh);
+        ctx.restore();
+      } else {
+        // Icon symbol/emoji (large, centered)
+        ctx.font      = (upg.icon.length > 1 ? '34px' : '42px') + ' "Segoe UI Emoji", Consolas, monospace';
+        ctx.fillStyle = upg.iconColor;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(upg.icon, ix + 40, iy + 42);
+        ctx.textBaseline = 'alphabetic';
+        ctx.textAlign = 'left';
+      }
 
       // Upgrade name — bold, bright, with a subtle glow for readability.
       // Auto-fit: long names (e.g. "Storm Saber Cursed Slash Lv.2") shrink to
