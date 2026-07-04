@@ -4096,6 +4096,27 @@ export class Game {
           text-align:center;
         }
 
+        #cgm-evomatrix .em-owners {
+          width:100%; font-size:9px; letter-spacing:1.5px; text-transform:uppercase;
+          color:var(--amber); opacity:.9;
+        }
+        #cgm-evomatrix .em-tacnote { font-size:10px; color:var(--txt-dim); line-height:1.5; }
+        #cgm-evomatrix .em-tacgrid {
+          display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:10px;
+        }
+        #cgm-evomatrix .em-taccard {
+          border:1px solid rgba(46,90,100,.25); border-radius:10px;
+          padding:10px 12px; background:rgba(10,16,46,.5);
+        }
+        #cgm-evomatrix .em-taccard-char {
+          font-family:'Orbitron',sans-serif; font-weight:700; font-size:11px;
+          color:var(--amber); letter-spacing:1.5px; margin-bottom:6px;
+        }
+        #cgm-evomatrix .em-taccard ul {
+          list-style:none; font-size:10px; color:#8aa0c0;
+          display:flex; flex-direction:column; gap:5px; line-height:1.45;
+        }
+
         #cgm-evomatrix .em-op {
           font-family:'Orbitron',sans-serif; font-weight:900; font-size:18px;
           color:var(--txt-dim); flex-shrink:0;
@@ -4183,16 +4204,30 @@ export class Game {
             <div class="em-evo-name" style="color:${evo.color}">${evo.name.replace(/'/g, '’')}</div>
             <div class="em-evo-element" style="color:${evo.color};border-color:${evo.color}40">${evoElem.toUpperCase()}</div>
           </div>
+          <div class="em-owners">🔒 CLASS-LOCKED — only ${charA} &amp; ${charB} can perform this fusion</div>
           <div class="em-tooltip">
             <strong style="color:${evo.color}">${evo.name.replace(/'/g, '’')}</strong><br>
             ${evo.description.replace(/'/g, '’')}<br><br>
-            <span style="color:var(--cyan)">Requires:</span> Both <strong>${wA.name.replace(/'/g, '’')}</strong> and <strong>${wB.name.replace(/'/g, '’')}</strong> at Level ${recipe.minLevel} during a run.<br>
+            <span style="color:var(--cyan)">Requires:</span> Both <strong>${wA.name.replace(/'/g, '’')}</strong> and <strong>${wB.name.replace(/'/g, '’')}</strong> at Level ${recipe.minLevel} during a run. The EVOLVE card then appears GUARANTEED on your next level-up.<br>
+            <span style="color:var(--magenta)">Class-locked:</span> visible only to ${charA} and ${charB}.<br>
             <span style="color:var(--amber)">DMG ${evo.baseStats.damage}</span> &middot;
             <span style="color:var(--cyan)">CD ${evo.baseStats.cooldown}s</span> &middot;
             <span style="color:var(--green)">AOE ${evo.baseStats.aoeRadius}px</span> &middot;
             <span style="color:var(--purple)">Pierce ${evo.baseStats.piercing === 99 ? 'ALL' : evo.baseStats.piercing}</span>
           </div>
         </div>`;
+    });
+
+    // ── Tactical arsenal per character (GRID CACHE weapons) ──
+    let tacticalHTML = '';
+    (this.characters || []).forEach(c => {
+      let defs = [];
+      try { defs = getAvailableTactical(c.id).filter(d => !d.exclusive || d.character === c.id); } catch (_) {}
+      if (!defs.length) return;
+      const items = defs.map(d =>
+        `<li><strong style="color:${d.color || '#00ffaa'}">${(d.name || d.id)}</strong> — ${(d.description || '').replace(/'/g, '’')}</li>`
+      ).join('');
+      tacticalHTML += `<div class="em-taccard"><div class="em-taccard-char">${charNames[c.id] || c.name || c.id}</div><ul>${items}</ul></div>`;
     });
 
     el.innerHTML = `
@@ -4204,9 +4239,13 @@ export class Game {
         <div class="em-sep"></div>
         <div class="em-recipes" id="em-recipes">${recipesHTML}</div>
         <div class="em-sep"></div>
+        <div class="em-subtitle">✦ TACTICAL ARSENAL — GRID CACHE</div>
+        <div class="em-tacnote">GRID CACHE reward cards appear on level-up (15% chance, max 3 active at once). Each deploys at YOUR position the moment you pick the card, then acts on its own — totems and beams stay where dropped, drones/missiles/mines act around the drop point.</div>
+        <div class="em-tacgrid">${tacticalHTML}</div>
+        <div class="em-sep"></div>
         <div class="em-footer">
           <button class="em-foot-btn" id="em-back-btn">◀ BACK</button>
-          <div class="em-hint">Level both weapons to 5 during a run to trigger evolution.</div>
+          <div class="em-hint">Level both weapons to 5 during a run — the EVOLVE card then appears guaranteed. Each fusion is class-locked to its two owner characters.</div>
         </div>
       </div>
     `;
