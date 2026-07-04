@@ -357,6 +357,57 @@ export const EVOLUTION_RECIPES = Object.freeze([
   },
 ]);
 
+// ── Character ownership (HARD LOCK) ─────────────────────────────────
+// An evolution belongs ONLY to the characters whose NATIVE weapon is one
+// of its ingredients. Every character owns exactly one evolution recipe.
+// Foreign characters never see an unowned evolution card (no cross-
+// character contamination in the level-up rotation).
+export function getEvolutionOwners(recipe) {
+  return recipe.ingredients
+    .map(id => _weaponIndex.get(id)?.character)
+    .filter(Boolean);
+}
+export function isEvolutionOwnedBy(recipe, characterId) {
+  return getEvolutionOwners(recipe).includes(characterId);
+}
+
+// ── Dynamic card naming — NameLookupTable ───────────────────────────
+// The card label reflects the WIELDER's identity. Mechanics (damage, AoE,
+// cooldown) stay 100% shared — only the display string changes.
+// Native wielder → canonical name. Foreign wielder → class-flavored name:
+// CHAR_FLAVOR prefix + the weapon's core noun.
+const WEAPON_CORE_NOUN = {
+  storm_saber:      'Saber Slash',
+  magnetic_arc:     'Arc Burst',
+  spirit_crescent:  'Crescent Aura',
+  shadow_toxic:     'Shadow Cuts',
+  nexus_chakram:    'Chakram',
+  gas_needle:       'Needle Vector',
+  cataclysm_pulse:  'Cataclysm Pulse',
+  glitch_tear:      'Singularity Tear',
+  storm_conductor:  'Storm Conductor',
+  plasma_execution: 'Plasma Execution',
+  cataclysm_chain:  'Cataclysm Chain',
+  frozen_eden:      'Frozen Eden',
+};
+const CHAR_FLAVOR = {
+  skeleton_warrior:       'Bone-Cursed',
+  taekwondo_girl:         'Spirit',
+  cyber_arm_hero:         'Inferno',
+  brawler_warrior:        'Rift',
+  assassin_clone:         'Phantom',
+  euclid_vector:          'Toxic',
+  japan_phasewalker:      'Null-Phase',
+  oni_cataclysm_protocol: 'Crimson-Demon',
+};
+export function getCardDisplayName(weaponId, characterId) {
+  const def = _weaponIndex.get(weaponId);
+  if (!def) return weaponId;
+  if (!characterId || def.character === characterId || !CHAR_FLAVOR[characterId]) return def.name;
+  const core = WEAPON_CORE_NOUN[weaponId] || def.name;
+  return CHAR_FLAVOR[characterId] + ' ' + core;
+}
+
 // ── Internal index for fast lookups ─────────────────────────────────
 const _weaponIndex = new Map(Object.values(WEAPON_DEFS).map(w => [w.id, w]));
 const _characterWeaponIndex = new Map(

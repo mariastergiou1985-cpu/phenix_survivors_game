@@ -6,7 +6,7 @@ import { clamp, distance, safeNormalize, randomRange, randomChoice, drawBar } fr
 import { DataCore } from './DataCore.js?v=20260615210000';
 import { FloatingText } from './FloatingText.js';
 import { drawGlow } from '../game/Effects.js?v=20260615210000';
-import { PRIMARY_WEAPON_MAP, MINI_WEAPON_MAP, BOSS_WEAPON_MAP, getWeaponById } from '../game/EnemyWeaponCatalog.js?v=20260704170000';
+import { PRIMARY_WEAPON_MAP, MINI_WEAPON_MAP, BOSS_WEAPON_MAP, getWeaponById } from '../game/EnemyWeaponCatalog.js?v=20260704230000';
 
 // ─── Weapon sprite cache (shared across all enemies — each PNG loads once) ──────
 const _weaponSpriteCache = new Map();

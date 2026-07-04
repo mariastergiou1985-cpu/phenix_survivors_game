@@ -12,11 +12,11 @@ import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260703990000
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260703990000';
 import { Player }         from '../entities/Player.js?v=20260703990000';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260703990000';
-import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260704200000';
+import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260704230000';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=20260703990000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260703990000';
-import { SystemEventManager } from './Events.js?v=20260704200000';
+import { SystemEventManager } from './Events.js?v=20260704230000';
 import { UpgradeUI }      from './UpgradeUI.js?v=20260704210000';
 import { weightedSample } from './Upgrades.js?v=20260703990000';
 import { MutationUI }      from './MutationUI.js?v=20260703990000';
@@ -41,8 +41,8 @@ import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260704200000';
 import { NexusManager } from './NexusManager.js?v=20260704220000';
 import { VESSELS, getVesselById, getDefaultVesselId } from './VesselCatalog.js?v=20260703996000';
 import { PETS, getPetById } from './PetCatalog.js?v=20260703999100';
-import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons } from './WeaponCatalog.js?v=20260704120000';
-import { TACTICAL_ID, TACTICAL_DEFS, getTacticalDef, getTacticalForCharacter, getAvailableTactical, preloadTacticalSprites } from './TacticalWeaponCatalog.js?v=20260705010000';
+import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons, isEvolutionOwnedBy, getCardDisplayName } from './WeaponCatalog.js?v=20260704230000';
+import { TACTICAL_ID, TACTICAL_DEFS, getTacticalDef, getTacticalForCharacter, getAvailableTactical, preloadTacticalSprites } from './TacticalWeaponCatalog.js?v=20260704230000';
 import { VFXSpritePlayer } from './VFXSpritePlayer.js?v=20260704120000';
 
 // ── Mastery card → base weapon mapping (for evolution level tracking) ──
@@ -8530,7 +8530,7 @@ export class Game {
       if (!def) return null;
       return {
         key:         '_wacq_' + pick.id,
-        name:        def.name,
+        name:        getCardDisplayName(pick.id, charId),   // wielder-flavored label (mechanics unchanged)
         description: 'NEW WEAPON — auto-fires independently',
         iconColor:   def.color || '#ffcc00',
         icon:        '⚔',                 // ⚔
@@ -8556,7 +8556,7 @@ export class Game {
     const newLvl = pick.level + 1;
     return {
       key:         '_wupg_' + pick.id,
-      name:        def.name + ' Lv.' + newLvl,
+      name:        getCardDisplayName(pick.id, charId) + ' Lv.' + newLvl,   // wielder-flavored label
       description: 'Upgrade to Level ' + newLvl + (newLvl >= 5 ? ' — EVOLUTION READY' : ''),
       iconColor:   def.color || '#ffcc00',
       icon:        '⬆',                   // ⬆
@@ -8627,6 +8627,10 @@ export class Game {
     const readyRecipes = checkAllEvolutionsReady(playerWeapons);
     // Find first recipe not already evolved
     for (const recipe of readyRecipes) {
+      // ── HARD CHARACTER LOCK: an evolution belongs only to the characters
+      // whose native weapon is an ingredient. Foreign characters NEVER see
+      // this card in the rotation — filtered before it can enter choices. ──
+      if (!isEvolutionOwnedBy(recipe, this.player.selectedCharacter)) continue;
       if (this._evolutionsDone.has(recipe.result)) continue;
       const def = getWeaponDef(recipe.result);
       if (!def) continue;
