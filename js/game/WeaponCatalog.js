@@ -1,0 +1,459 @@
+/**
+ * WeaponCatalog.js — PHENIX: NULL EDEN
+ * ─────────────────────────────────────
+ * Player Weapon & Evolution Registry.
+ * Data-only weapon definitions for all 8 base character weapons
+ * and 4 evolution weapons. Includes per-level scaling, evolution
+ * recipes, and lookup helpers. No gameplay logic — that lives in
+ * Game.js / Player.js.
+ */
+
+// ── Weapon IDs ──────────────────────────────────────────────────────
+export const WEAPON_ID = Object.freeze({
+  // Base weapons (one per character)
+  STORM_SABER:      'storm_saber',
+  MAGNETIC_ARC:     'magnetic_arc',
+  SPIRIT_CRESCENT:  'spirit_crescent',
+  SHADOW_TOXIC:     'shadow_toxic',
+  NEXUS_CHAKRAM:    'nexus_chakram',
+  GAS_NEEDLE:       'gas_needle',
+  CATACLYSM_PULSE:  'cataclysm_pulse',
+  GLITCH_TEAR:      'glitch_tear',
+  // Evolution weapons (require 2 base weapons at level 5)
+  STORM_CONDUCTOR:    'storm_conductor',
+  PLASMA_EXECUTION:   'plasma_execution',
+  CATACLYSM_CHAIN:    'cataclysm_chain',
+  FROZEN_EDEN:        'frozen_eden',
+});
+
+// ── Weapon behavior types ───────────────────────────────────────────
+export const WEAPON_BEHAVIOR = Object.freeze({
+  FORWARD_ARC:        'forward_arc',
+  FORWARD_CONE:       'forward_cone',
+  WIDE_ARC:           'wide_arc',
+  CROSS_SLASH:        'cross_slash',
+  ORBIT_THROW:        'orbit_throw',
+  LINE_CLOUD:         'line_cloud',
+  GROUND_SHOCKWAVE:   'ground_shockwave',
+  VORTEX:             'vortex',
+  CIRCLE_360:         'circle_360',
+  EXPANDING_SPIRAL:   'expanding_spiral',
+  SEQUENTIAL_GROUND:  'sequential_ground',
+  PULL_EXPLODE:       'pull_explode',
+});
+
+// ── Level scaling multipliers ───────────────────────────────────────
+const LEVEL_SCALING = [
+  null, // index 0 unused
+  { dmg: 1.00, cd: 1.00, aoe: 1.00 }, // Level 1 — base stats
+  { dmg: 1.15, cd: 0.95, aoe: 1.00 }, // Level 2
+  { dmg: 1.30, cd: 0.90, aoe: 1.10 }, // Level 3
+  { dmg: 1.50, cd: 0.85, aoe: 1.20 }, // Level 4
+  { dmg: 1.75, cd: 0.80, aoe: 1.30 }, // Level 5 — EVOLUTION READY
+];
+
+// ── Weapon definitions ──────────────────────────────────────────────
+export const WEAPON_DEFS = Object.freeze({
+
+  // ────────────────────────────────────────────────────────────────
+  // BASE WEAPONS (8)
+  // ────────────────────────────────────────────────────────────────
+
+  [WEAPON_ID.STORM_SABER]: {
+    id: 'storm_saber',
+    name: 'Storm Saber Cursed Slash',
+    description: 'A crackling cursed blade unleashes a forward curved slash wave of electric fury.',
+    character: 'skeleton_warrior',
+    element: 'electric',
+    behavior: WEAPON_BEHAVIOR.FORWARD_ARC,
+    isEvolution: false,
+    color: '#9fd8ff',
+    sprite: 'assets/weapons/vfx/storm_saber_slash.png',
+    grid: { cols: 4, rows: 4, frameW: 128, frameH: 128 },
+    totalFrames: 16,
+    fps: 24,
+    baseStats: {
+      damage: 28,
+      cooldown: 1.2,
+      aoeRadius: 80,
+      speed: 6,
+      piercing: 1,
+    },
+  },
+
+  [WEAPON_ID.MAGNETIC_ARC]: {
+    id: 'magnetic_arc',
+    name: 'Overloaded Magnetic Arc Burst',
+    description: 'Overcharged magnetic rings burst forward in a cone of crackling arc energy.',
+    character: 'cyber_arm_hero',
+    element: 'electric',
+    behavior: WEAPON_BEHAVIOR.FORWARD_CONE,
+    isEvolution: false,
+    color: '#7ab8ff',
+    sprite: 'assets/weapons/vfx/magnetic_arc_burst.png',
+    grid: { cols: 4, rows: 4, frameW: 128, frameH: 128 },
+    totalFrames: 16,
+    fps: 24,
+    baseStats: {
+      damage: 22,
+      cooldown: 1.0,
+      aoeRadius: 70,
+      speed: 7,
+      piercing: 1,
+    },
+  },
+
+  [WEAPON_ID.SPIRIT_CRESCENT]: {
+    id: 'spirit_crescent',
+    name: 'Spirit Crescent Kick Aura',
+    description: 'A crescent moon of spirit ice sweeps outward in a wide arc following each kick.',
+    character: 'taekwondo_girl',
+    element: 'ice',
+    behavior: WEAPON_BEHAVIOR.WIDE_ARC,
+    isEvolution: false,
+    color: '#7fe0ff',
+    sprite: 'assets/weapons/vfx/spirit_crescent_kick.png',
+    grid: { cols: 4, rows: 4, frameW: 256, frameH: 128 },
+    totalFrames: 16,
+    fps: 24,
+    baseStats: {
+      damage: 25,
+      cooldown: 0.9,
+      aoeRadius: 100,
+      speed: 8,
+      piercing: 2,
+    },
+  },
+
+  [WEAPON_ID.SHADOW_TOXIC]: {
+    id: 'shadow_toxic',
+    name: 'Shadow-Toxic Diagonal Cuts',
+    description: 'Twin diagonal slashes carve a toxic X across targets, leaving corrosive residue.',
+    character: 'assassin_clone',
+    element: 'toxin',
+    behavior: WEAPON_BEHAVIOR.CROSS_SLASH,
+    isEvolution: false,
+    color: '#7CFF4D',
+    sprite: 'assets/weapons/vfx/shadow_toxic_cuts.png',
+    grid: { cols: 4, rows: 3, frameW: 128, frameH: 128 },
+    totalFrames: 12,
+    fps: 20,
+    baseStats: {
+      damage: 32,
+      cooldown: 1.4,
+      aoeRadius: 55,
+      speed: 9,
+      piercing: 2,
+    },
+  },
+
+  [WEAPON_ID.NEXUS_CHAKRAM]: {
+    id: 'nexus_chakram',
+    name: 'Nexus Chakram',
+    description: 'A blazing fire ring orbits the wielder before being hurled outward in a searing arc.',
+    character: 'brawler_warrior',
+    element: 'fire',
+    behavior: WEAPON_BEHAVIOR.ORBIT_THROW,
+    isEvolution: false,
+    color: '#ff6a1a',
+    sprite: 'assets/weapons/vfx/nexus_chakram.png',
+    grid: { cols: 6, rows: 4, frameW: 256, frameH: 256 },
+    totalFrames: 24,
+    fps: 28,
+    baseStats: {
+      damage: 18,
+      cooldown: 0.8,
+      aoeRadius: 110,
+      speed: 5,
+      piercing: 3,
+    },
+  },
+
+  [WEAPON_ID.GAS_NEEDLE]: {
+    id: 'gas_needle',
+    name: 'Digital Gas Needle Vector',
+    description: 'A precision toxin needle fires forward, leaving a lingering digital gas cloud in its wake.',
+    character: 'euclid_vector',
+    element: 'toxin',
+    behavior: WEAPON_BEHAVIOR.LINE_CLOUD,
+    isEvolution: false,
+    color: '#8fdf7f',
+    sprite: 'assets/weapons/vfx/gas_needle_vector.png',
+    grid: { cols: 4, rows: 4, frameW: 128, frameH: 128 },
+    totalFrames: 16,
+    fps: 22,
+    baseStats: {
+      damage: 30,
+      cooldown: 1.5,
+      aoeRadius: 60,
+      speed: 10,
+      piercing: 1,
+    },
+  },
+
+  [WEAPON_ID.CATACLYSM_PULSE]: {
+    id: 'cataclysm_pulse',
+    name: 'Demonic Cataclysm Pulse',
+    description: 'A devastating ground-lava shockwave erupts outward, branded with burning demonic sigils.',
+    character: 'oni_cataclysm_protocol',
+    element: 'fire',
+    behavior: WEAPON_BEHAVIOR.GROUND_SHOCKWAVE,
+    isEvolution: false,
+    color: '#ff3030',
+    sprite: 'assets/weapons/vfx/cataclysm_pulse.png',
+    grid: { cols: 6, rows: 4, frameW: 256, frameH: 256 },
+    totalFrames: 24,
+    fps: 20,
+    baseStats: {
+      damage: 45,
+      cooldown: 2.5,
+      aoeRadius: 160,
+      speed: 3,
+      piercing: 99,
+    },
+  },
+
+  [WEAPON_ID.GLITCH_TEAR]: {
+    id: 'glitch_tear',
+    name: 'Glitch Singularity Tear',
+    description: 'A black hole vortex rips through digital space, warping light with RGB distortion.',
+    character: 'japan_phasewalker',
+    element: 'void',
+    behavior: WEAPON_BEHAVIOR.VORTEX,
+    isEvolution: false,
+    color: '#6600CC',
+    sprite: 'assets/weapons/vfx/glitch_tear.png',
+    grid: { cols: 5, rows: 4, frameW: 256, frameH: 256 },
+    totalFrames: 20,
+    fps: 18,
+    baseStats: {
+      damage: 35,
+      cooldown: 2.0,
+      aoeRadius: 90,
+      speed: 4,
+      piercing: 5,
+    },
+  },
+
+  // ────────────────────────────────────────────────────────────────
+  // EVOLUTION WEAPONS (4) — require 2 base weapons at level 5
+  // ────────────────────────────────────────────────────────────────
+
+  [WEAPON_ID.STORM_CONDUCTOR]: {
+    id: 'storm_conductor',
+    name: 'Storm Conductor',
+    description: 'The saber and arc merge into a full 360-degree lightning storm that annihilates all nearby foes.',
+    character: null,
+    element: 'electric',
+    behavior: WEAPON_BEHAVIOR.CIRCLE_360,
+    isEvolution: true,
+    evolvedFrom: [WEAPON_ID.STORM_SABER, WEAPON_ID.MAGNETIC_ARC],
+    color: '#c0e8ff',
+    sprite: 'assets/weapons/vfx/storm_conductor.png',
+    grid: { cols: 6, rows: 4, frameW: 256, frameH: 256 },
+    totalFrames: 24,
+    fps: 28,
+    baseStats: {
+      damage: 65,
+      cooldown: 3.0,
+      aoeRadius: 200,
+      speed: 0,
+      piercing: 99,
+    },
+  },
+
+  [WEAPON_ID.PLASMA_EXECUTION]: {
+    id: 'plasma_execution',
+    name: 'Plasma Execution Loop',
+    description: 'Toxic blades and burning chakrams spiral outward in an ever-expanding loop of plasma death.',
+    character: null,
+    element: 'fire',
+    behavior: WEAPON_BEHAVIOR.EXPANDING_SPIRAL,
+    isEvolution: true,
+    evolvedFrom: [WEAPON_ID.SHADOW_TOXIC, WEAPON_ID.NEXUS_CHAKRAM],
+    color: '#ff7adf',
+    sprite: 'assets/weapons/vfx/plasma_execution.png',
+    grid: { cols: 6, rows: 4, frameW: 256, frameH: 256 },
+    totalFrames: 24,
+    fps: 24,
+    baseStats: {
+      damage: 55,
+      cooldown: 2.5,
+      aoeRadius: 170,
+      speed: 4,
+      piercing: 99,
+    },
+  },
+
+  [WEAPON_ID.CATACLYSM_CHAIN]: {
+    id: 'cataclysm_chain',
+    name: 'Cataclysm Chain Reaction',
+    description: 'Lava pulses and gas clouds chain-detonate across the ground in sequential eruptions.',
+    character: null,
+    element: 'fire',
+    behavior: WEAPON_BEHAVIOR.SEQUENTIAL_GROUND,
+    isEvolution: true,
+    evolvedFrom: [WEAPON_ID.CATACLYSM_PULSE, WEAPON_ID.GAS_NEEDLE],
+    color: '#ff5500',
+    sprite: 'assets/weapons/vfx/cataclysm_chain.png',
+    grid: { cols: 8, rows: 4, frameW: 256, frameH: 256 },
+    totalFrames: 32,
+    fps: 24,
+    baseStats: {
+      damage: 80,
+      cooldown: 4.0,
+      aoeRadius: 220,
+      speed: 2,
+      piercing: 99,
+    },
+  },
+
+  [WEAPON_ID.FROZEN_EDEN]: {
+    id: 'frozen_eden',
+    name: 'Frozen Eden / Glitch Vortex',
+    description: 'Crescent ice and void singularity fuse — a pull vortex freezes and shatters all caught within.',
+    character: null,
+    element: 'void',
+    behavior: WEAPON_BEHAVIOR.PULL_EXPLODE,
+    isEvolution: true,
+    evolvedFrom: [WEAPON_ID.SPIRIT_CRESCENT, WEAPON_ID.GLITCH_TEAR],
+    color: '#aa44ff',
+    sprite: 'assets/weapons/vfx/frozen_eden.png',
+    grid: { cols: 5, rows: 4, frameW: 256, frameH: 256 },
+    totalFrames: 20,
+    fps: 20,
+    baseStats: {
+      damage: 50,
+      cooldown: 3.5,
+      aoeRadius: 140,
+      speed: 3,
+      piercing: 99,
+    },
+  },
+});
+
+// ── Evolution recipes ───────────────────────────────────────────────
+export const EVOLUTION_RECIPES = Object.freeze([
+  {
+    result: WEAPON_ID.STORM_CONDUCTOR,
+    ingredients: [WEAPON_ID.STORM_SABER, WEAPON_ID.MAGNETIC_ARC],
+    minLevel: 5,
+  },
+  {
+    result: WEAPON_ID.PLASMA_EXECUTION,
+    ingredients: [WEAPON_ID.SHADOW_TOXIC, WEAPON_ID.NEXUS_CHAKRAM],
+    minLevel: 5,
+  },
+  {
+    result: WEAPON_ID.CATACLYSM_CHAIN,
+    ingredients: [WEAPON_ID.CATACLYSM_PULSE, WEAPON_ID.GAS_NEEDLE],
+    minLevel: 5,
+  },
+  {
+    result: WEAPON_ID.FROZEN_EDEN,
+    ingredients: [WEAPON_ID.SPIRIT_CRESCENT, WEAPON_ID.GLITCH_TEAR],
+    minLevel: 5,
+  },
+]);
+
+// ── Internal index for fast lookups ─────────────────────────────────
+const _weaponIndex = new Map(Object.values(WEAPON_DEFS).map(w => [w.id, w]));
+const _characterWeaponIndex = new Map(
+  Object.values(WEAPON_DEFS)
+    .filter(w => w.character !== null)
+    .map(w => [w.character, w])
+);
+
+// ── Helpers ─────────────────────────────────────────────────────────
+
+/**
+ * Get a weapon definition by ID.
+ * @param {string} weaponId
+ * @returns {object|null}
+ */
+export function getWeaponDef(weaponId) {
+  return _weaponIndex.get(weaponId) || null;
+}
+
+/**
+ * Get scaled weapon stats at a given level (1–5).
+ * Returns { damage, cooldown, aoeRadius, speed, piercing }.
+ * @param {string} weaponId
+ * @param {number} level — 1 to 5
+ * @returns {object|null}
+ */
+export function getWeaponStatsAtLevel(weaponId, level) {
+  const def = _weaponIndex.get(weaponId);
+  if (!def) return null;
+  const clampedLevel = Math.max(1, Math.min(5, level));
+  const scale = LEVEL_SCALING[clampedLevel];
+  const base = def.baseStats;
+  return {
+    damage:    Math.round(base.damage * scale.dmg),
+    cooldown:  +(base.cooldown * scale.cd).toFixed(3),
+    aoeRadius: Math.round(base.aoeRadius * scale.aoe),
+    speed:     base.speed,
+    piercing:  base.piercing,
+  };
+}
+
+/**
+ * Check if the player has two weapons at the required level to
+ * produce an evolution. Returns the first matching recipe or null.
+ * @param {{ id: string, level: number }[]} playerWeapons
+ * @returns {object|null} — matching recipe { result, ingredients, minLevel }
+ */
+export function checkEvolutionReady(playerWeapons) {
+  const ready = new Set(
+    playerWeapons
+      .filter(w => w.level >= 5)
+      .map(w => w.id)
+  );
+  for (const recipe of EVOLUTION_RECIPES) {
+    if (recipe.ingredients.every(id => ready.has(id))) {
+      return recipe;
+    }
+  }
+  return null;
+}
+
+/**
+ * Get all evolution recipes the player qualifies for.
+ * @param {{ id: string, level: number }[]} playerWeapons
+ * @returns {object[]}
+ */
+export function checkAllEvolutionsReady(playerWeapons) {
+  const ready = new Set(
+    playerWeapons
+      .filter(w => w.level >= 5)
+      .map(w => w.id)
+  );
+  return EVOLUTION_RECIPES.filter(recipe =>
+    recipe.ingredients.every(id => ready.has(id))
+  );
+}
+
+/**
+ * Get the base weapon definition that belongs to a character.
+ * @param {string} characterId — e.g. 'skeleton_warrior'
+ * @returns {object|null}
+ */
+export function getWeaponForCharacter(characterId) {
+  return _characterWeaponIndex.get(characterId) || null;
+}
+
+/**
+ * Get all base (non-evolution) weapons.
+ * @returns {object[]}
+ */
+export function getAllBaseWeapons() {
+  return Object.values(WEAPON_DEFS).filter(w => !w.isEvolution);
+}
+
+/**
+ * Get all evolution weapons.
+ * @returns {object[]}
+ */
+export function getAllEvolutions() {
+  return Object.values(WEAPON_DEFS).filter(w => w.isEvolution);
+}

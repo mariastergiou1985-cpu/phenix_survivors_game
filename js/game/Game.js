@@ -41,6 +41,52 @@ import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260703999000';
 import { NexusManager } from './NexusManager.js?v=20260703999000';
 import { VESSELS, getVesselById, getDefaultVesselId } from './VesselCatalog.js?v=20260703996000';
 import { PETS, getPetById } from './PetCatalog.js?v=20260703999100';
+import { WEAPON_ID, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter } from './WeaponCatalog.js?v=20260704120000';
+import { VFXSpritePlayer } from './VFXSpritePlayer.js?v=20260704120000';
+
+// ── Mastery card → base weapon mapping (for evolution level tracking) ──
+const MASTERY_TO_WEAPON = Object.freeze({
+  skeleton_primary_mastery:              WEAPON_ID.STORM_SABER,
+  skeleton_chain_lightning_mastery:      WEAPON_ID.STORM_SABER,
+  skeleton_thunder_solo_mastery:         WEAPON_ID.STORM_SABER,
+  cyber_primary_mastery:                 WEAPON_ID.MAGNETIC_ARC,
+  cyber_neon_pierce_mastery:             WEAPON_ID.MAGNETIC_ARC,
+  cyber_heavy_chains_mastery:            WEAPON_ID.MAGNETIC_ARC,
+  taekwondo_primary_mastery:             WEAPON_ID.SPIRIT_CRESCENT,
+  taekwondo_aqua_trail_mastery:          WEAPON_ID.SPIRIT_CRESCENT,
+  taekwondo_dojang_flag_mastery:         WEAPON_ID.SPIRIT_CRESCENT,
+  brawler_chakram_mastery:               WEAPON_ID.NEXUS_CHAKRAM,
+  brawler_crescent_claw_mastery:        WEAPON_ID.NEXUS_CHAKRAM,
+  brawler_skyfall_lances_mastery:        WEAPON_ID.NEXUS_CHAKRAM,
+  assassin_clone_twin_dagger_mastery:    WEAPON_ID.SHADOW_TOXIC,
+  assassin_clone_whip_sword_mastery:     WEAPON_ID.SHADOW_TOXIC,
+  assassin_clone_chrome_phantom_mastery: WEAPON_ID.SHADOW_TOXIC,
+  phasewalker_phase_shard_mastery:       WEAPON_ID.GLITCH_TEAR,
+  phasewalker_shockwave_mastery:         WEAPON_ID.GLITCH_TEAR,
+  phasewalker_singularity_mastery:       WEAPON_ID.GLITCH_TEAR,
+  euclid_toxin_shot_mastery:             WEAPON_ID.GAS_NEEDLE,
+  euclid_corrosive_spread:               WEAPON_ID.GAS_NEEDLE,
+  euclid_vector_overdose:                WEAPON_ID.GAS_NEEDLE,
+  oni_laser_mastery:                     WEAPON_ID.CATACLYSM_PULSE,
+  oni_meteor_mastery:                    WEAPON_ID.CATACLYSM_PULSE,
+  oni_protocol0_mastery:                 WEAPON_ID.CATACLYSM_PULSE,
+});
+
+// ── VFX sprite sheet metadata (frame data from Blender render) ──
+const WEAPON_VFX_META = Object.freeze({
+  storm_saber:      { cols: 4, frameW: 128, frameH: 128, totalFrames: 16, fps: 24 },
+  magnetic_arc:     { cols: 4, frameW: 128, frameH: 128, totalFrames: 16, fps: 24 },
+  spirit_crescent:  { cols: 4, frameW: 256, frameH: 128, totalFrames: 16, fps: 24 },
+  shadow_toxic:     { cols: 4, frameW: 128, frameH: 128, totalFrames: 12, fps: 20 },
+  nexus_chakram:    { cols: 6, frameW: 256, frameH: 256, totalFrames: 24, fps: 28 },
+  gas_needle:       { cols: 4, frameW: 128, frameH: 128, totalFrames: 16, fps: 22 },
+  cataclysm_pulse:  { cols: 6, frameW: 256, frameH: 256, totalFrames: 24, fps: 20 },
+  glitch_tear:      { cols: 5, frameW: 256, frameH: 256, totalFrames: 20, fps: 18 },
+  storm_conductor:  { cols: 6, frameW: 256, frameH: 256, totalFrames: 24, fps: 28 },
+  plasma_execution: { cols: 6, frameW: 256, frameH: 256, totalFrames: 24, fps: 24 },
+  cataclysm_chain:  { cols: 8, frameW: 256, frameH: 256, totalFrames: 32, fps: 24 },
+  frozen_eden:      { cols: 5, frameW: 256, frameH: 256, totalFrames: 20, fps: 20 },
+});
 
 // Euclid Vector toxin kit — used ONLY when selectedCharacter === 'euclid_vector' (world-space).
 import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=20260703990000';
@@ -444,6 +490,30 @@ export class Game {
       img.onerror = () => console.warn(`[Weapon] missing ${src} — drawn-shape fallback used`);
       img.src = src;
       this._weaponImages[key] = img;
+    });
+
+    // ── Weapon VFX sprite sheets (12: 8 base + 4 evolution) ──────────
+    // Each is a grid sprite sheet rendered by generate_phenix_vfx_master.py.
+    // Missing files degrade gracefully (no VFX overlay, weapon still functions).
+    this._weaponVFXSheets = {};
+    [
+      ['storm_saber',      'assets/weapons/vfx/storm_saber_slash.png'],
+      ['magnetic_arc',     'assets/weapons/vfx/magnetic_arc_burst.png'],
+      ['spirit_crescent',  'assets/weapons/vfx/spirit_crescent_kick.png'],
+      ['shadow_toxic',     'assets/weapons/vfx/shadow_toxic_cuts.png'],
+      ['nexus_chakram',    'assets/weapons/vfx/nexus_chakram.png'],
+      ['gas_needle',       'assets/weapons/vfx/gas_needle_vector.png'],
+      ['cataclysm_pulse',  'assets/weapons/vfx/cataclysm_pulse.png'],
+      ['glitch_tear',      'assets/weapons/vfx/glitch_tear.png'],
+      ['storm_conductor',  'assets/weapons/vfx/storm_conductor.png'],
+      ['plasma_execution', 'assets/weapons/vfx/plasma_execution.png'],
+      ['cataclysm_chain',  'assets/weapons/vfx/cataclysm_chain.png'],
+      ['frozen_eden',      'assets/weapons/vfx/frozen_eden.png'],
+    ].forEach(([key, src]) => {
+      const img = new Image();
+      img.onerror = () => console.warn(`[WeaponVFX] missing ${src} — no VFX overlay`);
+      img.src = src;
+      this._weaponVFXSheets[key] = img;
     });
 
     // Assassin Clone ultimate sprites (Chrome Phantom Protocol): pink phantom clone + chrome
@@ -865,6 +935,16 @@ export class Game {
     this._specialTrail    = [];
     this._taekwondoDmgSet = new Set();
     this._iceFields        = [];   // active Crystal Ice Field instances (Taekwondo ultimate)
+
+    // ── Weapon Evolution System ──────────────────────────────────────
+    this._weaponLevels      = new Map();   // weaponId → current level (1–5)
+    this._evolvedWeapons    = new Map();   // evolved weaponId → { def, stats }
+    this._evolutionsDone    = new Set();   // track which evolutions already triggered
+    this._activeWeaponVFX   = [];          // active VFXSpritePlayer instances
+    // Seed this character's base weapon at level 1
+    const _charWeapon = getWeaponForCharacter(this.selectedCharacter);
+    if (_charWeapon) this._weaponLevels.set(_charWeapon.id, 1);
+
     this.enemyBullets = [];
     this.floatingTexts = [];
     this.particles    = new ParticleSystem();
@@ -6010,6 +6090,7 @@ export class Game {
   selectUpgrade(index) {
     if (!this.upgradeUI || index >= this.upgradeUI.choices.length) return;
     this.upgradeUI.choices[index].apply(this.player);
+    this._checkWeaponEvolutions();   // check if any evolution recipe is now satisfied
     this.score = (this.score ?? 0) + 50;
     this.upgradeUI = null;
   }
@@ -6387,6 +6468,11 @@ export class Game {
     this._updateEndlessHazards(dt);   // Endless-only: airstrike ships/rockets + lightning storm
     this._updateSynergyMarks(dt);     // character synergy mark/burst lifetimes (inert without card)
     this.elementFx.update(dt);        // elemental VFX lifetimes (bounded, auto-expire)
+    // Weapon evolution VFX sprite sheet animations (auto-expire, play-once)
+    for (let i = this._activeWeaponVFX.length - 1; i >= 0; i--) {
+      this._activeWeaponVFX[i].update(dt);
+      if (this._activeWeaponVFX[i].isDone()) this._activeWeaponVFX.splice(i, 1);
+    }
     this._updateStormExecution(dt);   // Storm Execution reward (normal-enemy-only zaps)
     this._updateFusionClouds(dt);     // Phase-2 fusion gas clouds (bounded, auto-expire)
     this._updateUltInfusion(dt);      // Forbidden Ultimate Infusion element nova on ult cast
@@ -7999,6 +8085,74 @@ export class Game {
     if (this.bloodfangBoss    && this.bloodfangBoss.hp    <= 0) this._bloodfangDie();
     if (this.cyberSerpentBoss && this.cyberSerpentBoss.hp <= 0) this._cyberSerpentDie();
     if (this.cyberDragonBoss  && this.cyberDragonBoss.hp  <= 0) this._cyberDragonDie();
+  }
+
+  // ── Weapon Evolution System — runtime methods ────────────────────────────────
+  // Called from selectUpgrade() after every card pick. Scans mastery card levels,
+  // updates the weapon-level map, and triggers any evolution whose recipe is met.
+  _checkWeaponEvolutions() {
+    // 1 — Sync mastery card levels into _weaponLevels
+    for (const [masteryKey, weaponId] of Object.entries(MASTERY_TO_WEAPON)) {
+      const cardLvl = this._cardLvl(masteryKey);
+      if (cardLvl > 0) {
+        const cur = this._weaponLevels.get(weaponId) || 0;
+        if (cardLvl > cur) this._weaponLevels.set(weaponId, cardLvl);
+      }
+    }
+    // 2 — Build array for catalog check
+    const playerWeapons = [];
+    for (const [id, lvl] of this._weaponLevels) playerWeapons.push({ id, level: lvl });
+    // 3 — Check all recipes
+    const readyRecipes = checkAllEvolutionsReady(playerWeapons);
+    for (const recipe of readyRecipes) {
+      if (this._evolutionsDone.has(recipe.result)) continue;
+      this._applyWeaponEvolution(recipe);
+    }
+  }
+
+  // Triggered when an evolution recipe is satisfied. Grants the evolved weapon,
+  // spawns a premium VFX burst, and logs to console.
+  _applyWeaponEvolution(recipe) {
+    this._evolutionsDone.add(recipe.result);
+    const def = getWeaponDef(recipe.result);
+    if (!def) return;
+    const stats = getWeaponStatsAtLevel(recipe.result, 5);
+    this._evolvedWeapons.set(recipe.result, { def, stats });
+    // Visual fanfare — spawn the evolution VFX at player position
+    this._spawnWeaponVFX(recipe.result, this.player.pos.x, this.player.pos.y, 0, 2.5);
+    // Premium floating text announcement
+    this.floatingTexts.push(new FloatingText(
+      this.player.pos.x, this.player.pos.y - 50,
+      'WEAPON EVOLVED: ' + def.name.toUpperCase(),
+      def.color || '#ffcc00', 60, 2.5
+    ));
+    // Screen shake for emphasis
+    this.screenShake?.shake?.(8, 0.5);
+    console.log('[WeaponEvolution] ' + def.name + ' unlocked from ' + recipe.ingredients.join(' + '));
+  }
+
+  // Grant a base weapon that this character does not normally own (future: weapon-drop mechanic).
+  // Adds it to _weaponLevels at the given level, enabling cross-character evolution recipes.
+  _grantBaseWeapon(weaponId, level) {
+    const cur = this._weaponLevels.get(weaponId) || 0;
+    if (level > cur) this._weaponLevels.set(weaponId, level);
+    this._checkWeaponEvolutions();
+  }
+
+  // Spawn a weapon VFX sprite sheet animation at a world position.
+  // Used for weapon fire effects AND evolution fanfare.
+  _spawnWeaponVFX(weaponId, x, y, angle, scale) {
+    const meta = WEAPON_VFX_META[weaponId];
+    const sheet = this._weaponVFXSheets[weaponId];
+    if (!meta || !sheet || !sheet.complete || sheet.naturalWidth === 0) return null;
+    const vfx = new VFXSpritePlayer(sheet, meta.frameW, meta.frameH, meta.totalFrames, meta.cols, meta.fps);
+    vfx.x     = x;
+    vfx.y     = y;
+    vfx.angle = angle || 0;
+    vfx.scale = scale || 1.0;
+    vfx.play();
+    this._activeWeaponVFX.push(vfx);
+    return vfx;
   }
 
   // ── Primary: Nexus Chakram ──────────────────────────────────────────────────
@@ -10139,6 +10293,8 @@ export class Game {
     this._drawNanoMines(ctx);            // Phase 2 MINE
     this._drawBlacknetSwarmDrones(ctx);  // Phase 2 SUMMON
     this._drawHomingMissiles(ctx);       // Phase 2 HOMING
+    // ── Weapon Evolution VFX overlays (additive sprite sheet anims) ─────────
+    for (const vfx of this._activeWeaponVFX) vfx.draw(ctx);
     for (const r of this.empRings)    r.draw(ctx);
     for (const r of this._specialRings) {
       const alpha = r.life / r.maxLife;
