@@ -38,7 +38,7 @@ import { EventBus, EVENTS } from './EventBus.js?v=20260703990000';
 import { EnemySpawner, ELITE_WAVE as ELITE_WAVE_CFG, BOSS_WARN_COOLDOWN as BOSS_WARN_CD } from './EnemySpawner.js?v=20260704200000';
 import { StateManager, GAME_STATES } from './StateManager.js?v=20260703990000';
 import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260704200000';
-import { NexusManager } from './NexusManager.js?v=20260704200000';
+import { NexusManager } from './NexusManager.js?v=20260704220000';
 import { VESSELS, getVesselById, getDefaultVesselId } from './VesselCatalog.js?v=20260703996000';
 import { PETS, getPetById } from './PetCatalog.js?v=20260703999100';
 import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons } from './WeaponCatalog.js?v=20260704120000';
@@ -9350,7 +9350,9 @@ export class Game {
         ctx.beginPath(); ctx.arc(0, 0, 24 + c.boost * 2, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
       }
       if (ready) {
-        ctx.drawImage(spr, -26, -26, 52, 52);
+        // Draw ONE animated frame from the 6×4 sheet (256px frames) — never the whole sheet.
+        const _cf = Math.floor((Date.now() / (1000 / 28)) % 24);
+        ctx.drawImage(spr, (_cf % 6) * 256, Math.floor(_cf / 6) * 256, 256, 256, -26, -26, 52, 52);
       } else {
         ctx.globalCompositeOperation = 'lighter';
         ctx.strokeStyle = '#1fd6a6'; ctx.lineWidth = 4;

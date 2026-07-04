@@ -173,7 +173,7 @@ export class NexusManager {
     // Placed at ~1.5 chunks from origin in each biome's angular sector center.
     // Angle formula matches ChunkManager._getBiomeForCoords so each Nexus
     // lands inside its own biome territory.
-    const ringDist = CHUNK_SIZE * 1.5; // unified with repositionForEndless — identical Nexus layout on both Endless entry paths
+    const ringDist = CHUNK_SIZE * 0.8; // INSIDE the 3x3 playable arena (walls at +/-1.5 chunks) — unified on both Endless entry paths
     const sectorCount = BIOME_RING_ORDER.length;
 
     for (let s = 0; s < sectorCount; s++) {
@@ -223,7 +223,7 @@ export class NexusManager {
 
     // Spawn outer-biome Nexus (matches _createEndlessNexus layout)
     this.endless = true;
-    const ringDist = CHUNK_SIZE * 1.5; // ~1.5 chunks — in biome ring
+    const ringDist = CHUNK_SIZE * 0.8; // INSIDE the 3x3 playable arena — matches _createEndlessNexus
     const sectorCount = BIOME_RING_ORDER.length;
 
     for (let s = 0; s < sectorCount; s++) {
