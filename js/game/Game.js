@@ -1830,7 +1830,7 @@ export class Game {
           }
         }
         // VFX: expanding cyan ring
-        this.empRings.push({ x: p.pos.x, y: p.pos.y, r: 0, maxR: R, t: 0, duration: 0.4, color: 'rgba(46,230,246,0.35)', update(dt) { this.t += dt; this.r = this.maxR * Math.min(1, this.t / this.duration); }, draw(ctx) { ctx.beginPath(); ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2); ctx.strokeStyle = this.color; ctx.lineWidth = 3; ctx.stroke(); } });
+        this.empRings.push({ x: p.pos.x, y: p.pos.y, r: 0, maxR: R, t: 0, duration: 0.4, color: 'rgba(46,230,246,0.35)', alive() { return this.t < this.duration; }, update(dt) { this.t += dt; this.r = this.maxR * Math.min(1, this.t / this.duration); }, draw(ctx) { ctx.beginPath(); ctx.arc(this.x, this.y, this.r, 0, Math.PI * 2); ctx.strokeStyle = this.color; ctx.lineWidth = 3; ctx.stroke(); } });
       }
     }
 
