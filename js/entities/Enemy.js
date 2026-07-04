@@ -6,7 +6,7 @@ import { clamp, distance, safeNormalize, randomRange, randomChoice, drawBar } fr
 import { DataCore } from './DataCore.js?v=20260615210000';
 import { FloatingText } from './FloatingText.js';
 import { drawGlow } from '../game/Effects.js?v=20260615210000';
-import { MINI_WEAPON_MAP, BOSS_WEAPON_MAP, getWeaponById } from '../game/EnemyWeaponCatalog.js?v=20260703990000';
+import { PRIMARY_WEAPON_MAP, MINI_WEAPON_MAP, BOSS_WEAPON_MAP, getWeaponById } from '../game/EnemyWeaponCatalog.js?v=20260704170000';
 
 // ─── Weapon sprite cache (shared across all enemies — each PNG loads once) ──────
 const _weaponSpriteCache = new Map();
@@ -14,7 +14,7 @@ function _getWeaponSprite(weaponDef) {
   if (!weaponDef || !weaponDef.spritePath) return null;
   if (_weaponSpriteCache.has(weaponDef.id)) return _weaponSpriteCache.get(weaponDef.id);
   const img = new Image();
-  img.src = weaponDef.spritePath + '?v=20260703990000';
+  img.src = weaponDef.spritePath + '?v=20260704170000';
   _weaponSpriteCache.set(weaponDef.id, img);
   return img;
 }
@@ -132,7 +132,7 @@ export class Enemy {
         this.bulletSpeed   = 400;   // speed pass: 280 → 400
         this.bulletDamage  = 20;
         this.bulletRadius  = 9;
-        this.bulletColor   = ORANGE;
+        this.bulletColor   = CYAN;    // Electric/Fire beam (addendum visual mapping)
         break;
       case 'Rogue AI Overlord':
         this.shootInterval = 1.9;
@@ -229,12 +229,21 @@ export class Enemy {
     }
 
     // ── Weapon sprite lookup — preload primary weapon sprite for this enemy ──
+    // Priority: BOSS → MINI → PRIMARY (base enemies). All 3 maps now populated
+    // per the addendum visual mapping (Drones→Chakram/Lance, Mechs→Arc Beam,
+    // Bosses→Abyss/Blacknet/Cryo).
     const catalogKey = this.enemyType.toLowerCase().replace(/ /g, '-');
-    const weaponIds  = MINI_WEAPON_MAP[catalogKey] || BOSS_WEAPON_MAP[catalogKey];
+    const weaponIds  = BOSS_WEAPON_MAP[catalogKey] || MINI_WEAPON_MAP[catalogKey] || PRIMARY_WEAPON_MAP[catalogKey];
     if (weaponIds && weaponIds.length > 0) {
       const wDef = getWeaponById(weaponIds[0]);   // primary weapon
       this._weaponSprite = _getWeaponSprite(wDef);
-      this._weaponSize   = Math.max(18, this.bulletRadius * 3.2);  // render size (px)
+      // Size scaled by enemy tier: bosses get large sweep-wave sprites,
+      // elites/mechs get medium beam sprites, drones get readable projectiles.
+      const isBoss = this.isBoss() || this.isMegaBoss;
+      const isMech = catalogKey === 'security-defector-mech' || catalogKey === 'heavy-mech';
+      this._weaponSize = isBoss ? Math.max(40, this.bulletRadius * 4.5)
+                       : isMech ? Math.max(30, this.bulletRadius * 3.8)
+                       :          Math.max(22, this.bulletRadius * 3.2);
     }
   }
 

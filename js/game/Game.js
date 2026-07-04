@@ -10815,13 +10815,16 @@ export class Game {
       if (_off(b.pos)) continue;   // offscreen — skip draw
       // Try weapon sprite first — fall back to colored circle if not loaded
       if (b.weaponSprite && b.weaponSprite.complete && b.weaponSprite.naturalWidth > 0) {
-        const sz = b.weaponSize || b.radius * 3.2;
+        const sz = b.weaponSize || Math.max(22, b.radius * 3.2);
         ctx.save();
         ctx.translate(b.pos.x, b.pos.y);
         ctx.rotate(b.angle || 0);
-        // Additive blend for glowing VFX feel
+        // Additive blend for glowing VFX feel — neon glow halo underneath
         ctx.globalCompositeOperation = 'lighter';
-        ctx.globalAlpha = 0.92;
+        ctx.globalAlpha = 0.35;
+        ctx.drawImage(b.weaponSprite, -sz * 0.7, -sz * 0.7, sz * 1.4, sz * 1.4);
+        // Sharp weapon sprite on top
+        ctx.globalAlpha = 0.94;
         ctx.drawImage(b.weaponSprite, -sz / 2, -sz / 2, sz, sz);
         ctx.globalCompositeOperation = 'source-over';
         ctx.globalAlpha = 1;

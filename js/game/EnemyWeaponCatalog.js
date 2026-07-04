@@ -70,7 +70,7 @@ export const ENEMY_WEAPONS = Object.freeze([
     id: 'eden_star_lance',
     displayName: 'Eden Star Lance',
     spritePath: 'assets/enemies/weapons/sprites/eden_star_lance.png',
-    ownerEnemyTypes: ['solar-tyrant'],
+    ownerEnemyTypes: ['glitch-drone', 'stealth-infiltrator', 'cyber-shooter', 'combat-hunter', 'solar-tyrant'],
     behavior: WEAPON_BEHAVIOR.PIERCING_PROJECTILE,
     damage: 22,
     speed: 500,
@@ -84,7 +84,7 @@ export const ENEMY_WEAPONS = Object.freeze([
     id: 'abyss_rift_blade',
     displayName: 'Abyss Rift Blade',
     spritePath: 'assets/enemies/weapons/sprites/abyss_rift_blade.png',
-    ownerEnemyTypes: ['pale-bloodknight', 'abyss-maw'],
+    ownerEnemyTypes: ['rogue-ai-overlord', 'overclocked-berserker', 'pale-bloodknight', 'abyss-maw'],
     behavior: WEAPON_BEHAVIOR.SLASH_WAVE,
     damage: 16,
     speed: 450,
@@ -98,7 +98,7 @@ export const ENEMY_WEAPONS = Object.freeze([
     id: 'cryo_shard_lance',
     displayName: 'Cryo Shard Lance',
     spritePath: 'assets/enemies/weapons/sprites/cryo_shard_lance.png',
-    ownerEnemyTypes: ['cryo-warden', 'cryo-claw'],
+    ownerEnemyTypes: ['rogue-ai-overlord', 'cyber-net-junkie', 'cryo-warden', 'cryo-claw'],
     behavior: WEAPON_BEHAVIOR.PROJECTILE,
     damage: 10,
     speed: 480,
@@ -154,7 +154,7 @@ export const ENEMY_WEAPONS = Object.freeze([
     id: 'arc_circuit_beam',
     displayName: 'Arc Circuit Beam',
     spritePath: 'assets/enemies/weapons/sprites/arc_circuit_beam.png',
-    ownerEnemyTypes: ['null-hierophant', 'reactor-colossus', 'cryo-warden', 'pulse-burrower', 'volt-rat'],
+    ownerEnemyTypes: ['security-defector-mech', 'heavy-mech', 'null-hierophant', 'reactor-colossus', 'pulse-burrower', 'volt-rat'],
     behavior: WEAPON_BEHAVIOR.BEAM,
     damage: 5,
     speed: 0,
@@ -168,7 +168,7 @@ export const ENEMY_WEAPONS = Object.freeze([
     id: 'aether_crescent_chakram',
     displayName: 'Aether Crescent Chakram',
     spritePath: 'assets/enemies/weapons/sprites/aether_crescent_chakram.png',
-    ownerEnemyTypes: ['cryo-warden', 'pulse-burrower'],
+    ownerEnemyTypes: ['glitch-drone', 'rogue-punk', 'cyber-shooter', 'scrap-scavenger', 'cryo-warden', 'pulse-burrower'],
     behavior: WEAPON_BEHAVIOR.BOOMERANG,
     damage: 8,
     speed: 400,
@@ -196,7 +196,7 @@ export const ENEMY_WEAPONS = Object.freeze([
     id: 'blacknet_scythe_arc',
     displayName: 'Blacknet Scythe Arc',
     spritePath: 'assets/enemies/weapons/sprites/blacknet_scythe_arc.png',
-    ownerEnemyTypes: ['pale-bloodknight', 'void-widow'],
+    ownerEnemyTypes: ['rogue-ai-overlord', 'pale-bloodknight', 'void-widow'],
     behavior: WEAPON_BEHAVIOR.SLASH_ARC,
     damage: 15,
     speed: 0,
@@ -236,15 +236,35 @@ export const ENEMY_WEAPONS = Object.freeze([
   },
 ]);
 
+// ── Primary / base enemy weapon assignments (Addendum Visual Mapping) ──
+// DRONES (ranged minions): Burst Fire — Cyan/Magenta projectiles
+// SECURITY MECHS (elites): Telegraphed beam — Electric/Fire
+// BOSS / AI OVERLORD: Heavy Spatial Sweeping Waves — Dark Purple
+export const PRIMARY_WEAPON_MAP = Object.freeze({
+  'glitch-drone':           ['aether_crescent_chakram', 'eden_star_lance'],
+  'rogue-punk':             ['aether_crescent_chakram'],
+  'stealth-infiltrator':    ['eden_star_lance'],
+  'cyber-shooter':          ['aether_crescent_chakram', 'eden_star_lance'],
+  'security-defector-mech': ['arc_circuit_beam'],
+  'heavy-mech':             ['arc_circuit_beam'],
+  'overclocked-berserker':  ['abyss_rift_blade'],
+  'combat-hunter':          ['eden_star_lance'],
+  'scrap-scavenger':        ['aether_crescent_chakram'],
+  'cyber-net-junkie':       ['cryo_shard_lance'],
+  'rogue-ai-overlord':      ['abyss_rift_blade', 'blacknet_scythe_arc', 'cryo_shard_lance'],
+});
+
 // ── Boss weapon assignments ──────────────────────────────────────────
+// All bosses carry the 3 heavy sweep weapons (abyss/blacknet/cryo) as primary
+// plus their unique secondary weapons for visual variety.
 export const BOSS_WEAPON_MAP = Object.freeze({
-  'cryo-warden':     ['cryo_shard_lance', 'arc_circuit_beam', 'aether_crescent_chakram'],
-  'forge-mauler':    ['magma_reaver_lance', 'void_ember_comet', 'solar_halo_bolt'],
-  'null-hierophant': ['null_sigil_beam', 'arc_circuit_beam', 'null_rupture_orb'],
-  'pale-bloodknight':['abyss_rift_blade', 'blacknet_scythe_arc', 'null_rupture_orb'],
-  'rail-reaper':     ['violet_spectral_needle', 'toxic_data_spear', 'seraph_vector_javelin'],
-  'reactor-colossus':['arc_circuit_beam', 'magma_reaver_lance', 'solar_halo_bolt'],
-  'solar-tyrant':    ['solar_halo_bolt', 'seraph_vector_javelin', 'eden_star_lance'],
+  'cryo-warden':     ['cryo_shard_lance', 'abyss_rift_blade', 'blacknet_scythe_arc'],
+  'forge-mauler':    ['abyss_rift_blade', 'blacknet_scythe_arc', 'magma_reaver_lance'],
+  'null-hierophant': ['blacknet_scythe_arc', 'cryo_shard_lance', 'null_rupture_orb'],
+  'pale-bloodknight':['abyss_rift_blade', 'blacknet_scythe_arc', 'cryo_shard_lance'],
+  'rail-reaper':     ['cryo_shard_lance', 'abyss_rift_blade', 'seraph_vector_javelin'],
+  'reactor-colossus':['abyss_rift_blade', 'blacknet_scythe_arc', 'magma_reaver_lance'],
+  'solar-tyrant':    ['blacknet_scythe_arc', 'cryo_shard_lance', 'eden_star_lance'],
 });
 
 // ── Mini enemy weapon assignments ────────────────────────────────────
@@ -267,6 +287,6 @@ export function getWeaponById(id) { return _weaponIndex.get(id) || null; }
 
 // ── Helper: get all weapons for an enemy type ────────────────────────
 export function getWeaponsForEnemy(enemyId) {
-  const ids = BOSS_WEAPON_MAP[enemyId] || MINI_WEAPON_MAP[enemyId] || [];
+  const ids = BOSS_WEAPON_MAP[enemyId] || MINI_WEAPON_MAP[enemyId] || PRIMARY_WEAPON_MAP[enemyId] || [];
   return ids.map(id => _weaponIndex.get(id)).filter(Boolean);
 }
