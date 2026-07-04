@@ -128,6 +128,32 @@ export class Protocol0 {
       for (let i = 0; i <= 16; i++) { const a = (i / 16) * Math.PI * 2, rr = 52 + (i % 2 ? 10 : 0); const px = this.x + Math.cos(a) * rr, py = this.y - 60 + Math.sin(a) * rr; i ? ctx.lineTo(px, py) : ctx.moveTo(px, py); }
       ctx.closePath(); ctx.stroke(); ctx.restore();
     }
+    // ── FUSE COUNTDOWN — charging ring + seconds. The 8s fuse reads as a
+    // CHARGE-UP, not a dead button: ring fills toward detonation, flashes near 0.
+    if (this.state === 'active') {
+      const prog = Math.min(1, (now - this.born) / this.cfg.duration.ms);
+      const secs = Math.max(0, Math.ceil((this.cfg.duration.ms - (now - this.born)) / 1000));
+      const R = 46;
+      ctx.save();
+      ctx.strokeStyle = 'rgba(60,4,0,0.55)'; ctx.lineWidth = 7;
+      ctx.beginPath(); ctx.arc(this.x, this.y, R, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = prog > 0.75 ? '#ffd23c' : '#ff3b1f';
+      ctx.shadowColor = '#ff3b1f'; ctx.shadowBlur = 14; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.arc(this.x, this.y, R, -Math.PI / 2, -Math.PI / 2 + prog * Math.PI * 2); ctx.stroke();
+      if (prog > 0.82) {   // near-detonation pulse flash
+        ctx.globalAlpha = 0.18 + 0.18 * Math.sin(now / 55);
+        ctx.fillStyle = '#ff3b1f';
+        ctx.beginPath(); ctx.arc(this.x, this.y, R - 5, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = 1;
+      }
+      ctx.textAlign = 'center';
+      ctx.font = 'bold 26px Consolas, monospace'; ctx.fillStyle = '#ffe9d6';
+      ctx.fillText(String(secs), this.x, this.y - R - 14);
+      ctx.font = 'bold 10px Consolas, monospace'; ctx.fillStyle = '#ff8866';
+      ctx.fillText('DETONATION', this.x, this.y - R - 34);
+      ctx.restore();
+    }
+
     // STAGE 3: core detonation shockwave
     if (this.state === 'detonate' && this._shock) {
       const t = (now - this._shock.born) / this.cfg.detonate.ms, r = this._shock.maxR * t, a = 1 - t;

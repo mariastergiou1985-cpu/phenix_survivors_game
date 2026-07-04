@@ -26,6 +26,12 @@ export const METEOR_DEFAULTS = {
   color:    { hue: 4, sat: 100, light: 56 },
 };
 
+// ── Official meteorite sprite (FX sheets) — replaces the procedural red balls.
+// void_ember_comet: the engine's canonical flaming-comet asset. Crystals remain
+// only as a fallback while the image is still loading.
+const _METEOR_SPRITE = (typeof Image !== 'undefined') ? new Image() : null;
+if (_METEOR_SPRITE) _METEOR_SPRITE.src = 'assets/enemies/weapons/sprites/void_ember_comet.png?v=20260705000000';
+
 export class MeteorRain {
   constructor(canvas, opts = {}) {
     this.canvas = canvas;
@@ -54,14 +60,18 @@ export class MeteorRain {
   }
   _spawnMeteor() {
     const land = this._pickLanding();
-    const topY = this.cfg.meteor.topY - Math.random() * 40;
-    const sx = land.x - (this.cy - topY) * 0.45;  // diagonal offset (down-right fall)
+    // Impact-crater physics: random spawn offsets ABOVE the screen, falling in
+    // from either side with an arc (vx decays, vy gains) toward the target zone.
+    const topY = this.cfg.meteor.topY - Math.random() * 90;
+    const side = Math.random() < 0.5 ? -1 : 1;
+    const sx = land.x - side * (this.cy - topY) * (0.25 + Math.random() * 0.45);
     let dx = land.x - sx, dy = land.y - topY; const m = Math.hypot(dx, dy) || 1; dx /= m; dy /= m;
     const sp = this.cfg.meteor.speed;
     this._meteors.push({
       x: sx, y: topY, vx: dx * sp, vy: dy * sp, ax: dx * this.cfg.meteor.accel, ay: dy * this.cfg.meteor.accel,
       size: this.cfg.meteor.sizeMin + Math.random() * (this.cfg.meteor.sizeMax - this.cfg.meteor.sizeMin),
       rot: Math.random() * Math.PI, vr: (Math.random() - 0.5) * 0.3,
+      arc: 0.9955 + Math.random() * 0.003,   // per-meteor horizontal decay → parabolic arc
     });
   }
 
@@ -80,7 +90,8 @@ export class MeteorRain {
       }
       // move + impact
       for (const m of this._meteors) {
-        m.vx += m.ax; m.vy += m.ay; m.x += m.vx; m.y += m.vy; m.rot += m.vr;
+        m.vx = m.vx * (m.arc || 1) + m.ax; m.vy += m.ay * 1.35;   // arc velocity: horizontal decays, vertical gains
+        m.x += m.vx; m.y += m.vy; m.rot += m.vr;
         if (m.y >= this.cy) { m.dead = true; this._impact(m.x, this.cy, now); }
       }
       this._meteors = this._meteors.filter(m => !m.dead);
@@ -133,8 +144,18 @@ export class MeteorRain {
       // trail
       ctx.strokeStyle = this._c(0.5, 55); ctx.lineWidth = m.size * 0.5;
       ctx.beginPath(); ctx.moveTo(m.x, m.y); ctx.lineTo(m.x - m.vx * 2.5, m.y - m.vy * 2.5); ctx.stroke();
-      ctx.fillStyle = this._c(0.95, 55); this._crystal(ctx, m.x, m.y, m.size, m.rot);
-      ctx.fillStyle = this._c(1, 85); this._crystal(ctx, m.x, m.y, m.size * 0.5, m.rot);
+      if (_METEOR_SPRITE && _METEOR_SPRITE.complete && _METEOR_SPRITE.naturalWidth > 0) {
+        // Official meteorite asset at 1.5× the old visual footprint, nose-first along velocity.
+        const sz = m.size * 3;
+        ctx.save();
+        ctx.translate(m.x, m.y);
+        ctx.rotate(Math.atan2(m.vy, m.vx) + Math.PI / 4);
+        ctx.drawImage(_METEOR_SPRITE, -sz / 2, -sz / 2, sz, sz);
+        ctx.restore();
+      } else {
+        ctx.fillStyle = this._c(0.95, 55); this._crystal(ctx, m.x, m.y, m.size, m.rot);
+        ctx.fillStyle = this._c(1, 85); this._crystal(ctx, m.x, m.y, m.size * 0.5, m.rot);
+      }
     }
     // debris
     ctx.shadowBlur = 6;

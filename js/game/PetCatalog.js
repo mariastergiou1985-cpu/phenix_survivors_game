@@ -50,9 +50,9 @@ export const PETS = Object.freeze([
     costFragments: 3,
     unlockByDefault: false,
     // Behavior params
-    orbitRadius: 56,       // orbit distance from player — tight 48–64 range, visibly attached
+    orbitRadius: 100,      // orbit distance — scaled with the 2.0× companion size (sprite 104px)
     orbitSpeed: 1.8,       // radians/sec
-    blockRadius: 24,       // collision radius vs enemy projectiles (scaled with larger sprite)
+    blockRadius: 40,       // collision radius vs enemy projectiles (2.0× sprite scaling)
   },
   {
     id: 'error_code_bomber',

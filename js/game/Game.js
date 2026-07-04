@@ -29,9 +29,9 @@ import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARAC
 import { GlitchDash } from '../effects/glitch-dash.js?v=20260703990000';
 import { EMPShockwave } from '../effects/emp-shockwave.js?v=20260703990000';
 import { DigitalSingularity } from '../effects/digital-singularity.js?v=20260703990000';
-import { Protocol0 } from '../effects/protocol-0.js?v=20260703990000';
+import { Protocol0 } from '../effects/protocol-0.js?v=20260705000000';
 import { LaserEyes } from '../effects/laser-eyes.js?v=20260703990000';
-import { MeteorRain } from '../effects/meteor-rain.js?v=20260703990000';
+import { MeteorRain } from '../effects/meteor-rain.js?v=20260705000000';
 import { NpcWalker } from './NpcWalker.js?v=20260703990000';
 import { MapManager, BIOME_ID, BIOME_DEFS } from './MapManager.js?v=20260703999000';
 import { EventBus, EVENTS } from './EventBus.js?v=20260703990000';
@@ -40,7 +40,7 @@ import { StateManager, GAME_STATES } from './StateManager.js?v=20260703990000';
 import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260704200000';
 import { NexusManager } from './NexusManager.js?v=20260704220000';
 import { VESSELS, getVesselById, getDefaultVesselId } from './VesselCatalog.js?v=20260703996000';
-import { PETS, getPetById } from './PetCatalog.js?v=20260703999100';
+import { PETS, getPetById } from './PetCatalog.js?v=20260705000000';
 import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons, isEvolutionOwnedBy, getCardDisplayName } from './WeaponCatalog.js?v=20260704230000';
 import { TACTICAL_ID, TACTICAL_DEFS, getTacticalDef, getTacticalForCharacter, getAvailableTactical, preloadTacticalSprites } from './TacticalWeaponCatalog.js?v=20260704230000';
 import { VFXSpritePlayer } from './VFXSpritePlayer.js?v=20260704120000';
@@ -95,17 +95,17 @@ import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/t
 // ── Vessel companion placement (Ally-Walker-style escort) ───────────────────
 // The vessel flies BESIDE the player like the Kiroshi Walker ally, never on top
 // of the player sprite. Offset chosen so the 64px vessel fully clears the 64px player.
-const VESSEL_COMPANION_OFF  = { x: 72, y: -52 };   // px, relative to player center — must clear the 64px player sprite fully
-const VESSEL_COMPANION_SIZE = 64;                  // sprite height — same scale as player, no overlap
+const VESSEL_COMPANION_OFF  = { x: 120, y: -86 };  // px — widened with the 2.0× size so the 128px vessel still clears the player fully
+const VESSEL_COMPANION_SIZE = 128;                 // 2.0× global entity scaling (was 64)
 
 // Pet slot offsets — player-relative companion anchors (slot order = selection order).
 // Slots 1–2 per designer spec; 3–4 mirror below the player. Firewall Sentinel ignores
 // these and orbits instead (its own ally behavior).
 const PET_SLOT_OFFSETS = [
-  { x: -62, y: -46 },   // slot 1 — upper-left escort (clears 64px player)
-  { x:  62, y: -42 },   // slot 2 — upper-right escort
-  { x: -66, y:  44 },   // slot 3 — lower-left escort
-  { x:  66, y:  46 },   // slot 4 — lower-right escort
+  { x: -104, y: -78 },  // slot 1 — upper-left escort  (2.0× scaling: offsets widened, player stays clear)
+  { x:  104, y: -72 },  // slot 2 — upper-right escort
+  { x: -110, y:  74 },  // slot 3 — lower-left escort
+  { x:  110, y:  78 },  // slot 4 — lower-right escort
 ];
 
 // ── Eden Core character message pools (in-run transmissions) ────────────────
@@ -1831,6 +1831,19 @@ export class Game {
   }
 
   // ── Draw selected vessel sprite behind the player during gameplay ──────────
+  // 'PLAYER-OWNED' marker — inverted red chevron in screen blend so it reads
+  // on any background. Drawn above every vessel/pet companion.
+  _drawOwnedChevron(ctx, x, topY) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.strokeStyle = '#ff2a2a'; ctx.lineWidth = 4; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    ctx.shadowColor = '#ff2a2a'; ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.moveTo(x - 11, topY - 20); ctx.lineTo(x, topY - 9); ctx.lineTo(x + 11, topY - 20);
+    ctx.stroke();
+    ctx.restore();
+  }
+
   _drawActiveVessel(ctx) {
     if (!this.player || !this._activeVesselId || !this._vesselCompanion) return;
     const spr = this._vesselSpriteCache?.[this._activeVesselId];
@@ -1861,6 +1874,7 @@ export class Game {
     // Vessel escorts the player as a companion — offset, not covering the character
     ctx.drawImage(spr, vx - sprW / 2, vy - sprH / 2, sprW, sprH);
     ctx.restore();
+    this._drawOwnedChevron(ctx, vx, vy - sprH / 2);
   }
 
   // ─── Cyber-Pet System ────────────────────────────────────────────────────────
@@ -1918,7 +1932,9 @@ export class Game {
         const dx = b.x - e.pos.x;
         const dy = b.y - e.pos.y;
         if (dx * dx + dy * dy < (e.radius + 6) * (e.radius + 6)) {
-          e.hp -= b.dmg;
+          // Route through takeHit → white hit-flash + damage number: pet damage
+          // is always visually confirmed on the target.
+          if (e.takeHit) e.takeHit(b.dmg, this); else e.hp -= b.dmg;
           this._petBolts.splice(i, 1);
           break;
         }
@@ -1944,7 +1960,8 @@ export class Game {
           const edx = bomb.x - e.pos.x;
           const edy = bomb.y - e.pos.y;
           if (edx * edx + edy * edy < bomb.radius * bomb.radius) {
-            e.stunned = Math.max(e.stunned || 0, bomb.freezeDur);
+            e.stunned  = Math.max(e.stunned || 0, bomb.freezeDur);
+            e.hitFlash = Math.max(e.hitFlash || 0, 0.08);   // visual confirmation of the freeze hit
           }
         }
       }
@@ -2119,11 +2136,11 @@ export class Game {
     }
 
     // Per-pet visual scale (% of player's 64px sprite) — makes each pet readable as a companion
-    const _petScale = {
-      byte_mite:          44,   // 69% — small agile attack drone
-      data_miner_drone:   48,   // 75% — medium utility drone
-      firewall_sentinel:  52,   // 81% — large shield orbiter
-      error_code_bomber:  56,   // 88% — bulky bomb launcher
+    const _petScale = {   // 2.0× global entity scaling
+      byte_mite:          88,   // small agile attack drone
+      data_miner_drone:   96,   // medium utility drone
+      firewall_sentinel: 104,   // large shield orbiter
+      error_code_bomber: 112,   // bulky bomb launcher
     };
 
     // Draw pet sprites
@@ -2153,6 +2170,7 @@ export class Game {
         ctx.arc(pet.x, pet.y, 16, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
+        this._drawOwnedChevron(ctx, pet.x, pet.y - 16);
         continue;
       }
       const sprH = _petScale[pet.def.id] || 48;
@@ -2161,6 +2179,7 @@ export class Game {
       ctx.globalAlpha = 0.95;   // near-full opacity — pets are player-owned, not ghostly
       ctx.drawImage(spr, pet.x - sprW / 2, pet.y - sprH / 2, sprW, sprH);
       ctx.restore();
+      this._drawOwnedChevron(ctx, pet.x, pet.y - sprH / 2);
     }
   }
 
@@ -5296,7 +5315,14 @@ export class Game {
       onDetonate: () => {
         this.screenShake.trigger(14, 0.6);
         const det = 220 + 40 * cl;               // Total Cataclysm mastery: stronger detonation (boss-capped)
-        for (const e of this.enemies) if (e?.takeHit) e.takeHit((e.isBoss?.() || e.isMegaBoss) ? this._capBossDamage(e, det) : det, this);
+        // Hybrid scaling vs NORMAL enemies: flat + 15% of their max HP, so the
+        // detonation stays impactful against biome-buffed HP pools in Endless.
+        // Bosses keep the existing _capBossDamage path — encounter balance intact.
+        for (const e of this.enemies) {
+          if (!e?.takeHit) continue;
+          if (e.isBoss?.() || e.isMegaBoss) e.takeHit(this._capBossDamage(e, det), this);
+          else e.takeHit(det + 0.15 * (e.maxHp || 0), this);
+        }
         this.enemyBullets.length = 0;            // clear all enemy projectiles
         // ── Oni Blood Circuit relic: mark nearby enemies +15% damage taken for 5s ──
         if (this.meta?.isRelicUnlocked('oni_blood_circuit')) {
@@ -5431,7 +5457,11 @@ export class Game {
       const tgt = nearest();
       if (tgt && distance(tgt.pos, p.pos) < 620) {
         const ml       = p.upgrades['oni_meteor_mastery'] || 0;   // Meteor Cataclysm mastery
-        const meteorDmg = 30 + 8 * ml;                            // 30 → 54 per meteor
+        // Registered meteor damage: Base_Atk × 3.5 (Base_Atk = one basic shot's
+        // damage: 1 + Pulse Damage levels), floored at the mastery curve so the
+        // overhaul can only BUFF meteors — never below pre-overhaul values.
+        const baseAtk   = 1 + (p.upgrades['Pulse Damage'] || 0);
+        const meteorDmg = Math.max(30 + 8 * ml, Math.round(3.5 * baseAtk));
         this._oniMeteorWorld = { x: tgt.pos.x, y: tgt.pos.y };   // anchor the field in WORLD space
         this._meteorRain.cast(toX(tgt), toY(tgt), this.enemies, {
           getX: toX, getY: toY,
@@ -6984,20 +7014,14 @@ export class Game {
   }
 
   _updateHealthPickups(dt) {
-    const PICKUP_R = 18;
-    const MAGNET_R = 90;   // gentle magnet pull range so pickups are easier to collect
+    // Health drops stay EXACTLY where the enemy died — vacuum/magnet pull removed.
+    // Fixed 60px pickup radius: the player must walk near the drop to collect it.
+    const PICKUP_R = 60;
     for (let i = this.healthPickups.length - 1; i >= 0; i--) {
       const hp = this.healthPickups[i];
       const d = distance(this.player.pos, hp.pos);
 
-      // Gentle magnet pull when within range
-      if (d < MAGNET_R && d > PLAYER_RADIUS + PICKUP_R) {
-        const pull = Math.min(1, dt * 3.5);
-        hp.pos.x += (this.player.pos.x - hp.pos.x) * pull;
-        hp.pos.y += (this.player.pos.y - hp.pos.y) * pull;
-      }
-
-      if (d < PLAYER_RADIUS + PICKUP_R) {
+      if (d < PICKUP_R) {
         const heal = this.player.maxHp * 0.25;
         this.player.hp = this.player.hp >= this.player.maxHp   // never clip overheal
           ? this.player.hp
@@ -8701,7 +8725,7 @@ export class Game {
       }
       if (best) {
         const angle = Math.atan2(best.pos.y - py, best.pos.x - px);
-        this._spawnWeaponVFX(weaponId, best.pos.x, best.pos.y, angle, 2.5);
+        this._spawnWeaponVFX(weaponId, best.pos.x, best.pos.y, angle, 3.75);   // 1.5× global weapon-sprite scaling (was 2.5 — read like flies)
         // AoE damage at impact point
         const aoe2 = (stats.aoeRadius || 60) * (stats.aoeRadius || 60);
         for (const e of this.enemies) {
