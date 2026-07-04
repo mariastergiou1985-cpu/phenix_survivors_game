@@ -123,52 +123,13 @@ export const ALL_UPGRADES = [
     ORANGE, 2, () => {}, '🛸', 'legendary'  // persistent ally drones spawned/updated in Game._updateAllyDrones
   ),
 
-  // ── Phase 1 Weapons — global (all characters), activated at level 1, scale to level 4 ────────
-  // Levels are read live in Game._updatePlasmaBlade / _updateVoidNeedle / _updateRailSpike /
-  // _updateP1SentryDrone / _updateShardRing. Each weapon activates at level 1; no char gate.
-  new UpgradeDefinition(
-    'plasma_blade', 'Plasma Blade', 'Melee slash arc — damages nearby enemies',
-    CYAN, 4, () => {}, '⚔', 'epic'
-  ),
-  new UpgradeDefinition(
-    'void_needle', 'Void Needle', 'Fast piercing projectile — fires toward enemies',
-    CYAN, 4, () => {}, '➤', 'rare'
-  ),
-  new UpgradeDefinition(
-    'sentry_drone', 'Sentry Drone', 'Orbiting sentry — auto-targets and eliminates hostiles',
-    ORANGE, 4, () => {}, '🤖', 'epic'
-  ),
-  new UpgradeDefinition(
-    'shard_ring', 'Shard Ring', 'Orbiting energy ring — damages enemies on contact',
-    PURPLE, 4, () => {}, '◎', 'epic'
-  ),
-  new UpgradeDefinition(
-    'rail_spike', 'Rail Spike', 'Heavy hypersonic spike — high damage single shot',
-    CYAN, 4, () => {}, '⇥', 'epic'
-  ),
-
-  // ── Phase 2 Weapons — global (all characters), gated on card level ────────
-  // Levels are read live in Game._updateVoidBeam / _updateGravityCore / etc.
-  new UpgradeDefinition(
-    'void_beam', 'Void Beam', 'Sustained energy beam — cuts through enemies in a line',
-    CYAN, 4, () => {}, '▬', 'epic'
-  ),
-  new UpgradeDefinition(
-    'gravity_core', 'Gravity Core', 'Gravity pulse field — pulls and damages nearby enemies',
-    PURPLE, 4, () => {}, '◉', 'epic'
-  ),
-  new UpgradeDefinition(
-    'nano_mine', 'Nano Mine', 'Auto-drop proximity mines — detonate on enemy contact',
-    ORANGE, 4, () => {}, '💣', 'epic'
-  ),
-  new UpgradeDefinition(
-    'blacknet_swarm_drone', 'Blacknet Swarm', 'Deploys a vicious drone swarm that hunts nearby foes',
-    PURPLE, 4, () => {}, '⬡', 'epic'
-  ),
-  new UpgradeDefinition(
-    'homing_missile_launcher', 'Homing Missile', 'Smart-tracking missiles — home in on targets',
-    ORANGE, 4, () => {}, '⤞', 'epic'
-  ),
+  // ── Phase 1 & 2 auto-fire weapons REMOVED from weightedSample pool. ──────────
+  // These weapons are EXCLUSIVELY acquired through _injectWeaponCard() / _buildWeaponCard()
+  // in Game.js, which properly gates: new weapon only if slot available (max 3),
+  // upgrades only for owned weapons, evolution only when both ingredients at Lv5.
+  // The old ungated cards were orphaned (applyFn was no-op, not wired to _weaponLevels).
+  // Weapon IDs for reference: plasma_blade, void_needle, sentry_drone, shard_ring,
+  // rail_spike, void_beam, gravity_core, nano_mine, blacknet_swarm_drone, homing_missile_launcher.
 
   // ── Corrosive (global) — reuses the existing _corrosiveTimer DoT (Game._updateCorrosive) ──
   new UpgradeDefinition(

@@ -14,9 +14,31 @@ function _getWeaponSprite(weaponDef) {
   if (!weaponDef || !weaponDef.spritePath) return null;
   if (_weaponSpriteCache.has(weaponDef.id)) return _weaponSpriteCache.get(weaponDef.id);
   const img = new Image();
-  img.src = weaponDef.spritePath + '?v=20260704170000';
+  img.onerror = () => {
+    console.warn('[PHENIX] weapon sprite FAILED:', weaponDef.spritePath);
+    _weaponSpriteCache.delete(weaponDef.id);   // allow retry
+  };
+  img.src = weaponDef.spritePath + '?v=20260704180000';
   _weaponSpriteCache.set(weaponDef.id, img);
   return img;
+}
+
+// ── Eagerly preload ALL enemy weapon sprites during boot ───────────────────────
+// Call once from Game.js init so sprites are already loaded when enemies spawn.
+export function preloadAllWeaponSprites() {
+  const allMaps = [PRIMARY_WEAPON_MAP, MINI_WEAPON_MAP, BOSS_WEAPON_MAP];
+  const seen = new Set();
+  for (const map of allMaps) {
+    for (const ids of Object.values(map)) {
+      for (const id of ids) {
+        if (seen.has(id)) continue;
+        seen.add(id);
+        const def = getWeaponById(id);
+        if (def) _getWeaponSprite(def);
+      }
+    }
+  }
+  console.log('[PHENIX] preloaded', seen.size, 'enemy weapon sprites');
 }
 
 // ─── Hit/death feedback tuning (visual only — no balance impact) ────────────────
@@ -239,11 +261,12 @@ export class Enemy {
       this._weaponSprite = _getWeaponSprite(wDef);
       // Size scaled by enemy tier: bosses get large sweep-wave sprites,
       // elites/mechs get medium beam sprites, drones get readable projectiles.
+      // ARCADE SCALE: 2.0x-2.5x larger than base radius for visual impact.
       const isBoss = this.isBoss() || this.isMegaBoss;
       const isMech = catalogKey === 'security-defector-mech' || catalogKey === 'heavy-mech';
-      this._weaponSize = isBoss ? Math.max(40, this.bulletRadius * 4.5)
-                       : isMech ? Math.max(30, this.bulletRadius * 3.8)
-                       :          Math.max(22, this.bulletRadius * 3.2);
+      this._weaponSize = isBoss ? Math.max(56, this.bulletRadius * 5.5)
+                       : isMech ? Math.max(44, this.bulletRadius * 4.8)
+                       :          Math.max(34, this.bulletRadius * 4.0);
     }
   }
 

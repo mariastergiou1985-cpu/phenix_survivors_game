@@ -12,7 +12,7 @@ import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260703990000
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260703990000';
 import { Player }         from '../entities/Player.js?v=20260703990000';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260703990000';
-import { Enemy }          from '../entities/Enemy.js?v=20260703991000';
+import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260704180000';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=20260703990000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260703990000';
@@ -495,6 +495,9 @@ export class Game {
     // ── Weapon VFX sprite sheets (12: 8 base + 4 evolution) ──────────
     // Each is a grid sprite sheet rendered by generate_phenix_vfx_master.py.
     // Missing files degrade gracefully (no VFX overlay, weapon still functions).
+    // ── Preload ALL enemy weapon sprites so they're ready before enemies spawn ──
+    preloadAllWeaponSprites();
+
     this._weaponVFXSheets = {};
     [
       ['storm_saber',      'assets/weapons/vfx/storm_saber_slash.png'],
@@ -8399,7 +8402,7 @@ export class Game {
     // 2) Intense screen shake
     this.screenShake.trigger(14, 0.6);
     // 3) VFX sprite burst at player position
-    this._spawnWeaponVFX(recipe.result, this.player.pos.x, this.player.pos.y, 0, 2.5);
+    this._spawnWeaponVFX(recipe.result, this.player.pos.x, this.player.pos.y, 0, 4.0);
     // 4) Premium floating text (fixed: correct FloatingText arg order)
     this.floatingTexts.push(new FloatingText(
       'EVOLUTION: ' + def.name.toUpperCase(),
@@ -8415,7 +8418,12 @@ export class Game {
   // Adds it to _weaponLevels at the given level, enabling cross-character evolution recipes.
   _grantBaseWeapon(weaponId, level) {
     const cur = this._weaponLevels.get(weaponId) || 0;
-    if (level > cur) this._weaponLevels.set(weaponId, level);
+    if (level > cur) {
+      this._weaponLevels.set(weaponId, level);
+      // Sync player.upgrades so _cardLvl(weaponId) returns the correct level
+      // for weapon behavior scaling (damage, pierce, cooldown, etc.)
+      this.player.upgrades[weaponId] = level;
+    }
     this._checkWeaponEvolutions();
   }
 
@@ -8612,7 +8620,7 @@ export class Game {
       }
       if (best) {
         const angle = Math.atan2(best.pos.y - py, best.pos.x - px);
-        this._spawnWeaponVFX(weaponId, best.pos.x, best.pos.y, angle, 1.5);
+        this._spawnWeaponVFX(weaponId, best.pos.x, best.pos.y, angle, 2.5);
         // AoE damage at impact point
         const aoe2 = (stats.aoeRadius || 60) * (stats.aoeRadius || 60);
         for (const e of this.enemies) {
@@ -10815,7 +10823,7 @@ export class Game {
       if (_off(b.pos)) continue;   // offscreen — skip draw
       // Try weapon sprite first — fall back to colored circle if not loaded
       if (b.weaponSprite && b.weaponSprite.complete && b.weaponSprite.naturalWidth > 0) {
-        const sz = b.weaponSize || Math.max(22, b.radius * 3.2);
+        const sz = b.weaponSize || Math.max(34, b.radius * 4.0);
         ctx.save();
         ctx.translate(b.pos.x, b.pos.y);
         ctx.rotate(b.angle || 0);
