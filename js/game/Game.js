@@ -43,7 +43,7 @@ import { VESSELS, getVesselById, getDefaultVesselId } from './VesselCatalog.js?v
 import { PETS, getPetById } from './PetCatalog.js?v=20260705000000';
 import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons, isEvolutionOwnedBy, getCardDisplayName } from './WeaponCatalog.js?v=20260704230000';
 import { TACTICAL_ID, TACTICAL_DEFS, getTacticalDef, getTacticalForCharacter, getAvailableTactical, preloadTacticalSprites } from './TacticalWeaponCatalog.js?v=20260704230000';
-import { VFXSpritePlayer } from './VFXSpritePlayer.js?v=20260704120000';
+import { VFXSpritePlayer } from './VFXSpritePlayer.js?v=20260705020000';
 
 // ── Mastery card → base weapon mapping (for evolution level tracking) ──
 const MASTERY_TO_WEAPON = Object.freeze({
@@ -9244,6 +9244,38 @@ export class Game {
         case 'kinetic_rain':
           this._drawRainFx(ctx, w, cam);
           break;
+        case 'gravity_singularity': {
+          // PREMIUM black hole — the artist sprite IS the visual (transparent PNG
+          // drawn as-is): large, slowly rotating, growing toward collapse, with a
+          // subtle purple event-horizon ring. No procedural beige circles.
+          if (sprite && sprite.complete && sprite.naturalWidth > 0) {
+            const grow = w.collapsed ? 1.0 : Math.min(1, w.pullTimer / (w.def.collapseTime || 2.0));
+            const sz = 200 + 80 * grow;                     // 200 → 280px toward collapse
+            ctx.save();
+            ctx.globalAlpha = fadeAlpha;
+            ctx.translate(sx, sy);
+            ctx.rotate(w.angle * 0.5);
+            ctx.drawImage(sprite, -sz / 2, -sz / 2, sz, sz);
+            ctx.restore();
+            ctx.save();
+            ctx.globalCompositeOperation = 'lighter';
+            ctx.globalAlpha = 0.20 + 0.10 * Math.sin(w.angle * 3);
+            ctx.strokeStyle = '#8b2fd6'; ctx.lineWidth = 3;
+            ctx.beginPath(); ctx.arc(sx, sy, sz * 0.55, 0, Math.PI * 2); ctx.stroke();
+            ctx.restore();
+            if (w.collapsed) {
+              // Collapse shockwave — expanding violet ring, fades out
+              const t = Math.min(1, Math.max(0, (w.pullTimer - (w.def.collapseTime || 2.0)) / 1.5));
+              ctx.save();
+              ctx.globalCompositeOperation = 'lighter';
+              ctx.globalAlpha = (1 - t) * 0.8;
+              ctx.strokeStyle = '#c48bff'; ctx.lineWidth = 8 * (1 - t) + 2;
+              ctx.beginPath(); ctx.arc(sx, sy, (w.def.blastRadius || 450) * t, 0, Math.PI * 2); ctx.stroke();
+              ctx.restore();
+            }
+          }
+          break;
+        }
         default: {
           // All other behaviors: render weapon sprite at drop point, sprite-only
           if (sprite && sprite.complete && sprite.naturalWidth > 0) {
@@ -9325,7 +9357,7 @@ export class Game {
       const rx = spike.x - cam.x, ry = spike.y - cam.y;
       const alpha = spike.life / spike.maxLife;
       ctx.globalAlpha = alpha * 0.7;
-      const sz = 24 * alpha;
+      const sz = 40 * alpha;   // readable rail spikes
       ctx.drawImage(sprite, rx - sz / 2, ry - sz / 2, sz, sz);
     }
     ctx.restore();
@@ -9334,7 +9366,7 @@ export class Game {
   _drawVolleyFx(ctx, w, cam) {
     const sprite = this._tacticalSpriteCache.get(w.id);
     if (!sprite || !sprite.complete || sprite.naturalWidth <= 0) return;
-    const mSize = 24;
+    const mSize = 36;   // readable volley missiles
     ctx.save();
     for (const mis of w.missiles) {
       const mx = mis.x - cam.x, my = mis.y - cam.y;

@@ -87,8 +87,13 @@ export class VFXSpritePlayer {
     const sx  = col * this.frameW;
     const sy  = row * this.frameH;
 
-    const dw = this.frameW * this.scale;
-    const dh = this.frameH * this.scale;
+    let dw = this.frameW * this.scale;
+    let dh = this.frameH * this.scale;
+    // Readability hard cap: no weapon VFX may exceed 320px on screen. Large
+    // source frames (256px sheets, e.g. Nexus Chakram) at high scale were
+    // filling the arena with washed-out additive rings.
+    const _max = Math.max(dw, dh);
+    if (_max > 320) { const _k = 320 / _max; dw *= _k; dh *= _k; }
 
     ctx.save();
     ctx.globalAlpha = this.alpha;
