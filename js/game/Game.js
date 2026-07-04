@@ -2028,8 +2028,9 @@ export class Game {
   _tickPetDefense(pet, dt, px, py, _bobY) {
     // Orbit around player
     pet.angle += pet.def.orbitSpeed * dt;
-    pet.x = px + Math.cos(pet.angle) * pet.def.orbitRadius;
-    pet.y = py + Math.sin(pet.angle) * pet.def.orbitRadius;
+    const petOrbitR = Math.max(110, pet.def.orbitRadius);   // min 110px orbital padding
+    pet.x = px + Math.cos(pet.angle) * petOrbitR;
+    pet.y = py + Math.sin(pet.angle) * petOrbitR;
 
     // Destroy enemy projectiles on collision
     const br2 = pet.def.blockRadius * pet.def.blockRadius;
@@ -9013,7 +9014,7 @@ export class Game {
     if (!cp) { ctx.globalAlpha = 1; return; }
     const p = this.player;
     // Two orbiting clone overlays flanking the player: pink phantom + chrome mirror.
-    const orbit = 56, ang = cp.t * 6;
+    const orbit = 110, ang = cp.t * 6;   // min 110px orbital padding — player visibility
     const clones = [
       { spr: this._assassinPhantomSprite, ox: Math.cos(ang) * orbit,            oy: Math.sin(ang) * orbit,            tint: '#ff4dd2' },
       { spr: this._assassinChromeSprite,  ox: Math.cos(ang + Math.PI) * orbit,  oy: Math.sin(ang + Math.PI) * orbit,  tint: '#cfd6e0' },
@@ -10729,7 +10730,30 @@ export class Game {
       ctx.fillRect(Math.round(pos.x - sz / 2), Math.round(pos.y + sz / 2 + 4), Math.round(sz * (timer / 20)), 4);
     }
 
-    // 5 ── Player (Thunder Solo guitar + aura drawn first so the skeleton sits in front of them)
+    // ═══ LAYER 2: WEAPON VFX — drawn BELOW player sprite ═══════════════════
+    // All weapon effects render here so the player character is ALWAYS visible
+    // on top. This enforces the strict z-index: biome → weapons → player → projectiles.
+    this._drawShardRing(ctx);            // Phase 1 ORBIT ring
+    this._drawP1SentryDrones(ctx);       // Phase 1 DRONE companions
+    this._drawPlasmaBladeSlashes(ctx);   // Phase 1 MELEE slash arc
+    this._drawVoidNeedles(ctx);          // Phase 1 PROJECTILE piercing shots
+    this._drawRailSpikes(ctx);           // Phase 1 PROJECTILE heavy shots
+    this._drawVoidBeamArcs(ctx);         // Phase 2 BEAM
+    this._drawGravityCore(ctx);          // Phase 2 AREA
+    this._drawNanoMines(ctx);            // Phase 2 MINE
+    this._drawBlacknetSwarmDrones(ctx);  // Phase 2 SUMMON
+    this._drawHomingMissiles(ctx);       // Phase 2 HOMING
+    for (const vfx of this._activeWeaponVFX) vfx.draw(ctx);   // Evolution VFX overlays
+    this._drawEuclidKit(ctx);       // Euclid Vector toxin sniper / katanas / plague (world-space)
+    this._drawChainLightning(ctx);
+    this._drawNeonPierceBeam(ctx);
+    this._drawSkyfall(ctx);         // Brawler ultimate impacts
+    this._drawCrescentSlashes(ctx); // Brawler secondary
+    this._drawChakrams(ctx);        // Brawler primary
+    this._drawChromePhantom(ctx);   // Assassin ultimate (clone overlays + burst rings)
+    this._drawShuriken(ctx);        // Assassin bounce weapon
+
+    // ═══ LAYER 3: PLAYER SPRITE — ALWAYS on top of weapon VFX ═══════════════
     // Endless-only contact shadow at the hero's feet — grounds the player on the flat Stage 02 arena.
     if (this.endless) {
       ctx.save();
@@ -10744,7 +10768,7 @@ export class Game {
     // Digital Singularity OWNS the player while active (it draws the dissolving/reforming sprite
     // in screen space), so skip the normal world-space player draw during the ultimate.
     if (!(this.player.selectedCharacter === 'japan_phasewalker' && this._digitalSingularity?.isActive())) {
-      // ── Player character — always fully visible, companions never cover it ──
+      // ── Player character — always fully visible, weapons NEVER cover it ──
       drawGlow(ctx, this.player.pos.x, this.player.pos.y, 48, CYAN, 0.28); // player hero glow
       this.player.draw(ctx, this._lastMousePos || { x: 0, y: 0 });
       // ── Vessel companion — Ally-Walker-style escort BESIDE the player (offset, smaller) ──
@@ -10754,31 +10778,9 @@ export class Game {
     }
     this._drawUltAura(ctx);
 
-    // 6 ── Projectiles, homing discs, EMP rings, particles
-    for (const p of this.projectiles) { if (!p.hidden && !_off(p.pos)) p.draw(ctx); }   // keep character-specific attack sprite identity (assassin base shot drawn hidden)
-    this._drawEuclidKit(ctx);       // Euclid Vector toxin sniper / katanas / plague (world-space)
+    // ═══ LAYER 4: PROJECTILES, ENEMY HP, TEXT — on top of everything ════════
+    for (const p of this.projectiles) { if (!p.hidden && !_off(p.pos)) p.draw(ctx); }
     for (const d of this.homingDiscs) d.draw(ctx);
-    this._drawChainLightning(ctx);
-    this._drawNeonPierceBeam(ctx);
-    this._drawSkyfall(ctx);         // Brawler ultimate impacts
-    this._drawCrescentSlashes(ctx); // Brawler secondary
-    this._drawChakrams(ctx);        // Brawler primary
-    this._drawChromePhantom(ctx);   // Assassin ultimate (clone overlays + burst rings)
-    this._drawShuriken(ctx);        // Assassin bounce weapon
-    // ── Phase 1 Weapons draw ──────────────────────────────────────────────────
-    this._drawShardRing(ctx);            // Phase 1 ORBIT ring (below player)
-    this._drawP1SentryDrones(ctx);       // Phase 1 DRONE companions
-    this._drawPlasmaBladeSlashes(ctx);   // Phase 1 MELEE slash arc
-    this._drawVoidNeedles(ctx);          // Phase 1 PROJECTILE piercing shots
-    this._drawRailSpikes(ctx);           // Phase 1 PROJECTILE heavy shots
-    // ── Phase 2 Weapons draw ──────────────────────────────────────────────────
-    this._drawVoidBeamArcs(ctx);         // Phase 2 BEAM
-    this._drawGravityCore(ctx);          // Phase 2 AREA
-    this._drawNanoMines(ctx);            // Phase 2 MINE
-    this._drawBlacknetSwarmDrones(ctx);  // Phase 2 SUMMON
-    this._drawHomingMissiles(ctx);       // Phase 2 HOMING
-    // ── Weapon Evolution VFX overlays (additive sprite sheet anims) ─────────
-    for (const vfx of this._activeWeaponVFX) vfx.draw(ctx);
     for (const r of this.empRings)    r.draw(ctx);
     for (const r of this._specialRings) {
       const alpha = r.life / r.maxLife;
@@ -19929,7 +19931,7 @@ _drawLoreArchive(ctx) {
       this._p1SentryDrones.pop();
     }
 
-    const ORBIT_R    = 105;
+    const ORBIT_R    = 110;   // min 110px orbital padding — player visibility
     const ORBIT_SPD  = 1.8;   // rad/s — more dynamic orbit feel
     const FIRE_CDS   = [1.5, 1.2, 0.9, 0.7];
     const fireCd     = FIRE_CDS[Math.min(lvl - 1, FIRE_CDS.length - 1)];
@@ -20295,11 +20297,20 @@ _drawLoreArchive(ctx) {
       }
     }
 
-    // Drop new mine if under cap
+    // REAR_DROP_HAZARD: drop mine behind the player based on movement direction
     this._nanoMineDropCd -= dt;
     if (this._nanoMineDropCd <= 0 && this._nanoMines.length < maxM) {
       const p = this.player;
-      this._nanoMines.push({ x: p.pos.x, y: p.pos.y, life: 13, armTimer: 0.7 });
+      // Calculate rear drop position — 70px behind player's movement direction
+      const vx = p.vel ? p.vel.x : 0, vy = p.vel ? p.vel.y : 0;
+      const spd = Math.sqrt(vx * vx + vy * vy);
+      let dropX = p.pos.x, dropY = p.pos.y;
+      if (spd > 10) {
+        // Drop behind movement direction
+        dropX = p.pos.x - (vx / spd) * 70;
+        dropY = p.pos.y - (vy / spd) * 70;
+      }
+      this._nanoMines.push({ x: dropX, y: dropY, life: 13, armTimer: 0.7 });
       this._nanoMineDropCd = dropIvl;
       this.audio?.playNanoMineDrop?.();
     }
@@ -20338,7 +20349,7 @@ _drawLoreArchive(ctx) {
     const MAX_DRONES = [2, 3, 4, 5];
     const DMGS       = [8, 11, 15, 19];
     const FIRE_IVLS  = [0.85, 0.70, 0.58, 0.45];
-    const ORBIT_R    = 90;
+    const ORBIT_R    = 110;   // min 110px orbital padding — player visibility
     const maxD    = MAX_DRONES[Math.min(lvl - 1, MAX_DRONES.length - 1)];
     const dmg     = DMGS[Math.min(lvl - 1, DMGS.length - 1)];
     const fireIvl = FIRE_IVLS[Math.min(lvl - 1, FIRE_IVLS.length - 1)];
