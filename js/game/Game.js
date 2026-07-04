@@ -9143,52 +9143,42 @@ export class Game {
       if (!w.alive) continue;
       const sx = w.x - cam.x, sy = w.y - cam.y;
       const sprite = this._tacticalSpriteCache.get(w.id);
+      const fadeAlpha = Math.min(1, w.timer / 1.0);
 
-      // ── Draw sprite at drop point ──
-      if (sprite && sprite.complete && sprite.naturalWidth > 0) {
-        const size = 64; // render size on-screen
-        ctx.save();
-        ctx.globalAlpha = Math.min(1, w.timer / 1.0); // fade out in last second
-        ctx.translate(sx, sy);
-        ctx.rotate(w.angle);
-        ctx.drawImage(sprite, -size / 2, -size / 2, size, size);
-        ctx.restore();
-      }
-
-      // ── Per-behavior visual overlays (sprite-based, no vector strokes) ──
+      // ── Sprite-only rendering per behavior ──
       switch (w.def.behavior) {
-        case 'stationary_totem':
-          this._drawTotemFx(ctx, w, sx, sy);
-          break;
-        case 'ground_shockwave':
-          this._drawShockwaveFx(ctx, w, sx, sy);
-          break;
-        case 'linear_beam':
-          this._drawBeamFx(ctx, w, sx, sy);
-          break;
-        case 'horizontal_slash':
-          this._drawSlashFx(ctx, w, sx, sy);
-          break;
         case 'autonomous_drone':
           this._drawDroneFx(ctx, w, cam);
           break;
         case 'proximity_mine':
           this._drawMineFx(ctx, w, cam);
           break;
-        case 'gravity_singularity':
-          this._drawSingularityFx(ctx, w, sx, sy);
+        case 'homing_volley':
+          this._drawVolleyFx(ctx, w, cam);
           break;
         case 'kinetic_rain':
           this._drawRainFx(ctx, w, cam);
           break;
-        case 'homing_volley':
-          this._drawVolleyFx(ctx, w, cam);
+        default: {
+          // All other behaviors: render weapon sprite at drop point, sprite-only
+          if (sprite && sprite.complete && sprite.naturalWidth > 0) {
+            const pulse = 1.0 + 0.08 * Math.sin(w.angle * 4);
+            const size = 72 * pulse;
+            ctx.save();
+            ctx.globalAlpha = fadeAlpha;
+            ctx.translate(sx, sy);
+            ctx.rotate(w.angle);
+            ctx.drawImage(sprite, -size / 2, -size / 2, size, size);
+            ctx.restore();
+          }
           break;
+        }
       }
 
-      // ── Draw particles ──
+      // ── Draw particles (tiny 3-6px squares — ambient only) ──
       for (const p of w.particles) {
-        ctx.globalAlpha = p.alpha * 0.8;
+        if (p.size > 6) p.size = 6; // cap particle size
+        ctx.globalAlpha = p.alpha * 0.6;
         ctx.fillStyle = p.color;
         ctx.fillRect(p.x - cam.x - p.size / 2, p.y - cam.y - p.size / 2, p.size, p.size);
       }
@@ -9196,71 +9186,7 @@ export class Game {
     }
   }
 
-  // ── VFX draw helpers — sprite + glow overlay, NO vector lines ──
-
-  _drawTotemFx(ctx, w, sx, sy) {
-    // Glow pulse around totem
-    const pulse = 0.5 + 0.5 * Math.sin(w.angle * 3);
-    const r = (w.def.aoeRadius || 200) * pulse * 0.3;
-    ctx.save();
-    ctx.globalAlpha = 0.15 * pulse;
-    ctx.fillStyle = w.def.color;
-    ctx.fillRect(sx - r, sy - r, r * 2, r * 2);
-    ctx.restore();
-  }
-
-  _drawShockwaveFx(ctx, w, sx, sy) {
-    // Expanding filled ring using rectangles (no arc/stroke)
-    if (w.ringRadius <= 0) return;
-    const band = 6;
-    const alpha = 0.4 * (1 - w.ringRadius / (w.def.aoeRadius || 240));
-    ctx.save();
-    ctx.globalAlpha = Math.max(0, alpha);
-    ctx.fillStyle = w.def.color;
-    // Approximate ring with 24 small filled rectangles along circumference
-    const segments = 24;
-    for (let i = 0; i < segments; i++) {
-      const a = (i / segments) * Math.PI * 2;
-      const rx = sx + Math.cos(a) * w.ringRadius;
-      const ry = sy + Math.sin(a) * w.ringRadius;
-      ctx.fillRect(rx - band / 2, ry - band / 2, band, band);
-    }
-    ctx.restore();
-  }
-
-  _drawBeamFx(ctx, w, sx, sy) {
-    if (!w.beamOn) return;
-    const len = w.def.beamLength || 500;
-    const bw  = w.def.beamWidth || 24;
-    const cosA = Math.cos(w.beamAngle), sinA = Math.sin(w.beamAngle);
-    ctx.save();
-    ctx.globalAlpha = 0.7;
-    ctx.fillStyle = w.def.color;
-    // Draw beam as a rotated filled rectangle
-    ctx.translate(sx, sy);
-    ctx.rotate(w.beamAngle);
-    ctx.fillRect(0, -bw / 2, len, bw);
-    // Bright core
-    ctx.globalAlpha = 0.9;
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, -bw / 6, len, bw / 3);
-    ctx.restore();
-  }
-
-  _drawSlashFx(ctx, w, sx, sy) {
-    if (w.slashPhase <= 0) return;
-    w.slashPhase -= 0.05; // decay visual
-    const hw = (w.def.slashWidth || 400) / 2;
-    const hh = (w.def.slashHeight || 60) / 2;
-    ctx.save();
-    ctx.globalAlpha = w.slashPhase * 0.6;
-    ctx.fillStyle = w.def.color;
-    ctx.fillRect(sx - hw * w.slashPhase, sy - hh, hw * 2 * w.slashPhase, hh * 2);
-    ctx.globalAlpha = w.slashPhase * 0.9;
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(sx - hw * w.slashPhase, sy - 2, hw * 2 * w.slashPhase, 4);
-    ctx.restore();
-  }
+  // ── VFX draw helpers — SPRITE-ONLY, zero fillRect geometry ──
 
   _drawDroneFx(ctx, w, cam) {
     const sprite = this._tacticalSpriteCache.get(w.id);
@@ -9304,69 +9230,36 @@ export class Game {
     }
   }
 
-  _drawSingularityFx(ctx, w, sx, sy) {
-    const progress = w.pullTimer / (w.def.collapseTime || 2.0);
-    if (!w.collapsed) {
-      // Growing dark void — filled rect with inward shrink
-      const r = (w.def.pullRadius || 300) * progress * 0.4;
-      ctx.save();
-      ctx.globalAlpha = 0.3 + progress * 0.4;
-      ctx.fillStyle = '#110011';
-      ctx.fillRect(sx - r, sy - r, r * 2, r * 2);
-      ctx.globalAlpha = 0.6;
-      ctx.fillStyle = w.def.color;
-      const cr = 8 + progress * 20;
-      ctx.fillRect(sx - cr, sy - cr, cr * 2, cr * 2);
-      ctx.restore();
-    } else {
-      // Post-collapse flash
-      const fade = Math.max(0, 1 - (w.pullTimer - (w.def.collapseTime || 2.0)) / 1.5);
-      ctx.save();
-      ctx.globalAlpha = fade * 0.6;
-      ctx.fillStyle = '#ffffff';
-      const br = (w.def.blastRadius || 450) * fade;
-      ctx.fillRect(sx - br, sy - br, br * 2, br * 2);
-      ctx.restore();
-    }
-  }
+  // _drawSingularityFx — REMOVED: was rendering 900×900 fillRect debug geometry
 
   _drawRainFx(ctx, w, cam) {
+    const sprite = this._tacticalSpriteCache.get(w.id);
+    if (!sprite || !sprite.complete || sprite.naturalWidth <= 0) return;
     ctx.save();
     for (const spike of w.spikes) {
       const rx = spike.x - cam.x, ry = spike.y - cam.y;
       const alpha = spike.life / spike.maxLife;
-      ctx.globalAlpha = alpha * 0.8;
-      ctx.fillStyle = w.def.color;
-      // Spike as a narrow vertical rectangle
-      ctx.fillRect(rx - 2, ry - 20 * alpha, 4, 20);
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(rx - 1, ry - 14 * alpha, 2, 14);
+      ctx.globalAlpha = alpha * 0.7;
+      const sz = 24 * alpha;
+      ctx.drawImage(sprite, rx - sz / 2, ry - sz / 2, sz, sz);
     }
     ctx.restore();
   }
 
   _drawVolleyFx(ctx, w, cam) {
     const sprite = this._tacticalSpriteCache.get(w.id);
-    const mSize = 20;
+    if (!sprite || !sprite.complete || sprite.naturalWidth <= 0) return;
+    const mSize = 24;
     ctx.save();
     for (const mis of w.missiles) {
       const mx = mis.x - cam.x, my = mis.y - cam.y;
       ctx.globalAlpha = Math.min(1, mis.life);
-      if (sprite && sprite.complete && sprite.naturalWidth > 0) {
-        const angle = Math.atan2(mis.vy, mis.vx);
-        ctx.save();
-        ctx.translate(mx, my);
-        ctx.rotate(angle);
-        ctx.drawImage(sprite, -mSize / 2, -mSize / 4, mSize, mSize / 2);
-        ctx.restore();
-      } else {
-        ctx.fillStyle = w.def.color;
-        ctx.fillRect(mx - 4, my - 2, 8, 4);
-      }
-      // Missile trail
-      ctx.globalAlpha = 0.3;
-      ctx.fillStyle = w.def.particles?.color2 || '#ff8800';
-      ctx.fillRect(mx - mis.vx * 0.01 - 2, my - mis.vy * 0.01 - 2, 4, 4);
+      const angle = Math.atan2(mis.vy, mis.vx);
+      ctx.save();
+      ctx.translate(mx, my);
+      ctx.rotate(angle);
+      ctx.drawImage(sprite, -mSize / 2, -mSize / 4, mSize, mSize / 2);
+      ctx.restore();
     }
     ctx.restore();
   }
