@@ -12,11 +12,11 @@ import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260705040000
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260705040000';
 import { Player }         from '../entities/Player.js?v=20260703990000';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260703990000';
-import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260705040000';
+import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260705050000';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=20260703990000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260703990000';
-import { SystemEventManager } from './Events.js?v=20260705040000';
+import { SystemEventManager } from './Events.js?v=20260705050000';
 import { UpgradeUI }      from './UpgradeUI.js?v=20260705040000';
 import { weightedSample } from './Upgrades.js?v=20260705040000';
 import { MutationUI }      from './MutationUI.js?v=20260703990000';
@@ -578,6 +578,9 @@ export class Game {
     this._gridCacheSprite = new Image();
     this._gridCacheSprite.onerror = () => console.warn('[Assets] grid_cache_crate not found — cyan fallback will be used');
     this._gridCacheSprite.src = 'assets/events/supply_drop/grid_cache_crate.png';
+    // VAULT DROP — locked tier-2 cyber vault (InkSpireM art, transparent PNG)
+    this._vaultDropSprite = new Image();
+    this._vaultDropSprite.src = 'assets/events/supply_drop/second_grid_cache_cyber.png?v=20260705050000';
 
     // Preload Thunder Solo ultimate sprites (Cyber Skeleton Warrior)
     this._thunderGuitarSprite = new Image();
@@ -859,6 +862,7 @@ export class Game {
     }
     this.matrices     = [];  // will be set to nexusManager.matrices after init()
     this._appliedNexusCapBonus = 0;   // in-run capacity cards applied so far (Memory Bank etc.)
+    this.vaultDrop = null;            // locked tier-2 supply cache (boss-kill drop, Endless only)
     this.groundCores  = [];
     this.enemies      = [];
     this.projectiles  = [];
@@ -6924,6 +6928,7 @@ export class Game {
     }
     this._sysEvents.update(dt, this.timeAlive, this);
     this._updateGridCache(dt);
+    this._updateVaultDrop(dt);
     this._updateHealthPickups(dt);
     this._updateManaPickups(dt);
     this._updateAnnouncement(dt);
@@ -7086,6 +7091,110 @@ export class Game {
     pos.x = clamp(pos.x, mx, WORLD_W - mx);
     pos.y = clamp(pos.y, myTop, WORLD_H - myBot);
     return pos;
+  }
+
+  // ── VAULT DROP — locked tier-2 supply cache ────────────────────────────────
+  // Spawns near a boss kill (Endless, 35%). LOCKED: break it by killing 8 enemies
+  // within 260px, each kill refreshing a 10s window. Unlocked → walk up to open:
+  // OVERCHARGE CACHE, +1 level to your LOWEST-level weapon (evolution accelerator).
+  _maybeSpawnVaultDrop(pos) {
+    if (!this.endless || this.vaultDrop) return;
+    if (Math.random() > 0.35) return;
+    const p = this._clampPickupPos(pos.clone().add(new Vec2(randomRange(-80, 80), randomRange(-80, 80))));
+    this.vaultDrop = { pos: p, timer: 30, kills: 0, needed: 8, killWindow: 10, unlocked: false, spin: 0 };
+    this.triggerAnnouncement('VAULT DROP DETECTED — BREAK THE LOCK', '#ffd23c');
+  }
+
+  _onVaultKill(pos) {
+    const v = this.vaultDrop;
+    if (!v || v.unlocked) return;
+    if (distance(pos, v.pos) > 260) return;
+    v.kills++;
+    v.killWindow = 10;                          // each nearby kill refreshes the window
+    if (v.kills >= v.needed) {
+      v.unlocked = true;
+      v.timer = Math.max(v.timer, 12);
+      this.triggerAnnouncement('VAULT UNLOCKED', '#34d399');
+      this.screenShake.trigger(5, 0.25);
+    }
+  }
+
+  _updateVaultDrop(dt) {
+    const v = this.vaultDrop;
+    if (!v) return;
+    v.timer -= dt;
+    v.spin  += dt;
+    if (!v.unlocked) {
+      v.killWindow -= dt;
+      if (v.killWindow <= 0 && v.kills > 0) { v.kills = 0; v.killWindow = 10; }   // window expired → lock progress resets
+    }
+    if (v.timer <= 0) {
+      this.floatingTexts.push(new FloatingText('VAULT LOST', v.pos.clone(), '#888888', 1.2));
+      this.vaultDrop = null;
+      return;
+    }
+    if (v.unlocked && distance(this.player.pos, v.pos) < 64) {
+      this._grantVaultReward(v.pos);
+      this.vaultDrop = null;
+    }
+  }
+
+  _grantVaultReward(pos) {
+    // OVERCHARGE CACHE — +1 level to the LOWEST-level (non-consumed, <5) weapon.
+    let bestId = null, bestLvl = Infinity;
+    for (const [wid, lvl] of this._weaponLevels) {
+      if (lvl < 5 && !this._consumedWeapons.has(wid) && lvl < bestLvl) { bestLvl = lvl; bestId = wid; }
+    }
+    if (bestId) {
+      this._grantBaseWeapon(bestId, Math.min(5, bestLvl + 1));
+      const def = getWeaponDef(bestId);
+      this.floatingTexts.push(new FloatingText('OVERCHARGE: ' + ((def && def.name) || bestId) + ' +1 LV', pos.clone(), '#ffd23c', 2));
+    } else {
+      // Everything maxed/consumed → surge fallback: +40 mana, +15% HP
+      this.player.mana = Math.min(this.player.maxMana, this.player.mana + 40);
+      const heal = Math.round(this.player.maxHp * 0.15);
+      this.player.hp = Math.min(this.player.maxHp, this.player.hp + heal);
+      this.floatingTexts.push(new FloatingText('VAULT SURGE: +40 MANA, +15% HP', pos.clone(), '#ffd23c', 2));
+    }
+    this.screenShake.trigger(6, 0.3);
+    this.audio?.playCorePickup?.();
+  }
+
+  _drawVaultDrop(ctx) {
+    const v = this.vaultDrop;
+    if (!v) return;
+    const spr = this._vaultDropSprite;
+    const sz = 84;
+    const pulse = 0.5 + 0.5 * Math.sin(v.spin * 3);
+    // aura: gold while locked, green when unlocked
+    drawGlow(ctx, v.pos.x, v.pos.y, sz * 0.7 + 8 * pulse, v.unlocked ? '#34d399' : '#ffd23c', 0.30 + 0.20 * pulse);
+    if (spr && spr.complete && spr.naturalWidth > 0) {
+      ctx.save();
+      ctx.globalAlpha = 1;
+      ctx.drawImage(spr, v.pos.x - sz / 2, v.pos.y - sz / 2, sz, sz);
+      ctx.restore();
+    } else {
+      ctx.fillStyle = '#ffd23c';
+      ctx.fillRect(v.pos.x - sz / 2, v.pos.y - sz / 2, sz, sz);
+    }
+    // lock progress / status
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 13px Consolas, monospace';
+    if (!v.unlocked) {
+      ctx.fillStyle = '#ffd23c';
+      ctx.fillText('LOCK ' + v.kills + '/' + v.needed, v.pos.x, v.pos.y - sz / 2 - 10);
+    } else {
+      ctx.fillStyle = '#34d399';
+      ctx.fillText('OPEN — WALK IN', v.pos.x, v.pos.y - sz / 2 - 10);
+    }
+    // expiry bar
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(v.pos.x - sz / 2, v.pos.y + sz / 2 + 4, sz, 4);
+    ctx.fillStyle = v.unlocked ? '#34d399' : '#ffd23c';
+    ctx.fillRect(v.pos.x - sz / 2, v.pos.y + sz / 2 + 4, Math.max(0, sz * (v.timer / 30)), 4);
+    ctx.restore();
+    ctx.textAlign = 'left';
   }
 
   _updateHealthPickups(dt) {
@@ -11495,6 +11604,9 @@ export class Game {
     this._drawCyberSerpent(ctx);
     this._drawCyberDragon(ctx);
     this._drawDoubleDemonsBoss(ctx);
+
+    // 4b-pre ── VAULT DROP (locked tier-2 cyber cache)
+    this._drawVaultDrop(ctx);
 
     // 4b ── Grid Cache supply drop crate
     if (this.gridCache) {

@@ -490,12 +490,14 @@ export class Enemy {
     let xp = this.isMegaBoss ? 42 : (this.isBoss() ? 12 : 1 + Math.floor((game.timeAlive || 0) / 120));
     game.player.gainXp(xp, game.floatingTexts);
 
+    game._onVaultKill?.(this.pos);   // VAULT lock progress — nearby kills break the lock
     const idx = game.enemies.indexOf(this);
     if (idx !== -1) game.enemies.splice(idx, 1);
 
     if (this.isBoss() || this.isMegaBoss) {
       game.spawnPauseTimer = 10;
       game.floatingTexts.push(new FloatingText('BOSS NEUTRALIZED: SPAWNS PAUSED', this.pos.clone(), YELLOW, 2));
+      game._maybeSpawnVaultDrop?.(this.pos);   // VAULT DROP — 35% locked tier-2 cache (Endless)
     }
 
     if (this.isMegaBoss) {
