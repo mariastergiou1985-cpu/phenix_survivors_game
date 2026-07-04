@@ -42,6 +42,7 @@ import { NexusManager } from './NexusManager.js?v=20260703999000';
 import { VESSELS, getVesselById, getDefaultVesselId } from './VesselCatalog.js?v=20260703996000';
 import { PETS, getPetById } from './PetCatalog.js?v=20260703999100';
 import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons } from './WeaponCatalog.js?v=20260704120000';
+import { TACTICAL_ID, TACTICAL_DEFS, getTacticalDef, getTacticalForCharacter, getAvailableTactical, preloadTacticalSprites } from './TacticalWeaponCatalog.js?v=20260705010000';
 import { VFXSpritePlayer } from './VFXSpritePlayer.js?v=20260704120000';
 
 // ── Mastery card → base weapon mapping (for evolution level tracking) ──
@@ -958,6 +959,10 @@ export class Game {
     // Seed this character's base weapon at level 1
     const _charWeapon = getWeaponForCharacter(this.selectedCharacter);
     if (_charWeapon) this._weaponLevels.set(_charWeapon.id, 1);
+
+    // ── Tactical Cache Weapons — independent map objects, 100% decoupled from player ──
+    this.tacticalCacheWeapons = [];
+    this._tacticalSpriteCache = preloadTacticalSprites();
 
     this.enemyBullets = [];
     this.floatingTexts = [];
@@ -6530,6 +6535,8 @@ export class Game {
     this._tickPets(dt);
     // ── Acquired Weapon Auto-Fire ─────────────────────────────────────────────
     this._tickAcquiredWeapons(dt);
+    // ── Tactical Cache Weapons — independent map entities ───────────────────
+    this._tickTacticalWeapons(dt);
 
     // ── MapManager + ChunkManager update (biome transitions, chunk streaming) ─
     this.mapManager.update(dt);
@@ -8457,6 +8464,12 @@ export class Game {
       return;                                   // evolution takes priority, skip normal weapon card
     }
 
+    // ── Tactical Cache card: 15% chance (separate from weapon cards) ──
+    if (Math.random() < 0.15) {
+      const tacCard = this._buildTacticalCard();
+      if (tacCard) { choices[choices.length - 1] = tacCard; return; }
+    }
+
     // ── Normal weapon cards: 25% chance per level-up ──
     if (Math.random() > 0.25) return;
     const card = this._buildWeaponCard();
@@ -8542,6 +8555,46 @@ export class Game {
         game._grantBaseWeapon(pick.id, newLvl);
       },
       canApply() { return true; },
+    };
+  }
+
+  // ── Tactical Cache Card Builder ──────────────────────────────────────────────
+  // Returns a tactical weapon card for the current character.
+  // Max 3 tactical weapons active at once. Spawns at player position, then DECOUPLES.
+  _buildTacticalCard() {
+    const MAX_TACTICAL = 3;
+    if (this.tacticalCacheWeapons.length >= MAX_TACTICAL) return null;
+
+    const charId = this.player.selectedCharacter;
+    const pool   = getAvailableTactical(charId).filter(
+      d => !d.exclusive || d.character === charId
+    );
+    if (pool.length === 0) return null;
+
+    const pick = pool[Math.floor(Math.random() * pool.length)];
+    const game = this;
+
+    return {
+      key:            '_tac_' + pick.id,
+      name:           pick.name,
+      description:    'GRID CACHE — deploys at current position',
+      iconColor:      pick.color || '#00ffaa',
+      icon:           '✦',                  // ✦
+      rarity:         'legendary',
+      maxLevel:       99,                        // always re-offerable
+      _isTacticalCard: true,
+      _isWeaponCard:   true,
+      reward:         true,                      // premium gold card styling
+      synergy:        false,
+      chaosOnly:      false,
+      endlessOnly:    false,
+      char:           null,
+      apply(player) {
+        player.upgrades[this.key] = (player.upgrades[this.key] || 0) + 1;
+        // Spawn at player position — then fully decoupled
+        game._spawnTacticalWeapon(pick.id, player.pos.x, player.pos.y);
+      },
+      canApply() { return game.tacticalCacheWeapons.length < MAX_TACTICAL; },
     };
   }
 
@@ -8638,6 +8691,684 @@ export class Game {
       }
     }
     this._acquiredWeaponTimers.set(weaponId, t);
+  }
+
+  // ╔══════════════════════════════════════════════════════════════════════════════╗
+  // ║  TACTICAL CACHE WEAPONS — Independent Map Objects                          ║
+  // ║  100% DECOUPLED from player position post-spawn.                           ║
+  // ║  They activate at their drop coordinates and NEVER track the player.       ║
+  // ╚══════════════════════════════════════════════════════════════════════════════╝
+
+  /**
+   * Spawn a tactical weapon at world coordinates.
+   * Called when a Grid Cache event triggers a tactical unlock.
+   * @param {string} tacId — TACTICAL_ID value
+   * @param {number} worldX — world X coordinate (drop point, LOCKED)
+   * @param {number} worldY — world Y coordinate (drop point, LOCKED)
+   */
+  _spawnTacticalWeapon(tacId, worldX, worldY) {
+    const def = getTacticalDef(tacId);
+    if (!def) { console.warn('[Tactical] Unknown weapon:', tacId); return; }
+
+    const entity = {
+      id:        tacId,
+      def,
+      x:         worldX,   // DROP COORDINATES — NEVER CHANGE
+      y:         worldY,   // DROP COORDINATES — NEVER CHANGE
+      timer:     def.duration,
+      cooldown:  0,
+      alive:     true,
+      angle:     Math.random() * Math.PI * 2,
+      particles: [],
+      hitSet:    new Set(), // enemies hit this tick (prevents multi-hit)
+    };
+
+    // ── Per-behavior init ──
+    switch (def.behavior) {
+      case 'ground_shockwave':
+        entity.ringRadius = 0;
+        entity.pulseCount = 0;
+        break;
+      case 'linear_beam':
+        entity.beamAngle = Math.random() * Math.PI * 2;
+        entity.beamOn    = false;
+        break;
+      case 'horizontal_slash':
+        entity.slashPhase = 0;  // 0→1 sweep progress
+        break;
+      case 'autonomous_drone':
+        entity.orbitAngle = 0;
+        entity.droneX     = worldX;
+        entity.droneY     = worldY;
+        break;
+      case 'proximity_mine': {
+        const mc = def.mineCount || 5;
+        entity.mines = [];
+        for (let i = 0; i < mc; i++) {
+          const a = (i / mc) * Math.PI * 2;
+          const r = 40 + Math.random() * 80;
+          entity.mines.push({
+            x: worldX + Math.cos(a) * r,
+            y: worldY + Math.sin(a) * r,
+            alive: true,
+            flashTimer: 0,
+          });
+        }
+        break;
+      }
+      case 'gravity_singularity':
+        entity.pullTimer  = 0;
+        entity.collapsed  = false;
+        break;
+      case 'kinetic_rain':
+        entity.spikes = [];
+        break;
+      case 'homing_volley':
+        entity.missiles = [];
+        entity.salvoTimer = 0;
+        break;
+    }
+
+    this.tacticalCacheWeapons.push(entity);
+  }
+
+  /**
+   * Tick all active tactical weapons. NO player position references allowed.
+   */
+  _tickTacticalWeapons(dt) {
+    if (this.paused || this.gameOver || this.victory || this.upgradeUI || this.mutationUI) return;
+
+    for (let i = this.tacticalCacheWeapons.length - 1; i >= 0; i--) {
+      const w = this.tacticalCacheWeapons[i];
+      if (!w.alive) { this.tacticalCacheWeapons.splice(i, 1); continue; }
+
+      w.timer -= dt;
+      if (w.timer <= 0) { w.alive = false; this.tacticalCacheWeapons.splice(i, 1); continue; }
+
+      w.cooldown -= dt;
+      w.hitSet.clear();
+      w.angle += dt * 2.0; // generic rotation for sprite
+
+      // ── Particle decay ──
+      for (let p = w.particles.length - 1; p >= 0; p--) {
+        const pt = w.particles[p];
+        pt.life -= dt;
+        if (pt.life <= 0) { w.particles.splice(p, 1); continue; }
+        pt.x += pt.vx * dt;
+        pt.y += pt.vy * dt;
+        pt.alpha = Math.max(0, pt.life / pt.maxLife);
+      }
+
+      // ── Per-behavior tick ──
+      switch (w.def.behavior) {
+        case 'stationary_totem':   this._tickTotem(w, dt);       break;
+        case 'ground_shockwave':   this._tickShockwave(w, dt);   break;
+        case 'linear_beam':        this._tickBeam(w, dt);        break;
+        case 'horizontal_slash':   this._tickSlash(w, dt);       break;
+        case 'autonomous_drone':   this._tickDrone(w, dt);       break;
+        case 'proximity_mine':     this._tickMines(w, dt);       break;
+        case 'gravity_singularity': this._tickSingularity(w, dt); break;
+        case 'kinetic_rain':       this._tickRain(w, dt);        break;
+        case 'homing_volley':      this._tickVolley(w, dt);      break;
+      }
+    }
+  }
+
+  // ── STATIONARY TOTEM: periodic AoE at drop point ──
+  _tickTotem(w, dt) {
+    if (w.cooldown > 0) return;
+    w.cooldown = w.def.tickRate;
+    const r2 = (w.def.aoeRadius || 200) * (w.def.aoeRadius || 200);
+    for (const e of this.enemies) {
+      if (!e || e.hp <= 0) continue;
+      const dx = e.pos.x - w.x, dy = e.pos.y - w.y;
+      if (dx * dx + dy * dy <= r2) {
+        e.takeHit(w.def.baseDamage, this);
+        this._spawnTacParticles(w, e.pos.x, e.pos.y, 3);
+      }
+    }
+    // EMP pulse particles at drop point
+    this._spawnTacParticles(w, w.x, w.y, w.def.particles?.count || 8);
+  }
+
+  // ── GROUND SHOCKWAVE: expanding ring from drop point ──
+  _tickShockwave(w, dt) {
+    const maxR = w.def.aoeRadius || 240;
+    if (w.cooldown > 0) { w.cooldown -= dt; return; } // handled in main loop already, but guard
+    w.ringRadius += dt * 180; // expand at 180 px/s
+    if (w.ringRadius >= maxR) {
+      w.ringRadius = 0;
+      w.pulseCount++;
+      w.cooldown = w.def.tickRate;
+    }
+    // Damage enemies at ring edge (band of ±20px)
+    const rOuter2 = (w.ringRadius + 20) * (w.ringRadius + 20);
+    const rInner2 = Math.max(0, w.ringRadius - 20) * Math.max(0, w.ringRadius - 20);
+    for (const e of this.enemies) {
+      if (!e || e.hp <= 0 || w.hitSet.has(e)) continue;
+      const dx = e.pos.x - w.x, dy = e.pos.y - w.y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 <= rOuter2 && d2 >= rInner2) {
+        e.takeHit(w.def.baseDamage, this);
+        w.hitSet.add(e);
+        this._spawnTacParticles(w, e.pos.x, e.pos.y, 2);
+      }
+    }
+  }
+
+  // ── LINEAR BEAM: directional beam cannon from drop point ──
+  _tickBeam(w, dt) {
+    // Rotate beam slowly
+    w.beamAngle += dt * 0.5;
+    if (w.cooldown > 0) return;
+    w.cooldown = w.def.tickRate;
+    w.beamOn = true;
+    setTimeout(() => { if (w.alive) w.beamOn = false; }, 300);
+
+    const len  = w.def.beamLength || 500;
+    const half = (w.def.beamWidth || 24) / 2;
+    const cosA = Math.cos(w.beamAngle), sinA = Math.sin(w.beamAngle);
+
+    for (const e of this.enemies) {
+      if (!e || e.hp <= 0) continue;
+      // Project enemy position onto beam axis
+      const dx = e.pos.x - w.x, dy = e.pos.y - w.y;
+      const along = dx * cosA + dy * sinA;
+      const perp  = Math.abs(-dx * sinA + dy * cosA);
+      if (along >= 0 && along <= len && perp <= half + 16) {
+        e.takeHit(w.def.baseDamage, this);
+        this._spawnTacParticles(w, e.pos.x, e.pos.y, 2);
+      }
+    }
+  }
+
+  // ── HORIZONTAL SLASH: wide sweep from drop point ──
+  _tickSlash(w, dt) {
+    if (w.cooldown > 0) return;
+    w.cooldown = w.def.tickRate;
+    w.slashPhase = 1.0; // reset visual sweep
+
+    const hw = (w.def.slashWidth || 400) / 2;
+    const hh = (w.def.slashHeight || 60) / 2;
+    for (const e of this.enemies) {
+      if (!e || e.hp <= 0) continue;
+      const dx = Math.abs(e.pos.x - w.x), dy = Math.abs(e.pos.y - w.y);
+      if (dx <= hw && dy <= hh) {
+        e.takeHit(w.def.baseDamage, this);
+        this._spawnTacParticles(w, e.pos.x, e.pos.y, 3);
+        // Hit-stop juice
+        if (w.def.hitStopMs) this._hitStopTimer = Math.max(this._hitStopTimer, w.def.hitStopMs / 1000);
+      }
+    }
+  }
+
+  // ── AUTONOMOUS DRONE: orbits drop point, damages nearby enemies ──
+  _tickDrone(w, dt) {
+    const pR = w.def.patrolRadius || 280;
+    const spd = w.def.flySpeed || 3.0;
+    w.orbitAngle += dt * spd * 0.5;
+    // Orbit around DROP POINT (w.x, w.y) — NOT player
+    w.droneX = w.x + Math.cos(w.orbitAngle) * pR;
+    w.droneY = w.y + Math.sin(w.orbitAngle) * pR;
+
+    if (w.cooldown > 0) return;
+    w.cooldown = w.def.tickRate;
+
+    // Damage nearest enemy to drone position
+    let best = null, bestD2 = 120 * 120;
+    for (const e of this.enemies) {
+      if (!e || e.hp <= 0) continue;
+      const dx = e.pos.x - w.droneX, dy = e.pos.y - w.droneY;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < bestD2) { bestD2 = d2; best = e; }
+    }
+    if (best) {
+      best.takeHit(w.def.baseDamage, this);
+      this._spawnTacParticles(w, best.pos.x, best.pos.y, 4);
+    }
+  }
+
+  // ── PROXIMITY MINE: detonates on enemy proximity ──
+  _tickMines(w, dt) {
+    const trigR2 = (w.def.triggerRadius || 80) * (w.def.triggerRadius || 80);
+    const blastR2 = (w.def.blastRadius || 140) * (w.def.blastRadius || 140);
+
+    for (const mine of w.mines) {
+      if (!mine.alive) continue;
+      mine.flashTimer += dt;
+
+      // Check if any enemy is within trigger radius
+      for (const e of this.enemies) {
+        if (!e || e.hp <= 0) continue;
+        const dx = e.pos.x - mine.x, dy = e.pos.y - mine.y;
+        if (dx * dx + dy * dy <= trigR2) {
+          // DETONATE — AoE damage at mine position
+          for (const e2 of this.enemies) {
+            if (!e2 || e2.hp <= 0) continue;
+            const dx2 = e2.pos.x - mine.x, dy2 = e2.pos.y - mine.y;
+            if (dx2 * dx2 + dy2 * dy2 <= blastR2) {
+              e2.takeHit(w.def.baseDamage, this);
+            }
+          }
+          this._spawnTacParticles(w, mine.x, mine.y, 12);
+          mine.alive = false;
+          break;
+        }
+      }
+    }
+    // Remove weapon when all mines are detonated
+    if (w.mines.every(m => !m.alive)) w.alive = false;
+  }
+
+  // ── GRAVITY SINGULARITY: pull enemies → collapse → explode ──
+  _tickSingularity(w, dt) {
+    const pullR = w.def.pullRadius || 300;
+    const pullR2 = pullR * pullR;
+    const force = w.def.pullForce || 2.5;
+
+    if (!w.collapsed) {
+      w.pullTimer += dt;
+      // Pull enemies toward drop point
+      for (const e of this.enemies) {
+        if (!e || e.hp <= 0) continue;
+        const dx = w.x - e.pos.x, dy = w.y - e.pos.y;
+        const d2 = dx * dx + dy * dy;
+        if (d2 <= pullR2 && d2 > 1) {
+          const d = Math.sqrt(d2);
+          const strength = force * (1 - d / pullR);
+          e.pos.x += (dx / d) * strength;
+          e.pos.y += (dy / d) * strength;
+          // Tick damage while pulling
+          if (w.cooldown <= 0) {
+            e.takeHit(Math.floor(w.def.baseDamage * 0.15), this);
+          }
+        }
+      }
+      if (w.cooldown <= 0) w.cooldown = 0.5; // tick damage every 0.5s during pull
+
+      // Collapse after collapseTime
+      if (w.pullTimer >= (w.def.collapseTime || 2.0)) {
+        w.collapsed = true;
+        // DETONATION — massive AoE
+        const blastR2 = (w.def.blastRadius || 450) * (w.def.blastRadius || 450);
+        for (const e of this.enemies) {
+          if (!e || e.hp <= 0) continue;
+          const dx = e.pos.x - w.x, dy = e.pos.y - w.y;
+          if (dx * dx + dy * dy <= blastR2) {
+            e.takeHit(w.def.baseDamage, this);
+          }
+        }
+        this._spawnTacParticles(w, w.x, w.y, 20);
+        // Screen shake on detonation
+        this.screenShake.trigger(12, 0.4);
+      }
+    }
+    // After collapse, weapon stays briefly for visual then dies
+    if (w.collapsed && w.pullTimer > (w.def.collapseTime || 2.0) + 1.5) {
+      w.alive = false;
+    }
+  }
+
+  // ── KINETIC RAIN: falling projectiles in area ──
+  _tickRain(w, dt) {
+    if (w.cooldown > 0) return;
+    w.cooldown = w.def.tickRate;
+
+    const count = w.def.spikeCount || 6;
+    const aoeR  = w.def.aoeRadius || 200;
+
+    for (let i = 0; i < count; i++) {
+      // Random position within AoE of drop point
+      const a = Math.random() * Math.PI * 2;
+      const r = Math.random() * aoeR;
+      const sx = w.x + Math.cos(a) * r;
+      const sy = w.y + Math.sin(a) * r;
+
+      // Add spike visual
+      w.spikes.push({ x: sx, y: sy, life: 0.6, maxLife: 0.6 });
+
+      // Damage enemies at impact
+      for (const e of this.enemies) {
+        if (!e || e.hp <= 0 || w.hitSet.has(e)) continue;
+        const dx = e.pos.x - sx, dy = e.pos.y - sy;
+        if (dx * dx + dy * dy <= 40 * 40) {
+          e.takeHit(w.def.baseDamage, this);
+          w.hitSet.add(e);
+          this._spawnTacParticles(w, e.pos.x, e.pos.y, 2);
+        }
+      }
+    }
+
+    // Decay old spikes
+    for (let s = w.spikes.length - 1; s >= 0; s--) {
+      w.spikes[s].life -= dt;
+      if (w.spikes[s].life <= 0) w.spikes.splice(s, 1);
+    }
+  }
+
+  // ── HOMING VOLLEY: auto-targeting missiles from drop point ──
+  _tickVolley(w, dt) {
+    w.salvoTimer -= dt;
+    if (w.salvoTimer <= 0) {
+      w.salvoTimer = w.def.tickRate || 0.5;
+      const mc = w.def.missileCount || 8;
+      // Fire a salvo of missiles if we have live enemies
+      if (this.enemies.some(e => e && e.hp > 0) && w.missiles.length < mc * 2) {
+        for (let i = 0; i < Math.min(mc, 3); i++) { // fire 3 per salvo
+          const a = Math.random() * Math.PI * 2;
+          w.missiles.push({
+            x: w.x, y: w.y,
+            vx: Math.cos(a) * 100,
+            vy: Math.sin(a) * 100,
+            life: 3.0,
+            hit: false,
+          });
+        }
+      }
+    }
+
+    const mSpd = (w.def.missileSpeed || 5.5) * 80;
+    const hForce = w.def.homingForce || 0.08;
+
+    for (let m = w.missiles.length - 1; m >= 0; m--) {
+      const mis = w.missiles[m];
+      if (mis.hit) { w.missiles.splice(m, 1); continue; }
+      mis.life -= dt;
+      if (mis.life <= 0) { w.missiles.splice(m, 1); continue; }
+
+      // Find nearest enemy to missile
+      let best = null, bestD2 = 600 * 600;
+      for (const e of this.enemies) {
+        if (!e || e.hp <= 0) continue;
+        const dx = e.pos.x - mis.x, dy = e.pos.y - mis.y;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < bestD2) { bestD2 = d2; best = e; }
+      }
+
+      if (best) {
+        // Steer toward target
+        const dx = best.pos.x - mis.x, dy = best.pos.y - mis.y;
+        const d = Math.sqrt(dx * dx + dy * dy) || 1;
+        mis.vx += (dx / d) * hForce * mSpd;
+        mis.vy += (dy / d) * hForce * mSpd;
+        // Clamp speed
+        const spd = Math.sqrt(mis.vx * mis.vx + mis.vy * mis.vy);
+        if (spd > mSpd) { mis.vx = (mis.vx / spd) * mSpd; mis.vy = (mis.vy / spd) * mSpd; }
+      }
+
+      mis.x += mis.vx * dt;
+      mis.y += mis.vy * dt;
+
+      // Hit check
+      for (const e of this.enemies) {
+        if (!e || e.hp <= 0) continue;
+        const dx = e.pos.x - mis.x, dy = e.pos.y - mis.y;
+        if (dx * dx + dy * dy <= 30 * 30) {
+          e.takeHit(w.def.baseDamage, this);
+          this._spawnTacParticles(w, e.pos.x, e.pos.y, 4);
+          mis.hit = true;
+          break;
+        }
+      }
+    }
+  }
+
+  /** Spawn particle burst at position for a tactical weapon */
+  _spawnTacParticles(w, px, py, count) {
+    const c1 = w.def.particles?.color1 || w.def.color || '#ffffff';
+    const c2 = w.def.particles?.color2 || '#ffffff';
+    for (let i = 0; i < count; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const s = (w.def.particles?.speed || 3) * (0.5 + Math.random());
+      w.particles.push({
+        x: px, y: py,
+        vx: Math.cos(a) * s * 60,
+        vy: Math.sin(a) * s * 60,
+        life: 0.4 + Math.random() * 0.3,
+        maxLife: 0.7,
+        alpha: 1,
+        color: Math.random() > 0.5 ? c1 : c2,
+        size: 2 + Math.random() * 3,
+      });
+    }
+  }
+
+  /**
+   * Draw all active tactical weapons — SPRITE-BASED rendering only.
+   * No ctx.arc() or ctx.stroke() for weapon visuals.
+   */
+  _drawTacticalWeapons(ctx) {
+    const cam = this.camera;
+    for (const w of this.tacticalCacheWeapons) {
+      if (!w.alive) continue;
+      const sx = w.x - cam.x, sy = w.y - cam.y;
+      const sprite = this._tacticalSpriteCache.get(w.id);
+
+      // ── Draw sprite at drop point ──
+      if (sprite && sprite.complete && sprite.naturalWidth > 0) {
+        const size = 64; // render size on-screen
+        ctx.save();
+        ctx.globalAlpha = Math.min(1, w.timer / 1.0); // fade out in last second
+        ctx.translate(sx, sy);
+        ctx.rotate(w.angle);
+        ctx.drawImage(sprite, -size / 2, -size / 2, size, size);
+        ctx.restore();
+      }
+
+      // ── Per-behavior visual overlays (sprite-based, no vector strokes) ──
+      switch (w.def.behavior) {
+        case 'stationary_totem':
+          this._drawTotemFx(ctx, w, sx, sy);
+          break;
+        case 'ground_shockwave':
+          this._drawShockwaveFx(ctx, w, sx, sy);
+          break;
+        case 'linear_beam':
+          this._drawBeamFx(ctx, w, sx, sy);
+          break;
+        case 'horizontal_slash':
+          this._drawSlashFx(ctx, w, sx, sy);
+          break;
+        case 'autonomous_drone':
+          this._drawDroneFx(ctx, w, cam);
+          break;
+        case 'proximity_mine':
+          this._drawMineFx(ctx, w, cam);
+          break;
+        case 'gravity_singularity':
+          this._drawSingularityFx(ctx, w, sx, sy);
+          break;
+        case 'kinetic_rain':
+          this._drawRainFx(ctx, w, cam);
+          break;
+        case 'homing_volley':
+          this._drawVolleyFx(ctx, w, cam);
+          break;
+      }
+
+      // ── Draw particles ──
+      for (const p of w.particles) {
+        ctx.globalAlpha = p.alpha * 0.8;
+        ctx.fillStyle = p.color;
+        ctx.fillRect(p.x - cam.x - p.size / 2, p.y - cam.y - p.size / 2, p.size, p.size);
+      }
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // ── VFX draw helpers — sprite + glow overlay, NO vector lines ──
+
+  _drawTotemFx(ctx, w, sx, sy) {
+    // Glow pulse around totem
+    const pulse = 0.5 + 0.5 * Math.sin(w.angle * 3);
+    const r = (w.def.aoeRadius || 200) * pulse * 0.3;
+    ctx.save();
+    ctx.globalAlpha = 0.15 * pulse;
+    ctx.fillStyle = w.def.color;
+    ctx.fillRect(sx - r, sy - r, r * 2, r * 2);
+    ctx.restore();
+  }
+
+  _drawShockwaveFx(ctx, w, sx, sy) {
+    // Expanding filled ring using rectangles (no arc/stroke)
+    if (w.ringRadius <= 0) return;
+    const band = 6;
+    const alpha = 0.4 * (1 - w.ringRadius / (w.def.aoeRadius || 240));
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, alpha);
+    ctx.fillStyle = w.def.color;
+    // Approximate ring with 24 small filled rectangles along circumference
+    const segments = 24;
+    for (let i = 0; i < segments; i++) {
+      const a = (i / segments) * Math.PI * 2;
+      const rx = sx + Math.cos(a) * w.ringRadius;
+      const ry = sy + Math.sin(a) * w.ringRadius;
+      ctx.fillRect(rx - band / 2, ry - band / 2, band, band);
+    }
+    ctx.restore();
+  }
+
+  _drawBeamFx(ctx, w, sx, sy) {
+    if (!w.beamOn) return;
+    const len = w.def.beamLength || 500;
+    const bw  = w.def.beamWidth || 24;
+    const cosA = Math.cos(w.beamAngle), sinA = Math.sin(w.beamAngle);
+    ctx.save();
+    ctx.globalAlpha = 0.7;
+    ctx.fillStyle = w.def.color;
+    // Draw beam as a rotated filled rectangle
+    ctx.translate(sx, sy);
+    ctx.rotate(w.beamAngle);
+    ctx.fillRect(0, -bw / 2, len, bw);
+    // Bright core
+    ctx.globalAlpha = 0.9;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, -bw / 6, len, bw / 3);
+    ctx.restore();
+  }
+
+  _drawSlashFx(ctx, w, sx, sy) {
+    if (w.slashPhase <= 0) return;
+    w.slashPhase -= 0.05; // decay visual
+    const hw = (w.def.slashWidth || 400) / 2;
+    const hh = (w.def.slashHeight || 60) / 2;
+    ctx.save();
+    ctx.globalAlpha = w.slashPhase * 0.6;
+    ctx.fillStyle = w.def.color;
+    ctx.fillRect(sx - hw * w.slashPhase, sy - hh, hw * 2 * w.slashPhase, hh * 2);
+    ctx.globalAlpha = w.slashPhase * 0.9;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(sx - hw * w.slashPhase, sy - 2, hw * 2 * w.slashPhase, 4);
+    ctx.restore();
+  }
+
+  _drawDroneFx(ctx, w, cam) {
+    const sprite = this._tacticalSpriteCache.get(w.id);
+    const dx = w.droneX - cam.x, dy = w.droneY - cam.y;
+    const size = 48;
+    if (sprite && sprite.complete && sprite.naturalWidth > 0) {
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, w.timer / 1.0);
+      ctx.translate(dx, dy);
+      ctx.rotate(w.orbitAngle);
+      ctx.drawImage(sprite, -size / 2, -size / 2, size, size);
+      ctx.restore();
+    }
+    // Ghost trail — small fading sprite copies
+    if (w.def.glitchFx?.ghostTrail) {
+      for (let g = 1; g <= 3; g++) {
+        const ga = w.orbitAngle - g * 0.3;
+        const gx = w.x + Math.cos(ga) * (w.def.patrolRadius || 280) - cam.x;
+        const gy = w.y + Math.sin(ga) * (w.def.patrolRadius || 280) - cam.y;
+        ctx.save();
+        ctx.globalAlpha = 0.15 / g;
+        if (sprite && sprite.complete) ctx.drawImage(sprite, gx - size / 2, gy - size / 2, size, size);
+        ctx.restore();
+      }
+    }
+  }
+
+  _drawMineFx(ctx, w, cam) {
+    const sprite = this._tacticalSpriteCache.get(w.id);
+    const mSize = 32;
+    for (const mine of w.mines) {
+      if (!mine.alive) continue;
+      const mx = mine.x - cam.x, my = mine.y - cam.y;
+      if (sprite && sprite.complete && sprite.naturalWidth > 0) {
+        const flash = Math.sin(mine.flashTimer * 6) > 0 ? 1 : 0.6;
+        ctx.save();
+        ctx.globalAlpha = flash;
+        ctx.drawImage(sprite, mx - mSize / 2, my - mSize / 2, mSize, mSize);
+        ctx.restore();
+      }
+    }
+  }
+
+  _drawSingularityFx(ctx, w, sx, sy) {
+    const progress = w.pullTimer / (w.def.collapseTime || 2.0);
+    if (!w.collapsed) {
+      // Growing dark void — filled rect with inward shrink
+      const r = (w.def.pullRadius || 300) * progress * 0.4;
+      ctx.save();
+      ctx.globalAlpha = 0.3 + progress * 0.4;
+      ctx.fillStyle = '#110011';
+      ctx.fillRect(sx - r, sy - r, r * 2, r * 2);
+      ctx.globalAlpha = 0.6;
+      ctx.fillStyle = w.def.color;
+      const cr = 8 + progress * 20;
+      ctx.fillRect(sx - cr, sy - cr, cr * 2, cr * 2);
+      ctx.restore();
+    } else {
+      // Post-collapse flash
+      const fade = Math.max(0, 1 - (w.pullTimer - (w.def.collapseTime || 2.0)) / 1.5);
+      ctx.save();
+      ctx.globalAlpha = fade * 0.6;
+      ctx.fillStyle = '#ffffff';
+      const br = (w.def.blastRadius || 450) * fade;
+      ctx.fillRect(sx - br, sy - br, br * 2, br * 2);
+      ctx.restore();
+    }
+  }
+
+  _drawRainFx(ctx, w, cam) {
+    ctx.save();
+    for (const spike of w.spikes) {
+      const rx = spike.x - cam.x, ry = spike.y - cam.y;
+      const alpha = spike.life / spike.maxLife;
+      ctx.globalAlpha = alpha * 0.8;
+      ctx.fillStyle = w.def.color;
+      // Spike as a narrow vertical rectangle
+      ctx.fillRect(rx - 2, ry - 20 * alpha, 4, 20);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(rx - 1, ry - 14 * alpha, 2, 14);
+    }
+    ctx.restore();
+  }
+
+  _drawVolleyFx(ctx, w, cam) {
+    const sprite = this._tacticalSpriteCache.get(w.id);
+    const mSize = 20;
+    ctx.save();
+    for (const mis of w.missiles) {
+      const mx = mis.x - cam.x, my = mis.y - cam.y;
+      ctx.globalAlpha = Math.min(1, mis.life);
+      if (sprite && sprite.complete && sprite.naturalWidth > 0) {
+        const angle = Math.atan2(mis.vy, mis.vx);
+        ctx.save();
+        ctx.translate(mx, my);
+        ctx.rotate(angle);
+        ctx.drawImage(sprite, -mSize / 2, -mSize / 4, mSize, mSize / 2);
+        ctx.restore();
+      } else {
+        ctx.fillStyle = w.def.color;
+        ctx.fillRect(mx - 4, my - 2, 8, 4);
+      }
+      // Missile trail
+      ctx.globalAlpha = 0.3;
+      ctx.fillStyle = w.def.particles?.color2 || '#ff8800';
+      ctx.fillRect(mx - mis.vx * 0.01 - 2, my - mis.vy * 0.01 - 2, 4, 4);
+    }
+    ctx.restore();
   }
 
   // ── Primary: Nexus Chakram ──────────────────────────────────────────────────
@@ -10749,6 +11480,7 @@ export class Game {
     this._drawBlacknetSwarmDrones(ctx);  // Phase 2 SUMMON
     this._drawHomingMissiles(ctx);       // Phase 2 HOMING
     for (const vfx of this._activeWeaponVFX) vfx.draw(ctx);   // Evolution VFX overlays
+    this._drawTacticalWeapons(ctx);  // Tactical cache weapons (independent map objects)
     this._drawEuclidKit(ctx);       // Euclid Vector toxin sniper / katanas / plague (world-space)
     this._drawChainLightning(ctx);
     this._drawNeonPierceBeam(ctx);
