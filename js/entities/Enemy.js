@@ -132,6 +132,8 @@ export class Enemy {
       case 'Toxin Leech':            return 'hunter';
       case 'Void Widow':             return 'shooter';
       case 'Volt Rat':               return 'hunter';
+      case 'Scrap Scavenger':        return 'hunter';   // Phase 1: was 'scavenger' → fled at 115px, literally harmless
+      case 'Cyber-Net Junkie':       return 'hunter';   // Phase 1: same — now a real melee chaser
       default:                       return 'scavenger';
     }
   }
@@ -160,7 +162,7 @@ export class Enemy {
         this.bulletColor   = RED;
         break;
       case 'Rogue Punk':
-        this.shootInterval = 2.4;
+        this.shootInterval = 3.0;   // Phase 4: 2.4→3.0 — he now actually fires (mixed fix); keep minute-0 TTK fair
         this.bulletSpeed   = 460;   // speed pass: 360 → 460
         this.bulletDamage  = 7;
         this.bulletRadius  = 5;
@@ -392,7 +394,7 @@ export class Enemy {
       case 'Cryo Claw':            return [140 * d, 5 * g,    CYAN,    9999, 10 * g];   // medium, melee frost
       case 'Ember Scarab':         return [120 * d, 8 * g,    ORANGE,  9999, 12 * g];   // medium, fire AoE
       case 'Pulse Burrower':       return [100 * d, 10 * g,   CYAN,    9999,  8 * g];   // medium, beam/boomerang
-      case 'Rift Eye':             return [60  * d, 14 * g,   PURPLE,  9999,  4 * g];   // slow, fragile ranged
+      case 'Rift Eye':             return [90  * d, 14 * g,   PURPLE,  9999,  4 * g];   // Phase 4: 60→90 — can actually hold kiting range
       case 'Solar Stinger':        return [175 * d, 3 * g,    YELLOW,  9999,  8 * g];   // fast, light shooter
       case 'Toxin Leech':          return [145 * d, 4 * g,    GREEN,   9999, 12 * g];   // fast melee, poison
       case 'Void Widow':           return [90  * d, 12 * g,   PURPLE,  9999, 14 * g];   // slow-med, heavy ranged
@@ -595,7 +597,9 @@ export class Enemy {
     }
 
     if (this.role === 'mixed' && playerDist < 280) {
-      // Chase player when nearby — ignore repel aura
+      // Chase player when nearby — ignore repel aura. FIRES too (Phase 1 fix:
+      // mixed enemies had full bullet stats that were never reachable).
+      this._tryShoot(game);
       let dir = safeNormalize(player.pos.sub(this.pos));
       if (this.enemyType === 'Overclocked Berserker')
         dir = safeNormalize(dir.add(new Vec2(randomRange(-1, 1), randomRange(-1, 1)).scale(0.75)));

@@ -12,11 +12,11 @@ import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260705040000
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260705040000';
 import { Player }         from '../entities/Player.js?v=20260703990000';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260703990000';
-import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260705050000';
+import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260705090000';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=20260703990000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260703990000';
-import { SystemEventManager } from './Events.js?v=20260705050000';
+import { SystemEventManager } from './Events.js?v=20260705090000';
 import { UpgradeUI }      from './UpgradeUI.js?v=20260705040000';
 import { weightedSample } from './Upgrades.js?v=20260705040000';
 import { MutationUI }      from './MutationUI.js?v=20260703990000';
@@ -1420,6 +1420,7 @@ export class Game {
     this._endlessLavaCd    = randomRange(18, 26);   // arm ambient Endless Lava Rain (boss-independent)
     this._airstrikeTimer   = 90;            // first AIRSTRIKE ~1.5 min in, then every ~2 min
     this._lightningTimer   = 70;            // first LIGHTNING STORM ~1.2 min in, then every ~2 min
+    this._frozenSleetTimer = 150;           // first FROZEN SLEET ~2.5 min into Endless (Chaos arms its own 55s)
     this._stormActive      = 0;             // seconds of active strikes remaining in the current storm
     this._stormSpawnCd     = 0;
     this.airstrikeShips    = [];            // clear any carryover hazards on (re)entry
@@ -15545,14 +15546,14 @@ _drawLoreArchive(ctx) {
   // ─── Acid Rain weather event ──────────────────────────────────────────────
 
 
-  // ─── Frozen Sleet Storm — Chaos Mode weather event ────────────────────────
-  // Chaos-only. Never triggers in Act 1, shop, character select, or non-Chaos states.
+  // ─── Frozen Sleet Storm — Chaos + Endless weather event ────────────────────
+  // Chaos: full 5.5s freeze. Plain Endless: milder 3.0s freeze. Never in Act 1/menus.
   // Phase 1 ONSET (0.6s): frost grows inward from screen edges.
   // Phase 2 HOLD (5.5s):  full freeze overlay, player movement disabled.
   // Phase 3 RECOVERY (1.0s): frost melts outward, player regains control.
   _updateFrozenSleet(dt) {
     // Gate: only in active Chaos Mode gameplay, not during menus/gameover/victory
-    if (!this._chaosMode || this.gameOver || this.victory) {
+    if ((!this._chaosMode && !this.endless) || this.gameOver || this.victory) {
       // Drain timer but do not trigger
       if (this._frozenSleetTimer > 0) this._frozenSleetTimer -= dt;
       return;
@@ -15568,7 +15569,7 @@ _drawLoreArchive(ctx) {
         if (p.y > 720) { p.y = -8; p.x = Math.random() * 1280; }
       }
       const ONSET_DUR    = 0.65;
-      const HOLD_DUR     = 5.5;
+      const HOLD_DUR     = this._chaosMode ? 5.5 : 3.0;   // milder freeze outside Chaos
       const RECOVERY_DUR = 1.1;
       if (fs.phase === 'onset' && fs.t >= ONSET_DUR) {
         fs.phase = 'hold';
