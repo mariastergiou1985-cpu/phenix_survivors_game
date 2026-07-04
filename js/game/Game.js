@@ -12,17 +12,17 @@ import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260703990000
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260703990000';
 import { Player }         from '../entities/Player.js?v=20260703990000';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260703990000';
-import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260704180000';
+import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260704200000';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=20260703990000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260703990000';
-import { SystemEventManager } from './Events.js?v=20260703990000';
+import { SystemEventManager } from './Events.js?v=20260704200000';
 import { UpgradeUI }      from './UpgradeUI.js?v=20260703990000';
 import { weightedSample } from './Upgrades.js?v=20260703990000';
 import { MutationUI }      from './MutationUI.js?v=20260703990000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260703990000';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS } from './MetaProgress.js?v=20260703990000';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS } from './MetaProgress.js?v=20260704200000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260703990000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
@@ -35,10 +35,10 @@ import { MeteorRain } from '../effects/meteor-rain.js?v=20260703990000';
 import { NpcWalker } from './NpcWalker.js?v=20260703990000';
 import { MapManager, BIOME_ID, BIOME_DEFS } from './MapManager.js?v=20260703999000';
 import { EventBus, EVENTS } from './EventBus.js?v=20260703990000';
-import { EnemySpawner, ELITE_WAVE as ELITE_WAVE_CFG, BOSS_WARN_COOLDOWN as BOSS_WARN_CD } from './EnemySpawner.js?v=20260703990000';
+import { EnemySpawner, ELITE_WAVE as ELITE_WAVE_CFG, BOSS_WARN_COOLDOWN as BOSS_WARN_CD } from './EnemySpawner.js?v=20260704200000';
 import { StateManager, GAME_STATES } from './StateManager.js?v=20260703990000';
-import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260703999000';
-import { NexusManager } from './NexusManager.js?v=20260703999000';
+import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260704200000';
+import { NexusManager } from './NexusManager.js?v=20260704200000';
 import { VESSELS, getVesselById, getDefaultVesselId } from './VesselCatalog.js?v=20260703996000';
 import { PETS, getPetById } from './PetCatalog.js?v=20260703999100';
 import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons } from './WeaponCatalog.js?v=20260704120000';
@@ -642,8 +642,8 @@ export class Game {
 
     // Preload Double Demons boss sprites (note: space in filename is intentional)
     this._doubleDemonsSprite = new Image();
-    this._doubleDemonsSprite.onerror = () => console.warn('[Boss] double_ demons.png not found — drawn fallback used');
-    this._doubleDemonsSprite.src = 'assets/enemies/bosses/double_ demons.png?v=20260628400000';
+    this._doubleDemonsSprite.onerror = () => console.warn('[Boss] double_demons.png not found — drawn fallback used');
+    this._doubleDemonsSprite.src = 'assets/enemies/bosses/double_demons.png?v=20260704200000';
     this._rocketRainSprite = new Image();
     this._rocketRainSprite.onerror = () => console.warn('[Boss] rocket_rain.png not found — drawn fallback used');
     this._rocketRainSprite.src = 'assets/enemies/bosses/rocket_rain.png?v=20260628400000';
@@ -4737,6 +4737,12 @@ export class Game {
       const sp = this.chunkManager.getSpawnEdge(this.camera, this._viewW, this._viewH, 60);
       e.pos.x = sp.x;
       e.pos.y = sp.y;
+      // CORRIDOR chunks (chunk-type variety): tighter spawns — nudge toward view center.
+      if (this.chunkManager.currentChunkType() === CHUNK_TYPE.CORRIDOR) {
+        const _vcx = this.camera.x + this._viewW / 2, _vcy = this.camera.y + this._viewH / 2;
+        e.pos.x += (_vcx - e.pos.x) * 0.12;
+        e.pos.y += (_vcy - e.pos.y) * 0.12;
+      }
     }
     // Armored Swarm Protocol — Endless-only extra HP scaling (modest; never touches Act 1 or bosses,
     // which are already tuned). Applied once at spawn so it can't compound or double-apply.
@@ -4745,6 +4751,18 @@ export class Game {
     if (this._chaosMode && !e.isBoss()) {
       const _esm = this._getActiveChaosLawModifiers().enemySpeedMult;
       if (_esm !== 1) { e._baseSpeedFull *= _esm; e.baseSpeed *= _esm; }
+    }
+    // ── Biome enemy modifiers — BIOME_DEFS.enemyModifiers now actually applies ──
+    // hpMult/speedMult scale once at spawn (biome at the enemy's spawn position);
+    // regenRate ticks in Enemy.update. Bosses excluded — they have their own tuning.
+    if (this.chunkManager?.enabled && !e.isBoss()) {
+      const _bId  = this.chunkManager.biomeAtWorld(e.pos.x, e.pos.y);
+      const _mods = BIOME_DEFS[_bId]?.enemyModifiers;
+      if (_mods) {
+        if (_mods.hpMult && _mods.hpMult !== 1) { e.hp = Math.round(e.hp * _mods.hpMult); e.maxHp = e.hp; }
+        if (_mods.speedMult && _mods.speedMult !== 1) { e._baseSpeedFull *= _mods.speedMult; e.baseSpeed *= _mods.speedMult; }
+        if (_mods.regenRate) e._biomeRegen = _mods.regenRate;
+      }
     }
     this.enemies.push(e);
     if (e.isBoss()) {
@@ -6669,7 +6687,7 @@ export class Game {
       this._emberTrailCd -= dt;
       if (this._emberTrailCd <= 0) {
         this._emberTrailCd = 0.04; // spawn ember every 40ms during dash
-        this._emberTrail.push({ x: p.pos.x, y: p.pos.y, ttl: 1.5 });
+        this._emberTrail.push({ x: this.player.pos.x, y: this.player.pos.y, ttl: 1.5 });
       }
     }
     // Tick ember trail zones — burn enemies, remove expired
@@ -10383,6 +10401,21 @@ export class Game {
       this.meta.unlock('log_1998');
       this.triggerAnnouncement('SYSTEM LOG #1998 FOUND — PHANTOM ASSASSIN', '#ff4dd2');
     }
+    // Euclid Vector TOXIC OVERLOAD: survive 15:00 in Endless AS Euclid Vector.
+    if (sc === 'euclid_vector' && this._eliteWaveElapsed >= 900 && !this.meta.isUnlocked('toxic_overload')) {
+      this.meta.unlock('toxic_overload');
+      this.triggerAnnouncement('TOXIC OVERLOAD SIGNATURE FOUND — EUCLID SKIN', '#39ff6a');
+    }
+    // Phasewalker NULL WALKER: survive 18:00 in Endless AS Japan Phasewalker.
+    if (sc === 'japan_phasewalker' && this._eliteWaveElapsed >= 1080 && !this.meta.isUnlocked('null_walker')) {
+      this.meta.unlock('null_walker');
+      this.triggerAnnouncement('NULL WALKER PROTOCOL FOUND — PHASEWALKER SKIN', '#8b2fd6');
+    }
+    // Oni CRIMSON PROTOCOL: survive 20:00 in Endless AS Oni Cataclysm.
+    if (sc === 'oni_cataclysm_protocol' && this._eliteWaveElapsed >= 1200 && !this.meta.isUnlocked('crimson_oni')) {
+      this.meta.unlock('crimson_oni');
+      this.triggerAnnouncement('CRIMSON PROTOCOL FOUND — ONI SKIN', '#ff2244');
+    }
     this._eliteWaveTimer   -= dt;
     if (this._eliteWaveTimer <= 0) {
       this._spawnEliteWave();
@@ -10395,6 +10428,8 @@ export class Game {
     let batch = ELITE_WAVE.baseBatch;
     if (this._eliteWaveElapsed >= 20 * 60)      batch = ELITE_WAVE.batch20min;
     else if (this._eliteWaveElapsed >= 10 * 60) batch = ELITE_WAVE.batch10min;
+    // ARENA chunks (chunk-type variety): host one extra elite per wave.
+    if (this.chunkManager?.enabled && this.chunkManager.currentChunkType() === CHUNK_TYPE.ARENA) batch += 1;
 
     const m   = this.currentMinute();
     const cap = this.enemyCap();

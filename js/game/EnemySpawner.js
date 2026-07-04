@@ -53,7 +53,7 @@ export const ELITE_WAVE = {
   hpMult:      2.0,
   speedMult:   1.10,
   radiusMult:  1.20,
-  pool: ['Combat Hunter', 'Cyber Shooter', 'Heavy Mech', 'Overclocked Berserker', 'Stealth Infiltrator', 'Glitch Drone', 'Rogue Punk', 'Abyss Maw', 'Void Widow', 'Ember Scarab', 'Amethyst Fang'],
+  pool: ['Combat Hunter', 'Cyber Shooter', 'Heavy Mech', 'Overclocked Berserker', 'Stealth Infiltrator', 'Glitch Drone', 'Rogue Punk', 'Abyss Maw', 'Void Widow', 'Ember Scarab', 'Amethyst Fang', 'Solar Stinger', 'Rift Eye', 'Cryo Claw', 'Toxin Leech', 'Volt Rat', 'Pulse Burrower'],
 };
 
 // ─── Population Cap Curve ───────────────────────────────────────────────────

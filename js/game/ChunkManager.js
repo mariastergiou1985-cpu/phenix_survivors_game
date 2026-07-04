@@ -116,13 +116,15 @@ export class ChunkManager {
     /** Whether chunk streaming is active */
     this.enabled = false;
 
-    // Biome assignment ring — 3 sectors radiating from Neon District center
+    // Biome assignment ring — 5 sectors radiating from Neon District center
     // Neon District stays center-only (dist 0), not in this ring.
     // Compact layout: 4 practical biomes total (center + 3 outer).
     this._biomeRing = [
       BIOME_ID.INDUSTRIAL_CORE,
       BIOME_ID.ABYSSAL_TRENCH,
       BIOME_ID.GLACIAL_EXPANSE,
+      BIOME_ID.ORBITAL_NEXUS,
+      BIOME_ID.DATA_WASTES,
     ];
   }
 
@@ -298,6 +300,17 @@ export class ChunkManager {
    * @param {number} cy
    * @returns {string} BIOME_ID
    */
+  /** Biome id at a world position (delegates to the sector ring mapping). */
+  biomeAtWorld(x, y) {
+    return this._getBiomeForCoords(Math.floor(x / CHUNK_SIZE), Math.floor(y / CHUNK_SIZE));
+  }
+
+  /** Chunk type of the chunk the player currently stands in (null if unknown). */
+  currentChunkType() {
+    const c = this.chunks.get(`${this.playerChunkX},${this.playerChunkY}`);
+    return c ? c.chunkType : null;
+  }
+
   _getBiomeForCoords(cx, cy) {
     // Center chunk: Neon District
     if (cx === 0 && cy === 0) return BIOME_ID.NEON_DISTRICT;

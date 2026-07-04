@@ -80,6 +80,20 @@ export const CHARACTER_OUTFITS = {
     default: { name: 'Default', asset: 'assets/characters/assassin_clone.png' },
     secret:  { name: 'LOG #1998 — Phantom Assassin', asset: 'assets/unlocks/secret_skins/assassin_clone_log1998_secret.png', unlockKey: 'log_1998' },
   },
+  // Endless-tier secret outfits — palette-signature variants, survival-gated in Endless
+  // (same pattern as LOG #1997/#1998: unlock flags granted in Game.js _updateEliteWaves).
+  euclid_vector: {
+    default: { name: 'Default', asset: 'assets/characters/endless/euclid_vector.png' },
+    secret:  { name: 'Toxic Overload Euclid', asset: 'assets/unlocks/secret_skins/euclid_vector_toxic_overload_secret.png', unlockKey: 'toxic_overload' },
+  },
+  japan_phasewalker: {
+    default: { name: 'Default', asset: 'assets/characters/endless/japan_phasewalker.png' },
+    secret:  { name: 'Null Walker Phasewalker', asset: 'assets/unlocks/secret_skins/japan_phasewalker_null_walker_secret.png', unlockKey: 'null_walker' },
+  },
+  oni_cataclysm_protocol: {
+    default: { name: 'Default', asset: 'assets/characters/endless/oni_cataclysm_protocol.png' },
+    secret:  { name: 'Crimson Protocol Oni', asset: 'assets/unlocks/secret_skins/oni_cataclysm_crimson_secret.png', unlockKey: 'crimson_oni' },
+  },
 };
 
 // Endless-only achievement milestones. Each `test` is a PURE read-only predicate over a

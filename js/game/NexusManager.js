@@ -51,6 +51,8 @@ const BIOME_RING_ORDER = [
   BIOME_ID.INDUSTRIAL_CORE,
   BIOME_ID.ABYSSAL_TRENCH,
   BIOME_ID.GLACIAL_EXPANSE,
+  BIOME_ID.ORBITAL_NEXUS,
+  BIOME_ID.DATA_WASTES,
 ];
 
 // ─── Helper ────────────────────────────────────────────────────────────────
@@ -171,7 +173,7 @@ export class NexusManager {
     // Placed at ~1.5 chunks from origin in each biome's angular sector center.
     // Angle formula matches ChunkManager._getBiomeForCoords so each Nexus
     // lands inside its own biome territory.
-    const ringDist = CHUNK_SIZE * 0.8; // ~0.8 chunks — compact arena (3×3 world)
+    const ringDist = CHUNK_SIZE * 1.5; // unified with repositionForEndless — identical Nexus layout on both Endless entry paths
     const sectorCount = BIOME_RING_ORDER.length;
 
     for (let s = 0; s < sectorCount; s++) {

@@ -60,10 +60,6 @@ export class Enemy {
     this.pos       = this._spawnEdge();
     this.vel       = new Vec2();
 
-    this.carryingCore = null;
-    this.dumpTarget   = null;
-
-    this.stealTimer = 0;
     this.hitFlash   = 0;
     this.stunned    = 0;
     this.slowTimer  = 0;     // Cryo Rounds debuff: reduced movement speed while > 0
@@ -258,6 +254,7 @@ export class Enemy {
     const weaponIds  = BOSS_WEAPON_MAP[catalogKey] || MINI_WEAPON_MAP[catalogKey] || PRIMARY_WEAPON_MAP[catalogKey];
     if (weaponIds && weaponIds.length > 0) {
       const wDef = getWeaponById(weaponIds[0]);   // primary weapon
+      this._weaponDef = wDef;   // behavior params (cooldown/speed/damage) for catalog-armed shots
       this._weaponSprite = _getWeaponSprite(wDef);
       // Size scaled by enemy tier: bosses get large sweep-wave sprites,
       // elites/mechs get medium beam sprites, drones get readable projectiles.
@@ -273,7 +270,13 @@ export class Enemy {
   _tryShoot(game) {
     // Lazily arm melee elites with a modest ranged attack so EVERY elite has real projectile threat.
     if (this.isElite && !this.shootInterval) {
-      this.shootInterval = 2.6; this.bulletSpeed = 420; this.bulletDamage = 8; this.bulletRadius = 7; this.bulletColor = ORANGE;
+      // Catalog-armed elites: use the mapped enemy weapon's behavior params
+      // (cooldown/speed/damage) when available; generic armament otherwise.
+      const wd = this._weaponDef || null;
+      this.shootInterval = wd?.cooldown || 2.6;
+      this.bulletSpeed   = wd?.speed    || 420;
+      this.bulletDamage  = wd?.damage   || 8;
+      this.bulletRadius  = 7; this.bulletColor = ORANGE;
     }
     if (!this.shootInterval || this.shootTimer > 0) return;
     this.shootTimer = this.shootInterval;
@@ -444,16 +447,6 @@ export class Enemy {
       game.floatingTexts.push(new FloatingText('-' + Math.round(dmg), dmgPos, numClr, numLife, numSize, numRise));
     }
 
-    if (this.carryingCore !== null) {
-      const dropped = this.carryingCore;
-      dropped.pos = this.pos.add(new Vec2(randomRange(-12, 12), randomRange(-12, 12)));
-      game.groundCores.push(dropped);
-      this.carryingCore = null;
-      this.dumpTarget   = null;
-      game.player.coresIntercepted++;
-      game.floatingTexts.push(new FloatingText('INTERCEPT!', this.pos.clone(), CYAN, 1.2));
-    }
-
     if (this.hp <= 0) {
       this._die(game);
     } else {
@@ -497,12 +490,6 @@ export class Enemy {
     let xp = this.isMegaBoss ? 42 : (this.isBoss() ? 12 : 1 + Math.floor((game.timeAlive || 0) / 120));
     game.player.gainXp(xp, game.floatingTexts);
 
-    if (this.carryingCore !== null) {
-      this.carryingCore.pos = this.pos.clone();
-      game.groundCores.push(this.carryingCore);
-      this.carryingCore = null;
-    }
-
     const idx = game.enemies.indexOf(this);
     if (idx !== -1) game.enemies.splice(idx, 1);
 
@@ -519,38 +506,13 @@ export class Enemy {
     }
   }
 
-  _chooseTargetMatrix(matrices) {
-    const valid = matrices.filter(m => m.hasCore());
-    if (!valid.length) return null;
-    return valid.reduce((a, b) => distance(this.pos, a.pos) < distance(this.pos, b.pos) ? a : b);
-  }
 
-  _chooseDumpTarget(matrixPos, playerPos) {
-    // Uniform point across the FULL world. (Previously randomPosition()/clamp used the 1280×720
-    // viewport, confining every dump to the top-left arena corner — the top-left core-clustering
-    // bug, which also pulled carriers back to re-target the top-left Nexus.)
-    const worldRand = () => new Vec2(
-      randomRange(WORLD_BOUNDS.left + WORLD_BOUNDS.margin, WORLD_BOUNDS.right - WORLD_BOUNDS.margin),
-      randomRange(WORLD_BOUNDS.top + WORLD_BOUNDS.margin + 40, WORLD_BOUNDS.bottom - WORLD_BOUNDS.margin),
-    );
-    let target;
-    if (Math.random() < 0.35) {
-      target = matrixPos.add(new Vec2(randomRange(-90, 90), randomRange(-90, 90)));
-    } else {
-      target = worldRand();
-      for (let i = 0; i < 20; i++) {
-        const t = worldRand();
-        if (distance(t, matrixPos) > 260 && distance(t, playerPos) > 170) {
-          target = t; break;
-        }
-      }
-    }
-    target.x = clamp(target.x, WORLD_BOUNDS.left + WORLD_BOUNDS.margin, WORLD_BOUNDS.right - WORLD_BOUNDS.margin);
-    target.y = clamp(target.y, WORLD_BOUNDS.top + WORLD_BOUNDS.margin + 40, WORLD_BOUNDS.bottom - WORLD_BOUNDS.margin);
-    return target;
-  }
 
   update(dt, game) {
+    // Biome regen (BIOME_DEFS.enemyModifiers.regenRate) — slow passive HP regen.
+    if (this._biomeRegen && this.hp > 0 && this.hp < this.maxHp) {
+      this.hp = Math.min(this.maxHp, this.hp + this._biomeRegen * dt);
+    }
     if (this.hitFlash > 0) this.hitFlash -= dt;
 
     // ── Knockback decay (applied before movement AI, independent of role) ────
