@@ -21,7 +21,7 @@ import { UpgradeUI }      from './UpgradeUI.js?v=20260705040000';
 import { weightedSample } from './Upgrades.js?v=20260705040000';
 import { MutationUI }      from './MutationUI.js?v=20260703990000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
-import { drawHUD, drawEndScreen } from './HUD.js?v=20260703990000';
+import { drawHUD, drawEndScreen } from './HUD.js?v=20260705080000';
 import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS } from './MetaProgress.js?v=20260705040000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260703990000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
@@ -37,7 +37,7 @@ import { MapManager, BIOME_ID, BIOME_DEFS } from './MapManager.js?v=202607039990
 import { EventBus, EVENTS } from './EventBus.js?v=20260703990000';
 import { EnemySpawner, ELITE_WAVE as ELITE_WAVE_CFG, BOSS_WARN_COOLDOWN as BOSS_WARN_CD } from './EnemySpawner.js?v=20260704200000';
 import { StateManager, GAME_STATES } from './StateManager.js?v=20260703990000';
-import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260704200000';
+import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260705080000';
 import { NexusManager } from './NexusManager.js?v=20260705040000';
 import { VESSELS, getVesselById, getDefaultVesselId } from './VesselCatalog.js?v=20260705040000';
 import { PETS, getPetById } from './PetCatalog.js?v=20260705000000';
@@ -6884,6 +6884,13 @@ export class Game {
     this.elementFx.update(dt);        // elemental VFX lifetimes (bounded, auto-expire)
     // Weapon evolution VFX sprite sheet animations (auto-expire, play-once)
     for (let i = this._activeWeaponVFX.length - 1; i >= 0; i--) {
+      const _v = this._activeWeaponVFX[i];
+      // 70% homing follow — track the living target while the animation plays.
+      if (_v.follow && _v.follow.pos && (_v.follow.hp === undefined || _v.follow.hp > 0)) {
+        const k = Math.min(1, (_v.followK || 0.7) * 10 * dt);
+        _v.x += (_v.follow.pos.x - _v.x) * k;
+        _v.y += (_v.follow.pos.y - _v.y) * k;
+      }
       this._activeWeaponVFX[i].update(dt);
       if (this._activeWeaponVFX[i].isDone()) this._activeWeaponVFX.splice(i, 1);
     }
@@ -8898,7 +8905,8 @@ export class Game {
     t -= dt;
     if (t <= 0) {
       t = stats.cooldown;
-      // Find nearest living enemy
+      // AUTO-AIM: nearest living target INCLUDING bosses/mini-bosses (was enemies-only,
+      // so acquired weapons spun uselessly during boss fights).
       const px = this.player.pos.x, py = this.player.pos.y;
       let best = null, bestD2 = 620 * 620;
       for (const e of this.enemies) {
@@ -8907,15 +8915,30 @@ export class Game {
         const d2 = dx * dx + dy * dy;
         if (d2 < bestD2) { bestD2 = d2; best = e; }
       }
+      const _ddW = this.doubleDemonsBoss && this.doubleDemonsBoss.hp > 0
+        ? [this.doubleDemonsBoss.gunner, this.doubleDemonsBoss.claw] : [];
+      for (const b of [this.titanBoss, this.annihilatorBoss, this.bloodfangBoss, this.cyberSerpentBoss, this.cyberDragonBoss, ..._ddW]) {
+        if (!b || b.hp <= 0 || !b.pos) continue;
+        const dx = b.pos.x - px, dy = b.pos.y - py;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < bestD2) { bestD2 = d2; best = b; }
+      }
       if (best) {
         const angle = Math.atan2(best.pos.y - py, best.pos.x - px);
-        this._spawnWeaponVFX(weaponId, best.pos.x, best.pos.y, angle, 3.75);   // 1.5× global weapon-sprite scaling (was 2.5 — read like flies)
-        // AoE damage at impact point
+        const vfx = this._spawnWeaponVFX(weaponId, best.pos.x, best.pos.y, angle, 3.75);
+        // 70% homing: the VFX tracks its target while animating instead of
+        // spinning at the cast point after the target has moved away.
+        if (vfx) { vfx.follow = best; vfx.followK = 0.7; }
+        // Damage at impact point: AoE vs enemies + capped direct hit vs bosses.
         const aoe2 = (stats.aoeRadius || 60) * (stats.aoeRadius || 60);
         for (const e of this.enemies) {
           if (!e || e.hp <= 0) continue;
           const dx = e.pos.x - best.pos.x, dy = e.pos.y - best.pos.y;
           if (dx * dx + dy * dy <= aoe2) e.takeHit(stats.damage, this);
+        }
+        if (!best.takeHit && best.hp !== undefined) {
+          best.hp -= this._capBossDamage(best, stats.damage);
+          if (best.hitFlash !== undefined) best.hitFlash = 0.08;
         }
         this.audio?.playShoot?.();
       }

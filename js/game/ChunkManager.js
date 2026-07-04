@@ -521,6 +521,68 @@ export class ChunkManager {
         this._drawChunkBg(ctx, chunk, cx, cy);
       }
     }
+
+    // Soft dark edge-fade at the playable world bounds so the padding area
+    // beyond the wall reads as an intentional vignette, not a hard cut.
+    this._drawWorldEdgeFade(ctx, camera, viewW, viewH);
+  }
+
+  /**
+   * Darken everything beyond getWorldBounds() with a ~140px gradient ramp at the
+   * boundary followed by a flat dark fill. Replaces the old per-chunk step fade.
+   * Cheap: at most 4 linear gradients + fills per frame, only when the (padded)
+   * viewport actually reaches a boundary. No canvas allocations.
+   */
+  _drawWorldEdgeFade(ctx, camera, viewW, viewH) {
+    const wb   = this.getWorldBounds();
+    const FADE = 140;    // gradient depth (px) just outside the boundary
+    const MAXA = 0.62;   // final darkness of the out-of-bounds padding area
+    // Cover the whole drawn area including the +1 chunk visual padding
+    const vx = camera.x - CHUNK_SIZE, vy = camera.y - CHUNK_SIZE;
+    const vr = camera.x + viewW + CHUNK_SIZE, vb = camera.y + viewH + CHUNK_SIZE;
+    const vh = vb - vy, vw = vr - vx;
+    ctx.save();
+    if (vr > wb.right) {                                   // RIGHT edge
+      const g = ctx.createLinearGradient(wb.right, 0, wb.right + FADE, 0);
+      g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, `rgba(0,0,0,${MAXA})`);
+      ctx.fillStyle = g;
+      ctx.fillRect(wb.right, vy, FADE, vh);
+      if (vr > wb.right + FADE) {
+        ctx.fillStyle = `rgba(0,0,0,${MAXA})`;
+        ctx.fillRect(wb.right + FADE, vy, vr - wb.right - FADE, vh);
+      }
+    }
+    if (vx < wb.left) {                                    // LEFT edge
+      const g = ctx.createLinearGradient(wb.left, 0, wb.left - FADE, 0);
+      g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, `rgba(0,0,0,${MAXA})`);
+      ctx.fillStyle = g;
+      ctx.fillRect(wb.left - FADE, vy, FADE, vh);
+      if (vx < wb.left - FADE) {
+        ctx.fillStyle = `rgba(0,0,0,${MAXA})`;
+        ctx.fillRect(vx, vy, wb.left - FADE - vx, vh);
+      }
+    }
+    if (vb > wb.bottom) {                                  // BOTTOM edge
+      const g = ctx.createLinearGradient(0, wb.bottom, 0, wb.bottom + FADE);
+      g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, `rgba(0,0,0,${MAXA})`);
+      ctx.fillStyle = g;
+      ctx.fillRect(vx, wb.bottom, vw, FADE);
+      if (vb > wb.bottom + FADE) {
+        ctx.fillStyle = `rgba(0,0,0,${MAXA})`;
+        ctx.fillRect(vx, wb.bottom + FADE, vw, vb - wb.bottom - FADE);
+      }
+    }
+    if (vy < wb.top) {                                     // TOP edge
+      const g = ctx.createLinearGradient(0, wb.top, 0, wb.top - FADE);
+      g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, `rgba(0,0,0,${MAXA})`);
+      ctx.fillStyle = g;
+      ctx.fillRect(vx, wb.top - FADE, vw, FADE);
+      if (vy < wb.top - FADE) {
+        ctx.fillStyle = `rgba(0,0,0,${MAXA})`;
+        ctx.fillRect(vx, vy, vw, wb.top - FADE - vy);
+      }
+    }
+    ctx.restore();
   }
 
   /**
@@ -535,28 +597,27 @@ export class ChunkManager {
     // Try to draw the biome map image (1024→2560 scale)
     const img = mapMgr ? mapMgr.getBiomeImage(chunk.biomeId) : null;
 
+    // Integer destination + 1px opaque overlap: kills hairline seams between
+    // chunk tiles at fractional view scales (later chunks overwrite the overlap).
+    const dx = Math.round(chunk.worldX);
+    const dy = Math.round(chunk.worldY);
     if (img) {
-      ctx.drawImage(img, chunk.worldX, chunk.worldY, CHUNK_SIZE, CHUNK_SIZE);
-      // Dark overlay for gameplay readability
+      ctx.drawImage(img, dx, dy, CHUNK_SIZE + 1, CHUNK_SIZE + 1);
+      // Dark overlay for gameplay readability (exact size — translucent, must not overlap)
       ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
-      ctx.fillRect(chunk.worldX, chunk.worldY, CHUNK_SIZE, CHUNK_SIZE);
+      ctx.fillRect(dx, dy, CHUNK_SIZE, CHUNK_SIZE);
     } else {
-      // Fallback: solid palette background
+      // Fallback: solid palette background (opaque → safe to overlap 1px)
       ctx.fillStyle = pal.bg;
-      ctx.fillRect(chunk.worldX, chunk.worldY, CHUNK_SIZE, CHUNK_SIZE);
+      ctx.fillRect(dx, dy, CHUNK_SIZE + 1, CHUNK_SIZE + 1);
     }
 
     // Draw biome-specific grid
     this._drawChunkGrid(ctx, chunk, pal);
 
-    // Edge darkening: chunks beyond playable area (dist >= 2) get progressive fade
-    const dist = Math.max(Math.abs(cx !== undefined ? cx : chunk.cx),
-                          Math.abs(cy !== undefined ? cy : chunk.cy));
-    if (dist >= 2) {
-      const fade = Math.min(0.7, 0.3 + (dist - 2) * 0.2);
-      ctx.fillStyle = `rgba(0, 0, 0, ${fade})`;
-      ctx.fillRect(chunk.worldX, chunk.worldY, CHUNK_SIZE, CHUNK_SIZE);
-    }
+    // Out-of-bounds darkening is handled by _drawWorldEdgeFade() (smooth gradient
+    // at the world bounds) instead of the old per-chunk step fade, which read as
+    // a hard vertical/horizontal cut exactly at the playable boundary.
     // No strokeRect — eliminates ugly square biome seams
   }
 
@@ -573,12 +634,15 @@ export class ChunkManager {
     ctx.lineWidth = 1;
     ctx.globalAlpha = gridStyle === 'neon' ? 0.25 : 0.15;
 
+    // Interior lines only (start at +spacing, strict < end): lines exactly on
+    // chunk borders were drawn by BOTH neighbouring chunks → double-alpha bright
+    // seam at every chunk boundary (the thin bright vertical line at world edge).
     ctx.beginPath();
-    for (let x = x0; x <= x0 + CHUNK_SIZE; x += spacing) {
+    for (let x = x0 + spacing; x < x0 + CHUNK_SIZE; x += spacing) {
       ctx.moveTo(x, y0);
       ctx.lineTo(x, y0 + CHUNK_SIZE);
     }
-    for (let y = y0; y <= y0 + CHUNK_SIZE; y += spacing) {
+    for (let y = y0 + spacing; y < y0 + CHUNK_SIZE; y += spacing) {
       ctx.moveTo(x0, y);
       ctx.lineTo(x0 + CHUNK_SIZE, y);
     }

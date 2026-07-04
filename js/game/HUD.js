@@ -498,13 +498,15 @@ function _drawSkull(ctx, cx, cy, color) {
 export function drawEndScreen(ctx, game) {
   // ── Cinematic overlay ────────────────────────────────────────────────────
   if (game.victory) {
-    ctx.fillStyle = 'rgba(0,0,0,0.88)';
+    ctx.fillStyle = 'rgba(0,0,0,0.94)';
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
   } else {
+    // Near-opaque backdrop (was 0.90-0.97): the in-game HUD (KILLS / XP digits)
+    // bled through the title area and left stray glyphs inside the heading.
     const _dg = ctx.createRadialGradient(WIDTH / 2, HEIGHT / 2, 60, WIDTH / 2, HEIGHT / 2, HEIGHT * 0.8);
-    _dg.addColorStop(0,   'rgba(10,0,0,0.90)');
-    _dg.addColorStop(0.6, 'rgba(24,0,0,0.93)');
-    _dg.addColorStop(1,   'rgba(50,0,8,0.97)');
+    _dg.addColorStop(0,   'rgba(6,8,14,0.97)');
+    _dg.addColorStop(0.6, 'rgba(9,7,13,0.975)');
+    _dg.addColorStop(1,   'rgba(30,4,12,0.985)');
     ctx.fillStyle = _dg;
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
     // CRT scanlines
@@ -549,7 +551,7 @@ export function drawEndScreen(ctx, game) {
       ctx.fillStyle = '#ff6a7a';
       ctx.fillText(cause, WIDTH / 2, 78);
       ctx.font      = '12px Consolas, monospace';
-      ctx.fillStyle = 'rgba(150,180,200,0.75)';
+      ctx.fillStyle = '#6f86b8';
       ctx.fillText(hint, WIDTH / 2, 94);
     }
   }
@@ -558,19 +560,19 @@ export function drawEndScreen(ctx, game) {
   const heroY   = isVictory ? 82 : 108;
   const score   = Math.floor(game.score ?? 0);
   const scoreTxt = score.toLocaleString();
-  const scoreAccent = isVictory ? '#4eff9f' : '#FFD700';
+  const scoreAccent = '#ffd23c';   // gold — reserved for score numbers only
 
   // New high score burst (non-Endless only)
   if (game.isNewHighScore && !game.endless) {
     ctx.font      = 'bold 14px Consolas, monospace';
-    ctx.fillStyle = '#FFD700';
+    ctx.fillStyle = '#ffd23c';
     ctx.textAlign = 'center';
     ctx.fillText('★  NEW HIGH SCORE  ★', WIDTH / 2, heroY + 4);
   }
 
   // Score label
   ctx.font      = 'bold 11px Consolas, monospace';
-  ctx.fillStyle = 'rgba(180,200,220,0.65)';
+  ctx.fillStyle = 'rgba(46,230,246,0.75)';
   ctx.textAlign = 'center';
   ctx.fillText('SCORE', WIDTH / 2, heroY + 20);
 
@@ -589,7 +591,7 @@ export function drawEndScreen(ctx, game) {
 
   // Best score underneath
   ctx.font = '13px Consolas, monospace';
-  ctx.fillStyle = 'rgba(180,200,220,0.7)';
+  ctx.fillStyle = 'rgba(223,240,255,0.60)';
   ctx.fillText('BEST: ' + (game.bestScore ?? 0).toLocaleString(), WIDTH / 2, heroY + 76);
 
   // ── Stats panel ──────────────────────────────────────────────────────────
@@ -600,7 +602,7 @@ export function drawEndScreen(ctx, game) {
   if (game.endless && game.endlessRun) {
     // Endless mode: THIS RUN vs BEST records inside a premium panel
     const endPanelH = 130;
-    game._premiumPanel(ctx, panelX, y, panelW, endPanelH, CYAN, 'ENDLESS RECORDS');
+    game._premiumPanel(ctx, panelX, y, panelW, endPanelH, '#2ee6f6', 'ENDLESS RECORDS');
     y = _drawEndlessRecords(ctx, game, y + 30, panelX + 14, panelX + panelW - 14);
     // Endless achievements
     if (game.endlessNewAchievements && game.endlessNewAchievements.length) {
@@ -612,24 +614,24 @@ export function drawEndScreen(ctx, game) {
     const mins = Math.floor(game.timeAlive / 60).toString().padStart(2, '0');
     const secs = Math.floor(game.timeAlive % 60).toString().padStart(2, '0');
     const statPanelH = 118;
-    game._premiumPanel(ctx, panelX, y, panelW, statPanelH, isVictory ? GREEN : CYAN, 'MISSION DEBRIEF');
+    game._premiumPanel(ctx, panelX, y, panelW, statPanelH, isVictory ? GREEN : '#2ee6f6', 'MISSION DEBRIEF');
 
     // 2-column stat layout using _statCapsule
     const capW = 260, capH = 38, gap = 14, colL = panelX + 16, colR = panelX + panelW / 2 + 8;
     const row1 = y + 24;
     const row2 = row1 + capH + 6;
-    game._statCapsule(ctx, colL, row1, capW, capH, 'MAX COMBO',           'x' + (game.maxCombo ?? 0), YELLOW);
-    game._statCapsule(ctx, colR, row1, capW, capH, 'SURVIVAL TIME',       mins + ':' + secs, CYAN);
-    game._statCapsule(ctx, colL, row2, capW, capH, 'ENEMIES DEFEATED',    '' + game.player.kills, '#ff6a7a');
-    game._statCapsule(ctx, colR, row2, capW, capH, 'DATA-CORES SECURED',  '' + game.player.coresSecured, GREEN);
+    game._statCapsule(ctx, colL, row1, capW, capH, 'MAX COMBO',           'x' + (game.maxCombo ?? 0), '#2ee6f6');
+    game._statCapsule(ctx, colR, row1, capW, capH, 'SURVIVAL TIME',       mins + ':' + secs, '#2ee6f6');
+    game._statCapsule(ctx, colL, row2, capW, capH, 'ENEMIES DEFEATED',    '' + game.player.kills, '#2ee6f6');
+    game._statCapsule(ctx, colR, row2, capW, capH, 'DATA-CORES SECURED',  '' + game.player.coresSecured, '#2ee6f6');
 
     y += statPanelH + 8;
 
     // Credits sub-panel
     const credH = 44;
-    game._premiumPanel(ctx, panelX, y, panelW, credH, YELLOW, 'GRID CREDITS');
-    game._statCapsule(ctx, panelX + 16, y + 2, capW, capH, 'EARNED THIS RUN', '+' + (game.runCreditsEarned ?? 0), YELLOW);
-    game._statCapsule(ctx, panelX + panelW / 2 + 8, y + 2, capW, capH, 'TOTAL CREDITS', '' + (game.meta?.credits ?? 0), '#FFD700');
+    game._premiumPanel(ctx, panelX, y, panelW, credH, '#2ee6f6', 'GRID CREDITS');
+    game._statCapsule(ctx, panelX + 16, y + 2, capW, capH, 'EARNED THIS RUN', '+' + (game.runCreditsEarned ?? 0), '#2ee6f6');
+    game._statCapsule(ctx, panelX + panelW / 2 + 8, y + 2, capW, capH, 'TOTAL CREDITS', '' + (game.meta?.credits ?? 0), '#2ee6f6');
     y += credH + 6;
   }
 
@@ -644,9 +646,9 @@ export function drawEndScreen(ctx, game) {
   const totalBtnsW = BW * 3 + 24;
   const btnStartX  = WIDTH / 2 - totalBtnsW / 2;
   const btns = [
-    { label: 'RETRY',     accent: CYAN     },
-    { label: 'UPGRADES',  accent: YELLOW   },
-    { label: 'MAIN MENU', accent: '#ff4466' },
+    { label: 'RETRY',     accent: '#2ee6f6' },
+    { label: 'UPGRADES',  accent: '#2ee6f6' },
+    { label: 'MAIN MENU', accent: '#6f86b8' },
   ];
   for (let bi = 0; bi < btns.length; bi++) {
     const btn     = btns[bi];
@@ -673,7 +675,7 @@ export function drawEndScreen(ctx, game) {
 
   // Keyboard / controller hint
   ctx.font      = '13px Consolas, monospace';
-  ctx.fillStyle = 'rgba(90,112,128,0.8)';
+  ctx.fillStyle = '#6f86b8';
   ctx.textAlign = 'center';
   if (hasPad) {
     ctx.fillText('◄ ► Navigate   ·   A = Select   ·   ESC / B = Menu   ·   R = Retry', WIDTH / 2, BY + BH + 18);
@@ -691,11 +693,11 @@ export function drawEndScreen(ctx, game) {
       ? 'EDEN CORE: Rescue used · No fragment'
       : ar.completed > 0 ? 'Perfect clear · Fragment chance applied' : '';
     ctx.font      = '12px Consolas, monospace';
-    ctx.fillStyle = ar.completed > 0 ? '#00e6ff' : '#ff88cc';
+    ctx.fillStyle = ar.completed > 0 ? '#2ee6f6' : '#6f86b8';
     ctx.textAlign = 'center';
     ctx.fillText('⬡  ' + arLine1, WIDTH / 2, BY + BH + 34);
     if (arLine2) {
-      ctx.fillStyle = 'rgba(160,200,220,0.65)';
+      ctx.fillStyle = 'rgba(111,134,184,0.9)';
       ctx.fillText(arLine2, WIDTH / 2, BY + BH + 48);
     }
   }
@@ -706,9 +708,15 @@ export function drawEndScreen(ctx, game) {
     : null;
   const edenMem  = game.meta ? game.meta.getEdenMemory() : 0;
   if ((edenMsgs || edenMem > 0) && typeof game._drawEdenTransmission === 'function') {
-    const edenY  = BY + BH + 54;
-    const panelH = Math.max(68, 14 + (edenMsgs ? edenMsgs.length * 14 : 0) + 28);
-    game._drawEdenTransmission(ctx, {
+    let panelH = Math.max(68, 14 + (edenMsgs ? edenMsgs.length * 14 : 0) + 28);
+    let edenY  = BY + BH + 54;
+    // Keep the transmission panel fully inside the canvas: slide it up first,
+    // and only shrink it if there is genuinely no room left.
+    if (edenY + panelH > HEIGHT - 8) {
+      edenY = Math.max(BY + BH + 30, HEIGHT - 8 - panelH);
+      if (edenY + panelH > HEIGHT - 8) panelH = (HEIGHT - 8) - edenY;
+    }
+    if (panelH >= 46) game._drawEdenTransmission(ctx, {
       x:        WIDTH / 2 - 310,
       y:        edenY,
       w:        620,
@@ -739,51 +747,50 @@ function _drawEndlessRecords(ctx, game, startY, lx, rx) {
 
   let y = startY;
 
-  // Header
-  ctx.font      = 'bold 22px Consolas, monospace';
-  ctx.fillStyle = GREEN;
-  ctx.textAlign = 'center';
-  ctx.fillText('◆ ENDLESS RECORDS ◆', WIDTH / 2, y);
-  y += 34;
+  // No big centered header here — the panel's tab label already reads
+  // "ENDLESS RECORDS"; the duplicate title overlapped the panel frame.
 
-  // Column anchors (right edges of the THIS RUN / BEST value columns)
-  const runR  = WIDTH / 2 + 90;
-  const bestR = WIDTH / 2 + 250;
-  const tagX  = WIDTH / 2 + 262;   // left edge of the ★ NEW BEST tag
+  // Column anchors (right edges of the THIS RUN / BEST value columns).
+  // Pulled inward so the ★ NEW BEST tag always fits inside the panel border.
+  const runR  = WIDTH / 2 + 40;
+  const bestR = WIDTH / 2 + 170;
+  const tagX  = WIDTH / 2 + 186;   // left edge of the ★ NEW BEST tag
 
   // Column headers
-  ctx.font      = '14px Consolas, monospace';
-  ctx.fillStyle = '#7fa8c8';
+  ctx.font      = '12px Consolas, monospace';
+  ctx.fillStyle = 'rgba(46,230,246,0.55)';
   ctx.textAlign = 'right';
   ctx.fillText('THIS RUN', runR, y);
   ctx.fillText('BEST', bestR, y);
-  y += 26;
+  y += 24;
 
   const rows = [
-    ['TIME',  fmtTime(run.time),  fmtTime(best.time),  isNew.time],
-    ['SCORE', fmtNum(run.score),  fmtNum(best.score),  isNew.score],
-    ['LEVEL', fmtNum(run.level),  fmtNum(best.level),  isNew.level],
+    ['TIME',  fmtTime(run.time),  fmtTime(best.time),  isNew.time,  false],
+    ['SCORE', fmtNum(run.score),  fmtNum(best.score),  isNew.score, true],
+    ['LEVEL', fmtNum(run.level),  fmtNum(best.level),  isNew.level, false],
   ];
 
-  for (const [label, runV, bestV, beat] of rows) {
-    ctx.font      = '22px Consolas, monospace';
+  for (const [label, runV, bestV, beat, isScore] of rows) {
+    ctx.font      = '15px Consolas, monospace';
     ctx.textAlign = 'left';
-    ctx.fillStyle = CYAN;
+    ctx.fillStyle = '#2ee6f6';
     ctx.fillText(label, lx, y);
 
+    // Values in white — gold is reserved for the score numbers only
+    ctx.font      = 'bold 18px Consolas, monospace';
     ctx.textAlign = 'right';
-    ctx.fillStyle = beat ? '#FFD700' : WHITE;
+    ctx.fillStyle = isScore ? '#ffd23c' : '#dff0ff';
     ctx.fillText(runV, runR, y);
-    ctx.fillStyle = beat ? '#FFD700' : YELLOW;
+    ctx.fillStyle = isScore ? 'rgba(255,210,60,0.75)' : 'rgba(223,240,255,0.55)';
     ctx.fillText(bestV, bestR, y);
 
     if (beat) {
       ctx.textAlign = 'left';
-      ctx.font      = 'bold 14px Consolas, monospace';
-      ctx.fillStyle = '#FFD700';
+      ctx.font      = 'bold 11px Consolas, monospace';
+      ctx.fillStyle = '#2ee6f6';
       ctx.fillText('★ NEW BEST', tagX, y);
     }
-    y += 30;
+    y += 26;
   }
 
   ctx.textAlign = 'left';
@@ -801,7 +808,7 @@ function _drawEndlessAchievements(ctx, game, startY) {
   let y = startY + 14;
 
   ctx.font      = 'bold 18px Consolas, monospace';
-  ctx.fillStyle = GREEN;
+  ctx.fillStyle = '#2ee6f6';
   ctx.textAlign = 'center';
   ctx.fillText('ACHIEVEMENTS UNLOCKED', WIDTH / 2, y);
   y += 28;
@@ -819,7 +826,7 @@ function _drawEndlessAchievements(ctx, game, startY) {
     const row = i % perCol;
     const cx  = startX + col * colW + colW / 2;
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#FFD700';
+    ctx.fillStyle = '#dff0ff';
     ctx.fillText('★ ' + items[i].name, cx, y + row * lineH);
   }
 
@@ -843,7 +850,7 @@ function _drawChaosRankBadge(ctx, game, startY) {
   let y = startY + 10;
   ctx.save();
   ctx.textAlign   = 'center';
-  ctx.fillStyle   = 'rgba(255,45,149,0.08)';
+  ctx.fillStyle   = 'rgba(46,230,246,0.06)';
   ctx.strokeStyle = color;
   ctx.lineWidth   = 1.5;
   ctx.shadowColor = glow;
@@ -853,7 +860,7 @@ function _drawChaosRankBadge(ctx, game, startY) {
   ctx.fill();
   ctx.stroke();
   ctx.font      = 'bold 12px Consolas, monospace';
-  ctx.fillStyle = '#ff2d95';
+  ctx.fillStyle = '#2ee6f6';
   ctx.shadowBlur = 4;
   ctx.fillText('⚡ CHAOS SURVIVAL RANK', WIDTH / 2, y + 12);
   ctx.font      = 'bold 16px Consolas, monospace';
@@ -880,16 +887,24 @@ function _drawPersonalRecords(ctx, game, lx, rx, dynamicY) {
   ctx.beginPath();
   ctx.roundRect(lx - 8, y0 - 16, rx - lx + 16, panH, 4);
   ctx.fill();
+  // 1px cyan border + soft glow — matches the premium panels above
+  ctx.save();
+  ctx.strokeStyle = 'rgba(46,230,246,0.30)';
+  ctx.lineWidth   = 1;
+  ctx.shadowColor = '#2ee6f6';
+  ctx.shadowBlur  = 8;
+  ctx.stroke();
+  ctx.restore();
 
   ctx.font      = 'bold 12px Consolas, monospace';
-  ctx.fillStyle = '#fbbf24';
+  ctx.fillStyle = '#2ee6f6';
   ctx.textAlign = 'center';
   ctx.fillText('— PERSONAL RECORDS (LAST ' + rows.length + ' RUNS) —', (lx + rx) / 2, y0);
 
   ctx.font = '11px Consolas, monospace';
   const colX = [lx, lx + 60, lx + 140, lx + 210, lx + 280, rx];
   const headers = ['DATE', 'MODE', 'CHAR', 'LVL', 'SCORE', 'TIME'];
-  ctx.fillStyle = '#4a6080';
+  ctx.fillStyle = 'rgba(46,230,246,0.5)';
   ctx.textAlign = 'left';
   headers.forEach((h, i) => {
     if (i === headers.length - 1) {
@@ -904,14 +919,21 @@ function _drawPersonalRecords(ctx, game, lx, rx, dynamicY) {
   rows.forEach((run, idx) => {
     const ry = y0 + lineH * (idx + 2);
     const isLatest = idx === 0;
-    ctx.fillStyle = isLatest ? '#cfe9ff' : '#5a7090';
+    ctx.fillStyle = isLatest ? '#dff0ff' : '#6f86b8';
     const fmtTime = (s) => {
       const m = Math.floor((s || 0) / 60).toString().padStart(2, '0');
       const c = Math.floor((s || 0) % 60).toString().padStart(2, '0');
       return `${m}:${c}`;
     };
-    const charShort = (run.char || 'UNK').replace(/_/g,' ').slice(0, 10);
-    const modeShort = (run.mode || '').slice(0, 8);
+    // measureText-fit so long names can never overflow their column
+    const fitText = (t, maxW) => {
+      t = String(t);
+      if (ctx.measureText(t).width <= maxW) return t;
+      while (t.length > 1 && ctx.measureText(t + '…').width > maxW) t = t.slice(0, -1);
+      return t + '…';
+    };
+    const charShort = fitText((run.char || 'UNK').replace(/_/g, ' '), colX[3] - colX[2] - 10);
+    const modeShort = fitText(run.mode || '', colX[2] - colX[1] - 10);
     const values = [run.date || '', modeShort, charShort, run.level || 0, run.score || 0, fmtTime(run.time)];
     values.forEach((v, i) => {
       if (i === values.length - 1) {
