@@ -41,7 +41,7 @@ import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260703999000';
 import { NexusManager } from './NexusManager.js?v=20260703999000';
 import { VESSELS, getVesselById, getDefaultVesselId } from './VesselCatalog.js?v=20260703996000';
 import { PETS, getPetById } from './PetCatalog.js?v=20260703999100';
-import { WEAPON_ID, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons } from './WeaponCatalog.js?v=20260704120000';
+import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons } from './WeaponCatalog.js?v=20260704120000';
 import { VFXSpritePlayer } from './VFXSpritePlayer.js?v=20260704120000';
 
 // ── Mastery card → base weapon mapping (for evolution level tracking) ──
@@ -772,6 +772,15 @@ export class Game {
       console.error('[CGM Hangar] _initHangarOverlay failed:', err);
     }
 
+    this._evoMatrixOverlayEl      = null;
+    this._evoMatrixOverlayVisible = false;
+    this._evoMatrixFocusIdx       = 0;    // gamepad focus row (0-3)
+    try {
+      this._initEvoMatrixOverlay();
+    } catch (err) {
+      console.error('[CGM EvoMatrix] _initEvoMatrixOverlay failed:', err);
+    }
+
     // Preload vessel sprite images for hangar
     this._vesselSpriteCache = {};
     VESSELS.forEach(v => {
@@ -823,7 +832,7 @@ export class Game {
     const items = ['START GAME'];
     if (this.meta?.isEndlessUnlocked()) items.push('ENDLESS MODE');
     items.push('CHAOS MODE');   // always visible; locked if !endlessUnlocked — handled in draw/click
-    items.push('CHARACTER SELECT', 'UPGRADES', 'ACHIEVEMENTS', 'RELICS', 'HANGAR', 'SETTINGS', 'EXIT');
+    items.push('CHARACTER SELECT', 'UPGRADES', 'ACHIEVEMENTS', 'RELICS', 'HANGAR', 'EVOLUTION MATRIX', 'SETTINGS', 'EXIT');
     return items;
   }
 
@@ -1331,6 +1340,7 @@ export class Game {
       this._hideAchievementsOverlay();
       this._hideRelicsOverlay();
       this._hideHangarOverlay();
+      this._hideEvoMatrixOverlay();
       this._showMenuOverlay();
     });
   }
@@ -3975,6 +3985,269 @@ export class Game {
 
   _drawHangarScreen(ctx) {
     if (this._hangarOverlayVisible) return;   // DOM overlay takes over
+  }
+
+  // ─── EVOLUTION MATRIX OVERLAY ─────────────────────────────────────────────
+  goToEvolutionMatrix() { this._hideMenuOverlay(); this.gameState = 'evolution_matrix'; this._evoMatrixFocusIdx = 0; this._showEvoMatrixOverlay(); }
+
+  _initEvoMatrixOverlay() {
+    if (this._evoMatrixOverlayEl) return;
+
+    // ── Character ID → display name mapping ──
+    const charNames = {};
+    (this.characters || []).forEach(c => { charNames[c.id] = c.name; });
+
+    if (!document.getElementById('cgm-evomatrix-style')) {
+      const style = document.createElement('style');
+      style.id = 'cgm-evomatrix-style';
+      style.textContent = `
+        #cgm-evomatrix {
+          position:fixed; inset:0; z-index:140; display:none;
+          align-items:flex-start; justify-content:center;
+          overflow-y:auto; padding:16px 14px 24px;
+          font-family:'Share Tech Mono',ui-monospace,monospace; color:#cfe9ff;
+          background:
+            radial-gradient(1200px 700px at 50% -10%,rgba(46,230,246,.12),transparent 60%),
+            radial-gradient(900px 600px at 80% 40%,rgba(168,85,247,.08),transparent 60%),
+            linear-gradient(180deg,#0d0b18,#070a1c);
+          --amber:#fbbf24; --cyan:#2ee6f6; --green:#34d399; --orange:#ff9900; --purple:#a855f7;
+          --magenta:#ff2d95; --txt:#cfe9ff; --txt-dim:#6f86b8; --panel-edge:rgba(46,230,246,.15);
+          --glow-cyan:0 0 8px rgba(46,230,246,.55),0 0 22px rgba(46,230,246,.22);
+          --glow-magenta:0 0 8px rgba(255,45,149,.55),0 0 22px rgba(255,45,149,.22);
+          --radius:12px;
+        }
+        #cgm-evomatrix * { box-sizing:border-box; margin:0; padding:0; }
+
+        #cgm-evomatrix .em-stage {
+          position:relative; z-index:1; width:100%; max-width:1100px;
+          border:1px solid var(--panel-edge); border-radius:20px;
+          padding:22px 26px 20px;
+          background:rgba(10,8,22,.82);
+          box-shadow:inset 0 0 60px rgba(46,230,246,.05),0 30px 80px rgba(0,0,0,.55);
+          display:flex; flex-direction:column; align-items:stretch; gap:14px;
+        }
+
+        #cgm-evomatrix .em-header { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; }
+        #cgm-evomatrix .em-title  { font-family:'Orbitron',sans-serif; font-weight:800; font-size:16px; letter-spacing:3px; color:var(--cyan); text-shadow:var(--glow-cyan); }
+        #cgm-evomatrix .em-subtitle { font-family:'Orbitron',sans-serif; font-weight:600; font-size:11px; letter-spacing:2px; color:var(--magenta); text-shadow:var(--glow-magenta); }
+        #cgm-evomatrix .em-sep { width:100%; height:1px; background:linear-gradient(90deg,transparent,var(--cyan),transparent); opacity:.3; }
+
+        #cgm-evomatrix .em-recipes { display:flex; flex-direction:column; gap:12px; }
+
+        #cgm-evomatrix .em-recipe {
+          position:relative; border-radius:var(--radius); border:1px solid rgba(46,90,100,.25);
+          background:rgba(10,16,46,.55); padding:14px 16px;
+          display:flex; align-items:center; gap:12px; flex-wrap:wrap;
+          transition:border-color .2s, box-shadow .2s; cursor:pointer;
+        }
+        #cgm-evomatrix .em-recipe:hover { border-color:var(--cyan); background:rgba(10,16,46,.7); }
+        #cgm-evomatrix .em-recipe.em-focused {
+          border-color:var(--magenta);
+          box-shadow:0 0 14px rgba(255,45,149,.35), inset 0 0 30px rgba(255,45,149,.06);
+          animation:em-pulse 1.5s ease-in-out infinite;
+        }
+        @keyframes em-pulse {
+          0%,100% { box-shadow:0 0 14px rgba(255,45,149,.35), inset 0 0 30px rgba(255,45,149,.06); }
+          50%     { box-shadow:0 0 22px rgba(255,45,149,.55), inset 0 0 40px rgba(255,45,149,.1); }
+        }
+
+        #cgm-evomatrix .em-weapon {
+          display:flex; flex-direction:column; align-items:center; gap:4px; min-width:120px;
+        }
+        #cgm-evomatrix .em-weapon-icon {
+          width:54px; height:54px; border-radius:10px; border:2px solid currentColor;
+          background:rgba(0,0,0,.3); display:flex; align-items:center; justify-content:center;
+          font-size:22px; transition:.2s;
+        }
+        #cgm-evomatrix .em-weapon-name {
+          font-family:'Orbitron',sans-serif; font-weight:700; font-size:11px; color:#dff0ff;
+          text-align:center; line-height:1.3; max-width:130px;
+        }
+        #cgm-evomatrix .em-weapon-char {
+          font-size:9px; letter-spacing:1.5px; text-transform:uppercase; color:var(--txt-dim);
+          text-align:center;
+        }
+
+        #cgm-evomatrix .em-op {
+          font-family:'Orbitron',sans-serif; font-weight:900; font-size:18px;
+          color:var(--txt-dim); flex-shrink:0;
+        }
+        #cgm-evomatrix .em-op.em-arrow { color:var(--cyan); text-shadow:var(--glow-cyan); }
+
+        #cgm-evomatrix .em-evo {
+          display:flex; flex-direction:column; align-items:center; gap:4px; min-width:150px; flex:1;
+        }
+        #cgm-evomatrix .em-evo-icon {
+          width:62px; height:62px; border-radius:12px; border:2px solid currentColor;
+          background:rgba(0,0,0,.4); display:flex; align-items:center; justify-content:center;
+          font-size:26px; box-shadow:0 0 12px rgba(255,255,255,.08);
+        }
+        #cgm-evomatrix .em-evo-name {
+          font-family:'Orbitron',sans-serif; font-weight:800; font-size:13px;
+          text-align:center; line-height:1.3;
+        }
+        #cgm-evomatrix .em-evo-desc {
+          font-size:10px; color:#8aa0c0; text-align:center; line-height:1.4; max-width:280px;
+        }
+        #cgm-evomatrix .em-evo-element {
+          font-size:9px; letter-spacing:2px; text-transform:uppercase; padding:3px 10px;
+          border-radius:999px; border:1px solid rgba(46,230,246,.25); background:rgba(46,230,246,.06);
+        }
+
+        #cgm-evomatrix .em-tooltip {
+          display:none; width:100%; margin-top:6px; padding:10px 14px;
+          border-radius:8px; border:1px solid rgba(168,85,247,.25);
+          background:rgba(15,10,30,.85); font-size:11px; color:#a0b8d0; line-height:1.5;
+        }
+        #cgm-evomatrix .em-recipe.em-expanded .em-tooltip { display:block; }
+
+        #cgm-evomatrix .em-footer { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; }
+        #cgm-evomatrix .em-foot-btn { padding:11px 26px; border-radius:10px; cursor:pointer; border:1px solid rgba(111,134,184,.22); background:rgba(10,16,46,.3); color:var(--txt-dim); font-family:'Orbitron',sans-serif; font-weight:700; font-size:12px; letter-spacing:2px; transition:.15s; }
+        #cgm-evomatrix .em-foot-btn:hover { border-color:var(--txt-dim); color:var(--txt); }
+        #cgm-evomatrix .em-hint { color:var(--txt-dim); font-size:11px; letter-spacing:1px; }
+
+        @media (max-width:700px) {
+          #cgm-evomatrix .em-recipe { flex-direction:column; align-items:center; text-align:center; gap:8px; }
+          #cgm-evomatrix .em-weapon { min-width:unset; }
+          #cgm-evomatrix .em-evo { min-width:unset; }
+        }
+      `;
+      document.head.appendChild(style);
+    }
+
+    // ── Element symbols for each element type ──
+    const elemIcons = { electric: '⚡', fire: '🔥', ice: '❄️', toxin: '☣️', void: '🌀' };
+
+    const el = document.createElement('div');
+    el.id = 'cgm-evomatrix';
+    el.setAttribute('role', 'dialog');
+    el.setAttribute('aria-label', 'Evolution Matrix');
+
+    // ── Build recipe rows from EVOLUTION_RECIPES + WEAPON_DEFS ──
+    let recipesHTML = '';
+    EVOLUTION_RECIPES.forEach((recipe, idx) => {
+      const wA = getWeaponDef(recipe.ingredients[0]);
+      const wB = getWeaponDef(recipe.ingredients[1]);
+      const evo = getWeaponDef(recipe.result);
+      if (!wA || !wB || !evo) return;
+
+      const charA = charNames[wA.character] || wA.character || '???';
+      const charB = charNames[wB.character] || wB.character || '???';
+      const evoElem = evo.element || 'void';
+      const elemIcon = elemIcons[evoElem] || '⭐';
+
+      recipesHTML += `
+        <div class="em-recipe" data-idx="${idx}" tabindex="0">
+          <div class="em-weapon">
+            <div class="em-weapon-icon" style="color:${wA.color}">${elemIcons[wA.element] || '⚔️'}</div>
+            <div class="em-weapon-name">${wA.name.replace(/'/g, '’')}</div>
+            <div class="em-weapon-char">${charA}</div>
+          </div>
+          <div class="em-op">+</div>
+          <div class="em-weapon">
+            <div class="em-weapon-icon" style="color:${wB.color}">${elemIcons[wB.element] || '⚔️'}</div>
+            <div class="em-weapon-name">${wB.name.replace(/'/g, '’')}</div>
+            <div class="em-weapon-char">${charB}</div>
+          </div>
+          <div class="em-op em-arrow">▶</div>
+          <div class="em-evo">
+            <div class="em-evo-icon" style="color:${evo.color}">${elemIcon}</div>
+            <div class="em-evo-name" style="color:${evo.color}">${evo.name.replace(/'/g, '’')}</div>
+            <div class="em-evo-element" style="color:${evo.color};border-color:${evo.color}40">${evoElem.toUpperCase()}</div>
+          </div>
+          <div class="em-tooltip">
+            <strong style="color:${evo.color}">${evo.name.replace(/'/g, '’')}</strong><br>
+            ${evo.description.replace(/'/g, '’')}<br><br>
+            <span style="color:var(--cyan)">Requires:</span> Both <strong>${wA.name.replace(/'/g, '’')}</strong> and <strong>${wB.name.replace(/'/g, '’')}</strong> at Level ${recipe.minLevel} during a run.<br>
+            <span style="color:var(--amber)">DMG ${evo.baseStats.damage}</span> &middot;
+            <span style="color:var(--cyan)">CD ${evo.baseStats.cooldown}s</span> &middot;
+            <span style="color:var(--green)">AOE ${evo.baseStats.aoeRadius}px</span> &middot;
+            <span style="color:var(--purple)">Pierce ${evo.baseStats.piercing === 99 ? 'ALL' : evo.baseStats.piercing}</span>
+          </div>
+        </div>`;
+    });
+
+    el.innerHTML = `
+      <div class="em-stage">
+        <div class="em-header">
+          <div class="em-title">⬢ EVOLUTION MATRIX</div>
+          <div class="em-subtitle">WEAPON FUSION PROTOCOLS</div>
+        </div>
+        <div class="em-sep"></div>
+        <div class="em-recipes" id="em-recipes">${recipesHTML}</div>
+        <div class="em-sep"></div>
+        <div class="em-footer">
+          <button class="em-foot-btn" id="em-back-btn">◀ BACK</button>
+          <div class="em-hint">Level both weapons to 5 during a run to trigger evolution.</div>
+        </div>
+      </div>
+    `;
+
+    // ── Mouse: hover toggles tooltip ──
+    el.querySelectorAll('.em-recipe').forEach(row => {
+      row.addEventListener('mouseenter', () => row.classList.add('em-expanded'));
+      row.addEventListener('mouseleave', () => row.classList.remove('em-expanded'));
+      row.addEventListener('click', () => row.classList.toggle('em-expanded'));
+    });
+
+    el.querySelector('#em-back-btn')?.addEventListener('click', () => this.goToMainMenu());
+
+    // ── Gamepad / keyboard navigation ──
+    el.addEventListener('keydown', (e) => {
+      const rows = el.querySelectorAll('.em-recipe');
+      if (!rows.length) return;
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        this._evoMatrixFocusIdx = Math.min(this._evoMatrixFocusIdx + 1, rows.length - 1);
+        this._syncEvoMatrixFocus();
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        this._evoMatrixFocusIdx = Math.max(this._evoMatrixFocusIdx - 1, 0);
+        this._syncEvoMatrixFocus();
+      } else if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        rows[this._evoMatrixFocusIdx]?.classList.toggle('em-expanded');
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        this.goToMainMenu();
+      }
+    });
+
+    document.body.appendChild(el);
+    this._evoMatrixOverlayEl = el;
+  }
+
+  _syncEvoMatrixFocus() {
+    if (!this._evoMatrixOverlayEl) return;
+    const rows = this._evoMatrixOverlayEl.querySelectorAll('.em-recipe');
+    rows.forEach((r, i) => {
+      r.classList.toggle('em-focused', i === this._evoMatrixFocusIdx);
+    });
+    rows[this._evoMatrixFocusIdx]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    rows[this._evoMatrixFocusIdx]?.focus({ preventScroll: true });
+  }
+
+  _showEvoMatrixOverlay() {
+    if (!this._evoMatrixOverlayEl) return;
+    this._evoMatrixOverlayEl.style.display = 'flex';
+    this._evoMatrixOverlayVisible = true;
+    this._evoMatrixFocusIdx = 0;
+    this._syncEvoMatrixFocus();
+  }
+
+  _hideEvoMatrixOverlay() {
+    if (!this._evoMatrixOverlayEl) return;
+    this._evoMatrixOverlayEl.style.display = 'none';
+    this._evoMatrixOverlayVisible = false;
+    // Clear expanded tooltips
+    this._evoMatrixOverlayEl.querySelectorAll('.em-recipe').forEach(r => {
+      r.classList.remove('em-expanded', 'em-focused');
+    });
+  }
+
+  _drawEvolutionMatrixScreen(ctx) {
+    if (this._evoMatrixOverlayVisible) return;   // DOM overlay takes over
   }
 
     _drawUpgradesScreen(ctx) {
@@ -7101,6 +7374,7 @@ export class Game {
     else if (item === 'ACHIEVEMENTS')   this.goToAchievementsScreen();
     else if (item === 'RELICS')         this.goToRelicsScreen();
     else if (item === 'HANGAR')         this.goToHangar();
+    else if (item === 'EVOLUTION MATRIX') this.goToEvolutionMatrix();
     else if (item === 'SETTINGS')       this.goToSettings();
     else if (item === 'EXIT') { try { window.close(); } catch (e) {} this.goToExitScreen(); }   // browser-safe: close if allowed, else friendly exit screen
   }
@@ -10218,6 +10492,11 @@ export class Game {
     }
     if (this.gameState === 'hangar') {
       this._drawHangarScreen(ctx);
+      this._drawFade(ctx);
+      return;
+    }
+    if (this.gameState === 'evolution_matrix') {
+      this._drawEvolutionMatrixScreen(ctx);
       this._drawFade(ctx);
       return;
     }

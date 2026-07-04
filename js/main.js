@@ -1,4 +1,4 @@
-import { Game } from './game/Game.js?v=20260704130000';
+import { Game } from './game/Game.js?v=20260704140000';
 import { AudioManager } from './audio/AudioManager.js?v=20260703990000';
 import { GamepadInput } from './Gamepad.js?v=20260703990000';
 import { initTouchControls } from './TouchInput.js?v=20260703990000';
@@ -156,6 +156,8 @@ window.addEventListener('keydown', e => {
     } else if (game.gameState === 'instructions') {
       game.goToMainMenu();
     } else if (game.gameState === 'achievements') {
+      game.goToMainMenu();
+    } else if (game.gameState === 'evolution_matrix') {
       game.goToMainMenu();
     } else if (game.gameState === 'playing') {
       if (game.gameOver || game.victory) {
