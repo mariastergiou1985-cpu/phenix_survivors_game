@@ -255,16 +255,14 @@ export const PRIMARY_WEAPON_MAP = Object.freeze({
 });
 
 // ── Boss weapon assignments ──────────────────────────────────────────
-// All bosses carry the 3 heavy sweep weapons (abyss/blacknet/cryo) as primary
-// plus their unique secondary weapons for visual variety.
+// Only the Rogue AI Overlord is a real Enemy type that routes through this
+// catalog. The other named bosses (Cyber Titan, Cyber Serpent/Dragon, Double
+// Demons, Bloodfang, the Endless act bosses, etc.) are bespoke boss objects
+// with custom attack code in Game.js/Events.js — they never do a catalog
+// lookup, so the seven old keys here (cryo-warden, forge-mauler, ...) were
+// dead data with no matching enemyType and have been removed.
 export const BOSS_WEAPON_MAP = Object.freeze({
-  'cryo-warden':     ['cryo_shard_lance', 'abyss_rift_blade', 'blacknet_scythe_arc'],
-  'forge-mauler':    ['abyss_rift_blade', 'blacknet_scythe_arc', 'magma_reaver_lance'],
-  'null-hierophant': ['blacknet_scythe_arc', 'cryo_shard_lance', 'null_rupture_orb'],
-  'pale-bloodknight':['abyss_rift_blade', 'blacknet_scythe_arc', 'cryo_shard_lance'],
-  'rail-reaper':     ['cryo_shard_lance', 'abyss_rift_blade', 'seraph_vector_javelin'],
-  'reactor-colossus':['abyss_rift_blade', 'blacknet_scythe_arc', 'magma_reaver_lance'],
-  'solar-tyrant':    ['blacknet_scythe_arc', 'cryo_shard_lance', 'eden_star_lance'],
+  'rogue-ai-overlord': ['eden_star_lance', 'null_sigil_beam'],
 });
 
 // ── Mini enemy weapon assignments ────────────────────────────────────

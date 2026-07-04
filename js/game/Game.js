@@ -10,13 +10,13 @@ import { clamp, distance, safeNormalize, randomChoice, randomRange } from '../ut
 import { FloatingText }   from '../entities/FloatingText.js?v=20260703990000';
 import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260705040000';
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260705040000';
-import { Player }         from '../entities/Player.js?v=20260703990000';
+import { Player }         from '../entities/Player.js?v=20260705100000';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260703990000';
-import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260705090000';
+import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260705100000';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=20260703990000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260703990000';
-import { SystemEventManager } from './Events.js?v=20260705090000';
+import { SystemEventManager } from './Events.js?v=20260705100000';
 import { UpgradeUI }      from './UpgradeUI.js?v=20260705040000';
 import { weightedSample } from './Upgrades.js?v=20260705040000';
 import { MutationUI }      from './MutationUI.js?v=20260703990000';
@@ -992,6 +992,7 @@ export class Game {
     this._nextCardLevel  = 1;     // card-pacing: next player level that will OFFER an upgrade card
     this.megaBoss     = null;
     this.bossLavaZones = [];   // telegraphed lava/fire-rain zones cast by the main boss (player-only)
+    this._enemyOrbZones = [];  // elite ORB_EXPLOSION warn→impact ground zones (player-only, cap 10)
     this.bossTrails    = [];   // boss/mini-boss corruption blood trails — player-only DoT (capped, auto-expire)
     this._lavaRainActive = 0;  // ambient Lava Rain active window (s) — sustained storm, capped drops
     this._lavaSpawnCd    = 0;  // cadence within an active Lava Rain window
@@ -6867,6 +6868,7 @@ export class Game {
     this._updateCyberBikeRush(dt);
     this._checkPlayerEnemyCollisions(dt);
     this._updateEnemyBullets(dt);
+    this._updateEnemyOrbZones(dt);
     this._updateAbilityTimers(dt);
     this._updateQuantumOverhaul(dt);
     this._updateAcidRain(dt);
@@ -7940,6 +7942,9 @@ export class Game {
     const angle = Math.atan2(dir.y, dir.x);
     this.enemyBullets.push({
       pos, dir: dir.clone(), speed, damage, radius, color, life: 4.0,
+      behavior: opts.behavior || null,          // elite catalog behavior ('boomerang' / 'orb_explosion')
+      t: 0,                                     // flight-time accumulator for behavior phases
+      originX: pos.x, originY: pos.y,           // spawn origin — boomerang return target
       stun: opts.stun || 0,
       weaponSprite: opts.weaponSprite || null,
       weaponSize:   opts.weaponSize   || 0,
@@ -7952,6 +7957,25 @@ export class Game {
       const b = this.enemyBullets[i];
       b.pos.addMut(b.dir.scale(b.speed * dt));
       b.life -= dt;
+      b.t = (b.t || 0) + dt;
+
+      // ── Elite weapon behavior: BOOMERANG — fly out 0.55s, then arc back to origin ──
+      if (b.behavior === 'boomerang') {
+        b.angle = (b.angle || 0) + dt * 8;                     // visual spin (draw rotates by live angle)
+        if (b.t > 0.55) {
+          const ox = b.originX - b.pos.x, oy = b.originY - b.pos.y;
+          if (Math.sqrt(ox * ox + oy * oy) < 18) { this.enemyBullets.splice(i, 1); continue; }  // came home — expire
+          // Steer smoothly toward the spawn origin with a capped turn rate (no snap reversal).
+          const want = Math.atan2(oy, ox);
+          const cur  = Math.atan2(b.dir.y, b.dir.x);
+          let dAng = want - cur;
+          while (dAng >  Math.PI) dAng -= Math.PI * 2;
+          while (dAng < -Math.PI) dAng += Math.PI * 2;
+          const step = clamp(dAng, -5.5 * dt, 5.5 * dt);       // 5.5 rad/s → full reversal in ~0.6s
+          const ang  = cur + step;
+          b.dir.x = Math.cos(ang); b.dir.y = Math.sin(ang);
+        }
+      }
 
       // OOB check: use camera-relative coords so bullets survive in the larger Endless world.
       // Margin of 400px keeps bullets alive long enough to reach distant targets with
@@ -7959,6 +7983,7 @@ export class Game {
       const bx = b.pos.x - this.camera.x, by = b.pos.y - this.camera.y;
       if (b.life <= 0 || bx < -400 || bx > this._viewW + 400 ||
           by < -400 || by > this._viewH + 400) {
+        if (b.behavior === 'orb_explosion' && b.life <= 0) this._spawnEnemyOrbZone(b);  // fuse ran out → detonate
         this.enemyBullets.splice(i, 1);
         continue;
       }
@@ -7969,11 +7994,72 @@ export class Game {
       if (distance(b.pos, this.player.pos) < b.radius + PLAYER_RADIUS) {
         if (this._damagePlayer(b.damage, { color: RED, shake: 5 })) {
           if (b.stun) this.player.applyBite({ stagger: b.stun });   // telegraphed stun bolt — anti-lock immunity inside applyBite
+          if (b.behavior === 'orb_explosion') this._spawnEnemyOrbZone(b);   // detonate on impact too
           this.audio?.playEnemyProjectileImpact();
           this.enemyBullets.splice(i, 1);
         }
       }
     }
+  }
+
+  // ── Elite ORB_EXPLOSION ground zones (warn ring → impact) ────────────────────
+  // Minimal replica of the bossLavaZones pattern: that infra is DPS-tick based with
+  // baked-in lava colors, so a tiny dedicated array is cleaner than bending it.
+  // Player-only, ONE-shot damage (the bullet's damage), hard-capped at 10 zones.
+  _spawnEnemyOrbZone(b) {
+    if (this._enemyOrbZones.length >= 10) return;              // hard cap on active zones
+    this._enemyOrbZones.push({
+      pos: b.pos.clone(), radius: 70, warn: 0.6, impact: 0.35, t: 0,
+      damage: b.damage, hit: false,
+    });
+  }
+
+  _updateEnemyOrbZones(dt) {
+    if (!this._enemyOrbZones.length) return;
+    for (const z of this._enemyOrbZones) {
+      z.t += dt;
+      if (!z.hit && z.t >= z.warn) {
+        z.hit = true;                                          // fires exactly once
+        if (distance(this.player.pos, z.pos) < z.radius + PLAYER_RADIUS) {
+          this._damagePlayer(z.damage, { color: '#9d6bff', shake: 5 });   // fairness gate inside
+        }
+      }
+    }
+    this._enemyOrbZones = this._enemyOrbZones.filter(z => z.t < z.warn + z.impact);
+  }
+
+  _drawEnemyOrbZones(ctx) {
+    if (!this._enemyOrbZones.length) return;
+    const now = performance.now();
+    ctx.save();
+    for (const z of this._enemyOrbZones) {
+      if (z.t < z.warn) {
+        // WARN (0.6s): pulsing cyan-violet telegraph — outer blast ring + closing inner ring.
+        const k     = z.t / z.warn;
+        const pulse = 0.5 + 0.5 * Math.sin(now * 0.02);
+        ctx.globalAlpha = 0.35 + 0.4 * k;
+        ctx.strokeStyle = '#6be4ff'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(z.pos.x, z.pos.y, z.radius, 0, Math.PI * 2); ctx.stroke();
+        ctx.strokeStyle = '#9d6bff'; ctx.lineWidth = 2 + 2 * k;
+        ctx.beginPath(); ctx.arc(z.pos.x, z.pos.y, z.radius * (1 - 0.6 * k), 0, Math.PI * 2); ctx.stroke();
+        ctx.globalAlpha = 0.10 + 0.12 * k * pulse;
+        ctx.fillStyle = '#7c5cff';
+        ctx.beginPath(); ctx.arc(z.pos.x, z.pos.y, z.radius, 0, Math.PI * 2); ctx.fill();
+      } else {
+        // IMPACT (0.35s): bright violet burst fading out.
+        const k = 1 - (z.t - z.warn) / z.impact;               // 1 → 0
+        const g = ctx.createRadialGradient(z.pos.x, z.pos.y, 0, z.pos.x, z.pos.y, z.radius);
+        g.addColorStop(0,   `rgba(210,180,255,${(0.55 * k).toFixed(3)})`);
+        g.addColorStop(0.5, `rgba(140,90,255,${(0.40 * k).toFixed(3)})`);
+        g.addColorStop(1,   'rgba(60,20,120,0)');
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(z.pos.x, z.pos.y, z.radius, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = `rgba(157,107,255,${(0.6 * k).toFixed(3)})`; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(z.pos.x, z.pos.y, z.radius, 0, Math.PI * 2); ctx.stroke();
+      }
+    }
+    ctx.globalAlpha = 1; ctx.restore();
   }
 
   _updateProjectiles(dt) {
@@ -11268,6 +11354,12 @@ export class Game {
           this.player.applyDamage(dmg);
           damageDone = true;
 
+          // Cryo Claw contact identity — chill: 25% move slow for 1.2s (refresh, never stacks;
+          // decay + speed multiplier live in Player).
+          if (e.enemyType === 'Cryo Claw') {
+            this.player._chillT = Math.max(this.player._chillT || 0, 1.2);
+          }
+
           // Throttle screen shake and floating text to once per 0.5s
           if (this.playerHitCooldown <= 0) {
             this.playerHitCooldown = 0.5;
@@ -11280,6 +11372,15 @@ export class Game {
               this.particles.spawnBloodSplash(this.player.pos);
               this.floatingTexts.push(
                 new FloatingText(staggered ? 'STAGGERED' : 'BLEED', new Vec2(this.player.pos.x, this.player.pos.y - 28), RED, 0.7)
+              );
+            } else if (e.enemyType === 'Toxin Leech') {
+              // Toxin Leech contact identity — mild toxin bleed via the shared bite/bleed
+              // mechanism (bleed ticks 1 HP/s in Player.update → ~2 HP over 2s; refresh-not-
+              // stack + anti-chain immunity handled inside applyBite).
+              this.player.applyBite({ bleed: 2.0 });
+              this.particles.spawnHitSparks(this.player.pos, GREEN);
+              this.floatingTexts.push(
+                new FloatingText('TOXIN', new Vec2(this.player.pos.x, this.player.pos.y - 28), GREEN, 0.7)
               );
             } else {
               this.particles.spawnHitSparks(this.player.pos, RED);
@@ -11517,6 +11618,7 @@ export class Game {
     this._drawArenaContainment(ctx);
     // 1a ── Boss Lava/Fire Rain zones (ground markers — under entities so they read as terrain)
     this._drawBossLava(ctx);
+    this._drawEnemyOrbZones(ctx);   // elite orb blast zones — same ground-marker layer
     this._drawBossTrails(ctx);
     // Chaos Mode ambient particle field (world-space, additive blend, bounded)
     if (this._chaosMode) this._chaosAmbient.draw(ctx);

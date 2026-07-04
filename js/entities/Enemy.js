@@ -6,7 +6,7 @@ import { clamp, distance, safeNormalize, randomRange, randomChoice, drawBar } fr
 import { DataCore } from './DataCore.js?v=20260705040000';
 import { FloatingText } from './FloatingText.js';
 import { drawGlow } from '../game/Effects.js?v=20260615210000';
-import { PRIMARY_WEAPON_MAP, MINI_WEAPON_MAP, BOSS_WEAPON_MAP, getWeaponById } from '../game/EnemyWeaponCatalog.js?v=20260704230000';
+import { PRIMARY_WEAPON_MAP, MINI_WEAPON_MAP, BOSS_WEAPON_MAP, getWeaponById } from '../game/EnemyWeaponCatalog.js?v=20260705100000';
 
 // ─── Weapon sprite cache (shared across all enemies — each PNG loads once) ──────
 const _weaponSpriteCache = new Map();
@@ -257,6 +257,18 @@ export class Enemy {
     if (weaponIds && weaponIds.length > 0) {
       const wDef = getWeaponById(weaponIds[0]);   // primary weapon
       this._weaponDef = wDef;   // behavior params (cooldown/speed/damage) for catalog-armed shots
+      // Default catalog armament (future-proofing): shooter-capable roles with NO explicit
+      // _initRole stat case above inherit their catalog weapon's baseline stats. Guarded by
+      // !this.shootInterval so it can never override an explicit case. (this.role is assigned
+      // in the constructor BEFORE _initRole runs, so it is valid here.)
+      if (!this.shootInterval && wDef &&
+          (this.role === 'shooter' || this.role === 'mixed' ||
+           this.role === 'hybrid'  || this.role === 'boss')) {
+        this.shootInterval = wDef.cooldown;
+        this.bulletSpeed   = wDef.speed;
+        this.bulletDamage  = wDef.damage;
+        this.bulletRadius  = 6;   // bulletColor keeps its constructor default
+      }
       this._weaponSprite = _getWeaponSprite(wDef);
       // Size scaled by enemy tier: bosses get large sweep-wave sprites,
       // elites/mechs get medium beam sprites, drones get readable projectiles.
@@ -304,7 +316,8 @@ export class Enemy {
       const ang = baseAng + (start + s) * spread;
       game.spawnEnemyBullet(this.pos.clone(), new Vec2(Math.cos(ang), Math.sin(ang)),
         this.bulletSpeed, this.bulletDamage, this.bulletRadius, this.bulletColor,
-        { stun: 0, weaponSprite: this._weaponSprite || null, weaponSize: this._weaponSize || 0 });
+        { stun: 0, weaponSprite: this._weaponSprite || null, weaponSize: this._weaponSize || 0,
+          behavior: (this.isElite && this._weaponDef?.behavior) || null });
     }
     game.audio?.playEnemyShoot();
   }

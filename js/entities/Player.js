@@ -30,6 +30,7 @@ export class Player {
     this.staggerTimer      = 0.0;  // reduced movement + stamina regen while > 0
     this.stunImmunityTimer = 0.0;  // blocks NEW stagger (anti chain-lock) while > 0
     this.bleedTimer        = 0.0;  // 1 HP/s while > 0 (refresh, never stacks)
+    this._chillT           = 0.0;  // Cryo Claw chill: 25% move slow while > 0 (refresh, never stacks)
 
     this.pickupRadius = 72;
     this.returnRadius = 70;
@@ -198,7 +199,7 @@ export class Player {
     }
   }
 
-  get speed()             { return this.baseSpeed * (1 + this.speedBonus); }
+  get speed()             { return this.baseSpeed * (1 + this.speedBonus) * (this._chillT > 0 ? 0.75 : 1); }
   get overloadDampening() { return this.upgrades['Firewall Protection'] * 0.02; }
 
   // Smooth quadratic curve (XP to go from `level` → `level+1`). Gentle early so the
@@ -251,6 +252,7 @@ export class Player {
     if (this.staggerTimer > 0)      this.staggerTimer      -= dt;
     if (this.stunImmunityTimer > 0) this.stunImmunityTimer -= dt;
     if (this.bleedTimer > 0)      { this.bleedTimer -= dt; this.hp = Math.max(0, this.hp - dt); }
+    if (this._chillT > 0)           this._chillT -= dt;   // Cryo Claw chill decay
 
     if (dir.lengthSq() > 0) this.lastFacingDir = dir.clone();
 
