@@ -1,6 +1,6 @@
 import { Vec2, MATRIX_RADIUS, CYAN_DARK, BLACK, RED, ORANGE, CYAN, WHITE } from '../constants.js';
 import { randomRange } from '../utils.js';
-import { DataCore, rollCoreType } from './DataCore.js?v=20260615210000';
+import { DataCore, rollCoreType } from './DataCore.js?v=20260705040000';
 
 export class PowerMatrix {
   constructor(pos, color, capacity = 6) {

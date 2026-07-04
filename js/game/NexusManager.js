@@ -9,7 +9,7 @@
 // ────────────────────────────────────────────────────────────────────────────
 
 import { Vec2, CORE_COLORS } from '../constants.js';
-import { PowerMatrix } from '../entities/PowerMatrix.js?v=20260703900000';
+import { PowerMatrix } from '../entities/PowerMatrix.js?v=20260705040000';
 import { BIOME_ID, CHUNK_SIZE } from './MapManager.js?v=20260703999000';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -137,7 +137,7 @@ export class NexusManager {
     const neonColors = BIOME_NEXUS_COLORS[BIOME_ID.NEON_DISTRICT];
     for (let i = 0; i < positions.length; i++) {
       const [x, y] = positions[i];
-      const m = new PowerMatrix(new Vec2(x, y), neonColors.full, NEXUS_CAPACITY);
+      const m = new PowerMatrix(new Vec2(x, y), neonColors.full, NEXUS_CAPACITY + (this.capacityBonus || 0));
       m.biomeId = BIOME_ID.NEON_DISTRICT;
       m.biomeColors = neonColors;
       this.matrices.push(m);
@@ -161,7 +161,7 @@ export class NexusManager {
     const neonColors = BIOME_NEXUS_COLORS[BIOME_ID.NEON_DISTRICT];
     for (let i = 0; i < neonPositions.length; i++) {
       const [x, y] = neonPositions[i];
-      const m = new PowerMatrix(new Vec2(x, y), neonColors.full, NEXUS_CAPACITY);
+      const m = new PowerMatrix(new Vec2(x, y), neonColors.full, NEXUS_CAPACITY + (this.capacityBonus || 0));
       m.biomeId = BIOME_ID.NEON_DISTRICT;
       m.biomeColors = neonColors;
       this.matrices.push(m);
@@ -193,7 +193,7 @@ export class NexusManager {
         const y = Math.round(r * Math.sin(angle));
 
         const bColors = BIOME_NEXUS_COLORS[biomeId] || BIOME_NEXUS_COLORS[BIOME_ID.NEON_DISTRICT];
-        const m = new PowerMatrix(new Vec2(x, y), bColors.full, NEXUS_CAPACITY);
+        const m = new PowerMatrix(new Vec2(x, y), bColors.full, NEXUS_CAPACITY + (this.capacityBonus || 0));
         m.biomeId = biomeId;
         m.biomeColors = bColors;
         this.matrices.push(m);
@@ -241,7 +241,7 @@ export class NexusManager {
         const y = Math.round(r * Math.sin(angle));
 
         const bColors = BIOME_NEXUS_COLORS[biomeId] || BIOME_NEXUS_COLORS[BIOME_ID.NEON_DISTRICT];
-        const m = new PowerMatrix(new Vec2(x, y), bColors.full, NEXUS_CAPACITY);
+        const m = new PowerMatrix(new Vec2(x, y), bColors.full, NEXUS_CAPACITY + (this.capacityBonus || 0));
         m.biomeId = biomeId;
         m.biomeColors = bColors;
         this.matrices.push(m);

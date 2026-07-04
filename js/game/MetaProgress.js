@@ -4,13 +4,13 @@ export const META_UPGRADES = [
   { key: 'coreMagnet',   name: 'Core Magnet',    desc: '+10% pickup radius per level',       maxLevel: 5, baseCost: 10 },
   { key: 'coreCapacity', name: 'Nexus Capacity',  desc: '+1 Nexus charge capacity per level',  maxLevel: 3, baseCost: 20 },
   { key: 'pulseDamage',  name: 'Pulse Damage',   desc: '+1 projectile damage per level',     maxLevel: 5, baseCost: 10 },
-  { key: 'firewall',     name: 'Firewall',       desc: '-5% Nexus charge decay per level',   maxLevel: 5, baseCost: 10 },
+  { key: 'firewall',     name: 'Firewall',       desc: '-2% contact damage per level',       maxLevel: 5, baseCost: 10 },
   // ── Upgrade Economy phase additions (save-compatible: unknown keys default to level 0) ──
   { key: 'combatCalibration', name: 'Combat Calibration', desc: '+0.5 shot damage per level',        maxLevel: 5, baseCost: 12 },
   { key: 'armorPlating',      name: 'Armor Plating',      desc: '-3% contact damage per level',       maxLevel: 5, baseCost: 12 },
   { key: 'manaCapacitor',     name: 'Mana Capacitor',     desc: '+10 max mana per level',             maxLevel: 5, baseCost: 12 },
   { key: 'xpUplink',          name: 'XP Uplink',          desc: '+5% XP gain per level',              maxLevel: 5, baseCost: 12 },
-  { key: 'cacheScanner',      name: 'Cache Scanner',      desc: '+5% Endless cache bonus / level',    maxLevel: 5, baseCost: 12 },
+  { key: 'cacheScanner',      name: 'Cache Scanner',      desc: '+5% chance / level of a SECOND Endless cache bonus', maxLevel: 5, baseCost: 12 },
 ];
 
 // Explicit per-level cost curves (steeper sink so a single run can't max everything).
@@ -36,7 +36,7 @@ export const SYNERGY_UPGRADES = [
   { key: 'syn_rift_rebound',      name: 'Rift Rebound ★',           char: 'brawler_warrior',         charName: 'Brawler Warrior',  desc: '+rift burst radius & damage',     maxLevel: 5, flatCost: 1000 },
   { key: 'syn_plasma_execution',  name: 'Plasma Execution Loop ★',  char: 'assassin_clone',          charName: 'Assassin Clone',   desc: '+execution damage & uptime',      maxLevel: 5, flatCost: 1000 },
   { key: 'syn_toxic_geometry',    name: 'Toxic Geometry ★',         char: 'euclid_vector',           charName: 'Euclid Vector',    desc: '+poison tick & mark duration',    maxLevel: 5, flatCost: 1000 },
-  { key: 'syn_cataclysm_chain',   name: 'Cataclysm Chain Reaction ★', char: 'oni_cataclysm_protocol', charName: 'Oni Cataclysm',  desc: 'Unlock Oni to access',            maxLevel: 5, flatCost: 1000, lockedUntil: 'oni_cataclysm_protocol' },
+  { key: 'syn_cataclysm_chain',   name: 'Cataclysm Chain Reaction ★', char: 'oni_cataclysm_protocol', charName: 'Oni Cataclysm',  desc: '+4% Protocol 0 detonation per star', maxLevel: 5, flatCost: 1000, lockedUntil: 'oni_cataclysm_protocol' },
 ];
 
 // Secret unlock flags — set on a victory, persisted in localStorage, read by the
@@ -111,7 +111,7 @@ export const ENDLESS_ACHIEVEMENTS = [
     protocolName: 'Survivor Core Protocol', protocolEffect: '+5% max HP',
     cardName: 'Survivor Plating', cardEffect: '+8% max HP per level' },
   { id: 'grid_legend',     name: 'GRID LEGEND',        desc: 'Survive 20:00 in Endless',     test: (s) => s.time  >= 20 * 60,
-    protocolName: 'Grid Stabilizer Protocol', protocolEffect: 'Nexus charge decay reduced 50%',
+    protocolName: 'Grid Stabilizer Protocol', protocolEffect: '+1 Nexus charge capacity',
     cardName: 'Grid Stabilizer', cardEffect: '-5% Nexus charge decay / level (capped)' },
   { id: 'level_breaker',   name: 'LEVEL BREAKER',      desc: 'Reach Level 30 in Endless',    test: (s) => s.level >= 30,
     protocolName: 'Weapon Evolution Protocol', protocolEffect: 'Your mastery cards appear more often',
@@ -204,13 +204,13 @@ export const PROTOCOL_CARD_BY_ID = Object.fromEntries(PROTOCOL_CARDS.map(c => [c
 // ─── Null Relics V1 ─────────────────────────────────────────────────────────
 export const RELIC_DEFS = [
   { id:'eden_core_fragment',   name:'Eden Core Fragment',   type:'universal',  cost:5,
-    effect:'The first boss defeated each run drops +1 extra Fragment.',
+    effect:'Every boss kill this run grants +15 bonus XP.',
     req:null, reqChar:null },
   { id:'null_battery',         name:'Null Battery',         type:'universal',  cost:4,
     effect:'Q and E ability cooldowns recharge 8% faster.',
     req:null, reqChar:null },
   { id:'broken_halo',          name:'Broken Halo',          type:'universal',  cost:5,
-    effect:'Once per run, when HP drops below 25%, gain a 2-second shield and push enemies away.',
+    effect:'Once per run, death is refused: revive at 25% HP with brief invulnerability.',
     req:null, reqChar:null },
   { id:'blacknet_coupon',      name:'Blacknet Coupon',      type:'universal',  cost:4,
     effect:'First level-up screen each run grants 1 extra reroll.',
@@ -228,7 +228,7 @@ export const RELIC_DEFS = [
     effect:'Every 7th Spirit Kick pierces +2 extra enemies and creates a shockwave.',
     req:null, reqChar:'taekwondo_girl' },
   { id:'null_venom_chamber',   name:'Null Venom Chamber',   type:'character',  cost:7,
-    effect:'Poisoned enemies that die have a 25% chance to spread poison.',
+    effect:'When you take a hit, release a poison cloud that damages nearby enemies over time.',
     req:null, reqChar:'euclid_vector' },
   { id:'mirror_kill_protocol', name:'Mirror Kill Protocol', type:'character',  cost:8,
     effect:'When a clone expires, it releases a shadow slash. 3+ hits refunds 20 mana.',
@@ -241,7 +241,7 @@ export const RELIC_DEFS = [
     effect:'If EDEN CORE rescues you inside NULL BREACH ARENA: gain a 6-second protective shield on extraction.',
     req:'arena_rescue_used',   reqChar:null },
   { id:'elite_signal_core',  name:'Elite Signal Core',  type:'arena',     cost:6,
-    effect:'During NULL BREACH ARENA: surviving with 3+ boss kills grants bonus score at arena completion.',
+    effect:'Arena elite kills pay +30 bonus score each.',
     req:'arena_elite_3',       reqChar:null },
 ];
 
@@ -786,6 +786,14 @@ export class MetaProgress {
   }
 
   // Purchase a vessel. Deducts Grids + Fragments. Returns 'ok'|'owned'|'poor'.
+  /** Direct condition-based vessel unlock (e.g. Glitch Phantom survival condition). */
+  unlockVessel(id) {
+    if (this.unlockedVessels[id]) return false;
+    this.unlockedVessels[id] = true;
+    this._save();
+    return true;
+  }
+
   tryBuyVessel(id, costGrids, costFragments) {
     if (this.isVesselUnlocked(id)) return 'owned';
     if (this.credits < costGrids || this.protocolFragments < costFragments) return 'poor';

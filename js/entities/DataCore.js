@@ -7,8 +7,9 @@ export const CORE_DEFS = {
 };
 
 // ~22% of spawned cores are gold (rare/valuable), the rest silver (common).
-export function rollCoreType() {
-  return Math.random() < 0.22 ? 'gold' : 'silver';
+// goldBonus: additive chance (e.g. Grid Investor card +0.02/level) — finally wired.
+export function rollCoreType(goldBonus = 0) {
+  return Math.random() < 0.22 + goldBonus ? 'gold' : 'silver';
 }
 
 export class DataCore {

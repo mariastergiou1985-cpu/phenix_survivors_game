@@ -8,21 +8,21 @@ import {
 import { clamp, distance, safeNormalize, randomChoice, randomRange } from '../utils.js';
 
 import { FloatingText }   from '../entities/FloatingText.js?v=20260703990000';
-import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260703990000';
-import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260703990000';
+import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260705040000';
+import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260705040000';
 import { Player }         from '../entities/Player.js?v=20260703990000';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260703990000';
-import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260704230000';
+import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260705040000';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=20260703990000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260703990000';
-import { SystemEventManager } from './Events.js?v=20260704230000';
-import { UpgradeUI }      from './UpgradeUI.js?v=20260704210000';
-import { weightedSample } from './Upgrades.js?v=20260703990000';
+import { SystemEventManager } from './Events.js?v=20260705040000';
+import { UpgradeUI }      from './UpgradeUI.js?v=20260705040000';
+import { weightedSample } from './Upgrades.js?v=20260705040000';
 import { MutationUI }      from './MutationUI.js?v=20260703990000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260703990000';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS } from './MetaProgress.js?v=20260704200000';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS } from './MetaProgress.js?v=20260705040000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260703990000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
@@ -38,8 +38,8 @@ import { EventBus, EVENTS } from './EventBus.js?v=20260703990000';
 import { EnemySpawner, ELITE_WAVE as ELITE_WAVE_CFG, BOSS_WARN_COOLDOWN as BOSS_WARN_CD } from './EnemySpawner.js?v=20260704200000';
 import { StateManager, GAME_STATES } from './StateManager.js?v=20260703990000';
 import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260704200000';
-import { NexusManager } from './NexusManager.js?v=20260704220000';
-import { VESSELS, getVesselById, getDefaultVesselId } from './VesselCatalog.js?v=20260703996000';
+import { NexusManager } from './NexusManager.js?v=20260705040000';
+import { VESSELS, getVesselById, getDefaultVesselId } from './VesselCatalog.js?v=20260705040000';
 import { PETS, getPetById } from './PetCatalog.js?v=20260705000000';
 import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons, isEvolutionOwnedBy, getCardDisplayName } from './WeaponCatalog.js?v=20260704230000';
 import { TACTICAL_ID, TACTICAL_DEFS, getTacticalDef, getTacticalForCharacter, getAvailableTactical, preloadTacticalSprites } from './TacticalWeaponCatalog.js?v=20260704230000';
@@ -853,10 +853,12 @@ export class Game {
     // ── NexusManager: manages all Nexus stations, per-biome health, rewards ──
     if (!this.nexusManager) {
       this.nexusManager = new NexusManager({ endless: false });
+      this.nexusManager.capacityBonus = this._nexusCapacityBonus();   // coreCapacity meta + capacity achievements
     } else {
       this.nexusManager.endless = false;
     }
     this.matrices     = [];  // will be set to nexusManager.matrices after init()
+    this._appliedNexusCapBonus = 0;   // in-run capacity cards applied so far (Memory Bank etc.)
     this.groundCores  = [];
     this.enemies      = [];
     this.projectiles  = [];
@@ -1625,6 +1627,14 @@ export class Game {
       const add = Math.round(p.maxHp * 0.05);
       p.maxHp += add; p.hp = Math.min(p.maxHp, p.hp + add);
     }
+    // ── Previously display-only protocols — now actually applied ──
+    if (m.hasAchievement('endless_titan'))   p.fireRateBonus = (p.fireRateBonus || 0) + 0.10;  // +10% fire rate
+    if (m.hasAchievement('score_legend')) {                                                     // +10% max HP
+      const addL = Math.round(p.maxHp * 0.10);
+      p.maxHp += addL; p.hp = Math.min(p.maxHp, p.hp + addL);
+    }
+    if (m.hasAchievement('level_ascendant')) p.maxMana = Math.round(p.maxMana * 1.15);          // +15% max mana
+    if (m.hasAchievement('combo_god'))       p.speedBonus = (p.speedBonus || 0) + 0.08;         // +8% move speed
   }
 
   // Global damage multiplier from Achievement Protocols/Cards — Endless ONLY (returns 1 in Act 1,
@@ -1707,6 +1717,16 @@ export class Game {
   }
 
   // ─── Meta upgrades ──────────────────────────────────────────────────────────
+  // Total +capacity applied to every Nexus: coreCapacity meta levels + the two
+  // capacity Achievement Protocols (core_defender / core_warden) — finally real.
+  _nexusCapacityBonus() {
+    const m = this.meta; if (!m) return 0;
+    return (m.getLevel('coreCapacity') || 0)
+         + (m.hasAchievement?.('core_defender') ? 1 : 0)
+         + (m.hasAchievement?.('core_warden')   ? 1 : 0)
+         + (m.hasAchievement?.('grid_legend')   ? 1 : 0);
+  }
+
   _applyMetaUpgrades() {
     if (!this.meta) return;
     const p  = this.player;
@@ -1726,6 +1746,8 @@ export class Game {
     // p.baseDamage field, so the old line was a no-op. Seed the dict so the meta upgrade applies.
     p.upgrades['Pulse Damage']        = (p.upgrades['Pulse Damage'] || 0) + m.getLevel('pulseDamage');
     p.upgrades['Firewall Protection'] = m.getLevel('firewall');
+    // Firewall repurposed (Nexus decay no longer exists): -2% contact damage per level.
+    p.contactDamageReduction = Math.min(0.6, (p.contactDamageReduction || 0) + m.getLevel('firewall') * 0.02);
 
     // ── Upgrade Economy phase metas ──
     p.upgrades['Pulse Damage']  += m.getLevel('combatCalibration') * 0.5;          // global damage
@@ -2022,7 +2044,7 @@ export class Game {
 
     // Pull distant pickups toward player (XP orbs + ground cores)
     const r2 = pet.def.collectRadius * pet.def.collectRadius;
-    for (const orb of (this.xpOrbs || [])) {
+    for (const orb of [...(this.healthPickups || []), ...(this.manaPickups || [])]) {
       const dx = orb.pos.x - px;
       const dy = orb.pos.y - py;
       if (dx * dx + dy * dy < r2) {
@@ -5353,7 +5375,8 @@ export class Game {
       // screen-space onCollide never fires under the player-centred camera). No onCollide here.
       onDetonate: () => {
         this.screenShake.trigger(14, 0.6);
-        const det = 220 + 40 * cl;               // Total Cataclysm mastery: stronger detonation (boss-capped)
+        const synCC = this.meta?.getLevel?.('syn_cataclysm_chain') || 0;   // Oni synergy stars (wired)
+        const det = Math.round((220 + 40 * cl) * (1 + 0.04 * synCC));       // Total Cataclysm mastery + synergy stars
         // Hybrid scaling vs NORMAL enemies: flat + 15% of their max HP, so the
         // detonation stays impactful against biome-buffed HP pools in Endless.
         // Bosses keep the existing _capBossDamage path — encounter balance intact.
@@ -6618,6 +6641,16 @@ export class Game {
     // ── Vessel passive runtime tick ──────────────────────────────────────────
     this._tickVesselPassives(dt);
     this._tickVesselCompanion(dt);   // Ally-Walker-style escort follow (visual only)
+    // In-run Nexus capacity cards (Memory Bank / Core Magnetizer / Core Hoarder):
+    // apply the delta once to every live matrix the frame after a card is picked.
+    {
+      const _nb = this.player._nexusCapBonus || 0;
+      if (_nb !== this._appliedNexusCapBonus) {
+        const _d = _nb - this._appliedNexusCapBonus;
+        for (const _m of (this.matrices || [])) _m.capacity += _d;
+        this._appliedNexusCapBonus = _nb;
+      }
+    }
     // ── Cyber-Pet AI tick ─────────────────────────────────────────────────────
     this._tickPets(dt);
     // ── Acquired Weapon Auto-Fire ─────────────────────────────────────────────
@@ -6964,6 +6997,9 @@ export class Game {
         this.floatingTexts.push(new FloatingText('GRID CACHE COLLECTED', this.player.pos.clone(), CYAN, 1.2));
         this.particles.spawnCorePickup(this.gridCache.pos, CYAN);
         this._grantGridCacheBonus();
+        // Cache Scanner meta (wired): Endless chance of a SECOND cache bonus (+5%/level).
+        if (this.endless && Math.random() < (this._endlessCacheBonusChance() - 0.5))
+          this._grantGridCacheBonus();
         this.gridCache = null;
         this.gridCacheSpawnTimer = 60;
         return;
@@ -7032,7 +7068,7 @@ export class Game {
       const n = 2 + Math.floor(Math.random() * 2);    // 2..3 loose cores to secure
       for (let i = 0; i < n; i++) {
         const off = new Vec2(randomRange(-40, 40), randomRange(-40, 40));
-        this.groundCores.push(new DataCore(this._clampPickupPos(p.pos.clone().add(off)), rollCoreType()));
+        this.groundCores.push(new DataCore(this._clampPickupPos(p.pos.clone().add(off)), rollCoreType(this.player?.goldChanceBonus || 0)));
       }
       this.floatingTexts.push(new FloatingText('+' + n + ' CORES', p.pos.clone(), YELLOW, 1.4));
     }
@@ -7053,9 +7089,9 @@ export class Game {
   }
 
   _updateHealthPickups(dt) {
-    // Health drops stay EXACTLY where the enemy died — vacuum/magnet pull removed.
-    // Fixed 60px pickup radius: the player must walk near the drop to collect it.
-    const PICKUP_R = 60;
+    // Health drops stay EXACTLY where the enemy died — no vacuum pull. Base 60px
+    // walk-up radius, expanded by Core Magnet meta / Tractor Beam card (pickupRadius).
+    const PICKUP_R = Math.max(60, Math.round((this.player.pickupRadius || 0) * 0.75));
     for (let i = this.healthPickups.length - 1; i >= 0; i--) {
       const hp = this.healthPickups[i];
       const d = distance(this.player.pos, hp.pos);
@@ -7079,7 +7115,7 @@ export class Game {
 
   _updateManaPickups(dt) {
     const PICKUP_R = 18;
-    const MAGNET_R = 90;   // gentle magnet pull range
+    const MAGNET_R = Math.max(90, this.player.pickupRadius || 0);   // magnet range scales with pickupRadius (Core Magnet / Tractor Beam)
     // Collect
     for (let i = this.manaPickups.length - 1; i >= 0; i--) {
       const m = this.manaPickups[i];
@@ -10511,6 +10547,10 @@ export class Game {
     if (sc === 'japan_phasewalker' && this._eliteWaveElapsed >= 1080 && !this.meta.isUnlocked('null_walker')) {
       this.meta.unlock('null_walker');
       this.triggerAnnouncement('NULL WALKER PROTOCOL FOUND — PHASEWALKER SKIN', '#8b2fd6');
+    }
+    // GLITCH PHANTOM vessel: survive 20:00 in Endless (any character). Was unobtainable.
+    if (this._eliteWaveElapsed >= 1200 && !this.meta.isVesselUnlocked('glitch_phantom')) {
+      if (this.meta.unlockVessel('glitch_phantom')) this.triggerAnnouncement('GLITCH PHANTOM VESSEL UNLOCKED', '#8b2fd6');
     }
     // Oni CRIMSON PROTOCOL: survive 20:00 in Endless AS Oni Cataclysm.
     if (sc === 'oni_cataclysm_protocol' && this._eliteWaveElapsed >= 1200 && !this.meta.isUnlocked('crimson_oni')) {

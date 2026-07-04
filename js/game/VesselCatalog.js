@@ -55,7 +55,7 @@ export const VESSELS = Object.freeze([
     costGrids: 0,
     costFragments: 0,
     unlockByDefault: false,
-    unlockCondition: 'Survive 20:00 in Stage 1',
+    unlockCondition: 'Survive 20:00 in Endless',
     passive: 'glitch_dodge',
     passiveDesc: '-30% HP, 50% chance to dodge hits.',
     statMods: { maxHpMult: 0.7 },
