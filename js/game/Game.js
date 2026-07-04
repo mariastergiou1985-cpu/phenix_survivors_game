@@ -12,11 +12,11 @@ import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260705040000
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260705040000';
 import { Player }         from '../entities/Player.js?v=20260705100000';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260703990000';
-import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260705100000';
+import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260705110000';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=20260703990000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260703990000';
-import { SystemEventManager } from './Events.js?v=20260705100000';
+import { SystemEventManager } from './Events.js?v=20260705110000';
 import { UpgradeUI }      from './UpgradeUI.js?v=20260705040000';
 import { weightedSample } from './Upgrades.js?v=20260705040000';
 import { MutationUI }      from './MutationUI.js?v=20260703990000';
@@ -1026,7 +1026,8 @@ export class Game {
     this._prevGroundCoreCount = 0;   // tracks ground-core count frame-to-frame for dump-hit detection
     this.spawnTimer         = 0;
     this.spawnPauseTimer    = 0;
-    this.stealSpeedMultiplier = 1.0;
+    this.stealSpeedMultiplier = 1.0;   // legacy (unused)
+    this._blackoutSpeedMult   = 1.0;   // GRID BLACKOUT event: enemy speed multiplier
     this.gridBlackoutActive   = false;
     this.announcement         = null;
 
@@ -1422,6 +1423,8 @@ export class Game {
     this._airstrikeTimer   = 90;            // first AIRSTRIKE ~1.5 min in, then every ~2 min
     this._lightningTimer   = 70;            // first LIGHTNING STORM ~1.2 min in, then every ~2 min
     this._frozenSleetTimer = 150;           // first FROZEN SLEET ~2.5 min into Endless (Chaos arms its own 55s)
+    this._whiteoutT  = 0;                    // WHITEOUT PROTOCOL — Glacial biome hazard (active seconds)
+    this._whiteoutCd = 45;                   // first whiteout ~45s after entering Glacial territory
     this._stormActive      = 0;             // seconds of active strikes remaining in the current storm
     this._stormSpawnCd     = 0;
     this.airstrikeShips    = [];            // clear any carryover hazards on (re)entry
@@ -6872,7 +6875,27 @@ export class Game {
     this._updateAbilityTimers(dt);
     this._updateQuantumOverhaul(dt);
     this._updateAcidRain(dt);
-    this._updateFrozenSleet(dt);          // Chaos Mode: Frozen Sleet Storm
+    this._updateFrozenSleet(dt);          // Chaos + Endless: Frozen Sleet Storm
+    // ── WHITEOUT PROTOCOL — Glacial Expanse biome hazard (BIOME_DEFS.hazards, first one live) ──
+    // While the player stands in Glacial territory: every ~55-75s a 3.5s white fog
+    // closes in from the screen edges and lightly chills movement. Pure Endless.
+    if (this.endless && this.chunkManager?.enabled && !this.gameOver && !this.victory) {
+      if (this._whiteoutT > 0) {
+        this._whiteoutT -= dt;
+        this.player._chillT = Math.max(this.player._chillT || 0, 0.3);   // light chill while inside the fog
+      } else {
+        const _wb = this.chunkManager.biomeAtWorld(this.player.pos.x, this.player.pos.y);
+        if (_wb === BIOME_ID.GLACIAL_EXPANSE) {
+          this._whiteoutCd -= dt;
+          if (this._whiteoutCd <= 0) {
+            this._whiteoutCd = 55 + Math.random() * 20;
+            this._whiteoutT  = 3.5;
+            this.triggerAnnouncement('WHITEOUT PROTOCOL', '#cfe9ff');
+            this.audio?.playIceSweep?.();
+          }
+        }
+      }
+    }
     this._updateEndlessBossRotation(dt);   // Endless-only: repeating miniboss/boss pressure
     this._updateTitan(dt);
     this._updateAnnihilator(dt);
@@ -12096,6 +12119,16 @@ export class Game {
     if (this.victory)        this._drawVictoryScreen(ctx);
     else if (this.gameOver)  drawEndScreen(ctx, this);
 
+    // WHITEOUT overlay — white fog closing from the screen edges (Glacial hazard)
+    if (this._whiteoutT > 0) {
+      const _wt = this._whiteoutT;
+      const _wa = Math.min(0.55, _wt > 3.0 ? (3.5 - _wt) * 1.1 : _wt < 1 ? _wt * 0.55 : 0.55);
+      const _wg = ctx.createRadialGradient(640, 360, 150, 640, 360, 700);
+      _wg.addColorStop(0, 'rgba(230,244,255,0)');
+      _wg.addColorStop(1, 'rgba(230,244,255,' + _wa.toFixed(3) + ')');
+      ctx.fillStyle = _wg;
+      ctx.fillRect(0, 0, 1280, 720);
+    }
     drawCRTVignette(ctx);
 
     if (this.paused && !this.gameOver && !this.victory) {

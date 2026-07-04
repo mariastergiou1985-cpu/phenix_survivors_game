@@ -2,7 +2,7 @@ import { Vec2, WIDTH, HEIGHT, ORANGE, GREEN, RED, YELLOW, CYAN, PURPLE } from '.
 import { randomChoice, randomRange } from '../utils.js';
 import { FloatingText } from '../entities/FloatingText.js?v=20260703990000';
 import { DataCore } from '../entities/DataCore.js?v=20260705040000';
-import { Enemy } from '../entities/Enemy.js?v=20260705100000';
+import { Enemy } from '../entities/Enemy.js?v=20260705110000';
 
 const EVENT_LABELS = {
   drone_swarm:    'DRONE SWARM INCOMING',
@@ -58,7 +58,7 @@ export class SystemEventManager {
       this.activeEvent.timer -= dt;
       if (this.activeEvent.type === 'grid_blackout' && this.activeEvent.timer <= 0) {
         game.gridBlackoutActive  = false;
-        game.stealSpeedMultiplier = 1.0;
+        game._blackoutSpeedMult   = 1.0;   // blackout over — enemy speed back to normal
         this.activeEvent = null;
       }
     }
@@ -119,10 +119,10 @@ export class SystemEventManager {
 
   _gridBlackout(game) {
     game.gridBlackoutActive   = true;
-    game.stealSpeedMultiplier = 2.0;
+    game._blackoutSpeedMult   = 1.12;   // REAL effect: all enemies +12% speed for the blackout (steal economy is gone)
     this.activeEvent          = { type: 'grid_blackout', timer: 15 };
     game.floatingTexts.push(
-      new FloatingText('!! GRID BLACKOUT — CORES UNPROTECTED !!', game.player.pos.add(new Vec2(-280, 0)), RED, 4)
+      new FloatingText('!! GRID BLACKOUT — ENEMIES OVERDRIVEN !!', game.player.pos.add(new Vec2(-280, 0)), RED, 4)
     );
   }
 
