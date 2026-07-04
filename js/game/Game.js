@@ -8371,22 +8371,15 @@ export class Game {
   // Called from selectUpgrade() after every card pick. Scans mastery card levels,
   // updates the weapon-level map, and triggers any evolution whose recipe is met.
   _checkWeaponEvolutions() {
-    // 1 — Sync mastery card levels into _weaponLevels
+    // Sync mastery card levels into _weaponLevels (keeps weapon levels in sync with card picks).
+    // NOTE: Evolution is NO LONGER auto-triggered here. Evolution cards are offered as
+    // choosable level-up cards via _buildWeaponCard() when both recipe weapons reach L5.
     for (const [masteryKey, weaponId] of Object.entries(MASTERY_TO_WEAPON)) {
       const cardLvl = this._cardLvl(masteryKey);
       if (cardLvl > 0) {
         const cur = this._weaponLevels.get(weaponId) || 0;
         if (cardLvl > cur) this._weaponLevels.set(weaponId, cardLvl);
       }
-    }
-    // 2 — Build array for catalog check
-    const playerWeapons = [];
-    for (const [id, lvl] of this._weaponLevels) playerWeapons.push({ id, level: lvl });
-    // 3 — Check all recipes
-    const readyRecipes = checkAllEvolutionsReady(playerWeapons);
-    for (const recipe of readyRecipes) {
-      if (this._evolutionsDone.has(recipe.result)) continue;
-      this._applyWeaponEvolution(recipe);
     }
   }
 
@@ -8447,11 +8440,19 @@ export class Game {
   // with a 25% probability per level-up. Max 3 weapon slots enforced.
   _injectWeaponCard(choices) {
     if (!choices || choices.length === 0) return;
-    if (Math.random() > 0.25) return;          // 75% of the time → normal cards only
 
+    // ── PRIORITY: Evolution cards appear GUARANTEED when any recipe is ready ──
+    const evoCard = this._buildEvolutionCard();
+    if (evoCard) {
+      choices[choices.length - 1] = evoCard;   // always replace last slot
+      return;                                   // evolution takes priority, skip normal weapon card
+    }
+
+    // ── Normal weapon cards: 25% chance per level-up ──
+    if (Math.random() > 0.25) return;
     const card = this._buildWeaponCard();
     if (!card) return;
-    choices[choices.length - 1] = card;        // replace last slot with weapon card
+    choices[choices.length - 1] = card;
   }
 
   _buildWeaponCard() {
@@ -8530,6 +8531,49 @@ export class Game {
     };
   }
 
+  // ── Evolution Card Builder ──────────────────────────────────────────────────
+  // Returns a choosable evolution card when both recipe weapons are at Level 5.
+  // Evolution is a DELIBERATE player choice, NOT auto-triggered.
+  _buildEvolutionCard() {
+    const game = this;
+    // Build array for catalog check
+    const playerWeapons = [];
+    for (const [id, lvl] of this._weaponLevels) playerWeapons.push({ id, level: lvl });
+    const readyRecipes = checkAllEvolutionsReady(playerWeapons);
+    // Find first recipe not already evolved
+    for (const recipe of readyRecipes) {
+      if (this._evolutionsDone.has(recipe.result)) continue;
+      const def = getWeaponDef(recipe.result);
+      if (!def) continue;
+      // Build ingredient names for description
+      const ingNames = recipe.ingredients.map(id => {
+        const d = getWeaponDef(id);
+        return d ? d.name : id;
+      }).join(' + ');
+      return {
+        key:         '_wevo_' + recipe.result,
+        name:        'EVOLVE: ' + def.name,
+        description: ingNames + ' merge into ' + def.name + '!',
+        iconColor:   def.color || '#ffcc00',
+        icon:        '⚡',                 // ⚡
+        rarity:      'legendary',
+        maxLevel:    1,
+        _isWeaponCard: true,
+        _isEvolutionCard: true,
+        reward:      true,                     // premium gold card styling
+        synergy:     false,
+        chaosOnly:   false,
+        endlessOnly: false,
+        char:        null,
+        apply(player) {
+          game._applyWeaponEvolution(recipe);
+        },
+        canApply() { return true; },
+      };
+    }
+    return null;   // no evolution ready
+  }
+
   // ── Acquired Weapon Auto-Fire — TASK 1 runtime ────────────────────────────
   // Non-native weapons auto-fire at nearest enemy on cooldown. Consumed weapons
   // (merged into an evolution) stop; evolved weapons auto-fire instead.
@@ -8574,7 +8618,7 @@ export class Game {
         for (const e of this.enemies) {
           if (!e || e.hp <= 0) continue;
           const dx = e.pos.x - best.pos.x, dy = e.pos.y - best.pos.y;
-          if (dx * dx + dy * dy <= aoe2) e.hp -= stats.damage;
+          if (dx * dx + dy * dy <= aoe2) e.takeHit(stats.damage, this);
         }
         this.audio?.playShoot?.();
       }
