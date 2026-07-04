@@ -41,7 +41,7 @@ import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260703999000';
 import { NexusManager } from './NexusManager.js?v=20260703999000';
 import { VESSELS, getVesselById, getDefaultVesselId } from './VesselCatalog.js?v=20260703996000';
 import { PETS, getPetById } from './PetCatalog.js?v=20260703999100';
-import { WEAPON_ID, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter } from './WeaponCatalog.js?v=20260704120000';
+import { WEAPON_ID, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons } from './WeaponCatalog.js?v=20260704120000';
 import { VFXSpritePlayer } from './VFXSpritePlayer.js?v=20260704120000';
 
 // ── Mastery card → base weapon mapping (for evolution level tracking) ──
@@ -940,7 +940,9 @@ export class Game {
     this._weaponLevels      = new Map();   // weaponId → current level (1–5)
     this._evolvedWeapons    = new Map();   // evolved weaponId → { def, stats }
     this._evolutionsDone    = new Set();   // track which evolutions already triggered
+    this._consumedWeapons   = new Set();   // base weapons consumed by an evolution
     this._activeWeaponVFX   = [];          // active VFXSpritePlayer instances
+    this._acquiredWeaponTimers = new Map(); // weaponId → cooldown timer for auto-fire
     // Seed this character's base weapon at level 1
     const _charWeapon = getWeaponForCharacter(this.selectedCharacter);
     if (_charWeapon) this._weaponLevels.set(_charWeapon.id, 1);
@@ -6128,6 +6130,7 @@ export class Game {
   rerollUpgrade() {
     if (!this.upgradeUI || this.rerollsLeft <= 0) return;
     const choices = weightedSample(this.player, 3, { meta: this.meta, endless: this.endless, chaos: this._chaosMode });
+    this._injectWeaponCard(choices);   // weapon cards also appear on reroll
     if (choices.length === 0) return;
     this.upgradeUI.setChoices(choices);
     this.rerollsLeft--;
@@ -6224,6 +6227,7 @@ export class Game {
       if (this.player.level >= this._nextCardLevel) {
         this._nextCardLevel = this.player.level + (this.player.level >= 6 ? 2 : 1);   // schedule next offer
         const choices = weightedSample(this.player, 3, { meta: this.meta, endless: this.endless, chaos: this._chaosMode });
+        this._injectWeaponCard(choices);   // TASK 1+2: 25% chance to offer a weapon card
         if (choices.length > 0) {
           this.audio?.playLevelUp();
           this.upgradeUI = new UpgradeUI(choices);
@@ -6247,6 +6251,8 @@ export class Game {
     this._tickVesselCompanion(dt);   // Ally-Walker-style escort follow (visual only)
     // ── Cyber-Pet AI tick ─────────────────────────────────────────────────────
     this._tickPets(dt);
+    // ── Acquired Weapon Auto-Fire ─────────────────────────────────────────────
+    this._tickAcquiredWeapons(dt);
 
     // ── MapManager + ChunkManager update (biome transitions, chunk streaming) ─
     this.mapManager.update(dt);
@@ -8111,23 +8117,30 @@ export class Game {
   }
 
   // Triggered when an evolution recipe is satisfied. Grants the evolved weapon,
-  // spawns a premium VFX burst, and logs to console.
+  // spawns premium VFX burst, hit-stop, screen shake, and neon announcement.
   _applyWeaponEvolution(recipe) {
     this._evolutionsDone.add(recipe.result);
     const def = getWeaponDef(recipe.result);
     if (!def) return;
     const stats = getWeaponStatsAtLevel(recipe.result, 5);
     this._evolvedWeapons.set(recipe.result, { def, stats });
-    // Visual fanfare — spawn the evolution VFX at player position
+    // Mark ingredient weapons as consumed (they merge into the evolution)
+    for (const ingId of recipe.ingredients) this._consumedWeapons.add(ingId);
+    // ── TASK 3: Evolution Juice ─────────────────────────────────────────
+    // 1) 0.5s hit-stop — dramatic freeze frame
+    this._triggerHitStop(0.5);
+    // 2) Intense screen shake
+    this.screenShake.trigger(14, 0.6);
+    // 3) VFX sprite burst at player position
     this._spawnWeaponVFX(recipe.result, this.player.pos.x, this.player.pos.y, 0, 2.5);
-    // Premium floating text announcement
+    // 4) Premium floating text (fixed: correct FloatingText arg order)
     this.floatingTexts.push(new FloatingText(
-      this.player.pos.x, this.player.pos.y - 50,
-      'WEAPON EVOLVED: ' + def.name.toUpperCase(),
-      def.color || '#ffcc00', 60, 2.5
+      'EVOLUTION: ' + def.name.toUpperCase(),
+      this.player.pos.clone(),
+      def.color || '#ffcc00', 3.0, 24, 45
     ));
-    // Screen shake for emphasis
-    this.screenShake?.shake?.(8, 0.5);
+    // 5) Full-screen neon announcement overlay
+    this.triggerAnnouncement('⚡ EVOLUTION UNLOCKED: ' + def.name.toUpperCase() + ' ⚡', def.color || '#ffcc00');
     console.log('[WeaponEvolution] ' + def.name + ' unlocked from ' + recipe.ingredients.join(' + '));
   }
 
@@ -8153,6 +8166,146 @@ export class Game {
     vfx.play();
     this._activeWeaponVFX.push(vfx);
     return vfx;
+  }
+
+  // ── Weapon Acquisition Cards — TASK 1 + TASK 2 ─────────────────────────────
+  // Injects a weapon card (acquire OR upgrade) into the 3-card level-up pool
+  // with a 25% probability per level-up. Max 3 weapon slots enforced.
+  _injectWeaponCard(choices) {
+    if (!choices || choices.length === 0) return;
+    if (Math.random() > 0.25) return;          // 75% of the time → normal cards only
+
+    const card = this._buildWeaponCard();
+    if (!card) return;
+    choices[choices.length - 1] = card;        // replace last slot with weapon card
+  }
+
+  _buildWeaponCard() {
+    const MAX_SLOTS = 3;
+    const owned     = [...this._weaponLevels.keys()];
+    const game      = this;                    // closure for apply()
+
+    // ── Upgradeable weapons (owned, < level 5, not consumed by evolution) ──
+    const upgradeable = [];
+    for (const [wid, lvl] of this._weaponLevels) {
+      if (lvl < 5 && !this._consumedWeapons.has(wid)) upgradeable.push({ id: wid, level: lvl });
+    }
+
+    // ── Available for acquisition (unowned base weapons, only if slots open) ──
+    const canAcquire = owned.length < MAX_SLOTS;
+    const available  = canAcquire
+      ? getAllBaseWeapons().filter(w => !this._weaponLevels.has(w.id))
+      : [];
+
+    // Build combined pool: upgrades + acquisitions
+    const pool = [];
+    for (const w of upgradeable) pool.push({ type: 'upgrade', id: w.id, level: w.level });
+    for (const w of available)   pool.push({ type: 'acquire', id: w.id });
+    if (pool.length === 0) return null;
+
+    const pick = pool[Math.floor(Math.random() * pool.length)];
+
+    if (pick.type === 'acquire') {
+      const def = getWeaponDef(pick.id);
+      if (!def) return null;
+      return {
+        key:         '_wacq_' + pick.id,
+        name:        def.name,
+        description: 'NEW WEAPON — auto-fires independently',
+        iconColor:   def.color || '#ffcc00',
+        icon:        '⚔',                 // ⚔
+        rarity:      'epic',
+        maxLevel:    1,
+        _isWeaponCard: true,
+        reward:      true,                     // premium gold card styling
+        synergy:     false,
+        chaosOnly:   false,
+        endlessOnly: false,
+        char:        null,
+        apply(player) {
+          player.upgrades[this.key] = 1;
+          game._grantBaseWeapon(pick.id, 1);
+        },
+        canApply() { return true; },
+      };
+    }
+
+    // Weapon UPGRADE card
+    const def    = getWeaponDef(pick.id);
+    if (!def) return null;
+    const newLvl = pick.level + 1;
+    return {
+      key:         '_wupg_' + pick.id,
+      name:        def.name + ' Lv.' + newLvl,
+      description: 'Upgrade to Level ' + newLvl + (newLvl >= 5 ? ' — EVOLUTION READY' : ''),
+      iconColor:   def.color || '#ffcc00',
+      icon:        '⬆',                   // ⬆
+      rarity:      newLvl >= 5 ? 'legendary' : newLvl >= 4 ? 'epic' : 'rare',
+      maxLevel:    5,
+      _isWeaponCard: true,
+      reward:      newLvl >= 5,                // level-5 = premium card glow
+      synergy:     false,
+      chaosOnly:   false,
+      endlessOnly: false,
+      char:        null,
+      apply(player) {
+        player.upgrades[this.key] = (player.upgrades[this.key] || 0) + 1;
+        game._grantBaseWeapon(pick.id, newLvl);
+      },
+      canApply() { return true; },
+    };
+  }
+
+  // ── Acquired Weapon Auto-Fire — TASK 1 runtime ────────────────────────────
+  // Non-native weapons auto-fire at nearest enemy on cooldown. Consumed weapons
+  // (merged into an evolution) stop; evolved weapons auto-fire instead.
+  _tickAcquiredWeapons(dt) {
+    if (this.paused || this.gameOver || this.victory || this.upgradeUI || this.mutationUI) return;
+    const charWeapon = getWeaponForCharacter(this.player.selectedCharacter);
+    const nativeId   = charWeapon ? charWeapon.id : null;
+
+    // Auto-fire acquired base weapons (skip native + consumed)
+    for (const [weaponId, level] of this._weaponLevels) {
+      if (weaponId === nativeId) continue;
+      if (this._consumedWeapons.has(weaponId)) continue;
+      this._autoFireWeapon(weaponId, level, dt);
+    }
+    // Auto-fire evolved weapons
+    for (const [weaponId] of this._evolvedWeapons) {
+      this._autoFireWeapon(weaponId, 5, dt);
+    }
+  }
+
+  _autoFireWeapon(weaponId, level, dt) {
+    const stats = getWeaponStatsAtLevel(weaponId, level);
+    if (!stats) return;
+    let t = this._acquiredWeaponTimers.get(weaponId) || 0;
+    t -= dt;
+    if (t <= 0) {
+      t = stats.cooldown;
+      // Find nearest living enemy
+      const px = this.player.pos.x, py = this.player.pos.y;
+      let best = null, bestD2 = 620 * 620;
+      for (const e of this.enemies) {
+        if (!e || e.hp <= 0) continue;
+        const dx = e.pos.x - px, dy = e.pos.y - py;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < bestD2) { bestD2 = d2; best = e; }
+      }
+      if (best) {
+        const angle = Math.atan2(best.pos.y - py, best.pos.x - px);
+        this._spawnWeaponVFX(weaponId, best.pos.x, best.pos.y, angle, 1.5);
+        // AoE damage at impact point
+        const aoe2 = (stats.aoeRadius || 60) * (stats.aoeRadius || 60);
+        for (const e of this.enemies) {
+          if (!e || e.hp <= 0) continue;
+          const dx = e.pos.x - best.pos.x, dy = e.pos.y - best.pos.y;
+          if (dx * dx + dy * dy <= aoe2) e.hp -= stats.damage;
+        }
+        this.audio?.playShoot?.();
+      }
+    }
+    this._acquiredWeaponTimers.set(weaponId, t);
   }
 
   // ── Primary: Nexus Chakram ──────────────────────────────────────────────────
