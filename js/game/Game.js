@@ -17,7 +17,7 @@ import { SupportDrone }   from '../entities/SupportDrone.js?v=20260703990000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260703990000';
 import { SystemEventManager } from './Events.js?v=20260704200000';
-import { UpgradeUI }      from './UpgradeUI.js?v=20260703990000';
+import { UpgradeUI }      from './UpgradeUI.js?v=20260704210000';
 import { weightedSample } from './Upgrades.js?v=20260703990000';
 import { MutationUI }      from './MutationUI.js?v=20260703990000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';

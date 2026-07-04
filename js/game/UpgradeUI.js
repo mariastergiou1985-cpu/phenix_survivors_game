@@ -152,9 +152,17 @@ export class UpgradeUI {
       ctx.textBaseline = 'alphabetic';
       ctx.textAlign = 'left';
 
-      // Upgrade name — bold, bright, with a subtle glow for readability
+      // Upgrade name — bold, bright, with a subtle glow for readability.
+      // Auto-fit: long names (e.g. "Storm Saber Cursed Slash Lv.2") shrink to
+      // stay inside the card frame instead of overflowing past its edges.
       ctx.save();
-      ctx.font      = 'bold 19px Consolas, monospace';
+      let _nameSize = 19;
+      ctx.font = 'bold ' + _nameSize + 'px Consolas, monospace';
+      const _maxNameW = r.w - 24;
+      while (_nameSize > 12 && ctx.measureText(upg.name).width > _maxNameW) {
+        _nameSize -= 1;
+        ctx.font = 'bold ' + _nameSize + 'px Consolas, monospace';
+      }
       ctx.fillStyle = WHITE;
       ctx.shadowColor = accent; ctx.shadowBlur = 6;
       ctx.textAlign = 'center';
@@ -179,16 +187,17 @@ export class UpgradeUI {
       // Description (word-wrapped)
       wrapText(ctx, upg.description, r.x + 12, r.y + 162, r.w - 24, 20, WHITE, '14px Consolas, monospace');
 
-      // Current level dots
-      const level = player.upgrades[upg.key] ?? 0;
+      // Current level dots — capped at 10 so re-offerable cards (maxLevel 99,
+      // e.g. tactical GRID CACHE cards) never overflow the card with dot rows.
+      const level = Math.min(player.upgrades[upg.key] ?? 0, 10);
       for (let d = 0; d < level; d++) {
         ctx.fillStyle = upg.iconColor;
         ctx.beginPath();
         ctx.arc(r.x + 12 + d * 14, r.y + r.h - 24, 5, 0, Math.PI * 2);
         ctx.fill();
       }
-      // Empty dots to max
-      for (let d = level; d < upg.maxLevel; d++) {
+      // Empty dots to max — same cap: past 10 the dot row is meaningless.
+      for (let d = level; d < Math.min(upg.maxLevel, 10); d++) {
         ctx.strokeStyle = upg.iconColor + '55';
         ctx.lineWidth   = 1;
         ctx.beginPath();
