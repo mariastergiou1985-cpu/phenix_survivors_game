@@ -266,6 +266,111 @@ export class AudioManager {
   }
 
   // 1. Shoot — short cyber laser blip (descending triangle; softer than square).
+  // ── PROCEDURAL SFX ENGINE — generateSound(type) ────────────────────────────
+  // Zero-file real-time synthesis (WebAudio oscillators + biquad filters).
+  // The files in assets/audio/sfx/ remain the PRIMARY source; this engine is
+  // the guaranteed fallback so no event is EVER silent (first trigger before
+  // fetch completes, slow network, offline play).
+  generateSound(type, throttle = 0) {
+    if (!this.actx) return;
+    const now = this.actx.currentTime;
+    this._genLast = this._genLast || {};
+    if (throttle > 0 && this._genLast[type] !== undefined && now - this._genLast[type] < throttle) return;
+    this._genLast[type] = now;
+    const out = this.sfxGain;
+    const noise = (dur) => {
+      const n = this.actx.createBufferSource();
+      const buf = this.actx.createBuffer(1, Math.ceil(this.actx.sampleRate * dur), this.actx.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+      n.buffer = buf; return n;
+    };
+    switch (type) {
+      case 'enemy-death': {   // sharp white-noise burst, fast exponential decay
+        const src = noise(0.25);
+        const bp = this.actx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1800; bp.Q.value = 0.8;
+        const g = this.actx.createGain();
+        g.gain.setValueAtTime(0.5, now);
+        g.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+        src.connect(bp); bp.connect(g); g.connect(out); src.start(now); src.stop(now + 0.25);
+        break;
+      }
+      case 'airstrike-bomb': {   // cinematic bass sweep — EXPONENTIAL pitch drop + boom noise
+        const o = this.actx.createOscillator(); o.type = 'sine';
+        o.frequency.setValueAtTime(320, now);
+        o.frequency.exponentialRampToValueAtTime(38, now + 0.7);
+        const g = this.actx.createGain();
+        g.gain.setValueAtTime(0.65, now);
+        g.gain.exponentialRampToValueAtTime(0.001, now + 0.9);
+        o.connect(g); g.connect(out); o.start(now); o.stop(now + 0.95);
+        const src = noise(0.5);
+        const lp = this.actx.createBiquadFilter(); lp.type = 'lowpass';
+        lp.frequency.setValueAtTime(900, now);
+        lp.frequency.exponentialRampToValueAtTime(120, now + 0.5);
+        const g2 = this.actx.createGain(); g2.gain.setValueAtTime(0.4, now); g2.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+        src.connect(lp); lp.connect(g2); g2.connect(out); src.start(now); src.stop(now + 0.5);
+        break;
+      }
+      case 'lava-rain': {   // heavy bubbling — LFO-modulated low osc, low-pass roll-off (atmospheric)
+        const o = this.actx.createOscillator(); o.type = 'triangle'; o.frequency.value = 70;
+        const lfo = this.actx.createOscillator(); lfo.type = 'sine'; lfo.frequency.value = 6 + Math.random() * 5;   // randomized pitch modulation
+        const lfoG = this.actx.createGain(); lfoG.gain.value = 28;
+        lfo.connect(lfoG); lfoG.connect(o.frequency);
+        const lp = this.actx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 420;   // high-frequency roll-off → heavy
+        const g = this.actx.createGain();
+        g.gain.setValueAtTime(0.0001, now);
+        g.gain.exponentialRampToValueAtTime(0.35, now + 0.15);
+        g.gain.exponentialRampToValueAtTime(0.001, now + 2.2);
+        o.connect(lp); lp.connect(g); g.connect(out);
+        o.start(now); lfo.start(now); o.stop(now + 2.3); lfo.stop(now + 2.3);
+        break;
+      }
+      case 'acid-rain': {   // corrosive hiss — low-passed noise bed
+        const src = noise(2.2);
+        const lp = this.actx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 2600;
+        const g = this.actx.createGain();
+        g.gain.setValueAtTime(0.0001, now);
+        g.gain.exponentialRampToValueAtTime(0.22, now + 0.2);
+        g.gain.exponentialRampToValueAtTime(0.001, now + 2.1);
+        src.connect(lp); lp.connect(g); g.connect(out); src.start(now); src.stop(now + 2.2);
+        break;
+      }
+      case 'rocket-rain': {   // rising whoosh into bomb thump
+        const src = noise(1.1);
+        const bp = this.actx.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = 1.2;
+        bp.frequency.setValueAtTime(300, now);
+        bp.frequency.exponentialRampToValueAtTime(2400, now + 0.6);
+        const g = this.actx.createGain(); g.gain.setValueAtTime(0.28, now); g.gain.exponentialRampToValueAtTime(0.001, now + 1.05);
+        src.connect(bp); bp.connect(g); g.connect(out); src.start(now); src.stop(now + 1.1);
+        setTimeout(() => this.generateSound('airstrike-bomb'), 550);
+        break;
+      }
+      case 'player-death': {   // descending saw power-down through closing filter
+        const o = this.actx.createOscillator(); o.type = 'sawtooth';
+        o.frequency.setValueAtTime(440, now);
+        o.frequency.exponentialRampToValueAtTime(40, now + 1.6);
+        const lp = this.actx.createBiquadFilter(); lp.type = 'lowpass';
+        lp.frequency.setValueAtTime(3200, now);
+        lp.frequency.exponentialRampToValueAtTime(200, now + 1.6);
+        const g = this.actx.createGain(); g.gain.setValueAtTime(0.5, now); g.gain.exponentialRampToValueAtTime(0.001, now + 1.8);
+        o.connect(lp); lp.connect(g); g.connect(out); o.start(now); o.stop(now + 1.85);
+        break;
+      }
+      case 'player-impact': {   // thud — sine pitch-bend through low-pass
+        const o = this.actx.createOscillator(); o.type = 'sine';
+        o.frequency.setValueAtTime(180, now);
+        o.frequency.exponentialRampToValueAtTime(55, now + 0.16);
+        const lp = this.actx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 500;
+        const g = this.actx.createGain(); g.gain.setValueAtTime(0.55, now); g.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+        o.connect(lp); lp.connect(g); g.connect(out); o.start(now); o.stop(now + 0.22);
+        break;
+      }
+    }
+  }
+
+  // Player takes a hit — heavy thud (procedural; throttled so swarms don't drum-roll).
+  playPlayerImpact() { this.generateSound('player-impact', 0.25); }
+
   playShoot() {
     if (!this._canPlay('shoot', 0.09)) return;
     this._tone({ type: 'triangle', freqStart: 660, freqEnd: 200, dur: 0.08, gain: 0.065 });
@@ -560,8 +665,8 @@ export class AudioManager {
     if (this._sfxBuffers['sfxEnemyDeath']) {
       this._playSfxBuffer('sfxEnemyDeath', 0.08, 0.85);
     } else {
-      // Buffer still loading — fall back to synthesized glitch burst this frame.
-      this.playDeath();
+      // Buffer still loading — procedural fallback, never silent.
+      this.generateSound('enemy-death', 0.08);
     }
   }
 
@@ -571,7 +676,8 @@ export class AudioManager {
       'assets/audio/sfx/player-death.ogg',
       'assets/audio/sfx/player-death.mp3',
       'assets/audio/sfx/player-death.wav');
-    this._playSfxBuffer('sfxPlayerDeath', 0, 1.0);
+    if (this._sfxBuffers['sfxPlayerDeath']) this._playSfxBuffer('sfxPlayerDeath', 0, 1.0);
+    else this.generateSound('player-death');
   }
 
   // Airstrike rocket impact — throttled 300 ms; many rockets land close together.
@@ -580,7 +686,8 @@ export class AudioManager {
       'assets/audio/sfx/airstrike-bomb.ogg',
       'assets/audio/sfx/airstrike-bomb.mp3',
       'assets/audio/sfx/airstrike-bomb.wav');
-    this._playSfxBuffer('sfxAirstrike', 0.30, 0.90);
+    if (this._sfxBuffers['sfxAirstrike']) this._playSfxBuffer('sfxAirstrike', 0.30, 0.90);
+    else this.generateSound('airstrike-bomb', 0.30);
   }
 
   // Acid rain — throttled 4 s; plays once when the event activates.
@@ -589,7 +696,8 @@ export class AudioManager {
       'assets/audio/sfx/acid-rain.ogg',
       'assets/audio/sfx/acid-rain.mp3',
       'assets/audio/sfx/acid-rain.wav');
-    this._playSfxBuffer('sfxAcidRain', 4.0, 0.85);
+    if (this._sfxBuffers['sfxAcidRain']) this._playSfxBuffer('sfxAcidRain', 4.0, 0.85);
+    else this.generateSound('acid-rain', 4.0);
   }
 
   // Lava rain — throttled 1.5 s; one hit per spawn wave (not per drop).
@@ -598,7 +706,8 @@ export class AudioManager {
       'assets/audio/sfx/lava-rain.ogg',
       'assets/audio/sfx/lava-rain.mp3',
       'assets/audio/sfx/lava-rain.wav');
-    this._playSfxBuffer('sfxLavaRain', 1.5, 0.88);
+    if (this._sfxBuffers['sfxLavaRain']) this._playSfxBuffer('sfxLavaRain', 1.5, 0.88);
+    else this.generateSound('lava-rain', 1.5);
   }
 
   // Double Demons Rocket Rain — throttled 3 s; one sound per wave, not per rocket.
@@ -607,7 +716,8 @@ export class AudioManager {
       'assets/audio/sfx/rocket-rain.ogg',
       'assets/audio/sfx/rocket-rain.mp3',
       'assets/audio/sfx/rocket-rain.wav');
-    this._playSfxBuffer('sfxRocketRain', 3.0, 0.90);
+    if (this._sfxBuffers['sfxRocketRain']) this._playSfxBuffer('sfxRocketRain', 3.0, 0.90);
+    else this.generateSound('rocket-rain', 3.0);
   }
   // ─── EDEN CORE transmission audio (V1) ──────────────────────────────────────
   // Clip IDs map to files under assets/audio/eden_core/.

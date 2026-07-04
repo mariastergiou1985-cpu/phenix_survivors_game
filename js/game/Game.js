@@ -15947,6 +15947,7 @@ _drawLoreArchive(ctx) {
     const applied = Math.min(dmg, cap);
     this.player.applyDamage(applied);
     this.playerHitCooldown = 0.5;
+    this.audio?.playPlayerImpact?.();   // heavy procedural thud on every player hit
     this.screenShake.trigger(shake, 0.2);
     this.particles.spawnHitSparks(this.player.pos, color);
     this.floatingTexts.push(new FloatingText(`-${Math.ceil(applied)} HP`, this.player.pos.clone(), color, 0.7));
