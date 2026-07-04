@@ -8476,9 +8476,14 @@ export class Game {
     }
 
     // ── Available for acquisition (unowned base weapons, only if slots open) ──
+    // Exclusive weapons (e.g. Demonic Cataclysm Pulse) are hard-locked to their
+    // owning character and NEVER appear in another character's acquisition pool.
     const canAcquire = owned.length < MAX_SLOTS;
+    const charId     = this.player.selectedCharacter;
     const available  = canAcquire
-      ? getAllBaseWeapons().filter(w => !this._weaponLevels.has(w.id))
+      ? getAllBaseWeapons().filter(w =>
+          !this._weaponLevels.has(w.id) &&
+          (!w.exclusive || w.character === charId))
       : [];
 
     // Build combined pool: upgrades + acquisitions

@@ -196,6 +196,7 @@ export const WEAPON_DEFS = Object.freeze({
     name: 'Demonic Cataclysm Pulse',
     description: 'A devastating ground-lava shockwave erupts outward, branded with burning demonic sigils.',
     character: 'oni_cataclysm_protocol',
+    exclusive: true,   // HARD-LOCKED to Oni — never appears in other characters' weapon pools
     element: 'fire',
     behavior: WEAPON_BEHAVIOR.GROUND_SHOCKWAVE,
     isEvolution: false,
