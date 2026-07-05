@@ -19,6 +19,7 @@ export const WEAPON_ID = Object.freeze({
   GAS_NEEDLE:       'gas_needle',
   CATACLYSM_PULSE:  'cataclysm_pulse',
   GLITCH_TEAR:      'glitch_tear',
+  SOLO_RED_THUNDER: 'solo_red_thunder',
   // Evolution weapons (require 2 base weapons at level 5)
   STORM_CONDUCTOR:    'storm_conductor',
   PLASMA_EXECUTION:   'plasma_execution',
@@ -40,6 +41,7 @@ export const WEAPON_BEHAVIOR = Object.freeze({
   EXPANDING_SPIRAL:   'expanding_spiral',
   SEQUENTIAL_GROUND:  'sequential_ground',
   PULL_EXPLODE:       'pull_explode',
+  BOLT_PROJECTILE:    'bolt_projectile',
 });
 
 // ── Level scaling multipliers ───────────────────────────────────────
@@ -236,6 +238,28 @@ export const WEAPON_DEFS = Object.freeze({
     },
   },
 
+  [WEAPON_ID.SOLO_RED_THUNDER]: {
+    id: 'solo_red_thunder',
+    name: 'Solo Red Thunder',
+    description: 'NEW WEAPON — auto-fires red thunder riffs independently. His solo never stops.',
+    character: 'eddie',
+    exclusive: true,   // HARD-LOCKED to Eddie — never appears in other characters' weapon pools
+    element: 'electric',
+    behavior: WEAPON_BEHAVIOR.BOLT_PROJECTILE,
+    isEvolution: false,
+    color: '#ff2d2d',
+    // Single illustration (card icon / VFX override art) — NOT a frame sheet, so it has
+    // no grid/totalFrames/fps and must never be added to WEAPON_VFX_META in Game.js.
+    sprite: 'assets/weapons/solo_red_thunder.png',
+    baseStats: {
+      damage: 38,        // ~1.3x the base-weapon damage median (29) — hits harder than average
+      cooldown: 1.1,
+      aoeRadius: 70,
+      speed: 12,
+      piercing: 2,
+    },
+  },
+
   // ────────────────────────────────────────────────────────────────
   // EVOLUTION WEAPONS (4) — require 2 base weapons at level 5
   // ────────────────────────────────────────────────────────────────
@@ -385,6 +409,7 @@ const WEAPON_CORE_NOUN = {
   gas_needle:       'Needle Vector',
   cataclysm_pulse:  'Cataclysm Pulse',
   glitch_tear:      'Singularity Tear',
+  solo_red_thunder: 'Thunder Riff',
   storm_conductor:  'Storm Conductor',
   plasma_execution: 'Plasma Execution',
   cataclysm_chain:  'Cataclysm Chain',
@@ -399,6 +424,7 @@ const CHAR_FLAVOR = {
   euclid_vector:          'Toxic',
   japan_phasewalker:      'Null-Phase',
   oni_cataclysm_protocol: 'Crimson-Demon',
+  eddie:                  'Thunder',
 };
 export function getCardDisplayName(weaponId, characterId) {
   const def = _weaponIndex.get(weaponId);

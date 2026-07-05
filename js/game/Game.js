@@ -10,20 +10,20 @@ import { clamp, distance, safeNormalize, randomChoice, randomRange, wrapText } f
 import { FloatingText }   from '../entities/FloatingText.js?v=20260703990000';
 import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260705040000';
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260705150000';
-import { Player }         from '../entities/Player.js?v=20260705150000';
-import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260703990000';
+import { Player }         from '../entities/Player.js?v=20260705300000';
+import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260705300000';
 import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260705150000';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=20260703990000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260705150000';
 import { SystemEventManager } from './Events.js?v=20260705150000';
-import { UpgradeUI }      from './UpgradeUI.js?v=20260705240000';
-import { weightedSample } from './Upgrades.js?v=20260705040000';
+import { UpgradeUI }      from './UpgradeUI.js?v=20260705300000';
+import { weightedSample } from './Upgrades.js?v=20260705300000';
 import { MutationUI }      from './MutationUI.js?v=20260703990000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
-import { drawHUD, drawEndScreen } from './HUD.js?v=20260705080000';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS } from './MetaProgress.js?v=20260705170000';
-import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260703990000';
+import { drawHUD, drawEndScreen } from './HUD.js?v=20260705300000';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS } from './MetaProgress.js?v=20260705300000';
+import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260705300000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
 import { GlitchDash } from '../effects/glitch-dash.js?v=20260703990000';
@@ -41,8 +41,8 @@ import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260705080000';
 import { NexusManager } from './NexusManager.js?v=20260705150000';
 import { VESSELS, getVesselById, getDefaultVesselId } from './VesselCatalog.js?v=20260705040000';
 import { PETS, getPetById } from './PetCatalog.js?v=20260705000000';
-import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons, isEvolutionOwnedBy, getCardDisplayName } from './WeaponCatalog.js?v=20260704230000';
-import { TACTICAL_ID, TACTICAL_DEFS, getTacticalDef, getTacticalForCharacter, getAvailableTactical, preloadTacticalSprites, FUSION_TACTICALS } from './TacticalWeaponCatalog.js?v=20260705120000';
+import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons, isEvolutionOwnedBy, getCardDisplayName } from './WeaponCatalog.js?v=20260705300000';
+import { TACTICAL_ID, TACTICAL_DEFS, getTacticalDef, getTacticalForCharacter, getAvailableTactical, preloadTacticalSprites, FUSION_TACTICALS } from './TacticalWeaponCatalog.js?v=20260705300000';
 import { VFXSpritePlayer } from './VFXSpritePlayer.js?v=20260705120000';
 
 // ── Mastery card → base weapon mapping (for evolution level tracking) ──
@@ -99,6 +99,8 @@ const WIELDER_VFX_OVERRIDES = Object.freeze({
   'magnetic_arc|brawler_warrior':       'assets/weapons/nexus/brawler_heavy_impact_burst.png',
   'storm_saber|oni_cataclysm_protocol': 'assets/weapons/nexus/oni_inferno_saber_slash.png',
   'spirit_crescent|cyber_arm_hero':     'assets/weapons/nexus/arm_inferno_crescent_aura.png',
+  // Eddie base weapon — single illustration (NOT a frame sheet; never enters WEAPON_VFX_META).
+  'solo_red_thunder|eddie':             'assets/weapons/solo_red_thunder.png',
 });
 
 // Lazy one-time Image cache for Nexus pack illustrations (VFX overrides + card icons).
@@ -505,6 +507,11 @@ export class Game {
     this._oniSprite.onerror = () => console.warn('[Char] missing assets/characters/endless/oni_cataclysm_protocol.png');
     this._oniSprite.src = 'assets/characters/endless/oni_cataclysm_protocol.png';
     this._charImages['oni_cataclysm_protocol'] = this._oniSprite;
+    // Eddie portrait (root folder, descriptive filename) — PF-gated via PF_CHARACTER_COSTS.
+    this._eddieSprite = new Image();
+    this._eddieSprite.onerror = () => console.warn('[Char] missing assets/characters/eddie_thunder_guitar.png');
+    this._eddieSprite.src = 'assets/characters/eddie_thunder_guitar.png';
+    this._charImages['eddie'] = this._eddieSprite;
 
     // Brawler Warrior weapon sprites (Nexus Chakram / Crescent Rift Claw / Skyfall Lances).
     // Missing files degrade to drawn-shape fallbacks (never crash).
@@ -515,6 +522,8 @@ export class Game {
       ['skyfall_lances',    'assets/weapons/skyfall_lances.png'],
       // Assassin Clone bounce weapon — Shuriken (the Arrow base-shot uses Player.attackSprite, not this map).
       ['suriken_assasin',   'assets/weapons/suriken_assasin.png'],
+      // Eddie base weapon — Solo Red Thunder (single illustration; card icon + VFX override art).
+      ['solo_red_thunder',  'assets/weapons/solo_red_thunder.png'],
       // Phase 1 weapons — global (all characters). Missing files use drawn fallbacks.
       ['plasma_blade',      'assets/weapons/plasma-blade.png'],
       ['void_needle',       'assets/weapons/void-needle.png'],
@@ -649,6 +658,20 @@ export class Game {
     this._chainsIcon = new Image();
     this._chainsIcon.onerror = () => console.warn('[HUD] overheated_heavy_chains.png not found — drawn fallback used');
     this._chainsIcon.src = 'assets/abilities/ultimates/overheated_heavy_chains.png';
+    // Eddie — Red Thunder Curtain (SPACE ultimate icon; same preload pattern as the chains icon)
+    this._eddieUltIcon = new Image();
+    this._eddieUltIcon.onerror = () => console.warn('[HUD] eddie_ultimate.png not found — drawn fallback used');
+    this._eddieUltIcon.src = 'assets/abilities/ultimates/eddie_ultimate.png';
+    // Eddie element identity art (Crimson Gate / Thunder Maiden / fused Crimson Thunder Gate).
+    // Cosmetic icons only — consumed by the HUD element badge + menu panels, Eddie-gated there.
+    this._eddieElementIcons = {
+      crimson_gate:         new Image(),
+      thunder_maiden:       new Image(),
+      crimson_thunder_gate: new Image(),
+    };
+    this._eddieElementIcons.crimson_gate.src         = 'assets/elements/elements/crimson_gate_element.png';
+    this._eddieElementIcons.thunder_maiden.src       = 'assets/elements/elements/thunder_maiden_element.png';
+    this._eddieElementIcons.crimson_thunder_gate.src = 'assets/elements/elements/fusion/fusion_element_eddie.png';
     // Neon Pierce Beam — Cyber Arm Hero's automatic secondary weapon (red laser identity)
     this._neonBeamSprite = new Image();
     this._neonBeamSprite.onerror = () => console.warn('[Weapon] neon_pierce_beam.png missing — drawn fallback used');
@@ -756,6 +779,9 @@ export class Game {
       // (PF_CHARACTER_COSTS). Shown as locked/unlockable; selectCharacter() guards on isCharacterUnlocked,
       // so it is never freely selectable and needs no TEST bypass.
       { id: 'oni_cataclysm_protocol',  name: 'Oni Cataclysm Protocol', fallbackColor: '#ff3030', fallbackAlt: '#ff8a3c', role: 'Endless / Cataclysm', specialty: 'Quad laser array — overwhelming cataclysm output' },
+      // Eddie — LOCKED until purchased with Protocol Fragments (PF_CHARACTER_COSTS, mid-range 10 PF).
+      // Same gate as Oni: selectCharacter() guards on isCharacterUnlocked, no TEST bypass needed.
+      { id: 'eddie',                   name: 'Eddie',                  fallbackColor: '#ff2d2d', fallbackAlt: '#ffb43c', role: 'Thunder / Berserk',   specialty: 'Red thunder riffs — his solo never stops' },
     ];
     this.reset();
 
@@ -1043,6 +1069,12 @@ export class Game {
     this._ventBursts  = [];    // INDUSTRIAL_CORE biome hazard: vent bursts (Endless, player-only, cap 4)
     this._ventCd      = 0;     // cadence between vent spawns while standing in Industrial territory
     this._ventAnnCd   = 0;     // re-announce cooldown for the INDUSTRIAL ZONE banner
+    this._eddieNoteClouds = []; // Eddie dash NOTE CLOUD zones (enemy-damage ground zones, cap 12)
+    this._redThunderCd    = 0;  // Solo Red Thunder auto-fire cooldown (Eddie native weapon)
+    this._redCurtain        = null; // Eddie SPACE ultimate — Red Thunder Curtain storm state (null = idle)
+    this._redCurtainBolts   = [];   // falling red note-bolts (hard cap 14 simultaneous)
+    this._redCurtainImpacts = [];   // short-lived ground impact visuals (cap 20)
+    this._redThunderArcs  = []; // Solo Red Thunder Lv3+ chain-lightning arc visuals (short-lived)
     this._murkActive  = false; // ABYSSAL MURK live flag (halves effective pickup radius while true)
     this.bossTrails    = [];   // boss/mini-boss corruption blood trails — player-only DoT (capped, auto-expire)
     this._lavaRainActive = 0;  // ambient Lava Rain active window (s) — sustained storm, capped drops
@@ -6896,7 +6928,11 @@ export class Game {
     this.player.update(dt, _frozenInput);
     // Dash SFX — fire once on the frame a dash begins (rising edge of dashTimer).
     const dashing = this.player.dashTimer > 0;
-    if (dashing && !this._wasDashing) this.audio?.playDash();
+    if (dashing && !this._wasDashing) {
+      this.audio?.playDash();
+      // Eddie only: each dash deposits ground NOTE CLOUD zones along the dash path.
+      if (this.player.selectedCharacter === 'eddie') this._depositEddieNoteClouds();
+    }
     // ── Serpent Ember Coil relic: dash leaves burn trail ──────────────
     if (dashing && this.meta?.isRelicUnlocked('serpent_ember_coil')) {
       this._emberTrailCd -= dt;
@@ -6943,6 +6979,7 @@ export class Game {
     this._updateNexusChakram(dt);   // Brawler primary (guards on character)
     this._updateCrescentClaw(dt);   // Brawler secondary
     this._updateSkyfall(dt);        // Brawler ultimate
+    this._updateRedThunderCurtain(dt); // Eddie ultimate — red note-bolt storm (guards on character)
     this._updateShuriken(dt);       // Assassin bounce weapon (guards on character)
     // ── Phase 1 Weapons — global (all characters), gated on upgrade card level ─
     this._updatePlasmaBlade(dt);    // Phase 1 MELEE  — arc slash
@@ -6960,6 +6997,7 @@ export class Game {
     this._updatePhasewalkerFx(dt);  // Japan Phasewalker kit (guards on character)
     this._updateOniFx(dt);          // Oni Protocol 0 (guards on character)
     this._updateEuclidKit(dt);      // Euclid Vector toxin kit (guards on character)
+    this._updateSoloRedThunder(dt); // Eddie native weapon — red riff bolts (guards on character)
     this._updateEnemies(dt);
     this._updateOverload(dt);
     this._updateSpawning(dt);
@@ -6979,6 +7017,7 @@ export class Game {
     this._updateEnemyBeams(dt);
     this._updateVoidRifts(dt);
     this._updateVentBursts(dt);
+    this._updateEddieNoteClouds(dt);
     this._updateAbilityTimers(dt);
     this._updateQuantumOverhaul(dt);
     this._updateAcidRain(dt);
@@ -8481,6 +8520,84 @@ export class Game {
     ctx.globalAlpha = 1; ctx.restore();
   }
 
+  // ── EDDIE DASH — NOTE CLOUD (Eddie only) ────────────────────────────────────
+  // Each dash deposits 3-4 warn-less, IMMEDIATELY-active ground note-cloud zones
+  // along the dash path (mirrors the void-rift / vent-burst zone machinery, but
+  // these damage ENEMIES — never the player — and never block movement).
+  // r≈46, 1.6s duration, 8 damage per 0.5s tick per enemy inside, per-zone dmgCd,
+  // hard cap 12 zones, in-place compaction. Other characters are unaffected.
+  _depositEddieNoteClouds() {
+    const p     = this.player;
+    const dir   = p._dashDir || p.lastFacingDir;
+    const reach = p.speed * 3.5 * p.dashDuration;        // full dash travel distance
+    const n     = 3 + (Math.random() < 0.5 ? 1 : 0);     // 3-4 clouds per dash
+    for (let i = 0; i < n; i++) {
+      if (this._eddieNoteClouds.length >= 12) break;     // hard cap 12 zones
+      const k = n > 1 ? i / (n - 1) : 0;
+      this._eddieNoteClouds.push({
+        x: p.pos.x + dir.x * reach * k,
+        y: p.pos.y + dir.y * reach * k,
+        r: 46, t: 0, active: 1.6, dmgCd: 0,
+        glyph: Math.random() < 0.5 ? '♪' : '♩',
+        rot: (Math.random() - 0.5) * 0.8,
+      });
+    }
+  }
+
+  _updateEddieNoteClouds(dt) {
+    if (!this._eddieNoteClouds.length) return;
+    for (const nc of this._eddieNoteClouds) {
+      nc.t += dt;
+      if (nc.t >= nc.active) { nc.dead = true; continue; }
+      nc.dmgCd -= dt;
+      if (nc.dmgCd <= 0) {
+        nc.dmgCd = 0.5;                                  // per-zone damage tick cadence
+        const r2 = nc.r * nc.r;
+        for (const e of this.enemies) {
+          if (!e || e.hp <= 0) continue;
+          const dx = e.pos.x - nc.x, dy = e.pos.y - nc.y;
+          if (dx * dx + dy * dy < r2) e.takeHit(8, this); // 8 dmg per tick per enemy inside
+        }
+      }
+    }
+    { const _a = this._eddieNoteClouds; let _w = 0; for (let _i = 0; _i < _a.length; _i++) { const c = _a[_i]; if (!c.dead) _a[_w++] = c; } _a.length = _w; }
+  }
+
+  // Red note glyphs + tiny spark particles, additive, ground layer (drawn BELOW the player).
+  _drawEddieNoteClouds(ctx) {
+    if (!this._eddieNoteClouds?.length) return;
+    const now = performance.now();
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.textAlign = 'center';
+    for (const nc of this._eddieNoteClouds) {
+      const fade = nc.t > nc.active - 0.4 ? Math.max(0, (nc.active - nc.t) / 0.4) : 1;
+      // Soft red ground pool
+      const g = ctx.createRadialGradient(nc.x, nc.y, 4, nc.x, nc.y, nc.r);
+      g.addColorStop(0, 'rgba(255,60,60,' + (0.30 * fade).toFixed(3) + ')');
+      g.addColorStop(1, 'rgba(255,60,60,0)');
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(nc.x, nc.y, nc.r, 0, Math.PI * 2); ctx.fill();
+      // Red note glyph, gently bobbing
+      const bob = Math.sin(now * 0.006 + nc.rot * 10) * 3;
+      ctx.globalAlpha = 0.85 * fade;
+      ctx.fillStyle = '#ff4040';
+      ctx.font = 'bold 22px Consolas, monospace';
+      ctx.fillText(nc.glyph, nc.x, nc.y + 7 + bob);
+      // Tiny spark particles orbiting the pool rim
+      ctx.fillStyle = '#ffb0a0';
+      for (let sp = 0; sp < 3; sp++) {
+        const a2 = now * 0.004 + nc.rot + sp * (Math.PI * 2 / 3);
+        ctx.globalAlpha = 0.5 * fade;
+        ctx.fillRect(nc.x + Math.cos(a2) * nc.r * 0.7 - 1, nc.y + Math.sin(a2) * nc.r * 0.7 - 1, 2, 2);
+      }
+    }
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+    ctx.textAlign = 'left';
+    ctx.restore();
+  }
+
   _updateProjectiles(dt) {
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const p = this.projectiles[i];
@@ -9522,6 +9639,99 @@ export class Game {
     this._acquiredWeaponTimers.set(weaponId, t);
   }
 
+  // ── SOLO RED THUNDER — Eddie native weapon (auto-fires red riff bolts) ──────
+  // Auto-fires independently every catalog cooldown at the nearest valid target
+  // (same _autoTarget helper the primary auto-shot uses — enemies, bosses AND
+  // core carriers). Each shot spawns a fast red lightning-bolt Projectile OFFSET
+  // from Eddie toward the target (never centered on him); damage rides the
+  // EXISTING projectile damage path (_updateProjectiles → takeHit / boss caps).
+  // Level scaling comes from getWeaponStatsAtLevel (shared LEVEL_SCALING table);
+  // Lv4+ adds a second bolt; Lv3+ has a 35% chance to arc chain lightning to
+  // ONE enemy near the target for 50% damage (capped at one arc per shot).
+  _updateSoloRedThunder(dt) {
+    // Fade chain-arc visuals first (array stays empty for every other character)
+    if (this._redThunderArcs.length) {
+      for (const arc of this._redThunderArcs) arc.t -= dt;
+      { const _a = this._redThunderArcs; let _w = 0; for (let _i = 0; _i < _a.length; _i++) { const c = _a[_i]; if (c.t > 0) _a[_w++] = c; } _a.length = _w; }
+    }
+
+    if (this.player.selectedCharacter !== 'eddie') return;
+    if (this.paused || this.gameOver || this.victory || this.upgradeUI || this.mutationUI) return;
+    const level = this._weaponLevels.get(WEAPON_ID.SOLO_RED_THUNDER) || 0;
+    if (level < 1 || this._consumedWeapons.has(WEAPON_ID.SOLO_RED_THUNDER)) return;
+    const stats = getWeaponStatsAtLevel(WEAPON_ID.SOLO_RED_THUNDER, level);
+    if (!stats) return;
+
+    this._redThunderCd -= dt;
+    if (this._redThunderCd > 0) return;
+
+    const p      = this.player;
+    const target = this._autoTarget(p.pos, 750);
+    if (!target) return;                       // hold fire — never riff into empty space
+    this._redThunderCd = stats.cooldown;
+
+    const shots   = level >= 4 ? 2 : 1;        // Lv4+: +1 bolt
+    const baseAng = Math.atan2(target.pos.y - p.pos.y, target.pos.x - p.pos.x);
+    for (let i = 0; i < shots; i++) {
+      const ang = baseAng + (shots > 1 ? (i === 0 ? -0.09 : 0.09) : 0);
+      const dir = new Vec2(Math.cos(ang), Math.sin(ang));
+      // Spawn OFFSET from Eddie toward the target — the bolt never sits on the player.
+      const proj = new Projectile(p.pos.add(dir.scale(46)), dir, stats.damage, null);
+      proj.style = 'red_bolt';
+      proj.speed = 1150;                       // fast bolt
+      proj.life  = 0.8;
+      this.projectiles.push(proj);
+    }
+    this.audio?.playShoot?.();
+
+    // Lv3+ chain lightning: 35% chance to arc to ONE enemy near the target (50% dmg)
+    if (level >= 3 && Math.random() < 0.35) {
+      let arcTo = null, bestD2 = 180 * 180;
+      for (const e of this.enemies) {
+        if (!e || e.hp <= 0 || e === target) continue;
+        const dx = e.pos.x - target.pos.x, dy = e.pos.y - target.pos.y;
+        const d2 = dx * dx + dy * dy;
+        if (d2 < bestD2) { bestD2 = d2; arcTo = e; }
+      }
+      if (arcTo) {
+        arcTo.takeHit(stats.damage * 0.5, this);
+        this.particles?.spawnHitSparks?.(arcTo.pos, '#ff4040');
+        this._redThunderArcs.push({ x1: target.pos.x, y1: target.pos.y, x2: arcTo.pos.x, y2: arcTo.pos.y, t: 0.18, maxT: 0.18 });
+      }
+    }
+  }
+
+  // Jagged red arc segments between chain-lightning endpoints (additive, short-lived).
+  _drawRedThunderArcs(ctx) {
+    if (!this._redThunderArcs?.length) return;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.lineCap = 'round';
+    for (const arc of this._redThunderArcs) {
+      const k  = Math.max(0, arc.t / arc.maxT);
+      const dx = arc.x2 - arc.x1, dy = arc.y2 - arc.y1;
+      const nx = -dy, ny = dx;                 // perpendicular for the jag offsets
+      ctx.strokeStyle = '#ff3030';
+      ctx.lineWidth   = 2.5;
+      ctx.globalAlpha = 0.85 * k;
+      ctx.beginPath();
+      ctx.moveTo(arc.x1, arc.y1);
+      for (let seg = 1; seg < 4; seg++) {
+        const f = seg / 4;
+        const j = (Math.random() - 0.5) * 0.22;
+        ctx.lineTo(arc.x1 + dx * f + nx * j, arc.y1 + dy * f + ny * j);
+      }
+      ctx.lineTo(arc.x2, arc.y2);
+      ctx.stroke();
+      ctx.strokeStyle = '#ffd9c8';             // white-hot core pass
+      ctx.lineWidth   = 1;
+      ctx.globalAlpha = 0.7 * k;
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+    ctx.restore();
+  }
+
   // ╔══════════════════════════════════════════════════════════════════════════════╗
   // ║  TACTICAL CACHE WEAPONS — Independent Map Objects                          ║
   // ║  100% DECOUPLED from player position post-spawn.                           ║
@@ -9597,6 +9807,12 @@ export class Game {
         entity.missiles = [];
         entity.salvoTimer = 0;
         break;
+      case 'chord_rain':
+        entity.frags = [];      // falling chord fragments (hard cap 18 live)
+        break;
+      case 'sword_burst':
+        entity.swords = [];     // active twin blades (cap: 1 pair in flight)
+        break;
     }
 
     this.tacticalCacheWeapons.push(entity);
@@ -9640,6 +9856,8 @@ export class Game {
         case 'gravity_singularity': this._tickSingularity(w, dt); break;
         case 'kinetic_rain':       this._tickRain(w, dt);        break;
         case 'homing_volley':      this._tickVolley(w, dt);      break;
+        case 'chord_rain':         this._tickChordRain(w, dt);   break;
+        case 'sword_burst':        this._tickSwordBurst(w, dt);  break;
       }
     }
   }
@@ -9943,6 +10161,91 @@ export class Game {
     }
   }
 
+  // ── CHORD RAIN (Eddie — Eddie Chord Curtain): map-wide chord-fragment waves ──
+  // Every tickRate seconds, 10-14 encrypted chord fragments drop across the CURRENT VIEW
+  // (camera bounds ±200px margin — never a player-centered ring). Each falls 0.45s, then a
+  // one-shot ground pulse damages + briefly slows normal enemies (bosses are _capBossDamage
+  // capped, never slowed). Fragments are broken glyphs — scattered, rotated, low-alpha — so
+  // the rain reads as encrypted data and NEVER assembles into a readable sentence.
+  _tickChordRain(w, dt) {
+    const FRAG_SET = ['ED', 'DIE', 'IS', 'TH', 'E', 'BE', 'ST', '♪', '♫'];
+    const COLORS = ['#ff2d2d', '#b44dff', '#4dff88', '#4da6ff'];   // concept-art chord palette
+    const DMG = w.def.baseDamage || 26, R = (w.def.aoeRadius || 60) + 10, SLOW = 0.4;
+
+    // Advance falling fragments; on landing, one-shot ground pulse (zones tick once, no dedup needed)
+    for (const f of w.frags) {
+      f.t += dt;
+      if (f.t < f.fall || f.hitDone) continue;
+      f.hitDone = true;
+      for (const e of this.enemies) {
+        if (!e || e.hp <= 0) continue;
+        const dx = e.pos.x - f.x, dy = e.pos.y - f.gy;
+        if (dx * dx + dy * dy <= R * R) {
+          const boss = e.isBoss?.() || e.isMegaBoss;
+          e.takeHit(boss ? this._capBossDamage(e, DMG) : DMG, this);
+          if (!boss) e.slowTimer = Math.max(e.slowTimer || 0, SLOW);
+        }
+      }
+    }
+    { const _a = w.frags; let _k = 0; for (let _i = 0; _i < _a.length; _i++) { const f = _a[_i]; if (f.t < f.fall + 0.35) _a[_k++] = f; } _a.length = _k; }   // fall + brief pulse linger
+
+    if (w.cooldown > 0) return;
+    w.cooldown = w.def.tickRate || 2.2;
+    const n = 10 + Math.floor(Math.random() * 5);                 // 10-14 drop points per wave
+    for (let i = 0; i < n; i++) {
+      if (w.frags.length >= 18) break;                            // hard cap on live fragments
+      const gx = this.camera.x + randomRange(-200, this._viewW + 200);
+      const gy = this.camera.y + randomRange(-200, this._viewH + 200);
+      w.frags.push({
+        x: gx, gy: gy, t: 0, fall: 0.45, hitDone: false,
+        txt: FRAG_SET[Math.floor(Math.random() * FRAG_SET.length)],
+        color: COLORS[Math.floor(Math.random() * COLORS.length)],
+        rot: randomRange(-0.9, 0.9),
+      });
+    }
+  }
+
+  // ── SWORD BURST (Eddie — Nexus Eddie Double Swords): twin piercing blades ──
+  // Periodically fires TWO sword projectiles side by side (±34px perpendicular offset) toward
+  // the densest direction (shared _autoTarget helper, from the DROP POINT — decoupled from the
+  // player, spawned 60px ahead so a blade never sits on the wielder). Each blade flies 900px,
+  // piercing: every enemy is hit once per blade (per-sword hit Set), bosses _capBossDamage
+  // capped. Cap: 1 active pair — no new launch while a pair is in flight.
+  _tickSwordBurst(w, dt) {
+    const SPEED = w.def.swordSpeed || 620, RANGE = 900;
+    const DMG = w.def.baseDamage || 70, HIT_R = w.def.swathRadius || 54;
+    for (const s of w.swords) {                                   // independent after firing
+      s.dist += SPEED * dt;
+      s.x += s.dx * SPEED * dt; s.y += s.dy * SPEED * dt;
+      for (const e of this.enemies) {
+        if (!e || e.hp <= 0 || s.hit.has(e)) continue;
+        const dx = e.pos.x - s.x, dy = e.pos.y - s.y;
+        const rr = HIT_R + e.radius;
+        if (dx * dx + dy * dy <= rr * rr) {
+          s.hit.add(e);                                           // pierce — each enemy once per blade
+          const boss = e.isBoss?.() || e.isMegaBoss;
+          e.takeHit(boss ? this._capBossDamage(e, DMG) : DMG, this);
+        }
+      }
+    }
+    { const _a = w.swords; let _k = 0; for (let _i = 0; _i < _a.length; _i++) { const s = _a[_i]; if (s.dist < RANGE) _a[_k++] = s; } _a.length = _k; }
+
+    if (w.cooldown > 0 || w.swords.length) return;                // cap: 1 active pair
+    const target = this._autoTarget(new Vec2(w.x, w.y), 1200);    // densest direction = nearest target
+    if (!target) { w.cooldown = 0.5; return; }                    // hold, retry soon
+    w.cooldown = w.def.tickRate || 12;
+    const dx0 = target.pos.x - w.x, dy0 = target.pos.y - w.y;
+    const d = Math.hypot(dx0, dy0) || 1, dx = dx0 / d, dy = dy0 / d;
+    const px = -dy, py = dx;                                      // perpendicular offset for the pair
+    for (const side of [-1, 1]) {
+      w.swords.push({
+        x: w.x + dx * 60 + px * 34 * side,                        // 60px ahead — never on the wielder
+        y: w.y + dy * 60 + py * 34 * side,
+        dx: dx, dy: dy, ang: Math.atan2(dy, dx), dist: 0, hit: new Set(),
+      });
+    }
+  }
+
   /** Spawn particle burst at position for a tactical weapon */
   _spawnTacParticles(w, px, py, count) {
     const c1 = w.def.particles?.color1 || w.def.color || '#ffffff';
@@ -9988,6 +10291,12 @@ export class Game {
           break;
         case 'kinetic_rain':
           this._drawRainFx(ctx, w, cam);
+          break;
+        case 'chord_rain':
+          this._drawChordRainFx(ctx, w);
+          break;
+        case 'sword_burst':
+          this._drawSwordBurstFx(ctx, w);
           break;
         case 'gravity_singularity': {
           // PREMIUM black hole — the artist sprite IS the visual (transparent PNG
@@ -10124,6 +10433,74 @@ export class Game {
       ctx.restore();
     }
     ctx.restore();
+  }
+
+  // ── Eddie tactical draws — WORLD coordinates on purpose: the tactical draw pass runs inside
+  // the camera transform (translate(-camera)), so world coords land exactly where the damage
+  // zones tick. Fragments render on the world layer below entities; impact flashes above ground.
+  _drawChordRainFx(ctx, w) {
+    const sprite = this._tacticalSpriteCache.get(w.id);
+    if (sprite && sprite.complete && sprite.naturalWidth > 0) {   // deployed-cache marker at drop point
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, w.timer / 1.0) * 0.9;
+      ctx.drawImage(sprite, w.x - 30, w.y - 30, 60, 60);
+      ctx.restore();
+    }
+    for (const f of w.frags) {
+      if (f.t < f.fall) {                                         // falling encrypted fragment
+        const k = f.t / f.fall, y = f.gy - (1 - k) * 340;
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.34 + 0.22 * k;                        // low-alpha — never a readable block
+        ctx.translate(f.x, y); ctx.rotate(f.rot);
+        ctx.fillStyle = f.color;
+        ctx.font = 'bold 18px Consolas, monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(f.txt, 0, 0);
+        ctx.restore();
+      } else {                                                    // ground pulse — impact flash
+        const a = Math.max(0, 1 - (f.t - f.fall) / 0.35);
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = a * 0.8;
+        ctx.strokeStyle = f.color; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(f.x, f.gy, ((w.def.aoeRadius || 60) + 10) * (1 - a * 0.5), 0, Math.PI * 2); ctx.stroke();
+        ctx.restore();
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  _drawSwordBurstFx(ctx, w) {
+    const sprite = this._tacticalSpriteCache.get(w.id);
+    const ready = sprite && sprite.complete && sprite.naturalWidth > 0;
+    if (ready && !w.swords.length) {                              // idle cache marker at drop point
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, w.timer / 1.0) * 0.9;
+      ctx.drawImage(sprite, w.x - 30, w.y - 30, 60, 60);
+      ctx.restore();
+    }
+    for (const s of w.swords) {
+      ctx.save();
+      ctx.translate(s.x, s.y);
+      ctx.rotate(s.ang);
+      ctx.globalCompositeOperation = 'lighter';                   // additive glow trail behind the blade
+      const grad = ctx.createLinearGradient(-190, 0, 0, 0);
+      grad.addColorStop(0, 'rgba(255,106,26,0)');
+      grad.addColorStop(1, 'rgba(255,210,60,0.55)');
+      ctx.strokeStyle = grad; ctx.lineWidth = 10;
+      ctx.beginPath(); ctx.moveTo(-190, 0); ctx.lineTo(-40, 0); ctx.stroke();
+      ctx.globalCompositeOperation = 'source-over';
+      if (ready) {
+        ctx.drawImage(sprite, -75, -75, 150, 150);                // blade art rotated to travel direction
+      } else {
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.strokeStyle = '#ff6a1a'; ctx.lineWidth = 5;
+        ctx.beginPath(); ctx.moveTo(-60, 0); ctx.lineTo(60, 0); ctx.stroke();
+      }
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
   }
 
   // ── Primary: Nexus Chakram ──────────────────────────────────────────────────
@@ -10336,6 +10713,125 @@ export class Game {
       ctx.globalAlpha = a * 0.7;
       ctx.strokeStyle = '#1fd6a6'; ctx.lineWidth = 3;
       ctx.beginPath(); ctx.arc(im.pos.x, im.pos.y, im.r * (1 - a * 0.4), 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // ── Ultimate: Red Thunder Curtain (Eddie, SPACE, 80 mana) ───────────────────
+  // 6.5s storm: every 0.22s, 2-3 red note-bolts fall at random points across the VISIBLE
+  // camera area; each ground impact is a 95px AoE (55 dmg, boss factor mirrors Skyfall) plus
+  // a 0.6s slow on normal enemies. Cost is 80 (not the shared 100) because Eddie caps at
+  // 80 max mana — a 100 gate could never fire at base. Bolts/impacts are hard-capped.
+  activateRedThunderCurtain() {
+    if (this.gameState !== 'playing' || this.paused || this.gameOver || this.victory || this.upgradeUI) return;
+    const p = this.player;
+    if (p.selectedCharacter !== 'eddie') return;                // Eddie only
+    if (this._redCurtain) return;                               // already running
+    const cost = 80;                                            // fits his 80 max mana (see note above)
+    if (p.mana < cost) {                                        // same NOT-ENOUGH-MANA behavior as other ultimates
+      this.floatingTexts.push(new FloatingText('NOT ENOUGH MANA', p.pos.clone(), CYAN, 1.0));
+      return;
+    }
+    p.mana -= cost;
+    this._redCurtain = { t: 0, spawnTimer: 0 };
+    this.screenShake.trigger(4, 0.3);
+    this.audio?.playEventWarning?.();
+    this.floatingTexts.push(new FloatingText('RED THUNDER CURTAIN!', p.pos.clone(), '#ff2d2d', 1.4));
+  }
+
+  _updateRedThunderCurtain(dt) {
+    // Impact rings decay + in-place compaction (mirrors _skyfallImpacts)
+    for (const im of this._redCurtainImpacts) im.life -= dt;
+    if (this._redCurtainImpacts.length) { const _a = this._redCurtainImpacts; let _w = 0; for (let _i = 0; _i < _a.length; _i++) { const im = _a[_i]; if (im.life > 0) _a[_w++] = im; } _a.length = _w; }
+
+    // Falling bolts keep advancing after the storm window closes, so in-flight bolts still land.
+    const bolts = this._redCurtainBolts;
+    if (bolts.length) {
+      const RADIUS = 95, DMG = 55, SLOW = 0.6;
+      for (const b of bolts) {
+        b.t += dt;
+        if (b.t < b.fall) continue;
+        b.done = true;                                          // GROUND IMPACT
+        const center = new Vec2(b.x, b.gy);
+        for (const t of this._brawlerTargets()) {
+          if (distance(center, t.obj.pos) > RADIUS + t.obj.radius) continue;
+          this._brawlerHit(t, (this._targetIsBoss(t) ? 0.65 : 1) * DMG, '#ff2d2d');   // boss factor mirrors Skyfall
+          if (t.arr && !this._targetIsBoss(t)) t.obj.slowTimer = Math.max(t.obj.slowTimer || 0, SLOW);   // slow normals only
+        }
+        if (this._redCurtainImpacts.length < 20)                // perf cap on live impact rings
+          this._redCurtainImpacts.push({ pos: center, r: RADIUS, life: 0.45, maxLife: 0.45 });
+      }
+      { let _w = 0; for (let _i = 0; _i < bolts.length; _i++) { const b = bolts[_i]; if (!b.done) bolts[_w++] = b; } bolts.length = _w; }
+    }
+
+    const rc = this._redCurtain;
+    if (!rc) return;
+    const DURATION = 6.5, SPAWN_EVERY = 0.22, MAX_BOLTS = 14;
+    rc.t += dt; rc.spawnTimer -= dt;
+    if (rc.t < DURATION && rc.spawnTimer <= 0) {
+      rc.spawnTimer = SPAWN_EVERY;
+      const n = 2 + (Math.random() < 0.5 ? 1 : 0);              // 2-3 bolts per pulse
+      for (let i = 0; i < n; i++) {
+        if (bolts.length >= MAX_BOLTS) break;                   // hard cap on simultaneous falling bolts
+        // Random ground point across the VISIBLE camera area (world coords from camera bounds)
+        const gx = this.camera.x + randomRange(40, this._viewW - 40);
+        const gy = this.camera.y + randomRange(80, this._viewH - 40);
+        bolts.push({ x: gx, gy: gy, t: 0, fall: randomRange(0.42, 0.55), done: false });
+      }
+    }
+    if (rc.t >= DURATION && !bolts.length) this._redCurtain = null;
+  }
+
+  _drawRedThunderCurtain(ctx) {
+    const storm = this._redCurtain;
+    const bolts = this._redCurtainBolts, impacts = this._redCurtainImpacts;
+    if (!storm && !bolts.length && !impacts.length) return;
+    // Faint red vignette pulse while the storm runs — capped at 0.12 alpha so the screen stays
+    // readable (never an opaque overlay), and drawn below the player so the hero is never hidden.
+    if (storm) {
+      ctx.save();
+      ctx.globalAlpha = Math.min(0.12, 0.07 + 0.04 * Math.sin(storm.t * 9));
+      ctx.fillStyle = '#ff2d2d';
+      ctx.fillRect(this.camera.x, this.camera.y, this._viewW, this._viewH);
+      ctx.restore();
+    }
+    // Falling red note-bolts — note glyph head + additive lightning tail (gradient line)
+    for (const b of bolts) {
+      const k = Math.min(1, b.t / b.fall);
+      const y = b.gy - (1 - k) * 420;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      const grad = ctx.createLinearGradient(b.x, y - 120, b.x, y);
+      grad.addColorStop(0, 'rgba(255,45,45,0)');
+      grad.addColorStop(1, 'rgba(255,130,90,0.9)');
+      ctx.strokeStyle = grad; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.moveTo(b.x, y - 120); ctx.lineTo(b.x, y); ctx.stroke();
+      ctx.globalAlpha = 0.95;
+      ctx.fillStyle = '#ff2d2d';
+      ctx.font = 'bold 26px Consolas, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('♪', b.x, y);
+      ctx.restore();
+    }
+    // Ground impacts — red shock ring + gold sparks (procedural spokes, no per-particle arrays)
+    for (const im of impacts) {
+      const a = Math.max(0, im.life / im.maxLife);
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = a * 0.85;
+      ctx.strokeStyle = '#ff2d2d'; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.arc(im.pos.x, im.pos.y, im.r * (1 - a * 0.45), 0, Math.PI * 2); ctx.stroke();
+      ctx.globalAlpha = a * 0.6;
+      ctx.strokeStyle = '#ffd23c'; ctx.lineWidth = 2;
+      for (let i = 0; i < 6; i++) {
+        const ang = i * (Math.PI / 3) + (1 - a) * 1.7;
+        const r0 = im.r * 0.25, r1 = im.r * (0.55 + (1 - a) * 0.45);
+        ctx.beginPath();
+        ctx.moveTo(im.pos.x + Math.cos(ang) * r0, im.pos.y + Math.sin(ang) * r0);
+        ctx.lineTo(im.pos.x + Math.cos(ang) * r1, im.pos.y + Math.sin(ang) * r1);
+        ctx.stroke();
+      }
       ctx.restore();
     }
     ctx.globalAlpha = 1;
@@ -12111,6 +12607,7 @@ export class Game {
     this._drawEnemyOrbZones(ctx);   // elite orb blast zones — same ground-marker layer
     this._drawVoidRifts(ctx);       // VOID_ZONE rifts — ground-marker layer (under entities)
     this._drawVentBursts(ctx);      // INDUSTRIAL vent bursts — same ground-marker layer
+    this._drawEddieNoteClouds(ctx); // Eddie dash NOTE CLOUDS — same ground-marker layer (below player)
     this._drawEnemyBeams(ctx);      // elite telegraph/fire beams — above ground markers
     this._drawBossTrails(ctx);
     // Chaos Mode ambient particle field (world-space, additive blend, bounded)
@@ -12272,6 +12769,7 @@ export class Game {
     this._drawShardRing(ctx);            // Phase 1 ORBIT ring
     this._drawP1SentryDrones(ctx);       // Phase 1 DRONE companions
     this._drawPlasmaBladeSlashes(ctx);   // Phase 1 MELEE slash arc
+    this._drawRedThunderArcs(ctx);       // Eddie Lv3+ chain-lightning arcs
     this._drawVoidNeedles(ctx);          // Phase 1 PROJECTILE piercing shots
     this._drawRailSpikes(ctx);           // Phase 1 PROJECTILE heavy shots
     this._drawVoidBeamArcs(ctx);         // Phase 2 BEAM
@@ -12285,6 +12783,7 @@ export class Game {
     this._drawChainLightning(ctx);
     this._drawNeonPierceBeam(ctx);
     this._drawSkyfall(ctx);         // Brawler ultimate impacts
+    this._drawRedThunderCurtain(ctx); // Eddie ultimate — red note-bolt storm (below player)
     this._drawCrescentSlashes(ctx); // Brawler secondary
     this._drawChakrams(ctx);        // Brawler primary
     this._drawChromePhantom(ctx);   // Assassin ultimate (clone overlays + burst rings)
@@ -12828,6 +13327,7 @@ export class Game {
     const S = this._themeSlots();
     const ch = this._menuSelectedChar();
     const el = CHARACTER_ELEMENT[ch.id]; const elIcon = ELEMENT_ICON[el] || '◆';
+    const elName = el ? (ELEMENTS[el]?.name || el.toUpperCase()) : '—';   // display name (single-word elements unchanged)
     const progression = m && m.getPlayerProgression ? m.getPlayerProgression() : { level: 1, rank: 'ROOKIE', progress: 0, label: '1 / 5 TO NEXT LEVEL' };
     const owned = (m && m.protocolCards) ? Object.keys(m.protocolCards).filter(k => m.protocolCards[k]) : [];
     const pfAvail  = m ? m.getProtocolFragments() : 0;
@@ -12853,18 +13353,18 @@ export class Game {
     ctx.textAlign = 'left'; ctx.fillStyle = '#eaffff'; ctx.font = 'bold 12px Consolas, monospace';
     ctx.fillText(ch.name.length > 19 ? ch.name.slice(0, 18) + '…' : ch.name, ex, s.y + 38);
     this._slotRow(ctx, ex, ew, s.y + 58, 'CLASS',   ch.role, '#ffd2a0');
-    this._slotRow(ctx, ex, ew, s.y + 76, 'ELEMENT', elIcon + ' ' + (el ? el.toUpperCase() : '—'), this._elementColors?.[el] || '#7df9ff');
+    this._slotRow(ctx, ex, ew, s.y + 76, 'ELEMENT', elIcon + ' ' + elName, this._elementColors?.[el] || '#7df9ff');
     this._slotRow(ctx, ex, ew, s.y + 94, 'WEAPON',  this._charWeaponLabel(ch.id), '#ffe0b0');
 
     // ── QUICK STATS (left bottom) — bound to selected character (no fake HP/ATK) ──
     s = S.quickStats; this._slotPanel(ctx, s, '#9fff6a', 'QUICK STATS');
     const qx = s.x + 12, qw = s.w - 24;
     const revives = 3 + (this._hasProto('phoenix_revival') ? 1 : 0);
-    this._slotRow(ctx, qx, qw, s.y + 38,  'ELEMENT',   elIcon + ' ' + (el ? el.toUpperCase() : '—'), '#7df9ff');
+    this._slotRow(ctx, qx, qw, s.y + 38,  'ELEMENT',   elIcon + ' ' + elName, '#7df9ff');
     this._slotRow(ctx, qx, qw, s.y + 56,  'CLASS',     ch.role.split(' ')[0], '#9fff6a');
     this._slotRow(ctx, qx, qw, s.y + 74,  'REVIVES',   '✦ ' + revives, '#ff9b3c');
     this._slotRow(ctx, qx, qw, s.y + 92,  'PROTOCOLS', '◈ ' + owned.length, '#b88bff');
-    const _qStats = { skeleton_warrior:{hp:130,mana:100}, taekwondo_girl:{hp:90,mana:100}, cyber_arm_hero:{hp:100,mana:100}, brawler_warrior:{hp:125,mana:100}, assassin_clone:{hp:88,mana:100}, japan_phasewalker:{hp:100,mana:100}, euclid_vector:{hp:100,mana:100}, oni_cataclysm_protocol:{hp:100,mana:100} };
+    const _qStats = { skeleton_warrior:{hp:130,mana:100}, taekwondo_girl:{hp:90,mana:100}, cyber_arm_hero:{hp:100,mana:100}, brawler_warrior:{hp:125,mana:100}, assassin_clone:{hp:88,mana:100}, japan_phasewalker:{hp:100,mana:100}, euclid_vector:{hp:100,mana:100}, oni_cataclysm_protocol:{hp:100,mana:100}, eddie:{hp:200,mana:80} };
     const _qs = _qStats[ch.id] || { hp: 100, mana: 100 };
     this._slotRow(ctx, qx, qw, s.y + 110, 'HP / MANA', _qs.hp + ' / ' + _qs.mana, '#7fd0ff');
 
@@ -12901,7 +13401,7 @@ export class Game {
     s = S.controllerHelp; this._slotPanel(ctx, s, '#7df9ff', 'BUILD');
     const bx2 = s.x + 12, bw2 = s.w - 24;
     this._slotRow(ctx, bx2, bw2, s.y + 40, 'BUILD',   ch.role, '#9fffe6');
-    this._slotRow(ctx, bx2, bw2, s.y + 58, 'ELEMENT', elIcon + ' ' + (el ? el.toUpperCase() : '—'), this._elementColors?.[el] || '#7df9ff');
+    this._slotRow(ctx, bx2, bw2, s.y + 58, 'ELEMENT', elIcon + ' ' + elName, this._elementColors?.[el] || '#7df9ff');
     this._slotRow(ctx, bx2, bw2, s.y + 76, 'WEAPON',  this._charWeaponLabel(ch.id), '#ffe0b0');
     ctx.textAlign = 'left'; ctx.font = '10px Consolas, monospace'; ctx.fillStyle = 'rgba(160,180,200,0.7)';
     ctx.fillText('INPUT: Enter / ESC · Controller (Xbox · PS · PC)', bx2, s.y + 98);
@@ -12931,6 +13431,7 @@ export class Game {
       assassin_clone:   'Plasma Daggers',
       euclid_vector:    'Vector Bolt',
       oni_cataclysm_protocol: 'Cataclysm Core',
+      eddie:            'Solo Red Thunder',
     })[id] || '—';
   }
 
@@ -13418,7 +13919,7 @@ export class Game {
     const name     = (m && m.getProfileName && m.getProfileName()) || 'PLAYER_01';
     const revives  = 3 + (this._hasProto('phoenix_revival') ? 1 : 0);
     const weapon   = this._charWeaponLabel(ch.id);
-    const elStr    = (el ? el.toUpperCase() : '—');
+    const elStr    = (el ? (ELEMENTS[el]?.name || el.toUpperCase()) : '—');
     const muted    = !!(this.audio && this.audio.muted);
 
     // Top bar chips
@@ -13440,6 +13941,17 @@ export class Game {
     this._cgmSet('equip-name', shortName);
     this._cgmSet('equip-class', ch.role);
     this._cgmSet('equip-element', elIcon + ' ' + elStr);
+    // Eddie identity art — swap the text badge for the real element icon set:
+    // Crimson Gate + Thunder Maiden → Crimson Thunder Gate. Other characters keep plain text.
+    if (ch.id === 'eddie') {
+      const _eqEl = this._menuOverlayEl && this._menuOverlayEl.querySelector('[data-cgm="equip-element"]');
+      if (_eqEl) {
+        const _img = (p, t) => `<img src="${p}" title="${t}" alt="${t}" style="height:16px;vertical-align:-3px">`;
+        _eqEl.innerHTML = _img('assets/elements/elements/crimson_gate_element.png', 'Crimson Gate') + ' CRIMSON GATE ' +
+                          _img('assets/elements/elements/thunder_maiden_element.png', 'Thunder Maiden') + ' + ' +
+                          _img('assets/elements/elements/fusion/fusion_element_eddie.png', 'Crimson Thunder Gate');
+      }
+    }
     this._cgmSet('equip-weapon', weapon);
 
     // Quick Stats panel
@@ -13447,8 +13959,8 @@ export class Game {
     this._cgmSet('qs-class', ch.role.split(' ')[0]);
     this._cgmSet('qs-revives', revives);
     this._cgmSet('qs-protocols', owned.length);
-    const _qsMap = { skeleton_warrior:130, taekwondo_girl:90, cyber_arm_hero:100, brawler_warrior:125, assassin_clone:88, japan_phasewalker:100, euclid_vector:100, oni_cataclysm_protocol:100 };
-    this._cgmSet('qs-hp-mana', (_qsMap[ch.id] || 100) + ' / 100');
+    const _qsMap = { skeleton_warrior:130, taekwondo_girl:90, cyber_arm_hero:100, brawler_warrior:125, assassin_clone:88, japan_phasewalker:100, euclid_vector:100, oni_cataclysm_protocol:100, eddie:200 };
+    this._cgmSet('qs-hp-mana', (_qsMap[ch.id] || 100) + ' / ' + (ch.id === 'eddie' ? 80 : 100));
 
     // System Feed — Eden Core messages + Eden Memory %
     const feedEl = this._menuOverlayEl.querySelector('#cgm-feed-list');

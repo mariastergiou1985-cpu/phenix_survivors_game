@@ -1,4 +1,4 @@
-import { Game } from './game/Game.js?v=20260705280000';
+import { Game } from './game/Game.js?v=20260705300000';
 import { AudioManager } from './audio/AudioManager.js?v=20260705220000';
 import { GamepadInput } from './Gamepad.js?v=20260703990000';
 import { initTouchControls } from './TouchInput.js?v=20260703990000';
@@ -127,7 +127,7 @@ window.addEventListener('keydown', e => {
   // One-shot abilities
   if (key === 'q') game.activatePulseShield();   // Pulse Shield — shared by ALL characters
   if (key === 'e') game.activateEMPCloud();       // EMP stun — shared by ALL (Phasewalker layers his Shockwave VFX inside)
-  if (key === ' ') { game.activateThunderSolo(); game.activateOverheatedChains(); game.activateCyberBikeRush(); game.activateSkyfallLances(); game.activateChromePhantomProtocol(); game.activateDigitalSingularity(); game.activateEuclidPlague(); game.activateProtocol0Cataclysm(); }   // SPACE ultimate (per-character; each self-guards)
+  if (key === ' ') { game.activateThunderSolo(); game.activateOverheatedChains(); game.activateCyberBikeRush(); game.activateSkyfallLances(); game.activateChromePhantomProtocol(); game.activateDigitalSingularity(); game.activateEuclidPlague(); game.activateProtocol0Cataclysm(); game.activateRedThunderCurtain(); }   // SPACE ultimate (per-character; each self-guards)
   if (key === 'm') game.audio?.toggleMute();
   if (key === 'f') {
     if (!document.fullscreenElement) {
@@ -287,7 +287,7 @@ canvas.addEventListener('mousedown', e => {
     // so at most one fires. Click is swallowed (no stray aim-fire on the ult box).
     game.activateThunderSolo(); game.activateOverheatedChains(); game.activateCyberBikeRush();
     game.activateSkyfallLances(); game.activateChromePhantomProtocol(); game.activateDigitalSingularity();
-    game.activateEuclidPlague(); game.activateProtocol0Cataclysm();
+    game.activateEuclidPlague(); game.activateProtocol0Cataclysm(); game.activateRedThunderCurtain();
     mouseDown = false;
 
   } else if (game.gameState === 'lore_archive') {
@@ -527,7 +527,7 @@ initTouchControls({
   setAim: (x, y) => { mousePos = { x, y }; game.setMousePos(mousePos); },
   onQ:   () => game.activatePulseShield(),
   onE:   () => game.activateEMPCloud(),
-  onUlt: () => { game.activateThunderSolo(); game.activateOverheatedChains(); game.activateCyberBikeRush(); game.activateSkyfallLances(); game.activateChromePhantomProtocol(); game.activateDigitalSingularity(); game.activateEuclidPlague(); game.activateProtocol0Cataclysm(); },
+  onUlt: () => { game.activateThunderSolo(); game.activateOverheatedChains(); game.activateCyberBikeRush(); game.activateSkyfallLances(); game.activateChromePhantomProtocol(); game.activateDigitalSingularity(); game.activateEuclidPlague(); game.activateProtocol0Cataclysm(); game.activateRedThunderCurtain(); },
 });
 
 // ─── Game loop ────────────────────────────────────────────────────────────────

@@ -13,11 +13,16 @@ export const ELEMENTS = {
   magnetic:  { name: 'MAGNETIC',  c1: '#9b6bff', c2: '#cdb6ff', spokes: 5, style: 'pull',  life: 0.45 },
   toxin:     { name: 'TOXIN',     c1: '#7CFF4D', c2: '#caffae', spokes: 5, style: 'splat', life: 0.55 },
   gas:       { name: 'GAS',       c1: '#8fdf7f', c2: '#d8ffcf', spokes: 0, style: 'cloud', life: 0.90 },
+  // Eddie signature elements — purely additive data entries that reuse existing burst styles
+  // ('ember' / 'arc'), so the draw engine needs zero changes.
+  crimson_gate:   { name: 'CRIMSON GATE',   c1: '#ff2d2d', c2: '#ffd23c', spokes: 7, style: 'ember', life: 0.52 },
+  thunder_maiden: { name: 'THUNDER MAIDEN', c1: '#ffd23c', c2: '#fff6d0', spokes: 6, style: 'arc',   life: 0.45 },
 };
 
 // Symbol/icon per element — used for compact icon-based badges (HUD, cards) instead of long words.
 export const ELEMENT_ICON = {
   fire: '🔥', electric: '⚡', radiation: '☢', ice: '❄', magnetic: '🧲', toxin: '☣', gas: '☁',
+  crimson_gate: '⛩', thunder_maiden: '🌩',
 };
 
 // Primary elemental identity per active character. Oni is included but stays locked/PF-gated
@@ -30,6 +35,7 @@ export const CHARACTER_ELEMENT = {
   assassin_clone:         'electric',
   euclid_vector:          'toxin',
   oni_cataclysm_protocol: 'radiation',
+  eddie:                  'crimson_gate',   // Crimson Gate — red+gold burn/shock resonance identity
 };
 
 // Future fusion hooks (Phase 1 PREP ONLY) — data only, so fusion cards can be added later without
@@ -60,6 +66,9 @@ export const FUSION_FX = {
   frost_arc:        { name: 'FROST ARC',        c1: '#7fe0ff', c2: '#9fd8ff', kind: 'aoe',   radius: 76, dmg: 12 },
   magnetic_furnace: { name: 'MAGNETIC FURNACE', c1: '#ff6a1a', c2: '#9b6bff', kind: 'field', radius: 84, dmg: 12, slow: 0.8 },
   cataclysm:        { name: 'CATACLYSM BURN',   c1: '#c6ff3a', c2: '#ff6a1a', kind: 'aoe',   radius: 96, dmg: 18 },
+  // Eddie fusion — Crimson Gate + Thunder Maiden resonance field (burn+shock ticks + short slow;
+  // 'field' kind never slows bosses, radius kept inside the existing field range for balance).
+  crimson_thunder_gate: { name: 'CRIMSON THUNDER GATE', c1: '#ff2d2d', c2: '#ffd23c', kind: 'field', radius: 96, dmg: 12, slow: 0.8 },
 };
 
 // Element-pair → fusion id (keyed by fusionKey(a,b), i.e. the two element names sorted + joined).
@@ -75,6 +84,7 @@ export const FUSION_PAIRS = {
   'electric+ice':       'frost_arc',
   'fire+magnetic':      'magnetic_furnace',
   'fire+radiation':     'cataclysm',
+  'crimson_gate+thunder_maiden': 'crimson_thunder_gate',   // Eddie: primary + card-granted secondary
 };
 
 // Which fusion each playable character triggers once Fusion Catalyst is active. Single-element
@@ -86,6 +96,7 @@ export const CHARACTER_FUSION = {
   assassin_clone:         'plasma',           // Electric / Plasma
   euclid_vector:          'viral',            // Toxin + Gas
   oni_cataclysm_protocol: 'cataclysm',        // Radiation + Fire
+  eddie:                  'crimson_thunder_gate',   // Crimson Gate + Thunder Maiden
 };
 
 const MAX_BURSTS = 56;   // hard cap on concurrent element bursts

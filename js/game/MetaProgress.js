@@ -94,6 +94,10 @@ export const CHARACTER_OUTFITS = {
     default: { name: 'Default', asset: 'assets/characters/endless/oni_cataclysm_protocol.png' },
     secret:  { name: 'Crimson Protocol Oni', asset: 'assets/unlocks/secret_skins/oni_cataclysm_crimson_secret.png', unlockKey: 'crimson_oni' },
   },
+  // Eddie — default outfit only (no secret skin yet; PF-gated via PF_CHARACTER_COSTS).
+  eddie: {
+    default: { name: 'Default', asset: 'assets/characters/eddie_thunder_guitar.png' },
+  },
 };
 
 // Endless-only achievement milestones. Each `test` is a PURE read-only predicate over a
@@ -176,6 +180,7 @@ export const PF_TOTAL_OBTAINABLE = Object.values(PF_PAYOUTS).reduce((a, b) => a 
 export const PF_CHARACTER_COSTS = {
   japan_phasewalker:      8,
   oni_cataclysm_protocol: 14,
+  eddie:                  10,   // Thunder / Berserk roster addition — mid-range PF tier (8 < 10 < 14)
   // euclid_vector is intentionally NOT listed → unlocked from the start (free). Oni stays PF-gated.
 };
 

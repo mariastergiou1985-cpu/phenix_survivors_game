@@ -1,6 +1,6 @@
 import { Vec2, WIDTH, HEIGHT, WORLD_W, WORLD_H, WORLD_MARGIN, WORLD_BOUNDS, PLAYER_RADIUS, CYAN, WHITE, YELLOW, GREEN, BLUE, RED } from '../constants.js';
 import { clamp, safeNormalize } from '../utils.js';
-import { Projectile } from './Projectile.js?v=20260615210000';
+import { Projectile } from './Projectile.js?v=20260705300000';
 import { FloatingText } from './FloatingText.js';
 
 export class Player {
@@ -62,6 +62,14 @@ export class Player {
       this.hp           = 96;
       this.baseSpeed    = Math.round(230 * 1.12); // 258 (fast; only Taekwondo is faster)
       this.pickupRadius = 88;
+    } else if (this.selectedCharacter === 'eddie') {
+      // Thunder / Berserk: huge HP pool + near-Taekwondo speed, but a SMALLER mana tank
+      // (80 < 100) — his ultimate economy is the tradeoff for raw riff damage.
+      this.maxHp     = 200;
+      this.hp        = 200;
+      this.maxMana   = 80;
+      this.mana      = 80;
+      this.baseSpeed = Math.round(230 * 1.18); // 271 (a hair under Taekwondo at 276)
     }
 
     this._tankTimer   = 0;     // Oni Protocol 0: damage-reduction window
@@ -139,6 +147,7 @@ export class Player {
       japan_phasewalker:      'assets/characters/endless/japan_phasewalker.png?v=20260615210000',   // ?v bust: corrected transparency
       oni_cataclysm_protocol: 'assets/characters/endless/oni_cataclysm_protocol.png',
       euclid_vector:          'assets/characters/endless/euclid_vector.png',           // playable; auto toxin needle weapon
+      eddie:                  'assets/characters/eddie_thunder_guitar.png',            // root folder; descriptive filename (not eddie.png)
     };
     const defaultPath = ENDLESS_SPRITES[this.selectedCharacter] || `assets/characters/${this.selectedCharacter}.png`;
     const spritePath  = this._outfitSpritePath || defaultPath;
@@ -175,6 +184,7 @@ export class Player {
       case 'cyber_arm_hero': return { primary: '#FF6600', secondary: '#CC0000' };
       case 'brawler_warrior': return { primary: '#1fd6a6', secondary: '#0a9c78' };
       case 'assassin_clone': return { primary: '#ff4dd2', secondary: '#9aa0aa' };
+      case 'eddie': return { primary: '#ff2d2d', secondary: '#ffb43c' };
       default: return { primary: CYAN, secondary: WHITE };
     }
   }
@@ -194,6 +204,8 @@ export class Player {
         return { rim: '#1fd6a6', innerGlow: 'rgba(31,214,166,0.30)', outerGlow: 'rgba(31,214,166,0)' };
       case 'assassin_clone':
         return { rim: '#ff4dd2', innerGlow: 'rgba(255,77,210,0.30)', outerGlow: 'rgba(255,77,210,0)' };
+      case 'eddie':
+        return { rim: '#ff3a3a', innerGlow: 'rgba(255,58,58,0.30)',  outerGlow: 'rgba(255,58,58,0)' };
       default:
         return { rim: '#00e6ff', innerGlow: 'rgba(0,230,255,0.28)',  outerGlow: 'rgba(0,230,255,0)' };
     }

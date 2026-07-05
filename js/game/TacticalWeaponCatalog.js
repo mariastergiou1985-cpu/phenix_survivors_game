@@ -21,6 +21,8 @@ export const TACTICAL_ID = Object.freeze({
   RAIL_STRIKE:       'tac_rail_strike',
   MISSILE_BARRAGE:   'tac_missile_barrage',
   HEAVY_IMPACT_BURST: 'tac_heavy_impact_burst',
+  EDDIE_CHORD_CURTAIN: 'eddie_chord_curtain',
+  EDDIE_DOUBLE_SWORDS: 'eddie_double_swords',
   // Tactical Fusions (Nexus Weapon Visual Pack) — parents must both deploy first
   FUSION_CHAKRAM_KINETIC: 'fusion_chakram_kinetic',
   FUSION_OVERDRIVE_VOID:  'fusion_overdrive_void',
@@ -60,6 +62,8 @@ export const TACTICAL_BEHAVIOR = Object.freeze({
   GRAVITY_SINGULARITY: 'gravity_singularity',   // Pulls enemies + explodes
   KINETIC_RAIN:        'kinetic_rain',          // Falling projectiles in area
   HOMING_VOLLEY:       'homing_volley',         // Auto-targeting missiles
+  CHORD_RAIN:          'chord_rain',            // Map-wide falling chord-fragment waves
+  SWORD_BURST:         'sword_burst',           // Periodic piercing twin-blade launches
 });
 
 // ── Tactical Weapon Definitions ─────────────────────────────────────────────
@@ -385,6 +389,67 @@ export const TACTICAL_DEFS = Object.freeze({
       speed:      5.5,
       color1:     '#ffcc00',
       color2:     '#ff8800',
+    },
+  },
+
+  // ╔═══════════════════════════════════════════════════════════════════╗
+  // ║ 10. EDDIE — Eddie Chord Curtain (GRID CACHE)                     ║
+  // ║     Module A: Storm Conductor Overdrive                          ║
+  // ╚═══════════════════════════════════════════════════════════════════╝
+  [TACTICAL_ID.EDDIE_CHORD_CURTAIN]: {
+    id:          TACTICAL_ID.EDDIE_CHORD_CURTAIN,
+    name:        'Eddie Chord Curtain',
+    description: 'GRID CACHE — rains red thunder chords across the map',
+    character:   'eddie',
+    exclusive:   true,    // Eddie-only, never leaks to other characters (mirrors GRAVITY_WELL)
+    fxModule:    FX_MODULE.A_STORM_CONDUCTOR,
+    behavior:    TACTICAL_BEHAVIOR.CHORD_RAIN,
+    sprite:      'assets/weapons/tactical/tac_eddie_chord_curtain.png',
+    baseDamage:  22,
+    aoeRadius:   60,
+    tickRate:     2.2,    // seconds between fragment waves
+    duration:    14,      // seconds active
+    color:       '#ff2d2d',
+    glitchFx: {
+      rgbSplit:   true,
+    },
+    particles: {
+      type:       'electric_sparks',
+      count:      8,
+      speed:      3.0,
+      color1:     '#ff2d2d',
+      color2:     '#ffd23c',
+    },
+  },
+
+  // ╔═══════════════════════════════════════════════════════════════════╗
+  // ║ 11. EDDIE — Nexus Eddie Double Swords (BURST)                    ║
+  // ║     Module F: Brawler Impact Slash                               ║
+  // ╚═══════════════════════════════════════════════════════════════════╝
+  [TACTICAL_ID.EDDIE_DOUBLE_SWORDS]: {
+    id:          TACTICAL_ID.EDDIE_DOUBLE_SWORDS,
+    name:        'Nexus Eddie Double Swords',
+    description: 'BURST — launches twin inferno blades through enemy lines',
+    character:   'eddie',
+    exclusive:   true,    // Eddie-only, never leaks to other characters
+    fxModule:    FX_MODULE.F_IMPACT_SLASH,
+    behavior:    TACTICAL_BEHAVIOR.SWORD_BURST,
+    sprite:      'assets/weapons/nexus/eddie_double_swords.png',
+    baseDamage:  55,
+    swathRadius: 54,
+    swordSpeed:  520,
+    tickRate:     8.0,    // seconds between blade launches
+    duration:    24,      // seconds active (~3 launches)
+    color:       '#ff6a1a',
+    glitchFx: {
+      vectorFlash: true,
+    },
+    particles: {
+      type:       'slash_smear',
+      count:      6,
+      speed:      4.0,
+      color1:     '#ff6a1a',
+      color2:     '#ffd23c',
     },
   },
 

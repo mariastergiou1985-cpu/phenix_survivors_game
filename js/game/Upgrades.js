@@ -299,6 +299,9 @@ export const ALL_UPGRADES = [
   new UpgradeDefinition('infuse_gas', 'Gas Infusion', 'Adds GAS element. With Fusion Catalyst, Toxin attacks can trigger Viral Cloud.',
     '#8fdf7f', 1, p => { (p.secondaryElements ||= []).includes('gas')       || p.secondaryElements.push('gas'); },       '☁', 'legendary', null, null, true, false, null, true,
     ['euclid_vector']),
+  new UpgradeDefinition('infuse_thunder_maiden', 'Thunder Maiden Infusion', 'Adds THUNDER MAIDEN element. With Fusion Catalyst, attacks can trigger the Crimson Thunder Gate resonance field.',
+    '#ffd23c', 1, p => { (p.secondaryElements ||= []).includes('thunder_maiden') || p.secondaryElements.push('thunder_maiden'); }, '🌩', 'legendary', null, null, true, false, null, true,
+    ['eddie']),   // Eddie only — gold chain-lightning secondary for his Crimson Gate primary
 ];
 
 // ─── Weighted sample: every card is useful; bias toward the player's current build ──

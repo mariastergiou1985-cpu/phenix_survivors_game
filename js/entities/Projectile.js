@@ -66,6 +66,22 @@ export class Projectile {
       ctx.restore();
       return;
     }
+    // Eddie "Red Bolt" — a crimson lightning riff-bolt (Solo Red Thunder; not a generic orb).
+    if (this.style === 'red_bolt') {
+      const a = Math.atan2(this.direction.y, this.direction.x);
+      ctx.save();
+      ctx.translate(this.pos.x, this.pos.y);
+      ctx.rotate(a);
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.fillStyle = '#b31212';   // outer thunder glow
+      ctx.beginPath(); ctx.moveTo(18, 0); ctx.lineTo(4, 3); ctx.lineTo(8, 5.5); ctx.lineTo(-8, 4.5); ctx.lineTo(-3, 0); ctx.lineTo(-8, -4.5); ctx.lineTo(8, -5.5); ctx.lineTo(4, -3); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#ff3030';   // bright red bolt core
+      ctx.beginPath(); ctx.moveTo(13, 0); ctx.lineTo(3, 2); ctx.lineTo(6, 3.6); ctx.lineTo(-5, 2.8); ctx.lineTo(-2, 0); ctx.lineTo(-5, -2.8); ctx.lineTo(6, -3.6); ctx.lineTo(3, -2); ctx.closePath(); ctx.fill();
+      ctx.globalAlpha = 0.6; ctx.fillStyle = '#ffd9c8';   // white-hot flecks
+      ctx.fillRect(-3, -1, 6, 2);
+      ctx.restore();
+      return;
+    }
     // Japan Phasewalker "Phase Shard" — a cyan/blue glitch data-needle (not a generic orb).
     if (this.style === 'phase_shard') {
       const a = Math.atan2(this.direction.y, this.direction.x);

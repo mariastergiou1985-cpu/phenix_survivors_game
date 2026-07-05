@@ -129,7 +129,7 @@ export function drawHUD(ctx, game) {
     (cx, cy) => _glyphEMP(ctx, cx, cy, bs, CYAN), CYAN);
 
   // ── Bottom-right: SPACE ultimate (mana-fill, frame tinted to character identity) ──
-  if (p.selectedCharacter === 'skeleton_warrior' || p.selectedCharacter === 'cyber_arm_hero' || p.selectedCharacter === 'taekwondo_girl' || p.selectedCharacter === 'brawler_warrior' || p.selectedCharacter === 'assassin_clone' || p.selectedCharacter === 'japan_phasewalker' || p.selectedCharacter === 'euclid_vector' || p.selectedCharacter === 'oni_cataclysm_protocol') {
+  if (p.selectedCharacter === 'skeleton_warrior' || p.selectedCharacter === 'cyber_arm_hero' || p.selectedCharacter === 'taekwondo_girl' || p.selectedCharacter === 'brawler_warrior' || p.selectedCharacter === 'assassin_clone' || p.selectedCharacter === 'japan_phasewalker' || p.selectedCharacter === 'euclid_vector' || p.selectedCharacter === 'oni_cataclysm_protocol' || p.selectedCharacter === 'eddie') {
     const icon = p.selectedCharacter === 'skeleton_warrior' ? game._thunderGuitarSprite
                : p.selectedCharacter === 'cyber_arm_hero'   ? game._chainsIcon
                : p.selectedCharacter === 'brawler_warrior'  ? game._weaponImages?.skyfall_lances
@@ -137,6 +137,7 @@ export function drawHUD(ctx, game) {
                : p.selectedCharacter === 'japan_phasewalker' ? game._phasewalkerSprite      // Digital Singularity ultimate
                : p.selectedCharacter === 'euclid_vector'    ? game._euclidSprite            // Plague Trail Dash ultimate
                : p.selectedCharacter === 'oni_cataclysm_protocol' ? game._oniSprite         // Protocol 0: Total Cataclysm
+               : p.selectedCharacter === 'eddie'            ? game._eddieUltIcon         // Red Thunder Curtain
                : 'bike';  // taekwondo_girl → Cyber Ride (canvas-drawn bike glyph; no sprite asset)
     // Frame/glow color by base character identity (outfits don't change selectedCharacter).
     const ultColor = p.selectedCharacter === 'skeleton_warrior' ? '#9fd8ff'   // electric blue-white
@@ -146,9 +147,11 @@ export function drawHUD(ctx, game) {
                    : p.selectedCharacter === 'japan_phasewalker' ? '#7df9ff'  // phase cyan (Digital Singularity)
                    : p.selectedCharacter === 'euclid_vector'    ? '#00ff66'   // toxic green (Plague Trail)
                    : p.selectedCharacter === 'oni_cataclysm_protocol' ? '#ff3030'  // demon red (Protocol 0)
+                   : p.selectedCharacter === 'eddie'            ? '#ff2d2d'  // riff red (Red Thunder Curtain)
                    : '#3cf0e6';                                                // aqua spirit
-    const manaFrac = clamp(p.mana / 100, 0, 1);   // ultimate is ready at the fixed 100 cost, not maxMana (Mana Core safe)
-    const ultCasts = Math.floor(p.mana / 100);     // how many casts the current mana affords (display-only)
+    const ultCost  = p.selectedCharacter === 'eddie' ? 80 : 100;   // Eddie caps at 80 max mana — his ultimate costs 80
+    const manaFrac = clamp(p.mana / ultCost, 0, 1);   // ultimate is ready at the fixed cost, not maxMana (Mana Core safe)
+    const ultCasts = Math.floor(p.mana / ultCost);     // how many casts the current mana affords (display-only)
     _drawUltimateBox(ctx, WIDTH - 64, HEIGHT - 66, 48, 'SPACE', manaFrac, icon, ultColor, ultCasts);
 
     // One-shot "ULTIMATE READY" cue — shown briefly the moment the ultimate becomes castable
@@ -181,10 +184,23 @@ export function drawHUD(ctx, game) {
       ? ' + ' + game._secondaryElements.map(s => icons[s] || '◆').join(' + ') : '';
     ctx.textAlign = 'left';
     drawText(ctx, 'ELEMENT ' + prim + secs, 16, HEIGHT - 70, col, 'bold 13px "Segoe UI Emoji", Consolas, monospace');
+    // Eddie identity art — Crimson Gate element icon beside the badge (element-id gated, no leak)
+    if (game._activeElement === 'crimson_gate' && game._eddieElementIcons) {
+      ctx.font = 'bold 13px "Segoe UI Emoji", Consolas, monospace';
+      const _tw = ctx.measureText('ELEMENT ' + prim + secs).width;
+      _drawIcon(ctx, game._eddieElementIcons.crimson_gate, 16 + _tw + 8, HEIGHT - 84, 18, col);
+    }
     // Brief fusion-name flash when a fusion procs (fades over its last moment).
     if (game._fusionName && game._fusionNameT > 0) {
       ctx.globalAlpha = Math.min(1, game._fusionNameT);
       drawText(ctx, '⚡ ' + game._fusionName, 16, HEIGHT - 86, '#ffd23c', 'bold 11px Consolas, monospace');
+      // Eddie fusion recipe art — Thunder Maiden partner + fused Crimson Thunder Gate icons
+      if (game._activeElement === 'crimson_gate' && game._eddieElementIcons) {
+        ctx.font = 'bold 11px Consolas, monospace';
+        const _fw = ctx.measureText('⚡ ' + game._fusionName).width;
+        _drawIcon(ctx, game._eddieElementIcons.thunder_maiden,       16 + _fw + 8,  HEIGHT - 98, 16, '#ffd23c');
+        _drawIcon(ctx, game._eddieElementIcons.crimson_thunder_gate, 16 + _fw + 30, HEIGHT - 98, 16, '#ff2d2d');
+      }
       ctx.globalAlpha = 1;
     }
   }
