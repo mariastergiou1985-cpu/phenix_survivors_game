@@ -783,12 +783,14 @@ export class AudioManager {
       const msg = String(text).replace(/^EDEN CORE:\s*/i, '');
       synth.cancel();
       const u = new SpeechSynthesisUtterance(msg);
-      u.rate = 0.98; u.pitch = 0.55; u.volume = 0.9;   // deep, deliberate, mechanical
+      u.rate = 0.80; u.pitch = 0.28; u.volume = 0.95;  // abyssal-deep, slow, unearthly — the voice of the antagonist
       const voices = synth.getVoices();
       const pick = voices.find(v => /en[-_](US|GB)/i.test(v.lang) && /Google|Microsoft/i.test(v.name))
                 || voices.find(v => /^en/i.test(v.lang));
       if (pick) u.voice = pick;
       // Delay past the glitch intro chirp (~0.45 s) so it reads as EDEN "opening the channel".
+      // Low sub-drone under the voice — makes the transmission feel vast and hostile
+      this._tone({ type: 'sine', freqStart: 52, freqEnd: 40, dur: 2.4, gain: 0.10, delay: 0.40 });
       setTimeout(() => { try { if (!this.muted) synth.speak(u); } catch (_) {} }, 450);
     } catch (_) { /* speech unavailable — glitch chirp already played */ }
   }
