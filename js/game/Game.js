@@ -9,14 +9,14 @@ import { clamp, distance, safeNormalize, randomChoice, randomRange } from '../ut
 
 import { FloatingText }   from '../entities/FloatingText.js?v=20260703990000';
 import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260705040000';
-import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260705040000';
-import { Player }         from '../entities/Player.js?v=20260705100000';
+import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260705150000';
+import { Player }         from '../entities/Player.js?v=20260705150000';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260703990000';
-import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260705140000';
+import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260705150000';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=20260703990000';
 
-import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260703990000';
-import { SystemEventManager } from './Events.js?v=20260705140000';
+import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260705150000';
+import { SystemEventManager } from './Events.js?v=20260705150000';
 import { UpgradeUI }      from './UpgradeUI.js?v=20260705120000';
 import { weightedSample } from './Upgrades.js?v=20260705040000';
 import { MutationUI }      from './MutationUI.js?v=20260703990000';
@@ -38,7 +38,7 @@ import { EventBus, EVENTS } from './EventBus.js?v=20260703990000';
 import { EnemySpawner, ELITE_WAVE as ELITE_WAVE_CFG, BOSS_WARN_COOLDOWN as BOSS_WARN_CD } from './EnemySpawner.js?v=20260704200000';
 import { StateManager, GAME_STATES } from './StateManager.js?v=20260703990000';
 import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260705080000';
-import { NexusManager } from './NexusManager.js?v=20260705040000';
+import { NexusManager } from './NexusManager.js?v=20260705150000';
 import { VESSELS, getVesselById, getDefaultVesselId } from './VesselCatalog.js?v=20260705040000';
 import { PETS, getPetById } from './PetCatalog.js?v=20260705000000';
 import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons, isEvolutionOwnedBy, getCardDisplayName } from './WeaponCatalog.js?v=20260704230000';
@@ -6037,7 +6037,7 @@ export class Game {
       }
     }
     for (const d of oc.drops) d.t += dt;
-    oc.drops = oc.drops.filter(d => d.t < d.fall + 0.28);   // fall time + brief impact linger
+    { const _a = oc.drops; let _w = 0; for (let _i = 0; _i < _a.length; _i++) { const d = _a[_i]; if (d.t < d.fall + 0.28) _a[_w++] = d; } _a.length = _w; }   // fall time + brief impact linger
 
     // Gradual cyber-arm overheat self-damage: 10% maxHp over the duration, never lethal (floor 1 HP)
     const selfRate = (0.10 * p.maxHp) / DURATION;
@@ -6171,7 +6171,7 @@ export class Game {
       b.t += dt;
       if (!b.struck && b.t >= b.windup) { b.struck = true; this._strikeImpact(b); }
     }
-    ts.bolts = ts.bolts.filter(b => b.t < b.maxLife);
+    { const _a = ts.bolts; let _w = 0; for (let _i = 0; _i < _a.length; _i++) { const b = _a[_i]; if (b.t < b.maxLife) _a[_w++] = b; } _a.length = _w; }
 
     // Drift musical notes upward with a gentle sway, then fade out
     for (const n of ts.notes) {
@@ -6180,7 +6180,7 @@ export class Game {
       n.x    += Math.sin(n.life * n.swaySpd + n.swayPhase) * n.sway * dt;
       n.rot  += n.spin * dt;
     }
-    ts.notes = ts.notes.filter(n => n.life > 0);
+    { const _a = ts.notes; let _w = 0; for (let _i = 0; _i < _a.length; _i++) { const n = _a[_i]; if (n.life > 0) _a[_w++] = n; } _a.length = _w; }
 
     // Ambient notes stream up from around the skeleton/guitar for the whole cast — "musical thunder"
     if (ts.phase !== 'fade') {
@@ -8135,7 +8135,7 @@ export class Game {
         }
       }
     }
-    this._enemyOrbZones = this._enemyOrbZones.filter(z => z.t < z.warn + z.impact);
+    { const _a = this._enemyOrbZones; let _w = 0; for (let _i = 0; _i < _a.length; _i++) { const z = _a[_i]; if (z.t < z.warn + z.impact) _a[_w++] = z; } _a.length = _w; }
   }
 
   _drawEnemyOrbZones(ctx) {
@@ -8217,7 +8217,7 @@ export class Game {
         if (bm.t >= bm.fireDur) bm.dead = true;
       }
     }
-    this._enemyBeams = this._enemyBeams.filter(b => !b.dead);
+    { const _a = this._enemyBeams; let _w = 0; for (let _i = 0; _i < _a.length; _i++) { const b = _a[_i]; if (!b.dead) _a[_w++] = b; } _a.length = _w; }
   }
 
   _drawEnemyBeams(ctx) {
@@ -8293,7 +8293,7 @@ export class Game {
         if (rf.t >= rf.active) rf.dead = true;
       }
     }
-    this._voidRifts = this._voidRifts.filter(r => !r.dead);
+    { const _a = this._voidRifts; let _w = 0; for (let _i = 0; _i < _a.length; _i++) { const r = _a[_i]; if (!r.dead) _a[_w++] = r; } _a.length = _w; }
   }
 
   _drawVoidRifts(ctx) {
@@ -8367,7 +8367,7 @@ export class Game {
         if (v.t >= v.active) v.dead = true;
       }
     }
-    this._ventBursts = this._ventBursts.filter(v => !v.dead);
+    { const _a = this._ventBursts; let _w = 0; for (let _i = 0; _i < _a.length; _i++) { const v = _a[_i]; if (!v.dead) _a[_w++] = v; } _a.length = _w; }
   }
 
   _drawVentBursts(ctx) {
@@ -8773,7 +8773,7 @@ export class Game {
   _updateNeonPierceBeam(dt) {
     // Advance + retire short-lived beam visuals
     for (const b of this._neonBeams) b.life -= dt;
-    if (this._neonBeams.length) this._neonBeams = this._neonBeams.filter(b => b.life > 0);
+    if (this._neonBeams.length) { const _a = this._neonBeams; let _w = 0; for (let _i = 0; _i < _a.length; _i++) { const b = _a[_i]; if (b.life > 0) _a[_w++] = b; } _a.length = _w; }
 
     if (this.player.selectedCharacter !== 'cyber_arm_hero') return;   // Cyber Arm Hero only
     this._neonBeamTimer -= dt;
@@ -10104,7 +10104,7 @@ export class Game {
   // normal enemies. Reuses the Sonic Pulse cone logic. Not full-screen, weaker than the ultimate.
   _updateCrescentClaw(dt) {
     for (const s of this._crescentSlashes) s.life -= dt;
-    if (this._crescentSlashes.length) this._crescentSlashes = this._crescentSlashes.filter(s => s.life > 0);
+    if (this._crescentSlashes.length) { const _a = this._crescentSlashes; let _w = 0; for (let _i = 0; _i < _a.length; _i++) { const s = _a[_i]; if (s.life > 0) _a[_w++] = s; } _a.length = _w; }
     if (this.player.selectedCharacter !== 'brawler_warrior') return;
     this._crescentTimer -= dt;
     if (this._crescentTimer > 0) return;
@@ -10177,7 +10177,7 @@ export class Game {
 
   _updateSkyfall(dt) {
     for (const im of this._skyfallImpacts) im.life -= dt;
-    if (this._skyfallImpacts.length) this._skyfallImpacts = this._skyfallImpacts.filter(im => im.life > 0);
+    if (this._skyfallImpacts.length) { const _a = this._skyfallImpacts; let _w = 0; for (let _i = 0; _i < _a.length; _i++) { const im = _a[_i]; if (im.life > 0) _a[_w++] = im; } _a.length = _w; }
     const sf = this._skyfall;
     if (!sf) return;
     const lm = this._cardLvl('brawler_skyfall_lances_mastery');   // Lance Storm: extra lances + wider impact
@@ -10338,7 +10338,7 @@ export class Game {
 
   _updateChromePhantom(dt) {
     for (const f of this._chromeFx) { f.life -= dt; f.r += (f.dr || 0) * dt; }
-    if (this._chromeFx.length) this._chromeFx = this._chromeFx.filter(f => f.life > 0);
+    if (this._chromeFx.length) { const _a = this._chromeFx; let _w = 0; for (let _i = 0; _i < _a.length; _i++) { const f = _a[_i]; if (f.life > 0) _a[_w++] = f; } _a.length = _w; }
     const cp = this._chromePhantom;
     if (!cp) return;
     const p = this.player;
@@ -10700,7 +10700,7 @@ export class Game {
                           vy: randomRange(20, 40), size: randomRange(2, 4) });
     }
     for (const pt of sd.particles) { pt.life -= dt; pt.y -= pt.vy * dt; }
-    sd.particles = sd.particles.filter(pt => pt.life > 0);
+    { const _a = sd.particles; let _w = 0; for (let _i = 0; _i < _a.length; _i++) { const pt = _a[_i]; if (pt.life > 0) _a[_w++] = pt; } _a.length = _w; }
 
     // Per-second boss-damage budget reset (keeps bosses controlled / unbreakable)
     sd.bossDmgTimer -= dt;
@@ -10880,7 +10880,7 @@ export class Game {
       this.audio?.playHit?.();
     }
     for (const b of bk.beams) b.life -= dt;
-    bk.beams = bk.beams.filter(b => b.life > 0);
+    { const _a = bk.beams; let _w = 0; for (let _i = 0; _i < _a.length; _i++) { const b = _a[_i]; if (b.life > 0) _a[_w++] = b; } _a.length = _w; }
 
     // end: remove the speed buff and revert to normal
     if (bk.t >= DURATION) {
@@ -11794,14 +11794,14 @@ export class Game {
       // Taekwondo core pickup — disabled (carry/return economy removed).
     }
     for (const t of this._specialTrail) t.alpha -= 3.5 * dt;
-    this._specialTrail = this._specialTrail.filter(t => t.alpha > 0);
+    { const _a = this._specialTrail; let _w = 0; for (let _i = 0; _i < _a.length; _i++) { const t = _a[_i]; if (t.alpha > 0) _a[_w++] = t; } _a.length = _w; }
     for (const r of this._specialRings) {
       r.radius = r.maxRadius * (1 - r.life / r.maxLife);
       r.life  -= dt;
     }
-    this._specialRings = this._specialRings.filter(r => r.life > 0);
+    { const _a = this._specialRings; let _w = 0; for (let _i = 0; _i < _a.length; _i++) { const r = _a[_i]; if (r.life > 0) _a[_w++] = r; } _a.length = _w; }
     for (const b of this._specialBeams) b.life -= dt;
-    this._specialBeams = this._specialBeams.filter(b => b.life > 0);
+    { const _a = this._specialBeams; let _w = 0; for (let _i = 0; _i < _a.length; _i++) { const b = _a[_i]; if (b.life > 0) _a[_w++] = b; } _a.length = _w; }
   }
 
   _updateQuantumOverhaul(dt) {
@@ -16457,7 +16457,7 @@ _drawLoreArchive(ctx) {
   _updateComboPopups(dt) {
     if (!this.comboPopups.length) return;
     for (const cp of this.comboPopups) cp.t += dt;
-    this.comboPopups = this.comboPopups.filter(cp => cp.t < cp.life);
+    { const _a = this.comboPopups; let _w = 0; for (let _i = 0; _i < _a.length; _i++) { const cp = _a[_i]; if (cp.t < cp.life) _a[_w++] = cp; } _a.length = _w; }
   }
 
   _drawComboPopups(ctx) {
@@ -16630,7 +16630,7 @@ _drawLoreArchive(ctx) {
           }
         }
       }
-      this.bossLavaZones = this.bossLavaZones.filter(z => z.t < z.warn + z.impact);
+      { const _a = this.bossLavaZones; let _w = 0; for (let _i = 0; _i < _a.length; _i++) { const z = _a[_i]; if (z.t < z.warn + z.impact) _a[_w++] = z; } _a.length = _w; }
     }
 
     // Advance the signature beam + novas every frame so active ones resolve even as the boss dies.
@@ -21073,7 +21073,7 @@ _drawLoreArchive(ctx) {
   _updatePlasmaBlade(dt) {
     // Advance + expire slash visuals (runs regardless of card level so they fade out cleanly)
     for (const s of this._plasmaBladeSlashes) s.life -= dt;
-    this._plasmaBladeSlashes = this._plasmaBladeSlashes.filter(s => s.life > 0);
+    { const _a = this._plasmaBladeSlashes; let _w = 0; for (let _i = 0; _i < _a.length; _i++) { const s = _a[_i]; if (s.life > 0) _a[_w++] = s; } _a.length = _w; }
 
     const lvl = this._cardLvl('plasma_blade');
     if (lvl < 1) return;
@@ -21545,7 +21545,7 @@ _drawLoreArchive(ctx) {
   // ── VOID BEAM — rapid energy beam toward nearest enemy ────────────────────
   _updateVoidBeam(dt) {
     for (const a of this._voidBeamArcs) a.life -= dt;
-    this._voidBeamArcs = this._voidBeamArcs.filter(a => a.life > 0);
+    { const _a = this._voidBeamArcs; let _w = 0; for (let _i = 0; _i < _a.length; _i++) { const a = _a[_i]; if (a.life > 0) _a[_w++] = a; } _a.length = _w; }
 
     const lvl = this._cardLvl('void_beam');
     if (lvl < 1) return;

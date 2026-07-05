@@ -45,7 +45,7 @@ export class PowerMatrix {
 
     // Advance + retire insertion pulse rings
     for (const r of this.pulseRings) r.t += dt;
-    if (this.pulseRings.length) this.pulseRings = this.pulseRings.filter(r => r.t < r.life);
+    if (this.pulseRings.length) { const _a = this.pulseRings; let _w = 0; for (let _i = 0; _i < _a.length; _i++) { const r = _a[_i]; if (r.t < r.life) _a[_w++] = r; } _a.length = _w; }
 
     // Detect a core insertion purely from the stored count rising — keeps slotCore() logic intact
     if (this.stored > this._prevStored) {

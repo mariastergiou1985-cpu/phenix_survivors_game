@@ -13,7 +13,8 @@ class Particle {
   }
 
   update(dt) {
-    this.pos.addMut(this.vel.scale(dt));
+    this.pos.x += this.vel.x * dt;
+    this.pos.y += this.vel.y * dt;
     this.life -= dt;
   }
 
@@ -32,11 +33,33 @@ export class ParticleSystem {
   constructor() {
     this.particles = [];
     this.MAX       = 200;
+    this._pool     = [];   // free-list of dead Particle objects (perf: reuse instead of realloc)
   }
 
   _add(p) {
-    if (this.particles.length >= this.MAX) this.particles.shift();
+    if (this.particles.length >= this.MAX) {
+      const old = this.particles.shift();
+      if (this._pool.length < 600) this._pool.push(old);
+    }
     this.particles.push(p);
+  }
+
+  // Pooled spawn — pops a dead Particle from the free-list and overwrites its fields
+  // (identical field set to the constructor) instead of allocating a new object.
+  _spawn(pos, vel, color, radius, life) {
+    const p = this._pool.length ? this._pool.pop() : null;
+    if (p) {
+      p.pos.x   = pos.x;
+      p.pos.y   = pos.y;
+      p.vel     = vel;
+      p.color   = color;
+      p.radius  = radius;
+      p.life    = life;
+      p.maxLife = life;
+      this._add(p);
+    } else {
+      this._add(new Particle(pos, vel, color, radius, life));
+    }
   }
 
   spawnCorePickup(pos, color) {
@@ -44,7 +67,7 @@ export class ParticleSystem {
       const angle = (i / 8) * Math.PI * 2;
       const speed = 80 + Math.random() * 80;
       const vel   = new Vec2(Math.cos(angle) * speed, Math.sin(angle) * speed);
-      this._add(new Particle(pos, vel, color, 3, 0.4));
+      this._spawn(pos, vel, color, 3, 0.4);
     }
   }
 
@@ -53,7 +76,7 @@ export class ParticleSystem {
       const angle = (i / 6) * Math.PI * 2 - Math.PI / 2;
       const speed = 60 + Math.random() * 60;
       const vel   = new Vec2(Math.cos(angle) * speed, Math.sin(angle) * speed - 40);
-      this._add(new Particle(pos, vel, color, 4, 0.6));
+      this._spawn(pos, vel, color, 4, 0.6);
     }
   }
 
@@ -62,7 +85,7 @@ export class ParticleSystem {
       const angle = Math.random() * Math.PI * 2;
       const speed = 40 + Math.random() * 60;
       const vel   = new Vec2(Math.cos(angle) * speed, Math.sin(angle) * speed);
-      this._add(new Particle(pos, vel, color, size, 0.25));
+      this._spawn(pos, vel, color, size, 0.25);
     }
   }
 
@@ -74,7 +97,7 @@ export class ParticleSystem {
       const angle = Math.random() * Math.PI * 2;
       const speed = 60 + Math.random() * 110;
       const vel   = new Vec2(Math.cos(angle) * speed, Math.sin(angle) * speed);
-      this._add(new Particle(pos, vel, i % 3 === 0 ? '#e6f5ff' : color, size + Math.random() * 2, 0.3));
+      this._spawn(pos, vel, i % 3 === 0 ? '#e6f5ff' : color, size + Math.random() * 2, 0.3);
     }
   }
 
@@ -85,7 +108,7 @@ export class ParticleSystem {
     for (let i = 0; i < count; i++) {
       const angle = (i / count) * Math.PI * 2;
       const vel   = new Vec2(Math.cos(angle) * speed, Math.sin(angle) * speed);
-      this._add(new Particle(pos, vel, color, size, 0.32));
+      this._spawn(pos, vel, color, size, 0.32);
     }
   }
 
@@ -95,7 +118,7 @@ export class ParticleSystem {
       const angle = Math.random() * Math.PI * 2;
       const speed = 70 + Math.random() * 140;
       const vel   = new Vec2(Math.cos(angle) * speed, Math.sin(angle) * speed);
-      this._add(new Particle(pos, vel, i % 4 === 0 ? '#ff3750' : '#a8112a', 2 + Math.random() * 2, 0.3));
+      this._spawn(pos, vel, i % 4 === 0 ? '#ff3750' : '#a8112a', 2 + Math.random() * 2, 0.3);
     }
   }
 
@@ -105,7 +128,7 @@ export class ParticleSystem {
       const angle = Math.random() * Math.PI * 2;
       const speed = 80 + Math.random() * 220;
       const vel   = new Vec2(Math.cos(angle) * speed, Math.sin(angle) * speed);
-      this._add(new Particle(pos, vel, colors[i % colors.length], 3 + Math.random() * 3, 0.4 + Math.random() * 0.4));
+      this._spawn(pos, vel, colors[i % colors.length], 3 + Math.random() * 3, 0.4 + Math.random() * 0.4);
     }
   }
 
@@ -117,7 +140,7 @@ export class ParticleSystem {
       const angle = Math.random() * Math.PI * 2;
       const speed = 70 + Math.random() * 130;
       const vel   = new Vec2(Math.cos(angle) * speed, Math.sin(angle) * speed);
-      this._add(new Particle(pos, vel, i % 4 === 0 ? '#e6f5ff' : color, size + Math.random() * 2.5, 0.35));
+      this._spawn(pos, vel, i % 4 === 0 ? '#e6f5ff' : color, size + Math.random() * 2.5, 0.35);
     }
     // Evenly-spaced ring (reads as an expanding circle)
     const ringCount = 10;
@@ -125,13 +148,13 @@ export class ParticleSystem {
       const angle = (i / ringCount) * Math.PI * 2;
       const speed = 140 + Math.random() * 30;
       const vel   = new Vec2(Math.cos(angle) * speed, Math.sin(angle) * speed);
-      this._add(new Particle(pos, vel, color, 1.8, 0.28));
+      this._spawn(pos, vel, color, 1.8, 0.28);
     }
     // Bright core flash (3 white sparks outward)
     for (let i = 0; i < 3; i++) {
       const angle = (i / 3) * Math.PI * 2;
       const vel   = new Vec2(Math.cos(angle) * 55, Math.sin(angle) * 55);
-      this._add(new Particle(pos, vel, '#ffffff', 2.5, 0.18));
+      this._spawn(pos, vel, '#ffffff', 2.5, 0.18);
     }
   }
 
@@ -139,7 +162,7 @@ export class ParticleSystem {
   // Each call adds one outward radial particle. Caller loops 8-12 times with evenly spaced angles.
   spawnWindupSpark(pos, angle, color, speed = 110) {
     const vel = new Vec2(Math.cos(angle) * speed, Math.sin(angle) * speed);
-    this._add(new Particle(pos, vel, color, 2.5, 0.22));
+    this._spawn(pos, vel, color, 2.5, 0.22);
   }
 
   // Element-tagged death burst — reads the weapon hit color to pick an element palette.
@@ -160,27 +183,32 @@ export class ParticleSystem {
       const angle = Math.random() * Math.PI * 2;
       const speed = 75 + Math.random() * 115;
       const vel   = new Vec2(Math.cos(angle) * speed, Math.sin(angle) * speed);
-      this._add(new Particle(pos, vel, palette[i % palette.length], 2 + Math.random() * 2.5, 0.35));
+      this._spawn(pos, vel, palette[i % palette.length], 2 + Math.random() * 2.5, 0.35);
     }
     // Element ring (8 evenly spaced)
     for (let i = 0; i < 8; i++) {
       const angle = (i / 8) * Math.PI * 2;
       const vel   = new Vec2(Math.cos(angle) * 100, Math.sin(angle) * 100);
-      this._add(new Particle(pos, vel, palette[0], 1.5, 0.25));
+      this._spawn(pos, vel, palette[0], 1.5, 0.25);
     }
     // White pop-flash — 3 large sparks, very short life for the "pop" on kill
     for (let i = 0; i < 3; i++) {
       const angle = (i / 3) * Math.PI * 2;
       const vel   = new Vec2(Math.cos(angle) * 65, Math.sin(angle) * 65);
-      this._add(new Particle(pos, vel, '#ffffff', 8, 0.10));
+      this._spawn(pos, vel, '#ffffff', 8, 0.10);
     }
   }
 
   update(dt) {
-    this.particles = this.particles.filter(p => {
+    const arr = this.particles;
+    let w = 0;
+    for (let i = 0; i < arr.length; i++) {
+      const p = arr[i];
       p.update(dt);
-      return p.life > 0;
-    });
+      if (p.life > 0) arr[w++] = p;
+      else if (this._pool.length < 600) this._pool.push(p);
+    }
+    arr.length = w;
   }
 
   draw(ctx) {

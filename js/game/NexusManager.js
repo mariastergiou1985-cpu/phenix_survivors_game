@@ -9,7 +9,7 @@
 // ────────────────────────────────────────────────────────────────────────────
 
 import { Vec2, CORE_COLORS } from '../constants.js';
-import { PowerMatrix } from '../entities/PowerMatrix.js?v=20260705040000';
+import { PowerMatrix } from '../entities/PowerMatrix.js?v=20260705150000';
 import { BIOME_ID, CHUNK_SIZE } from './MapManager.js?v=20260703999000';
 
 // ─── Constants ──────────────────────────────────────────────────────────────

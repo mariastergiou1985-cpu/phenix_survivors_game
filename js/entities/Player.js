@@ -272,7 +272,7 @@ export class Player {
       this._dashTrail.push({ x: this.pos.x, y: this.pos.y, alpha: 0.55 });
     }
     for (const t of this._dashTrail) t.alpha -= 4 * dt;
-    this._dashTrail = this._dashTrail.filter(t => t.alpha > 0);
+    { const _a = this._dashTrail; let _w = 0; for (let _i = 0; _i < _a.length; _i++) { const t = _a[_i]; if (t.alpha > 0) _a[_w++] = t; } _a.length = _w; }
 
     if (this.dashTimer > 0) {
       this.dashTimer -= dt;
