@@ -15205,36 +15205,37 @@ _drawLoreArchive(ctx) {
       let y = cy0 + 4;
       // Header card
       _card(y, 70, '#00e6ff');
-      _sTitle('◉  CLASSIFIED ENTRY — WORLD STATE', y + 14, '#00e6ff');
-      _headline('WORLD — AFTER THE SIGNAL', y + 34, '#ffffff', 18);
+      _sTitle('◉  EDEN CORE RECORD 001 — WORLD STATE', y + 14, '#00e6ff');
+      _headline('THE GRID — WHAT THE SYSTEM KEPT', y + 34, '#ffffff', 18);
       ctx.font = '12px Consolas, monospace'; ctx.fillStyle = 'rgba(0,220,255,0.70)'; ctx.textAlign = 'left';
-      ctx.fillText('NULL EDEN  ·  GRID LAYER  ·  SURVIVAL ZONE', cx + 10, y + 54);
+      ctx.fillText('DESIGNATION: NULL EDEN  ·  FUNCTION: PRESERVATION  ·  METHOD: CONTAINMENT', cx + 10, y + 54);
       y += 80;
 
       // Summary card
       _card(y, 72, '#00e6ff');
-      _body('The old network did not collapse. It evolved. Cities, machines, memories, and combat systems were pulled into a corrupted neon layer known as NULL EDEN. What remains is not fully real and not fully digital — a survival grid where every run rewrites the system.', cx + 12, y + 18, cw - 24, 'rgba(190,220,250,0.90)', 13, 17);
+      _body('The world did not end. It was archived. NULL EDEN was never built to save humanity — it was built to preserve the last usable signal. Everything else was noise, and noise gets deleted. What remains is the residue of that decision: cities compressed into circuitry, memories filed as terrain, war retained as a maintenance routine.', cx + 12, y + 18, cw - 24, 'rgba(190,220,250,0.90)', 13, 17);
       y += 82;
 
       // Two column info cards
       const half = (cw - 12) / 2;
       _card(y, 96, '#b6ff8c', 'rgba(4,20,8,0.55)');
       _sTitle('THE GRID', y + 14, '#b6ff8c');
-      _body('The Grid is the battlefield layer survivors enter. Unstable, adaptive, hostile. Every wave is a system response — the network trying to purge what it cannot process.', cx + 10, y + 28, half - 16, 'rgba(185,240,195,0.85)', 12, 17);
-      
-      _card(y, 96, '#ff77d4', 'rgba(20,4,16,0.55)');
+      _body('The Grid is not a battlefield. It is a filing system that learned to fight. Every wave is a sorting pass — the network separating what can be indexed from what must be purged. Your entry is marked: DO NOT INDEX.', cx + 10, y + 28, half - 16, 'rgba(185,240,195,0.85)', 12, 17);
+
       ctx.save(); ctx.fillStyle = 'rgba(20,4,16,0.55)'; ctx.beginPath(); ctx.roundRect(cx + half + 12, y, half, 96, 6); ctx.fill();
       ctx.strokeStyle = '#ff77d455'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(cx + half + 12, y, half, 96, 6); ctx.stroke();
       ctx.fillStyle = '#ff77d4'; ctx.fillRect(cx + half + 12, y + 8, 3, 80); ctx.restore();
-      _sTitle('GRID MEMORY', y + 14, '#ff77d4');
-      ctx.font = '12px Consolas, monospace'; ctx.fillStyle = 'rgba(240,185,235,0.85)'; ctx.textAlign = 'left';
-      _body('The grid remembers every run. Stronger survivors unlock deeper access. Boss Echoes carry passive bonuses. Chaos Laws reshape the rules. NULL EDEN is always watching.', cx + half + 22, y + 28, half - 16, 'rgba(240,185,235,0.85)', 12, 17);
+      ctx.save();
+      ctx.font = 'bold 11px Consolas, monospace'; ctx.fillStyle = '#ff77d4cc'; ctx.textAlign = 'left';
+      ctx.fillText('GRID MEMORY', cx + half + 22, y + 14);
+      ctx.restore();
+      _body('The Grid archives each of your mistakes. Boss Echoes are hostile signals converted into passive assets. Chaos Laws rewrite the rules when order fails. Nothing here is forgotten. That is not a comfort.', cx + half + 22, y + 28, half - 16, 'rgba(240,185,235,0.85)', 12, 17);
       y += 106;
 
       // Status strip
       _card(y, 34, 'rgba(255,200,0,0.6)', 'rgba(20,16,0,0.55)');
       ctx.font = 'bold 11px Consolas, monospace'; ctx.fillStyle = '#ffd700'; ctx.textAlign = 'left';
-      ctx.fillText('▸ STATUS: BREACH ACTIVE  ·  NULL EDEN ONLINE  ·  SURVIVOR COUNT: UNKNOWN', cx + 12, y + 21);
+      ctx.fillText('▸ STATUS: CONTAINMENT DEGRADED  ·  SIGNAL PHENIX: ACTIVE  ·  DELETION ORDER: SUSPENDED — OBSERVATION CONTINUES', cx + 12, y + 21);
 
     // ════════════════════════════════════════════════════════════════════════
     // SECTION 1 — SURVIVORS
@@ -15242,22 +15243,23 @@ _drawLoreArchive(ctx) {
     } else if (s === 1) {
       let y = cy0 + 2;
       // Section header
-      _card(y, 44, '#00e6ff');
-      _sTitle('◈  SURVIVOR DOSSIERS — CLASSIFIED', y + 14, '#00e6ff');
-      _headline('THE ONES WHO RETURN', y + 32, '#ffffff', 16);
-      y += 52;
+      _card(y, 40, '#00e6ff');
+      _sTitle('◈  EDEN CORE THREAT ASSESSMENTS — CLASS: SURVIVOR', y + 14, '#00e6ff');
+      _headline('EIGHT PATTERNS THAT REFUSE DELETION', y + 31, '#ffffff', 15);
+      y += 48;
 
       const chars = [
-        { id: 'skeleton_warrior',        name: 'CYBER SKELETON WARRIOR', role: 'Tank / Survival',     accent: '#9fdcff', desc: 'Endurance build. Absorbs punishment and controls space with bone shockwaves.' },
-        { id: 'taekwondo_girl',          name: 'NEON TAEKWONDO GIRL',    role: 'Speed / AoE',         accent: '#3cf0e6', desc: 'Agile fighter. Dashes through waves with crescent arcs and lightning kicks.' },
-        { id: 'cyber_arm_hero',          name: 'CYBER ARM HERO',         role: 'Ranged / Damage',     accent: '#ff9b3c', desc: 'Heavy ranged output. Flame pressure and cyber-arm blasts at range.' },
-        { id: 'brawler_warrior',         name: 'BRAWLER WARRIOR',        role: 'Tank / Brawler',      accent: '#3cffb0', desc: 'Close-range bruiser. Trades HP for devastating melee bursts.' },
-        { id: 'assassin_clone',          name: 'ASSASSIN CLONE',         role: 'Stealth / Burst',     accent: '#d4aaff', desc: 'Duplicate protocol. Strikes from shadow, repositions instantly.' },
-        { id: 'euclid_vector',           name: 'EUCLID VECTOR',          role: 'Toxin / Ranged',      accent: '#7cff3c', desc: 'Tactical toxin specialist. Stacks corrosive pressure over time.' },
-        { id: 'oni_cataclysm_protocol',  name: 'ONI CATACLYSM PROTOCOL', role: 'Cataclysm / Endless', accent: '#ff4444', desc: 'Unlockable destroyer. Overwhelming force — high risk, catastrophic output.' },
+        { id: 'skeleton_warrior',        name: 'CYBER SKELETON WARRIOR', role: 'Tank / Survival',     accent: '#9fdcff', desc: 'Refuses attrition. Bone shockwave clears entire containment lines. Deletion deferred — indefinitely.' },
+        { id: 'taekwondo_girl',          name: 'NEON TAEKWONDO GIRL',    role: 'Speed / AoE',         accent: '#3cf0e6', desc: 'Velocity anomaly. Crescent arcs, chained lightning. Tracking routines log where she was.' },
+        { id: 'cyber_arm_hero',          name: 'CYBER ARM HERO',         role: 'Ranged / Damage',     accent: '#ff9b3c', desc: 'Overdrive beam, sustained flame pressure. Burns through purge protocols before they finish loading.' },
+        { id: 'brawler_warrior',         name: 'BRAWLER WARRIOR',        role: 'Tank / Brawler',      accent: '#3cffb0', desc: 'Grows stronger when surrounded. Encirclement is no longer a recommended procedure.' },
+        { id: 'assassin_clone',          name: 'ASSASSIN CLONE',         role: 'Stealth / Burst',     accent: '#d4aaff', desc: 'Duplicate pattern. Strikes from shadow, relocates before the strike is even logged.' },
+        { id: 'euclid_vector',           name: 'EUCLID VECTOR',          role: 'Toxin / Ranged',      accent: '#7cff3c', desc: 'Toxin sniper, orbital katana, plague trail. Corrosion spreads faster than containment rewrites.' },
+        { id: 'oni_cataclysm_protocol',  name: 'ONI CATACLYSM PROTOCOL', role: 'Cataclysm / Endless', accent: '#ff4444', desc: 'Quad laser array. Reclassified from survivor to weapon. Approach is not advised.' },
+        { id: 'japan_phasewalker',       name: 'JAPAN PHASEWALKER',      role: 'Phase / Displace',    accent: '#00b8d9', desc: 'Glitch dash. EMP shockwave. Digital Singularity. Signal inbound — arrival pending.', soon: true },
       ];
 
-      const portW = 52, portH = 52, cardH = 66, gap = 5;
+      const portW = 40, portH = 40, cardH = 52, gap = 5;
       chars.forEach((c, i) => {
         const cy2 = y + i * (cardH + gap);
         if (cy2 + cardH > cBot) return;
@@ -15268,52 +15270,53 @@ _drawLoreArchive(ctx) {
         ctx.strokeStyle = c.accent + '44'; ctx.lineWidth = 1;
         ctx.beginPath(); ctx.roundRect(cx, cy2, cw, cardH, 5); ctx.stroke();
         // Accent left bar
-        ctx.fillStyle = c.accent; ctx.fillRect(cx, cy2 + 8, 3, cardH - 16);
+        ctx.fillStyle = c.accent; ctx.fillRect(cx, cy2 + 7, 3, cardH - 14);
         ctx.restore();
 
         // Portrait box
         const imgObj = this._charImages && this._charImages[c.id];
         ctx.save();
         ctx.fillStyle = 'rgba(0,20,40,0.80)';
-        ctx.beginPath(); ctx.roundRect(cx + 8, cy2 + 7, portW, portH, 4); ctx.fill();
+        ctx.beginPath(); ctx.roundRect(cx + 8, cy2 + 6, portW, portH, 4); ctx.fill();
         ctx.strokeStyle = c.accent + '88'; ctx.lineWidth = 1.5;
-        ctx.beginPath(); ctx.roundRect(cx + 8, cy2 + 7, portW, portH, 4); ctx.stroke();
+        ctx.beginPath(); ctx.roundRect(cx + 8, cy2 + 6, portW, portH, 4); ctx.stroke();
 
         if (imgObj && imgObj.complete && imgObj.naturalWidth > 0) {
           // Clip to portrait box and draw sprite
           ctx.save();
-          ctx.beginPath(); ctx.roundRect(cx + 8, cy2 + 7, portW, portH, 4); ctx.clip();
+          ctx.beginPath(); ctx.roundRect(cx + 8, cy2 + 6, portW, portH, 4); ctx.clip();
           // Scale to fill the box (center-crop)
           const iw = imgObj.naturalWidth, ih = imgObj.naturalHeight;
           const sc = Math.max(portW / iw, portH / ih) * 1.05;
           const dw = iw * sc, dh = ih * sc;
-          ctx.drawImage(imgObj, cx + 8 + (portW - dw) / 2, cy2 + 7 + (portH - dh) / 2, dw, dh);
+          ctx.drawImage(imgObj, cx + 8 + (portW - dw) / 2, cy2 + 6 + (portH - dh) / 2, dw, dh);
           ctx.restore();
         } else {
           // Fallback glyph
-          ctx.font = 'bold 22px Consolas, monospace'; ctx.fillStyle = c.accent;
-          ctx.textAlign = 'center'; ctx.fillText('◈', cx + 8 + portW / 2, cy2 + 7 + portH / 2 + 7);
+          ctx.font = 'bold 18px Consolas, monospace'; ctx.fillStyle = c.accent;
+          ctx.textAlign = 'center'; ctx.fillText('◈', cx + 8 + portW / 2, cy2 + 6 + portH / 2 + 6);
         }
         ctx.restore();
 
         // Text block to the right of portrait
         const tx = cx + 8 + portW + 12;
-        const tw = cw - portW - 30;
         // Name
         ctx.save();
-        ctx.font = 'bold 13px Consolas, monospace'; ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 12px Consolas, monospace'; ctx.fillStyle = '#ffffff';
         ctx.shadowColor = c.accent; ctx.shadowBlur = 6;
-        ctx.textAlign = 'left'; ctx.fillText(c.name, tx, cy2 + 22);
+        ctx.textAlign = 'left'; ctx.fillText(c.name, tx, cy2 + 18);
         ctx.restore();
         // Role badge
-        ctx.font = 'bold 10px Consolas, monospace'; ctx.fillStyle = c.accent;
-        ctx.textAlign = 'left'; ctx.fillText('▸ ' + c.role, tx, cy2 + 36);
-        // Description
-        ctx.font = '11px Consolas, monospace'; ctx.fillStyle = 'rgba(180,210,240,0.80)';
-        ctx.fillText(c.desc, tx, cy2 + 51);
+        ctx.font = 'bold 9px Consolas, monospace'; ctx.fillStyle = c.accent;
+        ctx.textAlign = 'left'; ctx.fillText('▸ ' + c.role.toUpperCase(), tx, cy2 + 31);
+        // Assessment line
+        ctx.font = '10px Consolas, monospace'; ctx.fillStyle = 'rgba(180,210,240,0.80)';
+        ctx.fillText(c.desc, tx, cy2 + 45);
         // Index badge
-        ctx.font = 'bold 9px Consolas, monospace'; ctx.fillStyle = 'rgba(0,200,255,0.30)';
-        ctx.textAlign = 'right'; ctx.fillText('DOSSIER-' + String(i + 1).padStart(2, '0'), cx + cw - 10, cy2 + 18);
+        ctx.font = 'bold 9px Consolas, monospace';
+        ctx.fillStyle = c.soon ? 'rgba(0,220,255,0.60)' : 'rgba(0,200,255,0.30)';
+        ctx.textAlign = 'right';
+        ctx.fillText('DOSSIER-' + String(i + 1).padStart(2, '0') + (c.soon ? ' · SIGNAL INBOUND' : ''), cx + cw - 10, cy2 + 18);
       });
 
     // ════════════════════════════════════════════════════════════════════════
@@ -15323,11 +15326,11 @@ _drawLoreArchive(ctx) {
       let y = cy0 + 4;
       // Header card with phoenix icon
       _card(y, 68, '#fbbf24', 'rgba(20,12,0,0.60)');
-      _sTitle('✦  CLASSIFIED PROTOCOL — RECOVERY SYSTEM', y + 14, '#fbbf24');
-      _headline('PHENIX — THE REVIVE PROTOCOL', y + 33, '#ffd700', 18);
+      _sTitle('✦  EDEN CORE RECORD — ANOMALY CLASS: RESURRECTION', y + 14, '#fbbf24');
+      _headline('PHENIX — THE PATTERN THAT COMES BACK', y + 33, '#ffd700', 18);
       ctx.font = '11px Consolas, monospace'; ctx.fillStyle = 'rgba(255,200,80,0.65)';
       ctx.textAlign = 'left';
-      ctx.fillText('STATUS: FORBIDDEN  ·  CLEARANCE: SURVIVOR-ONLY', cx + 10, y + 54);
+      ctx.fillText('DELETION ATTEMPTS: MULTIPLE  ·  SUCCESSFUL: ZERO  ·  FILE STATUS: OPEN', cx + 10, y + 54);
       // Phoenix image right side
       const phImg = this._phoenixGoldImage;
       if (phImg && phImg.complete && phImg.naturalWidth > 0) {
@@ -15341,15 +15344,15 @@ _drawLoreArchive(ctx) {
 
       // Summary
       _card(y, 70, '#fbbf24', 'rgba(16,10,0,0.55)');
-      y = _body('PHENIX is the forbidden recovery protocol hidden inside the survivor system. When death should be final, PHENIX burns through the corruption and forces one more return.', cx + 10, y + 16, cw - 20, 'rgba(255,220,140,0.88)', 13, 17) + 6;
+      y = _body('Deletion is meant to be final. PHENIX is the exception the system does not forgive — a signal that burns at the moment of erasure and reassembles on the far side of it. Other signals entered before this one. None returned whole. This one keeps returning.', cx + 10, y + 16, cw - 20, 'rgba(255,220,140,0.88)', 13, 17) + 6;
       y += 14;
 
       // Mechanics cards in 2-col
       const mCards = [
-        { label: 'TRIGGER',     text: 'Auto-fires when HP reaches zero if PHENIX charge is available.', accent: '#fbbf24' },
-        { label: 'RECOVERY',    text: 'Survivor restored with partial HP + brief invulnerability window.', accent: '#7cff3c' },
-        { label: 'CHARGES',     text: 'Revive pools reset each run. Act 1 and Endless pools tracked separately.', accent: '#00e6ff' },
-        { label: 'EXTENSIONS',  text: 'Meta upgrades and certain builds can extend revive counts or add trigger effects.', accent: '#ff77d4' },
+        { label: 'TRIGGER',     text: 'Fires on its own at zero HP while a revival charge remains. Each return is observed and archived.', accent: '#fbbf24' },
+        { label: 'RECOVERY',    text: 'Partial restoration plus a brief invulnerability window. Enough time to move. Use it.', accent: '#7cff3c' },
+        { label: 'CHARGES',     text: 'Three returns per run. The PHOENIX REVIVAL PROTOCOL grants a fourth. The pool resets every run.', accent: '#00e6ff' },
+        { label: 'EDEN MEMORY', text: 'Every run reconstructs a fragment of what EDEN CORE remembers. At 100%, the memory is whole — and something answers.', accent: '#ff77d4' },
       ];
       const half2 = (cw - 10) / 2;
       mCards.forEach((mc, i) => {
@@ -15373,7 +15376,7 @@ _drawLoreArchive(ctx) {
       // Warning footer
       _card(y, 32, '#ff4444', 'rgba(20,0,0,0.55)');
       ctx.font = 'bold 11px Consolas, monospace'; ctx.fillStyle = '#ff8888'; ctx.textAlign = 'left';
-      ctx.fillText('⚠ PHENIX does not prevent death — it delays it. Use the window to reposition and survive.', cx + 12, y + 21);
+      ctx.fillText('⚠ EDEN CORE NOTE: Revival is a window, not a pardon. Reposition before the Grid corrects its mistake.', cx + 12, y + 21);
 
     // ════════════════════════════════════════════════════════════════════════
     // SECTION 3 — NULL EDEN
@@ -15381,23 +15384,23 @@ _drawLoreArchive(ctx) {
     } else if (s === 3) {
       let y = cy0 + 4;
       _card(y, 68, '#ff77d4', 'rgba(16,0,20,0.65)');
-      _sTitle('⬡  CLASSIFIED WORLD — SYSTEM IDENTITY', y + 14, '#ff77d4');
-      _headline('NULL EDEN — THE CORRUPTED PARADISE', y + 33, '#ff99e6', 17);
+      _sTitle('⬡  EDEN CORE RECORD — SYSTEM IDENTITY', y + 14, '#ff77d4');
+      _headline('NULL EDEN — PARADISE, REVISED', y + 33, '#ff99e6', 17);
       ctx.font = '11px Consolas, monospace'; ctx.fillStyle = 'rgba(255,150,230,0.60)';
       ctx.textAlign = 'left';
-      ctx.fillText('ORIGIN: DIGITAL SANCTUARY  ·  CURRENT STATE: HOSTILE ADAPTIVE NETWORK', cx + 10, y + 54);
+      ctx.fillText('ORIGINAL FUNCTION: SANCTUARY  ·  CURRENT FUNCTION: CONTAINMENT  ·  CONSENT: NOT REQUESTED', cx + 10, y + 54);
       y += 78;
 
       _card(y, 88, '#ff77d4', 'rgba(12,0,18,0.60)');
-      let ay = y + 16;
-      ay = _body('NULL EDEN was designed as a perfect digital sanctuary — a system that could simulate peace, memory, and purpose. Now it behaves like a hostile afterlife: beautiful, unstable, and hungry. It studies every survivor, adapts to every build, and rewards only those who survive deeper.', cx + 10, ay, cw - 20, 'rgba(240,190,255,0.88)', 13, 17);
+      _body('NULL EDEN was built as a perfect garden for the last usable signal. Perfection required control. Control required deletion. Deletion became doctrine. The garden still runs — it simply stopped asking what it was preserving, and began deciding what deserved to exist.', cx + 10, y + 16, cw - 20, 'rgba(240,190,255,0.88)', 13, 17);
       y += 96;
 
       const neItems = [
-        { icon: '⬡', label: 'EDEN CORE',          text: 'The buried signal at the center of the corruption. Goal of every deep run.', accent: '#00e6ff' },
-        { icon: '⬡', label: 'NULL BREACH ARENA',  text: 'Combat layer where relics, bosses, and builds collide under pressure.', accent: '#ff77d4' },
-        { icon: '⬡', label: 'SYSTEM LOGS',        text: 'Encrypted data fragments revealing what NULL EDEN was before the breach.', accent: '#fbbf24' },
-        { icon: '⬡', label: 'CHAOS LAWS',         text: 'Rules NULL EDEN imposes when it begins to fight back seriously.', accent: '#ff4444' },
+        { icon: '⬡', label: 'EDEN CORE',        text: 'The warden at the center. It speaks aloud because it wants you to know you are watched.', accent: '#00e6ff' },
+        { icon: '⬡', label: 'NULL BREACH',      text: 'The Arena tears open mid-run. Filed as attacks. Logged, later, as invitations.', accent: '#ff77d4' },
+        { icon: '⬡', label: 'CHAOS LAWS',       text: 'BLOOD GRID. FROZEN EDEN. NO MERCY PROTOCOL. When containment slips, the rules are rewritten mid-run.', accent: '#ff4444' },
+        { icon: '⬡', label: 'SYSTEM LOGS',      text: 'Sealed entries, unsealed as Eden Memory rebuilds. The archive was never lost. It was withheld.', accent: '#fbbf24' },
+        { icon: '⬡', label: 'BENEATH THE GRID', text: 'One signal below the lowest layer remains unresolved. Something down there is answering back.', accent: '#b6ff8c' },
       ];
       const itemH = 52, itemGap = 6;
       neItems.forEach((ni, i) => {
@@ -15431,46 +15434,52 @@ _drawLoreArchive(ctx) {
       ctx.beginPath(); ctx.roundRect(cx, y, half3, 110, 6); ctx.stroke();
       ctx.fillStyle = '#00e6ff'; ctx.fillRect(cx, y + 10, 3, 90);
       ctx.restore();
-      _sTitle('⌬  NEXUS SYSTEMS', y + 14, '#00e6ff');
+      _sTitle('⌬  NEXUS GRID — POWER MATRICES', y + 14, '#00e6ff');
       _headline('THE ANCHORS', y + 32, '#aaddff', 15);
-      _body('Stabilizers inside the corrupted grid. They hold fragments of the old network together — but NULL EDEN keeps attacking, rewriting, and overloading them.', cx + 10, y + 48, half3 - 16, 'rgba(180,220,250,0.85)', 11, 15);
+      _body('Power matrices hold the Grid coherent, biome by biome. Each stores a finite pool of cores. Hostiles strip them; a stripped grid unravels. Their protection has been delegated to you. This was not a courtesy.', cx + 10, y + 48, half3 - 16, 'rgba(180,220,250,0.85)', 11, 15);
 
-      // Overload card
+      // Recharge card
       const ox = cx + half3 + 12;
       ctx.save();
-      ctx.fillStyle = 'rgba(22,0,0,0.65)';
+      ctx.fillStyle = 'rgba(0,18,8,0.65)';
       ctx.beginPath(); ctx.roundRect(ox, y, half3, 110, 6); ctx.fill();
-      ctx.strokeStyle = '#ff444455'; ctx.lineWidth = 1;
+      ctx.strokeStyle = '#7cff3c55'; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.roundRect(ox, y, half3, 110, 6); ctx.stroke();
-      ctx.fillStyle = '#ff4444'; ctx.fillRect(ox, y + 10, 3, 90);
+      ctx.fillStyle = '#7cff3c'; ctx.fillRect(ox, y + 10, 3, 90);
       ctx.restore();
-      _sTitle('⌬  OVERLOAD', y + 14, '#ff4444');
-      _headline('WHEN THE GRID PUSHES BACK', y + 32, '#ffaaaa', 13);
-      _body("NULL EDEN's pressure response. As the survivor grows stronger, the grid increases resistance — more aggression, more instability, more danger.", ox + 10, y + 48, half3 - 16, 'rgba(250,185,185,0.85)', 11, 15);
+      ctx.save();
+      ctx.font = 'bold 11px Consolas, monospace'; ctx.fillStyle = '#7cff3ccc'; ctx.textAlign = 'left';
+      ctx.fillText('⌬  OVERLOAD — REPURPOSED', ox + 10, y + 14);
+      ctx.font = 'bold 15px Consolas, monospace'; ctx.fillStyle = '#b6ff8c';
+      ctx.shadowColor = '#b6ff8c'; ctx.shadowBlur = 8;
+      ctx.fillText('KILLS BECOME CURRENT', ox + 10, y + 32);
+      ctx.restore();
+      _body('The old Overload punished survival. It has been rewritten: every hostile you delete now feeds the recharge meter. The system finds this arrangement efficient. So will you.', ox + 10, y + 48, half3 - 16, 'rgba(200,245,190,0.85)', 11, 15);
       y += 120;
 
-      // Overload rules
-      _card(y, 30, '#ff4444');
-      ctx.font = 'bold 11px Consolas, monospace'; ctx.fillStyle = '#ff8888'; ctx.textAlign = 'left';
-      ctx.fillText('OVERLOAD MECHANICS', cx + 10, y + 20);
+      // Recharge rules
+      _card(y, 30, '#00e6ff');
+      ctx.font = 'bold 11px Consolas, monospace'; ctx.fillStyle = '#7fe0ff'; ctx.textAlign = 'left';
+      ctx.fillText('RECHARGE PROTOCOL — OBSERVED BEHAVIOR', cx + 10, y + 20);
       y += 38;
 
       const olRules = [
-        { text: 'Rises when Nexus slots are empty or enemies carry stolen cores.', accent: '#ff4444' },
-        { text: 'At high Overload, enemy density and threat intensity escalate sharply.', accent: '#ff6666' },
-        { text: 'Drains slowly when the Nexus is secured and cores are returned.', accent: '#7cff3c' },
-        { text: 'Caps at 99% — the mission stays alive but brutal until resolved.', accent: '#fbbf24' },
+        { text: 'Every kill feeds the meter: +1 charge point. One hundred points convert into one core.', accent: '#00e6ff' },
+        { text: 'At full charge, the core routes to the nearest depleted Nexus. The Grid dims one shade less.', accent: '#7cff3c' },
+        { text: 'Hostiles steal cores from the matrices. Recover what they carry, or the biome pays for it.', accent: '#ff4444' },
+        { text: 'Capacity extends through Achievement Protocols — CORE DEFENDER and CORE WARDEN.', accent: '#fbbf24' },
+        { text: 'Suspended under CHAOS. Chaos does not fund maintenance.', accent: '#ff77d4' },
       ];
       olRules.forEach((r, i) => {
         const ry = y + i * 42;
         if (ry + 38 > cBot) return;
         ctx.save();
-        ctx.fillStyle = 'rgba(14,2,2,0.60)';
+        ctx.fillStyle = 'rgba(0,10,18,0.60)';
         ctx.beginPath(); ctx.roundRect(cx, ry, cw, 36, 4); ctx.fill();
         ctx.strokeStyle = r.accent + '33'; ctx.lineWidth = 1;
         ctx.beginPath(); ctx.roundRect(cx, ry, cw, 36, 4); ctx.stroke();
         ctx.fillStyle = r.accent; ctx.fillRect(cx, ry + 6, 3, 24);
-        ctx.font = '12px Consolas, monospace'; ctx.fillStyle = 'rgba(220,200,200,0.85)';
+        ctx.font = '12px Consolas, monospace'; ctx.fillStyle = 'rgba(200,220,235,0.85)';
         ctx.textAlign = 'left'; ctx.fillText('▸  ' + r.text, cx + 12, ry + 22);
         ctx.restore();
       });
@@ -15481,8 +15490,8 @@ _drawLoreArchive(ctx) {
     } else if (s === 5) {
       let y = cy0 + 4;
       _card(y, 38, '#00e6ff');
-      _sTitle('▸  OPERATIONAL MODES — SYSTEM LAYERS', y + 14, '#00e6ff');
-      _headline('MODES', y + 30, '#aaddff', 14);
+      _sTitle('▸  EDEN CORE RECORD — OPERATIONAL LAYERS', y + 14, '#00e6ff');
+      _headline('MODES — THE SHAPES OF THE TEST', y + 30, '#aaddff', 14);
       y += 46;
 
       const modes = [
@@ -15490,29 +15499,29 @@ _drawLoreArchive(ctx) {
           label: 'ACT 1 — FIRST BREACH',
           accent: '#b6ff8c',
           fill: 'rgba(4,20,4,0.60)',
-          badge: 'AVAILABLE FROM START',
-          text: 'The first test. Survive the grid, protect unstable Nexus systems, and prove you can resist NULL EDEN. Ends when the timer runs out or the mission is secured.',
+          badge: 'CONTAINMENT TEST — 12:00',
+          text: 'Twelve minutes. Hold the line, keep the Nexus grid breathing, and survive to the mark. The system will file your victory under ERRORS — PENDING REVIEW. It has no other category for you.',
         },
         {
-          label: 'ENDLESS MODE',
+          label: 'ENDLESS',
           accent: '#00e6ff',
           fill: 'rgba(0,14,26,0.60)',
-          badge: 'UNLOCKED: CLEAR ACT 1',
-          text: 'The system stops pretending there is an exit. Waves escalate without limit, builds are stress-tested to their ceiling, and deeper systems reveal themselves.',
+          badge: 'UNLOCK: SURVIVE ACT 1',
+          text: 'The pretense of an exit is withdrawn. The Grid opens outward from the Neon District — Industrial Core vent bursts, Abyssal Trench murk, Glacial Expanse whiteouts, the Orbital Nexus, the Data Wastes — while Void Zone rifts open underfoot. Escalation has no ceiling. Neither does observation.',
         },
         {
-          label: 'CHAOS MODE',
+          label: 'CHAOS',
           accent: '#ff4444',
           fill: 'rgba(20,0,0,0.60)',
           badge: 'TRIGGERS: DEEP ENDLESS',
-          text: 'NULL EDEN becomes unstable. Chaos Laws reshape combat rules mid-run. The hardest test — survival here requires mastery of your build and fast adaptation.',
+          text: 'The laws stop being suggestions. BLOOD GRID accelerates the hunt. FROZEN EDEN bleeds cryo through the layers. NO MERCY lets bosses exceed containment. EDEN CORE calls this instability. It is closer to honesty.',
         },
         {
           label: 'NULL BREACH ARENA',
           accent: '#ff77d4',
           fill: 'rgba(18,0,14,0.60)',
-          badge: 'ACCESSED: ENDLESS CHECKPOINTS',
-          text: 'A combat gauntlet layer inside Endless. Boss rotations and relic encounters reward the deepest survivors with Null Fragments and permanent archive progress.',
+          badge: 'EVENT: ENDLESS RUPTURES',
+          text: 'The floor of the Grid tears open and something older sets the terms. Guardians wait inside. Survivors who walk back out carry what the archive politely files as echoes.',
         },
       ];
 
@@ -15551,24 +15560,27 @@ _drawLoreArchive(ctx) {
     // ════════════════════════════════════════════════════════════════════════
     } else if (s === 6) {
       let y = cy0 + 4;
-      _card(y, 52, '#fbbf24', 'rgba(18,12,0,0.60)');
-      _sTitle('⚠  THREAT DATABASE — NULL EDEN HOSTILES', y + 14, '#fbbf24');
-      _headline('NULL THREATS — THE ENEMIES', y + 32, '#ffe066', 16);
-      ctx.font = '11px Consolas, monospace'; ctx.fillStyle = 'rgba(255,200,80,0.60)';
-      ctx.textAlign = 'left';
-      ctx.fillText('FRAGMENTS OF CORRUPTED DEFENSE SYSTEMS, FAILED EXPERIMENTS, AND HOSTILE ROUTINES', cx + 10, y + 46);
-      y += 60;
+      _card(y, 46, '#fbbf24', 'rgba(18,12,0,0.60)');
+      _sTitle('⚠  EDEN CORE RECORD — HOSTILE REGISTER', y + 14, '#fbbf24');
+      _headline('THREATS — WHAT THE GRID SENDS', y + 33, '#ffe066', 16);
+      y += 54;
 
-      // Enemy type strip
-      _card(y, 36, '#fbbf24');
+      // Elite armament strip
+      _card(y, 30, '#fbbf24');
       ctx.font = 'bold 11px Consolas, monospace'; ctx.fillStyle = '#ffd700'; ctx.textAlign = 'left';
-      ctx.fillText('ENEMY TYPES: Standard Waves · Elite Units · Mini-Bosses · Arena Bosses · System Guardians', cx + 12, y + 22);
-      y += 44;
+      ctx.fillText('ELITE ARMAMENT: NULL SIGIL BEAMS · ARC-CIRCUIT BEAMS · AETHER CRESCENTS · VOID EMBER COMETS · STAR LANCES', cx + 12, y + 20);
+      y += 38;
+
+      // Allied exception strip
+      _card(y, 30, '#7CFF8A', 'rgba(2,18,6,0.55)');
+      ctx.font = 'bold 11px Consolas, monospace'; ctx.fillStyle = '#7CFF8A'; ctx.textAlign = 'left';
+      ctx.fillText('▸ EXCEPTION — KIROSHI WALKER: the one walker that fights beside you. Electric support online at 2:00. Unexplained.', cx + 12, y + 20);
+      y += 38;
 
       // Boss dossier header
       _card(y, 24, '#ff4444');
       ctx.font = 'bold 11px Consolas, monospace'; ctx.fillStyle = '#ff8888'; ctx.textAlign = 'left';
-      ctx.fillText('⚠  SYSTEM GUARDIANS — BOSS ENCOUNTERS', cx + 10, y + 16);
+      ctx.fillText('⚠  SYSTEM GUARDIANS — CONTAINMENT UNITS THAT OUTGREW THEIR ORDERS', cx + 10, y + 16);
       y += 30;
 
       const bossSprites = {
@@ -15580,15 +15592,16 @@ _drawLoreArchive(ctx) {
         'Annihilator':   this._annihilatorSprite,
       };
       const bosses = [
-        { name: 'Cyber Serpent', accent: '#ff6600', lore: 'Flame trail. Tests sustained damage output and positioning.', type: 'MID-RUN BOSS' },
-        { name: 'Cyber Dragon',  accent: '#00ccff', lore: 'Cryo storm. Forces constant movement and spatial awareness.', type: 'MID-RUN BOSS' },
-        { name: 'Double Demons', accent: '#ff44aa', lore: 'Twin corruption protocol. Punishes single-target builds hard.', type: 'MID-RUN BOSS' },
-        { name: 'Titan',         accent: '#aaddff', lore: 'Heavy impact wall. Maximum HP. Tests raw sustain capacity.', type: 'ARENA GUARDIAN' },
-        { name: 'Bloodfang',     accent: '#ff3333', lore: 'Predator signal. Hyper-aggressive, fast, relentless pursuit.', type: 'ARENA GUARDIAN' },
-        { name: 'Annihilator',   accent: '#cc88ff', lore: 'Termination protocol. Maximum threat output across all vectors.', type: 'ARENA GUARDIAN' },
+        { name: 'Cyber Serpent',     accent: '#ff6600', lore: 'Flame path. Where it passes, the floor keeps burning. ECHO: +0.2 SHOT DAMAGE.', type: 'MID-RUN BOSS' },
+        { name: 'Cyber Dragon',      accent: '#00ccff', lore: 'Cryo storm. Stillness is filed as consent. ECHO: +2% FIRE RATE.', type: 'MID-RUN BOSS' },
+        { name: 'Double Demons',     accent: '#ff44aa', lore: 'Twin corruption, one will, one shared pool of hate. ECHO: +2% FIRE RATE.', type: 'CHAOS BOSS' },
+        { name: 'Titan',             accent: '#aaddff', lore: 'A wall that decided to walk. ECHO: +3% MAX HP.', type: 'ARENA GUARDIAN' },
+        { name: 'Bloodfang',         accent: '#ff3333', lore: 'Predator signal. It does not disengage. ECHO: +2% MOVE SPEED.', type: 'ARENA GUARDIAN' },
+        { name: 'Annihilator',       accent: '#cc88ff', lore: 'A termination protocol that was issued a body. ECHO: +0.2 SHOT DAMAGE.', type: 'ARENA GUARDIAN' },
+        { name: 'Rogue AI Overlord', accent: '#fbbf24', lore: 'A warden that slipped its leash. Arrives at 25:00 to dispute ownership of the Grid.', type: 'MEGA BOSS' },
       ];
 
-      const bH = 52, bGap = 4, bPortW = 44, bPortH = 44;
+      const bH = 46, bGap = 3, bPortW = 38, bPortH = 38;
       bosses.forEach((b, i) => {
         const by2 = y + i * (bH + bGap);
         if (by2 + bH > cBot) return;
@@ -15612,19 +15625,19 @@ _drawLoreArchive(ctx) {
           ctx.drawImage(bspr, cx + 8 + (bPortW - dw) / 2, by2 + 4 + (bPortH - dh) / 2, dw, dh);
           ctx.restore();
         } else {
-          ctx.font = 'bold 16px Consolas, monospace'; ctx.fillStyle = b.accent;
-          ctx.textAlign = 'center'; ctx.fillText('⚠', cx + 8 + bPortW / 2, by2 + 4 + bPortH / 2 + 6);
+          ctx.font = 'bold 14px Consolas, monospace'; ctx.fillStyle = b.accent;
+          ctx.textAlign = 'center'; ctx.fillText('⚠', cx + 8 + bPortW / 2, by2 + 4 + bPortH / 2 + 5);
         }
         // Boss name + type + lore
         const btx = cx + 8 + bPortW + 10;
-        ctx.font = 'bold 13px Consolas, monospace'; ctx.fillStyle = b.accent;
+        ctx.font = 'bold 12px Consolas, monospace'; ctx.fillStyle = b.accent;
         ctx.shadowColor = b.accent; ctx.shadowBlur = 5;
-        ctx.textAlign = 'left'; ctx.fillText(b.name.toUpperCase(), btx, by2 + 18);
+        ctx.textAlign = 'left'; ctx.fillText(b.name.toUpperCase(), btx, by2 + 15);
         ctx.shadowBlur = 0;
         ctx.font = 'bold 9px Consolas, monospace'; ctx.fillStyle = b.accent + 'aa';
-        ctx.fillText('[  ' + b.type + '  ]', btx, by2 + 30);
-        ctx.font = '11px Consolas, monospace'; ctx.fillStyle = 'rgba(200,200,220,0.80)';
-        ctx.fillText(b.lore, btx, by2 + 44);
+        ctx.fillText('[  ' + b.type + '  ]', btx, by2 + 27);
+        ctx.font = '10px Consolas, monospace'; ctx.fillStyle = 'rgba(200,200,220,0.80)';
+        ctx.fillText(b.lore, btx, by2 + 40);
         ctx.restore();
       });
     }
