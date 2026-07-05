@@ -98,6 +98,7 @@ const WIELDER_VFX_OVERRIDES = Object.freeze({
   'magnetic_arc|assassin_clone':        'assets/weapons/nexus/assassin_toxic_arc_burst.png',
   'magnetic_arc|brawler_warrior':       'assets/weapons/nexus/brawler_heavy_impact_burst.png',
   'storm_saber|oni_cataclysm_protocol': 'assets/weapons/nexus/oni_inferno_saber_slash.png',
+  'spirit_crescent|cyber_arm_hero':     'assets/weapons/nexus/arm_inferno_crescent_aura.png',
 });
 
 // Lazy one-time Image cache for Nexus pack illustrations (VFX overrides + card icons).
