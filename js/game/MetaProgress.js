@@ -566,6 +566,28 @@ export class MetaProgress {
     return 'ok';
   }
 
+  // ─── Respec (Upgrades screen RESET PROTOCOL) ───────────────────────────────────────
+  // Total Grid Cores spent on levelled upgrades (CORE + ★ SYNERGY tabs), recomputed
+  // from current levels and the live cost tables, so the confirmation dialog always
+  // shows exactly what respec() will pay back.
+  getRespecRefund() {
+    let total = 0;
+    for (const upg of [...META_UPGRADES, ...SYNERGY_UPGRADES]) {
+      const lvl = Math.min(this.getLevel(upg.key), upg.maxLevel);
+      for (let i = 0; i < lvl; i++) total += upgradeCost(upg, i);
+    }
+    return total;
+  }
+
+  // Reset ALL upgrade levels and refund 100% of the Grid Cores spent on them.
+  // Touches ONLY credits + levels — character unlocks, Protocol Fragments, relics,
+  // records, achievements and Eden state are never affected.
+  respec() {
+    this.credits += this.getRespecRefund();
+    this.levels = {};
+    this._save();
+  }
+
   reset() {
     this.credits = 0;
     this.levels  = {};

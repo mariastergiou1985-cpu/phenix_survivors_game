@@ -5,7 +5,7 @@ import {
   DARK_BG, GRID_LINE, BLACK, CYAN, RED, GREEN, YELLOW, ORANGE, WHITE, PURPLE,
   CORE_COLORS, VIEW_SCALE, VIEW_W, VIEW_H, ENDLESS_VIEW_SCALE,
 } from '../constants.js';
-import { clamp, distance, safeNormalize, randomChoice, randomRange } from '../utils.js';
+import { clamp, distance, safeNormalize, randomChoice, randomRange, wrapText } from '../utils.js';
 
 import { FloatingText }   from '../entities/FloatingText.js?v=20260703990000';
 import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260705040000';
@@ -22,7 +22,7 @@ import { weightedSample } from './Upgrades.js?v=20260705040000';
 import { MutationUI }      from './MutationUI.js?v=20260703990000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260705080000';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS } from './MetaProgress.js?v=20260705040000';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS } from './MetaProgress.js?v=20260705170000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260703990000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
@@ -32,7 +32,7 @@ import { DigitalSingularity } from '../effects/digital-singularity.js?v=20260703
 import { Protocol0 } from '../effects/protocol-0.js?v=20260705000000';
 import { LaserEyes } from '../effects/laser-eyes.js?v=20260703990000';
 import { MeteorRain } from '../effects/meteor-rain.js?v=20260705000000';
-import { NpcWalker } from './NpcWalker.js?v=20260703990000';
+import { NpcWalker } from './NpcWalker.js?v=20260705170000';
 import { MapManager, BIOME_ID, BIOME_DEFS } from './MapManager.js?v=20260703999000';
 import { EventBus, EVENTS } from './EventBus.js?v=20260703990000';
 import { EnemySpawner, ELITE_WAVE as ELITE_WAVE_CFG, BOSS_WARN_COOLDOWN as BOSS_WARN_CD } from './EnemySpawner.js?v=20260704200000';
@@ -773,6 +773,7 @@ export class Game {
 
     this._upgradesOverlayEl      = null;   // root #cgm-upgrades div
     this._upgradesOverlayVisible = false;
+    this._resetModalOpen         = false;  // RESET PROTOCOL confirmation modal open flag
     try {
       this._initUpgradesOverlay();
     } catch (err) {
@@ -1099,7 +1100,7 @@ export class Game {
     this.runCreditsEarned  = 0;
     this.edenRunMessages        = [];     // 1-3 Eden Core messages for end screen
     this._chaosEdenAwarded      = false;  // prevent double +3% memory if chaos already triggered
-    this._edenTransmission      = null;   // { message, title, priority, expiresAt }
+    this._edenTransmission      = null;   // { message, title, priority, duration, startedAt, expiresAt }
     this._edenRunMilestonesShown = new Set();
     this._edenLastAutoAt        = -999;   // timeAlive when last auto-transmission fired
     this._edenLowHpFired        = false;  // fire low-HP line once per episode
@@ -2751,7 +2752,8 @@ export class Game {
   _updateUpgradesScreen(input) {
     if (this._upgradeMsgTimer > 0) { this._upgradeMsgTimer -= 1/60; this._syncUpgradeMsg(); }
     if (input.keys.has('escape')) {
-      this.goToMainMenu();
+      if (this._resetModalOpen) this._closeResetModal();   // ESC cancels the RESET PROTOCOL modal first
+      else this.goToMainMenu();
       input.keys.delete('escape');
     }
   }
@@ -2875,6 +2877,21 @@ export class Game {
         @keyframes cgu-pulse { to { box-shadow:0 0 18px rgba(255,45,149,.7); } }
         #cgm-upgrades .cgu-hints { color:var(--txt-faint); font-size:11px; letter-spacing:1px; display:flex; gap:14px; flex-wrap:wrap; align-items:center; }
         #cgm-upgrades .cgu-hints b { color:var(--cyan); font-weight:400; }
+        /* ── RESET PROTOCOL confirmation modal ─────────────────────────────── */
+        #cgm-upgrades .cgu-modal-backdrop { position:fixed; inset:0; z-index:60; display:none; align-items:center; justify-content:center; background:rgba(3,6,14,.72); backdrop-filter:blur(2px); }
+        #cgm-upgrades .cgu-modal-backdrop.open { display:flex; }
+        #cgm-upgrades .cgu-modal { position:relative; width:min(460px,92vw); padding:24px 26px 22px; border-radius:var(--radius); background:rgba(8,14,26,.97); border:2px solid var(--cyan); box-shadow:0 0 14px rgba(46,230,246,.35),0 0 40px rgba(46,230,246,.15),0 18px 60px rgba(0,0,0,.65); animation:cgu-modal-in .18s ease-out; }
+        @keyframes cgu-modal-in { from { opacity:0; transform:translateY(12px) scale(.96); } to { opacity:1; transform:none; } }
+        #cgm-upgrades .cgu-modal-title { font-family:'Orbitron',sans-serif; font-weight:700; font-size:16px; letter-spacing:4px; color:#ffd23c; text-shadow:0 0 12px rgba(255,210,60,.45); margin-bottom:12px; }
+        #cgm-upgrades .cgu-modal-body { font-size:12.5px; line-height:1.7; color:var(--txt); margin-bottom:10px; }
+        #cgm-upgrades .cgu-modal-body b { color:var(--cyan); font-weight:700; }
+        #cgm-upgrades .cgu-modal-note { font-size:11px; color:var(--txt-dim); line-height:1.5; margin-bottom:18px; }
+        #cgm-upgrades .cgu-modal-btns { display:flex; gap:12px; justify-content:flex-end; }
+        #cgm-upgrades .cgu-modal-btn { padding:10px 22px; border-radius:8px; cursor:pointer; font-family:'Orbitron',sans-serif; font-weight:700; font-size:11px; letter-spacing:2px; text-transform:uppercase; transition:.15s; }
+        #cgm-upgrades .cgu-modal-btn.confirm { border:1px solid var(--magenta); color:var(--magenta); background:rgba(255,45,149,.08); }
+        #cgm-upgrades .cgu-modal-btn.confirm:hover { color:#fff; background:rgba(255,45,149,.22); box-shadow:var(--glow-mag); }
+        #cgm-upgrades .cgu-modal-btn.cancel { border:1px solid rgba(111,134,184,.35); color:var(--txt-dim); background:rgba(10,16,46,.4); }
+        #cgm-upgrades .cgu-modal-btn.cancel:hover { border-color:var(--cyan); color:var(--cyan); box-shadow:var(--glow-cyan); }
       `;
       document.head.appendChild(style);
     }
@@ -2929,6 +2946,18 @@ export class Game {
           </div>
         </div>
       </div>
+
+      <div class="cgu-modal-backdrop" id="cgu-reset-modal">
+        <div class="cgu-modal" role="alertdialog" aria-modal="true" aria-label="Reset Protocol">
+          <div class="cgu-modal-title">RESET PROTOCOL</div>
+          <div class="cgu-modal-body" id="cgu-reset-body"></div>
+          <div class="cgu-modal-note">Character unlocks, Protocol Fragments, relics, achievements and EDEN memory are NOT affected.</div>
+          <div class="cgu-modal-btns">
+            <button class="cgu-modal-btn cancel"  id="cgu-reset-cancel">CANCEL</button>
+            <button class="cgu-modal-btn confirm" id="cgu-reset-confirm">CONFIRM RESET</button>
+          </div>
+        </div>
+      </div>
     `;
 
     el.querySelectorAll('.cgu-tab').forEach(btn => {
@@ -2941,17 +2970,17 @@ export class Game {
 
     el.querySelector('#cgu-back-btn')?.addEventListener('click', () => this.goToMainMenu());
 
-    el.querySelector('#cgu-reset-btn')?.addEventListener('click', () => {
-      if (this._confirmReset) {
-        this.meta.respec();
-        this._confirmReset = false;
-        this._upgradeMsg      = 'Upgrades reset — spent points refunded.';
-        this._upgradeMsgTimer = 2.5;
-      } else {
-        this._confirmReset    = true;
-        this._upgradeMsg      = 'Click RESET UPGRADES again to confirm.';
-        this._upgradeMsgTimer = 3.0;
-      }
+    // RESET PROGRESS — opens the RESET PROTOCOL confirmation modal (replaces double-click)
+    el.querySelector('#cgu-reset-btn')?.addEventListener('click', () => this._openResetModal());
+
+    const resetModal = el.querySelector('#cgu-reset-modal');
+    resetModal?.addEventListener('click', e => { if (e.target === resetModal) this._closeResetModal(); });   // backdrop = cancel
+    el.querySelector('#cgu-reset-cancel')?.addEventListener('click', () => this._closeResetModal());
+    el.querySelector('#cgu-reset-confirm')?.addEventListener('click', () => {
+      this.meta.respec();
+      this._closeResetModal();
+      this._upgradeMsg      = 'Upgrades reset — spent points refunded.';
+      this._upgradeMsgTimer = 2.5;
       this._syncUpgradesOverlay();
     });
 
@@ -3003,8 +3032,32 @@ export class Game {
 
   _hideUpgradesOverlay() {
     if (!this._upgradesOverlayEl) return;
+    this._closeResetModal();
     this._upgradesOverlayEl.style.display = 'none';
     this._upgradesOverlayVisible = false;
+  }
+
+  // ── RESET PROTOCOL confirmation modal (DOM overlay path) ────────────────────
+  // Body text is computed LIVE from meta state so the promised refund always
+  // matches exactly what meta.respec() pays back (100% of spent Grid Cores).
+  _openResetModal() {
+    const el = this._upgradesOverlayEl;
+    if (!el) return;
+    const modal = el.querySelector('#cgu-reset-modal');
+    const body  = el.querySelector('#cgu-reset-body');
+    if (!modal || !body) return;
+    const refund = (typeof this.meta.getRespecRefund === 'function') ? this.meta.getRespecRefund() : 0;
+    body.innerHTML =
+      `All CORE UPGRADE and ★ WEAPON SYNERGY levels will be reset to 0.<br>` +
+      `Refunds <b>${refund} Grid Cores</b> (100% of spent).`;
+    this._resetModalOpen = true;
+    modal.classList.add('open');
+  }
+
+  _closeResetModal() {
+    this._resetModalOpen = false;
+    const modal = this._upgradesOverlayEl?.querySelector('#cgu-reset-modal');
+    if (modal) modal.classList.remove('open');
   }
 
   _syncUpgradeMsg() {
@@ -3101,10 +3154,7 @@ export class Game {
     this._syncUpgradeMsg();
 
     const resetBtn = el.querySelector('#cgu-reset-btn');
-    if (resetBtn) {
-      resetBtn.classList.toggle('reset-confirm', !!this._confirmReset);
-      resetBtn.textContent = this._confirmReset ? 'CONFIRM RESET?' : 'RESET PROGRESS';
-    }
+    if (resetBtn) resetBtn.textContent = 'RESET PROGRESS';   // confirmation now lives in the RESET PROTOCOL modal
   }
 
   // ─── ACHIEVEMENTS DOM overlay ────────────────────────────────────────────────
@@ -17287,7 +17337,7 @@ _drawLoreArchive(ctx) {
     // Existing higher-priority block
     const ex = this._edenTransmission;
     if (ex && now < ex.expiresAt && priority < ex.priority) return;
-    this._edenTransmission = { message, title, priority, expiresAt: now + duration };
+    this._edenTransmission = { message, title, priority, duration, startedAt: now, expiresAt: now + duration };
     if (auto) this._edenLastAutoAt = now;
     // Optional audio hook — synthesized glitch if no clip, silent if muted
     this.audio?.playEdenTransmission(clipId);
@@ -17383,10 +17433,16 @@ _drawLoreArchive(ctx) {
     const remaining = tx.expiresAt - this.timeAlive;
     if (remaining <= 0) { this._edenTransmission = null; return; }
 
-    // Fade out over last 0.6 s
+    const duration = tx.duration || 5;
+    const elapsed  = Math.max(0, tx.startedAt != null ? this.timeAlive - tx.startedAt : duration - remaining);
+
+    // Fade out over last 0.6 s (unchanged)
     const fadeAlpha = remaining < 0.6 ? remaining / 0.6 : 1;
-    const PW = 212, PH = 68;
-    const PX = WIDTH - PW - 6;
+    const PW = 300, PH = 92;
+    // Slide-in from the right over the first 0.25 s (cubic ease-out)
+    const slideT = Math.min(1, elapsed / 0.25);
+    const ease   = 1 - Math.pow(1 - slideT, 3);
+    const PX = Math.round(WIDTH - PW - 6 + (1 - ease) * (PW + 12));
     const PY = 50;   // below top HUD bar (y=44); same row as active-relic HUD (left side)
 
     ctx.globalAlpha = fadeAlpha;
@@ -17395,6 +17451,9 @@ _drawLoreArchive(ctx) {
       messages: [tx.message],
       edenMem:  this.meta ? this.meta.getEdenMemory() : 0,
       title:    tx.title || 'EDEN CORE',
+      priority: tx.priority || 1,
+      elapsed,
+      arrivalPulse: Math.max(0, 1 - elapsed / 0.9),   // subtle glow pulse on arrival
     });
     ctx.globalAlpha = 1;
   }
@@ -17554,43 +17613,55 @@ _drawLoreArchive(ctx) {
    * Called from HUD end screen and future arena second-chance mechanic.
    * opts: { x, y, w, h, messages[], edenMem, title }
    */
-  _drawEdenTransmission(ctx, { x, y, w, h, messages = [], edenMem = 0, title = null }) {
+  _drawEdenTransmission(ctx, { x, y, w, h, messages = [], edenMem = 0, title = null, priority = 1, elapsed = 99, arrivalPulse = 0 }) {
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
 
-    // ── outer box ──────────────────────────────────────────────────────────
-    ctx.fillStyle   = 'rgba(0,8,22,0.93)';
-    ctx.strokeStyle = '#1a4a70';
-    ctx.lineWidth   = 1;
-    ctx.beginPath(); ctx.roundRect(x, y, w, h, 4); ctx.fill(); ctx.stroke();
+    // Priority accent: >=2 (boss/chaos/critical) = magenta, else cyan
+    const accent    = priority >= 2 ? '#ff2d95' : '#2ee6f6';
+    const accentRgb = priority >= 2 ? '255,45,149' : '46,230,246';
 
-    // ── neon gradient top border ───────────────────────────────────────────
-    const gbrd = ctx.createLinearGradient(x, y, x + w, y);
-    gbrd.addColorStop(0,   'transparent');
-    gbrd.addColorStop(0.25,'#3fd0ff');
-    gbrd.addColorStop(0.75,'#a855f7');
-    gbrd.addColorStop(1,   'transparent');
-    ctx.strokeStyle = gbrd;
+    // ── dark glass panel + 2px priority border with soft outer glow ────────
+    ctx.save();
+    ctx.shadowColor = accent;
+    ctx.shadowBlur  = 12 + 14 * arrivalPulse;               // glow pulse on arrival
+    ctx.fillStyle   = 'rgba(6,12,24,0.92)';
+    ctx.beginPath(); ctx.roundRect(x, y, w, h, 6); ctx.fill();
+    ctx.strokeStyle = accent;
+    ctx.lineWidth   = 2;
+    ctx.beginPath(); ctx.roundRect(x, y, w, h, 6); ctx.stroke();
+    ctx.restore();
+
+    // ── thin inner scanlines + header tint band (UpgradeUI card language) ──
+    ctx.save();
+    ctx.beginPath(); ctx.roundRect(x, y, w, h, 6); ctx.clip();
+    ctx.fillStyle = `rgba(${accentRgb},0.07)`;
+    ctx.fillRect(x, y, w, 24);
+    ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+    ctx.lineWidth   = 1;
+    for (let sy = y + 6; sy < y + h; sy += 6) {
+      ctx.beginPath(); ctx.moveTo(x, sy); ctx.lineTo(x + w, sy); ctx.stroke();
+    }
+    ctx.restore();
+
+    // ── corner notches ─────────────────────────────────────────────────────
+    const CA = 9;
+    ctx.strokeStyle = accent;
     ctx.lineWidth   = 1.5;
-    ctx.beginPath(); ctx.moveTo(x + 10, y); ctx.lineTo(x + w - 10, y); ctx.stroke();
-
-    // ── corner accents ─────────────────────────────────────────────────────
-    const CA = 7;
-    ctx.strokeStyle = 'rgba(46,230,246,0.65)';
-    ctx.lineWidth   = 1;
     for (const [cx,cy,sx,sy] of [[x,y,1,1],[x+w,y,-1,1],[x,y+h,1,-1],[x+w,y+h,-1,-1]]) {
       ctx.beginPath();
       ctx.moveTo(cx + sx*CA, cy); ctx.lineTo(cx, cy); ctx.lineTo(cx, cy + sy*CA);
       ctx.stroke();
     }
 
-    // ── portrait area (left side) ──────────────────────────────────────────
-    const portW  = Math.min(56, Math.floor(w * 0.16));
-    const portH  = Math.round(portW / 0.841);  // match 941x1119 aspect ratio
-    const portX  = x + 8;
-    const portY  = y + Math.max(4, Math.floor((h - portH) / 2));
+    // ── portrait (left, 56px wide) with 1px glitch x-jitter every ~0.7 s ───
+    const portW = 56;
+    const portH = Math.min(h - 12, Math.round(portW / 0.841));  // 941x1119 asset aspect, clamped
+    const portX = x + 10;
+    const portY = y + Math.max(6, Math.floor((h - portH) / 2));
+    const jx    = ((elapsed % 0.7) < 0.06) ? 1 : 0;
 
-    ctx.strokeStyle = '#3fd0ff';
+    ctx.strokeStyle = `rgba(${accentRgb},0.75)`;
     ctx.lineWidth   = 1;
     ctx.strokeRect(portX - 1, portY - 1, portW + 2, portH + 2);
 
@@ -17602,57 +17673,56 @@ _drawLoreArchive(ctx) {
       ctx.beginPath(); ctx.rect(portX, portY, portW, portH); ctx.clip();
       const aspect = pimg.naturalWidth / pimg.naturalHeight;
       const dw = portW, dh = Math.round(dw / aspect);
-      ctx.drawImage(pimg, portX, portY, dw, dh);
+      ctx.drawImage(pimg, portX + jx, portY, dw, dh);
       ctx.restore();
     } else {
-      // Fallback: glowing AI circle
+      // Fallback: glowing AI glyph (no asset invented)
       ctx.fillStyle = 'rgba(0,10,26,.95)';
       ctx.fillRect(portX, portY, portW, portH);
-      const fcx = portX + portW / 2, fcy = portY + portH * 0.5;
-      const fr  = portW * 0.28;
-      ctx.strokeStyle = 'rgba(46,230,246,0.6)';
+      const fcx = portX + portW / 2 + jx, fcy = portY + portH * 0.5;
+      ctx.strokeStyle = `rgba(${accentRgb},0.6)`;
       ctx.lineWidth   = 1;
-      ctx.beginPath(); ctx.arc(fcx, fcy, fr, 0, Math.PI * 2); ctx.stroke();
-      ctx.font      = `bold ${Math.round(portW * 0.3)}px Consolas,monospace`;
-      ctx.fillStyle = '#3fd0ff';
+      ctx.beginPath(); ctx.arc(fcx, fcy, portW * 0.28, 0, Math.PI * 2); ctx.stroke();
+      ctx.font      = 'bold 17px Consolas,monospace';
+      ctx.fillStyle = accent;
       ctx.textAlign = 'center';
-      ctx.fillText('◈', fcx, fcy + portW * 0.11);
+      ctx.fillText('◈', fcx, fcy + 6);
       ctx.textAlign = 'left';
     }
 
-    // ── text area (right of portrait) ─────────────────────────────────────
-    const textX   = portX + portW + 10;
-    const maxCols = Math.floor((w - portW - 28) / 6.2);
-    let ty = y + 14;
-
-    // Header line
-    const hdr = title || `EDEN CORE  ·  MEM ${edenMem}%`;
-    ctx.font      = 'bold 10px Consolas,monospace';
-    ctx.fillStyle = '#3fd0ff';
+    // ── header row: glowing dot + title + right-aligned EDEN MEM (gold) ────
+    const textX = portX + portW + 12;
+    const hdrY  = y + 20;
+    ctx.save();
+    ctx.shadowColor = accent;
+    ctx.shadowBlur  = 8;
+    ctx.fillStyle   = accent;
+    ctx.beginPath(); ctx.arc(textX + 3, hdrY - 4, 3, 0, Math.PI * 2); ctx.fill();
+    ctx.font      = 'bold 13px Consolas,monospace';
     ctx.textAlign = 'left';
-    ctx.fillText(hdr.slice(0, maxCols), textX, ty);
-    ty += 15;
+    ctx.fillText(String(title || 'EDEN CORE'), textX + 12, hdrY);
+    ctx.restore();
+    ctx.font      = '9px Consolas,monospace';
+    ctx.fillStyle = '#ffd23c';
+    ctx.textAlign = 'right';
+    ctx.fillText(`EDEN MEM ${edenMem}%`, x + w - 10, hdrY);
+    ctx.textAlign = 'left';
 
-    // Separator dot-line
-    ctx.fillStyle = 'rgba(46,230,246,0.25)';
-    ctx.font      = '8px Consolas,monospace';
-    ctx.fillText('· · · · · · · · · · · · · · · · · · · ·'.slice(0, maxCols + 4), textX, ty);
-    ty += 13;
+    // ── separator ──────────────────────────────────────────────────────────
+    ctx.strokeStyle = `rgba(${accentRgb},0.28)`;
+    ctx.lineWidth   = 1;
+    ctx.beginPath(); ctx.moveTo(textX, y + 27); ctx.lineTo(x + w - 10, y + 27); ctx.stroke();
 
-    // Messages
-    if (messages.length > 0) {
-      ctx.font      = '10px Consolas,monospace';
-      ctx.fillStyle = 'rgba(150,210,255,0.82)';
-      for (const line of messages.slice(0, 3)) {
-        if (ty + 12 > y + h - 4) break;
-        ctx.fillText(String(line).slice(0, maxCols), textX, ty);
-        ty += 13;
-      }
-    } else {
-      ctx.font      = '10px Consolas,monospace';
-      ctx.fillStyle = 'rgba(63,208,255,0.4)';
-      ctx.fillText('NULL EDEN is listening.', textX, ty);
-    }
+    // ── message: white 14px Consolas, ~40 chars/s typewriter reveal ────────
+    const msg     = messages.length > 0 ? String(messages[0]) : 'NULL EDEN is listening.';
+    const visible = Math.max(0, Math.floor((elapsed - 0.25) * 40));   // reveal starts after slide-in
+    const typing  = visible < msg.length;
+    const shown   = typing ? msg.slice(0, visible) + '\u258c' : msg;
+    ctx.save();
+    ctx.beginPath(); ctx.rect(x + 2, y + 30, w - 4, h - 34); ctx.clip();
+    wrapText(ctx, shown, textX, y + 45, w - (textX - x) - 12, 16,
+             'rgba(255,255,255,0.92)', '14px Consolas, monospace');
+    ctx.restore();
 
     ctx.restore();
   }

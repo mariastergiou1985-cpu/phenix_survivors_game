@@ -758,10 +758,13 @@ export class AudioManager {
       // Buffer still loading this frame — fall through to synthesized glitch
     }
 
-    // Synthesized glitch fallback: two descending pulses + bandpass noise burst.
-    // Sounds like a digital stutter / cyber voice crackle — distinct from other SFX.
-    this._tone({ type: 'square',    freqStart: 660, freqEnd: 220, dur: 0.14, gain: 0.09 });
-    this._tone({ type: 'sawtooth',  freqStart: 440, freqEnd: 110, dur: 0.12, gain: 0.07, delay: 0.08 });
+    // Synthesized "alive voice" fallback: 3-pulse vocoder-like chatter — square tones
+    // stepping 520→380→300 Hz (0.09 s each, 0.06 s gaps) + the bandpass noise burst.
+    // Louder + more present than the old 2-pulse stutter so EDEN reads as speaking.
+    // Still throttled (3.5 s) and mute-gated above; file-clip playback path untouched.
+    this._tone({ type: 'square', freqStart: 520, freqEnd: 470, dur: 0.09, gain: 0.14 });
+    this._tone({ type: 'square', freqStart: 380, freqEnd: 345, dur: 0.09, gain: 0.14, delay: 0.15 });
+    this._tone({ type: 'square', freqStart: 300, freqEnd: 272, dur: 0.09, gain: 0.14, delay: 0.30 });
     this._noiseBurst({ dur: 0.18, gain: 0.06, filterType: 'bandpass', freq: 900 });
   }
 

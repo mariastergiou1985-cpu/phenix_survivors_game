@@ -947,7 +947,7 @@ export class NpcWalker {
         : activeH;
 
     ctx.save();
-    ctx.fillStyle = 'rgba(2,5,14,0.82)';
+    ctx.fillStyle = 'rgba(6,12,24,0.9)';   // dark glass — matches Eden transmission panel language
     if (ctx.roundRect) {
       ctx.beginPath(); ctx.roundRect(x, y, W, H, 5); ctx.fill();
     } else {
