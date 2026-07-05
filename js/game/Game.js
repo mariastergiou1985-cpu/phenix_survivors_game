@@ -1996,6 +1996,7 @@ export class Game {
       // Hit detection vs enemies
       for (let j = this.enemies.length - 1; j >= 0; j--) {
         const e = this.enemies[j];
+        if (!e) continue;   // chain-kill splices during takeHit can shrink the array mid-loop
         const dx = b.x - e.pos.x;
         const dy = b.y - e.pos.y;
         if (dx * dx + dy * dy < (e.radius + 6) * (e.radius + 6)) {
@@ -8421,6 +8422,7 @@ export class Game {
       let hit = false;
       for (let j = this.enemies.length - 1; j >= 0; j--) {
         const e = this.enemies[j];
+        if (!e) continue;   // chain-kill splices during takeHit can shrink the array mid-loop
         if (distance(p.pos, e.pos) < p.radius + e.radius) {
           const cryo = this.player.upgrades['Cryo Rounds'] || 0;
           const supp = this.player.upgrades['Suppression'] || 0;
@@ -8595,6 +8597,7 @@ export class Game {
       let hit = false;
       for (let j = this.enemies.length - 1; j >= 0; j--) {
         const e = this.enemies[j];
+        if (!e) continue;   // chain-kill splices during takeHit can shrink the array mid-loop
         if (distance(disc.pos, e.pos) < disc.radius + e.radius) {
           const discDmg = (e.isBoss() || e.isMegaBoss) ? this._capBossDamage(e, disc.damage) : disc.damage;
           e.takeHit(discDmg, this);
@@ -8818,6 +8821,7 @@ export class Game {
     // Damage each enemy on the line at most once
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       const e = this.enemies[i];
+      if (!e) continue;   // chain-kill splices during takeHit can shrink the array mid-loop
       if (!onBeam(e.pos, e.radius)) continue;
       const d = tierDmg(e.isMegaBoss, e.isBoss() && !e.isMegaBoss);
       e.takeHit(d, this);
