@@ -1,5 +1,5 @@
 import { Game } from './game/Game.js?v=20260705200000';
-import { AudioManager } from './audio/AudioManager.js?v=20260705200000';
+import { AudioManager } from './audio/AudioManager.js?v=20260705210000';
 import { GamepadInput } from './Gamepad.js?v=20260703990000';
 import { initTouchControls } from './TouchInput.js?v=20260703990000';
 
@@ -204,6 +204,18 @@ function _initAudioOnGesture() {
       try {
         game.audio.playEdenTransmission(null, game._edenMenuGreeting || 'PHENIX. NULL EDEN. Your pattern is expected.');
       } catch (_) { /* speech/audio unavailable — menu continues silently */ }
+      // PHENIX NULL RADIO — after the greeting settles, EDEN announces the channel,
+      // then the lore broadcast starts (once per session, menu only, mute-aware).
+      setTimeout(() => {
+        try {
+          if (game.gameState === 'start_menu' && game.audio) {
+            game.audio.playEdenTransmission(null, 'PHENIX NULL RADIO: online.');
+            setTimeout(() => {
+              try { if (game.gameState === 'start_menu') game.audio.playMenuRadio(); } catch (_) {}
+            }, 2600);
+          }
+        } catch (_) {}
+      }, 6000);
     }
   }
 }

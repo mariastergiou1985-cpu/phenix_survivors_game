@@ -57,6 +57,8 @@ export class AudioManager {
     this._gameplayAudio = null;
     this._endlessAudio  = null;
     this._chaosAudio    = null;
+    this._radioAudio    = null;   // PHENIX NULL RADIO — one lore broadcast per session (menu)
+    this._radioPlayed   = false;
     this._currentMusic  = null;   // the single track that may be audible; gates _play retries
 
     this._setupTrack('assets/audio/music/menu_theme.mp3?v=20260615210000', 0.28, a => { this._menuAudio     = a; });
@@ -163,7 +165,44 @@ export class AudioManager {
     this._play(this._menuAudio);
   }
 
+  // ── PHENIX NULL RADIO — one-shot lore broadcast on the main menu ──────────
+  // Plays assets/audio/phenix_null_eden_radio/ai_radio.mp3 once per session,
+  // ducking the menu theme underneath and labeling NOW PLAYING while on air.
+  playMenuRadio() {
+    if (this._radioPlayed || this.muted) return;
+    this._radioPlayed = true;
+    try {
+      const audio = new Audio('assets/audio/phenix_null_eden_radio/ai_radio.mp3');
+      audio.loop = false; audio.preload = 'auto';
+      audio.onerror = () => console.warn('[Audio] radio broadcast failed to load');
+      const src  = this.actx.createMediaElementSource(audio);
+      const gain = this.actx.createGain(); gain.gain.value = 0.9;
+      src.connect(gain);
+      gain.connect(this.masterGain);   // direct to master — ducking music leaves the radio loud
+      this._radioAudio = audio;
+      this.musicGain.gain.setTargetAtTime((this.muted ? 0 : this.musicVolume) * 0.25, this.actx.currentTime, 0.4);
+      this.currentTrackTitle = 'PHENIX NULL RADIO — ONLINE';
+      const restore = () => {
+        this.musicGain.gain.setTargetAtTime(this.muted ? 0 : this.musicVolume, this.actx.currentTime, 0.6);
+        if (this._currentMusic === this._menuAudio) this.currentTrackTitle = 'Hope';
+        this._radioAudio = null;
+      };
+      audio.onended = restore;
+      this._radioRestore = restore;
+      audio.play().catch(() => {});
+    } catch (_) { /* degrade silently — menu theme keeps playing */ }
+  }
+
+  // Cut the broadcast when leaving the menu (run start etc.); restores music level.
+  stopMenuRadio() {
+    const a = this._radioAudio;
+    if (!a) return;
+    try { a.pause(); } catch (_) {}
+    try { this._radioRestore?.(); } catch (_) {}
+  }
+
   startGameplayMusic() {
+    this.stopMenuRadio();
     this._stop(this._menuAudio);
     this._stop(this._endlessAudio);
     this._stop(this._chaosAudio);
@@ -175,6 +214,7 @@ export class AudioManager {
   // Endless-only music — plays solely after CONTINUE — ENDLESS / direct ENDLESS MODE start.
   // Stops the menu/gameplay tracks first so only one track ever plays.
   startEndlessMusic() {
+    this.stopMenuRadio();
     this._stop(this._menuAudio);
     this._stop(this._gameplayAudio);
     this._stop(this._chaosAudio);
