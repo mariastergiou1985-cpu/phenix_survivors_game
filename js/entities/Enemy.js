@@ -293,6 +293,16 @@ export class Enemy {
       this.bulletRadius  = 7; this.bulletColor = ORANGE;
     }
     if (!this.shootInterval || this.shootTimer > 0) return;
+
+    // ── ELITE BEAM WEAPONS (Rift Eye / Pulse Burrower / mechs): telegraphed beam ──
+    // Elites whose catalog weapon is a BEAM fire a locked-angle telegraphed beam
+    // instead of a bullet spread. Beams are rarer than bullets (>= 3.5s cadence).
+    if (this.isElite && this._weaponDef?.behavior === 'beam' && game._spawnEnemyBeam) {
+      this.shootTimer = Math.max(3.5, this._weaponDef.cooldown || 0);
+      game._spawnEnemyBeam(this, this._weaponDef);
+      game.audio?.playEnemyShoot();
+      return;
+    }
     this.shootTimer = this.shootInterval;
 
     const boss = this.isBoss() || this.isMegaBoss;

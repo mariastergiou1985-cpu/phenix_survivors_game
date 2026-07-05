@@ -12,11 +12,11 @@ import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260705040000
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260705040000';
 import { Player }         from '../entities/Player.js?v=20260705100000';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260703990000';
-import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260705110000';
+import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260705130000';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=20260703990000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260703990000';
-import { SystemEventManager } from './Events.js?v=20260705110000';
+import { SystemEventManager } from './Events.js?v=20260705130000';
 import { UpgradeUI }      from './UpgradeUI.js?v=20260705120000';
 import { weightedSample } from './Upgrades.js?v=20260705040000';
 import { MutationUI }      from './MutationUI.js?v=20260703990000';
@@ -1018,6 +1018,10 @@ export class Game {
     this.megaBoss     = null;
     this.bossLavaZones = [];   // telegraphed lava/fire-rain zones cast by the main boss (player-only)
     this._enemyOrbZones = [];  // elite ORB_EXPLOSION warn→impact ground zones (player-only, cap 10)
+    this._enemyBeams  = [];    // elite BEAM weapons: telegraph→fire line beams (player-only, cap 4)
+    this._voidRifts   = [];    // VOID_ZONE chunk hazard rifts (Endless, player-only, cap 5)
+    this._voidRiftCd  = 0;     // cadence between rift spawns while standing in a VOID_ZONE chunk
+    this._voidAnnCd   = 0;     // re-announce cooldown for the VOID ZONE banner
     this.bossTrails    = [];   // boss/mini-boss corruption blood trails — player-only DoT (capped, auto-expire)
     this._lavaRainActive = 0;  // ambient Lava Rain active window (s) — sustained storm, capped drops
     this._lavaSpawnCd    = 0;  // cadence within an active Lava Rain window
@@ -6897,6 +6901,8 @@ export class Game {
     this._checkPlayerEnemyCollisions(dt);
     this._updateEnemyBullets(dt);
     this._updateEnemyOrbZones(dt);
+    this._updateEnemyBeams(dt);
+    this._updateVoidRifts(dt);
     this._updateAbilityTimers(dt);
     this._updateQuantumOverhaul(dt);
     this._updateAcidRain(dt);
@@ -8105,6 +8111,162 @@ export class Game {
         ctx.beginPath(); ctx.arc(z.pos.x, z.pos.y, z.radius, 0, Math.PI * 2); ctx.fill();
         ctx.strokeStyle = `rgba(157,107,255,${(0.6 * k).toFixed(3)})`; ctx.lineWidth = 3;
         ctx.beginPath(); ctx.arc(z.pos.x, z.pos.y, z.radius, 0, Math.PI * 2); ctx.stroke();
+      }
+    }
+    ctx.globalAlpha = 1; ctx.restore();
+  }
+
+  // ── Elite BEAM weapons (Rift Eye / Pulse Burrower): telegraph → fire line beam ────
+  // Angle LOCKS toward the player (+ small lead) at spawn so it can be dodged; the
+  // origin follows the source enemy during the telegraph. One hit max per beam.
+  _spawnEnemyBeam(src, wd) {
+    if (!this._enemyBeams || this._enemyBeams.length >= 4) return;   // hard cap 4 beams
+    const pv = this.player.vel || { x: 0, y: 0 };
+    const tx = this.player.pos.x + pv.x * 0.15;                      // small lead only
+    const ty = this.player.pos.y + pv.y * 0.15;
+    this._enemyBeams.push({
+      srcRef: src, x1: src.pos.x, y1: src.pos.y,
+      angle: Math.atan2(ty - src.pos.y, tx - src.pos.x),
+      len: 620, width: 26, phase: 'telegraph', t: 0,
+      telegraphDur: Math.max(0.7, wd?.telegraphTime || 0.8),
+      fireDur: 0.45,
+      damage: Math.min(wd?.damage || 12, 16),
+      color: wd?.color || '#9d6bff',
+      tick: 0, hasHit: false,
+    });
+  }
+
+  _updateEnemyBeams(dt) {
+    if (!this._enemyBeams?.length) return;
+    for (const bm of this._enemyBeams) {
+      bm.t += dt;
+      if (bm.phase === 'telegraph') {
+        const src = bm.srcRef;
+        if (!src || src.hp <= 0) { bm.dead = true; continue; }       // source died → cancel
+        bm.x1 = src.pos.x; bm.y1 = src.pos.y;                        // follow source, angle stays locked
+        if (bm.t >= bm.telegraphDur) { bm.phase = 'fire'; bm.t = 0; bm.tick = 0; }
+      } else {
+        bm.tick -= dt;
+        if (!bm.hasHit && bm.tick <= 0) {
+          bm.tick = 0.15;                                            // hit-test cadence during fire
+          const dx = Math.cos(bm.angle), dy = Math.sin(bm.angle);
+          const px = this.player.pos.x - bm.x1, py = this.player.pos.y - bm.y1;
+          const proj = Math.max(0, Math.min(bm.len, px * dx + py * dy));
+          const d = Math.hypot(px - dx * proj, py - dy * proj);      // point-to-segment distance
+          if (d < bm.width / 2 + PLAYER_RADIUS) {
+            // Fairness: a beam damages at most ONCE (dash i-frames return false → not consumed).
+            if (this._damagePlayer(bm.damage, { color: bm.color, shake: 4 })) bm.hasHit = true;
+          }
+        }
+        if (bm.t >= bm.fireDur) bm.dead = true;
+      }
+    }
+    this._enemyBeams = this._enemyBeams.filter(b => !b.dead);
+  }
+
+  _drawEnemyBeams(ctx) {
+    if (!this._enemyBeams?.length) return;
+    const now = performance.now();
+    ctx.save();
+    for (const bm of this._enemyBeams) {
+      const x2 = bm.x1 + Math.cos(bm.angle) * bm.len;
+      const y2 = bm.y1 + Math.sin(bm.angle) * bm.len;
+      if (bm.phase === 'telegraph') {
+        // Thin dashed warning ray, alpha pulsing 0.25–0.5, + warning arc at the muzzle.
+        ctx.globalAlpha = 0.25 + 0.125 * (1 + Math.sin(now * 0.02));
+        ctx.strokeStyle = bm.color; ctx.lineWidth = 2;
+        ctx.setLineDash([10, 8]);
+        ctx.beginPath(); ctx.moveTo(bm.x1, bm.y1); ctx.lineTo(x2, y2); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.globalAlpha = 0.35 + 0.3 * (bm.t / bm.telegraphDur);
+        ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(bm.x1, bm.y1, 22, bm.angle - 0.6, bm.angle + 0.6); ctx.stroke();
+      } else {
+        // FIRE: white-hot core + additive outer glow fading over fireDur.
+        const k = 1 - bm.t / bm.fireDur;                             // 1 → 0
+        ctx.lineCap = 'round';
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.35 * k;
+        ctx.strokeStyle = bm.color; ctx.lineWidth = bm.width;
+        ctx.beginPath(); ctx.moveTo(bm.x1, bm.y1); ctx.lineTo(x2, y2); ctx.stroke();
+        ctx.globalAlpha = Math.min(1, 0.15 + 0.85 * k);
+        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 6;
+        ctx.beginPath(); ctx.moveTo(bm.x1, bm.y1); ctx.lineTo(x2, y2); ctx.stroke();
+        ctx.globalCompositeOperation = 'source-over';
+      }
+    }
+    ctx.globalAlpha = 1; ctx.restore();
+  }
+
+  // ── VOID_ZONE chunk hazard (Endless): void rifts — anti-player area denial ─────
+  // While the player stands in a VOID_ZONE chunk, a rift opens near them every 2.5s
+  // (warn 0.9s → active 2.2s). Standing inside an active rift drains 6 HP / 0.8s.
+  // Enemies are unaffected. Hard cap 5 rifts.
+  _updateVoidRifts(dt) {
+    if (this._voidAnnCd > 0) this._voidAnnCd -= dt;
+    const inVoid = this.endless && this.chunkManager?.enabled && !this.gameOver && !this.victory &&
+                   this.chunkManager.currentChunkType() === CHUNK_TYPE.VOID_ZONE;
+    if (inVoid) {
+      if (this._voidAnnCd <= 0) {
+        this.triggerAnnouncement('VOID ZONE — RIFTS OPENING', '#8b2fd6');
+        this._voidAnnCd = 30;                                        // re-announce cooldown
+      }
+      this._voidRiftCd -= dt;
+      if (this._voidRiftCd <= 0 && this._voidRifts.length < 5) {
+        this._voidRiftCd = 2.5;
+        const ang = Math.random() * Math.PI * 2;
+        const d   = 90 + Math.random() * 330;                        // 90–420 px from player
+        this._voidRifts.push({
+          x: this.player.pos.x + Math.cos(ang) * d,
+          y: this.player.pos.y + Math.sin(ang) * d,
+          r: 64, phase: 'warn', t: 0, warn: 0.9, active: 2.2, dmgCd: 0,
+        });
+      }
+    }
+    if (!this._voidRifts.length) return;
+    for (const rf of this._voidRifts) {
+      rf.t += dt;
+      if (rf.phase === 'warn') {
+        if (rf.t >= rf.warn) { rf.phase = 'active'; rf.t = 0; }
+      } else {
+        rf.dmgCd -= dt;
+        if (rf.dmgCd <= 0 &&
+            Math.hypot(this.player.pos.x - rf.x, this.player.pos.y - rf.y) < rf.r) {
+          if (this._damagePlayer(6, { color: '#8b2fd6', shake: 3 })) rf.dmgCd = 0.8;
+        }
+        if (rf.t >= rf.active) rf.dead = true;
+      }
+    }
+    this._voidRifts = this._voidRifts.filter(r => !r.dead);
+  }
+
+  _drawVoidRifts(ctx) {
+    if (!this._voidRifts?.length) return;
+    const now = performance.now();
+    ctx.save();
+    for (const rf of this._voidRifts) {
+      if (rf.phase === 'warn') {
+        // WARN: dark-violet swirling outline, alpha pulse, ring closes in.
+        const spin = now * 0.004;
+        ctx.globalAlpha = 0.3 + 0.15 * (1 + Math.sin(now * 0.015));
+        ctx.strokeStyle = '#8b2fd6'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(rf.x, rf.y, rf.r * (1 - 0.4 * rf.t / rf.warn), 0, Math.PI * 2); ctx.stroke();
+        ctx.beginPath(); ctx.arc(rf.x, rf.y, rf.r * 0.55, spin, spin + Math.PI * 1.3); ctx.stroke();
+      } else {
+        // ACTIVE: filled void disc + additive violet rim + inner spiral suggestion.
+        const fade = rf.t > rf.active - 0.4 ? Math.max(0, (rf.active - rf.t) / 0.4) : 1;
+        const spin = now * 0.006;
+        ctx.globalAlpha = fade;
+        ctx.fillStyle = 'rgba(20,0,40,0.55)';
+        ctx.beginPath(); ctx.arc(rf.x, rf.y, rf.r, 0, Math.PI * 2); ctx.fill();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.strokeStyle = '#8b2fd6'; ctx.lineWidth = 3;
+        ctx.globalAlpha = 0.7 * fade;
+        ctx.beginPath(); ctx.arc(rf.x, rf.y, rf.r, 0, Math.PI * 2); ctx.stroke();
+        ctx.lineWidth = 2; ctx.globalAlpha = 0.45 * fade;
+        ctx.beginPath(); ctx.arc(rf.x, rf.y, rf.r * 0.62, spin, spin + Math.PI * 1.2); ctx.stroke();
+        ctx.beginPath(); ctx.arc(rf.x, rf.y, rf.r * 0.34, -spin, -spin + Math.PI * 1.4); ctx.stroke();
+        ctx.globalCompositeOperation = 'source-over';
       }
     }
     ctx.globalAlpha = 1; ctx.restore();
@@ -11697,6 +11859,8 @@ export class Game {
     // 1a ── Boss Lava/Fire Rain zones (ground markers — under entities so they read as terrain)
     this._drawBossLava(ctx);
     this._drawEnemyOrbZones(ctx);   // elite orb blast zones — same ground-marker layer
+    this._drawVoidRifts(ctx);       // VOID_ZONE rifts — ground-marker layer (under entities)
+    this._drawEnemyBeams(ctx);      // elite telegraph/fire beams — above ground markers
     this._drawBossTrails(ctx);
     // Chaos Mode ambient particle field (world-space, additive blend, bounded)
     if (this._chaosMode) this._chaosAmbient.draw(ctx);
