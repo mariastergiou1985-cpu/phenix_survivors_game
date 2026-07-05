@@ -13128,7 +13128,7 @@ export class Game {
       #cgm-overlay .unlocked{font-family:'Orbitron',sans-serif;font-weight:700;color:var(--cyan);letter-spacing:2px;font-size:12px;margin-bottom:10px;}
       #cgm-overlay .unlocked b{color:#fff;}
       #cgm-overlay .eq{display:flex;align-items:flex-end;gap:4px;height:64px;margin-top:6px;}
-      #cgm-overlay .eq>i{flex:1;background:linear-gradient(180deg,var(--cyan),var(--cyan-dim));border-radius:2px 2px 0 0;box-shadow:0 0 8px rgba(46,230,246,.4);animation:cgm-eq 1.1s ease-in-out infinite;transform-origin:bottom;}
+      #cgm-overlay .eq>i{flex:1;height:100%;background:linear-gradient(180deg,var(--cyan),var(--cyan-dim));border-radius:2px 2px 0 0;box-shadow:0 0 8px rgba(46,230,246,.4);animation:cgm-eq 1.1s ease-in-out infinite;transform-origin:bottom;}
       #cgm-overlay .eq>i:nth-child(2){animation-delay:.15s} #cgm-overlay .eq>i:nth-child(3){animation-delay:.30s}
       #cgm-overlay .eq>i:nth-child(4){animation-delay:.45s} #cgm-overlay .eq>i:nth-child(5){animation-delay:.60s}
       #cgm-overlay .eq>i:nth-child(6){animation-delay:.20s} #cgm-overlay .eq>i:nth-child(7){animation-delay:.50s}
@@ -13178,7 +13178,7 @@ export class Game {
       #cgm-overlay .hints b{color:var(--cyan);font-weight:400;}
       #cgm-overlay .input-note{color:var(--txt-faint);font-size:11px;letter-spacing:1px;margin-top:8px;}
       #cgm-overlay .svgdefs{position:absolute;width:0;height:0;overflow:hidden;}
-      #cgm-overlay .muted-eq .eq>i{animation:none;transform:scaleY(.25);}
+      #cgm-overlay .eq.muted-eq>i{animation:none;transform:scaleY(.12);}
       @media(max-width:1080px){
         #cgm-overlay .grid{grid-template-columns:1fr;}
         #cgm-overlay .stage-mid{flex-direction:column;align-items:center;}
@@ -13532,12 +13532,15 @@ export class Game {
     if (!eqEl) return;
     const bars = eqEl.querySelectorAll('i');
     if (!bars.length) return;
-    const analyser = this.audio?.analyser;
-    const data     = this.audio?.analyserData;
-    const n        = bars.length;
+    const n = bars.length;
     const loop = () => {
       if (!this._menuOverlayVisible) { this._eqRafId = null; eqEl.classList.remove('live'); return; }
       this._eqRafId = requestAnimationFrame(loop);
+      // Resolve the analyser EVERY frame — audio may initialize after the menu
+      // is already open (first user gesture), and the old captured-once closure
+      // kept it null forever, which is why the equalizer never went live.
+      const analyser = this.audio?.analyser;
+      const data     = this.audio?.analyserData;
       if (!analyser || !data) return;
       analyser.getByteFrequencyData(data);
       const hasSignal = data.some(v => v > 4);
