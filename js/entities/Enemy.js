@@ -303,6 +303,16 @@ export class Enemy {
       game.audio?.playEnemyShoot();
       return;
     }
+
+    // ── ELITE SHORT_PULSE WEAPONS: self-centered radial nova instead of a projectile ──
+    // Warn ring 0.5s on the elite itself, then a one-shot burst (Game reuses the
+    // orb-zone machinery). No catalog weapon maps to SHORT_PULSE yet — dormant path.
+    if (this.isElite && this._weaponDef?.behavior === 'short_pulse' && game._spawnEnemyNova) {
+      this.shootTimer = Math.max(3.0, this._weaponDef.cooldown || 0);
+      game._spawnEnemyNova(this, this._weaponDef);
+      game.audio?.playEnemyShoot();
+      return;
+    }
     this.shootTimer = this.shootInterval;
 
     const boss = this.isBoss() || this.isMegaBoss;

@@ -12,11 +12,11 @@ import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260705040000
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260705040000';
 import { Player }         from '../entities/Player.js?v=20260705100000';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260703990000';
-import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260705130000';
+import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260705140000';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=20260703990000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260703990000';
-import { SystemEventManager } from './Events.js?v=20260705130000';
+import { SystemEventManager } from './Events.js?v=20260705140000';
 import { UpgradeUI }      from './UpgradeUI.js?v=20260705120000';
 import { weightedSample } from './Upgrades.js?v=20260705040000';
 import { MutationUI }      from './MutationUI.js?v=20260703990000';
@@ -1022,6 +1022,10 @@ export class Game {
     this._voidRifts   = [];    // VOID_ZONE chunk hazard rifts (Endless, player-only, cap 5)
     this._voidRiftCd  = 0;     // cadence between rift spawns while standing in a VOID_ZONE chunk
     this._voidAnnCd   = 0;     // re-announce cooldown for the VOID ZONE banner
+    this._ventBursts  = [];    // INDUSTRIAL_CORE biome hazard: vent bursts (Endless, player-only, cap 4)
+    this._ventCd      = 0;     // cadence between vent spawns while standing in Industrial territory
+    this._ventAnnCd   = 0;     // re-announce cooldown for the INDUSTRIAL ZONE banner
+    this._murkActive  = false; // ABYSSAL MURK live flag (halves effective pickup radius while true)
     this.bossTrails    = [];   // boss/mini-boss corruption blood trails — player-only DoT (capped, auto-expire)
     this._lavaRainActive = 0;  // ambient Lava Rain active window (s) — sustained storm, capped drops
     this._lavaSpawnCd    = 0;  // cadence within an active Lava Rain window
@@ -1454,6 +1458,9 @@ export class Game {
     this._frozenSleetTimer = 150;           // first FROZEN SLEET ~2.5 min into Endless (Chaos arms its own 55s)
     this._whiteoutT  = 0;                    // WHITEOUT PROTOCOL — Glacial biome hazard (active seconds)
     this._whiteoutCd = 45;                   // first whiteout ~45s after entering Glacial territory
+    this._murkT      = 0;                    // ABYSSAL MURK — Abyssal Trench biome hazard (active seconds)
+    this._murkCd     = 45;                   // first murk ~45s after entering Abyssal territory
+    this._murkActive = false;
     this._stormActive      = 0;             // seconds of active strikes remaining in the current storm
     this._stormSpawnCd     = 0;
     this.airstrikeShips    = [];            // clear any carryover hazards on (re)entry
@@ -6903,6 +6910,7 @@ export class Game {
     this._updateEnemyOrbZones(dt);
     this._updateEnemyBeams(dt);
     this._updateVoidRifts(dt);
+    this._updateVentBursts(dt);
     this._updateAbilityTimers(dt);
     this._updateQuantumOverhaul(dt);
     this._updateAcidRain(dt);
@@ -6923,6 +6931,29 @@ export class Game {
             this._whiteoutT  = 3.5;
             this.triggerAnnouncement('WHITEOUT PROTOCOL', '#cfe9ff');
             this.audio?.playIceSweep?.();
+          }
+        }
+      }
+    }
+    // ── ABYSSAL MURK — Abyssal Trench biome hazard (mirrors WHITEOUT above) ──
+    // While the player stands in Abyssal territory: every ~50-70s a 4s deep-blue murk
+    // closes in from the edges. No damage — pure visual pressure, but the effective
+    // pickup radius is halved while the murk holds (see _updateHealth/ManaPickups).
+    if (this.endless && this.chunkManager?.enabled && !this.gameOver && !this.victory) {
+      if (this._murkT > 0) {
+        this._murkT -= dt;
+        this._murkActive = this._murkT > 0;
+      } else {
+        this._murkActive = false;
+        const _mb = this.chunkManager.biomeAtWorld(this.player.pos.x, this.player.pos.y);
+        if (_mb === BIOME_ID.ABYSSAL_TRENCH) {
+          this._murkCd -= dt;
+          if (this._murkCd <= 0) {
+            this._murkCd = 50 + Math.random() * 20;
+            this._murkT  = 4.0;
+            this._murkActive = true;
+            this.triggerAnnouncement('ABYSSAL MURK RISING', '#4488cc');
+            this.audio?.playEventWarning?.();
           }
         }
       }
@@ -7264,7 +7295,7 @@ export class Game {
   _updateHealthPickups(dt) {
     // Health drops stay EXACTLY where the enemy died — no vacuum pull. Base 60px
     // walk-up radius, expanded by Core Magnet meta / Tractor Beam card (pickupRadius).
-    const PICKUP_R = Math.max(60, Math.round((this.player.pickupRadius || 0) * 0.75));
+    const PICKUP_R = Math.max(60, Math.round((this.player.pickupRadius || 0) * 0.75 * (this._murkActive ? 0.5 : 1)));
     for (let i = this.healthPickups.length - 1; i >= 0; i--) {
       const hp = this.healthPickups[i];
       const d = distance(this.player.pos, hp.pos);
@@ -7288,7 +7319,7 @@ export class Game {
 
   _updateManaPickups(dt) {
     const PICKUP_R = 18;
-    const MAGNET_R = Math.max(90, this.player.pickupRadius || 0);   // magnet range scales with pickupRadius (Core Magnet / Tractor Beam)
+    const MAGNET_R = Math.max(90, (this.player.pickupRadius || 0) * (this._murkActive ? 0.5 : 1));   // magnet range scales with pickupRadius (Core Magnet / Tractor Beam); halved during ABYSSAL MURK
     // Collect
     for (let i = this.manaPickups.length - 1; i >= 0; i--) {
       const m = this.manaPickups[i];
@@ -7994,8 +8025,16 @@ export class Game {
   spawnEnemyBullet(pos, dir, speed, damage, radius, color, opts = {}) {
     speed *= this.mutations.enemyBulletSpeedMult;   // ACCELERATED ROUNDS (1.0 outside Endless)
     const angle = Math.atan2(dir.y, dir.x);
+    // Elite SLASH_WAVE / SLASH_ARC: wide crescent — slower, short-lived, 3x hit width.
+    const isSlash = opts.behavior === 'slash_wave' || opts.behavior === 'slash_arc';
+    if (isSlash) speed *= 0.85;
+    // Elite ARC_PROJECTILE: lobbed shot — fixed fuse so the lob visibly lands, then detonates.
+    const isArc = opts.behavior === 'arc_projectile';
     this.enemyBullets.push({
-      pos, dir: dir.clone(), speed, damage, radius, color, life: 4.0,
+      pos, dir: dir.clone(), speed, damage, radius, color,
+      life: isSlash ? 0.9 : isArc ? 1.2 : 4.0,
+      isSlash,
+      arcT: isArc ? 1.2 : 0,                    // total lob flight time (draw-only arc offset)
       behavior: opts.behavior || null,          // elite catalog behavior ('boomerang' / 'orb_explosion')
       t: 0,                                     // flight-time accumulator for behavior phases
       originX: pos.x, originY: pos.y,           // spawn origin — boomerang return target
@@ -8037,7 +8076,10 @@ export class Game {
       const bx = b.pos.x - this.camera.x, by = b.pos.y - this.camera.y;
       if (b.life <= 0 || bx < -400 || bx > this._viewW + 400 ||
           by < -400 || by > this._viewH + 400) {
-        if (b.behavior === 'orb_explosion' && b.life <= 0) this._spawnEnemyOrbZone(b);  // fuse ran out → detonate
+        if (b.life <= 0) {
+          if (b.behavior === 'orb_explosion')      this._spawnEnemyOrbZone(b);      // fuse ran out → detonate
+          else if (b.behavior === 'arc_projectile') this._spawnEnemyOrbZone(b, 60); // lob lands → small impact zone
+        }
         this.enemyBullets.splice(i, 1);
         continue;
       }
@@ -8045,7 +8087,9 @@ export class Game {
       // Hit player — routed through the shared fairness gate (dash/Phoenix i-frames + 0.5s grace
       // + per-hit ceiling). While dashing the gate returns false, so the bullet is NOT consumed
       // and passes through — a true dodge.
-      if (distance(b.pos, this.player.pos) < b.radius + PLAYER_RADIUS) {
+      // Slash crescents hit across their full drawn width (3x base radius).
+      const hitR = b.isSlash ? b.radius * 3 : b.radius;
+      if (distance(b.pos, this.player.pos) < hitR + PLAYER_RADIUS) {
         if (this._damagePlayer(b.damage, { color: RED, shake: 5 })) {
           if (b.stun) this.player.applyBite({ stagger: b.stun });   // telegraphed stun bolt — anti-lock immunity inside applyBite
           if (b.behavior === 'orb_explosion') this._spawnEnemyOrbZone(b);   // detonate on impact too
@@ -8060,11 +8104,23 @@ export class Game {
   // Minimal replica of the bossLavaZones pattern: that infra is DPS-tick based with
   // baked-in lava colors, so a tiny dedicated array is cleaner than bending it.
   // Player-only, ONE-shot damage (the bullet's damage), hard-capped at 10 zones.
-  _spawnEnemyOrbZone(b) {
+  _spawnEnemyOrbZone(b, radius = 70) {
     if (this._enemyOrbZones.length >= 10) return;              // hard cap on active zones
     this._enemyOrbZones.push({
-      pos: b.pos.clone(), radius: 70, warn: 0.6, impact: 0.35, t: 0,
+      pos: b.pos.clone(), radius, warn: 0.6, impact: 0.35, t: 0,
       damage: b.damage, hit: false,
+    });
+  }
+
+  // ── Elite SHORT_PULSE weapons: radial nova centered on the elite itself ─────────
+  // Warn ring 0.5s at the enemy's position (r=110), then a one-shot burst if the
+  // player is inside. Reuses the _enemyOrbZones warn→impact machinery (shared cap).
+  // NOTE: no catalog weapon maps to SHORT_PULSE yet — dormant until one does.
+  _spawnEnemyNova(src, wd) {
+    if (this._enemyOrbZones.length >= 10) return;              // shared hard cap
+    this._enemyOrbZones.push({
+      pos: src.pos.clone(), radius: 110, warn: 0.5, impact: 0.35, t: 0,
+      damage: Math.min(wd?.damage || 10, 14), hit: false,
     });
   }
 
@@ -8266,6 +8322,91 @@ export class Game {
         ctx.lineWidth = 2; ctx.globalAlpha = 0.45 * fade;
         ctx.beginPath(); ctx.arc(rf.x, rf.y, rf.r * 0.62, spin, spin + Math.PI * 1.2); ctx.stroke();
         ctx.beginPath(); ctx.arc(rf.x, rf.y, rf.r * 0.34, -spin, -spin + Math.PI * 1.4); ctx.stroke();
+        ctx.globalCompositeOperation = 'source-over';
+      }
+    }
+    ctx.globalAlpha = 1; ctx.restore();
+  }
+
+  // ── INDUSTRIAL_CORE biome hazard (Endless): VENT BURST — steam vents near the player ──
+  // While the player stands in Industrial territory a vent telegraphs every ~3s
+  // (warn 1.0s → steam column 1.2s). Standing inside an erupting vent takes 8 HP with
+  // a per-vent 0.8s cooldown. Player-only, hard cap 4 vents. Mirrors the void-rift machinery.
+  _updateVentBursts(dt) {
+    if (this._ventAnnCd > 0) this._ventAnnCd -= dt;
+    const inInd = this.endless && this.chunkManager?.enabled && !this.gameOver && !this.victory &&
+                  this.chunkManager.biomeAtWorld(this.player.pos.x, this.player.pos.y) === BIOME_ID.INDUSTRIAL_CORE;
+    if (inInd) {
+      if (this._ventAnnCd <= 0) {
+        this.triggerAnnouncement('INDUSTRIAL ZONE — VENTS ERUPTING', '#ff6a00');
+        this._ventAnnCd = 30;                                        // re-announce cooldown
+      }
+      this._ventCd -= dt;
+      if (this._ventCd <= 0 && this._ventBursts.length < 4) {
+        this._ventCd = 3.0;
+        const ang = Math.random() * Math.PI * 2;
+        const d   = 100 + Math.random() * 280;                       // 100–380 px from player
+        this._ventBursts.push({
+          x: this.player.pos.x + Math.cos(ang) * d,
+          y: this.player.pos.y + Math.sin(ang) * d,
+          r: 58, phase: 'warn', t: 0, warn: 1.0, active: 1.2, dmgCd: 0,
+        });
+      }
+    }
+    if (!this._ventBursts.length) return;
+    for (const v of this._ventBursts) {
+      v.t += dt;
+      if (v.phase === 'warn') {
+        if (v.t >= v.warn) { v.phase = 'active'; v.t = 0; }
+      } else {
+        v.dmgCd -= dt;
+        if (v.dmgCd <= 0 &&
+            Math.hypot(this.player.pos.x - v.x, this.player.pos.y - v.y) < v.r) {
+          if (this._damagePlayer(8, { color: '#ff6a00', shake: 3 })) v.dmgCd = 0.8;
+        }
+        if (v.t >= v.active) v.dead = true;
+      }
+    }
+    this._ventBursts = this._ventBursts.filter(v => !v.dead);
+  }
+
+  _drawVentBursts(ctx) {
+    if (!this._ventBursts?.length) return;
+    const now = performance.now();
+    ctx.save();
+    for (const v of this._ventBursts) {
+      if (v.phase === 'warn') {
+        // WARN: pulsing orange hazard-stripe ring + faint steam puffs drifting up.
+        const k = v.t / v.warn;
+        ctx.globalAlpha = 0.3 + 0.15 * (1 + Math.sin(now * 0.02)) + 0.15 * k;
+        ctx.strokeStyle = '#ff6a00'; ctx.lineWidth = 2 + 1.5 * k;
+        ctx.setLineDash([9, 7]);
+        ctx.beginPath(); ctx.arc(v.x, v.y, v.r, 0, Math.PI * 2); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = 'rgba(255,190,120,0.9)';
+        for (let s = 0; s < 3; s++) {
+          const ph = (now * 0.0009 + s * 0.37) % 1;                  // steam puff cycle
+          ctx.globalAlpha = 0.16 * (1 - ph);
+          ctx.beginPath();
+          ctx.arc(v.x + (s - 1) * 14, v.y - 12 - ph * 42, 7 + 5 * ph, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      } else {
+        // ACTIVE: bright steam column — vertical gradient rect + white-hot base, additive.
+        const fade = v.t > v.active - 0.3 ? Math.max(0, (v.active - v.t) / 0.3) : 1;
+        ctx.globalCompositeOperation = 'lighter';
+        const g = ctx.createLinearGradient(v.x, v.y, v.x, v.y - 110);
+        g.addColorStop(0, 'rgba(255,170,60,' + (0.55 * fade).toFixed(3) + ')');
+        g.addColorStop(1, 'rgba(255,170,60,0)');
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = g;
+        ctx.fillRect(v.x - 23, v.y - 110, 46, 110);
+        ctx.globalAlpha = 0.7 * fade;
+        ctx.fillStyle = '#fff2d8';
+        ctx.beginPath(); ctx.ellipse(v.x, v.y, 26, 10, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = 0.5 * fade;
+        ctx.strokeStyle = '#ff6a00'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(v.x, v.y, v.r, 0, Math.PI * 2); ctx.stroke();
         ctx.globalCompositeOperation = 'source-over';
       }
     }
@@ -11860,6 +12001,7 @@ export class Game {
     this._drawBossLava(ctx);
     this._drawEnemyOrbZones(ctx);   // elite orb blast zones — same ground-marker layer
     this._drawVoidRifts(ctx);       // VOID_ZONE rifts — ground-marker layer (under entities)
+    this._drawVentBursts(ctx);      // INDUSTRIAL vent bursts — same ground-marker layer
     this._drawEnemyBeams(ctx);      // elite telegraph/fire beams — above ground markers
     this._drawBossTrails(ctx);
     // Chaos Mode ambient particle field (world-space, additive blend, bounded)
@@ -12109,11 +12251,34 @@ export class Game {
     // 6c ── Enemy bullets (weapon sprites or colored circles)
     for (const b of this.enemyBullets) {
       if (_off(b.pos)) continue;   // offscreen — skip draw
+      // Elite SLASH crescent — intended vector visual: two additive arc strokes
+      // perpendicular to travel (weapon color + white edge), replaces the sprite.
+      if (b.isSlash) {
+        const cr = b.radius * 3;
+        ctx.save();
+        ctx.translate(b.pos.x, b.pos.y);
+        ctx.rotate(b.angle || 0);
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.lineCap = 'round';
+        ctx.strokeStyle = b.color; ctx.lineWidth = 5;
+        ctx.globalAlpha = 0.8;
+        ctx.beginPath(); ctx.arc(-cr * 0.55, 0, cr, -Math.PI * 0.42, Math.PI * 0.42); ctx.stroke();
+        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2;
+        ctx.globalAlpha = 0.9;
+        ctx.beginPath(); ctx.arc(-cr * 0.5, 0, cr * 1.06, -Math.PI * 0.36, Math.PI * 0.36); ctx.stroke();
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = 1;
+        ctx.restore();
+        continue;
+      }
+      // Elite ARC_PROJECTILE — draw-time lob offset ONLY (collision stays on the ground path).
+      const _ay = (b.behavior === 'arc_projectile' && b.arcT)
+        ? -Math.sin(Math.min(1, b.t / b.arcT) * Math.PI) * 46 : 0;
       // Try weapon sprite first — fall back to colored circle if not loaded
       if (b.weaponSprite && b.weaponSprite.complete && b.weaponSprite.naturalWidth > 0) {
         const sz = b.weaponSize || Math.max(34, b.radius * 4.0);
         ctx.save();
-        ctx.translate(b.pos.x, b.pos.y);
+        ctx.translate(b.pos.x, b.pos.y + _ay);
         ctx.rotate(b.angle || 0);
         // Additive blend for glowing VFX feel — neon glow halo underneath
         ctx.globalCompositeOperation = 'lighter';
@@ -12126,11 +12291,11 @@ export class Game {
         ctx.globalAlpha = 1;
         ctx.restore();
       } else {
-        drawGlow(ctx, b.pos.x, b.pos.y, b.radius * 2, b.color, 0.5);
+        drawGlow(ctx, b.pos.x, b.pos.y + _ay, b.radius * 2, b.color, 0.5);
         ctx.fillStyle   = b.color;
-        ctx.beginPath(); ctx.arc(b.pos.x, b.pos.y, b.radius, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(b.pos.x, b.pos.y + _ay, b.radius, 0, Math.PI * 2); ctx.fill();
         ctx.strokeStyle = WHITE; ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.arc(b.pos.x, b.pos.y, b.radius, 0, Math.PI * 2); ctx.stroke();
+        ctx.beginPath(); ctx.arc(b.pos.x, b.pos.y + _ay, b.radius, 0, Math.PI * 2); ctx.stroke();
       }
     }
 
@@ -12346,6 +12511,16 @@ export class Game {
       _wg.addColorStop(0, 'rgba(230,244,255,0)');
       _wg.addColorStop(1, 'rgba(230,244,255,' + _wa.toFixed(3) + ')');
       ctx.fillStyle = _wg;
+      ctx.fillRect(0, 0, 1280, 720);
+    }
+    // ABYSSAL MURK overlay — deep-blue murk closing from the screen edges (Abyssal hazard)
+    if (this._murkT > 0) {
+      const _mt = this._murkT;
+      const _ma = Math.min(0.62, _mt > 3.4 ? (4.0 - _mt) * 1.05 : _mt < 1 ? _mt * 0.62 : 0.62);
+      const _mg = ctx.createRadialGradient(640, 360, 170, 640, 360, 700);
+      _mg.addColorStop(0, 'rgba(4,10,30,0)');
+      _mg.addColorStop(1, 'rgba(4,10,30,' + _ma.toFixed(3) + ')');
+      ctx.fillStyle = _mg;
       ctx.fillRect(0, 0, 1280, 720);
     }
     drawCRTVignette(ctx);
