@@ -22,7 +22,7 @@ import { weightedSample } from './Upgrades.js?v=20260705300000';
 import { MutationUI }      from './MutationUI.js?v=20260703990000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260705300000';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS } from './MetaProgress.js?v=20260705300000';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS } from './MetaProgress.js?v=20260705320000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260705300000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
@@ -42,7 +42,7 @@ import { NexusManager } from './NexusManager.js?v=20260705150000';
 import { VESSELS, getVesselById, getDefaultVesselId } from './VesselCatalog.js?v=20260705040000';
 import { PETS, getPetById } from './PetCatalog.js?v=20260705000000';
 import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons, isEvolutionOwnedBy, getCardDisplayName } from './WeaponCatalog.js?v=20260705300000';
-import { TACTICAL_ID, TACTICAL_DEFS, getTacticalDef, getTacticalForCharacter, getAvailableTactical, preloadTacticalSprites, FUSION_TACTICALS } from './TacticalWeaponCatalog.js?v=20260705300000';
+import { TACTICAL_ID, TACTICAL_DEFS, getTacticalDef, getTacticalForCharacter, getAvailableTactical, preloadTacticalSprites, FUSION_TACTICALS } from './TacticalWeaponCatalog.js?v=20260705320000';
 import { VFXSpritePlayer } from './VFXSpritePlayer.js?v=20260705120000';
 
 // ── Mastery card → base weapon mapping (for evolution level tracking) ──
@@ -1852,6 +1852,8 @@ export class Game {
 
     // ── Null Battery relic: 8% faster Q/E ability cooldowns ──
     if (m.isRelicUnlocked('null_battery')) p.abilityCdMult = 1.08;
+    // Null Riff Capacitor — Eddie relic: amplified dash note clouds + hotter riff bolts
+    this._riffCapacitor = (p.selectedCharacter === 'eddie') && m.isRelicUnlocked('null_riff_capacitor');
   }
 
   // ── Vessel passives ──────────────────────────────────────────────────────────
@@ -8537,7 +8539,8 @@ export class Game {
       this._eddieNoteClouds.push({
         x: p.pos.x + dir.x * reach * k,
         y: p.pos.y + dir.y * reach * k,
-        r: 46, t: 0, active: 1.6, dmgCd: 0,
+        r: 46, t: 0, active: this._riffCapacitor ? 3.2 : 1.6,
+        dmg: this._riffCapacitor ? 12 : 8, dmgCd: 0,
         glyph: Math.random() < 0.5 ? '♪' : '♩',
         rot: (Math.random() - 0.5) * 0.8,
       });
@@ -8556,7 +8559,7 @@ export class Game {
         for (const e of this.enemies) {
           if (!e || e.hp <= 0) continue;
           const dx = e.pos.x - nc.x, dy = e.pos.y - nc.y;
-          if (dx * dx + dy * dy < r2) e.takeHit(8, this); // 8 dmg per tick per enemy inside
+          if (dx * dx + dy * dy < r2) e.takeHit(nc.dmg || 8, this); // per-zone dmg (12 with Null Riff Capacitor)
         }
       }
     }
@@ -9671,12 +9674,15 @@ export class Game {
     this._redThunderCd = stats.cooldown;
 
     const shots   = level >= 4 ? 2 : 1;        // Lv4+: +1 bolt
+    // Red Thunder Resonance ★ synergy + Null Riff Capacitor relic scale the riff
+    const synRT   = this.meta?.getLevel?.('syn_red_thunder') || 0;
+    const dmgMult = (1 + 0.06 * synRT) * (this._riffCapacitor ? 1.10 : 1);
     const baseAng = Math.atan2(target.pos.y - p.pos.y, target.pos.x - p.pos.x);
     for (let i = 0; i < shots; i++) {
       const ang = baseAng + (shots > 1 ? (i === 0 ? -0.09 : 0.09) : 0);
       const dir = new Vec2(Math.cos(ang), Math.sin(ang));
       // Spawn OFFSET from Eddie toward the target — the bolt never sits on the player.
-      const proj = new Projectile(p.pos.add(dir.scale(46)), dir, stats.damage, null);
+      const proj = new Projectile(p.pos.add(dir.scale(46)), dir, Math.round(stats.damage * dmgMult), null);
       proj.style = 'red_bolt';
       proj.speed = 1150;                       // fast bolt
       proj.life  = 0.8;
@@ -9685,7 +9691,7 @@ export class Game {
     this.audio?.playShoot?.();
 
     // Lv3+ chain lightning: 35% chance to arc to ONE enemy near the target (50% dmg)
-    if (level >= 3 && Math.random() < 0.35) {
+    if (level >= 3 && Math.random() < 0.35 + 0.04 * synRT) {   // synergy stars widen the arc chance
       let arcTo = null, bestD2 = 180 * 180;
       for (const e of this.enemies) {
         if (!e || e.hp <= 0 || e === target) continue;
@@ -10442,31 +10448,37 @@ export class Game {
   // the camera transform (translate(-camera)), so world coords land exactly where the damage
   // zones tick. Fragments render on the world layer below entities; impact flashes above ground.
   _drawChordRainFx(ctx, w) {
+    // SCREEN-SPACE like every other tactical FX (world - camera). The first version drew in
+    // raw world coords on this screen-space layer — fragments rendered far from where they
+    // actually landed, so the rain looked absent and its damage looked like it never happened.
+    const cam = this.camera;
     const sprite = this._tacticalSpriteCache.get(w.id);
     if (sprite && sprite.complete && sprite.naturalWidth > 0) {   // deployed-cache marker at drop point
       ctx.save();
       ctx.globalAlpha = Math.min(1, w.timer / 1.0) * 0.9;
-      ctx.drawImage(sprite, w.x - 30, w.y - 30, 60, 60);
+      ctx.drawImage(sprite, w.x - cam.x - 30, w.y - cam.y - 30, 60, 60);
       ctx.restore();
     }
     for (const f of w.frags) {
+      const fx = f.x - cam.x;
       if (f.t < f.fall) {                                         // falling encrypted fragment
         const k = f.t / f.fall;
         const top = f.top !== undefined ? f.top : f.gy - 340;
-        const y = top + k * (f.gy - top);
-        const tail = Math.min(240, Math.max(70, (y - top) * 0.55));
+        const y = top + k * (f.gy - top) - cam.y;
+        const tail = Math.min(260, Math.max(80, (top + k * (f.gy - top) - top) * 0.55));
         ctx.save();
         ctx.globalCompositeOperation = 'lighter';
-        const tg = ctx.createLinearGradient(f.x, y - tail, f.x, y);
+        const tg = ctx.createLinearGradient(fx, y - tail, fx, y);
         tg.addColorStop(0, 'rgba(0,0,0,0)');
         tg.addColorStop(1, f.color);
-        ctx.globalAlpha = 0.30;
-        ctx.strokeStyle = tg; ctx.lineWidth = 2.5;
-        ctx.beginPath(); ctx.moveTo(f.x, y - tail); ctx.lineTo(f.x, y); ctx.stroke();
-        ctx.globalAlpha = 0.34 + 0.22 * k;                        // low-alpha — never a readable block
-        ctx.translate(f.x, y); ctx.rotate(f.rot);
+        ctx.globalAlpha = 0.5;
+        ctx.strokeStyle = tg; ctx.lineWidth = 3.5;
+        ctx.beginPath(); ctx.moveTo(fx, y - tail); ctx.lineTo(fx, y); ctx.stroke();
+        ctx.globalAlpha = 0.72 + 0.2 * k;                         // clearly visible — encrypted by scatter, not by faintness
+        ctx.translate(fx, y); ctx.rotate(f.rot);
         ctx.fillStyle = f.color;
-        ctx.font = 'bold 18px Consolas, monospace';
+        ctx.shadowColor = f.color; ctx.shadowBlur = 12;
+        ctx.font = 'bold 34px Consolas, monospace';
         ctx.textAlign = 'center';
         ctx.fillText(f.txt, 0, 0);
         ctx.restore();
@@ -10474,9 +10486,9 @@ export class Game {
         const a = Math.max(0, 1 - (f.t - f.fall) / 0.35);
         ctx.save();
         ctx.globalCompositeOperation = 'lighter';
-        ctx.globalAlpha = a * 0.8;
-        ctx.strokeStyle = f.color; ctx.lineWidth = 3;
-        ctx.beginPath(); ctx.arc(f.x, f.gy, ((w.def.aoeRadius || 60) + 10) * (1 - a * 0.5), 0, Math.PI * 2); ctx.stroke();
+        ctx.globalAlpha = a * 0.9;
+        ctx.strokeStyle = f.color; ctx.lineWidth = 5;
+        ctx.beginPath(); ctx.arc(fx, f.gy - cam.y, ((w.def.aoeRadius || 60) + 10) * (1 - a * 0.5), 0, Math.PI * 2); ctx.stroke();
         ctx.restore();
       }
     }
@@ -10486,15 +10498,16 @@ export class Game {
   _drawSwordBurstFx(ctx, w) {
     const sprite = this._tacticalSpriteCache.get(w.id);
     const ready = sprite && sprite.complete && sprite.naturalWidth > 0;
+    const cam = this.camera;                                     // screen-space like every tactical FX
     if (ready && !w.swords.length) {                              // idle cache marker at drop point
       ctx.save();
       ctx.globalAlpha = Math.min(1, w.timer / 1.0) * 0.9;
-      ctx.drawImage(sprite, w.x - 30, w.y - 30, 60, 60);
+      ctx.drawImage(sprite, w.x - cam.x - 30, w.y - cam.y - 30, 60, 60);
       ctx.restore();
     }
     for (const s of w.swords) {
       ctx.save();
-      ctx.translate(s.x, s.y);
+      ctx.translate(s.x - cam.x, s.y - cam.y);
       ctx.rotate(s.ang);
       ctx.globalCompositeOperation = 'lighter';                   // additive glow trail behind the blade
       const grad = ctx.createLinearGradient(-190, 0, 0, 0);

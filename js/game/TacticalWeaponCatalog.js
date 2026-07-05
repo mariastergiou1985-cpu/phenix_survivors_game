@@ -405,7 +405,7 @@ export const TACTICAL_DEFS = Object.freeze({
     fxModule:    FX_MODULE.A_STORM_CONDUCTOR,
     behavior:    TACTICAL_BEHAVIOR.CHORD_RAIN,
     sprite:      'assets/weapons/tactical/tac_eddie_chord_curtain.png',
-    baseDamage:  22,
+    baseDamage:  30,
     aoeRadius:   60,
     tickRate:     2.2,    // seconds between fragment waves
     duration:    14,      // seconds active

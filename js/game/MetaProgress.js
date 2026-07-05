@@ -37,6 +37,7 @@ export const SYNERGY_UPGRADES = [
   { key: 'syn_plasma_execution',  name: 'Plasma Execution Loop ★',  char: 'assassin_clone',          charName: 'Assassin Clone',   desc: '+execution damage & uptime',      maxLevel: 5, flatCost: 1000 },
   { key: 'syn_toxic_geometry',    name: 'Toxic Geometry ★',         char: 'euclid_vector',           charName: 'Euclid Vector',    desc: '+poison tick & mark duration',    maxLevel: 5, flatCost: 1000 },
   { key: 'syn_cataclysm_chain',   name: 'Cataclysm Chain Reaction ★', char: 'oni_cataclysm_protocol', charName: 'Oni Cataclysm',  desc: '+4% Protocol 0 detonation per star', maxLevel: 5, flatCost: 1000, lockedUntil: 'oni_cataclysm_protocol' },
+  { key: 'syn_red_thunder',       name: 'Red Thunder Resonance ★',   char: 'eddie',                  charName: 'Eddie',            desc: '+4% chain arc chance & +6% bolt damage per star', maxLevel: 5, flatCost: 1000, lockedUntil: 'eddie' },
 ];
 
 // Secret unlock flags — set on a victory, persisted in localStorage, read by the
@@ -220,6 +221,9 @@ export const RELIC_DEFS = [
   { id:'blacknet_coupon',      name:'Blacknet Coupon',      type:'universal',  cost:4,
     effect:'First level-up screen each run grants 1 extra reroll.',
     req:null, reqChar:null },
+  { id:'null_riff_capacitor',  name:'Null Riff Capacitor',  type:'universal',  cost:6,
+    effect:'Eddie: dash note clouds last 3.2s and tick for 12. Solo Red Thunder bolts +10% damage.',
+    req:null, reqChar:'eddie' },
   { id:'serpent_ember_coil',   name:'Serpent Ember Coil',   type:'boss',       cost:6,
     effect:'Dash leaves a 1.5s ember trail. Enemies touching it take burn damage.',
     req:'cyberSerpent', reqChar:null },
