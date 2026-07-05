@@ -290,6 +290,17 @@ canvas.addEventListener('mousedown', e => {
     game.activateEuclidPlague(); game.activateProtocol0Cataclysm();
     mouseDown = false;
 
+  } else if (game.gameState === 'lore_archive') {
+    // ── LORE / ARCHIVE — clickable section nav (mirrors ↑↓/W-S) + BACK ──
+    // Geometry mirrors _drawLoreArchive: panel 1200×624 centered, header 48,
+    // nav at (52,104) 192×518, 7 rows of ~71px starting y=124.
+    if (mousePos.x >= 52 && mousePos.x <= 244 && mousePos.y >= 124 && mousePos.y <= 621) {
+      const idx = Math.max(0, Math.min(6, Math.floor((mousePos.y - 124) / 71)));
+      game._loreSection = idx;
+    } else if (mousePos.y >= 622 && mousePos.y <= 666 && mousePos.x >= 556 && mousePos.x <= 724) {
+      game.goToSettings();   // BACK button zone (bottom center)
+    }
+
   } else if (game.gameState === 'start_menu') {
     // ── Start Menu ───────────────────────────────────────────────
     // Top-right gear icon → shortcut to the SAME Settings screen (no duplicate logic).
