@@ -9,34 +9,34 @@ import { FloatingText } from '../entities/FloatingText.js';
 // Does NOT trigger game-over when downed. Revives after 20s within the same active window.
 
 const WALKER_FOLLOW_DIST  = 72;    // target gap from player (px)
-const WALKER_FOLLOW_SPEED = 115;   // px/s approach speed
-const WALKER_MANA_REGEN   = 10;   // mana/s — buffed to support 3 weapons
+const WALKER_FOLLOW_SPEED = 135;   // px/s approach speed (buffed — keeps pace with the player)
+const WALKER_MANA_REGEN   = 13;   // mana/s — buffed to support 3 weapons
 const WALKER_DOWNED_DUR   = 20;   // seconds until revive (within same active window)
 const WALKER_REVIVE_PCT   = 0.4;  // revive at 40% HP
 
-const BASIC_ATTACK_CD     = 5.0;  // seconds between basic electric wave casts
-const BASIC_ATTACK_DMG    = 18;   // base damage per basic hit (buffed from 12)
+const BASIC_ATTACK_CD     = 3.5;  // seconds between basic electric wave casts (buffed from 5.0)
+const BASIC_ATTACK_DMG    = 26;   // base damage per basic hit (buffed from 18)
 const BASIC_ATTACK_MANA   = 5;    // mana cost for basic wave
 
 // ── Shockwave AoE Ultimate (reworked) ────────────────────────────────────────
 const ABILITY_CD          = 10;   // seconds between shockwave ultimates
 const ABILITY_MANA_COST   = 20;   // mana cost
-const SHOCKWAVE_DMG       = 75;   // damage per pulse per enemy (was 35 single-target)
-const SHOCKWAVE_RADIUS    = 280;  // AoE radius in px — real range, not cosmetic
+const SHOCKWAVE_DMG       = 95;   // damage per pulse per enemy (buffed from 75)
+const SHOCKWAVE_RADIUS    = 340;  // AoE radius in px — real range, not cosmetic (buffed from 280)
 const SHOCKWAVE_PULSES    = 3;    // number of expanding pulses per activation
 const SHOCKWAVE_PULSE_GAP = 0.20; // seconds between pulses
 
 // ── Mind Glitch / Neural Override ─────────────────────────────────────────────
 const GLITCH_CD           = 5;    // seconds between Mind Glitch casts
 const GLITCH_MANA_COST    = 10;   // mana cost
-const GLITCH_RANGE        = 220;  // px — range to select targets
-const GLITCH_MAX_TARGETS  = 5;    // max enemies to glitch at once
+const GLITCH_RANGE        = 300;  // px — range to select targets (buffed from 220)
+const GLITCH_MAX_TARGETS  = 6;    // max enemies to glitch at once (buffed from 5)
 const GLITCH_DELAY        = 1.1;  // seconds until self-destruct / heavy damage fires
-const GLITCH_DAMAGE       = 130;  // heavy damage applied at end of glitch delay (bosses use _capBossDamage)
-const GLITCH_BOSS_DAMAGE  = 200;  // large hit applied to bosses via _capBossDamage
+const GLITCH_DAMAGE       = 165;  // heavy damage applied at end of glitch delay (buffed from 130)
+const GLITCH_BOSS_DAMAGE  = 260;  // large hit applied to bosses via _capBossDamage (buffed from 200)
 
 // ── Autonomous Dash ─────────────────────────────────────────────────────────────
-const WALKER_DASH_CD      = 10;   // seconds between autonomous dashes
+const WALKER_DASH_CD      = 8;    // seconds between autonomous dashes (buffed from 10 — shield/heal uptime up)
 const WALKER_DASH_DIST    = 90;   // px — distance of each dash toward nearest target
 
 // ── Misc ─────────────────────────────────────────────────────────────────────
@@ -364,10 +364,17 @@ export class NpcWalker {
     }
   }
 
+  // Late-run damage scaling: +3%/minute, capped ×2.2 (~40:00) — enemies scale
+  // with time, so a flat-damage Walker fades into irrelevance without this.
+  _lateMult(game) {
+    const min = (game && typeof game.currentMinute === 'function') ? game.currentMinute() : 0;
+    return 1 + Math.min(1.2, min * 0.03);
+  }
+
   // ── Basic electric wave ────────────────────────────────────────────────────
   _castBasicWave(target, game) {
     const syn    = this._synergy;
-    const rawDmg = Math.round(BASIC_ATTACK_DMG * (syn.dmgMult || 1.0));
+    const rawDmg = Math.round(BASIC_ATTACK_DMG * (syn.dmgMult || 1.0) * this._lateMult(game));
     const tp     = target.pos;
 
     if (target._isDD) {
@@ -454,7 +461,7 @@ export class NpcWalker {
 
   _fireShockwavePulse(pulse, game) {
     const syn    = pulse.syn;
-    const rawDmg = Math.round((SHOCKWAVE_DMG + (pulse.dmgBonus || 0)) * (syn.dmgMult || 1.0));
+    const rawDmg = Math.round((SHOCKWAVE_DMG + (pulse.dmgBonus || 0)) * (syn.dmgMult || 1.0) * this._lateMult(game));
     const wx     = this.pos.x;
     const wy     = this.pos.y;
     const radius = SHOCKWAVE_RADIUS;
@@ -677,9 +684,9 @@ export class NpcWalker {
       const e = g.target;
       if (!e.dead && !e.dying) {
         if (typeof e.takeHit === 'function') {
-          e.takeHit(GLITCH_DAMAGE, game);
+          e.takeHit(Math.round(GLITCH_DAMAGE * this._lateMult(game)), game);
         } else {
-          e.hp -= GLITCH_DAMAGE;
+          e.hp -= Math.round(GLITCH_DAMAGE * this._lateMult(game));
           if (e.hp <= 0 && !e.dead) e.dead = true;
         }
       }
@@ -954,17 +961,20 @@ export class NpcWalker {
       ctx.fillRect(x, y, W, H);
     }
     const borderCol = !this._active
-      ? 'rgba(80,80,100,0.25)'
+      ? 'rgba(110,150,180,0.6)'
       : this.downed
-        ? 'rgba(255,68,102,0.35)'
-        : (syn.col1 + '33');
+        ? 'rgba(255,68,102,0.8)'
+        : (syn.col1 + 'cc');
     ctx.strokeStyle = borderCol;
-    ctx.lineWidth   = 1;
+    ctx.lineWidth   = 1.5;
+    ctx.shadowColor = borderCol;
+    ctx.shadowBlur  = this._active && !this.downed ? 10 : 5;
     if (ctx.roundRect) {
       ctx.beginPath(); ctx.roundRect(x, y, W, H, 5); ctx.stroke();
     } else {
       ctx.strokeRect(x, y, W, H);
     }
+    ctx.shadowBlur = 0;
 
     const barX = x + PAD;
     const barW = W - PAD * 2;
@@ -972,7 +982,7 @@ export class NpcWalker {
 
     if (!this._active) {
       ctx.font      = 'bold 10px Consolas, monospace';
-      ctx.fillStyle = 'rgba(100,120,140,0.7)';
+      ctx.fillStyle = '#9fd8e8';
       ctx.textAlign = 'left';
       ctx.fillText('KIROSHI WALKER', barX, cy);
       cy += ROW + 4;
@@ -980,7 +990,7 @@ export class NpcWalker {
       const mins = Math.floor(cd / 60).toString().padStart(1, '0');
       const secs = (cd % 60).toString().padStart(2, '0');
       ctx.font      = '9px Consolas, monospace';
-      ctx.fillStyle = 'rgba(100,150,160,0.55)';
+      ctx.fillStyle = 'rgba(170,220,235,0.9)';
       ctx.fillText('OFFLINE — INBOUND ' + mins + ':' + secs, barX, cy);
     } else if (this.downed) {
       ctx.font      = 'bold 10px Consolas, monospace';
