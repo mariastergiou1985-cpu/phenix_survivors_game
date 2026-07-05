@@ -1,4 +1,4 @@
-import { Game } from './game/Game.js?v=20260705260000';
+import { Game } from './game/Game.js?v=20260705270000';
 import { AudioManager } from './audio/AudioManager.js?v=20260705220000';
 import { GamepadInput } from './Gamepad.js?v=20260703990000';
 import { initTouchControls } from './TouchInput.js?v=20260703990000';
@@ -279,6 +279,16 @@ canvas.addEventListener('mousedown', e => {
     } else if (ebr && _hit(ebr[2])) {
       game.goToMainMenu();
     }
+
+  } else if (game.gameState === 'playing' && !game.paused && !game.gameOver && !game.victory &&
+             mousePos.x >= 1208 && mousePos.x <= 1272 && mousePos.y >= 646 && mousePos.y <= 710) {
+    // ── Clickable ULT button (bottom-right HUD box, WIDTH-64/HEIGHT-66, 48px + ring pad) ──
+    // Mirrors the SPACE chain exactly: every activate self-guards by character/mana,
+    // so at most one fires. Click is swallowed (no stray aim-fire on the ult box).
+    game.activateThunderSolo(); game.activateOverheatedChains(); game.activateCyberBikeRush();
+    game.activateSkyfallLances(); game.activateChromePhantomProtocol(); game.activateDigitalSingularity();
+    game.activateEuclidPlague(); game.activateProtocol0Cataclysm();
+    mouseDown = false;
 
   } else if (game.gameState === 'start_menu') {
     // ── Start Menu ───────────────────────────────────────────────

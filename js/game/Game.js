@@ -13021,7 +13021,7 @@ export class Game {
     style.id = 'cgm-style';
     style.textContent = `
       #cgm-code-rain-canvas {
-        position:fixed; inset:0; z-index:101;
+        position:fixed; inset:0; z-index:99;   /* BELOW #cgm-overlay(100): rain stays in the backdrop, never over panel text */
         pointer-events:none;
         width:100vw; height:100vh;
         display:none;
