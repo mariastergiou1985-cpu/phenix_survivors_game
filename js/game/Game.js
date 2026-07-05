@@ -13674,6 +13674,16 @@ export class Game {
       #cgm-eq-bars.radio>i{background:linear-gradient(180deg,#ff2d95,#7a1548);box-shadow:0 0 10px rgba(255,45,149,.55);}
       #cgm-overlay .now-radio{color:#ff2d95!important;text-shadow:0 0 8px rgba(255,45,149,.6);animation:cgm-onair 1.2s ease-in-out infinite;}
       @keyframes cgm-onair{0%,100%{opacity:1}50%{opacity:.55}}
+      /* ── VIDEO FEED panel (left column, below Quick Stats) ── */
+      #cgm-overlay .grid>.col:first-child{align-self:stretch;}
+      #cgm-overlay .video-panel{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden;}
+      #cgm-overlay .video-frame{position:relative;flex:1;min-height:0;border:1px solid rgba(255,45,149,.18);border-radius:6px;overflow:hidden;box-shadow:inset 0 0 24px rgba(0,0,0,.5),0 0 12px rgba(255,45,149,.08);}
+      #cgm-overlay .video-frame video{width:100%;height:100%;object-fit:cover;display:block;filter:saturate(1.15) contrast(1.05);}
+      #cgm-overlay .video-frame .vf-scanlines{position:absolute;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.06) 2px,rgba(0,0,0,.06) 4px);pointer-events:none;}
+      #cgm-overlay .video-frame .vf-vignette{position:absolute;inset:0;background:radial-gradient(ellipse at center,transparent 50%,rgba(7,10,28,.7) 100%);pointer-events:none;}
+      #cgm-overlay .vf-badge{position:absolute;top:6px;right:8px;font-family:'Orbitron',sans-serif;font-size:8px;letter-spacing:2px;color:var(--magenta);background:rgba(0,0,0,.65);padding:2px 7px;border-radius:3px;border:1px solid rgba(255,45,149,.25);display:flex;align-items:center;gap:4px;}
+      #cgm-overlay .vf-rec{width:5px;height:5px;border-radius:50%;background:var(--magenta);box-shadow:0 0 6px var(--magenta);animation:cgm-rec 1.2s infinite;}
+      @keyframes cgm-rec{0%,100%{opacity:1}50%{opacity:.15}}
       #cgm-overlay .now-row{display:flex;align-items:center;justify-content:space-between;}
       #cgm-overlay .now-row .label{font-family:'Orbitron',sans-serif;font-weight:600;color:var(--cyan);font-size:11px;letter-spacing:2px;}
       #cgm-overlay .now-row svg{width:16px;height:16px;color:var(--cyan);}
@@ -13805,6 +13815,16 @@ export class Game {
         <div class="row"><span class="k">Revives</span><span class="v amber"><svg><use href="#i-activity"/></svg><span data-cgm="qs-revives">3</span></span></div>
         <div class="row"><span class="k">Protocols</span><span class="v" style="color:var(--purple)"><svg style="color:var(--purple)"><use href="#i-node"/></svg><span data-cgm="qs-protocols">0</span></span></div>
         <div class="row"><span class="k">HP / Mana</span><span class="v" style="color:var(--txt-dim)"><span data-cgm="qs-hp-mana">—</span></span></div>
+      </section>
+
+      <section class="panel video-panel" style="--accent:var(--magenta);--accent-glow:rgba(255,45,149,.5)">
+        <div class="panel-title" style="color:var(--magenta)"><span class="dot" style="background:var(--magenta)"></span>LIVE FEED</div>
+        <div class="video-frame">
+          <video id="cgm-menu-video" src="assets/video/phenix_null_eden_menu.mp4" loop muted playsinline preload="auto"></video>
+          <div class="vf-scanlines"></div>
+          <div class="vf-vignette"></div>
+          <div class="vf-badge"><span class="vf-rec"></span>LIVE</div>
+        </div>
       </section>
     </div>
 
@@ -14061,11 +14081,17 @@ export class Game {
     if (this._codeRainCanvas) this._codeRainCanvas.style.display = 'block';
     this._menuOverlayVisible = true;
     this._startEqLoop();
+    // ── start menu video feed ──
+    const vid = document.getElementById('cgm-menu-video');
+    if (vid) vid.play().catch(() => {});
   }
 
   _hideMenuOverlay() {
     if (!this._menuOverlayEl) return;
     this._stopEqLoop();
+    // ── pause menu video feed ──
+    const vid = document.getElementById('cgm-menu-video');
+    if (vid) { vid.pause(); vid.currentTime = 0; }
     this._menuOverlayEl.style.display = 'none';
     if (this._codeRainCanvas) this._codeRainCanvas.style.display = 'none';
     this._menuOverlayVisible = false;
