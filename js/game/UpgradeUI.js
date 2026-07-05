@@ -145,8 +145,14 @@ export class UpgradeUI {
 
       // Icon — IMAGE art when the card carries a loaded iconImg (Nexus pack
       // illustrations), otherwise the classic symbol/emoji glyph.
-      if (upg.iconImg && upg.iconImg.complete && upg.iconImg.naturalWidth > 0) {
-        const iw = upg.iconImg.naturalWidth, ih = upg.iconImg.naturalHeight;
+      // iconImg can be an HTMLImageElement (Nexus illustrations) OR an offscreen
+      // canvas (frame-0 crop of a VFX sheet). Canvases have no complete/naturalWidth,
+      // so readiness/size are read from width/height instead.
+      const _icCanvas = !!upg.iconImg && upg.iconImg.naturalWidth === undefined;
+      if (upg.iconImg && (_icCanvas ? upg.iconImg.width > 0
+                                    : (upg.iconImg.complete && upg.iconImg.naturalWidth > 0))) {
+        const iw = _icCanvas ? upg.iconImg.width  : upg.iconImg.naturalWidth,
+              ih = _icCanvas ? upg.iconImg.height : upg.iconImg.naturalHeight;
         const fit = Math.min(72 / iw, 72 / ih);          // fit inside the 80×80 box w/ 4px pad
         const dw = iw * fit, dh = ih * fit;
         ctx.save();

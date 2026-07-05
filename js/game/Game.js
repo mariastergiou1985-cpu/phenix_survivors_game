@@ -17,7 +17,7 @@ import { SupportDrone }   from '../entities/SupportDrone.js?v=20260703990000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260705150000';
 import { SystemEventManager } from './Events.js?v=20260705150000';
-import { UpgradeUI }      from './UpgradeUI.js?v=20260705120000';
+import { UpgradeUI }      from './UpgradeUI.js?v=20260705240000';
 import { weightedSample } from './Upgrades.js?v=20260705040000';
 import { MutationUI }      from './MutationUI.js?v=20260703990000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
@@ -103,6 +103,10 @@ const WIELDER_VFX_OVERRIDES = Object.freeze({
 
 // Lazy one-time Image cache for Nexus pack illustrations (VFX overrides + card icons).
 const _nexusImgCache = new Map();
+// Frame-0 crop cache for weapon card icons: weaponId -> offscreen canvas holding
+// only frame 0 of that weapon's VFX frame sheet (drawing the whole sheet as a
+// card icon is the known chakram bug). Built lazily once the sheet has loaded.
+const _weaponCardIconCrops = new Map();
 function _getNexusImage(src) {
   let img = _nexusImgCache.get(src);
   if (!img) {
@@ -9193,11 +9197,51 @@ export class Game {
     return vfx;
   }
 
+  // ── Card icon art resolver ──────────────────────────────────────────────────
+  // Returns the REAL weapon art for an upgrade card icon, or null (glyph fallback).
+  // Resolution priority:
+  //   1) WIELDER_VFX_OVERRIDES['weaponId|selectedCharacter'] (single illustration)
+  //      + the dedicated Nexus chakram illustration for ALL chakram wielders,
+  //   2) weapon def `sprite` — cropped to FRAME 0 on an offscreen canvas when the
+  //      sprite is a frame sheet (WEAPON_VFX_META), whole image when single,
+  //   3) null — caller keeps the classic glyph.
+  // Sheet crops are cached in _weaponCardIconCrops; if the sheet hasn't finished
+  // loading yet, returns null for this appearance (glyph fallback — acceptable).
+  _weaponCardIcon(weaponId) {
+    const charId = this.player ? this.player.selectedCharacter : '';
+    const ovSrc = WIELDER_VFX_OVERRIDES[weaponId + '|' + charId]
+      || (weaponId === 'nexus_chakram' ? 'assets/weapons/nexus/nexus_nexus_chakram.png' : null);
+    if (ovSrc) return _getNexusImage(ovSrc);
+    const def = getWeaponDef(weaponId);
+    if (!def || !def.sprite) return null;
+    const meta = WEAPON_VFX_META[weaponId];
+    if (!meta) return _getNexusImage(def.sprite);        // single illustration — safe to draw whole
+    const cached = _weaponCardIconCrops.get(weaponId);
+    if (cached) return cached;
+    const sheet = (this._weaponVFXSheets && this._weaponVFXSheets[weaponId]) || _getNexusImage(def.sprite);
+    if (!(sheet.complete && sheet.naturalWidth > 0)) return null;   // still loading — glyph this time
+    const cv = document.createElement('canvas');
+    cv.width  = meta.frameW;
+    cv.height = meta.frameH;
+    cv.getContext('2d').drawImage(sheet, 0, 0, meta.frameW, meta.frameH, 0, 0, meta.frameW, meta.frameH);
+    _weaponCardIconCrops.set(weaponId, cv);
+    return cv;
+  }
+
   // ── Weapon Acquisition Cards — TASK 1 + TASK 2 ─────────────────────────────
   // Injects a weapon card (acquire OR upgrade) into the 3-card level-up pool
   // with a 25% probability per level-up. Max 3 weapon slots enforced.
   _injectWeaponCard(choices) {
     if (!choices || choices.length === 0) return;
+
+    // ── Mastery card art pass: character weapon/mastery cards show the REAL art
+    // of the weapon they master (same resolver; null keeps the glyph). Runs on
+    // every level-up AND reroll, so the art always matches the current wielder. ──
+    for (const c of choices) {
+      if (c && c.key && MASTERY_TO_WEAPON[c.key]) {
+        c.iconImg = this._weaponCardIcon(MASTERY_TO_WEAPON[c.key]);
+      }
+    }
 
     // ── PRIORITY: Evolution cards appear GUARANTEED when any recipe is ready ──
     const evoCard = this._buildEvolutionCard();
@@ -9249,12 +9293,10 @@ export class Game {
 
     const pick = pool[Math.floor(Math.random() * pool.length)];
 
-    // Nexus pack card icons: chakram illustration for ALL wielders; wielder-
-    // flavored art where a WIELDER_VFX_OVERRIDES combo exists. Glyph fallback otherwise.
-    const _nexusIconSrc = pick.id === 'nexus_chakram'
-      ? 'assets/weapons/nexus/nexus_nexus_chakram.png'
-      : (WIELDER_VFX_OVERRIDES[pick.id + '|' + charId] || null);
-    const _nexusIcon = _nexusIconSrc ? _getNexusImage(_nexusIconSrc) : null;
+    // Card icon: REAL weapon art via the resolver (wielder override → nexus
+    // chakram illustration → sprite frame-0 crop / single sprite). Glyph fallback
+    // only while a frame sheet is still loading.
+    const _nexusIcon = this._weaponCardIcon(pick.id);
 
     if (pick.type === 'acquire') {
       const def = getWeaponDef(pick.id);
@@ -9345,8 +9387,7 @@ export class Game {
                                 : 'GRID CACHE — deploys at current position',
       iconColor:      pick.color || '#00ffaa',
       icon:           '✦',                  // ✦
-      iconImg:        (pick.sprite && pick.sprite.indexOf('assets/weapons/nexus/') === 0)
-                        ? _getNexusImage(pick.sprite) : null,   // Nexus pack card art
+      iconImg:        pick.sprite ? _getNexusImage(pick.sprite) : null,   // tactical card art (single illustrations)
       rarity:         'legendary',
       maxLevel:       99,                        // always re-offerable
       _isTacticalCard: true,
@@ -9394,6 +9435,7 @@ export class Game {
         description: ingNames + ' merge into ' + def.name + '!',
         iconColor:   def.color || '#ffcc00',
         icon:        '⚡',                 // ⚡
+        iconImg:     game._weaponCardIcon(recipe.result),   // evolved weapon art (frame-0 crop)
         rarity:      'legendary',
         maxLevel:    1,
         _isWeaponCard: true,
