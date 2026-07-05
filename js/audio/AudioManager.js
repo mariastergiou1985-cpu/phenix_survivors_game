@@ -179,6 +179,7 @@ export class AudioManager {
       const gain = this.actx.createGain(); gain.gain.value = 0.9;
       src.connect(gain);
       gain.connect(this.masterGain);   // direct to master — ducking music leaves the radio loud
+      try { gain.connect(this.analyser); } catch (_) {}   // menu equalizer dances to the broadcast
       this._radioAudio = audio;
       this.musicGain.gain.setTargetAtTime((this.muted ? 0 : this.musicVolume) * 0.25, this.actx.currentTime, 0.4);
       this.currentTrackTitle = 'PHENIX NULL RADIO — ONLINE';

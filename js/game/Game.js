@@ -13093,6 +13093,9 @@ export class Game {
       #cgm-overlay .eq>i:nth-child(10){animation-delay:.40s} #cgm-overlay .eq>i:nth-child(11){animation-delay:.25s}
       @keyframes cgm-eq{0%,100%{transform:scaleY(.25)} 50%{transform:scaleY(1)}}
       #cgm-eq-bars.live>i{animation:none;transition:transform 0.06s linear;}
+      #cgm-eq-bars.radio>i{background:linear-gradient(180deg,#ff2d95,#7a1548);box-shadow:0 0 10px rgba(255,45,149,.55);}
+      #cgm-overlay .now-radio{color:#ff2d95!important;text-shadow:0 0 8px rgba(255,45,149,.6);animation:cgm-onair 1.2s ease-in-out infinite;}
+      @keyframes cgm-onair{0%,100%{opacity:1}50%{opacity:.55}}
       #cgm-overlay .now-row{display:flex;align-items:center;justify-content:space-between;}
       #cgm-overlay .now-row .label{font-family:'Orbitron',sans-serif;font-weight:600;color:var(--cyan);font-size:11px;letter-spacing:2px;}
       #cgm-overlay .now-row svg{width:16px;height:16px;color:var(--cyan);}
@@ -13496,6 +13499,18 @@ export class Game {
       analyser.getByteFrequencyData(data);
       const hasSignal = data.some(v => v > 4);
       eqEl.classList.toggle('live', hasSignal);
+      // PHENIX NULL RADIO — while on air the bars burn magenta and the label pulses;
+      // when the broadcast ends this flips back and the OST titles resume untouched.
+      const radioOn = !!this.audio?._radioAudio;
+      if (radioOn !== this._eqRadioOn) {
+        this._eqRadioOn = radioOn;
+        eqEl.classList.toggle('radio', radioOn);
+        const lbl = this._menuOverlayEl?.querySelector('[data-cgm="now-playing"]');
+        if (lbl) {
+          lbl.textContent = this.audio?.muted ? 'MUTED' : (this.audio?.currentTrackTitle || 'NULL EDEN OST');
+          lbl.classList.toggle('now-radio', radioOn);
+        }
+      }
       if (!hasSignal) return;
       const step = Math.max(1, Math.floor(data.length / n));
       for (let i = 0; i < n; i++) {
