@@ -204,6 +204,7 @@ export class AudioManager {
 
   toggleMute() {
     this.muted = !this.muted;
+    if (this.muted) { try { window.speechSynthesis?.cancel(); } catch (_) {} }
     // Restore to the saved masterVolume on unmute; volume sliders are untouched.
     this.masterGain.gain.setTargetAtTime(
       this.muted ? 0 : this.masterVolume,
@@ -740,9 +741,14 @@ export class AudioManager {
    * Play audio for an EDEN CORE transmission.
    * @param {string|null} clipId  Key from _EDEN_CLIP_MAP, or null for synthesized glitch.
    */
-  playEdenTransmission(clipId = null) {
+  playEdenTransmission(clipId = null, text = null) {
     if (this.muted) return;
     if (!this._canPlay('edenTx', 3.5)) return;   // hard-limit: never more than once per 3.5 s
+
+    // EDEN CORE actually SPEAKS its transmission: browser speech synthesis with a
+    // deep robotic voice reads the exact on-screen text. The glitch chirp below
+    // becomes a short intro; speech starts right after it.
+    if (text) this._speakEden(text);
 
     const filename = clipId ? AudioManager._EDEN_CLIP_MAP[clipId] : null;
     if (filename) {
@@ -766,6 +772,25 @@ export class AudioManager {
     this._tone({ type: 'square', freqStart: 380, freqEnd: 345, dur: 0.09, gain: 0.14, delay: 0.15 });
     this._tone({ type: 'square', freqStart: 300, freqEnd: 272, dur: 0.09, gain: 0.14, delay: 0.30 });
     this._noiseBurst({ dur: 0.18, gain: 0.06, filterType: 'bandpass', freq: 900 });
+  }
+
+  // EDEN CORE voice — speech synthesis with a machine cadence. Cancels any prior
+  // utterance (one voice, never overlapping). No-ops silently where unsupported.
+  _speakEden(text) {
+    try {
+      const synth = window.speechSynthesis;
+      if (!synth) return;
+      const msg = String(text).replace(/^EDEN CORE:\s*/i, '');
+      synth.cancel();
+      const u = new SpeechSynthesisUtterance(msg);
+      u.rate = 0.98; u.pitch = 0.55; u.volume = 0.9;   // deep, deliberate, mechanical
+      const voices = synth.getVoices();
+      const pick = voices.find(v => /en[-_](US|GB)/i.test(v.lang) && /Google|Microsoft/i.test(v.name))
+                || voices.find(v => /^en/i.test(v.lang));
+      if (pick) u.voice = pick;
+      // Delay past the glitch intro chirp (~0.45 s) so it reads as EDEN "opening the channel".
+      setTimeout(() => { try { if (!this.muted) synth.speak(u); } catch (_) {} }, 450);
+    } catch (_) { /* speech unavailable — glitch chirp already played */ }
   }
 
 

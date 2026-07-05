@@ -17340,7 +17340,7 @@ _drawLoreArchive(ctx) {
     this._edenTransmission = { message, title, priority, duration, startedAt: now, expiresAt: now + duration };
     if (auto) this._edenLastAutoAt = now;
     // Optional audio hook — synthesized glitch if no clip, silent if muted
-    this.audio?.playEdenTransmission(clipId);
+    this.audio?.playEdenTransmission(clipId, message);
   }
 
   /**
