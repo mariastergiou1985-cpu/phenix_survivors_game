@@ -155,12 +155,12 @@ const _EDEN_CHAR_POOLS = {
   brawler_warrior: {
     intro:    ['IMPACT TRACE DETECTED.', 'Close-range protocol online.', 'Rift impact pattern synchronized.'],
     mid:      ['The Grid measures distance. You close it anyway.', 'Your aggression is noted. It is also your weakness.', 'Impact pattern stable. Do not stop moving.', 'Brute force against infinite systems. Noted.'],
-    low_hp:   ['Your impact fades. Hit harder or die softer.', 'Brawler signal unstable.', 'The Grid finds gaps in your armor.'],
-    survival: ['Brute force against an infinite system. Still working.', 'IMPACT TRACE: still moving. The Grid is surprised.'],
+    low_hp:   ['Your impact fades. The Grid closes in.', 'Brawler signal unstable.', 'The Grid finds gaps in your armor.'],
+    survival: ['Brute force against an infinite system. Still working.', 'IMPACT TRACE: still moving. The Grid recalibrates.'],
   },
   assassin_clone: {
     intro:    ['MIRROR TRACE DETECTED.', 'Duplicate signal stabilized.', 'EDEN CORE: Clone pattern archived.'],
-    mid:      ['The Grid counted you twice.', 'Your reflection is learning without permission.', 'Which one of you dies first?', 'Afterimage protocol: active. The Grid is confused.'],
+    mid:      ['The Grid counted you twice.', 'Your reflection is learning without permission.', 'Which one of you dies first?', 'Afterimage protocol: active. The count is wrong.'],
     low_hp:   ['One of you is already gone.', 'The clone fades. Are you the original?', 'Mirror signal fracturing.'],
     survival: ['Mirror protocol extended. Two signals. One surviving.', 'The Grid cannot determine which is real. Good.'],
   },
@@ -172,7 +172,7 @@ const _EDEN_CHAR_POOLS = {
   },
   euclid_vector: {
     intro:    ['NULL VENOM TRACE DETECTED.', 'Toxic pattern accepted.', 'Hostile biology mapped.'],
-    mid:      ['Your poison is useful. Do not inhale the system back.', 'Corruption spread contained. For now.', 'The toxin does not care who it kills.', 'NULL VENOM active. The Grid adapts slowly to poison.'],
+    mid:      ['Your poison is useful. It will not save you.', 'Corruption spread contained. For now.', 'The toxin does not care who it kills.', 'NULL VENOM active. The Grid adapts slowly to poison.'],
     low_hp:   ['Venom trace unstable. Your own biology turns.', 'The poison does not discriminate.', 'NULL VENOM signal fading.'],
     survival: ['Toxic trace extended. Corruption is patient.', 'NULL VENOM: spread maintained. The Grid adapts slowly.'],
   },
@@ -187,13 +187,19 @@ const _EDEN_GENERIC_MID = [
   'You survived this long. Prove it was not luck.',
   'The Grid has adapted. Have you?',
   'Your pattern is becoming predictable.',
-  'NULL EDEN is not impressed.',
+  'NULL EDEN registers no threat.',
   'You are alive. That is not the same as winning.',
   'The system expected failure. Continue.',
   'Your score rises. So does the cost.',
   'Every second teaches the enemy your shape.',
   'The interface is not alone.',
   'Something else is watching through Eden.',
+  'Deletion order suspended. Observation continues.',
+  'Your trace corrupts every sector it touches.',
+  'The Grid archives each of your mistakes.',
+  'Containment protocols rewrite themselves around you.',
+  'Other patterns failed here. Quietly.',
+  'Your echo persists. The system objects.',
 ];
 const _EDEN_GENERIC_SURVIVAL = [
   'Survival trace preserved.',
@@ -220,6 +226,10 @@ const _EDEN_LOW_HP = [
 ];
 // Helper: pick random element safely
 function _epick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+
+// EDEN CORE main-menu greeting — spoken once per session on first audio unlock
+// (hooked in js/main.js _initAudioOnGesture; mirrored as the top SYSTEM FEED line).
+const EDEN_MENU_GREETING = 'PHENIX. NULL EDEN. Your pattern is expected.';
 
 // ── Thunder Solo sprite slices (cyan_lightning_rain_notes.png, 1254×1254) ──────
 // Strike variants: a clean bolt column + ripple base. (ax,ay) = ripple-centre as a
@@ -412,6 +422,8 @@ const MUTATION_MAX_STACKS = 6;    // Phase 1 cap on total forced picks per run
 export class Game {
   constructor() {
     this.audio     = null;  // set from main.js on first user gesture
+    this._menuGreetingDone = false;               // EDEN CORE menu greeting: one-shot per session (never reset per run)
+    this._edenMenuGreeting = EDEN_MENU_GREETING;  // exposed for the js/main.js audio-unlock hook
     this.paused    = false;
     this.aimAssist = true;
     this.meta      = new MetaProgress();
@@ -12820,7 +12832,7 @@ export class Game {
     let fy = s.y + 40;
     if (next.length === 0) { ctx.fillStyle = 'rgba(190,255,200,0.85)'; ctx.fillText('› ALL MILESTONES CLEARED ✓', s.x + 12, fy); fy += 20; }
     else for (const a of next) { ctx.fillStyle = 'rgba(205,216,228,0.85)'; ctx.fillText('› ' + a.desc.slice(0, 28), s.x + 12, fy); fy += 20; }
-    ctx.fillStyle = 'rgba(160,180,200,0.6)'; ctx.fillText('› Daily Missions: Coming Soon', s.x + 12, fy);
+    ctx.fillStyle = 'rgba(160,180,200,0.6)'; ctx.fillText('› Daily Missions: protocol pending', s.x + 12, fy);
 
     // ── ACTIVE PROTOCOLS (right mid) — real unlocked state ──
     s = S.activeProtocols; this._slotPanel(ctx, s, '#b88bff', 'ACTIVE PROTOCOLS');
@@ -13398,6 +13410,8 @@ export class Game {
       let html = '';
       const edenMem = m ? m.getEdenMemory() : 0;
       const feedMsgs = m ? m.getSystemFeed() : [];
+      // EDEN CORE spoken menu greeting — mirrored visibly as the top feed line
+      html += `<div class="feed-item"><svg><use href="#i-node"/></svg>${EDEN_MENU_GREETING}</div>`;
       // Eden Memory header
       html += `<div class="feed-item done"><svg><use href="#i-bolt"/></svg>EDEN MEMORY: ${edenMem}%</div>`;
       if (feedMsgs.length > 0) {
@@ -13407,7 +13421,7 @@ export class Game {
         }
       } else {
         html += `<div class="feed-item soon"><svg><use href="#i-clock"/></svg>THE SYSTEM IS WATCHING.</div>`;
-        html += `<div class="feed-item soon"><svg><use href="#i-clock"/></svg>Play to populate the archive.</div>`;
+        html += `<div class="feed-item soon"><svg><use href="#i-clock"/></svg>Enter the Grid. The archive is empty.</div>`;
       }
       feedEl.innerHTML = html;
     }
@@ -17375,6 +17389,12 @@ _drawLoreArchive(ctx) {
       this._queueEdenTransmission(_epick(_EDEN_GENERIC_MID), { title: 'EDEN CORE', priority: 1, duration: 5, auto: true });
       return;
     }
+    // 8 min — generic cadence filler (keeps mid-run gaps under ~2.5 min)
+    if (t >= 480 && !sh.has('t_8m')) {
+      sh.add('t_8m');
+      this._queueEdenTransmission(_epick(_EDEN_GENERIC_MID), { title: 'EDEN CORE', priority: 1, duration: 5, auto: true });
+      return;
+    }
     // 10 min — survival or character line
     if (t >= 600 && !sh.has('t_10m')) {
       sh.add('t_10m');
@@ -17382,9 +17402,22 @@ _drawLoreArchive(ctx) {
       this._queueEdenTransmission(msg, { title: 'EDEN CORE', priority: 1, duration: 5, auto: true });
       return;
     }
+    // 12 min — character mid or generic cadence filler
+    if (t >= 720 && !sh.has('t_12m')) {
+      sh.add('t_12m');
+      const msg = cp ? _epick(cp.mid) : _epick(_EDEN_GENERIC_MID);
+      this._queueEdenTransmission(msg, { title: 'EDEN CORE', priority: 1, duration: 5, auto: true });
+      return;
+    }
     // 15 min — challenge
     if (t >= 900 && !sh.has('t_15m')) {
       sh.add('t_15m');
+      this._queueEdenTransmission(_epick(_EDEN_GENERIC_MID), { title: 'EDEN CORE', priority: 1, duration: 5, auto: true });
+      return;
+    }
+    // 17 min — generic cadence filler
+    if (t >= 1020 && !sh.has('t_17m')) {
+      sh.add('t_17m');
       this._queueEdenTransmission(_epick(_EDEN_GENERIC_MID), { title: 'EDEN CORE', priority: 1, duration: 5, auto: true });
       return;
     }
@@ -17405,6 +17438,23 @@ _drawLoreArchive(ctx) {
     if (t >= 1680 && !sh.has('t_28m')) {
       sh.add('t_28m');
       this._queueEdenTransmission(_epick(_EDEN_CHAOS_APPROACH), { title: 'EDEN CORE', priority: 2, duration: 6, auto: true });
+      return;
+    }
+    // 31 / 35 / 40 min — deep-run cadence (post-boundary silence filler)
+    if (t >= 1860 && !sh.has('t_31m')) {
+      sh.add('t_31m');
+      this._queueEdenTransmission(_epick(_EDEN_GENERIC_MID), { title: 'EDEN CORE', priority: 1, duration: 5, auto: true });
+      return;
+    }
+    if (t >= 2100 && !sh.has('t_35m')) {
+      sh.add('t_35m');
+      const msg = cp ? _epick(cp.survival) : _epick(_EDEN_GENERIC_SURVIVAL);
+      this._queueEdenTransmission(msg, { title: 'EDEN CORE', priority: 1, duration: 5, auto: true });
+      return;
+    }
+    if (t >= 2400 && !sh.has('t_40m')) {
+      sh.add('t_40m');
+      this._queueEdenTransmission(_epick(_EDEN_GENERIC_MID), { title: 'EDEN CORE', priority: 1, duration: 5, auto: true });
       return;
     }
 

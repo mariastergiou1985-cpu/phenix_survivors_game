@@ -1,5 +1,5 @@
-import { Game } from './game/Game.js?v=20260705180000';
-import { AudioManager } from './audio/AudioManager.js?v=20260705190000';
+import { Game } from './game/Game.js?v=20260705200000';
+import { AudioManager } from './audio/AudioManager.js?v=20260705200000';
 import { GamepadInput } from './Gamepad.js?v=20260703990000';
 import { initTouchControls } from './TouchInput.js?v=20260703990000';
 
@@ -196,6 +196,15 @@ function _initAudioOnGesture() {
     game.audio.startGameplayMusic();
   } else if (game.gameState === 'start_menu' || game.gameState === 'character_select') {
     game.audio.startMenuMusic();
+    // EDEN CORE menu greeting — spoken ONCE per session, only when the main menu
+    // wakes with audio. Respects mute (playEdenTransmission gates on this.muted),
+    // never repeats on returning to the menu, and can never block boot (try/catch).
+    if (game.gameState === 'start_menu' && !game._menuGreetingDone) {
+      game._menuGreetingDone = true;
+      try {
+        game.audio.playEdenTransmission(null, game._edenMenuGreeting || 'PHENIX. NULL EDEN. Your pattern is expected.');
+      } catch (_) { /* speech/audio unavailable — menu continues silently */ }
+    }
   }
 }
 document.addEventListener('mousedown', _initAudioOnGesture, { once: true });

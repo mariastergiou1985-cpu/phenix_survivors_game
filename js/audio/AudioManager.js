@@ -244,9 +244,9 @@ export class AudioManager {
   }
 
   // Decaying filtered white-noise burst (for digital crackle / zap texture).
-  _noiseBurst({ dur = 0.12, gain = 0.12, filterType = 'highpass', freq = 800 }) {
+  _noiseBurst({ dur = 0.12, gain = 0.12, filterType = 'highpass', freq = 800, delay = 0 }) {
     if (this.muted) return;
-    const t0  = this.actx.currentTime;
+    const t0  = this.actx.currentTime + delay;
     const len = Math.floor(this.actx.sampleRate * dur);
     const buf = this.actx.createBuffer(1, len, this.actx.sampleRate);
     const d   = buf.getChannelData(0);
@@ -789,8 +789,15 @@ export class AudioManager {
                 || voices.find(v => /^en/i.test(v.lang));
       if (pick) u.voice = pick;
       // Delay past the glitch intro chirp (~0.45 s) so it reads as EDEN "opening the channel".
-      // Low sub-drone under the voice — makes the transmission feel vast and hostile
-      this._tone({ type: 'sine', freqStart: 52, freqEnd: 40, dur: 2.4, gain: 0.10, delay: 0.40 });
+      // Unearthly underscore beneath the voice, sized to the speech duration:
+      // beating detuned sub pair (52/55.5 Hz) reads as a second, inhuman voice
+      // murmuring under the first; slow bandpass swells add cavernous breath.
+      const specDur = Math.min(9, 1.2 + msg.length / 11);   // ≈ speech length at rate 0.8
+      this._tone({ type: 'sine', freqStart: 52,   freqEnd: 40, dur: specDur, gain: 0.10, delay: 0.40 });
+      this._tone({ type: 'sine', freqStart: 55.5, freqEnd: 43, dur: specDur, gain: 0.07, delay: 0.40 });
+      for (let sw = 0; sw < Math.floor(specDur / 1.4); sw++) {
+        this._noiseBurst({ dur: 0.9, gain: 0.035, filterType: 'bandpass', freq: 240 + sw * 60, delay: 0.6 + sw * 1.4 });
+      }
       setTimeout(() => { try { if (!this.muted) synth.speak(u); } catch (_) {} }, 450);
     } catch (_) { /* speech unavailable — glitch chirp already played */ }
   }
