@@ -10193,11 +10193,14 @@ export class Game {
     w.cooldown = w.def.tickRate || 2.2;
     const n = 10 + Math.floor(Math.random() * 5);                 // 10-14 drop points per wave
     for (let i = 0; i < n; i++) {
-      if (w.frags.length >= 18) break;                            // hard cap on live fragments
-      const gx = this.camera.x + randomRange(-200, this._viewW + 200);
-      const gy = this.camera.y + randomRange(-200, this._viewH + 200);
+      if (w.frags.length >= 24) break;                            // hard cap on live fragments
+      // CURTAIN RAIN: every fragment is born ABOVE the top edge and falls a full
+      // vertical lane to its ground point — encrypted chord rain across the whole view.
+      const gx  = this.camera.x + randomRange(-200, this._viewW + 200);
+      const gy  = this.camera.y + randomRange(this._viewH * 0.25, this._viewH + 120);
+      const top = this.camera.y - 80;
       w.frags.push({
-        x: gx, gy: gy, t: 0, fall: 0.45, hitDone: false,
+        x: gx, gy: gy, top: top, t: 0, fall: Math.max(0.35, (gy - top) / 1050), hitDone: false,
         txt: FRAG_SET[Math.floor(Math.random() * FRAG_SET.length)],
         color: COLORS[Math.floor(Math.random() * COLORS.length)],
         rot: randomRange(-0.9, 0.9),
@@ -10448,9 +10451,18 @@ export class Game {
     }
     for (const f of w.frags) {
       if (f.t < f.fall) {                                         // falling encrypted fragment
-        const k = f.t / f.fall, y = f.gy - (1 - k) * 340;
+        const k = f.t / f.fall;
+        const top = f.top !== undefined ? f.top : f.gy - 340;
+        const y = top + k * (f.gy - top);
+        const tail = Math.min(240, Math.max(70, (y - top) * 0.55));
         ctx.save();
         ctx.globalCompositeOperation = 'lighter';
+        const tg = ctx.createLinearGradient(f.x, y - tail, f.x, y);
+        tg.addColorStop(0, 'rgba(0,0,0,0)');
+        tg.addColorStop(1, f.color);
+        ctx.globalAlpha = 0.30;
+        ctx.strokeStyle = tg; ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.moveTo(f.x, y - tail); ctx.lineTo(f.x, y); ctx.stroke();
         ctx.globalAlpha = 0.34 + 0.22 * k;                        // low-alpha — never a readable block
         ctx.translate(f.x, y); ctx.rotate(f.rot);
         ctx.fillStyle = f.color;
@@ -10748,7 +10760,7 @@ export class Game {
     // Falling bolts keep advancing after the storm window closes, so in-flight bolts still land.
     const bolts = this._redCurtainBolts;
     if (bolts.length) {
-      const RADIUS = 95, DMG = 55, SLOW = 0.6;
+      const RADIUS = 95, DMG = 48, SLOW = 0.6;   // slightly lower per-impact — the curtain lands ~2x more impacts
       for (const b of bolts) {
         b.t += dt;
         if (b.t < b.fall) continue;
@@ -10767,17 +10779,21 @@ export class Game {
 
     const rc = this._redCurtain;
     if (!rc) return;
-    const DURATION = 6.5, SPAWN_EVERY = 0.22, MAX_BOLTS = 14;
+    // TRUE CURTAIN: every bolt is born ABOVE the top edge of the view and rains the FULL
+    // screen height in a vertical lane (constant fall speed), dense across the whole width —
+    // a falling curtain of red notes, not scattered strikes.
+    const DURATION = 6.5, SPAWN_EVERY = 0.13, MAX_BOLTS = 26, FALL_SPEED = 1350;
     rc.t += dt; rc.spawnTimer -= dt;
     if (rc.t < DURATION && rc.spawnTimer <= 0) {
       rc.spawnTimer = SPAWN_EVERY;
-      const n = 2 + (Math.random() < 0.5 ? 1 : 0);              // 2-3 bolts per pulse
+      const n = 3 + (Math.random() < 0.5 ? 1 : 0);              // 3-4 lanes per pulse
       for (let i = 0; i < n; i++) {
         if (bolts.length >= MAX_BOLTS) break;                   // hard cap on simultaneous falling bolts
-        // Random ground point across the VISIBLE camera area (world coords from camera bounds)
-        const gx = this.camera.x + randomRange(40, this._viewW - 40);
-        const gy = this.camera.y + randomRange(80, this._viewH - 40);
-        bolts.push({ x: gx, gy: gy, t: 0, fall: randomRange(0.42, 0.55), done: false });
+        const gx  = this.camera.x + randomRange(30, this._viewW - 30);
+        const gy  = this.camera.y + randomRange(this._viewH * 0.22, this._viewH - 30);
+        const top = this.camera.y - 60;                         // born above the visible top edge
+        bolts.push({ x: gx, gy: gy, top: top, t: 0, fall: Math.max(0.3, (gy - top) / FALL_SPEED),
+                     glyph: Math.random() < 0.5 ? '\u266a' : '\u266b', done: false });
       }
     }
     if (rc.t >= DURATION && !bolts.length) this._redCurtain = null;
@@ -10799,19 +10815,24 @@ export class Game {
     // Falling red note-bolts — note glyph head + additive lightning tail (gradient line)
     for (const b of bolts) {
       const k = Math.min(1, b.t / b.fall);
-      const y = b.gy - (1 - k) * 420;
+      const top = b.top !== undefined ? b.top : b.gy - 420;
+      const y = top + k * (b.gy - top);
+      const tail = Math.min(300, Math.max(90, (y - top) * 0.6));   // long curtain streak
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
-      const grad = ctx.createLinearGradient(b.x, y - 120, b.x, y);
+      const grad = ctx.createLinearGradient(b.x, y - tail, b.x, y);
       grad.addColorStop(0, 'rgba(255,45,45,0)');
-      grad.addColorStop(1, 'rgba(255,130,90,0.9)');
-      ctx.strokeStyle = grad; ctx.lineWidth = 4;
-      ctx.beginPath(); ctx.moveTo(b.x, y - 120); ctx.lineTo(b.x, y); ctx.stroke();
+      grad.addColorStop(0.6, 'rgba(255,45,45,0.55)');
+      grad.addColorStop(1, 'rgba(255,150,110,0.95)');
+      ctx.strokeStyle = grad; ctx.lineWidth = 5;
+      ctx.beginPath(); ctx.moveTo(b.x, y - tail); ctx.lineTo(b.x, y); ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,235,225,0.5)'; ctx.lineWidth = 1.5;   // white-hot core line
+      ctx.beginPath(); ctx.moveTo(b.x, y - tail * 0.5); ctx.lineTo(b.x, y); ctx.stroke();
       ctx.globalAlpha = 0.95;
       ctx.fillStyle = '#ff2d2d';
       ctx.font = 'bold 26px Consolas, monospace';
       ctx.textAlign = 'center';
-      ctx.fillText('♪', b.x, y);
+      ctx.fillText(b.glyph || '\u266a', b.x, y);
       ctx.restore();
     }
     // Ground impacts — red shock ring + gold sparks (procedural spokes, no per-particle arrays)
