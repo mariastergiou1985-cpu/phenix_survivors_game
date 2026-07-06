@@ -302,6 +302,11 @@ export const ALL_UPGRADES = [
   new UpgradeDefinition('infuse_thunder_maiden', 'Thunder Maiden Infusion', 'Adds THUNDER MAIDEN element. With Fusion Catalyst, attacks can trigger the Crimson Thunder Gate resonance field.',
     '#ffd23c', 1, p => { (p.secondaryElements ||= []).includes('thunder_maiden') || p.secondaryElements.push('thunder_maiden'); }, '🌩', 'legendary', null, null, true, false, null, true,
     ['eddie']),   // Eddie only — gold chain-lightning secondary for his Crimson Gate primary
+  // Eddie GUITAR SOLO — his second weapon. Big red note-riffs scatter into enemies AND golden
+  // lightning strikes the whole map each time the solo plays (with the eddie_riffs track).
+  new UpgradeDefinition('eddie_guitar_solo', 'Guitar Solo', 'Eddie shreds a solo: GIANT red note-riffs scatter into the crowd and GOLDEN lightning strikes the WHOLE map. Faster and stronger per level.',
+    '#ffd23c', 3, () => {}, '🎸', 'legendary', null, null, false, false, null, true,
+    ['eddie']),   // Eddie only — available in Act 1 + Endless
 ];
 
 // ─── Weighted sample: every card is useful; bias toward the player's current build ──

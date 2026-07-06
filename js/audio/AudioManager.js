@@ -153,6 +153,27 @@ export class AudioManager {
     audio.currentTime = 0;
   }
 
+  // Eddie GUITAR SOLO one-shot riff clip. Plays OVER the current gameplay music (its own
+  // gain node → musicGain), restartable on every solo wave. Lazily wired once; degrades
+  // safely if the file is missing or the AudioContext blocks autoplay.
+  playEddieRiffs() {
+    try {
+      if (!this._eddieRiffsAudio) {
+        const a = new Audio('assets/audio/music/eddie_riffs.mp3?v=20260706290000');
+        a.loop = false; a.preload = 'auto';
+        a.onerror = () => console.warn('[Audio] failed to load: eddie_riffs.mp3');
+        const src = this.actx.createMediaElementSource(a);
+        const g   = this.actx.createGain(); g.gain.value = 0.6;
+        src.connect(g); g.connect(this.musicGain);
+        this._eddieRiffsAudio = a;
+      }
+      const a = this._eddieRiffsAudio;
+      if (this.actx.state === 'suspended') this.actx.resume().catch(() => {});
+      try { a.currentTime = 0; } catch (_) {}
+      a.play().catch(() => {});
+    } catch (_) {}
+  }
+
   // Each start method makes its track the single CURRENT track: stop the other two, then
   // record + play this one. _currentMusic gates _play's async retry so a stale track that
   // was just stopped can never re-start on top of the new one (the overlap bug).

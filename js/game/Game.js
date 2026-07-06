@@ -17,8 +17,8 @@ import { SupportDrone }   from '../entities/SupportDrone.js?v=20260703990000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260705150000';
 import { SystemEventManager } from './Events.js?v=20260705150000';
-import { UpgradeUI }      from './UpgradeUI.js?v=20260705300000';
-import { weightedSample } from './Upgrades.js?v=20260705300000';
+import { UpgradeUI }      from './UpgradeUI.js?v=20260706300000';
+import { weightedSample } from './Upgrades.js?v=20260706300000';
 import { MutationUI }      from './MutationUI.js?v=20260703990000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260705300000';
@@ -1085,6 +1085,10 @@ export class Game {
     this._redCurtainBolts   = [];   // falling red note-bolts (hard cap 14 simultaneous)
     this._redCurtainImpacts = [];   // short-lived ground impact visuals (cap 20)
     this._redThunderArcs  = []; // Solo Red Thunder Lv3+ chain-lightning arc visuals (short-lived)
+    this._guitarSoloCd    = 4;  // Eddie GUITAR SOLO card cooldown (seconds until next riff wave)
+    this._guitarNotes     = []; // big red note-riff projectiles [{x,y,vx,vy,life,glyph,rot}]
+    this._goldStrikes     = []; // full-map golden lightning bolts [{x,gy,top,t,fall,done}]
+    this._goldImpacts     = []; // golden strike ground impact rings (cap 24)
     this._murkActive  = false; // ABYSSAL MURK live flag (halves effective pickup radius while true)
     this.bossTrails    = [];   // boss/mini-boss corruption blood trails — player-only DoT (capped, auto-expire)
     this._lavaRainActive = 0;  // ambient Lava Rain active window (s) — sustained storm, capped drops
@@ -7022,6 +7026,7 @@ export class Game {
     this._updateOniFx(dt);          // Oni Protocol 0 (guards on character)
     this._updateEuclidKit(dt);      // Euclid Vector toxin kit (guards on character)
     this._updateSoloRedThunder(dt); // Eddie native weapon — red riff bolts (guards on character)
+    this._updateGuitarSolo(dt);     // Eddie GUITAR SOLO card — big red notes + golden full-map lightning
     this._updateEnemies(dt);
     this._updateOverload(dt);
     this._updateSpawning(dt);
@@ -9779,6 +9784,145 @@ export class Game {
     ctx.restore();
   }
 
+  // ── EDDIE GUITAR SOLO (extra card) — big red note-riffs + golden full-map lightning ──
+  // Every few seconds while the card is held, Eddie's guitar wails: a fan of GIANT red
+  // musical notes scatters into the crowd (contact damage, one hit per enemy per note) and
+  // golden lightning strikes rain across the WHOLE visible map (AoE). Plays eddie_riffs.mp3.
+  _updateGuitarSolo(dt) {
+    // ── advance existing big red note projectiles (finish in-flight even off-Eddie) ──
+    if (this._guitarNotes.length) {
+      for (const n of this._guitarNotes) {
+        n.life -= dt;
+        n.x += n.vx * dt; n.y += n.vy * dt;
+        n.vx *= 0.985; n.vy *= 0.985;                 // gentle drag so notes hang in the crowd
+        n.rot += dt * 5;
+        if (!n.hit) n.hit = new Set();
+        for (const t of this._brawlerTargets()) {
+          if (n.hit.has(t.obj)) continue;
+          if (distance(t.obj.pos, { x: n.x, y: n.y }) <= 46 + (t.obj.radius || 0)) {
+            this._brawlerHit(t, (this._targetIsBoss(t) ? 0.6 : 1) * n.dmg, '#ff2d2d');
+            n.hit.add(t.obj);
+          }
+        }
+      }
+      { const _a = this._guitarNotes; let _w = 0; for (let _i = 0; _i < _a.length; _i++) { const n = _a[_i]; if (n.life > 0) _a[_w++] = n; } _a.length = _w; }
+    }
+    // ── advance golden full-map strikes (fall → ground AoE) ──
+    if (this._goldStrikes.length) {
+      const R = 115;
+      for (const b of this._goldStrikes) {
+        b.t += dt;
+        if (b.t < b.fall) continue;
+        b.done = true;
+        const c = new Vec2(b.x, b.gy);
+        for (const t of this._brawlerTargets()) {
+          if (distance(c, t.obj.pos) > R + (t.obj.radius || 0)) continue;
+          this._brawlerHit(t, (this._targetIsBoss(t) ? 0.6 : 1) * b.dmg, '#ffd23c');
+        }
+        if (this._goldImpacts.length < 24) this._goldImpacts.push({ x: b.x, y: b.gy, r: R, life: 0.4, maxLife: 0.4 });
+      }
+      { const _a = this._goldStrikes; let _w = 0; for (let _i = 0; _i < _a.length; _i++) { const b = _a[_i]; if (!b.done) _a[_w++] = b; } _a.length = _w; }
+    }
+    if (this._goldImpacts.length) {
+      for (const im of this._goldImpacts) im.life -= dt;
+      const _a = this._goldImpacts; let _w = 0; for (let _i = 0; _i < _a.length; _i++) { const im = _a[_i]; if (im.life > 0) _a[_w++] = im; } _a.length = _w;
+    }
+
+    // ── SPAWN a new wave — Eddie only, requires the GUITAR SOLO card ──
+    if (!this.player || this.player.selectedCharacter !== 'eddie') return;
+    if (this.paused || this.gameOver || this.victory || this.upgradeUI || this.mutationUI) return;
+    const lvl = this._cardLvl('eddie_guitar_solo');
+    if (lvl < 1) return;
+    this._guitarSoloCd -= dt;
+    if (this._guitarSoloCd > 0) return;
+    this._guitarSoloCd = Math.max(4.5, 8 - lvl);       // faster solos at higher card level
+
+    this.audio?.playEddieRiffs?.();
+    this.triggerAnnouncement('♪ GUITAR SOLO ♫', '#ff2d2d');
+    const p = this.player;
+
+    // GIANT red note-riffs — fan out all around, biased toward the nearest enemy cluster.
+    const count = 12 + lvl * 2;
+    const nDmg  = 40 + 14 * lvl;
+    let baseAng = Math.random() * Math.PI * 2;
+    const tgt = this._autoTarget?.(p.pos, 900);
+    if (tgt) baseAng = Math.atan2(tgt.pos.y - p.pos.y, tgt.pos.x - p.pos.x);
+    for (let i = 0; i < count; i++) {
+      const ang = baseAng + (i / count) * Math.PI * 2 + (Math.random() - 0.5) * 0.4;
+      const spd = 340 + Math.random() * 160;
+      this._guitarNotes.push({
+        x: p.pos.x, y: p.pos.y, vx: Math.cos(ang) * spd, vy: Math.sin(ang) * spd,
+        life: 1.5, dmg: nDmg, glyph: Math.random() < 0.5 ? '♪' : '♫',
+        rot: Math.random() * 6, hit: new Set(),
+      });
+    }
+    // Golden lightning across the WHOLE visible map.
+    const strikes = 16 + lvl * 3;
+    const sDmg    = 30 + 10 * lvl;
+    for (let i = 0; i < strikes; i++) {
+      const gx  = this.camera.x + randomRange(30, this._viewW - 30);
+      const gy  = this.camera.y + randomRange(this._viewH * 0.14, this._viewH - 30);
+      const top = this.camera.y - 60;
+      this._goldStrikes.push({ x: gx, gy: gy, top: top, t: 0, fall: Math.max(0.12, (gy - top) / 1650), done: false, dmg: sDmg });
+    }
+    this.screenShake?.trigger?.(3, 0.25);
+  }
+
+  _drawGuitarSolo(ctx) {
+    // Golden falling lightning bolts (world-space — this pass is camera-translated).
+    if (this._goldStrikes.length) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      for (const b of this._goldStrikes) {
+        const k  = Math.min(1, b.t / b.fall);
+        const yN = b.top + (b.gy - b.top) * k;
+        const tail = 220;
+        const grad = ctx.createLinearGradient(b.x, yN - tail, b.x, yN);
+        grad.addColorStop(0, 'rgba(255,210,60,0)');
+        grad.addColorStop(1, '#ffe680');
+        ctx.strokeStyle = grad; ctx.lineWidth = 5; ctx.globalAlpha = 0.85;
+        ctx.beginPath();
+        ctx.moveTo(b.x, yN - tail);
+        for (let s = 1; s < 4; s++) { const f = s / 4; ctx.lineTo(b.x + (Math.random() - 0.5) * 14, yN - tail + tail * f); }
+        ctx.lineTo(b.x, yN);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+    // Golden ground-impact rings.
+    if (this._goldImpacts.length) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      for (const im of this._goldImpacts) {
+        const a = Math.max(0, im.life / im.maxLife);
+        ctx.globalAlpha = a * 0.8;
+        ctx.strokeStyle = '#ffd23c'; ctx.lineWidth = 5;
+        ctx.beginPath(); ctx.arc(im.x, im.y, im.r * (1 - a * 0.4), 0, Math.PI * 2); ctx.stroke();
+      }
+      ctx.restore();
+    }
+    // GIANT red music notes.
+    if (this._guitarNotes.length) {
+      for (const n of this._guitarNotes) {
+        const a = Math.max(0, Math.min(1, n.life / 1.5));
+        ctx.save();
+        ctx.translate(n.x, n.y);
+        ctx.rotate(Math.sin(n.rot) * 0.4);
+        ctx.globalAlpha = 0.9 * a;
+        ctx.shadowColor = '#ff2d2d'; ctx.shadowBlur = 18;
+        ctx.fillStyle = '#ff2d2d';
+        ctx.font = 'bold 52px Consolas, monospace';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(n.glyph, 0, 0);
+        ctx.fillStyle = '#ffd9d9';
+        ctx.font = 'bold 30px Consolas, monospace';
+        ctx.fillText(n.glyph, 0, 0);
+        ctx.restore();
+      }
+      ctx.globalAlpha = 1; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    }
+  }
+
   // ╔══════════════════════════════════════════════════════════════════════════════╗
   // ║  TACTICAL CACHE WEAPONS — Independent Map Objects                          ║
   // ║  100% DECOUPLED from player position post-spawn.                           ║
@@ -10498,23 +10642,36 @@ export class Game {
     const cam = this.camera;
     const sprite = this._tacticalSpriteCache.get(w.id);
     if (sprite && sprite.complete && sprite.naturalWidth > 0) {
-      // SLOGAN CURTAIN — the Eddie Chord Curtain art drops as a big banner across the
-      // top-centre of the view while the tactical is active (fades in on deploy, out at end,
-      // gentle pulse). This is the visible "text curtain"; damage is applied in _tickChordRain.
+      // SLOGAN CURTAIN — the Eddie slogan art DROPS from the top like a full-map curtain,
+      // covering the whole view, then LINGERS ~1.5s and fades. One-shot at deploy (not a
+      // permanent banner). Damage is applied continuously in _tickChordRain.
       const life    = w.def.duration || 14;
       const elapsed = life - w.timer;
-      const fadeIn  = Math.min(1, elapsed / 1.2);      // 1.2s fade-in
-      const fadeOut = Math.min(1, w.timer / 1.5);      // 1.5s fade-out
-      const pulse   = 0.82 + 0.18 * Math.sin((this.timeAlive || 0) * 4.2);
-      const bw = Math.min(this._viewW * 0.46, 480);
-      const bh = bw;                                   // square slogan art
-      const bx = this._viewW / 2 - bw / 2;
-      const by = this._viewH * 0.07;
-      ctx.save();
-      ctx.globalAlpha = 0.7 * fadeIn * fadeOut * pulse;
-      ctx.shadowColor = '#ff2d2d'; ctx.shadowBlur = 24;
-      ctx.drawImage(sprite, bx, by, bw, bh);
-      ctx.restore();
+      const DROP = 0.55, HOLD = 1.5, FADE = 0.7;       // drop-in → linger → fade-out
+      const total = DROP + HOLD + FADE;                // ~2.75s total appearance
+      if (elapsed <= total) {
+        // Full-view curtain: cover the whole map width, tall enough to read as a curtain.
+        const cw = this._viewW;
+        const ch = this._viewH * 0.9;
+        const cx = 0;
+        let alpha, cy;
+        if (elapsed < DROP) {                          // dropping down from above the top edge
+          const k = elapsed / DROP;
+          cy = -ch + (this._viewH * 0.05 + ch) * k;    // slide to rest near the top
+          alpha = 0.85 * k;
+        } else if (elapsed < DROP + HOLD) {            // hanging in place (linger 1.5s)
+          cy = this._viewH * 0.05;
+          alpha = 0.85;
+        } else {                                       // fade out
+          cy = this._viewH * 0.05;
+          alpha = 0.85 * Math.max(0, 1 - (elapsed - DROP - HOLD) / FADE);
+        }
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.shadowColor = '#ff2d2d'; ctx.shadowBlur = 30;
+        ctx.drawImage(sprite, cx, cy, cw, ch);         // stretched across the whole map like a banner
+        ctx.restore();
+      }
     }
     for (const f of w.frags) {
       const fx = f.x - cam.x;
@@ -12897,6 +13054,7 @@ export class Game {
     this._drawNeonPierceBeam(ctx);
     this._drawSkyfall(ctx);         // Brawler ultimate impacts
     this._drawRedThunderCurtain(ctx); // Eddie ultimate — red note-bolt storm (below player)
+    this._drawGuitarSolo(ctx);        // Eddie GUITAR SOLO — big red notes + golden lightning
     this._drawCrescentSlashes(ctx); // Brawler secondary
     this._drawChakrams(ctx);        // Brawler primary
     this._drawChromePhantom(ctx);   // Assassin ultimate (clone overlays + burst rings)
