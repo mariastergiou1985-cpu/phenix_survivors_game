@@ -8405,7 +8405,7 @@ export class Game {
         this._voidRifts.push({
           x: this.player.pos.x + Math.cos(ang) * d,
           y: this.player.pos.y + Math.sin(ang) * d,
-          r: 64, phase: 'warn', t: 0, warn: 0.9, active: 2.2, dmgCd: 0,
+          r: 120, phase: 'warn', t: 0, warn: 0.9, active: 2.8, dmgCd: 0,
         });
       }
     }
@@ -8418,7 +8418,7 @@ export class Game {
         rf.dmgCd -= dt;
         if (rf.dmgCd <= 0 &&
             Math.hypot(this.player.pos.x - rf.x, this.player.pos.y - rf.y) < rf.r) {
-          if (this._damagePlayer(6, { color: '#8b2fd6', shake: 3 })) rf.dmgCd = 0.8;
+          if (this._damagePlayer(14, { color: '#8b2fd6', shake: 5 })) rf.dmgCd = 0.7;
         }
         if (rf.t >= rf.active) rf.dead = true;
       }
