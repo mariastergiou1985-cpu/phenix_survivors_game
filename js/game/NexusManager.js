@@ -337,7 +337,7 @@ export class NexusManager {
       orb.pos.y += orb.vel.y * dt;
 
       // Mark for collection when close to player (Game.js applies the reward and splices)
-      if (d < 50) {
+      if (d < 90) {
         orb._collected = true;
       }
     }
@@ -480,26 +480,44 @@ export class NexusManager {
   drawRewardOrbs(ctx) {
     for (const orb of this.rewardOrbs) {
       const alpha = Math.min(1, orb.life / orb.maxLife * 2);
-      const pulse = 0.8 + 0.2 * Math.sin(performance.now() * 0.01);
-      const r = 6 * pulse;
+      const pulse = 0.85 + 0.15 * Math.sin(performance.now() * 0.008);
+      const R = 20 * pulse;                       // BIG gold star (outer radius)
+      const spin = performance.now() * 0.0015;
 
       ctx.save();
       ctx.globalAlpha = alpha;
-      ctx.globalCompositeOperation = 'lighter';
 
-      // Glow
-      const g = ctx.createRadialGradient(orb.pos.x, orb.pos.y, r * 0.3, orb.pos.x, orb.pos.y, r * 3);
-      g.addColorStop(0, orb.color);
-      g.addColorStop(1, 'rgba(0,0,0,0)');
+      // Soft gold glow
+      ctx.globalCompositeOperation = 'lighter';
+      const g = ctx.createRadialGradient(orb.pos.x, orb.pos.y, R * 0.2, orb.pos.x, orb.pos.y, R * 2.4);
+      g.addColorStop(0, 'rgba(255,210,60,0.85)');
+      g.addColorStop(1, 'rgba(255,170,0,0)');
       ctx.fillStyle = g;
       ctx.beginPath();
-      ctx.arc(orb.pos.x, orb.pos.y, r * 3, 0, Math.PI * 2);
+      ctx.arc(orb.pos.x, orb.pos.y, R * 2.4, 0, Math.PI * 2);
       ctx.fill();
 
-      // Core
-      ctx.fillStyle = orb.color;
+      // Solid gold 5-point star
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.translate(orb.pos.x, orb.pos.y);
+      ctx.rotate(spin);
       ctx.beginPath();
-      ctx.arc(orb.pos.x, orb.pos.y, r, 0, Math.PI * 2);
+      for (let k = 0; k < 10; k++) {
+        const a = (Math.PI / 5) * k - Math.PI / 2;
+        const rad = (k % 2 === 0) ? R : R * 0.45;
+        const px = Math.cos(a) * rad, py = Math.sin(a) * rad;
+        if (k === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      ctx.fillStyle = '#ffd23c';
+      ctx.fill();
+      ctx.strokeStyle = '#fff6c0';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      // bright center
+      ctx.beginPath();
+      ctx.arc(0, 0, R * 0.28, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffffff';
       ctx.fill();
 
       ctx.restore();
