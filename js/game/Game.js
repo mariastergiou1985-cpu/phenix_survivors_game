@@ -4392,13 +4392,13 @@ export class Game {
           <div class="em-owners">🔒 CLASS-LOCKED — only ${charA} &amp; ${charB} can perform this fusion</div>
           <div class="em-tooltip">
             <strong style="color:${evo.color}">${evo.name.replace(/'/g, '’')}</strong><br>
-            ${(evo.description || ‘’).replace(/’/g, ‘’’)}<br><br>
-            <span style="color:var(--cyan)">Requires:</span> Both <strong>${wA.name.replace(/’/g, ‘’’)}</strong> and <strong>${wB.name.replace(/’/g, ‘’’)}</strong> at Level ${recipe.minLevel} during a run. The EVOLVE card then appears GUARANTEED on your next level-up.<br>
+            ${(evo.description || '').replace(/'/g, '’')}<br><br>
+            <span style="color:var(--cyan)">Requires:</span> Both <strong>${wA.name.replace(/'/g, '’')}</strong> and <strong>${wB.name.replace(/'/g, '’')}</strong> at Level ${recipe.minLevel} during a run. The EVOLVE card then appears GUARANTEED on your next level-up.<br>
             <span style="color:var(--magenta)">Class-locked:</span> visible only to ${charA} and ${charB}.<br>
             ${evo.baseStats ? `<span style="color:var(--amber)">DMG ${evo.baseStats.damage}</span> &middot;
             <span style="color:var(--cyan)">CD ${evo.baseStats.cooldown}s</span> &middot;
             <span style="color:var(--green)">AOE ${evo.baseStats.aoeRadius}px</span> &middot;
-            <span style="color:var(--purple)">Pierce ${evo.baseStats.piercing === 99 ? ‘ALL’ : evo.baseStats.piercing}</span>` : ‘’}
+            <span style="color:var(--purple)">Pierce ${evo.baseStats.piercing === 99 ? 'ALL' : evo.baseStats.piercing}</span>` : ''}
           </div>
         </div>`;
     });
