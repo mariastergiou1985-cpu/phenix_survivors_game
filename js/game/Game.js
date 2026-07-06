@@ -10819,11 +10819,11 @@ export class Game {
     // TRUE CURTAIN: every bolt is born ABOVE the top edge of the view and rains the FULL
     // screen height in a vertical lane (constant fall speed), dense across the whole width —
     // a falling curtain of red notes, not scattered strikes.
-    const DURATION = 6.5, SPAWN_EVERY = 0.13, MAX_BOLTS = 26, FALL_SPEED = 1350;
+    const DURATION = 6.5, SPAWN_EVERY = 0.10, MAX_BOLTS = 44, FALL_SPEED = 1350;
     rc.t += dt; rc.spawnTimer -= dt;
     if (rc.t < DURATION && rc.spawnTimer <= 0) {
       rc.spawnTimer = SPAWN_EVERY;
-      const n = 3 + (Math.random() < 0.5 ? 1 : 0);              // 3-4 lanes per pulse
+      const n = 5 + (Math.random() < 0.5 ? 1 : 0);              // 5-6 lanes per pulse (denser full-map curtain)
       for (let i = 0; i < n; i++) {
         if (bolts.length >= MAX_BOLTS) break;                   // hard cap on simultaneous falling bolts
         const gx  = this.camera.x + randomRange(30, this._viewW - 30);
@@ -10861,14 +10861,16 @@ export class Game {
       grad.addColorStop(0, 'rgba(255,45,45,0)');
       grad.addColorStop(0.6, 'rgba(255,45,45,0.55)');
       grad.addColorStop(1, 'rgba(255,150,110,0.95)');
-      ctx.strokeStyle = grad; ctx.lineWidth = 5;
+      ctx.strokeStyle = grad; ctx.lineWidth = 13;                       // THICK curtain streak
       ctx.beginPath(); ctx.moveTo(b.x, y - tail); ctx.lineTo(b.x, y); ctx.stroke();
-      ctx.strokeStyle = 'rgba(255,235,225,0.5)'; ctx.lineWidth = 1.5;   // white-hot core line
+      ctx.strokeStyle = 'rgba(255,235,225,0.6)'; ctx.lineWidth = 4;     // white-hot core line
       ctx.beginPath(); ctx.moveTo(b.x, y - tail * 0.5); ctx.lineTo(b.x, y); ctx.stroke();
       ctx.globalAlpha = 0.95;
       ctx.fillStyle = '#ff2d2d';
-      ctx.font = 'bold 26px Consolas, monospace';
+      ctx.font = 'bold 48px Consolas, monospace';                       // BIG, clearly readable note
       ctx.textAlign = 'center';
+      ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+      ctx.strokeText(b.glyph || '\u266a', b.x, y);                      // white outline so the note pops
       ctx.fillText(b.glyph || '\u266a', b.x, y);
       ctx.restore();
     }
