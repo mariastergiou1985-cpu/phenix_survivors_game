@@ -10,8 +10,8 @@ import { clamp, distance, safeNormalize, randomChoice, randomRange, wrapText } f
 import { FloatingText }   from '../entities/FloatingText.js?v=20260703990000';
 import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260705040000';
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260705150000';
-import { Player }         from '../entities/Player.js?v=20260706210000';
-import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260705300000';
+import { Player }         from '../entities/Player.js?v=20260706270000';
+import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260706270000';
 import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260705150000';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=20260703990000';
 
@@ -538,6 +538,8 @@ export class Game {
       ['homing_missile_launcher', 'assets/weapons/homing/homing-missile-launcher.png'],
       // Vessel companion auto-aim rocket — big purple homing rocket sprite.
       ['vessel_purple_rockets',   'assets/weapons/vessel_purple_rockets.png'],
+      // Eddie base auto-shot — big flame projectile (replaces the generic orb).
+      ['eddie_flame',             'assets/weapons/eddie_flame.png'],
     ].forEach(([key, src]) => {
       const img = new Image();
       img.onerror = () => console.warn(`[Weapon] missing ${src} — drawn-shape fallback used`);
@@ -8134,6 +8136,13 @@ export class Game {
     if (this.player.selectedCharacter === 'japan_phasewalker') {
       proj.damage += this._cardLvl('phasewalker_phase_shard_mastery');
     }
+    // Eddie — base auto-shot renders as a BIG flame projectile (not the generic magenta orb).
+    if (this.player.selectedCharacter === 'eddie') {
+      proj.style      = 'eddie_flame';
+      proj.sprite     = this._weaponImages?.eddie_flame || null;
+      proj.spriteSize = 54;
+      proj.radius     = 12;                 // slightly larger hit to match the visible flame
+    }
     this.projectiles.push(proj);
     this.audio?.playShoot();
   }
@@ -10484,10 +10493,23 @@ export class Game {
     // actually landed, so the rain looked absent and its damage looked like it never happened.
     const cam = this.camera;
     const sprite = this._tacticalSpriteCache.get(w.id);
-    if (sprite && sprite.complete && sprite.naturalWidth > 0) {   // deployed-cache marker at drop point
+    if (sprite && sprite.complete && sprite.naturalWidth > 0) {
+      // SLOGAN CURTAIN — the Eddie Chord Curtain art drops as a big banner across the
+      // top-centre of the view while the tactical is active (fades in on deploy, out at end,
+      // gentle pulse). This is the visible "text curtain"; damage is applied in _tickChordRain.
+      const life    = w.def.duration || 14;
+      const elapsed = life - w.timer;
+      const fadeIn  = Math.min(1, elapsed / 1.2);      // 1.2s fade-in
+      const fadeOut = Math.min(1, w.timer / 1.5);      // 1.5s fade-out
+      const pulse   = 0.82 + 0.18 * Math.sin((this.timeAlive || 0) * 4.2);
+      const bw = Math.min(this._viewW * 0.46, 480);
+      const bh = bw;                                   // square slogan art
+      const bx = this._viewW / 2 - bw / 2;
+      const by = this._viewH * 0.07;
       ctx.save();
-      ctx.globalAlpha = Math.min(1, w.timer / 1.0) * 0.9;
-      ctx.drawImage(sprite, w.x - cam.x - 30, w.y - cam.y - 30, 60, 60);
+      ctx.globalAlpha = 0.7 * fadeIn * fadeOut * pulse;
+      ctx.shadowColor = '#ff2d2d'; ctx.shadowBlur = 24;
+      ctx.drawImage(sprite, bx, by, bw, bh);
       ctx.restore();
     }
     for (const f of w.frags) {

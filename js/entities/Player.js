@@ -1,6 +1,6 @@
 import { Vec2, WIDTH, HEIGHT, WORLD_W, WORLD_H, WORLD_MARGIN, WORLD_BOUNDS, PLAYER_RADIUS, CYAN, WHITE, YELLOW, GREEN, BLUE, RED } from '../constants.js';
 import { clamp, safeNormalize } from '../utils.js';
-import { Projectile } from './Projectile.js?v=20260705300000';
+import { Projectile } from './Projectile.js?v=20260706270000';
 import { FloatingText } from './FloatingText.js';
 
 export class Player {

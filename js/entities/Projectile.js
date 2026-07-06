@@ -39,7 +39,7 @@ export class Projectile {
         const alpha = frac * t1.a * 0.55;
         if (alpha < 0.01) continue;
         ctx.globalAlpha  = alpha;
-        ctx.strokeStyle  = MAGENTA;
+        ctx.strokeStyle  = (this.style === 'eddie_flame') ? '#ff7a1a' : MAGENTA;   // flame → orange trail
         ctx.lineWidth    = Math.max(0.5, this.radius * frac * 0.6);
         ctx.lineCap      = 'round';
         ctx.beginPath();
@@ -96,6 +96,35 @@ export class Projectile {
       ctx.globalAlpha = 0.5; ctx.fillStyle = '#bfefff';   // glitch echo flecks
       ctx.fillRect(-3, -1, 5, 2);
       ctx.restore();
+      return;
+    }
+    // Eddie base auto-shot — a BIG flame projectile (replaces the generic orb).
+    if (this.style === 'eddie_flame') {
+      const a   = Math.atan2(this.direction.y, this.direction.x);
+      const spr = this.sprite;
+      const sz  = this.spriteSize || 50;
+      ctx.save();
+      ctx.translate(this.pos.x, this.pos.y);
+      ctx.rotate(a - Math.PI / 2);          // flame art points up → align its tip to travel direction
+      ctx.globalCompositeOperation = 'lighter';
+      if (spr && spr.complete && spr.naturalWidth > 0) {
+        const ar  = spr.naturalWidth / spr.naturalHeight;
+        const hgt = sz, wid = sz * ar;
+        ctx.globalAlpha = 0.96;
+        ctx.drawImage(spr, -wid / 2, -hgt / 2, wid, hgt);
+      } else {
+        // procedural flame fallback (no asset)
+        ctx.fillStyle = '#ff5a1a';
+        ctx.beginPath();
+        ctx.moveTo(0, -sz * 0.6);
+        ctx.quadraticCurveTo(sz * 0.42, 0, 0, sz * 0.5);
+        ctx.quadraticCurveTo(-sz * 0.42, 0, 0, -sz * 0.6);
+        ctx.fill();
+        ctx.fillStyle = '#ffd24a';
+        ctx.beginPath(); ctx.arc(0, sz * 0.12, sz * 0.2, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.restore();
+      ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
       return;
     }
     const spr = this.sprite;
