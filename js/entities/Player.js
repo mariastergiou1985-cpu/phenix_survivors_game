@@ -63,13 +63,13 @@ export class Player {
       this.baseSpeed    = Math.round(230 * 1.12); // 258 (fast; only Taekwondo is faster)
       this.pickupRadius = 88;
     } else if (this.selectedCharacter === 'eddie') {
-      // Thunder / Berserk: huge HP pool + near-Taekwondo speed, but a SMALLER mana tank
-      // (80 < 100) — his ultimate economy is the tradeoff for raw riff damage.
-      this.maxHp     = 200;
-      this.hp        = 200;
-      this.maxMana   = 80;
-      this.mana      = 80;
-      this.baseSpeed = Math.round(230 * 1.18); // 271 (a hair under Taekwondo at 276)
+      // Thunder / Berserk — STRONGEST character: biggest HP pool, fastest, best mana economy, armored.
+      this.maxHp     = 260;
+      this.hp        = 260;
+      this.maxMana   = 120;
+      this.mana      = 120;
+      this.baseSpeed = Math.round(230 * 1.26); // 290 (fastest — above Taekwondo 276)
+      this.contactDamageReduction = 0.20;      // best armor of all characters
     }
 
     this._tankTimer   = 0;     // Oni Protocol 0: damage-reduction window
