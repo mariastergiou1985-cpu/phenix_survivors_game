@@ -648,6 +648,14 @@ export class Game {
     this._lavaRainSprite = new Image();
     this._lavaRainSprite.onerror = () => console.warn('[Boss] lava_fire_rain.png not found — drawn fallback will be used');
     this._lavaRainSprite.src = 'assets/enemies/bosses/lava_fire_rain.png';
+    // Falling lava-bomb sheet (2×3 molten meteors) — rains from the sky into lava zones.
+    this._lavaBombsSprite = new Image();
+    this._lavaBombsSprite.onerror = () => console.warn('[Hazard] lavabombs_t.png not found — drawn fallback used');
+    this._lavaBombsSprite.src = 'assets/weapons/lavabombs_t.png?v=20260706310000';
+    // Red strike-marker reticle — incoming-attack ground marker (replaces the plain red circle).
+    this._strikeMarkerSprite = new Image();
+    this._strikeMarkerSprite.onerror = () => console.warn('[Hazard] marker_t.png not found — drawn fallback used');
+    this._strikeMarkerSprite.src = 'assets/weapons/marker_t.png?v=20260706310000';
     // Endless hazard art (single-frame transparent PNGs).
     this._airstrikeSprite = new Image();
     this._airstrikeSprite.onerror = () => console.warn('[Endless] airstrike_sheet.png not found — drawn fallback used');
@@ -18009,6 +18017,21 @@ _drawLoreArchive(ctx) {
           ctx.fill();
         }
 
+        // ── Falling LAVA BOMB from the sky (user art) — rains down into the zone as k→1 ──
+        const _lb = this._lavaBombsSprite;
+        if (_lb && _lb.complete && _lb.naturalWidth > 0) {
+          const cols = 2, rows = 3;
+          const cw = _lb.naturalWidth / cols, chh = _lb.naturalHeight / rows;
+          const cell = zSeed % 6;
+          const cx = (cell % cols) * cw, cy = ((cell / cols) | 0) * chh;
+          const bw = R * 1.9, bh = bw * (chh / cw);
+          const startY = py - 400;
+          const curY   = startY + (py - startY) * (k * k);   // accelerate down (gravity) → lands at impact
+          ctx.globalAlpha = Math.min(1, 0.45 + k);
+          ctx.globalCompositeOperation = 'source-over';
+          ctx.drawImage(_lb, cx, cy, cw, chh, px - bw / 2, curY - bh / 2, bw, bh);
+        }
+
         ctx.restore();
       } else {
         // ── IMPACT PHASE: volcanic eruption — magma burst + flying lava blobs ──
@@ -21428,17 +21451,22 @@ _drawLoreArchive(ctx) {
       const prog  = Math.min(1, activeT / sh.warnT);
       const { pos } = sh;
 
-      // Ground shadow: pulsing orange circle
+      // Ground marker: red strike reticle (replaces the plain red circle), tightening as impact nears.
+      const _mk = this._strikeMarkerSprite;
       ctx.save();
-      ctx.globalAlpha = 0.10 + 0.25 * prog;
-      ctx.fillStyle   = ORANGE;
-      ctx.beginPath(); ctx.arc(pos.x, pos.y, DD_ROCKET_RADIUS, 0, Math.PI * 2); ctx.fill();
-      ctx.globalAlpha = 0.35 + 0.55 * prog;
-      ctx.strokeStyle = RED;
-      ctx.lineWidth   = 2;
-      ctx.setLineDash([8, 6]);
-      ctx.beginPath(); ctx.arc(pos.x, pos.y, DD_ROCKET_RADIUS, 0, Math.PI * 2); ctx.stroke();
-      ctx.setLineDash([]);
+      if (_mk && _mk.complete && _mk.naturalWidth > 0) {
+        const ms = DD_ROCKET_RADIUS * 2.6 * (1 - 0.12 * prog);   // slight tighten = imminence
+        ctx.globalAlpha = 0.5 + 0.45 * prog;
+        ctx.drawImage(_mk, pos.x - ms / 2, pos.y - ms / 2, ms, ms);
+      } else {
+        ctx.globalAlpha = 0.10 + 0.25 * prog;
+        ctx.fillStyle   = ORANGE;
+        ctx.beginPath(); ctx.arc(pos.x, pos.y, DD_ROCKET_RADIUS, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = 0.35 + 0.55 * prog;
+        ctx.strokeStyle = RED; ctx.lineWidth = 2; ctx.setLineDash([8, 6]);
+        ctx.beginPath(); ctx.arc(pos.x, pos.y, DD_ROCKET_RADIUS, 0, Math.PI * 2); ctx.stroke();
+        ctx.setLineDash([]);
+      }
       ctx.restore();
 
       // Rocket falling from above (visible in last 40% of warn time)
