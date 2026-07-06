@@ -558,4 +558,23 @@ function loop(timestamp) {
   lastTime = timestamp;
 
   // Crash-resilient: a single transient error in update/draw must NOT stop the rAF loop
-  // (that was a hard
+  // (that was a hard-freeze with the timer stuck). We always reschedule, keep the canvas
+  // save-stack balanced via finally, and log the first error so the cause stays visible.
+  const _fStart = performance.now();
+  try {
+    applyGamepad();   // inject controller input into keys/handlers before the update reads them
+    game.setMousePos(mousePos);
+    game.update(dt, { keys, mousePos, mouseDown });
+    applyContextualCursor();
+
+    // Apply screen shake offset
+    const [ox, oy] = game.screenShake.getOffset();
+    ctx.save();
+    try { ctx.translate(ox, oy); game.draw(ctx); }
+    finally { ctx.restore(); }
+  } catch (err) {
+    if (!loop._errLogged) { console.error('[game loop]', err); loop._errLogged = true; }
+  }
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);

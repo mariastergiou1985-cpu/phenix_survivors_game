@@ -22747,4 +22747,74 @@ _drawLoreArchive(ctx) {
         if (distance(t.obj.pos, { x: m.x, y: m.y }) < (t.obj.radius || 28) + 10) {
           this._brawlerHit(t, (this._targetIsBoss(t) ? 0.55 : 1) * dmg, '#ff4400');
           this._specialRings.push({
-            pos: { x: m.x, y: m.y }
+            pos: { x: m.x, y: m.y },
+            radius: 0, maxRadius: 55,
+            life: 0.30, maxLife: 0.30,
+            color1: '#ff4400', color2: '#ffcc00',
+          });
+          this.audio?.playHomingMissileImpact?.();
+          hit = true;
+          break;
+        }
+      }
+      if (hit) { this._homingMissiles.splice(i, 1); continue; }
+    }
+
+    // Launch new missile
+    this._homingMissileCd -= dt;
+    if (this._homingMissileCd <= 0) {
+      this._homingMissileCd = cd;
+      const p = this.player;
+      let best = null, bestDist = 650;
+      for (const t of this._brawlerTargets()) {
+        const d = distance(t.obj.pos, p.pos);
+        if (d < bestDist) { bestDist = d; best = t; }
+      }
+      if (best) {
+        const ang = Math.atan2(best.obj.pos.y - p.pos.y, best.obj.pos.x - p.pos.x);
+        this._homingMissiles.push({ x: p.pos.x, y: p.pos.y, ang, life: 4.5, trail: [] });
+        this.audio?.playHomingMissileFire?.();
+      }
+    }
+  }
+
+  _drawHomingMissiles(ctx) {
+    if (!this._homingMissiles.length) return;
+    const spr   = this._weaponImages?.homing_missile_launcher;
+    const ready = spr && spr.complete && spr.naturalWidth > 0;
+    const sz    = 36;
+    for (const m of this._homingMissiles) {
+      // Draw exhaust trail
+      if (m.trail) {
+        for (const tr of m.trail) {
+          if (tr.a <= 0) continue;
+          ctx.save();
+          ctx.globalAlpha = Math.max(0, tr.a);
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.fillStyle = '#ff6600';
+          ctx.beginPath(); ctx.arc(tr.x, tr.y, 3.5, 0, Math.PI * 2); ctx.fill();
+          ctx.restore();
+        }
+      }
+      // Draw missile body
+      ctx.save();
+      ctx.translate(m.x, m.y);
+      ctx.rotate(m.ang);
+      if (ready) {
+        ctx.globalAlpha = 0.92;
+        ctx.drawImage(spr, -sz / 2, -sz / 2, sz, sz);
+      } else {
+        ctx.fillStyle = '#ff4400';
+        ctx.beginPath();
+        ctx.moveTo(16, 0); ctx.lineTo(-12, 8); ctx.lineTo(-8, 0); ctx.lineTo(-12, -8);
+        ctx.closePath(); ctx.fill();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.55;
+        ctx.fillStyle = '#ff8800';
+        ctx.beginPath(); ctx.arc(-12, 0, 6, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  }
+}
