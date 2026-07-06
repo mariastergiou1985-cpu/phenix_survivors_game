@@ -438,8 +438,8 @@ export const TACTICAL_DEFS = Object.freeze({
     baseDamage:  55,
     swathRadius: 54,
     swordSpeed:  520,
-    tickRate:     8.0,    // seconds between blade launches
-    duration:    24,      // seconds active (~3 launches)
+    tickRate:     1.2,    // seconds between blade launches — near-continuous
+    duration:    60,      // seconds active (continuous launches while deployed)
     color:       '#ff6a1a',
     glitchFx: {
       vectorFlash: true,
