@@ -9391,8 +9391,8 @@ export class Game {
       return;                                   // evolution takes priority, skip normal weapon card
     }
 
-    // ── Tactical Cache card: 15% chance (separate from weapon cards) ──
-    if (Math.random() < 0.15) {
+    // ── Tactical Cache card: 30% chance (separate from weapon cards) — buffed so Missile Barrage etc. appear more often ──
+    if (Math.random() < 0.30) {
       const tacCard = this._buildTacticalCard();
       if (tacCard) { choices[choices.length - 1] = tacCard; return; }
     }
