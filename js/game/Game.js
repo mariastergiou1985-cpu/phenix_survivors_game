@@ -536,6 +536,8 @@ export class Game {
       ['nano_mine',               'assets/weapons/mine/nano-mine.png'],
       ['blacknet_swarm_drone',    'assets/weapons/summon/blacknet-swarm-drone.png'],
       ['homing_missile_launcher', 'assets/weapons/homing/homing-missile-launcher.png'],
+      // Vessel companion auto-aim rocket — big purple homing rocket sprite.
+      ['vessel_purple_rockets',   'assets/weapons/vessel_purple_rockets.png'],
     ].forEach(([key, src]) => {
       const img = new Image();
       img.onerror = () => console.warn(`[Weapon] missing ${src} — drawn-shape fallback used`);
@@ -1008,6 +1010,8 @@ export class Game {
     this._blacknetDrones        = [];         // Blacknet swarm drone companions [{angle,x,y,fireTimer}]
     this._homingMissiles        = [];         // active homing missiles [{x,y,ang,life,trail}]
     this._homingMissileCd       = 0;          // missile launch cooldown
+    this._vesselRockets         = [];         // vessel companion auto-aim purple rockets [{x,y,ang,life,trail}]
+    this._vesselRocketCd        = 0;          // vessel rocket launch cooldown
     this.empRings     = [];
     this._specialRings    = [];
     this.thunderSolo      = null;   // Thunder Solo ultimate state while active
@@ -6800,6 +6804,7 @@ export class Game {
     // ── Vessel passive runtime tick ──────────────────────────────────────────
     this._tickVesselPassives(dt);
     this._tickVesselCompanion(dt);   // Ally-Walker-style escort follow (visual only)
+    this._tickVesselRockets(dt);     // auto-aim purple rockets fired FROM the vessel companion
     // In-run Nexus capacity cards (Memory Bank / Core Magnetizer / Core Hoarder):
     // apply the delta once to every live matrix the frame after a card is picked.
     {
@@ -12837,6 +12842,7 @@ export class Game {
     this._drawNanoMines(ctx);            // Phase 2 MINE
     this._drawBlacknetSwarmDrones(ctx);  // Phase 2 SUMMON
     this._drawHomingMissiles(ctx);       // Phase 2 HOMING
+    this._drawVesselRockets(ctx);        // Vessel companion auto-aim purple rockets
     for (const vfx of this._activeWeaponVFX) vfx.draw(ctx);   // Evolution VFX overlays
     this._drawTacticalWeapons(ctx);  // Tactical cache weapons (independent map objects)
     this._drawEuclidKit(ctx);       // Euclid Vector toxin sniper / katanas / plague (world-space)
@@ -22818,6 +22824,130 @@ _drawLoreArchive(ctx) {
         ctx.globalAlpha = 0.55;
         ctx.fillStyle = '#ff8800';
         ctx.beginPath(); ctx.arc(-12, 0, 6, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  }
+
+  // ── VESSEL COMPANION ROCKETS — big purple auto-aim (homing) rockets ───────
+  // The escort vessel auto-locks the nearest enemy and fires large purple
+  // homing rockets that explode for AoE damage. Active for EVERY run (the
+  // default Alpha Phoenix vessel included), independent of weapon cards.
+  _tickVesselRockets(dt) {
+    if (!this._vesselRockets) this._vesselRockets = [];
+    const p = this.player;
+    if (!p || !this._activeVesselId || !this._vesselCompanion) { this._vesselRockets.length = 0; return; }
+
+    const CD    = 1.5;   // seconds between launches
+    const DMG   = 70;    // direct + AoE damage per rocket
+    const SPEED = 300;   // px/sec
+    const TURN  = 3.4;   // radians/sec homing turn rate
+    const AOE_R = 95;    // explosion radius (AoE)
+    const RANGE = 720;   // acquisition range
+
+    // Move + home existing rockets
+    for (let i = this._vesselRockets.length - 1; i >= 0; i--) {
+      const m = this._vesselRockets[i];
+      m.life -= dt;
+      if (m.life <= 0) { this._vesselRockets.splice(i, 1); continue; }
+
+      // Re-acquire nearest enemy each frame (true auto-aim)
+      let best = null, bestDist = Infinity;
+      for (const t of this._brawlerTargets()) {
+        const d = distance(t.obj.pos, { x: m.x, y: m.y });
+        if (d < bestDist) { bestDist = d; best = t; }
+      }
+      if (best) {
+        const tx = best.obj.pos.x - m.x, ty = best.obj.pos.y - m.y;
+        let dAng = Math.atan2(ty, tx) - m.ang;
+        while (dAng >  Math.PI) dAng -= Math.PI * 2;
+        while (dAng < -Math.PI) dAng += Math.PI * 2;
+        const maxTurn = TURN * dt;
+        m.ang += Math.max(-maxTurn, Math.min(maxTurn, dAng));
+      }
+
+      m.x += Math.cos(m.ang) * SPEED * dt;
+      m.y += Math.sin(m.ang) * SPEED * dt;
+
+      if (!m.trail) m.trail = [];
+      m.trail.push({ x: m.x, y: m.y, a: 0.6 });
+      if (m.trail.length > 10) m.trail.shift();
+      for (const tr of m.trail) tr.a -= dt * 1.7;
+
+      // Proximity detonation → AoE
+      let boom = false;
+      for (const t of this._brawlerTargets()) {
+        if (distance(t.obj.pos, { x: m.x, y: m.y }) < (t.obj.radius || 28) + 14) { boom = true; break; }
+      }
+      if (boom) {
+        // AoE: damage every target inside the blast radius
+        for (const t of this._brawlerTargets()) {
+          if (distance(t.obj.pos, { x: m.x, y: m.y }) <= AOE_R) {
+            this._brawlerHit(t, (this._targetIsBoss(t) ? 0.55 : 1) * DMG, '#b24cff');
+          }
+        }
+        this._specialRings.push({
+          pos: { x: m.x, y: m.y },
+          radius: 0, maxRadius: AOE_R + 10,
+          life: 0.34, maxLife: 0.34,
+          color1: '#b24cff', color2: '#e0a0ff',
+        });
+        this.audio?.playHomingMissileImpact?.();
+        this._vesselRockets.splice(i, 1);
+      }
+    }
+
+    // Launch new rocket from the vessel companion at the nearest enemy
+    this._vesselRocketCd -= dt;
+    if (this._vesselRocketCd <= 0) {
+      const c = this._vesselCompanion;
+      let best = null, bestDist = RANGE;
+      for (const t of this._brawlerTargets()) {
+        const d = distance(t.obj.pos, { x: c.x, y: c.y });
+        if (d < bestDist) { bestDist = d; best = t; }
+      }
+      if (best) {
+        this._vesselRocketCd = CD;
+        const ang = Math.atan2(best.obj.pos.y - c.y, best.obj.pos.x - c.x);
+        this._vesselRockets.push({ x: c.x, y: c.y, ang, life: 4.5, trail: [] });
+        this.audio?.playHomingMissileFire?.();
+      }
+    }
+  }
+
+  _drawVesselRockets(ctx) {
+    if (!this._vesselRockets || !this._vesselRockets.length) return;
+    const spr   = this._weaponImages?.vessel_purple_rockets;
+    const ready = spr && spr.complete && spr.naturalWidth > 0;
+    const sz    = 64;   // big — not "like a fly"
+    for (const m of this._vesselRockets) {
+      if (m.trail) {
+        for (const tr of m.trail) {
+          if (tr.a <= 0) continue;
+          ctx.save();
+          ctx.globalAlpha = Math.max(0, tr.a);
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.fillStyle = '#b24cff';
+          ctx.beginPath(); ctx.arc(tr.x, tr.y, 4.5, 0, Math.PI * 2); ctx.fill();
+          ctx.restore();
+        }
+      }
+      ctx.save();
+      ctx.translate(m.x, m.y);
+      ctx.rotate(m.ang);
+      if (ready) {
+        ctx.globalAlpha = 0.96;
+        ctx.drawImage(spr, -sz / 2, -sz / 2, sz, sz);
+      } else {
+        ctx.fillStyle = '#b24cff';
+        ctx.beginPath();
+        ctx.moveTo(22, 0); ctx.lineTo(-16, 11); ctx.lineTo(-10, 0); ctx.lineTo(-16, -11);
+        ctx.closePath(); ctx.fill();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.6;
+        ctx.fillStyle = '#e0a0ff';
+        ctx.beginPath(); ctx.arc(-16, 0, 8, 0, Math.PI * 2); ctx.fill();
       }
       ctx.restore();
     }
