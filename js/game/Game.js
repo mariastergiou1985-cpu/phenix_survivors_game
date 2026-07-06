@@ -923,7 +923,7 @@ export class Game {
     const items = ['START GAME'];
     if (this.meta?.isEndlessUnlocked()) items.push('ENDLESS MODE');
     items.push('CHAOS MODE');   // always visible; locked if !endlessUnlocked — handled in draw/click
-    items.push('CHARACTER SELECT', 'UPGRADES', 'ACHIEVEMENTS', 'RELICS', 'HANGAR', 'EVOLUTION MATRIX', 'SETTINGS', 'EXIT');
+    items.push('CHARACTER SELECT', 'UPGRADES', 'RECORDS', 'RELICS', 'HANGAR', 'EVOLUTION MATRIX', 'SETTINGS', 'EXIT');
     return items;
   }
 
@@ -3443,7 +3443,7 @@ export class Game {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
               <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
             </svg>
-            ACHIEVEMENTS
+            RECORDS
           </div>
           <div class="ca-badges">
             <div class="ca-badge">★ <span id="ca-earned">0</span>&nbsp;/&nbsp;<span id="ca-total">0</span>&nbsp;UNLOCKED</div>
@@ -4775,7 +4775,7 @@ export class Game {
     ctx.font      = 'bold 40px Consolas, monospace';
     ctx.fillStyle = CYAN;
     ctx.textAlign = 'center';
-    ctx.fillText('ACHIEVEMENTS', WIDTH / 2, 52);
+    ctx.fillText('RECORDS', WIDTH / 2, 52);
 
     // Progress header — X / N UNLOCKED
     const total  = ENDLESS_ACHIEVEMENTS.length;
@@ -7851,7 +7851,7 @@ export class Game {
     else if (item === 'ENDLESS MODE')   this.startEndlessRun();
     else if (item === 'CHAOS MODE')    this._selectChaosMode();
     else if (item === 'UPGRADES')       this.goToUpgradesScreen();
-    else if (item === 'ACHIEVEMENTS')   this.goToAchievementsScreen();
+    else if (item === 'RECORDS')        this.goToAchievementsScreen();   // 'RECORDS' label → same achievements screen/logic
     else if (item === 'RELICS')         this.goToRelicsScreen();
     else if (item === 'HANGAR')         this.goToHangar();
     else if (item === 'EVOLUTION MATRIX') this.goToEvolutionMatrix();
@@ -14617,7 +14617,7 @@ export class Game {
       'CHAOS MODE':       '✦',
       'CHARACTER SELECT': '◈',
       'UPGRADES':         '▲',
-      'ACHIEVEMENTS':     '★',
+      'RECORDS':          '★',
       'RELICS':           '◆',
       'HANGAR':           '⬢',
       'SETTINGS':         '≡',
