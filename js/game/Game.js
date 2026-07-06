@@ -478,10 +478,11 @@ export class Game {
       img.src = src + '?v=20260703997000';
       this._nexusSpriteCache[biomeId] = img;
     }
-    // Fallback for biomes without a dedicated sprite (Neon District, Abyssal Trench)
+    // Fallback for biomes without a dedicated sprite (Neon District, Abyssal Trench):
+    // the Nexus Burst art (auto-shown when approaching a biome), used for all players.
     this._nexusFallbackImage = new Image();
-    this._nexusFallbackImage.onerror = () => console.warn('[Nexus] missing assets/nexus/endless_nexus_base_8cores.png');
-    this._nexusFallbackImage.src = 'assets/nexus/endless_nexus_base_8cores.png?v=20260703997000';
+    this._nexusFallbackImage.onerror = () => console.warn('[Nexus] missing assets/nexus/nexus_burst.png');
+    this._nexusFallbackImage.src = 'assets/nexus/nexus_burst.png?v=20260706280000';
 
     // Chaos Mode background — loaded by MapManager.loadBackgrounds()
 
@@ -8424,7 +8425,7 @@ export class Game {
         this._voidRifts.push({
           x: this.player.pos.x + Math.cos(ang) * d,
           y: this.player.pos.y + Math.sin(ang) * d,
-          r: 120, phase: 'warn', t: 0, warn: 0.9, active: 2.8, dmgCd: 0,
+          r: 190, phase: 'warn', t: 0, warn: 0.9, active: 3.2, dmgCd: 0,
         });
       }
     }
