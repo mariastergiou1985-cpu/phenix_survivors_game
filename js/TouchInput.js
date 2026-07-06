@@ -245,12 +245,17 @@ export function initTouchControls({ canvas, keys, game, setAim, onQ, onE, onUlt 
     const g = game;
     const inPlay = g.gameState === 'playing' && !g.paused && !g.gameOver && !g.victory
                    && !g.upgradeUI && !g.mutationUI;
+    // A connected+activated controller drives movement/actions directly, so hide the on-screen
+    // touch joystick + buttons (they'd be redundant) — even on a phone. Touch returns if the pad
+    // goes idle/disconnects. The controller is polled on every platform, so pads work on mobile too.
+    const padActive = !!(g._controllerConnected && g._controllerActivated);
+    const showTouch = inPlay && !padActive;
     const showPause = g.gameState === 'playing' && !g.gameOver && !g.victory;
-    if (inPlay !== _shown) {
-      _shown = inPlay;
-      joy.style.display  = inPlay ? '' : 'none';
-      btns.style.display = inPlay ? '' : 'none';
-      if (!inPlay) { joyReset(); clearHeld(); }
+    if (showTouch !== _shown) {
+      _shown = showTouch;
+      joy.style.display  = showTouch ? '' : 'none';
+      btns.style.display = showTouch ? '' : 'none';
+      if (!showTouch) { joyReset(); clearHeld(); }
     }
     if (showPause !== _pauseShown) { _pauseShown = showPause; pauseB.style.display = showPause ? '' : 'none'; }
     if (g.gameState !== _lastState) { _lastState = g.gameState; updateRotate(); }
