@@ -22,7 +22,7 @@ import { weightedSample } from './Upgrades.js?v=20260705300000';
 import { MutationUI }      from './MutationUI.js?v=20260703990000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260705300000';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS } from './MetaProgress.js?v=20260705320000';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS } from './MetaProgress.js?v=20260706160000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260705300000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
@@ -1455,6 +1455,7 @@ export class Game {
       this._hideRelicsOverlay();
       this._hideHangarOverlay();
       this._hideEvoMatrixOverlay();
+      this._hideChaosLawSelectionOverlay();
       this._showMenuOverlay();
     });
   }
@@ -1601,7 +1602,7 @@ export class Game {
         'font-size:11px;letter-spacing:3px;}',
         '#cgm-chaos-law-sel .cls-card-effect{',
         'font-size:10px;color:rgba(180,220,255,0.65);letter-spacing:1px;}',
-        '#cgm-chaos-law-sel .cls-skip{text-align:center;}',
+        '#cgm-chaos-law-sel .cls-skip{text-align:center;display:flex;gap:10px;justify-content:center;}',
         '#cgm-chaos-law-sel .cls-skip button{',
         'background:transparent;border:1px solid rgba(46,230,246,0.18);',
         'border-radius:6px;color:rgba(120,160,200,0.55);',
@@ -1654,7 +1655,7 @@ export class Game {
             + '</div>'
         ).join('')
       + '</div>'
-      + '<div class="cls-skip"><button id="cls-skip-btn">SKIP \u2014 STANDARD ENDLESS</button></div>'
+      + '<div class="cls-skip"><button id="cls-back-btn">\u2190 BACK</button><button id="cls-skip-btn">SKIP \u2014 STANDARD ENDLESS</button></div>'
       + '</div>';
     document.body.appendChild(el);
 
@@ -1673,6 +1674,10 @@ export class Game {
       this.gameState = 'playing';
       this.reset();
       this._enterEndless();
+    });
+    document.getElementById('cls-back-btn').addEventListener('click', () => {
+      this._hideChaosLawSelectionOverlay();
+      this.goToMainMenu();
     });
   }
 
@@ -11797,12 +11802,12 @@ export class Game {
       this.triggerAnnouncement('SYSTEM LOG #1998 FOUND — PHANTOM ASSASSIN', '#ff4dd2');
     }
     // Euclid Vector TOXIC OVERLOAD: survive 15:00 in Endless AS Euclid Vector.
-    if (sc === 'euclid_vector' && this._eliteWaveElapsed >= 900 && !this.meta.isUnlocked('toxic_overload')) {
+    if (false && sc === 'euclid_vector' && this._eliteWaveElapsed >= 900 && !this.meta.isUnlocked('toxic_overload')) {   // LOCKED: user never requested this secret skin
       this.meta.unlock('toxic_overload');
       this.triggerAnnouncement('TOXIC OVERLOAD SIGNATURE FOUND — EUCLID SKIN', '#39ff6a');
     }
     // Phasewalker NULL WALKER: survive 18:00 in Endless AS Japan Phasewalker.
-    if (sc === 'japan_phasewalker' && this._eliteWaveElapsed >= 1080 && !this.meta.isUnlocked('null_walker')) {
+    if (false && sc === 'japan_phasewalker' && this._eliteWaveElapsed >= 1080 && !this.meta.isUnlocked('null_walker')) {   // LOCKED: user never requested this secret skin
       this.meta.unlock('null_walker');
       this.triggerAnnouncement('NULL WALKER PROTOCOL FOUND — PHASEWALKER SKIN', '#8b2fd6');
     }
@@ -11811,7 +11816,7 @@ export class Game {
       if (this.meta.unlockVessel('glitch_phantom')) this.triggerAnnouncement('GLITCH PHANTOM VESSEL UNLOCKED', '#8b2fd6');
     }
     // Oni CRIMSON PROTOCOL: survive 20:00 in Endless AS Oni Cataclysm.
-    if (sc === 'oni_cataclysm_protocol' && this._eliteWaveElapsed >= 1200 && !this.meta.isUnlocked('crimson_oni')) {
+    if (false && sc === 'oni_cataclysm_protocol' && this._eliteWaveElapsed >= 1200 && !this.meta.isUnlocked('crimson_oni')) {   // LOCKED: user never requested this secret skin
       this.meta.unlock('crimson_oni');
       this.triggerAnnouncement('CRIMSON PROTOCOL FOUND — ONI SKIN', '#ff2244');
     }
@@ -16838,7 +16843,7 @@ _drawLoreArchive(ctx) {
         if (p.y > 720) { p.y = -8; p.x = Math.random() * 1280; }
       }
       const ONSET_DUR    = 0.65;
-      const HOLD_DUR     = this._chaosMode ? 5.5 : 3.0;   // milder freeze outside Chaos
+      const HOLD_DUR     = (this._chaosMode ? 5.5 : 3.0) + (this._hasProto('frozen_sleet') ? 2.0 : 0);   // milder freeze outside Chaos; Frozen Sleet Storm+ holds longer
       const RECOVERY_DUR = 1.1;
       if (fs.phase === 'onset' && fs.t >= ONSET_DUR) {
         fs.phase = 'hold';
