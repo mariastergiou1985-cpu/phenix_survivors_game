@@ -153,26 +153,54 @@ export class AudioManager {
     audio.currentTime = 0;
   }
 
-  // Eddie GUITAR SOLO one-shot riff clip. Plays OVER the current gameplay music (its own
-  // gain node → musicGain), restartable on every solo wave. Lazily wired once; degrades
-  // safely if the file is missing or the AudioContext blocks autoplay.
+  // Eddie GUITAR SOLO track — plays the WHOLE eddie_riffs song ONCE (not restarted per wave)
+  // and DUCKS the map music to 25% while it plays so the guitar is clearly audible (mirrors the
+  // menu radio duck). Routed direct to masterGain so ducking musicGain never lowers the guitar.
+  // Idempotent: calling again while it's already playing is a no-op (lets the full track finish).
   playEddieRiffs() {
+    if (this.muted) return;
+    if (this._eddieRiffsPlaying) return;
     try {
       if (!this._eddieRiffsAudio) {
-        const a = new Audio('assets/audio/music/eddie_riffs.mp3?v=20260706290000');
+        const a = new Audio('assets/audio/music/eddie_riffs.mp3?v=20260706300000');
         a.loop = false; a.preload = 'auto';
         a.onerror = () => console.warn('[Audio] failed to load: eddie_riffs.mp3');
         const src = this.actx.createMediaElementSource(a);
-        const g   = this.actx.createGain(); g.gain.value = 0.6;
-        src.connect(g); g.connect(this.musicGain);
+        const g   = this.actx.createGain(); g.gain.value = 0.9;
+        src.connect(g); g.connect(this.masterGain);   // direct to master — duck-proof, like the radio
+        try { g.connect(this.analyser); } catch (_) {}
         this._eddieRiffsAudio = a;
       }
       const a = this._eddieRiffsAudio;
       if (this.actx.state === 'suspended') this.actx.resume().catch(() => {});
+      // Duck the map music so the guitar solo takes the foreground.
+      this.musicGain.gain.setTargetAtTime((this.muted ? 0 : this.musicVolume) * 0.25, this.actx.currentTime, 0.4);
+      this._eddieRiffsPlaying = true;
+      const restore = () => {
+        this.musicGain.gain.setTargetAtTime(this.muted ? 0 : this.musicVolume, this.actx.currentTime, 0.6);
+        this._eddieRiffsPlaying = false;
+      };
+      a.onended = restore;
+      this._eddieRiffsRestore = restore;
       try { a.currentTime = 0; } catch (_) {}
       a.play().catch(() => {});
     } catch (_) {}
   }
+
+  // Stop the guitar solo early (performance ended) and restore the map-music level.
+  stopEddieRiffs() {
+    const a = this._eddieRiffsAudio;
+    if (!a) return;
+    try { a.pause(); } catch (_) {}
+    try { this._eddieRiffsRestore?.(); } catch (_) {}
+  }
+
+  // Track length in seconds (0 until metadata has loaded).
+  eddieRiffsDuration() {
+    const d = this._eddieRiffsAudio && this._eddieRiffsAudio.duration;
+    return (d && isFinite(d)) ? d : 0;
+  }
+  isEddieRiffsPlaying() { return !!this._eddieRiffsPlaying; }
 
   // Each start method makes its track the single CURRENT track: stop the other two, then
   // record + play this one. _currentMusic gates _play's async retry so a stale track that

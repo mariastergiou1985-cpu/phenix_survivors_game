@@ -1085,7 +1085,8 @@ export class Game {
     this._redCurtainBolts   = [];   // falling red note-bolts (hard cap 14 simultaneous)
     this._redCurtainImpacts = [];   // short-lived ground impact visuals (cap 20)
     this._redThunderArcs  = []; // Solo Red Thunder Lv3+ chain-lightning arc visuals (short-lived)
-    this._guitarSoloCd    = 4;  // Eddie GUITAR SOLO card cooldown (seconds until next riff wave)
+    this._guitarSoloCd    = 4;  // Eddie GUITAR SOLO card cooldown (seconds before a performance can auto-start)
+    this._guitarPerf      = null; // active sustained solo performance { t, dur, waveCd, waveEvery, lvl } | null
     this._guitarNotes     = []; // big red note-riff projectiles [{x,y,vx,vy,life,glyph,rot}]
     this._goldStrikes     = []; // full-map golden lightning bolts [{x,gy,top,t,fall,done}]
     this._goldImpacts     = []; // golden strike ground impact rings (cap 24)
@@ -9828,20 +9829,38 @@ export class Game {
       const _a = this._goldImpacts; let _w = 0; for (let _i = 0; _i < _a.length; _i++) { const im = _a[_i]; if (im.life > 0) _a[_w++] = im; } _a.length = _w;
     }
 
-    // ── SPAWN a new wave — Eddie only, requires the GUITAR SOLO card ──
+    // ── GUITAR SOLO PERFORMANCE — Eddie only. While active, the WHOLE eddie_riffs track
+    //    plays (map music ducked) and note+lightning waves fire continuously for ≥1.5 min.
+    //    Started by the Red Thunder Curtain ultimate AND auto-repeated while the GUITAR SOLO
+    //    card is held. Other characters are unaffected.
     if (!this.player || this.player.selectedCharacter !== 'eddie') return;
     if (this.paused || this.gameOver || this.victory || this.upgradeUI || this.mutationUI) return;
+
+    const gp = this._guitarPerf;
+    if (gp) {
+      gp.t += dt; gp.waveCd -= dt;
+      if (gp.waveCd <= 0) { gp.waveCd = gp.waveEvery; this._fireGuitarWave(gp.lvl); }
+      if (gp.t >= gp.dur) {                              // performance over → stop track, restore music
+        this.audio?.stopEddieRiffs?.();
+        this._guitarPerf = null;
+        this._guitarSoloCd = 6;                          // brief gap before the card auto-restarts it
+      }
+      return;
+    }
+
+    // Auto-repeat via the GUITAR SOLO card (the SPACE ultimate also starts a performance).
     const lvl = this._cardLvl('eddie_guitar_solo');
     if (lvl < 1) return;
     this._guitarSoloCd -= dt;
-    if (this._guitarSoloCd > 0) return;
-    this._guitarSoloCd = Math.max(4.5, 8 - lvl);       // faster solos at higher card level
+    if (this._guitarSoloCd <= 0) this._startGuitarPerformance();
+  }
 
-    this.audio?.playEddieRiffs?.();
-    this.triggerAnnouncement('♪ GUITAR SOLO ♫', '#ff2d2d');
+  // Fire ONE solo wave: giant red note-riffs fan toward the nearest cluster + golden lightning
+  // strikes rain across the whole visible map.
+  _fireGuitarWave(lvl) {
     const p = this.player;
-
-    // GIANT red note-riffs — fan out all around, biased toward the nearest enemy cluster.
+    if (!p) return;
+    lvl = Math.max(1, lvl || 1);
     const count = 12 + lvl * 2;
     const nDmg  = 40 + 14 * lvl;
     let baseAng = Math.random() * Math.PI * 2;
@@ -9856,7 +9875,6 @@ export class Game {
         rot: Math.random() * 6, hit: new Set(),
       });
     }
-    // Golden lightning across the WHOLE visible map.
     const strikes = 16 + lvl * 3;
     const sDmg    = 30 + 10 * lvl;
     for (let i = 0; i < strikes; i++) {
@@ -9865,7 +9883,21 @@ export class Game {
       const top = this.camera.y - 60;
       this._goldStrikes.push({ x: gx, gy: gy, top: top, t: 0, fall: Math.max(0.12, (gy - top) / 1650), done: false, dmg: sDmg });
     }
-    this.screenShake?.trigger?.(3, 0.25);
+    this.screenShake?.trigger?.(3, 0.22);
+  }
+
+  // Start a sustained guitar-solo performance: play the full track (ducking map music) and fire
+  // waves for at least ~90s (≥1.5 min). No-op if one is already running or the player isn't Eddie.
+  _startGuitarPerformance() {
+    if (this._guitarPerf) return;
+    if (!this.player || this.player.selectedCharacter !== 'eddie') return;
+    const lvl = Math.max(1, this._cardLvl('eddie_guitar_solo'));
+    const trackDur = this.audio?.eddieRiffsDuration?.() || 0;
+    const dur = Math.max(90, trackDur);                 // at least 1.5 minutes of solo
+    this._guitarPerf = { t: 0, dur, waveCd: 0, waveEvery: Math.max(1.6, 2.6 - lvl * 0.2), lvl };
+    this.audio?.playEddieRiffs?.();
+    this.triggerAnnouncement('♪ GUITAR SOLO ♫', '#ff2d2d');
+    this._fireGuitarWave(lvl);
   }
 
   _drawGuitarSolo(ctx) {
@@ -10977,6 +11009,9 @@ export class Game {
     this.screenShake.trigger(4, 0.3);
     this.audio?.playEventWarning?.();
     this.floatingTexts.push(new FloatingText('RED THUNDER CURTAIN!', p.pos.clone(), '#ff2d2d', 1.4));
+    // Thunder Solo also kicks off the full GUITAR SOLO performance: the whole eddie_riffs
+    // track plays (map music ducked) with a sustained note+lightning solo (≥1.5 min).
+    this._startGuitarPerformance();
   }
 
   _updateRedThunderCurtain(dt) {
