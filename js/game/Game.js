@@ -1667,6 +1667,7 @@ export class Game {
       card.addEventListener('click', () => {
         this.runChaosLaw = card.dataset.law;
         this._hideChaosLawSelectionOverlay();
+        this._hideMenuOverlay();          // guarantee the main-menu overlay never lingers over the run
         this.gameState = 'playing';
         this.reset();
         this._enterEndless();
@@ -1675,6 +1676,7 @@ export class Game {
     document.getElementById('cls-skip-btn').addEventListener('click', () => {
       this.runChaosLaw = null;
       this._hideChaosLawSelectionOverlay();
+      this._hideMenuOverlay();            // guarantee the main-menu overlay never lingers over the run after SKIP
       this.gameState = 'playing';
       this.reset();
       this._enterEndless();
