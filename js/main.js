@@ -1,4 +1,4 @@
-import { Game } from './game/Game.js?v=20260705330000';
+import { Game } from './game/Game.js?v=20260706100000';
 import { AudioManager } from './audio/AudioManager.js?v=20260705220000';
 import { GamepadInput } from './Gamepad.js?v=20260703990000';
 import { initTouchControls } from './TouchInput.js?v=20260703990000';
@@ -22,7 +22,6 @@ window.addEventListener('resize', resizeCanvas);
 window.addEventListener('orientationchange', () => { resizeCanvas(); setTimeout(resizeCanvas, 250); });
 window.visualViewport?.addEventListener('resize', resizeCanvas);
 document.addEventListener('fullscreenchange', () => { resizeCanvas(); [100, 300, 750].forEach(ms => setTimeout(resizeCanvas, ms)); });
-if (window.visualViewport) window.visualViewport.addEventListener('resize', resizeCanvas);
 // Mobile reports its final viewport only after the address bar settles — re-fit shortly after load.
 window.addEventListener('load', () => {
   setTimeout(resizeCanvas, 300);
@@ -120,6 +119,21 @@ window.addEventListener('keydown', e => {
       const idx = game._endScreenBtnIndex ?? 0;
       if (idx === 0) { game.goToMainMenu(); }
       else { game.continueEndless(); }
+      return;
+    }
+  }
+
+  // ── Pause menu controller navigation (ArrowUp/Down cycle buttons, Enter confirms) ──
+  if (game.paused && game.gameState === 'playing' && !game.gameOver && !game.victory) {
+    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      const dir = e.key === 'ArrowDown' ? 1 : -1;
+      game._pauseMenuIndex = ((game._pauseMenuIndex ?? 0) + dir + 2) % 2;
+      return;
+    }
+    if (e.key === 'Enter') {
+      const idx = game._pauseMenuIndex ?? 0;
+      if (idx === 0) { game.paused = false; }         // RESUME
+      else           { game.goToMainMenu(); }          // RETURN TO MAIN MENU
       return;
     }
   }
@@ -493,6 +507,12 @@ function applyGamepad() {
     if (s.btn.rb.pressed)    padTap('e');        // RB / R1 → EMP
     if (s.btn.y.pressed)     padTap(' ');        // Y / Triangle → Ultimate
     if (s.btn.start.pressed) padTap('Escape');   // Start/Options → pause (B/Circle is now gameplay dash)
+    // Right stick → manual aim direction (overrides auto-aim while active)
+    if (s.axes.rx !== 0 || s.axes.ry !== 0) {
+      game.gamepadAimDir = { x: s.axes.rx, y: s.axes.ry };
+    } else {
+      game.gamepadAimDir = null;
+    }
   } else {
     padClearHeld();                              // no held movement outside gameplay
     if (eUp)    padTap('ArrowUp');

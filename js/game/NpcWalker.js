@@ -342,9 +342,9 @@ export class NpcWalker {
       game.player.hp = Math.min(game.player.maxHp, game.player.hp + game.player.maxHp * 0.05);
       this._shieldAppliedTimer = 5;
       // Floating texts
-      if (Array.isArray(game._floatingTexts)) {
-        game._floatingTexts.push({ text: '+SHIELD', x: game.player.pos.x - 20, y: game.player.pos.y - 34, timer: 1.3, color: '#00ccff', size: 13 });
-        game._floatingTexts.push({ text: '+HEAL',   x: game.player.pos.x + 22, y: game.player.pos.y - 20, timer: 1.3, color: '#88ff88', size: 13 });
+      if (Array.isArray(game.floatingTexts)) {
+        game.floatingTexts.push(new FloatingText('+SHIELD', game.player.pos.add(new Vec2(-20, -34)), '#00ccff', 1.3, 13));
+        game.floatingTexts.push(new FloatingText('+HEAL',   game.player.pos.add(new Vec2( 22, -20)), '#88ff88', 1.3, 13));
       }
     }
   }

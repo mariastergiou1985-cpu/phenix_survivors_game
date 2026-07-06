@@ -14,20 +14,22 @@ import { EVENTS } from './EventBus.js?v=20260702700000';
 
 // ─── Valid Game States ──────────────────────────────────────────────────────
 export const GAME_STATES = Object.freeze({
-  START_MENU:       'start_menu',
-  CHARACTER_SELECT: 'character_select',
-  PLAYING:          'playing',
-  GAME_OVER:        'game_over',
-  VICTORY:          'victory',
-  EXIT_SCREEN:      'exit_screen',
-  UPGRADES:         'upgrades',
-  ACHIEVEMENTS:     'achievements',
-  RELICS:           'relics',
-  CREDITS:          'credits',
-  INSTRUCTIONS:     'instructions',
-  AUDIO_SETTINGS:   'audio_settings',
-  SETTINGS:         'settings',
-  LORE_ARCHIVE:     'lore_archive',
+  START_MENU:        'start_menu',
+  CHARACTER_SELECT:  'character_select',
+  PLAYING:           'playing',
+  GAME_OVER:         'game_over',
+  VICTORY:           'victory',
+  EXIT_SCREEN:       'exit_screen',
+  UPGRADES:          'upgrades',
+  ACHIEVEMENTS:      'achievements',
+  RELICS:            'relics',
+  CREDITS:           'credits',
+  INSTRUCTIONS:      'instructions',
+  AUDIO_SETTINGS:    'audio_settings',
+  SETTINGS:          'settings',
+  LORE_ARCHIVE:      'lore_archive',
+  EVOLUTION_MATRIX:  'evolution_matrix',
+  HANGAR:            'hangar',
 });
 
 // Menu states — player is NOT in gameplay
@@ -43,6 +45,8 @@ const MENU_STATES = new Set([
   GAME_STATES.AUDIO_SETTINGS,
   GAME_STATES.SETTINGS,
   GAME_STATES.LORE_ARCHIVE,
+  GAME_STATES.EVOLUTION_MATRIX,
+  GAME_STATES.HANGAR,
 ]);
 
 // ─── StateManager Class ────────────────────────────────────────────────────

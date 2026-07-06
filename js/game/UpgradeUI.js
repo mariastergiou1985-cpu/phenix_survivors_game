@@ -162,7 +162,7 @@ export class UpgradeUI {
         ctx.restore();
       } else {
         // Icon symbol/emoji (large, centered)
-        ctx.font      = (upg.icon.length > 1 ? '34px' : '42px') + ' "Segoe UI Emoji", Consolas, monospace';
+        ctx.font      = (upg.icon && upg.icon.length > 1 ? '34px' : '42px') + ' "Segoe UI Emoji", Consolas, monospace';
         ctx.fillStyle = upg.iconColor;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';

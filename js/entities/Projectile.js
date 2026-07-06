@@ -127,12 +127,9 @@ export class HomingDisc {
   }
 
   update(dt, enemies) {
-    // Re-acquire target: prefer core-carriers, else nearest enemy
+    // Re-acquire target: nearest enemy
     if (!enemies.includes(this.target)) {
-      const carriers = enemies.filter(e => e.carryingCore);
-      if (carriers.length > 0) {
-        this.target = carriers.reduce((a, b) => distance(this.pos, a.pos) < distance(this.pos, b.pos) ? a : b);
-      } else if (enemies.length > 0) {
+      if (enemies.length > 0) {
         this.target = enemies.reduce((a, b) => distance(this.pos, a.pos) < distance(this.pos, b.pos) ? a : b);
       } else {
         this.target = null;

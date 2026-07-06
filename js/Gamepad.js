@@ -36,7 +36,7 @@ export class GamepadInput {
   }
 
   // Per-frame snapshot, or null when no controller is connected.
-  //   { axes:{lx,ly}, btn:{ name:{held,pressed} }, type, activated }
+  //   { axes:{lx,ly,rx,ry}, btn:{ name:{held,pressed} }, type, activated }
   poll() {
     const p = this._firstPad();
     this.connected = !!p;
@@ -44,9 +44,12 @@ export class GamepadInput {
     this.type = this._detectType(p.id);
 
     const ax  = p.axes || [];
-    const out = { axes: { lx: 0, ly: 0 }, btn: {}, type: this.type, activated: this.activated };
+    const out = { axes: { lx: 0, ly: 0, rx: 0, ry: 0 }, btn: {}, type: this.type, activated: this.activated };
     out.axes.lx = Math.abs(ax[0] || 0) > DEADZONE ? ax[0] : 0;
     out.axes.ly = Math.abs(ax[1] || 0) > DEADZONE ? ax[1] : 0;
+    // Right stick (axes[2]/axes[3]) — aim direction; same deadzone as left stick.
+    out.axes.rx = Math.abs(ax[2] || 0) > DEADZONE ? ax[2] : 0;
+    out.axes.ry = Math.abs(ax[3] || 0) > DEADZONE ? ax[3] : 0;
 
     const now = {};
     for (const name in BTN) {

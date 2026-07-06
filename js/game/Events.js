@@ -1,7 +1,7 @@
 import { Vec2, WIDTH, HEIGHT, ORANGE, GREEN, RED, YELLOW, CYAN, PURPLE } from '../constants.js';
 import { randomChoice, randomRange } from '../utils.js';
 import { FloatingText } from '../entities/FloatingText.js?v=20260703990000';
-import { DataCore } from '../entities/DataCore.js?v=20260705040000';
+import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260705040000';
 import { Enemy } from '../entities/Enemy.js?v=20260705150000';
 
 const EVENT_LABELS = {
@@ -166,7 +166,7 @@ export class SystemEventManager {
       const angle  = (i / Math.max(count, 1)) * Math.PI * 2;
       const radius = randomRange(60, 140);
       const pos    = target.pos.add(new Vec2(Math.cos(angle) * radius, Math.sin(angle) * radius));
-      game.groundCores.push(new DataCore(pos, target.color));
+      game.groundCores.push(new DataCore(pos, rollCoreType()));
     }
     target.stored = 0;
 

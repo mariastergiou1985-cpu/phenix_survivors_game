@@ -357,7 +357,7 @@ const BOSS_DOT_RESIST   = 0.28;   // −28% from DoT (aqua trail / burn / corros
 const BOSS_DRONE_RESIST = 0.20;
 
 // ── Double Demons (Chaos Mode dual-body boss) ── tuning constants (all in one place) ─
-const DD_HP           = 900;   // shared HP pool (both bodies, one bar)
+const DD_HP_BASE      = 900;   // shared HP pool base (both bodies, one bar)
 const DD_GUNNER_R     = 36;    // gunner body radius
 const DD_CLAW_R       = 42;    // claw body radius
 const DD_GUNNER_SPEED = 85;    // gunner strafe movement speed
@@ -735,6 +735,9 @@ export class Game {
       ['grandmaster_dojang_girl', 'assets/unlocks/secret_skins/cyber_dojang_girl_secret.png'],
       ['log_1997',                'assets/unlocks/secret_skins/brawler_warrior_log1997_secret.png'],
       ['log_1998',                'assets/unlocks/secret_skins/assassin_clone_log1998_secret.png'],
+      ['toxic_overload',          'assets/unlocks/secret_skins/euclid_vector_toxic_overload_secret.png'],
+      ['null_walker',             'assets/unlocks/secret_skins/japan_phasewalker_null_walker_secret.png'],
+      ['crimson_oni',             'assets/unlocks/secret_skins/oni_cataclysm_crimson_secret.png'],
     ].forEach(([key, src]) => {
       const img = new Image();
       img.onerror = () => console.warn('[Skins] missing ' + src + ' — text fallback used');
@@ -1113,6 +1116,7 @@ export class Game {
     this._blackoutSpeedMult   = 1.0;   // GRID BLACKOUT event: enemy speed multiplier
     this.gridBlackoutActive   = false;
     this.announcement         = null;
+    this._pauseMenuIndex      = 0;    // controller nav: 0=RESUME  1=RETURN TO MAIN MENU
 
     // Phoenix revive tiers (orange → blue → gold, one per death per run)
     this.phoenixUsed        = false;
@@ -1165,6 +1169,16 @@ export class Game {
     this._ultWasReady = false;
     this._ultReadyCue = 0;   // HUD "ULTIMATE READY" banner timer
     this._ultAura     = 0;   // player aura-pulse timer
+
+    // ── Relic run-state ──────────────────────────────────────────
+    this._firstBossKilledRun  = false;   // Eden Core Fragment — once per run
+    this._brokenHaloUsed      = false;   // Broken Halo — once per run
+    this._emberTrail          = [];      // Serpent Ember Coil trail segments
+    this._emberTrailCd        = 0;
+    this._cryoChargeCd        = 0;       // Dragon Cryo Heart cooldown
+    this._cryoChargeReady     = false;
+    this._kickFireCount       = 0;       // Crescent Soul Bead kick counter
+    this._oniBloodMarks       = new Map();// Oni Blood Circuit marked enemies
 
     this.camera = { x: 0, y: 0 };
 
@@ -1261,6 +1275,7 @@ export class Game {
     this.mapManager.chunkStreamingEnabled = false;
   }
 
+  // DEPRECATED - unused (game start is handled via _startActOne / _enterEndless)
   startGame() {
     this._hideMenuOverlay();
     const _selDef = this.characters?.find(c => c.id === this.selectedCharacter);
@@ -2386,7 +2401,7 @@ export class Game {
       time:  Math.floor(this.timeAlive),
       score: finalScore,
       level: this.player.level,
-      char:  this.player.characterId || 'unknown',
+      char:  this.player.selectedCharacter || 'unknown',
       mode:  this.endless ? 'Endless' : (this.victory ? 'Act 1 Win' : 'Act 1'),
     });
 
@@ -2475,7 +2490,7 @@ export class Game {
     const push   = (t) => { msgs.push(t); this.meta.addSystemMessage(t); };
 
     const time    = Math.floor(this.timeAlive);
-    const charId  = this.player?.characterId || '';
+    const charId  = this.player?.selectedCharacter || '';
     const isNewRecord = !!(this.endlessNewBest && (this.endlessNewBest.time || this.endlessNewBest.score || this.endlessNewBest.level));
     const isChaos  = !!(this._chaosMode);
 
@@ -4062,6 +4077,7 @@ export class Game {
         e.stopPropagation();
         const vid = btn.dataset.vesselBuy;
         const vDef = getVesselById(vid);
+        if (!vDef) return;
         const result = this.meta.tryBuyVessel(vid, vDef.costGrids, vDef.costFragments);
         if (result === 'ok') this._syncHangarOverlay();
       });
@@ -4376,13 +4392,13 @@ export class Game {
           <div class="em-owners">🔒 CLASS-LOCKED — only ${charA} &amp; ${charB} can perform this fusion</div>
           <div class="em-tooltip">
             <strong style="color:${evo.color}">${evo.name.replace(/'/g, '’')}</strong><br>
-            ${evo.description.replace(/'/g, '’')}<br><br>
-            <span style="color:var(--cyan)">Requires:</span> Both <strong>${wA.name.replace(/'/g, '’')}</strong> and <strong>${wB.name.replace(/'/g, '’')}</strong> at Level ${recipe.minLevel} during a run. The EVOLVE card then appears GUARANTEED on your next level-up.<br>
+            ${(evo.description || ‘’).replace(/’/g, ‘’’)}<br><br>
+            <span style="color:var(--cyan)">Requires:</span> Both <strong>${wA.name.replace(/’/g, ‘’’)}</strong> and <strong>${wB.name.replace(/’/g, ‘’’)}</strong> at Level ${recipe.minLevel} during a run. The EVOLVE card then appears GUARANTEED on your next level-up.<br>
             <span style="color:var(--magenta)">Class-locked:</span> visible only to ${charA} and ${charB}.<br>
-            <span style="color:var(--amber)">DMG ${evo.baseStats.damage}</span> &middot;
+            ${evo.baseStats ? `<span style="color:var(--amber)">DMG ${evo.baseStats.damage}</span> &middot;
             <span style="color:var(--cyan)">CD ${evo.baseStats.cooldown}s</span> &middot;
             <span style="color:var(--green)">AOE ${evo.baseStats.aoeRadius}px</span> &middot;
-            <span style="color:var(--purple)">Pierce ${evo.baseStats.piercing === 99 ? 'ALL' : evo.baseStats.piercing}</span>
+            <span style="color:var(--purple)">Pierce ${evo.baseStats.piercing === 99 ? ‘ALL’ : evo.baseStats.piercing}</span>` : ‘’}
           </div>
         </div>`;
     });
@@ -5294,15 +5310,6 @@ export class Game {
     this._specialRings.push({ pos: p.pos.clone(), radius: 0, maxRadius: radius,
                                life: 0.5, maxLife: 0.5, color1: CYAN, color2: '#ffffff' });
     p.empCloudCooldown = Math.max(8, 12 - p.upgrades['EMP Cloud']);   // 12s base, upgrade trims it
-    // ── Relic run-state ──────────────────────────────────────────
-    this._firstBossKilledRun  = false;   // Eden Core Fragment — once per run
-    this._brokenHaloUsed      = false;   // Broken Halo — once per run
-    this._emberTrail          = [];      // Serpent Ember Coil trail segments
-    this._emberTrailCd        = 0;
-    this._cryoChargeCd        = 0;       // Dragon Cryo Heart cooldown
-    this._cryoChargeReady     = false;
-    this._kickFireCount       = 0;       // Crescent Soul Bead kick counter
-    this._oniBloodMarks       = new Map();// Oni Blood Circuit marked enemies
     this.floatingTexts.push(new FloatingText('STUN PULSE!', p.pos.clone(), CYAN, 0.9));
     // (Japan Phasewalker's EMP Shockwave is now AUTOMATIC/passive — see _updatePhasewalkerFx —
     //  so E stays purely the shared global EMP stun for every character.)
@@ -6951,7 +6958,7 @@ export class Game {
       if (em.ttl <= 0) { this._emberTrail.splice(i, 1); continue; }
       for (const e of this.enemies) {
         const dx = e.pos.x - em.x, dy = e.pos.y - em.y;
-        if (dx * dx + dy * dy < 1600) e.hp -= 18 * dt; // 18 DPS in 40px radius
+        if (dx * dx + dy * dy < 1600) e.takeHit(18 * dt, this); // 18 DPS in 40px radius
       }
     }
     this._wasDashing = dashing;
@@ -8093,9 +8100,18 @@ export class Game {
     if (this.player.selectedCharacter === 'euclid_vector') return;   // his weapon IS the toxin kit (ToxicSniper), not the base shot
     if (!this.player.canShoot()) return;
     if (!this.aimAssist) return;                          // T still toggles auto-fire on/off
-    const target = this._autoTarget(this.player.pos, 750); // wide, screen-aware detection
-    if (!target) return;                                  // no enemy/boss/carrier in range → hold fire
-    const proj = this.player.shoot(target.pos);
+
+    // Right-stick gamepad aim: override auto-aim when the player is actively aiming
+    let aimPos;
+    if (this.gamepadAimDir) {
+      const range = 400;   // virtual aim distance from player
+      aimPos = this.player.pos.add(new Vec2(this.gamepadAimDir.x * range, this.gamepadAimDir.y * range));
+    } else {
+      const target = this._autoTarget(this.player.pos, 750); // wide, screen-aware detection
+      if (!target) return;                                  // no enemy/boss/carrier in range → hold fire
+      aimPos = target.pos;
+    }
+    const proj = this.player.shoot(aimPos);
     // Assassin Clone: her base auto-shot IS the Arrow (visible arrow sprite via Player.attackMap,
     // rotated to its travel direction — no orb). Her retired Twin-Dagger mastery card now feeds the
     // arrow (+1 damage/level), so the card is never a dead pick. Same projectile that always existed.
@@ -9888,7 +9904,7 @@ export class Game {
   // ── GROUND SHOCKWAVE: expanding ring from drop point ──
   _tickShockwave(w, dt) {
     const maxR = w.def.aoeRadius || 240;
-    if (w.cooldown > 0) { w.cooldown -= dt; return; } // handled in main loop already, but guard
+    if (w.cooldown > 0) return; // cooldown already decremented in main _tickTacticalWeapons loop
     w.ringRadius += dt * 180; // expand at 180 px/s
     if (w.ringRadius >= maxR) {
       w.ringRadius = 0;
@@ -9917,7 +9933,7 @@ export class Game {
     if (w.cooldown > 0) return;
     w.cooldown = w.def.tickRate;
     w.beamOn = true;
-    setTimeout(() => { if (w.alive) w.beamOn = false; }, 300);
+    setTimeout(() => { if (w.alive) w.beamOn = false; }, 300); // cosmetic — runs in real time (OK)
 
     const len  = w.def.beamLength || 500;
     const half = (w.def.beamWidth || 24) / 2;
@@ -10057,9 +10073,12 @@ export class Game {
         this.screenShake.trigger(12, 0.4);
       }
     }
-    // After collapse, weapon stays briefly for visual then dies
-    if (w.collapsed && w.pullTimer > (w.def.collapseTime || 2.0) + 1.5) {
-      w.alive = false;
+    // After collapse, weapon stays briefly for visual then dies.
+    // Use w.timer from the outer _tickTacticalWeapons loop (which keeps decrementing)
+    // instead of w.pullTimer (which stops advancing after collapse).
+    if (w.collapsed) {
+      w.collapseElapsed = (w.collapseElapsed || 0) + dt;
+      if (w.collapseElapsed > 1.5) w.alive = false;
     }
   }
 
@@ -11903,7 +11922,7 @@ export class Game {
       if (hit || r.life <= 0 || out) {
         if (hit && this.phoenixReviveTimer <= 0 && this.player.dashTimer <= 0) {
           const dmg = Math.round(this.player.maxHp * randomRange(0.40, 0.50));   // heavy clean hit
-          this.player.applyBite({ hp: dmg, stagger: 0.8 });   // damage + short stun (anti-chain inside)
+          this._damagePlayer(dmg, { color: ORANGE, shake: 9, stagger: 0.8 });   // damage + short stun
           this.screenShake.trigger(9, 0.4);
           this.particles.spawnExplosion(r.pos, ['#ff6600', '#ffaa22', '#ff3300', '#ffe088', '#ffffff'], 22);
           this.particles.spawnDeathRing(r.pos, '#ff8844', 12, 180, 2.2);
@@ -11947,7 +11966,7 @@ export class Game {
         const d = distance(this.player.pos, z.pos);
         if (d < z.radius && this.phoenixReviveTimer <= 0 && this.player.dashTimer <= 0) {
           const dmg = Math.round(this.player.maxHp * 0.5);    // ~50% max HP clean hit
-          this.player.applyBite({ hp: dmg, stagger: 0.7 });   // heavy hit + short stun (anti-chain inside)
+          this._damagePlayer(dmg, { color: '#9fd0ff', shake: 9, stagger: 0.7 });   // heavy hit + short stun
           this.screenShake.trigger(9, 0.35);
           this.particles?.spawnHitSparks(this.player.pos, '#cfe6ff');
           this.floatingTexts.push(new FloatingText('-' + dmg + ' HP', this.player.pos.clone(), '#9fd0ff', 1.2));
@@ -13201,8 +13220,9 @@ export class Game {
       const _btnX = Math.round(WIDTH / 2 - _btnW / 2);
       const _btnY1 = _capY2 + _capH + 20;
       const _btnY2 = _btnY1 + _btnH + 10;
-      this._premiumButton(ctx, _btnX, _btnY1, _btnW, _btnH, 'RESUME', false, CYAN);
-      this._premiumButton(ctx, _btnX, _btnY2, _btnW, _btnH, 'RETURN TO MAIN MENU', false, '#ff6a7a');
+      const _pmi = this._pauseMenuIndex ?? 0;
+      this._premiumButton(ctx, _btnX, _btnY1, _btnW, _btnH, 'RESUME', _pmi === 0, CYAN);
+      this._premiumButton(ctx, _btnX, _btnY2, _btnW, _btnH, 'RETURN TO MAIN MENU', _pmi === 1, '#ff6a7a');
 
       // Store rects for click hit-testing
       this._pauseBtnRects = [
@@ -13960,6 +13980,7 @@ export class Game {
 
   // Refresh all live data in the overlay. Called once per _showMenuOverlay().
   _refreshMenuOverlay() {
+    if (!this._menuOverlayEl) return;
     const m   = this.meta;
     const ch  = this._menuSelectedChar();
     const el  = CHARACTER_ELEMENT[ch.id];
@@ -14711,11 +14732,14 @@ export class Game {
   // Secret-skin roster (flag key → display name). Single source of truth shared by
   // the Victory screen and Character Select so the two never drift.
   _secretSkins() {
-    return [
-      { key: 'golden_skeleton_warrior', name: 'Cyber Skeleton Warrior' },
-      { key: 'dark_cyber_arm_hero',     name: 'Neon Cyber Arm Hero'    },
-      { key: 'grandmaster_dojang_girl', name: 'Grandmaster Dojang Girl' },
-    ];
+    // Dynamically build secret skin roster from CHARACTER_OUTFITS (single source of truth)
+    const skins = [];
+    for (const [, outfits] of Object.entries(CHARACTER_OUTFITS)) {
+      if (outfits.secret) {
+        skins.push({ key: outfits.secret.unlockKey, name: outfits.secret.name });
+      }
+    }
+    return skins;
   }
 
   // Framed skin thumbnail. Unlocked → bright preview + neon frame; locked → darkened
@@ -14803,8 +14827,9 @@ export class Game {
     const BW = 300, BH = 50, BY = 540, GAP = 24;
     const LBX = Math.round(WIDTH / 2 - BW - GAP / 2);   // 328
     const RBX = Math.round(WIDTH / 2 + GAP / 2);        // 652
-    this._premiumButton(ctx, LBX, BY, BW, BH, 'RETURN TO MAIN MENU', false, CYAN);
-    this._premiumButton(ctx, RBX, BY, BW, BH, 'CONTINUE — ENDLESS', false, GREEN);
+    const _vbi = this._endScreenBtnIndex ?? -1;
+    this._premiumButton(ctx, LBX, BY, BW, BH, 'RETURN TO MAIN MENU', _vbi === 0, CYAN);
+    this._premiumButton(ctx, RBX, BY, BW, BH, 'CONTINUE — ENDLESS', _vbi === 1, GREEN);
 
     ctx.font      = '15px Consolas, monospace';
     ctx.fillStyle = '#5a7080';
@@ -15271,6 +15296,7 @@ export class Game {
     // Cards: active highlight + portrait (default vs secret skin) + lock overlay
     el.querySelectorAll('.csc-card').forEach((card, i) => {
       const c = this.characters[i];
+      if (!c) return;
       const unlocked = !c.comingSoon && this.meta.isCharacterUnlocked(c.id);
       card.classList.toggle('active', i === idx);
       card.querySelector('.csc-lock-overlay').style.display = unlocked ? 'none' : 'flex';
@@ -16854,7 +16880,7 @@ _drawLoreArchive(ctx) {
     const CX = W / 2, CY = H / 2;
 
     const ONSET_DUR    = 0.65;
-    const HOLD_DUR     = 5.5;
+    const HOLD_DUR     = this._chaosMode ? 5.5 : 3.0;
     const RECOVERY_DUR = 1.1;
 
     // Progress within each phase (0→1)
@@ -18011,7 +18037,7 @@ _drawLoreArchive(ctx) {
     if (!this.endless || this.gameOver || this.victory) return;
     const t    = this.timeAlive;
     const sh   = this._edenRunMilestonesShown;
-    const cid  = this.player?.characterId || '';
+    const cid  = this.player?.selectedCharacter || '';
     const cp   = _EDEN_CHAR_POOLS[cid] || null;
 
     // ── Time milestones (ordered — only one fires per call via return) ────────
@@ -18497,7 +18523,7 @@ _drawLoreArchive(ctx) {
     this._queueEdenTransmission('NULL BREACH DETECTED.', { priority: 2, duration: 5 });
     const _self = this;
     setTimeout(() => {
-      if (_self._nullBreachArena) {
+      if (_self.gameState === 'playing' && _self._nullBreachArena) {
         _self._queueEdenTransmission(
           'EDEN CORE: Only elite signals can enter the breach.', { priority: 2, duration: 6 }
         );
@@ -18750,11 +18776,13 @@ _drawLoreArchive(ctx) {
     this._queueEdenTransmission(
       'EXTRACTION COMPLETE. Reward sequence denied.', { priority: 3, duration: 6, clipId: 'extract' }
     );
-    const _self = this;
+    const _self2 = this;
     setTimeout(() => {
-      _self._queueEdenTransmission(
-        'EDEN CORE: Do not waste the second signal.', { priority: 2, duration: 5 }
-      );
+      if (_self2.gameState === 'playing') {
+        _self2._queueEdenTransmission(
+          'EDEN CORE: Do not waste the second signal.', { priority: 2, duration: 5 }
+        );
+      }
     }, 4000);
 
     if (this.meta) {
@@ -18941,7 +18969,7 @@ _drawLoreArchive(ctx) {
 
   _drawActiveRelicHUD(ctx) {
     if (!this.meta) return;
-    const _charId     = this.player?.characterId || '';
+    const _charId     = this.player?.selectedCharacter || '';
     const ownedRelics = RELIC_DEFS.filter(r => {
       if (!this.meta.isRelicUnlocked(r.id)) return false;
       if (r.reqChar && r.reqChar !== _charId) return false;
@@ -19763,7 +19791,7 @@ _drawLoreArchive(ctx) {
       else                 { sx = WORLD_W - margin;  sy = randomRange(margin, WORLD_H - margin); }
     }
     const isEndless = !!this.endless;
-    const hp        = 1500;
+    const hp        = Math.round(1500 * this._getActiveChaosLawModifiers().bossHpMult);
     this.cyberSerpentBoss = {
       pos:        new Vec2(sx, sy),
       hp,
@@ -19780,7 +19808,7 @@ _drawLoreArchive(ctx) {
     this._serpentTrails       = [];
     this._serpentLastTrailPos = null;
     this._bossAnnounce('⚠ CYBER SERPENT DETECTED', ORANGE);
-    triggerAnnouncement('CYBER SERPENT DETECTED', ORANGE);
+    this.triggerAnnouncement('CYBER SERPENT DETECTED', ORANGE);
   }
 
   _updateCyberSerpent(dt) {
@@ -19848,14 +19876,14 @@ _drawLoreArchive(ctx) {
       t.life  -= dt;
       if (t.life <= 0) { this._serpentTrails.splice(i, 1); continue; }
       if (t.tickCd > 0) { t.tickCd -= dt; continue; }
-      if (distance(pp, t.pos) < this.player.radius + 30) {
+      if (distance(pp, t.pos) < PLAYER_RADIUS + 30) {
         this._damagePlayer(12, { color: ORANGE, shake: 3 });
         t.tickCd = 0.5;
       }
     }
 
     // ── Contact damage ──
-    if (distance(pp, s.pos) < this.player.radius + s.radius) {
+    if (distance(pp, s.pos) < PLAYER_RADIUS + s.radius) {
       this._damagePlayer(18, { color: ORANGE, shake: 5, cap: BOSS_MAX_PLAYER_HIT });
     }
 
@@ -19891,20 +19919,20 @@ _drawLoreArchive(ctx) {
 
     // Rewards
     this.score += 1800;
-    this.xp    += 120;
-    this.credits = (this.credits || 0) + 3;
-    if (!this._nullBreachActive && typeof this.protocolFragments !== 'undefined') {
-      this.protocolFragments += BOSS_KILL_PF;
+    this.player.gainXp(120, this.floatingTexts);
+    this._awardCredits(3);
+    if (!this._nullBreachActive && typeof this.meta.protocolFragments !== 'undefined') {
+      this.meta.protocolFragments += BOSS_KILL_PF;
     }
     if (this._nullBreachArena) this._nullBreachArena.kills = (this._nullBreachArena.kills || 0) + 1;
     this._onBossKilledRelicHook(pos, 'cyberSerpent');
 
     // VFX
-    this.particles.spawnExplosion(pos, ORANGE, 32);
-    this.particles.spawnExplosion(pos, RED,    20);
+    this.particles.spawnExplosion(pos, [ORANGE], 32);
+    this.particles.spawnExplosion(pos, [RED],    20);
 
     // Announcement
-    triggerAnnouncement('CYBER SERPENT ELIMINATED', ORANGE);
+    this.triggerAnnouncement('CYBER SERPENT ELIMINATED', ORANGE);
     this._bossAnnounce('CYBER SERPENT ELIMINATED', ORANGE);
   }
 
@@ -20068,7 +20096,7 @@ _drawLoreArchive(ctx) {
       else                 { sx = WORLD_W - margin;  sy = randomRange(margin, WORLD_H - margin); }
     }
     const isEndless = !!this.endless;
-    const hp        = 1500;
+    const hp        = Math.round(1500 * this._getActiveChaosLawModifiers().bossHpMult);
     this.cyberDragonBoss = {
       pos:        new Vec2(sx, sy),
       hp,
@@ -20088,7 +20116,7 @@ _drawLoreArchive(ctx) {
     this._dragonIceShards = [];
     this._dragonBolts     = [];
     this._bossAnnounce('⚠ CYBER DRAGON APPROACHING', '#00ccff');
-    triggerAnnouncement('CYBER DRAGON APPROACHING', '#00ccff');
+    this.triggerAnnouncement('CYBER DRAGON APPROACHING', '#00ccff');
   }
 
   _updateCyberDragon(dt) {
@@ -20155,7 +20183,7 @@ _drawLoreArchive(ctx) {
       if (!sh.hit && sh.t >= sh.warnTime) {
         // Impact!
         sh.hit = true;
-        if (distance(pp, sh.targetPos) < this.player.radius + 30) {
+        if (distance(pp, sh.targetPos) < PLAYER_RADIUS + 30) {
           this._damagePlayer(16, { color: '#00ccff', shake: 5, cap: BOSS_MAX_PLAYER_HIT });
         }
         // Linger a moment for burst VFX, then remove
@@ -20171,7 +20199,7 @@ _drawLoreArchive(ctx) {
     }
 
     // ── Contact damage ──
-    if (distance(pp, d.pos) < this.player.radius + d.radius) {
+    if (distance(pp, d.pos) < PLAYER_RADIUS + d.radius) {
       this._damagePlayer(20, { color: '#00ccff', shake: 6, cap: BOSS_MAX_PLAYER_HIT });
     }
 
@@ -20196,7 +20224,7 @@ _drawLoreArchive(ctx) {
       b.pos.y += b.vel.y * dt;
       b.life   -= dt;
       if (b.life <= 0) { this._dragonBolts.splice(i, 1); continue; }
-      if (distance(pp, b.pos) < this.player.radius + b.radius) {
+      if (distance(pp, b.pos) < PLAYER_RADIUS + b.radius) {
         this._damagePlayer(14, { color: '#00ccff', shake: 4, cap: BOSS_MAX_PLAYER_HIT });
         this._dragonBolts.splice(i, 1);
       }
@@ -20221,12 +20249,14 @@ _drawLoreArchive(ctx) {
         tx = pp.x + randomRange(-spread, spread);
         ty = pp.y + randomRange(-spread, spread);
       } else {
-        // 30% fully random arena position
-        tx = randomRange(WORLD_MARGIN + 60, WORLD_W - WORLD_MARGIN - 60);
-        ty = randomRange(WORLD_MARGIN + 60, WORLD_H - WORLD_MARGIN - 60);
+        // 30% fully random arena position — use Endless world bounds when available
+        const wb = this._chaosMode ? (this._worldBounds || {w: WORLD_W, h: WORLD_H}) : {w: WORLD_W, h: WORLD_H};
+        tx = randomRange(WORLD_MARGIN + 60, wb.w - WORLD_MARGIN - 60);
+        ty = randomRange(WORLD_MARGIN + 60, wb.h - WORLD_MARGIN - 60);
       }
-      tx = clamp(tx, WORLD_MARGIN + 40, WORLD_W - WORLD_MARGIN - 40);
-      ty = clamp(ty, WORLD_MARGIN + 40, WORLD_H - WORLD_MARGIN - 40);
+      const wbClamp = this._chaosMode ? (this._worldBounds || {w: WORLD_W, h: WORLD_H}) : {w: WORLD_W, h: WORLD_H};
+      tx = clamp(tx, WORLD_MARGIN + 40, wbClamp.w - WORLD_MARGIN - 40);
+      ty = clamp(ty, WORLD_MARGIN + 40, wbClamp.h - WORLD_MARGIN - 40);
       this._dragonIceShards.push({
         targetPos:  new Vec2(tx, ty),
         warnTime:   1.2,
@@ -20262,20 +20292,20 @@ _drawLoreArchive(ctx) {
 
     // Rewards
     this.score += 2800;
-    this.xp    += 180;
-    this.credits = (this.credits || 0) + 5;
-    if (!this._nullBreachActive && typeof this.protocolFragments !== 'undefined') {
-      this.protocolFragments += BOSS_KILL_PF;
+    this.player.gainXp(180, this.floatingTexts);
+    this._awardCredits(5);
+    if (!this._nullBreachActive && typeof this.meta.protocolFragments !== 'undefined') {
+      this.meta.protocolFragments += BOSS_KILL_PF;
     }
     if (this._nullBreachArena) this._nullBreachArena.kills = (this._nullBreachArena.kills || 0) + 1;
     this._onBossKilledRelicHook(pos, 'cyberDragon');
 
     // VFX
-    this.particles.spawnExplosion(pos, '#00ccff', 32);
-    this.particles.spawnExplosion(pos, '#ffffff', 20);
+    this.particles.spawnExplosion(pos, ['#00ccff'], 32);
+    this.particles.spawnExplosion(pos, ['#ffffff'], 20);
 
     // Announcement
-    triggerAnnouncement('CYBER DRAGON ELIMINATED', '#00ccff');
+    this.triggerAnnouncement('CYBER DRAGON ELIMINATED', '#00ccff');
     this._bossAnnounce('CYBER DRAGON ELIMINATED', '#00ccff');
   }
 
@@ -20504,7 +20534,7 @@ _drawLoreArchive(ctx) {
   // DEBUG: game.forceDoubleDemon = true  (or F8 in Endless) spawns them immediately.
 
   _spawnDoubleDemonsBoss() {
-    const hp   = DD_HP;
+    const hp   = Math.round(DD_HP_BASE * this._getActiveChaosLawModifiers().bossHpMult);
     const mid  = this.endless ? this.player.pos.clone() : new Vec2(WORLD_W / 2, WORLD_H / 2);
     const halfW = this.endless ? (WORLD_BOUNDS.right - WORLD_BOUNDS.left) / 2 : WORLD_W / 2;
     const halfH = this.endless ? (WORLD_BOUNDS.bottom - WORLD_BOUNDS.top) / 2 : WORLD_H / 2;
@@ -20620,7 +20650,9 @@ _drawLoreArchive(ctx) {
       }
       if (g.barragePhase) {
         const bp = g.barragePhase;
-        bp.t += dt;
+        if (bp.phase === 'telegraph') {
+          bp.t += dt;
+        }
         if (bp.phase === 'telegraph' && bp.t >= bp.telegraphT) {
           const toP  = p.pos.sub(g.pos);
           bp.phase      = 'fire';
@@ -20816,7 +20848,6 @@ _drawLoreArchive(ctx) {
           ds.trailLife = 0.55;   // trail fades over 0.55s
         }
       } else if (ds.phase === 'trail') {
-        ds.t += dt;
         if (ds.t >= ds.trailLife) c.dashState = null;
       }
     }
@@ -21404,8 +21435,8 @@ _drawLoreArchive(ctx) {
   }
 
   _spawnFloatingText(text, pos, color, intensity) {
-    if (this._floatingTexts) {
-      this._floatingTexts.push(new FloatingText(text, pos, color, intensity));
+    if (this.floatingTexts) {
+      this.floatingTexts.push(new FloatingText(text, pos, color, intensity));
     }
   }
 
@@ -21510,7 +21541,7 @@ _drawLoreArchive(ctx) {
     if (!this.player) return;
     const W  = this._canvas.width, H = this._canvas.height;
     // Convert player world-pos → screen-pos via camera
-    const cam = this._camera || { x: 0, y: 0 };
+    const cam = this.camera || { x: 0, y: 0 };
     const sx  = this.player.pos.x - cam.x;
     const sy  = this.player.pos.y - cam.y;
     const rad = Math.min(W, H) * 0.65;
@@ -21931,8 +21962,9 @@ _drawLoreArchive(ctx) {
       n.t      += dt;
       n.prev    = n.pos.clone();
       n.pos.addMut(n.dir.scale(1050 * dt));
-      const out = n.pos.x < -80 || n.pos.x > WORLD_W + 80 ||
-                  n.pos.y < -80 || n.pos.y > WORLD_H + 80;
+      const _vnBounds = this._chaosMode ? (this._worldBounds || {w: WORLD_W, h: WORLD_H}) : {w: WORLD_W, h: WORLD_H};
+      const out = n.pos.x < -80 || n.pos.x > _vnBounds.w + 80 ||
+                  n.pos.y < -80 || n.pos.y > _vnBounds.h + 80;
       if (out || n.t > 3.0) { this._voidNeedles.splice(i, 1); continue; }
 
       let removed = false;
@@ -22057,8 +22089,9 @@ _drawLoreArchive(ctx) {
       n.t      += dt;
       n.prev    = n.pos.clone();
       n.pos.addMut(n.dir.scale(820 * dt));
-      const out = n.pos.x < -80 || n.pos.x > WORLD_W + 80 ||
-                  n.pos.y < -80 || n.pos.y > WORLD_H + 80;
+      const _rsBounds = this._chaosMode ? (this._worldBounds || {w: WORLD_W, h: WORLD_H}) : {w: WORLD_W, h: WORLD_H};
+      const out = n.pos.x < -80 || n.pos.x > _rsBounds.w + 80 ||
+                  n.pos.y < -80 || n.pos.y > _rsBounds.h + 80;
       if (out || n.t > 3.0) { this._railSpikes.splice(i, 1); continue; }
 
       let removed = false;
