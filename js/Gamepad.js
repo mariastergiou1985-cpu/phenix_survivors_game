@@ -63,4 +63,20 @@ export class GamepadInput {
     out.activated = this.activated;
     return out;
   }
+
+  // Haptic rumble (dual-rumble) — works on Xbox / DualSense / DualShock / most pads over USB or
+  // Bluetooth. Feature-detected and fully guarded, so pads without haptics simply do nothing and
+  // nothing ever throws. duration in ms; strong = low-freq motor, weak = high-freq motor (0..1).
+  rumble(duration = 120, strong = 0.6, weak = 0.4) {
+    try {
+      const p = this._firstPad();
+      const act = p && (p.vibrationActuator || (p.hapticActuators && p.hapticActuators[0]));
+      if (!act) return;
+      if (typeof act.playEffect === 'function') {
+        act.playEffect('dual-rumble', { duration, strongMagnitude: strong, weakMagnitude: weak, startDelay: 0 }).catch(() => {});
+      } else if (typeof act.pulse === 'function') {
+        act.pulse(Math.max(strong, weak), duration).catch(() => {});
+      }
+    } catch (_) { /* no haptics → silent */ }
+  }
 }

@@ -1,6 +1,6 @@
 import { Game } from './game/Game.js?v=20260706320000';
 import { AudioManager } from './audio/AudioManager.js?v=20260706310000';
-import { GamepadInput } from './Gamepad.js?v=20260703990000';
+import { GamepadInput } from './Gamepad.js?v=20260706330000';
 import { initTouchControls } from './TouchInput.js?v=20260703990000';
 
 const canvas = document.getElementById('game');
@@ -503,9 +503,10 @@ function applyGamepad() {
   if (inGameplay) {
     padSetHeld('w', up); padSetHeld('s', down); padSetHeld('a', left); padSetHeld('d', right);
     padSetHeld('shift', s.btn.rt.held || s.btn.lt.held || s.btn.b.held);   // RT/R2 / LT/L2 / B/Circle = dash
-    if (s.btn.lb.pressed)    padTap('q');        // LB / L1 → Pulse Shield
-    if (s.btn.rb.pressed)    padTap('e');        // RB / R1 → EMP
-    if (s.btn.y.pressed)     padTap(' ');        // Y / Triangle → Ultimate
+    if (s.btn.rt.pressed || s.btn.lt.pressed || s.btn.b.pressed) pad.rumble(70, 0.5, 0.3);   // dash kick
+    if (s.btn.lb.pressed)    { padTap('q'); pad.rumble(90, 0.4, 0.5); }   // LB / L1 → Pulse Shield
+    if (s.btn.rb.pressed)    { padTap('e'); pad.rumble(90, 0.4, 0.5); }   // RB / R1 → EMP
+    if (s.btn.y.pressed)     { padTap(' '); pad.rumble(200, 0.85, 0.6); } // Y / Triangle → Ultimate (big rumble)
     if (s.btn.start.pressed) padTap('Escape');   // Start/Options → pause (B/Circle is now gameplay dash)
     // Right stick → manual aim direction (overrides auto-aim while active)
     if (s.axes.rx !== 0 || s.axes.ry !== 0) {
