@@ -7326,8 +7326,10 @@ export class Game {
     if (!this.endless || this.vaultDrop) return;
     if (Math.random() > 0.35) return;
     const p = this._clampPickupPos(pos.clone().add(new Vec2(randomRange(-80, 80), randomRange(-80, 80))));
-    this.vaultDrop = { pos: p, timer: 30, kills: 0, needed: 8, killWindow: 10, unlocked: false, spin: 0 };
-    this.triggerAnnouncement('VAULT DROP DETECTED — BREAK THE LOCK', '#ffd23c');
+    this.vaultDrop = { pos: p, timer: 45, maxTimer: 45, kills: 0, needed: 30, killWindow: 12, unlocked: false, spin: 0 };
+    this.triggerAnnouncement('LOCKED VAULT — 30 KILLS TO BREACH', '#ffd23c');
+    // Eden Core announces the locked second cache and its kill-challenge.
+    this._queueEdenTransmission('SECOND GRID CACHE SEALED. 30 KILLS WILL BREAK THE LOCK.', { title: 'EDEN CORE', priority: 2, duration: 6 });
   }
 
   _onVaultKill(pos) {
@@ -7340,6 +7342,7 @@ export class Game {
       v.unlocked = true;
       v.timer = Math.max(v.timer, 12);
       this.triggerAnnouncement('VAULT UNLOCKED', '#34d399');
+      this._queueEdenTransmission('LOCK BROKEN. THE SECOND CACHE IS YOURS — WALK IN.', { title: 'EDEN CORE', priority: 2, duration: 5 });
       this.screenShake.trigger(5, 0.25);
     }
   }
@@ -7417,7 +7420,7 @@ export class Game {
     ctx.fillStyle = 'rgba(0,0,0,0.5)';
     ctx.fillRect(v.pos.x - sz / 2, v.pos.y + sz / 2 + 4, sz, 4);
     ctx.fillStyle = v.unlocked ? '#34d399' : '#ffd23c';
-    ctx.fillRect(v.pos.x - sz / 2, v.pos.y + sz / 2 + 4, Math.max(0, sz * (v.timer / 30)), 4);
+    ctx.fillRect(v.pos.x - sz / 2, v.pos.y + sz / 2 + 4, Math.max(0, sz * (v.timer / (v.maxTimer || 45))), 4);
     ctx.restore();
     ctx.textAlign = 'left';
   }
@@ -12850,6 +12853,25 @@ export class Game {
       ctx.fillRect(Math.round(pos.x - sz / 2), Math.round(pos.y + sz / 2 + 4), sz, 4);
       ctx.fillStyle = CYAN;
       ctx.fillRect(Math.round(pos.x - sz / 2), Math.round(pos.y + sz / 2 + 4), Math.round(sz * (timer / 20)), 4);
+      // ── Blinking inverted-symbol marker (▽) hovering above the crate — all modes ──
+      // Hard on/off blink so the cache is instantly spottable even on busy backgrounds.
+      if ((Math.floor(Date.now() / 340) % 2) === 0) {
+        const mY = pos.y - sz / 2 - 24;
+        const S  = 13;
+        drawGlow(ctx, pos.x, mY, S * 1.6, CYAN, 0.55);
+        ctx.save();
+        ctx.fillStyle   = CYAN;
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth   = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(pos.x - S, mY - S * 0.85);   // inverted triangle: top edge …
+        ctx.lineTo(pos.x + S, mY - S * 0.85);
+        ctx.lineTo(pos.x,     mY + S * 0.95);   // … apex pointing DOWN at the crate
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+      }
     }
 
     // ═══ LAYER 2: WEAPON VFX — drawn BELOW player sprite ═══════════════════
@@ -15192,8 +15214,10 @@ export class Game {
       </div>`;
     }).join('');
 
-    // Build secret skins HTML
-    const secretChars = this.characters.filter(c => CHARACTER_OUTFITS[c.id]?.secret);
+    // Build secret skins HTML — the trailing unrequested locked skins are removed entirely.
+    const HIDDEN_SKINS = ['toxic_overload', 'null_walker', 'crimson_oni'];
+    const secretChars = this.characters.filter(c => CHARACTER_OUTFITS[c.id]?.secret
+      && !HIDDEN_SKINS.includes(CHARACTER_OUTFITS[c.id].secret.unlockKey));
     const skinsHtml = secretChars.map(c => {
       const secret = CHARACTER_OUTFITS[c.id].secret;
       const key = secret.unlockKey;
@@ -15598,7 +15622,10 @@ export class Game {
 
     // Secret skins — their OWN centered row (decoupled from the 2-row card grid). Only characters
     // that actually have a secret outfit appear, so there is never an empty slot or overlap.
-    const secretChars = this.characters.filter(c => CHARACTER_OUTFITS[c.id]?.secret);
+    // The trailing unrequested locked skins are removed entirely.
+    const HIDDEN_SKINS = ['toxic_overload', 'null_walker', 'crimson_oni'];
+    const secretChars = this.characters.filter(c => CHARACTER_OUTFITS[c.id]?.secret
+      && !HIDDEN_SKINS.includes(CHARACTER_OUTFITS[c.id].secret.unlockKey));
     const stW = 52, stH = 50, stGap = 28, stTop = 518;
     const stRowW = secretChars.length * stW + (secretChars.length - 1) * stGap;
     let stCx = Math.round(WIDTH / 2 - stRowW / 2) + stW / 2;
