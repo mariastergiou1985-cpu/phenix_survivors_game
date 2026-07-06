@@ -306,12 +306,12 @@ export const TACTICAL_DEFS = Object.freeze({
     fxModule:    FX_MODULE.B_TOTAL_CATACLYSM,
     behavior:    TACTICAL_BEHAVIOR.GRAVITY_SINGULARITY,
     sprite:      'assets/weapons/tactical/tac_gravity_well.png',
-    baseDamage:  110,
+    baseDamage:  160,
     pullRadius:  300,
     pullForce:   2.5,
     collapseTime: 2.0,   // seconds of vacuum pull before detonation
     blastRadius:  450,
-    duration:    8,
+    duration:    12,
     color:       '#ff3030',
     glitchFx: {
       screenTear:  true,  // full screen tear on detonation
@@ -372,12 +372,12 @@ export const TACTICAL_DEFS = Object.freeze({
     fxModule:    null,     // Uses Universal Flare Flashes
     behavior:    TACTICAL_BEHAVIOR.HOMING_VOLLEY,
     sprite:      'assets/weapons/nexus/arm_missile_barrage_overdrive.png',
-    baseDamage:  65,
+    baseDamage:  90,
     missileCount: 8,
     missileSpeed: 5.5,
     homingForce:  0.08,
     tickRate:     0.5,
-    duration:    10,
+    duration:    14,
     color:       '#ffcc00',
     glitchFx: {
       flareFlash: true,   // bright universal flare on impact

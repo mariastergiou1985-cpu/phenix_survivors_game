@@ -10050,7 +10050,7 @@ export class Game {
           e.pos.y += (dy / d) * strength;
           // Tick damage while pulling
           if (w.cooldown <= 0) {
-            e.takeHit(Math.floor(w.def.baseDamage * 0.15), this);
+            e.takeHit(Math.floor(w.def.baseDamage * 0.30), this);
           }
         }
       }
@@ -10078,7 +10078,7 @@ export class Game {
     // instead of w.pullTimer (which stops advancing after collapse).
     if (w.collapsed) {
       w.collapseElapsed = (w.collapseElapsed || 0) + dt;
-      if (w.collapseElapsed > 1.5) w.alive = false;
+      if (w.collapseElapsed > 1.5) { w.collapsed = false; w.pullTimer = 0; w.collapseElapsed = 0; }
     }
   }
 
@@ -10347,7 +10347,7 @@ export class Game {
             ctx.restore();
             if (w.collapsed) {
               // Collapse shockwave — expanding violet ring, fades out
-              const t = Math.min(1, Math.max(0, (w.pullTimer - (w.def.collapseTime || 2.0)) / 1.5));
+              const t = Math.min(1, Math.max(0, (w.collapseElapsed || 0) / 1.5));
               ctx.save();
               ctx.globalCompositeOperation = 'lighter';
               ctx.globalAlpha = (1 - t) * 0.8;
