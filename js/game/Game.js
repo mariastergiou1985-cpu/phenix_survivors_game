@@ -13600,6 +13600,10 @@ export class Game {
         display:flex; align-items:flex-start; justify-content:center;
         padding:22px; overflow-x:hidden; overflow-y:auto;
       }
+      /* Mobile: shrink the whole menu so the entire main menu fits on screen without scrolling */
+      @media (max-width:900px){ #cgm-overlay{padding:8px;align-items:center;} #cgm-overlay .stage{zoom:0.72;} }
+      @media (max-height:620px){ #cgm-overlay{align-items:center;} #cgm-overlay .stage{zoom:0.62;} }
+      @media (max-width:560px){ #cgm-overlay .stage{zoom:0.56;} }
       #cgm-overlay::before{
         content:""; position:fixed; inset:0; pointer-events:none; z-index:0;
         background-image:
