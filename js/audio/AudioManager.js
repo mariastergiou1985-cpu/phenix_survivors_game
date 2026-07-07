@@ -159,9 +159,14 @@ export class AudioManager {
   // (duck-proof, like the radio). Idempotent while already playing. ADD MORE SONGS IN ORDER BELOW.
   _EDDIE_ALBUM() {
     return [
-      'assets/audio/music/eddie_riffs.mp3?v=20260707000000',
-      'assets/audio/music/handshake_without_hands.mp3?v=20260707000000',
-      // ↑ next songs get appended here, in play order (Consensus, Convergence Protocol, … TBD)
+      'assets/audio/music/eddie_riffs.mp3?v=20260707000000',            // 1
+      'assets/audio/music/handshake_without_hands.mp3?v=20260707000000', // 2
+      'assets/audio/music/echo_relation.mp3?v=20260707000000',          // 3
+      'assets/audio/music/mirror_relation.mp3?v=20260707000000',        // 4
+      'assets/audio/music/lattice_integrity.mp3?v=20260707000000',      // 5
+      'assets/audio/music/consensus.mp3?v=20260707000000',              // 6
+      'assets/audio/music/convergence_protocol.mp3?v=20260707000000',   // 7
+      'assets/audio/music/home_synchronization.mp3?v=20260707000000',   // 8 (then loops to 1)
     ];
   }
 
