@@ -32,10 +32,11 @@ Specs: ~512×512 (ή μεγαλύτερο), διάφανο background, neon cybe
 - **Cryo Sovereign** → ice evolution. Recipe: spirit_crescent + (ice base). Behavior: PULL_EXPLODE/VORTEX (freeze-shatter). Element: ice.
 Κάθε ένα: 1-frame sprite (το art είναι ενιαίο image, όχι spritesheet) → static render, δείχνει όλο το art.
 
-### Art batch #2 (μετά)
-- [ ] `assets/weapons/vfx/ion_halo.png` — **Ion Halo** (μπλε ηλεκτρικό δαχτυλίδι)
-- [ ] `assets/weapons/vfx/null_lance.png` — **Null Lance** (λευκό void δόρυ)
-- [ ] `assets/weapons/vfx/ember_storm.png` — **Ember Storm** (πορτοκαλί δίνη στάχτης)
+### Art batch #2 (ΕΤΟΙΜΟ ✅ — art παραδόθηκε + alpha-fixed από Claude)
+- [x] `assets/weapons/vfx/ion_halo.png` — **Ion Halo** (μπλε ηλεκτρικό δαχτυλίδι) ✅ RGBA
+- [x] `assets/weapons/vfx/null_lance.png` — **Null Lance** (μωβ/λευκό void δόρυ + black hole) ✅ RGBA
+- [x] `assets/weapons/vfx/ember_storm.png` — **Ember Storm** (πορτοκαλί δίνη στάχτης) ✅ RGBA
+Και τα 6 art evolutions είναι πλέον στον φάκελο, alpha-fixed. Επόμενο: wiring στο gameplay.
 
 ### Wiring (Claude, αφού έρθει το art)
 - [ ] Batch #1 wired (recipes + card + damage path) → commit → live verify
