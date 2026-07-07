@@ -9906,8 +9906,9 @@ export class Game {
     if (this._guitarPerf) return;
     if (!this.player || this.player.selectedCharacter !== 'eddie') return;
     const lvl = Math.max(1, this._cardLvl('eddie_guitar_solo'));
-    const trackDur = this.audio?.eddieRiffsDuration?.() || 0;
-    const dur = Math.max(90, trackDur);                 // at least 1.5 minutes of solo
+    // Runs until the run ends (death / menu) so the whole ALBUM plays through in order — the
+    // performance never self-expires; stopEddieRiffs + _guitarPerf clearing happen on death/menu.
+    const dur = 1e9;
     this._guitarPerf = { t: 0, dur, waveCd: 0, waveEvery: Math.max(1.6, 2.6 - lvl * 0.2), lvl };
     this.audio?.playEddieRiffs?.();
     this.triggerAnnouncement('♪ GUITAR SOLO ♫', '#ff2d2d');

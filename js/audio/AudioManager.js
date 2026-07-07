@@ -153,46 +153,64 @@ export class AudioManager {
     audio.currentTime = 0;
   }
 
-  // Eddie GUITAR SOLO track — plays the WHOLE eddie_riffs song ONCE (not restarted per wave)
-  // and DUCKS the map music to 25% while it plays so the guitar is clearly audible (mirrors the
-  // menu radio duck). Routed direct to masterGain so ducking musicGain never lowers the guitar.
-  // Idempotent: calling again while it's already playing is a no-op (lets the full track finish).
+  // Eddie GUITAR SOLO ALBUM — an ordered playlist. Song 1 plays, then the NEXT starts the instant
+  // the previous ends (via onended), looping back to the top after the last one. The map music is
+  // DUCKED to 25% for the whole album so the guitar is clearly in front. Routed direct to masterGain
+  // (duck-proof, like the radio). Idempotent while already playing. ADD MORE SONGS IN ORDER BELOW.
+  _EDDIE_ALBUM() {
+    return [
+      'assets/audio/music/eddie_riffs.mp3?v=20260707000000',
+      'assets/audio/music/handshake_without_hands.mp3?v=20260707000000',
+      // ↑ next songs get appended here, in play order (Consensus, Convergence Protocol, … TBD)
+    ];
+  }
+
+  _playEddieAlbumTrack(i) {
+    const a = this._eddieRiffsAudio;
+    if (!a) return;
+    const album = this._EDDIE_ALBUM();
+    this._eddieAlbumIdx = ((i % album.length) + album.length) % album.length;
+    try {
+      a.src = album[this._eddieAlbumIdx];
+      a.currentTime = 0;
+      a.play().catch(() => {});
+    } catch (_) {}
+  }
+
   playEddieRiffs() {
     if (this.muted) return;
     if (this._eddieRiffsPlaying) return;
     try {
       if (!this._eddieRiffsAudio) {
-        const a = new Audio('assets/audio/music/eddie_riffs.mp3?v=20260706300000');
+        const a = new Audio();
         a.loop = false; a.preload = 'auto';
-        a.onerror = () => console.warn('[Audio] failed to load: eddie_riffs.mp3');
+        a.onerror = () => console.warn('[Audio] Eddie album track failed to load');
         const src = this.actx.createMediaElementSource(a);
         const g   = this.actx.createGain(); g.gain.value = 0.9;
         src.connect(g); g.connect(this.masterGain);   // direct to master — duck-proof, like the radio
         try { g.connect(this.analyser); } catch (_) {}
+        // Auto-advance to the NEXT album track the moment one ends (loops at the end).
+        a.onended = () => {
+          if (!this._eddieRiffsPlaying) return;        // stopped → don't chain another song
+          this._playEddieAlbumTrack((this._eddieAlbumIdx || 0) + 1);
+        };
         this._eddieRiffsAudio = a;
       }
-      const a = this._eddieRiffsAudio;
       if (this.actx.state === 'suspended') this.actx.resume().catch(() => {});
-      // Duck the map music so the guitar solo takes the foreground.
+      // Duck the map music so the guitar album takes the foreground.
       this.musicGain.gain.setTargetAtTime((this.muted ? 0 : this.musicVolume) * 0.25, this.actx.currentTime, 0.4);
       this._eddieRiffsPlaying = true;
-      const restore = () => {
-        this.musicGain.gain.setTargetAtTime(this.muted ? 0 : this.musicVolume, this.actx.currentTime, 0.6);
-        this._eddieRiffsPlaying = false;
-      };
-      a.onended = restore;
-      this._eddieRiffsRestore = restore;
-      try { a.currentTime = 0; } catch (_) {}
-      a.play().catch(() => {});
+      this._playEddieAlbumTrack(this._eddieAlbumIdx || 0);   // start from the top (song 1)
     } catch (_) {}
   }
 
-  // Stop the guitar solo early (performance ended) and restore the map-music level.
+  // Stop the album (performance ended / death / menu) and restore the map-music level.
   stopEddieRiffs() {
+    this._eddieRiffsPlaying = false;                  // set FIRST so onended never chains a new song
     const a = this._eddieRiffsAudio;
-    if (!a) return;
-    try { a.pause(); } catch (_) {}
-    try { this._eddieRiffsRestore?.(); } catch (_) {}
+    if (a) { try { a.pause(); } catch (_) {} }
+    this.musicGain.gain.setTargetAtTime(this.muted ? 0 : this.musicVolume, this.actx.currentTime, 0.6);
+    this._eddieAlbumIdx = 0;                           // next performance starts the album from song 1
   }
 
   // Track length in seconds (0 until metadata has loaded).
