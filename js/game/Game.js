@@ -22,7 +22,7 @@ import { weightedSample } from './Upgrades.js?v=20260706300000';
 import { MutationUI }      from './MutationUI.js?v=20260703990000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260705300000';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS } from './MetaProgress.js?v=20260706170000';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS } from './MetaProgress.js?v=20260706430000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260705300000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
@@ -1449,6 +1449,10 @@ export class Game {
     // Save Endless records before fading (must happen synchronously)
     if (this.endless && !this.rewardsGranted && this.timeAlive > 5) {
       this._grantRewards();
+    }
+    // OST Jukebox unlock: banking Eddie survival time when quitting a run mid-way, too.
+    if (this.gameState === 'playing' && this.player?.selectedCharacter === 'eddie' && this.timeAlive > 0) {
+      this.meta?.recordEddieTime?.(this.timeAlive);
     }
     this._transition(() => {
       this._postArenaChoice = false;
@@ -3451,6 +3455,10 @@ export class Game {
         #cgm-achievements .jb-idx     { font-family:'Orbitron',sans-serif; font-weight:800; font-size:11px; color:#ff6a6a; min-width:26px; text-align:center; }
         #cgm-achievements .jb-play    { font-size:13px; color:#ff9a9a; width:18px; text-align:center; }
         #cgm-achievements .jb-name    { flex:1; font-family:'Orbitron',sans-serif; font-weight:700; font-size:11px; letter-spacing:.5px; color:#ffd9d9; }
+        #cgm-achievements .jb-row.locked { opacity:.5; cursor:not-allowed; border-color:rgba(110,110,130,.16); background:rgba(10,10,16,.5); }
+        #cgm-achievements .jb-row.locked:hover { border-color:rgba(110,110,130,.16); background:rgba(10,10,16,.5); }
+        #cgm-achievements .jb-row.locked .jb-idx { color:#54546a; }
+        #cgm-achievements .jb-row.locked .jb-name { color:#7a7a8a; font-weight:600; }
       `;
       document.head.appendChild(style);
     }
@@ -3769,33 +3777,42 @@ export class Game {
       if (skCount) skCount.textContent = unlockedN + ' / ' + skinChars.length + ' UNLOCKED';
     }
 
-    // ── OST Jukebox — play any Eddie album track on demand (menu only) ──
+    // ── OST Jukebox — tracks UNLOCK progressively by longest survival AS EDDIE ──
+    //   [file, display name, required Eddie survival seconds]
     const JUKEBOX = [
-      ['eddie_riffs',             'Red Thunder Riffs'],
-      ['handshake_without_hands', 'Handshake Without Hands'],
-      ['echo_relation',           'Echo Relation'],
-      ['mirror_relation',         'Mirror Relation'],
-      ['lattice_integrity',       'Lattice Integrity'],
-      ['consensus',               'Consensus'],
-      ['convergence_protocol',    'Convergence Protocol'],
-      ['home_synchronization',    'Home Synchronization'],
+      ['eddie_riffs',             'Red Thunder Riffs',        60],
+      ['handshake_without_hands', 'Handshake Without Hands', 180],
+      ['echo_relation',           'Echo Relation',           360],
+      ['mirror_relation',         'Mirror Relation',         600],
+      ['lattice_integrity',       'Lattice Integrity',       900],
+      ['consensus',               'Consensus',              1200],
+      ['convergence_protocol',    'Convergence Protocol',   1500],
+      ['home_synchronization',    'Home Synchronization',   1800],
     ];
     const jbList = el.querySelector('#jb-list');
     const jbNow  = el.querySelector('#jb-now');
+    const bestEddie = this.meta?.getBestEddieTime?.() || 0;
+    const _fmtT = s => Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
     if (jbList) {
-      jbList.innerHTML = JUKEBOX.map(([file, name], i) =>
-        `<div class="jb-row" data-jb="${file}" data-name="${name}">
+      const unlockedCount = JUKEBOX.filter(t => bestEddie >= t[2]).length;
+      const idleLabel = unlockedCount + ' / ' + JUKEBOX.length + ' UNLOCKED';
+      if (jbNow) jbNow.textContent = idleLabel;
+      jbList.innerHTML = JUKEBOX.map(([file, name, req], i) => {
+        const unlocked = bestEddie >= req;
+        return `<div class="jb-row ${unlocked ? '' : 'locked'}" data-jb="${file}" data-name="${name}" data-unlocked="${unlocked ? 1 : 0}">
           <span class="jb-idx">${String(i + 1).padStart(2, '0')}</span>
-          <span class="jb-play">▶</span>
-          <span class="jb-name">${name}</span>
-        </div>`).join('');
+          <span class="jb-play">${unlocked ? '▶' : '🔒'}</span>
+          <span class="jb-name">${unlocked ? name : 'LOCKED — survive ' + _fmtT(req) + ' as Eddie'}</span>
+        </div>`;
+      }).join('');
       jbList.querySelectorAll('.jb-row').forEach(row => {
         row.addEventListener('click', () => {
+          if (row.dataset.unlocked !== '1') return;   // locked track — not playable yet
           const wasPlaying = row.classList.contains('playing');
-          jbList.querySelectorAll('.jb-row').forEach(r => { r.classList.remove('playing'); const p = r.querySelector('.jb-play'); if (p) p.textContent = '▶'; });
+          jbList.querySelectorAll('.jb-row').forEach(r => { r.classList.remove('playing'); if (r.dataset.unlocked === '1') { const p = r.querySelector('.jb-play'); if (p) p.textContent = '▶'; } });
           if (wasPlaying) {
             this.audio?.stopJukebox?.();
-            if (jbNow) jbNow.textContent = '♪ IDLE';
+            if (jbNow) jbNow.textContent = idleLabel;
           } else {
             this.audio?.playJukebox?.('assets/audio/music/' + row.dataset.jb + '.mp3');
             row.classList.add('playing');
@@ -7289,6 +7306,8 @@ export class Game {
         this._guitarNotes.length  = 0;
         this._goldStrikes.length  = 0;
         this._goldImpacts.length  = 0;
+        // OST Jukebox unlock: record this Eddie survival time (unlocks tracks by duration).
+        if (this.player?.selectedCharacter === 'eddie') this.meta?.recordEddieTime?.(this.timeAlive);
         this._grantRewards();
       }
     }

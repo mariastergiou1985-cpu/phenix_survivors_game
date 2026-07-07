@@ -262,6 +262,7 @@ export class MetaProgress {
     // Personal Endless-mode records — kept SEPARATE from Act 1 / global high score.
     // { time: seconds survived, score: best score, level: highest player level }.
     this.endlessRecords = { time: 0, score: 0, level: 0 };
+    this.bestEddieTime = 0;   // longest survival AS EDDIE (seconds) — progressively unlocks OST jukebox tracks
     // Endless achievement flags: { [id]: true } once earned. Persisted alongside records.
     this.achievements = {};
     // Equipped outfit per character: { [characterId]: 'default' | 'secret' }. Stored SEPARATELY
@@ -311,6 +312,7 @@ export class MetaProgress {
         score: Number(er.score) || 0,
         level: Number(er.level) || 0,
       };
+      this.bestEddieTime = Number(d.bestEddieTime) || 0;   // longest Eddie survival (unlocks OST jukebox tracks)
       this.achievements = d.achievements || {};
       this.selectedOutfits = d.selectedOutfits || {};
       this.endlessUnlocked = d.endlessUnlocked === true;
@@ -390,6 +392,7 @@ export class MetaProgress {
         levels:  this.levels,
         unlocks: this.unlocks,
         endlessRecords: this.endlessRecords,
+        bestEddieTime: this.bestEddieTime,
         achievements: this.achievements,
         selectedOutfits: this.selectedOutfits,
         endlessUnlocked: this.endlessUnlocked,
@@ -414,6 +417,14 @@ export class MetaProgress {
         petSlots:           this.petSlots,
       }));
     } catch (_) {}
+  }
+
+  // ── OST Jukebox unlock: longest survival AS EDDIE (seconds) ──
+  getBestEddieTime() { return this.bestEddieTime || 0; }
+  recordEddieTime(seconds) {
+    const t = Number(seconds) || 0;
+    if (t > (this.bestEddieTime || 0)) { this.bestEddieTime = t; this._save(); return true; }
+    return false;
   }
 
   // Submit a finished Endless run. Updates any beaten personal records and persists.
