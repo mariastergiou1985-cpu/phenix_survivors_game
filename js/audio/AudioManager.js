@@ -209,6 +209,7 @@ export class AudioManager {
     this._stop(this._gameplayAudio);
     this._stop(this._endlessAudio);
     this._stop(this._chaosAudio);
+    this.stopEddieRiffs();   // cut any lingering Eddie guitar solo when returning to the menu
     this._currentMusic = this._menuAudio;
     this.currentTrackTitle = 'Hope';
     this._play(this._menuAudio);
@@ -290,6 +291,7 @@ export class AudioManager {
     this._stop(this._gameplayAudio);
     this._stop(this._endlessAudio);
     this._stop(this._chaosAudio);
+    this.stopEddieRiffs();   // also cut the Eddie guitar solo track + restore ducked music (death / menu / etc.)
   }
 
   toggleMute() {

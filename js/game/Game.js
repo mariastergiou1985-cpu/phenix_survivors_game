@@ -7224,6 +7224,12 @@ export class Game {
         this.finalMessage = 'CYBER-HERO OFFLINE';
         this.audio?.playPlayerDeath?.();
         this.audio?.stopAll();
+        // Eddie GUITAR SOLO: end the performance on death — stop the track (stopAll already does)
+        // and clear the sustained solo so notes/lightning don't linger or carry into a retry.
+        this._guitarPerf   = null;
+        this._guitarNotes.length  = 0;
+        this._goldStrikes.length  = 0;
+        this._goldImpacts.length  = 0;
         this._grantRewards();
       }
     }
