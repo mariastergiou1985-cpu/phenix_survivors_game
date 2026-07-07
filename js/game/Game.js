@@ -923,7 +923,7 @@ export class Game {
     const items = ['START GAME'];
     if (this.meta?.isEndlessUnlocked()) items.push('ENDLESS MODE');
     items.push('CHAOS MODE');   // always visible; locked if !endlessUnlocked — handled in draw/click
-    items.push('CHARACTER SELECT', 'UPGRADES', 'RECORDS', 'RELICS', 'HANGAR', 'EVOLUTION MATRIX', 'SETTINGS', 'EXIT');
+    items.push('CHARACTER SELECT', 'UPGRADES', 'COLLECTIBLES', 'RELICS', 'HANGAR', 'EVOLUTION MATRIX', 'SETTINGS', 'EXIT');
     return items;
   }
 
@@ -3443,7 +3443,7 @@ export class Game {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
               <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
             </svg>
-            RECORDS
+            COLLECTIBLES
           </div>
           <div class="ca-badges">
             <div class="ca-badge">★ <span id="ca-earned">0</span>&nbsp;/&nbsp;<span id="ca-total">0</span>&nbsp;UNLOCKED</div>
@@ -3511,21 +3511,6 @@ export class Game {
             </div>
           </div>
           <div class="sl-list" id="sl-list"></div>
-        </div>
-
-        <div class="ca-sep"></div>
-
-        <div class="cl-section" id="cl-section">
-          <div class="cl-header">
-            <div class="cl-title">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18" aria-hidden="true">
-                <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
-              </svg>
-              CHAOS LAWS
-            </div>
-            <div class="cl-subtitle" id="cl-subtitle">PREVIEW LOCKED</div>
-          </div>
-          <div id="cl-body"></div>
         </div>
 
         <div class="ca-sep"></div>
@@ -3635,48 +3620,8 @@ export class Game {
       }).join('');
     }
 
-    // Sync Chaos Laws preview
-    const clSubtitle = el.querySelector('#cl-subtitle');
-    const clBody     = el.querySelector('#cl-body');
-    if (clSubtitle && clBody && this.meta) {
-      const mem = this.meta.getEdenMemory();
-      const detected = mem >= 50;
-      if (detected) {
-        clSubtitle.textContent = 'ENDGAME PROTOCOLS DETECTED';
-        clSubtitle.style.color = '#ef4444';
-        clBody.innerHTML = `<div class="cl-grid">${CHAOS_LAWS.map(law => {
-          const _bgAct = law.id === 'blood_grid';
-          return `<div class="cl-card detected" style="${_bgAct ? 'border-color:rgba(239,68,68,.75);background:rgba(20,4,4,.92);box-shadow:0 0 10px rgba(239,68,68,.12);' : ''}">
-            <div class="cl-card-top">
-              <div class="cl-name" style="color:${law.color}${_bgAct ? ';text-shadow:0 0 8px ' + law.color + '55' : ''}">${law.name}</div>
-              <div class="cl-badge ${_bgAct ? 'active' : 'detected'}">${_bgAct ? '✦ ONLINE' : '⚡ DETECTED'}</div>
-            </div>
-            <div class="cl-desc">${law.desc}</div>
-            ${_bgAct
-              ? `<div class="cl-future" style="color:#ef8888;font-style:normal;border-top:1px solid rgba(239,68,68,.18);padding-top:5px;margin-top:2px;">Enemy speed +7% · Score +10% — <span style="color:#ef4444;font-weight:700">ACTIVE</span></div>`
-              : `<div class="cl-future detected">${law.future} <span style="color:#ef4444;font-style:normal">— PREVIEW ONLY · NOT ACTIVE</span></div>`
-            }
-          </div>`;
-        }).join('')}</div>`;
-      } else {
-        clSubtitle.textContent = 'PREVIEW LOCKED BY EDEN MEMORY';
-        clSubtitle.style.color = '#6b2020';
-        clBody.innerHTML = `
-          <div class="cl-locked-banner">
-            <div class="cl-lock-icon">🔒</div>
-            <div class="cl-lock-msg">CHAOS LAWS ENCRYPTED</div>
-            <div class="cl-lock-req">Requires EDEN MEMORY 50% — currently ${Math.round(mem)}%</div>
-          </div>
-          <div class="cl-grid" style="opacity:.35;pointer-events:none">${CHAOS_LAWS.map(law => `
-            <div class="cl-card locked">
-              <div class="cl-card-top">
-                <div class="cl-name" style="color:#4a2020">??? LAW</div>
-                <div class="cl-badge locked">✕ LOCKED</div>
-              </div>
-              <div class="cl-desc" style="color:#3a2020">ENCRYPTED DATA</div>
-            </div>`).join('')}</div>`;
-      }
-    }
+    // (Chaos Laws removed from Collectibles — they are gameplay run-modifiers, chosen at the
+    //  Chaos Law Selection at Endless start, not collectible codex entries.)
 
     // Sync System Logs / Lore Archive
     const slMem  = el.querySelector('#sl-mem');
@@ -4775,7 +4720,7 @@ export class Game {
     ctx.font      = 'bold 40px Consolas, monospace';
     ctx.fillStyle = CYAN;
     ctx.textAlign = 'center';
-    ctx.fillText('RECORDS', WIDTH / 2, 52);
+    ctx.fillText('COLLECTIBLES', WIDTH / 2, 52);
 
     // Progress header — X / N UNLOCKED
     const total  = ENDLESS_ACHIEVEMENTS.length;
@@ -7857,7 +7802,7 @@ export class Game {
     else if (item === 'ENDLESS MODE')   this.startEndlessRun();
     else if (item === 'CHAOS MODE')    this._selectChaosMode();
     else if (item === 'UPGRADES')       this.goToUpgradesScreen();
-    else if (item === 'RECORDS')        this.goToAchievementsScreen();   // 'RECORDS' label → same achievements screen/logic
+    else if (item === 'COLLECTIBLES')   this.goToAchievementsScreen();   // 'COLLECTIBLES' label → same screen/logic
     else if (item === 'RELICS')         this.goToRelicsScreen();
     else if (item === 'HANGAR')         this.goToHangar();
     else if (item === 'EVOLUTION MATRIX') this.goToEvolutionMatrix();
@@ -14661,7 +14606,7 @@ export class Game {
       'CHAOS MODE':       '✦',
       'CHARACTER SELECT': '◈',
       'UPGRADES':         '▲',
-      'RECORDS':          '★',
+      'COLLECTIBLES':     '★',
       'RELICS':           '◆',
       'HANGAR':           '⬢',
       'SETTINGS':         '≡',
