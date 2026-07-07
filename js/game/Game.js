@@ -14112,7 +14112,7 @@ export class Game {
       <section class="panel video-panel" style="--accent:var(--magenta);--accent-glow:rgba(255,45,149,.5)">
         <div class="panel-title" style="color:var(--magenta)"><span class="dot" style="background:var(--magenta)"></span>LIVE FEED</div>
         <div class="video-frame">
-          <video id="cgm-menu-video" src="assets/video/phenix_null_eden_menu.mp4" loop muted playsinline preload="auto"></video>
+          <video id="cgm-menu-video" muted playsinline preload="auto"></video>
           <div class="vf-scanlines"></div>
           <div class="vf-vignette"></div>
           <div class="vf-badge"><span class="vf-rec"></span>LIVE</div>
@@ -14374,9 +14374,46 @@ export class Game {
     if (this._codeRainCanvas) this._codeRainCanvas.style.display = 'block';
     this._menuOverlayVisible = true;
     this._startEqLoop();
-    // ── start menu video feed ──
+    // ── start menu video feed (sequential playlist) ──
     const vid = document.getElementById('cgm-menu-video');
-    if (vid) vid.play().catch(() => {});
+    if (vid) {
+      // Advance to the NEXT clip the moment one ends, looping the whole list (wired once).
+      if (!vid._playlistWired) {
+        vid._playlistWired = true;
+        vid.addEventListener('ended', () => this._playMenuVideo((this._menuVideoIdx || 0) + 1));
+      }
+      if (!vid.src) this._playMenuVideo(this._menuVideoIdx || 0);   // first show → start at clip 1
+      else vid.play().catch(() => {});                              // returning → resume current clip
+    }
+  }
+
+  // Ordered menu video playlist. Clip 1 plays, then the next starts the instant it ends, looping
+  // back to the top after the last. ADD/REORDER CLIPS HERE.
+  _MENU_VIDEOS() {
+    return [
+      'assets/video/phenix_null_eden_menu.mp4?v=20260707000000',  // 1
+      'assets/video/episode2.mp4?v=20260707000000',              // 2
+      'assets/video/episode3.mp4?v=20260707000000',              // 3
+      'assets/video/episode4.mp4?v=20260707000000',              // 4
+      'assets/video/episode5.mp4?v=20260707000000',              // 5
+      'assets/video/episode6.mp4?v=20260707000000',              // 6
+      'assets/video/episode7.mp4?v=20260707000000',              // 7
+      'assets/video/episode8.mp4?v=20260707000000',              // 8
+      'assets/video/episode9.mp4?v=20260707000000',              // 9
+      'assets/video/telos.mp4?v=20260707000000',                 // 10 (then loops to 1)
+    ];
+  }
+
+  _playMenuVideo(i) {
+    const vid = document.getElementById('cgm-menu-video');
+    if (!vid) return;
+    const list = this._MENU_VIDEOS();
+    this._menuVideoIdx = ((i % list.length) + list.length) % list.length;
+    try {
+      vid.src = list[this._menuVideoIdx];
+      vid.currentTime = 0;
+      vid.play().catch(() => {});
+    } catch (_) {}
   }
 
   _hideMenuOverlay() {
