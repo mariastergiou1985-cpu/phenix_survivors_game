@@ -107,17 +107,26 @@ export function roundRect(ctx, x, y, w, h, r) {
 }
 
 // Simple word-wrap for canvas text
-export function wrapText(ctx, text, x, y, maxWidth, lineHeight, color, font = '16px Consolas, monospace') {
+export function wrapText(ctx, text, x, y, maxWidth, lineHeight, color, font = '16px Consolas, monospace', maxLines = Infinity) {
   ctx.font      = font;
   ctx.fillStyle = color;
   const words = text.split(' ');
-  let line = '';
-  let cy   = y;
+  let line  = '';
+  let cy    = y;
+  let drawn = 0;   // lines already committed
 
   for (const word of words) {
     const test = line ? `${line} ${word}` : word;
     if (ctx.measureText(test).width > maxWidth && line) {
+      // If this committed line would be the last allowed one but more text remains, ellipsize it.
+      if (drawn + 1 >= maxLines) {
+        let clipped = line;
+        while (clipped && ctx.measureText(clipped + '…').width > maxWidth) clipped = clipped.slice(0, -1);
+        ctx.fillText(clipped + '…', x, cy);
+        return;
+      }
       ctx.fillText(line, x, cy);
+      drawn++;
       line = word;
       cy  += lineHeight;
     } else {

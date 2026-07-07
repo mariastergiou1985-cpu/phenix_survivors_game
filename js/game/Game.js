@@ -22,7 +22,7 @@ import { weightedSample } from './Upgrades.js?v=20260706300000';
 import { MutationUI }      from './MutationUI.js?v=20260703990000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260705300000';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS } from './MetaProgress.js?v=20260706430000';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS } from './MetaProgress.js?v=20260707100000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260705300000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
@@ -437,6 +437,7 @@ export class Game {
     this.bestScore      = parseInt(localStorage.getItem('phenix_best_score') || '0', 10);
     this.isNewHighScore = false;
     this.runChaosLaw    = null;   // set by Chaos Law selection overlay; null = no law active
+    this._pendingChaosStart = false; // true while the law overlay is open on the DIRECT Chaos path
 
     // ── Core Systems (Phase 0: new decoupled modules) ──────────────────────
     this.events = new EventBus();
@@ -1258,7 +1259,9 @@ export class Game {
     this._dragonBolts          = [];   // slow cryo bolts fired during non-storm phases
 
     // Double Demons — Chaos Mode dual-body boss (Gunner + Claw, shared HP)
-    this.doubleDemonsSpawned    = false;
+    // Init as ALREADY-SPAWNED so this Chaos-exclusive boss never fires at t=0 in Act 1.
+    // Chaos entry / boss rotation set this back to false to arm the real spawn.
+    this.doubleDemonsSpawned    = true;
     this.doubleDemonsBoss       = null;   // { hp, maxHp, enraged, gunner:{...}, claw:{...} }
     this.doubleDemonsSpawnTimer = 0;
     this._ddClawShockwaves      = [];     // Claw Slam shockwave rings
@@ -1688,6 +1691,7 @@ export class Game {
         this.runChaosLaw = card.dataset.law;
         this._hideChaosLawSelectionOverlay();
         this._hideMenuOverlay();          // guarantee the main-menu overlay never lingers over the run
+        if (this._pendingChaosStart) { this._pendingChaosStart = false; this._beginChaosRun(); return; }
         this.gameState = 'playing';
         this.reset();
         this._enterEndless();
@@ -1697,11 +1701,13 @@ export class Game {
       this.runChaosLaw = null;
       this._hideChaosLawSelectionOverlay();
       this._hideMenuOverlay();            // guarantee the main-menu overlay never lingers over the run after SKIP
+      if (this._pendingChaosStart) { this._pendingChaosStart = false; this._beginChaosRun(); return; }
       this.gameState = 'playing';
       this.reset();
       this._enterEndless();
     });
     document.getElementById('cls-back-btn').addEventListener('click', () => {
+      this._pendingChaosStart = false;
       this._hideChaosLawSelectionOverlay();
       this.goToMainMenu();
     });
@@ -7959,7 +7965,21 @@ export class Game {
     if (this.characters?.find(c => c.id === this.selectedCharacter && c.comingSoon)) {
       this.selectedCharacter = this.characters.find(c => !c.comingSoon && this.meta.isCharacterUnlocked(c.id))?.id || 'skeleton_warrior';
     }
-    this.runChaosLaw = null;          // skip Chaos Law selection overlay for direct Chaos start
+    // Chaos Law gate: Eden Memory >= 50% → offer law selection before engaging Chaos (same gate as
+    // direct Endless). The overlay's confirm/skip handlers route back into _beginChaosRun() because
+    // _pendingChaosStart is set. Below that threshold, start Chaos immediately with no law.
+    if ((this.meta?.getEdenMemory() ?? 0) >= 50) {
+      this._pendingChaosStart = true;
+      this._showChaosLawSelectionOverlay();
+      return;
+    }
+    this.runChaosLaw = null;          // no law available yet → direct Chaos start
+    this._beginChaosRun();
+  }
+
+  // Engages a fresh Chaos run (reset → Endless infra → Chaos state). Shared by the direct-start path
+  // and the Chaos Law overlay confirm/skip handlers.
+  _beginChaosRun() {
     this.gameState = 'playing';
     this.reset();
     this._enterEndless();             // set up all Endless infrastructure
@@ -11085,8 +11105,8 @@ export class Game {
   // ── Ultimate: Red Thunder Curtain (Eddie, SPACE, 80 mana) ───────────────────
   // 6.5s storm: every 0.22s, 2-3 red note-bolts fall at random points across the VISIBLE
   // camera area; each ground impact is a 95px AoE (55 dmg, boss factor mirrors Skyfall) plus
-  // a 0.6s slow on normal enemies. Cost is 80 (not the shared 100) because Eddie caps at
-  // 80 max mana — a 100 gate could never fire at base. Bolts/impacts are hard-capped.
+  // a 0.6s slow on normal enemies. Cost is 80 (cheaper than the shared 100) so it stays
+  // castable often given Eddie's fast, aggressive kit. Bolts/impacts are hard-capped.
   activateRedThunderCurtain() {
     if (this.gameState !== 'playing' || this.paused || this.gameOver || this.victory || this.upgradeUI) return;
     const p = this.player;
@@ -13764,7 +13784,7 @@ export class Game {
     this._slotRow(ctx, qx, qw, s.y + 56,  'CLASS',     ch.role.split(' ')[0], '#9fff6a');
     this._slotRow(ctx, qx, qw, s.y + 74,  'REVIVES',   '✦ ' + revives, '#ff9b3c');
     this._slotRow(ctx, qx, qw, s.y + 92,  'PROTOCOLS', '◈ ' + owned.length, '#b88bff');
-    const _qStats = { skeleton_warrior:{hp:130,mana:100}, taekwondo_girl:{hp:90,mana:100}, cyber_arm_hero:{hp:100,mana:100}, brawler_warrior:{hp:125,mana:100}, assassin_clone:{hp:88,mana:100}, japan_phasewalker:{hp:100,mana:100}, euclid_vector:{hp:100,mana:100}, oni_cataclysm_protocol:{hp:100,mana:100}, eddie:{hp:200,mana:80} };
+    const _qStats = { skeleton_warrior:{hp:130,mana:100}, taekwondo_girl:{hp:90,mana:100}, cyber_arm_hero:{hp:100,mana:100}, brawler_warrior:{hp:125,mana:100}, assassin_clone:{hp:88,mana:100}, japan_phasewalker:{hp:100,mana:100}, euclid_vector:{hp:100,mana:100}, oni_cataclysm_protocol:{hp:100,mana:100}, eddie:{hp:260,mana:120} };
     const _qs = _qStats[ch.id] || { hp: 100, mana: 100 };
     this._slotRow(ctx, qx, qw, s.y + 110, 'HP / MANA', _qs.hp + ' / ' + _qs.mana, '#7fd0ff');
 
@@ -14384,8 +14404,8 @@ export class Game {
     this._cgmSet('qs-class', ch.role.split(' ')[0]);
     this._cgmSet('qs-revives', revives);
     this._cgmSet('qs-protocols', owned.length);
-    const _qsMap = { skeleton_warrior:130, taekwondo_girl:90, cyber_arm_hero:100, brawler_warrior:125, assassin_clone:88, japan_phasewalker:100, euclid_vector:100, oni_cataclysm_protocol:100, eddie:200 };
-    this._cgmSet('qs-hp-mana', (_qsMap[ch.id] || 100) + ' / ' + (ch.id === 'eddie' ? 80 : 100));
+    const _qsMap = { skeleton_warrior:130, taekwondo_girl:90, cyber_arm_hero:100, brawler_warrior:125, assassin_clone:88, japan_phasewalker:100, euclid_vector:100, oni_cataclysm_protocol:100, eddie:260 };
+    this._cgmSet('qs-hp-mana', (_qsMap[ch.id] || 100) + ' / ' + (ch.id === 'eddie' ? 120 : 100));
 
     // System Feed — Eden Core messages + Eden Memory %
     const feedEl = this._menuOverlayEl.querySelector('#cgm-feed-list');

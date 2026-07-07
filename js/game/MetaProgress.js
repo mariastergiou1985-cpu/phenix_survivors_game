@@ -197,7 +197,7 @@ export const PROTOCOL_CARDS = [
   { id: 'lightning_plus',       name: 'Lightning Storm+',           cat: 'WEATHER', cost: 2, desc: 'Lightning Storm lasts longer.' },
   { id: 'lava_plus',            name: 'Lava Rain+',                 cat: 'WEATHER', cost: 2, desc: 'Lava Rain lasts longer.' },
   { id: 'airstrike_plus',       name: 'Airstrike+',                 cat: 'WEATHER', cost: 2, desc: 'Airstrike fires a larger salvo (fair aim kept).' },
-  { id: 'frozen_sleet',         name: 'Frozen Sleet Storm+',        cat: 'WEATHER', cost: 2, desc: 'Frozen Sleet Storm holds you frozen ~2s longer.' },
+  { id: 'frozen_sleet',         name: 'Frozen Sleet Storm+',        cat: 'WEATHER', cost: 2, desc: 'Endless/Chaos hazard: Frozen Sleet Storm holds you frozen ~2s longer.' },
   { id: 'elemental_mastery',    name: 'Elemental Mastery',          cat: 'PLAYER',  cost: 3, desc: 'Stronger elemental bursts (boss-capped).' },
   { id: 'fusion_mastery',       name: 'Fusion Mastery',             cat: 'PLAYER',  cost: 4, desc: 'Stronger fusion damage & radius (boss-capped).' },
   { id: 'ult_infusion_mastery', name: 'Ult Infusion Mastery',       cat: 'PLAYER',  cost: 4, desc: 'Bigger Forbidden Ultimate Infusion nova.' },

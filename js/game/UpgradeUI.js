@@ -204,8 +204,8 @@ export class UpgradeUI {
       ctx.fillText(catLabel, r.x + r.w / 2, r.y + 140);
       ctx.textAlign = 'left';
 
-      // Description (word-wrapped)
-      wrapText(ctx, upg.description, r.x + 12, r.y + 162, r.w - 24, 20, WHITE, '14px Consolas, monospace');
+      // Description (word-wrapped, capped at 3 lines so long copy never spills past the card body)
+      wrapText(ctx, upg.description, r.x + 12, r.y + 162, r.w - 24, 20, WHITE, '14px Consolas, monospace', 3);
 
       // Tactical GRID CACHE cards are REPEATABLE deployables (no fixed max level) — showing
       // level dots would falsely imply they "cap out". Instead print a clear repeatable note so

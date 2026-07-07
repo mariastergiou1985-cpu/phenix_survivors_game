@@ -284,7 +284,7 @@ export const ALL_UPGRADES = [
   new UpgradeDefinition('infuse_electric', 'Electric Infusion', 'Adds ELECTRIC element. With Fusion Catalyst, attacks can trigger Plasma / Ion Storm / Electro-Rot.',
     '#9fd8ff', 1, p => { (p.secondaryElements ||= []).includes('electric')  || p.secondaryElements.push('electric'); },  '⚡', 'legendary', null, null, true, false, null, true,
     ['taekwondo_girl', 'cyber_arm_hero', 'oni_cataclysm_protocol']),   // NOT Euclid (toxin/gas identity)
-  new UpgradeDefinition('infuse_ice', 'Frost Infusion', 'Adds ICE element. With Fusion Catalyst, attacks can trigger Cryo Field / Thermal Shock / Frost Blight / Frost Arc.',
+  new UpgradeDefinition('infuse_ice', 'Frost Infusion', 'Adds ICE element. With Fusion Catalyst, can trigger Cryo Field / Frost Blight / Frost Arc.',
     '#7fe0ff', 1, p => { (p.secondaryElements ||= []).includes('ice')       || p.secondaryElements.push('ice'); },       '❄', 'legendary', null, null, true, false, null, true,
     ['taekwondo_girl', 'cyber_arm_hero', 'brawler_warrior']),   // NOT Euclid (gas) / NOT Skeleton (electric identity = Flame/Radiation only)
   new UpgradeDefinition('infuse_magnetic', 'Magnetic Infusion', 'Adds MAGNETIC element. With Fusion Catalyst, attacks can trigger Cryo Field / Magnetic Furnace.',
@@ -299,12 +299,12 @@ export const ALL_UPGRADES = [
   new UpgradeDefinition('infuse_gas', 'Gas Infusion', 'Adds GAS element. With Fusion Catalyst, Toxin attacks can trigger Viral Cloud.',
     '#8fdf7f', 1, p => { (p.secondaryElements ||= []).includes('gas')       || p.secondaryElements.push('gas'); },       '☁', 'legendary', null, null, true, false, null, true,
     ['euclid_vector']),
-  new UpgradeDefinition('infuse_thunder_maiden', 'Thunder Maiden Infusion', 'Adds THUNDER MAIDEN element. With Fusion Catalyst, attacks can trigger the Crimson Thunder Gate resonance field.',
+  new UpgradeDefinition('infuse_thunder_maiden', 'Thunder Maiden Infusion', 'Adds THUNDER MAIDEN element. With Fusion Catalyst, triggers the Crimson Thunder Gate field.',
     '#ffd23c', 1, p => { (p.secondaryElements ||= []).includes('thunder_maiden') || p.secondaryElements.push('thunder_maiden'); }, '🌩', 'legendary', null, null, true, false, null, true,
     ['eddie']),   // Eddie only — gold chain-lightning secondary for his Crimson Gate primary
   // Eddie GUITAR SOLO — his second weapon. Big red note-riffs scatter into enemies AND golden
   // lightning strikes the whole map each time the solo plays (with the eddie_riffs track).
-  new UpgradeDefinition('eddie_guitar_solo', 'Guitar Solo', 'Eddie shreds a solo: GIANT red note-riffs scatter into the crowd and GOLDEN lightning strikes the WHOLE map. Faster and stronger per level.',
+  new UpgradeDefinition('eddie_guitar_solo', 'Guitar Solo', 'Eddie shreds a solo: giant red riffs scatter and GOLDEN lightning hits the whole map. Stronger per level.',
     '#ffd23c', 3, () => {}, '🎸', 'legendary', null, null, false, false, null, true,
     ['eddie']),   // Eddie only — available in Act 1 + Endless
 ];

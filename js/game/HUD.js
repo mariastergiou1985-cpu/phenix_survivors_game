@@ -829,25 +829,36 @@ function _drawEndlessAchievements(ctx, game, startY) {
   ctx.fillText('ACHIEVEMENTS UNLOCKED', WIDTH / 2, y);
   y += 28;
 
+  const MAX_SHOWN = 6;                          // ≤2 columns so the panel never overflows width
+  const shown  = items.slice(0, MAX_SHOWN);
+  const extra  = items.length - shown.length;
   const perCol = 3;
   const lineH  = 22;
   const colW   = 260;
-  const cols   = Math.ceil(items.length / perCol);
-  const rows   = Math.min(perCol, items.length);
+  const cols   = Math.ceil(shown.length / perCol);
+  const rows   = Math.min(perCol, shown.length);
   const startX = WIDTH / 2 - (cols * colW) / 2;
 
   ctx.font = '16px Consolas, monospace';
-  for (let i = 0; i < items.length; i++) {
+  for (let i = 0; i < shown.length; i++) {
     const col = Math.floor(i / perCol);
     const row = i % perCol;
     const cx  = startX + col * colW + colW / 2;
     ctx.textAlign = 'center';
     ctx.fillStyle = '#dff0ff';
-    ctx.fillText('★ ' + items[i].name, cx, y + row * lineH);
+    ctx.fillText('★ ' + shown[i].name, cx, y + row * lineH);
   }
 
+  let endY = y + rows * lineH;
+  if (extra > 0) {
+    ctx.fillStyle = 'rgba(223,240,255,0.6)';
+    ctx.font = '13px Consolas, monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('+' + extra + ' more', WIDTH / 2, endY + 4);
+    endY += 18;
+  }
   ctx.textAlign = 'left';
-  return y + rows * lineH;
+  return endY;
 }
 
 // Local leaderboard — last 5 runs stored in meta.runHistory. Shown on both
