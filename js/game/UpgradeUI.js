@@ -190,7 +190,8 @@ export class UpgradeUI {
 
       // Category / rarity label — premium badge per card type
       ctx.font      = 'bold 11px Consolas, monospace';
-      const catLabel = upg.reward     ? '★ REWARD ★'
+      const catLabel = upg._isTacticalCard ? '✦ REPEATABLE ✦'
+                     : upg.reward     ? '★ REWARD ★'
                      : upg.synergy    ? '★ SYNERGY ★'
                      : upg.chaosOnly  ? '★ CHAOS ★'
                      : upg.endlessOnly ? '∞ ENDLESS'
@@ -206,22 +207,35 @@ export class UpgradeUI {
       // Description (word-wrapped)
       wrapText(ctx, upg.description, r.x + 12, r.y + 162, r.w - 24, 20, WHITE, '14px Consolas, monospace');
 
-      // Current level dots — capped at 10 so re-offerable cards (maxLevel 99,
-      // e.g. tactical GRID CACHE cards) never overflow the card with dot rows.
-      const level = Math.min(player.upgrades[upg.key] ?? 0, 10);
-      for (let d = 0; d < level; d++) {
+      // Tactical GRID CACHE cards are REPEATABLE deployables (no fixed max level) — showing
+      // level dots would falsely imply they "cap out". Instead print a clear repeatable note so
+      // every player knows they can keep taking them (up to 3 deployed on the map at once).
+      if (upg._isTacticalCard) {
+        const takes = player.upgrades[upg.key] ?? 0;
+        ctx.save();
+        ctx.font = 'bold 11px Consolas, monospace';
         ctx.fillStyle = upg.iconColor;
-        ctx.beginPath();
-        ctx.arc(r.x + 12 + d * 14, r.y + r.h - 24, 5, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      // Empty dots to max — same cap: past 10 the dot row is meaningless.
-      for (let d = level; d < Math.min(upg.maxLevel, 10); d++) {
-        ctx.strokeStyle = upg.iconColor + '55';
-        ctx.lineWidth   = 1;
-        ctx.beginPath();
-        ctx.arc(r.x + 12 + d * 14, r.y + r.h - 24, 5, 0, Math.PI * 2);
-        ctx.stroke();
+        ctx.textAlign = 'left';
+        ctx.fillText('↻ RE-DEPLOYABLE · MAX 3 ACTIVE' + (takes > 0 ? '  (x' + takes + ')' : ''),
+                     r.x + 12, r.y + r.h - 20);
+        ctx.restore();
+      } else {
+        // Current level dots — capped at 10 so re-offerable cards never overflow the card.
+        const level = Math.min(player.upgrades[upg.key] ?? 0, 10);
+        for (let d = 0; d < level; d++) {
+          ctx.fillStyle = upg.iconColor;
+          ctx.beginPath();
+          ctx.arc(r.x + 12 + d * 14, r.y + r.h - 24, 5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        // Empty dots to max — same cap: past 10 the dot row is meaningless.
+        for (let d = level; d < Math.min(upg.maxLevel, 10); d++) {
+          ctx.strokeStyle = upg.iconColor + '55';
+          ctx.lineWidth   = 1;
+          ctx.beginPath();
+          ctx.arc(r.x + 12 + d * 14, r.y + r.h - 24, 5, 0, Math.PI * 2);
+          ctx.stroke();
+        }
       }
 
       // Keyboard hint
