@@ -25,6 +25,13 @@ export const WEAPON_ID = Object.freeze({
   PLASMA_EXECUTION:   'plasma_execution',
   CATACLYSM_CHAIN:    'cataclysm_chain',
   FROZEN_EDEN:        'frozen_eden',
+  // Depth-expansion evolutions (batch 1 — art by InkSpireM Visuals)
+  CHAOS_CHORD:        'chaos_chord',
+  GRID_REAPER:        'grid_reaper',
+  CRYO_SOVEREIGN:     'cryo_sovereign',
+  ION_HALO:           'ion_halo',
+  NULL_LANCE:         'null_lance',
+  EMBER_STORM:        'ember_storm',
 });
 
 // ── Weapon behavior types ───────────────────────────────────────────
@@ -355,6 +362,112 @@ export const WEAPON_DEFS = Object.freeze({
       piercing: 99,
     },
   },
+
+  // ── Depth-expansion evolutions (batch 1) ────────────────────────────
+  // Single-illustration sprites (NOT frame sheets → never added to WEAPON_VFX_META,
+  // so the card shows the whole art and no VFX fanfare is spawned). Each reuses an
+  // existing, proven behavior so the runtime damage path is unchanged.
+  [WEAPON_ID.CHAOS_CHORD]: {
+    id: 'chaos_chord',
+    name: 'Chaos Chord',
+    description: "Eddie's solo detonates into homing note-bolts and map-wide golden lightning.",
+    character: null,
+    element: 'electric',
+    behavior: WEAPON_BEHAVIOR.BOLT_PROJECTILE,
+    isEvolution: true,
+    evolvedFrom: [WEAPON_ID.SOLO_RED_THUNDER, WEAPON_ID.STORM_SABER],
+    color: '#ffd23c',
+    sprite: 'assets/weapons/vfx/chaos_chord.png',
+    grid: { cols: 1, rows: 1, frameW: 1254, frameH: 1254 },
+    totalFrames: 1,
+    fps: 1,
+    baseStats: { damage: 70, cooldown: 2.2, aoeRadius: 150, speed: 6, piercing: 99 },
+  },
+
+  [WEAPON_ID.GRID_REAPER]: {
+    id: 'grid_reaper',
+    name: 'Grid Reaper',
+    description: 'A toxic lattice scythe reaps everything in a wide arc, leaving corrosive residue.',
+    character: null,
+    element: 'toxin',
+    behavior: WEAPON_BEHAVIOR.WIDE_ARC,
+    isEvolution: true,
+    evolvedFrom: [WEAPON_ID.GAS_NEEDLE, WEAPON_ID.SHADOW_TOXIC],
+    color: '#7CFF4D',
+    sprite: 'assets/weapons/vfx/grid_reaper.png',
+    grid: { cols: 1, rows: 1, frameW: 1254, frameH: 1254 },
+    totalFrames: 1,
+    fps: 1,
+    baseStats: { damage: 65, cooldown: 2.6, aoeRadius: 190, speed: 3, piercing: 99 },
+  },
+
+  [WEAPON_ID.CRYO_SOVEREIGN]: {
+    id: 'cryo_sovereign',
+    name: 'Cryo Sovereign',
+    description: 'A crystalline field freezes all caught inside, then shatters them apart.',
+    character: null,
+    element: 'ice',
+    behavior: WEAPON_BEHAVIOR.PULL_EXPLODE,
+    isEvolution: true,
+    evolvedFrom: [WEAPON_ID.SPIRIT_CRESCENT, WEAPON_ID.MAGNETIC_ARC],
+    color: '#7fe0ff',
+    sprite: 'assets/weapons/vfx/cryo_sovereign.png',
+    grid: { cols: 1, rows: 1, frameW: 1254, frameH: 1254 },
+    totalFrames: 1,
+    fps: 1,
+    baseStats: { damage: 55, cooldown: 3.2, aoeRadius: 170, speed: 3, piercing: 99 },
+  },
+
+  [WEAPON_ID.ION_HALO]: {
+    id: 'ion_halo',
+    name: 'Ion Halo',
+    description: 'A spinning ion ring orbits you and chain-lightnings nearby foes.',
+    character: null,
+    element: 'electric',
+    behavior: WEAPON_BEHAVIOR.CIRCLE_360,
+    isEvolution: true,
+    evolvedFrom: [WEAPON_ID.MAGNETIC_ARC, WEAPON_ID.NEXUS_CHAKRAM],
+    color: '#3fa9ff',
+    sprite: 'assets/weapons/vfx/ion_halo.png',
+    grid: { cols: 1, rows: 1, frameW: 1254, frameH: 1254 },
+    totalFrames: 1,
+    fps: 1,
+    baseStats: { damage: 45, cooldown: 2.0, aoeRadius: 150, speed: 4, piercing: 99 },
+  },
+
+  [WEAPON_ID.NULL_LANCE]: {
+    id: 'null_lance',
+    name: 'Null Lance',
+    description: 'A void lance pierces all in a line and drags enemies into its singularity.',
+    character: null,
+    element: 'void',
+    behavior: WEAPON_BEHAVIOR.BOLT_PROJECTILE,
+    isEvolution: true,
+    evolvedFrom: [WEAPON_ID.GLITCH_TEAR, WEAPON_ID.MAGNETIC_ARC],
+    color: '#cfe0ff',
+    sprite: 'assets/weapons/vfx/null_lance.png',
+    grid: { cols: 1, rows: 1, frameW: 1254, frameH: 1254 },
+    totalFrames: 1,
+    fps: 1,
+    baseStats: { damage: 75, cooldown: 2.8, aoeRadius: 140, speed: 7, piercing: 99 },
+  },
+
+  [WEAPON_ID.EMBER_STORM]: {
+    id: 'ember_storm',
+    name: 'Ember Storm',
+    description: 'A whirling ember vortex lingers on the ground and burns anything that enters.',
+    character: null,
+    element: 'fire',
+    behavior: WEAPON_BEHAVIOR.VORTEX,
+    isEvolution: true,
+    evolvedFrom: [WEAPON_ID.CATACLYSM_PULSE, WEAPON_ID.SHADOW_TOXIC],
+    color: '#ff7a1a',
+    sprite: 'assets/weapons/vfx/ember_storm.png',
+    grid: { cols: 1, rows: 1, frameW: 1254, frameH: 1254 },
+    totalFrames: 1,
+    fps: 1,
+    baseStats: { damage: 60, cooldown: 3.0, aoeRadius: 200, speed: 2, piercing: 99 },
+  },
 });
 
 // ── Evolution recipes ───────────────────────────────────────────────
@@ -379,6 +492,45 @@ export const EVOLUTION_RECIPES = Object.freeze([
     ingredients: [WEAPON_ID.SPIRIT_CRESCENT, WEAPON_ID.GLITCH_TEAR],
     minLevel: 5,
   },
+  // ── Depth-expansion recipes (batch 1). `owner` pins the recipe to a single
+  // character (overrides ingredient-derived ownership) so each new evolution
+  // stays exclusive and never leaks into another character's card rotation. ──
+  {
+    result: WEAPON_ID.CHAOS_CHORD,
+    ingredients: [WEAPON_ID.SOLO_RED_THUNDER, WEAPON_ID.STORM_SABER],
+    minLevel: 5,
+    owner: ['eddie'],
+  },
+  {
+    result: WEAPON_ID.GRID_REAPER,
+    ingredients: [WEAPON_ID.GAS_NEEDLE, WEAPON_ID.SHADOW_TOXIC],
+    minLevel: 5,
+    owner: ['euclid_vector'],
+  },
+  {
+    result: WEAPON_ID.CRYO_SOVEREIGN,
+    ingredients: [WEAPON_ID.SPIRIT_CRESCENT, WEAPON_ID.MAGNETIC_ARC],
+    minLevel: 5,
+    owner: ['taekwondo_girl'],
+  },
+  {
+    result: WEAPON_ID.ION_HALO,
+    ingredients: [WEAPON_ID.MAGNETIC_ARC, WEAPON_ID.NEXUS_CHAKRAM],
+    minLevel: 5,
+    owner: ['cyber_arm_hero'],
+  },
+  {
+    result: WEAPON_ID.NULL_LANCE,
+    ingredients: [WEAPON_ID.GLITCH_TEAR, WEAPON_ID.MAGNETIC_ARC],
+    minLevel: 5,
+    owner: ['japan_phasewalker'],
+  },
+  {
+    result: WEAPON_ID.EMBER_STORM,
+    ingredients: [WEAPON_ID.CATACLYSM_PULSE, WEAPON_ID.SHADOW_TOXIC],
+    minLevel: 5,
+    owner: ['oni_cataclysm_protocol'],
+  },
 ]);
 
 // ── Character ownership (HARD LOCK) ─────────────────────────────────
@@ -387,6 +539,8 @@ export const EVOLUTION_RECIPES = Object.freeze([
 // Foreign characters never see an unowned evolution card (no cross-
 // character contamination in the level-up rotation).
 export function getEvolutionOwners(recipe) {
+  // Explicit owner pin (depth-expansion recipes) wins over ingredient-derived ownership.
+  if (recipe.owner && recipe.owner.length) return recipe.owner;
   return recipe.ingredients
     .map(id => _weaponIndex.get(id)?.character)
     .filter(Boolean);
@@ -414,6 +568,12 @@ const WEAPON_CORE_NOUN = {
   plasma_execution: 'Plasma Execution',
   cataclysm_chain:  'Cataclysm Chain',
   frozen_eden:      'Frozen Eden',
+  chaos_chord:      'Chaos Chord',
+  grid_reaper:      'Grid Reaper',
+  cryo_sovereign:   'Cryo Sovereign',
+  ion_halo:         'Ion Halo',
+  null_lance:       'Null Lance',
+  ember_storm:      'Ember Storm',
 };
 const CHAR_FLAVOR = {
   skeleton_warrior:       'Bone-Cursed',
