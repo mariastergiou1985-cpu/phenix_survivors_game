@@ -3424,6 +3424,33 @@ export class Game {
         #cgm-achievements .sl-status   { font-family:'Orbitron',sans-serif; font-weight:700; font-size:9px; letter-spacing:1.5px; white-space:nowrap; flex-shrink:0; }
         #cgm-achievements .sl-status.readable { color:#38bdf8; }
         #cgm-achievements .sl-status.locked   { color:#1e3a4a; }
+        /* ── Secret Skins gallery ── */
+        #cgm-achievements .sk-section { display:flex; flex-direction:column; gap:10px; }
+        #cgm-achievements .sk-header  { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; }
+        #cgm-achievements .sk-title   { font-family:'Orbitron',sans-serif; font-weight:800; font-size:14px; letter-spacing:3px; color:var(--purple); text-shadow:0 0 8px rgba(168,85,247,.55); display:flex; align-items:center; gap:10px; }
+        #cgm-achievements .sk-count   { font-family:'Orbitron',sans-serif; font-weight:700; font-size:11px; color:var(--purple); padding:4px 12px; border-radius:999px; border:1px solid rgba(168,85,247,.3); background:rgba(168,85,247,.06); }
+        #cgm-achievements .sk-grid    { display:flex; flex-wrap:wrap; gap:14px; }
+        #cgm-achievements .sk-card    { width:120px; display:flex; flex-direction:column; align-items:center; gap:6px; }
+        #cgm-achievements .sk-thumb   { width:120px; height:120px; border-radius:10px; overflow:hidden; border:1px solid rgba(120,140,180,.25); background:rgba(4,10,24,.6); display:flex; align-items:center; justify-content:center; }
+        #cgm-achievements .sk-thumb.unlocked { border-color:var(--purple); box-shadow:0 0 12px rgba(168,85,247,.4); }
+        #cgm-achievements .sk-thumb img { width:100%; height:100%; object-fit:contain; }
+        #cgm-achievements .sk-thumb.locked img { filter:grayscale(1) brightness(.32); }
+        #cgm-achievements .sk-name    { font-family:'Orbitron',sans-serif; font-weight:700; font-size:9px; letter-spacing:.5px; text-align:center; color:#cfe9ff; }
+        #cgm-achievements .sk-state   { font-family:'Orbitron',sans-serif; font-weight:800; font-size:9px; letter-spacing:1px; }
+        #cgm-achievements .sk-state.unlocked { color:var(--green); }
+        #cgm-achievements .sk-state.locked   { color:#5a6470; }
+        /* ── OST Jukebox ── */
+        #cgm-achievements .jb-section { display:flex; flex-direction:column; gap:10px; }
+        #cgm-achievements .jb-header  { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; }
+        #cgm-achievements .jb-title   { font-family:'Orbitron',sans-serif; font-weight:800; font-size:14px; letter-spacing:3px; color:#ff2d2d; text-shadow:0 0 8px rgba(255,45,45,.5); display:flex; align-items:center; gap:10px; }
+        #cgm-achievements .jb-now     { font-family:'Orbitron',sans-serif; font-weight:700; font-size:11px; color:#ff9a9a; padding:4px 12px; border-radius:999px; border:1px solid rgba(255,45,45,.3); background:rgba(255,45,45,.06); max-width:60%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        #cgm-achievements .jb-list    { display:flex; flex-direction:column; gap:6px; }
+        #cgm-achievements .jb-row     { display:flex; align-items:center; gap:12px; padding:9px 14px; border-radius:9px; border:1px solid rgba(255,45,45,.18); background:rgba(14,4,4,.55); cursor:pointer; transition:border-color .15s, background .15s; }
+        #cgm-achievements .jb-row:hover { border-color:rgba(255,45,45,.5); background:rgba(30,6,6,.7); }
+        #cgm-achievements .jb-row.playing { border-color:#ff2d2d; background:rgba(40,8,8,.85); box-shadow:0 0 10px rgba(255,45,45,.25); }
+        #cgm-achievements .jb-idx     { font-family:'Orbitron',sans-serif; font-weight:800; font-size:11px; color:#ff6a6a; min-width:26px; text-align:center; }
+        #cgm-achievements .jb-play    { font-size:13px; color:#ff9a9a; width:18px; text-align:center; }
+        #cgm-achievements .jb-name    { flex:1; font-family:'Orbitron',sans-serif; font-weight:700; font-size:11px; letter-spacing:.5px; color:#ffd9d9; }
       `;
       document.head.appendChild(style);
     }
@@ -3514,6 +3541,32 @@ export class Game {
         </div>
 
         <div class="ca-sep"></div>
+
+        <div class="sk-section" id="sk-section">
+          <div class="sk-header">
+            <div class="sk-title">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18" aria-hidden="true"><path d="M20.38 3.46 16 2a4 4 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.47a1 1 0 0 0 .99.84H6v10a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V10h2.15a1 1 0 0 0 .99-.84l.58-3.47a2 2 0 0 0-1.34-2.23z"/></svg>
+              SECRET SKINS
+            </div>
+            <div class="sk-count" id="sk-count">0 / 0 UNLOCKED</div>
+          </div>
+          <div class="sk-grid" id="sk-grid"></div>
+        </div>
+
+        <div class="ca-sep"></div>
+
+        <div class="jb-section" id="jb-section">
+          <div class="jb-header">
+            <div class="jb-title">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18" aria-hidden="true"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+              OST JUKEBOX
+            </div>
+            <div class="jb-now" id="jb-now">♪ IDLE</div>
+          </div>
+          <div class="jb-list" id="jb-list"></div>
+        </div>
+
+        <div class="ca-sep"></div>
         <div class="ca-footer">
           <button class="ca-foot-btn" id="ca-back-btn">◀ BACK</button>
           <div class="ca-hints">
@@ -3538,6 +3591,7 @@ export class Game {
 
   _hideAchievementsOverlay() {
     if (!this._achievementsOverlayEl) return;
+    this.audio?.stopJukebox?.();   // stop any OST jukebox track when leaving Collectibles
     this._achievementsOverlayEl.style.display = 'none';
     this._achievementsOverlayVisible = false;
   }
@@ -3691,6 +3745,66 @@ export class Game {
         </div>
       </div>`;
     }).join('');
+
+    // ── Secret Skins gallery (moved here from Character Select) ──
+    const _HIDDEN_SK = ['toxic_overload', 'null_walker', 'crimson_oni'];
+    const skinChars = this.characters.filter(c => CHARACTER_OUTFITS[c.id]?.secret
+      && !_HIDDEN_SK.includes(CHARACTER_OUTFITS[c.id].secret.unlockKey));
+    const skGrid  = el.querySelector('#sk-grid');
+    const skCount = el.querySelector('#sk-count');
+    if (skGrid) {
+      let unlockedN = 0;
+      skGrid.innerHTML = skinChars.map(c => {
+        const secret   = CHARACTER_OUTFITS[c.id].secret;
+        const key      = secret.unlockKey;
+        const img      = this._skinImages?.[key];
+        const unlocked = this.meta?.isUnlocked(key) === true;
+        if (unlocked) unlockedN++;
+        return `<div class="sk-card">
+          <div class="sk-thumb ${unlocked ? 'unlocked' : 'locked'}">${img ? `<img src="${img.src}" alt="">` : ''}</div>
+          <div class="sk-name">${unlocked ? secret.name : '???'}</div>
+          <div class="sk-state ${unlocked ? 'unlocked' : 'locked'}">${unlocked ? '★ UNLOCKED' : '🔒 LOCKED'}</div>
+        </div>`;
+      }).join('');
+      if (skCount) skCount.textContent = unlockedN + ' / ' + skinChars.length + ' UNLOCKED';
+    }
+
+    // ── OST Jukebox — play any Eddie album track on demand (menu only) ──
+    const JUKEBOX = [
+      ['eddie_riffs',             'Red Thunder Riffs'],
+      ['handshake_without_hands', 'Handshake Without Hands'],
+      ['echo_relation',           'Echo Relation'],
+      ['mirror_relation',         'Mirror Relation'],
+      ['lattice_integrity',       'Lattice Integrity'],
+      ['consensus',               'Consensus'],
+      ['convergence_protocol',    'Convergence Protocol'],
+      ['home_synchronization',    'Home Synchronization'],
+    ];
+    const jbList = el.querySelector('#jb-list');
+    const jbNow  = el.querySelector('#jb-now');
+    if (jbList) {
+      jbList.innerHTML = JUKEBOX.map(([file, name], i) =>
+        `<div class="jb-row" data-jb="${file}" data-name="${name}">
+          <span class="jb-idx">${String(i + 1).padStart(2, '0')}</span>
+          <span class="jb-play">▶</span>
+          <span class="jb-name">${name}</span>
+        </div>`).join('');
+      jbList.querySelectorAll('.jb-row').forEach(row => {
+        row.addEventListener('click', () => {
+          const wasPlaying = row.classList.contains('playing');
+          jbList.querySelectorAll('.jb-row').forEach(r => { r.classList.remove('playing'); const p = r.querySelector('.jb-play'); if (p) p.textContent = '▶'; });
+          if (wasPlaying) {
+            this.audio?.stopJukebox?.();
+            if (jbNow) jbNow.textContent = '♪ IDLE';
+          } else {
+            this.audio?.playJukebox?.('assets/audio/music/' + row.dataset.jb + '.mp3');
+            row.classList.add('playing');
+            const p = row.querySelector('.jb-play'); if (p) p.textContent = '⏸';
+            if (jbNow) jbNow.textContent = '♪ ' + row.dataset.name;
+          }
+        });
+      });
+    }
   }
 
   _initRelicsOverlay() {
@@ -15222,7 +15336,7 @@ export class Game {
         #cgm-charselect .csc-obtn:disabled { opacity:.4; cursor:not-allowed; }
         #cgm-charselect .csc-grid { display:flex; flex-wrap:wrap; gap:14px; justify-content:center; width:100%; }
         #cgm-charselect .csc-card {
-          position:relative; width:116px; flex:0 0 116px;
+          position:relative; width:150px; flex:0 0 150px;
           border:1px solid rgba(46,230,246,.22); border-radius:10px;
           background:rgba(10,16,46,.55); overflow:hidden;
           cursor:pointer;
@@ -15278,7 +15392,7 @@ export class Game {
           font-size:9px; letter-spacing:2px; color:var(--txt-faint); text-transform:uppercase; margin-top:2px;
         }
         #cgm-charselect .csc-portrait {
-          width:100%; height:104px; overflow:hidden;
+          width:100%; height:140px; overflow:hidden;
           display:flex; align-items:flex-end; justify-content:center;
           position:relative;
         }
@@ -15628,9 +15742,9 @@ export class Game {
       }
     }
 
-    // Secret skins section — always visible
+    // Secret skins moved to the COLLECTIBLES screen — hidden here so character cards get the space.
     const skinsSection = el.querySelector('#csc-skins-section');
-    if (skinsSection) skinsSection.style.display = 'flex';
+    if (skinsSection) skinsSection.style.display = 'none';
     el.querySelectorAll('.csc-skin-thumb').forEach(thumb => {
       const charId = thumb.dataset.char;
       const skinKey = thumb.dataset.skin;

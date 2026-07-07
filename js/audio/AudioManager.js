@@ -225,6 +225,41 @@ export class AudioManager {
   }
   isEddieRiffsPlaying() { return !!this._eddieRiffsPlaying; }
 
+  // ── OST JUKEBOX (Collectibles screen) — play a single chosen track on demand, ducking the menu
+  // music underneath. Lazily wired; degrades safely. stopJukebox() restores the music level. ──
+  playJukebox(url) {
+    try {
+      if (!this._jukeboxAudio) {
+        const a = new Audio();
+        a.loop = false; a.preload = 'auto';
+        a.onerror = () => console.warn('[Audio] jukebox track failed to load');
+        const src = this.actx.createMediaElementSource(a);
+        const g   = this.actx.createGain(); g.gain.value = 0.9;
+        src.connect(g); g.connect(this.masterGain);   // direct to master — duck-proof
+        try { g.connect(this.analyser); } catch (_) {}
+        a.onended = () => {
+          this.musicGain.gain.setTargetAtTime(this.muted ? 0 : this.musicVolume, this.actx.currentTime, 0.5);
+          this._jukeboxPlaying = false;
+        };
+        this._jukeboxAudio = a;
+      }
+      const a = this._jukeboxAudio;
+      if (this.actx.state === 'suspended') this.actx.resume().catch(() => {});
+      this.musicGain.gain.setTargetAtTime((this.muted ? 0 : this.musicVolume) * 0.15, this.actx.currentTime, 0.3);
+      this._jukeboxPlaying = true;
+      a.src = url + '?v=20260707000000';
+      try { a.currentTime = 0; } catch (_) {}
+      a.play().catch(() => {});
+    } catch (_) {}
+  }
+
+  stopJukebox() {
+    const a = this._jukeboxAudio;
+    if (a) { try { a.pause(); } catch (_) {} }
+    this.musicGain.gain.setTargetAtTime(this.muted ? 0 : this.musicVolume, this.actx.currentTime, 0.5);
+    this._jukeboxPlaying = false;
+  }
+
   // Each start method makes its track the single CURRENT track: stop the other two, then
   // record + play this one. _currentMusic gates _play's async retry so a stale track that
   // was just stopped can never re-start on top of the new one (the overlap bug).
@@ -315,6 +350,7 @@ export class AudioManager {
     this._stop(this._endlessAudio);
     this._stop(this._chaosAudio);
     this.stopEddieRiffs();   // also cut the Eddie guitar solo track + restore ducked music (death / menu / etc.)
+    this.stopJukebox();      // and any OST jukebox track
   }
 
   toggleMute() {
