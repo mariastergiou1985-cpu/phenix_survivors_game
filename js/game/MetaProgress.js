@@ -220,7 +220,7 @@ export const RELIC_DEFS = [
   { id:'blacknet_coupon',      name:'Blacknet Coupon',      type:'universal',  cost:4,
     effect:'First level-up screen each run grants 1 extra reroll.',
     req:null, reqChar:null },
-  { id:'null_riff_capacitor',  name:'Null Riff Capacitor',  type:'universal',  cost:6,
+  { id:'null_riff_capacitor',  name:'Null Riff Capacitor',  type:'character',  cost:6,
     effect:'Eddie: dash note clouds last 3.2s and tick for 12. Solo Red Thunder bolts +10% damage.',
     req:null, reqChar:'eddie' },
   { id:'serpent_ember_coil',   name:'Serpent Ember Coil',   type:'boss',       cost:6,
@@ -758,7 +758,12 @@ export class MetaProgress {
     const def = RELIC_DEFS.find(r => r.id === id);
     if (!def)                                  return 'invalid';
     if (this.relics[id])                       return 'owned';
-    if (def.req && !this.bossKills[def.req])   return 'req';
+    // Category availability (PHENIX_DESIGN_DECISIONS A9): boss relics need the boss kill;
+    // character relics need the character unlocked (stage-gated); universal relics need some
+    // campaign progress; arena relics gate through their Endless clear flag (def.req).
+    if (def.req && !this.bossKills[def.req])                       return 'req';
+    if (def.reqChar && !this.isCharacterUnlocked(def.reqChar))     return 'req';
+    if (def.type === 'universal' && (this.stagesCleared || 0) < 1) return 'req';
     if (this.protocolFragments < def.cost)     return 'poor';
     this.protocolFragments -= def.cost;
     this.relics[id] = true;
