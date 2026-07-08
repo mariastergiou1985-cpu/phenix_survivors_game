@@ -1,8 +1,8 @@
 // ─── Game config ──────────────────────────────────────────────────────────────
 export const WIDTH  = 1280;
 export const HEIGHT = 720;
-export const WORLD_W = 2240;   // enlarged from 1792 for late-game breathing room / kiting space
-export const WORLD_H = 1260;   // enlarged from 1008 (keeps 16:9); matrices/camera/spawns/clamps all derive from these
+export const WORLD_W = 3000;   // enlarged from 2240 — bigger stage arenas (Maria: "bigger arena, keep zoom-out")
+export const WORLD_H = 1688;   // enlarged from 1260 (keeps ~16:9); matrices/camera/spawns/clamps all derive from these
 export const FPS    = 60;
 export const WORLD_MARGIN = 40;
 

@@ -662,11 +662,17 @@ export class Game {
     this._menuBg.onerror = () => console.warn('[Menu] main_menu_theme.png not found — dark fallback used');
     this._menuBg.src = 'assets/ui/new_main_menu_theme/main_menu_theme.png?v=20260628400000';
 
-    // Menu character cut-out (transparent two-character art) — code-positioned layer over the theme's
-    // character zone, so the protagonists are crisp + code-controlled. Graceful if missing.
-    this._menuChars = new Image();
-    this._menuChars.onerror = () => console.warn('[Menu] cyber-grid-menu.png not found — theme art used');
-    this._menuChars.src = 'assets/ui/cyber-grid-menu.png?v=20260628400000';
+    // Menu protagonist trio — Maria's custom art. The old two-character pair is baked into
+    // main_menu_theme.png; the hero splash below fully covers that footprint. Graceful if missing.
+    this._menuHero = new Image();   // TENKA MUSO epic poster (opaque, has its own city bg) — big backdrop
+    this._menuHero.onerror = () => console.warn('[Menu] main_menu_protagonistes.png missing');
+    this._menuHero.src = 'assets/ui/main_menu_protagonistes.png?v=20260709600000';
+    this._menuCyber = new Image();  // KIROSHI 07 (transparent full-body cutout)
+    this._menuCyber.onerror = () => console.warn('[Menu] main_menu_protagonistes_1.png missing');
+    this._menuCyber.src = 'assets/ui/main_menu_protagonistes_1.png?v=20260709600000';
+    this._menuMaria = new Image();  // ITF SITE-00 taekwondo — third member (transparent full-body cutout)
+    this._menuMaria.onerror = () => console.warn('[Menu] main_menu_ptotagonistes_2.png missing');
+    this._menuMaria.src = 'assets/ui/main_menu_ptotagonistes_2.png?v=20260709600000';
 
     // Preload phoenix revive effect images (orange / blue / gold tiers)
     this._phoenixImage = new Image();
@@ -7186,6 +7192,11 @@ export class Game {
       const pad = 20; // small inset so player stays visually inside
       this.player.pos.x = Math.max(wb.left + pad, Math.min(wb.right - pad, this.player.pos.x));
       this.player.pos.y = Math.max(wb.top + pad,  Math.min(wb.bottom - pad, this.player.pos.y));
+    } else {
+      // Fixed arena (Act 1 / Campaign): lock bounds to the static world so the player clamp AND
+      // the edge-glow walls both use WORLD_W/H — never stale Endless chunk bounds from a prior run.
+      WORLD_BOUNDS.left  = 0;        WORLD_BOUNDS.top    = 0;
+      WORLD_BOUNDS.right = WORLD_W;  WORLD_BOUNDS.bottom = WORLD_H;
     }
 
     // ── Eden Core in-run transmissions (Endless only, safe) ──────────────────
@@ -15053,6 +15064,57 @@ export class Game {
     this._menuOverlayEl?.querySelector('#cgm-eq-bars')?.classList.remove('live');
   }
 
+  // Menu protagonist trio (Maria's custom art). Coords in the fixed 1280×720 canvas space.
+  // Zone sits between the left data panels (end ≈x220) and the centre button stack (start x=572).
+  _drawMenuProtagonists(ctx) {
+    const hero = this._menuHero, cyber = this._menuCyber, maria = this._menuMaria;
+    const ready = img => img && img.complete && img.naturalWidth > 0;
+    if (!ready(hero) && !ready(cyber) && !ready(maria)) return;   // fall back to baked art while loading
+
+    const zx = 224, zy = 84, zw = 336, zh = 628;   // character stage: x[224,560], y[84,712]
+
+    // ── Hero splash (TENKA MUSO): opaque poster, cover-fit + clipped to the zone, edges
+    //    feathered into the menu navy so it reads as a featured backdrop (hides the baked pair). ──
+    if (ready(hero)) {
+      const nx = 388, ny = 198;   // spare the CYBER-GRID logo's lower-left corner (L-shaped clip)
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(zx, zy); ctx.lineTo(nx, zy); ctx.lineTo(nx, ny); ctx.lineTo(zx + zw, ny);
+      ctx.lineTo(zx + zw, zy + zh); ctx.lineTo(zx, zy + zh); ctx.closePath();
+      ctx.clip();
+      const s  = Math.max(zw / hero.naturalWidth, zh / hero.naturalHeight);
+      const dw = hero.naturalWidth * s, dh = hero.naturalHeight * s;
+      const dx = zx + (zw - dw) / 2, dy = zy + (zh - dh) * 0.30;   // bias up → keep face/torso in frame
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(hero, Math.round(dx), Math.round(dy), Math.round(dw), Math.round(dh));
+      // Feather every outer edge into the menu navy so the poster reads as a featured backdrop.
+      const clear = 'rgba(7,12,24,0)', navy = '#070c18', fe = 34;
+      let g;
+      g = ctx.createLinearGradient(zx, 0, zx + fe, 0);               g.addColorStop(0, navy); g.addColorStop(1, clear); ctx.fillStyle = g; ctx.fillRect(zx, zy, fe, zh);
+      g = ctx.createLinearGradient(zx + zw, 0, zx + zw - fe, 0);     g.addColorStop(0, navy); g.addColorStop(1, clear); ctx.fillStyle = g; ctx.fillRect(zx + zw - fe, zy, fe, zh);
+      g = ctx.createLinearGradient(0, zy, 0, zy + fe);               g.addColorStop(0, navy); g.addColorStop(1, clear); ctx.fillStyle = g; ctx.fillRect(zx, zy, zw, fe);
+      g = ctx.createLinearGradient(0, ny, 0, ny + fe);               g.addColorStop(0, navy); g.addColorStop(1, clear); ctx.fillStyle = g; ctx.fillRect(nx, ny, (zx + zw) - nx, fe);   // notch bottom edge
+      g = ctx.createLinearGradient(0, zy + zh, 0, zy + zh - fe * 2); g.addColorStop(0, navy); g.addColorStop(1, clear); ctx.fillStyle = g; ctx.fillRect(zx, zy + zh - fe * 2, zw, fe * 2);
+      ctx.restore();
+    }
+
+    // ── Standing duo in front (transparent cutouts): KIROSHI (left, slightly back) + ITF Maria (right). ──
+    const floorY = 706;
+    const drawCut = (img, cx, h) => {
+      if (!ready(img)) return;
+      const w = h * (img.naturalWidth / img.naturalHeight);
+      const x = Math.round(cx - w / 2), y = Math.round(floorY - h);
+      ctx.save();
+      ctx.globalAlpha = 0.32; ctx.fillStyle = '#02040a';               // soft ground shadow
+      ctx.beginPath(); ctx.ellipse(cx, floorY - 6, w * 0.36, 12, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1; ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(img, x, y, Math.round(w), Math.round(h));
+      ctx.restore();
+    };
+    drawCut(cyber, 330, 338);   // KIROSHI — left
+    drawCut(maria, 458, 322);   // ITF Maria — right, a touch smaller/forward
+  }
+
   _drawStartMenu(ctx) {
     // Background — use the new clean background image, fall back to city bg
     const bg = this._menuBg;
@@ -15075,17 +15137,9 @@ export class Game {
     // ── Code rain (drawn on dedicated overlay canvas above #cgm-overlay)
     this._drawMenuCodeRainOverlay();
 
-    // ── Character cut-out (code-positioned layer over the theme's character zone) ──
-    const ci = this._menuChars;
-    if (ci && ci.complete && ci.naturalWidth > 0) {
-      const dh = HEIGHT * 0.74;
-      const dw = dh * (ci.naturalWidth / ci.naturalHeight);
-      const cxC = WIDTH * 0.275, baseY = HEIGHT * 0.88;   // standing baseline, left-of-centre
-      ctx.save();
-      ctx.imageSmoothingEnabled = true;
-      ctx.drawImage(ci, Math.round(cxC - dw / 2), Math.round(baseY - dh), Math.round(dw), Math.round(dh));
-      ctx.restore();
-    }
+    // ── Protagonist trio (Maria's custom art) — hero splash covers the old baked pair,
+    //    KIROSHI + ITF Maria stand in front. See _drawMenuProtagonists. ──
+    this._drawMenuProtagonists(ctx);
 
     // ── Top-right resource strip (real Grid Credits + spendable PF) ──
     this._drawTopResources(ctx);
@@ -22484,7 +22538,11 @@ _drawLoreArchive(ctx) {
   // Performance: layered lines only — NO shadowBlur, NO per-pixel ops.
   // ═══════════════════════════════════════════════════════════════════════════
   _drawWorldBoundaries(ctx) {
-    const wb = this.chunkManager.getWorldBounds();
+    // Fixed arena (Act 1 / Campaign) draws glow walls at the static world edges (= player clamp);
+    // Endless/Chaos streaming uses the chunk bounds. Keeps the neon border ON the real map edge.
+    const wb = this.chunkManager.enabled
+      ? this.chunkManager.getWorldBounds()
+      : { left: 0, top: 0, right: WORLD_W, bottom: WORLD_H };
     const px = this.player.pos.x;
     const py = this.player.pos.y;
 
