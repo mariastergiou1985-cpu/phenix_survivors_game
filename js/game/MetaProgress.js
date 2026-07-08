@@ -870,6 +870,10 @@ export class MetaProgress {
 
   tryBuyVessel(id, costGrids, costFragments) {
     if (this.isVesselUnlocked(id)) return 'owned';
+    // Endless-tier vessels are locked until the campaign is fully cleared (Endless unlocked).
+    // Only Grid Eraser (campaign unlock) + Alpha Phoenix (starter) are available during the campaign.
+    if ((id === 'null_singularity' || id === 'glitch_phantom' || id === 'overclocked_vanguard')
+        && !this.isEndlessUnlocked()) return 'locked';
     if (this.credits < costGrids || this.protocolFragments < costFragments) return 'poor';
     this.credits -= costGrids;
     this.protocolFragments -= costFragments;
@@ -921,6 +925,9 @@ export class MetaProgress {
   // Purchase a pet. Returns 'ok'|'owned'|'poor'.
   tryBuyPet(id, costGrids, costFragments) {
     if (this.isPetUnlocked(id)) return 'owned';
+    // Endless-tier pets are locked until Endless unlocks; only Byte-Mite (campaign/starter) is early.
+    if ((id === 'data_miner_drone' || id === 'firewall_sentinel' || id === 'error_code_bomber')
+        && !this.isEndlessUnlocked()) return 'locked';
     if (this.credits < costGrids || this.protocolFragments < costFragments) return 'poor';
     this.credits -= costGrids;
     this.protocolFragments -= costFragments;
