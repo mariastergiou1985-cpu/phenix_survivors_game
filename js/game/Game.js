@@ -22,7 +22,7 @@ import { weightedSample } from './Upgrades.js?v=20260706300000';
 import { MutationUI }      from './MutationUI.js?v=20260703990000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260705300000';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS } from './MetaProgress.js?v=20260709660000';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS } from './MetaProgress.js?v=20260709690000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260705300000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
@@ -4054,7 +4054,7 @@ export class Game {
     ];
     const jbList = el.querySelector('#jb-list');
     const jbNow  = el.querySelector('#jb-now');
-    const bestEddie = this.meta?.getBestEddieTime?.() || 0;
+    const bestEddie = Math.max(this.meta?.getBestEddieTime?.() || 0, this.meta?.getTotalEddieTime?.() || 0);   // cumulative (any mode) or best single run
     const _fmtT = s => Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
     if (jbList) {
       const unlockedCount = JUKEBOX.filter(t => bestEddie >= t[2]).length;

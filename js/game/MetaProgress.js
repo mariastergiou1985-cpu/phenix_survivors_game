@@ -262,6 +262,7 @@ export class MetaProgress {
     // { time: seconds survived, score: best score, level: highest player level }.
     this.endlessRecords = { time: 0, score: 0, level: 0 };
     this.bestEddieTime = 0;   // longest survival AS EDDIE (seconds) — progressively unlocks OST jukebox tracks
+    this.totalEddieTime = 0;  // CUMULATIVE Eddie survival across ALL runs (any mode) — OST jukebox unlock (reachable from Act 1)
     // Endless achievement flags: { [id]: true } once earned. Persisted alongside records.
     this.achievements = {};
     // Equipped outfit per character: { [characterId]: 'default' | 'secret' }. Stored SEPARATELY
@@ -313,6 +314,7 @@ export class MetaProgress {
         level: Number(er.level) || 0,
       };
       this.bestEddieTime = Number(d.bestEddieTime) || 0;   // longest Eddie survival (unlocks OST jukebox tracks)
+      this.totalEddieTime = Number(d.totalEddieTime) || 0; // cumulative Eddie survival
       this.achievements = d.achievements || {};
       this.selectedOutfits = d.selectedOutfits || {};
       this.endlessUnlocked = d.endlessUnlocked === true;
@@ -394,6 +396,7 @@ export class MetaProgress {
         unlocks: this.unlocks,
         endlessRecords: this.endlessRecords,
         bestEddieTime: this.bestEddieTime,
+        totalEddieTime: this.totalEddieTime,
         achievements: this.achievements,
         selectedOutfits: this.selectedOutfits,
         endlessUnlocked: this.endlessUnlocked,
@@ -433,6 +436,7 @@ export class MetaProgress {
 
   // ── OST Jukebox unlock: longest survival AS EDDIE (seconds) ──
   getBestEddieTime() { return this.bestEddieTime || 0; }
+  getTotalEddieTime() { return this.totalEddieTime || 0; }
   recordEddieTime(seconds) {
     const t = Number(seconds) || 0;
     if (t > (this.bestEddieTime || 0)) { this.bestEddieTime = t; this._save(); return true; }
@@ -774,6 +778,9 @@ export class MetaProgress {
   // ─── Run history ─────────────────────────────────────────────────────────────
   // Records { time, score, level, char, mode, date } (up to 20, newest first)
   recordRun(entry) {
+    // Cumulative Eddie survival (any mode) — powers the OST jukebox unlocks (reachable from Act 1).
+    if ((entry.char || entry.character) === 'eddie')
+      this.totalEddieTime = (this.totalEddieTime || 0) + Math.max(0, Math.floor(entry.time || 0));
     this.runHistory.unshift({
       time:  Math.floor(entry.time  || 0),
       score: Math.floor(entry.score || 0),
