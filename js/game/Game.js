@@ -808,8 +808,12 @@ export class Game {
     this._doubleDemonsSprite.onerror = () => console.warn('[Boss] double_demons.png not found — drawn fallback used');
     this._doubleDemonsSprite.src = 'assets/enemies/bosses/double_demons.png?v=20260704200000';
     this._rocketRainSprite = new Image();
-    this._rocketRainSprite.onerror = () => console.warn('[Boss] rocket_rain.png not found — drawn fallback used');
-    this._rocketRainSprite.src = 'assets/enemies/bosses/rocket_rain.png?v=20260628400000';
+    this._rocketRainSprite.onerror = () => console.warn('[Weather] rocket_rain.png not found — drawn fallback used');
+    this._rocketRainSprite.src = 'assets/events/weather/rocket_rain.png?v=20260709670000';   // Maria's weather art (moved from bosses/)
+    // Preload Maria's generic weather effects sheet (available for weather VFX wiring).
+    this._weatherEffectsSheet = new Image();
+    this._weatherEffectsSheet.onerror = () => console.warn('[Weather] weather_effects_sheet.png not found');
+    this._weatherEffectsSheet.src = 'assets/events/weather/weather_effects_sheet.png?v=20260709670000';
 
     // Preload Cyber Serpent mid-run mini-boss sprite
     this._cyberSerpentSprite = new Image();
