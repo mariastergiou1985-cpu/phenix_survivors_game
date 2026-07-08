@@ -54,7 +54,7 @@ Specs: ~512×512 (ή μεγαλύτερο), διάφανο background, neon cybe
   - `assets/weapons/vfx/venom_shroud.png` — Assassin (toxic phantom blades· #7CFF4D/#2a1040/#b6ff3a). Recipe: Shadow Toxic + Glitch Tear. Behavior: LINE_CLOUD.
   - `assets/weapons/vfx/seismic_rift.png` — Brawler (kinetic shockwave· #ffb347/#ff2d95/λευκό). Recipe: Nexus Chakram + Cataclysm Pulse. Behavior: GROUND_SHOCKWAVE.
 - [ ] **ELEMENT cards UI polish** — η Maria λέει «δεν είναι ωραία» (screenshot: element selection cards με shield/target icons, 100%). Βρες πού σχεδιάζονται (element/fusion selection) και κάν' τα πιο premium/cyber.
-- [ ] **Purple-square lightning VFX** — Maria: ένα thunder/κεραυνός effect εμφανίζεται ως ΜΩΒ ΤΕΤΡΑΓΩΝΟ (όχι σαν κεραυνός). Πιθανό sprite με μη-διάφανο φόντο ή placeholder rect. Ρώτα την από πού βγαίνει (δικό της attack / εχθροί / hazard) και ψάξε lightning/thunder/arc VFX draws. (Σχετικό: παλιό task «Replace ugly Thunder/Arc Burst sprite».)
+- [x] **Purple-square lightning VFX — ΔΙΟΡΘΩΘΗΚΕ** (commit 48b2a0a). Ρίζα: τα `crimson_gate_element.png` + `thunder_maiden_element.png` είχαν ΑΔΙΑΦΑΝΕΣ ΜΑΥΡΟ φόντο → έβγαιναν ως σκούρο/μωβ τετράγωνο (in-world icon + element panel). Keyed το μαύρο σε διάφανο, effect άθικτο. ΣΗΜ: τα assets φορτώνουν χωρίς ?v → θέλει hard refresh (Ctrl+Shift+R) για να φανεί άμεσα. (Πιθανόν διορθώνει και το «element cards δεν είναι ωραία».)
 - [ ] **Evolution discoverability** — η κάρτα evolution βγαίνει μόνο όταν 2 όπλα είναι L5 (RNG για το 2ο όπλο). Σκέψου: hint στο HUD «X + Y → EVOLVE», ή/και πιο εύκολο 2ο ingredient. (Λογική/reachability επιβεβαιωμένη — ΟΧΙ bug.)
 
 ## MILESTONE 2 — Selectable Stages (ΕΝΕΡΓΟ)

@@ -87,6 +87,15 @@ const WEAPON_VFX_META = Object.freeze({
   plasma_execution: { cols: 6, frameW: 256, frameH: 256, totalFrames: 24, fps: 24 },
   cataclysm_chain:  { cols: 8, frameW: 256, frameH: 256, totalFrames: 32, fps: 24 },
   frozen_eden:      { cols: 5, frameW: 256, frameH: 256, totalFrames: 20, fps: 20 },
+  // Depth-expansion evolutions — single-illustration art (1254² whole frame). The matching
+  // WIELDER_VFX_OVERRIDES entry makes _spawnWeaponVFX draw the whole image in-world (capped
+  // 320px, additive) so the real art shows on fire instead of only thin procedural bolts.
+  chaos_chord:      { cols: 1, frameW: 1254, frameH: 1254, totalFrames: 1, fps: 1 },
+  grid_reaper:      { cols: 1, frameW: 1254, frameH: 1254, totalFrames: 1, fps: 1 },
+  cryo_sovereign:   { cols: 1, frameW: 1254, frameH: 1254, totalFrames: 1, fps: 1 },
+  ion_halo:         { cols: 1, frameW: 1254, frameH: 1254, totalFrames: 1, fps: 1 },
+  null_lance:       { cols: 1, frameW: 1254, frameH: 1254, totalFrames: 1, fps: 1 },
+  ember_storm:      { cols: 1, frameW: 1254, frameH: 1254, totalFrames: 1, fps: 1 },
 });
 
 // ── Nexus Weapon Visual Pack: per-wielder VFX variants (single illustrations,
@@ -101,6 +110,14 @@ const WIELDER_VFX_OVERRIDES = Object.freeze({
   'spirit_crescent|cyber_arm_hero':     'assets/weapons/nexus/arm_inferno_crescent_aura.png',
   // Eddie base weapon — single illustration (NOT a frame sheet; never enters WEAPON_VFX_META).
   'solo_red_thunder|eddie':             'assets/weapons/solo_red_thunder.png',
+  // Depth-expansion evolutions — draw the real evolution art in-world (whole image, additive,
+  // capped 320px) instead of only the thin procedural bolts. Keyed to each evolution's owner.
+  'chaos_chord|eddie':                    'assets/weapons/vfx/chaos_chord.png',
+  'grid_reaper|euclid_vector':            'assets/weapons/vfx/grid_reaper.png',
+  'cryo_sovereign|taekwondo_girl':        'assets/weapons/vfx/cryo_sovereign.png',
+  'ion_halo|cyber_arm_hero':              'assets/weapons/vfx/ion_halo.png',
+  'null_lance|japan_phasewalker':         'assets/weapons/vfx/null_lance.png',
+  'ember_storm|oni_cataclysm_protocol':   'assets/weapons/vfx/ember_storm.png',
 });
 
 // Lazy one-time Image cache for Nexus pack illustrations (VFX overrides + card icons).
@@ -569,6 +586,12 @@ export class Game {
       ['plasma_execution', 'assets/weapons/vfx/plasma_execution.png'],
       ['cataclysm_chain',  'assets/weapons/vfx/cataclysm_chain.png'],
       ['frozen_eden',      'assets/weapons/vfx/frozen_eden.png'],
+      ['chaos_chord',      'assets/weapons/vfx/chaos_chord.png'],
+      ['grid_reaper',      'assets/weapons/vfx/grid_reaper.png'],
+      ['cryo_sovereign',   'assets/weapons/vfx/cryo_sovereign.png'],
+      ['ion_halo',         'assets/weapons/vfx/ion_halo.png'],
+      ['null_lance',       'assets/weapons/vfx/null_lance.png'],
+      ['ember_storm',      'assets/weapons/vfx/ember_storm.png'],
     ].forEach(([key, src]) => {
       const img = new Image();
       img.onerror = () => console.warn(`[WeaponVFX] missing ${src} — no VFX overlay`);
@@ -683,9 +706,9 @@ export class Game {
       thunder_maiden:       new Image(),
       crimson_thunder_gate: new Image(),
     };
-    this._eddieElementIcons.crimson_gate.src         = 'assets/elements/elements/crimson_gate_element.png';
-    this._eddieElementIcons.thunder_maiden.src       = 'assets/elements/elements/thunder_maiden_element.png';
-    this._eddieElementIcons.crimson_thunder_gate.src = 'assets/elements/elements/fusion/fusion_element_eddie.png';
+    this._eddieElementIcons.crimson_gate.src         = 'assets/elements/elements/crimson_gate_element.png?v=20260708';
+    this._eddieElementIcons.thunder_maiden.src       = 'assets/elements/elements/thunder_maiden_element.png?v=20260708';
+    this._eddieElementIcons.crimson_thunder_gate.src = 'assets/elements/elements/fusion/fusion_element_eddie.png?v=20260708';
     // Neon Pierce Beam — Cyber Arm Hero's automatic secondary weapon (red laser identity)
     this._neonBeamSprite = new Image();
     this._neonBeamSprite.onerror = () => console.warn('[Weapon] neon_pierce_beam.png missing — drawn fallback used');
@@ -14392,9 +14415,9 @@ export class Game {
       const _eqEl = this._menuOverlayEl && this._menuOverlayEl.querySelector('[data-cgm="equip-element"]');
       if (_eqEl) {
         const _img = (p, t) => `<img src="${p}" title="${t}" alt="${t}" style="height:16px;vertical-align:-3px">`;
-        _eqEl.innerHTML = _img('assets/elements/elements/crimson_gate_element.png', 'Crimson Gate') + ' CRIMSON GATE ' +
-                          _img('assets/elements/elements/thunder_maiden_element.png', 'Thunder Maiden') + ' + ' +
-                          _img('assets/elements/elements/fusion/fusion_element_eddie.png', 'Crimson Thunder Gate');
+        _eqEl.innerHTML = _img('assets/elements/elements/crimson_gate_element.png?v=20260708', 'Crimson Gate') + ' CRIMSON GATE ' +
+                          _img('assets/elements/elements/thunder_maiden_element.png?v=20260708', 'Thunder Maiden') + ' + ' +
+                          _img('assets/elements/elements/fusion/fusion_element_eddie.png?v=20260708', 'Crimson Thunder Gate');
       }
     }
     this._cgmSet('equip-weapon', weapon);
