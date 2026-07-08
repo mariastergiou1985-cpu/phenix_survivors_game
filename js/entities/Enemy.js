@@ -567,7 +567,7 @@ export class Enemy {
     // Cryo Rounds slow — recompute effective speed each frame (all movement branches
     // read this.baseSpeed). Bosses are immune so they stay threatening.
     if (this.slowTimer > 0) this.slowTimer -= dt;
-    const _vesselSpeedMult = ((game && game._vesselEnemySpeedMult) || 1) * ((game && game._blackoutSpeedMult) || 1);   // vessel passive × GRID BLACKOUT overdrive
+    const _vesselSpeedMult = ((game && game._vesselEnemySpeedMult) || 1) * ((game && game._blackoutSpeedMult) || 1) * ((game && game._stageSpeedMult) || 1);   // vessel × GRID BLACKOUT × STAGE biome rule
     this.baseSpeed = (this.slowTimer > 0 && !this.isBoss() && !this.isMegaBoss)
       ? this._baseSpeedFull * (this.slowFactor || 0.55) * _vesselSpeedMult
       : this._baseSpeedFull * _vesselSpeedMult;
