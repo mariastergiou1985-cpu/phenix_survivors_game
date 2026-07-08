@@ -38,18 +38,46 @@ Specs: ~512×512 (ή μεγαλύτερο), διάφανο background, neon cybe
 - [x] `assets/weapons/vfx/ember_storm.png` — **Ember Storm** (πορτοκαλί δίνη στάχτης) ✅ RGBA
 Και τα 6 art evolutions είναι πλέον στον φάκελο, alpha-fixed. Επόμενο: wiring στο gameplay.
 
-### Wiring (Claude, αφού έρθει το art)
-- [ ] Batch #1 wired (recipes + card + damage path) → commit → live verify
-- [ ] Batch #2 wired → commit → live verify
+### Wiring (Claude) — ΕΤΟΙΜΟ ✅
+- [x] Και τα 6 evolutions wired (WEAPON_ID + WEAPON_DEFS + recipes + owner-override + name lookups) → commit `9e2d509` → live verified
+  - Chaos Chord → Eddie (γέμισε το κενό του!), Grid Reaper → Euclid, Cryo Sovereign → Taekwondo, Ion Halo → Cyber, Null Lance → Phasewalker, Ember Storm → Oni
+  - Deployed: 6 νέα weapons + 10 recipes + owner field· boot καθαρό, καμία μαύρη οθόνη. Cache-bust 20260707110000.
+- [ ] ΕΚΚΡΕΜΕΙ playtest από Maria: κάθε evolution εμφανίζεται όταν ο σωστός χαρακτήρας φτάσει L5 στα 2 ingredient όπλα (ζωντανό in-run trigger — δεν επιβεβαιώνεται με static test).
 
-**Στόχος Milestone 1:** evolutions 4 → 10.
+**Στόχος Milestone 1:** evolutions 4 → 10 ✅ ΕΠΙΤΕΥΧΘΗΚΕ (στον κώδικα).
 
 ---
 
-## MILESTONE 2 — Selectable Stages (χρησιμοποιεί υπάρχοντα biomes)
-- [ ] Neon District + 2 biomes ως selectable stages (art υπάρχει)
-- [ ] 1 rule + 1 stage-boss + 1 reward ανά stage
-Art που ίσως χρειαστεί: 1 stage-select εικονίδιο ανά stage (μικρό).
+## OPEN ITEMS (από Maria, 7/7 βράδυ) — για αύριο
+- [ ] **Art batch #3** — 3 evolutions για τους χαρακτήρες που έχουν μόνο 1 (Skeleton/Assassin/Brawler):
+  - `assets/weapons/vfx/bonecircuit_storm.png` — Skeleton (electric bone spiral· #7fd0ff/#e8e4d0/#b06bff). Recipe: Storm Saber + Nexus Chakram. Behavior: EXPANDING_SPIRAL.
+  - `assets/weapons/vfx/venom_shroud.png` — Assassin (toxic phantom blades· #7CFF4D/#2a1040/#b6ff3a). Recipe: Shadow Toxic + Glitch Tear. Behavior: LINE_CLOUD.
+  - `assets/weapons/vfx/seismic_rift.png` — Brawler (kinetic shockwave· #ffb347/#ff2d95/λευκό). Recipe: Nexus Chakram + Cataclysm Pulse. Behavior: GROUND_SHOCKWAVE.
+- [ ] **ELEMENT cards UI polish** — η Maria λέει «δεν είναι ωραία» (screenshot: element selection cards με shield/target icons, 100%). Βρες πού σχεδιάζονται (element/fusion selection) και κάν' τα πιο premium/cyber.
+- [ ] **Purple-square lightning VFX** — Maria: ένα thunder/κεραυνός effect εμφανίζεται ως ΜΩΒ ΤΕΤΡΑΓΩΝΟ (όχι σαν κεραυνός). Πιθανό sprite με μη-διάφανο φόντο ή placeholder rect. Ρώτα την από πού βγαίνει (δικό της attack / εχθροί / hazard) και ψάξε lightning/thunder/arc VFX draws. (Σχετικό: παλιό task «Replace ugly Thunder/Arc Burst sprite».)
+- [ ] **Evolution discoverability** — η κάρτα evolution βγαίνει μόνο όταν 2 όπλα είναι L5 (RNG για το 2ο όπλο). Σκέψου: hint στο HUD «X + Y → EVOLVE», ή/και πιο εύκολο 2ο ingredient. (Λογική/reachability επιβεβαιωμένη — ΟΧΙ bug.)
+
+## MILESTONE 2 — Selectable Stages (ΕΝΕΡΓΟ)
+Εύρημα: οι 6 biomes ΥΠΑΡΧΟΥΝ ήδη πλήρεις στο MapManager (BIOME_DEFS: map εικόνα, palette,
+hazards, enemyModifiers, music). Στο Act 1 δεν χρησιμοποιούνται — παίζει σταθερό bg. Άρα το
+feature = «ξεκλείδωμα» υπάρχοντος περιεχομένου, ΟΧΙ δημιουργία από το μηδέν.
+
+### Slice A — Stage Select MVP (ΧΩΡΙΣ νέο art, ασφαλές πρώτο βήμα)
+- [ ] `this.runBiome` (default neon_district) — τίθεται στην αρχή του Act 1 run
+- [ ] Νέο Stage-Select overlay από το μενού (λίστα 6 biomes με name/description από BIOME_DEFS)
+- [ ] Legacy background draw: χρήση `mapManager.getBiomeImage(runBiome)` + palette αντί σταθερού bg
+- [ ] Εφαρμογή `enemyModifiers` (speedMult/hpMult) του biome = το «rule» του stage
+- [ ] Unlock ladder: 3 stages στην αρχή, τα υπόλοιπα με νίκες/milestones
+Αρχεία: Game.js (menu flow + run start + bg draw), MapManager (ήδη έτοιμο). Cache-bust bump.
+
+### Slice B — Βάθος ανά stage (αργότερα)
+- [ ] 1 stage-boss + 1 unique reward ανά stage
+- [ ] Stage-specific enemy sub-pool
+
+### Art dependency (για αύριο)
+- [ ] 6 stage-select thumbnails (~400×300) — 1 ανά biome. ASCII names, transparent όχι απαραίτητο.
+  Προτεινόμενα ονόματα: `assets/maps/thumbs/{neon_district,industrial_core,orbital_nexus,abyssal_trench,glacial_expanse,data_wastes}.png`
+  (Μπορούμε προσωρινά να κόψουμε thumbnails από τις υπάρχουσες map εικόνες — δεν μπλοκάρει το Slice A.)
 
 ## MILESTONE 3 — Enemy signatures στο Act 1 (κυρίως code/VFX)
 - [ ] Ξεκλείδωμα signature attacks σε base (Enemy.js:340) με telegraph
