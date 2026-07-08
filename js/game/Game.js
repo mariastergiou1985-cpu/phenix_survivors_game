@@ -43,7 +43,7 @@ import { VESSELS, getVesselById, getDefaultVesselId } from './VesselCatalog.js?v
 import { PETS, getPetById } from './PetCatalog.js?v=20260705000000';
 import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons, isEvolutionOwnedBy, getCardDisplayName } from './WeaponCatalog.js?v=20260708200000';
 import { TACTICAL_ID, TACTICAL_DEFS, getTacticalDef, getTacticalForCharacter, getAvailableTactical, preloadTacticalSprites, FUSION_TACTICALS } from './TacticalWeaponCatalog.js?v=20260706240000';
-import { VFXSpritePlayer } from './VFXSpritePlayer.js?v=20260708200000';
+import { VFXSpritePlayer } from './VFXSpritePlayer.js?v=20260708700000';
 
 // ── Mastery card → base weapon mapping (for evolution level tracking) ──
 const MASTERY_TO_WEAPON = Object.freeze({
@@ -10719,6 +10719,9 @@ export class Game {
         case 'linear_beam':
           this._drawBeamFx(ctx, w, cam);
           break;
+        case 'ground_shockwave':
+          this._drawShockwaveFx(ctx, w, cam);
+          break;
         case 'kinetic_rain':
           this._drawRainFx(ctx, w, cam);
           break;
@@ -10891,6 +10894,52 @@ export class Game {
       ctx.globalAlpha = fade;
       ctx.translate(sx, sy);
       ctx.rotate(w.beamAngle || 0);
+      ctx.drawImage(sprite, -sz / 2, -sz / 2, sz, sz);
+      ctx.restore();
+    }
+  }
+
+  // Electric Shard Nova — GROUND_SHOCKWAVE: the expanding damage ring was NEVER
+  // drawn (only the base sprite), so the "shard ring" looked absent. Draw the ring
+  // at the live w.ringRadius + radial ice shards + her sprite big at the centre.
+  _drawShockwaveFx(ctx, w, cam) {
+    const sx = w.x - cam.x, sy = w.y - cam.y;
+    const R    = w.ringRadius || 0;
+    const maxR = w.def.aoeRadius || 240;
+    const col  = w.def.color || '#44ddff';
+    const fade = Math.min(1, w.timer / 1.0);
+    const now  = performance.now() * 0.001;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    if (R > 4) {
+      const k = R / maxR;                       // 0→1 as it grows
+      ctx.globalAlpha = (1 - k) * 0.9 * fade;
+      ctx.strokeStyle = col; ctx.lineWidth = 6 * (1 - k) + 2;
+      ctx.beginPath(); ctx.arc(sx, sy, R, 0, Math.PI * 2); ctx.stroke();
+      ctx.globalAlpha = (1 - k) * 0.55 * fade;
+      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(sx, sy, R * 0.92, 0, Math.PI * 2); ctx.stroke();
+      ctx.globalAlpha = (1 - k) * 0.8 * fade; ctx.lineWidth = 3; ctx.strokeStyle = col;
+      for (let i = 0; i < 12; i++) {
+        const a = i * Math.PI / 6 + now * 0.6;
+        ctx.beginPath();
+        ctx.moveTo(sx + Math.cos(a) * (R - 14), sy + Math.sin(a) * (R - 14));
+        ctx.lineTo(sx + Math.cos(a) * (R + 14), sy + Math.sin(a) * (R + 14));
+        ctx.stroke();
+      }
+    }
+    const g = ctx.createRadialGradient(sx, sy, 0, sx, sy, 70);
+    g.addColorStop(0, col); g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.globalAlpha = 0.28 * fade; ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(sx, sy, 70, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+    const sprite = this._tacticalSpriteCache.get(w.id);
+    if (sprite && sprite.complete && sprite.naturalWidth > 0) {
+      const sz = 128;
+      ctx.save();
+      ctx.globalAlpha = fade;
+      ctx.translate(sx, sy);
+      ctx.rotate(w.angle * 0.4);
       ctx.drawImage(sprite, -sz / 2, -sz / 2, sz, sz);
       ctx.restore();
     }

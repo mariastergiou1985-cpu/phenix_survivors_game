@@ -42,7 +42,7 @@ export class VFXSpritePlayer {
     this.animStyle = 'spin';   // spin | pulse | expand | drift | stab | slash | flicker
     this.aimAngle  = 0;        // firing direction (for stab / slash / drift)
     this._age      = 0;        // seconds since play() (override-mode animation clock)
-    this._animLife = 0.6;      // override-mode animation duration (s)
+    this._animLife = 1.1;      // override-mode animation duration (s) — lingers so the art is clearly seen
   }
 
   /** Start (or restart) animation from frame 0. */
@@ -127,13 +127,13 @@ export class VFXSpritePlayer {
         default:        rot = this.angle; sc = 0.85 + 0.16 * Math.sin(p * Math.PI); break;   // steady swirl
       }
       // Fit whole art to a base display size, then apply the animated scale.
-      const BASE   = 300;
+      const BASE   = 380;   // bigger, premium presence (was 300)
       const natMax = Math.max(oi.naturalWidth, oi.naturalHeight) || 1;
       const k      = (BASE / natMax) * sc;
       let odw = oi.naturalWidth * k;
       let odh = oi.naturalHeight * k;
       const _om = Math.max(odw, odh);
-      if (_om > 470) { const _ok = 470 / _om; odw *= _ok; odh *= _ok; }   // readability safety cap
+      if (_om > 560) { const _ok = 560 / _om; odw *= _ok; odh *= _ok; }   // readability safety cap (was 470)
       ctx.save();
       ctx.globalAlpha = Math.max(0, this.alpha * am);
       ctx.globalCompositeOperation = 'lighter';   // additive blend for energy VFX
@@ -157,7 +157,7 @@ export class VFXSpritePlayer {
     // source frames (256px sheets, e.g. Nexus Chakram) at high scale were
     // filling the arena with washed-out additive rings.
     const _max = Math.max(dw, dh);
-    if (_max > 320) { const _k = 320 / _max; dw *= _k; dh *= _k; }
+    if (_max > 420) { const _k = 420 / _max; dw *= _k; dh *= _k; }   // premium size (was 320)
 
     ctx.save();
     ctx.globalAlpha = this.alpha;
