@@ -11191,13 +11191,14 @@ export class Game {
       ctx.translate(c.pos.x, c.pos.y); ctx.rotate(c.ang);
       if (c.boost) {   // Razor Chakram: brighter spinning green/cyan ring trail
         ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.55;
-        ctx.strokeStyle = '#34ff9e'; ctx.lineWidth = 2 + c.boost;
-        ctx.beginPath(); ctx.arc(0, 0, 24 + c.boost * 2, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
+        ctx.strokeStyle = '#34ff9e'; ctx.lineWidth = 3 + c.boost * 1.5;
+        ctx.beginPath(); ctx.arc(0, 0, 42 + c.boost * 3, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
       }
       if (ready) {
         // Draw ONE animated frame from the 6×4 sheet (256px frames) — never the whole sheet.
+        // Bigger blade (was a small 52px) so the signature chakram reads aggressive.
         const _cf = Math.floor((Date.now() / (1000 / 28)) % 24);
-        ctx.drawImage(spr, (_cf % 6) * 256, Math.floor(_cf / 6) * 256, 256, 256, -26, -26, 52, 52);
+        ctx.drawImage(spr, (_cf % 6) * 256, Math.floor(_cf / 6) * 256, 256, 256, -46, -46, 92, 92);
       } else {
         ctx.globalCompositeOperation = 'lighter';
         ctx.strokeStyle = '#1fd6a6'; ctx.lineWidth = 4;
@@ -11252,7 +11253,7 @@ export class Game {
       ctx.translate(s.pos.x, s.pos.y); ctx.rotate(Math.atan2(s.dir.y, s.dir.x));
       ctx.globalAlpha = a;
       if (ready) {
-        const h = s.range * 1.7, w = h * (spr.naturalWidth / spr.naturalHeight);
+        const h = s.range * 2.3, w = h * (spr.naturalWidth / spr.naturalHeight);   // bigger, more aggressive arc (was 1.7)
         ctx.drawImage(spr, -w * 0.1, -h / 2, w, h);
       } else {
         ctx.globalCompositeOperation = 'lighter';
@@ -11326,7 +11327,7 @@ export class Game {
       ctx.save();
       ctx.globalAlpha = a;
       if (ready) {
-        const h = 150, w = h * (spr.naturalWidth / spr.naturalHeight), drop = (1 - a) * 40;
+        const h = 215, w = h * (spr.naturalWidth / spr.naturalHeight), drop = (1 - a) * 40;   // taller, heavier lances (was 150)
         ctx.drawImage(spr, im.pos.x - w / 2, im.pos.y - h + drop, w, h);
       } else {
         ctx.globalCompositeOperation = 'lighter';
@@ -23460,7 +23461,7 @@ _drawLoreArchive(ctx) {
     if (!this._homingMissiles.length) return;
     const spr   = this._weaponImages?.homing_missile_launcher;
     const ready = spr && spr.complete && spr.naturalWidth > 0;
-    const sz    = 36;
+    const sz    = 60;   // bigger, more aggressive (was 36)
     for (const m of this._homingMissiles) {
       // Draw exhaust trail
       if (m.trail) {
@@ -23586,7 +23587,7 @@ _drawLoreArchive(ctx) {
     if (!this._vesselRockets || !this._vesselRockets.length) return;
     const spr   = this._weaponImages?.vessel_purple_rockets;
     const ready = spr && spr.complete && spr.naturalWidth > 0;
-    const sz    = 64;   // big — not "like a fly"
+    const sz    = 92;   // big & aggressive — not "like a fly"
     for (const m of this._vesselRockets) {
       if (m.trail) {
         for (const tr of m.trail) {
