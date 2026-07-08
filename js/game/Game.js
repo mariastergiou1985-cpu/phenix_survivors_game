@@ -711,7 +711,7 @@ export class Game {
     // Boss Lava/Fire Rain impact sheet (2 cols × 4 rows = 8 frames, 512×384 each)
     this._lavaRainSprite = new Image();
     this._lavaRainSprite.onerror = () => console.warn('[Boss] lava_fire_rain.png not found — drawn fallback will be used');
-    this._lavaRainSprite.src = 'assets/enemies/bosses/lava_fire_rain.png';
+    this._lavaRainSprite.src = 'assets/events/weather/lava_fire_rain.png?v=20260709100000';
     // Falling lava-bomb sheet (2×3 molten meteors) — rains from the sky into lava zones.
     this._lavaBombsSprite = new Image();
     this._lavaBombsSprite.onerror = () => console.warn('[Hazard] lavabombs_t.png not found — drawn fallback used');
@@ -18483,6 +18483,23 @@ _drawLoreArchive(ctx) {
         const it   = (z.t - z.warn) / z.impact;   // 0→1 over impact duration
         const fade = it > 0.75 ? (1 - it) / 0.25 : 1;
         ctx.save();
+
+        // ── Maria's eruption art (lava_fire_rain 2×4 sheet) — animates through its 8
+        // growth frames over the impact so the strike reads as a real volcanic eruption
+        // (was loaded but never drawn; procedural blobs below add the molten underglow). ──
+        const _lr = this._lavaRainSprite;
+        if (_lr && _lr.complete && _lr.naturalWidth > 0) {
+          const cols = 2, rows = 4, total = 8;
+          const fi = Math.min(total - 1, Math.floor(it * total));
+          const cw = _lr.naturalWidth / cols, chh = _lr.naturalHeight / rows;
+          const sxp = (fi % cols) * cw, syp = ((fi / cols) | 0) * chh;
+          const ew = R * 3.2, eh = ew * (chh / cw);
+          ctx.save();
+          ctx.globalAlpha = Math.max(0, fade);
+          ctx.globalCompositeOperation = 'source-over';
+          ctx.drawImage(_lr, sxp, syp, cw, chh, px - ew / 2, py - eh * 0.82, ew, eh);   // base sits at zone centre
+          ctx.restore();
+        }
 
         // Massive molten core — layered blobs for irregular lava pool
         ctx.globalAlpha = Math.max(0, fade) * 0.9;
