@@ -6305,15 +6305,15 @@ export class Game {
     // random ground points within the damage RADIUS so the rain reads as "striking around me".
     oc.dropTimer -= dt;
     if (oc.t < DURATION - 0.4 && oc.dropTimer <= 0) {
-      oc.dropTimer = 0.07;
-      const n = 1 + (Math.random() < 0.7 ? 1 : 0);
+      oc.dropTimer = 0.06;
+      const n = 2 + (Math.random() < 0.6 ? 1 : 0);   // denser rain (premium heft)
       for (let i = 0; i < n; i++) {
         const ang = Math.random() * Math.PI * 2;
         const rr  = Math.sqrt(Math.random()) * RADIUS;
         oc.drops.push({
           x: p.pos.x + Math.cos(ang) * rr,
           ty: p.pos.y + Math.sin(ang) * rr * 0.85,   // slight vertical squash → ground-plane feel
-          t: 0, fall: randomRange(0.26, 0.4), len: randomRange(40, 70),
+          t: 0, fall: randomRange(0.26, 0.4), len: randomRange(85, 135),   // longer, heavier chains
         });
       }
     }
@@ -6403,7 +6403,7 @@ export class Game {
     ctx.beginPath(); ctx.ellipse(p.pos.x, p.pos.y, RADIUS, RADIUS * 0.85, 0, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
 
-    const FALL = 150;                       // how far above the target a chain starts
+    const FALL = 225;                       // how far above the target a chain starts (taller drop)
     ctx.save();
     ctx.lineCap = 'round';
     for (const d of oc.drops) {
@@ -6415,13 +6415,21 @@ export class Game {
 
       // The chain: a hot core line + a brighter inner line + round "links" along it (mechanical/heavy)
       ctx.globalAlpha = 0.9 * fade;
-      ctx.strokeStyle = '#ff5a14'; ctx.lineWidth = 5;
+      // Wide outer heat-haze so the chain reads big & molten
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = 0.35 * fade;
+      ctx.strokeStyle = '#ff2a00'; ctx.lineWidth = 16;
       ctx.beginPath(); ctx.moveTo(d.x, topY); ctx.lineTo(d.x, bottomY); ctx.stroke();
-      ctx.strokeStyle = '#ffd27a'; ctx.lineWidth = 2;
+      ctx.restore();
+      ctx.globalAlpha = 0.9 * fade;
+      ctx.strokeStyle = '#ff5a14'; ctx.lineWidth = 9;
+      ctx.beginPath(); ctx.moveTo(d.x, topY); ctx.lineTo(d.x, bottomY); ctx.stroke();
+      ctx.strokeStyle = '#ffd27a'; ctx.lineWidth = 4;
       ctx.beginPath(); ctx.moveTo(d.x, topY); ctx.lineTo(d.x, bottomY); ctx.stroke();
       ctx.fillStyle = '#ffae3c';
-      for (let ly = topY; ly <= bottomY; ly += 9) {
-        ctx.beginPath(); ctx.ellipse(d.x, ly, 3.2, 2.2, 0, 0, Math.PI * 2); ctx.fill();
+      for (let ly = topY; ly <= bottomY; ly += 13) {
+        ctx.beginPath(); ctx.ellipse(d.x, ly, 4.8, 3.3, 0, 0, Math.PI * 2); ctx.fill();
       }
 
       // Impact burst at the strike point once landed
@@ -6430,9 +6438,9 @@ export class Game {
         ctx.save();
         ctx.globalCompositeOperation = 'lighter';
         ctx.globalAlpha = fade;
-        drawGlow(ctx, d.x, d.ty, 10 + 16 * k, '#ff8a2a', 0.7 * (1 - k));
-        ctx.strokeStyle = '#ffd27a'; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.arc(d.x, d.ty, 6 + 14 * k, 0, Math.PI * 2); ctx.stroke();
+        drawGlow(ctx, d.x, d.ty, 15 + 24 * k, '#ff8a2a', 0.7 * (1 - k));
+        ctx.strokeStyle = '#ffd27a'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(d.x, d.ty, 9 + 20 * k, 0, Math.PI * 2); ctx.stroke();
         ctx.restore();
       }
     }
@@ -10827,17 +10835,39 @@ export class Game {
 
   _drawVolleyFx(ctx, w, cam) {
     const sprite = this._tacticalSpriteCache.get(w.id);
-    if (!sprite || !sprite.complete || sprite.naturalWidth <= 0) return;
-    const mSize = 36;   // readable volley missiles
+    const ready  = sprite && sprite.complete && sprite.naturalWidth > 0;
+    const mSize = 78;   // BIG readable volley missiles (premium — was a tiny 36px speck)
     ctx.save();
     for (const mis of w.missiles) {
       const mx = mis.x - cam.x, my = mis.y - cam.y;
-      ctx.globalAlpha = Math.min(1, mis.life);
+      const a  = Math.min(1, mis.life);
       const angle = Math.atan2(mis.vy, mis.vx);
+
+      // Hot exhaust trail behind the missile (additive) so it reads as an overdrive rocket
       ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = 0.5 * a;
+      const tg = ctx.createRadialGradient(mx, my, 0, mx, my, mSize * 0.7);
+      tg.addColorStop(0, 'rgba(255,210,120,0.9)');
+      tg.addColorStop(0.5, 'rgba(255,140,0,0.4)');
+      tg.addColorStop(1, 'rgba(255,80,0,0)');
+      ctx.fillStyle = tg;
+      ctx.beginPath(); ctx.arc(mx, my, mSize * 0.7, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+
+      ctx.save();
+      ctx.globalAlpha = a;
       ctx.translate(mx, my);
       ctx.rotate(angle);
-      ctx.drawImage(sprite, -mSize / 2, -mSize / 4, mSize, mSize / 2);
+      if (ready) {
+        // Preserve the art's square aspect (was squished to a 2:1 sliver)
+        ctx.drawImage(sprite, -mSize / 2, -mSize / 2, mSize, mSize);
+      } else {
+        // Fallback bolt if the sprite is not yet decoded — never invisible
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.fillStyle = '#ffcc44';
+        ctx.beginPath(); ctx.ellipse(0, 0, mSize * 0.4, mSize * 0.18, 0, 0, Math.PI * 2); ctx.fill();
+      }
       ctx.restore();
     }
     ctx.restore();
@@ -12598,6 +12628,17 @@ export class Game {
     const scale = ((core ? 1.4 : 1.05) + 0.12 * fus) * em;   // larger = clearly visible per-character identity
     this.elementFx.spawn(e.pos.x, e.pos.y, el, scale);
 
+    // Second-Element Infusion cards (Frost / Electric / etc.): make the ADDED element VISIBLY
+    // appear on hits even WITHOUT Fusion Catalyst. Previously secondaryElements only mattered for
+    // fusion procs, so picking Frost/Electric Infusion showed nothing → felt broken. Alternate
+    // through the added elements (one per hit) so each infusion clearly shows its own burst.
+    const secs = this.player.secondaryElements;
+    if (secs && secs.length) {
+      this._secElemIdx = ((this._secElemIdx || 0) + 1) % secs.length;
+      const s = secs[this._secElemIdx];
+      if (s && s !== el) this.elementFx.spawn(e.pos.x, e.pos.y, s, scale * 0.85);
+    }
+
     if (fus <= 0) return;                            // fusion behavior needs Fusion Catalyst
     const fid = this._selectFusion(this.player.selectedCharacter);
     if (fid && (e._fuseCd || 0) <= 0) {             // ── real FUSION proc (Phase 2/3) ──
@@ -12755,18 +12796,31 @@ export class Game {
       const pulse = 0.6 + 0.4 * Math.sin(performance.now() * 0.01);
       ctx.save();
       ctx.globalAlpha = pulse;
-      ctx.font = 'bold 15px "Segoe UI Emoji", Consolas, monospace';
+      // Bigger, glowing mark so the synergy state is clearly visible (was a tiny 15px glyph)
+      ctx.shadowColor = mk.color; ctx.shadowBlur = 12;
+      ctx.font = 'bold 24px "Segoe UI Emoji", Consolas, monospace';
       ctx.fillStyle = mk.color;
       ctx.textAlign = 'center';
-      ctx.fillText(mk.glyph, e.pos.x, e.pos.y - e.radius - 12);
+      ctx.fillText(mk.glyph, e.pos.x, e.pos.y - e.radius - 16);
       ctx.restore();
     }
     for (const b of this.synergyBursts) {
-      const k = b.t / b.life;
+      const k  = b.t / b.life;
+      const vr = b.r * 1.6 * (0.35 + 0.65 * k);   // VISUAL radius (bigger than damage radius, readability only)
       ctx.save();
-      ctx.globalAlpha = (1 - k) * 0.8;
-      ctx.strokeStyle = b.color; ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.arc(b.pos.x, b.pos.y, b.r * (0.4 + 0.6 * k), 0, Math.PI * 2); ctx.stroke();
+      ctx.globalCompositeOperation = 'lighter';
+      // Molten fill flash — makes the erupt read as a real burst, not a hairline ring
+      const g = ctx.createRadialGradient(b.pos.x, b.pos.y, 0, b.pos.x, b.pos.y, vr);
+      g.addColorStop(0,   b.color);
+      g.addColorStop(0.5, b.color);
+      g.addColorStop(1,   'rgba(0,0,0,0)');
+      ctx.globalAlpha = (1 - k) * 0.35;
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(b.pos.x, b.pos.y, vr, 0, Math.PI * 2); ctx.fill();
+      // Bright expanding shock ring
+      ctx.globalAlpha = (1 - k) * 0.9;
+      ctx.strokeStyle = b.color; ctx.lineWidth = 5 * (1 - k) + 2;
+      ctx.beginPath(); ctx.arc(b.pos.x, b.pos.y, vr, 0, Math.PI * 2); ctx.stroke();
       ctx.restore();
     }
     ctx.textAlign = 'left';
