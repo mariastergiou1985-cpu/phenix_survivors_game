@@ -14575,9 +14575,9 @@ export class Game {
       #cgm-overlay .title .l2{font-family:'Press Start 2P',monospace;font-size:clamp(18px,2.6vw,36px);color:var(--cyan);text-shadow:var(--glow-cyan);margin-top:14px;letter-spacing:5px;}
       #cgm-overlay .title .l3{font-size:clamp(9px,0.85vw,12px);color:var(--txt-dim);letter-spacing:3px;text-transform:uppercase;margin-top:10px;opacity:0.6;}
       #cgm-overlay .stage-mid{display:flex;align-items:stretch;gap:22px;width:100%;justify-content:center;}
-      #cgm-overlay .stage-art{flex:0 0 320px;position:relative;min-height:480px;border-radius:var(--radius);display:grid;place-items:end center;overflow:visible;}
+      #cgm-overlay .stage-art{flex:0 0 400px;position:relative;min-height:560px;border-radius:var(--radius);display:grid;place-items:end center;overflow:visible;}
       #cgm-overlay .stage-art:not(.has-art){border:1px dashed rgba(46,230,246,.28);background:radial-gradient(120% 80% at 50% 100%,rgba(46,230,246,.08),transparent 70%);}
-      #cgm-overlay .stage-art img{display:none;width:auto;height:auto;max-width:100%;max-height:600px;object-position:bottom center;filter:drop-shadow(0 8px 26px rgba(0,0,0,.55)) drop-shadow(0 0 28px rgba(46,230,246,.18));}
+      #cgm-overlay .stage-art img{display:none;width:auto;height:auto;max-width:100%;max-height:720px;object-position:bottom center;filter:drop-shadow(0 8px 26px rgba(0,0,0,.55)) drop-shadow(0 0 28px rgba(46,230,246,.18));}
       #cgm-overlay .stage-art.has-art img{display:block;}
       #cgm-overlay .stage-art.has-art .art-hint,#cgm-overlay .stage-art.has-art .art-corner{display:none;}
       #cgm-overlay .art-hint{text-align:center;color:var(--txt-faint);font-size:12px;letter-spacing:1px;padding:14px;}
@@ -14718,7 +14718,7 @@ export class Game {
         <div class="stage-art">
           <span class="art-corner a"></span><span class="art-corner b"></span>
           <span class="art-corner c"></span><span class="art-corner d"></span>
-          <img src="assets/ui/main_menu_trio.png?v=20260709610000" alt="Character art">
+          <img src="assets/ui/main_menu_trio.png?v=20260709620000" alt="Character art">
         </div>
         <nav class="menu" id="cgm-menu-nav">
           <!-- populated by _syncMenuOverlayItems() -->
