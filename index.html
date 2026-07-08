@@ -45,6 +45,18 @@
   <canvas id="game" width="1280" height="720"></canvas>
   <!-- deploy fix v4 — retrigger pages build (642624f deploy failed upstream) -->
   <div id="click-to-start">Click or press any key to enable music &nbsp;|&nbsp; M = mute &nbsp;|&nbsp; ESC = pause</div>
+  <!-- Import map: single source of truth for constants.js cache-busting. constants.js is imported
+       by ~16 modules WITHOUT a ?v, so the browser used to serve a stale copy after every deploy
+       (WORLD size / VIEW_SCALE changes needed a hard refresh). This remaps every resolved
+       ".../js/constants.js" import to a versioned URL. To bust constants.js in future, bump the
+       ONE ?v below — every module then re-fetches fresh constants automatically, no hard refresh. -->
+  <script type="importmap">
+  {
+    "imports": {
+      "./js/constants.js": "./js/constants.js?v=20260709630000"
+    }
+  }
+  </script>
   <script type="module" src="js/main.js?v=20260709620000"></script>
 </body>
 </html>
