@@ -1,5 +1,12 @@
 # PHENIX: NULL EDEN — Κοινός Οδικός Χάρτης & Πρόοδος (30h depth)
 
+## ⚠️ ΜΟΝΙΜΟΣ ΚΑΝΟΝΑΣ ART (Maria, 8/7) — ΙΣΧΥΕΙ ΠΑΝΤΑ
+- Σε ΟΤΙΔΗΠΟΤΕ (όπλα, effects, fusions, elements, ultimates, evolutions) μπαίνει **ΜΟΝΟ η art της Maria**.
+- **ΜΟΝΟ διορθώσεις επιτρέπονται** (alpha fix, σύνδεση/wiring, μέγεθος) — **ΟΧΙ αντικατάσταση** με generated/procedural art.
+- Αν κάπου παίζει procedural effect ενώ υπάρχει art της Maria → σύνδεσε την art της. Αν ΔΕΝ υπάρχει art → ΡΩΤΑ την, μη βάζεις generated.
+- Ο Claude πρέπει να ελέγχει κάθε φορά ότι χρησιμοποιείται η δική της art, όχι placeholder/procedural.
+
+
 *Αυτό είναι το κοινό μας tracker. Ο Claude το ξαναδιαβάζει και θυμίζει στη Maria πού πάμε.
 Στόχος: από «6ωρο indie» → «30ωρο survivor-like με δική του ταυτότητα».*
 

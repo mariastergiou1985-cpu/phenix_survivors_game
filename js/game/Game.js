@@ -41,9 +41,9 @@ import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260705080000';
 import { NexusManager } from './NexusManager.js?v=20260706200000';
 import { VESSELS, getVesselById, getDefaultVesselId } from './VesselCatalog.js?v=20260705040000';
 import { PETS, getPetById } from './PetCatalog.js?v=20260705000000';
-import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons, isEvolutionOwnedBy, getCardDisplayName } from './WeaponCatalog.js?v=20260707110000';
+import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons, isEvolutionOwnedBy, getCardDisplayName } from './WeaponCatalog.js?v=20260708200000';
 import { TACTICAL_ID, TACTICAL_DEFS, getTacticalDef, getTacticalForCharacter, getAvailableTactical, preloadTacticalSprites, FUSION_TACTICALS } from './TacticalWeaponCatalog.js?v=20260706240000';
-import { VFXSpritePlayer } from './VFXSpritePlayer.js?v=20260705120000';
+import { VFXSpritePlayer } from './VFXSpritePlayer.js?v=20260708200000';
 
 // ── Mastery card → base weapon mapping (for evolution level tracking) ──
 const MASTERY_TO_WEAPON = Object.freeze({
@@ -83,8 +83,10 @@ const WEAPON_VFX_META = Object.freeze({
   gas_needle:       { cols: 4, frameW: 128, frameH: 128, totalFrames: 16, fps: 22 },
   cataclysm_pulse:  { cols: 6, frameW: 256, frameH: 256, totalFrames: 24, fps: 20 },
   glitch_tear:      { cols: 5, frameW: 256, frameH: 256, totalFrames: 20, fps: 18 },
-  storm_conductor:  { cols: 6, frameW: 256, frameH: 256, totalFrames: 24, fps: 28 },
-  plasma_execution: { cols: 6, frameW: 256, frameH: 256, totalFrames: 24, fps: 24 },
+  // Storm Conductor / Plasma Execution now use Maria's single-illustration art (1254² whole
+  // frame + matching WIELDER_VFX_OVERRIDES) instead of the old procedural frame sheets.
+  storm_conductor:  { cols: 1, frameW: 1254, frameH: 1254, totalFrames: 1, fps: 1 },
+  plasma_execution: { cols: 1, frameW: 1254, frameH: 1254, totalFrames: 1, fps: 1 },
   cataclysm_chain:  { cols: 8, frameW: 256, frameH: 256, totalFrames: 32, fps: 24 },
   frozen_eden:      { cols: 5, frameW: 256, frameH: 256, totalFrames: 20, fps: 20 },
   // Depth-expansion evolutions — single-illustration art (1254² whole frame). The matching
@@ -96,6 +98,27 @@ const WEAPON_VFX_META = Object.freeze({
   ion_halo:         { cols: 1, frameW: 1254, frameH: 1254, totalFrames: 1, fps: 1 },
   null_lance:       { cols: 1, frameW: 1254, frameH: 1254, totalFrames: 1, fps: 1 },
   ember_storm:      { cols: 1, frameW: 1254, frameH: 1254, totalFrames: 1, fps: 1 },
+  bonecircuit_storm:{ cols: 1, frameW: 1254, frameH: 1254, totalFrames: 1, fps: 1 },
+  venom_shroud:     { cols: 1, frameW: 1254, frameH: 1254, totalFrames: 1, fps: 1 },
+  seismic_rift:     { cols: 1, frameW: 1254, frameH: 1254, totalFrames: 1, fps: 1 },
+});
+
+// ── Per-art animation styles ────────────────────────────────────────
+// Each single-illustration weapon/evolution animates its OWN art (transform only —
+// spin / pulse / expand / drift / stab / flicker). The ART PIXELS ARE NEVER REPLACED,
+// only moved/scaled/faded, so Maria's illustration stays intact but feels alive.
+const WEAPON_ANIM_STYLE = Object.freeze({
+  chaos_chord:      'spin',       // golden notes swirl
+  ion_halo:         'spin',       // ion ring rotates
+  grid_reaper:      'slash',      // reaping arc sweep
+  cryo_sovereign:   'pulse',      // ice field pulses
+  ember_storm:      'expand',     // ember vortex blooms
+  null_lance:       'stab',       // lance thrusts along aim
+  bonecircuit_storm:'flicker',    // electric jitter + spin
+  venom_shroud:     'drift',      // toxic cloud drifts + dissipates
+  seismic_rift:     'expand',     // shockwave rips outward
+  storm_conductor:  'flicker',    // lightning crackle
+  plasma_execution: 'pulse',      // plasma throb
 });
 
 // ── Nexus Weapon Visual Pack: per-wielder VFX variants (single illustrations,
@@ -118,6 +141,15 @@ const WIELDER_VFX_OVERRIDES = Object.freeze({
   'ion_halo|cyber_arm_hero':              'assets/weapons/vfx/ion_halo.png',
   'null_lance|japan_phasewalker':         'assets/weapons/vfx/null_lance.png',
   'ember_storm|oni_cataclysm_protocol':   'assets/weapons/vfx/ember_storm.png',
+  // Batch 3 evolutions (Skeleton / Assassin / Brawler)
+  'bonecircuit_storm|skeleton_warrior':   'assets/weapons/vfx/bonecircuit_storm.png',
+  'venom_shroud|assassin_clone':          'assets/weapons/vfx/venom_shroud.png',
+  'seismic_rift|brawler_warrior':         'assets/weapons/vfx/seismic_rift.png',
+  // Storm Conductor / Plasma Execution — Maria's new single-illustration art (both owners each)
+  'storm_conductor|skeleton_warrior':     'assets/weapons/vfx/storm_conductor_hd.png',
+  'storm_conductor|cyber_arm_hero':       'assets/weapons/vfx/storm_conductor_hd.png',
+  'plasma_execution|assassin_clone':      'assets/weapons/vfx/plasma_execution_hd.png',
+  'plasma_execution|brawler_warrior':     'assets/weapons/vfx/plasma_execution_hd.png',
 });
 
 // Lazy one-time Image cache for Nexus pack illustrations (VFX overrides + card icons).
@@ -582,8 +614,8 @@ export class Game {
       ['gas_needle',       'assets/weapons/vfx/gas_needle_vector.png'],
       ['cataclysm_pulse',  'assets/weapons/vfx/cataclysm_pulse.png'],
       ['glitch_tear',      'assets/weapons/vfx/glitch_tear.png'],
-      ['storm_conductor',  'assets/weapons/vfx/storm_conductor.png'],
-      ['plasma_execution', 'assets/weapons/vfx/plasma_execution.png'],
+      ['storm_conductor',  'assets/weapons/vfx/storm_conductor_hd.png'],
+      ['plasma_execution', 'assets/weapons/vfx/plasma_execution_hd.png'],
       ['cataclysm_chain',  'assets/weapons/vfx/cataclysm_chain.png'],
       ['frozen_eden',      'assets/weapons/vfx/frozen_eden.png'],
       ['chaos_chord',      'assets/weapons/vfx/chaos_chord.png'],
@@ -592,6 +624,9 @@ export class Game {
       ['ion_halo',         'assets/weapons/vfx/ion_halo.png'],
       ['null_lance',       'assets/weapons/vfx/null_lance.png'],
       ['ember_storm',      'assets/weapons/vfx/ember_storm.png'],
+      ['bonecircuit_storm','assets/weapons/vfx/bonecircuit_storm.png'],
+      ['venom_shroud',     'assets/weapons/vfx/venom_shroud.png'],
+      ['seismic_rift',     'assets/weapons/vfx/seismic_rift.png'],
     ].forEach(([key, src]) => {
       const img = new Image();
       img.onerror = () => console.warn(`[WeaponVFX] missing ${src} — no VFX overlay`);
@@ -9494,6 +9529,9 @@ export class Game {
     // for matching weapon+character combos (timing/alpha/homing unchanged).
     const _ovSrc = WIELDER_VFX_OVERRIDES[weaponId + '|' + (this.player ? this.player.selectedCharacter : '')];
     if (_ovSrc) vfx.overrideImg = _getNexusImage(_ovSrc);
+    // Per-art animation style (transform-only; never alters the illustration pixels).
+    vfx.animStyle = WEAPON_ANIM_STYLE[weaponId] || 'spin';
+    vfx.aimAngle  = angle || 0;
     vfx.play();
     this._activeWeaponVFX.push(vfx);
     return vfx;

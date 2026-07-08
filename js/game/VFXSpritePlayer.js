@@ -37,6 +37,12 @@ export class VFXSpritePlayer {
     // draw() renders this illustration (centered, capped, fading) instead of
     // the sheet frame, and update() adds a slow spin. Timing/alpha unchanged.
     this.overrideImg = null;
+
+    // Single-image animation (override mode): per-art motion style + timing.
+    this.animStyle = 'spin';   // spin | pulse | expand | drift | stab | slash | flicker
+    this.aimAngle  = 0;        // firing direction (for stab / slash / drift)
+    this._age      = 0;        // seconds since play() (override-mode animation clock)
+    this._animLife = 0.6;      // override-mode animation duration (s)
   }
 
   /** Start (or restart) animation from frame 0. */
@@ -46,6 +52,7 @@ export class VFXSpritePlayer {
     this._playing     = true;
     this._done        = false;
     this.alpha        = 1.0;
+    this._age         = 0;
   }
 
   /**
@@ -55,8 +62,20 @@ export class VFXSpritePlayer {
   update(dt) {
     if (!this._playing) return;
 
-    // Single-image override: slow spin replaces frame-by-frame motion
-    if (this.overrideImg) this.angle += dt * 2;
+    // Single-image override: TIME-BASED per-art animation (transform only — the
+    // illustration pixels are never altered, just moved/scaled/faded so it feels alive).
+    if (this.overrideImg) {
+      this._age = (this._age || 0) + dt;
+      const spinRate = this.animStyle === 'flicker' ? 7.0
+                     : this.animStyle === 'spin'    ? 3.2
+                     : 1.4;
+      this.angle += dt * spinRate;
+      const life = this._animLife || 0.6;
+      const p = Math.min(1, this._age / life);
+      this.alpha = p < 0.18 ? (p / 0.18) : Math.max(0, 1 - (p - 0.18) / 0.82);
+      if (this._age >= life) { this._playing = false; this._done = true; }
+      return;
+    }
 
     this.frameTimer += dt;
     const frameDuration = 1.0 / this.fps;
@@ -88,20 +107,38 @@ export class VFXSpritePlayer {
   draw(ctx) {
     if (!this._playing && !this._done) return;
 
-    // Nexus wielder-variant single-image mode — draw the override illustration
-    // (respecting the 320px cap and alpha fade) instead of the sheet frame.
+    // Single-image mode — draw the override illustration with a PER-ART animation.
+    // The whole image is fit to a base size then animated by transform only (scale /
+    // rotate / drift / fade); the illustration itself is never modified or replaced.
     if (this.overrideImg) {
       const oi = this.overrideImg;
       if (!oi.complete || oi.naturalWidth === 0) return;
-      let odw = oi.naturalWidth * this.scale;
-      let odh = oi.naturalHeight * this.scale;
+      const p   = Math.min(1, (this._age || 0) / (this._animLife || 0.6));   // 0..1 progress
+      const aim = this.aimAngle || 0;
+      let sc = 1, rot = this.angle, ox = 0, oy = 0, am = 1;
+      switch (this.animStyle) {
+        case 'pulse':   sc = 0.78 + 0.42 * Math.sin(p * Math.PI); break;                    // grow → shrink throb
+        case 'expand':  sc = 0.5 + 1.15 * p; am = 1 - p * 0.35; rot = this.angle * 0.35; break; // bloom outward
+        case 'drift':   sc = 0.82 + 0.3 * p; ox = Math.cos(aim) * 36 * p; oy = Math.sin(aim) * 36 * p; break; // cloud drifts
+        case 'stab':    rot = aim; sc = 1.3 - 0.6 * p; ox = Math.cos(aim) * 34 * p; oy = Math.sin(aim) * 34 * p; break; // thrust along aim
+        case 'slash':   rot = aim + (p - 0.5) * 1.4; sc = 0.9 + 0.18 * Math.sin(p * Math.PI); break;   // arc sweep
+        case 'flicker': rot = this.angle; sc = 0.9 + 0.12 * Math.sin((this._age || 0) * 42); am = 0.72 + 0.28 * Math.abs(Math.sin((this._age || 0) * 60)); break; // electric jitter
+        case 'spin':
+        default:        rot = this.angle; sc = 0.85 + 0.16 * Math.sin(p * Math.PI); break;   // steady swirl
+      }
+      // Fit whole art to a base display size, then apply the animated scale.
+      const BASE   = 300;
+      const natMax = Math.max(oi.naturalWidth, oi.naturalHeight) || 1;
+      const k      = (BASE / natMax) * sc;
+      let odw = oi.naturalWidth * k;
+      let odh = oi.naturalHeight * k;
       const _om = Math.max(odw, odh);
-      if (_om > 320) { const _ok = 320 / _om; odw *= _ok; odh *= _ok; }
+      if (_om > 470) { const _ok = 470 / _om; odw *= _ok; odh *= _ok; }   // readability safety cap
       ctx.save();
-      ctx.globalAlpha = this.alpha;
+      ctx.globalAlpha = Math.max(0, this.alpha * am);
       ctx.globalCompositeOperation = 'lighter';   // additive blend for energy VFX
-      ctx.translate(this.x, this.y);
-      if (this.angle !== 0) ctx.rotate(this.angle);
+      ctx.translate(this.x + ox, this.y + oy);
+      if (rot !== 0) ctx.rotate(rot);
       ctx.drawImage(oi, -odw / 2, -odh / 2, odw, odh);
       ctx.restore();
       return;

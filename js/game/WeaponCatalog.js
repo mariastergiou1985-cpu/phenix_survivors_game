@@ -32,6 +32,10 @@ export const WEAPON_ID = Object.freeze({
   ION_HALO:           'ion_halo',
   NULL_LANCE:         'null_lance',
   EMBER_STORM:        'ember_storm',
+  // Depth-expansion evolutions (batch 3 — Skeleton / Assassin / Brawler)
+  BONECIRCUIT_STORM:  'bonecircuit_storm',
+  VENOM_SHROUD:       'venom_shroud',
+  SEISMIC_RIFT:       'seismic_rift',
 });
 
 // ── Weapon behavior types ───────────────────────────────────────────
@@ -281,7 +285,7 @@ export const WEAPON_DEFS = Object.freeze({
     isEvolution: true,
     evolvedFrom: [WEAPON_ID.STORM_SABER, WEAPON_ID.MAGNETIC_ARC],
     color: '#c0e8ff',
-    sprite: 'assets/weapons/vfx/storm_conductor.png',
+    sprite: 'assets/weapons/vfx/storm_conductor_hd.png',
     grid: { cols: 6, rows: 4, frameW: 256, frameH: 256 },
     totalFrames: 24,
     fps: 28,
@@ -304,7 +308,7 @@ export const WEAPON_DEFS = Object.freeze({
     isEvolution: true,
     evolvedFrom: [WEAPON_ID.SHADOW_TOXIC, WEAPON_ID.NEXUS_CHAKRAM],
     color: '#ff7adf',
-    sprite: 'assets/weapons/vfx/plasma_execution.png',
+    sprite: 'assets/weapons/vfx/plasma_execution_hd.png',
     grid: { cols: 6, rows: 4, frameW: 256, frameH: 256 },
     totalFrames: 24,
     fps: 24,
@@ -468,6 +472,57 @@ export const WEAPON_DEFS = Object.freeze({
     fps: 1,
     baseStats: { damage: 60, cooldown: 3.0, aoeRadius: 200, speed: 2, piercing: 99 },
   },
+
+  [WEAPON_ID.BONECIRCUIT_STORM]: {
+    id: 'bonecircuit_storm',
+    name: 'Bonecircuit Storm',
+    description: 'A spiral of electrified bone shards whirls outward, arcing lightning between them.',
+    character: null,
+    element: 'electric',
+    behavior: WEAPON_BEHAVIOR.EXPANDING_SPIRAL,
+    isEvolution: true,
+    evolvedFrom: [WEAPON_ID.STORM_SABER, WEAPON_ID.NEXUS_CHAKRAM],
+    color: '#7fd0ff',
+    sprite: 'assets/weapons/vfx/bonecircuit_storm.png',
+    grid: { cols: 1, rows: 1, frameW: 1254, frameH: 1254 },
+    totalFrames: 1,
+    fps: 1,
+    baseStats: { damage: 62, cooldown: 2.6, aoeRadius: 180, speed: 4, piercing: 99 },
+  },
+
+  [WEAPON_ID.VENOM_SHROUD]: {
+    id: 'venom_shroud',
+    name: 'Venom Shroud',
+    description: 'A cloud of phantom toxic blades disperses and reforms, poisoning everything it passes.',
+    character: null,
+    element: 'toxin',
+    behavior: WEAPON_BEHAVIOR.LINE_CLOUD,
+    isEvolution: true,
+    evolvedFrom: [WEAPON_ID.SHADOW_TOXIC, WEAPON_ID.GLITCH_TEAR],
+    color: '#7CFF4D',
+    sprite: 'assets/weapons/vfx/venom_shroud.png',
+    grid: { cols: 1, rows: 1, frameW: 1254, frameH: 1254 },
+    totalFrames: 1,
+    fps: 1,
+    baseStats: { damage: 58, cooldown: 2.4, aoeRadius: 175, speed: 5, piercing: 99 },
+  },
+
+  [WEAPON_ID.SEISMIC_RIFT]: {
+    id: 'seismic_rift',
+    name: 'Seismic Rift',
+    description: 'A kinetic shockwave rips the ground open, hurling foes back from the impact.',
+    character: null,
+    element: 'fire',
+    behavior: WEAPON_BEHAVIOR.GROUND_SHOCKWAVE,
+    isEvolution: true,
+    evolvedFrom: [WEAPON_ID.NEXUS_CHAKRAM, WEAPON_ID.CATACLYSM_PULSE],
+    color: '#ffb347',
+    sprite: 'assets/weapons/vfx/seismic_rift.png',
+    grid: { cols: 1, rows: 1, frameW: 1254, frameH: 1254 },
+    totalFrames: 1,
+    fps: 1,
+    baseStats: { damage: 68, cooldown: 3.0, aoeRadius: 210, speed: 3, piercing: 99 },
+  },
 });
 
 // ── Evolution recipes ───────────────────────────────────────────────
@@ -531,6 +586,24 @@ export const EVOLUTION_RECIPES = Object.freeze([
     minLevel: 5,
     owner: ['oni_cataclysm_protocol'],
   },
+  {
+    result: WEAPON_ID.BONECIRCUIT_STORM,
+    ingredients: [WEAPON_ID.STORM_SABER, WEAPON_ID.NEXUS_CHAKRAM],
+    minLevel: 5,
+    owner: ['skeleton_warrior'],
+  },
+  {
+    result: WEAPON_ID.VENOM_SHROUD,
+    ingredients: [WEAPON_ID.SHADOW_TOXIC, WEAPON_ID.GLITCH_TEAR],
+    minLevel: 5,
+    owner: ['assassin_clone'],
+  },
+  {
+    result: WEAPON_ID.SEISMIC_RIFT,
+    ingredients: [WEAPON_ID.NEXUS_CHAKRAM, WEAPON_ID.CATACLYSM_PULSE],
+    minLevel: 5,
+    owner: ['brawler_warrior'],
+  },
 ]);
 
 // ── Character ownership (HARD LOCK) ─────────────────────────────────
@@ -574,6 +647,9 @@ const WEAPON_CORE_NOUN = {
   ion_halo:         'Ion Halo',
   null_lance:       'Null Lance',
   ember_storm:      'Ember Storm',
+  bonecircuit_storm:'Bonecircuit Storm',
+  venom_shroud:     'Venom Shroud',
+  seismic_rift:     'Seismic Rift',
 };
 const CHAR_FLAVOR = {
   skeleton_warrior:       'Bone-Cursed',
