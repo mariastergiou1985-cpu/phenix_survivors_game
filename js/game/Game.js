@@ -9573,10 +9573,18 @@ export class Game {
     if (cached) return cached;
     const sheet = (this._weaponVFXSheets && this._weaponVFXSheets[weaponId]) || _getNexusImage(def.sprite);
     if (!(sheet.complete && sheet.naturalWidth > 0)) return null;   // still loading — glyph this time
+    // Crop the PEAK frame, not frame-0: on slash/burst sheets frame-0 is empty
+    // (animation start), which produced BLANK mastery-card icons. ~60% through the
+    // sheet is the fully-drawn peak of the effect — real art in every card.
+    const cols  = meta.cols || 1;
+    const total = meta.totalFrames || 1;
+    const fi    = Math.min(total - 1, Math.max(0, Math.round((total - 1) * 0.6)));
+    const sx    = (fi % cols) * meta.frameW;
+    const sy    = Math.floor(fi / cols) * meta.frameH;
     const cv = document.createElement('canvas');
     cv.width  = meta.frameW;
     cv.height = meta.frameH;
-    cv.getContext('2d').drawImage(sheet, 0, 0, meta.frameW, meta.frameH, 0, 0, meta.frameW, meta.frameH);
+    cv.getContext('2d').drawImage(sheet, sx, sy, meta.frameW, meta.frameH, 0, 0, meta.frameW, meta.frameH);
     _weaponCardIconCrops.set(weaponId, cv);
     return cv;
   }
@@ -9854,7 +9862,7 @@ export class Game {
       }
       if (best) {
         const angle = Math.atan2(best.pos.y - py, best.pos.x - px);
-        const vfx = this._spawnWeaponVFX(weaponId, best.pos.x, best.pos.y, angle, 3.75);
+        const vfx = this._spawnWeaponVFX(weaponId, best.pos.x, best.pos.y, angle, 4.5);   // bigger, premium presence (was 3.75)
         // 70% homing: the VFX tracks its target while animating instead of
         // spinning at the cast point after the target has moved away.
         if (vfx) { vfx.follow = best; vfx.followK = 0.7; }
@@ -10705,6 +10713,12 @@ export class Game {
         case 'homing_volley':
           this._drawVolleyFx(ctx, w, cam);
           break;
+        case 'stationary_totem':
+          this._drawTotemFx(ctx, w, cam);
+          break;
+        case 'linear_beam':
+          this._drawBeamFx(ctx, w, cam);
+          break;
         case 'kinetic_rain':
           this._drawRainFx(ctx, w, cam);
           break;
@@ -10750,7 +10764,7 @@ export class Game {
           // All other behaviors: render weapon sprite at drop point, sprite-only
           if (sprite && sprite.complete && sprite.naturalWidth > 0) {
             const pulse = 1.0 + 0.08 * Math.sin(w.angle * 4);
-            const size = 72 * pulse;
+            const size = 110 * pulse;   // premium readable size (was a small 72px)
             ctx.save();
             ctx.globalAlpha = fadeAlpha;
             ctx.translate(sx, sy);
@@ -10798,6 +10812,87 @@ export class Game {
         if (sprite && sprite.complete) ctx.drawImage(sprite, gx - size / 2, gy - size / 2, size, size);
         ctx.restore();
       }
+    }
+  }
+
+  // Lightning Blade Totem — STATIONARY_TOTEM: her sprite BIG + a pulsing electric
+  // damage field at aoeRadius, so the AoE that actually deals damage is VISIBLE and
+  // lingers the whole duration (was just a tiny 72px sprite with no field).
+  _drawTotemFx(ctx, w, cam) {
+    const sx = w.x - cam.x, sy = w.y - cam.y;
+    const R   = w.def.aoeRadius || 200;
+    const col = w.def.color || '#00ccff';
+    const fade = Math.min(1, w.timer / 1.0);
+    const now  = performance.now() * 0.001;
+    const pulse = 0.5 + 0.5 * Math.sin(now * 3);
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const g = ctx.createRadialGradient(sx, sy, R * 0.15, sx, sy, R);
+    g.addColorStop(0, col); g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.globalAlpha = (0.10 + 0.06 * pulse) * fade;
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(sx, sy, R, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = (0.5 + 0.4 * pulse) * fade;
+    ctx.strokeStyle = col; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(sx, sy, R * (0.9 + 0.1 * pulse), 0, Math.PI * 2); ctx.stroke();
+    ctx.globalAlpha = 0.7 * fade; ctx.lineWidth = 2;
+    for (let i = 0; i < 8; i++) {
+      const a = now * 1.6 + i * Math.PI / 4;
+      ctx.beginPath();
+      ctx.moveTo(sx + Math.cos(a) * R * 0.2, sy + Math.sin(a) * R * 0.2);
+      ctx.lineTo(sx + Math.cos(a) * R,        sy + Math.sin(a) * R);
+      ctx.stroke();
+    }
+    ctx.restore();
+    const sprite = this._tacticalSpriteCache.get(w.id);
+    if (sprite && sprite.complete && sprite.naturalWidth > 0) {
+      const sz = 132 * (1 + 0.05 * pulse);
+      ctx.save();
+      ctx.globalAlpha = fade;
+      ctx.translate(sx, sy);
+      ctx.rotate(w.angle * 0.6);
+      ctx.drawImage(sprite, -sz / 2, -sz / 2, sz, sz);
+      ctx.restore();
+    }
+  }
+
+  // Heavy Void Turret — LINEAR_BEAM: her turret sprite + a rotating BEAM that was
+  // NEVER drawn before (damage happened invisibly). Persistent faint beam + bright
+  // pulse while firing, so the damaging beam is clearly visible and lingers.
+  _drawBeamFx(ctx, w, cam) {
+    const sx = w.x - cam.x, sy = w.y - cam.y;
+    const len = w.def.beamLength || 500;
+    const col = w.def.color || '#b26bff';
+    const fade = Math.min(1, w.timer / 1.0);
+    const ca = Math.cos(w.beamAngle || 0), sa = Math.sin(w.beamAngle || 0);
+    const ex = sx + ca * len, ey = sy + sa * len;
+    const hot = w.beamOn ? 1 : 0.4;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.lineCap = 'round';
+    ctx.globalAlpha = 0.30 * hot * fade;
+    ctx.strokeStyle = col; ctx.lineWidth = 34 * hot;
+    ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(ex, ey); ctx.stroke();
+    ctx.globalAlpha = 0.85 * hot * fade;
+    ctx.strokeStyle = col; ctx.lineWidth = 14 * hot;
+    ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(ex, ey); ctx.stroke();
+    ctx.globalAlpha = hot * fade;
+    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 5 * hot;
+    ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(ex, ey); ctx.stroke();
+    const g = ctx.createRadialGradient(ex, ey, 0, ex, ey, 40 * hot);
+    g.addColorStop(0, col); g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.globalAlpha = 0.8 * hot * fade; ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(ex, ey, 40 * hot, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+    const sprite = this._tacticalSpriteCache.get(w.id);
+    if (sprite && sprite.complete && sprite.naturalWidth > 0) {
+      const sz = 120;
+      ctx.save();
+      ctx.globalAlpha = fade;
+      ctx.translate(sx, sy);
+      ctx.rotate(w.beamAngle || 0);
+      ctx.drawImage(sprite, -sz / 2, -sz / 2, sz, sz);
+      ctx.restore();
     }
   }
 
