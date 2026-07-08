@@ -667,6 +667,11 @@ export class Game {
     this._phoenixGoldImage.onerror = () => console.warn('[Assets] Failed to load: assets/effects/phoenix/gold_phoenix_revive.png');
     this._phoenixGoldImage.src = 'assets/effects/phoenix/gold_phoenix_revive.png?v=20260628400000';
 
+    // Cyber Dragon ice-strike telegraph — Maria's crystalline targeting reticle art.
+    this._iceStrikeWarnImg = new Image();
+    this._iceStrikeWarnImg.onerror = () => console.warn('[CyberDragon] ice_strike_warning.png missing — ring fallback used');
+    this._iceStrikeWarnImg.src = 'assets/effects/attacks/ice_strike_warning.png?v=20260708300000';
+
     // Preload credits photos
     this._creditImgInk = new Image();
     // Newer Maria / InkSpireM portrait. Safe fallback to the previous photo if it fails to load.
@@ -20809,39 +20814,26 @@ _drawLoreArchive(ctx) {
         const pulse    = 0.5 + 0.5 * Math.sin(now * 8); // fast pulse
         const ringR    = 30 + (1 - progress) * 14;
 
-        // Crosshair lines (4 short dashes pointing inward)
-        ctx.save();
-        ctx.globalAlpha = (0.5 + pulse * 0.5) * (0.4 + progress * 0.6);
-        ctx.strokeStyle = '#00ccff';
-        ctx.lineWidth   = 1.5;
-        ctx.shadowColor = '#00ccff';
-        ctx.shadowBlur  = 8;
-        for (let ci = 0; ci < 4; ci++) {
-          const ca  = (ci / 4) * Math.PI * 2;
-          const in1 = ringR + 6;
-          const in2 = ringR + 14;
-          ctx.beginPath();
-          ctx.moveTo(tp.x + Math.cos(ca) * in1, tp.y + Math.sin(ca) * in1);
-          ctx.lineTo(tp.x + Math.cos(ca) * in2, tp.y + Math.sin(ca) * in2);
-          ctx.stroke();
+        // Ice-strike targeting reticle — Maria's crystalline art (rotating + pulsing),
+        // replaces the old procedural crosshair + diamond. Falls back to a simple ring
+        // if the image hasn't loaded yet, so the telegraph is never invisible.
+        const _isw = this._iceStrikeWarnImg;
+        if (_isw && _isw.complete && _isw.naturalWidth) {
+          const rs = (ringR + 18) * 2.4;
+          ctx.save();
+          ctx.globalAlpha = (0.55 + pulse * 0.4) * (0.5 + progress * 0.5);
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.translate(tp.x, tp.y);
+          ctx.rotate(now * 0.6);
+          ctx.drawImage(_isw, -rs / 2, -rs / 2, rs, rs);
+          ctx.restore();
+        } else {
+          ctx.save();
+          ctx.globalAlpha = (0.4 + pulse * 0.4) * (0.4 + progress * 0.6);
+          ctx.strokeStyle = '#00ccff'; ctx.lineWidth = 2; ctx.shadowColor = '#00ccff'; ctx.shadowBlur = 10;
+          ctx.beginPath(); ctx.arc(tp.x, tp.y, ringR, 0, Math.PI * 2); ctx.stroke();
+          ctx.restore();
         }
-        ctx.restore();
-
-        // Diamond warning ring (rotates slightly)
-        ctx.save();
-        ctx.globalAlpha = (0.3 + pulse * 0.35) * (1 - progress * 0.2);
-        ctx.translate(tp.x, tp.y);
-        ctx.rotate(now * 0.6 + sh.t);
-        ctx.strokeStyle = '#00ccff';
-        ctx.lineWidth   = 2;
-        ctx.shadowColor = '#00ccff';
-        ctx.shadowBlur  = 12;
-        ctx.beginPath();
-        ctx.moveTo(0, -ringR); ctx.lineTo(ringR * 0.7, 0);
-        ctx.lineTo(0, ringR);  ctx.lineTo(-ringR * 0.7, 0);
-        ctx.closePath();
-        ctx.stroke();
-        ctx.restore();
 
         // Danger fill (fades in)
         ctx.save();
