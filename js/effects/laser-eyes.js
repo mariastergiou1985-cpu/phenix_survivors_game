@@ -21,7 +21,7 @@
 
 export const LASER_DEFAULTS = {
   charge: { ms: 300 },
-  beam:   { durationMs: 1500, width: 2.6, maxLen: 1500, hitWidth: 16, tickMs: 100 },
+  beam:   { durationMs: 1500, width: 8, maxLen: 1500, hitWidth: 16, tickMs: 100 },
   burn:   { sparkRate: 1, disruptRate: 0, fireRate: 0.1, fireLifeMs: 600 },  // reduced for performance
   color:  { hue: 2, sat: 100, light: 56 },
 };
@@ -134,11 +134,20 @@ export class LaserEyes {
       const dir = this._dir(), eyes = this.opts.getEyes(), ends = eyes.map(e => this._endpoint(e, dir));
       const flick = 0.7 + Math.random() * 0.3;
       // No shadowBlur on beams (performance) — two-pass: glow layer + bright core
+      const bw = this.cfg.beam.width;
+      ctx.lineCap = 'round';
       for (let i = 0; i < eyes.length; i++) {
-        ctx.strokeStyle = this._c(0.4 * flick, 50); ctx.lineWidth = this.cfg.beam.width * 2.5;
+        // 3-pass beam: wide outer haze → bright body → white-hot core (premium cataclysm laser)
+        ctx.strokeStyle = this._c(0.22 * flick, 50); ctx.lineWidth = bw * 3.4;
         ctx.beginPath(); ctx.moveTo(eyes[i].x, eyes[i].y); ctx.lineTo(ends[i].x, ends[i].y); ctx.stroke();
-        ctx.strokeStyle = this._c(flick, 92); ctx.lineWidth = this.cfg.beam.width;
+        ctx.strokeStyle = this._c(0.85 * flick, 55); ctx.lineWidth = bw * 1.7;
         ctx.beginPath(); ctx.moveTo(eyes[i].x, eyes[i].y); ctx.lineTo(ends[i].x, ends[i].y); ctx.stroke();
+        ctx.strokeStyle = `hsla(0,0%,100%,${flick})`; ctx.lineWidth = Math.max(2, bw * 0.5);
+        ctx.beginPath(); ctx.moveTo(eyes[i].x, eyes[i].y); ctx.lineTo(ends[i].x, ends[i].y); ctx.stroke();
+        // muzzle flare at each eye
+        const g = ctx.createRadialGradient(eyes[i].x, eyes[i].y, 0, eyes[i].x, eyes[i].y, bw * 3);
+        g.addColorStop(0, this._c(0.9 * flick, 70)); g.addColorStop(1, this._c(0, 50));
+        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(eyes[i].x, eyes[i].y, bw * 3, 0, Math.PI * 2); ctx.fill();
       }
       // pixel disruption along the beams
       for (const d of this._disrupt) { const t = (now - d.born) / d.life; if (t >= 1) continue; ctx.globalAlpha = 1 - t; ctx.fillStyle = this._c(1, 75); ctx.fillRect(d.x - d.size / 2, d.y - d.size / 2, d.size, d.size); }

@@ -20,8 +20,8 @@ export const METEOR_DEFAULTS = {
   duration: { ms: 5000 },
   area:     { radius: 180 },
   spawn:    { perSec: 5 },
-  meteor:   { speed: 6, accel: 0.25, sizeMin: 10, sizeMax: 20, topY: -40 },
-  impact:   { radius: 46, debris: 14 },
+  meteor:   { speed: 6, accel: 0.25, sizeMin: 16, sizeMax: 32, topY: -40 },
+  impact:   { radius: 46, debris: 18 },
   grid:     { cell: 22 },
   color:    { hue: 4, sat: 100, light: 56 },
 };
