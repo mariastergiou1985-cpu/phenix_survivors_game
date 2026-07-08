@@ -14718,7 +14718,7 @@ export class Game {
         <div class="stage-art">
           <span class="art-corner a"></span><span class="art-corner b"></span>
           <span class="art-corner c"></span><span class="art-corner d"></span>
-          <img src="assets/ui/cyber-grid-menu.png" alt="Character art">
+          <img src="assets/ui/main_menu_trio.png?v=20260709610000" alt="Character art">
         </div>
         <nav class="menu" id="cgm-menu-nav">
           <!-- populated by _syncMenuOverlayItems() -->
