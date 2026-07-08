@@ -11550,8 +11550,15 @@ export class Game {
       ctx.save();
       ctx.translate(s.pos.x, s.pos.y); ctx.rotate(s.ang);
       if (ready) {
-        const sz = 34;
-        ctx.drawImage(spr, -sz / 2, -sz / 2, sz, sz);   // spinning shuriken sprite (no glow/orb)
+        const sz = 62;   // bigger spinning shuriken (was a tiny 34px)
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.4;
+        const g = ctx.createRadialGradient(0, 0, 0, 0, 0, sz * 0.7);
+        g.addColorStop(0, 'rgba(255,120,220,0.8)'); g.addColorStop(1, 'rgba(255,77,210,0)');
+        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, sz * 0.7, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+        ctx.drawImage(spr, -sz / 2, -sz / 2, sz, sz);   // spinning shuriken sprite + neon glow
       } else {
         ctx.strokeStyle = '#ff4dd2'; ctx.lineWidth = 3;
         ctx.beginPath(); ctx.arc(0, 0, 12, 0, Math.PI * 2); ctx.stroke();
@@ -11633,8 +11640,15 @@ export class Game {
       const a = Math.max(0, f.life / f.maxLife);
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
+      // Soft filled band so the burst reads premium (not a thin hairline)
+      ctx.globalAlpha = a * 0.28;
+      const g = ctx.createRadialGradient(f.pos.x, f.pos.y, f.r * 0.7, f.pos.x, f.pos.y, f.r);
+      g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(0.7, f.color); g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(f.pos.x, f.pos.y, f.r, 0, Math.PI * 2); ctx.fill();
+      // Bright leading ring
       ctx.globalAlpha = a;
-      ctx.strokeStyle = f.color; ctx.lineWidth = 4;
+      ctx.strokeStyle = f.color; ctx.lineWidth = 7 * a + 2;
       ctx.beginPath(); ctx.arc(f.pos.x, f.pos.y, f.r, 0, Math.PI * 2); ctx.stroke();
       ctx.restore();
     }
@@ -11662,8 +11676,8 @@ export class Game {
       ctx.save();
       ctx.globalAlpha = 0.9;
       if (c.spr && c.spr.complete && c.spr.naturalWidth > 0) {
-        const h = 80, w = h * (c.spr.naturalWidth / c.spr.naturalHeight);
-        ctx.shadowColor = c.tint; ctx.shadowBlur = 14;
+        const h = 120, w = h * (c.spr.naturalWidth / c.spr.naturalHeight);   // bigger clones (was 80)
+        ctx.shadowColor = c.tint; ctx.shadowBlur = 18;
         ctx.drawImage(c.spr, cx - w / 2, cy - h, w, h);
       } else {
         ctx.globalCompositeOperation = 'lighter';
