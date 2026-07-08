@@ -179,10 +179,9 @@ export const PF_TOTAL_OBTAINABLE = Object.values(PF_PAYOUTS).reduce((a, b) => a 
 // Future Endless-character unlock costs. Progression targets (of the 14 total):
 //   Japan Phasewalker 8 = 57% · Euclid Vector 10 = 71% · Oni Cataclysm 14 = 100%.
 export const PF_CHARACTER_COSTS = {
-  japan_phasewalker:      8,
-  oni_cataclysm_protocol: 14,
-  eddie:                  10,   // Thunder / Berserk roster addition — mid-range PF tier (8 < 10 < 14)
-  // euclid_vector is intentionally NOT listed → unlocked from the start (free). Oni stays PF-gated.
+  // Characters no longer unlock via Protocol Fragments — they unlock through campaign stage
+  // progression (see MetaProgress.isCharacterUnlocked). Kept as an empty map so existing
+  // references (protocolUnlockCost, _pfUnlockCharacterRect) resolve to "no PF path".
 };
 
 // ─── Protocol Fragment unlock cards (permanent meta-upgrades, bought with spendable PF) ─────────
@@ -725,12 +724,23 @@ export class MetaProgress {
   // Character unlock gate. The 3 base characters are always available; Brawler Warrior is
   // unlocked by reaching 10:00 in Endless (flag set via unlock('brawler_warrior')).
   isCharacterUnlocked(characterId) {
-    if (characterId === 'brawler_warrior') return this.isUnlocked('brawler_warrior');
-    // Any PF-gated Endless character (japan_phasewalker / euclid_vector / oni_cataclysm_protocol)
-    // is locked until purchased with Protocol Fragments — NO free default unlock. Future characters
-    // added to PF_CHARACTER_COSTS are automatically gated the same way.
-    if (PF_CHARACTER_COSTS[characterId]) return this.isProtocolUnlocked(characterId);
-    return true;
+    // Campaign stage-gated unlock (PHENIX_DESIGN_DECISIONS A1): Skeleton is the starter; one
+    // character unlocks per stage cleared; Eddie unlocks after the FINAL stage (all cleared).
+    // Japan Phasewalker stays locked (COMING SOON). Order confirmed with Maria.
+    const REQ = {
+      skeleton_warrior:       0,
+      taekwondo_girl:         1,
+      cyber_arm_hero:         2,
+      brawler_warrior:        3,
+      assassin_clone:         4,
+      euclid_vector:          5,
+      oni_cataclysm_protocol: 6,
+      eddie:                  this.totalStages,   // 7 → after FINAL (all stages cleared)
+      japan_phasewalker:      Infinity,           // COMING SOON — never unlocks yet
+    };
+    const req = REQ[characterId];
+    if (req == null) return true;                 // any unmapped character defaults unlocked (safety)
+    return (this.stagesCleared || 0) >= req;
   }
 
   // Resolve the sprite asset for a character+outfit (always returns a valid path).
