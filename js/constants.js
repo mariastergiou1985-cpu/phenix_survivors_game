@@ -23,9 +23,9 @@ export const WORLD_BOUNDS = {
 // Camera zoom-out: render the world slightly smaller so more of the battlefield
 // is visible (late-game crowds read better). The visible world window is
 // WIDTH/VIEW_SCALE × HEIGHT/VIEW_SCALE world-units inside the fixed 1280×720 canvas.
-export const VIEW_SCALE = 0.85;
-export const VIEW_W = WIDTH  / VIEW_SCALE;   // ≈ 1505.9 world-units shown horizontally
-export const VIEW_H = HEIGHT / VIEW_SCALE;   // ≈ 847.1  world-units shown vertically
+export const VIEW_SCALE = 0.6;               // zoomed OUT (was 0.85) → ~2× visible map area, more room to move
+export const VIEW_W = WIDTH  / VIEW_SCALE;   // ≈ 2133 world-units shown horizontally
+export const VIEW_H = HEIGHT / VIEW_SCALE;   // ≈ 1200 world-units shown vertically
 
 // Endless-only zoom: render a touch smaller so the arena breathes and more map is
 // visible around the player (Act 1 keeps VIEW_SCALE). Applied only when this.endless
