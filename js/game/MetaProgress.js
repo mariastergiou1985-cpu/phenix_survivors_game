@@ -272,6 +272,7 @@ export class MetaProgress {
     // Endless after an Act 1 victory). Once set, the Main Menu shows a direct ENDLESS MODE entry
     // so the player never has to replay Act 1. Persisted; fresh saves start false (locked).
     this.endlessUnlocked = false;
+    this.stagesCleared   = 0;   // STAGE CAMPAIGN progress
     // ─── Protocol Fragments (Phase 1) — SEPARATE from Grid Credits (this.credits) ───
     this.protocolFragments = 0;   // current PF balance
     this.pfEarnedFrom      = {};  // { [achievementId]: true } — idempotent payout ledger
@@ -316,6 +317,7 @@ export class MetaProgress {
       this.achievements = d.achievements || {};
       this.selectedOutfits = d.selectedOutfits || {};
       this.endlessUnlocked = d.endlessUnlocked === true;
+      this.stagesCleared   = Math.max(0, Number(d.stagesCleared) || 0);   // highest Stage cleared (0 = none); Stage N unlocked when stagesCleared >= N-1
       // Protocol Fragments — corruption-safe defaults (Number||0 / object-or-{}).
       this.protocolFragments = Number(d.protocolFragments) || 0;
       this.pfEarnedFrom    = (d.pfEarnedFrom    && typeof d.pfEarnedFrom    === 'object') ? d.pfEarnedFrom    : {};
@@ -396,6 +398,7 @@ export class MetaProgress {
         achievements: this.achievements,
         selectedOutfits: this.selectedOutfits,
         endlessUnlocked: this.endlessUnlocked,
+        stagesCleared:   this.stagesCleared,
         protocolFragments: this.protocolFragments,
         pfEarnedFrom: this.pfEarnedFrom,
         protocolUnlocks: this.protocolUnlocks,
@@ -417,6 +420,16 @@ export class MetaProgress {
         petSlots:           this.petSlots,
       }));
     } catch (_) {}
+  }
+
+  // ── STAGE CAMPAIGN progression (7 stages: 1-6 + Final). Sequential unlock; clearing all
+  // unlocks Endless + Chaos. Persisted as stagesCleared (highest stage number cleared). ──
+  get totalStages() { return 7; }
+  isStageUnlocked(n) { return n <= (this.stagesCleared || 0) + 1; }   // Stage 1 always open; N opens once N-1 cleared
+  allStagesCleared() { return (this.stagesCleared || 0) >= this.totalStages; }
+  clearStage(n) {
+    if (n > (this.stagesCleared || 0)) { this.stagesCleared = Math.min(this.totalStages, n); this._save(); return true; }
+    return false;
   }
 
   // ── OST Jukebox unlock: longest survival AS EDDIE (seconds) ──
@@ -624,6 +637,7 @@ export class MetaProgress {
     this.achievements   = {};
     this.selectedOutfits = {};
     this.endlessUnlocked = false;
+    this.stagesCleared   = 0;   // STAGE CAMPAIGN progress
     this.protocolFragments = 0;
     this.pfEarnedFrom      = {};
     this.protocolUnlocks   = {};
@@ -667,7 +681,7 @@ export class MetaProgress {
   // ─── Endless Mode access ────────────────────────────────────────────────────
   // True once the player has entered Endless at least once. Read by the Main Menu to
   // show/hide the ENDLESS MODE entry. Never gates achievements/outfits/balance.
-  isEndlessUnlocked() { return this.endlessUnlocked === true; }
+  isEndlessUnlocked() { return this.endlessUnlocked === true || this.allStagesCleared(); }
 
   unlockEndless() {
     if (this.endlessUnlocked === true) return;

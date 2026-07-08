@@ -22,7 +22,7 @@ import { weightedSample } from './Upgrades.js?v=20260706300000';
 import { MutationUI }      from './MutationUI.js?v=20260703990000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260705300000';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS } from './MetaProgress.js?v=20260707100000';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS } from './MetaProgress.js?v=20260709500000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260705300000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
@@ -72,6 +72,19 @@ const MASTERY_TO_WEAPON = Object.freeze({
   oni_meteor_mastery:                    WEAPON_ID.CATACLYSM_PULSE,
   oni_protocol0_mastery:                 WEAPON_ID.CATACLYSM_PULSE,
 });
+
+// ── STAGE CAMPAIGN — 6 stages + Final. Each = one of Maria's custom maps + a biome rule.
+// Sequential unlock (MetaProgress.stagesCleared); clearing ALL unlocks Endless + Chaos.
+const CAMPAIGN_STAGES = [
+  { n: 1, name: 'STAGE 1',     map: 'assets/maps/biomes/stage_1.png',     biome: 'neon_district'   },
+  { n: 2, name: 'STAGE 2',     map: 'assets/maps/biomes/stage_2.png',     biome: 'industrial_core' },
+  { n: 3, name: 'STAGE 3',     map: 'assets/maps/biomes/stage_3.png',     biome: 'orbital_nexus'   },
+  { n: 4, name: 'STAGE 4',     map: 'assets/maps/biomes/stage_4.png',     biome: 'abyssal_trench'  },
+  { n: 5, name: 'STAGE 5',     map: 'assets/maps/biomes/stage_5.png',     biome: 'glacial_expanse' },
+  { n: 6, name: 'STAGE 6',     map: 'assets/maps/biomes/stage_6.png',     biome: 'data_wastes'     },
+  { n: 7, name: 'FINAL STAGE', map: 'assets/maps/biomes/final_stage.png', biome: 'data_wastes', final: true },
+];
+const CAMPAIGN_STAGE_SECONDS = 300;   // survive 5 minutes to clear a stage
 
 // ── VFX sprite sheet metadata (frame data from Blender render) ──
 const WEAPON_VFX_META = Object.freeze({
@@ -845,6 +858,12 @@ export class Game {
     this._stageIndex     = 0;      // current stage (0 = Stage 1)
     this._stageBiome     = null;   // current stage biome id (whole map = this biome; null = ring)
     this._stageSpeedMult = 1;      // enemy speed mult from the current stage biome
+    // ── STAGE CAMPAIGN (VS-style select → play → clear → unlock next) ──
+    this._campaignStage        = 0;   // active campaign stage number (0 = not a campaign run)
+    this._pendingCampaignStage = 0;   // stage picked in the select screen, applied on run start
+    this._campaignSelIndex     = 0;   // highlighted card in the CAMPAIGN select screen
+    this._campaignCleared      = false; // guard: stage-clear fires once per run
+    this._campaignMapImg       = null;  // loaded stage map Image (bg)
     
     // Menu state
     this.menuIndex = 0;
@@ -989,7 +1008,7 @@ export class Game {
   // entry so they never replay Act 1 to reach it. Computed live so the unlock reflects instantly.
   get menuItems() {
     // Lean main nav only. Exit/Credits/Instructions/Audio moved into the SETTINGS screen.
-    const items = ['START GAME'];
+    const items = ['CAMPAIGN', 'START GAME'];
     if (this.meta?.isEndlessUnlocked()) items.push('ENDLESS MODE');
     items.push('CHAOS MODE');   // always visible; locked if !endlessUnlocked — handled in draw/click
     items.push('CHARACTER SELECT', 'UPGRADES', 'COLLECTIBLES', 'RELICS', 'HANGAR', 'EVOLUTION MATRIX', 'SETTINGS', 'EXIT');
@@ -1203,9 +1222,11 @@ export class Game {
     this.spawnPauseTimer    = 0;
     this.stealSpeedMultiplier = 1.0;   // legacy (unused)
     this._blackoutSpeedMult   = 1.0;   // GRID BLACKOUT event: enemy speed multiplier
-    this._stageIndex          = 0;     // STAGE PROGRESSION reset (Stage 1 re-armed on first tick)
+    this._stageIndex          = 0;     // STAGE PROGRESSION reset
     this._stageBiome          = null;
     this._stageSpeedMult      = 1;
+    this._campaignStage       = 0;     // campaign run flag (set by _applyCampaignStage after reset)
+    this._campaignCleared     = false;
     this.gridBlackoutActive   = false;
     this.announcement         = null;
     this._pauseMenuIndex      = 0;    // controller nav: 0=RESUME  1=RETURN TO MAIN MENU
@@ -1393,6 +1414,7 @@ export class Game {
       this.audio?.startGameplayMusic();
       this.gameState = 'playing';
       this.reset();
+      this._applyCampaignStage();   // if a campaign stage was picked, apply its map + rules to this run
     });
   }
 
@@ -1404,6 +1426,118 @@ export class Game {
       this.audio?.startMenuMusic();
       this._showCharSelectOverlay();
     });
+  }
+
+  // ══ STAGE CAMPAIGN (VS-style: select → play → clear → unlock next) ═══════════
+  goToCampaign() {
+    this._transition(() => {
+      this._hideMenuOverlay();
+      this.gameState = 'campaign_select';
+      const cleared = this.meta?.stagesCleared || 0;
+      this._campaignSelIndex = Math.min(CAMPAIGN_STAGES.length - 1, cleared);   // cursor on the next stage to beat
+      this.audio?.startMenuMusic();
+    });
+  }
+
+  _updateCampaignSelect(input) {
+    const { keys } = input, n = CAMPAIGN_STAGES.length;
+    if (keys.has('arrowleft')  || keys.has('a')) { this._campaignSelIndex = (this._campaignSelIndex - 1 + n) % n; keys.delete('arrowleft');  keys.delete('a'); }
+    if (keys.has('arrowright') || keys.has('d')) { this._campaignSelIndex = (this._campaignSelIndex + 1) % n;     keys.delete('arrowright'); keys.delete('d'); }
+    if (keys.has('enter') || keys.has(' ')) {
+      keys.delete('enter'); keys.delete(' ');
+      const st = CAMPAIGN_STAGES[this._campaignSelIndex];
+      if (this.meta?.isStageUnlocked(st.n)) { this._pendingCampaignStage = st.n; this.goToCharacterSelect(); }
+      else this.triggerAnnouncement('CLEAR THE PREVIOUS STAGE FIRST', '#888888');
+    }
+    if (keys.has('escape')) { this.goToMainMenu(); keys.delete('escape'); }
+  }
+
+  _campaignThumb(st) {
+    this._campaignThumbs = this._campaignThumbs || {};
+    if (!this._campaignThumbs[st.n]) { const im = new Image(); im.src = st.map; this._campaignThumbs[st.n] = im; }
+    return this._campaignThumbs[st.n];
+  }
+
+  _campaignCardRect(i) {
+    const cols = 4, cw = 250, ch = 150, gapX = 26, gapY = 34;
+    const rows = Math.ceil(CAMPAIGN_STAGES.length / cols);
+    const totalW = cols * cw + (cols - 1) * gapX;
+    const totalH = rows * ch + (rows - 1) * gapY;
+    const x0 = Math.round(WIDTH / 2 - totalW / 2);
+    const y0 = Math.round((HEIGHT - totalH) / 2 + 24);
+    const cx = i % cols, cy = (i / cols) | 0;
+    return { x: x0 + cx * (cw + gapX), y: y0 + cy * (ch + gapY), w: cw, h: ch };
+  }
+
+  _drawCampaignSelect(ctx) {
+    this._drawBackground(ctx);
+    ctx.fillStyle = 'rgba(4,8,20,0.82)'; ctx.fillRect(0, 0, WIDTH, HEIGHT);
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 34px Consolas, monospace'; ctx.fillStyle = '#2ee6f6';
+    ctx.fillText('CAMPAIGN', WIDTH / 2, 66);
+    ctx.font = '13px Consolas, monospace'; ctx.fillStyle = 'rgba(190,200,215,0.6)';
+    ctx.fillText('Survive 5:00 to clear a stage and unlock the next. Beat them all to open ENDLESS + CHAOS.', WIDTH / 2, 92);
+    const cleared = this.meta?.stagesCleared || 0;
+    for (let i = 0; i < CAMPAIGN_STAGES.length; i++) {
+      const st = CAMPAIGN_STAGES[i], r = this._campaignCardRect(i);
+      const unlocked = this.meta?.isStageUnlocked(st.n), isCleared = st.n <= cleared, sel = i === this._campaignSelIndex;
+      ctx.save();
+      ctx.globalAlpha = unlocked ? 1 : 0.45;
+      ctx.fillStyle = 'rgba(10,16,46,0.7)';
+      ctx.strokeStyle = sel ? '#2ee6f6' : (isCleared ? '#7CFF4D' : (unlocked ? 'rgba(46,230,246,0.35)' : 'rgba(120,120,140,0.3)'));
+      ctx.lineWidth = sel ? 3 : 1.5;
+      ctx.beginPath(); ctx.rect(r.x, r.y, r.w, r.h); ctx.fill(); ctx.stroke();
+      const img = this._campaignThumb(st);
+      if (img && img.complete && img.naturalWidth > 0) {
+        ctx.save(); ctx.beginPath(); ctx.rect(r.x + 6, r.y + 6, r.w - 12, r.h - 44); ctx.clip();
+        const iw = r.w - 12, ih = r.h - 44, sc = Math.max(iw / img.naturalWidth, ih / img.naturalHeight);
+        ctx.globalAlpha = (unlocked ? 1 : 0.4) * 0.92;
+        ctx.drawImage(img, r.x + 6 + (iw - img.naturalWidth * sc) / 2, r.y + 6 + (ih - img.naturalHeight * sc) / 2, img.naturalWidth * sc, img.naturalHeight * sc);
+        ctx.restore();
+      }
+      ctx.globalAlpha = unlocked ? 1 : 0.55;
+      ctx.font = 'bold 16px Consolas, monospace';
+      ctx.fillStyle = isCleared ? '#7CFF4D' : (unlocked ? '#e8ffff' : '#8892a0');
+      ctx.fillText(st.name, r.x + r.w / 2, r.y + r.h - 14);
+      if (!unlocked) { ctx.font = '22px "Segoe UI Emoji", Consolas'; ctx.fillText('🔒', r.x + r.w / 2, r.y + r.h / 2 - 4); }
+      else if (isCleared) { ctx.font = 'bold 12px Consolas, monospace'; ctx.fillStyle = '#7CFF4D'; ctx.fillText('✓ CLEARED', r.x + r.w / 2, r.y + 20); }
+      ctx.restore();
+    }
+    ctx.font = '12px Consolas, monospace'; ctx.fillStyle = 'rgba(190,200,215,0.55)';
+    ctx.fillText('← → Select • ENTER Play • ESC Back', WIDTH / 2, HEIGHT - 28);
+    ctx.textAlign = 'left';
+  }
+
+  // Apply the picked campaign stage to the fresh run (called from selectCharacter after reset).
+  _applyCampaignStage() {
+    const n = this._pendingCampaignStage;
+    if (!n) return;
+    const st = CAMPAIGN_STAGES.find(s => s.n === n);
+    this._pendingCampaignStage = 0;
+    if (!st) return;
+    this._campaignStage   = n;
+    this._campaignCleared = false;
+    this._stageBiome      = st.biome;                                   // enemy rules follow the stage biome
+    const def = BIOME_DEFS[st.biome] || {};
+    this._stageSpeedMult  = (def.enemyModifiers && def.enemyModifiers.speedMult) || 1;
+    const img = new Image(); img.src = st.map; this._campaignMapImg = img;
+    if (this.mapManager) this.mapManager._bgImage = img;               // Maria's stage map as the fixed background
+    this.triggerAnnouncement((st.final ? 'FINAL STAGE' : ('STAGE ' + n)) + ' — SURVIVE 5:00', '#2ee6f6');
+  }
+
+  // Campaign clear check — survive CAMPAIGN_STAGE_SECONDS → clear, unlock next, back to select.
+  _updateCampaignProgress() {
+    if (!this._campaignStage || this._campaignCleared || this.gameOver || this.victory) return;
+    if (this.timeAlive < CAMPAIGN_STAGE_SECONDS) return;
+    this._campaignCleared = true;
+    const n = this._campaignStage;
+    this.meta?.clearStage(n);
+    const allDone = this.meta?.allStagesCleared();
+    this.triggerAnnouncement('STAGE ' + n + ' CLEAR' + (allDone ? ' — ENDLESS + CHAOS UNLOCKED!' : ''), '#7CFF4D');
+    this.screenShake?.trigger(6, 0.6);
+    // Return to the campaign select after a short beat.
+    this._campaignStage = 0;
+    setTimeout(() => { try { this.goToCampaign(); } catch (_) {} }, 2600);
   }
 
   // Highlight a character card WITHOUT starting a run (mouse preview). Sets the live selection so the
@@ -6914,6 +7048,10 @@ export class Game {
       this._updateCharacterSelect(input);
       return;
     }
+    if (this.gameState === 'campaign_select') {
+      this._updateCampaignSelect(input);
+      return;
+    }
     if (this.gameState === 'exit_screen') {
       this._updateExitScreen(input);
       return;
@@ -7007,7 +7145,7 @@ export class Game {
 
     this.timeAlive += dt;
     this.score += dt;
-    this._updateStageProgression();   // Act 1 timed biome stages (Stage 1→2→3…)
+    this._updateCampaignProgress();   // STAGE CAMPAIGN: survive 5:00 → clear stage → unlock next
 
     // ── Vessel passive runtime tick ──────────────────────────────────────────
     this._tickVesselPassives(dt);
@@ -8045,7 +8183,8 @@ export class Game {
 
   // Name-based menu dispatch (shared by keyboard + mouse) so item order can change safely.
   _selectMenuItem(item) {
-    if (item === 'START GAME' || item === 'CHARACTER SELECT') this.goToCharacterSelect();
+    if (item === 'CAMPAIGN') this.goToCampaign();
+    else if (item === 'START GAME' || item === 'CHARACTER SELECT') this.goToCharacterSelect();
     else if (item === 'ENDLESS MODE')   this.startEndlessRun();
     else if (item === 'CHAOS MODE')    this._selectChaosMode();
     else if (item === 'UPGRADES')       this.goToUpgradesScreen();
@@ -13250,6 +13389,11 @@ export class Game {
   draw(ctx) {
     if (this.gameState === 'start_menu') {
       this._drawStartMenu(ctx);
+      this._drawFade(ctx);
+      return;
+    }
+    if (this.gameState === 'campaign_select') {
+      this._drawCampaignSelect(ctx);
       this._drawFade(ctx);
       return;
     }
