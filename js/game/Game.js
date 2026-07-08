@@ -1528,12 +1528,29 @@ export class Game {
     this._stageSpeedMult  = (def.enemyModifiers && def.enemyModifiers.speedMult) || 1;
     const img = new Image(); img.src = st.map; this._campaignMapImg = img;
     if (this.mapManager) this.mapManager._bgImage = img;               // Maria's stage map as the fixed background
+    // Campaign boss roster — the 3 recurring bosses (Cyber Serpent, Matrix Annihilator, AI Overload
+    // Titan) appear STAGGERED across the 5:00 stage via their existing (Act-1-tested) spawn paths.
+    // Clearing is time-based (survive), so an un-killed boss is pure pressure — never a softlock.
+    this.cyberSerpentSpawned = false; this.cyberSerpentSpawnTimer = 90;    // ~1:30
+    this.annihilatorSpawned  = false; this.annihilatorSpawnTimer  = 180;   // ~3:00
+    this.titanSpawned        = false; this.titanSpawnTimer         = 255;   // ~4:15
+    this._campaignOverlordSpawned = false;   // FINAL stage only — spawned in _updateCampaignProgress
     this.triggerAnnouncement((st.final ? 'FINAL STAGE' : ('STAGE ' + n)) + ' — SURVIVE 5:00', '#2ee6f6');
   }
 
   // Campaign clear check — survive CAMPAIGN_STAGE_SECONDS → clear, unlock next, back to select.
   _updateCampaignProgress() {
     if (!this._campaignStage || this._campaignCleared || this.gameOver || this.victory) return;
+    // FINAL stage climax: bring in the AI Overlord (once, ~0:45 in) as the ultimate boss.
+    if (!this._campaignOverlordSpawned && this.timeAlive >= 45 &&
+        CAMPAIGN_STAGES.find(s => s.n === this._campaignStage)?.final) {
+      this._campaignOverlordSpawned = true;
+      const boss = new Enemy('Rogue AI Overlord', this.currentMinute());
+      boss.hp *= 3; boss.maxHp = boss.hp; boss.isMegaBoss = true;
+      this.enemies.push(boss); this.megaBoss = boss;
+      this.triggerAnnouncement('AI OVERLORD — FINAL BREACH', RED);
+      this.screenShake?.trigger(6, 0.6);
+    }
     if (this.timeAlive < CAMPAIGN_STAGE_SECONDS) return;
     this._campaignCleared = true;
     const n = this._campaignStage;
