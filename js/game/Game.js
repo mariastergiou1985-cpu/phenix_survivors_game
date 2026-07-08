@@ -37,7 +37,7 @@ import { MapManager, BIOME_ID, BIOME_DEFS } from './MapManager.js?v=202607039990
 import { EventBus, EVENTS } from './EventBus.js?v=20260703990000';
 import { EnemySpawner, ELITE_WAVE as ELITE_WAVE_CFG, BOSS_WARN_COOLDOWN as BOSS_WARN_CD } from './EnemySpawner.js?v=20260704200000';
 import { StateManager, GAME_STATES } from './StateManager.js?v=20260703990000';
-import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260705080000';
+import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260709300000';
 import { NexusManager } from './NexusManager.js?v=20260706200000';
 import { VESSELS, getVesselById, getDefaultVesselId } from './VesselCatalog.js?v=20260705040000';
 import { PETS, getPetById } from './PetCatalog.js?v=20260705000000';
@@ -840,6 +840,7 @@ export class Game {
     // Game state management
     this.gameState = 'start_menu'; // 'start_menu' | 'character_select' | 'playing' | 'game_over' | 'victory' | 'exit_screen'
     this.selectedCharacter = null; // 'skeleton_warrior' | 'taekwondo_girl' | 'cyber_arm_hero'
+    this.runBiome = null;          // STAGE SELECT: chosen biome for this run (null = procedural mixed ring)
     
     // Menu state
     this.menuIndex = 0;
@@ -8115,6 +8116,12 @@ export class Game {
       this.meta.setSelectedOutfit(charId, next);
       ['arrowup', 'arrowdown', 'w', 's'].forEach(k => keys.delete(k));
       this._syncCharSelectOverlay();
+    }
+    if (keys.has('b')) {   // STAGE SELECT — cycle the run biome (MIXED = procedural ring)
+      const order = [null, 'neon_district', 'industrial_core', 'orbital_nexus', 'abyssal_trench', 'glacial_expanse', 'data_wastes'];
+      const cur = order.indexOf(this.runBiome ?? null);
+      this.runBiome = order[(cur + 1) % order.length];
+      keys.delete('b');
     }
     if (keys.has('enter') || keys.has(' ')) {
       const charId = this.characters[this.characterIndex].id;
@@ -16295,7 +16302,13 @@ export class Game {
     this._drawSlotLabel(ctx, A.back,  'BACK', false, '#9aa4b0');
     this._drawSlotLabel(ctx, A.start, 'START GAME', selUnlocked, selUnlocked ? CYAN : '#5a6470');
     this._drawSlotLabel(ctx, A.endless, endlessOk ? 'START ENDLESS' : 'ENDLESS LOCKED', endlessOk, endlessOk ? '#7CFF4D' : '#5a6470');
-    ctx.font = '12px Consolas, monospace'; ctx.fillStyle = 'rgba(190,200,215,0.55)'; ctx.textAlign = 'center';
+    // ── STAGE SELECT indicator (press B to cycle the run biome) ──
+    const _bn = { neon_district: 'NEON DISTRICT', industrial_core: 'INDUSTRIAL CORE', orbital_nexus: 'ORBITAL NEXUS', abyssal_trench: 'ABYSSAL TRENCH', glacial_expanse: 'GLACIAL EXPANSE', data_wastes: 'DATA WASTES' };
+    const _sn = this.runBiome ? (_bn[this.runBiome] || this.runBiome) : 'MIXED (default)';
+    ctx.font = 'bold 13px Consolas, monospace'; ctx.textAlign = 'center';
+    ctx.fillStyle = this.runBiome ? '#7CFF4D' : 'rgba(190,200,215,0.7)';
+    ctx.fillText('◆ STAGE: ' + _sn + '   [ press B to change ]', WIDTH / 2, HEIGHT - 70);
+    ctx.font = '12px Consolas, monospace'; ctx.fillStyle = 'rgba(190,200,215,0.55)';
     ctx.fillText('← → Select • ↑ ↓ Outfit • ENTER Start • ESC Back', WIDTH / 2, HEIGHT - 54);
     ctx.textAlign = 'left';
   }

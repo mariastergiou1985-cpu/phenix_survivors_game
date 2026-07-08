@@ -312,6 +312,9 @@ export class ChunkManager {
   }
 
   _getBiomeForCoords(cx, cy) {
+    // ── STAGE SELECT ──: when the run has a chosen biome, the ENTIRE map is that biome
+    // (background image + palette + hazards + enemyModifiers all follow). null = procedural ring.
+    if (this.game && this.game.runBiome && BIOME_DEFS[this.game.runBiome]) return this.game.runBiome;
     // Center chunk: Neon District
     if (cx === 0 && cy === 0) return BIOME_ID.NEON_DISTRICT;
 
