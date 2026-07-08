@@ -6196,6 +6196,7 @@ export class Game {
     // cell + muzzle, oriented toward the aim so shots read as coming from the barrel (not a blob).
     for (const g of (this._euclidGuns || [])) {
       ctx.save(); ctx.translate(g.x, g.y); ctx.rotate(g.ang);
+      ctx.scale(1.85, 1.85);   // bigger toxic pistols — read as weapons, not tiny blobs
       ctx.fillStyle = '#3a2e28'; ctx.fillRect(-5, 2, 4, 6);            // grip (angled down-back)
       ctx.fillStyle = '#566372'; ctx.fillRect(-7, -3, 12, 6);          // slide/body
       ctx.fillStyle = '#3a4654'; ctx.fillRect(-7, -3, 12, 2);          // top rail
@@ -6209,23 +6210,25 @@ export class Game {
       ctx.restore();
     }
     ctx.globalCompositeOperation = 'lighter';
-    // Toxin Vector Bolts — glowing green/cyan orb + bounce trail
+    // Toxin Vector Bolts — glowing green/cyan orb + bounce trail (bigger, weapon-like)
     for (const b of this._euclidBolts) {
-      ctx.globalAlpha = 0.45; ctx.strokeStyle = '#7CFF4D'; ctx.lineWidth = 4; ctx.lineCap = 'round';
+      ctx.globalAlpha = 0.45; ctx.strokeStyle = '#7CFF4D'; ctx.lineWidth = 7; ctx.lineCap = 'round';
       ctx.beginPath(); ctx.moveTo(b.prev.x, b.prev.y); ctx.lineTo(b.pos.x, b.pos.y); ctx.stroke();
       ctx.globalAlpha = 1; ctx.fillStyle = '#caffae';
-      ctx.beginPath(); ctx.arc(b.pos.x, b.pos.y, 5, 0, Math.PI * 2); ctx.fill();
-      ctx.globalAlpha = 0.5; ctx.strokeStyle = '#46e6ff'; ctx.lineWidth = 1.5;
-      ctx.beginPath(); ctx.arc(b.pos.x, b.pos.y, 8, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(b.pos.x, b.pos.y, 9, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 0.6; ctx.strokeStyle = '#46e6ff'; ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.arc(b.pos.x, b.pos.y, 15, 0, Math.PI * 2); ctx.stroke();
     }
-    // Viral Gas Needles — sharp toxic shard (triangle) + trail
+    // Viral Gas Needles — sharp toxic shard (triangle) + trail (bigger, clearly a blade)
     for (const n of this._euclidNeedles) {
       const ang = Math.atan2(n.dir.y, n.dir.x);
-      ctx.globalAlpha = 0.35; ctx.strokeStyle = '#7CFF4D'; ctx.lineWidth = 3;
+      ctx.globalAlpha = 0.4; ctx.strokeStyle = '#7CFF4D'; ctx.lineWidth = 5;
       ctx.beginPath(); ctx.moveTo(n.prev.x, n.prev.y); ctx.lineTo(n.pos.x, n.pos.y); ctx.stroke();
       ctx.save(); ctx.translate(n.pos.x, n.pos.y); ctx.rotate(ang);
       ctx.globalAlpha = 1; ctx.fillStyle = '#aaff7f';
-      ctx.beginPath(); ctx.moveTo(8, 0); ctx.lineTo(-5, 4); ctx.lineTo(-5, -4); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(16, 0); ctx.lineTo(-9, 8); ctx.lineTo(-9, -8); ctx.closePath(); ctx.fill();
+      ctx.globalAlpha = 0.6; ctx.fillStyle = '#eaffd0';
+      ctx.beginPath(); ctx.moveTo(16, 0); ctx.lineTo(-2, 3); ctx.lineTo(-2, -3); ctx.closePath(); ctx.fill();   // white-hot core
       ctx.restore();
     }
     ctx.restore();
@@ -11596,6 +11599,7 @@ export class Game {
     const cm = this._cardLvl('assassin_clone_chrome_phantom_mastery');   // Chrome Phantom Mastery
     const DURATION = 3.0 + 0.4 * cm, RADIUS = 200 * (1 + 0.12 * cm), PULSE_GAP = 0.4, DMG = 28;
     cp.t += dt; cp.pulseTimer -= dt;
+    cp.fadeK = Math.max(0, Math.min(1, (DURATION - cp.t) / 0.45));   // clones pulse-fade out at the end
     if (cp.pulseTimer <= 0 && cp.t < DURATION) {
       cp.pulseTimer = PULSE_GAP; cp.pulse++;
       for (const t of this._brawlerTargets()) {
@@ -11604,6 +11608,18 @@ export class Game {
       }
       this._chromeFx.push({ pos: p.pos.clone(), r: RADIUS * 0.4, dr: RADIUS * 1.6, life: 0.4, maxLife: 0.4,
                             color: cp.pulse % 2 ? '#ff4dd2' : '#cfd6e0' });
+      // ── Clones project their OWN pulse OUTWARD from where they orbit — gives the
+      // ultimate reach beyond the player (requested). Boss-capped, modest damage.
+      const _oa = cp.t * 6, _orb = 110, CR = 150;
+      for (const _sg of [0, Math.PI]) {
+        const _cx = p.pos.x + Math.cos(_oa + _sg) * _orb, _cy = p.pos.y + Math.sin(_oa + _sg) * _orb;
+        const _cpos = new Vec2(_cx, _cy);
+        for (const t of this._brawlerTargets()) {
+          if (distance(_cpos, t.obj.pos) > CR + t.obj.radius) continue;
+          this._brawlerHit(t, (this._targetIsBoss(t) ? 0.4 : 0.7) * DMG, '#ff9cf0');
+        }
+        this._chromeFx.push({ pos: _cpos, r: 18, dr: CR * 3.2, life: 0.35, maxLife: 0.35, color: '#ff9cf0' });
+      }
       this.screenShake.trigger(2, 0.12);
     }
     if (!cp.finalDone && cp.t >= DURATION) {   // wider final chrome-mirror impact pulse
@@ -11614,6 +11630,13 @@ export class Game {
         this._brawlerHit(t, (this._targetIsBoss(t) ? 0.6 : 1) * DMG * 1.5, '#cfd6e0');
       }
       this._chromeFx.push({ pos: p.pos.clone(), r: FR * 0.5, dr: FR * 1.4, life: 0.5, maxLife: 0.5, color: '#ffd0f4' });
+      // ── Clones VANISH as an outward pulse from their last orbit positions (requested) ──
+      const _va = cp.t * 6, _vorb = 110;
+      for (const _sg of [0, Math.PI]) {
+        const _vx = p.pos.x + Math.cos(_va + _sg) * _vorb, _vy = p.pos.y + Math.sin(_va + _sg) * _vorb;
+        this._chromeFx.push({ pos: new Vec2(_vx, _vy), r: 26, dr: 340, life: 0.45, maxLife: 0.45,
+                              color: _sg ? '#cfd6e0' : '#ff4dd2' });
+      }
       this.screenShake.trigger(4, 0.2);
       // ── Mirror Kill Protocol relic: shadow slash on clone expire, 3+ hits refunds 20 mana ──
       if (this.meta?.isRelicUnlocked('mirror_kill_protocol')) {
@@ -11673,10 +11696,11 @@ export class Game {
       ctx.beginPath(); ctx.arc(cx, cy - 30, 46, 0, Math.PI * 2); ctx.fill();
       ctx.restore();
 
+      const _fk = cp.fadeK ?? 1;
       ctx.save();
-      ctx.globalAlpha = 0.9;
+      ctx.globalAlpha = 0.9 * _fk;
       if (c.spr && c.spr.complete && c.spr.naturalWidth > 0) {
-        const h = 120, w = h * (c.spr.naturalWidth / c.spr.naturalHeight);   // bigger clones (was 80)
+        const h = 120 * (1 + (1 - _fk) * 0.55), w = h * (c.spr.naturalWidth / c.spr.naturalHeight);   // bigger clones (was 80); grow as they pulse-vanish
         ctx.shadowColor = c.tint; ctx.shadowBlur = 18;
         ctx.drawImage(c.spr, cx - w / 2, cy - h, w, h);
       } else {
