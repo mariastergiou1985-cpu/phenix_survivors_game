@@ -27,7 +27,7 @@ export const ENEMY_WEAPONS = Object.freeze([
   {
     id: 'void_ember_comet',
     displayName: 'Void Ember Comet',
-    spritePath: 'assets/enemies/weapons/sprites/void_ember_comet.png',
+    spritePath: 'assets/effects/attacks/void_ember_comet.png',
     ownerEnemyTypes: ['forge-mauler', 'ember-scarab'],
     behavior: WEAPON_BEHAVIOR.ARC_PROJECTILE,
     damage: 10,
@@ -41,7 +41,7 @@ export const ENEMY_WEAPONS = Object.freeze([
   {
     id: 'null_sigil_beam',
     displayName: 'Null Sigil Beam',
-    spritePath: 'assets/enemies/weapons/sprites/null_sigil_beam.png',
+    spritePath: 'assets/effects/attacks/null_sigil_beam.png',
     ownerEnemyTypes: ['null-hierophant', 'rift-eye'],
     behavior: WEAPON_BEHAVIOR.BEAM,
     damage: 6,
@@ -55,7 +55,7 @@ export const ENEMY_WEAPONS = Object.freeze([
   {
     id: 'violet_spectral_needle',
     displayName: 'Violet Spectral Needle',
-    spritePath: 'assets/enemies/weapons/sprites/violet_spectral_needle.png',
+    spritePath: 'assets/effects/attacks/violet_spectral_needle.png',
     ownerEnemyTypes: ['rail-reaper', 'amethyst-fang', 'void-widow'],
     behavior: WEAPON_BEHAVIOR.FAST_PROJECTILE,
     damage: 14,
@@ -69,7 +69,7 @@ export const ENEMY_WEAPONS = Object.freeze([
   {
     id: 'eden_star_lance',
     displayName: 'Eden Star Lance',
-    spritePath: 'assets/enemies/weapons/sprites/eden_star_lance.png',
+    spritePath: 'assets/effects/attacks/eden_star_lance.png',
     ownerEnemyTypes: ['glitch-drone', 'stealth-infiltrator', 'cyber-shooter', 'combat-hunter', 'solar-tyrant'],
     behavior: WEAPON_BEHAVIOR.PIERCING_PROJECTILE,
     damage: 22,
@@ -83,7 +83,7 @@ export const ENEMY_WEAPONS = Object.freeze([
   {
     id: 'abyss_rift_blade',
     displayName: 'Abyss Rift Blade',
-    spritePath: 'assets/enemies/weapons/sprites/abyss_rift_blade.png',
+    spritePath: 'assets/effects/attacks/abyss_rift_blade.png',
     ownerEnemyTypes: ['rogue-ai-overlord', 'overclocked-berserker', 'pale-bloodknight', 'abyss-maw'],
     behavior: WEAPON_BEHAVIOR.SLASH_WAVE,
     damage: 16,
@@ -97,7 +97,7 @@ export const ENEMY_WEAPONS = Object.freeze([
   {
     id: 'cryo_shard_lance',
     displayName: 'Cryo Shard Lance',
-    spritePath: 'assets/enemies/weapons/sprites/cryo_shard_lance.png',
+    spritePath: 'assets/effects/attacks/cryo_shard_lance.png',
     ownerEnemyTypes: ['rogue-ai-overlord', 'cyber-net-junkie', 'cryo-warden', 'cryo-claw'],
     behavior: WEAPON_BEHAVIOR.PROJECTILE,
     damage: 10,
@@ -111,7 +111,7 @@ export const ENEMY_WEAPONS = Object.freeze([
   {
     id: 'solar_halo_bolt',
     displayName: 'Solar Halo Bolt',
-    spritePath: 'assets/enemies/weapons/sprites/solar_halo_bolt.png',
+    spritePath: 'assets/effects/attacks/solar_halo_bolt.png',
     ownerEnemyTypes: ['solar-tyrant', 'solar-stinger', 'forge-mauler'],
     behavior: WEAPON_BEHAVIOR.PROJECTILE,
     damage: 8,
@@ -125,7 +125,7 @@ export const ENEMY_WEAPONS = Object.freeze([
   {
     id: 'toxic_data_spear',
     displayName: 'Toxic Data Spear',
-    spritePath: 'assets/enemies/weapons/sprites/toxic_data_spear.png',
+    spritePath: 'assets/effects/attacks/toxic_data_spear.png',
     ownerEnemyTypes: ['rail-reaper', 'toxin-leech', 'volt-rat'],
     behavior: WEAPON_BEHAVIOR.PROJECTILE,
     damage: 12,
@@ -139,7 +139,7 @@ export const ENEMY_WEAPONS = Object.freeze([
   {
     id: 'magma_reaver_lance',
     displayName: 'Magma Reaver Lance',
-    spritePath: 'assets/enemies/weapons/sprites/magma_reaver_lance.png',
+    spritePath: 'assets/effects/attacks/magma_reaver_lance.png',
     ownerEnemyTypes: ['forge-mauler', 'reactor-colossus', 'ember-scarab'],
     behavior: WEAPON_BEHAVIOR.HEAVY_PROJECTILE,
     damage: 18,
@@ -153,7 +153,7 @@ export const ENEMY_WEAPONS = Object.freeze([
   {
     id: 'arc_circuit_beam',
     displayName: 'Arc Circuit Beam',
-    spritePath: 'assets/enemies/weapons/sprites/arc_circuit_beam.png',
+    spritePath: 'assets/effects/attacks/arc_circuit_beam.png',
     ownerEnemyTypes: ['security-defector-mech', 'heavy-mech', 'null-hierophant', 'reactor-colossus', 'pulse-burrower', 'volt-rat'],
     behavior: WEAPON_BEHAVIOR.BEAM,
     damage: 5,
@@ -167,7 +167,7 @@ export const ENEMY_WEAPONS = Object.freeze([
   {
     id: 'aether_crescent_chakram',
     displayName: 'Aether Crescent Chakram',
-    spritePath: 'assets/enemies/weapons/sprites/aether_crescent_chakram.png',
+    spritePath: 'assets/effects/attacks/aether_crescent_chakram.png',
     ownerEnemyTypes: ['glitch-drone', 'rogue-punk', 'cyber-shooter', 'scrap-scavenger', 'cryo-warden', 'pulse-burrower'],
     behavior: WEAPON_BEHAVIOR.BOOMERANG,
     damage: 8,
@@ -181,7 +181,7 @@ export const ENEMY_WEAPONS = Object.freeze([
   {
     id: 'prism_wing_bolt',
     displayName: 'Prism Wing Bolt',
-    spritePath: 'assets/enemies/weapons/sprites/prism_wing_bolt.png',
+    spritePath: 'assets/effects/attacks/prism_wing_bolt.png',
     ownerEnemyTypes: ['amethyst-fang'],
     behavior: WEAPON_BEHAVIOR.PROJECTILE,
     damage: 7,
@@ -195,7 +195,7 @@ export const ENEMY_WEAPONS = Object.freeze([
   {
     id: 'blacknet_scythe_arc',
     displayName: 'Blacknet Scythe Arc',
-    spritePath: 'assets/enemies/weapons/sprites/blacknet_scythe_arc.png',
+    spritePath: 'assets/effects/attacks/blacknet_scythe_arc.png',
     ownerEnemyTypes: ['rogue-ai-overlord', 'pale-bloodknight', 'void-widow'],
     behavior: WEAPON_BEHAVIOR.SLASH_ARC,
     damage: 15,
@@ -209,7 +209,7 @@ export const ENEMY_WEAPONS = Object.freeze([
   {
     id: 'seraph_vector_javelin',
     displayName: 'Seraph Vector Javelin',
-    spritePath: 'assets/enemies/weapons/sprites/seraph_vector_javelin.png',
+    spritePath: 'assets/effects/attacks/seraph_vector_javelin.png',
     ownerEnemyTypes: ['rail-reaper', 'solar-tyrant', 'solar-stinger'],
     behavior: WEAPON_BEHAVIOR.PIERCING_PROJECTILE,
     damage: 16,
@@ -223,7 +223,7 @@ export const ENEMY_WEAPONS = Object.freeze([
   {
     id: 'null_rupture_orb',
     displayName: 'Null Rupture Orb',
-    spritePath: 'assets/enemies/weapons/sprites/null_rupture_orb.png',
+    spritePath: 'assets/effects/attacks/null_rupture_orb.png',
     ownerEnemyTypes: ['null-hierophant', 'pale-bloodknight', 'abyss-maw', 'rift-eye'],
     behavior: WEAPON_BEHAVIOR.ORB_EXPLOSION,
     damage: 20,

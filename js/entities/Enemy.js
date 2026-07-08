@@ -6,7 +6,7 @@ import { clamp, distance, safeNormalize, randomRange, randomChoice, drawBar } fr
 import { DataCore } from './DataCore.js?v=20260705040000';
 import { FloatingText } from './FloatingText.js';
 import { drawGlow } from '../game/Effects.js?v=20260705150000';
-import { PRIMARY_WEAPON_MAP, MINI_WEAPON_MAP, BOSS_WEAPON_MAP, getWeaponById } from '../game/EnemyWeaponCatalog.js?v=20260705100000';
+import { PRIMARY_WEAPON_MAP, MINI_WEAPON_MAP, BOSS_WEAPON_MAP, getWeaponById } from '../game/EnemyWeaponCatalog.js?v=20260708300000';
 
 // ─── Weapon sprite cache (shared across all enemies — each PNG loads once) ──────
 const _weaponSpriteCache = new Map();
@@ -344,12 +344,12 @@ export class Enemy {
 
   _loadSprite() {
     const spriteMap = {
-      // Primary types — dedicated sprite
-      'Glitch Drone':            'glitch_drone',
-      'Rogue Punk':              'rogue_punk',
-      'Stealth Infiltrator':     'stealth_infiltrator',
-      'Security Defector Mech':  'security_defector_mech',
-      'Rogue AI Overlord':       'ai_overlord',
+      // Primary types — dedicated sprite (Maria's remade art in minions/ + bosses/ subfolders)
+      'Glitch Drone':            'minions/glitch_drone',
+      'Rogue Punk':              'minions/rogue_punk',
+      'Stealth Infiltrator':     'minions/stealth_infiltrator',
+      'Security Defector Mech':  'minions/security_defector_mech',
+      'Rogue AI Overlord':       'bosses/ai_overlord',
       // Secondary types — unique mini sprites for visual diversity
       'Combat Hunter':           'minis/forge-mauler',
       'Scrap Scavenger':         'minis/cryo-warden',
