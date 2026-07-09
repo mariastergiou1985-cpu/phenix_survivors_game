@@ -22,7 +22,7 @@ import { weightedSample } from './Upgrades.js?v=20260706300000';
 import { MutationUI }      from './MutationUI.js?v=20260703990000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260705300000';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS } from './MetaProgress.js?v=20260709690000';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS } from './MetaProgress.js?v=20260709700000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260705300000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
@@ -716,6 +716,10 @@ export class Game {
     this._gridCacheSprite = new Image();
     this._gridCacheSprite.onerror = () => console.warn('[Assets] grid_cache_crate not found — cyan fallback will be used');
     this._gridCacheSprite.src = 'assets/events/supply_drop/grid_cache_crate.png';
+    // NULL CACHE — hidden secret-log cache (Maria's art) for the secret-skin discovery mechanic.
+    this._nullCacheSprite = new Image();
+    this._nullCacheSprite.onerror = () => console.warn('[Assets] null_supply_secret_log_catche not found — magenta fallback used');
+    this._nullCacheSprite.src = 'assets/events/supply_drop/null_supply_secret_log_catche.png?v=20260709700000';
     // VAULT DROP — locked tier-2 cyber vault (InkSpireM art, transparent PNG)
     this._vaultDropSprite = new Image();
     this._vaultDropSprite.src = 'assets/events/supply_drop/second_grid_cache_cyber.png?v=20260705050000';
@@ -1307,6 +1311,11 @@ export class Game {
 
     this.gridCache           = null;  // { pos: Vec2, timer: number } | null
     this.gridCacheSpawnTimer = 75;    // first crate at 75s (avoids Drone Swarm at 60s)
+    // NULL CACHE (secret-skin discovery) — hidden cache, no marker; explore + decrypt to unlock a skin.
+    this._nullCache          = null;  // { pos: Vec2, decrypt: number } | null
+    this._nullCacheDone      = false; // one attempt per run (spawns at most once)
+    this._nullCacheSpawnAt   = -1;    // scheduled spawn time (campaign only; -1 = no cache this run)
+    this._nullCacheStatic    = 0;     // 0..1 screen-static intensity as the player nears the cache
 
     this._coreSpawnTimer = 0;         // rate-limit for matrix-deficit core replenishment
 
@@ -1539,6 +1548,14 @@ export class Game {
     this.annihilatorSpawned  = false; this.annihilatorSpawnTimer  = 180;   // ~3:00
     this.titanSpawned        = false; this.titanSpawnTimer         = 255;   // ~4:15
     this._campaignOverlordSpawned = false;   // FINAL stage only — spawned in _updateCampaignProgress
+    // NULL CACHE roster — not every run: ~45% chance, only if a secret skin is still locked. When it
+    // spawns, it's hidden (no marker) at a random spot; the player must explore + decrypt (~3s).
+    this._nullCache = null; this._nullCacheStatic = 0;
+    if (this.meta?.hasLockedSecretSkin?.() && Math.random() < 0.45) {
+      this._nullCacheDone = false; this._nullCacheSpawnAt = randomRange(60, 220);
+    } else {
+      this._nullCacheDone = true;  this._nullCacheSpawnAt = -1;
+    }
     this.triggerAnnouncement((st.final ? 'FINAL STAGE' : ('STAGE ' + n)) + ' — SURVIVE 5:00', '#2ee6f6');
   }
 
@@ -7530,6 +7547,7 @@ export class Game {
     // FINAL) — the random System Events (drone swarm, mega-boss, blackout, etc.) do NOT run here.
     if (!this._campaignStage) this._sysEvents.update(dt, this.timeAlive, this);
     this._updateGridCache(dt);
+    this._updateNullCache(dt);
     this._updateVaultDrop(dt);
     this._updateHealthPickups(dt);
     this._updateManaPickups(dt);
@@ -7653,6 +7671,74 @@ export class Game {
     this.gridCache = { pos: spawnPos, timer: DURATION };
     this.triggerAnnouncement('GRID CACHE DETECTED', CYAN);
     this.audio?.playGridCache();
+  }
+
+  // NULL CACHE — hidden secret-log discovery (secret skins). No marker: a faint glitch at a random
+  // spot + screen static that intensifies as you approach. Stand within range ~3s to decrypt →
+  // unlocks a random still-locked secret skin. Campaign only, at most once per run, not every run.
+  _updateNullCache(dt) {
+    const DECRYPT_R = 48;   // stand within this radius to channel the decrypt
+    const NEED      = 3.0;  // seconds of channel to reveal
+    const SENSE_R   = 620;  // proximity range where the screen static begins
+    // Static fades on its own; re-raised below when near an active cache.
+    this._nullCacheStatic = Math.max(0, (this._nullCacheStatic || 0) - dt * 1.4);
+
+    if (!this._nullCache) {
+      if (this._nullCacheDone || !this._campaignStage || this._nullCacheSpawnAt < 0) return;
+      if (this.timeAlive < this._nullCacheSpawnAt) return;
+      if (!(this.meta?.hasLockedSecretSkin?.())) { this._nullCacheDone = true; return; }
+      // Hidden spot — pick the farthest of a few candidates so the player must actually explore.
+      const margin = 150; let best = null, bestD = -1;
+      for (let i = 0; i < 12; i++) {
+        const c = new Vec2(randomRange(margin, WORLD_W - margin), randomRange(margin, WORLD_H - margin));
+        const d = distance(c, this.player.pos);
+        if (d > bestD) { bestD = d; best = c; }
+      }
+      this._nullCache = { pos: best, decrypt: 0 };
+      this._nullCacheDone = true;                 // one attempt per run
+      this.audio?.playEventWarning?.();           // faint cue only — NO marker/announcement
+      return;
+    }
+
+    // Active cache: static rises with proximity; decrypt channel fills while standing on it.
+    const d = distance(this.player.pos, this._nullCache.pos);
+    this._nullCacheStatic = Math.max(this._nullCacheStatic, Math.max(0, 1 - d / SENSE_R));
+    if (d < DECRYPT_R) {
+      this._nullCache.decrypt += dt;
+      if (this._nullCache.decrypt >= NEED) {
+        const name = this.meta?.unlockRandomSecretSkin?.();
+        this.triggerAnnouncement('SECRET LOG DECRYPTED' + (name ? ' — ' + name : ''), '#ff2d95');
+        this.screenShake?.trigger(5, 0.5);
+        this.audio?.playGridCache?.();
+        this._nullCache = null;
+      }
+    } else {
+      this._nullCache.decrypt = Math.max(0, this._nullCache.decrypt - dt * 2);   // leaving resets progress
+    }
+  }
+
+  // Screen-space "signal static" cue for the hidden Null Cache — a magenta edge vignette + faint
+  // scanline flicker that intensifies as the player nears the cache (the only hint it exists).
+  _drawNullCacheStatic(ctx) {
+    const s = this._nullCacheStatic || 0;
+    if (s <= 0.02) return;
+    const W = this._canvas.width, H = this._canvas.height;
+    ctx.save();
+    // Edge vignette (stronger near screen borders)
+    const g = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.34, W / 2, H / 2, Math.max(W, H) * 0.62);
+    g.addColorStop(0, 'rgba(255,45,149,0)');
+    g.addColorStop(1, `rgba(255,45,149,${(0.30 * s).toFixed(3)})`);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    // Sparse glitch scanlines when very close
+    if (s > 0.55) {
+      ctx.globalAlpha = 0.10 * s;
+      ctx.fillStyle = '#ff2d95';
+      for (let i = 0; i < 5; i++) {
+        const y = Math.random() * H;
+        ctx.fillRect(0, y, W, 1 + Math.random() * 2);
+      }
+    }
+    ctx.restore();
   }
 
   // Grid Credits award, scaled by the Grid Investor card (+10% per level). Returns granted amount.
@@ -13695,6 +13781,30 @@ export class Game {
       }
     }
 
+    // 4c ── NULL CACHE (hidden secret-log cache) — faint glitch, NO marker; player must notice + decrypt.
+    if (this._nullCache) {
+      const p = this._nullCache.pos, sz = 46;
+      const t = Date.now() / 130;
+      const flick = 0.16 + 0.22 * (0.5 + 0.5 * Math.sin(t)) + (Math.random() < 0.08 ? 0.32 : 0);   // low, glitchy
+      const spr = this._nullCacheSprite;
+      ctx.save();
+      ctx.globalAlpha = Math.min(0.85, flick);
+      if (spr && spr.complete && spr.naturalWidth > 0) {
+        ctx.drawImage(spr, Math.round(p.x - sz / 2), Math.round(p.y - sz / 2), sz, sz);
+      } else {
+        drawGlow(ctx, p.x, p.y, 22, MAGENTA, 0.4 * flick);
+        ctx.fillStyle = MAGENTA; ctx.fillRect(Math.round(p.x - 8), Math.round(p.y - 8), 16, 16);
+      }
+      ctx.restore();
+      const dc = this._nullCache.decrypt || 0;
+      if (dc > 0) {                                   // decrypt channel ring while standing on it
+        ctx.save();
+        ctx.strokeStyle = '#ff2d95'; ctx.lineWidth = 3; ctx.globalAlpha = 0.9;
+        ctx.beginPath(); ctx.arc(p.x, p.y, sz / 2 + 8, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, dc / 3), false); ctx.stroke();
+        ctx.restore();
+      }
+    }
+
     // ═══ LAYER 2: WEAPON VFX — drawn BELOW player sprite ═══════════════════
     // All weapon effects render here so the player character is ALWAYS visible
     // on top. This enforces the strict z-index: biome → weapons → player → projectiles.
@@ -14012,6 +14122,7 @@ export class Game {
     // Chaos Mode: screen-edge rim glow + player-centred vignette (readability polish)
     if (this._chaosMode) { this._drawChaosRimGlow(ctx); this._drawChaosVignette(ctx); }
     this._drawGridCacheArrow(ctx);
+    this._drawNullCacheStatic(ctx);        // proximity static cue for the hidden Null Cache
     ctx.fillStyle = BLACK;
     ctx.fillRect(0, 0, WIDTH, 44);
 

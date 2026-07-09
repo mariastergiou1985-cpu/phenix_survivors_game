@@ -590,6 +590,23 @@ export class MetaProgress {
     this._save();
   }
 
+  // ── Secret skins (Null Cache discovery) ──────────────────────────────────────
+  // True if any character still has a locked secret skin (drives Null Cache spawning).
+  hasLockedSecretSkin() {
+    return Object.values(CHARACTER_OUTFITS)
+      .some(o => o?.secret?.unlockKey && !this.isUnlocked(o.secret.unlockKey));
+  }
+  // Unlock a RANDOM still-locked secret skin (Null Cache decrypt reward). Returns its name or null.
+  unlockRandomSecretSkin() {
+    const locked = Object.values(CHARACTER_OUTFITS)
+      .map(o => o?.secret)
+      .filter(s => s?.unlockKey && !this.isUnlocked(s.unlockKey));
+    if (!locked.length) return null;
+    const pick = locked[Math.floor(Math.random() * locked.length)];
+    this.unlock(pick.unlockKey);   // persists via unlock()
+    return pick.name;
+  }
+
   // Unlock several flags and persist once (used by the Victory screen).
   unlockMany(keys) {
     let changed = false;
