@@ -207,6 +207,7 @@ export const PROTOCOL_CARD_BY_ID = Object.fromEntries(PROTOCOL_CARDS.map(c => [c
 
 
 // ─── Null Relics V1 ─────────────────────────────────────────────────────────
+export const RELIC_FRAGMENT_COST = 25;   // flat fragment cost per relic (Maria's economy: 25 PF each)
 export const RELIC_DEFS = [
   { id:'eden_core_fragment',   name:'Eden Core Fragment',   type:'universal',  cost:5,
     effect:'Every boss kill this run grants +15 bonus XP.',
@@ -785,8 +786,8 @@ export class MetaProgress {
     if (def.req && !this.bossKills[def.req])                       return 'req';
     if (def.reqChar && !this.isCharacterUnlocked(def.reqChar))     return 'req';
     if (def.type === 'universal' && (this.stagesCleared || 0) < 1) return 'req';
-    if (this.protocolFragments < def.cost)     return 'poor';
-    this.protocolFragments -= def.cost;
+    if (this.protocolFragments < RELIC_FRAGMENT_COST) return 'poor';
+    this.protocolFragments -= RELIC_FRAGMENT_COST;
     this.relics[id] = true;
     this._save();
     return 'ok';
