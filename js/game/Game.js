@@ -24007,9 +24007,8 @@ _drawLoreArchive(ctx) {
     if (!this._homingMissiles.length) return;
     const spr   = this._weaponImages?.homing_missile_launcher;
     const ready = spr && spr.complete && spr.naturalWidth > 0;
-    const sz    = 60;   // bigger, more aggressive (was 36)
+    const sz    = 60;
     for (const m of this._homingMissiles) {
-      // Draw exhaust trail
       if (m.trail) {
         for (const tr of m.trail) {
           if (tr.a <= 0) continue;
@@ -24021,7 +24020,6 @@ _drawLoreArchive(ctx) {
           ctx.restore();
         }
       }
-      // Draw missile body
       ctx.save();
       ctx.translate(m.x, m.y);
       ctx.rotate(m.ang);
@@ -24043,29 +24041,24 @@ _drawLoreArchive(ctx) {
     ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
   }
 
-  // ── VESSEL COMPANION ROCKETS — big purple auto-aim (homing) rockets ───────
-  // The escort vessel auto-locks the nearest enemy and fires large purple
-  // homing rockets that explode for AoE damage. Active for EVERY run (the
-  // default Alpha Phoenix vessel included), independent of weapon cards.
+  // ── VESSEL COMPANION ROCKETS ───────────────────────────────────────────────
   _tickVesselRockets(dt) {
     if (!this._vesselRockets) this._vesselRockets = [];
     const p = this.player;
     if (!p || !this._activeVesselId || !this._vesselCompanion) { this._vesselRockets.length = 0; return; }
 
-    const CD    = 1.5;   // seconds between launches
-    const DMG   = 70;    // direct + AoE damage per rocket
-    const SPEED = 300;   // px/sec
-    const TURN  = 3.4;   // radians/sec homing turn rate
-    const AOE_R = 95;    // explosion radius (AoE)
-    const RANGE = 720;   // acquisition range
+    const CD    = 1.5;
+    const DMG   = 70;
+    const SPEED = 300;
+    const TURN  = 3.4;
+    const AOE_R = 95;
+    const RANGE = 720;
 
-    // Move + home existing rockets
     for (let i = this._vesselRockets.length - 1; i >= 0; i--) {
       const m = this._vesselRockets[i];
       m.life -= dt;
       if (m.life <= 0) { this._vesselRockets.splice(i, 1); continue; }
 
-      // Re-acquire nearest enemy each frame (true auto-aim)
       let best = null, bestDist = Infinity;
       for (const t of this._brawlerTargets()) {
         const d = distance(t.obj.pos, { x: m.x, y: m.y });
@@ -24088,13 +24081,11 @@ _drawLoreArchive(ctx) {
       if (m.trail.length > 10) m.trail.shift();
       for (const tr of m.trail) tr.a -= dt * 1.7;
 
-      // Proximity detonation → AoE
       let boom = false;
       for (const t of this._brawlerTargets()) {
         if (distance(t.obj.pos, { x: m.x, y: m.y }) < (t.obj.radius || 28) + 14) { boom = true; break; }
       }
       if (boom) {
-        // AoE: damage every target inside the blast radius
         for (const t of this._brawlerTargets()) {
           if (distance(t.obj.pos, { x: m.x, y: m.y }) <= AOE_R) {
             this._brawlerHit(t, (this._targetIsBoss(t) ? 0.55 : 1) * DMG, '#b24cff');
@@ -24111,7 +24102,6 @@ _drawLoreArchive(ctx) {
       }
     }
 
-    // Launch new rocket from the vessel companion at the nearest enemy
     this._vesselRocketCd -= dt;
     if (this._vesselRocketCd <= 0) {
       const c = this._vesselCompanion;
@@ -24133,7 +24123,7 @@ _drawLoreArchive(ctx) {
     if (!this._vesselRockets || !this._vesselRockets.length) return;
     const spr   = this._weaponImages?.vessel_purple_rockets;
     const ready = spr && spr.complete && spr.naturalWidth > 0;
-    const sz    = 92;   // big & aggressive — not "like a fly"
+    const sz    = 92;
     for (const m of this._vesselRockets) {
       if (m.trail) {
         for (const tr of m.trail) {

@@ -1,4 +1,4 @@
-import { Game } from './game/Game.js?v=20260709740000';
+import { Game } from './game/Game.js?v=20260709750000';
 import { AudioManager } from './audio/AudioManager.js?v=20260709740000';
 import { GamepadInput } from './Gamepad.js?v=20260706330000';
 import { initTouchControls } from './TouchInput.js?v=20260706340000';
@@ -570,17 +570,4 @@ function loop(timestamp) {
   try {
     applyGamepad();   // inject controller input into keys/handlers before the update reads them
     game.setMousePos(mousePos);
-    game.update(dt, { keys, mousePos, mouseDown });
-    applyContextualCursor();
-
-    // Apply screen shake offset
-    const [ox, oy] = game.screenShake.getOffset();
-    ctx.save();
-    try { ctx.translate(ox, oy); game.draw(ctx); }
-    finally { ctx.restore(); }
-  } catch (err) {
-    if (!loop._errLogged) { console.error('[game loop]', err); loop._errLogged = true; }
-  }
-  requestAnimationFrame(loop);
-}
-requestAnimationFrame(loop);
+    game.update(dt, 
