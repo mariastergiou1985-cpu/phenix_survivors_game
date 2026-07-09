@@ -759,7 +759,7 @@ export class MetaProgress {
       euclid_vector:          5,
       oni_cataclysm_protocol: 6,
       eddie:                  this.totalStages,   // 7 → after FINAL (all stages cleared)
-      japan_phasewalker:      Infinity,           // COMING SOON — never unlocks yet
+      japan_phasewalker:      0,                   // TEMP UNLOCK (Maria preview) — REVERT to Infinity before release
     };
     const req = REQ[characterId];
     if (req == null) return true;                 // any unmapped character defaults unlocked (safety)
