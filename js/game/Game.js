@@ -22,7 +22,7 @@ import { weightedSample } from './Upgrades.js?v=20260706300000';
 import { MutationUI }      from './MutationUI.js?v=20260703990000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260705300000';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST } from './MetaProgress.js?v=20260709720000';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST } from './MetaProgress.js?v=20260709730000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260705300000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
@@ -4236,7 +4236,7 @@ export class Game {
     grid.innerHTML = defs.map(r => {
       const owned   = this.meta.isRelicUnlocked(r.id);
       const hasReq  = !r.req || this.meta.hasBossKill(r.req);
-      const canAfford = this.meta.protocolFragments >= r.cost;
+      const canAfford = this.meta.protocolFragments >= RELIC_FRAGMENT_COST && this.meta.credits >= RELIC_GRID_COST;
       const cardCls = owned ? 'cr-card owned' : (hasReq ? 'cr-card' : 'cr-card locked');
 
       let badgeHtml;
@@ -4246,9 +4246,9 @@ export class Game {
         const reqName = r.req ? r.req.replace(/_/g,' ').toUpperCase() : '';
         badgeHtml = `<span class="cr-badge req">REQ: DEFEAT ${reqName}</span>`;
       } else if (!canAfford) {
-        badgeHtml = `<span class="cr-badge poor">NEED ${r.cost}🧩</span>`;
+        badgeHtml = `<span class="cr-badge poor">NEED ${RELIC_GRID_COST}⬡ ${RELIC_FRAGMENT_COST}🧩</span>`;
       } else {
-        badgeHtml = `<span class="cr-badge buy-btn" data-relic-id="${r.id}">BUY ${RELIC_FRAGMENT_COST}🧩</span>`;
+        badgeHtml = `<span class="cr-badge buy-btn" data-relic-id="${r.id}">BUY ${RELIC_GRID_COST}⬡ ${RELIC_FRAGMENT_COST}🧩</span>`;
       }
 
       const typeLabel = r.type.toUpperCase();
