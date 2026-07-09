@@ -1241,6 +1241,7 @@ export class Game {
     this._stageSpeedMult      = 1;
     this._campaignStage       = 0;     // campaign run flag (set by _applyCampaignStage after reset)
     this._campaignCleared     = false;
+    this._stageCompleteBanner = null;  // full-screen STAGE COMPLETE banner (set on clear)
     this.gridBlackoutActive   = false;
     this.announcement         = null;
     this._pauseMenuIndex      = 0;    // controller nav: 0=RESUME  1=RETURN TO MAIN MENU
@@ -1575,13 +1576,22 @@ export class Game {
     if (this.timeAlive < CAMPAIGN_STAGE_SECONDS) return;
     this._campaignCleared = true;
     const n = this._campaignStage;
+    const isFinal = !!CAMPAIGN_STAGES.find(s => s.n === n)?.final;
     this.meta?.clearStage(n);
     const allDone = this.meta?.allStagesCleared();
-    this.triggerAnnouncement('STAGE ' + n + ' CLEAR' + (allDone ? ' — ENDLESS + CHAOS UNLOCKED!' : ''), '#7CFF4D');
-    this.screenShake?.trigger(6, 0.6);
-    // Return to the campaign select after a short beat.
+    // Soft, celebratory finish instead of a hard shake + instant cut: a full-screen
+    // "STAGE n COMPLETE" banner fades in, holds, then eases back to the campaign map.
+    this._stageCompleteBanner = {
+      n, isFinal, allDone, start: (typeof performance !== 'undefined' ? performance.now() : Date.now()),
+      title: isFinal ? 'FINAL STAGE COMPLETE' : ('STAGE ' + n + ' COMPLETE'),
+      sub:   allDone ? 'ENDLESS + CHAOS UNLOCKED' : (isFinal ? 'NULL EDEN SECURED' : 'SECTOR SECURED — NEXT STAGE UNLOCKED'),
+    };
+    this.audio?.playStageComplete(!!allDone);   // triumphant victory fanfare, not an alarm
+    this.screenShake?.trigger(2, 0.25);                            // gentle, not violent
+    // Freeze combat under the banner, then ease back to the campaign select.
     this._campaignStage = 0;
-    setTimeout(() => { try { this.goToCampaign(); } catch (_) {} }, 2600);
+    this.paused = true;
+    setTimeout(() => { try { this.paused = false; this._stageCompleteBanner = null; this.goToCampaign(); } catch (_) {} }, 4200);
   }
 
   // Highlight a character card WITHOUT starting a run (mouse preview). Sets the live selection so the
@@ -2987,7 +2997,7 @@ export class Game {
       if (!this._inRect(mousePos, rects[i])) continue;
       const upg = list[i];
       // Locked synergy (Oni) — cannot be purchased until the character is unlocked.
-      if (upg.lockedUntil && !this.meta.isProtocolUnlocked(upg.lockedUntil)) {
+      if ((upg.lockedUntil && !this.meta.isProtocolUnlocked(upg.lockedUntil)) || (upg.char && !this.meta.isCharacterUnlocked(upg.char))) {
         this._upgradeMsg = `${upg.charName} must be unlocked first.`;
         this._upgradeMsgTimer = 2.2;
         this._confirmReset = false;
@@ -3381,7 +3391,7 @@ export class Game {
         const list = tab === 'synergy' ? SYNERGY_UPGRADES : META_UPGRADES;
         const upg  = list[idx];
         if (!upg) return;
-        if (upg.lockedUntil && !this.meta.isProtocolUnlocked(upg.lockedUntil)) {
+        if ((upg.lockedUntil && !this.meta.isProtocolUnlocked(upg.lockedUntil)) || (upg.char && !this.meta.isCharacterUnlocked(upg.char))) {
           this._upgradeMsg      = `${upg.charName || upg.name} must be unlocked first.`;
           this._upgradeMsgTimer = 2.2;
         } else {
@@ -3475,7 +3485,7 @@ export class Game {
         const lvl    = this.meta.getLevel(upg.key);
         const cost   = upgradeCost(upg, lvl);
         const maxed  = lvl >= upg.maxLevel;
-        const locked = !!(upg.lockedUntil && !this.meta.isProtocolUnlocked(upg.lockedUntil));
+        const locked = !!((upg.lockedUntil && !this.meta.isProtocolUnlocked(upg.lockedUntil)) || (upg.char && !this.meta.isCharacterUnlocked(upg.char)));
         const can    = !maxed && !locked && credits >= cost;
         const dots   = Array.from({length: upg.maxLevel}, (_, d) =>
           `<span class="cgu-dot${d < lvl ? (isSyn ? ' syn-filled' : ' filled') : ''}"></span>`
@@ -5049,7 +5059,7 @@ export class Game {
 
   // Premium synergy upgrade card: name + character + ★ strip + flat 1000-Core cost / MAX / LOCKED.
   _drawSynergyUpgradeCard(ctx, upg, r, lvl, cost, maxed) {
-    const locked = !!(upg.lockedUntil && !this.meta.isProtocolUnlocked(upg.lockedUntil));
+    const locked = !!((upg.lockedUntil && !this.meta.isProtocolUnlocked(upg.lockedUntil)) || (upg.char && !this.meta.isCharacterUnlocked(upg.char)));
     const accent = locked ? '#5a5a6a' : '#ffd23c';
     const can    = !maxed && !locked && this.meta.credits >= cost;
 
@@ -8446,23 +8456,27 @@ export class Game {
     const TW = 440;
     const tx = Math.round((WIDTH - TW) / 2);
     const rows = [
-      { key: 'master', label: 'MASTER VOLUME' },
-      { key: 'music',  label: 'MUSIC VOLUME'  },
-      { key: 'sfx',    label: 'SFX VOLUME'    },
+      { key: 'master', label: 'MASTER VOLUME'    },
+      { key: 'music',  label: 'MUSIC VOLUME'     },
+      { key: 'sfx',    label: 'SFX VOLUME'       },
+      { key: 'eden',   label: 'EDEN CORE VOICE'  },
     ];
-    const startY = 240, gap = 78;
+    const startY = 210, gap = 68;
     const sliders = rows.map((r, i) => {
       const ty = startY + i * gap;
-      return { ...r, tx, ty, tw: TW, y0: ty - 26, y1: ty + 26 };
+      return { ...r, tx, ty, tw: TW, y0: ty - 24, y1: ty + 24 };
     });
-    const backRect = { x: Math.round((WIDTH - 160) / 2), y: startY + 3 * gap + 6, w: 160, h: 44 };
-    return { sliders, backRect };
+    // PHENIX NULL RADIO on/off toggle sits under the sliders.
+    const radioRect = { x: tx, y: startY + rows.length * gap + 4, w: TW, h: 46 };
+    const backRect  = { x: Math.round((WIDTH - 160) / 2), y: radioRect.y + radioRect.h + 20, w: 160, h: 44 };
+    return { sliders, radioRect, backRect };
   }
 
   _audioVolumeFor(key) {
     const a = this.audio;
     if (key === 'master') return a?.masterVolume ?? 1.0;
     if (key === 'music')  return a?.musicVolume  ?? 0.70;
+    if (key === 'eden')   return a?.edenVolume   ?? 0.95;
     return a?.sfxVolume ?? 0.80;
   }
 
@@ -8471,11 +8485,12 @@ export class Game {
     if      (key === 'master') this.audio.setMasterVolume(v);
     else if (key === 'music')  this.audio.setMusicVolume(v);
     else if (key === 'sfx')    this.audio.setSfxVolume(v);
+    else if (key === 'eden')   this.audio.setEdenVolume(v);
   }
 
   _updateAudioSettings(input) {
     const { keys, mousePos, mouseDown } = input;
-    const { sliders, backRect } = this._audioRects();
+    const { sliders, radioRect, backRect } = this._audioRects();
 
     // Mouse: set/drag the slider whose horizontal band holds the cursor.
     if (mouseDown && this.audio) {
@@ -8491,30 +8506,41 @@ export class Game {
       }
     }
 
+    // PHENIX NULL RADIO toggle — rising edge; flips the persisted opt-out.
+    if (mouseDown && !this._prevMouseDown && this._inRect(mousePos, radioRect) && this.audio) {
+      this.audio.setRadioEnabled(!this.audio.radioEnabled);
+    }
+
     // BACK button — rising edge only, so a drag does not trigger it.
     if (mouseDown && !this._prevMouseDown && this._inRect(mousePos, backRect)) {
       this.goToMainMenu();
     }
     this._prevMouseDown = mouseDown;
 
-    // Keyboard: ↑/↓ select row, ←/→ adjust by 5%, ESC back.
+    // Keyboard: ↑/↓ select row (last row = radio toggle), ←/→ adjust / toggle, ESC back.
+    const n = sliders.length + 1;   // +1 for the PHENIX NULL RADIO toggle row
+    const radioIdx = sliders.length;
     if (keys.has('arrowup') || keys.has('w')) {
-      this._audioSelIndex = (this._audioSelIndex + sliders.length - 1) % sliders.length;
+      this._audioSelIndex = (this._audioSelIndex + n - 1) % n;
       keys.delete('arrowup'); keys.delete('w');
     }
     if (keys.has('arrowdown') || keys.has('s')) {
-      this._audioSelIndex = (this._audioSelIndex + 1) % sliders.length;
+      this._audioSelIndex = (this._audioSelIndex + 1) % n;
       keys.delete('arrowdown'); keys.delete('s');
     }
     if (keys.has('arrowleft') || keys.has('a')) {
-      const s = sliders[this._audioSelIndex];
-      this._setAudioVolume(s.key, this._audioVolumeFor(s.key) - 0.05);
+      if (this._audioSelIndex === radioIdx) { this.audio?.setRadioEnabled(!this.audio.radioEnabled); }
+      else { const s = sliders[this._audioSelIndex]; this._setAudioVolume(s.key, this._audioVolumeFor(s.key) - 0.05); }
       keys.delete('arrowleft'); keys.delete('a');
     }
     if (keys.has('arrowright') || keys.has('d')) {
-      const s = sliders[this._audioSelIndex];
-      this._setAudioVolume(s.key, this._audioVolumeFor(s.key) + 0.05);
+      if (this._audioSelIndex === radioIdx) { this.audio?.setRadioEnabled(!this.audio.radioEnabled); }
+      else { const s = sliders[this._audioSelIndex]; this._setAudioVolume(s.key, this._audioVolumeFor(s.key) + 0.05); }
       keys.delete('arrowright'); keys.delete('d');
+    }
+    if ((keys.has('enter') || keys.has(' ')) && this._audioSelIndex === radioIdx) {
+      this.audio?.setRadioEnabled(!this.audio.radioEnabled);
+      keys.delete('enter'); keys.delete(' ');
     }
     if (keys.has('escape')) {
       this.goToMainMenu();
@@ -8535,13 +8561,13 @@ export class Game {
     ctx.fillText('AUDIO SETTINGS', WIDTH / 2, 110);
     ctx.shadowBlur = 0;
 
-    const { sliders, backRect } = this._audioRects();
+    const { sliders, radioRect, backRect } = this._audioRects();
 
-    // Premium panel behind sliders
+    // Premium panel behind sliders + radio toggle
     const _aPanX = sliders[0].tx - 20;
-    const _aPanY = sliders[0].ty - 56;
+    const _aPanY = sliders[0].ty - 52;
     const _aPanW = sliders[0].tw + 40;
-    const _aPanH = (sliders[sliders.length - 1].ty - sliders[0].ty) + 70;
+    const _aPanH = (radioRect.y + radioRect.h) - sliders[0].ty + 60;
     this._premiumPanel(ctx, _aPanX, _aPanY, _aPanW, _aPanH, CYAN, 'VOLUME CONTROLS');
 
     for (let i = 0; i < sliders.length; i++) {
@@ -8581,6 +8607,35 @@ export class Game {
       ctx.beginPath(); ctx.roundRect(hx - 5, s.ty - 10, 10, 20, 5); ctx.fill();
     }
 
+    // ── PHENIX NULL RADIO on/off toggle ──────────────────────────────────────
+    {
+      const on       = this.audio?.radioEnabled !== false;
+      const selected = this._audioSelIndex === sliders.length;
+      const rr       = radioRect;
+      // Label
+      ctx.font      = 'bold 16px Consolas, monospace';
+      ctx.textAlign = 'left';
+      ctx.fillStyle = selected ? CYAN : 'rgba(220,230,240,0.85)';
+      ctx.fillText('PHENIX NULL RADIO', rr.x, rr.y + rr.h / 2 + 5);
+      // Pill switch on the right
+      const pw = 74, ph = 30, px = rr.x + rr.w - pw, py = rr.y + (rr.h - ph) / 2;
+      ctx.fillStyle = on ? 'rgba(30,144,255,0.30)' : 'rgba(60,70,80,0.35)';
+      ctx.strokeStyle = selected ? CYAN : (on ? '#2a8aaa' : '#3a4658');
+      ctx.lineWidth = selected ? 2 : 1.2;
+      ctx.beginPath(); ctx.roundRect(px, py, pw, ph, ph / 2); ctx.fill(); ctx.stroke();
+      // Knob
+      const kx = on ? px + pw - ph + 3 : px + 3;
+      ctx.fillStyle = on ? CYAN : '#8a97a5';
+      if (selected) { ctx.shadowColor = CYAN; ctx.shadowBlur = 8; }
+      ctx.beginPath(); ctx.roundRect(kx, py + 3, ph - 6, ph - 6, (ph - 6) / 2); ctx.fill();
+      ctx.shadowBlur = 0;
+      // ON/OFF text
+      ctx.font      = 'bold 12px Consolas, monospace';
+      ctx.textAlign = 'right';
+      ctx.fillStyle = on ? CYAN : 'rgba(200,200,200,0.6)';
+      ctx.fillText(on ? 'ON' : 'OFF', px - 12, py + ph / 2 + 4);
+    }
+
     // Mute status / hint
     ctx.font      = '13px Consolas, monospace';
     ctx.textAlign = 'center';
@@ -8589,7 +8644,7 @@ export class Game {
       ctx.fillText('MUTED — press M to unmute', WIDTH / 2, backRect.y - 22);
     } else {
       ctx.fillStyle = 'rgba(200,200,200,0.55)';
-      ctx.fillText('Press M to mute      Drag sliders, or ↑↓ select / ← → adjust', WIDTH / 2, backRect.y - 22);
+      ctx.fillText('Press M to mute   ·   ↑↓ select · ←→ adjust/toggle   ·   click the RADIO switch to opt out', WIDTH / 2, backRect.y - 22);
     }
 
     // Premium BACK button
@@ -14178,12 +14233,14 @@ export class Game {
     }
     drawCRTVignette(ctx);
 
-    if (this.paused && !this.gameOver && !this.victory) {
+    if (this._stageCompleteBanner) {
+      this._drawStageCompleteBanner(ctx);
+    } else if (this.paused && !this.gameOver && !this.victory) {
       ctx.fillStyle = 'rgba(0,0,0,0.62)';
       ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
       // Premium pause panel
-      const _pw = 420, _ph = 320;
+      const _pw = 420, _ph = 388;
       const _px = Math.round(WIDTH / 2 - _pw / 2);
       const _py = Math.round(HEIGHT / 2 - _ph / 2) - 10;
       this._premiumPanel(ctx, _px, _py, _pw, _ph, CYAN, 'SYSTEM PAUSED');
@@ -14222,14 +14279,78 @@ export class Game {
         { x: _btnX, y: _btnY2, w: _btnW, h: _btnH },
       ];
 
+      // ── In-game EDEN CORE voice slider (click anywhere on the track to set) ──
+      {
+        const sTx = _px + 24, sTw = _pw - 48, sTy = _btnY2 + _btnH + 30, th = 8;
+        const v = this.audio?.edenVolume ?? 0.95;
+        ctx.font = 'bold 13px Consolas, monospace'; ctx.textAlign = 'left';
+        ctx.fillStyle = 'rgba(220,230,240,0.85)';
+        ctx.fillText('EDEN CORE VOICE', sTx, sTy - 12);
+        ctx.textAlign = 'right'; ctx.fillStyle = 'rgba(255,215,0,0.75)';
+        ctx.fillText(`${Math.round(v * 100)}%`, sTx + sTw, sTy - 12);
+        ctx.fillStyle = '#1a2a3a'; ctx.beginPath(); ctx.roundRect(sTx, sTy - th / 2, sTw, th, 4); ctx.fill();
+        const g2 = ctx.createLinearGradient(sTx, 0, sTx + sTw * v, 0);
+        g2.addColorStop(0, '#1e90ff'); g2.addColorStop(1, CYAN);
+        ctx.fillStyle = g2; ctx.beginPath(); ctx.roundRect(sTx, sTy - th / 2, sTw * v, th, 4); ctx.fill();
+        ctx.strokeStyle = '#2a4060'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(sTx, sTy - th / 2, sTw, th, 4); ctx.stroke();
+        const hx = sTx + sTw * v;
+        ctx.fillStyle = CYAN; ctx.beginPath(); ctx.roundRect(hx - 5, sTy - 10, 10, 20, 5); ctx.fill();
+        // Rect for click hit-testing in main.js (band a little taller than the track).
+        this._pauseEdenSlider = { tx: sTx, tw: sTw, y0: sTy - 16, y1: sTy + 16 };
+      }
+
       // Hint
       ctx.font = '12px Consolas, monospace'; ctx.fillStyle = 'rgba(200,210,225,0.55)'; ctx.textAlign = 'center';
-      ctx.fillText('ESC Resume   •   Click to select', WIDTH / 2, _btnY2 + _btnH + 22);
+      ctx.fillText('ESC Resume   •   Click to select', WIDTH / 2, _py + _ph - 16);
       ctx.textAlign = 'left';
     }
 
     // Screen transition fade overlay — always on top of everything
     this._drawFade(ctx);
+  }
+
+  // Full-screen "STAGE n COMPLETE" celebration banner — replaces the old hard shake +
+  // instant cut. Fades in, holds, fades out (total ~4.2s, matching the return timer).
+  _drawStageCompleteBanner(ctx) {
+    const b = this._stageCompleteBanner;
+    if (!b) return;
+    const nowMs = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+    const el    = Math.max(0, (nowMs - b.start) / 1000);   // seconds elapsed
+    const IN = 0.6, OUT_START = 3.7, TOTAL = 4.2;
+    let a = 1;
+    if (el < IN)             a = el / IN;
+    else if (el > OUT_START) a = Math.max(0, 1 - (el - OUT_START) / (TOTAL - OUT_START));
+    const accent = b.allDone ? '#FFD700' : '#7CFF4D';
+
+    ctx.save();
+    ctx.globalAlpha = a * 0.78;
+    ctx.fillStyle = 'rgba(3,6,12,1)';
+    ctx.fillRect(0, 0, WIDTH, HEIGHT);
+    ctx.globalAlpha = a;
+
+    // Sweeping accent bars above/below the title (grow with the fade-in).
+    const cx = WIDTH / 2, cy = HEIGHT / 2;
+    const barW = Math.min(WIDTH * 0.7, 620) * Math.min(1, el / IN);
+    ctx.strokeStyle = accent; ctx.lineWidth = 3;
+    ctx.shadowColor = accent; ctx.shadowBlur = 18;
+    ctx.beginPath(); ctx.moveTo(cx - barW / 2, cy - 58); ctx.lineTo(cx + barW / 2, cy - 58); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx - barW / 2, cy + 48); ctx.lineTo(cx + barW / 2, cy + 48); ctx.stroke();
+
+    // Title (slight upward drift as it settles).
+    const drift = (1 - Math.min(1, el / IN)) * 14;
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 52px Consolas, monospace';
+    ctx.fillStyle = accent;
+    ctx.shadowBlur = 26;
+    ctx.fillText(b.title, cx, cy - 6 - drift);
+    ctx.shadowBlur = 0;
+
+    // Subtitle.
+    ctx.font = 'bold 20px Consolas, monospace';
+    ctx.fillStyle = 'rgba(225,235,245,0.92)';
+    ctx.fillText(b.sub, cx, cy + 30);
+
+    ctx.restore();
   }
 
   // ─── Premium UI primitives (brushed metal + frosted glass + neon, Canvas 2D) ────────────────

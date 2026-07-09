@@ -3,9 +3,11 @@ const VOL_KEYS = {
   master: 'phenix_master_volume',
   music:  'phenix_music_volume',
   sfx:    'phenix_sfx_volume',
+  eden:   'phenix_eden_volume',     // EDEN CORE voice/transmission level (separate slider)
   muted:  'phenix_muted',
+  radio:  'phenix_radio_enabled',   // PHENIX NULL RADIO on/off (menu broadcast opt-out)
 };
-const VOL_DEFAULTS = { master: 1.0, music: 0.70, sfx: 0.80, muted: false };
+const VOL_DEFAULTS = { master: 1.0, music: 0.70, sfx: 0.80, eden: 0.95, muted: false, radio: true };
 
 const clamp01 = v => Math.max(0, Math.min(1, v));
 
@@ -82,9 +84,14 @@ export class AudioManager {
     this.masterVolume = read(VOL_KEYS.master, VOL_DEFAULTS.master);
     this.musicVolume  = read(VOL_KEYS.music,  VOL_DEFAULTS.music);
     this.sfxVolume    = read(VOL_KEYS.sfx,    VOL_DEFAULTS.sfx);
+    this.edenVolume   = read(VOL_KEYS.eden,   VOL_DEFAULTS.eden);
     try {
       this.muted = localStorage.getItem(VOL_KEYS.muted) === 'true';
     } catch (_) { this.muted = VOL_DEFAULTS.muted; }
+    try {
+      // Default ON: only OFF when the player explicitly disabled the radio.
+      this.radioEnabled = localStorage.getItem(VOL_KEYS.radio) !== 'false';
+    } catch (_) { this.radioEnabled = VOL_DEFAULTS.radio; }
   }
 
   _saveVolume(key, val) {
@@ -107,6 +114,21 @@ export class AudioManager {
     this.sfxVolume = clamp01(v);
     this.sfxGain.gain.value = this.sfxVolume;
     this._saveVolume(VOL_KEYS.sfx, this.sfxVolume);
+  }
+
+  // EDEN CORE voice level — read live by playEdenTransmission / _speakEden, so
+  // changing it in Audio Settings applies immediately, in menu AND in-game.
+  setEdenVolume(v) {
+    this.edenVolume = clamp01(v);
+    this._saveVolume(VOL_KEYS.eden, this.edenVolume);
+  }
+
+  // PHENIX NULL RADIO on/off — persisted opt-out so a player who doesn't want the
+  // menu broadcast every session can silence it permanently.
+  setRadioEnabled(b) {
+    this.radioEnabled = !!b;
+    try { localStorage.setItem(VOL_KEYS.radio, this.radioEnabled ? 'true' : 'false'); } catch (_) {}
+    if (!this.radioEnabled) this.stopMenuRadio();
   }
 
   _setupTrack(src, volume, assign) {
@@ -277,7 +299,7 @@ export class AudioManager {
   // Plays assets/audio/phenix_null_eden_radio/ai_radio.mp3 once per session,
   // ducking the menu theme underneath and labeling NOW PLAYING while on air.
   playMenuRadio() {
-    if (this._radioPlayed || this.muted) return;
+    if (this._radioPlayed || this.muted || this.radioEnabled === false) return;
     this._radioPlayed = true;
     try {
       const audio = new Audio('assets/audio/phenix_null_eden_radio/ai_radio.mp3');
@@ -894,6 +916,7 @@ export class AudioManager {
    */
   playEdenTransmission(clipId = null, text = null) {
     if (this.muted) return;
+    if ((this.edenVolume ?? 0.95) <= 0.001) return;   // EDEN CORE voice slider at 0 → silent
     if (!this._canPlay('edenTx', 3.5)) return;   // hard-limit: never more than once per 3.5 s
 
     // EDEN CORE actually SPEAKS its transmission: browser speech synthesis with a
@@ -908,8 +931,8 @@ export class AudioManager {
         `assets/audio/eden_core/${filename}.ogg`,
         `assets/audio/eden_core/${filename}.mp3`);
       if (this._sfxBuffers[key]) {
-        // File loaded — play at 0.72 gain (below music, above ambient SFX)
-        this._playSfxBuffer(key, 3.5, 0.72);
+        // File loaded — base 0.72 gain (below music, above ambient SFX), scaled by the EDEN slider.
+        this._playSfxBuffer(key, 3.5, 0.72 * (this.edenVolume ?? 0.95));
         return;
       }
       // Buffer still loading this frame — fall through to synthesized glitch
@@ -934,7 +957,7 @@ export class AudioManager {
       const msg = String(text).replace(/^EDEN CORE:\s*/i, '');
       synth.cancel();
       const u = new SpeechSynthesisUtterance(msg);
-      u.rate = 0.80; u.pitch = 0.28; u.volume = 0.95;  // abyssal-deep, slow, unearthly — the voice of the antagonist
+      u.rate = 0.80; u.pitch = 0.28; u.volume = clamp01(this.edenVolume ?? 0.95);  // abyssal-deep, slow — level from the EDEN slider
       const voices = synth.getVoices();
       const pick = voices.find(v => /en[-_](US|GB)/i.test(v.lang) && /Google|Microsoft/i.test(v.name))
                 || voices.find(v => /^en/i.test(v.lang));
@@ -1106,6 +1129,23 @@ export class AudioManager {
     if (!this._canPlay('bossHit', 0.12)) return;
     this._tone({ type: 'sine', freqStart: 100, freqEnd: 35, dur: 0.30, gain: 0.16 });
     this._noiseBurst({ dur: 0.20, gain: 0.08, filterType: 'lowpass', freq: 180 });
+  }
+
+  // STAGE COMPLETE fanfare — triumphant ascending arpeggio + shimmer, for a campaign
+  // stage clear. `grand` (all stages done) adds an extra high sparkle layer.
+  playStageComplete(grand = false) {
+    // Rising major arpeggio: C–E–G–C(oct) then a held top note.
+    const notes = [523, 659, 784, 1047];
+    notes.forEach((f, i) => {
+      this._tone({ type: 'triangle', freqStart: f, freqEnd: f, dur: 0.22, gain: 0.16, delay: i * 0.11 });
+      this._tone({ type: 'sine',     freqStart: f, freqEnd: f, dur: 0.22, gain: 0.09, delay: i * 0.11 });
+    });
+    this._tone({ type: 'triangle', freqStart: 1047, freqEnd: 1568, dur: 0.6, gain: 0.14, delay: 0.48 });
+    this._noiseBurst({ dur: 0.5, gain: 0.05, filterType: 'highpass', freq: 4000, delay: 0.48 });
+    if (grand) {
+      this._tone({ type: 'sine', freqStart: 1568, freqEnd: 2093, dur: 0.7, gain: 0.10, delay: 0.7 });
+      this._tone({ type: 'sine', freqStart: 2093, freqEnd: 2637, dur: 0.5, gain: 0.07, delay: 0.95 });
+    }
   }
 
   // Combat juice multi-kill burst — layered ascending tones + bandpass noise.

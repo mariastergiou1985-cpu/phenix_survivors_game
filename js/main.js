@@ -1,5 +1,5 @@
-import { Game } from './game/Game.js?v=20260709730000';
-import { AudioManager } from './audio/AudioManager.js?v=20260706420000';
+import { Game } from './game/Game.js?v=20260709740000';
+import { AudioManager } from './audio/AudioManager.js?v=20260709740000';
 import { GamepadInput } from './Gamepad.js?v=20260706330000';
 import { initTouchControls } from './TouchInput.js?v=20260706340000';
 
@@ -124,7 +124,7 @@ window.addEventListener('keydown', e => {
   }
 
   // ── Pause menu controller navigation (ArrowUp/Down cycle buttons, Enter confirms) ──
-  if (game.paused && game.gameState === 'playing' && !game.gameOver && !game.victory) {
+  if (game.paused && game.gameState === 'playing' && !game.gameOver && !game.victory && !game._stageCompleteBanner) {
     if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
       const dir = e.key === 'ArrowDown' ? 1 : -1;
       game._pauseMenuIndex = ((game._pauseMenuIndex ?? 0) + dir + 2) % 2;
@@ -176,8 +176,8 @@ window.addEventListener('keydown', e => {
     } else if (game.gameState === 'playing') {
       if (game.gameOver || game.victory) {
         game.goToMainMenu();        // game ended → back to start menu
-      } else {
-        game.paused = !game.paused; // mid-game → toggle pause
+      } else if (!game._stageCompleteBanner) {
+        game.paused = !game.paused; // mid-game → toggle pause (blocked during STAGE COMPLETE banner)
       }
     }
     // start_menu: ESC does nothing (no crash)
@@ -430,12 +430,17 @@ canvas.addEventListener('mousedown', e => {
       }
     }
 
-  } else if (game.gameState === 'playing' && game.paused && !game.gameOver && !game.victory) {
+  } else if (game.gameState === 'playing' && game.paused && !game.gameOver && !game.victory && !game._stageCompleteBanner) {
     // ── Pause menu — RESUME / RETURN TO MAIN MENU (dynamic rects) ──
     const pbr = game._pauseBtnRects;
     const _pHit = (r) => r && mousePos.x >= r.x && mousePos.x <= r.x + r.w &&
                           mousePos.y >= r.y && mousePos.y <= r.y + r.h;
-    if (pbr && _pHit(pbr[0])) {
+    const es = game._pauseEdenSlider;
+    if (es && mousePos.y >= es.y0 && mousePos.y <= es.y1 &&
+        mousePos.x >= es.tx - 14 && mousePos.x <= es.tx + es.tw + 14) {
+      const v = Math.max(0, Math.min(1, (mousePos.x - es.tx) / es.tw));
+      game.audio?.setEdenVolume(v);
+    } else if (pbr && _pHit(pbr[0])) {
       game.paused = false;
     } else if (pbr && _pHit(pbr[1])) {
       game.goToMainMenu();
