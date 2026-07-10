@@ -15023,11 +15023,10 @@ export class Game {
         <div class="stage-art">
           <span class="art-corner a"></span><span class="art-corner b"></span>
           <span class="art-corner c"></span><span class="art-corner d"></span>
-          <img class="slideshow-img active" src="assets/ui/walker%20main%20theme%202.png?v=20260710140000" alt="Character art">
-          <img class="slideshow-img" src="assets/ui/main%20theme%20brawler.png?v=20260710140000" alt="Character art">
-          <img class="slideshow-img" src="assets/ui/vector%20main%20theme.png?v=20260710140000" alt="Character art">
-          <img class="slideshow-img" src="assets/ui/main%20theme%20taekwon%20do%20.png?v=20260710140000" alt="Character art">
-          <img class="slideshow-img" src="assets/ui/vilian%20main%20menu%20fist%20theme%20.png?v=20260710140000" alt="Character art">
+          <img class="slideshow-img active" src="assets/ui/walker%20main%20theme%202.png?v=20260710150000" alt="Character art">
+          <img class="slideshow-img" src="assets/ui/main%20theme%20brawler1.png?v=20260710150000" alt="Character art">
+          <img class="slideshow-img" src="assets/ui/vector%20main%20theme.png?v=20260710150000" alt="Character art">
+          <img class="slideshow-img" src="assets/ui/main%20theme%20taekwon%20do%20.png?v=20260710150000" alt="Character art">
         </div>
         <nav class="menu" id="cgm-menu-nav">
           <!-- populated by _syncMenuOverlayItems() -->
