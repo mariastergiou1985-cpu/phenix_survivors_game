@@ -14880,8 +14880,10 @@ export class Game {
       #cgm-overlay .stage-mid{display:flex;align-items:stretch;gap:22px;width:100%;justify-content:center;}
       #cgm-overlay .stage-art{flex:0 0 400px;position:relative;min-height:560px;border-radius:var(--radius);display:grid;place-items:end center;overflow:visible;}
       #cgm-overlay .stage-art:not(.has-art){border:1px dashed rgba(46,230,246,.28);background:radial-gradient(120% 80% at 50% 100%,rgba(46,230,246,.08),transparent 70%);}
-      #cgm-overlay .stage-art img{display:none;width:auto;height:auto;max-width:100%;max-height:720px;object-position:bottom center;filter:drop-shadow(0 8px 26px rgba(0,0,0,.55)) drop-shadow(0 0 28px rgba(46,230,246,.18));}
-      #cgm-overlay .stage-art.has-art img{display:block;}
+      /* Slideshow: all arts stacked in the same grid cell, bottom-anchored, cross-fading. */
+      #cgm-overlay .stage-art img{display:none;grid-area:1/1;width:auto;height:auto;max-width:100%;max-height:720px;object-fit:contain;object-position:bottom center;align-self:end;justify-self:center;filter:drop-shadow(0 8px 26px rgba(0,0,0,.55)) drop-shadow(0 0 28px rgba(46,230,246,.18));}
+      #cgm-overlay .stage-art.has-art img.slideshow-img{display:block;opacity:0;transition:opacity 1.3s ease-in-out;pointer-events:none;}
+      #cgm-overlay .stage-art.has-art img.slideshow-img.active{opacity:1;}
       #cgm-overlay .stage-art.has-art .art-hint,#cgm-overlay .stage-art.has-art .art-corner{display:none;}
       #cgm-overlay .art-hint{text-align:center;color:var(--txt-faint);font-size:12px;letter-spacing:1px;padding:14px;}
       #cgm-overlay .art-hint b{display:block;color:var(--cyan);font-family:'Orbitron',sans-serif;letter-spacing:3px;margin-bottom:8px;}
@@ -15021,7 +15023,11 @@ export class Game {
         <div class="stage-art">
           <span class="art-corner a"></span><span class="art-corner b"></span>
           <span class="art-corner c"></span><span class="art-corner d"></span>
-          <img src="assets/ui/main_menu_trio.png?v=20260709710000" alt="Character art">
+          <img class="slideshow-img active" src="assets/ui/walker%20main%20theme%202.png?v=20260710140000" alt="Character art">
+          <img class="slideshow-img" src="assets/ui/main%20theme%20brawler.png?v=20260710140000" alt="Character art">
+          <img class="slideshow-img" src="assets/ui/vector%20main%20theme.png?v=20260710140000" alt="Character art">
+          <img class="slideshow-img" src="assets/ui/main%20theme%20taekwon%20do%20.png?v=20260710140000" alt="Character art">
+          <img class="slideshow-img" src="assets/ui/vilian%20main%20menu%20fist%20theme%20.png?v=20260710140000" alt="Character art">
         </div>
         <nav class="menu" id="cgm-menu-nav">
           <!-- populated by _syncMenuOverlayItems() -->
@@ -15095,13 +15101,26 @@ export class Game {
     this._codeRainCanvas = crCanvas;
     this._codeRainCtx    = crCanvas.getContext('2d');
 
-    // ── character art: reveal when image loads ───────────────────────────────
-    const slot = el.querySelector('.stage-art');
-    const img  = slot && slot.querySelector('img');
-    if (img) {
+    // ── character art slideshow: reveal when the first image loads, then cross-fade
+    // through all the character theme arts on a timer (premium showcase). ─────────
+    const slot   = el.querySelector('.stage-art');
+    const slides = slot ? Array.from(slot.querySelectorAll('img.slideshow-img')) : [];
+    if (slides.length) {
       const show = () => slot.classList.add('has-art');
-      img.addEventListener('load', show);
-      if (img.complete && img.naturalWidth) show();
+      const first = slides[0];
+      first.addEventListener('load', show);
+      if (first.complete && first.naturalWidth) show();
+      // Cycle the .active slide every ~6s (only when the menu is actually on screen).
+      if (this._menuArtTimer) { clearInterval(this._menuArtTimer); this._menuArtTimer = null; }
+      if (slides.length > 1) {
+        let idx = 0;
+        this._menuArtTimer = setInterval(() => {
+          if (this.gameState !== 'start_menu') return;   // pause the cycle off-menu
+          slides[idx].classList.remove('active');
+          idx = (idx + 1) % slides.length;
+          slides[idx].classList.add('active');
+        }, 6000);
+      }
     }
 
     // ── Settings gear button ─────────────────────────────────────────────────
