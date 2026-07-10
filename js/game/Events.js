@@ -16,17 +16,13 @@ const EVENT_LABELS = {
   core_meltdown:  'CORE MELTDOWN',
 };
 
-// warn:false = suppress the 30s FloatingText countdown (announcement is the notification)
+// System-event announcement banners are now spaced out: exactly 3 per hour of play
+// (Endless + Chaos), one every 20 minutes, so the banner is a rare, dramatic beat
+// instead of constant interruptions over the player. warn:true = 30s heads-up FloatingText.
 const WINDOWS = [
-  { time: 45,      type: 'drone_swarm',    warn: false },
-  { time: 105,     type: 'core_raiders',   warn: false },
-  { time: 180,     type: 'security_mech',  warn: false },
-  { time: 270,     type: 'overload_surge', warn: false },
-  { time: 360,     type: 'hunter_squad',   warn: false },
-  { time: 8 * 60,  type: 'grid_blackout',  warn: true  },
-  { time: 15 * 60, type: 'firewall_purge', warn: true  },
-  { time: 22 * 60, type: 'mega_boss',      warn: true  },
-  { time: 28 * 60, type: 'core_meltdown',  warn: true  },
+  { time: 20 * 60, type: 'grid_blackout',  warn: true  },   // 20:00
+  { time: 40 * 60, type: 'firewall_purge', warn: true  },   // 40:00
+  { time: 60 * 60, type: 'mega_boss',      warn: true  },   // 60:00
 ];
 
 export class SystemEventManager {

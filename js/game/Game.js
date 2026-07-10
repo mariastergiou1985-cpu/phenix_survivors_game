@@ -16,7 +16,7 @@ import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=202607094
 import { SupportDrone }   from '../entities/SupportDrone.js?v=20260703990000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260705150000';
-import { SystemEventManager } from './Events.js?v=20260709400000';
+import { SystemEventManager } from './Events.js?v=20260710170000';
 import { UpgradeUI }      from './UpgradeUI.js?v=20260706360000';
 import { weightedSample } from './Upgrades.js?v=20260706300000';
 import { MutationUI }      from './MutationUI.js?v=20260703990000';
@@ -15928,16 +15928,20 @@ export class Game {
     const panelW = Math.min(820, WIDTH - 60);
     const panelH = 84;
     const panelX = Math.round(WIDTH  / 2 - panelW / 2);
-    const panelY = Math.round(HEIGHT / 2 - 100);
+    // Sit the banner near the TOP of the screen (below the HUD timer), not over the
+    // player at the centre — so the player keeps full visibility of the play area.
+    const panelY = Math.round(HEIGHT * 0.12);
+    // Cap opacity so the banner is always semi-transparent (see-through), never a solid block.
+    const A = alpha * 0.72;
 
     ctx.save();
-    ctx.globalAlpha = alpha;
+    ctx.globalAlpha = A;
 
-    // Dark backing panel with gradient
+    // Dark backing panel with gradient (translucent so gameplay shows through)
     const grad = ctx.createLinearGradient(panelX, panelY, panelX + panelW, panelY);
-    grad.addColorStop(0,   'rgba(0,0,12,0.92)');
-    grad.addColorStop(0.5, 'rgba(0,0,20,0.96)');
-    grad.addColorStop(1,   'rgba(0,0,12,0.92)');
+    grad.addColorStop(0,   'rgba(0,0,12,0.48)');
+    grad.addColorStop(0.5, 'rgba(0,0,20,0.55)');
+    grad.addColorStop(1,   'rgba(0,0,12,0.48)');
     ctx.fillStyle = grad;
     ctx.fillRect(panelX, panelY, panelW, panelH);
 
@@ -15954,18 +15958,18 @@ export class Game {
     glowGrad.addColorStop(1,   'transparent');
     ctx.strokeStyle = glowGrad;
     ctx.lineWidth   = 3;
-    ctx.globalAlpha = alpha * 0.6;
+    ctx.globalAlpha = A * 0.6;
     ctx.beginPath();
     ctx.moveTo(panelX, panelY);
     ctx.lineTo(panelX + panelW, panelY);
     ctx.stroke();
-    ctx.globalAlpha = alpha;
+    ctx.globalAlpha = A;
 
     // Corner accent marks
     const cm = 14;
     ctx.strokeStyle = a.color;
     ctx.lineWidth   = 2;
-    ctx.globalAlpha = alpha * 0.7;
+    ctx.globalAlpha = A * 0.7;
     // Top-left
     ctx.beginPath(); ctx.moveTo(panelX, panelY + cm); ctx.lineTo(panelX, panelY); ctx.lineTo(panelX + cm, panelY); ctx.stroke();
     // Top-right
@@ -15974,15 +15978,15 @@ export class Game {
     ctx.beginPath(); ctx.moveTo(panelX, panelY + panelH - cm); ctx.lineTo(panelX, panelY + panelH); ctx.lineTo(panelX + cm, panelY + panelH); ctx.stroke();
     // Bottom-right
     ctx.beginPath(); ctx.moveTo(panelX + panelW - cm, panelY + panelH); ctx.lineTo(panelX + panelW, panelY + panelH); ctx.lineTo(panelX + panelW, panelY + panelH - cm); ctx.stroke();
-    ctx.globalAlpha = alpha;
+    ctx.globalAlpha = A;
 
     // Small sub-label above main text
     ctx.font      = 'bold 11px Consolas, monospace';
     ctx.fillStyle = a.color;
     ctx.textAlign = 'center';
-    ctx.globalAlpha = alpha * 0.55;
+    ctx.globalAlpha = A * 0.55;
     ctx.fillText('[ SYSTEM EVENT ]', WIDTH / 2, panelY + 20);
-    ctx.globalAlpha = alpha;
+    ctx.globalAlpha = A;
 
     // Main event text
     ctx.font      = 'bold 30px Consolas, monospace';
