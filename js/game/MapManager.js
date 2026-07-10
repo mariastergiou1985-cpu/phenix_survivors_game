@@ -236,9 +236,12 @@ export class MapManager {
     this._endlessBgImage.src = `assets/maps/endless/stage_02_neon_shinjuku_plaza.png${v}`;
 
     this._chaosBgImage = new Image();
-    this._chaosBgImage.onerror = () =>
-      console.warn('[MapManager] missing chaos bg');
-    this._chaosBgImage.src = `assets/ui/CHAOS_mode.png${v}`;
+    this._chaosBgImage.onerror = () => {
+      console.warn('[MapManager] missing chaos bg — falling back to CHAOS_mode.png');
+      this._chaosBgImage.src = `assets/ui/CHAOS_mode.png${v}`;   // safe fallback
+    };
+    // Maria's dedicated Chaos Mode map (new).
+    this._chaosBgImage.src = `assets/maps/chaos_mode_map/chaos_mode_only_new_map.png${v}`;
 
     // ── Biome map images (for chunk streaming) ───────────────────────────
     this.biomeImages = {};   // { biomeId: Image }
