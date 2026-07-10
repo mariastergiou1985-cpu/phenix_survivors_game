@@ -1022,9 +1022,9 @@ export class Game {
   // entry so they never replay Act 1 to reach it. Computed live so the unlock reflects instantly.
   get menuItems() {
     // Lean main nav only. Exit/Credits/Instructions/Audio moved into the SETTINGS screen.
+    // ENDLESS + CHAOS are no longer top-level entries — they live inside START GAME
+    // (Character Select), as START ENDLESS / START CHAOS action buttons.
     const items = ['CAMPAIGN', 'START GAME'];
-    if (this.meta?.isEndlessUnlocked()) items.push('ENDLESS MODE');
-    items.push('CHAOS MODE');   // always visible; locked if !endlessUnlocked — handled in draw/click
     items.push('CHARACTER SELECT', 'UPGRADES', 'COLLECTIBLES', 'RELICS', 'HANGAR', 'EVOLUTION MATRIX', 'SETTINGS', 'EXIT');
     return items;
   }
@@ -16354,6 +16354,8 @@ export class Game {
         #cgm-charselect .csc-abtn.start-btn:not(:disabled) { border-color:rgba(46,230,246,.5); }
         #cgm-charselect .csc-abtn.endless-btn:not(:disabled) { border-color:rgba(124,255,77,.4); color:#7CFF4D; }
         #cgm-charselect .csc-abtn.endless-btn:not(:disabled):hover { border-color:#7CFF4D; box-shadow:0 0 10px rgba(124,255,77,.4); }
+        #cgm-charselect .csc-abtn.chaos-btn:not(:disabled) { border-color:rgba(168,85,247,.5); color:#c88bff; }
+        #cgm-charselect .csc-abtn.chaos-btn:not(:disabled):hover { border-color:#a855f7; box-shadow:0 0 10px rgba(168,85,247,.45); }
         #cgm-charselect .csc-hints { color:var(--txt-faint); font-size:11px; letter-spacing:1px; display:flex; gap:16px; flex-wrap:wrap; justify-content:center; }
         #cgm-charselect .csc-hints b { color:var(--cyan); font-weight:400; }
       `;
@@ -16468,6 +16470,7 @@ export class Game {
           <button class="csc-abtn back-btn" id="csc-back-btn">BACK</button>
           <button class="csc-abtn start-btn" id="csc-start-btn">START GAME</button>
           <button class="csc-abtn endless-btn" id="csc-endless-btn">START ENDLESS</button>
+          <button class="csc-abtn chaos-btn" id="csc-chaos-btn">START CHAOS</button>
         </div>
 
         <div class="csc-hints">
@@ -16510,6 +16513,14 @@ export class Game {
       if (c) this.selectCharacter(c.id);
     });
     el.querySelector('#csc-endless-btn')?.addEventListener('click', () => this.startSelectedEndless());
+    el.querySelector('#csc-chaos-btn')?.addEventListener('click', () => {
+      // Chaos needs a valid selection first (mirror START ENDLESS gating), then run the Chaos flow.
+      const c = this.characters[this.characterIndex];
+      if (!c || c.comingSoon || !this.meta.isCharacterUnlocked(c.id)) return;
+      if (!this.meta?.isEndlessUnlocked()) return;
+      this.selectedCharacter = c.id;
+      this._selectChaosMode();
+    });
     el.querySelector('#csc-pf-btn')?.addEventListener('click', () => this.tryUnlockSelectedCharacterPF());
 
     document.body.appendChild(el);
@@ -16637,11 +16648,13 @@ export class Game {
 
     // Action buttons
     const selUnlocked = this.meta.isCharacterUnlocked(sel.id);
-    const endlessOk   = selUnlocked && !!this.meta?.isEndlessUnlocked();
+    const modeOk      = selUnlocked && !!this.meta?.isEndlessUnlocked();   // Endless + Chaos both need all campaign cleared
     const startBtn    = el.querySelector('#csc-start-btn');
     const endlessBtn  = el.querySelector('#csc-endless-btn');
+    const chaosBtn    = el.querySelector('#csc-chaos-btn');
     if (startBtn)   startBtn.disabled   = !selUnlocked;
-    if (endlessBtn) endlessBtn.disabled = !endlessOk;
+    if (endlessBtn) { endlessBtn.disabled = !modeOk; endlessBtn.textContent = modeOk ? 'START ENDLESS' : 'ENDLESS LOCKED'; }
+    if (chaosBtn)   { chaosBtn.disabled   = !modeOk; chaosBtn.textContent   = modeOk ? 'START CHAOS'   : 'CHAOS LOCKED'; }
 
     // Preview panel — portrait + name + role + specialty
     const pvPanel = el.querySelector('#csc-preview-panel');
