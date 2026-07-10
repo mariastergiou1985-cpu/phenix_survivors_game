@@ -581,7 +581,7 @@ export class Game {
 
     // Preload character portraits for Character Select screen
     this._charImages = {};
-    ['skeleton_warrior', 'taekwondo_girl', 'cyber_arm_hero', 'brawler_warrior', 'assassin_clone'].forEach(id => {
+    ['skeleton_warrior', 'taekwondo_girl', 'cyber_arm_hero', 'brawler_warrior', 'assassin_clone', 'dimis_kickboxer'].forEach(id => {
       const img = new Image();
       img.onerror = () => console.warn(`[Char] missing assets/characters/${id}.png — fallback circle used`);
       img.src = `assets/characters/${id}.png`;
