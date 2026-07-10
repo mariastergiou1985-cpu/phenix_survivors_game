@@ -101,6 +101,11 @@ export class Player {
     this.projSpeedBonus = 0.0;   // +% projectile travel speed
     this.fireRateBonus  = 0.0;   // +% shots per second
 
+    // Chaos Nexus buff stars — temporary tactical HASTE (attack-speed) buff, non-HP.
+    // Read live in shoot() as an extra fire-rate factor; ticks down in update().
+    this._chaosHasteMult  = 1.0;
+    this._chaosHasteTimer = 0.0;
+
     this.kills             = 0;
     this.coresSecured      = 0;
     this.upgrades = {
@@ -255,6 +260,7 @@ export class Player {
     this.dashCooldown     = Math.max(0, this.dashCooldown - dt);
     if (this.specialCooldown > 0) this.specialCooldown -= dt;
     this.shootCooldown    = Math.max(0, this.shootCooldown - dt);
+    if (this._chaosHasteTimer > 0) { this._chaosHasteTimer -= dt; if (this._chaosHasteTimer <= 0) this._chaosHasteMult = 1.0; }
     this.sonicPulseCooldown = Math.max(0, this.sonicPulseCooldown - dt);
     this.empCloudCooldown   = Math.max(0, this.empCloudCooldown - dt * this.abilityCdMult);
     this.shieldTimer         = Math.max(0, this.shieldTimer - dt);
@@ -323,10 +329,16 @@ export class Player {
     return stagger > 0;
   }
 
+  // Chaos Nexus buff star — apply a temporary attack-speed HASTE (tactical, non-HP).
+  applyChaosHaste(mult = 1.4, dur = 8) {
+    this._chaosHasteMult  = Math.max(this._chaosHasteMult || 1, mult);
+    this._chaosHasteTimer = Math.max(this._chaosHasteTimer || 0, dur);
+  }
+
   canShoot() { return this.shootCooldown <= 0; }
 
   shoot(mousePos) {
-    this.shootCooldown = 0.18 / ((1 + this.fireRateBonus) * (this._vesselFireRateMult || 1));   // Fire Rate card + Vessel passive
+    this.shootCooldown = 0.18 / ((1 + this.fireRateBonus) * (this._vesselFireRateMult || 1) * (this._chaosHasteMult || 1));   // Fire Rate card + Vessel passive + Chaos HASTE buff
     const dir    = safeNormalize(new Vec2(mousePos.x - this.pos.x, mousePos.y - this.pos.y));
     const base   = 1 + this.upgrades['Pulse Damage'];
     let damage   = base;

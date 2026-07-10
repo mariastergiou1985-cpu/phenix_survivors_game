@@ -10,7 +10,7 @@ import { clamp, distance, safeNormalize, randomChoice, randomRange, wrapText } f
 import { FloatingText }   from '../entities/FloatingText.js?v=20260703990000';
 import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260705040000';
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260705150000';
-import { Player }         from '../entities/Player.js?v=20260706270000';
+import { Player }         from '../entities/Player.js?v=20260710230000';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260706270000';
 import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260710200000';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=20260703990000';
@@ -38,7 +38,7 @@ import { EventBus, EVENTS } from './EventBus.js?v=20260703990000';
 import { EnemySpawner, ELITE_WAVE as ELITE_WAVE_CFG, BOSS_WARN_COOLDOWN as BOSS_WARN_CD } from './EnemySpawner.js?v=20260710190000';
 import { StateManager, GAME_STATES } from './StateManager.js?v=20260703990000';
 import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260709400000';
-import { NexusManager } from './NexusManager.js?v=20260706200000';
+import { NexusManager } from './NexusManager.js?v=20260710230000';
 import { VESSELS, getVesselById, getDefaultVesselId } from './VesselCatalog.js?v=20260705040000';
 import { PETS, getPetById } from './PetCatalog.js?v=20260705000000';
 import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons, isEvolutionOwnedBy, getCardDisplayName } from './WeaponCatalog.js?v=20260708200000';
@@ -1552,8 +1552,11 @@ export class Game {
     // NULL CACHE roster — not every run: ~45% chance, only if a secret skin is still locked. When it
     // spawns, it's hidden (no marker) at a random spot; the player must explore + decrypt (~3s).
     this._nullCache = null; this._nullCacheStatic = 0;
-    if (this.meta?.hasLockedSecretSkin?.() && Math.random() < 0.45) {
-      this._nullCacheDone = false; this._nullCacheSpawnAt = randomRange(60, 220);
+    // Phase 7 fix — Null Caches "never appeared": the 45% RNG gate + no on-spawn cue made them
+    // practically undiscoverable. Now: if any secret log/uniform is still locked, ALWAYS schedule
+    // one cache this run (still at most once per run, campaign stages), and cue the player on spawn.
+    if (this.meta?.hasLockedSecretSkin?.()) {
+      this._nullCacheDone = false; this._nullCacheSpawnAt = randomRange(45, 180);
     } else {
       this._nullCacheDone = true;  this._nullCacheSpawnAt = -1;
     }
@@ -7267,6 +7270,7 @@ export class Game {
         this.forceChaos         = false;
         this._chaosTransTimer   = -1;    // no transition timer
         this._chaosMode         = true;
+        if (this.nexusManager) this.nexusManager.chaos = true;   // Phase 6: Nexus buff stars turn TACTICAL (no flat-HP heal)
         if (this._chaosStartedAt < 0) this._chaosStartedAt = this.timeAlive; // Phase B: chaos timer
         this.audio?.startChaosMusic();   // switch to Chaos track
         this.triggerAnnouncement('⚡ CHAOS MODE ⚡', '#ff2d95');
@@ -7589,6 +7593,7 @@ export class Game {
         else if (r.type === 'credits')  { this._awardCredits(2 + Math.floor(Math.random() * 3)); }
         else if (r.type === 'heal')     { this.player.hp = Math.min(this.player.maxHp, this.player.hp + 5); }
         else if (r.type === 'mana')     { this.player.mana = Math.min(this.player.maxMana, this.player.mana + 8); }
+        else if (r.type === 'haste')    { this.player.applyChaosHaste?.(1.4, 8); }   // Chaos buff star: +40% attack speed 8s
         this.floatingTexts.push(new FloatingText(r.label, this.player.pos.clone(), r.color, 0.8));
       }
     }
@@ -7696,7 +7701,7 @@ export class Game {
   _updateNullCache(dt) {
     const DECRYPT_R = 48;   // stand within this radius to channel the decrypt
     const NEED      = 3.0;  // seconds of channel to reveal
-    const SENSE_R   = 620;  // proximity range where the screen static begins
+    const SENSE_R   = 900;  // proximity range where the screen static begins (widened so it guides)
     // Static fades on its own; re-raised below when near an active cache.
     this._nullCacheStatic = Math.max(0, (this._nullCacheStatic || 0) - dt * 1.4);
 
@@ -7713,7 +7718,9 @@ export class Game {
       }
       this._nullCache = { pos: best, decrypt: 0 };
       this._nullCacheDone = true;                 // one attempt per run
-      this.audio?.playEventWarning?.();           // faint cue only — NO marker/announcement
+      this.audio?.playEventWarning?.();
+      // Faint discovery cue so the player knows to explore (still no map arrow — the static guides).
+      this.triggerAnnouncement('◈ NULL SIGNAL DETECTED — DECRYPT NEARBY', '#ff2d95');
       return;
     }
 
@@ -8368,6 +8375,7 @@ export class Game {
     this.reset();
     this._enterEndless();             // set up all Endless infrastructure
     this._chaosMode          = true;     // engage Chaos immediately
+    if (this.nexusManager) this.nexusManager.chaos = true;   // Phase 6: tactical buff stars
     if (this._chaosStartedAt < 0) this._chaosStartedAt = this.timeAlive; // Phase B: chaos timer
     this._chaosTransTimer    = -1;
     this._frozenSleetTimer   = 55;  // first Frozen Sleet Storm 55 s into Chaos
@@ -13962,7 +13970,7 @@ export class Game {
     if (this._nullCache) {
       const p = this._nullCache.pos, sz = 46;
       const t = Date.now() / 130;
-      const flick = 0.16 + 0.22 * (0.5 + 0.5 * Math.sin(t)) + (Math.random() < 0.08 ? 0.32 : 0);   // low, glitchy
+      const flick = 0.34 + 0.24 * (0.5 + 0.5 * Math.sin(t)) + (Math.random() < 0.08 ? 0.30 : 0);   // glitchy but findable
       const spr = this._nullCacheSprite;
       ctx.save();
       ctx.globalAlpha = Math.min(0.85, flick);

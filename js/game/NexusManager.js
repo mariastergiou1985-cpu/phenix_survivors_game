@@ -27,6 +27,21 @@ const REWARD_TYPES = [
 ];
 const TOTAL_REWARD_WEIGHT = REWARD_TYPES.reduce((s, r) => s + r.weight, 0);
 
+// Chaos Mode buff stars — TACTICAL/OFFENSIVE only, never flat HP (no 'heal').
+// 'haste' = temporary attack-speed buff (applied via player.applyChaosHaste).
+const CHAOS_REWARD_TYPES = [
+  { type: 'haste',   weight: 34, color: '#ffd447', label: '★ HASTE' },
+  { type: 'xp',      weight: 30, color: '#a0d8ef', label: '+XP' },
+  { type: 'mana',    weight: 20, color: '#7fe0ff', label: '+MANA' },
+  { type: 'credits', weight: 16, color: '#7CFF8A', label: '+CREDITS' },
+];
+const TOTAL_CHAOS_WEIGHT = CHAOS_REWARD_TYPES.reduce((s, r) => s + r.weight, 0);
+function pickChaosReward() {
+  let roll = Math.random() * TOTAL_CHAOS_WEIGHT;
+  for (const r of CHAOS_REWARD_TYPES) { if ((roll -= r.weight) <= 0) return r; }
+  return CHAOS_REWARD_TYPES[0];
+}
+
 // Per-biome charge thresholds
 const BIOME_DEPLETED_THRESHOLD = 0.25; // below 25% → biome is "depleted" (harder enemies)
 const BIOME_CHARGED_THRESHOLD  = 0.75; // above 75% → biome is "charged" (player buff)
@@ -291,7 +306,7 @@ export class NexusManager {
       // Spend 1 stored charge per reward pulse
       m.stored = Math.max(0, m.stored - 1);
 
-      const reward = pickWeightedReward();
+      const reward = this.chaos ? pickChaosReward() : pickWeightedReward();
       const angle = Math.atan2(player.pos.y - m.pos.y, player.pos.x - m.pos.x);
       const speed = 200;
 
