@@ -12,7 +12,7 @@ import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260705040000
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260705150000';
 import { Player }         from '../entities/Player.js?v=20260706270000';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260706270000';
-import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260710190000';
+import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260710200000';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=20260703990000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260705150000';
@@ -7556,6 +7556,7 @@ export class Game {
     // Campaign stages are hand-curated (minions + minis + the 3 recurring bosses, final boss on
     // FINAL) — the random System Events (drone swarm, mega-boss, blackout, etc.) do NOT run here.
     if (!this._campaignStage) this._sysEvents.update(dt, this.timeAlive, this);
+    if (this._chaosMode) this._updateChaosTitans(dt);   // Chaos-only Mega Titan scheduler
     this._updateGridCache(dt);
     this._updateNullCache(dt);
     this._updateVaultDrop(dt);
@@ -8366,6 +8367,37 @@ export class Game {
     this._frozenSleetTimer   = 55;  // first Frozen Sleet Storm 55 s into Chaos
     this.audio?.startChaosMusic();    // override the Endless track started by _enterEndless()
     this.triggerAnnouncement('⚡ CHAOS MODE ⚡', '#ff2d95');
+  }
+
+  // ── Chaos Mega Titan scheduler (Chaos-only) ────────────────────────────────
+  // Spawns ONE Titan at a time (perf + fairness), cycling the 4, ~55s apart. Each is a
+  // huge mega-boss (radius 90, ×2 HP on top of boss stats). Their signature screen-abilities
+  // will layer on top; for now they are giant boss-tier threats with heavy aimed fire.
+  _updateChaosTitans(dt) {
+    if (this.gameOver || this.victory || this.paused) return;
+    if (this._chaosTitanTimer == null) { this._chaosTitanTimer = 40; this._chaosTitanIdx = 0; }
+    // Only one Titan alive at a time.
+    const aliveTitan = this.enemies.some(e => e.isMegaBoss && Enemy.CHAOS_TITANS.has(e.enemyType));
+    if (aliveTitan) return;
+    this._chaosTitanTimer -= dt;
+    if (this._chaosTitanTimer > 0) return;
+    this._chaosTitanTimer = 55;   // next Titan ~55s after the last one is cleared
+    const titanNames = ['Giga-Core Overlord', 'Malware Leviathan', 'Quantum Void Emperor', 'Apocalypse Mech Tyrant'];
+    const name = titanNames[this._chaosTitanIdx % titanNames.length];
+    this._chaosTitanIdx++;
+    try {
+      const t = new Enemy(name, this.currentMinute());
+      t.hp *= 2; t.maxHp = t.hp; t.isMegaBoss = true;
+      if (this.chunkManager?.enabled) {
+        const sp = this.chunkManager.getSpawnEdge(this.camera, this._viewW, this._viewH, 140);
+        t.pos.x = sp.x; t.pos.y = sp.y;
+      }
+      this.enemies.push(t);
+      this.megaBoss = t;
+      this.audio?.playBossWarning?.();
+      this.triggerAnnouncement('⚠ ' + name.toUpperCase() + ' ⚠', '#ff2d95');
+      this.screenShake?.trigger(6, 0.6);
+    } catch (_) { /* never break the run on a Titan spawn */ }
   }
 
   goToSettings() { this._hideMenuOverlay(); this.gameState = 'settings'; this._settingsIndex = 0; this._showSettingsOverlay(); }

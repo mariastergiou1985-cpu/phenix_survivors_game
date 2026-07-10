@@ -55,6 +55,11 @@ const FEEDBACK = {
 };
 
 export class Enemy {
+  // Chaos Mega Titans — treated as mega-bosses (huge radius, boss HP bars, no biome mods).
+  static CHAOS_TITANS = new Set([
+    'Giga-Core Overlord', 'Malware Leviathan', 'Quantum Void Emperor', 'Apocalypse Mech Tyrant',
+  ]);
+
   constructor(enemyType, minute) {
     this.enemyType = enemyType;
     this.pos       = this._spawnEdge();
@@ -87,6 +92,7 @@ export class Enemy {
     else if (enemyType === 'Heavy Mech')          this.radius = 22;
     else if (enemyType === 'Plasma Juggernaut')   this.radius = 30;   // Chaos tank
     else if (enemyType === 'Singularity Core Mech') this.radius = 34; // Chaos elite bruiser
+    else if (Enemy.CHAOS_TITANS.has(enemyType))   this.radius = 90;   // Mega Titans — MUCH larger than the player
 
     // Phase D flags
     this.isMegaBoss      = false;
@@ -147,6 +153,11 @@ export class Enemy {
       case 'Void Rift Summoner':     return 'shooter';   // ranged
       case 'Wireframe Net-Caster':   return 'shooter';   // ranged slow/net
       case 'Singularity Core Mech':  return 'hybrid';    // elite bruiser
+      // ── Chaos Mega Titans ──
+      case 'Giga-Core Overlord':     return 'boss';
+      case 'Malware Leviathan':      return 'boss';
+      case 'Quantum Void Emperor':   return 'boss';
+      case 'Apocalypse Mech Tyrant': return 'boss';
       default:                       return 'scavenger';
     }
   }
@@ -288,6 +299,16 @@ export class Enemy {
         this.bulletRadius  = 7;
         this.bulletColor   = CYAN;
         break;
+      // ── Chaos Mega Titans — heavy boss fire (their signature screen-abilities are
+      // layered in Game.js; this keeps them dangerous at range even between abilities) ──
+      case 'Giga-Core Overlord':
+        this.shootInterval = 1.7; this.bulletSpeed = 460; this.bulletDamage = 34; this.bulletRadius = 13; this.bulletColor = WHITE; break;
+      case 'Malware Leviathan':
+        this.shootInterval = 1.9; this.bulletSpeed = 420; this.bulletDamage = 30; this.bulletRadius = 13; this.bulletColor = GREEN; break;
+      case 'Quantum Void Emperor':
+        this.shootInterval = 1.8; this.bulletSpeed = 440; this.bulletDamage = 36; this.bulletRadius = 13; this.bulletColor = YELLOW; break;
+      case 'Apocalypse Mech Tyrant':
+        this.shootInterval = 2.0; this.bulletSpeed = 400; this.bulletDamage = 32; this.bulletRadius = 14; this.bulletColor = RED; break;
     }
 
     // ── Weapon sprite lookup — preload primary weapon sprite for this enemy ──
@@ -423,6 +444,11 @@ export class Enemy {
       'Void Rift Summoner':      'chaos_enemies/08 _Void _Rift_ Summoner',
       'Wireframe Net-Caster':    'chaos_enemies/09 _Wireframe_ Net-Caster',
       'Singularity Core Mech':   'chaos_enemies/10_ Singularity _Core_ Mech',
+      // ── Chaos Mega Titans (Chaos-only mega-bosses; much larger than the player) ──
+      'Giga-Core Overlord':      'chaos_enemies/chaos_mega_bosses/GIGA-CORE OVERLORD',
+      'Malware Leviathan':       'chaos_enemies/chaos_mega_bosses/MALWARE_ LEVIATHAN',
+      'Quantum Void Emperor':    'chaos_enemies/chaos_mega_bosses/QUANTUM_ VOID_EMPEROR',
+      'Apocalypse Mech Tyrant':  'chaos_enemies/chaos_mega_bosses/APOCALYPSE_ MECH_ TYRANT',
     };
     const spriteFile = spriteMap[this.enemyType];
     if (spriteFile) {
@@ -496,12 +522,18 @@ export class Enemy {
       case 'Void Rift Summoner':   return [92 * d,  13 * g,   PURPLE,  9999, 10 * g];   // heavy ranged
       case 'Wireframe Net-Caster': return [132 * d, 6 * g,    CYAN,    9999,  8 * g];   // ranged slow/net
       case 'Singularity Core Mech':return [80 * d,  46 * g,   PURPLE,  9999, 22 * g];   // elite bruiser (big radius)
+      // ── Chaos Mega Titans (huge HP; mega-boss ×3 may apply on top in the spawner) ──
+      case 'Giga-Core Overlord':   return [55 * d,  620 * gB, WHITE,   0.55, 45 * gB];
+      case 'Malware Leviathan':    return [50 * d,  640 * gB, GREEN,   0.55, 42 * gB];
+      case 'Quantum Void Emperor': return [58 * d,  600 * gB, YELLOW,  0.55, 48 * gB];
+      case 'Apocalypse Mech Tyrant':return [48 * d, 680 * gB, RED,     0.55, 46 * gB];
       default:                      return [100,      2.6,     WHITE,   1.80,  6];
     }
   }
 
   isBoss() {
-    return this.enemyType === 'Security Defector Mech' || this.enemyType === 'Rogue AI Overlord';
+    return this.enemyType === 'Security Defector Mech' || this.enemyType === 'Rogue AI Overlord'
+        || Enemy.CHAOS_TITANS.has(this.enemyType);
   }
 
   takeHit(damage, game) {
