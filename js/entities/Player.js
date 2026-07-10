@@ -71,6 +71,14 @@ export class Player {
       this.mana      = 120;
       this.baseSpeed = Math.round(230 * 1.15); // 264 (was 290 — now below Taekwondo 276 & Assassin 258-ish, not fastest)
       this.contactDamageReduction = 0.16;      // was 0.20 — still armored, no longer best-in-class
+    } else if (this.selectedCharacter === 'dimis_kickboxer') {
+      // Heavy armored cyber martial artist: highest survivability, SLOWEST of all characters.
+      this.maxHp   = 150;
+      this.hp      = 150;
+      this.maxMana = 100;
+      this.mana    = 100;
+      this.baseSpeed = Math.round(230 * 0.82);   // 189 — slowest (below Skeleton 207)
+      this.contactDamageReduction = 0.10;        // armor 10
     }
 
     this._tankTimer   = 0;     // Oni Protocol 0: damage-reduction window
@@ -179,6 +187,7 @@ export class Player {
       'taekwondo_girl':   'assets/effects/attacks/lightning_kick_arc.png',
       'cyber_arm_hero':   'assets/effects/attacks/cyber_arm_pulse_beam.png',
       'assassin_clone':   'assets/weapons/arrow_assasin.png',   // ranged auto-shot = a thrown arrow (rotated to travel dir)
+      'dimis_kickboxer':  'assets/weapons/Cyber-Gauntlets Injection.png',   // Dimi auto-attack = cyber-gauntlet strike
     };
     const attackPath = attackMap[this.selectedCharacter];
     if (attackPath) {
@@ -344,6 +353,7 @@ export class Player {
       case 'euclid_vector':            return { c: '#7CFF4D', comp: 'lighter' };  // green toxic mist
       case 'oni_cataclysm_protocol':   return { c: '#9d6bff', comp: 'lighter' };  // void dust
       case 'eddie':                    return { c: '#ff3b3b', comp: 'lighter' };  // warp flicker
+      case 'dimis_kickboxer':          return { c: '#b026ff', comp: 'lighter' };  // heavy purple cyber-vent
       default:                         return null;                               // phasewalker/other: none
     }
   }

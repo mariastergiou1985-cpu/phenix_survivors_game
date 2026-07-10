@@ -10,7 +10,7 @@ import { clamp, distance, safeNormalize, randomChoice, randomRange, wrapText } f
 import { FloatingText }   from '../entities/FloatingText.js?v=20260703990000';
 import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260705040000';
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260705150000';
-import { Player }         from '../entities/Player.js?v=20260710260000';
+import { Player }         from '../entities/Player.js?v=20260710280000';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260706270000';
 import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260710200000';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=20260703990000';
@@ -930,6 +930,10 @@ export class Game {
       // Eddie — LOCKED until purchased with Protocol Fragments (PF_CHARACTER_COSTS, mid-range 10 PF).
       // Same gate as Oni: selectCharacter() guards on isCharacterUnlocked, no TEST bypass needed.
       { id: 'eddie',                   name: 'Eddie',                  fallbackColor: '#ff2d2d', fallbackAlt: '#ffb43c', role: 'Thunder / Berserk',   specialty: 'Red thunder riffs — his solo never stops' },
+      // Dimi Kickboxer — heavy, slow, armored cyber martial artist (red/purple). Unlocked by
+      // default (unmapped in isCharacterUnlocked → true). Base kit playable now; full bespoke
+      // loadout (elements/fusion/evolutions/tactical/synergy/relic) art exists and is wired incrementally.
+      { id: 'dimis_kickboxer',         name: 'Dimi Kickboxer',         fallbackColor: '#b026ff', fallbackAlt: '#ff2d6a', role: 'Heavy / Armored Brawler', specialty: 'Cyber-gauntlet pressure — slowest but tankiest, Cyber-Angel ultimate' },
     ];
     this.reset();
 
