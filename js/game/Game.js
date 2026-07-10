@@ -14240,7 +14240,7 @@ export class Game {
       ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
       // Premium pause panel
-      const _pw = 420, _ph = 388;
+      const _pw = 420, _ph = 470;
       const _px = Math.round(WIDTH / 2 - _pw / 2);
       const _py = Math.round(HEIGHT / 2 - _ph / 2) - 10;
       this._premiumPanel(ctx, _px, _py, _pw, _ph, CYAN, 'SYSTEM PAUSED');
@@ -14279,29 +14279,41 @@ export class Game {
         { x: _btnX, y: _btnY2, w: _btnW, h: _btnH },
       ];
 
-      // ── In-game EDEN CORE voice slider (click anywhere on the track to set) ──
+      // ── In-game AUDIO sliders (music / sfx / EDEN voice) — tap or click anywhere on a
+      // track to set. Handled on the mousedown EVENT in main.js so it works on mobile taps
+      // AND desktop clicks/drags identically. ──
       {
-        const sTx = _px + 24, sTw = _pw - 48, sTy = _btnY2 + _btnH + 30, th = 8;
-        const v = this.audio?.edenVolume ?? 0.95;
-        ctx.font = 'bold 13px Consolas, monospace'; ctx.textAlign = 'left';
-        ctx.fillStyle = 'rgba(220,230,240,0.85)';
-        ctx.fillText('EDEN CORE VOICE', sTx, sTy - 12);
-        ctx.textAlign = 'right'; ctx.fillStyle = 'rgba(255,215,0,0.75)';
-        ctx.fillText(`${Math.round(v * 100)}%`, sTx + sTw, sTy - 12);
-        ctx.fillStyle = '#1a2a3a'; ctx.beginPath(); ctx.roundRect(sTx, sTy - th / 2, sTw, th, 4); ctx.fill();
-        const g2 = ctx.createLinearGradient(sTx, 0, sTx + sTw * v, 0);
-        g2.addColorStop(0, '#1e90ff'); g2.addColorStop(1, CYAN);
-        ctx.fillStyle = g2; ctx.beginPath(); ctx.roundRect(sTx, sTy - th / 2, sTw * v, th, 4); ctx.fill();
-        ctx.strokeStyle = '#2a4060'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(sTx, sTy - th / 2, sTw, th, 4); ctx.stroke();
-        const hx = sTx + sTw * v;
-        ctx.fillStyle = CYAN; ctx.beginPath(); ctx.roundRect(hx - 5, sTy - 10, 10, 20, 5); ctx.fill();
-        // Rect for click hit-testing in main.js (band a little taller than the track).
-        this._pauseEdenSlider = { tx: sTx, tw: sTw, y0: sTy - 16, y1: sTy + 16 };
+        const rows = [
+          { key: 'music', label: 'MUSIC VOLUME', get: () => this.audio?.musicVolume ?? 0.70 },
+          { key: 'sfx',   label: 'SFX VOLUME',   get: () => this.audio?.sfxVolume   ?? 0.80 },
+          { key: 'eden',  label: 'EDEN CORE VOICE', get: () => this.audio?.edenVolume ?? 0.95 },
+        ];
+        const sTx = _px + 24, sTw = _pw - 48, th = 8;
+        let sTy = _btnY2 + _btnH + 32;
+        const gap = 44;
+        this._pauseSliders = [];
+        for (const row of rows) {
+          const v = Math.max(0, Math.min(1, row.get()));
+          ctx.font = 'bold 13px Consolas, monospace'; ctx.textAlign = 'left';
+          ctx.fillStyle = 'rgba(220,230,240,0.85)';
+          ctx.fillText(row.label, sTx, sTy - 12);
+          ctx.textAlign = 'right'; ctx.fillStyle = 'rgba(255,215,0,0.75)';
+          ctx.fillText(`${Math.round(v * 100)}%`, sTx + sTw, sTy - 12);
+          ctx.fillStyle = '#1a2a3a'; ctx.beginPath(); ctx.roundRect(sTx, sTy - th / 2, sTw, th, 4); ctx.fill();
+          const g2 = ctx.createLinearGradient(sTx, 0, sTx + sTw * v, 0);
+          g2.addColorStop(0, '#1e90ff'); g2.addColorStop(1, CYAN);
+          ctx.fillStyle = g2; ctx.beginPath(); ctx.roundRect(sTx, sTy - th / 2, sTw * v, th, 4); ctx.fill();
+          ctx.strokeStyle = '#2a4060'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(sTx, sTy - th / 2, sTw, th, 4); ctx.stroke();
+          const hx = sTx + sTw * v;
+          ctx.fillStyle = CYAN; ctx.beginPath(); ctx.roundRect(hx - 5, sTy - 10, 10, 20, 5); ctx.fill();
+          this._pauseSliders.push({ key: row.key, tx: sTx, tw: sTw, y0: sTy - 16, y1: sTy + 16 });
+          sTy += gap;
+        }
       }
 
       // Hint
       ctx.font = '12px Consolas, monospace'; ctx.fillStyle = 'rgba(200,210,225,0.55)'; ctx.textAlign = 'center';
-      ctx.fillText('ESC Resume   •   Click to select', WIDTH / 2, _py + _ph - 16);
+      ctx.fillText('ESC Resume   •   tap a bar to set volume', WIDTH / 2, _py + _ph - 14);
       ctx.textAlign = 'left';
     }
 

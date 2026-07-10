@@ -1,4 +1,4 @@
-import { Game } from './game/Game.js?v=20260709750000';
+import { Game } from './game/Game.js?v=20260710100000';
 import { AudioManager } from './audio/AudioManager.js?v=20260709740000';
 import { GamepadInput } from './Gamepad.js?v=20260706330000';
 import { initTouchControls } from './TouchInput.js?v=20260706340000';
@@ -347,6 +347,32 @@ canvas.addEventListener('mousedown', e => {
       }
     }
 
+  } else if (game.gameState === 'audio_settings') {
+    // ── Audio Settings screen — handle on the DOWN event so BACK / sliders / radio
+    // work on a mobile TAP (instantaneous down+up) as well as desktop click/drag. ──
+    const { sliders, radioRect, backRect } = game._audioRects();
+    let handled = false;
+    for (const s of sliders) {
+      if (mousePos.y >= s.y0 && mousePos.y <= s.y1 &&
+          mousePos.x >= s.tx - 14 && mousePos.x <= s.tx + s.tw + 14) {
+        const v = Math.max(0, Math.min(1, (mousePos.x - s.tx) / s.tw));
+        game._setAudioVolume(s.key, v);
+        handled = true;
+        break;
+      }
+    }
+    if (!handled && radioRect &&
+        mousePos.x >= radioRect.x && mousePos.x <= radioRect.x + radioRect.w &&
+        mousePos.y >= radioRect.y && mousePos.y <= radioRect.y + radioRect.h) {
+      if (game.audio) game.audio.setRadioEnabled(!game.audio.radioEnabled);
+      handled = true;
+    }
+    if (!handled && backRect &&
+        mousePos.x >= backRect.x && mousePos.x <= backRect.x + backRect.w &&
+        mousePos.y >= backRect.y && mousePos.y <= backRect.y + backRect.h) {
+      game.goToMainMenu();
+    }
+
   } else if (game.gameState === 'upgrades') {
     // ── Upgrades screen ──────────────────────────────────────────
     game.handleUpgradesClick(mousePos);
@@ -435,11 +461,19 @@ canvas.addEventListener('mousedown', e => {
     const pbr = game._pauseBtnRects;
     const _pHit = (r) => r && mousePos.x >= r.x && mousePos.x <= r.x + r.w &&
                           mousePos.y >= r.y && mousePos.y <= r.y + r.h;
-    const es = game._pauseEdenSlider;
-    if (es && mousePos.y >= es.y0 && mousePos.y <= es.y1 &&
-        mousePos.x >= es.tx - 14 && mousePos.x <= es.tx + es.tw + 14) {
-      const v = Math.max(0, Math.min(1, (mousePos.x - es.tx) / es.tw));
-      game.audio?.setEdenVolume(v);
+    const sliders = game._pauseSliders || [];
+    let hitSlider = false;
+    for (const s of sliders) {
+      if (mousePos.y >= s.y0 && mousePos.y <= s.y1 &&
+          mousePos.x >= s.tx - 14 && mousePos.x <= s.tx + s.tw + 14) {
+        const v = Math.max(0, Math.min(1, (mousePos.x - s.tx) / s.tw));
+        game._setAudioVolume(s.key, v);
+        hitSlider = true;
+        break;
+      }
+    }
+    if (hitSlider) {
+      // volume set — do nothing else
     } else if (pbr && _pHit(pbr[0])) {
       game.paused = false;
     } else if (pbr && _pHit(pbr[1])) {
