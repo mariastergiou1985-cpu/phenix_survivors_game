@@ -667,7 +667,7 @@ export class MapManager {
         const TS = 1400;                                   // world-px tile size
         const x0 = Math.floor(cam.x / TS) * TS, y0 = Math.floor(cam.y / TS) * TS;
         ctx.save();
-        ctx.globalAlpha = 0.55;
+        ctx.globalAlpha = 0.9;                             // dominant so Maria's chaos map clearly reads
         for (let x = x0; x < cam.x + vw + TS; x += TS) {
           for (let y = y0; y < cam.y + vh + TS; y += TS) {
             ctx.drawImage(cb, x, y, TS, TS);
