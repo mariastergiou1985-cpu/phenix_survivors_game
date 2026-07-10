@@ -33,7 +33,7 @@ import { Protocol0 } from '../effects/protocol-0.js?v=20260705000000';
 import { LaserEyes } from '../effects/laser-eyes.js?v=20260709100000';
 import { MeteorRain } from '../effects/meteor-rain.js?v=20260709100000';
 import { NpcWalker } from './NpcWalker.js?v=20260705260000';
-import { MapManager, BIOME_ID, BIOME_DEFS } from './MapManager.js?v=20260710320000';
+import { MapManager, BIOME_ID, BIOME_DEFS } from './MapManager.js?v=20260710330000';
 import { EventBus, EVENTS } from './EventBus.js?v=20260703990000';
 import { EnemySpawner, ELITE_WAVE as ELITE_WAVE_CFG, BOSS_WARN_COOLDOWN as BOSS_WARN_CD } from './EnemySpawner.js?v=20260710330000';
 import { StateManager, GAME_STATES } from './StateManager.js?v=20260703990000';
@@ -581,13 +581,10 @@ export class Game {
 
     // Preload character portraits for Character Select screen
     this._charImages = {};
-    // ?v cache-bust so updated character art (e.g. new Taekwondo cutout) is re-fetched instead of
-    // served stale from the browser's image cache after a deploy. Bump when a portrait changes.
-    const _charV = '?v=20260710310000';
     ['skeleton_warrior', 'taekwondo_girl', 'cyber_arm_hero', 'brawler_warrior', 'assassin_clone', 'dimis_kickboxer'].forEach(id => {
       const img = new Image();
       img.onerror = () => console.warn(`[Char] missing assets/characters/${id}.png — fallback circle used`);
-      img.src = `assets/characters/${id}.png${_charV}`;
+      img.src = `assets/characters/${id}.png?v=20260710330000`;
       this._charImages[id] = img;
     });
     // Japan Phasewalker portrait lives in the endless/ subfolder (Character Select + FX modules).
@@ -23860,4 +23857,854 @@ _drawLoreArchive(ctx) {
         ctx.beginPath(); ctx.moveTo(16, 0); ctx.lineTo(-8, 5); ctx.lineTo(-8, -5); ctx.closePath(); ctx.fill();
       }
       ctx.restore();
- 
+    }
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  }
+
+  // ── RAIL SPIKE (PROJECTILE) — heavy hypersonic spike, high damage ────────────
+
+  _updateRailSpike(dt) {
+    // Advance in-flight spikes (runs regardless of card level)
+    for (let i = this._railSpikes.length - 1; i >= 0; i--) {
+      const n   = this._railSpikes[i];
+      n.t      += dt;
+      n.prev    = n.pos.clone();
+      n.pos.addMut(n.dir.scale(820 * dt));
+      const _rsBounds = this._chaosMode ? (this._worldBounds || {w: WORLD_W, h: WORLD_H}) : {w: WORLD_W, h: WORLD_H};
+      const out = n.pos.x < -80 || n.pos.x > _rsBounds.w + 80 ||
+                  n.pos.y < -80 || n.pos.y > _rsBounds.h + 80;
+      if (out || n.t > 3.0) { this._railSpikes.splice(i, 1); continue; }
+
+      let removed = false;
+
+      // Normal enemy hits (pierce = 1 so first hit removes spike)
+      for (const e of this.enemies) {
+        if (e.hp <= 0 || n.hit.has(e)) continue;
+        if (distance(e.pos, n.pos) > (e.radius || 16) + 9) continue;
+        e.takeHit(n.dmg, this);
+        this._tryCorrode(e);
+        this.particles.spawnHitSparks(e.pos, '#00e6ff');
+        this.screenShake?.trigger(3, 0.12);
+        this.audio?.playRailSpikeImpact?.();
+        n.hit.add(e);
+        n.pierceLeft -= 1;
+        if (n.pierceLeft <= 0) { this._railSpikes.splice(i, 1); removed = true; break; }
+      }
+      if (removed) continue;
+
+      // Boss hits
+      for (const t of this._brawlerTargets()) {
+        if (t.arr) continue;
+        const b = t.obj;
+        if (n.hit.has(b)) continue;
+        if (distance(b.pos, n.pos) > (b.radius || 32) + 9) continue;
+        this._brawlerHit(t, 0.6 * n.dmg, '#00e6ff');
+        this.screenShake?.trigger(3, 0.12);
+        this.audio?.playRailSpikeImpact?.();
+        n.hit.add(b);
+        n.pierceLeft -= 1;
+        if (n.pierceLeft <= 0) { this._railSpikes.splice(i, 1); removed = true; break; }
+      }
+    }
+
+    const lvl = this._cardLvl('rail_spike');
+    if (lvl < 1) return;
+
+    this._railSpikeCd -= dt;
+    if (this._railSpikeCd > 0) return;
+
+    const CDS  = [3.0, 2.5, 2.0, 1.6];
+    const DMGS = [45, 62, 80, 100];
+    this._railSpikeCd = CDS[Math.min(lvl - 1, CDS.length - 1)];
+
+    const p   = this.player;
+    const tgt = this._autoTarget(p.pos, 900);
+    if (!tgt) return;
+
+    const dir = safeNormalize(tgt.pos.sub(p.pos));
+    this._railSpikes.push({
+      pos:        p.pos.clone(),
+      dir,
+      prev:       p.pos.clone(),
+      dmg:        DMGS[Math.min(lvl - 1, DMGS.length - 1)],
+      pierceLeft: lvl >= 4 ? 2 : 1,  // lvl4 gets 2-pierce
+      hit:        new Set(),
+      t:          0,
+    });
+    this.screenShake?.trigger(5, 0.14);  // heavy cannon launch shake
+    this.audio?.playRailSpikeFire?.();
+  }
+
+  _drawRailSpikes(ctx) {
+    if (!this._railSpikes.length) return;
+    const spr   = this._weaponImages?.rail_spike;
+    const ready = spr && spr.complete && spr.naturalWidth > 0;
+    for (const n of this._railSpikes) {
+      const ang = Math.atan2(n.dir.y, n.dir.x);
+      ctx.save();
+      ctx.translate(n.pos.x, n.pos.y);
+      ctx.rotate(ang);
+      if (ready) {
+        ctx.globalAlpha = 0.95;
+        ctx.drawImage(spr, -28, -14, 56, 28);
+      } else {
+        // Trail
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha   = 0.5; ctx.strokeStyle = '#00e6ff'; ctx.lineWidth = 4; ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(n.prev.x - n.pos.x, n.prev.y - n.pos.y);
+        ctx.lineTo(0, 0);
+        ctx.stroke();
+        // Heavy spike body
+        ctx.globalAlpha = 1; ctx.fillStyle = '#1a1a22';
+        ctx.beginPath(); ctx.moveTo(22, 0); ctx.lineTo(-12, 7); ctx.lineTo(-10, 0); ctx.lineTo(-12, -7); ctx.closePath(); ctx.fill();
+        // Energy core line
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.fillStyle = '#00e6ff'; ctx.globalAlpha = 0.9;
+        ctx.fillRect(-10, -2, 28, 4);
+      }
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  }
+
+  // ── P1 SENTRY DRONE (DRONE) — orbiting companion that fires at enemies ────────
+
+  _updateP1SentryDrone(dt) {
+    const lvl = this._cardLvl('sentry_drone');
+    if (lvl < 1) { this._p1SentryDrones = []; return; }
+
+    // Sync drone count: 1 at levels 1-2, 2 at levels 3-4
+    const targetCount = lvl >= 3 ? 2 : 1;
+    while (this._p1SentryDrones.length < targetCount) {
+      this._p1SentryDrones.push({
+        angle:     this._p1SentryDrones.length * Math.PI,  // spread drones evenly
+        fireTimer: 0.8 + this._p1SentryDrones.length * 0.4,  // stagger initial shots
+        worldPos:  null,
+      });
+    }
+    while (this._p1SentryDrones.length > targetCount) {
+      this._p1SentryDrones.pop();
+    }
+
+    const ORBIT_R    = 110;   // min 110px orbital padding — player visibility
+    const ORBIT_SPD  = 1.8;   // rad/s — more dynamic orbit feel
+    const FIRE_CDS   = [1.5, 1.2, 0.9, 0.7];
+    const fireCd     = FIRE_CDS[Math.min(lvl - 1, FIRE_CDS.length - 1)];
+    const projDmg    = 14 + 5 * lvl;  // lvl1:19 lvl2:24 lvl3:29 lvl4:34
+    const p          = this.player;
+
+    for (const drone of this._p1SentryDrones) {
+      drone.angle    += ORBIT_SPD * dt;
+      drone.fireTimer -= dt;
+
+      const wx = p.pos.x + Math.cos(drone.angle) * ORBIT_R;
+      const wy = p.pos.y + Math.sin(drone.angle) * ORBIT_R;
+      drone.worldPos = new Vec2(wx, wy);
+
+      if (drone.fireTimer <= 0) {
+        drone.fireTimer = fireCd;
+        const tgt = this._autoTarget(drone.worldPos, 700);
+        if (tgt) {
+          const dir  = safeNormalize(tgt.pos.sub(drone.worldPos));
+          const proj = new Projectile(drone.worldPos, dir, projDmg);
+          proj.speed = 780;
+          proj.life  = 1.6;
+          proj.sentryShot = true;
+          this.projectiles.push(proj);
+          this.audio?.playSentryDroneFire?.();
+        }
+      }
+    }
+  }
+
+  _drawP1SentryDrones(ctx) {
+    if (!this._p1SentryDrones.length) return;
+    const spr   = this._weaponImages?.sentry_drone;
+    const ready = spr && spr.complete && spr.naturalWidth > 0;
+    const sz    = 44;
+    for (const drone of this._p1SentryDrones) {
+      if (!drone.worldPos) continue;
+      const wp = drone.worldPos;
+      ctx.save();
+      ctx.translate(wp.x, wp.y);
+      ctx.rotate(drone.angle + Math.PI / 2);   // keep drone "upright" as it orbits
+      if (ready) {
+        ctx.drawImage(spr, -sz / 2, -sz / 2, sz, sz);
+      } else {
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.strokeStyle = '#ff9100'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(0, 0, 16, 0, Math.PI * 2); ctx.stroke();
+        ctx.fillStyle = '#ff9100';
+        ctx.beginPath(); ctx.arc(0, 0, 6, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  }
+
+  // ── SHARD RING (ORBIT) — contact-damage energy ring orbiting the player ──────
+
+  _updateShardRing(dt) {
+    const lvl = this._cardLvl('shard_ring');
+    if (lvl < 1) { this._shardRingHitCds.clear(); return; }
+
+    this._shardRingAngle += 2.4 * dt;   // orbit spin speed (rad/s) — more dynamic
+
+    const RADII = [110, 125, 142, 162];
+    const DMGS  = [16, 22, 28, 35];
+    const R     = RADII[Math.min(lvl - 1, RADII.length - 1)];
+    const dmg   = DMGS[Math.min(lvl - 1, DMGS.length - 1)];
+    const p     = this.player;
+
+    // Tick down per-enemy hit cooldowns
+    for (const [e, cd] of this._shardRingHitCds) {
+      const next = cd - dt;
+      if (next <= 0) this._shardRingHitCds.delete(e);
+      else           this._shardRingHitCds.set(e, next);
+    }
+
+    // Normal enemy contact
+    for (const e of this.enemies) {
+      if (e.hp <= 0 || this._shardRingHitCds.has(e)) continue;
+      if (distance(e.pos, p.pos) < R + (e.radius || 16)) {
+        e.takeHit(dmg, this);
+        this._tryCorrode(e);
+        this.particles.spawnHitSparks(e.pos, '#9650ff');
+        this.audio?.playShardRingHit?.();
+        this._shardRingHitCds.set(e, 0.45);
+      }
+    }
+
+    // Boss contact
+    for (const t of this._brawlerTargets()) {
+      if (t.arr) continue;
+      const b = t.obj;
+      if (this._shardRingHitCds.has(b)) continue;
+      if (distance(b.pos, p.pos) < R + (b.radius || 32)) {
+        this._brawlerHit(t, 0.6 * dmg, '#9650ff');
+        this.audio?.playShardRingHit?.();
+        this._shardRingHitCds.set(b, 0.45);
+      }
+    }
+  }
+
+  _drawShardRing(ctx) {
+    const lvl = this._cardLvl('shard_ring');
+    if (lvl < 1) return;
+
+    const RADII = [110, 125, 142, 162];
+    const R     = RADII[Math.min(lvl - 1, RADII.length - 1)];
+    const p     = this.player;
+    const spr   = this._weaponImages?.shard_ring;
+    const ready = spr && spr.complete && spr.naturalWidth > 0;
+    const sz    = R * 2.4;
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.translate(p.pos.x, p.pos.y);
+    ctx.rotate(this._shardRingAngle);
+
+    if (ready) {
+      ctx.drawImage(spr, -sz / 2, -sz / 2, sz, sz);
+    } else {
+      ctx.globalAlpha = 0.5;
+      ctx.strokeStyle = '#9650ff'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = '#c480ff'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(0, 0, R - 6, 0, Math.PI * 2); ctx.stroke();
+    }
+
+    ctx.restore();
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  }
+
+  // Called by main.js to pass current mouse pos to the draw call
+  setMousePos(pos) { this._lastMousePos = pos; }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ── Phase 2 Weapons — global (all characters) ────────────────────────────
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // ── VOID BEAM — rapid energy beam toward nearest enemy ────────────────────
+  _updateVoidBeam(dt) {
+    for (const a of this._voidBeamArcs) a.life -= dt;
+    { const _a = this._voidBeamArcs; let _w = 0; for (let _i = 0; _i < _a.length; _i++) { const a = _a[_i]; if (a.life > 0) _a[_w++] = a; } _a.length = _w; }
+
+    const lvl = this._cardLvl('void_beam');
+    if (lvl < 1) return;
+
+    this._voidBeamCd -= dt;
+    if (this._voidBeamCd > 0) return;
+
+    const CDS  = [1.0, 0.85, 0.70, 0.55];
+    const DMGS = [22, 28, 34, 42];
+    const RNGS = [320, 360, 410, 460];
+    this._voidBeamCd = CDS[Math.min(lvl - 1, CDS.length - 1)];
+    const dmg  = DMGS[Math.min(lvl - 1, DMGS.length - 1)];
+    const rng  = RNGS[Math.min(lvl - 1, RNGS.length - 1)];
+
+    const p = this.player;
+    let best = null, bestDist = rng;
+    for (const t of this._brawlerTargets()) {
+      const d = distance(t.obj.pos, p.pos);
+      if (d < bestDist) { bestDist = d; best = t; }
+    }
+    if (!best) return;
+
+    const tx = best.obj.pos.x, ty = best.obj.pos.y;
+    const dx = tx - p.pos.x, dy = ty - p.pos.y;
+    const len = Math.sqrt(dx * dx + dy * dy) || 1;
+    const BEAM_W = 16 + lvl * 4;
+    // Perpendicular normal for width check
+    const nx = dy / len, ny = -dx / len;
+
+    let hits = 0;
+    for (const t of this._brawlerTargets()) {
+      const ex = t.obj.pos.x - p.pos.x, ey = t.obj.pos.y - p.pos.y;
+      const proj = ex * (dx / len) + ey * (dy / len);
+      const perp = Math.abs(ex * nx + ey * ny);
+      if (proj > 0 && proj < rng + 40 && perp < BEAM_W + (t.obj.radius || 28)) {
+        this._brawlerHit(t, (this._targetIsBoss(t) ? 0.55 : 1) * dmg, '#00ffff');
+        hits++;
+      }
+    }
+
+    this._voidBeamArcs.push({
+      x1: p.pos.x, y1: p.pos.y, x2: tx, y2: ty,
+      life: 0.13, maxLife: 0.13, width: BEAM_W,
+    });
+
+    this.audio?.playVoidBeamFire?.();
+    if (hits > 0) this.audio?.playVoidBeamHit?.();
+  }
+
+  _drawVoidBeamArcs(ctx) {
+    if (!this._voidBeamArcs.length) return;
+    for (const a of this._voidBeamArcs) {
+      const t = a.life / a.maxLife;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.lineCap = 'round';
+      // outer glow
+      ctx.globalAlpha = t * 0.30;
+      ctx.strokeStyle = '#00ffff';
+      ctx.lineWidth = a.width * 2.8;
+      ctx.beginPath(); ctx.moveTo(a.x1, a.y1); ctx.lineTo(a.x2, a.y2); ctx.stroke();
+      // mid beam
+      ctx.globalAlpha = t * 0.75;
+      ctx.strokeStyle = '#88ffff';
+      ctx.lineWidth = a.width * 0.9;
+      ctx.beginPath(); ctx.moveTo(a.x1, a.y1); ctx.lineTo(a.x2, a.y2); ctx.stroke();
+      // bright core
+      ctx.globalAlpha = t;
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = a.width * 0.28;
+      ctx.beginPath(); ctx.moveTo(a.x1, a.y1); ctx.lineTo(a.x2, a.y2); ctx.stroke();
+      // sprite overlay at midpoint
+      const spr = this._weaponImages?.void_beam;
+      if (spr && spr.complete && spr.naturalWidth > 0) {
+        const mx = (a.x1 + a.x2) / 2, my = (a.y1 + a.y2) / 2;
+        const ang = Math.atan2(a.y2 - a.y1, a.x2 - a.x1);
+        const sz  = 68;
+        ctx.globalAlpha = t * 0.6;
+        ctx.save();
+        ctx.translate(mx, my); ctx.rotate(ang);
+        ctx.drawImage(spr, -sz / 2, -sz / 2, sz, sz);
+        ctx.restore();
+      }
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  }
+
+  // ── GRAVITY CORE — pulsing gravity field: pulls + damages enemies ─────────
+  _updateGravityCore(dt) {
+    const lvl = this._cardLvl('gravity_core');
+    if (lvl < 1) { this._gravityCoreWave = 0; return; }
+
+    // age per-enemy hit cooldowns
+    for (const [e, cd] of this._gravityCoreHitCds) {
+      const next = cd - dt;
+      if (next <= 0) this._gravityCoreHitCds.delete(e);
+      else           this._gravityCoreHitCds.set(e, next);
+    }
+
+    const PULSE_IVL = [2.4, 2.0, 1.7, 1.4];
+    const RADII     = [140, 165, 195, 225];
+    const DMGS      = [18, 24, 32, 40];
+    const ivl = PULSE_IVL[Math.min(lvl - 1, PULSE_IVL.length - 1)];
+    const R   = RADII[Math.min(lvl - 1, RADII.length - 1)];
+    const dmg = DMGS[Math.min(lvl - 1, DMGS.length - 1)];
+
+    // Visual wave grows outward each frame
+    this._gravityCoreWave += dt * 90;
+    if (this._gravityCoreWave > R * 1.3) this._gravityCoreWave = 0;
+
+    this._gravityCoreTimer -= dt;
+    if (this._gravityCoreTimer > 0) return;
+    this._gravityCoreTimer = ivl;
+    this._gravityCoreWave  = 0; // restart wave on pulse
+
+    const p = this.player;
+    let hits = 0;
+    for (const t of this._brawlerTargets()) {
+      const b = t.obj;
+      const d = distance(b.pos, p.pos);
+      if (d > R + (b.radius || 28)) continue;
+      if (this._gravityCoreHitCds.has(b)) continue;
+      // Pull toward player
+      if (d > 6) {
+        const pullStrength = 55 * (1 - d / R);
+        b.pos.x += ((p.pos.x - b.pos.x) / d) * pullStrength;
+        b.pos.y += ((p.pos.y - b.pos.y) / d) * pullStrength;
+      }
+      this._brawlerHit(t, (this._targetIsBoss(t) ? 0.55 : 1) * dmg, '#b35cff');
+      this._gravityCoreHitCds.set(b, 0.9);
+      hits++;
+    }
+
+    this.audio?.playGravityCoreActivate?.();
+    if (hits > 0) this.audio?.playGravityCoreHit?.();
+  }
+
+  _drawGravityCore(ctx) {
+    const lvl = this._cardLvl('gravity_core');
+    if (lvl < 1) return;
+
+    const RADII = [140, 165, 195, 225];
+    const R     = RADII[Math.min(lvl - 1, RADII.length - 1)];
+    const p     = this.player;
+    const spr   = this._weaponImages?.gravity_core;
+    const ready = spr && spr.complete && spr.naturalWidth > 0;
+    const sz    = R * 2.1;
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.translate(p.pos.x, p.pos.y);
+
+    // Slowly rotating sprite
+    if (ready) {
+      ctx.globalAlpha = 0.50;
+      ctx.save();
+      ctx.rotate(Date.now() * 0.0007);
+      ctx.drawImage(spr, -sz / 2, -sz / 2, sz, sz);
+      ctx.restore();
+    }
+
+    // Expanding pulse wave ring
+    const wAlpha = Math.max(0, 0.65 * (1 - this._gravityCoreWave / (R * 1.3)));
+    if (wAlpha > 0.02) {
+      ctx.globalAlpha = wAlpha;
+      ctx.strokeStyle = '#b35cff'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(0, 0, this._gravityCoreWave, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = '#e8aaff'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(0, 0, this._gravityCoreWave * 0.82, 0, Math.PI * 2); ctx.stroke();
+    }
+
+    // Ambient inner glow
+    ctx.globalAlpha = 0.10;
+    ctx.fillStyle = '#9a30ff';
+    ctx.beginPath(); ctx.arc(0, 0, R * 0.32, 0, Math.PI * 2); ctx.fill();
+
+    ctx.restore();
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  }
+
+  // ── NANO MINE — auto-drops proximity mines; detonates on enemy contact ────
+  _updateNanoMine(dt) {
+    const lvl = this._cardLvl('nano_mine');
+    if (lvl < 1) { this._nanoMines = []; return; }
+
+    const MAX_MINES  = [2, 3, 4, 5];
+    const DMGS       = [30, 40, 52, 66];
+    const RADII      = [58, 68, 78, 90];
+    const DROP_IVLS  = [2.2, 1.9, 1.6, 1.3];
+    const maxM    = MAX_MINES[Math.min(lvl - 1, MAX_MINES.length - 1)];
+    const dmg     = DMGS[Math.min(lvl - 1, DMGS.length - 1)];
+    const R       = RADII[Math.min(lvl - 1, RADII.length - 1)];
+    const dropIvl = DROP_IVLS[Math.min(lvl - 1, DROP_IVLS.length - 1)];
+
+    // Age/arm mines; check detonation
+    for (let i = this._nanoMines.length - 1; i >= 0; i--) {
+      const m = this._nanoMines[i];
+      m.life      -= dt;
+      m.armTimer   = Math.max(0, (m.armTimer ?? 0.7) - dt);
+      if (m.life <= 0) { this._nanoMines.splice(i, 1); continue; }
+      if (m.armTimer > 0) continue; // still arming
+
+      // Check enemy proximity
+      let detonated = false;
+      for (const t of this._brawlerTargets()) {
+        if (distance(t.obj.pos, { x: m.x, y: m.y }) < R + (t.obj.radius || 28)) {
+          this._brawlerHit(t, (this._targetIsBoss(t) ? 0.55 : 1) * dmg, '#ff6a00');
+          detonated = true;
+        }
+      }
+      if (detonated) {
+        this._specialRings.push({
+          pos: { x: m.x, y: m.y },
+          radius: 0, maxRadius: R * 1.5,
+          life: 0.40, maxLife: 0.40,
+          color1: '#ff6a00', color2: '#ffcc00',
+        });
+        this.audio?.playNanoMineExplode?.();
+        this._nanoMines.splice(i, 1);
+      }
+    }
+
+    // REAR_DROP_HAZARD: drop mine behind the player based on movement direction
+    this._nanoMineDropCd -= dt;
+    if (this._nanoMineDropCd <= 0 && this._nanoMines.length < maxM) {
+      const p = this.player;
+      // Calculate rear drop position — 70px behind player's movement direction
+      const vx = p.vel ? p.vel.x : 0, vy = p.vel ? p.vel.y : 0;
+      const spd = Math.sqrt(vx * vx + vy * vy);
+      let dropX = p.pos.x, dropY = p.pos.y;
+      if (spd > 10) {
+        // Drop behind movement direction
+        dropX = p.pos.x - (vx / spd) * 70;
+        dropY = p.pos.y - (vy / spd) * 70;
+      }
+      this._nanoMines.push({ x: dropX, y: dropY, life: 13, armTimer: 0.7 });
+      this._nanoMineDropCd = dropIvl;
+      this.audio?.playNanoMineDrop?.();
+    }
+  }
+
+  _drawNanoMines(ctx) {
+    if (!this._nanoMines.length) return;
+    const spr   = this._weaponImages?.nano_mine;
+    const ready = spr && spr.complete && spr.naturalWidth > 0;
+    const sz    = 46;
+    for (const m of this._nanoMines) {
+      const armed = (m.armTimer ?? 0) <= 0;
+      const pulse = armed ? (0.65 + 0.35 * Math.sin(Date.now() * 0.006)) : 0.35;
+      ctx.save();
+      ctx.translate(m.x, m.y);
+      if (ready) {
+        ctx.globalAlpha = pulse;
+        ctx.drawImage(spr, -sz / 2, -sz / 2, sz, sz);
+      } else {
+        ctx.globalAlpha = pulse;
+        ctx.fillStyle = armed ? '#ff6a00' : '#666';
+        ctx.beginPath(); ctx.arc(0, 0, 12, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#ffcc00'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(0, 0, 17, 0, Math.PI * 2); ctx.stroke();
+      }
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // ── BLACKNET SWARM DRONE — orbiting drone companions that fire at enemies ──
+  _updateBlacknetSwarm(dt) {
+    const lvl = this._cardLvl('blacknet_swarm_drone');
+    if (lvl < 1) { this._blacknetDrones = []; return; }
+
+    const MAX_DRONES = [2, 3, 4, 5];
+    const DMGS       = [8, 11, 15, 19];
+    const FIRE_IVLS  = [0.85, 0.70, 0.58, 0.45];
+    const ORBIT_R    = 110;   // min 110px orbital padding — player visibility
+    const maxD    = MAX_DRONES[Math.min(lvl - 1, MAX_DRONES.length - 1)];
+    const dmg     = DMGS[Math.min(lvl - 1, DMGS.length - 1)];
+    const fireIvl = FIRE_IVLS[Math.min(lvl - 1, FIRE_IVLS.length - 1)];
+
+    // Ensure correct count
+    while (this._blacknetDrones.length < maxD) {
+      this._blacknetDrones.push({
+        angle:     (Math.PI * 2 * this._blacknetDrones.length / maxD),
+        fireTimer: Math.random() * fireIvl,
+      });
+    }
+    if (this._blacknetDrones.length > maxD) this._blacknetDrones.length = maxD;
+
+    const p = this.player;
+    for (let i = 0; i < this._blacknetDrones.length; i++) {
+      const d = this._blacknetDrones[i];
+      d.angle += dt * 1.5;
+      d.x = p.pos.x + Math.cos(d.angle) * ORBIT_R;
+      d.y = p.pos.y + Math.sin(d.angle) * ORBIT_R;
+
+      d.fireTimer -= dt;
+      if (d.fireTimer > 0) continue;
+      d.fireTimer = fireIvl;
+
+      // Find nearest enemy in range
+      let best = null, bestDist = 420;
+      for (const t of this._brawlerTargets()) {
+        const dist = distance(t.obj.pos, { x: d.x, y: d.y });
+        if (dist < bestDist) { bestDist = dist; best = t; }
+      }
+      if (best) {
+        this._brawlerHit(best, (this._targetIsBoss(best) ? 0.55 : 1) * dmg, '#9650ff');
+        this.audio?.playBlacknetSwarmHit?.();
+      }
+      this.audio?.playBlacknetSwarmLaunch?.();
+    }
+  }
+
+  _drawBlacknetSwarmDrones(ctx) {
+    if (!this._blacknetDrones.length) return;
+    const spr   = this._weaponImages?.blacknet_swarm_drone;
+    const ready = spr && spr.complete && spr.naturalWidth > 0;
+    const sz    = 38;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (const d of this._blacknetDrones) {
+      if (d.x === undefined) continue;
+      ctx.save();
+      ctx.translate(d.x, d.y);
+      ctx.rotate(d.angle + Math.PI / 2);
+      if (ready) {
+        ctx.globalAlpha = 0.85;
+        ctx.drawImage(spr, -sz / 2, -sz / 2, sz, sz);
+      } else {
+        ctx.globalAlpha = 0.75;
+        ctx.fillStyle = '#9650ff';
+        ctx.beginPath(); ctx.arc(0, 0, 8, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#cc88ff'; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(0, 0, 13, 0, Math.PI * 2); ctx.stroke();
+      }
+      ctx.restore();
+    }
+    ctx.restore();
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  }
+
+  // ── HOMING MISSILE LAUNCHER — smart-tracking missiles ────────────────────
+  _updateHomingMissile(dt) {
+    const lvl = this._cardLvl('homing_missile_launcher');
+    if (lvl < 1) { this._homingMissiles = []; return; }
+
+    const CDS    = [2.4, 1.9, 1.5, 1.1];
+    const DMGS   = [35, 46, 58, 72];
+    const SPEEDS = [280, 310, 345, 385];
+    const TURNS  = [2.6, 3.2, 3.8, 4.5]; // radians/sec
+    const cd    = CDS[Math.min(lvl - 1, CDS.length - 1)];
+    const dmg   = DMGS[Math.min(lvl - 1, DMGS.length - 1)];
+    const spd   = SPEEDS[Math.min(lvl - 1, SPEEDS.length - 1)];
+    const turn  = TURNS[Math.min(lvl - 1, TURNS.length - 1)];
+
+    // Move existing missiles
+    for (let i = this._homingMissiles.length - 1; i >= 0; i--) {
+      const m = this._homingMissiles[i];
+      m.life -= dt;
+      if (m.life <= 0) { this._homingMissiles.splice(i, 1); continue; }
+
+      // Find nearest enemy to home on
+      let best = null, bestDist = Infinity;
+      for (const t of this._brawlerTargets()) {
+        const d = distance(t.obj.pos, { x: m.x, y: m.y });
+        if (d < bestDist) { bestDist = d; best = t; }
+      }
+
+      if (best) {
+        const tx = best.obj.pos.x - m.x, ty = best.obj.pos.y - m.y;
+        let dAng = Math.atan2(ty, tx) - m.ang;
+        while (dAng >  Math.PI) dAng -= Math.PI * 2;
+        while (dAng < -Math.PI) dAng += Math.PI * 2;
+        const maxTurn = turn * dt;
+        m.ang += Math.max(-maxTurn, Math.min(maxTurn, dAng));
+      }
+
+      m.x += Math.cos(m.ang) * spd * dt;
+      m.y += Math.sin(m.ang) * spd * dt;
+
+      // Trail
+      if (!m.trail) m.trail = [];
+      m.trail.push({ x: m.x, y: m.y, a: 0.55 });
+      if (m.trail.length > 9) m.trail.shift();
+      for (const tr of m.trail) tr.a -= dt * 1.8;
+
+      // Hit detection
+      let hit = false;
+      for (const t of this._brawlerTargets()) {
+        if (distance(t.obj.pos, { x: m.x, y: m.y }) < (t.obj.radius || 28) + 10) {
+          this._brawlerHit(t, (this._targetIsBoss(t) ? 0.55 : 1) * dmg, '#ff4400');
+          this._specialRings.push({
+            pos: { x: m.x, y: m.y },
+            radius: 0, maxRadius: 55,
+            life: 0.30, maxLife: 0.30,
+            color1: '#ff4400', color2: '#ffcc00',
+          });
+          this.audio?.playHomingMissileImpact?.();
+          hit = true;
+          break;
+        }
+      }
+      if (hit) { this._homingMissiles.splice(i, 1); continue; }
+    }
+
+    // Launch new missile
+    this._homingMissileCd -= dt;
+    if (this._homingMissileCd <= 0) {
+      this._homingMissileCd = cd;
+      const p = this.player;
+      let best = null, bestDist = 650;
+      for (const t of this._brawlerTargets()) {
+        const d = distance(t.obj.pos, p.pos);
+        if (d < bestDist) { bestDist = d; best = t; }
+      }
+      if (best) {
+        const ang = Math.atan2(best.obj.pos.y - p.pos.y, best.obj.pos.x - p.pos.x);
+        this._homingMissiles.push({ x: p.pos.x, y: p.pos.y, ang, life: 4.5, trail: [] });
+        this.audio?.playHomingMissileFire?.();
+      }
+    }
+  }
+
+  _drawHomingMissiles(ctx) {
+    if (!this._homingMissiles.length) return;
+    const spr   = this._weaponImages?.homing_missile_launcher;
+    const ready = spr && spr.complete && spr.naturalWidth > 0;
+    const sz    = 60;
+    for (const m of this._homingMissiles) {
+      if (m.trail) {
+        for (const tr of m.trail) {
+          if (tr.a <= 0) continue;
+          ctx.save();
+          ctx.globalAlpha = Math.max(0, tr.a);
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.fillStyle = '#ff6600';
+          ctx.beginPath(); ctx.arc(tr.x, tr.y, 3.5, 0, Math.PI * 2); ctx.fill();
+          ctx.restore();
+        }
+      }
+      ctx.save();
+      ctx.translate(m.x, m.y);
+      ctx.rotate(m.ang);
+      if (ready) {
+        ctx.globalAlpha = 0.92;
+        ctx.drawImage(spr, -sz / 2, -sz / 2, sz, sz);
+      } else {
+        ctx.fillStyle = '#ff4400';
+        ctx.beginPath();
+        ctx.moveTo(16, 0); ctx.lineTo(-12, 8); ctx.lineTo(-8, 0); ctx.lineTo(-12, -8);
+        ctx.closePath(); ctx.fill();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.55;
+        ctx.fillStyle = '#ff8800';
+        ctx.beginPath(); ctx.arc(-12, 0, 6, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  }
+
+  // ── VESSEL COMPANION ROCKETS ───────────────────────────────────────────────
+  _tickVesselRockets(dt) {
+    if (!this._vesselRockets) this._vesselRockets = [];
+    const p = this.player;
+    if (!p || !this._activeVesselId || !this._vesselCompanion) { this._vesselRockets.length = 0; return; }
+
+    const CD    = 1.5;
+    const DMG   = 70;
+    const SPEED = 300;
+    const TURN  = 3.4;
+    const AOE_R = 95;
+    const RANGE = 720;
+
+    for (let i = this._vesselRockets.length - 1; i >= 0; i--) {
+      const m = this._vesselRockets[i];
+      m.life -= dt;
+      if (m.life <= 0) { this._vesselRockets.splice(i, 1); continue; }
+
+      let best = null, bestDist = Infinity;
+      for (const t of this._brawlerTargets()) {
+        const d = distance(t.obj.pos, { x: m.x, y: m.y });
+        if (d < bestDist) { bestDist = d; best = t; }
+      }
+      if (best) {
+        const tx = best.obj.pos.x - m.x, ty = best.obj.pos.y - m.y;
+        let dAng = Math.atan2(ty, tx) - m.ang;
+        while (dAng >  Math.PI) dAng -= Math.PI * 2;
+        while (dAng < -Math.PI) dAng += Math.PI * 2;
+        const maxTurn = TURN * dt;
+        m.ang += Math.max(-maxTurn, Math.min(maxTurn, dAng));
+      }
+
+      m.x += Math.cos(m.ang) * SPEED * dt;
+      m.y += Math.sin(m.ang) * SPEED * dt;
+
+      if (!m.trail) m.trail = [];
+      m.trail.push({ x: m.x, y: m.y, a: 0.6 });
+      if (m.trail.length > 10) m.trail.shift();
+      for (const tr of m.trail) tr.a -= dt * 1.7;
+
+      let boom = false;
+      for (const t of this._brawlerTargets()) {
+        if (distance(t.obj.pos, { x: m.x, y: m.y }) < (t.obj.radius || 28) + 14) { boom = true; break; }
+      }
+      if (boom) {
+        for (const t of this._brawlerTargets()) {
+          if (distance(t.obj.pos, { x: m.x, y: m.y }) <= AOE_R) {
+            this._brawlerHit(t, (this._targetIsBoss(t) ? 0.55 : 1) * DMG, '#b24cff');
+          }
+        }
+        this._specialRings.push({
+          pos: { x: m.x, y: m.y },
+          radius: 0, maxRadius: AOE_R + 10,
+          life: 0.34, maxLife: 0.34,
+          color1: '#b24cff', color2: '#e0a0ff',
+        });
+        this.audio?.playHomingMissileImpact?.();
+        this._vesselRockets.splice(i, 1);
+      }
+    }
+
+    this._vesselRocketCd -= dt;
+    if (this._vesselRocketCd <= 0) {
+      const c = this._vesselCompanion;
+      let best = null, bestDist = RANGE;
+      for (const t of this._brawlerTargets()) {
+        const d = distance(t.obj.pos, { x: c.x, y: c.y });
+        if (d < bestDist) { bestDist = d; best = t; }
+      }
+      if (best) {
+        this._vesselRocketCd = CD;
+        const ang = Math.atan2(best.obj.pos.y - c.y, best.obj.pos.x - c.x);
+        this._vesselRockets.push({ x: c.x, y: c.y, ang, life: 4.5, trail: [] });
+        this.audio?.playHomingMissileFire?.();
+      }
+    }
+  }
+
+  _drawVesselRockets(ctx) {
+    if (!this._vesselRockets || !this._vesselRockets.length) return;
+    const spr   = this._weaponImages?.vessel_purple_rockets;
+    const ready = spr && spr.complete && spr.naturalWidth > 0;
+    const sz    = 92;
+    for (const m of this._vesselRockets) {
+      if (m.trail) {
+        for (const tr of m.trail) {
+          if (tr.a <= 0) continue;
+          ctx.save();
+          ctx.globalAlpha = Math.max(0, tr.a);
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.fillStyle = '#b24cff';
+          ctx.beginPath(); ctx.arc(tr.x, tr.y, 4.5, 0, Math.PI * 2); ctx.fill();
+          ctx.restore();
+        }
+      }
+      ctx.save();
+      ctx.translate(m.x, m.y);
+      ctx.rotate(m.ang);
+      if (ready) {
+        ctx.globalAlpha = 0.96;
+        ctx.drawImage(spr, -sz / 2, -sz / 2, sz, sz);
+      } else {
+        ctx.fillStyle = '#b24cff';
+        ctx.beginPath();
+        ctx.moveTo(22, 0); ctx.lineTo(-16, 11); ctx.lineTo(-10, 0); ctx.lineTo(-16, -11);
+        ctx.closePath(); ctx.fill();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.6;
+        ctx.fillStyle = '#e0a0ff';
+        ctx.beginPath(); ctx.arc(-16, 0, 8, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+  }
+}
