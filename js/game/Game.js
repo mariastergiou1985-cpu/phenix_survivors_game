@@ -22,7 +22,7 @@ import { weightedSample } from './Upgrades.js?v=20260706300000';
 import { MutationUI }      from './MutationUI.js?v=20260703990000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260705300000';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST } from './MetaProgress.js?v=20260709750000';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST } from './MetaProgress.js?v=20260709730000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260705300000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
@@ -890,7 +890,7 @@ export class Game {
       { id: 'assassin_clone',          name: 'Assassin Clone',          fallbackColor: '#ff4dd2', fallbackAlt: '#9aa0aa', role: 'Stealth / Burst',      specialty: 'Shadow reposition — instant teleport strike burst' },
       // Japan Phasewalker — COMING SOON. Shown in roster as a locked preview; comingSoon:true
       // prevents selection and suppresses the PF-unlock path until the freeze bug is resolved.
-      { id: 'japan_phasewalker', name: 'Japan Phasewalker', fallbackColor: '#00b8d9', fallbackAlt: '#0077a8', role: 'Phase / Displace', specialty: 'Glitch dash + EMP shockwave + Digital Singularity ult', comingSoon: false },   // TEMP UNLOCK (Maria preview) — REVERT to comingSoon:true before release
+      { id: 'japan_phasewalker', name: 'Japan Phasewalker', fallbackColor: '#00b8d9', fallbackAlt: '#0077a8', role: 'Phase / Displace', specialty: 'Glitch dash + EMP shockwave + Digital Singularity ult', comingSoon: true },
       // Euclid Vector — unlocked from the start (NOT PF-gated; see MetaProgress free-unlock).
       { id: 'euclid_vector',           name: 'Euclid Vector',           fallbackColor: '#00ff66', fallbackAlt: '#0a9c44', role: 'Toxin / Ranged',       specialty: 'Toxin sniper + orbital katana + plague trail dash' },
       // Oni Cataclysm Protocol — Endless boss character, LOCKED until purchased with Protocol Fragments
