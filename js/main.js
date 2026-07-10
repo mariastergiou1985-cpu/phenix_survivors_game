@@ -1,4 +1,4 @@
-import { Game } from './game/Game.js?v=20260710100000';
+import { Game } from './game/Game.js?v=20260710120000';
 import { AudioManager } from './audio/AudioManager.js?v=20260709740000';
 import { GamepadInput } from './Gamepad.js?v=20260706330000';
 import { initTouchControls } from './TouchInput.js?v=20260706340000';
@@ -352,9 +352,13 @@ canvas.addEventListener('mousedown', e => {
     // work on a mobile TAP (instantaneous down+up) as well as desktop click/drag. ──
     const { sliders, radioRect, backRect } = game._audioRects();
     let handled = false;
+    const _inR2 = (r) => r && mousePos.x >= r.x && mousePos.x <= r.x + r.w &&
+                         mousePos.y >= r.y && mousePos.y <= r.y + r.h;
     for (const s of sliders) {
+      if (_inR2(s.minus)) { game._setAudioVolume(s.key, game._audioVolumeFor(s.key) - 0.05); handled = true; break; }
+      if (_inR2(s.plus))  { game._setAudioVolume(s.key, game._audioVolumeFor(s.key) + 0.05); handled = true; break; }
       if (mousePos.y >= s.y0 && mousePos.y <= s.y1 &&
-          mousePos.x >= s.tx - 14 && mousePos.x <= s.tx + s.tw + 14) {
+          mousePos.x >= s.tx - 8 && mousePos.x <= s.tx + s.tw + 8) {
         const v = Math.max(0, Math.min(1, (mousePos.x - s.tx) / s.tw));
         game._setAudioVolume(s.key, v);
         handled = true;
@@ -463,9 +467,14 @@ canvas.addEventListener('mousedown', e => {
                           mousePos.y >= r.y && mousePos.y <= r.y + r.h;
     const sliders = game._pauseSliders || [];
     let hitSlider = false;
+    const _inR = (r) => r && mousePos.x >= r.x && mousePos.x <= r.x + r.w &&
+                        mousePos.y >= r.y && mousePos.y <= r.y + r.h;
+    const _cur = (key) => game._audioVolumeFor(key);
     for (const s of sliders) {
+      if (_inR(s.minus)) { game._setAudioVolume(s.key, _cur(s.key) - 0.05); hitSlider = true; break; }
+      if (_inR(s.plus))  { game._setAudioVolume(s.key, _cur(s.key) + 0.05); hitSlider = true; break; }
       if (mousePos.y >= s.y0 && mousePos.y <= s.y1 &&
-          mousePos.x >= s.tx - 14 && mousePos.x <= s.tx + s.tw + 14) {
+          mousePos.x >= s.tx - 8 && mousePos.x <= s.tx + s.tw + 8) {
         const v = Math.max(0, Math.min(1, (mousePos.x - s.tx) / s.tw));
         game._setAudioVolume(s.key, v);
         hitSlider = true;

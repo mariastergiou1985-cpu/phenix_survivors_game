@@ -8462,9 +8462,15 @@ export class Game {
       { key: 'eden',   label: 'EDEN CORE VOICE'  },
     ];
     const startY = 210, gap = 68;
+    const BW = 38, BH = 30;                    // [-]/[+] button size
+    const trackX = tx + BW + 14, trackW = TW - 2 * (BW + 14);
     const sliders = rows.map((r, i) => {
       const ty = startY + i * gap;
-      return { ...r, tx, ty, tw: TW, y0: ty - 24, y1: ty + 24 };
+      return {
+        ...r, tx: trackX, ty, tw: trackW, y0: ty - 24, y1: ty + 24,
+        minus: { x: tx, y: ty - BH / 2, w: BW, h: BH },
+        plus:  { x: tx + TW - BW, y: ty - BH / 2, w: BW, h: BH },
+      };
     });
     // PHENIX NULL RADIO on/off toggle sits under the sliders.
     const radioRect = { x: tx, y: startY + rows.length * gap + 4, w: TW, h: 46 };
@@ -8605,6 +8611,18 @@ export class Game {
       const hx = s.tx + s.tw * v;
       ctx.fillStyle = selected ? CYAN : WHITE;
       ctx.beginPath(); ctx.roundRect(hx - 5, s.ty - 10, 10, 20, 5); ctx.fill();
+
+      // [-] / [+] step buttons (5% each) — big tap targets for mobile
+      for (const [rect, sym] of [[s.minus, '−'], [s.plus, '+']]) {
+        ctx.fillStyle = 'rgba(30,60,90,0.55)';
+        ctx.beginPath(); ctx.roundRect(rect.x, rect.y, rect.w, rect.h, 7); ctx.fill();
+        ctx.strokeStyle = CYAN; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.roundRect(rect.x, rect.y, rect.w, rect.h, 7); ctx.stroke();
+        ctx.fillStyle = CYAN; ctx.font = 'bold 22px Consolas, monospace';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(sym, rect.x + rect.w / 2, rect.y + rect.h / 2 + 1);
+        ctx.textBaseline = 'alphabetic';
+      }
     }
 
     // ── PHENIX NULL RADIO on/off toggle ──────────────────────────────────────
@@ -14279,41 +14297,59 @@ export class Game {
         { x: _btnX, y: _btnY2, w: _btnW, h: _btnH },
       ];
 
-      // ── In-game AUDIO sliders (music / sfx / EDEN voice) — tap or click anywhere on a
-      // track to set. Handled on the mousedown EVENT in main.js so it works on mobile taps
-      // AND desktop clicks/drags identically. ──
+      // ── In-game AUDIO sliders (music / sfx / EDEN voice) with [-]/[+] step buttons.
+      // Tap the track to jump-set, or tap [-]/[+] to nudge by 5%. All hit-testing is on the
+      // mousedown EVENT (main.js) so it works identically on a mobile tap and a desktop click. ──
       {
         const rows = [
-          { key: 'music', label: 'MUSIC VOLUME', get: () => this.audio?.musicVolume ?? 0.70 },
-          { key: 'sfx',   label: 'SFX VOLUME',   get: () => this.audio?.sfxVolume   ?? 0.80 },
-          { key: 'eden',  label: 'EDEN CORE VOICE', get: () => this.audio?.edenVolume ?? 0.95 },
+          { key: 'music', label: 'MUSIC',     get: () => this.audio?.musicVolume ?? 0.70 },
+          { key: 'sfx',   label: 'SFX',       get: () => this.audio?.sfxVolume   ?? 0.80 },
+          { key: 'eden',  label: 'EDEN VOICE', get: () => this.audio?.edenVolume ?? 0.95 },
         ];
-        const sTx = _px + 24, sTw = _pw - 48, th = 8;
-        let sTy = _btnY2 + _btnH + 32;
-        const gap = 44;
+        const rowX = _px + 24, rowW = _pw - 48, th = 8;
+        const BW = 34, BH = 26;                       // [-]/[+] button size
+        const trackX = rowX + BW + 10, trackW = rowW - 2 * (BW + 10);
+        let sTy = _btnY2 + _btnH + 34;
+        const gap = 46;
         this._pauseSliders = [];
         for (const row of rows) {
-          const v = Math.max(0, Math.min(1, row.get()));
+          const v  = Math.max(0, Math.min(1, row.get()));
+          const by = sTy - BH / 2;
+          // Label + percent above the row
           ctx.font = 'bold 13px Consolas, monospace'; ctx.textAlign = 'left';
           ctx.fillStyle = 'rgba(220,230,240,0.85)';
-          ctx.fillText(row.label, sTx, sTy - 12);
-          ctx.textAlign = 'right'; ctx.fillStyle = 'rgba(255,215,0,0.75)';
-          ctx.fillText(`${Math.round(v * 100)}%`, sTx + sTw, sTy - 12);
-          ctx.fillStyle = '#1a2a3a'; ctx.beginPath(); ctx.roundRect(sTx, sTy - th / 2, sTw, th, 4); ctx.fill();
-          const g2 = ctx.createLinearGradient(sTx, 0, sTx + sTw * v, 0);
+          ctx.fillText(row.label, rowX, sTy - 18);
+          ctx.textAlign = 'right'; ctx.fillStyle = 'rgba(255,215,0,0.85)';
+          ctx.fillText(`${Math.round(v * 100)}%`, rowX + rowW, sTy - 18);
+          // [-] button
+          const minusRect = { x: rowX, y: by, w: BW, h: BH };
+          const plusRect  = { x: rowX + rowW - BW, y: by, w: BW, h: BH };
+          for (const [rect, sym] of [[minusRect, '−'], [plusRect, '+']]) {
+            ctx.fillStyle = 'rgba(30,60,90,0.55)';
+            ctx.beginPath(); ctx.roundRect(rect.x, rect.y, rect.w, rect.h, 6); ctx.fill();
+            ctx.strokeStyle = CYAN; ctx.lineWidth = 1.4;
+            ctx.beginPath(); ctx.roundRect(rect.x, rect.y, rect.w, rect.h, 6); ctx.stroke();
+            ctx.fillStyle = CYAN; ctx.font = 'bold 20px Consolas, monospace';
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText(sym, rect.x + rect.w / 2, rect.y + rect.h / 2 + 1);
+            ctx.textBaseline = 'alphabetic';
+          }
+          // Track
+          ctx.fillStyle = '#1a2a3a'; ctx.beginPath(); ctx.roundRect(trackX, sTy - th / 2, trackW, th, 4); ctx.fill();
+          const g2 = ctx.createLinearGradient(trackX, 0, trackX + trackW * v, 0);
           g2.addColorStop(0, '#1e90ff'); g2.addColorStop(1, CYAN);
-          ctx.fillStyle = g2; ctx.beginPath(); ctx.roundRect(sTx, sTy - th / 2, sTw * v, th, 4); ctx.fill();
-          ctx.strokeStyle = '#2a4060'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(sTx, sTy - th / 2, sTw, th, 4); ctx.stroke();
-          const hx = sTx + sTw * v;
+          ctx.fillStyle = g2; ctx.beginPath(); ctx.roundRect(trackX, sTy - th / 2, trackW * v, th, 4); ctx.fill();
+          ctx.strokeStyle = '#2a4060'; ctx.lineWidth = 1; ctx.beginPath(); ctx.roundRect(trackX, sTy - th / 2, trackW, th, 4); ctx.stroke();
+          const hx = trackX + trackW * v;
           ctx.fillStyle = CYAN; ctx.beginPath(); ctx.roundRect(hx - 5, sTy - 10, 10, 20, 5); ctx.fill();
-          this._pauseSliders.push({ key: row.key, tx: sTx, tw: sTw, y0: sTy - 16, y1: sTy + 16 });
+          this._pauseSliders.push({ key: row.key, tx: trackX, tw: trackW, y0: sTy - 16, y1: sTy + 16, minus: minusRect, plus: plusRect });
           sTy += gap;
         }
       }
 
       // Hint
       ctx.font = '12px Consolas, monospace'; ctx.fillStyle = 'rgba(200,210,225,0.55)'; ctx.textAlign = 'center';
-      ctx.fillText('ESC Resume   •   tap a bar to set volume', WIDTH / 2, _py + _ph - 14);
+      ctx.fillText('ESC Resume   •   tap −/+ to adjust 5%, or tap the bar', WIDTH / 2, _py + _ph - 14);
       ctx.textAlign = 'left';
     }
 
