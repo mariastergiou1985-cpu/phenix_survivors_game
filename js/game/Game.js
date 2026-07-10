@@ -22,7 +22,7 @@ import { weightedSample } from './Upgrades.js?v=20260706300000';
 import { MutationUI }      from './MutationUI.js?v=20260703990000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260705300000';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST } from './MetaProgress.js?v=20260710220000';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST } from './MetaProgress.js?v=20260710290000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260705300000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
@@ -2231,6 +2231,11 @@ export class Game {
     if (m.isRelicUnlocked('leviathan_nanite_core'))    p.xpMult = (p.xpMult || 1) + 0.10;             // nanites harvest → +10% XP
     if (m.isRelicUnlocked('emperor_singularity_edge')) p.abilityCdMult = (p.abilityCdMult || 1) * 1.10; // gravity control → faster abilities
     if (m.isRelicUnlocked('tyrant_antimatter_battery')) p.contactDamageReduction = Math.min(0.6, (p.contactDamageReduction || 0) + 0.08); // armor plating
+    // ── Dimi's Cyber-Relic — character-gated (only affects Dimi runs) ──
+    if (m.isRelicUnlocked('dimi_cyber_relic') && p.selectedCharacter === 'dimis_kickboxer') {
+      p.pulseDamage = (p.pulseDamage || 0) + 2;
+      p.contactDamageReduction = Math.min(0.6, (p.contactDamageReduction || 0) + 0.05);
+    }
     // Null Riff Capacitor — Eddie relic: amplified dash note clouds + hotter riff bolts
     this._riffCapacitor = (p.selectedCharacter === 'eddie') && m.isRelicUnlocked('null_riff_capacitor');
   }
@@ -5511,6 +5516,27 @@ export class Game {
     if      (p.selectedCharacter === 'skeleton_warrior')  this._activateBoneGuardBlast();
     else if (p.selectedCharacter === 'taekwondo_girl')    this._activateLightningDashStrike();
     else if (p.selectedCharacter === 'cyber_arm_hero')    this._activateOverdriveBeam();
+    else if (p.selectedCharacter === 'dimis_kickboxer')   this._activateCyberAngelNova();
+  }
+
+  // Dimi ultimate — Cyber-Angel Summoning: a large heavy-bruiser AoE nova (big radius,
+  // strong knockback + damage). Reuses the special-ring VFX; bounded, single burst.
+  _activateCyberAngelNova() {
+    const p = this.player;
+    const radius = 300, force = 470, dmg = 34;   // heavy: bigger + harder than Bone Guard
+    for (const e of this.enemies) {
+      if (!e.pos) continue;
+      if (distance(e.pos, p.pos) < radius) {
+        if (!(e.isBoss?.() || e.isMegaBoss)) e.vel.addMut(safeNormalize(e.pos.sub(p.pos)).scale(force));
+        e.takeHit(dmg, this);
+      }
+    }
+    this._specialRings.push({ pos: p.pos.clone(), radius: 0, maxRadius: radius,
+                               life: 0.7, maxLife: 0.7, color1: '#b026ff', color2: '#ff2d6a' });
+    p.specialCooldown = p.specialMaxCooldown;
+    this.floatingTexts.push(new FloatingText('CYBER-ANGEL SUMMONING!', p.pos.clone(), '#b026ff', 1.2));
+    this.audio?.playBossWarning?.();
+    this.screenShake.trigger(7, 0.35);
   }
 
   _activateBoneGuardBlast() {
