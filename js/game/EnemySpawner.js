@@ -28,23 +28,32 @@ const ACT1_POOLS = [
   { from: 1500, pool: ['Combat Hunter', 'Cyber Shooter', 'Scrap Scavenger', 'Glitch Drone', 'Rogue Punk', 'Stealth Infiltrator', 'Overclocked Berserker', 'Heavy Mech', 'Cyber-Net Junkie', 'Abyss Maw', 'Void Widow', 'Rift Eye', 'Ember Scarab', 'Amethyst Fang', 'Solar Stinger', 'Volt Rat', 'Pulse Burrower', 'Toxin Leech', 'Cryo Claw'] },
 ];
 
+// #81 — Complete Chaos roster: EVERY enemy family is eligible in Chaos (Act 1 + Endless + new
+// Chaos enemies), weighted so swarm/chaser pressure is common and heavies/elites are rarer.
+// Bosses/mega-bosses/titans arrive via their own systems (chooseEnemyType inserts, ELITE_WAVE,
+// Events mega_boss, chaos-titan scheduler, Boss Rush) — this pool is the standard population.
 const CHAOS_POOL = [
-  'Overclocked Berserker', 'Combat Hunter',
-  'Cyber Shooter',         'Heavy Mech',
-  'Cyber-Net Junkie',      'Stealth Infiltrator',
-  'Rogue Punk',            'Abyss Maw',
-  'Void Widow',            'Amethyst Fang',
-  'Ember Scarab',          'Volt Rat',
-  // ── The 10 dedicated Chaos enemies (Chaos-only; this pool runs only when ctx.chaos) ──
-  // Weighted so swarm/chaser pressure is common and heavies/elites are rarer.
-  'Neon Swarmer',          'Neon Swarmer',          'Neon Swarmer',
-  'Data Glitch Stalker',   'Data Glitch Stalker',
-  'Overclocked Bomber',    'Overclocked Bomber',
-  'EMP Hacker Drone',      'EMP Hacker Drone',
+  // ── Melee / chaser pressure (common) ──
+  'Combat Hunter',         'Combat Hunter',
+  'Overclocked Berserker', 'Overclocked Berserker',
+  'Rogue Punk',            'Stealth Infiltrator',
   'Cyber-Axe Executioner', 'Cyber-Axe Executioner',
-  'Malware Spreader',      'Wireframe Net-Caster',
-  'Void Rift Summoner',    'Plasma Juggernaut',
-  'Singularity Core Mech',
+  // ── Ranged / shooters (medium) ──
+  'Cyber Shooter',         'EMP Hacker Drone',      'EMP Hacker Drone',
+  'Wireframe Net-Caster',  'Solar Stinger',
+  // ── Swarm (very common) ──
+  'Neon Swarmer',          'Neon Swarmer',          'Neon Swarmer',
+  'Glitch Drone',          'Volt Rat',              'Scrap Scavenger',
+  // ── Suicide / bombers ──
+  'Overclocked Bomber',    'Overclocked Bomber',
+  // ── Zoners / DoT / area denial ──
+  'Malware Spreader',      'Toxin Leech',           'Cryo Claw',
+  'Void Rift Summoner',    'Data Glitch Stalker',   'Data Glitch Stalker',
+  // ── Heavies / elites (rarer) ──
+  'Heavy Mech',            'Plasma Juggernaut',     'Singularity Core Mech',
+  'Cyber-Net Junkie',      'Abyss Maw',             'Void Widow',
+  'Amethyst Fang',         'Ember Scarab',          'Rift Eye',
+  'Pulse Burrower',
 ];
 
 // ─── Elite Wave Config ──────────────────────────────────────────────────────
@@ -154,7 +163,12 @@ export class EnemySpawner {
         return 'Rogue AI Overlord';
       if (!ctx.enemies?.some(e => e.enemyType === 'Security Defector Mech') && Math.random() < 0.12)
         return 'Security Defector Mech';
-      return randomChoice(CHAOS_POOL);
+      // Weighted rotation: avoid returning the exact same type twice in a row so the whole roster
+      // rotates through instead of the same few appearing continuously (#81 controlled director).
+      let pick = randomChoice(CHAOS_POOL);
+      if (pick === this._lastChaosType) pick = randomChoice(CHAOS_POOL);   // one reroll
+      this._lastChaosType = pick;
+      return pick;
     }
 
     // ── Act 1 / Endless: time-tiered pools ───────────────────────────────
