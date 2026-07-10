@@ -1622,8 +1622,12 @@ export class Game {
     // "STAGE n COMPLETE" banner fades in, holds, then eases back to the campaign map.
     this._stageCompleteBanner = {
       n, isFinal, allDone, start: (typeof performance !== 'undefined' ? performance.now() : Date.now()),
-      title: isFinal ? 'FINAL STAGE COMPLETE' : ('STAGE ' + n + ' COMPLETE'),
-      sub:   allDone ? 'ENDLESS + CHAOS UNLOCKED' : (isFinal ? 'NULL EDEN SECURED' : 'SECTOR SECURED — NEXT STAGE UNLOCKED'),
+      // Phase 16 — Final Stage shows a premium Greek completion message.
+      greek: isFinal,
+      title: isFinal ? 'ΚΑΛΩΣ ΗΡΘΕΣ ΣΤΟ NULL EDEN' : ('STAGE ' + n + ' COMPLETE'),
+      sub:   isFinal ? 'Επέζησες από το χάος — αλλά ο πυρήνας δεν σιώπησε.'
+                     : (allDone ? 'ENDLESS + CHAOS UNLOCKED' : 'SECTOR SECURED — NEXT STAGE UNLOCKED'),
+      sub2:  isFinal ? 'Ευχαριστώ που έπαιξες. — InkSpireM Visuals' : null,
     };
     this.audio?.playStageComplete(!!allDone);   // triumphant victory fanfare, not an alarm
     this.screenShake?.trigger(2, 0.25);                            // gentle, not violent
@@ -7576,6 +7580,7 @@ export class Game {
       this._activeWeaponVFX[i].update(dt);
       if (this._activeWeaponVFX[i].isDone()) this._activeWeaponVFX.splice(i, 1);
     }
+    this._enforcePerfCaps();          // Phase 18: defensive global hard-caps (never collapse perf)
     this._updatePatternVFX(dt);       // Phase 8: per-character pattern art overlay
     this._updateStormExecution(dt);   // Storm Execution reward (normal-enemy-only zaps)
     this._updateFusionClouds(dt);     // Phase-2 fusion gas clouds (bounded, auto-expire)
@@ -10251,6 +10256,29 @@ export class Game {
     vfx.play();
     this._activeWeaponVFX.push(vfx);
     return vfx;
+  }
+
+  // ── Phase 18: defensive global hard-caps ────────────────────────────────────
+  // A last-line safety net so no path (incl. Boss Rush / Titan bullet-hell / direct pushes) can
+  // ever grow the enemy or projectile arrays without bound and collapse mobile performance.
+  // Bosses/mega-bosses are always preserved; only surplus normal enemies / oldest bullets are trimmed.
+  _enforcePerfCaps() {
+    const MAX_ENEMIES = 340, MAX_BULLETS = 600;
+    if (this.enemies && this.enemies.length > MAX_ENEMIES) {
+      // keep all bosses; drop the farthest normal enemies first
+      const normals = [];
+      for (const e of this.enemies) { if (!(e.isBoss?.() || e.isMegaBoss)) normals.push(e); }
+      if (normals.length) {
+        const px = this.player.pos.x, py = this.player.pos.y;
+        normals.sort((a, b) => (Math.hypot(b.pos.x - px, b.pos.y - py)) - (Math.hypot(a.pos.x - px, a.pos.y - py)));
+        const toRemove = Math.min(normals.length, this.enemies.length - MAX_ENEMIES);
+        const drop = new Set(normals.slice(0, toRemove));
+        this.enemies = this.enemies.filter(e => !drop.has(e));
+      }
+    }
+    if (this.enemyBullets && this.enemyBullets.length > MAX_BULLETS) {
+      this.enemyBullets.splice(0, this.enemyBullets.length - MAX_BULLETS);  // drop oldest
+    }
   }
 
   // ── Phase 8: per-character Pattern VFX signature overlay ────────────────────
@@ -14779,16 +14807,22 @@ export class Game {
     // Title (slight upward drift as it settles).
     const drift = (1 - Math.min(1, el / IN)) * 14;
     ctx.textAlign = 'center';
-    ctx.font = 'bold 52px Consolas, monospace';
+    // Greek final message is a longer headline → smaller title font so it fits on one line.
+    ctx.font = b.greek ? 'bold 34px Consolas, monospace' : 'bold 52px Consolas, monospace';
     ctx.fillStyle = accent;
     ctx.shadowBlur = 26;
     ctx.fillText(b.title, cx, cy - 6 - drift);
     ctx.shadowBlur = 0;
 
-    // Subtitle.
+    // Subtitle (Greek line for the final stage).
     ctx.font = 'bold 20px Consolas, monospace';
     ctx.fillStyle = 'rgba(225,235,245,0.92)';
     ctx.fillText(b.sub, cx, cy + 30);
+    if (b.sub2) {
+      ctx.font = 'bold 16px Consolas, monospace';
+      ctx.fillStyle = 'rgba(255,215,0,0.92)';
+      ctx.fillText(b.sub2, cx, cy + 56);
+    }
 
     ctx.restore();
   }
