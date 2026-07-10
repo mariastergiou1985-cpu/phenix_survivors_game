@@ -403,6 +403,11 @@ export class AudioManager {
     const osc = this.actx.createOscillator();
     const g   = this.actx.createGain();
     osc.type  = type;
+    // Phase 11 — anti-monotony: small random pitch jitter (±6%) so repeated SFX (shots, hits)
+    // never sound like the exact same blip on a loop.
+    const jit = 1 + (Math.random() * 2 - 1) * 0.06;
+    freqStart *= jit;
+    if (freqEnd) freqEnd *= jit;
     osc.frequency.setValueAtTime(freqStart, t0);
     if (freqEnd && freqEnd !== freqStart) {
       osc.frequency.exponentialRampToValueAtTime(Math.max(1, freqEnd), t0 + dur);
@@ -630,7 +635,7 @@ export class AudioManager {
 
   // Enemy shoot — hostile descending square, darker/lower than the player blip.
   playEnemyShoot() {
-    if (!this._canPlay('enemyShoot', 0.06)) return;
+    if (!this._canPlay('enemyShoot', 0.11)) return;   // Phase 11: fewer bullet-spam blips
     this._tone({ type: 'square', freqStart: 520, freqEnd: 160, dur: 0.07, gain: 0.07 });
     this._noiseBurst({ dur: 0.03, gain: 0.03, filterType: 'highpass', freq: 1400 });
   }

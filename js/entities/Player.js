@@ -63,13 +63,14 @@ export class Player {
       this.baseSpeed    = Math.round(230 * 1.12); // 258 (fast; only Taekwondo is faster)
       this.pickupRadius = 88;
     } else if (this.selectedCharacter === 'eddie') {
-      // Thunder / Berserk — STRONGEST character: biggest HP pool, fastest, best mana economy, armored.
+      // Thunder / Berserk — still the tankiest bruiser (biggest HP, strong mana), but Phase 12
+      // balance nerf trims the COMPOUNDING edge: no longer also the fastest, and slightly less armor.
       this.maxHp     = 260;
       this.hp        = 260;
       this.maxMana   = 120;
       this.mana      = 120;
-      this.baseSpeed = Math.round(230 * 1.26); // 290 (fastest — above Taekwondo 276)
-      this.contactDamageReduction = 0.20;      // best armor of all characters
+      this.baseSpeed = Math.round(230 * 1.15); // 264 (was 290 — now below Taekwondo 276 & Assassin 258-ish, not fastest)
+      this.contactDamageReduction = 0.16;      // was 0.20 — still armored, no longer best-in-class
     }
 
     this._tankTimer   = 0;     // Oni Protocol 0: damage-reduction window
@@ -105,6 +106,10 @@ export class Player {
     // Read live in shoot() as an extra fire-rate factor; ticks down in update().
     this._chaosHasteMult  = 1.0;
     this._chaosHasteTimer = 0.0;
+
+    // Phase 13 — per-character movement signature trail (velocity-driven, bounded, cosmetic).
+    this._sigTrail = [];
+    this._sigTimer = 0;
 
     this.kills             = 0;
     this.coresSecured      = 0;
@@ -311,6 +316,36 @@ export class Player {
     this.pos.addMut(this.vel.scale(dt));
     this.pos.x = clamp(this.pos.x, WORLD_BOUNDS.left + WORLD_BOUNDS.margin, WORLD_BOUNDS.right - WORLD_BOUNDS.margin);
     this.pos.y = clamp(this.pos.y, WORLD_BOUNDS.top + WORLD_BOUNDS.margin + 40, WORLD_BOUNDS.bottom - WORLD_BOUNDS.margin);
+
+    // ── Phase 13: movement signature trail — spawn while actually moving, bounded + fading ──
+    const sp = Math.hypot(this.vel.x, this.vel.y);
+    this._sigTimer -= dt;
+    if (sp > 55 && this._sigTimer <= 0) {
+      this._sigTimer = 0.05;
+      const ang = Math.atan2(this.vel.y, this.vel.x);
+      // spawn slightly BEHIND the player (opposite the velocity) so it reads as a wake
+      this._sigTrail.push({ x: this.pos.x - Math.cos(ang) * 10, y: this.pos.y + 12 - Math.sin(ang) * 10, a: 1, r: 7 + Math.random() * 5 });
+      if (this._sigTrail.length > 16) this._sigTrail.shift();
+    }
+    for (let i = this._sigTrail.length - 1; i >= 0; i--) {
+      const s = this._sigTrail[i]; s.a -= dt * 1.8; s.r += dt * 10;
+      if (s.a <= 0) this._sigTrail.splice(i, 1);
+    }
+  }
+
+  // Phase 13 — per-character signature color/style for the movement trail.
+  _sigStyle() {
+    switch (this.selectedCharacter) {
+      case 'brawler_warrior':          return { c: '#ff7a1a', comp: 'lighter' };  // magma vent
+      case 'skeleton_warrior':         return { c: '#ff2d55', comp: 'lighter' };  // neon-red glitch
+      case 'taekwondo_girl':           return { c: '#44ffff', comp: 'lighter' };  // cyan electric ribbon
+      case 'cyber_arm_hero':           return { c: '#bfefff', comp: 'lighter' };  // white/cyan steam
+      case 'assassin_clone':           return { c: '#b06bff', comp: 'lighter' };  // purple phantom echo
+      case 'euclid_vector':            return { c: '#7CFF4D', comp: 'lighter' };  // green toxic mist
+      case 'oni_cataclysm_protocol':   return { c: '#9d6bff', comp: 'lighter' };  // void dust
+      case 'eddie':                    return { c: '#ff3b3b', comp: 'lighter' };  // warp flicker
+      default:                         return null;                               // phasewalker/other: none
+    }
   }
 
   // Bite from Bloodfang/Razorhound. HP is always applied; stagger/knockback/bleed are
@@ -378,6 +413,19 @@ export class Player {
       ctx.beginPath(); ctx.arc(t.x, t.y, r, 0, Math.PI * 2); ctx.fill();
     }
     ctx.restore();
+
+    // ── Phase 13: movement signature trail (per-character color/style) ──
+    const sig = this._sigStyle();
+    if (sig && this._sigTrail.length) {
+      ctx.save();
+      ctx.globalCompositeOperation = sig.comp;
+      ctx.fillStyle = sig.c;
+      for (const s of this._sigTrail) {
+        ctx.globalAlpha = Math.max(0, s.a) * 0.5;
+        ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.restore();
+    }
 
     // ── Player visibility pass (readability only) — character-tinted ground glow + sprite rim.
     // Drawn in world space so it scales with the camera zoom on every map. A soft neon pool at

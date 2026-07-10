@@ -10,7 +10,7 @@ import { clamp, distance, safeNormalize, randomChoice, randomRange, wrapText } f
 import { FloatingText }   from '../entities/FloatingText.js?v=20260703990000';
 import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260705040000';
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260705150000';
-import { Player }         from '../entities/Player.js?v=20260710230000';
+import { Player }         from '../entities/Player.js?v=20260710260000';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260706270000';
 import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260710200000';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=20260703990000';
@@ -1630,7 +1630,22 @@ export class Game {
     // Freeze combat under the banner, then ease back to the campaign select.
     this._campaignStage = 0;
     this.paused = true;
-    setTimeout(() => { try { this.paused = false; this._stageCompleteBanner = null; this.goToCampaign(); } catch (_) {} }, 4200);
+    this._stageCompletePausedAt = (typeof performance !== 'undefined' ? performance.now() : Date.now());  // Phase 15 watchdog anchor
+    setTimeout(() => { try { this._stageCompletePausedAt = 0; this.paused = false; this._stageCompleteBanner = null; this.goToCampaign(); } catch (_) {} }, 4200);
+  }
+
+  // Phase 15 — anti-freeze watchdog: if a stage-complete pause ever fails to release (dropped
+  // setTimeout, tab throttling, thrown handler), force-recover after 7s so the game never stays
+  // frozen on the completion banner (Stage 4 / 6 / Final completion freeze class).
+  _stageCompleteWatchdog() {
+    if (!this._stageCompletePausedAt) return;
+    const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+    if (now - this._stageCompletePausedAt > 7000) {
+      this._stageCompletePausedAt = 0;
+      this.paused = false;
+      this._stageCompleteBanner = null;
+      try { this.goToCampaign(); } catch (_) {}
+    }
   }
 
   // Highlight a character card WITHOUT starting a run (mouse preview). Sets the live selection so the
@@ -7138,6 +7153,7 @@ export class Game {
   update(dt, input) {
     // Fade system must tick in ALL states so screen transitions always complete.
     this._updateFade(dt);
+    this._stageCompleteWatchdog();   // Phase 15: never stay frozen on the stage-complete banner
 
     if (this.gameState === 'start_menu') {
       this._updateStartMenu(dt, input);
@@ -7857,10 +7873,15 @@ export class Game {
   // OVERCHARGE CACHE, +1 level to your LOWEST-level weapon (evolution accelerator).
   _maybeSpawnVaultDrop(pos) {
     if (!this.endless || this.vaultDrop) return;
+    // Phase 14: global cooldown — at most one Locked Vault announcement per 10 minutes
+    // (≈6 per hour max), no stacking, no spam.
+    if (this.timeAlive - (this._lastVaultSpawnAt ?? -99999) < 600) return;
     if (Math.random() > 0.35) return;
+    this._lastVaultSpawnAt = this.timeAlive;
     const p = this._clampPickupPos(pos.clone().add(new Vec2(randomRange(-80, 80), randomRange(-80, 80))));
     this.vaultDrop = { pos: p, timer: 45, maxTimer: 45, kills: 0, needed: 30, killWindow: 12, unlocked: false, spin: 0 };
-    this.triggerAnnouncement('LOCKED VAULT — 30 KILLS TO BREACH', '#ffd23c');
+    // Low-opacity banner (~0.4), top of screen (away from the player), aligned with other banners.
+    this.triggerAnnouncement('LOCKED VAULT — 30 KILLS TO BREACH', '#ffd23c', { alpha: 0.4 });
     // Eden Core announces the locked second cache and its kill-challenge.
     this._queueEdenTransmission('SECOND GRID CACHE SEALED. 30 KILLS WILL BREAK THE LOCK.', { title: 'EDEN CORE', priority: 2, duration: 6 });
   }
@@ -16269,8 +16290,8 @@ export class Game {
     this.triggerAnnouncement(text, color);
   }
 
-  triggerAnnouncement(text, color) {
-    this.announcement = { text, color, phase: 'fadein', timer: 0 };
+  triggerAnnouncement(text, color, opts) {
+    this.announcement = { text, color, phase: 'fadein', timer: 0, alphaMul: opts && opts.alpha != null ? opts.alpha : null };
     const WAVE_EVENTS = ['DRONE SWARM', 'CORE RAIDERS', 'SECURITY MECH', 'OVERLOAD SURGE', 'HUNTER SQUAD'];
     if (WAVE_EVENTS.some(w => text.includes(w))) {
       this.score = (this.score ?? 0) + 100;
@@ -16303,7 +16324,7 @@ export class Game {
     // player at the centre — so the player keeps full visibility of the play area.
     const panelY = Math.round(HEIGHT * 0.12);
     // Cap opacity so the banner is always semi-transparent (see-through), never a solid block.
-    const A = alpha * 0.72;
+    const A = alpha * (a.alphaMul != null ? a.alphaMul : 0.72);
 
     ctx.save();
     ctx.globalAlpha = A;
