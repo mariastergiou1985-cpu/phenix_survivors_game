@@ -85,6 +85,8 @@ export class Enemy {
     if (enemyType === 'Security Defector Mech')  this.radius = 28;
     else if (enemyType === 'Rogue AI Overlord')   this.radius = 44;
     else if (enemyType === 'Heavy Mech')          this.radius = 22;
+    else if (enemyType === 'Plasma Juggernaut')   this.radius = 30;   // Chaos tank
+    else if (enemyType === 'Singularity Core Mech') this.radius = 34; // Chaos elite bruiser
 
     // Phase D flags
     this.isMegaBoss      = false;
@@ -134,6 +136,17 @@ export class Enemy {
       case 'Volt Rat':               return 'hunter';
       case 'Scrap Scavenger':        return 'hunter';   // Phase 1: was 'scavenger' → fled at 115px, literally harmless
       case 'Cyber-Net Junkie':       return 'hunter';   // Phase 1: same — now a real melee chaser
+      // ── Chaos Mode enemies ──
+      case 'Neon Swarmer':           return 'hunter';    // fast fragile swarm
+      case 'Data Glitch Stalker':    return 'assassin';  // stealth chaser
+      case 'Plasma Juggernaut':      return 'hybrid';    // tank + occasional shot
+      case 'Overclocked Bomber':     return 'hunter';    // suicide rusher (heavy contact)
+      case 'EMP Hacker Drone':       return 'shooter';   // ranged harass
+      case 'Cyber-Axe Executioner':  return 'hunter';    // heavy melee chaser
+      case 'Malware Spreader':       return 'mixed';     // area denial / toxic
+      case 'Void Rift Summoner':     return 'shooter';   // ranged
+      case 'Wireframe Net-Caster':   return 'shooter';   // ranged slow/net
+      case 'Singularity Core Mech':  return 'hybrid';    // elite bruiser
       default:                       return 'scavenger';
     }
   }
@@ -244,6 +257,35 @@ export class Enemy {
         this.bulletSpeed   = 420;   // speed pass: 300 → 420
         this.bulletDamage  = 5;
         this.bulletRadius  = 5;
+        this.bulletColor   = CYAN;
+        break;
+      // ── Chaos Mode ranged/mixed enemies ──
+      case 'EMP Hacker Drone':
+        this.shootInterval = 2.4;
+        this.bulletSpeed   = 470;
+        this.bulletDamage  = 7;
+        this.bulletRadius  = 6;
+        this.bulletColor   = CYAN;
+        break;
+      case 'Malware Spreader':
+        this.shootInterval = 3.0;
+        this.bulletSpeed   = 360;
+        this.bulletDamage  = 9;
+        this.bulletRadius  = 8;
+        this.bulletColor   = GREEN;
+        break;
+      case 'Void Rift Summoner':
+        this.shootInterval = 3.2;
+        this.bulletSpeed   = 430;
+        this.bulletDamage  = 12;
+        this.bulletRadius  = 9;
+        this.bulletColor   = PURPLE;
+        break;
+      case 'Wireframe Net-Caster':
+        this.shootInterval = 2.8;
+        this.bulletSpeed   = 400;
+        this.bulletDamage  = 8;
+        this.bulletRadius  = 7;
         this.bulletColor   = CYAN;
         break;
     }
@@ -370,6 +412,17 @@ export class Enemy {
       'Toxin Leech':             'minis/mini_enemy_toxin-leech_candidate',
       'Void Widow':              'minis/mini_enemy_void-widow_candidate',
       'Volt Rat':                'minis/mini_enemy_volt-rat_candidate',
+      // ── Chaos Mode enemies (Chaos-only; Maria's art in chaos_enemies/) ──
+      'Neon Swarmer':            'chaos_enemies/01_neon_swarmer',
+      'Data Glitch Stalker':     'chaos_enemies/02_ Data_ Glitch_ Stalker',
+      'Plasma Juggernaut':       'chaos_enemies/03_ Plasma_ Juggernaut',
+      'Overclocked Bomber':      'chaos_enemies/04_ Overclocked_ Bomber',
+      'EMP Hacker Drone':        'chaos_enemies/05_ EMP_ Hacker _Drone',
+      'Cyber-Axe Executioner':   'chaos_enemies/06_ Cyber-Axe_ Executioner',
+      'Malware Spreader':        'chaos_enemies/07_ Malware_ Spreader',
+      'Void Rift Summoner':      'chaos_enemies/08 _Void _Rift_ Summoner',
+      'Wireframe Net-Caster':    'chaos_enemies/09 _Wireframe_ Net-Caster',
+      'Singularity Core Mech':   'chaos_enemies/10_ Singularity _Core_ Mech',
     };
     const spriteFile = spriteMap[this.enemyType];
     if (spriteFile) {
@@ -432,6 +485,17 @@ export class Enemy {
       case 'Toxin Leech':          return [145 * d, 4 * g,    GREEN,   9999, 12 * g];   // fast melee, poison
       case 'Void Widow':           return [90  * d, 12 * g,   PURPLE,  9999, 14 * g];   // slow-med, heavy ranged
       case 'Volt Rat':             return [220 * d, 2 * g,    CYAN,    9999,  6 * g];   // very fast, fragile swarm
+      // ── Chaos Mode enemies (Chaos-only) — [speed, hp, color, stealTime, contactDmg] ──
+      case 'Neon Swarmer':         return [235 * d, 2 * g,    CYAN,    9999,  7 * g];   // very fast, fragile swarm pressure
+      case 'Data Glitch Stalker':  return [170 * d, 3.4 * g,  PURPLE,  9999, 13 * g];   // stealth assassin
+      case 'Plasma Juggernaut':    return [62 * d,  40 * g,   YELLOW,  9999, 20 * g];   // slow tank (big radius)
+      case 'Overclocked Bomber':   return [200 * d, 4 * g,    RED,     9999, 22 * g];   // fast suicide rusher (heavy contact)
+      case 'EMP Hacker Drone':     return [125 * d, 4 * g,    CYAN,    9999,  6 * g];   // ranged harass
+      case 'Cyber-Axe Executioner':return [150 * d, 15 * g,   ORANGE,  9999, 18 * g];   // heavy melee
+      case 'Malware Spreader':     return [110 * d, 9 * g,    GREEN,   9999, 12 * g];   // toxic area denial
+      case 'Void Rift Summoner':   return [92 * d,  13 * g,   PURPLE,  9999, 10 * g];   // heavy ranged
+      case 'Wireframe Net-Caster': return [132 * d, 6 * g,    CYAN,    9999,  8 * g];   // ranged slow/net
+      case 'Singularity Core Mech':return [80 * d,  46 * g,   PURPLE,  9999, 22 * g];   // elite bruiser (big radius)
       default:                      return [100,      2.6,     WHITE,   1.80,  6];
     }
   }

@@ -29,18 +29,22 @@ const ACT1_POOLS = [
 ];
 
 const CHAOS_POOL = [
-  'Overclocked Berserker', 'Overclocked Berserker',
-  'Combat Hunter',         'Combat Hunter',
-  'Cyber Shooter',         'Cyber Shooter',
-  'Heavy Mech',            'Heavy Mech',
+  'Overclocked Berserker', 'Combat Hunter',
+  'Cyber Shooter',         'Heavy Mech',
   'Cyber-Net Junkie',      'Stealth Infiltrator',
-  'Scrap Scavenger',       'Glitch Drone',
-  'Rogue Punk',            'Rogue Punk',
-  'Abyss Maw',             'Void Widow',
-  'Amethyst Fang',         'Solar Stinger',
-  'Ember Scarab',          'Rift Eye',
-  'Pulse Burrower',        'Volt Rat',
-  'Toxin Leech',           'Cryo Claw',
+  'Rogue Punk',            'Abyss Maw',
+  'Void Widow',            'Amethyst Fang',
+  'Ember Scarab',          'Volt Rat',
+  // ── The 10 dedicated Chaos enemies (Chaos-only; this pool runs only when ctx.chaos) ──
+  // Weighted so swarm/chaser pressure is common and heavies/elites are rarer.
+  'Neon Swarmer',          'Neon Swarmer',          'Neon Swarmer',
+  'Data Glitch Stalker',   'Data Glitch Stalker',
+  'Overclocked Bomber',    'Overclocked Bomber',
+  'EMP Hacker Drone',      'EMP Hacker Drone',
+  'Cyber-Axe Executioner', 'Cyber-Axe Executioner',
+  'Malware Spreader',      'Wireframe Net-Caster',
+  'Void Rift Summoner',    'Plasma Juggernaut',
+  'Singularity Core Mech',
 ];
 
 // ─── Elite Wave Config ──────────────────────────────────────────────────────
