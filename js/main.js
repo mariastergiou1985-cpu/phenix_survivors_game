@@ -604,4 +604,17 @@ function loop(timestamp) {
   try {
     applyGamepad();   // inject controller input into keys/handlers before the update reads them
     game.setMousePos(mousePos);
-    game.update(dt, 
+    game.update(dt, { keys, mousePos, mouseDown });
+    applyContextualCursor();
+
+    // Apply screen shake offset
+    const [ox, oy] = game.screenShake.getOffset();
+    ctx.save();
+    try { ctx.translate(ox, oy); game.draw(ctx); }
+    finally { ctx.restore(); }
+  } catch (err) {
+    if (!loop._errLogged) { console.error('[game loop]', err); loop._errLogged = true; }
+  }
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
