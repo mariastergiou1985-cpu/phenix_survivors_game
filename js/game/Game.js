@@ -182,6 +182,36 @@ function _getNexusImage(src) {
   return img;
 }
 
+// ── Phase 8: Pattern VFX (Maria's manifest art) — per-character signature overlays ──
+// Character id → pattern folder; folder → exact filenames placed from the manifest sheet.
+const PATTERN_CHAR_MAP = {
+  skeleton_warrior: 'skeleton_cyber', taekwondo_girl: 'taekwondo_girl', cyber_arm_hero: 'cyber_arm',
+  brawler_warrior: 'brawler', assassin_clone: 'assassin_clone_girl', euclid_vector: 'euclid_vector_venom',
+  oni_cataclysm_protocol: 'oni', eddie: 'eddie',
+};
+const PATTERN_FILES = {
+  skeleton_cyber:      ['pattern_04_bloodfrost_guillotine', 'pattern_10_hellblood_cleaver', 'pattern_18_grave_rot_abyss'],
+  taekwondo_girl:      ['pattern_03_absolute_zero_tempest', 'pattern_11_solar_flare_edge', 'pattern_20_nova_circuit'],
+  cyber_arm:           ['pattern_09_plasma_overload', 'pattern_21_stormrift_edge', 'pattern_26_event_horizon_blade'],
+  brawler:             ['pattern_01_vaporize_blade', 'pattern_08_caustic_inferno', 'pattern_23_crimson_singularity', 'pattern_24_ruin_halo'],
+  assassin_clone_girl: ['pattern_07_eclipse_frostfang', 'pattern_22_blackout_tempest', 'pattern_25_dread_reaver'],
+  euclid_vector_venom: ['pattern_02_cryo_venom_fang', 'pattern_14_bio_shock_reaper', 'pattern_15_hemotoxin_fang', 'pattern_16_nebula_blight'],
+  oni:                 ['pattern_12_riftforge_blade', 'pattern_13_cinder_oblivion', 'pattern_28_null_eclipse'],
+  eddie:               ['pattern_06_shatter_rift_blade', 'pattern_17_plaguebringer', 'pattern_27_darkmatter_lance'],
+};
+const _patternImgCache = new Map();
+function _getPatternImage(folder, name) {
+  const src = `assets/effects/pattern/${folder}/${name}.png`;
+  let img = _patternImgCache.get(src);
+  if (!img) {
+    img = new Image();
+    img.onerror = () => { img._failed = true; console.warn('[Pattern] missing ' + src); };
+    img.src = src;
+    _patternImgCache.set(src, img);
+  }
+  return img;
+}
+
 // Euclid Vector toxin kit — used ONLY when selectedCharacter === 'euclid_vector' (world-space).
 import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=20260703990000';
 
@@ -1149,6 +1179,9 @@ export class Game {
     this._evolutionsDone    = new Set();   // track which evolutions already triggered
     this._consumedWeapons   = new Set();   // base weapons consumed by an evolution
     this._activeWeaponVFX   = [];          // active VFXSpritePlayer instances
+    this._patternVFX        = [];          // Phase 8: per-character pattern art overlays
+    this._patternTimer      = 0;           // spawn cadence
+    this._patternIdx        = 0;           // cycles through the character's patterns
     this._acquiredWeaponTimers = new Map(); // weaponId → cooldown timer for auto-fire
     // Seed this character's base weapon at level 1
     const _charWeapon = getWeaponForCharacter(this.selectedCharacter);
@@ -7527,6 +7560,7 @@ export class Game {
       this._activeWeaponVFX[i].update(dt);
       if (this._activeWeaponVFX[i].isDone()) this._activeWeaponVFX.splice(i, 1);
     }
+    this._updatePatternVFX(dt);       // Phase 8: per-character pattern art overlay
     this._updateStormExecution(dt);   // Storm Execution reward (normal-enemy-only zaps)
     this._updateFusionClouds(dt);     // Phase-2 fusion gas clouds (bounded, auto-expire)
     this._updateUltInfusion(dt);      // Forbidden Ultimate Infusion element nova on ult cast
@@ -10196,6 +10230,62 @@ export class Game {
     vfx.play();
     this._activeWeaponVFX.push(vfx);
     return vfx;
+  }
+
+  // ── Phase 8: per-character Pattern VFX signature overlay ────────────────────
+  // Periodically flashes the selected character's manifest pattern art in-world at premium
+  // size (transform-only fade/spin — never alters the illustration). Cosmetic, bounded, safe.
+  _updatePatternVFX(dt) {
+    if (this.gameOver || this.victory || this.paused || !this.player) return;
+    const folder = PATTERN_CHAR_MAP[this.player.selectedCharacter];
+    if (!folder) return;
+    const files = PATTERN_FILES[folder];
+    if (!files || !files.length) return;
+    this._patternTimer = (this._patternTimer || 0) - dt;
+    if (this._patternTimer <= 0) {
+      this._patternTimer = 2.8;
+      this._patternIdx = (this._patternIdx || 0) + 1;
+      const name = files[this._patternIdx % files.length];
+      const img = _getPatternImage(folder, name);
+      // Aim toward nearest enemy so the signature reads as an attack flourish.
+      let ang = Math.random() * Math.PI * 2;
+      let near = null, nd = 1e9;
+      for (const e of this.enemies) { if (!e.pos) continue; const d = Math.hypot(e.pos.x - this.player.pos.x, e.pos.y - this.player.pos.y); if (d < nd) { nd = d; near = e; } }
+      if (near) ang = Math.atan2(near.pos.y - this.player.pos.y, near.pos.x - this.player.pos.x);
+      const dist = 70;
+      this._patternVFX.push({
+        img, x: this.player.pos.x + Math.cos(ang) * dist, y: this.player.pos.y + Math.sin(ang) * dist,
+        t: 0, life: 1.15, rot: ang, scale: 0.9,
+      });
+      if (this._patternVFX.length > 6) this._patternVFX.splice(0, this._patternVFX.length - 6); // hard cap
+    }
+    for (let i = this._patternVFX.length - 1; i >= 0; i--) {
+      this._patternVFX[i].t += dt;
+      if (this._patternVFX[i].t >= this._patternVFX[i].life) this._patternVFX.splice(i, 1);
+    }
+  }
+
+  _drawPatternVFX(ctx) {
+    if (!this._patternVFX || !this._patternVFX.length) return;
+    const vs = this._viewScale || 1;
+    for (const p of this._patternVFX) {
+      const img = p.img;
+      if (!img || !img.complete || img.naturalWidth === 0 || img._failed) continue;
+      const k = p.t / p.life;                       // 0..1
+      const alpha = Math.sin(Math.min(1, k) * Math.PI) * 0.85;   // fade in/out
+      const grow = (0.85 + 0.35 * k) * p.scale;
+      const sx = (p.x - this.camera.x) * vs;
+      const sy = (p.y - this.camera.y) * vs;
+      const w = img.naturalWidth * 0.5 * grow * vs;   // premium size (art stays large, readable)
+      const h = img.naturalHeight * 0.5 * grow * vs;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';       // additive glow (bg already transparent)
+      ctx.globalAlpha = alpha;
+      ctx.translate(sx, sy);
+      ctx.rotate(p.rot + k * 0.25);
+      ctx.drawImage(img, -w / 2, -h / 2, w, h);
+      ctx.restore();
+    }
   }
 
   // ── Card icon art resolver ──────────────────────────────────────────────────
@@ -14173,6 +14263,7 @@ export class Game {
     this._drawHomingMissiles(ctx);       // Phase 2 HOMING
     this._drawVesselRockets(ctx);        // Vessel companion auto-aim purple rockets
     for (const vfx of this._activeWeaponVFX) vfx.draw(ctx);   // Evolution VFX overlays
+    this._drawPatternVFX(ctx);                                // Phase 8: per-character pattern art
     this._drawTacticalWeapons(ctx);  // Tactical cache weapons (independent map objects)
     this._drawEuclidKit(ctx);       // Euclid Vector toxin sniper / katanas / plague (world-space)
     this._drawChainLightning(ctx);
