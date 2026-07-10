@@ -22,7 +22,7 @@ import { weightedSample } from './Upgrades.js?v=20260706300000';
 import { MutationUI }      from './MutationUI.js?v=20260703990000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260705300000';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST } from './MetaProgress.js?v=20260709730000';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST } from './MetaProgress.js?v=20260710220000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260705300000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
@@ -2163,6 +2163,12 @@ export class Game {
 
     // ── Null Battery relic: 8% faster Q/E ability cooldowns ──
     if (m.isRelicUnlocked('null_battery')) p.abilityCdMult = 1.08;
+    // ── Chaos Mega Titan reward relics (single-tier passive versions; the full 5-tier
+    // bespoke mechanics are a later pass — these give a real, safe bonus meanwhile). ──
+    if (m.isRelicUnlocked('overlord_prism_array'))     p.pulseDamage = (p.pulseDamage || 0) + 2;      // laser array → +projectile damage
+    if (m.isRelicUnlocked('leviathan_nanite_core'))    p.xpMult = (p.xpMult || 1) + 0.10;             // nanites harvest → +10% XP
+    if (m.isRelicUnlocked('emperor_singularity_edge')) p.abilityCdMult = (p.abilityCdMult || 1) * 1.10; // gravity control → faster abilities
+    if (m.isRelicUnlocked('tyrant_antimatter_battery')) p.contactDamageReduction = Math.min(0.6, (p.contactDamageReduction || 0) + 0.08); // armor plating
     // Null Riff Capacitor — Eddie relic: amplified dash note clouds + hotter riff bolts
     this._riffCapacitor = (p.selectedCharacter === 'eddie') && m.isRelicUnlocked('null_riff_capacitor');
   }
@@ -8378,7 +8384,17 @@ export class Game {
     if (this._chaosTitanTimer == null) { this._chaosTitanTimer = 40; this._chaosTitanIdx = 0; }
     // Only one Titan alive at a time — while it lives, run its signature ability.
     const titan = this.enemies.find(e => e.isMegaBoss && Enemy.CHAOS_TITANS.has(e.enemyType));
-    if (titan) { this._runTitanAbility(titan, dt); return; }
+    if (titan) { this._activeTitan = titan; this._runTitanAbility(titan, dt); return; }
+    // The tracked Titan just died → grant its unique reward-relic unlock (earned by the kill).
+    if (this._activeTitan) {
+      const flag = {
+        'Giga-Core Overlord': 'titan_overlord', 'Malware Leviathan': 'titan_leviathan',
+        'Quantum Void Emperor': 'titan_emperor', 'Apocalypse Mech Tyrant': 'titan_tyrant',
+      }[this._activeTitan.enemyType];
+      try { if (flag && this.meta) this.meta.recordBossKill(flag); } catch (_) {}
+      this.triggerAnnouncement(this._activeTitan.enemyType.toUpperCase() + ' DESTROYED — REWARD RELIC UNLOCKED', '#7CFF4D');
+      this._activeTitan = null;
+    }
     this._chaosTitanTimer -= dt;
     if (this._chaosTitanTimer > 0) return;
     this._chaosTitanTimer = 55;   // next Titan ~55s after the last one is cleared
@@ -8394,6 +8410,7 @@ export class Game {
       }
       this.enemies.push(t);
       this.megaBoss = t;
+      this._activeTitan = t;
       this.audio?.playBossWarning?.();
       this.triggerAnnouncement('⚠ ' + name.toUpperCase() + ' ⚠', '#ff2d95');
       this.screenShake?.trigger(6, 0.6);
