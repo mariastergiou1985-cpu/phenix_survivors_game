@@ -1224,6 +1224,9 @@ export class Game {
     this._pacMsgAt          = 0;       // timeAlive when panel appeared
     // ── Chaos Mode (unlocks at 21:00 Endless) ─────────────────────────────
     this._chaosMode         = false;   // true after transition completes
+    this._bossRush          = null;    // Boss Rush encounter state (Phase 4-5); null = inactive
+    this._bossRushCount     = null;    // rushes triggered this run (lazy-init in _updateBossRush)
+    this._bossRushDmgCd     = 0;       // hazard damage cooldown
     this._chaosStartedAt    = -1;         // timeAlive when Chaos engaged; -1 = not yet reached this run
     this._chaosTransTimer   = -1;      // >=0 while glitch transition is playing
     this.forceChaos         = false;   // defensive: prevent stale debug-key state leaking into the next run
@@ -7567,6 +7570,7 @@ export class Game {
     // FINAL) — the random System Events (drone swarm, mega-boss, blackout, etc.) do NOT run here.
     if (!this._campaignStage) this._sysEvents.update(dt, this.timeAlive, this);
     if (this._chaosMode) this._updateChaosTitans(dt);   // Chaos-only Mega Titan scheduler
+    if (this._chaosMode) this._updateBossRush(dt);       // Chaos-only Boss Rush (2× per run, 180s)
     this._updateGridCache(dt);
     this._updateNullCache(dt);
     this._updateVaultDrop(dt);
@@ -8478,6 +8482,169 @@ export class Game {
         default: t._abilityCd = 4;
       }
     } catch (_) { /* an ability hiccup must never break the run */ }
+  }
+
+  // ── CHAOS BOSS RUSH (Phase 4-5) ────────────────────────────────────────────
+  // A structured 180-second encounter that triggers at most 2× per Chaos run. Reuses the existing
+  // Enemy/Titan spawn primitives; adds telegraphed shrinking-ring hazards (Laser Lockdown, Double
+  // Ring, Enrage Grid). Fully bounded (spawn/hazard caps) and cleaned up on completion. Never
+  // spawns everything at once. Survive to the timer end = win the encounter.
+  _updateBossRush(dt) {
+    if (this.gameOver || this.victory || this.paused) return;
+    // ── Scheduler: 2 rushes per Chaos run, spaced out ──
+    if (this._bossRush == null) {
+      if (this._bossRushCount == null) { this._bossRushCount = 0; this._bossRushSchedule = [120, 480]; }
+      const chaosEl = this.timeAlive - (this._chaosStartedAt < 0 ? this.timeAlive : this._chaosStartedAt);
+      const next = this._bossRushSchedule[this._bossRushCount];
+      if (next != null && chaosEl >= next) {
+        this._bossRushCount++;
+        this._bossRush = {
+          t: 0, dur: 180, cx: this.player.pos.x, cy: this.player.pos.y,
+          hazard: null, spawnAcc: 0, titanIdx: 0, flags: {},
+        };
+        this.triggerAnnouncement('⚔ CHAOS BOSS RUSH — SURVIVE 3:00 ⚔', '#ffd447');
+        this.audio?.playBossWarning?.();
+        this.screenShake?.trigger(7, 0.7);
+      }
+      return;
+    }
+    const br = this._bossRush;
+    br.t += dt;
+    const T = br.t;
+    const min = this.currentMinute();
+
+    // ── Bounded periodic swarm during setup (0-30s), XP-rich phase ──
+    br.spawnAcc -= dt;
+    if (T < 30 && br.spawnAcc <= 0 && this.enemies.length < 180) {
+      br.spawnAcc = 1.2;
+      try {
+        const e = new Enemy('Neon Swarmer', min);
+        this._bossRushPlaceAtEdge(e);
+        this.enemies.push(e);
+      } catch (_) {}
+    }
+
+    // ── Timeline beats (each fires once via flags) ──
+    if (T >= 30 && !br.flags.lockdown) {           // 0:30 First Lockdown — single shrinking ring
+      br.flags.lockdown = true;
+      br.hazard = { kind: 'lockdown', r: 620, minR: 150, shrink: 30, dmg: 16, t: 0, dur: 15 };
+      this.triggerAnnouncement('!! LASER GRID LOCKDOWN — STAY INSIDE !!', '#ff4d4d');
+      this.audio?.playEventWarning?.();
+    }
+    if (T >= 45 && !br.flags.elite) {              // 0:45 Elite assault — chaos enemies
+      br.flags.elite = true;
+      const pool = ['EMP Hacker Drone', 'Overclocked Bomber', 'Cyber-Axe Executioner'];
+      for (const nm of pool) { try { const e = new Enemy(nm, min); this._bossRushPlaceAtEdge(e); this.enemies.push(e); } catch (_) {} }
+    }
+    if (T >= 75 && !br.flags.titan1) {             // 1:15 First Mega Titan
+      br.flags.titan1 = true; this._bossRushSpawnTitan(br);
+    }
+    if (T >= 90 && !br.flags.doublering) {         // 1:30 Double Ring
+      br.flags.doublering = true;
+      br.hazard = { kind: 'double', r: 520, minR: 120, shrink: 26, dmg: 18, t: 0, dur: 14, inner: 190 };
+      this.triggerAnnouncement('!! DOUBLE RING — PUSH OUT, THEN IN !!', '#ff7a4d');
+    }
+    if (T >= 105 && !br.flags.titan2) { br.flags.titan2 = true; this._bossRushSpawnTitan(br); }
+    if (T >= 130 && !br.flags.titan3) { br.flags.titan3 = true; this._bossRushSpawnTitan(br); }
+    if (T >= 165 && !br.flags.enrage) {            // 2:45 Enrage Grid — continuous shrink
+      br.flags.enrage = true;
+      br.hazard = { kind: 'enrage', r: 900, minR: 90, shrink: 55, dmg: 26, t: 0, dur: 15 };
+      this.triggerAnnouncement('!! ENRAGE GRID — SURVIVE 15s !!', '#ff2d2d');
+      this.audio?.playBossWarning?.();
+    }
+
+    // ── Hazard ring update + fair damage ──
+    const hz = br.hazard;
+    if (hz) {
+      hz.t += dt;
+      hz.r = Math.max(hz.minR, hz.r - hz.shrink * dt);
+      const d = Math.hypot(this.player.pos.x - br.cx, this.player.pos.y - br.cy);
+      // lockdown/enrage: stay INSIDE the ring; double: safe band between inner and r
+      let outside = false;
+      if (hz.kind === 'double') outside = (d > hz.r) || (d < (hz.inner || 0));
+      else outside = d > hz.r;
+      if (outside && (this._bossRushDmgCd == null || this._bossRushDmgCd <= 0)) {
+        if (this._damagePlayer(hz.dmg, { color: '#ff3344', shake: 4 })) this._bossRushDmgCd = 0.5;
+        else this._bossRushDmgCd = 0.5;
+      }
+      if (hz.t >= hz.dur) br.hazard = null;
+    }
+    if (this._bossRushDmgCd > 0) this._bossRushDmgCd -= dt;
+
+    // ── Completion — survive to the end ──
+    if (T >= br.dur) {
+      br.hazard = null;
+      this.triggerAnnouncement('◈ BOSS RUSH CLEARED — CHAOS APEX SURVIVED ◈', '#7CFF4D');
+      this.audio?.playStageComplete?.(false);
+      this.screenShake?.trigger(6, 0.6);
+      this._awardCredits?.(40);
+      this._bossRush = null;
+    }
+  }
+
+  // Place an enemy at the streamed-map spawn edge (reuses the Titan spawn logic; safe fallback).
+  _bossRushPlaceAtEdge(e) {
+    try {
+      if (this.chunkManager?.enabled) {
+        const sp = this.chunkManager.getSpawnEdge(this.camera, this._viewW, this._viewH, 140);
+        e.pos.x = sp.x; e.pos.y = sp.y;
+      }
+    } catch (_) {}
+  }
+
+  _bossRushSpawnTitan(br) {
+    const names = ['Giga-Core Overlord', 'Malware Leviathan', 'Quantum Void Emperor', 'Apocalypse Mech Tyrant'];
+    const name = names[(br.titanIdx++) % names.length];
+    try {
+      const t = new Enemy(name, this.currentMinute());
+      t.hp *= 2.2; t.maxHp = t.hp; t.isMegaBoss = true;   // Boss Rush scaling: extra HP
+      this._bossRushPlaceAtEdge(t);
+      this.enemies.push(t); this.megaBoss = t;
+      this.audio?.playBossWarning?.();
+      this.triggerAnnouncement('⚠ ' + name.toUpperCase() + ' — BOSS RUSH ⚠', '#ff2d95');
+      this.screenShake?.trigger(6, 0.6);
+    } catch (_) {}
+  }
+
+  // Arena ring + hazard rings + timer (world-space for the arena, screen-space for the HUD timer).
+  _drawBossRush(ctx) {
+    const br = this._bossRush;
+    if (!br) return;
+    const vs = this._viewScale || 1;
+    const sx = (br.cx - this.camera.x) * vs;
+    const sy = (br.cy - this.camera.y) * vs;
+    ctx.save();
+    // Gold arena ring with semicircle segments (premium presentation)
+    const AR = 700 * vs;
+    ctx.lineWidth = 4; ctx.globalAlpha = 0.5;
+    for (let i = 0; i < 12; i++) {
+      const a0 = (i / 12) * Math.PI * 2, a1 = a0 + Math.PI / 12;
+      ctx.strokeStyle = (i % 2 === 0) ? 'rgba(255,212,71,0.7)' : 'rgba(255,150,60,0.4)';
+      ctx.beginPath(); ctx.arc(sx, sy, AR, a0, a1); ctx.stroke();
+    }
+    // Hazard ring(s)
+    const hz = br.hazard;
+    if (hz) {
+      const rr = hz.r * vs;
+      ctx.globalAlpha = 0.85; ctx.lineWidth = 6;
+      ctx.strokeStyle = hz.kind === 'enrage' ? 'rgba(255,45,45,0.9)' : 'rgba(255,90,60,0.85)';
+      ctx.beginPath(); ctx.arc(sx, sy, rr, 0, Math.PI * 2); ctx.stroke();
+      ctx.globalAlpha = 0.25;
+      ctx.beginPath(); ctx.arc(sx, sy, rr, 0, Math.PI * 2); ctx.lineWidth = 18; ctx.stroke();
+      if (hz.kind === 'double' && hz.inner) {
+        ctx.globalAlpha = 0.8; ctx.lineWidth = 5; ctx.strokeStyle = 'rgba(120,200,255,0.85)';
+        ctx.beginPath(); ctx.arc(sx, sy, hz.inner * vs, 0, Math.PI * 2); ctx.stroke();
+      }
+    }
+    ctx.restore();
+    // Timer HUD (screen-space)
+    const W = this._canvas.width;
+    const rem = Math.max(0, Math.ceil(br.dur - br.t));
+    ctx.save();
+    ctx.font = 'bold 26px Consolas, monospace'; ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(255,212,71,0.95)';
+    ctx.fillText('BOSS RUSH  ' + Math.floor(rem / 60) + ':' + String(rem % 60).padStart(2, '0'), W / 2, 40);
+    ctx.restore();
   }
 
   goToSettings() { this._hideMenuOverlay(); this.gameState = 'settings'; this._settingsIndex = 0; this._showSettingsOverlay(); }
@@ -14307,6 +14474,7 @@ export class Game {
     // Chaos Mode: screen-edge rim glow + player-centred vignette (readability polish)
     if (this._chaosMode) { this._drawChaosRimGlow(ctx); this._drawChaosVignette(ctx); }
     this._drawGridCacheArrow(ctx);
+    if (this._chaosMode) this._drawBossRush(ctx);   // Boss Rush arena ring + hazards + timer
     this._drawNullCacheStatic(ctx);        // proximity static cue for the hidden Null Cache
     ctx.fillStyle = BLACK;
     ctx.fillRect(0, 0, WIDTH, 44);
