@@ -8376,9 +8376,9 @@ export class Game {
   _updateChaosTitans(dt) {
     if (this.gameOver || this.victory || this.paused) return;
     if (this._chaosTitanTimer == null) { this._chaosTitanTimer = 40; this._chaosTitanIdx = 0; }
-    // Only one Titan alive at a time.
-    const aliveTitan = this.enemies.some(e => e.isMegaBoss && Enemy.CHAOS_TITANS.has(e.enemyType));
-    if (aliveTitan) return;
+    // Only one Titan alive at a time — while it lives, run its signature ability.
+    const titan = this.enemies.find(e => e.isMegaBoss && Enemy.CHAOS_TITANS.has(e.enemyType));
+    if (titan) { this._runTitanAbility(titan, dt); return; }
     this._chaosTitanTimer -= dt;
     if (this._chaosTitanTimer > 0) return;
     this._chaosTitanTimer = 55;   // next Titan ~55s after the last one is cleared
@@ -8398,6 +8398,61 @@ export class Game {
       this.triggerAnnouncement('⚠ ' + name.toUpperCase() + ' ⚠', '#ff2d95');
       this.screenShake?.trigger(6, 0.6);
     } catch (_) { /* never break the run on a Titan spawn */ }
+  }
+
+  // Signature Titan ability — a distinctive, telegraphed bullet pattern per Titan, on a
+  // cooldown, built from the existing enemy-bullet system (bounded; never unbounded spam).
+  _runTitanAbility(t, dt) {
+    try {
+      if (t._abilityCd == null) t._abilityCd = 6;   // grace period after appearing
+      t._abilityCd -= dt;
+      if (t._abilityCd > 0) return;
+      const p = this.player.pos;
+      const min = this.currentMinute();
+      const dmg = 12 + Math.min(18, min);   // scales modestly with time
+      switch (t.enemyType) {
+        case 'Giga-Core Overlord': {   // Omnidirectional Doomsday Laser Array — rotating radial beams
+          const n = 14; t._aRot = (t._aRot || 0) + 0.35;
+          for (let i = 0; i < n; i++) {
+            const a = t._aRot + i * (Math.PI * 2 / n);
+            this.spawnEnemyBullet(t.pos.clone(), new Vec2(Math.cos(a), Math.sin(a)), 360, dmg + 4, 11, WHITE);
+          }
+          this.screenShake?.trigger(3, 0.25);
+          t._abilityCd = 2.3;
+          break;
+        }
+        case 'Malware Leviathan': {   // Screen Corruptor — lobbed toxic pools around the player
+          for (let i = 0; i < 4; i++) {
+            const target = p.add(new Vec2(randomRange(-220, 220), randomRange(-220, 220)));
+            const dir = safeNormalize(target.sub(t.pos));
+            this.spawnEnemyBullet(t.pos.clone(), dir, 300, dmg, 12, GREEN, { behavior: 'orb_explosion' });
+          }
+          t._abilityCd = 6.0;
+          break;
+        }
+        case 'Quantum Void Emperor': {   // Gravity Inversion — outward singularity burst ring
+          const n = 22;
+          for (let i = 0; i < n; i++) {
+            const a = i * (Math.PI * 2 / n);
+            this.spawnEnemyBullet(t.pos.clone(), new Vec2(Math.cos(a), Math.sin(a)), 300, dmg + 2, 10, YELLOW);
+          }
+          this.screenShake?.trigger(4, 0.35);
+          t._abilityCd = 5.0;
+          break;
+        }
+        case 'Apocalypse Mech Tyrant': {   // Carpet Bombing — lobbed bombs raining around the player
+          for (let i = 0; i < 8; i++) {
+            const target = p.add(new Vec2(randomRange(-260, 260), randomRange(-260, 260)));
+            const dir = safeNormalize(target.sub(t.pos));
+            this.spawnEnemyBullet(t.pos.clone(), dir, 320, dmg + 6, 12, RED, { behavior: 'orb_explosion' });
+          }
+          this.audio?.playAirstrikeBomb?.();
+          t._abilityCd = 5.5;
+          break;
+        }
+        default: t._abilityCd = 4;
+      }
+    } catch (_) { /* an ability hiccup must never break the run */ }
   }
 
   goToSettings() { this._hideMenuOverlay(); this.gameState = 'settings'; this._settingsIndex = 0; this._showSettingsOverlay(); }
