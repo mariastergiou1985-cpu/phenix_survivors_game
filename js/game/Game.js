@@ -12,11 +12,11 @@ import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260705040000
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260705150000';
 import { Player }         from '../entities/Player.js?v=20260710280000';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260706270000';
-import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260710200000';
+import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260710310000';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=20260703990000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260705150000';
-import { SystemEventManager } from './Events.js?v=20260710170000';
+import { SystemEventManager } from './Events.js?v=20260710310000';
 import { UpgradeUI }      from './UpgradeUI.js?v=20260706360000';
 import { weightedSample } from './Upgrades.js?v=20260706300000';
 import { MutationUI }      from './MutationUI.js?v=20260703990000';
@@ -33,7 +33,7 @@ import { Protocol0 } from '../effects/protocol-0.js?v=20260705000000';
 import { LaserEyes } from '../effects/laser-eyes.js?v=20260709100000';
 import { MeteorRain } from '../effects/meteor-rain.js?v=20260709100000';
 import { NpcWalker } from './NpcWalker.js?v=20260705260000';
-import { MapManager, BIOME_ID, BIOME_DEFS } from './MapManager.js?v=20260710180000';
+import { MapManager, BIOME_ID, BIOME_DEFS } from './MapManager.js?v=20260710310000';
 import { EventBus, EVENTS } from './EventBus.js?v=20260703990000';
 import { EnemySpawner, ELITE_WAVE as ELITE_WAVE_CFG, BOSS_WARN_COOLDOWN as BOSS_WARN_CD } from './EnemySpawner.js?v=20260710190000';
 import { StateManager, GAME_STATES } from './StateManager.js?v=20260703990000';
@@ -7359,7 +7359,8 @@ export class Game {
         if (this.nexusManager) this.nexusManager.chaos = true;   // Phase 6: Nexus buff stars turn TACTICAL (no flat-HP heal)
         if (this._chaosStartedAt < 0) this._chaosStartedAt = this.timeAlive; // Phase B: chaos timer
         this.audio?.startChaosMusic();   // switch to Chaos track
-        this.triggerAnnouncement('⚡ CHAOS MODE ⚡', '#ff2d95');
+        // #71 — Chaos entry no longer uses the central banner; a discreet floating cue instead.
+        this.floatingTexts.push(new FloatingText('⚡ CHAOS MODE ⚡', this.player.pos.add(new Vec2(-70, -90)), '#ff2d95', 2.5));
         // Eden Core: chaos reached
         if (this.meta) {
           const cmsg = this._edenPick([
@@ -7446,6 +7447,13 @@ export class Game {
     const _sleetFrozen = !!(this._frozenSleet && this._frozenSleet.phase === 'hold');
     const _frozenInput = _sleetFrozen ? { ...input, keys: new Set() } : input;
     this.player.update(dt, _frozenInput);
+    // Anti-passive tracker: how long the player has stayed roughly still. Enemies read this to
+    // compress their encirclement ring on a stationary player (Vampire-Survivors pressure).
+    {
+      const sp = Math.hypot(this.player.vel?.x || 0, this.player.vel?.y || 0);
+      if (sp < 40) this._playerIdleT = (this._playerIdleT || 0) + dt;
+      else         this._playerIdleT = 0;
+    }
     // Dash SFX — fire once on the frame a dash begins (rising edge of dashTimer).
     const dashing = this.player.dashTimer > 0;
     if (dashing && !this._wasDashing) {
@@ -8474,7 +8482,8 @@ export class Game {
     this._chaosTransTimer    = -1;
     this._frozenSleetTimer   = 55;  // first Frozen Sleet Storm 55 s into Chaos
     this.audio?.startChaosMusic();    // override the Endless track started by _enterEndless()
-    this.triggerAnnouncement('⚡ CHAOS MODE ⚡', '#ff2d95');
+    // #71 — discreet floating cue, not a central banner.
+    this.floatingTexts.push(new FloatingText('⚡ CHAOS MODE ⚡', this.player.pos.add(new Vec2(-70, -90)), '#ff2d95', 2.5));
   }
 
   // ── Chaos Mega Titan scheduler (Chaos-only) ────────────────────────────────
@@ -16381,14 +16390,15 @@ export class Game {
     if (a.phase === 'fadeout') alpha = 1 - (a.timer / FADE_OUT);
     alpha = Math.max(0, Math.min(1, alpha));
 
-    const panelW = Math.min(820, WIDTH - 60);
-    const panelH = 84;
+    // #71 — smaller, more discreet banner (narrower + shorter), lower default opacity.
+    const panelW = Math.min(560, WIDTH - 60);
+    const panelH = 56;
     const panelX = Math.round(WIDTH  / 2 - panelW / 2);
     // Sit the banner near the TOP of the screen (below the HUD timer), not over the
     // player at the centre — so the player keeps full visibility of the play area.
-    const panelY = Math.round(HEIGHT * 0.12);
+    const panelY = Math.round(HEIGHT * 0.10);
     // Cap opacity so the banner is always semi-transparent (see-through), never a solid block.
-    const A = alpha * (a.alphaMul != null ? a.alphaMul : 0.72);
+    const A = alpha * (a.alphaMul != null ? a.alphaMul : 0.58);
 
     ctx.save();
     ctx.globalAlpha = A;
@@ -16437,17 +16447,17 @@ export class Game {
     ctx.globalAlpha = A;
 
     // Small sub-label above main text
-    ctx.font      = 'bold 11px Consolas, monospace';
+    ctx.font      = 'bold 9px Consolas, monospace';
     ctx.fillStyle = a.color;
     ctx.textAlign = 'center';
-    ctx.globalAlpha = A * 0.55;
-    ctx.fillText('[ SYSTEM EVENT ]', WIDTH / 2, panelY + 20);
+    ctx.globalAlpha = A * 0.5;
+    ctx.fillText('[ SYSTEM EVENT ]', WIDTH / 2, panelY + 16);
     ctx.globalAlpha = A;
 
-    // Main event text
-    ctx.font      = 'bold 30px Consolas, monospace';
+    // Main event text (smaller to fit the discreet panel)
+    ctx.font      = 'bold 20px Consolas, monospace';
     ctx.fillStyle = a.color;
-    ctx.fillText(a.text, WIDTH / 2, panelY + 54);
+    ctx.fillText(a.text, WIDTH / 2, panelY + 40);
 
     ctx.restore();
   }

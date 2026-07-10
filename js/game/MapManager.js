@@ -658,6 +658,23 @@ export class MapManager {
       const vw   = this.game._viewW;
       const vh   = this.game._viewH;
       cm.drawChunkBackgrounds(ctx, cam, vw, vh);
+
+      // #70 fix — Chaos Mode uses chunk streaming (so the single chaos-map image was never shown).
+      // Tile Maria's new chaos map across the visible camera region as a translucent overlay so the
+      // Chaos world actually reads as the new map, blended over the biome chunks.
+      const cb = this._chaosBgImage;
+      if (opts && opts.chaosMode && cb && cb.complete && cb.naturalWidth > 0) {
+        const TS = 1400;                                   // world-px tile size
+        const x0 = Math.floor(cam.x / TS) * TS, y0 = Math.floor(cam.y / TS) * TS;
+        ctx.save();
+        ctx.globalAlpha = 0.55;
+        for (let x = x0; x < cam.x + vw + TS; x += TS) {
+          for (let y = y0; y < cam.y + vh + TS; y += TS) {
+            ctx.drawImage(cb, x, y, TS, TS);
+          }
+        }
+        ctx.restore();
+      }
     }
   }
 

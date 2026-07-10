@@ -65,6 +65,12 @@ export class Enemy {
     this.pos       = this._spawnEdge();
     this.vel       = new Vec2();
 
+    // Encirclement steering: per-enemy tangential slot so the swarm spreads into a RING around the
+    // player (Vampire-Survivors pressure) instead of stacking into one column. Sign+magnitude random.
+    this._encSlot  = (Math.random() < 0.5 ? -1 : 1) * (0.35 + Math.random() * 0.5);
+    this._stuckT   = 0;    // short stuck-detection timer
+    this._lastDist = 0;
+
     this.hitFlash   = 0;
     this.stunned    = 0;
     this.slowTimer  = 0;     // Cryo Rounds debuff: reduced movement speed while > 0
@@ -762,6 +768,27 @@ export class Enemy {
     // All enemies chase the player. No enemy steals from Nexus/PowerMatrix.
     let dir = safeNormalize(player.pos.sub(this.pos));
 
+    // ── Encirclement steering (surround, don't single-file) ──────────────────
+    // Blend direct pursuit with a TANGENTIAL component so enemies curve around the player and fill
+    // all angles → a compressing ring. When the player stands still, tighten the ring (anti-passive).
+    // Cheap: no neighbor queries — per-enemy slot + player-idle signal from the game.
+    {
+      const idle = game._playerIdleT || 0;                 // seconds the player has been ~stationary
+      // Tangential falls off as the enemy closes in (so it commits to contact, not orbits forever),
+      // and shrinks while the player is idle (ring compresses inward for the kill).
+      let tanW = this._encSlot * 0.9;
+      if (playerDist < 160) tanW *= Math.max(0, (playerDist - 60) / 100);   // near → go straight in
+      if (idle > 1.2) tanW *= 0.45;                                          // idle player → compress
+      const perp = new Vec2(-dir.y, dir.x).scale(tanW);
+      dir = safeNormalize(dir.add(perp));
+      // Stuck detection: if not getting closer over time, nudge laterally + flip slot.
+      if (this._lastDist > 0 && playerDist > this._lastDist - 2) {
+        this._stuckT += dt;
+        if (this._stuckT > 0.7) { this._encSlot = -this._encSlot; this._stuckT = 0; }
+      } else { this._stuckT = 0; }
+      this._lastDist = playerDist;
+    }
+
     // Stealth burst
     let burst = 1;
     if (this.enemyType === 'Stealth Infiltrator' && Math.random() < 0.01) burst = 2;
@@ -771,7 +798,10 @@ export class Enemy {
       dir = safeNormalize(dir.add(new Vec2(randomRange(-1, 1), randomRange(-1, 1)).scale(0.75)));
     }
 
-    this.vel = dir.scale(this.baseSpeed * burst);
+    // Anti-idle contact pressure: if the player is standing still, the whole swarm speeds up slightly
+    // so a passive player is inevitably overrun (Vampire-Survivors philosophy). Bounded.
+    const idlePush = (game._playerIdleT || 0) > 2 ? 1.12 : 1;
+    this.vel = dir.scale(this.baseSpeed * burst * idlePush);
     this.pos.addMut(this.vel.scale(dt));
   }
 
