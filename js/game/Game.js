@@ -14489,12 +14489,46 @@ export class Game {
     ctx.shadowBlur = 0;
     ctx.filter = 'none';
 
-    // Airstrike ships.
+    // Airstrike ships — cinematic pass: frame-crop the sheet (was drawn WHOLE — the "smashed
+    // ships in a square" look), screen blend kills any black bg, plus hover bob, ground shadow,
+    // twin engine glows and a thruster flicker. Fallback stays for missing art.
     const ship = this._airstrikeSprite;
+    const _sNow = performance.now() / 1000;
     for (const s of this.airstrikeShips) {
       const sz = 110;
-      if (ship.complete && ship.naturalWidth) ctx.drawImage(ship, s.pos.x - sz / 2, s.pos.y - sz / 2, sz, sz);
-      else { ctx.save(); ctx.fillStyle = '#dfe9f5'; ctx.beginPath(); ctx.arc(s.pos.x, s.pos.y, 22, 0, Math.PI * 2); ctx.fill(); ctx.restore(); }
+      const bob = Math.sin(_sNow * 2.2 + (s.pos.x % 7)) * 4;
+      const sy2 = s.pos.y + bob;
+      ctx.save();
+      // soft ground shadow (sells altitude)
+      ctx.globalAlpha = 0.30;
+      ctx.fillStyle = '#000000';
+      ctx.beginPath(); ctx.ellipse(s.pos.x, s.pos.y + 46, sz * 0.32, sz * 0.10, 0, 0, Math.PI * 2); ctx.fill();
+      if (ship.complete && ship.naturalWidth) {
+        // frame-crop heuristic: square cells on a horizontal strip (whole image if single)
+        let fw = ship.naturalWidth, fh = ship.naturalHeight, fx = 0;
+        if (ship.naturalWidth >= ship.naturalHeight * 1.8) {
+          fh = ship.naturalHeight; fw = fh;
+          const frames = Math.max(1, Math.floor(ship.naturalWidth / fw));
+          fx = (Math.floor(_sNow * 8 + (s.pos.x % 3)) % frames) * fw;
+        }
+        ctx.globalAlpha = 1;
+        ctx.globalCompositeOperation = 'screen';   // no black box
+        try { ctx.drawImage(ship, fx, 0, fw, fh, s.pos.x - sz / 2, sy2 - sz / 2, sz, sz); } catch (_) {}
+        // twin engine glows + flicker
+        ctx.globalCompositeOperation = 'lighter';
+        const fl = 0.6 + 0.4 * Math.sin(_sNow * 30 + s.pos.x);
+        for (const off of [-sz * 0.18, sz * 0.18]) {
+          ctx.globalAlpha = 0.55 * fl;
+          ctx.fillStyle = '#7fd0ff';
+          ctx.beginPath(); ctx.arc(s.pos.x + off, sy2 + sz * 0.30, 4.5, 0, Math.PI * 2); ctx.fill();
+          ctx.globalAlpha = 0.25 * fl;
+          ctx.beginPath(); ctx.arc(s.pos.x + off, sy2 + sz * 0.30, 9, 0, Math.PI * 2); ctx.fill();
+        }
+      } else {
+        ctx.globalAlpha = 1; ctx.fillStyle = '#dfe9f5';
+        ctx.beginPath(); ctx.arc(s.pos.x, sy2, 22, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.restore();
     }
     // Rockets — premium cyberpunk missile with multi-layer exhaust, sharp silhouette, pulsing blast ring.
     const _rNow = performance.now();
@@ -20622,22 +20656,39 @@ _drawLoreArchive(ctx) {
         const pulse = 0.5 + 0.5 * Math.sin(now * 0.008);
         ctx.save();
 
-        // Irregular molten pool (6 overlapping blobs that grow in)
-        const blobR = R * (0.3 + 0.7 * k);
-        for (let bi = 0; bi < 6; bi++) {
-          const bSeed = ((zSeed + bi * 47) & 0xFFFF) / 0xFFFF;
-          const bAng  = bSeed * Math.PI * 2 + now * 0.0003 * (bi % 2 === 0 ? 1 : -1);
-          const bDist = R * 0.25 * bSeed;
-          const bx    = px + Math.cos(bAng) * bDist;
-          const by    = py + Math.sin(bAng) * bDist;
-          const br    = blobR * (0.5 + bSeed * 0.6);
-          const g = ctx.createRadialGradient(bx, by, 0, bx, by, br);
-          g.addColorStop(0, 'rgba(255,120,20,' + (0.25 + 0.35 * k) + ')');
-          g.addColorStop(0.4, 'rgba(200,40,0,' + (0.15 + 0.25 * k) + ')');
-          g.addColorStop(1, 'rgba(80,5,0,0)');
-          ctx.fillStyle = g;
-          ctx.beginPath(); ctx.arc(bx, by, br, 0, Math.PI * 2); ctx.fill();
+        // CRISP crusted molten pool forming (no mushy gradients): dark crust disc with a
+        // wobbling hot rim + inner lava swirls. Reads sharp at game scale.
+        const poolR = R * (0.35 + 0.6 * k);
+        ctx.save();
+        // dark crust base
+        ctx.globalAlpha = 0.5 + 0.3 * k;
+        ctx.fillStyle = '#2a0a02';
+        ctx.beginPath();
+        for (let bi = 0; bi <= 22; bi++) {                     // wobbling organic edge
+          const wa = (bi / 22) * Math.PI * 2;
+          const wob = 1 + 0.10 * Math.sin(wa * 5 + zSeed) + 0.05 * Math.sin(now * 0.004 + wa * 3);
+          const wx = px + Math.cos(wa) * poolR * wob;
+          const wy = py + Math.sin(wa) * poolR * 0.62 * wob;
+          bi === 0 ? ctx.moveTo(wx, wy) : ctx.lineTo(wx, wy);
         }
+        ctx.closePath(); ctx.fill();
+        // hot rim stroke on the same wobbling path
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.55 + 0.4 * k;
+        ctx.strokeStyle = '#ff5a00'; ctx.lineWidth = 2.5;
+        ctx.shadowColor = '#ff5a00'; ctx.shadowBlur = 8;
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        // inner lava swirls (crisp bezier arcs, slowly rotating)
+        for (let siw = 0; siw < 3; siw++) {
+          const swA = now * 0.0011 * (siw % 2 ? -1 : 1) + siw * 2.1 + zSeed;
+          ctx.globalAlpha = (0.35 + 0.35 * k);
+          ctx.strokeStyle = siw === 0 ? '#ffd23c' : '#ff8a2a'; ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(px, py, poolR * (0.30 + siw * 0.20), swA, swA + Math.PI * (0.8 - siw * 0.15));
+          ctx.stroke();
+        }
+        ctx.restore();
 
         // Molten cracks (flowing lines from center outward)
         ctx.globalAlpha = 0.3 + 0.5 * k;
@@ -20714,26 +20765,55 @@ _drawLoreArchive(ctx) {
           ctx.restore();
         }
 
-        // Massive molten core — layered blobs for irregular lava pool
-        ctx.globalAlpha = Math.max(0, fade) * 0.9;
-        for (let bi = 0; bi < 8; bi++) {
-          const bSeed = ((zSeed + bi * 37) & 0xFFFF) / 0xFFFF;
-          const bAng  = bSeed * Math.PI * 2 + now * 0.002 * (bi % 2 === 0 ? 1 : -1);
-          const bDist = R * 0.2 * bSeed * (1 + it * 0.3);
-          const bx    = px + Math.cos(bAng) * bDist;
-          const by    = py + Math.sin(bAng) * bDist;
-          const br    = R * (0.4 + bSeed * 0.5) * (1 + it * 0.15);
-          const g = ctx.createRadialGradient(bx, by, 0, bx, by, br);
-          if (bi < 3) {
-            g.addColorStop(0, '#fffbe0'); g.addColorStop(0.2, '#ffcc33');
-            g.addColorStop(0.5, '#ff6600'); g.addColorStop(1, 'rgba(120,10,0,0)');
-          } else {
-            g.addColorStop(0, '#ffaa22'); g.addColorStop(0.3, '#dd3300');
-            g.addColorStop(0.7, '#881100'); g.addColorStop(1, 'rgba(40,2,0,0)');
-          }
-          ctx.fillStyle = g;
-          ctx.beginPath(); ctx.arc(bx, by, br, 0, Math.PI * 2); ctx.fill();
+        // CRISP eruption core (no giant soft balloons): white-hot core + double shock ring
+        // + crusted molten pool with hot rim. Sharp, volcanic, readable.
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        // white-hot core flash (shrinks fast)
+        ctx.globalAlpha = Math.max(0, 1 - it * 2.2) * fade;
+        ctx.fillStyle = '#fff6dc';
+        ctx.beginPath(); ctx.arc(px, py, R * 0.30 * (1 - it * 0.5), 0, Math.PI * 2); ctx.fill();
+        // double expanding shock rings
+        for (const [rk, lw, col] of [[1.0, 4, '#ffd23c'], [0.72, 2.5, '#ff5a00']]) {
+          ctx.globalAlpha = Math.max(0, 1 - it) * 0.9 * fade;
+          ctx.strokeStyle = col; ctx.lineWidth = lw * (1 - it * 0.6) + 0.5;
+          ctx.shadowColor = col; ctx.shadowBlur = 10;
+          ctx.beginPath();
+          ctx.ellipse(px, py, R * (0.3 + it * 1.1) * rk, R * (0.3 + it * 1.1) * rk * 0.62, 0, 0, Math.PI * 2);
+          ctx.stroke();
         }
+        ctx.shadowBlur = 0;
+        // crusted pool (same crisp language as the warn phase, settled + bubbling)
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = 0.75 * fade;
+        ctx.fillStyle = '#2a0a02';
+        ctx.beginPath();
+        for (let bi = 0; bi <= 22; bi++) {
+          const wa = (bi / 22) * Math.PI * 2;
+          const wob = 1 + 0.09 * Math.sin(wa * 5 + zSeed) + 0.04 * Math.sin(now * 0.005 + wa * 4);
+          const wx = px + Math.cos(wa) * R * 0.9 * wob;
+          const wy = py + Math.sin(wa) * R * 0.56 * wob;
+          bi === 0 ? ctx.moveTo(wx, wy) : ctx.lineTo(wx, wy);
+        }
+        ctx.closePath(); ctx.fill();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.85 * fade;
+        ctx.strokeStyle = '#ff5a00'; ctx.lineWidth = 2.5;
+        ctx.shadowColor = '#ff5a00'; ctx.shadowBlur = 8;
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        // bubbling hot cells inside the pool (crisp small discs popping)
+        for (let bi = 0; bi < 6; bi++) {
+          const bSeed = ((zSeed + bi * 37) & 0xFFFF) / 0xFFFF;
+          const cyc = ((now * 0.001) * (0.6 + bSeed * 0.7) + bSeed) % 1;
+          ctx.globalAlpha = Math.sin(cyc * Math.PI) * 0.9 * fade;
+          ctx.fillStyle = bi % 2 ? '#ffd23c' : '#ff8a2a';
+          ctx.beginPath();
+          ctx.arc(px + (bSeed - 0.5) * R * 1.2, py + (((zSeed >> 3 & 15) / 15) - 0.5 + bSeed * 0.4 - 0.2) * R * 0.7,
+                  2 + bSeed * 3.5 + cyc * 2, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
 
         // Flying lava globs (irregular shapes flung outward)
         ctx.globalCompositeOperation = 'lighter';
