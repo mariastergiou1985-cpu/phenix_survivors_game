@@ -129,6 +129,13 @@ export class Player {
     this._sigTrail = [];
     this._sigTimer = 0;
 
+    // Phase 5 — procedural movement animation state (cosmetic only, no gameplay effect).
+    // _animPhase advances with distance travelled (so the "step" cadence matches speed),
+    // _moveBlend eases 0→1 between idle and running, _facing mirrors the sprite left/right.
+    this._animPhase = 0;
+    this._moveBlend = 0;
+    this._facing    = 1;
+
     this.kills             = 0;
     this.coresSecured      = 0;
     this.upgrades = {
@@ -338,6 +345,14 @@ export class Player {
 
     // ── Phase 13: movement signature trail — spawn while actually moving, bounded + fading ──
     const sp = Math.hypot(this.vel.x, this.vel.y);
+
+    // ── Phase 5: movement animation state (cosmetic) ──
+    // Step phase advances with distance so the bob cadence tracks actual speed (dash included).
+    const prof = this._animProfile();
+    if (sp > 10) this._animPhase += sp * dt * prof.freq;
+    const targetBlend = sp > 10 ? Math.min(1, sp / this.speed) : 0;
+    this._moveBlend += (targetBlend - this._moveBlend) * Math.min(1, dt * 10);   // ease in/out
+    if (Math.abs(this.vel.x) > 5) this._facing = this.vel.x >= 0 ? 1 : -1;
     this._sigTimer -= dt;
     if (sp > 55 && this._sigTimer <= 0) {
       this._sigTimer = 0.05;
@@ -365,6 +380,25 @@ export class Player {
       case 'eddie':                    return { c: '#ff3b3b', comp: 'lighter' };  // warp flicker
       case 'dimis_kickboxer':          return { c: '#b026ff', comp: 'lighter' };  // heavy purple cyber-vent
       default:                         return null;                               // phasewalker/other: none
+    }
+  }
+
+  // Phase 5 — per-character movement animation profile. freq scales step cadence per pixel
+  // travelled; bob = vertical hop px; lean = max tilt (rad) into the run; stretch = squash
+  // amplitude. Heavies read slow + weighty, speedsters read quick + light. Cosmetic only.
+  _animProfile() {
+    switch (this.selectedCharacter) {
+      case 'taekwondo_girl':         return { freq: 0.055, bob: 3.2, lean: 0.10, stretch: 0.045 }; // fastest — quick light steps
+      case 'japan_phasewalker':      return { freq: 0.052, bob: 2.6, lean: 0.11, stretch: 0.040 }; // glitch-walker — darty
+      case 'assassin_clone':         return { freq: 0.050, bob: 2.8, lean: 0.10, stretch: 0.040 }; // lethal glide
+      case 'eddie':                  return { freq: 0.042, bob: 3.6, lean: 0.07, stretch: 0.050 }; // big bruiser stomp
+      case 'brawler_warrior':        return { freq: 0.042, bob: 3.4, lean: 0.07, stretch: 0.048 };
+      case 'cyber_arm_hero':         return { freq: 0.045, bob: 3.0, lean: 0.08, stretch: 0.042 };
+      case 'euclid_vector':          return { freq: 0.046, bob: 2.8, lean: 0.09, stretch: 0.040 };
+      case 'oni_cataclysm_protocol': return { freq: 0.038, bob: 3.6, lean: 0.06, stretch: 0.050 }; // ominous heavy stride
+      case 'skeleton_warrior':       return { freq: 0.040, bob: 3.8, lean: 0.06, stretch: 0.055 }; // bony clatter — heavy bob
+      case 'dimis_kickboxer':        return { freq: 0.035, bob: 4.0, lean: 0.05, stretch: 0.060 }; // slowest, heaviest stomp
+      default:                       return { freq: 0.045, bob: 3.0, lean: 0.08, stretch: 0.045 };
     }
   }
 
@@ -471,10 +505,29 @@ export class Player {
     if (spr && spr.complete && spr.naturalWidth > 0) {
       const sprH = 64;
       const sprW = Math.round(spr.naturalWidth * (sprH / spr.naturalHeight));
+
+      // ── Phase 5: procedural movement animation — no static slide. All transforms pivot at the
+      // FEET (bottom-center) so steps plant on the ground. Running: distance-driven bob (hop),
+      // lean into the travel direction, step squash/stretch. Idle: soft breathing. The sprite
+      // mirrors to face the movement direction. Cosmetic only — position/hitbox untouched.
+      const prof  = this._animProfile();
+      const blend = this._moveBlend;
+      const step  = Math.sin(this._animPhase);
+      const now   = performance.now() / 1000;
+      const bobY    = -Math.abs(step) * prof.bob * blend;                                  // hop (always up)
+      const lean    = clamp(this.vel.x / (this.speed || 1), -1, 1) * prof.lean * blend
+                    + step * 0.02 * blend;                                                 // tilt + step wobble
+      const breathe = (1 - blend) * Math.sin(now * 2.2) * 0.02;                            // idle breathing
+      const stY     = 1 + step * prof.stretch * blend + breathe;                           // vertical stretch
+      const stX     = 1 - (step * prof.stretch * blend + breathe) * 0.7;                   // volume-preserving
+
       ctx.save();
+      ctx.translate(this.pos.x, this.pos.y + sprH / 2 + bobY);   // feet pivot
+      ctx.rotate(lean);
+      ctx.scale(stX * this._facing, stY);
       ctx.shadowColor = vis.rim;   // tinted rim hugging the sprite silhouette ("outline")
       ctx.shadowBlur  = 8;
-      ctx.drawImage(spr, this.pos.x - sprW / 2, this.pos.y - sprH / 2, sprW, sprH);
+      ctx.drawImage(spr, -sprW / 2, -sprH, sprW, sprH);
       ctx.restore();
     } else {
       ctx.fillStyle   = colors.primary;
@@ -544,3 +597,4 @@ export class Player {
     }
   }
 }
+// Phase 5: procedural movement animation — sync marker 20260711450000-r2
