@@ -142,7 +142,7 @@ export class Enemy {
       case 'Ember Scarab':           return 'mixed';
       case 'Pulse Burrower':         return 'mixed';
       case 'Rift Eye':               return 'shooter';
-      case 'Solar Stinger':          return 'shooter';
+      case 'Solar Stinger':          return 'hunter';   // Φ7 VS-style: fast melee wasp (was a circle-spam shooter)
       case 'Toxin Leech':            return 'hunter';
       case 'Void Widow':             return 'shooter';
       case 'Volt Rat':               return 'hunter';
@@ -170,13 +170,7 @@ export class Enemy {
 
   _initRole(type) {
     switch (type) {
-      case 'Glitch Drone':
-        this.shootInterval = 2.5;
-        this.bulletSpeed   = 480;   // speed pass: 380 → 480
-        this.bulletDamage  = 4;
-        this.bulletRadius  = 5;
-        this.bulletColor   = CYAN;
-        break;
+      // Glitch Drone — Φ7 VS-style: pure melee swarm pressure, NO bullets (was weak circle spam)
       case 'Security Defector Mech':
         this.shootInterval = 2.6;
         this.bulletSpeed   = 400;   // speed pass: 280 → 400
@@ -255,13 +249,7 @@ export class Enemy {
         this.bulletRadius  = 7;
         this.bulletColor   = PURPLE;
         break;
-      case 'Solar Stinger':
-        this.shootInterval = 1.6;
-        this.bulletSpeed   = 580;   // speed pass: 520 → 580
-        this.bulletDamage  = 8;
-        this.bulletRadius  = 5;
-        this.bulletColor   = YELLOW;
-        break;
+      // Solar Stinger — Φ7 VS-style: pure melee swarm pressure, NO bullets (was weak circle spam)
       case 'Void Widow':
         this.shootInterval = 2.8;
         this.bulletSpeed   = 500;   // speed pass: 400 → 500
@@ -269,13 +257,7 @@ export class Enemy {
         this.bulletRadius  = 7;
         this.bulletColor   = PURPLE;
         break;
-      case 'Volt Rat':
-        this.shootInterval = 3.5;
-        this.bulletSpeed   = 420;   // speed pass: 300 → 420
-        this.bulletDamage  = 5;
-        this.bulletRadius  = 5;
-        this.bulletColor   = CYAN;
-        break;
+      // Volt Rat — Φ7 VS-style: pure melee swarm pressure, NO bullets (was weak circle spam)
       // ── Chaos Mode ranged/mixed enemies ──
       case 'EMP Hacker Drone':
         this.shootInterval = 2.4;
