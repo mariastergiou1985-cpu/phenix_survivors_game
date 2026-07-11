@@ -8829,7 +8829,13 @@ export class Game {
       if (this._bossRushCount == null) { this._bossRushCount = 0; this._bossRushSchedule = [120, 480]; }
       const chaosEl = this.timeAlive - (this._chaosStartedAt < 0 ? this.timeAlive : this._chaosStartedAt);
       const next = this._bossRushSchedule[this._bossRushCount];
+      if (next != null && chaosEl >= next - 5 && chaosEl < next && !this._bossRushWarned) {
+        this._bossRushWarned = true;                       // Phase 6: pre-warning beat
+        this.triggerAnnouncement('\u26a0 BOSS RUSH INCOMING \u2014 ARENA FORMING \u26a0', '#ff9a2d');
+        this.audio?.playEventWarning?.();
+      }
       if (next != null && chaosEl >= next) {
+        this._bossRushWarned = false;
         this._bossRushCount++;
         this._bossRush = {
           t: 0, dur: 180, cx: this.player.pos.x, cy: this.player.pos.y,
@@ -8845,6 +8851,17 @@ export class Game {
     br.t += dt;
     const T = br.t;
     const min = this.currentMinute();
+
+    // \u2500\u2500 Phase 6: PLAYER LOCK \u2014 the arena wall is solid; the fight cannot be skipped \u2500\u2500
+    {
+      const LOCK_R = 700 - 18;   // just inside the drawn wall
+      const pdx = this.player.pos.x - br.cx, pdy = this.player.pos.y - br.cy;
+      const pd  = Math.hypot(pdx, pdy);
+      if (pd > LOCK_R && pd > 0) {
+        this.player.pos.x = br.cx + (pdx / pd) * LOCK_R;
+        this.player.pos.y = br.cy + (pdy / pd) * LOCK_R;
+      }
+    }
 
     // ── Bounded periodic swarm during setup (0-30s), XP-rich phase ──
     br.spawnAcc -= dt;
@@ -8947,14 +8964,37 @@ export class Game {
     const sx = (br.cx - this.camera.x) * vs;
     const sy = (br.cy - this.camera.y) * vs;
     ctx.save();
-    // Gold arena ring with semicircle segments (premium presentation)
+    // Phase 6: pseudo-3D holographic arena cage \u2014 solid base ring, energy pillars with
+    // vertical height (taller/brighter on the near side, shorter/dimmer behind), and a floating
+    // top rim. Reads as a 3D cylinder without any real 3D math; purely canvas 2D, bounded cost.
     const AR = 700 * vs;
-    ctx.lineWidth = 4; ctx.globalAlpha = 0.5;
-    for (let i = 0; i < 12; i++) {
-      const a0 = (i / 12) * Math.PI * 2, a1 = a0 + Math.PI / 12;
-      ctx.strokeStyle = (i % 2 === 0) ? 'rgba(255,212,71,0.7)' : 'rgba(255,150,60,0.4)';
-      ctx.beginPath(); ctx.arc(sx, sy, AR, a0, a1); ctx.stroke();
+    const tNow = performance.now() / 1000;
+    const WALL_H = 96 * vs;                                     // pillar height (screen px)
+    // base ring (ground contact)
+    ctx.lineWidth = 4; ctx.globalAlpha = 0.6; ctx.strokeStyle = 'rgba(255,212,71,0.8)';
+    ctx.beginPath(); ctx.arc(sx, sy, AR, 0, Math.PI * 2); ctx.stroke();
+    // energy pillars (36 posts; near side reads closer \u2192 taller + brighter)
+    for (let i = 0; i < 36; i++) {
+      const a = (i / 36) * Math.PI * 2 + tNow * 0.08;           // slow rotation = alive
+      const px = sx + Math.cos(a) * AR, py = sy + Math.sin(a) * AR;
+      const near = 0.5 + 0.5 * Math.sin(a);                     // 0 back \u2192 1 front
+      const h = WALL_H * (0.45 + 0.55 * near);
+      const pulse = 0.75 + 0.25 * Math.sin(tNow * 3 + i * 1.7);
+      const g = ctx.createLinearGradient(px, py, px, py - h);
+      g.addColorStop(0, `rgba(255,212,71,${(0.55 * near + 0.18) * pulse})`);
+      g.addColorStop(1, 'rgba(255,150,60,0)');
+      ctx.strokeStyle = g; ctx.lineWidth = 3; ctx.globalAlpha = 1;
+      ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(px, py - h); ctx.stroke();
     }
+    // translucent wall sheet (very light, sells the surface between pillars)
+    const wall = ctx.createLinearGradient(sx, sy, sx, sy - WALL_H);
+    wall.addColorStop(0, 'rgba(255,190,60,0.10)');
+    wall.addColorStop(1, 'rgba(255,190,60,0)');
+    ctx.strokeStyle = wall; ctx.lineWidth = WALL_H; ctx.globalAlpha = 0.5;
+    ctx.beginPath(); ctx.arc(sx, sy - WALL_H / 2, AR, 0, Math.PI * 2); ctx.stroke();
+    // floating top rim
+    ctx.lineWidth = 2.5; ctx.globalAlpha = 0.45; ctx.strokeStyle = 'rgba(255,235,150,0.9)';
+    ctx.beginPath(); ctx.arc(sx, sy - WALL_H, AR, 0, Math.PI * 2); ctx.stroke();
     // Hazard ring(s)
     const hz = br.hazard;
     if (hz) {
