@@ -51,7 +51,7 @@ import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260711730000';
 import { NexusManager } from './NexusManager.js?v=20260711900000';
 import { VESSELS, getVesselById, getDefaultVesselId } from './VesselCatalog.js?v=20260705040000';
 import { PETS, getPetById } from './PetCatalog.js?v=20260705000000';
-import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons, isEvolutionOwnedBy, getCardDisplayName } from './WeaponCatalog.js?v=20260711990000';
+import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons, isEvolutionOwnedBy, getCardDisplayName } from './WeaponCatalog.js?v=20260712000000';
 import { TACTICAL_ID, TACTICAL_DEFS, getTacticalDef, getTacticalForCharacter, getAvailableTactical, preloadTacticalSprites, FUSION_TACTICALS } from './TacticalWeaponCatalog.js?v=20260711420000';
 import { VFXSpritePlayer } from './VFXSpritePlayer.js?v=20260711800000';
 
@@ -12035,6 +12035,122 @@ export class Game {
             ctx.beginPath(); ctx.ellipse(0, 0, 1.6, 5.5, 0, 0, Math.PI * 2); ctx.fill();
             ctx.restore();
           }
+        }
+        ctx.restore();
+      } else if (f.id === 'causality_stitch') {
+        // TIMELINE ZIPPER: a glitch-seam UNZIPS forward — the two reality edges flicker
+        // in different timeline colors with cross-stitch glitch ticks (act 1-2) → the
+        // zipper CLOSES backwards, stitching shut with a white suture flash (act 3).
+        const dir5 = f.angle || 0;
+        const LEN = f.R * 1.7;
+        ctx.save();
+        ctx.rotate(dir5);
+        ctx.globalCompositeOperation = 'lighter';
+        const unzip = Math.min(1, k / 0.45);
+        const rezip = Math.max(0, (k - 0.62) / 0.45);
+        const head = unzip * LEN;                        // zipper head position
+        const tail = rezip * LEN;                        // how much has re-closed (from far end back)
+        // gap width breathes along the seam
+        for (let xx = tail > 0 ? 0 : 0; xx <= head; xx += 8) {
+          if (rezip > 0 && xx > LEN - tail) continue;    // already stitched shut
+          const local = xx / LEN;
+          const gap = (Math.sin(local * Math.PI) * 10 + 3) * (1 - rezip * 0.4);
+          const flickA = 0.55 + 0.35 * Math.sin(f.t * 21 + xx);
+          const flickB = 0.55 + 0.35 * Math.sin(f.t * 19 + xx + 2.2);
+          // upper lip: timeline A (cyan)   lower lip: timeline B (magenta)
+          ctx.globalAlpha = flickA;
+          ctx.strokeStyle = '#7df9ff'; ctx.lineWidth = 2.2;
+          ctx.beginPath(); ctx.moveTo(xx, -gap); ctx.lineTo(xx + 8, -(Math.sin((xx + 8) / LEN * Math.PI) * 10 + 3) * (1 - rezip * 0.4)); ctx.stroke();
+          ctx.globalAlpha = flickB;
+          ctx.strokeStyle = '#ff4dd2';
+          ctx.beginPath(); ctx.moveTo(xx, gap); ctx.lineTo(xx + 8, (Math.sin((xx + 8) / LEN * Math.PI) * 10 + 3) * (1 - rezip * 0.4)); ctx.stroke();
+          // void between the lips
+          ctx.globalAlpha = 0.5;
+          ctx.fillStyle = '#02020a';
+          ctx.globalCompositeOperation = 'source-over';
+          ctx.fillRect(xx, -gap + 2, 8, gap * 2 - 4);
+          ctx.globalCompositeOperation = 'lighter';
+          // cross-stitch glitch ticks
+          if ((xx / 8) % 3 < 1) {
+            ctx.globalAlpha = 0.7;
+            ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(xx, -gap); ctx.lineTo(xx + 5, gap); ctx.stroke();
+          }
+        }
+        // zipper head spark
+        const hx2 = rezip > 0 ? LEN - tail : head;
+        if (hx2 > 2 && hx2 < LEN - 1) {
+          ctx.globalAlpha = 0.95;
+          ctx.fillStyle = '#ffffff';
+          ctx.shadowColor = rezip > 0 ? '#ff4dd2' : '#7df9ff'; ctx.shadowBlur = 14;
+          ctx.beginPath(); ctx.arc(hx2, 0, 4.5, 0, Math.PI * 2); ctx.fill();
+          ctx.shadowBlur = 0;
+        }
+        if (rezip > 0) {                                 // suture line left behind
+          ctx.globalAlpha = 0.8 * Math.min(1, rezip * 1.4);
+          ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.4;
+          ctx.setLineDash([5, 4]);
+          ctx.beginPath(); ctx.moveTo(LEN - tail, 0); ctx.lineTo(LEN, 0); ctx.stroke();
+          ctx.setLineDash([]);
+        }
+        ctx.restore();
+      } else if (f.id === 'quantum_roulette') {
+        // SUPERPOSITION SPIN: 6 spectral probability-ghosts blink around a circle like a
+        // roulette that decelerates (act 1-2) → lands on ONE → all other possibilities
+        // COLLAPSE into it in streaks and it detonates (act 3).
+        const NG = 6;
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        const spinT = Math.min(1, k / 0.62);
+        // decelerating cursor: angle integrates a slowing speed
+        const cursor = 14 * (spinT - spinT * spinT / 2); // ∫(14(1-t))dt — smooth slowdown
+        const winner = ((cursor % (Math.PI * 2)) / (Math.PI * 2) * NG) | 0;
+        const collapse = Math.max(0, (k - 0.66) / 0.49);
+        for (let i2 = 0; i2 < NG; i2++) {
+          const ga3 = (i2 / NG) * Math.PI * 2;
+          const gr2 = f.R * 0.7;
+          const gx2 = Math.cos(ga3) * gr2, gy3 = Math.sin(ga3) * gr2 * 0.72;
+          const isWin = i2 === winner;
+          // cursor proximity → this ghost lights up as the roulette passes
+          const dAng = Math.abs((((cursor - ga3) % (Math.PI * 2)) + Math.PI * 3) % (Math.PI * 2) - Math.PI);
+          const lit2 = Math.max(0, 1 - dAng / 0.9);
+          let px4 = gx2, py4 = gy3, al2 = 0.25 + lit2 * 0.7;
+          if (collapse > 0) {
+            if (isWin) { al2 = 1; }
+            else {                                       // streak toward the winner
+              const wx2 = Math.cos((winner / NG) * Math.PI * 2) * gr2;
+              const wy2 = Math.sin((winner / NG) * Math.PI * 2) * gr2 * 0.72;
+              px4 = gx2 + (wx2 - gx2) * collapse; py4 = gy3 + (wy2 - gy3) * collapse;
+              al2 = (1 - collapse) * 0.9;
+              ctx.globalAlpha = al2 * 0.6;               // collapse streak
+              ctx.strokeStyle = '#c86bff'; ctx.lineWidth = 1.6;
+              ctx.beginPath(); ctx.moveTo(gx2, gy3); ctx.lineTo(px4, py4); ctx.stroke();
+            }
+          }
+          // the ghost: flickering spectral silhouette (diamond body + head dot)
+          const blink = spinT < 1 ? (Math.sin(f.t * (9 + i2 * 2)) > -0.3 ? 1 : 0.15) : 1;
+          ctx.save();
+          ctx.translate(px4, py4);
+          ctx.globalAlpha = al2 * blink;
+          ctx.strokeStyle = isWin && collapse > 0 ? '#ffffff' : '#c86bff';
+          ctx.lineWidth = isWin && collapse > 0 ? 2.6 : 1.6;
+          ctx.shadowColor = '#c86bff'; ctx.shadowBlur = 10;
+          ctx.beginPath();
+          ctx.moveTo(0, -14); ctx.lineTo(6, 0); ctx.lineTo(0, 12); ctx.lineTo(-6, 0); ctx.closePath(); ctx.stroke();
+          ctx.beginPath(); ctx.arc(0, -18, 3, 0, Math.PI * 2); ctx.stroke();
+          ctx.shadowBlur = 0;
+          ctx.restore();
+        }
+        if (collapse > 0.55) {                           // superposition detonation on the winner
+          const dK3 = (collapse - 0.55) / 0.45;
+          const wx2 = Math.cos((winner / NG) * Math.PI * 2) * f.R * 0.7;
+          const wy2 = Math.sin((winner / NG) * Math.PI * 2) * f.R * 0.7 * 0.72;
+          ctx.globalAlpha = (1 - dK3) * 0.95;
+          ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 3 * (1 - dK3) + 0.8;
+          ctx.beginPath(); ctx.arc(wx2, wy2, 10 + dK3 * f.R * 0.9, 0, Math.PI * 2); ctx.stroke();
+          ctx.globalAlpha = (1 - dK3) * 0.4;
+          ctx.fillStyle = '#c86bff';
+          ctx.beginPath(); ctx.arc(wx2, wy2, 8 + dK3 * f.R * 0.6, 0, Math.PI * 2); ctx.fill();
         }
         ctx.restore();
       } else if (f.id === 'revenant_choir') {

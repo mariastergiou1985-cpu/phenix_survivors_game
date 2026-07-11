@@ -48,6 +48,8 @@ export const WEAPON_ID = Object.freeze({
   SOLO_OF_THE_DAMNED:'solo_of_the_damned',// NEW eddie evolution (procedural)
   SANCTION_HALO:    'sanction_halo',    // NEW dimi evolution (procedural)
   WING_GUILLOTINE:  'wing_guillotine',  // NEW dimi evolution (procedural)
+  CAUSALITY_STITCH: 'causality_stitch', // NEW phasewalker evolution (procedural)
+  QUANTUM_ROULETTE: 'quantum_roulette', // NEW phasewalker evolution (procedural)
   TEMPEST_RIBBON:   'tempest_ribbon',   // NEW taekwondo evolution (procedural)
   REVENANT_CHOIR:   'revenant_choir',   // NEW skeleton evolution (procedural)
 });
@@ -695,6 +697,30 @@ export const WEAPON_DEFS = Object.freeze({
     color: '#e8f2ff',
     baseStats: { damage: 33, cooldown: 2.7, aoeRadius: 135, speed: 0, piercing: 99 },
   },
+  [WEAPON_ID.CAUSALITY_STITCH]: {
+    id: 'causality_stitch',
+    name: 'Causality Stitch',
+    description: 'Reality unzips — a glitch-seam runs forward with both timeline edges flickering different colors, then the zipper CLOSES backwards, stitching enemies inside.',
+    character: 'japan_phasewalker',
+    element: 'void',
+    behavior: WEAPON_BEHAVIOR.GROUND_SHOCKWAVE,
+    isEvolution: true,
+    procedural: true,
+    color: '#7df9ff',
+    baseStats: { damage: 29, cooldown: 2.7, aoeRadius: 160, speed: 0, piercing: 99 },
+  },
+  [WEAPON_ID.QUANTUM_ROULETTE]: {
+    id: 'quantum_roulette',
+    name: 'Quantum Roulette',
+    description: 'Six spectral probability-ghosts blink around a circle like a roulette spinning slower and slower — it stops on one, and every other possibility COLLAPSES into it.',
+    character: 'japan_phasewalker',
+    element: 'void',
+    behavior: WEAPON_BEHAVIOR.NOVA,
+    isEvolution: true,
+    procedural: true,
+    color: '#c86bff',
+    baseStats: { damage: 31, cooldown: 3.0, aoeRadius: 145, speed: 0, piercing: 99 },
+  },
   [WEAPON_ID.REVENANT_CHOIR]: {
     id: 'revenant_choir',
     name: 'Revenant Choir',
@@ -818,6 +844,18 @@ export const EVOLUTION_RECIPES = Object.freeze([
     ingredients: [WEAPON_ID.STORM_SABER, WEAPON_ID.CATACLYSM_PULSE],
     minLevel: 5,
     owner: ['dimis_kickboxer'],
+  },
+  {
+    result: WEAPON_ID.CAUSALITY_STITCH,
+    ingredients: [WEAPON_ID.GLITCH_TEAR, WEAPON_ID.STORM_SABER],
+    minLevel: 5,
+    owner: ['japan_phasewalker'],
+  },
+  {
+    result: WEAPON_ID.QUANTUM_ROULETTE,
+    ingredients: [WEAPON_ID.GLITCH_TEAR, WEAPON_ID.SPIRIT_CRESCENT],
+    minLevel: 5,
+    owner: ['japan_phasewalker'],
   },
   {
     result: WEAPON_ID.CHAOS_CHORD,
