@@ -849,6 +849,73 @@ export class Enemy {
   draw(ctx) {
     const drawColor = this.hitFlash > 0 ? WHITE : this.color;
 
+    // ── Rank presence layer (cinematic pass — cosmetic only, all enemies) ──────
+    // Spawn-in glitch materialization for everyone, then a rank-scaled ground aura:
+    // minions = whisper glow · elites = rotating dashed ring · bosses = heavy breathing
+    // aura + rising embers · mega-bosses = double ring + stronger embers.
+    {
+      if (this._spawnT === undefined) this._spawnT = 0.6;          // one-shot on first draw
+      const nowS = performance.now() / 1000;
+      const boss = this.isBoss() || this.isMegaBoss;
+      // spawn materialization: horizontal glitch slices + flash (0.6s)
+      if (this._spawnT > 0) {
+        this._spawnT -= 1 / 60;
+        const sk = Math.max(0, this._spawnT / 0.6);                // 1 → 0
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = sk * 0.8;
+        ctx.strokeStyle = this.color;
+        ctx.lineWidth = 2;
+        for (let i = 0; i < 3; i++) {
+          const oy = (i - 1) * this.radius * 0.6;
+          const jx = Math.sin(nowS * 40 + i * 7) * 8 * sk;
+          ctx.beginPath();
+          ctx.moveTo(this.pos.x - this.radius - 6 + jx, this.pos.y + oy);
+          ctx.lineTo(this.pos.x + this.radius + 6 + jx, this.pos.y + oy);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+      // rank aura
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      if (this.isMegaBoss) {
+        const br = this.radius * 1.5, pulse = 0.72 + 0.28 * Math.sin(nowS * 2.2);
+        ctx.globalAlpha = 0.34 * pulse;
+        ctx.strokeStyle = this.color; ctx.lineWidth = 3.5;
+        ctx.shadowColor = this.color; ctx.shadowBlur = 16;
+        ctx.beginPath(); ctx.ellipse(this.pos.x, this.pos.y + this.radius * 0.8, br, br * 0.42, 0, 0, Math.PI * 2); ctx.stroke();
+        ctx.globalAlpha = 0.2 * pulse; ctx.lineWidth = 8;
+        ctx.beginPath(); ctx.ellipse(this.pos.x, this.pos.y + this.radius * 0.8, br * 0.75, br * 0.32, 0, 0, Math.PI * 2); ctx.stroke();
+      } else if (boss) {
+        const br = this.radius * 1.35, pulse = 0.7 + 0.3 * Math.sin(nowS * 2.6);
+        ctx.globalAlpha = 0.28 * pulse;
+        ctx.strokeStyle = this.color; ctx.lineWidth = 3;
+        ctx.shadowColor = this.color; ctx.shadowBlur = 12;
+        ctx.beginPath(); ctx.ellipse(this.pos.x, this.pos.y + this.radius * 0.8, br, br * 0.42, 0, 0, Math.PI * 2); ctx.stroke();
+      } else if (this.isElite) {
+        ctx.globalAlpha = 0.35 + 0.12 * Math.sin(nowS * 3);
+        ctx.strokeStyle = this.color; ctx.lineWidth = 1.8;
+        ctx.setLineDash([7, 6]); ctx.lineDashOffset = -nowS * 24;
+        ctx.beginPath(); ctx.ellipse(this.pos.x, this.pos.y + this.radius * 0.75, this.radius * 1.2, this.radius * 0.5, 0, 0, Math.PI * 2); ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      // boss embers (cheap: 4, time-derived, no arrays)
+      if (boss) {
+        ctx.fillStyle = this.color;
+        for (let i = 0; i < (this.isMegaBoss ? 6 : 4); i++) {
+          const v = Math.sin((this.pos.x | 0) * 0.13 + i * 78.233) * 43758.5453;
+          const rnd = v - Math.floor(v);
+          const cyc = (nowS * (0.3 + rnd * 0.3) + rnd) % 1;
+          ctx.globalAlpha = Math.sin(cyc * Math.PI) * 0.45;
+          ctx.beginPath();
+          ctx.arc(this.pos.x + (rnd - 0.5) * this.radius * 2.2, this.pos.y + this.radius * 0.7 - cyc * this.radius * 2.4, 1.6 + rnd * 1.6, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      ctx.restore();
+    }
+
     // (Carrying glow removed — enemies no longer carry cores)
 
     // Try to draw sprite if loaded

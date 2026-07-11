@@ -206,6 +206,78 @@ export class WeatherTheater {
     ctx.restore();
   }
 
+  // ── WHITEOUT (Glacial hazard — replaces the flat white radial fog) ─────────
+  whiteout(ctx, t, W, H, k = 1) {
+    ctx.save();
+    // swirling snow in 2 depths
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.fillStyle = '#ffffff';
+    for (let L = 0; L < 2; L++) {
+      const n = L ? 16 : 24, sp = L ? 90 : 55;
+      for (let i = 0; i < n; i++) {
+        const cyc = ((t * sp) / (H + 40) + pr(i, L + 90)) % 1;
+        const sway = Math.sin(t * (0.8 + pr(i, L + 91)) + i) * 40;
+        ctx.globalAlpha = (L ? 0.5 : 0.25) * k;
+        ctx.beginPath();
+        ctx.arc(pr(i, L + 92) * W + sway, cyc * (H + 40) - 20, L ? 2.2 : 1.3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    // frost crystals growing on the screen edges
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.strokeStyle = '#e6f4ff'; ctx.lineWidth = 1.4;
+    for (let i = 0; i < 10; i++) {
+      const edge = i % 4;
+      const px2 = edge === 0 ? pr(i, 95) * W : edge === 1 ? pr(i, 95) * W : edge === 2 ? 0 : W;
+      const py2 = edge === 0 ? 0 : edge === 1 ? H : pr(i, 96) * H;
+      const len = (14 + pr(i, 97) * 22) * k;
+      const dir = edge === 0 ? Math.PI / 2 : edge === 1 ? -Math.PI / 2 : edge === 2 ? 0 : Math.PI;
+      ctx.globalAlpha = 0.5 * k;
+      ctx.beginPath(); ctx.moveTo(px2, py2);
+      ctx.lineTo(px2 + Math.cos(dir + 0.4) * len, py2 + Math.sin(dir + 0.4) * len);
+      ctx.moveTo(px2, py2);
+      ctx.lineTo(px2 + Math.cos(dir - 0.4) * len, py2 + Math.sin(dir - 0.4) * len);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // ── ABYSSAL MURK (deep-sea darkness with life in it) ───────────────────────
+  murk(ctx, t, W, H, k = 1) {
+    ctx.save();
+    // drifting bioluminescent motes
+    ctx.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < 14; i++) {
+      const cyc = (t * (0.05 + pr(i, 100) * 0.06) + pr(i, 101)) % 1;
+      const gl = 0.4 + 0.6 * Math.sin(t * (1 + pr(i, 102)) + i);
+      ctx.globalAlpha = Math.max(0, gl) * 0.30 * k;
+      ctx.fillStyle = i % 3 ? '#3a7dc9' : '#6fd0ff';
+      ctx.beginPath();
+      ctx.arc(pr(i, 103) * W, ((pr(i, 104) + cyc) % 1) * H, 1.4 + pr(i, 105) * 2.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // slow shadow shapes gliding past behind everything (source-over dark blobs)
+    ctx.globalCompositeOperation = 'source-over';
+    for (let i = 0; i < 3; i++) {
+      const cyc = (t * 0.03 * (1 + i * 0.4) + pr(i, 110)) % 1.4 - 0.2;
+      ctx.globalAlpha = 0.12 * k;
+      ctx.fillStyle = '#020817';
+      ctx.beginPath();
+      ctx.ellipse(cyc * W * 1.2, pr(i, 111) * H, 130 + i * 50, 26 + i * 8, Math.sin(t * 0.2 + i) * 0.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // pressure rings drifting up (very faint)
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.strokeStyle = '#2f5f9f'; ctx.lineWidth = 1;
+    for (let i = 0; i < 4; i++) {
+      const cyc = (t * 0.1 + pr(i, 112)) % 1;
+      ctx.globalAlpha = Math.sin(cyc * Math.PI) * 0.18 * k;
+      ctx.beginPath();
+      ctx.arc(pr(i, 113) * W, H - cyc * H, 8 + cyc * 26, 0, Math.PI * 2); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   // ── GRID BLACKOUT (system failure ambience over the existing darkness) ─────
   blackout(ctx, t, W, H, k = 1) {
     ctx.save();
