@@ -51,7 +51,7 @@ import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260711730000';
 import { NexusManager } from './NexusManager.js?v=20260711900000';
 import { VESSELS, getVesselById, getDefaultVesselId } from './VesselCatalog.js?v=20260705040000';
 import { PETS, getPetById } from './PetCatalog.js?v=20260705000000';
-import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons, isEvolutionOwnedBy, getCardDisplayName } from './WeaponCatalog.js?v=20260712010000';
+import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons, isEvolutionOwnedBy, getCardDisplayName } from './WeaponCatalog.js?v=20260712020000';
 import { TACTICAL_ID, TACTICAL_DEFS, getTacticalDef, getTacticalForCharacter, getAvailableTactical, preloadTacticalSprites, FUSION_TACTICALS } from './TacticalWeaponCatalog.js?v=20260711420000';
 import { VFXSpritePlayer } from './VFXSpritePlayer.js?v=20260711800000';
 
@@ -12267,6 +12267,148 @@ export class Game {
             ctx.globalAlpha = (1 - dust) * 0.8;
             ctx.beginPath();
             ctx.arc(Math.cos(da2) * dr2, Math.sin(da2) * dr2 * 0.72 - dust * 14, 1.4 + prV(f.seed, i2) * 1.6, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+        ctx.restore();
+      } else if (f.id === 'hannya_brand') {
+        // DEMON CALLIGRAPHY: an invisible brush sears the kanji 鬼 stroke by stroke —
+        // each stroke a glowing ember line with a hot brush-tip (act 1-2) → on the final
+        // stroke the whole ideogram IGNITES in blue oni-fire blasting outward (act 3).
+        // Simplified 鬼 as 7 strokes (polyline segments, hand-drawn proportions).
+        const K2 = 0.9;
+        const STK = [
+          [[-4, -46], [4, -38]],                              // top tick
+          [[-22, -34], [22, -34], [22, -2], [-22, -2], [-22, -34]],  // head box
+          [[-22, -18], [22, -18]],                            // box mid-line
+          [[0, -34], [0, -2]],                                // box center vertical
+          [[-14, -2], [-20, 22], [-28, 34]],                  // left leg
+          [[6, -2], [10, 18], [22, 30], [30, 26]],            // right leg w/ hook
+          [[14, 8], [24, 14]],                                // demon tick (the horn)
+        ];
+        const totalPts = STK.reduce((n2, st2) => n2 + st2.length - 1, 0);
+        const drawn = Math.min(1, k / 0.62) * totalPts;
+        const ignite = Math.max(0, (k - 0.68) / 0.2);
+        const blast = Math.max(0, (k - 0.8) / 0.35);
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.lineCap = 'round';
+        let seg = 0, tipX = 0, tipY = 0, tipOn = false;
+        for (const st2 of STK) {
+          for (let i2 = 0; i2 < st2.length - 1; i2++) {
+            const segK = Math.min(1, Math.max(0, drawn - seg)); seg++;
+            if (segK <= 0) continue;
+            const [x1, y1] = st2[i2], [x2, y2] = st2[i2 + 1];
+            const ex3 = x1 + (x2 - x1) * segK, ey3 = y1 + (y2 - y1) * segK;
+            // ember stroke — turns blue-white as it ignites
+            ctx.globalAlpha = (0.8 - blast * 0.8);
+            ctx.strokeStyle = ignite > 0 ? '#9ec2ff' : '#ff7a3c';
+            ctx.lineWidth = 4.6 * K2 + ignite * 2;
+            ctx.shadowColor = ignite > 0 ? '#5a8cff' : '#ff7a3c';
+            ctx.shadowBlur = 10 + ignite * 10;
+            ctx.beginPath(); ctx.moveTo(x1 * K2, y1 * K2); ctx.lineTo(ex3 * K2, ey3 * K2); ctx.stroke();
+            ctx.shadowBlur = 0;
+            if (segK < 1) { tipX = ex3 * K2; tipY = ey3 * K2; tipOn = true; }
+          }
+        }
+        if (tipOn && ignite <= 0) {                           // the searing brush tip
+          ctx.globalAlpha = 0.95;
+          ctx.fillStyle = '#fff4d8';
+          ctx.shadowColor = '#ff7a3c'; ctx.shadowBlur = 14;
+          ctx.beginPath(); ctx.arc(tipX, tipY, 3.4, 0, Math.PI * 2); ctx.fill();
+          ctx.shadowBlur = 0;
+        }
+        if (blast > 0) {                                      // blue oni-fire blast
+          ctx.globalAlpha = (1 - blast) * 0.9;
+          ctx.strokeStyle = '#9ec2ff'; ctx.lineWidth = 3.4 * (1 - blast) + 0.8;
+          ctx.beginPath(); ctx.ellipse(0, 0, f.R * blast * 1.15, f.R * blast * 0.6, 0, 0, Math.PI * 2); ctx.stroke();
+          for (let i2 = 0; i2 < 10; i2++) {                   // blue flame tongues
+            const fa2 = prV(f.seed, i2 + 20) * Math.PI * 2;
+            const fr2 = f.R * blast * (0.5 + prV(f.seed, i2 + 21) * 0.55);
+            ctx.globalAlpha = (1 - blast) * 0.7;
+            ctx.strokeStyle = i2 % 2 ? '#5a8cff' : '#cfe0ff'; ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(Math.cos(fa2) * fr2 * 0.75, Math.sin(fa2) * fr2 * 0.45);
+            ctx.lineTo(Math.cos(fa2) * fr2, Math.sin(fa2) * fr2 * 0.6 - 8);
+            ctx.stroke();
+          }
+        }
+        ctx.restore();
+      } else if (f.id === 'gate_of_hungry_ghosts') {
+        // THE TORII: a black basalt gate RISES from the ground (act 1) → shadow hands
+        // reach out from its threshold and sweep, grasping (act 2) → the gate SINKS
+        // taking everything, leaving only embers (act 3).
+        const GW = 62, GH = 78;
+        const rise = Math.min(1, k / 0.24);
+        const sink = Math.max(0, (k - 0.78) / 0.3);
+        const lift = (rise - sink) * GH;
+        ctx.save();
+        // the gate silhouette (source-over — it must be BLACK basalt, not glow)
+        if (lift > 1) {
+          ctx.save();
+          ctx.beginPath(); ctx.rect(-GW, -GH - 20, GW * 2, GH + 20 + 6);  // clip above ground
+          ctx.clip();
+          ctx.translate(0, GH - lift);
+          ctx.fillStyle = '#0a0610';
+          ctx.strokeStyle = '#b026ff'; ctx.lineWidth = 1.6;
+          // two pillars
+          for (const sd of [-1, 1]) {
+            ctx.fillRect(sd * GW * 0.42 - 5, -GH + 18, 10, GH - 18);
+            ctx.strokeRect(sd * GW * 0.42 - 5, -GH + 18, 10, GH - 18);
+          }
+          // double lintel with upswept kasagi
+          ctx.beginPath();
+          ctx.moveTo(-GW * 0.62, -GH + 12); ctx.quadraticCurveTo(0, -GH + 2, GW * 0.62, -GH + 12);
+          ctx.lineTo(GW * 0.58, -GH + 20); ctx.quadraticCurveTo(0, -GH + 11, -GW * 0.58, -GH + 20);
+          ctx.closePath(); ctx.fill(); ctx.stroke();
+          ctx.fillRect(-GW * 0.5, -GH + 26, GW, 6);
+          ctx.strokeRect(-GW * 0.5, -GH + 26, GW, 6);
+          ctx.restore();
+        }
+        ctx.globalCompositeOperation = 'lighter';
+        // threshold void glow between the pillars
+        if (lift > GH * 0.5 && sink < 1) {
+          const vg2 = ctx.createRadialGradient(0, -14, 2, 0, -14, 34);
+          vg2.addColorStop(0, `rgba(176,38,255,${0.5 * (1 - sink)})`);
+          vg2.addColorStop(1, 'rgba(176,38,255,0)');
+          ctx.fillStyle = vg2;
+          ctx.beginPath(); ctx.arc(0, -14, 34, 0, Math.PI * 2); ctx.fill();
+        }
+        // shadow hands sweep out of the threshold
+        const grasp = k > 0.3 && sink <= 0 ? Math.min(1, (k - 0.3) / 0.4) : (sink > 0 ? Math.max(0, 1 - sink * 2) : 0);
+        if (grasp > 0) {
+          for (let h2 = 0; h2 < 5; h2++) {
+            const ha2 = (h2 / 5 - 0.5) * Math.PI * 1.5 + Math.sin(f.t * 2.2 + h2 * 1.9) * 0.35;
+            const reach = f.R * (0.4 + prV(f.seed, h2) * 0.6) * grasp * (0.8 + 0.2 * Math.sin(f.t * 3.4 + h2 * 2.6));
+            const hx3 = Math.cos(ha2) * reach, hy3 = -10 + Math.sin(ha2) * reach * 0.55;
+            // the arm: tapering dark tentacle with purple rim
+            ctx.globalAlpha = 0.75 * grasp;
+            ctx.strokeStyle = '#b026ff'; ctx.lineWidth = 1.4;
+            ctx.beginPath(); ctx.moveTo(0, -12);
+            ctx.quadraticCurveTo(hx3 * 0.5, hy3 * 0.5 - 16, hx3, hy3); ctx.stroke();
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.globalAlpha = 0.8 * grasp;
+            ctx.strokeStyle = '#0a0610'; ctx.lineWidth = 5;
+            ctx.beginPath(); ctx.moveTo(0, -12);
+            ctx.quadraticCurveTo(hx3 * 0.5, hy3 * 0.5 - 16, hx3, hy3); ctx.stroke();
+            ctx.globalCompositeOperation = 'lighter';
+            // grasping fingers
+            for (let fg = 0; fg < 3; fg++) {
+              const fa3 = ha2 + (fg - 1) * 0.5 + Math.sin(f.t * 6 + h2 + fg) * 0.24;
+              ctx.globalAlpha = 0.85 * grasp;
+              ctx.strokeStyle = '#b026ff'; ctx.lineWidth = 1.6;
+              ctx.beginPath(); ctx.moveTo(hx3, hy3);
+              ctx.lineTo(hx3 + Math.cos(fa3) * 9, hy3 + Math.sin(fa3) * 7); ctx.stroke();
+            }
+          }
+        }
+        if (sink > 0.4) {                                     // only embers remain
+          ctx.fillStyle = '#ff7a3c';
+          for (let i2 = 0; i2 < 8; i2++) {
+            const ep = prV(f.seed, i2 + 60);
+            ctx.globalAlpha = (1 - sink) * 1.4 * Math.min(1, sink * 2) * 0.7;
+            ctx.beginPath();
+            ctx.arc((ep - 0.5) * GW, 2 - (sink - 0.4) * (14 + ep * 22), 1.3 + ep * 1.4, 0, Math.PI * 2);
             ctx.fill();
           }
         }

@@ -52,6 +52,8 @@ export const WEAPON_ID = Object.freeze({
   QUANTUM_ROULETTE: 'quantum_roulette', // NEW phasewalker evolution (procedural)
   FRACTAL_VERDICT:  'fractal_verdict',  // NEW euclid evolution (procedural)
   GOLDEN_SPIRAL_GUILLOTINE: 'golden_spiral_guillotine', // NEW euclid evolution (procedural)
+  HANNYA_BRAND:     'hannya_brand',     // NEW oni evolution (procedural)
+  GATE_OF_HUNGRY_GHOSTS: 'gate_of_hungry_ghosts', // NEW oni evolution (procedural)
   TEMPEST_RIBBON:   'tempest_ribbon',   // NEW taekwondo evolution (procedural)
   REVENANT_CHOIR:   'revenant_choir',   // NEW skeleton evolution (procedural)
 });
@@ -747,6 +749,30 @@ export const WEAPON_DEFS = Object.freeze({
     color: '#ffd76a',
     baseStats: { damage: 28, cooldown: 2.8, aoeRadius: 155, speed: 0, piercing: 99 },
   },
+  [WEAPON_ID.HANNYA_BRAND]: {
+    id: 'hannya_brand',
+    name: 'Hannya Brand',
+    description: 'An invisible brush sears the demon kanji stroke by stroke into the ground — on the final stroke the whole ideogram IGNITES in blue oni-fire that blasts outward.',
+    character: 'oni_cataclysm_protocol',
+    element: 'fire',
+    behavior: WEAPON_BEHAVIOR.NOVA,
+    isEvolution: true,
+    procedural: true,
+    color: '#5a8cff',
+    baseStats: { damage: 32, cooldown: 2.8, aoeRadius: 150, speed: 0, piercing: 99 },
+  },
+  [WEAPON_ID.GATE_OF_HUNGRY_GHOSTS]: {
+    id: 'gate_of_hungry_ghosts',
+    name: 'Gate of Hungry Ghosts',
+    description: 'A black basalt torii gate rises from the ground — shadow hands reach out from its threshold and sweep for everything in reach, then the gate sinks back, taking it all, leaving only embers.',
+    character: 'oni_cataclysm_protocol',
+    element: 'shadow',
+    behavior: WEAPON_BEHAVIOR.VORTEX,
+    isEvolution: true,
+    procedural: true,
+    color: '#b026ff',
+    baseStats: { damage: 30, cooldown: 3.0, aoeRadius: 160, speed: 0, piercing: 99 },
+  },
   [WEAPON_ID.REVENANT_CHOIR]: {
     id: 'revenant_choir',
     name: 'Revenant Choir',
@@ -894,6 +920,18 @@ export const EVOLUTION_RECIPES = Object.freeze([
     ingredients: [WEAPON_ID.NEXUS_CHAKRAM, WEAPON_ID.MAGNETIC_ARC],
     minLevel: 5,
     owner: ['euclid_vector'],
+  },
+  {
+    result: WEAPON_ID.HANNYA_BRAND,
+    ingredients: [WEAPON_ID.CATACLYSM_PULSE, WEAPON_ID.SPIRIT_CRESCENT],
+    minLevel: 5,
+    owner: ['oni_cataclysm_protocol'],
+  },
+  {
+    result: WEAPON_ID.GATE_OF_HUNGRY_GHOSTS,
+    ingredients: [WEAPON_ID.SHADOW_TOXIC, WEAPON_ID.CATACLYSM_PULSE],
+    minLevel: 5,
+    owner: ['oni_cataclysm_protocol'],
   },
   {
     result: WEAPON_ID.CHAOS_CHORD,
