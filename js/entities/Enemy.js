@@ -597,6 +597,11 @@ export class Enemy {
   }
 
   _die(game) {
+    // Φ7: a downed Overclocked Bomber still cooks off — smaller telegraphed blast on death.
+    if (this.enemyType === 'Overclocked Bomber' && !this._cookedOff) {
+      this._cookedOff = true;
+      try { if (game && game._spawnEnemyOrbZone) game._spawnEnemyOrbZone({ pos: this.pos.clone(), damage: 12 }, 65); } catch (_) {}
+    }
     game.audio?.playEnemyDeath?.();
     // Tiered death feedback (visual only). Heavy/elite/boss-type enemies get a larger
     // burst plus an expanding neon shock-ring so big kills read weightier than trash.
@@ -653,6 +658,46 @@ export class Enemy {
       this.hp = Math.min(this.maxHp, this.hp + this._biomeRegen * dt);
     }
     if (this.hitFlash > 0) this.hitFlash -= dt;
+
+    // ── Φ7 aggression: Overclocked Bomber is a REAL suicide unit now — inside 70px it
+    // arms (0.5s furious blink) and detonates itself in a telegraphed blast zone.
+    if (this.enemyType === 'Overclocked Bomber' && this.hp > 0 && game?.player?.pos) {
+      const dP = Math.hypot(game.player.pos.x - this.pos.x, game.player.pos.y - this.pos.y);
+      if (this._armT === undefined) this._armT = -1;
+      if (this._armT < 0 && dP < 70) { this._armT = 0.5; this.speed *= 0.3; }   // arm + brace
+      if (this._armT >= 0) {
+        this._armT -= dt;
+        this.hitFlash = 0.05;                              // furious white blink while armed
+        if (this._armT <= 0) {
+          if (game._spawnEnemyOrbZone) game._spawnEnemyOrbZone({ pos: this.pos.clone(), damage: 18 }, 85);
+          this.hp = 0;
+          this._die(game);
+          return;
+        }
+      }
+    }
+
+    // ── Φ7 aggression: Cyber-Axe Executioner LUNGES — every ~3.5s, if the player sits in
+    // the 120-300px band, he telegraphs (0.4s wind-up flash) then bursts forward at 3.2×.
+    if (this.enemyType === 'Cyber-Axe Executioner' && this.hp > 0 && game?.player?.pos) {
+      if (this._lungeCd === undefined) { this._lungeCd = 2.0; this._lungeT = 0; this._windup = 0; }
+      this._lungeCd -= dt;
+      const dP = Math.hypot(game.player.pos.x - this.pos.x, game.player.pos.y - this.pos.y);
+      if (this._windup > 0) {
+        this._windup -= dt;
+        this.hitFlash = 0.05;                              // wind-up telegraph flash
+        if (this._windup <= 0) { this._lungeT = 0.4; }     // release the lunge
+      } else if (this._lungeT > 0) {
+        this._lungeT -= dt;
+        const dx = game.player.pos.x - this.pos.x, dy = game.player.pos.y - this.pos.y;
+        const dd = Math.hypot(dx, dy) || 1;
+        this.pos.x += (dx / dd) * this.speed * 2.2 * dt;   // burst ON TOP of normal chase movement
+        this.pos.y += (dy / dd) * this.speed * 2.2 * dt;
+      } else if (this._lungeCd <= 0 && dP > 120 && dP < 300) {
+        this._lungeCd = 3.5;
+        this._windup  = 0.4;
+      }
+    }
 
     // ── Knockback decay (applied before movement AI, independent of role) ────
     // Exponential decay to zero; bosses not displaced (immune). Clamp so micro-drift
