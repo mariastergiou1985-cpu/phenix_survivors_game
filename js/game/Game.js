@@ -14925,9 +14925,13 @@ export class Game {
         const alpha = Math.max(0, 1 - fk);
         ctx.save();
         if (lspr.complete && lspr.naturalWidth) {
+          // PHASE 4 fix: screen blend — the sprite's dark box vanishes, ONLY the bolt renders
+          // (brightness/branching preserved; additive family keeps it luminous over any biome).
+          ctx.globalCompositeOperation = 'screen';
           ctx.globalAlpha = alpha;
           const bw = z.radius * 2.0, bh = z.radius * 7;   // tall lightning column descending into the zone
           ctx.drawImage(lspr, z.pos.x - bw / 2, z.pos.y - bh + z.radius * 0.4, bw, bh);
+          ctx.globalCompositeOperation = 'source-over';
         }
         ctx.globalAlpha = alpha * 0.8;                 // bright impact flash
         ctx.fillStyle = '#eaf4ff';
@@ -21223,8 +21227,9 @@ _drawLoreArchive(ctx) {
           const startY = py - 400;
           const curY   = startY + (py - startY) * (k * k);   // accelerate down (gravity) → lands at impact
           ctx.globalAlpha = Math.min(1, 0.45 + k);
-          ctx.globalCompositeOperation = 'source-over';
+          ctx.globalCompositeOperation = 'screen';   // PHASE 4 family fix: no sprite box
           ctx.drawImage(_lb, cx, cy, cw, chh, px - bw / 2, curY - bh / 2, bw, bh);
+          ctx.globalCompositeOperation = 'source-over';
         }
 
         ctx.restore();
