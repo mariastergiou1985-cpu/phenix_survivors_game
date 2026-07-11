@@ -2441,25 +2441,31 @@ export class Game {
     const sprH = VESSEL_COMPANION_SIZE;
     const sprW = Math.round(spr.naturalWidth * (sprH / spr.naturalHeight));
 
-    // Soft engine/thruster glow under the vessel — shows it's a powered ship
+    // Living escort pass: hover bob + banking tilt + twin flickering engine glows.
+    const _vNow = performance.now() / 1000;
+    const vBob  = Math.sin(_vNow * 2.1) * 4;
+    const vBank = Math.max(-0.12, Math.min(0.12, ((vx - (this._vesselLastX ?? vx)) || 0) * 0.05));
+    this._vesselLastX = vx;
     ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.globalAlpha = 0.18;
-    const vg = ctx.createRadialGradient(vx, vy + sprH * 0.18, sprH * 0.08, vx, vy + sprH * 0.18, sprH * 0.38);
-    vg.addColorStop(0, '#00e6ff');
-    vg.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = vg;
-    ctx.beginPath();
-    ctx.arc(vx, vy + sprH * 0.18, sprH * 0.38, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-
-    ctx.save();
+    ctx.translate(vx, vy + vBob);
+    ctx.rotate(vBank);
     ctx.globalAlpha = 1.0;
-    // Vessel escorts the player as a companion — offset, not covering the character
-    ctx.drawImage(spr, vx - sprW / 2, vy - sprH / 2, sprW, sprH);
+    ctx.drawImage(spr, -sprW / 2, -sprH / 2, sprW, sprH);
+    // twin engines + heat wake
+    ctx.globalCompositeOperation = 'lighter';
+    const vFl = 0.55 + 0.45 * Math.sin(_vNow * 24);
+    for (const off of [-sprW * 0.20, sprW * 0.20]) {
+      ctx.globalAlpha = 0.6 * vFl;
+      ctx.fillStyle = '#7fe6ff';
+      ctx.beginPath(); ctx.arc(off, sprH * 0.34, 3.5, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 0.28 * vFl;
+      ctx.beginPath(); ctx.arc(off, sprH * 0.34, 7.5, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 0.20 * vFl;                       // heat wake streak
+      ctx.strokeStyle = '#7fe6ff'; ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.moveTo(off, sprH * 0.38); ctx.lineTo(off, sprH * 0.38 + 14 + vFl * 6); ctx.stroke();
+    }
     ctx.restore();
-    this._drawOwnedChevron(ctx, vx, vy - sprH / 2);
+    this._drawOwnedChevron(ctx, vx, vy + vBob - sprH / 2);
   }
 
   // ─── Cyber-Pet System ────────────────────────────────────────────────────────
@@ -2690,33 +2696,51 @@ export class Game {
   _drawPets(ctx) {
     if (!this._activePets || this._activePets.length === 0) return;
 
-    // Draw pet bolts
+    // Draw pet bolts — comet streaks (trail opposite the velocity, white-hot core)
     for (const b of this._petBolts) {
       ctx.save();
-      ctx.fillStyle = b.color;
-      ctx.shadowColor = b.color;
-      ctx.shadowBlur = 6;
-      ctx.beginPath();
-      ctx.arc(b.x, b.y, 3, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.globalCompositeOperation = 'lighter';
+      const bl = Math.hypot(b.vx || 0, b.vy || 0) || 1;
+      const nx = (b.vx || 0) / bl, ny = (b.vy || 1) / bl;
+      ctx.globalAlpha = 0.45;
+      ctx.strokeStyle = b.color; ctx.lineWidth = 4; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(b.x - nx * 16, b.y - ny * 16); ctx.lineTo(b.x, b.y); ctx.stroke();
+      ctx.globalAlpha = 0.9;
+      ctx.lineWidth = 1.6; ctx.strokeStyle = '#ffffff';
+      ctx.beginPath(); ctx.moveTo(b.x - nx * 9, b.y - ny * 9); ctx.lineTo(b.x, b.y); ctx.stroke();
+      ctx.shadowColor = b.color; ctx.shadowBlur = 8;
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath(); ctx.arc(b.x, b.y, 2.4, 0, Math.PI * 2); ctx.fill();
       ctx.restore();
     }
 
-    // Draw pet bombs
+    // Draw pet bombs — blinking fuse core, then a crisp detonation (double ring + flash)
+    const _pbNow = performance.now() / 1000;
     for (const bomb of this._petBombs) {
       ctx.save();
-      ctx.globalAlpha = 0.8;
-      ctx.fillStyle = bomb.color;
-      ctx.shadowColor = bomb.color;
-      ctx.shadowBlur = 10;
-      ctx.beginPath();
-      ctx.arc(bomb.x, bomb.y, bomb.detonated ? bomb.radius * 0.5 : 6, 0, Math.PI * 2);
-      ctx.fill();
-      if (bomb.detonated) {
-        ctx.globalAlpha = 0.15;
-        ctx.beginPath();
-        ctx.arc(bomb.x, bomb.y, bomb.radius, 0, Math.PI * 2);
-        ctx.fill();
+      ctx.globalCompositeOperation = 'lighter';
+      if (!bomb.detonated) {
+        const blink = 0.5 + 0.5 * Math.sin(_pbNow * 12);
+        ctx.globalAlpha = 0.9;
+        ctx.fillStyle = bomb.color;
+        ctx.shadowColor = bomb.color; ctx.shadowBlur = 10;
+        ctx.beginPath(); ctx.arc(bomb.x, bomb.y, 5.5, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = blink;                                   // arming blink
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath(); ctx.arc(bomb.x, bomb.y, 2.2, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = 0.4 * blink;                             // arming ring
+        ctx.strokeStyle = bomb.color; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(bomb.x, bomb.y, 10 + blink * 3, 0, Math.PI * 2); ctx.stroke();
+      } else {
+        const dk = Math.min(1, (bomb.detT = (bomb.detT || 0) + 0.05));
+        ctx.globalAlpha = (1 - dk) * 0.9;                          // white core flash
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath(); ctx.arc(bomb.x, bomb.y, bomb.radius * 0.22 * (1 - dk * 0.5), 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = bomb.color; ctx.shadowColor = bomb.color; ctx.shadowBlur = 10;
+        ctx.globalAlpha = (1 - dk) * 0.95; ctx.lineWidth = 4 * (1 - dk) + 1;
+        ctx.beginPath(); ctx.arc(bomb.x, bomb.y, bomb.radius * (0.3 + dk * 0.7), 0, Math.PI * 2); ctx.stroke();
+        ctx.globalAlpha = (1 - dk) * 0.5; ctx.lineWidth = 10 * (1 - dk);
+        ctx.beginPath(); ctx.arc(bomb.x, bomb.y, bomb.radius * (0.24 + dk * 0.56), 0, Math.PI * 2); ctx.stroke();
       }
       ctx.restore();
     }
@@ -2761,11 +2785,24 @@ export class Game {
       }
       const sprH = _petScale[pet.def.id] || 48;
       const sprW = Math.round(spr.naturalWidth * (sprH / spr.naturalHeight));
+      // Living companion pass: hover bob + banking tilt from horizontal motion + thruster flicker.
+      const _now2 = performance.now() / 1000;
+      const bob2 = Math.sin(_now2 * 2.6 + pet.slot * 1.7) * 3.5;
+      const bank = Math.max(-0.16, Math.min(0.16, ((pet.x - (pet._lastX ?? pet.x)) || 0) * 0.06));
+      pet._lastX = pet.x;
       ctx.save();
+      ctx.translate(pet.x, pet.y + bob2);
+      ctx.rotate(bank);
       ctx.globalAlpha = 0.95;   // near-full opacity — pets are player-owned, not ghostly
-      ctx.drawImage(spr, pet.x - sprW / 2, pet.y - sprH / 2, sprW, sprH);
+      ctx.drawImage(spr, -sprW / 2, -sprH / 2, sprW, sprH);
+      // thruster spark under the belly
+      ctx.globalCompositeOperation = 'lighter';
+      const fl2 = 0.5 + 0.5 * Math.sin(_now2 * 26 + pet.slot * 3);
+      ctx.globalAlpha = 0.5 * fl2;
+      ctx.fillStyle = teamColor;
+      ctx.beginPath(); ctx.arc(0, sprH * 0.42, 3 + fl2 * 2, 0, Math.PI * 2); ctx.fill();
       ctx.restore();
-      this._drawOwnedChevron(ctx, pet.x, pet.y - sprH / 2);
+      this._drawOwnedChevron(ctx, pet.x, pet.y + bob2 - sprH / 2);
     }
   }
 
