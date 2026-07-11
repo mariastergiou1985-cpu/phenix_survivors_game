@@ -776,7 +776,11 @@ export class Enemy {
       const idle = game._playerIdleT || 0;                 // seconds the player has been ~stationary
       // Tangential falls off as the enemy closes in (so it commits to contact, not orbits forever),
       // and shrinks while the player is idle (ring compresses inward for the kill).
-      let tanW = this._encSlot * 0.9;
+      // #82 role-specific pursuit: fast/light enemies FLANK (wider tangential arc to fill open
+      // angles), heavy/slow enemies act as BLOCKERS (straighter charge that closes the ring). No
+      // extra state — derived from baseSpeed so it applies across the whole roster automatically.
+      const _roleTanMul = this.baseSpeed > 200 ? 1.25 : this.baseSpeed < 130 ? 0.7 : 1.0;
+      let tanW = this._encSlot * 0.9 * _roleTanMul;
       if (playerDist < 160) tanW *= Math.max(0, (playerDist - 60) / 100);   // near → go straight in
       if (idle > 1.2) tanW *= 0.45;                                          // idle player → compress
       const perp = new Vec2(-dir.y, dir.x).scale(tanW);

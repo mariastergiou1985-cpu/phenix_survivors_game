@@ -12,13 +12,13 @@ import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260705040000
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260705150000';
 import { Player }         from '../entities/Player.js?v=20260711360000';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260706270000';
-import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260710310000';
+import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260711370000';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=20260703990000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260705150000';
 import { SystemEventManager } from './Events.js?v=20260710310000';
-import { UpgradeUI }      from './UpgradeUI.js?v=20260711360000';
-import { weightedSample } from './Upgrades.js?v=20260711360000';
+import { UpgradeUI }      from './UpgradeUI.js?v=20260711370000';
+import { weightedSample } from './Upgrades.js?v=20260711370000';
 import { MutationUI }      from './MutationUI.js?v=20260703990000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260705300000';
@@ -376,23 +376,23 @@ const EDEN_MILESTONES = [
 
 const CHAOS_LAWS = [
   { id: 'blood_grid',        name: 'Blood Grid',           color: '#ef4444',
-    desc: 'Enemies accelerate. Rewards intensify.',
-    future: 'Future: enemy speed up, score/reward multiplier.' },
+    desc: 'Enemies move +10% faster. Score +15%.',
+    future: 'Aggression: the swarm accelerates and every kill pays more.' },
   { id: 'frozen_eden',       name: 'Frozen Eden',          color: '#00ccff',
-    desc: 'Cryo hazards bleed through the Grid.',
-    future: 'Future: ice storms, slow fields, bonus XP.' },
+    desc: 'Enemies chilled -10% speed. XP +15%.',
+    future: 'Attrition: slower foes, but the Grid feeds you more TECH-XP.' },
   { id: 'serpent_law',       name: 'Serpent Law',          color: '#ff7733',
-    desc: 'Fire paths reopen across NULL EDEN.',
-    future: 'Future: ember trails, burn hazards, Serpent pressure.' },
+    desc: 'Enemies +6% faster, bosses +6% HP. Score +12%.',
+    future: 'Fire pressure: relentless pursuit and hardier serpents.' },
   { id: 'dragon_law',        name: 'Dragon Law',           color: '#a855f7',
-    desc: 'Cryo memory begins to fall from above.',
-    future: 'Future: periodic cryo rain and Dragon Echo pressure.' },
+    desc: 'Bosses +15% HP. XP +12%.',
+    future: 'Cryo-elite: bosses endure far longer, rewards scale up.' },
   { id: 'no_mercy_protocol', name: 'No Mercy Protocol',    color: '#fbbf24',
-    desc: 'Bosses stabilize beyond safe limits.',
-    future: 'Future: boss HP/damage up, score multiplier.' },
+    desc: 'Bosses +12% HP. Score +18%.',
+    future: 'Boss overdrive: the hardest fights pay the richest score.' },
   { id: 'broken_signal',     name: 'Broken Signal',        color: '#ff2d95',
-    desc: 'EDEN CORE transmissions become unreliable.',
-    future: 'Future: corrupted messages, altered event warnings.' },
+    desc: 'Enemies +5% faster. Score +20%, XP +8%.',
+    future: 'High risk / high reward: unstable Grid, maximum payout.' },
 ];
 
 // ── System Logs / Lore Archive — unlock via Eden Memory threshold ──────────
@@ -2047,9 +2047,14 @@ export class Game {
   /** Returns active Chaos Law multipliers for this run. All fields default to 1 (no effect). */
   _getActiveChaosLawModifiers() {
     const mods = { scoreMult: 1, xpMult: 1, bossHpMult: 1, enemySpeedMult: 1 };
-    if (this.runChaosLaw === 'blood_grid')        { mods.scoreMult  = 1.10; mods.enemySpeedMult = 1.07; }
-    if (this.runChaosLaw === 'frozen_eden')       { mods.xpMult     = 1.10; }
-    if (this.runChaosLaw === 'no_mercy_protocol') { mods.scoreMult  = 1.15; mods.bossHpMult = 1.10; }
+    switch (this.runChaosLaw) {
+      case 'blood_grid':        mods.scoreMult = 1.15; mods.enemySpeedMult = 1.10; break;   // aggression
+      case 'frozen_eden':       mods.xpMult    = 1.15; mods.enemySpeedMult = 0.90; break;   // attrition (chilled foes)
+      case 'serpent_law':       mods.scoreMult = 1.12; mods.enemySpeedMult = 1.06; mods.bossHpMult = 1.06; break; // fire pressure
+      case 'dragon_law':        mods.xpMult    = 1.12; mods.bossHpMult = 1.15; break;       // cryo-elite bosses
+      case 'no_mercy_protocol': mods.scoreMult = 1.18; mods.bossHpMult = 1.12; break;       // boss overdrive
+      case 'broken_signal':     mods.scoreMult = 1.20; mods.xpMult = 1.08; mods.enemySpeedMult = 1.05; break; // high risk/reward
+    }
     return mods;
   }
 
@@ -3010,14 +3015,21 @@ export class Game {
     else if (this.comboCount >= 2)  bonus = 5;
     this.score += Math.round((10 + bonus) * this._getActiveChaosLawModifiers().scoreMult);
 
-    // HP CELL drop: guaranteed one healing pickup every 40 kills, near the defeated enemy.
+    // HP CELL drop: one healing pickup every ~25 non-elite kills, near the defeated enemy.
     // Does not touch overload / credits / score / combo, and never replaces Phoenix revives.
     // Elite kills are excluded — they grant their own sparse reward roll in Enemy._die, so dense
     // elite waves no longer accelerate the generic HP-drop cadence (Endless health-drop spam fix).
-    if (pos && !isElite && ++this.killsSinceHealthDrop >= 25) {
-      this.killsSinceHealthDrop = 0;
-      const dropPos = this._clampPickupPos(pos.clone().add(new Vec2(randomRange(-10, 10), -8)));
-      this.healthPickups.push({ pos: dropPos, timer: 25 });
+    // #76 distribution audit — LOW-HP MERCY: when the player is badly hurt (<30% HP) the drop
+    // threshold tightens (25 → 15 kills) so relief arrives sooner in a losing fight; at healthy HP
+    // the cadence is unchanged (no farming exploit). Cap concurrent pickups so they can't pile up.
+    if (pos && !isElite) {
+      const _hpFrac  = this.player && this.player.maxHp ? this.player.hp / this.player.maxHp : 1;
+      const _thresh  = _hpFrac < 0.30 ? 15 : 25;
+      if (++this.killsSinceHealthDrop >= _thresh && (this.healthPickups.length < 6)) {
+        this.killsSinceHealthDrop = 0;
+        const dropPos = this._clampPickupPos(pos.clone().add(new Vec2(randomRange(-10, 10), -8)));
+        this.healthPickups.push({ pos: dropPos, timer: 25 });
+      }
     }
   }
 
@@ -20933,10 +20945,16 @@ _drawLoreArchive(ctx) {
       const _lawLabel = this.runChaosLaw === 'blood_grid'        ? 'BLOOD GRID'
                       : this.runChaosLaw === 'frozen_eden'       ? 'FROZEN EDEN'
                       : this.runChaosLaw === 'no_mercy_protocol' ? 'NO MERCY'
+                      : this.runChaosLaw === 'serpent_law'       ? 'SERPENT LAW'
+                      : this.runChaosLaw === 'dragon_law'        ? 'DRAGON LAW'
+                      : this.runChaosLaw === 'broken_signal'     ? 'BROKEN SIGNAL'
                       : this.runChaosLaw.toUpperCase().replace(/_/g, ' ');
       const _lawColor = this.runChaosLaw === 'blood_grid'        ? '#ef4444'
                       : this.runChaosLaw === 'frozen_eden'       ? '#00ccff'
                       : this.runChaosLaw === 'no_mercy_protocol' ? '#fbbf24'
+                      : this.runChaosLaw === 'serpent_law'       ? '#ff7733'
+                      : this.runChaosLaw === 'dragon_law'        ? '#a855f7'
+                      : this.runChaosLaw === 'broken_signal'     ? '#ff2d95'
                       : '#2ee6f6';
       ctx.font      = 'bold 7px Consolas, monospace';
       ctx.fillStyle = _lawColor + '99';

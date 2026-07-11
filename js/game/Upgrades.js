@@ -6,6 +6,13 @@ export const RARITY_COLORS = {
   rare:      '#4aa3ff',
   epic:      '#b66bff',
   legendary: '#ffd23c',
+  mythic:    '#ff4de3',   // #77 5th tier — build-defining character ULTIMATE cards
+};
+
+// #77 rarity → draw weight multiplier. Higher tiers are rarer in the reward pool (real 5-tier
+// logic — previously rarity was cosmetic only). Kept GENTLE so build-critical ults still appear.
+export const RARITY_WEIGHT = {
+  common: 1.0, rare: 0.85, epic: 0.70, legendary: 0.55, mythic: 0.42,
 };
 
 export class UpgradeDefinition {
@@ -316,6 +323,15 @@ export const ALL_UPGRADES = [
     ['eddie']),   // Eddie only — available in Act 1 + Endless
 ];
 
+// #77 — promote each character's build-defining ULTIMATE mastery to the new mythic tier.
+// Post-construction so it can't disturb the definition order; unknown keys are simply skipped.
+const _MYTHIC_KEYS = new Set([
+  'skeleton_thunder_solo_mastery', 'cyber_heavy_chains_mastery', 'taekwondo_dojang_flag_mastery',
+  'brawler_skyfall_lances_mastery', 'assassin_clone_chrome_phantom_mastery', 'phasewalker_singularity_mastery',
+  'dimi_cyber_angel_mastery',
+]);
+for (const u of ALL_UPGRADES) { if (_MYTHIC_KEYS.has(u.key)) u.rarity = 'mythic'; }
+
 // ─── Weighted sample: every card is useful; bias toward the player's current build ──
 // New cards stay common (weight 3); cards already invested in are weighted higher so
 // the offered set leans into the build the player is forming (and reroll does the same).
@@ -341,6 +357,7 @@ export function weightedSample(player, n = 3, ctx = {}) {
     const lvl  = player.upgrades[u.key] || 0;
     let   w    = lvl === 0 ? 3 : 2 + lvl;
     if (u.char && u.char === player.selectedCharacter) w *= masteryBoost;
+    w *= (RARITY_WEIGHT[u.rarity] || 1);   // #77 real 5-tier weighting
     return w;
   };
 
