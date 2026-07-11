@@ -305,6 +305,7 @@ export const AMULET_DEFS = [
   { id: 'amulet_dimi',        char: 'dimis_kickboxer',        charName: 'Dimi',             name: 'Angelic Relay',      sprite: 'assets/amulets/amulet_dimi.png',        cost: 110 },
   { id: 'amulet_phasewalker', char: 'japan_phasewalker',      charName: 'Phasewalker',      name: 'Singularity Knot',   sprite: 'assets/amulets/amulet_phasewalker.png', cost: 110 },
   { id: 'amulet_eyklid',      char: 'euclid_vector',          charName: 'Euclid Vector',    name: 'Axiom Locket',       sprite: 'assets/amulets/amulet_eyklid.png',      cost: 110 },
+  { id: 'amulet_brawler',     char: 'brawler_warrior',        charName: 'Brawler Warrior',  name: 'Magma Core Fist',    sprite: 'assets/amulets/amulet_brawler.png',     cost: 110 },
   { id: 'amulet_oni',         char: 'oni_cataclysm_protocol', charName: 'Oni',              name: 'Cataclysm Bead',     sprite: 'assets/amulets/amulet_oni.png',         cost: 130 },
 ];
 export const AMULET_BY_ID   = Object.fromEntries(AMULET_DEFS.map(a => [a.id, a]));
