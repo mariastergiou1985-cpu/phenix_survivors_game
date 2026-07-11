@@ -127,7 +127,9 @@ export class EnemySpawner {
     let iv = Math.max(0.16, 0.5 - minute * 0.025);
     if (mode.endless) iv = Math.max(0.04, iv * 0.30);
     if (mode.chaos)   iv = Math.max(0.06, iv / 1.5);
-    return iv * (mode.spawnRateMult || 1);
+    // BALANCE (Maria): characters got strong — pressure comes from DENSITY, not damage nerfs.
+    // +15% spawn rate in every mode; the global 340-enemy hard cap + culling keep perf safe.
+    return (iv / 1.15) * (mode.spawnRateMult || 1);
   }
 
   // ─── Spawn Batch Size ───────────────────────────────────────────────────

@@ -278,7 +278,7 @@ export class Player {
     // Slightly slower early (so the new higher enemy density doesn't strobe level-ups),
     // a steady quadratic mid-game, and — paired with time-scaled kill XP in Enemy._die —
     // still regular level-ups in the late game.
-    return Math.round(6 + level * 4 + level * level * 0.7);
+    return Math.round(6 + level * 4 + level * level * 0.85);   // BALANCE: 0.7→0.85 — slower late-game levels, card pool lasts 1h+
   }
 
   gainXp(amount, floatingTexts) {

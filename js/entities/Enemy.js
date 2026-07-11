@@ -629,7 +629,7 @@ export class Enemy {
     }
     // Normal-enemy XP scales with elapsed time (+1 every 2 min) so dense late-game
     // crowds still feed steady level-ups; bosses keep their flat high values.
-    let xp = this.isMegaBoss ? 42 : (this.isBoss() ? 12 : 1 + Math.floor((game.timeAlive || 0) / 120));
+    let xp = this.isMegaBoss ? 42 : (this.isBoss() ? 12 : 1 + Math.floor((game.timeAlive || 0) / 150));   // BALANCE: 120→150s per +1 — cards must last past the hour
     game.player.gainXp(xp, game.floatingTexts);
 
     game._onVaultKill?.(this.pos);   // VAULT lock progress — nearby kills break the lock
