@@ -35,6 +35,7 @@ import { FeedbackApocalypse } from '../effects/feedback-apocalypse.js?v=20260711
 import { OniMaskOverture } from '../effects/oni-mask-overture.js?v=20260711530000';
 import { EuclidTheorem } from '../effects/euclid-theorem.js?v=20260711540000';
 import { DeusExMachina } from '../effects/deus-ex-machina.js?v=20260711550000';
+import { RailgunHorizon } from '../effects/railgun-horizon.js?v=20260711560000';
 import { Protocol0 } from '../effects/protocol-0.js?v=20260705000000';
 import { LaserEyes } from '../effects/laser-eyes.js?v=20260709100000';
 import { MeteorRain } from '../effects/meteor-rain.js?v=20260709100000';
@@ -1137,6 +1138,7 @@ export class Game {
     this._feedbackApoc        = null;   // Eddie ultimate (Feedback Apocalypse)
     this._theorem             = null;   // Euclid Vector ultimate (Theorem of Rot)
     this._deusEx              = null;   // Dimi angel cinematic presentation (Deus Ex Machina)
+    this._railgun             = null;   // Cyber Arm Hero ultimate (Railgun Horizon)
     this._pwFxBuilt           = false;
     this._pwDashing           = false;
     this._pwDashStart         = null;
@@ -6894,13 +6896,57 @@ export class Game {
       this.floatingTexts.push(new FloatingText('NOT ENOUGH MANA', p.pos.clone(), ORANGE, 1.0));
       return;
     }
+    // Railgun Horizon replaced Overheated Chains as the Cyber Arm ultimate (module VFX,
+    // full-width horizon shot + real screen tear). Chains code stays, never scheduled.
+    this._ensureRailgunFx();
+    if (!this._railgun || this._railgun.isActive()) return;
     p.mana -= ULTIMATE_MANA_COST;                           // fixed 100 cost; Mana Core overflow banks toward next cast
-    this.overChains = { t: 0, angle: 0, dmgTimer: 0,
-                        miniDmgThisSec: 0, megaDmgThisSec: 0, bossDmgTimer: 1.0,
-                        drops: [], dropTimer: 0 };           // visual-only: falling chain-rain segments
+    const sp = this._playerScreenPos();
+    this._railgun.trigger(sp.cx, sp.footY);
     this.screenShake.trigger(5, 0.3);
     this.audio?.playEventWarning?.();
-    this.floatingTexts.push(new FloatingText('OVERHEATED HEAVY CHAINS!', p.pos.clone(), ORANGE, 1.4));
+    this.floatingTexts.push(new FloatingText('RAILGUN HORIZON!', p.pos.clone(), ORANGE, 1.4));
+  }
+
+  // Lazy builder — canvas required (hero not drawn by the module; stays visible).
+  _ensureRailgunFx() {
+    if (this.player?.selectedCharacter !== 'cyber_arm_hero') return;
+    if (this._railgun || !this._canvas) return;
+    const h = Math.max(24, Math.round(64 * this._viewScale));
+    this._railgun = new RailgunHorizon(this._canvas, this.player.characterSprite, { spriteW: h, spriteH: h });
+  }
+
+  _updateRailgunFx(dt) {
+    if (this.player?.selectedCharacter !== 'cyber_arm_hero' || !this._railgun) return;
+    const vs = this._viewScale, cam = this.camera;
+    try {
+      if (this._railgun.isActive()) {
+        const sp = this._playerScreenPos();
+        this._railgun.cx = sp.cx; this._railgun.footY = sp.footY;
+      }
+      this._railgun.update(performance.now(), this.enemies, {
+        getX: e => ((e?.pos?.x ?? cam.x) - cam.x) * vs,
+        getY: e => ((e?.pos?.y ?? cam.y) - cam.y) * vs,
+        onStrike: (e, kind) => {
+          if (!e?.takeHit) return;
+          const dmg = kind === 'core' ? 85 : 9;    // one heavy bisect hit, then small burn ticks
+          e.takeHit((e.isBoss?.() || e.isMegaBoss) && this._capBossDamage ? this._capBossDamage(e, dmg) : dmg, this);
+        },
+      });
+    } catch (err) { console.warn('[Railgun]', err); }
+  }
+
+  _drawRailgunFx(ctx) {
+    this._canvas = ctx.canvas;
+    if (this.player?.selectedCharacter !== 'cyber_arm_hero') return;
+    this._ensureRailgunFx();
+    if (!this._railgun) return;
+    try {
+      const sh = this._railgun.getShake();
+      ctx.save(); ctx.translate(sh.x, sh.y);
+      this._railgun.render(ctx);
+      ctx.restore();
+    } catch (err) { console.warn('[Railgun render]', err); }
   }
 
   _updateOverheatedChains(dt) {
@@ -7822,6 +7868,7 @@ export class Game {
     this._updateTribunalFx(dt);     // Taekwondo Girl ultimate (guards on character)
     this._updateFeedbackFx(dt);     // Eddie ultimate (guards on character)
     this._updateTheoremFx(dt);      // Euclid Vector ultimate (guards on character)
+    this._updateRailgunFx(dt);      // Cyber Arm Hero ultimate (guards on character)
     this._updateOniFx(dt);          // Oni Protocol 0 (guards on character)
     this._updateDimiGauntlet(dt);   // Dimi Cyber-Gauntlet Shockwave (guards on character)
     this._updateDimiAngels(dt);     // Dimi Cyber-Angel summon (Ultimate)
@@ -15242,6 +15289,7 @@ export class Game {
     this._drawTribunalFx(ctx);         // Taekwondo Girl Afterimage Tribunal (screen-space; guards on character)
     this._drawFeedbackFx(ctx);         // Eddie Feedback Apocalypse (screen-space; guards on character)
     this._drawTheoremFx(ctx);          // Euclid Theorem of Rot (screen-space; guards on character)
+    this._drawRailgunFx(ctx);          // Cyber Arm Railgun Horizon (screen-space; guards on character)
     if (this.player?.selectedCharacter === 'dimis_kickboxer' && this._deusEx?.isActive()) {
       try { this._deusEx.render(ctx); } catch (err) { console.warn('[DeusEx render]', err); }   // Dimi angel cinematic
     }
