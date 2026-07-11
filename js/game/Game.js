@@ -21,7 +21,7 @@ import { UpgradeUI }      from './UpgradeUI.js?v=20260711370000';
 import { weightedSample } from './Upgrades.js?v=20260711370000';
 import { MutationUI }      from './MutationUI.js?v=20260703990000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
-import { drawHUD, drawEndScreen } from './HUD.js?v=20260705300000';
+import { drawHUD, drawEndScreen } from './HUD.js?v=20260711800000';
 import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, SKILL_TREE, AMULET_DEFS } from './MetaProgress.js?v=20260711760000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260711590000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
@@ -53,7 +53,7 @@ import { VESSELS, getVesselById, getDefaultVesselId } from './VesselCatalog.js?v
 import { PETS, getPetById } from './PetCatalog.js?v=20260705000000';
 import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons, isEvolutionOwnedBy, getCardDisplayName } from './WeaponCatalog.js?v=20260708200000';
 import { TACTICAL_ID, TACTICAL_DEFS, getTacticalDef, getTacticalForCharacter, getAvailableTactical, preloadTacticalSprites, FUSION_TACTICALS } from './TacticalWeaponCatalog.js?v=20260711420000';
-import { VFXSpritePlayer } from './VFXSpritePlayer.js?v=20260708700000';
+import { VFXSpritePlayer } from './VFXSpritePlayer.js?v=20260711800000';
 
 // ── Mastery card → base weapon mapping (for evolution level tracking) ──
 const MASTERY_TO_WEAPON = Object.freeze({
@@ -3567,6 +3567,7 @@ export class Game {
           <button class="cgu-tab" data-tab="synergy">★ WEAPON SYNERGIES</button>
           <button class="cgu-tab" data-tab="protocols">🧩 PROTOCOLS</button>
           <button class="cgu-tab" data-tab="skilltree">🌳 SKILL TREE</button>
+          <button class="cgu-tab" data-tab="amulets">⛨ AMULETS</button>
         </div>
 
         <div class="cgu-grid" id="cgu-grid"></div>
@@ -3630,6 +3631,17 @@ export class Game {
       if (!card) return;
       const idx = parseInt(card.dataset.idx, 10);
       const tab = this._upgradeTab;
+      if (tab === 'amulets') {
+        const am = AMULET_DEFS[idx];
+        if (!am) return;
+        const res = this.meta.tryBuyAmulet(am.id);
+        if      (res === 'ok')    this._upgradeMsg = `${am.name} bound! ${am.charName}'s ULTIMATE +30%.`;
+        else if (res === 'owned') this._upgradeMsg = `${am.name} already bound.`;
+        else if (res === 'poor')  this._upgradeMsg = `Not enough Fragments (need ${am.cost} 🧩).`;
+        this._upgradeMsgTimer = 2.2;
+        this._syncUpgradesOverlay();
+        return;
+      }
       if (tab === 'protocols') {
         const pc  = PROTOCOL_CARDS[idx];
         if (!pc) return;
@@ -3765,6 +3777,27 @@ export class Game {
           ${effectText}
           <div class="cgu-dots">${dots}</div>
           <button class="cgu-buy-btn ${btnClass}" ${btnDis}>${btnLabel}</button>
+        </div>`;
+      }).join('');
+    } else if (tab === 'amulets') {
+      // AMULETS — Maria's art, PF-only one-time buys, one per character (+30% that character's ULT)
+      grid.innerHTML = AMULET_DEFS.map((am, i) => {
+        const owned  = !!(this.meta.amulets && this.meta.amulets[am.id]);
+        const can    = !owned && pf >= am.cost;
+        let btnClass = '', btnLabel = '';
+        if (owned)    { btnClass = 'maxed';      btnLabel = '✦ BOUND'; }
+        else if (can) { btnClass = 'can-afford'; btnLabel = `BIND — ${am.cost} 🧩`; }
+        else          { btnClass = '';           btnLabel = `${am.cost} 🧩 needed`; }
+        return `<div class="cgu-card${owned ? ' maxed' : ''}${can ? ' can-afford' : ''}" data-idx="${i}">
+          <div style="display:flex;align-items:center;gap:12px;">
+            <img src="${am.sprite}" alt="" style="width:64px;height:64px;object-fit:contain;mix-blend-mode:screen;filter:drop-shadow(0 0 8px rgba(255,212,71,.6));">
+            <div>
+              <div class="cgu-card-name" style="color:${owned ? '#ffd447' : ''}">${am.name}</div>
+              <div class="cgu-char-tag">${am.charName}</div>
+            </div>
+          </div>
+          <div class="cgu-card-desc">Empowers ${am.charName}'s ULTIMATE — +30% damage. Permanent.</div>
+          <button class="cgu-buy-btn ${btnClass}" ${owned ? 'disabled' : ''}>${btnLabel}</button>
         </div>`;
       }).join('');
     } else {
@@ -6318,7 +6351,6 @@ export class Game {
       return;
     }
     p.mana -= ULTIMATE_MANA_COST;
-    { const sm = this._playerScreenPos(); this._oniMask?.trigger(sm.cx, sm.footY, 8000); }   // cinematic mask (visual only)
     const cl = p.upgrades['oni_protocol0_mastery'] || 0;   // Total Cataclysm mastery level
     const vs = this._viewScale, cam = this.camera;
     const s  = this._playerScreenPos();
@@ -6401,7 +6433,6 @@ export class Game {
     try {
       const s = this._playerScreenPos();
       this._protocol0.update(now, s.cx, s.footY, this.enemies);
-      if (this._oniMask?.isActive()) { this._oniMask.cx = s.cx; this._oniMask.footY = s.footY; this._oniMask.update(now); }
     } catch (err) { console.warn('[Oni Protocol0]', err); }
 
     // ── STAGE-2 contact damage (world-space) ──
@@ -6512,7 +6543,6 @@ export class Game {
     try {
       if (this._meteorRain) this._meteorRain.render(ctx);   // ground grid + falling meteors (behind)
       if (this._protocol0)  this._protocol0.render(ctx);    // ult aura / lava / detonation
-      if (this._oniMask?.isActive()) this._oniMask.render(ctx);   // cinematic mask overture (visual only)
       if (this._laserEyes)  this._laserEyes.render(ctx);    // beams (on top)
     } catch (err) { console.warn('[Oni FX render]', err); }
   }
@@ -12579,6 +12609,20 @@ export class Game {
     const sprite = this._tacticalSpriteCache.get(w.id);
     const dx = w.droneX - cam.x, dy = w.droneY - cam.y;
     const size = 48;
+    if (!sprite || !sprite.complete || !sprite.naturalWidth) {
+      // sprite missing/loading → procedural drone body so the weapon is NEVER invisible
+      const col = (w.def && w.def.color) || '#cc44ff';
+      const tD = performance.now() / 1000;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.translate(dx, dy);
+      ctx.rotate(w.orbitAngle || 0);
+      ctx.strokeStyle = col; ctx.lineWidth = 2.2; ctx.shadowColor = col; ctx.shadowBlur = 10;
+      ctx.beginPath(); ctx.moveTo(0, -12); ctx.lineTo(11, 0); ctx.lineTo(0, 12); ctx.lineTo(-11, 0); ctx.closePath(); ctx.stroke();
+      ctx.fillStyle = '#ffffff'; ctx.globalAlpha = 0.6 + 0.4 * Math.sin(tD * 10);
+      ctx.beginPath(); ctx.arc(0, 0, 3, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
     if (sprite && sprite.complete && sprite.naturalWidth > 0) {
       ctx.save();
       ctx.globalAlpha = Math.min(1, w.timer / 1.0);
@@ -13066,7 +13110,15 @@ export class Game {
     // Magma Core Eruption replaced Skyfall Lances as the Brawler ultimate (module VFX,
     // ground-shatter fissures + geysers + core blast). Skyfall code stays, never scheduled.
     this._ensureMagmaFx();
-    if (!this._magma || this._magma.isActive()) return;
+    if (this._magma && this._magma.isActive()) return;
+    if (!this._magma) {                                          // module unavailable → legacy Skyfall (button NEVER dead)
+      console.warn('[Magma] module not ready — falling back to Skyfall Lances');
+      p.mana -= ULTIMATE_MANA_COST;
+      this._skyfall = { t: 0, waveTimer: 0, wave: 0 };
+      this.screenShake.trigger(4, 0.3);
+      this.floatingTexts.push(new FloatingText('SKYFALL LANCES!', p.pos.clone(), '#1fd6a6', 1.4));
+      return;
+    }
     p.mana -= ULTIMATE_MANA_COST;                               // fixed 100 cost; Mana Core overflow banks toward next cast
     const sp = this._playerScreenPos();
     this._magma.trigger(sp.cx, sp.footY);

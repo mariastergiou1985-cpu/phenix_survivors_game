@@ -129,7 +129,7 @@ export function drawHUD(ctx, game) {
     (cx, cy) => _glyphEMP(ctx, cx, cy, bs, CYAN), CYAN);
 
   // ── Bottom-right: SPACE ultimate (mana-fill, frame tinted to character identity) ──
-  if (p.selectedCharacter === 'skeleton_warrior' || p.selectedCharacter === 'cyber_arm_hero' || p.selectedCharacter === 'taekwondo_girl' || p.selectedCharacter === 'brawler_warrior' || p.selectedCharacter === 'assassin_clone' || p.selectedCharacter === 'japan_phasewalker' || p.selectedCharacter === 'euclid_vector' || p.selectedCharacter === 'oni_cataclysm_protocol' || p.selectedCharacter === 'eddie') {
+  if (p.selectedCharacter === 'skeleton_warrior' || p.selectedCharacter === 'cyber_arm_hero' || p.selectedCharacter === 'taekwondo_girl' || p.selectedCharacter === 'brawler_warrior' || p.selectedCharacter === 'assassin_clone' || p.selectedCharacter === 'japan_phasewalker' || p.selectedCharacter === 'euclid_vector' || p.selectedCharacter === 'oni_cataclysm_protocol' || p.selectedCharacter === 'eddie' || p.selectedCharacter === 'dimis_kickboxer') {
     const icon = p.selectedCharacter === 'skeleton_warrior' ? game._thunderGuitarSprite
                : p.selectedCharacter === 'cyber_arm_hero'   ? game._chainsIcon
                : p.selectedCharacter === 'brawler_warrior'  ? game._weaponImages?.skyfall_lances
@@ -138,6 +138,7 @@ export function drawHUD(ctx, game) {
                : p.selectedCharacter === 'euclid_vector'    ? game._euclidSprite            // Plague Trail Dash ultimate
                : p.selectedCharacter === 'oni_cataclysm_protocol' ? game._oniSprite         // Protocol 0: Total Cataclysm
                : p.selectedCharacter === 'eddie'            ? game._eddieUltIcon         // Red Thunder Curtain
+               : p.selectedCharacter === 'dimis_kickboxer'  ? game._cyberAngelImg        // Cyber-Angel Summoning (Deus Ex Machina)
                : 'bike';  // taekwondo_girl → Cyber Ride (canvas-drawn bike glyph; no sprite asset)
     // Frame/glow color by base character identity (outfits don't change selectedCharacter).
     const ultColor = p.selectedCharacter === 'skeleton_warrior' ? '#9fd8ff'   // electric blue-white
@@ -148,10 +149,14 @@ export function drawHUD(ctx, game) {
                    : p.selectedCharacter === 'euclid_vector'    ? '#00ff66'   // toxic green (Plague Trail)
                    : p.selectedCharacter === 'oni_cataclysm_protocol' ? '#ff3030'  // demon red (Protocol 0)
                    : p.selectedCharacter === 'eddie'            ? '#ff2d2d'  // riff red (Red Thunder Curtain)
+                   : p.selectedCharacter === 'dimis_kickboxer'  ? '#b026ff'  // angelic violet (Deus Ex Machina)
                    : '#3cf0e6';                                                // aqua spirit
     const ultCost  = p.selectedCharacter === 'eddie' ? 80 : 100;   // Eddie caps at 80 max mana — his ultimate costs 80
-    const manaFrac = clamp(p.mana / ultCost, 0, 1);   // ultimate is ready at the fixed cost, not maxMana (Mana Core safe)
-    const ultCasts = Math.floor(p.mana / ultCost);     // how many casts the current mana affords (display-only)
+    // Dimi's angel gates on the 25s special cooldown (not mana) — his ring charges with it.
+    const manaFrac = p.selectedCharacter === 'dimis_kickboxer'
+      ? 1 - clamp((p.specialCooldown || 0) / (p.specialMaxCooldown || 25), 0, 1)
+      : clamp(p.mana / ultCost, 0, 1);
+    const ultCasts = p.selectedCharacter === 'dimis_kickboxer' ? (p.specialCooldown <= 0 ? 1 : 0) : Math.floor(p.mana / ultCost);
     _drawUltimateBox(ctx, WIDTH - 64, HEIGHT - 66, 48, 'SPACE', manaFrac, icon, ultColor, ultCasts);
 
     // One-shot "ULTIMATE READY" cue — shown briefly the moment the ultimate becomes castable
@@ -183,7 +188,33 @@ export function drawHUD(ctx, game) {
     const secs  = (game._secondaryElements && game._secondaryElements.length)
       ? ' + ' + game._secondaryElements.map(s => icons[s] || '◆').join(' + ') : '';
     ctx.textAlign = 'left';
-    drawText(ctx, 'ELEMENT ' + prim + secs, 16, HEIGHT - 70, col, 'bold 13px "Segoe UI Emoji", Consolas, monospace');
+    // Clean element chips: tiny label + one glowing diamond per element (primary bigger),
+    // all in true element colors — replaces the broken-looking emoji row.
+    {
+      ctx.save();
+      ctx.font = 'bold 9px Consolas, monospace';
+      ctx.fillStyle = 'rgba(150,180,200,0.75)';
+      ctx.fillText('ELEMENT', 16, HEIGHT - 82);
+      const els = [game._activeElement, ...(game._secondaryElements || [])].filter(Boolean);
+      let chipX = 16;
+      for (let ei = 0; ei < els.length; ei++) {
+        const ec = game._elementColors?.[els[ei]] || col;
+        const sz = ei === 0 ? 7 : 5;
+        const cyE = HEIGHT - 70;
+        ctx.save();
+        ctx.translate(chipX + sz, cyE);
+        ctx.rotate(Math.PI / 4);
+        ctx.shadowColor = ec; ctx.shadowBlur = 8;
+        ctx.fillStyle = ec;
+        ctx.fillRect(-sz / 2, -sz / 2, sz, sz);
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = '#ffffff'; ctx.globalAlpha = 0.7; ctx.lineWidth = 1;
+        ctx.strokeRect(-sz / 2, -sz / 2, sz, sz);
+        ctx.restore();
+        chipX += sz * 2 + 8;
+      }
+      ctx.restore();
+    }
     // Eddie identity art — Crimson Gate element icon beside the badge (element-id gated, no leak)
     if (game._activeElement === 'crimson_gate' && game._eddieElementIcons) {
       ctx.font = 'bold 13px "Segoe UI Emoji", Consolas, monospace';

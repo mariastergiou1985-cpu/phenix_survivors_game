@@ -137,6 +137,7 @@ export class VFXSpritePlayer {
       ctx.save();
       ctx.globalAlpha = Math.max(0, this.alpha * am);
       ctx.globalCompositeOperation = 'lighter';   // additive blend for energy VFX
+      ctx.globalCompositeOperation = 'screen';   // black art backgrounds vanish (no more squares)
       ctx.translate(this.x + ox, this.y + oy);
       if (rot !== 0) ctx.rotate(rot);
       ctx.drawImage(oi, -odw / 2, -odh / 2, odw, odh);
