@@ -12,7 +12,7 @@ import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260705040000
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260705150000';
 import { Player }         from '../entities/Player.js?v=20260711490000';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260706270000';
-import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260711790000';
+import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260711840000';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=20260711750000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260705150000';
@@ -8533,6 +8533,21 @@ export class Game {
   }
 
   _updateHealthPickups(dt) {
+    // Φ10 mercy valve: if you are under 50% HP and the field has been DRY of health
+    // for 45s straight, one cell materializes nearby (mana-pickup pattern — fair, no farming:
+    // the timer only runs while you are actually hurt and the field is empty).
+    if (this.player && this.player.hp / this.player.maxHp < 0.5 && this.healthPickups.length === 0) {
+      this._healthMercyT = (this._healthMercyT || 0) + dt;
+      if (this._healthMercyT >= 45) {
+        this._healthMercyT = 0;
+        const ang = Math.random() * Math.PI * 2;
+        const r = randomRange(140, 240);
+        this.healthPickups.push({ pos: this._clampPickupPos(new Vec2(
+          this.player.pos.x + Math.cos(ang) * r, this.player.pos.y + Math.sin(ang) * r)), timer: 25 });
+      }
+    } else {
+      this._healthMercyT = 0;
+    }
     // Health drops stay EXACTLY where the enemy died — no vacuum pull. Base 60px
     // walk-up radius, expanded by Core Magnet meta / Tractor Beam card (pickupRadius).
     const PICKUP_R = Math.max(60, Math.round((this.player.pickupRadius || 0) * 0.75 * (this._murkActive ? 0.5 : 1)));
@@ -8596,41 +8611,62 @@ export class Game {
   }
 
   // Drawn inside the camera-space block (translate handles the camera offset) → raw world coords.
+  // Φ10 art pass — HEALTH CELL: a hex med-capsule with a LIVE HEARTBEAT. The cross pulses
+  // on a lub-dub rhythm, an ECG blip sweeps across the cell, and the glow beats with it.
   _drawHealthPickups(ctx) {
-    const R = 16;
     const now = performance.now() / 1000;
     for (const hp of this.healthPickups) {
-      const x = hp.pos.x;
-      const y = hp.pos.y;
-      // Pronounced blink so it stays readable in late-game chaos (abs-sine = on/off pulse).
-      const blink = 0.45 + 0.55 * Math.abs(Math.sin(now * 4 + x * 0.05));
-      const scale = 1 + 0.12 * blink;
-
-      // Strong blinking red halo + outer beacon ring
-      drawGlow(ctx, x, y, (R + 14) * scale, RED, 0.55 * blink);
+      const x = hp.pos.x, y = hp.pos.y;
+      // lub-dub heartbeat envelope (two quick pulses then rest — like a real heart)
+      const cyc = (now * 1.1 + x * 0.01) % 1;
+      const beat = cyc < 0.12 ? Math.sin(cyc / 0.12 * Math.PI)
+                 : cyc < 0.30 ? Math.sin((cyc - 0.18) / 0.12 * Math.PI) * 0.6
+                 : 0;
+      const R = 15 + beat * 2.5;
+      const urgent = hp.timer < 6 ? (0.5 + 0.5 * Math.sin(now * 10)) : 1;   // expiring: fast blink
       ctx.save();
-      ctx.globalAlpha = 0.5 + 0.5 * blink;
-      ctx.strokeStyle = '#ff7a8c'; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(x, y, R + 6 * scale, 0, Math.PI * 2); ctx.stroke();
+      ctx.globalAlpha = urgent;
+      // beating glow
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = (0.25 + beat * 0.45) * urgent;
+      ctx.fillStyle = '#ff3b4e';
+      ctx.beginPath(); ctx.arc(x, y, R + 14, 0, Math.PI * 2); ctx.fill();
       ctx.restore();
-
-      // Disc with a bold readable outline
+      // hex capsule body
+      ctx.fillStyle = '#1a0508';
+      ctx.strokeStyle = '#ff5a6e'; ctx.lineWidth = 2;
+      ctx.shadowColor = '#ff3b4e'; ctx.shadowBlur = 8 + beat * 8;
       ctx.beginPath();
-      ctx.arc(x, y, R, 0, Math.PI * 2);
-      ctx.fillStyle   = '#3a0c12';
-      ctx.fill();
-      ctx.lineWidth   = 3;
-      ctx.strokeStyle = '#ffffff';
+      for (let i = 0; i <= 6; i++) {
+        const a = (i / 6) * Math.PI * 2 + Math.PI / 6;
+        i === 0 ? ctx.moveTo(x + Math.cos(a) * R, y + Math.sin(a) * R)
+                : ctx.lineTo(x + Math.cos(a) * R, y + Math.sin(a) * R);
+      }
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.shadowBlur = 0;
+      // beating cross
+      const cs = 6.5 + beat * 1.5;
+      ctx.fillStyle = beat > 0.4 ? '#ffffff' : '#ff8090';
+      ctx.fillRect(x - 2, y - cs, 4, cs * 2);
+      ctx.fillRect(x - cs, y - 2, cs * 2, 4);
+      // ECG blip sweeping across the cell
+      const ek = (now * 0.9 + x * 0.02) % 1;
+      const ex = x - R + ek * R * 2;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = 0.85 * urgent;
+      ctx.strokeStyle = '#7dff9a'; ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(Math.max(x - R + 2, ex - 9), y + 8);
+      ctx.lineTo(ex - 4, y + 8); ctx.lineTo(ex - 2, y + 3);
+      ctx.lineTo(ex, y + 12); ctx.lineTo(ex + 2, y + 8);
+      ctx.lineTo(Math.min(x + R - 2, ex + 8), y + 8);
       ctx.stroke();
-      ctx.lineWidth   = 2;
-      ctx.strokeStyle = RED;
-      ctx.beginPath(); ctx.arc(x, y, R - 2, 0, Math.PI * 2); ctx.stroke();
-
-      // White cyber-cross (med icon)
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(x - 7, y - 2.5, 14, 5);
-      ctx.fillRect(x - 2.5, y - 7, 5, 14);
+      ctx.restore();
+      ctx.restore();
     }
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; ctx.shadowBlur = 0;
   }
 
   // Cyan mana pickup — visually distinct from the red/white HP cross (world-space).
@@ -8705,44 +8741,76 @@ export class Game {
     }
   }
 
+  // Φ10 art pass — MANA CELL: a floating energy crystal (kite-cut) that visibly CHARGES —
+  // ticks fill around it, arcs crackle at full, then it discharges and refills. Alive, not a disc.
   _drawManaPickups(ctx) {
-    const R = 16;
     const now = performance.now() / 1000;
-    const MANA_BLUE = '#3aa0ff';   // support = blue (distinct from player-ability cyan)
     for (const m of this.manaPickups) {
       const x = m.pos.x, y = m.pos.y;
-      // Pronounced blink (offset phase from HP so the two never sync) for late-game readability.
-      const blink = 0.45 + 0.55 * Math.abs(Math.sin(now * 3.4 + x * 0.05 + 1.6));
-      const scale = 1 + 0.12 * blink;
-
-      // Strong blinking blue halo + outer beacon ring
-      drawGlow(ctx, x, y, (R + 14) * scale, MANA_BLUE, 0.55 * blink);
+      const bob = Math.sin(now * 2.4 + x * 0.03) * 3;
+      const chg = (now * 0.55 + x * 0.01) % 1;                     // 0→1 charge cycle
+      const full = chg > 0.82;
+      const yy = y + bob;
       ctx.save();
-      ctx.globalAlpha = 0.5 + 0.5 * blink;
-      ctx.strokeStyle = '#9fd0ff'; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(x, y, R + 6 * scale, 0, Math.PI * 2); ctx.stroke();
+      // charge glow (brightens toward full)
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = 0.18 + chg * 0.3;
+      ctx.fillStyle = '#3aa0ff';
+      ctx.beginPath(); ctx.arc(x, yy, 26, 0, Math.PI * 2); ctx.fill();
       ctx.restore();
-
-      // Disc with a bold readable outline
-      ctx.beginPath();
-      ctx.arc(x, y, R, 0, Math.PI * 2);
-      ctx.fillStyle   = '#06283a';
-      ctx.fill();
-      ctx.lineWidth   = 3;
-      ctx.strokeStyle = '#ffffff';
-      ctx.stroke();
-      ctx.lineWidth   = 2;
-      ctx.strokeStyle = MANA_BLUE;
-      ctx.beginPath(); ctx.arc(x, y, R - 2, 0, Math.PI * 2); ctx.stroke();
-
-      // White diamond rune (rotated square) — distinct from the HP cross
+      // kite crystal (two-tone facets, slow spin via skew shimmer)
+      const K = 13;
       ctx.save();
-      ctx.translate(x, y);
-      ctx.rotate(Math.PI / 4);
-      ctx.fillStyle   = '#ffffff';
-      ctx.fillRect(-5, -5, 10, 10);
+      ctx.translate(x, yy);
+      ctx.rotate(Math.sin(now * 1.1 + x * 0.05) * 0.16);
+      ctx.fillStyle = '#0a2c4e';
+      ctx.strokeStyle = '#6fd0ff'; ctx.lineWidth = 2;
+      ctx.shadowColor = '#3aa0ff'; ctx.shadowBlur = 9;
+      ctx.beginPath();
+      ctx.moveTo(0, -K * 1.25); ctx.lineTo(K * 0.75, 0); ctx.lineTo(0, K * 1.25); ctx.lineTo(-K * 0.75, 0);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.shadowBlur = 0;
+      // bright facet + inner charge level (fills bottom-up with the cycle)
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(0, -K * 1.25); ctx.lineTo(K * 0.75, 0); ctx.lineTo(0, K * 1.25); ctx.lineTo(-K * 0.75, 0);
+      ctx.closePath(); ctx.clip();
+      ctx.globalAlpha = 0.85;
+      ctx.fillStyle = full ? '#bfe9ff' : '#2e8fe0';
+      ctx.fillRect(-K, K * 1.25 - chg * K * 2.5, K * 2, chg * K * 2.5);
+      ctx.restore();
+      ctx.restore();
+      // charge ticks orbiting (light up clockwise with the cycle)
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      for (let i = 0; i < 8; i++) {
+        const lit = (i / 8) < chg;
+        const a = (i / 8) * Math.PI * 2 - Math.PI / 2;
+        ctx.globalAlpha = lit ? 0.9 : 0.2;
+        ctx.strokeStyle = lit ? '#9fd8ff' : '#2a4a6a'; ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(x + Math.cos(a) * 19, yy + Math.sin(a) * 19);
+        ctx.lineTo(x + Math.cos(a) * 23, yy + Math.sin(a) * 23);
+        ctx.stroke();
+      }
+      // full: crackle arcs jump off the crystal
+      if (full) {
+        for (let i = 0; i < 3; i++) {
+          const a = now * 7 + i * 2.1;
+          ctx.globalAlpha = 0.8;
+          ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          const sx2 = x + Math.cos(a) * K, sy2 = yy + Math.sin(a) * K;
+          ctx.moveTo(sx2, sy2);
+          ctx.lineTo(sx2 + Math.cos(a) * 7 + Math.sin(i * 9) * 4, sy2 + Math.sin(a) * 7);
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
       ctx.restore();
     }
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; ctx.shadowBlur = 0;
   }
 
   _drawGridCacheArrow(ctx) {

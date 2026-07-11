@@ -602,6 +602,17 @@ export class Enemy {
     game.addNexusChargePoint?.();   // +1 nexus recharge point per kill (no multipliers)
     game.addKillScore?.(this.pos, this.isElite);
 
+    // Φ10: bosses ALWAYS pay out health — long boss fights are exactly when you bleed the
+    // most and kill the least, so the old kill-cadence drop could starve you completely.
+    if (this.isBoss() || this.isMegaBoss) {
+      const nDrops = this.isMegaBoss ? 2 : 1;
+      for (let i = 0; i < nDrops; i++) {
+        const oa = (i / nDrops) * Math.PI * 2 + 0.7;
+        game.healthPickups.push({ pos: this.pos.clone().add
+          ? this.pos.clone().add(new (this.pos.constructor)(Math.cos(oa) * 26, Math.sin(oa) * 26))
+          : { x: this.pos.x + Math.cos(oa) * 26, y: this.pos.y + Math.sin(oa) * 26 }, timer: 30 });
+      }
+    }
     // Elite reward (Endless): sparse but visible. 18% health, 32% mana, 50% nothing — restores
     // useful HP cells without flooding the grid, and mana stays a strong elite reward.
     if (this.isElite) {
