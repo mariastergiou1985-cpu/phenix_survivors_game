@@ -38,6 +38,8 @@ export const WEAPON_ID = Object.freeze({
   SEISMIC_RIFT:       'seismic_rift',
   MARROW_REACTOR:   'marrow_reactor',   // NEW skeleton evolution (procedural)
   MIRROR_CASCADE:   'mirror_cascade',   // NEW taekwondo evolution (procedural)
+  FOUNDRY_PISTON:   'foundry_piston',   // NEW cyber-arm evolution (procedural)
+  FERRO_TEMPEST:    'ferro_tempest',    // NEW cyber-arm evolution (procedural)
   TEMPEST_RIBBON:   'tempest_ribbon',   // NEW taekwondo evolution (procedural)
   REVENANT_CHOIR:   'revenant_choir',   // NEW skeleton evolution (procedural)
 });
@@ -565,6 +567,30 @@ export const WEAPON_DEFS = Object.freeze({
     color: '#14ebd2',
     baseStats: { damage: 24, cooldown: 2.8, aoeRadius: 150, speed: 0, piercing: 99 },
   },
+  [WEAPON_ID.FOUNDRY_PISTON]: {
+    id: 'foundry_piston',
+    name: 'Foundry Piston',
+    description: 'A colossal hydraulic piston drops from above and FORGES the ground — three strikes, each heavier.',
+    character: 'cyber_arm_hero',
+    element: 'fire',
+    behavior: WEAPON_BEHAVIOR.GROUND_SHOCKWAVE,
+    isEvolution: true,
+    procedural: true,
+    color: '#ff9b3c',
+    baseStats: { damage: 34, cooldown: 2.7, aoeRadius: 120, speed: 0, piercing: 99 },
+  },
+  [WEAPON_ID.FERRO_TEMPEST]: {
+    id: 'ferro_tempest',
+    name: 'Ferro Tempest',
+    description: 'Magnetized iron filings swirl in, condense into orbiting crescent blades, then FLING outward.',
+    character: 'cyber_arm_hero',
+    element: 'magnetic',
+    behavior: WEAPON_BEHAVIOR.VORTEX,
+    isEvolution: true,
+    procedural: true,
+    color: '#9b6bff',
+    baseStats: { damage: 27, cooldown: 2.9, aoeRadius: 150, speed: 0, piercing: 99 },
+  },
   [WEAPON_ID.REVENANT_CHOIR]: {
     id: 'revenant_choir',
     name: 'Revenant Choir',
@@ -628,6 +654,18 @@ export const EVOLUTION_RECIPES = Object.freeze([
     ingredients: [WEAPON_ID.STORM_SABER, WEAPON_ID.SHADOW_TOXIC],
     minLevel: 5,
     owner: ['taekwondo_girl'],
+  },
+  {
+    result: WEAPON_ID.FOUNDRY_PISTON,
+    ingredients: [WEAPON_ID.MAGNETIC_ARC, WEAPON_ID.CATACLYSM_PULSE],
+    minLevel: 5,
+    owner: ['cyber_arm_hero'],
+  },
+  {
+    result: WEAPON_ID.FERRO_TEMPEST,
+    ingredients: [WEAPON_ID.SHADOW_TOXIC, WEAPON_ID.SPIRIT_CRESCENT],
+    minLevel: 5,
+    owner: ['cyber_arm_hero'],
   },
   {
     result: WEAPON_ID.CHAOS_CHORD,

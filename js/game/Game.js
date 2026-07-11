@@ -51,7 +51,7 @@ import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260711730000';
 import { NexusManager } from './NexusManager.js?v=20260711900000';
 import { VESSELS, getVesselById, getDefaultVesselId } from './VesselCatalog.js?v=20260705040000';
 import { PETS, getPetById } from './PetCatalog.js?v=20260705000000';
-import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons, isEvolutionOwnedBy, getCardDisplayName } from './WeaponCatalog.js?v=20260711940000';
+import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons, isEvolutionOwnedBy, getCardDisplayName } from './WeaponCatalog.js?v=20260711950000';
 import { TACTICAL_ID, TACTICAL_DEFS, getTacticalDef, getTacticalForCharacter, getAvailableTactical, preloadTacticalSprites, FUSION_TACTICALS } from './TacticalWeaponCatalog.js?v=20260711420000';
 import { VFXSpritePlayer } from './VFXSpritePlayer.js?v=20260711800000';
 
@@ -11479,6 +11479,110 @@ export class Game {
           ctx.strokeStyle = '#14ebd2'; ctx.lineWidth = 4 * (1 - sK) + 1;
           ctx.shadowColor = '#14ebd2'; ctx.shadowBlur = 12;
           ctx.beginPath(); ctx.ellipse(0, 0, f.R * (0.4 + sK * 0.8), f.R * (0.3 + sK * 0.6), 0, 0, Math.PI * 2); ctx.stroke();
+        }
+        ctx.restore();
+      } else if (f.id === 'foundry_piston') {
+        // THE FORGE: a steel piston SLAMS three times (0.25 / 0.5 / 0.78 of the timeline),
+        // each strike heavier — spark fans + shock ellipses; a molten dent glows after.
+        const hits = [0.25, 0.5, 0.78];
+        // targeting shadow grows before the first hit
+        if (k < hits[0]) {
+          const tk2 = k / hits[0];
+          ctx.globalAlpha = 0.4 * tk2;
+          ctx.fillStyle = '#000000';
+          ctx.beginPath(); ctx.ellipse(0, 6, f.R * 0.5 * tk2, f.R * 0.24 * tk2, 0, 0, Math.PI * 2); ctx.fill();
+        }
+        // piston body: drops fast before each hit, retracts between
+        let phase = 0;
+        for (let h = 0; h < 3; h++) if (k > hits[h]) phase = h + 1;
+        const nextHit = hits[Math.min(2, phase)];
+        const drop = phase < 3 ? Math.max(0, 1 - (nextHit - k) / 0.1) : Math.max(0, 1 - (k - hits[2]) / 0.3);
+        if (k < 1.0) {
+          const py2 = -170 + drop * 160;
+          const pw = 26 + phase * 5;                              // heavier each strike
+          const grad2 = ctx.createLinearGradient(-pw, 0, pw, 0);
+          grad2.addColorStop(0, '#6a7688'); grad2.addColorStop(0.5, '#c8d2e0'); grad2.addColorStop(1, '#4a5468');
+          ctx.fillStyle = grad2;
+          ctx.fillRect(-pw / 2, py2 - 90, pw, 90);                // shaft
+          ctx.fillStyle = '#38404e';
+          ctx.fillRect(-pw * 0.9, py2 - 6, pw * 1.8, 16);         // head
+          ctx.strokeStyle = '#ff9b3c'; ctx.lineWidth = 2;         // hot rim on the head
+          ctx.strokeRect(-pw * 0.9, py2 - 6, pw * 1.8, 16);
+        }
+        // strike feedback
+        for (let h = 0; h < 3; h++) {
+          const dtH = k - hits[h];
+          if (dtH < 0 || dtH > 0.16) continue;
+          const sK2 = dtH / 0.16, big = (h + 1) / 3;
+          ctx.save();
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.globalAlpha = (1 - sK2) * 0.95;
+          ctx.strokeStyle = h === 2 ? '#fff4e0' : '#ff9b3c';
+          ctx.lineWidth = (5 - 3 * sK2) * big + 1;
+          ctx.beginPath(); ctx.ellipse(0, 8, f.R * sK2 * (0.7 + big * 0.5), f.R * sK2 * (0.35 + big * 0.25), 0, 0, Math.PI * 2); ctx.stroke();
+          for (let i = 0; i < 6; i++) {                           // forge spark fan
+            const sa = -Math.PI / 2 + (i - 2.5) * 0.4;
+            ctx.globalAlpha = (1 - sK2) * 0.9;
+            ctx.strokeStyle = i % 2 ? '#ffd23c' : '#fff4e0'; ctx.lineWidth = 1.6;
+            ctx.beginPath(); ctx.moveTo(0, 4);
+            ctx.lineTo(Math.cos(sa) * 40 * sK2 * (1 + big), 4 + Math.sin(sa) * 40 * sK2); ctx.stroke();
+          }
+          if (h === 2) { ctx.globalAlpha = (1 - sK2) * 0.4; ctx.fillStyle = '#fff4e0';
+            ctx.beginPath(); ctx.arc(0, 0, f.R * 0.5 * sK2 + 8, 0, Math.PI * 2); ctx.fill(); }
+          ctx.restore();
+        }
+        if (k > hits[2]) {                                        // molten dent afterglow
+          const gK = (k - hits[2]) / (1.15 - hits[2]);
+          ctx.save(); ctx.globalCompositeOperation = 'lighter';
+          ctx.globalAlpha = (1 - gK) * 0.5;
+          ctx.strokeStyle = '#ff5a00'; ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.ellipse(0, 8, f.R * 0.45, f.R * 0.2, 0, 0, Math.PI * 2); ctx.stroke();
+          ctx.restore();
+        }
+      } else if (f.id === 'ferro_tempest') {
+        // MAGNETIC STORM: iron filings swirl INWARD (act 1), condense into three crescent
+        // blades orbiting fast (act 2), then FLING outward as slicing arcs (act 3).
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        if (k < 0.35) {                                           // filings swirl in
+          const iK = k / 0.35;
+          for (let i = 0; i < 22; i++) {
+            const pv = prV(f.seed, i);
+            const a2 = pv * Math.PI * 2 + f.t * 4;
+            const rr = f.R * (1.3 - iK) * (0.5 + pv * 0.6);
+            const fx2 = Math.cos(a2) * rr, fy2 = Math.sin(a2) * rr * 0.75;
+            ctx.save();
+            ctx.translate(fx2, fy2);
+            ctx.rotate(a2 + Math.PI / 2);                         // tangent-aligned sliver
+            ctx.globalAlpha = 0.5 + iK * 0.4;
+            ctx.fillStyle = i % 3 ? '#9b6bff' : '#cdb6ff';
+            ctx.fillRect(-0.8, -4, 1.6, 8);
+            ctx.restore();
+          }
+        } else {                                                  // blades orbit → fling
+          const bK = (k - 0.35) / 0.8;
+          const fling = Math.max(0, (bK - 0.55) / 0.45);
+          for (let b2 = 0; b2 < 3; b2++) {
+            const a2 = b2 * (Math.PI * 2 / 3) + f.t * (7 - fling * 4);
+            const rr = f.R * (0.4 + fling * 1.1);
+            const bx2 = Math.cos(a2) * rr, by3 = Math.sin(a2) * rr * 0.75;
+            ctx.save();
+            ctx.translate(bx2, by3);
+            ctx.rotate(a2 + Math.PI / 2);
+            ctx.globalAlpha = (1 - fling) * 0.95 + 0.05;
+            ctx.strokeStyle = '#cdb6ff'; ctx.lineWidth = 3.4;
+            ctx.shadowColor = '#9b6bff'; ctx.shadowBlur = 12;
+            ctx.beginPath(); ctx.arc(0, 0, 20, -0.9, 0.9); ctx.stroke();   // crescent blade
+            ctx.shadowBlur = 0;
+            ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.4;
+            ctx.globalAlpha = (1 - fling);
+            ctx.beginPath(); ctx.arc(0, 0, 22, -0.7, 0.7); ctx.stroke();   // hot edge
+            ctx.restore();
+          }
+          // magnetic core hum
+          ctx.globalAlpha = (1 - bK) * 0.6;
+          ctx.strokeStyle = '#9b6bff'; ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.arc(0, 0, 10 + Math.sin(f.t * 14) * 3, 0, Math.PI * 2); ctx.stroke();
         }
         ctx.restore();
       } else if (f.id === 'revenant_choir') {
