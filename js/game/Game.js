@@ -1100,6 +1100,10 @@ export class Game {
     this._dimiSlamTimer = 0;  // Dimi Cyber-Gauntlet Shockwave (dimis_kickboxer only) cadence
     this._titanWeaponFx = [];  // Mega Boss real-weapon art flashes (Phase 2)
     this._titanWeaponImgCache = {};
+    this._dimiDrones = null;    // Dimi Tactical Drone Swarm (extra weapon) — 3 orbiting drones
+    this._dimiDroneImg = new Image();
+    this._dimiDroneImg.onerror = () => console.warn('[Dimi] Drone Swarm art missing');
+    this._dimiDroneImg.src = 'assets/weapons/vfx/Extra Weapon 1 Tactical Drone Swarm.png';
     this._dimiAngels = [];    // Dimi Cyber-Angel summons (Ultimate) — big animated art that attacks
     this._cyberAngelImg = new Image();
     this._cyberAngelImg.onerror = () => console.warn('[Dimi] Cyber-Angel Summoning art missing');
@@ -5631,6 +5635,53 @@ export class Game {
     ctx.restore();
   }
 
+  // Dimi Tactical Drone Swarm — 3 drones orbit Dimi and strike the nearest enemies (extra weapon).
+  // Draws Maria's drone art at each orbit slot; damage via takeHit; guards on character.
+  _updateDimiDrones(dt) {
+    const p = this.player;
+    if (!p || p.selectedCharacter !== 'dimis_kickboxer') { this._dimiDrones = null; return; }
+    if (!this._dimiDrones) {
+      this._dimiDrones = [0, 1, 2].map(i => ({ ang: i * (Math.PI * 2 / 3), r: 120, cd: 0.4 + i * 0.3, x: p.pos.x, y: p.pos.y }));
+    }
+    for (const d of this._dimiDrones) {
+      d.ang += dt * 1.4;
+      d.x = p.pos.x + Math.cos(d.ang) * d.r;
+      d.y = p.pos.y + Math.sin(d.ang) * d.r;
+      d.cd -= dt;
+      if (d.cd <= 0) {
+        d.cd = 1.1;
+        // strike nearest enemy within 420px
+        let best = null, bd = 420 * 420;
+        for (const e of this.enemies) {
+          if (!e || e.hp <= 0 || !e.pos) continue;
+          const dx = e.pos.x - d.x, dy = e.pos.y - d.y, q = dx * dx + dy * dy;
+          if (q < bd) { bd = q; best = e; }
+        }
+        if (best) {
+          best.takeHit(14, this);
+          this._specialRings.push({ pos: best.pos.clone(), radius: 0, maxRadius: 70, life: 0.28, maxLife: 0.28, color1: '#b026ff', color2: '#ff2d6a' });
+        }
+      }
+    }
+  }
+
+  _drawDimiDrones(ctx) {
+    const img = this._dimiDroneImg;
+    if (!this._dimiDrones || !img || !img.complete || !img.naturalWidth) return;
+    const sz = 96;
+    ctx.save();
+    for (const d of this._dimiDrones) {
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = 0.30;
+      ctx.drawImage(img, d.x - sz * 0.6, d.y - sz * 0.6, sz * 1.2, sz * 1.2);
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.globalAlpha = 0.95;
+      ctx.drawImage(img, d.x - sz / 2, d.y - sz / 2, sz, sz);
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
   // Dimi Cyber-Gauntlet Shockwave — periodic close-range AoE giving Dimi a real signature
   // auto-weapon (heavy gauntlet pressure). Reuses the existing _specialRings VFX (no new draw
   // code). Guards on character; damage routes through takeHit like every other weapon.
@@ -7645,6 +7696,7 @@ export class Game {
     this._updateOniFx(dt);          // Oni Protocol 0 (guards on character)
     this._updateDimiGauntlet(dt);   // Dimi Cyber-Gauntlet Shockwave (guards on character)
     this._updateDimiAngels(dt);     // Dimi Cyber-Angel summon (Ultimate)
+    this._updateDimiDrones(dt);     // Dimi Tactical Drone Swarm (extra weapon)
     this._updateEuclidKit(dt);      // Euclid Vector toxin kit (guards on character)
     this._updateSoloRedThunder(dt); // Eddie native weapon — red riff bolts (guards on character)
     this._updateGuitarSolo(dt);     // Eddie GUITAR SOLO card — big red notes + golden full-map lightning
@@ -14451,6 +14503,7 @@ export class Game {
 
     // 4b ── AI Overload Titan mini-boss
     this._drawDimiAngels(ctx);
+    this._drawDimiDrones(ctx);
     this._drawTitan(ctx);
     this._drawTitanWeaponFx(ctx);   // Phase 2: real boss weapon art on top
     this._drawAnnihilator(ctx);
