@@ -51,7 +51,7 @@ import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260711730000';
 import { NexusManager } from './NexusManager.js?v=20260711900000';
 import { VESSELS, getVesselById, getDefaultVesselId } from './VesselCatalog.js?v=20260705040000';
 import { PETS, getPetById } from './PetCatalog.js?v=20260705000000';
-import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons, isEvolutionOwnedBy, getCardDisplayName } from './WeaponCatalog.js?v=20260711950000';
+import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons, isEvolutionOwnedBy, getCardDisplayName } from './WeaponCatalog.js?v=20260711960000';
 import { TACTICAL_ID, TACTICAL_DEFS, getTacticalDef, getTacticalForCharacter, getAvailableTactical, preloadTacticalSprites, FUSION_TACTICALS } from './TacticalWeaponCatalog.js?v=20260711420000';
 import { VFXSpritePlayer } from './VFXSpritePlayer.js?v=20260711800000';
 
@@ -11583,6 +11583,117 @@ export class Game {
           ctx.globalAlpha = (1 - bK) * 0.6;
           ctx.strokeStyle = '#9b6bff'; ctx.lineWidth = 2;
           ctx.beginPath(); ctx.arc(0, 0, 10 + Math.sin(f.t * 14) * 3, 0, Math.PI * 2); ctx.stroke();
+        }
+        ctx.restore();
+      } else if (f.id === 'seismic_gauntlet') {
+        // EARTHBREAKER: fist-plant flash → a zig-zag fissure SNAKES forward segment by
+        // segment (rock chips + dust puffs per segment) → whole crack flashes and SEALS
+        // with a seismic pulse.
+        const segs = 7;
+        const dir2 = f.angle || 0;
+        // precompute zig-zag joints (stateless from seed)
+        const pts = [[0, 0]];
+        for (let i2 = 1; i2 <= segs; i2++) {
+          const swing = (prV(f.seed, i2) - 0.5) * 1.1;
+          const st = (f.R * 1.6) / segs;
+          pts.push([pts[i2-1][0] + Math.cos(dir2 + swing) * st,
+                    pts[i2-1][1] + Math.sin(dir2 + swing) * st * 0.6]);
+        }
+        const open2 = Math.min(1, k / 0.6) * segs;      // how many segments are torn open
+        const seal = Math.max(0, (k - 0.78) / 0.37);    // sealing flash at the end
+        ctx.save();
+        if (k < 0.12) {                                 // fist-plant flash
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.globalAlpha = 1 - k / 0.12;
+          ctx.fillStyle = '#ffe9c4';
+          ctx.beginPath(); ctx.arc(0, 0, 16 + k * 90, 0, Math.PI * 2); ctx.fill();
+        }
+        for (let i2 = 0; i2 < Math.floor(open2); i2++) {
+          const segK = Math.min(1, open2 - i2);
+          const [x1, y1] = pts[i2], [x2, y2] = pts[i2 + 1];
+          // dark chasm
+          ctx.globalCompositeOperation = 'source-over';
+          ctx.globalAlpha = 0.8 * segK * (1 - seal);
+          ctx.strokeStyle = '#140b04'; ctx.lineWidth = 7 * segK; ctx.lineCap = 'round';
+          ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+          // hot inner vein (amber, flickers; goes WHITE during seal)
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.globalAlpha = (0.55 + 0.25 * Math.sin(f.t * 16 + i2)) * segK;
+          ctx.strokeStyle = seal > 0 ? '#fff6dc' : '#d8a24a';
+          ctx.lineWidth = (2.4 + seal * 3) * segK;
+          ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+          // rock chips flung when this segment first opens
+          const fresh = segK < 0.5;
+          if (fresh) for (let c2 = 0; c2 < 3; c2++) {
+            const ca = prV(f.seed, i2 * 7 + c2) * Math.PI * 2;
+            ctx.globalAlpha = (1 - segK * 2) * 0.9;
+            ctx.fillStyle = c2 % 2 ? '#8a6a3a' : '#c9a05a';
+            ctx.fillRect(x2 + Math.cos(ca) * 14 * segK * 2 - 1.5,
+                         y2 + Math.sin(ca) * 10 * segK * 2 - 8 * segK, 3, 3);
+          }
+        }
+        if (seal > 0) {                                 // seismic seal pulse
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.globalAlpha = (1 - seal) * 0.8;
+          ctx.strokeStyle = '#ffe9c4'; ctx.lineWidth = 3 * (1 - seal) + 1;
+          const [ex2, ey2] = pts[segs];
+          ctx.beginPath(); ctx.ellipse((ex2) / 2, (ey2) / 2, f.R * seal * 1.2, f.R * seal * 0.55, 0, 0, Math.PI * 2); ctx.stroke();
+        }
+        ctx.restore();
+      } else if (f.id === 'pyroclast_uppercut') {
+        // VOLCANO PUNCH: blazing phantom fist arcs UP (act 1) → fire geyser column erupts
+        // skyward (act 2) → burning debris rains back down onto a crater ring (act 3).
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        if (k < 0.25) {                                 // phantom fist uppercut arc
+          const uK = k / 0.25;
+          const fy2 = 20 - uK * 90;
+          ctx.globalAlpha = 0.9;
+          ctx.strokeStyle = '#ff6a2a'; ctx.lineWidth = 4;
+          ctx.shadowColor = '#ff6a2a'; ctx.shadowBlur = 14;
+          ctx.beginPath(); ctx.arc(0, fy2, 13, 0, Math.PI * 2); ctx.stroke();  // fist outline
+          ctx.strokeStyle = '#ffd23c'; ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.moveTo(-6, fy2 + 26); ctx.lineTo(0, fy2 + 13); ctx.stroke(); // trail
+          ctx.shadowBlur = 0;
+        } else if (k < 0.6) {                           // geyser column
+          const gK = (k - 0.25) / 0.35;
+          const h2 = 150 * Math.min(1, gK * 1.6);
+          const grad3 = ctx.createLinearGradient(0, 0, 0, -h2);
+          grad3.addColorStop(0, 'rgba(255,244,216,0.95)');
+          grad3.addColorStop(0.5, 'rgba(255,106,42,0.7)');
+          grad3.addColorStop(1, 'rgba(255,106,42,0)');
+          ctx.fillStyle = grad3;
+          const w2 = 18 + Math.sin(f.t * 22) * 4;
+          ctx.globalAlpha = 1 - Math.max(0, gK - 0.75) * 4;
+          ctx.fillRect(-w2 / 2, -h2, w2, h2);
+          for (let i2 = 0; i2 < 6; i2++) {              // licks of flame off the column
+            const la = prV(f.seed, i2 + 30);
+            ctx.globalAlpha = 0.6;
+            ctx.strokeStyle = i2 % 2 ? '#ffd23c' : '#ff6a2a'; ctx.lineWidth = 2;
+            const ly = -la * h2;
+            ctx.beginPath(); ctx.moveTo(0, ly);
+            ctx.lineTo((la - 0.5) * 44, ly - 16); ctx.stroke();
+          }
+        } else {                                        // debris rain + crater ring
+          const dK = (k - 0.6) / 0.55;
+          for (let i2 = 0; i2 < 10; i2++) {
+            const pa = prV(f.seed, i2 + 50) * Math.PI * 2;
+            const pd = f.R * (0.3 + prV(f.seed, i2 + 60) * 0.7);
+            const fall = Math.min(1, dK * 1.5 + prV(f.seed, i2 + 70) * 0.2 - 0.2);
+            if (fall <= 0) continue;
+            const dx2 = Math.cos(pa) * pd * fall, dy2 = -120 * (1 - fall) * (1 - fall) * 4 + Math.sin(pa) * pd * 0.5 * fall;
+            ctx.globalAlpha = 0.85;
+            ctx.fillStyle = i2 % 3 ? '#ff6a2a' : '#ffd23c';
+            ctx.beginPath(); ctx.arc(dx2, dy2, 2.5, 0, Math.PI * 2); ctx.fill();
+            if (fall > 0.92) {                          // impact flash on landing
+              ctx.globalAlpha = 0.7;
+              ctx.strokeStyle = '#fff4d8'; ctx.lineWidth = 1.5;
+              ctx.beginPath(); ctx.arc(dx2, dy2, 6 + (fall - 0.92) * 60, 0, Math.PI * 2); ctx.stroke();
+            }
+          }
+          ctx.globalAlpha = (1 - dK) * 0.7;             // crater ring glow
+          ctx.strokeStyle = '#ff6a2a'; ctx.lineWidth = 3;
+          ctx.beginPath(); ctx.ellipse(0, 6, f.R * 0.8, f.R * 0.38, 0, 0, Math.PI * 2); ctx.stroke();
         }
         ctx.restore();
       } else if (f.id === 'revenant_choir') {

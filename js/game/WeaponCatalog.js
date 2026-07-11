@@ -40,6 +40,8 @@ export const WEAPON_ID = Object.freeze({
   MIRROR_CASCADE:   'mirror_cascade',   // NEW taekwondo evolution (procedural)
   FOUNDRY_PISTON:   'foundry_piston',   // NEW cyber-arm evolution (procedural)
   FERRO_TEMPEST:    'ferro_tempest',    // NEW cyber-arm evolution (procedural)
+  SEISMIC_GAUNTLET: 'seismic_gauntlet', // NEW brawler evolution (procedural)
+  PYROCLAST_UPPERCUT:'pyroclast_uppercut',// NEW brawler evolution (procedural)
   TEMPEST_RIBBON:   'tempest_ribbon',   // NEW taekwondo evolution (procedural)
   REVENANT_CHOIR:   'revenant_choir',   // NEW skeleton evolution (procedural)
 });
@@ -591,6 +593,30 @@ export const WEAPON_DEFS = Object.freeze({
     color: '#9b6bff',
     baseStats: { damage: 27, cooldown: 2.9, aoeRadius: 150, speed: 0, piercing: 99 },
   },
+  [WEAPON_ID.SEISMIC_GAUNTLET]: {
+    id: 'seismic_gauntlet',
+    name: 'Seismic Gauntlet',
+    description: 'The fist plants into the ground — a lightning-shaped fissure SNAKES forward, tearing the earth open segment by segment.',
+    character: 'brawler_warrior',
+    element: 'earth',
+    behavior: WEAPON_BEHAVIOR.GROUND_SHOCKWAVE,
+    isEvolution: true,
+    procedural: true,
+    color: '#d8a24a',
+    baseStats: { damage: 30, cooldown: 2.6, aoeRadius: 160, speed: 0, piercing: 99 },
+  },
+  [WEAPON_ID.PYROCLAST_UPPERCUT]: {
+    id: 'pyroclast_uppercut',
+    name: 'Pyroclast Uppercut',
+    description: 'A blazing phantom fist UPPERCUTS a fire geyser skyward — burning debris rains back down in a crater ring.',
+    character: 'brawler_warrior',
+    element: 'fire',
+    behavior: WEAPON_BEHAVIOR.NOVA,
+    isEvolution: true,
+    procedural: true,
+    color: '#ff6a2a',
+    baseStats: { damage: 32, cooldown: 2.8, aoeRadius: 140, speed: 0, piercing: 99 },
+  },
   [WEAPON_ID.REVENANT_CHOIR]: {
     id: 'revenant_choir',
     name: 'Revenant Choir',
@@ -666,6 +692,18 @@ export const EVOLUTION_RECIPES = Object.freeze([
     ingredients: [WEAPON_ID.SHADOW_TOXIC, WEAPON_ID.SPIRIT_CRESCENT],
     minLevel: 5,
     owner: ['cyber_arm_hero'],
+  },
+  {
+    result: WEAPON_ID.SEISMIC_GAUNTLET,
+    ingredients: [WEAPON_ID.CATACLYSM_PULSE, WEAPON_ID.STORM_SABER],
+    minLevel: 5,
+    owner: ['brawler_warrior'],
+  },
+  {
+    result: WEAPON_ID.PYROCLAST_UPPERCUT,
+    ingredients: [WEAPON_ID.GAS_NEEDLE, WEAPON_ID.SPIRIT_CRESCENT],
+    minLevel: 5,
+    owner: ['brawler_warrior'],
   },
   {
     result: WEAPON_ID.CHAOS_CHORD,
