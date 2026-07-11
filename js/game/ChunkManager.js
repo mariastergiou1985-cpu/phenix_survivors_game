@@ -603,8 +603,9 @@ export class ChunkManager {
     const dy = Math.round(chunk.worldY);
     if (img) {
       ctx.drawImage(img, dx, dy, CHUNK_SIZE + 1, CHUNK_SIZE + 1);
-      // Dark overlay for gameplay readability (exact size — translucent, must not overlap)
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+      // Readability overlay — lighter than before (0.35 flat black made the city mush),
+      // and biome-tinted so each district keeps its color identity through the dim.
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.26)';
       ctx.fillRect(dx, dy, CHUNK_SIZE, CHUNK_SIZE);
     } else {
       // Fallback: solid palette background (opaque → safe to overlap 1px)
@@ -648,6 +649,58 @@ export class ChunkManager {
     }
     ctx.stroke();
     ctx.globalAlpha = 1;
+
+    // ── Living-city pass (cinematic map, bounded + deterministic per chunk) ──
+    // A) DATA PULSES: bright packets racing along grid lines (2 per chunk, looping).
+    // B) CITY LIGHTS: 6 tiny biome-colored window lights blinking at their own tempo.
+    // Everything derives from (chunk coords, time) — zero state, zero allocations.
+    const tNow = performance.now() / 1000;
+    const seed = ((chunk.cx * 73856093) ^ (chunk.cy * 19349663)) >>> 0;
+    const prC = (i) => { const v = Math.sin((seed % 1000) * 12.9898 + i * 78.233) * 43758.5453; return v - Math.floor(v); };
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+
+    // A) data pulses — one horizontal, one vertical lane per chunk
+    for (let piC = 0; piC < 2; piC++) {
+      const lane = 1 + Math.floor(prC(piC) * ((CHUNK_SIZE / spacing) - 1));
+      const cyc = (tNow * (0.10 + prC(piC + 4) * 0.08) + prC(piC + 8)) % 1;
+      const head = cyc * CHUNK_SIZE;
+      ctx.globalAlpha = 0.38;
+      ctx.strokeStyle = pal.grid;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      if (piC === 0) {                                   // horizontal packet
+        const yy = y0 + lane * spacing;
+        ctx.moveTo(x0 + Math.max(0, head - 34), yy);
+        ctx.lineTo(x0 + head, yy);
+      } else {                                           // vertical packet
+        const xx = x0 + lane * spacing;
+        ctx.moveTo(xx, y0 + Math.max(0, head - 34));
+        ctx.lineTo(xx, y0 + head);
+      }
+      ctx.stroke();
+      // packet head dot
+      ctx.globalAlpha = 0.7;
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      if (piC === 0) ctx.arc(x0 + head, y0 + lane * spacing, 1.6, 0, Math.PI * 2);
+      else           ctx.arc(x0 + lane * spacing, y0 + head, 1.6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // B) blinking city lights
+    for (let liC = 0; liC < 6; liC++) {
+      const lx = x0 + prC(liC + 20) * CHUNK_SIZE;
+      const ly = y0 + prC(liC + 30) * CHUNK_SIZE;
+      const blink = 0.5 + 0.5 * Math.sin(tNow * (0.7 + prC(liC + 40) * 1.6) + liC * 2.2);
+      ctx.globalAlpha = 0.22 * blink;
+      ctx.fillStyle = pal.grid;
+      ctx.beginPath(); ctx.arc(lx, ly, 2.4, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 0.10 * blink;
+      ctx.beginPath(); ctx.arc(lx, ly, 6, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
   }
 
   // ─── Debug ──────────────────────────────────────────────────────────────
