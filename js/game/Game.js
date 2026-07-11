@@ -51,7 +51,7 @@ import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260711730000';
 import { NexusManager } from './NexusManager.js?v=20260711900000';
 import { VESSELS, getVesselById, getDefaultVesselId } from './VesselCatalog.js?v=20260705040000';
 import { PETS, getPetById } from './PetCatalog.js?v=20260705000000';
-import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons, isEvolutionOwnedBy, getCardDisplayName } from './WeaponCatalog.js?v=20260711980000';
+import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons, isEvolutionOwnedBy, getCardDisplayName } from './WeaponCatalog.js?v=20260711990000';
 import { TACTICAL_ID, TACTICAL_DEFS, getTacticalDef, getTacticalForCharacter, getAvailableTactical, preloadTacticalSprites, FUSION_TACTICALS } from './TacticalWeaponCatalog.js?v=20260711420000';
 import { VFXSpritePlayer } from './VFXSpritePlayer.js?v=20260711800000';
 
@@ -11917,6 +11917,124 @@ export class Game {
           ctx.globalAlpha = (1 - chord) * 0.35;
           ctx.fillStyle = '#ff3c3c';
           ctx.beginPath(); ctx.ellipse(L2 / 2, 0, f.R * chord, f.R * chord * 0.45, 0, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.restore();
+      } else if (f.id === 'sanction_halo') {
+        // TRIBUNAL: a golden halo disc irises OPEN overhead (act 1) → pillars of
+        // judgement drop in sequence around its rim like nails of light (act 2) →
+        // the halo closes like an EYELID (act 3).
+        const HP2 = 6;                                   // pillars
+        const hy = -95;                                  // halo height above point
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        const iris = k < 0.2 ? k / 0.2 : (k > 0.82 ? Math.max(0, 1 - (k - 0.82) / 0.28) : 1);
+        // halo: two concentric golden rings + inner seal spokes, squashed for perspective
+        if (iris > 0.01) {
+          ctx.save();
+          ctx.translate(0, hy);
+          ctx.scale(1, 0.34);
+          ctx.globalAlpha = 0.9 * iris;
+          ctx.strokeStyle = '#ffd76a'; ctx.lineWidth = 3;
+          ctx.shadowColor = '#ffd76a'; ctx.shadowBlur = 16;
+          ctx.beginPath(); ctx.arc(0, 0, 58 * iris, 0, Math.PI * 2); ctx.stroke();
+          ctx.lineWidth = 1.4;
+          ctx.beginPath(); ctx.arc(0, 0, 42 * iris, 0, Math.PI * 2); ctx.stroke();
+          ctx.shadowBlur = 0;
+          ctx.globalAlpha = 0.5 * iris;                  // celestial seal spokes (rotating)
+          for (let i2 = 0; i2 < 8; i2++) {
+            const sa3 = (i2 / 8) * Math.PI * 2 + f.t * 0.7;
+            ctx.beginPath();
+            ctx.moveTo(Math.cos(sa3) * 20 * iris, Math.sin(sa3) * 20 * iris);
+            ctx.lineTo(Math.cos(sa3) * 40 * iris, Math.sin(sa3) * 40 * iris);
+            ctx.stroke();
+          }
+          ctx.restore();
+        }
+        // pillars fall in sequence around the rim
+        for (let i2 = 0; i2 < HP2; i2++) {
+          const drop2 = (k - 0.2 - i2 * 0.075) / 0.14;
+          if (drop2 <= 0 || drop2 > 1.6) continue;
+          const pa2 = (i2 / HP2) * Math.PI * 2 + 0.5;
+          const px3 = Math.cos(pa2) * f.R * 0.62, pyG = Math.sin(pa2) * f.R * 0.62 * 0.5;
+          const dK2 = Math.min(1, drop2);
+          const fade = drop2 > 1 ? 1 - (drop2 - 1) / 0.6 : 1;
+          // the pillar: from halo rim down to its ground point
+          const topY = hy + (0 - hy - pyG) * 0; // start at halo
+          ctx.globalAlpha = 0.85 * fade;
+          const pg = ctx.createLinearGradient(px3, hy, px3, pyG);
+          pg.addColorStop(0, 'rgba(255,246,220,0.0)');
+          pg.addColorStop(Math.max(0.01, dK2 - 0.25), 'rgba(255,215,106,0.05)');
+          pg.addColorStop(dK2, '#fff6dc');
+          ctx.strokeStyle = '#ffd76a';
+          ctx.lineWidth = 5;
+          ctx.beginPath(); ctx.moveTo(px3, hy);
+          ctx.lineTo(px3, hy + (pyG - hy) * dK2); ctx.stroke();
+          ctx.strokeStyle = '#fff6dc'; ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.moveTo(px3, hy);
+          ctx.lineTo(px3, hy + (pyG - hy) * dK2); ctx.stroke();
+          if (dK2 >= 1) {                                // nail-of-light impact ring
+            const iK2 = Math.min(1, (drop2 - 1) / 0.6);
+            ctx.globalAlpha = (1 - iK2) * 0.9;
+            ctx.strokeStyle = '#ffd76a'; ctx.lineWidth = 2.4 * (1 - iK2) + 0.6;
+            ctx.beginPath(); ctx.ellipse(px3, pyG, 16 * iK2 + 4, (16 * iK2 + 4) * 0.45, 0, 0, Math.PI * 2); ctx.stroke();
+          }
+        }
+        ctx.restore();
+      } else if (f.id === 'wing_guillotine') {
+        // GUILLOTINE OF WINGS: two colossal light-feather wings materialize spread wide
+        // (act 1) → SNAP shut on the point in a white scissor-flash (act 2) → dissolve
+        // into feathers drifting down (act 3).
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        const mat = Math.min(1, k / 0.3);
+        const snapK = k < 0.3 ? 0 : Math.min(1, (k - 0.3) / 0.14);      // FAST close
+        const after = Math.max(0, (k - 0.44) / 0.71);
+        const spread = (1 - snapK) * 1.25 + 0.06;        // wing opening angle
+        if (after < 0.35) {
+          for (const side of [-1, 1]) {
+            ctx.save();
+            ctx.scale(side, 1);
+            ctx.rotate(-spread);
+            ctx.globalAlpha = mat * (after > 0 ? 1 - after / 0.35 : 1);
+            // wing: 5 feather layers, each an arc of tapered strokes
+            for (let fL = 0; fL < 5; fL++) {
+              const fr = 34 + fL * 17;
+              ctx.strokeStyle = fL % 2 ? '#e8f2ff' : '#ffffff';
+              ctx.lineWidth = 6 - fL;
+              ctx.shadowColor = '#9ecbff'; ctx.shadowBlur = 10;
+              ctx.beginPath();
+              ctx.arc(14, -20, fr * mat, Math.PI * 0.15, Math.PI * 0.62);
+              ctx.stroke();
+            }
+            ctx.shadowBlur = 0;
+            ctx.restore();
+          }
+        }
+        if (snapK > 0.5 && after < 0.4) {                // scissor flash on the SNAP
+          const fK2 = after < 0.001 ? (snapK - 0.5) * 2 : 1 - after / 0.4;
+          ctx.globalAlpha = fK2 * 0.9;
+          ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 3;
+          ctx.beginPath(); ctx.moveTo(-f.R * 0.7, -34); ctx.lineTo(f.R * 0.7, 10); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(f.R * 0.7, -34); ctx.lineTo(-f.R * 0.7, 10); ctx.stroke();
+          ctx.globalAlpha = fK2 * 0.3;
+          ctx.fillStyle = '#e8f2ff';
+          ctx.beginPath(); ctx.arc(0, -12, f.R * 0.6, 0, Math.PI * 2); ctx.fill();
+        }
+        if (after > 0) {                                 // feathers drift down
+          for (let i2 = 0; i2 < 12; i2++) {
+            const fp = prV(f.seed, i2 + 90);
+            const fall2 = Math.min(1, after * 1.3 + fp * 0.2 - 0.2);
+            if (fall2 <= 0) continue;
+            const fx3 = (fp - 0.5) * f.R * 1.5 + Math.sin(f.t * 3 + i2) * 10;
+            const fy3 = -70 + fall2 * 95;
+            ctx.save();
+            ctx.translate(fx3, fy3);
+            ctx.rotate(Math.sin(f.t * 2.4 + i2 * 2) * 0.7);
+            ctx.globalAlpha = (1 - after) * 0.85;
+            ctx.fillStyle = i2 % 2 ? '#e8f2ff' : '#ffffff';
+            ctx.beginPath(); ctx.ellipse(0, 0, 1.6, 5.5, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.restore();
+          }
         }
         ctx.restore();
       } else if (f.id === 'revenant_choir') {

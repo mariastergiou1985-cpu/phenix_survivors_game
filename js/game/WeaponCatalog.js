@@ -46,6 +46,8 @@ export const WEAPON_ID = Object.freeze({
   POISON_PETAL_WALTZ:'poison_petal_waltz',// NEW assassin evolution (procedural)
   AMP_OVERDRIVE_WALL:'amp_overdrive_wall',// NEW eddie evolution (procedural)
   SOLO_OF_THE_DAMNED:'solo_of_the_damned',// NEW eddie evolution (procedural)
+  SANCTION_HALO:    'sanction_halo',    // NEW dimi evolution (procedural)
+  WING_GUILLOTINE:  'wing_guillotine',  // NEW dimi evolution (procedural)
   TEMPEST_RIBBON:   'tempest_ribbon',   // NEW taekwondo evolution (procedural)
   REVENANT_CHOIR:   'revenant_choir',   // NEW skeleton evolution (procedural)
 });
@@ -669,6 +671,30 @@ export const WEAPON_DEFS = Object.freeze({
     color: '#ffb03c',
     baseStats: { damage: 29, cooldown: 3.0, aoeRadius: 165, speed: 0, piercing: 99 },
   },
+  [WEAPON_ID.SANCTION_HALO]: {
+    id: 'sanction_halo',
+    name: 'Sanction Halo',
+    description: 'A golden tribunal halo opens overhead — pillars of judgement fall in sequence around its rim like nails of light, until the halo closes like an eyelid.',
+    character: 'dimis_kickboxer',
+    element: 'holy',
+    behavior: WEAPON_BEHAVIOR.NOVA,
+    isEvolution: true,
+    procedural: true,
+    color: '#ffd76a',
+    baseStats: { damage: 30, cooldown: 2.9, aoeRadius: 150, speed: 0, piercing: 99 },
+  },
+  [WEAPON_ID.WING_GUILLOTINE]: {
+    id: 'wing_guillotine',
+    name: 'Wing Guillotine',
+    description: 'Two colossal wings of light-feathers materialize spread wide — then SNAP shut like a guillotine in a white scissor-flash, dissolving into falling feathers.',
+    character: 'dimis_kickboxer',
+    element: 'holy',
+    behavior: WEAPON_BEHAVIOR.GROUND_SHOCKWAVE,
+    isEvolution: true,
+    procedural: true,
+    color: '#e8f2ff',
+    baseStats: { damage: 33, cooldown: 2.7, aoeRadius: 135, speed: 0, piercing: 99 },
+  },
   [WEAPON_ID.REVENANT_CHOIR]: {
     id: 'revenant_choir',
     name: 'Revenant Choir',
@@ -780,6 +806,18 @@ export const EVOLUTION_RECIPES = Object.freeze([
     ingredients: [WEAPON_ID.SOLO_RED_THUNDER, WEAPON_ID.CATACLYSM_PULSE],
     minLevel: 5,
     owner: ['eddie'],
+  },
+  {
+    result: WEAPON_ID.SANCTION_HALO,
+    ingredients: [WEAPON_ID.SPIRIT_CRESCENT, WEAPON_ID.NEXUS_CHAKRAM],
+    minLevel: 5,
+    owner: ['dimis_kickboxer'],
+  },
+  {
+    result: WEAPON_ID.WING_GUILLOTINE,
+    ingredients: [WEAPON_ID.STORM_SABER, WEAPON_ID.CATACLYSM_PULSE],
+    minLevel: 5,
+    owner: ['dimis_kickboxer'],
   },
   {
     result: WEAPON_ID.CHAOS_CHORD,
