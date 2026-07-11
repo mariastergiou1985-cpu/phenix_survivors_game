@@ -22,7 +22,7 @@ import { weightedSample } from './Upgrades.js?v=20260711370000';
 import { MutationUI }      from './MutationUI.js?v=20260703990000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260705300000';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST } from './MetaProgress.js?v=20260710290000';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, SKILL_TREE } from './MetaProgress.js?v=20260711380000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260711360000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
@@ -2233,6 +2233,17 @@ export class Game {
     p.maxMana                   += m.getLevel('manaCapacitor') * 10;               // ultimate cost stays 100
     p.xpMult                     = 1 + m.getLevel('xpUplink') * 0.05;
 
+    // ── #78 Universal Skill Tree — permanent cross-character passives (prereq-gated tree) ──
+    const _st = k => m.getLevel(k);
+    const _stHp = _st('st_vitality') * 8 + _st('st_ascendant') * 15;
+    p.maxHp += _stHp; p.hp += _stHp;
+    p.upgrades['Pulse Damage'] = (p.upgrades['Pulse Damage'] || 0) + _st('st_power') * 0.4 + _st('st_annihilator') * 0.8;
+    p.speedBonus += _st('st_agility') * 0.04;
+    p.contactDamageReduction = Math.min(0.6, (p.contactDamageReduction || 0) + _st('st_fortress') * 0.03);
+    p.fireRateBonus = (p.fireRateBonus || 0) + _st('st_overcharge') * 0.05 + _st('st_annihilator') * 0.04;
+    { let _pr = p.pickupRadius; for (let _i = 0; _i < _st('st_momentum'); _i++) _pr = Math.round(_pr * 1.06); p.pickupRadius = _pr; }
+    p.xpMult = (p.xpMult || 1) + _st('st_ascendant') * 0.05;
+
     // ── Null Battery relic: 8% faster Q/E ability cooldowns ──
     if (m.isRelicUnlocked('null_battery')) p.abilityCdMult = 1.08;
     // ── Chaos Mega Titan reward relics (single-tier passive versions; the full 5-tier
@@ -3119,6 +3130,7 @@ export class Game {
   // Active Upgrades-screen list — CORE (META_UPGRADES) or the SYNERGY 5★ Grid-Core sink.
   _upgradeList() {
     if (this._upgradeTab === 'synergy')   return SYNERGY_UPGRADES;
+    if (this._upgradeTab === 'skilltree') return SKILL_TREE;
     if (this._upgradeTab === 'protocols') return PROTOCOL_CARDS;
     return META_UPGRADES;
   }
@@ -3405,6 +3417,7 @@ export class Game {
           <button class="cgu-tab" data-tab="core">CORE UPGRADES</button>
           <button class="cgu-tab" data-tab="synergy">★ WEAPON SYNERGIES</button>
           <button class="cgu-tab" data-tab="protocols">🧩 PROTOCOLS</button>
+          <button class="cgu-tab" data-tab="skilltree">🌳 SKILL TREE</button>
         </div>
 
         <div class="cgu-grid" id="cgu-grid"></div>
@@ -3478,10 +3491,14 @@ export class Game {
         else if (res === 'poor')  this._upgradeMsg = `Not enough Fragments (need ${pc.cost}).`;
         this._upgradeMsgTimer = 2.2;
       } else {
-        const list = tab === 'synergy' ? SYNERGY_UPGRADES : META_UPGRADES;
+        const list = tab === 'synergy' ? SYNERGY_UPGRADES : tab === 'skilltree' ? SKILL_TREE : META_UPGRADES;
         const upg  = list[idx];
         if (!upg) return;
-        if ((upg.lockedUntil && !this.meta.isProtocolUnlocked(upg.lockedUntil)) || (upg.char && !this.meta.isCharacterUnlocked(upg.char))) {
+        if (upg.prereq && this.meta.getLevel(upg.prereq) < 1) {
+          const _pn = (SKILL_TREE.find(n => n.key === upg.prereq) || {}).name || 'the previous node';
+          this._upgradeMsg      = `Unlock ${_pn} first.`;
+          this._upgradeMsgTimer = 2.2;
+        } else if ((upg.lockedUntil && !this.meta.isProtocolUnlocked(upg.lockedUntil)) || (upg.char && !this.meta.isCharacterUnlocked(upg.char))) {
           this._upgradeMsg      = `${upg.charName || upg.name} must be unlocked first.`;
           this._upgradeMsgTimer = 2.2;
         } else {
@@ -3559,7 +3576,7 @@ export class Game {
     el.querySelectorAll('.cgu-tab').forEach(btn => {
       btn.classList.remove('active-core','active-syn','active-proto');
       if (btn.dataset.tab === tab) {
-        btn.classList.add(tab === 'core' ? 'active-core' : tab === 'synergy' ? 'active-syn' : 'active-proto');
+        btn.classList.add(tab === 'synergy' ? 'active-syn' : tab === 'protocols' ? 'active-proto' : 'active-core');
       }
     });
 
@@ -3568,19 +3585,19 @@ export class Game {
     const credits = this.meta.credits;
     const pf      = this.meta.getProtocolFragments();
 
-    if (tab === 'core' || tab === 'synergy') {
-      const list  = tab === 'synergy' ? SYNERGY_UPGRADES : META_UPGRADES;
+    if (tab === 'core' || tab === 'synergy' || tab === 'skilltree') {
+      const list  = tab === 'synergy' ? SYNERGY_UPGRADES : tab === 'skilltree' ? SKILL_TREE : META_UPGRADES;
       const isSyn = tab === 'synergy';
       grid.innerHTML = list.map((upg, i) => {
         const lvl    = this.meta.getLevel(upg.key);
         const cost   = upgradeCost(upg, lvl);
         const maxed  = lvl >= upg.maxLevel;
-        const locked = !!((upg.lockedUntil && !this.meta.isProtocolUnlocked(upg.lockedUntil)) || (upg.char && !this.meta.isCharacterUnlocked(upg.char)));
+        const locked = !!((upg.lockedUntil && !this.meta.isProtocolUnlocked(upg.lockedUntil)) || (upg.char && !this.meta.isCharacterUnlocked(upg.char)) || (upg.prereq && this.meta.getLevel(upg.prereq) < 1));
         const can    = !maxed && !locked && credits >= cost;
         const dots   = Array.from({length: upg.maxLevel}, (_, d) =>
           `<span class="cgu-dot${d < lvl ? (isSyn ? ' syn-filled' : ' filled') : ''}"></span>`
         ).join('');
-        const effectText = (!isSyn && lvl > 0) ? `<div class="cgu-card-effect">▸ ${this._metaEffectText(upg.key, lvl)}</div>` : '';
+        const effectText = (tab === 'core' && lvl > 0) ? `<div class="cgu-card-effect">▸ ${this._metaEffectText(upg.key, lvl)}</div>` : '';
         const charTag    = (isSyn && upg.charName) ? `<div class="cgu-char-tag">${upg.charName}</div>` : '';
         const synTag     = isSyn ? `<div class="cgu-syn-tag">★ Synergy</div>` : '';
         let btnClass = '', btnLabel = '', btnDis = '';

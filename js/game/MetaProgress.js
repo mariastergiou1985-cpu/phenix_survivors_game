@@ -19,9 +19,28 @@ const COST_3 = [35, 90, 180];           // 3-level upgrades (e.g. Core Capacity)
 
 export function upgradeCost(upg, level) {
   if (upg.flatCost) return upg.flatCost;   // synergy upgrades: flat cost per star (1000)
+  if (upg.costTable) return upg.costTable[Math.min(level, upg.costTable.length - 1)];  // #78 skill-tree per-node curve
   const table = upg.maxLevel <= 3 ? COST_3 : COST_5;
   return table[Math.min(level, table.length - 1)];
 }
+
+// ─── #78 UNIVERSAL SKILL TREE — permanent, cross-character passives bought with Grid Cores.
+// A real tree: tier-2 nodes stay LOCKED until their tier-1 `prereq` node is owned (level ≥ 1),
+// tier-3 capstones until their tier-2 prereq is owned. Levels live in the SAME `levels` dict as
+// META_UPGRADES (save-compatible; unknown keys default to 0). Effects applied in Game._applyMetaUpgrades.
+export const SKILL_TREE = [
+  // Tier 1 — roots (no prereq)
+  { key:'st_vitality', name:'Vitality Core',  desc:'+8 max HP per level',        tier:1, prereq:null,          maxLevel:5, costTable:[20,40,70,110,160] },
+  { key:'st_power',    name:'Power Core',      desc:'+0.4 shot damage per level', tier:1, prereq:null,          maxLevel:5, costTable:[20,40,70,110,160] },
+  { key:'st_agility',  name:'Agility Core',    desc:'+4% move speed per level',   tier:1, prereq:null,          maxLevel:5, costTable:[20,40,70,110,160] },
+  // Tier 2 — require the matching tier-1 root
+  { key:'st_fortress',   name:'Fortress Protocol',   desc:'+3% armor per level',        tier:2, prereq:'st_vitality', maxLevel:3, costTable:[60,120,200] },
+  { key:'st_overcharge', name:'Overcharge Protocol', desc:'+5% fire rate per level',    tier:2, prereq:'st_power',    maxLevel:3, costTable:[60,120,200] },
+  { key:'st_momentum',   name:'Momentum Protocol',   desc:'+6% pickup radius per level',tier:2, prereq:'st_agility',  maxLevel:3, costTable:[60,120,200] },
+  // Tier 3 — capstones
+  { key:'st_ascendant',   name:'Ascendant Core',   desc:'+15 max HP & +5% XP per level',        tier:3, prereq:'st_fortress',   maxLevel:2, costTable:[150,300] },
+  { key:'st_annihilator', name:'Annihilator Core', desc:'+0.8 shot damage & +4% fire rate/lvl', tier:3, prereq:'st_overcharge', maxLevel:2, costTable:[150,300] },
+];
 
 // ─── Character Weapon Synergy meta-upgrades (5★, flat 1000 Grid Cores per star) ───────────────
 // A deep late-game Grid-Core sink, rendered on a separate SYNERGY tab of the Upgrades screen.
@@ -651,7 +670,7 @@ export class MetaProgress {
   // shows exactly what respec() will pay back.
   getRespecRefund() {
     let total = 0;
-    for (const upg of [...META_UPGRADES, ...SYNERGY_UPGRADES]) {
+    for (const upg of [...META_UPGRADES, ...SYNERGY_UPGRADES, ...SKILL_TREE]) {
       const lvl = Math.min(this.getLevel(upg.key), upg.maxLevel);
       for (let i = 0; i < lvl; i++) total += upgradeCost(upg, i);
     }
