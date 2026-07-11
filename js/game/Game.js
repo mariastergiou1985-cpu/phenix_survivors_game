@@ -22,7 +22,7 @@ import { weightedSample } from './Upgrades.js?v=20260711370000';
 import { MutationUI }      from './MutationUI.js?v=20260703990000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260705300000';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, SKILL_TREE } from './MetaProgress.js?v=20260711400000';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, SKILL_TREE } from './MetaProgress.js?v=20260711410000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260711360000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
@@ -153,7 +153,6 @@ const WIELDER_VFX_OVERRIDES = Object.freeze({
   'cryo_sovereign|taekwondo_girl':        'assets/weapons/vfx/cryo_sovereign.png',
   'ion_halo|cyber_arm_hero':              'assets/weapons/vfx/ion_halo.png',
   'null_lance|japan_phasewalker':         'assets/weapons/vfx/null_lance.png',
-  'glitch_tear|japan_phasewalker':        'assets/weapons/vfx/Synergy Weapon 2 Linked AI Companion Rifle.png',   // #74+ synergy art (big single-illustration)
   'ember_storm|oni_cataclysm_protocol':   'assets/weapons/vfx/ember_storm.png',
   // Batch 3 evolutions (Skeleton / Assassin / Brawler)
   'bonecircuit_storm|skeleton_warrior':   'assets/weapons/vfx/bonecircuit_storm.png',
@@ -511,6 +510,7 @@ const SYNERGY_FX = {
   assassin_clone:   { card: 'synergy_plasma_execution', meta: 'syn_plasma_execution', color: '#ff5cd2', glyph: '✖' },
   euclid_vector:    { card: 'synergy_toxic_geometry',   meta: 'syn_toxic_geometry',   color: '#7CFF4D', glyph: '▲' },
   japan_phasewalker:{ card: 'synergy_phase_companion', meta: 'syn_phase_companion', color: '#9fdcff', glyph: '◆' },
+  dimis_kickboxer:  { card: 'synergy_gauntlet_resonance', meta: 'syn_gauntlet_resonance', color: '#b026ff', glyph: '✊' },
 };
 
 // BOSS_WARN_COOLDOWN now lives in EnemySpawner.js — aliased here.
@@ -5587,9 +5587,10 @@ export class Game {
     this._dimiSlamTimer -= dt;
     if (this._dimiSlamTimer > 0) return;
     const gm = this._cardLvl('dimi_gauntlet_mastery');
-    this._dimiSlamTimer = Math.max(0.85, 1.5 - 0.15 * gm);
-    const radius = 150 + 20 * gm;
-    const dmg    = 16 + 5 * gm;
+    const sr = this.meta?.getLevel?.('syn_gauntlet_resonance') || 0;   // synergy: Resonance Plasma Gauntlets
+    this._dimiSlamTimer = Math.max(0.70, 1.5 - 0.15 * gm - 0.06 * sr);
+    const radius = 150 + 20 * gm + 14 * sr;
+    const dmg    = 16 + 5 * gm + 4 * sr;
     let hit = 0;
     for (const e of this.enemies) {
       if (!e || !e.pos) continue;
