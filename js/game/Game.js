@@ -33,6 +33,7 @@ import { OssuaryReconstruction } from '../effects/ossuary-reconstruction.js?v=20
 import { AfterimageTribunal } from '../effects/afterimage-tribunal.js?v=20260711510000';
 import { FeedbackApocalypse } from '../effects/feedback-apocalypse.js?v=20260711520000';
 import { OniMaskOverture } from '../effects/oni-mask-overture.js?v=20260711530000';
+import { EuclidTheorem } from '../effects/euclid-theorem.js?v=20260711540000';
 import { Protocol0 } from '../effects/protocol-0.js?v=20260705000000';
 import { LaserEyes } from '../effects/laser-eyes.js?v=20260709100000';
 import { MeteorRain } from '../effects/meteor-rain.js?v=20260709100000';
@@ -1133,6 +1134,7 @@ export class Game {
     this._ossuary             = null;   // Skeleton Warrior ultimate (Ossuary Reconstruction)
     this._tribunal            = null;   // Taekwondo Girl ultimate (Afterimage Tribunal)
     this._feedbackApoc        = null;   // Eddie ultimate (Feedback Apocalypse)
+    this._theorem             = null;   // Euclid Vector ultimate (Theorem of Rot)
     this._pwFxBuilt           = false;
     this._pwDashing           = false;
     this._pwDashStart         = null;
@@ -6743,13 +6745,62 @@ export class Game {
     if (!this._euclidPlague) return;
     const cost = Math.max(60, ULTIMATE_MANA_COST - 12 * (p.upgrades['euclid_vector_overdose'] || 0));
     if (p.mana < cost) { this.floatingTexts.push(new FloatingText('NOT ENOUGH MANA', p.pos.clone(), '#00ff66', 1.0)); return; }
-    this._euclidPlayer.x = p.pos.x; this._euclidPlayer.y = p.pos.y;
-    this._euclidPlague.dashSpeed    = EUCLID_DASH_SPEED;    // tunable — faster lunge
-    this._euclidPlague.dashDuration = EUCLID_DASH_DURATION; // tunable — longer lunge
-    this._euclidPlague.trigger();
+    // Theorem of Rot replaced Plague Trail as Euclid's ultimate (module VFX, living
+    // geometry proof). Plague Trail code stays in the kit but is never triggered here.
+    this._ensureTheoremFx();
+    if (!this._theorem || this._theorem.isActive()) return;
     p.mana -= cost;
+    const sp = this._playerScreenPos();
+    this._theorem.trigger(sp.cx, sp.footY);
     this.screenShake.trigger(5, 0.25);
-    this.floatingTexts.push(new FloatingText('PLAGUE TRAIL!', p.pos.clone(), '#00ff66', 1.2));
+    this.audio?.playEventWarning?.();
+    this.floatingTexts.push(new FloatingText('THEOREM OF ROT!', p.pos.clone(), '#7CFF4D', 1.4));
+  }
+
+  // Lazy builder — canvas required (sprite not drawn by this module; Euclid stays visible).
+  _ensureTheoremFx() {
+    if (this.player?.selectedCharacter !== 'euclid_vector') return;
+    if (this._theorem || !this._canvas) return;
+    const h = Math.max(24, Math.round(64 * this._viewScale));
+    this._theorem = new EuclidTheorem(this._canvas, this.player.characterSprite, { spriteW: h, spriteH: h });
+  }
+
+  // World→screen hooks shared by update AND render (the proof diagram FOLLOWS moving enemies).
+  _theoremHooks() {
+    const vs = this._viewScale, cam = this.camera;
+    return {
+      getX: e => ((e?.pos?.x ?? cam.x) - cam.x) * vs,
+      getY: e => ((e?.pos?.y ?? cam.y) - cam.y) * vs,
+      onStrike: (e, kind) => {
+        if (!e?.takeHit) return;
+        if (kind === 'qed') e.takeHit(this._capBossDamage ? ((e.isBoss?.() || e.isMegaBoss) ? this._capBossDamage(e, 45) : 45) : 45, this);
+        else e.takeHit((e.isBoss?.() || e.isMegaBoss) ? (this._capBossDamage ? this._capBossDamage(e, 20) : 20) : 20, this);
+      },
+    };
+  }
+
+  _updateTheoremFx(dt) {
+    if (this.player?.selectedCharacter !== 'euclid_vector' || !this._theorem) return;
+    try {
+      if (this._theorem.isActive()) {
+        const sp = this._playerScreenPos();
+        this._theorem.cx = sp.cx; this._theorem.footY = sp.footY;
+      }
+      this._theorem.update(performance.now(), this.enemies, this._theoremHooks());
+    } catch (err) { console.warn('[Theorem]', err); }
+  }
+
+  _drawTheoremFx(ctx) {
+    this._canvas = ctx.canvas;
+    if (this.player?.selectedCharacter !== 'euclid_vector') return;
+    this._ensureTheoremFx();
+    if (!this._theorem) return;
+    try {
+      const sh = this._theorem.getShake();
+      ctx.save(); ctx.translate(sh.x, sh.y);
+      this._theorem.render(ctx, this._theoremHooks());   // render needs the hooks: lines track enemies
+      ctx.restore();
+    } catch (err) { console.warn('[Theorem render]', err); }
   }
 
   // ── Thunder Solo ultimate (Cyber Skeleton Warrior, SPACE, 100 mana) ──────────
@@ -7756,6 +7807,7 @@ export class Game {
     this._updateOssuaryFx(dt);      // Skeleton Warrior ultimate (guards on character)
     this._updateTribunalFx(dt);     // Taekwondo Girl ultimate (guards on character)
     this._updateFeedbackFx(dt);     // Eddie ultimate (guards on character)
+    this._updateTheoremFx(dt);      // Euclid Vector ultimate (guards on character)
     this._updateOniFx(dt);          // Oni Protocol 0 (guards on character)
     this._updateDimiGauntlet(dt);   // Dimi Cyber-Gauntlet Shockwave (guards on character)
     this._updateDimiAngels(dt);     // Dimi Cyber-Angel summon (Ultimate)
@@ -15175,6 +15227,7 @@ export class Game {
     this._drawOssuaryFx(ctx);          // Skeleton Warrior Ossuary Reconstruction (screen-space; guards on character)
     this._drawTribunalFx(ctx);         // Taekwondo Girl Afterimage Tribunal (screen-space; guards on character)
     this._drawFeedbackFx(ctx);         // Eddie Feedback Apocalypse (screen-space; guards on character)
+    this._drawTheoremFx(ctx);          // Euclid Theorem of Rot (screen-space; guards on character)
     this._drawOniFx(ctx);           // Oni Protocol 0 (screen-space; guards on character)
     this._drawThunderSoloScreen(ctx);  // darken + fullscreen lightning flash (under HUD)
     this._drawStormOverlay(ctx);       // Endless Lightning Storm: full-map rain/lightning atmosphere
