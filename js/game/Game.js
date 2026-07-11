@@ -1098,6 +1098,10 @@ export class Game {
     this._chainTimer  = 0;    // auto-fire cooldown
     this._neonBeamTimer = 0;  // Neon Pierce Beam (Cyber Arm Hero only) auto-fire cooldown
     this._dimiSlamTimer = 0;  // Dimi Cyber-Gauntlet Shockwave (dimis_kickboxer only) cadence
+    this._dimiAngels = [];    // Dimi Cyber-Angel summons (Ultimate) — big animated art that attacks
+    this._cyberAngelImg = new Image();
+    this._cyberAngelImg.onerror = () => console.warn('[Dimi] Cyber-Angel Summoning art missing');
+    this._cyberAngelImg.src = 'assets/abilities/ultimates/Cyber-Angel Summoning (Deus Ex Machina).png';
     this._neonBeams     = [];  // active Neon Pierce Beam visuals (short-lived)
     // Brawler Warrior weapons (only active while selectedCharacter === 'brawler_warrior')
     this._chakramTimer    = 0;     // Nexus Chakram auto-fire cooldown
@@ -5572,10 +5576,57 @@ export class Game {
     }
     this._specialRings.push({ pos: p.pos.clone(), radius: 0, maxRadius: radius,
                                life: 0.7, maxLife: 0.7, color1: '#b026ff', color2: '#ff2d6a' });
+    (this._dimiAngels ||= []).push({ pos: new Vec2(p.pos.x, p.pos.y - 160), t: 0, life: 6.0, atk: 0.3, dmg: 20 + 4 * _am });
     p.specialCooldown = p.specialMaxCooldown;
     this.floatingTexts.push(new FloatingText('CYBER-ANGEL SUMMONING!', p.pos.clone(), '#b026ff', 1.2));
     this.audio?.playBossWarning?.();
     this.screenShake.trigger(7, 0.35);
+  }
+
+  // Dimi Cyber-Angel summon — big animated guardian that hovers above Dimi and smites nearby
+  // enemies with periodic AoE. Draws Maria's Ultimate art LARGE (~340px). Finite life + cleanup.
+  _updateDimiAngels(dt) {
+    if (!this._dimiAngels || !this._dimiAngels.length) return;
+    const p = this.player;
+    for (let i = this._dimiAngels.length - 1; i >= 0; i--) {
+      const a = this._dimiAngels[i];
+      a.t += dt; a.life -= dt;
+      const tx = p.pos.x, ty = p.pos.y - 160;
+      a.pos.x += (tx - a.pos.x) * Math.min(1, dt * 3);
+      a.pos.y += (ty - a.pos.y) * Math.min(1, dt * 3);
+      a.atk -= dt;
+      if (a.atk <= 0) {
+        a.atk = 0.5;
+        for (const e of this.enemies) {
+          if (!e || !e.pos) continue;
+          if (distance(e.pos, a.pos) < 270) e.takeHit(a.dmg, this);
+        }
+        this._specialRings.push({ pos: a.pos.clone(), radius: 0, maxRadius: 210,
+                                   life: 0.4, maxLife: 0.4, color1: '#ff2d6a', color2: '#b026ff' });
+        this.audio?.playHit?.();
+      }
+      if (a.life <= 0) this._dimiAngels.splice(i, 1);
+    }
+  }
+
+  _drawDimiAngels(ctx) {
+    const img = this._cyberAngelImg;
+    if (!img || !img.complete || !img.naturalWidth || !this._dimiAngels || !this._dimiAngels.length) return;
+    ctx.save();
+    for (const a of this._dimiAngels) {
+      const fade  = Math.min(1, a.life / 0.7) * Math.min(1, a.t / 0.3);
+      const pulse = 1 + Math.sin(a.t * 4) * 0.06;
+      const bob   = Math.sin(a.t * 2) * 12;
+      const size  = 340 * pulse;   // BIG — premium ultimate presence
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = 0.30 * fade;
+      ctx.drawImage(img, a.pos.x - size * 0.6, a.pos.y + bob - size * 0.6, size * 1.2, size * 1.2);
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.globalAlpha = fade;
+      ctx.drawImage(img, a.pos.x - size / 2, a.pos.y + bob - size / 2, size, size);
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
   }
 
   // Dimi Cyber-Gauntlet Shockwave — periodic close-range AoE giving Dimi a real signature
@@ -7591,6 +7642,7 @@ export class Game {
     this._updatePhasewalkerFx(dt);  // Japan Phasewalker kit (guards on character)
     this._updateOniFx(dt);          // Oni Protocol 0 (guards on character)
     this._updateDimiGauntlet(dt);   // Dimi Cyber-Gauntlet Shockwave (guards on character)
+    this._updateDimiAngels(dt);     // Dimi Cyber-Angel summon (Ultimate)
     this._updateEuclidKit(dt);      // Euclid Vector toxin kit (guards on character)
     this._updateSoloRedThunder(dt); // Eddie native weapon — red riff bolts (guards on character)
     this._updateGuitarSolo(dt);     // Eddie GUITAR SOLO card — big red notes + golden full-map lightning
@@ -14333,6 +14385,7 @@ export class Game {
     if (this._npcWalker) this._npcWalker.draw(ctx);   // KIROSHI WALKER ally
 
     // 4b ── AI Overload Titan mini-boss
+    this._drawDimiAngels(ctx);
     this._drawTitan(ctx);
     this._drawAnnihilator(ctx);
     this._drawBloodfang(ctx);
