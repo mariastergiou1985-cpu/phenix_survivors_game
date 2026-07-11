@@ -17449,83 +17449,140 @@ export class Game {
     if (a.phase === 'fadeout' && a.timer >= FADE_OUT) { this.announcement = null; }
   }
 
+  // Cinematic "system intrusion" banner — shared presentation for EVERY event/announcement.
+  // Same API + timings + discreet top placement; the drama is in the choreography:
+  //   FADE-IN  glitch-slice materialization + corner brackets sliding in + letter DECODE
+  //   HOLD     breathing edge glow, drifting scanline, animated side chevrons
+  //   FADE-OUT the panel shears apart into horizontal glitch slices
   _drawAnnouncement(ctx) {
     const a = this.announcement;
     if (!a) return;
-    const FADE_IN = 0.35, HOLD = 1.9, FADE_OUT = 0.55;
-    let alpha = 1;
-    if (a.phase === 'fadein')  alpha = a.timer / FADE_IN;
-    if (a.phase === 'fadeout') alpha = 1 - (a.timer / FADE_OUT);
+    const FADE_IN = 0.35, FADE_OUT = 0.55;
+    let alpha = 1, inK = 1, outK = 0;
+    if (a.phase === 'fadein')  { inK = Math.max(0, Math.min(1, a.timer / FADE_IN)); alpha = inK; }
+    if (a.phase === 'fadeout') { outK = Math.max(0, Math.min(1, a.timer / FADE_OUT)); alpha = 1 - outK; }
     alpha = Math.max(0, Math.min(1, alpha));
 
-    // #71 — smaller, more discreet banner (narrower + shorter), lower default opacity.
     const panelW = Math.min(560, WIDTH - 60);
-    const panelH = 56;
+    const panelH = 60;
     const panelX = Math.round(WIDTH  / 2 - panelW / 2);
-    // Sit the banner near the TOP of the screen (below the HUD timer), not over the
-    // player at the centre — so the player keeps full visibility of the play area.
     const panelY = Math.round(HEIGHT * 0.10);
-    // Cap opacity so the banner is always semi-transparent (see-through), never a solid block.
-    const A = alpha * (a.alphaMul != null ? a.alphaMul : 0.58);
+    const A = alpha * (a.alphaMul != null ? a.alphaMul : 0.66);
+    const now = performance.now();
+    const bucket = Math.floor(now / 50);                        // 20fps glitch clock (calm, not strobing)
+    const pr = (i) => { const v = Math.sin((bucket % 97) * 12.9898 + i * 78.233) * 43758.5453; return v - Math.floor(v); };
 
     ctx.save();
+
+    // ── panel body: during fade-in it materializes as a center-out wipe; during fade-out it
+    // shears into 4 horizontal slices sliding in alternate directions.
+    const slices = 4, sh = panelH / slices;
+    for (let i = 0; i < slices; i++) {
+      let sx = panelX, sw = panelW;
+      if (a.phase === 'fadein') {
+        sw = panelW * inK; sx = panelX + (panelW - sw) / 2;      // center-out wipe
+        if (inK < 0.85 && pr(i) < 0.35) sx += (pr(i + 9) - 0.5) * 26;   // materialize jitter
+      } else if (a.phase === 'fadeout') {
+        sx += (i % 2 ? 1 : -1) * outK * outK * 120;              // shear apart
+      }
+      const grad = ctx.createLinearGradient(sx, 0, sx + sw, 0);
+      grad.addColorStop(0,   'rgba(0,0,12,0.50)');
+      grad.addColorStop(0.5, 'rgba(0,0,22,0.60)');
+      grad.addColorStop(1,   'rgba(0,0,12,0.50)');
+      ctx.globalAlpha = A;
+      ctx.fillStyle = grad;
+      ctx.fillRect(sx, panelY + i * sh, sw, sh + 0.5);
+      // thin colored slice edges only while glitching
+      if ((a.phase === 'fadein' && inK < 0.85) || a.phase === 'fadeout') {
+        ctx.globalAlpha = A * 0.5; ctx.fillStyle = a.color;
+        ctx.fillRect(sx, panelY + i * sh, sw, 1);
+      }
+    }
+
+    // ── frame: border + breathing top glow
+    const breathe = 0.75 + 0.25 * Math.sin(now / 260);
     ctx.globalAlpha = A;
-
-    // Dark backing panel with gradient (translucent so gameplay shows through)
-    const grad = ctx.createLinearGradient(panelX, panelY, panelX + panelW, panelY);
-    grad.addColorStop(0,   'rgba(0,0,12,0.48)');
-    grad.addColorStop(0.5, 'rgba(0,0,20,0.55)');
-    grad.addColorStop(1,   'rgba(0,0,12,0.48)');
-    ctx.fillStyle = grad;
-    ctx.fillRect(panelX, panelY, panelW, panelH);
-
-    // Outer colored border
-    ctx.strokeStyle = a.color;
-    ctx.lineWidth   = 2;
+    ctx.strokeStyle = a.color; ctx.lineWidth = 2;
     ctx.strokeRect(panelX, panelY, panelW, panelH);
-
-    // Top accent glow bar
     const glowGrad = ctx.createLinearGradient(panelX, panelY, panelX + panelW, panelY);
-    glowGrad.addColorStop(0,   'transparent');
-    glowGrad.addColorStop(0.3, a.color);
-    glowGrad.addColorStop(0.7, a.color);
-    glowGrad.addColorStop(1,   'transparent');
-    ctx.strokeStyle = glowGrad;
-    ctx.lineWidth   = 3;
-    ctx.globalAlpha = A * 0.6;
-    ctx.beginPath();
-    ctx.moveTo(panelX, panelY);
-    ctx.lineTo(panelX + panelW, panelY);
-    ctx.stroke();
-    ctx.globalAlpha = A;
+    glowGrad.addColorStop(0, 'transparent');
+    glowGrad.addColorStop(0.3, a.color); glowGrad.addColorStop(0.7, a.color);
+    glowGrad.addColorStop(1, 'transparent');
+    ctx.strokeStyle = glowGrad; ctx.lineWidth = 3;
+    ctx.globalAlpha = A * 0.65 * breathe;
+    ctx.shadowColor = a.color; ctx.shadowBlur = 10;
+    ctx.beginPath(); ctx.moveTo(panelX, panelY); ctx.lineTo(panelX + panelW, panelY); ctx.stroke();
+    ctx.shadowBlur = 0;
 
-    // Corner accent marks
-    const cm = 14;
-    ctx.strokeStyle = a.color;
-    ctx.lineWidth   = 2;
-    ctx.globalAlpha = A * 0.7;
-    // Top-left
-    ctx.beginPath(); ctx.moveTo(panelX, panelY + cm); ctx.lineTo(panelX, panelY); ctx.lineTo(panelX + cm, panelY); ctx.stroke();
-    // Top-right
-    ctx.beginPath(); ctx.moveTo(panelX + panelW - cm, panelY); ctx.lineTo(panelX + panelW, panelY); ctx.lineTo(panelX + panelW, panelY + cm); ctx.stroke();
-    // Bottom-left
-    ctx.beginPath(); ctx.moveTo(panelX, panelY + panelH - cm); ctx.lineTo(panelX, panelY + panelH); ctx.lineTo(panelX + cm, panelY + panelH); ctx.stroke();
-    // Bottom-right
-    ctx.beginPath(); ctx.moveTo(panelX + panelW - cm, panelY + panelH); ctx.lineTo(panelX + panelW, panelY + panelH); ctx.lineTo(panelX + panelW, panelY + panelH - cm); ctx.stroke();
-    ctx.globalAlpha = A;
+    // ── corner brackets SLIDE IN from outside during fade-in
+    const cm = 14, slide = (1 - inK) * 26;
+    ctx.strokeStyle = a.color; ctx.lineWidth = 2.4; ctx.globalAlpha = A * 0.85;
+    const corners = [
+      [panelX - slide,          panelY - slide,          1,  1],
+      [panelX + panelW + slide, panelY - slide,         -1,  1],
+      [panelX - slide,          panelY + panelH + slide, 1, -1],
+      [panelX + panelW + slide, panelY + panelH + slide,-1, -1],
+    ];
+    for (const [cx2, cy2, dx, dy] of corners) {
+      ctx.beginPath();
+      ctx.moveTo(cx2, cy2 + dy * cm); ctx.lineTo(cx2, cy2); ctx.lineTo(cx2 + dx * cm, cy2);
+      ctx.stroke();
+    }
 
-    // Small sub-label above main text
-    ctx.font      = 'bold 9px Consolas, monospace';
+    // ── animated side chevrons (hold phase heartbeat)
+    if (a.phase !== 'fadein' || inK > 0.7) {
+      const ch = ((now / 300) % 1);
+      for (const side of [-1, 1]) {
+        for (let i = 0; i < 3; i++) {
+          const off = ((ch + i / 3) % 1);
+          const chx = panelX + (side > 0 ? panelW + 10 + off * 16 : -10 - off * 16);
+          ctx.globalAlpha = A * (1 - off) * 0.8;
+          ctx.beginPath();
+          ctx.moveTo(chx, panelY + panelH / 2 - 7);
+          ctx.lineTo(chx + side * 6, panelY + panelH / 2);
+          ctx.lineTo(chx, panelY + panelH / 2 + 7);
+          ctx.stroke();
+        }
+      }
+    }
+
+    // ── drifting scanline inside the panel
+    const scanY = panelY + ((now / 900) % 1) * panelH;
+    ctx.globalAlpha = A * 0.25;
+    ctx.fillStyle = a.color;
+    ctx.fillRect(panelX + 2, scanY, panelW - 4, 1.5);
+
+    // ── sub-label
+    ctx.globalAlpha = A * 0.55;
+    ctx.font = 'bold 9px Consolas, monospace';
     ctx.fillStyle = a.color;
     ctx.textAlign = 'center';
-    ctx.globalAlpha = A * 0.5;
     ctx.fillText('[ SYSTEM EVENT ]', WIDTH / 2, panelY + 16);
-    ctx.globalAlpha = A;
 
-    // Main event text (smaller to fit the discreet panel)
-    ctx.font      = 'bold 20px Consolas, monospace';
+    // ── main text with letter-by-letter DECODE during fade-in
+    ctx.font = 'bold 20px Consolas, monospace';
+    const GLYPHS = '!<>-_/[]{}=+*^?#$%&';
+    let text = a.text;
+    if (a.phase === 'fadein') {
+      const reveal = Math.floor(text.length * Math.min(1, inK * 1.35));
+      let out = '';
+      for (let i = 0; i < text.length; i++) {
+        if (i < reveal || text[i] === ' ') out += text[i];
+        else out += GLYPHS[Math.floor(pr(i) * GLYPHS.length)];
+      }
+      text = out;
+    }
+    ctx.globalAlpha = A;
+    ctx.shadowColor = a.color; ctx.shadowBlur = 8 * breathe;
     ctx.fillStyle = a.color;
-    ctx.fillText(a.text, WIDTH / 2, panelY + 40);
+    ctx.fillText(text, WIDTH / 2, panelY + 42);
+    ctx.shadowBlur = 0;
+    // white-hot core pass on the settled text (hold only)
+    if (a.phase === 'hold') {
+      ctx.globalAlpha = A * 0.35;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(text, WIDTH / 2, panelY + 42);
+    }
 
     ctx.restore();
   }
