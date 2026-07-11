@@ -144,6 +144,7 @@ export class NpcWalker {
 
   // ── Update ────────────────────────────────────────────────────────────────
   update(dt, playerPos, game) {
+    this._lastPlayerPos = playerPos;   // for the support-tether draw
     this._updateVfx(dt);
     this._updatePendingPulses(dt, game);
     this._updateGlitchedTargets(dt, game);
@@ -747,6 +748,7 @@ export class NpcWalker {
     this._drawGlitchedTargets(ctx);
     if (!this._active) return;
     if (this.downed) { this._drawDowned(ctx); return; }
+    this._drawSupportTether(ctx);
     this._drawSprite(ctx);
     this._drawWorldBars(ctx);
   }
@@ -778,6 +780,48 @@ export class NpcWalker {
       ctx.fillText(g.timer.toFixed(1) + 's', tp.x, tp.y - r + 4);
     }
     ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
+  // Electric support tether — a living arc from the Walker to the player with energy
+  // packets flowing PLAYER-ward: you can SEE what the ally is feeding you.
+  _drawSupportTether(ctx) {
+    const pp = this._lastPlayerPos;
+    if (!pp || !this._active) return;
+    const x1 = this.pos.x, y1 = this.pos.y - SPRITE_H * 0.55;
+    const x2 = pp.x, y2 = pp.y;
+    const dx = x2 - x1, dy = y2 - y1;
+    const len = Math.hypot(dx, dy) || 1;
+    if (len > 420) return;                                  // out of link range — no tether
+    const nx = -dy / len, ny = dx / len;
+    const tT = Date.now() / 1000;
+    const syn = this._synergy || { col1: '#7df9ff' };
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    // arc body (gentle sag + shimmer)
+    ctx.globalAlpha = 0.35 + 0.15 * Math.sin(tT * 5);
+    ctx.strokeStyle = syn.col1; ctx.lineWidth = 1.8;
+    ctx.shadowColor = syn.col1; ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    for (let sgm = 1; sgm <= 6; sgm++) {
+      const f = sgm / 6;
+      const sag = Math.sin(f * Math.PI) * 14;
+      const jit = Math.sin(tT * 11 + sgm * 5) * 3;
+      ctx.lineTo(x1 + dx * f + nx * (sag + jit), y1 + dy * f + ny * (sag + jit));
+    }
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    // energy packets flowing toward the PLAYER
+    for (let pk = 0; pk < 3; pk++) {
+      const f = ((tT * 0.55) + pk / 3) % 1;
+      const sag = Math.sin(f * Math.PI) * 14;
+      ctx.globalAlpha = 0.85 * Math.sin(f * Math.PI);
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(x1 + dx * f + nx * sag, y1 + dy * f + ny * sag, 2.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
     ctx.restore();
   }
 

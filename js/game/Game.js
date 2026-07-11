@@ -13,7 +13,7 @@ import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260705150000';
 import { Player }         from '../entities/Player.js?v=20260711490000';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260706270000';
 import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260711370000';
-import { SupportDrone }   from '../entities/SupportDrone.js?v=20260703990000';
+import { SupportDrone }   from '../entities/SupportDrone.js?v=20260711750000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260705150000';
 import { SystemEventManager } from './Events.js?v=20260710310000';
@@ -42,7 +42,7 @@ import { WeatherTheater } from '../effects/weather-theater.js?v=20260711710000';
 import { Protocol0 } from '../effects/protocol-0.js?v=20260705000000';
 import { LaserEyes } from '../effects/laser-eyes.js?v=20260709100000';
 import { MeteorRain } from '../effects/meteor-rain.js?v=20260709100000';
-import { NpcWalker } from './NpcWalker.js?v=20260705260000';
+import { NpcWalker } from './NpcWalker.js?v=20260711750000';
 import { MapManager, BIOME_ID, BIOME_DEFS } from './MapManager.js?v=20260710330000';
 import { EventBus, EVENTS } from './EventBus.js?v=20260703990000';
 import { EnemySpawner, ELITE_WAVE as ELITE_WAVE_CFG, BOSS_WARN_COOLDOWN as BOSS_WARN_CD } from './EnemySpawner.js?v=20260710330000';

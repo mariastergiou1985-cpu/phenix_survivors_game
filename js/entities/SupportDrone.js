@@ -146,28 +146,57 @@ export class SupportDrone {
       ctx.restore();
     }
 
-    // Beam flash toward target — dual-layer: wide dim + thin bright core
+    // Elemental attack stream — the drones now SHOOT their element, not a plain line:
+    // flame = three wavy fire tongues + impact embers · electro = jagged jitter bolt + crackle.
     if (this._beamTimer > 0 && this._beamTo) {
-      const alpha = (this._beamTimer / 0.12) * 0.85;
+      const alpha = (this._beamTimer / 0.12) * 0.9;
+      const x1 = this.pos.x, y1 = this.pos.y, x2 = this._beamTo.x, y2 = this._beamTo.y;
+      const dx = x2 - x1, dy = y2 - y1;
+      const len = Math.hypot(dx, dy) || 1;
+      const nx = -dy / len, ny = dx / len;                 // perpendicular
+      const tW = this._age * 20;
       ctx.save();
-      // Outer wide beam
-      ctx.globalAlpha = alpha * 0.45;
-      ctx.strokeStyle = color;
-      ctx.lineWidth   = this.type === 'flame' ? 6 : 5;
-      if (this.type === 'electro') ctx.setLineDash([5, 4]);
-      ctx.beginPath();
-      ctx.moveTo(this.pos.x, this.pos.y);
-      ctx.lineTo(this._beamTo.x, this._beamTo.y);
-      ctx.stroke();
-      ctx.setLineDash([]);
-      // Inner bright core
-      ctx.globalAlpha = alpha;
-      ctx.strokeStyle = '#FFFFFF';
-      ctx.lineWidth   = this.type === 'flame' ? 2 : 1.5;
-      ctx.beginPath();
-      ctx.moveTo(this.pos.x, this.pos.y);
-      ctx.lineTo(this._beamTo.x, this._beamTo.y);
-      ctx.stroke();
+      ctx.globalCompositeOperation = 'lighter';
+      if (this.type === 'flame') {
+        for (let sIdx = 0; sIdx < 3; sIdx++) {             // wavy fire tongues
+          const amp = (sIdx - 1) * 7 + Math.sin(tW + sIdx * 2) * 5;
+          ctx.globalAlpha = alpha * (sIdx === 1 ? 0.9 : 0.5);
+          ctx.strokeStyle = sIdx === 1 ? '#ffd23c' : FLAME_COLOR;
+          ctx.lineWidth = sIdx === 1 ? 2.4 : 4;
+          ctx.beginPath();
+          ctx.moveTo(x1, y1);
+          ctx.quadraticCurveTo((x1 + x2) / 2 + nx * amp, (y1 + y2) / 2 + ny * amp, x2, y2);
+          ctx.stroke();
+        }
+        for (let eIdx = 0; eIdx < 4; eIdx++) {             // impact embers rising
+          const es = Math.sin(tW * 1.7 + eIdx * 2.4) * 0.5 + 0.5;
+          ctx.globalAlpha = alpha * 0.8 * es;
+          ctx.fillStyle = eIdx % 2 ? '#ffd23c' : FLAME_COLOR;
+          ctx.beginPath();
+          ctx.arc(x2 + (es - 0.5) * 18, y2 - es * 16, 1.8 + es * 1.6, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      } else {
+        ctx.strokeStyle = ELECTRO_COLOR; ctx.lineWidth = 2.4;   // jagged jitter bolt
+        ctx.shadowColor = ELECTRO_COLOR; ctx.shadowBlur = 10;
+        ctx.globalAlpha = alpha;
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        for (let sgm = 1; sgm <= 4; sgm++) {
+          const jt = Math.sin(tW * 3.1 + sgm * 7) * 12;
+          ctx.lineTo(x1 + (dx * sgm) / 4 + nx * jt, y1 + (dy * sgm) / 4 + ny * jt);
+        }
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.globalAlpha = alpha; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1;
+        ctx.stroke();
+        for (let cIdx = 0; cIdx < 3; cIdx++) {             // crackle dots at the wound
+          ctx.globalAlpha = alpha * 0.9;
+          ctx.fillStyle = '#ffffff';
+          const ca = tW * 2 + cIdx * 2.1;
+          ctx.beginPath(); ctx.arc(x2 + Math.cos(ca) * 9, y2 + Math.sin(ca) * 9, 1.5, 0, Math.PI * 2); ctx.fill();
+        }
+      }
       ctx.restore();
     }
 
@@ -180,9 +209,18 @@ export class SupportDrone {
     ctx.beginPath(); ctx.arc(this.pos.x, this.pos.y, 16, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
 
-    // Sprite (32x32) or fallback circle — with subtle bob
+    // Sprite (32x32) or fallback circle — hover bob + elemental thruster flicker
     const bob = Math.sin(this._age * 2.2) * 2;
     const spr = this._sprite;
+    {
+      const fl = 0.5 + 0.5 * Math.sin(this._age * 24);
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = 0.5 * fl;
+      ctx.fillStyle = color;
+      ctx.beginPath(); ctx.arc(this.pos.x, this.pos.y + 14 + bob, 2.6 + fl * 2, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
     if (spr && spr.complete && spr.naturalWidth > 0) {
       ctx.drawImage(spr, this.pos.x - 16, this.pos.y - 16 + bob, 32, 32);
     } else {
