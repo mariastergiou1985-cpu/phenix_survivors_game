@@ -586,7 +586,7 @@ export class Game {
     ['skeleton_warrior', 'taekwondo_girl', 'cyber_arm_hero', 'brawler_warrior', 'assassin_clone', 'dimis_kickboxer'].forEach(id => {
       const img = new Image();
       img.onerror = () => console.warn(`[Char] missing assets/characters/${id}.png — fallback circle used`);
-      img.src = `assets/characters/${id}.png?v=20260710330000`;
+      img.src = `assets/characters/${id}.png?v=20260711430000`;
       this._charImages[id] = img;
     });
     // Japan Phasewalker portrait lives in the endless/ subfolder (Character Select + FX modules).
@@ -11448,38 +11448,40 @@ export class Game {
 
   // ── KINETIC RAIN: falling projectiles in area ──
   _tickRain(w, dt) {
-    if (w.cooldown > 0) return;
-    w.cooldown = w.def.tickRate;
-
-    const count = w.def.spikeCount || 6;
-    const aoeR  = w.def.aoeRadius || 200;
-
-    for (let i = 0; i < count; i++) {
-      // Random position within AoE of drop point
-      const a = Math.random() * Math.PI * 2;
-      const r = Math.random() * aoeR;
-      const sx = w.x + Math.cos(a) * r;
-      const sy = w.y + Math.sin(a) * r;
-
-      // Add spike visual
-      w.spikes.push({ x: sx, y: sy, life: 0.6, maxLife: 0.6 });
-
-      // Damage enemies at impact
-      for (const e of this.enemies) {
-        if (!e || e.hp <= 0 || w.hitSet.has(e)) continue;
-        const dx = e.pos.x - sx, dy = e.pos.y - sy;
-        if (dx * dx + dy * dy <= 40 * 40) {
-          e.takeHit(w.def.baseDamage, this);
-          w.hitSet.add(e);
-          this._spawnTacParticles(w, e.pos.x, e.pos.y, 2);
-        }
+    // Rail Strike now LAUNCHES spikes that TRAVEL toward enemies (were static impacts before).
+    if (w.cooldown <= 0) {
+      w.cooldown = w.def.tickRate;
+      const count = w.def.spikeCount || 6;
+      const aoeR  = w.def.aoeRadius || 200;
+      const live  = this.enemies.filter(e => e && e.hp > 0 && e.pos);
+      for (let i = 0; i < count; i++) {
+        const target = live.length ? live[(Math.random() * live.length) | 0] : null;
+        const a0 = Math.random() * Math.PI * 2, r0 = Math.random() * aoeR * 0.35;
+        const sx = w.x + Math.cos(a0) * r0, sy = w.y + Math.sin(a0) * r0 - 48;
+        w.spikes.push({ x: sx, y: sy, life: 1.6, maxLife: 1.6, target, done: false, spd: 640, ang: 0,
+                         lastx: target ? target.pos.x : sx, lasty: target ? target.pos.y : sy });
       }
     }
-
-    // Decay old spikes
+    // Move + impact every frame (independent of cooldown) so spikes fly to their targets.
+    const dmg = w.def.baseDamage || 60;
     for (let s = w.spikes.length - 1; s >= 0; s--) {
-      w.spikes[s].life -= dt;
-      if (w.spikes[s].life <= 0) w.spikes.splice(s, 1);
+      const sp = w.spikes[s];
+      sp.life -= dt;
+      let tx, ty;
+      if (sp.target && sp.target.hp > 0 && sp.target.pos) { tx = sp.target.pos.x; ty = sp.target.pos.y; sp.lastx = tx; sp.lasty = ty; }
+      else { tx = sp.lastx; ty = sp.lasty; }
+      const dx = tx - sp.x, dy = ty - sp.y, d = Math.hypot(dx, dy) || 1, step = sp.spd * dt;
+      if (!sp.done && d <= step + 30) {
+        for (const e of this.enemies) {
+          if (!e || e.hp <= 0 || !e.pos) continue;
+          const ex = e.pos.x - tx, ey = e.pos.y - ty;
+          if (ex * ex + ey * ey <= 50 * 50) { e.takeHit(dmg, this); this._spawnTacParticles(w, e.pos.x, e.pos.y, 2); }
+        }
+        sp.done = true; sp.x = tx; sp.y = ty; sp.life = Math.min(sp.life, 0.18);
+      } else if (!sp.done) {
+        sp.x += dx / d * step; sp.y += dy / d * step; sp.ang = Math.atan2(dy, dx);
+      }
+      if (sp.life <= 0) w.spikes.splice(s, 1);
     }
   }
 
