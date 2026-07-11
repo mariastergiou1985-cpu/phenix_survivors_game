@@ -7781,6 +7781,7 @@ export class Game {
     // Levels that don't hit the schedule are still consumed (no card) — they just don't interrupt play.
     if (this.player.pendingLevelupCount > 0) {
       this.player.pendingLevelupCount--;
+      this._checkLevelMilestones();   // Φ12: 5/10/25(+25...) milestone rewards
       if (this.player.level >= this._nextCardLevel) {
         this._nextCardLevel = this.player.level + (this.player.level >= 6 ? 2 : 1);   // schedule next offer
         const choices = weightedSample(this.player, 3, { meta: this.meta, endless: this.endless, chaos: this._chaosMode });
@@ -11532,6 +11533,40 @@ export class Game {
     const card = this._buildWeaponCard();
     if (!card) return;
     choices[choices.length - 1] = card;
+  }
+
+  // ── Φ12 Level Milestones — the run CELEBRATES your growth at 5 / 10 / 25 and every
+  // +25 after (50, 75...). Real rewards, clear banner, one-shot per milestone (migration-safe:
+  // _milestonesPaid starts empty each run; joining mid-level pays every milestone passed).
+  _checkLevelMilestones() {
+    const lvl = this.player.level;
+    this._milestonesPaid = this._milestonesPaid || {};
+    const due = [];
+    if (lvl >= 5)  due.push(5);
+    if (lvl >= 10) due.push(10);
+    for (let m = 25; m <= lvl; m += 25) due.push(m);
+    for (const m of due) {
+      if (this._milestonesPaid[m]) continue;
+      this._milestonesPaid[m] = true;
+      if (m === 5) {                                             // SUPPLY BONUS
+        this._awardCredits?.(25);
+        this.player.mana = this.player.maxMana;
+        this.triggerAnnouncement('◈ LEVEL 5 — SUPPLY BONUS: +25 CORES · MANA FULL ◈', '#7df9ff');
+      } else if (m === 10) {                                     // COMBAT BONUS
+        this._awardCredits?.(40);
+        this.player._armorT = 15;                                // armor shield window
+        this.player.hp = Math.min(this.player.maxHp, this.player.hp + Math.round(this.player.maxHp * 0.25));
+        this.triggerAnnouncement('◈ LEVEL 10 — COMBAT BONUS: +40 CORES · +25% HP · ARMOR 15s ◈', '#ffd447');
+      } else {                                                   // APEX BONUS (25, 50, 75...)
+        this._awardCredits?.(100);
+        this.player.hp = this.player.maxHp;                      // full heal
+        this.player.mana = this.player.maxMana;
+        if (this.meta) { this.meta.protocolFragments += 3; this.meta._save?.(); }   // +3 PF (same path as boss-kill PF)
+        this.triggerAnnouncement('◈ LEVEL ' + m + ' — APEX BONUS: +100 CORES · FULL RESTORE · +3 🧩 ◈', '#ff2d95');
+        this.screenShake?.trigger(5, 0.4);
+      }
+      this.audio?.playLevelUp?.();
+    }
   }
 
   _buildWeaponCard() {
