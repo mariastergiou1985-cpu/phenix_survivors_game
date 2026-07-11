@@ -36,6 +36,7 @@ import { OniMaskOverture } from '../effects/oni-mask-overture.js?v=2026071153000
 import { EuclidTheorem } from '../effects/euclid-theorem.js?v=20260711540000';
 import { DeusExMachina } from '../effects/deus-ex-machina.js?v=20260711550000';
 import { RailgunHorizon } from '../effects/railgun-horizon.js?v=20260711560000';
+import { MagmaCoreEruption } from '../effects/magma-core-eruption.js?v=20260711570000';
 import { Protocol0 } from '../effects/protocol-0.js?v=20260705000000';
 import { LaserEyes } from '../effects/laser-eyes.js?v=20260709100000';
 import { MeteorRain } from '../effects/meteor-rain.js?v=20260709100000';
@@ -1139,6 +1140,7 @@ export class Game {
     this._theorem             = null;   // Euclid Vector ultimate (Theorem of Rot)
     this._deusEx              = null;   // Dimi angel cinematic presentation (Deus Ex Machina)
     this._railgun             = null;   // Cyber Arm Hero ultimate (Railgun Horizon)
+    this._magma               = null;   // Brawler Warrior ultimate (Magma Core Eruption)
     this._pwFxBuilt           = false;
     this._pwDashing           = false;
     this._pwDashStart         = null;
@@ -7869,6 +7871,7 @@ export class Game {
     this._updateFeedbackFx(dt);     // Eddie ultimate (guards on character)
     this._updateTheoremFx(dt);      // Euclid Vector ultimate (guards on character)
     this._updateRailgunFx(dt);      // Cyber Arm Hero ultimate (guards on character)
+    this._updateMagmaFx(dt);        // Brawler Warrior ultimate (guards on character)
     this._updateOniFx(dt);          // Oni Protocol 0 (guards on character)
     this._updateDimiGauntlet(dt);   // Dimi Cyber-Gauntlet Shockwave (guards on character)
     this._updateDimiAngels(dt);     // Dimi Cyber-Angel summon (Ultimate)
@@ -12652,11 +12655,67 @@ export class Game {
       this.floatingTexts.push(new FloatingText('NOT ENOUGH MANA', p.pos.clone(), CYAN, 1.0));
       return;
     }
+    // Magma Core Eruption replaced Skyfall Lances as the Brawler ultimate (module VFX,
+    // ground-shatter fissures + geysers + core blast). Skyfall code stays, never scheduled.
+    this._ensureMagmaFx();
+    if (!this._magma || this._magma.isActive()) return;
     p.mana -= ULTIMATE_MANA_COST;                               // fixed 100 cost; Mana Core overflow banks toward next cast
-    this._skyfall = { t: 0, waveTimer: 0, wave: 0 };
-    this.screenShake.trigger(4, 0.3);
+    const sp = this._playerScreenPos();
+    this._magma.trigger(sp.cx, sp.footY);
+    this.screenShake.trigger(6, 0.35);
     this.audio?.playEventWarning?.();
-    this.floatingTexts.push(new FloatingText('SKYFALL LANCES!', p.pos.clone(), '#1fd6a6', 1.4));
+    this.floatingTexts.push(new FloatingText('MAGMA CORE ERUPTION!', p.pos.clone(), '#ff4d00', 1.4));
+  }
+
+  _ensureMagmaFx() {
+    if (this.player?.selectedCharacter !== 'brawler_warrior') return;
+    if (this._magma || !this._canvas) return;
+    const h = Math.max(24, Math.round(64 * this._viewScale));
+    this._magma = new MagmaCoreEruption(this._canvas, this.player.characterSprite, { spriteW: h, spriteH: h });
+  }
+
+  _updateMagmaFx(dt) {
+    if (this.player?.selectedCharacter !== 'brawler_warrior' || !this._magma) return;
+    const vs = this._viewScale, cam = this.camera;
+    try {
+      if (this._magma.isActive()) {
+        const sp = this._playerScreenPos();
+        this._magma.cx = sp.cx; this._magma.footY = sp.footY;   // epicenter itself stays locked internally
+      }
+      this._magma.update(performance.now(), this.enemies, {
+        getX: e => ((e?.pos?.x ?? cam.x) - cam.x) * vs,
+        getY: e => ((e?.pos?.y ?? cam.y) - cam.y) * vs,
+        onStrike: (e, kind) => {
+          if (!e?.takeHit) return;
+          const dmg = kind === 'core' ? 70 : 38;   // geysers 38, epicenter detonation 70
+          e.takeHit((e.isBoss?.() || e.isMegaBoss) && this._capBossDamage ? this._capBossDamage(e, dmg) : dmg, this);
+        },
+      });
+    } catch (err) { console.warn('[Magma]', err); }
+  }
+
+  _drawMagmaFx(ctx) {
+    this._canvas = ctx.canvas;
+    if (this.player?.selectedCharacter !== 'brawler_warrior') return;
+    this._ensureMagmaFx();
+    if (!this._magma) return;
+    try {
+      const sh = this._magma.getShake();
+      ctx.save(); ctx.translate(sh.x, sh.y);
+      this._magma.render(ctx);
+      ctx.restore();
+    } catch (err) { console.warn('[Magma render]', err); }
+  }
+
+  // ── Dimi ULT button fix: SPACE never reached _activateCyberAngelNova because activateSpecial()
+  // has no key binding anywhere (dead dispatcher). Dedicated self-guarding activate, added to the
+  // shared SPACE/click/gamepad chains in main.js like every other ultimate.
+  activateDimiAngelUltimate() {
+    if (this.gameState !== 'playing' || this.paused || this.gameOver || this.victory || this.upgradeUI) return;
+    const p = this.player;
+    if (p.selectedCharacter !== 'dimis_kickboxer') return;
+    if (p.specialCooldown > 0) return;                          // same gate the old dispatcher used (25s)
+    this._activateCyberAngelNova();
   }
 
   _updateSkyfall(dt) {
@@ -15290,6 +15349,7 @@ export class Game {
     this._drawFeedbackFx(ctx);         // Eddie Feedback Apocalypse (screen-space; guards on character)
     this._drawTheoremFx(ctx);          // Euclid Theorem of Rot (screen-space; guards on character)
     this._drawRailgunFx(ctx);          // Cyber Arm Railgun Horizon (screen-space; guards on character)
+    this._drawMagmaFx(ctx);            // Brawler Magma Core Eruption (screen-space; guards on character)
     if (this.player?.selectedCharacter === 'dimis_kickboxer' && this._deusEx?.isActive()) {
       try { this._deusEx.render(ctx); } catch (err) { console.warn('[DeusEx render]', err); }   // Dimi angel cinematic
     }
@@ -19540,13 +19600,17 @@ _drawLoreArchive(ctx) {
   _ultimateReady() {
     const p = this.player;
     if (!p) return false;
-    const hasUlt = p.selectedCharacter === 'skeleton_warrior'
-                || p.selectedCharacter === 'cyber_arm_hero'
-                || p.selectedCharacter === 'taekwondo_girl'
-                || p.selectedCharacter === 'brawler_warrior'
-                || p.selectedCharacter === 'assassin_clone';
+    const c = p.selectedCharacter;
+    const hasUlt = ['skeleton_warrior', 'cyber_arm_hero', 'taekwondo_girl', 'brawler_warrior',
+                    'assassin_clone', 'dimis_kickboxer', 'japan_phasewalker', 'eddie',
+                    'euclid_vector', 'oni_cataclysm_protocol'].includes(c);
     if (!hasUlt) return false;
-    if (this.thunderSolo || this.overChains || this.spiritDojang || this._cyberBike || this._skyfall || this._chromePhantom) return false;  // mid-cast
+    if (this.thunderSolo || this.overChains || this.spiritDojang || this._cyberBike || this._skyfall || this._chromePhantom) return false;  // mid-cast (legacy states)
+    if (this._ossuary?.isActive() || this._tribunal?.isActive() || this._feedbackApoc?.isActive()
+     || this._theorem?.isActive() || this._railgun?.isActive() || this._magma?.isActive()
+     || this._digitalSingularity?.isActive() || this._protocol0?.isRunning?.()) return false;   // mid-cast (module ults)
+    if (c === 'dimis_kickboxer') return p.specialCooldown <= 0;                 // Dimi gates on the 25s special CD, not mana
+    if (c === 'eddie')           return p.mana >= 80;                            // Eddie's ult costs 80
     return p.mana >= ULTIMATE_MANA_COST;
   }
 

@@ -1,4 +1,4 @@
-import { Game } from './game/Game.js?v=20260711560000';
+import { Game } from './game/Game.js?v=20260711570000';
 import { AudioManager } from './audio/AudioManager.js?v=20260710260000';
 import { GamepadInput } from './Gamepad.js?v=20260706330000';
 import { initTouchControls } from './TouchInput.js?v=20260706340000';
@@ -141,7 +141,7 @@ window.addEventListener('keydown', e => {
   // One-shot abilities
   if (key === 'q') game.activatePulseShield();   // Pulse Shield — shared by ALL characters
   if (key === 'e') game.activateEMPCloud();       // EMP stun — shared by ALL (Phasewalker layers his Shockwave VFX inside)
-  if (key === ' ') { game.activateThunderSolo(); game.activateOverheatedChains(); game.activateCyberBikeRush(); game.activateSkyfallLances(); game.activateChromePhantomProtocol(); game.activateDigitalSingularity(); game.activateEuclidPlague(); game.activateProtocol0Cataclysm(); game.activateRedThunderCurtain(); }   // SPACE ultimate (per-character; each self-guards)
+  if (key === ' ') { game.activateThunderSolo(); game.activateOverheatedChains(); game.activateCyberBikeRush(); game.activateSkyfallLances(); game.activateChromePhantomProtocol(); game.activateDigitalSingularity(); game.activateEuclidPlague(); game.activateProtocol0Cataclysm(); game.activateRedThunderCurtain(); game.activateDimiAngelUltimate(); }   // SPACE ultimate (per-character; each self-guards)
   if (key === 'm') game.audio?.toggleMute();
   if (key === 'f') {
     if (!document.fullscreenElement) {
@@ -302,6 +302,7 @@ canvas.addEventListener('mousedown', e => {
     game.activateThunderSolo(); game.activateOverheatedChains(); game.activateCyberBikeRush();
     game.activateSkyfallLances(); game.activateChromePhantomProtocol(); game.activateDigitalSingularity();
     game.activateEuclidPlague(); game.activateProtocol0Cataclysm(); game.activateRedThunderCurtain();
+    game.activateDimiAngelUltimate();
     mouseDown = false;
 
   } else if (game.gameState === 'lore_archive') {
@@ -596,7 +597,7 @@ initTouchControls({
   setAim: (x, y) => { mousePos = { x, y }; game.setMousePos(mousePos); },
   onQ:   () => game.activatePulseShield(),
   onE:   () => game.activateEMPCloud(),
-  onUlt: () => { game.activateThunderSolo(); game.activateOverheatedChains(); game.activateCyberBikeRush(); game.activateSkyfallLances(); game.activateChromePhantomProtocol(); game.activateDigitalSingularity(); game.activateEuclidPlague(); game.activateProtocol0Cataclysm(); game.activateRedThunderCurtain(); },
+  onUlt: () => { game.activateThunderSolo(); game.activateOverheatedChains(); game.activateCyberBikeRush(); game.activateSkyfallLances(); game.activateChromePhantomProtocol(); game.activateDigitalSingularity(); game.activateEuclidPlague(); game.activateProtocol0Cataclysm(); game.activateRedThunderCurtain(); game.activateDimiAngelUltimate(); },
 });
 
 // ─── Game loop ────────────────────────────────────────────────────────────────
