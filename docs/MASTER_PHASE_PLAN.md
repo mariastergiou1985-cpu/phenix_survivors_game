@@ -42,6 +42,9 @@ Remove generic stat duplication; add tactical permissions / rerolls / info / cap
 ## PHASE 12 — PLAYER PROGRESSION LEVEL REWARDS
 Level-based permanent reward track (cadence 1/5/10/25), non-duplicating, retroactive idempotent migration, menu UI + history. Doc: PLAYER_PROGRESSION_REWARD_TRACK.md.
 
+## PHASE 14 — CHAOS NEXUS ROLE SEPARATION (Buff vs Defence, Chaos-only)
+Split Nexus bases into BUFF (star emission, cyan/violet/gold) vs DEFENCE (turret/shield, red/gunmetal). Two core types + wrong-base rejection feedback, HUD role icons, in-world markers, Chaos menu explanation, role audio, Boss Rush interaction, balance caps. Chaos-mode ONLY. Maria's art only.
+
 ## PHASE 13 — FINAL FULL AUDIT + STRICT REPORT (Strict §20–21)
 Runtime tests for every system; consolidated final report (all audit sections) + errors found.
 

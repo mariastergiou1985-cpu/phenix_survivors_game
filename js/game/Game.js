@@ -42,7 +42,7 @@ import { NexusManager } from './NexusManager.js?v=20260710230000';
 import { VESSELS, getVesselById, getDefaultVesselId } from './VesselCatalog.js?v=20260705040000';
 import { PETS, getPetById } from './PetCatalog.js?v=20260705000000';
 import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons, isEvolutionOwnedBy, getCardDisplayName } from './WeaponCatalog.js?v=20260708200000';
-import { TACTICAL_ID, TACTICAL_DEFS, getTacticalDef, getTacticalForCharacter, getAvailableTactical, preloadTacticalSprites, FUSION_TACTICALS } from './TacticalWeaponCatalog.js?v=20260711400000';
+import { TACTICAL_ID, TACTICAL_DEFS, getTacticalDef, getTacticalForCharacter, getAvailableTactical, preloadTacticalSprites, FUSION_TACTICALS } from './TacticalWeaponCatalog.js?v=20260711420000';
 import { VFXSpritePlayer } from './VFXSpritePlayer.js?v=20260708700000';
 
 // ── Mastery card → base weapon mapping (for evolution level tracking) ──

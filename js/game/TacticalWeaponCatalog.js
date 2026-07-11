@@ -20,6 +20,9 @@ export const TACTICAL_ID = Object.freeze({
   GRAVITY_WELL:      'tac_gravity_well',
   RAIL_STRIKE:       'tac_rail_strike',
   EMP_JAMMER:        'tac_emp_jammer',
+  SYSTEM_REBOOT:     'tac_system_reboot',
+  OVERCLOCK:         'tac_overclock',
+  FIREWALL_MATRIX:   'tac_firewall_matrix',
   MISSILE_BARRAGE:   'tac_missile_barrage',
   HEAVY_IMPACT_BURST: 'tac_heavy_impact_burst',
   EDDIE_CHORD_CURTAIN: 'eddie_chord_curtain',
@@ -368,7 +371,7 @@ export const TACTICAL_DEFS = Object.freeze({
     id:          TACTICAL_ID.EMP_JAMMER,
     name:        'EMP Jammer',
     description: 'Deploys a large EMP jammer field — a wide overload pulse that scrambles and damages every enemy caught inside',
-    character:   'japan_phasewalker',
+    character:   'dimis_kickboxer',
     fxModule:    FX_MODULE.H_SPECTRAL_WEB,
     behavior:    TACTICAL_BEHAVIOR.GROUND_SHOCKWAVE,
     sprite:      'assets/weapons/tactical/EMP Jammer.png',
@@ -389,6 +392,76 @@ export const TACTICAL_DEFS = Object.freeze({
       color1:     '#7fe0ff',
       color2:     '#ffffff',
     },
+  },
+
+  // ╔═══════════════════════════════════════════════════════════════════╗
+  // ║ 8c. DIMI KICKBOXER — System Reboot (big cyber recovery pulse)     ║
+  // ╚═══════════════════════════════════════════════════════════════════╝
+  [TACTICAL_ID.SYSTEM_REBOOT]: {
+    id:          TACTICAL_ID.SYSTEM_REBOOT,
+    name:        'System Reboot',
+    description: 'Dimi force-reboots his exo-frame: a large purple system-recovery pulse that scrambles and damages every enemy in a wide radius and clears incoming pressure',
+    character:   'dimis_kickboxer',
+    fxModule:    FX_MODULE.H_SPECTRAL_WEB,
+    behavior:    TACTICAL_BEHAVIOR.GROUND_SHOCKWAVE,
+    sprite:      'assets/weapons/tactical/System Reboot.png',
+    baseDamage:  78,
+    aoeRadius:   300,     // BIG — Maria's art rendered large
+    tickRate:     1.3,
+    duration:    11,
+    color:       '#b026ff',
+    glitchFx: {
+      freezeFrame: true,
+      gridLock:    true,
+    },
+    particles: {
+      type:       'reboot_sparks',
+      gridLock:   true,
+      count:      10,
+      speed:      5.0,
+      color1:     '#c77dff',
+      color2:     '#ff2d6a',
+    },
+  },
+
+  // ╔═══════════════════════════════════════════════════════════════════╗
+  // ║ 8d. DIMI KICKBOXER — Overclock (big overclock detonation burst)   ║
+  // ╚═══════════════════════════════════════════════════════════════════╝
+  [TACTICAL_ID.OVERCLOCK]: {
+    id:          TACTICAL_ID.OVERCLOCK,
+    name:        'Overclock',
+    description: 'Dimi overclocks his cyber-frame and vents a large red/purple heat detonation, hammering nearby enemies with repeated overclock bursts',
+    character:   'dimis_kickboxer',
+    fxModule:    FX_MODULE.H_SPECTRAL_WEB,
+    behavior:    TACTICAL_BEHAVIOR.GROUND_SHOCKWAVE,
+    sprite:      'assets/weapons/tactical/Overclock.png',
+    baseDamage:  84,
+    aoeRadius:   290,
+    tickRate:     1.1,
+    duration:    10,
+    color:       '#ff2d6a',
+    glitchFx: { freezeFrame: true, gridLock: true },
+    particles: { type: 'overclock_sparks', gridLock: true, count: 11, speed: 5.5, color1: '#ff6a8a', color2: '#c77dff' },
+  },
+
+  // ╔═══════════════════════════════════════════════════════════════════╗
+  // ║ 8e. DIMI KICKBOXER — Firewall Matrix (deployed defensive grid)    ║
+  // ╚═══════════════════════════════════════════════════════════════════╝
+  [TACTICAL_ID.FIREWALL_MATRIX]: {
+    id:          TACTICAL_ID.FIREWALL_MATRIX,
+    name:        'Firewall Matrix',
+    description: 'Dimi projects a large red defensive firewall grid that stands its ground and burns enemies that push into it',
+    character:   'dimis_kickboxer',
+    fxModule:    FX_MODULE.H_SPECTRAL_WEB,
+    behavior:    TACTICAL_BEHAVIOR.STATIONARY_TOTEM,
+    sprite:      'assets/weapons/tactical/Firewall Matrix.png',
+    baseDamage:  60,
+    aoeRadius:   260,
+    tickRate:     0.9,
+    duration:    12,
+    color:       '#ff3a4e',
+    glitchFx: { gridLock: true },
+    particles: { type: 'firewall_grid', gridLock: true, count: 9, speed: 3.5, color1: '#ff5a6e', color2: '#ffffff' },
   },
 
   // ╔═══════════════════════════════════════════════════════════════════╗
