@@ -292,6 +292,24 @@ export const RELIC_DEFS = [
     req:'arena_elite_3',       reqChar:null },
 ];
 
+// ─── AMULETS (Maria's art, assets/amulets/) ────────────────────────────────────
+// One per character. Purchased with Protocol FRAGMENTS only (never Grid Credits).
+// Owning a character's amulet empowers that character's SPACE ULTIMATE (+30% damage,
+// applied at every ult damage hook via Game._amuletUltMult). Permanent, one-time buys.
+export const AMULET_DEFS = [
+  { id: 'amulet_skeleton',    char: 'skeleton_warrior',       charName: 'Cyber Skeleton',   name: 'Ossuary Sigil',      sprite: 'assets/amulets/amulet_skeleton.png',    cost: 110 },
+  { id: 'amulet_taekwon',     char: 'taekwondo_girl',         charName: 'Neon Taekwondo',   name: 'Afterimage Charm',   sprite: 'assets/amulets/amulet_taekwon.png',     cost: 110 },
+  { id: 'amulet_cyber',       char: 'cyber_arm_hero',         charName: 'Cyber Arm Hero',   name: 'Railgun Core',       sprite: 'assets/amulets/amulet_cyber.png',       cost: 110 },
+  { id: 'amulet_assasin',     char: 'assassin_clone',         charName: 'Assassin Clone',   name: 'Phantom Seal',       sprite: 'assets/amulets/amulet_assasin.png',     cost: 110 },
+  { id: 'amulet_eddie',       char: 'eddie',                  charName: 'Eddie',            name: 'Feedback Pick',      sprite: 'assets/amulets/amulet_eddie.png',       cost: 110 },
+  { id: 'amulet_dimi',        char: 'dimis_kickboxer',        charName: 'Dimi',             name: 'Angelic Relay',      sprite: 'assets/amulets/amulet_dimi.png',        cost: 110 },
+  { id: 'amulet_phasewalker', char: 'japan_phasewalker',      charName: 'Phasewalker',      name: 'Singularity Knot',   sprite: 'assets/amulets/amulet_phasewalker.png', cost: 110 },
+  { id: 'amulet_eyklid',      char: 'euclid_vector',          charName: 'Euclid Vector',    name: 'Axiom Locket',       sprite: 'assets/amulets/amulet_eyklid.png',      cost: 110 },
+  { id: 'amulet_oni',         char: 'oni_cataclysm_protocol', charName: 'Oni',              name: 'Cataclysm Bead',     sprite: 'assets/amulets/amulet_oni.png',         cost: 130 },
+];
+export const AMULET_BY_ID   = Object.fromEntries(AMULET_DEFS.map(a => [a.id, a]));
+export const AMULET_BY_CHAR = Object.fromEntries(AMULET_DEFS.map(a => [a.char, a]));
+
 export class MetaProgress {
   constructor() {
     this.credits = 0;
@@ -317,6 +335,7 @@ export class MetaProgress {
     this.pfEarnedFrom      = {};  // { [achievementId]: true } — idempotent payout ledger
     this.protocolUnlocks   = {};  // { [characterId]: true }   — PF-purchased character unlocks
     this.protocolCards     = {};  // { [cardId]: true }        — PF-purchased permanent Protocol cards
+    this.amulets           = {};  // { [amuletId]: true }      — PF-purchased character amulets (ult +30%)
     this.profileName       = null;// optional custom player profile name (fallback 'PLAYER_01' in UI)
     this.relics       = {};  // { [relicId]: true }  — purchased relics
     this.bossKills    = {};  // { [bossKey]: true }  — required boss kills for boss relics
@@ -363,6 +382,7 @@ export class MetaProgress {
       this.pfEarnedFrom    = (d.pfEarnedFrom    && typeof d.pfEarnedFrom    === 'object') ? d.pfEarnedFrom    : {};
       this.protocolUnlocks = (d.protocolUnlocks && typeof d.protocolUnlocks === 'object') ? d.protocolUnlocks : {};
       this.protocolCards   = (d.protocolCards   && typeof d.protocolCards   === 'object') ? d.protocolCards   : {};
+      this.amulets         = (d.amulets         && typeof d.amulets         === 'object') ? d.amulets         : {};
       this.profileName     = (typeof d.profileName === 'string' && d.profileName.trim()) ? d.profileName.slice(0, 16) : null;
       this.relics      = (d.relics     && typeof d.relics    === 'object') ? d.relics    : {};
       this.bossKills   = (d.bossKills  && typeof d.bossKills === 'object') ? d.bossKills : {};
@@ -444,6 +464,7 @@ export class MetaProgress {
         pfEarnedFrom: this.pfEarnedFrom,
         protocolUnlocks: this.protocolUnlocks,
         protocolCards: this.protocolCards,
+        amulets: this.amulets,
         profileName: this.profileName,
         relics:    this.relics,
         bossKills: this.bossKills,
@@ -701,6 +722,7 @@ export class MetaProgress {
     this.pfEarnedFrom      = {};
     this.protocolUnlocks   = {};
     this.protocolCards     = {};
+    this.amulets           = {};
     this.selectedVessel   = 'alpha_phoenix';
     this.unlockedVessels  = { alpha_phoenix: true };
     this.selectedPets     = ['byte_mite'];
@@ -733,6 +755,19 @@ export class MetaProgress {
     if (this.protocolFragments < card.cost) return 'poor';
     this.protocolFragments -= card.cost;
     this.protocolCards[id]  = true;
+    this._save();
+    return 'ok';
+  }
+
+  // ─── Amulets (PF-only, one per character, empowers that character's ultimate) ──
+  hasAmuletFor(char) { const a = AMULET_BY_CHAR[char]; return !!(a && this.amulets[a.id]); }
+  tryBuyAmulet(id) {
+    const a = AMULET_BY_ID[id];
+    if (!a)                                return 'invalid';
+    if (this.amulets[id])                  return 'owned';
+    if (this.protocolFragments < a.cost)   return 'poor';
+    this.protocolFragments -= a.cost;
+    this.amulets[id] = true;
     this._save();
     return 'ok';
   }

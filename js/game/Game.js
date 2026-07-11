@@ -22,7 +22,7 @@ import { weightedSample } from './Upgrades.js?v=20260711370000';
 import { MutationUI }      from './MutationUI.js?v=20260703990000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260705300000';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, SKILL_TREE } from './MetaProgress.js?v=20260711410000';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, SKILL_TREE, AMULET_DEFS } from './MetaProgress.js?v=20260711740000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260711590000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
@@ -3122,12 +3122,13 @@ export class Game {
 
   // ─── Upgrades screen interaction ─────────────────────────────────────────────
   handleUpgradesClick(mousePos) {
-    const { rects, backRect, resetRect, coreTab, synTab, protoTab } = this._upgradeRects();
+    const { rects, backRect, resetRect, coreTab, synTab, protoTab, amuTab } = this._upgradeRects();
 
     // Tab toggle
     if (this._inRect(mousePos, coreTab))  { this._upgradeTab = 'core';      this._confirmReset = false; return; }
     if (this._inRect(mousePos, synTab))   { this._upgradeTab = 'synergy';   this._confirmReset = false; return; }
     if (this._inRect(mousePos, protoTab)) { this._upgradeTab = 'protocols'; this._confirmReset = false; return; }
+    if (amuTab && this._inRect(mousePos, amuTab)) { this._upgradeTab = 'amulets'; this._confirmReset = false; return; }
 
     // Back button
     if (this._inRect(mousePos, backRect)) {
@@ -3161,6 +3162,23 @@ export class Game {
         else if (res === 'owned') this._upgradeMsg = `${card.name} already unlocked.`;
         else if (res === 'soon')  this._upgradeMsg = `${card.name}: COMING SOON.`;
         else if (res === 'poor')  this._upgradeMsg = `Not enough Fragments (need ${card.cost} 🧩).`;
+        this._upgradeMsgTimer = 2.2;
+        this._confirmReset = false;
+        break;
+      }
+      return;
+    }
+
+    // AMULETS tab — PF-only one-time character amulets (empower that character's ultimate)
+    if (this._upgradeTab === 'amulets') {
+      const amus = AMULET_DEFS;
+      for (let i = 0; i < amus.length; i++) {
+        if (!this._inRect(mousePos, rects[i])) continue;
+        const am  = amus[i];
+        const res = this.meta.tryBuyAmulet(am.id);
+        if      (res === 'ok')    this._upgradeMsg = `${am.name} bound! ${am.charName}'s ULTIMATE +30%.`;
+        else if (res === 'owned') this._upgradeMsg = `${am.name} already bound.`;
+        else if (res === 'poor')  this._upgradeMsg = `Not enough Fragments (need ${am.cost} 🧩).`;
         this._upgradeMsgTimer = 2.2;
         this._confirmReset = false;
         break;
@@ -3208,6 +3226,7 @@ export class Game {
     if (this._upgradeTab === 'synergy')   return SYNERGY_UPGRADES;
     if (this._upgradeTab === 'skilltree') return SKILL_TREE;
     if (this._upgradeTab === 'protocols') return PROTOCOL_CARDS;
+    if (this._upgradeTab === 'amulets')   return AMULET_DEFS;
     return META_UPGRADES;
   }
 
@@ -3234,7 +3253,8 @@ export class Game {
     const coreTab  = { x: x0,                   y: tabY, w: tabW, h: tabH };
     const synTab   = { x: x0 + (tabW + 18),     y: tabY, w: tabW, h: tabH };
     const protoTab = { x: x0 + 2 * (tabW + 18), y: tabY, w: tabW, h: tabH };
-    return { rects, backRect, resetRect, coreTab, synTab, protoTab };
+    const amuTab   = { x: x0 + 3 * (tabW + 18), y: tabY, w: tabW, h: tabH };
+    return { rects, backRect, resetRect, coreTab, synTab, protoTab, amuTab };
   }
 
   // ★★★☆☆ / MAX star strip for synergy upgrades.
@@ -3242,6 +3262,59 @@ export class Game {
 
   // Permanent Protocol unlock card (PROTOCOLS tab). Category-accented, premium styling, clear
   // LOCKED / UNLOCKED / affordable / COMING-SOON states. Bought with spendable PF (idempotent).
+  // Amulet card (AMULETS tab) — Maria's amulet art (screen blend, no dark box), gold accent,
+  // OWNED / affordable states. One per character; empowers that character's ultimate (+30%).
+  _drawAmuletCard(ctx, am, r) {
+    const owned  = this.meta.amulets && this.meta.amulets[am.id];
+    const avail  = this.meta.getProtocolFragments();
+    const afford = !owned && avail >= am.cost;
+    const accent = '#ffd447';
+    if (!this._amuletIconCache) this._amuletIconCache = {};
+    if (!this._amuletIconCache[am.id]) { const im = new Image(); im.src = am.sprite; this._amuletIconCache[am.id] = im; }
+    const img = this._amuletIconCache[am.id];
+
+    ctx.fillStyle = owned ? '#161206' : '#0a0f1e';
+    ctx.fillRect(r.x, r.y, r.w, r.h);
+    ctx.save();
+    ctx.shadowColor = owned ? accent : afford ? '#7df9ff' : 'transparent';
+    ctx.shadowBlur  = owned || afford ? 12 : 0;
+    ctx.strokeStyle = owned ? accent : afford ? '#7df9ff' : '#2a3550';
+    ctx.lineWidth   = owned || afford ? 2 : 1;
+    ctx.strokeRect(r.x, r.y, r.w, r.h);
+    ctx.restore();
+
+    // art (left) — screen blend so dark backgrounds vanish; gentle bob when owned
+    if (img && img.complete && img.naturalWidth > 0) {
+      const isz = 74;
+      const bob = owned ? Math.sin(performance.now() / 500 + r.x) * 3 : 0;
+      ctx.save();
+      ctx.globalCompositeOperation = 'screen';
+      ctx.shadowColor = accent; ctx.shadowBlur = owned ? 14 : 6;
+      ctx.drawImage(img, r.x + 10, r.y + (r.h - isz) / 2 + bob, isz, isz);
+      ctx.restore();
+    }
+
+    const tx = r.x + 96;
+    ctx.textAlign = 'left';
+    ctx.font = 'bold 15px Consolas, monospace';
+    ctx.fillStyle = owned ? accent : '#dfe8f5';
+    ctx.fillText(am.name, tx, r.y + 28);
+    ctx.font = '12px Consolas, monospace';
+    ctx.fillStyle = '#9fb4cc';
+    ctx.fillText(am.charName, tx, r.y + 48);
+    ctx.fillStyle = '#7fd0a0';
+    ctx.fillText('ULTIMATE  +30%', tx, r.y + 70);
+    ctx.font = 'bold 13px "Segoe UI Emoji", Consolas, monospace';
+    if (owned) { ctx.fillStyle = accent;               ctx.fillText('✦ BOUND', tx, r.y + 108); }
+    else       { ctx.fillStyle = afford ? '#7df9ff' : '#5a7080'; ctx.fillText(`🧩 ${am.cost}`, tx, r.y + 108); }
+    ctx.textAlign = 'center';
+  }
+
+  // ×1.3 on every ultimate damage hook while the ACTIVE character's amulet is owned.
+  _amuletUltMult() {
+    return (this.meta && this.player && this.meta.hasAmuletFor(this.player.selectedCharacter)) ? 1.3 : 1;
+  }
+
   _drawProtocolCard(ctx, card, r) {
     const owned  = this.meta.hasProtocolCard(card.id);
     const soon   = !!card.comingSoon;
@@ -5095,16 +5168,16 @@ export class Game {
     ctx.fillStyle = YELLOW;
     ctx.fillText(`Grid Credits: ${this.meta.credits}`, WIDTH / 2, 82);
     // Protocol Fragments — separate rare Endless currency (display only here; spent in Character Select)
-    if (this._upgradeTab !== 'protocols') {
+    if (this._upgradeTab !== 'protocols' && this._upgradeTab !== 'amulets') {
       ctx.font      = 'bold 15px "Segoe UI Emoji", Consolas, monospace';
       ctx.fillStyle = '#7df9ff';
       ctx.fillText(`🧩 Fragments: ${this.meta.getProtocolFragmentsEarned()} / ${PF_TOTAL_OBTAINABLE}`, WIDTH / 2, 104);
     }
 
-    const { rects, backRect, resetRect, coreTab, synTab, protoTab } = this._upgradeRects();
+    const { rects, backRect, resetRect, coreTab, synTab, protoTab, amuTab } = this._upgradeRects();
 
     // PROTOCOLS tab header: show spendable PF + lifetime-earned progress (no regression on spend).
-    if (this._upgradeTab === 'protocols') {
+    if (this._upgradeTab === 'protocols' || this._upgradeTab === 'amulets') {
       ctx.font      = 'bold 15px "Segoe UI Emoji", Consolas, monospace';
       ctx.fillStyle = '#7df9ff';
       ctx.textAlign = 'center';
@@ -5126,6 +5199,7 @@ export class Game {
     drawTab(coreTab,  'CORE UPGRADES',      this._upgradeTab === 'core',      CYAN);
     drawTab(synTab,   '★ WEAPON SYNERGIES', this._upgradeTab === 'synergy',   '#ffd23c');
     drawTab(protoTab, '🧩 PROTOCOLS',       this._upgradeTab === 'protocols', '#b88bff');
+    drawTab(amuTab,   '⛨ AMULETS',          this._upgradeTab === 'amulets',   '#ffd447');
 
     // Upgrade cards (active tab list)
     const list = this._upgradeList();
@@ -5138,6 +5212,7 @@ export class Game {
       const r     = rects[i];
 
       if (this._upgradeTab === 'protocols') { this._drawProtocolCard(ctx, upg, r); continue; }
+      if (this._upgradeTab === 'amulets')   { this._drawAmuletCard(ctx, upg, r);   continue; }
       if (this._upgradeTab === 'synergy') { this._drawSynergyUpgradeCard(ctx, upg, r, lvl, cost, maxed); continue; }
 
       // Card bg + border
@@ -5634,7 +5709,8 @@ export class Game {
   _activateCyberAngelNova() {
     const p = this.player;
     const _am = this._cardLvl('dimi_cyber_angel_mastery');
-    const radius = 300 + 30 * _am, force = 470, dmg = 34 + 8 * _am;   // heavy nova, scales with Angelic Overcharge
+    const _amu = this._amuletUltMult();
+    const radius = 300 + 30 * _am, force = 470, dmg = (34 + 8 * _am) * _amu;   // nova: Overcharge + amulet
     for (const e of this.enemies) {
       if (!e.pos) continue;
       if (distance(e.pos, p.pos) < radius) {
@@ -5644,7 +5720,7 @@ export class Game {
     }
     this._specialRings.push({ pos: p.pos.clone(), radius: 0, maxRadius: radius,
                                life: 0.7, maxLife: 0.7, color1: '#b026ff', color2: '#ff2d6a' });
-    (this._dimiAngels ||= []).push({ pos: new Vec2(p.pos.x, p.pos.y - 160), t: 0, life: 6.0, atk: 0.3, dmg: 20 + 4 * _am });
+    (this._dimiAngels ||= []).push({ pos: new Vec2(p.pos.x, p.pos.y - 160), t: 0, life: 6.0, atk: 0.3, dmg: (20 + 4 * _am) * _amu });
     // Deus Ex Machina cinematic layer (visual only): heaven-gate, descent, halo, ascend.
     if (!this._deusEx && this._canvas) this._deusEx = new DeusExMachina(this._canvas, this._cyberAngelImg, { totalMs: 6000 });
     if (this._deusEx && !this._deusEx.isActive()) { const sm = this._playerScreenPos(); this._deusEx.trigger(sm.cx, sm.footY); }
@@ -6187,7 +6263,7 @@ export class Game {
           this._digitalSingularity.cx = s.cx;
           this._digitalSingularity.footY = s.footY;
         }
-        const ultDmg = 36 + 6 * (this.player.upgrades['phasewalker_singularity_mastery'] || 0);   // Digital Singularity Mastery
+        const ultDmg = (36 + 6 * (this.player.upgrades['phasewalker_singularity_mastery'] || 0)) * this._amuletUltMult();   // Mastery + amulet
         this._digitalSingularity.update(now, this.enemies, {
           getX: e => ((e?.pos?.x ?? this.camera.x) - cam.x) * vs,
           getY: e => ((e?.pos?.y ?? this.camera.y) - cam.y) * vs,
@@ -6263,7 +6339,7 @@ export class Game {
       onDetonate: () => {
         this.screenShake.trigger(14, 0.6);
         const synCC = this.meta?.getLevel?.('syn_cataclysm_chain') || 0;   // Oni synergy stars (wired)
-        const det = Math.round((220 + 40 * cl) * (1 + 0.04 * synCC));       // Total Cataclysm mastery + synergy stars
+        const det = Math.round((220 + 40 * cl) * (1 + 0.04 * synCC) * this._amuletUltMult());       // mastery + synergy + amulet
         // Hybrid scaling vs NORMAL enemies: flat + 15% of their max HP, so the
         // detonation stays impactful against biome-buffed HP pools in Endless.
         // Bosses keep the existing _capBossDamage path — encounter balance intact.
@@ -6836,8 +6912,9 @@ export class Game {
       getY: e => ((e?.pos?.y ?? cam.y) - cam.y) * vs,
       onStrike: (e, kind) => {
         if (!e?.takeHit) return;
-        if (kind === 'qed') e.takeHit(this._capBossDamage ? ((e.isBoss?.() || e.isMegaBoss) ? this._capBossDamage(e, 45) : 45) : 45, this);
-        else e.takeHit((e.isBoss?.() || e.isMegaBoss) ? (this._capBossDamage ? this._capBossDamage(e, 20) : 20) : 20, this);
+        const amQ = this._amuletUltMult();
+        if (kind === 'qed') { const d = 45 * amQ; e.takeHit((e.isBoss?.() || e.isMegaBoss) && this._capBossDamage ? this._capBossDamage(e, d) : d, this); }
+        else { const d = 20 * amQ; e.takeHit((e.isBoss?.() || e.isMegaBoss) && this._capBossDamage ? this._capBossDamage(e, d) : d, this); }
       },
     };
   }
@@ -6908,7 +6985,7 @@ export class Game {
         const sp = this._playerScreenPos();
         this._ossuary.cx = sp.cx; this._ossuary.footY = sp.footY;
       }
-      const ultDmg = 30;   // per shard-swarm strike tick (Reap phase, ~170ms cadence, comparable to Thunder Solo)
+      const ultDmg = 30 * this._amuletUltMult();   // per shard-swarm strike tick (amulet-empowered)
       this._ossuary.update(performance.now(), this.enemies, {
         getX: e => ((e?.pos?.x ?? cam.x) - cam.x) * vs,
         getY: e => ((e?.pos?.y ?? cam.y) - cam.y) * vs,
@@ -6976,7 +7053,7 @@ export class Game {
         getY: e => ((e?.pos?.y ?? cam.y) - cam.y) * vs,
         onStrike: (e, kind) => {
           if (!e?.takeHit) return;
-          const dmg = kind === 'core' ? 85 : 9;    // one heavy bisect hit, then small burn ticks
+          const dmg = (kind === 'core' ? 85 : 9) * this._amuletUltMult();    // amulet-empowered
           e.takeHit((e.isBoss?.() || e.isMegaBoss) && this._capBossDamage ? this._capBossDamage(e, dmg) : dmg, this);
         },
       });
@@ -13017,7 +13094,7 @@ export class Game {
         getY: e => ((e?.pos?.y ?? cam.y) - cam.y) * vs,
         onStrike: (e, kind) => {
           if (!e?.takeHit) return;
-          const dmg = kind === 'core' ? 70 : 38;   // geysers 38, epicenter detonation 70
+          const dmg = (kind === 'core' ? 70 : 38) * this._amuletUltMult();   // amulet-empowered
           e.takeHit((e.isBoss?.() || e.isMegaBoss) && this._capBossDamage ? this._capBossDamage(e, dmg) : dmg, this);
         },
       });
@@ -13158,7 +13235,7 @@ export class Game {
       this._feedbackApoc.update(performance.now(), this.enemies, {
         getX: e => ((e?.pos?.x ?? cam.x) - cam.x) * vs,
         getY: e => ((e?.pos?.y ?? cam.y) - cam.y) * vs,
-        onStrike: (e, kind) => { if (e?.takeHit) e.takeHit(kind === 'bolt' ? 40 : 22, this); },
+        onStrike: (e, kind) => { if (e?.takeHit) e.takeHit((kind === 'bolt' ? 40 : 22) * this._amuletUltMult(), this); },
       });
     } catch (err) { console.warn('[FeedbackApoc]', err); }
   }
@@ -13418,7 +13495,7 @@ export class Game {
       getY: e => ((e?.pos?.y ?? cam.y) - cam.y) * vs,
       onStrike: (e, kind) => {
         if (!e?.takeHit) return;
-        const dmg = kind === 'reckon' ? 65 : 22;   // light cut per blink pass, heavy simultaneous reckoning
+        const dmg = (kind === 'reckon' ? 65 : 22) * this._amuletUltMult();   // amulet-empowered
         e.takeHit((e.isBoss?.() || e.isMegaBoss) && this._capBossDamage ? this._capBossDamage(e, dmg) : dmg, this);
       },
     };
@@ -13995,7 +14072,7 @@ export class Game {
         const sp = this._playerScreenPos();
         this._tribunal.cx = sp.cx; this._tribunal.footY = sp.footY;
       }
-      const ultDmg = 34;   // per-afterimage dash strike (each enemy max once per dash)
+      const ultDmg = 34 * this._amuletUltMult();   // per-afterimage dash strike (amulet-empowered)
       this._tribunal.update(performance.now(), this.enemies, {
         getX: e => ((e?.pos?.x ?? cam.x) - cam.x) * vs,
         getY: e => ((e?.pos?.y ?? cam.y) - cam.y) * vs,
