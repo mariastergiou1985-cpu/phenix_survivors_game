@@ -30,6 +30,7 @@ import { GlitchDash } from '../effects/glitch-dash.js?v=20260703990000';
 import { EMPShockwave } from '../effects/emp-shockwave.js?v=20260703990000';
 import { DigitalSingularity } from '../effects/digital-singularity.js?v=20260703990000';
 import { OssuaryReconstruction } from '../effects/ossuary-reconstruction.js?v=20260711500000';
+import { AfterimageTribunal } from '../effects/afterimage-tribunal.js?v=20260711510000';
 import { Protocol0 } from '../effects/protocol-0.js?v=20260705000000';
 import { LaserEyes } from '../effects/laser-eyes.js?v=20260709100000';
 import { MeteorRain } from '../effects/meteor-rain.js?v=20260709100000';
@@ -1128,6 +1129,7 @@ export class Game {
     this._empShock            = null;
     this._digitalSingularity  = null;
     this._ossuary             = null;   // Skeleton Warrior ultimate (Ossuary Reconstruction)
+    this._tribunal            = null;   // Taekwondo Girl ultimate (Afterimage Tribunal)
     this._pwFxBuilt           = false;
     this._pwDashing           = false;
     this._pwDashStart         = null;
@@ -7745,6 +7747,7 @@ export class Game {
     this._updateChromePhantom(dt);  // Assassin ultimate
     this._updatePhasewalkerFx(dt);  // Japan Phasewalker kit (guards on character)
     this._updateOssuaryFx(dt);      // Skeleton Warrior ultimate (guards on character)
+    this._updateTribunalFx(dt);     // Taekwondo Girl ultimate (guards on character)
     this._updateOniFx(dt);          // Oni Protocol 0 (guards on character)
     this._updateDimiGauntlet(dt);   // Dimi Cyber-Gauntlet Shockwave (guards on character)
     this._updateDimiAngels(dt);     // Dimi Cyber-Angel summon (Ultimate)
@@ -13352,14 +13355,57 @@ export class Game {
       this.floatingTexts.push(new FloatingText('NOT ENOUGH MANA', p.pos.clone(), CYAN, 1.0));
       return;
     }
+    // Afterimage Tribunal replaced Cyber Ride as the Taekwondo ultimate (module VFX,
+    // Phasewalker-style). Cyber Ride update/draw code stays but is never scheduled.
+    this._ensureTribunalFx();
+    if (!this._tribunal || this._tribunal.isActive()) return;
     p.mana -= ULTIMATE_MANA_COST;
-    const dir = (p.lastFacingDir && p.lastFacingDir.lengthSq() > 0.001) ? safeNormalize(p.lastFacingDir.clone()) : new Vec2(1, 0);
-    const speedAdded = 1.2;                       // +120% move speed while riding (tunable)
-    p.speedBonus = (p.speedBonus || 0) + speedAdded;
-    this._cyberBike = { t: 0, fireTimer: 0, dir, beams: [], hits: new Map(), speedAdded };
-    this.screenShake.trigger(5, 0.25);
+    const sp = this._playerScreenPos();
+    this._tribunal.trigger(sp.cx, sp.footY);
+    this.screenShake.trigger(6, 0.3);
     this.audio?.playEventWarning?.();
-    this.floatingTexts.push(new FloatingText('CYBER RIDE!', p.pos.clone(), CYAN, 1.4));
+    this.floatingTexts.push(new FloatingText('AFTERIMAGE TRIBUNAL!', p.pos.clone(), '#14ebd2', 1.4));
+  }
+
+  // Lazy builder — mirrors _ensureOssuaryFx (canvas + loaded sprite required).
+  _ensureTribunalFx() {
+    if (this.player?.selectedCharacter !== 'taekwondo_girl') return;
+    if (this._tribunal || !this._canvas) return;
+    const spr = this.player.characterSprite;
+    if (!spr || !spr.complete || !spr.naturalWidth) return;
+    const h = Math.max(24, Math.round(64 * this._viewScale));
+    const w = Math.max(12, Math.round(spr.naturalWidth * (h / spr.naturalHeight)));
+    this._tribunal = new AfterimageTribunal(this._canvas, spr, { spriteW: w, spriteH: h });
+  }
+
+  _updateTribunalFx(dt) {
+    if (this.player?.selectedCharacter !== 'taekwondo_girl' || !this._tribunal) return;
+    const vs = this._viewScale, cam = this.camera;
+    try {
+      if (this._tribunal.isActive()) {
+        const sp = this._playerScreenPos();
+        this._tribunal.cx = sp.cx; this._tribunal.footY = sp.footY;
+      }
+      const ultDmg = 34;   // per-afterimage dash strike (each enemy max once per dash)
+      this._tribunal.update(performance.now(), this.enemies, {
+        getX: e => ((e?.pos?.x ?? cam.x) - cam.x) * vs,
+        getY: e => ((e?.pos?.y ?? cam.y) - cam.y) * vs,
+        onStrike: e => { if (e?.takeHit) e.takeHit(ultDmg, this); },
+      });
+    } catch (err) { console.warn('[Tribunal]', err); }
+  }
+
+  _drawTribunalFx(ctx) {
+    this._canvas = ctx.canvas;
+    if (this.player?.selectedCharacter !== 'taekwondo_girl') return;
+    this._ensureTribunalFx();
+    if (!this._tribunal) return;
+    try {
+      const sh = this._tribunal.getShake();
+      ctx.save(); ctx.translate(sh.x, sh.y);
+      this._tribunal.render(ctx);
+      ctx.restore();
+    } catch (err) { console.warn('[Tribunal render]', err); }
   }
 
   _updateCyberBikeRush(dt) {
@@ -14806,7 +14852,8 @@ export class Game {
     // Digital Singularity OWNS the player while active (it draws the dissolving/reforming sprite
     // in screen space), so skip the normal world-space player draw during the ultimate.
     if (!(this.player.selectedCharacter === 'japan_phasewalker' && this._digitalSingularity?.isActive()) &&
-        !(this.player.selectedCharacter === 'skeleton_warrior' && this._ossuary?.isActive())) {
+        !(this.player.selectedCharacter === 'skeleton_warrior' && this._ossuary?.isActive()) &&
+        !(this.player.selectedCharacter === 'taekwondo_girl' && this._tribunal?.isActive())) {
       // ── Player character — always fully visible, weapons NEVER cover it ──
       drawGlow(ctx, this.player.pos.x, this.player.pos.y, 48, CYAN, 0.28); // player hero glow
       this.player.draw(ctx, this._lastMousePos || { x: 0, y: 0 });
@@ -15071,6 +15118,7 @@ export class Game {
 
     this._drawPhasewalkerFx(ctx);      // Japan Phasewalker glitch-dash / EMP / singularity (screen-space; guards on character)
     this._drawOssuaryFx(ctx);          // Skeleton Warrior Ossuary Reconstruction (screen-space; guards on character)
+    this._drawTribunalFx(ctx);         // Taekwondo Girl Afterimage Tribunal (screen-space; guards on character)
     this._drawOniFx(ctx);           // Oni Protocol 0 (screen-space; guards on character)
     this._drawThunderSoloScreen(ctx);  // darken + fullscreen lightning flash (under HUD)
     this._drawStormOverlay(ctx);       // Endless Lightning Storm: full-map rain/lightning atmosphere
