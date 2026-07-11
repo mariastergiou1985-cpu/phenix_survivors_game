@@ -2589,11 +2589,14 @@ export class Game {
     const dy = nearest.pos.y - pet.y;
     const dist = Math.sqrt(dx * dx + dy * dy);
     if (dist <= 0) return;
+    // Pet damage now scales with run time (like enemy HP does) — pets stay VISIBLE
+    // contributors all game instead of fading into irrelevance after minute 2.
+    const _petMin = this.currentMinute ? this.currentMinute() : 0;
     this._petBolts.push({
       x: pet.x, y: pet.y,
       vx: (dx / dist) * pet.def.boltSpeed,
       vy: (dy / dist) * pet.def.boltSpeed,
-      dmg: pet.def.boltDamage,
+      dmg: pet.def.boltDamage * (1 + _petMin * 0.15),
       color: pet.def.boltColor,
       life: 1.5,
     });
