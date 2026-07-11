@@ -22116,6 +22116,32 @@ _drawLoreArchive(ctx) {
       ctx.lineWidth   = r ? 1.2 : 0.6;
       _rr(ctx, sx + 0.5, sy + 0.5, SLOT - 1, SLOT - 1, 4);
       ctx.stroke();
+      // Cyber corner ticks (filled slots) — premium frame read at tiny sizes
+      if (r) {
+        ctx.save();
+        ctx.strokeStyle = c.fg; ctx.lineWidth = 1.4; ctx.globalAlpha = 0.9;
+        const tk = 5;
+        ctx.beginPath();
+        ctx.moveTo(sx, sy + tk); ctx.lineTo(sx, sy); ctx.lineTo(sx + tk, sy);
+        ctx.moveTo(sx + SLOT - tk, sy + SLOT); ctx.lineTo(sx + SLOT, sy + SLOT); ctx.lineTo(sx + SLOT, sy + SLOT - tk);
+        ctx.stroke();
+        // shimmer sweep — a bright diagonal band crossing the slot every ~3s (staggered per slot)
+        const shm = ((performance.now() / 3000) + i * 0.18) % 1;
+        if (shm < 0.22) {
+          const sp2 = shm / 0.22;
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.globalAlpha = Math.sin(sp2 * Math.PI) * 0.30;
+          ctx.beginPath();
+          ctx.moveTo(sx + sp2 * SLOT - 6, sy);
+          ctx.lineTo(sx + sp2 * SLOT + 3, sy);
+          ctx.lineTo(sx + sp2 * SLOT - 3, sy + SLOT);
+          ctx.lineTo(sx + sp2 * SLOT - 12, sy + SLOT);
+          ctx.closePath();
+          ctx.fillStyle = '#ffffff';
+          ctx.fill();
+        }
+        ctx.restore();
+      }
 
       // Icon / fallback letter
       if (r) {
@@ -22123,7 +22149,11 @@ _drawLoreArchive(ctx) {
         const iy  = sy + PAD;
         const img = this._relicIconCache?.[r.id];
         if (img && img.complete && img.naturalWidth > 0) {
+          ctx.save();
+          ctx.globalCompositeOperation = 'screen';   // relic icons w/ dark bg render clean
+          ctx.shadowColor = c.fg; ctx.shadowBlur = 6;
           ctx.drawImage(img, ix, iy, iconSz, iconSz);
+          ctx.restore();
         } else {
           // Fallback: icon PNG missing — show 3-char abbreviation so a single letter
           // (e.g. "S" for Second Signal Debt) never confuses the player.
