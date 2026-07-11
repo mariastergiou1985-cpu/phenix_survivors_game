@@ -206,6 +206,62 @@ export class WeatherTheater {
     ctx.restore();
   }
 
+  // ── LIGHTNING STORM (layered over Maria's storm sprite overlay) ────────────
+  storm(ctx, t, W, H, k = 1) {
+    ctx.save();
+    // electric rain streaks (thin, fast, cold blue)
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.strokeStyle = '#9fd0ff'; ctx.lineCap = 'round'; ctx.lineWidth = 1.4;
+    for (let i = 0; i < 22; i++) {
+      const prog = ((t * 640) / (H + 60) + pr(i, 120)) % 1;
+      const x = pr(i, 121) * (W + 80) - 40 + prog * 90;
+      ctx.globalAlpha = 0.30 * k;
+      ctx.beginPath(); ctx.moveTo(x, prog * (H + 60) - 30); ctx.lineTo(x + 5, prog * (H + 60) - 4); ctx.stroke();
+    }
+    // MAIN EVENT: a huge jagged sky bolt every ~0.9s (deterministic per cycle), with
+    // branch forks and a full-screen flash on the frame it is born.
+    const CYC = 0.9;
+    const cyc = Math.floor(t / CYC);
+    const age = (t % CYC);
+    if (age < 0.16 && pr(cyc, 130) > 0.25) {                     // 75% of cycles fire a bolt
+      const bx = pr(cyc, 131) * W;
+      const fade = 1 - age / 0.16;
+      // screen flash (strongest on birth)
+      ctx.globalAlpha = 0.16 * fade * k;
+      ctx.fillStyle = '#eaf4ff';
+      ctx.fillRect(0, 0, W, H);
+      // trunk: jagged 8-segment bolt from the sky to ~65% height
+      const endY = H * (0.45 + pr(cyc, 132) * 0.25);
+      ctx.globalAlpha = fade * 0.95 * k;
+      ctx.strokeStyle = '#eaf4ff'; ctx.lineWidth = 3;
+      ctx.shadowColor = '#9fd0ff'; ctx.shadowBlur = 18;
+      let px2 = bx, py2 = -10;
+      ctx.beginPath(); ctx.moveTo(px2, py2);
+      const segs = 8;
+      for (let sgm = 1; sgm <= segs; sgm++) {
+        px2 = bx + (pr(cyc, 133 + sgm) - 0.5) * 120 * (sgm / segs);
+        py2 = (endY * sgm) / segs;
+        ctx.lineTo(px2, py2);
+        // branch forks off two mid segments
+        if (sgm === 3 || sgm === 5) {
+          const fx = px2 + (pr(cyc, 140 + sgm) - 0.5) * 160;
+          ctx.moveTo(px2, py2); ctx.lineTo(fx, py2 + 70 + pr(cyc, 150 + sgm) * 50);
+          ctx.moveTo(px2, py2);
+        }
+      }
+      ctx.stroke();
+      // thin white-hot core re-stroke
+      ctx.shadowBlur = 0; ctx.lineWidth = 1.2; ctx.strokeStyle = '#ffffff';
+      ctx.globalAlpha = fade * k;
+      ctx.stroke();
+      // ground glow where it lands
+      ctx.globalAlpha = fade * 0.5 * k;
+      ctx.fillStyle = '#9fd0ff';
+      ctx.beginPath(); ctx.ellipse(px2, py2 + 6, 46 * fade + 10, 12, 0, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
+  }
+
   // ── WHITEOUT (Glacial hazard — replaces the flat white radial fog) ─────────
   whiteout(ctx, t, W, H, k = 1) {
     ctx.save();

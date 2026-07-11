@@ -38,7 +38,7 @@ import { DeusExMachina } from '../effects/deus-ex-machina.js?v=20260711550000';
 import { RailgunHorizon } from '../effects/railgun-horizon.js?v=20260711560000';
 import { MagmaCoreEruption } from '../effects/magma-core-eruption.js?v=20260711570000';
 import { PhantomExecution } from '../effects/phantom-execution.js?v=20260711580000';
-import { WeatherTheater } from '../effects/weather-theater.js?v=20260711660000';
+import { WeatherTheater } from '../effects/weather-theater.js?v=20260711710000';
 import { Protocol0 } from '../effects/protocol-0.js?v=20260705000000';
 import { LaserEyes } from '../effects/laser-eyes.js?v=20260709100000';
 import { MeteorRain } from '../effects/meteor-rain.js?v=20260709100000';
@@ -24362,6 +24362,7 @@ _drawLoreArchive(ctx) {
       if (this._lavaRainActive > 0) th.lava(ctx, t, WIDTH, HEIGHT, Math.min(1, this._lavaRainActive));
       if (this._ddRocketShadows && this._ddRocketShadows.length) th.raid(ctx, t, WIDTH, HEIGHT, 1);
       if (this.gridBlackoutActive) th.blackout(ctx, t, WIDTH, HEIGHT, 1);
+      if (this.endless && this._stormActive > 0) th.storm(ctx, t, WIDTH, HEIGHT, Math.min(1, this._stormActive / 3));
       if (this._whiteoutT > 0) th.whiteout(ctx, t, WIDTH, HEIGHT, Math.min(1, this._whiteoutT));
       if (this._murkT > 0)     th.murk(ctx, t, WIDTH, HEIGHT, Math.min(1, this._murkT));
       if (this._frozenSleet && this._frozenSleet.phase !== 'fadeout') {
