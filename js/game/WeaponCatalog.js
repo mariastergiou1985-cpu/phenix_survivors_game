@@ -37,6 +37,8 @@ export const WEAPON_ID = Object.freeze({
   VENOM_SHROUD:       'venom_shroud',
   SEISMIC_RIFT:       'seismic_rift',
   MARROW_REACTOR:   'marrow_reactor',   // NEW skeleton evolution (procedural)
+  MIRROR_CASCADE:   'mirror_cascade',   // NEW taekwondo evolution (procedural)
+  TEMPEST_RIBBON:   'tempest_ribbon',   // NEW taekwondo evolution (procedural)
   REVENANT_CHOIR:   'revenant_choir',   // NEW skeleton evolution (procedural)
 });
 
@@ -539,6 +541,30 @@ export const WEAPON_DEFS = Object.freeze({
     color: '#e8e4d0',
     baseStats: { damage: 40, cooldown: 2.6, aoeRadius: 130, speed: 0, piercing: 99 },
   },
+  [WEAPON_ID.MIRROR_CASCADE]: {
+    id: 'mirror_cascade',
+    name: 'Mirror Cascade',
+    description: 'Ice mirrors materialize in an arc — her kick REFLECTS pane to pane, striking at every bounce.',
+    character: 'taekwondo_girl',
+    element: 'ice',
+    behavior: WEAPON_BEHAVIOR.FORWARD_ARC,
+    isEvolution: true,
+    procedural: true,
+    color: '#7fe0ff',
+    baseStats: { damage: 30, cooldown: 2.4, aoeRadius: 120, speed: 0, piercing: 99 },
+  },
+  [WEAPON_ID.TEMPEST_RIBBON]: {
+    id: 'tempest_ribbon',
+    name: 'Tempest Ribbon',
+    description: 'A storm ribbon dances a figure-eight around the strike point, shearing everything on its path.',
+    character: 'taekwondo_girl',
+    element: 'electric',
+    behavior: WEAPON_BEHAVIOR.CIRCLE_360,
+    isEvolution: true,
+    procedural: true,
+    color: '#14ebd2',
+    baseStats: { damage: 24, cooldown: 2.8, aoeRadius: 150, speed: 0, piercing: 99 },
+  },
   [WEAPON_ID.REVENANT_CHOIR]: {
     id: 'revenant_choir',
     name: 'Revenant Choir',
@@ -590,6 +616,18 @@ export const EVOLUTION_RECIPES = Object.freeze([
     ingredients: [WEAPON_ID.NEXUS_CHAKRAM, WEAPON_ID.GLITCH_TEAR],
     minLevel: 5,
     owner: ['skeleton_warrior'],
+  },
+  {
+    result: WEAPON_ID.MIRROR_CASCADE,
+    ingredients: [WEAPON_ID.SPIRIT_CRESCENT, WEAPON_ID.MAGNETIC_ARC],
+    minLevel: 5,
+    owner: ['taekwondo_girl'],
+  },
+  {
+    result: WEAPON_ID.TEMPEST_RIBBON,
+    ingredients: [WEAPON_ID.STORM_SABER, WEAPON_ID.SHADOW_TOXIC],
+    minLevel: 5,
+    owner: ['taekwondo_girl'],
   },
   {
     result: WEAPON_ID.CHAOS_CHORD,

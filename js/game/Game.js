@@ -51,7 +51,7 @@ import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260711730000';
 import { NexusManager } from './NexusManager.js?v=20260711900000';
 import { VESSELS, getVesselById, getDefaultVesselId } from './VesselCatalog.js?v=20260705040000';
 import { PETS, getPetById } from './PetCatalog.js?v=20260705000000';
-import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons, isEvolutionOwnedBy, getCardDisplayName } from './WeaponCatalog.js?v=20260711930000';
+import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons, isEvolutionOwnedBy, getCardDisplayName } from './WeaponCatalog.js?v=20260711940000';
 import { TACTICAL_ID, TACTICAL_DEFS, getTacticalDef, getTacticalForCharacter, getAvailableTactical, preloadTacticalSprites, FUSION_TACTICALS } from './TacticalWeaponCatalog.js?v=20260711420000';
 import { VFXSpritePlayer } from './VFXSpritePlayer.js?v=20260711800000';
 
@@ -11370,6 +11370,117 @@ export class Game {
             ctx.fill();
           }
         }
+      } else if (f.id === 'mirror_cascade') {
+        // ACT 1 (k<0.3): four frost MIRROR panes materialize in an arc facing the strike.
+        // ACT 2 (0.3-0.72): her kick-flash REFLECTS pane→pane — a bright bolt ricochets
+        // across all four with an impact flash at every bounce. ACT 3: panes SHATTER.
+        const panes = [];
+        for (let i = 0; i < 4; i++) {
+          const pa = f.angle + (i - 1.5) * 0.55;
+          panes.push({ x: Math.cos(pa) * f.R * 0.85, y: Math.sin(pa) * f.R * 0.55, a: pa });
+        }
+        const mat = Math.min(1, k / 0.3);
+        if (k < 0.85) {
+          for (let i = 0; i < 4; i++) {
+            const P = panes[i];
+            const shK = k > 0.72 ? (k - 0.72) / 0.13 : 0;         // shatter offset
+            ctx.save();
+            ctx.translate(P.x, P.y);
+            ctx.rotate(P.a + Math.PI / 2);
+            ctx.globalAlpha = mat * (1 - shK);
+            ctx.fillStyle = 'rgba(20,60,90,0.4)';
+            ctx.strokeStyle = '#7fe0ff'; ctx.lineWidth = 2;
+            ctx.shadowColor = '#7fe0ff'; ctx.shadowBlur = 8;
+            const w2 = 12 * mat, h2 = 30 * mat;
+            ctx.beginPath();                                      // slanted mirror pane
+            ctx.moveTo(-w2 + 4 + shK * 6, -h2); ctx.lineTo(w2 + 4, -h2 + shK * 8);
+            ctx.lineTo(w2 - 4, h2); ctx.lineTo(-w2 - 4 - shK * 6, h2 - shK * 8);
+            ctx.closePath(); ctx.fill(); ctx.stroke();
+            ctx.shadowBlur = 0;
+            ctx.globalAlpha = mat * 0.6 * (1 - shK);              // glass shine stripe
+            ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.2;
+            ctx.beginPath(); ctx.moveTo(-w2 * 0.4, -h2 * 0.7); ctx.lineTo(w2 * 0.2, h2 * 0.6); ctx.stroke();
+            ctx.restore();
+          }
+        }
+        if (k >= 0.3 && k < 0.72) {
+          const bK = (k - 0.3) / 0.42;
+          const hops = 4;
+          const idx = Math.min(hops - 1, Math.floor(bK * hops));
+          const hopK = (bK * hops) % 1;
+          const from = idx === 0 ? { x: 0, y: 0 } : panes[idx - 1];
+          const to = panes[idx];
+          const bx = from.x + (to.x - from.x) * hopK, by2 = from.y + (to.y - from.y) * hopK;
+          ctx.save();
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.globalAlpha = 0.95;                                 // the ricocheting kick-flash
+          ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 3;
+          ctx.shadowColor = '#7fe0ff'; ctx.shadowBlur = 14;
+          ctx.beginPath(); ctx.moveTo(from.x, from.y); ctx.lineTo(bx, by2); ctx.stroke();
+          ctx.shadowBlur = 0;
+          if (hopK > 0.85) {                                      // bounce flash on the pane
+            ctx.globalAlpha = (hopK - 0.85) / 0.15;
+            ctx.fillStyle = '#bfefff';
+            ctx.beginPath(); ctx.arc(to.x, to.y, 10, 0, Math.PI * 2); ctx.fill();
+          }
+          ctx.restore();
+        }
+        if (k >= 0.72) {                                          // shatter glints
+          const sK = (k - 0.72) / 0.43;
+          ctx.save(); ctx.globalCompositeOperation = 'lighter';
+          for (let i = 0; i < 10; i++) {
+            const pv = prV(f.seed, i + 60);
+            const P = panes[i % 4];
+            ctx.globalAlpha = (1 - sK) * 0.9;
+            ctx.fillStyle = i % 2 ? '#ffffff' : '#7fe0ff';
+            ctx.beginPath();
+            ctx.arc(P.x + (pv - 0.5) * 40 * sK * 2, P.y + (prV(f.seed, i + 70) - 0.5) * 40 * sK * 2 + sK * 20, 1.8, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          ctx.restore();
+        }
+      } else if (f.id === 'tempest_ribbon') {
+        // A storm RIBBON draws itself along a figure-eight (lemniscate) around the point —
+        // white leading edge, teal body, storm sparks shearing off the curve; at the end it
+        // TIGHTENS and snaps with a ring pulse.
+        const head = Math.min(1, k / 0.8) * Math.PI * 4;          // two full loops
+        const a2r = f.R * 0.75;
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.lineCap = 'round';
+        const pt = tt => {                                        // lemniscate point
+          const sc2 = 1 / (1 + Math.sin(tt) * Math.sin(tt) * 0.6);
+          return { x: Math.cos(tt) * a2r * sc2, y: Math.sin(tt) * Math.cos(tt) * a2r * 0.8 * sc2 };
+        };
+        const TAIL = Math.PI * 1.1;
+        for (let sgm = 0; sgm < 22; sgm++) {                      // ribbon body (fading tail)
+          const t0 = head - TAIL + (sgm / 22) * TAIL;
+          if (t0 < 0) continue;
+          const p0 = pt(t0), p1 = pt(t0 + TAIL / 22);
+          const fade2 = sgm / 22;
+          ctx.globalAlpha = fade2 * 0.85 * (k > 0.8 ? 1 - (k - 0.8) / 0.35 : 1);
+          ctx.strokeStyle = sgm > 18 ? '#ffffff' : '#14ebd2';
+          ctx.lineWidth = 2 + fade2 * 4;
+          ctx.shadowColor = '#14ebd2'; ctx.shadowBlur = sgm > 16 ? 12 : 0;
+          ctx.beginPath(); ctx.moveTo(p0.x, p0.y); ctx.lineTo(p1.x, p1.y); ctx.stroke();
+        }
+        ctx.shadowBlur = 0;
+        if (k < 0.8) {                                            // storm sparks shear off the head
+          const hp2 = pt(head);
+          for (let i = 0; i < 3; i++) {
+            const pv = prV(f.seed, i + ((f.t * 20) | 0));
+            ctx.globalAlpha = 0.8;
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath(); ctx.arc(hp2.x + (pv - 0.5) * 18, hp2.y + (prV(f.seed, i + 9) - 0.5) * 18, 1.6, 0, Math.PI * 2); ctx.fill();
+          }
+        } else {                                                  // the SNAP: tightening ring pulse
+          const sK = (k - 0.8) / 0.35;
+          ctx.globalAlpha = (1 - sK) * 0.9;
+          ctx.strokeStyle = '#14ebd2'; ctx.lineWidth = 4 * (1 - sK) + 1;
+          ctx.shadowColor = '#14ebd2'; ctx.shadowBlur = 12;
+          ctx.beginPath(); ctx.ellipse(0, 0, f.R * (0.4 + sK * 0.8), f.R * (0.3 + sK * 0.6), 0, 0, Math.PI * 2); ctx.stroke();
+        }
+        ctx.restore();
       } else if (f.id === 'revenant_choir') {
         // ACT 1 (k<0.32): three revenant skulls RISE from the strike point.
         // ACT 2 (0.32-0.62): they SING — bone-toothed sonic rings pulse outward.
