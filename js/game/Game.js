@@ -10,20 +10,20 @@ import { clamp, distance, safeNormalize, randomChoice, randomRange, wrapText } f
 import { FloatingText }   from '../entities/FloatingText.js?v=20260703990000';
 import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260705040000';
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260705150000';
-import { Player }         from '../entities/Player.js?v=20260710280000';
+import { Player }         from '../entities/Player.js?v=20260711360000';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260706270000';
 import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260710310000';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=20260703990000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260705150000';
 import { SystemEventManager } from './Events.js?v=20260710310000';
-import { UpgradeUI }      from './UpgradeUI.js?v=20260706360000';
-import { weightedSample } from './Upgrades.js?v=20260706300000';
+import { UpgradeUI }      from './UpgradeUI.js?v=20260711360000';
+import { weightedSample } from './Upgrades.js?v=20260711360000';
 import { MutationUI }      from './MutationUI.js?v=20260703990000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260705300000';
 import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST } from './MetaProgress.js?v=20260710290000';
-import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260705300000';
+import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260711360000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
 import { GlitchDash } from '../effects/glitch-dash.js?v=20260703990000';
@@ -1095,6 +1095,7 @@ export class Game {
     this._chainLinks  = [];   // Chain Lightning Laser: active jump segments (drawn on activation, then fade)
     this._chainTimer  = 0;    // auto-fire cooldown
     this._neonBeamTimer = 0;  // Neon Pierce Beam (Cyber Arm Hero only) auto-fire cooldown
+    this._dimiSlamTimer = 0;  // Dimi Cyber-Gauntlet Shockwave (dimis_kickboxer only) cadence
     this._neonBeams     = [];  // active Neon Pierce Beam visuals (short-lived)
     // Brawler Warrior weapons (only active while selectedCharacter === 'brawler_warrior')
     this._chakramTimer    = 0;     // Nexus Chakram auto-fire cooldown
@@ -5527,7 +5528,8 @@ export class Game {
   // strong knockback + damage). Reuses the special-ring VFX; bounded, single burst.
   _activateCyberAngelNova() {
     const p = this.player;
-    const radius = 300, force = 470, dmg = 34;   // heavy: bigger + harder than Bone Guard
+    const _am = this._cardLvl('dimi_cyber_angel_mastery');
+    const radius = 300 + 30 * _am, force = 470, dmg = 34 + 8 * _am;   // heavy nova, scales with Angelic Overcharge
     for (const e of this.enemies) {
       if (!e.pos) continue;
       if (distance(e.pos, p.pos) < radius) {
@@ -5541,6 +5543,32 @@ export class Game {
     this.floatingTexts.push(new FloatingText('CYBER-ANGEL SUMMONING!', p.pos.clone(), '#b026ff', 1.2));
     this.audio?.playBossWarning?.();
     this.screenShake.trigger(7, 0.35);
+  }
+
+  // Dimi Cyber-Gauntlet Shockwave — periodic close-range AoE giving Dimi a real signature
+  // auto-weapon (heavy gauntlet pressure). Reuses the existing _specialRings VFX (no new draw
+  // code). Guards on character; damage routes through takeHit like every other weapon.
+  _updateDimiGauntlet(dt) {
+    const p = this.player;
+    if (!p || p.selectedCharacter !== 'dimis_kickboxer') return;
+    this._dimiSlamTimer -= dt;
+    if (this._dimiSlamTimer > 0) return;
+    const gm = this._cardLvl('dimi_gauntlet_mastery');
+    this._dimiSlamTimer = Math.max(0.85, 1.5 - 0.15 * gm);
+    const radius = 150 + 20 * gm;
+    const dmg    = 16 + 5 * gm;
+    let hit = 0;
+    for (const e of this.enemies) {
+      if (!e || !e.pos) continue;
+      if (distance(e.pos, p.pos) <= radius + (e.radius || 0)) {
+        if (!(e.isBoss?.() || e.isMegaBoss)) e.vel.addMut(safeNormalize(e.pos.sub(p.pos)).scale(190));
+        e.takeHit(dmg, this);
+        hit++;
+      }
+    }
+    this._specialRings.push({ pos: p.pos.clone(), radius: 0, maxRadius: radius,
+                               life: 0.34, maxLife: 0.34, color1: '#b026ff', color2: '#ff2d6a' });
+    if (hit) { this.audio?.playHit?.(); this.screenShake?.trigger?.(2, 0.08); }
   }
 
   _activateBoneGuardBlast() {
@@ -7528,6 +7556,7 @@ export class Game {
     this._updateChromePhantom(dt);  // Assassin ultimate
     this._updatePhasewalkerFx(dt);  // Japan Phasewalker kit (guards on character)
     this._updateOniFx(dt);          // Oni Protocol 0 (guards on character)
+    this._updateDimiGauntlet(dt);   // Dimi Cyber-Gauntlet Shockwave (guards on character)
     this._updateEuclidKit(dt);      // Euclid Vector toxin kit (guards on character)
     this._updateSoloRedThunder(dt); // Eddie native weapon — red riff bolts (guards on character)
     this._updateGuitarSolo(dt);     // Eddie GUITAR SOLO card — big red notes + golden full-map lightning

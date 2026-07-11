@@ -36,6 +36,7 @@ export const CHARACTER_ELEMENT = {
   euclid_vector:          'toxin',
   oni_cataclysm_protocol: 'radiation',
   eddie:                  'crimson_gate',   // Crimson Gate — red+gold burn/shock resonance identity
+  dimis_kickboxer:        'electric',       // Cyber-gauntlet crackle — single-element (no fusion entry)
 };
 
 // Future fusion hooks (Phase 1 PREP ONLY) — data only, so fusion cards can be added later without

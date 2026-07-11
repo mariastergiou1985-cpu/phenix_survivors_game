@@ -393,6 +393,9 @@ export class Player {
     } else if (this.selectedCharacter === 'cyber_arm_hero') {
       damage   = base * 1.2;
       projLife = 1.3;
+    } else if (this.selectedCharacter === 'dimis_kickboxer') {
+      damage   = base * 1.25 * (1 + 0.10 * (this.upgrades['dimi_ironframe_mastery'] || 0));   // heavy gauntlet strike
+      projLife = 1.0;
     }
     const proj = new Projectile(this.pos.clone(), dir, damage, this.attackSprite);
     proj.life  = projLife;

@@ -177,6 +177,13 @@ export const ALL_UPGRADES = [
     MAGENTA, 3, () => {}, '🌀', 'epic', 'assassin_clone'),
   new UpgradeDefinition('assassin_clone_chrome_phantom_mastery', 'Chrome Phantom Mastery', 'Chrome Phantom Protocol: longer & larger clone assault',
     PURPLE, 3, () => {}, '👥', 'legendary', 'assassin_clone'),
+  // Dimi Kickboxer — cyber-gauntlet shockwave / ironframe armor / Cyber-Angel nova identity (purple)
+  new UpgradeDefinition('dimi_gauntlet_mastery', 'Gauntlet Overdrive', 'Cyber-Gauntlet Shockwave: faster, larger & harder',
+    PURPLE, 3, () => {}, '🥊', 'rare', 'dimis_kickboxer'),
+  new UpgradeDefinition('dimi_ironframe_mastery', 'Ironframe Protocol', '+3% armor & +10% primary damage per level',
+    BLUE, 3, (p) => { p.contactDamageReduction = Math.min(0.30, (p.contactDamageReduction || 0) + 0.03); }, '🛡', 'epic', 'dimis_kickboxer'),
+  new UpgradeDefinition('dimi_cyber_angel_mastery', 'Angelic Overcharge', 'Cyber-Angel Nova: bigger radius & damage',
+    PURPLE, 3, () => {}, '👼', 'legendary', 'dimis_kickboxer'),
   // Japan Phasewalker — phase-shard auto-shot / passive EMP shockwave / Digital Singularity ult (levels read in Game.js)
   new UpgradeDefinition('phasewalker_phase_shard_mastery', 'Phase Shard Mastery', 'Phase Shard: +damage & sharper glitch needle',
     CYAN, 3, () => {}, '◆', 'rare', 'japan_phasewalker'),
