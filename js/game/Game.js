@@ -38,6 +38,7 @@ import { DeusExMachina } from '../effects/deus-ex-machina.js?v=20260711550000';
 import { RailgunHorizon } from '../effects/railgun-horizon.js?v=20260711560000';
 import { MagmaCoreEruption } from '../effects/magma-core-eruption.js?v=20260711570000';
 import { PhantomExecution } from '../effects/phantom-execution.js?v=20260711580000';
+import { WeatherTheater } from '../effects/weather-theater.js?v=20260711640000';
 import { Protocol0 } from '../effects/protocol-0.js?v=20260705000000';
 import { LaserEyes } from '../effects/laser-eyes.js?v=20260709100000';
 import { MeteorRain } from '../effects/meteor-rain.js?v=20260709100000';
@@ -1143,6 +1144,7 @@ export class Game {
     this._railgun             = null;   // Cyber Arm Hero ultimate (Railgun Horizon)
     this._magma               = null;   // Brawler Warrior ultimate (Magma Core Eruption)
     this._phantomExec         = null;   // Assassin Clone ultimate (Phantom Execution)
+    this._weatherTheater      = new WeatherTheater();   // shared cinematic weather/hazard engine
     this._pwFxBuilt           = false;
     this._pwDashing           = false;
     this._pwDashStart         = null;
@@ -15716,6 +15718,7 @@ export class Game {
     this._drawLavaAtmosphere(ctx);     // Lava Rain: full-map warm wash + drifting embers (visual only)
 
     // ── Screen-space block (HUD, overlays) ───────────────────────────────────
+    this._drawWeatherTheater(ctx);         // shared cinematic ambience for ALL screen-wide events
     this._drawAcidRain(ctx);
     this._drawFrozenSleet(ctx);            // Chaos Mode: Frozen Sleet Storm overlay
     // Chaos Mode: screen-edge rim glow + player-centred vignette (readability polish)
@@ -24157,95 +24160,30 @@ _drawLoreArchive(ctx) {
     ctx.restore();  // back to camera (world) space
   }
 
+  // Central weather/hazard ambience dispatcher — presets stack if several events overlap.
+  // Every call is try/caught: ambience must never kill a frame.
+  _drawWeatherTheater(ctx) {
+    const th = this._weatherTheater;
+    if (!th) return;
+    const t = performance.now() / 1000;
+    try {
+      if (this._lavaRainActive > 0) th.lava(ctx, t, WIDTH, HEIGHT, Math.min(1, this._lavaRainActive));
+      if (this._ddRocketShadows && this._ddRocketShadows.length) th.raid(ctx, t, WIDTH, HEIGHT, 1);
+      if (this.gridBlackoutActive) th.blackout(ctx, t, WIDTH, HEIGHT, 1);
+      if (this._frozenSleet && this._frozenSleet.phase !== 'fadeout') {
+        th.sleet(ctx, t, WIDTH, HEIGHT, this._frozenSleet.phase === 'hold' ? 1 : 0.6);
+      }
+    } catch (err) { console.warn('[WeatherTheater]', err); }
+  }
+
   _drawAcidRain(ctx) {
     if (!this.acidRain) return;
-
-    const now = performance.now() / 1000;
-
-    ctx.save();
-
-    // Subtle green screen tint
-    ctx.fillStyle = 'rgba(0,60,0,0.12)';
-    ctx.fillRect(0, 0, WIDTH, HEIGHT);
-
-    const fallImg   = this._acidRainFallImg;
-    const splashImg = this._acidRainSplashImg;
-    const hasFall   = fallImg   && fallImg.complete   && fallImg.naturalWidth   > 0;
-    const hasSplash = splashImg && splashImg.complete && splashImg.naturalWidth > 0;
-
-    const ACID_COLOR  = '#44ff88';
-    const DROP_SPEED  = 300;
-    const DIAGONAL    = 0.24;
-    const TOTAL_H     = HEIGHT + 60;
-    const COUNT       = 50;
-
-    // Sprite sheet layout: fall = 6 frames side by side (732×492 → 122×492 each)
-    const FALL_FRAMES = 6;
-    const FALL_FW     = hasFall   ? Math.floor(fallImg.naturalWidth   / FALL_FRAMES) : 0;
-    const FALL_FH     = hasFall   ? fallImg.naturalHeight : 0;
-
-    // Sprite sheet layout: splash = 2×2 grid (714×363 → 357×181 each)
-    const SPLASH_FW   = hasSplash ? Math.floor(splashImg.naturalWidth  / 2) : 0;
-    const SPLASH_FH   = hasSplash ? Math.floor(splashImg.naturalHeight / 2) : 0;
-
-    // On-screen draw sizes (pixel art, keeps aspect ratio)
-    const DRAW_DROP_W   = 18;
-    const DRAW_DROP_H   = 72;
-    const DRAW_SPLASH_W = 52;
-    const DRAW_SPLASH_H = 26;
-
-    ctx.imageSmoothingEnabled = false;
-
-    for (let i = 0; i < COUNT; i++) {
-      const seedX     = ((i * 23.4 + i * i * 0.71) % (WIDTH + 80)) - 40;
-      const seedPhase = (i * 17.13) % 1;
-      const alpha     = 0.72 + 0.20 * ((i * 7 % 3) / 3);
-      const progress  = ((now * DROP_SPEED / TOTAL_H) + seedPhase) % 1;
-      const x         = seedX + progress * TOTAL_H * DIAGONAL;
-      const y         = progress * TOTAL_H - 30;
-
-      ctx.globalAlpha = alpha;
-
-      if (y > HEIGHT - 28 && y <= HEIGHT + 10) {
-        // Ground splash
-        if (hasSplash) {
-          // Alternate top-left (big splash) and top-right (smaller) per drop
-          const _sIdx  = i % 4;
-          const sFrameX = (_sIdx % 2) * SPLASH_FW;
-          const sFrameY = (_sIdx < 2) ? 0 : SPLASH_FH;
-          ctx.drawImage(splashImg,
-            sFrameX, sFrameY, SPLASH_FW, SPLASH_FH,
-            Math.round(x - DRAW_SPLASH_W / 2), HEIGHT - DRAW_SPLASH_H,
-            DRAW_SPLASH_W, DRAW_SPLASH_H);
-        } else {
-          ctx.strokeStyle = ACID_COLOR;
-          ctx.lineWidth   = 1;
-          ctx.beginPath();
-          ctx.ellipse(Math.round(x + 5), HEIGHT - 3, 5, 2, 0, 0, Math.PI * 2);
-          ctx.stroke();
-        }
-      } else if (y < HEIGHT - 28) {
-        // Falling drop — animate through 6 frames at ~10 fps, offset per drop
-        if (hasFall) {
-          const frameIdx = (Math.floor(now * 10) + i) % FALL_FRAMES;
-          ctx.drawImage(fallImg,
-            frameIdx * FALL_FW, 0, FALL_FW, FALL_FH,
-            Math.round(x - DRAW_DROP_W / 2), Math.round(y),
-            DRAW_DROP_W, DRAW_DROP_H);
-        } else {
-          ctx.strokeStyle = ACID_COLOR;
-          ctx.lineWidth   = 2;
-          ctx.beginPath();
-          ctx.moveTo(Math.round(x),     Math.round(y));
-          ctx.lineTo(Math.round(x + 4), Math.round(y + 14));
-          ctx.stroke();
-        }
-      }
-    }
-
-    ctx.globalAlpha           = 1;
-    ctx.imageSmoothingEnabled = true;
-    ctx.restore();
+    // Cinematic pass: the toxic downpour now lives in WeatherTheater (3-depth procedural rain,
+    // splash rings, corrosion bubbles, dripping vignette). Damage logic untouched (_updateAcidRain).
+    const tIn = Math.min(1, (12 - this.acidRain.timer) / 1.2);            // storm ramps in
+    const tOut = Math.min(1, this.acidRain.timer / 1.2);                  // and drains out
+    try { this._weatherTheater.acid(ctx, performance.now() / 1000, WIDTH, HEIGHT, Math.min(tIn, tOut)); }
+    catch (err) { console.warn('[WeatherTheater acid]', err); }
   }
 
   // Effective view scale / visible window. Endless zooms out slightly (ENDLESS_VIEW_SCALE);
