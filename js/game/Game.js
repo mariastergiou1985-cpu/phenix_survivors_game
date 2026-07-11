@@ -37,6 +37,7 @@ import { EuclidTheorem } from '../effects/euclid-theorem.js?v=20260711540000';
 import { DeusExMachina } from '../effects/deus-ex-machina.js?v=20260711550000';
 import { RailgunHorizon } from '../effects/railgun-horizon.js?v=20260711560000';
 import { MagmaCoreEruption } from '../effects/magma-core-eruption.js?v=20260711570000';
+import { PhantomExecution } from '../effects/phantom-execution.js?v=20260711580000';
 import { Protocol0 } from '../effects/protocol-0.js?v=20260705000000';
 import { LaserEyes } from '../effects/laser-eyes.js?v=20260709100000';
 import { MeteorRain } from '../effects/meteor-rain.js?v=20260709100000';
@@ -1141,6 +1142,7 @@ export class Game {
     this._deusEx              = null;   // Dimi angel cinematic presentation (Deus Ex Machina)
     this._railgun             = null;   // Cyber Arm Hero ultimate (Railgun Horizon)
     this._magma               = null;   // Brawler Warrior ultimate (Magma Core Eruption)
+    this._phantomExec         = null;   // Assassin Clone ultimate (Phantom Execution)
     this._pwFxBuilt           = false;
     this._pwDashing           = false;
     this._pwDashStart         = null;
@@ -7872,6 +7874,7 @@ export class Game {
     this._updateTheoremFx(dt);      // Euclid Vector ultimate (guards on character)
     this._updateRailgunFx(dt);      // Cyber Arm Hero ultimate (guards on character)
     this._updateMagmaFx(dt);        // Brawler Warrior ultimate (guards on character)
+    this._updatePhantomExecFx(dt);  // Assassin Clone ultimate (guards on character)
     this._updateOniFx(dt);          // Oni Protocol 0 (guards on character)
     this._updateDimiGauntlet(dt);   // Dimi Cyber-Gauntlet Shockwave (guards on character)
     this._updateDimiAngels(dt);     // Dimi Cyber-Angel summon (Ultimate)
@@ -13058,11 +13061,64 @@ export class Game {
       this.floatingTexts.push(new FloatingText('NOT ENOUGH MANA', p.pos.clone(), '#ff4dd2', 1.0));
       return;
     }
+    // Phantom Execution replaced Chrome Phantom Protocol as the Assassin ultimate (module
+    // VFX, mark → blink-execute → sheathe → simultaneous reckoning). Old code never scheduled.
+    this._ensurePhantomExecFx();
+    if (!this._phantomExec || this._phantomExec.isActive()) return;
     p.mana -= ULTIMATE_MANA_COST;                               // fixed 100 cost; Mana Core overflow banks toward next cast
-    this._chromePhantom = { t: 0, pulseTimer: 0, pulse: 0, finalDone: false };
-    this.screenShake.trigger(4, 0.3);
+    const sp = this._playerScreenPos();
+    this._phantomExec.trigger(sp.cx, sp.footY);
+    this.screenShake.trigger(4, 0.25);
     this.audio?.playEventWarning?.();
-    this.floatingTexts.push(new FloatingText('CHROME PHANTOM PROTOCOL!', p.pos.clone(), '#ff4dd2', 1.4));
+    this.floatingTexts.push(new FloatingText('PHANTOM EXECUTION!', p.pos.clone(), '#ff4dd2', 1.4));
+  }
+
+  _ensurePhantomExecFx() {
+    if (this.player?.selectedCharacter !== 'assassin_clone') return;
+    if (this._phantomExec || !this._canvas) return;
+    const spr = this.player.characterSprite;
+    if (!spr || !spr.complete || !spr.naturalWidth) return;
+    const h = Math.max(24, Math.round(64 * this._viewScale));
+    const w = Math.max(12, Math.round(spr.naturalWidth * (h / spr.naturalHeight)));
+    this._phantomExec = new PhantomExecution(this._canvas, spr, { spriteW: w, spriteH: h });
+  }
+
+  // Shared hooks for update AND render (sigils/streaks track moving victims at draw time).
+  _phantomExecHooks() {
+    const vs = this._viewScale, cam = this.camera;
+    return {
+      getX: e => ((e?.pos?.x ?? cam.x) - cam.x) * vs,
+      getY: e => ((e?.pos?.y ?? cam.y) - cam.y) * vs,
+      onStrike: (e, kind) => {
+        if (!e?.takeHit) return;
+        const dmg = kind === 'reckon' ? 65 : 22;   // light cut per blink pass, heavy simultaneous reckoning
+        e.takeHit((e.isBoss?.() || e.isMegaBoss) && this._capBossDamage ? this._capBossDamage(e, dmg) : dmg, this);
+      },
+    };
+  }
+
+  _updatePhantomExecFx(dt) {
+    if (this.player?.selectedCharacter !== 'assassin_clone' || !this._phantomExec) return;
+    try {
+      if (this._phantomExec.isActive()) {
+        const sp = this._playerScreenPos();
+        this._phantomExec.cx = sp.cx; this._phantomExec.footY = sp.footY;
+      }
+      this._phantomExec.update(performance.now(), this.enemies, this._phantomExecHooks());
+    } catch (err) { console.warn('[PhantomExec]', err); }
+  }
+
+  _drawPhantomExecFx(ctx) {
+    this._canvas = ctx.canvas;
+    if (this.player?.selectedCharacter !== 'assassin_clone') return;
+    this._ensurePhantomExecFx();
+    if (!this._phantomExec) return;
+    try {
+      const sh = this._phantomExec.getShake();
+      ctx.save(); ctx.translate(sh.x, sh.y);
+      this._phantomExec.render(ctx, this._phantomExecHooks());
+      ctx.restore();
+    } catch (err) { console.warn('[PhantomExec render]', err); }
   }
 
   _updateChromePhantom(dt) {
@@ -15080,7 +15136,8 @@ export class Game {
     if (!(this.player.selectedCharacter === 'japan_phasewalker' && this._digitalSingularity?.isActive()) &&
         !(this.player.selectedCharacter === 'skeleton_warrior' && this._ossuary?.isActive()) &&
         !(this.player.selectedCharacter === 'taekwondo_girl' && this._tribunal?.isActive()) &&
-        !(this.player.selectedCharacter === 'eddie' && this._feedbackApoc?.isActive())) {
+        !(this.player.selectedCharacter === 'eddie' && this._feedbackApoc?.isActive()) &&
+        !(this.player.selectedCharacter === 'assassin_clone' && this._phantomExec?.isActive())) {
       // ── Player character — always fully visible, weapons NEVER cover it ──
       drawGlow(ctx, this.player.pos.x, this.player.pos.y, 48, CYAN, 0.28); // player hero glow
       this.player.draw(ctx, this._lastMousePos || { x: 0, y: 0 });
@@ -15350,6 +15407,7 @@ export class Game {
     this._drawTheoremFx(ctx);          // Euclid Theorem of Rot (screen-space; guards on character)
     this._drawRailgunFx(ctx);          // Cyber Arm Railgun Horizon (screen-space; guards on character)
     this._drawMagmaFx(ctx);            // Brawler Magma Core Eruption (screen-space; guards on character)
+    this._drawPhantomExecFx(ctx);      // Assassin Phantom Execution (screen-space; guards on character)
     if (this.player?.selectedCharacter === 'dimis_kickboxer' && this._deusEx?.isActive()) {
       try { this._deusEx.render(ctx); } catch (err) { console.warn('[DeusEx render]', err); }   // Dimi angel cinematic
     }
@@ -19608,7 +19666,8 @@ _drawLoreArchive(ctx) {
     if (this.thunderSolo || this.overChains || this.spiritDojang || this._cyberBike || this._skyfall || this._chromePhantom) return false;  // mid-cast (legacy states)
     if (this._ossuary?.isActive() || this._tribunal?.isActive() || this._feedbackApoc?.isActive()
      || this._theorem?.isActive() || this._railgun?.isActive() || this._magma?.isActive()
-     || this._digitalSingularity?.isActive() || this._protocol0?.isRunning?.()) return false;   // mid-cast (module ults)
+     || this._digitalSingularity?.isActive() || this._protocol0?.isRunning?.()
+     || this._phantomExec?.isActive()) return false;   // mid-cast (module ults)
     if (c === 'dimis_kickboxer') return p.specialCooldown <= 0;                 // Dimi gates on the 25s special CD, not mana
     if (c === 'eddie')           return p.mana >= 80;                            // Eddie's ult costs 80
     return p.mana >= ULTIMATE_MANA_COST;
