@@ -9796,23 +9796,50 @@ export class Game {
     { const _a = this._enemyOrbZones; let _w = 0; for (let _i = 0; _i < _a.length; _i++) { const z = _a[_i]; if (z.t < z.warn + z.impact) _a[_w++] = z; } _a.length = _w; }
   }
 
+  // ── Shared telegraph language (ALL boss/enemy strike zones) ─────────────────
+  // One consistent read everywhere: dashed rotating outer ring + clockwise countdown
+  // sweep (fills as impact nears) + closing inner ring + 4 rotating corner ticks.
+  _drawTelegraphRing(ctx, x, y, R, k, c1, c2) {
+    const now = performance.now() / 1000;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    // dashed rotating outer ring
+    ctx.globalAlpha = 0.5 + 0.4 * k;
+    ctx.strokeStyle = c1; ctx.lineWidth = 2.5;
+    ctx.setLineDash([10, 8]); ctx.lineDashOffset = -now * 40;
+    ctx.beginPath(); ctx.arc(x, y, R, 0, Math.PI * 2); ctx.stroke();
+    ctx.setLineDash([]);
+    // clockwise countdown sweep (the "clock hand" fill)
+    ctx.globalAlpha = 0.16 + 0.16 * k;
+    ctx.fillStyle = c2 || c1;
+    ctx.beginPath(); ctx.moveTo(x, y);
+    ctx.arc(x, y, R * 0.94, -Math.PI / 2, -Math.PI / 2 + k * Math.PI * 2);
+    ctx.closePath(); ctx.fill();
+    // closing inner ring = imminence
+    ctx.globalAlpha = 0.6 + 0.3 * k;
+    ctx.strokeStyle = c2 || c1; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(x, y, Math.max(4, R * (1 - k * 0.85)), 0, Math.PI * 2); ctx.stroke();
+    // 4 rotating corner ticks
+    ctx.strokeStyle = c1; ctx.lineWidth = 2; ctx.globalAlpha = 0.8;
+    for (let i = 0; i < 4; i++) {
+      const ta = now * 1.6 + i * Math.PI / 2;
+      const tx = x + Math.cos(ta) * (R + 7), ty = y + Math.sin(ta) * (R + 7);
+      ctx.beginPath();
+      ctx.moveTo(tx - Math.cos(ta) * 6, ty - Math.sin(ta) * 6);
+      ctx.lineTo(tx, ty);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   _drawEnemyOrbZones(ctx) {
     if (!this._enemyOrbZones.length) return;
     const now = performance.now();
     ctx.save();
     for (const z of this._enemyOrbZones) {
       if (z.t < z.warn) {
-        // WARN (0.6s): pulsing cyan-violet telegraph — outer blast ring + closing inner ring.
-        const k     = z.t / z.warn;
-        const pulse = 0.5 + 0.5 * Math.sin(now * 0.02);
-        ctx.globalAlpha = 0.35 + 0.4 * k;
-        ctx.strokeStyle = '#6be4ff'; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.arc(z.pos.x, z.pos.y, z.radius, 0, Math.PI * 2); ctx.stroke();
-        ctx.strokeStyle = '#9d6bff'; ctx.lineWidth = 2 + 2 * k;
-        ctx.beginPath(); ctx.arc(z.pos.x, z.pos.y, z.radius * (1 - 0.6 * k), 0, Math.PI * 2); ctx.stroke();
-        ctx.globalAlpha = 0.10 + 0.12 * k * pulse;
-        ctx.fillStyle = '#7c5cff';
-        ctx.beginPath(); ctx.arc(z.pos.x, z.pos.y, z.radius, 0, Math.PI * 2); ctx.fill();
+        // WARN: unified telegraph language (dashed ring + countdown sweep + ticks)
+        this._drawTelegraphRing(ctx, z.pos.x, z.pos.y, z.radius, z.t / z.warn, '#6be4ff', '#9d6bff');
       } else {
         // IMPACT (0.35s): bright violet burst fading out.
         const k = 1 - (z.t - z.warn) / z.impact;               // 1 → 0
@@ -14498,16 +14525,8 @@ export class Game {
     const lspr = this._lightningStormSprite;
     for (const z of this.lightningZones) {
       if (!z.struck) {
-        const k = z.t / z.warn;                       // 0 → 1 as the strike approaches
-        const p = 0.4 + 0.5 * Math.abs(Math.sin(performance.now() * 0.02));
-        ctx.save();
-        ctx.globalAlpha = 0.35 + 0.4 * p;
-        ctx.strokeStyle = '#9fd0ff'; ctx.lineWidth = 3; ctx.setLineDash([10, 8]);
-        ctx.beginPath(); ctx.arc(z.pos.x, z.pos.y, z.radius, 0, Math.PI * 2); ctx.stroke();
-        ctx.setLineDash([]);
-        ctx.globalAlpha = 0.5;                         // shrinking inner ring = imminence
-        ctx.beginPath(); ctx.arc(z.pos.x, z.pos.y, z.radius * (1 - k * 0.85), 0, Math.PI * 2); ctx.stroke();
-        ctx.restore();
+        // unified telegraph language (dashed ring + countdown sweep + ticks)
+        this._drawTelegraphRing(ctx, z.pos.x, z.pos.y, z.radius, z.t / z.warn, '#9fd0ff', '#eaf4ff');
       } else {
         const fk    = (z.t - z.warn) / z.flash;        // 0 → 1 over the flash
         const alpha = Math.max(0, 1 - fk);
@@ -15650,11 +15669,25 @@ export class Game {
         ctx.globalAlpha = 1;
         ctx.restore();
       } else {
+        // comet-style bullet: velocity trail + colored body + white-hot core (unified with
+        // the player/pet projectile language — every projectile in the game reads the same way)
+        const bvl = b.vel ? Math.hypot(b.vel.x, b.vel.y) || 1 : 1;
+        const bnx = b.vel ? b.vel.x / bvl : 0, bny = b.vel ? b.vel.y / bvl : 0;
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        if (b.vel) {
+          ctx.globalAlpha = 0.4; ctx.lineCap = 'round';
+          ctx.strokeStyle = b.color; ctx.lineWidth = b.radius * 1.4;
+          ctx.beginPath();
+          ctx.moveTo(b.pos.x - bnx * b.radius * 4.5, b.pos.y + _ay - bny * b.radius * 4.5);
+          ctx.lineTo(b.pos.x, b.pos.y + _ay); ctx.stroke();
+        }
+        ctx.restore();
         drawGlow(ctx, b.pos.x, b.pos.y + _ay, b.radius * 2, b.color, 0.5);
         ctx.fillStyle   = b.color;
         ctx.beginPath(); ctx.arc(b.pos.x, b.pos.y + _ay, b.radius, 0, Math.PI * 2); ctx.fill();
-        ctx.strokeStyle = WHITE; ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.arc(b.pos.x, b.pos.y + _ay, b.radius, 0, Math.PI * 2); ctx.stroke();
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath(); ctx.arc(b.pos.x - bnx * b.radius * 0.2, b.pos.y + _ay - bny * b.radius * 0.2, Math.max(1.2, b.radius * 0.45), 0, Math.PI * 2); ctx.fill();
       }
     }
 
