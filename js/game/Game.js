@@ -1217,6 +1217,7 @@ export class Game {
     this._evolutionsDone    = new Set();   // track which evolutions already triggered
     this._consumedWeapons   = new Set();   // base weapons consumed by an evolution
     this._activeWeaponVFX   = [];          // active VFXSpritePlayer instances
+    this._weaponAccents     = [];          // procedural cinematic accents per weapon strike (bounded)
     this._patternVFX        = [];          // Phase 8: per-character pattern art overlays
     this._patternTimer      = 0;           // spawn cadence
     this._patternIdx        = 0;           // cycles through the character's patterns
@@ -7973,6 +7974,7 @@ export class Game {
       this._activeWeaponVFX[i].update(dt);
       if (this._activeWeaponVFX[i].isDone()) this._activeWeaponVFX.splice(i, 1);
     }
+    this._updateWeaponAccents(dt);    // weapon strike accent layer (bounded)
     this._enforcePerfCaps();          // Phase 18: defensive global hard-caps (never collapse perf)
     this._updatePatternVFX(dt);       // Phase 8: per-character pattern art overlay
     this._updateStormExecution(dt);   // Storm Execution reward (normal-enemy-only zaps)
@@ -10845,7 +10847,130 @@ export class Game {
     vfx.aimAngle  = angle || 0;
     vfx.play();
     this._activeWeaponVFX.push(vfx);
+    this._spawnWeaponAccent(weaponId, x, y, angle || 0, scale || 1);   // cinematic accent layer
     return vfx;
+  }
+
+  // ── Weapon accent layer — the ultimate-module treatment for every base/evolution weapon.
+  // Purely additive procedural flourishes (behavior-flavored: slash crescents, spin rings,
+  // muzzle bolts, ground shatters...) drawn under Maria's art. Names/cards/art untouched.
+  _spawnWeaponAccent(weaponId, x, y, ang, scale) {
+    const def = getWeaponDef(weaponId);
+    if (!def) return;
+    const bh = def.behavior || '';
+    let kind = 'ring';
+    if (bh === 'forward_arc' || bh === 'forward_cone' || bh === 'wide_arc') kind = 'slash';
+    else if (bh === 'cross_slash')                                          kind = 'cross';
+    else if (bh === 'orbit_throw' || bh === 'circle_360' || bh === 'vortex'
+          || bh === 'expanding_spiral')                                     kind = 'spin';
+    else if (bh === 'bolt_projectile')                                      kind = 'bolt';
+    else if (bh === 'ground_shockwave' || bh === 'sequential_ground')       kind = 'ground';
+    else if (bh === 'pull_explode')                                         kind = 'implode';
+    else if (bh === 'line_cloud')                                           kind = 'mist';
+    if (this._weaponAccents.length >= 40) this._weaponAccents.shift();      // hard cap
+    this._weaponAccents.push({ x, y, ang, t: 0, life: kind === 'implode' ? 0.65 : 0.5,
+                               kind, c: def.color || '#9fd8ff', scale: Math.min(scale, 2.2),
+                               seed: (Math.random() * 1000) | 0 });
+  }
+
+  _updateWeaponAccents(dt) {
+    for (let i = this._weaponAccents.length - 1; i >= 0; i--) {
+      this._weaponAccents[i].t += dt;
+      if (this._weaponAccents[i].t >= this._weaponAccents[i].life) this._weaponAccents.splice(i, 1);
+    }
+  }
+
+  _drawWeaponAccents(ctx) {
+    if (!this._weaponAccents.length) return;
+    for (const w of this._weaponAccents) {
+      const k = w.t / w.life, a = 1 - k, sc = w.scale;
+      ctx.save();
+      ctx.translate(w.x, w.y);
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = w.c; ctx.fillStyle = w.c;
+      if (w.kind === 'slash' || w.kind === 'cross') {
+        const passes = w.kind === 'cross' ? [w.ang - 0.6, w.ang + 0.6] : [w.ang];
+        for (const pa of passes) {
+          ctx.save(); ctx.rotate(pa);
+          const r = (34 + 46 * k) * sc;
+          ctx.globalAlpha = a * 0.9; ctx.lineWidth = (5 - 3 * k) * sc;
+          ctx.shadowColor = w.c; ctx.shadowBlur = 10;
+          ctx.beginPath(); ctx.arc(0, 0, r, -0.65, 0.65); ctx.stroke();      // crescent sweep
+          ctx.globalAlpha = a * 0.5; ctx.lineWidth = 1.6 * sc; ctx.strokeStyle = '#ffffff';
+          ctx.beginPath(); ctx.arc(0, 0, r * 0.88, -0.5, 0.5); ctx.stroke(); // hot inner edge
+          ctx.strokeStyle = w.c;
+          ctx.restore();
+        }
+        for (let i = 0; i < 4; i++) {                                        // spark dots fly off
+          const pr = Math.sin(w.seed + i * 3.7) * 0.5 + 0.5;
+          const sa = w.ang + (pr - 0.5) * 1.2, sr = (40 + 60 * k) * sc;
+          ctx.globalAlpha = a * 0.8; ctx.fillStyle = '#ffffff';
+          ctx.beginPath(); ctx.arc(Math.cos(sa) * sr, Math.sin(sa) * sr, 1.8 * sc, 0, Math.PI * 2); ctx.fill();
+        }
+      } else if (w.kind === 'spin') {
+        const r = (26 + 30 * k) * sc;
+        for (let i = 0; i < 3; i++) {                                        // rotating broken ring
+          const s0 = w.seed + k * 7 + i * (Math.PI * 2 / 3);
+          ctx.globalAlpha = a * 0.85; ctx.lineWidth = 3 * sc;
+          ctx.shadowColor = w.c; ctx.shadowBlur = 8;
+          ctx.beginPath(); ctx.arc(0, 0, r, s0, s0 + Math.PI * 0.45); ctx.stroke();
+        }
+        ctx.globalAlpha = a * 0.5; ctx.lineWidth = 1.5 * sc; ctx.strokeStyle = '#ffffff';
+        ctx.beginPath(); ctx.arc(0, 0, r * 0.6, w.seed - k * 9, w.seed - k * 9 + Math.PI); ctx.stroke();
+      } else if (w.kind === 'bolt') {
+        ctx.save(); ctx.rotate(w.ang);
+        ctx.globalAlpha = (1 - k) * 0.9;                                     // muzzle flash
+        ctx.beginPath(); ctx.arc(0, 0, (10 - 6 * k) * sc, 0, Math.PI * 2); ctx.fill();
+        for (const off of [-6, 0, 6]) {                                      // speed lines
+          ctx.globalAlpha = a * (off === 0 ? 0.95 : 0.5);
+          ctx.lineWidth = (off === 0 ? 2.6 : 1.4) * sc;
+          ctx.strokeStyle = off === 0 ? '#ffffff' : w.c;
+          ctx.beginPath(); ctx.moveTo(12 * sc, off * sc);
+          ctx.lineTo((30 + 70 * k) * sc, off * sc); ctx.stroke();
+        }
+        ctx.restore();
+      } else if (w.kind === 'ground') {
+        const r = (18 + 60 * k) * sc;
+        ctx.globalAlpha = a * 0.9; ctx.lineWidth = (4 - 2.5 * k) * sc;
+        ctx.shadowColor = w.c; ctx.shadowBlur = 8;
+        ctx.beginPath(); ctx.ellipse(0, 0, r, r * 0.5, 0, 0, Math.PI * 2); ctx.stroke();  // ground ring
+        for (let i = 0; i < 5; i++) {                                        // debris chips pop up
+          const pr = Math.sin(w.seed + i * 5.1) * 0.5 + 0.5;
+          const da = pr * Math.PI * 2;
+          ctx.globalAlpha = a * 0.8; ctx.fillStyle = i % 2 ? '#ffffff' : w.c;
+          ctx.beginPath();
+          ctx.arc(Math.cos(da) * r * 0.7, Math.sin(da) * r * 0.35 - (14 + pr * 12) * k * sc, 1.8 * sc, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      } else if (w.kind === 'implode') {
+        if (k < 0.5) {                                                       // suck in...
+          const r = (70 * (1 - k * 2) + 8) * sc;
+          ctx.globalAlpha = (0.4 + k) * 0.8; ctx.lineWidth = 2.5 * sc;
+          ctx.beginPath(); ctx.ellipse(0, 0, r, r * 0.6, 0, 0, Math.PI * 2); ctx.stroke();
+        } else {                                                             // ...then burst
+          const kk = (k - 0.5) * 2, r2 = (10 + 55 * kk) * sc;
+          ctx.globalAlpha = (1 - kk) * 0.95; ctx.lineWidth = (4.5 - 3 * kk) * sc;
+          ctx.shadowColor = w.c; ctx.shadowBlur = 12;
+          ctx.beginPath(); ctx.arc(0, 0, r2, 0, Math.PI * 2); ctx.stroke();
+          ctx.globalAlpha = (1 - kk) * 0.5; ctx.fillStyle = '#ffffff';
+          ctx.beginPath(); ctx.arc(0, 0, r2 * 0.3, 0, Math.PI * 2); ctx.fill();
+        }
+      } else if (w.kind === 'mist') {
+        for (let i = 0; i < 4; i++) {                                        // drifting puffs
+          const pr = Math.sin(w.seed + i * 2.9) * 0.5 + 0.5;
+          ctx.globalAlpha = a * 0.35;
+          ctx.beginPath();
+          ctx.arc((i - 1.5) * 20 * sc, -k * 12 * sc, (7 + pr * 6) * sc * (0.6 + k), 0, Math.PI * 2);
+          ctx.fill();
+        }
+      } else {                                                               // fallback ring
+        const r = (20 + 36 * k) * sc;
+        ctx.globalAlpha = a * 0.85; ctx.lineWidth = 3 * sc;
+        ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.stroke();
+      }
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; ctx.shadowBlur = 0;
   }
 
   // ── Phase 18: defensive global hard-caps ────────────────────────────────────
@@ -15105,6 +15230,7 @@ export class Game {
     this._drawBlacknetSwarmDrones(ctx);  // Phase 2 SUMMON
     this._drawHomingMissiles(ctx);       // Phase 2 HOMING
     this._drawVesselRockets(ctx);        // Vessel companion auto-aim purple rockets
+    this._drawWeaponAccents(ctx);                             // cinematic accents UNDER the art
     for (const vfx of this._activeWeaponVFX) vfx.draw(ctx);   // Evolution VFX overlays
     this._drawPatternVFX(ctx);                                // Phase 8: per-character pattern art
     this._drawTacticalWeapons(ctx);  // Tactical cache weapons (independent map objects)
