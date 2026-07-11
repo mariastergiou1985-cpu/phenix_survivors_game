@@ -10,7 +10,7 @@ import { clamp, distance, safeNormalize, randomChoice, randomRange, wrapText } f
 import { FloatingText }   from '../entities/FloatingText.js?v=20260703990000';
 import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260705040000';
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260705150000';
-import { Player }         from '../entities/Player.js?v=20260711390000';
+import { Player }         from '../entities/Player.js?v=20260711450000';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260706270000';
 import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260711370000';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=20260703990000';
@@ -1098,6 +1098,8 @@ export class Game {
     this._chainTimer  = 0;    // auto-fire cooldown
     this._neonBeamTimer = 0;  // Neon Pierce Beam (Cyber Arm Hero only) auto-fire cooldown
     this._dimiSlamTimer = 0;  // Dimi Cyber-Gauntlet Shockwave (dimis_kickboxer only) cadence
+    this._titanWeaponFx = [];  // Mega Boss real-weapon art flashes (Phase 2)
+    this._titanWeaponImgCache = {};
     this._dimiAngels = [];    // Dimi Cyber-Angel summons (Ultimate) — big animated art that attacks
     this._cyberAngelImg = new Image();
     this._cyberAngelImg.onerror = () => console.warn('[Dimi] Cyber-Angel Summoning art missing');
@@ -7782,6 +7784,7 @@ export class Game {
     // FINAL) — the random System Events (drone swarm, mega-boss, blackout, etc.) do NOT run here.
     if (!this._campaignStage) this._sysEvents.update(dt, this.timeAlive, this);
     if (this._chaosMode) this._updateChaosTitans(dt);   // Chaos-only Mega Titan scheduler
+    this._updateTitanWeaponFx(dt);   // Phase 2: Mega Boss weapon-art flashes
     if (this._chaosMode) this._updateBossRush(dt);       // Chaos-only Boss Rush (2× per run, 180s)
     this._updateGridCache(dt);
     this._updateNullCache(dt);
@@ -8657,6 +8660,7 @@ export class Game {
       const p = this.player.pos;
       const min = this.currentMinute();
       const dmg = 12 + Math.min(18, min);   // scales modestly with time
+      this._spawnTitanWeaponFx(t);   // Phase 2: flash the boss's REAL weapon art (big + animated)
       switch (t.enemyType) {
         case 'Giga-Core Overlord': {   // Omnidirectional Doomsday Laser Array — rotating radial beams
           const n = 14; t._aRot = (t._aRot || 0) + 0.35;
@@ -8700,6 +8704,65 @@ export class Game {
         default: t._abilityCd = 4;
       }
     } catch (_) { /* an ability hiccup must never break the run */ }
+  }
+
+  // ── Phase 2: Mega Boss REAL weapon art — each Titan flashes its unique Maria-made weapon
+  //    (Prism Array / Nanite Core / Singularity Edge / Anti-Matter Battery) BIG + animated on
+  //    top of its attack, replacing the old "generic circles only" read. Additive VFX, cleaned up.
+  _titanWeaponImg(type) {
+    const map = {
+      'Giga-Core Overlord':     "assets/enemies/chaos_enemies/chaos_mega_bosses/unique/Overlord’s Prism Array (Unique Weapon).png",
+      'Malware Leviathan':      "assets/enemies/chaos_enemies/chaos_mega_bosses/unique/Leviathan’s Nanite Core (Passive Tactical Item).png",
+      'Quantum Void Emperor':   "assets/enemies/chaos_enemies/chaos_mega_bosses/unique/Emperor’s Singularity Edge (Unique Weapon).png",
+      'Apocalypse Mech Tyrant': "assets/enemies/chaos_enemies/chaos_mega_bosses/unique/Tyrant’s Anti-Matter Battery (Passive Tactical Item).png",
+    };
+    const src = map[type]; if (!src) return null;
+    let img = this._titanWeaponImgCache[type];
+    if (!img) { img = new Image(); img.onerror = () => console.warn('[Titan] weapon art missing: ' + src); img.src = src; this._titanWeaponImgCache[type] = img; }
+    return img;
+  }
+
+  _spawnTitanWeaponFx(t) {
+    const img = this._titanWeaponImg(t.enemyType);
+    if (!img) return;
+    const spin = (t.enemyType === 'Giga-Core Overlord' || t.enemyType === 'Quantum Void Emperor');
+    (this._titanWeaponFx ||= []).push({ pos: t.pos.clone(), t: 0, life: 1.2, spin, base: (t.radius || 90) * 4, type: t.enemyType });
+  }
+
+  _updateTitanWeaponFx(dt) {
+    if (!this._titanWeaponFx || !this._titanWeaponFx.length) return;
+    const titan = this._activeTitan;
+    for (let i = this._titanWeaponFx.length - 1; i >= 0; i--) {
+      const fx = this._titanWeaponFx[i];
+      fx.t += dt; fx.life -= dt;
+      if (titan && titan.pos) { fx.pos.x = titan.pos.x; fx.pos.y = titan.pos.y; }
+      if (fx.life <= 0) this._titanWeaponFx.splice(i, 1);
+    }
+  }
+
+  _drawTitanWeaponFx(ctx) {
+    if (!this._titanWeaponFx || !this._titanWeaponFx.length) return;
+    ctx.save();
+    for (const fx of this._titanWeaponFx) {
+      const img = this._titanWeaponImg(fx.type);
+      const im = img && img.complete && img.naturalWidth ? img : null;
+      if (!im) continue;
+      const fade = Math.min(1, fx.life / 0.45) * Math.min(1, fx.t / 0.12);
+      const grow = 0.8 + Math.min(1, fx.t * 4) * 0.28;
+      const size = (fx.base || 360) * grow;
+      ctx.save();
+      ctx.translate(fx.pos.x, fx.pos.y);
+      if (fx.spin) ctx.rotate(fx.t * 1.5);
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = 0.28 * fade;
+      ctx.drawImage(im, -size * 0.6, -size * 0.6, size * 1.2, size * 1.2);
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.globalAlpha = fade;
+      ctx.drawImage(im, -size / 2, -size / 2, size, size);
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
   }
 
   // ── CHAOS BOSS RUSH (Phase 4-5) ────────────────────────────────────────────
@@ -14389,6 +14452,7 @@ export class Game {
     // 4b ── AI Overload Titan mini-boss
     this._drawDimiAngels(ctx);
     this._drawTitan(ctx);
+    this._drawTitanWeaponFx(ctx);   // Phase 2: real boss weapon art on top
     this._drawAnnihilator(ctx);
     this._drawBloodfang(ctx);
     this._drawCyberSerpent(ctx);
