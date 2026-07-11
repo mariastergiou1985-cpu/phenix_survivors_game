@@ -528,7 +528,14 @@ export class Enemy {
     // Achievement Protocol/Card global damage — Endless only (multiplier is 1 in Act 1, so Act 1
     // is unchanged). Single chokepoint for player damage to NORMAL enemies; bosses use a separate
     // hp path and stay unbuffed (respects boss caps). Display reflects the actual damage dealt.
-    const dmg      = damage * (game._endlessDamageMult ? game._endlessDamageMult() : 1);
+    let dmg        = damage * (game._endlessDamageMult ? game._endlessDamageMult() : 1);
+    // Φ11 Executioner Cache: enemies below the threshold take DOUBLE damage (bosses excluded —
+    // their caps stay meaningful; threshold 10-18% by level)
+    const _exL = game.player?._stExecLvl || 0;
+    if (_exL > 0 && !(this.isBoss?.() || this.isMegaBoss) && this.maxHp > 0 &&
+        this.hp / this.maxHp < 0.08 + 0.02 * _exL) {
+      dmg *= 2;
+    }
     this.hp       -= dmg;
 
     // ── Game Feel: hit weight classification ─────────────────────────────────

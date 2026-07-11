@@ -29,17 +29,19 @@ export function upgradeCost(upg, level) {
 // tier-3 capstones until their tier-2 prereq is owned. Levels live in the SAME `levels` dict as
 // META_UPGRADES (save-compatible; unknown keys default to 0). Effects applied in Game._applyMetaUpgrades.
 export const SKILL_TREE = [
+  // Φ11 rework — TACTICAL tree: decisions, information and run-changing capstones instead of
+  // flat stat food. Keys are unchanged so existing saves keep their invested levels (respec exists).
   // Tier 1 — roots (no prereq)
-  { key:'st_vitality', name:'Vitality Core',  desc:'+8 max HP per level',        tier:1, prereq:null,          maxLevel:5, costTable:[20,40,70,110,160] },
-  { key:'st_power',    name:'Power Core',      desc:'+0.4 shot damage per level', tier:1, prereq:null,          maxLevel:5, costTable:[20,40,70,110,160] },
-  { key:'st_agility',  name:'Agility Core',    desc:'+4% move speed per level',   tier:1, prereq:null,          maxLevel:5, costTable:[20,40,70,110,160] },
+  { key:'st_vitality', name:'Emergency Protocol', desc:'Hit below 30% HP → auto-shield 30% for 1s (CD 20/15/12/10/8s)', tier:1, prereq:null, maxLevel:5, costTable:[20,40,70,110,160] },
+  { key:'st_power',    name:'Executioner Cache',  desc:'Enemies below 10/12/14/16/18% HP take DOUBLE damage from you', tier:1, prereq:null, maxLevel:5, costTable:[20,40,70,110,160] },
+  { key:'st_agility',  name:'Adrenal Dash',       desc:'After a dash: +15% move speed for 1.5s (+0.3s per level)',     tier:1, prereq:null, maxLevel:5, costTable:[20,40,70,110,160] },
   // Tier 2 — require the matching tier-1 root
-  { key:'st_fortress',   name:'Fortress Protocol',   desc:'+3% armor per level',        tier:2, prereq:'st_vitality', maxLevel:3, costTable:[60,120,200] },
-  { key:'st_overcharge', name:'Overcharge Protocol', desc:'+5% fire rate per level',    tier:2, prereq:'st_power',    maxLevel:3, costTable:[60,120,200] },
-  { key:'st_momentum',   name:'Momentum Protocol',   desc:'+6% pickup radius per level',tier:2, prereq:'st_agility',  maxLevel:3, costTable:[60,120,200] },
+  { key:'st_fortress',   name:'Guardian Info-Link',  desc:'Enemy HP bars always visible + elite/boss threat marks · +2% armor/lvl', tier:2, prereq:'st_vitality', maxLevel:3, costTable:[60,120,200] },
+  { key:'st_overcharge', name:'Overload Window',     desc:'Casting Q or E grants +8% fire rate per level for 3s',                   tier:2, prereq:'st_power',    maxLevel:3, costTable:[60,120,200] },
+  { key:'st_momentum',   name:'Scavenger Doctrine',  desc:'+10%/lvl pickup magnet on EVERYTHING · health cells heal +5%/lvl more',  tier:2, prereq:'st_agility',  maxLevel:3, costTable:[60,120,200] },
   // Tier 3 — capstones
-  { key:'st_ascendant',   name:'Ascendant Core',   desc:'+15 max HP & +5% XP per level',        tier:3, prereq:'st_fortress',   maxLevel:2, costTable:[150,300] },
-  { key:'st_annihilator', name:'Annihilator Core', desc:'+0.8 shot damage & +4% fire rate/lvl', tier:3, prereq:'st_overcharge', maxLevel:2, costTable:[150,300] },
+  { key:'st_ascendant',   name:'Phoenix Vow',     desc:'Once per run: a killing blow leaves you at 1 HP + 2s immunity (L2: also heal 25%)', tier:3, prereq:'st_fortress',   maxLevel:2, costTable:[150,300] },
+  { key:'st_annihilator', name:'Apex Ultimatum',  desc:'Your ULTIMATE deals +10% damage per level (stacks with amulets)',                   tier:3, prereq:'st_overcharge', maxLevel:2, costTable:[150,300] },
 ];
 
 // ─── Character Weapon Synergy meta-upgrades (5★, flat 1000 Grid Cores per star) ───────────────

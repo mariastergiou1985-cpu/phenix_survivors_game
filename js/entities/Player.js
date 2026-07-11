@@ -170,10 +170,25 @@ export class Player {
   // Single chokepoint for incoming combat damage so Pulse Shield can scale it (60% reduction).
   // When the shield is inactive this is identical to a plain hp subtraction (no balance change).
   applyDamage(amount) {
+    if ((this._vowInvulnT || 0) > 0) return;       // Φ11 Phoenix Vow immunity window
     let mult = this.shieldTimer > 0 ? 0.4 : 1;
     if ((this._tankTimer || 0) > 0) mult *= 0.5;   // Oni Protocol 0: 50% damage reduction
     if ((this._armorT || 0) > 0) mult *= 0.85;     // Phase 7: armor shield pickup (+15% DR)
-    this.hp = Math.max(0, this.hp - amount * mult);
+    // Φ11 Emergency Protocol: hit while below 30% HP → 1s auto-shield 30% (level-gated CD)
+    if ((this._stEmergencyLvl || 0) > 0 && this.hp / this.maxHp < 0.3 && (this._emergCd || 0) <= 0) {
+      this._emergT  = 1.0;
+      this._emergCd = [0, 20, 15, 12, 10, 8][Math.min(5, this._stEmergencyLvl)];
+    }
+    if ((this._emergT || 0) > 0) mult *= 0.7;
+    const next = this.hp - amount * mult;
+    // Φ11 Phoenix Vow: once per run a killing blow leaves you at 1 HP + 2s immunity (L2: +25% heal)
+    if (next <= 0 && (this._stVowLvl || 0) > 0 && !this._stVowUsed) {
+      this._stVowUsed  = true;
+      this._vowInvulnT = 2.0;
+      this.hp = Math.max(1, this._stVowLvl >= 2 ? Math.round(this.maxHp * 0.25) : 1);
+      return;
+    }
+    this.hp = Math.max(0, next);
   }
 
   _loadCharacterSprite() {
@@ -251,7 +266,7 @@ export class Player {
     }
   }
 
-  get speed()             { return this.baseSpeed * (1 + this.speedBonus) * (this._chillT > 0 ? 0.75 : 1); }
+  get speed()             { return this.baseSpeed * (1 + this.speedBonus) * (this._chillT > 0 ? 0.75 : 1) * ((this._adrenalT || 0) > 0 ? 1.15 : 1); }
   get overloadDampening() { return this.upgrades['Firewall Protection'] * 0.02; }
 
   // Smooth quadratic curve (XP to go from `level` → `level+1`). Gentle early so the
@@ -307,6 +322,11 @@ export class Player {
     if (this.bleedTimer > 0)      { this.bleedTimer -= dt; this.hp = Math.max(0, this.hp - dt); }
     if (this._chillT > 0)           this._chillT -= dt;   // Cryo Claw chill decay
     if ((this._armorT || 0) > 0)    this._armorT -= dt;   // armor pickup buff decay
+    if ((this._emergT || 0) > 0)      this._emergT -= dt;       // Φ11 emergency shield window
+    if ((this._emergCd || 0) > 0)     this._emergCd -= dt;
+    if ((this._vowInvulnT || 0) > 0)  this._vowInvulnT -= dt;   // Φ11 phoenix vow immunity
+    if ((this._stOverloadT || 0) > 0) this._stOverloadT -= dt;  // Φ11 overload window
+    if ((this._adrenalT || 0) > 0)    this._adrenalT -= dt;     // Φ11 adrenal dash window
 
     if (dir.lengthSq() > 0) this.lastFacingDir = dir.clone();
 
@@ -331,6 +351,9 @@ export class Player {
     if (this.dashTimer > 0) {
       this.dashTimer -= dt;
       this.vel = this._dashDir.scale(this.speed * 3.5);
+      if (this.dashTimer <= 0 && (this._stAdrenalLvl || 0) > 0) {   // Φ11 Adrenal Dash window
+        this._adrenalT = 1.5 + 0.3 * (this._stAdrenalLvl - 1);
+      }
     } else {
       // Stagger debuff: slower walk + reduced stamina regen (dash stays full — an escape).
       const moveMult  = this.staggerTimer > 0 ? 0.45 : 1.0;
@@ -432,7 +455,8 @@ export class Player {
   canShoot() { return this.shootCooldown <= 0; }
 
   shoot(mousePos) {
-    this.shootCooldown = 0.18 / ((1 + this.fireRateBonus) * (this._vesselFireRateMult || 1) * (this._chaosHasteMult || 1));   // Fire Rate card + Vessel passive + Chaos HASTE buff
+    const _ovl = (this._stOverloadT || 0) > 0 ? 1 + 0.08 * (this._stOverloadLvl || 0) : 1;   // Φ11 Overload Window
+    this.shootCooldown = 0.18 / ((1 + this.fireRateBonus) * (this._vesselFireRateMult || 1) * (this._chaosHasteMult || 1) * _ovl);
     const dir    = safeNormalize(new Vec2(mousePos.x - this.pos.x, mousePos.y - this.pos.y));
     const base   = 1 + this.upgrades['Pulse Damage'];
     let damage   = base;

@@ -10,9 +10,9 @@ import { clamp, distance, safeNormalize, randomChoice, randomRange, wrapText } f
 import { FloatingText }   from '../entities/FloatingText.js?v=20260703990000';
 import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260705040000';
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260705150000';
-import { Player }         from '../entities/Player.js?v=20260711490000';
+import { Player }         from '../entities/Player.js?v=20260711860000';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260706270000';
-import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260711840000';
+import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260711860000';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=20260711750000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260705150000';
@@ -22,7 +22,7 @@ import { weightedSample } from './Upgrades.js?v=20260711370000';
 import { MutationUI }      from './MutationUI.js?v=20260703990000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260711820000';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, SKILL_TREE, AMULET_DEFS } from './MetaProgress.js?v=20260711760000';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, SKILL_TREE, AMULET_DEFS } from './MetaProgress.js?v=20260711860000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260711590000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
@@ -2267,16 +2267,21 @@ export class Game {
     p.maxMana                   += m.getLevel('manaCapacitor') * 10;               // ultimate cost stays 100
     p.xpMult                     = 1 + m.getLevel('xpUplink') * 0.05;
 
-    // ── #78 Universal Skill Tree — permanent cross-character passives (prereq-gated tree) ──
+    // ── Φ11 Universal Skill Tree — TACTICAL passives (Emergency/Executioner/Adrenal/
+    // Info-Link/Overload/Scavenger/Phoenix Vow/Apex). Levels cached on the player; the
+    // live hooks read them in Player.applyDamage/update, Enemy.takeHit and the ult hooks.
     const _st = k => m.getLevel(k);
-    const _stHp = _st('st_vitality') * 8 + _st('st_ascendant') * 15;
-    p.maxHp += _stHp; p.hp += _stHp;
-    p.upgrades['Pulse Damage'] = (p.upgrades['Pulse Damage'] || 0) + _st('st_power') * 0.4 + _st('st_annihilator') * 0.8;
-    p.speedBonus += _st('st_agility') * 0.04;
-    p.contactDamageReduction = Math.min(0.6, (p.contactDamageReduction || 0) + _st('st_fortress') * 0.03);
-    p.fireRateBonus = (p.fireRateBonus || 0) + _st('st_overcharge') * 0.05 + _st('st_annihilator') * 0.04;
-    { let _pr = p.pickupRadius; for (let _i = 0; _i < _st('st_momentum'); _i++) _pr = Math.round(_pr * 1.06); p.pickupRadius = _pr; }
-    p.xpMult = (p.xpMult || 1) + _st('st_ascendant') * 0.05;
+    p._stEmergencyLvl = _st('st_vitality');     // auto-shield on low-HP hit
+    p._stExecLvl      = _st('st_power');        // execution threshold
+    p._stAdrenalLvl   = _st('st_agility');      // post-dash speed window
+    p._stInfoLvl      = _st('st_fortress');     // info-link + light armor
+    p._stOverloadLvl  = _st('st_overcharge');   // post-Q/E fire-rate window
+    p._stScavLvl      = _st('st_momentum');     // magnet + heal bonus
+    p._stVowLvl       = _st('st_ascendant');    // phoenix vow (once per run)
+    p._stApexLvl      = _st('st_annihilator');  // ult damage
+    p._stVowUsed      = false;
+    p.contactDamageReduction = Math.min(0.6, (p.contactDamageReduction || 0) + p._stInfoLvl * 0.02);
+    { let _pr = p.pickupRadius; for (let _i = 0; _i < p._stScavLvl; _i++) _pr = Math.round(_pr * 1.10); p.pickupRadius = _pr; }
     // Phasewalker synergy — Linked Companion Rifle: +phase-shard damage per star
     p.upgrades['Pulse Damage'] = (p.upgrades['Pulse Damage'] || 0) + m.getLevel('syn_phase_companion') * 0.6;
 
@@ -3312,7 +3317,9 @@ export class Game {
 
   // ×1.3 on every ultimate damage hook while the ACTIVE character's amulet is owned.
   _amuletUltMult() {
-    return (this.meta && this.player && this.meta.hasAmuletFor(this.player.selectedCharacter)) ? 1.3 : 1;
+    const am = (this.meta && this.player && this.meta.hasAmuletFor(this.player.selectedCharacter)) ? 1.3 : 1;
+    const apex = 1 + 0.10 * (this.player?._stApexLvl || 0);   // Φ11 Apex Ultimatum capstone
+    return am * apex;
   }
 
   _drawProtocolCard(ctx, card, r) {
@@ -6152,6 +6159,7 @@ export class Game {
     if (this._empBlasts.length >= 3) this._empBlasts.shift();
     this._empBlasts.push({ x: p.pos.x, y: p.pos.y, t: 0, R: radius, seed: (Math.random() * 1000) | 0 });
     p.empCloudCooldown = Math.max(8, 12 - p.upgrades['EMP Cloud']);   // 12s base, upgrade trims it
+    if (p._stOverloadLvl > 0) p._stOverloadT = 3;   // Φ11 Overload Window (post-cast fire-rate)
     this.floatingTexts.push(new FloatingText('STUN PULSE!', p.pos.clone(), CYAN, 0.9));
     // (Japan Phasewalker's EMP Shockwave is now AUTOMATIC/passive — see _updatePhasewalkerFx —
     //  so E stays purely the shared global EMP stun for every character.)
@@ -6166,7 +6174,8 @@ export class Game {
       return;
     }
     p.shieldTimer         = p.shieldDuration;          // 7s active
-    p.pulseShieldCooldown = p.pulseShieldMaxCooldown;  // 25s cooldown
+    p.pulseShieldCooldown = p.pulseShieldMaxCooldown;
+    if (p._stOverloadLvl > 0) p._stOverloadT = 3;   // Φ11 Overload Window  // 25s cooldown
     this._specialRings.push({ pos: p.pos.clone(), radius: 0, maxRadius: 60,
                                life: 0.45, maxLife: 0.45, color1: CYAN, color2: '#bfefff' });
     // Wind-up spiral burst — 12 radial sparks collapse inward → shield snaps on
@@ -8556,7 +8565,7 @@ export class Game {
       const d = distance(this.player.pos, hp.pos);
 
       if (d < PICKUP_R) {
-        const heal = this.player.maxHp * 0.25;
+        const heal = this.player.maxHp * 0.25 * (1 + 0.05 * (this.player._stScavLvl || 0));   // Φ11 Scavenger
         this.player.hp = this.player.hp >= this.player.maxHp   // never clip overheal
           ? this.player.hp
           : Math.min(this.player.maxHp, this.player.hp + heal);
@@ -15776,6 +15785,18 @@ export class Game {
         ctx.restore();
       }
       e.draw(ctx);
+      // Φ11 Guardian Info-Link: threat marks over elites/bosses (level-gated, cosmetic)
+      if ((this.player?._stInfoLvl || 0) > 0 && (e.isElite || e.isBoss?.() || e.isMegaBoss)) {
+        const _thN = performance.now() / 1000;
+        ctx.save();
+        ctx.globalAlpha = 0.75 + 0.25 * Math.sin(_thN * 4);
+        ctx.fillStyle = e.isMegaBoss ? '#ff3030' : e.isBoss?.() ? '#ff9b3c' : '#ffd23c';
+        const ty2 = e.pos.y - (e.radius || 14) - 16 + Math.sin(_thN * 2.5) * 2;
+        ctx.beginPath();
+        ctx.moveTo(e.pos.x, ty2 + 7); ctx.lineTo(e.pos.x - 5, ty2); ctx.lineTo(e.pos.x + 5, ty2);
+        ctx.closePath(); ctx.fill();
+        ctx.restore();
+      }
     }
 
     // 4a ── Support drones (drawn between enemies and titan so they appear above enemies)
