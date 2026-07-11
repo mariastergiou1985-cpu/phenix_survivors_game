@@ -7866,7 +7866,8 @@ export class Game {
         this._chaosTransTimer   = -1;    // no transition timer
         this._chaosMode         = true;
         if (this.nexusManager) this.nexusManager.chaos = true;
-        this.nexusManager.assignChaosRoles?.();   // Φ14: BUFF vs DEFENCE bases   // Phase 6: Nexus buff stars turn TACTICAL (no flat-HP heal)
+        this.nexusManager.assignChaosRoles?.();   // Φ14: BUFF vs DEFENCE bases
+        this._nexusRoleTeachT = 5;   // one-shot role explanation banner shortly after chaos starts   // Phase 6: Nexus buff stars turn TACTICAL (no flat-HP heal)
         if (this._chaosStartedAt < 0) this._chaosStartedAt = this.timeAlive; // Phase B: chaos timer
         this.audio?.startChaosMusic();   // switch to Chaos track
         // #71 — Chaos entry no longer uses the central banner; a discreet floating cue instead.
@@ -8193,6 +8194,12 @@ export class Game {
     this._updateManaPickups(dt);
     this._updateArmorPickups(dt);   // Phase 7: shield/armor drops
     this._updateNexusDefence(dt);   // Φ14: Chaos DEFENCE nexus turrets + shield dome
+    if (this._nexusRoleTeachT > 0) {                              // Φ14 one-shot role lesson
+      this._nexusRoleTeachT -= dt;
+      if (this._nexusRoleTeachT <= 0) {
+        this.triggerAnnouncement('NEXUS ROLES — ★ GOLD: BUFF STARS · ▲ RED: TURRET + DOME', '#ffd447');
+      }
+    }
     this._updateAnnouncement(dt);
     this.particles.update(this._hitStopTimer > 0 ? dt * 0.10 : dt);  // slow sparks/particles during hit stop
     this._updateCamera();
@@ -9141,7 +9148,8 @@ export class Game {
     this._enterEndless();             // set up all Endless infrastructure
     this._chaosMode          = true;     // engage Chaos immediately
     if (this.nexusManager) this.nexusManager.chaos = true;
-        this.nexusManager.assignChaosRoles?.();   // Φ14: BUFF vs DEFENCE bases   // Phase 6: tactical buff stars
+        this.nexusManager.assignChaosRoles?.();   // Φ14: BUFF vs DEFENCE bases
+        this._nexusRoleTeachT = 5;   // one-shot role explanation banner shortly after chaos starts   // Phase 6: tactical buff stars
     if (this._chaosStartedAt < 0) this._chaosStartedAt = this.timeAlive; // Phase B: chaos timer
     this._chaosTransTimer    = -1;
     this._frozenSleetTimer   = 55;  // first Frozen Sleet Storm 55 s into Chaos
@@ -11201,6 +11209,7 @@ export class Game {
   _updateNexusDefence(dt) {
     if (!this._chaosMode || !this.matrices?.length) return;
     let inDome = false;
+    const rushCadence = this._bossRush ? 0.55 : 1.1;              // Φ14×Φ6: turrets fight HARD during Boss Rush
     for (const m of this.matrices) {
       if (m.chaosRole !== 'defence') continue;
       if (distance(this.player.pos, m.pos) < 160) inDome = true;
@@ -11214,13 +11223,21 @@ export class Game {
         if (q < bd) { bd = q; best = e; }
       }
       if (!best) continue;
-      m._turretCd = 1.1;
+      m._turretCd = rushCadence;
       const dx = best.pos.x - m.pos.x, dy = best.pos.y - m.pos.y;
       const dd = Math.hypot(dx, dy) || 1;
       this._petBolts.push({ x: m.pos.x, y: m.pos.y - 20, vx: (dx / dd) * 520, vy: (dy / dd) * 520,
                             dmg: 22, color: '#ff5560', life: 1.1 });
+      this.audio?.forgeTurret?.();                                // Φ14 role audio (self-throttled)
     }
-    if (this.player) this.player._nexusDomeT = inDome ? 0.25 : Math.max(0, (this.player._nexusDomeT || 0) - dt);
+    if (this.player) {
+      const was = (this.player._nexusDomeT || 0) > 0;
+      this.player._nexusDomeT = inDome ? 0.25 : Math.max(0, (this.player._nexusDomeT || 0) - dt);
+      if (inDome && !was) {                                       // entering the dome: teach + sound
+        this.audio?.forgeDome?.();
+        this.floatingTexts.push(new FloatingText('NEXUS DOME  -15% DMG', this.player.pos.clone(), '#ff8090', 1.1));
+      }
+    }
   }
 
   // Φ14 in-world role markers — drawn right after each nexus (world-space).

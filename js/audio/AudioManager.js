@@ -1240,6 +1240,17 @@ export class AudioManager {
     else if (el === 'radiation')                        this.forgeRadiation();
   }
 
+  forgeTurret() {                                            // Φ14 defence turret shot
+    if (this.muted || !this._forgeOk('turret', 140)) return;
+    this._tone({ type: 'square', freqStart: this._v(520, 0.2), freqEnd: 240, dur: 0.05, gain: 0.05 });
+    this._noiseBurst({ dur: 0.03, gain: 0.04, filterType: 'highpass', freq: 2400 });
+  }
+  forgeDome() {                                              // Φ14 entering a defence dome
+    if (this.muted || !this._forgeOk('dome', 900)) return;
+    this._tone({ type: 'sine', freqStart: 180, freqEnd: 320, dur: 0.30, gain: 0.07 });
+    this._tone({ type: 'sine', freqStart: 360, freqEnd: 480, dur: 0.22, gain: 0.045, delay: 0.06 });
+  }
+
   // ── ambient weather loops (start/stop idempotent, gentle fade) ─────────────
   _forgeLoop(name, build) {
     this._forgeLoops = this._forgeLoops || {};
