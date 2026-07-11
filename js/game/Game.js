@@ -34,6 +34,7 @@ import { AfterimageTribunal } from '../effects/afterimage-tribunal.js?v=20260711
 import { FeedbackApocalypse } from '../effects/feedback-apocalypse.js?v=20260711520000';
 import { OniMaskOverture } from '../effects/oni-mask-overture.js?v=20260711530000';
 import { EuclidTheorem } from '../effects/euclid-theorem.js?v=20260711540000';
+import { DeusExMachina } from '../effects/deus-ex-machina.js?v=20260711550000';
 import { Protocol0 } from '../effects/protocol-0.js?v=20260705000000';
 import { LaserEyes } from '../effects/laser-eyes.js?v=20260709100000';
 import { MeteorRain } from '../effects/meteor-rain.js?v=20260709100000';
@@ -1135,6 +1136,7 @@ export class Game {
     this._tribunal            = null;   // Taekwondo Girl ultimate (Afterimage Tribunal)
     this._feedbackApoc        = null;   // Eddie ultimate (Feedback Apocalypse)
     this._theorem             = null;   // Euclid Vector ultimate (Theorem of Rot)
+    this._deusEx              = null;   // Dimi angel cinematic presentation (Deus Ex Machina)
     this._pwFxBuilt           = false;
     this._pwDashing           = false;
     this._pwDashStart         = null;
@@ -5594,6 +5596,9 @@ export class Game {
     this._specialRings.push({ pos: p.pos.clone(), radius: 0, maxRadius: radius,
                                life: 0.7, maxLife: 0.7, color1: '#b026ff', color2: '#ff2d6a' });
     (this._dimiAngels ||= []).push({ pos: new Vec2(p.pos.x, p.pos.y - 160), t: 0, life: 6.0, atk: 0.3, dmg: 20 + 4 * _am });
+    // Deus Ex Machina cinematic layer (visual only): heaven-gate, descent, halo, ascend.
+    if (!this._deusEx && this._canvas) this._deusEx = new DeusExMachina(this._canvas, this._cyberAngelImg, { totalMs: 6000 });
+    if (this._deusEx && !this._deusEx.isActive()) { const sm = this._playerScreenPos(); this._deusEx.trigger(sm.cx, sm.footY); }
     p.specialCooldown = p.specialMaxCooldown;
     this.floatingTexts.push(new FloatingText('CYBER-ANGEL SUMMONING!', p.pos.clone(), '#b026ff', 1.2));
     this.audio?.playBossWarning?.();
@@ -5620,13 +5625,22 @@ export class Game {
         }
         this._specialRings.push({ pos: a.pos.clone(), radius: 0, maxRadius: 210,
                                    life: 0.4, maxLife: 0.4, color1: '#ff2d6a', color2: '#b026ff' });
+        this._deusEx?.pulse();   // judgement beams on the cinematic layer
         this.audio?.playHit?.();
       }
       if (a.life <= 0) this._dimiAngels.splice(i, 1);
     }
+    if (this._deusEx?.isActive()) {
+      const sm = this._playerScreenPos();
+      this._deusEx.cx = sm.cx; this._deusEx.footY = sm.footY;
+      try { this._deusEx.update(performance.now()); } catch (err) { console.warn('[DeusEx]', err); }
+    }
   }
 
   _drawDimiAngels(ctx) {
+    // Deus Ex Machina module owns the angel presentation while active (screen-space,
+    // drawn in _drawDeusExFx after the camera block) — skip the legacy hologram draw.
+    if (this._deusEx?.isActive()) return;
     const img = this._cyberAngelImg;
     if (!img || !img.complete || !img.naturalWidth || !this._dimiAngels || !this._dimiAngels.length) return;
     ctx.save();
@@ -15228,6 +15242,9 @@ export class Game {
     this._drawTribunalFx(ctx);         // Taekwondo Girl Afterimage Tribunal (screen-space; guards on character)
     this._drawFeedbackFx(ctx);         // Eddie Feedback Apocalypse (screen-space; guards on character)
     this._drawTheoremFx(ctx);          // Euclid Theorem of Rot (screen-space; guards on character)
+    if (this.player?.selectedCharacter === 'dimis_kickboxer' && this._deusEx?.isActive()) {
+      try { this._deusEx.render(ctx); } catch (err) { console.warn('[DeusEx render]', err); }   // Dimi angel cinematic
+    }
     this._drawOniFx(ctx);           // Oni Protocol 0 (screen-space; guards on character)
     this._drawThunderSoloScreen(ctx);  // darken + fullscreen lightning flash (under HUD)
     this._drawStormOverlay(ctx);       // Endless Lightning Storm: full-map rain/lightning atmosphere
