@@ -10868,7 +10868,7 @@ export class Game {
     else if (bh === 'pull_explode')                                         kind = 'implode';
     else if (bh === 'line_cloud')                                           kind = 'mist';
     if (this._weaponAccents.length >= 40) this._weaponAccents.shift();      // hard cap
-    this._weaponAccents.push({ x, y, ang, t: 0, life: kind === 'implode' ? 0.65 : 0.5,
+    this._weaponAccents.push({ x, y, ang, t: 0, life: kind === 'implode' ? 0.85 : 0.72,
                                kind, c: def.color || '#9fd8ff', scale: Math.min(scale, 2.2),
                                seed: (Math.random() * 1000) | 0 });
   }
@@ -10882,89 +10882,180 @@ export class Game {
 
   _drawWeaponAccents(ctx) {
     if (!this._weaponAccents.length) return;
+    // Every accent is a 3-act choreography (like the ultimates, scaled down):
+    //   WINDUP (k<0.2)  – anticipation flash / charge-in
+    //   STRIKE (0.2-0.6) – the signature flourish at full power
+    //   AFTERMATH (>0.6) – embers / afterglow / dissipation
+    const pr = (seed, i) => { const v = Math.sin(seed * 12.9898 + i * 78.233) * 43758.5453; return v - Math.floor(v); };
     for (const w of this._weaponAccents) {
       const k = w.t / w.life, a = 1 - k, sc = w.scale;
+      const windup = Math.min(1, k / 0.2);                    // 0→1 during act 1
+      const strike = k < 0.2 ? 0 : Math.min(1, (k - 0.2) / 0.4);
+      const after  = k < 0.6 ? 0 : (k - 0.6) / 0.4;
       ctx.save();
       ctx.translate(w.x, w.y);
       ctx.globalCompositeOperation = 'lighter';
       ctx.strokeStyle = w.c; ctx.fillStyle = w.c;
+
+      // shared WINDUP: converging charge flash
+      if (k < 0.2) {
+        ctx.globalAlpha = windup * 0.7;
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath(); ctx.arc(0, 0, (14 - 10 * windup) * sc, 0, Math.PI * 2); ctx.fill();
+        for (let i = 0; i < 4; i++) {                          // charge sparks flying IN
+          const ca = pr(w.seed, i + 20) * Math.PI * 2;
+          const cr = (36 - 30 * windup) * sc;
+          ctx.globalAlpha = windup * 0.8; ctx.fillStyle = w.c;
+          ctx.beginPath(); ctx.arc(Math.cos(ca) * cr, Math.sin(ca) * cr, 2 * sc, 0, Math.PI * 2); ctx.fill();
+        }
+      }
+
       if (w.kind === 'slash' || w.kind === 'cross') {
         const passes = w.kind === 'cross' ? [w.ang - 0.6, w.ang + 0.6] : [w.ang];
-        for (const pa of passes) {
-          ctx.save(); ctx.rotate(pa);
-          const r = (34 + 46 * k) * sc;
-          ctx.globalAlpha = a * 0.9; ctx.lineWidth = (5 - 3 * k) * sc;
-          ctx.shadowColor = w.c; ctx.shadowBlur = 10;
-          ctx.beginPath(); ctx.arc(0, 0, r, -0.65, 0.65); ctx.stroke();      // crescent sweep
-          ctx.globalAlpha = a * 0.5; ctx.lineWidth = 1.6 * sc; ctx.strokeStyle = '#ffffff';
-          ctx.beginPath(); ctx.arc(0, 0, r * 0.88, -0.5, 0.5); ctx.stroke(); // hot inner edge
+        for (let pi = 0; pi < passes.length; pi++) {
+          const cross2nd = w.kind === 'cross' && pi === 1;
+          const st = cross2nd ? Math.max(0, (strike - 0.35) / 0.65) : strike;  // 2nd cut lands LATER
+          if (st <= 0) continue;
+          ctx.save(); ctx.rotate(passes[pi]);
+          const sweep = -0.75 + 1.5 * st;                      // the crescent actually SWEEPS
+          const r = (36 + 34 * st) * sc;
+          ctx.globalAlpha = (1 - after) * 0.95; ctx.lineWidth = (6 - 3.5 * st) * sc;
+          ctx.shadowColor = w.c; ctx.shadowBlur = 14;
+          ctx.beginPath(); ctx.arc(0, 0, r, -0.75, sweep); ctx.stroke();
+          ctx.globalAlpha = (1 - after) * 0.7; ctx.lineWidth = 2 * sc; ctx.strokeStyle = '#ffffff';
+          ctx.beginPath(); ctx.arc(0, 0, r * 0.9, -0.68, sweep * 0.95); ctx.stroke();
+          // blade-tip comet at the sweep head
+          const ta = sweep, tx = Math.cos(ta) * r, ty = Math.sin(ta) * r;
+          ctx.globalAlpha = (1 - after); ctx.fillStyle = '#ffffff';
+          ctx.beginPath(); ctx.arc(tx, ty, 3.2 * sc, 0, Math.PI * 2); ctx.fill();
           ctx.strokeStyle = w.c;
           ctx.restore();
         }
-        for (let i = 0; i < 4; i++) {                                        // spark dots fly off
-          const pr = Math.sin(w.seed + i * 3.7) * 0.5 + 0.5;
-          const sa = w.ang + (pr - 0.5) * 1.2, sr = (40 + 60 * k) * sc;
-          ctx.globalAlpha = a * 0.8; ctx.fillStyle = '#ffffff';
-          ctx.beginPath(); ctx.arc(Math.cos(sa) * sr, Math.sin(sa) * sr, 1.8 * sc, 0, Math.PI * 2); ctx.fill();
+        if (after > 0) {                                        // AFTERMATH: sparks rain outward
+          for (let i = 0; i < 6; i++) {
+            const sa = w.ang + (pr(w.seed, i) - 0.5) * 1.6;
+            const sr = (60 + 60 * after) * sc * (0.7 + pr(w.seed, i + 7) * 0.5);
+            ctx.globalAlpha = (1 - after) * 0.9;
+            ctx.fillStyle = i % 2 ? '#ffffff' : w.c;
+            ctx.beginPath();
+            ctx.arc(Math.cos(sa) * sr, Math.sin(sa) * sr + after * after * 26 * sc, 1.9 * sc, 0, Math.PI * 2);
+            ctx.fill();
+          }
         }
+
       } else if (w.kind === 'spin') {
-        const r = (26 + 30 * k) * sc;
-        for (let i = 0; i < 3; i++) {                                        // rotating broken ring
-          const s0 = w.seed + k * 7 + i * (Math.PI * 2 / 3);
-          ctx.globalAlpha = a * 0.85; ctx.lineWidth = 3 * sc;
-          ctx.shadowColor = w.c; ctx.shadowBlur = 8;
-          ctx.beginPath(); ctx.arc(0, 0, r, s0, s0 + Math.PI * 0.45); ctx.stroke();
+        if (strike > 0) {
+          const r = (24 + 34 * strike) * sc;
+          for (let i = 0; i < 3; i++) {                        // accelerating broken rings
+            const s0 = w.seed + strike * strike * 14 + i * (Math.PI * 2 / 3);
+            ctx.globalAlpha = (1 - after) * 0.9; ctx.lineWidth = 3.2 * sc;
+            ctx.shadowColor = w.c; ctx.shadowBlur = 12;
+            ctx.beginPath(); ctx.arc(0, 0, r, s0, s0 + Math.PI * (0.5 - 0.15 * strike)); ctx.stroke();
+          }
+          ctx.globalAlpha = (1 - after) * 0.6; ctx.lineWidth = 1.6 * sc; ctx.strokeStyle = '#ffffff';
+          ctx.beginPath(); ctx.arc(0, 0, r * 0.55, w.seed - strike * 17, w.seed - strike * 17 + Math.PI * 0.8); ctx.stroke();
+          // orbiting comet dot with short trail
+          const oa = w.seed + strike * 15, or_ = r * 0.8;
+          for (let tsegm = 0; tsegm < 4; tsegm++) {
+            ctx.globalAlpha = (1 - after) * (1 - tsegm * 0.22);
+            ctx.fillStyle = tsegm === 0 ? '#ffffff' : w.c;
+            ctx.beginPath();
+            ctx.arc(Math.cos(oa - tsegm * 0.22) * or_, Math.sin(oa - tsegm * 0.22) * or_, (2.8 - tsegm * 0.5) * sc, 0, Math.PI * 2);
+            ctx.fill();
+          }
         }
-        ctx.globalAlpha = a * 0.5; ctx.lineWidth = 1.5 * sc; ctx.strokeStyle = '#ffffff';
-        ctx.beginPath(); ctx.arc(0, 0, r * 0.6, w.seed - k * 9, w.seed - k * 9 + Math.PI); ctx.stroke();
+
       } else if (w.kind === 'bolt') {
-        ctx.save(); ctx.rotate(w.ang);
-        ctx.globalAlpha = (1 - k) * 0.9;                                     // muzzle flash
-        ctx.beginPath(); ctx.arc(0, 0, (10 - 6 * k) * sc, 0, Math.PI * 2); ctx.fill();
-        for (const off of [-6, 0, 6]) {                                      // speed lines
-          ctx.globalAlpha = a * (off === 0 ? 0.95 : 0.5);
-          ctx.lineWidth = (off === 0 ? 2.6 : 1.4) * sc;
-          ctx.strokeStyle = off === 0 ? '#ffffff' : w.c;
-          ctx.beginPath(); ctx.moveTo(12 * sc, off * sc);
-          ctx.lineTo((30 + 70 * k) * sc, off * sc); ctx.stroke();
+        if (strike > 0) {
+          ctx.save(); ctx.rotate(w.ang);
+          ctx.globalAlpha = (1 - strike) * 0.95;               // muzzle core
+          ctx.fillStyle = '#ffffff';
+          ctx.beginPath(); ctx.arc(0, 0, (11 - 6 * strike) * sc, 0, Math.PI * 2); ctx.fill();
+          for (let i = 0; i < 5; i++) {                        // muzzle petals
+            const pa2 = (i - 2) * 0.3;
+            ctx.globalAlpha = (1 - strike) * 0.7;
+            ctx.strokeStyle = w.c; ctx.lineWidth = 2 * sc;
+            ctx.beginPath(); ctx.moveTo(6 * sc, 0);
+            ctx.lineTo(Math.cos(pa2) * (20 + 10 * strike) * sc, Math.sin(pa2) * (20 + 10 * strike) * sc);
+            ctx.stroke();
+          }
+          for (const off of [-7, 0, 7]) {                      // rushing speed lines
+            const lead = (26 + 110 * strike) * sc, tail = lead - (18 + 26 * strike) * sc;
+            ctx.globalAlpha = (1 - after) * (off === 0 ? 0.95 : 0.5);
+            ctx.lineWidth = (off === 0 ? 2.8 : 1.4) * sc;
+            ctx.strokeStyle = off === 0 ? '#ffffff' : w.c;
+            ctx.beginPath(); ctx.moveTo(tail, off * sc); ctx.lineTo(lead, off * sc); ctx.stroke();
+          }
+          ctx.restore();
         }
-        ctx.restore();
+
       } else if (w.kind === 'ground') {
-        const r = (18 + 60 * k) * sc;
-        ctx.globalAlpha = a * 0.9; ctx.lineWidth = (4 - 2.5 * k) * sc;
-        ctx.shadowColor = w.c; ctx.shadowBlur = 8;
-        ctx.beginPath(); ctx.ellipse(0, 0, r, r * 0.5, 0, 0, Math.PI * 2); ctx.stroke();  // ground ring
-        for (let i = 0; i < 5; i++) {                                        // debris chips pop up
-          const pr = Math.sin(w.seed + i * 5.1) * 0.5 + 0.5;
-          const da = pr * Math.PI * 2;
-          ctx.globalAlpha = a * 0.8; ctx.fillStyle = i % 2 ? '#ffffff' : w.c;
-          ctx.beginPath();
-          ctx.arc(Math.cos(da) * r * 0.7, Math.sin(da) * r * 0.35 - (14 + pr * 12) * k * sc, 1.8 * sc, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      } else if (w.kind === 'implode') {
-        if (k < 0.5) {                                                       // suck in...
-          const r = (70 * (1 - k * 2) + 8) * sc;
-          ctx.globalAlpha = (0.4 + k) * 0.8; ctx.lineWidth = 2.5 * sc;
-          ctx.beginPath(); ctx.ellipse(0, 0, r, r * 0.6, 0, 0, Math.PI * 2); ctx.stroke();
-        } else {                                                             // ...then burst
-          const kk = (k - 0.5) * 2, r2 = (10 + 55 * kk) * sc;
-          ctx.globalAlpha = (1 - kk) * 0.95; ctx.lineWidth = (4.5 - 3 * kk) * sc;
+        if (strike > 0) {
+          const r = (16 + 66 * strike) * sc;
+          ctx.globalAlpha = (1 - after) * 0.95; ctx.lineWidth = (5 - 3 * strike) * sc;
           ctx.shadowColor = w.c; ctx.shadowBlur = 12;
-          ctx.beginPath(); ctx.arc(0, 0, r2, 0, Math.PI * 2); ctx.stroke();
-          ctx.globalAlpha = (1 - kk) * 0.5; ctx.fillStyle = '#ffffff';
-          ctx.beginPath(); ctx.arc(0, 0, r2 * 0.3, 0, Math.PI * 2); ctx.fill();
+          ctx.beginPath(); ctx.ellipse(0, 0, r, r * 0.48, 0, 0, Math.PI * 2); ctx.stroke();
+          // jagged ground cracks radiating (drawn once strike lands)
+          for (let i = 0; i < 5; i++) {
+            const ca = pr(w.seed, i) * Math.PI * 2;
+            ctx.globalAlpha = (1 - after) * 0.8; ctx.lineWidth = 2 * sc; ctx.strokeStyle = w.c;
+            ctx.beginPath(); ctx.moveTo(Math.cos(ca) * 8 * sc, Math.sin(ca) * 4 * sc);
+            const midx = Math.cos(ca) * r * 0.6 + (pr(w.seed, i + 9) - 0.5) * 14 * sc;
+            const midy = Math.sin(ca) * r * 0.3 + (pr(w.seed, i + 4) - 0.5) * 8 * sc;
+            ctx.lineTo(midx, midy);
+            ctx.lineTo(Math.cos(ca) * r * 0.95, Math.sin(ca) * r * 0.46);
+            ctx.stroke();
+          }
+          // debris chips arc up then fall (real gravity feel)
+          for (let i = 0; i < 6; i++) {
+            const da = pr(w.seed, i + 30) * Math.PI * 2;
+            const up = Math.sin(Math.min(1, k) * Math.PI) * (16 + pr(w.seed, i) * 16);
+            ctx.globalAlpha = (1 - after) * 0.85; ctx.fillStyle = i % 2 ? '#ffffff' : w.c;
+            ctx.beginPath();
+            ctx.arc(Math.cos(da) * r * 0.7, Math.sin(da) * r * 0.34 - up * sc, 2 * sc, 0, Math.PI * 2);
+            ctx.fill();
+          }
         }
+
+      } else if (w.kind === 'implode') {
+        if (k < 0.45) {                                        // ACT 1-2: gravity draw-in
+          const t2 = k / 0.45, r = (78 * (1 - t2) + 8) * sc;
+          ctx.globalAlpha = (0.35 + t2 * 0.6);
+          ctx.lineWidth = (2 + t2 * 2) * sc;
+          ctx.beginPath(); ctx.ellipse(0, 0, r, r * 0.6, 0, 0, Math.PI * 2); ctx.stroke();
+          for (let i = 0; i < 5; i++) {                        // debris streaking INTO the core
+            const ca = pr(w.seed, i) * Math.PI * 2 + t2 * 2;
+            ctx.globalAlpha = t2 * 0.85; ctx.strokeStyle = i % 2 ? '#ffffff' : w.c; ctx.lineWidth = 1.6 * sc;
+            ctx.beginPath();
+            ctx.moveTo(Math.cos(ca) * r * 1.1, Math.sin(ca) * r * 0.66);
+            ctx.lineTo(Math.cos(ca) * r * 0.55, Math.sin(ca) * r * 0.33);
+            ctx.stroke();
+          }
+          ctx.strokeStyle = w.c;
+        } else {                                                // ACT 3: the detonation
+          const kk = (k - 0.45) / 0.55, r2 = (8 + 66 * kk) * sc;
+          ctx.globalAlpha = (1 - kk) * 0.95; ctx.lineWidth = (5 - 3.5 * kk) * sc;
+          ctx.shadowColor = w.c; ctx.shadowBlur = 16;
+          ctx.beginPath(); ctx.arc(0, 0, r2, 0, Math.PI * 2); ctx.stroke();
+          ctx.globalAlpha = (1 - kk) * 0.65; ctx.lineWidth = 12 * (1 - kk) * sc;
+          ctx.beginPath(); ctx.arc(0, 0, r2 * 0.8, 0, Math.PI * 2); ctx.stroke();
+          ctx.globalAlpha = (1 - kk) * 0.6; ctx.fillStyle = '#ffffff';
+          ctx.beginPath(); ctx.arc(0, 0, r2 * 0.28, 0, Math.PI * 2); ctx.fill();
+        }
+
       } else if (w.kind === 'mist') {
-        for (let i = 0; i < 4; i++) {                                        // drifting puffs
-          const pr = Math.sin(w.seed + i * 2.9) * 0.5 + 0.5;
-          ctx.globalAlpha = a * 0.35;
+        for (let i = 0; i < 5; i++) {
+          const p2 = pr(w.seed, i);
+          const drift = (k * (10 + p2 * 14)) * sc;
+          ctx.globalAlpha = Math.sin(Math.min(1, k) * Math.PI) * 0.4;
+          ctx.fillStyle = i % 2 ? w.c : '#ffffff';
           ctx.beginPath();
-          ctx.arc((i - 1.5) * 20 * sc, -k * 12 * sc, (7 + pr * 6) * sc * (0.6 + k), 0, Math.PI * 2);
+          ctx.arc((i - 2) * 18 * sc + drift * (p2 - 0.5), -drift, (6 + p2 * 7) * sc * (0.5 + k), 0, Math.PI * 2);
           ctx.fill();
         }
-      } else {                                                               // fallback ring
-        const r = (20 + 36 * k) * sc;
+
+      } else {                                                  // fallback ring
+        const r = (20 + 38 * k) * sc;
         ctx.globalAlpha = a * 0.85; ctx.lineWidth = 3 * sc;
         ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.stroke();
       }
