@@ -12337,6 +12337,7 @@ export class Game {
             const sz = 200 + 80 * grow;                     // 200 → 280px toward collapse
             ctx.save();
             ctx.globalAlpha = fadeAlpha;
+            ctx.globalCompositeOperation = 'screen';   // no square bounds on the black-hole art
             ctx.translate(sx, sy);
             ctx.rotate(w.angle * 0.5);
             ctx.drawImage(sprite, -sz / 2, -sz / 2, sz, sz);
@@ -12367,6 +12368,7 @@ export class Game {
             const size = 110 * pulse;   // premium readable size (was a small 72px)
             ctx.save();
             ctx.globalAlpha = fadeAlpha;
+            ctx.globalCompositeOperation = 'screen';   // black sprite backgrounds vanish (no more boxes)
             ctx.translate(sx, sy);
             ctx.rotate(w.angle);
             ctx.drawImage(sprite, -size / 2, -size / 2, size, size);
@@ -12374,6 +12376,45 @@ export class Game {
           }
           break;
         }
+      }
+
+      // ── Cinematic deploy + operating aura (all behaviors, all characters) ──────────
+      {
+        const col = (w.def && w.def.color) || '#66d9ff';
+        const age = w.timer != null ? w.timer : 99;               // w.timer counts UP from 0 on deploy
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        if (age < 1.0) {                                          // DEPLOY: holo materialization
+          const dk = Math.min(1, age);
+          // expanding deploy ring
+          ctx.globalAlpha = (1 - dk) * 0.9;
+          ctx.strokeStyle = col; ctx.lineWidth = 3 * (1 - dk) + 1;
+          ctx.shadowColor = col; ctx.shadowBlur = 12;
+          ctx.beginPath(); ctx.ellipse(sx, sy, 20 + dk * 70, (20 + dk * 70) * 0.55, 0, 0, Math.PI * 2); ctx.stroke();
+          // vertical holo scan bar sweeping down
+          ctx.shadowBlur = 0;
+          ctx.globalAlpha = (1 - dk) * 0.55;
+          ctx.fillStyle = col;
+          ctx.fillRect(sx - 48, sy - 70 + dk * 130, 96, 2.5);
+          // rising materialization sparks
+          for (let i = 0; i < 5; i++) {
+            const spk = ((age * (1.3 + i * 0.17)) + i * 0.19) % 1;
+            ctx.globalAlpha = (1 - spk) * (1 - dk * 0.5) * 0.8;
+            ctx.beginPath();
+            ctx.arc(sx + Math.sin(i * 2.1 + age * 6) * 26, sy + 18 - spk * 60, 1.8, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        } else if (w.def && w.def.behavior !== 'gravity_singularity') {
+          // OPERATING: slow rotating dashed ground ring — "this device is live"
+          const tt = performance.now() / 1000;
+          ctx.globalAlpha = 0.30 + 0.12 * Math.sin(tt * 2.4);
+          ctx.strokeStyle = col; ctx.lineWidth = 1.8;
+          ctx.setLineDash([9, 7]);
+          ctx.lineDashOffset = -tt * 26;
+          ctx.beginPath(); ctx.ellipse(sx, sy + 8, 42, 20, 0, 0, Math.PI * 2); ctx.stroke();
+          ctx.setLineDash([]);
+        }
+        ctx.restore();
       }
 
       // ── Draw particles (tiny 3-6px squares — ambient only) ──
@@ -12396,9 +12437,10 @@ export class Game {
     if (sprite && sprite.complete && sprite.naturalWidth > 0) {
       ctx.save();
       ctx.globalAlpha = Math.min(1, w.timer / 1.0);
+      ctx.globalCompositeOperation = 'screen';   // kill black sprite boxes
       ctx.translate(dx, dy);
       ctx.rotate(w.orbitAngle);
-      ctx.drawImage(sprite, -size / 2, -size / 2, size, size);
+      { const _pgc = ctx.globalCompositeOperation; ctx.globalCompositeOperation = 'screen'; ctx.drawImage(sprite, -size / 2, -size / 2, size, size); ctx.globalCompositeOperation = _pgc; }
       ctx.restore();
     }
     // Ghost trail — small fading sprite copies
@@ -12409,7 +12451,7 @@ export class Game {
         const gy = w.y + Math.sin(ga) * (w.def.patrolRadius || 280) - cam.y;
         ctx.save();
         ctx.globalAlpha = 0.15 / g;
-        if (sprite && sprite.complete) ctx.drawImage(sprite, gx - size / 2, gy - size / 2, size, size);
+        if (sprite && sprite.complete) { const _pgc = ctx.globalCompositeOperation; ctx.globalCompositeOperation = 'screen'; ctx.drawImage(sprite, gx - size / 2, gy - size / 2, size, size); ctx.globalCompositeOperation = _pgc; }
         ctx.restore();
       }
     }
@@ -12451,7 +12493,7 @@ export class Game {
       ctx.globalAlpha = fade;
       ctx.translate(sx, sy);
       ctx.rotate(w.angle * 0.6);
-      ctx.drawImage(sprite, -sz / 2, -sz / 2, sz, sz);
+      { const _pgc = ctx.globalCompositeOperation; ctx.globalCompositeOperation = 'screen'; ctx.drawImage(sprite, -sz / 2, -sz / 2, sz, sz); ctx.globalCompositeOperation = _pgc; }
       ctx.restore();
     }
   }
@@ -12491,7 +12533,7 @@ export class Game {
       ctx.globalAlpha = fade;
       ctx.translate(sx, sy);
       ctx.rotate(w.beamAngle || 0);
-      ctx.drawImage(sprite, -sz / 2, -sz / 2, sz, sz);
+      { const _pgc = ctx.globalCompositeOperation; ctx.globalCompositeOperation = 'screen'; ctx.drawImage(sprite, -sz / 2, -sz / 2, sz, sz); ctx.globalCompositeOperation = _pgc; }
       ctx.restore();
     }
   }
@@ -12537,7 +12579,7 @@ export class Game {
       ctx.globalAlpha = fade;
       ctx.translate(sx, sy);
       ctx.rotate(w.angle * 0.4);
-      ctx.drawImage(sprite, -sz / 2, -sz / 2, sz, sz);
+      { const _pgc = ctx.globalCompositeOperation; ctx.globalCompositeOperation = 'screen'; ctx.drawImage(sprite, -sz / 2, -sz / 2, sz, sz); ctx.globalCompositeOperation = _pgc; }
       ctx.restore();
     }
   }
@@ -12552,7 +12594,7 @@ export class Game {
         const flash = Math.sin(mine.flashTimer * 6) > 0 ? 1 : 0.6;
         ctx.save();
         ctx.globalAlpha = flash;
-        ctx.drawImage(sprite, mx - mSize / 2, my - mSize / 2, mSize, mSize);
+        { const _pgc = ctx.globalCompositeOperation; ctx.globalCompositeOperation = 'screen'; ctx.drawImage(sprite, mx - mSize / 2, my - mSize / 2, mSize, mSize); ctx.globalCompositeOperation = _pgc; }
         ctx.restore();
       }
     }
@@ -12569,7 +12611,7 @@ export class Game {
       const alpha = spike.life / spike.maxLife;
       ctx.globalAlpha = alpha * 0.7;
       const sz = 40 * alpha;   // readable rail spikes
-      ctx.drawImage(sprite, rx - sz / 2, ry - sz / 2, sz, sz);
+      { const _pgc = ctx.globalCompositeOperation; ctx.globalCompositeOperation = 'screen'; ctx.drawImage(sprite, rx - sz / 2, ry - sz / 2, sz, sz); ctx.globalCompositeOperation = _pgc; }
     }
     ctx.restore();
   }
@@ -12602,7 +12644,7 @@ export class Game {
       ctx.rotate(angle);
       if (ready) {
         // Preserve the art's square aspect (was squished to a 2:1 sliver)
-        ctx.drawImage(sprite, -mSize / 2, -mSize / 2, mSize, mSize);
+        { const _pgc = ctx.globalCompositeOperation; ctx.globalCompositeOperation = 'screen'; ctx.drawImage(sprite, -mSize / 2, -mSize / 2, mSize, mSize); ctx.globalCompositeOperation = _pgc; }
       } else {
         // Fallback bolt if the sprite is not yet decoded — never invisible
         ctx.globalCompositeOperation = 'lighter';
@@ -12651,7 +12693,7 @@ export class Game {
         ctx.save();
         ctx.globalAlpha = alpha;
         ctx.shadowColor = '#ff2d2d'; ctx.shadowBlur = 30;
-        ctx.drawImage(sprite, cx, cy, cw, ch);         // stretched across the whole map like a banner
+        { const _pgc = ctx.globalCompositeOperation; ctx.globalCompositeOperation = 'screen'; ctx.drawImage(sprite, cx, cy, cw, ch); ctx.globalCompositeOperation = _pgc; }         // stretched across the whole map like a banner
         ctx.restore();
       }
     }
@@ -12698,7 +12740,7 @@ export class Game {
     if (ready && !w.swords.length) {                              // idle cache marker at drop point
       ctx.save();
       ctx.globalAlpha = Math.min(1, w.timer / 1.0) * 0.9;
-      ctx.drawImage(sprite, w.x - cam.x - 30, w.y - cam.y - 30, 60, 60);
+      { const _pgc = ctx.globalCompositeOperation; ctx.globalCompositeOperation = 'screen'; ctx.drawImage(sprite, w.x - cam.x - 30, w.y - cam.y - 30, 60, 60); ctx.globalCompositeOperation = _pgc; }
       ctx.restore();
     }
     for (const s of w.swords) {
@@ -12713,7 +12755,7 @@ export class Game {
       ctx.beginPath(); ctx.moveTo(-190, 0); ctx.lineTo(-40, 0); ctx.stroke();
       ctx.globalCompositeOperation = 'source-over';
       if (ready) {
-        ctx.drawImage(sprite, -75, -75, 150, 150);                // blade art rotated to travel direction
+        { const _pgc = ctx.globalCompositeOperation; ctx.globalCompositeOperation = 'screen'; ctx.drawImage(sprite, -75, -75, 150, 150); ctx.globalCompositeOperation = _pgc; }                // blade art rotated to travel direction
       } else {
         ctx.globalCompositeOperation = 'lighter';
         ctx.strokeStyle = '#ff6a1a'; ctx.lineWidth = 5;
