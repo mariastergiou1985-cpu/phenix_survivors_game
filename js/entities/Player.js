@@ -79,6 +79,16 @@ export class Player {
       this.mana    = 100;
       this.baseSpeed = Math.round(230 * 0.82);   // 189 — slowest (below Skeleton 207)
       this.contactDamageReduction = 0.10;        // armor 10
+    } else if (this.selectedCharacter === 'japan_phasewalker') {
+      // #74 Glitch-walker — fast + fragile. Leans on phase-shard auto-shots, EMP Shockwave (E) and
+      // the Digital Singularity ultimate (SPACE, mana-fed). Low armor: survives by repositioning.
+      this.maxHp        = 95;
+      this.hp           = 95;
+      this.maxMana      = 100;
+      this.mana         = 100;
+      this.baseSpeed    = Math.round(230 * 1.18); // 271 — very fast (just below Taekwondo 276)
+      this.pickupRadius = 84;
+      this.contactDamageReduction = 0.06;         // fragile: minimal armor
     }
 
     this._tankTimer   = 0;     // Oni Protocol 0: damage-reduction window

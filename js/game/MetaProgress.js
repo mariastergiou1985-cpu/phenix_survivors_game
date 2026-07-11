@@ -794,7 +794,7 @@ export class MetaProgress {
       euclid_vector:          5,
       oni_cataclysm_protocol: 6,
       eddie:                  this.totalStages,   // 7 → after FINAL (all stages cleared)
-      japan_phasewalker:      Infinity,           // COMING SOON — never unlocks yet
+      japan_phasewalker:      this.totalStages,   // #74 restored — unlocks after the FINAL stage (bonus glitch-walker)
     };
     const req = REQ[characterId];
     if (req == null) return true;                 // any unmapped character defaults unlocked (safety)

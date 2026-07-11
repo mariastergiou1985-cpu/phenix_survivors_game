@@ -10,7 +10,7 @@ import { clamp, distance, safeNormalize, randomChoice, randomRange, wrapText } f
 import { FloatingText }   from '../entities/FloatingText.js?v=20260703990000';
 import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260705040000';
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260705150000';
-import { Player }         from '../entities/Player.js?v=20260711360000';
+import { Player }         from '../entities/Player.js?v=20260711390000';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260706270000';
 import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260711370000';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=20260703990000';
@@ -22,7 +22,7 @@ import { weightedSample } from './Upgrades.js?v=20260711370000';
 import { MutationUI }      from './MutationUI.js?v=20260703990000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260705300000';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, SKILL_TREE } from './MetaProgress.js?v=20260711380000';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, SKILL_TREE } from './MetaProgress.js?v=20260711390000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260711360000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
@@ -924,7 +924,7 @@ export class Game {
       { id: 'assassin_clone',          name: 'Assassin Clone',          fallbackColor: '#ff4dd2', fallbackAlt: '#9aa0aa', role: 'Stealth / Burst',      specialty: 'Shadow reposition — instant teleport strike burst' },
       // Japan Phasewalker — COMING SOON. Shown in roster as a locked preview; comingSoon:true
       // prevents selection and suppresses the PF-unlock path until the freeze bug is resolved.
-      { id: 'japan_phasewalker', name: 'Japan Phasewalker', fallbackColor: '#00b8d9', fallbackAlt: '#0077a8', role: 'Phase / Displace', specialty: 'Glitch dash + EMP shockwave + Digital Singularity ult', comingSoon: true },
+      { id: 'japan_phasewalker', name: 'Japan Phasewalker', fallbackColor: '#00b8d9', fallbackAlt: '#0077a8', role: 'Phase / Displace', specialty: 'Glitch dash + EMP shockwave + Digital Singularity ult' },  // #74 restored — playable (unlocks after final stage)
       // Euclid Vector — unlocked from the start (NOT PF-gated; see MetaProgress free-unlock).
       { id: 'euclid_vector',           name: 'Euclid Vector',           fallbackColor: '#00ff66', fallbackAlt: '#0a9c44', role: 'Toxin / Ranged',       specialty: 'Toxin sniper + orbital katana + plague trail dash' },
       // Oni Cataclysm Protocol — Endless boss character, LOCKED until purchased with Protocol Fragments
@@ -17692,7 +17692,7 @@ _drawLoreArchive(ctx) {
         { id: 'assassin_clone',          name: 'ASSASSIN CLONE',         role: 'Stealth / Burst',     accent: '#d4aaff', desc: 'Duplicate pattern. Strikes from shadow, relocates before the strike is even logged.' },
         { id: 'euclid_vector',           name: 'EUCLID VECTOR',          role: 'Toxin / Ranged',      accent: '#7cff3c', desc: 'Toxin sniper, orbital katana, plague trail. Corrosion spreads faster than containment rewrites.' },
         { id: 'oni_cataclysm_protocol',  name: 'ONI CATACLYSM PROTOCOL', role: 'Cataclysm / Endless', accent: '#ff4444', desc: 'Quad laser array. Reclassified from survivor to weapon. Approach is not advised.' },
-        { id: 'japan_phasewalker',       name: 'JAPAN PHASEWALKER',      role: 'Phase / Displace',    accent: '#00b8d9', desc: 'Glitch dash. EMP shockwave. Digital Singularity. Signal inbound — arrival pending.', soon: true },
+        { id: 'japan_phasewalker',       name: 'JAPAN PHASEWALKER',      role: 'Phase / Displace',    accent: '#00b8d9', desc: 'Glitch dash. EMP shockwave. Digital Singularity. Fast, fragile, untrackable.' },
       ];
 
       const portW = 40, portH = 40, cardH = 52, gap = 5;
