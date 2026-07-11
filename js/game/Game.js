@@ -51,7 +51,7 @@ import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260711730000';
 import { NexusManager } from './NexusManager.js?v=20260711900000';
 import { VESSELS, getVesselById, getDefaultVesselId } from './VesselCatalog.js?v=20260705040000';
 import { PETS, getPetById } from './PetCatalog.js?v=20260705000000';
-import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons, isEvolutionOwnedBy, getCardDisplayName } from './WeaponCatalog.js?v=20260711960000';
+import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons, isEvolutionOwnedBy, getCardDisplayName } from './WeaponCatalog.js?v=20260711970000';
 import { TACTICAL_ID, TACTICAL_DEFS, getTacticalDef, getTacticalForCharacter, getAvailableTactical, preloadTacticalSprites, FUSION_TACTICALS } from './TacticalWeaponCatalog.js?v=20260711420000';
 import { VFXSpritePlayer } from './VFXSpritePlayer.js?v=20260711800000';
 
@@ -11694,6 +11694,117 @@ export class Game {
           ctx.globalAlpha = (1 - dK) * 0.7;             // crater ring glow
           ctx.strokeStyle = '#ff6a2a'; ctx.lineWidth = 3;
           ctx.beginPath(); ctx.ellipse(0, 6, f.R * 0.8, f.R * 0.38, 0, 0, Math.PI * 2); ctx.stroke();
+        }
+        ctx.restore();
+      } else if (f.id === 'wire_garrote_web') {
+        // INVISIBLE WEB: 5 anchor shurikens flick out (act 1) → blade-wires snap taut
+        // between EVERY pair, glinting only where 'light' sweeps across them (act 2) →
+        // the whole web CINCHES to the centre and vanishes in one thin white slice (act 3).
+        const N = 5;
+        const anch = [];
+        for (let i2 = 0; i2 < N; i2++) {
+          const aa = (i2 / N) * Math.PI * 2 + prV(f.seed, i2) * 0.7;
+          const ar = f.R * (0.75 + prV(f.seed, i2 + 9) * 0.35);
+          anch.push([Math.cos(aa) * ar, Math.sin(aa) * ar * 0.72]);
+        }
+        const out = Math.min(1, k / 0.2);               // anchors flick out
+        const cinch = Math.max(0, (k - 0.72) / 0.43);   // web tightens
+        const sc = out * (1 - cinch * 0.92);
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        // wires between every pair — alpha driven by a sweeping light band
+        if (k > 0.16) {
+          for (let i2 = 0; i2 < N; i2++) for (let j2 = i2 + 1; j2 < N; j2++) {
+            const [x1, y1] = anch[i2], [x2, y2] = anch[j2];
+            const mx = (x1 + x2) / 2 * sc, my2 = (y1 + y2) / 2 * sc;
+            // light sweep: bright when the rotating band passes the wire midpoint
+            const band = Math.sin(Math.atan2(my2, mx) - f.t * 2.4);
+            const glint = Math.max(0.06, band * band * band * band);
+            ctx.globalAlpha = glint * (0.9 - cinch * 0.3);
+            ctx.strokeStyle = '#e8ecf4'; ctx.lineWidth = cinch > 0 ? 1.6 : 0.8;
+            ctx.beginPath(); ctx.moveTo(x1 * sc, y1 * sc); ctx.lineTo(x2 * sc, y2 * sc); ctx.stroke();
+          }
+        }
+        // anchor shurikens
+        for (let i2 = 0; i2 < N; i2++) {
+          const [ax2, ay2] = anch[i2];
+          ctx.save();
+          ctx.translate(ax2 * sc, ay2 * sc);
+          ctx.rotate(f.t * 9 + i2);
+          ctx.globalAlpha = 0.9 * out * (1 - cinch);
+          ctx.strokeStyle = '#ff4dd2'; ctx.lineWidth = 1.8;
+          for (let s2 = 0; s2 < 4; s2++) { ctx.rotate(Math.PI / 2);
+            ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(7, -2.5); ctx.stroke(); }
+          ctx.restore();
+        }
+        if (cinch > 0.55) {                              // final slice-flash
+          const fK = (cinch - 0.55) / 0.45;
+          ctx.globalAlpha = (1 - fK) * 0.95;
+          ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2.4 * (1 - fK) + 0.6;
+          ctx.beginPath(); ctx.moveTo(-f.R * fK, 0); ctx.lineTo(f.R * fK, 0); ctx.stroke();
+        }
+        ctx.restore();
+      } else if (f.id === 'poison_petal_waltz') {
+        // BLACK ROSE: bloom (act 1) → petals detach ONE BY ONE and waltz outward on
+        // spiral paths as blades trailing toxic pink (act 2) → stem dissolves into
+        // drifting spores (act 3).
+        const P2 = 8;                                    // petals
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        const bloom = Math.min(1, k / 0.22);
+        // stem + rose head (until dissolve)
+        const diss = Math.max(0, (k - 0.8) / 0.35);
+        if (diss < 1) {
+          ctx.globalAlpha = (0.85 - diss * 0.85);
+          ctx.strokeStyle = '#3a5a2a'; ctx.lineWidth = 2.4;
+          ctx.beginPath(); ctx.moveTo(0, 18); ctx.quadraticCurveTo(4, 2, 0, -10 * bloom); ctx.stroke();
+        }
+        for (let i2 = 0; i2 < P2; i2++) {
+          const rel = (k - 0.22 - i2 * 0.055) / 0.5;     // per-petal release timing
+          const pa0 = (i2 / P2) * Math.PI * 2;
+          if (rel <= 0) {                                // still on the rose — bloom pose
+            if (bloom <= 0) continue;
+            ctx.save();
+            ctx.translate(0, -10 * bloom);
+            ctx.rotate(pa0 + f.t * 0.8);
+            ctx.globalAlpha = 0.85 * bloom;
+            ctx.fillStyle = i2 % 2 ? '#1a0a14' : '#2a0a20';
+            ctx.strokeStyle = '#ff4dd2'; ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.ellipse(0, -7 * bloom, 3.4, 7 * bloom, 0, 0, Math.PI * 2);
+            ctx.fill(); ctx.stroke();
+            ctx.restore();
+          } else if (rel < 1.15) {                       // waltzing outward on a spiral
+            const rr = f.R * Math.min(1, rel) * (0.9 + prV(f.seed, i2) * 0.25);
+            const pa = pa0 + rel * 3.2;                  // spiral
+            const px2 = Math.cos(pa) * rr, py2 = Math.sin(pa) * rr * 0.72 - 10;
+            // toxic trail (3 ghost petals behind)
+            for (let g2 = 1; g2 <= 3; g2++) {
+              const ga2 = pa - g2 * 0.16;
+              const gr = rr - g2 * 7;
+              if (gr < 0) continue;
+              ctx.globalAlpha = 0.3 / g2 * (1.15 - rel);
+              ctx.fillStyle = '#ff4dd2';
+              ctx.beginPath(); ctx.arc(Math.cos(ga2) * gr, Math.sin(ga2) * gr * 0.72 - 10, 2.2, 0, Math.PI * 2); ctx.fill();
+            }
+            ctx.save();
+            ctx.translate(px2, py2);
+            ctx.rotate(pa + Math.PI / 2 + rel * 4);      // petal tumbles as it dances
+            ctx.globalAlpha = Math.max(0, 1.15 - rel);
+            ctx.fillStyle = '#1a0a14';
+            ctx.strokeStyle = '#ff4dd2'; ctx.lineWidth = 1.2;
+            ctx.shadowColor = '#ff4dd2'; ctx.shadowBlur = 8;
+            ctx.beginPath(); ctx.ellipse(0, 0, 3.6, 8, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+            ctx.restore();
+          }
+        }
+        if (diss > 0) {                                  // spores drift up from the stem
+          ctx.fillStyle = '#9dff9d';
+          for (let i2 = 0; i2 < 9; i2++) {
+            const sp = prV(f.seed, i2 + 80);
+            ctx.globalAlpha = (1 - diss) * 0.7;
+            ctx.beginPath();
+            ctx.arc((sp - 0.5) * 26, 14 - diss * (24 + sp * 30), 1.3 + sp, 0, Math.PI * 2); ctx.fill();
+          }
         }
         ctx.restore();
       } else if (f.id === 'revenant_choir') {

@@ -42,6 +42,8 @@ export const WEAPON_ID = Object.freeze({
   FERRO_TEMPEST:    'ferro_tempest',    // NEW cyber-arm evolution (procedural)
   SEISMIC_GAUNTLET: 'seismic_gauntlet', // NEW brawler evolution (procedural)
   PYROCLAST_UPPERCUT:'pyroclast_uppercut',// NEW brawler evolution (procedural)
+  WIRE_GARROTE_WEB: 'wire_garrote_web', // NEW assassin evolution (procedural)
+  POISON_PETAL_WALTZ:'poison_petal_waltz',// NEW assassin evolution (procedural)
   TEMPEST_RIBBON:   'tempest_ribbon',   // NEW taekwondo evolution (procedural)
   REVENANT_CHOIR:   'revenant_choir',   // NEW skeleton evolution (procedural)
 });
@@ -617,6 +619,30 @@ export const WEAPON_DEFS = Object.freeze({
     color: '#ff6a2a',
     baseStats: { damage: 32, cooldown: 2.8, aoeRadius: 140, speed: 0, piercing: 99 },
   },
+  [WEAPON_ID.WIRE_GARROTE_WEB]: {
+    id: 'wire_garrote_web',
+    name: 'Wire Garrote Web',
+    description: 'Invisible blade-wires snap taut between five anchor points — a geometric web that glints only when light catches it, then CINCHES shut.',
+    character: 'assassin_clone',
+    element: 'shadow',
+    behavior: WEAPON_BEHAVIOR.VORTEX,
+    isEvolution: true,
+    procedural: true,
+    color: '#e8ecf4',
+    baseStats: { damage: 28, cooldown: 2.5, aoeRadius: 140, speed: 0, piercing: 99 },
+  },
+  [WEAPON_ID.POISON_PETAL_WALTZ]: {
+    id: 'poison_petal_waltz',
+    name: 'Poison Petal Waltz',
+    description: 'A black rose blooms — its petals waltz outward one by one as spiralling blades trailing toxic pink, until the stem dissolves into spores.',
+    character: 'assassin_clone',
+    element: 'toxic',
+    behavior: WEAPON_BEHAVIOR.NOVA,
+    isEvolution: true,
+    procedural: true,
+    color: '#ff4dd2',
+    baseStats: { damage: 26, cooldown: 2.9, aoeRadius: 155, speed: 0, piercing: 99 },
+  },
   [WEAPON_ID.REVENANT_CHOIR]: {
     id: 'revenant_choir',
     name: 'Revenant Choir',
@@ -704,6 +730,18 @@ export const EVOLUTION_RECIPES = Object.freeze([
     ingredients: [WEAPON_ID.GAS_NEEDLE, WEAPON_ID.SPIRIT_CRESCENT],
     minLevel: 5,
     owner: ['brawler_warrior'],
+  },
+  {
+    result: WEAPON_ID.WIRE_GARROTE_WEB,
+    ingredients: [WEAPON_ID.NEXUS_CHAKRAM, WEAPON_ID.STORM_SABER],
+    minLevel: 5,
+    owner: ['assassin_clone'],
+  },
+  {
+    result: WEAPON_ID.POISON_PETAL_WALTZ,
+    ingredients: [WEAPON_ID.GAS_NEEDLE, WEAPON_ID.SHADOW_TOXIC],
+    minLevel: 5,
+    owner: ['assassin_clone'],
   },
   {
     result: WEAPON_ID.CHAOS_CHORD,
