@@ -6146,9 +6146,11 @@ export class Game {
       }
     }
 
-    // Cyan electric pulse ring around the player
-    this._specialRings.push({ pos: p.pos.clone(), radius: 0, maxRadius: radius,
-                               life: 0.5, maxLife: 0.5, color1: CYAN, color2: '#ffffff' });
+    // Cinematic EMP blast (replaces the plain ring): implode flash → jittered EM wavefront
+    // with jagged arc teeth + hex cells igniting as it passes → residual static crackle.
+    this._empBlasts = this._empBlasts || [];
+    if (this._empBlasts.length >= 3) this._empBlasts.shift();
+    this._empBlasts.push({ x: p.pos.x, y: p.pos.y, t: 0, R: radius, seed: (Math.random() * 1000) | 0 });
     p.empCloudCooldown = Math.max(8, 12 - p.upgrades['EMP Cloud']);   // 12s base, upgrade trims it
     this.floatingTexts.push(new FloatingText('STUN PULSE!', p.pos.clone(), CYAN, 0.9));
     // (Japan Phasewalker's EMP Shockwave is now AUTOMATIC/passive — see _updatePhasewalkerFx —
@@ -12656,6 +12658,66 @@ export class Game {
     const fade = Math.min(1, w.timer / 1.0);
     const now  = performance.now() * 0.001;
     const pulse = 0.5 + 0.5 * Math.sin(now * 3);
+
+    // ── Lightning Blade Totem identity: the BLADE hovers point-down over the totem spot,
+    // slowly rotating, with 3 orbiting charge nodes arc-linked to it — and every ~0.9s a
+    // real jagged bolt SLAMS from the blade tip to a random point on the field rim.
+    {
+      const spr2 = this._tacticalSpriteCache.get(w.id);
+      const bob = Math.sin(now * 2.2) * 5;
+      const by2 = sy - 46 + bob;
+      ctx.save();
+      ctx.globalCompositeOperation = 'screen';
+      if (spr2 && spr2.complete && spr2.naturalWidth > 0) {
+        ctx.save();
+        ctx.translate(sx, by2);
+        ctx.rotate(Math.sin(now * 0.8) * 0.1);
+        ctx.shadowColor = col; ctx.shadowBlur = 14;
+        ctx.globalAlpha = fade;
+        ctx.drawImage(spr2, -20, -34, 40, 68);               // blade, point-down
+        ctx.restore();
+      }
+      ctx.globalCompositeOperation = 'lighter';
+      // 3 orbiting charge nodes + arcs to the blade
+      for (let i = 0; i < 3; i++) {
+        const a2 = now * 1.7 + i * (Math.PI * 2 / 3);
+        const nx = sx + Math.cos(a2) * 34, ny = by2 + Math.sin(a2) * 20;
+        ctx.globalAlpha = fade * (0.6 + 0.4 * Math.sin(now * 6 + i * 2));
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath(); ctx.arc(nx, ny, 2.4, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = fade * 0.5;
+        ctx.strokeStyle = col; ctx.lineWidth = 1.2;
+        ctx.beginPath(); ctx.moveTo(nx, ny);
+        ctx.lineTo(sx + (nx - sx) * 0.3 + (Math.random() - 0.5) * 5, by2 + (ny - by2) * 0.3 + (Math.random() - 0.5) * 5);
+        ctx.lineTo(sx, by2);
+        ctx.stroke();
+      }
+      // periodic bolt: blade tip → field rim (deterministic per cycle)
+      const CYC2 = 0.9, cyc2 = Math.floor(now / CYC2), age2 = now % CYC2;
+      if (age2 < 0.14) {
+        const va = Math.sin(cyc2 * 12.9898) * 43758.5453; const rnd2 = va - Math.floor(va);
+        const ta2 = rnd2 * Math.PI * 2;
+        const tx2 = sx + Math.cos(ta2) * R * 0.9, ty2 = sy + Math.sin(ta2) * R * 0.55;
+        const fb = 1 - age2 / 0.14;
+        ctx.globalAlpha = fb * fade;
+        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2.4;
+        ctx.shadowColor = col; ctx.shadowBlur = 14;
+        ctx.beginPath();
+        let px2 = sx, py2 = by2 + 30;
+        ctx.moveTo(px2, py2);
+        for (let sgm = 1; sgm <= 4; sgm++) {
+          px2 = sx + ((tx2 - sx) * sgm) / 4 + (Math.sin(cyc2 * 7 + sgm * 5) * 14);
+          py2 = (by2 + 30) + ((ty2 - by2 - 30) * sgm) / 4;
+          ctx.lineTo(px2, py2);
+        }
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.globalAlpha = fb * fade * 0.7;
+        ctx.fillStyle = col;
+        ctx.beginPath(); ctx.ellipse(tx2, ty2, 16 * fb + 4, 7 * fb + 2, 0, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.restore();
+    }
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     const g = ctx.createRadialGradient(sx, sy, R * 0.15, sx, sy, R);
@@ -15164,6 +15226,12 @@ export class Game {
       this.empRings[i].update(dt);
       if (!this.empRings[i].alive()) this.empRings.splice(i, 1);
     }
+    if (this._empBlasts) {
+      for (let i = this._empBlasts.length - 1; i >= 0; i--) {
+        this._empBlasts[i].t += dt;
+        if (this._empBlasts[i].t > 1.25) this._empBlasts.splice(i, 1);
+      }
+    }
   }
 
   _checkPlayerEnemyCollisions(dt) {
@@ -15720,6 +15788,7 @@ export class Game {
     for (const p of this.projectiles) { if (!p.hidden && !_off(p.pos)) p.draw(ctx); }
     for (const d of this.homingDiscs) d.draw(ctx);
     for (const r of this.empRings)    r.draw(ctx);
+    this._drawEmpBlasts(ctx);        // cinematic EMP shockwaves (E ability, all characters)
     for (const r of this._specialRings) {
       const alpha = r.life / r.maxLife;
       ctx.save(); ctx.globalAlpha = alpha;
@@ -24544,6 +24613,93 @@ _drawLoreArchive(ctx) {
         th.sleet(ctx, t, WIDTH, HEIGHT, this._frozenSleet.phase === 'hold' ? 1 : 0.6);
       }
     } catch (err) { console.warn('[WeatherTheater]', err); }
+  }
+
+  // EMP blast renderer — PHASE A (t<0.12) white implode flash · PHASE B (0.12-0.62)
+  // electromagnetic wavefront: double ring with jagged arc TEETH + hex cells igniting at the
+  // front · PHASE C (0.62-1.25) residual static crackle inside the stunned zone. World-space.
+  _drawEmpBlasts(ctx) {
+    if (!this._empBlasts || !this._empBlasts.length) return;
+    const prE = (sd, i) => { const v = Math.sin(sd * 12.9898 + i * 78.233) * 43758.5453; return v - Math.floor(v); };
+    for (const b of this._empBlasts) {
+      const { x, y, R, seed } = b;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      if (b.t < 0.12) {                                        // A: implode flash
+        const k = b.t / 0.12;
+        ctx.globalAlpha = (1 - k) * 0.9;
+        ctx.fillStyle = '#eaffff';
+        ctx.beginPath(); ctx.arc(x, y, 26 * (1 - k) + 6, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = k;
+        ctx.strokeStyle = CYAN; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(x, y, 40 * (1 - k) + 8, 0, Math.PI * 2); ctx.stroke();
+      } else if (b.t < 0.62) {                                 // B: EM wavefront
+        const k = (b.t - 0.12) / 0.5;
+        const r = R * k;
+        // main jittered ring (24 segments, radial jitter = electric wavefront)
+        ctx.globalAlpha = (1 - k * 0.6) * 0.95;
+        ctx.strokeStyle = CYAN; ctx.lineWidth = 3.2 * (1 - k) + 1;
+        ctx.shadowColor = CYAN; ctx.shadowBlur = 12;
+        ctx.beginPath();
+        for (let i = 0; i <= 24; i++) {
+          const a2 = (i / 24) * Math.PI * 2;
+          const jit = (prE(seed, i + ((b.t * 30) | 0)) - 0.5) * 14;
+          const rr = r + jit;
+          const px = x + Math.cos(a2) * rr, py = y + Math.sin(a2) * rr;
+          i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+        }
+        ctx.closePath(); ctx.stroke();
+        ctx.shadowBlur = 0;
+        // trailing white core ring
+        ctx.globalAlpha = (1 - k) * 0.7;
+        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.4;
+        ctx.beginPath(); ctx.arc(x, y, r * 0.92, 0, Math.PI * 2); ctx.stroke();
+        // jagged arc TEETH biting outward from the front (8, seed-stable)
+        for (let i = 0; i < 8; i++) {
+          const a2 = prE(seed, i + 40) * Math.PI * 2;
+          ctx.globalAlpha = (1 - k) * 0.85;
+          ctx.strokeStyle = i % 2 ? CYAN : '#ffffff'; ctx.lineWidth = 1.6;
+          ctx.beginPath();
+          let px = x + Math.cos(a2) * r, py = y + Math.sin(a2) * r;
+          ctx.moveTo(px, py);
+          for (let sgm = 1; sgm <= 3; sgm++) {
+            px += Math.cos(a2) * 11 + (prE(seed, i * 7 + sgm) - 0.5) * 12;
+            py += Math.sin(a2) * 11 + (prE(seed, i * 3 + sgm) - 0.5) * 12;
+            ctx.lineTo(px, py);
+          }
+          ctx.stroke();
+        }
+        // hex cells igniting just behind the front
+        for (let i = 0; i < 6; i++) {
+          const a2 = prE(seed, i + 60) * Math.PI * 2;
+          const rr = r * (0.7 + prE(seed, i + 70) * 0.25);
+          const hx = x + Math.cos(a2) * rr, hy = y + Math.sin(a2) * rr, hr = 9;
+          ctx.globalAlpha = (1 - k) * 0.5;
+          ctx.strokeStyle = CYAN; ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          for (let hv = 0; hv <= 6; hv++) {
+            const ha = (hv / 6) * Math.PI * 2 + Math.PI / 6;
+            hv === 0 ? ctx.moveTo(hx + Math.cos(ha) * hr, hy + Math.sin(ha) * hr)
+                     : ctx.lineTo(hx + Math.cos(ha) * hr, hy + Math.sin(ha) * hr);
+          }
+          ctx.stroke();
+        }
+      } else {                                                 // C: residual static
+        const k = (b.t - 0.62) / 0.63;
+        for (let i = 0; i < 10; i++) {
+          const cyc = prE(seed, i + 90 + ((b.t * 12) | 0));
+          if (cyc < 0.55) continue;                            // sparse, twitchy
+          const a2 = prE(seed, i + 80) * Math.PI * 2;
+          const rr = R * prE(seed, i + 85) * 0.95;
+          ctx.globalAlpha = (1 - k) * 0.6;
+          ctx.strokeStyle = i % 2 ? CYAN : '#ffffff'; ctx.lineWidth = 1.2;
+          const px = x + Math.cos(a2) * rr, py = y + Math.sin(a2) * rr;
+          ctx.beginPath(); ctx.moveTo(px - 4, py); ctx.lineTo(px + 4, py + (cyc - 0.75) * 8); ctx.stroke();
+        }
+      }
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; ctx.shadowBlur = 0;
   }
 
   _drawAcidRain(ctx) {
