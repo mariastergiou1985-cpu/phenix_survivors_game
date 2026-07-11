@@ -10091,33 +10091,92 @@ export class Game {
     { const _a = this._voidRifts; let _w = 0; for (let _i = 0; _i < _a.length; _i++) { const r = _a[_i]; if (!r.dead) _a[_w++] = r; } _a.length = _w; }
   }
 
+  // VOID RIFTS — premium pass: a real tear in reality. WARN uses the unified telegraph
+  // language; ACTIVE is a black-hole disc with a violet event-horizon rim, 3 accretion
+  // arms spiraling INWARD, matter being sucked in, and glitch slices crossing the void.
   _drawVoidRifts(ctx) {
     if (!this._voidRifts?.length) return;
     const now = performance.now();
+    const tS = now / 1000;
     ctx.save();
     for (const rf of this._voidRifts) {
       if (rf.phase === 'warn') {
-        // WARN: dark-violet swirling outline, alpha pulse, ring closes in.
-        const spin = now * 0.004;
-        ctx.globalAlpha = 0.3 + 0.15 * (1 + Math.sin(now * 0.015));
-        ctx.strokeStyle = '#8b2fd6'; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.arc(rf.x, rf.y, rf.r * (1 - 0.4 * rf.t / rf.warn), 0, Math.PI * 2); ctx.stroke();
-        ctx.beginPath(); ctx.arc(rf.x, rf.y, rf.r * 0.55, spin, spin + Math.PI * 1.3); ctx.stroke();
-      } else {
-        // ACTIVE: filled void disc + additive violet rim + inner spiral suggestion.
-        const fade = rf.t > rf.active - 0.4 ? Math.max(0, (rf.active - rf.t) / 0.4) : 1;
-        const spin = now * 0.006;
-        ctx.globalAlpha = fade;
-        ctx.fillStyle = 'rgba(20,0,40,0.55)';
-        ctx.beginPath(); ctx.arc(rf.x, rf.y, rf.r, 0, Math.PI * 2); ctx.fill();
+        // unified danger telegraph (same language as every other strike zone)
+        this._drawTelegraphRing(ctx, rf.x, rf.y, rf.r, rf.t / rf.warn, '#8b2fd6', '#c48bff');
+        // reality pre-crack: thin violet fracture lines forming at the center
+        const k = rf.t / rf.warn;
+        ctx.save();
         ctx.globalCompositeOperation = 'lighter';
-        ctx.strokeStyle = '#8b2fd6'; ctx.lineWidth = 3;
-        ctx.globalAlpha = 0.7 * fade;
-        ctx.beginPath(); ctx.arc(rf.x, rf.y, rf.r, 0, Math.PI * 2); ctx.stroke();
-        ctx.lineWidth = 2; ctx.globalAlpha = 0.45 * fade;
-        ctx.beginPath(); ctx.arc(rf.x, rf.y, rf.r * 0.62, spin, spin + Math.PI * 1.2); ctx.stroke();
-        ctx.beginPath(); ctx.arc(rf.x, rf.y, rf.r * 0.34, -spin, -spin + Math.PI * 1.4); ctx.stroke();
-        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = k * 0.8;
+        ctx.strokeStyle = '#c48bff'; ctx.lineWidth = 1.5;
+        for (let i = 0; i < 4; i++) {
+          const a = (i / 4) * Math.PI * 2 + 0.6;
+          ctx.beginPath();
+          ctx.moveTo(rf.x, rf.y);
+          ctx.lineTo(rf.x + Math.cos(a) * 26 * k + Math.sin(i * 9) * 6, rf.y + Math.sin(a) * 26 * k);
+          ctx.stroke();
+        }
+        ctx.restore();
+      } else {
+        const fade = rf.t > rf.active - 0.4 ? Math.max(0, (rf.active - rf.t) / 0.4) : 1;
+        const born = Math.min(1, rf.t / 0.25);                     // tear rips open fast
+        const R = rf.r * born;
+        ctx.save();
+        // the VOID: deep black disc (source-over — genuinely dark, light dies here)
+        ctx.globalAlpha = 0.85 * fade;
+        const hole = ctx.createRadialGradient(rf.x, rf.y, 0, rf.x, rf.y, R);
+        hole.addColorStop(0, 'rgba(0,0,0,0.95)');
+        hole.addColorStop(0.55, 'rgba(12,0,26,0.85)');
+        hole.addColorStop(0.85, 'rgba(30,4,58,0.45)');
+        hole.addColorStop(1, 'rgba(30,4,58,0)');
+        ctx.fillStyle = hole;
+        ctx.beginPath(); ctx.arc(rf.x, rf.y, R, 0, Math.PI * 2); ctx.fill();
+        ctx.globalCompositeOperation = 'lighter';
+        // event-horizon rim — bright violet, slightly wobbling
+        ctx.globalAlpha = 0.85 * fade;
+        ctx.strokeStyle = '#a44dff'; ctx.lineWidth = 2.6;
+        ctx.shadowColor = '#8b2fd6'; ctx.shadowBlur = 14;
+        ctx.beginPath();
+        for (let i = 0; i <= 30; i++) {
+          const a = (i / 30) * Math.PI * 2;
+          const wob = 1 + 0.03 * Math.sin(a * 6 + tS * 4);
+          const px = rf.x + Math.cos(a) * R * 0.94 * wob, py = rf.y + Math.sin(a) * R * 0.94 * wob;
+          i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+        }
+        ctx.closePath(); ctx.stroke();
+        ctx.shadowBlur = 0;
+        // 3 accretion arms spiraling INWARD (logarithmic-ish spirals, rotating)
+        for (let arm = 0; arm < 3; arm++) {
+          ctx.globalAlpha = 0.5 * fade;
+          ctx.strokeStyle = arm === 0 ? '#c48bff' : '#8b2fd6'; ctx.lineWidth = 1.8;
+          ctx.beginPath();
+          for (let sgm = 0; sgm <= 14; sgm++) {
+            const f = sgm / 14;
+            const a = arm * (Math.PI * 2 / 3) - tS * 1.8 - f * 2.6;
+            const rr = R * (0.92 - f * 0.8);
+            const px = rf.x + Math.cos(a) * rr, py = rf.y + Math.sin(a) * rr;
+            sgm === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+          }
+          ctx.stroke();
+        }
+        // matter being SUCKED in — motes racing inward and vanishing
+        for (let i = 0; i < 7; i++) {
+          const v = Math.sin((rf.x | 0) * 0.7 + i * 78.233) * 43758.5453; const rnd = v - Math.floor(v);
+          const cyc = (tS * (0.8 + rnd * 0.6) + rnd) % 1;
+          const a = rnd * Math.PI * 2 + tS * 0.4;
+          const rr = R * (1.15 - cyc);
+          ctx.globalAlpha = fade * (0.3 + cyc * 0.6) * (rr > R * 0.15 ? 1 : 0);
+          ctx.fillStyle = i % 2 ? '#c48bff' : '#ffffff';
+          ctx.beginPath(); ctx.arc(rf.x + Math.cos(a) * rr, rf.y + Math.sin(a) * rr, 1.6 + rnd, 0, Math.PI * 2); ctx.fill();
+        }
+        // glitch slices crossing the void (reality failing to render it)
+        if (Math.sin(tS * 13 + rf.x) > 0.55) {
+          ctx.globalAlpha = 0.5 * fade;
+          ctx.fillStyle = '#c48bff';
+          const gy2 = rf.y + (Math.sin(tS * 31) * R * 0.5);
+          ctx.fillRect(rf.x - R * 0.8, gy2, R * 1.6, 1.5);
+        }
+        ctx.restore();
       }
     }
     ctx.globalAlpha = 1; ctx.restore();

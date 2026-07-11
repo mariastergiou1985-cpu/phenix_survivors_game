@@ -1,4 +1,4 @@
-import { Game } from './game/Game.js?v=20260711820000';
+import { Game } from './game/Game.js?v=20260711830000';
 import { AudioManager } from './audio/AudioManager.js?v=20260711770000';
 import { GamepadInput } from './Gamepad.js?v=20260706330000';
 import { initTouchControls } from './TouchInput.js?v=20260706340000';
