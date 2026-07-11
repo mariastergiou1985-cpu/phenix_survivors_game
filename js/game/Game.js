@@ -51,7 +51,7 @@ import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260711730000';
 import { NexusManager } from './NexusManager.js?v=20260711900000';
 import { VESSELS, getVesselById, getDefaultVesselId } from './VesselCatalog.js?v=20260705040000';
 import { PETS, getPetById } from './PetCatalog.js?v=20260705000000';
-import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons, isEvolutionOwnedBy, getCardDisplayName } from './WeaponCatalog.js?v=20260708200000';
+import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons, isEvolutionOwnedBy, getCardDisplayName } from './WeaponCatalog.js?v=20260711930000';
 import { TACTICAL_ID, TACTICAL_DEFS, getTacticalDef, getTacticalForCharacter, getAvailableTactical, preloadTacticalSprites, FUSION_TACTICALS } from './TacticalWeaponCatalog.js?v=20260711420000';
 import { VFXSpritePlayer } from './VFXSpritePlayer.js?v=20260711800000';
 
@@ -8140,6 +8140,7 @@ export class Game {
       if (this._activeWeaponVFX[i].isDone()) this._activeWeaponVFX.splice(i, 1);
     }
     this._updateWeaponAccents(dt);    // weapon strike accent layer (bounded)
+    if (this._evoFx) { for (let i = this._evoFx.length - 1; i >= 0; i--) { this._evoFx[i].t += dt; if (this._evoFx[i].t > 1.15) this._evoFx.splice(i, 1); } }
     this._enforcePerfCaps();          // Phase 18: defensive global hard-caps (never collapse perf)
     this._updatePatternVFX(dt);       // Phase 8: per-character pattern art overlay
     this._updateStormExecution(dt);   // Storm Execution reward (normal-enemy-only zaps)
@@ -11159,6 +11160,17 @@ export class Game {
   // Spawn a weapon VFX sprite sheet animation at a world position.
   // Used for weapon fire effects AND evolution fanfare.
   _spawnWeaponVFX(weaponId, x, y, angle, scale) {
+    // NEW-GEN procedural evolutions: no sprite sheet — a bespoke choreography object
+    // (drawn in _drawEvoFx, ultimate-style). Damage stays in _autoFireWeapon as usual.
+    const _pDef = getWeaponDef(weaponId);
+    if (_pDef && _pDef.procedural) {
+      this._evoFx = this._evoFx || [];
+      if (this._evoFx.length >= 10) this._evoFx.shift();
+      this._evoFx.push({ id: weaponId, x, y, angle: angle || 0, t: 0,
+                         seed: (Math.random() * 1000) | 0, R: _pDef.baseStats?.aoeRadius || 120 });
+      this._spawnWeaponAccent(weaponId, x, y, angle || 0, 1.4);
+      return null;
+    }
     const meta = WEAPON_VFX_META[weaponId];
     const sheet = this._weaponVFXSheets[weaponId];
     if (!meta || !sheet || !sheet.complete || sheet.naturalWidth === 0) return null;
@@ -11287,6 +11299,139 @@ export class Game {
       this._weaponAccents[i].t += dt;
       if (this._weaponAccents[i].t >= this._weaponAccents[i].life) this._weaponAccents.splice(i, 1);
     }
+  }
+
+  // ── NEW-GEN procedural evolutions — each is a mini-ultimate choreography. World-space.
+  _drawEvoFx(ctx) {
+    if (!this._evoFx || !this._evoFx.length) return;
+    const prV = (sd, i) => { const v = Math.sin(sd * 12.9898 + i * 78.233) * 43758.5453; return v - Math.floor(v); };
+    for (const f of this._evoFx) {
+      const k = f.t / 1.15;
+      ctx.save();
+      ctx.translate(f.x, f.y);
+      if (f.id === 'marrow_reactor') {
+        // ACT 1 (k<0.26): six bone RIBS slam inward and cage the point.
+        // ACT 2 (0.26-0.62): the reactor VENTS — white core + electric marrow beams through the gaps.
+        // ACT 3 (>0.62): the cage crumbles into falling bone chips.
+        const R = f.R * 0.8;
+        if (k < 0.62) {
+          const inK = Math.min(1, k / 0.26);
+          for (let i = 0; i < 6; i++) {
+            const a2 = (i / 6) * Math.PI * 2 + 0.3;
+            const dist = R * (1.6 - inK * 0.85);
+            const bx = Math.cos(a2) * dist, by = Math.sin(a2) * dist * 0.7;
+            ctx.save();
+            ctx.translate(bx, by);
+            ctx.rotate(a2 + Math.PI / 2);
+            ctx.fillStyle = '#e8e4d0';
+            ctx.strokeStyle = '#b8b2a0'; ctx.lineWidth = 1.5;
+            ctx.beginPath();                                     // curved rib (bezier bone)
+            ctx.moveTo(-4, -R * 0.45);
+            ctx.quadraticCurveTo(-14, 0, -4, R * 0.45);
+            ctx.lineTo(4, R * 0.45);
+            ctx.quadraticCurveTo(-6, 0, 4, -R * 0.45);
+            ctx.closePath(); ctx.fill(); ctx.stroke();
+            ctx.restore();
+          }
+        }
+        if (k >= 0.26 && k < 0.62) {
+          const vK = (k - 0.26) / 0.36;
+          ctx.save();
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.globalAlpha = (1 - vK) * 0.95;
+          ctx.fillStyle = '#ffffff';                             // reactor core
+          ctx.beginPath(); ctx.arc(0, 0, 10 + vK * 8, 0, Math.PI * 2); ctx.fill();
+          for (let i = 0; i < 6; i++) {                          // marrow beams through the gaps
+            const a2 = (i / 6) * Math.PI * 2 + 0.3 + Math.PI / 6;
+            ctx.strokeStyle = i % 2 ? '#9fd8ff' : '#ffffff'; ctx.lineWidth = 3 * (1 - vK) + 1;
+            ctx.shadowColor = '#9fd8ff'; ctx.shadowBlur = 12;
+            ctx.beginPath();
+            let px = Math.cos(a2) * 12, py = Math.sin(a2) * 12 * 0.7;
+            ctx.moveTo(px, py);
+            for (let sgm = 1; sgm <= 3; sgm++) {
+              px = Math.cos(a2) * (12 + vK * f.R * sgm / 3) + (prV(f.seed, i * 5 + sgm) - 0.5) * 16;
+              py = Math.sin(a2) * (12 + vK * f.R * sgm / 3) * 0.7;
+              ctx.lineTo(px, py);
+            }
+            ctx.stroke();
+          }
+          ctx.shadowBlur = 0;
+          ctx.restore();
+        }
+        if (k >= 0.62) {
+          const cK = (k - 0.62) / 0.53;
+          ctx.globalAlpha = 1 - cK;
+          ctx.fillStyle = '#e8e4d0';
+          for (let i = 0; i < 8; i++) {                          // crumbling chips fall
+            const a2 = prV(f.seed, i + 40) * Math.PI * 2;
+            const rr = R * (0.8 + prV(f.seed, i + 50) * 0.3);
+            ctx.beginPath();
+            ctx.arc(Math.cos(a2) * rr, Math.sin(a2) * rr * 0.7 + cK * cK * 40, 2.4, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+      } else if (f.id === 'revenant_choir') {
+        // ACT 1 (k<0.32): three revenant skulls RISE from the strike point.
+        // ACT 2 (0.32-0.62): they SING — bone-toothed sonic rings pulse outward.
+        // ACT 3 (>0.62): they DIVE outward as hunting streaks with wisp trails.
+        const rise = Math.min(1, k / 0.32);
+        for (let i = 0; i < 3; i++) {
+          const a2 = (i / 3) * Math.PI * 2 - Math.PI / 2 + f.seed;
+          let sx2, sy2, al = 1;
+          if (k < 0.62) {
+            sx2 = Math.cos(a2) * 30;
+            sy2 = Math.sin(a2) * 16 - rise * 44;
+          } else {
+            const dK = (k - 0.62) / 0.53;
+            sx2 = Math.cos(a2) * (30 + dK * f.R * 1.4);
+            sy2 = Math.sin(a2) * (16 + dK * f.R * 0.9) - 44 + dK * 30;
+            al = 1 - dK;
+            ctx.save();                                          // dive streak trail
+            ctx.globalCompositeOperation = 'lighter';
+            ctx.globalAlpha = al * 0.5;
+            ctx.strokeStyle = '#bfefff'; ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(sx2 - Math.cos(a2) * 26, sy2 - Math.sin(a2) * 18 + 6);
+            ctx.lineTo(sx2, sy2);
+            ctx.stroke();
+            ctx.restore();
+          }
+          // procedural skull: dome + eye sockets + jaw teeth
+          ctx.save();
+          ctx.globalAlpha = al * (0.75 + 0.25 * Math.sin(f.t * 12 + i * 2));
+          ctx.fillStyle = '#e8e4d0';
+          ctx.shadowColor = '#bfefff'; ctx.shadowBlur = 10;
+          ctx.beginPath(); ctx.arc(sx2, sy2, 8, Math.PI, 0); ctx.lineTo(sx2 + 8, sy2 + 4); ctx.lineTo(sx2 - 8, sy2 + 4); ctx.closePath(); ctx.fill();
+          ctx.shadowBlur = 0;
+          ctx.fillStyle = '#0a0e18';
+          ctx.beginPath(); ctx.arc(sx2 - 3, sy2 - 1, 1.8, 0, Math.PI * 2); ctx.fill();
+          ctx.beginPath(); ctx.arc(sx2 + 3, sy2 - 1, 1.8, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = '#e8e4d0';
+          for (let tth = -1; tth <= 1; tth++) ctx.fillRect(sx2 + tth * 3 - 1, sy2 + 4, 2, 3);
+          ctx.restore();
+        }
+        if (k >= 0.32 && k < 0.62) {                             // the SONG: toothed sonic rings
+          const sK = (k - 0.32) / 0.3;
+          ctx.save();
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.globalAlpha = (1 - sK) * 0.85;
+          ctx.strokeStyle = '#bfefff'; ctx.lineWidth = 2.4;
+          ctx.shadowColor = '#bfefff'; ctx.shadowBlur = 10;
+          const rr = 20 + sK * f.R;
+          ctx.beginPath();
+          for (let i = 0; i <= 36; i++) {                        // bone-toothed edge
+            const a2 = (i / 36) * Math.PI * 2;
+            const tooth = i % 3 === 0 ? 6 : 0;
+            const px = Math.cos(a2) * (rr + tooth), py = Math.sin(a2) * (rr + tooth) * 0.7;
+            i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+          }
+          ctx.closePath(); ctx.stroke();
+          ctx.restore();
+        }
+      }
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; ctx.shadowBlur = 0;
   }
 
   _drawWeaponAccents(ctx) {
@@ -16051,6 +16196,7 @@ export class Game {
     this._drawHomingMissiles(ctx);       // Phase 2 HOMING
     this._drawVesselRockets(ctx);        // Vessel companion auto-aim purple rockets
     this._drawWeaponAccents(ctx);                             // cinematic accents UNDER the art
+    this._drawEvoFx(ctx);                                     // NEW-GEN procedural evolutions
     for (const vfx of this._activeWeaponVFX) vfx.draw(ctx);   // Evolution VFX overlays
     this._drawPatternVFX(ctx);                                // Phase 8: per-character pattern art
     this._drawTacticalWeapons(ctx);  // Tactical cache weapons (independent map objects)

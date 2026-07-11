@@ -36,6 +36,8 @@ export const WEAPON_ID = Object.freeze({
   BONECIRCUIT_STORM:  'bonecircuit_storm',
   VENOM_SHROUD:       'venom_shroud',
   SEISMIC_RIFT:       'seismic_rift',
+  MARROW_REACTOR:   'marrow_reactor',   // NEW skeleton evolution (procedural)
+  REVENANT_CHOIR:   'revenant_choir',   // NEW skeleton evolution (procedural)
 });
 
 // ── Weapon behavior types ───────────────────────────────────────────
@@ -523,6 +525,33 @@ export const WEAPON_DEFS = Object.freeze({
     fps: 1,
     baseStats: { damage: 68, cooldown: 3.0, aoeRadius: 210, speed: 3, piercing: 99 },
   },
+  // ── NEW-GENERATION EVOLUTIONS (procedural — drawn like the ultimates, no sprite sheet).
+  // `procedural: true` routes them to Game._spawnEvoFx instead of the sprite VFX player.
+  [WEAPON_ID.MARROW_REACTOR]: {
+    id: 'marrow_reactor',
+    name: 'Marrow Reactor',
+    description: 'Bone ribs cage the target, then the reactor VENTS — electric marrow erupts through the gaps.',
+    character: 'skeleton_warrior',
+    element: 'electric',
+    behavior: WEAPON_BEHAVIOR.GROUND_SHOCKWAVE,
+    isEvolution: true,
+    procedural: true,
+    color: '#e8e4d0',
+    baseStats: { damage: 40, cooldown: 2.6, aoeRadius: 130, speed: 0, piercing: 99 },
+  },
+  [WEAPON_ID.REVENANT_CHOIR]: {
+    id: 'revenant_choir',
+    name: 'Revenant Choir',
+    description: 'Three revenant skulls rise, SING a bone-toothed shockwave, then dive as hunting streaks.',
+    character: 'skeleton_warrior',
+    element: 'electric',
+    behavior: WEAPON_BEHAVIOR.CIRCLE_360,
+    isEvolution: true,
+    procedural: true,
+    color: '#bfefff',
+    baseStats: { damage: 26, cooldown: 3.0, aoeRadius: 150, speed: 0, piercing: 99 },
+  },
+
 });
 
 // ── Evolution recipes ───────────────────────────────────────────────
@@ -550,6 +579,18 @@ export const EVOLUTION_RECIPES = Object.freeze([
   // ── Depth-expansion recipes (batch 1). `owner` pins the recipe to a single
   // character (overrides ingredient-derived ownership) so each new evolution
   // stays exclusive and never leaks into another character's card rotation. ──
+  {
+    result: WEAPON_ID.MARROW_REACTOR,
+    ingredients: [WEAPON_ID.STORM_SABER, WEAPON_ID.GAS_NEEDLE],
+    minLevel: 5,
+    owner: ['skeleton_warrior'],
+  },
+  {
+    result: WEAPON_ID.REVENANT_CHOIR,
+    ingredients: [WEAPON_ID.NEXUS_CHAKRAM, WEAPON_ID.GLITCH_TEAR],
+    minLevel: 5,
+    owner: ['skeleton_warrior'],
+  },
   {
     result: WEAPON_ID.CHAOS_CHORD,
     ingredients: [WEAPON_ID.SOLO_RED_THUNDER, WEAPON_ID.STORM_SABER],
