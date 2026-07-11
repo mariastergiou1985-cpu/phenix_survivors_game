@@ -224,7 +224,24 @@ export function drawHUD(ctx, game) {
     // Brief fusion-name flash when a fusion procs (fades over its last moment).
     if (game._fusionName && game._fusionNameT > 0) {
       ctx.globalAlpha = Math.min(1, game._fusionNameT);
-      drawText(ctx, '⚡ ' + game._fusionName, 16, HEIGHT - 86, '#ffd23c', 'bold 11px Consolas, monospace');
+      // Premium fusion chip: dark pill + gold rim + white name (no emoji)
+      {
+        ctx.save();
+        ctx.font = 'bold 10px Consolas, monospace';
+        const fnW = ctx.measureText(game._fusionName).width + 22;
+        const fy = HEIGHT - 98;
+        ctx.fillStyle = 'rgba(10,8,2,0.85)';
+        ctx.beginPath(); ctx.roundRect(16, fy, fnW, 17, 8); ctx.fill();
+        ctx.strokeStyle = '#ffd23c'; ctx.lineWidth = 1.2;
+        ctx.shadowColor = '#ffd23c'; ctx.shadowBlur = 6;
+        ctx.beginPath(); ctx.roundRect(16, fy, fnW, 17, 8); ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = '#ffd23c';
+        ctx.beginPath(); ctx.arc(26, fy + 8.5, 3, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#fff6d8'; ctx.textAlign = 'left';
+        ctx.fillText(game._fusionName, 34, fy + 12);
+        ctx.restore();
+      }
       // Eddie fusion recipe art — Thunder Maiden partner + fused Crimson Thunder Gate icons
       if (game._activeElement === 'crimson_gate' && game._eddieElementIcons) {
         ctx.font = 'bold 11px Consolas, monospace';
@@ -410,9 +427,37 @@ function _drawAbilityBox(ctx, x, y, s, label, frac, ready, glyphFn, color = CYAN
   glyphFn(cx, cy);
   ctx.restore();
   _drawRing(ctx, cx, cy, s / 2 + 5, frac, ready, color);
+  // Charging: dark radial sweep shows exactly HOW MUCH is left + live % readout.
+  // Ready: no stale "100%" — a breathing glass highlight + corner ticks say it for you.
+  if (!ready) {
+    ctx.save();
+    ctx.globalAlpha = 0.55;
+    ctx.fillStyle = '#04070c';
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, s * 0.62, -Math.PI / 2 + frac * Math.PI * 2, -Math.PI / 2 + Math.PI * 2);
+    ctx.closePath(); ctx.fill();
+    ctx.restore();
+  } else {
+    ctx.save();
+    const gl = _readyPulse();
+    ctx.globalAlpha = 0.16 * gl;                             // glass sheen
+    const gg = ctx.createLinearGradient(cx, cy - s / 2, cx, cy + s / 2);
+    gg.addColorStop(0, '#ffffff'); gg.addColorStop(0.5, 'rgba(255,255,255,0)');
+    ctx.fillStyle = gg;
+    ctx.beginPath(); ctx.roundRect(cx - s / 2 + 2, cy - s / 2 + 2, s - 4, s * 0.5, 5); ctx.fill();
+    ctx.globalAlpha = 0.9 * gl;                              // corner ticks
+    ctx.strokeStyle = color; ctx.lineWidth = 1.6;
+    const tk = 6, x0 = cx - s / 2, y0 = cy - s / 2;
+    ctx.beginPath();
+    ctx.moveTo(x0, y0 + tk); ctx.lineTo(x0, y0); ctx.lineTo(x0 + tk, y0);
+    ctx.moveTo(x0 + s - tk, y0 + s); ctx.lineTo(x0 + s, y0 + s); ctx.lineTo(x0 + s, y0 + s - tk);
+    ctx.stroke();
+    ctx.restore();
+  }
   ctx.textAlign = 'center';
   drawText(ctx, label, cx, y - 8, ready ? color : '#90a4b4', 'bold 13px Consolas, monospace');
-  drawText(ctx, `${Math.round(frac * 100)}%`, cx, y + s + 16, ready ? color : '#90a4b4', '11px Consolas, monospace');
+  if (!ready) drawText(ctx, `${Math.round(frac * 100)}%`, cx, y + s + 16, '#90a4b4', '11px Consolas, monospace');
 }
 
 // Bottom-right ultimate box: icon image + circular mana-fill ring. `color` = character identity.

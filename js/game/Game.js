@@ -21,7 +21,7 @@ import { UpgradeUI }      from './UpgradeUI.js?v=20260711370000';
 import { weightedSample } from './Upgrades.js?v=20260711370000';
 import { MutationUI }      from './MutationUI.js?v=20260703990000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
-import { drawHUD, drawEndScreen } from './HUD.js?v=20260711800000';
+import { drawHUD, drawEndScreen } from './HUD.js?v=20260711820000';
 import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, SKILL_TREE, AMULET_DEFS } from './MetaProgress.js?v=20260711760000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260711590000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
@@ -12611,6 +12611,33 @@ export class Game {
     const sprite = this._tacticalSpriteCache.get(w.id);
     const dx = w.droneX - cam.x, dy = w.droneY - cam.y;
     const size = 48;
+    // Predator identity: rotating RADAR SWEEP cone + hunting blink — reads as a killer
+    // actively scanning, not a floating decoration.
+    {
+      const col = (w.def && w.def.color) || '#cc44ff';
+      const tS = performance.now() / 1000;
+      const sweepA = tS * 2.4;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      const cone = ctx.createRadialGradient(dx, dy, 6, dx, dy, 120);
+      cone.addColorStop(0, col.replace(')', '') ? col + '' : col);   // solid col fallback
+      ctx.globalAlpha = 0.14;
+      ctx.fillStyle = col;
+      ctx.beginPath();
+      ctx.moveTo(dx, dy);
+      ctx.arc(dx, dy, 120, sweepA, sweepA + 0.55);
+      ctx.closePath(); ctx.fill();
+      ctx.globalAlpha = 0.5;
+      ctx.strokeStyle = col; ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.moveTo(dx, dy);
+      ctx.lineTo(dx + Math.cos(sweepA + 0.27) * 120, dy + Math.sin(sweepA + 0.27) * 120);
+      ctx.stroke();
+      // hunting blink (red pulse under the body — "armed")
+      ctx.globalAlpha = 0.5 + 0.5 * Math.sin(tS * 9);
+      ctx.fillStyle = '#ff3355';
+      ctx.beginPath(); ctx.arc(dx, dy + 10, 2.2, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
     if (!sprite || !sprite.complete || !sprite.naturalWidth) {
       // sprite missing/loading → procedural drone body so the weapon is NEVER invisible
       const col = (w.def && w.def.color) || '#cc44ff';
