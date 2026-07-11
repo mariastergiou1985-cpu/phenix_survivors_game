@@ -108,13 +108,16 @@ export class ElementFx {
   spawn(x, y, element, scale = 1) {
     if (!ELEMENTS[element]) return;
     if (this.bursts.length >= MAX_BURSTS) this.bursts.shift();   // drop oldest — never unbounded
-    this.bursts.push({ x, y, t: 0, life: ELEMENTS[element].life, element, scale, rot: Math.random() * Math.PI });
+    // seed: stable per-burst randomness so jitter shapes don't strobe frame-to-frame
+    this.bursts.push({ x, y, t: 0, life: ELEMENTS[element].life, element, scale,
+                       rot: Math.random() * Math.PI, seed: (Math.random() * 1000) | 0 });
   }
 
-  // Premium two-color fusion burst (impact flash + dual expanding rings + alternating spokes).
+  // Premium two-color fusion burst — counter-rotating rings + interleaved petals + core flash.
   spawnFusion(x, y, c1, c2, scale = 1) {
     if (this.bursts.length >= MAX_BURSTS) this.bursts.shift();
-    this.bursts.push({ x, y, t: 0, life: 0.65, fusion: true, c1, c2, scale, rot: Math.random() * Math.PI });
+    this.bursts.push({ x, y, t: 0, life: 0.65, fusion: true, c1, c2, scale,
+                       rot: Math.random() * Math.PI, seed: (Math.random() * 1000) | 0 });
   }
 
   update(dt) {
@@ -126,94 +129,202 @@ export class ElementFx {
 
   clear() { this.bursts.length = 0; }
 
-  // World-space draw (caller is inside the camera transform). Additive blend so bursts glow.
+  // deterministic pseudo-random per (seed, i) — stable shapes, no per-particle arrays
+  _pr(seed, i) { const v = Math.sin(seed * 12.9898 + i * 78.233) * 43758.5453; return v - Math.floor(v); }
+
+  // ── World-space draw (caller is inside the camera transform). Additive glow. Each element
+  // has a cinematic identity in the ultimate-module style — procedural, bounded, seed-stable.
   draw(ctx) {
     for (const b of this.bursts) {
-      if (b.fusion) {                          // premium two-color fusion burst
-        const k = b.t / b.life, a = 1 - k, r = (12 + 34 * k) * b.scale;
-        ctx.save();
-        ctx.translate(b.x, b.y);
-        ctx.globalCompositeOperation = 'lighter';
-        if (k < 0.4) { ctx.globalAlpha = (0.4 - k) * 2; ctx.fillStyle = b.c2;
-          ctx.beginPath(); ctx.arc(0, 0, 10 * b.scale * (1 - k), 0, Math.PI * 2); ctx.fill(); }
-        ctx.globalAlpha = a * 0.85; ctx.strokeStyle = b.c1; ctx.lineWidth = 3 * b.scale;
-        ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.stroke();
-        ctx.globalAlpha = a * 0.7; ctx.strokeStyle = b.c2; ctx.lineWidth = 2 * b.scale;
-        ctx.beginPath(); ctx.arc(0, 0, r * 0.6, 0, Math.PI * 2); ctx.stroke();
-        for (let i = 0; i < 8; i++) {          // alternating-color spokes
-          const ang = b.rot + i * (Math.PI / 4), dx = Math.cos(ang), dy = Math.sin(ang);
-          ctx.globalAlpha = a; ctx.strokeStyle = (i % 2) ? b.c1 : b.c2; ctx.lineWidth = 2 * b.scale;
-          ctx.beginPath(); ctx.moveTo(dx * 8, dy * 8); ctx.lineTo(dx * r, dy * r); ctx.stroke();
-        }
-        ctx.restore();
-        continue;
-      }
-      const def = ELEMENTS[b.element]; if (!def) continue;
-      const k = b.t / b.life;                 // 0..1 progress
-      const a = 1 - k;                         // fade out
-      const r = (14 + 40 * k) * b.scale;       // expanding ring (bigger = more readable)
+      const k = b.t / b.life, a = 1 - k;
       ctx.save();
       ctx.translate(b.x, b.y);
       ctx.globalCompositeOperation = 'lighter';
 
-      // Impact flash (first 50%)
-      if (k < 0.50) {
-        ctx.globalAlpha = (0.4 - k) * 2;
-        ctx.fillStyle = def.c2;
-        ctx.beginPath(); ctx.arc(0, 0, 8 * b.scale * (1 - k), 0, Math.PI * 2); ctx.fill();
-      }
-      // Burst ring
-      ctx.globalAlpha = a * 0.95; ctx.strokeStyle = def.c1; ctx.lineWidth = 3 * b.scale;
-      ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.stroke();
-
-      // Element-specific flourish (procedural — fixed small loops, no arrays)
-      ctx.strokeStyle = def.c2; ctx.fillStyle = def.c1; ctx.lineWidth = 2 * b.scale;
-      const n = def.spokes;
-      for (let i = 0; i < n; i++) {
-        const ang = b.rot + i * (Math.PI * 2 / n), dx = Math.cos(ang), dy = Math.sin(ang);
-        ctx.globalAlpha = a;
-        if (def.style === 'shard') {
-          const px = dx * r, py = dy * r;
-          ctx.beginPath();
-          ctx.moveTo(px, py);
-          ctx.lineTo(px - dy * 4 * b.scale, py + dx * 4 * b.scale);
-          ctx.lineTo(px + dx * 7 * b.scale, py + dy * 7 * b.scale);
-          ctx.lineTo(px + dy * 4 * b.scale, py - dx * 4 * b.scale);
-          ctx.closePath(); ctx.fill();
-        } else if (def.style === 'arc') {
-          ctx.beginPath(); ctx.moveTo(dx * 6, dy * 6);
-          ctx.lineTo(dx * r * 0.6 - dy * 5, dy * r * 0.6 + dx * 5);
-          ctx.lineTo(dx * r, dy * r); ctx.stroke();
-        } else if (def.style === 'ember') {
-          ctx.beginPath(); ctx.moveTo(dx * 8, dy * 8 - k * 4);
-          ctx.lineTo(dx * r, dy * r - k * 12); ctx.stroke();
-        } else {
-          ctx.beginPath(); ctx.moveTo(dx * 8, dy * 8); ctx.lineTo(dx * r, dy * r); ctx.stroke();
+      if (b.fusion) {                          // ── FUSION: two forces colliding ──
+        const r = (12 + 36 * k) * b.scale;
+        if (k < 0.35) { ctx.globalAlpha = (0.35 - k) * 2.6; ctx.fillStyle = '#ffffff';
+          ctx.beginPath(); ctx.arc(0, 0, 11 * b.scale * (1 - k), 0, Math.PI * 2); ctx.fill(); }
+        // counter-rotating broken rings (one per color)
+        for (const [col, dir, rr] of [[b.c1, 1, r], [b.c2, -1, r * 0.72]]) {
+          ctx.strokeStyle = col; ctx.lineWidth = 2.6 * b.scale; ctx.globalAlpha = a * 0.9;
+          for (let i = 0; i < 3; i++) {
+            const s0 = b.rot * dir + k * dir * 3 + i * (Math.PI * 2 / 3);
+            ctx.beginPath(); ctx.arc(0, 0, rr, s0, s0 + Math.PI * 0.5); ctx.stroke();
+          }
         }
+        // interleaved petals
+        for (let i = 0; i < 8; i++) {
+          const ang = b.rot + i * (Math.PI / 4) + k * 1.5, dx = Math.cos(ang), dy = Math.sin(ang);
+          ctx.globalAlpha = a; ctx.strokeStyle = (i % 2) ? b.c1 : b.c2; ctx.lineWidth = 2 * b.scale;
+          ctx.beginPath(); ctx.moveTo(dx * 8, dy * 8);
+          ctx.quadraticCurveTo(dx * r * 0.6 - dy * 8, dy * r * 0.6 + dx * 8, dx * r, dy * r);
+          ctx.stroke();
+        }
+        ctx.restore();
+        continue;
       }
-      // Extra inner ring for ice/crystal — adds depth (after spokes, before style extras)
-      if (def.style === 'shard') {
-        ctx.globalAlpha  = a * 0.55;
-        ctx.strokeStyle  = def.c2;
-        ctx.lineWidth    = 1.5 * b.scale;
-        ctx.beginPath(); ctx.arc(0, 0, r * 0.45, 0, Math.PI * 2); ctx.stroke();
+
+      const def = ELEMENTS[b.element]; if (!def) { ctx.restore(); continue; }
+      const r = (14 + 40 * k) * b.scale;
+      const st = def.style;
+
+      // shared impact flash
+      if (k < 0.4) {
+        ctx.globalAlpha = (0.4 - k) * 2.2;
+        ctx.fillStyle = def.c2;
+        ctx.beginPath(); ctx.arc(0, 0, 9 * b.scale * (1 - k), 0, Math.PI * 2); ctx.fill();
       }
-      // Style extras
-      if (def.style === 'pulse') {              // radiation: concentric contamination ring
-        ctx.globalAlpha = a * 0.6; ctx.strokeStyle = def.c2;
-        ctx.beginPath(); ctx.arc(0, 0, r * 0.6, 0, Math.PI * 2); ctx.stroke();
-      } else if (def.style === 'pull') {        // magnetic: imploding inner ring
-        ctx.globalAlpha = a * 0.7; ctx.strokeStyle = def.c2;
-        ctx.beginPath(); ctx.arc(0, 0, r * (1 - k) * 0.8 + 4, 0, Math.PI * 2); ctx.stroke();
-      } else if (def.style === 'cloud') {       // gas: soft spreading puffs
-        ctx.globalAlpha = a * 0.5; ctx.fillStyle = def.c1;
-        for (let i = 0; i < 5; i++) { const ang = b.rot + i * 1.25;
-          ctx.beginPath(); ctx.arc(Math.cos(ang) * r * 0.6, Math.sin(ang) * r * 0.6, 7 * b.scale * (0.6 + k), 0, Math.PI * 2); ctx.fill(); }
-      } else if (def.style === 'splat') {       // toxin: corrosive drips
-        ctx.globalAlpha = a * 0.7; ctx.fillStyle = def.c1;
-        for (let i = 0; i < 5; i++) { const ang = b.rot + i * 1.25;
-          ctx.beginPath(); ctx.arc(Math.cos(ang) * r, Math.sin(ang) * r, 3 * b.scale, 0, Math.PI * 2); ctx.fill(); }
+
+      if (st === 'ember') {                    // ── FIRE / CRIMSON GATE: living flame ──
+        // flame tongues licking upward (bezier, wobbling), embers rising
+        for (let i = 0; i < 6; i++) {
+          const pr = this._pr(b.seed, i);
+          const ang = b.rot + (i / 6) * Math.PI * 2;
+          const bx = Math.cos(ang) * r * 0.5, by = Math.sin(ang) * r * 0.5;
+          const wob = Math.sin(k * 9 + i * 2.2) * 6 * b.scale;
+          ctx.globalAlpha = a * 0.9; ctx.strokeStyle = i % 2 ? def.c1 : def.c2; ctx.lineWidth = (2.6 - k) * b.scale;
+          ctx.beginPath(); ctx.moveTo(bx, by);
+          ctx.quadraticCurveTo(bx + wob, by - (12 + pr * 14) * b.scale, bx + wob * 0.4, by - (22 + pr * 20) * b.scale * (0.5 + k));
+          ctx.stroke();
+          // ember dot at the tip
+          ctx.globalAlpha = a; ctx.fillStyle = def.c2;
+          ctx.beginPath(); ctx.arc(bx + wob * 0.4, by - (22 + pr * 20) * b.scale * (0.5 + k), 1.8 * b.scale, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.globalAlpha = a * 0.8; ctx.strokeStyle = def.c1; ctx.lineWidth = 3 * b.scale;
+        ctx.beginPath(); ctx.arc(0, 0, r * 0.8, 0, Math.PI * 2); ctx.stroke();
+
+      } else if (st === 'arc') {               // ── ELECTRIC / THUNDER MAIDEN: real jagged bolts ──
+        for (let i = 0; i < def.spokes; i++) {
+          const ang = b.rot + (i / def.spokes) * Math.PI * 2;
+          ctx.globalAlpha = a * (0.65 + 0.35 * this._pr(b.seed, i + k * 7 | 0));
+          ctx.strokeStyle = i % 2 ? def.c1 : def.c2; ctx.lineWidth = 2 * b.scale;
+          ctx.beginPath();
+          let px = Math.cos(ang) * 6, py = Math.sin(ang) * 6;
+          ctx.moveTo(px, py);
+          for (let sgm = 1; sgm <= 4; sgm++) {                  // 4-segment jitter bolt
+            const rr = (r * sgm) / 4;
+            const j = (this._pr(b.seed, i * 10 + sgm) - 0.5) * 14 * b.scale;
+            px = Math.cos(ang) * rr - Math.sin(ang) * j;
+            py = Math.sin(ang) * rr + Math.cos(ang) * j;
+            ctx.lineTo(px, py);
+          }
+          ctx.stroke();
+          // crackle tip
+          ctx.globalAlpha = a; ctx.fillStyle = '#ffffff';
+          ctx.beginPath(); ctx.arc(px, py, 1.6 * b.scale, 0, Math.PI * 2); ctx.fill();
+        }
+
+      } else if (st === 'shard') {             // ── ICE: crystal bloom ──
+        for (let i = 0; i < def.spokes; i++) {
+          const ang = b.rot + (i / def.spokes) * Math.PI * 2 + k * 0.6;
+          const px = Math.cos(ang) * r, py = Math.sin(ang) * r;
+          const dx = Math.cos(ang), dy = Math.sin(ang);
+          // hex-cut crystal (two-tone facets)
+          ctx.globalAlpha = a;
+          ctx.fillStyle = def.c1;
+          ctx.beginPath();
+          ctx.moveTo(px - dy * 4 * b.scale, py + dx * 4 * b.scale);
+          ctx.lineTo(px + dx * 9 * b.scale, py + dy * 9 * b.scale);
+          ctx.lineTo(px + dy * 4 * b.scale, py - dx * 4 * b.scale);
+          ctx.lineTo(px - dx * 5 * b.scale, py - dy * 5 * b.scale);
+          ctx.closePath(); ctx.fill();
+          ctx.globalAlpha = a * 0.8; ctx.fillStyle = def.c2;
+          ctx.beginPath();
+          ctx.moveTo(px, py); ctx.lineTo(px + dx * 9 * b.scale, py + dy * 9 * b.scale);
+          ctx.lineTo(px + dy * 3 * b.scale, py - dx * 3 * b.scale); ctx.closePath(); ctx.fill();
+        }
+        // frost ring + sparkle crosses
+        ctx.globalAlpha = a * 0.6; ctx.strokeStyle = def.c2; ctx.lineWidth = 1.6 * b.scale;
+        ctx.beginPath(); ctx.arc(0, 0, r * 0.5, 0, Math.PI * 2); ctx.stroke();
+        for (let i = 0; i < 3; i++) {
+          const pr = this._pr(b.seed, i + 40), ang = pr * Math.PI * 2;
+          const sx = Math.cos(ang) * r * 0.7, sy = Math.sin(ang) * r * 0.7, sl = 3.5 * b.scale;
+          ctx.globalAlpha = a * (0.5 + 0.5 * Math.sin(k * 12 + i * 2));
+          ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.2;
+          ctx.beginPath(); ctx.moveTo(sx - sl, sy); ctx.lineTo(sx + sl, sy);
+          ctx.moveTo(sx, sy - sl); ctx.lineTo(sx, sy + sl); ctx.stroke();
+        }
+
+      } else if (st === 'pull') {              // ── MAGNETIC: field-line lens ──
+        // curved field lines arcing pole-to-pole (like iron filings), collapsing inward
+        for (let i = 0; i < 5; i++) {
+          const off = (i - 2) * 7 * b.scale;
+          ctx.globalAlpha = a * 0.85; ctx.strokeStyle = i % 2 ? def.c1 : def.c2; ctx.lineWidth = 1.8 * b.scale;
+          ctx.save(); ctx.rotate(b.rot + k * 1.4);
+          ctx.beginPath();
+          ctx.moveTo(-r * 0.8, off * (1 - k));
+          ctx.quadraticCurveTo(0, off * 3.2 * (1 - k), r * 0.8, off * (1 - k));
+          ctx.stroke();
+          ctx.restore();
+        }
+        // imploding ring (reads as attraction)
+        ctx.globalAlpha = a * 0.8; ctx.strokeStyle = def.c2; ctx.lineWidth = 2.2 * b.scale;
+        ctx.beginPath(); ctx.arc(0, 0, Math.max(3, r * (1 - k) * 0.9), 0, Math.PI * 2); ctx.stroke();
+        // N/S pole flashes
+        ctx.save(); ctx.rotate(b.rot + k * 1.4);
+        ctx.globalAlpha = a; ctx.fillStyle = def.c1;
+        ctx.beginPath(); ctx.arc(-r * 0.8, 0, 2.6 * b.scale, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = def.c2;
+        ctx.beginPath(); ctx.arc(r * 0.8, 0, 2.6 * b.scale, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+
+      } else if (st === 'pulse') {             // ── RADIATION: rotating trefoil ──
+        ctx.save(); ctx.rotate(b.rot + k * 2.2);
+        ctx.globalAlpha = a * 0.9; ctx.fillStyle = def.c1;
+        for (let i = 0; i < 3; i++) {          // the classic 3-wedge hazard sign, spinning
+          const s0 = i * (Math.PI * 2 / 3);
+          ctx.beginPath(); ctx.moveTo(0, 0);
+          ctx.arc(0, 0, r * 0.75, s0, s0 + Math.PI / 3); ctx.closePath(); ctx.fill();
+        }
+        ctx.globalAlpha = a; ctx.fillStyle = def.c2;
+        ctx.beginPath(); ctx.arc(0, 0, 3.4 * b.scale, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+        for (let i = 0; i < 2; i++) {          // contamination rings ripple out
+          ctx.globalAlpha = a * (0.55 - i * 0.2); ctx.strokeStyle = def.c2; ctx.lineWidth = 1.8 * b.scale;
+          ctx.beginPath(); ctx.arc(0, 0, r * (0.65 + i * 0.35), 0, Math.PI * 2); ctx.stroke();
+        }
+
+      } else if (st === 'splat') {             // ── TOXIN: corrosive boil ──
+        for (let i = 0; i < 6; i++) {
+          const pr = this._pr(b.seed, i);
+          const ang = b.rot + (i / 6) * Math.PI * 2;
+          const rr = r * (0.65 + pr * 0.5);
+          const px = Math.cos(ang) * rr, py = Math.sin(ang) * rr;
+          // blob + elongating drip
+          ctx.globalAlpha = a * 0.9; ctx.fillStyle = i % 2 ? def.c1 : def.c2;
+          ctx.beginPath(); ctx.arc(px, py, (2.5 + pr * 2.5) * b.scale, 0, Math.PI * 2); ctx.fill();
+          ctx.globalAlpha = a * 0.7; ctx.strokeStyle = def.c1; ctx.lineWidth = 1.6 * b.scale;
+          ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(px, py + (5 + 12 * k) * b.scale); ctx.stroke();
+          ctx.beginPath(); ctx.arc(px, py + (5 + 12 * k) * b.scale, 1.4 * b.scale, 0, Math.PI * 2); ctx.fill();
+        }
+        // bubbling inner ring
+        ctx.globalAlpha = a * 0.6; ctx.strokeStyle = def.c2; ctx.lineWidth = 2 * b.scale;
+        ctx.beginPath(); ctx.arc(0, 0, r * 0.5 + Math.sin(k * 14) * 2, 0, Math.PI * 2); ctx.stroke();
+
+      } else if (st === 'cloud') {             // ── GAS: drifting miasma ──
+        for (let i = 0; i < 6; i++) {
+          const pr = this._pr(b.seed, i);
+          const ang = b.rot + i * 1.05 + k * 0.7;
+          const rr = r * (0.4 + pr * 0.5 + k * 0.3);
+          ctx.globalAlpha = a * 0.4;
+          ctx.fillStyle = i % 2 ? def.c1 : def.c2;
+          ctx.beginPath(); ctx.arc(Math.cos(ang) * rr, Math.sin(ang) * rr - k * 8 * b.scale,
+                                   (6 + pr * 5) * b.scale * (0.6 + k), 0, Math.PI * 2); ctx.fill();
+        }
+
+      } else {                                 // fallback: simple spokes (unknown style safety)
+        ctx.strokeStyle = def.c2; ctx.lineWidth = 2 * b.scale;
+        for (let i = 0; i < (def.spokes || 5); i++) {
+          const ang = b.rot + i * (Math.PI * 2 / (def.spokes || 5));
+          ctx.globalAlpha = a;
+          ctx.beginPath(); ctx.moveTo(Math.cos(ang) * 8, Math.sin(ang) * 8);
+          ctx.lineTo(Math.cos(ang) * r, Math.sin(ang) * r); ctx.stroke();
+        }
+        ctx.globalAlpha = a * 0.9; ctx.strokeStyle = def.c1; ctx.lineWidth = 3 * b.scale;
+        ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.stroke();
       }
+
       ctx.restore();
     }
     // Defensive canvas-state reset so element VFX never leak into later rendering.
