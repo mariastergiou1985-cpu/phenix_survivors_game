@@ -22,7 +22,7 @@ import { weightedSample } from './Upgrades.js?v=20260711370000';
 import { MutationUI }      from './MutationUI.js?v=20260703990000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260705300000';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, SKILL_TREE } from './MetaProgress.js?v=20260711390000';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, SKILL_TREE } from './MetaProgress.js?v=20260711400000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260711360000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
@@ -42,7 +42,7 @@ import { NexusManager } from './NexusManager.js?v=20260710230000';
 import { VESSELS, getVesselById, getDefaultVesselId } from './VesselCatalog.js?v=20260705040000';
 import { PETS, getPetById } from './PetCatalog.js?v=20260705000000';
 import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons, isEvolutionOwnedBy, getCardDisplayName } from './WeaponCatalog.js?v=20260708200000';
-import { TACTICAL_ID, TACTICAL_DEFS, getTacticalDef, getTacticalForCharacter, getAvailableTactical, preloadTacticalSprites, FUSION_TACTICALS } from './TacticalWeaponCatalog.js?v=20260706240000';
+import { TACTICAL_ID, TACTICAL_DEFS, getTacticalDef, getTacticalForCharacter, getAvailableTactical, preloadTacticalSprites, FUSION_TACTICALS } from './TacticalWeaponCatalog.js?v=20260711400000';
 import { VFXSpritePlayer } from './VFXSpritePlayer.js?v=20260708700000';
 
 // ── Mastery card → base weapon mapping (for evolution level tracking) ──
@@ -153,6 +153,7 @@ const WIELDER_VFX_OVERRIDES = Object.freeze({
   'cryo_sovereign|taekwondo_girl':        'assets/weapons/vfx/cryo_sovereign.png',
   'ion_halo|cyber_arm_hero':              'assets/weapons/vfx/ion_halo.png',
   'null_lance|japan_phasewalker':         'assets/weapons/vfx/null_lance.png',
+  'glitch_tear|japan_phasewalker':        'assets/weapons/vfx/Synergy Weapon 2 Linked AI Companion Rifle.png',   // #74+ synergy art (big single-illustration)
   'ember_storm|oni_cataclysm_protocol':   'assets/weapons/vfx/ember_storm.png',
   // Batch 3 evolutions (Skeleton / Assassin / Brawler)
   'bonecircuit_storm|skeleton_warrior':   'assets/weapons/vfx/bonecircuit_storm.png',
@@ -509,6 +510,7 @@ const SYNERGY_FX = {
   brawler_warrior:  { card: 'synergy_rift_rebound',     meta: 'syn_rift_rebound',     color: '#5effc8', glyph: '◎' },
   assassin_clone:   { card: 'synergy_plasma_execution', meta: 'syn_plasma_execution', color: '#ff5cd2', glyph: '✖' },
   euclid_vector:    { card: 'synergy_toxic_geometry',   meta: 'syn_toxic_geometry',   color: '#7CFF4D', glyph: '▲' },
+  japan_phasewalker:{ card: 'synergy_phase_companion', meta: 'syn_phase_companion', color: '#9fdcff', glyph: '◆' },
 };
 
 // BOSS_WARN_COOLDOWN now lives in EnemySpawner.js — aliased here.
@@ -2243,6 +2245,8 @@ export class Game {
     p.fireRateBonus = (p.fireRateBonus || 0) + _st('st_overcharge') * 0.05 + _st('st_annihilator') * 0.04;
     { let _pr = p.pickupRadius; for (let _i = 0; _i < _st('st_momentum'); _i++) _pr = Math.round(_pr * 1.06); p.pickupRadius = _pr; }
     p.xpMult = (p.xpMult || 1) + _st('st_ascendant') * 0.05;
+    // Phasewalker synergy — Linked Companion Rifle: +phase-shard damage per star
+    p.upgrades['Pulse Damage'] = (p.upgrades['Pulse Damage'] || 0) + m.getLevel('syn_phase_companion') * 0.6;
 
     // ── Null Battery relic: 8% faster Q/E ability cooldowns ──
     if (m.isRelicUnlocked('null_battery')) p.abilityCdMult = 1.08;

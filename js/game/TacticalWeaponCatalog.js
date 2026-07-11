@@ -19,6 +19,7 @@ export const TACTICAL_ID = Object.freeze({
   PROXIMITY_GRID:    'tac_proximity_grid',
   GRAVITY_WELL:      'tac_gravity_well',
   RAIL_STRIKE:       'tac_rail_strike',
+  EMP_JAMMER:        'tac_emp_jammer',
   MISSILE_BARRAGE:   'tac_missile_barrage',
   HEAVY_IMPACT_BURST: 'tac_heavy_impact_burst',
   EDDIE_CHORD_CURTAIN: 'eddie_chord_curtain',
@@ -357,6 +358,36 @@ export const TACTICAL_DEFS = Object.freeze({
       speed:      6.0,
       color1:     '#9944ff',
       color2:     '#cc88ff',
+    },
+  },
+
+  // ╔═══════════════════════════════════════════════════════════════════╗
+  // ║ 8b. JAPAN PHASEWALKER — EMP Jammer (2nd tactical, big cyber pulse) ║
+  // ╚═══════════════════════════════════════════════════════════════════╝
+  [TACTICAL_ID.EMP_JAMMER]: {
+    id:          TACTICAL_ID.EMP_JAMMER,
+    name:        'EMP Jammer',
+    description: 'Deploys a large EMP jammer field — a wide overload pulse that scrambles and damages every enemy caught inside',
+    character:   'japan_phasewalker',
+    fxModule:    FX_MODULE.H_SPECTRAL_WEB,
+    behavior:    TACTICAL_BEHAVIOR.GROUND_SHOCKWAVE,
+    sprite:      'assets/weapons/tactical/EMP Jammer.png',
+    baseDamage:  72,
+    aoeRadius:   280,     // BIG — Maria's art rendered large, not a tiny icon
+    tickRate:     1.2,
+    duration:    11,
+    color:       '#5fd0ff',
+    glitchFx: {
+      freezeFrame: true,   // momentary stutter on detonation (EMP scramble)
+      gridLock:    true,
+    },
+    particles: {
+      type:       'emp_sparks',
+      gridLock:   true,
+      count:      10,
+      speed:      5.0,
+      color1:     '#7fe0ff',
+      color2:     '#ffffff',
     },
   },
 

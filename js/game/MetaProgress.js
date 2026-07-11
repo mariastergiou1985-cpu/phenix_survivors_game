@@ -57,6 +57,7 @@ export const SYNERGY_UPGRADES = [
   { key: 'syn_toxic_geometry',    name: 'Toxic Geometry ★',         char: 'euclid_vector',           charName: 'Euclid Vector',    desc: '+poison tick & mark duration',    maxLevel: 5, flatCost: 1000 },
   { key: 'syn_cataclysm_chain',   name: 'Cataclysm Chain Reaction ★', char: 'oni_cataclysm_protocol', charName: 'Oni Cataclysm',  desc: '+4% Protocol 0 detonation per star', maxLevel: 5, flatCost: 1000, lockedUntil: 'oni_cataclysm_protocol' },
   { key: 'syn_red_thunder',       name: 'Red Thunder Resonance ★',   char: 'eddie',                  charName: 'Eddie',            desc: '+4% chain arc chance & +6% bolt damage per star', maxLevel: 5, flatCost: 1000, lockedUntil: 'eddie' },
+  { key: 'syn_phase_companion',   name: 'Linked Companion Rifle ★', char: 'japan_phasewalker',       charName: 'Japan Phasewalker', desc: '+phase-shard damage & AI companion overwatch per star', maxLevel: 5, flatCost: 1000 },
 ];
 
 // Secret unlock flags — set on a victory, persisted in localStorage, read by the
