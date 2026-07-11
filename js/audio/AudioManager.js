@@ -1161,4 +1161,162 @@ export class AudioManager {
     this._noiseBurst({ dur: 0.18, gain: 0.10, filterType: 'bandpass', freq: 800 });
   }
 
+
+  // ═══ SFX FORGE — procedural audio identity (no files) ═══════════════════════
+  // Every source type gets a DISTINCT premium sound with per-trigger variation
+  // (pitch/length jitter) so repeats never sound identical. All routed through the
+  // sfx bus (volume/mute respected). Internally throttled per type — no spam.
+  _forgeOk(type, minMs) {
+    const now = performance.now();
+    this._forgeLast = this._forgeLast || {};
+    if (now - (this._forgeLast[type] || 0) < minMs) return false;
+    this._forgeLast[type] = now;
+    return true;
+  }
+  _v(base, jit) { return base * (1 + (Math.random() * 2 - 1) * jit); }   // variation helper
+
+  // ── one-shots ──────────────────────────────────────────────────────────────
+  forgeThunder() {
+    if (this.muted || !this._forgeOk('thunder', 260)) return;
+    // crack + long low rumble
+    this._noiseBurst({ dur: this._v(0.10, 0.3), gain: 0.16, filterType: 'highpass', freq: 1800 });
+    this._noiseBurst({ dur: this._v(0.9, 0.25), gain: 0.14, filterType: 'lowpass',  freq: this._v(220, 0.3), delay: 0.03 });
+    this._tone({ type: 'sine', freqStart: this._v(70, 0.2), freqEnd: 38, dur: this._v(0.8, 0.2), gain: 0.12, delay: 0.02 });
+  }
+  forgeGunshot() {
+    if (this.muted || !this._forgeOk('gun', 70)) return;
+    this._noiseBurst({ dur: this._v(0.05, 0.3), gain: 0.10, filterType: 'bandpass', freq: this._v(1500, 0.25) });
+    this._tone({ type: 'triangle', freqStart: this._v(240, 0.2), freqEnd: 90, dur: 0.05, gain: 0.06 });
+  }
+  forgeFire() {
+    if (this.muted || !this._forgeOk('fire', 130)) return;
+    // whoosh + crackle grains
+    this._noiseBurst({ dur: this._v(0.28, 0.3), gain: 0.09, filterType: 'bandpass', freq: this._v(500, 0.3) });
+    for (let i = 0; i < 3; i++) {
+      this._noiseBurst({ dur: 0.02, gain: 0.05, filterType: 'highpass', freq: this._v(2600, 0.4), delay: 0.04 + i * this._v(0.05, 0.5) });
+    }
+  }
+  forgeIce() {
+    if (this.muted || !this._forgeOk('ice', 130)) return;
+    // crystalline pings, detuned pair + glassy shimmer
+    const f = this._v(1900, 0.25);
+    this._tone({ type: 'sine',     freqStart: f,        freqEnd: f * 1.02, dur: this._v(0.16, 0.3), gain: 0.07 });
+    this._tone({ type: 'triangle', freqStart: f * 1.5,  freqEnd: f * 1.48, dur: 0.10, gain: 0.045, delay: 0.02 });
+    this._noiseBurst({ dur: 0.05, gain: 0.035, filterType: 'highpass', freq: 5200, delay: 0.01 });
+  }
+  forgeZap() {
+    if (this.muted || !this._forgeOk('zap', 110)) return;
+    this._tone({ type: 'sawtooth', freqStart: this._v(1400, 0.3), freqEnd: this._v(160, 0.3), dur: this._v(0.09, 0.3), gain: 0.075 });
+    this._noiseBurst({ dur: 0.05, gain: 0.055, filterType: 'highpass', freq: 3200 });
+  }
+  forgeToxin() {
+    if (this.muted || !this._forgeOk('toxin', 160)) return;
+    // wet bubbling blips
+    for (let i = 0; i < 2; i++) {
+      const f = this._v(240, 0.35);
+      this._tone({ type: 'sine', freqStart: f, freqEnd: f * 1.8, dur: 0.07, gain: 0.055, delay: i * this._v(0.06, 0.4) });
+    }
+  }
+  forgeMagnet() {
+    if (this.muted || !this._forgeOk('magnet', 160)) return;
+    this._tone({ type: 'sine', freqStart: this._v(300, 0.2), freqEnd: this._v(90, 0.2), dur: 0.18, gain: 0.06 });
+    this._tone({ type: 'sine', freqStart: this._v(150, 0.2), freqEnd: 60, dur: 0.22, gain: 0.05, delay: 0.02 });
+  }
+  forgeRadiation() {
+    if (this.muted || !this._forgeOk('rad', 160)) return;
+    // geiger ticks
+    for (let i = 0; i < 4; i++) {
+      this._noiseBurst({ dur: 0.012, gain: 0.05, filterType: 'highpass', freq: 4000, delay: i * this._v(0.035, 0.6) });
+    }
+  }
+
+  // element id → its forge voice (single entry point for the game)
+  forgeElement(el) {
+    if (el === 'fire' || el === 'crimson_gate')        this.forgeFire();
+    else if (el === 'electric' || el === 'thunder_maiden') this.forgeZap();
+    else if (el === 'ice')                              this.forgeIce();
+    else if (el === 'toxin' || el === 'gas')            this.forgeToxin();
+    else if (el === 'magnetic')                         this.forgeMagnet();
+    else if (el === 'radiation')                        this.forgeRadiation();
+  }
+
+  // ── ambient weather loops (start/stop idempotent, gentle fade) ─────────────
+  _forgeLoop(name, build) {
+    this._forgeLoops = this._forgeLoops || {};
+    if (this._forgeLoops[name]) return;                     // already running
+    try { this._forgeLoops[name] = build(); } catch (_) { /* audio must never crash the game */ }
+  }
+  forgeLoopStop(name) {
+    const L = this._forgeLoops && this._forgeLoops[name];
+    if (!L) return;
+    try {
+      const t = this.actx.currentTime;
+      L.gain.gain.cancelScheduledValues(t);
+      L.gain.gain.setValueAtTime(L.gain.gain.value, t);
+      L.gain.gain.linearRampToValueAtTime(0, t + 0.8);
+      for (const n of L.nodes) { try { n.stop(t + 0.9); } catch (_) {} }
+    } catch (_) {}
+    delete this._forgeLoops[name];
+  }
+  _noiseLoopNode() {
+    if (!this._forgeNoiseBuf) {
+      const len = this.actx.sampleRate * 2;
+      const buf = this.actx.createBuffer(1, len, this.actx.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+      this._forgeNoiseBuf = buf;
+    }
+    const src = this.actx.createBufferSource();
+    src.buffer = this._forgeNoiseBuf; src.loop = true;
+    return src;
+  }
+  forgeRainStart() {                                        // steady rain hiss + patter LFO
+    if (this.muted) return;
+    this._forgeLoop('rain', () => {
+      const src = this._noiseLoopNode();
+      const bp = this.actx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1500; bp.Q.value = 0.6;
+      const g = this.actx.createGain(); g.gain.value = 0;
+      const lfo = this.actx.createOscillator(); lfo.frequency.value = 0.5;
+      const lg = this.actx.createGain(); lg.gain.value = 0.015;
+      lfo.connect(lg); lg.connect(g.gain);
+      src.connect(bp); bp.connect(g); g.connect(this.sfxGain);
+      const t = this.actx.currentTime;
+      g.gain.linearRampToValueAtTime(0.085, t + 1.2);
+      src.start(); lfo.start();
+      return { gain: g, nodes: [src, lfo] };
+    });
+  }
+  forgeWindStart() {                                        // icy wind howl
+    if (this.muted) return;
+    this._forgeLoop('wind', () => {
+      const src = this._noiseLoopNode();
+      const bp = this.actx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 600; bp.Q.value = 2.2;
+      const g = this.actx.createGain(); g.gain.value = 0;
+      const lfo = this.actx.createOscillator(); lfo.frequency.value = 0.18;
+      const lg = this.actx.createGain(); lg.gain.value = 260;
+      lfo.connect(lg); lg.connect(bp.frequency);            // sweeping howl
+      src.connect(bp); bp.connect(g); g.connect(this.sfxGain);
+      const t = this.actx.currentTime;
+      g.gain.linearRampToValueAtTime(0.07, t + 1.5);
+      src.start(); lfo.start();
+      return { gain: g, nodes: [src, lfo] };
+    });
+  }
+  forgeRumbleStart() {                                      // volcanic ground rumble
+    if (this.muted) return;
+    this._forgeLoop('rumble', () => {
+      const src = this._noiseLoopNode();
+      const lp = this.actx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 130;
+      const g = this.actx.createGain(); g.gain.value = 0;
+      const lfo = this.actx.createOscillator(); lfo.frequency.value = 0.9;
+      const lg = this.actx.createGain(); lg.gain.value = 0.02;
+      lfo.connect(lg); lg.connect(g.gain);
+      src.connect(lp); lp.connect(g); g.connect(this.sfxGain);
+      const t = this.actx.currentTime;
+      g.gain.linearRampToValueAtTime(0.10, t + 1.2);
+      src.start(); lfo.start();
+      return { gain: g, nodes: [src, lfo] };
+    });
+  }
+
 }

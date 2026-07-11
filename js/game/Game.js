@@ -9715,6 +9715,7 @@ export class Game {
       aimPos = target.pos;
     }
     const proj = this.player.shoot(aimPos);
+    this.audio?.forgeGunshot?.();                             // per-shot report (self-throttled 70ms)
     // Assassin Clone: her base auto-shot IS the Arrow (visible arrow sprite via Player.attackMap,
     // rotated to its travel direction — no orb). Her retired Twin-Dagger mastery card now feeds the
     // arrow (+1 damage/level), so the card is never a dead pick. Same projectile that always existed.
@@ -14575,6 +14576,7 @@ export class Game {
         }
         this.particles?.spawnDeathBurst?.(z.pos, '#bfe0ff', 8, 1.8);
         this.audio?.playLightningStrike?.();  // thunder crack per strike (throttled 0.3s)
+        this.audio?.forgeThunder?.();         // synth thunder body under the crack (self-throttled)
       }
       if (z.t >= z.warn + z.flash) this.lightningZones.splice(i, 1);
     }
@@ -14814,6 +14816,7 @@ export class Game {
     const em   = this._hasProto('elemental_mastery') ? 1.25 : 1;   // Elemental Mastery Protocol (boss-capped below)
     const scale = ((core ? 1.4 : 1.05) + 0.12 * fus) * em;   // larger = clearly visible per-character identity
     this.elementFx.spawn(e.pos.x, e.pos.y, el, scale);
+    this.audio?.forgeElement?.(el);                           // distinct element voice (self-throttled)
 
     // Second-Element Infusion cards (Frost / Electric / etc.): make the ADDED element VISIBLY
     // appear on hits even WITHOUT Fusion Catalyst. Previously secondaryElements only mattered for
@@ -24468,6 +24471,16 @@ _drawLoreArchive(ctx) {
     const th = this._weatherTheater;
     if (!th) return;
     const t = performance.now() / 1000;
+    // ── ambient AUDIO sync (idempotent start/stop — rain sounds like rain,
+    // lava rumbles, sleet howls; loops fade out ~0.8s after the event ends) ──
+    try {
+      const au = this.audio;
+      if (au) {
+        if (this.acidRain) au.forgeRainStart?.(); else au.forgeLoopStop?.('rain');
+        if (this._lavaRainActive > 0 || (this.bossLavaZones && this.bossLavaZones.length)) au.forgeRumbleStart?.(); else au.forgeLoopStop?.('rumble');
+        if (this._frozenSleet) au.forgeWindStart?.(); else au.forgeLoopStop?.('wind');
+      }
+    } catch (_) {}
     try {
       if (this._lavaRainActive > 0) th.lava(ctx, t, WIDTH, HEIGHT, Math.min(1, this._lavaRainActive));
       if (this._ddRocketShadows && this._ddRocketShadows.length) th.raid(ctx, t, WIDTH, HEIGHT, 1);
