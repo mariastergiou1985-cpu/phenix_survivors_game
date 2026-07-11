@@ -10,7 +10,7 @@ import { clamp, distance, safeNormalize, randomChoice, randomRange, wrapText } f
 import { FloatingText }   from '../entities/FloatingText.js?v=20260703990000';
 import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260705040000';
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260705150000';
-import { Player }         from '../entities/Player.js?v=20260711860000';
+import { Player }         from '../entities/Player.js?v=20260711900000';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260706270000';
 import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260711860000';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=20260711750000';
@@ -48,7 +48,7 @@ import { EventBus, EVENTS } from './EventBus.js?v=20260703990000';
 import { EnemySpawner, ELITE_WAVE as ELITE_WAVE_CFG, BOSS_WARN_COOLDOWN as BOSS_WARN_CD } from './EnemySpawner.js?v=20260710330000';
 import { StateManager, GAME_STATES } from './StateManager.js?v=20260703990000';
 import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260711730000';
-import { NexusManager } from './NexusManager.js?v=20260710230000';
+import { NexusManager } from './NexusManager.js?v=20260711900000';
 import { VESSELS, getVesselById, getDefaultVesselId } from './VesselCatalog.js?v=20260705040000';
 import { PETS, getPetById } from './PetCatalog.js?v=20260705000000';
 import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons, isEvolutionOwnedBy, getCardDisplayName } from './WeaponCatalog.js?v=20260708200000';
@@ -7865,7 +7865,8 @@ export class Game {
         this.forceChaos         = false;
         this._chaosTransTimer   = -1;    // no transition timer
         this._chaosMode         = true;
-        if (this.nexusManager) this.nexusManager.chaos = true;   // Phase 6: Nexus buff stars turn TACTICAL (no flat-HP heal)
+        if (this.nexusManager) this.nexusManager.chaos = true;
+        this.nexusManager.assignChaosRoles?.();   // Φ14: BUFF vs DEFENCE bases   // Phase 6: Nexus buff stars turn TACTICAL (no flat-HP heal)
         if (this._chaosStartedAt < 0) this._chaosStartedAt = this.timeAlive; // Phase B: chaos timer
         this.audio?.startChaosMusic();   // switch to Chaos track
         // #71 — Chaos entry no longer uses the central banner; a discreet floating cue instead.
@@ -8191,6 +8192,7 @@ export class Game {
     this._updateHealthPickups(dt);
     this._updateManaPickups(dt);
     this._updateArmorPickups(dt);   // Phase 7: shield/armor drops
+    this._updateNexusDefence(dt);   // Φ14: Chaos DEFENCE nexus turrets + shield dome
     this._updateAnnouncement(dt);
     this.particles.update(this._hitStopTimer > 0 ? dt * 0.10 : dt);  // slow sparks/particles during hit stop
     this._updateCamera();
@@ -9138,7 +9140,8 @@ export class Game {
     this.reset();
     this._enterEndless();             // set up all Endless infrastructure
     this._chaosMode          = true;     // engage Chaos immediately
-    if (this.nexusManager) this.nexusManager.chaos = true;   // Phase 6: tactical buff stars
+    if (this.nexusManager) this.nexusManager.chaos = true;
+        this.nexusManager.assignChaosRoles?.();   // Φ14: BUFF vs DEFENCE bases   // Phase 6: tactical buff stars
     if (this._chaosStartedAt < 0) this._chaosStartedAt = this.timeAlive; // Phase B: chaos timer
     this._chaosTransTimer    = -1;
     this._frozenSleetTimer   = 55;  // first Frozen Sleet Storm 55 s into Chaos
@@ -11189,6 +11192,77 @@ export class Game {
     this._weaponAccents.push({ x, y, ang, t: 0, life: kind === 'implode' ? 0.85 : 0.72,
                                kind, c: def.color || '#9fd8ff', scale: Math.min(scale, 2.2),
                                seed: (Math.random() * 1000) | 0 });
+  }
+
+  // ── Φ14: Chaos DEFENCE nexus behavior — auto-turret + protective dome ──────
+  // Turret: every ~1.1s a defence base fires a red interceptor bolt (reuses the pet-bolt
+  // pipeline → real takeHit damage + comet visuals). Dome: standing within 160px of a
+  // defence base grants 15% damage reduction (read in Player.applyDamage via _nexusDomeT).
+  _updateNexusDefence(dt) {
+    if (!this._chaosMode || !this.matrices?.length) return;
+    let inDome = false;
+    for (const m of this.matrices) {
+      if (m.chaosRole !== 'defence') continue;
+      if (distance(this.player.pos, m.pos) < 160) inDome = true;
+      if (m.stored <= 0) continue;                                // depleted base: dome only
+      m._turretCd = (m._turretCd || 0) - dt;
+      if (m._turretCd > 0) continue;
+      let best = null, bd = 340 * 340;
+      for (const e of this.enemies) {
+        if (!e?.pos || e.hp <= 0) continue;
+        const dx = e.pos.x - m.pos.x, dy = e.pos.y - m.pos.y, q = dx * dx + dy * dy;
+        if (q < bd) { bd = q; best = e; }
+      }
+      if (!best) continue;
+      m._turretCd = 1.1;
+      const dx = best.pos.x - m.pos.x, dy = best.pos.y - m.pos.y;
+      const dd = Math.hypot(dx, dy) || 1;
+      this._petBolts.push({ x: m.pos.x, y: m.pos.y - 20, vx: (dx / dd) * 520, vy: (dy / dd) * 520,
+                            dmg: 22, color: '#ff5560', life: 1.1 });
+    }
+    if (this.player) this.player._nexusDomeT = inDome ? 0.25 : Math.max(0, (this.player._nexusDomeT || 0) - dt);
+  }
+
+  // Φ14 in-world role markers — drawn right after each nexus (world-space).
+  _drawNexusRoleMarker(ctx, m) {
+    if (!this._chaosMode || !m.chaosRole) return;
+    const tN = performance.now() / 1000;
+    const x = m.pos.x, y = m.pos.y - 58 + Math.sin(tN * 2 + x * 0.01) * 3;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    if (m.chaosRole === 'buff') {
+      // pulsing gold/cyan STAR — "come here for buffs"
+      const p2 = 0.7 + 0.3 * Math.sin(tN * 3);
+      ctx.globalAlpha = 0.9 * p2;
+      ctx.strokeStyle = '#ffd447'; ctx.lineWidth = 2;
+      ctx.shadowColor = '#ffd447'; ctx.shadowBlur = 10;
+      ctx.beginPath();
+      for (let i = 0; i < 10; i++) {
+        const a2 = (i / 10) * Math.PI * 2 - Math.PI / 2;
+        const r = i % 2 === 0 ? 11 : 4.6;
+        i === 0 ? ctx.moveTo(x + Math.cos(a2) * r, y + Math.sin(a2) * r)
+                : ctx.lineTo(x + Math.cos(a2) * r, y + Math.sin(a2) * r);
+      }
+      ctx.closePath(); ctx.stroke();
+    } else {
+      // red turret chevron + rotating barrel — "this base fights"
+      ctx.globalAlpha = 0.9;
+      ctx.strokeStyle = '#ff5560'; ctx.lineWidth = 2.4;
+      ctx.shadowColor = '#ff5560'; ctx.shadowBlur = 10;
+      ctx.beginPath();
+      ctx.moveTo(x - 9, y + 5); ctx.lineTo(x, y - 6); ctx.lineTo(x + 9, y + 5);
+      ctx.stroke();
+      const ba = tN * 1.8;
+      ctx.globalAlpha = 0.7;
+      ctx.beginPath(); ctx.moveTo(x, y + 1);
+      ctx.lineTo(x + Math.cos(ba) * 13, y + 1 + Math.sin(ba) * 13); ctx.stroke();
+      // dome ring on the ground (the protection zone, readable)
+      ctx.globalAlpha = 0.25 + 0.1 * Math.sin(tN * 2.6);
+      ctx.setLineDash([8, 7]); ctx.lineDashOffset = -tN * 20;
+      ctx.beginPath(); ctx.ellipse(m.pos.x, m.pos.y + 12, 160, 78, 0, 0, Math.PI * 2); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    ctx.restore();
   }
 
   _updateWeaponAccents(dt) {
@@ -15542,6 +15616,8 @@ export class Game {
     for (const core of this.groundCores) {
       for (const m of this.matrices) {
         if (!m.hasSpace()) continue;
+        // Φ14 wrong-base rejection: in Chaos, DEFENCE bases refuse cores (BUFF bases only)
+        if (this._chaosMode && m.chaosRole === 'defence') continue;
         const d = distance(core.pos, m.pos);
         if (d < bestDist) { bestDist = d; bestCore = core; bestMatrix = m; }
       }
@@ -15743,6 +15819,7 @@ export class Game {
     for (const m of this.matrices) {
       this._drawEndlessNexusBase(ctx, m);   // biome-specific sprite UNDER the matrix glow
       m.draw(ctx, 0);              // no danger blink — overload is now a positive recharge meter
+      this._drawNexusRoleMarker(ctx, m);    // Φ14: BUFF star / DEFENCE turret + dome ring (Chaos)
     }
     // 2b ── Nexus reward orbs (homing XP/credit/heal pulses from charged Nexus)
     this.nexusManager.drawRewardOrbs(ctx);

@@ -174,6 +174,7 @@ export class Player {
     let mult = this.shieldTimer > 0 ? 0.4 : 1;
     if ((this._tankTimer || 0) > 0) mult *= 0.5;   // Oni Protocol 0: 50% damage reduction
     if ((this._armorT || 0) > 0) mult *= 0.85;     // Phase 7: armor shield pickup (+15% DR)
+    if ((this._nexusDomeT || 0) > 0) mult *= 0.85; // Φ14: Chaos DEFENCE nexus dome (+15% DR)
     // Φ11 Emergency Protocol: hit while below 30% HP → 1s auto-shield 30% (level-gated CD)
     if ((this._stEmergencyLvl || 0) > 0 && this.hp / this.maxHp < 0.3 && (this._emergCd || 0) <= 0) {
       this._emergT  = 1.0;

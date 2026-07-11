@@ -294,12 +294,26 @@ export class NexusManager {
     this._updateBiomeHealth();
   }
 
+  // ─── Φ14 Chaos role separation ───────────────────────────────────────────
+  // Chaos-only: matrices split into BUFF (emit tactical stars — cyan/gold identity) and
+  // DEFENCE (turret + shield dome — red/gunmetal identity). Alternating by index so both
+  // roles always exist; roles persist for the whole chaos run.
+  assignChaosRoles() {
+    let i = 0;
+    for (const m of this.matrices) {
+      m.chaosRole = (i++ % 2 === 0) ? 'buff' : 'defence';
+      m._turretCd = 0.6 + (i % 3) * 0.3;   // stagger first shots
+    }
+  }
+
   // ─── Reward System ──────────────────────────────────────────────────────
   _emitRewards(player) {
     if (!player) return;
     for (const m of this.matrices) {
       // Only Nexus with stored > 0 can emit rewards
       if (m.stored <= 0) continue;
+      // Φ14: DEFENCE bases never emit buff stars — their power goes to the turret/dome
+      if (this.chaos && m.chaosRole === 'defence') continue;
       // Only emit if player is within range
       if (dist(m.pos, player.pos) > REWARD_PULSE_RADIUS) continue;
 
