@@ -51,7 +51,7 @@ import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260711730000';
 import { NexusManager } from './NexusManager.js?v=20260711900000';
 import { VESSELS, getVesselById, getDefaultVesselId } from './VesselCatalog.js?v=20260705040000';
 import { PETS, getPetById } from './PetCatalog.js?v=20260705000000';
-import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons, isEvolutionOwnedBy, getCardDisplayName } from './WeaponCatalog.js?v=20260711970000';
+import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons, isEvolutionOwnedBy, getCardDisplayName } from './WeaponCatalog.js?v=20260711980000';
 import { TACTICAL_ID, TACTICAL_DEFS, getTacticalDef, getTacticalForCharacter, getAvailableTactical, preloadTacticalSprites, FUSION_TACTICALS } from './TacticalWeaponCatalog.js?v=20260711420000';
 import { VFXSpritePlayer } from './VFXSpritePlayer.js?v=20260711800000';
 
@@ -11805,6 +11805,118 @@ export class Game {
             ctx.beginPath();
             ctx.arc((sp - 0.5) * 26, 14 - diss * (24 + sp * 30), 1.3 + sp, 0, Math.PI * 2); ctx.fill();
           }
+        }
+        ctx.restore();
+      } else if (f.id === 'amp_overdrive_wall') {
+        // CONCERT RIG: amp cabinets STACK one by one into a wall (act 1) → every woofer
+        // cone pumps and fires a single visible BASS WAVE that warps forward (act 2) →
+        // the stack collapses into feedback sparks (act 3).
+        const cols = 3, rows = 2, cw = 26, ch = 20;
+        const dir3 = f.angle || 0;
+        ctx.save();
+        ctx.rotate(dir3);
+        const built = Math.min(1, k / 0.3) * cols * rows;   // cabinets placed so far
+        const boom = k > 0.38 && k < 0.62 ? (k - 0.38) / 0.24 : -1;
+        const coll = Math.max(0, (k - 0.72) / 0.43);
+        for (let i2 = 0; i2 < Math.floor(built); i2++) {
+          const cx2 = -10, r2 = i2 % rows, c2 = (i2 / rows) | 0;
+          const bx2 = cx2, by2 = -((c2 - 1) * 0) ;
+          const x2 = cx2, y2 = (c2 - (cols - 1) / 2) * (ch + 2);
+          const dropK = Math.min(1, built - i2);
+          const fall = coll > 0 ? coll * coll * 60 : (1 - dropK) * -40;  // drop in / collapse out
+          const tilt = coll > 0 ? (prV(f.seed, i2) - 0.5) * coll * 1.2 : 0;
+          ctx.save();
+          ctx.translate(x2 - r2 * (cw + 2), y2 + fall);
+          ctx.rotate(tilt);
+          ctx.globalAlpha = (coll > 0 ? 1 - coll : dropK) * 0.95;
+          ctx.fillStyle = '#141018';
+          ctx.fillRect(-cw / 2, -ch / 2, cw, ch);              // cabinet
+          ctx.strokeStyle = '#ff3c3c'; ctx.lineWidth = 1.4;
+          ctx.strokeRect(-cw / 2, -ch / 2, cw, ch);
+          const pump = boom >= 0 ? 1 + Math.sin(boom * Math.PI) * 0.45 : 1;
+          ctx.beginPath(); ctx.arc(0, 0, 6 * pump, 0, Math.PI * 2); ctx.stroke();   // woofer
+          ctx.beginPath(); ctx.arc(0, 0, 2.2 * pump, 0, Math.PI * 2); ctx.stroke();
+          ctx.restore();
+        }
+        if (boom >= 0) {                                     // THE bass wave
+          ctx.globalCompositeOperation = 'lighter';
+          const wx = 20 + boom * f.R * 1.5;
+          for (let w3 = 0; w3 < 3; w3++) {
+            ctx.globalAlpha = (1 - boom) * (0.8 - w3 * 0.22);
+            ctx.strokeStyle = w3 ? '#ff3c3c' : '#fff0e0';
+            ctx.lineWidth = 4 - w3;
+            ctx.beginPath();
+            ctx.arc(wx - w3 * 9, 0, 46 + boom * 30, -Math.PI * 0.42, Math.PI * 0.42);  // warp front
+            ctx.stroke();
+          }
+        }
+        if (coll > 0) {                                      // feedback sparks
+          ctx.globalCompositeOperation = 'lighter';
+          for (let i2 = 0; i2 < 8; i2++) {
+            const sa2 = prV(f.seed, i2 + 40) * Math.PI * 2;
+            ctx.globalAlpha = (1 - coll) * 0.8;
+            ctx.strokeStyle = i2 % 2 ? '#ffd23c' : '#ff3c3c'; ctx.lineWidth = 1.6;
+            ctx.beginPath(); ctx.moveTo(-10, 0);
+            ctx.lineTo(-10 + Math.cos(sa2) * 50 * coll, Math.sin(sa2) * 40 * coll); ctx.stroke();
+          }
+        }
+        ctx.restore();
+      } else if (f.id === 'solo_of_the_damned') {
+        // THE RIFF: a burning staff ribbon unrolls along the ground (act 1) → notes ignite
+        // ONE BY ONE as the solo plays, each bursting into a red lightning arc (act 2) →
+        // final POWER CHORD: the whole score detonates (act 3).
+        const NN = 7;
+        const dir4 = f.angle || 0;
+        ctx.save();
+        ctx.rotate(dir4);
+        ctx.globalCompositeOperation = 'lighter';
+        const unroll = Math.min(1, k / 0.25);
+        const L2 = f.R * 1.7 * unroll;
+        // 5-line staff, gently waving
+        for (let l2 = 0; l2 < 5; l2++) {
+          ctx.globalAlpha = 0.5 * unroll * (k > 0.92 ? Math.max(0, 1 - (k - 0.92) / 0.23) : 1);
+          ctx.strokeStyle = '#ffb03c'; ctx.lineWidth = 1;
+          ctx.beginPath();
+          for (let xx = 0; xx <= L2; xx += 10) {
+            const yy = (l2 - 2) * 5 + Math.sin(xx / 34 + f.t * 3) * 3;
+            xx === 0 ? ctx.moveTo(xx, yy) : ctx.lineTo(xx, yy);
+          }
+          ctx.stroke();
+        }
+        // notes ignite one by one
+        const chord = Math.max(0, (k - 0.88) / 0.27);
+        for (let i2 = 0; i2 < NN; i2++) {
+          const nx = (i2 + 0.7) * (f.R * 1.7 / NN);
+          if (nx > L2) continue;
+          const ny = ((prV(f.seed, i2) * 4) | 0) * 5 - 10 + Math.sin(nx / 34 + f.t * 3) * 3;
+          const lit = (k - 0.28 - i2 * 0.075) / 0.1;
+          if (lit <= 0) {                                    // unlit note (dim outline)
+            ctx.globalAlpha = 0.35;
+            ctx.strokeStyle = '#ffb03c'; ctx.lineWidth = 1.2;
+            ctx.beginPath(); ctx.ellipse(nx, ny, 4, 3, -0.4, 0, Math.PI * 2); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(nx + 3.6, ny - 1); ctx.lineTo(nx + 3.6, ny - 13); ctx.stroke();
+          } else {
+            const hot2 = Math.min(1, lit);
+            ctx.globalAlpha = 0.95;
+            ctx.fillStyle = chord > 0 ? '#fff4d8' : '#ffb03c';
+            ctx.shadowColor = '#ff3c3c'; ctx.shadowBlur = 10;
+            ctx.beginPath(); ctx.ellipse(nx, ny, 4.4, 3.2, -0.4, 0, Math.PI * 2); ctx.fill();
+            ctx.shadowBlur = 0;
+            if (hot2 < 1) {                                  // ignition: red lightning burst
+              ctx.globalAlpha = 1 - hot2;
+              ctx.strokeStyle = '#ff3c3c'; ctx.lineWidth = 2;
+              ctx.beginPath(); ctx.moveTo(nx, ny - 26);
+              ctx.lineTo(nx + 4, ny - 15); ctx.lineTo(nx - 3, ny - 8); ctx.lineTo(nx, ny); ctx.stroke();
+            }
+          }
+        }
+        if (chord > 0) {                                     // POWER CHORD detonation
+          ctx.globalAlpha = (1 - chord) * 0.9;
+          ctx.strokeStyle = '#fff0e0'; ctx.lineWidth = 4 * (1 - chord) + 1;
+          ctx.beginPath(); ctx.ellipse(L2 / 2, 0, f.R * chord * 1.25, f.R * chord * 0.55, 0, 0, Math.PI * 2); ctx.stroke();
+          ctx.globalAlpha = (1 - chord) * 0.35;
+          ctx.fillStyle = '#ff3c3c';
+          ctx.beginPath(); ctx.ellipse(L2 / 2, 0, f.R * chord, f.R * chord * 0.45, 0, 0, Math.PI * 2); ctx.fill();
         }
         ctx.restore();
       } else if (f.id === 'revenant_choir') {

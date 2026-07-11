@@ -44,6 +44,8 @@ export const WEAPON_ID = Object.freeze({
   PYROCLAST_UPPERCUT:'pyroclast_uppercut',// NEW brawler evolution (procedural)
   WIRE_GARROTE_WEB: 'wire_garrote_web', // NEW assassin evolution (procedural)
   POISON_PETAL_WALTZ:'poison_petal_waltz',// NEW assassin evolution (procedural)
+  AMP_OVERDRIVE_WALL:'amp_overdrive_wall',// NEW eddie evolution (procedural)
+  SOLO_OF_THE_DAMNED:'solo_of_the_damned',// NEW eddie evolution (procedural)
   TEMPEST_RIBBON:   'tempest_ribbon',   // NEW taekwondo evolution (procedural)
   REVENANT_CHOIR:   'revenant_choir',   // NEW skeleton evolution (procedural)
 });
@@ -643,6 +645,30 @@ export const WEAPON_DEFS = Object.freeze({
     color: '#ff4dd2',
     baseStats: { damage: 26, cooldown: 2.9, aoeRadius: 155, speed: 0, piercing: 99 },
   },
+  [WEAPON_ID.AMP_OVERDRIVE_WALL]: {
+    id: 'amp_overdrive_wall',
+    name: 'Amp Overdrive Wall',
+    description: 'A wall of stage amps stacks itself speaker by speaker — every woofer fires at once, punching a visible bass wave that warps the air.',
+    character: 'eddie',
+    element: 'thunder',
+    behavior: WEAPON_BEHAVIOR.GROUND_SHOCKWAVE,
+    isEvolution: true,
+    procedural: true,
+    color: '#ff3c3c',
+    baseStats: { damage: 31, cooldown: 2.8, aoeRadius: 160, speed: 0, piercing: 99 },
+  },
+  [WEAPON_ID.SOLO_OF_THE_DAMNED]: {
+    id: 'solo_of_the_damned',
+    name: 'Solo of the Damned',
+    description: 'A burning music staff unrolls across the ground — notes IGNITE one by one as the riff plays, each bursting into red lightning, until the final power chord detonates the whole score.',
+    character: 'eddie',
+    element: 'fire',
+    behavior: WEAPON_BEHAVIOR.NOVA,
+    isEvolution: true,
+    procedural: true,
+    color: '#ffb03c',
+    baseStats: { damage: 29, cooldown: 3.0, aoeRadius: 165, speed: 0, piercing: 99 },
+  },
   [WEAPON_ID.REVENANT_CHOIR]: {
     id: 'revenant_choir',
     name: 'Revenant Choir',
@@ -742,6 +768,18 @@ export const EVOLUTION_RECIPES = Object.freeze([
     ingredients: [WEAPON_ID.GAS_NEEDLE, WEAPON_ID.SHADOW_TOXIC],
     minLevel: 5,
     owner: ['assassin_clone'],
+  },
+  {
+    result: WEAPON_ID.AMP_OVERDRIVE_WALL,
+    ingredients: [WEAPON_ID.SOLO_RED_THUNDER, WEAPON_ID.MAGNETIC_ARC],
+    minLevel: 5,
+    owner: ['eddie'],
+  },
+  {
+    result: WEAPON_ID.SOLO_OF_THE_DAMNED,
+    ingredients: [WEAPON_ID.SOLO_RED_THUNDER, WEAPON_ID.CATACLYSM_PULSE],
+    minLevel: 5,
+    owner: ['eddie'],
   },
   {
     result: WEAPON_ID.CHAOS_CHORD,
