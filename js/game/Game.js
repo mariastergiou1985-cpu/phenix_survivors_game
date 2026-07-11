@@ -51,7 +51,7 @@ import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260711730000';
 import { NexusManager } from './NexusManager.js?v=20260711900000';
 import { VESSELS, getVesselById, getDefaultVesselId } from './VesselCatalog.js?v=20260705040000';
 import { PETS, getPetById } from './PetCatalog.js?v=20260705000000';
-import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons, isEvolutionOwnedBy, getCardDisplayName } from './WeaponCatalog.js?v=20260712000000';
+import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons, isEvolutionOwnedBy, getCardDisplayName } from './WeaponCatalog.js?v=20260712010000';
 import { TACTICAL_ID, TACTICAL_DEFS, getTacticalDef, getTacticalForCharacter, getAvailableTactical, preloadTacticalSprites, FUSION_TACTICALS } from './TacticalWeaponCatalog.js?v=20260711420000';
 import { VFXSpritePlayer } from './VFXSpritePlayer.js?v=20260711800000';
 
@@ -12151,6 +12151,124 @@ export class Game {
           ctx.globalAlpha = (1 - dK3) * 0.4;
           ctx.fillStyle = '#c86bff';
           ctx.beginPath(); ctx.arc(wx2, wy2, 8 + dK3 * f.R * 0.6, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.restore();
+      } else if (f.id === 'fractal_verdict') {
+        // SIERPINSKI: a triangle inscribes itself (gen 0) → subdivides into 4 (gen 1) →
+        // again (gen 2) → again (gen 3), each generation brighter — then the fractal
+        // COLLAPSES inward generation by generation into a point-detonation.
+        const S3 = f.R * 1.05;
+        const top = [0, -S3 * 0.62], bl = [-S3 * 0.6, S3 * 0.34], br = [S3 * 0.6, S3 * 0.34];
+        // generation reveal: 0..4 over first 60%; collapse over last 35%
+        const gen = Math.min(4, (k / 0.6) * 4);
+        const coll2 = Math.max(0, (k - 0.68) / 0.35);
+        const shrink = 1 - coll2 * coll2 * 0.96;
+        ctx.save();
+        ctx.scale(shrink, shrink);
+        ctx.globalCompositeOperation = 'lighter';
+        // recursive subdivision, drawn iteratively per depth
+        const mid2 = (A2, B2) => [(A2[0] + B2[0]) / 2, (A2[1] + B2[1]) / 2];
+        const drawTri = (A2, B2, C2, d2) => {
+          const born2 = Math.min(1, Math.max(0, gen - d2));
+          if (born2 <= 0) return;
+          // deeper generations fade first during the collapse
+          const cf = coll2 > 0 ? Math.max(0, 1 - Math.max(0, coll2 * 4 - (3 - d2))) : 1;
+          if (cf <= 0) return;
+          ctx.globalAlpha = (0.2 + d2 * 0.22) * born2 * cf;
+          ctx.strokeStyle = d2 === 3 ? '#e4ffd2' : '#8dff6a';
+          ctx.lineWidth = 2.2 - d2 * 0.4;
+          ctx.beginPath();
+          ctx.moveTo(A2[0], A2[1]); ctx.lineTo(B2[0], B2[1]); ctx.lineTo(C2[0], C2[1]); ctx.closePath();
+          ctx.stroke();
+          if (d2 < 3) {
+            const ab = mid2(A2, B2), bc = mid2(B2, C2), ca = mid2(C2, A2);
+            drawTri(A2, ab, ca, d2 + 1); drawTri(ab, B2, bc, d2 + 1); drawTri(ca, bc, C2, d2 + 1);
+          }
+        };
+        drawTri(top, br, bl, 0);
+        // vertices spark as each generation completes
+        if (gen > 0 && coll2 <= 0) {
+          ctx.globalAlpha = 0.5 + 0.3 * Math.sin(f.t * 9);
+          ctx.fillStyle = '#e4ffd2';
+          for (const [vx2, vy3] of [top, bl, br]) { ctx.beginPath(); ctx.arc(vx2, vy3, 2.6, 0, Math.PI * 2); ctx.fill(); }
+        }
+        ctx.restore();
+        if (coll2 > 0.75) {                              // point-detonation (Q.E.D. of destruction)
+          const dK4 = (coll2 - 0.75) / 0.25;
+          ctx.save(); ctx.globalCompositeOperation = 'lighter';
+          ctx.globalAlpha = (1 - dK4) * 0.95;
+          ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 3 * (1 - dK4) + 0.8;
+          ctx.beginPath(); ctx.arc(0, 0, dK4 * f.R * 1.1 + 5, 0, Math.PI * 2); ctx.stroke();
+          ctx.globalAlpha = (1 - dK4) * 0.4;
+          ctx.fillStyle = '#8dff6a';
+          ctx.beginPath(); ctx.arc(0, 0, dK4 * f.R * 0.7 + 4, 0, Math.PI * 2); ctx.fill();
+          ctx.restore();
+        }
+      } else if (f.id === 'golden_spiral_guillotine') {
+        // PHI BLADE: blueprint golden rectangles appear one by one and the Fibonacci
+        // spiral draws itself quadrant by quadrant (act 1) → the finished spiral SPINS
+        // like a blade with a hot leading edge (act 2) → dissolves into phi-dust (act 3).
+        const FIB = [1, 1, 2, 3, 5, 8];
+        const SC2 = f.R * 0.15;
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        const draw2 = Math.min(1, k / 0.42) * FIB.length;   // quadrants drawn so far
+        const spin2 = Math.max(0, Math.min(1, (k - 0.46) / 0.42));
+        const dust = Math.max(0, (k - 0.9) / 0.25);
+        ctx.rotate(spin2 * spin2 * 14);                     // accelerating blade spin
+        // walk the fibonacci quadrants (same construction as the real curve)
+        let cx3 = 0, cy3 = 0, ang2 = 0;
+        for (let i2 = 0; i2 < FIB.length; i2++) {
+          const rr2 = FIB[i2] * SC2;
+          const q2 = Math.min(1, Math.max(0, draw2 - i2));
+          if (q2 <= 0) break;
+          const a1 = ang2, a2v = ang2 + (Math.PI / 2) * q2;
+          // blueprint rectangle (faint, dashed) while drawing
+          if (spin2 <= 0) {
+            ctx.globalAlpha = 0.22 * q2 * (1 - dust);
+            ctx.strokeStyle = '#7df9ff'; ctx.lineWidth = 0.8;
+            ctx.setLineDash([3, 3]);
+            ctx.strokeRect(cx3 - rr2, cy3 - rr2, rr2, rr2);
+            ctx.setLineDash([]);
+          }
+          // spiral arc
+          ctx.globalAlpha = (0.85 - dust * 0.85);
+          ctx.strokeStyle = i2 === FIB.length - 1 && spin2 > 0 ? '#fff6dc' : '#ffd76a';
+          ctx.lineWidth = 2.6 + (spin2 > 0 ? 1.2 : 0);
+          ctx.shadowColor = '#ffd76a'; ctx.shadowBlur = spin2 > 0 ? 12 : 6;
+          ctx.beginPath(); ctx.arc(cx3, cy3, rr2, a1, a2v); ctx.stroke();
+          ctx.shadowBlur = 0;
+          if (q2 >= 1) {                                    // advance construction point
+            const na = ang2 + Math.PI / 2;
+            cx3 += (Math.cos(na) - Math.cos(ang2)) * 0;     // centers per fibonacci tiling:
+            // classic recurrence: next center = current + fib rotation step
+            cx3 += Math.cos(ang2 + Math.PI) * 0;
+            const step2 = (FIB[i2 + 1] || 0) * SC2 - rr2;
+            cx3 += Math.cos(na) * -step2 * 0;
+            // simpler exact walk: move center by fib difference along the new axis
+            cx3 += Math.cos(na + Math.PI) * ((FIB[i2 + 1] || FIB[i2]) - FIB[i2]) * SC2;
+            cy3 += Math.sin(na + Math.PI) * ((FIB[i2 + 1] || FIB[i2]) - FIB[i2]) * SC2;
+            ang2 = na;
+          }
+        }
+        if (spin2 > 0 && dust < 1) {                        // hot slicing tip
+          ctx.globalAlpha = (1 - dust) * 0.9;
+          ctx.fillStyle = '#ffffff';
+          ctx.shadowColor = '#ffd76a'; ctx.shadowBlur = 14;
+          const tipR = FIB[FIB.length - 1] * SC2;
+          ctx.beginPath(); ctx.arc(cx3 + Math.cos(ang2) * tipR, cy3 + Math.sin(ang2) * tipR, 4, 0, Math.PI * 2); ctx.fill();
+          ctx.shadowBlur = 0;
+        }
+        if (dust > 0) {                                     // phi-dust dissolution
+          ctx.fillStyle = '#ffd76a';
+          for (let i2 = 0; i2 < 16; i2++) {
+            const da2 = prV(f.seed, i2 + 70) * Math.PI * 2;
+            const dr2 = f.R * (0.2 + prV(f.seed, i2 + 71) * 0.8) * (0.6 + dust * 0.6);
+            ctx.globalAlpha = (1 - dust) * 0.8;
+            ctx.beginPath();
+            ctx.arc(Math.cos(da2) * dr2, Math.sin(da2) * dr2 * 0.72 - dust * 14, 1.4 + prV(f.seed, i2) * 1.6, 0, Math.PI * 2);
+            ctx.fill();
+          }
         }
         ctx.restore();
       } else if (f.id === 'revenant_choir') {

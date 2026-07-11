@@ -50,6 +50,8 @@ export const WEAPON_ID = Object.freeze({
   WING_GUILLOTINE:  'wing_guillotine',  // NEW dimi evolution (procedural)
   CAUSALITY_STITCH: 'causality_stitch', // NEW phasewalker evolution (procedural)
   QUANTUM_ROULETTE: 'quantum_roulette', // NEW phasewalker evolution (procedural)
+  FRACTAL_VERDICT:  'fractal_verdict',  // NEW euclid evolution (procedural)
+  GOLDEN_SPIRAL_GUILLOTINE: 'golden_spiral_guillotine', // NEW euclid evolution (procedural)
   TEMPEST_RIBBON:   'tempest_ribbon',   // NEW taekwondo evolution (procedural)
   REVENANT_CHOIR:   'revenant_choir',   // NEW skeleton evolution (procedural)
 });
@@ -721,6 +723,30 @@ export const WEAPON_DEFS = Object.freeze({
     color: '#c86bff',
     baseStats: { damage: 31, cooldown: 3.0, aoeRadius: 145, speed: 0, piercing: 99 },
   },
+  [WEAPON_ID.FRACTAL_VERDICT]: {
+    id: 'fractal_verdict',
+    name: 'Fractal Verdict',
+    description: 'A triangle is inscribed on the ground — it subdivides into four, then again, then again (a living Sierpinski), before the whole fractal collapses generation by generation into a single point-detonation.',
+    character: 'euclid_vector',
+    element: 'toxic',
+    behavior: WEAPON_BEHAVIOR.NOVA,
+    isEvolution: true,
+    procedural: true,
+    color: '#8dff6a',
+    baseStats: { damage: 30, cooldown: 2.9, aoeRadius: 150, speed: 0, piercing: 99 },
+  },
+  [WEAPON_ID.GOLDEN_SPIRAL_GUILLOTINE]: {
+    id: 'golden_spiral_guillotine',
+    name: 'Golden Spiral Guillotine',
+    description: 'A golden Fibonacci spiral draws itself quadrant by quadrant over blueprint rectangles — then the spiral SPINS like a blade, sweeping everything it touches, and dissolves into phi-dust.',
+    character: 'euclid_vector',
+    element: 'radiation',
+    behavior: WEAPON_BEHAVIOR.VORTEX,
+    isEvolution: true,
+    procedural: true,
+    color: '#ffd76a',
+    baseStats: { damage: 28, cooldown: 2.8, aoeRadius: 155, speed: 0, piercing: 99 },
+  },
   [WEAPON_ID.REVENANT_CHOIR]: {
     id: 'revenant_choir',
     name: 'Revenant Choir',
@@ -856,6 +882,18 @@ export const EVOLUTION_RECIPES = Object.freeze([
     ingredients: [WEAPON_ID.GLITCH_TEAR, WEAPON_ID.SPIRIT_CRESCENT],
     minLevel: 5,
     owner: ['japan_phasewalker'],
+  },
+  {
+    result: WEAPON_ID.FRACTAL_VERDICT,
+    ingredients: [WEAPON_ID.GAS_NEEDLE, WEAPON_ID.NEXUS_CHAKRAM],
+    minLevel: 5,
+    owner: ['euclid_vector'],
+  },
+  {
+    result: WEAPON_ID.GOLDEN_SPIRAL_GUILLOTINE,
+    ingredients: [WEAPON_ID.NEXUS_CHAKRAM, WEAPON_ID.MAGNETIC_ARC],
+    minLevel: 5,
+    owner: ['euclid_vector'],
   },
   {
     result: WEAPON_ID.CHAOS_CHORD,
