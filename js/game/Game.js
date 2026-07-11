@@ -32,6 +32,7 @@ import { DigitalSingularity } from '../effects/digital-singularity.js?v=20260703
 import { OssuaryReconstruction } from '../effects/ossuary-reconstruction.js?v=20260711500000';
 import { AfterimageTribunal } from '../effects/afterimage-tribunal.js?v=20260711510000';
 import { FeedbackApocalypse } from '../effects/feedback-apocalypse.js?v=20260711520000';
+import { OniMaskOverture } from '../effects/oni-mask-overture.js?v=20260711530000';
 import { Protocol0 } from '../effects/protocol-0.js?v=20260705000000';
 import { LaserEyes } from '../effects/laser-eyes.js?v=20260709100000';
 import { MeteorRain } from '../effects/meteor-rain.js?v=20260709100000';
@@ -6159,6 +6160,7 @@ export class Game {
     if (this.player?.selectedCharacter !== 'oni_cataclysm_protocol') return;
     if (this._oniFxBuilt || !this._canvas) return;
     this._protocol0  = new Protocol0(this._canvas);
+    this._oniMask    = new OniMaskOverture(this._canvas);   // visual-only mask overture (no mechanics)
     this._laserEyes  = new LaserEyes(this._canvas, { charge: { ms: 150 }, beam: { durationMs: 1100 } });
     this._meteorRain = new MeteorRain(this._canvas, { area: { radius: 170 } });
     this._oniFxBuilt = true;
@@ -6175,6 +6177,7 @@ export class Game {
       return;
     }
     p.mana -= ULTIMATE_MANA_COST;
+    { const sm = this._playerScreenPos(); this._oniMask?.trigger(sm.cx, sm.footY, 8000); }   // cinematic mask (visual only)
     const cl = p.upgrades['oni_protocol0_mastery'] || 0;   // Total Cataclysm mastery level
     const vs = this._viewScale, cam = this.camera;
     const s  = this._playerScreenPos();
@@ -6257,6 +6260,7 @@ export class Game {
     try {
       const s = this._playerScreenPos();
       this._protocol0.update(now, s.cx, s.footY, this.enemies);
+      if (this._oniMask?.isActive()) { this._oniMask.cx = s.cx; this._oniMask.footY = s.footY; this._oniMask.update(now); }
     } catch (err) { console.warn('[Oni Protocol0]', err); }
 
     // ── STAGE-2 contact damage (world-space) ──
@@ -6367,6 +6371,7 @@ export class Game {
     try {
       if (this._meteorRain) this._meteorRain.render(ctx);   // ground grid + falling meteors (behind)
       if (this._protocol0)  this._protocol0.render(ctx);    // ult aura / lava / detonation
+      if (this._oniMask?.isActive()) this._oniMask.render(ctx);   // cinematic mask overture (visual only)
       if (this._laserEyes)  this._laserEyes.render(ctx);    // beams (on top)
     } catch (err) { console.warn('[Oni FX render]', err); }
   }
