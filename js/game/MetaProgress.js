@@ -299,16 +299,16 @@ export const RELIC_DEFS = [
 // Owning a character's amulet empowers that character's SPACE ULTIMATE (+30% damage,
 // applied at every ult damage hook via Game._amuletUltMult). Permanent, one-time buys.
 export const AMULET_DEFS = [
-  { id: 'amulet_skeleton',    char: 'skeleton_warrior',       charName: 'Cyber Skeleton',   name: 'Ossuary Sigil',      sprite: 'assets/amulets/amulet_skeleton.png',    cost: 110 },
-  { id: 'amulet_taekwon',     char: 'taekwondo_girl',         charName: 'Neon Taekwondo',   name: 'Afterimage Charm',   sprite: 'assets/amulets/amulet_taekwon.png',     cost: 110 },
-  { id: 'amulet_cyber',       char: 'cyber_arm_hero',         charName: 'Cyber Arm Hero',   name: 'Railgun Core',       sprite: 'assets/amulets/amulet_cyber.png',       cost: 110 },
-  { id: 'amulet_assasin',     char: 'assassin_clone',         charName: 'Assassin Clone',   name: 'Phantom Seal',       sprite: 'assets/amulets/amulet_assasin.png',     cost: 110 },
-  { id: 'amulet_eddie',       char: 'eddie',                  charName: 'Eddie',            name: 'Feedback Pick',      sprite: 'assets/amulets/amulet_eddie.png',       cost: 110 },
-  { id: 'amulet_dimi',        char: 'dimis_kickboxer',        charName: 'Dimi',             name: 'Angelic Relay',      sprite: 'assets/amulets/amulet_dimi.png',        cost: 110 },
-  { id: 'amulet_phasewalker', char: 'japan_phasewalker',      charName: 'Phasewalker',      name: 'Singularity Knot',   sprite: 'assets/amulets/amulet_phasewalker.png', cost: 110 },
-  { id: 'amulet_eyklid',      char: 'euclid_vector',          charName: 'Euclid Vector',    name: 'Axiom Locket',       sprite: 'assets/amulets/amulet_eyklid.png',      cost: 110 },
-  { id: 'amulet_brawler',     char: 'brawler_warrior',        charName: 'Brawler Warrior',  name: 'Magma Core Fist',    sprite: 'assets/amulets/amulet_brawler.png',     cost: 110 },
-  { id: 'amulet_oni',         char: 'oni_cataclysm_protocol', charName: 'Oni',              name: 'Cataclysm Bead',     sprite: 'assets/amulets/amulet_oni.png',         cost: 130 },
+  { id: 'amulet_skeleton',    char: 'skeleton_warrior',       charName: 'Cyber Skeleton',   name: 'Ossuary Sigil',      sprite: 'assets/amulets/amulet_skeleton.png',    cost: 110, creditCost: 2500 },
+  { id: 'amulet_taekwon',     char: 'taekwondo_girl',         charName: 'Neon Taekwondo',   name: 'Afterimage Charm',   sprite: 'assets/amulets/amulet_taekwon.png',     cost: 110, creditCost: 2500 },
+  { id: 'amulet_cyber',       char: 'cyber_arm_hero',         charName: 'Cyber Arm Hero',   name: 'Railgun Core',       sprite: 'assets/amulets/amulet_cyber.png',       cost: 110, creditCost: 2500 },
+  { id: 'amulet_assasin',     char: 'assassin_clone',         charName: 'Assassin Clone',   name: 'Phantom Seal',       sprite: 'assets/amulets/amulet_assasin.png',     cost: 110, creditCost: 2500 },
+  { id: 'amulet_eddie',       char: 'eddie',                  charName: 'Eddie',            name: 'Feedback Pick',      sprite: 'assets/amulets/amulet_eddie.png',       cost: 110, creditCost: 2500 },
+  { id: 'amulet_dimi',        char: 'dimis_kickboxer',        charName: 'Dimi',             name: 'Angelic Relay',      sprite: 'assets/amulets/amulet_dimi.png',        cost: 110, creditCost: 2500 },
+  { id: 'amulet_phasewalker', char: 'japan_phasewalker',      charName: 'Phasewalker',      name: 'Singularity Knot',   sprite: 'assets/amulets/amulet_phasewalker.png', cost: 110, creditCost: 2500 },
+  { id: 'amulet_eyklid',      char: 'euclid_vector',          charName: 'Euclid Vector',    name: 'Axiom Locket',       sprite: 'assets/amulets/amulet_eyklid.png',      cost: 110, creditCost: 2500 },
+  { id: 'amulet_brawler',     char: 'brawler_warrior',        charName: 'Brawler Warrior',  name: 'Magma Core Fist',    sprite: 'assets/amulets/amulet_brawler.png',     cost: 110, creditCost: 2500 },
+  { id: 'amulet_oni',         char: 'oni_cataclysm_protocol', charName: 'Oni',              name: 'Cataclysm Bead',     sprite: 'assets/amulets/amulet_oni.png',         cost: 130, creditCost: 3000 },
 ];
 export const AMULET_BY_ID   = Object.fromEntries(AMULET_DEFS.map(a => [a.id, a]));
 export const AMULET_BY_CHAR = Object.fromEntries(AMULET_DEFS.map(a => [a.char, a]));
@@ -766,10 +766,12 @@ export class MetaProgress {
   hasAmuletFor(char) { const a = AMULET_BY_CHAR[char]; return !!(a && this.amulets[a.id]); }
   tryBuyAmulet(id) {
     const a = AMULET_BY_ID[id];
-    if (!a)                                return 'invalid';
-    if (this.amulets[id])                  return 'owned';
-    if (this.protocolFragments < a.cost)   return 'poor';
-    this.protocolFragments -= a.cost;
+    if (!a)               return 'invalid';
+    if (this.amulets[id]) return 'owned';
+    // Dual pricing (Maria): Fragments preferred, Grid Cores accepted as the alternative.
+    if (this.protocolFragments >= a.cost)            this.protocolFragments -= a.cost;
+    else if (this.credits >= (a.creditCost || 2500)) this.credits -= (a.creditCost || 2500);
+    else return 'poor';
     this.amulets[id] = true;
     this._save();
     return 'ok';

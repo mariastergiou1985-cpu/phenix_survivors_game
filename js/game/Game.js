@@ -22,7 +22,7 @@ import { weightedSample } from './Upgrades.js?v=20260711370000';
 import { MutationUI }      from './MutationUI.js?v=20260703990000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260711820000';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, SKILL_TREE, AMULET_DEFS } from './MetaProgress.js?v=20260711860000';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, SKILL_TREE, AMULET_DEFS } from './MetaProgress.js?v=20260711870000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260711590000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
@@ -3183,7 +3183,7 @@ export class Game {
         const res = this.meta.tryBuyAmulet(am.id);
         if      (res === 'ok')    this._upgradeMsg = `${am.name} bound! ${am.charName}'s ULTIMATE +30%.`;
         else if (res === 'owned') this._upgradeMsg = `${am.name} already bound.`;
-        else if (res === 'poor')  this._upgradeMsg = `Not enough Fragments (need ${am.cost} 🧩).`;
+        else if (res === 'poor')  this._upgradeMsg = `Need ${am.cost} 🧩 Fragments OR ${am.creditCost || 2500} Grid Cores.`;
         this._upgradeMsgTimer = 2.2;
         this._confirmReset = false;
         break;
@@ -3272,7 +3272,7 @@ export class Game {
   _drawAmuletCard(ctx, am, r) {
     const owned  = this.meta.amulets && this.meta.amulets[am.id];
     const avail  = this.meta.getProtocolFragments();
-    const afford = !owned && avail >= am.cost;
+    const afford = !owned && (avail >= am.cost || this.meta.credits >= (am.creditCost || 2500));
     const accent = '#ffd447';
     if (!this._amuletIconCache) this._amuletIconCache = {};
     if (!this._amuletIconCache[am.id]) { const im = new Image(); im.src = am.sprite; this._amuletIconCache[am.id] = im; }
@@ -3311,7 +3311,7 @@ export class Game {
     ctx.fillText('ULTIMATE  +30%', tx, r.y + 70);
     ctx.font = 'bold 13px "Segoe UI Emoji", Consolas, monospace';
     if (owned) { ctx.fillStyle = accent;               ctx.fillText('✦ BOUND', tx, r.y + 108); }
-    else       { ctx.fillStyle = afford ? '#7df9ff' : '#5a7080'; ctx.fillText(`🧩 ${am.cost}`, tx, r.y + 108); }
+    else       { ctx.fillStyle = afford ? '#7df9ff' : '#5a7080'; ctx.fillText(`🧩 ${am.cost}  /  ⛁ ${am.creditCost || 2500}`, tx, r.y + 108); }
     ctx.textAlign = 'center';
   }
 
@@ -3644,7 +3644,7 @@ export class Game {
         const res = this.meta.tryBuyAmulet(am.id);
         if      (res === 'ok')    this._upgradeMsg = `${am.name} bound! ${am.charName}'s ULTIMATE +30%.`;
         else if (res === 'owned') this._upgradeMsg = `${am.name} already bound.`;
-        else if (res === 'poor')  this._upgradeMsg = `Not enough Fragments (need ${am.cost} 🧩).`;
+        else if (res === 'poor')  this._upgradeMsg = `Need ${am.cost} 🧩 Fragments OR ${am.creditCost || 2500} Grid Cores.`;
         this._upgradeMsgTimer = 2.2;
         this._syncUpgradesOverlay();
         return;
@@ -3790,11 +3790,13 @@ export class Game {
       // AMULETS — Maria's art, PF-only one-time buys, one per character (+30% that character's ULT)
       grid.innerHTML = AMULET_DEFS.map((am, i) => {
         const owned  = !!(this.meta.amulets && this.meta.amulets[am.id]);
-        const can    = !owned && pf >= am.cost;
+        const gc     = am.creditCost || 2500;
+        const can    = !owned && (pf >= am.cost || credits >= gc);
         let btnClass = '', btnLabel = '';
         if (owned)    { btnClass = 'maxed';      btnLabel = '✦ BOUND'; }
-        else if (can) { btnClass = 'can-afford'; btnLabel = `BIND — ${am.cost} 🧩`; }
-        else          { btnClass = '';           btnLabel = `${am.cost} 🧩 needed`; }
+        else if (pf >= am.cost)      { btnClass = 'can-afford'; btnLabel = `BIND — ${am.cost} 🧩`; }
+        else if (credits >= gc)      { btnClass = 'can-afford'; btnLabel = `BIND — ${gc} Cores`; }
+        else          { btnClass = '';           btnLabel = `${am.cost} 🧩 or ${gc} Cores`; }
         return `<div class="cgu-card${owned ? ' maxed' : ''}${can ? ' can-afford' : ''}" data-idx="${i}">
           <div style="display:flex;align-items:center;gap:12px;">
             <img src="${am.sprite}" alt="" style="width:64px;height:64px;object-fit:contain;mix-blend-mode:screen;filter:drop-shadow(0 0 8px rgba(255,212,71,.6));">
