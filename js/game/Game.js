@@ -14700,18 +14700,100 @@ export class Game {
     if (this._fusionNameT > 0) this._fusionNameT -= dt;
   }
 
+  // Fusion clouds — cinematic pass (names/data untouched): a churning 3-layer miasma with a
+  // rotating dashed containment ring, rising bubbles that pop at the surface, and reactive
+  // tendrils in the secondary color. Birth scale-in + death dissipation. Fully procedural,
+  // fixed loops only, still hard-capped at 12 clouds.
   _drawFusionClouds(ctx) {
     for (const c of this.fusionClouds) {
       const def = FUSION_FX[c.fid] || {}; const R = (def.radius || 70);
-      const k = c.t / c.life, a = (1 - k) * 0.5;
+      const c1 = def.c1 || '#7CFF4D', c2 = def.c2 || '#8fdf7f';
+      const k = c.t / c.life;
+      const birth = Math.min(1, c.t / 0.3);                       // scale-in
+      const dieK  = k > 0.75 ? (k - 0.75) / 0.25 : 0;             // dissipate
+      const vis   = birth * (1 - dieK);
+      const seed  = (c.x * 0.37 + c.y * 0.11);
+      const pr = i => { const v = Math.sin(seed + i * 78.233) * 43758.5453; return v - Math.floor(v); };
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
+
+      // LAYER 0: dark grounding pool (gives the gas body/weight)
+      const pool = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, R * birth);
+      pool.addColorStop(0, 'rgba(0,0,0,0)');
+      pool.addColorStop(0.65, 'rgba(0,20,0,0.0)');
+      pool.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.save();
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.globalAlpha = 0.28 * vis;
+      ctx.fillStyle = '#03140a';
+      ctx.beginPath(); ctx.ellipse(c.x, c.y, R * birth, R * 0.55 * birth, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+
+      // LAYER 1: slow heavy under-puffs (counter-rotating)
       for (let i = 0; i < 5; i++) {
-        const ang = i * 1.25 + c.t * 0.6;
-        ctx.globalAlpha = a; ctx.fillStyle = i % 2 ? (def.c2 || '#8fdf7f') : (def.c1 || '#7CFF4D');
+        const ang = i * 1.25 - c.t * 0.35 + pr(i) * 2;
+        ctx.globalAlpha = 0.30 * vis;
+        ctx.fillStyle = c1;
         ctx.beginPath();
-        ctx.arc(c.x + Math.cos(ang) * R * 0.5, c.y + Math.sin(ang) * R * 0.5, R * 0.42 * (0.7 + 0.3 * k), 0, Math.PI * 2);
+        ctx.arc(c.x + Math.cos(ang) * R * 0.45, c.y + Math.sin(ang) * R * 0.28,
+                R * (0.34 + 0.12 * Math.sin(c.t * 1.7 + i)) * birth, 0, Math.PI * 2);
         ctx.fill();
+      }
+      // LAYER 2: brighter mid-puffs churning the other way
+      for (let i = 0; i < 5; i++) {
+        const ang = i * 1.25 + c.t * 0.65 + pr(i + 5) * 2;
+        ctx.globalAlpha = 0.26 * vis;
+        ctx.fillStyle = i % 2 ? c2 : c1;
+        ctx.beginPath();
+        ctx.arc(c.x + Math.cos(ang) * R * 0.55, c.y + Math.sin(ang) * R * 0.34 - R * 0.08,
+                R * (0.26 + 0.08 * Math.sin(c.t * 2.3 + i * 2)) * birth, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      // LAYER 3: bright rim wisps (small, fast, at the crown)
+      for (let i = 0; i < 4; i++) {
+        const ang = i * 1.57 + c.t * 1.1;
+        ctx.globalAlpha = 0.30 * vis;
+        ctx.fillStyle = c2;
+        ctx.beginPath();
+        ctx.arc(c.x + Math.cos(ang) * R * 0.62, c.y + Math.sin(ang) * R * 0.36 - R * 0.22,
+                R * 0.13 * birth, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // rotating dashed containment ring — reads as the DAMAGE zone edge
+      ctx.save();
+      ctx.globalAlpha = 0.55 * vis * (0.7 + 0.3 * Math.sin(c.t * 3));
+      ctx.strokeStyle = c2; ctx.lineWidth = 2;
+      ctx.shadowColor = c1; ctx.shadowBlur = 8;
+      ctx.setLineDash([10, 8]);
+      ctx.lineDashOffset = -c.t * 30;
+      ctx.beginPath(); ctx.ellipse(c.x, c.y, R * birth, R * 0.55 * birth, 0, 0, Math.PI * 2); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+
+      // rising bubbles that POP at the crown (6, seed-staggered, looping)
+      for (let i = 0; i < 6; i++) {
+        const cyc = (c.t * (0.5 + pr(i + 20) * 0.5) + pr(i + 30)) % 1;   // 0→1 rise loop
+        const bx = c.x + (pr(i + 40) - 0.5) * R * 1.1;
+        const by = c.y + R * 0.3 - cyc * R * 0.75;
+        if (cyc < 0.85) {                                          // rising bubble
+          ctx.globalAlpha = 0.5 * vis * (1 - cyc * 0.4);
+          ctx.strokeStyle = c2; ctx.lineWidth = 1.4;
+          ctx.beginPath(); ctx.arc(bx, by, 2.5 + pr(i) * 3, 0, Math.PI * 2); ctx.stroke();
+        } else {                                                   // pop flash
+          const pk = (cyc - 0.85) / 0.15;
+          ctx.globalAlpha = 0.7 * vis * (1 - pk);
+          ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.2;
+          ctx.beginPath(); ctx.arc(bx, by, (2.5 + pr(i) * 3) * (1 + pk * 2.2), 0, Math.PI * 2); ctx.stroke();
+        }
+      }
+
+      // damage-tick pulse — when the cloud actually bites (dmgCd just reset), flash inward ring
+      if (c.dmgCd > 0.36) {
+        const tk = (0.5 - c.dmgCd) / 0.14;                        // 0→1 right after a tick
+        ctx.globalAlpha = Math.max(0, (1 - tk)) * 0.6 * vis;
+        ctx.strokeStyle = c1; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.ellipse(c.x, c.y, R * (1 - tk * 0.35), R * 0.55 * (1 - tk * 0.35), 0, 0, Math.PI * 2); ctx.stroke();
       }
       ctx.restore();
     }
