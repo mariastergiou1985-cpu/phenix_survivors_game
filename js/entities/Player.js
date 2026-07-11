@@ -136,6 +136,9 @@ export class Player {
     this._moveBlend = 0;
     this._facing    = 1;
 
+    // Phase 7 — armor shield pickup buff: +15% damage reduction while > 0 (refresh, no stack).
+    this._armorT = 0;
+
     this.kills             = 0;
     this.coresSecured      = 0;
     this.upgrades = {
@@ -169,6 +172,7 @@ export class Player {
   applyDamage(amount) {
     let mult = this.shieldTimer > 0 ? 0.4 : 1;
     if ((this._tankTimer || 0) > 0) mult *= 0.5;   // Oni Protocol 0: 50% damage reduction
+    if ((this._armorT || 0) > 0) mult *= 0.85;     // Phase 7: armor shield pickup (+15% DR)
     this.hp = Math.max(0, this.hp - amount * mult);
   }
 
@@ -302,6 +306,7 @@ export class Player {
     if (this.stunImmunityTimer > 0) this.stunImmunityTimer -= dt;
     if (this.bleedTimer > 0)      { this.bleedTimer -= dt; this.hp = Math.max(0, this.hp - dt); }
     if (this._chillT > 0)           this._chillT -= dt;   // Cryo Claw chill decay
+    if ((this._armorT || 0) > 0)    this._armorT -= dt;   // armor pickup buff decay
 
     if (dir.lengthSq() > 0) this.lastFacingDir = dir.clone();
 
@@ -450,6 +455,15 @@ export class Player {
   }
 
   draw(ctx, mousePos) {
+    // Phase 7: armor buff ring — thin gold band so the +15% DR window is readable
+    if ((this._armorT || 0) > 0) {
+      const fade = Math.min(1, this._armorT / 1.5);
+      ctx.save();
+      ctx.globalAlpha = 0.55 * fade;
+      ctx.strokeStyle = '#ffd447'; ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.arc(this.pos.x, this.pos.y, PLAYER_RADIUS + 11, 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
+    }
     // Dash glow
     if (this.dashTimer > 0) {
       ctx.strokeStyle = CYAN;

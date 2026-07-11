@@ -10,7 +10,7 @@ import { clamp, distance, safeNormalize, randomChoice, randomRange, wrapText } f
 import { FloatingText }   from '../entities/FloatingText.js?v=20260703990000';
 import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260705040000';
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260705150000';
-import { Player }         from '../entities/Player.js?v=20260711450000';
+import { Player }         from '../entities/Player.js?v=20260711490000';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260706270000';
 import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260711370000';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=20260703990000';
@@ -1393,6 +1393,8 @@ export class Game {
 
     this.manaPickups     = [];   // [{ pos: Vec2 }] — restores +25 mana on touch
     this.manaPickupTimer = 20;   // time-based: one every 20s while mana < max
+    this.armorPickups     = [];  // Phase 7: shield drops — +15% damage reduction for 12s on touch
+    this.armorPickupTimer = 35;  // one every 35s (Chaos 25s), never duplicates
 
     this.titanSpawned     = false;
     this.titanBoss        = null;
@@ -2586,7 +2588,7 @@ export class Game {
 
     // Pull distant pickups toward player (XP orbs + ground cores)
     const r2 = pet.def.collectRadius * pet.def.collectRadius;
-    for (const orb of [...(this.healthPickups || []), ...(this.manaPickups || [])]) {
+    for (const orb of [...(this.healthPickups || []), ...(this.manaPickups || []), ...(this.armorPickups || [])]) {
       const dx = orb.pos.x - px;
       const dy = orb.pos.y - py;
       if (dx * dx + dy * dy < r2) {
@@ -7843,6 +7845,7 @@ export class Game {
     this._updateVaultDrop(dt);
     this._updateHealthPickups(dt);
     this._updateManaPickups(dt);
+    this._updateArmorPickups(dt);   // Phase 7: shield/armor drops
     this._updateAnnouncement(dt);
     this.particles.update(this._hitStopTimer > 0 ? dt * 0.10 : dt);  // slow sparks/particles during hit stop
     this._updateCamera();
@@ -8298,6 +8301,77 @@ export class Game {
   }
 
   // Cyan mana pickup — visually distinct from the red/white HP cross (world-space).
+  // Phase 7: armor/shield pickups — same fair pattern as mana (timer spawn, magnet, no dupes).
+  // Grants +15% damage reduction for 12s (player._armorT, applied in Player.applyDamage).
+  _updateArmorPickups(dt) {
+    const PICKUP_R = 18;
+    const MAGNET_R = Math.max(90, (this.player.pickupRadius || 0) * (this._murkActive ? 0.5 : 1));
+    for (let i = this.armorPickups.length - 1; i >= 0; i--) {
+      const m = this.armorPickups[i];
+      const d = distance(this.player.pos, m.pos);
+      if (d < MAGNET_R && d > PLAYER_RADIUS + PICKUP_R) {
+        const pull = Math.min(1, dt * 3.5);
+        m.pos.x += (this.player.pos.x - m.pos.x) * pull;
+        m.pos.y += (this.player.pos.y - m.pos.y) * pull;
+      }
+      if (d < PLAYER_RADIUS + PICKUP_R) {
+        this.player._armorT = 12;   // refresh, never stacks
+        this.floatingTexts.push(new FloatingText('+15% ARMOR 12s', this.player.pos.clone(), '#ffd447', 1.2));
+        this.particles.spawnCorePickup(m.pos, '#ffd447');
+        this.audio?.playCorePickup();
+        this.armorPickups.splice(i, 1);
+      }
+    }
+    this.armorPickupTimer -= dt;
+    if (this.armorPickupTimer <= 0) {
+      this.armorPickupTimer = this._chaosMode ? 25 : 35;
+      if ((this.player._armorT || 0) <= 0 && this.armorPickups.length === 0) {
+        const ang = Math.random() * Math.PI * 2;
+        const r   = randomRange(140, 240);
+        const pos = this._clampPickupPos(new Vec2(
+          this.player.pos.x + Math.cos(ang) * r,
+          this.player.pos.y + Math.sin(ang) * r,
+        ));
+        this.armorPickups.push({ pos });
+      }
+    }
+  }
+
+  // Real heater-shield silhouette (flat top, curved sides, bottom point) — steel face,
+  // gold rim + cross boss, blinking gold halo so it reads like the other pickups.
+  _drawArmorPickups(ctx) {
+    const now = performance.now() / 1000;
+    const GOLD = '#ffd447';
+    for (const m of this.armorPickups) {
+      const x = m.pos.x, y = m.pos.y;
+      const blink = 0.45 + 0.55 * Math.abs(Math.sin(now * 3.1 + x * 0.05 + 3.2));
+      drawGlow(ctx, x, y, 30 * (1 + 0.12 * blink), GOLD, 0.5 * blink);
+      ctx.save();
+      // shield body path (w 30, h 38, feet at bottom point)
+      const W = 15, TOP = 17, PT = 21;
+      const shieldPath = () => {
+        ctx.beginPath();
+        ctx.moveTo(x - W, y - TOP);
+        ctx.lineTo(x + W, y - TOP);                                    // flat top
+        ctx.bezierCurveTo(x + W, y - 2, x + W * 0.72, y + PT * 0.62, x, y + PT);  // right curve to point
+        ctx.bezierCurveTo(x - W * 0.72, y + PT * 0.62, x - W, y - 2, x - W, y - TOP); // left curve back
+        ctx.closePath();
+      };
+      const g = ctx.createLinearGradient(x, y - TOP, x, y + PT);
+      g.addColorStop(0, '#dfe7f2'); g.addColorStop(0.45, '#8fa3bf'); g.addColorStop(1, '#4a5c78');
+      shieldPath(); ctx.fillStyle = g; ctx.fill();
+      ctx.lineWidth = 3; ctx.strokeStyle = GOLD; shieldPath(); ctx.stroke();   // gold rim
+      // gold cross (vertical spine + upper band)
+      ctx.lineWidth = 2.5; ctx.strokeStyle = GOLD; ctx.globalAlpha = 0.9;
+      ctx.beginPath(); ctx.moveTo(x, y - TOP + 4); ctx.lineTo(x, y + PT - 5); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x - W + 4, y - 6); ctx.lineTo(x + W - 4, y - 6); ctx.stroke();
+      // center boss
+      ctx.globalAlpha = 1; ctx.fillStyle = GOLD;
+      ctx.beginPath(); ctx.arc(x, y - 6, 3, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
+  }
+
   _drawManaPickups(ctx) {
     const R = 16;
     const now = performance.now() / 1000;
@@ -14512,6 +14586,7 @@ export class Game {
     // 3a ── HP CELL recovery pickups
     this._drawHealthPickups(ctx);
     this._drawManaPickups(ctx);
+    this._drawArmorPickups(ctx);   // Phase 7: shield drops
 
     // 3b ── Aqua Spirit Trail puddles (ground terrain — under entities so they read as footprints)
     this._drawAquaPuddles(ctx);
