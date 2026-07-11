@@ -806,6 +806,10 @@ export class Game {
     this._neonBeamSprite = new Image();
     this._neonBeamSprite.onerror = () => console.warn('[Weapon] neon_pierce_beam.png missing — drawn fallback used');
     this._neonBeamSprite.src = 'assets/weapons/neon_pierce_beam.png';
+    // #42 Inferno Cyber Slash — Maria's crescent aura art replaces the procedural radar beam.
+    this._infernoCrescentSprite = new Image();
+    this._infernoCrescentSprite.onerror = () => console.warn('[Weapon] arm_inferno_crescent_aura.png missing — procedural fallback used');
+    this._infernoCrescentSprite.src = 'assets/weapons/nexus/arm_inferno_crescent_aura.png';
     // Neon Taekwondo Girl — Aqua Spirit Trail (movement secondary) + Spirit Dojang Flag (SPACE ultimate)
     this._aquaTrailSprite = new Image();
     this._aquaTrailSprite.onerror = () => console.warn('[Weapon] aqua_spirit_trail.png missing — drawn fallback used');
@@ -10003,7 +10007,7 @@ export class Game {
 
     // One short-lived visual originating from the cyber arm
     const startPos = new Vec2(p.pos.x + aimDir.x * 16, p.pos.y + aimDir.y * 16);
-    this._neonBeams.push({ startPos, dir: aimDir, length: RANGE, life: 0.15, maxLife: 0.15, boost: nm });
+    this._neonBeams.push({ startPos, dir: aimDir, length: RANGE, life: 0.25, maxLife: 0.25, boost: nm });
     this.audio?.playHit?.();
     return true;
   }
@@ -10024,6 +10028,29 @@ export class Game {
       const ang = Math.atan2(b.dir.y, b.dir.x);
       const px = -b.dir.y, py = b.dir.x;                          // perpendicular unit
       const bw = 1 + 0.35 * (b.boost || 0);                       // Neon Lance widening
+
+      // #42 — when Maria's crescent aura art is loaded, draw IT (an Inferno slash) instead of
+      // the procedural radar strokes. A faint pierce core still reads the ranged hit down the line.
+      const _cres = this._infernoCrescentSprite;
+      if (_cres && _cres.complete && _cres.naturalWidth > 0) {
+        const size = 300 * bw;
+        const cx = sx + b.dir.x * size * 0.55, cy = sy + b.dir.y * size * 0.55;
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.32 * alpha;
+        ctx.strokeStyle = '#ff5a4a'; ctx.lineWidth = 6 * bw * alpha + 1;
+        ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(ex, ey); ctx.stroke();
+        ctx.strokeStyle = '#fff0e0'; ctx.lineWidth = Math.max(1, 2 * bw * alpha);
+        ctx.globalAlpha = 0.5 * alpha;
+        ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(ex, ey); ctx.stroke();
+        ctx.globalAlpha = Math.min(1, 1.05 * alpha);
+        ctx.save();
+        ctx.translate(cx, cy); ctx.rotate(ang);
+        ctx.drawImage(_cres, -size * 0.5, -size * 0.5, size, size);
+        ctx.restore();
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = 1;
+        continue;
+      }
 
       ctx.globalCompositeOperation = 'lighter';
 
