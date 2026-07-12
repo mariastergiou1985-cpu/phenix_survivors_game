@@ -327,8 +327,8 @@ export class NexusManager {
       this.rewardOrbs.push({
         pos: m.pos.clone(),
         vel: new Vec2(Math.cos(angle) * speed, Math.sin(angle) * speed),
-        life: 3.0,
-        maxLife: 3.0,
+        life: 12.0,                      // failsafe only — orbs now ALWAYS reach the player
+        maxLife: 12.0,
         reward,
         color: reward.color,
         label: reward.label,
@@ -348,25 +348,26 @@ export class NexusManager {
         continue;
       }
 
-      // Home toward player
+      // DEAD-STRAIGHT pursuit (Maria: stars must visibly fly ONTO the player and land):
+      // velocity is aimed directly at the player every frame, speed ramps 320→980.
       const dx = player.pos.x - orb.pos.x;
-      const dy = player.pos.y - orb.pos.y;
+      const dy = player.pos.y - (orb.pos.y - 0) - 0;
       const d = Math.sqrt(dx * dx + dy * dy);
-      if (d > 0) {
-        const homeStrength = 400 + (1 - orb.life / orb.maxLife) * 600; // accelerates
-        orb.vel.x += (dx / d) * homeStrength * dt;
-        orb.vel.y += (dy / d) * homeStrength * dt;
+      orb._age = (orb._age || 0) + dt;
+      const sp = Math.min(980, 320 + orb._age * 520);
+      if (d > 1) {
+        orb.vel.x = (dx / d) * sp;
+        orb.vel.y = (dy / d) * sp;
+        orb.pos.x += orb.vel.x * dt;
+        orb.pos.y += orb.vel.y * dt;
       }
+      // sparkle trail breadcrumbs (drawn in drawRewardOrbs)
+      orb._trail = orb._trail || [];
+      orb._trail.push({ x: orb.pos.x, y: orb.pos.y });
+      if (orb._trail.length > 9) orb._trail.shift();
 
-      // Dampen velocity slightly
-      orb.vel.x *= 0.97;
-      orb.vel.y *= 0.97;
-
-      orb.pos.x += orb.vel.x * dt;
-      orb.pos.y += orb.vel.y * dt;
-
-      // Mark for collection when close to player (Game.js applies the reward and splices)
-      if (d < 90) {
+      // Collect ON the player (Game.js applies the reward and splices)
+      if (d < 64) {
         orb._collected = true;
       }
     }
@@ -509,6 +510,19 @@ export class NexusManager {
   drawRewardOrbs(ctx) {
     for (const orb of this.rewardOrbs) {
       const alpha = Math.min(1, orb.life / orb.maxLife * 2);
+      // golden comet trail — makes the flight to the player unmistakable
+      if (orb._trail && orb._trail.length > 1) {
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        for (let ti = 0; ti < orb._trail.length - 1; ti++) {
+          const tp = orb._trail[ti];
+          const tk = ti / orb._trail.length;
+          ctx.globalAlpha = tk * 0.55 * alpha;
+          ctx.fillStyle = ti % 2 ? '#ffd23c' : '#fff6c0';
+          ctx.beginPath(); ctx.arc(tp.x, tp.y, 2 + tk * 5, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.restore();
+      }
       const pulse = 0.85 + 0.15 * Math.sin(performance.now() * 0.008);
       const R = 20 * pulse;                       // BIG gold star (outer radius)
       const spin = performance.now() * 0.0015;
