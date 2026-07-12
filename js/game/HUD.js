@@ -903,7 +903,7 @@ export function drawEndScreen(ctx, game) {
 
     // Credits sub-panel
     const credH = 44;
-    game._premiumPanel(ctx, panelX, y, panelW, credH, '#2ee6f6', 'GRID CREDITS');
+    game._premiumPanel(ctx, panelX, y, panelW, credH, '#2ee6f6', 'GRID CORES');
     game._statCapsule(ctx, panelX + 16, y + 2, capW, capH, 'EARNED THIS RUN', '+' + (game.runCreditsEarned ?? 0), '#2ee6f6');
     game._statCapsule(ctx, panelX + panelW / 2 + 8, y + 2, capW, capH, 'TOTAL CREDITS', '' + (game.meta?.credits ?? 0), '#2ee6f6');
     y += credH + 6;

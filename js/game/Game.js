@@ -21,7 +21,7 @@ import { UpgradeUI }      from './UpgradeUI.js?v=20260711370000';
 import { weightedSample } from './Upgrades.js?v=20260711370000';
 import { MutationUI }      from './MutationUI.js?v=20260703990000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
-import { drawHUD, drawEndScreen } from './HUD.js?v=20260712320000';
+import { drawHUD, drawEndScreen } from './HUD.js?v=20260712330000';
 import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, SKILL_TREE, AMULET_DEFS } from './MetaProgress.js?v=20260712280000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260712320000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
@@ -3594,7 +3594,7 @@ export class Game {
           <div class="cgu-currency">
             <div class="cgu-credits">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><use href="#i-bolt"/></svg>
-              <span id="cgu-credits">0</span>&nbsp;CREDITS
+              <span id="cgu-credits">0</span>&nbsp;CORES
             </div>
             <div class="cgu-pf">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><use href="#i-diamond"/></svg>
@@ -8461,7 +8461,7 @@ export class Game {
       this.floatingTexts.push(new FloatingText('+' + m + ' MANA', p.pos.clone(), CYAN, 1.4));
     } else if (r < 0.80) {
       const c = this._awardCredits(3 + Math.floor(Math.random() * 4));   // 3..6 (×Grid Investor)
-      this.floatingTexts.push(new FloatingText('+' + c + ' GRID CREDITS', p.pos.clone(), GREEN, 1.4));
+      this.floatingTexts.push(new FloatingText('+' + c + ' GRID CORES', p.pos.clone(), GREEN, 1.4));
     } else {
       const n = 2 + Math.floor(Math.random() * 2);    // 2..3 loose cores to secure
       for (let i = 0; i < n; i++) {
@@ -18369,7 +18369,7 @@ export class Game {
     ctx.font = '9px Consolas, monospace'; ctx.fillStyle = '#ffd23c'; ctx.fillText(`LEVEL ${progression.level} · ${progression.rank}`, ix, s.y + 47);
     ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.beginPath(); ctx.roundRect(ix, s.y + 52, iw, 6, 3); ctx.fill();
     ctx.fillStyle = '#3CF0E6'; ctx.beginPath(); ctx.roundRect(ix, s.y + 52, iw * progression.progress, 6, 3); ctx.fill();
-    this._slotRow(ctx, ix, iw, s.y + 76,  'CREDITS',   m ? m.credits : 0, '#7fd0ff');
+    this._slotRow(ctx, ix, iw, s.y + 76,  'CORES',     m ? m.credits : 0, '#7fd0ff');
     this._slotRow(ctx, ix, iw, s.y + 92,  'PF AVAIL',  '◆ ' + pfAvail, '#ff5ea8');
     this._slotRow(ctx, ix, iw, s.y + 108, 'NEXT LV',   progression.label, '#9fe8ff');
     this._slotRow(ctx, ix, iw, s.y + 124, 'BEST',      best.time > 0 ? this._fmtClock(best.time) : '—', '#9fff9f');
@@ -18794,7 +18794,7 @@ export class Game {
         <div class="player" data-cgm="player-name">PLAYER_01</div>
         <div class="rank" data-cgm="player-rank">LEVEL 1 · ROOKIE</div>
         <div class="bar"><i data-cgm="xp-bar" style="width:0%"></i></div>
-        <div class="row"><span class="k">Credits</span><span class="v cyan"><svg><use href="#i-diamond"/></svg><span data-cgm="credits-row">0</span></span></div>
+        <div class="row"><span class="k">Cores</span><span class="v cyan"><svg><use href="#i-diamond"/></svg><span data-cgm="credits-row">0</span></span></div>
         <div class="row"><span class="k">PF Avail</span><span class="v mag"><svg><use href="#i-heart"/></svg><span data-cgm="pf-avail">0</span></span></div>
         <div class="row"><span class="k">Next Lv</span><span class="v green"><span data-cgm="player-progress">1 / 5 TO NEXT LEVEL</span></span></div>
         <div class="row"><span class="k">Best</span><span class="v cyan"><svg><use href="#i-clock"/></svg><span data-cgm="best-time">—</span></span></div>
@@ -21910,7 +21910,7 @@ _drawLoreArchive(ctx) {
     header('COMBAT & BUILDS');
     bullet('Level up to choose upgrade and mastery cards for your build.');
     bullet('Weapons, abilities, and passives stack into powerful combinations.');
-    bullet('Mana fuels your Ultimate — pickups and credits help you recover.');
+    bullet('Mana fuels your Ultimate — pickups and cores help you recover.');
     bullet('Phenix Revive triggers when HP hits 0 — use the extra life wisely.');
     cy += 5;
 
@@ -22169,7 +22169,7 @@ _drawLoreArchive(ctx) {
         ctx.font = '11px Consolas, monospace'; ctx.fillStyle = 'rgba(180,220,255,0.7)';
         ctx.fillText('Credits unlock build options between danger spikes', cx, iconY + 34);
         drawCard('▣', 'BLACKNET MARKET', [
-          'Spend credits on upgrades, passives, and utilities',
+          'Spend cores on upgrades, passives, and utilities',
           'Risk / reward decisions that shape every run',
           'Explore build options — some unlock deeper systems',
         ], '#00e5ff', topY + 102);
@@ -24805,7 +24805,7 @@ _drawLoreArchive(ctx) {
     this._onBossKilledRelicHook(t.pos, 'titan');
     const titanCredits = this._awardCredits(12 + Math.floor(Math.random() * 9));   // 12..20 (×Grid Investor)
     this.floatingTexts.push(new FloatingText('TITAN DEFEATED',     t.pos.clone(),                            YELLOW, 2.5));
-    this.floatingTexts.push(new FloatingText('+' + titanCredits + ' GRID CREDITS',   new Vec2(t.pos.x, t.pos.y - 30),         GREEN,  2.5));
+    this.floatingTexts.push(new FloatingText('+' + titanCredits + ' GRID CORES',   new Vec2(t.pos.x, t.pos.y - 30),         GREEN,  2.5));
     this.floatingTexts.push(new FloatingText('NETWORK STABILIZED', new Vec2(t.pos.x, t.pos.y - 60),         CYAN,   2.5));
     this.triggerAnnouncement('TITAN DEFEATED — NETWORK STABILIZED', GREEN);
     this.screenShake.trigger(14, 1.0);
@@ -25066,7 +25066,7 @@ _drawLoreArchive(ctx) {
     this._onBossKilledRelicHook(a.pos, 'annihilator');
     const annihilatorCredits = this._awardCredits(12 + Math.floor(Math.random() * 9));   // 12..20 (×Grid Investor)
     this.floatingTexts.push(new FloatingText('MATRIX ANNIHILATOR DESTROYED', a.pos.clone(),                    YELLOW, 2.5));
-    this.floatingTexts.push(new FloatingText('+' + annihilatorCredits + ' GRID CREDITS',            new Vec2(a.pos.x, a.pos.y - 30),  GREEN,  2.5));
+    this.floatingTexts.push(new FloatingText('+' + annihilatorCredits + ' GRID CORES',            new Vec2(a.pos.x, a.pos.y - 30),  GREEN,  2.5));
     this.triggerAnnouncement('MATRIX ANNIHILATOR DESTROYED', GREEN);
     this.screenShake.trigger(14, 1.0);
     this.particles.spawnExplosion(a.pos, [RED, ORANGE, YELLOW], 28);
@@ -25320,7 +25320,7 @@ _drawLoreArchive(ctx) {
     const bloodfangCredits = this._awardCredits(25 + Math.floor(Math.random() * 16));   // 25..40 (×Grid Investor)
     this.floatingTexts.push(new FloatingText('BLOODFANG PACKMASTER DEFEATED', a.pos.clone(),                   YELLOW, 2.5));
     this.floatingTexts.push(new FloatingText('RAZORHOUND PACK BROKEN',         new Vec2(a.pos.x, a.pos.y - 28), ORANGE, 2.5));
-    this.floatingTexts.push(new FloatingText('+' + bloodfangCredits + ' GRID CREDITS',               new Vec2(a.pos.x, a.pos.y - 56), GREEN,  2.5));
+    this.floatingTexts.push(new FloatingText('+' + bloodfangCredits + ' GRID CORES',               new Vec2(a.pos.x, a.pos.y - 56), GREEN,  2.5));
     this.triggerAnnouncement('BLOODFANG PACKMASTER DEFEATED', GREEN);
     this.screenShake.trigger(14, 1.0);
     this.particles.spawnExplosion(a.pos, [RED, ORANGE, YELLOW], 30);
@@ -26578,7 +26578,7 @@ _drawLoreArchive(ctx) {
 
     this.floatingTexts.push(new FloatingText('\u26a1 DOUBLE DEMONS DEFEATED \u26a1',
       dd.gunner.pos.clone(), '#ff2d95', 2.8));
-    this.floatingTexts.push(new FloatingText('+' + ddCredits + ' GRID CREDITS',
+    this.floatingTexts.push(new FloatingText('+' + ddCredits + ' GRID CORES',
       new Vec2(dd.claw.pos.x, dd.claw.pos.y - 32), GREEN, 2.5));
     this.floatingTexts.push(new FloatingText('+5 CORES DROPPED',
       new Vec2(dd.gunner.pos.x, dd.gunner.pos.y - 32), YELLOW, 2.2));
