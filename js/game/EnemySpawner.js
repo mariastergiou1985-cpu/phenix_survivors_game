@@ -129,7 +129,7 @@ export class EnemySpawner {
     if (mode.chaos)   iv = Math.max(0.06, iv / 1.5);
     // BALANCE (Maria): characters got strong — pressure comes from DENSITY, not damage nerfs.
     // +15% spawn rate in every mode; the global 340-enemy hard cap + culling keep perf safe.
-    return (iv / 1.15) * (mode.spawnRateMult || 1);
+    return (iv / 1.5) * (mode.spawnRateMult || 1);   // pressure pass 2: +50% density (was +15%) — Maria: 'poli ligi i exthroi'
   }
 
   // ─── Spawn Batch Size ───────────────────────────────────────────────────

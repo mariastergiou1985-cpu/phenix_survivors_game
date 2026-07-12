@@ -821,7 +821,7 @@ export const EVOLUTION_RECIPES = Object.freeze([
   },
   {
     result: WEAPON_ID.REVENANT_CHOIR,
-    ingredients: [WEAPON_ID.NEXUS_CHAKRAM, WEAPON_ID.GLITCH_TEAR],
+    ingredients: [WEAPON_ID.STORM_SABER, WEAPON_ID.GLITCH_TEAR],
     minLevel: 5,
     owner: ['skeleton_warrior'],
   },
@@ -833,7 +833,7 @@ export const EVOLUTION_RECIPES = Object.freeze([
   },
   {
     result: WEAPON_ID.TEMPEST_RIBBON,
-    ingredients: [WEAPON_ID.STORM_SABER, WEAPON_ID.SHADOW_TOXIC],
+    ingredients: [WEAPON_ID.SPIRIT_CRESCENT, WEAPON_ID.SHADOW_TOXIC],
     minLevel: 5,
     owner: ['taekwondo_girl'],
   },
@@ -845,25 +845,25 @@ export const EVOLUTION_RECIPES = Object.freeze([
   },
   {
     result: WEAPON_ID.FERRO_TEMPEST,
-    ingredients: [WEAPON_ID.SHADOW_TOXIC, WEAPON_ID.SPIRIT_CRESCENT],
+    ingredients: [WEAPON_ID.MAGNETIC_ARC, WEAPON_ID.GLITCH_TEAR],
     minLevel: 5,
     owner: ['cyber_arm_hero'],
   },
   {
     result: WEAPON_ID.SEISMIC_GAUNTLET,
-    ingredients: [WEAPON_ID.CATACLYSM_PULSE, WEAPON_ID.STORM_SABER],
+    ingredients: [WEAPON_ID.NEXUS_CHAKRAM, WEAPON_ID.STORM_SABER],
     minLevel: 5,
     owner: ['brawler_warrior'],
   },
   {
     result: WEAPON_ID.PYROCLAST_UPPERCUT,
-    ingredients: [WEAPON_ID.GAS_NEEDLE, WEAPON_ID.SPIRIT_CRESCENT],
+    ingredients: [WEAPON_ID.NEXUS_CHAKRAM, WEAPON_ID.GAS_NEEDLE],
     minLevel: 5,
     owner: ['brawler_warrior'],
   },
   {
     result: WEAPON_ID.WIRE_GARROTE_WEB,
-    ingredients: [WEAPON_ID.NEXUS_CHAKRAM, WEAPON_ID.STORM_SABER],
+    ingredients: [WEAPON_ID.SHADOW_TOXIC, WEAPON_ID.STORM_SABER],
     minLevel: 5,
     owner: ['assassin_clone'],
   },
@@ -917,7 +917,7 @@ export const EVOLUTION_RECIPES = Object.freeze([
   },
   {
     result: WEAPON_ID.GOLDEN_SPIRAL_GUILLOTINE,
-    ingredients: [WEAPON_ID.NEXUS_CHAKRAM, WEAPON_ID.MAGNETIC_ARC],
+    ingredients: [WEAPON_ID.GAS_NEEDLE, WEAPON_ID.MAGNETIC_ARC],
     minLevel: 5,
     owner: ['euclid_vector'],
   },

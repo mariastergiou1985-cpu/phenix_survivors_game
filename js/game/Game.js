@@ -45,13 +45,13 @@ import { MeteorRain } from '../effects/meteor-rain.js?v=20260709100000';
 import { NpcWalker } from './NpcWalker.js?v=20260711750000';
 import { MapManager, BIOME_ID, BIOME_DEFS } from './MapManager.js?v=20260710330000';
 import { EventBus, EVENTS } from './EventBus.js?v=20260703990000';
-import { EnemySpawner, ELITE_WAVE as ELITE_WAVE_CFG, BOSS_WARN_COOLDOWN as BOSS_WARN_CD } from './EnemySpawner.js?v=20260711920000';
+import { EnemySpawner, ELITE_WAVE as ELITE_WAVE_CFG, BOSS_WARN_COOLDOWN as BOSS_WARN_CD } from './EnemySpawner.js?v=20260712050000';
 import { StateManager, GAME_STATES } from './StateManager.js?v=20260703990000';
 import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260711730000';
 import { NexusManager } from './NexusManager.js?v=20260711900000';
 import { VESSELS, getVesselById, getDefaultVesselId } from './VesselCatalog.js?v=20260705040000';
 import { PETS, getPetById } from './PetCatalog.js?v=20260705000000';
-import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons, isEvolutionOwnedBy, getCardDisplayName } from './WeaponCatalog.js?v=20260712030000';
+import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons, isEvolutionOwnedBy, getCardDisplayName } from './WeaponCatalog.js?v=20260712050000';
 import { TACTICAL_ID, TACTICAL_DEFS, getTacticalDef, getTacticalForCharacter, getAvailableTactical, preloadTacticalSprites, FUSION_TACTICALS } from './TacticalWeaponCatalog.js?v=20260711420000';
 import { VFXSpritePlayer } from './VFXSpritePlayer.js?v=20260711800000';
 
@@ -12876,10 +12876,23 @@ export class Game {
           (!w.exclusive || w.character === charId))
       : [];
 
-    // Build combined pool: upgrades + acquisitions
+    // Build combined pool: upgrades + acquisitions.
+    // EVOLUTION BIAS: ingredients still needed by this character's pending
+    // evolutions get 3x weight, so the recipes are actually reachable in a run.
+    const _needed = new Set();
+    try {
+      for (const r of EVOLUTION_RECIPES) {
+        if (!isEvolutionOwnedBy(r, charId)) continue;
+        if (this._evolutionsDone.has(r.result)) continue;
+        for (const ing of r.ingredients) {
+          const lv = this._weaponLevels.get(ing) || 0;
+          if (lv < 5) _needed.add(ing);
+        }
+      }
+    } catch (e) { /* bias is optional */ }
     const pool = [];
-    for (const w of upgradeable) pool.push({ type: 'upgrade', id: w.id, level: w.level });
-    for (const w of available)   pool.push({ type: 'acquire', id: w.id });
+    for (const w of upgradeable) { const n = _needed.has(w.id) ? 3 : 1; for (let bi = 0; bi < n; bi++) pool.push({ type: 'upgrade', id: w.id, level: w.level }); }
+    for (const w of available)   { const n = _needed.has(w.id) ? 3 : 1; for (let bi = 0; bi < n; bi++) pool.push({ type: 'acquire', id: w.id }); }
     if (pool.length === 0) return null;
 
     const pick = pool[Math.floor(Math.random() * pool.length)];
@@ -19309,6 +19322,12 @@ export class Game {
   }
 
   triggerAnnouncement(text, color, opts) {
+    // Anti-spam: never restack the SAME banner on top of itself while it's showing,
+    // and give any different banner a 0.4s breather after the previous one appeared.
+    if (this.announcement) {
+      if (this.announcement.text === text) return;
+      if (this.announcement.phase === 'fadein' && this.announcement.timer < 0.25) return;
+    }
     this.announcement = { text, color, phase: 'fadein', timer: 0, alphaMul: opts && opts.alpha != null ? opts.alpha : null };
     // Φ9: every full-screen banner gets the intrusion whoosh; boss-class arrivals ROAR.
     try {
