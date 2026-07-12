@@ -21257,7 +21257,7 @@ _drawLoreArchive(ctx) {
     ctx.beginPath(); ctx.roundRect(navX, navY, navW, navH, 5); ctx.stroke();
 
     // Nav label
-    ctx.font = 'bold 9px Consolas, monospace';
+    ctx.font = 'bold 10px Consolas, monospace';
     ctx.fillStyle = 'rgba(0,200,255,0.40)';
     ctx.textAlign = 'left';
     ctx.fillText('SECTIONS', navX + 10, navY + 14);
@@ -21327,7 +21327,7 @@ _drawLoreArchive(ctx) {
     // ─── Helper: card headline ───────────────────────────────────────────────
     const _headline = (t, y, accent = '#ffffff', size = 17) => {
       ctx.save();
-      ctx.font = `bold ${size}px Consolas, monospace`;
+      ctx.font = `bold ${size}px 'Orbitron', Consolas, monospace`;
       ctx.fillStyle = accent;
       ctx.shadowColor = accent; ctx.shadowBlur = 8;
       ctx.textAlign = 'left';
@@ -21336,8 +21336,11 @@ _drawLoreArchive(ctx) {
     };
 
     // ─── Helper: word-wrapped body text ─────────────────────────────────────
-    const _body = (text, x, startY, maxW, color = 'rgba(185,215,240,0.88)', size = 13, lh = 18) => {
-      ctx.font = `${size}px Consolas, monospace`;
+    const _body = (text, x, startY, maxW, color = 'rgba(205,228,248,0.95)', size = 13, lh = 18) => {
+      // READABILITY PASS (Maria): body copy moves off the terminal monospace onto a
+      // humanist face, +1.5px larger, with generous line-height — premium, not «κώδικας».
+      size = size + 1.5; lh = Math.max(lh, Math.round(size * 1.6));
+      ctx.font = `${size}px 'Segoe UI', 'Trebuchet MS', Verdana, sans-serif`;
       ctx.fillStyle = color;
       ctx.textAlign = 'left';
       const words = text.split(' ');
@@ -21369,7 +21372,7 @@ _drawLoreArchive(ctx) {
       _card(y, 70, '#00e6ff');
       _sTitle('◉  EDEN CORE RECORD 001 — WORLD STATE', y + 14, '#00e6ff');
       _headline('THE GRID — WHAT THE SYSTEM KEPT', y + 34, '#ffffff', 18);
-      ctx.font = '12px Consolas, monospace'; ctx.fillStyle = 'rgba(0,220,255,0.70)'; ctx.textAlign = 'left';
+      ctx.font = '13.5px \'Segoe UI\', sans-serif'; ctx.fillStyle = 'rgba(0,220,255,0.70)'; ctx.textAlign = 'left';
       ctx.fillText('DESIGNATION: NULL EDEN  ·  FUNCTION: PRESERVATION  ·  METHOD: CONTAINMENT', cx + 10, y + 54);
       y += 80;
 
@@ -21469,13 +21472,13 @@ _drawLoreArchive(ctx) {
         ctx.textAlign = 'left'; ctx.fillText(c.name, tx, cy2 + 18);
         ctx.restore();
         // Role badge
-        ctx.font = 'bold 9px Consolas, monospace'; ctx.fillStyle = c.accent;
+        ctx.font = 'bold 10px Consolas, monospace'; ctx.fillStyle = c.accent;
         ctx.textAlign = 'left'; ctx.fillText('▸ ' + c.role.toUpperCase(), tx, cy2 + 31);
         // Assessment line
-        ctx.font = '10px Consolas, monospace'; ctx.fillStyle = 'rgba(180,210,240,0.80)';
+        ctx.font = '12px \'Segoe UI\', sans-serif'; ctx.fillStyle = 'rgba(180,210,240,0.80)';
         ctx.fillText(c.desc, tx, cy2 + 45);
         // Index badge
-        ctx.font = 'bold 9px Consolas, monospace';
+        ctx.font = 'bold 10px Consolas, monospace';
         ctx.fillStyle = c.soon ? 'rgba(0,220,255,0.60)' : 'rgba(0,200,255,0.30)';
         ctx.textAlign = 'right';
         ctx.fillText('DOSSIER-' + String(i + 1).padStart(2, '0') + (c.soon ? ' · SIGNAL INBOUND' : ''), cx + cw - 10, cy2 + 18);
@@ -21490,7 +21493,7 @@ _drawLoreArchive(ctx) {
       _card(y, 68, '#fbbf24', 'rgba(20,12,0,0.60)');
       _sTitle('✦  EDEN CORE RECORD — ANOMALY CLASS: RESURRECTION', y + 14, '#fbbf24');
       _headline('PHENIX — THE PATTERN THAT COMES BACK', y + 33, '#ffd700', 18);
-      ctx.font = '11px Consolas, monospace'; ctx.fillStyle = 'rgba(255,200,80,0.65)';
+      ctx.font = '12.5px \'Segoe UI\', sans-serif'; ctx.fillStyle = 'rgba(255,200,80,0.65)';
       ctx.textAlign = 'left';
       ctx.fillText('DELETION ATTEMPTS: MULTIPLE  ·  SUCCESSFUL: ZERO  ·  FILE STATUS: OPEN', cx + 10, y + 54);
       // Phoenix image right side
@@ -21529,7 +21532,7 @@ _drawLoreArchive(ctx) {
         ctx.fillStyle = mc.accent; ctx.fillRect(mx, my + 8, 3, 42);
         ctx.font = 'bold 10px Consolas, monospace'; ctx.fillStyle = mc.accent; ctx.textAlign = 'left';
         ctx.fillText('▸ ' + mc.label, mx + 10, my + 18);
-        ctx.font = '11px Consolas, monospace'; ctx.fillStyle = 'rgba(200,220,240,0.85)';
+        ctx.font = '12.5px \'Segoe UI\', sans-serif'; ctx.fillStyle = 'rgba(200,220,240,0.85)';
         _body(mc.text, mx + 10, my + 32, half2 - 16, 'rgba(200,220,240,0.85)', 11, 14);
         ctx.restore();
       });
@@ -21548,7 +21551,7 @@ _drawLoreArchive(ctx) {
       _card(y, 68, '#ff77d4', 'rgba(16,0,20,0.65)');
       _sTitle('⬡  EDEN CORE RECORD — SYSTEM IDENTITY', y + 14, '#ff77d4');
       _headline('NULL EDEN — PARADISE, REVISED', y + 33, '#ff99e6', 17);
-      ctx.font = '11px Consolas, monospace'; ctx.fillStyle = 'rgba(255,150,230,0.60)';
+      ctx.font = '12.5px \'Segoe UI\', sans-serif'; ctx.fillStyle = 'rgba(255,150,230,0.60)';
       ctx.textAlign = 'left';
       ctx.fillText('ORIGINAL FUNCTION: SANCTUARY  ·  CURRENT FUNCTION: CONTAINMENT  ·  CONSENT: NOT REQUESTED', cx + 10, y + 54);
       y += 78;
@@ -21576,7 +21579,7 @@ _drawLoreArchive(ctx) {
         ctx.fillStyle = ni.accent; ctx.fillRect(cx, iy + 8, 3, itemH - 16);
         ctx.font = 'bold 13px Consolas, monospace'; ctx.fillStyle = ni.accent;
         ctx.textAlign = 'left'; ctx.fillText(ni.icon + '  ' + ni.label, cx + 12, iy + 20);
-        ctx.font = '12px Consolas, monospace'; ctx.fillStyle = 'rgba(200,190,220,0.82)';
+        ctx.font = '13.5px \'Segoe UI\', sans-serif'; ctx.fillStyle = 'rgba(200,190,220,0.82)';
         ctx.fillText(ni.text, cx + 12, iy + 38);
         ctx.restore();
       });
@@ -21641,7 +21644,7 @@ _drawLoreArchive(ctx) {
         ctx.strokeStyle = r.accent + '33'; ctx.lineWidth = 1;
         ctx.beginPath(); ctx.roundRect(cx, ry, cw, 36, 4); ctx.stroke();
         ctx.fillStyle = r.accent; ctx.fillRect(cx, ry + 6, 3, 24);
-        ctx.font = '12px Consolas, monospace'; ctx.fillStyle = 'rgba(200,220,235,0.85)';
+        ctx.font = '13.5px \'Segoe UI\', sans-serif'; ctx.fillStyle = 'rgba(200,220,235,0.85)';
         ctx.textAlign = 'left'; ctx.fillText('▸  ' + r.text, cx + 12, ry + 22);
         ctx.restore();
       });
@@ -21707,7 +21710,7 @@ _drawLoreArchive(ctx) {
         ctx.textAlign = 'left'; ctx.fillText(m.label, cx + 12, my + 19);
         ctx.shadowBlur = 0;
         // Badge
-        ctx.font = 'bold 9px Consolas, monospace'; ctx.fillStyle = m.accent + 'aa';
+        ctx.font = 'bold 10px Consolas, monospace'; ctx.fillStyle = m.accent + 'aa';
         ctx.textAlign = 'right'; ctx.fillText('[  ' + m.badge + '  ]', cx + cw - 10, my + 19);
         // Separator
         ctx.strokeStyle = m.accent + '22'; ctx.lineWidth = 1;
@@ -21796,9 +21799,9 @@ _drawLoreArchive(ctx) {
         ctx.shadowColor = b.accent; ctx.shadowBlur = 5;
         ctx.textAlign = 'left'; ctx.fillText(b.name.toUpperCase(), btx, by2 + 15);
         ctx.shadowBlur = 0;
-        ctx.font = 'bold 9px Consolas, monospace'; ctx.fillStyle = b.accent + 'aa';
+        ctx.font = 'bold 10px Consolas, monospace'; ctx.fillStyle = b.accent + 'aa';
         ctx.fillText('[  ' + b.type + '  ]', btx, by2 + 27);
-        ctx.font = '10px Consolas, monospace'; ctx.fillStyle = 'rgba(200,200,220,0.80)';
+        ctx.font = '12px \'Segoe UI\', sans-serif'; ctx.fillStyle = 'rgba(200,200,220,0.80)';
         ctx.fillText(b.lore, btx, by2 + 40);
         ctx.restore();
       });
@@ -21812,7 +21815,7 @@ _drawLoreArchive(ctx) {
 
     // Age badge + back hint
     this._drawAgeBadge(ctx, px + 8, py + ph - 44, 32);
-    ctx.font = '10px Consolas, monospace'; ctx.fillStyle = 'rgba(100,160,200,0.45)';
+    ctx.font = '12px \'Segoe UI\', sans-serif'; ctx.fillStyle = 'rgba(100,160,200,0.45)';
     ctx.textAlign = 'right';
     ctx.fillText('↑↓ Navigate · ESC Back', px + pw - 10, py + ph - 28);
     ctx.textAlign = 'left';
@@ -21917,7 +21920,7 @@ _drawLoreArchive(ctx) {
 
     ctx.textAlign = 'left';
     const lx  = px + 28;
-    const lh  = 14;
+    const lh  = 19;   // airier line-height for the humanist body face (Maria readability pass)
     let   cy  = py + 80;
 
     // Left content sub-panel (dark glass) behind the text column — premium two-column feel.
@@ -21930,7 +21933,7 @@ _drawLoreArchive(ctx) {
     const header = (label) => {
       ctx.fillStyle = '#ff4dd2';
       ctx.fillRect(lx, cy - 9, 4, 13);
-      ctx.font      = 'bold 15px Consolas, monospace';
+      ctx.font      = "bold 15px 'Orbitron', Consolas, monospace";
       ctx.fillStyle = CYAN;
       ctx.fillText(label, lx + 12, cy);
       ctx.strokeStyle = 'rgba(0,230,255,0.30)'; ctx.lineWidth = 1;
@@ -21938,7 +21941,7 @@ _drawLoreArchive(ctx) {
       cy += 20;
     };
     const bullet = (text, color = WHITE) => {
-      ctx.font = '13px Consolas, monospace'; ctx.fillStyle = color;
+      ctx.font = "14.5px 'Segoe UI', sans-serif"; ctx.fillStyle = color;
       ctx.fillText('• ' + text, lx + 6, cy); cy += lh;
     };
 
@@ -21954,7 +21957,7 @@ _drawLoreArchive(ctx) {
     // ── CONTROLS — keyboard + controller (auto-detected USB/Bluetooth: Xbox/PS/PC) ──
     header('CONTROLS — KEYBOARD & CONTROLLER');
     const colA = lx + 6, colK = lx + 132, colX = lx + 268, colP = lx + 396;
-    ctx.font = 'bold 10px Consolas, monospace'; ctx.fillStyle = CYAN;
+    ctx.font = 'bold 11px Consolas, monospace'; ctx.fillStyle = CYAN;
     ctx.fillText('ACTION', colA, cy); ctx.fillText('KEYBOARD', colK, cy);
     ctx.fillText('XBOX / PC', colX, cy); ctx.fillText('PLAYSTATION', colP, cy);
     cy += 12;
