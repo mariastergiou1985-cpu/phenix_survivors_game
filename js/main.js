@@ -612,6 +612,14 @@ function loop(timestamp) {
   // save-stack balanced via finally, and log the first error so the cause stays visible.
   const _fStart = performance.now();
   try {
+    // ── FRAME-STATE HARD RESET (2026-07-12): the giant-tile / zoom-corruption class of
+    // bugs came from leaked ctx.save() levels accumulating across frames (the finally
+    // below can only pop ONE level). ctx.reset() wipes transforms, clips, alpha, blend
+    // and the whole save stack every frame — no leak can ever survive into the next
+    // frame again, in ANY mode. (Fallback covers older browsers; identity transform is
+    // the game's true baseline — no DPR scaling is used.)
+    if (ctx.reset) ctx.reset();
+    else { ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; ctx.shadowBlur = 0; }
     applyGamepad();   // inject controller input into keys/handlers before the update reads them
     game.setMousePos(mousePos);
     game.update(dt, { keys, mousePos, mouseDown });
