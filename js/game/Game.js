@@ -606,12 +606,12 @@ export class Game {
     this._charImages['japan_phasewalker'] = this._phasewalkerSprite;
     // Euclid Vector portrait (endless/ subfolder; unlocked from the start — see roster + free unlock).
     this._euclidSprite = new Image();
-    this._euclidSprite.onerror = () => console.warn('[Char] missing assets/characters/endless/euclid_vector.png');
-    this._euclidSprite.src = 'assets/characters/endless/euclid_vector.png';
+    this._euclidSprite.onerror = () => console.warn('[Char] missing assets/characters/endless/euclid_vector.png?v=20260712080000');
+    this._euclidSprite.src = 'assets/characters/endless/euclid_vector.png?v=20260712080000';
     this._charImages['euclid_vector'] = this._euclidSprite;
     this._oniSprite = new Image();
-    this._oniSprite.onerror = () => console.warn('[Char] missing assets/characters/endless/oni_cataclysm_protocol.png');
-    this._oniSprite.src = 'assets/characters/endless/oni_cataclysm_protocol.png';
+    this._oniSprite.onerror = () => console.warn('[Char] missing assets/characters/endless/oni_cataclysm_protocol.png?v=20260712080000');
+    this._oniSprite.src = 'assets/characters/endless/oni_cataclysm_protocol.png?v=20260712080000';
     this._charImages['oni_cataclysm_protocol'] = this._oniSprite;
     // Eddie portrait (root folder, descriptive filename) — PF-gated via PF_CHARACTER_COSTS.
     this._eddieSprite = new Image();

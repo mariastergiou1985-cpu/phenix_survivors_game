@@ -40,15 +40,21 @@ export function initTouchControls({ canvas, keys, game, setAim, onQ, onE, onUlt 
       background: rgba(150,210,255,0.25); border: 1.5px solid rgba(180,230,255,0.55);
       box-shadow: 0 0 10px rgba(120,200,255,0.4); }
     #touch-btns { position: absolute; right: 3%; bottom: 7%; width: 160px; height: 118px; }
-    #touch-btns button, #touch-pause, #touch-fs { position: absolute; border-radius: 7px;
-      font: bold 11px Consolas, monospace; color: #dff2ff;
-      background: rgba(20,40,70,0.52); border: 1.5px solid rgba(150,200,255,0.45);
-      box-shadow: 0 0 8px rgba(80,150,220,0.28); cursor: pointer; }
-    #touch-btns button:active, #touch-pause:active, #touch-fs:active { background: rgba(60,120,200,0.62); }
+    #touch-btns button, #touch-pause, #touch-fs { position: absolute; border-radius: 10px;
+      font: bold 11px Consolas, monospace; color: #cfefff; letter-spacing: 1px;
+      background: linear-gradient(180deg, rgba(10,26,44,0.92), rgba(4,10,20,0.92));
+      border: 1.5px solid rgba(46,230,246,0.65);
+      box-shadow: 0 0 12px rgba(46,230,246,0.35), inset 0 1px 0 rgba(255,255,255,0.10),
+                  inset 0 -6px 12px rgba(46,230,246,0.06);
+      text-shadow: 0 0 6px rgba(46,230,246,0.8); cursor: pointer; }
+    #touch-btns button:active, #touch-pause:active, #touch-fs:active {
+      background: linear-gradient(180deg, rgba(46,230,246,0.30), rgba(10,26,44,0.9));
+      box-shadow: 0 0 18px rgba(46,230,246,0.7); }
     #touch-btns button { width: 50px; height: 50px; }
     #btn-ult   { right: 0; bottom: 60px; width: 55px; height: 55px; color: #ffd9a8;
-      border-color: rgba(255,140,60,0.65); font-size: 12px;
-      box-shadow: 0 0 10px rgba(255,140,60,0.25); }
+      border-color: rgba(255,140,60,0.75); font-size: 12px;
+      text-shadow: 0 0 6px rgba(255,140,60,0.9);
+      box-shadow: 0 0 14px rgba(255,140,60,0.45), inset 0 1px 0 rgba(255,255,255,0.10); }
     #btn-dash  { right: 62px; bottom: 56px; color: #bfe9ff; }
     #btn-q     { right: 62px; bottom: 2px; }
     #btn-e     { right: 4px;  bottom: 2px; }
