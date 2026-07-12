@@ -606,12 +606,12 @@ export class Game {
     this._charImages['japan_phasewalker'] = this._phasewalkerSprite;
     // Euclid Vector portrait (endless/ subfolder; unlocked from the start — see roster + free unlock).
     this._euclidSprite = new Image();
-    this._euclidSprite.onerror = () => console.warn('[Char] missing assets/characters/endless/euclid_vector.png?v=20260712140000');
-    this._euclidSprite.src = 'assets/characters/endless/euclid_vector.png?v=20260712140000';
+    this._euclidSprite.onerror = () => console.warn('[Char] missing assets/characters/endless/euclid_vector.png?v=20260712210000');
+    this._euclidSprite.src = 'assets/characters/endless/euclid_vector.png?v=20260712210000';
     this._charImages['euclid_vector'] = this._euclidSprite;
     this._oniSprite = new Image();
-    this._oniSprite.onerror = () => console.warn('[Char] missing assets/characters/endless/oni_cataclysm_protocol.png?v=20260712140000');
-    this._oniSprite.src = 'assets/characters/endless/oni_cataclysm_protocol.png?v=20260712140000';
+    this._oniSprite.onerror = () => console.warn('[Char] missing assets/characters/endless/oni_cataclysm_protocol.png?v=20260712210000');
+    this._oniSprite.src = 'assets/characters/endless/oni_cataclysm_protocol.png?v=20260712210000';
     this._charImages['oni_cataclysm_protocol'] = this._oniSprite;
     // Eddie portrait (root folder, descriptive filename) — PF-gated via PF_CHARACTER_COSTS.
     this._eddieSprite = new Image();
@@ -8345,7 +8345,7 @@ export class Game {
       spawnPos = new Vec2(randomRange(margin, WORLD_W - margin), randomRange(margin, WORLD_H - margin));
     }
 
-    this.gridCache = { pos: spawnPos, timer: DURATION };
+    this.gridCache = { pos: this._clampPickupPos(spawnPos), timer: DURATION };   // never outside the playable bounds (Maria's screenshot)
     this.triggerAnnouncement('GRID CACHE DETECTED', CYAN);
     this.audio?.playGridCache();
   }
@@ -17940,6 +17940,13 @@ export class Game {
     ctx.fillRect(0, 0, WIDTH, 44);
 
     drawHUD(ctx, this);
+    // Edge seal (Maria: thin vertical world-strips leaking at the far left/right):
+    // whatever sub-pixel scaling leaves at the borders, this opaque 3px frame owns it.
+    ctx.save();
+    ctx.fillStyle = '#04060c';
+    ctx.fillRect(0, 0, 3, HEIGHT); ctx.fillRect(WIDTH - 3, 0, 3, HEIGHT);
+    ctx.fillRect(0, 0, WIDTH, 2);  ctx.fillRect(0, HEIGHT - 2, WIDTH, 2);
+    ctx.restore();
     this._drawActiveRelicHUD(ctx);
     this._drawNpcWalkerHUD(ctx);   // KIROSHI WALKER status panel
     this._drawNullBreachArena(ctx);            // Null Breach Arena overlay + timer
@@ -19655,9 +19662,9 @@ export class Game {
       this._carriedCores = this._carriedCores || [];
       // pickup — cores inside the magnet radius get SUCKED to the player fast,
       // and vanish the moment they touch (Maria: no lingering on the ground)
-      if (p.carry < 8 && this.groundCores && this.groundCores.length) {
+      if (this.groundCores && this.groundCores.length) {          // NO carry cap (Maria): the courier lifts EVERYTHING
         const pr = (p.pickupRadius || 72) + 48;
-        for (let i = this.groundCores.length - 1; i >= 0 && p.carry < 8; i--) {
+        for (let i = this.groundCores.length - 1; i >= 0; i--) {
           const c = this.groundCores[i];
           const dC = distance(p.pos, c.pos);
           if (dC < pr && dC > 26) {                       // suction flight
@@ -19924,9 +19931,19 @@ export class Game {
       const p = this.player;
       if (!p || !p.carry || !this._carriedCores || !this._carriedCores.length) return;
       const t = performance.now() / 1000;
-      for (let i = 0; i < this._carriedCores.length; i++) {
+      const shown = Math.min(6, this._carriedCores.length);       // orbit shows up to 6; the counter tells the truth
+      if (this._carriedCores.length > 6) {
+        ctx.save();
+        ctx.font = 'bold 13px Consolas, monospace';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#ffd23c';
+        ctx.shadowColor = '#ff9d00'; ctx.shadowBlur = 6;
+        ctx.fillText('×' + this._carriedCores.length, p.pos.x, p.pos.y - 74);
+        ctx.restore();
+      }
+      for (let i = 0; i < shown; i++) {
         const c = this._carriedCores[i];
-        const a = t * 2.2 + (i / this._carriedCores.length) * Math.PI * 2;
+        const a = t * 2.2 + (i / shown) * Math.PI * 2;
         const rr = 34 + Math.sin(t * 3 + i) * 3;
         const x = p.pos.x + Math.cos(a) * rr;
         const y = p.pos.y - 26 + Math.sin(a) * rr * 0.45;
@@ -19966,9 +19983,9 @@ export class Game {
     // REAL QUEUE (Maria's video): banners play ONE AT A TIME, never on top of each
     // other. Duplicates of the current banner or anything already waiting are
     // dropped; the queue holds at most 3 so stale news never floods the screen.
-    if (this.announcement) {
+    if (this.announcement || this._frozenSleet) {   // sleet takeover banner owns the screen — queue behind it
       this._annQueue = this._annQueue || [];
-      if (this.announcement.text === text) return;
+      if (this.announcement && this.announcement.text === text) return;
       if (this._annQueue.some(q => q.text === text)) return;
       if (this._annQueue.length < 3) this._annQueue.push({ text, color, opts });
       return;
@@ -19991,7 +20008,14 @@ export class Game {
 
   _updateAnnouncement(dt) {
     const a = this.announcement;
-    if (!a) return;
+    if (!a) {
+      // nothing showing: drain the queue as soon as the screen is free (e.g. after sleet)
+      if (!this._frozenSleet && this._annQueue && this._annQueue.length) {
+        const nx = this._annQueue.shift();
+        this.triggerAnnouncement(nx.text, nx.color, nx.opts);
+      }
+      return;
+    }
     const FADE_IN = 0.35, HOLD = 1.9, FADE_OUT = 0.55;
     a.timer += dt;
     if (a.phase === 'fadein'  && a.timer >= FADE_IN)  { a.phase = 'hold';    a.timer = 0; }
