@@ -204,106 +204,79 @@ export class DeusExMachina {
       ctx.restore();
     }
 
-    // THE MACHINE-ANGEL — fully procedural robot angel (replaces the sprite box):
-    // chrome segmented torso + angular visor head, twin fans of ENERGY-BLADE wings
-    // that spread wider on each smite, spinning gold halo, thruster glow at the feet.
+    // ═══ OPHANIM — THE WHEEL OF JUDGEMENT ═══════════════════════════════════
+    // A biblically-accurate machine seraph: three counter-rotating golden rings,
+    // rims studded with LENS-EYES that blink and track, a burning iris core.
+    // Assembly: the rings spin up out of the gate's light seam. On every smite
+    // (pulse) all eyes FLASH white and the iris dilates. Ascend: the wheel folds
+    // into a vertical line of light and is gone.
     if (angelAlpha > 0) {
-      const bob = this.phase === PHASE.GUARDIAN ? Math.sin(el / 500) * 12 : 0;
       const flash = this._pulseT;
-      const K = (SZ / 340) * (1 + 0.05 * Math.sin(el / 250)) * (1 + 0.06 * flash);
-      const axc = this.cx, ayc = ay + bob;
+      const K = SZ / 340;
+      const axc = this.cx, ayc = ay;
+      // fold factor: wheels squash to a vertical line during ASCEND
+      const fold = this.phase === PHASE.ASCEND
+        ? Math.max(0.04, 1 - (el - this.cfg.phases.gateMs - this.cfg.phases.descentMs - (this.cfg.totalMs - this.cfg.phases.gateMs - this.cfg.phases.descentMs - this.cfg.phases.ascendMs)) / this.cfg.phases.ascendMs)
+        : 1;
       ctx.save();
       ctx.translate(axc, ayc);
-      ctx.scale(K, K);
-      ctx.globalAlpha = angelAlpha;
-      // ── WINGS: two fans of 6 energy blades each (violet body, white edge) ──
-      const spread = 0.55 + 0.25 * Math.sin(el / 700) + 0.5 * flash;
-      for (const side of [-1, 1]) {
-        for (let i = 0; i < 6; i++) {
-          const wa = -Math.PI / 2 + side * (0.35 + (i / 5) * 1.05) * spread;
-          const wl = 150 - i * 14;
-          const bx = Math.cos(wa) * wl * side * (side === -1 ? -1 : 1);
-          ctx.save();
-          ctx.globalCompositeOperation = 'lighter';
-          ctx.rotate(0);
-          const tipX = side * Math.abs(Math.cos(wa)) * wl;
-          const tipY = -40 + Math.sin(wa) * wl * 0.9;
-          const g2 = ctx.createLinearGradient(side * 20, -40, tipX, tipY);
-          g2.addColorStop(0, 'rgba(176,38,255,0.95)');
-          g2.addColorStop(0.7, 'rgba(255,45,106,0.55)');
-          g2.addColorStop(1, 'rgba(255,246,216,0.9)');
-          ctx.strokeStyle = g2; ctx.lineWidth = 7 - i * 0.7; ctx.lineCap = 'round';
-          ctx.shadowColor = '#b026ff'; ctx.shadowBlur = 10 + flash * 14;
-          ctx.beginPath();
-          ctx.moveTo(side * 18, -36);
-          ctx.quadraticCurveTo(side * (30 + wl * 0.35), -70 + Math.sin(wa) * wl * 0.3, tipX, tipY);
-          ctx.stroke();
-          ctx.shadowBlur = 0;
-          // white hot edge
-          ctx.globalAlpha = angelAlpha * 0.8;
-          ctx.strokeStyle = '#fff6d8'; ctx.lineWidth = 1.4;
-          ctx.beginPath();
-          ctx.moveTo(side * 18, -38);
-          ctx.quadraticCurveTo(side * (30 + wl * 0.35), -72 + Math.sin(wa) * wl * 0.3, tipX, tipY - 2);
-          ctx.stroke();
-          ctx.restore();
+      ctx.scale(K * fold, K);
+      ctx.globalCompositeOperation = 'lighter';
+      // ── the three rings: different radii, tilts and directions ──
+      const rings = [
+        { r: 128, tilt: 0.32, spin:  el / 900,  w: 5,   col: C.gold },
+        { r: 96,  tilt: 0.78, spin: -el / 640,  w: 4,   col: '#ffedb0' },
+        { r: 64,  tilt: 0.55, spin:  el / 420,  w: 3.2, col: C.violet },
+      ];
+      for (const rg of rings) {
+        ctx.save();
+        ctx.rotate(rg.spin * 0.15);
+        // ring band (ellipse for 3D tilt) + glow
+        ctx.globalAlpha = angelAlpha * 0.9;
+        ctx.strokeStyle = rg.col; ctx.lineWidth = rg.w + flash * 2;
+        ctx.shadowColor = rg.col; ctx.shadowBlur = 14 + flash * 16;
+        ctx.beginPath(); ctx.ellipse(0, 0, rg.r, rg.r * rg.tilt, 0, 0, Math.PI * 2); ctx.stroke();
+        ctx.shadowBlur = 0;
+        // glyph ticks riding the ring
+        ctx.globalAlpha = angelAlpha * 0.6;
+        ctx.lineWidth = 1.6;
+        for (let i = 0; i < 12; i++) {
+          const ta = rg.spin + (i / 12) * Math.PI * 2;
+          const tx = Math.cos(ta) * rg.r, ty = Math.sin(ta) * rg.r * rg.tilt;
+          const nx2 = Math.cos(ta) * 6,  ny2 = Math.sin(ta) * 6 * rg.tilt;
+          ctx.beginPath(); ctx.moveTo(tx - nx2, ty - ny2); ctx.lineTo(tx + nx2, ty + ny2); ctx.stroke();
         }
+        // LENS-EYES on the rim: 6 per ring, blinking on their own clocks — ALL flash on smite
+        for (let i = 0; i < 6; i++) {
+          const ea = rg.spin * 1.4 + (i / 6) * Math.PI * 2;
+          const ex2 = Math.cos(ea) * rg.r, ey2 = Math.sin(ea) * rg.r * rg.tilt;
+          const blink = flash > 0.3 ? 1 : (Math.sin(el / 230 + i * 2.4 + rg.r) > -0.55 ? 1 : 0.12);
+          ctx.globalAlpha = angelAlpha * blink;
+          ctx.fillStyle = flash > 0.3 ? '#ffffff' : C.pink;
+          ctx.shadowColor = C.pink; ctx.shadowBlur = 9;
+          ctx.beginPath(); ctx.arc(ex2, ey2, 4.6 + flash * 2, 0, Math.PI * 2); ctx.fill();
+          ctx.shadowBlur = 0;
+          ctx.globalAlpha = angelAlpha * blink * 0.9;
+          ctx.fillStyle = '#2a0010';
+          ctx.beginPath(); ctx.arc(ex2, ey2, 1.7, 0, Math.PI * 2); ctx.fill();     // pupil
+        }
+        ctx.restore();
       }
-      // ── BODY: chrome segmented torso ──
-      const chrome = ctx.createLinearGradient(-24, 0, 24, 0);
-      chrome.addColorStop(0, '#4a5468'); chrome.addColorStop(0.5, '#c8d2e0'); chrome.addColorStop(1, '#39445c');
-      ctx.fillStyle = chrome;
-      ctx.strokeStyle = '#ffd447'; ctx.lineWidth = 1.6;
-      ctx.beginPath();                                        // chest plate (inverted trapezoid)
-      ctx.moveTo(-26, -46); ctx.lineTo(26, -46); ctx.lineTo(16, 6); ctx.lineTo(-16, 6); ctx.closePath();
-      ctx.fill(); ctx.stroke();
-      ctx.beginPath();                                        // waist + skirt armor
-      ctx.moveTo(-14, 8); ctx.lineTo(14, 8); ctx.lineTo(22, 58); ctx.lineTo(-22, 58); ctx.closePath();
-      ctx.fill(); ctx.stroke();
-      // shoulder pauldrons
-      for (const sd of [-1, 1]) {
-        ctx.beginPath();
-        ctx.moveTo(sd * 24, -48); ctx.lineTo(sd * 44, -40); ctx.lineTo(sd * 36, -18); ctx.lineTo(sd * 22, -30);
-        ctx.closePath(); ctx.fill(); ctx.stroke();
-      }
-      // ── CORE: glowing reactor heart (pulses on smite) ──
-      ctx.save();
-      ctx.globalCompositeOperation = 'lighter';
-      ctx.globalAlpha = angelAlpha * (0.75 + 0.25 * Math.sin(el / 160) + flash * 0.3);
-      ctx.fillStyle = flash > 0.4 ? '#fff6d8' : '#ffd447';
-      ctx.shadowColor = '#ffd447'; ctx.shadowBlur = 16 + flash * 20;
-      ctx.beginPath();
-      ctx.moveTo(0, -30); ctx.lineTo(8, -20); ctx.lineTo(0, -10); ctx.lineTo(-8, -20); ctx.closePath();
-      ctx.fill();
-      ctx.shadowBlur = 0;
-      ctx.restore();
-      // ── HEAD: angular helm + glowing visor slit ──
-      ctx.fillStyle = chrome;
-      ctx.beginPath();
-      ctx.moveTo(-11, -74); ctx.lineTo(11, -74); ctx.lineTo(14, -56); ctx.lineTo(0, -48); ctx.lineTo(-14, -56);
-      ctx.closePath(); ctx.fill(); ctx.stroke();
-      ctx.save();
-      ctx.globalCompositeOperation = 'lighter';
-      ctx.globalAlpha = angelAlpha * (0.8 + 0.2 * Math.sin(el / 120));
-      ctx.fillStyle = flash > 0.4 ? '#fff6d8' : '#ff2d6a';
-      ctx.fillRect(-9, -66, 18, 3.4);                          // the visor slit
-      ctx.restore();
-      // ── THRUSTERS: light jets instead of legs ──
-      ctx.save();
-      ctx.globalCompositeOperation = 'lighter';
-      for (const sd of [-1, 1]) {
-        const jg = ctx.createLinearGradient(0, 58, 0, 108 + Math.sin(el / 90 + sd) * 8);
-        jg.addColorStop(0, 'rgba(255,212,71,0.9)');
-        jg.addColorStop(0.5, 'rgba(255,45,106,0.4)');
-        jg.addColorStop(1, 'rgba(255,45,106,0)');
-        ctx.fillStyle = jg;
-        ctx.globalAlpha = angelAlpha * (0.7 + 0.3 * Math.sin(el / 70 + sd * 2));
-        ctx.beginPath();
-        ctx.moveTo(sd * 14 - 7, 58); ctx.lineTo(sd * 14 + 7, 58);
-        ctx.lineTo(sd * 14, 106 + Math.sin(el / 90 + sd) * 8);
-        ctx.closePath(); ctx.fill();
-      }
-      ctx.restore();
+      // ── the IRIS CORE: burning gold eye that dilates on judgement ──
+      const coreR = 26 + Math.sin(el / 180) * 3 + flash * 14;
+      const cg = ctx.createRadialGradient(0, 0, 2, 0, 0, coreR * 1.8);
+      cg.addColorStop(0, flash > 0.3 ? 'rgba(255,255,255,0.95)' : 'rgba(255,246,216,0.95)');
+      cg.addColorStop(0.4, 'rgba(255,212,71,0.7)');
+      cg.addColorStop(1, 'rgba(255,212,71,0)');
+      ctx.globalAlpha = angelAlpha;
+      ctx.fillStyle = cg;
+      ctx.beginPath(); ctx.arc(0, 0, coreR * 1.8, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = C.hot; ctx.lineWidth = 2;
+      ctx.globalAlpha = angelAlpha * 0.9;
+      ctx.beginPath(); ctx.arc(0, 0, coreR, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = '#1a0800';                                        // slit pupil
+      ctx.globalAlpha = angelAlpha;
+      ctx.beginPath(); ctx.ellipse(0, 0, coreR * 0.18, coreR * (0.55 + flash * 0.4), 0, 0, Math.PI * 2); ctx.fill();
       ctx.restore();
       // rotating halo above the head
       ctx.save();

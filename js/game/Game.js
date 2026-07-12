@@ -34,7 +34,7 @@ import { AfterimageTribunal } from '../effects/afterimage-tribunal.js?v=20260711
 import { FeedbackApocalypse } from '../effects/feedback-apocalypse.js?v=20260711520000';
 import { OniMaskOverture } from '../effects/oni-mask-overture.js?v=20260711530000';
 import { EuclidTheorem } from '../effects/euclid-theorem.js?v=20260711540000';
-import { DeusExMachina } from '../effects/deus-ex-machina.js?v=20260712200000';
+import { DeusExMachina } from '../effects/deus-ex-machina.js?v=20260712230000';
 import { RailgunHorizon } from '../effects/railgun-horizon.js?v=20260711560000';
 import { MagmaCoreEruption } from '../effects/magma-core-eruption.js?v=20260711570000';
 import { PhantomExecution } from '../effects/phantom-execution.js?v=20260711580000';
@@ -5826,9 +5826,10 @@ export class Game {
   }
 
   _drawDimiAngels(ctx) {
-    // Deus Ex Machina module owns the angel presentation while active (screen-space,
-    // drawn in _drawDeusExFx after the camera block) — skip the legacy hologram draw.
-    if (this._deusEx?.isActive()) return;
+    // RETIRED (Maria 2026-07-12): the OPHANIM module is the ONLY visual for this
+    // ultimate now — the legacy sprite draw never runs again (any timing gap between
+    // module life and angel-entity life used to leak the old art behind the new one).
+    return;
     const img = this._cyberAngelImg;
     if (!img || !img.complete || !img.naturalWidth || !this._dimiAngels || !this._dimiAngels.length) return;
     ctx.save();
