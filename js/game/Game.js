@@ -27,7 +27,7 @@ import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARAC
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
 import { GlitchDash } from '../effects/glitch-dash.js?v=20260703990000';
-import { EMPShockwave } from '../effects/emp-shockwave.js?v=20260703990000';
+import { EMPShockwave } from '../effects/emp-shockwave.js?v=20260712300000';
 import { DigitalSingularity } from '../effects/digital-singularity.js?v=20260703990000';
 import { OssuaryReconstruction } from '../effects/ossuary-reconstruction.js?v=20260711500000';
 import { AfterimageTribunal } from '../effects/afterimage-tribunal.js?v=20260711510000';
@@ -36,7 +36,7 @@ import { OniMaskOverture } from '../effects/oni-mask-overture.js?v=2026071153000
 import { EuclidTheorem } from '../effects/euclid-theorem.js?v=20260711540000';
 import { DeusExMachina } from '../effects/deus-ex-machina.js?v=20260712250000';
 import { RailgunHorizon } from '../effects/railgun-horizon.js?v=20260711560000';
-import { MagmaCoreEruption } from '../effects/magma-core-eruption.js?v=20260712290000';
+import { MagmaCoreEruption } from '../effects/magma-core-eruption.js?v=20260712300000';
 import { PhantomExecution } from '../effects/phantom-execution.js?v=20260711580000';
 import { WeatherTheater } from '../effects/weather-theater.js?v=20260712130000';
 import { Protocol0 } from '../effects/protocol-0.js?v=20260705000000';

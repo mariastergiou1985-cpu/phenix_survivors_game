@@ -174,7 +174,7 @@ export class MagmaCoreEruption {
           const rr = (1 - rk) * 220 + 18;
           ctx.beginPath(); ctx.ellipse(this.cx, this.footY - 8, rr, rr * 0.45, 0, 0, Math.PI * 2); ctx.stroke();
         }
-        ctx.restore(); return;
+        return;   // finally{} owns the restore — the old inline restore double-popped the caller's stack
       }
 
       // crack progress: draws out fast on impact, holds, retracts on heal

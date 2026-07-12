@@ -152,16 +152,22 @@ export class EMPShockwave {
     if (s <= 0 || this.radius < 4) return;
     const w = this.cfg.ring.width * 2.2;
     const rOuter = this.radius + w, rInner = Math.max(0, this.radius - w);
+    // SAFE refraction fake (no canvas self-copy — that whole family of scaled
+    // drawImage(ctx.canvas) feedbacks caused the infinite-mirror corruption):
+    // a chromatic double-fringe rides the wavefront — cyan leading edge, white
+    // core, faint dark trailing band. Reads as lensing without touching pixels.
     ctx.save();
-    // clip to the ring band (annulus) so only the wavefront bends
-    ctx.beginPath();
-    ctx.arc(this.cx, this.cy, rOuter, 0, Math.PI * 2);
-    ctx.arc(this.cx, this.cy, rInner, 0, Math.PI * 2, true);
-    ctx.clip('evenodd');
-    // magnify the already-drawn scene about the center -> lens/refraction bulge
-    const k = 1 + s * fade;
-    ctx.translate(this.cx, this.cy); ctx.scale(k, k); ctx.translate(-this.cx, -this.cy);
-    ctx.drawImage(ctx.canvas, 0, 0);
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = 0.5 * fade;
+    ctx.strokeStyle = '#8ff4ff'; ctx.lineWidth = w * 0.8;
+    ctx.beginPath(); ctx.arc(this.cx, this.cy, rOuter - w * 0.4, 0, Math.PI * 2); ctx.stroke();
+    ctx.globalAlpha = 0.85 * fade;
+    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(this.cx, this.cy, this.radius, 0, Math.PI * 2); ctx.stroke();
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 0.22 * fade;
+    ctx.strokeStyle = '#02060c'; ctx.lineWidth = w * 0.5;
+    ctx.beginPath(); ctx.arc(this.cx, this.cy, Math.max(1, rInner + w * 0.25), 0, Math.PI * 2); ctx.stroke();
     ctx.restore();
   }
 
