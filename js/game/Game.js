@@ -2226,27 +2226,63 @@ export class Game {
   // ── SAVE BACKUP / RESTORE (Maria: carry progress between browser ↔ exe ↔ devices) ──
   // The save travels as a Base64 code. BACKUP copies it to the clipboard (and shows it
   // in a prompt as fallback). RESTORE accepts a pasted code, validates, writes, reloads.
-  _backupSave() {
-    try {
+  // NOTE: window.prompt() does NOT exist in Electron — the exe silently got null and
+  // reported 'invalid code'. Both flows now use our own DOM modal (works everywhere).
+  _saveCodeModal(mode) {
+    const old = document.getElementById('phx-save-modal'); if (old) old.remove();
+    const wrap = document.createElement('div');
+    wrap.id = 'phx-save-modal';
+    wrap.style.cssText = 'position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:rgba(2,6,14,.85);font-family:Consolas,monospace;';
+    const isBackup = mode === 'backup';
+    let code = '';
+    if (isBackup) {
       const raw = localStorage.getItem('phenix_meta') || '';
-      if (!raw) { alert('Δεν βρέθηκε αποθήκευση σε αυτή τη συσκευή.'); return; }
-      const code = btoa(unescape(encodeURIComponent(raw)));
+      if (!raw) { wrap.remove(); this.triggerAnnouncement('ΔΕΝ ΒΡΕΘΗΚΕ ΑΠΟΘΗΚΕΥΣΗ ΕΔΩ', '#ff8866'); return; }
+      code = btoa(unescape(encodeURIComponent(raw)));
       try { navigator.clipboard?.writeText(code); } catch (_) {}
-      prompt('Ο ΚΩΔΙΚΟΣ ΑΠΟΘΗΚΕΥΣΗΣ σου (αντιγράφηκε ήδη στο πρόχειρο — Ctrl+C για σιγουριά):', code);
-    } catch (e) { alert('Αποτυχία εξαγωγής: ' + e.message); }
+    }
+    wrap.innerHTML = `
+      <div style="width:640px;max-width:92vw;background:linear-gradient(180deg,#0a1626,#04101e);border:1.5px solid #2ee6f6;border-radius:14px;box-shadow:0 0 30px rgba(46,230,246,.35);padding:22px 24px;color:#cfefff;">
+        <div style="font-family:Orbitron,Consolas,monospace;font-weight:700;letter-spacing:2px;color:#2ee6f6;font-size:15px;margin-bottom:10px;">
+          ${isBackup ? '\u2B07 BACKUP SAVE — Ο ΚΩΔΙΚΟΣ ΣΟΥ' : '\u2B06 RESTORE SAVE — ΕΠΙΚΟΛΛΗΣΗ ΚΩΔΙΚΟΥ'}</div>
+        <div style="font-size:12px;color:#8fb3cc;margin-bottom:10px;">
+          ${isBackup ? 'Αντιγράφηκε ήδη στο πρόχειρο. Αν όχι: κλικ στο κείμενο → Ctrl+A → Ctrl+C.' : 'Κάνε κλικ στο πλαίσιο και πάτα Ctrl+V. Μετά πάτα ΕΠΑΝΑΦΟΡΑ.'}</div>
+        <textarea id="phx-save-ta" spellcheck="false" style="width:100%;height:140px;resize:none;background:#020a14;color:#7fe0ff;border:1px solid rgba(46,230,246,.4);border-radius:8px;padding:10px;font:11px Consolas,monospace;word-break:break-all;" ${isBackup ? 'readonly' : ''}></textarea>
+        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px;">
+          ${isBackup ? '<button id="phx-copy" style="padding:9px 18px;border-radius:8px;border:1px solid #2ee6f6;background:rgba(46,230,246,.12);color:#2ee6f6;font-family:Orbitron;font-weight:700;cursor:pointer;">ΑΝΤΙΓΡΑΦΗ</button>'
+                     : '<button id="phx-apply" style="padding:9px 18px;border-radius:8px;border:1px solid #7CFF8A;background:rgba(124,255,138,.12);color:#7CFF8A;font-family:Orbitron;font-weight:700;cursor:pointer;">ΕΠΑΝΑΦΟΡΑ</button>'}
+          <button id="phx-close" style="padding:9px 18px;border-radius:8px;border:1px solid rgba(160,180,200,.4);background:transparent;color:#9fb6c8;font-family:Orbitron;font-weight:700;cursor:pointer;">ΚΛΕΙΣΙΜΟ</button>
+        </div>
+        <div id="phx-msg" style="margin-top:10px;font-size:12px;color:#ff8866;"></div>
+      </div>`;
+    document.body.appendChild(wrap);
+    const ta = wrap.querySelector('#phx-save-ta');
+    if (isBackup) { ta.value = code; ta.onclick = () => ta.select(); }
+    else setTimeout(() => ta.focus(), 50);
+    wrap.querySelector('#phx-close').onclick = () => wrap.remove();
+    const copyBtn = wrap.querySelector('#phx-copy');
+    if (copyBtn) copyBtn.onclick = () => {
+      ta.select(); try { document.execCommand('copy'); } catch (_) {}
+      try { navigator.clipboard?.writeText(ta.value); } catch (_) {}
+      copyBtn.textContent = '\u2713 ΑΝΤΙΓΡΑΦΗΚΕ';
+    };
+    const applyBtn = wrap.querySelector('#phx-apply');
+    if (applyBtn) applyBtn.onclick = () => {
+      try {
+        const raw = decodeURIComponent(escape(atob(ta.value.trim())));
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object') throw new Error('invalid');
+        localStorage.setItem('phenix_meta', raw);
+        wrap.querySelector('#phx-msg').style.color = '#7CFF8A';
+        wrap.querySelector('#phx-msg').textContent = '\u2713 Η αποθήκευση επαναφέρθηκε — επανεκκίνηση...';
+        setTimeout(() => location.reload(), 900);
+      } catch (e) {
+        wrap.querySelector('#phx-msg').textContent = 'Ο κωδικός δεν είναι έγκυρος — βεβαιώσου ότι τον επικόλλησες ΟΛΟΚΛΗΡΟ (Ctrl+A, Ctrl+C στην πηγή).';
+      }
+    };
   }
-  _restoreSave() {
-    try {
-      const code = prompt('Επικόλλησε εδώ τον ΚΩΔΙΚΟ ΑΠΟΘΗΚΕΥΣΗΣ (Ctrl+V) και πάτα ΟΚ:');
-      if (!code) return;
-      const raw = decodeURIComponent(escape(atob(code.trim())));
-      const parsed = JSON.parse(raw);                       // validation: must be JSON
-      if (!parsed || typeof parsed !== 'object') throw new Error('invalid');
-      localStorage.setItem('phenix_meta', raw);
-      alert('Η αποθήκευση επαναφέρθηκε! Το παιχνίδι θα επανεκκινήσει.');
-      location.reload();
-    } catch (e) { alert('Ο κωδικός δεν είναι έγκυρος — βεβαιώσου ότι τον επικόλλησες ολόκληρο.'); }
-  }
+  _backupSave()  { this._saveCodeModal('backup'); }
+  _restoreSave() { this._saveCodeModal('restore'); }
 
   goToCredits() { this._hideMenuOverlay(); this._hideSettingsOverlay(); this.gameState = 'credits'; }
 
