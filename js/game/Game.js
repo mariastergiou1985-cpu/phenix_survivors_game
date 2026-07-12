@@ -10,7 +10,7 @@ import { clamp, distance, safeNormalize, randomChoice, randomRange, wrapText } f
 import { FloatingText }   from '../entities/FloatingText.js?v=20260703990000';
 import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260705040000';
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260712090000';
-import { Player }         from '../entities/Player.js?v=20260712060000';
+import { Player }         from '../entities/Player.js?v=20260712420000';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260706270000';
 import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260712190000';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=20260711750000';
@@ -22,7 +22,7 @@ import { weightedSample } from './Upgrades.js?v=20260711370000';
 import { MutationUI }      from './MutationUI.js?v=20260703990000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260712330000';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, SKILL_TREE, AMULET_DEFS } from './MetaProgress.js?v=20260712410000';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, SKILL_TREE, AMULET_DEFS } from './MetaProgress.js?v=20260712420000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260712320000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
@@ -374,6 +374,11 @@ const BOSS_ECHOES = [
   { id: 'titan',        name: 'Titan Echo',           color: '#a855f7', lore: 'Heavy impact pattern stored.',  passive: '+3% Max HP' },
   { id: 'bloodfang',    name: 'Bloodfang Echo',       color: '#ef4444', lore: 'Predator signal contained.',    passive: '+2% Move Speed' },
   { id: 'annihilator',  name: 'Annihilator Echo',     color: '#fbbf24', lore: 'Termination protocol indexed.', passive: '+0.2 Shot Damage' },
+  // Chaos Mega Titans (Maria: 'εδώ πρέπει να μπουν και τα mega bosses')
+  { id: 'overlordMega',  name: 'Giga-Core Echo',       color: '#ffd447', lore: 'Doomsday array schematics kept.',  passive: '+0.2 Shot Damage' },
+  { id: 'leviathanMega', name: 'Leviathan Echo',       color: '#7CFF4D', lore: 'Nanite bloom neutralized.',        passive: '+3% Max HP' },
+  { id: 'emperorMega',   name: 'Void Emperor Echo',    color: '#b026ff', lore: 'Singularity edge traced.',         passive: '+2% Move Speed' },
+  { id: 'tyrantMega',    name: 'Mech Tyrant Echo',     color: '#ff5a3c', lore: 'Anti-matter cell drained.',        passive: '+2% Fire Rate' },
 ];
 
 const EDEN_MILESTONES = [
@@ -1688,7 +1693,15 @@ export class Game {
     this._campaignCleared = true;
     const n = this._campaignStage;
     const isFinal = !!CAMPAIGN_STAGES.find(s => s.n === n)?.final;
-    this.meta?.clearStage(n);
+    const firstClear = this.meta?.clearStage(n);
+    // Maria: campaign FINALLY pays secret skins — every FIRST clear of a stage
+    // decrypts one random locked secret skin (if any remain).
+    if (firstClear) {
+      try {
+        const skin = this.meta.unlockRandomSecretSkin?.();
+        if (skin) this.triggerAnnouncement('SECRET SKIN DECRYPTED — ' + skin.toUpperCase(), '#ff2d95');
+      } catch (_) {}
+    }
     const allDone = this.meta?.allStagesCleared();
     // Soft, celebratory finish instead of a hard shake + instant cut: a full-screen
     // "STAGE n COMPLETE" banner fades in, holds, then eases back to the campaign map.
@@ -2328,7 +2341,23 @@ export class Game {
     if (m.isRelicUnlocked('emperor_singularity_edge')) p.abilityCdMult = (p.abilityCdMult || 1) * 1.10; // gravity control → faster abilities
     if (m.isRelicUnlocked('tyrant_antimatter_battery')) p.contactDamageReduction = Math.min(0.6, (p.contactDamageReduction || 0) + 0.08); // armor plating
     // ── Dimi's Cyber-Relic — character-gated (only affects Dimi runs) ──
-    if (m.isRelicUnlocked('dimi_cyber_relic') && p.selectedCharacter === 'dimis_kickboxer') {
+    if (m.isRelicUnlocked('ossuary_marrow') && p.selectedCharacter === 'skeleton_warrior') {
+      p.upgrades['Pulse Damage'] = (p.upgrades['Pulse Damage'] || 0) + 0.5;   // marrow-charged sabers
+      p.maxHp = Math.round(p.maxHp * 1.05); p.hp = Math.min(p.hp, p.maxHp);
+    }
+    if (m.isRelicUnlocked('overheat_regulator') && p.selectedCharacter === 'cyber_arm_hero') {
+      p.upgrades['Pulse Damage'] = (p.upgrades['Pulse Damage'] || 0) + 0.5;   // regulated overdrive
+      p.fireRateBonus = (p.fireRateBonus || 0) + 0.03;
+    }
+    if (m.isRelicUnlocked('seismic_knuckle') && p.selectedCharacter === 'brawler_warrior') {
+      p.upgrades['Pulse Damage'] = (p.upgrades['Pulse Damage'] || 0) + 0.4;
+      p.contactDamageReduction = Math.min(0.6, (p.contactDamageReduction || 0) + 0.03);
+    }
+    if (m.isRelicUnlocked('null_shard_loop') && p.selectedCharacter === 'japan_phasewalker') {
+      p.abilityCdMult = (p.abilityCdMult || 1) * 1.06;                        // dash/EMP loop faster
+      p.speedBonus    = (p.speedBonus || 0) + 0.02;
+    }
+        if (m.isRelicUnlocked('dimi_cyber_relic') && p.selectedCharacter === 'dimis_kickboxer') {
       p.pulseDamage = (p.pulseDamage || 0) + 2;
       p.contactDamageReduction = Math.min(0.6, (p.contactDamageReduction || 0) + 0.05);
     }
@@ -2855,10 +2884,10 @@ export class Game {
     if (!this.meta) return { maxHpMult: 1, moveSpeedBonus: 0, pulseDamageBonus: 0, fireRateBonus: 0 };
     const h = id => this.meta.hasBossEcho(id);
     return {
-      maxHpMult:        h('titan')        ? 1.03 : 1,
-      moveSpeedBonus:   h('bloodfang')    ? 0.02 : 0,
-      pulseDamageBonus: (h('annihilator') ? 0.2  : 0) + (h('cyberSerpent') ? 0.2 : 0),
-      fireRateBonus:    (h('cyberDragon') ? 0.02 : 0) + (h('doubleDemon')  ? 0.02 : 0),
+      maxHpMult:        (h('titan') ? 1.03 : 1) * (h('leviathanMega') ? 1.03 : 1),
+      moveSpeedBonus:   (h('bloodfang') ? 0.02 : 0) + (h('emperorMega') ? 0.02 : 0),
+      pulseDamageBonus: (h('annihilator') ? 0.2  : 0) + (h('cyberSerpent') ? 0.2 : 0) + (h('overlordMega') ? 0.2 : 0),
+      fireRateBonus:    (h('cyberDragon') ? 0.02 : 0) + (h('doubleDemon')  ? 0.02 : 0) + (h('tyrantMega') ? 0.02 : 0),
     };
   }
 
@@ -9220,6 +9249,22 @@ export class Game {
         'Quantum Void Emperor': 'titan_emperor', 'Apocalypse Mech Tyrant': 'titan_tyrant',
       }[this._activeTitan.enemyType];
       try { if (flag && this.meta) this.meta.recordBossKill(flag); } catch (_) {}
+      try {                                                     // echo archive entry per mega (once)
+        const echoKey = {
+          'Giga-Core Overlord': 'overlordMega', 'Malware Leviathan': 'leviathanMega',
+          'Quantum Void Emperor': 'emperorMega', 'Apocalypse Mech Tyrant': 'tyrantMega',
+        }[this._activeTitan.enemyType];
+        if (echoKey && this.meta?.recordBossEcho(echoKey)) {
+          this.meta.addEdenMemory(2);
+          this._queueEdenTransmission(this._activeTitan.enemyType.toUpperCase() + ' ECHO ARCHIVED.', { priority: 2, duration: 5 });
+        }
+        // Boss Rush bounty: titans killed during the rush pay PF (Titan Pact doubles it)
+        if (this._bossRush && this.meta) {
+          const pf = this.meta.isRelicUnlocked('rush_titan_pact') ? 4 : 2;
+          this.meta.protocolFragments += pf; this.meta._save?.();
+          this.floatingTexts.push(new FloatingText('+' + pf + ' \uD83E\uDDE9', this._activeTitan.pos.clone(), '#a855f7', 2.0));
+        }
+      } catch (_) {}
       this.triggerAnnouncement(this._activeTitan.enemyType.toUpperCase() + ' DESTROYED — REWARD RELIC UNLOCKED', '#7CFF4D');
       this._activeTitan = null;
     }
@@ -9380,6 +9425,12 @@ export class Game {
       if (next != null && chaosEl >= next) {
         this._bossRushWarned = false;
         this._bossRushCount++;
+        // ARENA RELIC: Glass Vow — sharper blade, thinner skin, only while the rush runs
+        if (this.meta?.isRelicUnlocked?.('rush_glass_vow') && this.player) {
+          this.player.upgrades['Pulse Damage'] = (this.player.upgrades['Pulse Damage'] || 0) + 1.0;
+          this.player._rushVulnMult = 1.25;
+          this.floatingTexts.push(new FloatingText('GLASS VOW ACTIVE', this.player.pos.clone(), '#ff9a2d', 2.0));
+        }
         this._bossRush = {
           t: 0, dur: 180, cx: this.player.pos.x, cy: this.player.pos.y,
           hazard: null, spawnAcc: 0, titanIdx: 0, flags: {},
@@ -9472,7 +9523,12 @@ export class Game {
       this.audio?.playStageComplete?.(false);
       this.screenShake?.trigger(6, 0.6);
       this._awardCredits?.(40);
-      this._bossRush = null;
+      
+        if (this.player && this.player._rushVulnMult) {          // Glass Vow off
+          this.player.upgrades['Pulse Damage'] = Math.max(0, (this.player.upgrades['Pulse Damage'] || 0) - 1.0);
+          this.player._rushVulnMult = 0;
+        }
+        this._bossRush = null;
     }
   }
 
@@ -9487,11 +9543,13 @@ export class Game {
   }
 
   _bossRushSpawnTitan(br) {
+    // ARENA RELIC hooks: Titan Pact = richer bounty but tougher titans (the debuff).
+    this._rushPact = !!this.meta?.isRelicUnlocked?.('rush_titan_pact');
     const names = ['Giga-Core Overlord', 'Malware Leviathan', 'Quantum Void Emperor', 'Apocalypse Mech Tyrant'];
     const name = names[(br.titanIdx++) % names.length];
     try {
       const t = new Enemy(name, this.currentMinute());
-      t.hp *= 3.4; t.maxHp = t.hp; t.isMegaBoss = true;   // Boss Rush scaling: extra HP (Maria: tougher megas)
+      t.hp *= 3.4 * (this._rushPact ? 1.25 : 1); t.maxHp = t.hp; t.isMegaBoss = true;   // Boss Rush scaling (+25% under Titan Pact)
       this._bossRushPlaceAtEdge(t);
       this.enemies.push(t); this.megaBoss = t;
       this.audio?.playBossWarning?.();
