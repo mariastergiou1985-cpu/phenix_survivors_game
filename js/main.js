@@ -1,4 +1,4 @@
-import { Game } from './game/Game.js?v=20260712300000';
+import { Game } from './game/Game.js?v=20260712470000';
 import { AudioManager } from './audio/AudioManager.js?v=20260712170000';
 import { PlatformAchievements } from './platform/PlatformAchievements.js?v=20260712370000';
 // Steam build: replay any web-earned achievements to Steam on boot (no-op in browsers)
@@ -430,6 +430,11 @@ canvas.addEventListener('mousedown', e => {
         mousePos.y >= by && mousePos.y <= by + bh) {
       game.goToSettings();
     }
+
+  } else if (game.gameState === 'campaign_select') {
+    // ── CAMPAIGN stage select — handled on the DOWN event so a mobile TAP
+    // (instantaneous synthetic down+up from TouchInput) enters the stage too.
+    game._campaignClickAt(mousePos);
 
   } else if (game.gameState === 'character_select') {
     // ── Character Select ─────────────────────────────────────────

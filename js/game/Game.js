@@ -1564,25 +1564,32 @@ export class Game {
       else this.triggerAnnouncement('CLEAR THE PREVIOUS STAGE FIRST', '#888888');
     }
     if (keys.has('escape')) { this.goToMainMenu(); keys.delete('escape'); }
-    // MOBILE/MOUSE (Maria: no way to enter campaign on phone): tapping/clicking a
-    // stage card selects it AND enters — same rules as the Enter key. Touch taps
-    // arrive here as synthetic canvas mousedown via TouchInput.
+    // MOUSE (desktop hold-click, polled): same hit-test as the shared method below.
     if (input.mouseDown && input.mousePos) {
       if (!this._campClickLatch) {
         this._campClickLatch = true;
-        const mp = input.mousePos;
-        for (let i = 0; i < CAMPAIGN_STAGES.length; i++) {
-          const r = this._campaignCardRect(i);
-          if (mp.x >= r.x && mp.x <= r.x + r.w && mp.y >= r.y && mp.y <= r.y + r.h) {
-            this._campaignSelIndex = i;
-            const st = CAMPAIGN_STAGES[i];
-            if (this.meta?.isStageUnlocked(st.n)) { this._pendingCampaignStage = st.n; this.goToCharacterSelect(); }
-            else this.triggerAnnouncement('CLEAR THE PREVIOUS STAGE FIRST', '#888888');
-            break;
-          }
-        }
+        this._campaignClickAt(input.mousePos);
       }
     } else this._campClickLatch = false;
+  }
+
+  // Shared click/tap hit-test for the CAMPAIGN screen. Called from the polled
+  // mouse path above (desktop) AND directly from the canvas mousedown handler in
+  // main.js — mobile taps arrive as an instantaneous synthetic mousedown+mouseup
+  // (TouchInput), so by the next frame mouseDown is already false and the polled
+  // path never sees them. Handling the DOWN event makes stages enterable on phones.
+  _campaignClickAt(mp) {
+    if (this.gameState !== 'campaign_select' || !mp) return;
+    for (let i = 0; i < CAMPAIGN_STAGES.length; i++) {
+      const r = this._campaignCardRect(i);
+      if (mp.x >= r.x && mp.x <= r.x + r.w && mp.y >= r.y && mp.y <= r.y + r.h) {
+        this._campaignSelIndex = i;
+        const st = CAMPAIGN_STAGES[i];
+        if (this.meta?.isStageUnlocked(st.n)) { this._pendingCampaignStage = st.n; this.goToCharacterSelect(); }
+        else this.triggerAnnouncement('CLEAR THE PREVIOUS STAGE FIRST', '#888888');
+        return;
+      }
+    }
   }
 
   _campaignThumb(st) {
