@@ -419,6 +419,15 @@ const SYSTEM_LOGS = [
     text: 'Every arena breach is not an attack. Some are invitations.' },
   { id: 'log06', num: '06', threshold: 100, title: 'TRUE NULL EDEN',
     text: 'Something beneath the Grid is answering back.' },
+  // ── Archive refresh (2026-07-12): the events of the last cycle, canonized ──
+  { id: 'log07', num: '07', threshold: 120, title: 'THE WHEEL HAS EYES',
+    text: 'When Dimi prays, something with too many rings answers. The archive refuses to classify it as machinery.' },
+  { id: 'log08', num: '08', threshold: 150, title: 'THE COURIER ECONOMY',
+    text: 'The Grid pays in cores now. Thieves learned this before we did. What is stolen can be hunted; what is hunted can be returned.' },
+  { id: 'log09', num: '09', threshold: 185, title: 'TWENTY NEW SIGNATURES',
+    text: 'Every survivor now carries two weapons that did not exist last cycle. The forge did not make them. The characters did.' },
+  { id: 'log10', num: '10', threshold: 220, title: 'THE BOSSES REMEMBER',
+    text: 'Containment reports say the longer a warden survives, the more it learns. Enrage. Nova. Reinforcement. Do not let them study you.' },
 ];
 
 // ── Taekwondo Crystal Ice Field (replaces Lightning Dash Strike) ───────────────
@@ -2037,9 +2046,13 @@ export class Game {
       { id: 'no_mercy_protocol', name: 'NO MERCY PROTOCOL', color: '#fbbf24',
         effect: '+10% boss HP \u00b7 +15% score multiplier for this run.' },
       // Preview-only \u2014 not yet active. Shown non-selectable so players see future content.
-      { id: 'serpent_law',   name: 'SERPENT LAW',   color: '#ff7733', comingSoon: true },
-      { id: 'dragon_law',    name: 'DRAGON LAW',    color: '#a855f7', comingSoon: true },
-      { id: 'broken_signal', name: 'BROKEN SIGNAL', color: '#ff2d95', comingSoon: true },
+      // ALL LAWS OPEN (Maria 2026-07-12): the three former previews are live.
+      { id: 'serpent_law',   name: 'SERPENT LAW',   color: '#ff7733',
+        effect: 'Enemies +6% faster \u00b7 bosses +6% HP \u00b7 +12% score.' },
+      { id: 'dragon_law',    name: 'DRAGON LAW',    color: '#a855f7',
+        effect: 'Bosses +15% HP \u00b7 +12% XP gain.' },
+      { id: 'broken_signal', name: 'BROKEN SIGNAL', color: '#ff2d95',
+        effect: 'Enemies +5% faster \u00b7 +20% score \u00b7 +8% XP.' },
     ];
 
     const el = document.createElement('div');
