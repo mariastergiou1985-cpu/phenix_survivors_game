@@ -472,7 +472,7 @@ function _drawElementSigil(ctx, el, x, y, r, color) {
   ctx.shadowColor = color; ctx.shadowBlur = 8;
   ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 1.6; ctx.lineJoin = 'round';
   const fam = String(el || '');
-  if (fam.includes('fire') || fam === 'crimson_gate' || fam.includes('lava') || fam.includes('magma')) {
+  if (fam.includes('fire') || fam === 'crimson_gate' || fam.includes('blaze') || fam.includes('lava') || fam.includes('magma')) {
     // FLAME: outer tongue + white inner tongue
     ctx.beginPath();
     ctx.moveTo(0, r);
@@ -497,7 +497,7 @@ function _drawElementSigil(ctx, el, x, y, r, color) {
       ctx.lineTo(Math.cos(a2) * r * 0.55 + Math.cos(a2 + 2.4) * r * 0.3, Math.sin(a2) * r * 0.55 + Math.sin(a2 + 2.4) * r * 0.3);
       ctx.stroke();
     }
-  } else if (fam.includes('electric') || fam.includes('thunder') || fam.includes('storm') || fam.includes('volt')) {
+  } else if (fam.includes('electric') || fam.includes('thunder') || fam.includes('storm') || fam.includes('volt') || fam.includes('torrent') || fam.includes('plasma')) {
     // BOLT: filled zig-zag
     ctx.beginPath();
     ctx.moveTo(r * 0.25, -r); ctx.lineTo(-r * 0.5, r * 0.15); ctx.lineTo(-r * 0.05, r * 0.15);
@@ -544,7 +544,7 @@ function _drawElementSigil(ctx, el, x, y, r, color) {
     // HALO + spark cross
     ctx.beginPath(); ctx.ellipse(0, -r * 0.35, r * 0.7, r * 0.28, 0, 0, Math.PI * 2); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(0, -r * 0.05); ctx.lineTo(0, r); ctx.moveTo(-r * 0.45, r * 0.5); ctx.lineTo(r * 0.45, r * 0.5); ctx.stroke();
-  } else if (fam.includes('earth') || fam.includes('seism') || fam.includes('rock')) {
+  } else if (fam.includes('earth') || fam.includes('seism') || fam.includes('rock') || fam.includes('tectonic')) {
     // ROCK SHARD
     ctx.beginPath();
     ctx.moveTo(0, -r); ctx.lineTo(r * 0.8, r * 0.3); ctx.lineTo(r * 0.3, r); ctx.lineTo(-r * 0.7, r * 0.7); ctx.lineTo(-r * 0.75, -r * 0.1);

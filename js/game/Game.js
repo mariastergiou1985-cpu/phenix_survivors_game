@@ -21,9 +21,9 @@ import { UpgradeUI }      from './UpgradeUI.js?v=20260711370000';
 import { weightedSample } from './Upgrades.js?v=20260711370000';
 import { MutationUI }      from './MutationUI.js?v=20260703990000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
-import { drawHUD, drawEndScreen } from './HUD.js?v=20260712280000';
+import { drawHUD, drawEndScreen } from './HUD.js?v=20260712320000';
 import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, SKILL_TREE, AMULET_DEFS } from './MetaProgress.js?v=20260712280000';
-import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260711590000';
+import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260712320000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
 import { GlitchDash } from '../effects/glitch-dash.js?v=20260703990000';
@@ -1336,6 +1336,7 @@ export class Game {
     this.phoenixUsed        = false;
     this.phoenixReviveTimer = 0;    // > 0 while the flash animation plays
     this.phoenixReviveCount = 0;    // how many revives used this run (0–3)
+    this._lastPhoenixUsed   = false; // THE LAST PHOENIX — 5th, once per run, kills everything
     this.phoenixReviveType  = 'orange'; // 'orange' | 'blue' | 'gold'
 
     // Score / combo
@@ -1950,6 +1951,7 @@ export class Game {
     // Phoenix revives reset on Endless entry: Act 1 uses must not consume the Endless pool.
     // (startEndlessRun already calls reset() which zeroes these; this guard covers continueEndless.)
     this.phoenixReviveCount = 0;
+    this._lastPhoenixUsed   = false;
     this.phoenixReviveTimer = 0;
     this.phoenixUsed        = false;
     this._annihNexusKills  = 0;             // Annihilator Nexus-erase count this run (hard max 2)
@@ -8289,6 +8291,8 @@ export class Game {
       // never from a timer/cooldown/visual schedule.
       } else if (this.phoenixReviveCount < (3 + (this._hasProto('phoenix_revival') ? 1 : 0))) {
         this._triggerPhoenixRevive();
+      } else if (!this._lastPhoenixUsed) {
+        this._triggerLastPhoenix();          // THE LAST PHOENIX — once per run, every mode
       } else {
         this.gameOver           = true;
         this._endScreenBtnIndex = 0;   // controller nav: start on RETRY
@@ -17197,6 +17201,39 @@ export class Game {
     }
   }
 
+  // ═══ THE LAST PHOENIX (Maria 2026-07-12) ═══════════════════════════════════
+  // The final death has an answer. Once per run, in EVERY mode: the Phoenix does
+  // not just revive — it SPEAKS (live Eden-channel monologue) and then burns the
+  // entire battlefield clean: every enemy, elite, boss and mega-boss dies in one
+  // wave of fire. Full HP + mana. After this, death is final.
+  _triggerLastPhoenix() {
+    this._lastPhoenixUsed   = true;
+    this.phoenixUsed        = true;
+    this.phoenixReviveType  = 'last';
+    this.phoenixReviveTimer = 3.0;
+    this.score = (this.score ?? 0) + 500;
+    this.player.hp   = this.player.maxHp;
+    this.player.mana = this.player.maxMana;
+    // the LIVE SPEECH — typewriter transmission, top priority
+    this._queueEdenTransmission(
+      'I have burned four times for you. This fifth fire is not a gift — it is a VERDICT. Stand up. Everything else burns.',
+      { title: 'THE LAST PHOENIX', priority: 3, duration: 7 });
+    this.triggerAnnouncement('✦ THE LAST PHOENIX ✦', '#ff2d2d');
+    this.screenShake.trigger(24, 1.2);
+    this.audio?.forgeBossRoar?.(true);
+    // ANNIHILATION WAVE — everything on the field dies (bosses included; armor can't save them)
+    try {
+      for (const e of [...this.enemies]) { if (e && e.hp > 0 && e.takeHit) e.takeHit(9e9, this); }
+      for (const bkey of ['titanBoss', 'annihilatorBoss', 'bloodfangBoss', 'cyberSerpentBoss', 'cyberDragonBoss', 'megaBoss']) {
+        const bb = this[bkey];
+        if (bb && bb.hp > 0 && bb.takeHit) bb.takeHit(9e9, this);
+      }
+      const dd = this.doubleDemonsBoss;
+      if (dd) { for (const half of [dd.gunner, dd.claw]) { if (half && half.hp > 0 && half.takeHit) half.takeHit(9e9, this); } }
+    } catch (err) { console.warn('[LastPhoenix purge]', err); }
+    this.floatingTexts.push(new FloatingText('EVERYTHING BURNS', this.player.pos.clone(), '#ff2d2d', 3.5));
+  }
+
   _triggerPhoenixRevive() {
     this.phoenixReviveCount++;
     this.score = (this.score ?? 0) + 100;
@@ -17779,7 +17816,15 @@ export class Game {
 
       // ── per-tier colour config ──────────────────────────────────────────
       let tintRGBA, coreColor, ringColor, sparkColor, pimg, sprSz;
-      if (rtype === 'blue') {
+      if (rtype === 'last') {
+        // THE LAST PHOENIX — crimson-white conflagration, biggest of all tiers
+        tintRGBA   = `rgba(255,30,30,${(alpha * 0.5).toFixed(3)})`;
+        coreColor  = '#fff0e0';
+        ringColor  = '#ff2d2d';
+        sparkColor = '#ffd23c';
+        pimg       = this._phoenixGoldImage;
+        sprSz      = 280;
+      } else if (rtype === 'blue') {
         tintRGBA   = `rgba(0,160,255,${(alpha * 0.32).toFixed(3)})`;
         coreColor  = '#00e6ff';
         ringColor  = '#0099ff';

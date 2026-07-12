@@ -17,11 +17,20 @@ export const ELEMENTS = {
   // ('ember' / 'arc'), so the draw engine needs zero changes.
   crimson_gate:   { name: 'CRIMSON GATE',   c1: '#ff2d2d', c2: '#ffd23c', spokes: 7, style: 'ember', life: 0.52 },
   thunder_maiden: { name: 'THUNDER MAIDEN', c1: '#ffd23c', c2: '#fff6d0', spokes: 6, style: 'arc',   life: 0.45 },
+  // Dimi signature cyber elements (Φ1 completion) — additive data entries on existing
+  // burst styles, exactly the Eddie pattern. Neon Blaze is his PRIMARY; Data Torrent is
+  // the Fusion-Catalyst secondary; Plasma Shockwave / Tectonic Nano-Shield registered
+  // for cards/lore surfaces.
+  neon_blaze:      { name: 'NEON BLAZE',       c1: '#ff2d6a', c2: '#7df9ff', spokes: 7, style: 'ember', life: 0.50 },
+  data_torrent:    { name: 'DATA TORRENT',     c1: '#7df9ff', c2: '#ffffff', spokes: 6, style: 'arc',   life: 0.45 },
+  plasma_shockwave:{ name: 'PLASMA SHOCKWAVE', c1: '#c77dff', c2: '#ffd0f0', spokes: 5, style: 'pulse', life: 0.50 },
+  tectonic_shield: { name: 'TECTONIC NANO-SHIELD', c1: '#d8a24a', c2: '#fff0d0', spokes: 4, style: 'shard', life: 0.55 },
 };
 
 // Symbol/icon per element — used for compact icon-based badges (HUD, cards) instead of long words.
 export const ELEMENT_ICON = {
   fire: '🔥', electric: '⚡', radiation: '☢', ice: '❄', magnetic: '🧲', toxin: '☣', gas: '☁',
+  neon_blaze: '✦', data_torrent: '≋', plasma_shockwave: '◎', tectonic_shield: '⬟',
   crimson_gate: '⛩', thunder_maiden: '🌩',
 };
 
@@ -36,7 +45,7 @@ export const CHARACTER_ELEMENT = {
   euclid_vector:          'toxin',
   oni_cataclysm_protocol: 'radiation',
   eddie:                  'crimson_gate',   // Crimson Gate — red+gold burn/shock resonance identity
-  dimis_kickboxer:        'electric',       // Cyber-gauntlet crackle — single-element (no fusion entry)
+  dimis_kickboxer:        'neon_blaze',     // Φ1: Dimi signature primary (was plain electric)
 };
 
 // Future fusion hooks (Phase 1 PREP ONLY) — data only, so fusion cards can be added later without
@@ -70,6 +79,8 @@ export const FUSION_FX = {
   // Eddie fusion — Crimson Gate + Thunder Maiden resonance field (burn+shock ticks + short slow;
   // 'field' kind never slows bosses, radius kept inside the existing field range for balance).
   crimson_thunder_gate: { name: 'CRIMSON THUNDER GATE', c1: '#ff2d2d', c2: '#ffd23c', kind: 'field', radius: 96, dmg: 12, slow: 0.8 },
+  // Dimi fusion (Φ1) — Binary Overdrive Aura: neon/data resonance field, same balance class.
+  binary_overdrive:     { name: 'BINARY OVERDRIVE AURA', c1: '#ff2d6a', c2: '#7df9ff', kind: 'field', radius: 94, dmg: 12, slow: 0.8 },
 };
 
 // Element-pair → fusion id (keyed by fusionKey(a,b), i.e. the two element names sorted + joined).
@@ -86,6 +97,7 @@ export const FUSION_PAIRS = {
   'fire+magnetic':      'magnetic_furnace',
   'fire+radiation':     'cataclysm',
   'crimson_gate+thunder_maiden': 'crimson_thunder_gate',   // Eddie: primary + card-granted secondary
+  'data_torrent+neon_blaze':     'binary_overdrive',       // Dimi: primary + card-granted secondary (Φ1)
 };
 
 // Which fusion each playable character triggers once Fusion Catalyst is active. Single-element
@@ -97,7 +109,8 @@ export const CHARACTER_FUSION = {
   assassin_clone:         'plasma',           // Electric / Plasma
   euclid_vector:          'viral',            // Toxin + Gas
   oni_cataclysm_protocol: 'cataclysm',        // Radiation + Fire
-  eddie:                  'crimson_thunder_gate',   // Crimson Gate + Thunder Maiden
+  eddie:                  'crimson_thunder_gate',
+  dimis_kickboxer:        'binary_overdrive',       // Φ1: Neon Blaze + Data Torrent   // Crimson Gate + Thunder Maiden
 };
 
 const MAX_BURSTS = 56;   // hard cap on concurrent element bursts
