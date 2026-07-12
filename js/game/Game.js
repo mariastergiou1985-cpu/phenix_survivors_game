@@ -10,7 +10,7 @@ import { clamp, distance, safeNormalize, randomChoice, randomRange, wrapText } f
 import { FloatingText }   from '../entities/FloatingText.js?v=20260703990000';
 import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260705040000';
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260705150000';
-import { Player }         from '../entities/Player.js?v=20260711920000';
+import { Player }         from '../entities/Player.js?v=20260712060000';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260706270000';
 import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260711920000';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=20260711750000';
@@ -8204,6 +8204,7 @@ export class Game {
     }
     this._updateAnnouncement(dt);
     this._ultSfxWatch();               // Φ9 ult-cast stings
+    this._updateCoreCourier(dt);       // core pickup → carry → deposit loop
     this.particles.update(this._hitStopTimer > 0 ? dt * 0.10 : dt);  // slow sparks/particles during hit stop
     this._updateCamera();
     this._updateDamagePulse(dt);
@@ -17259,6 +17260,7 @@ export class Game {
     this._drawVesselRockets(ctx);        // Vessel companion auto-aim purple rockets
     this._drawWeaponAccents(ctx);                             // cinematic accents UNDER the art
     this._drawEvoFx(ctx);                                     // NEW-GEN procedural evolutions
+    this._drawCarriedCores(ctx);                              // courier: orbiting carried cores
     for (const vfx of this._activeWeaponVFX) vfx.draw(ctx);   // Evolution VFX overlays
     this._drawPatternVFX(ctx);                                // Phase 8: per-character pattern art
     this._drawTacticalWeapons(ctx);  // Tactical cache weapons (independent map objects)
@@ -19300,6 +19302,80 @@ export class Game {
     this._bossWarnCd = BOSS_WARN_COOLDOWN;
     this.audio?.playBossWarning();
     this.triggerAnnouncement(text, color);
+  }
+
+  // ── CORE COURIER LOOP (restored by Maria's request) ────────────────────────
+  // Ground cores are PICKED UP by walking over them (pickupRadius), carried as
+  // orbiting orbs around the character (visible load), and DEPOSITED automatically
+  // when touching a Nexus base with space. Carry cap 8.
+  _updateCoreCourier(dt) {
+    try {
+      const p = this.player; if (!p) return;
+      p.carry = p.carry || 0;
+      this._carriedCores = this._carriedCores || [];
+      // pickup
+      if (p.carry < 8 && this.groundCores && this.groundCores.length) {
+        const pr = (p.pickupRadius || 72) + 10;
+        for (let i = this.groundCores.length - 1; i >= 0 && p.carry < 8; i--) {
+          const c = this.groundCores[i];
+          if (distance(p.pos, c.pos) < pr) {
+            this.groundCores.splice(i, 1);
+            this._carriedCores.push({ type: c.type, value: c.value ?? 3 });
+            p.carry++;
+            this.floatingTexts.push(new FloatingText(c.type === 'gold' ? '+GOLD CORE' : '+CORE', p.pos.clone(), c.type === 'gold' ? '#ffd23c' : '#cfe0ff', 0.9));
+            this.audio?.forgeIce?.();   // crisp pickup tick (reuses crystalline voice)
+          }
+        }
+      }
+      // deposit
+      if (p.carry > 0 && this.matrices && this.matrices.length) {
+        for (const m of this.matrices) {
+          if (!m.hasSpace()) continue;
+          if (this._chaosMode && m.chaosRole === 'defence') continue;   // Φ14: defence bases refuse cores
+          if (distance(p.pos, m.pos) < 110) {
+            let n = 0;
+            while (this._carriedCores.length && m.hasSpace()) {
+              const c = this._carriedCores.pop();
+              m.slotCore(c.value);
+              n++;
+            }
+            p.carry = this._carriedCores.length;
+            if (n > 0) {
+              this.player.coresSecured = (this.player.coresSecured || 0) + n;
+              this.floatingTexts.push(new FloatingText('DEPOSITED ×' + n, m.pos.clone(), '#7CFF8A', 1.3));
+              this.particles.spawnCoreSlot(m.pos, m.color);
+              this.audio?.forgeMilestone?.();
+            }
+            break;
+          }
+        }
+      }
+    } catch (e) { /* courier must never break the loop */ }
+  }
+
+  // Carried cores orbit the character — the visible 'loaded' state.
+  _drawCarriedCores(ctx) {
+    try {
+      const p = this.player;
+      if (!p || !p.carry || !this._carriedCores || !this._carriedCores.length) return;
+      const t = performance.now() / 1000;
+      for (let i = 0; i < this._carriedCores.length; i++) {
+        const c = this._carriedCores[i];
+        const a = t * 2.2 + (i / this._carriedCores.length) * Math.PI * 2;
+        const rr = 34 + Math.sin(t * 3 + i) * 3;
+        const x = p.pos.x + Math.cos(a) * rr;
+        const y = p.pos.y - 26 + Math.sin(a) * rr * 0.45;
+        const gold = c.type === 'gold';
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.9;
+        ctx.fillStyle = gold ? '#ffc21a' : '#9fb6d6';
+        ctx.shadowColor = gold ? '#ff9d00' : '#6fd0ff'; ctx.shadowBlur = 10;
+        ctx.beginPath(); ctx.arc(x, y, gold ? 5 : 4, 0, Math.PI * 2); ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.restore();
+      }
+    } catch (e) { /* visual only */ }
   }
 
   // Φ9: one watcher, zero edits in the 10 ult bodies — plays the per-character
