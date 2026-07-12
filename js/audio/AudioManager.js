@@ -575,8 +575,8 @@ export class AudioManager {
   playPlayerImpact() { this.generateSound('player-impact', 0.25); }
 
   playShoot() {
-    if (!this._canPlay('shoot', 0.09)) return;
-    this._tone({ type: 'triangle', freqStart: 660, freqEnd: 200, dur: 0.08, gain: 0.065 });
+    if (!this._canPlay('shoot', 0.12)) return;                 // rarer AND quieter — the pew
+    this._tone({ type: 'triangle', freqStart: 440, freqEnd: 170, dur: 0.05, gain: 0.028 });   // was 0.065: it drowned the whole mix
   }
 
   // 2. Enemy hit — small electric zap (saw + tiny noise tick).
@@ -1203,8 +1203,8 @@ export class AudioManager {
   forgeThunder() {
     if (this.muted || !this._forgeOk('thunder', 260)) return;
     // crack + long low rumble
-    this._noiseBurst({ dur: this._v(0.10, 0.3), gain: 0.16, filterType: 'highpass', freq: 1800 });
-    this._noiseBurst({ dur: this._v(0.9, 0.25), gain: 0.14, filterType: 'lowpass',  freq: this._v(220, 0.3), delay: 0.03 });
+    this._noiseBurst({ dur: this._v(0.10, 0.3), gain: 0.30, filterType: 'highpass', freq: 1800 });
+    this._noiseBurst({ dur: this._v(0.9, 0.25), gain: 0.26, filterType: 'lowpass',  freq: this._v(220, 0.3), delay: 0.03 });
     this._tone({ type: 'sine', freqStart: this._v(70, 0.2), freqEnd: 38, dur: this._v(0.8, 0.2), gain: 0.12, delay: 0.02 });
   }
   forgeGunshot() {
@@ -1215,7 +1215,7 @@ export class AudioManager {
   forgeFire() {
     if (this.muted || !this._forgeOk('fire', 130)) return;
     // whoosh + crackle grains
-    this._noiseBurst({ dur: this._v(0.28, 0.3), gain: 0.09, filterType: 'bandpass', freq: this._v(500, 0.3) });
+    this._noiseBurst({ dur: this._v(0.28, 0.3), gain: 0.20, filterType: 'bandpass', freq: this._v(500, 0.3) });
     for (let i = 0; i < 3; i++) {
       this._noiseBurst({ dur: 0.02, gain: 0.05, filterType: 'highpass', freq: this._v(2600, 0.4), delay: 0.04 + i * this._v(0.05, 0.5) });
     }
@@ -1230,7 +1230,7 @@ export class AudioManager {
   }
   forgeZap() {
     if (this.muted || !this._forgeOk('zap', 110)) return;
-    this._tone({ type: 'sawtooth', freqStart: this._v(1400, 0.3), freqEnd: this._v(160, 0.3), dur: this._v(0.09, 0.3), gain: 0.075 });
+    this._tone({ type: 'sawtooth', freqStart: this._v(1400, 0.3), freqEnd: this._v(160, 0.3), dur: this._v(0.09, 0.3), gain: 0.16 });
     this._noiseBurst({ dur: 0.05, gain: 0.055, filterType: 'highpass', freq: 3200 });
   }
   forgeToxin() {
@@ -1370,13 +1370,13 @@ export class AudioManager {
     this._forgeLoop('rain', () => {
       const src = this._noiseLoopNode();
       const bp = this.actx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1500; bp.Q.value = 0.6;
-      const g = this.actx.createGain(); g.gain.value = 0;
+      const g = this.actx.createGain(); g.gain.value = 0.000;
       const lfo = this.actx.createOscillator(); lfo.frequency.value = 0.5;
       const lg = this.actx.createGain(); lg.gain.value = 0.015;
       lfo.connect(lg); lg.connect(g.gain);
       src.connect(bp); bp.connect(g); g.connect(this.sfxGain);
       const t = this.actx.currentTime;
-      g.gain.linearRampToValueAtTime(0.085, t + 1.2);
+      g.gain.linearRampToValueAtTime(0.19, t + 1.2);   // Maria: rain was inaudible
       src.start(); lfo.start();
       return { gain: g, nodes: [src, lfo] };
     });
@@ -1386,13 +1386,13 @@ export class AudioManager {
     this._forgeLoop('wind', () => {
       const src = this._noiseLoopNode();
       const bp = this.actx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 600; bp.Q.value = 2.2;
-      const g = this.actx.createGain(); g.gain.value = 0;
+      const g = this.actx.createGain(); g.gain.value = 0.000;
       const lfo = this.actx.createOscillator(); lfo.frequency.value = 0.18;
       const lg = this.actx.createGain(); lg.gain.value = 260;
       lfo.connect(lg); lg.connect(bp.frequency);            // sweeping howl
       src.connect(bp); bp.connect(g); g.connect(this.sfxGain);
       const t = this.actx.currentTime;
-      g.gain.linearRampToValueAtTime(0.07, t + 1.5);
+      g.gain.linearRampToValueAtTime(0.154, t + 1.5);
       src.start(); lfo.start();
       return { gain: g, nodes: [src, lfo] };
     });
@@ -1402,13 +1402,13 @@ export class AudioManager {
     this._forgeLoop('rumble', () => {
       const src = this._noiseLoopNode();
       const lp = this.actx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 130;
-      const g = this.actx.createGain(); g.gain.value = 0;
+      const g = this.actx.createGain(); g.gain.value = 0.000;
       const lfo = this.actx.createOscillator(); lfo.frequency.value = 0.9;
       const lg = this.actx.createGain(); lg.gain.value = 0.02;
       lfo.connect(lg); lg.connect(g.gain);
       src.connect(lp); lp.connect(g); g.connect(this.sfxGain);
       const t = this.actx.currentTime;
-      g.gain.linearRampToValueAtTime(0.10, t + 1.2);
+      g.gain.linearRampToValueAtTime(0.220, t + 1.2);
       src.start(); lfo.start();
       return { gain: g, nodes: [src, lfo] };
     });

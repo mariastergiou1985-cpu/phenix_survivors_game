@@ -1549,6 +1549,25 @@ export class Game {
       else this.triggerAnnouncement('CLEAR THE PREVIOUS STAGE FIRST', '#888888');
     }
     if (keys.has('escape')) { this.goToMainMenu(); keys.delete('escape'); }
+    // MOBILE/MOUSE (Maria: no way to enter campaign on phone): tapping/clicking a
+    // stage card selects it AND enters — same rules as the Enter key. Touch taps
+    // arrive here as synthetic canvas mousedown via TouchInput.
+    if (input.mouseDown && input.mousePos) {
+      if (!this._campClickLatch) {
+        this._campClickLatch = true;
+        const mp = input.mousePos;
+        for (let i = 0; i < CAMPAIGN_STAGES.length; i++) {
+          const r = this._campaignCardRect(i);
+          if (mp.x >= r.x && mp.x <= r.x + r.w && mp.y >= r.y && mp.y <= r.y + r.h) {
+            this._campaignSelIndex = i;
+            const st = CAMPAIGN_STAGES[i];
+            if (this.meta?.isStageUnlocked(st.n)) { this._pendingCampaignStage = st.n; this.goToCharacterSelect(); }
+            else this.triggerAnnouncement('CLEAR THE PREVIOUS STAGE FIRST', '#888888');
+            break;
+          }
+        }
+      }
+    } else this._campClickLatch = false;
   }
 
   _campaignThumb(st) {
@@ -2597,6 +2616,7 @@ export class Game {
     // Pet damage now scales with run time (like enemy HP does) — pets stay VISIBLE
     // contributors all game instead of fading into irrelevance after minute 2.
     const _petMin = this.currentMinute ? this.currentMinute() : 0;
+    this.audio?.forgeZap?.();                       // Φ9b: pets are audible now
     this._petBolts.push({
       x: pet.x, y: pet.y,
       vx: (dx / dist) * pet.def.boltSpeed,
@@ -3120,7 +3140,7 @@ export class Game {
       if (++this.killsSinceHealthDrop >= _thresh && (this.healthPickups.length < 6)) {
         this.killsSinceHealthDrop = 0;
         const dropPos = this._clampPickupPos(pos.clone().add(new Vec2(randomRange(-10, 10), -8)));
-        this.healthPickups.push({ pos: dropPos, timer: 25 });
+        this.healthPickups.push({ pos: dropPos, timer: 45 });
       }
     }
   }
@@ -8570,7 +8590,7 @@ export class Game {
         const ang = Math.random() * Math.PI * 2;
         const r = randomRange(140, 240);
         this.healthPickups.push({ pos: this._clampPickupPos(new Vec2(
-          this.player.pos.x + Math.cos(ang) * r, this.player.pos.y + Math.sin(ang) * r)), timer: 25 });
+          this.player.pos.x + Math.cos(ang) * r, this.player.pos.y + Math.sin(ang) * r)), timer: 45 });
       }
     } else {
       this._healthMercyT = 0;
@@ -9693,12 +9713,12 @@ export class Game {
     }
     if (keys.has('arrowleft') || keys.has('a')) {
       if (this._audioSelIndex === radioIdx) { this.audio?.setRadioEnabled(!this.audio.radioEnabled); }
-      else { const s = sliders[this._audioSelIndex]; this._setAudioVolume(s.key, this._audioVolumeFor(s.key) - 0.05); }
+      else { const s = sliders[this._audioSelIndex]; this._setAudioVolume(s.key, this._audioVolumeFor(s.key) - 0.10); }
       keys.delete('arrowleft'); keys.delete('a');
     }
     if (keys.has('arrowright') || keys.has('d')) {
       if (this._audioSelIndex === radioIdx) { this.audio?.setRadioEnabled(!this.audio.radioEnabled); }
-      else { const s = sliders[this._audioSelIndex]; this._setAudioVolume(s.key, this._audioVolumeFor(s.key) + 0.05); }
+      else { const s = sliders[this._audioSelIndex]; this._setAudioVolume(s.key, this._audioVolumeFor(s.key) + 0.10); }
       keys.delete('arrowright'); keys.delete('d');
     }
     if ((keys.has('enter') || keys.has(' ')) && this._audioSelIndex === radioIdx) {
@@ -9727,9 +9747,9 @@ export class Game {
     const { sliders, radioRect, backRect } = this._audioRects();
 
     // Premium panel behind sliders + radio toggle
-    const _aPanX = sliders[0].tx - 20;
+    const _aPanX = sliders[0].minus.x - 20;                       // frame includes the [-]/[+] buttons
     const _aPanY = sliders[0].ty - 52;
-    const _aPanW = sliders[0].tw + 40;
+    const _aPanW = (sliders[0].plus.x + sliders[0].plus.w) - sliders[0].minus.x + 40;
     const _aPanH = (radioRect.y + radioRect.h) - sliders[0].ty + 60;
     this._premiumPanel(ctx, _aPanX, _aPanY, _aPanW, _aPanH, CYAN, 'VOLUME CONTROLS');
 
@@ -11245,6 +11265,7 @@ export class Game {
       m._turretCd = rushCadence;
       const dx = best.pos.x - m.pos.x, dy = best.pos.y - m.pos.y;
       const dd = Math.hypot(dx, dy) || 1;
+      this.audio?.forgeTurret?.();                  // Φ9b: defence turret shot voice
       this._petBolts.push({ x: m.pos.x, y: m.pos.y - 20, vx: (dx / dd) * 520, vy: (dy / dd) * 520,
                             dmg: 22, color: '#ff5560', life: 1.1 });
       this.audio?.forgeTurret?.();                                // Φ14 role audio (self-throttled)
@@ -16405,6 +16426,7 @@ export class Game {
 
   _spawnAirstrike() {
     const edge = Math.random() < 0.5 ? WORLD_BOUNDS.left - 60 : WORLD_BOUNDS.right + 60;
+    this.audio?.forgeThunder?.();                   // Φ9b: aircraft flyby roar
     this.airstrikeShips.push({
       pos: new Vec2(edge, randomRange(WORLD_BOUNDS.top + WORLD_BOUNDS.margin, WORLD_BOUNDS.bottom - WORLD_BOUNDS.margin)),
       angle: Math.random() * Math.PI * 2, fireCd: 1.5, life: 45,
@@ -28336,6 +28358,7 @@ _drawLoreArchive(ctx) {
       if (best) {
         this._vesselRocketCd = CD;
         const ang = Math.atan2(best.obj.pos.y - c.y, best.obj.pos.x - c.x);
+        this.audio?.forgeGunshot?.();                 // Φ9b: vessel rocket launch voice
         this._vesselRockets.push({ x: c.x, y: c.y, ang, life: 4.5, trail: [] });
         this.audio?.playHomingMissileFire?.();
       }
