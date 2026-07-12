@@ -604,7 +604,7 @@ export class MetaProgress {
       current: level,
       next,
       progress,
-      label: `${level} / ${next} TO NEXT LEVEL`,
+      label: `${level} / ${next} NEXT LV`,   // shorter — the old text clipped in the menu panel (Maria)
     };
   }
 

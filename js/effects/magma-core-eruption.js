@@ -1,48 +1,48 @@
 /**
- * MagmaCoreEruption — cinematic 3-phase ULTIMATE VFX (Brawler Warrior).
- * Canvas 2D, no dependencies. Standard ultimate-module API
- * (trigger / update / render / isActive / getShake / .cx .footY pinning).
+ * MagmaCoreEruption — REBUILT AS «PLANET CRACKER» (Maria 2026-07-12).
+ * Canvas 2D, no dependencies. Same class name + ultimate-module API so the
+ * Game.js wiring (trigger / update / render / isActive / getShake / cx,footY,
+ * onStrike kinds 'core' & default) is untouched.
  *
- * THE GIMMICK: the ground SHATTERS LIKE GLASS. Jagged lava fissures crack outward from
- * the Brawler's fist-slam in a radial spiderweb (pre-seeded, branch-jittered), magma
- * geysers erupt one by one ALONG the cracks, and the epicenter core finally detonates
- * in a fountain dome. The map itself looks broken.
+ * THE GIMMICK no other game has: the Brawler hits the ground SO hard that the
+ * SCREEN ITSELF cracks like glass. A jagged crack-web spreads across the whole
+ * viewport from the impact point, MAGMA LIGHT bleeds up through the cracks,
+ * wedge-shards of the picture slip out of place — and then the web heals
+ * BACKWARDS, retracting into the fist point with white glints.
  *
- *   PHASE 1  FISSURE  – radial cracks tear open progressively, glowing from within
- *   PHASE 2  GEYSERS  – lava columns erupt along the cracks on a cadence, striking around
- *   PHASE 3  CORE     – the epicenter detonates: magma dome + shock ring + ember rain
+ *   PHASE 1  WINDUP   – slow dim, fist-charge rings collapse into the player
+ *   PHASE 2  IMPACT   – flash; the crack-web draws across the screen (kind 'core' hit)
+ *   PHASE 3  BLEED    – magma light pulses through the cracks; picture shards slip
+ *                       (canvas self-copy); enemies near any crack take ticks
+ *   PHASE 4  HEAL     – the web retracts backwards into the epicenter, white tips
  */
 
 export const MAGMA_CONFIG = {
-  phases:  { fissureMs: 700, geysersMs: 1500, coreMs: 650 },
-  cracks:  { count: 7, reach: 340, segs: 7, branchChance: 0.5 },
-  geyser:  { everyMs: 160, hitRadius: 82, height: 120, shake: 10 },
-  core:    { radius: 200, shake: 20 },
-  color:   { deep: '#7a1002', lava: '#ff4d00', hot: '#ffd23c', white: '#fff4d8', glow: 'rgba(255,77,0,' },
+  phases: { windupMs: 620, impactMs: 200, bleedMs: 2300, healMs: 700 },
+  cracks: { spokes: 11, jag: 34, step: 46, branchEvery: 3 },
+  damage: { coreRadius: 300, crackWidth: 46, tickMs: 420 },
 };
 
-const PHASE = { IDLE: 0, FISSURE: 1, GEYSERS: 2, CORE: 3 };
+const PHASE = { IDLE: 0, WINDUP: 1, IMPACT: 2, BLEED: 3, HEAL: 4 };
+const pr = (i, salt = 0) => { const v = Math.sin(i * 12.9898 + salt * 78.233) * 43758.5453; return v - Math.floor(v); };
 
 export class MagmaCoreEruption {
   constructor(canvas, sprite, opts = {}) {
     this.canvas = canvas;
-    this.sprite = sprite;                  // API-uniform (Brawler stays visible)
-    this.cfg = MAGMA_CONFIG;
+    this.sprite = sprite;
     this.SW = opts.spriteW || 48; this.SH = opts.spriteH || 64;
+    this.cfg = MAGMA_CONFIG;
     this.phase = PHASE.IDLE;
     this.born = 0; this.cx = 0; this.footY = 0;
-    this._ox = 0; this._oy = 0;            // epicenter LOCKED at trigger (cracks don't follow)
-    this._cracks = [];                     // [{pts:[{x,y}], branch:[{x,y}...]|null}] offsets from epicenter
-    this._geysers = [];                    // {x,y,t,maxT,struck}
-    this._geyserClock = 0;
-    this._embers = [];                     // {x,y,vx,vy,a,r}
-    this._coreFired = false;
+    this._ex = 0; this._ey = 0;            // epicenter (locked at impact)
+    this._spokes = [];                     // [{pts:[{x,y}...], branch:[{x,y}..]|null}]
+    this._seed = 0;
     this._shake = 0;
-    this._flashT = 0;
+    this._tickAcc = 0;
+    this._coreHit = false;
   }
 
   isActive() { return this.phase !== PHASE.IDLE; }
-
   getShake() {
     if (this._shake <= 0) return { x: 0, y: 0 };
     return { x: (Math.random() * 2 - 1) * this._shake, y: (Math.random() * 2 - 1) * this._shake };
@@ -51,215 +51,222 @@ export class MagmaCoreEruption {
   trigger(cx, footY) {
     if (this.phase !== PHASE.IDLE) return;
     this.cx = cx; this.footY = footY;
-    this._ox = cx; this._oy = footY;       // slam point stays put
-    this.phase = PHASE.FISSURE;
+    this.phase = PHASE.WINDUP;
     this.born = performance.now();
-    this._geysers = []; this._embers = [];
-    this._geyserClock = 0;
-    this._coreFired = false;
-    // pre-seed the crack spiderweb (offsets; ellipse-squashed for ground perspective)
-    const C = this.cfg.cracks;
-    this._cracks = [];
-    for (let i = 0; i < C.count; i++) {
-      const baseAng = (i / C.count) * Math.PI * 2 + Math.random() * 0.5;
-      const pts = [{ x: 0, y: 0 }];
-      let ang = baseAng, dist = 0;
-      for (let sgm = 1; sgm <= C.segs; sgm++) {
-        ang += (Math.random() - 0.5) * 0.7;
-        dist = (sgm / C.segs) * C.reach * (0.8 + Math.random() * 0.35);
-        pts.push({ x: Math.cos(ang) * dist, y: Math.sin(ang) * dist * 0.55 });
-      }
+    this._seed = (Math.random() * 1000) | 0;
+    this._coreHit = false;
+    this._tickAcc = 0;
+  }
+
+  _buildCracks() {
+    const W = this.canvas.width, H = this.canvas.height;
+    const diag = Math.hypot(W, H);
+    this._spokes = [];
+    const n = this.cfg.cracks.spokes;
+    for (let i = 0; i < n; i++) {
+      const baseA = (i / n) * Math.PI * 2 + pr(this._seed, i) * 0.5;
+      const len = diag * (0.55 + pr(this._seed, i + 40) * 0.5);
+      const pts = [{ x: this._ex, y: this._ey }];
+      let x = this._ex, y = this._ey, a = baseA, d = 0, k = 0;
       let branch = null;
-      if (Math.random() < C.branchChance) {
-        const from = pts[2 + ((Math.random() * (C.segs - 3)) | 0)];
-        const bAng = baseAng + (Math.random() < 0.5 ? 0.9 : -0.9);
-        branch = [ { x: from.x, y: from.y } ];
-        for (let bs = 1; bs <= 3; bs++) {
-          branch.push({ x: from.x + Math.cos(bAng) * bs * 42, y: from.y + Math.sin(bAng) * bs * 42 * 0.55 });
+      while (d < len) {
+        const st = this.cfg.cracks.step * (0.7 + pr(this._seed, i * 31 + k) * 0.7);
+        a = baseA + (pr(this._seed, i * 57 + k) - 0.5) * (this.cfg.cracks.jag / 40);
+        x += Math.cos(a) * st; y += Math.sin(a) * st; d += st; k++;
+        pts.push({ x, y });
+        if (!branch && k === this.cfg.cracks.branchEvery + (i % 3)) {
+          // one side-branch per spoke: short jagged offshoot
+          const bA = a + (pr(this._seed, i + 77) > 0.5 ? 0.9 : -0.9);
+          let bx = x, by = y; branch = [{ x: bx, y: by }];
+          for (let b = 0; b < 3; b++) {
+            bx += Math.cos(bA + (pr(this._seed, b + i) - 0.5) * 0.6) * st * 0.7;
+            by += Math.sin(bA + (pr(this._seed, b + i) - 0.5) * 0.6) * st * 0.7;
+            branch.push({ x: bx, y: by });
+          }
         }
       }
-      this._cracks.push({ pts, branch });
+      this._spokes.push({ pts, branch });
     }
   }
 
-  _crackPoint() {   // random point along a random crack (for geyser placement)
-    const c = this._cracks[(Math.random() * this._cracks.length) | 0];
-    const p = c.pts[1 + ((Math.random() * (c.pts.length - 1)) | 0)];
-    return { x: this._ox + p.x, y: this._oy + p.y };
-  }
-
   update(now, enemies, hooks = {}) {
-    if (this.phase === PHASE.IDLE) { if (this._flashT > 0) this._flashT -= 16; return; }
+    if (this.phase === PHASE.IDLE) return;
     const P = this.cfg.phases;
     const el = now - this.born;
     this._shake *= 0.86;
 
-    for (const e of this._embers) { e.x += e.vx; e.y += e.vy; e.vy += 0.15; e.a -= 0.014; }
-    this._embers = this._embers.filter(e => e.a > 0);
-    for (const g of this._geysers) g.t += 16;
-
-    if (this.phase === PHASE.FISSURE) {
-      if ((el % 90) < 17) this._shake = Math.max(this._shake, 3);       // rumble
-      if (el >= P.fissureMs) this.phase = PHASE.GEYSERS;
-
-    } else if (this.phase === PHASE.GEYSERS) {
-      this._geyserClock -= 16;
-      if (this._geyserClock <= 0) {
-        this._geyserClock = this.cfg.geyser.everyMs;
-        const pt = this._crackPoint();
-        const g = { x: pt.x, y: pt.y, t: 0, maxT: 520, struck: false };
-        this._geysers.push(g);
-        this._shake = Math.max(this._shake, this.cfg.geyser.shake * 0.5);
-        for (let i = 0; i < 6; i++) {
-          this._embers.push({ x: g.x, y: g.y, vx: (Math.random() - 0.5) * 3,
-                              vy: -(2.5 + Math.random() * 3.5), a: 1, r: 2 + Math.random() * 2.5 });
+    if (this.phase === PHASE.WINDUP && el >= P.windupMs) {
+      this.phase = PHASE.IMPACT;
+      this._ex = this.cx; this._ey = this.footY - this.SH * 0.4;   // lock epicenter
+      this._buildCracks();
+      this._shake = 17;
+      // the punch itself — heavy hit around the epicenter
+      if (hooks.onStrike && hooks.getX && !this._coreHit) {
+        this._coreHit = true;
+        const R2 = this.cfg.damage.coreRadius ** 2;
+        for (const e of (enemies || [])) {
+          if (!e || (e.hp !== undefined && e.hp <= 0)) continue;
+          const dx = hooks.getX(e) - this._ex, dy = hooks.getY(e) - this._ey;
+          if (dx * dx + dy * dy <= R2) hooks.onStrike(e, 'core');
         }
-        if (hooks.onStrike && hooks.getX) {
-          const HR = this.cfg.geyser.hitRadius;
-          for (const e of enemies || []) {
-            if (!e || (e.hp !== undefined && e.hp <= 0)) continue;
-            const ex = hooks.getX(e), ey = hooks.getY(e);
-            if ((ex - g.x) ** 2 + (ey - g.y) ** 2 < HR * HR) hooks.onStrike(e, 'geyser');
+      }
+    } else if (this.phase === PHASE.IMPACT && el >= P.windupMs + P.impactMs) {
+      this.phase = PHASE.BLEED;
+    } else if (this.phase === PHASE.BLEED) {
+      // magma ticks: enemies close to ANY crack line take damage
+      this._tickAcc += 16.7;
+      if (this._tickAcc >= this.cfg.damage.tickMs && hooks.onStrike && hooks.getX) {
+        this._tickAcc = 0;
+        const W2 = this.cfg.damage.crackWidth ** 2;
+        for (const e of (enemies || [])) {
+          if (!e || (e.hp !== undefined && e.hp <= 0)) continue;
+          const ex = hooks.getX(e), ey = hooks.getY(e);
+          let hit = false;
+          for (const sp of this._spokes) {
+            const pts = sp.pts;
+            for (let j = 0; j + 2 < pts.length && !hit; j += 2) {
+              // point-to-segment squared distance (coarse: every 2nd segment)
+              const ax = pts[j].x, ay = pts[j].y, bx = pts[j + 2].x, by = pts[j + 2].y;
+              const abx = bx - ax, aby = by - ay;
+              const t = Math.max(0, Math.min(1, ((ex - ax) * abx + (ey - ay) * aby) / ((abx * abx + aby * aby) || 1)));
+              const dx = ex - (ax + abx * t), dy = ey - (ay + aby * t);
+              if (dx * dx + dy * dy <= W2) hit = true;
+            }
+            if (hit) break;
           }
+          if (hit) hooks.onStrike(e, 'crack');
         }
+        this._shake = Math.max(this._shake, 3);
       }
-      if (el >= P.fissureMs + P.geysersMs) this.phase = PHASE.CORE;
-
-    } else if (this.phase === PHASE.CORE) {
-      if (!this._coreFired) {
-        this._coreFired = true;
-        this._shake = this.cfg.core.shake;
-        for (let i = 0; i < 30; i++) {
-          const a = Math.random() * Math.PI * 2;
-          this._embers.push({ x: this._ox, y: this._oy, vx: Math.cos(a) * (2 + Math.random() * 4),
-                              vy: -Math.abs(Math.sin(a)) * (4 + Math.random() * 5) - 2, a: 1, r: 2.5 + Math.random() * 3 });
-        }
-        if (hooks.onStrike && hooks.getX) {
-          const R = this.cfg.core.radius;
-          for (const e of enemies || []) {
-            if (!e || (e.hp !== undefined && e.hp <= 0)) continue;
-            const ex = hooks.getX(e), ey = hooks.getY(e);
-            if ((ex - this._ox) ** 2 + (ey - this._oy) ** 2 < R * R) hooks.onStrike(e, 'core');
-          }
-        }
-      }
-      if (el >= P.fissureMs + P.geysersMs + P.coreMs) {
-        this.phase = PHASE.IDLE;
-        this._flashT = 320;
-      }
+      if (el >= P.windupMs + P.impactMs + P.bleedMs) this.phase = PHASE.HEAL;
+    } else if (this.phase === PHASE.HEAL && el >= P.windupMs + P.impactMs + P.bleedMs + P.healMs) {
+      this.phase = PHASE.IDLE;
     }
   }
 
-  _drawCracks(ctx, reveal, dim) {
-    const C = this.cfg.color;
-    for (const c of this._cracks) {
-      for (const seq of [c.pts, c.branch]) {
-        if (!seq) continue;
-        const upto = Math.max(2, Math.ceil(seq.length * reveal));
-        // hot core line + dark rim, drawn twice for depth
-        for (const pass of [{ w: 6, col: C.deep, a: 0.9 }, { w: 2.5, col: C.lava, a: 1 }]) {
-          ctx.save();
-          if (pass.col === C.lava) { ctx.globalCompositeOperation = 'lighter'; ctx.shadowColor = C.lava; ctx.shadowBlur = 9; }
-          ctx.globalAlpha = pass.a * dim;
-          ctx.strokeStyle = pass.col; ctx.lineWidth = pass.w;
-          ctx.beginPath();
-          for (let i = 0; i < upto && i < seq.length; i++) {
-            const x = this._ox + seq[i].x, y = this._oy + seq[i].y;
-            i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-          }
-          ctx.stroke();
-          ctx.restore();
-        }
-      }
-    }
+  _drawCrackPath(ctx, pts, upTo) {
+    ctx.beginPath();
+    const n = Math.max(2, Math.ceil(pts.length * upTo));
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < n; i++) ctx.lineTo(pts[i].x, pts[i].y);
+    ctx.stroke();
   }
 
   render(ctx) {
-    const C = this.cfg.color;
-    if (this.phase === PHASE.IDLE) {
-      if (this._flashT > 0) {                                  // cooling cracks linger
-        this._drawCracks(ctx, 1, this._flashT / 320 * 0.5);
-      }
-      return;
-    }
-
-    const el = performance.now() - this.born;
-    const P = this.cfg.phases;
+    if (this.phase === PHASE.IDLE) return;
     ctx.save();
+    try {
+      const P = this.cfg.phases;
+      const el = performance.now() - this.born;
+      const W = ctx.canvas.width, H = ctx.canvas.height;
 
-    // heat haze dim
-    ctx.fillStyle = 'rgba(14,3,0,0.28)';
-    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+      if (this.phase === PHASE.WINDUP) {
+        // slow dim + charge rings collapsing into the fist
+        const k = Math.min(1, el / P.windupMs);
+        ctx.fillStyle = `rgba(10,4,2,${0.35 * k})`;
+        ctx.fillRect(0, 0, W, H);
+        ctx.globalCompositeOperation = 'lighter';
+        for (let i = 0; i < 3; i++) {
+          const rk = ((k * 1.6 + i * 0.33) % 1);
+          ctx.globalAlpha = rk * 0.8;
+          ctx.strokeStyle = i % 2 ? '#ff7a3c' : '#ffd23c';
+          ctx.lineWidth = 3 - i * 0.6;
+          const rr = (1 - rk) * 220 + 18;
+          ctx.beginPath(); ctx.ellipse(this.cx, this.footY - 8, rr, rr * 0.45, 0, 0, Math.PI * 2); ctx.stroke();
+        }
+        ctx.restore(); return;
+      }
 
-    // cracks (progressive reveal in FISSURE, full after)
-    const reveal = this.phase === PHASE.FISSURE ? Math.min(1, el / P.fissureMs) : 1;
-    this._drawCracks(ctx, reveal, 1);
+      // crack progress: draws out fast on impact, holds, retracts on heal
+      let upTo = 1, glow = 1;
+      if (this.phase === PHASE.IMPACT) {
+        upTo = Math.min(1, (el - P.windupMs) / P.impactMs);
+        // white concussion flash
+        ctx.fillStyle = `rgba(255,244,220,${(1 - upTo) * 0.55})`;
+        ctx.fillRect(0, 0, W, H);
+      } else if (this.phase === PHASE.HEAL) {
+        const hk = (el - P.windupMs - P.impactMs - P.bleedMs) / P.healMs;
+        upTo = Math.max(0, 1 - hk);
+        glow = 1 - hk * 0.6;
+      }
 
-    // under-glow pool at the epicenter, breathing
-    ctx.save(); ctx.globalCompositeOperation = 'lighter';
-    const breathe = 0.75 + 0.25 * Math.sin(el / 140);
-    const pool = ctx.createRadialGradient(this._ox, this._oy, 0, this._ox, this._oy, 130);
-    pool.addColorStop(0, C.glow + (0.45 * breathe) + ')');
-    pool.addColorStop(1, C.glow + '0)');
-    ctx.fillStyle = pool;
-    ctx.beginPath(); ctx.ellipse(this._ox, this._oy, 130, 72, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.restore();
+      const pulse = 0.75 + 0.25 * Math.sin(el / 110);
 
-    // geysers — erupting lava columns (grow fast, collapse slow)
-    for (const g of this._geysers) {
-      const t = Math.min(1, g.t / g.maxT);
-      const up = t < 0.35 ? t / 0.35 : 1 - (t - 0.35) / 0.65;
-      if (up <= 0) continue;
-      const h = this.cfg.geyser.height * up;
-      ctx.save(); ctx.globalCompositeOperation = 'lighter';
-      const grad = ctx.createLinearGradient(g.x, g.y, g.x, g.y - h);
-      grad.addColorStop(0, C.hot); grad.addColorStop(0.6, C.lava); grad.addColorStop(1, C.glow + '0)');
-      ctx.globalAlpha = 0.9;
-      ctx.fillStyle = grad;
-      const w = 14 * up;
-      ctx.beginPath();
-      ctx.moveTo(g.x - w, g.y);
-      ctx.quadraticCurveTo(g.x - w * 0.5, g.y - h * 0.7, g.x, g.y - h);
-      ctx.quadraticCurveTo(g.x + w * 0.5, g.y - h * 0.7, g.x + w, g.y);
-      ctx.closePath(); ctx.fill();
-      // base splash ellipse
-      ctx.globalAlpha = 0.65 * up;
-      ctx.strokeStyle = C.lava; ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.ellipse(g.x, g.y, 26 * up + 6, 12 * up + 3, 0, 0, Math.PI * 2); ctx.stroke();
+      // ── SHARD SLIP: two wedges of the live picture copied slightly offset ──
+      if (this.phase === PHASE.BLEED) {
+        const slip = Math.sin(el / 300) * 3.5;
+        for (let w2 = 0; w2 < 2; w2++) {
+          const s0 = this._spokes[w2 * 4], s1 = this._spokes[w2 * 4 + 1];
+          if (!s0 || !s1) continue;
+          ctx.save();
+          ctx.beginPath();
+          ctx.moveTo(this._ex, this._ey);
+          for (const q of s0.pts) ctx.lineTo(q.x, q.y);
+          for (let j = s1.pts.length - 1; j >= 0; j--) ctx.lineTo(s1.pts[j].x, s1.pts[j].y);
+          ctx.closePath();
+          ctx.clip();
+          const ox = (w2 ? -1 : 1) * (2.5 + slip), oy = (w2 ? 1.5 : -1.5);
+          ctx.drawImage(ctx.canvas, ox, oy);            // the picture itself slips
+          ctx.restore();
+        }
+      }
+
+      // ── the crack web: dark fissure + magma vein + white core ──
+      for (let pass = 0; pass < 3; pass++) {
+        ctx.save();
+        if (pass === 0) {                                // dark glass fissure
+          ctx.globalCompositeOperation = 'source-over';
+          ctx.strokeStyle = 'rgba(6,2,0,0.9)'; ctx.lineWidth = 7; ctx.lineCap = 'round';
+          ctx.globalAlpha = 0.9 * glow;
+        } else if (pass === 1) {                         // magma bleeding through
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.strokeStyle = '#ff5a00'; ctx.lineWidth = 4;
+          ctx.shadowColor = '#ff5a00'; ctx.shadowBlur = 16;
+          ctx.globalAlpha = (this.phase === PHASE.BLEED ? pulse : 0.8) * glow;
+        } else {                                         // white-hot centerline
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.strokeStyle = '#fff0d8'; ctx.lineWidth = 1.4;
+          ctx.globalAlpha = 0.85 * glow;
+        }
+        for (const sp of this._spokes) {
+          this._drawCrackPath(ctx, sp.pts, upTo);
+          if (sp.branch && upTo > 0.5) this._drawCrackPath(ctx, sp.branch, (upTo - 0.5) * 2);
+        }
+        ctx.restore();
+      }
+
+      // heal glints: white sparks at each receding crack tip
+      if (this.phase === PHASE.HEAL) {
+        ctx.save(); ctx.globalCompositeOperation = 'lighter';
+        for (const sp of this._spokes) {
+          const idx = Math.max(1, Math.floor(sp.pts.length * upTo) - 1);
+          const tip = sp.pts[idx];
+          ctx.globalAlpha = 0.9;
+          ctx.fillStyle = '#ffffff';
+          ctx.shadowColor = '#ffd23c'; ctx.shadowBlur = 10;
+          ctx.beginPath(); ctx.arc(tip.x, tip.y, 2.6, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.restore();
+      }
+
+      // epicenter: molten fist crater glowing all along
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      const cg = ctx.createRadialGradient(this._ex, this._ey, 2, this._ex, this._ey, 90);
+      cg.addColorStop(0, `rgba(255,240,216,${0.8 * pulse * glow})`);
+      cg.addColorStop(0.4, `rgba(255,90,0,${0.45 * glow})`);
+      cg.addColorStop(1, 'rgba(255,90,0,0)');
+      ctx.fillStyle = cg;
+      ctx.beginPath(); ctx.arc(this._ex, this._ey, 90, 0, Math.PI * 2); ctx.fill();
       ctx.restore();
-    }
-
-    // CORE detonation dome
-    if (this.phase === PHASE.CORE) {
-      const t = Math.min(1, (el - P.fissureMs - P.geysersMs) / P.coreMs);
-      ctx.save(); ctx.globalCompositeOperation = 'lighter';
-      // white flash
-      ctx.fillStyle = `rgba(255,244,216,${0.4 * (1 - t)})`;
-      ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-      // rising dome
-      const dr = this.cfg.core.radius * (0.3 + 0.7 * t);
-      const dome = ctx.createRadialGradient(this._ox, this._oy, 0, this._ox, this._oy, dr);
-      dome.addColorStop(0, C.glow + (0.7 * (1 - t)) + ')');
-      dome.addColorStop(0.7, C.glow + (0.35 * (1 - t)) + ')');
-      dome.addColorStop(1, C.glow + '0)');
-      ctx.fillStyle = dome;
-      ctx.beginPath(); ctx.ellipse(this._ox, this._oy - dr * 0.25, dr, dr * 0.8, 0, 0, Math.PI * 2); ctx.fill();
-      // shock ring on the ground
-      ctx.globalAlpha = (1 - t) * 0.9;
-      ctx.strokeStyle = C.hot; ctx.lineWidth = 5 * (1 - t) + 1;
-      ctx.beginPath(); ctx.ellipse(this._ox, this._oy, dr * 1.25, dr * 0.62, 0, 0, Math.PI * 2); ctx.stroke();
+    } catch (e) {
+      if (!this._rendErr) { console.error('[PlanetCracker render]', e); this._rendErr = true; }
+      this.phase = PHASE.IDLE;
+    } finally {
       ctx.restore();
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.shadowBlur = 0;
     }
-
-    // embers
-    ctx.save(); ctx.globalCompositeOperation = 'lighter';
-    for (const e of this._embers) {
-      ctx.globalAlpha = e.a;
-      ctx.fillStyle = Math.random() < 0.3 ? C.hot : C.lava;
-      ctx.beginPath(); ctx.arc(e.x, e.y, e.r, 0, Math.PI * 2); ctx.fill();
-    }
-    ctx.restore();
-
-    ctx.restore();
   }
 }

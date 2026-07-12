@@ -49,9 +49,9 @@ export function drawHUD(ctx, game) {
   // premium glass chip behind timer + kills: dark pill, cyan rim, corner ticks
   {
     ctx.save();
-    const cw = 168, chh = 58, cx0 = WIDTH / 2 - cw / 2, cy0 = 16;
+    const cw = 128, chh = 44, cx0 = WIDTH / 2 - cw / 2, cy0 = 20;
     const cg = ctx.createLinearGradient(0, cy0, 0, cy0 + chh);
-    cg.addColorStop(0, 'rgba(12,26,44,0.82)'); cg.addColorStop(1, 'rgba(4,10,20,0.82)');
+    cg.addColorStop(0, 'rgba(12,26,44,0.42)'); cg.addColorStop(1, 'rgba(4,10,20,0.42)');   // Maria: was a big black box — now light glass
     ctx.fillStyle = cg;
     ctx.beginPath(); ctx.roundRect(cx0, cy0, cw, chh, 9); ctx.fill();
     ctx.strokeStyle = 'rgba(46,230,246,0.45)'; ctx.lineWidth = 1.2;

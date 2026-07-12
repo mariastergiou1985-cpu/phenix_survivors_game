@@ -21,8 +21,8 @@ import { UpgradeUI }      from './UpgradeUI.js?v=20260711370000';
 import { weightedSample } from './Upgrades.js?v=20260711370000';
 import { MutationUI }      from './MutationUI.js?v=20260703990000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
-import { drawHUD, drawEndScreen } from './HUD.js?v=20260712270000';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, SKILL_TREE, AMULET_DEFS } from './MetaProgress.js?v=20260711870000';
+import { drawHUD, drawEndScreen } from './HUD.js?v=20260712280000';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, SKILL_TREE, AMULET_DEFS } from './MetaProgress.js?v=20260712280000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260711590000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
@@ -36,7 +36,7 @@ import { OniMaskOverture } from '../effects/oni-mask-overture.js?v=2026071153000
 import { EuclidTheorem } from '../effects/euclid-theorem.js?v=20260711540000';
 import { DeusExMachina } from '../effects/deus-ex-machina.js?v=20260712250000';
 import { RailgunHorizon } from '../effects/railgun-horizon.js?v=20260711560000';
-import { MagmaCoreEruption } from '../effects/magma-core-eruption.js?v=20260711570000';
+import { MagmaCoreEruption } from '../effects/magma-core-eruption.js?v=20260712280000';
 import { PhantomExecution } from '../effects/phantom-execution.js?v=20260711580000';
 import { WeatherTheater } from '../effects/weather-theater.js?v=20260712130000';
 import { Protocol0 } from '../effects/protocol-0.js?v=20260705000000';
@@ -18660,7 +18660,8 @@ export class Game {
       #cgm-overlay .art-corner.c{bottom:8px;left:8px;border-right:0;border-top:0;}
       #cgm-overlay .art-corner.d{bottom:8px;right:8px;border-left:0;border-top:0;}
       #cgm-overlay .menu{flex:0 0 360px;display:flex;flex-direction:column;gap:12px;justify-content:center;}
-      #cgm-overlay .mbtn{position:relative;width:100%;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:12px;padding:16px 20px;border-radius:12px;border:1px solid rgba(46,230,246,.28);background:linear-gradient(180deg,rgba(46,230,246,.05),rgba(10,16,46,.35));color:var(--txt);font-family:'Orbitron',sans-serif;font-weight:700;font-size:16px;letter-spacing:3px;text-transform:uppercase;transition:.16s ease;}
+      #cgm-overlay .mbtn{position:relative;width:100%;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:12px;padding:16px 20px;border-radius:12px;border:1.5px solid rgba(46,230,246,.55);background:linear-gradient(180deg,rgba(46,230,246,.08),rgba(10,16,46,.45));color:var(--txt);font-family:'Orbitron',sans-serif;font-weight:700;font-size:16px;letter-spacing:3px;text-transform:uppercase;transition:.16s ease;box-shadow:0 0 8px rgba(46,230,246,.12),inset 0 1px 0 rgba(255,255,255,.05);}
+      #cgm-overlay .mbtn::after{content:"";position:absolute;right:8px;top:8px;width:10px;height:10px;border-top:2px solid rgba(46,230,246,.6);border-right:2px solid rgba(46,230,246,.6);pointer-events:none;}
       #cgm-overlay .mbtn svg{width:18px;height:18px;opacity:0;transform:translateX(-6px);transition:.16s;color:var(--cyan);}
       #cgm-overlay .mbtn:hover,#cgm-overlay .mbtn.active{color:#fff;border-color:var(--cyan);background:linear-gradient(180deg,rgba(46,230,246,.16),rgba(46,230,246,.04));box-shadow:var(--glow-cyan),inset 0 0 18px rgba(46,230,246,.12);}
       #cgm-overlay .mbtn:hover svg,#cgm-overlay .mbtn.active svg{opacity:1;transform:translateX(0);}
