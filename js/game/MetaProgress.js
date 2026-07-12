@@ -401,8 +401,8 @@ export class MetaProgress {
       // into the level metric → runaway loop (levels 213→1494, cores in the millions).
       // Detect a polluted save and settle it to generous-but-sane values.
       if (this.lastPlayerLevelRewarded > 300 || (this.credits || 0) > 500000) {
-        this.credits           = Math.min(this.credits || 0, 100000);
-        this.protocolFragments = Math.min(this.protocolFragments || 0, 300);
+        this.credits           = Math.min(this.credits || 0, 20000);    // Maria's numbers
+        this.protocolFragments = Math.min(this.protocolFragments || 0, 120);
         this.rewardedPFTotal   = Math.max(0, this.getProtocolFragmentsEarned() - 250);
         const lv = this.getPlayerProgression().level;
         this.lastPlayerLevelRewarded = lv;      // no back-claims on the repaired level
