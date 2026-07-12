@@ -25,11 +25,15 @@ export class PowerMatrix {
   hasCore()  { return this.stored > 0; }
   hasSpace() { return this.stored < this.capacity; }
 
-  stealCore() {
-    // DISABLED — no enemy or system is allowed to remove cores from matrices.
-    // Matrices stay at full charge. The old steal/carry/return economy is replaced
-    // by automatic Nexus reward orbs that magnetize to the player.
-    return null;
+  stealCore(goldBonus = 0) {
+    // RE-ENABLED (defense loop, Maria 2026-07-12): thieves pull a core out of the
+    // base — the player hunts them down, recovers the dropped core and returns it.
+    if (this.stored <= 0) return null;
+    const gold = Math.random() < 0.22 + goldBonus;
+    const val  = Math.min(gold ? 5 : 3, this.stored);
+    this.stored -= val;
+    this.hackTimer = 0.9;                 // warning flash on the base
+    return { type: gold && val === 5 ? 'gold' : 'silver', value: val };
   }
 
   // Deposit a core worth `amount` Matrix-cores (Gold = 5, Silver = 3), capped at capacity.

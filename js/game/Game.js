@@ -9,7 +9,7 @@ import { clamp, distance, safeNormalize, randomChoice, randomRange, wrapText } f
 
 import { FloatingText }   from '../entities/FloatingText.js?v=20260703990000';
 import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260705040000';
-import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260712070000';
+import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260712090000';
 import { Player }         from '../entities/Player.js?v=20260712060000';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260706270000';
 import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260711920000';
@@ -8205,6 +8205,7 @@ export class Game {
     this._updateAnnouncement(dt);
     this._ultSfxWatch();               // Φ9 ult-cast stings
     this._updateCoreCourier(dt);       // core pickup → carry → deposit loop
+    this._updateCoreThieves(dt);       // defense loop: enemies steal cores from bases
     this.particles.update(this._hitStopTimer > 0 ? dt * 0.10 : dt);  // slow sparks/particles during hit stop
     this._updateCamera();
     this._updateDamagePulse(dt);
@@ -17310,6 +17311,7 @@ export class Game {
     this._drawWeaponAccents(ctx);                             // cinematic accents UNDER the art
     this._drawEvoFx(ctx);                                     // NEW-GEN procedural evolutions
     this._drawCarriedCores(ctx);                              // courier: orbiting carried cores
+    this._drawCoreThieves(ctx);                               // defense: thieves + stolen loot
     for (const vfx of this._activeWeaponVFX) vfx.draw(ctx);   // Evolution VFX overlays
     this._drawPatternVFX(ctx);                                // Phase 8: per-character pattern art
     this._drawTacticalWeapons(ctx);  // Tactical cache weapons (independent map objects)
@@ -19400,6 +19402,113 @@ export class Game {
         }
       }
     } catch (e) { /* courier must never break the loop */ }
+  }
+
+  // ── CORE THIEVES (defense loop — approved by Maria) ─────────────────────────
+  // Every ~30s one living normal enemy is possessed with THIEF intent: it runs to
+  // the nearest charged base, RIPS a core out (base flashes + CORE THEFT banner),
+  // then flees with the core visibly hovering over it. Kill it → the core drops as
+  // a normal ground core (courier loop closes). If it escapes far off-screen, the
+  // core is lost. Never targets bosses; inactive while no base has charge.
+  _updateCoreThieves(dt) {
+    try {
+      if (this.gameState !== 'playing' || this.paused || this.gameOver || this.victory) return;
+      if (!this.matrices || !this.matrices.length) return;
+      this._thieves = this._thieves || [];
+      this._thiefTimer = (this._thiefTimer ?? 20) - dt;
+      // recruit
+      if (this._thiefTimer <= 0 && this._thieves.length < 2) {
+        this._thiefTimer = 26 + Math.random() * 14;
+        const charged = this.matrices.filter(m => m.stored > 0 && !(this._chaosMode && m.chaosRole === 'defence'));
+        if (charged.length && this.enemies && this.enemies.length) {
+          let best = null, bd = Infinity, bm = null;
+          for (const e of this.enemies) {
+            if (!e || e.hp <= 0 || e._thief) continue;
+            if (e.rank === 'boss' || e.rank === 'mega' || e.isBoss) continue;
+            for (const m of charged) {
+              const d = distance(e.pos, m.pos);
+              if (d < bd) { bd = d; best = e; bm = m; }
+            }
+          }
+          if (best && bm) {
+            best._thief = { state: 'toBase', m: bm, core: null };
+            this._thieves.push(best);
+            this.floatingTexts.push(new FloatingText('THIEF!', best.pos.clone(), '#ff4444', 1.1));
+          }
+        }
+      }
+      // drive
+      for (let i = this._thieves.length - 1; i >= 0; i--) {
+        const e = this._thieves[i];
+        const th = e && e._thief;
+        if (!e || !th) { this._thieves.splice(i, 1); continue; }
+        if (e.hp <= 0 || !this.enemies.includes(e)) {
+          // killed — the core drops where it fell
+          if (th.core) {
+            this.groundCores.push(new DataCore(this._clampPickupPos(e.pos.clone()), th.core.type));
+            this.floatingTexts.push(new FloatingText('CORE RECOVERED — RETURN IT!', e.pos.clone(), '#7CFF8A', 1.4));
+          }
+          this._thieves.splice(i, 1); continue;
+        }
+        if (th.state === 'toBase') {
+          const m = th.m;
+          if (!m || m.stored <= 0) { e._thief = null; this._thieves.splice(i, 1); continue; }
+          const d = distance(e.pos, m.pos);
+          if (d < 70) {
+            const core = m.stealCore(this.player?.goldChanceBonus || 0);
+            if (core) {
+              th.core = core; th.state = 'flee';
+              this.triggerAnnouncement('⚠ CORE THEFT — HUNT THE THIEF', '#ff4444');
+              this.audio?.playMatrixBreach?.();
+              this.screenShake.trigger(3, 0.2);
+            } else { e._thief = null; this._thieves.splice(i, 1); }
+          } else {
+            const sp = (e.speed || 60) * 1.5 * dt;
+            e.pos.x += (m.pos.x - e.pos.x) / d * sp;
+            e.pos.y += (m.pos.y - e.pos.y) / d * sp;
+          }
+        } else if (th.state === 'flee') {
+          const p = this.player;
+          const dx = e.pos.x - p.pos.x, dy = e.pos.y - p.pos.y;
+          const d = Math.max(1, Math.sqrt(dx * dx + dy * dy));
+          const sp = (e.speed || 60) * 1.35 * dt;
+          e.pos.x += dx / d * sp; e.pos.y += dy / d * sp;
+          if (d > 1500) {                                      // escaped — core lost
+            this.floatingTexts.push(new FloatingText('CORE LOST…', p.pos.clone(), '#ff8866', 1.2));
+            this._thieves.splice(i, 1); e._thief = null;
+          }
+        }
+      }
+    } catch (err) { /* defense loop must never break the frame */ }
+  }
+
+  // Thief flair: stolen core hovers over the runner + red pulse ring underneath.
+  _drawCoreThieves(ctx) {
+    try {
+      if (!this._thieves || !this._thieves.length) return;
+      const t = performance.now() / 1000;
+      for (const e of this._thieves) {
+        if (!e || e.hp <= 0) continue;
+        const th = e._thief; if (!th) continue;
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.55 + 0.25 * Math.sin(t * 6);        // red intent ring
+        ctx.strokeStyle = '#ff4444'; ctx.lineWidth = 2;
+        ctx.setLineDash([6, 5]);
+        ctx.beginPath(); ctx.ellipse(e.pos.x, e.pos.y + 6, 22, 10, 0, 0, Math.PI * 2); ctx.stroke();
+        ctx.setLineDash([]);
+        if (th.core) {                                          // the loot, bobbing overhead
+          const gold = th.core.type === 'gold';
+          const by = e.pos.y - 46 + Math.sin(t * 4) * 4;
+          ctx.globalAlpha = 0.95;
+          ctx.fillStyle = gold ? '#ffc21a' : '#9fb6d6';
+          ctx.shadowColor = gold ? '#ff9d00' : '#6fd0ff'; ctx.shadowBlur = 12;
+          ctx.beginPath(); ctx.arc(e.pos.x, by, gold ? 6 : 5, 0, Math.PI * 2); ctx.fill();
+          ctx.shadowBlur = 0;
+        }
+        ctx.restore();
+      }
+    } catch (err) { /* visual only */ }
   }
 
   // Carried cores orbit the character — the visible 'loaded' state.
