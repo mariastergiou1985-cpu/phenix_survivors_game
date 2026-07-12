@@ -204,17 +204,106 @@ export class DeusExMachina {
       ctx.restore();
     }
 
-    // the angel — Maria's art, SOLID, golden rim, gentle hover bob + smite flash
-    const img = this.img;
-    if (img && img.complete && img.naturalWidth > 0 && angelAlpha > 0) {
+    // THE MACHINE-ANGEL — fully procedural robot angel (replaces the sprite box):
+    // chrome segmented torso + angular visor head, twin fans of ENERGY-BLADE wings
+    // that spread wider on each smite, spinning gold halo, thruster glow at the feet.
+    if (angelAlpha > 0) {
       const bob = this.phase === PHASE.GUARDIAN ? Math.sin(el / 500) * 12 : 0;
       const flash = this._pulseT;
-      const size = SZ * (1 + 0.05 * Math.sin(el / 250)) * (1 + 0.06 * flash);
+      const K = (SZ / 340) * (1 + 0.05 * Math.sin(el / 250)) * (1 + 0.06 * flash);
+      const axc = this.cx, ayc = ay + bob;
       ctx.save();
+      ctx.translate(axc, ayc);
+      ctx.scale(K, K);
       ctx.globalAlpha = angelAlpha;
-      ctx.shadowColor = flash > 0.4 ? C.hot : C.gold;
-      ctx.shadowBlur = 22 + 26 * flash;
-      ctx.drawImage(img, this.cx - size / 2, ay + bob - size / 2, size, size);
+      // ── WINGS: two fans of 6 energy blades each (violet body, white edge) ──
+      const spread = 0.55 + 0.25 * Math.sin(el / 700) + 0.5 * flash;
+      for (const side of [-1, 1]) {
+        for (let i = 0; i < 6; i++) {
+          const wa = -Math.PI / 2 + side * (0.35 + (i / 5) * 1.05) * spread;
+          const wl = 150 - i * 14;
+          const bx = Math.cos(wa) * wl * side * (side === -1 ? -1 : 1);
+          ctx.save();
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.rotate(0);
+          const tipX = side * Math.abs(Math.cos(wa)) * wl;
+          const tipY = -40 + Math.sin(wa) * wl * 0.9;
+          const g2 = ctx.createLinearGradient(side * 20, -40, tipX, tipY);
+          g2.addColorStop(0, 'rgba(176,38,255,0.95)');
+          g2.addColorStop(0.7, 'rgba(255,45,106,0.55)');
+          g2.addColorStop(1, 'rgba(255,246,216,0.9)');
+          ctx.strokeStyle = g2; ctx.lineWidth = 7 - i * 0.7; ctx.lineCap = 'round';
+          ctx.shadowColor = '#b026ff'; ctx.shadowBlur = 10 + flash * 14;
+          ctx.beginPath();
+          ctx.moveTo(side * 18, -36);
+          ctx.quadraticCurveTo(side * (30 + wl * 0.35), -70 + Math.sin(wa) * wl * 0.3, tipX, tipY);
+          ctx.stroke();
+          ctx.shadowBlur = 0;
+          // white hot edge
+          ctx.globalAlpha = angelAlpha * 0.8;
+          ctx.strokeStyle = '#fff6d8'; ctx.lineWidth = 1.4;
+          ctx.beginPath();
+          ctx.moveTo(side * 18, -38);
+          ctx.quadraticCurveTo(side * (30 + wl * 0.35), -72 + Math.sin(wa) * wl * 0.3, tipX, tipY - 2);
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
+      // ── BODY: chrome segmented torso ──
+      const chrome = ctx.createLinearGradient(-24, 0, 24, 0);
+      chrome.addColorStop(0, '#4a5468'); chrome.addColorStop(0.5, '#c8d2e0'); chrome.addColorStop(1, '#39445c');
+      ctx.fillStyle = chrome;
+      ctx.strokeStyle = '#ffd447'; ctx.lineWidth = 1.6;
+      ctx.beginPath();                                        // chest plate (inverted trapezoid)
+      ctx.moveTo(-26, -46); ctx.lineTo(26, -46); ctx.lineTo(16, 6); ctx.lineTo(-16, 6); ctx.closePath();
+      ctx.fill(); ctx.stroke();
+      ctx.beginPath();                                        // waist + skirt armor
+      ctx.moveTo(-14, 8); ctx.lineTo(14, 8); ctx.lineTo(22, 58); ctx.lineTo(-22, 58); ctx.closePath();
+      ctx.fill(); ctx.stroke();
+      // shoulder pauldrons
+      for (const sd of [-1, 1]) {
+        ctx.beginPath();
+        ctx.moveTo(sd * 24, -48); ctx.lineTo(sd * 44, -40); ctx.lineTo(sd * 36, -18); ctx.lineTo(sd * 22, -30);
+        ctx.closePath(); ctx.fill(); ctx.stroke();
+      }
+      // ── CORE: glowing reactor heart (pulses on smite) ──
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = angelAlpha * (0.75 + 0.25 * Math.sin(el / 160) + flash * 0.3);
+      ctx.fillStyle = flash > 0.4 ? '#fff6d8' : '#ffd447';
+      ctx.shadowColor = '#ffd447'; ctx.shadowBlur = 16 + flash * 20;
+      ctx.beginPath();
+      ctx.moveTo(0, -30); ctx.lineTo(8, -20); ctx.lineTo(0, -10); ctx.lineTo(-8, -20); ctx.closePath();
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.restore();
+      // ── HEAD: angular helm + glowing visor slit ──
+      ctx.fillStyle = chrome;
+      ctx.beginPath();
+      ctx.moveTo(-11, -74); ctx.lineTo(11, -74); ctx.lineTo(14, -56); ctx.lineTo(0, -48); ctx.lineTo(-14, -56);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = angelAlpha * (0.8 + 0.2 * Math.sin(el / 120));
+      ctx.fillStyle = flash > 0.4 ? '#fff6d8' : '#ff2d6a';
+      ctx.fillRect(-9, -66, 18, 3.4);                          // the visor slit
+      ctx.restore();
+      // ── THRUSTERS: light jets instead of legs ──
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      for (const sd of [-1, 1]) {
+        const jg = ctx.createLinearGradient(0, 58, 0, 108 + Math.sin(el / 90 + sd) * 8);
+        jg.addColorStop(0, 'rgba(255,212,71,0.9)');
+        jg.addColorStop(0.5, 'rgba(255,45,106,0.4)');
+        jg.addColorStop(1, 'rgba(255,45,106,0)');
+        ctx.fillStyle = jg;
+        ctx.globalAlpha = angelAlpha * (0.7 + 0.3 * Math.sin(el / 70 + sd * 2));
+        ctx.beginPath();
+        ctx.moveTo(sd * 14 - 7, 58); ctx.lineTo(sd * 14 + 7, 58);
+        ctx.lineTo(sd * 14, 106 + Math.sin(el / 90 + sd) * 8);
+        ctx.closePath(); ctx.fill();
+      }
+      ctx.restore();
       ctx.restore();
       // rotating halo above the head
       ctx.save();
