@@ -52,7 +52,7 @@ import { NexusManager } from './NexusManager.js?v=20260712110000';
 import { VESSELS, getVesselById, getDefaultVesselId } from './VesselCatalog.js?v=20260705040000';
 import { PETS, getPetById } from './PetCatalog.js?v=20260705000000';
 import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons, isEvolutionOwnedBy, getCardDisplayName } from './WeaponCatalog.js?v=20260712050000';
-import { TACTICAL_ID, TACTICAL_DEFS, getTacticalDef, getTacticalForCharacter, getAvailableTactical, preloadTacticalSprites, FUSION_TACTICALS } from './TacticalWeaponCatalog.js?v=20260711420000';
+import { TACTICAL_ID, TACTICAL_DEFS, getTacticalDef, getTacticalForCharacter, getAvailableTactical, preloadTacticalSprites, FUSION_TACTICALS } from './TacticalWeaponCatalog.js?v=20260712120000';
 import { VFXSpritePlayer } from './VFXSpritePlayer.js?v=20260711800000';
 
 // ── Mastery card → base weapon mapping (for evolution level tracking) ──
@@ -13941,6 +13941,197 @@ export class Game {
    * Draw all active tactical weapons — SPRITE-BASED rendering only.
    * No ctx.arc() or ctx.stroke() for weapon visuals.
    */
+  // Each procedural GRID CACHE weapon gets a full choreography, same craft as the ults.
+  _drawProceduralTactical(ctx, w, sx, sy) {
+    const id = w.def.id;
+    const t = (w.timer != null ? w.timer : 0);
+    const prT = (i, sl) => { const v = Math.sin((w.x + i) * 12.9898 + sl * 78.233) * 43758.5453; return v - Math.floor(v); };
+    ctx.save();
+    ctx.translate(sx, sy);
+    if (id === 'tac_piston_rampart') {
+      // four pistons in a rank, hammering in alternating rhythm
+      for (let i = 0; i < 4; i++) {
+        const px = (i - 1.5) * 34;
+        const ph = (t * 2.2 + i * 0.5) % 1;                    // each piston offset in phase
+        const drop = ph < 0.18 ? ph / 0.18 : Math.max(0, 1 - (ph - 0.18) / 0.3);
+        ctx.save();
+        ctx.translate(px, 0);
+        const g2 = ctx.createLinearGradient(-8, 0, 8, 0);
+        g2.addColorStop(0, '#6a7688'); g2.addColorStop(0.5, '#c8d2e0'); g2.addColorStop(1, '#4a5468');
+        ctx.fillStyle = g2;
+        ctx.fillRect(-6, -58 + drop * 34, 12, 44);             // shaft
+        ctx.fillStyle = '#38404e';
+        ctx.fillRect(-11, -16 + drop * 34, 22, 10);            // head
+        ctx.strokeStyle = '#ff9b3c'; ctx.lineWidth = 1.6;
+        ctx.strokeRect(-11, -16 + drop * 34, 22, 10);
+        if (drop > 0.96) {                                     // slam feedback
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.globalAlpha = 0.8;
+          ctx.strokeStyle = '#ffd23c'; ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.ellipse(0, 22, 16, 6, 0, 0, Math.PI * 2); ctx.stroke();
+          for (let s2 = 0; s2 < 3; s2++) {
+            const sa = -Math.PI / 2 + (s2 - 1) * 0.7;
+            ctx.beginPath(); ctx.moveTo(0, 18);
+            ctx.lineTo(Math.cos(sa) * 18, 18 + Math.sin(sa) * 12); ctx.stroke();
+          }
+          ctx.globalCompositeOperation = 'source-over';
+        }
+        ctx.restore();
+      }
+    } else if (id === 'tac_scrap_coil') {
+      // the coil core + razor cloud of orbiting scrap
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = '#9b6bff'; ctx.lineWidth = 2.4;
+      ctx.shadowColor = '#9b6bff'; ctx.shadowBlur = 12;
+      for (let r2 = 0; r2 < 3; r2++) {                          // coil rings
+        ctx.globalAlpha = 0.7 - r2 * 0.18;
+        ctx.beginPath(); ctx.ellipse(0, -22 - r2 * 9, 13 + r2 * 3, 5, 0, 0, Math.PI * 2); ctx.stroke();
+      }
+      ctx.shadowBlur = 0;
+      for (let i = 0; i < 12; i++) {                            // orbiting scrap shards
+        const oa = t * (1.8 + prT(i, 1)) + i * 0.55;
+        const orr = 30 + prT(i, 2) * ((w.def.aoeRadius || 190) * 0.45);
+        const ox2 = Math.cos(oa) * orr, oy2 = Math.sin(oa) * orr * 0.6 - 14;
+        ctx.save();
+        ctx.translate(ox2, oy2);
+        ctx.rotate(oa * 2);
+        ctx.globalAlpha = 0.85;
+        ctx.fillStyle = i % 3 ? '#8a93a6' : '#cdb6ff';
+        ctx.fillRect(-3.4, -1.4, 6.8, 2.8);                     // jagged scrap chip
+        ctx.restore();
+      }
+    } else if (id === 'tac_quake_pylon') {
+      // basalt pylon + hammer head bouncing with the shockwave cadence
+      const hm = (t * 1.4) % 1;
+      const lift = hm < 0.7 ? Math.sin(hm / 0.7 * Math.PI) * 22 : 0;
+      ctx.fillStyle = '#1a1008';
+      ctx.strokeStyle = '#d8a24a'; ctx.lineWidth = 1.6;
+      ctx.beginPath();                                          // tapered monolith
+      ctx.moveTo(-12, 16); ctx.lineTo(-7, -52 - lift); ctx.lineTo(7, -52 - lift); ctx.lineTo(12, 16);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.globalCompositeOperation = 'lighter';
+      for (let i = 0; i < 3; i++) {                             // amber vein pulses
+        ctx.globalAlpha = 0.4 + 0.3 * Math.sin(t * 6 + i * 2);
+        ctx.strokeStyle = '#ffd23c'; ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(-6 + i * 6, 12); ctx.lineTo(-4 + i * 5, -40 - lift * 0.8);
+        ctx.stroke();
+      }
+      if (hm >= 0.7 && hm < 0.85) {                             // the HAMMER lands
+        ctx.globalAlpha = 1 - (hm - 0.7) / 0.15;
+        ctx.strokeStyle = '#fff0d0'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.ellipse(0, 18, 30, 11, 0, 0, Math.PI * 2); ctx.stroke();
+      }
+    } else if (id === 'tac_umbral_snare') {
+      // pool of shadow + sweeping glint wires
+      const R = (w.def.aoeRadius || 170) * 0.8;
+      ctx.globalAlpha = 0.55;
+      const sg = ctx.createRadialGradient(0, 6, 4, 0, 6, R);
+      sg.addColorStop(0, 'rgba(10,2,14,0.9)');
+      sg.addColorStop(1, 'rgba(10,2,14,0)');
+      ctx.fillStyle = sg;
+      ctx.beginPath(); ctx.ellipse(0, 6, R, R * 0.45, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.globalCompositeOperation = 'lighter';
+      for (let i = 0; i < 4; i++) {                             // wires glint as they sweep
+        const wa = t * (0.9 + i * 0.23) + i * 1.7;
+        const glint = Math.pow(Math.max(0, Math.sin(wa * 2.1)), 6);
+        ctx.globalAlpha = 0.15 + glint * 0.8;
+        ctx.strokeStyle = glint > 0.5 ? '#ffffff' : '#ff4dd2';
+        ctx.lineWidth = glint > 0.5 ? 1.6 : 0.8;
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(wa) * R, 6 + Math.sin(wa) * R * 0.45);
+        ctx.lineTo(Math.cos(wa + Math.PI) * R, 6 + Math.sin(wa + Math.PI) * R * 0.45);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 0.5 + 0.3 * Math.sin(t * 5);            // sigil heart
+      ctx.strokeStyle = '#ff4dd2'; ctx.lineWidth = 1.6;
+      ctx.beginPath(); ctx.arc(0, -6, 9, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-5, -11); ctx.lineTo(5, -1); ctx.moveTo(5, -11); ctx.lineTo(-5, -1); ctx.stroke();
+    } else if (id === 'tac_phase_beacon') {
+      // a beacon existing in TWO places — blinks between twin positions, swap pulse
+      const sw = (t * 1.1) % 1;
+      const here = sw < 0.5;
+      for (const side of [-1, 1]) {
+        const active = (side === -1) === here;
+        const bx2 = side * 46;
+        ctx.save();
+        ctx.translate(bx2, 0);
+        ctx.globalAlpha = active ? 0.95 : 0.25 + 0.1 * Math.sin(t * 9);
+        ctx.strokeStyle = '#7df9ff'; ctx.lineWidth = active ? 2.2 : 1;
+        if (active) { ctx.shadowColor = '#7df9ff'; ctx.shadowBlur = 12; }
+        ctx.beginPath();                                        // the beacon prism
+        ctx.moveTo(0, -44); ctx.lineTo(9, -14); ctx.lineTo(0, 12); ctx.lineTo(-9, -14); ctx.closePath();
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        if (!active) { ctx.setLineDash([3, 4]);                 // ghost twin
+          ctx.beginPath(); ctx.moveTo(0, -44); ctx.lineTo(9, -14); ctx.lineTo(0, 12); ctx.lineTo(-9, -14); ctx.closePath(); ctx.stroke();
+          ctx.setLineDash([]); }
+        ctx.restore();
+      }
+      const swapK = Math.abs(sw - 0.5) < 0.06 ? 1 - Math.abs(sw - 0.5) / 0.06 : 0;
+      if (swapK > 0) {                                          // the SWAP is the weapon
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = swapK * 0.9;
+        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(-46, -16); ctx.lineTo(46, -16); ctx.stroke();
+        ctx.globalAlpha = swapK * 0.5;
+        ctx.strokeStyle = '#7df9ff'; ctx.lineWidth = 5;
+        ctx.beginPath(); ctx.ellipse(0, 0, 60 * swapK + 20, (60 * swapK + 20) * 0.5, 0, 0, Math.PI * 2); ctx.stroke();
+      }
+    } else if (id === 'tac_axiom_compass') {
+      // giant compass: fixed needle leg + drawing leg sweeping; the inscribed arc glows
+      const ca = t * 1.3;
+      const CR = 56;
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = '#8dff6a'; ctx.lineWidth = 2.6;
+      ctx.beginPath(); ctx.moveTo(0, -66); ctx.lineTo(0, 0); ctx.stroke();                  // needle leg
+      ctx.beginPath(); ctx.moveTo(0, -66);                                                  // drawing leg
+      ctx.lineTo(Math.cos(ca) * CR, Math.sin(ca) * CR * 0.6); ctx.stroke();
+      ctx.globalAlpha = 0.5 + 0.2 * Math.sin(t * 4);                                        // hinge
+      ctx.fillStyle = '#e4ffd2';
+      ctx.beginPath(); ctx.arc(0, -66, 4, 0, Math.PI * 2); ctx.fill();
+      // the inscribed circle so far (trailing arc behind the drawing tip)
+      ctx.globalAlpha = 0.85;
+      ctx.strokeStyle = '#e4ffd2'; ctx.lineWidth = 2;
+      ctx.shadowColor = '#8dff6a'; ctx.shadowBlur = 10;
+      ctx.beginPath(); ctx.ellipse(0, 0, CR, CR * 0.6, 0, ca - 2.4, ca); ctx.stroke();
+      ctx.shadowBlur = 0;
+      ctx.globalAlpha = 0.3;
+      ctx.setLineDash([4, 6]);
+      ctx.beginPath(); ctx.ellipse(0, 0, CR, CR * 0.6, 0, 0, Math.PI * 2); ctx.stroke();     // faint full guide
+      ctx.setLineDash([]);
+    } else if (id === 'tac_ember_shrine') {
+      // obsidian mini-torii + slow blue flame arcs breathing out of the gate
+      ctx.fillStyle = '#0a0610';
+      ctx.strokeStyle = '#5a8cff'; ctx.lineWidth = 1.4;
+      for (const sd of [-1, 1]) {                               // pillars
+        ctx.fillRect(sd * 16 - 3.5, -34, 7, 40);
+        ctx.strokeRect(sd * 16 - 3.5, -34, 7, 40);
+      }
+      ctx.beginPath();                                          // upswept lintel
+      ctx.moveTo(-26, -36); ctx.quadraticCurveTo(0, -44, 26, -36);
+      ctx.lineTo(24, -30); ctx.quadraticCurveTo(0, -37, -24, -30);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.globalCompositeOperation = 'lighter';
+      for (let i = 0; i < 3; i++) {                             // breathing flame arcs
+        const fk = (t * (0.5 + i * 0.17) + i * 0.37) % 1;
+        const fr = 18 + fk * ((w.def.aoeRadius || 175) * 0.55);
+        ctx.globalAlpha = Math.sin(fk * Math.PI) * 0.7;
+        ctx.strokeStyle = i % 2 ? '#9ec2ff' : '#5a8cff';
+        ctx.lineWidth = 2.6 - fk * 1.4;
+        ctx.beginPath();
+        ctx.ellipse(0, -8, fr, fr * 0.5, 0, Math.PI * 0.15, Math.PI * 0.85);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 0.6 + 0.3 * Math.sin(t * 7);            // gate glow
+      const gg2 = ctx.createRadialGradient(0, -14, 2, 0, -14, 20);
+      gg2.addColorStop(0, 'rgba(90,140,255,0.7)'); gg2.addColorStop(1, 'rgba(90,140,255,0)');
+      ctx.fillStyle = gg2;
+      ctx.beginPath(); ctx.arc(0, -14, 20, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
+  }
+
   _drawTacticalWeapons(ctx) {
     const cam = this.camera;
     for (const w of this.tacticalCacheWeapons) {
@@ -14075,6 +14266,11 @@ export class Game {
           }
           break;
         }
+      }
+
+      // ── PROCEDURAL TACTICALS (2026-07-12 batch — ultimate-grade, no sprites) ──────
+      if (w.def && w.def.procedural) {
+        try { this._drawProceduralTactical(ctx, w, sx, sy); } catch (e) { /* never break the frame */ }
       }
 
       // ── Cinematic deploy + operating aura (all behaviors, all characters) ──────────
