@@ -587,7 +587,7 @@ export const TACTICAL_DEFS = Object.freeze({
     fxModule:    FX_MODULE.A_STORM_CONDUCTOR,
     behavior:    TACTICAL_BEHAVIOR.CHORD_RAIN,
     sprite:      'assets/weapons/tactical/tac_eddie_chord_curtain.png',
-    baseDamage:  55,     // was 30 — far below the 72-95 band (Maria balance pass)
+    baseDamage:  40,     // Maria: settled at 40 (30 was weak, 55 overshot on a strong kit)
     aoeRadius:   60,
     tickRate:     2.2,    // seconds between fragment waves
     duration:    14,      // seconds active

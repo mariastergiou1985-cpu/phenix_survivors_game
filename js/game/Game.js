@@ -10,7 +10,7 @@ import { clamp, distance, safeNormalize, randomChoice, randomRange, wrapText } f
 import { FloatingText }   from '../entities/FloatingText.js?v=20260703990000';
 import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260705040000';
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260712090000';
-import { Player }         from '../entities/Player.js?v=20260712420000';
+import { Player }         from '../entities/Player.js?v=20260712430000';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260706270000';
 import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260712190000';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=20260711750000';
@@ -51,8 +51,8 @@ import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260712160000';
 import { NexusManager } from './NexusManager.js?v=20260712110000';
 import { VESSELS, getVesselById, getDefaultVesselId } from './VesselCatalog.js?v=20260705040000';
 import { PETS, getPetById } from './PetCatalog.js?v=20260705000000';
-import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons, isEvolutionOwnedBy, getCardDisplayName } from './WeaponCatalog.js?v=20260712050000';
-import { TACTICAL_ID, TACTICAL_DEFS, getTacticalDef, getTacticalForCharacter, getAvailableTactical, preloadTacticalSprites, FUSION_TACTICALS } from './TacticalWeaponCatalog.js?v=20260712150000';
+import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons, isEvolutionOwnedBy, getCardDisplayName } from './WeaponCatalog.js?v=20260712430000';
+import { TACTICAL_ID, TACTICAL_DEFS, getTacticalDef, getTacticalForCharacter, getAvailableTactical, preloadTacticalSprites, FUSION_TACTICALS } from './TacticalWeaponCatalog.js?v=20260712430000';
 import { VFXSpritePlayer } from './VFXSpritePlayer.js?v=20260711800000';
 
 // ── Mastery card → base weapon mapping (for evolution level tracking) ──
@@ -8271,6 +8271,21 @@ export class Game {
     this._updateAnnouncement(dt);
     this._ultSfxWatch();               // Φ9 ult-cast stings
     this._updateCoreCourier(dt);       // core pickup → carry → deposit loop
+    // LOW-HP MERCY MAGNET (Maria): health drops fly to the player ONLY below 30% HP —
+    // above that you walk over them like normal, so they keep working as map resources.
+    try {
+      const p2 = this.player;
+      if (p2 && p2.hp / p2.maxHp < 0.30 && this.healthPickups && this.healthPickups.length) {
+        for (const hpk of this.healthPickups) {
+          const d2 = distance(p2.pos, hpk.pos);
+          if (d2 > 26 && d2 < 900) {
+            const sp2 = (520 + (900 - d2) * 0.4) * dt;
+            hpk.pos.x += (p2.pos.x - hpk.pos.x) / d2 * sp2;
+            hpk.pos.y += (p2.pos.y - hpk.pos.y) / d2 * sp2;
+          }
+        }
+      }
+    } catch (e) { /* mercy magnet is optional */ }
     this._updateCoreThieves(dt);       // defense loop: enemies steal cores from bases
     this._updateBossEvolution(dt);     // bosses grow skills the longer they live
     this.particles.update(this._hitStopTimer > 0 ? dt * 0.10 : dt);  // slow sparks/particles during hit stop
@@ -10474,13 +10489,13 @@ export class Game {
     const reach = p.speed * 3.5 * p.dashDuration;        // full dash travel distance
     const n     = 3 + (Math.random() < 0.5 ? 1 : 0);     // 3-4 clouds per dash
     for (let i = 0; i < n; i++) {
-      if (this._eddieNoteClouds.length >= 12) break;     // hard cap 12 zones
+      if (this._eddieNoteClouds.length >= 3) break;      // Eddie nerf (Maria): max 3 active zones (was 12)
       const k = n > 1 ? i / (n - 1) : 0;
       this._eddieNoteClouds.push({
         x: p.pos.x + dir.x * reach * k,
         y: p.pos.y + dir.y * reach * k,
-        r: 46, t: 0, active: this._riffCapacitor ? 3.2 : 1.6,
-        dmg: this._riffCapacitor ? 12 : 8, dmgCd: 0,
+        r: 46, t: 0, active: this._riffCapacitor ? 2.2 : 1.2,   // shorter zones (nerf)
+        dmg: this._riffCapacitor ? 8 : 6, dmgCd: 0,              // -30% tick damage (nerf)
         glyph: Math.random() < 0.5 ? '♪' : '♩',
         rot: (Math.random() - 0.5) * 0.8,
       });

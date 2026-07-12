@@ -65,10 +65,10 @@ export class Player {
     } else if (this.selectedCharacter === 'eddie') {
       // Thunder / Berserk — still the tankiest bruiser (biggest HP, strong mana), but Phase 12
       // balance nerf trims the COMPOUNDING edge: no longer also the fastest, and slightly less armor.
-      this.maxHp     = 260;
-      this.hp        = 260;
-      this.maxMana   = 120;
-      this.mana      = 120;
+      this.maxHp     = 225;    // balance pass (Maria): was 260 — still tanky, no longer an outlier
+      this.hp        = 225;
+      this.maxMana   = 100;    // was 120 — ultimate cadence in line with the others
+      this.mana      = 100;
       this.baseSpeed = Math.round(230 * 1.15); // 264 (was 290 — now below Taekwondo 276 & Assassin 258-ish, not fastest)
       this.contactDamageReduction = 0.16;      // was 0.20 — still armored, no longer best-in-class
     } else if (this.selectedCharacter === 'dimis_kickboxer') {

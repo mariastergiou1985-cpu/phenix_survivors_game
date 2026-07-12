@@ -284,7 +284,7 @@ export const WEAPON_DEFS = Object.freeze({
     sprite: 'assets/weapons/solo_red_thunder.png',
     baseStats: {
       damage: 38,        // ~1.3x the base-weapon damage median (29) — hits harder than average
-      cooldown: 1.1,
+      cooldown: 1.25,    // Eddie nerf (Maria): was 1.1 — riffs land a beat slower
       aoeRadius: 70,
       speed: 12,
       piercing: 2,
