@@ -19719,7 +19719,7 @@ export class Game {
               const sold = this._carriedCores.length;
               this._carriedCores.length = 0;
               const pay = sold * 12;
-              this.runCreditsEarned = (this.runCreditsEarned || 0) + pay;   // banked via meta.addCredits at run end
+              this.meta?.addCredits?.(pay);   // banked IMMEDIATELY — the end-of-run line recomputes runCreditsEarned from stats and would wipe a += here
               this.floatingTexts.push(new FloatingText('SURPLUS SOLD +' + pay + '₵', m.pos.clone(), '#ffd23c', 1.4));
               this.audio?.forgeIce?.();
             }
