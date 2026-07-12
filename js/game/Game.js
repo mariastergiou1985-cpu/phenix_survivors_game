@@ -6364,6 +6364,7 @@ export class Game {
       return;
     }
     p.mana -= ULTIMATE_MANA_COST;
+    this.audio?.forgeUltCast?.('oni');                     // Φ9 cast sting
     const cl = p.upgrades['oni_protocol0_mastery'] || 0;   // Total Cataclysm mastery level
     const vs = this._viewScale, cam = this.camera;
     const s  = this._playerScreenPos();
@@ -8202,6 +8203,7 @@ export class Game {
       }
     }
     this._updateAnnouncement(dt);
+    this._ultSfxWatch();               // Φ9 ult-cast stings
     this.particles.update(this._hitStopTimer > 0 ? dt * 0.10 : dt);  // slow sparks/particles during hit stop
     this._updateCamera();
     this._updateDamagePulse(dt);
@@ -11168,6 +11170,7 @@ export class Game {
       if (this._evoFx.length >= 10) this._evoFx.shift();
       this._evoFx.push({ id: weaponId, x, y, angle: angle || 0, t: 0,
                          seed: (Math.random() * 1000) | 0, R: _pDef.baseStats?.aoeRadius || 120 });
+      this.audio?.forgeEvolution?.();                    // Φ9 forge sting
       this._spawnWeaponAccent(weaponId, x, y, angle || 0, 1.4);
       return null;
     }
@@ -12829,6 +12832,7 @@ export class Game {
     for (const m of due) {
       if (this._milestonesPaid[m]) continue;
       this._milestonesPaid[m] = true;
+      this.audio?.forgeMilestone?.();                            // Φ9 fanfare
       if (m === 5) {                                             // SUPPLY BONUS
         this._awardCredits?.(25);
         this.player.mana = this.player.maxMana;
@@ -19285,8 +19289,36 @@ export class Game {
     this.triggerAnnouncement(text, color);
   }
 
+  // Φ9: one watcher, zero edits in the 10 ult bodies — plays the per-character
+  // cast sting on the rising edge of each cinematic module's isActive().
+  _ultSfxWatch() {
+    try {
+      const M = [
+        ['_ossuary', 'skeleton'], ['_tribunal', 'taekwondo'], ['_feedbackApoc', 'eddie'],
+        ['_railgun', 'cyber_arm'], ['_magma', 'brawler'], ['_phantomExec', 'assassin'],
+        ['_digitalSingularity', 'phasewalker'], ['_theorem', 'euclid'], ['_deusEx', 'dimi'],
+      ];
+      this._ultWasActive = this._ultWasActive || {};
+      for (const [ref, flavor] of M) {
+        const mod = this[ref];
+        const on = !!(mod && mod.isActive && mod.isActive());
+        if (on && !this._ultWasActive[ref]) this.audio?.forgeUltCast?.(flavor);
+        this._ultWasActive[ref] = on;
+      }
+    } catch (e) { /* sfx must never break the loop */ }
+  }
+
   triggerAnnouncement(text, color, opts) {
     this.announcement = { text, color, phase: 'fadein', timer: 0, alphaMul: opts && opts.alpha != null ? opts.alpha : null };
+    // Φ9: every full-screen banner gets the intrusion whoosh; boss-class arrivals ROAR.
+    try {
+      const T = String(text).toUpperCase();
+      const MEGA = ['OVERLORD', 'LEVIATHAN', 'EMPEROR', 'TYRANT', 'TITAN', 'FINAL BREACH'];
+      const BOSSY = ['BOSS', 'VESSEL', 'EXECUTIONER'];
+      if (MEGA.some(w => T.includes(w)))       this.audio?.forgeBossRoar?.(true);
+      else if (BOSSY.some(w => T.includes(w))) this.audio?.forgeBossRoar?.(false);
+      else                                     this.audio?.forgeAnnounce?.();
+    } catch (e) { /* sfx must never break announcements */ }
     const WAVE_EVENTS = ['DRONE SWARM', 'CORE RAIDERS', 'SECURITY MECH', 'OVERLOAD SURGE', 'HUNTER SQUAD'];
     if (WAVE_EVENTS.some(w => text.includes(w))) {
       this.score = (this.score ?? 0) + 100;

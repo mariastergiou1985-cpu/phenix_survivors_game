@@ -1,5 +1,5 @@
-import { Game } from './game/Game.js?v=20260712030000';
-import { AudioManager } from './audio/AudioManager.js?v=20260711910000';
+import { Game } from './game/Game.js?v=20260712040000';
+import { AudioManager } from './audio/AudioManager.js?v=20260712040000';
 import { GamepadInput } from './Gamepad.js?v=20260706330000';
 import { initTouchControls } from './TouchInput.js?v=20260706340000';
 

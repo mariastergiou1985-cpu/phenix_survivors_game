@@ -45,7 +45,20 @@ export class AudioManager {
     // final SFX = master×sfx×toneBase.
     this.sfxGain = this.actx.createGain();
     this.sfxGain.gain.value = this.sfxVolume;
-    this.sfxGain.connect(this.masterGain);
+    // Φ9 mixing: SFX bus runs through a gentle compressor so stacked one-shots
+    // (weapon spam + events + ults) can never clip or drown the music.
+    try {
+      this.sfxComp = this.actx.createDynamicsCompressor();
+      this.sfxComp.threshold.value = -16;
+      this.sfxComp.knee.value = 18;
+      this.sfxComp.ratio.value = 5;
+      this.sfxComp.attack.value = 0.004;
+      this.sfxComp.release.value = 0.18;
+      this.sfxGain.connect(this.sfxComp);
+      this.sfxComp.connect(this.masterGain);
+    } catch (e) {
+      this.sfxGain.connect(this.masterGain);   // ancient browser fallback
+    }
 
     // Per-sound timestamps for rate-limiting (avoids machine-gun stacking).
     this._lastPlay = {};
@@ -397,7 +410,17 @@ export class AudioManager {
   }
 
   // Short pitched blip with an attack/decay envelope.
+  // Φ9 spam control: global polyphony budget — max N synth voices per sliding window.
+  _voiceOk() {
+    const now = performance.now();
+    if (!this._voiceWin || now - this._voiceWin > 130) { this._voiceWin = now; this._voiceCount = 0; }
+    if (this._voiceCount >= 16) return false;
+    this._voiceCount++;
+    return true;
+  }
+
   _tone({ type = 'sine', freqStart, freqEnd, dur, gain = 0.15, delay = 0 }) {
+    if (!this._voiceOk()) return;
     if (this.muted) return;
     const t0  = this.actx.currentTime + delay;
     const osc = this.actx.createOscillator();
@@ -423,6 +446,7 @@ export class AudioManager {
 
   // Decaying filtered white-noise burst (for digital crackle / zap texture).
   _noiseBurst({ dur = 0.12, gain = 0.12, filterType = 'highpass', freq = 800, delay = 0 }) {
+    if (!this._voiceOk()) return;
     if (this.muted) return;
     const t0  = this.actx.currentTime + delay;
     const len = Math.floor(this.actx.sampleRate * dur);
@@ -1238,6 +1262,66 @@ export class AudioManager {
     else if (el === 'toxin' || el === 'gas')            this.forgeToxin();
     else if (el === 'magnetic')                         this.forgeMagnet();
     else if (el === 'radiation')                        this.forgeRadiation();
+  }
+
+  // ── Φ9 EXTRA VOICES ────────────────────────────────────────────────────────
+
+  // ULT CAST sting — one distinct flavor per character, throttled hard (casts are rare).
+  forgeUltCast(flavor) {
+    if (this.muted || !this._forgeOk('ult', 900)) return;
+    const F = {
+      skeleton:   () => { this._tone({ type: 'sawtooth', freqStart: 90,  freqEnd: 30,  dur: 0.7, gain: 0.13 });
+                          this._noiseBurst({ dur: 0.5, gain: 0.09, filterType: 'lowpass', freq: 300 }); },              // bone rumble
+      taekwondo:  () => { for (let i = 0; i < 4; i++) this._tone({ type: 'triangle', freqStart: 500 + i * 180, freqEnd: 380 + i * 180, dur: 0.07, gain: 0.07, delay: i * 0.06 }); }, // dash flurry
+      eddie:      () => { this._tone({ type: 'sawtooth', freqStart: 110, freqEnd: 110, dur: 0.5, gain: 0.10 });
+                          this._tone({ type: 'sawtooth', freqStart: 165, freqEnd: 165, dur: 0.5, gain: 0.08, delay: 0.02 }); }, // power chord
+      cyber_arm:  () => { this._tone({ type: 'sine', freqStart: 60, freqEnd: 1400, dur: 0.6, gain: 0.10 });
+                          this._noiseBurst({ dur: 0.25, gain: 0.07, filterType: 'highpass', freq: 2400, delay: 0.35 }); }, // railgun charge
+      brawler:    () => { this._noiseBurst({ dur: 0.6, gain: 0.12, filterType: 'lowpass', freq: 180 });
+                          this._tone({ type: 'sine', freqStart: 55, freqEnd: 28, dur: 0.7, gain: 0.12, delay: 0.05 }); },  // magma quake
+      assassin:   () => { this._tone({ type: 'sine', freqStart: 2600, freqEnd: 2400, dur: 0.14, gain: 0.06 });
+                          this._noiseBurst({ dur: 0.08, gain: 0.05, filterType: 'highpass', freq: 4000, delay: 0.1 }); },  // blade whisper
+      phasewalker:() => { this._tone({ type: 'sine', freqStart: 880, freqEnd: 55, dur: 0.8, gain: 0.09 });
+                          this._tone({ type: 'sine', freqStart: 55, freqEnd: 880, dur: 0.5, gain: 0.06, delay: 0.25 }); }, // reality fold
+      euclid:     () => { for (let i = 0; i < 3; i++) this._tone({ type: 'square', freqStart: 330 * (i + 1), freqEnd: 330 * (i + 1), dur: 0.1, gain: 0.05, delay: i * 0.09 }); },   // axiom steps
+      oni:        () => { this._tone({ type: 'sawtooth', freqStart: 140, freqEnd: 60, dur: 0.55, gain: 0.11 });
+                          this._noiseBurst({ dur: 0.4, gain: 0.08, filterType: 'bandpass', freq: 700, delay: 0.06 }); },   // demon breath
+      dimi:       () => { for (let i = 0; i < 3; i++) this._tone({ type: 'sine', freqStart: [523, 659, 784][i], freqEnd: [523, 659, 784][i], dur: 0.4, gain: 0.06, delay: i * 0.05 }); }, // angelic triad
+    };
+    (F[flavor] || F.skeleton)();
+  }
+
+  // BOSS ROAR — deep formant growl for boss/mega-boss arrivals (announcement-driven).
+  forgeBossRoar(mega = false) {
+    if (this.muted || !this._forgeOk('roar', 2500)) return;
+    const g = mega ? 0.16 : 0.12;
+    this._tone({ type: 'sawtooth', freqStart: this._v(65, 0.15), freqEnd: 34, dur: mega ? 1.2 : 0.8, gain: g });
+    this._tone({ type: 'square',   freqStart: this._v(48, 0.15), freqEnd: 26, dur: mega ? 1.3 : 0.9, gain: g * 0.7, delay: 0.05 });
+    this._noiseBurst({ dur: mega ? 1.0 : 0.6, gain: 0.10, filterType: 'lowpass', freq: 260, delay: 0.02 });
+    if (mega) this._noiseBurst({ dur: 0.5, gain: 0.06, filterType: 'bandpass', freq: 900, delay: 0.5 });
+  }
+
+  // EVOLUTION FORGE sting — anvil + shimmer when a new-gen evolution weapon fires its show.
+  forgeEvolution() {
+    if (this.muted || !this._forgeOk('evo', 1100)) return;
+    this._noiseBurst({ dur: 0.06, gain: 0.10, filterType: 'highpass', freq: 1600 });      // anvil clink
+    this._tone({ type: 'sine', freqStart: this._v(1200, 0.2), freqEnd: 2400, dur: 0.3, gain: 0.05, delay: 0.05 }); // shimmer up
+    this._tone({ type: 'sine', freqStart: 90, freqEnd: 50, dur: 0.25, gain: 0.08, delay: 0.01 });                  // weight
+  }
+
+  // MILESTONE fanfare — Φ12 level rewards (5/10/25+).
+  forgeMilestone() {
+    if (this.muted || !this._forgeOk('mile', 1500)) return;
+    const seq = [392, 523, 659, 784];
+    for (let i = 0; i < seq.length; i++)
+      this._tone({ type: 'triangle', freqStart: seq[i], freqEnd: seq[i], dur: 0.16, gain: 0.07, delay: i * 0.09 });
+  }
+
+  // ANNOUNCEMENT whoosh — quiet system-intrusion sweep under every full-screen banner.
+  forgeAnnounce() {
+    if (this.muted || !this._forgeOk('ann', 1400)) return;
+    this._noiseBurst({ dur: 0.35, gain: 0.055, filterType: 'bandpass', freq: 1200 });
+    this._tone({ type: 'sine', freqStart: 300, freqEnd: 900, dur: 0.3, gain: 0.035, delay: 0.02 });
   }
 
   forgeTurret() {                                            // Φ14 defence turret shot
