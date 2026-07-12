@@ -1,0 +1,71 @@
+# PHENIX: NULL EDEN — automatic Windows .exe build
+# Runs on GitHub's Windows machines on every push that touches the shell (or manually
+# from the Actions tab). The finished exe appears as a downloadable artifact.
+name: Build Windows EXE
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [ main ]
+    paths:
+      - 'electron/**'
+      - '.github/workflows/build-exe.yml'
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install packager + electron
+        working-directory: electron
+        run: |
+          npm init -y | Out-Null
+          npm install --no-audit --no-fund electron-packager@17 electron@33
+
+      - name: Assemble app (online edition — loads the live GitHub Pages build)
+        working-directory: electron
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path app | Out-Null
+          Copy-Item preload.js app/
+          @'
+          const { app, BrowserWindow } = require('electron');
+          const path = require('path');
+          const GAME_URL = 'https://mariastergiou1985-cpu.github.io/phenix_survivors_game/';
+          function createWindow() {
+            const win = new BrowserWindow({
+              width: 1600, height: 900, fullscreen: true, autoHideMenuBar: true,
+              backgroundColor: '#060a18', title: 'PHENIX: NULL EDEN',
+              webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: false, nodeIntegration: false },
+            });
+            win.setMenuBarVisibility(false);
+            win.loadURL(GAME_URL);
+          }
+          app.whenReady().then(createWindow);
+          app.on('window-all-closed', () => app.quit());
+          '@ | Set-Content app/main.js -Encoding UTF8
+          @'
+          { "name": "phenix-null-eden", "productName": "PHENIX NULL EDEN", "version": "1.0.0", "main": "main.js" }
+          '@ | Set-Content app/package.json -Encoding UTF8
+
+      - name: Package exe
+        working-directory: electron
+        run: npx electron-packager ./app "PHENIX NULL EDEN" --platform=win32 --arch=x64 --out=dist --overwrite --icon=../assets/pwa/icon-512.png
+
+      - name: Zip it
+        shell: pwsh
+        run: Compress-Archive -Path "electron/dist/PHENIX NULL EDEN-win32-x64" -DestinationPath "PHENIX-NULL-EDEN-win64.zip"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PHENIX-NULL-EDEN-win64
+          path: PHENIX-NULL-EDEN-win64.zip
+          retention-days: 30
