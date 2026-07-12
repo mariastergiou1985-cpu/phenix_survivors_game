@@ -136,6 +136,23 @@ export class DeusExMachina {
   }
 
   render(ctx) {
+    // Context guard: whatever happens inside, the canvas state stack is restored —
+    // a single throw in here once flooded the whole screen yellow (Maria's screenshot).
+    const _saved = ctx.save();
+    try {
+      this._render(ctx);
+    } catch (e) {
+      if (!this._rendErr) { console.error('[DeusEx render]', e); this._rendErr = true; }
+      this.phase = PHASE.IDLE;             // kill the effect rather than corrupt the frame
+    } finally {
+      ctx.restore();
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.shadowBlur = 0;
+    }
+  }
+
+  _render(ctx) {
     if (this.phase === PHASE.IDLE) return;
     const el = performance.now() - this.born;
     const P = this.cfg.phases;
@@ -278,14 +295,7 @@ export class DeusExMachina {
       ctx.globalAlpha = angelAlpha;
       ctx.beginPath(); ctx.ellipse(0, 0, coreR * 0.18, coreR * (0.55 + flash * 0.4), 0, 0, Math.PI * 2); ctx.fill();
       ctx.restore();
-      // rotating halo above the head
-      ctx.save();
-      ctx.globalCompositeOperation = 'lighter';
-      ctx.globalAlpha = angelAlpha * (0.6 + 0.3 * Math.sin(el / 300));
-      ctx.strokeStyle = C.gold; ctx.lineWidth = 3.5;
-      ctx.shadowColor = C.gold; ctx.shadowBlur = 12;
-      ctx.beginPath(); ctx.ellipse(this.cx, ay + bob - size * 0.46, size * 0.16, size * 0.05, 0, 0, Math.PI * 2); ctx.stroke();
-      ctx.restore();
+      // (legacy halo removed — the OPHANIM rings ARE the halo now)
     }
 
     // falling light-feathers
