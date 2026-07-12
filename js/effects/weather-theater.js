@@ -338,7 +338,7 @@ export class WeatherTheater {
   blackout(ctx, t, W, H, k = 1) {
     ctx.save();
     // irregular brightness flicker (subtle — readability preserved)
-    const fl = pr(Math.floor(t * 14), 80) < 0.12 ? 0.08 : 0;
+    const fl = pr(Math.floor(t * 4), 80) < 0.10 ? 0.045 : 0;   // Maria: fast strobe was eye-straining — 14Hz→4Hz, half strength
     if (fl > 0) { ctx.fillStyle = `rgba(120,10,10,${fl * k})`; ctx.fillRect(0, 0, W, H); }
     ctx.globalCompositeOperation = 'lighter';
     // red diagnostic scan sweep
@@ -351,7 +351,7 @@ export class WeatherTheater {
     // corner static ticks
     ctx.fillStyle = '#ff5050';
     for (let i = 0; i < 6; i++) {
-      if (pr(Math.floor(t * 8) + i, 81) < 0.4) continue;
+      if (pr(Math.floor(t * 3) + i, 81) < 0.4) continue;   // slower static ticks (eye comfort)
       const cx = (i % 2) ? W - 30 - pr(i, 82) * 60 : 30 + pr(i, 82) * 60;
       const cy = (i < 3) ? 20 + pr(i, 83) * 24 : H - 20 - pr(i, 83) * 24;
       ctx.globalAlpha = 0.5 * k;

@@ -38,7 +38,7 @@ import { DeusExMachina } from '../effects/deus-ex-machina.js?v=20260711550000';
 import { RailgunHorizon } from '../effects/railgun-horizon.js?v=20260711560000';
 import { MagmaCoreEruption } from '../effects/magma-core-eruption.js?v=20260711570000';
 import { PhantomExecution } from '../effects/phantom-execution.js?v=20260711580000';
-import { WeatherTheater } from '../effects/weather-theater.js?v=20260711710000';
+import { WeatherTheater } from '../effects/weather-theater.js?v=20260712130000';
 import { Protocol0 } from '../effects/protocol-0.js?v=20260705000000';
 import { LaserEyes } from '../effects/laser-eyes.js?v=20260709100000';
 import { MeteorRain } from '../effects/meteor-rain.js?v=20260712100000';
@@ -1650,7 +1650,7 @@ export class Game {
         CAMPAIGN_STAGES.find(s => s.n === this._campaignStage)?.final) {
       this._campaignOverlordSpawned = true;
       const boss = new Enemy('Rogue AI Overlord', this.currentMinute());
-      boss.hp *= 3; boss.maxHp = boss.hp; boss.isMegaBoss = true;
+      boss.hp *= 4.2; boss.maxHp = boss.hp; boss.isMegaBoss = true;   // Maria: mega bosses need real staying power
       this.enemies.push(boss); this.megaBoss = boss;
       this.triggerAnnouncement('AI OVERLORD — FINAL BREACH', RED);
       this.screenShake?.trigger(6, 0.6);
@@ -9191,7 +9191,7 @@ export class Game {
     this._chaosTitanIdx++;
     try {
       const t = new Enemy(name, this.currentMinute());
-      t.hp *= 2; t.maxHp = t.hp; t.isMegaBoss = true;
+      t.hp *= 3.2; t.maxHp = t.hp; t.isMegaBoss = true;   // Maria: mega bosses need real staying power
       if (this.chunkManager?.enabled) {
         const sp = this.chunkManager.getSpawnEdge(this.camera, this._viewW, this._viewH, 140);
         t.pos.x = sp.x; t.pos.y = sp.y;
@@ -9450,7 +9450,7 @@ export class Game {
     const name = names[(br.titanIdx++) % names.length];
     try {
       const t = new Enemy(name, this.currentMinute());
-      t.hp *= 2.2; t.maxHp = t.hp; t.isMegaBoss = true;   // Boss Rush scaling: extra HP
+      t.hp *= 3.4; t.maxHp = t.hp; t.isMegaBoss = true;   // Boss Rush scaling: extra HP (Maria: tougher megas)
       this._bossRushPlaceAtEdge(t);
       this.enemies.push(t); this.megaBoss = t;
       this.audio?.playBossWarning?.();
@@ -17637,25 +17637,38 @@ export class Game {
         ctx.globalAlpha = 1;
         ctx.restore();
       } else {
-        // comet-style bullet: velocity trail + colored body + white-hot core (unified with
-        // the player/pet projectile language — every projectile in the game reads the same way)
-        const bvl = b.vel ? Math.hypot(b.vel.x, b.vel.y) || 1 : 1;
-        const bnx = b.vel ? b.vel.x / bvl : 0, bny = b.vel ? b.vel.y / bvl : 0;
+        // COMET SHARD (fixed): bullets store `dir`, not `vel` — the old code read the
+        // missing field, so the trail never drew and every boss shot was a plain ball
+        // (Maria's 'μπίλιες'). Now: tapered trail + elongated shard body + hot tip.
+        const bnx = b.dir ? b.dir.x : 0, bny = b.dir ? b.dir.y : 1;
+        const bx = b.pos.x, by = b.pos.y + _ay;
         ctx.save();
         ctx.globalCompositeOperation = 'lighter';
-        if (b.vel) {
-          ctx.globalAlpha = 0.4; ctx.lineCap = 'round';
-          ctx.strokeStyle = b.color; ctx.lineWidth = b.radius * 1.4;
-          ctx.beginPath();
-          ctx.moveTo(b.pos.x - bnx * b.radius * 4.5, b.pos.y + _ay - bny * b.radius * 4.5);
-          ctx.lineTo(b.pos.x, b.pos.y + _ay); ctx.stroke();
-        }
+        ctx.lineCap = 'round';
+        ctx.globalAlpha = 0.30;                                   // wide haze trail
+        ctx.strokeStyle = b.color; ctx.lineWidth = b.radius * 1.8;
+        ctx.beginPath();
+        ctx.moveTo(bx - bnx * b.radius * 6.5, by - bny * b.radius * 6.5);
+        ctx.lineTo(bx, by); ctx.stroke();
+        ctx.globalAlpha = 0.75;                                   // tight bright trail
+        ctx.strokeStyle = b.color; ctx.lineWidth = b.radius * 0.8;
+        ctx.beginPath();
+        ctx.moveTo(bx - bnx * b.radius * 3.6, by - bny * b.radius * 3.6);
+        ctx.lineTo(bx, by); ctx.stroke();
+        // elongated shard body along flight direction (not a ball)
+        ctx.translate(bx, by);
+        ctx.rotate(Math.atan2(bny, bnx));
+        ctx.globalAlpha = 0.95;
+        ctx.fillStyle = b.color;
+        ctx.beginPath();
+        ctx.moveTo(b.radius * 1.7, 0);
+        ctx.lineTo(-b.radius * 1.1, b.radius * 0.75);
+        ctx.lineTo(-b.radius * 0.6, 0);
+        ctx.lineTo(-b.radius * 1.1, -b.radius * 0.75);
+        ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#ffffff';                                // white-hot tip
+        ctx.beginPath(); ctx.arc(b.radius * 0.7, 0, Math.max(1.2, b.radius * 0.42), 0, Math.PI * 2); ctx.fill();
         ctx.restore();
-        drawGlow(ctx, b.pos.x, b.pos.y + _ay, b.radius * 2, b.color, 0.5);
-        ctx.fillStyle   = b.color;
-        ctx.beginPath(); ctx.arc(b.pos.x, b.pos.y + _ay, b.radius, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = '#ffffff';
-        ctx.beginPath(); ctx.arc(b.pos.x - bnx * b.radius * 0.2, b.pos.y + _ay - bny * b.radius * 0.2, Math.max(1.2, b.radius * 0.45), 0, Math.PI * 2); ctx.fill();
       }
     }
 
@@ -19560,12 +19573,19 @@ export class Game {
       const p = this.player; if (!p) return;
       p.carry = p.carry || 0;
       this._carriedCores = this._carriedCores || [];
-      // pickup
+      // pickup — cores inside the magnet radius get SUCKED to the player fast,
+      // and vanish the moment they touch (Maria: no lingering on the ground)
       if (p.carry < 8 && this.groundCores && this.groundCores.length) {
-        const pr = (p.pickupRadius || 72) + 10;
+        const pr = (p.pickupRadius || 72) + 48;
         for (let i = this.groundCores.length - 1; i >= 0 && p.carry < 8; i--) {
           const c = this.groundCores[i];
-          if (distance(p.pos, c.pos) < pr) {
+          const dC = distance(p.pos, c.pos);
+          if (dC < pr && dC > 26) {                       // suction flight
+            const sp2 = (620 + (pr - dC) * 6) * dt;
+            c.pos.x += (p.pos.x - c.pos.x) / dC * sp2;
+            c.pos.y += (p.pos.y - c.pos.y) / dC * sp2;
+          }
+          if (dC <= 30) {
             this.groundCores.splice(i, 1);
             this._carriedCores.push({ type: c.type, value: c.value ?? 3 });
             p.carry++;
@@ -19757,11 +19777,15 @@ export class Game {
   }
 
   triggerAnnouncement(text, color, opts) {
-    // Anti-spam: never restack the SAME banner on top of itself while it's showing,
-    // and give any different banner a 0.4s breather after the previous one appeared.
+    // REAL QUEUE (Maria's video): banners play ONE AT A TIME, never on top of each
+    // other. Duplicates of the current banner or anything already waiting are
+    // dropped; the queue holds at most 3 so stale news never floods the screen.
     if (this.announcement) {
+      this._annQueue = this._annQueue || [];
       if (this.announcement.text === text) return;
-      if (this.announcement.phase === 'fadein' && this.announcement.timer < 0.25) return;
+      if (this._annQueue.some(q => q.text === text)) return;
+      if (this._annQueue.length < 3) this._annQueue.push({ text, color, opts });
+      return;
     }
     this.announcement = { text, color, phase: 'fadein', timer: 0, alphaMul: opts && opts.alpha != null ? opts.alpha : null };
     // Φ9: every full-screen banner gets the intrusion whoosh; boss-class arrivals ROAR.
@@ -19786,7 +19810,11 @@ export class Game {
     a.timer += dt;
     if (a.phase === 'fadein'  && a.timer >= FADE_IN)  { a.phase = 'hold';    a.timer = 0; }
     if (a.phase === 'hold'    && a.timer >= HOLD)     { a.phase = 'fadeout'; a.timer = 0; }
-    if (a.phase === 'fadeout' && a.timer >= FADE_OUT) { this.announcement = null; }
+    if (a.phase === 'fadeout' && a.timer >= FADE_OUT) { this.announcement = null;
+        if (this._annQueue && this._annQueue.length) {           // play the next one
+          const nx = this._annQueue.shift();
+          this.triggerAnnouncement(nx.text, nx.color, nx.opts);
+        } }
   }
 
   // Cinematic "system intrusion" banner — shared presentation for EVERY event/announcement.
@@ -22056,7 +22084,7 @@ _drawLoreArchive(ctx) {
         if (p.y > 720) { p.y = -8; p.x = Math.random() * 1280; }
       }
       const ONSET_DUR    = 0.65;
-      const HOLD_DUR     = (this._chaosMode ? 5.5 : 3.0) + (this._hasProto('frozen_sleet') ? 2.0 : 0);   // milder freeze outside Chaos; Frozen Sleet Storm+ holds longer
+      const HOLD_DUR     = 2.0;   // Maria: the player freeze must NEVER exceed 2s (was up to 7.5s in Chaos)
       const RECOVERY_DUR = 1.1;
       if (fs.phase === 'onset' && fs.t >= ONSET_DUR) {
         fs.phase = 'hold';
