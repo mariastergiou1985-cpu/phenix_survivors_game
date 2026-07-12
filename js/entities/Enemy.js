@@ -533,6 +533,14 @@ export class Enemy {
     // is unchanged). Single chokepoint for player damage to NORMAL enemies; bosses use a separate
     // hp path and stay unbuffed (respects boss caps). Display reflects the actual damage dealt.
     let dmg        = damage * (game._endlessDamageMult ? game._endlessDamageMult() : 1);
+    // BOSS ARMOR (Maria: bosses die in one hit late-game): boss-rank enemies gain
+    // armor that scales with the PLAYER's level, so they stay a real fight as the
+    // build snowballs. Boss: -4%/level, Mega: -6%/level, both capped at 78% reduction.
+    if (this.isBoss?.() || this.isMegaBoss || this.rank === 'boss' || this.rank === 'mega') {
+      const _pl = game.player?.level || 1;
+      const _rate = this.isMegaBoss || this.rank === 'mega' ? 0.06 : 0.04;
+      dmg *= Math.max(0.22, 1 - _pl * _rate);
+    }
     // Φ11 Executioner Cache: enemies below the threshold take DOUBLE damage (bosses excluded —
     // their caps stay meaningful; threshold 10-18% by level)
     const _exL = game.player?._stExecLvl || 0;

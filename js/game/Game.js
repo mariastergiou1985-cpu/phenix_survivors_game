@@ -12,7 +12,7 @@ import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260705040000
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260712090000';
 import { Player }         from '../entities/Player.js?v=20260712060000';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260706270000';
-import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260712180000';
+import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260712190000';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=20260711750000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260705150000';
@@ -8227,6 +8227,7 @@ export class Game {
     this._ultSfxWatch();               // Φ9 ult-cast stings
     this._updateCoreCourier(dt);       // core pickup → carry → deposit loop
     this._updateCoreThieves(dt);       // defense loop: enemies steal cores from bases
+    this._updateBossEvolution(dt);     // bosses grow skills the longer they live
     this.particles.update(this._hitStopTimer > 0 ? dt * 0.10 : dt);  // slow sparks/particles during hit stop
     this._updateCamera();
     this._updateDamagePulse(dt);
@@ -17586,6 +17587,7 @@ export class Game {
     this._drawEvoFx(ctx);                                     // NEW-GEN procedural evolutions
     this._drawCarriedCores(ctx);                              // courier: orbiting carried cores
     this._drawCoreThieves(ctx);                               // defense: thieves + stolen loot
+    this._drawBossNovas(ctx);                                 // boss evolution: nova telegraphs
     for (const vfx of this._activeWeaponVFX) vfx.draw(ctx);   // Evolution VFX overlays
     this._drawPatternVFX(ctx);                                // Phase 8: per-character pattern art
     this._drawTacticalWeapons(ctx);  // Tactical cache weapons (independent map objects)
@@ -19696,6 +19698,112 @@ export class Game {
         }
       }
     } catch (e) { /* courier must never break the loop */ }
+  }
+
+  // ── BOSS EVOLUTION (Maria: bosses must GROW while they live) ────────────────
+  // Every boss/mega-boss alive accumulates age. Tiers unlock live:
+  //   25s  ENRAGE     — +22% speed, red ember tell (rank aura already glows)
+  //   40s+ NOVA       — every 14s: telegraphed shock-ring around the boss (0.9s warn),
+  //                     then a damaging pulse if the player is inside
+  //   80s+ SUMMON     — every 18s: calls 3 escorts from the local pool
+  //   60s+ BULLET RING (mega only) — 10 comet shards in a full circle
+  _updateBossEvolution(dt) {
+    try {
+      if (this.gameState !== 'playing' || this.paused) return;
+      this._bossNovas = this._bossNovas || [];
+      for (const e of this.enemies) {
+        const mega = e.isMegaBoss || e.rank === 'mega';
+        const boss = mega || e.isBoss?.() || e.rank === 'boss';
+        if (!boss || e.hp <= 0) continue;
+        e._bossAge = (e._bossAge || 0) + dt;
+        if (e._bossAge > 25 && !e._enraged) {                       // TIER 1: enrage
+          e._enraged = true;
+          if (e.baseSpeed) e.baseSpeed *= 1.22;
+          this.floatingTexts.push(new FloatingText('ENRAGED!', e.pos.clone(), '#ff5a3c', 1.2));
+        }
+        if (e._bossAge > 40) {                                      // TIER 2: nova cycle
+          e._novaCd = (e._novaCd ?? 6) - dt;
+          if (e._novaCd <= 0) {
+            e._novaCd = 14;
+            this._bossNovas.push({ x: e.pos.x, y: e.pos.y, src: e, t: 0, warn: 0.9, R: mega ? 300 : 230, dmg: mega ? 18 : 12 });
+          }
+        }
+        if (e._bossAge > 80 && !this._bossRush) {        // TIER 3: summon escorts
+          e._sumCd = (e._sumCd ?? 4) - dt;
+          if (e._sumCd <= 0 && this.enemies.length < 300) {
+            e._sumCd = 18;
+            const pool = ['Combat Hunter', 'Razorhound', 'Neon Swarmer'];
+            for (let i2 = 0; i2 < 3; i2++) {
+              try {
+                const m2 = new Enemy(pool[i2 % pool.length], this.currentMinute ? this.currentMinute() : 5);
+                const aa2 = Math.random() * Math.PI * 2;
+                m2.pos.x = e.pos.x + Math.cos(aa2) * 120; m2.pos.y = e.pos.y + Math.sin(aa2) * 90;
+                this.enemies.push(m2);
+              } catch (err) {}
+            }
+            this.floatingTexts.push(new FloatingText('REINFORCEMENTS!', e.pos.clone(), '#ff9a2d', 1.1));
+          }
+        }
+        if (mega && e._bossAge > 60) {                              // TIER 4: bullet ring (mega only)
+          e._ringCd = (e._ringCd ?? 8) - dt;
+          if (e._ringCd <= 0) {
+            e._ringCd = 11;
+            for (let i2 = 0; i2 < 10; i2++) {
+              const ba = (i2 / 10) * Math.PI * 2;
+              this.enemyBullets.push({
+                pos: e.pos.clone(), dir: new Vec2(Math.cos(ba), Math.sin(ba)), speed: 220,
+                damage: 14, radius: 7, color: '#ff5a3c', life: 3.2, isSlash: false, arcT: 0,
+                behavior: null, t: 0, originX: e.pos.x, originY: e.pos.y, stun: 0,
+                weaponSprite: null, weaponSize: 0, angle: ba,
+              });
+            }
+            this.audio?.forgeBossRoar?.(false);
+          }
+        }
+      }
+      // nova lifecycle: 0.9s telegraph → pulse → fade
+      for (let i2 = this._bossNovas.length - 1; i2 >= 0; i2--) {
+        const nv = this._bossNovas[i2];
+        nv.t += dt;
+        if (nv.src && nv.src.hp > 0) { nv.x = nv.src.pos.x; nv.y = nv.src.pos.y; }   // follows the boss while warning
+        if (!nv.fired && nv.t >= nv.warn) {
+          nv.fired = true;
+          const p = this.player;
+          if (p && distance(p.pos, new Vec2(nv.x, nv.y)) < nv.R) {
+            if (p.applyDamage) p.applyDamage(nv.dmg, this); else p.hp -= nv.dmg;
+            this.screenShake.trigger(5, 0.25);
+          }
+          this.audio?.forgeThunder?.();
+        }
+        if (nv.t > nv.warn + 0.6) this._bossNovas.splice(i2, 1);
+      }
+    } catch (err) { /* boss evolution must never break the frame */ }
+  }
+
+  _drawBossNovas(ctx) {
+    try {
+      if (!this._bossNovas || !this._bossNovas.length) return;
+      for (const nv of this._bossNovas) {
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        if (!nv.fired) {                                            // telegraph: shrinking dashes
+          const k = nv.t / nv.warn;
+          ctx.globalAlpha = 0.35 + k * 0.5;
+          ctx.strokeStyle = '#ff5a3c'; ctx.lineWidth = 2 + k * 2;
+          ctx.setLineDash([10, 8]);
+          ctx.beginPath(); ctx.ellipse(nv.x, nv.y, nv.R, nv.R * 0.6, 0, 0, Math.PI * 2); ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.globalAlpha = 0.25 * k;
+          ctx.beginPath(); ctx.ellipse(nv.x, nv.y, nv.R * (1 - k * 0.15), nv.R * 0.6 * (1 - k * 0.15), 0, 0, Math.PI * 2); ctx.stroke();
+        } else {                                                    // pulse: bright expanding flash
+          const k = (nv.t - nv.warn) / 0.6;
+          ctx.globalAlpha = (1 - k) * 0.9;
+          ctx.strokeStyle = '#fff0e0'; ctx.lineWidth = 5 * (1 - k) + 1;
+          ctx.beginPath(); ctx.ellipse(nv.x, nv.y, nv.R * (0.6 + k * 0.5), nv.R * 0.6 * (0.6 + k * 0.5), 0, 0, Math.PI * 2); ctx.stroke();
+        }
+        ctx.restore();
+      }
+    } catch (err) { /* visual only */ }
   }
 
   // ── CORE THIEVES (defense loop — approved by Maria) ─────────────────────────
