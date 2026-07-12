@@ -13,14 +13,24 @@
     "electron": "^33.0.0",
     "electron-builder": "^25.0.0"
   },
-  "dependencies": {
-    "steamworks.js": "^0.4.1"
-  },
   "build": {
     "appId": "com.inkspirem.phenixnulleden",
     "productName": "PHENIX NULL EDEN",
-    "files": ["main.js", "preload.js", "game/**/*"],
-    "win": { "target": ["nsis", "portable"], "icon": "game/assets/pwa/icon-512.png" },
-    "nsis": { "oneClick": false, "allowToChangeInstallationDirectory": true }
+    "files": [
+      "main.js",
+      "preload.js",
+      "game/**/*"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "game/assets/pwa/icon-512.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
   }
 }
