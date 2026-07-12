@@ -21,7 +21,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       - name: Install packager + electron
         working-directory: electron
@@ -57,7 +57,16 @@ jobs:
 
       - name: Package exe
         working-directory: electron
-        run: npx electron-packager ./app "PHENIX NULL EDEN" --platform=win32 --arch=x64 --out=dist --overwrite --icon=../assets/pwa/icon-512.png
+        shell: pwsh
+        run: |
+          # icon must be .ico on Windows; fall back to default icon rather than failing
+          $icon = "../assets/pwa/icon.ico"
+          if (Test-Path $icon) {
+            npx electron-packager ./app "PHENIX NULL EDEN" --platform=win32 --arch=x64 --out=dist --overwrite --icon=$icon
+          } else {
+            npx electron-packager ./app "PHENIX NULL EDEN" --platform=win32 --arch=x64 --out=dist --overwrite
+          }
+          if ($LASTEXITCODE -ne 0) { exit 1 }
 
       - name: Zip it
         shell: pwsh
