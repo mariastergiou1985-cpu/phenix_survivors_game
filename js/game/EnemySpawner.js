@@ -165,15 +165,21 @@ export class EnemySpawner {
         return 'Rogue AI Overlord';
       if (!ctx.enemies?.some(e => e.enemyType === 'Security Defector Mech') && Math.random() < 0.12)
         return 'Security Defector Mech';
-      // Weighted rotation: avoid returning the exact same type twice in a row so the whole roster
-      // rotates through instead of the same few appearing continuously (#81 controlled director).
+      // VARIETY DIRECTOR (Maria): rotate the WHOLE roster — reroll against the last
+      // FOUR picks (up to 5 tries), so the same few commons can never dominate the field.
+      this._chaosHistory = this._chaosHistory || [];
       let pick = randomChoice(CHAOS_POOL);
-      if (pick === this._lastChaosType) pick = randomChoice(CHAOS_POOL);   // one reroll
-      this._lastChaosType = pick;
+      for (let tr = 0; tr < 5 && this._chaosHistory.includes(pick); tr++) pick = randomChoice(CHAOS_POOL);
+      this._chaosHistory.push(pick);
+      if (this._chaosHistory.length > 4) this._chaosHistory.shift();
       return pick;
     }
 
     // ── Act 1 / Endless: time-tiered pools ───────────────────────────────
+    // ENDLESS VARIETY (Maria): the full roster unlocks far sooner — Endless walks the
+    // tier ladder at 2x speed with a +4min head start, so heavies/elites/zoners show
+    // up in the first minutes instead of after 15-25.
+    if (ctx.endless) timeAlive = timeAlive * 2 + 240;
     // Special boss insertions for mid/late tiers
     if (minute >= 10 && minute < 15) {
       if (!ctx.enemies?.some(e => e.enemyType === 'Heavy Mech'))

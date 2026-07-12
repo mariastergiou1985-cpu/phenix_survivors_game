@@ -45,7 +45,7 @@ import { MeteorRain } from '../effects/meteor-rain.js?v=20260712100000';
 import { NpcWalker } from './NpcWalker.js?v=20260711750000';
 import { MapManager, BIOME_ID, BIOME_DEFS } from './MapManager.js?v=20260710330000';
 import { EventBus, EVENTS } from './EventBus.js?v=20260703990000';
-import { EnemySpawner, ELITE_WAVE as ELITE_WAVE_CFG, BOSS_WARN_COOLDOWN as BOSS_WARN_CD } from './EnemySpawner.js?v=20260712050000';
+import { EnemySpawner, ELITE_WAVE as ELITE_WAVE_CFG, BOSS_WARN_COOLDOWN as BOSS_WARN_CD } from './EnemySpawner.js?v=20260712140000';
 import { StateManager, GAME_STATES } from './StateManager.js?v=20260703990000';
 import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260711730000';
 import { NexusManager } from './NexusManager.js?v=20260712110000';
@@ -606,12 +606,12 @@ export class Game {
     this._charImages['japan_phasewalker'] = this._phasewalkerSprite;
     // Euclid Vector portrait (endless/ subfolder; unlocked from the start — see roster + free unlock).
     this._euclidSprite = new Image();
-    this._euclidSprite.onerror = () => console.warn('[Char] missing assets/characters/endless/euclid_vector.png?v=20260712080000');
-    this._euclidSprite.src = 'assets/characters/endless/euclid_vector.png?v=20260712080000';
+    this._euclidSprite.onerror = () => console.warn('[Char] missing assets/characters/endless/euclid_vector.png?v=20260712140000');
+    this._euclidSprite.src = 'assets/characters/endless/euclid_vector.png?v=20260712140000';
     this._charImages['euclid_vector'] = this._euclidSprite;
     this._oniSprite = new Image();
-    this._oniSprite.onerror = () => console.warn('[Char] missing assets/characters/endless/oni_cataclysm_protocol.png?v=20260712080000');
-    this._oniSprite.src = 'assets/characters/endless/oni_cataclysm_protocol.png?v=20260712080000';
+    this._oniSprite.onerror = () => console.warn('[Char] missing assets/characters/endless/oni_cataclysm_protocol.png?v=20260712140000');
+    this._oniSprite.src = 'assets/characters/endless/oni_cataclysm_protocol.png?v=20260712140000';
     this._charImages['oni_cataclysm_protocol'] = this._oniSprite;
     // Eddie portrait (root folder, descriptive filename) — PF-gated via PF_CHARACTER_COSTS.
     this._eddieSprite = new Image();
@@ -5656,6 +5656,7 @@ export class Game {
   chooseEnemyType() {
     return this.spawner.chooseEnemyType(this.timeAlive, {
       chaos:    this._chaosMode,
+      endless:  !!this.endless && !this._chaosMode,   // variety director: full roster sooner
       enemies:  this.enemies,
       megaBoss: this.megaBoss,
     });
