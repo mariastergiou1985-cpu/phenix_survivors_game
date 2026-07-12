@@ -420,13 +420,13 @@ const SYSTEM_LOGS = [
   { id: 'log06', num: '06', threshold: 100, title: 'TRUE NULL EDEN',
     text: 'Something beneath the Grid is answering back.' },
   // ── Archive refresh (2026-07-12): the events of the last cycle, canonized ──
-  { id: 'log07', num: '07', threshold: 120, title: 'THE WHEEL HAS EYES',
+  { id: 'log07', num: '07', threshold: 55, title: 'THE WHEEL HAS EYES',
     text: 'When Dimi prays, something with too many rings answers. The archive refuses to classify it as machinery.' },
-  { id: 'log08', num: '08', threshold: 150, title: 'THE COURIER ECONOMY',
+  { id: 'log08', num: '08', threshold: 70, title: 'THE COURIER ECONOMY',
     text: 'The Grid pays in cores now. Thieves learned this before we did. What is stolen can be hunted; what is hunted can be returned.' },
-  { id: 'log09', num: '09', threshold: 185, title: 'TWENTY NEW SIGNATURES',
+  { id: 'log09', num: '09', threshold: 85, title: 'TWENTY NEW SIGNATURES',
     text: 'Every survivor now carries two weapons that did not exist last cycle. The forge did not make them. The characters did.' },
-  { id: 'log10', num: '10', threshold: 220, title: 'THE BOSSES REMEMBER',
+  { id: 'log10', num: '10', threshold: 95, title: 'THE BOSSES REMEMBER',
     text: 'Containment reports say the longer a warden survives, the more it learns. Enrage. Nova. Reinforcement. Do not let them study you.' },
 ];
 
