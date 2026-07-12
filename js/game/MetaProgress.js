@@ -347,6 +347,7 @@ export class MetaProgress {
     // ── Eden Core narrative system ──────────────────────────────────────────
     this.edenMemoryPercent  = 0;   // 0–100, persisted
     this.lastPlayerLevelRewarded = 1;   // account-level rewards claimed up to this menu level
+    this.rewardedPFTotal = 0;           // PF granted BY level rewards — excluded from progression (breaks the feedback loop)
     this.systemFeedMessages = [];  // last 8 { text, ts } entries, newest first
     this.bossEchoes         = {};  // { [bossKey]: true } first-time echo archives
     this.edenMilestonesSeen = {};  // { [threshold]: true } milestone one-fire guard
@@ -395,6 +396,18 @@ export class MetaProgress {
       // Eden Core — safe defaults for old saves
       this.edenMemoryPercent  = Math.min(100, Math.max(0, Number(d.edenMemoryPercent) || 0));
       this.lastPlayerLevelRewarded = Math.max(1, Math.floor(Number(d.lastPlayerLevelRewarded) || 1));
+      this.rewardedPFTotal = Math.max(0, Math.floor(Number(d.rewardedPFTotal) || 0));
+      // ── ONE-TIME REPAIR (2026-07-12): the first version of level rewards fed PF back
+      // into the level metric → runaway loop (levels 213→1494, cores in the millions).
+      // Detect a polluted save and settle it to generous-but-sane values.
+      if (this.lastPlayerLevelRewarded > 300 || (this.credits || 0) > 500000) {
+        this.credits           = Math.min(this.credits || 0, 100000);
+        this.protocolFragments = Math.min(this.protocolFragments || 0, 300);
+        this.rewardedPFTotal   = Math.max(0, this.getProtocolFragmentsEarned() - 250);
+        const lv = this.getPlayerProgression().level;
+        this.lastPlayerLevelRewarded = lv;      // no back-claims on the repaired level
+        this._save();
+      }
       this.systemFeedMessages = Array.isArray(d.systemFeedMessages) ? d.systemFeedMessages.slice(0, 8) : [];
       this.bossEchoes         = (d.bossEchoes && typeof d.bossEchoes === 'object') ? d.bossEchoes : {};
       this.edenMilestonesSeen = (d.edenMilestonesSeen && typeof d.edenMilestonesSeen === 'object') ? d.edenMilestonesSeen : {};
@@ -477,6 +490,7 @@ export class MetaProgress {
         runHistory: this.runHistory,
         edenMemoryPercent:  this.edenMemoryPercent,
         lastPlayerLevelRewarded: this.lastPlayerLevelRewarded,
+        rewardedPFTotal: this.rewardedPFTotal,
         systemFeedMessages: this.systemFeedMessages,
         bossEchoes:         this.bossEchoes,
         edenMilestonesSeen: this.edenMilestonesSeen,
@@ -600,20 +614,21 @@ export class MetaProgress {
     if (prog.level <= from) return null;
     let cores = 0, pf = 0, eden = 0;
     for (let L = from + 1; L <= prog.level; L++) {
-      cores += 75 * L;
+      cores += Math.min(1200, 40 * L);            // toned down + capped per level
       pf    += 1;
       if (L % 5 === 0) { pf += 3; eden += 3; }
     }
     this.lastPlayerLevelRewarded = prog.level;
     this.credits = (this.credits || 0) + cores;
     this.protocolFragments = (this.protocolFragments || 0) + pf;
+    this.rewardedPFTotal   = (this.rewardedPFTotal || 0) + pf;   // excluded from the level metric
     if (eden > 0) this.addEdenMemory(eden);
     this._save();
     return { levels: prog.level - from, level: prog.level, cores, pf, eden };
   }
 
   getPlayerProgression() {
-    const pfEarned = Math.max(0, Math.floor(this.getProtocolFragmentsEarned() || 0));
+    const pfEarned = Math.max(0, Math.floor((this.getProtocolFragmentsEarned() || 0) - (this.rewardedPFTotal || 0)));   // reward PF never feeds the level (loop-proof)
     const achievementCount = this.achievements ? Object.keys(this.achievements).filter((id) => this.achievements[id]).length : 0;
     const records = this.endlessRecords || {};
     const bestLevel = Math.max(0, Math.floor(records.level || 0));

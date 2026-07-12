@@ -22,7 +22,7 @@ import { weightedSample } from './Upgrades.js?v=20260711370000';
 import { MutationUI }      from './MutationUI.js?v=20260703990000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260712330000';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, SKILL_TREE, AMULET_DEFS } from './MetaProgress.js?v=20260712370000';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, SKILL_TREE, AMULET_DEFS } from './MetaProgress.js?v=20260712390000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260712320000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
@@ -3598,7 +3598,7 @@ export class Game {
             </div>
             <div class="cgu-pf">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><use href="#i-diamond"/></svg>
-              <span id="cgu-pf-count">0</span>&nbsp;/&nbsp;<span id="cgu-pf-total">?</span>&nbsp;PF
+              <span id="cgu-pf-count">0</span>&nbsp;/&nbsp;<span id="cgu-pf-total">?</span>&nbsp;FRAGMENTS
             </div>
           </div>
         </div>
@@ -4701,7 +4701,7 @@ export class Game {
         <div class="ch-header">
           <div class="ch-title">⬢ HANGAR</div>
           <div class="ch-wallet">
-            <div class="ch-currency" id="ch-grids">⬡ <span>0</span> GRIDS</div>
+            <div class="ch-currency" id="ch-grids">⬡ <span>0</span> CORES</div>
             <div class="ch-currency" id="ch-frags">🧩 <span>0</span> FRAGMENTS</div>
           </div>
         </div>
@@ -18370,7 +18370,7 @@ export class Game {
     ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.beginPath(); ctx.roundRect(ix, s.y + 52, iw, 6, 3); ctx.fill();
     ctx.fillStyle = '#3CF0E6'; ctx.beginPath(); ctx.roundRect(ix, s.y + 52, iw * progression.progress, 6, 3); ctx.fill();
     this._slotRow(ctx, ix, iw, s.y + 76,  'CORES',     m ? m.credits : 0, '#7fd0ff');
-    this._slotRow(ctx, ix, iw, s.y + 92,  'PF AVAIL',  '◆ ' + pfAvail, '#ff5ea8');
+    this._slotRow(ctx, ix, iw, s.y + 92,  'FRAGMENTS', '◆ ' + pfAvail, '#ff5ea8');
     this._slotRow(ctx, ix, iw, s.y + 108, 'NEXT LV',   progression.label, '#9fe8ff');
     this._slotRow(ctx, ix, iw, s.y + 124, 'BEST',      best.time > 0 ? this._fmtClock(best.time) : '—', '#9fff9f');
 
@@ -20720,7 +20720,7 @@ export class Game {
           </div>
           <div class="csc-pf-badge">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><use href="#i-diamond"/></svg>
-            <span id="csc-pf-count">0</span>&nbsp;PF
+            <span id="csc-pf-count">0</span>&nbsp;FRAGMENTS
           </div>
         </div>
         <div class="csc-sep"></div>
