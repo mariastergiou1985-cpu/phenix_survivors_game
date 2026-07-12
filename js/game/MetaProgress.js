@@ -1,3 +1,4 @@
+import { PlatformAchievements } from '../platform/PlatformAchievements.js?v=20260712370000';
 export const META_UPGRADES = [
   { key: 'maxHp',        name: 'Max HP',        desc: '+10 max HP per level',              maxLevel: 5, baseCost: 10 },
   { key: 'moveSpeed',    name: 'Move Speed',     desc: '+5% movement speed per level',       maxLevel: 5, baseCost: 10 },
@@ -554,6 +555,7 @@ export class MetaProgress {
       if (earned) {
         this.achievements[a.id] = true;
         newly.push({ id: a.id, name: a.name });
+        PlatformAchievements.unlock(a.id);   // Steam bridge: journals now, activates on the Steam build
       }
     }
     if (newly.length) { this._backfillProtocolFragments(); this._save(); }   // pay PF for newly-earned (idempotent)

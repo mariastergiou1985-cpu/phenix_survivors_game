@@ -1,5 +1,8 @@
 import { Game } from './game/Game.js?v=20260712300000';
 import { AudioManager } from './audio/AudioManager.js?v=20260712170000';
+import { PlatformAchievements } from './platform/PlatformAchievements.js?v=20260712370000';
+// Steam build: replay any web-earned achievements to Steam on boot (no-op in browsers)
+setTimeout(() => { try { PlatformAchievements.syncPending(); } catch (_) {} }, 3000);
 import { GamepadInput } from './Gamepad.js?v=20260706330000';
 import { initTouchControls } from './TouchInput.js?v=20260712080000';
 
