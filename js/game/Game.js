@@ -9,7 +9,7 @@ import { clamp, distance, safeNormalize, randomChoice, randomRange, wrapText } f
 
 import { FloatingText }   from '../entities/FloatingText.js?v=20260703990000';
 import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260705040000';
-import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260705150000';
+import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260712070000';
 import { Player }         from '../entities/Player.js?v=20260712060000';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260706270000';
 import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260711920000';
@@ -48,7 +48,7 @@ import { EventBus, EVENTS } from './EventBus.js?v=20260703990000';
 import { EnemySpawner, ELITE_WAVE as ELITE_WAVE_CFG, BOSS_WARN_COOLDOWN as BOSS_WARN_CD } from './EnemySpawner.js?v=20260712050000';
 import { StateManager, GAME_STATES } from './StateManager.js?v=20260703990000';
 import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260711730000';
-import { NexusManager } from './NexusManager.js?v=20260711900000';
+import { NexusManager } from './NexusManager.js?v=20260712070000';
 import { VESSELS, getVesselById, getDefaultVesselId } from './VesselCatalog.js?v=20260705040000';
 import { PETS, getPetById } from './PetCatalog.js?v=20260705000000';
 import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons, isEvolutionOwnedBy, getCardDisplayName } from './WeaponCatalog.js?v=20260712050000';
@@ -13978,36 +13978,85 @@ export class Game {
           this._drawSwordBurstFx(ctx, w);
           break;
         case 'gravity_singularity': {
-          // PREMIUM black hole — the artist sprite IS the visual (transparent PNG
-          // drawn as-is): large, slowly rotating, growing toward collapse, with a
-          // subtle purple event-horizon ring. No procedural beige circles.
-          if (sprite && sprite.complete && sprite.naturalWidth > 0) {
-            const grow = w.collapsed ? 1.0 : Math.min(1, w.pullTimer / (w.def.collapseTime || 2.0));
-            const sz = 200 + 80 * grow;                     // 200 → 280px toward collapse
-            ctx.save();
-            ctx.globalAlpha = fadeAlpha;
-            ctx.globalCompositeOperation = 'screen';   // no square bounds on the black-hole art
-            ctx.translate(sx, sy);
-            ctx.rotate(w.angle * 0.5);
-            ctx.drawImage(sprite, -sz / 2, -sz / 2, sz, sz);
-            ctx.restore();
-            ctx.save();
+          // SPATIAL GRAVITY WELL — rebuilt from zero, ultimate-grade, NO sprite.
+          // COLLAPSE: a true black event horizon (flat void disc) with a thin white
+          // photon rim, an accretion disk of light streaks spiralling IN, and
+          // background debris lines bending toward the well (lensing feel).
+          // DETONATION: the horizon snaps to a point → white core flash + double
+          // counter-shockwave + radial ejecta streaks.
+          const grow = w.collapsed ? 1.0 : Math.min(1, w.pullTimer / (w.def.collapseTime || 2.0));
+          const t2 = w.angle;                                     // running clock
+          const hz = (46 + 42 * grow) * (w.collapsed ? Math.max(0.08, 1 - (w.collapseElapsed || 0) * 3.4) : 1);
+          const prW = (i2, sl) => { const v = Math.sin(i2 * 12.9898 + sl * 78.233) * 43758.5453; return v - Math.floor(v); };
+          ctx.save();
+          ctx.globalAlpha = fadeAlpha;
+          if (!w.collapsed || (w.collapseElapsed || 0) < 0.3) {
+            // in-falling debris streaks (lensing): lines from far away bending into the well
             ctx.globalCompositeOperation = 'lighter';
-            ctx.globalAlpha = 0.20 + 0.10 * Math.sin(w.angle * 3);
-            ctx.strokeStyle = '#8b2fd6'; ctx.lineWidth = 3;
-            ctx.beginPath(); ctx.arc(sx, sy, sz * 0.55, 0, Math.PI * 2); ctx.stroke();
-            ctx.restore();
-            if (w.collapsed) {
-              // Collapse shockwave — expanding violet ring, fades out
-              const t = Math.min(1, Math.max(0, (w.collapseElapsed || 0) / 1.5));
-              ctx.save();
-              ctx.globalCompositeOperation = 'lighter';
-              ctx.globalAlpha = (1 - t) * 0.8;
-              ctx.strokeStyle = '#c48bff'; ctx.lineWidth = 8 * (1 - t) + 2;
-              ctx.beginPath(); ctx.arc(sx, sy, (w.def.blastRadius || 450) * t, 0, Math.PI * 2); ctx.stroke();
-              ctx.restore();
+            for (let i2 = 0; i2 < 14; i2++) {
+              const da = prW(i2, 1) * Math.PI * 2 + t2 * 0.15;
+              const cyc = ((t2 * (0.25 + prW(i2, 2) * 0.2)) + prW(i2, 3)) % 1;
+              const rr = (w.def.pullRadius || 300) * (1 - cyc);
+              if (rr < hz * 1.2) continue;
+              const bx2 = sx + Math.cos(da) * rr, by2 = sy + Math.sin(da) * rr * 0.8;
+              const toX = sx + Math.cos(da + 0.16) * (rr - 26), toY = sy + Math.sin(da + 0.16) * (rr - 26) * 0.8;
+              ctx.globalAlpha = fadeAlpha * cyc * 0.55;
+              ctx.strokeStyle = i2 % 3 ? '#b98bff' : '#e6d5ff';
+              ctx.lineWidth = 1.2 + cyc;
+              ctx.beginPath(); ctx.moveTo(bx2, by2); ctx.lineTo(toX, toY); ctx.stroke();
+            }
+            // accretion disk: 3 elliptical light arcs orbiting fast, brighter near the rim
+            for (let d2 = 0; d2 < 3; d2++) {
+              const oa = t2 * (2.2 + d2 * 0.5) + d2 * 2.1;
+              ctx.globalAlpha = fadeAlpha * (0.55 - d2 * 0.12);
+              ctx.strokeStyle = d2 === 0 ? '#ffffff' : (d2 === 1 ? '#c48bff' : '#8b2fd6');
+              ctx.lineWidth = 2.6 - d2 * 0.6;
+              ctx.beginPath();
+              ctx.ellipse(sx, sy, hz * (1.5 + d2 * 0.5), hz * (0.5 + d2 * 0.16), oa * 0.13, oa, oa + Math.PI * 1.2);
+              ctx.stroke();
+            }
+            // the VOID itself — flat black disc, drawn over the disk (event horizon)
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.globalAlpha = fadeAlpha;
+            ctx.fillStyle = '#000000';
+            ctx.beginPath(); ctx.arc(sx, sy, hz, 0, Math.PI * 2); ctx.fill();
+            // thin photon rim — the only pure white line
+            ctx.globalCompositeOperation = 'lighter';
+            ctx.globalAlpha = fadeAlpha * (0.75 + 0.25 * Math.sin(t2 * 5));
+            ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.8;
+            ctx.beginPath(); ctx.arc(sx, sy, hz + 1.5, 0, Math.PI * 2); ctx.stroke();
+            ctx.globalAlpha = fadeAlpha * 0.35;
+            ctx.strokeStyle = '#c48bff'; ctx.lineWidth = 5;
+            ctx.beginPath(); ctx.arc(sx, sy, hz + 4.5, 0, Math.PI * 2); ctx.stroke();
+          }
+          if (w.collapsed) {
+            // DETONATION — white snap + double shockwave + ejecta
+            const ct = Math.min(1, Math.max(0, (w.collapseElapsed || 0) / 1.5));
+            ctx.globalCompositeOperation = 'lighter';
+            if (ct < 0.22) {                                     // the snap flash
+              ctx.globalAlpha = (1 - ct / 0.22) * 0.9;
+              ctx.fillStyle = '#ffffff';
+              ctx.beginPath(); ctx.arc(sx, sy, 26 + ct * 240, 0, Math.PI * 2); ctx.fill();
+            }
+            const R2 = w.def.blastRadius || 450;
+            ctx.globalAlpha = (1 - ct) * 0.85;                   // primary wave
+            ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 7 * (1 - ct) + 1.5;
+            ctx.beginPath(); ctx.arc(sx, sy, R2 * ct, 0, Math.PI * 2); ctx.stroke();
+            ctx.globalAlpha = (1 - ct) * 0.5;                    // trailing violet wave
+            ctx.strokeStyle = '#c48bff'; ctx.lineWidth = 12 * (1 - ct) + 2;
+            ctx.beginPath(); ctx.arc(sx, sy, R2 * ct * 0.82, 0, Math.PI * 2); ctx.stroke();
+            for (let i2 = 0; i2 < 12; i2++) {                    // radial ejecta streaks
+              const ea = prW(i2, 9) * Math.PI * 2;
+              const er = R2 * ct * (0.5 + prW(i2, 10) * 0.5);
+              ctx.globalAlpha = (1 - ct) * 0.7;
+              ctx.strokeStyle = i2 % 2 ? '#e6d5ff' : '#8b2fd6'; ctx.lineWidth = 2;
+              ctx.beginPath();
+              ctx.moveTo(sx + Math.cos(ea) * er * 0.75, sy + Math.sin(ea) * er * 0.6);
+              ctx.lineTo(sx + Math.cos(ea) * er, sy + Math.sin(ea) * er * 0.8);
+              ctx.stroke();
             }
           }
+          ctx.restore();
           break;
         }
         default: {

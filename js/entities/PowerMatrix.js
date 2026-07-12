@@ -91,6 +91,29 @@ export class PowerMatrix {
     }
     this._drawGlow(ctx, glowColor, glowAlpha, glowRadius);
 
+    // ── BRIGHT PERIMETER RING (Maria: bases need a clearly visible rim) ──
+    // Double ring in the biome color: crisp bright inner line + soft outer halo,
+    // with a slow rotating highlight arc so the base reads even in dark biomes.
+    {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      const rr = MATRIX_RADIUS + 12;
+      ctx.globalAlpha = 0.85;
+      ctx.strokeStyle = glowColor; ctx.lineWidth = 2.4;
+      ctx.shadowColor = glowColor; ctx.shadowBlur = 14;
+      ctx.beginPath(); ctx.arc(this.pos.x, this.pos.y, rr, 0, Math.PI * 2); ctx.stroke();
+      ctx.shadowBlur = 0;
+      ctx.globalAlpha = 0.35;
+      ctx.lineWidth = 6;
+      ctx.beginPath(); ctx.arc(this.pos.x, this.pos.y, rr + 4, 0, Math.PI * 2); ctx.stroke();
+      // rotating white highlight arc
+      const ha = now * 0.0016;
+      ctx.globalAlpha = 0.9;
+      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(this.pos.x, this.pos.y, rr, ha, ha + 0.9); ctx.stroke();
+      ctx.restore();
+    }
+
     // Insertion flash: brief cyan/white boost layered on top of the tier glow.
     if (this.flashTimer > 0) {
       const k = this.flashTimer / 0.35;
