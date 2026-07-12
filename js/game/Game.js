@@ -19007,25 +19007,41 @@ export class Game {
     this._cgmSet('credits-row', credits);
     this._cgmSet('pf-avail', pfAvail);
     this._cgmSet('player-progress', progression.label);
-    // ── ACCOUNT-LEVEL REWARDS: claim any new menu levels and toast them (Maria) ──
+    // ── ACCOUNT-LEVEL REWARDS + PERMANENT PILOT CHIP (Maria: not on the title —
+    // it lives in the empty space at the BOTTOM, always visible, updates itself;
+    // on a level-up it flashes gold and shows the payout for a few seconds) ──
     try {
-      const rw = this.meta?.claimPlayerLevelRewards?.();
-      if (rw) {
-        const root = document.getElementById('cgm-overlay');
-        if (root && !root.querySelector('.cgm-lvl-toast')) {
-          const t = document.createElement('div');
-          t.className = 'cgm-lvl-toast';
-          t.style.cssText = 'position:absolute;left:50%;top:84px;transform:translateX(-50%);z-index:60;'
-            + 'padding:14px 26px;border-radius:12px;border:1.5px solid #ffd447;'
-            + 'background:linear-gradient(180deg,rgba(40,30,6,.96),rgba(16,10,2,.96));'
-            + 'box-shadow:0 0 24px rgba(255,212,71,.45);color:#ffe9a8;'
-            + "font-family:'Orbitron',sans-serif;font-weight:700;font-size:14px;letter-spacing:1px;text-align:center;";
-          t.innerHTML = '✦ PILOT LEVEL ' + rw.level + ' ✦<br>'
-            + '<span style="font-size:12px;color:#fff">+' + rw.cores + ' CORES · +' + rw.pf + ' 🧩'
+      const root = document.getElementById('cgm-overlay');
+      if (root) {
+        let chip = root.querySelector('#cgm-pilot-chip');
+        if (!chip) {
+          chip = document.createElement('div');
+          chip.id = 'cgm-pilot-chip';
+          chip.style.cssText = 'position:absolute;left:50%;bottom:26px;transform:translateX(-50%);z-index:60;'
+            + 'padding:10px 22px;border-radius:11px;border:1px solid rgba(46,230,246,.5);'
+            + 'background:linear-gradient(180deg,rgba(10,22,40,.9),rgba(4,10,20,.9));'
+            + 'box-shadow:0 0 12px rgba(46,230,246,.2);color:#bfe9ff;transition:all .5s ease;'
+            + "font-family:'Orbitron',sans-serif;font-weight:700;font-size:12.5px;letter-spacing:2px;text-align:center;";
+          root.appendChild(chip);
+        }
+        const rw = this.meta?.claimPlayerLevelRewards?.();
+        if (rw) {
+          chip.style.border = '1.5px solid #ffd447';
+          chip.style.boxShadow = '0 0 26px rgba(255,212,71,.5)';
+          chip.style.color = '#ffe9a8';
+          chip.innerHTML = '✦ PILOT LEVEL ' + rw.level + ' ✦<br>'
+            + '<span style="font-size:11px;color:#fff">+' + rw.cores.toLocaleString() + ' CORES · +' + rw.pf + ' 🧩'
             + (rw.eden ? ' · +' + rw.eden + '% EDEN MEMORY' : '') + '</span>';
-          root.appendChild(t);
-          setTimeout(() => { try { t.remove(); } catch (_) {} }, 7000);
           this.audio?.forgeMilestone?.();
+          clearTimeout(this._pilotChipT);
+          this._pilotChipT = setTimeout(() => { try {
+            chip.style.border = '1px solid rgba(46,230,246,.5)';
+            chip.style.boxShadow = '0 0 12px rgba(46,230,246,.2)';
+            chip.style.color = '#bfe9ff';
+            chip.textContent = '✦ PILOT LEVEL ' + progression.level + ' · ' + progression.rank + ' ✦';
+          } catch (_) {} }, 8000);
+        } else if (!this._pilotChipT || chip.textContent.indexOf('CORES') === -1) {
+          chip.textContent = '✦ PILOT LEVEL ' + progression.level + ' · ' + progression.rank + ' ✦';
         }
       }
     } catch (e) { /* rewards must never break the menu */ }
