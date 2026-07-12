@@ -52,7 +52,7 @@ import { NexusManager } from './NexusManager.js?v=20260712110000';
 import { VESSELS, getVesselById, getDefaultVesselId } from './VesselCatalog.js?v=20260705040000';
 import { PETS, getPetById } from './PetCatalog.js?v=20260705000000';
 import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons, isEvolutionOwnedBy, getCardDisplayName } from './WeaponCatalog.js?v=20260712050000';
-import { TACTICAL_ID, TACTICAL_DEFS, getTacticalDef, getTacticalForCharacter, getAvailableTactical, preloadTacticalSprites, FUSION_TACTICALS } from './TacticalWeaponCatalog.js?v=20260712120000';
+import { TACTICAL_ID, TACTICAL_DEFS, getTacticalDef, getTacticalForCharacter, getAvailableTactical, preloadTacticalSprites, FUSION_TACTICALS } from './TacticalWeaponCatalog.js?v=20260712150000';
 import { VFXSpritePlayer } from './VFXSpritePlayer.js?v=20260711800000';
 
 // ── Mastery card → base weapon mapping (for evolution level tracking) ──
@@ -9369,8 +9369,8 @@ export class Game {
 
     // ── Bounded periodic swarm during setup (0-30s), XP-rich phase ──
     br.spawnAcc -= dt;
-    if (T < 30 && br.spawnAcc <= 0 && this.enemies.length < 180) {
-      br.spawnAcc = 1.2;
+    if (T < 30 && br.spawnAcc <= 0 && this.enemies.length < 220) {
+      br.spawnAcc = 0.85;   // Maria: Boss Rush even more intense — faster add pressure
       try {
         const e = new Enemy('Neon Swarmer', min);
         this._bossRushPlaceAtEdge(e);
@@ -9390,7 +9390,7 @@ export class Game {
       const pool = ['EMP Hacker Drone', 'Overclocked Bomber', 'Cyber-Axe Executioner'];
       for (const nm of pool) { try { const e = new Enemy(nm, min); this._bossRushPlaceAtEdge(e); this.enemies.push(e); } catch (_) {} }
     }
-    if (T >= 75 && !br.flags.titan1) {             // 1:15 First Mega Titan
+    if (T >= 60 && !br.flags.titan1) {             // 1:00 First Mega Titan (was 1:15 — Maria wants heat)
       br.flags.titan1 = true; this._bossRushSpawnTitan(br);
     }
     if (T >= 90 && !br.flags.doublering) {         // 1:30 Double Ring
@@ -9398,8 +9398,9 @@ export class Game {
       br.hazard = { kind: 'double', r: 520, minR: 120, shrink: 26, dmg: 18, t: 0, dur: 14, inner: 190 };
       this.triggerAnnouncement('!! DOUBLE RING — PUSH OUT, THEN IN !!', '#ff7a4d');
     }
-    if (T >= 105 && !br.flags.titan2) { br.flags.titan2 = true; this._bossRushSpawnTitan(br); }
-    if (T >= 130 && !br.flags.titan3) { br.flags.titan3 = true; this._bossRushSpawnTitan(br); }
+    if (T >= 88 && !br.flags.titan2) { br.flags.titan2 = true; this._bossRushSpawnTitan(br); }
+    if (T >= 112 && !br.flags.titan3) { br.flags.titan3 = true; this._bossRushSpawnTitan(br); }
+    if (T >= 138 && !br.flags.titan4) { br.flags.titan4 = true; this._bossRushSpawnTitan(br); this.triggerAnnouncement('⚠ FINAL TITAN — NO MORE MERCY ⚠', '#ff2d2d'); }
     if (T >= 165 && !br.flags.enrage) {            // 2:45 Enrage Grid — continuous shrink
       br.flags.enrage = true;
       br.hazard = { kind: 'enrage', r: 900, minR: 90, shrink: 55, dmg: 26, t: 0, dur: 15 };
@@ -14101,6 +14102,59 @@ export class Game {
       ctx.setLineDash([4, 6]);
       ctx.beginPath(); ctx.ellipse(0, 0, CR, CR * 0.6, 0, 0, Math.PI * 2); ctx.stroke();     // faint full guide
       ctx.setLineDash([]);
+    } else if (id === 'tac_overclock') {
+      // OVERCLOCK REACTOR: a hexagonal heat-core with rotating heat-sink fins CHARGES
+      // (core goes red→white, temperature ring fills) and VENTS — six radial steam-heat
+      // plumes + red/purple detonation ring, synced to the damage tick (1.1s cycle).
+      const cyc = (t / 1.1) % 1;
+      const charge = Math.min(1, cyc / 0.72);
+      const vent = cyc > 0.72 ? (cyc - 0.72) / 0.28 : 0;
+      ctx.globalCompositeOperation = 'lighter';
+      // heat-sink fins (rotate faster as it charges)
+      for (let i = 0; i < 6; i++) {
+        const fa = (i / 6) * Math.PI * 2 + t * (1.5 + charge * 4);
+        ctx.globalAlpha = 0.5 + charge * 0.4;
+        ctx.strokeStyle = '#c77dff'; ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(fa) * 16, -14 + Math.sin(fa) * 10);
+        ctx.lineTo(Math.cos(fa) * 28, -14 + Math.sin(fa) * 17);
+        ctx.stroke();
+      }
+      // hex core — color slides red→white with charge
+      const coreCol = vent > 0 ? '#ffffff' : (charge > 0.6 ? '#ffb3c0' : '#ff2d6a');
+      ctx.globalAlpha = 0.9;
+      ctx.strokeStyle = coreCol; ctx.lineWidth = 2.6;
+      ctx.shadowColor = '#ff2d6a'; ctx.shadowBlur = 10 + charge * 12;
+      ctx.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const ha2 = (i / 6) * Math.PI * 2 + Math.PI / 6;
+        const hr = 12 + charge * 3 + (vent > 0 ? Math.sin(vent * Math.PI) * 4 : 0);
+        i === 0 ? ctx.moveTo(Math.cos(ha2) * hr, -14 + Math.sin(ha2) * hr)
+                : ctx.lineTo(Math.cos(ha2) * hr, -14 + Math.sin(ha2) * hr);
+      }
+      ctx.closePath(); ctx.stroke();
+      ctx.shadowBlur = 0;
+      // temperature ring filling around the core
+      ctx.globalAlpha = 0.8;
+      ctx.strokeStyle = '#ff2d6a'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(0, -14, 22, -Math.PI / 2, -Math.PI / 2 + charge * Math.PI * 2); ctx.stroke();
+      if (vent > 0) {                                   // THE VENT
+        ctx.globalAlpha = (1 - vent) * 0.9;
+        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 4 * (1 - vent) + 1;
+        ctx.beginPath(); ctx.ellipse(0, 0, (w.def.aoeRadius || 290) * vent, (w.def.aoeRadius || 290) * vent * 0.45, 0, 0, Math.PI * 2); ctx.stroke();
+        ctx.globalAlpha = (1 - vent) * 0.5;
+        ctx.strokeStyle = '#c77dff'; ctx.lineWidth = 7 * (1 - vent) + 2;
+        ctx.beginPath(); ctx.ellipse(0, 0, (w.def.aoeRadius || 290) * vent * 0.8, (w.def.aoeRadius || 290) * vent * 0.36, 0, 0, Math.PI * 2); ctx.stroke();
+        for (let i = 0; i < 6; i++) {                   // steam-heat plumes
+          const pa3 = (i / 6) * Math.PI * 2 + 0.3;
+          ctx.globalAlpha = (1 - vent) * 0.7;
+          ctx.strokeStyle = i % 2 ? '#ff6a8a' : '#ffffff'; ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.moveTo(Math.cos(pa3) * 18, -14 + Math.sin(pa3) * 12);
+          ctx.lineTo(Math.cos(pa3) * (34 + vent * 46), -14 + Math.sin(pa3) * (22 + vent * 30) - vent * 18);
+          ctx.stroke();
+        }
+      }
     } else if (id === 'tac_ember_shrine') {
       // obsidian mini-torii + slow blue flame arcs breathing out of the gate
       ctx.fillStyle = '#0a0610';
@@ -14254,7 +14308,8 @@ export class Game {
         }
         default: {
           // All other behaviors: render weapon sprite at drop point, sprite-only
-          if (sprite && sprite.complete && sprite.naturalWidth > 0) {
+          // (procedural tacticals draw their own choreography — never the sprite)
+          if (!w.def?.procedural && sprite && sprite.complete && sprite.naturalWidth > 0) {
             const pulse = 1.0 + 0.08 * Math.sin(w.angle * 4);
             const size = 110 * pulse;   // premium readable size (was a small 72px)
             ctx.save();

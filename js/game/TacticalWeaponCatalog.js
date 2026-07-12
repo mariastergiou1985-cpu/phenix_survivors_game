@@ -441,6 +441,7 @@ export const TACTICAL_DEFS = Object.freeze({
     character:   'dimis_kickboxer',
     fxModule:    FX_MODULE.H_SPECTRAL_WEB,
     behavior:    TACTICAL_BEHAVIOR.GROUND_SHOCKWAVE,
+    procedural:  true,   // rebuilt from zero (Maria) — sprite no longer drawn
     sprite:      'assets/weapons/tactical/Overclock.png',
     baseDamage:  84,
     aoeRadius:   290,
