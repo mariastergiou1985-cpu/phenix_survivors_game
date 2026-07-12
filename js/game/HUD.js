@@ -20,6 +20,24 @@ export function drawHUD(ctx, game) {
   // thin highlight line so the fill edge reads against the dark track
   ctx.fillStyle = 'rgba(180,235,255,0.85)';
   ctx.fillRect(0, XPH - 1, Math.round(WIDTH * xpRatio), 1);
+  // premium: moving shimmer inside the fill + hot spark at the fill head
+  {
+    const fw = Math.round(WIDTH * xpRatio);
+    if (fw > 30) {
+      ctx.save();
+      const shX = ((Date.now() / 14) % (fw + 160)) - 80;
+      const sh = ctx.createLinearGradient(shX - 40, 0, shX + 40, 0);
+      sh.addColorStop(0, 'rgba(255,255,255,0)');
+      sh.addColorStop(0.5, 'rgba(255,255,255,0.30)');
+      sh.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = sh; ctx.fillRect(Math.max(0, shX - 40), 0, 80, XPH);
+      ctx.fillStyle = '#eaffff';
+      ctx.shadowColor = '#66e0ff'; ctx.shadowBlur = 8;
+      ctx.fillRect(fw - 2, 0, 2, XPH);                    // fill head spark
+      ctx.shadowBlur = 0;
+      ctx.restore();
+    }
+  }
   // Readout: bold level + XP-to-next, right-aligned just under the bar.
   ctx.textAlign = 'right';
   drawText(ctx, `LV ${p.level}`, WIDTH - 12, 26, '#dff2ff', 'bold 17px Consolas, monospace');
@@ -28,6 +46,24 @@ export function drawHUD(ctx, game) {
   // ── Top-center: timer + kills (skull) ───────────────────────────────────
   const mins = Math.floor(game.timeAlive / 60).toString().padStart(2, '0');
   const secs = Math.floor(game.timeAlive % 60).toString().padStart(2, '0');
+  // premium glass chip behind timer + kills: dark pill, cyan rim, corner ticks
+  {
+    ctx.save();
+    const cw = 168, chh = 58, cx0 = WIDTH / 2 - cw / 2, cy0 = 16;
+    const cg = ctx.createLinearGradient(0, cy0, 0, cy0 + chh);
+    cg.addColorStop(0, 'rgba(12,26,44,0.82)'); cg.addColorStop(1, 'rgba(4,10,20,0.82)');
+    ctx.fillStyle = cg;
+    ctx.beginPath(); ctx.roundRect(cx0, cy0, cw, chh, 9); ctx.fill();
+    ctx.strokeStyle = 'rgba(46,230,246,0.45)'; ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.roundRect(cx0, cy0, cw, chh, 9); ctx.stroke();
+    ctx.strokeStyle = '#2ee6f6'; ctx.lineWidth = 1.6; ctx.globalAlpha = 0.9;   // corner ticks
+    const tk = 7;
+    ctx.beginPath();
+    ctx.moveTo(cx0, cy0 + tk); ctx.lineTo(cx0, cy0); ctx.lineTo(cx0 + tk, cy0);
+    ctx.moveTo(cx0 + cw - tk, cy0 + chh); ctx.lineTo(cx0 + cw, cy0 + chh); ctx.lineTo(cx0 + cw, cy0 + chh - tk);
+    ctx.stroke();
+    ctx.restore();
+  }
   ctx.textAlign = 'center';
   drawText(ctx, `${mins}:${secs}`, WIDTH / 2, 42, WHITE, 'bold 26px Consolas, monospace');
   _drawSkull(ctx, WIDTH / 2 - 36, 60, '#d7dee6');
@@ -244,11 +280,39 @@ export function drawHUD(ctx, game) {
     }
   }
 
-  // ── Bottom-center: HP / Mana numeric readout (display-only; reflects card/upgrade max increases) ──
-  ctx.textAlign = 'center';
-  drawText(ctx, `HP ${Math.ceil(p.hp)} / ${Math.round(p.maxHp)}`,    WIDTH / 2 - 80, HEIGHT - 14, '#ff8a98', 'bold 14px Consolas, monospace');
-  drawText(ctx, `MP ${Math.ceil(p.mana)} / ${Math.round(p.maxMana)}`, WIDTH / 2 + 80, HEIGHT - 14, '#7fe0ff', 'bold 14px Consolas, monospace');
-  ctx.textAlign = 'left';
+  // ── Bottom-center: PREMIUM HP / MP glass bars (cyber theme, low-HP heartbeat) ──
+  {
+    const BW2 = 190, BH2 = 13, GAP2 = 14;
+    const bx0 = WIDTH / 2 - BW2 - GAP2 / 2, mx0 = WIDTH / 2 + GAP2 / 2;
+    const byy = HEIGHT - 30;
+    const bar = (x0, ratio, c1, c2, label, txt, low) => {
+      ctx.save();
+      // low-HP heartbeat glow
+      if (low) { ctx.shadowColor = '#ff3c50'; ctx.shadowBlur = 8 + 7 * Math.abs(Math.sin(Date.now() / 180)); }
+      ctx.fillStyle = 'rgba(6,12,24,0.88)';                                  // track
+      ctx.beginPath(); ctx.roundRect(x0, byy, BW2, BH2, 6); ctx.fill();
+      ctx.shadowBlur = 0;
+      const g2 = ctx.createLinearGradient(x0, 0, x0 + BW2, 0);               // fill
+      g2.addColorStop(0, c1); g2.addColorStop(1, c2);
+      ctx.fillStyle = g2;
+      const fw2 = Math.max(0, Math.round(BW2 * ratio));
+      if (fw2 > 2) { ctx.beginPath(); ctx.roundRect(x0, byy, fw2, BH2, 6); ctx.fill(); }
+      ctx.fillStyle = 'rgba(255,255,255,0.22)';                              // glass sheen
+      if (fw2 > 2) ctx.fillRect(x0 + 2, byy + 1.5, fw2 - 4, 3);
+      ctx.strokeStyle = 'rgba(160,200,230,0.35)'; ctx.lineWidth = 1;         // rim + ticks
+      ctx.beginPath(); ctx.roundRect(x0, byy, BW2, BH2, 6); ctx.stroke();
+      ctx.globalAlpha = 0.4;
+      for (let q2 = 1; q2 < 4; q2++) { ctx.fillStyle = '#0a1626'; ctx.fillRect(x0 + (BW2 / 4) * q2, byy + 2, 1, BH2 - 4); }
+      ctx.globalAlpha = 1;
+      ctx.textAlign = 'center';
+      drawText(ctx, `${label} ${txt}`, x0 + BW2 / 2, byy + BH2 - 2.5, '#eaf4ff', 'bold 10.5px Consolas, monospace');
+      ctx.restore();
+    };
+    const hpR = clamp(p.hp / p.maxHp, 0, 1);
+    bar(bx0, hpR, '#c81e3c', '#ff5a72', 'HP', `${Math.ceil(p.hp)} / ${Math.round(p.maxHp)}`, hpR < 0.3);
+    bar(mx0, clamp(p.mana / p.maxMana, 0, 1), '#0f6c9c', '#38d6ff', 'MP', `${Math.ceil(p.mana)} / ${Math.round(p.maxMana)}`, false);
+    ctx.textAlign = 'left';
+  }
 
   // First-run hint — teaches the kill → Nexus recharge loop.
   // Auto-dismisses (fades out over its last 1.5s); upper third, never covers
