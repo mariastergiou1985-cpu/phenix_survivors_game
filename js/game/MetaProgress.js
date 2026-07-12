@@ -400,6 +400,13 @@ export class MetaProgress {
       // ── ONE-TIME REPAIR (2026-07-12): the first version of level rewards fed PF back
       // into the level metric → runaway loop (levels 213→1494, cores in the millions).
       // Detect a polluted save and settle it to generous-but-sane values.
+      // v2: also settle saves that already ran the too-generous v1 repair (100k/300).
+      if (!d.economyRepairV2 && ((this.credits || 0) > 20000 || (this.protocolFragments || 0) > 120)) {
+        this.credits           = Math.min(this.credits || 0, 20000);
+        this.protocolFragments = Math.min(this.protocolFragments || 0, 120);
+        this._save();
+      }
+      this.economyRepairV2 = true;
       if (this.lastPlayerLevelRewarded > 300 || (this.credits || 0) > 500000) {
         this.credits           = Math.min(this.credits || 0, 20000);    // Maria's numbers
         this.protocolFragments = Math.min(this.protocolFragments || 0, 120);
@@ -491,6 +498,7 @@ export class MetaProgress {
         edenMemoryPercent:  this.edenMemoryPercent,
         lastPlayerLevelRewarded: this.lastPlayerLevelRewarded,
         rewardedPFTotal: this.rewardedPFTotal,
+        economyRepairV2: true,
         systemFeedMessages: this.systemFeedMessages,
         bossEchoes:         this.bossEchoes,
         edenMilestonesSeen: this.edenMilestonesSeen,
