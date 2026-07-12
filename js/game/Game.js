@@ -18853,6 +18853,7 @@ export class Game {
         <div class="pcell"><div class="pk">Best Run</div><div class="pv green"><span data-cgm="profile-best">—</span></div></div>
         <div class="pcell"><div class="pk">Build</div><div class="pv"><svg class="amber" style="color:var(--amber)"><use href="#i-bolt"/></svg><svg class="cyan" style="color:var(--cyan)"><use href="#i-node"/></svg><span data-cgm="profile-build">0</span></div></div>
       </div>
+      <div id="cgm-pilot-chip" style="margin:12px auto 0;max-width:560px;padding:10px 22px;border-radius:11px;border:1px solid rgba(46,230,246,.5);background:linear-gradient(180deg,rgba(10,22,40,.9),rgba(4,10,20,.9));box-shadow:0 0 12px rgba(46,230,246,.2);color:#bfe9ff;transition:all .5s ease;font-family:'Orbitron',sans-serif;font-weight:700;font-size:12.5px;letter-spacing:2px;text-align:center;"></div>
     </div>
 
     <!-- RIGHT COLUMN -->
@@ -19013,17 +19014,8 @@ export class Game {
     try {
       const root = document.getElementById('cgm-overlay');
       if (root) {
-        let chip = root.querySelector('#cgm-pilot-chip');
-        if (!chip) {
-          chip = document.createElement('div');
-          chip.id = 'cgm-pilot-chip';
-          chip.style.cssText = 'position:absolute;left:50%;bottom:26px;transform:translateX(-50%);z-index:60;'
-            + 'padding:10px 22px;border-radius:11px;border:1px solid rgba(46,230,246,.5);'
-            + 'background:linear-gradient(180deg,rgba(10,22,40,.9),rgba(4,10,20,.9));'
-            + 'box-shadow:0 0 12px rgba(46,230,246,.2);color:#bfe9ff;transition:all .5s ease;'
-            + "font-family:'Orbitron',sans-serif;font-weight:700;font-size:12.5px;letter-spacing:2px;text-align:center;";
-          root.appendChild(chip);
-        }
+        const chip = root.querySelector('#cgm-pilot-chip');   // static: sits in-flow under Profile/Best Run/Build
+        if (chip) {
         const rw = this.meta?.claimPlayerLevelRewards?.();
         if (rw) {
           chip.style.border = '1.5px solid #ffd447';
@@ -19042,6 +19034,7 @@ export class Game {
           } catch (_) {} }, 8000);
         } else if (!this._pilotChipT || chip.textContent.indexOf('CORES') === -1) {
           chip.textContent = '✦ PILOT LEVEL ' + progression.level + ' · ' + progression.rank + ' ✦';
+        }
         }
       }
     } catch (e) { /* rewards must never break the menu */ }
