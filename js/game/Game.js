@@ -1094,7 +1094,7 @@ export class Game {
   }
 
   // SETTINGS sub-menu — the single home for Audio, Controls/How-To-Play, Credits.
-  get settingsItems() { return ['AUDIO', 'CONTROLS / HOW TO PLAY', 'CREDITS', 'LORE / ARCHIVE', 'BACK']; }
+  get settingsItems() { return ['AUDIO', 'CONTROLS / HOW TO PLAY', 'BACKUP SAVE', 'RESTORE SAVE', 'CREDITS', 'LORE / ARCHIVE', 'BACK']; }
 
   reset() {
     // Resolve the equipped (cosmetic) outfit sprite for this character, if any.
@@ -2221,6 +2221,31 @@ export class Game {
     this._loreSection    = 0;
     this._upgradeTab      = 'core';
     this._showUpgradesOverlay();
+  }
+
+  // ── SAVE BACKUP / RESTORE (Maria: carry progress between browser ↔ exe ↔ devices) ──
+  // The save travels as a Base64 code. BACKUP copies it to the clipboard (and shows it
+  // in a prompt as fallback). RESTORE accepts a pasted code, validates, writes, reloads.
+  _backupSave() {
+    try {
+      const raw = localStorage.getItem('phenix_meta') || '';
+      if (!raw) { alert('Δεν βρέθηκε αποθήκευση σε αυτή τη συσκευή.'); return; }
+      const code = btoa(unescape(encodeURIComponent(raw)));
+      try { navigator.clipboard?.writeText(code); } catch (_) {}
+      prompt('Ο ΚΩΔΙΚΟΣ ΑΠΟΘΗΚΕΥΣΗΣ σου (αντιγράφηκε ήδη στο πρόχειρο — Ctrl+C για σιγουριά):', code);
+    } catch (e) { alert('Αποτυχία εξαγωγής: ' + e.message); }
+  }
+  _restoreSave() {
+    try {
+      const code = prompt('Επικόλλησε εδώ τον ΚΩΔΙΚΟ ΑΠΟΘΗΚΕΥΣΗΣ (Ctrl+V) και πάτα ΟΚ:');
+      if (!code) return;
+      const raw = decodeURIComponent(escape(atob(code.trim())));
+      const parsed = JSON.parse(raw);                       // validation: must be JSON
+      if (!parsed || typeof parsed !== 'object') throw new Error('invalid');
+      localStorage.setItem('phenix_meta', raw);
+      alert('Η αποθήκευση επαναφέρθηκε! Το παιχνίδι θα επανεκκινήσει.');
+      location.reload();
+    } catch (e) { alert('Ο κωδικός δεν είναι έγκυρος — βεβαιώσου ότι τον επικόλλησες ολόκληρο.'); }
   }
 
   goToCredits() { this._hideMenuOverlay(); this._hideSettingsOverlay(); this.gameState = 'credits'; }
@@ -9650,6 +9675,8 @@ export class Game {
 
   _selectSettingsItem(item) {
     if      (item === 'AUDIO')            this.goToAudioSettings();
+    else if (item === 'BACKUP SAVE')      this._backupSave();
+    else if (item === 'RESTORE SAVE')     this._restoreSave();
     else if (item === 'CREDITS')          this.goToCredits();
     else if (item === 'LORE / ARCHIVE')   this.goToLoreArchive();
     else if (item === 'BACK')             this.goToMainMenu();
@@ -19708,15 +19735,23 @@ export class Game {
             CONTROLS / HOW TO PLAY
           </button>
           <button class="cgs-mbtn" data-idx="2">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><use href="#i-diamond"/></svg>
+            BACKUP SAVE
+          </button>
+          <button class="cgs-mbtn" data-idx="3">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><use href="#i-diamond"/></svg>
+            RESTORE SAVE
+          </button>
+          <button class="cgs-mbtn" data-idx="4">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><use href="#i-star"/></svg>
             CREDITS
           </button>
-          <button class="cgs-mbtn" data-idx="3">
+          <button class="cgs-mbtn" data-idx="5">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><use href="#i-node"/></svg>
             LORE / ARCHIVE
           </button>
           <div class="cgs-sep" style="margin:4px 0;"></div>
-          <button class="cgs-mbtn back-btn" data-idx="4">
+          <button class="cgs-mbtn back-btn" data-idx="6">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><use href="#i-chev"/></svg>
             BACK
           </button>
