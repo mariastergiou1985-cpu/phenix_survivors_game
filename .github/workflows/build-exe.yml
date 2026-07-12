@@ -27,7 +27,7 @@ jobs:
         working-directory: electron
         run: |
           npm init -y | Out-Null
-          npm install --no-audit --no-fund electron-packager@17 electron@33
+          npm install --no-audit --no-fund @electron/packager@18 electron@33.2.0
 
       - name: Assemble app (online edition — loads the live GitHub Pages build)
         working-directory: electron
@@ -62,9 +62,9 @@ jobs:
           # icon must be .ico on Windows; fall back to default icon rather than failing
           $icon = "../assets/pwa/icon.ico"
           if (Test-Path $icon) {
-            npx electron-packager ./app "PHENIX NULL EDEN" --platform=win32 --arch=x64 --out=dist --overwrite --icon=$icon
+            npx electron-packager ./app "PHENIX NULL EDEN" --platform=win32 --arch=x64 --electron-version=33.2.0 --out=dist --overwrite --icon=$icon
           } else {
-            npx electron-packager ./app "PHENIX NULL EDEN" --platform=win32 --arch=x64 --out=dist --overwrite
+            npx electron-packager ./app "PHENIX NULL EDEN" --platform=win32 --arch=x64 --electron-version=33.2.0 --out=dist --overwrite
           }
           if ($LASTEXITCODE -ne 0) { exit 1 }
 
