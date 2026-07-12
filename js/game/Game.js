@@ -36,7 +36,7 @@ import { OniMaskOverture } from '../effects/oni-mask-overture.js?v=2026071153000
 import { EuclidTheorem } from '../effects/euclid-theorem.js?v=20260711540000';
 import { DeusExMachina } from '../effects/deus-ex-machina.js?v=20260712250000';
 import { RailgunHorizon } from '../effects/railgun-horizon.js?v=20260711560000';
-import { MagmaCoreEruption } from '../effects/magma-core-eruption.js?v=20260712280000';
+import { MagmaCoreEruption } from '../effects/magma-core-eruption.js?v=20260712290000';
 import { PhantomExecution } from '../effects/phantom-execution.js?v=20260711580000';
 import { WeatherTheater } from '../effects/weather-theater.js?v=20260712130000';
 import { Protocol0 } from '../effects/protocol-0.js?v=20260705000000';
@@ -19699,7 +19699,6 @@ export class Game {
       // deposit
       if (p.carry > 0 && this.matrices && this.matrices.length) {
         for (const m of this.matrices) {
-          if (!m.hasSpace()) continue;
           if (this._chaosMode && m.chaosRole === 'defence') continue;   // Φ14: defence bases refuse cores
           if (distance(p.pos, m.pos) < 110) {
             let n = 0;
@@ -19708,13 +19707,23 @@ export class Game {
               m.slotCore(c.value);
               n++;
             }
-            p.carry = this._carriedCores.length;
             if (n > 0) {
               this.player.coresSecured = (this.player.coresSecured || 0) + n;
               this.floatingTexts.push(new FloatingText('DEPOSITED ×' + n, m.pos.clone(), '#7CFF8A', 1.3));
               this.particles.spawnCoreSlot(m.pos, m.color);
               this.audio?.forgeMilestone?.();
             }
+            // FULL base still buys the surplus (Maria: 'δεν τα αφήνει ποτέ') —
+            // leftover cores convert to credits on the spot, 12₵ each.
+            if (this._carriedCores.length && !m.hasSpace()) {
+              const sold = this._carriedCores.length;
+              this._carriedCores.length = 0;
+              const pay = sold * 12;
+              this.runCreditsEarned = (this.runCreditsEarned || 0) + pay;   // banked via meta.addCredits at run end
+              this.floatingTexts.push(new FloatingText('SURPLUS SOLD +' + pay + '₵', m.pos.clone(), '#ffd23c', 1.4));
+              this.audio?.forgeIce?.();
+            }
+            p.carry = this._carriedCores.length;
             break;
           }
         }

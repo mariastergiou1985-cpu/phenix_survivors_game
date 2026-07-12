@@ -192,21 +192,26 @@ export class MagmaCoreEruption {
 
       const pulse = 0.75 + 0.25 * Math.sin(el / 110);
 
-      // ── SHARD SLIP: two wedges of the live picture copied slightly offset ──
+      // ── SHARD STRESS: the wedges between cracks glow under strain (NO canvas
+      // self-copy — the drawImage(canvas) version fed back on itself and tiled
+      // the whole screen into infinite mirror copies; Maria's screenshot) ──
       if (this.phase === PHASE.BLEED) {
-        const slip = Math.sin(el / 300) * 3.5;
+        const strain = 0.5 + 0.5 * Math.sin(el / 300);
         for (let w2 = 0; w2 < 2; w2++) {
           const s0 = this._spokes[w2 * 4], s1 = this._spokes[w2 * 4 + 1];
           if (!s0 || !s1) continue;
           ctx.save();
+          ctx.globalCompositeOperation = 'lighter';
           ctx.beginPath();
           ctx.moveTo(this._ex, this._ey);
           for (const q of s0.pts) ctx.lineTo(q.x, q.y);
           for (let j = s1.pts.length - 1; j >= 0; j--) ctx.lineTo(s1.pts[j].x, s1.pts[j].y);
           ctx.closePath();
-          ctx.clip();
-          const ox = (w2 ? -1 : 1) * (2.5 + slip), oy = (w2 ? 1.5 : -1.5);
-          ctx.drawImage(ctx.canvas, ox, oy);            // the picture itself slips
+          const wg = ctx.createRadialGradient(this._ex, this._ey, 20, this._ex, this._ey, 420);
+          wg.addColorStop(0, `rgba(255,120,40,${0.16 * strain})`);
+          wg.addColorStop(1, 'rgba(255,120,40,0)');
+          ctx.fillStyle = wg;
+          ctx.fill();
           ctx.restore();
         }
       }
