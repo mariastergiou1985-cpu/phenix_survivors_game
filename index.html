@@ -2,6 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#0a1020">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>PHENIX: NULL EDEN — A cyber-survival roguelite</title>
   <!-- Preload menu theme so it's cached before the first click (no autoplay) -->
@@ -57,6 +59,7 @@
     }
   }
   </script>
+  <script>if("serviceWorker" in navigator){addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}));}</script>
   <script type="module" src="js/main.js?v=20260712370000"></script>
 </body>
 </html>
