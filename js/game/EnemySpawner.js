@@ -23,9 +23,9 @@ const ACT1_POOLS = [
   { from: 180, pool: ['Combat Hunter', 'Cyber Shooter', 'Scrap Scavenger', 'Glitch Drone', 'Rogue Punk', 'Stealth Infiltrator', 'Overclocked Berserker', 'Cyber-Net Junkie', 'Solar Stinger', 'Amethyst Fang', 'Ember Scarab', 'Volt Rat'] },
   { from: 360, pool: ['Combat Hunter', 'Cyber Shooter', 'Scrap Scavenger', 'Glitch Drone', 'Rogue Punk', 'Stealth Infiltrator', 'Overclocked Berserker', 'Cyber-Net Junkie', 'Heavy Mech', 'Pulse Burrower', 'Rift Eye', 'Void Widow', 'Solar Stinger'] },
   { from: 600, pool: ['Combat Hunter', 'Cyber Shooter', 'Scrap Scavenger', 'Glitch Drone', 'Rogue Punk', 'Stealth Infiltrator', 'Overclocked Berserker', 'Cyber-Net Junkie', 'Heavy Mech', 'Abyss Maw', 'Void Widow', 'Amethyst Fang', 'Pulse Burrower'] },
-  { from: 900, pool: ['Combat Hunter', 'Cyber Shooter', 'Scrap Scavenger', 'Glitch Drone', 'Rogue Punk', 'Stealth Infiltrator', 'Overclocked Berserker', 'Heavy Mech', 'Cyber-Net Junkie', 'Abyss Maw', 'Rift Eye', 'Ember Scarab', 'Void Widow', 'Volt Rat'] },
+  { from: 900, pool: ['Combat Hunter', 'Cyber Shooter', 'Scrap Scavenger', 'Glitch Drone', 'Rogue Punk', 'Stealth Infiltrator', 'Overclocked Berserker', 'Heavy Mech', 'Cyber-Net Junkie', 'Abyss Maw', 'Rift Eye', 'Ember Scarab', 'Void Widow', 'Volt Rat', 'Razorhound'] },
   { from: 1200, pool: ['Combat Hunter', 'Cyber Shooter', 'Scrap Scavenger', 'Glitch Drone', 'Rogue Punk', 'Stealth Infiltrator', 'Overclocked Berserker', 'Heavy Mech', 'Cyber-Net Junkie', 'Abyss Maw', 'Amethyst Fang', 'Solar Stinger', 'Pulse Burrower', 'Toxin Leech', 'Cryo Claw'] },
-  { from: 1500, pool: ['Combat Hunter', 'Cyber Shooter', 'Scrap Scavenger', 'Glitch Drone', 'Rogue Punk', 'Stealth Infiltrator', 'Overclocked Berserker', 'Heavy Mech', 'Cyber-Net Junkie', 'Abyss Maw', 'Void Widow', 'Rift Eye', 'Ember Scarab', 'Amethyst Fang', 'Solar Stinger', 'Volt Rat', 'Pulse Burrower', 'Toxin Leech', 'Cryo Claw'] },
+  { from: 1500, pool: ['Combat Hunter', 'Cyber Shooter', 'Scrap Scavenger', 'Glitch Drone', 'Rogue Punk', 'Stealth Infiltrator', 'Overclocked Berserker', 'Heavy Mech', 'Cyber-Net Junkie', 'Abyss Maw', 'Void Widow', 'Rift Eye', 'Ember Scarab', 'Amethyst Fang', 'Solar Stinger', 'Volt Rat', 'Pulse Burrower', 'Toxin Leech', 'Cryo Claw', 'Razorhound', 'Solar Tyrant'] },
 ];
 
 // #81 — Complete Chaos roster: EVERY enemy family is eligible in Chaos (Act 1 + Endless + new
@@ -52,6 +52,7 @@ const CHAOS_POOL = [
   // ── Heavies / elites (rarer) ──
   'Heavy Mech',            'Plasma Juggernaut',     'Singularity Core Mech',
   'Cyber-Net Junkie',      'Abyss Maw',             'Void Widow',
+  'Razorhound',            'Razorhound',            'Solar Tyrant',
   'Amethyst Fang',         'Ember Scarab',          'Rift Eye',
   'Pulse Burrower',
 ];
@@ -66,7 +67,7 @@ export const ELITE_WAVE = {
   hpMult:      2.0,
   speedMult:   1.10,
   radiusMult:  1.20,
-  pool: ['Combat Hunter', 'Cyber Shooter', 'Heavy Mech', 'Overclocked Berserker', 'Stealth Infiltrator', 'Glitch Drone', 'Rogue Punk', 'Abyss Maw', 'Void Widow', 'Ember Scarab', 'Amethyst Fang', 'Solar Stinger', 'Rift Eye', 'Cryo Claw', 'Toxin Leech', 'Volt Rat', 'Pulse Burrower'],
+  pool: ['Combat Hunter', 'Cyber Shooter', 'Heavy Mech', 'Overclocked Berserker', 'Stealth Infiltrator', 'Glitch Drone', 'Rogue Punk', 'Abyss Maw', 'Void Widow', 'Ember Scarab', 'Amethyst Fang', 'Solar Stinger', 'Rift Eye', 'Cryo Claw', 'Toxin Leech', 'Volt Rat', 'Pulse Burrower', 'Razorhound', 'Solar Tyrant'],
 };
 
 // ─── Population Cap Curve ───────────────────────────────────────────────────
@@ -112,7 +113,7 @@ export class EnemySpawner {
     else                  cap = Math.min(280, 250 + (minute - 20) * 5);
 
     if (mode.endless) cap = Math.min(400, Math.round(cap * 2.5) + 50);
-    if (mode.chaos)   cap = Math.min(280, Math.round(cap * 1.3));
+    if (mode.chaos)   cap = Math.min(340, Math.round(cap * 2.0));   // CHAOS SURGE (Maria): field must never feel empty
     return cap;
   }
 
@@ -126,7 +127,7 @@ export class EnemySpawner {
   spawnInterval(minute, mode = {}) {
     let iv = Math.max(0.16, 0.5 - minute * 0.025);
     if (mode.endless) iv = Math.max(0.04, iv * 0.30);
-    if (mode.chaos)   iv = Math.max(0.06, iv / 1.5);
+    if (mode.chaos)   iv = Math.max(0.045, iv / 2.4);   // CHAOS SURGE: respawn outpaces even Eddie's clear speed
     // BALANCE (Maria): characters got strong — pressure comes from DENSITY, not damage nerfs.
     // +15% spawn rate in every mode; the global 340-enemy hard cap + culling keep perf safe.
     return (iv / 1.5) * (mode.spawnRateMult || 1);   // pressure pass 2: +50% density (was +15%) — Maria: 'poli ligi i exthroi'
@@ -144,6 +145,7 @@ export class EnemySpawner {
     let count = minute < 2 ? 5 : minute < 5 ? 4 : minute < 10 ? 5 : 6;
     // Endless: bigger batches to fill the larger visible area
     if (mode.endless) count += 3;
+    if (mode.chaos)   count += 4;   // CHAOS SURGE: bigger batches
     // Catch-up surge if battlefield is below 70% cap
     if (currentCount < cap * 0.7) count += 4;
     return count;

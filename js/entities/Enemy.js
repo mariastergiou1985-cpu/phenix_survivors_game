@@ -96,6 +96,7 @@ export class Enemy {
     if (enemyType === 'Security Defector Mech')  this.radius = 28;
     else if (enemyType === 'Rogue AI Overlord')   this.radius = 44;
     else if (enemyType === 'Heavy Mech')          this.radius = 22;
+    else if (enemyType === 'Solar Tyrant')        this.radius = 26;   // rare solar heavy (new — unused art activated)
     else if (enemyType === 'Plasma Juggernaut')   this.radius = 30;   // Chaos tank
     else if (enemyType === 'Singularity Core Mech') this.radius = 34; // Chaos elite bruiser
     else if (Enemy.CHAOS_TITANS.has(enemyType))   this.radius = 90;   // Mega Titans — MUCH larger than the player
@@ -134,6 +135,7 @@ export class Enemy {
       case 'Combat Hunter':          return 'hunter';
       case 'Cyber Shooter':          return 'shooter';
       case 'Heavy Mech':             return 'hunter';
+      case 'Solar Tyrant':           return 'hunter';   // slow solar juggernaut, pure melee (VS rule)
       case 'Razorhound':             return 'hunter';  // fast melee chaser, never steals
       // ── New mini enemies (weapon pack) ──
       case 'Abyss Maw':              return 'mixed';
@@ -408,6 +410,7 @@ export class Enemy {
       'Overclocked Berserker':   'minis/pale-bloodknight',
       'Cyber Shooter':           'minis/rail-reaper',
       'Heavy Mech':              'minis/reactor-colossus',
+      'Solar Tyrant':            'minis/solar-tyrant',
       // Bloodfang pack minion — dedicated sprite in minions/ subfolder
       'Razorhound':              'minions/razorhound',
       // ── New mini enemies (weapon pack) ──
@@ -487,6 +490,7 @@ export class Enemy {
       case 'Combat Hunter':         return [168 * d, 4.2 * g,  MAGENTA, 9999, 12 * g];   // medium ×1.4
       case 'Cyber Shooter':         return [108 * d, 5.6 * g,  CYAN,    9999,  6 * g];   // medium ×1.4
       case 'Heavy Mech':            return [58  * d, 32 * g,   ORANGE,  9999, 20 * g];   // large ×1.6
+      case 'Solar Tyrant':          return [52  * d, 44 * g,   YELLOW,  9999, 22 * g];   // rare heavy — big HP wall
       case 'Razorhound':            return [200 * d, 21 * g,   RED,     9999,  6 * g];   // large ×1.5
       // ── New mini enemies (weapon pack) ──
       case 'Abyss Maw':            return [75  * d, 28 * g,   PURPLE,  9999, 18 * g];   // large, slow, tanky
