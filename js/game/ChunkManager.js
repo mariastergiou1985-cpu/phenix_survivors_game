@@ -613,6 +613,28 @@ export class ChunkManager {
       ctx.fillRect(dx, dy, CHUNK_SIZE + 1, CHUNK_SIZE + 1);
     }
 
+    // ── BIOME SEAM FEATHERING (Maria's video: 'map inside the map') ──────────
+    // Where a neighbouring chunk belongs to a DIFFERENT biome, the two map images
+    // used to butt together in a razor-sharp vertical/horizontal cut that read as
+    // a rendering bug. Each edge facing a foreign biome now gets a 130px smog
+    // gradient (deep at the seam → transparent inward), so districts hand over
+    // to each other through a believable transition band instead of a knife edge.
+    try {
+      const FB = 130;
+      const nb = (dx2, dy2) => this._getBiomeForCoords(chunk.cx + dx2, chunk.cy + dy2);
+      const mkGrad = (x1, y1, x2, y2) => {
+        const g = ctx.createLinearGradient(x1, y1, x2, y2);
+        g.addColorStop(0, 'rgba(4,6,12,0.62)');
+        g.addColorStop(0.55, 'rgba(4,6,12,0.28)');
+        g.addColorStop(1, 'rgba(4,6,12,0)');
+        return g;
+      };
+      if (nb(1, 0)  !== chunk.biomeId) { ctx.fillStyle = mkGrad(dx + CHUNK_SIZE, 0, dx + CHUNK_SIZE - FB, 0); ctx.fillRect(dx + CHUNK_SIZE - FB, dy, FB, CHUNK_SIZE); }
+      if (nb(-1, 0) !== chunk.biomeId) { ctx.fillStyle = mkGrad(dx, 0, dx + FB, 0);                           ctx.fillRect(dx, dy, FB, CHUNK_SIZE); }
+      if (nb(0, 1)  !== chunk.biomeId) { ctx.fillStyle = mkGrad(0, dy + CHUNK_SIZE, 0, dy + CHUNK_SIZE - FB); ctx.fillRect(dx, dy + CHUNK_SIZE - FB, CHUNK_SIZE, FB); }
+      if (nb(0, -1) !== chunk.biomeId) { ctx.fillStyle = mkGrad(0, dy, 0, dy + FB);                           ctx.fillRect(dx, dy, CHUNK_SIZE, FB); }
+    } catch (e) { /* feathering is cosmetic — never break the map */ }
+
     // Draw biome-specific grid
     this._drawChunkGrid(ctx, chunk, pal);
 
