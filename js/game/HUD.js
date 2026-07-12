@@ -199,19 +199,10 @@ export function drawHUD(ctx, game) {
       let chipX = 16;
       for (let ei = 0; ei < els.length; ei++) {
         const ec = game._elementColors?.[els[ei]] || col;
-        const sz = ei === 0 ? 7 : 5;
+        const sz = ei === 0 ? 9 : 7;
         const cyE = HEIGHT - 70;
-        ctx.save();
-        ctx.translate(chipX + sz, cyE);
-        ctx.rotate(Math.PI / 4);
-        ctx.shadowColor = ec; ctx.shadowBlur = 8;
-        ctx.fillStyle = ec;
-        ctx.fillRect(-sz / 2, -sz / 2, sz, sz);
-        ctx.shadowBlur = 0;
-        ctx.strokeStyle = '#ffffff'; ctx.globalAlpha = 0.7; ctx.lineWidth = 1;
-        ctx.strokeRect(-sz / 2, -sz / 2, sz, sz);
-        ctx.restore();
-        chipX += sz * 2 + 8;
+        _drawElementSigil(ctx, els[ei], chipX + sz, cyE, sz, ec);
+        chipX += sz * 2 + 10;
       }
       ctx.restore();
     }
@@ -407,57 +398,184 @@ function _readyPulse() { return 0.6 + 0.4 * (0.5 + 0.5 * Math.sin(performance.no
 
 // Rounded-square ability box with a circular ready/cooldown ring + key label + % readout.
 // `color` tints the frame/glyph/ring/label so Q (magenta) and E (cyan) read as distinct.
-function _drawAbilityBox(ctx, x, y, s, label, frac, ready, glyphFn, color = CYAN) {
-  const cx = x + s / 2, cy = y + s / 2;
-  ctx.fillStyle = 'rgba(6,18,32,0.85)';
-  ctx.beginPath(); ctx.roundRect(x, y, s, s, 6); ctx.fill();
-  // Ready → colored border with a soft pulsing glow; not ready → dim, calm border.
+// ── ELEMENT SIGILS — each element family gets a REAL identity icon (Maria:
+// 'σκέτοι ρόμβοι δεν λένε τίποτα'). All procedural, all in the element's color,
+// with a soft glow. r = half-size.
+function _drawElementSigil(ctx, el, x, y, r, color) {
   ctx.save();
-  if (ready) {
-    ctx.globalAlpha = _readyPulse();
-    ctx.shadowColor = color; ctx.shadowBlur = 10;
-    ctx.strokeStyle = color; ctx.lineWidth = 2;
+  ctx.translate(x, y);
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.shadowColor = color; ctx.shadowBlur = 8;
+  ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = 1.6; ctx.lineJoin = 'round';
+  const fam = String(el || '');
+  if (fam.includes('fire') || fam === 'crimson_gate' || fam.includes('lava') || fam.includes('magma')) {
+    // FLAME: outer tongue + white inner tongue
+    ctx.beginPath();
+    ctx.moveTo(0, r);
+    ctx.bezierCurveTo(-r, r * 0.4, -r * 0.45, -r * 0.15, 0, -r);
+    ctx.bezierCurveTo(r * 0.7, -r * 0.1, r, r * 0.5, 0, r);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#fff4d8';
+    ctx.beginPath();
+    ctx.moveTo(0, r * 0.65);
+    ctx.bezierCurveTo(-r * 0.35, r * 0.25, -r * 0.15, -r * 0.1, 0, -r * 0.35);
+    ctx.bezierCurveTo(r * 0.3, 0, r * 0.35, r * 0.35, 0, r * 0.65);
+    ctx.fill();
+  } else if (fam.includes('ice') || fam.includes('cryo') || fam.includes('frost')) {
+    // CRYSTAL: 6-spoke snow star with mid ticks
+    for (let i = 0; i < 6; i++) {
+      const a2 = (i / 6) * Math.PI * 2;
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(Math.cos(a2) * r, Math.sin(a2) * r); ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a2) * r * 0.55 + Math.cos(a2 + 2.1) * r * 0.25, Math.sin(a2) * r * 0.55 + Math.sin(a2 + 2.1) * r * 0.25);
+      ctx.moveTo(Math.cos(a2) * r * 0.55, Math.sin(a2) * r * 0.55);
+      ctx.lineTo(Math.cos(a2) * r * 0.55 + Math.cos(a2 + 2.4) * r * 0.3, Math.sin(a2) * r * 0.55 + Math.sin(a2 + 2.4) * r * 0.3);
+      ctx.stroke();
+    }
+  } else if (fam.includes('electric') || fam.includes('thunder') || fam.includes('storm') || fam.includes('volt')) {
+    // BOLT: filled zig-zag
+    ctx.beginPath();
+    ctx.moveTo(r * 0.25, -r); ctx.lineTo(-r * 0.5, r * 0.15); ctx.lineTo(-r * 0.05, r * 0.15);
+    ctx.lineTo(-r * 0.25, r); ctx.lineTo(r * 0.5, -r * 0.1); ctx.lineTo(r * 0.05, -r * 0.1);
+    ctx.closePath(); ctx.fill();
+  } else if (fam.includes('toxin') || fam.includes('gas') || fam.includes('acid') || fam.includes('corros') || fam.includes('plague') || fam.includes('venom')) {
+    // CORROSIVE DROP + rising bubbles
+    ctx.beginPath();
+    ctx.moveTo(0, -r);
+    ctx.bezierCurveTo(r * 0.9, 0, r * 0.65, r, 0, r);
+    ctx.bezierCurveTo(-r * 0.65, r, -r * 0.9, 0, 0, -r);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#eaffe0';
+    ctx.beginPath(); ctx.arc(-r * 0.2, r * 0.15, r * 0.16, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(r * 0.18, -r * 0.15, r * 0.11, 0, Math.PI * 2); ctx.fill();
+  } else if (fam.includes('magnet')) {
+    // HORSESHOE magnet
+    ctx.beginPath(); ctx.arc(0, -r * 0.15, r * 0.7, Math.PI * 0.05, Math.PI * 0.95, true); ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(-r * 0.85, r * 0.25, r * 0.42, r * 0.36);
+    ctx.fillRect(r * 0.43, r * 0.25, r * 0.42, r * 0.36);
+  } else if (fam.includes('radia') || fam.includes('nuc')) {
+    // TREFOIL
+    for (let i = 0; i < 3; i++) {
+      const a2 = -Math.PI / 2 + (i / 3) * Math.PI * 2;
+      ctx.beginPath(); ctx.arc(0, 0, r * 0.85, a2 - 0.42, a2 + 0.42); ctx.lineWidth = r * 0.55; ctx.stroke();
+    }
+    ctx.lineWidth = 1.6;
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath(); ctx.arc(0, 0, r * 0.2, 0, Math.PI * 2); ctx.fill();
+  } else if (fam.includes('shadow') || fam.includes('void') || fam.includes('null') || fam.includes('glitch')) {
+    // VOID CRESCENT
+    ctx.beginPath(); ctx.arc(0, 0, r * 0.85, 0, Math.PI * 2); ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.beginPath(); ctx.arc(r * 0.4, -r * 0.25, r * 0.7, 0, Math.PI * 2); ctx.fill();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.strokeStyle = color;
+    ctx.beginPath(); ctx.arc(0, 0, r * 0.85, Math.PI * 0.35, Math.PI * 1.5); ctx.stroke();
+  } else if (fam.includes('holy') || fam.includes('angel') || fam.includes('light')) {
+    // HALO + spark cross
+    ctx.beginPath(); ctx.ellipse(0, -r * 0.35, r * 0.7, r * 0.28, 0, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, -r * 0.05); ctx.lineTo(0, r); ctx.moveTo(-r * 0.45, r * 0.5); ctx.lineTo(r * 0.45, r * 0.5); ctx.stroke();
+  } else if (fam.includes('earth') || fam.includes('seism') || fam.includes('rock')) {
+    // ROCK SHARD
+    ctx.beginPath();
+    ctx.moveTo(0, -r); ctx.lineTo(r * 0.8, r * 0.3); ctx.lineTo(r * 0.3, r); ctx.lineTo(-r * 0.7, r * 0.7); ctx.lineTo(-r * 0.75, -r * 0.1);
+    ctx.closePath(); ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = '#ffffff'; ctx.globalAlpha = 0.6;
+    ctx.beginPath(); ctx.moveTo(-r * 0.3, -r * 0.4); ctx.lineTo(r * 0.15, r * 0.5); ctx.stroke();
   } else {
-    ctx.strokeStyle = 'rgba(120,150,170,0.45)'; ctx.lineWidth = 1.5;
+    // fallback diamond (unknown element)
+    ctx.rotate(Math.PI / 4);
+    ctx.fillRect(-r * 0.6, -r * 0.6, r * 1.2, r * 1.2);
   }
-  ctx.beginPath(); ctx.roundRect(x, y, s, s, 6); ctx.stroke();
   ctx.restore();
+}
+
+function _drawAbilityBox(ctx, x, y, s, label, frac, ready, glyphFn, color = CYAN) {
+  // CYBER HEX SOCKET (rebuilt from zero — Maria). A dark glass hexagon holds the
+  // ability: while CHARGING a radial energy sweep fills the hex from the bottom up
+  // and a thin arc runs the rim with a live % in the heart; when READY the rim
+  // doubles, breathes, and a single spark orbits it. Label sits INSIDE the top of
+  // the hex so nothing collides with the ELEMENT row above.
+  const cx = x + s / 2, cy = y + s / 2;
+  const R = s / 2 + 3;
+  const now = performance.now();
+  const hex = (r, rot = 0) => {
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const a = rot + (i / 6) * Math.PI * 2 - Math.PI / 2;
+      i === 0 ? ctx.moveTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r)
+              : ctx.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+    }
+    ctx.closePath();
+  };
+  // glass body
   ctx.save();
-  ctx.globalAlpha = ready ? 1 : 0.5;
-  glyphFn(cx, cy);
-  ctx.restore();
-  _drawRing(ctx, cx, cy, s / 2 + 5, frac, ready, color);
-  // Charging: dark radial sweep shows exactly HOW MUCH is left + live % readout.
-  // Ready: no stale "100%" — a breathing glass highlight + corner ticks say it for you.
+  hex(R);
+  const bg = ctx.createLinearGradient(cx, cy - R, cx, cy + R);
+  bg.addColorStop(0, 'rgba(14,30,48,0.92)');
+  bg.addColorStop(1, 'rgba(4,10,20,0.92)');
+  ctx.fillStyle = bg; ctx.fill();
+  // charge fill: energy rises from the floor of the hex
   if (!ready) {
     ctx.save();
-    ctx.globalAlpha = 0.55;
-    ctx.fillStyle = '#04070c';
+    hex(R); ctx.clip();
+    const fh = frac * s;
+    const fg = ctx.createLinearGradient(0, cy + R - fh, 0, cy + R);
+    fg.addColorStop(0, color + '55');
+    fg.addColorStop(1, color + '18');
+    ctx.fillStyle = fg;
+    ctx.fillRect(cx - R, cy + R - fh, R * 2, fh);
+    ctx.globalAlpha = 0.75;                                   // liquid surface line
+    ctx.strokeStyle = color; ctx.lineWidth = 1.4;
     ctx.beginPath();
-    ctx.moveTo(cx, cy);
-    ctx.arc(cx, cy, s * 0.62, -Math.PI / 2 + frac * Math.PI * 2, -Math.PI / 2 + Math.PI * 2);
-    ctx.closePath(); ctx.fill();
-    ctx.restore();
-  } else {
-    ctx.save();
-    const gl = _readyPulse();
-    ctx.globalAlpha = 0.16 * gl;                             // glass sheen
-    const gg = ctx.createLinearGradient(cx, cy - s / 2, cx, cy + s / 2);
-    gg.addColorStop(0, '#ffffff'); gg.addColorStop(0.5, 'rgba(255,255,255,0)');
-    ctx.fillStyle = gg;
-    ctx.beginPath(); ctx.roundRect(cx - s / 2 + 2, cy - s / 2 + 2, s - 4, s * 0.5, 5); ctx.fill();
-    ctx.globalAlpha = 0.9 * gl;                              // corner ticks
-    ctx.strokeStyle = color; ctx.lineWidth = 1.6;
-    const tk = 6, x0 = cx - s / 2, y0 = cy - s / 2;
-    ctx.beginPath();
-    ctx.moveTo(x0, y0 + tk); ctx.lineTo(x0, y0); ctx.lineTo(x0 + tk, y0);
-    ctx.moveTo(x0 + s - tk, y0 + s); ctx.lineTo(x0 + s, y0 + s); ctx.lineTo(x0 + s, y0 + s - tk);
+    ctx.moveTo(cx - R + 4, cy + R - fh + Math.sin(now / 160) * 1.5);
+    ctx.lineTo(cx + R - 4, cy + R - fh - Math.sin(now / 160) * 1.5);
     ctx.stroke();
     ctx.restore();
   }
+  // rim(s)
+  if (ready) {
+    const gl = _readyPulse();
+    ctx.globalAlpha = gl;
+    ctx.shadowColor = color; ctx.shadowBlur = 14;
+    ctx.strokeStyle = color; ctx.lineWidth = 2.2;
+    hex(R); ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = gl * 0.5;
+    ctx.lineWidth = 1;
+    hex(R + 4, now / 4000); ctx.stroke();
+    // orbiting spark
+    const sa = now / 500;
+    ctx.globalAlpha = 0.95;
+    ctx.fillStyle = '#ffffff';
+    ctx.shadowColor = color; ctx.shadowBlur = 8;
+    ctx.beginPath(); ctx.arc(cx + Math.cos(sa) * (R + 4), cy + Math.sin(sa) * (R + 4), 2, 0, Math.PI * 2); ctx.fill();
+    ctx.shadowBlur = 0;
+  } else {
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = 'rgba(120,150,170,0.5)'; ctx.lineWidth = 1.4;
+    hex(R); ctx.stroke();
+    // rim progress arc (thin, exact)
+    ctx.strokeStyle = color; ctx.lineWidth = 2;
+    ctx.globalAlpha = 0.85;
+    ctx.beginPath(); ctx.arc(cx, cy, R + 4, -Math.PI / 2, -Math.PI / 2 + frac * Math.PI * 2); ctx.stroke();
+  }
+  // glyph
+  ctx.globalAlpha = ready ? 1 : 0.45;
+  glyphFn(cx, cy + 2);
+  // key label INSIDE the hex top
+  ctx.globalAlpha = 1;
   ctx.textAlign = 'center';
-  drawText(ctx, label, cx, y - 8, ready ? color : '#90a4b4', 'bold 13px Consolas, monospace');
-  if (!ready) drawText(ctx, `${Math.round(frac * 100)}%`, cx, y + s + 16, '#90a4b4', '11px Consolas, monospace');
+  drawText(ctx, label, cx, y + 2, ready ? color : '#7e94a6', 'bold 10px Consolas, monospace');
+  // live % in the heart while charging
+  if (!ready) drawText(ctx, `${Math.round(frac * 100)}%`, cx, cy + R - 6, '#aebfce', 'bold 9px Consolas, monospace');
+  ctx.restore();
 }
 
 // Bottom-right ultimate box: icon image + circular mana-fill ring. `color` = character identity.
