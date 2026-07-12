@@ -345,6 +345,7 @@ export class MetaProgress {
     this.runHistory   = [];  // last 20 runs { time, score, level, char, mode, date }
     // ── Eden Core narrative system ──────────────────────────────────────────
     this.edenMemoryPercent  = 0;   // 0–100, persisted
+    this.lastPlayerLevelRewarded = 1;   // account-level rewards claimed up to this menu level
     this.systemFeedMessages = [];  // last 8 { text, ts } entries, newest first
     this.bossEchoes         = {};  // { [bossKey]: true } first-time echo archives
     this.edenMilestonesSeen = {};  // { [threshold]: true } milestone one-fire guard
@@ -392,6 +393,7 @@ export class MetaProgress {
       this.runHistory  = Array.isArray(d.runHistory) ? d.runHistory.slice(-20) : [];
       // Eden Core — safe defaults for old saves
       this.edenMemoryPercent  = Math.min(100, Math.max(0, Number(d.edenMemoryPercent) || 0));
+      this.lastPlayerLevelRewarded = Math.max(1, Math.floor(Number(d.lastPlayerLevelRewarded) || 1));
       this.systemFeedMessages = Array.isArray(d.systemFeedMessages) ? d.systemFeedMessages.slice(0, 8) : [];
       this.bossEchoes         = (d.bossEchoes && typeof d.bossEchoes === 'object') ? d.bossEchoes : {};
       this.edenMilestonesSeen = (d.edenMilestonesSeen && typeof d.edenMilestonesSeen === 'object') ? d.edenMilestonesSeen : {};
@@ -473,6 +475,7 @@ export class MetaProgress {
         bossKills: this.bossKills,
         runHistory: this.runHistory,
         edenMemoryPercent:  this.edenMemoryPercent,
+        lastPlayerLevelRewarded: this.lastPlayerLevelRewarded,
         systemFeedMessages: this.systemFeedMessages,
         bossEchoes:         this.bossEchoes,
         edenMilestonesSeen: this.edenMilestonesSeen,
@@ -586,6 +589,27 @@ export class MetaProgress {
 
   // Menu-only player progression. Derived from existing save data so old saves keep working
   // and PF/relic/achievement balances are not migrated or re-awarded.
+  // ── ACCOUNT-LEVEL REWARDS (Maria 2026-07-12) — every new menu level pays out:
+  //    +75 x level Cores and +1 Protocol Fragment per level, plus a MILESTONE bonus
+  //    every 5 levels (+3 PF, +3% Eden Memory). Claimed once, persisted.
+  claimPlayerLevelRewards() {
+    const prog = this.getPlayerProgression();
+    const from = Math.max(1, this.lastPlayerLevelRewarded || 1);
+    if (prog.level <= from) return null;
+    let cores = 0, pf = 0, eden = 0;
+    for (let L = from + 1; L <= prog.level; L++) {
+      cores += 75 * L;
+      pf    += 1;
+      if (L % 5 === 0) { pf += 3; eden += 3; }
+    }
+    this.lastPlayerLevelRewarded = prog.level;
+    this.credits = (this.credits || 0) + cores;
+    this.protocolFragments = (this.protocolFragments || 0) + pf;
+    if (eden > 0) this.addEdenMemory(eden);
+    this._save();
+    return { levels: prog.level - from, level: prog.level, cores, pf, eden };
+  }
+
   getPlayerProgression() {
     const pfEarned = Math.max(0, Math.floor(this.getProtocolFragmentsEarned() || 0));
     const achievementCount = this.achievements ? Object.keys(this.achievements).filter((id) => this.achievements[id]).length : 0;

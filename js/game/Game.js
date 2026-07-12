@@ -22,7 +22,7 @@ import { weightedSample } from './Upgrades.js?v=20260711370000';
 import { MutationUI }      from './MutationUI.js?v=20260703990000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260712330000';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, SKILL_TREE, AMULET_DEFS } from './MetaProgress.js?v=20260712280000';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, SKILL_TREE, AMULET_DEFS } from './MetaProgress.js?v=20260712340000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260712320000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
@@ -19007,6 +19007,28 @@ export class Game {
     this._cgmSet('credits-row', credits);
     this._cgmSet('pf-avail', pfAvail);
     this._cgmSet('player-progress', progression.label);
+    // ── ACCOUNT-LEVEL REWARDS: claim any new menu levels and toast them (Maria) ──
+    try {
+      const rw = this.meta?.claimPlayerLevelRewards?.();
+      if (rw) {
+        const root = document.getElementById('cgm-overlay');
+        if (root && !root.querySelector('.cgm-lvl-toast')) {
+          const t = document.createElement('div');
+          t.className = 'cgm-lvl-toast';
+          t.style.cssText = 'position:absolute;left:50%;top:84px;transform:translateX(-50%);z-index:60;'
+            + 'padding:14px 26px;border-radius:12px;border:1.5px solid #ffd447;'
+            + 'background:linear-gradient(180deg,rgba(40,30,6,.96),rgba(16,10,2,.96));'
+            + 'box-shadow:0 0 24px rgba(255,212,71,.45);color:#ffe9a8;'
+            + "font-family:'Orbitron',sans-serif;font-weight:700;font-size:14px;letter-spacing:1px;text-align:center;";
+          t.innerHTML = '✦ PILOT LEVEL ' + rw.level + ' ✦<br>'
+            + '<span style="font-size:12px;color:#fff">+' + rw.cores + ' CORES · +' + rw.pf + ' 🧩'
+            + (rw.eden ? ' · +' + rw.eden + '% EDEN MEMORY' : '') + '</span>';
+          root.appendChild(t);
+          setTimeout(() => { try { t.remove(); } catch (_) {} }, 7000);
+          this.audio?.forgeMilestone?.();
+        }
+      }
+    } catch (e) { /* rewards must never break the menu */ }
     this._cgmSet('best-time', bestStr);
 
     // Equipment panel
@@ -21204,6 +21226,7 @@ _drawLoreArchive(ctx) {
     ctx.shadowColor = '#00e6ff'; ctx.shadowBlur = 14;
     ctx.textAlign = 'center';
     ctx.fillText('◈  PHENIX: NULL EDEN  —  ARCHIVE TERMINAL  ◈', WIDTH / 2, py + 31);
+    this._screenDress(ctx, px, py, pw, ph, '#7fd0ff');
     ctx.restore();
 
     // ── Left nav panel ───────────────────────────────────────────────────────
@@ -21811,6 +21834,36 @@ _drawLoreArchive(ctx) {
     ctx.textAlign = 'left';
   }
 
+  // Shared PREMIUM DRESSING for terminal screens (Maria: 'όλα premium, όχι απλά
+  // ζωγραφισμένα γράμματα'): corner brackets, a slow scanline sweeping the panel,
+  // and a breathing outer glow. Pure additive — call AFTER the panel bg is drawn.
+  _screenDress(ctx, px, py, pw, ph, color = '#2ee6f6') {
+    try {
+      const t = performance.now() / 1000;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = color; ctx.lineWidth = 2;                 // corner brackets
+      ctx.globalAlpha = 0.9;
+      const B = 20;
+      for (const [cx2, cy2, sx2, sy2] of [[px, py, 1, 1], [px + pw, py, -1, 1], [px, py + ph, 1, -1], [px + pw, py + ph, -1, -1]]) {
+        ctx.beginPath();
+        ctx.moveTo(cx2 + sx2 * B, cy2); ctx.lineTo(cx2, cy2); ctx.lineTo(cx2, cy2 + sy2 * B);
+        ctx.stroke();
+      }
+      const sy3 = py + ((t * 42) % ph);                           // scanline sweep
+      const sg2 = ctx.createLinearGradient(0, sy3 - 10, 0, sy3 + 10);
+      sg2.addColorStop(0, 'rgba(255,255,255,0)');
+      sg2.addColorStop(0.5, 'rgba(160,235,255,0.05)');
+      sg2.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = sg2; ctx.fillRect(px + 2, sy3 - 10, pw - 4, 20);
+      ctx.globalAlpha = 0.25 + 0.12 * Math.sin(t * 2.2);          // breathing outer glow
+      ctx.shadowColor = color; ctx.shadowBlur = 22;
+      ctx.strokeStyle = color; ctx.lineWidth = 1;
+      ctx.strokeRect(px - 1, py - 1, pw + 2, ph + 2);
+      ctx.restore();
+    } catch (e) { /* cosmetic only */ }
+  }
+
   _drawInstructionsScreen(ctx) {
     this._drawBackground(ctx);
     ctx.fillStyle = 'rgba(0,0,0,0.85)';
@@ -21829,6 +21882,7 @@ _drawLoreArchive(ctx) {
     ctx.strokeRect(px, py, pw, ph);
     ctx.strokeStyle = 'rgba(255,77,210,0.30)'; ctx.lineWidth = 1;
     ctx.strokeRect(px + 5, py + 5, pw - 10, ph - 10);
+    this._screenDress(ctx, px, py, pw, ph, CYAN);
 
     // Title with neon glow
     ctx.textAlign = 'center';
@@ -22210,6 +22264,7 @@ _drawLoreArchive(ctx) {
     ctx.fillStyle = CYAN;
     ctx.fillText('CREDITS', WIDTH / 2, py + 52);
     ctx.restore();
+    this._screenDress(ctx, px, py, pw, ph, '#ff4dd2');
 
     // Gradient separator (cyan → magenta → cyan)
     const sg = ctx.createLinearGradient(px + 50, 0, px + pw - 50, 0);
