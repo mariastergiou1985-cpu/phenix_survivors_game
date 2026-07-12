@@ -41,7 +41,7 @@ import { PhantomExecution } from '../effects/phantom-execution.js?v=202607115800
 import { WeatherTheater } from '../effects/weather-theater.js?v=20260711710000';
 import { Protocol0 } from '../effects/protocol-0.js?v=20260705000000';
 import { LaserEyes } from '../effects/laser-eyes.js?v=20260709100000';
-import { MeteorRain } from '../effects/meteor-rain.js?v=20260709100000';
+import { MeteorRain } from '../effects/meteor-rain.js?v=20260712100000';
 import { NpcWalker } from './NpcWalker.js?v=20260711750000';
 import { MapManager, BIOME_ID, BIOME_DEFS } from './MapManager.js?v=20260710330000';
 import { EventBus, EVENTS } from './EventBus.js?v=20260703990000';
@@ -19458,7 +19458,12 @@ export class Game {
             const core = m.stealCore(this.player?.goldChanceBonus || 0);
             if (core) {
               th.core = core; th.state = 'flee';
-              this.triggerAnnouncement('⚠ CORE THEFT — HUNT THE THIEF', '#ff4444');
+              if (!this._theftAnnounced) {              // full banner only the FIRST time
+                this._theftAnnounced = true;
+                this.triggerAnnouncement('⚠ CORE THEFT — HUNT THE THIEF', '#ff4444');
+              } else {
+                this.floatingTexts.push(new FloatingText('CORE THEFT!', m.pos.clone(), '#ff4444', 1.3));
+              }
               this.audio?.playMatrixBreach?.();
               this.screenShake.trigger(3, 0.2);
             } else { e._thief = null; this._thieves.splice(i, 1); }

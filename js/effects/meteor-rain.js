@@ -26,11 +26,9 @@ export const METEOR_DEFAULTS = {
   color:    { hue: 4, sat: 100, light: 56 },
 };
 
-// ── Official meteorite sprite (FX sheets) — replaces the procedural red balls.
-// void_ember_comet: the engine's canonical flaming-comet asset. Crystals remain
-// only as a fallback while the image is still loading.
-const _METEOR_SPRITE = (typeof Image !== 'undefined') ? new Image() : null;
-if (_METEOR_SPRITE) _METEOR_SPRITE.src = 'assets/enemies/weapons/sprites/void_ember_comet.png?v=20260705000000';
+// Meteors are now FULLY PROCEDURAL (ultimate-grade, Maria 2026-07-12) — the sprite
+// sheet drew as a mushy blob. Each meteor is a seeded jagged rock silhouette with
+// molten crack veins, a white-hot nose and a 3-layer tapering fire trail.
 
 export class MeteorRain {
   constructor(canvas, opts = {}) {
@@ -39,7 +37,7 @@ export class MeteorRain {
     for (const k in opts) if (cfg[k] && typeof cfg[k] === 'object') Object.assign(cfg[k], opts[k]);
     this.cfg = cfg;
     this.state = 'idle';
-    this._meteors = []; this._debris = [];
+    this._meteors = []; this._debris = []; this._rings = [];
     this._acc = 0; this._last = 0;
   }
   isActive() { return this.state !== 'idle'; }
@@ -71,6 +69,7 @@ export class MeteorRain {
       x: sx, y: topY, vx: dx * sp, vy: dy * sp, ax: dx * this.cfg.meteor.accel, ay: dy * this.cfg.meteor.accel,
       size: this.cfg.meteor.sizeMin + Math.random() * (this.cfg.meteor.sizeMax - this.cfg.meteor.sizeMin),
       rot: Math.random() * Math.PI, vr: (Math.random() - 0.5) * 0.3,
+      seed: Math.random() * 1000,   // per-meteor rock silhouette
       arc: 0.9955 + Math.random() * 0.003,   // per-meteor horizontal decay → parabolic arc
     });
   }
@@ -110,6 +109,10 @@ export class MeteorRain {
       const r2 = this.cfg.impact.radius * this.cfg.impact.radius;
       for (const en of this.enemies) { const dx = this.opts.getX(en) - x, dy = this.opts.getY(en) - y; if (dx * dx + dy * dy <= r2) this.opts.onImpact(en); }
     }
+    // impact shock ring + ground flash
+    this._rings = this._rings || [];
+    this._rings.push({ x, y, born: now, life: 420 });
+    if (this._rings.length > 20) this._rings.shift();
     // shatter into crystalline debris
     for (let i = 0; i < this.cfg.impact.debris; i++) { const a = Math.random() * Math.PI * 2, s = 1.5 + Math.random() * 4;
       this._debris.push({ x, y, vx: Math.cos(a) * s, vy: -Math.abs(Math.sin(a) * s) - 1, size: 2 + Math.random() * 4, rot: Math.random() * 6, vr: (Math.random() - 0.5) * 0.4, born: now, life: 460, ember: Math.random() < 0.4 }); }
@@ -137,26 +140,90 @@ export class MeteorRain {
       ctx.save(); ctx.strokeStyle = this._c(0.5 + 0.3 * pulse, 60); ctx.lineWidth = 2; ctx.shadowColor = this._c(1); ctx.shadowBlur = 12;
       ctx.beginPath(); ctx.arc(this.cx, this.cy, this.cfg.area.radius, 0, Math.PI * 2); ctx.stroke(); ctx.restore();
     }
-    ctx.save(); ctx.globalCompositeOperation = 'lighter';
-    // meteors
-    ctx.shadowColor = this._c(1); ctx.shadowBlur = 12;
+    ctx.save();
+    // meteors — procedural molten rocks, nose-first along velocity
+    const pr = (sd, i) => { const v = Math.sin(sd * 12.9898 + i * 78.233) * 43758.5453; return v - Math.floor(v); };
     for (const m of this._meteors) {
-      // trail
-      ctx.strokeStyle = this._c(0.5, 55); ctx.lineWidth = m.size * 0.5;
-      ctx.beginPath(); ctx.moveTo(m.x, m.y); ctx.lineTo(m.x - m.vx * 2.5, m.y - m.vy * 2.5); ctx.stroke();
-      if (_METEOR_SPRITE && _METEOR_SPRITE.complete && _METEOR_SPRITE.naturalWidth > 0) {
-        // Official meteorite asset at 1.5× the old visual footprint, nose-first along velocity.
-        const sz = m.size * 3;
-        ctx.save();
-        ctx.translate(m.x, m.y);
-        ctx.rotate(Math.atan2(m.vy, m.vx) + Math.PI / 4);
-        ctx.drawImage(_METEOR_SPRITE, -sz / 2, -sz / 2, sz, sz);
-        ctx.restore();
-      } else {
-        ctx.fillStyle = this._c(0.95, 55); this._crystal(ctx, m.x, m.y, m.size, m.rot);
-        ctx.fillStyle = this._c(1, 85); this._crystal(ctx, m.x, m.y, m.size * 0.5, m.rot);
+      const ang = Math.atan2(m.vy, m.vx);
+      const R = m.size * 0.65;
+      // ── 3-layer tapering fire trail (lighter) ──
+      ctx.globalCompositeOperation = 'lighter';
+      const trail = [
+        { len: 5.2, w: R * 1.7, col: 'rgba(255,60,20,0.22)' },
+        { len: 3.6, w: R * 1.0, col: 'rgba(255,140,40,0.45)' },
+        { len: 2.2, w: R * 0.45, col: 'rgba(255,244,214,0.85)' },
+      ];
+      for (const tl of trail) {
+        ctx.strokeStyle = tl.col; ctx.lineWidth = tl.w; ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(m.x - m.vx * 0.6, m.y - m.vy * 0.6);
+        ctx.lineTo(m.x - m.vx * tl.len, m.y - m.vy * tl.len);
+        ctx.stroke();
+      }
+      // shed sparks along the trail
+      for (let sp2 = 0; sp2 < 3; sp2++) {
+        const st = 1 + pr(m.seed, sp2) * 3;
+        ctx.globalAlpha = 0.7 - sp2 * 0.2;
+        ctx.fillStyle = sp2 % 2 ? '#ffd23c' : '#ff7a3c';
+        ctx.beginPath();
+        ctx.arc(m.x - m.vx * st + (pr(m.seed, sp2 + 5) - 0.5) * 10,
+                m.y - m.vy * st + (pr(m.seed, sp2 + 9) - 0.5) * 10, 1.6, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+      // ── the rock: seeded jagged silhouette (dark body over the glow) ──
+      ctx.save();
+      ctx.translate(m.x, m.y);
+      ctx.rotate(ang + m.rot * 0.2);
+      const pts = 7;
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.fillStyle = '#241009';
+      ctx.strokeStyle = '#ff7a3c'; ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      for (let i = 0; i < pts; i++) {
+        const pa = (i / pts) * Math.PI * 2;
+        const rr = R * (0.75 + pr(m.seed, i) * 0.5);
+        i === 0 ? ctx.moveTo(Math.cos(pa) * rr, Math.sin(pa) * rr)
+                : ctx.lineTo(Math.cos(pa) * rr, Math.sin(pa) * rr);
+      }
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      // molten crack veins across the rock
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = '#ffb03c'; ctx.lineWidth = 1.2;
+      for (let c2 = 0; c2 < 3; c2++) {
+        const a1 = pr(m.seed, c2 + 20) * Math.PI * 2;
+        const a2 = a1 + 1.6 + pr(m.seed, c2 + 30) * 1.4;
+        ctx.globalAlpha = 0.55 + 0.35 * Math.sin((this._now || 0) * 0.02 + c2 * 2);
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(a1) * R * 0.8, Math.sin(a1) * R * 0.8);
+        ctx.lineTo(Math.cos((a1 + a2) / 2) * R * 0.25, Math.sin((a1 + a2) / 2) * R * 0.25);
+        ctx.lineTo(Math.cos(a2) * R * 0.8, Math.sin(a2) * R * 0.8);
+        ctx.stroke();
+      }
+      // white-hot nose (leading edge — the air burns first)
+      ctx.globalAlpha = 0.95;
+      ctx.fillStyle = '#fff4d8';
+      ctx.shadowColor = '#ff7a3c'; ctx.shadowBlur = 12;
+      ctx.beginPath(); ctx.arc(R * 0.55, 0, R * 0.4, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.restore();
+    }
+    ctx.globalCompositeOperation = 'lighter';
+    // impact shock rings — flattened ground ellipses + white flash core
+    for (const rg of (this._rings || [])) {
+      const t = (now - rg.born) / rg.life; if (t >= 1) continue;
+      ctx.globalAlpha = (1 - t) * 0.85;
+      ctx.strokeStyle = t < 0.25 ? '#fff4d8' : '#ff7a3c';
+      ctx.lineWidth = 3.5 * (1 - t) + 0.8;
+      ctx.beginPath(); ctx.ellipse(rg.x, rg.y, 10 + t * 52, (10 + t * 52) * 0.42, 0, 0, Math.PI * 2); ctx.stroke();
+      if (t < 0.2) {
+        ctx.globalAlpha = (1 - t / 0.2) * 0.7;
+        ctx.fillStyle = '#fff4d8';
+        ctx.beginPath(); ctx.arc(rg.x, rg.y - 4, 8 + t * 40, 0, Math.PI * 2); ctx.fill();
       }
     }
+    this._rings = (this._rings || []).filter(rg => now - rg.born < rg.life);
+    ctx.globalAlpha = 1;
     // debris
     ctx.shadowBlur = 6;
     for (const d of this._debris) { const t = (now - d.born) / d.life; if (t >= 1) continue; ctx.globalAlpha = 1 - t; ctx.fillStyle = this._c(1, 60, d.ember ? 28 : this.cfg.color.hue); this._crystal(ctx, d.x, d.y, d.size, d.rot); }
