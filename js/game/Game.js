@@ -12,18 +12,18 @@ import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260705040000
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260712090000';
 import { Player }         from '../entities/Player.js?v=20260712480000';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260706270000';
-import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260712510000';
+import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260712520000';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=20260711750000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260705150000';
 import { SystemEventManager } from './Events.js?v=20260711780000';
-import { UpgradeUI }      from './UpgradeUI.js?v=20260711370000';
-import { weightedSample } from './Upgrades.js?v=20260711370000';
+import { UpgradeUI }      from './UpgradeUI.js?v=20260712520000';
+import { weightedSample } from './Upgrades.js?v=20260712520000';
 import { MutationUI }      from './MutationUI.js?v=20260703990000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260712330000';
 import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, SKILL_TREE, AMULET_DEFS } from './MetaProgress.js?v=20260712420000';
-import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260712320000';
+import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260712520000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
 import { GlitchDash } from '../effects/glitch-dash.js?v=20260712490000';
@@ -8745,7 +8745,7 @@ export class Game {
       const d = distance(this.player.pos, hp.pos);
 
       if (d < PICKUP_R) {
-        const heal = this.player.maxHp * 0.25 * (1 + 0.05 * (this.player._stScavLvl || 0));   // Φ11 Scavenger
+        const heal = this.player.maxHp * 0.10 * (1 + 0.05 * (this.player._stScavLvl || 0));   // Maria 2026-07-12: ground health cells heal 10/100 (was 25) · Φ11 Scavenger still applies
         this.player.hp = this.player.hp >= this.player.maxHp   // never clip overheal
           ? this.player.hp
           : Math.min(this.player.maxHp, this.player.hp + heal);

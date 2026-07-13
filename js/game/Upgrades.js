@@ -316,6 +316,12 @@ export const ALL_UPGRADES = [
   new UpgradeDefinition('infuse_thunder_maiden', 'Thunder Maiden Infusion', 'Adds THUNDER MAIDEN element. With Fusion Catalyst, triggers the Crimson Thunder Gate field.',
     '#ffd23c', 1, p => { (p.secondaryElements ||= []).includes('thunder_maiden') || p.secondaryElements.push('thunder_maiden'); }, '🌩', 'legendary', null, null, true, false, null, true,
     ['eddie']),   // Eddie only — gold chain-lightning secondary for his Crimson Gate primary
+  new UpgradeDefinition('infuse_void_static', 'Void Static Infusion', 'Adds VOID STATIC element. With Fusion Catalyst, triggers the Null Cascade field.',
+    '#5b4bff', 1, p => { (p.secondaryElements ||= []).includes('void_static') || p.secondaryElements.push('void_static'); }, '✧', 'legendary', null, null, true, false, null, true,
+    ['japan_phasewalker']),   // Phasewalker only — the static between frames (Maria 2026-07-12)
+  new UpgradeDefinition('infuse_ghost_frequency', 'Ghost Frequency Infusion', 'Adds GHOST FREQUENCY element. With Fusion Catalyst, triggers Spectral Overload bursts.',
+    '#9fdcff', 1, p => { (p.secondaryElements ||= []).includes('ghost_frequency') || p.secondaryElements.push('ghost_frequency'); }, '≈', 'legendary', null, null, true, false, null, true,
+    ['japan_phasewalker']),   // Phasewalker only — the signal the Grid cannot hear
   // Eddie GUITAR SOLO — his second weapon. Big red note-riffs scatter into enemies AND golden
   // lightning strikes the whole map each time the solo plays (with the eddie_riffs track).
   new UpgradeDefinition('eddie_guitar_solo', 'Guitar Solo', 'Eddie shreds a solo: giant red riffs scatter and GOLDEN lightning hits the whole map. Stronger per level.',

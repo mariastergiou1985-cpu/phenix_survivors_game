@@ -507,8 +507,8 @@ export class Enemy {
       case 'Scrap Scavenger':       return [105 * d, 7 * g,    ORANGE,  1.55,  8 * g];   // medium ×1.4
       case 'Cyber-Net Junkie':      return [135 * d, 5.6 * g,  GREEN,   1.45, 10 * g];   // medium ×1.4
       case 'Overclocked Berserker': return [210 * d, 4.2 * g,  RED,     1.00, 14 * g];   // medium ×1.4
-      case 'Security Defector Mech':return [108 * d, 80 * gB, YELLOW,  0.75, 33 * gB];   // mini-boss: hp ×1.6, dmg ×1.5, spd ×1.2
-      case 'Rogue AI Overlord':     return [90 * d,  300 * gB, RED,     0.55, 42 * gB];  // boss: hp ×1.6, dmg ×1.5, spd ×1.2; mega-boss ×3 inherits hp
+      case 'Security Defector Mech':return [108 * d, 108 * gB, YELLOW,  0.75, 33 * gB];   // Maria: bosses need more HP (80->108)   // mini-boss: hp ×1.6, dmg ×1.5, spd ×1.2
+      case 'Rogue AI Overlord':     return [90 * d,  400 * gB, RED,     0.55, 42 * gB];   // Maria: bosses need more HP (300->400)  // boss: hp ×1.6, dmg ×1.5, spd ×1.2; mega-boss ×3 inherits hp
       case 'Combat Hunter':         return [168 * d, 4.2 * g,  MAGENTA, 9999, 12 * g];   // medium ×1.4
       case 'Cyber Shooter':         return [108 * d, 5.6 * g,  CYAN,    9999,  6 * g];   // medium ×1.4
       case 'Heavy Mech':            return [58  * d, 32 * g,   ORANGE,  9999, 20 * g];   // large ×1.6

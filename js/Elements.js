@@ -25,6 +25,11 @@ export const ELEMENTS = {
   data_torrent:    { name: 'DATA TORRENT',     c1: '#7df9ff', c2: '#ffffff', spokes: 6, style: 'arc',   life: 0.45 },
   plasma_shockwave:{ name: 'PLASMA SHOCKWAVE', c1: '#c77dff', c2: '#ffd0f0', spokes: 5, style: 'pulse', life: 0.50 },
   tectonic_shield: { name: 'TECTONIC NANO-SHIELD', c1: '#d8a24a', c2: '#fff0d0', spokes: 4, style: 'shard', life: 0.55 },
+  // Phasewalker signature cyber elements (Maria 2026-07-12: he had NO elements at all) —
+  // additive data entries on existing burst styles, exactly the Eddie/Dimi pattern.
+  phase_shift:     { name: 'PHASE SHIFT',     c1: '#00b8d9', c2: '#e8fdff', spokes: 6, style: 'arc',   life: 0.45 },
+  void_static:     { name: 'VOID STATIC',     c1: '#5b4bff', c2: '#c8bfff', spokes: 5, style: 'pulse', life: 0.50 },
+  ghost_frequency: { name: 'GHOST FREQUENCY', c1: '#9fdcff', c2: '#ffffff', spokes: 6, style: 'shard', life: 0.48 },
 };
 
 // Symbol/icon per element — used for compact icon-based badges (HUD, cards) instead of long words.
@@ -32,6 +37,7 @@ export const ELEMENT_ICON = {
   fire: '🔥', electric: '⚡', radiation: '☢', ice: '❄', magnetic: '🧲', toxin: '☣', gas: '☁',
   neon_blaze: '✦', data_torrent: '≋', plasma_shockwave: '◎', tectonic_shield: '⬟',
   crimson_gate: '⛩', thunder_maiden: '🌩',
+  phase_shift: '◇', void_static: '✧', ghost_frequency: '≈',
 };
 
 // Primary elemental identity per active character. Oni is included but stays locked/PF-gated
@@ -46,6 +52,7 @@ export const CHARACTER_ELEMENT = {
   oni_cataclysm_protocol: 'radiation',
   eddie:                  'crimson_gate',   // Crimson Gate — red+gold burn/shock resonance identity
   dimis_kickboxer:        'neon_blaze',     // Φ1: Dimi signature primary (was plain electric)
+  japan_phasewalker:      'phase_shift',    // Maria 2026-07-12: Phasewalker finally gets his element identity
 };
 
 // Future fusion hooks (Phase 1 PREP ONLY) — data only, so fusion cards can be added later without
@@ -81,6 +88,9 @@ export const FUSION_FX = {
   crimson_thunder_gate: { name: 'CRIMSON THUNDER GATE', c1: '#ff2d2d', c2: '#ffd23c', kind: 'field', radius: 96, dmg: 12, slow: 0.8 },
   // Dimi fusion (Φ1) — Binary Overdrive Aura: neon/data resonance field, same balance class.
   binary_overdrive:     { name: 'BINARY OVERDRIVE AURA', c1: '#ff2d6a', c2: '#7df9ff', kind: 'field', radius: 94, dmg: 12, slow: 0.8 },
+  // Phasewalker fusions — same 'field' balance class as Eddie/Dimi (never slows bosses).
+  null_cascade:         { name: 'NULL CASCADE',          c1: '#00b8d9', c2: '#5b4bff', kind: 'field', radius: 92, dmg: 12, slow: 0.8 },
+  spectral_overload:    { name: 'SPECTRAL OVERLOAD',     c1: '#9fdcff', c2: '#ffffff', kind: 'aoe',   radius: 84, dmg: 14 },
 };
 
 // Element-pair → fusion id (keyed by fusionKey(a,b), i.e. the two element names sorted + joined).
@@ -98,6 +108,8 @@ export const FUSION_PAIRS = {
   'fire+radiation':     'cataclysm',
   'crimson_gate+thunder_maiden': 'crimson_thunder_gate',   // Eddie: primary + card-granted secondary
   'data_torrent+neon_blaze':     'binary_overdrive',       // Dimi: primary + card-granted secondary (Φ1)
+  'phase_shift+void_static':     'null_cascade',           // Phasewalker: primary + Void Static card
+  'ghost_frequency+phase_shift': 'spectral_overload',      // Phasewalker: primary + Ghost Frequency card
 };
 
 // Which fusion each playable character triggers once Fusion Catalyst is active. Single-element
@@ -111,6 +123,7 @@ export const CHARACTER_FUSION = {
   oni_cataclysm_protocol: 'cataclysm',        // Radiation + Fire
   eddie:                  'crimson_thunder_gate',
   dimis_kickboxer:        'binary_overdrive',       // Φ1: Neon Blaze + Data Torrent   // Crimson Gate + Thunder Maiden
+  japan_phasewalker:      'null_cascade',           // default fusion once Fusion Catalyst is live
 };
 
 const MAX_BURSTS = 56;   // hard cap on concurrent element bursts
