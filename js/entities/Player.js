@@ -89,6 +89,26 @@ export class Player {
       this.baseSpeed    = Math.round(230 * 1.18); // 271 — very fast (just below Taekwondo 276)
       this.pickupRadius = 84;
       this.contactDamageReduction = 0.06;         // fragile: minimal armor
+    } else if (this.selectedCharacter === 'cyber_arm_hero') {
+      // Ranged / Damage mid-liner — was falling through to constructor defaults
+      // (audit 2026-07-12): now a proper stat identity. Baseline speed kept.
+      this.maxHp   = 105;
+      this.hp      = 105;
+      this.contactDamageReduction = 0.04;         // light plating on the cyber arm
+    } else if (this.selectedCharacter === 'euclid_vector') {
+      // Toxin / Ranged kiter — lives at distance, slightly quick, modest plating (Maria: armor 0.08).
+      this.maxHp        = 100;
+      this.hp           = 100;
+      this.baseSpeed    = Math.round(230 * 1.05); // 242 — nimble, well below Assassin 258
+      this.pickupRadius = 80;
+      this.contactDamageReduction = 0.08;
+    } else if (this.selectedCharacter === 'oni_cataclysm_protocol') {
+      // Endless / Cataclysm juggernaut (14 PF unlock) — heavy and slow, 3rd toughest
+      // after Eddie (225/0.16) and Dimi (150/0.10). Was generic 100 HP / armor 0.
+      this.maxHp   = 140;
+      this.hp      = 140;
+      this.baseSpeed = Math.round(230 * 0.92);   // 212 — heavy stride (Skeleton 207, Dimi 189)
+      this.contactDamageReduction = 0.12;
     }
 
     this._tankTimer   = 0;     // Oni Protocol 0: damage-reduction window
