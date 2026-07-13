@@ -236,9 +236,14 @@ export class EMPShockwave {
     if (!this._sparks.length) return;
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
-    ctx.shadowColor = this._neon(1); ctx.shadowBlur = 6;
+    // shadowBlur removed (2026-07-12 perf pass): with up to 240 sparks live it was
+    // one of the heaviest per-frame costs. Halo faked with a soft under-rect.
     for (const s of this._sparks) {
       const t = (now - s.born) / s.life; if (t >= 1) continue;
+      const halo = s.size * 2.0;
+      ctx.globalAlpha = (1 - t) * 0.30;
+      ctx.fillStyle = this._neon(1, 50);
+      ctx.fillRect(s.x - halo / 2, s.y - halo / 2, halo, halo);
       ctx.globalAlpha = 1 - t;
       ctx.fillStyle = this._neon(1, 70);
       ctx.fillRect(s.x - s.size / 2, s.y - s.size / 2, s.size, s.size); // square neon static

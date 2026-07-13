@@ -60,6 +60,8 @@ export class GlitchDash {
     this._gbuf = document.createElement('canvas');
     this._gctx = this._gbuf.getContext('2d');
     this._PAD = 28;
+    this._gbuf.width  = this.SW + this._PAD * 2;   // sized ONCE — resizing a canvas
+    this._gbuf.height = this.SH + this._PAD * 2;   // per ghost per frame reallocates its backing store (FPS drain)
 
     // precompute the three channel-tinted silhouettes once (cheap RGB-split source)
     this._buildSilhouettes();
@@ -109,15 +111,15 @@ export class GlitchDash {
       });
     }
 
-    // 2. screen-tear: snapshot the path band from the (still-drawn) canvas
+    // 2. screen-tear — PERF FIX (2026-07-12): the old version snapshotted the canvas
+    // (drawImage(this.canvas) readback + a NEW canvas allocation on EVERY dash) which
+    // stalled the GPU pipeline — the FPS hitch Maria felt from the very first dashes.
+    // Now purely procedural: neon displacement bars along the path band, zero copies.
     const left = Math.min(A, B) - this.SW, right = Math.max(A, B) + this.SW;
     const rx = Math.max(0, left), rw = Math.min(this.canvas.width, right) - rx;
     const ry = Math.max(0, y - this.SH - 20), rh = this.SH + 34;
     if (rw > 0 && rh > 0) {
-      const buf = document.createElement('canvas');
-      buf.width = rw; buf.height = rh;
-      buf.getContext('2d').drawImage(this.canvas, rx, ry, rw, rh, 0, 0, rw, rh);
-      this.tear = { x: rx, y: ry, w: rw, h: rh, buf, born: now, life: this.cfg.tear.lifeMs };
+      this.tear = { x: rx, y: ry, w: rw, h: rh, born: now, life: this.cfg.tear.lifeMs };
     }
 
     // 3. neon burst at departure and arrival
@@ -160,10 +162,13 @@ export class GlitchDash {
     ctx.globalCompositeOperation = 'lighter';
     for (const p of this.particles) {
       const t = (now - p.born) / p.life; if (t >= 1) continue;
+      ctx.globalAlpha = (1 - t) * 0.35;                 // soft halo rect replaces shadowBlur
+      const s = p.size, h = s * 2.2;                     // (shadowBlur on 28 rects/burst was a big per-frame cost)
+      ctx.fillStyle = this._neon(1, 55);
+      ctx.fillRect(p.x - h / 2, p.y - h / 2, h, h);
       ctx.globalAlpha = 1 - t;
       ctx.fillStyle = this._neon(1);
-      ctx.shadowColor = this._neon(1); ctx.shadowBlur = 8;
-      const s = p.size; ctx.fillRect(p.x - s / 2, p.y - s / 2, s, s);
+      ctx.fillRect(p.x - s / 2, p.y - s / 2, s, s);
     }
     ctx.restore();
   }
@@ -173,7 +178,6 @@ export class GlitchDash {
     const t = age / gh.life; if (t >= 1) return;
     const a = gh.alpha * (1 - t), off = this.cfg.ghosts.aberration;
     const PAD = this._PAD, buf = this._gbuf, g = this._gctx;
-    buf.width = this.SW + PAD * 2; buf.height = this.SH + PAD * 2;
     g.clearRect(0, 0, buf.width, buf.height);
     g.globalCompositeOperation = 'lighter';           // RGB split
     g.drawImage(this._silR, PAD - off, PAD);
@@ -191,14 +195,22 @@ export class GlitchDash {
   _drawTear(ctx, now) {
     if (!this.tear) return;
     const T = this.tear, t = (now - T.born) / T.life; if (t >= 1) return;
-    ctx.globalAlpha = 1 - t;
+    // Procedural corruption band: offset neon slivers + dark counter-slivers.
+    // Same visual language (horizontal displacement), no canvas copies at all.
     const amp = this.cfg.tear.maxShift * (1 - t);
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
     for (let y = 0; y < T.h; y += this.cfg.tear.sliceH) {
       const shift = (Math.sin(y * 0.7 + now * 0.05) + (Math.random() - 0.5)) * amp;
       const sh = Math.min(this.cfg.tear.sliceH, T.h - y);
-      ctx.drawImage(T.buf, 0, y, T.w, sh, T.x + shift, T.y + y, T.w, sh);
+      ctx.globalAlpha = (1 - t) * 0.16;
+      ctx.fillStyle = this._neon(1, 62);
+      ctx.fillRect(T.x + shift, T.y + y, T.w, Math.max(1, sh - 2));
+      ctx.globalAlpha = (1 - t) * 0.10;
+      ctx.fillStyle = '#02060c';
+      ctx.fillRect(T.x - shift * 0.6, T.y + y + 1, T.w, 1);
     }
-    ctx.globalAlpha = 1;
+    ctx.restore();
   }
 }
 

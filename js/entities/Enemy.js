@@ -8,6 +8,21 @@ import { FloatingText } from './FloatingText.js';
 import { drawGlow } from '../game/Effects.js?v=20260705150000';
 import { PRIMARY_WEAPON_MAP, MINI_WEAPON_MAP, BOSS_WEAPON_MAP, getWeaponById } from '../game/EnemyWeaponCatalog.js?v=20260708300000';
 
+// ─── Enemy body-sprite cache (each PNG loads & decodes ONCE, shared by all spawns) ──
+const _enemySpriteCache = new Map();
+function _getEnemySprite(spriteFile) {
+  let img = _enemySpriteCache.get(spriteFile);
+  if (img) return img;
+  img = new Image();
+  img.onerror = () => {
+    console.warn(`[Enemy] Sprite failed: assets/enemies/${spriteFile}.png`);
+    _enemySpriteCache.delete(spriteFile);   // allow retry on next spawn
+  };
+  img.src = `assets/enemies/${spriteFile}.png?v=20260615210000`;
+  _enemySpriteCache.set(spriteFile, img);
+  return img;
+}
+
 // ─── Weapon sprite cache (shared across all enemies — each PNG loads once) ──────
 const _weaponSpriteCache = new Map();
 function _getWeaponSprite(weaponDef) {
@@ -443,9 +458,13 @@ export class Enemy {
     };
     const spriteFile = spriteMap[this.enemyType];
     if (spriteFile) {
-      this.sprite = new Image();
-      this.sprite.onerror = () => console.warn(`[Enemy] Sprite failed: assets/enemies/${spriteFile}.png`);
-      this.sprite.src = `assets/enemies/${spriteFile}.png?v=20260615210000`;
+      // PERF/CHAOS FIX (2026-07-12, Maria: sprites vanish ~20min into Chaos):
+      // this used to be `new Image()` PER SPAWN — every enemy re-fetched and
+      // re-decoded its PNG. Hundreds of spawns/min in Chaos meant constant
+      // decode churn; under memory pressure sprites blinked out for seconds
+      // until they re-decoded. One shared Image per path fixes both the
+      // disappearing sprites and a steady FPS drain in every mode.
+      this.sprite = _getEnemySprite(spriteFile);
     } else {
       console.warn(`[Enemy] No sprite mapped for: ${this.enemyType}`);
     }
