@@ -12,7 +12,7 @@ import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260705040000
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260712090000';
 import { Player }         from '../entities/Player.js?v=20260712480000';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260706270000';
-import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260712500000';
+import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260712510000';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=20260711750000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260705150000';
@@ -1300,6 +1300,7 @@ export class Game {
     this.airstrikeRockets = [];   // aimed rockets with impact telegraph
     this.gunships         = [];   // RED GUNSHIP event (event_aircraft_2): locks on the player
     this.gunshipZones     = [];   // its plasma-mortar impact zones
+    this.cybermoteMines   = [];   // CYBERMOTE event: proximity mines dropped by the W2 rider
     this.lightningZones   = [];   // Lightning Storm: telegraphed strike zones (hard-capped)
     this.synergyBursts    = [];   // transient synergy-burst rings (visual; hard-capped, auto-expire)
     this.elementFx        = new ElementFx();   // Phase-1 elemental VFX (bounded, auto-expiring)
@@ -1976,6 +1977,8 @@ export class Game {
     this.gunships          = [];            // RED GUNSHIP event state
     this.gunshipZones      = [];
     this._gunshipTimer     = 180;           // Maria: every 3 min in Endless AND Chaos, NO announcement
+    this.cybermoteMines    = [];
+    this._cybermoteTimer   = 300;           // CYBERMOTE pack every 5 min (Endless + Chaos)
     // Phoenix revives reset on Endless entry: Act 1 uses must not consume the Endless pool.
     // (startEndlessRun already calls reset() which zeroes these; this guard covers continueEndless.)
     this.phoenixReviveCount = 0;
@@ -16567,6 +16570,7 @@ export class Game {
     this._updateAirstrike(dt);
     this._updateLightningStorm(dt);
     this._updateGunship(dt);
+    this._updateCybermotes(dt);
   }
 
   _updateAirstrike(dt) {
@@ -16768,6 +16772,131 @@ export class Game {
     }
   }
 
+  // ── CYBERMOTE PACK (Maria 2026-07-12) — every 5 min in Endless AND Chaos. ─────
+  // One bike rides in, then GLITCH-SPLITS into 4 (the pack). Each rider carries a
+  // DIFFERENT weapon (0 ram / 1 SMG / 2 mines / 3 EMP lance). Huge HP — but they are
+  // real enemies: the ONLY event the player can destroy, with every weapon/character.
+  _updateCybermotes(dt) {
+    this._cybermoteTimer -= dt;
+    if (this._cybermoteTimer <= 0) {
+      this._cybermoteTimer = 300;
+      if (!this.enemies.some(e => e.enemyType === 'Cybermote')) {
+        const lead = new Enemy('Cybermote', this.currentMinute());
+        lead._moteWpn = 0; lead._moteLead = true; lead._moteSplitT = 1.1;
+        this.enemies.push(lead);
+        this.audio?.forgeThunder?.();   // engine scream — no announcement banner
+      }
+    }
+    for (let i = this.enemies.length - 1; i >= 0; i--) {
+      const e = this.enemies[i];
+      if (e.enemyType !== 'Cybermote' || e.hp <= 0) continue;
+
+      // GLITCH SPLIT: the lead bike duplicates into 4 shortly after arriving
+      if (e._moteLead && e._moteSplitT !== undefined) {
+        e._moteSplitT -= dt;
+        if (e._moteSplitT <= 0) {
+          e._moteSplitT = undefined;
+          for (let k = 1; k <= 3; k++) {
+            const c = new Enemy('Cybermote', this.currentMinute());
+            c._moteWpn = k;
+            c.pos = e.pos.clone().add(new Vec2(Math.cos(k * 2.1) * 70, Math.sin(k * 2.1) * 70));
+            this.enemies.push(c);
+          }
+          this.particles.spawnDeathRing(e.pos, '#bfe6ff', 14, 190, 2.0);   // split glitch flash
+          this.particles.spawnExplosion(e.pos, ['#ffffff', '#9fdcff', '#5577ff'], 18);
+          this.audio?.playEventWarning?.();
+        }
+      }
+
+      // ── W0 RAM DASH: periodic neon charge straight through the player ──
+      if (e._moteWpn === 0) {
+        e._ramCd = (e._ramCd ?? 3.0) - dt;
+        if (e._ramCd <= 0 && !e._ramT) {
+          e._ramCd = 4.2; e._ramT = 0.55;
+          const d0 = safeNormalize(this.player.pos.sub(e.pos));
+          e._ramDir = d0.lengthSq() > 0 ? d0 : new Vec2(1, 0);
+        }
+        if (e._ramT) {
+          e._ramT -= dt;
+          e.pos.addMut(e._ramDir.scale(560 * dt));            // burst well above bike cruise speed
+          if (Math.random() < 0.7) this.particles.spawnHitSparks(e.pos, '#9fdcff');
+          if (e._ramT <= 0) e._ramT = 0;
+        }
+      }
+
+      // ── W1 TWIN SMG: 3-round fan of fast tracer bullets (aim jitter = dodge window) ──
+      if (e._moteWpn === 1) {
+        e._smgCd = (e._smgCd ?? 2.0) - dt;
+        if (e._smgCd <= 0) {
+          e._smgCd = 2.8;
+          const base = safeNormalize(this.player.pos.sub(e.pos));
+          if (base.lengthSq() > 0) {
+            for (const j of [-0.22, 0, 0.22]) {
+              const c = Math.cos(j), sn = Math.sin(j);
+              this.spawnEnemyBullet(e.pos.clone(),
+                new Vec2(base.x * c - base.y * sn, base.x * sn + base.y * c),
+                340, 13, 5, '#cfe6ff');
+            }
+            this.audio?.playEnemyShoot();
+          }
+        }
+      }
+
+      // ── W2 MINE DROPPER: leaves armed proximity mines on its trail ──
+      if (e._moteWpn === 2) {
+        e._mineCd = (e._mineCd ?? 2.5) - dt;
+        if (e._mineCd <= 0 && this.cybermoteMines.length < 10) {
+          e._mineCd = 4.5;
+          this.cybermoteMines.push({ pos: e.pos.clone(), t: 0, arm: 0.8, life: 12 });
+        }
+      }
+
+      // ── W3 EMP LANCE: tracking telegraph line → thin locked beam (ultimate-style) ──
+      if (e._moteWpn === 3) {
+        if (!e._lancePhase) { e._lancePhase = 'cd'; e._lanceT = 2.2; }
+        e._lanceT -= dt;
+        if (e._lancePhase === 'cd' && e._lanceT <= 0) {
+          e._lancePhase = 'aim'; e._lanceT = 0.9; e._lanceAim = this.player.pos.clone();
+        } else if (e._lancePhase === 'aim') {
+          e._lanceAim.x += (this.player.pos.x - e._lanceAim.x) * Math.min(1, 0.6 * dt * 4);  // 60% tracking
+          e._lanceAim.y += (this.player.pos.y - e._lanceAim.y) * Math.min(1, 0.6 * dt * 4);
+          if (e._lanceT <= 0) {
+            e._lancePhase = 'fire'; e._lanceT = 0.30;
+            if (this._segDist(this.player.pos, e.pos, e._lanceAim) < PLAYER_RADIUS + 13 &&
+                this.phoenixReviveTimer <= 0 && this.player.dashTimer <= 0) {
+              const dmg = Math.round(this.player.maxHp * 0.10);
+              this._damagePlayer(dmg, { color: '#7fd0ff', shake: 5, stagger: 0.35 });
+              this.floatingTexts.push(new FloatingText('-' + dmg + ' HP', this.player.pos.clone(), '#7fd0ff', 1.0));
+            }
+            this.audio?.playLightningStrike?.();
+          }
+        } else if (e._lancePhase === 'fire' && e._lanceT <= 0) {
+          e._lancePhase = 'cd'; e._lanceT = 2.2;
+        }
+      }
+    }
+
+    // mines: arm → pulse → proximity detonation (or expire)
+    for (let i = this.cybermoteMines.length - 1; i >= 0; i--) {
+      const m = this.cybermoteMines[i];
+      m.t += dt; m.life -= dt;
+      const armed = m.t >= m.arm;
+      if (armed && distance(m.pos, this.player.pos) < PLAYER_RADIUS + 40) {
+        if (this.phoenixReviveTimer <= 0 && this.player.dashTimer <= 0) {
+          const dmg = Math.round(this.player.maxHp * 0.18);
+          this._damagePlayer(dmg, { color: '#ff7755', shake: 7, stagger: 0.4 });
+          this.floatingTexts.push(new FloatingText('-' + dmg + ' HP', this.player.pos.clone(), '#ff7755', 1.1));
+        }
+        this.particles.spawnExplosion(m.pos, ['#ff5533', '#ffaa55', '#ffffff'], 14);
+        this.particles.spawnDeathRing(m.pos, '#ff7755', 9, 130, 1.6);
+        this.audio?.playAirstrikeBomb?.();
+        this.cybermoteMines.splice(i, 1);
+        continue;
+      }
+      if (m.life <= 0) this.cybermoteMines.splice(i, 1);
+    }
+  }
+
   _spawnGunship() {
     const edge = Math.random() < 0.5 ? WORLD_BOUNDS.left - 80 : WORLD_BOUNDS.right + 80;
     this.gunships.push({
@@ -16927,6 +17056,51 @@ export class Game {
       }
       ctx.restore();
     }
+    // ── CYBERMOTE pack: mines + EMP-lance VFX (bikes themselves draw as enemies) ──
+    for (const m of this.cybermoteMines) {
+      const armed = m.t >= m.arm;
+      const pulse = 0.5 + 0.5 * Math.sin(_sNow * (armed ? 9 : 3) + m.pos.x);
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = armed ? 0.35 + 0.35 * pulse : 0.25;
+      ctx.strokeStyle = armed ? '#ff5533' : '#8899aa'; ctx.lineWidth = 2;
+      ctx.beginPath();                                     // hex mine shell
+      for (let k = 0; k <= 6; k++) {
+        const an = k * Math.PI / 3 + _sNow * 0.8;
+        const px2 = m.pos.x + Math.cos(an) * 9, py2 = m.pos.y + Math.sin(an) * 9;
+        k === 0 ? ctx.moveTo(px2, py2) : ctx.lineTo(px2, py2);
+      }
+      ctx.stroke();
+      ctx.globalAlpha = (armed ? 0.8 : 0.4) * pulse;
+      ctx.fillStyle = armed ? '#ff8866' : '#aabbcc';
+      ctx.beginPath(); ctx.arc(m.pos.x, m.pos.y, 3, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
+    for (const e of this.enemies) {
+      if (e.enemyType !== 'Cybermote' || !e._lancePhase || !e._lanceAim) continue;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      if (e._lancePhase === 'aim') {
+        const k = 1 - Math.max(0, e._lanceT) / 0.9;
+        ctx.globalAlpha = 0.20 + 0.45 * k * (0.7 + 0.3 * Math.sin(_sNow * 42));
+        ctx.strokeStyle = '#7fd0ff'; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(e.pos.x, e.pos.y); ctx.lineTo(e._lanceAim.x, e._lanceAim.y); ctx.stroke();
+        ctx.globalAlpha = 0.4 + 0.4 * k;
+        ctx.strokeStyle = '#bfe6ff'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(e._lanceAim.x, e._lanceAim.y, 26 - 14 * k, 0, Math.PI * 2); ctx.stroke();
+      } else if (e._lancePhase === 'fire') {
+        const life = Math.max(0, e._lanceT) / 0.30;
+        ctx.globalAlpha = 0.35 * life; ctx.strokeStyle = '#3388ff'; ctx.lineWidth = 10;
+        ctx.beginPath(); ctx.moveTo(e.pos.x, e.pos.y); ctx.lineTo(e._lanceAim.x, e._lanceAim.y); ctx.stroke();
+        ctx.globalAlpha = 0.95 * life; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(e.pos.x, e.pos.y); ctx.lineTo(e._lanceAim.x, e._lanceAim.y); ctx.stroke();
+        ctx.globalAlpha = 0.7 * life; ctx.fillStyle = '#cfe9ff';
+        ctx.beginPath(); ctx.arc(e._lanceAim.x, e._lanceAim.y, 8 + 6 * (1 - life), 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+
     // ── RED GUNSHIP (event_aircraft_2): sprite locked-on + procedural weapon VFX ──
     const g2 = this._gunship2Sprite;
     for (const g of this.gunships) {
