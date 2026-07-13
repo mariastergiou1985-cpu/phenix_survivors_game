@@ -12,7 +12,7 @@ import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260705040000
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260712090000';
 import { Player }         from '../entities/Player.js?v=20260712480000';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260706270000';
-import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260712520000';
+import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260712530000';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=20260711750000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260705150000';
@@ -8355,13 +8355,18 @@ export class Game {
     try {
       const p2 = this.player;
       if (p2 && p2.hp / p2.maxHp < 0.30 && this.healthPickups && this.healthPickups.length) {
+        // AFK-refill fix (Maria 2026-07-12: standing still, HP snapped back up at ~30%):
+        // the magnet used to vacuum EVERY cell on the map at once (up to 6 = a full bar).
+        // Now it pulls only the NEAREST one — one 10% top-up per dip, not a refill.
+        let best = null, bestD = 900;
         for (const hpk of this.healthPickups) {
           const d2 = distance(p2.pos, hpk.pos);
-          if (d2 > 26 && d2 < 900) {
-            const sp2 = (520 + (900 - d2) * 0.4) * dt;
-            hpk.pos.x += (p2.pos.x - hpk.pos.x) / d2 * sp2;
-            hpk.pos.y += (p2.pos.y - hpk.pos.y) / d2 * sp2;
-          }
+          if (d2 > 26 && d2 < bestD) { best = hpk; bestD = d2; }
+        }
+        if (best) {
+          const sp2 = (520 + (900 - bestD) * 0.4) * dt;
+          best.pos.x += (p2.pos.x - best.pos.x) / bestD * sp2;
+          best.pos.y += (p2.pos.y - best.pos.y) / bestD * sp2;
         }
       }
     } catch (e) { /* mercy magnet is optional */ }
@@ -8749,7 +8754,7 @@ export class Game {
         this.player.hp = this.player.hp >= this.player.maxHp   // never clip overheal
           ? this.player.hp
           : Math.min(this.player.maxHp, this.player.hp + heal);
-        this.floatingTexts.push(new FloatingText('+25% HP', this.player.pos.clone(), RED, 1.2));
+        this.floatingTexts.push(new FloatingText('+' + Math.round(heal) + ' HP', this.player.pos.clone(), RED, 1.2));
         this.particles.spawnCorePickup(hp.pos, RED);
         this.audio?.playCorePickup();
         this.healthPickups.splice(i, 1);
@@ -10083,6 +10088,7 @@ export class Game {
 
   spawnEnemyBullet(pos, dir, speed, damage, radius, color, opts = {}) {
     speed *= this.mutations.enemyBulletSpeedMult;   // ACCELERATED ROUNDS (1.0 outside Endless)
+    damage *= 1.10;                                 // Maria 2026-07-12: all enemy damage +10%
     const angle = Math.atan2(dir.y, dir.x);
     // Elite SLASH_WAVE / SLASH_ARC: wide crescent — slower, short-lived, 3x hit width.
     const isSlash = opts.behavior === 'slash_wave' || opts.behavior === 'slash_arc';

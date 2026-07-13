@@ -105,7 +105,7 @@ export class Enemy {
     this.maxHp         = hp;
     this.color         = color;
     this.stealTime     = stealTime;
-    this.contactDamage = contactDamage;
+    this.contactDamage = contactDamage * 1.10;   // Maria 2026-07-12: all enemy damage +10% (single central point)
     this.radius        = ENEMY_RADIUS;
 
     if (enemyType === 'Security Defector Mech')  this.radius = 28;
