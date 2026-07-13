@@ -12,7 +12,7 @@ import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260705040000
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260712090000';
 import { Player }         from '../entities/Player.js?v=20260712480000';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260706270000';
-import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260712540000';
+import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260712550000';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=20260711750000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260705150000';
@@ -1302,6 +1302,7 @@ export class Game {
     this.gunshipZones     = [];   // its plasma-mortar impact zones
     this.cybermoteMines   = [];   // CYBERMOTE event: proximity mines dropped by the W2 rider
     this.dmgNums          = [];   // VS-style damage numbers (hard cap 40, per-enemy merge window)
+    this.nullEcho         = null; // NULL ECHO event: corrupted mirror of the player's own character
     this.lightningZones   = [];   // Lightning Storm: telegraphed strike zones (hard-capped)
     this.synergyBursts    = [];   // transient synergy-burst rings (visual; hard-capped, auto-expire)
     this.elementFx        = new ElementFx();   // Phase-1 elemental VFX (bounded, auto-expiring)
@@ -1980,6 +1981,9 @@ export class Game {
     this._gunshipTimer     = 180;           // Maria: every 3 min in Endless AND Chaos, NO announcement
     this.cybermoteMines    = [];
     this._cybermoteTimer   = 300;           // CYBERMOTE pack every 5 min (Endless + Chaos)
+    this.nullEcho          = null;
+    this.nullEchoZones     = [];
+    this._nullEchoTimer    = 600;           // NULL ECHO every 10 min — the apex event (Claude's own)
     // Phoenix revives reset on Endless entry: Act 1 uses must not consume the Endless pool.
     // (startEndlessRun already calls reset() which zeroes these; this guard covers continueEndless.)
     this.phoenixReviveCount = 0;
@@ -16578,6 +16582,7 @@ export class Game {
     this._updateLightningStorm(dt);
     this._updateGunship(dt);
     this._updateCybermotes(dt);
+    this._updateNullEcho(dt);
   }
 
   _updateAirstrike(dt) {
@@ -16776,6 +16781,186 @@ export class Game {
         this.audio?.playAirstrikeBomb?.();
       }
       if (z.t >= z.warn + z.flash) this.gunshipZones.splice(i, 1);
+    }
+  }
+
+  // ── NULL ECHO (Claude's own event, 2026-07-12) — every 10 min, Endless + Chaos. ──
+  // The Grid compiles a corrupted mirror of YOUR character. It stalks you for 30s and
+  // attacks with a twisted version of that character's own signature — a DIFFERENT
+  // pattern per pilot. Every attack is telegraphed and dodgeable; dash/phoenix protect
+  // as everywhere. Invulnerable like the sky events — you outlast it, you don't kill it.
+  _updateNullEcho(dt) {
+    this._nullEchoTimer -= dt;
+    if (this._nullEchoTimer <= 0) {
+      this._nullEchoTimer = 600;
+      if (!this.nullEcho) this._spawnNullEcho();
+    }
+    const E = this.nullEcho;
+    if (!E) return;
+    E.t += dt; E.life -= dt; E.atkCd -= dt;
+
+    // stalk: keep ~180px, mirror-strafe around the player
+    if (!E.busy) {
+      const d = distance(E.pos, this.player.pos);
+      const dir = safeNormalize(this.player.pos.sub(E.pos));
+      const spd = (this.player.baseSpeed || 230) * 0.92;
+      if (d > 190) E.pos.addMut(dir.scale(spd * dt));
+      else { E.pos.addMut(new Vec2(-dir.y, dir.x).scale(spd * 0.6 * dt)); }
+    }
+
+    // ── attack state machine (per-character signature) ──
+    if (!E.busy && E.atkCd <= 0) {
+      E.busy = true; E.phase = 'tell'; E.pt = 0.9;
+      E.aim = this.player.pos.clone();
+      E.step = 0;
+      this.audio?.playEventWarning?.();
+    }
+    if (E.busy) {
+      E.pt -= dt;
+      const kind = E.kind;
+      if (E.phase === 'tell') {
+        if (kind === 'blitz' || kind === 'blink') E.aim = this.player.pos.clone();   // track until strike
+        if (E.pt <= 0) { E.phase = 'strike'; E.pt = 0.45; this._nullEchoStrike(E); }
+      } else if (E.phase === 'strike' && E.pt <= 0) {
+        E.step++;
+        const steps = (kind === 'blitz') ? 3 : (kind === 'zones') ? 1 : 1;
+        if (E.step < steps) { E.phase = 'tell'; E.pt = 0.55; E.aim = this.player.pos.clone(); }
+        else { E.busy = false; E.phase = null; E.atkCd = 4.2; }
+      }
+    }
+
+    // expanding rings resolve here (ring kind)
+    if (E.ring) {
+      E.ring.r += 320 * dt;
+      const d = distance(this.player.pos, E.ring.pos);
+      if (!E.ring.hit && Math.abs(d - E.ring.r) < 26 &&
+          this.phoenixReviveTimer <= 0 && this.player.dashTimer <= 0) {
+        E.ring.hit = true;
+        const dmg = Math.round(this.player.maxHp * 0.25);
+        this._damagePlayer(dmg, { color: E.c1, shake: 8, stagger: 0.5 });
+        this.floatingTexts.push(new FloatingText('-' + dmg + ' HP', this.player.pos.clone(), E.c1, 1.2));
+      }
+      if (E.ring.r > 460) E.ring = null;
+    }
+
+    // zone resolution (thunder strikes / toxin pools)
+    for (let i = this.nullEchoZones.length - 1; i >= 0; i--) {
+      const z = this.nullEchoZones[i];
+      z.t += dt;
+      if (!z.struck && z.t >= z.warn) {
+        z.struck = true;
+        if (distance(this.player.pos, z.pos) < z.radius &&
+            this.phoenixReviveTimer <= 0 && this.player.dashTimer <= 0) {
+          const dmg = Math.round(this.player.maxHp * (z.pool ? 0.10 : 0.30));
+          this._damagePlayer(dmg, { color: z.c, shake: 8, stagger: 0.5 });
+          this.floatingTexts.push(new FloatingText('-' + dmg + ' HP', this.player.pos.clone(), z.c, 1.2));
+        }
+        this.particles.spawnExplosion(z.pos, [z.c, '#ffffff'], 14);
+        this.audio?.playLightningStrike?.();
+      }
+      if (z.pool && z.struck) {                       // toxin pools linger and tick
+        z.poolT = (z.poolT || 0) + dt;
+        z.tick = (z.tick || 0) - dt;
+        if (z.tick <= 0) {
+          z.tick = 0.6;
+          if (distance(this.player.pos, z.pos) < z.radius &&
+              this.phoenixReviveTimer <= 0 && this.player.dashTimer <= 0) {
+            const dmg = Math.round(this.player.maxHp * 0.06);
+            this._damagePlayer(dmg, { color: z.c, shake: 3, stagger: 0 });
+          }
+        }
+        if (z.poolT > 3.5) this.nullEchoZones.splice(i, 1);
+      } else if (z.t >= z.warn + 0.35) this.nullEchoZones.splice(i, 1);
+    }
+
+    if (E.life <= 0) {                                 // decompiles — glitch-out
+      this.particles.spawnDeathRing(E.pos, E.c1, 14, 220, 2.2);
+      this.particles.spawnExplosion(E.pos, [E.c1, '#ffffff', '#02060c'], 22);
+      this.triggerAnnouncement('ECHO DECOMPILED', '#8899aa');
+      this.nullEcho = null;
+    }
+  }
+
+  _spawnNullEcho() {
+    const char = this.player.selectedCharacter;
+    // signature attack + palette per pilot — the mirror fights like YOU do
+    const TABLE = {
+      skeleton_warrior:       { kind: 'ring',  c1: '#dfe9f5', c2: '#8B0050' },   // corrupted bone shockwave
+      taekwondo_girl:         { kind: 'blitz', c1: '#ff7ab8', c2: '#7df9ff' },   // dash-kick blitz x3
+      cyber_arm_hero:         { kind: 'beam',  c1: '#ff6600', c2: '#ffd27f' },   // overdrive flame lance
+      brawler_warrior:        { kind: 'ring',  c1: '#ffb066', c2: '#c77dff' },   // planet-crack slam ring
+      assassin_clone:         { kind: 'blink', c1: '#9fd8ff', c2: '#c77dff' },   // blink-behind crescent
+      japan_phasewalker:      { kind: 'blink', c1: '#00b8d9', c2: '#5b4bff' },   // phase-slip EMP burst
+      euclid_vector:          { kind: 'pools', c1: '#7CFF4D', c2: '#0a9c44' },   // toxin memory pools
+      oni_cataclysm_protocol: { kind: 'beam',  c1: '#ff3030', c2: '#ff8a3c' },   // quad-laser echo
+      eddie:                  { kind: 'zones', c1: '#ff2d2d', c2: '#ffd23c' },   // red thunder from a dead song
+      dimis_kickboxer:        { kind: 'blitz', c1: '#b026ff', c2: '#ff2d6a' },   // gauntlet charge combo
+    };
+    const cfg = TABLE[char] || TABLE.skeleton_warrior;
+    const edge = Math.random() < 0.5 ? WORLD_BOUNDS.left + 40 : WORLD_BOUNDS.right - 40;
+    this.nullEcho = {
+      pos: new Vec2(edge, this.player.pos.y), t: 0, life: 30, atkCd: 2.5,
+      busy: false, phase: null, pt: 0, step: 0, aim: new Vec2(0, 0), ring: null,
+      kind: cfg.kind, c1: cfg.c1, c2: cfg.c2, charId: char,
+    };
+    this.triggerAnnouncement('◈ NULL ECHO — YOUR REFLECTION HAS BEEN COMPILED ◈', cfg.c1);
+    this.audio?.playEventWarning?.();
+    this.audio?.forgeBossRoar?.();
+  }
+
+  // Execute the strike for the echo's current attack pattern.
+  _nullEchoStrike(E) {
+    const P = this.player;
+    if (E.kind === 'ring') {
+      E.ring = { pos: E.pos.clone(), r: 24, hit: false };
+      this.screenShake.trigger(6, 0.3);
+    } else if (E.kind === 'blitz') {
+      // dash THROUGH the locked aim point; contact along the path hurts
+      const from = E.pos.clone();
+      const dir = safeNormalize(E.aim.sub(E.pos));
+      const dist = Math.min(360, distance(E.pos, E.aim) + 120);
+      E.pos = E.pos.add(dir.scale(dist));
+      if (this._segDist(P.pos, from, E.pos) < PLAYER_RADIUS + 20 &&
+          this.phoenixReviveTimer <= 0 && P.dashTimer <= 0) {
+        const dmg = Math.round(P.maxHp * 0.20);
+        this._damagePlayer(dmg, { color: E.c1, shake: 7, stagger: 0.4 });
+        this.floatingTexts.push(new FloatingText('-' + dmg + ' HP', P.pos.clone(), E.c1, 1.1));
+      }
+      this.particles.spawnHitSparks(E.pos, E.c1);
+    } else if (E.kind === 'beam') {
+      if (this._segDist(P.pos, E.pos, E.aim) < PLAYER_RADIUS + 16 &&
+          this.phoenixReviveTimer <= 0 && P.dashTimer <= 0) {
+        const dmg = Math.round(P.maxHp * 0.30);
+        this._damagePlayer(dmg, { color: E.c1, shake: 8, stagger: 0.5 });
+        this.floatingTexts.push(new FloatingText('-' + dmg + ' HP', P.pos.clone(), E.c1, 1.2));
+      }
+      E.beamT = 0.4;                                    // draw flash window
+    } else if (E.kind === 'blink') {
+      // vanish → reappear at the player's back → crescent burst zone
+      const dir = safeNormalize(P.pos.sub(E.pos));
+      E.pos = P.pos.clone().add(dir.scale(70));
+      this.nullEchoZones.push({ pos: P.pos.clone(), radius: 78, warn: 0.7, t: 0, struck: false, c: E.c1 });
+      this.particles.spawnDeathRing(E.pos, E.c1, 8, 110, 1.4);
+    } else if (E.kind === 'zones') {
+      for (let k = 0; k < 3; k++) {
+        if (this.nullEchoZones.length >= 8) break;
+        const aimed = k === 0 ? 0 : randomRange(70, 220);
+        const ang = Math.random() * Math.PI * 2;
+        this.nullEchoZones.push({
+          pos: new Vec2(P.pos.x + Math.cos(ang) * aimed, P.pos.y + Math.sin(ang) * aimed),
+          radius: 66, warn: 1.0, t: 0, struck: false, c: E.c1,
+        });
+      }
+    } else if (E.kind === 'pools') {
+      for (let k = 0; k < 2; k++) {
+        if (this.nullEchoZones.length >= 8) break;
+        const off = k === 0 ? 0 : randomRange(90, 200);
+        const ang = Math.random() * Math.PI * 2;
+        this.nullEchoZones.push({
+          pos: new Vec2(P.pos.x + Math.cos(ang) * off, P.pos.y + Math.sin(ang) * off),
+          radius: 74, warn: 0.8, t: 0, struck: false, c: E.c1, pool: true,
+        });
+      }
     }
   }
 
@@ -17130,6 +17315,88 @@ export class Game {
       }
       ctx.restore();
     }
+    // ── NULL ECHO: corrupted mirror of the player's character + its telegraphs ──
+    const E = this.nullEcho;
+    if (E) {
+      // build the dark-tinted mirror sprite ONCE per spawn (small offscreen, one-time)
+      if (!E._spr) {
+        const src = this._charImages?.[E.charId];
+        if (src && src.complete && src.naturalWidth) {
+          const c = document.createElement('canvas');
+          const w = 74, h2 = Math.round(74 * src.naturalHeight / src.naturalWidth);
+          c.width = w; c.height = h2;
+          const g = c.getContext('2d');
+          g.translate(w, 0); g.scale(-1, 1);            // mirrored — it IS your reflection
+          g.drawImage(src, 0, 0, w, h2);
+          g.globalCompositeOperation = 'source-atop';    // corrupt: near-black body, tinted rim
+          g.fillStyle = 'rgba(4,6,12,0.82)'; g.fillRect(0, 0, w, h2);
+          E._spr = c;
+        }
+      }
+      const jx = (Math.random() - 0.5) * 3, glitch = Math.sin(_sNow * 22) > 0.86;
+      ctx.save();
+      ctx.globalAlpha = 0.28; ctx.fillStyle = '#000';
+      ctx.beginPath(); ctx.ellipse(E.pos.x, E.pos.y + 6, 26, 8, 0, 0, Math.PI * 2); ctx.fill();
+      if (E._spr) {
+        const w = E._spr.width, h2 = E._spr.height;
+        ctx.globalCompositeOperation = 'lighter';        // chromatic ghost pair behind the body
+        ctx.globalAlpha = 0.35;
+        ctx.drawImage(E._spr, E.pos.x - w / 2 - 3 + jx, E.pos.y - h2 + (glitch ? 3 : 0));
+        ctx.globalAlpha = 0.30;
+        ctx.drawImage(E._spr, E.pos.x - w / 2 + 3 - jx, E.pos.y - h2 - (glitch ? 2 : 0));
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = 1;
+        ctx.drawImage(E._spr, E.pos.x - w / 2 + (glitch ? jx * 2 : 0), E.pos.y - h2);
+        // burning eyes in its accent color
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.8 + 0.2 * Math.sin(_sNow * 8);
+        ctx.fillStyle = E.c1;
+        ctx.beginPath(); ctx.arc(E.pos.x - 6, E.pos.y - h2 * 0.78, 2.4, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(E.pos.x + 6, E.pos.y - h2 * 0.78, 2.4, 0, Math.PI * 2); ctx.fill();
+      } else {
+        ctx.globalAlpha = 0.9; ctx.fillStyle = '#0a0f1a'; ctx.strokeStyle = E.c1; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(E.pos.x, E.pos.y - 20, 20, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      }
+      // attack telegraphs
+      ctx.globalCompositeOperation = 'lighter';
+      if (E.busy && E.phase === 'tell') {
+        const k = 1 - Math.max(0, E.pt) / 0.9;
+        if (E.kind === 'beam') {                        // aim lance
+          ctx.globalAlpha = 0.25 + 0.5 * k * (0.7 + 0.3 * Math.sin(_sNow * 40));
+          ctx.strokeStyle = E.c1; ctx.lineWidth = 2 + 2 * k;
+          ctx.beginPath(); ctx.moveTo(E.pos.x, E.pos.y - 30); ctx.lineTo(E.aim.x, E.aim.y); ctx.stroke();
+        } else {                                        // charge aura tightening
+          ctx.globalAlpha = 0.3 + 0.5 * k;
+          ctx.strokeStyle = E.c1; ctx.lineWidth = 2.5;
+          ctx.beginPath(); ctx.arc(E.pos.x, E.pos.y - 26, 40 - 22 * k, 0, Math.PI * 2); ctx.stroke();
+        }
+      }
+      if (E.beamT > 0) {                                // firing beam flash
+        E.beamT -= 1 / 60;
+        const bl = Math.max(0, E.beamT) / 0.4;
+        ctx.globalAlpha = 0.35 * bl; ctx.strokeStyle = E.c1; ctx.lineWidth = 13;
+        ctx.beginPath(); ctx.moveTo(E.pos.x, E.pos.y - 30); ctx.lineTo(E.aim.x, E.aim.y); ctx.stroke();
+        ctx.globalAlpha = 0.95 * bl; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.moveTo(E.pos.x, E.pos.y - 30); ctx.lineTo(E.aim.x, E.aim.y); ctx.stroke();
+      }
+      if (E.ring) {                                     // expanding shock ring
+        ctx.globalAlpha = 0.6; ctx.strokeStyle = E.c1; ctx.lineWidth = 7;
+        ctx.beginPath(); ctx.arc(E.ring.pos.x, E.ring.pos.y, E.ring.r, 0, Math.PI * 2); ctx.stroke();
+        ctx.globalAlpha = 0.9; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(E.ring.pos.x, E.ring.pos.y, E.ring.r, 0, Math.PI * 2); ctx.stroke();
+      }
+      ctx.restore();
+    }
+    for (const z of this.nullEchoZones || []) {
+      if (!z.struck) this._drawTelegraphRing(ctx, z.pos.x, z.pos.y, z.radius, z.t / z.warn, z.c, '#ffffff');
+      else if (z.pool) {                                // lingering pool
+        ctx.save(); ctx.globalAlpha = 0.30 + 0.12 * Math.sin(_sNow * 6 + z.pos.x);
+        ctx.fillStyle = z.c;
+        ctx.beginPath(); ctx.arc(z.pos.x, z.pos.y, z.radius, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+      }
+    }
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+
     // ── CYBERMOTE pack: mines + EMP-lance VFX (bikes themselves draw as enemies) ──
     for (const m of this.cybermoteMines) {
       const armed = m.t >= m.arm;
