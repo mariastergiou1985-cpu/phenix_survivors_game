@@ -12,7 +12,7 @@ import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260705040000
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260712090000';
 import { Player }         from '../entities/Player.js?v=20260712480000';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260706270000';
-import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260712490000';
+import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260712500000';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=20260711750000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260705150000';
@@ -803,6 +803,9 @@ export class Game {
     this._airstrikeSprite = new Image();
     this._airstrikeSprite.onerror = () => console.warn('[Endless] airstrike_sheet.png not found — drawn fallback used');
     this._airstrikeSprite.src = 'assets/enemies/event_airstrike/airstrike_sheet.png';
+    this._gunship2Sprite = new Image();
+    this._gunship2Sprite.onerror = () => console.warn('[Hazard] event_aircraft_2.png not found — drawn fallback used');
+    this._gunship2Sprite.src = 'assets/enemies/event_airstrike/event_aircraft_2.png?v=20260712500000';
     this._lightningStormSprite = new Image();
     this._lightningStormSprite.onerror = () => console.warn('[Endless] lights_storm_rain.png not found — drawn fallback used');
     this._lightningStormSprite.src = 'assets/events/weather/lights_storm_rain.png?v=20260628400000';
@@ -1295,6 +1298,8 @@ export class Game {
     // Endless-only high-threat hazards (inert in Act 1; armed/reset in _enterEndless).
     this.airstrikeShips   = [];   // loitering airstrike ships that fire aimed rockets
     this.airstrikeRockets = [];   // aimed rockets with impact telegraph
+    this.gunships         = [];   // RED GUNSHIP event (event_aircraft_2): locks on the player
+    this.gunshipZones     = [];   // its plasma-mortar impact zones
     this.lightningZones   = [];   // Lightning Storm: telegraphed strike zones (hard-capped)
     this.synergyBursts    = [];   // transient synergy-burst rings (visual; hard-capped, auto-expire)
     this.elementFx        = new ElementFx();   // Phase-1 elemental VFX (bounded, auto-expiring)
@@ -1691,7 +1696,7 @@ export class Game {
         CAMPAIGN_STAGES.find(s => s.n === this._campaignStage)?.final) {
       this._campaignOverlordSpawned = true;
       const boss = new Enemy('Rogue AI Overlord', this.currentMinute());
-      boss.hp *= 4.2; boss.maxHp = boss.hp; boss.isMegaBoss = true;   // Maria: mega bosses need real staying power
+      boss.hp *= 5.2; boss.maxHp = boss.hp; boss.isMegaBoss = true;   // Maria: mega bosses need real staying power
       this.enemies.push(boss); this.megaBoss = boss;
       this.triggerAnnouncement('AI OVERLORD — FINAL BREACH', RED);
       this.screenShake?.trigger(6, 0.6);
@@ -1968,6 +1973,9 @@ export class Game {
     this.airstrikeShips    = [];            // clear any carryover hazards on (re)entry
     this.airstrikeRockets  = [];
     this.lightningZones    = [];
+    this.gunships          = [];            // RED GUNSHIP event state
+    this.gunshipZones      = [];
+    this._gunshipTimer     = 180;           // Maria: every 3 min in Endless AND Chaos, NO announcement
     // Phoenix revives reset on Endless entry: Act 1 uses must not consume the Endless pool.
     // (startEndlessRun already calls reset() which zeroes these; this guard covers continueEndless.)
     this.phoenixReviveCount = 0;
@@ -9359,7 +9367,7 @@ export class Game {
     this._chaosTitanIdx++;
     try {
       const t = new Enemy(name, this.currentMinute());
-      t.hp *= 3.2; t.maxHp = t.hp; t.isMegaBoss = true;   // Maria: mega bosses need real staying power
+      t.hp *= 4.2; t.maxHp = t.hp; t.isMegaBoss = true;   // Maria: mega bosses need real staying power
       if (this.chunkManager?.enabled) {
         const sp = this.chunkManager.getSpawnEdge(this.camera, this._viewW, this._viewH, 140);
         t.pos.x = sp.x; t.pos.y = sp.y;
@@ -9632,7 +9640,7 @@ export class Game {
     const name = names[(br.titanIdx++) % names.length];
     try {
       const t = new Enemy(name, this.currentMinute());
-      t.hp *= 3.4 * (this._rushPact ? 1.25 : 1); t.maxHp = t.hp; t.isMegaBoss = true;   // Boss Rush scaling (+25% under Titan Pact)
+      t.hp *= 4.4 * (this._rushPact ? 1.25 : 1); t.maxHp = t.hp; t.isMegaBoss = true;   // Boss Rush scaling (+25% under Titan Pact)
       this._bossRushPlaceAtEdge(t);
       this.enemies.push(t); this.megaBoss = t;
       this.audio?.playBossWarning?.();
@@ -16558,6 +16566,7 @@ export class Game {
     if (!this.endless) return;
     this._updateAirstrike(dt);
     this._updateLightningStorm(dt);
+    this._updateGunship(dt);
   }
 
   _updateAirstrike(dt) {
@@ -16618,6 +16627,13 @@ export class Game {
     for (let i = this.airstrikeRockets.length - 1; i >= 0; i--) {
       const r = this.airstrikeRockets[i];
       r.life -= dt;
+      if (r.h) {   // gunship rockets: partial homing (h = tracking strength, Maria: >= 60%)
+        const want = safeNormalize(this.player.pos.sub(r.pos));
+        if (want.lengthSq() > 0) {
+          r.dir = safeNormalize(new Vec2(r.dir.x + want.x * r.h * dt * 2.2,
+                                         r.dir.y + want.y * r.h * dt * 2.2));
+        }
+      }
       r.pos.addMut(r.dir.scale(r.speed * dt));
       const hit = distance(r.pos, this.player.pos) < PLAYER_RADIUS + r.blast;
       const out = r.pos.x < WORLD_BOUNDS.left - 80 || r.pos.x > WORLD_BOUNDS.right + 80 || r.pos.y < WORLD_BOUNDS.top - 80 || r.pos.y > WORLD_BOUNDS.bottom + 80;
@@ -16637,6 +16653,146 @@ export class Game {
         this.airstrikeRockets.splice(i, 1);
       }
     }
+  }
+
+  // ── RED GUNSHIP (event_aircraft_2) — Maria 2026-07-12 ────────────────────────
+  // Every 3 min in Endless AND Chaos, NO announcement (silent ambush). One ship max.
+  // It LOCKS onto the player and cycles four hardpoints, all >=60% auto-aim:
+  //   W1+W2  twin wing LASERS — 1.1s tracking telegraph (60% lerp), then a 0.7s
+  //          locked twin-beam burst (procedural: white core + red bloom, ultimate-style)
+  //   W3     rocket pods — 4 homing rockets (h=0.6) into the shared rocket pool
+  //   W4     plasma mortar — 2 telegraphed AoE zones (60% aimed / 40% offset)
+  _updateGunship(dt) {
+    this._gunshipTimer -= dt;
+    if (this._gunshipTimer <= 0) {
+      if (this.gunships.length < 1) { this._gunshipTimer = 180; this._spawnGunship(); }
+      else this._gunshipTimer = 25;
+    }
+    for (let i = this.gunships.length - 1; i >= 0; i--) {
+      const g = this.gunships[i];
+      g.life -= dt; g.orbit += dt * 0.42;
+      // lock: orbit the player at standoff range (it faces the player when drawn)
+      const want = new Vec2(this.player.pos.x + Math.cos(g.orbit) * 340,
+                            this.player.pos.y + Math.sin(g.orbit) * 260);
+      const mv = safeNormalize(want.sub(g.pos));
+      g.pos.addMut(mv.scale(190 * dt));
+      g.pos.x = clamp(g.pos.x, WORLD_BOUNDS.left + WORLD_BOUNDS.margin, WORLD_BOUNDS.right - WORLD_BOUNDS.margin);
+      g.pos.y = clamp(g.pos.y, WORLD_BOUNDS.top + WORLD_BOUNDS.margin, WORLD_BOUNDS.bottom - WORLD_BOUNDS.margin);
+
+      // ── W1+W2 laser cycle: idle → telegraph (track 60%) → fire (locked) ──
+      g.laserCd -= dt;
+      if (g.phase === 'idle' && g.laserCd <= 0) {
+        g.phase = 'aim'; g.phaseT = 1.1;
+        g.aim = this.player.pos.clone();
+      } else if (g.phase === 'aim') {
+        g.phaseT -= dt;
+        // 60% tracking: the aim point chases the player at 60% strength — dodgeable at the edges
+        g.aim.x += (this.player.pos.x - g.aim.x) * Math.min(1, 0.6 * dt * 4);
+        g.aim.y += (this.player.pos.y - g.aim.y) * Math.min(1, 0.6 * dt * 4);
+        if (g.phaseT <= 0) { g.phase = 'fire'; g.phaseT = 0.7; g.tick = 0; this.audio?.playLightningStrike?.(); }
+      } else if (g.phase === 'fire') {
+        g.phaseT -= dt; g.tick -= dt;
+        if (g.tick <= 0) {
+          g.tick = 0.22;
+          // twin beams: player hit if close to either wing→aim segment
+          for (const off of [-1, 1]) {
+            const wing = this._gunshipWing(g, off);
+            if (this._segDist(this.player.pos, wing, g.aim) < PLAYER_RADIUS + 15 &&
+                this.phoenixReviveTimer <= 0 && this.player.dashTimer <= 0) {
+              const dmg = Math.round(this.player.maxHp * 0.09);
+              this._damagePlayer(dmg, { color: '#ff4444', shake: 5, stagger: 0 });
+              this.floatingTexts.push(new FloatingText('-' + dmg + ' HP', this.player.pos.clone(), '#ff6666', 1.0));
+              break;   // one tick, not double for both beams
+            }
+          }
+        }
+        if (g.phaseT <= 0) { g.phase = 'idle'; g.laserCd = 3.6; }
+      }
+
+      // ── W3 rocket pods: 4 homing rockets into the shared (capped) pool ──
+      g.rocketCd -= dt;
+      if (g.rocketCd <= 0) {
+        g.rocketCd = 5.2;
+        for (let k = 0; k < 4; k++) {
+          if (this.airstrikeRockets.length >= 40) break;
+          const base = safeNormalize(this.player.pos.sub(g.pos));
+          if (base.lengthSq() === 0) break;
+          const j = randomRange(-0.5, 0.5);
+          const c = Math.cos(j), sn = Math.sin(j);
+          this.airstrikeRockets.push({
+            pos: g.pos.clone(),
+            dir: new Vec2(base.x * c - base.y * sn, base.x * sn + base.y * c),
+            speed: randomRange(200, 250), life: 6.0, radius: 7, blast: 42, h: 0.6,   // 60% homing
+          });
+        }
+        this.audio?.playEnemyShoot();
+      }
+
+      // ── W4 plasma mortar: 2 telegraphed AoE zones, 60% aimed ──
+      g.mortarCd -= dt;
+      if (g.mortarCd <= 0) {
+        g.mortarCd = 6.5;
+        for (let k = 0; k < 2; k++) {
+          if (this.gunshipZones.length >= 8) break;
+          const aimed = Math.random() < 0.6;                     // Maria: autoaim >= 60/100
+          const off = aimed ? randomRange(0, 60) : randomRange(130, 300);
+          const ang = Math.random() * Math.PI * 2;
+          this.gunshipZones.push({
+            pos: new Vec2(
+              clamp(this.player.pos.x + Math.cos(ang) * off, WORLD_BOUNDS.left + WORLD_BOUNDS.margin, WORLD_BOUNDS.right - WORLD_BOUNDS.margin),
+              clamp(this.player.pos.y + Math.sin(ang) * off, WORLD_BOUNDS.top + WORLD_BOUNDS.margin, WORLD_BOUNDS.bottom - WORLD_BOUNDS.margin)),
+            radius: 68, warn: 1.0, flash: 0.3, t: 0, struck: false,
+          });
+        }
+      }
+
+      if (g.life <= 0) this.gunships.splice(i, 1);   // departs after its pass
+    }
+
+    // mortar zone resolution (same pattern as lightning zones, red-plasma flavor)
+    for (let i = this.gunshipZones.length - 1; i >= 0; i--) {
+      const z = this.gunshipZones[i];
+      z.t += dt;
+      if (!z.struck && z.t >= z.warn) {
+        z.struck = true;
+        if (distance(this.player.pos, z.pos) < z.radius && this.phoenixReviveTimer <= 0 && this.player.dashTimer <= 0) {
+          const dmg = Math.round(this.player.maxHp * 0.35);
+          this._damagePlayer(dmg, { color: '#ff5533', shake: 8, stagger: 0.5 });
+          this.floatingTexts.push(new FloatingText('-' + dmg + ' HP', this.player.pos.clone(), '#ff5533', 1.2));
+        }
+        this.particles.spawnExplosion(z.pos, ['#ff3322', '#ff7744', '#ffb066', '#ffffff'], 16);
+        this.particles.spawnDeathRing(z.pos, '#ff5533', 10, 150, 1.8);
+        this.audio?.playAirstrikeBomb?.();
+      }
+      if (z.t >= z.warn + z.flash) this.gunshipZones.splice(i, 1);
+    }
+  }
+
+  _spawnGunship() {
+    const edge = Math.random() < 0.5 ? WORLD_BOUNDS.left - 80 : WORLD_BOUNDS.right + 80;
+    this.gunships.push({
+      pos: new Vec2(edge, randomRange(WORLD_BOUNDS.top + WORLD_BOUNDS.margin, WORLD_BOUNDS.bottom - WORLD_BOUNDS.margin)),
+      orbit: Math.random() * Math.PI * 2, life: 26,
+      phase: 'idle', phaseT: 0, laserCd: 2.0, rocketCd: 3.5, mortarCd: 5.0,
+      aim: new Vec2(0, 0), tick: 0,
+    });
+    this.audio?.forgeThunder?.();   // engine roar only — NO announcement (Maria: silent)
+  }
+
+  // wing hardpoint world position (offset perpendicular to the facing direction)
+  _gunshipWing(g, side) {
+    const f = safeNormalize(this.player.pos.sub(g.pos));
+    return new Vec2(g.pos.x - f.y * side * 34, g.pos.y + f.x * side * 34);
+  }
+
+  // distance from point P to segment AB (for beam hit tests)
+  _segDist(p, a, b) {
+    const abx = b.x - a.x, aby = b.y - a.y;
+    const L = abx * abx + aby * aby;
+    if (L === 0) return distance(p, a);
+    let t = ((p.x - a.x) * abx + (p.y - a.y) * aby) / L;
+    t = Math.max(0, Math.min(1, t));
+    return Math.hypot(p.x - (a.x + abx * t), p.y - (a.y + aby * t));
   }
 
   // LIGHTNING STORM — acid/lava-rain-style hazard. Every ~2 min a storm runs for a few seconds,
@@ -16771,6 +16927,90 @@ export class Game {
       }
       ctx.restore();
     }
+    // ── RED GUNSHIP (event_aircraft_2): sprite locked-on + procedural weapon VFX ──
+    const g2 = this._gunship2Sprite;
+    for (const g of this.gunships) {
+      const gz = 150;                                   // display width
+      const face = Math.atan2(this.player.pos.y - g.pos.y, this.player.pos.x - g.pos.x);
+      const bob = Math.sin(_sNow * 1.9 + (g.pos.x % 5)) * 4;
+      ctx.save();
+      // ground shadow
+      ctx.globalAlpha = 0.30; ctx.fillStyle = '#000';
+      ctx.beginPath(); ctx.ellipse(g.pos.x, g.pos.y + 52, gz * 0.30, gz * 0.09, 0, 0, Math.PI * 2); ctx.fill();
+      // hull — sprite is transparent PNG (cleaned), nose points RIGHT in the art → rotate to face player
+      ctx.globalAlpha = 1;
+      ctx.translate(g.pos.x, g.pos.y + bob);
+      ctx.rotate(face);
+      if (g2 && g2.complete && g2.naturalWidth) {
+        const ar = g2.naturalHeight / g2.naturalWidth;
+        try { ctx.drawImage(g2, -gz / 2, -gz * ar / 2, gz, gz * ar); } catch (_) {}
+      } else {
+        ctx.fillStyle = '#b22222';
+        ctx.beginPath(); ctx.arc(0, 0, 24, 0, Math.PI * 2); ctx.fill();
+      }
+      // engine afterglow at the tail
+      ctx.globalCompositeOperation = 'lighter';
+      const fl2 = 0.5 + 0.5 * Math.sin(_sNow * 26 + g.pos.y);
+      ctx.globalAlpha = 0.45 * fl2; ctx.fillStyle = '#ff9a55';
+      ctx.beginPath(); ctx.arc(-gz * 0.46, 0, 6, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 0.20 * fl2;
+      ctx.beginPath(); ctx.arc(-gz * 0.46, 0, 12, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+
+      // weapon VFX (world space, ultimate-style layering)
+      if (g.phase === 'aim') {
+        // twin tracking telegraph lines — thin red, flickering, from the wings to the aim point
+        const k = 1 - Math.max(0, g.phaseT) / 1.1;      // 0→1 as lock completes
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        for (const off of [-1, 1]) {
+          const w = this._gunshipWing(g, off);
+          ctx.globalAlpha = 0.22 + 0.5 * k * (0.7 + 0.3 * Math.sin(_sNow * 40));
+          ctx.strokeStyle = '#ff3344'; ctx.lineWidth = 1.5 + k;
+          ctx.beginPath(); ctx.moveTo(w.x, w.y); ctx.lineTo(g.aim.x, g.aim.y); ctx.stroke();
+        }
+        // lock reticle tightening on the aim point
+        ctx.globalAlpha = 0.5 + 0.4 * k;
+        ctx.strokeStyle = '#ff5566'; ctx.lineWidth = 2;
+        const rr = 34 - 18 * k;
+        ctx.beginPath(); ctx.arc(g.aim.x, g.aim.y, rr, 0, Math.PI * 2); ctx.stroke();
+        ctx.restore();
+      } else if (g.phase === 'fire') {
+        // locked twin beams — white-hot core + red bloom + impact flare (procedural, no copies)
+        const life = Math.max(0, g.phaseT) / 0.7;
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        for (const off of [-1, 1]) {
+          const w = this._gunshipWing(g, off);
+          ctx.globalAlpha = 0.35 * life;
+          ctx.strokeStyle = '#ff2233'; ctx.lineWidth = 14;
+          ctx.beginPath(); ctx.moveTo(w.x, w.y); ctx.lineTo(g.aim.x, g.aim.y); ctx.stroke();
+          ctx.globalAlpha = 0.75 * life;
+          ctx.strokeStyle = '#ff8899'; ctx.lineWidth = 6;
+          ctx.beginPath(); ctx.moveTo(w.x, w.y); ctx.lineTo(g.aim.x, g.aim.y); ctx.stroke();
+          ctx.globalAlpha = 0.95 * life;
+          ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.moveTo(w.x, w.y); ctx.lineTo(g.aim.x, g.aim.y); ctx.stroke();
+        }
+        // impact flare
+        ctx.globalAlpha = 0.8 * life; ctx.fillStyle = '#ffddee';
+        ctx.beginPath(); ctx.arc(g.aim.x, g.aim.y, 10 + 8 * (1 - life), 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = 0.3 * life; ctx.fillStyle = '#ff3344';
+        ctx.beginPath(); ctx.arc(g.aim.x, g.aim.y, 26 + 14 * (1 - life), 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+      }
+    }
+    // gunship mortar zones — red-plasma telegraph (unified ring language) + impact handled in update
+    for (const z of this.gunshipZones) {
+      if (!z.struck) this._drawTelegraphRing(ctx, z.pos.x, z.pos.y, z.radius, z.t / z.warn, '#ff5533', '#ffd0b8');
+      else {
+        const fk = (z.t - z.warn) / z.flash, alpha = Math.max(0, 1 - fk);
+        ctx.save(); ctx.globalAlpha = alpha * 0.75; ctx.fillStyle = '#ffb066';
+        ctx.beginPath(); ctx.arc(z.pos.x, z.pos.y, z.radius * (0.55 + fk * 0.6), 0, Math.PI * 2); ctx.fill(); ctx.restore();
+      }
+    }
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+
     // Rockets — premium cyberpunk missile with multi-layer exhaust, sharp silhouette, pulsing blast ring.
     const _rNow = performance.now();
     for (const r of this.airstrikeRockets) {

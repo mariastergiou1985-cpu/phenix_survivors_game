@@ -557,8 +557,9 @@ export class Enemy {
     // build snowballs. Boss: -4%/level, Mega: -6%/level, both capped at 78% reduction.
     if (this.isBoss?.() || this.isMegaBoss || this.rank === 'boss' || this.rank === 'mega') {
       const _pl = game.player?.level || 1;
-      const _rate = this.isMegaBoss || this.rank === 'mega' ? 0.06 : 0.04;
-      dmg *= Math.max(0.22, 1 - _pl * _rate);
+      const _mega = this.isMegaBoss || this.rank === 'mega';
+      const _rate = _mega ? 0.075 : 0.04;                    // Maria 2026-07-12: megas need MORE armor
+      dmg *= Math.max(_mega ? 0.14 : 0.22, 1 - _pl * _rate); // mega cap 86% reduction (was 78%)
     }
     // Φ11 Executioner Cache: enemies below the threshold take DOUBLE damage (bosses excluded —
     // their caps stay meaningful; threshold 10-18% by level)
