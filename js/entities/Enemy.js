@@ -573,6 +573,7 @@ export class Enemy {
       dmg *= 2;
     }
     this.hp       -= dmg;
+    game._spawnDmgNum?.(this, dmg);   // VS-style damage numbers (pooled/merged/capped in Game)
 
     // ── Game Feel: hit weight classification ─────────────────────────────────
     const isBossEnemy = this.isBoss() || this.isMegaBoss;

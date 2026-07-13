@@ -12,7 +12,7 @@ import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260705040000
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260712090000';
 import { Player }         from '../entities/Player.js?v=20260712480000';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260706270000';
-import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260712530000';
+import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260712540000';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=20260711750000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260705150000';
@@ -1301,6 +1301,7 @@ export class Game {
     this.gunships         = [];   // RED GUNSHIP event (event_aircraft_2): locks on the player
     this.gunshipZones     = [];   // its plasma-mortar impact zones
     this.cybermoteMines   = [];   // CYBERMOTE event: proximity mines dropped by the W2 rider
+    this.dmgNums          = [];   // VS-style damage numbers (hard cap 40, per-enemy merge window)
     this.lightningZones   = [];   // Lightning Storm: telegraphed strike zones (hard-capped)
     this.synergyBursts    = [];   // transient synergy-burst rings (visual; hard-capped, auto-expire)
     this.elementFx        = new ElementFx();   // Phase-1 elemental VFX (bounded, auto-expiring)
@@ -16778,6 +16779,73 @@ export class Game {
     }
   }
 
+  // ── VS-STYLE DAMAGE NUMBERS (Maria 2026-07-12, "τελευταίο πράγμα") ────────────
+  // Premium but CHEAP: plain objects, hard cap 40, per-enemy 0.30s merge window so a
+  // machine-gun build shows ONE growing number instead of 40 popups, no shadowBlur
+  // (offset dark pass fakes the shadow), color = the character's element identity.
+  _spawnDmgNum(enemy, dmg) {
+    if (!this.dmgNums || dmg < 1 || this.gameState !== 'playing') return;
+    const v = Math.round(dmg);
+    // merge into this enemy's live number while it is fresh (one bold count-up per target)
+    const live = enemy._dmgNumRef;
+    if (live && !live.dead && live.t < 0.30) {
+      live.val += v; live.t = 0; live.pop = 1;                       // reset rise + pop on merge
+      live.x = enemy.pos.x; live.y = enemy.pos.y - enemy.radius - 6;
+      return;
+    }
+    if (this.dmgNums.length >= 40) { this.dmgNums.shift(); }         // hard cap — oldest dies
+    const el = CHARACTER_ELEMENT[this.player?.selectedCharacter];
+    const n = {
+      x: enemy.pos.x + (Math.random() - 0.5) * 14,
+      y: enemy.pos.y - enemy.radius - 6,
+      val: v, t: 0, life: 0.75, pop: 1, dead: false,
+      color: (ELEMENTS[el]?.c1) || '#eaf4ff',
+    };
+    enemy._dmgNumRef = n;
+    this.dmgNums.push(n);
+  }
+
+  _updateDmgNums(dt) {
+    if (!this.dmgNums || !this.dmgNums.length) return;
+    for (let i = this.dmgNums.length - 1; i >= 0; i--) {
+      const n = this.dmgNums[i];
+      n.t += dt;
+      n.pop = Math.max(0, n.pop - dt * 5);                           // merge/spawn scale pop decay
+      if (n.t >= n.life) { n.dead = true; this.dmgNums.splice(i, 1); }
+    }
+  }
+
+  _drawDmgNums(ctx) {
+    if (!this.dmgNums || !this.dmgNums.length) return;
+    ctx.save();
+    ctx.textAlign = 'center';
+    for (const n of this.dmgNums) {
+      const k = n.t / n.life;                                        // 0 → 1
+      const rise = 26 * k;                                           // float upward
+      const a = k < 0.15 ? k / 0.15 : 1 - Math.max(0, (k - 0.55) / 0.45);   // in → hold → out
+      const big  = n.val >= 500 ? 2 : n.val >= 120 ? 1 : 0;          // weight tiers
+      const size = (big === 2 ? 26 : big === 1 ? 20 : 15) * (1 + 0.35 * n.pop);
+      const gold = big === 2;                                        // huge totals flash gold
+      ctx.font = '700 ' + Math.round(size) + 'px "Courier New", monospace';
+      const tx = Math.round(n.x), ty = Math.round(n.y - rise);
+      ctx.globalAlpha = a * 0.85;
+      ctx.fillStyle = '#02060c';                                     // offset shadow pass (no shadowBlur)
+      ctx.fillText(n.val, tx + 2, ty + 2);
+      ctx.globalAlpha = a;
+      ctx.fillStyle = gold ? '#ffd23c' : n.color;
+      ctx.fillText(n.val, tx, ty);
+      if (big) {                                                     // heavy hits get a white core pass
+        ctx.globalAlpha = a * 0.55;
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '700 ' + Math.round(size * 0.62) + 'px "Courier New", monospace';
+        ctx.fillText(n.val, tx, ty - 1);
+      }
+    }
+    ctx.restore();
+    ctx.globalAlpha = 1;
+    ctx.textAlign = 'left';
+  }
+
   // ── CYBERMOTE PACK (Maria 2026-07-12) — every 5 min in Endless AND Chaos. ─────
   // One bike rides in, then GLITCH-SPLITS into 4 (the pack). Each rider carries a
   // DIFFERENT weapon (0 ram / 1 SMG / 2 mines / 3 EMP lance). Huge HP — but they are
@@ -17627,6 +17695,7 @@ export class Game {
       this.floatingTexts[i].update(_ftDt);
       if (this.floatingTexts[i].timer <= 0) this.floatingTexts.splice(i, 1);
     }
+    this._updateDmgNums(dt);   // VS-style damage numbers (cheap, capped)
     if (this.floatingTexts.length > 90) this.floatingTexts.splice(0, this.floatingTexts.length - 90);
   }
 
@@ -18521,6 +18590,7 @@ export class Game {
     }
 
     // Floating texts (world-space)
+    this._drawDmgNums(ctx);   // VS-style damage numbers under the floating-text layer
     for (const ft of this.floatingTexts) ft.draw(ctx);
 
     this._drawThunderSoloWorld(ctx);   // ultimate lightning rain + musical notes over world entities
