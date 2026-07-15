@@ -999,6 +999,10 @@ export class Game {
     this._charSelectOverlayEl      = null;   // root #cgm-charselect div
     this._charSelectOverlayVisible = false;
     this._campaignOverlayEl        = null;   // root #cgm-campaign div (portrait-friendly DOM campaign select)
+    // Mobile gameplay zoom-in: on phones the fixed 1280×720 world is squeezed into a narrow
+    // screen, so everything looks tiny/far. Multiply the effective view scale on touch devices
+    // (all modes). Desktop stays 1 → byte-identical zoom. 1.35 ≈ 35% closer.
+    this._mobileZoom = ((typeof navigator !== 'undefined') && ((navigator.maxTouchPoints > 0) || (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(pointer: coarse)').matches))) ? 1.35 : 1;
     try {
       this._initCharSelectOverlay();
     } catch (err) {
@@ -28144,9 +28148,9 @@ _drawLoreArchive(ctx) {
 
   // Effective view scale / visible window. Endless zooms out slightly (ENDLESS_VIEW_SCALE);
   // Act 1 returns the exact globals (WIDTH/VIEW_SCALE === VIEW_W), so Act 1 is byte-identical.
-  get _viewScale() { return this.endless ? ENDLESS_VIEW_SCALE : VIEW_SCALE; }
-  get _viewW()     { return this.endless ? WIDTH  / ENDLESS_VIEW_SCALE : VIEW_W; }
-  get _viewH()     { return this.endless ? HEIGHT / ENDLESS_VIEW_SCALE : VIEW_H; }
+  get _viewScale() { return (this.endless ? ENDLESS_VIEW_SCALE : VIEW_SCALE) * (this._mobileZoom || 1); }
+  get _viewW()     { return WIDTH  / this._viewScale; }
+  get _viewH()     { return HEIGHT / this._viewScale; }
 
   _updateCamera() {
     // Center the player in the (larger, zoomed-out) visible world window.
