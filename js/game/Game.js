@@ -19484,9 +19484,12 @@ export class Game {
         padding:22px; overflow-x:hidden; overflow-y:auto;
       }
       /* Mobile: shrink the whole menu so the entire main menu fits on screen without scrolling */
-      @media (max-width:900px){ #cgm-overlay{padding:8px;align-items:center;} #cgm-overlay .stage{zoom:0.72;} }
-      @media (max-height:620px){ #cgm-overlay{align-items:center;} #cgm-overlay .stage{zoom:0.62;} }
-      @media (max-width:560px){ #cgm-overlay .stage{zoom:0.56;} }
+      @media (max-width:900px){ #cgm-overlay{padding:8px;} #cgm-overlay .stage{zoom:0.9;} }
+      @media (max-height:620px){ #cgm-overlay .stage{zoom:0.82;} }
+      @media (max-width:560px){ #cgm-overlay .stage{zoom:0.78;} }
+      /* Touch devices (phones/tablets): DON'T shrink into unreadable tiny UI — keep full size,
+         reflow to a single readable column (nav on top) and scroll. This replaces the old zoom:0.56. */
+      @media (pointer:coarse){ #cgm-overlay .stage{zoom:1 !important;} #cgm-overlay{align-items:flex-start;} }
       #cgm-overlay::before{
         content:""; position:fixed; inset:0; pointer-events:none; z-index:0;
         background-image:
@@ -19643,9 +19646,11 @@ export class Game {
       #cgm-overlay .eq.muted-eq>i{animation:none;transform:scaleY(.12);}
       @media(max-width:1080px){
         #cgm-overlay .grid{grid-template-columns:1fr;}
+        #cgm-overlay .col.center{order:-1;}                    /* MOBILE: nav buttons FIRST — no scrolling past side panels to play */
         #cgm-overlay .stage-mid{flex-direction:column;align-items:center;}
         #cgm-overlay .stage-art{flex:0 0 auto;width:100%;max-width:340px;min-height:320px;}
-        #cgm-overlay .menu{flex:0 0 auto;width:100%;max-width:440px;}
+        #cgm-overlay .menu{flex:0 0 auto;width:100%;max-width:560px;}
+        #cgm-overlay .mbtn{padding:18px 22px;font-size:17px;}  /* bigger, easier tap targets */
       }
       @media(prefers-reduced-motion:reduce){#cgm-overlay .eq>i{animation:none;transform:scaleY(.6);}}
     `;
