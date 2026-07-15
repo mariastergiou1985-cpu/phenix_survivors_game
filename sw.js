@@ -1,10 +1,16 @@
-// PHENIX: NULL EDEN — minimal service worker (PWA/TWA requirement).
-// Network-first: the game always prefers fresh files (the ?v cache-bust chain is
-// the real version control); the SW exists so the app is installable and boots
-// a cached shell offline if the network is briefly gone.
-const CACHE = 'phenix-shell-v1';
+// PHENIX: NULL EDEN — service worker (PWA/TWA). Network-first + AGGRESSIVE self-update:
+// always prefer fresh files, purge every old cache on activate, take control immediately,
+// and (with the index.html registration) auto-reload the page when a new version ships —
+// so phones stop getting stuck on a stale build. The ?v chain stays the real version control.
+const CACHE = 'phenix-shell-v2';
 self.addEventListener('install', (e) => { self.skipWaiting(); });
-self.addEventListener('activate', (e) => { e.waitUntil(self.clients.claim()); });
+self.addEventListener('activate', (e) => {
+  e.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)));  // drop stale shells
+    await self.clients.claim();
+  })());
+});
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
   e.respondWith(
