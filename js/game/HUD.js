@@ -242,12 +242,8 @@ export function drawHUD(ctx, game) {
       }
       ctx.restore();
     }
-    // Eddie identity art — Crimson Gate element icon beside the badge (element-id gated, no leak)
-    if (game._activeElement === 'crimson_gate' && game._eddieElementIcons) {
-      ctx.font = 'bold 13px "Segoe UI Emoji", Consolas, monospace';
-      const _tw = ctx.measureText('ELEMENT ' + prim + secs).width;
-      _drawIcon(ctx, game._eddieElementIcons.crimson_gate, 16 + _tw + 8, HEIGHT - 84, 18, col);
-    }
+    // Crimson Gate uses the same procedural element sigil as every other element (drawn in the
+    // chip loop above). The extra PNG badge was removed (Maria) so Eddie matches the others.
     // Brief fusion-name flash when a fusion procs (fades over its last moment).
     if (game._fusionName && game._fusionNameT > 0) {
       ctx.globalAlpha = Math.min(1, game._fusionNameT);
