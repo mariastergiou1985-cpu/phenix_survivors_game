@@ -8109,6 +8109,12 @@ export class Game {
     const _sleetFrozen = !!(this._frozenSleet && this._frozenSleet.phase === 'hold');
     const _frozenInput = _sleetFrozen ? { ...input, keys: new Set() } : input;
     this.player.update(dt, _frozenInput);
+    // Balance (Maria): Eddie HARD CAP — max HP never exceeds 300, no matter what
+    // (base + unlocked meta upgrades + in-run HP cards). Clamped every frame.
+    if (this.player.selectedCharacter === 'eddie' && this.player.maxHp > 300) {
+      this.player.maxHp = 300;
+      if (this.player.hp > 300) this.player.hp = 300;
+    }
     // Anti-passive tracker: how long the player has stayed roughly still. Enemies read this to
     // compress their encirclement ring on a stationary player (Vampire-Survivors pressure).
     {
