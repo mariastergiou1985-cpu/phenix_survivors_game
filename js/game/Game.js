@@ -1588,6 +1588,9 @@ export class Game {
   // path never sees them. Handling the DOWN event makes stages enterable on phones.
   _campaignClickAt(mp) {
     if (this.gameState !== 'campaign_select' || !mp) return;
+    // Tappable BACK (mobile has no ESC key) — must match the button drawn in _drawCampaignSelect.
+    const _bk = { x: 24, y: 34, w: 132, h: 40 };
+    if (mp.x >= _bk.x && mp.x <= _bk.x + _bk.w && mp.y >= _bk.y && mp.y <= _bk.y + _bk.h) { this.goToMainMenu(); return; }
     for (let i = 0; i < CAMPAIGN_STAGES.length; i++) {
       const r = this._campaignCardRect(i);
       if (mp.x >= r.x && mp.x <= r.x + r.w && mp.y >= r.y && mp.y <= r.y + r.h) {
@@ -1652,7 +1655,15 @@ export class Game {
       ctx.restore();
     }
     ctx.font = '12px Consolas, monospace'; ctx.fillStyle = 'rgba(190,200,215,0.55)';
-    ctx.fillText('← → Select • ENTER Play • ESC Back', WIDTH / 2, HEIGHT - 28);
+    ctx.fillText('← → Select • ENTER Play • ESC / tap BACK', WIDTH / 2, HEIGHT - 28);
+    // Tappable BACK button — mobile has no ESC key. Must match the hit-test in _campaignClickAt.
+    const _bk = { x: 24, y: 34, w: 132, h: 40 };
+    ctx.fillStyle = 'rgba(10,16,46,0.85)';
+    ctx.fillRect(_bk.x, _bk.y, _bk.w, _bk.h);
+    ctx.strokeStyle = '#2ee6f6'; ctx.lineWidth = 2;
+    ctx.strokeRect(_bk.x, _bk.y, _bk.w, _bk.h);
+    ctx.fillStyle = '#e8ffff'; ctx.font = 'bold 16px Consolas, monospace'; ctx.textAlign = 'center';
+    ctx.fillText('◀  BACK', _bk.x + _bk.w / 2, _bk.y + 26);
     ctx.textAlign = 'left';
   }
 
