@@ -993,6 +993,7 @@ export class Game {
 
     this._charSelectOverlayEl      = null;   // root #cgm-charselect div
     this._charSelectOverlayVisible = false;
+    this._campaignOverlayEl        = null;   // root #cgm-campaign div (portrait-friendly DOM campaign select)
     try {
       this._initCharSelectOverlay();
     } catch (err) {
@@ -1532,6 +1533,7 @@ export class Game {
     this._transition(() => {
       this._hideMenuOverlay();
       this._hideCharSelectOverlay();
+      this._hideCampaignOverlay?.();
       this.selectedCharacter = charId;
       this.audio?.startGameplayMusic();
       this.gameState = 'playing';
@@ -1543,6 +1545,7 @@ export class Game {
   goToCharacterSelect() {
     this._transition(() => {
       this._hideMenuOverlay();
+      this._hideCampaignOverlay?.();
       this.gameState = 'character_select';
       this.characterIndex = 0;
       this.audio?.startMenuMusic();
@@ -1558,6 +1561,7 @@ export class Game {
       const cleared = this.meta?.stagesCleared || 0;
       this._campaignSelIndex = Math.min(CAMPAIGN_STAGES.length - 1, cleared);   // cursor on the next stage to beat
       this.audio?.startMenuMusic();
+      this._showCampaignOverlay();   // portrait-friendly DOM overlay (canvas draw stays as fallback behind it)
     });
   }
 
@@ -1905,6 +1909,7 @@ export class Game {
       this.audio?.startMenuMusic();
       this._hideSettingsOverlay();
       this._hideCharSelectOverlay();
+      this._hideCampaignOverlay?.();
       this._hideUpgradesOverlay();
       this._hideAchievementsOverlay();
       this._hideRelicsOverlay();
@@ -21773,6 +21778,117 @@ export class Game {
     if (!this._charSelectOverlayEl) return;
     this._charSelectOverlayEl.style.display = 'none';
     this._charSelectOverlayVisible = false;
+  }
+
+  // ══ CAMPAIGN stage select — DOM overlay ═════════════════════════════════════
+  // Portrait-friendly HTML version of the campaign stage picker (the canvas
+  // _drawCampaignSelect stays as a desktop/keyboard fallback behind it). Fills the
+  // whole screen on phones — no letterbox black bars. Same selection logic/state as
+  // the canvas path (_campaignSelIndex, _pendingCampaignStage, goToCharacterSelect).
+  _buildCampaignOverlay() {
+    if (this._campaignOverlayEl) return;
+    if (!document.getElementById('cgm-campaign-style')) {
+      const style = document.createElement('style');
+      style.id = 'cgm-campaign-style';
+      style.textContent = `
+        #cgm-campaign {
+          position:fixed; inset:0; z-index:120; display:none;
+          align-items:center; justify-content:center; overflow-y:auto;
+          padding:20px 16px; font-family:'Share Tech Mono',ui-monospace,monospace; color:#cfe9ff;
+          background:
+            radial-gradient(1200px 700px at 50% -10%,rgba(168,85,247,.18),transparent 60%),
+            radial-gradient(900px 600px at 12% 30%,rgba(46,230,246,.10),transparent 60%),
+            radial-gradient(900px 600px at 88% 70%,rgba(255,45,149,.10),transparent 60%),
+            linear-gradient(180deg,#0b1030,#070a1c);
+          --cyan:#2ee6f6; --green:#7CFF4D; --txt-dim:#6f86b8;
+        }
+        #cgm-campaign * { box-sizing:border-box; margin:0; padding:0; }
+        #cgm-campaign .cmp-stage {
+          position:relative; width:100%; max-width:900px; margin:auto;
+          border:1px solid rgba(46,230,246,.12); border-radius:20px; padding:22px 24px 20px;
+          background:linear-gradient(180deg,rgba(168,85,247,.05),transparent 30%),rgba(7,10,28,.85);
+          box-shadow:inset 0 0 60px rgba(46,230,246,.05),0 30px 80px rgba(0,0,0,.55);
+          display:flex; flex-direction:column; gap:14px;
+        }
+        #cgm-campaign .cmp-top { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+        #cgm-campaign .cmp-title { font-family:'Orbitron',sans-serif; font-weight:800; font-size:22px; letter-spacing:3px; color:var(--cyan); text-shadow:0 0 8px rgba(46,230,246,.55); }
+        #cgm-campaign .cmp-back { padding:12px 22px; border-radius:10px; cursor:pointer; border:1px solid rgba(46,230,246,.45); background:rgba(10,16,46,.65); color:#e8ffff; font-family:'Orbitron',sans-serif; font-weight:700; font-size:13px; letter-spacing:2px; }
+        #cgm-campaign .cmp-back:hover { border-color:var(--cyan); box-shadow:0 0 12px rgba(46,230,246,.4); }
+        #cgm-campaign .cmp-sub { font-size:12px; color:var(--txt-dim); letter-spacing:1px; line-height:1.5; }
+        #cgm-campaign .cmp-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; }
+        #cgm-campaign .cmp-card { position:relative; border-radius:12px; overflow:hidden; cursor:pointer; border:1.5px solid rgba(46,230,246,.28); aspect-ratio:16/10; background:rgba(10,16,46,.7); display:flex; align-items:flex-end; transition:border-color .15s, box-shadow .18s, transform .18s; }
+        #cgm-campaign .cmp-card img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; opacity:.9; }
+        #cgm-campaign .cmp-card .cmp-cap { position:relative; z-index:2; width:100%; padding:8px 10px; font-weight:700; font-size:14px; letter-spacing:1px; text-align:center; color:#e8ffff; background:linear-gradient(0deg,rgba(4,8,20,.94),transparent); text-shadow:0 1px 3px #000; }
+        #cgm-campaign .cmp-card.sel { border-color:var(--cyan); box-shadow:0 0 20px rgba(46,230,246,.5); transform:scale(1.03); z-index:2; }
+        #cgm-campaign .cmp-card.cleared { border-color:var(--green); }
+        #cgm-campaign .cmp-card.locked { cursor:not-allowed; }
+        #cgm-campaign .cmp-card.locked img { opacity:.3; filter:grayscale(.6); }
+        #cgm-campaign .cmp-lock { position:absolute; inset:0; z-index:3; display:flex; align-items:center; justify-content:center; font-size:30px; }
+        #cgm-campaign .cmp-badge { position:absolute; top:6px; left:6px; z-index:3; font-size:11px; font-weight:700; color:var(--green); background:rgba(4,8,20,.82); padding:3px 7px; border-radius:6px; letter-spacing:1px; }
+        #cgm-campaign .cmp-hints { font-size:11px; color:#46588a; letter-spacing:1px; text-align:center; }
+        @media (max-width:760px) {
+          #cgm-campaign { padding:12px 10px; }
+          #cgm-campaign .cmp-stage { max-width:100%; padding:16px 12px; }
+          #cgm-campaign .cmp-grid { grid-template-columns:repeat(2,1fr); gap:10px; }
+          #cgm-campaign .cmp-title { font-size:17px; letter-spacing:2px; }
+          #cgm-campaign .cmp-back { padding:14px 18px; font-size:14px; }
+        }
+      `;
+      document.head.appendChild(style);
+    }
+    const el = document.createElement('div');
+    el.id = 'cgm-campaign';
+    el.setAttribute('role', 'dialog');
+    el.setAttribute('aria-label', 'Campaign Stage Select');
+    document.body.appendChild(el);
+    this._campaignOverlayEl = el;
+  }
+
+  _renderCampaignOverlay() {
+    const el = this._campaignOverlayEl;
+    if (!el) return;
+    const cleared = this.meta?.stagesCleared || 0;
+    const cards = CAMPAIGN_STAGES.map((st, i) => {
+      const unlocked  = this.meta?.isStageUnlocked(st.n);
+      const isCleared = st.n <= cleared;
+      const cls = ['cmp-card', unlocked ? '' : 'locked', isCleared ? 'cleared' : '', i === this._campaignSelIndex ? 'sel' : ''].filter(Boolean).join(' ');
+      return `<div class="${cls}" data-idx="${i}">
+        <img src="${st.map}" alt="${st.name}" loading="eager">
+        ${isCleared ? '<div class="cmp-badge">✓ CLEARED</div>' : ''}
+        ${unlocked ? '' : '<div class="cmp-lock">🔒</div>'}
+        <div class="cmp-cap">${st.name}</div>
+      </div>`;
+    }).join('');
+    el.innerHTML = `
+      <div class="cmp-stage">
+        <div class="cmp-top">
+          <div class="cmp-title">CAMPAIGN</div>
+          <button class="cmp-back" id="cmp-back">◀ BACK</button>
+        </div>
+        <div class="cmp-sub">Survive 5:00 to clear a stage and unlock the next. Beat them all to open ENDLESS + CHAOS.</div>
+        <div class="cmp-grid">${cards}</div>
+        <div class="cmp-hints">Tap a stage to deploy</div>
+      </div>`;
+    el.querySelector('#cmp-back')?.addEventListener('click', () => this.goToMainMenu());
+    el.querySelectorAll('.cmp-card').forEach(card => {
+      card.addEventListener('click', () => {
+        const i = parseInt(card.dataset.idx, 10);
+        const st = CAMPAIGN_STAGES[i];
+        this._campaignSelIndex = i;
+        if (this.meta?.isStageUnlocked(st.n)) { this._pendingCampaignStage = st.n; this.goToCharacterSelect(); }
+        else this.triggerAnnouncement('CLEAR THE PREVIOUS STAGE FIRST', '#888888');
+      });
+    });
+  }
+
+  _showCampaignOverlay() {
+    this._buildCampaignOverlay();
+    this._renderCampaignOverlay();
+    if (this._campaignOverlayEl) this._campaignOverlayEl.style.display = 'flex';
+  }
+
+  _hideCampaignOverlay() {
+    if (this._campaignOverlayEl) this._campaignOverlayEl.style.display = 'none';
   }
 
   _syncCharSelectOverlay() {

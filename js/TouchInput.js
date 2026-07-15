@@ -198,7 +198,7 @@ export function initTouchControls({ canvas, keys, game, setAim, onQ, onE, onUlt 
   // '#cgm-charselect' is the DOM character-select overlay — taps inside it must fire native
   // click events (card select / start buttons). Intercepting them with preventDefault here
   // cancelled those clicks on mobile; treating it like a control zone lets them pass through.
-  const onControl = el => !!(el && el.closest && el.closest('#touch-joy, #touch-btns, #touch-pause, #touch-fs, #cgm-charselect'));
+  const onControl = el => !!(el && el.closest && el.closest('#touch-joy, #touch-btns, #touch-pause, #touch-fs, #cgm-charselect, #cgm-campaign'));
   let tapId = null;
   document.addEventListener('pointerdown', e => {
     if (e.pointerType === 'mouse') return;       // let native mouse path handle desktop-style clicks
