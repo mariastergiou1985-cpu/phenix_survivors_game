@@ -1,4 +1,4 @@
-import { Game } from './game/Game.js?v=20260713500000';
+import { Game } from './game/Game.js?v=20260713600000';
 import { AudioManager } from './audio/AudioManager.js?v=20260712170000';
 import { PlatformAchievements } from './platform/PlatformAchievements.js?v=20260712370000';
 // Steam build: replay any web-earned achievements to Steam on boot (no-op in browsers)
@@ -8,6 +8,19 @@ import { initTouchControls } from './TouchInput.js?v=20260712080000';
 
 const canvas = document.getElementById('game');
 const ctx    = canvas.getContext('2d');
+
+// ── MOBILE PERF: shadowBlur is the #1 Canvas-2D framerate killer on phones. The game sets it
+// 160+ times per frame across all VFX (glows). On touch devices we neutralize it GLOBALLY with a
+// single prototype patch (instead of 160 edits) — glows draw flat but the framerate holds.
+// Desktop / mouse devices are completely untouched (full glow).
+const _IS_MOBILE = (navigator.maxTouchPoints > 0) || (window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+if (_IS_MOBILE) {
+  try {
+    Object.defineProperty(CanvasRenderingContext2D.prototype, 'shadowBlur', {
+      get() { return 0; }, set() { /* ignored on mobile — kills the glow cost */ }, configurable: true,
+    });
+  } catch (_) {}
+}
 
 // Scale canvas to fill the window while preserving 16:9
 function resizeCanvas() {

@@ -36,7 +36,7 @@ class Particle {
 export class ParticleSystem {
   constructor() {
     this.particles = [];
-    this.MAX       = IS_MOBILE ? 90 : 200;
+    this.MAX       = IS_MOBILE ? 60 : 200;
     this._pool     = [];   // free-list of dead Particle objects (perf: reuse instead of realloc)
   }
 

@@ -120,7 +120,7 @@ export class EnemySpawner {
 
     if (mode.endless) cap = Math.min(400, Math.round(cap * 2.5) + 50);
     if (mode.chaos)   cap = Math.min(340, Math.round(cap * 2.0));   // CHAOS SURGE (Maria): field must never feel empty
-    if (IS_MOBILE)    cap = Math.min(cap, 140);                     // MOBILE: hard density ceiling so phones stay playable (no lag/crash)
+    if (IS_MOBILE)    cap = Math.min(cap, 100);                     // MOBILE: hard density ceiling so phones stay playable (no lag/crash)
     return cap;
   }
 
