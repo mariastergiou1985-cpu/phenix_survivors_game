@@ -18239,6 +18239,7 @@ export class Game {
   // 7. HUD (floating texts, vignette, overlays)
 
   draw(ctx) {
+    // ── Frame-State Hard Reset ────────────────────────────────────────────────
     // Wipe any leaked transform / clip / globalAlpha / composite / shadow AND the entire save()
     // stack at the very start of every frame. If any module (present or future) leaves an
     // unbalanced ctx.save() / transform, it can no longer accumulate frame-to-frame — the class of
