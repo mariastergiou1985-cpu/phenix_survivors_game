@@ -43,7 +43,7 @@ import { Protocol0 } from '../effects/protocol-0.js?v=20260705000000';
 import { LaserEyes } from '../effects/laser-eyes.js?v=20260709100000';
 import { MeteorRain } from '../effects/meteor-rain.js?v=20260712100000';
 import { NpcWalker } from './NpcWalker.js?v=20260711750000';
-import { MapManager, BIOME_ID, BIOME_DEFS } from './MapManager.js?v=20260710330000';
+import { MapManager, BIOME_ID, BIOME_DEFS } from './MapManager.js?v=20260716100000';
 import { EventBus, EVENTS } from './EventBus.js?v=20260703990000';
 import { EnemySpawner, ELITE_WAVE as ELITE_WAVE_CFG, BOSS_WARN_COOLDOWN as BOSS_WARN_CD } from './EnemySpawner.js?v=20260713600000';
 import { StateManager, GAME_STATES } from './StateManager.js?v=20260703990000';
@@ -95,6 +95,11 @@ const CAMPAIGN_STAGES = [
   { n: 7, name: 'FINAL STAGE', map: 'assets/maps/biomes/final_stage.png', biome: 'data_wastes', final: true },
 ];
 const CAMPAIGN_STAGE_SECONDS = 300;   // survive 5 minutes to clear a stage
+// Mobile: campaign stage maps are 2.5–5.3 MB PNGs that often fail to decode on phones
+// (background silently dropped to the bare grid). Swap to the light ~300 KB JPG variants on
+// touch devices — used for both the campaign background and the HTML overlay thumbnails.
+const _IS_MOBILE_GM = (typeof navigator !== 'undefined') && ((navigator.maxTouchPoints > 0) || (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(pointer: coarse)').matches));
+const _mapSrc = (p) => (_IS_MOBILE_GM && typeof p === 'string' && /\.png$/.test(p)) ? p.replace(/\.png$/, '.jpg') : p;
 
 // ── VFX sprite sheet metadata (frame data from Blender render) ──
 const WEAPON_VFX_META = Object.freeze({
@@ -1609,7 +1614,7 @@ export class Game {
 
   _campaignThumb(st) {
     this._campaignThumbs = this._campaignThumbs || {};
-    if (!this._campaignThumbs[st.n]) { const im = new Image(); im.src = st.map; this._campaignThumbs[st.n] = im; }
+    if (!this._campaignThumbs[st.n]) { const im = new Image(); im.src = _mapSrc(st.map); this._campaignThumbs[st.n] = im; }
     return this._campaignThumbs[st.n];
   }
 
@@ -1683,7 +1688,7 @@ export class Game {
     this._stageBiome      = st.biome;                                   // enemy rules follow the stage biome
     const def = BIOME_DEFS[st.biome] || {};
     this._stageSpeedMult  = (def.enemyModifiers && def.enemyModifiers.speedMult) || 1;
-    const img = new Image(); img.src = st.map; this._campaignMapImg = img;
+    const img = new Image(); img.src = _mapSrc(st.map); this._campaignMapImg = img;
     if (this.mapManager) this.mapManager._bgImage = img;               // Maria's stage map as the fixed background
     // Campaign boss roster — the 3 recurring bosses (Cyber Serpent, Matrix Annihilator, AI Overload
     // Titan) appear STAGGERED across the 5:00 stage via their existing (Act-1-tested) spawn paths.
@@ -21858,7 +21863,7 @@ export class Game {
       const isCleared = st.n <= cleared;
       const cls = ['cmp-card', unlocked ? '' : 'locked', isCleared ? 'cleared' : '', i === this._campaignSelIndex ? 'sel' : ''].filter(Boolean).join(' ');
       return `<div class="${cls}" data-idx="${i}">
-        <img src="${st.map}" alt="${st.name}" loading="eager">
+        <img src="${_mapSrc(st.map)}" alt="${st.name}" loading="eager">
         ${isCleared ? '<div class="cmp-badge">✓ CLEARED</div>' : ''}
         ${unlocked ? '' : '<div class="cmp-lock">🔒</div>'}
         <div class="cmp-cap">${st.name}</div>

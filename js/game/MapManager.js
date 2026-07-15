@@ -221,19 +221,24 @@ export class MapManager {
    */
   loadBackgrounds(cacheBust = '') {
     const v = cacheBust ? `?v=${cacheBust}` : '';
+    // Mobile: the full-res PNG backgrounds are 2.3–5.3 MB each and frequently fail to decode
+    // on phones (low memory) → the game fell back to the bare grid ("maps disappeared"). Load
+    // the light ~300 KB JPG variants on touch devices so the maps actually render. Desktop = PNG.
+    const IS_MOBILE = (navigator.maxTouchPoints > 0) || (window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+    const M = (png) => IS_MOBILE ? png.replace(/\.png$/, '.jpg') : png;
 
     this._bgImage = new Image();
     this._bgImage.onerror = () => {
       const fallback = new Image();
-      fallback.src = 'assets/backgrounds/cyberpunk_city_background.png';
+      fallback.src = M('assets/backgrounds/cyberpunk_city_background.png');
       this._bgImage = fallback;
     };
-    this._bgImage.src = `assets/backgrounds/cyber_city_bg_clean.png${v}`;
+    this._bgImage.src = `${M('assets/backgrounds/cyber_city_bg_clean.png')}${v}`;
 
     this._endlessBgImage = new Image();
     this._endlessBgImage.onerror = () =>
       console.warn('[MapManager] missing endless bg — using default');
-    this._endlessBgImage.src = `assets/maps/endless/stage_02_neon_shinjuku_plaza.png${v}`;
+    this._endlessBgImage.src = `${M('assets/maps/endless/stage_02_neon_shinjuku_plaza.png')}${v}`;
 
     this._chaosBgImage = new Image();
     this._chaosBgImage.onerror = () => {
@@ -241,7 +246,7 @@ export class MapManager {
       this._chaosBgImage.src = `assets/ui/CHAOS_mode.png${v}`;   // safe fallback
     };
     // Maria's dedicated Chaos Mode map (new).
-    this._chaosBgImage.src = `assets/maps/chaos_mode_map/chaos_mode_only_new_map.png${v}`;
+    this._chaosBgImage.src = `${M('assets/maps/chaos_mode_map/chaos_mode_only_new_map.png')}${v}`;
 
     // ── Biome map images (for chunk streaming) ───────────────────────────
     this.biomeImages = {};   // { biomeId: Image }
