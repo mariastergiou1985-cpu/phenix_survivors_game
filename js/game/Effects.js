@@ -1,6 +1,10 @@
 import { Vec2, WIDTH, HEIGHT, GREY } from '../constants.js';
 import { clamp } from '../utils.js';
 
+// Mobile detection — phones get a smaller particle budget so the framerate holds. Desktop unchanged.
+const IS_MOBILE = (typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0)
+  || (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+
 // ─── Particle ─────────────────────────────────────────────────────────────────
 class Particle {
   constructor(pos, vel, color, radius, life) {
@@ -32,7 +36,7 @@ class Particle {
 export class ParticleSystem {
   constructor() {
     this.particles = [];
-    this.MAX       = 200;
+    this.MAX       = IS_MOBILE ? 90 : 200;
     this._pool     = [];   // free-list of dead Particle objects (perf: reuse instead of realloc)
   }
 

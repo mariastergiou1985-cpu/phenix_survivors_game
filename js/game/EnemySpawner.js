@@ -13,6 +13,12 @@
 
 import { EventBus, EVENTS } from './EventBus.js?v=20260703990000';
 
+// Mobile detection (touch / coarse pointer). On phones the full desktop density (up to 340
+// enemies) tanks the framerate and can crash — so enemyCap() clamps hard when this is true.
+// Desktop is completely unaffected.
+const IS_MOBILE = (typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0)
+  || (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+
 // ─── Enemy Pool Tables ──────────────────────────────────────────────────────
 // Each tier: { from: seconds, pool: string[] }
 // Pool is passed to randomChoice() — duplicates = higher weight.
@@ -114,6 +120,7 @@ export class EnemySpawner {
 
     if (mode.endless) cap = Math.min(400, Math.round(cap * 2.5) + 50);
     if (mode.chaos)   cap = Math.min(340, Math.round(cap * 2.0));   // CHAOS SURGE (Maria): field must never feel empty
+    if (IS_MOBILE)    cap = Math.min(cap, 140);                     // MOBILE: hard density ceiling so phones stay playable (no lag/crash)
     return cap;
   }
 

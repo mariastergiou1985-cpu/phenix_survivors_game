@@ -5,7 +5,7 @@ import {
 import { clamp, distance, safeNormalize, randomRange, randomChoice, drawBar } from '../utils.js';
 import { DataCore } from './DataCore.js?v=20260705040000';
 import { FloatingText } from './FloatingText.js';
-import { drawGlow } from '../game/Effects.js?v=20260705150000';
+import { drawGlow } from '../game/Effects.js?v=20260713400000';
 import { PRIMARY_WEAPON_MAP, MINI_WEAPON_MAP, BOSS_WEAPON_MAP, getWeaponById } from '../game/EnemyWeaponCatalog.js?v=20260708300000';
 
 // ─── Enemy body-sprite cache (each PNG loads & decodes ONCE, shared by all spawns) ──
