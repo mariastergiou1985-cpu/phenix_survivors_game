@@ -175,10 +175,15 @@ export class AudioManager {
         if (n > 0) setTimeout(() => attempt(n - 1), 250);
       });
     };
+    // Mobile: play() is only honoured INSIDE the user gesture — so kick synchronously first
+    // (this call chain runs inside the touchstart/mousedown handler). Waiting for the async
+    // resume().then() to fire the first play() puts it outside the gesture and mobile blocks it.
+    attempt(10);
+    // Mobile AudioContexts boot 'suspended' and music routed through Web Audio stays silent
+    // until resumed. Resume within the same gesture, then re-kick in case the sync attempt was
+    // too early (context not yet running). Idempotent: attempt() no-ops if already playing.
     if (this.actx.state === 'suspended') {
-      this.actx.resume().then(() => attempt(10)).catch(() => attempt(10));
-    } else {
-      attempt(10);
+      this.actx.resume().then(() => attempt(10)).catch(() => {});
     }
   }
 
