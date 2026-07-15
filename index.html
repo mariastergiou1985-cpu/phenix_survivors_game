@@ -52,7 +52,12 @@
   (function(){
     try{
       var ua = navigator.userAgent || '';
-      var inApp = /FBAN|FBAV|FB_IAB|FBIOS|Messenger|Instagram|Line\/|Viber|WhatsApp|MicroMessenger|Snapchat|TikTok|Twitter|Pinterest|GSA/i.test(ua);
+      var known = /FBAN|FBAV|FB_IAB|FBIOS|Messenger|Orca-Android|Instagram|Line\/|Viber|WhatsApp|MicroMessenger|Snapchat|TikTok|Twitter|Pinterest|GSA/i.test(ua);
+      // Generic Android in-app WebView signal ("; wv" or "Version/x.x ... Chrome" — real Chrome
+      // mobile has neither). Exclude our own TWA (launched from the installed app → referrer android-app://).
+      var isWebView = /;\s?wv\)/i.test(ua) || /\bVersion\/\d+\.\d+\b.*\bChrome\//i.test(ua);
+      var isTWA = (document.referrer || '').indexOf('android-app://') === 0;
+      var inApp = known || (isWebView && !isTWA);
       if(!inApp) return;
       var isAndroid = /Android/i.test(ua);
       var full = location.href;
