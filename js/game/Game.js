@@ -18239,6 +18239,20 @@ export class Game {
   // 7. HUD (floating texts, vignette, overlays)
 
   draw(ctx) {
+    // Wipe any leaked transform / clip / globalAlpha / composite / shadow AND the entire save()
+    // stack at the very start of every frame. If any module (present or future) leaves an
+    // unbalanced ctx.save() / transform, it can no longer accumulate frame-to-frame — the class of
+    // bugs where the world slowly zooms out, mirrors, or floods with colour dies here, for ALL
+    // modes (Act 1 / stages / Endless / Chaos). Safe: there is no DPR scaling anywhere, so the
+    // correct base transform is identity.
+    if (typeof ctx.reset === 'function') {
+      ctx.reset();
+    } else {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.shadowColor = 'transparent';
+    }
     if (this.gameState === 'start_menu') {
       this._drawStartMenu(ctx);
       this._drawFade(ctx);
