@@ -21581,6 +21581,18 @@ export class Game {
         #cgm-charselect .csc-abtn.chaos-btn:not(:disabled):hover { border-color:#a855f7; box-shadow:0 0 10px rgba(168,85,247,.45); }
         #cgm-charselect .csc-hints { color:var(--txt-faint); font-size:11px; letter-spacing:1px; display:flex; gap:16px; flex-wrap:wrap; justify-content:center; }
         #cgm-charselect .csc-hints b { color:var(--cyan); font-weight:400; }
+        /* ── Portrait / phone layout ── vertically centre the panel (kills the big empty band),
+           make cards fill the width 3-per-row (bigger, tappable), and enlarge the action buttons.
+           Gated on narrow viewports only — desktop is untouched. */
+        @media (max-width: 760px) {
+          #cgm-charselect { padding:12px 10px; }
+          #cgm-charselect .csc-stage { margin-top:auto; margin-bottom:auto; max-width:100%; padding:16px 12px; gap:12px; }
+          #cgm-charselect .csc-grid { gap:9px; }
+          #cgm-charselect .csc-card { width:auto; flex:1 1 30%; min-width:92px; max-width:31.5%; }
+          #cgm-charselect .csc-actions { width:100%; gap:9px; }
+          #cgm-charselect .csc-abtn { flex:1 1 44%; padding:16px 14px; font-size:14px; }
+          #cgm-charselect .csc-abtn.back-btn { flex:1 1 100%; }
+        }
       `;
       document.head.appendChild(style);
     }
