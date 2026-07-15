@@ -3594,6 +3594,11 @@ export class Game {
           --glow-mag:0 0 10px rgba(255,45,149,.55),0 0 26px rgba(255,45,149,.22);
           --radius:12px;
         }
+        /* Portrait / phone: vertically centre the panel so short content doesn't leave a big
+           empty black band at the bottom (desktop wide layout is untouched). */
+        @media (max-width: 1024px), (pointer: coarse) {
+          #cgm-upgrades .cgu-stage { margin-top:auto; margin-bottom:auto; }
+        }
         #cgm-upgrades::before {
           content:""; position:fixed; inset:0; pointer-events:none; z-index:0;
           background-image:linear-gradient(rgba(46,230,246,.05) 1px,transparent 1px),
@@ -21589,7 +21594,7 @@ export class Game {
         /* ── Portrait / phone layout ── vertically centre the panel (kills the big empty band),
            make cards fill the width 3-per-row (bigger, tappable), and enlarge the action buttons.
            Gated on narrow viewports only — desktop is untouched. */
-        @media (max-width: 760px) {
+        @media (max-width: 1024px), (pointer: coarse) {
           #cgm-charselect { padding:12px 10px; }
           #cgm-charselect .csc-stage { margin-top:auto; margin-bottom:auto; max-width:100%; padding:16px 12px; gap:12px; }
           #cgm-charselect .csc-grid { gap:9px; }
@@ -21826,7 +21831,7 @@ export class Game {
         #cgm-campaign .cmp-lock { position:absolute; inset:0; z-index:3; display:flex; align-items:center; justify-content:center; font-size:30px; }
         #cgm-campaign .cmp-badge { position:absolute; top:6px; left:6px; z-index:3; font-size:11px; font-weight:700; color:var(--green); background:rgba(4,8,20,.82); padding:3px 7px; border-radius:6px; letter-spacing:1px; }
         #cgm-campaign .cmp-hints { font-size:11px; color:#46588a; letter-spacing:1px; text-align:center; }
-        @media (max-width:760px) {
+        @media (max-width:1024px), (pointer: coarse) {
           #cgm-campaign { padding:12px 10px; }
           #cgm-campaign .cmp-stage { max-width:100%; padding:16px 12px; }
           #cgm-campaign .cmp-grid { grid-template-columns:repeat(2,1fr); gap:10px; }
