@@ -45,6 +45,39 @@
 </head>
 <body>
   <canvas id="game" width="1280" height="720"></canvas>
+  <!-- In-app browser guard: Messenger/Viber/Instagram etc. render the game in a slow WebView
+       that lags/crashes. Detect those (NOT normal Chrome, NOT our future TWA) and prompt the
+       user to open in Chrome. Purely additive; on real Chrome nothing shows and boot is unchanged. -->
+  <script>
+  (function(){
+    try{
+      var ua = navigator.userAgent || '';
+      var inApp = /FBAN|FBAV|FB_IAB|FBIOS|Messenger|Instagram|Line\/|Viber|WhatsApp|MicroMessenger|Snapchat|TikTok|Twitter|Pinterest|GSA/i.test(ua);
+      if(!inApp) return;
+      var isAndroid = /Android/i.test(ua);
+      var full = location.href;
+      var host = full.replace(/^https?:\/\//,'');
+      var chromeIntent = 'intent://'+host+'#Intent;scheme=https;package=com.android.chrome;end';
+      var ov = document.createElement('div');
+      ov.setAttribute('style','position:fixed;inset:0;z-index:99999;background:linear-gradient(160deg,#05080f,#0a1424);color:#dff2ff;font-family:Consolas,monospace;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:28px;');
+      ov.innerHTML =
+        '<div style="font-size:22px;font-weight:bold;letter-spacing:1px;color:#2ee6f6;text-shadow:0 0 12px rgba(46,230,246,.6);margin-bottom:14px;">PHENIX: NULL EDEN</div>'+
+        '<div style="font-size:15px;line-height:1.6;max-width:420px;margin-bottom:22px;color:#bfe0f2;">Άνοιξε το παιχνίδι στον <b>Google Chrome</b> για ομαλό παιχνίδι.<br>Ο browser της εφαρμογής (Messenger/Viber/Instagram) κολλάει.</div>'+
+        (isAndroid
+          ? '<a id="ib-chrome" href="'+chromeIntent.replace(/"/g,'&quot;')+'" style="display:block;padding:16px 30px;border-radius:12px;background:linear-gradient(180deg,#0f2a44,#04101e);border:1.5px solid rgba(46,230,246,.7);color:#cfefff;font-size:17px;font-weight:bold;text-decoration:none;box-shadow:0 0 16px rgba(46,230,246,.4);text-shadow:0 0 6px rgba(46,230,246,.8);margin-bottom:16px;">▶ Άνοιγμα σε Chrome</a>'
+          : '<div style="font-size:14px;line-height:1.6;max-width:400px;margin-bottom:16px;color:#9fc7dd;">Πάτησε το μενού (⋯ ή το βελάκι πάνω δεξιά) και διάλεξε <b>«Άνοιγμα σε Safari / Chrome»</b>.</div>')+
+        '<button id="ib-copy" style="padding:13px 26px;border-radius:10px;background:rgba(10,26,44,.9);border:1.5px solid rgba(120,180,220,.5);color:#bfe0f2;font-size:14px;font-family:Consolas,monospace;">📋 Αντιγραφή link</button>'+
+        '<div id="ib-copied" style="font-size:12px;color:#7fd6a0;margin-top:10px;height:16px;"></div>';
+      document.body.appendChild(ov);
+      var copyBtn = ov.querySelector('#ib-copy'), copied = ov.querySelector('#ib-copied');
+      copyBtn.addEventListener('click', function(){
+        var done = function(){ copied.textContent = 'Αντιγράφηκε! Επικόλλησε το στον Chrome.'; };
+        if(navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(full).then(done, done); }
+        else { try{ var t=document.createElement('textarea'); t.value=full; document.body.appendChild(t); t.select(); document.execCommand('copy'); document.body.removeChild(t); done(); }catch(e){ copied.textContent = full; } }
+      });
+    }catch(e){}
+  })();
+  </script>
   <!-- deploy fix v4 — retrigger pages build (642624f deploy failed upstream) -->
   <div id="click-to-start">Click or press any key to enable music &nbsp;|&nbsp; M = mute &nbsp;|&nbsp; ESC = pause</div>
   <!-- Import map: single source of truth for constants.js cache-busting. constants.js is imported
