@@ -7,7 +7,7 @@
 // lighter, φάσεις, caps, ΚΑΝΕΝΑ PNG, μηδέν shadowBlur.
 // ═══════════════════════════════════════════════════════════════════════════════
 import { WEAPON_DEFS, PASSIVE_DEFS, EVOLUTION_RECIPES, WEAPON_EXECUTORS }
-  from './BuildEngine.js?v=20260718200000';
+  from './BuildEngine.js?v=20260718300000';
 
 // ── κοινά helpers του module ─────────────────────────────────────────────────
 function aimAngle(rt) {
@@ -351,12 +351,19 @@ WEAPON_EXECUTORS.hydraulic_knuckle = {
     const d = WEAPON_DEFS.hydraulic_knuckle, evo = EVOLUTION_RECIPES.be_foundry_piston;
     const p = rt.game.player;
     for (const pu of (w.punches || [])) {
-      if (!pu.fired) {                                             // windup telegraph
+      if (!pu.fired) {                                             // ULTIMATE PASS: υδραυλική συμπίεση
         const k = pu.t / pu.wind;
-        ctx.save(); ctx.globalCompositeOperation = 'lighter';
-        ctx.globalAlpha = 0.25 + 0.35 * k;
-        ctx.strokeStyle = '#FF9B3C'; ctx.lineWidth = 3;
-        ctx.beginPath(); ctx.arc(p.pos.x, p.pos.y, 20 - 8 * k, 0, Math.PI * 2); ctx.stroke();
+        ctx.save(); ctx.translate(p.pos.x, p.pos.y); ctx.rotate(pu.dir);
+        ctx.globalCompositeOperation = 'lighter';
+        for (let ring = 0; ring < 3; ring++) {                     // δακτύλιοι που συγκλίνουν στη γροθιά
+          const rk = (k + ring / 3) % 1;
+          ctx.globalAlpha = 0.30 * (1 - rk);
+          ctx.strokeStyle = '#FF9B3C'; ctx.lineWidth = 2.5;
+          ctx.beginPath(); ctx.arc(14, 0, 26 * (1 - rk) + 5, 0, Math.PI * 2); ctx.stroke();
+        }
+        ctx.globalAlpha = 0.5 + 0.5 * k;                           // πυρήνας που πυρώνει
+        ctx.fillStyle = k > 0.75 ? '#ffffff' : '#ffc888';
+        ctx.beginPath(); ctx.arc(14, 0, 3 + 2 * k, 0, Math.PI * 2); ctx.fill();
         ctx.restore(); continue;
       }
       const L = w.evolved ? evo.length : d.length, W = w.evolved ? evo.width : d.width;
@@ -366,14 +373,35 @@ WEAPON_EXECUTORS.hydraulic_knuckle = {
       ctx.globalAlpha = 0.30 * fade;                               // halo βιομηχανικό πορτοκαλί
       ctx.fillStyle = '#FF9B3C'; ctx.fillRect(0, -W * 0.8, L * k, W * 1.6);
       ctx.globalCompositeOperation = 'source-over';
-      ctx.globalAlpha = 0.9 * fade;                                // σώμα: ατσάλινο έμβολο με αρθρώσεις
+      ctx.globalAlpha = 0.9 * fade;                                // σώμα: ατσάλινο έμβολο με αρθρώσεις + πριτσίνια
       ctx.fillStyle = '#c8ccd4'; ctx.fillRect(0, -W / 2, L * k, W);
       ctx.strokeStyle = 'rgba(40,44,52,0.8)'; ctx.lineWidth = 1.5;
-      for (let seg = 1; seg <= 3; seg++) { const sx = (L * k * seg) / 4; ctx.beginPath(); ctx.moveTo(sx, -W / 2); ctx.lineTo(sx, W / 2); ctx.stroke(); }
+      for (let seg = 1; seg <= 3; seg++) {
+        const sx = (L * k * seg) / 4;
+        ctx.beginPath(); ctx.moveTo(sx, -W / 2); ctx.lineTo(sx, W / 2); ctx.stroke();
+        ctx.fillStyle = '#7a8290';                                  // πριτσίνια στην άρθρωση
+        ctx.beginPath(); ctx.arc(sx, -W * 0.32, 1.6, 0, Math.PI * 2); ctx.arc(sx, W * 0.32, 1.6, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#c8ccd4';
+      }
       ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = 0.55 * fade;                               // ΑΤΜΟΙ ΠΙΕΣΗΣ: εκτονώνονται κάθετα στις αρθρώσεις
+      ctx.strokeStyle = '#e8f2ff'; ctx.lineWidth = 2;
+      for (let seg = 1; seg <= 3; seg++) {
+        const sx = (L * k * seg) / 4, jl = 6 + 10 * k + seg * 2;
+        ctx.beginPath(); ctx.moveTo(sx, -W / 2); ctx.lineTo(sx - 3, -W / 2 - jl); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(sx, W / 2); ctx.lineTo(sx - 3, W / 2 + jl); ctx.stroke();
+      }
+      if (w.evolved) {                                             // FOUNDRY: λιωμένο μέταλλο στάζει από την κεφαλή
+        ctx.globalAlpha = 0.8 * fade; ctx.fillStyle = '#ff7a3c';
+        for (let q = 0; q < 3; q++) {
+          ctx.beginPath(); ctx.arc(L * k - 4 - q * 7, W / 2 + 2 + ((rt._t * 60 + q * 13) % 8), 1.8, 0, Math.PI * 2); ctx.fill();
+        }
+      }
       ctx.globalAlpha = 0.95 * fade;                               // λευκός πυρήνας
       ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(L * k, 0); ctx.stroke();
+      ctx.globalAlpha = 0.9 * fade;                                // κεφαλή-σφυρί: λευκή πλάκα κρούσης
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(L * k - 3, -W * 0.42, 3.5, W * 0.84);
       ctx.restore();
     }
   },
@@ -486,11 +514,23 @@ WEAPON_EXECUTORS.magnetic_shrapnel = {
   draw(rt, ctx, w) {
     const evo = EVOLUTION_RECIPES.be_ferro_tempest;
     for (const f of (w.frags || [])) {
+      // ULTIMATE PASS: trail πολικότητας (πορτοκαλί έξω / κυανό επιστροφή)
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      for (let gh = 2; gh >= 1; gh--) {
+        ctx.globalAlpha = 0.10 * (3 - gh);
+        ctx.fillStyle = f.out ? '#FF9B3C' : '#7fd8ff';
+        ctx.beginPath(); ctx.arc(f.x - f.vx * 9 * gh, f.y - f.vy * 9 * gh, 5 - gh, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.restore();
       ctx.save(); ctx.translate(f.x, f.y); ctx.rotate(f.spin);
       ctx.globalCompositeOperation = 'lighter';
-      ctx.globalAlpha = 0.28;                                      // μαγνητικό halo (πορτοκαλί-κυανό)
+      ctx.globalAlpha = 0.28 + 0.08 * Math.sin(rt._t * 16);        // μαγνητικό halo που πάλλεται
       ctx.fillStyle = f.out ? '#FF9B3C' : '#7fd8ff';
       ctx.beginPath(); ctx.arc(0, 0, 10, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 0.35;                                      // ΓΡΑΜΜΕΣ ΠΕΔΙΟΥ: δύο μικρά τόξα γύρω από το θραύσμα
+      ctx.strokeStyle = f.out ? '#ffcf9b' : '#bfefff'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(0, 0, 7.5, 0.4, 2.2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(0, 0, 7.5, Math.PI + 0.4, Math.PI + 2.2); ctx.stroke();
       ctx.globalCompositeOperation = 'source-over';
       ctx.globalAlpha = 1;                                         // σώμα: πριονωτό θραύσμα
       ctx.fillStyle = '#c8ccd4';
@@ -513,6 +553,24 @@ WEAPON_EXECUTORS.magnetic_shrapnel = {
           q === 0 ? ctx.moveTo(qx, qy) : ctx.lineTo(qx, qy);
         }
         ctx.stroke();
+      }
+      for (let arm = 0; arm < 2; arm++) {                          // ΑΝΤΙΘΕΤΟΙ εσωτερικοί βραχίονες (κυανοί)
+        ctx.globalAlpha = 0.22 * fade;
+        ctx.strokeStyle = '#7fd8ff'; ctx.lineWidth = 3;
+        ctx.beginPath();
+        for (let q = 0; q <= 8; q++) {
+          const qa = -s.t * 5 + arm * Math.PI + q * 0.33, qr = R * 0.6 * (q / 8);
+          const qx = s.x + Math.cos(qa) * qr, qy = s.y + Math.sin(qa) * qr;
+          q === 0 ? ctx.moveTo(qx, qy) : ctx.lineTo(qx, qy);
+        }
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 0.7 * fade;                                // ΣΥΝΤΡΙΜΜΙΑ: ατσάλινα θραύσματα στη δίνη
+      ctx.fillStyle = '#c8ccd4';
+      for (let q = 0; q < 8; q++) {
+        const qa = s.t * 6 + q * (Math.PI * 2 / 8), qr = R * (0.4 + 0.5 * ((q * 37) % 10) / 10);
+        ctx.save(); ctx.translate(s.x + Math.cos(qa) * qr, s.y + Math.sin(qa) * qr); ctx.rotate(qa * 3);
+        ctx.fillRect(-2.5, -1.2, 5, 2.4); ctx.restore();
       }
       ctx.globalAlpha = 0.85 * fade;                               // λευκή εξωτερική ακμή
       ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.5;

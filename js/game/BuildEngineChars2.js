@@ -6,7 +6,7 @@
 // ΚΑΝΕΝΑ PNG, μηδέν shadowBlur.
 // ═══════════════════════════════════════════════════════════════════════════════
 import { WEAPON_DEFS, PASSIVE_DEFS, EVOLUTION_RECIPES, WEAPON_EXECUTORS }
-  from './BuildEngine.js?v=20260718200000';
+  from './BuildEngine.js?v=20260718300000';
 
 function aimAngle(rt) {
   const p = rt.game.player, e = rt._nearestEnemy(p.pos.x, p.pos.y);
@@ -111,8 +111,13 @@ WEAPON_EXECUTORS.faultline_fist = {
     }
   },
   draw(rt, ctx, w) {
+    const evo = EVOLUTION_RECIPES.be_seismic_gauntlet;
     for (const c of (w.cracks || [])) {
       const grow = Math.min(1, c.t / 0.22), fade = 1 - Math.max(0, (c.t - 0.5) / 0.4);
+      // ULTIMATE PASS: aftershock re-glow — η ρωγμή ΞΑΝΑΝΑΒΕΙ σε κάθε μετασεισμό
+      let boost = 1;
+      if (w.evolved) for (const at of evo.aftershocks)
+        if (c.t >= at && c.t < at + 0.18) boost = 1.8 - (c.t - at) * 4;
       ctx.save();
       for (const ln of c.lines) {
         const tip = Math.max(1, Math.floor(grow * (ln.pts.length - 1)));
@@ -122,14 +127,31 @@ WEAPON_EXECUTORS.faultline_fist = {
         ctx.beginPath(); ctx.moveTo(ln.pts[0][0], ln.pts[0][1]);
         for (let s = 1; s <= tip; s++) ctx.lineTo(ln.pts[s][0], ln.pts[s][1]); ctx.stroke();
         ctx.globalCompositeOperation = 'lighter';
-        ctx.globalAlpha = 0.35 * fade;                             // halo ενέργειας brawler
+        ctx.globalAlpha = Math.min(1, 0.35 * fade * boost);        // halo ενέργειας brawler
         ctx.strokeStyle = '#3CFFB0'; ctx.lineWidth = 10;
         ctx.beginPath(); ctx.moveTo(ln.pts[0][0], ln.pts[0][1]);
         for (let s = 1; s <= tip; s++) ctx.lineTo(ln.pts[s][0], ln.pts[s][1]); ctx.stroke();
-        ctx.globalAlpha = 0.9 * fade;                              // λευκός πυρήνας
+        ctx.globalAlpha = Math.min(1, 0.9 * fade * boost);         // λευκός πυρήνας
         ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.4;
         ctx.beginPath(); ctx.moveTo(ln.pts[0][0], ln.pts[0][1]);
         for (let s = 1; s <= tip; s++) ctx.lineTo(ln.pts[s][0], ln.pts[s][1]); ctx.stroke();
+        // ΜΠΑΖΑ: πέτρες που τινάζονται κατά μήκος της σχισμής (ντετερμινιστικά ανά κορυφή)
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = 0.9 * fade;
+        ctx.fillStyle = '#2c332c';
+        for (let s = 1; s <= tip; s++) {
+          const seed = (s * 73 + Math.floor(ln.a * 100)) % 7;
+          if (seed > 3) continue;
+          const px = ln.pts[s][0] + (seed - 1.5) * 4, py = ln.pts[s][1] - c.t * (18 + seed * 8);
+          ctx.save(); ctx.translate(px, py); ctx.rotate(c.t * (3 + seed));
+          ctx.fillRect(-2.2, -2.2, 4.4, 4.4); ctx.restore();
+        }
+        // ΣΚΟΝΗ: αναδύεται και διαλύεται
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.12 * fade;
+        ctx.fillStyle = '#9fb8a8';
+        for (let s = 2; s <= tip; s += 2)
+          ctx.beginPath(), ctx.arc(ln.pts[s][0], ln.pts[s][1] - c.t * 26, 6 + c.t * 10, 0, Math.PI * 2), ctx.fill();
       }
       ctx.restore();
     }
@@ -246,26 +268,45 @@ WEAPON_EXECUTORS.magma_uppercut = {
       ctx.globalAlpha = 0.22 * fade;                               // halo μάγματος
       ctx.fillStyle = '#ff5a3c';
       ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, s.R, a0, a1); ctx.closePath(); ctx.fill();
-      ctx.globalAlpha = 0.55 * fade;                               // σώμα: πυρωμένες ακτίνες
-      ctx.strokeStyle = '#ff8a4c'; ctx.lineWidth = 3;
+      ctx.globalAlpha = 0.55 * fade;                               // σώμα: ΦΛΕΒΕΣ ΛΑΒΑΣ (jagged ακτίνες)
+      ctx.strokeStyle = '#ff8a4c'; ctx.lineWidth = 3; ctx.lineJoin = 'round';
       for (let q = 0; q <= 4; q++) {
         const qa = a0 + (d.arc * k) * (q / 4);
         ctx.beginPath(); ctx.moveTo(Math.cos(qa) * s.R * 0.25, Math.sin(qa) * s.R * 0.25);
+        const zig = (q % 2 ? 1 : -1) * 7;
+        ctx.lineTo(Math.cos(qa) * s.R * 0.6 - Math.sin(qa) * zig, Math.sin(qa) * s.R * 0.6 + Math.cos(qa) * zig);
         ctx.lineTo(Math.cos(qa) * s.R, Math.sin(qa) * s.R); ctx.stroke();
+      }
+      ctx.globalAlpha = 0.7 * fade;                                // ΚΑΦΤΡΕΣ: αναδύονται από τον κώνο
+      ctx.fillStyle = '#ffb46b';
+      for (let q = 0; q < 6; q++) {
+        const qa = a0 + d.arc * ((q + 0.5) / 6);
+        const qr = s.R * (0.4 + 0.4 * ((q * 53) % 10) / 10);
+        ctx.beginPath();
+        ctx.arc(Math.cos(qa) * qr, Math.sin(qa) * qr - s.t * (50 + q * 14), 1.6 + (q % 2), 0, Math.PI * 2); ctx.fill();
       }
       ctx.globalAlpha = 0.9 * fade;                                // λευκός πυρήνας-ακμή
       ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.6;
       ctx.beginPath(); ctx.arc(0, 0, s.R, a0, a1); ctx.stroke();
       ctx.restore();
     }
-    for (const r of (w.rocks || [])) {                             // βράχοι: καμπύλη πτήση + πύρινη ουρά
+    for (const r of (w.rocks || [])) {                             // βράχοι: καμπύλη πτήση + καπνός + πύρινη ουρά
       const f = r.t / r.fly, x = r.x + (r.tx - r.x) * f, y = r.y + (r.ty - r.y) * f - Math.sin(f * Math.PI) * 46;
       ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      for (let gh = 3; gh >= 1; gh--) {                            // ΚΑΠΝΟΣ: γκρίζα φούσκα πίσω στην τροχιά
+        const gf = Math.max(0, f - gh * 0.07);
+        const gx = r.x + (r.tx - r.x) * gf, gy = r.y + (r.ty - r.y) * gf - Math.sin(gf * Math.PI) * 46;
+        ctx.globalAlpha = 0.10 * (4 - gh) / 3;
+        ctx.fillStyle = gh === 1 ? '#ff9b5c' : '#8a8a92';
+        ctx.beginPath(); ctx.arc(gx, gy, 5 + gh * 2, 0, Math.PI * 2); ctx.fill();
+      }
       ctx.globalAlpha = 0.4; ctx.fillStyle = '#ff7a3c';
       ctx.beginPath(); ctx.arc(x, y, 9, 0, Math.PI * 2); ctx.fill();
       ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
-      ctx.fillStyle = '#3a2a22';
+      ctx.fillStyle = '#3a2a22';                                   // σώμα βράχου με πυρωμένες ρωγμές
       ctx.beginPath(); ctx.arc(x, y, 5.5, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#ff7a3c'; ctx.lineWidth = 0.8; ctx.globalAlpha = 0.9;
+      ctx.beginPath(); ctx.moveTo(x - 4, y - 1); ctx.lineTo(x - 1, y + 1); ctx.lineTo(x + 3, y - 2); ctx.stroke();
       ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.9;
       ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(x - 2, y - 2, 1.3, 0, Math.PI * 2); ctx.fill();
       ctx.restore();
