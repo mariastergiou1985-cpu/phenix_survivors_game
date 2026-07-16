@@ -1045,7 +1045,13 @@ export class Game {
     // Mobile gameplay zoom-in: on phones the fixed 1280×720 world is squeezed into a narrow
     // screen, so everything looks tiny/far. Multiply the effective view scale on touch devices
     // (all modes). Desktop stays 1 → byte-identical zoom. 1.35 ≈ 35% closer.
-    this._mobileZoom = ((typeof navigator !== 'undefined') && ((navigator.maxTouchPoints > 0) || (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(pointer: coarse)').matches))) ? 1.35 : 1;
+        // HORDE CAMERA (audit 2026-07-16, variants A/B/C με screenshots ίδιας σκηνής):
+    // desktop ×1.18 (VARIANT C — VS framing: πυκνή ορδή, αναγνώσιμος παίκτης, χώρος αποφυγής)
+    // mobile ×1.08 πάνω στο 1.35 zoom (VARIANT B). Σταθερό zoom, καμία dynamic κάμερα,
+    // HUD εκτός transform, collisions world-space ΑΝΕΓΓΙΧΤΑ — όλα μέσω του _viewScale getter.
+    this._mobileZoom = ((typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0)
+      || (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(pointer: coarse)').matches))
+      ? 1.35 * 1.08 : 1.18;
     try {
       this._initCharSelectOverlay();
     } catch (err) {
