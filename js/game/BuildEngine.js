@@ -143,6 +143,11 @@ const FX_CAP = 48, NOVA_CAP = 2;
 // WEAPON_EXECUTORS[id] = { update(rt, w, dt), draw(rt, ctx, w) }
 export const WEAPON_EXECUTORS = {};
 
+// P2.6: generic hooks για τα build passives (§26-50). modDamage επιστρέφει
+// πολλαπλασιαστή ΠΡΙΝ τα boss caps· onDamage/onKill μετά το χτύπημα· tick ανά frame.
+// Τα hooks ΔΕΝ τρέχουν σε echo-χτυπήματα (depth guard) — μηδενική αναδρομή.
+export const RUNTIME_HOOKS = { modDamage: [], onDamage: [], onKill: [], tick: [] };
+
 export class BuildEngineRuntime {
   constructor(game) {
     this.game     = game;
@@ -193,7 +198,7 @@ export class BuildEngineRuntime {
       if (s.fear !== undefined) { s.fear -= dt; if (s.fear <= 0) delete s.fear; }
       if (s.sanction !== undefined) { s.sanction -= dt; if (s.sanction <= 0) delete s.sanction; }
       if (s.shred !== undefined) { s.shred -= dt; if (s.shred <= 0) delete s.shred; }
-      if (!s.burn && !s.poison && s.shock === undefined && s.fear === undefined && s.sanction === undefined && s.shred === undefined) this._status.delete(e);
+      if (Object.keys(s).length === 0) this._status.delete(e);     // fix: κράτα custom keys (scars κ.ά.)
     }
     for (let i = this.patches.length - 1; i >= 0; i--) {
       const pa = this.patches[i]; pa.t += dt; pa.next -= dt;
@@ -210,7 +215,7 @@ export class BuildEngineRuntime {
     let s = 0;
     for (const [pid, lvl] of this.passives) {
       const p = PASSIVE_DEFS[pid];
-      if (!p) continue;
+      if (!p || !p.bonuses) continue;                              // build passives (§26-50) δεν έχουν bonuses
       for (let i = 0; i < lvl; i++) s += (p.bonuses[i]?.[key] || 0);
     }
     return s;
@@ -308,6 +313,14 @@ export class BuildEngineRuntime {
         CARD_COLOR.weapon, '❖', () => self.addWeapon(wid)) });
     }
     for (const [pid, p] of Object.entries(PASSIVE_DEFS)) {
+      if (p.category === 'build_passive') {                        // P2.6: global build passives
+        const bl = this.passives.get(pid) || 0;
+        if (bl >= p.maxLevel) continue;
+        cand.push({ wt: 1, card: mk('be_p_' + pid, p.name,
+          (bl ? 'Level ' + (bl + 1) + ' — ' : '') + p.desc, CARD_COLOR.passive, '◆',
+          () => self.addPassive(pid)) });
+        continue;
+      }
       const w = this.weapons.get(p.forWeapon);
       const fd = WEAPON_DEFS[p.forWeapon];
       const extLvl = (!w && fd?.external) ? (g._weaponLevels?.get(p.forWeapon) || 0) : 0;
@@ -336,11 +349,23 @@ export class BuildEngineRuntime {
     let dmg = raw * (crit ? (weaponId === 'grave_cantor' || weaponId === 'be_revenant_choir' ? 1.5 : 1.6) : 1);
     const _est = this._status.get(e);
     if (_est?.sanction) dmg *= 1 + 0.12 + (this._catalystSum('markBonus') || 0);   // Dimi Sanction Mark (P2.4a)
-    if (_est?.shred) dmg *= 1.15;                                  // Grey-Goo nanite shred (P2.5)
+    if (_est?.shred) dmg *= 1.15;                                  // Grey-Goo nanite shred / Armor Fracture
+    const _depth = this._hookDepth || 0;
+    const _tags = (WEAPON_DEFS[weaponId] || EVOLUTION_RECIPES[weaponId])?.tags || [];
+    if (_depth === 0)                                              // P2.6 modDamage (ΠΡΙΝ τα boss caps)
+      for (const h of RUNTIME_HOOKS.modDamage) { const m = h(this, e, weaponId, _tags, dmg); if (m > 0) dmg *= m; }
     const boss = (e.isBoss?.() || e.isMegaBoss);
     if (boss) dmg = g._capBossDamage(e, dmg * bossMult);
     e.takeHit(dmg, g);
-    this.log.hit(weaponId, dmg, { crit, kill: e.hp <= 0 });
+    const kill = e.hp <= 0;
+    this.log.hit(weaponId, dmg, { crit, kill });
+    if (_depth === 0) {                                            // P2.6 events (depth guard: όχι σε echoes)
+      this._hookDepth = 1;
+      try {
+        for (const h of RUNTIME_HOOKS.onDamage) h(this, e, weaponId, _tags, dmg, crit, kill);
+        if (kill) for (const h of RUNTIME_HOOKS.onKill) h(this, e, weaponId, _tags, dmg);
+      } finally { this._hookDepth = 0; }
+    }
     return true;
   }
 
@@ -356,6 +381,8 @@ export class BuildEngineRuntime {
       else if (w.id === 'grave_cantor') this._updateCantor(w, dt);
     }
     this._tickStatus(dt);
+    this._hookDepth = 0;
+    for (const h of RUNTIME_HOOKS.tick) h(this, dt);               // P2.6 passive ticks
     this._updateShards(dt);
     this._updateNovas(dt);
     for (let i = this.fx.length - 1; i >= 0; i--) { this.fx[i].t += dt; if (this.fx[i].t >= this.fx[i].life) this.fx.splice(i, 1); }
