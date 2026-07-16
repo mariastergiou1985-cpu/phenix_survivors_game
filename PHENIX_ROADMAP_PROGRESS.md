@@ -10,7 +10,26 @@
 *Αυτό είναι το κοινό μας tracker. Ο Claude το ξαναδιαβάζει και θυμίζει στη Maria πού πάμε.
 Στόχος: από «6ωρο indie» → «30ωρο survivor-like με δική του ταυτότητα».*
 
-Τελευταία ενημέρωση: 2026-07-07
+Τελευταία ενημέρωση: 2026-07-16 (fable — P2 BUILD ENGINE ΠΑΡΑΔΟΘΗΚΕ)
+
+## ✅ P2 BUILD ENGINE — ΟΛΟΚΛΗΡΩΘΗΚΕ & LIVE (2026-07-16, 17 commits)
+Spec: docs/P2_BUILD_ENGINE_SPEC_GR.md · Πλάνο: docs/P2_IMPLEMENTATION_PLAN.md
+- **25 όπλα** (2 native x10 χαρακτήρες + 5 universal) — όλα procedural όπως τα ultimates,
+  VFX PASS σε πλήρη χορογραφία, executor registry, single data source (§13)
+- **50 passives** (25 evolution catalysts + 25 build-changers §26-50 με hooks/ICD/caps)
+- **25 evolutions** (be_*) — owner-gated, guaranteed κάρτα όταν έτοιμο, discovery tracking
+- **Loadout caps** 6W/6P, family limit 2, **Banish/Seal** (πλήκτρο B + κουμπί ⛔)
+- **NULL ARSENAL** menu: 7 tabs (Characters dossier/Weapons/Passives/Evolutions/
+  Tacticals/Elements/Fusions), Evolution Path + locked silhouettes, SINGLE-TARGET DPS labels
+- **Pause CURRENT BUILD** panel + **Results DAMAGE REPORT** + **telemetry** (localStorage
+  phenix_be_telemetry, 20 τελευταία runs) για το balancing
+- **P2.7 SOFT MIGRATION**: default ΟΝ για όλους (opt-out: F9 ή ?p2=0) — το παλιό σύστημα
+  παραμένει ως δίχτυ ασφαλείας
+- Guardrail: Quantum Roulette stacking cap 4 (ήταν 3-10x πάνω από όλα)
+- **Εκκρεμεί (πλήρες migration, μετά feel sign-off + telemetry):** απόσυρση old-gen
+  evolutions, ενοποίηση be_ ονομάτων, 2T/1R/1A caps, ενιαίο data source στα 3 τελευταία tabs
+- Σημ.: το procedural art του P2 είναι ΡΗΤΗ εντολή του spec της Maria (2026-07-16,
+  «όπως οι ultimates, κανένα PNG») — δεν αντικαταστάθηκε πουθενά δική της art.
 
 ## Πού πάμε (τα 4 μεγάλα levers)
 1. Evolutions 4 → 12–14  ← **ξεκινάμε ΕΔΩ**
