@@ -9,7 +9,12 @@
 // μέχρι το P2.7 migration (δηλωμένο μέσα στο ίδιο το UI).
 // ═══════════════════════════════════════════════════════════════════════════════
 import { WEAPON_DEFS, PASSIVE_DEFS, EVOLUTION_RECIPES, singleTargetDps }
-  from './BuildEngine.js?v=20260718700000';
+  from './BuildEngine.js?v=20260718800000';
+// P2.8 v2.1: τα TACTICALS/ELEMENTS/FUSIONS διαβάζονται read-only από τους
+// ΥΠΑΡΧΟΝΤΕΣ καταλόγους του παλιού συστήματος (ίδια ?v με το Game.js) —
+// καμία αλλαγή gameplay, μόνο παρουσίαση μέχρι το πλήρες migration.
+import { TACTICAL_DEFS, FUSION_TACTICALS } from './TacticalWeaponCatalog.js?v=20260712430000';
+import { ELEMENTS, ELEMENT_ICON, CHARACTER_ELEMENT, FUSION_PAIRS, CHARACTER_FUSION } from '../Elements.js?v=20260712520000';
 
 const C = { weapon: '#e9ecf2', passive: '#4fd8ff', evolution: '#ffd447', tactical: '#b06bff',
             bg: '#0a0e14', panel: '#0d131c', line: '#1c2836', dim: '#8fa8b8', white: '#e9ecf2' };
@@ -115,8 +120,47 @@ function dossier(ch, game) {
     '<div class="na-sub" style="color:#ff8a96">WEAKNESS</div><div class="na-desc">' + esc(WEAKNESS[ch.id] || '—') + '</div></div>';
 }
 
-const PENDING = tab => '<div class="na-pending">◈ ' + tab + ' — wired to the old system until the <b>P2.7 migration</b>.<br>' +
-  'They will surface here, reading from the same single data source, once the migration lands.</div>';
+// ── TACTICALS (μοβ §8) — από το TACTICAL_DEFS του παλιού συστήματος ─────────────
+function tacticalCard(d, game) {
+  const ownerName = d.character ? (game.characters?.find(c => c.id === d.character)?.name || d.character) : null;
+  const rows = [
+    d.baseDamage ? ['BASE DAMAGE', String(d.baseDamage)] : null,
+    d.aoeRadius ? ['AOE RADIUS', String(d.aoeRadius)] : null,
+    d.tickRate ? ['TICK', d.tickRate + 's'] : null,
+    d.duration ? ['DURATION', d.duration + 's'] : null,
+    d.behavior ? ['BEHAVIOR', String(d.behavior)] : null,
+  ].filter(Boolean).map(([k, v]) => '<tr><td>' + k + '</td><td>' + esc(v) + '</td></tr>').join('');
+  return '<div class="na-card" style="--acc:' + C.tactical + '">' +
+    '<div class="na-name" style="color:' + C.tactical + '">▣ ' + esc(d.name) +
+    (ownerName ? ' <span class="na-badge na-native">' + esc(ownerName) + '</span>' : '') + '</div>' +
+    '<div class="na-desc">' + esc(d.description || '') + '</div>' +
+    '<table class="na-t">' + rows + '</table></div>';
+}
+// ── ELEMENTS — από το ELEMENTS/CHARACTER_ELEMENT του Elements.js ────────────────
+function elementCard(key, el, game) {
+  const owners = Object.entries(CHARACTER_ELEMENT).filter(([, e]) => e === key)
+    .map(([cid]) => game.characters?.find(c => c.id === cid)?.name || cid);
+  return '<div class="na-card" style="--acc:' + esc(el.c1) + '">' +
+    '<div class="na-name" style="color:' + esc(el.c1) + '">' + esc(ELEMENT_ICON[key] || '◆') + ' ' + esc(el.name) + '</div>' +
+    '<table class="na-t">' +
+    '<tr><td>STYLE</td><td>' + esc(el.style) + '</td></tr>' +
+    '<tr><td>BURST LIFE</td><td>' + el.life + 's</td></tr>' +
+    (owners.length ? '<tr><td>WIELDED BY</td><td>' + esc(owners.join(' · ')) + '</td></tr>' : '') +
+    '</table></div>';
+}
+// ── FUSIONS — δίχρωμες κάρτες (§8) από FUSION_PAIRS + fusion tacticals ─────────
+function fusionCard(pair, result, game) {
+  const [a, b] = pair.split('+');
+  const eA = ELEMENTS[a], eB = ELEMENTS[b];
+  const owners = Object.entries(CHARACTER_FUSION || {}).filter(([, f]) => f === result)
+    .map(([cid]) => game.characters?.find(c => c.id === cid)?.name || cid);
+  return '<div class="na-card" style="--acc:' + esc(eA?.c1 || C.white) + ';border-right:3px solid ' + esc(eB?.c1 || C.white) + '">' +
+    '<div class="na-name"><span style="color:' + esc(eA?.c1 || '#fff') + '">' + esc(eA?.name || a) + '</span>' +
+    ' <span style="color:' + C.dim + '">+</span> <span style="color:' + esc(eB?.c1 || '#fff') + '">' + esc(eB?.name || b) + '</span>' +
+    ' <span style="color:' + C.dim + '">→</span> <b style="color:' + C.white + '">' + esc(String(result).toUpperCase().replace(/_/g, ' ')) + '</b></div>' +
+    (owners.length ? '<div class="na-desc" style="color:' + C.dim + '">Signature fusion: ' + esc(owners.join(' · ')) + '</div>' : '') +
+    '</div>';
+}
 
 export function openNullArsenal(game) {
   if (document.getElementById('na-root')) return;
@@ -169,7 +213,16 @@ export function openNullArsenal(game) {
       body.innerHTML = Object.entries(PASSIVE_DEFS).map(([id, p]) => passiveCard(id, p)).join('');
     else if (tab === 'EVOLUTIONS')
       body.innerHTML = Object.entries(EVOLUTION_RECIPES).map(([eid, r]) => evolutionRow(eid, r, disc)).join('');
-    else body.innerHTML = PENDING(tab);
+    else if (tab === 'TACTICALS')
+      body.innerHTML = Object.values(TACTICAL_DEFS).map(d => tacticalCard(d, game)).join('') +
+        (FUSION_TACTICALS?.length ? '<div class="na-card" style="--acc:' + C.tactical + ';grid-column:1/-1">' +
+          '<div class="na-name" style="color:' + C.tactical + '">▣▣ TACTICAL FUSIONS</div>' +
+          '<div class="na-desc">Deploy BOTH parent tacticals in one run to unlock their fusion: ' +
+          esc(FUSION_TACTICALS.map(f => f.name || f.result || '').filter(Boolean).join(' · ')) + '</div></div>' : '');
+    else if (tab === 'ELEMENTS')
+      body.innerHTML = Object.entries(ELEMENTS).map(([k, el]) => elementCard(k, el, game)).join('');
+    else if (tab === 'FUSIONS')
+      body.innerHTML = Object.entries(FUSION_PAIRS).map(([pair, res]) => fusionCard(pair, res, game)).join('');
     body.scrollTop = 0;
   };
   for (const t of TABS) {
