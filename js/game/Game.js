@@ -3382,7 +3382,10 @@ export class Game {
     // the cadence is unchanged (no farming exploit). Cap concurrent pickups so they can't pile up.
     if (pos && !isElite) {
       const _hpFrac  = this.player && this.player.maxHp ? this.player.hp / this.player.maxHp : 1;
-      const _thresh  = _hpFrac < 0.30 ? 15 : 25;
+      // HORDE §6 stationary-test fix: το mercy σφίξιμο (25->15 kills) ισχύει ΜΟΝΟ όταν ο
+      // παίκτης πραγματικά κινείται/παλεύει. Ακίνητος παίκτης (idle>2s) = κανονική συχνότητα —
+      // η ορδή που πεθαίνει πάνω του δεν τον κάνει πλέον αθάνατο. Ενεργό gameplay ΑΜΕΤΑΒΛΗΤΟ.
+      const _thresh  = (_hpFrac < 0.30 && (this._playerIdleT || 0) < 2) ? 15 : 25;
       if (++this.killsSinceHealthDrop >= _thresh && (this.healthPickups.length < 6)) {
         this.killsSinceHealthDrop = 0;
         const dropPos = this._clampPickupPos(pos.clone().add(new Vec2(randomRange(-10, 10), -8)));
@@ -10364,6 +10367,18 @@ export class Game {
   }
 
   _updateEnemyBullets(dt) {
+    // HORDE §10 leak-proofing (βρέθηκε στο live QA: ranged tokens κολλούσαν στο cap
+    // ενώ τα bullets είχαν φύγει): κάθε 4s επανυπολογισμός των μετρητών από τα
+    // πραγματικά bullets. Ο,τιδήποτε αφαιρεί bullets χωρίς release αυτοδιορθώνεται.
+    if (this.hostileDirector) {
+      this._hdReconT = (this._hdReconT || 0) - dt;
+      if (this._hdReconT <= 0) {
+        this._hdReconT = 4;
+        const cnt = { ranged: 0, elite: 0, boss: 0 };
+        for (const b of this.enemyBullets) cnt[b.tok || 'ranged']++;
+        this.hostileDirector.counts = cnt;
+      }
+    }
     for (let i = this.enemyBullets.length - 1; i >= 0; i--) {
       const b = this.enemyBullets[i];
       b.pos.addMut(b.dir.scale(b.speed * dt));
@@ -18502,9 +18517,16 @@ export class Game {
         if (!strongest || (e.contactDamage || 0) > (strongest.contactDamage || 0)) strongest = e;
       }
     }
+    let _crowdN = 0;
+    if (strongest) for (const e of near) {
+      if (e && e.hp > 0 && distance(e.pos, this.player.pos) < e.radius + PLAYER_RADIUS) _crowdN++;
+    }
     if (strongest && this._contactIfrT <= 0 && this.phoenixReviveTimer <= 0 && this.player.dashTimer <= 0) {
       this._contactIfrT = IFR;
-      const raw = (strongest.contactDamage ?? 8) * IFR;
+      // HORDE §7: crowd pressure — θαμμένος σε πλήθος = ×(1+0.15×min(7,n-1)), cap ×2.05.
+      // Ένας-δύο εχθροί: σχεδόν αμετάβλητο· η ΟΡΔΗ ως σύνολο είναι ο φονιάς (VS αρχή).
+      const _crowd = 1 + 0.15 * Math.min(7, Math.max(0, _crowdN - 1));
+      const raw = (strongest.contactDamage ?? 8) * IFR * _crowd;
       const dmg = raw * (1 - this.player.contactDamageReduction);
       this.player.applyDamage(dmg);
 
