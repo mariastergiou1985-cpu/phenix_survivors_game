@@ -19,6 +19,7 @@ import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, dr
 import { SystemEventManager } from './Events.js?v=20260711780000';
 import { UpgradeUI }      from './UpgradeUI.js?v=20260712520000';
 import { weightedSample } from './Upgrades.js?v=20260712520000';
+import { BuildEngineRuntime } from './BuildEngine.js?v=20260717300000';   // P2.2 — ενεργό ΜΟΝΟ με ?p2=1
 import { MutationUI }      from './MutationUI.js?v=20260703990000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260713200000';
@@ -1288,6 +1289,15 @@ export class Game {
     // Seed this character's base weapon at level 1
     const _charWeapon = getWeaponForCharacter(this.selectedCharacter);
     if (_charWeapon) this._weaponLevels.set(_charWeapon.id, 1);
+
+    // ── P2.2 BUILD ENGINE (spec docs/P2_BUILD_ENGINE_SPEC_GR.md) ────────────
+    // Δημιουργείται ΜΟΝΟ με ?p2=1 στο URL — χωρίς το flag μένει null και ΚΑΜΙΑ
+    // συμπεριφορά δεν αλλάζει (όλα τα hooks είναι optional-chained).
+    this.buildEngine = null;
+    try {
+      if (typeof location !== 'undefined' && new URLSearchParams(location.search).get('p2') === '1')
+        this.buildEngine = new BuildEngineRuntime(this);
+    } catch (_) { this.buildEngine = null; }
 
     // ── Tactical Cache Weapons — independent map objects, 100% decoupled from player ──
     this.tacticalCacheWeapons = [];
@@ -8266,6 +8276,7 @@ export class Game {
     // Π1 horde pass: one grid rebuild per frame feeds every hot collision loop below.
     (this._spatialGrid ||= new SpatialGrid(128)).rebuild(this.enemies);
     this._updateProjectiles(_hsDt);
+    this.buildEngine?.update(_hsDt);                          // P2.2 (?p2=1 μόνο) — μετά το grid rebuild
     this._updateHomingDiscs(_hsDt);
     this._updateChainLightning(dt);
     this._updateNeonPierceBeam(dt);
@@ -13171,6 +13182,10 @@ export class Game {
   // with a 25% probability per level-up. Max 3 weapon slots enforced.
   _injectWeaponCard(choices) {
     if (!choices || choices.length === 0) return;
+
+    // ── P2.2 Build Engine cards (?p2=1 μόνο): weighting x3 native/catalyst,
+    //    evolution guaranteed — αν έβαλε κάρτα, παρακάμπτει τα υπόλοιπα. ──
+    if (this.buildEngine && this.buildEngine.injectCards(choices)) return;
 
     // ── Mastery card art pass: character weapon/mastery cards show the REAL art
     // of the weapon they master (same resolver; null keeps the glyph). Runs on
@@ -18858,6 +18873,7 @@ export class Game {
     this._drawVesselRockets(ctx);        // Vessel companion auto-aim purple rockets
     this._drawWeaponAccents(ctx);                             // cinematic accents UNDER the art
     this._drawEvoFx(ctx);                                     // NEW-GEN procedural evolutions
+    this.buildEngine?.draw(ctx);                              // P2.2 Build Engine (?p2=1 μόνο)
     this._drawCarriedCores(ctx);                              // courier: orbiting carried cores
     this._drawCoreThieves(ctx);                               // defense: thieves + stolen loot
     this._drawBossNovas(ctx);                                 // boss evolution: nova telegraphs
