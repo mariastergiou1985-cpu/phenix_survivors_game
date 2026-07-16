@@ -1313,6 +1313,7 @@ export class Game {
     this.cybermoteMines   = [];   // CYBERMOTE event: proximity mines dropped by the W2 rider
     this.dmgNums          = [];   // VS-style damage numbers (hard cap 40, per-enemy merge window)
     this.nullEcho         = null; // NULL ECHO event: corrupted mirror of the player's own character
+    this.nullWyrm         = null; // NULL WYRM event: wireframe data-serpent sweeping the arena
     this.lightningZones   = [];   // Lightning Storm: telegraphed strike zones (hard-capped)
     this.synergyBursts    = [];   // transient synergy-burst rings (visual; hard-capped, auto-expire)
     this.elementFx        = new ElementFx();   // Phase-1 elemental VFX (bounded, auto-expiring)
@@ -2021,6 +2022,8 @@ export class Game {
     this.nullEcho          = null;
     this.nullEchoZones     = [];
     this._nullEchoTimer    = 600;           // NULL ECHO every 10 min — the apex event (Claude's own)
+    this.nullWyrm          = null;
+    this._nullWyrmTimer    = 420;           // NULL WYRM every 7 min (Claude's second signature event)
     // Phoenix revives reset on Endless entry: Act 1 uses must not consume the Endless pool.
     // (startEndlessRun already calls reset() which zeroes these; this guard covers continueEndless.)
     this.phoenixReviveCount = 0;
@@ -8403,7 +8406,7 @@ export class Game {
     if (!this._campaignStage) this._sysEvents.update(dt, this.timeAlive, this);
     if (this._chaosMode) this._updateChaosTitans(dt);   // Chaos-only Mega Titan scheduler
     this._updateTitanWeaponFx(dt);   // Phase 2: Mega Boss weapon-art flashes
-    if (this._chaosMode) this._updateBossRush(dt);       // Chaos-only Boss Rush (2× per run, 180s)
+    if (this._chaosMode || this.endless) this._updateBossRush(dt);   // Maria: arena 2× in Endless AND 2× in Chaos
     this._updateGridCache(dt);
     this._updateNullCache(dt);
     this._updateVaultDrop(dt);
@@ -9583,8 +9586,12 @@ export class Game {
     if (this.gameOver || this.victory || this.paused) return;
     // ── Scheduler: 2 rushes per Chaos run, spaced out ──
     if (this._bossRush == null) {
-      if (this._bossRushCount == null) { this._bossRushCount = 0; this._bossRushSchedule = [120, 480]; }
-      const chaosEl = this.timeAlive - (this._chaosStartedAt < 0 ? this.timeAlive : this._chaosStartedAt);
+      // Maria 2026-07-16: the arena runs 2× per CHAOS run (2:00 / 8:00) AND 2× per ENDLESS run
+      // (3:30 / 9:30 — offset so it never stacks on the Null Breach windows at 5:00/12:00).
+      if (this._bossRushCount == null) { this._bossRushCount = 0; this._bossRushSchedule = this._chaosMode ? [120, 480] : [210, 570]; }
+      const chaosEl = this._chaosMode
+        ? this.timeAlive - (this._chaosStartedAt < 0 ? this.timeAlive : this._chaosStartedAt)
+        : this.timeAlive - (this._endlessStartedAt || 0);
       const next = this._bossRushSchedule[this._bossRushCount];
       if (next != null && chaosEl >= next - 5 && chaosEl < next && !this._bossRushWarned) {
         this._bossRushWarned = true;                       // Phase 6: pre-warning beat
@@ -9681,6 +9688,20 @@ export class Game {
         if (this._damagePlayer(hz.dmg, { color: '#ff3344', shake: 4 })) this._bossRushDmgCd = 0.5;
         else this._bossRushDmgCd = 0.5;
       }
+      // HARD LOCK (Maria 2026-07-16: the field never actually CONTAINED you): the compression
+      // field is a physical wall — the player is vector-clamped inside as it shrinks
+      // (and outside the inner core on 'double'), exactly like the Null Breach containment.
+      if (d > 0.001) {
+        const _pad = PLAYER_RADIUS + 4;
+        const _ang = Math.atan2(this.player.pos.y - br.cy, this.player.pos.x - br.cx);
+        if (d > hz.r - _pad) {
+          this.player.pos.x = br.cx + Math.cos(_ang) * (hz.r - _pad);
+          this.player.pos.y = br.cy + Math.sin(_ang) * (hz.r - _pad);
+        } else if (hz.kind === 'double' && hz.inner && d < hz.inner + _pad) {
+          this.player.pos.x = br.cx + Math.cos(_ang) * (hz.inner + _pad);
+          this.player.pos.y = br.cy + Math.sin(_ang) * (hz.inner + _pad);
+        }
+      }
       if (hz.t >= hz.dur) br.hazard = null;
     }
     if (this._bossRushDmgCd > 0) this._bossRushDmgCd -= dt;
@@ -9766,19 +9787,65 @@ export class Game {
     // floating top rim
     ctx.lineWidth = 2.5; ctx.globalAlpha = 0.45; ctx.strokeStyle = 'rgba(255,235,150,0.9)';
     ctx.beginPath(); ctx.arc(sx, sy - WALL_H, AR, 0, Math.PI * 2); ctx.stroke();
-    // Hazard ring(s)
+    // ── COMPRESSION FIELD (Maria 2026-07-16: was a bare circle) — ultimate-style layers:
+    // rotating dashed pressure ring + colored bloom + white-hot edge, energy streaks being
+    // SUCKED inward along the wall, and warning chevrons pointing where the wall is going.
     const hz = br.hazard;
     if (hz) {
       const rr = hz.r * vs;
-      ctx.globalAlpha = 0.85; ctx.lineWidth = 6;
-      ctx.strokeStyle = hz.kind === 'enrage' ? 'rgba(255,45,45,0.9)' : 'rgba(255,90,60,0.85)';
+      const c1 = hz.kind === 'enrage' ? '#ff2d2d' : '#ff9a2d';
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      // bloom
+      ctx.globalAlpha = 0.20 + 0.10 * Math.sin(tNow * 5);
+      ctx.strokeStyle = c1; ctx.lineWidth = 22;
       ctx.beginPath(); ctx.arc(sx, sy, rr, 0, Math.PI * 2); ctx.stroke();
-      ctx.globalAlpha = 0.25;
-      ctx.beginPath(); ctx.arc(sx, sy, rr, 0, Math.PI * 2); ctx.lineWidth = 18; ctx.stroke();
-      if (hz.kind === 'double' && hz.inner) {
-        ctx.globalAlpha = 0.8; ctx.lineWidth = 5; ctx.strokeStyle = 'rgba(120,200,255,0.85)';
-        ctx.beginPath(); ctx.arc(sx, sy, hz.inner * vs, 0, Math.PI * 2); ctx.stroke();
+      // rotating pressure ring (dashed, counter-rotating pair)
+      ctx.globalAlpha = 0.85;
+      ctx.lineWidth = 5; ctx.strokeStyle = c1;
+      ctx.setLineDash([26, 14]); ctx.lineDashOffset = -tNow * 60;
+      ctx.beginPath(); ctx.arc(sx, sy, rr, 0, Math.PI * 2); ctx.stroke();
+      ctx.setLineDash([10, 22]); ctx.lineDashOffset = tNow * 90;
+      ctx.lineWidth = 2.5; ctx.strokeStyle = '#ffe9c8';
+      ctx.beginPath(); ctx.arc(sx, sy, rr - 5 * vs, 0, Math.PI * 2); ctx.stroke();
+      ctx.setLineDash([]);
+      // white-hot edge
+      ctx.globalAlpha = 0.9; ctx.lineWidth = 1.5; ctx.strokeStyle = '#ffffff';
+      ctx.beginPath(); ctx.arc(sx, sy, rr, 0, Math.PI * 2); ctx.stroke();
+      // energy streaks sucked inward along the wall (12 falling sparks)
+      for (let i = 0; i < 12; i++) {
+        const u = ((tNow * 0.55 + i / 12) % 1);
+        const a = i * 0.5236 + tNow * 0.7;
+        const r0 = rr + (60 - u * 60) * vs;
+        ctx.globalAlpha = 0.6 * Math.sin(u * Math.PI);
+        ctx.strokeStyle = c1; ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(sx + Math.cos(a) * r0, sy + Math.sin(a) * r0);
+        ctx.lineTo(sx + Math.cos(a) * (r0 - 16 * vs), sy + Math.sin(a) * (r0 - 16 * vs));
+        ctx.stroke();
       }
+      // warning chevrons pointing INWARD (the wall is coming)
+      ctx.globalAlpha = 0.8; ctx.fillStyle = '#ffdd88';
+      for (let i = 0; i < 6; i++) {
+        const a = i * 1.0472 + tNow * 0.35;
+        const bx = sx + Math.cos(a) * (rr + 26 * vs), by = sy + Math.sin(a) * (rr + 26 * vs);
+        ctx.save(); ctx.translate(bx, by); ctx.rotate(a + Math.PI);
+        ctx.beginPath(); ctx.moveTo(8, -6); ctx.lineTo(0, 0); ctx.lineTo(8, 6); ctx.lineTo(5, 0);
+        ctx.closePath(); ctx.fill(); ctx.restore();
+      }
+      // 'double' inner core: cool cyan counterpart of the same language
+      if (hz.kind === 'double' && hz.inner) {
+        const ir = hz.inner * vs;
+        ctx.globalAlpha = 0.30; ctx.strokeStyle = '#78c8ff'; ctx.lineWidth = 14;
+        ctx.beginPath(); ctx.arc(sx, sy, ir, 0, Math.PI * 2); ctx.stroke();
+        ctx.globalAlpha = 0.85; ctx.lineWidth = 3.5;
+        ctx.setLineDash([18, 12]); ctx.lineDashOffset = tNow * 70;
+        ctx.beginPath(); ctx.arc(sx, sy, ir, 0, Math.PI * 2); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.globalAlpha = 0.9; ctx.lineWidth = 1.2; ctx.strokeStyle = '#ffffff';
+        ctx.beginPath(); ctx.arc(sx, sy, ir, 0, Math.PI * 2); ctx.stroke();
+      }
+      ctx.restore();
     }
     ctx.restore();
     // Timer HUD (screen-space)
@@ -16648,6 +16715,7 @@ export class Game {
     this._updateGunship(dt);
     this._updateCybermotes(dt);
     this._updateNullEcho(dt);
+    this._updateNullWyrm(dt);
   }
 
   _updateAirstrike(dt) {
@@ -16847,6 +16915,123 @@ export class Game {
       }
       if (z.t >= z.warn + z.flash) this.gunshipZones.splice(i, 1);
     }
+  }
+
+  // ── NULL WYRM (Claude's second signature event, 2026-07-16) — every 7 min, Endless+Chaos. ──
+  // A colossal WIREFRAME DATA-SERPENT: 22 counter-rotating hex vertebrae threaded on a
+  // white-hot spine, slithering across the arena in a sine sweep. Its PATH is telegraphed
+  // as a fading guide-line before entry; touching the body burns. It crosses, banks once
+  // around the player, and dives back into the Grid. Pure vectors, ultimate layering,
+  // zero sprites, zero shadowBlur, fixed cost (22 segments).
+  _updateNullWyrm(dt) {
+    this._nullWyrmTimer -= dt;
+    if (this._nullWyrmTimer <= 0) {
+      this._nullWyrmTimer = 420;
+      if (!this.nullWyrm) this._spawnNullWyrm();
+    }
+    const W2 = this.nullWyrm;
+    if (!W2) return;
+    W2.t += dt;
+
+    if (W2.phase === 'tell') {                    // path telegraph — 1.6s hiss line
+      if (W2.t >= 1.6) { W2.phase = 'sweep'; W2.t = 0; this.audio?.forgeBossRoar?.(); }
+      return;
+    }
+    // head advances along a sine-modulated path toward/past the player, then leaves
+    W2.headU += dt * 0.22;                        // path progress 0→1 (≈4.5s crossing)
+    const px = W2.x0 + (W2.x1 - W2.x0) * W2.headU;
+    const py = W2.y0 + (W2.y1 - W2.y0) * W2.headU +
+               Math.sin(W2.headU * Math.PI * 3 + W2.wob) * 170;
+    W2.head.x = px; W2.head.y = py;
+    W2.trail.unshift({ x: px, y: py });
+    if (W2.trail.length > 22 * 6) W2.trail.length = 22 * 6;   // 6 samples between vertebrae
+
+    // body contact burn (head + every 3rd vertebra checked — cheap, fair)
+    W2.hitCd -= dt;
+    if (W2.hitCd <= 0) {
+      for (let i = 0; i < W2.trail.length; i += 18) {
+        const seg = W2.trail[i];
+        if (distance(seg, this.player.pos) < PLAYER_RADIUS + 26 &&
+            this.phoenixReviveTimer <= 0 && this.player.dashTimer <= 0) {
+          const dmg = Math.round(this.player.maxHp * 0.14);
+          this._damagePlayer(dmg, { color: '#7df9ff', shake: 6, stagger: 0.3 });
+          this.floatingTexts.push(new FloatingText('-' + dmg + ' HP', this.player.pos.clone(), '#7df9ff', 1.1));
+          W2.hitCd = 0.8;
+          break;
+        }
+      }
+    }
+    if (W2.headU >= 1.4) {                        // fully off — dive back into the Grid
+      this.particles.spawnDeathRing(W2.head, '#7df9ff', 12, 200, 2.0);
+      this.nullWyrm = null;
+    }
+  }
+
+  _spawnNullWyrm() {
+    const P = this.player.pos;
+    const fromLeft = Math.random() < 0.5;
+    const x0 = fromLeft ? WORLD_BOUNDS.left - 200 : WORLD_BOUNDS.right + 200;
+    const x1 = fromLeft ? WORLD_BOUNDS.right + 300 : WORLD_BOUNDS.left - 300;
+    this.nullWyrm = {
+      phase: 'tell', t: 0, headU: 0, wob: Math.random() * Math.PI * 2,
+      x0, y0: P.y + randomRange(-140, 140), x1, y1: P.y + randomRange(-200, 200),
+      head: new Vec2(x0, P.y), trail: [], hitCd: 0,
+    };
+    this.triggerAnnouncement('◈ NULL WYRM — THE GRID IS MOVING ◈', '#7df9ff');
+    this.audio?.playEventWarning?.();
+  }
+
+  _drawNullWyrm(ctx) {
+    const W2 = this.nullWyrm;
+    if (!W2) return;
+    const now = performance.now() / 1000;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    if (W2.phase === 'tell') {                    // path telegraph: flickering guide-line
+      const k = W2.t / 1.6;
+      ctx.globalAlpha = 0.14 + 0.30 * k * (0.6 + 0.4 * Math.sin(now * 26));
+      ctx.strokeStyle = '#7df9ff'; ctx.lineWidth = 2;
+      ctx.setLineDash([14, 18]); ctx.lineDashOffset = -now * 140;
+      ctx.beginPath(); ctx.moveTo(W2.x0, W2.y0); ctx.lineTo(W2.x1, W2.y1); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore(); return;
+    }
+    // spine — white-hot core line through the trail
+    if (W2.trail.length > 2) {
+      ctx.globalAlpha = 0.28; ctx.strokeStyle = '#7df9ff'; ctx.lineWidth = 14;
+      ctx.beginPath(); ctx.moveTo(W2.trail[0].x, W2.trail[0].y);
+      for (let i = 6; i < W2.trail.length; i += 6) ctx.lineTo(W2.trail[i].x, W2.trail[i].y);
+      ctx.stroke();
+      ctx.globalAlpha = 0.9; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(W2.trail[0].x, W2.trail[0].y);
+      for (let i = 6; i < W2.trail.length; i += 6) ctx.lineTo(W2.trail[i].x, W2.trail[i].y);
+      ctx.stroke();
+    }
+    // 22 hex vertebrae — counter-rotating, shrinking toward the tail
+    for (let v = 0; v < 22; v++) {
+      const idx = v * 6;
+      if (idx >= W2.trail.length) break;
+      const seg = W2.trail[idx];
+      const rr = 26 * (1 - v / 26);                          // head big → tail small
+      const rot = now * (v % 2 === 0 ? 2.2 : -2.2) + v * 0.6;
+      ctx.globalAlpha = 0.75 * (1 - v / 24);
+      ctx.strokeStyle = v % 3 === 0 ? '#bfffff' : '#7df9ff';
+      ctx.lineWidth = v === 0 ? 3 : 1.6;
+      ctx.beginPath();
+      for (let k = 0; k <= 6; k++) {
+        const an = rot + k * Math.PI / 3;
+        const hx = seg.x + Math.cos(an) * rr, hy = seg.y + Math.sin(an) * rr;
+        k === 0 ? ctx.moveTo(hx, hy) : ctx.lineTo(hx, hy);
+      }
+      ctx.stroke();
+    }
+    // head: burning core + twin eye sparks
+    ctx.globalAlpha = 0.9; ctx.fillStyle = '#ffffff';
+    ctx.beginPath(); ctx.arc(W2.head.x, W2.head.y, 7, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 0.5; ctx.fillStyle = '#7df9ff';
+    ctx.beginPath(); ctx.arc(W2.head.x, W2.head.y, 16 + 4 * Math.sin(now * 9), 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
   }
 
   // ── NULL ECHO (Claude's own event, 2026-07-12) — every 10 min, Endless + Chaos. ──
@@ -17380,6 +17565,7 @@ export class Game {
       }
       ctx.restore();
     }
+    this._drawNullWyrm(ctx);   // NULL WYRM data-serpent (world-space, before the echo)
     // ── NULL ECHO: corrupted mirror of the player's character + its telegraphs ──
     const E = this.nullEcho;
     if (E) {
@@ -18989,7 +19175,7 @@ export class Game {
     // Chaos Mode: screen-edge rim glow + player-centred vignette (readability polish)
     if (this._chaosMode) { this._drawChaosRimGlow(ctx); this._drawChaosVignette(ctx); }
     this._drawGridCacheArrow(ctx);
-    if (this._chaosMode) this._drawBossRush(ctx);   // Boss Rush arena ring + hazards + timer
+    if (this._chaosMode || this.endless) this._drawBossRush(ctx);   // Boss Rush arena ring + hazards + timer
     this._drawNullCacheStatic(ctx);        // proximity static cue for the hidden Null Cache
     ctx.fillStyle = BLACK;
     ctx.fillRect(0, 0, WIDTH, 44);
