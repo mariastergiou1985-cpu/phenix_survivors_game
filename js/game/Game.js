@@ -228,7 +228,7 @@ function _getPatternImage(folder, name) {
 }
 
 // Euclid Vector toxin kit — used ONLY when selectedCharacter === 'euclid_vector' (world-space).
-import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=20260703990000';
+import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=20260716600000';
 
 // ── Vessel companion placement (Ally-Walker-style escort) ───────────────────
 // The vessel flies BESIDE the player like the Kiroshi Walker ally, never on top
@@ -6873,12 +6873,23 @@ export class Game {
 
   _drawEuclidKit(ctx) {
     if (this.player?.selectedCharacter !== 'euclid_vector' || !this._euclidKitBuilt) return;
+    // TRANSFORM ARMOR (Maria 2026-07-16, Euclid+Chaos giant-zoom): if any kit draw throws
+    // between a save()+scale() and its restore(), the old catch swallowed it and the leaked
+    // scale corrupted EVERY later layer of EVERY frame (the frame-start reset can't fix
+    // mid-frame leaks). Snapshot the camera transform and force it back in finally.
+    const _tf = ctx.getTransform();
     try {
       this._euclidKatana.draw(ctx);
       this._euclidSniper.draw(ctx);
       this._euclidPlague.draw(ctx);
       this._drawEuclidAutoWeapons(ctx);
-    } catch (err) { console.warn('[Euclid kit draw]', err); }
+    } catch (err) { console.warn('[Euclid kit draw]', err);
+    } finally {
+      ctx.setTransform(_tf);
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.shadowBlur = 0;
+    }
   }
 
   // ── Euclid auto-weapons (Phase 3) — Toxin Vector Bolt (bounces ≤5) + Viral Gas Needle (pierce/multishot).

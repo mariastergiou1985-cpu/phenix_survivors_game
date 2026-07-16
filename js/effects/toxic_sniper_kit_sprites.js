@@ -46,7 +46,7 @@ function loadSprite(src) {
    1. TOXIC BULLET  +  TOXIC SNIPER  (automatic — unchanged)
    ===================================================================== */
 class ToxicBullet {
-  static sprite = loadSprite('assets/weapons/toxic_bullet.png');
+  static sprite = { loaded: false };   // Maria 2026-07-16: PNG retired — procedural needle only (ultimate-style)
 
   constructor(x, y, tx, ty, opts = {}) {
     this.x = x; this.y = y;
@@ -83,8 +83,20 @@ class ToxicBullet {
       const w = this.w * scale, h = this.h * scale;
       ctx.drawImage(img, -w / 2, -h / 2, w, h);
     } else {
+      // procedural toxin needle — layered like the ultimates: halo, body, white-hot core, tip
+      const w = this.w * scale, h = this.h * scale;
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = alpha * 0.35;
       ctx.fillStyle = TOXIC;
-      ctx.fillRect(-this.w * scale / 2, -this.h * scale / 2, this.w * scale, this.h * scale);
+      ctx.fillRect(-w * 0.6, -h * 0.9, w * 1.2, h * 1.8);        // soft halo
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = TOXIC;
+      ctx.beginPath();                                            // needle silhouette
+      ctx.moveTo(-w / 2, -h * 0.35); ctx.lineTo(w * 0.38, -h * 0.35);
+      ctx.lineTo(w * 0.62, 0);       ctx.lineTo(w * 0.38,  h * 0.35);
+      ctx.lineTo(-w / 2,  h * 0.35); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#eaffef';
+      ctx.fillRect(-w * 0.42, -h * 0.12, w * 0.86, h * 0.24);     // white-hot core line
     }
     ctx.restore();
   }
@@ -95,10 +107,7 @@ class ToxicBullet {
       const a = (i + 1) / this.trail.length;
       this._blit(ctx, p.x, p.y, a * 0.4, 0.5 + a * 0.4);
     }
-    ctx.save();
-    ctx.shadowColor = TOXIC; ctx.shadowBlur = 14;
-    this._blit(ctx, this.x, this.y, 1, 1);
-    ctx.restore();
+    this._blit(ctx, this.x, this.y, 1, 1);   // (shadowBlur removed — perf rule 2026-07-12)
     ctx.globalAlpha = 1;
   }
 }
@@ -186,7 +195,7 @@ class ToxicSniper {
    2. ORBITAL KATANA BARRIER — 3 big katanas, extend/range, damaging drips
    ===================================================================== */
 class OrbitalKatanaBarrier {
-  static sprite = loadSprite('assets/weapons/katana.png');
+  static sprite = { loaded: false };   // Maria 2026-07-16: PNG retired — vector blade only (ultimate-style)
 
   constructor(player, enemies, particles) {
     this.player = player;
@@ -340,12 +349,7 @@ class OrbitalKatanaBarrier {
       ctx.rotate(blade.a + Math.PI / 2);
       ctx.translate(0, -(r + this.bladeLength * 0.5));
       ctx.imageSmoothingEnabled = false;
-      if (img.loaded) {
-        ctx.shadowColor = TOXIC; ctx.shadowBlur = blade.flash > 0 ? 22 : 10;
-        ctx.drawImage(img, -this.bladeWidth / 2, -this.bladeLength / 2, this.bladeWidth, this.bladeLength);
-      } else {
-        this._drawVectorBlade(ctx, blade);
-      }
+      this._drawVectorBlade(ctx, blade);   // always the vector blade (PNG retired; shadowBlur removed)
       ctx.restore();
     }
     ctx.shadowBlur = 0;
@@ -369,7 +373,7 @@ class OrbitalKatanaBarrier {
    3. PLAGUE TRAIL DASH — longer-lasting gas + lingering toxic SLICK
    ===================================================================== */
 class ToxicGasPuff {
-  static sprite = loadSprite('assets/weapons/smoke_puff.png');
+  static sprite = { loaded: false };   // Maria 2026-07-16: PNG retired — radial-gradient puff only (ultimate-style)
 
   constructor(x, y) {
     this.x = x + rand(-10, 10);
