@@ -116,11 +116,13 @@ export class EnemySpawner {
     else if (minute < 5)  cap = 44 + (minute - 2) * 12;
     else if (minute < 10) cap = 80 + (minute - 5) * 14;
     else if (minute < 20) cap = 150 + (minute - 10) * 10;
-    else                  cap = Math.min(280, 250 + (minute - 20) * 5);
+    else                  cap = Math.min(420, 250 + (minute - 20) * 8);   // Π1 horde pass: late Act-1 crowds
 
-    if (mode.endless) cap = Math.min(400, Math.round(cap * 2.5) + 50);
-    if (mode.chaos)   cap = Math.min(340, Math.round(cap * 2.0));   // CHAOS SURGE (Maria): field must never feel empty
-    if (IS_MOBILE)    cap = Math.min(cap, 100);                     // MOBILE: hard density ceiling so phones stay playable (no lag/crash)
+    // Π1 HORDE PASS (Maria: reach VS-scale crowds) — enabled by the per-frame spatial grid
+    // (projectile/bolt collisions no longer scan every enemy) + existing offscreen draw-cull.
+    if (mode.endless) cap = Math.min(900, Math.round(cap * 3.2) + 80);
+    if (mode.chaos)   cap = Math.min(800, Math.round(cap * 2.8) + 60);   // CHAOS SURGE: a true flood
+    if (IS_MOBILE)    cap = Math.min(cap, 260);                          // phones: 2.6x the old ceiling (grid + cull carry it)
     return cap;
   }
 

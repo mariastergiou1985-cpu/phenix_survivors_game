@@ -45,7 +45,7 @@ import { MeteorRain } from '../effects/meteor-rain.js?v=20260712100000';
 import { NpcWalker } from './NpcWalker.js?v=20260711750000';
 import { MapManager, BIOME_ID, BIOME_DEFS } from './MapManager.js?v=20260716100000';
 import { EventBus, EVENTS } from './EventBus.js?v=20260703990000';
-import { EnemySpawner, ELITE_WAVE as ELITE_WAVE_CFG, BOSS_WARN_COOLDOWN as BOSS_WARN_CD } from './EnemySpawner.js?v=20260713600000';
+import { EnemySpawner, ELITE_WAVE as ELITE_WAVE_CFG, BOSS_WARN_COOLDOWN as BOSS_WARN_CD } from './EnemySpawner.js?v=20260717200000';
 import { StateManager, GAME_STATES } from './StateManager.js?v=20260703990000';
 import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260712160000';
 import { NexusManager } from './NexusManager.js?v=20260712110000';
@@ -548,6 +548,40 @@ const BOSS_WARN_COOLDOWN = BOSS_WARN_CD;
 // Forced Endless Mutation Cards (Phase 1) — run-scoped negative mutations only (never saved).
 const MUTATION_INTERVAL   = 180;  // s — first forced pick at 3:00, then every 3:00
 const MUTATION_MAX_STACKS = 6;    // Phase 1 cap on total forced picks per run
+
+// ─── SPATIAL HASH GRID (Π1 horde pass, 2026-07-16) ────────────────────────────
+// Rebuilt once per frame from this.enemies; hot loops (projectiles, pet bolts)
+// query a small neighborhood instead of scanning EVERY enemy. Turns the worst
+// O(projectiles × enemies) frame cost into O(projectiles × ~cell) so the enemy
+// cap can rise VS-style without melting the frame budget.
+class SpatialGrid {
+  constructor(cell = 128) { this.cell = cell; this.map = new Map(); this._scratch = []; }
+  _key(cx, cy) { return cx * 100000 + cy; }
+  rebuild(list) {
+    this.map.clear();
+    const c = this.cell;
+    for (let i = 0; i < list.length; i++) {
+      const e = list[i];
+      if (!e || !e.pos) continue;
+      const k = this._key(Math.floor(e.pos.x / c), Math.floor(e.pos.y / c));
+      let arr = this.map.get(k);
+      if (!arr) { arr = []; this.map.set(k, arr); }
+      arr.push(e);
+    }
+  }
+  // All entries within radius r of (x,y) — includes cell margin; caller re-checks distance.
+  query(x, y, r) {
+    const out = this._scratch; out.length = 0;
+    const c = this.cell;
+    const x0 = Math.floor((x - r) / c), x1 = Math.floor((x + r) / c);
+    const y0 = Math.floor((y - r) / c), y1 = Math.floor((y + r) / c);
+    for (let cx = x0; cx <= x1; cx++) for (let cy = y0; cy <= y1; cy++) {
+      const arr = this.map.get(this._key(cx, cy));
+      if (arr) for (let i = 0; i < arr.length; i++) out.push(arr[i]);
+    }
+    return out;
+  }
+}
 
 export class Game {
   constructor() {
@@ -2709,10 +2743,11 @@ export class Game {
       b.y += b.vy * dt;
       b.life -= dt;
       if (b.life <= 0) { this._petBolts.splice(i, 1); continue; }
-      // Hit detection vs enemies
-      for (let j = this.enemies.length - 1; j >= 0; j--) {
-        const e = this.enemies[j];
-        if (!e) continue;   // chain-kill splices during takeHit can shrink the array mid-loop
+      // Hit detection vs enemies (Π1: spatial-grid neighborhood, was a full scan per bolt)
+      const _nearB = this._spatialGrid ? this._spatialGrid.query(b.x, b.y, 70) : this.enemies;
+      for (let j = _nearB.length - 1; j >= 0; j--) {
+        const e = _nearB[j];
+        if (!e || e.hp <= 0) continue;   // chain-kill splices during takeHit can shrink the array mid-loop
         const dx = b.x - e.pos.x;
         const dy = b.y - e.pos.y;
         if (dx * dx + dy * dy < (e.radius + 6) * (e.radius + 6)) {
@@ -8228,6 +8263,8 @@ export class Game {
     this._handleAutoShooting();
     // Hit stop: slow projectiles + discs to ~10% during freeze window (bullet-time feel)
     const _hsDt = this._hitStopTimer > 0 ? dt * 0.10 : dt;
+    // Π1 horde pass: one grid rebuild per frame feeds every hot collision loop below.
+    (this._spatialGrid ||= new SpatialGrid(128)).rebuild(this.enemies);
     this._updateProjectiles(_hsDt);
     this._updateHomingDiscs(_hsDt);
     this._updateChainLightning(dt);
@@ -10786,9 +10823,13 @@ export class Game {
       p.update(dt);
 
       let hit = false;
-      for (let j = this.enemies.length - 1; j >= 0; j--) {
-        const e = this.enemies[j];
-        if (!e) continue;   // chain-kill splices during takeHit can shrink the array mid-loop
+      // Π1 horde pass: spatial-grid neighborhood (was a full scan of EVERY enemy per
+      // projectile — the single hottest loop in the game). 64px covers the largest
+      // enemy radius; behavior is identical, just ~20x fewer distance checks.
+      const _near = this._spatialGrid ? this._spatialGrid.query(p.pos.x, p.pos.y, p.radius + 64) : this.enemies;
+      for (let j = _near.length - 1; j >= 0; j--) {
+        const e = _near[j];
+        if (!e || e.hp <= 0) continue;   // chain-kill splices during takeHit can shrink the array mid-loop
         if (distance(p.pos, e.pos) < p.radius + e.radius) {
           const cryo = this.player.upgrades['Cryo Rounds'] || 0;
           const supp = this.player.upgrades['Suppression'] || 0;
@@ -13012,7 +13053,7 @@ export class Game {
   // ever grow the enemy or projectile arrays without bound and collapse mobile performance.
   // Bosses/mega-bosses are always preserved; only surplus normal enemies / oldest bullets are trimmed.
   _enforcePerfCaps() {
-    const MAX_ENEMIES = 340, MAX_BULLETS = 600;
+    const MAX_ENEMIES = 950, MAX_BULLETS = 700;   // Π1 horde pass: safety net raised with the new caps (grid + cull carry it)
     if (this.enemies && this.enemies.length > MAX_ENEMIES) {
       // keep all bosses; drop the farthest normal enemies first
       const normals = [];
