@@ -746,22 +746,24 @@ export class Enemy {
     game.addNexusChargePoint?.();   // +1 nexus recharge point per kill (no multipliers)
     game.addKillScore?.(this.pos, this.isElite);
 
-    // Φ10: bosses ALWAYS pay out health — long boss fights are exactly when you bleed the
-    // most and kill the least, so the old kill-cadence drop could starve you completely.
+    // ═══ HP ECONOMY REWORK (Maria 2026-07-16) — boss tier rewards κατά το spec:
+    // Miniboss (SDM) 35% -> 15% heal · Boss εγγυημένο 20% · Mega εγγυημένο 25%.
+    // Τα boss rewards ΔΕΝ μετράνε στο normal drop cooldown (δεν αγγίζουν _hpLastDropT).
     if (this.isBoss() || this.isMegaBoss) {
-      const nDrops = this.isMegaBoss ? 2 : 1;
-      for (let i = 0; i < nDrops; i++) {
-        const oa = (i / nDrops) * Math.PI * 2 + 0.7;
+      const _mini = this.enemyType === 'Security Defector Mech' && !this.isMegaBoss;
+      const _give = _mini ? Math.random() < 0.35 : true;
+      if (_give) {
+        const _heal = this.isMegaBoss ? 0.25 : _mini ? 0.15 : 0.20;
         game.healthPickups.push({ pos: this.pos.clone().add
-          ? this.pos.clone().add(new (this.pos.constructor)(Math.cos(oa) * 26, Math.sin(oa) * 26))
-          : { x: this.pos.x + Math.cos(oa) * 26, y: this.pos.y + Math.sin(oa) * 26 }, timer: 30 });
+          ? this.pos.clone().add(new (this.pos.constructor)(Math.cos(0.7) * 26, Math.sin(0.7) * 26))
+          : { x: this.pos.x + Math.cos(0.7) * 26, y: this.pos.y + Math.sin(0.7) * 26 },
+          timer: 30, heal: _heal, armT: 0.6 });
       }
     }
-    // Elite reward (Endless): sparse but visible. 18% health, 32% mana, 50% nothing — restores
-    // useful HP cells without flooding the grid, and mana stays a strong elite reward.
+    // Elite reward: 15% πιθανότητα για 12% heal (ήταν 18%/10%) — mana roll αμετάβλητο.
     if (this.isElite) {
       const r = Math.random();
-      if (r < 0.18)      game.healthPickups.push({ pos: this.pos.clone(), timer: 25 });
+      if (r < 0.15)      game.healthPickups.push({ pos: this.pos.clone(), timer: 25, heal: 0.12, armT: 0.6 });
       else if (r < 0.50) game.manaPickups.push({ pos: this.pos.clone() });
     }
     // Normal-enemy XP scales with elapsed time (+1 every 2 min) so dense late-game

@@ -12,7 +12,7 @@ import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260705040000
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260712090000';
 import { Player }         from '../entities/Player.js?v=20260712480000';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260706270000';
-import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260719200000';
+import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260719500000';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=20260711750000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260713600000';
@@ -3381,15 +3381,39 @@ export class Game {
     // threshold tightens (25 → 15 kills) so relief arrives sooner in a losing fight; at healthy HP
     // the cadence is unchanged (no farming exploit). Cap concurrent pickups so they can't pile up.
     if (pos && !isElite) {
-      const _hpFrac  = this.player && this.player.maxHp ? this.player.hp / this.player.maxHp : 1;
-      // HORDE §6 stationary-test fix: το mercy σφίξιμο (25->15 kills) ισχύει ΜΟΝΟ όταν ο
-      // παίκτης πραγματικά κινείται/παλεύει. Ακίνητος παίκτης (idle>2s) = κανονική συχνότητα —
-      // η ορδή που πεθαίνει πάνω του δεν τον κάνει πλέον αθάνατο. Ενεργό gameplay ΑΜΕΤΑΒΛΗΤΟ.
-      const _thresh  = (_hpFrac < 0.30 && (this._playerIdleT || 0) < 2) ? 15 : 25;
-      if (++this.killsSinceHealthDrop >= _thresh && (this.healthPickups.length < 6)) {
-        this.killsSinceHealthDrop = 0;
-        const dropPos = this._clampPickupPos(pos.clone().add(new Vec2(randomRange(-10, 10), -8)));
-        this.healthPickups.push({ pos: dropPos, timer: 45 });
+      // ═══ HP ECONOMY REWORK (απόφαση Maria 2026-07-16) — ΤΕΛΟΣ το εγγυημένο drop
+      // ανά kill counter (συντηρούσε επ' αόριστον τον ακίνητο παίκτη στο stationary test).
+      // Νέο: πιθανότητα ανά kill + 25s cooldown + max 2 ενεργά + PITY. Boss Rush: τα
+      // melee adds ΔΕΝ δίνουν heals (μόνο τα boss completion rewards).
+      const _mode = this._bossRush ? 'rush' : this._chaosMode ? 'chaos' : this.endless ? 'endless' : 'act1';
+      if (_mode !== 'rush') {
+        const _chance = _mode === 'chaos' ? 0.0022 : _mode === 'endless' ? 0.0030 : 0.0035;
+        const _now = this.timeAlive || 0;
+        this._hpLastDropT ??= -999; this._hpLastSpawnT ??= -999; this._pityArmed ??= 0;
+        const _cdOk  = _now - this._hpLastDropT >= 25;      // ελάχιστο διάστημα 25s
+        const _capOk = this.healthPickups.length < 2;       // max 2 στο έδαφος
+        // PITY: HP<=35% (Chaos 30%) ΚΑΙ 45s χωρίς spawn ΚΑΙ κανένα pickup ήδη κάτω ->
+        // οπλίζεται παράθυρο: ένα από τα επόμενα 30 kills δίνει εγγυημένο pickup.
+        const _hpFrac = this.player && this.player.maxHp ? this.player.hp / this.player.maxHp : 1;
+        const _pityThresh = _mode === 'chaos' ? 0.30 : 0.35;
+        if (this._pityArmed === 0 && _hpFrac <= _pityThresh &&
+            _now - this._hpLastSpawnT >= 45 && this.healthPickups.length === 0) {
+          this._pityArmed = 30;
+        }
+        let _drop = false;
+        if (this._pityArmed > 0) {
+          // ομοιόμορφα εγγυημένο μέσα στο παράθυρο (1/υπόλοιπα)· ΕΝΑ pickup, μετά μηδενίζεται
+          if (Math.random() < 1 / this._pityArmed || this._pityArmed === 1) { _drop = true; this._pityArmed = 0; }
+          else this._pityArmed--;
+        } else if (_cdOk && _capOk && Math.random() < _chance) {
+          _drop = true;
+        }
+        if (_drop && this.healthPickups.length < 2) {
+          this._hpLastDropT = _now; this._hpLastSpawnT = _now;
+          const dropPos = this._clampPickupPos(pos.clone().add(new Vec2(randomRange(-10, 10), -8)));
+          this.healthPickups.push({ pos: dropPos, timer: 45,
+            heal: _mode === 'chaos' ? 0.10 : 0.12, armT: 0.6 });   // όχι ακαριαία συλλογή
+        }
       }
     }
   }
@@ -8908,30 +8932,22 @@ export class Game {
   }
 
   _updateHealthPickups(dt) {
-    // Φ10 mercy valve: if you are under 50% HP and the field has been DRY of health
-    // for 45s straight, one cell materializes nearby (mana-pickup pattern — fair, no farming:
-    // the timer only runs while you are actually hurt and the field is empty).
-    if (this.player && this.player.hp / this.player.maxHp < 0.5 && this.healthPickups.length === 0) {
-      this._healthMercyT = (this._healthMercyT || 0) + dt;
-      if (this._healthMercyT >= 45) {
-        this._healthMercyT = 0;
-        const ang = Math.random() * Math.PI * 2;
-        const r = randomRange(140, 240);
-        this.healthPickups.push({ pos: this._clampPickupPos(new Vec2(
-          this.player.pos.x + Math.cos(ang) * r, this.player.pos.y + Math.sin(ang) * r)), timer: 45 });
-      }
-    } else {
-      this._healthMercyT = 0;
-    }
+    // (Το παλιό Φ10 mercy valve ΚΑΤΑΡΓΗΘΗΚΕ — HP ECONOMY REWORK: αντικαταστάθηκε από
+    // το pity σύστημα στο kill path, που δίνει το pickup στη θέση θανάτου του enemy,
+    // ΠΟΤΕ δίπλα στον παίκτη.)
     // Health drops stay EXACTLY where the enemy died — no vacuum pull. Base 60px
     // walk-up radius, expanded by Core Magnet meta / Tractor Beam card (pickupRadius).
-    const PICKUP_R = Math.max(60, Math.round((this.player.pickupRadius || 0) * 0.75 * (this._murkActive ? 0.5 : 1)));
+    // HP ECONOMY REWORK: τα HP pickups έχουν ΔΙΚΟ τους περιορισμένο magnet (cap 100px) —
+    // δεν ακολουθούν το τεράστιο global pickupRadius των XP/Cores· απαιτούν πραγματική
+    // προσέγγιση. armT 0.6s: δεν συλλέγονται ακαριαία τη στιγμή που γεννιούνται.
+    const PICKUP_R = Math.min(100, Math.max(60, Math.round((this.player.pickupRadius || 0) * 0.75 * (this._murkActive ? 0.5 : 1))));
     for (let i = this.healthPickups.length - 1; i >= 0; i--) {
       const hp = this.healthPickups[i];
+      if (hp.armT > 0) { hp.armT -= dt; hp.timer -= dt; continue; }
       const d = distance(this.player.pos, hp.pos);
 
       if (d < PICKUP_R) {
-        const heal = this.player.maxHp * 0.10 * (1 + 0.05 * (this.player._stScavLvl || 0));   // Maria 2026-07-12: ground health cells heal 10/100 (was 25) · Φ11 Scavenger still applies
+        const heal = this.player.maxHp * (hp.heal ?? 0.12) * (1 + 0.05 * (this.player._stScavLvl || 0));   // HP REWORK: 12% normal (10% chaos, 15-25% boss tier) · Φ11 Scavenger ισχύει
         this.player.hp = this.player.hp >= this.player.maxHp   // never clip overheal
           ? this.player.hp
           : Math.min(this.player.maxHp, this.player.hp + heal);
