@@ -84,6 +84,8 @@ window.addEventListener('keydown', e => {
       game.selectUpgrade(idx);
     } else if (key === 'r') {
       game.rerollUpgrade();
+    } else if (key === 'b') {
+      game.buildEngine?.banishFromUI?.(game.upgradeUI);   // P2.7 (?p2=1): B = Banish/Seal την BE κάρτα
     } else if (e.key === 'ArrowLeft') {
       const n = game.upgradeUI.choices.length;
       game.upgradeUI.selectedIndex = (game.upgradeUI.selectedIndex - 1 + n) % n;

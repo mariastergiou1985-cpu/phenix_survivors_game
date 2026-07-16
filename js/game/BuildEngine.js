@@ -161,6 +161,45 @@ export class BuildEngineRuntime {
     this._t       = 0;
     this._status  = new Map();   // enemy -> { shock, fear, burn:{t,dps,wid}, poison:{stacks,t,wid} }
     this.patches  = [];          // burn patches (λιωμένο μέταλλο/μάγμα) — cap 8
+    // P2.7 — loadout caps & pool διαχείριση (spec: 6W/6P, family limit, Banish/Seal).
+    // ΣΗΜΕΙΩΣΗ: το migration του παλιού συστήματος ΔΕΝ έγινε — περιμένει την έγκριση
+    // της Maria στο feel (τα 2T/1R/1A caps ανήκουν στα παλιά συστήματα ως τότε).
+    this.CAPS     = { weapons: 6, passives: 6, perFamily: 2 };
+    this.banished = new Set();   // banished weapon families (πρώτο tag)
+    this.sealed   = new Set();   // sealed passive ids
+  }
+
+  // ── P2.7 helpers ────────────────────────────────────────────────────────────
+  _familyOf(id) { return (WEAPON_DEFS[id]?.tags || [])[0] || 'MISC'; }
+  _familyCount(fam) {
+    let n = 0;
+    for (const w of this.weapons.values()) if (this._familyOf(w.id) === fam) n++;
+    return n;
+  }
+  banishFamily(fam) { this.banished.add(fam); this.game.triggerAnnouncement?.('⛔ BANISHED: ' + fam, '#ff6a7a'); }
+  sealPassive(pid)  { this.sealed.add(pid); this.game.triggerAnnouncement?.('⛔ SEALED: ' + (PASSIVE_DEFS[pid]?.name || pid), '#ff6a7a'); }
+  // Πατιέται με B στην οθόνη level-up: κάνει banish την οικογένεια/seal το passive
+  // της τρέχουσας BuildEngine κάρτας και τη σβήνει από τα choices (μένει κενή θέση).
+  banishFromUI(upgradeUI) {
+    if (!upgradeUI?.choices) return false;
+    for (let i = 0; i < upgradeUI.choices.length; i++) {
+      const k = String(upgradeUI.choices[i]?.key || '');
+      if (k.startsWith('be_w_')) {
+        const wid = k.slice(5);
+        this.banishFamily(this._familyOf(wid));
+        upgradeUI.choices[i] = { key: 'be_banished', name: 'BANISHED', description: 'This family will not be offered again this run.',
+          iconColor: '#ff6a7a', icon: '⛔', rarity: 'common', maxLevel: 1, apply() {}, canApply() { return true; } };
+        return true;
+      }
+      if (k.startsWith('be_p_')) {
+        const pid = k.slice(5);
+        this.sealPassive(pid);
+        upgradeUI.choices[i] = { key: 'be_sealed', name: 'SEALED', description: 'This passive will not be offered again this run.',
+          iconColor: '#ff6a7a', icon: '⛔', rarity: 'common', maxLevel: 1, apply() {}, canApply() { return true; } };
+        return true;
+      }
+    }
+    return false;
   }
 
   // ── STATUS LAYER (P2.3+): shock/burn/poison/fear με caps & boss immunity ────
@@ -251,11 +290,14 @@ export class BuildEngineRuntime {
   addWeapon(id) {
     const w = this.weapons.get(id);
     if (w) { w.level = Math.min(5, w.level + 1); return; }
+    if (this.weapons.size >= this.CAPS.weapons) return;            // P2.7: 6W cap
+    if (this._familyCount(this._familyOf(id)) >= this.CAPS.perFamily) return;   // family limit
     this.weapons.set(id, { id, level: 1, evolved: false, cd: 0.4, volley: 0, burstQ: [],
                            charge: 0, skulls: [], bladeT: 0 });
   }
   addPassive(id) {
     const p = PASSIVE_DEFS[id];
+    if (!this.passives.has(id) && this.passives.size >= this.CAPS.passives) return;   // P2.7: 6P cap
     this.passives.set(id, Math.min(p?.maxLevel || 3, (this.passives.get(id) || 0) + 1));
   }
   _evolve(weaponId) {
@@ -302,9 +344,14 @@ export class BuildEngineRuntime {
 
     // 2) Weighted pool: όπλα (νέα/level-up) + catalysts
     const cand = [];
+    const _wFull = this.weapons.size >= this.CAPS.weapons;
+    const _pFull = this.passives.size >= this.CAPS.passives;
     for (const [wid, d] of Object.entries(WEAPON_DEFS)) {
       if (d.external) continue;                     // data-wrap παλιού συστήματος — δεν προσφέρεται ως κάρτα
       const w = this.weapons.get(wid);
+      if (!w && _wFull) continue;                                  // P2.7: 6W cap — μόνο level-ups
+      if (!w && this.banished.has(this._familyOf(wid))) continue;  // P2.7: banished family
+      if (!w && this._familyCount(this._familyOf(wid)) >= this.CAPS.perFamily) continue;
       if (w && (w.level >= 5 || w.evolved)) continue;
       const wt = (w ? 2 : 3) * (d.owner === g.selectedCharacter ? 3 : 1);   // native x3 στον ιδιοκτήτη
       cand.push({ wt, card: mk('be_w_' + wid, d.name,
@@ -316,6 +363,8 @@ export class BuildEngineRuntime {
       if (p.category === 'build_passive') {                        // P2.6: global build passives
         const bl = this.passives.get(pid) || 0;
         if (bl >= p.maxLevel) continue;
+        if (this.sealed.has(pid)) continue;                        // P2.7: sealed
+        if (!bl && _pFull) continue;                               // P2.7: 6P cap — μόνο level-ups
         cand.push({ wt: 1, card: mk('be_p_' + pid, p.name,
           (bl ? 'Level ' + (bl + 1) + ' — ' : '') + p.desc, CARD_COLOR.passive, '◆',
           () => self.addPassive(pid)) });
@@ -327,6 +376,8 @@ export class BuildEngineRuntime {
       if ((!w && extLvl < 1) || w?.evolved) continue;           // catalyst μόνο αν υπάρχει το όπλο (ή external με level)
       const lvl = this.passives.get(pid) || 0;
       if (lvl >= p.maxLevel) continue;
+      if (this.sealed.has(pid)) continue;                        // P2.7: sealed
+      if (!lvl && _pFull) continue;                              // P2.7: 6P cap — μόνο level-ups
       const wt = ((w ? w.level : extLvl) >= 3 ? 3 : 1);         // x3 όταν το όπλο Lv3+
       cand.push({ wt, card: mk('be_p_' + pid, p.name,
         (lvl ? 'Level ' + (lvl + 1) + ' — ' : '') + p.desc, CARD_COLOR.passive, '◈',
