@@ -19,13 +19,13 @@ import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, dr
 import { SystemEventManager } from './Events.js?v=20260711780000';
 import { UpgradeUI }      from './UpgradeUI.js?v=20260712520000';
 import { weightedSample } from './Upgrades.js?v=20260712520000';
-import { BuildEngineRuntime } from './BuildEngine.js?v=20260718000000';   // P2.2 — ενεργό ΜΟΝΟ με ?p2=1
-import './BuildEngineChars1.js?v=20260718000000';   // P2.3a Taekwondo+CyberArm (side-effect register)
-import './BuildEngineChars2.js?v=20260718000000';   // P2.3b Brawler+Assassin (side-effect register)
-import './BuildEngineChars3.js?v=20260718000000';   // P2.4a Eddie+Dimi (side-effect register)
-import './BuildEngineChars4.js?v=20260718000000';   // P2.4b Phasewalker+Euclid+Oni (side-effect register)
-import './BuildEngineChars5.js?v=20260718000000';   // P2.5 Universal όπλα 21-25 (side-effect register)
-import './BuildEnginePassives.js?v=20260718000000'; // P2.6 Build passives §26-50 (generic hooks)
+import { BuildEngineRuntime } from './BuildEngine.js?v=20260718100000';   // P2.2 — ενεργό ΜΟΝΟ με ?p2=1
+import './BuildEngineChars1.js?v=20260718100000';   // P2.3a Taekwondo+CyberArm (side-effect register)
+import './BuildEngineChars2.js?v=20260718100000';   // P2.3b Brawler+Assassin (side-effect register)
+import './BuildEngineChars3.js?v=20260718100000';   // P2.4a Eddie+Dimi (side-effect register)
+import './BuildEngineChars4.js?v=20260718100000';   // P2.4b Phasewalker+Euclid+Oni (side-effect register)
+import './BuildEngineChars5.js?v=20260718100000';   // P2.5 Universal όπλα 21-25 (side-effect register)
+import './BuildEnginePassives.js?v=20260718100000'; // P2.6 Build passives §26-50 (generic hooks)
 import { MutationUI }      from './MutationUI.js?v=20260703990000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260713200000';
@@ -1301,8 +1301,10 @@ export class Game {
     // συμπεριφορά δεν αλλάζει (όλα τα hooks είναι optional-chained).
     this.buildEngine = null;
     try {
-      if (typeof location !== 'undefined' && new URLSearchParams(location.search).get('p2') === '1')
-        this.buildEngine = new BuildEngineRuntime(this);
+      const _p2url = typeof location !== 'undefined' && new URLSearchParams(location.search).get('p2') === '1';
+      const _p2ls  = typeof localStorage !== 'undefined' && localStorage.getItem('phenix_p2') === '1';
+      if (_p2url || _p2ls) this.buildEngine = new BuildEngineRuntime(this);
+      else console.log('[P2] Build Engine INACTIVE — add ?p2=1 to the URL or press F9 in the menu, then start a run');
     } catch (_) { this.buildEngine = null; }
 
     // ── Tactical Cache Weapons — independent map objects, 100% decoupled from player ──

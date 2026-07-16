@@ -150,6 +150,9 @@ export const RUNTIME_HOOKS = { modDamage: [], onDamage: [], onKill: [], tick: []
 
 export class BuildEngineRuntime {
   constructor(game) {
+    console.log('%c[P2] BUILD ENGINE ACTIVE — ' + Object.keys(WEAPON_DEFS).length + ' weapons / ' +
+      Object.keys(PASSIVE_DEFS).length + ' passives / ' + Object.keys(EVOLUTION_RECIPES).length + ' evolutions in pool',
+      'color:#4fd8ff;font-weight:bold');
     this.game     = game;
     this.log      = new DamageLog();
     this.log.start(performance.now());
@@ -393,8 +396,10 @@ export class BuildEngineRuntime {
         () => self.addPassive(pid)) });
     }
     if (!cand.length) return false;
-    // 45% πιθανότητα κάρτας BuildEngine (δεν πλημμυρίζει το pool της demo)
-    if (Math.random() > 0.45) return false;
+    // Οι 2 πρώτες BE προσφορές του run είναι ΕΓΓΥΗΜΕΝΕΣ (ορατότητα του νέου
+    // συστήματος από το 1ο level-up)· μετά 45% ώστε να μην πνίγει το παλιό pool.
+    this._offers = (this._offers || 0) + 1;
+    if (this._offers > 2 && Math.random() > 0.45) return false;
     let sum = 0; for (const c of cand) sum += c.wt;
     let r = Math.random() * sum, pick = cand[0];
     for (const c of cand) { r -= c.wt; if (r <= 0) { pick = c; break; } }
@@ -732,6 +737,12 @@ export class BuildEngineRuntime {
   // Ύφος §9: 70% matte σκούρο / 20% λευκή πληροφορία / 10% neon accent, όχι glow.
   drawPanels(ctx, game) {
     try {
+      if (game.gameState === 'playing' && !game.gameOver && !game.victory) {
+        ctx.save(); ctx.globalAlpha = 0.55; ctx.fillStyle = '#4fd8ff';
+        ctx.font = 'bold 11px Consolas, monospace'; ctx.textAlign = 'left';
+        ctx.fillText('◈ P2 BUILD ENGINE ACTIVE — B on a card = banish', 150, 62);
+        ctx.restore();
+      }
       if (game.gameOver || game.victory) { this._drawDamageReport(ctx); return; }
       if (game.paused && game.gameState === 'playing' && !game.upgradeUI && !game.mutationUI && !game._stageCompleteBanner)
         this._drawBuildPanel(ctx);

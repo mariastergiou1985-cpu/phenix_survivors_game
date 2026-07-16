@@ -1,4 +1,4 @@
-import { Game } from './game/Game.js?v=20260718000000';
+import { Game } from './game/Game.js?v=20260718100000';
 import { AudioManager } from './audio/AudioManager.js?v=20260715700000';
 import { PlatformAchievements } from './platform/PlatformAchievements.js?v=20260712370000';
 // Steam build: replay any web-earned achievements to Steam on boot (no-op in browsers)
@@ -153,6 +153,15 @@ window.addEventListener('keydown', e => {
   if (key === 'e') game.activateEMPCloud();       // EMP stun — shared by ALL (Phasewalker layers his Shockwave VFX inside)
   if (key === ' ') { game.activateThunderSolo(); game.activateOverheatedChains(); game.activateCyberBikeRush(); game.activateSkyfallLances(); game.activateChromePhantomProtocol(); game.activateDigitalSingularity(); game.activateEuclidPlague(); game.activateProtocol0Cataclysm(); game.activateRedThunderCurtain(); game.activateDimiAngelUltimate(); }   // SPACE ultimate (per-character; each self-guards)
   if (key === 'm') game.audio?.toggleMute();
+  // P2: F9 = toggle Build Engine (persisted) — ισχύει από το ΕΠΟΜΕΝΟ run
+  if (key === 'f9') {
+    try {
+      const on = localStorage.getItem('phenix_p2') === '1';
+      localStorage.setItem('phenix_p2', on ? '0' : '1');
+      game.triggerAnnouncement?.(on ? '◈ BUILD ENGINE OFF — restart run' : '◈ BUILD ENGINE ON — start a new run', '#4fd8ff');
+      console.log('[P2] Build Engine toggled ->', !on);
+    } catch (_) {}
+  }
   if (key === 'f') {
     if (!document.fullscreenElement) {
       document.documentElement.requestFullscreen().catch(() => {});
