@@ -5974,7 +5974,8 @@ export class Game {
     const e = new Enemy(_waveType || this.chooseEnemyType(), mins);
     // HORDE §17: θέση από τον WaveDirector (ΕΚΤΟΣ viewport, 8 sectors) — Act 1 έπαιρνε
     // μέχρι τώρα world-bounds edges 3840px μακριά· τώρα η ορδή φτάνει ΠΑΝΤΑ γρήγορα.
-    if (_wavePos) { e.pos.x = _wavePos.x; e.pos.y = _wavePos.y; }
+    if (_wavePos && isFinite(_wavePos.x) && isFinite(_wavePos.y)) { e.pos.x = _wavePos.x; e.pos.y = _wavePos.y; }
+    else if (_wavePos) _wavePos = null;   // NaN guard: fallback στο chunk/edge placement
     // HORDE §18 ELITE_ESCORT: elite εκτός Endless elite-wave συστήματος (ίδια buffs)
     if (_waveElite && !e.isBoss()) {
       e.isElite = true; e.hp = Math.round(e.hp * 2); e.maxHp = e.hp;
@@ -16681,6 +16682,19 @@ export class Game {
           if (e.hp <= 0) { e.hp = 0; e._die(this); continue; }
         }
       }
+      // ═══ NaN GUARD (bug report Maria 2026-07-16, βίντεο Chaos: «σπασμένος κόσμος») ═══
+      // Ένα pull/knockback effect μπορεί να βγάλει NaN θέση· χωρίς φρένο η NaN μεταδιδόταν
+      // μέσω separation σε 50+ εχθρούς/frame και μετά ΕΣΚΑΓΕ το draw (createRadialGradient
+      // non-finite στα boss trails) => μισοζωγραφισμένα frames/κατεστραμμένη οθόνη.
+      // Self-heal: άμεση επανατοποθέτηση στην περίμετρο + log τύπου για το root cause.
+      if (!isFinite(e.pos.x) || !isFinite(e.pos.y)) {
+        this._nanHeals = (this._nanHeals || 0) + 1;
+        if (this._nanHeals <= 3) console.error('[HORDE] NaN pos self-heal #' + this._nanHeals + ': ' + e.enemyType + ' (arch=' + e.archetype + ', t=' + Math.round(this.timeAlive) + 's)');
+        const _a = Math.random() * Math.PI * 2, _R = Math.hypot(this._viewW, this._viewH) / 2 + 160;
+        e.pos.x = this.player.pos.x + Math.cos(_a) * _R;
+        e.pos.y = this.player.pos.y + Math.sin(_a) * _R;
+        e.vel && (e.vel.x = 0, e.vel.y = 0); e._kbx = 0; e._kby = 0;
+      }
       // ═══ HORDE §27 LOD: μακρινοί (>1100px) non-elite/non-boss ενημερώνονται κάθε
       // 3 frames με dt×3 — ίδια πραγματική ταχύτητα pursuit, 1/3 κόστος. Κοντινοί: full.
       let _dtE = enemyDt;
@@ -16727,7 +16741,7 @@ export class Game {
           const dx = e.pos.x - o.pos.x, dy = e.pos.y - o.pos.y;
           const rr = (e.radius + o.radius) * 0.82;
           const d2 = dx * dx + dy * dy;
-          if (d2 >= rr * rr || d2 < 0.01) continue;
+          if (!(d2 < rr * rr) || d2 < 0.01) continue;   // NaN-safe: NaN αποτυγχάνει το <, όχι το >=
           const d = Math.sqrt(d2), ov = rr - d;
           px += (dx / d) * ov; py += (dy / d) * ov;
           if (++n >= 6) break;
@@ -24507,6 +24521,7 @@ _drawLoreArchive(ctx) {
   // Spawned from Enemy.update for any boss/mega-boss. Hard-capped, short-lived, auto-cleaned;
   // damage only ticks while the player stands inside (telegraphed dark-red pool). Never hits enemies.
   _spawnBossTrail(pos) {
+    if (!pos || !isFinite(pos.x) || !isFinite(pos.y)) return;   // NaN guard — ποτέ σκουπίδι στο draw
     if (this.bossTrails.length >= 36) return;            // hard cap on active trail pools
     const bp = this._hasProto('blood_path');             // Blood Path Protocol: harder + longer-lived
     this.bossTrails.push({ pos: pos.clone(), t: 0, life: bp ? 4.5 : 3.5, radius: bp ? 38 : 32, dps: bp ? 22 : 16, dmgAccum: 0 });
@@ -24538,6 +24553,7 @@ _drawLoreArchive(ctx) {
     if (!this.bossTrails.length) return;
     ctx.save();
     for (const z of this.bossTrails) {
+      if (!isFinite(z.pos.x) || !isFinite(z.pos.y)) continue;   // NaN guard (createRadialGradient σκάει σε non-finite)
       const k = Math.max(0, 1 - z.t / z.life);            // fade out over life
       const g = ctx.createRadialGradient(z.pos.x, z.pos.y, z.radius * 0.2, z.pos.x, z.pos.y, z.radius);
       g.addColorStop(0, `rgba(150,0,24,${0.42 * k})`);
