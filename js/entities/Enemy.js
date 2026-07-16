@@ -804,7 +804,7 @@ export class Enemy {
     if (this.enemyType === 'Overclocked Bomber' && this.hp > 0 && game?.player?.pos) {
       const dP = Math.hypot(game.player.pos.x - this.pos.x, game.player.pos.y - this.pos.y);
       if (this._armT === undefined) this._armT = -1;
-      if (this._armT < 0 && dP < 70) { this._armT = 0.5; this.speed *= 0.3; }   // arm + brace
+      if (this._armT < 0 && dP < 70) { this._armT = 0.5; this._baseSpeedFull *= 0.3; }   // arm + brace (ROOT FIX: this.speed δεν υπήρχε -> NaN)
       if (this._armT >= 0) {
         this._armT -= dt;
         this.hitFlash = 0.05;                              // furious white blink while armed
@@ -836,8 +836,11 @@ export class Enemy {
         }
       } else if (this._lungeT > 0) {
         this._lungeT -= dt;
-        this.pos.x += (this._lungeDirX || 0) * this.speed * 2.2 * dt;   // LINEAR CHARGE (locked)
-        this.pos.y += (this._lungeDirY || 0) * this.speed * 2.2 * dt;
+        // ROOT FIX (βίντεο Maria — ΤΟ NaN SEED): this.speed ΔΕΝ ορίζεται πουθενά στην
+        // κλάση Enemy => undefined × 2.2 × dt = NaN => η θέση του Executioner γινόταν NaN
+        // στην πρώτη του έφοδο και (πριν τα guards) μόλυνε όλη την ορδή + έριχνε το draw.
+        this.pos.x += (this._lungeDirX || 0) * this.baseSpeed * 2.2 * dt;   // LINEAR CHARGE (locked)
+        this.pos.y += (this._lungeDirY || 0) * this.baseSpeed * 2.2 * dt;
         if (this._lungeT <= 0) this._lungeRec = 0.6;       // SHORT RECOVERY μετά το charge
       } else if (this._lungeRec > 0) {
         this._lungeRec -= dt;                              // recovery: μισή ταχύτητα (στο movement κάτω)
