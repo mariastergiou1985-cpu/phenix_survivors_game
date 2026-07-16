@@ -23,6 +23,7 @@ import { BuildEngineRuntime } from './BuildEngine.js?v=20260717600000';   // P2.
 import './BuildEngineChars1.js?v=20260717600000';   // P2.3a Taekwondo+CyberArm (side-effect register)
 import './BuildEngineChars2.js?v=20260717600000';   // P2.3b Brawler+Assassin (side-effect register)
 import './BuildEngineChars3.js?v=20260717600000';   // P2.4a Eddie+Dimi (side-effect register)
+import './BuildEngineChars4.js?v=20260717700000';   // P2.4b Phasewalker+Euclid+Oni (side-effect register)
 import { MutationUI }      from './MutationUI.js?v=20260703990000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260713200000';
