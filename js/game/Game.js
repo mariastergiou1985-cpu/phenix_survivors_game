@@ -12,7 +12,7 @@ import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260705040000
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260712090000';
 import { Player }         from '../entities/Player.js?v=20260712480000';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260706270000';
-import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260713600000';
+import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260719100000';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=20260711750000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260713600000';
@@ -16591,6 +16591,7 @@ export class Game {
       }
       e.update(enemyDt, this);
       e.keepInBounds();
+      this._hordeSeparationQueue ||= true;   // separation pass τρέχει μετά το loop (βλ. κάτω)
 
       // Distance cull: recycle enemies that fell too far behind the player (Endless only).
       // Bosses and elites are exempt — they should always persist.
@@ -16603,6 +16604,41 @@ export class Game {
         }
       }
 
+    }
+  
+    // ═══ HORDE REBUILD §5 — SEPARATION μέσω spatial grid (μόνο 9 γειτονικά cells) ═══
+    // Μικρό, ανά-βάρος weight (0.04-0.18)· επιτρεπτή μερική επικάλυψη (0.82×radii)·
+    // hard cap στο 45%% του pursuit βήματος ώστε να μην ανοίγει ΠΟΤΕ ασφαλές κενό
+    // γύρω από τον παίκτη ούτε να σπρώχνει την ορδή προς τα έξω. Όχι πλήρες pairwise:
+    // έως 6 γείτονες ανά enemy, μόνο κοντά στη δράση (<1300px από τον παίκτη).
+    const _sepGrid = this._spatialGrid;
+    if (_sepGrid && this.player) {
+      const _ppx = this.player.pos.x, _ppy = this.player.pos.y;
+      for (const e of this.enemies) {
+        if (!e || e.hp <= 0 || e.stunned > 0) continue;
+        const _pdx = e.pos.x - _ppx, _pdy = e.pos.y - _ppy;
+        if (_pdx * _pdx + _pdy * _pdy > 1690000) continue;          // 1300px
+        const near = _sepGrid.query(e.pos.x, e.pos.y, e.radius + 26);
+        let px = 0, py = 0, n = 0;
+        for (const o of near) {
+          if (o === e || !o || o.hp <= 0) continue;
+          const dx = e.pos.x - o.pos.x, dy = e.pos.y - o.pos.y;
+          const rr = (e.radius + o.radius) * 0.82;
+          const d2 = dx * dx + dy * dy;
+          if (d2 >= rr * rr || d2 < 0.01) continue;
+          const d = Math.sqrt(d2), ov = rr - d;
+          px += (dx / d) * ov; py += (dy / d) * ov;
+          if (++n >= 6) break;
+        }
+        if (n) {
+          const w = e._sepW || 0.06;
+          let sx = px * w * 60 * dt, sy = py * w * 60 * dt;
+          const maxStep = e.baseSpeed * dt * 0.45;                  // separation < pursuit, ΠΑΝΤΑ
+          const sl = Math.hypot(sx, sy);
+          if (sl > maxStep && sl > 0) { sx = sx / sl * maxStep; sy = sy / sl * maxStep; }
+          e.pos.x += sx; e.pos.y += sy;
+        }
+      }
     }
   }
 
@@ -18349,56 +18385,65 @@ export class Game {
   }
 
   _checkPlayerEnemyCollisions(dt) {
+    // ═══ HORDE REBUILD §7 — CONTACT DAMAGE με global player contact iframe ═══
+    // Πριν: συνεχές contactDamage×dt από 1 enemy/frame (αόρατο τρίψιμο HP).
+    // Τώρα: διακριτός παλμός κάθε 0.30s (desktop) / 0.36s (mobile) από τον
+    // ΙΣΧΥΡΟΤΕΡΟ enemy σε επαφή — ΙΔΙΟ DPS (dmg = contactDamage × iframe), αλλά
+    // αναγνώσιμο. 100 overlapping enemies = 1 damage event ανά παλμό, ΟΧΙ 100.
+    // Κατά το iframe οι enemies ΣΥΝΕΧΙΖΟΥΝ να κινούνται (μόνο pushback, όχι πάγωμα).
+    // Tier/minute/mode scaling μεταφέρεται αυτούσιο μέσα στο e.contactDamage.
     if (this.playerHitCooldown > 0) this.playerHitCooldown -= dt;
+    this._contactIfrT = (this._contactIfrT || 0) - dt;
+    const IFR = this._ciDur || (this._ciDur =
+      ((typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0) ||
+       (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(pointer: coarse)').matches))
+        ? 0.36 : 0.30);   // PLAYER_CONTACT_IFRAME_MOBILE / _DESKTOP (§7)
 
-    let damageDone = false;
-    for (const e of this.enemies) {
+    // Spatial grid αντί για πλήρες O(N) scan (900 enemies στο Endless)
+    const near = this._spatialGrid
+      ? this._spatialGrid.query(this.player.pos.x, this.player.pos.y, 150)
+      : this.enemies;
+    let strongest = null;
+    for (const e of near) {
+      if (!e || e.hp <= 0) continue;
       if (distance(e.pos, this.player.pos) < e.radius + PLAYER_RADIUS) {
-        // Pushback
         const push = safeNormalize(this.player.pos.sub(e.pos));
-        this.player.pos.addMut(push.scale(60 * dt));
+        this.player.pos.addMut(push.scale(60 * dt));   // ήπιο pushback — δεν αντικαθιστά το damage
+        if (!strongest || (e.contactDamage || 0) > (strongest.contactDamage || 0)) strongest = e;
+      }
+    }
+    if (strongest && this._contactIfrT <= 0 && this.phoenixReviveTimer <= 0 && this.player.dashTimer <= 0) {
+      this._contactIfrT = IFR;
+      const raw = (strongest.contactDamage ?? 8) * IFR;
+      const dmg = raw * (1 - this.player.contactDamageReduction);
+      this.player.applyDamage(dmg);
 
-        if (!damageDone && this.phoenixReviveTimer <= 0 && this.player.dashTimer <= 0) {
-          // Apply per-enemy contact damage
-          const dmg = (e.contactDamage ?? 8) * dt * (1 - this.player.contactDamageReduction);
-          this.player.applyDamage(dmg);
-          damageDone = true;
-
-          // Cryo Claw contact identity — chill: 25% move slow for 1.2s (refresh, never stacks;
-          // decay + speed multiplier live in Player).
-          if (e.enemyType === 'Cryo Claw') {
-            this.player._chillT = Math.max(this.player._chillT || 0, 1.2);
-          }
-
-          // Throttle screen shake and floating text to once per 0.5s
-          if (this.playerHitCooldown <= 0) {
-            this.playerHitCooldown = 0.5;
-            this.screenShake.trigger(4, 0.15);
-            // Razorhound bite: stamina drain + short stagger + knockback + bleed (anti-lock via immunity)
-            if (e.enemyType === 'Razorhound') {
-              const dir = safeNormalize(this.player.pos.sub(e.pos));
-              const staggered = this.player.applyBite({ stamina: 8, stagger: 0.6, knockback: 14, dir, bleed: 2.5 });
-              this.audio?.playRazorhoundBite();
-              this.particles.spawnBloodSplash(this.player.pos);
-              this.floatingTexts.push(
-                new FloatingText(staggered ? 'STAGGERED' : 'BLEED', new Vec2(this.player.pos.x, this.player.pos.y - 28), RED, 0.7)
-              );
-            } else if (e.enemyType === 'Toxin Leech') {
-              // Toxin Leech contact identity — mild toxin bleed via the shared bite/bleed
-              // mechanism (bleed ticks 1 HP/s in Player.update → ~2 HP over 2s; refresh-not-
-              // stack + anti-chain immunity handled inside applyBite).
-              this.player.applyBite({ bleed: 2.0 });
-              this.particles.spawnHitSparks(this.player.pos, GREEN);
-              this.floatingTexts.push(
-                new FloatingText('TOXIN', new Vec2(this.player.pos.x, this.player.pos.y - 28), GREEN, 0.7)
-              );
-            } else {
-              this.particles.spawnHitSparks(this.player.pos, RED);
-              this.floatingTexts.push(
-                new FloatingText(`-${Math.ceil(e.contactDamage ?? 8)} HP`, this.player.pos.clone(), RED, 0.6)
-              );
-            }
-          }
+      // Contact ταυτότητες (μεταφέρθηκαν αυτούσιες — δένουν στον enemy του παλμού)
+      if (strongest.enemyType === 'Cryo Claw') {
+        this.player._chillT = Math.max(this.player._chillT || 0, 1.2);
+      }
+      if (this.playerHitCooldown <= 0) {
+        this.playerHitCooldown = 0.5;
+        this.screenShake.trigger(4, 0.15);
+        if (strongest.enemyType === 'Razorhound') {
+          const dir = safeNormalize(this.player.pos.sub(strongest.pos));
+          const staggered = this.player.applyBite({ stamina: 8, stagger: 0.6, knockback: 14, dir, bleed: 2.5 });
+          this.audio?.playRazorhoundBite();
+          this.particles.spawnBloodSplash(this.player.pos);
+          this.floatingTexts.push(
+            new FloatingText(staggered ? 'STAGGERED' : 'BLEED', new Vec2(this.player.pos.x, this.player.pos.y - 28), RED, 0.7)
+          );
+        } else if (strongest.enemyType === 'Toxin Leech') {
+          this.player.applyBite({ bleed: 2.0 });
+          this.particles.spawnHitSparks(this.player.pos, GREEN);
+          this.floatingTexts.push(
+            new FloatingText('TOXIN', new Vec2(this.player.pos.x, this.player.pos.y - 28), GREEN, 0.7)
+          );
+        } else {
+          this.particles.spawnHitSparks(this.player.pos, RED);
+          this.floatingTexts.push(
+            new FloatingText(`-${Math.ceil(dmg)} HP`, this.player.pos.clone(), RED, 0.6)
+          );
         }
       }
     }

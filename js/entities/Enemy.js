@@ -135,9 +135,88 @@ export class Enemy {
     this.bulletColor   = CYAN;
     this._initRole(enemyType);
 
+    // ═══ HORDE REBUILD (spec 2026-07-16) ══════════════════════════════════
+    // §8 Ένα καθαρό αρχέτυπο ανά type. §2: μόνο ranged/miniboss/boss πυροβολούν —
+    // ΟΛΗ η υπόλοιπη ορδή είναι contact-only pursuit (το gate αδειάζει το shootInterval
+    // που όρισε το _initRole· ένα σημείο, καμία αλλαγή στα 30 cases).
+    this.archetype = this._archetypeForType(enemyType);
+    if (this.archetype !== 'ranged' && this.archetype !== 'miniboss' && this.archetype !== 'boss')
+      this.shootInterval = null;
+    // §4 Οργανική κίνηση: σταθερή, deterministic παραλλαγή ταχύτητας ανά enemy (LCG seed) —
+    // όχι random jitter ανά frame. Ίδια σε όλη τη ζωή του enemy.
+    Enemy._seedLCG = ((Enemy._seedLCG || 12345) * 9301 + 49297) % 233280;
+    this.speedVariation = 0.92 + 0.16 * (Enemy._seedLCG / 233280);
+    // §5 Separation weight ανά κατηγορία βάρους (ποτέ ισχυρότερο από το pursuit)
+    this._sepW = { fodder: 0.04, swarm: 0.04, fast: 0.06, ranged: 0.08, charger: 0.08,
+                   shield: 0.14, heavy: 0.14, miniboss: 0.18, boss: 0.18 }[this.archetype] || 0.06;
+    // §9 Ranged specialist: σταθερά ανά enemy (spawn-time, όχι per-frame random)
+    this._telegraphT = 0; this._burstQ = 0; this._burstT = 0; this._guardCrackT = 0;
+    if (this.archetype === 'ranged') {
+      this._rangedDetect = 300 + Math.random() * 100;    // §9 detection 260-420px
+      this._rangedTele   = 0.5 + Math.random() * 0.2;    // telegraph 500-700ms
+      this._rangedCd     = 3.0 + Math.random() * 1.5;    // cooldown 3.0-4.5s
+      this._burstN       = enemyType === 'Void Rift Summoner' ? 3 : 1;  // ο ΜΟΝΟΣ burst specialist (§9)
+      if (this._burstN > 1) this._rangedCd = 4.0 + Math.random() * 2.0; // burst cooldown 4-6s
+    }
+
     // Load enemy sprite
     this.sprite = null;
     this._loadSprite();
+  }
+
+  // ═══ HORDE REBUILD §8 — αντιστοίχιση ΚΑΘΕ type σε ΕΝΑ αρχέτυπο ═════════════
+  // fodder: μικρό/χαμηλό HP swarm · swarm: βασικός contact walker · fast: hunter κοντά
+  // στην ταχύτητα παίκτη · heavy: αργό/τανκ contact · charger: telegraph->ευθεία ·
+  // shield: μπροστινή μείωση damage · ranged: ο σπάνιος ειδικός · miniboss/boss.
+  // ΜΕΤΑΤΡΟΠΕΣ σε melee (πριν πυροβολούσαν): Rogue Punk, Overclocked Berserker,
+  // Abyss Maw(->shield), Amethyst Fang, Ember Scarab, Pulse Burrower, Void Widow,
+  // Malware Spreader, Plasma Juggernaut(->shield), Singularity Core Mech, Solar Stinger.
+  // ΠΑΡΑΜΕΝΟΥΝ ranged (καθαρή ταυτότητα): Cyber Shooter, Rift Eye, EMP Hacker Drone,
+  // Wireframe Net-Caster, Void Rift Summoner (burst 3).
+  _archetypeForType(type) {
+    switch (type) {
+      case 'Glitch Drone': case 'Volt Rat': case 'Neon Swarmer':
+        return 'fodder';
+      case 'Rogue Punk': case 'Scrap Scavenger': case 'Cyber-Net Junkie':
+      case 'Ember Scarab': case 'Pulse Burrower': case 'Cryo Claw':
+      case 'Malware Spreader':
+        return 'swarm';
+      case 'Combat Hunter': case 'Stealth Infiltrator': case 'Overclocked Berserker':
+      case 'Solar Stinger': case 'Toxin Leech': case 'Amethyst Fang':
+      case 'Razorhound': case 'Data Glitch Stalker': case 'Cybermote':
+        return 'fast';
+      case 'Heavy Mech': case 'Solar Tyrant': case 'Void Widow':
+      case 'Cyber-Axe Executioner': case 'Singularity Core Mech':
+        return 'heavy';
+      case 'Overclocked Bomber':
+        return 'charger';
+      case 'Abyss Maw': case 'Plasma Juggernaut':
+        return 'shield';
+      case 'Cyber Shooter': case 'Rift Eye': case 'EMP Hacker Drone':
+      case 'Wireframe Net-Caster': case 'Void Rift Summoner':
+        return 'ranged';
+      case 'Security Defector Mech':
+        return 'miniboss';
+      case 'Rogue AI Overlord': case 'Giga-Core Overlord': case 'Malware Leviathan':
+      case 'Quantum Void Emperor': case 'Apocalypse Mech Tyrant':
+        return 'boss';
+      default:
+        return 'swarm';
+    }
+  }
+
+  // §9 Κανονικός ranged: ΜΙΑ στοχευμένη βολή (ή μικρό burst 3×130ms μόνο στον specialist).
+  // Μικρό lead 14%% — σαφώς αποφύξιμη. Ο director (Phase 3) κόβει τη βολή χωρίς token.
+  _fireRangedShot(game, isBurst = false) {
+    if (isBurst) { if (--this._burstQ < 0) { this._burstQ = 0; return; } }
+    else if (this._burstN > 1) { this._burstQ = this._burstN - 1; this._burstT = 0.13; }
+    const pv  = game.player.vel || new Vec2();
+    const dir = safeNormalize(game.player.pos.add(pv.scale(0.14)).sub(this.pos));
+    if (dir.lengthSq() === 0) return;
+    game.spawnEnemyBullet(this.pos.clone(), dir, this.bulletSpeed || 420, this.bulletDamage || 8,
+      this.bulletRadius || 6, this.bulletColor,
+      { weaponSprite: this._weaponSprite || null, weaponSize: this._weaponSize || 0 });
+    game.audio?.playEnemyShoot();
   }
 
   _roleForType(type) {
@@ -383,7 +462,9 @@ export class Enemy {
       game.audio?.playEnemyShoot();
       return;
     }
-    this.shootTimer = this.shootInterval;
+    this.shootTimer = (this.isElite && !this.isBoss() && !this.isMegaBoss)
+      ? Math.max(4.0, this.shootInterval)              // HORDE §8H: elite signature κάθε αρκετά sec
+      : this.shootInterval;
 
     const boss = this.isBoss() || this.isMegaBoss;
     // Aim assist — lead the player by a fraction of their velocity (readable, still dodgeable):
@@ -572,6 +653,15 @@ export class Enemy {
         this.hp / this.maxHp < 0.08 + 0.02 * _exL) {
       dmg *= 2;
     }
+    // HORDE §8F Shield Carrier: μπροστινή μείωση 40%% όσο ο φρουρός κρατά. Δεν είναι
+    // ποτέ μόνιμα άτρωτος: βαρύ χτύπημα (knockback-tier, dmg>=40) ΣΠΑΕΙ τον φρουρό
+    // για 1.5s — ρητή προσέγγιση: χωρίς hit-direction plumbing σε 200 call sites,
+    // το "πίσω/πλαϊνά ευάλωτα" υλοποιείται ως guard-crack από stagger χτυπήματα.
+    if (this.archetype === 'shield') {
+      if (this._guardCrackT > 0) this._guardCrackT -= 0; // (ticked στο update)
+      else if (dmg < 40) dmg *= 0.60;
+      if (dmg >= 40) this._guardCrackT = 1.5;
+    }
     this.hp       -= dmg;
     game._spawnDmgNum?.(this, dmg);   // VS-style damage numbers (pooled/merged/capped in Game)
 
@@ -695,6 +785,7 @@ export class Enemy {
       this.hp = Math.min(this.maxHp, this.hp + this._biomeRegen * dt);
     }
     if (this.hitFlash > 0) this.hitFlash -= dt;
+    if (this._guardCrackT > 0) this._guardCrackT -= dt;   // HORDE §8F: σπασμένος φρουρός
 
     // ── Φ7 aggression: Overclocked Bomber is a REAL suicide unit now — inside 70px it
     // arms (0.5s furious blink) and detonates itself in a telegraphed blast zone.
@@ -723,16 +814,24 @@ export class Enemy {
       if (this._windup > 0) {
         this._windup -= dt;
         this.hitFlash = 0.05;                              // wind-up telegraph flash
-        if (this._windup <= 0) { this._lungeT = 0.4; }     // release the lunge
+        if (this._windup <= 0) {
+          this._lungeT = 0.4;
+          // HORDE §8E: ΚΛΕΙΔΩΜΑ της τελευταίας θέσης παίκτη — το charge είναι ευθεία
+          // που αποφεύγεται, ΔΕΝ ακολουθεί τον παίκτη κατά τη διάρκεια.
+          const ldx = game.player.pos.x - this.pos.x, ldy = game.player.pos.y - this.pos.y;
+          const ldd = Math.hypot(ldx, ldy) || 1;
+          this._lungeDirX = ldx / ldd; this._lungeDirY = ldy / ldd;
+        }
       } else if (this._lungeT > 0) {
         this._lungeT -= dt;
-        const dx = game.player.pos.x - this.pos.x, dy = game.player.pos.y - this.pos.y;
-        const dd = Math.hypot(dx, dy) || 1;
-        this.pos.x += (dx / dd) * this.speed * 2.2 * dt;   // burst ON TOP of normal chase movement
-        this.pos.y += (dy / dd) * this.speed * 2.2 * dt;
+        this.pos.x += (this._lungeDirX || 0) * this.speed * 2.2 * dt;   // LINEAR CHARGE (locked)
+        this.pos.y += (this._lungeDirY || 0) * this.speed * 2.2 * dt;
+        if (this._lungeT <= 0) this._lungeRec = 0.6;       // SHORT RECOVERY μετά το charge
+      } else if (this._lungeRec > 0) {
+        this._lungeRec -= dt;                              // recovery: μισή ταχύτητα (στο movement κάτω)
       } else if (this._lungeCd <= 0 && dP > 120 && dP < 300) {
         this._lungeCd = 3.5;
-        this._windup  = 0.4;
+        this._windup  = 0.5;                               // §8E telegraph 450-700ms
       }
     }
 
@@ -784,61 +883,42 @@ export class Enemy {
 
     // (Carrying state removed — enemies no longer steal or carry cores)
 
-    // ── Role-based targeting ──────────────────────────────────────────────
+    // ═══ HORDE REBUILD §3 — ΕΝΙΑΙΟ Vampire-Survivors pursuit ══════════════════
+    // Αντικαθιστά ΟΛΑ τα role branches: kiting/orbit/strafe/jitter/random-burst
+    // ΑΠΑΓΟΡΕΥΟΝΤΑΙ. Η περικύκλωση προκύπτει από perimeter spawns + speedVariation
+    // + separation (Game) — όχι από τεχνητή tangential τροχιά.
     if (this.shootTimer > 0) this.shootTimer -= dt;
 
-    // Elites always have projectile threat regardless of role (lazily armed in _tryShoot).
+    // Elites: ΜΙΑ signature ability πάνω στο pursuit (cadence >=4s στο _tryShoot).
     if (this.isElite) this._tryShoot(game);
 
-    if (this.role === 'hunter' || this.role === 'assassin') {
-      // Always chase player — bypass repel aura
-      let dir = safeNormalize(player.pos.sub(this.pos));
-      let burst = 1;
-      if (this.role === 'assassin' && Math.random() < 0.01) burst = 2;
-      this.vel = dir.scale(this.baseSpeed * burst);
-      this.pos.addMut(this.vel.scale(dt));
-      this._tryShoot(game);
-      return;
+    const arch = this.archetype;
+    // Minibosses/bosses κρατούν τα όπλα τους (beam/volley) πάνω στο pursuit.
+    if (arch === 'boss' || arch === 'miniboss') this._tryShoot(game);
+
+    let speedMult = 1;
+    if (this._lungeRec > 0) speedMult = 0.5;               // §8E charger recovery
+
+    // §9 Ranged Specialist (κανονικός, ΟΧΙ elite): αργή προσέγγιση -> amber telegraph
+    // -> 1 βολή (ή burst 3 μόνο στον specialist) -> συνεχίζει να πλησιάζει. ΟΧΙ kiting.
+    if (arch === 'ranged' && !this.isElite) {
+      if (this._telegraphT > 0) {
+        this._telegraphT -= dt;
+        speedMult = 0.15;                                  // σχεδόν στάση στη φόρτιση — αναγνώσιμο
+        if (this._telegraphT <= 0) this._fireRangedShot(game);
+      } else if (this._burstQ > 0) {
+        this._burstT -= dt;
+        speedMult = 0.3;
+        if (this._burstT <= 0) { this._burstT = 0.13; this._fireRangedShot(game, true); }
+      } else if (this.shootTimer <= 0 && playerDist < this._rangedDetect) {
+        this._telegraphT = this._rangedTele;
+        this.shootTimer  = this._rangedCd;
+      } else {
+        speedMult = 0.65;                                  // πλησιάζει αργά ανάμεσα στις βολές
+      }
     }
 
-    if (this.role === 'shooter') {
-      // Keep preferred distance, shoot frequently, never targets matrices
-      const PREF_DIST = 300;
-      let dir = new Vec2();
-      if (playerDist < PREF_DIST - 60)       dir = safeNormalize(this.pos.sub(player.pos));
-      else if (playerDist > PREF_DIST + 100)  dir = safeNormalize(player.pos.sub(this.pos));
-      this.vel = dir.scale(this.baseSpeed);
-      this.pos.addMut(this.vel.scale(dt));
-      this._tryShoot(game);
-      return;
-    }
-
-    if (this.role === 'mixed' && playerDist < 280) {
-      // Chase player when nearby — ignore repel aura. FIRES too (Phase 1 fix:
-      // mixed enemies had full bullet stats that were never reachable).
-      this._tryShoot(game);
-      let dir = safeNormalize(player.pos.sub(this.pos));
-      if (this.enemyType === 'Overclocked Berserker')
-        dir = safeNormalize(dir.add(new Vec2(randomRange(-1, 1), randomRange(-1, 1)).scale(0.75)));
-      this.vel = dir.scale(this.baseSpeed);
-      this.pos.addMut(this.vel.scale(dt));
-      return;
-    }
-
-    if (this.role === 'boss') {
-      // Bosses aggressively chase the player and shoot — never seek matrices.
-      this._tryShoot(game);
-      let dir = safeNormalize(player.pos.sub(this.pos));
-      this.vel = dir.scale(this.baseSpeed);
-      this.pos.addMut(this.vel.scale(dt));
-      return;
-    }
-
-    if (this.role === 'hybrid') {
-      this._tryShoot(game);  // falls through to chase/steal behavior below
-    }
-
-    // ── Repel aura ───────────────────────────────────────────────────────
+    // Repel aura — PLAYER upgrade (Sonic Pulse οικογένεια), όχι AI συμπεριφορά: μένει.
     if (playerDist < player.repelRadius && repelStrength > 0) {
       const flee = safeNormalize(this.pos.sub(player.pos));
       this.vel = flee.scale(this.baseSpeed * (1.05 + repelStrength));
@@ -846,48 +926,11 @@ export class Enemy {
       return;
     }
 
-    // ── Chase player (all remaining roles: stealer, hybrid, default) ────
-    // All enemies chase the player. No enemy steals from Nexus/PowerMatrix.
-    let dir = safeNormalize(player.pos.sub(this.pos));
-
-    // ── Encirclement steering (surround, don't single-file) ──────────────────
-    // Blend direct pursuit with a TANGENTIAL component so enemies curve around the player and fill
-    // all angles → a compressing ring. When the player stands still, tighten the ring (anti-passive).
-    // Cheap: no neighbor queries — per-enemy slot + player-idle signal from the game.
-    {
-      const idle = game._playerIdleT || 0;                 // seconds the player has been ~stationary
-      // Tangential falls off as the enemy closes in (so it commits to contact, not orbits forever),
-      // and shrinks while the player is idle (ring compresses inward for the kill).
-      // #82 role-specific pursuit: fast/light enemies FLANK (wider tangential arc to fill open
-      // angles), heavy/slow enemies act as BLOCKERS (straighter charge that closes the ring). No
-      // extra state — derived from baseSpeed so it applies across the whole roster automatically.
-      const _roleTanMul = this.baseSpeed > 200 ? 1.25 : this.baseSpeed < 130 ? 0.7 : 1.0;
-      let tanW = this._encSlot * 0.9 * _roleTanMul;
-      if (playerDist < 160) tanW *= Math.max(0, (playerDist - 60) / 100);   // near → go straight in
-      if (idle > 1.2) tanW *= 0.45;                                          // idle player → compress
-      const perp = new Vec2(-dir.y, dir.x).scale(tanW);
-      dir = safeNormalize(dir.add(perp));
-      // Stuck detection: if not getting closer over time, nudge laterally + flip slot.
-      if (this._lastDist > 0 && playerDist > this._lastDist - 2) {
-        this._stuckT += dt;
-        if (this._stuckT > 0.7) { this._encSlot = -this._encSlot; this._stuckT = 0; }
-      } else { this._stuckT = 0; }
-      this._lastDist = playerDist;
-    }
-
-    // Stealth burst
-    let burst = 1;
-    if (this.enemyType === 'Stealth Infiltrator' && Math.random() < 0.01) burst = 2;
-
-    // Berserker jitter
-    if (this.enemyType === 'Overclocked Berserker') {
-      dir = safeNormalize(dir.add(new Vec2(randomRange(-1, 1), randomRange(-1, 1)).scale(0.75)));
-    }
-
-    // Anti-idle contact pressure: if the player is standing still, the whole swarm speeds up slightly
-    // so a passive player is inevitably overrun (Vampire-Survivors philosophy). Bounded.
+    // ΚΑΘΑΡΟ PURSUIT προς την ΠΡΑΓΜΑΤΙΚΗ θέση του παίκτη (§3) με σταθερό seeded
+    // speedVariation (§4). Anti-idle: ακίνητος παίκτης = +12%% πίεση (bounded, υπήρχε).
+    const dir = safeNormalize(player.pos.sub(this.pos));
     const idlePush = (game._playerIdleT || 0) > 2 ? 1.12 : 1;
-    this.vel = dir.scale(this.baseSpeed * burst * idlePush);
+    this.vel = dir.scale(this.baseSpeed * (this.speedVariation || 1) * speedMult * idlePush);
     this.pos.addMut(this.vel.scale(dt));
   }
 
@@ -897,6 +940,27 @@ export class Enemy {
   }
 
   // Role → distinct shape + outline color (read at a glance, no shadowBlur → cheap at 280 enemies).
+  // HORDE §23: κοινή γλώσσα telegraph — amber = φορτίζει. Μικρός καθαρός δακτύλιος
+  // ΜΟΝΟ όσο διαρκεί το telegraph του ranged (όχι μόνιμο aura σε normals, §22).
+  _drawTelegraph(ctx) {
+    if (this._telegraphT > 0) {
+      const k = 1 - this._telegraphT / (this._rangedTele || 0.6);
+      ctx.save();
+      ctx.strokeStyle = '#ffb347'; ctx.lineWidth = 2;
+      ctx.globalAlpha = 0.55 + 0.35 * Math.sin(k * Math.PI);
+      ctx.beginPath(); ctx.arc(this.pos.x, this.pos.y, this.radius + 6 + 6 * k, 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
+    }
+    if (this.archetype === 'shield' && this._guardCrackT <= 0 && this.hp > 0) {
+      // λεπτό frontal τόξο προς τον στόχο — ταυτότητα shield, σβήνει όταν σπάσει
+      const a = Math.atan2(this.vel?.y || 0, this.vel?.x || 1);
+      ctx.save();
+      ctx.strokeStyle = '#9fdcff'; ctx.lineWidth = 3; ctx.globalAlpha = 0.5;
+      ctx.beginPath(); ctx.arc(this.pos.x, this.pos.y, this.radius + 5, a - 0.85, a + 0.85); ctx.stroke();
+      ctx.restore();
+    }
+  }
+
   _drawRoleMarker(ctx) {
     let shape, color, lw, pad;
     if (this.isMegaBoss || this.isBoss()) { shape = 'hexagon'; color = PURPLE; lw = 3; pad = 6; }
@@ -1034,6 +1098,7 @@ export class Enemy {
     // Role silhouette marker — only when sprite is missing so we can still tell roles apart.
     // When a proper sprite is loaded, the sprite IS the visual identity — no overlay needed.
     if (!spritePath) this._drawRoleMarker(ctx);
+    this._drawTelegraph(ctx);   // HORDE §23: amber charge ring + shield frontal arc (όλα τα sprites)
 
     // Elite marker (Endless elite waves) — pulsing gold glow + ring so elites read
     // instantly against the normal horde. Purely visual; no balance impact.
