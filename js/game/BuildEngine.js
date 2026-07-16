@@ -614,26 +614,58 @@ export class BuildEngineRuntime {
   draw(ctx) {
     const tf = ctx.getTransform();
     try {
-      // bone shards
+      // bone shards — ULTIMATE PASS: ghost trail + οστικό tumble + διπλοκόνδυλη σιλουέτα
       for (const sh of this.shards) {
         const sc = sh.splinterChild ? 0.55 : 1;
+        const tumble = Math.sin(this._t * 11 + sh.x * 0.013 + sh.y * 0.007) * 0.24;
+        // ghost trail: 3 φαντάσματα πίσω στην τροχιά (χωρίς state — από την ταχύτητα)
+        ctx.save(); ctx.globalCompositeOperation = 'lighter';
+        for (let gh = 3; gh >= 1; gh--) {
+          const gx = sh.x - sh.vx * 0.016 * gh, gy = sh.y - sh.vy * 0.016 * gh;
+          ctx.globalAlpha = 0.10 * (4 - gh) / 3;
+          ctx.fillStyle = sh.evolved ? '#ffb46b' : '#9fdcff';
+          ctx.beginPath(); ctx.ellipse(gx, gy, 9 * sc, 3.5 * sc, sh.a, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.restore();
         ctx.save();
-        ctx.translate(sh.x, sh.y); ctx.rotate(sh.a);
+        ctx.translate(sh.x, sh.y); ctx.rotate(sh.a + tumble);
         ctx.globalCompositeOperation = 'lighter';
-        ctx.globalAlpha = 0.28;                                    // halo ταυτότητας
+        ctx.globalAlpha = sh.evolved ? 0.34 + 0.10 * Math.sin(this._t * 18) : 0.28;   // halo (heat flicker στο evolved)
         ctx.fillStyle = sh.evolved ? '#ffd9a8' : '#cfe8ff';
-        ctx.beginPath(); ctx.ellipse(0, 0, 16 * sc, 6 * sc, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(0, 0, 17 * sc, 6.5 * sc, 0, 0, Math.PI * 2); ctx.fill();
         ctx.globalCompositeOperation = 'source-over';
-        ctx.globalAlpha = 1;                                       // σώμα: αιχμηρό οστό
+        ctx.globalAlpha = 1;                                       // σώμα: κνήμη-βέλος με κονδύλους
         ctx.fillStyle = '#e8e4d0';
         ctx.beginPath();
-        ctx.moveTo(11 * sc, 0); ctx.lineTo(-7 * sc, 3.4 * sc);
-        ctx.lineTo(-4 * sc, 0); ctx.lineTo(-7 * sc, -3.4 * sc); ctx.closePath(); ctx.fill();
-        ctx.strokeStyle = 'rgba(90,80,60,0.5)'; ctx.lineWidth = 1; ctx.stroke();
-        ctx.globalCompositeOperation = 'lighter';                  // λευκός πυρήνας
-        ctx.globalAlpha = 0.9;
-        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.2;
-        ctx.beginPath(); ctx.moveTo(9 * sc, 0); ctx.lineTo(-3 * sc, 0); ctx.stroke();
+        ctx.moveTo(12 * sc, 0); ctx.lineTo(-4 * sc, 2.2 * sc);
+        ctx.lineTo(-7 * sc, 1.4 * sc); ctx.lineTo(-7 * sc, -1.4 * sc);
+        ctx.lineTo(-4 * sc, -2.2 * sc); ctx.closePath(); ctx.fill();
+        ctx.beginPath(); ctx.arc(-7.5 * sc, 2.1 * sc, 2 * sc, 0, Math.PI * 2);        // επίφυση (διπλός κόνδυλος)
+        ctx.arc(-7.5 * sc, -2.1 * sc, 2 * sc, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = 'rgba(90,80,60,0.55)'; ctx.lineWidth = 1; ctx.stroke();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = sh.splinterVolley ? 1 : 0.9;             // λευκός πυρήνας (η 3η ριπή καίει πιο άσπρη)
+        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = sh.splinterVolley ? 1.8 : 1.2;
+        ctx.beginPath(); ctx.moveTo(10 * sc, 0); ctx.lineTo(-3 * sc, 0); ctx.stroke();
+        if (sh.evolved) {                                          // Marrow Reactor: στάζει πυρωμένο μεδούλι
+          ctx.globalAlpha = 0.6; ctx.fillStyle = '#ff9b3c';
+          ctx.beginPath(); ctx.arc(-9 * sc, Math.sin(this._t * 14 + sh.x) * 2, 1.3 * sc, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.restore();
+      }
+      // Marrow Reactor: τόξο φόρτισης γύρω από τον παίκτη (charge/24 -> nova)
+      for (const w of this.weapons.values()) {
+        if (w.id !== 'marrow_spitter' || !w.evolved) continue;
+        const p = this.game.player, full = EVOLUTION_RECIPES.be_marrow_reactor.charge.full;
+        const k = Math.min(1, (w.charge || 0) / full);
+        if (k <= 0.02 || !p) continue;
+        ctx.save(); ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.22 + 0.10 * k;
+        ctx.strokeStyle = '#ffd9a8'; ctx.lineWidth = 3.5;
+        ctx.beginPath(); ctx.arc(p.pos.x, p.pos.y, 30, -Math.PI / 2, -Math.PI / 2 + k * Math.PI * 2); ctx.stroke();
+        ctx.globalAlpha = 0.7 * k;
+        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(p.pos.x, p.pos.y, 30, -Math.PI / 2, -Math.PI / 2 + k * Math.PI * 2); ctx.stroke();
         ctx.restore();
       }
       // novas (Marrow Reactor): δαχτυλίδι οστών + λευκή νεκροπλασματική ακμή
@@ -647,6 +679,9 @@ export class BuildEngineRuntime {
         ctx.globalAlpha = 0.85 * fade;
         ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 3;
         ctx.beginPath(); ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2); ctx.stroke();
+        ctx.globalAlpha = 0.30 * fade;                             // 2ο κλιμακωτό δαχτυλίδι (νεκροπλασματική ηχώ)
+        ctx.strokeStyle = '#9fdcff'; ctx.lineWidth = 6;
+        ctx.beginPath(); ctx.arc(n.x, n.y, n.r * 0.72, 0, Math.PI * 2); ctx.stroke();
         ctx.globalAlpha = 0.8 * fade;                              // θραύσματα οστών στην ακμή
         ctx.fillStyle = '#e8e4d0';
         for (let i = 0; i < 14; i++) {
@@ -654,6 +689,12 @@ export class BuildEngineRuntime {
           ctx.save(); ctx.translate(n.x + Math.cos(a) * n.r, n.y + Math.sin(a) * n.r); ctx.rotate(a);
           ctx.beginPath(); ctx.moveTo(7, 0); ctx.lineTo(-4, 2.4); ctx.lineTo(-4, -2.4); ctx.closePath(); ctx.fill();
           ctx.restore();
+        }
+        ctx.globalAlpha = 0.45 * fade;                             // καμένα υπολείμματα που ανεβαίνουν
+        ctx.fillStyle = '#ffd9a8';
+        for (let i = 0; i < 6; i++) {
+          const a = (i / 6) * Math.PI * 2 + n.t * 1.1;
+          ctx.beginPath(); ctx.arc(n.x + Math.cos(a) * n.r * 0.5, n.y + Math.sin(a) * n.r * 0.5 - n.t * 40, 1.6, 0, Math.PI * 2); ctx.fill();
         }
         ctx.restore();
       }
@@ -695,12 +736,24 @@ export class BuildEngineRuntime {
         const k = f.t / f.life;
         ctx.save(); ctx.globalCompositeOperation = 'lighter';
         if (f.kind === 'pulse') {
-          ctx.globalAlpha = 0.5 * (1 - k);
-          ctx.strokeStyle = '#9fdcff'; ctx.lineWidth = 3 - 2 * k;
-          ctx.beginPath(); ctx.arc(f.x, f.y, f.r * (0.25 + 0.75 * k), 0, Math.PI * 2); ctx.stroke();
+          for (let rp = 0; rp < 3; rp++) {                         // τριπλός ηχητικός κυματισμός
+            const rk = Math.max(0, k - rp * 0.14);
+            if (rk <= 0) continue;
+            ctx.globalAlpha = (rp === 0 ? 0.5 : 0.25) * (1 - k);
+            ctx.strokeStyle = rp === 0 ? '#9fdcff' : '#6fb8de'; ctx.lineWidth = 3 - 2 * rk;
+            ctx.beginPath(); ctx.arc(f.x, f.y, f.r * (0.25 + 0.75 * rk), 0, Math.PI * 2); ctx.stroke();
+          }
           ctx.globalAlpha = 0.9 * (1 - k);
           ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1;
           ctx.beginPath(); ctx.arc(f.x, f.y, f.r * (0.25 + 0.75 * k) - 4, 0, Math.PI * 2); ctx.stroke();
+          // η νότα της φωνής: ανεβαίνει και σβήνει
+          const ny = f.y - 14 - k * 26, nx = f.x + Math.sin(k * 9) * 4;
+          ctx.globalAlpha = 0.85 * (1 - k);
+          ctx.fillStyle = '#ffffff';
+          ctx.beginPath(); ctx.ellipse(nx, ny, 2.4, 1.8, -0.4, 0, Math.PI * 2); ctx.fill();
+          ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.moveTo(nx + 2.2, ny - 0.8); ctx.lineTo(nx + 2.2, ny - 9);
+          ctx.quadraticCurveTo(nx + 6, ny - 8, nx + 6.5, ny - 4.5); ctx.stroke();
         } else if (f.kind === 'shockring') {
           ctx.globalAlpha = 0.45 * (1 - k);
           ctx.strokeStyle = f.col || '#FF9B3C'; ctx.lineWidth = 4 - 3 * k;
@@ -835,25 +888,42 @@ export class BuildEngineRuntime {
 
   _drawSkull(ctx, sk, evolved) {
     const bob = Math.sin(this._t * 3 + sk.ph) * 2.5;
+    const jaw = Math.max(0, Math.sin(this._t * 4.2 + sk.ph * 2)) * 2.6;   // ΤΡΑΓΟΥΔΙ: το σαγόνι ανοίγει ρυθμικά
     ctx.save();
     ctx.translate(sk.x, sk.y + bob);
-    ctx.globalCompositeOperation = 'lighter';                      // halo ταυτότητας
-    ctx.globalAlpha = evolved ? 0.34 : 0.24;
+    ctx.globalCompositeOperation = 'lighter';                      // φασματικός μανδύας κάτω από το κρανίο
+    ctx.globalAlpha = evolved ? 0.22 : 0.14;
     ctx.fillStyle = evolved ? '#9fdcff' : '#7fb8d8';
+    ctx.beginPath(); ctx.moveTo(-6, 4);
+    ctx.quadraticCurveTo(-9 + Math.sin(this._t * 5 + sk.ph) * 3, 16, -2, 24 + Math.sin(this._t * 6 + sk.ph) * 2);
+    ctx.quadraticCurveTo(0, 18, 2, 24 + Math.cos(this._t * 6 + sk.ph) * 2);
+    ctx.quadraticCurveTo(9 + Math.cos(this._t * 5 + sk.ph) * 3, 16, 6, 4); ctx.closePath(); ctx.fill();
+    ctx.globalAlpha = evolved ? 0.34 : 0.24;                       // halo ταυτότητας
     ctx.beginPath(); ctx.arc(0, 0, 15, 0, Math.PI * 2); ctx.fill();
     ctx.globalCompositeOperation = 'source-over';
-    ctx.globalAlpha = 1;                                           // σώμα: κρανίο
+    ctx.globalAlpha = 1;                                           // σώμα: θόλος κρανίου (χωρίς γνάθο)
     ctx.fillStyle = '#e8e4d0';
-    ctx.beginPath(); ctx.arc(0, -1.5, 7.5, Math.PI * 0.95, Math.PI * 0.05); // θόλος
-    ctx.lineTo(5, 4); ctx.lineTo(3, 4); ctx.lineTo(2.4, 6.4); ctx.lineTo(-2.4, 6.4); // γνάθος με δόντια-εγκοπές
-    ctx.lineTo(-3, 4); ctx.lineTo(-5, 4); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.arc(0, -1.5, 7.5, Math.PI * 0.95, Math.PI * 0.05);
+    ctx.lineTo(5, 3.2); ctx.lineTo(-5, 3.2); ctx.closePath(); ctx.fill();
     ctx.strokeStyle = 'rgba(80,72,56,0.55)'; ctx.lineWidth = 1; ctx.stroke();
+    ctx.save(); ctx.translate(0, jaw);                             // ΚΙΝΟΥΜΕΝΗ γνάθος με δόντια-εγκοπές
+    ctx.fillStyle = '#ddd8c2';
+    ctx.beginPath(); ctx.moveTo(5, 3.6); ctx.lineTo(3, 3.6); ctx.lineTo(2.4, 6.4); ctx.lineTo(-2.4, 6.4);
+    ctx.lineTo(-3, 3.6); ctx.lineTo(-5, 3.6); ctx.lineTo(-4.2, 5.6); ctx.lineTo(4.2, 5.6); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = 'rgba(80,72,56,0.55)'; ctx.stroke();
+    ctx.restore();
+    if (jaw > 1.6) {                                               // μέσα στο στόμα: φως της νότας
+      ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.55;
+      ctx.fillStyle = evolved ? '#bfefff' : '#8fd4ff';
+      ctx.fillRect(-2.6, 3.4, 5.2, jaw * 0.8);
+      ctx.globalCompositeOperation = 'source-over';
+    }
     ctx.fillStyle = '#101418';                                     // κόγχες
     ctx.beginPath(); ctx.arc(-2.8, -1.5, 1.9, 0, Math.PI * 2); ctx.arc(2.8, -1.5, 1.9, 0, Math.PI * 2); ctx.fill();
-    ctx.globalCompositeOperation = 'lighter';                      // λευκός/κυανός πυρήνας ματιών
-    ctx.globalAlpha = 0.95;
+    ctx.globalCompositeOperation = 'lighter';                      // πυρήνας ματιών (τρεμοπαίζει στο ρυθμό)
+    ctx.globalAlpha = 0.75 + 0.25 * Math.sin(this._t * 4.2 + sk.ph * 2);
     ctx.fillStyle = evolved ? '#bfefff' : '#8fd4ff';
-    ctx.beginPath(); ctx.arc(-2.8, -1.5, 0.9, 0, Math.PI * 2); ctx.arc(2.8, -1.5, 0.9, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(-2.8, -1.5, 1.0, 0, Math.PI * 2); ctx.arc(2.8, -1.5, 1.0, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
   }
 }

@@ -7,7 +7,7 @@
 // lighter, φάσεις, caps, ΚΑΝΕΝΑ PNG, μηδέν shadowBlur.
 // ═══════════════════════════════════════════════════════════════════════════════
 import { WEAPON_DEFS, PASSIVE_DEFS, EVOLUTION_RECIPES, WEAPON_EXECUTORS }
-  from './BuildEngine.js?v=20260718100000';
+  from './BuildEngine.js?v=20260718200000';
 
 // ── κοινά helpers του module ─────────────────────────────────────────────────
 function aimAngle(rt) {
@@ -97,18 +97,52 @@ WEAPON_EXECUTORS.vector_heel = {
     const p = rt.game.player, R = w.evolved ? evo.radius : lvl(d, w, 'radius');
     for (const s of (w.sweeps || [])) {
       const k = s.t / s.dur, fade = 1 - k;
-      const a0 = s.dir - s.side * d.arc / 2, a1 = a0 + s.side * d.arc * Math.min(1, k * 1.6);
       ctx.save(); ctx.translate(p.pos.x, p.pos.y);
       ctx.globalCompositeOperation = 'lighter';
-      ctx.globalAlpha = 0.30 * fade;                               // halo ταυτότητας (aqua spirit)
-      ctx.strokeStyle = s.echo ? '#bfefff' : '#3CF0E6'; ctx.lineWidth = 16;
-      ctx.beginPath(); ctx.arc(0, 0, R * 0.9, Math.min(a0, a1), Math.max(a0, a1)); ctx.stroke();
-      ctx.globalAlpha = 0.65 * fade;                               // σώμα κοψίματος
-      ctx.strokeStyle = s.echo ? '#9fdcff' : '#5df5ea'; ctx.lineWidth = 6;
-      ctx.beginPath(); ctx.arc(0, 0, R * 0.96, Math.min(a0, a1), Math.max(a0, a1)); ctx.stroke();
-      ctx.globalAlpha = 0.95 * fade;                               // λευκός πυρήνας-ακμή
-      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.6;
-      ctx.beginPath(); ctx.arc(0, 0, R, Math.min(a0, a1), Math.max(a0, a1)); ctx.stroke();
+      // ULTIMATE PASS: τρία afterimages που κυνηγούν την μπροστινή ακμή
+      for (let gi = 2; gi >= 0; gi--) {
+        const gk = Math.max(0.02, Math.min(1, k * 1.6 - gi * 0.16));
+        const a0 = s.dir - s.side * d.arc / 2, a1 = a0 + s.side * d.arc * gk;
+        const alphaMul = gi === 0 ? 1 : (gi === 1 ? 0.5 : 0.25);
+        ctx.globalAlpha = 0.30 * fade * alphaMul;                  // halo (aqua spirit)
+        ctx.strokeStyle = s.echo ? '#bfefff' : '#3CF0E6'; ctx.lineWidth = 16 - gi * 4;
+        ctx.beginPath(); ctx.arc(0, 0, R * (0.9 - gi * 0.05), Math.min(a0, a1), Math.max(a0, a1)); ctx.stroke();
+        if (gi === 0) {
+          ctx.globalAlpha = 0.65 * fade;                           // σώμα κοψίματος
+          ctx.strokeStyle = s.echo ? '#9fdcff' : '#5df5ea'; ctx.lineWidth = 6;
+          ctx.beginPath(); ctx.arc(0, 0, R * 0.96, Math.min(a0, a1), Math.max(a0, a1)); ctx.stroke();
+          ctx.globalAlpha = 0.95 * fade;                           // λευκός πυρήνας-ακμή
+          ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.6;
+          ctx.beginPath(); ctx.arc(0, 0, R, Math.min(a0, a1), Math.max(a0, a1)); ctx.stroke();
+          // σπίθες στην αιχμή της λεπίδας
+          const tipA = a1;
+          const tx = Math.cos(tipA) * R, ty = Math.sin(tipA) * R;
+          ctx.globalAlpha = 0.9 * fade; ctx.lineWidth = 1.2;
+          for (let q = 0; q < 3; q++) {
+            const qa = tipA + (q - 1) * 0.5 + s.side * 0.8;
+            ctx.beginPath(); ctx.moveTo(tx, ty);
+            ctx.lineTo(tx + Math.cos(qa) * (7 + q * 3), ty + Math.sin(qa) * (7 + q * 3)); ctx.stroke();
+          }
+          // MIRROR CASCADE: θραύσματα καθρέφτη κατά μήκος του τόξου
+          if (s.echo) {
+            ctx.fillStyle = '#e8fbff';
+            for (let q = 0; q < 5; q++) {
+              const qa = a0 + s.side * d.arc * gk * (q + 0.5) / 5;
+              const qx = Math.cos(qa) * R * 0.93, qy = Math.sin(qa) * R * 0.93;
+              ctx.globalAlpha = (0.35 + 0.3 * Math.sin(rt._t * 12 + q * 2)) * fade;
+              ctx.save(); ctx.translate(qx, qy); ctx.rotate(rt._t * 4 + q);
+              ctx.fillRect(-2.4, -3.4, 4.8, 6.8); ctx.restore();
+            }
+          }
+        }
+      }
+      // στιγμή εκκίνησης: γραμμή-στάση στον παίκτη
+      if (k < 0.3) {
+        ctx.globalAlpha = 0.6 * (1 - k / 0.3);
+        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(0, 0);
+        ctx.lineTo(Math.cos(s.dir) * 20, Math.sin(s.dir) * 20); ctx.stroke();
+      }
       ctx.restore();
     }
   },
@@ -183,7 +217,7 @@ WEAPON_EXECUTORS.storm_sash = {
       const prog = s.t / s.dur, ang = s.a0 + prog * Math.PI * 2;
       const R = R0 * (0.72 + 0.30 * Math.sin(prog * Math.PI * 4));
       s.trail.push([p.pos.x + Math.cos(ang) * R, p.pos.y + Math.sin(ang) * R]);
-      if (s.trail.length > 12) s.trail.shift();
+      if (s.trail.length > 18) s.trail.shift();
       const near = rt.game._spatialGrid ? rt.game._spatialGrid.query(p.pos.x, p.pos.y, R0 * 1.3 + 60) : rt.game.enemies;
       for (const e of near) {
         if (!e || e.hp <= 0 || s.hit.has(e)) continue;
@@ -200,17 +234,38 @@ WEAPON_EXECUTORS.storm_sash = {
     }
   },
   draw(rt, ctx, w) {
+    const p = rt.game.player;
     for (const s of (w.spins || [])) {
       if (s.t < 0 || s.trail.length < 2) continue;
+      const n = s.trail.length;
       ctx.save(); ctx.globalCompositeOperation = 'lighter';
-      ctx.globalAlpha = 0.30;                                      // halo
-      ctx.strokeStyle = w.evolved ? '#9fe8ff' : '#3CF0E6'; ctx.lineWidth = 10; ctx.lineJoin = 'round';
-      ctx.beginPath(); ctx.moveTo(s.trail[0][0], s.trail[0][1]);
-      for (const [x, y] of s.trail) ctx.lineTo(x, y); ctx.stroke();
-      ctx.globalAlpha = 0.9;                                       // λευκός πυρήνας-κορδέλα
-      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.6;
-      ctx.beginPath(); ctx.moveTo(s.trail[0][0], s.trail[0][1]);
-      for (const [x, y] of s.trail) ctx.lineTo(x, y); ctx.stroke();
+      // ULTIMATE PASS: κορδέλα με σβήσιμο κατά μήκος (η ουρά λιώνει, η κεφαλή καίει)
+      for (let q = 1; q < n; q++) {
+        const f = q / (n - 1);                                     // 0=ουρά, 1=κεφαλή
+        ctx.globalAlpha = 0.08 + 0.30 * f;                         // halo με gradient ζωής
+        ctx.strokeStyle = w.evolved ? '#9fe8ff' : '#3CF0E6';
+        ctx.lineWidth = 4 + 9 * f; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(s.trail[q - 1][0], s.trail[q - 1][1]);
+        ctx.lineTo(s.trail[q][0], s.trail[q][1]); ctx.stroke();
+        ctx.globalAlpha = 0.25 + 0.70 * f;                         // λευκός πυρήνας
+        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 0.6 + 1.4 * f;
+        ctx.beginPath(); ctx.moveTo(s.trail[q - 1][0], s.trail[q - 1][1]);
+        ctx.lineTo(s.trail[q][0], s.trail[q][1]); ctx.stroke();
+      }
+      // κεφαλή-κομήτης: λευκό-καυτός πυρήνας + έκλαμψη
+      const [hx, hy] = s.trail[n - 1];
+      ctx.globalAlpha = 0.5; ctx.fillStyle = w.evolved ? '#9fe8ff' : '#3CF0E6';
+      ctx.beginPath(); ctx.arc(hx, hy, 9, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 0.95; ctx.fillStyle = '#ffffff';
+      ctx.beginPath(); ctx.arc(hx, hy, 3, 0, Math.PI * 2); ctx.fill();
+      // ανεμο-ραβδώσεις: δύο εσωτερικά τόξα που γυρίζουν με τη δίνη
+      const prog = s.t / s.dur;
+      for (let q = 0; q < 2; q++) {
+        const wa = s.a0 + prog * Math.PI * 2 + q * Math.PI;
+        ctx.globalAlpha = 0.20;
+        ctx.strokeStyle = '#bff4ff'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(p.pos.x, p.pos.y, 34 + q * 16, wa, wa + 1.1); ctx.stroke();
+      }
       ctx.restore();
     }
   },
