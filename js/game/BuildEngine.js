@@ -796,12 +796,6 @@ export class BuildEngineRuntime {
   // Ύφος §9: 70% matte σκούρο / 20% λευκή πληροφορία / 10% neon accent, όχι glow.
   drawPanels(ctx, game) {
     try {
-      if (game.gameState === 'playing' && !game.gameOver && !game.victory) {
-        ctx.save(); ctx.globalAlpha = 0.55; ctx.fillStyle = '#4fd8ff';
-        ctx.font = 'bold 11px Consolas, monospace'; ctx.textAlign = 'left';
-        ctx.fillText('◈ P2 BUILD ENGINE ACTIVE — B on a card = banish', 150, 62);
-        ctx.restore();
-      }
       if (game.gameOver || game.victory) { this._drawDamageReport(ctx); return; }
       if (game.paused && game.gameState === 'playing' && !game.upgradeUI && !game.mutationUI && !game._stageCompleteBanner)
         this._drawBuildPanel(ctx);

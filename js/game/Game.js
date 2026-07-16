@@ -17,15 +17,15 @@ import { SupportDrone }   from '../entities/SupportDrone.js?v=20260711750000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260713600000';
 import { SystemEventManager } from './Events.js?v=20260711780000';
-import { UpgradeUI }      from './UpgradeUI.js?v=20260718600000';
+import { UpgradeUI }      from './UpgradeUI.js?v=20260718700000';
 import { weightedSample } from './Upgrades.js?v=20260712520000';
-import { BuildEngineRuntime } from './BuildEngine.js?v=20260718600000';   // P2.2 — ενεργό ΜΟΝΟ με ?p2=1
-import './BuildEngineChars1.js?v=20260718600000';   // P2.3a Taekwondo+CyberArm (side-effect register)
-import './BuildEngineChars2.js?v=20260718600000';   // P2.3b Brawler+Assassin (side-effect register)
-import './BuildEngineChars3.js?v=20260718600000';   // P2.4a Eddie+Dimi (side-effect register)
-import './BuildEngineChars4.js?v=20260718600000';   // P2.4b Phasewalker+Euclid+Oni (side-effect register)
-import './BuildEngineChars5.js?v=20260718600000';   // P2.5 Universal όπλα 21-25 (side-effect register)
-import './BuildEnginePassives.js?v=20260718600000'; // P2.6 Build passives §26-50 (generic hooks)
+import { BuildEngineRuntime } from './BuildEngine.js?v=20260718700000';   // P2.2 — ενεργό ΜΟΝΟ με ?p2=1
+import './BuildEngineChars1.js?v=20260718700000';   // P2.3a Taekwondo+CyberArm (side-effect register)
+import './BuildEngineChars2.js?v=20260718700000';   // P2.3b Brawler+Assassin (side-effect register)
+import './BuildEngineChars3.js?v=20260718700000';   // P2.4a Eddie+Dimi (side-effect register)
+import './BuildEngineChars4.js?v=20260718700000';   // P2.4b Phasewalker+Euclid+Oni (side-effect register)
+import './BuildEngineChars5.js?v=20260718700000';   // P2.5 Universal όπλα 21-25 (side-effect register)
+import './BuildEnginePassives.js?v=20260718700000'; // P2.6 Build passives §26-50 (generic hooks)
 import { MutationUI }      from './MutationUI.js?v=20260703990000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260713200000';
@@ -1144,11 +1144,11 @@ export class Game {
     // (Character Select), as START ENDLESS / START CHAOS action buttons.
     const items = ['CAMPAIGN', 'START GAME'];
     items.push('CHARACTER SELECT', 'UPGRADES', 'COLLECTIBLES', 'RELICS', 'HANGAR', 'EVOLUTION MATRIX');
-    try {   // P2.8: NULL ARSENAL — ορατό ΜΟΝΟ με ενεργό Build Engine (?p2=1 ή F9)
-      if ((typeof localStorage !== 'undefined' && localStorage.getItem('phenix_p2') === '1') ||
-          (typeof location !== 'undefined' && new URLSearchParams(location.search).get('p2') === '1'))
-        items.push('NULL ARSENAL');
-    } catch (_) {}
+    try {   // P2.7 soft migration: NULL ARSENAL πλέον default-ορατό (κρύβεται μόνο με ρητό opt-out)
+      const _p2u = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('p2') : null;
+      const _p2l = typeof localStorage !== 'undefined' ? localStorage.getItem('phenix_p2') : null;
+      if (!(_p2u === '0' || (_p2u !== '1' && _p2l === '0'))) items.push('NULL ARSENAL');
+    } catch (_) { items.push('NULL ARSENAL'); }
     items.push('SETTINGS', 'EXIT');
     return items;
   }
@@ -1159,7 +1159,7 @@ export class Game {
   // P2.8: NULL ARSENAL — DOM overlay ΠΑΝΩ από το menu (δεν αγγίζει gameState)·
   // dynamic import ώστε το module να μη βαραίνει το boot όταν το flag είναι κλειστό.
   goToNullArsenal() {
-    import('./NullArsenalUI.js?v=20260718600000')
+    import('./NullArsenalUI.js?v=20260718700000')
       .then(m => m.openNullArsenal(this))
       .catch(err => console.error('[P2.8] NULL ARSENAL failed to open', err));
   }
@@ -1313,13 +1313,18 @@ export class Game {
     // ── P2.2 BUILD ENGINE (spec docs/P2_BUILD_ENGINE_SPEC_GR.md) ────────────
     // Δημιουργείται ΜΟΝΟ με ?p2=1 στο URL — χωρίς το flag μένει null και ΚΑΜΙΑ
     // συμπεριφορά δεν αλλάζει (όλα τα hooks είναι optional-chained).
+    // P2.7 SOFT MIGRATION (Maria 2026-07-16): το Build Engine είναι πλέον DEFAULT ON
+    // για όλους. Απενεργοποιείται ΜΟΝΟ ρητά (?p2=0 ή F9 -> phenix_p2='0'). Το παλιό
+    // weapon/upgrade σύστημα παραμένει άθικτο στον κώδικα ως δίχτυ ασφαλείας —
+    // το ΠΛΗΡΕΣ migration (απόσυρση old-gen, ενιαία ονόματα, 2T/1R/1A) έπεται.
     this.buildEngine = null;
     try {
-      const _p2url = typeof location !== 'undefined' && new URLSearchParams(location.search).get('p2') === '1';
-      const _p2ls  = typeof localStorage !== 'undefined' && localStorage.getItem('phenix_p2') === '1';
-      if (_p2url || _p2ls) this.buildEngine = new BuildEngineRuntime(this);
-      else console.log('[P2] Build Engine INACTIVE — add ?p2=1 to the URL or press F9 in the menu, then start a run');
-    } catch (_) { this.buildEngine = null; }
+      const _p2url = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('p2') : null;
+      const _p2ls  = typeof localStorage !== 'undefined' ? localStorage.getItem('phenix_p2') : null;
+      const _off = _p2url === '0' || (_p2url !== '1' && _p2ls === '0');
+      if (!_off) this.buildEngine = new BuildEngineRuntime(this);
+      else console.log('[P2] Build Engine DISABLED by user (?p2=0 / F9) — press F9 in the menu to re-enable');
+    } catch (_) { try { this.buildEngine = new BuildEngineRuntime(this); } catch (_2) { this.buildEngine = null; } }
 
     // ── Tactical Cache Weapons — independent map objects, 100% decoupled from player ──
     this.tacticalCacheWeapons = [];
