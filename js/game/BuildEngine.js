@@ -192,7 +192,8 @@ export class BuildEngineRuntime {
       if (s.shock !== undefined) { s.shock -= dt; if (s.shock <= 0) delete s.shock; }
       if (s.fear !== undefined) { s.fear -= dt; if (s.fear <= 0) delete s.fear; }
       if (s.sanction !== undefined) { s.sanction -= dt; if (s.sanction <= 0) delete s.sanction; }
-      if (!s.burn && !s.poison && s.shock === undefined && s.fear === undefined && s.sanction === undefined) this._status.delete(e);
+      if (s.shred !== undefined) { s.shred -= dt; if (s.shred <= 0) delete s.shred; }
+      if (!s.burn && !s.poison && s.shock === undefined && s.fear === undefined && s.sanction === undefined && s.shred === undefined) this._status.delete(e);
     }
     for (let i = this.patches.length - 1; i >= 0; i--) {
       const pa = this.patches[i]; pa.t += dt; pa.next -= dt;
@@ -333,8 +334,9 @@ export class BuildEngineRuntime {
     const g = this.game;
     if (!e || e.hp <= 0) return false;
     let dmg = raw * (crit ? (weaponId === 'grave_cantor' || weaponId === 'be_revenant_choir' ? 1.5 : 1.6) : 1);
-    const _sanc = this._status.get(e)?.sanction;                 // Dimi Sanction Mark (P2.4a)
-    if (_sanc) dmg *= 1 + 0.12 + (this._catalystSum('markBonus') || 0);
+    const _est = this._status.get(e);
+    if (_est?.sanction) dmg *= 1 + 0.12 + (this._catalystSum('markBonus') || 0);   // Dimi Sanction Mark (P2.4a)
+    if (_est?.shred) dmg *= 1.15;                                  // Grey-Goo nanite shred (P2.5)
     const boss = (e.isBoss?.() || e.isMegaBoss);
     if (boss) dmg = g._capBossDamage(e, dmg * bossMult);
     e.takeHit(dmg, g);
