@@ -139,6 +139,10 @@ export function singleTargetDps(def, level) {
 const CARD_COLOR = { weapon: '#e9ecf2', passive: '#4fd8ff', evolution: '#ffd447' };
 const FX_CAP = 48, NOVA_CAP = 2;
 
+// P2.3+: pluggable executors — κάθε char-module κάνει register το δικό του όπλο:
+// WEAPON_EXECUTORS[id] = { update(rt, w, dt), draw(rt, ctx, w) }
+export const WEAPON_EXECUTORS = {};
+
 export class BuildEngineRuntime {
   constructor(game) {
     this.game     = game;
@@ -150,6 +154,53 @@ export class BuildEngineRuntime {
     this.novas    = [];          // Marrow Reactor rings
     this.fx       = [];          // transient rings/motes (bounded FX_CAP)
     this._t       = 0;
+    this._status  = new Map();   // enemy -> { shock, fear, burn:{t,dps,wid}, poison:{stacks,t,wid} }
+    this.patches  = [];          // burn patches (λιωμένο μέταλλο/μάγμα) — cap 8
+  }
+
+  // ── STATUS LAYER (P2.3+): shock/burn/poison/fear με caps & boss immunity ────
+  _st(e) { let s = this._status.get(e); if (!s) { s = {}; this._status.set(e, s); } return s; }
+  applyShock(e, dur) {
+    if (e.isBoss?.() || e.isMegaBoss) return;
+    e.slowTimer = Math.max(e.slowTimer || 0, dur); e.slowFactor = 0.02;
+    this._st(e).shock = dur;
+    if (this.fx.length < FX_CAP) this.fx.push({ kind: 'spark', x: e.pos.x, y: e.pos.y, r: e.radius + 6, t: 0, life: 0.22 });
+  }
+  applyBurn(e, dps, dur, wid) { const s = this._st(e); s.burn = { t: dur, dps, wid, next: 0 }; }
+  applyPoison(e, wid, addStacks = 1, maxStacks = 8) {
+    const s = this._st(e); const p = s.poison || { stacks: 0, t: 0, wid, next: 0 };
+    p.stacks = Math.min(maxStacks, p.stacks + addStacks); p.t = 3.0; p.wid = wid; s.poison = p;
+  }
+  applyFear(e, dur) {
+    if (e.isBoss?.() || e.isMegaBoss) return;
+    e.slowTimer = Math.max(e.slowTimer || 0, dur); e.slowFactor = Math.min(e.slowFactor ?? 1, 0.35);
+    this._st(e).fear = dur;
+  }
+  addBurnPatch(x, y, radius, dps, dur, wid, col) {
+    if (this.patches.length >= 8) this.patches.shift();
+    this.patches.push({ x, y, radius, dps, dur, wid, col: col || '#ff9b3c', t: 0, next: 0 });
+  }
+  _tickStatus(dt) {
+    for (const [e, s] of this._status) {
+      if (!e || e.hp <= 0) { this._status.delete(e); continue; }
+      if (s.burn) { s.burn.t -= dt; s.burn.next -= dt;
+        if (s.burn.next <= 0) { s.burn.next = 0.5; this._dealDamage(s.burn.wid, e, s.burn.dps * 0.5, 0.7, false); }
+        if (s.burn.t <= 0) delete s.burn; }
+      if (s.poison) { s.poison.t -= dt; s.poison.next -= dt;
+        if (s.poison.next <= 0) { s.poison.next = 0.5; this._dealDamage(s.poison.wid, e, s.poison.stacks * 1.3, 0.7, false); }
+        if (s.poison.t <= 0) delete s.poison; }
+      if (s.shock !== undefined) { s.shock -= dt; if (s.shock <= 0) delete s.shock; }
+      if (s.fear !== undefined) { s.fear -= dt; if (s.fear <= 0) delete s.fear; }
+      if (!s.burn && !s.poison && s.shock === undefined && s.fear === undefined) this._status.delete(e);
+    }
+    for (let i = this.patches.length - 1; i >= 0; i--) {
+      const pa = this.patches[i]; pa.t += dt; pa.next -= dt;
+      if (pa.next <= 0) { pa.next = 0.5;
+        const near = this.game._spatialGrid ? this.game._spatialGrid.query(pa.x, pa.y, pa.radius + 60) : this.game.enemies;
+        for (const e of near) { if (e && e.hp > 0 && Math.hypot(e.pos.x - pa.x, e.pos.y - pa.y) < pa.radius + e.radius)
+          this._dealDamage(pa.wid, e, pa.dps * 0.5, 0.7, false); } }
+      if (pa.t >= pa.dur) this.patches.splice(i, 1);
+    }
   }
 
   // ── stats με catalyst bonuses (single source: DEFS) ─────────────────────────
@@ -203,12 +254,14 @@ export class BuildEngineRuntime {
   _evolve(weaponId) {
     const w = this.weapons.get(weaponId);
     if (w) { w.evolved = true; w.level = 5; w.charge = 0; }
-    const name = weaponId === 'marrow_spitter'
-      ? EVOLUTION_RECIPES.be_marrow_reactor.name : EVOLUTION_RECIPES.be_revenant_choir.name;
+    let name = weaponId;
+    for (const r of Object.values(EVOLUTION_RECIPES)) if (r.weapon === weaponId) { name = r.name; break; }
     this.game.triggerAnnouncement?.('◈ EVOLUTION — ' + name.toUpperCase() + ' ◈', CARD_COLOR.evolution);
   }
   _evolutionReady() {
     for (const [eid, r] of Object.entries(EVOLUTION_RECIPES)) {
+      const wd = WEAPON_DEFS[r.weapon];
+      if (wd?.owner && wd.owner !== this.game.selectedCharacter) continue;   // native evolutions ΜΟΝΟ στον ιδιοκτήτη
       const w = this.weapons.get(r.weapon);
       if (w && !w.evolved && w.level >= r.weaponLevel && (this.passives.get(r.passive) || 0) >= r.passiveLevel)
         return { eid, recipe: r };
@@ -237,12 +290,12 @@ export class BuildEngineRuntime {
     }
 
     // 2) Weighted pool: όπλα (νέα/level-up) + catalysts
-    const isOwner = g.selectedCharacter === 'skeleton_warrior';
     const cand = [];
     for (const [wid, d] of Object.entries(WEAPON_DEFS)) {
+      if (d.external) continue;                     // data-wrap παλιού συστήματος — δεν προσφέρεται ως κάρτα
       const w = this.weapons.get(wid);
       if (w && (w.level >= 5 || w.evolved)) continue;
-      const wt = (w ? 2 : 3) * (isOwner ? 3 : 1);   // native x3 στον ιδιοκτήτη
+      const wt = (w ? 2 : 3) * (d.owner === g.selectedCharacter ? 3 : 1);   // native x3 στον ιδιοκτήτη
       cand.push({ wt, card: mk('be_w_' + wid, d.name,
         (w ? 'Level ' + (w.level + 1) + ' — ' : 'NEW WEAPON — ') + d.desc +
         '  [SINGLE-TARGET DPS ' + singleTargetDps(d, (w?.level || 0) + 1) + ']',
@@ -286,9 +339,12 @@ export class BuildEngineRuntime {
     if (!g.player) return;
     this._t += dt;
     for (const w of this.weapons.values()) {
-      if (w.id === 'marrow_spitter') this._updateSpitter(w, dt);
+      const ex = WEAPON_EXECUTORS[w.id];
+      if (ex) ex.update(this, w, dt);
+      else if (w.id === 'marrow_spitter') this._updateSpitter(w, dt);
       else if (w.id === 'grave_cantor') this._updateCantor(w, dt);
     }
+    this._tickStatus(dt);
     this._updateShards(dt);
     this._updateNovas(dt);
     for (let i = this.fx.length - 1; i >= 0; i--) { this.fx[i].t += dt; if (this.fx[i].t >= this.fx[i].life) this.fx.splice(i, 1); }
@@ -517,17 +573,54 @@ export class BuildEngineRuntime {
         }
         for (const sk of w.skulls) this._drawSkull(ctx, sk, w.evolved);
       }
-      // transient fx (pulse rings)
+      // P2.3+ executors: κάθε όπλο ζωγραφίζει τα δικά του (ίδια συνταγή ultimates)
+      for (const w of this.weapons.values()) WEAPON_EXECUTORS[w.id]?.draw?.(this, ctx, w);
+      // burn patches (λιωμένο μέταλλο / μάγμα)
+      for (const pa of this.patches) {
+        const fade = 1 - pa.t / pa.dur;
+        ctx.save(); ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.16 * fade; ctx.fillStyle = pa.col;
+        ctx.beginPath(); ctx.arc(pa.x, pa.y, pa.radius, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = 0.5 * fade; ctx.strokeStyle = pa.col; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(pa.x, pa.y, pa.radius * (0.7 + 0.3 * Math.sin(this._t * 5)), 0, Math.PI * 2); ctx.stroke();
+        ctx.globalAlpha = 0.7 * fade; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(pa.x, pa.y, pa.radius, 0, Math.PI * 2); ctx.stroke();
+        ctx.restore();
+      }
+      // transient fx (pulse / shockring / spark / windcut)
       for (const f of this.fx) {
-        if (f.kind !== 'pulse') continue;
         const k = f.t / f.life;
         ctx.save(); ctx.globalCompositeOperation = 'lighter';
-        ctx.globalAlpha = 0.5 * (1 - k);
-        ctx.strokeStyle = '#9fdcff'; ctx.lineWidth = 3 - 2 * k;
-        ctx.beginPath(); ctx.arc(f.x, f.y, f.r * (0.25 + 0.75 * k), 0, Math.PI * 2); ctx.stroke();
-        ctx.globalAlpha = 0.9 * (1 - k);
-        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.arc(f.x, f.y, f.r * (0.25 + 0.75 * k) - 4, 0, Math.PI * 2); ctx.stroke();
+        if (f.kind === 'pulse') {
+          ctx.globalAlpha = 0.5 * (1 - k);
+          ctx.strokeStyle = '#9fdcff'; ctx.lineWidth = 3 - 2 * k;
+          ctx.beginPath(); ctx.arc(f.x, f.y, f.r * (0.25 + 0.75 * k), 0, Math.PI * 2); ctx.stroke();
+          ctx.globalAlpha = 0.9 * (1 - k);
+          ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.arc(f.x, f.y, f.r * (0.25 + 0.75 * k) - 4, 0, Math.PI * 2); ctx.stroke();
+        } else if (f.kind === 'shockring') {
+          ctx.globalAlpha = 0.45 * (1 - k);
+          ctx.strokeStyle = f.col || '#FF9B3C'; ctx.lineWidth = 4 - 3 * k;
+          ctx.beginPath(); ctx.arc(f.x, f.y, f.r * (0.3 + 0.7 * k), 0, Math.PI * 2); ctx.stroke();
+          ctx.globalAlpha = 0.8 * (1 - k);
+          ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.arc(f.x, f.y, f.r * (0.3 + 0.7 * k) - 3, 0, Math.PI * 2); ctx.stroke();
+        } else if (f.kind === 'spark') {
+          ctx.globalAlpha = 0.85 * (1 - k);
+          ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.4;
+          for (let q = 0; q < 4; q++) { const qa = q * Math.PI / 2 + k * 2;
+            ctx.beginPath(); ctx.moveTo(f.x + Math.cos(qa) * 3, f.y + Math.sin(qa) * 3);
+            ctx.lineTo(f.x + Math.cos(qa) * (f.r * (0.5 + k)), f.y + Math.sin(qa) * (f.r * (0.5 + k))); ctx.stroke(); }
+        } else if (f.kind === 'windcut') {
+          ctx.globalAlpha = 0.35 * (1 - k);
+          ctx.strokeStyle = '#9fe8ff'; ctx.lineWidth = 6 - 4 * k;
+          ctx.beginPath(); ctx.moveTo(f.x, f.y);
+          ctx.lineTo(f.x + Math.cos(f.a) * f.len * (0.4 + 0.6 * k), f.y + Math.sin(f.a) * f.len * (0.4 + 0.6 * k)); ctx.stroke();
+          ctx.globalAlpha = 0.9 * (1 - k);
+          ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.2;
+          ctx.beginPath(); ctx.moveTo(f.x, f.y);
+          ctx.lineTo(f.x + Math.cos(f.a) * f.len * (0.4 + 0.6 * k), f.y + Math.sin(f.a) * f.len * (0.4 + 0.6 * k)); ctx.stroke();
+        }
         ctx.restore();
       }
     } finally {
