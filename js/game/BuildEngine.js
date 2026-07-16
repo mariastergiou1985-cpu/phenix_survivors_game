@@ -423,8 +423,8 @@ export class BuildEngineRuntime {
     if (_est?.shred) dmg *= 1.15;                                  // Grey-Goo nanite shred / Armor Fracture
     const _depth = this._hookDepth || 0;
     const _tags = (WEAPON_DEFS[weaponId] || EVOLUTION_RECIPES[weaponId])?.tags || [];
-    if (_depth === 0)                                              // P2.6 modDamage (ΠΡΙΝ τα boss caps)
-      for (const h of RUNTIME_HOOKS.modDamage) { const m = h(this, e, weaponId, _tags, dmg); if (m > 0) dmg *= m; }
+    if (_depth === 0)                                              // P2.6 modDamage (ΠΡΙΝ τα boss caps) — armored
+      for (const h of RUNTIME_HOOKS.modDamage) { try { const m = h(this, e, weaponId, _tags, dmg); if (m > 0) dmg *= m; } catch (_e) {} }
     const boss = (e.isBoss?.() || e.isMegaBoss);
     if (boss) dmg = g._capBossDamage(e, dmg * bossMult);
     e.takeHit(dmg, g);
@@ -433,8 +433,8 @@ export class BuildEngineRuntime {
     if (_depth === 0) {                                            // P2.6 events (depth guard: όχι σε echoes)
       this._hookDepth = 1;
       try {
-        for (const h of RUNTIME_HOOKS.onDamage) h(this, e, weaponId, _tags, dmg, crit, kill);
-        if (kill) for (const h of RUNTIME_HOOKS.onKill) h(this, e, weaponId, _tags, dmg);
+        for (const h of RUNTIME_HOOKS.onDamage) { try { h(this, e, weaponId, _tags, dmg, crit, kill); } catch (_e) {} }
+        if (kill) for (const h of RUNTIME_HOOKS.onKill) { try { h(this, e, weaponId, _tags, dmg); } catch (_e) {} }
       } finally { this._hookDepth = 0; }
     }
     return true;
@@ -446,14 +446,18 @@ export class BuildEngineRuntime {
     if (!g.player) return;
     this._t += dt;
     for (const w of this.weapons.values()) {
-      const ex = WEAPON_EXECUTORS[w.id];
-      if (ex) ex.update(this, w, dt);
-      else if (w.id === 'marrow_spitter') this._updateSpitter(w, dt);
-      else if (w.id === 'grave_cantor') this._updateCantor(w, dt);
+      try {                                                        // armor: ανά όπλο
+        const ex = WEAPON_EXECUTORS[w.id];
+        if (ex) ex.update(this, w, dt);
+        else if (w.id === 'marrow_spitter') this._updateSpitter(w, dt);
+        else if (w.id === 'grave_cantor') this._updateCantor(w, dt);
+      } catch (e) { if ((w._errs = (w._errs || 0) + 1) <= 2) console.error('[P2] weapon "' + w.id + '" update error', e); }
     }
-    this._tickStatus(dt);
+    try { this._tickStatus(dt); } catch (e) { console.error('[P2] status tick error', e); }
     this._hookDepth = 0;
-    for (const h of RUNTIME_HOOKS.tick) h(this, dt);               // P2.6 passive ticks
+    for (const h of RUNTIME_HOOKS.tick) {                          // armor: ανά passive tick
+      try { h(this, dt); } catch (e) { if ((this._tickErrs = (this._tickErrs || 0) + 1) <= 2) console.error('[P2] passive tick error', e); }
+    }
     this._updateShards(dt);
     this._updateNovas(dt);
     for (let i = this.fx.length - 1; i >= 0; i--) { this.fx[i].t += dt; if (this.fx[i].t >= this.fx[i].life) this.fx.splice(i, 1); }
@@ -723,8 +727,11 @@ export class BuildEngineRuntime {
         }
         for (const sk of w.skulls) this._drawSkull(ctx, sk, w.evolved);
       }
-      // P2.3+ executors: κάθε όπλο ζωγραφίζει τα δικά του (ίδια συνταγή ultimates)
-      for (const w of this.weapons.values()) WEAPON_EXECUTORS[w.id]?.draw?.(this, ctx, w);
+      // P2.3+ executors: κάθε όπλο ζωγραφίζει τα δικά του (armored — ένα σπασμένο δεν ρίχνει τα άλλα)
+      for (const w of this.weapons.values()) {
+        try { WEAPON_EXECUTORS[w.id]?.draw?.(this, ctx, w); }
+        catch (e) { if ((w._drawErrs = (w._drawErrs || 0) + 1) <= 2) console.error('[P2] weapon "' + w.id + '" draw error', e); }
+      }
       // burn patches (λιωμένο μέταλλο / μάγμα)
       for (const pa of this.patches) {
         const fade = 1 - pa.t / pa.dur;

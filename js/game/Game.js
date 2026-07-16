@@ -17,15 +17,15 @@ import { SupportDrone }   from '../entities/SupportDrone.js?v=20260711750000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260713600000';
 import { SystemEventManager } from './Events.js?v=20260711780000';
-import { UpgradeUI }      from './UpgradeUI.js?v=20260718800000';
+import { UpgradeUI }      from './UpgradeUI.js?v=20260719000000';
 import { weightedSample } from './Upgrades.js?v=20260712520000';
-import { BuildEngineRuntime } from './BuildEngine.js?v=20260718800000';   // P2.2 — ενεργό ΜΟΝΟ με ?p2=1
-import './BuildEngineChars1.js?v=20260718800000';   // P2.3a Taekwondo+CyberArm (side-effect register)
-import './BuildEngineChars2.js?v=20260718800000';   // P2.3b Brawler+Assassin (side-effect register)
-import './BuildEngineChars3.js?v=20260718800000';   // P2.4a Eddie+Dimi (side-effect register)
-import './BuildEngineChars4.js?v=20260718800000';   // P2.4b Phasewalker+Euclid+Oni (side-effect register)
-import './BuildEngineChars5.js?v=20260718800000';   // P2.5 Universal όπλα 21-25 (side-effect register)
-import './BuildEnginePassives.js?v=20260718800000'; // P2.6 Build passives §26-50 (generic hooks)
+import { BuildEngineRuntime } from './BuildEngine.js?v=20260719000000';   // P2.2 — ενεργό ΜΟΝΟ με ?p2=1
+import './BuildEngineChars1.js?v=20260719000000';   // P2.3a Taekwondo+CyberArm (side-effect register)
+import './BuildEngineChars2.js?v=20260719000000';   // P2.3b Brawler+Assassin (side-effect register)
+import './BuildEngineChars3.js?v=20260719000000';   // P2.4a Eddie+Dimi (side-effect register)
+import './BuildEngineChars4.js?v=20260719000000';   // P2.4b Phasewalker+Euclid+Oni (side-effect register)
+import './BuildEngineChars5.js?v=20260719000000';   // P2.5 Universal όπλα 21-25 (side-effect register)
+import './BuildEnginePassives.js?v=20260719000000'; // P2.6 Build passives §26-50 (generic hooks)
 import { MutationUI }      from './MutationUI.js?v=20260703990000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260713200000';
@@ -1163,7 +1163,7 @@ export class Game {
   // P2.8: NULL ARSENAL — DOM overlay ΠΑΝΩ από το menu (δεν αγγίζει gameState)·
   // dynamic import ώστε το module να μη βαραίνει το boot όταν το flag είναι κλειστό.
   goToNullArsenal() {
-    import('./NullArsenalUI.js?v=20260718800000')
+    import('./NullArsenalUI.js?v=20260719000000')
       .then(m => m.openNullArsenal(this))
       .catch(err => console.error('[P2.8] NULL ARSENAL failed to open', err));
   }
@@ -8307,7 +8307,21 @@ export class Game {
     // Π1 horde pass: one grid rebuild per frame feeds every hot collision loop below.
     (this._spatialGrid ||= new SpatialGrid(128)).rebuild(this.enemies);
     this._updateProjectiles(_hsDt);
-    this.buildEngine?.update(_hsDt);                          // P2.2 (?p2=1 μόνο) — μετά το grid rebuild
+    // P2 BLACK-SCREEN ARMOR (bug report Maria: μαύρη οθόνη ~5:00 Endless/Chaos):
+    // αν το Build Engine σκάσει, ΔΕΝ ρίχνει το frame — logάρεται, και μετά από 30
+    // συνεχόμενα errors μπαίνει SAFE MODE (BE off για το run, το παιχνίδι συνεχίζει).
+    if (this.buildEngine) {
+      try { this.buildEngine.update(_hsDt); this._beErrs = 0; }
+      catch (beErr) {
+        this._beErrs = (this._beErrs || 0) + 1;
+        if (this._beErrs <= 3) console.error('[P2] BuildEngine update error #' + this._beErrs + ' at t=' + Math.round(this.timeAlive) + 's', beErr);
+        if (this._beErrs >= 30) {
+          console.error('[P2] BuildEngine SAFE MODE — απενεργοποιήθηκε για αυτό το run (30 συνεχόμενα errors)');
+          this.triggerAnnouncement?.('◈ BUILD ENGINE SAFE MODE ◈', '#ff6a7a');
+          this.buildEngine = null;
+        }
+      }
+    }
     this._updateHomingDiscs(_hsDt);
     this._updateChainLightning(dt);
     this._updateNeonPierceBeam(dt);
@@ -18905,7 +18919,13 @@ export class Game {
     this._drawVesselRockets(ctx);        // Vessel companion auto-aim purple rockets
     this._drawWeaponAccents(ctx);                             // cinematic accents UNDER the art
     this._drawEvoFx(ctx);                                     // NEW-GEN procedural evolutions
-    this.buildEngine?.draw(ctx);                              // P2.2 Build Engine (?p2=1 μόνο)
+    if (this.buildEngine) {                                   // P2 armor: το draw δεν ρίχνει ΠΟΤΕ το frame
+      try { this.buildEngine.draw(ctx); }
+      catch (beErr) {
+        this._beDrawErrs = (this._beDrawErrs || 0) + 1;
+        if (this._beDrawErrs <= 3) console.error('[P2] BuildEngine draw error #' + this._beDrawErrs, beErr);
+      }
+    }
     this._drawCarriedCores(ctx);                              // courier: orbiting carried cores
     this._drawCoreThieves(ctx);                               // defense: thieves + stolen loot
     this._drawBossNovas(ctx);                                 // boss evolution: nova telegraphs
