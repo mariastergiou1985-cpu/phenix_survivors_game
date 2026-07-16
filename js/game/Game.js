@@ -1546,6 +1546,9 @@ export class Game {
       this.selectedCharacter = charId;
       this.audio?.startGameplayMusic();
       this.gameState = 'playing';
+      this.paused = false;                 // FROZEN-CLOCK FIX (2026-07-16): reset() never cleared a stale
+      this._stageCompleteBanner = null;    // stage-complete pause — starting the next stage inside the 4.2s
+      this._stageCompletePausedAt = 0;     // banner window began the run PAUSED (timer stuck at 00:00 forever).
       this.reset();
       this._applyCampaignStage();   // if a campaign stage was picked, apply its map + rules to this run
     });
@@ -1759,7 +1762,10 @@ export class Game {
     this._campaignStage = 0;
     this.paused = true;
     this._stageCompletePausedAt = (typeof performance !== 'undefined' ? performance.now() : Date.now());  // Phase 15 watchdog anchor
-    setTimeout(() => { try { this._stageCompletePausedAt = 0; this.paused = false; this._stageCompleteBanner = null; this.goToCampaign(); } catch (_) {} }, 4200);
+    setTimeout(() => { try {
+      if (!this._stageCompleteBanner) return;   // player already moved on (fast taps) — don't yank a live run
+      this._stageCompletePausedAt = 0; this.paused = false; this._stageCompleteBanner = null; this.goToCampaign();
+    } catch (_) {} }, 4200);
   }
 
   // Phase 15 — anti-freeze watchdog: if a stage-complete pause ever fails to release (dropped
@@ -1859,7 +1865,13 @@ export class Game {
 
   // ── Screen transition: fade out → run callback (state swap) → fade in ──────
   _transition(cb) {
-    if (this._fadeDir !== 0) return;   // already transitioning
+    // MOBILE-CRITICAL FIX (2026-07-16, verified live): this used to silently DROP the
+    // callback while a fade was running (~1.5-2s after every screen change). Fast taps
+    // (which is every phone user) hit that window constantly -> "buttons do nothing".
+    // Now the latest intent always wins: mid fade-out we swap the callback; mid fade-in
+    // we reverse back out with the new one. Nothing is ever swallowed.
+    if (this._fadeDir === 1)  { this._fadeCb = cb; return; }
+    if (this._fadeDir === -1) { this._fadeCb = cb; this._fadeDir = 1; return; }
     this._fadeDir = 1;                 // start fading to black
     this._fadeAlpha = 0;
     this._fadeCb = cb;
