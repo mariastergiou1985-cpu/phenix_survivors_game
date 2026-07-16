@@ -7,7 +7,7 @@
 // lighter, φάσεις, caps, ΚΑΝΕΝΑ PNG, μηδέν shadowBlur.
 // ═══════════════════════════════════════════════════════════════════════════════
 import { WEAPON_DEFS, PASSIVE_DEFS, EVOLUTION_RECIPES, WEAPON_EXECUTORS }
-  from './BuildEngine.js?v=20260719200000';
+  from './BuildEngine.js?v=20260719900000';
 
 // ── κοινά helpers του module ─────────────────────────────────────────────────
 function aimAngle(rt) {

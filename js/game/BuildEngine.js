@@ -885,8 +885,11 @@ export class BuildEngineRuntime {
       } catch (_) {}
     }
     const W = ctx.canvas.width, H = ctx.canvas.height;
-    const w = 560, x = (W - w) / 2, top = rows.slice(0, 8);
-    const h = 52 + top.length * 16 + 26, y = H - h - 16;
+    // Maria 2026-07-16: το panel έπεφτε ΠΑΝΩ στα κουμπιά RETURN/CONTINUE των end screens
+    // (κέντρο-κάτω) και μπλόκαρε τη συνέχεια σε Endless/Chaos. Μεταφέρθηκε ΠΑΝΩ-ΑΡΙΣΤΕΡΑ —
+    // εκεί υπάρχει μόνο θαμπωμένο HUD, ποτέ interactive στοιχεία (victory ΚΑΙ game over).
+    const w = 560, x = 16, top = rows.slice(0, 8);
+    const h = 52 + top.length * 16 + 26, y = 36;
     this._panelBox(ctx, x, y, w, h, 'DAMAGE REPORT — BUILD ENGINE (Actual Run DPS)', '#ffd447');
     ctx.font = '11px Consolas, monospace'; ctx.textAlign = 'left';
     let ty = y + 38;
