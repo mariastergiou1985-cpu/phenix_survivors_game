@@ -191,7 +191,8 @@ export class BuildEngineRuntime {
         if (s.poison.t <= 0) delete s.poison; }
       if (s.shock !== undefined) { s.shock -= dt; if (s.shock <= 0) delete s.shock; }
       if (s.fear !== undefined) { s.fear -= dt; if (s.fear <= 0) delete s.fear; }
-      if (!s.burn && !s.poison && s.shock === undefined && s.fear === undefined) this._status.delete(e);
+      if (s.sanction !== undefined) { s.sanction -= dt; if (s.sanction <= 0) delete s.sanction; }
+      if (!s.burn && !s.poison && s.shock === undefined && s.fear === undefined && s.sanction === undefined) this._status.delete(e);
     }
     for (let i = this.patches.length - 1; i >= 0; i--) {
       const pa = this.patches[i]; pa.t += dt; pa.next -= dt;
@@ -252,7 +253,8 @@ export class BuildEngineRuntime {
     this.passives.set(id, Math.min(p?.maxLevel || 3, (this.passives.get(id) || 0) + 1));
   }
   _evolve(weaponId) {
-    const w = this.weapons.get(weaponId);
+    let w = this.weapons.get(weaponId);
+    if (!w && WEAPON_DEFS[weaponId]?.external) { this.addWeapon(weaponId); w = this.weapons.get(weaponId); }
     if (w) { w.evolved = true; w.level = 5; w.charge = 0; }
     let name = weaponId;
     for (const r of Object.values(EVOLUTION_RECIPES)) if (r.weapon === weaponId) { name = r.name; break; }
@@ -263,7 +265,10 @@ export class BuildEngineRuntime {
       const wd = WEAPON_DEFS[r.weapon];
       if (wd?.owner && wd.owner !== this.game.selectedCharacter) continue;   // native evolutions ΜΟΝΟ στον ιδιοκτήτη
       const w = this.weapons.get(r.weapon);
-      if (w && !w.evolved && w.level >= r.weaponLevel && (this.passives.get(r.passive) || 0) >= r.passiveLevel)
+      if (w?.evolved) continue;
+      // external data-wrap (π.χ. Solo Red Thunder): το level ζει στο παλιό σύστημα μέχρι το P2.7
+      const wl = w ? w.level : (wd?.external ? (this.game._weaponLevels?.get(r.weapon) || 0) : 0);
+      if (wl >= r.weaponLevel && (this.passives.get(r.passive) || 0) >= r.passiveLevel)
         return { eid, recipe: r };
     }
     return null;
@@ -303,10 +308,12 @@ export class BuildEngineRuntime {
     }
     for (const [pid, p] of Object.entries(PASSIVE_DEFS)) {
       const w = this.weapons.get(p.forWeapon);
-      if (!w || w.evolved) continue;                            // catalyst μόνο αν υπάρχει το όπλο
+      const fd = WEAPON_DEFS[p.forWeapon];
+      const extLvl = (!w && fd?.external) ? (g._weaponLevels?.get(p.forWeapon) || 0) : 0;
+      if ((!w && extLvl < 1) || w?.evolved) continue;           // catalyst μόνο αν υπάρχει το όπλο (ή external με level)
       const lvl = this.passives.get(pid) || 0;
       if (lvl >= p.maxLevel) continue;
-      const wt = (w.level >= 3 ? 3 : 1);                        // x3 όταν το όπλο Lv3+
+      const wt = ((w ? w.level : extLvl) >= 3 ? 3 : 1);         // x3 όταν το όπλο Lv3+
       cand.push({ wt, card: mk('be_p_' + pid, p.name,
         (lvl ? 'Level ' + (lvl + 1) + ' — ' : '') + p.desc, CARD_COLOR.passive, '◈',
         () => self.addPassive(pid)) });
@@ -326,6 +333,8 @@ export class BuildEngineRuntime {
     const g = this.game;
     if (!e || e.hp <= 0) return false;
     let dmg = raw * (crit ? (weaponId === 'grave_cantor' || weaponId === 'be_revenant_choir' ? 1.5 : 1.6) : 1);
+    const _sanc = this._status.get(e)?.sanction;                 // Dimi Sanction Mark (P2.4a)
+    if (_sanc) dmg *= 1 + 0.12 + (this._catalystSum('markBonus') || 0);
     const boss = (e.isBoss?.() || e.isMegaBoss);
     if (boss) dmg = g._capBossDamage(e, dmg * bossMult);
     e.takeHit(dmg, g);
