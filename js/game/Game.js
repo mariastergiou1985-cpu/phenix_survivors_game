@@ -1143,7 +1143,11 @@ export class Game {
     // ENDLESS + CHAOS are no longer top-level entries — they live inside START GAME
     // (Character Select), as START ENDLESS / START CHAOS action buttons.
     const items = ['CAMPAIGN', 'START GAME'];
-    items.push('CHARACTER SELECT', 'UPGRADES', 'COLLECTIBLES', 'RELICS', 'HANGAR', 'EVOLUTION MATRIX');
+    // EVOLUTION MATRIX αφαιρέθηκε από το μενού (απόφαση Maria 2026-07-16) — το NULL
+    // ARSENAL είναι πλέον ο κατάλογος. Ο κώδικας της οθόνης (goToEvolutionMatrix)
+    // μένει ανέγγιχτος για εύκολη επαναφορά· τα old-gen evolutions αποσύρονται στο
+    // πλήρες migration ούτως ή άλλως.
+    items.push('CHARACTER SELECT', 'UPGRADES', 'COLLECTIBLES', 'RELICS', 'HANGAR');
     try {   // P2.7 soft migration: NULL ARSENAL πλέον default-ορατό (κρύβεται μόνο με ρητό opt-out)
       const _p2u = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('p2') : null;
       const _p2l = typeof localStorage !== 'undefined' ? localStorage.getItem('phenix_p2') : null;
