@@ -41,4 +41,6 @@ P2.1-P2.9 ΠΑΡΑΔΟΘΗΚΑΝ. P2.7 = SOFT MIGRATION: Build Engine DEFAULT ON
 (opt-out: ?p2=0 ή F9 -> phenix_p2='0'). Το παλιό σύστημα ΠΑΡΑΜΕΝΕΙ στον κώδικα ως
 δίχτυ ασφαλείας. Εκκρεμεί για το ΠΛΗΡΕΣ migration (μετά το feel sign-off + telemetry):
 απόσυρση old-gen WeaponCatalog evolutions, ενοποίηση be_ ονομάτων, 2T/1R/1A caps,
-TACTICALS/ELEMENTS/FUSIONS tabs στο NULL ARSENAL, αφαίρεση F9/flag.
+TACTICALS/ELEMENTS/FUSIONS tabs στο NULL ARSENAL (ενιαίο data source), αφαίρεση F9/flag,
+αφαίρεση/συγχώνευση του EVOLUTION MATRIX menu στο NULL ARSENAL (ερώτηση Maria 2026-07-16 —
+μένει όσο ζει το παλιό σύστημα, γιατί τεκμηριώνει τα old-gen evolutions που ακόμα παίζουν).
