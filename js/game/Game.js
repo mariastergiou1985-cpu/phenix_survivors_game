@@ -16644,9 +16644,19 @@ export class Game {
           if (e.hp <= 0) { e.hp = 0; e._die(this); continue; }
         }
       }
-      e.update(enemyDt, this);
+      // ═══ HORDE §27 LOD: μακρινοί (>1100px) non-elite/non-boss ενημερώνονται κάθε
+      // 3 frames με dt×3 — ίδια πραγματική ταχύτητα pursuit, 1/3 κόστος. Κοντινοί: full.
+      let _dtE = enemyDt;
+      if (!e.isBoss() && !e.isMegaBoss && !e.isElite) {
+        const _ldx = e.pos.x - this.player.pos.x, _ldy = e.pos.y - this.player.pos.y;
+        if (_ldx * _ldx + _ldy * _ldy > 1210000) {
+          e._lodSkip = (e._lodSkip || 0) + 1;
+          if (e._lodSkip % 3 !== 0) continue;    // αυτό το frame: καμία δουλειά
+          _dtE = enemyDt * 3;
+        }
+      }
+      e.update(_dtE, this);
       e.keepInBounds();
-      this._hordeSeparationQueue ||= true;   // separation pass τρέχει μετά το loop (βλ. κάτω)
 
       // Distance cull: recycle enemies that fell too far behind the player (Endless only).
       // Bosses and elites are exempt — they should always persist.
@@ -16786,7 +16796,15 @@ export class Game {
     if (this.spawnTimer >= interval) {
       this.spawnTimer = 0;
       const _alive  = this.enemies.length;
-      const _target = Math.min(_blk.targetAlive, this.enemyCap());
+      // ═══ HORDE §26: dynamic cap από average frametime — ΔΕΝ εξαφανίζονται ορατοί
+      // enemies· μειώνεται μόνο το spawn budget, και επανέρχεται σταδιακά.
+      const _nowP = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+      if (this._ftLast) this._ftAvg = (this._ftAvg || 16.7) * 0.95 + Math.min(100, _nowP - this._ftLast) * 0.05;
+      this._ftLast = _nowP;
+      this._spawnBudget = this._spawnBudget ?? 1;
+      if ((this._ftAvg || 16.7) > 16.7 * 1.15)      this._spawnBudget = Math.max(0.45, this._spawnBudget - 0.01);
+      else if ((this._ftAvg || 16.7) < 16.7 * 0.85) this._spawnBudget = Math.min(1, this._spawnBudget + 0.002);
+      const _target = Math.min(Math.round(_blk.targetAlive * this._spawnBudget), this.enemyCap());
       // §16: catch-up αν είμαστε κάτω από το quota — αλλιώς μικρό σταθερό batch
       let count = _alive < _target ? _blk.batch + Math.min(6, Math.ceil((_target - _alive) / 12))
                                    : Math.max(1, Math.round(_blk.batch / 3));
@@ -28510,15 +28528,20 @@ _drawLoreArchive(ctx) {
         if (this._frozenSleet) au.forgeWindStart?.(); else au.forgeLoopStop?.('wind');
       }
     } catch (_) {}
+    // ═══ HORDE §25: το Weather Theater είναι διακοσμητικό layer — intensity ×0.70
+    // όταν enemies > 500 και ×0.5 όσο τρέχει ultimate/boss-signature (προσέγγιση:
+    // thunderSolo + corruption beam ως ρητοί δείκτες — δηλωμένη απλοποίηση).
+    const _wm = (this.enemies.length > 500 ? 0.70 : 1)
+              * ((this.thunderSolo || this._corruptionBeam) ? 0.5 : 1);
     try {
-      if (this._lavaRainActive > 0) th.lava(ctx, t, WIDTH, HEIGHT, Math.min(1, this._lavaRainActive));
-      if (this._ddRocketShadows && this._ddRocketShadows.length) th.raid(ctx, t, WIDTH, HEIGHT, 1);
+      if (this._lavaRainActive > 0) th.lava(ctx, t, WIDTH, HEIGHT, Math.min(1, this._lavaRainActive) * _wm);
+      if (this._ddRocketShadows && this._ddRocketShadows.length) th.raid(ctx, t, WIDTH, HEIGHT, _wm);
       if (this.gridBlackoutActive) th.blackout(ctx, t, WIDTH, HEIGHT, 1);
-      if (this.endless && this._stormActive > 0) th.storm(ctx, t, WIDTH, HEIGHT, Math.min(1, this._stormActive / 3));
-      if (this._whiteoutT > 0) th.whiteout(ctx, t, WIDTH, HEIGHT, Math.min(1, this._whiteoutT));
-      if (this._murkT > 0)     th.murk(ctx, t, WIDTH, HEIGHT, Math.min(1, this._murkT));
+      if (this.endless && this._stormActive > 0) th.storm(ctx, t, WIDTH, HEIGHT, Math.min(1, this._stormActive / 3) * _wm);
+      if (this._whiteoutT > 0) th.whiteout(ctx, t, WIDTH, HEIGHT, Math.min(1, this._whiteoutT) * _wm);
+      if (this._murkT > 0)     th.murk(ctx, t, WIDTH, HEIGHT, Math.min(1, this._murkT) * _wm);
       if (this._frozenSleet && this._frozenSleet.phase !== 'fadeout') {
-        th.sleet(ctx, t, WIDTH, HEIGHT, this._frozenSleet.phase === 'hold' ? 1 : 0.6);
+        th.sleet(ctx, t, WIDTH, HEIGHT, (this._frozenSleet.phase === 'hold' ? 1 : 0.6) * _wm);
       }
     } catch (err) { console.warn('[WeatherTheater]', err); }
   }
