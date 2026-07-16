@@ -228,7 +228,7 @@ function _getPatternImage(folder, name) {
 }
 
 // Euclid Vector toxin kit — used ONLY when selectedCharacter === 'euclid_vector' (world-space).
-import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=20260716600000';
+import { ToxicSniper, OrbitalKatanaBarrier, PlagueTrailDash } from '../effects/toxic_sniper_kit_sprites.js?v=20260716700000';
 
 // ── Vessel companion placement (Ally-Walker-style escort) ───────────────────
 // The vessel flies BESIDE the player like the Kiroshi Walker ally, never on top

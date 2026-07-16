@@ -83,20 +83,43 @@ class ToxicBullet {
       const w = this.w * scale, h = this.h * scale;
       ctx.drawImage(img, -w / 2, -h / 2, w, h);
     } else {
-      // procedural toxin needle — layered like the ultimates: halo, body, white-hot core, tip
+      // ── THEOREM NEEDLE (Maria 2026-07-16, unique-signature pass) ─────────────
+      // Euclid weaponizes GEOMETRY itself: a toxin vector-dart wrapped in a rotating
+      // double proof-helix, with an axiom-triangle tip. Ultimate recipe: lighter
+      // layers, identity halo -> body -> white-hot core. No sprites, no shadowBlur.
       const w = this.w * scale, h = this.h * scale;
+      const tt = performance.now() * 0.02 + this.x * 0.05;        // helix phase
       ctx.globalCompositeOperation = 'lighter';
-      ctx.globalAlpha = alpha * 0.35;
+      ctx.globalAlpha = alpha * 0.30;                             // identity halo
       ctx.fillStyle = TOXIC;
-      ctx.fillRect(-w * 0.6, -h * 0.9, w * 1.2, h * 1.8);        // soft halo
+      ctx.fillRect(-w * 0.62, -h, w * 1.24, h * 2);
+      // vector shaft (the "line segment" — his primitive)
+      ctx.globalAlpha = alpha * 0.9;
+      ctx.strokeStyle = TOXIC; ctx.lineWidth = Math.max(1.5, h * 0.22);
+      ctx.beginPath(); ctx.moveTo(-w * 0.5, 0); ctx.lineTo(w * 0.34, 0); ctx.stroke();
+      // double proof-helix coiling around the shaft (two counter-phased sine strands)
+      ctx.lineWidth = 1.2;
+      for (const ph of [0, Math.PI]) {
+        ctx.strokeStyle = ph === 0 ? TOXIC_LITE : '#baffd0';
+        ctx.globalAlpha = alpha * 0.75;
+        ctx.beginPath();
+        for (let k = 0; k <= 6; k++) {
+          const px2 = -w * 0.5 + (w * 0.84) * (k / 6);
+          const py2 = Math.sin(tt + ph + k * 1.05) * h * 0.42;
+          k === 0 ? ctx.moveTo(px2, py2) : ctx.lineTo(px2, py2);
+        }
+        ctx.stroke();
+      }
+      // axiom tip: solid toxin triangle with a white QED core
       ctx.globalAlpha = alpha;
       ctx.fillStyle = TOXIC;
-      ctx.beginPath();                                            // needle silhouette
-      ctx.moveTo(-w / 2, -h * 0.35); ctx.lineTo(w * 0.38, -h * 0.35);
-      ctx.lineTo(w * 0.62, 0);       ctx.lineTo(w * 0.38,  h * 0.35);
-      ctx.lineTo(-w / 2,  h * 0.35); ctx.closePath(); ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(w * 0.30, -h * 0.40); ctx.lineTo(w * 0.66, 0); ctx.lineTo(w * 0.30, h * 0.40);
+      ctx.closePath(); ctx.fill();
       ctx.fillStyle = '#eaffef';
-      ctx.fillRect(-w * 0.42, -h * 0.12, w * 0.86, h * 0.24);     // white-hot core line
+      ctx.beginPath();
+      ctx.moveTo(w * 0.38, -h * 0.16); ctx.lineTo(w * 0.58, 0); ctx.lineTo(w * 0.38, h * 0.16);
+      ctx.closePath(); ctx.fill();
     }
     ctx.restore();
   }
@@ -296,32 +319,56 @@ class OrbitalKatanaBarrier {
   }
 
   _drawVectorBlade(ctx, blade) {
+    // ── AXIOM SHARD (Maria 2026-07-16, unique-signature pass) ────────────────────
+    // Not a katana: a floating THEOREM made solid. An open geometric compass-blade —
+    // two rulers meeting at an acute vertex (his angle), a taut hypotenuse edge of
+    // pure toxin, orbiting proof-dashes along it, and a burning vertex core. Pure
+    // vectors, lighter layering, zero shadowBlur (perf rule 2026-07-12).
     const bw = this.bladeWidth, bl = this.bladeLength;
     const hot = blade.flash > 0;
-    ctx.shadowColor = TOXIC; ctx.shadowBlur = hot ? 18 : 8;   // modest — for visibility, not a glow blob
-    // blade body (tip at -y/outward)
-    ctx.fillStyle = hot ? '#ffffff' : STEEL;
+    const t = performance.now() * 0.004 + blade.a;
+    ctx.globalCompositeOperation = 'lighter';
+    // identity halo along the long axis
+    ctx.globalAlpha = hot ? 0.5 : 0.25;
+    ctx.strokeStyle = TOXIC; ctx.lineWidth = bw * 0.9; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(0, -bl * 0.46); ctx.lineTo(0, bl * 0.30); ctx.stroke();
+    ctx.globalCompositeOperation = 'source-over';
+    // the two ruler-arms (dark steel with etched gradations)
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = hot ? '#eaffef' : STEEL; ctx.lineWidth = Math.max(2, bw * 0.16); ctx.lineJoin = 'round';
     ctx.beginPath();
-    ctx.moveTo(0, -bl * 0.50);
-    ctx.lineTo(bw * 0.32, -bl * 0.30);
-    ctx.lineTo(bw * 0.28,  bl * 0.16);
-    ctx.lineTo(-bw * 0.28, bl * 0.16);
-    ctx.lineTo(-bw * 0.32, -bl * 0.30);
-    ctx.closePath(); ctx.fill();
-    // bright toxic cutting edge
-    ctx.strokeStyle = hot ? '#ffffff' : TOXIC; ctx.lineWidth = Math.max(2, bw * 0.18); ctx.lineJoin = 'round';
-    ctx.beginPath();
-    ctx.moveTo(0, -bl * 0.50); ctx.lineTo(bw * 0.32, -bl * 0.30); ctx.lineTo(bw * 0.28, bl * 0.16);
+    ctx.moveTo(-bw * 0.34, bl * 0.30); ctx.lineTo(0, -bl * 0.50);   // left arm to the vertex
+    ctx.lineTo(bw * 0.34, bl * 0.30);                               // right arm back down
     ctx.stroke();
-    // darker spine
-    ctx.shadowBlur = 0;
-    ctx.strokeStyle = STEEL_DK; ctx.lineWidth = Math.max(1, bw * 0.10);
-    ctx.beginPath(); ctx.moveTo(-bw * 0.22, -bl * 0.34); ctx.lineTo(-bw * 0.20, bl * 0.12); ctx.stroke();
-    // guard + handle
-    ctx.fillStyle = hot ? '#ffffff' : TOXIC_DARK;
-    ctx.fillRect(-bw * 0.55, bl * 0.16, bw * 1.10, Math.max(2, bl * 0.055));
-    ctx.fillStyle = TOXIC_DEEP;
-    ctx.fillRect(-bw * 0.22, bl * 0.21, bw * 0.44, bl * 0.26);
+    ctx.strokeStyle = STEEL_DK; ctx.lineWidth = 1;
+    for (let k = 1; k <= 4; k++) {                                  // ruler gradations (his measurements)
+      const yy = -bl * 0.50 + (bl * 0.8) * (k / 5);
+      const xx = bw * 0.34 * (k / 5);
+      ctx.beginPath(); ctx.moveTo(-xx - 2, yy); ctx.lineTo(-xx + 2, yy); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(xx - 2, yy);  ctx.lineTo(xx + 2, yy);  ctx.stroke();
+    }
+    // the HYPOTENUSE — a taut cutting edge of pure toxin closing the triangle
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = hot ? 1 : 0.85;
+    ctx.strokeStyle = TOXIC; ctx.lineWidth = Math.max(2.5, bw * 0.20);
+    ctx.beginPath(); ctx.moveTo(-bw * 0.34, bl * 0.30); ctx.lineTo(bw * 0.34, bl * 0.30); ctx.stroke();
+    ctx.strokeStyle = '#eaffef'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(-bw * 0.34, bl * 0.295); ctx.lineTo(bw * 0.34, bl * 0.295); ctx.stroke();
+    // proof-dashes orbiting the hypotenuse (Q.E.D. ticks marching along the edge)
+    ctx.fillStyle = TOXIC_LITE;
+    for (let k = 0; k < 3; k++) {
+      const u = ((t * 0.9 + k / 3) % 1);
+      ctx.globalAlpha = 0.9 * Math.sin(u * Math.PI);
+      ctx.fillRect(-bw * 0.34 + u * bw * 0.68 - 1.5, bl * 0.24, 3, 5);
+    }
+    // burning vertex core (the acute angle itself is the weapon)
+    ctx.globalAlpha = hot ? 1 : 0.85;
+    ctx.fillStyle = TOXIC;
+    ctx.beginPath(); ctx.arc(0, -bl * 0.50, Math.max(3, bw * 0.20), 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath(); ctx.arc(0, -bl * 0.50, Math.max(1.5, bw * 0.10), 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
   }
 
   draw(ctx) {
@@ -407,6 +454,9 @@ class ToxicGasPuff {
     if (img.loaded) {
       ctx.drawImage(img, -s / 2, -s / 2, s, s);
     } else {
+      // ── PLAGUE GEOMETRY (Maria 2026-07-16, unique-signature pass): toxin mist
+      // condensing around a dissolving wireframe polygon — geometry decomposing
+      // into plague. Gradient mist body + one rotating hex skeleton + vertex motes.
       for (let k = 0; k < 3; k++) {
         const ox = Math.cos(this.rot + k * 2.1) * s * 0.12;
         const oy = Math.sin(this.rot * 1.3 + k * 2.1) * s * 0.12;
@@ -417,6 +467,26 @@ class ToxicGasPuff {
         g.addColorStop(1,   'rgba(4,40,18,0)');
         ctx.fillStyle = g;
         ctx.beginPath(); ctx.arc(ox, oy, rr, 0, Math.PI * 2); ctx.fill();
+      }
+      // dissolving hex skeleton — fades and breaks apart as the puff dies
+      const hr = s * 0.30;
+      ctx.globalAlpha = t * t * 0.55;                       // skeleton dies faster than the mist
+      ctx.strokeStyle = TOXIC_LITE; ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let k = 0; k <= 6; k++) {
+        const an = this.rot * 1.6 + k * Math.PI / 3;
+        const gap = (k + ((this.maxLife - this.life) * 2 | 0)) % 6 === 0;   // missing edges = decomposition
+        const px2 = Math.cos(an) * hr, py2 = Math.sin(an) * hr;
+        (k === 0 || gap) ? ctx.moveTo(px2, py2) : ctx.lineTo(px2, py2);
+      }
+      ctx.stroke();
+      for (let k = 0; k < 3; k++) {                         // glowing vertex motes drifting off
+        const an = this.rot * 1.6 + k * 2.09;
+        ctx.globalAlpha = t * 0.7;
+        ctx.fillStyle = k === 1 ? '#eaffef' : TOXIC;
+        ctx.beginPath();
+        ctx.arc(Math.cos(an) * hr, Math.sin(an) * hr, 1.6, 0, Math.PI * 2);
+        ctx.fill();
       }
     }
     ctx.restore();
