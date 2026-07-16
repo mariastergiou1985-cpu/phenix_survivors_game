@@ -7054,7 +7054,8 @@ export class Game {
         this._euclidDamage(e, n.dmg);
         n.hit.add(e);
         if (this.fusionClouds.length < 12) {                   // small gas puff (reuses bounded cloud cap)
-          this.fusionClouds.push({ x: e.pos.x, y: e.pos.y, t: 0, life: 1.6, fid: 'viral', dmgCd: 0.4 });
+          if (Number.isFinite(e.pos.x) && Number.isFinite(e.pos.y))   // NaN guard (Chaos root-cause 2026-07-16)
+            this.fusionClouds.push({ x: e.pos.x, y: e.pos.y, t: 0, life: 1.6, fid: 'viral', dmgCd: 0.4 });
           this.audio?.playToxicGas?.();   // gas cloud spawn sound (throttled)
         }
         n.pierceLeft -= 1;
@@ -17782,7 +17783,8 @@ export class Game {
 
     if (def.kind === 'cloud') {                                    // lingering damaging gas cloud
       if (this.fusionClouds.length < 12) {
-        this.fusionClouds.push({ x: src.pos.x, y: src.pos.y, t: 0, life: 3.5, fid, dmgCd: 0 });
+        if (Number.isFinite(src.pos.x) && Number.isFinite(src.pos.y))   // NaN guard (Chaos root-cause 2026-07-16)
+          this.fusionClouds.push({ x: src.pos.x, y: src.pos.y, t: 0, life: 3.5, fid, dmgCd: 0 });
         this.audio?.playToxicGas?.();   // gas cloud spawn (throttled 0.8s)
       }
       return;
@@ -17832,6 +17834,16 @@ export class Game {
   // tendrils in the secondary color. Birth scale-in + death dissipation. Fully procedural,
   // fixed loops only, still hard-capped at 12 clouds.
   _drawFusionClouds(ctx) {
+    // ROOT CAUSE of the Euclid+Chaos "giant zoom / vanished player" (2026-07-16, seen live):
+    // a fusion cloud entered the pool with a non-finite x/y -> createRadialGradient threw ->
+    // Game.draw ABORTED mid-camera-block every frame -> player/enemies never drawn and the
+    // partial frame looked like a corrupted zoom. Cull bad clouds + armor the whole pass.
+    { const _a = this.fusionClouds; let _w = 0;
+      for (let _i = 0; _i < _a.length; _i++) { const c = _a[_i];
+        if (Number.isFinite(c.x) && Number.isFinite(c.y) && Number.isFinite(c.t)) _a[_w++] = c; }
+      _a.length = _w; }
+    const _tf = ctx.getTransform();
+    try {
     for (const c of this.fusionClouds) {
       const def = FUSION_FX[c.fid] || {}; const R = (def.radius || 70);
       const c1 = def.c1 || '#7CFF4D', c2 = def.c2 || '#8fdf7f';
@@ -17925,6 +17937,11 @@ export class Game {
       ctx.restore();
     }
     ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; ctx.shadowBlur = 0; ctx.filter = 'none';
+    } catch (err) { console.warn('[FusionClouds draw]', err);
+    } finally {
+      ctx.setTransform(_tf);
+      ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; ctx.shadowBlur = 0;
+    }
   }
 
   // Storm Execution Protocol reward — a battlefield storm that periodically zaps NORMAL enemies only.
