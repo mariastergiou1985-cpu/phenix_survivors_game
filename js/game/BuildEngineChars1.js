@@ -7,7 +7,7 @@
 // lighter, φάσεις, caps, ΚΑΝΕΝΑ PNG, μηδέν shadowBlur.
 // ═══════════════════════════════════════════════════════════════════════════════
 import { WEAPON_DEFS, PASSIVE_DEFS, EVOLUTION_RECIPES, WEAPON_EXECUTORS }
-  from './BuildEngine.js?v=20260719000000';
+  from './BuildEngine.js?v=20260719200000';
 
 // ── κοινά helpers του module ─────────────────────────────────────────────────
 function aimAngle(rt) {
@@ -293,6 +293,7 @@ PASSIVE_DEFS.pressure_chamber = {
   desc: 'Compressed pressure — faster windup, heavier hit. Powers the Foundry Piston.',
 };
 EVOLUTION_RECIPES.be_foundry_piston = {
+  canBlockHostileProjectiles: true,   // HORDE §14: Piston Rampart τείχος
   name: 'Foundry Piston', weapon: 'hydraulic_knuckle', passive: 'pressure_chamber',
   weaponLevel: 5, passiveLevel: 3,
   damage: 54, cooldown: 1.00, length: 210, width: 44,
@@ -318,6 +319,13 @@ WEAPON_EXECUTORS.hydraulic_knuckle = {
       if (!pu.fired && pu.t >= pu.wind) {
         pu.fired = true; pu.x = p.pos.x; pu.y = p.pos.y;           // εκτόξευση από τρέχουσα θέση
         this._strike(rt, w, pu, 1);
+        // HORDE §14 canBlockHostileProjectiles (evolved Piston Rampart): η γροθιά
+        // λειτουργεί στιγμιαία ως τείχος για κανονικά εχθρικά bullets.
+        if (w.evolved) {
+          const L = evo.length;
+          (rt.game._projectileBlockers ||= []).push(
+            { x: pu.x + Math.cos(pu.dir) * L, y: pu.y + Math.sin(pu.dir) * L, r: 46 });
+        }
         if (w.evolved) pu.secondAt = pu.t + evo.doubleHit.delay;
       }
       if (w.evolved && pu.fired && !pu.second && pu.secondAt && pu.t >= pu.secondAt) {

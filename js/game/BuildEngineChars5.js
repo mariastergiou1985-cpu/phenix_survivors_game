@@ -7,7 +7,7 @@
 // Συνταγή ultimates: halo -> σώμα -> λευκός πυρήνας, lighter, caps, ΚΑΝΕΝΑ PNG.
 // ═══════════════════════════════════════════════════════════════════════════════
 import { WEAPON_DEFS, PASSIVE_DEFS, EVOLUTION_RECIPES, WEAPON_EXECUTORS }
-  from './BuildEngine.js?v=20260719000000';
+  from './BuildEngine.js?v=20260719200000';
 
 function aimAngle(rt) {
   const p = rt.game.player, e = rt._nearestEnemy(p.pos.x, p.pos.y);
@@ -158,6 +158,7 @@ WEAPON_EXECUTORS.null_lance = {
 // ═══ 22 · ION HALO — orbit με μεταβλητή ακτίνα, hits = charge -> chain lightning ·
 //        Conductive Crown -> BE_SOVEREIGN_ION_HALO (ομόκεντροι + θόλος) ═══
 WEAPON_DEFS.ion_halo = {
+  canBlockHostileProjectiles: true,   // HORDE §14: defensive blocker
   name: 'Ion Halo', owner: null, category: 'weapon', kind: 'orbit_variable',
   damage:   [8, 10, 12, 15, 19],
   cooldown: [0, 0, 0, 0, 0],                        // μόνιμο halo
@@ -201,6 +202,9 @@ WEAPON_EXECUTORS.ion_halo = {
       const R = d.rMin + (d.rMax - d.rMin) * breathe - ring * 34;
       if (R < 30) continue;
       w.radii.push(R);
+      // HORDE §14 canBlockHostileProjectiles: το δαχτυλίδι μπλοκάρει κανονικά εχθρικά
+      // bullets (elite ×2 hits, boss ΠΟΤΕ — ο έλεγχος ζει στο Game._updateEnemyBullets).
+      (rt.game._projectileBlockers ||= []).push({ ring: true, x: p.pos.x, y: p.pos.y, R, band: 12 });
       const near = rt.game._spatialGrid ? rt.game._spatialGrid.query(p.pos.x, p.pos.y, R + 70) : rt.game.enemies;
       for (const e of near) {
         if (!e || e.hp <= 0) continue;

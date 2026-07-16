@@ -12,20 +12,20 @@ import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260705040000
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260712090000';
 import { Player }         from '../entities/Player.js?v=20260712480000';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260706270000';
-import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260719100000';
+import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260719200000';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=20260711750000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260713600000';
 import { SystemEventManager } from './Events.js?v=20260711780000';
-import { UpgradeUI }      from './UpgradeUI.js?v=20260719000000';
+import { UpgradeUI }      from './UpgradeUI.js?v=20260719200000';
 import { weightedSample } from './Upgrades.js?v=20260712520000';
-import { BuildEngineRuntime } from './BuildEngine.js?v=20260719000000';   // P2.2 — ενεργό ΜΟΝΟ με ?p2=1
-import './BuildEngineChars1.js?v=20260719000000';   // P2.3a Taekwondo+CyberArm (side-effect register)
-import './BuildEngineChars2.js?v=20260719000000';   // P2.3b Brawler+Assassin (side-effect register)
-import './BuildEngineChars3.js?v=20260719000000';   // P2.4a Eddie+Dimi (side-effect register)
-import './BuildEngineChars4.js?v=20260719000000';   // P2.4b Phasewalker+Euclid+Oni (side-effect register)
-import './BuildEngineChars5.js?v=20260719000000';   // P2.5 Universal όπλα 21-25 (side-effect register)
-import './BuildEnginePassives.js?v=20260719000000'; // P2.6 Build passives §26-50 (generic hooks)
+import { BuildEngineRuntime } from './BuildEngine.js?v=20260719200000';   // P2.2 — ενεργό ΜΟΝΟ με ?p2=1
+import './BuildEngineChars1.js?v=20260719200000';   // P2.3a Taekwondo+CyberArm (side-effect register)
+import './BuildEngineChars2.js?v=20260719200000';   // P2.3b Brawler+Assassin (side-effect register)
+import './BuildEngineChars3.js?v=20260719200000';   // P2.4a Eddie+Dimi (side-effect register)
+import './BuildEngineChars4.js?v=20260719200000';   // P2.4b Phasewalker+Euclid+Oni (side-effect register)
+import './BuildEngineChars5.js?v=20260719200000';   // P2.5 Universal όπλα 21-25 (side-effect register)
+import './BuildEnginePassives.js?v=20260719200000'; // P2.6 Build passives §26-50 (generic hooks)
 import { MutationUI }      from './MutationUI.js?v=20260703990000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260713200000';
@@ -52,6 +52,7 @@ import { MeteorRain } from '../effects/meteor-rain.js?v=20260712100000';
 import { NpcWalker } from './NpcWalker.js?v=20260711750000';
 import { MapManager, BIOME_ID, BIOME_DEFS } from './MapManager.js?v=20260716100000';
 import { EventBus, EVENTS } from './EventBus.js?v=20260703990000';
+import { HostileProjectileDirector } from './HostileProjectileDirector.js?v=20260719200000';
 import { EnemySpawner, ELITE_WAVE as ELITE_WAVE_CFG, BOSS_WARN_COOLDOWN as BOSS_WARN_CD } from './EnemySpawner.js?v=20260717200000';
 import { StateManager, GAME_STATES } from './StateManager.js?v=20260703990000';
 import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260712160000';
@@ -1163,7 +1164,7 @@ export class Game {
   // P2.8: NULL ARSENAL — DOM overlay ΠΑΝΩ από το menu (δεν αγγίζει gameState)·
   // dynamic import ώστε το module να μη βαραίνει το boot όταν το flag είναι κλειστό.
   goToNullArsenal() {
-    import('./NullArsenalUI.js?v=20260719000000')
+    import('./NullArsenalUI.js?v=20260719200000')
       .then(m => m.openNullArsenal(this))
       .catch(err => console.error('[P2.8] NULL ARSENAL failed to open', err));
   }
@@ -6666,6 +6667,7 @@ export class Game {
           else e.takeHit(det + 0.15 * (e.maxHp || 0), this);
         }
         this.enemyBullets.length = 0;            // clear all enemy projectiles
+        this.hostileDirector?.reset();           // HORDE: επιστροφή ΟΛΩΝ των tokens
         // ── Oni Blood Circuit relic: mark nearby enemies +15% damage taken for 5s ──
         if (this.meta?.isRelicUnlocked('oni_blood_circuit')) {
           for (const e of this.enemies) {
@@ -8307,6 +8309,7 @@ export class Game {
     // Π1 horde pass: one grid rebuild per frame feeds every hot collision loop below.
     (this._spatialGrid ||= new SpatialGrid(128)).rebuild(this.enemies);
     this._updateProjectiles(_hsDt);
+    this._projectileBlockers = [];   // HORDE §14: τα defensive effects γράφουν εδώ κάθε frame
     // P2 BLACK-SCREEN ARMOR (bug report Maria: μαύρη οθόνη ~5:00 Endless/Chaos):
     // αν το Build Engine σκάσει, ΔΕΝ ρίχνει το frame — logάρεται, και μετά από 30
     // συνεχόμενα errors μπαίνει SAFE MODE (BE off για το run, το παιχνίδι συνεχίζει).
@@ -9572,7 +9575,7 @@ export class Game {
           const n = 14; t._aRot = (t._aRot || 0) + 0.35;
           for (let i = 0; i < n; i++) {
             const a = t._aRot + i * (Math.PI * 2 / n);
-            this.spawnEnemyBullet(t.pos.clone(), new Vec2(Math.cos(a), Math.sin(a)), 360, dmg + 4, 11, WHITE);
+            this.spawnEnemyBullet(t.pos.clone(), new Vec2(Math.cos(a), Math.sin(a)), 360, dmg + 4, 11, WHITE, { cls: 'boss' });
           }
           this.screenShake?.trigger(3, 0.25);
           t._abilityCd = 2.3;
@@ -9582,7 +9585,7 @@ export class Game {
           for (let i = 0; i < 4; i++) {
             const target = p.add(new Vec2(randomRange(-220, 220), randomRange(-220, 220)));
             const dir = safeNormalize(target.sub(t.pos));
-            this.spawnEnemyBullet(t.pos.clone(), dir, 300, dmg, 12, GREEN, { behavior: 'orb_explosion' });
+            this.spawnEnemyBullet(t.pos.clone(), dir, 300, dmg, 12, GREEN, { behavior: 'orb_explosion', cls: 'boss' });
           }
           t._abilityCd = 6.0;
           break;
@@ -9591,7 +9594,7 @@ export class Game {
           const n = 22;
           for (let i = 0; i < n; i++) {
             const a = i * (Math.PI * 2 / n);
-            this.spawnEnemyBullet(t.pos.clone(), new Vec2(Math.cos(a), Math.sin(a)), 300, dmg + 2, 10, YELLOW);
+            this.spawnEnemyBullet(t.pos.clone(), new Vec2(Math.cos(a), Math.sin(a)), 300, dmg + 2, 10, YELLOW, { cls: 'boss' });
           }
           this.screenShake?.trigger(4, 0.35);
           t._abilityCd = 5.0;
@@ -9601,7 +9604,7 @@ export class Game {
           for (let i = 0; i < 8; i++) {
             const target = p.add(new Vec2(randomRange(-260, 260), randomRange(-260, 260)));
             const dir = safeNormalize(target.sub(t.pos));
-            this.spawnEnemyBullet(t.pos.clone(), dir, 320, dmg + 6, 12, RED, { behavior: 'orb_explosion' });
+            this.spawnEnemyBullet(t.pos.clone(), dir, 320, dmg + 6, 12, RED, { behavior: 'orb_explosion', cls: 'boss' });
           }
           this.audio?.playAirstrikeBomb?.();
           t._abilityCd = 5.5;
@@ -10318,6 +10321,13 @@ export class Game {
   }
 
   spawnEnemyBullet(pos, dir, speed, damage, radius, color, opts = {}) {
+    // ═══ HORDE §10-§11: ΚΑΝΕΝΑ εχθρικό projectile χωρίς token από τον director ═══
+    // Χωρίς token: η βολή ΑΚΥΡΩΝΕΤΑΙ εδώ (όχι queue/απόθεμα) — επιστρέφει false.
+    const _cls = opts.cls || 'ranged';
+    const _hd = (this.hostileDirector ||= new HostileProjectileDirector());
+    if (this.enemyBullets.length === 0 && _hd.counts.ranged + _hd.counts.elite + _hd.counts.boss > 0)
+      _hd.reset();   // self-heal: μετά από run reset/clear δεν μένουν ορφανά tokens
+    if (!opts.tokenPrepaid && !_hd.requestTokens(_cls, 1, this)) return false;
     speed *= this.mutations.enemyBulletSpeedMult;   // ACCELERATED ROUNDS (1.0 outside Endless)
     damage *= 1.10;                                 // Maria 2026-07-12: all enemy damage +10%
     const angle = Math.atan2(dir.y, dir.x);
@@ -10338,7 +10348,10 @@ export class Game {
       weaponSprite: opts.weaponSprite || null,
       weaponSize:   opts.weaponSize   || 0,
       angle,
+      tok: _cls,          // HORDE: κατηγορία token — επιστρέφεται σε ΚΑΘΕ αφαίρεση
+      _blockICD: 0,
     });
+    return true;
   }
 
   _updateEnemyBullets(dt) {
@@ -10353,7 +10366,7 @@ export class Game {
         b.angle = (b.angle || 0) + dt * 8;                     // visual spin (draw rotates by live angle)
         if (b.t > 0.55) {
           const ox = b.originX - b.pos.x, oy = b.originY - b.pos.y;
-          if (Math.sqrt(ox * ox + oy * oy) < 18) { this.enemyBullets.splice(i, 1); continue; }  // came home — expire
+          if (Math.sqrt(ox * ox + oy * oy) < 18) { this.hostileDirector?.release(b.tok); this.enemyBullets.splice(i, 1); continue; }  // came home — expire
           // Steer smoothly toward the spawn origin with a capped turn rate (no snap reversal).
           const want = Math.atan2(oy, ox);
           const cur  = Math.atan2(b.dir.y, b.dir.x);
@@ -10376,8 +10389,38 @@ export class Game {
           if (b.behavior === 'orb_explosion')      this._spawnEnemyOrbZone(b);      // fuse ran out → detonate
           else if (b.behavior === 'arc_projectile') this._spawnEnemyOrbZone(b, 60); // lob lands → small impact zone
         }
+        this.hostileDirector?.release(b.tok);
         this.enemyBullets.splice(i, 1);
         continue;
+      }
+
+      // ═══ HORDE §14 — Defensive blockers (canBlockHostileProjectiles) ═══
+      // Μόνο δηλωμένα defensive effects μπλοκάρουν: κανονικά bullets 1 hit,
+      // elite bullets 2 hits, BOSS bullets ΔΕΝ μπλοκάρονται. Μικρό spark, όχι έκρηξη.
+      if (b.tok !== 'boss' && this._projectileBlockers && this._projectileBlockers.length) {
+        if (b._blockICD > 0) b._blockICD -= dt;
+        else {
+          let hitBlocker = false;
+          for (const bl of this._projectileBlockers) {
+            if (bl.ring) {   // δαχτυλίδι (Ion Halo): μπλοκάρει πάνω στη ζώνη του ring
+              const dd = Math.hypot(b.pos.x - bl.x, b.pos.y - bl.y);
+              if (Math.abs(dd - bl.R) < bl.band + b.radius) { hitBlocker = true; break; }
+            } else {
+              const bdx = b.pos.x - bl.x, bdy = b.pos.y - bl.y;
+              if (bdx * bdx + bdy * bdy < (bl.r + b.radius) * (bl.r + b.radius)) { hitBlocker = true; break; }
+            }
+          }
+          if (hitBlocker) {
+            b._blockHP = (b._blockHP ?? (b.tok === 'elite' ? 2 : 1)) - 1;
+            b._blockICD = 0.2;
+            if (b._blockHP <= 0) {
+              this.particles?.spawnHitSparks?.(b.pos, '#9fdcff');   // καθαρό μικρό spark
+              this.hostileDirector?.release(b.tok);
+              this.enemyBullets.splice(i, 1);
+              continue;
+            }
+          }
+        }
       }
 
       // Hit player — routed through the shared fairness gate (dash/Phoenix i-frames + 0.5s grace
@@ -10390,6 +10433,7 @@ export class Game {
           if (b.stun) this.player.applyBite({ stagger: b.stun });   // telegraphed stun bolt — anti-lock immunity inside applyBite
           if (b.behavior === 'orb_explosion') this._spawnEnemyOrbZone(b);   // detonate on impact too
           this.audio?.playEnemyProjectileImpact();
+          this.hostileDirector?.release(b.tok);
           this.enemyBullets.splice(i, 1);
         }
       }
@@ -13124,6 +13168,8 @@ export class Game {
       }
     }
     if (this.enemyBullets && this.enemyBullets.length > MAX_BULLETS) {
+      for (let _d = 0; _d < this.enemyBullets.length - MAX_BULLETS; _d++)
+        this.hostileDirector?.release(this.enemyBullets[_d].tok);           // HORDE: tokens πίσω
       this.enemyBullets.splice(0, this.enemyBullets.length - MAX_BULLETS);  // drop oldest
     }
   }
@@ -17482,7 +17528,7 @@ export class Game {
               const c = Math.cos(j), sn = Math.sin(j);
               this.spawnEnemyBullet(e.pos.clone(),
                 new Vec2(base.x * c - base.y * sn, base.x * sn + base.y * c),
-                340, 13, 5, '#cfe6ff');
+                340, 13, 5, '#cfe6ff', { cls: 'elite' });
             }
             this.audio?.playEnemyShoot();
           }
@@ -19094,8 +19140,8 @@ export class Game {
         ctx.rotate(b.angle || 0);
         // Additive blend for glowing VFX feel — neon glow halo underneath
         ctx.globalCompositeOperation = 'lighter';
-        ctx.globalAlpha = 0.35;
-        ctx.drawImage(b.weaponSprite, -sz * 0.7, -sz * 0.7, sz * 1.4, sz * 1.4);
+        ctx.globalAlpha = 0.18;   // HORDE §12/§13: χαμηλότερο glow — τα player weapons κυριαρχούν
+        ctx.drawImage(b.weaponSprite, -sz * 0.58, -sz * 0.58, sz * 1.16, sz * 1.16);
         // Sharp weapon sprite on top
         ctx.globalAlpha = 0.94;
         ctx.drawImage(b.weaponSprite, -sz / 2, -sz / 2, sz, sz);
@@ -19111,8 +19157,8 @@ export class Game {
         ctx.save();
         ctx.globalCompositeOperation = 'lighter';
         ctx.lineCap = 'round';
-        ctx.globalAlpha = 0.30;                                   // wide haze trail
-        ctx.strokeStyle = b.color; ctx.lineWidth = b.radius * 1.8;
+        ctx.globalAlpha = 0.20;                                   // §12: trail alpha 0.15-0.35, στενότερο
+        ctx.strokeStyle = b.color; ctx.lineWidth = b.radius * 1.1;
         ctx.beginPath();
         ctx.moveTo(bx - bnx * b.radius * 6.5, by - bny * b.radius * 6.5);
         ctx.lineTo(bx, by); ctx.stroke();
@@ -24525,7 +24571,7 @@ _drawLoreArchive(ctx) {
         for (const off of spread) {
           const c = Math.cos(off), s = Math.sin(off);
           const dir = new Vec2(base.x * c - base.y * s, base.x * s + base.y * c);
-          this.spawnEnemyBullet(boss.pos.clone(), dir, 280, dmg, 9, PURPLE);
+          this.spawnEnemyBullet(boss.pos.clone(), dir, 280, dmg, 9, PURPLE, { cls: 'boss' });
         }
         this.audio?.playEnemyShoot();
       }
@@ -24594,7 +24640,7 @@ _drawLoreArchive(ctx) {
       if (boss._stunAim.t >= STUN_LANCE_CHARGE) {
         const dir = boss._stunAim.dir;
         if (dir.lengthSq() > 0)
-          this.spawnEnemyBullet(boss.pos.clone(), dir, 340, 8, 11, CYAN, { stun: STUN_LANCE_DURATION });
+          this.spawnEnemyBullet(boss.pos.clone(), dir, 340, 8, 11, CYAN, { stun: STUN_LANCE_DURATION, cls: 'boss' });
         this.audio?.playEnemyShoot();
         boss._stunAim = null;
       }
@@ -26576,7 +26622,7 @@ _drawLoreArchive(ctx) {
       a.shotTimer = 3.2 + Math.random() * 0.8;            // 3.2–4.0s cadence
       const dir = safeNormalize(this.player.pos.sub(a.pos));
       if (dir.lengthSq() > 0) {
-        this.spawnEnemyBullet(a.pos.clone(), dir, 360, 10, 9, PURPLE);
+        this.spawnEnemyBullet(a.pos.clone(), dir, 360, 10, 9, PURPLE, { cls: 'boss' });
         this.audio?.playEnemyShoot();
       }
     }
@@ -27847,7 +27893,7 @@ _drawLoreArchive(ctx) {
             this.spawnEnemyBullet(
               g.pos.clone(),
               new Vec2(Math.cos(angle), Math.sin(angle)),
-              290, 8, 7, '#ff2d95');
+              290, 8, 7, '#ff2d95', { cls: 'boss' });
           }
           if (bp.t >= bp.totalFireT) g.barragePhase = null;
         }
@@ -27882,7 +27928,7 @@ _drawLoreArchive(ctx) {
             const spread = (Math.random() - 0.5) * (Math.PI / 22);
             const cs = Math.cos(spread), sn = Math.sin(spread);
             const sdir = new Vec2(dir.x * cs - dir.y * sn, dir.x * sn + dir.y * cs);
-            this.spawnEnemyBullet(g.pos.clone(), sdir, 340, 6, 6, ORANGE);
+            this.spawnEnemyBullet(g.pos.clone(), sdir, 340, 6, 6, ORANGE, { cls: 'boss' });
           }
           if (ss.shotsLeft <= 0 && ss._nextShot <= -0.05) g.suppressState = null;
         }

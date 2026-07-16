@@ -213,9 +213,10 @@ export class Enemy {
     const pv  = game.player.vel || new Vec2();
     const dir = safeNormalize(game.player.pos.add(pv.scale(0.14)).sub(this.pos));
     if (dir.lengthSq() === 0) return;
-    game.spawnEnemyBullet(this.pos.clone(), dir, this.bulletSpeed || 420, this.bulletDamage || 8,
+    const ok = game.spawnEnemyBullet(this.pos.clone(), dir, this.bulletSpeed || 420, this.bulletDamage || 8,
       this.bulletRadius || 6, this.bulletColor,
-      { weaponSprite: this._weaponSprite || null, weaponSize: this._weaponSize || 0 });
+      { weaponSprite: this._weaponSprite || null, weaponSize: this._weaponSize || 0, cls: 'ranged' });
+    if (ok === false) { this._burstQ = 0; return; }   // §10: χωρίς token -> ακύρωση ΚΑΙ του burst
     game.audio?.playEnemyShoot();
   }
 
@@ -424,9 +425,11 @@ export class Enemy {
       // ARCADE SCALE: 2.0x-2.5x larger than base radius for visual impact.
       const isBoss = this.isBoss() || this.isMegaBoss;
       const isMech = catalogKey === 'security-defector-mech' || catalogKey === 'heavy-mech';
-      this._weaponSize = isBoss ? Math.max(56, this.bulletRadius * 5.5)
-                       : isMech ? Math.max(44, this.bulletRadius * 4.8)
-                       :          Math.max(34, this.bulletRadius * 4.0);
+      // HORDE §12/§13: projectiles αισθητά μικρότερα από πριν (ήταν 34-56px) ώστε τα
+      // player weapons να κυριαρχούν. Το sprite art της Maria μένει — μόνο το μέγεθος.
+      this._weaponSize = isBoss ? Math.max(40, this.bulletRadius * 3.4)
+                       : isMech ? Math.max(30, this.bulletRadius * 3.0)
+                       :          Math.max(24, this.bulletRadius * 2.6);
     }
   }
 
@@ -476,10 +479,16 @@ export class Enemy {
     const dir  = safeNormalize(lead.sub(this.pos));
     if (dir.lengthSq() === 0) return;
 
-    // Multishot — elites/bosses fire a small readable spread (the bullet pool is hard-capped in
-    // spawnEnemyBullet, so this can never become an unbounded bullet wall).
+    // Multishot — elites/bosses fire a small readable spread.
     let shots     = boss ? 3 : this.isElite ? 3 : 1;
-    if (this.isElite && game.endless && game._hasProto?.('elite_arsenal')) shots += 1;   // Elite Arsenal Protocol (+1 controlled shot; pool stays capped)
+    if (this.isElite && game.endless && game._hasProto?.('elite_arsenal')) shots += 1;   // Elite Arsenal Protocol
+    // ═══ HORDE §11: ζήτα ΟΛΑ τα tokens της βολής πριν ρίξεις. Χωρίς tokens:
+    // skipAttack — καμία ουρά, κανένα αποθηκευμένο burst, retry σε 1s (chase συνεχίζεται).
+    const _cls = boss ? 'boss' : this.isElite ? 'elite' : 'ranged';
+    if (game.hostileDirector && !game.hostileDirector.requestTokens(_cls, shots, game)) {
+      this.shootTimer = 1.0;
+      return;
+    }
     const spread  = boss ? 0.16 : 0.20;
     const baseAng = Math.atan2(dir.y, dir.x);
     const start   = -(shots - 1) / 2;
@@ -488,7 +497,8 @@ export class Enemy {
       game.spawnEnemyBullet(this.pos.clone(), new Vec2(Math.cos(ang), Math.sin(ang)),
         this.bulletSpeed, this.bulletDamage, this.bulletRadius, this.bulletColor,
         { stun: 0, weaponSprite: this._weaponSprite || null, weaponSize: this._weaponSize || 0,
-          behavior: (this.isElite && this._weaponDef?.behavior) || null });
+          behavior: (this.isElite && this._weaponDef?.behavior) || null,
+          cls: _cls, tokenPrepaid: true });
     }
     game.audio?.playEnemyShoot();
   }
