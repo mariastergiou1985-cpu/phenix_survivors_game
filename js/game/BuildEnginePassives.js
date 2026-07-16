@@ -10,7 +10,7 @@
 //  · §50 Phoenix Contingency: revive detect (hp<=0 -> hp>0) -> 8s +15% BE dmg +15% MS.
 // ═══════════════════════════════════════════════════════════════════════════════
 import { WEAPON_DEFS, PASSIVE_DEFS, EVOLUTION_RECIPES, RUNTIME_HOOKS }
-  from './BuildEngine.js?v=20260718400000';
+  from './BuildEngine.js?v=20260718500000';
 
 // ── per-runtime state (καθαρίζει μόνο του όταν πεθάνει το runtime instance) ────
 const STATE = new WeakMap();

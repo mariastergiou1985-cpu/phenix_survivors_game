@@ -310,6 +310,12 @@ export class BuildEngineRuntime {
     let name = weaponId;
     for (const r of Object.values(EVOLUTION_RECIPES)) if (r.weapon === weaponId) { name = r.name; break; }
     this.game.triggerAnnouncement?.('◈ EVOLUTION — ' + name.toUpperCase() + ' ◈', CARD_COLOR.evolution);
+    try {   // P2.8: NULL ARSENAL discovery — ξεκλειδώνει το silhouette στο EVOLUTIONS tab
+      const dk = 'phenix_be_discovered';
+      const dset = new Set(JSON.parse(localStorage.getItem(dk) || '[]'));
+      for (const [eid2, r2] of Object.entries(EVOLUTION_RECIPES)) if (r2.weapon === weaponId) dset.add(eid2);
+      localStorage.setItem(dk, JSON.stringify([...dset]));
+    } catch (_) {}
   }
   _evolutionReady() {
     for (const [eid, r] of Object.entries(EVOLUTION_RECIPES)) {

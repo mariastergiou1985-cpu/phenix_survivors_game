@@ -25,6 +25,8 @@ export class UpgradeUI {
     // Reroll button centered below the cards
     const rbW = 240, rbH = 40;
     this.rerollRect = { x: (WIDTH - rbW) / 2, y: startY + cardH + 22, w: rbW, h: rbH };
+    // P2.8 (?p2=1): BANISH κουμπί δεξιά του reroll — touch-φιλικό αντίστοιχο του [B]
+    this.banishRect = { x: (WIDTH - rbW) / 2 + rbW + 14, y: startY + cardH + 22, w: 170, h: rbH };
   }
 
   // Rebind choices after a reroll without recreating the layout (count is unchanged).
@@ -51,6 +53,14 @@ export class UpgradeUI {
     if (mousePos.x >= rr.x && mousePos.x <= rr.x + rr.w &&
         mousePos.y >= rr.y && mousePos.y <= rr.y + rr.h) {
       game.rerollUpgrade();
+      return;
+    }
+    // P2.8 (?p2=1): BANISH hit-test — μόνο όταν το Build Engine είναι ενεργό
+    const br = this.banishRect;
+    if (game?.buildEngine && this.choices.some(c => String(c?.key || '').startsWith('be_')) &&
+        mousePos.x >= br.x && mousePos.x <= br.x + br.w &&
+        mousePos.y >= br.y && mousePos.y <= br.y + br.h) {
+      game.buildEngine.banishFromUI?.(this);
       return;
     }
     this.cardRects.forEach((r, i) => {
@@ -260,6 +270,16 @@ export class UpgradeUI {
     ctx.textAlign = 'center';
     const rerollsLeft = game ? (game.rerollsLeft ?? 0) : 0;
     ctx.fillText(available ? `↻ REROLL (${rerollsLeft})  [R]` : '↻ REROLL USED', rr.x + rr.w / 2, rr.y + 26);
+    // P2.8 (?p2=1): BANISH κουμπί — εμφανίζεται μόνο όταν υπάρχει κάρτα Build Engine
+    if (game?.buildEngine && this.choices.some(c => String(c?.key || '').startsWith('be_'))) {
+      const br = this.banishRect;
+      ctx.fillStyle = '#160b10';
+      roundRect(ctx, br.x, br.y, br.w, br.h, 8); ctx.fill();
+      ctx.strokeStyle = '#ff6a7a'; ctx.lineWidth = 2;
+      roundRect(ctx, br.x, br.y, br.w, br.h, 8); ctx.stroke();
+      ctx.fillStyle = '#ff9aa8'; ctx.font = '16px Consolas, monospace'; ctx.textAlign = 'center';
+      ctx.fillText('⛔ BANISH  [B]', br.x + br.w / 2, br.y + 26);
+    }
     ctx.textAlign = 'left';
   }
 }

@@ -17,15 +17,15 @@ import { SupportDrone }   from '../entities/SupportDrone.js?v=20260711750000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260713600000';
 import { SystemEventManager } from './Events.js?v=20260711780000';
-import { UpgradeUI }      from './UpgradeUI.js?v=20260712520000';
+import { UpgradeUI }      from './UpgradeUI.js?v=20260718500000';
 import { weightedSample } from './Upgrades.js?v=20260712520000';
-import { BuildEngineRuntime } from './BuildEngine.js?v=20260718400000';   // P2.2 — ενεργό ΜΟΝΟ με ?p2=1
-import './BuildEngineChars1.js?v=20260718400000';   // P2.3a Taekwondo+CyberArm (side-effect register)
-import './BuildEngineChars2.js?v=20260718400000';   // P2.3b Brawler+Assassin (side-effect register)
-import './BuildEngineChars3.js?v=20260718400000';   // P2.4a Eddie+Dimi (side-effect register)
-import './BuildEngineChars4.js?v=20260718400000';   // P2.4b Phasewalker+Euclid+Oni (side-effect register)
-import './BuildEngineChars5.js?v=20260718400000';   // P2.5 Universal όπλα 21-25 (side-effect register)
-import './BuildEnginePassives.js?v=20260718400000'; // P2.6 Build passives §26-50 (generic hooks)
+import { BuildEngineRuntime } from './BuildEngine.js?v=20260718500000';   // P2.2 — ενεργό ΜΟΝΟ με ?p2=1
+import './BuildEngineChars1.js?v=20260718500000';   // P2.3a Taekwondo+CyberArm (side-effect register)
+import './BuildEngineChars2.js?v=20260718500000';   // P2.3b Brawler+Assassin (side-effect register)
+import './BuildEngineChars3.js?v=20260718500000';   // P2.4a Eddie+Dimi (side-effect register)
+import './BuildEngineChars4.js?v=20260718500000';   // P2.4b Phasewalker+Euclid+Oni (side-effect register)
+import './BuildEngineChars5.js?v=20260718500000';   // P2.5 Universal όπλα 21-25 (side-effect register)
+import './BuildEnginePassives.js?v=20260718500000'; // P2.6 Build passives §26-50 (generic hooks)
 import { MutationUI }      from './MutationUI.js?v=20260703990000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260713200000';
@@ -1143,12 +1143,26 @@ export class Game {
     // ENDLESS + CHAOS are no longer top-level entries — they live inside START GAME
     // (Character Select), as START ENDLESS / START CHAOS action buttons.
     const items = ['CAMPAIGN', 'START GAME'];
-    items.push('CHARACTER SELECT', 'UPGRADES', 'COLLECTIBLES', 'RELICS', 'HANGAR', 'EVOLUTION MATRIX', 'SETTINGS', 'EXIT');
+    items.push('CHARACTER SELECT', 'UPGRADES', 'COLLECTIBLES', 'RELICS', 'HANGAR', 'EVOLUTION MATRIX');
+    try {   // P2.8: NULL ARSENAL — ορατό ΜΟΝΟ με ενεργό Build Engine (?p2=1 ή F9)
+      if ((typeof localStorage !== 'undefined' && localStorage.getItem('phenix_p2') === '1') ||
+          (typeof location !== 'undefined' && new URLSearchParams(location.search).get('p2') === '1'))
+        items.push('NULL ARSENAL');
+    } catch (_) {}
+    items.push('SETTINGS', 'EXIT');
     return items;
   }
 
   // SETTINGS sub-menu — the single home for Audio, Controls/How-To-Play, Credits.
   get settingsItems() { return ['AUDIO', 'CONTROLS / HOW TO PLAY', 'BACKUP SAVE', 'RESTORE SAVE', 'CREDITS', 'LORE / ARCHIVE', 'BACK']; }
+
+  // P2.8: NULL ARSENAL — DOM overlay ΠΑΝΩ από το menu (δεν αγγίζει gameState)·
+  // dynamic import ώστε το module να μη βαραίνει το boot όταν το flag είναι κλειστό.
+  goToNullArsenal() {
+    import('./NullArsenalUI.js?v=20260718500000')
+      .then(m => m.openNullArsenal(this))
+      .catch(err => console.error('[P2.8] NULL ARSENAL failed to open', err));
+  }
 
   reset() {
     // Resolve the equipped (cosmetic) outfit sprite for this character, if any.
@@ -9410,6 +9424,7 @@ export class Game {
     else if (item === 'RELICS')         this.goToRelicsScreen();
     else if (item === 'HANGAR')         this.goToHangar();
     else if (item === 'EVOLUTION MATRIX') this.goToEvolutionMatrix();
+    else if (item === 'NULL ARSENAL')   this.goToNullArsenal();   // P2.8 (?p2=1/F9 μόνο)
     else if (item === 'SETTINGS')       this.goToSettings();
     else if (item === 'EXIT') { try { window.close(); } catch (e) {} this.goToExitScreen(); }   // browser-safe: close if allowed, else friendly exit screen
   }
@@ -20713,6 +20728,7 @@ export class Game {
       'ENDLESS MODE':     '∞',
       'CHAOS MODE':       '✦',
       'CHARACTER SELECT': '◈',
+      'NULL ARSENAL': '❖',
       'UPGRADES':         '▲',
       'COLLECTIBLES':     '★',
       'RELICS':           '◆',
