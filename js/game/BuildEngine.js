@@ -866,6 +866,23 @@ export class BuildEngineRuntime {
   _drawDamageReport(ctx) {
     const rows = this.log.report(performance.now());
     if (!rows.length) return;
+    // P2.9: μόνιμο telemetry — το report κάθε run σώζεται (ring buffer 20 runs).
+    // Δες τα με: JSON.parse(localStorage.phenix_be_telemetry) στην κονσόλα.
+    if (!this._telemetrySaved) {
+      this._telemetrySaved = true;
+      try {
+        const tk = 'phenix_be_telemetry';
+        const log = JSON.parse(localStorage.getItem(tk) || '[]');
+        log.push({ t: Date.now(), char: this.game.selectedCharacter,
+                   time: Math.round(this.game.timeAlive || 0),
+                   endless: !!this.game.endless, chaos: !!this.game._chaosMode,
+                   weapons: [...this.weapons.values()].map(w => w.id + (w.evolved ? '★' : ':L' + w.level)),
+                   rows: rows.slice(0, 12) });
+        while (log.length > 20) log.shift();
+        localStorage.setItem(tk, JSON.stringify(log));
+        console.log('[P2.9 telemetry] run saved —', rows.length, 'damage sources. WASTED PICK & shares στο localStorage.phenix_be_telemetry');
+      } catch (_) {}
+    }
     const W = ctx.canvas.width, H = ctx.canvas.height;
     const w = 560, x = (W - w) / 2, top = rows.slice(0, 8);
     const h = 52 + top.length * 16 + 26, y = H - h - 16;

@@ -9,7 +9,7 @@
 // μέχρι το P2.7 migration (δηλωμένο μέσα στο ίδιο το UI).
 // ═══════════════════════════════════════════════════════════════════════════════
 import { WEAPON_DEFS, PASSIVE_DEFS, EVOLUTION_RECIPES, singleTargetDps }
-  from './BuildEngine.js?v=20260718500000';
+  from './BuildEngine.js?v=20260718600000';
 
 const C = { weapon: '#e9ecf2', passive: '#4fd8ff', evolution: '#ffd447', tactical: '#b06bff',
             bg: '#0a0e14', panel: '#0d131c', line: '#1c2836', dim: '#8fa8b8', white: '#e9ecf2' };

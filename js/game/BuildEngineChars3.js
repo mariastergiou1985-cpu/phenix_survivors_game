@@ -6,7 +6,7 @@
 // Spec: docs/P2_BUILD_ENGINE_SPEC_GR.md. Συνταγή ultimates παντού.
 // ═══════════════════════════════════════════════════════════════════════════════
 import { WEAPON_DEFS, PASSIVE_DEFS, EVOLUTION_RECIPES, WEAPON_EXECUTORS }
-  from './BuildEngine.js?v=20260718500000';
+  from './BuildEngine.js?v=20260718600000';
 
 function aimAngle(rt) {
   const p = rt.game.player, e = rt._nearestEnemy(p.pos.x, p.pos.y);

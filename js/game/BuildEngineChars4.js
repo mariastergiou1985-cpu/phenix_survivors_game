@@ -5,7 +5,7 @@
 // ΚΑΝΕΝΑ PNG, μηδέν shadowBlur.
 // ═══════════════════════════════════════════════════════════════════════════════
 import { WEAPON_DEFS, PASSIVE_DEFS, EVOLUTION_RECIPES, WEAPON_EXECUTORS }
-  from './BuildEngine.js?v=20260718500000';
+  from './BuildEngine.js?v=20260718600000';
 
 function aimAngle(rt) {
   const p = rt.game.player, e = rt._nearestEnemy(p.pos.x, p.pos.y);
@@ -202,8 +202,11 @@ WEAPON_EXECUTORS.probability_disc = {
         rt._dealDamage(wid, e, dmgBase * ds.mods.dmg, bm, ds.mods.crit || Math.random() < d.critChance);
         ds.bouncesLeft--;
         if (ds.bouncesLeft <= 0) { w.discs.splice(i, 1); continue; }
-        // ΜΕΤΑΛΛΑΞΗ: roulette roll (evolution: ΚΡΑΤΑ τα προηγούμενα — stacking)
-        if (!w.evolved) ds.mods = { size: 1, speed: 1, dmg: 1, crit: false };
+        // ΜΕΤΑΛΛΑΞΗ: roulette roll (evolution: ΚΡΑΤΑ τα προηγούμενα — stacking).
+        // P2.9 GUARDRAIL: το stacking έβγαινε 3-10x πάνω από κάθε άλλο evolution στα
+        // smoke tests — cap στα 4 stacked rolls· μετά τα rolls ΑΝΤΙΚΑΘΙΣΤΟΥΝ αντί να στοιβάζουν.
+        ds.stackN = (ds.stackN || 0) + 1;
+        if (!w.evolved || ds.stackN > 4) ds.mods = { size: 1, speed: 1, dmg: 1, crit: false };
         const roll = ['bigger', 'faster', 'double', 'reverse', 'crit'][Math.floor(Math.random() * 5)];
         ds.roll = roll;
         if (roll === 'bigger') { ds.mods.size *= 1.35; ds.mods.dmg *= 1.2; }
