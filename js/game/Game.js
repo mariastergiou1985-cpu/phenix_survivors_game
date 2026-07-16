@@ -33,7 +33,7 @@ import { OssuaryReconstruction } from '../effects/ossuary-reconstruction.js?v=20
 import { AfterimageTribunal } from '../effects/afterimage-tribunal.js?v=20260711510000';
 import { FeedbackApocalypse } from '../effects/feedback-apocalypse.js?v=20260711520000';
 import { OniMaskOverture } from '../effects/oni-mask-overture.js?v=20260711530000';
-import { EuclidTheorem } from '../effects/euclid-theorem.js?v=20260711540000';
+import { EuclidTheorem } from '../effects/euclid-theorem.js?v=20260716800000';
 import { DeusExMachina } from '../effects/deus-ex-machina.js?v=20260712250000';
 import { RailgunHorizon } from '../effects/railgun-horizon.js?v=20260711560000';
 import { MagmaCoreEruption } from '../effects/magma-core-eruption.js?v=20260712300000';
@@ -7170,12 +7170,17 @@ export class Game {
     if (this.player?.selectedCharacter !== 'euclid_vector') return;
     this._ensureTheoremFx();
     if (!this._theorem) return;
-    try {
+    const _tf = ctx.getTransform();   // TRANSFORM ARMOR (same as the kit): a mid-render throw
+    try {                             // must never leak translate/scale into later layers
       const sh = this._theorem.getShake();
       ctx.save(); ctx.translate(sh.x, sh.y);
       this._theorem.render(ctx, this._theoremHooks());   // render needs the hooks: lines track enemies
       ctx.restore();
-    } catch (err) { console.warn('[Theorem render]', err); }
+    } catch (err) { console.warn('[Theorem render]', err);
+    } finally {
+      ctx.setTransform(_tf);
+      ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; ctx.shadowBlur = 0;
+    }
   }
 
   // ── Thunder Solo ultimate (Cyber Skeleton Warrior, SPACE, 100 mana) ──────────
