@@ -342,7 +342,9 @@ export class BuildEngineRuntime {
       return true;
     }
 
-    // 2) Weighted pool: όπλα (νέα/level-up) + catalysts
+    // 2) Weighted pool: όπλα (νέα/level-up) + catalysts.
+    // P2.8: κάθε κάρτα δείχνει badges (NEW/NATIVE/EVOLUTION READY/REQUIRES) + delta
+    // SINGLE-TARGET DPS (τρέχον -> επόμενο) — όλα από το ίδιο data source (§13).
     const cand = [];
     const _wFull = this.weapons.size >= this.CAPS.weapons;
     const _pFull = this.passives.size >= this.CAPS.passives;
@@ -354,9 +356,12 @@ export class BuildEngineRuntime {
       if (!w && this._familyCount(this._familyOf(wid)) >= this.CAPS.perFamily) continue;
       if (w && (w.level >= 5 || w.evolved)) continue;
       const wt = (w ? 2 : 3) * (d.owner === g.selectedCharacter ? 3 : 1);   // native x3 στον ιδιοκτήτη
+      const _badges = (w ? '' : '[NEW] ') + (d.owner === g.selectedCharacter ? '[NATIVE] ' : '');
+      const _cur = w ? singleTargetDps(d, w.level) : 0;
+      const _nxt = singleTargetDps(d, (w?.level || 0) + 1);
+      const _delta = w ? '  [ST-DPS ' + _cur + ' → ' + _nxt + ']' : '  [ST-DPS ' + _nxt + ']';
       cand.push({ wt, card: mk('be_w_' + wid, d.name,
-        (w ? 'Level ' + (w.level + 1) + ' — ' : 'NEW WEAPON — ') + d.desc +
-        '  [SINGLE-TARGET DPS ' + singleTargetDps(d, (w?.level || 0) + 1) + ']',
+        _badges + (w ? 'Lv' + w.level + ' → Lv' + (w.level + 1) + ' — ' : '') + d.desc + _delta,
         CARD_COLOR.weapon, '❖', () => self.addWeapon(wid)) });
     }
     for (const [pid, p] of Object.entries(PASSIVE_DEFS)) {
@@ -379,8 +384,12 @@ export class BuildEngineRuntime {
       if (this.sealed.has(pid)) continue;                        // P2.7: sealed
       if (!lvl && _pFull) continue;                              // P2.7: 6P cap — μόνο level-ups
       const wt = ((w ? w.level : extLvl) >= 3 ? 3 : 1);         // x3 όταν το όπλο Lv3+
+      // P2.8 badges: πόσο κοντά είναι το evolution αυτού του catalyst
+      const _wl = w ? w.level : extLvl;
+      const _evoReady = (_wl >= 5 && lvl + 1 >= p.maxLevel);
+      const _req = _evoReady ? '[EVOLUTION READY] ' : ('[REQUIRES: weapon Lv5 (' + _wl + '/5) + Lv' + p.maxLevel + ' (' + (lvl + 1) + '/' + p.maxLevel + ')] ');
       cand.push({ wt, card: mk('be_p_' + pid, p.name,
-        (lvl ? 'Level ' + (lvl + 1) + ' — ' : '') + p.desc, CARD_COLOR.passive, '◈',
+        _req + (lvl ? 'Lv' + lvl + ' → Lv' + (lvl + 1) + ' — ' : '') + p.desc, CARD_COLOR.passive, '◈',
         () => self.addPassive(pid)) });
     }
     if (!cand.length) return false;
@@ -717,6 +726,100 @@ export class BuildEngineRuntime {
       ctx.globalAlpha = 1;
       ctx.globalCompositeOperation = 'source-over';
     }
+  }
+
+  // ═══ P2.8 — SCREEN-SPACE PANELS (καλείται μετά τα end screens/pause στο Game.draw).
+  // Ύφος §9: 70% matte σκούρο / 20% λευκή πληροφορία / 10% neon accent, όχι glow.
+  drawPanels(ctx, game) {
+    try {
+      if (game.gameOver || game.victory) { this._drawDamageReport(ctx); return; }
+      if (game.paused && game.gameState === 'playing' && !game.upgradeUI && !game.mutationUI && !game._stageCompleteBanner)
+        this._drawBuildPanel(ctx);
+    } catch (_) { /* UI panel δεν ρίχνει ΠΟΤΕ το frame */ }
+  }
+  _panelBox(ctx, x, y, w, h, title, accent) {
+    ctx.fillStyle = 'rgba(8,12,18,0.86)'; ctx.fillRect(x, y, w, h);            // matte
+    ctx.strokeStyle = accent; ctx.lineWidth = 1; ctx.globalAlpha = 0.55;
+    ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1); ctx.globalAlpha = 1;
+    ctx.fillStyle = accent; ctx.fillRect(x, y, w, 22); ctx.globalAlpha = 1;
+    ctx.fillStyle = '#0a0e14'; ctx.font = 'bold 12px Consolas, monospace'; ctx.textAlign = 'left';
+    ctx.fillText(title, x + 8, y + 15);
+  }
+  _drawBuildPanel(ctx) {
+    const W = ctx.canvas.width, x = W - 336, y = 60, w = 320;
+    const rows = this.log.report(performance.now());
+    const share = id => { const r = rows.find(q => q.id === id || q.id === WEAPON_DEFS[id]?.evolution); return r ? r.share + '%' : '—'; };
+    let lines = 0;
+    const weapons = [...this.weapons.values()];
+    const passives = [...this.passives.entries()];
+    const nextEvos = [];
+    for (const [eid, r] of Object.entries(EVOLUTION_RECIPES)) {
+      const wp = this.weapons.get(r.weapon);
+      if (!wp || wp.evolved) continue;
+      const wd = WEAPON_DEFS[r.weapon];
+      if (wd?.owner && wd.owner !== this.game.selectedCharacter) continue;
+      nextEvos.push({ name: r.name, wl: wp.level, need: r.weaponLevel, pl: this.passives.get(r.passive) || 0, pn: r.passiveLevel });
+    }
+    const topStats = rows.slice(0, 5);
+    const h = 66 + (weapons.length + passives.length + nextEvos.length + topStats.length) * 15 + 54;
+    this._panelBox(ctx, x, y, w, Math.min(h, 560), 'CURRENT BUILD — NULL ARSENAL', '#4fd8ff');
+    ctx.font = '11px Consolas, monospace'; ctx.textAlign = 'left';
+    let ty = y + 38;
+    ctx.fillStyle = '#e9ecf2'; ctx.fillText('WEAPONS ' + weapons.length + '/' + this.CAPS.weapons, x + 10, ty); ty += 15;
+    for (const wp of weapons) {
+      const nm = wp.evolved ? (EVOLUTION_RECIPES[WEAPON_DEFS[wp.id]?.evolution]?.name || wp.id) : (WEAPON_DEFS[wp.id]?.name || wp.id);
+      ctx.fillStyle = wp.evolved ? '#ffd447' : '#ffffff';
+      ctx.fillText((wp.evolved ? '★ ' : '· ') + nm + (wp.evolved ? '' : '  Lv' + wp.level), x + 14, ty);
+      ctx.fillStyle = '#8fa8b8'; ctx.textAlign = 'right'; ctx.fillText(share(wp.id), x + w - 10, ty); ctx.textAlign = 'left';
+      ty += 15;
+    }
+    ty += 4; ctx.fillStyle = '#4fd8ff'; ctx.fillText('PASSIVES ' + passives.length + '/' + this.CAPS.passives, x + 10, ty); ty += 15;
+    for (const [pid, lv] of passives) {
+      ctx.fillStyle = '#bfe8ff'; ctx.fillText('· ' + (PASSIVE_DEFS[pid]?.name || pid) + '  Lv' + lv, x + 14, ty); ty += 15;
+    }
+    if (nextEvos.length) {
+      ty += 4; ctx.fillStyle = '#ffd447'; ctx.fillText('NEXT EVOLUTIONS', x + 10, ty); ty += 15;
+      for (const ev of nextEvos) {
+        const ready = ev.wl >= ev.need && ev.pl >= ev.pn;
+        ctx.fillStyle = ready ? '#ffd447' : '#9a8d5c';
+        ctx.fillText((ready ? '★ READY: ' : '· ') + ev.name + '  [W ' + ev.wl + '/' + ev.need + ' · P ' + ev.pl + '/' + ev.pn + ']', x + 14, ty);
+        ty += 15;
+      }
+    }
+    ty += 4; ctx.fillStyle = '#e9ecf2'; ctx.fillText('RUN STATISTICS (Actual Run DPS)', x + 10, ty); ty += 15;
+    for (const r of topStats) {
+      const nm = (WEAPON_DEFS[r.id] || EVOLUTION_RECIPES[r.id] || PASSIVE_DEFS[r.id.replace(/^bp_/, 'bp_')])?.name || r.id;
+      ctx.fillStyle = '#cfd8e0';
+      ctx.fillText('· ' + String(nm).slice(0, 22) + '  ' + r.avgDps + '/s  pk ' + r.peakDps, x + 14, ty); ty += 15;
+    }
+  }
+  _drawDamageReport(ctx) {
+    const rows = this.log.report(performance.now());
+    if (!rows.length) return;
+    const W = ctx.canvas.width, H = ctx.canvas.height;
+    const w = 560, x = (W - w) / 2, top = rows.slice(0, 8);
+    const h = 52 + top.length * 16 + 26, y = H - h - 16;
+    this._panelBox(ctx, x, y, w, h, 'DAMAGE REPORT — BUILD ENGINE (Actual Run DPS)', '#ffd447');
+    ctx.font = '11px Consolas, monospace'; ctx.textAlign = 'left';
+    let ty = y + 38;
+    ctx.fillStyle = '#8fa8b8';
+    ctx.fillText('WEAPON', x + 10, ty); ctx.fillText('TOTAL', x + 250, ty); ctx.fillText('AVG/s', x + 320, ty);
+    ctx.fillText('PEAK', x + 380, ty); ctx.fillText('KILLS', x + 438, ty); ctx.fillText('CRIT', x + 490, ty); ctx.fillText('%', x + 532, ty);
+    ty += 16;
+    for (let i = 0; i < top.length; i++) {
+      const r = top[i];
+      const nm = (WEAPON_DEFS[r.id] || EVOLUTION_RECIPES[r.id] || PASSIVE_DEFS[r.id])?.name || r.id;
+      ctx.fillStyle = i === 0 ? '#ffd447' : '#e9ecf2';
+      ctx.fillText((i === 0 ? '★ ' : '· ') + String(nm).slice(0, 26), x + 10, ty);
+      ctx.fillText(String(r.total), x + 250, ty); ctx.fillText(String(r.avgDps), x + 320, ty);
+      ctx.fillText(String(r.peakDps), x + 380, ty); ctx.fillText(String(r.kills), x + 438, ty);
+      ctx.fillText(String(r.crits), x + 490, ty); ctx.fillText(r.share + '%', x + 532, ty);
+      ty += 16;
+    }
+    ctx.fillStyle = '#ffd447'; ctx.fillText('MOST EFFECTIVE: ' + ((WEAPON_DEFS[top[0].id] || EVOLUTION_RECIPES[top[0].id] || {}).name || top[0].id), x + 10, ty + 6);
+    // WASTED PICK: internal telemetry ΜΟΝΟ (spec §12/P2.9) — δεν εμφανίζεται στον παίκτη
+    const owned = rows.filter(r => this.weapons.has(r.id));
+    if (owned.length > 1) console.log('[BE telemetry] WASTED PICK:', owned[owned.length - 1].id, owned[owned.length - 1].share + '%');
   }
 
   _drawSkull(ctx, sk, evolved) {
