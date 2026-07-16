@@ -53,7 +53,8 @@ import { NpcWalker } from './NpcWalker.js?v=20260711750000';
 import { MapManager, BIOME_ID, BIOME_DEFS } from './MapManager.js?v=20260716100000';
 import { EventBus, EVENTS } from './EventBus.js?v=20260703990000';
 import { HostileProjectileDirector } from './HostileProjectileDirector.js?v=20260719200000';
-import { EnemySpawner, ELITE_WAVE as ELITE_WAVE_CFG, BOSS_WARN_COOLDOWN as BOSS_WARN_CD } from './EnemySpawner.js?v=20260717200000';
+import { WaveDirector } from './WaveDirector.js?v=20260719300000';
+import { EnemySpawner, ELITE_WAVE as ELITE_WAVE_CFG, BOSS_WARN_COOLDOWN as BOSS_WARN_CD } from './EnemySpawner.js?v=20260719300000';
 import { StateManager, GAME_STATES } from './StateManager.js?v=20260703990000';
 import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260712160000';
 import { NexusManager } from './NexusManager.js?v=20260712110000';
@@ -5932,15 +5933,23 @@ export class Game {
     });
   }
 
-  spawnEnemy() {
+  spawnEnemy(_waveType = null, _wavePos = null, _waveElite = false) {
     if (this.enemies.length >= this.enemyCap()) return;
     // Endless: enemies are stronger from the start by treating them as ~8 minutes further along
     // (drives Enemy HP/speed scaling; damage stays conservative). Act 1 uses the real minute.
     const mins = this.currentMinute() + (this.endless ? 8 : 0);
-    const e = new Enemy(this.chooseEnemyType(), mins);
+    const e = new Enemy(_waveType || this.chooseEnemyType(), mins);
+    // HORDE §17: θέση από τον WaveDirector (ΕΚΤΟΣ viewport, 8 sectors) — Act 1 έπαιρνε
+    // μέχρι τώρα world-bounds edges 3840px μακριά· τώρα η ορδή φτάνει ΠΑΝΤΑ γρήγορα.
+    if (_wavePos) { e.pos.x = _wavePos.x; e.pos.y = _wavePos.y; }
+    // HORDE §18 ELITE_ESCORT: elite εκτός Endless elite-wave συστήματος (ίδια buffs)
+    if (_waveElite && !e.isBoss()) {
+      e.isElite = true; e.hp = Math.round(e.hp * 2); e.maxHp = e.hp;
+      e._baseSpeedFull *= 1.10; e.radius *= 1.2;
+    }
     // Endless/Chaos: spawn enemies just offscreen from the camera instead of at the
     // distant world-bounds edges (which are 3840px away on a 7680px active grid).
-    if (this.chunkManager?.enabled) {
+    if (this.chunkManager?.enabled && !_wavePos) {
       const sp = this.chunkManager.getSpawnEdge(this.camera, this._viewW, this._viewH, 60);
       e.pos.x = sp.x;
       e.pos.y = sp.y;
@@ -16768,15 +16777,32 @@ export class Game {
     // Arena: normal enemies still spawn but inside the arena circle (no camera-edge spawning)
     if (this.spawnPauseTimer > 0) { this.spawnPauseTimer -= dt; return; }
     this.spawnTimer += dt;
-    // During Thunder Solo, keep waves arriving fast so the 7s ultimate always has targets
-    // (still capped by enemyCap() inside spawnEnemy — not unfair spam).
-    const interval = this.thunderSolo ? Math.min(this.enemySpawnInterval(), 0.3) : this.enemySpawnInterval();
+    // ═══ HORDE §15/§16 — WAVE DIRECTOR: minute tables + targetAlive quota + formations ═══
+    this.waveDirector ||= new WaveDirector();
+    const _wMode = WaveDirector.mode(this);
+    const _blk   = this.waveDirector.blockFor(_wMode, this.timeAlive || 0);
+    const _form  = this.waveDirector.activeFormation(_blk, dt);
+    const interval = this.thunderSolo ? Math.min(_blk.interval, 0.3) : _blk.interval;
     if (this.spawnTimer >= interval) {
       this.spawnTimer = 0;
-      // Batch size delegated to EnemySpawner (Phase 0 decoupling).
-      const count = this.spawner.spawnBatchSize(this.currentMinute(), this.enemies.length, this.enemyCap(), { endless: this.endless, chaos: this._chaosMode });
+      const _alive  = this.enemies.length;
+      const _target = Math.min(_blk.targetAlive, this.enemyCap());
+      // §16: catch-up αν είμαστε κάτω από το quota — αλλιώς μικρό σταθερό batch
+      let count = _alive < _target ? _blk.batch + Math.min(6, Math.ceil((_target - _alive) / 12))
+                                   : Math.max(1, Math.round(_blk.batch / 3));
+      const _plan = this.waveDirector.spawnPlan(_form, count, this.camera, this._viewW, this._viewH);
       const prevLen = this.enemies.length;
-      for (let i = 0; i < count; i++) this.spawnEnemy();   // spawnEnemy() still enforces enemyCap
+      let _first = true;
+      for (const _p of _plan) {
+        // Το 1ο spawn του tick περνά από το ΥΠΑΡΧΟΝ chooseEnemyType — κρατά τα special
+        // boss insertions (Heavy Mech@10', SDM@15', Overlord@25', Chaos Overlord) ζωντανά.
+        let _type = null;
+        if (!_first) {
+          _type = _p.hint ? this.waveDirector.pickFromHint(_wMode, _p.hint) : this.waveDirector.pickEnemy(_blk);
+        }
+        _first = false;
+        this.spawnEnemy(_type, { x: _p.x, y: _p.y }, !!_p.elite);
+      }
       // ── Arena-constrained spawn positions: place new enemies inside circle ──
       if (this._nullBreachActive && this._nullBreachArena) {
         const _ac = this._nullBreachArena.center;

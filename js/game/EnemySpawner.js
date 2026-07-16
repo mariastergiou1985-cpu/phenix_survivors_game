@@ -118,6 +118,9 @@ export class EnemySpawner {
     else if (minute < 20) cap = 150 + (minute - 10) * 10;
     else                  cap = Math.min(420, 250 + (minute - 20) * 8);   // Π1 horde pass: late Act-1 crowds
 
+    // HORDE REBUILD §26: Act 1 πρέπει να χωρά τα targetAlive των wave tables (έως 265
+    // στο Final Collapse) — ×1.6 με ταβάνι 520. Endless/Chaos/mobile clamps ως είχαν.
+    if (!mode.endless && !mode.chaos) cap = Math.min(520, Math.round(cap * 1.6));
     // Π1 HORDE PASS (Maria: reach VS-scale crowds) — enabled by the per-frame spatial grid
     // (projectile/bolt collisions no longer scan every enemy) + existing offscreen draw-cull.
     if (mode.endless) cap = Math.min(900, Math.round(cap * 3.2) + 80);
