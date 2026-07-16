@@ -6,7 +6,7 @@
 // Spec: docs/P2_BUILD_ENGINE_SPEC_GR.md. Συνταγή ultimates παντού.
 // ═══════════════════════════════════════════════════════════════════════════════
 import { WEAPON_DEFS, PASSIVE_DEFS, EVOLUTION_RECIPES, WEAPON_EXECUTORS }
-  from './BuildEngine.js?v=20260718300000';
+  from './BuildEngine.js?v=20260718400000';
 
 function aimAngle(rt) {
   const p = rt.game.player, e = rt._nearestEnemy(p.pos.x, p.pos.y);
@@ -195,6 +195,14 @@ WEAPON_EXECUTORS.feedback_cabinet = {
       ctx.globalAlpha = 0.5 * fade;                                // σώμα: γραμμές πίεσης
       ctx.strokeStyle = '#ff6b5e'; ctx.lineWidth = 2;
       for (let q = -1; q <= 1; q++) { ctx.beginPath(); ctx.moveTo(q * halfH * 0.6, -halfW); ctx.lineTo(q * halfH * 0.6, halfW); ctx.stroke(); }
+      // ULTIMATE PASS: EQUALIZER μέσα στο κύμα — μπάρες που χορεύουν στη συχνότητα
+      ctx.globalAlpha = 0.65 * fade; ctx.strokeStyle = '#ffb3ab'; ctx.lineWidth = 2.5;
+      const bars = Math.max(4, Math.floor(halfW / 16));
+      for (let q = 0; q < bars; q++) {
+        const by = -halfW + (q + 0.5) * (halfW * 2 / bars);
+        const bh = (3 + 8 * Math.abs(Math.sin(rt._t * 11 + q * 1.7 + wv.dist * 0.03))) * fade;
+        ctx.beginPath(); ctx.moveTo(-bh / 2, by); ctx.lineTo(bh / 2, by); ctx.stroke();
+      }
       ctx.globalAlpha = 0.9 * fade;                                // λευκή μπροστινή ακμή
       ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.6;
       ctx.beginPath(); ctx.moveTo(halfH, -halfW); ctx.lineTo(halfH, halfW); ctx.stroke();
@@ -291,6 +299,22 @@ WEAPON_EXECUTORS.cyber_gauntlets_injection = {
       ctx.globalAlpha = 0.8 * fade;                                // σώμα: διπλή γραμμή γροθιάς
       ctx.strokeStyle = fin ? '#ffd447' : '#e8e8f0'; ctx.lineWidth = fin ? 4 : 2.5;
       ctx.beginPath(); ctx.moveTo(10, h.combo === 2 ? 6 : -6); ctx.lineTo(d.radius * 0.85, 0); ctx.stroke();
+      // ULTIMATE PASS: αστέρι κρούσης στη γροθιά + ΤΡΟΧΟΣ-ΣΦΡΑΓΙΔΑ ophanim στο finisher
+      ctx.globalAlpha = 0.9 * fade; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.2;
+      for (let q = 0; q < 4; q++) {
+        const qa = q * Math.PI / 2 + k * 3;
+        ctx.beginPath(); ctx.moveTo(d.radius * 0.85, 0);
+        ctx.lineTo(d.radius * 0.85 + Math.cos(qa) * (5 + 6 * k), Math.sin(qa) * (5 + 6 * k)); ctx.stroke();
+      }
+      if (fin) {
+        ctx.globalAlpha = 0.55 * fade; ctx.strokeStyle = '#ffd447'; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(d.radius * 0.6, 0, 15 + 8 * k, 0, Math.PI * 2); ctx.stroke();
+        for (let q = 0; q < 6; q++) {                              // δόντια του τροχού (ophanim)
+          const qa = q * Math.PI / 3 - rt._t * 5;
+          ctx.beginPath(); ctx.moveTo(d.radius * 0.6 + Math.cos(qa) * (15 + 8 * k), Math.sin(qa) * (15 + 8 * k));
+          ctx.lineTo(d.radius * 0.6 + Math.cos(qa) * (19 + 8 * k), Math.sin(qa) * (19 + 8 * k)); ctx.stroke();
+        }
+      }
       ctx.globalAlpha = 0.95 * fade;                               // λευκός πυρήνας
       ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.2;
       ctx.beginPath(); ctx.moveTo(12, h.combo === 2 ? 4 : -4); ctx.lineTo(d.radius * 0.8, 0); ctx.stroke();
@@ -301,6 +325,12 @@ WEAPON_EXECUTORS.cyber_gauntlets_injection = {
       ctx.save(); ctx.globalCompositeOperation = 'lighter';
       ctx.globalAlpha = 0.30 * fade;                               // χρυσή στήλη
       ctx.fillStyle = '#ffd447'; ctx.fillRect(s.x - 12, s.y - 90 * (1 - k), 24, 90 * (1 - k));
+      // περιστρεφόμενη σφραγίδα στη βάση του smite
+      ctx.globalAlpha = 0.6 * fade; ctx.strokeStyle = '#ffe89a'; ctx.lineWidth = 1.5;
+      for (let q = 0; q < 3; q++) {
+        const qa = rt._t * 4 + q * Math.PI * 2 / 3;
+        ctx.beginPath(); ctx.arc(s.x, s.y, 18 + 10 * k, qa, qa + 1.4); ctx.stroke();
+      }
       ctx.globalAlpha = 0.5 * fade;
       ctx.strokeStyle = '#ffd447'; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(s.x, s.y, 30 + 24 * k, 0, Math.PI * 2); ctx.stroke();
@@ -408,6 +438,12 @@ WEAPON_EXECUTORS.holo_energy_knuckles = {
       ctx.globalAlpha = 0.24;                                      // holo halo
       ctx.fillStyle = '#ffd447';
       ctx.beginPath(); ctx.arc(0, 0, size * 1.25, 0, Math.PI * 2); ctx.fill();
+      // ULTIMATE PASS: RGB-split ghost του ολογράμματος (ψηφιακό glitch)
+      const gl = Math.sin(rt._t * 17 + f.x * 0.05) > 0.7 ? 2.5 : 1;
+      ctx.globalAlpha = 0.22; ctx.strokeStyle = '#6bd8ff'; ctx.lineWidth = 2;
+      ctx.strokeRect(-size * 0.5 - gl, -size * 0.55, size, size * 1.1);
+      ctx.globalAlpha = 0.22; ctx.strokeStyle = '#ff6bd6';
+      ctx.strokeRect(-size * 0.5 + gl, -size * 0.55, size, size * 1.1);
       ctx.globalAlpha = 0.6;                                       // σώμα: holo γροθιά (τετράγωνη με δάχτυλα)
       ctx.strokeStyle = '#ffe89a'; ctx.lineWidth = 2;
       ctx.strokeRect(-size * 0.5, -size * 0.55, size, size * 1.1);

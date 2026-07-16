@@ -5,7 +5,7 @@
 // ΚΑΝΕΝΑ PNG, μηδέν shadowBlur.
 // ═══════════════════════════════════════════════════════════════════════════════
 import { WEAPON_DEFS, PASSIVE_DEFS, EVOLUTION_RECIPES, WEAPON_EXECUTORS }
-  from './BuildEngine.js?v=20260718300000';
+  from './BuildEngine.js?v=20260718400000';
 
 function aimAngle(rt) {
   const p = rt.game.player, e = rt._nearestEnemy(p.pos.x, p.pos.y);
@@ -107,9 +107,20 @@ WEAPON_EXECUTORS.phase_needle = {
     const drawNeedle = (x, y, a, echo) => {
       ctx.save(); ctx.translate(x, y); ctx.rotate(a);
       ctx.globalCompositeOperation = 'lighter';
+      // ULTIMATE PASS: το ύφασμα του χώρου ΣΚΙΖΕΤΑΙ — wake από δύο αποκλίνουσες ραφές
+      ctx.globalAlpha = echo ? 0.14 : 0.22;
+      ctx.strokeStyle = '#b17bff'; ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.moveTo(6, 0); ctx.quadraticCurveTo(-14, -4, -30, -8 - Math.sin(rt._t * 13) * 2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(6, 0); ctx.quadraticCurveTo(-14, 4, -30, 8 + Math.sin(rt._t * 13) * 2); ctx.stroke();
       ctx.globalAlpha = echo ? 0.20 : 0.30;                        // violet phase halo
       ctx.fillStyle = '#b17bff';
       ctx.beginPath(); ctx.ellipse(-8, 0, 18, 3.5, 0, 0, Math.PI * 2); ctx.fill();
+      if (echo) {                                                  // stitch: διακεκομμένο ΝΗΜΑ ραφής πίσω από την ηχώ
+        ctx.globalAlpha = 0.5; ctx.strokeStyle = '#e6d5ff'; ctx.lineWidth = 0.8;
+        ctx.setLineDash([4, 5]);
+        ctx.beginPath(); ctx.moveTo(-14, 0); ctx.lineTo(-70, 0); ctx.stroke();
+        ctx.setLineDash([]);
+      }
       ctx.globalAlpha = echo ? 0.55 : 0.95;                        // λευκή βελόνα-πυρήνας
       ctx.strokeStyle = '#ffffff'; ctx.lineWidth = echo ? 0.9 : 1.4;
       ctx.beginPath(); ctx.moveTo(10, 0); ctx.lineTo(-14, 0); ctx.stroke();
@@ -213,6 +224,13 @@ WEAPON_EXECUTORS.probability_disc = {
       const R = d.size * ds.mods.size;
       ctx.save(); ctx.translate(ds.x, ds.y); ctx.rotate(ds.t * 9);
       ctx.globalCompositeOperation = 'lighter';
+      // ULTIMATE PASS: το roll φαίνεται — χρώμα παλμού ανά μετάλλαξη
+      const ROLLC = { bigger: '#ffb46b', faster: '#6bffd8', double: '#6bd8ff', reverse: '#ff6b6b', crit: '#ff6bd6' };
+      if (ds.roll) {
+        ctx.globalAlpha = 0.35 + 0.25 * Math.sin(rt._t * 14);
+        ctx.strokeStyle = ROLLC[ds.roll] || '#b17bff'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(0, 0, R * 1.9, 0, Math.PI * 2); ctx.stroke();
+      }
       ctx.globalAlpha = 0.30;                                      // violet halo
       ctx.fillStyle = ds.mods.crit ? '#ff6bd6' : '#b17bff';
       ctx.beginPath(); ctx.arc(0, 0, R * 1.5, 0, Math.PI * 2); ctx.fill();
@@ -322,6 +340,18 @@ WEAPON_EXECUTORS.axiom_ray = {
         ctx.globalAlpha = 0.9 * fade;                              // λευκός πυρήνας
         ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.3;
         ctx.beginPath(); ctx.moveTo(r.x, r.y); ctx.lineTo(ex, ey); ctx.stroke();
+        // ULTIMATE PASS: QED σημάδια απόδειξης που παρελαύνουν στη γραμμή
+        ctx.globalAlpha = 0.8 * fade; ctx.lineWidth = 1.6;
+        for (let q = 0; q < 4; q++) {
+          const f = ((rt._t * 0.9 + q * 0.25) % 1);
+          const qx = r.x + (ex - r.x) * f, qy = r.y + (ey - r.y) * f;
+          ctx.beginPath(); ctx.moveTo(qx - 3, qy - 3); ctx.lineTo(qx + 3, qy + 3); ctx.stroke();
+        }
+        // τρίγωνο-σφραγίδα αξιώματος στο άκρο
+        ctx.globalAlpha = 0.85 * fade; ctx.strokeStyle = '#7CFF3C'; ctx.lineWidth = 1.4;
+        ctx.save(); ctx.translate(ex, ey); ctx.rotate(ba + rt._t * 3);
+        ctx.beginPath(); ctx.moveTo(6, 0); ctx.lineTo(-4, 4.5); ctx.lineTo(-4, -4.5); ctx.closePath(); ctx.stroke();
+        ctx.restore();
         ctx.restore();
       }
     }
@@ -415,8 +445,25 @@ WEAPON_EXECUTORS.phi_cutter = {
     }
   },
   draw(rt, ctx, w) {
+    const dD = WEAPON_DEFS.phi_cutter, evoD = EVOLUTION_RECIPES.be_golden_spiral_guillotine;
+    const pp = rt.game.player;
+    const maxR = (w.evolved ? evoD.maxR : dD.maxR) * (1 + rt._catalystSum('phiRadius'));
     for (const b of (w.blades || [])) {
       if (b.x === undefined) continue;
+      // ULTIMATE PASS: ο δρόμος της χρυσής σπείρας — αχνά σημάδια φ πίσω από τη λεπίδα
+      const progB = b.t / dD.dur;
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = 0.20; ctx.strokeStyle = w.evolved ? '#ffd447' : '#7CFF3C'; ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      for (let q = 0; q <= 9; q++) {
+        const f = Math.max(0, progB - q * 0.022);
+        const outF = f < 0.55 ? f / 0.55 : (1 - f) / 0.45;
+        const qa = b.a0 + f * dD.spins * Math.PI * 2, qr = maxR * outF;
+        const qx = pp.pos.x + Math.cos(qa) * qr, qy = pp.pos.y + Math.sin(qa) * qr;
+        q === 0 ? ctx.moveTo(qx, qy) : ctx.lineTo(qx, qy);
+      }
+      ctx.stroke();
+      ctx.restore();
       ctx.save(); ctx.translate(b.x, b.y); ctx.rotate((b.ang || 0) + Math.PI / 2);
       ctx.globalCompositeOperation = 'lighter';
       ctx.globalAlpha = 0.30;                                      // golden halo
@@ -527,13 +574,20 @@ WEAPON_EXECUTORS.hannya_cleaver = {
     const d = WEAPON_DEFS.hannya_cleaver, evo = EVOLUTION_RECIPES.be_hannya_brand;
     const p = rt.game.player;
     for (const s of (w.swings || [])) {
-      if (!s.fired) {                                              // windup: κόκκινη τηλεγράφηση
+      if (!s.fired) {                                              // windup: κόκκινη τηλεγράφηση + ΜΑΣΚΑ ONI
         const k = s.t / d.windup;
         ctx.save(); ctx.translate(p.pos.x, p.pos.y);
         ctx.globalCompositeOperation = 'lighter';
         ctx.globalAlpha = 0.14 + 0.16 * k;
         ctx.fillStyle = '#ff4d4d';
         ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, d.radius, s.dir - d.arc / 2, s.dir + d.arc / 2); ctx.closePath(); ctx.fill();
+        if (k > 0.5) {                                             // δύο μάτια hannya ανάβουν στο σκοτάδι του κώνου
+          const mx = Math.cos(s.dir) * d.radius * 0.5, my = Math.sin(s.dir) * d.radius * 0.5;
+          ctx.globalAlpha = (k - 0.5) * 2;
+          ctx.fillStyle = '#ffffff';
+          ctx.beginPath(); ctx.ellipse(mx - 7, my - 3, 3.5, 1.6, s.dir, 0, Math.PI * 2);
+          ctx.ellipse(mx + 7, my - 3, 3.5, 1.6, s.dir, 0, Math.PI * 2); ctx.fill();
+        }
         ctx.restore(); continue;
       }
       const k = (s.t - d.windup) / 0.34, fade = 1 - k;
@@ -549,6 +603,20 @@ WEAPON_EXECUTORS.hannya_cleaver = {
       ctx.globalAlpha = 0.95 * fade;                               // λευκή ακμή
       ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(0, 0, d.radius, a0, a1); ctx.stroke();
+      ctx.restore();
+    }
+    // RED CHARGE: πύρινες γλώσσες οργής σε τόξο πάνω από τον παίκτη (1 ανά kill-stack)
+    if ((w.rage || 0) >= 1) {
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';
+      const nR = Math.min(12, Math.floor(w.rage));
+      for (let q = 0; q < nR; q++) {
+        const qa = -Math.PI / 2 + (q - (nR - 1) / 2) * 0.22;
+        const fl = 6 + 3 * Math.sin(rt._t * 12 + q * 2);
+        ctx.globalAlpha = 0.55;
+        ctx.strokeStyle = '#ff4d4d'; ctx.lineWidth = 2.4;
+        ctx.beginPath(); ctx.moveTo(p.pos.x + Math.cos(qa) * 26, p.pos.y + Math.sin(qa) * 26);
+        ctx.lineTo(p.pos.x + Math.cos(qa) * (26 + fl), p.pos.y + Math.sin(qa) * (26 + fl)); ctx.stroke();
+      }
       ctx.restore();
     }
     for (const b of (w.brands || [])) {
@@ -685,12 +753,32 @@ WEAPON_EXECUTORS.hungry_spirit_lantern = {
   },
   draw(rt, ctx, w) {
     const evo = EVOLUTION_RECIPES.be_gate_of_hungry_ghosts;
+    const pl = rt.game.player, chg = (w.charges || 0) / WEAPON_DEFS.hungry_spirit_lantern.wave.charges;
+    // ULTIMATE PASS: το ΦΑΝΑΡΙ — κρέμεται πάνω από τον παίκτη και γεμίζει με ψυχές
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    const lx = pl.pos.x, ly = pl.pos.y - 34 + Math.sin(rt._t * 2.2) * 2;
+    ctx.globalAlpha = 0.20 + 0.35 * chg;                           // φωτεινότητα = φόρτιση
+    ctx.fillStyle = '#9a6bff';
+    ctx.beginPath(); ctx.arc(lx, ly, 10 + 5 * chg, 0, Math.PI * 2); ctx.fill();
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 0.9; ctx.strokeStyle = '#3a2f52'; ctx.lineWidth = 1.4;   // σκελετός φαναριού
+    ctx.strokeRect(lx - 4.5, ly - 6, 9, 12);
+    ctx.beginPath(); ctx.moveTo(lx - 4.5, ly - 6); ctx.lineTo(lx, ly - 10); ctx.lineTo(lx + 4.5, ly - 6); ctx.stroke();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = 0.5 + 0.5 * chg;                             // η φλόγα-ψυχή μέσα
+    ctx.fillStyle = chg >= 1 ? '#ffffff' : '#c8a8ff';
+    ctx.beginPath(); ctx.ellipse(lx, ly, 2.2 + 1.5 * chg, 3.4 + 1.5 * chg, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
     for (const s of (w.spirits || [])) {
       ctx.save(); ctx.translate(s.x, s.y);
       ctx.globalCompositeOperation = 'lighter';
       ctx.globalAlpha = 0.30;                                      // πορφυρό halo πνεύματος
       ctx.fillStyle = '#9a6bff';
       ctx.beginPath(); ctx.arc(0, 0, 11, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 0.35;                                      // wispy ουρά που κυματίζει
+      ctx.strokeStyle = '#c8a8ff'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(0, 8);
+      ctx.quadraticCurveTo(Math.sin(s.ph * 2) * 6, 16, Math.sin(s.ph * 3) * 4, 24); ctx.stroke();
       ctx.globalAlpha = 0.7;                                       // σώμα: φλογίτσα-πνεύμα με ουρά
       ctx.fillStyle = '#c8a8ff';
       ctx.beginPath(); ctx.moveTo(0, -7); ctx.quadraticCurveTo(6, 0, 0, 9); ctx.quadraticCurveTo(-6, 0, 0, -7); ctx.fill();

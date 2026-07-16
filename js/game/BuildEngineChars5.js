@@ -7,7 +7,7 @@
 // Συνταγή ultimates: halo -> σώμα -> λευκός πυρήνας, lighter, caps, ΚΑΝΕΝΑ PNG.
 // ═══════════════════════════════════════════════════════════════════════════════
 import { WEAPON_DEFS, PASSIVE_DEFS, EVOLUTION_RECIPES, WEAPON_EXECUTORS }
-  from './BuildEngine.js?v=20260718300000';
+  from './BuildEngine.js?v=20260718400000';
 
 function aimAngle(rt) {
   const p = rt.game.player, e = rt._nearestEnemy(p.pos.x, p.pos.y);
@@ -141,6 +141,13 @@ WEAPON_EXECUTORS.null_lance = {
       ctx.strokeStyle = '#7a5cff'; ctx.lineWidth = 4;
       for (let q = 0; q < 3; q++) { const qa = q * Math.PI * 2 / 3;
         ctx.beginPath(); ctx.arc(0, 0, d.rift.radius * (0.5 + 0.4 * k), qa, qa + 1.4); ctx.stroke(); }
+      ctx.globalAlpha = 0.5 * fade;                                // ΕΙΣΡΟΗ: ραβδώσεις που ρουφιούνται στο κέντρο
+      ctx.strokeStyle = '#b8a4ff'; ctx.lineWidth = 1.2;
+      for (let q = 0; q < 6; q++) {
+        const qa = q * Math.PI / 3 + rf.t * 3, fall = 1 - ((rf.t * 2.4 + q * 0.17) % 1);
+        ctx.beginPath(); ctx.moveTo(Math.cos(qa) * d.rift.radius * fall, Math.sin(qa) * d.rift.radius * fall);
+        ctx.lineTo(Math.cos(qa) * d.rift.radius * Math.max(0, fall - 0.22), Math.sin(qa) * d.rift.radius * Math.max(0, fall - 0.22)); ctx.stroke();
+      }
       ctx.globalAlpha = 0.9 * fade;
       ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(0, 0, 2.5, 0, Math.PI * 2); ctx.fill();
       ctx.restore();
@@ -263,6 +270,17 @@ WEAPON_EXECUTORS.ion_halo = {
       ctx.globalAlpha = 0.95 * fade; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.2;
       ctx.beginPath(); ctx.moveTo(b.x1, b.y1); ctx.lineTo((b.x1 + b.x2) / 2 + 8, (b.y1 + b.y2) / 2 - 8); ctx.lineTo(b.x2, b.y2); ctx.stroke();
     }
+    // SOVEREIGN: κροτάλισμα ανάμεσα στους δύο ομόκεντρους δακτυλίους
+    if (w.evolved && (w.radii || []).length >= 2) {
+      const cka = rt._t * 7 % (Math.PI * 2);
+      const r1 = w.radii[0], r2 = w.radii[1];
+      ctx.globalAlpha = 0.55 + 0.35 * Math.sin(rt._t * 23);
+      ctx.strokeStyle = '#bfefff'; ctx.lineWidth = 1.3;
+      ctx.beginPath();
+      ctx.moveTo(p.pos.x + Math.cos(cka) * r2, p.pos.y + Math.sin(cka) * r2);
+      ctx.lineTo(p.pos.x + Math.cos(cka + 0.18) * ((r1 + r2) / 2), p.pos.y + Math.sin(cka + 0.18) * ((r1 + r2) / 2));
+      ctx.lineTo(p.pos.x + Math.cos(cka + 0.32) * r1, p.pos.y + Math.sin(cka + 0.32) * r1); ctx.stroke();
+    }
     ctx.restore();
   },
 };
@@ -373,6 +391,16 @@ WEAPON_EXECUTORS.gravity_core = {
       for (let q = 0; q < 3; q++) {
         const qr = R0 * (0.35 + 0.22 * q) * (1 - 0.25 * Math.sin(c.t * 4 + q));
         ctx.beginPath(); ctx.arc(0, 0, qr, c.t * (2 + q), c.t * (2 + q) + 4.6); ctx.stroke();
+      }
+      ctx.globalAlpha = 0.10 * fade;                               // ΒΑΡΥΤΙΚΟΣ ΦΑΚΟΣ: λεπτός κύκλος παραμόρφωσης
+      ctx.strokeStyle = '#e6d5ff'; ctx.lineWidth = 8;
+      ctx.beginPath(); ctx.arc(0, 0, R0 * 0.92, 0, Math.PI * 2); ctx.stroke();
+      ctx.globalAlpha = 0.65 * fade;                               // ΥΛΗ που πέφτει σπειροειδώς στον πυρήνα
+      ctx.fillStyle = '#c8a8ff';
+      for (let q = 0; q < 7; q++) {
+        const fall = 1 - ((c.t * 1.6 + q * 0.143) % 1);
+        const qa = q * 0.9 + c.t * 5 + fall * 4;
+        ctx.beginPath(); ctx.arc(Math.cos(qa) * R0 * 0.85 * fall, Math.sin(qa) * R0 * 0.85 * fall, 1.5 + fall, 0, Math.PI * 2); ctx.fill();
       }
       ctx.globalAlpha = 0.9 * fade;                                // λευκό χείλος πυρήνα
       ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.3;
@@ -485,6 +513,10 @@ WEAPON_EXECUTORS.nano_mine = {
         ctx.beginPath(); ctx.moveTo(mA.x, mA.y); ctx.lineTo(mB.x, mB.y); ctx.stroke();
         ctx.globalAlpha = 0.7; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 0.7;
         ctx.beginPath(); ctx.moveTo(mA.x, mA.y); ctx.lineTo(mB.x, mB.y); ctx.stroke();
+        // DATA PACKET: nanite-κόμβος που ταξιδεύει στο νήμα
+        const dk = (rt._t * 1.8 + (a * 3 + b) * 0.21) % 1;
+        ctx.globalAlpha = 0.95; ctx.fillStyle = '#d8ffb8';
+        ctx.beginPath(); ctx.arc(mA.x + (mB.x - mA.x) * dk, mA.y + (mB.y - mA.y) * dk, 1.8, 0, Math.PI * 2); ctx.fill();
       }
     }
     for (const m of (w.mines || [])) {
@@ -625,6 +657,10 @@ WEAPON_EXECUTORS.blacknet_swarm_drone = {
     }
     for (const b of (w.bolts || [])) {
       ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(b.a);
+      if (b.t < 0.06) {                                            // λάμψη κάννης στη γέννηση του bolt
+        ctx.globalAlpha = 0.8 * (1 - b.t / 0.06); ctx.fillStyle = '#ffffff';
+        ctx.beginPath(); ctx.arc(-2, 0, 5, 0, Math.PI * 2); ctx.fill();
+      }
       ctx.globalAlpha = 0.35; ctx.fillStyle = '#ff3b6b';
       ctx.beginPath(); ctx.ellipse(-3, 0, 9, 2.6, 0, 0, Math.PI * 2); ctx.fill();
       ctx.globalAlpha = 0.95; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.2;
@@ -642,6 +678,9 @@ WEAPON_EXECUTORS.blacknet_swarm_drone = {
       ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.95;
       ctx.fillStyle = dr.state === 'reload' ? '#ffb84d' : '#ff3b6b';   // μάτι κατάστασης
       ctx.beginPath(); ctx.arc(1, 0, 1.6, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 0.5 + 0.4 * Math.sin(rt._t * 30 + dr.ph * 7);  // THRUSTER: τρεμάμενη φλόγα
+      ctx.fillStyle = '#7fd8ff';
+      ctx.beginPath(); ctx.moveTo(-6, 0); ctx.lineTo(-11 - 3 * Math.sin(rt._t * 25 + dr.ph), 1.6); ctx.lineTo(-11 - 3 * Math.sin(rt._t * 25 + dr.ph), -1.6); ctx.closePath(); ctx.fill();
       ctx.restore();
     }
     ctx.restore();

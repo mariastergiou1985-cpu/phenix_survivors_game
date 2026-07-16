@@ -6,7 +6,7 @@
 // ΚΑΝΕΝΑ PNG, μηδέν shadowBlur.
 // ═══════════════════════════════════════════════════════════════════════════════
 import { WEAPON_DEFS, PASSIVE_DEFS, EVOLUTION_RECIPES, WEAPON_EXECUTORS }
-  from './BuildEngine.js?v=20260718300000';
+  from './BuildEngine.js?v=20260718400000';
 
 function aimAngle(rt) {
   const p = rt.game.player, e = rt._nearestEnemy(p.pos.x, p.pos.y);
@@ -410,13 +410,23 @@ WEAPON_EXECUTORS.monowire_lash = {
     for (const l of (w.lashes || [])) {
       const phase = l.t / d.flyTime, ext = l.out ? Math.min(1, phase) : Math.max(0, 2 - phase);
       const tipX = l.x + Math.cos(l.dir) * l.R * ext, tipY = l.y + Math.sin(l.dir) * l.R * ext;
+      // ULTIMATE PASS: το σύρμα ΔΟΝΕΙΤΑΙ — αρμονικές ταλάντωσης κατά μήκος
+      const wob = (f) => Math.sin(f * Math.PI * 3 + rt._t * 30) * 3.2 * Math.sin(f * Math.PI);
+      const px2 = -Math.sin(l.dir), py2 = Math.cos(l.dir);
+      const wirePath = () => {
+        ctx.beginPath(); ctx.moveTo(l.x, l.y);
+        for (let q = 1; q <= 8; q++) {
+          const f = q / 8, wx = l.x + (tipX - l.x) * f + px2 * wob(f), wy = l.y + (tipY - l.y) * f + py2 * wob(f);
+          ctx.lineTo(wx, wy);
+        }
+      };
       ctx.save(); ctx.globalCompositeOperation = 'lighter';
       ctx.globalAlpha = 0.30;                                      // crimson halo assassin
-      ctx.strokeStyle = '#ff4d6d'; ctx.lineWidth = 5;
-      ctx.beginPath(); ctx.moveTo(l.x, l.y); ctx.lineTo(tipX, tipY); ctx.stroke();
+      ctx.strokeStyle = '#ff4d6d'; ctx.lineWidth = 5; wirePath(); ctx.stroke();
+      ctx.globalAlpha = 0.16;                                      // afterglow δεύτερης αρμονικής
+      ctx.lineWidth = 9; wirePath(); ctx.stroke();
       ctx.globalAlpha = 0.95;                                      // λευκό-καυτό σύρμα
-      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(l.x, l.y); ctx.lineTo(tipX, tipY); ctx.stroke();
+      ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1; wirePath(); ctx.stroke();
       ctx.globalAlpha = 0.9; ctx.fillStyle = '#ffffff';            // αιχμή
       ctx.beginPath(); ctx.arc(tipX, tipY, 2.4, 0, Math.PI * 2); ctx.fill();
       ctx.restore();
@@ -431,8 +441,13 @@ WEAPON_EXECUTORS.monowire_lash = {
         ctx.globalAlpha = 0.85;
         ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 0.8;
         ctx.beginPath(); ctx.moveTo(eA.pos.x, eA.pos.y); ctx.lineTo(eB.pos.x, eB.pos.y); ctx.stroke();
-        ctx.globalAlpha = 0.9; ctx.fillStyle = '#ffd0da';
-        ctx.beginPath(); ctx.arc(eA.pos.x, eA.pos.y, 2, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = 0.6 + 0.4 * Math.sin(rt._t * 10 + a * 2);   // κόμβοι που πάλλονται
+        ctx.fillStyle = '#ffd0da';
+        ctx.beginPath(); ctx.arc(eA.pos.x, eA.pos.y, 2.4, 0, Math.PI * 2); ctx.fill();
+        // λευκός παλμός που ΤΡΕΧΕΙ πάνω στο νήμα
+        const pk = (rt._t * 1.4 + a * 0.33) % 1;
+        ctx.globalAlpha = 0.9; ctx.fillStyle = '#ffffff';
+        ctx.beginPath(); ctx.arc(eA.pos.x + (eB.pos.x - eA.pos.x) * pk, eA.pos.y + (eB.pos.y - eA.pos.y) * pk, 1.6, 0, Math.PI * 2); ctx.fill();
       }
       ctx.restore();
     }
@@ -536,9 +551,16 @@ WEAPON_EXECUTORS.toxin_kunai = {
     const evo = EVOLUTION_RECIPES.be_poison_petal_waltz;
     const p = rt.game.player;
     for (const kn of (w.kunai || [])) {
+      ctx.save(); ctx.globalCompositeOperation = 'lighter';       // ατμός δηλητηρίου πίσω στην τροχιά
+      for (let gh = 3; gh >= 1; gh--) {
+        ctx.globalAlpha = 0.09 * (4 - gh);
+        ctx.fillStyle = '#7CFF3C';
+        ctx.beginPath(); ctx.arc(kn.x - Math.cos(kn.a) * 11 * gh, kn.y - Math.sin(kn.a) * 11 * gh + Math.sin(rt._t * 9 + gh) * 2, 4 - gh * 0.8, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.restore();
       ctx.save(); ctx.translate(kn.x, kn.y); ctx.rotate(kn.a);
       ctx.globalCompositeOperation = 'lighter';
-      ctx.globalAlpha = 0.30;                                      // venom halo
+      ctx.globalAlpha = 0.30 + 0.08 * Math.sin(rt._t * 20);        // venom halo (γυαλάδα λεπίδας)
       ctx.fillStyle = '#7CFF3C';
       ctx.beginPath(); ctx.ellipse(-4, 0, 12, 4, 0, 0, Math.PI * 2); ctx.fill();
       ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
