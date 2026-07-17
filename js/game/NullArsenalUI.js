@@ -13,7 +13,7 @@ import { WEAPON_DEFS, PASSIVE_DEFS, EVOLUTION_RECIPES, singleTargetDps }
 // P2.8 v2.1: τα TACTICALS/ELEMENTS/FUSIONS διαβάζονται read-only από τους
 // ΥΠΑΡΧΟΝΤΕΣ καταλόγους του παλιού συστήματος (ίδια ?v με το Game.js) —
 // καμία αλλαγή gameplay, μόνο παρουσίαση μέχρι το πλήρες migration.
-import { TACTICAL_DEFS, FUSION_TACTICALS } from './TacticalWeaponCatalog.js?v=20260712430000';
+import { TACTICAL_DEFS, FUSION_TACTICALS } from './TacticalWeaponCatalog.js?v=20260720000000';
 import { ELEMENTS, ELEMENT_ICON, CHARACTER_ELEMENT, FUSION_PAIRS, CHARACTER_FUSION } from '../Elements.js?v=20260712520000';
 
 const C = { weapon: '#e9ecf2', passive: '#4fd8ff', evolution: '#ffd447', tactical: '#b06bff',

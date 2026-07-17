@@ -61,7 +61,7 @@ import { NexusManager } from './NexusManager.js?v=20260712110000';
 import { VESSELS, getVesselById, getDefaultVesselId } from './VesselCatalog.js?v=20260705040000';
 import { PETS, getPetById } from './PetCatalog.js?v=20260705000000';
 import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons, isEvolutionOwnedBy, getCardDisplayName } from './WeaponCatalog.js?v=20260712430000';
-import { TACTICAL_ID, TACTICAL_DEFS, getTacticalDef, getTacticalForCharacter, getAvailableTactical, preloadTacticalSprites, FUSION_TACTICALS } from './TacticalWeaponCatalog.js?v=20260712430000';
+import { TACTICAL_ID, TACTICAL_DEFS, getTacticalDef, getTacticalForCharacter, getAvailableTactical, preloadTacticalSprites, FUSION_TACTICALS } from './TacticalWeaponCatalog.js?v=20260720000000';
 import { VFXSpritePlayer } from './VFXSpritePlayer.js?v=20260711800000';
 
 // ── Mastery card → base weapon mapping (for evolution level tracking) ──
@@ -1119,9 +1119,19 @@ export class Game {
     // Active pets runtime state (populated at run start)
     this._activePets = [];  // [{ def, x, y, timer, angle, ... }]
 
-    // Preload relic icon images for HUD display
+    // Preload relic icon images for HUD display.
+    // ONLY the ids that actually have a PNG in assets/relics/ — the HUD already draws a
+    // 3-char abbreviation fallback for the rest, so requesting them was ~11 guaranteed
+    // 404s spamming the console on every boot. When new icon art lands, add the id here.
+    const _RELIC_ICONS_PRESENT = new Set([
+      'eden_core_fragment', 'null_battery', 'broken_halo', 'blacknet_coupon',
+      'null_riff_capacitor', 'serpent_ember_coil', 'dragon_cryo_heart', 'oni_blood_circuit',
+      'crescent_soul_bead', 'null_venom_chamber', 'mirror_kill_protocol', 'breach_crown',
+      'second_signal_debt', 'elite_signal_core',
+    ]);
     this._relicIconCache = {};
     RELIC_DEFS.forEach(r => {
+      if (!_RELIC_ICONS_PRESENT.has(r.id)) return;   // no icon file → HUD abbr fallback, no 404
       const img = new Image();
       img.src = `assets/relics/${r.id}.png?v=20260628400000`;
       this._relicIconCache[r.id] = img;
@@ -1171,7 +1181,7 @@ export class Game {
   // P2.8: NULL ARSENAL — DOM overlay ΠΑΝΩ από το menu (δεν αγγίζει gameState)·
   // dynamic import ώστε το module να μη βαραίνει το boot όταν το flag είναι κλειστό.
   goToNullArsenal() {
-    import('./NullArsenalUI.js?v=20260719900000')
+    import('./NullArsenalUI.js?v=20260720000000')
       .then(m => m.openNullArsenal(this))
       .catch(err => console.error('[P2.8] NULL ARSENAL failed to open', err));
   }

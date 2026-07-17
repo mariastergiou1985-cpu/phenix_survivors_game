@@ -768,6 +768,7 @@ export function getAvailableTactical(characterId) {
 export function preloadTacticalSprites() {
   const cache = new Map();
   for (const def of Object.values(TACTICAL_DEFS)) {
+    if (!def.sprite) continue;   // procedural tacticals have no sprite — img.src = undefined was a guaranteed 404 ("/undefined") on every boot
     const img = new Image();
     img.src = def.sprite;
     img.onerror = () => console.warn('[TacticalWeapon] Failed to load sprite:', def.sprite);

@@ -2,7 +2,17 @@
 // always prefer fresh files, purge every old cache on activate, take control immediately,
 // and (with the index.html registration) auto-reload the page when a new version ships —
 // so phones stop getting stuck on a stale build. The ?v chain stays the real version control.
-const CACHE = 'phenix-shell-v2';
+//
+// 2026-07-17 hardening (Maria's console spam + wasted bandwidth):
+//   1. NEVER touch non-http(s) requests (chrome-extension:// etc.) — Cache.put() rejects
+//      on those schemes and every extension asset used to throw an Uncaught TypeError.
+//   2. NEVER intercept Range/media requests (menu radio mp3/mp4 streams) — intercepting
+//      them made EVERY media chunk download TWICE (media + sw fetch) ≈ 50 MB per menu
+//      session, and Cache.put() rejects 206 Partial responses (more console errors).
+//      The browser's native HTTP cache handles those better on its own.
+//   3. Only cache clean same-origin 200 responses, and swallow put() failures — a full
+//      or evicted cache must never surface as a page error.
+const CACHE = 'phenix-shell-v3';   // bumped: purge shells poisoned by the old handler
 self.addEventListener('install', (e) => { self.skipWaiting(); });
 self.addEventListener('activate', (e) => {
   e.waitUntil((async () => {
@@ -12,11 +22,17 @@ self.addEventListener('activate', (e) => {
   })());
 });
 self.addEventListener('fetch', (e) => {
-  if (e.request.method !== 'GET') return;
+  const req = e.request;
+  if (req.method !== 'GET') return;
+  if (!req.url.startsWith('http')) return;          // chrome-extension:// etc — never handle
+  if (req.headers.has('range')) return;             // media streams — browser-native (no 206 caching, no double fetch)
   e.respondWith(
-    fetch(e.request).then((res) => {
-      try { const c = res.clone(); caches.open(CACHE).then((cc) => cc.put(e.request, c)); } catch (_) {}
+    fetch(req).then((res) => {
+      if (res && res.status === 200 && res.type === 'basic') {
+        const c = res.clone();
+        caches.open(CACHE).then((cc) => cc.put(req, c)).catch(() => {});  // cache errors stay silent
+      }
       return res;
-    }).catch(() => caches.match(e.request))
+    }).catch(() => caches.match(req))
   );
 });

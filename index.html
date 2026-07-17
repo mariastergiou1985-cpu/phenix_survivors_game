@@ -6,9 +6,10 @@
   <meta name="theme-color" content="#0a1020">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>PHENIX: NULL EDEN — A cyber-survival roguelite</title>
-  <!-- Preload menu theme so it's cached before the first click (no autoplay) -->
-  <link rel="preload" as="audio" href="assets/audio/music/menu_theme.mp3?v=10" type="audio/mpeg">
-  <link rel="preload" as="audio" href="assets/audio/music/gameplay_theme.mp3?v=2" type="audio/mpeg">
+  <!-- Music preloads REMOVED (2026-07-17): they warned in console (unsupported `as` value)
+       and were dead weight — they fetched ?v=10 / ?v=2 while AudioManager actually plays
+       ?v=20260615210000, a different cache key, so megabytes downloaded at boot were never
+       reused. Music now loads once, on the first user gesture, as AudioManager always did. -->
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html {
@@ -98,6 +99,6 @@
   }
   </script>
   <script>if("serviceWorker" in navigator){var _hadSW=!!navigator.serviceWorker.controller;addEventListener("load",function(){navigator.serviceWorker.register("sw.js",{updateViaCache:"none"}).then(function(r){r.update();setInterval(function(){r.update();},60000);}).catch(function(){});});var _swReloaded=false;navigator.serviceWorker.addEventListener("controllerchange",function(){if(!_hadSW||_swReloaded)return;_swReloaded=true;location.reload();});}</script>
-  <script type="module" src="js/main.js?v=20260719900000"></script>
+  <script type="module" src="js/main.js?v=20260720000000"></script>
 </body>
 </html>
