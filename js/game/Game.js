@@ -12526,37 +12526,42 @@ export class Game {
         }
         ctx.restore();
       } else if (f.id === 'sanction_halo') {
-        // TRIBUNAL: a golden halo disc irises OPEN overhead (act 1) → pillars of
-        // judgement drop in sequence around its rim like nails of light (act 2) →
-        // the halo closes like an EYELID (act 3).
-        const HP2 = 6;                                   // pillars
-        const hy = -95;                                  // halo height above point
+        // Tribunal: a golden halo irises open, pillars of judgement fall around the rim,
+        // then it closes like an eyelid. Cinematic: 3-layer gold+white ring (§2),
+        // tick-pulse seal core (§6), rim glints (§7), 3-layer pillars + double impact ring.
+        const HP2 = 6, hy = -95;
+        const glow = f.color || '#ffd76a';
+        const pulse = Math.pow(Math.max(0, Math.sin(f.t * Math.PI * 2 * 4)), 6);   // §6 heartbeat
         ctx.save();
         ctx.globalCompositeOperation = 'lighter';
         const iris = k < 0.2 ? k / 0.2 : (k > 0.82 ? Math.max(0, 1 - (k - 0.82) / 0.28) : 1);
-        // halo: two concentric golden rings + inner seal spokes, squashed for perspective
         if (iris > 0.01) {
           ctx.save();
           ctx.translate(0, hy);
           ctx.scale(1, 0.34);
-          ctx.globalAlpha = 0.9 * iris;
-          ctx.strokeStyle = '#ffd76a'; ctx.lineWidth = 3;
-          ctx.shadowColor = '#ffd76a'; ctx.shadowBlur = 16;
+          ctx.globalAlpha = 0.5 * iris; ctx.strokeStyle = glow; ctx.lineWidth = 7;     // layer 2: gold bloom
           ctx.beginPath(); ctx.arc(0, 0, 58 * iris, 0, Math.PI * 2); ctx.stroke();
-          ctx.lineWidth = 1.4;
-          ctx.beginPath(); ctx.arc(0, 0, 42 * iris, 0, Math.PI * 2); ctx.stroke();
+          ctx.globalAlpha = 0.95 * iris; ctx.strokeStyle = '#fff6dc'; ctx.lineWidth = 2; // layer 1: white core
+          ctx.shadowColor = glow; ctx.shadowBlur = 14;                                  // single blurred stroke (§9)
+          ctx.beginPath(); ctx.arc(0, 0, 58 * iris, 0, Math.PI * 2); ctx.stroke();
           ctx.shadowBlur = 0;
-          ctx.globalAlpha = 0.5 * iris;                  // celestial seal spokes (rotating)
+          ctx.globalAlpha = 0.8 * iris; ctx.strokeStyle = glow; ctx.lineWidth = 1.4;    // inner ring
+          ctx.beginPath(); ctx.arc(0, 0, 42 * iris, 0, Math.PI * 2); ctx.stroke();
+          ctx.globalAlpha = 0.5 * iris;                                                 // rotating seal spokes + glints (§7)
           for (let i2 = 0; i2 < 8; i2++) {
             const sa3 = (i2 / 8) * Math.PI * 2 + f.t * 0.7;
+            ctx.strokeStyle = '#fff6dc'; ctx.lineWidth = 1.2;
             ctx.beginPath();
             ctx.moveTo(Math.cos(sa3) * 20 * iris, Math.sin(sa3) * 20 * iris);
             ctx.lineTo(Math.cos(sa3) * 40 * iris, Math.sin(sa3) * 40 * iris);
             ctx.stroke();
+            const gl = Math.pow(Math.max(0, Math.sin(f.t * 8 + i2)), 7);
+            if (gl > 0.45) { ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(Math.cos(sa3) * 50 * iris, Math.sin(sa3) * 50 * iris, 1.8, 0, Math.PI * 2); ctx.fill(); }
           }
+          ctx.globalAlpha = (0.5 + pulse * 0.5) * iris;                                 // pulsing white seal core (§6)
+          ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(0, 0, 5 + pulse * 6, 0, Math.PI * 2); ctx.fill();
           ctx.restore();
         }
-        // pillars fall in sequence around the rim
         for (let i2 = 0; i2 < HP2; i2++) {
           const drop2 = (k - 0.2 - i2 * 0.075) / 0.14;
           if (drop2 <= 0 || drop2 > 1.6) continue;
@@ -12564,32 +12569,29 @@ export class Game {
           const px3 = Math.cos(pa2) * f.R * 0.62, pyG = Math.sin(pa2) * f.R * 0.62 * 0.5;
           const dK2 = Math.min(1, drop2);
           const fade = drop2 > 1 ? 1 - (drop2 - 1) / 0.6 : 1;
-          // the pillar: from halo rim down to its ground point
-          const topY = hy + (0 - hy - pyG) * 0; // start at halo
-          ctx.globalAlpha = 0.85 * fade;
-          const pg = ctx.createLinearGradient(px3, hy, px3, pyG);
-          pg.addColorStop(0, 'rgba(255,246,220,0.0)');
-          pg.addColorStop(Math.max(0.01, dK2 - 0.25), 'rgba(255,215,106,0.05)');
-          pg.addColorStop(dK2, '#fff6dc');
-          ctx.strokeStyle = '#ffd76a';
-          ctx.lineWidth = 5;
-          ctx.beginPath(); ctx.moveTo(px3, hy);
-          ctx.lineTo(px3, hy + (pyG - hy) * dK2); ctx.stroke();
+          const py2 = hy + (pyG - hy) * dK2;
+          ctx.globalAlpha = 0.4 * fade; ctx.strokeStyle = glow; ctx.lineWidth = 8;      // 3-layer pillar (§2)
+          ctx.beginPath(); ctx.moveTo(px3, hy); ctx.lineTo(px3, py2); ctx.stroke();
+          ctx.globalAlpha = 0.85 * fade; ctx.strokeStyle = glow; ctx.lineWidth = 5;
+          ctx.beginPath(); ctx.moveTo(px3, hy); ctx.lineTo(px3, py2); ctx.stroke();
           ctx.strokeStyle = '#fff6dc'; ctx.lineWidth = 2;
-          ctx.beginPath(); ctx.moveTo(px3, hy);
-          ctx.lineTo(px3, hy + (pyG - hy) * dK2); ctx.stroke();
-          if (dK2 >= 1) {                                // nail-of-light impact ring
-            const iK2 = Math.min(1, (drop2 - 1) / 0.6);
+          ctx.beginPath(); ctx.moveTo(px3, hy); ctx.lineTo(px3, py2); ctx.stroke();
+          if (dK2 >= 1) {                                                               // nail-of-light impact: 2-layer ring (§3)
+            const iK2 = Math.min(1, (drop2 - 1) / 0.6), rr2 = 16 * iK2 + 4;
             ctx.globalAlpha = (1 - iK2) * 0.9;
-            ctx.strokeStyle = '#ffd76a'; ctx.lineWidth = 2.4 * (1 - iK2) + 0.6;
-            ctx.beginPath(); ctx.ellipse(px3, pyG, 16 * iK2 + 4, (16 * iK2 + 4) * 0.45, 0, 0, Math.PI * 2); ctx.stroke();
+            ctx.strokeStyle = glow; ctx.lineWidth = 3 * (1 - iK2) + 0.6;
+            ctx.beginPath(); ctx.ellipse(px3, pyG, rr2, rr2 * 0.45, 0, 0, Math.PI * 2); ctx.stroke();
+            ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.2 * (1 - iK2) + 0.4;
+            ctx.beginPath(); ctx.ellipse(px3, pyG, rr2 * 0.85, rr2 * 0.38, 0, 0, Math.PI * 2); ctx.stroke();
           }
         }
         ctx.restore();
       } else if (f.id === 'wing_guillotine') {
-        // GUILLOTINE OF WINGS: two colossal light-feather wings materialize spread wide
-        // (act 1) → SNAP shut on the point in a white scissor-flash (act 2) → dissolve
-        // into feathers drifting down (act 3).
+        // Guillotine of wings: feather wings spread, SNAP shut in a white scissor-flash,
+        // dissolve into drifting feathers. Cinematic: wing afterimage ghost (§4),
+        // 3-layer scissor (§2), tick-pulse burst core (§6). No shadowBlur in loops (§9).
+        const glow = f.color || '#9ecbff';
+        const pulse = Math.pow(Math.max(0, Math.sin(f.t * Math.PI * 2 * 5)), 6);   // §6 heartbeat
         ctx.save();
         ctx.globalCompositeOperation = 'lighter';
         const mat = Math.min(1, k / 0.3);
@@ -12601,30 +12603,31 @@ export class Game {
             ctx.save();
             ctx.scale(side, 1);
             ctx.rotate(-spread);
-            ctx.globalAlpha = mat * (after > 0 ? 1 - after / 0.35 : 1);
-            // wing: 5 feather layers, each an arc of tapered strokes
-            for (let fL = 0; fL < 5; fL++) {
-              const fr = 34 + fL * 17;
-              ctx.strokeStyle = fL % 2 ? '#e8f2ff' : '#ffffff';
-              ctx.lineWidth = 6 - fL;
-              ctx.shadowColor = '#9ecbff'; ctx.shadowBlur = 10;
-              ctx.beginPath();
-              ctx.arc(14, -20, fr * mat, Math.PI * 0.15, Math.PI * 0.62);
-              ctx.stroke();
+            const wa = mat * (after > 0 ? 1 - after / 0.35 : 1);
+            for (let g = 1; g >= 0; g--) {                             // g=1 afterimage ghost (§4)
+              const gm = mat * (1 - g * 0.12);
+              ctx.globalAlpha = wa * (g ? 0.26 : 1);
+              for (let fL = 0; fL < (g ? 3 : 5); fL++) {               // ghost is lighter (fewer feathers, §9 budget)
+                const fr = 34 + fL * 17;
+                ctx.strokeStyle = fL % 2 ? '#e8f2ff' : '#ffffff';
+                ctx.lineWidth = 6 - fL;
+                ctx.beginPath();
+                ctx.arc(14, -20, fr * gm, Math.PI * 0.15, Math.PI * 0.62);
+                ctx.stroke();
+              }
             }
-            ctx.shadowBlur = 0;
             ctx.restore();
           }
         }
-        if (snapK > 0.5 && after < 0.4) {                // scissor flash on the SNAP
+        if (snapK > 0.5 && after < 0.4) {                // 3-layer scissor flash on the SNAP (§2)
           const fK2 = after < 0.001 ? (snapK - 0.5) * 2 : 1 - after / 0.4;
-          ctx.globalAlpha = fK2 * 0.9;
-          ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 3;
-          ctx.beginPath(); ctx.moveTo(-f.R * 0.7, -34); ctx.lineTo(f.R * 0.7, 10); ctx.stroke();
-          ctx.beginPath(); ctx.moveTo(f.R * 0.7, -34); ctx.lineTo(-f.R * 0.7, 10); ctx.stroke();
-          ctx.globalAlpha = fK2 * 0.3;
+          ctx.globalAlpha = fK2 * 0.5; ctx.strokeStyle = glow; ctx.lineWidth = 6;    // layer 2: colored bloom
+          ctx.beginPath(); ctx.moveTo(-f.R * 0.7, -34); ctx.lineTo(f.R * 0.7, 10); ctx.moveTo(f.R * 0.7, -34); ctx.lineTo(-f.R * 0.7, 10); ctx.stroke();
+          ctx.globalAlpha = fK2 * 0.95; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2.4; // layer 1: white core
+          ctx.beginPath(); ctx.moveTo(-f.R * 0.7, -34); ctx.lineTo(f.R * 0.7, 10); ctx.moveTo(f.R * 0.7, -34); ctx.lineTo(-f.R * 0.7, 10); ctx.stroke();
+          ctx.globalAlpha = fK2 * (0.25 + pulse * 0.3);                              // pulsing burst core (§6)
           ctx.fillStyle = '#e8f2ff';
-          ctx.beginPath(); ctx.arc(0, -12, f.R * 0.6, 0, Math.PI * 2); ctx.fill();
+          ctx.beginPath(); ctx.arc(0, -12, f.R * 0.6 * (1 + pulse * 0.15), 0, Math.PI * 2); ctx.fill();
         }
         if (after > 0) {                                 // feathers drift down
           for (let i2 = 0; i2 < 12; i2++) {
