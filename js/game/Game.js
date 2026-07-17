@@ -12126,6 +12126,8 @@ export class Game {
           ctx.strokeStyle = h === 2 ? '#fff4e0' : '#ff9b3c';
           ctx.lineWidth = (5 - 3 * sK2) * big + 1;
           ctx.beginPath(); ctx.ellipse(0, 8, f.R * sK2 * (0.7 + big * 0.5), f.R * sK2 * (0.35 + big * 0.25), 0, 0, Math.PI * 2); ctx.stroke();
+          ctx.strokeStyle = '#ffffff'; ctx.lineWidth = ((5 - 3 * sK2) * big + 1) * 0.5;   // white core (§2)
+          ctx.beginPath(); ctx.ellipse(0, 8, f.R * sK2 * (0.7 + big * 0.5) * 0.9, f.R * sK2 * (0.35 + big * 0.25) * 0.9, 0, 0, Math.PI * 2); ctx.stroke();
           for (let i = 0; i < 6; i++) {                           // forge spark fan
             const sa = -Math.PI / 2 + (i - 2.5) * 0.4;
             ctx.globalAlpha = (1 - sK2) * 0.9;
@@ -12177,18 +12179,19 @@ export class Game {
             ctx.rotate(a2 + Math.PI / 2);
             ctx.globalAlpha = (1 - fling) * 0.95 + 0.05;
             ctx.strokeStyle = '#cdb6ff'; ctx.lineWidth = 3.4;
-            ctx.shadowColor = '#9b6bff'; ctx.shadowBlur = 12;
-            ctx.beginPath(); ctx.arc(0, 0, 20, -0.9, 0.9); ctx.stroke();   // crescent blade
-            ctx.shadowBlur = 0;
-            ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.4;
+            ctx.beginPath(); ctx.arc(0, 0, 20, -0.9, 0.9); ctx.stroke();   // crescent blade (bloom via 'lighter'; §9: no shadowBlur in loop)
+            ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.4;              // white hot edge (§2)
             ctx.globalAlpha = (1 - fling);
-            ctx.beginPath(); ctx.arc(0, 0, 22, -0.7, 0.7); ctx.stroke();   // hot edge
+            ctx.beginPath(); ctx.arc(0, 0, 22, -0.7, 0.7); ctx.stroke();
             ctx.restore();
           }
-          // magnetic core hum
+          // magnetic core hum + white tick-pulse (§6)
+          const mp = Math.pow(Math.max(0, Math.sin(f.t * Math.PI * 2 * 5)), 6);
           ctx.globalAlpha = (1 - bK) * 0.6;
           ctx.strokeStyle = '#9b6bff'; ctx.lineWidth = 2;
           ctx.beginPath(); ctx.arc(0, 0, 10 + Math.sin(f.t * 14) * 3, 0, Math.PI * 2); ctx.stroke();
+          ctx.globalAlpha = (1 - bK) * (0.3 + mp * 0.5);
+          ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(0, 0, 2 + mp * 4, 0, Math.PI * 2); ctx.fill();
         }
         ctx.restore();
       } else if (f.id === 'seismic_gauntlet') {
@@ -12244,6 +12247,8 @@ export class Game {
           ctx.strokeStyle = '#ffe9c4'; ctx.lineWidth = 3 * (1 - seal) + 1;
           const [ex2, ey2] = pts[segs];
           ctx.beginPath(); ctx.ellipse((ex2) / 2, (ey2) / 2, f.R * seal * 1.2, f.R * seal * 0.55, 0, 0, Math.PI * 2); ctx.stroke();
+          ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.4 * (1 - seal) + 0.4;    // white core (§2)
+          ctx.beginPath(); ctx.ellipse((ex2) / 2, (ey2) / 2, f.R * seal * 1.05, f.R * seal * 0.48, 0, 0, Math.PI * 2); ctx.stroke();
         }
         ctx.restore();
       } else if (f.id === 'pyroclast_uppercut') {
@@ -12297,9 +12302,11 @@ export class Game {
               ctx.beginPath(); ctx.arc(dx2, dy2, 6 + (fall - 0.92) * 60, 0, Math.PI * 2); ctx.stroke();
             }
           }
-          ctx.globalAlpha = (1 - dK) * 0.7;             // crater ring glow
+          ctx.globalAlpha = (1 - dK) * 0.7;             // crater ring glow — 2-layer (§2)
           ctx.strokeStyle = '#ff6a2a'; ctx.lineWidth = 3;
           ctx.beginPath(); ctx.ellipse(0, 6, f.R * 0.8, f.R * 0.38, 0, 0, Math.PI * 2); ctx.stroke();
+          ctx.strokeStyle = '#fff4d8'; ctx.lineWidth = 1.2;
+          ctx.beginPath(); ctx.ellipse(0, 6, f.R * 0.72, f.R * 0.34, 0, 0, Math.PI * 2); ctx.stroke();
         }
         ctx.restore();
       } else if (f.id === 'wire_garrote_web') {
@@ -12343,9 +12350,13 @@ export class Game {
             ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(7, -2.5); ctx.stroke(); }
           ctx.restore();
         }
-        if (cinch > 0.55) {                              // final slice-flash
+        if (cinch > 0.55) {                              // final slice-flash — §2 3-layer money shot
           const fK = (cinch - 0.55) / 0.45;
-          ctx.globalAlpha = (1 - fK) * 0.95;
+          const _sc = f.color || '#ff4dd2';
+          ctx.globalAlpha = (1 - fK) * 0.6;              // colored bloom (wide, under)
+          ctx.strokeStyle = _sc; ctx.lineWidth = 5.5 * (1 - fK) + 1.2;
+          ctx.beginPath(); ctx.moveTo(-f.R * fK, 0); ctx.lineTo(f.R * fK, 0); ctx.stroke();
+          ctx.globalAlpha = (1 - fK) * 0.98;             // white core (thin, over) — the ultimate edge (§2)
           ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2.4 * (1 - fK) + 0.6;
           ctx.beginPath(); ctx.moveTo(-f.R * fK, 0); ctx.lineTo(f.R * fK, 0); ctx.stroke();
         }
@@ -12397,9 +12408,10 @@ export class Game {
             ctx.rotate(pa + Math.PI / 2 + rel * 4);      // petal tumbles as it dances
             ctx.globalAlpha = Math.max(0, 1.15 - rel);
             ctx.fillStyle = '#1a0a14';
-            ctx.strokeStyle = '#ff4dd2'; ctx.lineWidth = 1.2;
-            ctx.shadowColor = '#ff4dd2'; ctx.shadowBlur = 8;
+            ctx.strokeStyle = '#ff4dd2'; ctx.lineWidth = 2.4;   // §2 colored bloom edge (wide, under) — no shadowBlur in loop (§9)
             ctx.beginPath(); ctx.ellipse(0, 0, 3.6, 8, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+            ctx.strokeStyle = '#ffdff4'; ctx.lineWidth = 0.9;   // §2 white core (thin, over)
+            ctx.beginPath(); ctx.ellipse(0, 0, 3.6, 8, 0, 0, Math.PI * 2); ctx.stroke();
             ctx.restore();
           }
         }
@@ -12505,9 +12517,11 @@ export class Game {
             const hot2 = Math.min(1, lit);
             ctx.globalAlpha = 0.95;
             ctx.fillStyle = chord > 0 ? '#fff4d8' : '#ffb03c';
-            ctx.shadowColor = '#ff3c3c'; ctx.shadowBlur = 10;
+            if (hot2 < 1) { ctx.shadowColor = '#ff3c3c'; ctx.shadowBlur = 10; }  // §9: blur only on transient ignition, not every frame
             ctx.beginPath(); ctx.ellipse(nx, ny, 4.4, 3.2, -0.4, 0, Math.PI * 2); ctx.fill();
             ctx.shadowBlur = 0;
+            ctx.globalAlpha = 0.9; ctx.fillStyle = '#fff8e6';                    // §2 white-core glint on the note head
+            ctx.beginPath(); ctx.arc(nx - 1, ny - 0.6, 1.3, 0, Math.PI * 2); ctx.fill();
             if (hot2 < 1) {                                  // ignition: red lightning burst
               ctx.globalAlpha = 1 - hot2;
               ctx.strokeStyle = '#ff3c3c'; ctx.lineWidth = 2;
