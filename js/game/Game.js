@@ -12755,9 +12755,10 @@ export class Game {
           ctx.save();
           ctx.translate(px4, py4);
           ctx.globalAlpha = al2 * blink;
-          ctx.strokeStyle = isWin && collapse > 0 ? '#ffffff' : '#c86bff';
-          ctx.lineWidth = isWin && collapse > 0 ? 2.6 : 1.6;
-          ctx.shadowColor = '#c86bff'; ctx.shadowBlur = 10;
+          const winGlow = isWin && collapse > 0;
+          ctx.strokeStyle = winGlow ? '#ffffff' : '#c86bff';
+          ctx.lineWidth = winGlow ? 2.6 : 1.6;
+          if (winGlow) { ctx.shadowColor = '#c86bff'; ctx.shadowBlur = 12; }   // §9: blur only on the collapsed winner, not every ghost every frame
           ctx.beginPath();
           ctx.moveTo(0, -14); ctx.lineTo(6, 0); ctx.lineTo(0, 12); ctx.lineTo(-6, 0); ctx.closePath(); ctx.stroke();
           ctx.beginPath(); ctx.arc(0, -18, 3, 0, Math.PI * 2); ctx.stroke();
@@ -12923,15 +12924,20 @@ export class Game {
             if (segK <= 0) continue;
             const [x1, y1] = st2[i2], [x2, y2] = st2[i2 + 1];
             const ex3 = x1 + (x2 - x1) * segK, ey3 = y1 + (y2 - y1) * segK;
-            // ember stroke — turns blue-white as it ignites
+            const growing = segK < 1;
+            // ember stroke — colored bloom (wide, under). turns blue-white as it ignites
             ctx.globalAlpha = (0.8 - blast * 0.8);
-            ctx.strokeStyle = ignite > 0 ? '#9ec2ff' : '#ff7a3c';
-            ctx.lineWidth = 4.6 * K2 + ignite * 2;
-            ctx.shadowColor = ignite > 0 ? '#5a8cff' : '#ff7a3c';
-            ctx.shadowBlur = 10 + ignite * 10;
+            ctx.strokeStyle = ignite > 0 ? '#5a8cff' : '#ff7a3c';
+            ctx.lineWidth = 6.4 * K2 + ignite * 2.4;
+            if (growing) { ctx.shadowColor = ignite > 0 ? '#5a8cff' : '#ff7a3c'; ctx.shadowBlur = 12 + ignite * 10; }  // §9: blur only on the live brush tip, not every finished stroke
             ctx.beginPath(); ctx.moveTo(x1 * K2, y1 * K2); ctx.lineTo(ex3 * K2, ey3 * K2); ctx.stroke();
             ctx.shadowBlur = 0;
-            if (segK < 1) { tipX = ex3 * K2; tipY = ey3 * K2; tipOn = true; }
+            // §2 bright core (thin, over) — the ultimate white/blue edge along the ideogram
+            ctx.globalAlpha = (0.9 - blast * 0.9);
+            ctx.strokeStyle = ignite > 0 ? '#eaf1ff' : '#ffd9a0';
+            ctx.lineWidth = 2.2 * K2 + ignite;
+            ctx.beginPath(); ctx.moveTo(x1 * K2, y1 * K2); ctx.lineTo(ex3 * K2, ey3 * K2); ctx.stroke();
+            if (growing) { tipX = ex3 * K2; tipY = ey3 * K2; tipOn = true; }
           }
         }
         if (tipOn && ignite <= 0) {                           // the searing brush tip
