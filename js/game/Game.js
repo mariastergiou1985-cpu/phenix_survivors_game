@@ -11729,7 +11729,8 @@ export class Game {
       this._evoFx = this._evoFx || [];
       if (this._evoFx.length >= 10) this._evoFx.shift();
       this._evoFx.push({ id: weaponId, x, y, angle: angle || 0, t: 0,
-                         seed: (Math.random() * 1000) | 0, R: _pDef.baseStats?.aoeRadius || 120 });
+                         seed: (Math.random() * 1000) | 0, R: _pDef.baseStats?.aoeRadius || 120,
+                         color: _pDef.color || '#9fd8ff' });
       this.audio?.forgeEvolution?.();                    // Φ9 forge sting
       this._spawnWeaponAccent(weaponId, x, y, angle || 0, 1.4);
       return null;
@@ -11874,42 +11875,71 @@ export class Game {
       ctx.save();
       try {
       ctx.translate(f.x, f.y);
+      // ── Cinematic Pass (shared): birth scale-in 0.45s + breathing ground halo ──
+      // Recipe §1 (birth scale-in — nothing "appears dry") + §A (1 radial ground halo,
+      // weapon color, alpha ~0.4 breathing with sin). Uniform for every procedural
+      // evolution; each weapon's bespoke body/impact choreography follows below.
+      const _birth = Math.min(1, f.t / 0.45);
+      ctx.scale(_birth, _birth);
+      {
+        const _hc = f.color || '#9fd8ff';
+        const _hR = (f.R || 120) * 1.15;
+        const _hg = ctx.createRadialGradient(0, 0, 0, 0, 0, _hR);
+        _hg.addColorStop(0, _hc);
+        _hg.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.save();
+        ctx.globalAlpha = (0.30 + 0.12 * Math.sin(f.t * 3.0)) * Math.max(0, 1 - k * 0.6);
+        ctx.fillStyle = _hg;
+        ctx.beginPath(); ctx.arc(0, 0, _hR, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+      }
       if (f.id === 'marrow_reactor') {
-        // ACT 1 (k<0.26): six bone RIBS slam inward and cage the point.
-        // ACT 2 (0.26-0.62): the reactor VENTS — white core + electric marrow beams through the gaps.
-        // ACT 3 (>0.62): the cage crumbles into falling bone chips.
+        // Bone reactor — ribs cage the point, vent a white marrow-core, then crumble.
+        // Cinematic Pass: double-stroke metal ribs + 1 afterimage ghost (§B,§4),
+        // 3-layer white core (§2), tick-pulse vent (§6), slam-ring crumble (§3), glints (§7).
         const R = f.R * 0.8;
+        const bone = '#e8e4d0', boneDk = '#8f8a76', glow = f.color || '#9fd8ff';
+        const pulse = Math.pow(Math.max(0, Math.sin(f.t * Math.PI * 2 * 5)), 6);      // §6 heartbeat
         if (k < 0.62) {
           const inK = Math.min(1, k / 0.26);
-          for (let i = 0; i < 6; i++) {
-            const a2 = (i / 6) * Math.PI * 2 + 0.3;
-            const dist = R * (1.6 - inK * 0.85);
-            const bx = Math.cos(a2) * dist, by = Math.sin(a2) * dist * 0.7;
-            ctx.save();
-            ctx.translate(bx, by);
-            ctx.rotate(a2 + Math.PI / 2);
-            ctx.fillStyle = '#e8e4d0';
-            ctx.strokeStyle = '#b8b2a0'; ctx.lineWidth = 1.5;
-            ctx.beginPath();                                     // curved rib (bezier bone)
-            ctx.moveTo(-4, -R * 0.45);
-            ctx.quadraticCurveTo(-14, 0, -4, R * 0.45);
-            ctx.lineTo(4, R * 0.45);
-            ctx.quadraticCurveTo(-6, 0, 4, -R * 0.45);
-            ctx.closePath(); ctx.fill(); ctx.stroke();
-            ctx.restore();
+          for (let g = 1; g >= 0; g--) {                         // g=1 ghost, g=0 solid (§4)
+            const gk = Math.max(0, inK - g * 0.12);
+            ctx.globalAlpha = g ? 0.3 : 1;
+            for (let i = 0; i < 6; i++) {
+              const a2 = (i / 6) * Math.PI * 2 + 0.3;
+              const dist = R * (1.6 - gk * 0.85);
+              ctx.save();
+              ctx.translate(Math.cos(a2) * dist, Math.sin(a2) * dist * 0.7);
+              ctx.rotate(a2 + Math.PI / 2);
+              ctx.beginPath();                                   // curved rib (bezier bone)
+              ctx.moveTo(-4, -R * 0.45);
+              ctx.quadraticCurveTo(-14, 0, -4, R * 0.45);
+              ctx.lineTo(4, R * 0.45);
+              ctx.quadraticCurveTo(-6, 0, 4, -R * 0.45);
+              ctx.closePath();
+              if (!g) { ctx.fillStyle = bone; ctx.fill(); }
+              ctx.strokeStyle = boneDk; ctx.lineWidth = 4; ctx.stroke();        // dark shadow under (§B)
+              ctx.strokeStyle = '#fff8ea'; ctx.lineWidth = 1.6; ctx.stroke();   // bright edge over (§B)
+              ctx.restore();
+            }
           }
+          ctx.globalAlpha = 1;
         }
         if (k >= 0.26 && k < 0.62) {
           const vK = (k - 0.26) / 0.36;
           ctx.save();
-          ctx.globalCompositeOperation = 'lighter';
-          ctx.globalAlpha = (1 - vK) * 0.95;
-          ctx.fillStyle = '#ffffff';                             // reactor core
-          ctx.beginPath(); ctx.arc(0, 0, 10 + vK * 8, 0, Math.PI * 2); ctx.fill();
-          for (let i = 0; i < 6; i++) {                          // marrow beams through the gaps
+          ctx.globalCompositeOperation = 'lighter';                            // §C additive
+          const cr = (10 + vK * 8) * (1 + pulse * 0.5);
+          ctx.globalAlpha = (1 - vK) * 0.4;                                     // layer 3: faint halo
+          ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(0, 0, cr * 2.2, 0, Math.PI * 2); ctx.fill();
+          ctx.globalAlpha = (1 - vK) * 0.7;                                     // layer 2: colored bloom
+          ctx.strokeStyle = glow; ctx.lineWidth = 6; ctx.beginPath(); ctx.arc(0, 0, cr, 0, Math.PI * 2); ctx.stroke();
+          ctx.globalAlpha = (1 - vK) * 0.95;                                    // layer 1: white core
+          ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0, 0, cr, 0, Math.PI * 2); ctx.stroke();
+          ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(0, 0, 3 + pulse * 3, 0, Math.PI * 2); ctx.fill();
+          for (let i = 0; i < 6; i++) {                                         // marrow beams (fixed loop)
             const a2 = (i / 6) * Math.PI * 2 + 0.3 + Math.PI / 6;
-            ctx.strokeStyle = i % 2 ? '#9fd8ff' : '#ffffff'; ctx.lineWidth = 3 * (1 - vK) + 1;
-            ctx.shadowColor = '#9fd8ff'; ctx.shadowBlur = 12;
+            ctx.strokeStyle = i % 2 ? glow : '#ffffff'; ctx.lineWidth = 3 * (1 - vK) + 1;
             ctx.beginPath();
             let px = Math.cos(a2) * 12, py = Math.sin(a2) * 12 * 0.7;
             ctx.moveTo(px, py);
@@ -11919,21 +11949,32 @@ export class Game {
               ctx.lineTo(px, py);
             }
             ctx.stroke();
+            const gl = Math.pow(Math.max(0, Math.sin(f.t * 9 + i)), 7);         // glint at tip (§7)
+            if (gl > 0.4) { ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(px, py, 1.6, 0, Math.PI * 2); ctx.fill(); }
           }
-          ctx.shadowBlur = 0;
           ctx.restore();
         }
         if (k >= 0.62) {
           const cK = (k - 0.62) / 0.53;
+          ctx.save();                                                          // slam ring (§3): white inside, bone-glow outside
+          ctx.globalCompositeOperation = 'lighter';
+          const sr = 10 + cK * R * 1.4;
+          ctx.globalAlpha = (1 - cK) * 0.8;
+          ctx.strokeStyle = glow; ctx.lineWidth = 5; ctx.beginPath(); ctx.ellipse(0, 0, sr, sr * 0.7, 0, 0, Math.PI * 2); ctx.stroke();
+          ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.8; ctx.beginPath(); ctx.ellipse(0, 0, sr * 0.9, sr * 0.63, 0, 0, Math.PI * 2); ctx.stroke();
+          ctx.restore();
           ctx.globalAlpha = 1 - cK;
-          ctx.fillStyle = '#e8e4d0';
-          for (let i = 0; i < 8; i++) {                          // crumbling chips fall
+          ctx.fillStyle = bone;
+          for (let i = 0; i < 8; i++) {                                        // crumbling chips fall
             const a2 = prV(f.seed, i + 40) * Math.PI * 2;
             const rr = R * (0.8 + prV(f.seed, i + 50) * 0.3);
             ctx.beginPath();
             ctx.arc(Math.cos(a2) * rr, Math.sin(a2) * rr * 0.7 + cK * cK * 40, 2.4, 0, Math.PI * 2);
             ctx.fill();
           }
+          ctx.globalAlpha = (1 - cK) * 0.25;                                   // dust (flat ellipse)
+          ctx.fillStyle = boneDk;
+          ctx.beginPath(); ctx.ellipse(0, R * 0.5, R * (0.6 + cK * 0.5), R * 0.18, 0, 0, Math.PI * 2); ctx.fill();
         }
       } else if (f.id === 'mirror_cascade') {
         // ACT 1 (k<0.3): four frost MIRROR panes materialize in an arc facing the strike.
@@ -12979,61 +13020,67 @@ export class Game {
         }
         ctx.restore();
       } else if (f.id === 'revenant_choir') {
-        // ACT 1 (k<0.32): three revenant skulls RISE from the strike point.
-        // ACT 2 (0.32-0.62): they SING — bone-toothed sonic rings pulse outward.
-        // ACT 3 (>0.62): they DIVE outward as hunting streaks with wisp trails.
+        // Three revenant skulls rise, SING a 3-layer toothed sonic ring, then dive out hunting.
+        // Cinematic Pass: double-stroke skulls (§B), 3-layer sonic ring (§2), dive ghosts (§4),
+        // socket glints (§7), tick-pulse glow (§6). No shadowBlur in loops (§9).
         const rise = Math.min(1, k / 0.32);
+        const bone = '#e8e4d0', boneDk = '#8f8a76', glow = f.color || '#bfefff';
+        const pulse = Math.pow(Math.max(0, Math.sin(f.t * Math.PI * 2 * 6)), 6);   // §6 heartbeat
         for (let i = 0; i < 3; i++) {
           const a2 = (i / 3) * Math.PI * 2 - Math.PI / 2 + f.seed;
-          let sx2, sy2, al = 1;
+          let sx2, sy2, al = 1, dK = 0;
           if (k < 0.62) {
             sx2 = Math.cos(a2) * 30;
             sy2 = Math.sin(a2) * 16 - rise * 44;
           } else {
-            const dK = (k - 0.62) / 0.53;
+            dK = (k - 0.62) / 0.53;
             sx2 = Math.cos(a2) * (30 + dK * f.R * 1.4);
             sy2 = Math.sin(a2) * (16 + dK * f.R * 0.9) - 44 + dK * 30;
             al = 1 - dK;
-            ctx.save();                                          // dive streak trail
+            ctx.save();                                          // dive: 2 ghosts + streak with white core
             ctx.globalCompositeOperation = 'lighter';
-            ctx.globalAlpha = al * 0.5;
-            ctx.strokeStyle = '#bfefff'; ctx.lineWidth = 3;
-            ctx.beginPath();
-            ctx.moveTo(sx2 - Math.cos(a2) * 26, sy2 - Math.sin(a2) * 18 + 6);
-            ctx.lineTo(sx2, sy2);
-            ctx.stroke();
+            for (let g = 2; g >= 1; g--) {
+              ctx.globalAlpha = al * (0.32 / g);
+              ctx.fillStyle = glow;
+              ctx.beginPath(); ctx.arc(sx2 - Math.cos(a2) * 13 * g, sy2 - Math.sin(a2) * 9 * g + 3 * g, 6, 0, Math.PI * 2); ctx.fill();
+            }
+            ctx.globalAlpha = al * 0.5; ctx.strokeStyle = glow; ctx.lineWidth = 3;
+            ctx.beginPath(); ctx.moveTo(sx2 - Math.cos(a2) * 26, sy2 - Math.sin(a2) * 18 + 6); ctx.lineTo(sx2, sy2); ctx.stroke();
+            ctx.globalAlpha = al * 0.9; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.2;   // white core (§2)
+            ctx.beginPath(); ctx.moveTo(sx2 - Math.cos(a2) * 20, sy2 - Math.sin(a2) * 14 + 4); ctx.lineTo(sx2, sy2); ctx.stroke();
             ctx.restore();
           }
-          // procedural skull: dome + eye sockets + jaw teeth
+          // procedural skull: dome + sockets + jaw teeth, double-stroke (§B)
           ctx.save();
-          ctx.globalAlpha = al * (0.75 + 0.25 * Math.sin(f.t * 12 + i * 2));
-          ctx.fillStyle = '#e8e4d0';
-          ctx.shadowColor = '#bfefff'; ctx.shadowBlur = 10;
-          ctx.beginPath(); ctx.arc(sx2, sy2, 8, Math.PI, 0); ctx.lineTo(sx2 + 8, sy2 + 4); ctx.lineTo(sx2 - 8, sy2 + 4); ctx.closePath(); ctx.fill();
-          ctx.shadowBlur = 0;
-          ctx.fillStyle = '#0a0e18';
+          ctx.globalAlpha = al * (0.78 + 0.22 * pulse);
+          ctx.beginPath(); ctx.arc(sx2, sy2, 8, Math.PI, 0); ctx.lineTo(sx2 + 8, sy2 + 4); ctx.lineTo(sx2 - 8, sy2 + 4); ctx.closePath();
+          ctx.fillStyle = bone; ctx.fill();
+          ctx.strokeStyle = boneDk; ctx.lineWidth = 3; ctx.stroke();        // dark shadow under (§B)
+          ctx.strokeStyle = '#fff8ea'; ctx.lineWidth = 1.2; ctx.stroke();   // bright edge over (§B)
+          ctx.fillStyle = '#0a0e18';                                         // eye sockets
           ctx.beginPath(); ctx.arc(sx2 - 3, sy2 - 1, 1.8, 0, Math.PI * 2); ctx.fill();
           ctx.beginPath(); ctx.arc(sx2 + 3, sy2 - 1, 1.8, 0, Math.PI * 2); ctx.fill();
-          ctx.fillStyle = '#e8e4d0';
+          const eg = Math.pow(Math.max(0, Math.sin(f.t * 10 + i * 2)), 6);   // socket glint (§7)
+          if (eg > 0.35) {
+            ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.fillStyle = glow;
+            ctx.beginPath(); ctx.arc(sx2 - 3, sy2 - 1, 2.2, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(sx2 + 3, sy2 - 1, 2.2, 0, Math.PI * 2); ctx.fill();
+            ctx.restore();
+          }
+          ctx.fillStyle = bone;
           for (let tth = -1; tth <= 1; tth++) ctx.fillRect(sx2 + tth * 3 - 1, sy2 + 4, 2, 3);
           ctx.restore();
         }
-        if (k >= 0.32 && k < 0.62) {                             // the SONG: toothed sonic rings
+        if (k >= 0.32 && k < 0.62) {                             // the SONG: 3-layer toothed sonic ring
           const sK = (k - 0.32) / 0.3;
+          const rr = 20 + sK * f.R;
+          const ringPath = (rad) => { ctx.beginPath(); for (let i = 0; i <= 36; i++) { const a3 = (i / 36) * Math.PI * 2; const tooth = i % 3 === 0 ? 6 : 0; const px = Math.cos(a3) * (rad + tooth), py = Math.sin(a3) * (rad + tooth) * 0.7; i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py); } ctx.closePath(); };
           ctx.save();
           ctx.globalCompositeOperation = 'lighter';
-          ctx.globalAlpha = (1 - sK) * 0.85;
-          ctx.strokeStyle = '#bfefff'; ctx.lineWidth = 2.4;
-          ctx.shadowColor = '#bfefff'; ctx.shadowBlur = 10;
-          const rr = 20 + sK * f.R;
-          ctx.beginPath();
-          for (let i = 0; i <= 36; i++) {                        // bone-toothed edge
-            const a2 = (i / 36) * Math.PI * 2;
-            const tooth = i % 3 === 0 ? 6 : 0;
-            const px = Math.cos(a2) * (rr + tooth), py = Math.sin(a2) * (rr + tooth) * 0.7;
-            i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
-          }
-          ctx.closePath(); ctx.stroke();
+          ctx.globalAlpha = (1 - sK) * 0.45; ctx.strokeStyle = glow;     ctx.lineWidth = 6;   ringPath(rr); ctx.stroke();  // layer 2: bloom
+          ctx.globalAlpha = (1 - sK) * 0.9;  ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.8; ringPath(rr); ctx.stroke();  // layer 1: white core
+          ctx.globalAlpha = (1 - sK) * (0.4 + pulse * 0.5);              // pulsing white heart (§6)
+          ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(0, 0, 4 + pulse * 4, 0, Math.PI * 2); ctx.fill();
           ctx.restore();
         }
       }
