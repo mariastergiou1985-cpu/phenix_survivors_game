@@ -1057,7 +1057,10 @@ export function getCardDisplayName(weaponId, characterId) {
 const _weaponIndex = new Map(Object.values(WEAPON_DEFS).map(w => [w.id, w]));
 const _characterWeaponIndex = new Map(
   Object.values(WEAPON_DEFS)
-    .filter(w => w.character !== null)
+    // Starter/native lookup must return a BASE weapon, never an evolution.
+    // Evolutions also carry `character`; without this filter the last-defined
+    // evolution won the Map key, seeding an end-game weapon at level 1 (QA-P1).
+    .filter(w => w.character !== null && !w.isEvolution)
     .map(w => [w.character, w])
 );
 

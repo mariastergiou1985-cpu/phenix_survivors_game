@@ -123,6 +123,9 @@ export const CHARACTER_OUTFITS = {
   eddie: {
     default: { name: 'Default', asset: 'assets/characters/eddie_thunder_guitar.png' },
   },
+  dimis_kickboxer: {
+    default: { name: 'Default', asset: 'assets/characters/dimis_kickboxer.png' },
+  },
 };
 
 // Endless-only achievement milestones. Each `test` is a PURE read-only predicate over a

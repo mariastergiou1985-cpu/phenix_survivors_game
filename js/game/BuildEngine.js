@@ -298,6 +298,21 @@ export class BuildEngineRuntime {
     this.weapons.set(id, { id, level: 1, evolved: false, cd: 0.4, volley: 0, burstQ: [],
                            charge: 0, skulls: [], bladeT: 0 });
   }
+  // Seed a character's native FULL Build-Engine weapon as their starter — used for
+  // characters with NO legacy base weapon (e.g. Dimi Kickboxer → Cyber-Gauntlets
+  // Injection). Picks the first non-external owned weapon that has a real executor
+  // and registers exactly one. Returns the weapon id, or null if none exists.
+  seedNativeStarter(charId) {
+    if (!charId) return null;
+    for (const id in WEAPON_DEFS) {
+      const d = WEAPON_DEFS[id];
+      if (d && d.owner === charId && d.category === 'weapon' && !d.external && WEAPON_EXECUTORS[id]) {
+        if (!this.weapons.has(id)) this.addWeapon(id);
+        return id;
+      }
+    }
+    return null;
+  }
   addPassive(id) {
     const p = PASSIVE_DEFS[id];
     if (!this.passives.has(id) && this.passives.size >= this.CAPS.passives) return;   // P2.7: 6P cap

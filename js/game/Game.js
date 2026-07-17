@@ -1348,6 +1348,27 @@ export class Game {
       else console.log('[P2] Build Engine DISABLED by user (?p2=0 / F9) — press F9 in the menu to re-enable');
     } catch (_) { try { this.buildEngine = new BuildEngineRuntime(this); } catch (_2) { this.buildEngine = null; } }
 
+    // ── Starter-weapon safety net (QA-P1: Dimi Kickboxer) ─────────────────────
+    // Characters with a legacy base weapon are seeded above. A character with NO
+    // legacy base weapon (getWeaponForCharacter → null after the base-only filter)
+    // but WITH a native Build-Engine weapon (Dimi → Cyber-Gauntlets Injection) is
+    // seeded here so they are never weaponless and never start on an evolution.
+    let _beStarter = null;
+    if (!_charWeapon && this.buildEngine) {
+      _beStarter = this.buildEngine.seedNativeStarter?.(this.selectedCharacter) || null;
+    }
+    // Dev-only diagnostics — never shown to players, zero production gameplay effect.
+    const _DEV = typeof location !== 'undefined' &&
+      (location.hostname === 'localhost' || location.hostname === '127.0.0.1' || location.protocol === 'file:');
+    if (_DEV) {
+      if (_charWeapon && _charWeapon.isEvolution)
+        console.warn('[DEV] starter weapon is an EVOLUTION for ' + this.selectedCharacter + ' (' + _charWeapon.id + ')');
+      if (!_charWeapon && !_beStarter)
+        console.warn('[DEV] ' + this.selectedCharacter + ' has NO base weapon and NO Build-Engine native — weaponless start!');
+      if (this.buildEngine && this.buildEngine.weapons.size === 0 && !_charWeapon)
+        console.warn('[DEV] Build Engine started with no registered weapon for ' + this.selectedCharacter);
+    }
+
     // ── Tactical Cache Weapons — independent map objects, 100% decoupled from player ──
     this.tacticalCacheWeapons = [];
     this._tacticalDeployedIds = new Set();   // every tactical id deployed this run (fusion unlock tracking)
