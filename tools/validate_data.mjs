@@ -89,6 +89,18 @@ for (const [pair, fx] of Object.entries(FUSION_PAIRS)) {
   if (!FUSION_FX[fx]) err(`FUSION_PAIRS['${pair}'] → unknown FUSION_FX '${fx}'`);
 }
 
+// ── 4b. Tactical runtime-required fields (the deploy path reads these) ────────
+console.log('▶ 4b. Tactical required runtime fields');
+for (const [id, t] of Object.entries(TACTICAL_DEFS)) {
+  if (t.character === '__fusion__') continue;
+  for (const f of ['behavior', 'baseDamage', 'duration']) {
+    if (t[f] === undefined) warn(`tactical '${id}' missing runtime field '${f}'`);
+  }
+}
+for (const [fx, def] of Object.entries(FUSION_FX)) {
+  if (!def.kind) warn(`FUSION_FX '${fx}' missing 'kind'`);
+}
+
 // ── 5. Roster coverage ────────────────────────────────────────────────────────
 console.log('▶ 5. Roster coverage (κάθε χαρακτήρας: element + ≥2 BE native weapons)');
 for (const ch of CHARS) {

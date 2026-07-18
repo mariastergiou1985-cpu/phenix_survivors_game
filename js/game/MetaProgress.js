@@ -982,6 +982,14 @@ export class MetaProgress {
   // who never opened the picker gets the first owned relic in catalog order — the cap
   // never silently strips a save down to zero bonuses.
   getEquippedRelic() {
+    // Phase 13 fix (save matrix case 9): unknown/deprecated relic ids in a save are IGNORED
+    // with a warning — they must never occupy the equip slot (which silently disabled the
+    // real relics). Only ids that exist in RELIC_DEFS count.
+    const known = id => RELIC_DEFS.some(r => r.id === id);
+    if (this.equippedRelic && !known(this.equippedRelic)) {
+      console.warn('[Meta] unknown equipped relic id ignored:', this.equippedRelic);
+      this.equippedRelic = null;
+    }
     if (this.equippedRelic && this.relics[this.equippedRelic] === true) return this.equippedRelic;
     for (const r of RELIC_DEFS) if (this.relics[r.id] === true) { this.equippedRelic = r.id; return r.id; }
     return null;
@@ -1159,7 +1167,16 @@ export class MetaProgress {
 
   // ─── Cyber-Pet system ─────────────────────────────────────────────────────
   isPetUnlocked(id) { return this.unlockedPets[id] === true; }
-  getSelectedPets() { return (this.selectedPets || []).slice(0, this.petSlots || 1); }
+  getSelectedPets() {
+    // Phase 13 fix (save matrix case 9): a pet id that was never unlocked (corrupted or
+    // deprecated save data) is dropped with a warning instead of spawning a broken pet.
+    const list = (this.selectedPets || []).filter(id => {
+      if (this.unlockedPets && this.unlockedPets[id]) return true;
+      if (id) console.warn('[Meta] unknown/locked pet id ignored:', id);
+      return false;
+    });
+    return list.slice(0, this.petSlots || 1);
+  }
   getPetSlots() { return this.petSlots || 1; }
 
   selectPet(slotIndex, petId) {
