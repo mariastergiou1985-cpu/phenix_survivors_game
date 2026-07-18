@@ -19658,7 +19658,12 @@ export class Game {
         !(this.player.selectedCharacter === 'eddie' && this._feedbackApoc?.isActive()) &&
         !(this.player.selectedCharacter === 'assassin_clone' && this._phantomExec?.isActive())) {
       // ── Player character — always fully visible, weapons NEVER cover it ──
-      drawGlow(ctx, this.player.pos.x, this.player.pos.y, 48, CYAN, 0.28); // player hero glow
+      // HERO GLOW REMOVED (Maria 2026-07-18): drawGlow(..., 48, CYAN, 0.28) painted an
+      // additive cyan disc (inner core alpha ~0.45, r≈26) directly BEHIND the whole 64px
+      // sprite. On light outfits (Grandmaster Dojang Girl secret skin: white dobok) the
+      // bright body pixels merged into the disc — arms, torso and uniform read as missing
+      // and the character looked transparent. Player readability is already handled inside
+      // Player.draw() (character-tinted ground pool at the feet + silhouette rim, 16d6089).
       this.player.draw(ctx, this._lastMousePos || { x: 0, y: 0 });
       // ── Vessel companion — Ally-Walker-style escort BESIDE the player (offset, smaller) ──
       this._drawActiveVessel(ctx);
