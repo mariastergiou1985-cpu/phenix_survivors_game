@@ -17,8 +17,8 @@ import { SupportDrone }   from '../entities/SupportDrone.js?v=20260711750000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260713600000';
 import { SystemEventManager } from './Events.js?v=20260711780000';
-import { UpgradeUI }      from './UpgradeUI.js?v=20260719200000';
-import { weightedSample } from './Upgrades.js?v=20260712520000';
+import { UpgradeUI }      from './UpgradeUI.js?v=20260722500000';
+import { weightedSample } from './Upgrades.js?v=20260722500000';
 import { BuildEngineRuntime } from './BuildEngine.js?v=20260721300000';   // BUILD ENGINE — always on (full migration 2026-07-18)
 import './BuildEngineChars1.js?v=20260719900000';   // P2.3a Taekwondo+CyberArm (side-effect register)
 import './BuildEngineChars2.js?v=20260719900000';   // P2.3b Brawler+Assassin (side-effect register)
@@ -29,7 +29,7 @@ import './BuildEnginePassives.js?v=20260719900000'; // P2.6 Build passives §26-
 import { MutationUI }      from './MutationUI.js?v=20260703990000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260721200000';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, SKILL_TREE, AMULET_DEFS, GRID_TO_PF_RATE } from './MetaProgress.js?v=20260722400000';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, COLLECTIBLE_FRAGMENT_COST, COLLECTIBLE_GRID_COST, ECHO_FRAGMENT_COST, ECHO_GRID_COST, SKILL_TREE, AMULET_DEFS, GRID_TO_PF_RATE } from './MetaProgress.js?v=20260722500000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260712520000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
@@ -2366,19 +2366,19 @@ export class Game {
   // achievements grant nothing, and none of this runs in Act 1 (continueEndless is the sole entry).
   _applyEndlessProtocols() {
     const p = this.player, m = this.meta;
-    if (m.hasAchievement('first_endless')) p.xpMult = (p.xpMult || 1) * 1.05;          // Endless Initiate
-    if (m.hasAchievement('endless_survivor')) {                                         // Survivor Core
+    if (m.isCollectibleActive('first_endless')) p.xpMult = (p.xpMult || 1) * 1.05;          // Endless Initiate
+    if (m.isCollectibleActive('endless_survivor')) {                                         // Survivor Core
       const add = Math.round(p.maxHp * 0.05);
       p.maxHp += add; p.hp = Math.min(p.maxHp, p.hp + add);
     }
     // ── Previously display-only protocols — now actually applied ──
-    if (m.hasAchievement('endless_titan'))   p.fireRateBonus = (p.fireRateBonus || 0) + 0.10;  // +10% fire rate
-    if (m.hasAchievement('score_legend')) {                                                     // +10% max HP
+    if (m.isCollectibleActive('endless_titan'))   p.fireRateBonus = (p.fireRateBonus || 0) + 0.10;  // +10% fire rate
+    if (m.isCollectibleActive('score_legend')) {                                                     // +10% max HP
       const addL = Math.round(p.maxHp * 0.10);
       p.maxHp += addL; p.hp = Math.min(p.maxHp, p.hp + addL);
     }
-    if (m.hasAchievement('level_ascendant')) p.maxMana = Math.round(p.maxMana * 1.15);          // +15% max mana
-    if (m.hasAchievement('combo_god'))       p.speedBonus = (p.speedBonus || 0) + 0.08;         // +8% move speed
+    if (m.isCollectibleActive('level_ascendant')) p.maxMana = Math.round(p.maxMana * 1.15);          // +15% max mana
+    if (m.isCollectibleActive('combo_god'))       p.speedBonus = (p.speedBonus || 0) + 0.08;         // +8% move speed
   }
 
   // Global damage multiplier from Achievement Protocols/Cards — Endless ONLY (returns 1 in Act 1,
@@ -2388,9 +2388,9 @@ export class Game {
     if (!this.endless) return 1;
     const m = this.meta, combo = this.comboCount || 0;
     let mult = 1;
-    if (m.hasAchievement('score_hunter')) mult += 0.05;                                  // Damage Uplink Protocol
+    if (m.isCollectibleActive('score_hunter')) mult += 0.05;                                  // Damage Uplink Protocol
     mult += 0.06 * this._cardLvl('achievement_damage_uplink');                           // Damage Uplink Card
-    if (m.hasAchievement('combo_master')) mult += combo >= 100 ? 0.08 : combo >= 50 ? 0.05 : 0;  // Combo Surge Protocol
+    if (m.isCollectibleActive('combo_master')) mult += combo >= 100 ? 0.08 : combo >= 50 ? 0.05 : 0;  // Combo Surge Protocol
     const co = this._cardLvl('achievement_combo_overdrive');                             // Combo Overdrive Card
     if (co > 0) mult += (combo >= 100 ? 0.05 : combo >= 50 ? 0.025 : 0) * co;
     return mult;
@@ -2527,9 +2527,9 @@ export class Game {
   _nexusCapacityBonus() {
     const m = this.meta; if (!m) return 0;
     return (m.getLevel('coreCapacity') || 0)
-         + (m.hasAchievement?.('core_defender') ? 1 : 0)
-         + (m.hasAchievement?.('core_warden')   ? 1 : 0)
-         + (m.hasAchievement?.('grid_legend')   ? 1 : 0);
+         + (m.isCollectibleActive?.('core_defender') ? 1 : 0)
+         + (m.isCollectibleActive?.('core_warden')   ? 1 : 0)
+         + (m.isCollectibleActive?.('grid_legend')   ? 1 : 0);
   }
 
   _applyMetaUpgrades() {
@@ -3129,7 +3129,7 @@ export class Game {
   // All values default to identity (1 or 0) for missing echoes — safe with old saves.
   _getBossEchoPassiveBonuses() {
     if (!this.meta) return { maxHpMult: 1, moveSpeedBonus: 0, pulseDamageBonus: 0, fireRateBonus: 0 };
-    const h = id => this.meta.hasBossEcho(id);
+    const h = id => this.meta.isEchoActive?.(id);   // paid activation (PF + grids), not just archived
     return {
       maxHpMult:        (h('titan') ? 1.03 : 1) * (h('leviathanMega') ? 1.03 : 1),
       moveSpeedBonus:   (h('bloodfang') ? 0.02 : 0) + (h('emperorMega') ? 0.02 : 0),
@@ -3154,7 +3154,7 @@ export class Game {
     if (b.pulseDamageBonus > 0) p.upgrades['Pulse Damage'] = (p.upgrades['Pulse Damage'] || 0) + b.pulseDamageBonus;
     if (b.fireRateBonus   > 0) p.fireRateBonus            = (p.fireRateBonus           || 0) + b.fireRateBonus;
     // One-time per-run EDEN CORE message when any passive is active
-    const activeCount = BOSS_ECHOES.filter(e => this.meta.hasBossEcho(e.id)).length;
+    const activeCount = BOSS_ECHOES.filter(e => this.meta.isEchoActive?.(e.id)).length;
     if (activeCount > 0 && !this._echoPassiveMsgFired) {
       this._echoPassiveMsgFired = true;
       try { this._queueEdenTransmission('EDEN CORE: Hostile echo converted into passive signal.', { priority: 1, duration: 5 }); } catch (_) {}
@@ -4587,19 +4587,26 @@ export class Game {
     const ceMemory = el.querySelector('#ce-memory');
     const ceGrid   = el.querySelector('#ce-grid');
     if (ceCount && ceMemory && ceGrid) {
-      const archivedN = BOSS_ECHOES.filter(e => this.meta.hasBossEcho(e.id)).length;
-      ceCount.textContent  = 'PASSIVES ACTIVE: ' + archivedN + ' / ' + BOSS_ECHOES.length;
+      // Maria 2026-07-18: killing the boss ARCHIVES the echo — switching its passive ON
+      // costs BOTH currencies (fragments AND grids).
+      const activeN = BOSS_ECHOES.filter(e => this.meta.isEchoActive?.(e.id)).length;
+      ceCount.textContent  = 'PASSIVES ACTIVE: ' + activeN + ' / ' + BOSS_ECHOES.length;
       ceMemory.textContent = 'EDEN MEMORY: ' + Math.round(this.meta.getEdenMemory()) + '%';
+      const canPayEcho = this.meta.protocolFragments >= ECHO_FRAGMENT_COST && this.meta.credits >= ECHO_GRID_COST;
       ceGrid.innerHTML = BOSS_ECHOES.map(echo => {
         const archived   = this.meta.hasBossEcho(echo.id);
+        const eActive    = archived && this.meta.isEchoActive?.(echo.id);
         const cardCls    = archived ? 'ce-card archived' : 'ce-card';
         const iconCls    = archived ? 'ce-icon archived' : 'ce-icon';
         const nameCls    = archived ? 'ce-name' : 'ce-name locked';
         const loreCls    = archived ? 'ce-lore' : 'ce-lore locked';
         const statCls    = archived ? 'ce-status archived' : 'ce-status locked';
-        const passiveCls = archived ? 'ce-passive archived' : 'ce-passive locked';
+        const passiveCls = eActive ? 'ce-passive archived' : 'ce-passive locked';
         const iconStyle  = archived ? `color:${echo.color}` : 'color:#3a5060';
         const nameStyle  = archived ? `color:${echo.color}` : '';
+        const statHtml   = eActive ? '★ ACTIVE'
+          : archived ? `<span class="ce-activate" data-echo-id="${echo.id}" style="cursor:pointer;border:1px solid rgba(255,212,71,.5);color:${canPayEcho ? '#ffd447' : '#7a8290'};background:rgba(255,212,71,.10);padding:3px 9px;border-radius:6px;">ACTIVATE ${ECHO_GRID_COST}⬡ ${ECHO_FRAGMENT_COST}🧩</span>`
+          : '✕ LOCKED';
         return `<div class="${cardCls}">
           <div class="${iconCls}" style="${iconStyle}">⬡</div>
           <div class="ce-info">
@@ -4607,9 +4614,18 @@ export class Game {
             <div class="${loreCls}">${archived ? echo.lore : 'Kill this boss in Endless to archive.'}</div>
             <div class="${passiveCls}">Passive: ${archived ? echo.passive : '???'}</div>
           </div>
-          <div class="${statCls}">${archived ? '✓ ARCHIVED' : '✕ LOCKED'}</div>
+          <div class="${statCls}">${statHtml}</div>
         </div>`;
       }).join('');
+      // Wire echo ACTIVATE buttons (paid: fragments + grids) — delegation, render-proof
+      if (!ceGrid._activateWired) {
+        ceGrid._activateWired = true;
+        ceGrid.addEventListener('click', (ev) => {
+          const btn = ev.target.closest?.('.ce-activate');
+          if (!btn || !ceGrid.contains(btn)) return;
+          if (this.meta.tryActivateEcho?.(btn.dataset.echoId) === 'ok') this._syncAchievementsOverlay();
+        });
+      }
     }
 
     // Sync Eden Memory Milestones
@@ -4690,11 +4706,17 @@ export class Game {
     if (!grid) return;
     grid.innerHTML = ENDLESS_ACHIEVEMENTS.map(a => {
       const got      = !!this.meta.achievements[a.id];
+      // Maria 2026-07-18: the milestone EARNS the collectible — switching its protocol+card
+      // ON costs BOTH currencies (fragments AND grids).
+      const active   = got && this.meta.isCollectibleActive?.(a.id);
+      const canPay   = this.meta.protocolFragments >= COLLECTIBLE_FRAGMENT_COST && this.meta.credits >= COLLECTIBLE_GRID_COST;
       const cardCls  = got ? 'ca-card unlocked' : 'ca-card';
       const nameCls  = got ? 'ca-card-name'     : 'ca-card-name locked';
       const goalCls  = got ? 'ca-card-goal'     : 'ca-card-goal locked';
       const statuCls = got ? 'ca-status unlocked' : 'ca-status locked';
-      const statuLbl = got ? '★ UNLOCKED' : '🔒 LOCKED';
+      const statuLbl = active ? '★ ACTIVE'
+        : got ? `<span class="ca-activate" data-ach-id="${a.id}" style="cursor:pointer;border:1px solid rgba(255,212,71,.5);color:${canPay ? '#ffd447' : '#7a8290'};background:rgba(255,212,71,.10);padding:3px 9px;border-radius:6px;">ACTIVATE ${COLLECTIBLE_GRID_COST}⬡ ${COLLECTIBLE_FRAGMENT_COST}🧩</span>`
+        : '🔒 LOCKED';
       const protoVal = got
         ? `<span class="ca-reward-val">${a.protocolName} — ${a.protocolEffect}</span>`
         : `<span class="ca-reward-val hidden">???</span>`;
@@ -4716,6 +4738,16 @@ export class Game {
         </div>
       </div>`;
     }).join('');
+    // Wire collectible ACTIVATE buttons (paid: fragments + grids) — delegation on the
+    // persistent grid node, survives innerHTML re-renders
+    if (!grid._activateWired) {
+      grid._activateWired = true;
+      grid.addEventListener('click', (ev) => {
+        const btn = ev.target.closest?.('.ca-activate');
+        if (!btn || !grid.contains(btn)) return;
+        if (this.meta.tryActivateCollectible?.(btn.dataset.achId) === 'ok') this._syncAchievementsOverlay();
+      });
+    }
 
     // ── Secret Skins gallery (moved here from Character Select) ──
     const _HIDDEN_SK = ['toxic_overload', 'null_walker', 'crimson_oni'];
@@ -4826,7 +4858,8 @@ export class Game {
         #cgm-relics .cr-tab.active, #cgm-relics .cr-tab:hover { border-color:var(--amber); color:var(--amber); background:rgba(255,153,0,.07); }
         #cgm-relics .cr-grid   { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:14px; }
         #cgm-relics .cr-card   { position:relative; border-radius:var(--radius); border:1px solid rgba(46,90,100,.25); background:rgba(10,16,46,.55); padding:14px; display:flex; flex-direction:column; gap:8px; }
-        #cgm-relics .cr-card.owned  { border-color:rgba(52,211,153,.5); background:rgba(0,14,10,.6); }
+        #cgm-relics .cr-card.owned  { border-color:rgba(52,211,153,.5); background:rgba(0,14,10,.6); cursor:pointer; }
+        #cgm-relics .cr-card.owned:hover { border-color:#ffd447; box-shadow:0 0 12px rgba(255,212,71,.25); }
         #cgm-relics .cr-card.locked { opacity:.65; }
         #cgm-relics .cr-card-top  { display:flex; align-items:flex-start; justify-content:space-between; gap:8px; }
         #cgm-relics .cr-card-name { font-family:'Orbitron',sans-serif; font-weight:700; font-size:12px; color:#dff0ff; }
@@ -4942,7 +4975,7 @@ export class Game {
       const typeLabel = r.type.toUpperCase();
       const reqLine   = r.reqChar ? `<div class="cr-card-req">Character: ${r.reqChar.replace(/_/g,' ')}</div>` : '';
 
-      return `<div class="${cardCls}">
+      return `<div class="${cardCls}" data-relic="${r.id}">
         <div class="cr-card-top">
           <div>
             <div class="cr-card-name">${r.name}</div>
@@ -4965,12 +4998,19 @@ export class Game {
         if (result === 'ok') this._syncRelicsOverlay();
       });
     });
-    // 1R loadout: click an owned relic to make it THE run relic (persisted)
-    grid.querySelectorAll('.equip-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        if (this.meta.equipRelic?.(btn.dataset.equipId)) this._syncRelicsOverlay();
+    // 1R loadout: click ANYWHERE on an owned relic card to make it THE run relic.
+    // Maria bug 2026-07-18 («δεν με άφησε να διαλέξω»): the tiny badge-only target was
+    // easy to miss — now the whole owned card equips, wired ONCE by delegation on the
+    // grid node itself so it survives every innerHTML re-render.
+    if (!grid._equipWired) {
+      grid._equipWired = true;
+      grid.addEventListener('click', (ev) => {
+        const card = ev.target.closest?.('.cr-card.owned');
+        if (!card || !grid.contains(card)) return;
+        const id = card.dataset.relic;
+        if (id && this.meta.equipRelic?.(id)) this._syncRelicsOverlay();
       });
-    });
+    }
   }
 
   _drawRelicsScreen(ctx) {

@@ -1,6 +1,6 @@
 import { WIDTH, HEIGHT, YELLOW, WHITE, GREY } from '../constants.js';
 import { drawText, wrapText, roundRect } from '../utils.js';
-import { RARITY_COLORS } from './Upgrades.js?v=20260712520000';
+import { RARITY_COLORS } from './Upgrades.js?v=20260722500000';
 
 export class UpgradeUI {
   constructor(choices) {

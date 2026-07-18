@@ -1,4 +1,4 @@
-import { Game } from './game/Game.js?v=20260722400000';
+import { Game } from './game/Game.js?v=20260722500000';
 import { AudioManager } from './audio/AudioManager.js?v=20260722100000';
 import { PlatformAchievements } from './platform/PlatformAchievements.js?v=20260712370000';
 // Steam build: replay any web-earned achievements to Steam on boot (no-op in browsers)

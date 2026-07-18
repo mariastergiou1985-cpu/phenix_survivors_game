@@ -243,6 +243,14 @@ export const GRID_TO_PF_RATE = 30;
 
 export const RELIC_FRAGMENT_COST = 25;   // flat fragment cost per relic (Maria's economy: 25 PF each)
 export const RELIC_GRID_COST     = 250;  // flat grid (credits) cost per relic (Maria's economy: 250 grids each)
+
+// Maria 2026-07-18: COLLECTIBLES (achievement protocol+card) and BOSS ECHO passives are no
+// longer free-on-milestone — the milestone makes them AVAILABLE, activating the effect costs
+// BOTH currencies (fragments AND grids), scaled under the 25/250 relic anchor.
+export const COLLECTIBLE_FRAGMENT_COST = 10;   // activate an earned collectible (protocol + card)
+export const COLLECTIBLE_GRID_COST     = 150;
+export const ECHO_FRAGMENT_COST        = 8;    // activate an archived boss-echo passive
+export const ECHO_GRID_COST            = 120;
 export const RELIC_DEFS = [
   { id:'eden_core_fragment',   name:'Eden Core Fragment',   type:'universal',  cost:5,
     effect:'Every boss kill this run grants +15 bonus XP.',
@@ -379,6 +387,8 @@ export class MetaProgress {
     this.rewardedPFTotal = 0;           // PF granted BY level rewards — excluded from progression (breaks the feedback loop)
     this.systemFeedMessages = [];  // last 8 { text, ts } entries, newest first
     this.bossEchoes         = {};  // { [bossKey]: true } first-time echo archives
+    this.collectiblesActive = {};  // { [achId]: true }  — paid activation (PF + grids) of earned collectibles
+    this.echoesActive       = {};  // { [echoId]: true } — paid activation (PF + grids) of archived echoes
     this.edenMilestonesSeen = {};  // { [threshold]: true } milestone one-fire guard
     this.systemLogsSeen    = {};  // { [threshold]: true } system log one-fire feed guard
     this.chaosRanks    = {};  // Phase B: { [charId]: { bestSecs, bestRank } } — Chaos Survival Rank per character
@@ -450,6 +460,15 @@ export class MetaProgress {
       }
       this.systemFeedMessages = Array.isArray(d.systemFeedMessages) ? d.systemFeedMessages.slice(0, 8) : [];
       this.bossEchoes         = (d.bossEchoes && typeof d.bossEchoes === 'object') ? d.bossEchoes : {};
+      // Paid-activation maps (Maria 2026-07-18). GRANDFATHERING: a save from before this
+      // system earned everything when activation was free — auto-activate what it already
+      // had, exactly once (only when the field is absent from the save).
+      const _hadColl = d.collectiblesActive !== undefined;
+      const _hadEcho = d.echoesActive !== undefined;
+      this.collectiblesActive = (_hadColl && typeof d.collectiblesActive === 'object') ? d.collectiblesActive : {};
+      this.echoesActive       = (_hadEcho && typeof d.echoesActive === 'object') ? d.echoesActive : {};
+      if (!_hadColl) { for (const k in this.achievements) if (this.achievements[k]) this.collectiblesActive[k] = true; }
+      if (!_hadEcho) { for (const k in this.bossEchoes)   if (this.bossEchoes[k])   this.echoesActive[k]       = true; }
       this.edenMilestonesSeen = (d.edenMilestonesSeen && typeof d.edenMilestonesSeen === 'object') ? d.edenMilestonesSeen : {};
       this.systemLogsSeen    = (d.systemLogsSeen    && typeof d.systemLogsSeen    === 'object') ? d.systemLogsSeen    : {};
       this.chaosRanks    = (d.chaosRanks    && typeof d.chaosRanks    === 'object') ? d.chaosRanks    : {}; // Phase B
@@ -535,6 +554,8 @@ export class MetaProgress {
         economyRepairV2: true,
         systemFeedMessages: this.systemFeedMessages,
         bossEchoes:         this.bossEchoes,
+        collectiblesActive: this.collectiblesActive,
+        echoesActive:       this.echoesActive,
         edenMilestonesSeen: this.edenMilestonesSeen,
         systemLogsSeen:     this.systemLogsSeen,
         chaosRanks:         this.chaosRanks,           // Phase B: Chaos Survival Rank per character
@@ -821,6 +842,8 @@ export class MetaProgress {
     this.edenMemoryPercent  = 0;
     this.systemFeedMessages = [];
     this.bossEchoes         = {};
+    this.collectiblesActive = {};
+    this.echoesActive       = {};
     this._save();
   }
 
@@ -904,6 +927,24 @@ export class MetaProgress {
   // derive their active state directly from this flag, so existing saves light up with no
   // migration. Read-only; never mutates state.
   hasAchievement(id) { return !!this.achievements[id]; }
+
+  // ─── Paid activation (Maria 2026-07-18): milestone earns it, BOTH currencies switch it on ──
+  isCollectibleActive(id) { return !!(this.achievements[id] && this.collectiblesActive[id]); }
+  tryActivateCollectible(id) {
+    if (!this.achievements[id] || this.collectiblesActive[id]) return 'no';
+    if (this.protocolFragments < COLLECTIBLE_FRAGMENT_COST || this.credits < COLLECTIBLE_GRID_COST) return 'poor';
+    this.protocolFragments -= COLLECTIBLE_FRAGMENT_COST;
+    this.credits           -= COLLECTIBLE_GRID_COST;
+    this.collectiblesActive[id] = true; this._save(); return 'ok';
+  }
+  isEchoActive(id) { return !!(this.bossEchoes?.[id] && this.echoesActive[id]); }
+  tryActivateEcho(id) {
+    if (!this.bossEchoes?.[id] || this.echoesActive[id]) return 'no';
+    if (this.protocolFragments < ECHO_FRAGMENT_COST || this.credits < ECHO_GRID_COST) return 'poor';
+    this.protocolFragments -= ECHO_FRAGMENT_COST;
+    this.credits           -= ECHO_GRID_COST;
+    this.echoesActive[id] = true; this._save(); return 'ok';
+  }
 
   // Character unlock gate. The 3 base characters are always available; Brawler Warrior is
   // unlocked by reaching 10:00 in Endless (flag set via unlock('brawler_warrior')).

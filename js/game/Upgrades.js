@@ -348,7 +348,7 @@ export function weightedSample(player, n = 3, ctx = {}) {
   const eligible = ALL_UPGRADES.filter(u =>
     u.canApply(player) &&
     (!u.char || u.char === player.selectedCharacter) &&
-    (!u.requiredAchievement || (meta && meta.hasAchievement(u.requiredAchievement))) &&
+    (!u.requiredAchievement || (meta && (meta.isCollectibleActive ? meta.isCollectibleActive(u.requiredAchievement) : meta.hasAchievement(u.requiredAchievement)))) &&
     (!u.endlessOnly || endless) &&
     (!u.allowedChars || u.allowedChars.includes(player.selectedCharacter)) &&
     (!u.prereq || u.prereq(player)));
@@ -356,7 +356,7 @@ export function weightedSample(player, n = 3, ctx = {}) {
 
   // Weapon Evolution Protocol / Evolution Algorithm card: in Endless, nudge the current
   // character's mastery cards to appear a little more often. Small — does not flood the pool.
-  const masteryBoost = (endless && meta && meta.hasAchievement('level_breaker'))
+  const masteryBoost = (endless && meta && (meta.isCollectibleActive ? meta.isCollectibleActive('level_breaker') : meta.hasAchievement('level_breaker')))
     ? 1 + 0.25 + 0.15 * (player.upgrades['achievement_evolution_algorithm'] || 0)
     : 1 + 0.15 * (endless ? (player.upgrades['achievement_evolution_algorithm'] || 0) : 0);
   const weightOf = u => {
