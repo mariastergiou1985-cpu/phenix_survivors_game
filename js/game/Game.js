@@ -41,7 +41,7 @@ import { AfterimageTribunal } from '../effects/afterimage-tribunal.js?v=20260711
 import { FeedbackApocalypse } from '../effects/feedback-apocalypse.js?v=20260711520000';
 import { OniMaskOverture } from '../effects/oni-mask-overture.js?v=20260711530000';
 import { EuclidTheorem } from '../effects/euclid-theorem.js?v=20260716800000';
-import { DeusExMachina } from '../effects/deus-ex-machina.js?v=20260712250000';
+import { DeusExMachina } from '../effects/deus-ex-machina.js?v=20260721900000';
 import { RailgunHorizon } from '../effects/railgun-horizon.js?v=20260711560000';
 import { MagmaCoreEruption } from '../effects/magma-core-eruption.js?v=20260712300000';
 import { PhantomExecution } from '../effects/phantom-execution.js?v=20260711580000';
@@ -6136,6 +6136,7 @@ export class Game {
         e.takeHit(dmg, this);
       }
     }
+    this._cyberAngelBossHit(p.pos, radius, dmg);   // standalone bosses/mega bosses live OUTSIDE this.enemies
     this._specialRings.push({ pos: p.pos.clone(), radius: 0, maxRadius: radius,
                                life: 0.7, maxLife: 0.7, color1: '#b026ff', color2: '#ff2d6a' });
     (this._dimiAngels ||= []).push({ pos: new Vec2(p.pos.x, p.pos.y - 160), t: 0, life: 6.0, atk: 0.3, dmg: (20 + 4 * _am) * _amu });
@@ -6146,6 +6147,33 @@ export class Game {
     this.floatingTexts.push(new FloatingText('CYBER-ANGEL SUMMONING!', p.pos.clone(), '#b026ff', 1.2));
     this.audio?.playBossWarning?.();
     this.screenShake.trigger(7, 0.35);
+  }
+
+  // Dimi ultimate — standalone-boss damage. The act bosses (Titan, Annihilator, Bloodfang,
+  // Cyber Serpent, Cyber Dragon, Double Demons) live OUTSIDE this.enemies, so the nova/smite
+  // enemy loops never see them. Damage + hitFlash only — bosses take no angelic knockback.
+  // Mirrors the Thunder Solo hitBoss pattern (die callbacks included).
+  _cyberAngelBossHit(at, radius, dmg) {
+    const hit = (boss, die) => {
+      if (boss && boss.hp > 0 && distance(boss.pos, at) < radius + (boss.radius || 0)) {
+        boss.hp -= dmg; boss.hitFlash = 0.08;
+        if (boss.hp <= 0 && die) die.call(this);
+      }
+    };
+    hit(this.titanBoss,        this._titanDie);
+    hit(this.annihilatorBoss,  this._annihilatorDie);
+    hit(this.bloodfangBoss,    this._bloodfangDie);
+    hit(this.cyberSerpentBoss, this._cyberSerpentDie);
+    hit(this.cyberDragonBoss,  this._cyberDragonDie);
+    if (this.doubleDemonsBoss && this.doubleDemonsBoss.hp > 0) {
+      const dd = this.doubleDemonsBoss;
+      for (const body of [dd.gunner, dd.claw]) {
+        if (distance(body.pos, at) < radius + (body.radius || 0)) {
+          dd.hp -= dmg; body.hitFlash = 0.08;
+          if (dd.hp <= 0) { this._doubleDemonsDie(); break; }
+        }
+      }
+    }
   }
 
   // Dimi Cyber-Angel summon — big animated guardian that hovers above Dimi and smites nearby
@@ -6166,10 +6194,12 @@ export class Game {
           if (!e || !e.pos) continue;
           if (distance(e.pos, a.pos) < 270) e.takeHit(a.dmg, this);
         }
+        this._cyberAngelBossHit(a.pos, 270, a.dmg);   // smites now judge standalone bosses/mega bosses too
         this._specialRings.push({ pos: a.pos.clone(), radius: 0, maxRadius: 210,
                                    life: 0.4, maxLife: 0.4, color1: '#ff2d6a', color2: '#b026ff' });
-        this._deusEx?.pulse();   // judgement beams on the cinematic layer
+        this._deusEx?.pulse();   // judgement beams + sigil on the cinematic layer
         this.audio?.playHit?.();
+        this.screenShake.trigger(2.5, 0.1);           // each judgement lands with weight
       }
       if (a.life <= 0) this._dimiAngels.splice(i, 1);
     }

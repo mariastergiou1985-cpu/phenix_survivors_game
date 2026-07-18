@@ -34,6 +34,7 @@ export class DeusExMachina {
     this.born = 0; this.cx = 0; this.footY = 0;
     this._feathers = [];   // {x,y,vy,vx,a,r,rot}
     this._beams = [];      // {ang,life,maxLife}
+    this._sigils = [];     // {born,rot} — golden judgement rings stamped on each smite
     this._pulseT = 0;
   }
 
@@ -46,6 +47,7 @@ export class DeusExMachina {
     this.born = performance.now();
     this._feathers = [];
     this._beams = [];
+    this._sigils = [];
   }
 
   // Called by the game each time the angel smites — fires the visible judgement beams.
@@ -57,6 +59,7 @@ export class DeusExMachina {
     for (let i = 0; i < n; i++) {
       this._beams.push({ ang: off + (i / n) * Math.PI * 2, life: 260, maxLife: 260 });
     }
+    this._sigils.push({ born: performance.now(), rot: Math.random() * Math.PI * 2 });
   }
 
   _gateY()  { return this.footY - this.cfg.size.hover - this.cfg.size.angel * 0.62; }
@@ -89,6 +92,7 @@ export class DeusExMachina {
     this._feathers = this._feathers.filter(f => f.a > 0);
     for (const b of this._beams) b.life -= 16;
     this._beams = this._beams.filter(b => b.life > 0);
+    this._sigils = this._sigils.filter(s => now - s.born < 600);
   }
 
   _drawGate(ctx, open, alpha) {
@@ -221,6 +225,32 @@ export class DeusExMachina {
       ctx.restore();
     }
 
+    // judgement sigils — expanding rotating golden glyph rings stamped on each smite,
+    // radiating from the angel across the smite zone (readable AoE cue)
+    const _nowS = performance.now();
+    for (const s of this._sigils) {
+      const t = (_nowS - s.born) / 600; if (t >= 1) continue;
+      const r = 60 + t * 240, a = 1 - t;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.translate(this.cx, ay);
+      ctx.rotate(s.rot + t * 0.8);
+      ctx.globalAlpha = a * 0.75;
+      ctx.strokeStyle = C.gold; ctx.lineWidth = 2.5;
+      ctx.shadowColor = C.gold; ctx.shadowBlur = 10;
+      ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.stroke();
+      ctx.globalAlpha = a * 0.5;
+      ctx.lineWidth = 1.6;
+      for (let i = 0; i < 16; i++) {
+        const ga = (i / 16) * Math.PI * 2;
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(ga) * (r - 8), Math.sin(ga) * (r - 8));
+        ctx.lineTo(Math.cos(ga) * (r + 8), Math.sin(ga) * (r + 8));
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
     // ═══ OPHANIM — THE WHEEL OF JUDGEMENT ═══════════════════════════════════
     // A biblically-accurate machine seraph: three counter-rotating golden rings,
     // rims studded with LENS-EYES that blink and track, a burning iris core.
@@ -279,23 +309,48 @@ export class DeusExMachina {
         }
         ctx.restore();
       }
-      // ── the IRIS CORE: burning gold eye that dilates on judgement ──
-      const coreR = 26 + Math.sin(el / 180) * 3 + flash * 14;
-      const cg = ctx.createRadialGradient(0, 0, 2, 0, 0, coreR * 1.8);
-      cg.addColorStop(0, flash > 0.3 ? 'rgba(255,255,255,0.95)' : 'rgba(255,246,216,0.95)');
-      cg.addColorStop(0.4, 'rgba(255,212,71,0.7)');
-      cg.addColorStop(1, 'rgba(255,212,71,0)');
-      ctx.globalAlpha = angelAlpha;
-      ctx.fillStyle = cg;
-      ctx.beginPath(); ctx.arc(0, 0, coreR * 1.8, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = C.hot; ctx.lineWidth = 2;
-      ctx.globalAlpha = angelAlpha * 0.9;
-      ctx.beginPath(); ctx.arc(0, 0, coreR, 0, Math.PI * 2); ctx.stroke();
-      ctx.fillStyle = '#1a0800';                                        // slit pupil
-      ctx.globalAlpha = angelAlpha;
-      ctx.beginPath(); ctx.ellipse(0, 0, coreR * 0.18, coreR * (0.55 + flash * 0.4), 0, 0, Math.PI * 2); ctx.fill();
+      // (iris core removed — Maria's angel art now stands at the wheel's centre;
+      //  the OPHANIM rings read as a great rotating halo BEHIND the figure)
       ctx.restore();
-      // (legacy halo removed — the OPHANIM rings ARE the halo now)
+    }
+
+    // ═══ THE CYBER-ANGEL — Maria's Ultimate art, drawn SOLID in front of the wheel ═══
+    // Never a ghost: source-over at full angelAlpha with a golden rim. On each smite
+    // (pulse) the rim flashes white and a brief radiant overdraw makes the art blaze.
+    if (angelAlpha > 0 && this.img && this.img.complete && this.img.naturalWidth > 0) {
+      const flash = this._pulseT;
+      const bob   = this.phase === PHASE.GUARDIAN ? Math.sin(el / 480) * 10 : 0;
+      const sway  = this.phase === PHASE.GUARDIAN ? Math.sin(el / 900) * 0.03 : 0;
+      const grow  = this.phase === PHASE.DESCENT ? (0.86 + 0.14 * descend) : 1;
+      const iw = this.img.naturalWidth, ih = this.img.naturalHeight;
+      const h = SZ * grow * (1 + flash * 0.03), w = h * (iw / ih);
+      ctx.save();
+      ctx.translate(this.cx, ay + bob);
+      ctx.rotate(sway);
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.globalAlpha = angelAlpha;
+      ctx.shadowColor = flash > 0.25 ? '#ffffff' : C.gold;
+      ctx.shadowBlur  = 22 + flash * 26;
+      ctx.drawImage(this.img, -w / 2, -h / 2, w, h);
+      if (flash > 0.05) {
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.22 * flash * angelAlpha;
+        ctx.drawImage(this.img, -w / 2, -h / 2, w, h);
+      }
+      ctx.restore();
+      // ASCEND: vertical light streaks trail the rising angel into the closing gate
+      if (this.phase === PHASE.ASCEND) {
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = (1 - angelAlpha) * 0.6;
+        ctx.strokeStyle = C.hot; ctx.lineWidth = 2;
+        ctx.shadowColor = C.gold; ctx.shadowBlur = 8;
+        for (let i = 0; i < 5; i++) {
+          const sx = this.cx + (i - 2) * w * 0.16;
+          ctx.beginPath(); ctx.moveTo(sx, ay - h * 0.2); ctx.lineTo(sx, ay + h * 0.55); ctx.stroke();
+        }
+        ctx.restore();
+      }
     }
 
     // falling light-feathers
