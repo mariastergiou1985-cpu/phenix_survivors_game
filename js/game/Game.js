@@ -10,7 +10,7 @@ import { clamp, distance, safeNormalize, randomChoice, randomRange, wrapText } f
 import { FloatingText }   from '../entities/FloatingText.js?v=20260703990000';
 import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260705040000';
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260712090000';
-import { Player }         from '../entities/Player.js?v=20260712480000';
+import { Player }         from '../entities/Player.js?v=20260721700000';
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260706270000';
 import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260719800000';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=20260711750000';

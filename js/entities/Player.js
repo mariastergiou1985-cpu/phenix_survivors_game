@@ -551,12 +551,17 @@ export class Player {
     const vis = this._getVisibilityColors();
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
-    const gx = this.pos.x, gy = this.pos.y + 16, gr = PLAYER_RADIUS * 2.5;
+    // GROUND POOL (Maria 2026-07-18): was centred at pos.y+16 with a vertical radius of
+    // gr*0.5 (=20), so it spanned pos.y-4 .. pos.y+36 while the sprite spans pos.y-32 ..
+    // pos.y+32 — the additive glow sat over the LOWER 55% OF THE BODY and washed out the
+    // legs and outfit. Pushed down to the feet and flattened so it reads as a ground pool
+    // under the character instead of a veil across it.
+    const gx = this.pos.x, gy = this.pos.y + 26, gr = PLAYER_RADIUS * 2.5;
     const pool = ctx.createRadialGradient(gx, gy, 0, gx, gy, gr);
     pool.addColorStop(0, vis.innerGlow);
     pool.addColorStop(1, vis.outerGlow);
     ctx.fillStyle = pool;
-    ctx.beginPath(); ctx.ellipse(gx, gy, gr, gr * 0.5, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(gx, gy, gr, gr * 0.32, 0, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
 
     // Draw character sprite (64 px tall) or fallback colored circle
@@ -582,6 +587,15 @@ export class Player {
       const stX     = 1 - (step * prof.stretch * blend + breathe) * 0.7;                   // volume-preserving
 
       ctx.save();
+      // OPAQUE-SPRITE GUARANTEE (Maria 2026-07-18): the character was rendering washed out —
+      // body and outfit unreadable. Game.draw() paints dozens of additive effects before
+      // calling player.draw(), and this drawImage inherited whatever globalAlpha /
+      // globalCompositeOperation was left set upstream: any leaked value (or a stray
+      // 'lighter') blended the character into the background instead of drawing it solidly.
+      // The character is the one thing that must ALWAYS read clearly, so its blend state is
+      // pinned here rather than trusted.
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = 'source-over';
       ctx.translate(this.pos.x, this.pos.y + sprH / 2 + bobY);   // feet pivot
       ctx.rotate(lean);
       ctx.scale(stX * this._facing, stY);
