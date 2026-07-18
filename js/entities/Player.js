@@ -305,7 +305,8 @@ export class Player {
   gainXp(amount, floatingTexts) {
     const gained = Math.max(1, Math.round(amount * (this.xpMult || 1)));   // XP Uplink meta
     this.xp += gained;
-    floatingTexts.push(new FloatingText(`+${gained} TECH-XP`, this.pos.clone(), GREEN));
+    // '+TECH-XP' floating text REMOVED (Maria brief 2026-07-18, Phase 1/6): XP feedback now
+    // comes from the physical Data-XP shard, its magnet flight, the pickup tick and the bar.
 
     while (this.xp >= this.xpToNext) {
       this.xp      -= this.xpToNext;

@@ -88,6 +88,9 @@ export class Enemy {
 
     this.hitFlash   = 0;
     this.stunned    = 0;
+    // Phase 4 (Maria brief 2026-07-18): per-instance animation phase — the horde must
+    // NEVER move in sync. Drives the procedural bob/lean/squash in draw().
+    this._animPh    = Math.random() * Math.PI * 2;
     this.slowTimer  = 0;     // Cryo Rounds debuff: reduced movement speed while > 0
     this.slowFactor = 0.55;  // speed multiplier while slowed (Suppression lowers it)
 
@@ -769,7 +772,10 @@ export class Enemy {
     // Normal-enemy XP scales with elapsed time (+1 every 2 min) so dense late-game
     // crowds still feed steady level-ups; bosses keep their flat high values.
     let xp = this.isMegaBoss ? 42 : (this.isBoss() ? 12 : 1 + Math.floor((game.timeAlive || 0) / 150));   // BALANCE: 120→150s per +1 — cards must last past the hour
-    game.player.gainXp(xp, game.floatingTexts);
+    // Maria brief 2026-07-18 (Phase 1): kills drop PHYSICAL Data-XP shards — XP is granted
+    // only on collection. Direct grant remains ONLY as a safety net if the system is absent.
+    if (game.xpShards) game.xpShards.spawnBurst(this.pos.x, this.pos.y, xp, this.radius);
+    else game.player.gainXp(xp, game.floatingTexts);
 
     game._onVaultKill?.(this.pos);   // VAULT lock progress — nearby kills break the lock
     const idx = game.enemies.indexOf(this);
@@ -1079,12 +1085,51 @@ export class Enemy {
 
     // (Carrying glow removed — enemies no longer carry cores)
 
+    // ── Phase 4 (Maria brief 2026-07-18): grounding + procedural movement ────────
+    // Per-archetype weight profiles, all tiny and cheap (pure math, zero shadowBlur).
+    // Each instance runs on its own _animPh so the horde never moves in sync.
+    const _mvT   = performance.now() / 1000;
+    const _boss  = this.isBoss() || this.isMegaBoss;
+    const _heavy = !_boss && this.radius >= 24;
+    const _fast  = !_boss && !_heavy && (this.speed || 0) >= 120;
+    const _rangd = !_boss && !!this.shootInterval;
+    let _bob = 0, _lean = 0, _sx = 1, _sy = 1, _shA = 0.28;
+    if (_boss) {                                    // slow breathing mass — no cartoon bounce
+      const b = Math.sin(_mvT * 1.1 + this._animPh);
+      _sx = 1 + b * 0.012; _sy = 1 - b * 0.012; _shA = 0.40;
+    } else if (_heavy) {                            // stomp: slow bob + landing squash
+      const s = Math.sin(_mvT * 3.0 + this._animPh);
+      _bob = -Math.abs(s) * 2.2; _sy = 1 + Math.min(0, s) * 0.05; _sx = 2 - _sy; _shA = 0.36;
+    } else if (_fast) {                             // forward lean + slight stretch, tiny hop
+      _lean = Math.max(-0.16, Math.min(0.16, ((this.vel?.x || 0) / (this.speed || 1)) * 0.14));
+      _sx = 1.04; _sy = 0.97; _bob = -Math.abs(Math.sin(_mvT * 9 + this._animPh)) * 1.2;
+    } else if (_rangd) {                            // ranged: steady, aim-braced — no wobble
+      _bob = Math.sin(_mvT * 2.0 + this._animPh) * 0.6;
+    } else {                                        // fodder/swarm: quick bob + side wobble
+      _bob  = -Math.abs(Math.sin(_mvT * 6.5 + this._animPh)) * 1.8;
+      _lean = Math.sin(_mvT * 3.2 + this._animPh) * 0.035;
+      const p = 1 + Math.sin(_mvT * 6.5 + this._animPh) * 0.02;
+      _sx = p; _sy = 2 - p;
+    }
+    // Contact shadow — low contrast, scales with size/weight, never reads as a damage zone
+    ctx.save();
+    ctx.fillStyle = `rgba(0,0,0,${_shA})`;
+    ctx.beginPath();
+    ctx.ellipse(this.pos.x, this.pos.y + this.radius * 0.88, this.radius * 0.85 * _sx, this.radius * 0.30, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
     // Try to draw sprite if loaded
     const spritePath = this.sprite && this.sprite.complete && this.sprite.naturalWidth > 0;
     if (spritePath) {
+      ctx.save();
+      ctx.translate(this.pos.x, this.pos.y + this.radius + _bob);   // feet pivot — steps plant
+      ctx.rotate(_lean);
+      ctx.scale(_sx, _sy);
       ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(this.sprite, this.pos.x - this.radius, this.pos.y - this.radius, this.radius * 2, this.radius * 2);
+      ctx.drawImage(this.sprite, -this.radius, -this.radius * 2, this.radius * 2, this.radius * 2);
       ctx.imageSmoothingEnabled = true;
+      ctx.restore();
     } else {
       // Fallback: Body — bosses drawn as rectangles
       if (this.isBoss()) {

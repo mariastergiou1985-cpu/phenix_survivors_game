@@ -10,9 +10,10 @@ import { clamp, distance, safeNormalize, randomChoice, randomRange, wrapText } f
 import { FloatingText }   from '../entities/FloatingText.js?v=20260703990000';
 import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260705040000';
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260712090000';
-import { Player }         from '../entities/Player.js?v=20260721700000';
+import { Player }         from '../entities/Player.js?v=20260722600000';
+import { XpShardSystem }  from '../entities/XpShards.js?v=20260722600000';   // Phase 1: physical Data-XP
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260706270000';
-import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260719800000';
+import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260722600000';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=20260711750000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260713600000';
@@ -50,14 +51,14 @@ import { Protocol0 } from '../effects/protocol-0.js?v=20260705000000';
 import { LaserEyes } from '../effects/laser-eyes.js?v=20260709100000';
 import { MeteorRain } from '../effects/meteor-rain.js?v=20260712100000';
 import { NpcWalker } from './NpcWalker.js?v=20260711750000';
-import { MapManager, BIOME_ID, BIOME_DEFS } from './MapManager.js?v=20260716100000';
+import { MapManager, BIOME_ID, BIOME_DEFS } from './MapManager.js?v=20260722600000';
 import { EventBus, EVENTS } from './EventBus.js?v=20260703990000';
 import { HostileProjectileDirector } from './HostileProjectileDirector.js?v=20260719200000';
 import { WaveDirector } from './WaveDirector.js?v=20260719300000';
 import { EnemySpawner, ELITE_WAVE as ELITE_WAVE_CFG, BOSS_WARN_COOLDOWN as BOSS_WARN_CD } from './EnemySpawner.js?v=20260719300000';
 import { StateManager, GAME_STATES } from './StateManager.js?v=20260703990000';
-import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260712160000';
-import { NexusManager } from './NexusManager.js?v=20260712110000';
+import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260722600000';
+import { NexusManager } from './NexusManager.js?v=20260722600000';
 import { VESSELS, getVesselById, getDefaultVesselId } from './VesselCatalog.js?v=20260705040000';
 import { PETS, getPetById } from './PetCatalog.js?v=20260705000000';
 import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons, isEvolutionOwnedBy, getCardDisplayName } from './WeaponCatalog.js?v=20260720800000';
@@ -1547,6 +1548,9 @@ export class Game {
 
     this.acidRain      = null;  // { timer, damageAccum } | null
     this.acidRainTimer = 120;   // first acid rain at 2:00 (was 10:00 — too late to ever see)
+
+    // Phase 1 (Maria brief 2026-07-18): physical Data-XP shard field — pooled, capped, merging
+    this.xpShards = new XpShardSystem();
 
     this._frozenSleet      = null;  // { phase, t, particles } | null — Chaos Mode only
     this._frozenSleetTimer = 9999; // first trigger on Chaos start (overridden in chaos block)
@@ -8672,6 +8676,7 @@ export class Game {
     this._updateAbilityTimers(dt);
     this._updateQuantumOverhaul(dt);
     this._updateAcidRain(dt);
+    this.xpShards?.update(dt, this);      // Phase 1: Data-XP shard field (magnet + merge + collect)
     this._updateFrozenSleet(dt);          // Chaos + Endless: Frozen Sleet Storm
     // ── WHITEOUT PROTOCOL — Glacial Expanse biome hazard (BIOME_DEFS.hazards, first one live) ──
     // While the player stands in Glacial territory: every ~55-75s a 3.5s white fog
@@ -18185,13 +18190,21 @@ export class Game {
   // (offset dark pass fakes the shadow), color = the character's element identity.
   _spawnDmgNum(enemy, dmg) {
     if (!this.dmgNums || dmg < 1 || this.gameState !== 'playing') return;
-    const v = Math.round(dmg);
+    let v = Math.round(dmg);
     // merge into this enemy's live number while it is fresh (one bold count-up per target)
     const live = enemy._dmgNumRef;
     if (live && !live.dead && live.t < 0.30) {
       live.val += v; live.t = 0; live.pop = 1;                       // reset rise + pop on merge
       live.x = enemy.pos.x; live.y = enemy.pos.y - enemy.radius - 6;
       return;
+    }
+    // Phase 6 (Maria brief 2026-07-18): tiny normal-enemy ticks don't each open a number.
+    // They pool per enemy and surface as ONE readable value once the pool reaches size —
+    // bosses and meaningful hits always show. Normal-hit feedback stays on flash/spark/sound.
+    if (!(enemy.isBoss?.() || enemy.isMegaBoss) && v < 6) {
+      enemy._dmgPend = (enemy._dmgPend || 0) + v;
+      if (enemy._dmgPend < 6) return;
+      v = enemy._dmgPend; enemy._dmgPend = 0;
     }
     if (this.dmgNums.length >= 40) { this.dmgNums.shift(); }         // hard cap — oldest dies
     const el = CHARACTER_ELEMENT[this.player?.selectedCharacter];
@@ -19652,6 +19665,7 @@ export class Game {
     }
 
     // 3a ── HP CELL recovery pickups
+    this.xpShards?.draw(ctx, this);   // Phase 1: Data-XP shards — under the other pickups
     this._drawHealthPickups(ctx);
     this._drawManaPickups(ctx);
     this._drawArmorPickups(ctx);   // Phase 7: shield drops
@@ -19835,12 +19849,15 @@ export class Game {
     this._drawShuriken(ctx);        // Assassin bounce weapon
 
     // ═══ LAYER 3: PLAYER SPRITE — ALWAYS on top of weapon VFX ═══════════════
-    // Endless-only contact shadow at the hero's feet — grounds the player on the flat Stage 02 arena.
-    if (this.endless) {
+    // Contact shadow at the hero's feet — ALL modes (Maria brief 2026-07-18, Phase 3):
+    // the character must read as standing ON the floor, never floating. Width breathes
+    // slightly with the run-bob so the ground contact feels alive.
+    {
+      const _shW = 20 + Math.sin((this.player._animPhase || 0)) * 1.6;
       ctx.save();
       ctx.fillStyle = 'rgba(0,0,0,0.34)';
       ctx.beginPath();
-      ctx.ellipse(this.player.pos.x, this.player.pos.y + 22, 20, 7, 0, 0, Math.PI * 2);
+      ctx.ellipse(this.player.pos.x, this.player.pos.y + 22, _shW, 7, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
     }

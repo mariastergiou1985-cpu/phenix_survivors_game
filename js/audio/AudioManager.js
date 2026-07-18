@@ -591,6 +591,27 @@ export class AudioManager {
     this._tone({ type: 'triangle', freqStart: 440, freqEnd: 170, dur: 0.05, gain: 0.016 });
   }
 
+  // DATA-XP pickup ladder (Maria brief 2026-07-18, Phase 2): short clean electronic tick.
+  // Rapid consecutive pickups (≤ 240ms apart) climb up to 6 pitch steps, then reset after a
+  // gap. Voices are grouped: max one voice per 35ms window — 100 shards never stack 100
+  // oscillators. High-value cores add a deeper layer + bright chime. Distinct from Cores /
+  // health / mana / level-up sounds (those live elsewhere in this file).
+  playXpPickup(tier = 'small') {
+    const now = performance.now();
+    if (now - (this._xpTickLast || 0) < 35) return;              // voice grouping window
+    if (now - (this._xpLadderT || 0) > 240) this._xpStep = 0;    // ladder reset on gap
+    else this._xpStep = Math.min((this._xpStep || 0) + 1, 6);    // climb (max 6 steps)
+    this._xpTickLast = now; this._xpLadderT = now;
+    const f = 620 * Math.pow(1.09, this._xpStep);
+    this._tone({ type: 'triangle', freqStart: f, freqEnd: f * 1.25, dur: 0.045, gain: 0.035 });
+    if (tier === 'core') {                                        // compressed data core
+      this._tone({ type: 'sine',     freqStart: 190,  freqEnd: 150,  dur: 0.10, gain: 0.06 });
+      this._tone({ type: 'triangle', freqStart: 1560, freqEnd: 1840, dur: 0.07, gain: 0.03, delay: 0.02 });
+    } else if (tier === 'medium') {
+      this._tone({ type: 'triangle', freqStart: f * 1.5, freqEnd: f * 1.8, dur: 0.04, gain: 0.022, delay: 0.015 });
+    }
+  }
+
   // 2. Enemy hit — small electric zap (saw + tiny noise tick).
   playHit() {
     if (!this._canPlay('hit', 0.07)) return;
