@@ -390,9 +390,12 @@ export class MetaProgress {
       if (!raw) return;
       const d = JSON.parse(raw);
       this.credits = Number(d.credits) || 0;
-      this.levels  = d.levels || {};
-      this.unlocks = d.unlocks || {};
-      const er = d.endlessRecords || {};
+      // Corruption-safe: a save where these are a string/number would pass `|| {}` intact and
+      // later THROW on `this.unlocks[key] = true` ("cannot create property on string").
+      // Same typeof guard already used for protocolUnlocks/amulets/relics below.
+      this.levels  = (d.levels  && typeof d.levels  === 'object') ? d.levels  : {};
+      this.unlocks = (d.unlocks && typeof d.unlocks === 'object') ? d.unlocks : {};
+      const er = (d.endlessRecords && typeof d.endlessRecords === 'object') ? d.endlessRecords : {};
       this.endlessRecords = {
         time:  Number(er.time)  || 0,
         score: Number(er.score) || 0,
@@ -400,8 +403,8 @@ export class MetaProgress {
       };
       this.bestEddieTime = Number(d.bestEddieTime) || 0;   // longest Eddie survival (unlocks OST jukebox tracks)
       this.totalEddieTime = Number(d.totalEddieTime) || 0; // cumulative Eddie survival
-      this.achievements = d.achievements || {};
-      this.selectedOutfits = d.selectedOutfits || {};
+      this.achievements = (d.achievements && typeof d.achievements === 'object') ? d.achievements : {};
+      this.selectedOutfits = (d.selectedOutfits && typeof d.selectedOutfits === 'object') ? d.selectedOutfits : {};
       this.endlessUnlocked = d.endlessUnlocked === true;
       this.stagesCleared   = Math.max(0, Number(d.stagesCleared) || 0);   // highest Stage cleared (0 = none); Stage N unlocked when stagesCleared >= N-1
       // Protocol Fragments — corruption-safe defaults (Number||0 / object-or-{}).
