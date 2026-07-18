@@ -2162,7 +2162,7 @@ export class Game {
     this._mutationTimer    = MUTATION_INTERVAL;         // first forced mutation at 3:00 into Endless
     this._initializeEndlessStats();    // consolidated Endless stat stacking (protocols + chaos laws)
     this.audio?.startEndlessMusic();   // Endless-only track (dawn) replaces gameplay music
-    this.triggerAnnouncement('STAGE 02 — NEON SHINJUKU PLAZA', CYAN);   // Endless Stage 02 visuals
+    this.triggerAnnouncement('STAGE 02 — NULL EDEN MEGACITY', CYAN);   // Maria 2026-07-19: official Endless stage name
 
     // Null Breach Arena — arm fresh triggers for this Endless run
     this._nullBreachActive  = false;
@@ -8703,7 +8703,12 @@ export class Game {
     // ── WHITEOUT PROTOCOL — Glacial Expanse biome hazard (BIOME_DEFS.hazards, first one live) ──
     // While the player stands in Glacial territory: every ~55-75s a 3.5s white fog
     // closes in from the screen edges and lightly chills movement. Pure Endless.
-    if (this.endless && this.chunkManager?.enabled && !this.gameOver && !this.victory) {
+    // Maria 2026-07-19 (Megacity finalization): the biome fog overlays (WHITEOUT / MURK)
+    // belonged to the old biome-collage world. On the NULL EDEN MEGACITY deck they read
+    // as random fog with no biome under them — their TRIGGERS are gated off while the
+    // city map is live. The systems stay intact (Chaos/chunk-world could still use them).
+    const _cityLive = !!(this.mapManager?._cityImg?.complete && this.mapManager._cityImg.naturalWidth > 0 && !this._chaosMode);
+    if (this.endless && !_cityLive && this.chunkManager?.enabled && !this.gameOver && !this.victory) {
       if (this._whiteoutT > 0) {
         this._whiteoutT -= dt;
         this.player._chillT = Math.max(this.player._chillT || 0, 0.3);   // light chill while inside the fog
@@ -8724,7 +8729,7 @@ export class Game {
     // While the player stands in Abyssal territory: every ~50-70s a 4s deep-blue murk
     // closes in from the edges. No damage — pure visual pressure, but the effective
     // pickup radius is halved while the murk holds (see _updateHealth/ManaPickups).
-    if (this.endless && this.chunkManager?.enabled && !this.gameOver && !this.victory) {
+    if (this.endless && !_cityLive && this.chunkManager?.enabled && !this.gameOver && !this.victory) {
       if (this._murkT > 0) {
         this._murkT -= dt;
         this._murkActive = this._murkT > 0;
