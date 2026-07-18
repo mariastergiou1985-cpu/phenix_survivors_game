@@ -8671,8 +8671,42 @@ export class Game {
       }
     }
 
+    // ── IMMORTAL-AT-ZERO GUARD (Maria 2026-07-18) ────────────────────────────────────
+    // Recorded: a run sitting at HP 0/178, still alive and still levelling at 09:37.
+    // The whole death chain below is gated on `phoenixReviveTimer <= 0`, so a non-finite
+    // timer disables dying FOREVER: NaN > 0 is false (never ticks down) AND NaN <= 0 is
+    // false (death never evaluated). Same for a non-finite hp. Sanitise both first.
+    if (!Number.isFinite(this.phoenixReviveTimer)) this.phoenixReviveTimer = 0;
+    if (!Number.isFinite(this.player.hp)) this.player.hp = 0;
+
     // Tick down phoenix animation
     if (this.phoenixReviveTimer > 0) this.phoenixReviveTimer -= dt;
+
+    // Watchdog: whatever the root cause, HP <= 0 must never persist. If it holds for >2s
+    // with no end state, clear the gate so the chain below resolves (revive or game over),
+    // and report the values so the real cause stays visible instead of silently hiding.
+    if (this.player.hp <= 0 && !this.gameOver && !this.victory) {
+      this._zeroHpT = (this._zeroHpT || 0) + dt;
+      if (this._zeroHpT > 2) {
+        this._zeroHpT = 0;
+        if (!this._zeroHpLogged) {
+          this._zeroHpLogged = true;
+          console.error('[watchdog] player stuck at HP<=0 >2s — forcing death resolution', {
+            hp: this.player.hp, reviveTimer: this.phoenixReviveTimer,
+            reviveCount: this.phoenixReviveCount, lastPhoenixUsed: this._lastPhoenixUsed,
+            arenaRescueUsed: this._arenaRescueUsed, t: Math.round(this.timeAlive || 0),
+          });
+          try {
+            localStorage.setItem('phenix_zerohp', JSON.stringify({
+              when: new Date().toISOString(), hp: this.player.hp,
+              reviveTimer: this.phoenixReviveTimer, reviveCount: this.phoenixReviveCount,
+              lastPhoenixUsed: !!this._lastPhoenixUsed, t: Math.round(this.timeAlive || 0),
+            }));
+          } catch (_) {}
+        }
+        this.phoenixReviveTimer = 0;   // unstick the gate — the chain below now resolves
+      }
+    } else { this._zeroHpT = 0; }
 
     // Nexus recharge meter: clamped at threshold (100), never triggers game over
     this.overload = clamp(this.overload, 0, NEXUS_RECHARGE_THRESHOLD);
