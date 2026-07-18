@@ -1427,6 +1427,9 @@ export class Game {
     this.cybermoteMines   = [];   // CYBERMOTE event: proximity mines dropped by the W2 rider
     this.dmgNums          = [];   // VS-style damage numbers (hard cap 40, per-enemy merge window)
     this.nullEcho         = null; // NULL ECHO event: corrupted mirror of the player's own character
+    this.nullEchoZones    = [];   // its telegraphed strike zones — was ONLY initialised in
+                                  // _enterEndless(), so any path reaching the echo without it
+                                  // would throw on .push/.length every frame (black screen).
     this.nullWyrm         = null; // NULL WYRM event: wireframe data-serpent sweeping the arena
     this.lightningZones   = [];   // Lightning Storm: telegraphed strike zones (hard-capped)
     this.synergyBursts    = [];   // transient synergy-burst rings (visual; hard-capped, auto-expire)

@@ -1,4 +1,4 @@
-import { Game } from './game/Game.js?v=20260720900000';
+import { Game } from './game/Game.js?v=20260721000000';
 import { AudioManager } from './audio/AudioManager.js?v=20260720900000';
 import { PlatformAchievements } from './platform/PlatformAchievements.js?v=20260712370000';
 // Steam build: replay any web-earned achievements to Steam on boot (no-op in browsers)
@@ -627,6 +627,29 @@ initTouchControls({
 // ─── Game loop ────────────────────────────────────────────────────────────────
 let lastTime = 0;
 
+// Persist loop errors so a black screen can be diagnosed AFTER the fact. The console line
+// is easy to miss (it fires once and the tab is usually mid-run), so the first error and
+// each NEW message are written to localStorage['phenix_lasterror'] with the run time and
+// mode. Throttled to message changes — never writes every frame.
+function _logLoopError(err, phase) {
+  const msg = String((err && err.message) || err);
+  _logLoopError.count = (_logLoopError.count || 0) + 1;
+  if (!_logLoopError.logged) { console.error('[game loop]', phase, err); _logLoopError.logged = true; }
+  if (_logLoopError.lastMsg === msg) return;
+  _logLoopError.lastMsg = msg;
+  try {
+    const rec = {
+      when: new Date().toISOString(), phase, msg,
+      stack: String((err && err.stack) || '').split('\n').slice(0, 8).join('\n'),
+      tAlive: +((game && game.timeAlive) || 0).toFixed(1),
+      mode: (game && game._chaosMode) ? 'chaos' : ((game && game.gameState) || '?'),
+      count: _logLoopError.count,
+    };
+    const prev = JSON.parse(localStorage.getItem('phenix_lasterror') || 'null');
+    localStorage.setItem('phenix_lasterror', JSON.stringify({ first: (prev && prev.first) || rec, last: rec }));
+  } catch (_) {}
+}
+
 function loop(timestamp) {
   const dt = Math.min((timestamp - lastTime) / 1000, 0.05);  // cap at 50ms
   lastTime = timestamp;
@@ -646,7 +669,13 @@ function loop(timestamp) {
     else { ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; ctx.shadowBlur = 0; }
     applyGamepad();   // inject controller input into keys/handlers before the update reads them
     game.setMousePos(mousePos);
-    game.update(dt, { keys, mousePos, mouseDown });
+    // BLACK-SCREEN GUARD (2026-07-18): update and draw are caught SEPARATELY on purpose.
+    // ctx.reset() above wipes the canvas at the top of every frame, so if update() throws
+    // the old code skipped draw() entirely and the canvas stayed blank — a persistent
+    // throw from ~10:00 (Endless/Chaos) therefore showed as a permanent BLACK SCREEN while
+    // the loop kept spinning. Now a failing update can never stop the frame from painting.
+    try { game.update(dt, { keys, mousePos, mouseDown }); }
+    catch (err) { _logLoopError(err, 'update'); }
     applyContextualCursor();
 
     // Apply screen shake offset
@@ -655,7 +684,7 @@ function loop(timestamp) {
     try { ctx.translate(ox, oy); game.draw(ctx); }
     finally { ctx.restore(); }
   } catch (err) {
-    if (!loop._errLogged) { console.error('[game loop]', err); loop._errLogged = true; }
+    _logLoopError(err, 'draw');
   }
   requestAnimationFrame(loop);
 }
