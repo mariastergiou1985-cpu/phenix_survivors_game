@@ -129,7 +129,7 @@ export class Player {
     this._dashDir      = new Vec2(1, 0);
     this._dashTrail    = [];
 
-    this.shootCooldown = 0.0;
+    this.shootCooldown = 0.35;   // §6 initial delay: no starter fires on frame 0 (fast-weapon band 0.25-0.45)
 
     this.level        = 1;
     this.xp           = 0;

@@ -9,7 +9,7 @@
 // μέχρι το P2.7 migration (δηλωμένο μέσα στο ίδιο το UI).
 // ═══════════════════════════════════════════════════════════════════════════════
 import { WEAPON_DEFS, PASSIVE_DEFS, EVOLUTION_RECIPES, singleTargetDps }
-  from './BuildEngine.js?v=20260721300000';
+  from './BuildEngine.js?v=20260722700000';
 // P2.8 v2.1: τα TACTICALS/ELEMENTS/FUSIONS διαβάζονται read-only από τους
 // ΥΠΑΡΧΟΝΤΕΣ καταλόγους του παλιού συστήματος (ίδια ?v με το Game.js) —
 // καμία αλλαγή gameplay, μόνο παρουσίαση μέχρι το πλήρες migration.

@@ -10,8 +10,8 @@ import { clamp, distance, safeNormalize, randomChoice, randomRange, wrapText } f
 import { FloatingText }   from '../entities/FloatingText.js?v=20260703990000';
 import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260705040000';
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260712090000';
-import { Player }         from '../entities/Player.js?v=20260722600000';
-import { XpShardSystem }  from '../entities/XpShards.js?v=20260722600000';   // Phase 1: physical Data-XP
+import { Player }         from '../entities/Player.js?v=20260722700000';
+import { XpShardSystem }  from '../entities/XpShards.js?v=20260722700000';   // Phase 1: physical Data-XP
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260706270000';
 import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260722600000';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=20260711750000';
@@ -20,13 +20,13 @@ import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, dr
 import { SystemEventManager } from './Events.js?v=20260711780000';
 import { UpgradeUI }      from './UpgradeUI.js?v=20260722500000';
 import { weightedSample } from './Upgrades.js?v=20260722500000';
-import { BuildEngineRuntime } from './BuildEngine.js?v=20260721300000';   // BUILD ENGINE — always on (full migration 2026-07-18)
-import './BuildEngineChars1.js?v=20260719900000';   // P2.3a Taekwondo+CyberArm (side-effect register)
-import './BuildEngineChars2.js?v=20260719900000';   // P2.3b Brawler+Assassin (side-effect register)
-import './BuildEngineChars3.js?v=20260719900000';   // P2.4a Eddie+Dimi (side-effect register)
-import './BuildEngineChars4.js?v=20260719900000';   // P2.4b Phasewalker+Euclid+Oni (side-effect register)
-import './BuildEngineChars5.js?v=20260719900000';   // P2.5 Universal όπλα 21-25 (side-effect register)
-import './BuildEnginePassives.js?v=20260719900000'; // P2.6 Build passives §26-50 (generic hooks)
+import { BuildEngineRuntime } from './BuildEngine.js?v=20260722700000';   // BUILD ENGINE — always on (full migration 2026-07-18)
+import './BuildEngineChars1.js?v=20260722700000';   // P2.3a Taekwondo+CyberArm (side-effect register)
+import './BuildEngineChars2.js?v=20260722700000';   // P2.3b Brawler+Assassin (side-effect register)
+import './BuildEngineChars3.js?v=20260722700000';   // P2.4a Eddie+Dimi (side-effect register)
+import './BuildEngineChars4.js?v=20260722700000';   // P2.4b Phasewalker+Euclid+Oni (side-effect register)
+import './BuildEngineChars5.js?v=20260722700000';   // P2.5 Universal όπλα 21-25 (side-effect register)
+import './BuildEnginePassives.js?v=20260722700000'; // P2.6 Build passives §26-50 (generic hooks)
 import { MutationUI }      from './MutationUI.js?v=20260703990000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260721200000';
@@ -51,7 +51,7 @@ import { Protocol0 } from '../effects/protocol-0.js?v=20260705000000';
 import { LaserEyes } from '../effects/laser-eyes.js?v=20260709100000';
 import { MeteorRain } from '../effects/meteor-rain.js?v=20260712100000';
 import { NpcWalker } from './NpcWalker.js?v=20260711750000';
-import { MapManager, BIOME_ID, BIOME_DEFS } from './MapManager.js?v=20260722600000';
+import { MapManager, BIOME_ID, BIOME_DEFS } from './MapManager.js?v=20260722800000';
 import { EventBus, EVENTS } from './EventBus.js?v=20260703990000';
 import { HostileProjectileDirector } from './HostileProjectileDirector.js?v=20260719200000';
 import { WaveDirector } from './WaveDirector.js?v=20260719300000';
@@ -1179,7 +1179,7 @@ export class Game {
   // P2.8: NULL ARSENAL — DOM overlay ΠΑΝΩ από το menu (δεν αγγίζει gameState)·
   // dynamic import ώστε το module να μη βαραίνει το boot όταν το flag είναι κλειστό.
   goToNullArsenal() {
-    import('./NullArsenalUI.js?v=20260720000000')
+    import('./NullArsenalUI.js?v=20260722700000')
       .then(m => m.openNullArsenal(this))
       .catch(err => console.error('[P2.8] NULL ARSENAL failed to open', err));
   }
@@ -4999,7 +4999,14 @@ export class Game {
     grid.querySelectorAll('.buy-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         const result = this.meta.tryUnlockRelic(btn.dataset.relicId);
-        if (result === 'ok') this._syncRelicsOverlay();
+        if (result === 'ok') {
+          // §2 (Maria unified brief): the MEGA BOSS reward relics (type 'boss' — Prism Array /
+          // Nanite Core / Singularity Edge / Anti-Matter Battery) get the heavy 'mega' stinger,
+          // exactly once, on the real acquisition. Ordinary relics get the 'rare' layer.
+          const _rdef = RELIC_DEFS.find(r => r.id === btn.dataset.relicId);
+          this.audio?.playCardSelect?.(_rdef?.type === 'boss' ? 'mega' : 'rare');
+          this._syncRelicsOverlay();
+        }
       });
     });
     // 1R loadout: click ANYWHERE on an owned relic card to make it THE run relic.
@@ -8223,7 +8230,12 @@ export class Game {
 
   selectUpgrade(index) {
     if (!this.upgradeUI || index >= this.upgradeUI.choices.length) return;
-    this.upgradeUI.choices[index].apply(this.player);
+    const _card = this.upgradeUI.choices[index];
+    _card.apply(this.player);
+    // §22-23: dedicated layered reward sound (with music duck) — tier by card identity.
+    const _tier = (_card._isEvolutionCard || String(_card.key || '').includes('evolution') || String(_card.name || '').startsWith('EVOLVE'))
+      ? 'evolution' : (_card.rarity === 'legendary' || _card.reward) ? 'rare' : 'common';
+    this.audio?.playCardSelect?.(_tier);
     this._checkWeaponEvolutions();   // check if any evolution recipe is now satisfied
     this.score = (this.score ?? 0) + 50;
     this.upgradeUI = null;
@@ -8538,6 +8550,16 @@ export class Game {
     const _sleetFrozen = !!(this._frozenSleet && this._frozenSleet.phase === 'hold');
     const _frozenInput = _sleetFrozen ? { ...input, keys: new Set() } : input;
     this.player.update(dt, _frozenInput);
+    // ACT 1 SPACESHIP DECK walkable band (Maria 2026-07-18): the hero never walks onto the
+    // space windows / planets / structural frames. Applied AFTER movement, so dash and
+    // knockback obey the same edge. Zoom, speed, pursuit and the open field untouched.
+    if (!this.endless && !this._chaosMode && !this._campaignStage) {
+      const b = this.mapManager?.getAct1DeckBounds?.();
+      if (b) {
+        this.player.pos.x = Math.max(b.x0, Math.min(b.x1, this.player.pos.x));
+        this.player.pos.y = Math.max(b.y0, Math.min(b.y1, this.player.pos.y));
+      }
+    }
     // Balance (Maria): Eddie HARD CAP — max HP never exceeds 300, no matter what
     // (base + unlocked meta upgrades + in-run HP cards). Clamped every frame.
     if (this.player.selectedCharacter === 'eddie' && this.player.maxHp > 300) {
@@ -17562,6 +17584,15 @@ export class Game {
         }
         _first = false;
         this.spawnEnemy(_type, { x: _p.x, y: _p.y }, !!_p.elite);
+      }
+      // ── ACT 1 SPACESHIP DECK: spawns stay ON the deck (never in the windows/space) ──
+      if (!this.endless && !this._chaosMode && !this._campaignStage) {
+        const _db = this.mapManager?.getAct1DeckBounds?.();
+        if (_db) for (let j = prevLen; j < this.enemies.length; j++) {
+          const e = this.enemies[j];
+          e.pos.x = Math.max(_db.x0, Math.min(_db.x1, e.pos.x));
+          e.pos.y = Math.max(_db.y0, Math.min(_db.y1, e.pos.y));
+        }
       }
       // ── Arena-constrained spawn positions: place new enemies inside circle ──
       if (this._nullBreachActive && this._nullBreachArena) {

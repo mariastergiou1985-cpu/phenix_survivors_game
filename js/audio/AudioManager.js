@@ -591,6 +591,36 @@ export class AudioManager {
     this._tone({ type: 'triangle', freqStart: 440, freqEnd: 170, dur: 0.05, gain: 0.016 });
   }
 
+  // ── CARD SELECTION + REWARD STINGERS (Maria unified brief 2026-07-18 §22-23, §25) ──
+  // Layered, satisfying, clearly NOT a projectile sound: confirmation click → rising cyber
+  // chime → low reward thump → shimmer tail (~0.6s). Music ducks ~4dB for the confirm and
+  // recovers in ~0.4s (never mutes). Rare/evolution/mega tiers add their own layers.
+  playCardSelect(tier = 'common') {
+    const t = this.actx.currentTime;
+    try {   // music duck: -4dB-ish dip, fast attack, ~0.4s recovery
+      const mg = this.musicGain.gain, base = this.muted ? 0 : this.musicVolume;
+      mg.cancelScheduledValues(t);
+      mg.setTargetAtTime(base * 0.63, t, 0.03);
+      mg.setTargetAtTime(base, t + 0.12, 0.35);
+    } catch (_) {}
+    this._tone({ type: 'square',   freqStart: 900,  freqEnd: 900,  dur: 0.03, gain: 0.05 });               // click
+    this._tone({ type: 'triangle', freqStart: 620,  freqEnd: 1240, dur: 0.16, gain: 0.06, delay: 0.03 });  // rising chime
+    this._tone({ type: 'sine',     freqStart: 150,  freqEnd: 110,  dur: 0.14, gain: 0.07, delay: 0.05 });  // reward thump
+    this._tone({ type: 'triangle', freqStart: 1560, freqEnd: 1900, dur: 0.22, gain: 0.025, delay: 0.16 }); // shimmer tail
+    if (tier === 'rare' || tier === 'evolution') {
+      this._tone({ type: 'triangle', freqStart: 930, freqEnd: 1860, dur: 0.20, gain: 0.045, delay: 0.10 }); // harmonic layer
+    }
+    if (tier === 'evolution') {   // transformation stinger: power rise + low release
+      this._tone({ type: 'sawtooth', freqStart: 220, freqEnd: 880, dur: 0.30, gain: 0.045, delay: 0.12 });
+      this._tone({ type: 'sine',     freqStart: 90,  freqEnd: 55,  dur: 0.34, gain: 0.10,  delay: 0.24 });
+    }
+    if (tier === 'mega') {        // Mega-Boss / permanent unlock: heavier premium stinger
+      this._tone({ type: 'sawtooth', freqStart: 160, freqEnd: 640, dur: 0.40, gain: 0.05, delay: 0.10 });
+      this._tone({ type: 'sine',     freqStart: 70,  freqEnd: 45,  dur: 0.45, gain: 0.12, delay: 0.28 });
+      this._tone({ type: 'triangle', freqStart: 1240, freqEnd: 2480, dur: 0.30, gain: 0.03, delay: 0.34 });
+    }
+  }
+
   // DATA-XP pickup ladder (Maria brief 2026-07-18, Phase 2): short clean electronic tick.
   // Rapid consecutive pickups (≤ 240ms apart) climb up to 6 pitch steps, then reset after a
   // gap. Voices are grouped: max one voice per 35ms window — 100 shards never stack 100

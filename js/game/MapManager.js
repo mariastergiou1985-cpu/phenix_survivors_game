@@ -210,11 +210,21 @@ export class MapManager {
     this._cityImg.onerror = () => console.warn('[Map] cyber_megacity map missing — endless keeps the chunk world');
     this._cityImg.src = 'assets/maps/new_endless/cyber_megacity.png';
     this.CITY_SCALE = 3;   // 1672×519 → 5016×1557 world px per tile (integer — no distortion)
-    // Maria 2026-07-18: ο νέος CHAOS χάρτης της («new chaos map») — ίδιο world-space
-    // mirror-tiling σύστημα, δική του ταυτότητα (το Chaos ΔΕΝ μοιράζεται τον city χάρτη).
+    // Maria 2026-07-18 ASSET INVENTORY CORRECTION: το «new chaos map.png» αποδείχθηκε
+    // οπτικά το INTERIOR SPACESHIP (Act 1 concept: παράθυρα με πλανήτες, όαση, hydroponics,
+    // engineering, research, observation). Ο πραγματικός Chaos χάρτης είναι το
+    // chaos_mode_only_new_map.png (multi-biome: ice/void/desert/forest/industrial).
     this._chaosDeckImg = new Image();
-    this._chaosDeckImg.onerror = () => console.warn('[Map] chaos_deck map missing — chaos keeps the chunk world');
-    this._chaosDeckImg.src = 'assets/maps/chaos_mode_map/chaos_deck.png';
+    this._chaosDeckImg.onerror = () => console.warn('[Map] chaos map missing — chaos keeps the chunk world');
+    this._chaosDeckImg.src = 'assets/maps/chaos_mode_map/chaos_mode_only_new_map.png';
+    // ACT 1 — SPACESHIP DECK (Maria's approved asset: assets/maps/act1_spaceship/spaceship.png,
+    // 1916×821 — a full station deck floating in space). Width-fit into the fixed 3000×1688
+    // world (uniform scale ≈1.566, painterly art → smoothing stays ON, no distortion), space
+    // fill above/below. The WALKABLE deck band is published to the game as _act1DeckBounds so
+    // player/spawns/pickups never sit on the windows, planets or structural frames.
+    this._shipImg = new Image();
+    this._shipImg.onerror = () => console.warn('[Map] act1 spaceship.png missing — Act 1 keeps the legacy map');
+    this._shipImg.src = 'assets/maps/act1_spaceship/spaceship.png';
 
     // Procedural background cache (for biomes without image assets)
     this._bgCanvas = null;
@@ -349,6 +359,45 @@ export class MapManager {
   // ── Drawing ─────────────────────────────────────────────────────────────────
 
   /**
+   * ACT 1 — INTERIOR SPACESHIP world (fixed 3000×1688 arena, fixed zoom, no tiling
+   * needed horizontally: the ×2 strip is 3344px wide and covers the world with a small
+   * right-edge crop of the outer frame only). Vertically centred; neutral deck-floor
+   * bands (quiet rows 302-338 of the concept) fill above/below — nothing mirrored,
+   * nothing stretched, no visible image edge inside the playfield.
+   */
+  // WALKABLE deck band of the Act 1 spaceship (measured on spaceship.png: the clean deck
+  // floor spans x 130..1790, y 185..700 of the 1916×821 asset). Computed lazily the moment
+  // the image is ready — player/spawn/pickup clamps read this every frame.
+  getAct1DeckBounds() {
+    if (this._act1BoundsCache) return this._act1BoundsCache;
+    const img = this._shipImg;
+    if (!img || !img.complete || !img.naturalWidth) return null;
+    const S  = this.worldW / img.naturalWidth;
+    const y0 = Math.round((this.worldH - img.naturalHeight * S) / 2);
+    this._act1BoundsCache = {
+      x0: Math.round(130 * S), x1: Math.round(1790 * S),
+      y0: y0 + Math.round(185 * S), y1: y0 + Math.round(700 * S),
+    };
+    return this._act1BoundsCache;
+  }
+
+  _drawShipWorld(ctx, opts = {}) {
+    const img = this._shipImg;
+    const iw = img.naturalWidth, ih = img.naturalHeight;      // 1916 × 821
+    const S  = this.worldW / iw;                              // width-fit ≈ 1.566 (uniform — no stretch)
+    const th = Math.round(ih * S);                            // ≈ 1285
+    const y0 = Math.round((this.worldH - th) / 2);            // ≈ 201
+    // space fill above/below the station (matches the art's own starfield edges)
+    ctx.fillStyle = '#0a0d26';
+    ctx.fillRect(0, 0, this.worldW, this.worldH);
+    ctx.drawImage(img, 0, 0, iw, ih, 0, y0, this.worldW, th); // painterly art — smoothing stays on
+    // walkable band published via getAct1DeckBounds() (lazy — see below)
+    // readability dim (ship art is BRIGHT — combat must sit on top)
+    ctx.fillStyle = opts.gridBlackoutActive ? 'rgba(0,0,0,0.65)' : 'rgba(0,0,0,0.30)';
+    ctx.fillRect(0, 0, this.worldW, this.worldH);
+  }
+
+  /**
    * CYBER MEGACITY world deck (Maria brief 2026-07-18, Phase 11 — Endless).
    * The approved concept strip is drawn in WORLD coordinates under the existing camera
    * transform (fixed zoom — the map scrolls under the player, survivor-style).
@@ -371,13 +420,34 @@ export class MapManager {
 
     const prevSmooth = ctx.imageSmoothingEnabled;
     ctx.imageSmoothingEnabled = false;                     // crisp pixels, uniform policy
+    // Vertical mirror-tiling REJECTED in rendered QA (Maria's rule: no upside-down
+    // buildings/holograms). Row j=0 carries the full concept strip (X mirror-tiling only —
+    // edges meet their own mirror, zero seams). Rows above/below extend with a NEUTRAL
+    // deck-floor band sliced from the same asset (plaza pavement, no landmarks), tiled
+    // upright — believable vertical continuation, nothing inverted, zero stretch.
+    // Measured: rows 450-490 are the flattest pavement in the concept (lowest pixel
+    // variance across the strip) — a repeating band there reads as continuous deck,
+    // with no helipads/props to betray the repetition.
+    const bandSy = 450;
+    const bandSh = 40;
+    const bandTh = bandSh * S;
     for (let i = Math.floor(xA / tw); i * tw < xB; i++) {
-      for (let j = Math.floor(yA / th); j * th < yB; j++) {
-        const fx = ((i % 2) + 2) % 2 === 1, fy = ((j % 2) + 2) % 2 === 1;
+      const fx = ((i % 2) + 2) % 2 === 1;
+      // main strip row (j = 0)
+      if (yA < th && yB > 0) {
         ctx.save();
-        ctx.translate(i * tw + (fx ? tw : 0), j * th + (fy ? th : 0));
-        ctx.scale(fx ? -1 : 1, fy ? -1 : 1);
+        ctx.translate(i * tw + (fx ? tw : 0), 0);
+        ctx.scale(fx ? -1 : 1, 1);
         ctx.drawImage(img, 0, 0, tw, th);
+        ctx.restore();
+      }
+      // neutral deck bands above (y < 0) and below (y >= th)
+      for (let by = Math.floor(yA / bandTh) * bandTh; by < yB; by += bandTh) {
+        if (by + bandTh > 0 && by < th) continue;          // main strip owns this range
+        ctx.save();
+        ctx.translate(i * tw + (fx ? tw : 0), by);
+        ctx.scale(fx ? -1 : 1, 1);
+        ctx.drawImage(img, 0, bandSy, img.naturalWidth, bandSh, 0, 0, tw, bandTh);
         ctx.restore();
       }
     }
@@ -405,6 +475,14 @@ export class MapManager {
         return;
       }
       this._drawChunkWorld(ctx, opts);
+      return;
+    }
+
+    // ── ACT 1: INTERIOR SPACESHIP (Maria concept — fixed world, fixed zoom) ──
+    // Only the plain Act 1 run (no campaign stage, no endless/chaos) uses the ship.
+    if (!endless && !chaosMode && !this.game?._campaignStage &&
+        this._shipImg && this._shipImg.complete && this._shipImg.naturalWidth > 0) {
+      this._drawShipWorld(ctx, opts);
       return;
     }
 

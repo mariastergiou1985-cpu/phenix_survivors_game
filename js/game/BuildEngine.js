@@ -295,8 +295,14 @@ export class BuildEngineRuntime {
     if (w) { w.level = Math.min(5, w.level + 1); return; }
     if (this.weapons.size >= this.CAPS.weapons) return;            // P2.7: 6W cap
     if (this._familyCount(this._familyOf(id)) >= this.CAPS.perFamily) return;   // family limit
-    this.weapons.set(id, { id, level: 1, evolved: false, cd: 0.4, volley: 0, burstQ: [],
-                           charge: 0, skulls: [], bladeT: 0 });
+    // Maria unified brief 2026-07-18 §6: INDEPENDENT WEAPON CLOCKS. Each weapon enters
+    // the build on its own deterministic phase offset (0.35s, 0.62s, 0.89s, ...) so a
+    // fresh pickup NEVER fires in the same frame as the rest of the arsenal, and the
+    // build's rhythm stays interleaved instead of volleying. Existing cooldowns are
+    // deliberately NOT touched when a weapon is added.
+    this.weapons.set(id, { id, level: 1, evolved: false,
+                           cd: 0.35 + (this.weapons.size % 6) * 0.27,
+                           volley: 0, burstQ: [], charge: 0, skulls: [], bladeT: 0 });
   }
   // Seed a character's native FULL Build-Engine weapon as their starter — used for
   // characters with NO legacy base weapon (e.g. Dimi Kickboxer → Cyber-Gauntlets

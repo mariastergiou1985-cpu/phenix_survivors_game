@@ -396,7 +396,9 @@ export class MetaProgress {
     this.selectedVessel   = 'alpha_phoenix';   // currently equipped vessel id
     this.unlockedVessels  = { alpha_phoenix: true };  // { [vesselId]: true }
     // ── Cyber-Pet system ────────────────────────────────────────────────
-    this.selectedPets    = ['byte_mite'];       // equipped pet ids (1-2 slots)
+    // Maria 2026-07-18 (§1): NO companion is equipped by default — fresh runs carry ONLY the
+    // starter weapon. byte_mite stays unlocked in the HANGAR; the player equips it explicitly.
+    this.selectedPets    = [];                  // equipped pet ids (1-2 slots) — empty by default
     this.unlockedPets    = { byte_mite: true }; // { [petId]: true }
     this.petSlots        = 1;                   // max pet slots (1 default, 2nd unlockable)
     this._load();
@@ -477,7 +479,7 @@ export class MetaProgress {
       this.unlockedVessels = (d.unlockedVessels && typeof d.unlockedVessels === 'object') ? d.unlockedVessels : { alpha_phoenix: true };
       if (!this.unlockedVessels.alpha_phoenix) this.unlockedVessels.alpha_phoenix = true; // always available
       // Cyber-Pet system — safe defaults for old saves (byte_mite always unlocked)
-      this.selectedPets  = Array.isArray(d.selectedPets) ? d.selectedPets : ['byte_mite'];
+      this.selectedPets  = Array.isArray(d.selectedPets) ? d.selectedPets : [];
       this.unlockedPets  = (d.unlockedPets && typeof d.unlockedPets === 'object') ? d.unlockedPets : { byte_mite: true };
       this.petSlots      = Math.max(1, Math.min(2, Number(d.petSlots) || 1));
       if (!this.unlockedPets.byte_mite) this.unlockedPets.byte_mite = true;
@@ -832,7 +834,7 @@ export class MetaProgress {
     this.amulets           = {};
     this.selectedVessel   = 'alpha_phoenix';
     this.unlockedVessels  = { alpha_phoenix: true };
-    this.selectedPets     = ['byte_mite'];
+    this.selectedPets     = [];
     this.unlockedPets     = { byte_mite: true };
     this.petSlots         = 1;
     this.relics    = {};
@@ -1157,7 +1159,7 @@ export class MetaProgress {
 
   // ─── Cyber-Pet system ─────────────────────────────────────────────────────
   isPetUnlocked(id) { return this.unlockedPets[id] === true; }
-  getSelectedPets() { return (this.selectedPets || ['byte_mite']).slice(0, this.petSlots || 1); }
+  getSelectedPets() { return (this.selectedPets || []).slice(0, this.petSlots || 1); }
   getPetSlots() { return this.petSlots || 1; }
 
   selectPet(slotIndex, petId) {
