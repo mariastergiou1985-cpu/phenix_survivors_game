@@ -138,10 +138,15 @@ export class AudioManager {
 
   // PHENIX NULL RADIO on/off — persisted opt-out so a player who doesn't want the
   // menu broadcast every session can silence it permanently.
+  // Maria 2026-07-18: the settings button LOOKED dead — it only flipped the flag, and since
+  // the broadcast is a once-per-session latch, turning it ON produced no sound (and OFF→ON
+  // never re-armed the latch). Now: OFF cuts the broadcast instantly, ON re-arms the one-shot
+  // and starts the broadcast right away — the button audibly works in both directions.
   setRadioEnabled(b) {
     this.radioEnabled = !!b;
     try { localStorage.setItem(VOL_KEYS.radio, this.radioEnabled ? 'true' : 'false'); } catch (_) {}
     if (!this.radioEnabled) this.stopMenuRadio();
+    else { this._radioPlayed = false; this.playMenuRadio(); }
   }
 
   _setupTrack(src, volume, assign) {
@@ -580,8 +585,10 @@ export class AudioManager {
   playPlayerImpact() { this.generateSound('player-impact', 0.25); }
 
   playShoot() {
-    if (!this._canPlay('shoot', 0.12)) return;                 // rarer AND quieter — the pew
-    this._tone({ type: 'triangle', freqStart: 440, freqEnd: 170, dur: 0.05, gain: 0.028 });   // was 0.065: it drowned the whole mix
+    if (!this._canPlay('shoot', 0.16)) return;                 // rarer AND quieter — the pew
+    // Maria 2026-07-18: the pew was still far too loud/present overall — halved again
+    // (0.065 → 0.028 → 0.016) and throttled 0.12 → 0.16s.
+    this._tone({ type: 'triangle', freqStart: 440, freqEnd: 170, dur: 0.05, gain: 0.016 });
   }
 
   // 2. Enemy hit — small electric zap (saw + tiny noise tick).
@@ -662,9 +669,11 @@ export class AudioManager {
 
   // Enemy shoot — hostile descending square, darker/lower than the player blip.
   playEnemyShoot() {
-    if (!this._canPlay('enemyShoot', 0.11)) return;   // Phase 11: fewer bullet-spam blips
-    this._tone({ type: 'square', freqStart: 520, freqEnd: 160, dur: 0.07, gain: 0.07 });
-    this._noiseBurst({ dur: 0.03, gain: 0.03, filterType: 'highpass', freq: 1400 });
+    if (!this._canPlay('enemyShoot', 0.15)) return;   // Phase 11: fewer bullet-spam blips
+    // Maria 2026-07-18: the harsh square 'piou piou' dominated the mix in crowds — halved
+    // (0.07 → 0.035, noise 0.03 → 0.02) and throttled 0.11 → 0.15s.
+    this._tone({ type: 'square', freqStart: 520, freqEnd: 160, dur: 0.07, gain: 0.035 });
+    this._noiseBurst({ dur: 0.03, gain: 0.02, filterType: 'highpass', freq: 1400 });
   }
 
   // Enemy projectile impact on player — short electric shield zap.
@@ -989,7 +998,11 @@ export class AudioManager {
       const msg = String(text).replace(/^EDEN CORE:\s*/i, '');
       synth.cancel();
       const u = new SpeechSynthesisUtterance(msg);
-      u.rate = 0.80; u.pitch = 0.28; u.volume = clamp01(this.edenVolume ?? 0.95);  // abyssal-deep, slow — level from the EDEN slider
+      // Maria 2026-07-18: speechSynthesis does NOT route through the Web Audio graph, so the
+      // EDEN voice ignored MASTER VOLUME entirely — at master 0 everything else fell silent
+      // but EDEN kept talking. Scale the utterance by master too; at master 0 it is now 0.
+      u.rate = 0.80; u.pitch = 0.28;
+      u.volume = clamp01((this.edenVolume ?? 0.95) * (this.muted ? 0 : (this.masterVolume ?? 1)));
       const voices = synth.getVoices();
       const pick = voices.find(v => /en[-_](US|GB)/i.test(v.lang) && /Google|Microsoft/i.test(v.name))
                 || voices.find(v => /^en/i.test(v.lang));
@@ -1004,7 +1017,7 @@ export class AudioManager {
       for (let sw = 0; sw < Math.floor(specDur / 1.4); sw++) {
         this._noiseBurst({ dur: 0.9, gain: 0.035, filterType: 'bandpass', freq: 240 + sw * 60, delay: 0.6 + sw * 1.4 });
       }
-      setTimeout(() => { try { if (!this.muted) synth.speak(u); } catch (_) {} }, 450);
+      setTimeout(() => { try { if (!this.muted && (this.masterVolume ?? 1) > 0 && u.volume > 0) synth.speak(u); } catch (_) {} }, 450);
     } catch (_) { /* speech unavailable — glitch chirp already played */ }
   }
 

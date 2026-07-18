@@ -1578,20 +1578,23 @@ export class Game {
     this._corruptionBeam  = null; // final-boss CORRUPTION GRID BEAM: { phase:'charge'|'fire', t, origin, dir }
     this._corruptionNovas = [];   // final-boss CORRUPTION NOVA telegraphed radial bursts (player-only)
 
-    // Matrix Annihilator — second mini-boss, marches on a Power Matrix at ~7:30
+    // Maria 2026-07-18: Act 1 compressed 12:00 → 8:00 (ACT1_WIN_SECONDS). Boss schedule
+    // squeezed to keep the WHOLE arc inside the shorter act — before, Bloodfang (10:00)
+    // and Serpent (10:30) would simply never appear in an 8:00 act.
+    // Matrix Annihilator — second mini-boss, marches on a Power Matrix at ~4:30
     this.annihilatorSpawned    = false;
     this.annihilatorBoss       = null;
-    this.annihilatorSpawnTimer = 450;
+    this.annihilatorSpawnTimer = 270;
 
-    // Bloodfang Packmaster — third mini-boss (fast pack leader) at 10:00
+    // Bloodfang Packmaster — third mini-boss (fast pack leader) at 6:00
     this.bloodfangSpawned    = false;
     this.bloodfangBoss       = null;
-    this.bloodfangSpawnTimer = 600;
+    this.bloodfangSpawnTimer = 360;
 
-    // Cyber Serpent — mid-run mini-boss at 10:30 (Inferno Smoke Trail floor hazard)
+    // Cyber Serpent — climax mini-boss at 6:30 (Inferno Smoke Trail floor hazard)
     this.cyberSerpentSpawned    = false;
     this.cyberSerpentBoss       = null;
-    this.cyberSerpentSpawnTimer = 630;   // 10:30 — just after Bloodfang to stagger pressure
+    this.cyberSerpentSpawnTimer = 390;   // 6:30 — just after Bloodfang to stagger pressure
     this._serpentTrails         = [];   // fire trail segments left during dash phases (max 20, auto-expire 10s)
     this._serpentLastTrailPos   = null; // last trail segment position for distance-based spawning
 
@@ -2122,6 +2125,11 @@ export class Game {
     this._endlessLavaCd    = randomRange(18, 26);   // arm ambient Endless Lava Rain (boss-independent)
     this._airstrikeTimer   = 90;            // first AIRSTRIKE ~1.5 min in, then every ~2 min
     this._lightningTimer   = 70;            // first LIGHTNING STORM ~1.2 min in, then every ~2 min
+    // Maria 2026-07-18: ACID RAIN is now explicitly armed on Endless entry like every other
+    // Endless event — before, it just inherited whatever mid-cycle remainder Act 1 left in
+    // acidRainTimer, so on Continue—Endless the first storm landed at an arbitrary moment.
+    this.acidRain          = null;
+    this.acidRainTimer     = 100;           // first ACID RAIN ~1:40 into Endless, then every ~1:40
     this._frozenSleetTimer = 150;           // first FROZEN SLEET ~2.5 min into Endless (Chaos arms its own 55s)
     this._whiteoutT  = 0;                    // WHITEOUT PROTOCOL — Glacial biome hazard (active seconds)
     this._whiteoutCd = 45;                   // first whiteout ~45s after entering Glacial territory
@@ -9846,9 +9854,11 @@ export class Game {
     if (this.gameOver || this.victory || this.paused) return;
     // ── Scheduler: 2 rushes per Chaos run, spaced out ──
     if (this._bossRush == null) {
-      // Maria 2026-07-16: the arena runs 2× per CHAOS run (2:00 / 8:00) AND 2× per ENDLESS run
-      // (3:30 / 9:30 — offset so it never stacks on the Null Breach windows at 5:00/12:00).
-      if (this._bossRushCount == null) { this._bossRushCount = 0; this._bossRushSchedule = this._chaosMode ? [120, 480] : [210, 570]; }
+      // Maria 2026-07-18: ENDLESS schedule was [210, 570] — with the 180s rush duration that
+      // meant 3:30-6:30 and 9:30-12:30, STACKED ON TOP of the Null Breach windows (5:00 and
+      // 12:00, 2:00 long). Now [480, 900]: rush 8:00-11:00 and 15:00-18:00, arenas 5:00-7:00
+      // and 12:00-14:00 — at least 60s of clear air between every event, both directions.
+      if (this._bossRushCount == null) { this._bossRushCount = 0; this._bossRushSchedule = this._chaosMode ? [120, 480] : [480, 900]; }
       const chaosEl = this._chaosMode
         ? this.timeAlive - (this._chaosStartedAt < 0 ? this.timeAlive : this._chaosStartedAt)
         : this.timeAlive - (this._endlessStartedAt || 0);
@@ -9858,7 +9868,9 @@ export class Game {
         this.triggerAnnouncement('\u26a0 BOSS RUSH INCOMING \u2014 ARENA FORMING \u26a0', '#ff9a2d');
         this.audio?.playEventWarning?.();
       }
-      if (next != null && chaosEl >= next) {
+      // Mutual exclusion: never open a rush while the Null Breach Arena is running —
+      // the start simply defers until the breach closes (schedule keeps them apart anyway).
+      if (next != null && chaosEl >= next && !this._nullBreachActive) {
         this._bossRushWarned = false;
         this._bossRushCount++;
         // ARENA RELIC: Glass Vow — sharper blade, thinner skin, only while the rush runs
@@ -9867,8 +9879,14 @@ export class Game {
           this.player._rushVulnMult = 1.25;
           this.floatingTexts.push(new FloatingText('GLASS VOW ACTIVE', this.player.pos.clone(), '#ff9a2d', 2.0));
         }
+        // Ring forms on a DIFFERENT spot of the map, not centred on the player: offset the
+        // centre ~260px in a random direction (player is still well inside the 700px wall,
+        // and the lock clamp keeps them in). Reads as 'the rush claims its own ground'.
+        const _rushAng = Math.random() * Math.PI * 2;
         this._bossRush = {
-          t: 0, dur: 180, cx: this.player.pos.x, cy: this.player.pos.y,
+          t: 0, dur: 180,
+          cx: this.player.pos.x + Math.cos(_rushAng) * 260,
+          cy: this.player.pos.y + Math.sin(_rushAng) * 260,
           hazard: null, spawnAcc: 0, titanIdx: 0, flags: {},
         };
         this.triggerAnnouncement('⚔ CHAOS BOSS RUSH — SURVIVE 3:00 ⚔', '#ffd447');
@@ -22367,6 +22385,12 @@ export class Game {
     ctx.fillStyle = 'rgba(2,6,14,0.95)';
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
+    // Maria 2026-07-18: on THIS screen the BUILD ENGINE damage report used to fall back to
+    // its legacy top-left pin (16,36) and sat straight on the THANK YOU FOR PLAYING title.
+    // Publish a proper slot every frame we draw: bottom-left corner, clear of the centered
+    // title/credits/skins column and BELOW the button row (6-row panel = 174px tall).
+    this._dmgReportSlot = { x: 24, y: HEIGHT - 174 - 24, w: 560 };
+
     // (Removed the small floating victory_logo thumbnail at the top — the screen now reads as a
     // clean premium end card driven by the text hierarchy below, no misplaced image.)
     ctx.textAlign = 'center';
@@ -23818,8 +23842,8 @@ _drawLoreArchive(ctx) {
           label: 'ACT 1 — FIRST BREACH',
           accent: '#b6ff8c',
           fill: 'rgba(4,20,4,0.60)',
-          badge: 'CONTAINMENT TEST — 12:00',
-          text: 'Twelve minutes. Hold the line, keep the Nexus grid breathing, and survive to the mark. The system will file your victory under ERRORS — PENDING REVIEW. It has no other category for you.',
+          badge: 'CONTAINMENT TEST — 8:00',
+          text: 'Eight minutes. Hold the line, keep the Nexus grid breathing, and survive to the mark. The system will file your victory under ERRORS — PENDING REVIEW. It has no other category for you.',
         },
         {
           label: 'ENDLESS',
@@ -24836,7 +24860,7 @@ _drawLoreArchive(ctx) {
 
       if (ar.timer <= 0) {
         this.acidRain      = null;
-        this.acidRainTimer = this._chaosMode ? 60 : 138; // Chaos: 60s apart; Normal: 2.5 min
+        this.acidRainTimer = this._chaosMode ? 60 : this.endless ? 100 : 138; // Chaos 60s / Endless ~1:40 / Act 1 2.5 min
       }
       return;
     }
@@ -24845,8 +24869,10 @@ _drawLoreArchive(ctx) {
     if (this.acidRainTimer <= 0) {
       this.acidRain = { timer: 12, damageAccum: 0 };
       this.triggerAnnouncement('INCOMING ACID RAIN', GREEN);
+      // World-space text pinned to the PLAYER — the old fixed (WIDTH/2, HEIGHT/2) point is a
+      // world coordinate near the origin, invisible from anywhere else on the Endless map.
       this.floatingTexts.push(
-        new FloatingText('TOXIC RAIN PURGE', new Vec2(WIDTH / 2 - 120, HEIGHT / 2 - 70), GREEN, 2.5)
+        new FloatingText('TOXIC RAIN PURGE', new Vec2(this.player.pos.x - 90, this.player.pos.y - 70), GREEN, 2.5)
       );
       this.audio?.playEventWarning();
       this.audio?.playAcidRain?.();   // file SFX — throttled 4 s (one per activation)
@@ -26308,7 +26334,9 @@ _drawLoreArchive(ctx) {
 
     const endlessElapsed = this.timeAlive - this._endlessStartedAt;
     // Defer (but do NOT permanently skip) if a hazard would stack badly.
-    const hazardActive = !!(this.acidRain || this.airstrikeShips.length > 0);
+    // Maria 2026-07-18: the Boss Rush now also blocks the breach — the two big
+    // containment events must never run on top of each other.
+    const hazardActive = !!(this.acidRain || this.airstrikeShips.length > 0 || this._bossRush);
 
     if (!this._nullBreach1Done && endlessElapsed >= 300) {   // 5:00 Endless
       if (!hazardActive) {
@@ -26786,7 +26814,9 @@ _drawLoreArchive(ctx) {
     ctx.font      = 'bold 12px Consolas, monospace';
     ctx.fillStyle = urgent ? `rgba(255,60,60,${tAlpha.toFixed(2)})` : '#00e6ff';
     ctx.textAlign = 'right';
-    ctx.fillText(`BREACH STABILIZATION: ${remSecs}s`, panX + panW - 12, panY + 15);
+    // Maria 2026-07-18: show the 2:00 arena countdown as MM:SS (mm/ss were computed
+    // above but never used — the panel printed raw seconds like '112s').
+    ctx.fillText(`BREACH STABILIZATION: ${mm}:${ss}`, panX + panW - 12, panY + 15);
 
     ctx.textAlign = 'left';
     ctx.restore();

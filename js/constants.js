@@ -47,10 +47,12 @@ export const ENDLESS_VIEW_SCALE = 0.72;   // was 0.55 · ≈ 1777.8 × 1000 worl
 // it as the win time. The reachable "Act 1" victory uses ACT1_WIN_SECONDS below.
 export const WIN_TIME_SECONDS = 30 * 60;
 
-// Reachable primary victory ("Act 1") — climaxes just after the Bloodfang Packmaster (10:00).
-// Used ONLY by the win check; kept separate from WIN_TIME_SECONDS so the core economy is
-// untouched. Endless mode (CONTINUE) lifts this so the run keeps scaling on absolute time.
-export const ACT1_WIN_SECONDS = 12 * 60;
+// Reachable primary victory ("Act 1") — Maria 2026-07-18: tightened 12:00 → 8:00. The boss
+// schedule in Game.reset() is compressed to match (Titan 3:00, Annihilator 4:30, Bloodfang
+// 6:00, Cyber Serpent 6:30) so the full arc still plays out — climax just after the Serpent,
+// then ~1:30 of peak pressure into the win. Used ONLY by the win check; kept separate from
+// WIN_TIME_SECONDS so the core economy is untouched. Endless (CONTINUE) lifts this.
+export const ACT1_WIN_SECONDS = 8 * 60;
 
 export const CORE_OVERLOAD_TICK_TIME  = 2.0;
 export const BASE_OVERLOAD_PER_CORE   = 1.0;
