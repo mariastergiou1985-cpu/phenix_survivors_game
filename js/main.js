@@ -1,5 +1,5 @@
-import { Game } from './game/Game.js?v=20260720800000';
-import { AudioManager } from './audio/AudioManager.js?v=20260715700000';
+import { Game } from './game/Game.js?v=20260720900000';
+import { AudioManager } from './audio/AudioManager.js?v=20260720900000';
 import { PlatformAchievements } from './platform/PlatformAchievements.js?v=20260712370000';
 // Steam build: replay any web-earned achievements to Steam on boot (no-op in browsers)
 setTimeout(() => { try { PlatformAchievements.syncPending(); } catch (_) {} }, 3000);

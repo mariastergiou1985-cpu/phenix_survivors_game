@@ -19103,6 +19103,7 @@ export class Game {
       this.player.coresSecured++;
       this.floatingTexts.push(new FloatingText('QUANTUM BEAM!', bestCore.pos.clone(), ORANGE, 1.2));
       this.particles.spawnCoreSlot(bestMatrix.pos, bestMatrix.color);
+      this.audio?.playCoreSlot?.();          // audio twin of spawnCoreSlot — this beat was silent
     }
   }
 

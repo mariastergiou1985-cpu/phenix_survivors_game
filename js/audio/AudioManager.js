@@ -592,11 +592,9 @@ export class AudioManager {
   }
 
   // 3. Enemy death — glitch burst / digital crack.
-  playDeath() {
-    if (!this._canPlay('death', 0.05)) return;
-    this._tone({ type: 'sawtooth', freqStart: 200, freqEnd: 40, dur: 0.22, gain: 0.15 });
-    this._noiseBurst({ dur: 0.18, gain: 0.12, filterType: 'bandpass', freq: 600 });
-  }
+  // playDeath() REMOVED (2026-07-18 audio audit): a synthesized death tone that nothing ever
+  // called. It was superseded by playPlayerDeath() / playEnemyDeath(), which use the real
+  // sfx files and ARE wired. Kept out to avoid two competing death sounds.
 
   // 4. Core pickup — clean bright ascending ping.
   playCorePickup() {
