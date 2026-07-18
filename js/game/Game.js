@@ -60,7 +60,7 @@ import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260712160000';
 import { NexusManager } from './NexusManager.js?v=20260712110000';
 import { VESSELS, getVesselById, getDefaultVesselId } from './VesselCatalog.js?v=20260705040000';
 import { PETS, getPetById } from './PetCatalog.js?v=20260705000000';
-import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons, isEvolutionOwnedBy, getCardDisplayName } from './WeaponCatalog.js?v=20260712430000';
+import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons, isEvolutionOwnedBy, getCardDisplayName } from './WeaponCatalog.js?v=20260720800000';
 import { TACTICAL_ID, TACTICAL_DEFS, getTacticalDef, getTacticalForCharacter, getAvailableTactical, preloadTacticalSprites, FUSION_TACTICALS } from './TacticalWeaponCatalog.js?v=20260720000000';
 import { VFXSpritePlayer } from './VFXSpritePlayer.js?v=20260711800000';
 
@@ -11800,6 +11800,7 @@ export class Game {
     else if (bh === 'ground_shockwave' || bh === 'sequential_ground')       kind = 'ground';
     else if (bh === 'pull_explode')                                         kind = 'implode';
     else if (bh === 'line_cloud')                                           kind = 'mist';
+    else if (bh === 'nova')                                                 kind = 'nova';
     if (this._weaponAccents.length >= 40) this._weaponAccents.shift();      // hard cap
     this._weaponAccents.push({ x, y, ang, t: 0, life: kind === 'implode' ? 0.85 : 0.72,
                                kind, c: def.color || '#9fd8ff', scale: Math.min(scale, 2.2),
@@ -13313,6 +13314,54 @@ export class Game {
           ctx.beginPath();
           ctx.arc((i - 2) * 18 * sc + drift * (p2 - 0.5), -drift, (6 + p2 * 7) * sc * (0.5 + k), 0, Math.PI * 2);
           ctx.fill();
+        }
+
+      } else if (w.kind === 'nova') {
+        // NOVA — ultimate-tier detonation: the star collapses, then goes supernova.
+        // STRIKE: 3-layer shockwave (faint halo / colored bloom / WHITE core edge) +
+        // radiating light spears + a white-hot core that blooms and contracts.
+        // AFTERMATH: a slower second shock ring and embers drifting outward and up.
+        if (strike > 0) {
+          const R = (18 + 92 * strike) * sc;
+          ctx.globalAlpha = (1 - after) * 0.26; ctx.lineWidth = 9 * sc;          // layer 3: outer halo
+          ctx.beginPath(); ctx.arc(0, 0, R * 1.06, 0, Math.PI * 2); ctx.stroke();
+          ctx.globalAlpha = (1 - after) * 0.9;                                    // layer 2: colored bloom
+          ctx.lineWidth = (6 - 3 * strike) * sc;
+          ctx.shadowColor = w.c; ctx.shadowBlur = 16;                             // the ONE blurred stroke
+          ctx.beginPath(); ctx.arc(0, 0, R, 0, Math.PI * 2); ctx.stroke();
+          ctx.shadowBlur = 0;
+          ctx.globalAlpha = (1 - after) * 0.95;                                   // layer 1: white core edge
+          ctx.lineWidth = (2.2 - 1.2 * strike) * sc; ctx.strokeStyle = '#ffffff';
+          ctx.beginPath(); ctx.arc(0, 0, R * 0.965, 0, Math.PI * 2); ctx.stroke();
+          ctx.strokeStyle = w.c;
+          for (let i = 0; i < 8; i++) {                                           // radiating light spears
+            const sa = (i / 8) * Math.PI * 2 + w.seed * 0.017;
+            const inr = R * 0.22, len = R * (0.58 + pr(w.seed, i) * 0.46);
+            ctx.globalAlpha = (1 - after) * (0.35 + 0.5 * pr(w.seed, i + 30));
+            ctx.lineWidth = (2.6 - 1.4 * strike) * sc;
+            ctx.beginPath();
+            ctx.moveTo(Math.cos(sa) * inr, Math.sin(sa) * inr);
+            ctx.lineTo(Math.cos(sa) * len, Math.sin(sa) * len);
+            ctx.stroke();
+          }
+          const core = Math.sin(Math.min(1, strike) * Math.PI);                   // bloom → contract
+          ctx.globalAlpha = (1 - after) * 0.98; ctx.fillStyle = '#ffffff';
+          ctx.beginPath(); ctx.arc(0, 0, (5 + 16 * core) * sc, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = w.c;
+        }
+        if (after > 0) {
+          ctx.globalAlpha = (1 - after) * 0.5; ctx.lineWidth = 2.4 * sc;          // slower 2nd shock ring
+          ctx.beginPath(); ctx.arc(0, 0, (70 + 90 * after) * sc, 0, Math.PI * 2); ctx.stroke();
+          for (let i = 0; i < 6; i++) {                                           // embers
+            const ea = pr(w.seed, i + 50) * Math.PI * 2;
+            const er = (60 + 70 * after) * sc * (0.6 + pr(w.seed, i + 60) * 0.6);
+            ctx.globalAlpha = (1 - after) * 0.85;
+            ctx.fillStyle = i % 2 ? '#ffffff' : w.c;
+            ctx.beginPath();
+            ctx.arc(Math.cos(ea) * er, Math.sin(ea) * er - after * after * 22 * sc, 2 * sc, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          ctx.fillStyle = w.c;
         }
 
       } else {                                                  // fallback ring

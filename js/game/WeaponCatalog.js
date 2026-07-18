@@ -73,6 +73,11 @@ export const WEAPON_BEHAVIOR = Object.freeze({
   SEQUENTIAL_GROUND:  'sequential_ground',
   PULL_EXPLODE:       'pull_explode',
   BOLT_PROJECTILE:    'bolt_projectile',
+  // NOVA — ultimate-tier area detonation. Was referenced by 7 procedural evolutions
+  // (sanction_halo, hannya_brand, quantum_roulette, fractal_verdict, pyroclast_uppercut,
+  // poison_petal_waltz, solo_of_the_damned) but never declared, so `WEAPON_BEHAVIOR.NOVA`
+  // silently evaluated to undefined and they fell back to the generic 'ring' accent.
+  NOVA:               'nova',
 });
 
 // ── Level scaling multipliers ───────────────────────────────────────
