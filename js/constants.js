@@ -23,14 +23,24 @@ export const WORLD_BOUNDS = {
 // Camera zoom-out: render the world slightly smaller so more of the battlefield
 // is visible (late-game crowds read better). The visible world window is
 // WIDTH/VIEW_SCALE × HEIGHT/VIEW_SCALE world-units inside the fixed 1280×720 canvas.
-export const VIEW_SCALE = 0.6;               // zoomed OUT (was 0.85) → ~2× visible map area, more room to move
+// ZOOM-IN PASS (Maria 2026-07-18): 0.6 showed 71% of the whole world at once (0.55 in
+// Endless showed 78%), which crushed every enemy and effect into a few pixels and read as
+// mush. Vampire-Survivors legibility comes from a TIGHTER camera, not a wider one — each
+// thing gets more pixels. Step 1 of a staged move: 0.60 -> 0.75 (~57% of the world).
+// Trade-off, measured: each effect now covers ~1.6x more screen, so the fusion-cloud cap
+// was cut 12 -> 8 in the same pass to keep total effect coverage roughly where it was.
+// Enemy spawning is safe — WaveDirector.spawnPlan() derives its ring from _viewW/_viewH,
+// so the spawn distance shrinks with the zoom and foes still arrive from off-screen.
+export const VIEW_SCALE = 0.75;              // was 0.6
 export const VIEW_W = WIDTH  / VIEW_SCALE;   // ≈ 2133 world-units shown horizontally
 export const VIEW_H = HEIGHT / VIEW_SCALE;   // ≈ 1200 world-units shown vertically
 
 // Endless-only zoom: render a touch smaller so the arena breathes and more map is
 // visible around the player (Act 1 keeps VIEW_SCALE). Applied only when this.endless
 // via Game's _viewScale/_viewW/_viewH getters — WORLD_W/H and spawns are unchanged.
-export const ENDLESS_VIEW_SCALE = 0.55;   // ≈ 2327.3 × 1309.1 world-units shown
+// Kept deliberately a touch wider than Act 1, as before (0.55 vs 0.60), so Endless still
+// breathes — the gap is preserved, both ends just moved in together.
+export const ENDLESS_VIEW_SCALE = 0.72;   // was 0.55 · ≈ 1777.8 × 1000 world-units shown
 
 // Full target is 30 minutes. Change to 180 for quick testing.
 // NOTE: WIN_TIME_SECONDS also normalizes coreVolatilityMultiplier() — do NOT repurpose

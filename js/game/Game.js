@@ -7251,7 +7251,7 @@ export class Game {
         if (distance(e.pos, n.pos) > (e.radius || 16) + 8) continue;
         this._euclidDamage(e, n.dmg);
         n.hit.add(e);
-        if (this.fusionClouds.length < 12) {                   // small gas puff (reuses bounded cloud cap)
+        if (this.fusionClouds.length < 8) {                    // small gas puff (cap 12->8: zoom-in pass)
           if (Number.isFinite(e.pos.x) && Number.isFinite(e.pos.y))   // NaN guard (Chaos root-cause 2026-07-16)
             this.fusionClouds.push({ x: e.pos.x, y: e.pos.y, t: 0, life: 1.6, fid: 'viral', dmgCd: 0.4 });
           this.audio?.playToxicGas?.();   // gas cloud spawn sound (throttled)
@@ -18750,9 +18750,9 @@ export class Game {
     this._fusionName = def.name; this._fusionNameT = 1.2;          // brief HUD label
 
     if (def.kind === 'cloud') {                                    // lingering damaging gas cloud
-      if (this.fusionClouds.length < 12) {
+      if (this.fusionClouds.length < 8) {   // cap 12->8 — at VIEW_SCALE 0.75 each cloud covers ~1.6x more screen
         if (Number.isFinite(src.pos.x) && Number.isFinite(src.pos.y))   // NaN guard (Chaos root-cause 2026-07-16)
-          this.fusionClouds.push({ x: src.pos.x, y: src.pos.y, t: 0, life: 3.5, fid, dmgCd: 0 });
+          this.fusionClouds.push({ x: src.pos.x, y: src.pos.y, t: 0, life: 2.6, fid, dmgCd: 0 });   // 3.5->2.6: clear faster, layer less
         this.audio?.playToxicGas?.();   // gas cloud spawn (throttled 0.8s)
       }
       return;
