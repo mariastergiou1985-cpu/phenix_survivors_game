@@ -905,8 +905,12 @@ export function drawEndScreen(ctx, game) {
     y += credH + 6;
   }
 
-  // ── Personal Records (dynamic y, no overlap) ────────────────────────────
-  _drawPersonalRecords(ctx, game, panelX, panelX + panelW, y);
+  // ── PERSONAL RECORDS removed (Maria 2026-07-18) ─────────────────────────
+  // The BUILD ENGINE damage report takes this slot instead. It used to be pinned
+  // top-left, where it overhung the canvas edge and covered the ENDLESS RECORDS
+  // heading. We only publish the geometry here; BuildEngine._drawDamageReport
+  // reads it (and falls back to its old position if it is ever missing).
+  game._dmgReportSlot = { x: panelX, y, w: panelW };
 
   // ── Buttons: RETRY / UPGRADES / MAIN MENU (premium styled) ──────────────
   const BW = 186, BH = 44;

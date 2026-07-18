@@ -19,7 +19,7 @@ import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, dr
 import { SystemEventManager } from './Events.js?v=20260711780000';
 import { UpgradeUI }      from './UpgradeUI.js?v=20260719200000';
 import { weightedSample } from './Upgrades.js?v=20260712520000';
-import { BuildEngineRuntime } from './BuildEngine.js?v=20260719900000';   // P2.2 — ενεργό ΜΟΝΟ με ?p2=1
+import { BuildEngineRuntime } from './BuildEngine.js?v=20260721200000';   // P2.2 — ενεργό ΜΟΝΟ με ?p2=1
 import './BuildEngineChars1.js?v=20260719900000';   // P2.3a Taekwondo+CyberArm (side-effect register)
 import './BuildEngineChars2.js?v=20260719900000';   // P2.3b Brawler+Assassin (side-effect register)
 import './BuildEngineChars3.js?v=20260719900000';   // P2.4a Eddie+Dimi (side-effect register)
@@ -28,7 +28,7 @@ import './BuildEngineChars5.js?v=20260719900000';   // P2.5 Universal όπλα 2
 import './BuildEnginePassives.js?v=20260719900000'; // P2.6 Build passives §26-50 (generic hooks)
 import { MutationUI }      from './MutationUI.js?v=20260703990000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
-import { drawHUD, drawEndScreen } from './HUD.js?v=20260713200000';
+import { drawHUD, drawEndScreen } from './HUD.js?v=20260721200000';
 import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, SKILL_TREE, AMULET_DEFS, GRID_TO_PF_RATE } from './MetaProgress.js?v=20260720700000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260712520000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained

@@ -901,10 +901,18 @@ export class BuildEngineRuntime {
     }
     const W = ctx.canvas.width, H = ctx.canvas.height;
     // Maria 2026-07-16: το panel έπεφτε ΠΑΝΩ στα κουμπιά RETURN/CONTINUE των end screens
-    // (κέντρο-κάτω) και μπλόκαρε τη συνέχεια σε Endless/Chaos. Μεταφέρθηκε ΠΑΝΩ-ΑΡΙΣΤΕΡΑ —
-    // εκεί υπάρχει μόνο θαμπωμένο HUD, ποτέ interactive στοιχεία (victory ΚΑΙ game over).
-    const w = 560, x = 16, top = rows.slice(0, 8);
-    const h = 52 + top.length * 16 + 26, y = 36;
+    // (κέντρο-κάτω) και μπλόκαρε τη συνέχεια σε Endless/Chaos. Μεταφέρθηκε ΠΑΝΩ-ΑΡΙΣΤΕΡΑ.
+    // Maria 2026-07-18: πάνω-αριστερά προεξείχε από την άκρη του καμβά και σκέπαζε τον τίτλο
+    // ENDLESS RECORDS. Πλέον παίρνει τη θέση του PERSONAL RECORDS (που αφαιρέθηκε): το HUD
+    // δημοσιεύει τη γεωμετρία στο game._dmgReportSlot. Fallback στην παλιά θέση αν λείπει.
+    const slot = this.game && this.game._dmgReportSlot;
+    // 6 rows in the slot, not 8: at 8 the panel is 206px tall and the gap down to the
+    // RETRY / UPGRADES / MAIN MENU buttons is ~200px, so it would clip them. 6 rows = 174px.
+    const top = rows.slice(0, slot ? 6 : 8);
+    const h = 52 + top.length * 16 + 26;
+    const w = slot ? slot.w : 560;
+    const x = slot ? slot.x : 16;
+    const y = slot ? slot.y : 36;
     this._panelBox(ctx, x, y, w, h, 'DAMAGE REPORT — BUILD ENGINE (Actual Run DPS)', '#ffd447');
     ctx.font = '11px Consolas, monospace'; ctx.textAlign = 'left';
     let ty = y + 38;
