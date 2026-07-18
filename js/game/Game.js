@@ -29,7 +29,7 @@ import './BuildEnginePassives.js?v=20260719900000'; // P2.6 Build passives §26-
 import { MutationUI }      from './MutationUI.js?v=20260703990000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260721200000';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, SKILL_TREE, AMULET_DEFS, GRID_TO_PF_RATE } from './MetaProgress.js?v=20260720700000';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, SKILL_TREE, AMULET_DEFS, GRID_TO_PF_RATE } from './MetaProgress.js?v=20260722400000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260712520000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
@@ -2579,36 +2579,36 @@ export class Game {
     p.upgrades['Pulse Damage'] = (p.upgrades['Pulse Damage'] || 0) + m.getLevel('syn_phase_companion') * 0.6;
 
     // ── Null Battery relic: 8% faster Q/E ability cooldowns ──
-    if (m.isRelicUnlocked('null_battery')) p.abilityCdMult = 1.08;
+    if (this._relicOn('null_battery')) p.abilityCdMult = 1.08;
     // ── Chaos Mega Titan reward relics (single-tier passive versions; the full 5-tier
     // bespoke mechanics are a later pass — these give a real, safe bonus meanwhile). ──
-    if (m.isRelicUnlocked('overlord_prism_array'))     p.pulseDamage = (p.pulseDamage || 0) + 2;      // laser array → +projectile damage
-    if (m.isRelicUnlocked('leviathan_nanite_core'))    p.xpMult = (p.xpMult || 1) + 0.10;             // nanites harvest → +10% XP
-    if (m.isRelicUnlocked('emperor_singularity_edge')) p.abilityCdMult = (p.abilityCdMult || 1) * 1.10; // gravity control → faster abilities
-    if (m.isRelicUnlocked('tyrant_antimatter_battery')) p.contactDamageReduction = Math.min(0.6, (p.contactDamageReduction || 0) + 0.08); // armor plating
+    if (this._relicOn('overlord_prism_array'))     p.pulseDamage = (p.pulseDamage || 0) + 2;      // laser array → +projectile damage
+    if (this._relicOn('leviathan_nanite_core'))    p.xpMult = (p.xpMult || 1) + 0.10;             // nanites harvest → +10% XP
+    if (this._relicOn('emperor_singularity_edge')) p.abilityCdMult = (p.abilityCdMult || 1) * 1.10; // gravity control → faster abilities
+    if (this._relicOn('tyrant_antimatter_battery')) p.contactDamageReduction = Math.min(0.6, (p.contactDamageReduction || 0) + 0.08); // armor plating
     // ── Dimi's Cyber-Relic — character-gated (only affects Dimi runs) ──
-    if (m.isRelicUnlocked('ossuary_marrow') && p.selectedCharacter === 'skeleton_warrior') {
+    if (this._relicOn('ossuary_marrow') && p.selectedCharacter === 'skeleton_warrior') {
       p.upgrades['Pulse Damage'] = (p.upgrades['Pulse Damage'] || 0) + 0.5;   // marrow-charged sabers
       p.maxHp = Math.round(p.maxHp * 1.05); p.hp = Math.min(p.hp, p.maxHp);
     }
-    if (m.isRelicUnlocked('overheat_regulator') && p.selectedCharacter === 'cyber_arm_hero') {
+    if (this._relicOn('overheat_regulator') && p.selectedCharacter === 'cyber_arm_hero') {
       p.upgrades['Pulse Damage'] = (p.upgrades['Pulse Damage'] || 0) + 0.5;   // regulated overdrive
       p.fireRateBonus = (p.fireRateBonus || 0) + 0.03;
     }
-    if (m.isRelicUnlocked('seismic_knuckle') && p.selectedCharacter === 'brawler_warrior') {
+    if (this._relicOn('seismic_knuckle') && p.selectedCharacter === 'brawler_warrior') {
       p.upgrades['Pulse Damage'] = (p.upgrades['Pulse Damage'] || 0) + 0.4;
       p.contactDamageReduction = Math.min(0.6, (p.contactDamageReduction || 0) + 0.03);
     }
-    if (m.isRelicUnlocked('null_shard_loop') && p.selectedCharacter === 'japan_phasewalker') {
+    if (this._relicOn('null_shard_loop') && p.selectedCharacter === 'japan_phasewalker') {
       p.abilityCdMult = (p.abilityCdMult || 1) * 1.06;                        // dash/EMP loop faster
       p.speedBonus    = (p.speedBonus || 0) + 0.02;
     }
-        if (m.isRelicUnlocked('dimi_cyber_relic') && p.selectedCharacter === 'dimis_kickboxer') {
+        if (this._relicOn('dimi_cyber_relic') && p.selectedCharacter === 'dimis_kickboxer') {
       p.pulseDamage = (p.pulseDamage || 0) + 2;
       p.contactDamageReduction = Math.min(0.6, (p.contactDamageReduction || 0) + 0.05);
     }
     // Null Riff Capacitor — Eddie relic: amplified dash note clouds + hotter riff bolts
-    this._riffCapacitor = (p.selectedCharacter === 'eddie') && m.isRelicUnlocked('null_riff_capacitor');
+    this._riffCapacitor = (p.selectedCharacter === 'eddie') && this._relicOn('null_riff_capacitor');
   }
 
   // ── Vessel passives ──────────────────────────────────────────────────────────
@@ -3654,6 +3654,10 @@ export class Game {
   }
 
   // ×1.3 on every ultimate damage hook while the ACTIVE character's amulet is owned.
+  // 1R loadout (Maria 2026-07-18): a relic's gameplay effect fires ONLY while it is the
+  // equipped run relic. Ownership alone (shop 'OWNED') no longer powers anything.
+  _relicOn(id) { return !!this.meta?.isRelicEquipped?.(id); }
+
   _amuletUltMult() {
     const am = (this.meta && this.player && this.meta.hasAmuletFor(this.player.selectedCharacter)) ? 1.3 : 1;
     const apex = 1 + 0.10 * (this.player?._stApexLvl || 0);   // Φ11 Apex Ultimatum capstone
@@ -4833,6 +4837,8 @@ export class Game {
         #cgm-relics .cr-cost      { font-family:'Orbitron',sans-serif; font-weight:700; font-size:11px; color:var(--cyan); }
         #cgm-relics .cr-badge     { font-family:'Orbitron',sans-serif; font-weight:700; font-size:10px; letter-spacing:1px; padding:4px 10px; border-radius:6px; }
         #cgm-relics .cr-badge.owned   { background:rgba(52,211,153,.15); color:#34d399; border:1px solid rgba(52,211,153,.35); }
+        #cgm-relics .cr-badge.equipped{ background:rgba(255,212,71,.15); color:#ffd447; border:1px solid rgba(255,212,71,.45); }
+        #cgm-relics .cr-badge.equip-btn:hover { border-color:#ffd447; color:#ffd447; }
         #cgm-relics .cr-badge.req     { background:rgba(168,85,247,.1); color:#a855f7; border:1px solid rgba(168,85,247,.3); }
         #cgm-relics .cr-badge.poor    { background:rgba(255,100,30,.08); color:#f87171; border:1px solid rgba(248,113,113,.3); }
         #cgm-relics .cr-badge.buy-btn { background:rgba(251,191,36,.1); color:var(--amber); border:1px solid rgba(251,191,36,.35); cursor:pointer; }
@@ -4918,9 +4924,12 @@ export class Game {
       const canAfford = this.meta.protocolFragments >= RELIC_FRAGMENT_COST && this.meta.credits >= RELIC_GRID_COST;
       const cardCls = owned ? 'cr-card owned' : (hasReq ? 'cr-card' : 'cr-card locked');
 
+      const equipped = owned && this.meta.isRelicEquipped?.(r.id);
       let badgeHtml;
-      if (owned) {
-        badgeHtml = `<span class="cr-badge owned">✓ OWNED</span>`;
+      if (equipped) {
+        badgeHtml = `<span class="cr-badge equipped">★ EQUIPPED</span>`;
+      } else if (owned) {
+        badgeHtml = `<span class="cr-badge owned equip-btn" data-equip-id="${r.id}" style="cursor:pointer">✓ OWNED — EQUIP</span>`;
       } else if (!hasReq) {
         const reqName = r.req ? r.req.replace(/_/g,' ').toUpperCase() : '';
         badgeHtml = `<span class="cr-badge req">REQ: DEFEAT ${reqName}</span>`;
@@ -4954,6 +4963,12 @@ export class Game {
       btn.addEventListener('click', () => {
         const result = this.meta.tryUnlockRelic(btn.dataset.relicId);
         if (result === 'ok') this._syncRelicsOverlay();
+      });
+    });
+    // 1R loadout: click an owned relic to make it THE run relic (persisted)
+    grid.querySelectorAll('.equip-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (this.meta.equipRelic?.(btn.dataset.equipId)) this._syncRelicsOverlay();
       });
     });
   }
@@ -6899,7 +6914,7 @@ export class Game {
         this.enemyBullets.length = 0;            // clear all enemy projectiles
         this.hostileDirector?.reset();           // HORDE: επιστροφή ΟΛΩΝ των tokens
         // ── Oni Blood Circuit relic: mark nearby enemies +15% damage taken for 5s ──
-        if (this.meta?.isRelicUnlocked('oni_blood_circuit')) {
+        if (this._relicOn('oni_blood_circuit')) {
           for (const e of this.enemies) {
             if (distance(e.pos, this.player.pos) < 350) this._oniBloodMarks.set(e, 5);
           }
@@ -8312,7 +8327,7 @@ export class Game {
           this.upgradeUI = new UpgradeUI(choices);
           this.rerollsLeft     = 2;     // two free rerolls per level-up screen
           // ── Relic: Blacknet Coupon — +1 bonus reroll per level-up ────────
-          if (this.meta?.isRelicUnlocked('blacknet_coupon')) this.rerollsLeft += 1;
+          if (this._relicOn('blacknet_coupon')) this.rerollsLeft += 1;
           this._blacknetCouponUsed = false;
           this.rerollAvailable = true;
           // EventBus emit
@@ -8500,7 +8515,7 @@ export class Game {
       if (this.player.selectedCharacter === 'eddie') this._depositEddieNoteClouds();
     }
     // ── Serpent Ember Coil relic: dash leaves burn trail ──────────────
-    if (dashing && this.meta?.isRelicUnlocked('serpent_ember_coil')) {
+    if (dashing && this._relicOn('serpent_ember_coil')) {
       this._emberTrailCd -= dt;
       if (this._emberTrailCd <= 0) {
         this._emberTrailCd = 0.04; // spawn ember every 40ms during dash
@@ -8520,7 +8535,7 @@ export class Game {
     }
     this._wasDashing = dashing;
     // ── Dragon Cryo Heart relic: charge a cryo shard every 30s ───────
-    if (this.meta?.isRelicUnlocked('dragon_cryo_heart')) {
+    if (this._relicOn('dragon_cryo_heart')) {
       this._cryoChargeCd += dt;
       if (this._cryoChargeCd >= 30) { this._cryoChargeReady = true; this._cryoChargeCd = 0; }
     }
@@ -8841,7 +8856,7 @@ export class Game {
       if (this._nullBreachActive && !this._arenaRescueUsed) {
         this._triggerArenaRescue();
       // ── Relic: Broken Halo — one-time revive at 25% HP (fires before Phoenix) ──
-      } else if (!this._brokenHaloUsed && this.meta?.isRelicUnlocked('broken_halo')) {
+      } else if (!this._brokenHaloUsed && this._relicOn('broken_halo')) {
         this._brokenHaloUsed = true;
         this.player.hp = Math.ceil(this.player.maxHp * 0.25);
         this.phoenixReviveTimer = 2.5;   // i-frames
@@ -9786,7 +9801,7 @@ export class Game {
         }
         // Boss Rush bounty: titans killed during the rush pay PF (Titan Pact doubles it)
         if (this._bossRush && this.meta) {
-          const pf = this.meta.isRelicUnlocked('rush_titan_pact') ? 4 : 2;
+          const pf = this._relicOn('rush_titan_pact') ? 4 : 2;
           this.meta.protocolFragments += pf; this.meta._save?.();
           this.floatingTexts.push(new FloatingText('+' + pf + ' \uD83E\uDDE9', this._activeTitan.pos.clone(), '#a855f7', 2.0));
         }
@@ -9960,7 +9975,7 @@ export class Game {
         this._bossRushWarned = false;
         this._bossRushCount++;
         // ARENA RELIC: Glass Vow — sharper blade, thinner skin, only while the rush runs
-        if (this.meta?.isRelicUnlocked?.('rush_glass_vow') && this.player) {
+        if (this._relicOn('rush_glass_vow') && this.player) {
           this.player.upgrades['Pulse Damage'] = (this.player.upgrades['Pulse Damage'] || 0) + 1.0;
           this.player._rushVulnMult = 1.25;
           this.floatingTexts.push(new FloatingText('GLASS VOW ACTIVE', this.player.pos.clone(), '#ff9a2d', 2.0));
@@ -10098,7 +10113,7 @@ export class Game {
 
   _bossRushSpawnTitan(br) {
     // ARENA RELIC hooks: Titan Pact = richer bounty but tougher titans (the debuff).
-    this._rushPact = !!this.meta?.isRelicUnlocked?.('rush_titan_pact');
+    this._rushPact = !!this._relicOn('rush_titan_pact');
     const names = ['Giga-Core Overlord', 'Malware Leviathan', 'Quantum Void Emperor', 'Apocalypse Mech Tyrant'];
     const name = names[(br.titanIdx++) % names.length];
     try {
@@ -16653,7 +16668,7 @@ export class Game {
       }
       this.screenShake.trigger(4, 0.2);
       // ── Mirror Kill Protocol relic: shadow slash on clone expire, 3+ hits refunds 20 mana ──
-      if (this.meta?.isRelicUnlocked('mirror_kill_protocol')) {
+      if (this._relicOn('mirror_kill_protocol')) {
         let slashHits = 0;
         const slashR = FR * 1.2, slashDmg = 35;
         for (const e of this.enemies) {
@@ -16888,7 +16903,7 @@ export class Game {
     const PIERCE = 4 + km;                                            // +1 pierce / level (4 → 7)
     const HITR = 30 * (1 + 0.08 * km);                               // +8% hit arc / level
     // ── Crescent Soul Bead relic: every 7th kick gets +2 pierce + shockwave ──
-    const _soulBead = this.meta?.isRelicUnlocked('crescent_soul_bead');
+    const _soulBead = this._relicOn('crescent_soul_bead');
     for (let k = 0; k < count; k++) {
       this._kickFireCount++;
       const empowered = _soulBead && (this._kickFireCount % 7 === 0);
@@ -25121,7 +25136,7 @@ _drawLoreArchive(ctx) {
     this.floatingTexts.push(new FloatingText(`-${Math.ceil(applied)} HP`, this.player.pos.clone(), color, 0.7));
 
     // ── Relic: Null Venom Chamber — on-hit poison AoE ──────────────────────
-    if (this.meta?.isRelicUnlocked('null_venom_chamber')) {
+    if (this._relicOn('null_venom_chamber')) {
       const NV_R = 160, NV_DPS = 8, NV_DUR = 3;
       for (const e of this.enemies) {
         const dx = e.pos.x - this.player.pos.x, dy = e.pos.y - this.player.pos.y;
@@ -26661,7 +26676,7 @@ _drawLoreArchive(ctx) {
     }
     // Breach Crown: clean arena (no rescue) → +0.5 Pulse Damage rest of run
     if (this.meta && !this._arenaRescueUsed && !this._breachCrownActive
-        && this.meta.isRelicUnlocked('breach_crown')) {
+        && this._relicOn('breach_crown')) {
       this._breachCrownActive = true;
       this.player.upgrades['Pulse Damage'] = (this.player.upgrades['Pulse Damage'] || 0) + 0.5;
       this.floatingTexts.push(
@@ -26672,7 +26687,7 @@ _drawLoreArchive(ctx) {
       ); } catch(_) {}
     }
     // Elite Signal Core: +30 score per arena boss kill at completion
-    if (this.meta && arenaKills > 0 && this.meta.isRelicUnlocked('elite_signal_core')) {
+    if (this.meta && arenaKills > 0 && this._relicOn('elite_signal_core')) {
       const eliteBonus = arenaKills * 30;
       this.score += eliteBonus;
       this.floatingTexts.push(
@@ -26719,7 +26734,7 @@ _drawLoreArchive(ctx) {
     // Arena relic: Second Signal Debt — rescue grants a 6s protective shield
     if (this.meta) this.meta.recordBossKill('arena_rescue_used');
     if (this.meta && !this._secondDebtFired
-        && this.meta.isRelicUnlocked('second_signal_debt')) {
+        && this._relicOn('second_signal_debt')) {
       this._secondDebtFired = true;
       this.player.shieldTimer = Math.max(this.player.shieldTimer, 6.0);
       this.floatingTexts.push(
@@ -26931,7 +26946,7 @@ _drawLoreArchive(ctx) {
     if (!this.meta) return;
     const _charId     = this.player?.selectedCharacter || '';
     const ownedRelics = RELIC_DEFS.filter(r => {
-      if (!this.meta.isRelicUnlocked(r.id)) return false;
+      if (!this.meta.isRelicEquipped?.(r.id)) return false;   // 1R loadout: only the EQUIPPED relic is live
       if (r.reqChar && r.reqChar !== _charId) return false;
       return true;
     });
@@ -27137,11 +27152,11 @@ _drawLoreArchive(ctx) {
   // ── Relic helper: Eden Core Fragment — boss kill bonus XP + EventBus emit ──
   _onBossKilledRelicHook(bossPos, bossName) {
     // Eden Core Fragment: +15 bonus XP per boss kill (once per run flag skipped — always active)
-    if (this.meta?.isRelicUnlocked('eden_core_fragment') && !this._firstBossKilledRun) {
+    if (this._relicOn('eden_core_fragment') && !this._firstBossKilledRun) {
       this._firstBossKilledRun = true;
       this.player.gainXp(15, this.floatingTexts);
       this.floatingTexts.push(new FloatingText('EDEN CORE: +XP', bossPos.clone(), '#ff88ff', 1.5));
-    } else if (this.meta?.isRelicUnlocked('eden_core_fragment')) {
+    } else if (this._relicOn('eden_core_fragment')) {
       this.player.gainXp(15, this.floatingTexts);
     }
     // EventBus emit

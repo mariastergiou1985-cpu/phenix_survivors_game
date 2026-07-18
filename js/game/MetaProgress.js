@@ -370,6 +370,7 @@ export class MetaProgress {
     this.amulets           = {};  // { [amuletId]: true }      — PF-purchased character amulets (ult +30%)
     this.profileName       = null;// optional custom player profile name (fallback 'PLAYER_01' in UI)
     this.relics       = {};  // { [relicId]: true }  — purchased relics
+    this.equippedRelic = null; // 1R loadout (Maria 2026-07-18): the ONE relic active per run
     this.bossKills    = {};  // { [bossKey]: true }  — required boss kills for boss relics
     this.runHistory   = [];  // last 20 runs { time, score, level, char, mode, date }
     // ── Eden Core narrative system ──────────────────────────────────────────
@@ -422,6 +423,7 @@ export class MetaProgress {
       this.amulets         = (d.amulets         && typeof d.amulets         === 'object') ? d.amulets         : {};
       this.profileName     = (typeof d.profileName === 'string' && d.profileName.trim()) ? d.profileName.slice(0, 16) : null;
       this.relics      = (d.relics     && typeof d.relics    === 'object') ? d.relics    : {};
+      this.equippedRelic = (typeof d.equippedRelic === 'string') ? d.equippedRelic : null;
       this.bossKills   = (d.bossKills  && typeof d.bossKills === 'object') ? d.bossKills : {};
       this.runHistory  = Array.isArray(d.runHistory) ? d.runHistory.slice(-20) : [];
       // Eden Core — safe defaults for old saves
@@ -524,6 +526,7 @@ export class MetaProgress {
         amulets: this.amulets,
         profileName: this.profileName,
         relics:    this.relics,
+        equippedRelic: this.equippedRelic,
         bossKills: this.bossKills,
         runHistory: this.runHistory,
         edenMemoryPercent:  this.edenMemoryPercent,
@@ -812,6 +815,7 @@ export class MetaProgress {
     this.unlockedPets     = { byte_mite: true };
     this.petSlots         = 1;
     this.relics    = {};
+    this.equippedRelic = null;
     this.bossKills = {};
     this.runHistory = [];
     this.edenMemoryPercent  = 0;
@@ -931,6 +935,19 @@ export class MetaProgress {
   }
   // ─── Relic helpers ───────────────────────────────────────────────────────────
   isRelicUnlocked(id)  { return this.relics[id] === true; }
+  // 1R loadout (Maria 2026-07-18): ONE relic is active per run. Auto-default: a player
+  // who never opened the picker gets the first owned relic in catalog order — the cap
+  // never silently strips a save down to zero bonuses.
+  getEquippedRelic() {
+    if (this.equippedRelic && this.relics[this.equippedRelic] === true) return this.equippedRelic;
+    for (const r of RELIC_DEFS) if (this.relics[r.id] === true) { this.equippedRelic = r.id; return r.id; }
+    return null;
+  }
+  equipRelic(id) {
+    if (this.relics[id] !== true) return false;
+    this.equippedRelic = id; this._save(); return true;
+  }
+  isRelicEquipped(id) { return this.getEquippedRelic() === id; }
   recordBossKill(id)   { if (!this.bossKills[id]) { this.bossKills[id] = true; this._save(); } }
   hasBossKill(id)      { return this.bossKills[id] === true; }
 
