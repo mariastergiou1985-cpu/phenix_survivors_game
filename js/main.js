@@ -650,6 +650,32 @@ function _logLoopError(err, phase) {
   } catch (_) {}
 }
 
+// ── CANVAS CONTEXT LOSS DETECTOR (2026-07-18) ────────────────────────────────────────
+// A 2D canvas context CAN be lost under GPU / memory pressure — precisely the conditions
+// of a long, dense run (hundreds of enemies, heavy additive VFX). Once lost, every draw
+// call silently no-ops: the result is a BLACK SCREEN with NO JavaScript error anywhere,
+// which is exactly the reported 9-12 min symptom that left the console clean.
+// preventDefault() is REQUIRED, otherwise the browser never fires 'contextrestored'.
+canvas.addEventListener('contextlost', (e) => {
+  e.preventDefault();
+  console.error('[canvas] CONTEXT LOST — the screen will stay black until it is restored');
+  try {
+    const prev = JSON.parse(localStorage.getItem('phenix_lasterror') || 'null');
+    const rec = {
+      when: new Date().toISOString(), phase: 'canvas-contextlost',
+      msg: '2D canvas context lost (GPU/memory pressure) — all draws silently no-op',
+      stack: '', tAlive: +((game && game.timeAlive) || 0).toFixed(1),
+      mode: (game && game._chaosMode) ? 'chaos' : ((game && game.gameState) || '?'),
+      enemies: (game && game.enemies && game.enemies.length) || 0,
+    };
+    localStorage.setItem('phenix_lasterror', JSON.stringify({ first: (prev && prev.first) || rec, last: rec }));
+  } catch (_) {}
+});
+canvas.addEventListener('contextrestored', () => {
+  console.warn('[canvas] context restored — resuming');
+  try { resizeCanvas(); } catch (_) {}
+});
+
 function loop(timestamp) {
   const dt = Math.min((timestamp - lastTime) / 1000, 0.05);  // cap at 50ms
   lastTime = timestamp;
