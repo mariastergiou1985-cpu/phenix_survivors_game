@@ -1221,7 +1221,9 @@ export class Game {
     this._dimiAngels = [];    // Dimi Cyber-Angel summons (Ultimate) — big animated art that attacks
     this._cyberAngelImg = new Image();
     this._cyberAngelImg.onerror = () => console.warn('[Dimi] Cyber-Angel Summoning art missing');
-    this._cyberAngelImg.src = 'assets/abilities/ultimates/Cyber-Angel Summoning (Deus Ex Machina).png';
+    // Maria 2026-07-18: the DIVINE white/gold angel (clean cutout of her new art) replaces
+    // the crimson mecha-seraph as the Deus Ex Machina guardian. Old asset stays in the repo.
+    this._cyberAngelImg.src = 'assets/abilities/ultimates/cyber_angel_divine.png';
     this._neonBeams     = [];  // active Neon Pierce Beam visuals (short-lived)
     // Brawler Warrior weapons (only active while selectedCharacter === 'brawler_warrior')
     this._chakramTimer    = 0;     // Nexus Chakram auto-fire cooldown
