@@ -29,7 +29,7 @@ import './BuildEnginePassives.js?v=20260719900000'; // P2.6 Build passives §26-
 import { MutationUI }      from './MutationUI.js?v=20260703990000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260713200000';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, SKILL_TREE, AMULET_DEFS } from './MetaProgress.js?v=20260720600000';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, SKILL_TREE, AMULET_DEFS, GRID_TO_PF_RATE } from './MetaProgress.js?v=20260720700000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260712520000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
@@ -3921,6 +3921,9 @@ export class Game {
           <div class="cgu-foot-left">
             <button class="cgu-foot-btn back-btn"  id="cgu-back-btn">BACK</button>
             <button class="cgu-foot-btn reset-btn" id="cgu-reset-btn">RESET UPGRADES</button>
+            <button class="cgu-foot-btn" id="cgu-forge-btn"
+              style="border:1px solid rgba(255,45,149,.65);color:#ffd0ea;box-shadow:0 0 10px rgba(255,45,149,.25);"
+              title="Convert surplus Cores into Protocol Fragments">⚗ GRID FORGE</button>
           </div>
           <div class="cgu-hints">
             <span><b>Click</b> card to buy</span>
@@ -3954,6 +3957,21 @@ export class Game {
 
     // RESET PROGRESS — opens the RESET PROTOCOL confirmation modal (replaces double-click)
     el.querySelector('#cgu-reset-btn')?.addEventListener('click', () => this._openResetModal());
+
+    // GRID FORGE — spend surplus Cores(grids) for Protocol Fragments. Grids are heavily
+    // oversupplied (see qa_reports/ECONOMY_MATH.md); this is the sink for them. The PF it
+    // grants is excluded from the pilot-level metric inside convertGridsToPF (loop-proof).
+    el.querySelector('#cgu-forge-btn')?.addEventListener('click', () => {
+      const res = this.meta?.convertGridsToPF?.(1);
+      if (res?.ok) {
+        this._upgradeMsg = `GRID FORGE — ${res.spent} CORES → +${res.gained} 🧩`;
+        this.audio?.forgeMilestone?.();
+      } else {
+        this._upgradeMsg = `GRID FORGE needs ${GRID_TO_PF_RATE} CORES.`;
+      }
+      this._upgradeMsgTimer = 2.5;
+      this._syncUpgradesOverlay();
+    });
 
     const resetModal = el.querySelector('#cgu-reset-modal');
     resetModal?.addEventListener('click', e => { if (e.target === resetModal) this._closeResetModal(); });   // backdrop = cancel
@@ -4075,6 +4093,16 @@ export class Game {
     if (pfEl) pfEl.textContent = this.meta.getProtocolFragments();
     const pfTotEl = el.querySelector('#cgu-pf-total');
     if (pfTotEl) pfTotEl.textContent = PF_TOTAL_OBTAINABLE;
+
+    // GRID FORGE button: always shows the rate; dims when the player can't afford it.
+    const forgeEl = el.querySelector('#cgu-forge-btn');
+    if (forgeEl) {
+      const can = (this.meta.credits || 0) >= GRID_TO_PF_RATE;
+      forgeEl.textContent = `⚗ GRID FORGE — ${GRID_TO_PF_RATE} CORES → 1 🧩`;
+      forgeEl.disabled = !can;
+      forgeEl.style.opacity = can ? '1' : '0.45';
+      forgeEl.style.cursor  = can ? 'pointer' : 'not-allowed';
+    }
 
     el.querySelectorAll('.cgu-tab').forEach(btn => {
       btn.classList.remove('active-core','active-syn','active-proto');

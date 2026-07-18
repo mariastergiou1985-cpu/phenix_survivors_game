@@ -234,6 +234,13 @@ export const PROTOCOL_CARD_BY_ID = Object.fromEntries(PROTOCOL_CARDS.map(c => [c
 
 
 // ─── Null Relics V1 ─────────────────────────────────────────────────────────
+// GRID FORGE exchange rate: Cores(grids) spent per 1 Protocol Fragment forged.
+// Derived, not guessed — see qa_reports/ECONOMY_MATH.md. Break-even for finishing all
+// content is 6.63 grids per PF; real income is ~37, so the excess is ~30.5 grids per PF.
+// 30 absorbs that excess almost exactly, leaving PF rare (10 would collapse a 179-run
+// grind to 63 and was rejected as too generous).
+export const GRID_TO_PF_RATE = 30;
+
 export const RELIC_FRAGMENT_COST = 25;   // flat fragment cost per relic (Maria's economy: 25 PF each)
 export const RELIC_GRID_COST     = 250;  // flat grid (credits) cost per relic (Maria's economy: 250 grids each)
 export const RELIC_DEFS = [
@@ -979,6 +986,32 @@ export class MetaProgress {
     this.protocolFragments = Math.max(0, (this.protocolFragments || 0) + n);
     this._save();
   }
+
+  // ── GRID FORGE: convert surplus Cores(grids) into Protocol Fragments ────────────────
+  // Economy measurement (2026-07-18): a typical run earns ~37 grids per 1 PF, while
+  // finishing all content needs only 6.63 — so grids are ~5.6x oversupplied and every
+  // grid purchase is done by ~run 32, while PF content needs ~179 runs. This drains the
+  // surplus without trivialising PF (rate chosen to absorb the ~30.5 excess grids per PF).
+  //
+  // LOOP SAFETY (critical): getProtocolFragmentsEarned() returns max(ledger, balance), and
+  // that value drives the PILOT LEVEL, which itself pays out grids. Adding PF to the balance
+  // WITHOUT excluding it would feed grids -> PF -> level -> grids: the exact runaway that
+  // corrupted saves before (see the economyRepairV2 block in _load). We therefore add the
+  // converted amount to rewardedPFTotal, the existing exclusion used by level rewards, so
+  // forged PF can never raise the pilot level.
+  convertGridsToPF(fragments = 1) {
+    const n = Math.max(1, Math.floor(Number(fragments) || 0));
+    const cost = n * GRID_TO_PF_RATE;
+    if ((this.credits || 0) < cost) return { ok: false, reason: 'insufficient', cost };
+    this.credits = Math.max(0, (this.credits || 0) - cost);
+    this.protocolFragments = Math.max(0, (this.protocolFragments || 0) + n);
+    this.rewardedPFTotal   = Math.max(0, (this.rewardedPFTotal || 0) + n);   // loop-proof
+    this._save();
+    return { ok: true, spent: cost, gained: n };
+  }
+
+  // How many fragments the current grid balance could forge.
+  affordableForgedPF() { return Math.floor((this.credits || 0) / GRID_TO_PF_RATE); }
 
   addSystemMessage(text) {
     if (!text) return;
