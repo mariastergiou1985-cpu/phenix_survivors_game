@@ -1218,6 +1218,11 @@ export class Game {
     this._dimiDroneImg = new Image();
     this._dimiDroneImg.onerror = () => console.warn('[Dimi] Drone Swarm art missing');
     this._dimiDroneImg.src = 'assets/weapons/vfx/Extra Weapon 1 Tactical Drone Swarm.png';
+    // Maria 2026-07-18: MEGA GLOVE — Dimi extra weapon 2 (comic rocket-punch, her art)
+    this._dimiGloveImg = new Image();
+    this._dimiGloveImg.onerror = () => console.warn('[Dimi] Mega Glove art missing');
+    this._dimiGloveImg.src = 'assets/weapons/dimi_mega_glove.png';
+    this._dimiGlove = null;   // { state:'cd'|'windup'|'punch'|'retract', t, dir, hitDone }
     this._dimiAngels = [];    // Dimi Cyber-Angel summons (Ultimate) — big animated art that attacks
     this._cyberAngelImg = new Image();
     this._cyberAngelImg.onerror = () => console.warn('[Dimi] Cyber-Angel Summoning art missing');
@@ -6291,6 +6296,96 @@ export class Game {
     ctx.restore();
   }
 
+  // ── DIMI MEGA GLOVE — extra weapon 2 (Maria 2026-07-18) ─────────────────────
+  // A HUGE comic rocket-punch built from Maria's glove art: every ~3s the glove pops
+  // up beside Dimi, winds back, then hammers forward in the direction he is FACING
+  // (sprite mirror = punch mirror). Ultimate-grade presence: big art (~190px at
+  // impact), red motion streaks, impact ring + sparks + shake. Damage: a corridor
+  // along the punch line via takeHit (comic launch knockback for normals), and the
+  // standalone bosses via the shared boss-AoE helper. Guards on character.
+  _updateDimiMegaGlove(dt) {
+    const p = this.player;
+    if (!p || p.selectedCharacter !== 'dimis_kickboxer') { this._dimiGlove = null; return; }
+    if (!this._dimiGlove) this._dimiGlove = { state: 'cd', t: 2.0, dir: 1, hitDone: false };
+    const g = this._dimiGlove;
+    g.t -= dt;
+    if (g.state === 'cd') {
+      if (g.t <= 0) { g.state = 'windup'; g.t = 0.22; g.dir = (p._facing >= 0 ? 1 : -1); g.hitDone = false; }
+    } else if (g.state === 'windup') {
+      if (g.t <= 0) { g.state = 'punch'; g.t = 0.16; }
+    } else if (g.state === 'punch') {
+      if (!g.hitDone && g.t <= 0.10) {   // the blow lands a beat into the lunge
+        g.hitDone = true;
+        const REACH = 250, HALF = 85, dmg = 34;
+        const ox = p.pos.x, oy = p.pos.y;
+        const ex = ox + g.dir * REACH;
+        for (const e of this.enemies) {
+          if (!e || e.hp <= 0 || !e.pos) continue;
+          const relX = (e.pos.x - ox) * g.dir;                       // distance ahead of Dimi
+          if (relX < -20 || relX > REACH + 60) continue;
+          if (Math.abs(e.pos.y - oy) > HALF + (e.radius || 0)) continue;
+          e.takeHit(dmg, this);
+          if (!(e.isBoss?.() || e.isMegaBoss)) {                     // comic launch (no boss shove)
+            e.vel.x += g.dir * 420;
+            e.vel.y += (e.pos.y - oy) * 1.5;
+            e.stunned = Math.max(e.stunned || 0, 0.25);
+          }
+        }
+        this._cyberAngelBossHit(new Vec2(ex, oy), 130, dmg);         // standalone bosses feel it too
+        this._specialRings.push({ pos: new Vec2(ex, oy), radius: 0, maxRadius: 130,
+                                   life: 0.32, maxLife: 0.32, color1: '#ff2222', color2: '#ffffff' });
+        this.particles.spawnHitSparks(new Vec2(ex, oy), '#ff3b30');
+        this.audio?.playPlayerImpact?.();
+        this.screenShake.trigger(3, 0.12);
+      }
+      if (g.t <= 0) { g.state = 'retract'; g.t = 0.30; }
+    } else if (g.state === 'retract' && g.t <= 0) {
+      g.state = 'cd'; g.t = 3.0;
+    }
+  }
+
+  _drawDimiMegaGlove(ctx) {
+    const g = this._dimiGlove, img = this._dimiGloveImg, p = this.player;
+    if (!g || g.state === 'cd' || !p) return;
+    if (!img || !img.complete || !img.naturalWidth) return;
+    const REACH = 250;
+    let ext = 0, size = 130, a = 1;                       // ext: 0 (beside Dimi) → 1 (full reach)
+    if (g.state === 'windup') {
+      const t = 1 - g.t / 0.22;
+      ext  = -0.14 * t;                                   // pulls BACK before the punch
+      size = 110 + 30 * t;
+    } else if (g.state === 'punch') {
+      const t = 1 - g.t / 0.16;
+      ext  = t * t;                                       // accelerating lunge
+      size = 150 + 40 * t;                                // BIG — never a fly
+    } else {                                              // retract
+      const t = 1 - g.t / 0.30;
+      ext  = 1 - t;
+      size = 170 - 60 * t;
+      a    = 1 - t * 0.6;
+    }
+    const fx = p.pos.x + g.dir * (34 + REACH * ext);
+    const fy = p.pos.y - 6;
+    ctx.save();
+    if (g.state === 'punch') {                            // red motion streaks behind the fist
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = '#ff4438'; ctx.lineWidth = 5; ctx.globalAlpha = 0.55 * a;
+      for (const off of [-26, 0, 26]) {
+        ctx.beginPath();
+        ctx.moveTo(p.pos.x + g.dir * 20, fy + off);
+        ctx.lineTo(fx - g.dir * size * 0.30, fy + off * 0.6);
+        ctx.stroke();
+      }
+      ctx.globalCompositeOperation = 'source-over';
+    }
+    ctx.globalAlpha = a;
+    ctx.translate(fx, fy);
+    ctx.scale(g.dir, 1);                                  // punch mirrors with Dimi's facing
+    ctx.rotate(-0.7 + (g.state === 'punch' ? 0.12 : 0));  // art's diagonal fist reads horizontal
+    ctx.drawImage(img, -size / 2, -size / 2, size, size);
+    ctx.restore();
+  }
+
   // Dimi Cyber-Gauntlet Shockwave — periodic close-range AoE giving Dimi a real signature
   // auto-weapon (heavy gauntlet pressure). Reuses the existing _specialRings VFX (no new draw
   // code). Guards on character; damage routes through takeHit like every other weapon.
@@ -8505,6 +8600,7 @@ export class Game {
     this._updateDimiGauntlet(dt);   // Dimi Cyber-Gauntlet Shockwave (guards on character)
     this._updateDimiAngels(dt);     // Dimi Cyber-Angel summon (Ultimate)
     this._updateDimiDrones(dt);     // Dimi Tactical Drone Swarm (extra weapon)
+    this._updateDimiMegaGlove(dt);  // Dimi MEGA GLOVE (extra weapon 2 — facing-direction rocket punch)
     this._updateEuclidKit(dt);      // Euclid Vector toxin kit (guards on character)
     this._updateSoloRedThunder(dt); // Eddie native weapon — red riff bolts (guards on character)
     this._updateGuitarSolo(dt);     // Eddie GUITAR SOLO card — big red notes + golden full-map lightning
@@ -19554,6 +19650,7 @@ export class Game {
     // 4b ── AI Overload Titan mini-boss
     this._drawDimiAngels(ctx);
     this._drawDimiDrones(ctx);
+    this._drawDimiMegaGlove(ctx);   // MEGA GLOVE — big comic punch in Dimi's facing direction
     this._drawTitan(ctx);
     this._drawTitanWeaponFx(ctx);   // Phase 2: real boss weapon art on top
     this._drawAnnihilator(ctx);
