@@ -19,7 +19,7 @@ import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, dr
 import { SystemEventManager } from './Events.js?v=20260711780000';
 import { UpgradeUI }      from './UpgradeUI.js?v=20260719200000';
 import { weightedSample } from './Upgrades.js?v=20260712520000';
-import { BuildEngineRuntime } from './BuildEngine.js?v=20260721300000';   // P2.2 — ενεργό ΜΟΝΟ με ?p2=1
+import { BuildEngineRuntime } from './BuildEngine.js?v=20260721300000';   // BUILD ENGINE — always on (full migration 2026-07-18)
 import './BuildEngineChars1.js?v=20260719900000';   // P2.3a Taekwondo+CyberArm (side-effect register)
 import './BuildEngineChars2.js?v=20260719900000';   // P2.3b Brawler+Assassin (side-effect register)
 import './BuildEngineChars3.js?v=20260719900000';   // P2.4a Eddie+Dimi (side-effect register)
@@ -1166,11 +1166,8 @@ export class Game {
     // μένει ανέγγιχτος για εύκολη επαναφορά· τα old-gen evolutions αποσύρονται στο
     // πλήρες migration ούτως ή άλλως.
     items.push('CHARACTER SELECT', 'UPGRADES', 'COLLECTIBLES', 'RELICS', 'HANGAR');
-    try {   // P2.7 soft migration: NULL ARSENAL πλέον default-ορατό (κρύβεται μόνο με ρητό opt-out)
-      const _p2u = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('p2') : null;
-      const _p2l = typeof localStorage !== 'undefined' ? localStorage.getItem('phenix_p2') : null;
-      if (!(_p2u === '0' || (_p2u !== '1' && _p2l === '0'))) items.push('NULL ARSENAL');
-    } catch (_) { items.push('NULL ARSENAL'); }
+    // P2 FULL MIGRATION: NULL ARSENAL is permanent — the opt-out flag is retired.
+    items.push('NULL ARSENAL');
     items.push('SETTINGS', 'EXIT');
     return items;
   }
@@ -1339,21 +1336,14 @@ export class Game {
     const _charWeapon = getWeaponForCharacter(this.selectedCharacter);
     if (_charWeapon) this._weaponLevels.set(_charWeapon.id, 1);
 
-    // ── P2.2 BUILD ENGINE (spec docs/P2_BUILD_ENGINE_SPEC_GR.md) ────────────
-    // Δημιουργείται ΜΟΝΟ με ?p2=1 στο URL — χωρίς το flag μένει null και ΚΑΜΙΑ
-    // συμπεριφορά δεν αλλάζει (όλα τα hooks είναι optional-chained).
-    // P2.7 SOFT MIGRATION (Maria 2026-07-16): το Build Engine είναι πλέον DEFAULT ON
-    // για όλους. Απενεργοποιείται ΜΟΝΟ ρητά (?p2=0 ή F9 -> phenix_p2='0'). Το παλιό
-    // weapon/upgrade σύστημα παραμένει άθικτο στον κώδικα ως δίχτυ ασφαλείας —
-    // το ΠΛΗΡΕΣ migration (απόσυρση old-gen, ενιαία ονόματα, 2T/1R/1A) έπεται.
+    // ── BUILD ENGINE (spec docs/P2_BUILD_ENGINE_SPEC_GR.md) ─────────────────
+    // P2 FULL MIGRATION (Maria 2026-07-18): the ?p2 / F9 opt-out is RETIRED — the Build
+    // Engine is unconditionally ON. The old weapon/upgrade system remains in the code as
+    // the emergency safety net: it re-activates automatically ONLY if the runtime fails
+    // to construct (buildEngine stays null and every hook is optional-chained).
     this.buildEngine = null;
-    try {
-      const _p2url = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('p2') : null;
-      const _p2ls  = typeof localStorage !== 'undefined' ? localStorage.getItem('phenix_p2') : null;
-      const _off = _p2url === '0' || (_p2url !== '1' && _p2ls === '0');
-      if (!_off) this.buildEngine = new BuildEngineRuntime(this);
-      else console.log('[P2] Build Engine DISABLED by user (?p2=0 / F9) — press F9 in the menu to re-enable');
-    } catch (_) { try { this.buildEngine = new BuildEngineRuntime(this); } catch (_2) { this.buildEngine = null; } }
+    try { this.buildEngine = new BuildEngineRuntime(this); }
+    catch (_) { console.error('[P2] Build Engine failed to construct — legacy weapon system active as fallback'); }
 
     // ── Starter-weapon safety net (QA-P1: Dimi Kickboxer) ─────────────────────
     // Characters with a legacy base weapon are seeded above. A character with NO
@@ -9717,7 +9707,7 @@ export class Game {
     else if (item === 'RELICS')         this.goToRelicsScreen();
     else if (item === 'HANGAR')         this.goToHangar();
     else if (item === 'EVOLUTION MATRIX') this.goToEvolutionMatrix();
-    else if (item === 'NULL ARSENAL')   this.goToNullArsenal();   // P2.8 (?p2=1/F9 μόνο)
+    else if (item === 'NULL ARSENAL')   this.goToNullArsenal();   // P2.8 — permanent menu entry
     else if (item === 'SETTINGS')       this.goToSettings();
     else if (item === 'EXIT') { try { window.close(); } catch (e) {} this.goToExitScreen(); }   // browser-safe: close if allowed, else friendly exit screen
   }
@@ -13707,7 +13697,11 @@ export class Game {
     }
 
     // ── PRIORITY: Evolution cards appear GUARANTEED when any recipe is ready ──
-    const evoCard = this._buildEvolutionCard();
+    // P2 FULL MIGRATION (Maria 2026-07-18): with the Build Engine active, the old-gen
+    // WeaponCatalog evolutions are RETIRED from the rotation — the be_ evolutions are
+    // the only evolution layer. The old path still runs when buildEngine is null
+    // (emergency fallback if the runtime ever fails to construct).
+    const evoCard = this.buildEngine ? null : this._buildEvolutionCard();
     if (evoCard) {
       choices[choices.length - 1] = evoCard;   // always replace last slot
       return;                                   // evolution takes priority, skip normal weapon card
@@ -13866,7 +13860,7 @@ export class Game {
   // Returns a tactical weapon card for the current character.
   // Max 3 tactical weapons active at once. Spawns at player position, then DECOUPLES.
   _buildTacticalCard() {
-    const MAX_TACTICAL = 3;
+    const MAX_TACTICAL = 2;   // P2 FULL MIGRATION (spec loadout cap 2T — was 3)
     if (this.tacticalCacheWeapons.length >= MAX_TACTICAL) return null;
 
     const charId = this.player.selectedCharacter;

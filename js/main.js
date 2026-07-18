@@ -1,4 +1,4 @@
-import { Game } from './game/Game.js?v=20260722200000';
+import { Game } from './game/Game.js?v=20260722300000';
 import { AudioManager } from './audio/AudioManager.js?v=20260722100000';
 import { PlatformAchievements } from './platform/PlatformAchievements.js?v=20260712370000';
 // Steam build: replay any web-earned achievements to Steam on boot (no-op in browsers)
@@ -153,15 +153,10 @@ window.addEventListener('keydown', e => {
   if (key === 'e') game.activateEMPCloud();       // EMP stun — shared by ALL (Phasewalker layers his Shockwave VFX inside)
   if (key === ' ') { game.activateThunderSolo(); game.activateOverheatedChains(); game.activateCyberBikeRush(); game.activateSkyfallLances(); game.activateChromePhantomProtocol(); game.activateDigitalSingularity(); game.activateEuclidPlague(); game.activateProtocol0Cataclysm(); game.activateRedThunderCurtain(); game.activateDimiAngelUltimate(); }   // SPACE ultimate (per-character; each self-guards)
   if (key === 'm') game.audio?.toggleMute();
-  // P2.7 soft migration: το Build Engine είναι DEFAULT ON — το F9 κάνει opt-out/in.
-  if (key === 'f9') {
-    try {
-      const off = localStorage.getItem('phenix_p2') === '0';
-      localStorage.setItem('phenix_p2', off ? '1' : '0');
-      game.triggerAnnouncement?.(off ? '◈ BUILD ENGINE ON — start a new run' : '◈ BUILD ENGINE OFF — restart run', '#4fd8ff');
-      console.log('[P2] Build Engine ->', off ? 'ON' : 'OFF');
-    } catch (_) {}
-  }
+  // P2 FULL MIGRATION (Maria 2026-07-18): F9 opt-out retired — the Build Engine is
+  // unconditionally ON (a stale phenix_p2='0' from the soft-migration era is cleared
+  // once so old testers are not silently opted out of anything ever again).
+  try { if (localStorage.getItem('phenix_p2') !== null) localStorage.removeItem('phenix_p2'); } catch (_) {}
   if (key === 'f') {
     if (!document.fullscreenElement) {
       document.documentElement.requestFullscreen().catch(() => {});

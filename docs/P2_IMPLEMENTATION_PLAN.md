@@ -44,3 +44,19 @@ P2.1-P2.9 ΠΑΡΑΔΟΘΗΚΑΝ. P2.7 = SOFT MIGRATION: Build Engine DEFAULT ON
 TACTICALS/ELEMENTS/FUSIONS tabs στο NULL ARSENAL (ενιαίο data source), αφαίρεση F9/flag,
 αφαίρεση/συγχώνευση του EVOLUTION MATRIX menu στο NULL ARSENAL (ερώτηση Maria 2026-07-16 —
 μένει όσο ζει το παλιό σύστημα, γιατί τεκμηριώνει τα old-gen evolutions που ακόμα παίζουν).
+
+## STATUS UPDATE 2 (fable, 2026-07-18, εντολή Maria «συνέχισε»)
+FULL MIGRATION — ΕΓΙΝΑΝ: (1) old-gen WeaponCatalog evolutions ΑΠΟΣΥΡΘΗΚΑΝ από το
+rotation όταν το BE είναι ενεργό (πάντα, πλην fallback)· (2) tactical cap 3 -> 2 (spec 2T)·
+(3) ?p2/F9 opt-out ΑΦΑΙΡΕΘΗΚΕ — BE unconditionally ON, το stale phenix_p2 καθαρίζεται από
+το main.js· NULL ARSENAL μόνιμο στο μενού. Το παλιό σύστημα μένει ως αυτόματο δίχτυ ΜΟΝΟ
+αν ο runtime αποτύχει να κατασκευαστεί.
+ΔΗΛΩΜΕΝΕΣ ΑΠΟΦΑΣΕΙΣ (όχι σιωπηλές αποκλίσεις):
+- be_ internal ids ΔΕΝ μετονομάστηκαν (τα display names ήδη ταιριάζουν με το spec· η
+  μετονομασία θα έσπαγε telemetry ring + ενδεχόμενα saved κλειδιά χωρίς όφελος παίκτη).
+- 1A cap: ήδη δομικό (ένα amulet ανά χαρακτήρα, επιδρά μόνο στο δικό του ultimate).
+- 1R cap: ΔΕΝ εφαρμόστηκε — σήμερα ΟΛΑ τα relics ισχύουν μαζί (HUD 8 slots)· επιβολή 1R
+  απαιτεί run-loadout picker UI (ποιο relic ενεργό ανά run) = απόφαση design της Maria.
+- TACTICALS/ELEMENTS/FUSIONS ενιαίο data source: τα tabs διαβάζουν read-only τους παλιούς
+  καταλόγους (7011aa9)· η μεταφορά των ίδιων των συστημάτων σε DEFS είναι ξεχωριστό βήμα.
+- Balance pass: εκκρεμεί σε πραγματικά runs της Maria (localStorage.phenix_be_telemetry).
