@@ -19,7 +19,7 @@ import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, dr
 import { SystemEventManager } from './Events.js?v=20260711780000';
 import { UpgradeUI }      from './UpgradeUI.js?v=20260719200000';
 import { weightedSample } from './Upgrades.js?v=20260712520000';
-import { BuildEngineRuntime } from './BuildEngine.js?v=20260721200000';   // P2.2 — ενεργό ΜΟΝΟ με ?p2=1
+import { BuildEngineRuntime } from './BuildEngine.js?v=20260721300000';   // P2.2 — ενεργό ΜΟΝΟ με ?p2=1
 import './BuildEngineChars1.js?v=20260719900000';   // P2.3a Taekwondo+CyberArm (side-effect register)
 import './BuildEngineChars2.js?v=20260719900000';   // P2.3b Brawler+Assassin (side-effect register)
 import './BuildEngineChars3.js?v=20260719900000';   // P2.4a Eddie+Dimi (side-effect register)
@@ -6712,7 +6712,7 @@ export class Game {
       } else if (this._digitalSingularity) {
         this._digitalSingularity.render(ctx);   // lingering reform flash after isActive() clears
       }
-    } catch (err) { console.warn('[Phasewalker FX render]', err); }
+    } catch (err) { this._warnFx('[Phasewalker FX render]', err); }
   }
 
   // ════════════════════════════════════════════════════════════════════════════
@@ -6936,7 +6936,7 @@ export class Game {
       if (this._meteorRain) this._meteorRain.render(ctx);   // ground grid + falling meteors (behind)
       if (this._protocol0)  this._protocol0.render(ctx);    // ult aura / lava / detonation
       if (this._laserEyes)  this._laserEyes.render(ctx);    // beams (on top)
-    } catch (err) { console.warn('[Oni FX render]', err); }
+    } catch (err) { this._warnFx('[Oni FX render]', err); }
   }
 
   // ── Euclid Vector toxin kit (world-space; built lazily when he is selected) ─────────────────
@@ -7081,7 +7081,7 @@ export class Game {
       this._euclidSniper.draw(ctx);
       this._euclidPlague.draw(ctx);
       this._drawEuclidAutoWeapons(ctx);
-    } catch (err) { console.warn('[Euclid kit draw]', err);
+    } catch (err) { this._warnFx('[Euclid kit draw]', err);
     } finally {
       ctx.setTransform(_tf);
       ctx.globalAlpha = 1;
@@ -7375,7 +7375,7 @@ export class Game {
       ctx.save(); ctx.translate(sh.x, sh.y);
       this._theorem.render(ctx, this._theoremHooks());   // render needs the hooks: lines track enemies
       ctx.restore();
-    } catch (err) { console.warn('[Theorem render]', err);
+    } catch (err) { this._warnFx('[Theorem render]', err);
     } finally {
       ctx.setTransform(_tf);
       ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; ctx.shadowBlur = 0;
@@ -7444,7 +7444,7 @@ export class Game {
       ctx.save(); ctx.translate(sh.x, sh.y);
       this._ossuary.render(ctx);
       ctx.restore();
-    } catch (err) { console.warn('[Ossuary render]', err); }
+    } catch (err) { this._warnFx('[Ossuary render]', err); }
   }
 
   // ── Overheated Heavy Chains ultimate (Cyber Arm Hero, SPACE, 100 mana) ───────
@@ -7509,7 +7509,7 @@ export class Game {
       ctx.save(); ctx.translate(sh.x, sh.y);
       this._railgun.render(ctx);
       ctx.restore();
-    } catch (err) { console.warn('[Railgun render]', err); }
+    } catch (err) { this._warnFx('[Railgun render]', err); }
   }
 
   _updateOverheatedChains(dt) {
@@ -11752,6 +11752,16 @@ export class Game {
 
   // Spawn a weapon VFX sprite sheet animation at a world position.
   // Used for weapon fire effects AND evolution fanfare.
+  // Throttled render warning. Every caller lives in a per-frame draw() catch block, so an FX
+  // that fails once fails ~60x/second: unthrottled these flood the console (burying real
+  // signals like [game loop] / [canvas] CONTEXT LOST) and cost real time. First 3 per label,
+  // then silence. Same discipline the BuildEngine draw guards already used.
+  _warnFx(tag, err) {
+    if (!this._fxWarnCount) this._fxWarnCount = {};
+    const n = (this._fxWarnCount[tag] = (this._fxWarnCount[tag] || 0) + 1);
+    if (n <= 3) console.warn(tag, err, n === 3 ? '— further identical warnings suppressed' : '');
+  }
+
   _spawnWeaponVFX(weaponId, x, y, angle, scale) {
     // NEW-GEN procedural evolutions: no sprite sheet — a bespoke choreography object
     // (drawn in _drawEvoFx, ultimate-style). Damage stays in _autoFireWeapon as usual.
@@ -16006,7 +16016,7 @@ export class Game {
       ctx.save(); ctx.translate(sh.x, sh.y);
       this._magma.render(ctx);
       ctx.restore();
-    } catch (err) { console.warn('[Magma render]', err); }
+    } catch (err) { this._warnFx('[Magma render]', err); }
   }
 
   // ── Dimi ULT button fix: SPACE never reached _activateCyberAngelNova because activateSpecial()
@@ -16145,7 +16155,7 @@ export class Game {
       ctx.save(); ctx.translate(sh.x, sh.y);
       this._feedbackApoc.render(ctx);
       ctx.restore();
-    } catch (err) { console.warn('[FeedbackApoc render]', err); }
+    } catch (err) { this._warnFx('[FeedbackApoc render]', err); }
   }
 
   _updateRedThunderCurtain(dt) {
@@ -16417,7 +16427,7 @@ export class Game {
       ctx.save(); ctx.translate(sh.x, sh.y);
       this._phantomExec.render(ctx, this._phantomExecHooks());
       ctx.restore();
-    } catch (err) { console.warn('[PhantomExec render]', err); }
+    } catch (err) { this._warnFx('[PhantomExec render]', err); }
   }
 
   _updateChromePhantom(dt) {
@@ -16986,7 +16996,7 @@ export class Game {
       ctx.save(); ctx.translate(sh.x, sh.y);
       this._tribunal.render(ctx);
       ctx.restore();
-    } catch (err) { console.warn('[Tribunal render]', err); }
+    } catch (err) { this._warnFx('[Tribunal render]', err); }
   }
 
   _updateCyberBikeRush(dt) {
@@ -18861,7 +18871,7 @@ export class Game {
       ctx.restore();
     }
     ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; ctx.shadowBlur = 0; ctx.filter = 'none';
-    } catch (err) { console.warn('[FusionClouds draw]', err);
+    } catch (err) { this._warnFx('[FusionClouds draw]', err);
     } finally {
       ctx.setTransform(_tf);
       ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; ctx.shadowBlur = 0;
@@ -19911,7 +19921,7 @@ export class Game {
     this._drawMagmaFx(ctx);            // Brawler Magma Core Eruption (screen-space; guards on character)
     this._drawPhantomExecFx(ctx);      // Assassin Phantom Execution (screen-space; guards on character)
     if (this.player?.selectedCharacter === 'dimis_kickboxer' && this._deusEx?.isActive()) {
-      try { this._deusEx.render(ctx); } catch (err) { console.warn('[DeusEx render]', err); }   // Dimi angel cinematic
+      try { this._deusEx.render(ctx); } catch (err) { this._warnFx('[DeusEx render]', err); }   // Dimi angel cinematic
     }
     this._drawOniFx(ctx);           // Oni Protocol 0 (screen-space; guards on character)
     this._drawThunderSoloScreen(ctx);  // darken + fullscreen lightning flash (under HUD)
@@ -29051,7 +29061,7 @@ _drawLoreArchive(ctx) {
       if (this._frozenSleet && this._frozenSleet.phase !== 'fadeout') {
         th.sleet(ctx, t, WIDTH, HEIGHT, (this._frozenSleet.phase === 'hold' ? 1 : 0.6) * _wm);
       }
-    } catch (err) { console.warn('[WeatherTheater]', err); }
+    } catch (err) { this._warnFx('[WeatherTheater]', err); }
   }
 
   // EMP blast renderer — PHASE A (t<0.12) white implode flash · PHASE B (0.12-0.62)
@@ -29148,7 +29158,7 @@ _drawLoreArchive(ctx) {
     const tIn = Math.min(1, (12 - this.acidRain.timer) / 1.2);            // storm ramps in
     const tOut = Math.min(1, this.acidRain.timer / 1.2);                  // and drains out
     try { this._weatherTheater.acid(ctx, performance.now() / 1000, WIDTH, HEIGHT, Math.min(tIn, tOut)); }
-    catch (err) { console.warn('[WeatherTheater acid]', err); }
+    catch (err) { this._warnFx('[WeatherTheater acid]', err); }
   }
 
   // Effective view scale / visible window. Endless zooms out slightly (ENDLESS_VIEW_SCALE);

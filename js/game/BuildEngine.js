@@ -931,9 +931,15 @@ export class BuildEngineRuntime {
       ty += 16;
     }
     ctx.fillStyle = '#ffd447'; ctx.fillText('MOST EFFECTIVE: ' + ((WEAPON_DEFS[top[0].id] || EVOLUTION_RECIPES[top[0].id] || {}).name || top[0].id), x + 10, ty + 6);
-    // WASTED PICK: internal telemetry ΜΟΝΟ (spec §12/P2.9) — δεν εμφανίζεται στον παίκτη
-    const owned = rows.filter(r => this.weapons.has(r.id));
-    if (owned.length > 1) console.log('[BE telemetry] WASTED PICK:', owned[owned.length - 1].id, owned[owned.length - 1].share + '%');
+    // WASTED PICK: internal telemetry ΜΟΝΟ (spec §12/P2.9) — δεν εμφανίζεται στον παίκτη.
+    // ONE-SHOT (2026-07-18): _drawDamageReport τρέχει ΣΕ ΚΑΘΕ FRAME όσο δείχνει η end screen,
+    // οπότε αυτό το log σπαμάριζε την κονσόλα — μετρήθηκαν 1187 πανομοιότυπες γραμμές σε μία
+    // συνεδρία. Τυπώνεται πλέον μία φορά ανά run, όπως το telemetry παραπάνω.
+    if (!this._wastedLogged) {
+      this._wastedLogged = true;
+      const owned = rows.filter(r => this.weapons.has(r.id));
+      if (owned.length > 1) console.log('[BE telemetry] WASTED PICK:', owned[owned.length - 1].id, owned[owned.length - 1].share + '%');
+    }
   }
 
   _drawSkull(ctx, sk, evolved) {
