@@ -202,6 +202,20 @@ export class MapManager {
     this._endlessBgImage = null;
     this._chaosBgImage = null;
 
+    // ── CYBER MEGACITY deck (Maria brief 2026-07-18, Phase 11 — Endless map) ──
+    // Maria's approved concept, drawn in WORLD SPACE at a fixed integer upscale and
+    // mirror-tiled in both axes so edges always match: no seams, no visible image
+    // ends, no stretch, and the gameplay zoom is never touched.
+    this._cityImg = new Image();
+    this._cityImg.onerror = () => console.warn('[Map] cyber_megacity map missing — endless keeps the chunk world');
+    this._cityImg.src = 'assets/maps/new_endless/cyber_megacity.png';
+    this.CITY_SCALE = 3;   // 1672×519 → 5016×1557 world px per tile (integer — no distortion)
+    // Maria 2026-07-18: ο νέος CHAOS χάρτης της («new chaos map») — ίδιο world-space
+    // mirror-tiling σύστημα, δική του ταυτότητα (το Chaos ΔΕΝ μοιράζεται τον city χάρτη).
+    this._chaosDeckImg = new Image();
+    this._chaosDeckImg.onerror = () => console.warn('[Map] chaos_deck map missing — chaos keeps the chunk world');
+    this._chaosDeckImg.src = 'assets/maps/chaos_mode_map/chaos_deck.png';
+
     // Procedural background cache (for biomes without image assets)
     this._bgCanvas = null;
     this._bgCtx = null;
@@ -335,6 +349,46 @@ export class MapManager {
   // ── Drawing ─────────────────────────────────────────────────────────────────
 
   /**
+   * CYBER MEGACITY world deck (Maria brief 2026-07-18, Phase 11 — Endless).
+   * The approved concept strip is drawn in WORLD coordinates under the existing camera
+   * transform (fixed zoom — the map scrolls under the player, survivor-style).
+   * Mirror-tiling on BOTH axes: tile (i,j) flips horizontally when i is odd and
+   * vertically when j is odd, so every edge meets its own mirror — mathematically
+   * seamless, no visible image border in any direction, zero stretch, integer upscale
+   * with pixelated rendering (uniform pixel-density policy). Only visible tiles draw.
+   */
+  _drawCityWorld(ctx, opts = {}, img = this._cityImg) {
+    const S   = this.CITY_SCALE;
+    const tw  = img.naturalWidth  * S;
+    const th  = img.naturalHeight * S;
+    const g   = this.game;
+    const p   = g?.player; if (!p) return;
+    const vs  = g._viewScale || 1;
+    const vw  = 1280 / vs, vh = 720 / vs;                 // visible world rect (fixed zoom)
+    const M   = 96;                                        // preload margin — no popping
+    const xA  = p.pos.x - vw / 2 - M, xB = p.pos.x + vw / 2 + M;
+    const yA  = p.pos.y - vh / 2 - M, yB = p.pos.y + vh / 2 + M;
+
+    const prevSmooth = ctx.imageSmoothingEnabled;
+    ctx.imageSmoothingEnabled = false;                     // crisp pixels, uniform policy
+    for (let i = Math.floor(xA / tw); i * tw < xB; i++) {
+      for (let j = Math.floor(yA / th); j * th < yB; j++) {
+        const fx = ((i % 2) + 2) % 2 === 1, fy = ((j % 2) + 2) % 2 === 1;
+        ctx.save();
+        ctx.translate(i * tw + (fx ? tw : 0), j * th + (fy ? th : 0));
+        ctx.scale(fx ? -1 : 1, fy ? -1 : 1);
+        ctx.drawImage(img, 0, 0, tw, th);
+        ctx.restore();
+      }
+    }
+    ctx.imageSmoothingEnabled = prevSmooth;
+
+    // Readability dim — same policy the chunk world uses, so combat stays on top
+    ctx.fillStyle = opts.gridBlackoutActive ? 'rgba(0,0,0,0.65)' : 'rgba(0,0,0,0.30)';
+    ctx.fillRect(xA, yA, xB - xA, yB - yA);
+  }
+
+  /**
    * Draw the world background. Drop-in replacement for Game._drawWorldBackground.
    * Phase 0: delegates to legacy image-based rendering.
    * Phase 1: will use chunk-based tile rendering per biome.
@@ -343,6 +397,13 @@ export class MapManager {
     const { chaosMode, endless, gridBlackoutActive } = opts;
 
     if (this.chunkStreamingEnabled) {
+      // Phase 11 (Maria brief): ENDLESS uses the CYBER MEGACITY deck, CHAOS uses Maria's
+      // new chaos deck — each with its OWN identity, same seamless world-space system.
+      const _deck = chaosMode ? this._chaosDeckImg : (endless ? this._cityImg : null);
+      if (_deck && _deck.complete && _deck.naturalWidth > 0) {
+        this._drawCityWorld(ctx, opts, _deck);
+        return;
+      }
       this._drawChunkWorld(ctx, opts);
       return;
     }

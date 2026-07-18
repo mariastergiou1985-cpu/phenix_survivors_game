@@ -10,7 +10,7 @@
 // ────────────────────────────────────────────────────────────────────────────
 
 import { EVENTS } from './EventBus.js?v=20260702700000';
-import { BIOME_ID, BIOME_DEFS, CHUNK_SIZE, ACTIVE_GRID } from './MapManager.js?v=20260703999000';
+import { BIOME_ID, BIOME_DEFS, CHUNK_SIZE, ACTIVE_GRID } from './MapManager.js?v=20260722600000';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 const UNLOAD_DISTANCE = 2;   // chunks beyond active grid before unload

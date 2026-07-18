@@ -10,7 +10,7 @@
 
 import { Vec2, CORE_COLORS } from '../constants.js';
 import { PowerMatrix } from '../entities/PowerMatrix.js?v=20260712090000';
-import { BIOME_ID, CHUNK_SIZE } from './MapManager.js?v=20260703999000';
+import { BIOME_ID, CHUNK_SIZE } from './MapManager.js?v=20260722600000';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 const NEXUS_PER_BIOME    = 1;     // 1 per outer biome — placed near active area, not far away
