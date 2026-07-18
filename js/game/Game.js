@@ -18802,27 +18802,37 @@ export class Game {
       ctx.beginPath(); ctx.ellipse(c.x, c.y, R * birth, R * 0.55 * birth, 0, 0, Math.PI * 2); ctx.fill();
       ctx.restore();
 
+      // WHITEOUT FIX (2026-07-18): the gas BODY must not be additive. Each cloud paints ~14
+      // filled circles; at the 12-cloud cap that is ~168 fills, and under 'lighter' their
+      // alphas ADD, so overlapping clouds saturate straight to white and swallow the arena
+      // (seen from ~7:30 onward in Maria's recording once Fusion Catalyst was picked).
+      // Smoke occludes, it does not emit: body layers are painted normally, and only the
+      // rim wisps / bubble pops below stay additive so the cloud still glows at its edge.
+      ctx.globalCompositeOperation = 'source-over';
+
       // LAYER 1: slow heavy under-puffs (counter-rotating)
       for (let i = 0; i < 5; i++) {
         const ang = i * 1.25 - c.t * 0.35 + pr(i) * 2;
-        ctx.globalAlpha = 0.30 * vis;
+        ctx.globalAlpha = 0.22 * vis;
         ctx.fillStyle = c1;
         ctx.beginPath();
         ctx.arc(c.x + Math.cos(ang) * R * 0.45, c.y + Math.sin(ang) * R * 0.28,
                 R * (0.34 + 0.12 * Math.sin(c.t * 1.7 + i)) * birth, 0, Math.PI * 2);
         ctx.fill();
       }
-      // LAYER 2: brighter mid-puffs churning the other way
+      // LAYER 2: brighter mid-puffs churning the other way (still body — non-additive)
       for (let i = 0; i < 5; i++) {
         const ang = i * 1.25 + c.t * 0.65 + pr(i + 5) * 2;
-        ctx.globalAlpha = 0.26 * vis;
+        ctx.globalAlpha = 0.20 * vis;
         ctx.fillStyle = i % 2 ? c2 : c1;
         ctx.beginPath();
         ctx.arc(c.x + Math.cos(ang) * R * 0.55, c.y + Math.sin(ang) * R * 0.34 - R * 0.08,
                 R * (0.26 + 0.08 * Math.sin(c.t * 2.3 + i * 2)) * birth, 0, Math.PI * 2);
         ctx.fill();
       }
-      // LAYER 3: bright rim wisps (small, fast, at the crown)
+      // LAYER 3: bright rim wisps — additive again from here (small + few, so they glow
+      // without stacking into a whiteout the way the big body puffs did).
+      ctx.globalCompositeOperation = 'lighter';
       for (let i = 0; i < 4; i++) {
         const ang = i * 1.57 + c.t * 1.1;
         ctx.globalAlpha = 0.30 * vis;
