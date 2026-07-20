@@ -1014,8 +1014,13 @@ export class Game {
       { id: 'cyber_arm_hero',          name: 'Cyber Arm Hero',          fallbackColor: '#FF6600', fallbackAlt: '#CC0000', role: 'Ranged / Damage',      specialty: 'Overdrive beam — sustained flame pressure at distance' },
       { id: 'brawler_warrior',         name: 'Brawler Warrior',         fallbackColor: '#1fd6a6', fallbackAlt: '#0a9c78', role: 'Tank / Brawler',       specialty: 'Rage melee burst — damage escalates when surrounded' },
       { id: 'assassin_clone',          name: 'Assassin Clone',          fallbackColor: '#ff4dd2', fallbackAlt: '#9aa0aa', role: 'Stealth / Burst',      specialty: 'Shadow reposition — instant teleport strike burst' },
-      // Japan Phasewalker — COMING SOON. Shown in roster as a locked preview; comingSoon:true
-      // prevents selection and suppresses the PF-unlock path until the freeze bug is resolved.
+      // Japan Phasewalker — PLAYABLE, progression-locked (no comingSoon flag). He unlocks through
+      // the EXISTING progression gate only: MetaProgress.isCharacterUnlocked maps him to
+      // totalStages, i.e. after the FINAL stage is cleared. Once unlocked he is selectable and
+      // plays like any other character. His VFX kit (GlitchDash / EMP Shockwave / Digital
+      // Singularity) passed the static lifecycle audit — bounded arrays, deterministic cleanup,
+      // fresh per-run instances via reset() — see tools/qa/phasewalker_vfx_lifecycle_regression.mjs.
+      // Runtime (in-browser) verification is still pending.
       { id: 'japan_phasewalker', name: 'Japan Phasewalker', fallbackColor: '#00b8d9', fallbackAlt: '#0077a8', role: 'Phase / Displace', specialty: 'Glitch dash + EMP shockwave + Digital Singularity ult' },  // #74 restored — playable (unlocks after final stage)
       // Euclid Vector — unlocked from the start (NOT PF-gated; see MetaProgress free-unlock).
       { id: 'euclid_vector',           name: 'Euclid Vector',           fallbackColor: '#00ff66', fallbackAlt: '#0a9c44', role: 'Toxin / Ranged',       specialty: 'Toxin sniper + orbital katana + plague trail dash' },
