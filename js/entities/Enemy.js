@@ -79,6 +79,20 @@ const FEEDBACK = {
 // slots per frame, awarded to the ones the player is most likely to care about:
 // closest first, then most wounded. Game calls selectHpBarEnemies() once per frame
 // before drawing; Enemy.draw only asks whether it won a slot. Enemy HP is untouched.
+// ── SPRITE FILTERING (Maria QA 2026-07-19) ───────────────────────────────────
+// Enemy art is painted at 1000-2800px and drawn at 28-180px. Nearest-neighbour at
+// those ratios samples roughly one source pixel in forty, so dense red/black artwork
+// disintegrates into granular speckle and thin appendages drop out of the silhouette.
+// Measured on Void Widow at its real 28px draw size (44.8x downscale):
+//   nearest  — 45 edge discontinuities, silhouette 93.6% of reference (limbs lost)
+//   bilinear — 11 edge discontinuities, silhouette 109.5%, colour error halved
+// This table is a MANUAL, EXPLICIT list. Nothing is classified automatically from
+// dimensions, downscale ratio or filename: a wrong guess would silently soften real
+// pixel art. Keys are the canonical enemyType used by spriteMap. Default is 'pixel'.
+const ENEMY_SPRITE_FILTERING = Object.freeze({
+  'Void Widow': 'smooth',   // 1254px illustration at 28px draw — diagnostics in qa_reports/
+});
+
 const STUCK_SECS = 0.5;        // continuous pinned time before recovery is considered
 const STUCK_COOLDOWN = 2.0;   // min seconds between recoveries for one enemy
 export const MAX_COMMON_BARS = 8;
@@ -145,6 +159,7 @@ export class Enemy {
     this.stealTime     = stealTime;
     this.contactDamage = contactDamage * 1.10;   // Maria 2026-07-12: all enemy damage +10% (single central point)
     this.radius        = ENEMY_RADIUS;
+    this.spriteFiltering = ENEMY_SPRITE_FILTERING[enemyType] ?? 'pixel';
 
     if (enemyType === 'Security Defector Mech')  this.radius = 28;
     else if (enemyType === 'Rogue AI Overlord')   this.radius = 44;
@@ -1200,7 +1215,9 @@ export class Enemy {
       ctx.translate(this.pos.x, this.pos.y + this.radius + _bob);   // feet pivot — steps plant
       ctx.rotate(_lean);
       ctx.scale(_sx, _sy);
-      ctx.imageSmoothingEnabled = false;
+      const smoothSprite = this.spriteFiltering === 'smooth';
+      ctx.imageSmoothingEnabled = smoothSprite;
+      if (smoothSprite && 'imageSmoothingQuality' in ctx) ctx.imageSmoothingQuality = 'high';
       ctx.drawImage(this.sprite, -this.radius, -this.radius * 2, this.radius * 2, this.radius * 2);
       ctx.imageSmoothingEnabled = true;
       ctx.restore();

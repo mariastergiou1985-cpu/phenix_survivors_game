@@ -593,6 +593,20 @@ class SpatialGrid {
   }
 }
 
+// ── BOSS SPRITE FILTERING (Maria QA 2026-07-19) ──────────────────────────────
+// The named bosses do NOT go through Enemy.draw(): each owns a private Image and its
+// own draw path in this file, so ENEMY_SPRITE_FILTERING can never reach them. This is
+// the parallel table for those paths, keyed by the canonical boss name used in the
+// bossSprites map. Same rules: MANUAL entries only, default 'pixel', nothing inferred
+// from size, ratio or filename.
+// Cyber Dragon measured at its real 106px draw size (26.6x downscale):
+//   nearest  — 323 red/black speckle pairs, 40 edge discontinuities
+//   bilinear —  56 speckle pairs, 21 discontinuities, silhouette 102.7% of reference
+// so the spikes and head survive while the granular breakup drops ~83%.
+const BOSS_SPRITE_FILTERING = Object.freeze({
+  'Cyber Dragon': 'smooth',   // 2816x1536 illustration — diagnostics in qa_reports/
+});
+
 export class Game {
   constructor() {
     this.audio     = null;  // set from main.js on first user gesture
@@ -28797,6 +28811,10 @@ _drawLoreArchive(ctx) {
     const sp = this._cyberDragonSprite;
     if (sp && sp.complete && sp.naturalWidth > 0) {
       const size = d.radius * 2.4;
+      // Already inside the ctx.save() above, so the flag is restored with everything else.
+      const smoothSprite = (BOSS_SPRITE_FILTERING['Cyber Dragon'] ?? 'pixel') === 'smooth';
+      ctx.imageSmoothingEnabled = smoothSprite;
+      if (smoothSprite && 'imageSmoothingQuality' in ctx) ctx.imageSmoothingQuality = 'high';
       ctx.drawImage(sp, d.pos.x - size / 2, d.pos.y - size / 2, size, size);
     } else {
       // Fallback: drawn dragon shape
