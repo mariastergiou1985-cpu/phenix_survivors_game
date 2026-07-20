@@ -13,7 +13,7 @@ import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260712090000';
 import { Player }         from '../entities/Player.js?v=20260722700000';
 import { XpShardSystem }  from '../entities/XpShards.js?v=20260724000000';   // Phase 1: physical Data-XP
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260706270000';
-import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260724000000';
+import { Enemy, preloadAllWeaponSprites, selectHpBarEnemies } from '../entities/Enemy.js?v=20260724000000';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=20260711750000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260713600000';
@@ -19849,6 +19849,10 @@ export class Game {
     // so nothing pops at the edges. Reused by projectiles + enemy bullets below.
     const _cam = this.camera, _vw = this._viewW, _vh = this._viewH, _M = 96;
     const _off = (pos) => pos.x < _cam.x - _M || pos.x > _cam.x + _vw + _M || pos.y < _cam.y - _M || pos.y > _cam.y + _vh + _M;
+    // Award the per-frame common-enemy HP-bar slots once, before any enemy draws.
+    // Bosses/elites are exempt and always show; commons compete for MAX_COMMON_BARS.
+    selectHpBarEnemies(this.enemies, this.player?.pos);
+
     for (const e of this.enemies) {
       if (_off(e.pos)) continue;   // offscreen — skip draw
       // Readability: a soft dark contour just outside each normal enemy so it separates from the

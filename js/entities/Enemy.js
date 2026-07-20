@@ -69,6 +69,39 @@ const FEEDBACK = {
   heavyRadius:          20,     // enemy radius at/above which a death counts as "heavy"
 };
 
+// ─── COMMON-ENEMY HP BAR BUDGET (Maria video QA 2026-07-19) ─────────────────
+// Showing a bar for N seconds after damage works in early play, but in a developed
+// build the player hits practically everything on screen every second, so the rule
+// degenerated into "always" and the horde disappeared behind dozens of red bars.
+//
+// Bosses, mega-bosses and elites are exempt: those are the targets that matter and
+// they always show. Common enemies now compete for a hard budget of MAX_COMMON_BARS
+// slots per frame, awarded to the ones the player is most likely to care about:
+// closest first, then most wounded. Game calls selectHpBarEnemies() once per frame
+// before drawing; Enemy.draw only asks whether it won a slot. Enemy HP is untouched.
+export const MAX_COMMON_BARS = 8;
+const _barWinners = new Set();
+
+export function selectHpBarEnemies(enemies, playerPos) {
+  _barWinners.clear();
+  if (!enemies || !playerPos) return _barWinners;
+  const cands = [];
+  for (const e of enemies) {
+    if (!e || e.dead || e.hp <= 1) continue;
+    if (e.isBoss?.() || e.isMegaBoss || e.isElite) continue;   // always shown, not budgeted
+    if (!(e._hpBarT > 0) || e.hp >= e.maxHp) continue;         // not recently hurt
+    const dx = e.pos.x - playerPos.x, dy = e.pos.y - playerPos.y;
+    // rank: nearest wins; a badly wounded enemy counts as "nearer" so finishing blows read
+    const wounded = 1 - (e.hp / e.maxHp);
+    cands.push({ e, score: Math.hypot(dx, dy) * (1 - wounded * 0.45) });
+  }
+  cands.sort((a, b) => a.score - b.score);
+  for (let i = 0; i < Math.min(MAX_COMMON_BARS, cands.length); i++) _barWinners.add(cands[i].e);
+  return _barWinners;
+}
+
+export function hasHpBarSlot(e) { return _barWinners.has(e); }
+
 export class Enemy {
   // Chaos Mega Titans — treated as mega-bosses (huge radius, boss HP bars, no biome mods).
   static CHAOS_TITANS = new Set([
@@ -687,7 +720,7 @@ export class Enemy {
     this.hitFlash = isHeavyHit ? FEEDBACK.flashDuration * 2.2 : FEEDBACK.flashDuration;
     // UI clutter pass (Maria video QA 2026-07-19): common enemies δείχνουν HP bar μόνο
     // για λίγο ΜΕΤΑ από χτύπημα — όχι μόνιμα πάνω από κάθε μικρό enemy στην ορδή.
-    this._hpBarT = 1.6;
+    this._hpBarT = 0.7;   // common-enemy bar fade (was 1.6s — see HP_BAR_BUDGET)
 
     // Knockback impulse — normal enemies only; bosses are immune; elites get half.
     if (!isBossEnemy && game.player) {
@@ -1200,7 +1233,7 @@ export class Enemy {
     //    η ορδή δεν σκεπάζεται πια από δεκάδες μόνιμα κόκκινα bars.
     if (this.hp > 1) {
       const _always = this.isBoss() || this.isMegaBoss || this.isElite;
-      if (_always || (this._hpBarT > 0 && this.hp < this.maxHp)) {
+      if (_always || hasHpBarSlot(this)) {   // common enemies must win a budget slot
         const bw = this.radius * 2;
         drawBar(ctx, this.pos.x - bw / 2, this.pos.y - this.radius - 12, bw, 4, this.hp, this.maxHp, RED);
       }
