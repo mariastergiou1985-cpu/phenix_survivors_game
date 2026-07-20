@@ -415,6 +415,11 @@ export class MapManager {
 
   /** True when this exact world point sits on real, unobstructed floor. */
   isWalkablePoint(x, y, mode = 'endless') {
+    // NaN/Infinity GUARD (black-screen audit 2026-07-19): a non-finite coordinate reaching
+    // these APIs used to travel straight through them and come back out as a NaN position.
+    // That NaN then landed in drawImage()/arc(), which fail SILENTLY on the canvas — the
+    // classic invisible cause of a blank screen. Reject it here instead of propagating it.
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
     const m = this._walkModel(mode);
     if (!m) return true;                       // no art loaded yet — never block gameplay
     const srcY = y / m.scale;
@@ -444,8 +449,13 @@ export class MapManager {
    * is always inside the walkable rows, so an object can never be dropped into the void.
    */
   findNearestWalkablePoint(x, y, radius = 0, mode = 'endless') {
+    const m0 = this._walkModel(mode);
+    // Never hand back what we were given if it is not a real number: a caller asking for a
+    // safe point must always receive one it can draw with.
+    if (!Number.isFinite(x)) x = 0;
+    if (!Number.isFinite(y)) y = m0 ? (m0.rows[0] + m0.rows[1]) * 0.5 * m0.scale : 0;
     if (this.isWalkableFootprint(x, y, radius, mode)) return { x, y };
-    const m = this._walkModel(mode);
+    const m = m0;
     if (!m) return { x, y };
     const STEP = 24, MAX_RINGS = 40;                    // ≤ 960px out, hard bound
     for (let ring = 1; ring <= MAX_RINGS; ring++) {
@@ -465,6 +475,9 @@ export class MapManager {
    * onto each other. Deterministic order, bounded attempts.
    */
   findSafeSpawnPoint({ x, y, radius = 0, mode = 'endless', avoid = [], minDist = 0 } = {}) {
+    const _m0 = this._walkModel(mode);
+    if (!Number.isFinite(x)) x = 0;
+    if (!Number.isFinite(y)) y = _m0 ? (_m0.rows[0] + _m0.rows[1]) * 0.5 * _m0.scale : 0;
     const ok = (px, py) => {
       if (!this.isWalkableFootprint(px, py, radius, mode)) return false;
       for (const a of avoid) {
