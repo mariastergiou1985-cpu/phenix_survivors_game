@@ -22841,7 +22841,9 @@ export class Game {
     // its legacy top-left pin (16,36) and sat straight on the THANK YOU FOR PLAYING title.
     // Publish a proper slot every frame we draw: bottom-left corner, clear of the centered
     // title/credits/skins column and BELOW the button row (6-row panel = 174px tall).
-    this._dmgReportSlot = { x: 24, y: HEIGHT - 174 - 24, w: 560 };
+    // Centered on the viewport, not pinned bottom-left: the title, credits and unlock
+    // cards on this screen are all centered, so a left-hugging report broke the balance.
+    this._dmgReportSlot = { centered: true, y: HEIGHT - 174 - 24, w: 560 };
 
     // (Removed the small floating victory_logo thumbnail at the top — the screen now reads as a
     // clean premium end card driven by the text hierarchy below, no misplaced image.)

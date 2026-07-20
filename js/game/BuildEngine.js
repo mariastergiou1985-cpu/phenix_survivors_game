@@ -916,8 +916,20 @@ export class BuildEngineRuntime {
     // RETRY / UPGRADES / MAIN MENU buttons is ~200px, so it would clip them. 6 rows = 174px.
     const top = rows.slice(0, slot ? 6 : 8);
     const h = 52 + top.length * 16 + 26;
-    const w = slot ? slot.w : 560;
-    const x = slot ? slot.x : 16;
+    // LAYOUT (Maria UI audit 2026-07-19): the panel used to pin itself to x=16 — hard
+    // against the left canvas edge — whenever no slot was published, and the victory
+    // screen published a deliberately left-pinned x=24 while its title, credits and
+    // unlock cards were centered. The end screen therefore read as lopsided.
+    //
+    // It is now centered on the viewport and sized relative to it, with a safe margin,
+    // so it shares the same vertical axis as the rest of the end-screen content at every
+    // resolution and aspect ratio. A publisher may still override x (the in-run HUD does,
+    // to sit in the records column) — only the width and the safe margin are enforced.
+    const SAFE = Math.max(16, Math.round(W * 0.02));
+    const w = Math.min(slot ? slot.w : 560, W - SAFE * 2);
+    const x = slot && slot.x != null && slot.centered !== true
+      ? Math.min(Math.max(slot.x, SAFE), W - w - SAFE)      // publisher position, kept on-screen
+      : Math.round((W - w) / 2);                            // default: centered on the viewport
     const y = slot ? slot.y : 36;
     this._panelBox(ctx, x, y, w, h, 'DAMAGE REPORT — BUILD ENGINE (Actual Run DPS)', '#ffd447');
     ctx.font = '11px Consolas, monospace'; ctx.textAlign = 'left';
