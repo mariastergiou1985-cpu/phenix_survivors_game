@@ -390,7 +390,23 @@ export class Player {
       this.vel = this.specialDashDir.scale(this.speed * 6);
     }
 
-    this.pos.addMut(this.vel.scale(dt));
+    // ── WALKABILITY-AWARE MOVEMENT (Maria video QA 2026-07-19) ────────────────
+    // The old code committed the full velocity and then clamped to the world rect, which
+    // is why the player walked over façades, cables and skyline: the rect says nothing
+    // about what is actually floor. Game injects _resolveMove, which validates the whole
+    // footprint against the authored walkable model.
+    //
+    // Axis-separated resolution, NOT nearest-point snapping: try both axes, then X only,
+    // then Y only, else stay put. That gives smooth sliding along an obstacle instead of
+    // the jitter/teleport/corner-oscillation a per-frame nearest-point solver produces.
+    const _fx = this.pos.x, _fy = this.pos.y;
+    const _tx = _fx + this.vel.x * dt, _ty = _fy + this.vel.y * dt;
+    if (typeof this._resolveMove === 'function') {
+      const r = this._resolveMove(_fx, _fy, _tx, _ty, PLAYER_RADIUS);
+      this.pos.x = r.x; this.pos.y = r.y;
+    } else {
+      this.pos.x = _tx; this.pos.y = _ty;               // no model injected (Act 1 / boot)
+    }
     this.pos.x = clamp(this.pos.x, WORLD_BOUNDS.left + WORLD_BOUNDS.margin, WORLD_BOUNDS.right - WORLD_BOUNDS.margin);
     this.pos.y = clamp(this.pos.y, WORLD_BOUNDS.top + WORLD_BOUNDS.margin + 40, WORLD_BOUNDS.bottom - WORLD_BOUNDS.margin);
 

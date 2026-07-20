@@ -10,7 +10,7 @@ import { clamp, distance, safeNormalize, randomChoice, randomRange, wrapText } f
 import { FloatingText }   from '../entities/FloatingText.js?v=20260703990000';
 import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260705040000';
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260712090000';
-import { Player }         from '../entities/Player.js?v=20260722700000';
+import { Player }         from '../entities/Player.js?v=20260724000000';
 import { XpShardSystem }  from '../entities/XpShards.js?v=20260724000000';   // Phase 1: physical Data-XP
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260706270000';
 import { Enemy, preloadAllWeaponSprites, selectHpBarEnemies } from '../entities/Enemy.js?v=20260724000000';
@@ -63,7 +63,7 @@ import { VESSELS, getVesselById, getDefaultVesselId } from './VesselCatalog.js?v
 import { PETS, getPetById } from './PetCatalog.js?v=20260705000000';
 import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons, isEvolutionOwnedBy, getCardDisplayName } from './WeaponCatalog.js?v=20260720800000';
 import { TACTICAL_ID, TACTICAL_DEFS, getTacticalDef, getTacticalForCharacter, getAvailableTactical, preloadTacticalSprites, FUSION_TACTICALS } from './TacticalWeaponCatalog.js?v=20260720000000';
-import { VFXSpritePlayer } from './VFXSpritePlayer.js?v=20260711800000';
+import { VFXSpritePlayer } from './VFXSpritePlayer.js?v=20260724000000';
 
 // ── Mastery card → base weapon mapping (for evolution level tracking) ──
 const MASTERY_TO_WEAPON = Object.freeze({
@@ -1631,6 +1631,8 @@ export class Game {
     this._endlessStartedAt  = 0;      // timeAlive when Endless began (direct=0, Act1→Endless=nonzero)
 
     this.nexusManager.init(WORLD_W, WORLD_H);
+    // Bind the shared resolver to the player for this run (see resolveWalkableMove).
+    if (this.player) this.player._resolveMove = (fx, fy, tx, ty, r) => this.resolveWalkableMove(fx, fy, tx, ty, r);
     this.matrices = this.nexusManager.matrices;  // alias — all existing code uses this.matrices unchanged
     // KIROSHI WALKER — timer-based summon; first arrival at 2:00 of active gameplay
     this._npcWalker = new NpcWalker();
@@ -29607,6 +29609,41 @@ _drawLoreArchive(ctx) {
   // {x0,x1,y0,y1} σε world coords ή null (fallback στο legacy clamp).
   // Act 1: το μετρημένο deck band του spaceship. Endless/Chaos: η μετρημένη
   // ζώνη δαπέδου του strip — x άπειρο (οριζόντια συνέχεια μέσω mirror tiling).
+  // ── CANONICAL MOVEMENT RESOLVER ──────────────────────────────────────────
+  // One resolver, used by the player and by enemies, so no system can drift onto its own
+  // walkability model. Act 1 is a fixed spaceship arena with its own deck bounds and no
+  // authored obstacle columns, so it deliberately returns the proposed position unchanged
+  // and keeps using the existing deck clamps — the Endless/Chaos rectangles must never be
+  // applied there.
+  _walkMode() {
+    if (this._chaosMode) return 'chaos';
+    if (this.endless)    return 'endless';
+    return null;                       // Act 1 / campaign — not obstacle-constrained
+  }
+
+  /**
+   * Axis-separated move resolution. Returns the furthest legal position between
+   * (fromX,fromY) and (toX,toY): both axes if possible, else X only, else Y only, else
+   * the original point. Never snaps to a distant "nearest" point — that produces jitter.
+   */
+  resolveWalkableMove(fromX, fromY, toX, toY, radius) {
+    const mode = this._walkMode();
+    const mm   = this.mapManager;
+    if (!mode || !mm?.isWalkableFootprint) return { x: toX, y: toY };
+    if (mm.isWalkableFootprint(toX, toY, radius, mode)) return { x: toX, y: toY };
+    if (mm.isWalkableFootprint(toX, fromY, radius, mode)) return { x: toX, y: fromY };  // slide along X
+    if (mm.isWalkableFootprint(fromX, toY, radius, mode)) return { x: fromX, y: toY };  // slide along Y
+    return { x: fromX, y: fromY };                                                      // blocked
+  }
+
+  /** Recovery only — spawns, mode transitions, corrupted state. Never per-frame. */
+  recoverToWalkable(x, y, radius) {
+    const mode = this._walkMode();
+    const mm   = this.mapManager;
+    if (!mode || !mm?.findNearestWalkablePoint) return { x, y };
+    return mm.findNearestWalkablePoint(x, y, radius, mode);
+  }
+
   getWalkableBounds() {
     const mm = this.mapManager;
     if (this.endless || this._chaosMode) {
