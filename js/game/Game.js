@@ -22841,9 +22841,17 @@ export class Game {
     // its legacy top-left pin (16,36) and sat straight on the THANK YOU FOR PLAYING title.
     // Publish a proper slot every frame we draw: bottom-left corner, clear of the centered
     // title/credits/skins column and BELOW the button row (6-row panel = 174px tall).
-    // Centered on the viewport, not pinned bottom-left: the title, credits and unlock
-    // cards on this screen are all centered, so a left-hugging report broke the balance.
-    this._dmgReportSlot = { centered: true, y: HEIGHT - 174 - 24, w: 560 };
+    // LAYOUT (Maria screenshot 2026-07-19). The report was published at y = HEIGHT-198,
+    // i.e. spanning y 522..696 — straight through the button row (540..590) and the help
+    // line (616). It covered RETURN TO MAIN MENU and the navigation hint.
+    //
+    // The vertical axis of this screen is fully committed: credits 80..304, unlock-skin
+    // thumbnails 322..472, buttons 540..590, help 616. There is no 174px gap to drop a
+    // centred panel into, so the report becomes a SIDE COLUMN instead (option B): it sits
+    // in the empty left margin beside the skin row, vertically aligned with it, ending well
+    // above the buttons. The skins occupy x 400..880, so a 360px column at x=24 clears them.
+    const _DR_W = 360, _DR_X = 24, _DR_Y = 322;
+    this._dmgReportSlot = { x: _DR_X, y: _DR_Y, w: _DR_W, compact: true };
 
     // (Removed the small floating victory_logo thumbnail at the top — the screen now reads as a
     // clean premium end card driven by the text hierarchy below, no misplaced image.)

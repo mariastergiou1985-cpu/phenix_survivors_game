@@ -47,7 +47,11 @@ console.log('\n── source integrity ──');
 T('κανένα hardcoded x=16 fallback', ()=>!/const x = slot \? slot\.x : 16;/.test(BE));
 T('victory screen δεν είναι πλέον pinned στο x:24',
   ()=>!/_dmgReportSlot = \{ x: 24,/.test(GAME));
-T('victory screen χρησιμοποιεί centered flag', ()=>/_dmgReportSlot = \{ centered: true,/.test(GAME));
+// Superseded by end_screen_layout_regression: the victory screen now uses a side column
+// (option B) because its vertical axis is fully committed. What matters here is only that
+// it is no longer published into the button band.
+T('victory slot εκτός της ζώνης των buttons (y<540)',
+  ()=>/_DR_Y = 322/.test(GAME) && !/y: HEIGHT - 174 - 24/.test(GAME));
 T('in-run HUD publisher διατηρεί τη θέση του (δεν σπάει)',
   ()=>/game\._dmgReportSlot = \{ x: panelX, y, w: panelW \};/.test(
       fs.readFileSync(path.resolve(HERE,'../../js/game/HUD.js'),'utf8')));

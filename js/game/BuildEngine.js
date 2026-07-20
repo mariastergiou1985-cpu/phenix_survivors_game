@@ -914,7 +914,7 @@ export class BuildEngineRuntime {
     const slot = this.game && this.game._dmgReportSlot;
     // 6 rows in the slot, not 8: at 8 the panel is 206px tall and the gap down to the
     // RETRY / UPGRADES / MAIN MENU buttons is ~200px, so it would clip them. 6 rows = 174px.
-    const top = rows.slice(0, slot ? 6 : 8);
+    const top = rows.slice(0, slot ? (slot.compact ? 5 : 6) : 8);   // compact side column keeps the panel short
     const h = 52 + top.length * 16 + 26;
     // LAYOUT (Maria UI audit 2026-07-19): the panel used to pin itself to x=16 — hard
     // against the left canvas edge — whenever no slot was published, and the victory
