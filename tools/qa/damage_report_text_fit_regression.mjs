@@ -44,8 +44,13 @@ over += check('header DPS (right-anchored)', 'DPS', cols.dmg, cols.dps);
 over += check('header KILLS (right-anchored)', 'KILLS', cols.dps, cols.kills);
 
 // worst-case weapon names actually in the game
-const NAMES = ['Resonance Plasma Blade','Null Eden Overcharge Cannon','Cybernetic Thunder Guitar Solo',
-               'Quantum Chakram Devastator','Nexus Overload Beam Array'];
+// REAL names, extracted from the actual registries (WeaponCatalog.js / BuildEngine.js —
+// 153 display names). These are the ten longest that can ever reach this panel; artificial
+// test strings would prove nothing about the shipped content.
+const NAMES = ['Overloaded Magnetic Arc Burst','Holographic Energy Knuckles','Frozen Eden / Glitch Vortex',
+               'Shadow-Toxic Diagonal Cuts','Cyber-Gauntlets Injection','Digital Gas Needle Vector',
+               'Spirit Crescent Kick Aura','Distributed Intelligence','Cataclysm Chain Reaction',
+               'Golden Spiral Guillotine'];
 for (const n of NAMES) {
   const t = fit('★ ' + n, cols.nameMax);
   over += check('name: '+n.slice(0,24), t, cols.name, cols.name+cols.nameMax);
@@ -54,17 +59,24 @@ for (const n of NAMES) {
 for (const [lbl,v,a0,a1] of [['DMG 999999999',999999999,cols.name+cols.nameMax,cols.dmg],
                              ['DMG 123456',123456,cols.name+cols.nameMax,cols.dmg],
                              ['DPS 99999',99999,cols.dmg,cols.dps],
-                             ['KILLS 999999',999999,cols.dps,cols.kills]])
+                             ['KILLS 999999',999999,cols.dps,cols.kills],
+                             ['DMG 0',0,cols.name+cols.nameMax,cols.dmg],
+                             ['DMG 999',999,cols.name+cols.nameMax,cols.dmg],
+                             ['DMG 1250000000',1250000000,cols.name+cols.nameMax,cols.dmg],
+                             ['DPS 0',0,cols.dmg,cols.dps],
+                             ['KILLS 0',0,cols.dps,cols.kills]])
   over += check(lbl+' → '+num(v), num(v), a0, a1);
 
 // footer
-const foot = fit('MOST EFFECTIVE: Cybernetic Thunder Guitar Solo', W - PAD*2);
+const foot = fit('MOST EFFECTIVE: Overloaded Magnetic Arc Burst', W - PAD*2);
 over += check('MOST EFFECTIVE (longest)', foot, PAD, W-PAD);
 
 console.log();
 T('συνολικό overflow = 0', ()=>over===0||`${over.toFixed(0)}px`);
-T('ellipsis λειτουργεί σε μακρύ όνομα',
-  ()=>fit('★ Cybernetic Thunder Guitar Solo', cols.nameMax).endsWith('…'));
+T('ellipsis σε ΟΛΑ τα πραγματικά ονόματα που δεν χωρούν',
+  ()=>NAMES.every(n=>{const d=fit('★ '+n, cols.nameMax); return measure(d)<=cols.nameMax;}));
+T('το μεγαλύτερο πραγματικό όνομα παίρνει ellipsis',
+  ()=>fit('★ Overloaded Magnetic Arc Burst', cols.nameMax).endsWith('…'));
 T('κοντό όνομα ΔΕΝ κόβεται', ()=>fit('★ Chakram', cols.nameMax)==='★ Chakram');
 T('καμία τομή στηλών (name τέλος < DMG αρχή)',
   ()=>cols.name+cols.nameMax <= cols.dmg - measure(num(999999999))||'columns intersect');
@@ -72,7 +84,7 @@ T('όλα εντός panel', ()=>cols.kills<=W-PAD && cols.name>=PAD);
 T('magnitude formatting: 9-ψήφιο → M', ()=>num(999999999)==='1000.00M'||num(999999999).endsWith('M'));
 T('ανοχή ±10% στη μετρική γραμματοσειράς', ()=>{
   const M=t=>t.length*CH*1.1;
-  return M(fit('★ Cybernetic Thunder Guitar Solo', cols.nameMax)) <= cols.nameMax*1.1 + 1; });
+  return M(fit('★ Overloaded Magnetic Arc Burst', cols.nameMax)) <= cols.nameMax*1.1 + 1; });
 
 console.log('\n── source integrity ──');
 T('compact mode στο draw code', ()=>/const compact = !!\(slot && slot\.compact\)/.test(BE));
