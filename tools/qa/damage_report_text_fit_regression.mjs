@@ -18,8 +18,15 @@ const W = 360, PAD = 10, x = 0;
 const cols = { name: x+PAD, nameMax: W-PAD-190-PAD, dmg: x+W-PAD-104, dps: x+W-PAD-52, kills: x+W-PAD };
 const fit = (t, maxW) => { if (measure(t)<=maxW) return t;
   let o=t; while(o.length>1 && measure(o+'…')>maxW) o=o.slice(0,-1); return o+'…'; };
-const num = v => { const n=Number(v); if(!Number.isFinite(n)) return String(v);
-  if(n>=1e6) return (n/1e6).toFixed(2)+'M'; if(n>=1e4) return (n/1e3).toFixed(1)+'K'; return String(Math.round(n)); };
+// mirrors BuildEngine's formatter exactly
+const U = ['', 'K', 'M', 'B', 'T'];
+const num = v => { let n=Number(v); if(!Number.isFinite(n)) return String(v);
+  const sign = n<0?'-':''; n=Math.abs(n); let u=0;
+  while(n>=1000 && u<U.length-1){ n/=1000; u++; }
+  const band = x => (x<10?2:x<100?1:0); let dp = band(n);
+  if(Number(n.toFixed(dp))>=1000 && u<U.length-1){ n/=1000; u++; dp=band(n); }
+  dp = band(Number(n.toFixed(dp)));
+  return sign + (u===0 ? String(Math.round(n)) : n.toFixed(dp)) + U[u]; };
 
 console.log('═══ DAMAGE REPORT TEXT FIT (compact, 360px) ═══');
 console.log(`  anchors: name ${cols.name} (max ${cols.nameMax}px) · DMG→${cols.dmg} · DPS→${cols.dps} · KILLS→${cols.kills}\n`);
@@ -81,7 +88,7 @@ T('κοντό όνομα ΔΕΝ κόβεται', ()=>fit('★ Chakram', cols.nam
 T('καμία τομή στηλών (name τέλος < DMG αρχή)',
   ()=>cols.name+cols.nameMax <= cols.dmg - measure(num(999999999))||'columns intersect');
 T('όλα εντός panel', ()=>cols.kills<=W-PAD && cols.name>=PAD);
-T('magnitude formatting: 9-ψήφιο → M', ()=>num(999999999)==='1000.00M'||num(999999999).endsWith('M'));
+T('magnitude formatting: 9-ψήφιο → B (όχι 1000M)', ()=>num(999999999)==='1.00B');
 T('ανοχή ±10% στη μετρική γραμματοσειράς', ()=>{
   const M=t=>t.length*CH*1.1;
   return M(fit('★ Overloaded Magnetic Arc Burst', cols.nameMax)) <= cols.nameMax*1.1 + 1; });
@@ -94,6 +101,29 @@ T('PEAK/CRIT διατηρούνται στο πλήρες panel', ()=>/fillText\
 T('αριθμοί right-aligned', ()=>/ctx\.textAlign = 'right';/.test(BE));
 T('max 5 γραμμές σε compact', ()=>/slot\.compact \? 5 : 6/.test(BE));
 T('ύψος panel <= 158px', ()=>52+5*16+26===158);
+
+
+console.log('\n── numeric formatter boundaries ──');
+const BOUNDS = [[0,'0'],[999,'999'],[1000,'1.00K'],[9999,'10.0K'],[10000,'10.0K'],[14604,'14.6K'],
+  [99999,'100K'],[100000,'100K'],[999499,'999K'],[999500,'1.00M'],[999999,'1.00M'],[1000000,'1.00M'],
+  [9999999,'10.0M'],[999499999,'999M'],[999500000,'1.00B'],[999999999,'1.00B'],[1000000000,'1.00B'],
+  [1250000000,'1.25B'],[999500000000,'1.00T'],[1000000000000,'1.00T']];
+let bErr = 0;
+for (const [inp, want] of BOUNDS) {
+  const got = num(inp);
+  if (got !== want) { bErr++; console.log(`  MISMATCH ${inp} → ${got} (αναμενόταν ${want})`); }
+}
+T('όλα τα 20 boundary cases σωστά', ()=>bErr===0||`${bErr} λάθη`);
+T('κανένα αποτέλεσμα δεν αρχίζει με 1000+suffix',
+  ()=>!BOUNDS.some(([i])=>/^1000[KMBT]/.test(num(i))));
+T('προαγωγή μονάδας στο rounding (999500 → M, όχι 1000K)', ()=>num(999500)==='1.00M');
+T('re-band μετά το rounding (9999999 → 10.0M, όχι 10.00M)', ()=>num(9999999)==='10.0M');
+T('χωρίς suffix κάτω από 1000', ()=>num(999)==='999' && num(0)==='0');
+T('deterministic output', ()=>BOUNDS.every(([i])=>num(i)===num(i)));
+T('όλες οι τιμές χωρούν στη στήλη τους',
+  ()=>BOUNDS.every(([i])=>measure(num(i)) <= cols.dmg - (cols.name+cols.nameMax)));
+T('τιμές αμετάβλητες (formatter είναι pure)',
+  ()=>{const v=1250000000; num(v); return v===1250000000;});
 
 console.log(`\n═══ ${pass} PASS · ${fail} FAIL ═══`);
 process.exit(fail?1:0);

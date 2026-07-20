@@ -956,13 +956,28 @@ export class BuildEngineRuntime {
       while (out.length > 1 && ctx.measureText(out + '…').width > maxW) out = out.slice(0, -1);
       return out + '…';
     };
-    // Compact magnitudes so a 7-digit total cannot push into the next column.
+    // Compact magnitudes so a large total cannot push into the next column.
+    // The first version produced "1000.0K" and "1250.00M": it never promoted to the next
+    // unit, so values piled up inside one suffix and read like a bug. Rules now:
+    //   • promote at every 1000, through K / M / B / T (T keeps extreme Endless runs safe)
+    //   • adaptive precision — under 10: two decimals · 10-99: one · 100+: none
+    //   • a value that ROUNDS UP to 1000 promotes first, so "1000K" can never be printed
+    //   • the precision band is re-evaluated after rounding, so 9 999 999 reads 10.0M
+    //     rather than 10.00M
+    // Display only: the stored totals, DPS and kill counters are untouched.
     const num = (v) => {
-      const n = Number(v);
+      let n = Number(v);
       if (!Number.isFinite(n)) return String(v);
-      if (n >= 1e6) return (n / 1e6).toFixed(2) + 'M';
-      if (n >= 1e4) return (n / 1e3).toFixed(1) + 'K';
-      return String(Math.round(n));
+      const sign = n < 0 ? '-' : '';
+      n = Math.abs(n);
+      const U = ['', 'K', 'M', 'B', 'T'];
+      let u = 0;
+      while (n >= 1000 && u < U.length - 1) { n /= 1000; u++; }
+      const band = (x) => (x < 10 ? 2 : x < 100 ? 1 : 0);
+      let dp = band(n);
+      if (Number(n.toFixed(dp)) >= 1000 && u < U.length - 1) { n /= 1000; u++; dp = band(n); }
+      dp = band(Number(n.toFixed(dp)));            // re-band after rounding
+      return sign + (u === 0 ? String(Math.round(n)) : n.toFixed(dp)) + U[u];
     };
 
     ctx.fillStyle = '#8fa8b8';
