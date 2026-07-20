@@ -463,5 +463,72 @@ if (RUN('vault')) {
   });
 }
 
+// ── 9. Ground hazards: placement, orphaning, damage path, rebase ────────────
+if (RUN('hazard')) {
+  console.log('\n── 9. Ground hazards ──');
+  const SRC = fs.readFileSync(path.join(JS, 'game/Game.js'), 'utf8');
+
+  // D1 — nullEchoZones bypassed placeGroundHazard: 757/1000 landed on non-walkable floor.
+  T('nullEchoZones `zones` περνούν από placeGroundHazard',
+    () => /const _nz = this\.placeGroundHazard\(P\.pos\.x \+ Math\.cos\(ang\) \* aimed/.test(SRC));
+  T('nullEchoZones `pools` περνούν από placeGroundHazard',
+    () => /const _np2 = this\.placeGroundHazard\(P\.pos\.x \+ Math\.cos\(ang\) \* off/.test(SRC));
+  T('κανένα raw-polar push στο nullEchoZones',
+    () => !/pos: new Vec2\(P\.pos\.x \+ Math\.cos\(ang\) \* (aimed|off), P\.pos\.y \+ Math\.sin\(ang\) \* (aimed|off)\)/.test(SRC));
+
+  // D2 — zones outlived their caster, froze, and painted a telegraph ring forever.
+  T('τα zones πεθαίνουν μαζί με τον Echo τους', () => {
+    const g = newRun('endless');
+    g.nullEcho = { life: 0.5, pos: g.player.pos.clone(), c1: '#fff', kind: 'zones' };
+    g.nullEchoZones.push({ pos: g.player.pos.clone(), radius: 66, warn: 1.0, t: 0, struck: false, c: '#fff' });
+    for (let f = 0; f < 60 * 60; f++) { try { g._updateNullEcho(1 / 60); } catch (_) {} }
+    return (g.nullEcho == null && g.nullEchoZones.length === 0) || `echo=${g.nullEcho} zones=${g.nullEchoZones.length}`;
+  });
+
+  // D3 — lava was the ONE damage source bypassing _damagePlayer's gates.
+  T('bossLavaZones περνούν από _damagePlayer (όχι applyDamage απευθείας)',
+    () => /this\._damagePlayer\(z\.dps \* \(1 - this\.player\.contactDamageReduction\)/.test(SRC) &&
+          !/this\.player\.applyDamage\(z\.dps \* \(1 - this\.player\.contactDamageReduction\)\);/.test(SRC));
+
+  // D4 — sh() silently skipped six hazard systems; measured dx = -10032, they moved 0.
+  T('_maybeRebaseWorld μετακινεί ΟΛΑ τα hazard systems', () => {
+    for (const f of ['_chaosPylons', '_titanShockwaves', '_titanBeams', '_iceFields', '_nanoMines']) {
+      if (!new RegExp(`shA\\(this\\.${f}\\)`).test(SRC)) return `${f} δεν μετακινείται`;
+    }
+    return (/_w\.x0 \+= dx;/.test(SRC) && /for \(const _s of _w\.trail\)/.test(SRC)) || 'nullWyrm δεν μετακινείται';
+  });
+  T('το no-op sh(this.nullWyrm) αφαιρέθηκε',
+    () => !/sh\(this\.nullEcho\); sh\(this\.nullWyrm\);/.test(SRC));
+
+  // D6 / D7 — small but real reset/cap holes.
+  T('το blink push έχει το ίδιο cap με τα αδέλφια του',
+    () => /if \(this\.nullEchoZones\.length < 8\) \{[\s\S]{0,140}placeGroundHazard\(P\.pos\.x, P\.pos\.y, 78\)/.test(SRC));
+  T('_plasmaWarnCd αρχικοποιείται στο reset()', () => {
+    const g = newRun('endless');
+    g._plasmaWarnCd = 42;
+    const un = muteConsole(); g.reset(); un();
+    return g._plasmaWarnCd === 0 || `value=${g._plasmaWarnCd}`;
+  });
+
+  // Caps still hold, and every hazard array empties on reset.
+  T('όλα τα hazard arrays αδειάζουν στο reset()', () => {
+    const g = newRun('chaos');
+    const HZ = ['bossLavaZones', 'lightningZones', 'nullEchoZones', 'cybermoteMines', 'gunshipZones',
+                '_iceFields', '_voidRifts', '_enemyOrbZones', '_ventBursts', '_chaosPylons',
+                '_titanShockwaves', '_titanBeams', '_nanoMines'];
+    for (const k of HZ) if (Array.isArray(g[k])) g[k].push({ pos: { x: 0, y: 0 }, radius: 1, t: 0 });
+    const un = muteConsole(); g.reset(); un();
+    const dirty = HZ.filter(k => Array.isArray(g[k]) && g[k].length > 0);
+    return dirty.length === 0 || 'έμειναν: ' + dirty.join(',');
+  });
+  T('nullWyrm / nullEcho καθαρίζονται στο reset()', () => {
+    const g = newRun('endless');
+    g.nullWyrm = { x0: 0, x1: 1, head: { x: 0, y: 0 }, trail: [] };
+    g.nullEcho = { life: 1, pos: g.player.pos.clone() };
+    const un = muteConsole(); g.reset(); un();
+    return g.nullWyrm == null && g.nullEcho == null;
+  });
+}
+
 console.log(`\n═══ ${pass} assertions passed · ${fail} failed ═══`);
 process.exit(fail ? 1 : 0);

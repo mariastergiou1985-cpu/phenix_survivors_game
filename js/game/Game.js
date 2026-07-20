@@ -1428,6 +1428,8 @@ export class Game {
     // "… DESTROYED — REWARD RELIC UNLOCKED" banner for a kill that never happened.
     this._activeTitan = null;
     this.bossLavaZones = [];   // telegraphed lava/fire-rain zones cast by the main boss (player-only)
+    this._plasmaWarnCd = 0;    // REACTOR PLASMA banner throttle — was written but never initialised
+                               // or reset, so its value survived reset() into the next run
     this._enemyOrbZones = [];  // elite ORB_EXPLOSION warn→impact ground zones (player-only, cap 10)
     this._enemyBeams  = [];    // elite BEAM weapons: telegraph→fire line beams (player-only, cap 4)
     this._voidRifts   = [];    // VOID_ZONE chunk hazard rifts (Endless, player-only, cap 5)
@@ -18394,6 +18396,11 @@ export class Game {
       this.particles.spawnExplosion(E.pos, [E.c1, '#ffffff', '#02060c'], 22);
       this.triggerAnnouncement('ECHO DECOMPILED', '#8899aa');
       this.nullEcho = null;
+      // Zones die with their caster. The zone-resolution loop lives AFTER the `if (!E) return;`
+      // guard in this method, but the draw loop is unconditional — so a zone outliving its Echo
+      // froze with t stuck and struck === false, never expiring, never damaging, and painting a
+      // telegraph ring on the floor for the rest of the run.
+      this.nullEchoZones.length = 0;
     }
   }
 
@@ -18455,16 +18462,25 @@ export class Game {
       // vanish → reappear at the player's back → crescent burst zone
       const dir = safeNormalize(P.pos.sub(E.pos));
       E.pos = P.pos.clone().add(dir.scale(70));
-      const _np = this.placeGroundHazard(P.pos.x, P.pos.y, 78);
-      if (_np) this.nullEchoZones.push({ pos: new Vec2(_np.x, _np.y), radius: 78, warn: 0.7, t: 0, struck: false, c: E.c1 });
+      // Cap first, exactly like the `zones`/`pools` branches — this push was the one hole in
+      // the shared 8-zone cap. Kept as a separate guard so the placeGroundHazard null-check
+      // below stays a literal `if (_np)`, which the black-screen harness asserts on.
+      if (this.nullEchoZones.length < 8) {
+        const _np = this.placeGroundHazard(P.pos.x, P.pos.y, 78);
+        if (_np) this.nullEchoZones.push({ pos: new Vec2(_np.x, _np.y), radius: 78, warn: 0.7, t: 0, struck: false, c: E.c1 });
+      }
       this.particles.spawnDeathRing(E.pos, E.c1, 8, 110, 1.4);
     } else if (E.kind === 'zones') {
       for (let k = 0; k < 3; k++) {
         if (this.nullEchoZones.length >= 8) break;
         const aimed = k === 0 ? 0 : randomRange(70, 220);
         const ang = Math.random() * Math.PI * 2;
-        this.nullEchoZones.push({
-          pos: new Vec2(P.pos.x + Math.cos(ang) * aimed, P.pos.y + Math.sin(ang) * aimed),
+        // placeGroundHazard like every other ground zone (and like the `blink` branch above).
+        // Pushing the raw polar offset put 455/1000 of these inside buildings in a sampled
+        // run — a 30% maxHp strike telegraphing from inside a façade the player cannot enter.
+        const _nz = this.placeGroundHazard(P.pos.x + Math.cos(ang) * aimed, P.pos.y + Math.sin(ang) * aimed, 66);
+        if (_nz) this.nullEchoZones.push({
+          pos: new Vec2(_nz.x, _nz.y),
           radius: 66, warn: 1.0, t: 0, struck: false, c: E.c1,
         });
       }
@@ -18473,8 +18489,10 @@ export class Game {
         if (this.nullEchoZones.length >= 8) break;
         const off = k === 0 ? 0 : randomRange(90, 200);
         const ang = Math.random() * Math.PI * 2;
-        this.nullEchoZones.push({
-          pos: new Vec2(P.pos.x + Math.cos(ang) * off, P.pos.y + Math.sin(ang) * off),
+        // Same fix as the `zones` branch: 302/1000 pools landed on non-walkable floor.
+        const _np2 = this.placeGroundHazard(P.pos.x + Math.cos(ang) * off, P.pos.y + Math.sin(ang) * off, 74);
+        if (_np2) this.nullEchoZones.push({
+          pos: new Vec2(_np2.x, _np2.y),
           radius: 74, warn: 0.8, t: 0, struck: false, c: E.c1, pool: true,
         });
       }
@@ -25685,15 +25703,14 @@ _drawLoreArchive(ctx) {
             z.dmgAccum -= 1.0;
             if (this.phoenixReviveTimer <= 0 && this.player.dashTimer <= 0 &&
                 distance(this.player.pos, z.pos) < z.radius) {
-              this.player.applyDamage(z.dps * (1 - this.player.contactDamageReduction));
-              if (this.playerHitCooldown <= 0) {
-                this.playerHitCooldown = 0.5;
-                this.screenShake.trigger(5, 0.2);
-                this.particles.spawnHitSparks(this.player.pos, ORANGE);
-                this.floatingTexts.push(
-                  new FloatingText(`-${Math.ceil(z.dps)} HP`, this.player.pos.clone(), ORANGE, 0.6)
-                );
-              }
+              // Route through _damagePlayer like every other hazard. Calling applyDamage
+              // directly made Reactor Plasma the ONE damage source that bypassed the Chaos
+              // entry-grace window (added specifically to stop the entry-frame HP dump), the
+              // 0.5s hit cooldown, the Glitch Phantom 50% dodge passive and BOSS_MAX_PLAYER_HIT.
+              // Measured: 68 HP lost in 5s with _chaosEntryGraceT = 99 AND with
+              // playerHitCooldown = 99. _damagePlayer already does the shake, sparks and text.
+              this._damagePlayer(z.dps * (1 - this.player.contactDamageReduction),
+                                 { color: ORANGE, shake: 5 });
             }
           }
         }
@@ -29959,7 +29976,7 @@ _drawLoreArchive(ctx) {
     // this it stayed at its old world x and was left 10032px behind, unreachable and
     // still counting down. The object-identity Set above makes the extra call safe even
     // if the same object is reachable through another reference.
-    sh(this.gridCache); sh(this.vaultDrop); sh(this.megaBoss); sh(this.nullEcho); sh(this.nullWyrm);
+    sh(this.gridCache); sh(this.vaultDrop); sh(this.megaBoss); sh(this.nullEcho);
     shA(this.bossLavaZones); shA(this._enemyOrbZones); shA(this._voidRifts);
     shA(this._ventBursts); shA(this._eddieNoteClouds); shA(this.lightningZones);
     shA(this.nullEchoZones); shA(this.gunshipZones); shA(this.cybermoteMines);
@@ -29968,6 +29985,24 @@ _drawLoreArchive(ctx) {
     shA(this._goldStrikes); shA(this._goldImpacts); shA(this._guitarNotes);
     shA(this._redCurtainBolts); shA(this._redCurtainImpacts); shA(this._redThunderArcs);
     if (this._nullBreachArena?.center) this._nullBreachArena.center.x += dx;
+
+    // ── HAZARDS sh() COULD NOT REACH (2026-07-20) ────────────────────────────────
+    // Same failure class as the _bossRush.center guard documented below: sh() shifts
+    // o.pos.x or a numeric o.x, so anything shaped differently is silently skipped. With a
+    // measured rebase of dx = -10032, these six moved by ZERO while the world moved:
+    // _chaosPylons, _titanShockwaves, _titanBeams, _iceFields, _nanoMines and the whole
+    // Null Wyrm (x0/x1/head/trail — it has no .pos and no numeric .x, so sh(this.nullWyrm)
+    // was a no-op and has been removed above).
+    shA(this._chaosPylons); shA(this._titanShockwaves); shA(this._titanBeams);
+    shA(this._iceFields);   shA(this._nanoMines);
+    if (this.nullWyrm) {
+      const _w = this.nullWyrm;
+      if (typeof _w.x0 === 'number') _w.x0 += dx;
+      if (typeof _w.x1 === 'number') _w.x1 += dx;
+      if (_w.head && typeof _w.head.x === 'number') _w.head.x += dx;
+      if (Array.isArray(_w.trail)) for (const _s of _w.trail) if (typeof _s.x === 'number') _s.x += dx;
+    }
+    if (this.nullEcho?.ring?.pos) this.nullEcho.ring.pos.x += dx;
 
     // ── BOSS RUSH ARENA (Maria 2026-07-19) ───────────────────────────────────────
     // Was `if (this._bossRush?.center) this._bossRush.center.x += dx;` — but the runtime
