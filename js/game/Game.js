@@ -1412,6 +1412,13 @@ export class Game {
     this.rerollsLeft     = 0;     // rerolls remaining on the current level-up screen (refilled to 2 per screen)
     this._nextCardLevel  = 1;     // card-pacing: next player level that will OFFER an upgrade card
     this.megaBoss     = null;
+    // _activeTitan was the one Chaos-Titan field reset() missed, so a new run inherited the
+    // DEAD Titan of the previous one. _updateChaosTitans reads "no live Titan + _activeTitan
+    // set" as "the tracked Titan just died", so the first Chaos tick of the NEW run re-granted
+    // that Titan's reward relic, re-recorded the boss kill and echo (+2 Eden Memory), paid the
+    // Boss Rush Protocol-Fragment bounty a second time and fired a phantom
+    // "… DESTROYED — REWARD RELIC UNLOCKED" banner for a kill that never happened.
+    this._activeTitan = null;
     this.bossLavaZones = [];   // telegraphed lava/fire-rain zones cast by the main boss (player-only)
     this._enemyOrbZones = [];  // elite ORB_EXPLOSION warn→impact ground zones (player-only, cap 10)
     this._enemyBeams  = [];    // elite BEAM weapons: telegraph→fire line beams (player-only, cap 4)
@@ -1462,7 +1469,7 @@ export class Game {
     this._postArenaChoice   = false;   // true while post-Arena NULL decision panel is showing
     this._pacIdx            = 0;       // 0=Continue Endless  1=Enter Chaos  2=Return Main Menu
     this._pacMsgStep        = 0;       // staged NULL dialogue line index
-    this._pacMsgAt          = 0;       // timeAlive when panel appeared
+    this._pacMsgAt          = 0;       // performance.now() when panel appeared (real time — timeAlive freezes)
     // ── Chaos Mode (unlocks at 21:00 Endless) ─────────────────────────────
     this._chaosMode         = false;   // true after transition completes
     this._bossRush          = null;    // Boss Rush encounter state (Phase 4-5); null = inactive
@@ -18164,7 +18171,15 @@ export class Game {
     if (W2.hitCd <= 0) {
       for (let i = 0; i < W2.trail.length; i += 18) {
         const seg = W2.trail[i];
-        if (distance(seg, this.player.pos) < PLAYER_RADIUS + 26 &&
+        // Plain-object math, NOT distance() (2026-07-20). distance(a,b) is a.distanceTo(b),
+        // which only exists on Vec2 — but the trail stores plain {x,y} literals (pushed
+        // above), so this check threw TypeError on EVERY frame the Wyrm was alive. The throw
+        // escaped _updateNullWyrm → _updateEndlessHazards → Game.update, so main.js aborted
+        // the rest of the update for ~58 s per Wyrm: the body never dealt contact damage and
+        // every system scheduled after the hazard block silently stopped ticking.
+        const _sdx = seg.x - this.player.pos.x, _sdy = seg.y - this.player.pos.y;
+        const _sr  = PLAYER_RADIUS + 26;
+        if (_sdx * _sdx + _sdy * _sdy < _sr * _sr &&
             this.phoenixReviveTimer <= 0 && this.player.dashTimer <= 0) {
           const dmg = Math.round(this.player.maxHp * 0.14);
           this._damagePlayer(dmg, { color: '#7df9ff', shake: 6, stagger: 0.3 });
@@ -26521,7 +26536,14 @@ _drawLoreArchive(ctx) {
   // Options: CONTINUE ENDLESS / ENTER CHAOS MODE / RETURN MAIN MENU
   _drawPostArenaChoice(ctx) {
     if (!this._postArenaChoice) return;
-    const et = this.timeAlive - this._pacMsgAt;
+    // REAL-TIME clock, not timeAlive (2026-07-20). update() returns early while
+    // _postArenaChoice is true, so `timeAlive += dt` never runs and timeAlive is FROZEN for
+    // as long as this panel is up. Staging the dialogue off timeAlive therefore left
+    // et === 0 forever: _pacMsgStep never left 0, so none of the 5 lines and — worse —
+    // none of the 3 options were ever drawn, and main.js gates the mouse/touch click path
+    // on _pacMsgStep >= 5. The panel rendered empty and mouse/touch players were soft-locked
+    // with no way to reach CONTINUE ENDLESS / ENTER CHAOS MODE / RETURN MAIN MENU.
+    const et = (performance.now() - this._pacMsgAt) / 1000;
 
     // Stage NULL dialogue lines as time elapses
     if (et > 0.3 && this._pacMsgStep < 1) this._pacMsgStep = 1;
@@ -27076,7 +27098,7 @@ _drawLoreArchive(ctx) {
     this._postArenaChoice = true;
     this._pacIdx          = 0;
     this._pacMsgStep      = 0;
-    this._pacMsgAt        = this.timeAlive;
+    this._pacMsgAt        = performance.now();   // real-time: timeAlive freezes while the panel is up
     // Kick off the NULL transmission sequence via the upper-right popup too
     this._queueEdenTransmission(
       'NULL TRANSMISSION: You reached the breach layer. Choose your route.',
