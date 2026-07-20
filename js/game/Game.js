@@ -2160,6 +2160,16 @@ export class Game {
     this._lastPhoenixUsed   = false;
     this.phoenixReviveTimer = 0;
     this._chaosEntryGraceT  = 0;    // Chaos fresh-entry protection window
+    // RUN-STATE LEAK FIX (Maria 2026-07-19). Both of these are lazily initialised — the
+    // Titan scheduler with `== null` and the thief timer with `??` — so once a Game
+    // instance has run them ONCE they hold a number forever and never re-arm. A second
+    // Chaos run in the same session therefore inherited a leftover countdown instead of
+    // its designed 40s opener (and a leftover cycle index), and a second Endless run
+    // inherited the thief countdown. Clearing them to null here, at the run boundary,
+    // restores the intended lazy defaults WITHOUT touching any duration or pacing value.
+    this._chaosTitanTimer = null;   // re-arms to 40 on first Chaos tick (55 thereafter)
+    this._chaosTitanIdx   = 0;      // Titan cycle restarts from the first of the four
+    this._thiefTimer      = null;   // re-arms to 20 on first Endless tick
     this.phoenixUsed        = false;
     this._annihNexusKills  = 0;             // Annihilator Nexus-erase count this run (hard max 2)
     this.mutations         = this._freshMutations();   // fresh forced-mutation state for THIS Endless run
