@@ -953,7 +953,8 @@ export class MetaProgress {
   isCharacterUnlocked(characterId) {
     // Campaign stage-gated unlock (PHENIX_DESIGN_DECISIONS A1): Skeleton is the starter; one
     // character unlocks per stage cleared; Eddie unlocks after the FINAL stage (all cleared).
-    // Japan Phasewalker stays locked (COMING SOON). Order confirmed with Maria.
+    // Japan Phasewalker unlocks after the FINAL stage too (see totalStages below) — he is a
+    // playable bonus character, NOT coming-soon. Order confirmed with Maria.
     const REQ = {
       skeleton_warrior:       0,
       taekwondo_girl:         1,
