@@ -369,5 +369,99 @@ if (RUN('panel')) {
   });
 }
 
+// ── 8. Locked Vault: schedule-backed, exactly 6, deferral never loses one ───
+// Before the fix the gate was `Math.random() > 0.35` + a 600s cooldown whose stamp
+// (_lastVaultSpawnAt) survived reset(). Measured across four full simulated hours: 6, 6, 6
+// and 5 vaults — the count depended on luck and boss-kill rate. Worse, run 2 after reset()
+// produced ZERO vaults in 20 minutes because it inherited run 1's cooldown stamp.
+if (RUN('vault')) {
+  console.log('\n── 8. Locked Vault ──');
+  const g = newRun('chaos');
+  const SRC = fs.readFileSync(path.join(JS, 'game/Game.js'), 'utf8');
+
+  T('υπάρχει schedule με ΑΚΡΙΒΩΣ 6 opportunities',
+    () => Array.isArray(g._vaultSchedule) && g._vaultSchedule.length === 6,
+    `schedule=${JSON.stringify(g._vaultSchedule)}`);
+  T('reset() μηδενίζει _vaultIdx και _lastVaultSpawnAt', () => {
+    const un = muteConsole(); g.reset(); un();
+    return g._vaultIdx === 0 && g._lastVaultSpawnAt == null && g.vaultDrop == null;
+  });
+  T('το πιθανοτικό gate αφαιρέθηκε (η εξάρτηση από τύχη)',
+    () => !/if \(Math\.random\(\) > 0\.35\) return;/.test(SRC));
+  T('ο 600s cooldown δεν καθορίζει πια το πλήθος',
+    () => !/if \(this\.timeAlive - \(this\._lastVaultSpawnAt \?\? -99999\) < 600\) return;/.test(SRC));
+
+  // Drive the REAL gate the way Enemy.js does, at each scheduled time.
+  const gv = newRun('chaos');
+  const at = (t) => { gv.timeAlive = t; };
+  const bossKill = () => { try { gv._maybeSpawnVaultDrop(gv.player.pos.clone()); } catch (_) {} };
+  let spawned = 0; const stamps = [];
+  for (const w of gv._vaultSchedule) {
+    at(w + 1);
+    for (let i = 0; i < 50 && !gv.vaultDrop; i++) bossKill();   // 50 boss kills in the window
+    if (gv.vaultDrop) { spawned++; stamps.push(w); gv.vaultDrop = null; }   // simulate collection
+  }
+  console.log(`    scheduled windows honoured: ${spawned}/6 at t=${stamps.join(', ')}`);
+  T('και τα 6 scheduled windows παράγουν vault', () => spawned === 6, `got ${spawned}/6`);
+  T('όλες οι opportunities καταναλώθηκαν ακριβώς μία φορά', () => gv._vaultIdx === 6, `_vaultIdx=${gv._vaultIdx}`);
+  T('7ο vault ΔΕΝ είναι δυνατό', () => {
+    at(3600); for (let i = 0; i < 200; i++) bossKill();
+    return gv.vaultDrop == null && gv._vaultIdx === 6;
+  });
+
+  // Deferral: an exclusive event must HOLD the window, not burn it.
+  for (const [label, field] of [['Boss Rush', '_bossRush'], ['Null Breach arena', '_nullBreachActive'], ['ενεργός Titan', '_activeTitan']]) {
+    const gd = newRun('chaos');
+    gd.timeAlive = gd._vaultSchedule[0] + 5;
+    gd[field] = (field === '_nullBreachActive') ? true : { t: 0 };
+    for (let i = 0; i < 200; i++) { try { gd._maybeSpawnVaultDrop(gd.player.pos.clone()); } catch (_) {} }
+    const held = gd.vaultDrop == null && gd._vaultIdx === 0 && gd._vaultPending === true;
+    gd[field] = (field === '_nullBreachActive') ? false : null;
+    try { gd._maybeSpawnVaultDrop(gd.player.pos.clone()); } catch (_) {}
+    T(`${label}: το window αναβάλλεται και ΔΕΝ χάνεται`,
+      () => held && gd.vaultDrop != null && gd._vaultIdx === 1,
+      `held=${held} afterEvent=${gd.vaultDrop != null} idx=${gd._vaultIdx}`);
+  }
+
+  T('window που δεν διεκδικήθηκε από boss kill παραδίδεται μετά από 45s', () => {
+    const gq = newRun('chaos');
+    gq.timeAlive = gq._vaultSchedule[0] + 46;      // window open, no boss kill at all
+    try { gq._updateVaultDrop(1 / 60); } catch (_) {}
+    return gq.vaultDrop != null && gq._vaultIdx === 1;
+  });
+
+  T('δεύτερο run μετά από reset δίνει τα ίδια vaults (καμία διαρροή cooldown)', () => {
+    const g2 = newRun('chaos');
+    g2.timeAlive = g2._vaultSchedule[0] + 1;
+    for (let i = 0; i < 50 && !g2.vaultDrop; i++) { try { g2._maybeSpawnVaultDrop(g2.player.pos.clone()); } catch (_) {} }
+    const run1 = g2.vaultDrop != null;
+    const un = muteConsole(); g2.reset(); g2.gameState = 'playing'; g2._beginChaosRun(); un();
+    g2.timeAlive = g2._vaultSchedule[0] + 1;
+    for (let i = 0; i < 50 && !g2.vaultDrop; i++) { try { g2._maybeSpawnVaultDrop(g2.player.pos.clone()); } catch (_) {} }
+    return run1 && g2.vaultDrop != null && g2._vaultIdx === 1;
+  });
+
+  T('ποτέ δύο vault ταυτόχρονα', () => {
+    const g3 = newRun('chaos');
+    g3.timeAlive = g3._vaultSchedule[0] + 1;
+    for (let i = 0; i < 300; i++) { try { g3._maybeSpawnVaultDrop(g3.player.pos.clone()); } catch (_) {} }
+    return g3._vaultIdx === 1 && g3.vaultDrop != null;
+  });
+
+  T('το vault count είναι ανεξάρτητο από FPS (schedule σε game-time)', () => {
+    const counts = [30, 60, 120].map(hz => {
+      const gf = newRun('chaos');
+      let n = 0;
+      for (const w of gf._vaultSchedule) {
+        gf.timeAlive = w + 1 / hz;
+        for (let i = 0; i < 50 && !gf.vaultDrop; i++) { try { gf._maybeSpawnVaultDrop(gf.player.pos.clone()); } catch (_) {} }
+        if (gf.vaultDrop) { n++; gf.vaultDrop = null; }
+      }
+      return n;
+    });
+    return new Set(counts).size === 1 && counts[0] === 6 || `counts=${counts.join('/')}`;
+  });
+}
+
 console.log(`\n═══ ${pass} assertions passed · ${fail} failed ═══`);
 process.exit(fail ? 1 : 0);

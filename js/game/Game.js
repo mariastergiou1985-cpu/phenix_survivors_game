@@ -1219,7 +1219,15 @@ export class Game {
     }
     this.matrices     = [];  // will be set to nexusManager.matrices after init()
     this._appliedNexusCapBonus = 0;   // in-run capacity cards applied so far (Memory Bank etc.)
-    this.vaultDrop = null;            // locked tier-2 supply cache (boss-kill drop, Endless only)
+    this.vaultDrop = null;            // locked tier-2 supply cache (Endless + Chaos; Chaos routes via _enterEndless)
+    // Locked Vault run state. _lastVaultSpawnAt used to survive reset(), so the NEXT run
+    // inherited the previous run's cooldown stamp: measured 2 vaults in run 1 and ZERO in
+    // run 2 over the same 20 minutes, because the stamp suppressed spawning until
+    // timeAlive passed 1352s of a run that only reached 1200s.
+    this._vaultSchedule    = [300, 900, 1500, 2100, 2700, 3300];   // EXACTLY 6 opportunities/hour
+    this._vaultIdx         = 0;      // opportunities consumed this run (only _spawnVaultAt advances it)
+    this._vaultPending     = false;  // a window is open but an exclusive event owns the screen
+    this._lastVaultSpawnAt = null;
     this.groundCores  = [];
     this.enemies      = [];
     this.projectiles  = [];
@@ -9327,18 +9335,41 @@ export class Game {
   }
 
   // ── VAULT DROP — locked tier-2 supply cache ────────────────────────────────
-  // Spawns near a boss kill (Endless, 35%). LOCKED: break it by killing 8 enemies
-  // within 260px, each kill refreshing a 10s window. Unlocked → walk up to open:
-  // OVERCHARGE CACHE, +1 level to your LOWEST-level weapon (evolution accelerator).
+  // SCHEDULE-BACKED (2026-07-20): exactly 6 opportunities per hour, at _vaultSchedule.
+  // A boss kill is the FLAVOUR trigger — it decides WHERE the vault lands, never whether
+  // one happens. The old gate was `Math.random() > 0.35` plus a 600s cooldown, which made
+  // the count depend on luck and boss-kill rate: measured 6, 6, 6 and 5 across four full
+  // hours, because one unlucky 812s gap pushed the sixth window past 60:00.
+  // LOCKED: break it with `needed` kills within 260px, each kill refreshing killWindow.
+  // Unlocked → walk up to open: OVERCHARGE CACHE, +1 level to your LOWEST-level weapon.
   _maybeSpawnVaultDrop(pos) {
-    if (!this.endless || this.vaultDrop) return;
-    // Phase 14: global cooldown — at most one Locked Vault announcement per 10 minutes
-    // (≈6 per hour max), no stacking, no spam.
-    if (this.timeAlive - (this._lastVaultSpawnAt ?? -99999) < 600) return;
-    if (Math.random() > 0.35) return;
+    if (!this.endless || this.vaultDrop) return;   // never two at once
+    if (!this._vaultWindowOpen()) return;
+    this._spawnVaultAt(pos);                       // boss kill = placement, not permission
+  }
+
+  // True when a scheduled opportunity is open AND the screen is free to show it.
+  // Deferral NEVER consumes the opportunity — _vaultIdx only advances in _spawnVaultAt.
+  _vaultWindowOpen() {
+    const s = this._vaultSchedule;
+    if (!s || this._vaultIdx >= s.length) return false;    // all 6 already spent this run
+    if (this.timeAlive < s[this._vaultIdx]) return false;  // window has not opened yet
+    // A Boss Rush hard-clamps the player inside its ring, and the Null Breach arena or a
+    // live Titan own the screen. Dropping a 45s vault into any of those spends the
+    // opportunity on something the player cannot reach — hold it instead.
+    if (this._bossRush || this._nullBreachActive || this._activeTitan) {
+      this._vaultPending = true;
+      return false;
+    }
+    return true;
+  }
+
+  _spawnVaultAt(pos) {
+    this._vaultIdx++;                              // consume exactly one opportunity
+    this._vaultPending = false;
     this._lastVaultSpawnAt = this.timeAlive;
     const p = this._clampPickupPos(pos.clone().add(new Vec2(randomRange(-80, 80), randomRange(-80, 80))), 52);   // real vault footprint
-    this.vaultDrop = { pos: p, timer: 45, maxTimer: 45, kills: 0, needed: 30, killWindow: 12, unlocked: false, spin: 0 };
+    this.vaultDrop = { pos: p, timer: 45, maxTimer: 45, kills: 0, needed: 30, killWindow: 10, unlocked: false, spin: 0 };
     // Low-opacity banner (~0.4), top of screen (away from the player), aligned with other banners.
     this.triggerAnnouncement('LOCKED VAULT — 30 KILLS TO BREACH', '#ffd23c', { alpha: 0.4 });
     // Eden Core announces the locked second cache and its kill-challenge.
@@ -9361,6 +9392,13 @@ export class Game {
   }
 
   _updateVaultDrop(dt) {
+    // DELIVERY GUARANTEE: a window that no boss kill claimed within 45s is delivered next
+    // to the player anyway. Without this the count would still depend on boss-kill timing,
+    // and a window that opened during a Boss Rush would be silently skipped.
+    if (!this.vaultDrop && this.endless && this._vaultWindowOpen() &&
+        this.timeAlive - this._vaultSchedule[this._vaultIdx] >= 45) {
+      this._spawnVaultAt(this.player.pos);
+    }
     const v = this.vaultDrop;
     if (!v) return;
     v.timer -= dt;
