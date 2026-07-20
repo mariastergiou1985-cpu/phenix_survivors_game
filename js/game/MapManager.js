@@ -220,6 +220,16 @@ export class MapManager {
     // προσόψεις, σωλήνες, ταράτσες ή παράθυρα. Οριζόντια: άπειρη συνέχεια (mirror tiling).
     this.CITY_WALK_ROWS  = [210, 415];
     this.CHAOS_WALK_ROWS = [135, 410];
+    // ── AUTHORED OBSTACLE COLUMNS (Maria video QA 2026-07-19) ─────────────────
+    // The row bands above keep entities off the skyline and the lower structures, but the
+    // video proved a horizontal band alone is not enough: inside the walkable rows the art
+    // still contains solid pillars, kiosks and cable towers, and the player walked through
+    // them. These are authored NO-GO columns expressed in SOURCE-IMAGE x (same space as
+    // the row bands), repeated with the tile, plus the row range they actually block.
+    // Kept deliberately coarse — a handful of rectangles is maintainable and provably
+    // correct, where a per-pixel mask of a painterly asset is neither.
+    this.CITY_BLOCK_COLS  = [ [180, 250, 210, 300], [700, 780, 210, 330], [1240, 1320, 210, 300] ];
+    this.CHAOS_BLOCK_COLS = [ [300, 372, 135, 250], [980, 1060, 135, 265] ];
     // Maria 2026-07-19 VIDEO-GROUNDED CORRECTION: το gameplay video («chaos mode map is
     // shit.mp4») απέδειξε ότι το chaos_mode_only_new_map.png είναι το multi-biome patchwork
     // (πάγος/έρημος/industrial/void με perspective γέφυρες) — FAIL. Το σωστό εγκεκριμένο
@@ -381,6 +391,103 @@ export class MapManager {
   // WALKABLE deck band of the Act 1 spaceship (measured on spaceship.png: the clean deck
   // floor spans x 130..1790, y 185..700 of the 1916×821 asset). Computed lazily the moment
   // the image is ready — player/spawn/pickup clamps read this every frame.
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CANONICAL WALKABILITY API
+  // One authority for "can a gameplay entity stand here". Player, enemies, bosses,
+  // Nexus, Grid Cache, Vault, XP and pickups all route through this; no system may
+  // keep its own bounds. Coordinates are WORLD pixels; the conversion to source-image
+  // rows/columns (and the mirror tiling) happens here.
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /** @returns {{rows:number[], blocks:number[][], scale:number, tileW:number}|null} */
+  _walkModel(mode) {
+    const chaos = mode === 'chaos';
+    const img   = chaos ? this._chaosDeckImg : this._cityImg;
+    if (!img || !img.complete || !img.naturalWidth) return null;
+    return {
+      rows:   chaos ? this.CHAOS_WALK_ROWS  : this.CITY_WALK_ROWS,
+      blocks: chaos ? this.CHAOS_BLOCK_COLS : this.CITY_BLOCK_COLS,
+      scale:  this.CITY_SCALE,
+      tileW:  img.naturalWidth,
+    };
+  }
+
+  /** True when this exact world point sits on real, unobstructed floor. */
+  isWalkablePoint(x, y, mode = 'endless') {
+    const m = this._walkModel(mode);
+    if (!m) return true;                       // no art loaded yet — never block gameplay
+    const srcY = y / m.scale;
+    if (srcY < m.rows[0] || srcY > m.rows[1]) return false;      // skyline / lower structures
+    // Mirror tiling: period is 2 tiles, the second mirrored. Fold world x into source x.
+    const period = m.tileW * 2;
+    let t = ((x / m.scale) % period + period) % period;
+    const srcX = (t < m.tileW) ? t : (period - t);
+    for (const [x0, x1, y0, y1] of m.blocks) {
+      if (srcX >= x0 && srcX <= x1 && srcY >= y0 && srcY <= y1) return false;
+    }
+    return true;
+  }
+
+  /** True when the whole circular footprint is on floor, not just the centre. */
+  isWalkableFootprint(x, y, radius = 0, mode = 'endless') {
+    if (!this.isWalkablePoint(x, y, mode)) return false;
+    if (radius <= 0) return true;
+    const r = radius;
+    return this.isWalkablePoint(x - r, y, mode) && this.isWalkablePoint(x + r, y, mode)
+        && this.isWalkablePoint(x, y - r, mode) && this.isWalkablePoint(x, y + r, mode);
+  }
+
+  /**
+   * Nearest legal placement for a footprint. Bounded spiral search — never an infinite
+   * retry loop; if nothing is found it returns the band's centre line at this x, which
+   * is always inside the walkable rows, so an object can never be dropped into the void.
+   */
+  findNearestWalkablePoint(x, y, radius = 0, mode = 'endless') {
+    if (this.isWalkableFootprint(x, y, radius, mode)) return { x, y };
+    const m = this._walkModel(mode);
+    if (!m) return { x, y };
+    const STEP = 24, MAX_RINGS = 40;                    // ≤ 960px out, hard bound
+    for (let ring = 1; ring <= MAX_RINGS; ring++) {
+      const d = ring * STEP;
+      for (let a = 0; a < 12; a++) {
+        const th = (a / 12) * Math.PI * 2;
+        const nx = x + Math.cos(th) * d, ny = y + Math.sin(th) * d;
+        if (this.isWalkableFootprint(nx, ny, radius, mode)) return { x: nx, y: ny };
+      }
+    }
+    const midY = (m.rows[0] + m.rows[1]) * 0.5 * m.scale;   // deterministic in-band fallback
+    return { x, y: midY };
+  }
+
+  /**
+   * Safe spawn honouring a keep-away list, so objects do not pile onto the player or
+   * onto each other. Deterministic order, bounded attempts.
+   */
+  findSafeSpawnPoint({ x, y, radius = 0, mode = 'endless', avoid = [], minDist = 0 } = {}) {
+    const ok = (px, py) => {
+      if (!this.isWalkableFootprint(px, py, radius, mode)) return false;
+      for (const a of avoid) {
+        if (!a) continue;
+        const ax = a.x ?? a.pos?.x, ay = a.y ?? a.pos?.y;
+        if (ax == null || ay == null) continue;
+        if (Math.hypot(px - ax, py - ay) < minDist) return false;   // too close to keep-away
+      }
+      return true;
+    };
+    if (ok(x, y)) return { x, y };
+    const m = this._walkModel(mode);
+    const STEP = 40, MAX_RINGS = 24;
+    for (let ring = 1; ring <= MAX_RINGS; ring++) {
+      for (let a = 0; a < 16; a++) {
+        const th = (a / 16) * Math.PI * 2, d = ring * STEP;
+        const nx = x + Math.cos(th) * d, ny = y + Math.sin(th) * d;
+        if (ok(nx, ny)) return { x: nx, y: ny };
+      }
+    }
+    return this.findNearestWalkablePoint(x, y, radius, mode);   // never the void
+  }
+
   getAct1DeckBounds() {
     if (this._act1BoundsCache) return this._act1BoundsCache;
     const img = this._shipImg;

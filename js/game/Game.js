@@ -2122,7 +2122,6 @@ export class Game {
     this._eliteWaveElapsed = 0;
     this._endlessBossTimer = 25;           // arm the repeating boss/miniboss rotation (~25s → ~2 min)
     this._endlessBossIdx   = -1;
-    this._endlessLavaCd    = randomRange(18, 26);   // arm ambient Endless Lava Rain (boss-independent)
     this._airstrikeTimer   = 90;            // first AIRSTRIKE ~1.5 min in, then every ~2 min
     this._lightningTimer   = 70;            // first LIGHTNING STORM ~1.2 min in, then every ~2 min
     // Maria 2026-07-18: ACID RAIN is now explicitly armed on Endless entry like every other
@@ -25516,39 +25515,14 @@ _drawLoreArchive(ctx) {
     // το έδειξε ακόμα ενεργό. Το area-denial pressure του Endless το δίνουν πλέον το
     // εγκεκριμένο Acid Rain (~100s cadence) + τα aircraft/gunship events. Ο μηχανισμός
     // (bossLavaZones) μένει ανέπαφος για τα boss abilities που τον χρησιμοποιούν.
-    if (false && this.endless) {
-      if (this._endlessLavaCd === undefined) this._endlessLavaCd = randomRange(18, 26);
-      this._endlessLavaCd -= dt;
-      // Threat pass: Lava Rain is now a SUSTAINED ~5s storm (was a single 3–5 drop burst), so the
-      // event's active duration is roughly doubled. Drops still telegraph (1.4s warn) + never land
-      // on the player (min 60px), and active zones are hard-capped → fair and dodgeable.
-      if (this._endlessLavaCd <= 0 && this._lavaRainActive <= 0) {
-        this._endlessLavaCd  = randomRange(16, 24);
-        this._lavaRainActive = this._hasProto('lava_plus') ? 7.5 : 5.0;   // Lava Rain+ extends the storm window
-        this._lavaSpawnCd    = 0;
-        this.triggerAnnouncement('⚠ LAVA RAIN', ORANGE);
-        this.audio?.playEventWarning();
-        this.audio?.playLavaRain?.();   // file SFX — throttled 1.5 s (one per storm wave)
-      }
-      if (this._lavaRainActive > 0) {
-        this._lavaRainActive -= dt;
-        this._lavaSpawnCd    -= dt;
-        if (this._lavaSpawnCd <= 0) {
-          this._lavaSpawnCd = 0.9;
-          const count = 2 + Math.floor(Math.random() * 2);   // 2–3 drops per wave
-          for (let i = 0; i < count; i++) {
-            if (this.bossLavaZones.length >= 26) break;       // hard cap on active lava zones
-            const ang  = Math.random() * Math.PI * 2;
-            const dist = randomRange(60, 280);                // never guaranteed on the player
-            const pos  = new Vec2(
-              clamp(this.player.pos.x + Math.cos(ang) * dist, WORLD_BOUNDS.left + WORLD_BOUNDS.margin, WORLD_BOUNDS.right - WORLD_BOUNDS.margin),
-              clamp(this.player.pos.y + Math.sin(ang) * dist, WORLD_BOUNDS.top + WORLD_BOUNDS.margin, WORLD_BOUNDS.bottom - WORLD_BOUNDS.margin)
-            );
-            this.bossLavaZones.push({ pos, radius: 70, warn: 1.4, impact: 1.3, t: 0, dmgAccum: 0, dps: 14 });
-          }
-        }
-      }
-    }
+    // ENDLESS LAVA RAIN — REMOVED (Maria video QA 2026-07-19).
+    // NULL EDEN MEGACITY is a city, not a volcanic biome: falling lava never fitted the
+    // fiction, and the video caught it firing twice inside 45 seconds. The ambient
+    // Endless selection is deleted outright here rather than left behind an `if (false)`
+    // kill-switch, so it cannot be reached by any pool, alias or fallback path. Endless
+    // area-denial now comes from the approved Acid Rain (~100s cadence) plus the
+    // aircraft/gunship events. The bossLavaZones mechanism itself is untouched — boss
+    // abilities that legitimately use lava still work.
 
     // Endless: keep the "final boss" attack suite alive across loops. After the first mega-boss dies,
     // later Rogue AI Overlords spawn as plain enemies — promote a live one so its corruption attacks
