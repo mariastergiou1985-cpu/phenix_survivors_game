@@ -18359,7 +18359,8 @@ export class Game {
       // vanish → reappear at the player's back → crescent burst zone
       const dir = safeNormalize(P.pos.sub(E.pos));
       E.pos = P.pos.clone().add(dir.scale(70));
-      this.nullEchoZones.push({ pos: P.pos.clone(), radius: 78, warn: 0.7, t: 0, struck: false, c: E.c1 });
+      const _np = this.placeGroundHazard(P.pos.x, P.pos.y, 78);
+      if (_np) this.nullEchoZones.push({ pos: new Vec2(_np.x, _np.y), radius: 78, warn: 0.7, t: 0, struck: false, c: E.c1 });
       this.particles.spawnDeathRing(E.pos, E.c1, 8, 110, 1.4);
     } else if (E.kind === 'zones') {
       for (let k = 0; k < 3; k++) {
@@ -18534,7 +18535,8 @@ export class Game {
         e._mineCd = (e._mineCd ?? 2.5) - dt;
         if (e._mineCd <= 0 && this.cybermoteMines.length < 10) {
           e._mineCd = 4.5;
-          this.cybermoteMines.push({ pos: e.pos.clone(), t: 0, arm: 0.8, life: 12 });
+          const _mp = this.placeGroundHazard(e.pos.x, e.pos.y, 26);
+          if (_mp) this.cybermoteMines.push({ pos: new Vec2(_mp.x, _mp.y), t: 0, arm: 0.8, life: 12 });
         }
       }
 
@@ -18664,7 +18666,9 @@ export class Game {
       const pos   = new Vec2(
         clamp(this.player.pos.x + Math.cos(ang) * off, WORLD_BOUNDS.left + WORLD_BOUNDS.margin, WORLD_BOUNDS.right - WORLD_BOUNDS.margin),
         clamp(this.player.pos.y + Math.sin(ang) * off, WORLD_BOUNDS.top + WORLD_BOUNDS.margin, WORLD_BOUNDS.bottom - WORLD_BOUNDS.margin));
-      this.lightningZones.push({ pos, radius: 64, warn: 1.1, flash: 0.35, t: 0, struck: false });
+      const _zp = this.placeGroundHazard(pos.x, pos.y, 64);
+      if (_zp) { pos.x = _zp.x; pos.y = _zp.y;
+        this.lightningZones.push({ pos, radius: 64, warn: 1.1, flash: 0.35, t: 0, struck: false }); }
     }
   }
 
@@ -25619,7 +25623,9 @@ _drawLoreArchive(ctx) {
           clamp(this.player.pos.x + Math.cos(ang) * dist, WORLD_BOUNDS.left + WORLD_BOUNDS.margin, WORLD_BOUNDS.right - WORLD_BOUNDS.margin),
           clamp(this.player.pos.y + Math.sin(ang) * dist, WORLD_BOUNDS.top + WORLD_BOUNDS.margin, WORLD_BOUNDS.bottom - WORLD_BOUNDS.margin)
         );
-        this.bossLavaZones.push({ pos, radius: 70, warn: 1.2, impact: 1.4, t: 0, dmgAccum: 0, dps: 16 });
+        const _lp = this.placeGroundHazard(pos.x, pos.y, 70);
+        if (_lp) { pos.x = _lp.x; pos.y = _lp.y;
+          this.bossLavaZones.push({ pos, radius: 70, warn: 1.2, impact: 1.4, t: 0, dmgAccum: 0, dps: 16 }); }
       }
       // One warning per plasma burst window (no per-volley spam).
       if (!(this._plasmaWarnCd > 0)) {
@@ -29689,6 +29695,30 @@ _drawLoreArchive(ctx) {
 
 =======
 >>>>>>> ae7b49263644ae634580df0297b9d7abc448c9b7
+  /**
+   * CANONICAL GROUND-HAZARD PLACEMENT (Maria 2026-07-19).
+   * Confirmed ground hazards — pools, mines, zones that sit on the floor and damage a
+   * fixed area — must not put their damage footprint inside a façade or out over the
+   * skyline, where the player cannot stand but the hitbox still ticks.
+   *
+   * Correction happens ONCE, at creation, BEFORE the visual/damage/telegraph centre is
+   * stored, so the visual and the hitbox can never disagree. Persistent hazards are never
+   * re-corrected per frame. Returns null when no legal placement exists — callers then
+   * skip the hazard outright rather than dropping damage into the void or onto the player.
+   *
+   * Airborne effects (projectiles, beams, orbitals, missiles in flight) must NOT use this.
+   */
+  placeGroundHazard(x, y, radius = 40) {
+    const mode = this._walkMode();
+    const mm   = this.mapManager;
+    if (!mode || !mm?.isWalkableFootprint) return { x, y };       // Act 1 — unconstrained
+    if (mm.isWalkableFootprint(x, y, radius, mode)) return { x, y };
+    const p = mm.findNearestWalkablePoint(x, y, radius, mode);
+    if (p && mm.isWalkableFootprint(p.x, p.y, radius, mode)) return p;
+    this._hazardSkips = (this._hazardSkips || 0) + 1;             // counted, never silent
+    return null;                                                  // caller must skip
+  }
+
   /** Recovery only — spawns, mode transitions, corrupted state. Never per-frame. */
   recoverToWalkable(x, y, radius) {
     const mode = this._walkMode();
