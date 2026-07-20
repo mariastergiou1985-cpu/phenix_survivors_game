@@ -79,6 +79,8 @@ const FEEDBACK = {
 // slots per frame, awarded to the ones the player is most likely to care about:
 // closest first, then most wounded. Game calls selectHpBarEnemies() once per frame
 // before drawing; Enemy.draw only asks whether it won a slot. Enemy HP is untouched.
+const STUCK_SECS = 0.5;        // continuous pinned time before recovery is considered
+const STUCK_COOLDOWN = 2.0;   // min seconds between recoveries for one enemy
 export const MAX_COMMON_BARS = 8;
 const _barWinners = new Set();
 
@@ -928,7 +930,7 @@ export class Enemy {
       if (game.enemies.includes(this.bodyguardTarget)) {
         const dir = safeNormalize(this.bodyguardTarget.pos.sub(this.pos));
         this.vel = dir.scale(this.baseSpeed);
-        this.pos.addMut(this.vel.scale(dt));
+        this._stepMove(game, dt);
         return;
       }
       this.bodyguardTarget = null;
@@ -980,7 +982,7 @@ export class Enemy {
     if (playerDist < player.repelRadius && repelStrength > 0) {
       const flee = safeNormalize(this.pos.sub(player.pos));
       this.vel = flee.scale(this.baseSpeed * (1.05 + repelStrength));
-      this.pos.addMut(this.vel.scale(dt));
+      this._stepMove(game, dt);
       return;
     }
 
@@ -989,7 +991,7 @@ export class Enemy {
     const dir = safeNormalize(player.pos.sub(this.pos));
     const idlePush = (game._playerIdleT || 0) > 2 ? 1.12 : 1;
     this.vel = dir.scale(this.baseSpeed * (this.speedVariation || 1) * speedMult * idlePush);
-    this.pos.addMut(this.vel.scale(dt));
+    this._stepMove(game, dt);
   }
 
   keepInBounds() {
@@ -1048,6 +1050,41 @@ export class Enemy {
     }
     ctx.stroke();
     ctx.restore();
+  }
+
+  // ── WALKABILITY-AWARE STEP (Maria video QA 2026-07-19) ────────────────────
+  // Enemies used to commit their velocity unconditionally, which is why the video showed
+  // them walking across façades and cables. Same axis-separated policy the player uses —
+  // both axes, then X only, then Y only, else hold — so they slide along an obstacle
+  // instead of jittering or teleporting. game._resolveEnemyMove is injected by Game and
+  // resolves the current mode; in Act 1 it is absent and movement is unchanged.
+  //
+  // Stuck recovery is deliberately NOT per-frame: an enemy must be genuinely pinned for
+  // STUCK_SECS before it is nudged, and then not again until STUCK_COOLDOWN has passed.
+  _stepMove(game, dt) {
+    const fx = this.pos.x, fy = this.pos.y;
+    const tx = fx + this.vel.x * dt, ty = fy + this.vel.y * dt;
+    const solve = game?._resolveEnemyMove;
+    if (typeof solve !== 'function') { this.pos.x = tx; this.pos.y = ty; return; }
+    const r = solve(fx, fy, tx, ty, this.radius || 12);
+    this.pos.x = r.x; this.pos.y = r.y;
+
+    // wanted to move, barely did → count it; otherwise decay the stuck timer
+    const wanted = Math.hypot(tx - fx, ty - fy);
+    const moved  = Math.hypot(r.x - fx, r.y - fy);
+    if (wanted > 0.5 && moved < wanted * 0.2) this._stuckT = (this._stuckT || 0) + dt;
+    else this._stuckT = 0;
+    if (this._stuckCd > 0) this._stuckCd -= dt;
+
+    if ((this._stuckT || 0) >= STUCK_SECS && (this._stuckCd || 0) <= 0) {
+      const rec = game._recoverEnemyPos?.(this.pos.x, this.pos.y, this.radius || 12);
+      if (rec) {
+        const px = game.player?.pos?.x ?? 0, py = game.player?.pos?.y ?? 0;
+        // never resolve on top of the player — that would teleport a threat into their lap
+        if (Math.hypot(rec.x - px, rec.y - py) > 120) { this.pos.x = rec.x; this.pos.y = rec.y; }
+      }
+      this._stuckT = 0; this._stuckCd = STUCK_COOLDOWN;
+    }
   }
 
   draw(ctx) {

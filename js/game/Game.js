@@ -6176,8 +6176,11 @@ export class Game {
     // distant world-bounds edges (which are 3840px away on a 7680px active grid).
     if (this.chunkManager?.enabled && !_wavePos) {
       const sp = this.chunkManager.getSpawnEdge(this.camera, this._viewW, this._viewH, 60);
-      e.pos.x = sp.x;
-      e.pos.y = sp.y;
+      // Route the edge candidate through the walkability model so nothing spawns inside a
+      // façade or out over the void; bounded fallback, never the player's position.
+      const _sp = this.resolveEnemySpawn(sp.x, sp.y, e.radius || 14, 220);
+      e.pos.x = _sp.x;
+      e.pos.y = _sp.y;
       // CORRIDOR chunks (chunk-type variety): tighter spawns — nudge toward view center.
       if (this.chunkManager.currentChunkType() === CHUNK_TYPE.CORRIDOR) {
         const _vcx = this.camera.x + this._viewW / 2, _vcy = this.camera.y + this._viewH / 2;
@@ -10026,7 +10029,10 @@ export class Game {
       t.hp *= 4.2; t.maxHp = t.hp; t.isMegaBoss = true;   // Maria: mega bosses need real staying power
       if (this.chunkManager?.enabled) {
         const sp = this.chunkManager.getSpawnEdge(this.camera, this._viewW, this._viewH, 140);
-        t.pos.x = sp.x; t.pos.y = sp.y;
+        // Mega boss: validate against its REAL radius, not just the centre point, so a
+        // large body can never end up half-buried in an authored pillar.
+        const _sp = this.resolveEnemySpawn(sp.x, sp.y, Math.max(60, t.radius || 60), 380);
+        t.pos.x = _sp.x; t.pos.y = _sp.y;
       }
       this.enemies.push(t);
       this.megaBoss = t;
@@ -29634,6 +29640,27 @@ _drawLoreArchive(ctx) {
     if (mm.isWalkableFootprint(toX, fromY, radius, mode)) return { x: toX, y: fromY };  // slide along X
     if (mm.isWalkableFootprint(fromX, toY, radius, mode)) return { x: fromX, y: toY };  // slide along Y
     return { x: fromX, y: fromY };                                                      // blocked
+  }
+
+  /** Shared by every Enemy via _stepMove — identical policy to the player's resolver. */
+  _resolveEnemyMove = (fx, fy, tx, ty, r) => this.resolveWalkableMove(fx, fy, tx, ty, r);
+
+  /** Stuck-recovery target for a pinned enemy. Bounded; never called per frame. */
+  _recoverEnemyPos = (x, y, r) => this.recoverToWalkable(x, y, r);
+
+  /**
+   * Canonical enemy spawn placement. Keeps spawns off obstacles and out of the player's
+   * lap, with a bounded deterministic fallback — never the void, never the player.
+   */
+  resolveEnemySpawn(x, y, radius = 14, minPlayerDist = 260) {
+    const mode = this._walkMode();
+    const mm   = this.mapManager;
+    if (!mode || !mm?.findSafeSpawnPoint) return { x, y };
+    return mm.findSafeSpawnPoint({
+      x, y, radius, mode,
+      avoid: this.player ? [this.player.pos] : [],
+      minDist: minPlayerDist,
+    });
   }
 
   /** Recovery only — spawns, mode transitions, corrupted state. Never per-frame. */

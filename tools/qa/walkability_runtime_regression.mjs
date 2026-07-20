@@ -106,5 +106,69 @@ T('Endless obstacles ΔΕΝ ισχύουν στο chaos model',
   ()=>mm.isWalkablePoint(215*S, 300*S, 'chaos')===true);
 T('chaos έχει δικά του authored blocks', ()=>mm.isWalkablePoint(330*S, 200*S, 'chaos')===false);
 
+
+console.log('\n── H. enemy movement: 100 commons γύρω από obstacles ──');
+const STUCK_SECS=0.5, STUCK_CD=2.0, dt=1/60;
+const mkE=(x,y,r)=>({pos:{x,y}, vel:{x:0,y:0}, radius:r, _stuckT:0, _stuckCd:0});
+const step=(e,player)=>{                                   // mirrors Enemy._stepMove
+  const dx=player.x-e.pos.x, dy=player.y-e.pos.y, d=Math.hypot(dx,dy)||1;
+  e.vel.x=(dx/d)*90; e.vel.y=(dy/d)*90;
+  const fx=e.pos.x, fy=e.pos.y, tx=fx+e.vel.x*dt, ty=fy+e.vel.y*dt;
+  const r=resolve(fx,fy,tx,ty,e.radius);
+  e.pos.x=r.x; e.pos.y=r.y;
+  const wanted=Math.hypot(tx-fx,ty-fy), moved=Math.hypot(r.x-fx,r.y-fy);
+  if (wanted>0.5 && moved<wanted*0.2) e._stuckT+=dt; else e._stuckT=0;
+  if (e._stuckCd>0) e._stuckCd-=dt;
+  if (e._stuckT>=STUCK_SECS && e._stuckCd<=0){
+    const rec=mm.findNearestWalkablePoint(e.pos.x,e.pos.y,e.radius,'endless');
+    if (Math.hypot(rec.x-player.x,rec.y-player.y)>120){ e.pos.x=rec.x; e.pos.y=rec.y; }
+    e._stuckT=0; e._stuckCd=STUCK_CD; e._recoveries=(e._recoveries||0)+1;
+  }
+};
+const tgt={x:1400*S,y:300*S};
+const commons=[]; for(let i=0;i<100;i++) commons.push(mkE(400*S+rnd()*120*S, (215+rnd()*195)*S, 14));
+let eBad=0, eTele=0, recoveries=0;
+for(let f=0;f<600;f++) for(const e of commons){
+  const bx=e.pos.x, by=e.pos.y; step(e,tgt);
+  if (Math.hypot(e.pos.x-bx,e.pos.y-by)>60) eTele++;        // recovery may jump; cap it
+  if (!mm.isWalkableFootprint(e.pos.x,e.pos.y,e.radius,'endless')) eBad++;
+}
+for(const e of commons) recoveries += (e._recoveries||0);
+const closed = commons.filter(e=>Math.hypot(e.pos.x-tgt.x,e.pos.y-tgt.y) < 1000*S).length;
+console.log(`  (${recoveries} stuck recoveries, ${closed}/100 πλησίασαν τον στόχο)`);
+T('invalid common enemy footprints = 0', ()=>eBad===0||'got '+eBad);
+T('permanent stuck enemies = 0 (καμία τελική invalid θέση)',
+  ()=>commons.every(e=>mm.isWalkableFootprint(e.pos.x,e.pos.y,e.radius,'endless')));
+T('οι enemies όντως πλησιάζουν τον παίκτη', ()=>closed>0||'κανένας');
+
+console.log('\n── I. 30 elites με μεγαλύτερο footprint ──');
+// spawn them exactly as the game now does — through findSafeSpawnPoint, not raw coords
+const elites=[];
+for(let i=0;i<30;i++){ const p=mm.findSafeSpawnPoint({x:500*S+rnd()*200*S, y:(220+rnd()*180)*S, radius:30, mode:'endless', avoid:[tgt], minDist:200}); elites.push(mkE(p.x,p.y,30)); }
+let elBad=0;
+for(let f=0;f<400;f++) for(const e of elites){ step(e,tgt);
+  if(!mm.isWalkableFootprint(e.pos.x,e.pos.y,e.radius,'endless')) elBad++; }
+T('invalid elite footprints = 0', ()=>elBad===0||'got '+elBad);
+
+console.log('\n── J. boss / mega-boss spawn footprints ──');
+let bBad=0;
+for(let i=0;i<200;i++){
+  const rad = i<100 ? 60 : 100;
+  const p = mm.findSafeSpawnPoint({ x:(rnd()*2-1)*30000, y:rnd()*519*S, radius:rad,
+                                    mode:'endless', avoid:[tgt], minDist:380 });
+  if(!mm.isWalkableFootprint(p.x,p.y,rad,'endless')) bBad++;
+}
+T('boss/mega spawn footprints valid = 100%', ()=>bBad===0||'got '+bBad);
+
+console.log('\n── K. rebase με ενεργούς enemies ──');
+const P2 = 2*1672*S;
+let rebaseBad=0;
+for(const e of commons.slice(0,40)){
+  const beforeOk = mm.isWalkableFootprint(e.pos.x,e.pos.y,e.radius,'endless');
+  const afterOk  = mm.isWalkableFootprint(e.pos.x-P2,e.pos.y,e.radius,'endless');
+  if (beforeOk !== afterOk) rebaseBad++;
+}
+T('rebase δεν αλλάζει walkability των enemies', ()=>rebaseBad===0||'got '+rebaseBad);
+
 console.log(`\n═══ ${pass} PASS · ${fail} FAIL ═══`);
 process.exit(fail?1:0);
