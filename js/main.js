@@ -3,8 +3,8 @@ import { AudioManager } from './audio/AudioManager.js?v=20260722700000';
 import { PlatformAchievements } from './platform/PlatformAchievements.js?v=20260712370000';
 // Steam build: replay any web-earned achievements to Steam on boot (no-op in browsers)
 setTimeout(() => { try { PlatformAchievements.syncPending(); } catch (_) {} }, 3000);
-import { GamepadInput } from './Gamepad.js?v=20260706330000';
-import { initTouchControls } from './TouchInput.js?v=20260715900000';
+import { GamepadInput } from './Gamepad.js?v=20260727000000';
+import { initTouchControls } from './TouchInput.js?v=20260727000000';
 
 const canvas = document.getElementById('game');
 const ctx    = canvas.getContext('2d');
@@ -604,6 +604,25 @@ function applyGamepad() {
     }
   }
 }
+
+// ─── STUCK-KEY GUARD: focus loss / tab hidden (2026-07-20) ──────────────────
+// `keyup` only fires while the window has focus. Alt-Tab, clicking another window, the
+// Windows/Command key, a notification stealing focus, or the tab being backgrounded all
+// swallow the keyup — so a held W/A/S/D stayed in `keys` FOREVER and the hero kept walking
+// by himself on return, with SHIFT stuck meaning a permanent dash attempt and a held mouse
+// button meaning permanent auto-fire. Releasing everything on blur/hide is the standard fix
+// and is safe: a key that is still physically down re-fires keydown on the next repeat.
+// padHeld is cleared through padClearHeld() so the controller bridge does not desync — it
+// only re-adds a key it believes it has not already injected.
+function _releaseAllHeldInput() {
+  keys.clear();
+  mouseDown = false;
+  padClearHeld();
+  prevDir.up = prevDir.down = prevDir.left = prevDir.right = false;
+}
+window.addEventListener('blur', _releaseAllHeldInput);
+window.addEventListener('pagehide', _releaseAllHeldInput);
+document.addEventListener('visibilitychange', () => { if (document.hidden) _releaseAllHeldInput(); });
 
 // ─── Mobile touch controls ──────────────────────────────────────────────────
 // Touch-device-gated (no-op on desktop). Injects into the SAME `keys` Set + synthetic

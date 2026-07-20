@@ -45,11 +45,30 @@ export class GamepadInput {
 
     const ax  = p.axes || [];
     const out = { axes: { lx: 0, ly: 0, rx: 0, ry: 0 }, btn: {}, type: this.type, activated: this.activated };
-    out.axes.lx = Math.abs(ax[0] || 0) > DEADZONE ? ax[0] : 0;
-    out.axes.ly = Math.abs(ax[1] || 0) > DEADZONE ? ax[1] : 0;
-    // Right stick (axes[2]/axes[3]) — aim direction; same deadzone as left stick.
-    out.axes.rx = Math.abs(ax[2] || 0) > DEADZONE ? ax[2] : 0;
-    out.axes.ry = Math.abs(ax[3] || 0) > DEADZONE ? ax[3] : 0;
+    // RADIAL deadzone + angular axis gate (2026-07-20). The old per-axis test cut a SQUARE hole
+    // of side 2*DEADZONE instead of a circle of radius DEADZONE, so diagonals died in the
+    // corners: a stick pushed to 45° at magnitude 0.35 gives |x|=|y|=0.247, both under 0.30, so
+    // BOTH axes were zeroed and the hero did not move at all — while the same 0.31 push straight
+    // up did move him. Diagonals effectively needed 0.424 (0.30/cos45°), 41% more than cardinals.
+    //
+    // Now: ONE magnitude test decides whether the stick is engaged (same threshold in every
+    // direction), then each axis is kept only if it carries a real share of that magnitude.
+    // The share is a RATIO, not a fixed value, so the cardinal sector is a constant ~16° at any
+    // deflection. That keeps a near-vertical push purely vertical (no diagonal drift, which a
+    // raw pass-through would have introduced, since main.js treats ANY non-zero axis as held)
+    // and at full deflection it behaves as before — only the weak-push dead cross is gone.
+    const AXIS_RATIO = 0.28;   // sin(16.3°)
+    const _radial = (x, y) => {
+      const mag = Math.hypot(x, y);
+      if (mag <= DEADZONE) return { x: 0, y: 0 };
+      const c = mag * AXIS_RATIO;
+      return { x: Math.abs(x) > c ? x : 0, y: Math.abs(y) > c ? y : 0 };
+    };
+    const L = _radial(ax[0] || 0, ax[1] || 0);
+    out.axes.lx = L.x; out.axes.ly = L.y;
+    // Right stick (axes[2]/axes[3]) — aim direction; same radial deadzone as the left stick.
+    const R = _radial(ax[2] || 0, ax[3] || 0);
+    out.axes.rx = R.x; out.axes.ry = R.y;
 
     const now = {};
     for (const name in BTN) {

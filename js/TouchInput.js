@@ -166,6 +166,12 @@ export function initTouchControls({ canvas, keys, game, setAim, onQ, onE, onUlt 
   joy.addEventListener('pointerup', joyUp);
   joy.addEventListener('pointercancel', joyUp);
 
+  // Backgrounding the tab (call, notification, app switch) does not always deliver
+  // pointercancel, so the joystick could stay latched and keep the hero walking on return.
+  // Mirrors the keyboard blur guard in main.js; clears only the keys WE injected.
+  document.addEventListener('visibilitychange', () => { if (document.hidden) { clearHeld(); joyReset(); } });
+  window.addEventListener('blur', () => { clearHeld(); joyReset(); });
+
   // ── action buttons (Dash held; Q/E/ULT direct callbacks; Pause one-shot) ─
   function bindButton(el, cb) {
     const key = el.dataset.key, hold = el.dataset.hold === '1';
