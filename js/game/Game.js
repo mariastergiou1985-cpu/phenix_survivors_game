@@ -29642,6 +29642,7 @@ _drawLoreArchive(ctx) {
     return { x: fromX, y: fromY };                                                      // blocked
   }
 
+<<<<<<< HEAD
   /** Shared by every Enemy via _stepMove — identical policy to the player's resolver. */
   _resolveEnemyMove = (fx, fy, tx, ty, r) => this.resolveWalkableMove(fx, fy, tx, ty, r);
 
@@ -29663,6 +29664,8 @@ _drawLoreArchive(ctx) {
     });
   }
 
+=======
+>>>>>>> ae7b49263644ae634580df0297b9d7abc448c9b7
   /** Recovery only — spawns, mode transitions, corrupted state. Never per-frame. */
   recoverToWalkable(x, y, radius) {
     const mode = this._walkMode();

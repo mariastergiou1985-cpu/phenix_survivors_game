@@ -170,5 +170,6 @@ for(const e of commons.slice(0,40)){
 }
 T('rebase δεν αλλάζει walkability των enemies', ()=>rebaseBad===0||'got '+rebaseBad);
 
+
 console.log(`\n═══ ${pass} PASS · ${fail} FAIL ═══`);
 process.exit(fail?1:0);
