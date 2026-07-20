@@ -1,4 +1,21 @@
 import { Vec2, WIDTH, HEIGHT, WORLD_W, WORLD_H, WORLD_MARGIN, WORLD_BOUNDS, PLAYER_RADIUS, CYAN, WHITE, YELLOW, GREEN, BLUE, RED } from '../constants.js';
+
+// ── CHARACTER VISUAL OFFSETS (Maria QA 2026-07-19) ───────────────────────────
+// Render-only nudges, in gameplay pixels, applied to the sprite alone. They never touch
+// the world position, the collision centre, the shadow or any gameplay value.
+//
+// Why they exist: sprites are drawn feet-anchored at a fixed 64px height, so transparent
+// padding at the bottom of a source image lifts the character off its own shadow. Measured
+// bottom padding converted to gameplay pixels:
+//   dimis_kickboxer 4.79 · cyber_arm_hero 4.04 · skeleton 2.88 · eddie 2.54 · assassin 2.38
+// Only entries above the 3px threshold WITH a plain-padding cause are corrected here.
+// cyber_arm_hero is deliberately NOT listed: its source is hard-cropped on the left
+// (72 opaque pixels run into x=0, y 1318..1389) and a render offset would mask a real
+// asset defect that needs a re-export instead.
+const CHARACTER_VISUAL_OFFSETS = Object.freeze({
+  dimis_kickboxer: { x: 0, y: 5 },   // 4.79px of bottom padding — feet float above the shadow
+});
+const DEFAULT_CHARACTER_VISUAL_OFFSET = Object.freeze({ x: 0, y: 0 });
 import { clamp, safeNormalize } from '../utils.js';
 import { Projectile } from './Projectile.js?v=20260706270000';
 import { FloatingText } from './FloatingText.js';
@@ -621,7 +638,8 @@ export class Player {
       // identically on every frame, whatever ran before it.
       ctx.imageSmoothingEnabled = true;
       if ('imageSmoothingQuality' in ctx) ctx.imageSmoothingQuality = 'high';
-      ctx.translate(this.pos.x, this.pos.y + sprH / 2 + bobY);   // feet pivot
+      const vo = CHARACTER_VISUAL_OFFSETS[this.selectedCharacter] || DEFAULT_CHARACTER_VISUAL_OFFSET;
+      ctx.translate(this.pos.x + vo.x, this.pos.y + sprH / 2 + bobY + vo.y);   // feet pivot + render-only offset
       ctx.rotate(lean);
       ctx.scale(stX * this._facing, stY);
       ctx.shadowColor = vis.rim;   // tinted rim hugging the sprite silhouette ("outline")

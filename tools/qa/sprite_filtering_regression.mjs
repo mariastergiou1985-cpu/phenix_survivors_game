@@ -82,5 +82,27 @@ T('character filtering ανεξάρτητο από enemy tables',
 T('κανένα blur/τεχνητό antialias στον Eddie ή σε άλλον',
   ()=>!/filter\s*=\s*['"`]blur/.test(pdraw));
 
+
+console.log('\n── character visual offsets ──');
+const ot = (()=>{ const i=PL.indexOf('const CHARACTER_VISUAL_OFFSETS');
+  return PL.slice(i, PL.indexOf('});', i)); })();
+T('πίνακας υπάρχει και είναι frozen', ()=>/CHARACTER_VISUAL_OFFSETS = Object\.freeze\(/.test(PL));
+T('default {x:0,y:0} frozen', ()=>/DEFAULT_CHARACTER_VISUAL_OFFSET = Object\.freeze\(\{ x: 0, y: 0 \}\)/.test(PL));
+T('ΜΟΝΟ ο dimis_kickboxer έχει offset',
+  ()=>(ot.match(/^\s+\w+:\s*\{/gm)||[]).length===1 && ot.includes('dimis_kickboxer'));
+T('dimis offset = { x: 0, y: 5 }', ()=>/dimis_kickboxer: \{ x: 0, y: 5 \}/.test(PL));
+T('cyber_arm_hero ΔΕΝ έχει offset (cropped asset, όχι padding)',
+  ()=>!ot.includes('cyber_arm_hero'));
+T('assassin/eddie/skeleton ΔΕΝ έχουν offset (<3px threshold)',
+  ()=>!ot.includes('assassin_clone') && !ot.includes('eddie') && !ot.includes('skeleton_warrior'));
+T('phasewalker/euclid ΔΕΝ έχουν offset', ()=>!ot.includes('japan_phasewalker') && !ot.includes('euclid_vector'));
+T('το offset εφαρμόζεται στο translate του sprite',
+  ()=>/translate\(this\.pos\.x \+ vo\.x, this\.pos\.y \+ sprH \/ 2 \+ bobY \+ vo\.y\)/.test(PL));
+T('render-only: το pos δεν μεταβάλλεται', ()=>!/this\.pos\.[xy]\s*[+-]?=\s*vo\./.test(PL));
+T('το shadow ΔΕΝ μετακινείται', ()=>/const gx = this\.pos\.x, gy = this\.pos\.y \+ 26/.test(PL));
+T('άγνωστος χαρακτήρας παίρνει το default (μοντέλο)',
+  ()=>{const t={dimis_kickboxer:{x:0,y:5}}; const d={x:0,y:0};
+       const v=t['skeleton_warrior']||d; return v.x===0 && v.y===0;});
+
 console.log(`\n═══ ${pass} PASS · ${fail} FAIL ═══`);
 process.exit(fail?1:0);
