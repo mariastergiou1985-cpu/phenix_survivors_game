@@ -4,6 +4,7 @@ import { register } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import fs from 'node:fs';
+import { execFileSync } from 'node:child_process';
 register('./strip-v-loader.mjs', import.meta.url);
 globalThis.window = globalThis;
 globalThis.document = { addEventListener(){}, createElement: () => ({ style:{}, getContext:()=>null, addEventListener(){} }) };
@@ -22,7 +23,35 @@ let pass=0, fail=0;
 const T=(n,f)=>{let ok=false,note='';try{const r=f();ok=r===true;if(typeof r==='string')note=r;}
   catch(e){note='THREW: '+e.message;}ok?pass++:fail++;console.log(`  ${ok?'PASS':'FAIL'}  ${n}${note?' — '+note:''}`);};
 
-console.log('═══ BLACK-SCREEN REGRESSION ═══\n── main loop liveness ──');
+console.log('═══ BLACK-SCREEN REGRESSION ═══\n── source integrity (parse-time black screen) ──');
+// Unresolved merge conflict markers shipped in Game.js once (fixed 2026-07-20). A single
+// "<<<<<<< HEAD" makes the module fail to PARSE, so main.js never imports Game, the loop
+// never starts and the canvas stays black — with no runtime error to catch. `node --check`
+// did NOT catch it: without --input-type=module it parses as a sloppy script and passes.
+// These two guards are the ones that actually bite.
+const SRC_FILES = [];
+(function walk(d) {
+  for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+    const p = path.join(d, e.name);
+    if (e.isDirectory()) walk(p); else if (e.name.endsWith('.js')) SRC_FILES.push(p);
+  }
+})(JS);
+T('κανένα unresolved merge conflict marker σε όλα τα js/ modules', () => {
+  const bad = SRC_FILES.filter(f => /^(<{7} |={7}$|>{7} )/m.test(fs.readFileSync(f, 'utf8')));
+  return bad.length === 0 || 'CONFLICT MARKERS: ' + bad.map(f => path.relative(JS, f)).join(', ');
+});
+T('index.html / sw.js χωρίς conflict markers', () =>
+  !/^(<{7} |={7}$|>{7} )/m.test(HTML) && !/^(<{7} |={7}$|>{7} )/m.test(fs.readFileSync(path.resolve(HERE,'../../sw.js'),'utf8')));
+T('Game.js παρσάρει ως ES MODULE (όχι μόνο ως script)', () => {
+  // node --check is script-mode and misses module-only syntax errors; parse explicitly.
+  try {
+    execFileSync(process.execPath, ['--input-type=module', '--check'],
+      { input: fs.readFileSync(path.join(JS, 'game/Game.js'), 'utf8'), stdio: ['pipe', 'pipe', 'pipe'] });
+    return true;
+  } catch (e) { return 'PARSE FAILED: ' + String(e.stderr || e.message).split('\n')[0]; }
+});
+
+console.log('\n── main loop liveness ──');
 T('rAF επαναπρογραμματίζεται ΕΞΩ από το try/catch', ()=>{
   const i=MAIN.lastIndexOf('requestAnimationFrame(loop);', MAIN.indexOf('\n}', MAIN.indexOf('function loop')));
   const c=MAIN.lastIndexOf('catch', i); const b=MAIN.lastIndexOf('}', i);

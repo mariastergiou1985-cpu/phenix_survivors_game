@@ -29785,7 +29785,6 @@ _drawLoreArchive(ctx) {
     return { x: fromX, y: fromY };                                                      // blocked
   }
 
-<<<<<<< HEAD
   /** Shared by every Enemy via _stepMove — identical policy to the player's resolver. */
   _resolveEnemyMove = (fx, fy, tx, ty, r) => this.resolveWalkableMove(fx, fy, tx, ty, r);
 
@@ -29807,8 +29806,6 @@ _drawLoreArchive(ctx) {
     });
   }
 
-=======
->>>>>>> ae7b49263644ae634580df0297b9d7abc448c9b7
   /**
    * CANONICAL GROUND-HAZARD PLACEMENT (Maria 2026-07-19).
    * Confirmed ground hazards — pools, mines, zones that sit on the floor and damage a

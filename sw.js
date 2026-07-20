@@ -17,7 +17,7 @@
 // the activate handler below drops every cache that is not the current one, and a mixed
 // old/new build becomes impossible. (A manual 'v3' style counter is easy to forget, and a
 // forgotten bump is exactly how a stale shell survives a deploy.)
-const BUILD = '20260724000000';    // === index.html main.js ?v=
+const BUILD = '20260725000000';    // === index.html main.js ?v=
 const CACHE = 'phenix-shell-' + BUILD;
 self.addEventListener('install', (e) => { self.skipWaiting(); });
 self.addEventListener('activate', (e) => {
