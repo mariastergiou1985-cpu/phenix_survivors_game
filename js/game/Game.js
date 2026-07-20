@@ -11168,9 +11168,15 @@ export class Game {
         this._voidRiftCd = 2.5;
         const ang = Math.random() * Math.PI * 2;
         const d   = 90 + Math.random() * 330;                        // 90–420 px from player
-        this._voidRifts.push({
-          x: this.player.pos.x + Math.cos(ang) * d,
-          y: this.player.pos.y + Math.sin(ang) * d,
+        // CONFIRMED GROUND HAZARD: fixed world centre, warn→active phases, area DoT via
+        // dmgCd. Corrected once here so the telegraph, the visual and the damage all read
+        // the same x/y; if no legal placement exists the rift is skipped rather than
+        // ticking damage inside a façade.
+        const _vr = this.placeGroundHazard(
+          this.player.pos.x + Math.cos(ang) * d,
+          this.player.pos.y + Math.sin(ang) * d, 190);
+        if (_vr) this._voidRifts.push({
+          x: _vr.x, y: _vr.y,
           r: 190, phase: 'warn', t: 0, warn: 0.9, active: 3.2, dmgCd: 0,
         });
       }
@@ -11301,9 +11307,12 @@ export class Game {
         this._ventCd = 3.0;
         const ang = Math.random() * Math.PI * 2;
         const d   = 100 + Math.random() * 280;                       // 100–380 px from player
-        this._ventBursts.push({
-          x: this.player.pos.x + Math.cos(ang) * d,
-          y: this.player.pos.y + Math.sin(ang) * d,
+        // CONFIRMED GROUND HAZARD: same warn→active ground pattern as the void rifts.
+        const _vb = this.placeGroundHazard(
+          this.player.pos.x + Math.cos(ang) * d,
+          this.player.pos.y + Math.sin(ang) * d, 58);
+        if (_vb) this._ventBursts.push({
+          x: _vb.x, y: _vb.y,
           r: 58, phase: 'warn', t: 0, warn: 1.0, active: 1.2, dmgCd: 0,
         });
       }
@@ -18056,10 +18065,15 @@ export class Game {
           const aimed = Math.random() < 0.6;                     // Maria: autoaim >= 60/100
           const off = aimed ? randomRange(0, 60) : randomRange(130, 300);
           const ang = Math.random() * Math.PI * 2;
-          this.gunshipZones.push({
-            pos: new Vec2(
-              clamp(this.player.pos.x + Math.cos(ang) * off, WORLD_BOUNDS.left + WORLD_BOUNDS.margin, WORLD_BOUNDS.right - WORLD_BOUNDS.margin),
-              clamp(this.player.pos.y + Math.sin(ang) * off, WORLD_BOUNDS.top + WORLD_BOUNDS.margin, WORLD_BOUNDS.bottom - WORLD_BOUNDS.margin)),
+          // MIXED STRUCTURE: the gunship itself is airborne and stays unconstrained — only
+          // this mortar GROUND IMPACT is corrected, so shells never detonate inside a
+          // building. The old WORLD_BOUNDS clamp only kept it in the world rect, which
+          // says nothing about floor.
+          const _gz = this.placeGroundHazard(
+            this.player.pos.x + Math.cos(ang) * off,
+            this.player.pos.y + Math.sin(ang) * off, 68);
+          if (_gz) this.gunshipZones.push({
+            pos: new Vec2(_gz.x, _gz.y),
             radius: 68, warn: 1.0, flash: 0.3, t: 0, struck: false,
           });
         }

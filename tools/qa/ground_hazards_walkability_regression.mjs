@@ -36,8 +36,11 @@ const place = (x, y, r, mode='endless') => {                 // mirrors Game.pla
 
 // The four confirmed ground hazards and their real damage radii.
 const HAZARDS = [
-  { id:'bossLavaZones',  r:70 }, { id:'lightningZones', r:64 },
-  { id:'nullEchoZones',  r:78 }, { id:'cybermoteMines', r:26 },
+  { id:'bossLavaZones',  r:70  }, { id:'lightningZones', r:64 },
+  { id:'nullEchoZones',  r:78  }, { id:'cybermoteMines', r:26 },
+  { id:'_voidRifts',     r:190 },   // ambiguous pass: confirmed ground (warn→active DoT)
+  { id:'_ventBursts',    r:58  },   // confirmed ground
+  { id:'gunshipZones',   r:68  },   // mixed: only the mortar ground impact is constrained
 ];
 
 console.log('═══ GROUND HAZARDS WALKABILITY ═══\n── A. confirmed ground hazards: 1000 candidates each ──');
@@ -113,6 +116,27 @@ const gameSrc = fs.readFileSync(path.join(JS,'game/Game.js'),'utf8');
 T('κανένα if(false && this.endless) kill-switch', ()=>!gameSrc.includes('if (false && this.endless)'));
 T('κανένα Endless Lava Rain selection timer', ()=>!gameSrc.includes('_endlessLavaCd'));
 T('κανένα ⚠ LAVA RAIN announcement', ()=>!gameSrc.includes("'⚠ LAVA RAIN'"));
+
+
+console.log('\n── H. ambiguous systems sign-off ──');
+const src = fs.readFileSync(path.join(JS,'game/Game.js'),'utf8');
+T('_voidRifts περνά από placeGroundHazard', ()=>/placeGroundHazard\([\s\S]{0,200}190\)/.test(src));
+T('_ventBursts περνά από placeGroundHazard', ()=>/placeGroundHazard\([\s\S]{0,200}58\)/.test(src));
+T('gunshipZones ground impact περνά από placeGroundHazard', ()=>/placeGroundHazard\([\s\S]{0,200}68\)/.test(src));
+T('_enemyOrbZones ΔΕΝ περιορίζεται (owner-anchored στον enemy)',
+  ()=>{ const i=src.indexOf('this._enemyOrbZones.push('); const seg=src.slice(Math.max(0,i-600), i);
+        return !seg.includes('placeGroundHazard'); });
+T('ο airborne gunship ΔΕΝ περιορίζεται (μόνο η ζώνη του)',
+  ()=>{ const i=src.indexOf('this.gunships.push('); if(i<0) return true;
+        return !src.slice(i-400,i).includes('placeGroundHazard'); });
+
+console.log('\n── I. cleanup / skip accounting ──');
+let created=0, skipped=0;
+for (let i=0;i<600;i++){ const p = place((rnd()*2-1)*40000, rnd()*519*S, 190); p ? created++ : skipped++; }
+console.log(`  (r=190: ${created} δημιουργήθηκαν, ${skipped} safe skips)`);
+T('τα skips είναι ρητά και μετρήσιμα', ()=>created+skipped===600);
+T('δεν παραλείπονται ΟΛΑ (δεν εξαφανίζονται boss attacks)', ()=>created>0||'όλα skipped');
+T('skip rate < 50% (καμία παθολογική αύξηση)', ()=>(skipped/600)<0.5||`skip rate ${(skipped/600*100).toFixed(0)}%`);
 
 console.log(`\n═══ ${pass} PASS · ${fail} FAIL ═══`);
 process.exit(fail?1:0);
