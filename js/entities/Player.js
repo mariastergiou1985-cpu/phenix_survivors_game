@@ -613,6 +613,14 @@ export class Player {
       // pinned here rather than trusted.
       ctx.globalAlpha = 1;
       ctx.globalCompositeOperation = 'source-over';
+      // Same guarantee, completed (Maria 2026-07-19): alpha and composite were pinned
+      // above, but imageSmoothingEnabled was not — so the character inherited whatever
+      // filtering the previous drawImage happened to leave. Enemy.draw() flips it to
+      // false for its own sprites, which meant the player's appearance depended on draw
+      // ORDER rather than on its own code. Pinned here so every character renders
+      // identically on every frame, whatever ran before it.
+      ctx.imageSmoothingEnabled = true;
+      if ('imageSmoothingQuality' in ctx) ctx.imageSmoothingQuality = 'high';
       ctx.translate(this.pos.x, this.pos.y + sprH / 2 + bobY);   // feet pivot
       ctx.rotate(lean);
       ctx.scale(stX * this._facing, stY);

@@ -6,6 +6,7 @@ import fs from 'node:fs';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const EN   = fs.readFileSync(path.resolve(HERE,'../../js/entities/Enemy.js'),'utf8');
 const GM   = fs.readFileSync(path.resolve(HERE,'../../js/game/Game.js'),'utf8');
+const PL   = fs.readFileSync(path.resolve(HERE,'../../js/entities/Player.js'),'utf8');
 
 let pass=0, fail=0;
 const T=(n,f)=>{let ok=false,note='';try{const r=f();ok=r===true;if(typeof r==='string')note=r;}
@@ -58,6 +59,28 @@ T('CSS image-rendering αμετάβλητο',
 T('draw scale αμετάβλητο (radius*2 / radius*2.4)',
   ()=>/this\.radius \* 2, this\.radius \* 2\)/.test(EN) && /d\.radius \* 2\.4/.test(GM));
 T('ENEMY_RADIUS αμετάβλητο', ()=>/this\.radius\s+= ENEMY_RADIUS;/.test(EN));
+
+
+console.log('\n── player canvas-state determinism ──');
+// Player.draw() must not inherit filtering from whatever drew before it.
+const pdraw = (()=>{ const i=PL.indexOf('OPAQUE-SPRITE GUARANTEE');
+  const d=PL.indexOf('ctx.drawImage(spr', i);
+  return PL.slice(i, PL.indexOf('ctx.restore()', d)); })();
+T('Player.draw καρφώνει globalAlpha', ()=>/ctx\.globalAlpha = 1;/.test(pdraw));
+T('Player.draw καρφώνει globalCompositeOperation', ()=>/globalCompositeOperation = 'source-over';/.test(pdraw));
+T('Player.draw καρφώνει imageSmoothingEnabled', ()=>/ctx\.imageSmoothingEnabled = true;/.test(pdraw));
+T('το pin γίνεται ΠΡΙΝ την πραγματική κλήση drawImage',
+  // 'drawImage' also appears in the comment above, so match the actual call site.
+  ()=>pdraw.indexOf('ctx.imageSmoothingEnabled') < pdraw.indexOf('ctx.drawImage(spr'));
+T('όλα μέσα σε ctx.save()', ()=>{
+  const i=PL.indexOf('OPAQUE-SPRITE GUARANTEE');
+  return PL.lastIndexOf('ctx.save()', i) > PL.lastIndexOf('ctx.restore()', i); });
+T('ο χαρακτήρας ΔΕΝ κληρονομεί το enemy filtering (enemy = flag-driven, player = pinned)',
+  ()=>/ctx\.imageSmoothingEnabled = smoothSprite;/.test(EN) && /ctx\.imageSmoothingEnabled = true;/.test(pdraw));
+T('character filtering ανεξάρτητο από enemy tables',
+  ()=>!pdraw.includes('ENEMY_SPRITE_FILTERING') && !pdraw.includes('BOSS_SPRITE_FILTERING'));
+T('κανένα blur/τεχνητό antialias στον Eddie ή σε άλλον',
+  ()=>!/filter\s*=\s*['"`]blur/.test(pdraw));
 
 console.log(`\n═══ ${pass} PASS · ${fail} FAIL ═══`);
 process.exit(fail?1:0);
