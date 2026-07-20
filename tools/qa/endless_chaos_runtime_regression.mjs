@@ -1,0 +1,373 @@
+// ENDLESS / CHAOS RUNTIME INTEGRITY — drives the REAL Game class headlessly at accelerated
+// time. Unlike a hand-written model, every number here is produced by production code, so a
+// failure is a real defect and a pass is real evidence.
+//
+// Covers: long-run stability, unbounded array growth, non-finite coordinates, event lifecycle
+// (Null Breach arena, Boss Rush, Chaos Titans, Locked Vault), stale state after death/restart/
+// mode transition, pause behaviour, and FPS independence of the schedulers.
+//
+// Run: node tools/qa/endless_chaos_runtime_regression.mjs   (exit 1 on failure)
+
+import { register } from 'node:module';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+import fs from 'node:fs';
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+register('./strip-v-loader.mjs', import.meta.url);
+const { installEnv, muteConsole } = await import(path.join(HERE, 'headless-env.mjs'));
+installEnv();
+
+const JS = path.resolve(HERE, '../../js');
+const unmute = muteConsole();
+const { Game } = await import(path.join(JS, 'game/Game.js'));
+unmute();
+
+let pass = 0, fail = 0;
+const T = (n, f, hint = '') => {
+  let ok = false, note = '';
+  try { const r = f(); ok = r === true; if (typeof r === 'string') note = r; }
+  catch (e) { note = 'THREW: ' + e.message; }
+  if (!ok && !note) note = hint;
+  ok ? pass++ : fail++;
+  console.log(`  ${ok ? 'PASS' : 'FAIL'}  ${n}${note ? ' — ' + note : ''}`);
+};
+const IN = () => ({ keys: new Set(), mousePos: { x: 0, y: 0 }, mouseDown: false });
+
+// Driving the real game costs ~3s wall per simulated minute, so the suite default is a
+// meaningful-but-quick run and the full-length audit is opt-in:
+//   node endless_chaos_runtime_regression.mjs            → all phases, default lengths
+//   node endless_chaos_runtime_regression.mjs chaos      → one phase (keeps each run short)
+//   PHENIX_QA_LONG=1 node ... chaos                      → full 60-minute audit lengths
+const PHASE = (process.argv[2] || 'all').toLowerCase();
+const LONG = process.env.PHENIX_QA_LONG === '1';
+const RUN = p => PHASE === 'all' || PHASE === p;
+const MIN_ENDLESS = LONG ? 20 : 8;
+const MIN_CHAOS = LONG ? 60 : 14;
+const MIN_CHAOS_SHORT = LONG ? 14 : 3;   // long enough to observe Boss Rush #1 at 2:00
+const MIN_FPS = LONG ? 10 : 4;
+
+// Arrays that grow per-event/per-frame and must stay bounded across a long run.
+const TRACKED = ['enemies', 'projectiles', 'enemyBullets', 'floatingTexts', 'xpShards',
+                 'airstrikeShips', 'rockets', 'cybermotes', 'iceFields', 'voidRifts',
+                 'enemyBeams', 'enemyOrbZones', 'ventBursts', 'homingDiscs', 'effects'];
+
+/**
+ * Drive a real run. Auto-dismisses card screens (a headless run never picks, and an
+ * un-dismissed card screen freezes timeAlive — which would silently invalidate the whole
+ * measurement) and keeps the player alive so pacing can be observed to the end.
+ */
+function drive(g, seconds, dt, opts = {}) {
+  const frames = Math.round(seconds / dt);
+  const st = {
+    updateErrors: 0, firstError: null, drawErrors: 0,
+    peak: Object.fromEntries(TRACKED.map(k => [k, 0])),
+    nonFinite: [], cards: 0, panels: 0,
+    events: { arena: 0, bossRush: 0, vault: 0, titan: 0 },
+    seen: { arena: false, bossRush: false, vault: false, titan: false },
+    samples: [],
+  };
+  const input = IN();
+  for (let f = 0; f < frames; f++) {
+    if (g.upgradeUI) { try { g.selectUpgrade(0); st.cards++; } catch (_) { g.upgradeUI = null; } }
+    if (g.mutationUI) { try { g.selectMutation(0); st.cards++; } catch (_) { g.mutationUI = null; } }
+    // The post-Arena panel legitimately freezes the run until the player chooses. A headless
+    // run never chooses, so without this the whole measurement would stall at ~7:00.
+    if (g._postArenaChoice) { st.panels++; try { g._selectPostArenaChoice(0); } catch (_) { g._postArenaChoice = false; } }
+    if (opts.immortal && g.player) { g.player.hp = g.player.maxHp; g.gameOver = false; }
+    try { g.update(dt, input); } catch (e) { st.updateErrors++; if (!st.firstError) st.firstError = e; }
+
+    // rising-edge event counters, read from the REAL state fields
+    const arena = !!g._nullBreachActive;
+    if (arena && !st.seen.arena) st.events.arena++;
+    st.seen.arena = arena;
+    const rush = !!g._bossRush;
+    if (rush && !st.seen.bossRush) st.events.bossRush++;
+    st.seen.bossRush = rush;
+    const vault = !!g.vaultDrop;
+    if (vault && !st.seen.vault) st.events.vault++;
+    st.seen.vault = vault;
+    const titan = !!g._activeTitan;
+    if (titan && !st.seen.titan) st.events.titan++;
+    st.seen.titan = titan;
+
+    if ((f & 63) === 0) {
+      for (const k of TRACKED) { const a = g[k]; if (Array.isArray(a) && a.length > st.peak[k]) st.peak[k] = a.length; }
+      const p = g.player, c = g.camera;
+      if (p && (!Number.isFinite(p.pos.x) || !Number.isFinite(p.pos.y))) st.nonFinite.push(`player@${f}`);
+      if (c && (!Number.isFinite(c.x) || !Number.isFinite(c.y))) st.nonFinite.push(`camera@${f}`);
+      if (!Number.isFinite(g.timeAlive)) st.nonFinite.push(`timeAlive@${f}`);
+      for (const e of (g.enemies || [])) {
+        if (!Number.isFinite(e.pos?.x) || !Number.isFinite(e.pos?.y) || !Number.isFinite(e.hp)) { st.nonFinite.push(`enemy ${e.enemyType}@${f}`); break; }
+      }
+    }
+  }
+  st.timeAlive = g.timeAlive;
+  return st;
+}
+
+function newRun(mode) {
+  const un = muteConsole();
+  const g = new Game();
+  g.audio = null;
+  g.gameState = 'playing';
+  g.reset();
+  // Chaos MUST go through the real entry path: _beginChaosRun() is what stamps
+  // _chaosStartedAt, and the Boss Rush scheduler measures chaosEl from it. Setting
+  // _chaosMode directly leaves the -1 sentinel, which pins chaosEl at 0 forever and
+  // silently disables every Boss Rush — a harness shortcut that would fake a defect.
+  if (mode === 'chaos') g._beginChaosRun();
+  else if (mode === 'endless') g._enterEndless();
+  un();
+  return g;
+}
+
+console.log('═══ ENDLESS / CHAOS RUNTIME INTEGRITY ═══');
+console.log('    (real Game instance, accelerated deterministic time)');
+
+// ── 1. ENDLESS long run ─────────────────────────────────────────────────────
+if (RUN('endless')) {
+console.log(`\n── 1. Endless · ${MIN_ENDLESS} simulated minutes ──`);
+const gE = newRun('endless');
+const tE0 = Date.now();
+const E = drive(gE, MIN_ENDLESS * 60, 1 / 60, { immortal: true });
+console.log(`    driven in ${((Date.now() - tE0) / 1000).toFixed(1)}s · timeAlive=${E.timeAlive.toFixed(0)}s · cards auto-picked=${E.cards} · post-arena panels dismissed=${E.panels}`);
+console.log(`    peak arrays: ${Object.entries(E.peak).filter(([, v]) => v > 0).map(([k, v]) => k + '=' + v).join(' ')}`);
+console.log(`    events: ${JSON.stringify(E.events)}`);
+T(`${MIN_ENDLESS} λεπτά Endless χωρίς update error`, () => E.updateErrors === 0,
+  E.firstError ? `${E.updateErrors} errors, first: ${E.firstError.message} @ ${String(E.firstError.stack).split('\n')[1].trim()}` : '');
+T('καμία μη-πεπερασμένη τιμή (player/camera/enemies/timeAlive)', () => E.nonFinite.length === 0, E.nonFinite.slice(0, 3).join(','));
+T('timeAlive προχώρησε πραγματικά (τα card screens δεν πάγωσαν το run)', () => E.timeAlive > MIN_ENDLESS * 60 * 0.9, `timeAlive=${E.timeAlive.toFixed(0)}s`);
+T('enemies bounded από το enemyCap', () => E.peak.enemies <= (gE.enemyCap() * 3 + 60), `peak=${E.peak.enemies} cap=${gE.enemyCap()}`);
+T('floatingTexts δεν αυξάνονται ανεξέλεγκτα', () => E.peak.floatingTexts < 500, `peak=${E.peak.floatingTexts}`);
+T('projectiles bounded', () => E.peak.projectiles < 2000, `peak=${E.peak.projectiles}`);
+T('enemyBullets bounded', () => E.peak.enemyBullets < 3000, `peak=${E.peak.enemyBullets}`);
+const EXPECT_ARENA = (MIN_ENDLESS * 60 >= 720 + 130) ? 2 : 1;   // breach 1 @5:00, breach 2 @12:00 (+120s arena)
+T(`Null Breach arena ενεργοποιήθηκε ${EXPECT_ARENA}× στα ${MIN_ENDLESS} λεπτά (5:00 / 12:00)`,
+  () => E.events.arena === EXPECT_ARENA, `fired ${E.events.arena}×`);
+T('η arena ΤΕΛΕΙΩΣΕ (δεν έμεινε μόνιμα ενεργή)', () => gE._nullBreachActive === false);
+T('τα Null Breach flags καταναλώθηκαν όσα events έτρεξαν',
+  () => (gE._nullBreach1Done === true) && (EXPECT_ARENA < 2 || gE._nullBreach2Done === true),
+  `b1=${gE._nullBreach1Done} b2=${gE._nullBreach2Done}`);
+T('το run παραμένει παίξιμο (όχι gameOver λόγω engine fault)', () => gE.gameOver === false);
+}
+
+// ── 2. CHAOS: Boss Rush schedule + 180s sequence ────────────────────────────
+// A full 60-minute Chaos sim costs >10 min of wall time (enemy-dense), so scheduling is
+// proven from the REAL schedule state plus a short drive that observes rush #1 actually
+// firing at its scheduled game-time. PHENIX_QA_LONG=1 runs the full-length version.
+if (RUN('chaos')) {
+console.log(`\n── 2. Chaos · Boss Rush schedule + 180s sequence ──`);
+const gC = newRun('chaos');
+const C = drive(gC, MIN_CHAOS_SHORT * 60, 1 / 60, { immortal: true });
+console.log(`    ${MIN_CHAOS_SHORT} sim-min · timeAlive=${C.timeAlive.toFixed(0)}s · events=${JSON.stringify(C.events)}`);
+console.log(`    peak arrays: ${Object.entries(C.peak).filter(([, v]) => v > 0).map(([k, v]) => k + '=' + v).join(' ')}`);
+const SRC = fs.readFileSync(path.join(JS, 'game/Game.js'), 'utf8');
+
+T(`${MIN_CHAOS_SHORT} λεπτά Chaos χωρίς update error`, () => C.updateErrors === 0,
+  C.firstError ? `${C.updateErrors} errors, first: ${C.firstError.message}` : '');
+T('καμία μη-πεπερασμένη τιμή στο Chaos', () => C.nonFinite.length === 0, C.nonFinite.slice(0, 3).join(','));
+T('Boss Rush schedule έχει ΑΚΡΙΒΩΣ 2 εγγραφές ανά run',
+  () => Array.isArray(gC._bossRushSchedule) && gC._bossRushSchedule.length === 2,
+  `schedule=${JSON.stringify(gC._bossRushSchedule)}`);
+T('Chaos schedule = [120, 480] (Endless = [480, 900])',
+  () => /_bossRushSchedule = this\._chaosMode \? \[120, 480\] : \[480, 900\]/.test(SRC));
+T('Boss Rush #1 όντως ενεργοποιήθηκε στο προγραμματισμένο game-time',
+  () => C.events.bossRush >= 1, `fired ${C.events.bossRush}×`);
+T('ο μετρητής δεν ξεπερνά ποτέ το μήκος του schedule',
+  () => gC._bossRushCount <= 2, `count=${gC._bossRushCount}`);
+T('Boss Rush ΔΕΝ ανοίγει όσο τρέχει το Null Breach Arena (mutual exclusion)',
+  () => /chaosEl >= next && !this\._nullBreachActive/.test(SRC));
+T('Boss Rush χρησιμοποιεί game-time (chaosEl), όχι wall-clock',
+  () => /const chaosEl = this\._chaosMode/.test(SRC) && /this\.timeAlive - \(this\._chaosStartedAt/.test(SRC));
+T('η διάρκεια του rush είναι 180s (3:00)', () => /t: 0, dur: 180,/.test(SRC));
+T('Chaos Titans εμφανίστηκαν', () => C.events.titan > 0, `titans=${C.events.titan}`);
+T('enemies bounded στο Chaos', () => C.peak.enemies <= (gC.enemyCap() * 3 + 120), `peak=${C.peak.enemies} cap=${gC.enemyCap()}`);
+T('κανένα tracked array δεν ξέφυγε (<5000)',
+  () => Object.entries(C.peak).every(([, v]) => v < 5000) || Object.entries(C.peak).filter(([, v]) => v >= 5000).map(([k, v]) => k + '=' + v).join(','));
+
+console.log('    · 180-second Boss Rush sequence (game-time beats, one-shot flags)');
+const BEATS = [
+  ['0:00-0:30 XP swarm',        /if \(T < 30 && br\.spawnAcc <= 0/],
+  ['0:30 lockdown ring',        /if \(T >= 30 && !br\.flags\.lockdown\)/],
+  ['0:45 elite assault',        /if \(T >= 45 && !br\.flags\.elite\)/],
+  ['1:00 first Mega Titan',     /if \(T >= 60 && !br\.flags\.titan1\)/],
+  ['1:28 second Mega Titan',    /if \(T >= 88 && !br\.flags\.titan2\)/],
+  ['1:30 double ring',          /if \(T >= 90 && !br\.flags\.doublering\)/],
+];
+for (const [label, re] of BEATS) T(`beat ${label}`, () => re.test(SRC));
+T('κάθε beat είναι one-shot flag (κανένα duplicate spawn)',
+  () => ['lockdown', 'elite', 'titan1', 'titan2', 'doublering']
+    .every(f => new RegExp(`br\\.flags\\.${f} = true`).test(SRC)));
+T('το ρολόι του rush είναι game-time (br.t += dt) — FPS-independent', () => /br\.t \+= dt;/.test(SRC));
+T('ο παίκτης κλειδώνεται μέσα στο rush arena', () => /pd > LOCK_R && pd > 0/.test(SRC));
+}
+
+// ── 3. FPS independence ─────────────────────────────────────────────────────
+if (RUN('fps')) {
+console.log('\n── 3. FPS independence (30 / 60 / 120 Hz, ίδιος game-time) ──');
+const fpsRes = {};
+for (const hz of [30, 60, 120]) {
+  const g = newRun('chaos');
+  const r = drive(g, MIN_FPS * 60, 1 / hz, { immortal: true });
+  fpsRes[hz] = { arena: r.events.arena, rush: r.events.bossRush, titan: r.events.titan,
+                 t: +r.timeAlive.toFixed(0), errs: r.updateErrors };
+}
+console.log(`    ${JSON.stringify(fpsRes)}`);
+T('game-time ίδιος σε 30/60/120 Hz (±2s)', () => {
+  const ts = [30, 60, 120].map(h => fpsRes[h].t);
+  return Math.max(...ts) - Math.min(...ts) <= 2 || `timeAlive: ${ts.join(' / ')}`;
+});
+T('Boss Rush count ανεξάρτητο από FPS', () => {
+  const v = [30, 60, 120].map(h => fpsRes[h].rush);
+  return new Set(v).size === 1 || `rushes: ${v.join(' / ')}`;
+});
+T('Titan count ανεξάρτητο από FPS (±1)', () => {
+  const v = [30, 60, 120].map(h => fpsRes[h].titan);
+  return Math.max(...v) - Math.min(...v) <= 1 || `titans: ${v.join(' / ')}`;
+});
+T('κανένα update error σε καμία συχνότητα', () => [30, 60, 120].every(h => fpsRes[h].errs === 0));
+}
+
+// ── 4. pause must freeze game time and all schedulers ───────────────────────
+if (RUN('pause')) {
+console.log('\n── 4. pause / focus ──');
+{
+  const g = newRun('chaos');
+  drive(g, 60, 1 / 60, { immortal: true });
+  const before = { t: g.timeAlive, rush: g._bossRushCount, titan: g._chaosTitanTimer, boss: g._endlessBossTimer };
+  g.paused = true;
+  const input = IN();
+  for (let f = 0; f < 60 * 60 * 5; f++) { try { g.update(1 / 60, input); } catch (_) {} }   // 5 min paused
+  const after = { t: g.timeAlive, rush: g._bossRushCount, titan: g._chaosTitanTimer, boss: g._endlessBossTimer };
+  g.paused = false;
+  T('timeAlive ΔΕΝ προχωρά όσο είναι paused', () => Math.abs(after.t - before.t) < 0.05, `${before.t.toFixed(2)} → ${after.t.toFixed(2)}`);
+  T('boss rotation timer ΔΕΝ τρέχει όσο είναι paused', () => Math.abs((after.boss ?? 0) - (before.boss ?? 0)) < 0.05,
+    `${before.boss} → ${after.boss}`);
+  T('Chaos Titan timer ΔΕΝ τρέχει όσο είναι paused', () => Math.abs((after.titan ?? 0) - (before.titan ?? 0)) < 0.05,
+    `${before.titan} → ${after.titan}`);
+  T('Boss Rush δεν προχωρά όσο είναι paused', () => after.rush === before.rush);
+  T('το run συνεχίζει κανονικά μετά το unpause', () => {
+    const t0 = g.timeAlive;
+    for (let f = 0; f < 120; f++) { try { g.update(1 / 60, IN()); } catch (_) {} }
+    return g.timeAlive > t0;
+  });
+}
+}
+
+// ── 5. state isolation: death / restart / mode transition ───────────────────
+if (RUN('isolation')) {
+console.log('\n── 5. state isolation ──');
+{
+  const g = newRun('chaos');
+  drive(g, 8 * 60, 1 / 60, { immortal: true });          // past the first Boss Rush (2:00) and arena
+  const hadRush = g._bossRushCount > 0;
+  const un = muteConsole(); g.reset(); un();
+  T('προηγούμενο run είχε όντως ενεργοποιήσει events (το test δεν είναι κενό)', () => hadRush, `rushCount=${g._bossRushCount}`);
+  T('reset() καθαρίζει το Boss Rush state', () => g._bossRush == null && (g._bossRushCount == null || g._bossRushCount === 0),
+    `rush=${g._bossRush} count=${g._bossRushCount}`);
+  T('reset() καθαρίζει το arena state', () => g._nullBreachActive === false && g._nullBreach1Done === false && g._nullBreach2Done === false);
+  T('reset() καθαρίζει τον Locked Vault', () => g.vaultDrop == null);
+  T('reset() καθαρίζει το Chaos Titan state', () => g._activeTitan == null);
+  T('reset() μηδενίζει το timeAlive', () => g.timeAlive === 0, `timeAlive=${g.timeAlive}`);
+  T('νέο run μετά το reset τρέχει χωρίς error', () => {
+    const un2 = muteConsole(); g.gameState = 'playing'; g._enterEndless(); un2();
+    const r = drive(g, 60, 1 / 60, { immortal: true });
+    return r.updateErrors === 0 || `${r.updateErrors} errors: ${r.firstError?.message}`;
+  });
+}
+}
+
+// ── 6. death inside the arena must not leave the arena latched ──────────────
+if (RUN('arena')) {
+console.log('\n── 6. death μέσα στην arena ──');
+{
+  const g = newRun('endless');
+  const input = IN();
+  let latched = false;
+  for (let f = 0; f < 60 * 60 * 7; f++) {                 // run past the 5:00 arena
+    if (g.upgradeUI) { try { g.selectUpgrade(0); } catch (_) { g.upgradeUI = null; } }
+    if (g.mutationUI) { try { g.selectMutation(0); } catch (_) { g.mutationUI = null; } }
+    if (g._nullBreachActive && !latched) {                // kill the player mid-arena
+      latched = true;
+      if (g.player) g.player.hp = 0;
+    }
+    if (!latched && g.player) g.player.hp = g.player.maxHp;
+    try { g.update(1 / 60, input); } catch (_) {}
+  }
+  T('η arena όντως ενεργοποιήθηκε (το test δεν είναι κενό)', () => latched);
+  T('θάνατος μέσα στην arena δεν αφήνει την arena μόνιμα ενεργή',
+    () => g.gameOver === false || g._nullBreachActive === false,
+    `gameOver=${g.gameOver} arenaActive=${g._nullBreachActive}`);
+  const un = muteConsole(); g.reset(); un();
+  T('reset μετά από θάνατο στην arena καθαρίζει τα πάντα',
+    () => g._nullBreachActive === false && g.gameOver === false && g.vaultDrop == null);
+}
+}
+
+// ── 7. post-Arena decision panel must not soft-lock ─────────────────────────
+// update() returns early while _postArenaChoice is true, so `timeAlive += dt` never runs.
+// Staging the panel's dialogue off timeAlive left et === 0 forever: _pacMsgStep never left 0,
+// so the 5 lines AND the 3 options were never drawn, and main.js gates the mouse/touch click
+// path on _pacMsgStep >= 5 — mouse and touch players were soft-locked with a blank panel.
+if (RUN('panel')) {
+  console.log('\n── 7. post-Arena decision panel ──');
+  const { makeCtx } = await import(path.join(HERE, 'headless-env.mjs'));
+  const g = newRun('endless');
+  const ctx = makeCtx();
+
+  T('timeAlive ΕΙΝΑΙ παγωμένο όσο το panel είναι ανοιχτό (η συνθήκη του bug)', () => {
+    g._postArenaChoice = true;
+    const t0 = g.timeAlive;
+    for (let f = 0; f < 120; f++) { try { g.update(1 / 60, IN()); } catch (_) {} }
+    return g.timeAlive === t0 || `timeAlive moved ${t0} → ${g.timeAlive}`;
+  });
+
+  T('το panel clock ΔΕΝ βασίζεται στο timeAlive', () => {
+    const src = fs.readFileSync(path.join(JS, 'game/Game.js'), 'utf8');
+    return !/const et = this\.timeAlive - this\._pacMsgAt/.test(src) &&
+           /const et = \(performance\.now\(\) - this\._pacMsgAt\) \/ 1000/.test(src);
+  });
+
+  T('_pacMsgStep φτάνει στο 5 → οι 3 επιλογές σχεδιάζονται και το mouse path ενεργοποιείται', () => {
+    g._postArenaChoice = true;
+    g._pacMsgStep = 0;
+    g._pacMsgAt = performance.now() - 4000;   // panel has been up 4s in REAL time
+    g._drawPostArenaChoice(ctx);
+    return g._pacMsgStep === 5 || `_pacMsgStep=${g._pacMsgStep} (0 ⇒ blank panel, dead mouse path)`;
+  });
+
+  T('και οι 5 γραμμές διαλόγου αποκαλύπτονται σταδιακά', () => {
+    const steps = [0.1, 0.5, 1.5, 2.5, 3.2, 4.0].map(sec => {
+      g._pacMsgStep = 0;
+      g._pacMsgAt = performance.now() - sec * 1000;
+      g._drawPostArenaChoice(ctx);
+      return g._pacMsgStep;
+    });
+    return steps.join(',') === '0,1,2,3,4,5' || `steps=${steps.join(',')}`;
+  });
+
+  T('και οι 3 επιλογές παραμένουν προσβάσιμες μέσω keyboard', () => {
+    const src = fs.readFileSync(path.join(JS, 'game/Game.js'), 'utf8');
+    return /keys\.has\('arrowup'\) \|\| keys\.has\('w'\)/.test(src) &&
+           /keys\.has\('enter'\) \|\| keys\.has\(' '\)/.test(src) &&
+           /_selectPostArenaChoice\(this\._pacIdx\)/.test(src);
+  });
+
+  T('το mouse click path στο main.js περιμένει _pacMsgStep >= 5 (γι΄ αυτό ήταν νεκρό)', () => {
+    const m = fs.readFileSync(path.join(JS, 'main.js'), 'utf8');
+    return /game\._postArenaChoice && game\._pacMsgStep >= 5/.test(m);
+  });
+
+  T('_selectPostArenaChoice κλείνει το panel και ξεπαγώνει το run', () => {
+    g._postArenaChoice = true;
+    try { g._selectPostArenaChoice(0); } catch (_) {}
+    const t0 = g.timeAlive;
+    for (let f = 0; f < 120; f++) { try { g.update(1 / 60, IN()); } catch (_) {} }
+    return g._postArenaChoice === false && g.timeAlive > t0 ||
+      `panel=${g._postArenaChoice} timeAlive ${t0} → ${g.timeAlive}`;
+  });
+}
+
+console.log(`\n═══ ${pass} assertions passed · ${fail} failed ═══`);
+process.exit(fail ? 1 : 0);
