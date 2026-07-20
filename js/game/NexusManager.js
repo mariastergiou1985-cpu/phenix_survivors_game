@@ -14,17 +14,12 @@ import { BIOME_ID, CHUNK_SIZE } from './MapManager.js?v=20260724000000';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 const NEXUS_PER_BIOME    = 1;     // 1 per outer biome
-// FEATURE FLAG (Maria stabilization decision 2026-07-19). The outer-biome streaming is
-// implemented and passes its runtime harness (17/17: single active instance, state kept
-// across biomes, hysteresis, idempotent records), but ONE unresolved issue remains: the
-// Endless world rebases by 10032px and CHUNK_SIZE is 1280, so the shift is 7.84 chunks —
-// not a whole number. floor(x / CHUNK_SIZE) therefore changes while the player stands
-// still, which would flip the biome and despawn/respawn the outer Nexus for no gameplay
-// reason. Fixing that properly means either making the rebase period a whole multiple of
-// CHUNK_SIZE or giving ChunkManager a logical origin offset — a separate change.
-// Until then this ships OFF: Endless runs with the four central Nexus only, which is
-// stable. The streaming code stays intact for the follow-up commit. Do NOT delete it.
-const OUTER_NEXUS_STREAMING_ENABLED = false;
+// FEATURE FLAG. Kept as a kill-switch. The blocker that forced this OFF — the Endless
+// rebase of 10032px not being a whole multiple of CHUNK_SIZE 1280, so floor(x/CHUNK_SIZE)
+// changed while the player stood still — is fixed: ChunkManager now keeps a logical world
+// origin and getBiomeForWorldPosition() is the single biome authority, so biome identity
+// is invariant across rebases. Covered by tools/qa/nexus_stream_regression.mjs.
+const OUTER_NEXUS_STREAMING_ENABLED = true;
 const OUTER_SWAP_HOLD    = 0.6;   // s a biome must be held before the outer Nexus swaps (boundary hysteresis)
 const NEXUS_CAPACITY     = 6;     // was 8 — smaller per-nexus, but 24 total in Endless (144 cores)
 const REWARD_PULSE_INTERVAL = 18; // seconds between reward emissions from charged Nexus (was 30)

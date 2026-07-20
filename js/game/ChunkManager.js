@@ -99,6 +99,24 @@ export class ChunkManager {
     this.events = events;
     this.worldSeed = seed;
 
+    // ─── LOGICAL WORLD ORIGIN (Maria 2026-07-19) ───────────────────────────
+    // Endless periodically rebases the world by dx = −10032px so coordinates never grow
+    // without bound. CHUNK_SIZE is 1280, and 10032 / 1280 = 7.84 — NOT a whole number.
+    // So a rebase shifts every physical coordinate by a fractional number of chunks, and
+    // anything deriving a chunk from the physical x (biome, sector, terrain) would jump
+    // while the player has not logically moved at all: the outer Nexus would despawn and
+    // respawn, and biome state could desynchronise, on every single rebase.
+    //
+    // The fix is to keep the LOGICAL world continuous. Each rebase adds the same dx back
+    // into the origin, so logical = physical + origin is invariant:
+    //     physical 15000, origin 0      → logical 15000
+    //     rebase dx −10032
+    //     physical  4968, origin 10032  → logical 15000   (biome unchanged)
+    // Every biome/chunk query must go through getBiomeForWorldPosition(), never through
+    // a raw floor(x / CHUNK_SIZE).
+    this.logicalOriginX = 0;
+    this.logicalOriginY = 0;   // rebasing is horizontal-only today, but keep the axis explicit
+
     /** @type {Map<string, Chunk>} All known chunks */
     this.chunks = new Map();
 
@@ -309,6 +327,35 @@ export class ChunkManager {
   currentChunkType() {
     const c = this.chunks.get(`${this.playerChunkX},${this.playerChunkY}`);
     return c ? c.chunkType : null;
+  }
+
+  // ─── PUBLIC BIOME/COORDINATE API ─────────────────────────────────────────
+  /** Physical world position → logical position (rebase-invariant). */
+  toLogical(worldX, worldY) {
+    return { x: worldX + this.logicalOriginX, y: worldY + this.logicalOriginY };
+  }
+
+  /**
+   * THE single authority for "which biome is this world position in".
+   * Callers pass PHYSICAL world coordinates (player.pos.x/y) and get the canonical
+   * biome back; the logical conversion happens here so no caller can accidentally
+   * build a second, rebase-sensitive sector model.
+   */
+  getBiomeForWorldPosition(worldX, worldY) {
+    const lx = worldX + this.logicalOriginX;
+    const ly = worldY + this.logicalOriginY;
+    return this._getBiomeForCoords(Math.floor(lx / CHUNK_SIZE), Math.floor(ly / CHUNK_SIZE));
+  }
+
+  /**
+   * Canonical world-rebase hook. Called EXACTLY ONCE per rebase, from the single place
+   * that shifts the world. It only moves the logical origin — shifting the physical
+   * runtime objects stays the caller's job — so that logical coordinates, and therefore
+   * biome identity, survive the rebase completely unchanged.
+   */
+  applyWorldRebase(dx, dy = 0) {
+    this.logicalOriginX -= dx;
+    this.logicalOriginY -= dy;
   }
 
   _getBiomeForCoords(cx, cy) {

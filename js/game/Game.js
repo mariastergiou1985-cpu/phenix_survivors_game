@@ -8943,9 +8943,9 @@ export class Game {
     // never derive it itself: the Endless world rebases by −10032px, so any model built on
     // raw world coordinates would flip biome while the player stands still.
     if (this.chunkManager?.enabled) {
-      const _cx = Math.floor(this.player.pos.x / CHUNK_SIZE);
-      const _cy = Math.floor(this.player.pos.y / CHUNK_SIZE);
-      const _biome = this.chunkManager._getBiomeForCoords?.(_cx, _cy);
+      // Public API only — it applies the logical-origin conversion internally, so this
+      // stays correct across world rebases. Never call _getBiomeForCoords() from here.
+      const _biome = this.chunkManager.getBiomeForWorldPosition?.(this.player.pos.x, this.player.pos.y);
       if (_biome != null) this.nexusManager._syncOuterNexus?.(_biome, dt);
     }
     this.nexusManager.update(dt, this.player, gridGoldBonus);
@@ -29668,6 +29668,11 @@ _drawLoreArchive(ctx) {
     // shifted it TWICE — dx applied twice = -20064 instead of -10032, teleporting the mega-boss
     // a full extra mirror period away. The Set makes every real object move exactly once no
     // matter how many references reach it, and keeps future aliases safe by construction.
+    // Move the LOGICAL origin exactly once, before anything physical shifts. This keeps
+    // logical coordinates — and therefore biome identity — invariant across the rebase,
+    // so the outer Nexus does not despawn/respawn and biome state cannot desynchronise.
+    this.chunkManager?.applyWorldRebase?.(dx, 0);
+
     const _moved = new Set();
     const sh  = (o) => { if (!o || _moved.has(o)) return; _moved.add(o);
       if (o.pos && typeof o.pos.x === 'number') o.pos.x += dx;
