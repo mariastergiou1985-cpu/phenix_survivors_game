@@ -1855,7 +1855,7 @@ export class Game {
       const boss = new Enemy('Rogue AI Overlord', this.currentMinute());
       boss.hp *= 5.2; boss.maxHp = boss.hp; boss.isMegaBoss = true;   // Maria: mega bosses need real staying power
       this.enemies.push(boss); this.megaBoss = boss;
-      this.triggerAnnouncement('AI OVERLORD — FINAL BREACH', RED);
+      this.triggerAnnouncement('AI OVERLORD — FINAL BREACH', RED, { priority: 1 });   // mega-boss arrival
       this.screenShake?.trigger(6, 0.6);
     }
     if (this.timeAlive < CAMPAIGN_STAGE_SECONDS) return;
@@ -2179,8 +2179,8 @@ export class Game {
     this.audio?.startEndlessMusic();   // Endless-only track (dawn) replaces gameplay music
     // Mode-σωστό entry banner (Maria 2026-07-19): το Chaos ΔΕΝ είναι «STAGE 02» — έχει δικό
     // του announcement. Το _beginChaosRun σηκώνει το _enteringChaos flag πριν καλέσει εδώ.
-    if (this._enteringChaos) this.triggerAnnouncement('NULL EDEN — CHAOS MODE', RED);
-    else this.triggerAnnouncement('STAGE 02 — NULL EDEN MEGACITY', CYAN);   // official Endless stage name
+    if (this._enteringChaos) this.triggerAnnouncement('NULL EDEN — CHAOS MODE', RED, { priority: 1 });   // mode transition
+    else this.triggerAnnouncement('STAGE 02 — NULL EDEN MEGACITY', CYAN, { priority: 1 });   // mode transition   // official Endless stage name
 
     // Null Breach Arena — arm fresh triggers for this Endless run
     this._nullBreachActive  = false;
@@ -8328,7 +8328,7 @@ export class Game {
   _openMutationChoice() {
     this.mutationUI = new MutationUI(sampleMutations(3, this.mutations));
     this.audio?.playEventWarning?.();
-    this.triggerAnnouncement('⚠ FORCED MUTATION', '#ff5a3c');
+    this.triggerAnnouncement('⚠ FORCED MUTATION', '#ff5a3c', { priority: 2 });   // immediate lethal telegraph
   }
 
   // Apply the chosen mutation and resume. No skip path exists — a valid index must be picked.
@@ -10071,7 +10071,7 @@ export class Game {
       this.megaBoss = t;
       this._activeTitan = t;
       this.audio?.playBossWarning?.();
-      this.triggerAnnouncement('⚠ ' + name.toUpperCase() + ' ⚠', '#ff2d95');
+      this.triggerAnnouncement('⚠ ' + name.toUpperCase() + ' ⚠', '#ff2d95', { priority: 1 });   // named boss arrival
       this.screenShake?.trigger(6, 0.6);
     } catch (_) { /* never break the run on a Titan spawn */ }
   }
@@ -10211,7 +10211,7 @@ export class Game {
       const next = this._bossRushSchedule[this._bossRushCount];
       if (next != null && chaosEl >= next - 5 && chaosEl < next && !this._bossRushWarned) {
         this._bossRushWarned = true;                       // Phase 6: pre-warning beat
-        this.triggerAnnouncement('\u26a0 BOSS RUSH INCOMING \u2014 ARENA FORMING \u26a0', '#ff9a2d');
+        this.triggerAnnouncement('\u26a0 BOSS RUSH INCOMING \u2014 ARENA FORMING \u26a0', '#ff9a2d', { priority: 2 });   // arena lock — restricts movement
         this.audio?.playEventWarning?.();
       }
       // Mutual exclusion: never open a rush while the Null Breach Arena is running —
@@ -22530,18 +22530,75 @@ export class Game {
     } catch (e) { /* sfx must never break the loop */ }
   }
 
+  // ── ANNOUNCEMENT PRIORITY (Maria decision 2026-07-19) ─────────────────────
+  // The queue already played banners one at a time and dropped duplicates, but it had no
+  // notion of importance: four informational banners could fill the 3-slot queue and a
+  // boss warning arriving behind them was silently DROPPED. Proven in
+  // tools/qa/announcement_priority_regression.mjs.
+  //
+  //   2 CRITICAL — telegraphed lethal attacks, lockdowns, impact warnings: things with a
+  //                real reaction window. Never dropped, preempts an informational banner.
+  //   1 IMPORTANT — boss/Titan arrivals, Boss Rush, mode transitions, phase changes.
+  //                Jumps ahead of informational, but never interrupts a live banner.
+  //   0 INFORMATIONAL — everything else (default).
+  //
+  // Priority is passed EXPLICITLY via opts.priority. It is never inferred from the text,
+  // keywords or the ⚠ symbol: a classifier that guesses wrong would silently downgrade a
+  // real warning, which is worse than the bug it replaces. All existing call sites keep
+  // working unchanged and are treated as informational.
   triggerAnnouncement(text, color, opts) {
-    // REAL QUEUE (Maria's video): banners play ONE AT A TIME, never on top of each
-    // other. Duplicates of the current banner or anything already waiting are
-    // dropped; the queue holds at most 3 so stale news never floods the screen.
-    if (this.announcement || this._frozenSleet) {   // sleet takeover banner owns the screen — queue behind it
-      this._annQueue = this._annQueue || [];
-      if (this.announcement && this.announcement.text === text) return;
-      if (this._annQueue.some(q => q.text === text)) return;
-      if (this._annQueue.length < 3) this._annQueue.push({ text, color, opts });
+    const prio = (opts && Number.isFinite(opts.priority)) ? opts.priority : 0;
+    const q = (this._annQueue = this._annQueue || []);
+
+    // Duplicate suppression is by message identity, unchanged in spirit: the same text
+    // showing or already waiting is dropped. Two DIFFERENT critical warnings are never
+    // duplicates of each other.
+    if (this.announcement && this.announcement.text === text) return;
+    if (q.some(e => e.text === text)) return;
+
+    const busy = !!this.announcement || this._frozenSleet;
+    if (!busy) { this._showAnnouncement(text, color, opts, prio); return; }
+
+    // CRITICAL preempts a live informational banner outright. The informational one is
+    // discarded rather than restored later — by then it would be stale news.
+    if (prio >= 2 && this.announcement && (this.announcement.priority || 0) === 0 && !this._frozenSleet) {
+      this.announcement = null;
+      this._showAnnouncement(text, color, opts, prio);
       return;
     }
-    this.announcement = { text, color, phase: 'fadein', timer: 0, alphaMul: opts && opts.alpha != null ? opts.alpha : null };
+
+    // Otherwise queue, inserted ahead of everything strictly less important so ordering
+    // is by priority first, arrival second.
+    let at = q.length;
+    for (let i = 0; i < q.length; i++) { if ((q[i].priority || 0) < prio) { at = i; break; } }
+    q.splice(at, 0, { text, color, opts, priority: prio });
+
+    // Trim back to the cap, but never at the cost of a warning: drop the OLDEST lowest
+    // priority entry. A critical may evict an important one only when nothing lower
+    // exists; if the queue is all-critical we let it overflow rather than lose a warning.
+    const CAP = 3;
+    while (q.length > CAP) {
+      // Evict the LAST entry holding the lowest priority present. If everything left is
+      // at least as important as the arrival, the arrival itself gives way — except for a
+      // CRITICAL, which is allowed to overflow the cap rather than be lost.
+      let victim = -1, worst = Infinity;
+      for (let i = q.length - 1; i >= 0; i--) {
+        const pi = q[i].priority || 0;
+        if (pi < worst) { worst = pi; victim = i; }
+      }
+      if (worst < prio) { q.splice(victim, 1); continue; }   // something less important goes
+      if (prio >= 2) break;                                  // all-critical → allow overflow
+      q.splice(at, 1);                                       // arrival is the least important
+      break;
+    }
+  }
+
+  /** Presents a banner immediately. Split out so priority logic has one display path. */
+  _showAnnouncement(text, color, opts, priority = 0) {
+    this.announcement = {
+      text, color, phase: 'fadein', timer: 0, priority,
+      alphaMul: opts && opts.alpha != null ? opts.alpha : null,
+    };
     // Φ9: every full-screen banner gets the intrusion whoosh; boss-class arrivals ROAR.
     try {
       const T = String(text).toUpperCase();
@@ -22563,7 +22620,7 @@ export class Game {
       // nothing showing: drain the queue as soon as the screen is free (e.g. after sleet)
       if (!this._frozenSleet && this._annQueue && this._annQueue.length) {
         const nx = this._annQueue.shift();
-        this.triggerAnnouncement(nx.text, nx.color, nx.opts);
+        this._showAnnouncement(nx.text, nx.color, nx.opts, nx.priority || 0);
       }
       return;
     }
@@ -22574,7 +22631,7 @@ export class Game {
     if (a.phase === 'fadeout' && a.timer >= FADE_OUT) { this.announcement = null;
         if (this._annQueue && this._annQueue.length) {           // play the next one
           const nx = this._annQueue.shift();
-          this.triggerAnnouncement(nx.text, nx.color, nx.opts);
+          this._showAnnouncement(nx.text, nx.color, nx.opts, nx.priority || 0);
         } }
   }
 
