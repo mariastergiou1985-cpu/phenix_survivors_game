@@ -267,9 +267,22 @@ export class DigitalSingularity {
     this._drawFlash(ctx, now);
   }
 
+  /**
+   * Size the offscreen dissolve buffer ONCE. Assigning canvas.width/height reallocates the
+   * backing store and resets the 2D context, so doing it unconditionally every frame (as this
+   * did during DISSOLVE/REFORM) is a per-frame allocation — the same FPS drain documented in
+   * glitch-dash.js. Guarded: a repeat frame at the same size costs nothing and only clearRect
+   * runs. _drawCharacter always re-establishes globalCompositeOperation ('source-over' on exit)
+   * and fillStyle, so skipping the implicit context reset is behaviour-neutral.
+   */
+  _ensureBufferSize(width, height) {
+    if (this._buf.width !== width) this._buf.width = width;
+    if (this._buf.height !== height) this._buf.height = height;
+  }
+
   _drawCharacter(ctx, progress, reform) {
     const buf = this._buf, b = this._bctx, c = this.cfg.dissolve.cell;
-    buf.width = this.SW; buf.height = this.SH;
+    this._ensureBufferSize(this.SW, this.SH);
     b.clearRect(0, 0, this.SW, this.SH);
     b.drawImage(this.sprite, 0, 0, this.SW, this.SH);
     // carve away dissolved cells

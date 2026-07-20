@@ -49,8 +49,13 @@ function mkCtx(tag) {
     createRadialGradient(...a) { chk('createRadialGradient', ...a); return { addColorStop() {} }; },
   };
 }
+// width/height are accessors so the harness can count backing-store reallocations:
+// a real canvas reallocates on EVERY assignment, even to the same value.
 function mkCanvas(w = 1280, h = 720, tag = 'ctx') {
-  const c = { width: w, height: h };
+  let _w = w, _h = h;
+  const c = { sizeWrites: 0 };
+  Object.defineProperty(c, 'width', { get: () => _w, set: v => { c.sizeWrites++; _w = v; } });
+  Object.defineProperty(c, 'height', { get: () => _h, set: v => { c.sizeWrites++; _h = v; } });
   const ctx = mkCtx(tag); ctx.canvas = c;
   c.getContext = () => ctx;
   return c;
@@ -210,6 +215,28 @@ console.log('\n── 4. Digital Singularity: 4-phase lifecycle τερματίζ
   T('κανένα retained enemy reference μετά το τέλος', () => {
     const blob = JSON.stringify(ult._lasers) + JSON.stringify(ult._particles);
     return ult._lasers.length === 0 && ult._particles.length === 0 && !blob.includes('takeHit');
+  });
+
+  // PERF REGRESSION: _drawCharacter used to assign buf.width/buf.height unconditionally on
+  // every DISSOLVE/REFORM frame, reallocating the backing store ~84 times per cast.
+  // _ensureBufferSize must collapse that to a single sizing for the whole run.
+  T('dissolve buffer δεν κάνει resize ανά frame (bounded backing-store writes)',
+    () => ult._buf.sizeWrites <= 2, `sizeWrites=${ult._buf.sizeWrites} (παλιά συμπεριφορά: ~2 ανά frame)`);
+  T('_ensureBufferSize είναι guarded (resize μόνο σε πραγματική αλλαγή διάστασης)', () => {
+    const src = fs.readFileSync(path.join(JS, 'effects/digital-singularity.js'), 'utf8');
+    return /_ensureBufferSize\(width, height\) \{[\s\S]{0,220}if \(this\._buf\.width !== width\)[\s\S]{0,160}if \(this\._buf\.height !== height\)/.test(src);
+  });
+  T('_drawCharacter δεν αναθέτει πλέον buf.width/buf.height απευθείας', () => {
+    const src = fs.readFileSync(path.join(JS, 'effects/digital-singularity.js'), 'utf8');
+    const i = src.indexOf('_drawCharacter(ctx, progress, reform) {');
+    const body = src.slice(i, src.indexOf('\n  }', i));
+    return !/buf\.width\s*=/.test(body) && !/buf\.height\s*=/.test(body);
+  });
+  T('δεύτερο cast δεν προκαλεί νέο resize (ίδιες διαστάσεις)', () => {
+    const before = ult._buf.sizeWrites;
+    ult.trigger(640, 400);
+    for (let i = 0; i < 40; i++) { NOW += 16; ult.update(NOW, enemies, hooks); ult.render(ctx); }
+    return ult._buf.sizeWrites === before;
   });
 
   // the storm top-up loop must terminate even if the particle budget can never be met

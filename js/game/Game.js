@@ -36,7 +36,7 @@ import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARAC
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
 import { GlitchDash } from '../effects/glitch-dash.js?v=20260712490000';
 import { EMPShockwave } from '../effects/emp-shockwave.js?v=20260712490000';
-import { DigitalSingularity } from '../effects/digital-singularity.js?v=20260703990000';
+import { DigitalSingularity } from '../effects/digital-singularity.js?v=20260726000000';
 import { OssuaryReconstruction } from '../effects/ossuary-reconstruction.js?v=20260711500000';
 import { AfterimageTribunal } from '../effects/afterimage-tribunal.js?v=20260711510000';
 import { FeedbackApocalypse } from '../effects/feedback-apocalypse.js?v=20260711520000';
