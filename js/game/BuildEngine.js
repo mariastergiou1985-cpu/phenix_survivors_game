@@ -931,24 +931,78 @@ export class BuildEngineRuntime {
       ? Math.min(Math.max(slot.x, SAFE), W - w - SAFE)      // publisher position, kept on-screen
       : Math.round((W - w) / 2);                            // default: centered on the viewport
     const y = slot ? slot.y : 36;
-    this._panelBox(ctx, x, y, w, h, 'DAMAGE REPORT — BUILD ENGINE (Actual Run DPS)', '#ffd447');
-    ctx.font = '11px Consolas, monospace'; ctx.textAlign = 'left';
+    const compact = !!(slot && slot.compact);
+    this._panelBox(ctx, x, y, w, h,
+      compact ? 'DAMAGE REPORT — ACTUAL RUN DPS' : 'DAMAGE REPORT — BUILD ENGINE (Actual Run DPS)', '#ffd447');
+    ctx.font = '11px Consolas, monospace';
     let ty = y + 38;
+
+    // COMPACT COLUMNS (Maria 2026-07-19). The full report anchors six columns at fixed
+    // offsets up to x+532 — sized for the 560px panel. In the 360px victory-screen column
+    // everything from TOTAL onward fell outside the box, so the numbers overlapped and the
+    // last two were drawn past the border entirely. The compact variant keeps only the four
+    // columns that carry the run's meaning — WEAPON / DMG / DPS / KILLS — with the numbers
+    // right-aligned to fixed anchors so they cannot drift into each other as values grow.
+    // PEAK and CRIT% are not deleted: they still exist in the full panel and in telemetry.
+    const PAD = 10;
+    const cols = compact
+      ? { name: x + PAD, nameMax: w - PAD - 190 - PAD, dmg: x + w - PAD - 104, dps: x + w - PAD - 52, kills: x + w - PAD }
+      : null;
+
+    // Shorten to fit, always ending in an ellipsis rather than a hard cut.
+    const fit = (t, maxW) => {
+      if (ctx.measureText(t).width <= maxW) return t;
+      let out = t;
+      while (out.length > 1 && ctx.measureText(out + '…').width > maxW) out = out.slice(0, -1);
+      return out + '…';
+    };
+    // Compact magnitudes so a 7-digit total cannot push into the next column.
+    const num = (v) => {
+      const n = Number(v);
+      if (!Number.isFinite(n)) return String(v);
+      if (n >= 1e6) return (n / 1e6).toFixed(2) + 'M';
+      if (n >= 1e4) return (n / 1e3).toFixed(1) + 'K';
+      return String(Math.round(n));
+    };
+
     ctx.fillStyle = '#8fa8b8';
-    ctx.fillText('WEAPON', x + 10, ty); ctx.fillText('TOTAL', x + 250, ty); ctx.fillText('AVG/s', x + 320, ty);
-    ctx.fillText('PEAK', x + 380, ty); ctx.fillText('KILLS', x + 438, ty); ctx.fillText('CRIT', x + 490, ty); ctx.fillText('%', x + 532, ty);
+    if (compact) {
+      ctx.textAlign = 'left';  ctx.fillText('WEAPON', cols.name, ty);
+      ctx.textAlign = 'right';
+      ctx.fillText('DMG',   cols.dmg,   ty);
+      ctx.fillText('DPS',   cols.dps,   ty);
+      ctx.fillText('KILLS', cols.kills, ty);
+    } else {
+      ctx.textAlign = 'left';
+      ctx.fillText('WEAPON', x + 10, ty); ctx.fillText('TOTAL', x + 250, ty); ctx.fillText('AVG/s', x + 320, ty);
+      ctx.fillText('PEAK', x + 380, ty); ctx.fillText('KILLS', x + 438, ty); ctx.fillText('CRIT', x + 490, ty); ctx.fillText('%', x + 532, ty);
+    }
     ty += 16;
+
     for (let i = 0; i < top.length; i++) {
       const r = top[i];
       const nm = (WEAPON_DEFS[r.id] || EVOLUTION_RECIPES[r.id] || PASSIVE_DEFS[r.id])?.name || r.id;
       ctx.fillStyle = i === 0 ? '#ffd447' : '#e9ecf2';
-      ctx.fillText((i === 0 ? '★ ' : '· ') + String(nm).slice(0, 26), x + 10, ty);
-      ctx.fillText(String(r.total), x + 250, ty); ctx.fillText(String(r.avgDps), x + 320, ty);
-      ctx.fillText(String(r.peakDps), x + 380, ty); ctx.fillText(String(r.kills), x + 438, ty);
-      ctx.fillText(String(r.crits), x + 490, ty); ctx.fillText(r.share + '%', x + 532, ty);
+      if (compact) {
+        ctx.textAlign = 'left';
+        ctx.fillText(fit((i === 0 ? '★ ' : '· ') + String(nm), cols.nameMax), cols.name, ty);
+        ctx.textAlign = 'right';
+        ctx.fillText(num(r.total),  cols.dmg,   ty);
+        ctx.fillText(num(r.avgDps), cols.dps,   ty);
+        ctx.fillText(num(r.kills),  cols.kills, ty);
+      } else {
+        ctx.textAlign = 'left';
+        ctx.fillText((i === 0 ? '★ ' : '· ') + String(nm).slice(0, 26), x + 10, ty);
+        ctx.fillText(String(r.total), x + 250, ty); ctx.fillText(String(r.avgDps), x + 320, ty);
+        ctx.fillText(String(r.peakDps), x + 380, ty); ctx.fillText(String(r.kills), x + 438, ty);
+        ctx.fillText(String(r.crits), x + 490, ty); ctx.fillText(r.share + '%', x + 532, ty);
+      }
       ty += 16;
     }
-    ctx.fillStyle = '#ffd447'; ctx.fillText('MOST EFFECTIVE: ' + ((WEAPON_DEFS[top[0].id] || EVOLUTION_RECIPES[top[0].id] || {}).name || top[0].id), x + 10, ty + 6);
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#ffd447';
+    const bestName = (WEAPON_DEFS[top[0].id] || EVOLUTION_RECIPES[top[0].id] || {}).name || top[0].id;
+    ctx.fillText(fit('MOST EFFECTIVE: ' + bestName, w - PAD * 2), x + PAD, ty + 6);
     // WASTED PICK: internal telemetry ΜΟΝΟ (spec §12/P2.9) — δεν εμφανίζεται στον παίκτη.
     // ONE-SHOT (2026-07-18): _drawDamageReport τρέχει ΣΕ ΚΑΘΕ FRAME όσο δείχνει η end screen,
     // οπότε αυτό το log σπαμάριζε την κονσόλα — μετρήθηκαν 1187 πανομοιότυπες γραμμές σε μία
