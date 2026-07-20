@@ -20,6 +20,7 @@ const NEXUS_PER_BIOME    = 1;     // 1 per outer biome
 // origin and getBiomeForWorldPosition() is the single biome authority, so biome identity
 // is invariant across rebases. Covered by tools/qa/nexus_stream_regression.mjs.
 const OUTER_NEXUS_STREAMING_ENABLED = true;
+const NEXUS_FOOTPRINT    = 44;    // body + interaction padding used for walkability checks
 const OUTER_SWAP_HOLD    = 0.6;   // s a biome must be held before the outer Nexus swaps (boundary hysteresis)
 const NEXUS_CAPACITY     = 6;     // was 8 — smaller per-nexus, but 24 total in Endless (144 cores)
 const REWARD_PULSE_INTERVAL = 18; // seconds between reward emissions from charged Nexus (was 30)
@@ -340,7 +341,18 @@ export class NexusManager {
     const rec = this.outerRecords[committed];
     this._activeSector = committed;
     if (!rec) return;
-    const m = new PowerMatrix(new Vec2(rec.x, rec.y), rec.colors.full, rec.capacity);
+    // Resolve the authored position against the walkable model ONCE and cache it on the
+    // record. Re-correcting on every stream-in would move the Nexus a little each time the
+    // player returned to the biome; caching keeps it a fixed world landmark. The canonical
+    // record x/y are never overwritten, so a rebase cannot drift the stored placement.
+    if (rec.fixedX == null) {
+      const mm = this.mapManager;
+      if (mm?.isWalkableFootprint && !mm.isWalkableFootprint(rec.x, rec.y, NEXUS_FOOTPRINT, 'endless')) {
+        const p = mm.findNearestWalkablePoint(rec.x, rec.y, NEXUS_FOOTPRINT, 'endless');
+        rec.fixedX = p.x; rec.fixedY = p.y;
+      } else { rec.fixedX = rec.x; rec.fixedY = rec.y; }
+    }
+    const m = new PowerMatrix(new Vec2(rec.fixedX, rec.fixedY), rec.colors.full, rec.capacity);
     m.biomeId     = rec.biomeId;
     m.biomeColors = rec.colors;
     m.stored      = rec.stored;                     // restore charge — no reset, no reward re-grant

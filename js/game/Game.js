@@ -1630,6 +1630,8 @@ export class Game {
     this._arenaResult       = null;
     this._endlessStartedAt  = 0;      // timeAlive when Endless began (direct=0, Act1→Endless=nonzero)
 
+    // NexusManager resolves outer placements against the walkable model; give it the map.
+    this.nexusManager.mapManager = this.mapManager;
     this.nexusManager.init(WORLD_W, WORLD_H);
     // Bind the shared resolver to the player for this run (see resolveWalkableMove).
     if (this.player) this.player._resolveMove = (fx, fy, tx, ty, r) => this.resolveWalkableMove(fx, fy, tx, ty, r);
@@ -9100,7 +9102,7 @@ export class Game {
       spawnPos = new Vec2(randomRange(margin, WORLD_W - margin), randomRange(margin, WORLD_H - margin));
     }
 
-    this.gridCache = { pos: this._clampPickupPos(spawnPos), timer: DURATION };   // never outside the playable bounds (Maria's screenshot)
+    this.gridCache = { pos: this._clampPickupPos(spawnPos, 46), timer: DURATION };   // real cache footprint   // never outside the playable bounds (Maria's screenshot)
     this.triggerAnnouncement('GRID CACHE DETECTED', CYAN);
     this.audio?.playGridCache();
   }
@@ -9250,7 +9252,28 @@ export class Game {
     return { x0, x1, y0, y1 };
   }
 
-  _clampPickupPos(pos) {
+  _clampPickupPos(pos, radius = 18) {
+    // WALKABILITY (Maria 2026-07-19): the band clamp below keeps things inside the deck
+    // rows, but the video proved rows alone are not enough — a shard could still land in
+    // an authored pillar or on a façade, where the player can see it and never reach it.
+    // Endless/Chaos therefore resolve through the canonical walkability model first; Act 1
+    // has no obstacle columns and keeps the band clamp only.
+    const _mode = this._walkMode?.();
+    const _mm   = this.mapManager;
+    if (_mode && _mm?.isWalkableFootprint) {
+      if (!_mm.isWalkableFootprint(pos.x, pos.y, radius, _mode)) {
+        // Several shards from one kill land in the same illegal spot; a plain nearest-point
+        // correction would stack them all on one pixel and read as a single pickup. A small
+        // deterministic scatter (counter-driven, not Math.random, so runs stay reproducible)
+        // spreads the search origins so the corrected drops stay individually visible.
+        this._pickupFixN = ((this._pickupFixN || 0) + 1) % 360;
+        const a = this._pickupFixN * 2.39996;                 // golden angle — even spread
+        const p = _mm.findNearestWalkablePoint(
+          pos.x + Math.cos(a) * 14, pos.y + Math.sin(a) * 14, radius, _mode);
+        pos.x = p.x; pos.y = p.y;
+      }
+      return pos;
+    }
     // Pickups are walked over, so the player's body must reach the centre: no
     // interaction radius, small padding.
     const sb = this.getSafeObjectBounds({ radius: 18, padding: 24 });
@@ -9278,7 +9301,7 @@ export class Game {
     if (this.timeAlive - (this._lastVaultSpawnAt ?? -99999) < 600) return;
     if (Math.random() > 0.35) return;
     this._lastVaultSpawnAt = this.timeAlive;
-    const p = this._clampPickupPos(pos.clone().add(new Vec2(randomRange(-80, 80), randomRange(-80, 80))));
+    const p = this._clampPickupPos(pos.clone().add(new Vec2(randomRange(-80, 80), randomRange(-80, 80))), 52);   // real vault footprint
     this.vaultDrop = { pos: p, timer: 45, maxTimer: 45, kills: 0, needed: 30, killWindow: 12, unlocked: false, spin: 0 };
     // Low-opacity banner (~0.4), top of screen (away from the player), aligned with other banners.
     this.triggerAnnouncement('LOCKED VAULT — 30 KILLS TO BREACH', '#ffd23c', { alpha: 0.4 });
