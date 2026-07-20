@@ -94,11 +94,30 @@
   <script type="importmap">
   {
     "imports": {
-      "./js/constants.js": "./js/constants.js?v=20260722400000"
+      "./js/constants.js": "./js/constants.js?v=20260724000000"
     }
   }
   </script>
-  <script>if("serviceWorker" in navigator){var _hadSW=!!navigator.serviceWorker.controller;addEventListener("load",function(){navigator.serviceWorker.register("sw.js",{updateViaCache:"none"}).then(function(r){r.update();setInterval(function(){r.update();},60000);}).catch(function(){});});var _swReloaded=false;navigator.serviceWorker.addEventListener("controllerchange",function(){if(!_hadSW||_swReloaded)return;_swReloaded=true;location.reload();});}</script>
-  <script type="module" src="js/main.js?v=20260723000000"></script>
+  <!-- Service Worker. LOCAL QA SAFETY (Maria 2026-07-19): on localhost/127.0.0.1 the SW is
+       NOT registered and any existing registration + cache is torn down. During QA the local
+       server drops out, the SW then served yesterday's cached main.js while newer modules came
+       from disk, and the result was a half-old/half-new build — that is where the "old GRID
+       LIMIT" and the dead menu came from, and it silently invalidated test runs. Production
+       (github.io) keeps the SW exactly as before; only the local origin opts out. -->
+  <script>(function(){
+    var _local = location.hostname === "localhost" || location.hostname === "127.0.0.1" || location.hostname === "";
+    if(!("serviceWorker" in navigator)) return;
+    if(_local){
+      navigator.serviceWorker.getRegistrations().then(function(rs){ rs.forEach(function(r){ r.unregister(); }); }).catch(function(){});
+      if(window.caches) caches.keys().then(function(ks){ ks.forEach(function(k){ caches.delete(k); }); }).catch(function(){});
+      console.log("[SW] localhost — service worker disabled and caches cleared (QA always sees the real build)");
+      return;
+    }
+    var _hadSW=!!navigator.serviceWorker.controller;
+    addEventListener("load",function(){navigator.serviceWorker.register("sw.js",{updateViaCache:"none"}).then(function(r){r.update();setInterval(function(){r.update();},60000);}).catch(function(){});});
+    var _swReloaded=false;
+    navigator.serviceWorker.addEventListener("controllerchange",function(){if(!_hadSW||_swReloaded)return;_swReloaded=true;location.reload();});
+  })();</script>
+  <script type="module" src="js/main.js?v=20260724000000"></script>
 </body>
 </html>

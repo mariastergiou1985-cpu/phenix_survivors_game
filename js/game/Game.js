@@ -3,7 +3,7 @@ import {
   WIN_TIME_SECONDS, ACT1_WIN_SECONDS,
   PLAYER_RADIUS, CORE_RADIUS, MATRIX_RADIUS,
   DARK_BG, GRID_LINE, BLACK, CYAN, RED, GREEN, YELLOW, ORANGE, WHITE, PURPLE,
-  CORE_COLORS, VIEW_SCALE, VIEW_W, VIEW_H, ENDLESS_VIEW_SCALE,
+  CORE_COLORS, VIEW_SCALE, VIEW_W, VIEW_H, ENDLESS_VIEW_SCALE, DEBUG_WORLD_BOUNDS,
 } from '../constants.js';
 import { clamp, distance, safeNormalize, randomChoice, randomRange, wrapText } from '../utils.js';
 
@@ -11,9 +11,9 @@ import { FloatingText }   from '../entities/FloatingText.js?v=20260703990000';
 import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260705040000';
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260712090000';
 import { Player }         from '../entities/Player.js?v=20260722700000';
-import { XpShardSystem }  from '../entities/XpShards.js?v=20260722700000';   // Phase 1: physical Data-XP
+import { XpShardSystem }  from '../entities/XpShards.js?v=20260724000000';   // Phase 1: physical Data-XP
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260706270000';
-import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260722600000';
+import { Enemy, preloadAllWeaponSprites } from '../entities/Enemy.js?v=20260724000000';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=20260711750000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260713600000';
@@ -50,11 +50,11 @@ import { WeatherTheater } from '../effects/weather-theater.js?v=20260712130000';
 import { Protocol0 } from '../effects/protocol-0.js?v=20260705000000';
 import { LaserEyes } from '../effects/laser-eyes.js?v=20260709100000';
 import { MeteorRain } from '../effects/meteor-rain.js?v=20260712100000';
-import { NpcWalker } from './NpcWalker.js?v=20260711750000';
-import { MapManager, BIOME_ID, BIOME_DEFS } from './MapManager.js?v=20260722800000';
+import { NpcWalker } from './NpcWalker.js?v=20260724000000';
+import { MapManager, BIOME_ID, BIOME_DEFS, CHUNK_SIZE } from './MapManager.js?v=20260724000000';
 import { EventBus, EVENTS } from './EventBus.js?v=20260703990000';
 import { HostileProjectileDirector } from './HostileProjectileDirector.js?v=20260719200000';
-import { WaveDirector } from './WaveDirector.js?v=20260719300000';
+import { WaveDirector } from './WaveDirector.js?v=20260724000000';
 import { EnemySpawner, ELITE_WAVE as ELITE_WAVE_CFG, BOSS_WARN_COOLDOWN as BOSS_WARN_CD } from './EnemySpawner.js?v=20260719300000';
 import { StateManager, GAME_STATES } from './StateManager.js?v=20260703990000';
 import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260722600000';
@@ -1469,6 +1469,7 @@ export class Game {
     this._stageCompleteBanner = null;  // full-screen STAGE COMPLETE banner (set on clear)
     this.gridBlackoutActive   = false;
     this.announcement         = null;
+    this._annQueue            = [];    // banner queue καθαρίζει σε κάθε reset — όχι stale announcements σε mode transitions
     this._pauseMenuIndex      = 0;    // controller nav: 0=RESUME  1=RETURN TO MAIN MENU
 
     // Phoenix revive tiers (orange → blue → gold, one per death per run)
@@ -2114,7 +2115,7 @@ export class Game {
     // ── Activate chunk streaming (Endless + Chaos only) ─────────────────
     this.chunkManager.enable();
     this.mapManager.chunkStreamingEnabled = true;
-    this.nexusManager.repositionForEndless();    // Expand to 24 Nexus across all biomes
+    this.nexusManager.repositionForEndless();    // 4 central Nexus + 5 streamed outer records (max 1 instantiated)
     this.matrices = this.nexusManager.matrices;   // re-alias after expansion
     // Endless-local elite-wave clock: first wave after firstDelay, then every interval.
     this._eliteWaveTimer   = ELITE_WAVE.firstDelay;
@@ -2155,6 +2156,7 @@ export class Game {
     this.phoenixReviveCount = 0;
     this._lastPhoenixUsed   = false;
     this.phoenixReviveTimer = 0;
+    this._chaosEntryGraceT  = 0;    // Chaos fresh-entry protection window
     this.phoenixUsed        = false;
     this._annihNexusKills  = 0;             // Annihilator Nexus-erase count this run (hard max 2)
     this.mutations         = this._freshMutations();   // fresh forced-mutation state for THIS Endless run
@@ -2162,7 +2164,10 @@ export class Game {
     this._mutationTimer    = MUTATION_INTERVAL;         // first forced mutation at 3:00 into Endless
     this._initializeEndlessStats();    // consolidated Endless stat stacking (protocols + chaos laws)
     this.audio?.startEndlessMusic();   // Endless-only track (dawn) replaces gameplay music
-    this.triggerAnnouncement('STAGE 02 — NULL EDEN MEGACITY', CYAN);   // Maria 2026-07-19: official Endless stage name
+    // Mode-σωστό entry banner (Maria 2026-07-19): το Chaos ΔΕΝ είναι «STAGE 02» — έχει δικό
+    // του announcement. Το _beginChaosRun σηκώνει το _enteringChaos flag πριν καλέσει εδώ.
+    if (this._enteringChaos) this.triggerAnnouncement('NULL EDEN — CHAOS MODE', RED);
+    else this.triggerAnnouncement('STAGE 02 — NULL EDEN MEGACITY', CYAN);   // official Endless stage name
 
     // Null Breach Arena — arm fresh triggers for this Endless run
     this._nullBreachActive  = false;
@@ -5981,12 +5986,64 @@ export class Game {
     // each (32 total). Cleaner multi-Nexus identity than the old 5-matrix setup, with a clear
     // central play space. Each starts full (PowerMatrix.stored = capacity), so the early game
     // stays gentle. Gold=+5 / Silver=+3 are core values set in PowerMatrix.stealCore — unchanged.
-    const positions = [
-      [260,           230],
-      [WORLD_W - 260, 230],
-      [280,           WORLD_H - 200],
-      [WORLD_W - 280, WORLD_H - 200],
+    // BOUNDS FIX (Maria video QA 2026-07-19): these four were hardcoded at y=230 and
+    // y=WORLD_H-200. Those are raw world coords, and the Act 1 walkable deck is only
+    // y 491..1297 — so the top pair floated 261px ABOVE the floor and the bottom pair
+    // 191px BELOW it, in the background void. The player clamps to the deck, so the
+    // Nexus could be seen but never reached. Now the corners are derived from the
+    // real walkable band, inset so the whole body plus its steal range sits on floor.
+    // AUTHORED ZONES (Maria video QA 2026-07-19): the first fix put these on perfect
+    // mathematical corners — equal spacing, symmetric, all four framed together. That
+    // reads as machine-placed furniture, not a lived-in map. Instead each Nexus gets its
+    // own authored district expressed as a FRACTION of the walkable band, deliberately
+    // asymmetric: different insets, staggered heights, no two sharing a row or column.
+    // Placement inside a district is deterministic (seeded), so a given run is stable
+    // and reproducible, but the layout never looks like a grid.
+    const sb = this.getSafeObjectBounds({ radius: MATRIX_RADIUS, padding: 40 });
+    const bx0 = sb && Number.isFinite(sb.x0) ? sb.x0 : 0;
+    const bx1 = sb && Number.isFinite(sb.x1) ? sb.x1 : WORLD_W;
+    const by0 = sb ? sb.y0 : 230, by1 = sb ? sb.y1 : WORLD_H - 200;
+    const bw = bx1 - bx0, bh = by1 - by0;
+    // fx/fy = district centre as a fraction of the band; jx/jy = jitter half-extent.
+    // Chosen by hand so the four read as distinct districts: upper-left sits high and
+    // far out, upper-right hangs noticeably LOWER, lower-left pulls toward centre, and
+    // the fourth sits centre-right rather than completing a rectangle.
+    // Fractions solved for maximum minimum-separation subject to: never more than TWO
+    // Nexus inside one viewport, no two sharing a column (≥180px apart in x) and none
+    // sharing a row (≥70px apart in y). Result ≈ 850px minimum separation, against a
+    // theoretical ceiling of 886px for four points in this band — so this is close to
+    // the best the Act 1 arena physically allows while staying asymmetric.
+    const ZONES = [
+      { fx: 0.91, fy: 0.88, jx: 0.03, jy: 0.05 },   // A — far right, low
+      { fx: 0.40, fy: 0.44, jx: 0.04, jy: 0.06 },   // B — left-of-centre, mid height
+      { fx: 0.08, fy: 0.79, jx: 0.03, jy: 0.05 },   // C — far left, lower
+      { fx: 0.72, fy: 0.10, jx: 0.04, jy: 0.05 },   // D — right-of-centre, high
     ];
+    // Deterministic per-run hash → stable within a run, no Math.random drift between
+    // the spawn and any later re-derivation.
+    const seed = (this._matrixLayoutSeed ??= (Math.floor(Math.random() * 0xffffff) | 0));
+    const rnd = (i, salt) => {
+      const h = Math.sin((seed + i * 374761393 + salt * 668265263) * 0.0001) * 43758.5453;
+      return (h - Math.floor(h)) * 2 - 1;                       // −1..1, deterministic
+    };
+    const MIN_SEP = Math.max(900, bw * 0.28);   // world-space separation between Nexus
+    const positions = [];
+    for (let i = 0; i < ZONES.length; i++) {
+      const z = ZONES[i];
+      let best = null, bestScore = -Infinity;
+      // Try several deterministic candidates inside the district and keep the one that
+      // is furthest from everything already placed — separation without random retries.
+      for (let a = 0; a < 6; a++) {
+        const x = bx0 + bw * (z.fx + z.jx * rnd(i, a * 2 + 1));
+        const y = by0 + bh * (z.fy + z.jy * rnd(i, a * 2 + 2));
+        let score = Infinity;
+        for (const [px, py] of positions) score = Math.min(score, Math.hypot(x - px, y - py));
+        if (positions.length === 0) score = MIN_SEP;
+        if (score > bestScore) { bestScore = score; best = [x, y]; }
+        if (score >= MIN_SEP) break;                            // good enough — stop early
+      }
+      positions.push(best);
+    }
     for (let i = 0; i < positions.length; i++) {
       const [x, y] = positions[i];
       this.matrices.push(new PowerMatrix(new Vec2(x, y), CORE_COLORS[i % CORE_COLORS.length], 8));
@@ -8432,10 +8489,17 @@ export class Game {
 
       // Hard-clamp player to the fixed playable area (dist 0–2 chunks) so they
       // never wander into The Null (black void at dist 3+).
-      const wb = this.chunkManager.getWorldBounds();
-      const pad = 20; // small inset so player stays visually inside
-      this.player.pos.x = Math.max(wb.left + pad, Math.min(wb.right - pad, this.player.pos.x));
-      this.player.pos.y = Math.max(wb.top + pad,  Math.min(wb.bottom - pad, this.player.pos.y));
+      // VIDEO-GROUNDED PASS (2026-07-19): όταν το city/chaos deck είναι live, ο χάρτης
+      // συνεχίζει άπειρα οριζόντια (mirror tiling) + world recentering — το κουτί των
+      // chunks ΔΕΝ είναι πια hard terminal edge. Το κάθετο όριο το βάζει το walkable
+      // band (clamp μετά το player.update). Χωρίς live deck: legacy box clamp.
+      const _deckLive = !!this.getWalkableBounds();
+      if (!_deckLive) {
+        const wb = this.chunkManager.getWorldBounds();
+        const pad = 20; // small inset so player stays visually inside
+        this.player.pos.x = Math.max(wb.left + pad, Math.min(wb.right - pad, this.player.pos.x));
+        this.player.pos.y = Math.max(wb.top + pad,  Math.min(wb.bottom - pad, this.player.pos.y));
+      }
     } else {
       // Fixed arena (Act 1 / Campaign): lock bounds to the static world so the player clamp AND
       // the edge-glow walls both use WORLD_W/H — never stale Endless chunk bounds from a prior run.
@@ -8488,8 +8552,9 @@ export class Game {
         this._endlessBossTimer  = 5;   // first Chaos boss rotation: 5 s from now
         // Walker: upgrade HP to 2000 if already active when Chaos starts
         if (this._npcWalker && this._npcWalker.isActive && !this._npcWalker.downed) {
-          this._npcWalker.maxHp = 2000;
-          this._npcWalker.hp    = Math.max(this._npcWalker.hp, Math.round(2000 * 0.5)); // keep current HP but ensure at least 50% of new pool
+          // Promote to the Chaos pool via the Walker's own per-mode table (no literal here,
+          // so this can never drift from WALKER_BASE_HP again).
+          this._npcWalker.promoteMode('chaos');
         }
         this.acidRainTimer      = 30;  // Phase 4: first acid rain 30 s into Chaos
         this._airstrikeTimer    = 15;  // Phase 4: first airstrike 15 s into Chaos
@@ -8550,16 +8615,19 @@ export class Game {
     const _sleetFrozen = !!(this._frozenSleet && this._frozenSleet.phase === 'hold');
     const _frozenInput = _sleetFrozen ? { ...input, keys: new Set() } : input;
     this.player.update(dt, _frozenInput);
-    // ACT 1 SPACESHIP DECK walkable band (Maria 2026-07-18): the hero never walks onto the
-    // space windows / planets / structural frames. Applied AFTER movement, so dash and
-    // knockback obey the same edge. Zoom, speed, pursuit and the open field untouched.
-    if (!this.endless && !this._chaosMode && !this._campaignStage) {
-      const b = this.mapManager?.getAct1DeckBounds?.();
+    // WALKABLE gameplay floor — ΟΛΑ τα modes (video-grounded pass 2026-07-19): ο ήρωας
+    // δεν περπατά ποτέ σε παράθυρα/κτίρια/κάγκελα/ταράτσες. Applied AFTER movement, so
+    // dash and knockback obey the same edge. Endless/Chaos: μόνο κάθετο clamp (το x
+    // συνεχίζει άπειρα πάνω στο mirror-tiled δάπεδο).
+    {
+      const b = this.getWalkableBounds();
       if (b) {
-        this.player.pos.x = Math.max(b.x0, Math.min(b.x1, this.player.pos.x));
+        if (isFinite(b.x0)) this.player.pos.x = Math.max(b.x0, Math.min(b.x1, this.player.pos.x));
         this.player.pos.y = Math.max(b.y0, Math.min(b.y1, this.player.pos.y));
       }
     }
+    // Silent world recentering (Endless/Chaos) — δεν υπάρχει hard terminal edge.
+    this._maybeRebaseWorld();
     // Balance (Maria): Eddie HARD CAP — max HP never exceeds 300, no matter what
     // (base + unlocked meta upgrades + in-run HP cards). Clamped every frame.
     if (this.player.selectedCharacter === 'eddie' && this.player.maxHp > 300) {
@@ -8803,7 +8871,8 @@ export class Game {
           const _wActiveDur  = 120 + (this.player.walkerActiveDurBonus || 0);
           const _wMaxHpBonus = this.player.walkerMaxHpBonus || 0;
           // summon() safely refreshes lifetime if Walker is already active (no stacking)
-          this._npcWalker.summon(this.player.pos, this.player.selectedCharacter || 'default', _wActiveDur, _wMaxHpBonus, this._chaosMode);
+          const _wMode = this._chaosMode ? 'chaos' : (this.endless ? 'endless' : 'act1');
+          this._npcWalker.summon(this.player.pos, this.player.selectedCharacter || 'default', _wActiveDur, _wMaxHpBonus, _wMode);
           const _wTxt = this._chaosMode ? '⚡ KIROSHI — CHAOS LINK ACTIVE' : 'ELECTRIC SUPPORT ONLINE';
           const _wCol = this._chaosMode ? '#ff2d95' : '#44ffff';
           this.triggerAnnouncement(_wTxt, _wCol);
@@ -8867,6 +8936,18 @@ export class Game {
 
     // Grid Investor card: +2% Gold Core chance per level on stolen cores (read in PowerMatrix.stealCore).
     const gridGoldBonus = (this.player.upgrades['Grid Investor'] || 0) * 0.02;
+    // Stream the outer-biome Nexus BEFORE the manager's own update, so the one instance
+    // that exists this frame is the current biome's and update() sees a settled list.
+    // Endless-only and a no-op unless the player actually changed biome (with hysteresis).
+    // The biome ID comes from ChunkManager — the ONE sector authority. NexusManager must
+    // never derive it itself: the Endless world rebases by −10032px, so any model built on
+    // raw world coordinates would flip biome while the player stands still.
+    if (this.chunkManager?.enabled) {
+      const _cx = Math.floor(this.player.pos.x / CHUNK_SIZE);
+      const _cy = Math.floor(this.player.pos.y / CHUNK_SIZE);
+      const _biome = this.chunkManager._getBiomeForCoords?.(_cx, _cy);
+      if (_biome != null) this.nexusManager._syncOuterNexus?.(_biome, dt);
+    }
     this.nexusManager.update(dt, this.player, gridGoldBonus);
 
     // ── Collect reward orbs that reached the player ──
@@ -8894,6 +8975,9 @@ export class Game {
 
     // Tick down phoenix animation
     if (this.phoenixReviveTimer > 0) this.phoenixReviveTimer -= dt;
+    // Chaos fresh-entry grace: ticks on real dt inside the normal update, so it expires on its
+    // own and CANNOT be extended or re-armed by pausing (a paused game runs no update).
+    if (this._chaosEntryGraceT > 0) this._chaosEntryGraceT -= dt;
 
     // Watchdog: whatever the root cause, HP <= 0 must never persist. If it holds for >2s
     // with no end state, clear the gate so the chain below resolves (revive or game over),
@@ -9128,8 +9212,52 @@ export class Game {
 
   // Keep a pickup comfortably inside the reachable play area (well away from edges so
   // HP/Mana/cores are never stranded outside where the player can travel).
+  // ── SAFE OBJECT BOUNDS — single source of truth for every world-placed object ──
+  // (Maria video QA 2026-07-19.) The old clamps used the FULL world rect (0..WORLD_H
+  // minus fixed margins). But the player only walks the deck band published by
+  // getWalkableBounds() — in Act 1 that is y 491..1297, not 0..1688. So a pickup
+  // clamped to y=150 sat 341px ABOVE the floor, inside the background void, and the
+  // player physically could not reach it: they stop at the walkable border.
+  //
+  // This helper derives the legal centre range for an object from the REAL walkable
+  // band of the current mode, inset by everything that determines reachability:
+  //   playerRadius        — the player's own centre cannot touch the border
+  //   (radius-interaction) — only the part of the body the interaction cannot cover
+  //   half footprint      — so the whole sprite/grid stays on the floor, not just its centre
+  //   padding             — safety margin
+  // Objects with a generous interaction radius need no extra inset (the term clamps
+  // at 0), which is why a Nexus you can steal from at range may sit nearer the edge
+  // than a body you must physically touch.
+  // Returns null when the mode publishes no band (campaign stages) → callers keep
+  // their legacy behaviour rather than clamping against garbage.
+  getSafeObjectBounds({ radius = 0, interactionRadius = 0, padding = 0,
+                        footprintWidth = 0, footprintHeight = 0 } = {}) {
+    const b = this.getWalkableBounds();
+    if (!b) return null;
+    const reach  = Math.max(0, radius - interactionRadius);
+    const marginX = PLAYER_RADIUS + reach + padding + footprintWidth  * 0.5;
+    const marginY = PLAYER_RADIUS + reach + padding + footprintHeight * 0.5;
+    let x0 = b.x0 + marginX, x1 = b.x1 - marginX;
+    let y0 = b.y0 + marginY, y1 = b.y1 - marginY;
+    // Degenerate band (object taller than the walkable strip): collapse to the centre
+    // line instead of inverting the range, so clamp() can never produce a wild value.
+    if (y0 > y1) { const mid = (b.y0 + b.y1) * 0.5; y0 = y1 = mid; }
+    if (x0 > x1) { const mid = (b.x0 + b.x1) * 0.5; x0 = x1 = mid; }
+    return { x0, x1, y0, y1 };
+  }
+
   _clampPickupPos(pos) {
-    const mx = 120, myTop = 150, myBot = 120;
+    // Pickups are walked over, so the player's body must reach the centre: no
+    // interaction radius, small padding.
+    const sb = this.getSafeObjectBounds({ radius: 18, padding: 24 });
+    if (sb) {
+      // x0/x1 are ±Infinity in Endless/Chaos (infinite horizontal floor) — clamp()
+      // against them is a no-op, which is exactly right; only y is constrained.
+      pos.x = clamp(pos.x, sb.x0, sb.x1);
+      pos.y = clamp(pos.y, sb.y0, sb.y1);
+      return pos;
+    }
+    const mx = 120, myTop = 150, myBot = 120;         // legacy fallback (campaign stages)
     pos.x = clamp(pos.x, mx, WORLD_W - mx);
     pos.y = clamp(pos.y, myTop, WORLD_H - myBot);
     return pos;
@@ -9832,8 +9960,13 @@ export class Game {
   _beginChaosRun() {
     this.gameState = 'playing';
     this.reset();
+    this._enteringChaos = true;       // banner routing: NULL EDEN — CHAOS MODE (όχι STAGE 02)
     this._enterEndless();             // set up all Endless infrastructure
+    this._enteringChaos = false;
     this._chaosMode          = true;     // engage Chaos immediately
+    // Fresh-entry grace only (see _damagePlayer). The mid-run escalation paths
+    // (update() / _selectPostArenaChoice) intentionally do NOT arm this.
+    this._chaosEntryGraceT   = 2.5;
     if (this.nexusManager) this.nexusManager.chaos = true;
         this.nexusManager.assignChaosRoles?.();   // Φ14: BUFF vs DEFENCE bases
         this._nexusRoleTeachT = 5;   // one-shot role explanation banner shortly after chaos starts   // Phase 6: tactical buff stars
@@ -17590,12 +17723,13 @@ export class Game {
         _first = false;
         this.spawnEnemy(_type, { x: _p.x, y: _p.y }, !!_p.elite);
       }
-      // ── ACT 1 SPACESHIP DECK: spawns stay ON the deck (never in the windows/space) ──
-      if (!this.endless && !this._chaosMode && !this._campaignStage) {
-        const _db = this.mapManager?.getAct1DeckBounds?.();
+      // ── WALKABLE FLOOR: spawns stay ON the deck σε ΟΛΑ τα modes (ποτέ σε
+      // παράθυρα/διάστημα/κτίρια/κάγκελα) — video-grounded pass 2026-07-19 ──
+      {
+        const _db = this.getWalkableBounds();
         if (_db) for (let j = prevLen; j < this.enemies.length; j++) {
           const e = this.enemies[j];
-          e.pos.x = Math.max(_db.x0, Math.min(_db.x1, e.pos.x));
+          if (isFinite(_db.x0)) e.pos.x = Math.max(_db.x0, Math.min(_db.x1, e.pos.x));
           e.pos.y = Math.max(_db.y0, Math.min(_db.y1, e.pos.y));
         }
       }
@@ -25213,6 +25347,14 @@ _drawLoreArchive(ctx) {
   // unchanged. This never touches player stats/damage — it only lets a signalled boss hit land harder.
   _damagePlayer(dmg, { color = RED, shake = 5, cap = BOSS_MAX_PLAYER_HIT } = {}) {
     if (this.player.dashTimer > 0 || this.phoenixReviveTimer > 0) return false;  // i-frames → dodged
+    // CHAOS-ENTRY GRACE (Maria 2026-07-19): a fresh character entering Chaos straight from the
+    // menu lost ~103 of 130 HP in the first 4 seconds — Chaos spawns its full pressure on the
+    // entry frame, before the player can read or move. This 2.5s window ONLY covers that first
+    // entry: it is armed once in _beginChaosRun(), ticks down on real dt (so pause/resume
+    // cannot re-arm or extend it), never re-arms on revive, and the player can move and attack
+    // throughout. Enemy HP, damage and density are untouched — the mid-run Endless→Chaos
+    // escalation paths keep their developed build and deliberately get NO grace.
+    if (this._chaosEntryGraceT > 0) return false;
     if (this.playerHitCooldown > 0) return false;                                // within 0.5s grace
     // ── Glitch Phantom vessel: 50% chance to dodge any hit ──
     if (this._activeVesselPassive === 'glitch_dodge' && Math.random() < 0.5) {
@@ -25365,7 +25507,12 @@ _drawLoreArchive(ctx) {
     // ── Endless-only ambient Lava Rain ── boss-INDEPENDENT area denial so the grid always has
     // pressure even between bosses. Reuses bossLavaZones (1.4s warn ring → impact), player-only
     // damage. Drops never land on the player (min 60px), so it stays dodgeable and fair.
-    if (this.endless) {
+    // VIDEO-GROUNDED PASS (Maria 2026-07-19): το Lava Rain ΑΦΑΙΡΕΘΗΚΕ από το Endless —
+    // δεν ταιριάζει στο NULL EDEN MEGACITY (πόλη, όχι ηφαιστειακό biome) και το video
+    // το έδειξε ακόμα ενεργό. Το area-denial pressure του Endless το δίνουν πλέον το
+    // εγκεκριμένο Acid Rain (~100s cadence) + τα aircraft/gunship events. Ο μηχανισμός
+    // (bossLavaZones) μένει ανέπαφος για τα boss abilities που τον χρησιμοποιούν.
+    if (false && this.endless) {
       if (this._endlessLavaCd === undefined) this._endlessLavaCd = randomRange(18, 26);
       this._endlessLavaCd -= dt;
       // Threat pass: Lava Rain is now a SUSTAINED ~5s storm (was a single 3–5 drop burst), so the
@@ -29477,10 +29624,140 @@ _drawLoreArchive(ctx) {
   get _viewW()     { return WIDTH  / this._viewScale; }
   get _viewH()     { return HEIGHT / this._viewScale; }
 
+  // ── WALKABLE gameplay floor ανά mode (video-grounded pass, Maria 2026-07-19) ──
+  // Ενιαία πηγή αλήθειας για player/enemy/pickup/spawn clamps. Επιστρέφει
+  // {x0,x1,y0,y1} σε world coords ή null (fallback στο legacy clamp).
+  // Act 1: το μετρημένο deck band του spaceship. Endless/Chaos: η μετρημένη
+  // ζώνη δαπέδου του strip — x άπειρο (οριζόντια συνέχεια μέσω mirror tiling).
+  getWalkableBounds() {
+    const mm = this.mapManager;
+    if (this.endless || this._chaosMode) {
+      const img = this._chaosMode ? mm?._chaosDeckImg : mm?._cityImg;
+      if (img && img.complete && img.naturalWidth > 0) {
+        const S = mm.CITY_SCALE;
+        const rows = this._chaosMode ? mm.CHAOS_WALK_ROWS : mm.CITY_WALK_ROWS;
+        return { x0: -Infinity, x1: Infinity, y0: rows[0] * S, y1: rows[1] * S };
+      }
+      return null;
+    }
+    if (this._campaignStage) return null;
+    return mm?.getAct1DeckBounds?.() || null;
+  }
+
+  // ── WORLD RECENTERING (video-grounded pass 2026-07-19) ──────────────────────
+  // Endless/Chaos: το δάπεδο συνεχίζει άπειρα οριζόντια (mirror tiling, περίοδος
+  // P = 2×tileW = 10032px). Όταν ο παίκτης απομακρυνθεί > P από το κέντρο, ΟΛΟΣ ο
+  // κόσμος μετατοπίζεται κατά ±P: επειδή το background είναι περιοδικό με P, το
+  // frame μετά το rebase είναι pixel-identical — καμία κάμερα δεν πηδά, οι σχετικές
+  // αποστάσεις διατηρούνται, projectiles/pickups/timers ανέγγιχτα. Έτσι δεν υπάρχει
+  // ποτέ hard terminal edge και το GRID LIMIT δεν μπορεί να συμβεί σε gameplay.
+  _maybeRebaseWorld() {
+    if (!(this.endless || this._chaosMode)) return;
+    const mm = this.mapManager;
+    const img = this._chaosMode ? mm?._chaosDeckImg : mm?._cityImg;
+    if (!(img && img.complete && img.naturalWidth > 0)) return;
+    const P = 2 * img.naturalWidth * mm.CITY_SCALE;          // mirror period (10032)
+    const cx = WORLD_W / 2;
+    const off = this.player.pos.x - cx;
+    if (Math.abs(off) <= P) return;
+    const dx = off > 0 ? -P : P;
+
+    // OBJECT-IDENTITY DEDUPLICATION (Maria 2026-07-19). Several objects are reachable through
+    // MORE THAN ONE reference: `this.enemies.push(boss); this.megaBoss = boss;` (Game.js 1853,
+    // 10213) puts the very same object in both the array AND the field, so the old helper
+    // shifted it TWICE — dx applied twice = -20064 instead of -10032, teleporting the mega-boss
+    // a full extra mirror period away. The Set makes every real object move exactly once no
+    // matter how many references reach it, and keeps future aliases safe by construction.
+    const _moved = new Set();
+    const sh  = (o) => { if (!o || _moved.has(o)) return; _moved.add(o);
+      if (o.pos && typeof o.pos.x === 'number') o.pos.x += dx;
+      else if (typeof o.x === 'number') o.x += dx; };
+    const shA = (a) => { if (Array.isArray(a)) for (const o of a) sh(o); };
+
+    sh(this.player);
+    this.camera.x += dx;                                     // ίδιο frame — κανένα visual jump
+    shA(this.enemies); shA(this.projectiles); shA(this.enemyBullets);
+    if (this.xpShards?.active) shA(this.xpShards.active);    // via sh() so shards dedupe too
+    shA(this.healthPickups); shA(this.manaPickups); shA(this.armorPickups);
+    shA(this.tacticalCacheWeapons); shA(this.floatingTexts); shA(this.dmgNums);
+    shA(this._activePets); shA(this.matrices);
+    // vaultDrop is Endless-only and Endless is exactly where rebasing happens: without
+    // this it stayed at its old world x and was left 10032px behind, unreachable and
+    // still counting down. The object-identity Set above makes the extra call safe even
+    // if the same object is reachable through another reference.
+    sh(this.gridCache); sh(this.vaultDrop); sh(this.megaBoss); sh(this.nullEcho); sh(this.nullWyrm);
+    shA(this.bossLavaZones); shA(this._enemyOrbZones); shA(this._voidRifts);
+    shA(this._ventBursts); shA(this._eddieNoteClouds); shA(this.lightningZones);
+    shA(this.nullEchoZones); shA(this.gunshipZones); shA(this.cybermoteMines);
+    shA(this.airstrikeShips); shA(this.airstrikeRockets); shA(this.gunships);
+    shA(this.bossTrails); shA(this.fusionClouds); shA(this.synergyBursts);
+    shA(this._goldStrikes); shA(this._goldImpacts); shA(this._guitarNotes);
+    shA(this._redCurtainBolts); shA(this._redCurtainImpacts); shA(this._redThunderArcs);
+    if (this._nullBreachArena?.center) this._nullBreachArena.center.x += dx;
+
+    // ── BOSS RUSH ARENA (Maria 2026-07-19) ───────────────────────────────────────
+    // Was `if (this._bossRush?.center) this._bossRush.center.x += dx;` — but the runtime
+    // object is built with cx/cy (Game.js ~10077) and has NO `center` field, so the guard
+    // was always falsy and the arena NEVER rebased: it stayed at the old coordinates while
+    // the whole world shifted by one mirror period (10032px), desyncing the lock radius,
+    // the hazard ring and the drawn circle from the player. cx/cy are the single source of
+    // truth (lock 10097-10101, distance 10151, hazard containment 10165-10171, render
+    // 10225-10226) and the hazard carries only radii, so moving cx moves everything.
+    // Rebase is horizontal-only (there is no dy), so cy is deliberately left untouched.
+    if (this._bossRush) this._bossRush.cx += dx;
+
+    // Named bosses live in their own fields, NOT in this.enemies, and were never shifted —
+    // a rebase mid-fight left the boss a full mirror period behind, unreachable. Double
+    // Demons carries two sub-bodies with their own positions.
+    sh(this.titanBoss); sh(this.annihilatorBoss); sh(this.bloodfangBoss);
+    sh(this.cyberSerpentBoss); sh(this.cyberDragonBoss);
+    if (this.doubleDemonsBoss) {
+      sh(this.doubleDemonsBoss); sh(this.doubleDemonsBoss.gunner); sh(this.doubleDemonsBoss.claw);
+    }
+    // line-shaped/transient fx με δύο άκρα (δεν καλύπτονται από το helper): καθάρισμα —
+    // ζουν <2s, ο παίκτης μόλις διέσχισε 10km, τίποτα ορατό δεν χάνεται.
+    if (this._enemyBeams) this._enemyBeams.length = 0;
+  }
+
   _updateCamera() {
     // Center the player in the (larger, zoomed-out) visible world window.
     const cx = this.player.pos.x - this._viewW / 2;
     const cy = this.player.pos.y - this._viewH / 2;
+    const mm = this.mapManager;
+
+    // ── VIDEO-GROUNDED FRAMING (Maria 2026-07-19) ─────────────────────────────
+    // Το viewport πρέπει να ζει πάνω στο map art — ποτέ μισή οθόνη void/διάστημα.
+    if (this.endless || this._chaosMode) {
+      // City/Chaos strip: κάθετα κλειδωμένη μέσα στο strip (0..th−viewH) ώστε να μη
+      // φαίνεται ΠΟΤΕ το neutral band ή άκρη εικόνας· οριζόντια ελεύθερη (άπειρο tiling).
+      const img = this._chaosMode ? mm?._chaosDeckImg : mm?._cityImg;
+      if (img && img.complete && img.naturalWidth > 0) {
+        const th = img.naturalHeight * mm.CITY_SCALE;
+        this.camera.x = cx;
+        this.camera.y = th > this._viewH
+          ? Math.max(0, Math.min(cy, th - this._viewH))
+          : (th - this._viewH) / 2;
+        return;
+      }
+    } else if (!this._campaignStage) {
+      // Act 1: η κάμερα κλειδώνει ΜΕΣΑ στο spaceship art (ποτέ στο space fill πάνω/κάτω
+      // από την εικόνα) — τα παράθυρα/διάστημα γίνονται accent στις άκρες, όχι μισό screen.
+      const img = mm?._shipImg;
+      if (img && img.complete && img.naturalWidth > 0) {
+        const S  = mm.worldW / img.naturalWidth;
+        const th = Math.round(img.naturalHeight * S);
+        const y0 = Math.round((mm.worldH - th) / 2);
+        const inset = 40;                        // κόβει και το frame περίγραμμα του art
+        const minY = y0 + inset;
+        const maxY = y0 + th - inset - this._viewH;
+        this.camera.x = Math.max(WORLD_BOUNDS.left, Math.min(cx, WORLD_BOUNDS.right - this._viewW));
+        this.camera.y = maxY > minY
+          ? Math.max(minY, Math.min(cy, maxY))
+          : y0 + (th - this._viewH) / 2;
+        return;
+      }
+    }
+
     this.camera.x = Math.max(WORLD_BOUNDS.left, Math.min(cx, WORLD_BOUNDS.right - this._viewW));
     this.camera.y = Math.max(WORLD_BOUNDS.top,  Math.min(cy, WORLD_BOUNDS.bottom - this._viewH));
   }
@@ -29703,6 +29980,12 @@ _drawLoreArchive(ctx) {
   // Performance: layered lines only — NO shadowBlur, NO per-pixel ops.
   // ═══════════════════════════════════════════════════════════════════════════
   _drawWorldBoundaries(ctx) {
+    // PRODUCTION KILL-SWITCH (Maria video QA 2026-07-19): τα cyan boundary walls και το
+    // «CRITICAL ERROR: GRID LIMIT REACHED» αποδείχθηκαν μόνιμα ορατά στο πραγματικό
+    // gameplay και στα 3 modes (τα videos το έδειξαν καθαρά). Με το άπειρο δάπεδο +
+    // recentering + deck clamps δεν υπάρχει πλέον νόμιμο σενάριο εμφάνισης — διατηρείται
+    // ΜΟΝΟ πίσω από το explicit debug flag για development.
+    if (!DEBUG_WORLD_BOUNDS) return;
     // Fixed arena (Act 1 / Campaign) draws glow walls at the static world edges (= player clamp);
     // Endless/Chaos streaming uses the chunk bounds. Keeps the neon border ON the real map edge.
     const wb = this.chunkManager.enabled

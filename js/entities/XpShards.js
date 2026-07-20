@@ -26,9 +26,15 @@ const CULL_DIST2 = 1500 * 1500;              // draw cull (world px², from play
 //   T2 ENCRYPTED CELL  — gunmetal segmented chip, bright white edge, acid-lime accent only
 //   T3 NULL DATA CACHE — amber/orange mechanical cache, magenta+gold circuit detail
 const TIER = {
-  small:  { max: 2,        size: 8,  c: '#d9dee8', core: '#a44dff', edge: '#f4f6fb' },
-  medium: { max: 8,        size: 11, c: '#3a4250', core: '#ffffff', edge: '#b8ff3c' },
-  core:   { max: Infinity, size: 15, c: '#ff9a2d', core: '#ffd447', edge: '#ff2dd0' },
+  // RUNTIME READABILITY PASS (Maria video QA 2026-07-19): στο πραγματικό gameplay zoom
+  // (0.72-0.75) τα 8/11/15 world px γίνονταν 6-11 screen px — «λευκές κουκκίδες/χιόνι».
+  // Μεγέθη +~35% ώστε η κομμένη γωνία του T1, η segmented capsule του T2 και το
+  // mechanical cache του T3 να διαβάζονται στο κανονικό zoom (όχι τεράστια — T3 ≈ 15
+  // screen px). Συν σκούρο outline + contact shadow (βλ. draw) για διαχωρισμό από
+  // bullets/particles. Καμία αλλαγή σε XP values/merge/cap — καθαρά οπτικό.
+  small:  { max: 2,        size: 11, c: '#d9dee8', core: '#a44dff', edge: '#f4f6fb' },
+  medium: { max: 8,        size: 15, c: '#3a4250', core: '#ffffff', edge: '#b8ff3c' },
+  core:   { max: Infinity, size: 20, c: '#ff9a2d', core: '#ffd447', edge: '#ff2dd0' },
 };
 function tierFor(v) { return v <= TIER.small.max ? 'small' : v <= TIER.medium.max ? 'medium' : 'core'; }
 
@@ -78,8 +84,8 @@ export class XpShardSystem {
   update(dt, game) {
     const p = game.player;
     if (!p) return;
-    // ACT 1 deck bounds: shards can never rest on the windows/space band
-    const db = (!game.endless && !game._chaosMode) ? game.mapManager?.getAct1DeckBounds?.() : null;
+    // WALKABLE floor ΟΛΩΝ των modes (2026-07-19): shards ποτέ σε παράθυρα/κτίρια/void
+    const db = game.getWalkableBounds ? game.getWalkableBounds() : null;
     const pr = (p.pickupRadius || 90) * (game._mutationEffects?.pickupRadiusMult || 1);
     const pr2 = pr * pr;
     const px = p.pos.x, py = p.pos.y;
@@ -89,7 +95,7 @@ export class XpShardSystem {
       s.t += dt;
 
       if (db) {
-        s.x = Math.max(db.x0, Math.min(db.x1, s.x));
+        if (isFinite(db.x0)) s.x = Math.max(db.x0, Math.min(db.x1, s.x));
         s.y = Math.max(db.y0, Math.min(db.y1, s.y));
       }
       // drop/pop-in: ease toward the landing spot over 0.28s with a tiny overshoot
@@ -171,7 +177,16 @@ export class XpShardSystem {
       }
       ctx.save();
       ctx.translate(s.x, s.y);
+      // contact shadow (un-rotated) — δένει το shard με το δάπεδο, δεν μοιάζει με particle
+      ctx.globalAlpha = 0.30;
+      ctx.fillStyle = '#04060c';
+      ctx.beginPath();
+      ctx.ellipse(0, sz * 0.62, sz * 0.72, sz * 0.26, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
       ctx.rotate(r);
+      // σκούρο περίγραμμα κάτω από κάθε σχήμα — contrast πάνω σε φωτεινό δάπεδο
+      ctx.strokeStyle = 'rgba(6,9,16,0.85)';
       const flick = Math.sin(now * 11 + s.ph) > 0.86;         // data flicker
       if (s.tier === 'small') {
         // T1 DATA FRAGMENT — asymmetric broken circuit-chip: silver casing, cut corner,
@@ -184,7 +199,9 @@ export class XpShardSystem {
         ctx.lineTo(sz * 0.55, sz * 0.5);
         ctx.lineTo(-sz * 0.3, sz * 0.55);
         ctx.lineTo(-sz * 0.75, sz * 0.05);
-        ctx.closePath(); ctx.fill();
+        ctx.closePath();
+        ctx.lineWidth = 2.6; ctx.stroke();                     // dark outline πίσω από το σώμα
+        ctx.fill();
         ctx.fillStyle = '#8a92a2';                             // digital notches
         ctx.fillRect(-sz * 0.2, -sz * 0.55, sz * 0.16, sz * 0.2);
         ctx.fillRect(sz * 0.28, sz * 0.36, sz * 0.18, sz * 0.2);
@@ -198,8 +215,10 @@ export class XpShardSystem {
         ctx.moveTo(-sz * 0.8, -sz * 0.35); ctx.lineTo(sz * 0.5, -sz * 0.5);
         ctx.lineTo(sz * 0.8, 0); ctx.lineTo(sz * 0.5, sz * 0.5);
         ctx.lineTo(-sz * 0.8, sz * 0.35);
-        ctx.closePath(); ctx.fill();
-        ctx.strokeStyle = T.core; ctx.globalAlpha = 0.95;      // white edge
+        ctx.closePath();
+        ctx.lineWidth = 2.6; ctx.stroke();                     // dark outline πίσω από το σώμα
+        ctx.fill();
+        ctx.strokeStyle = T.core; ctx.globalAlpha = 0.95; ctx.lineWidth = 1.4;  // white edge
         ctx.stroke();
         ctx.globalAlpha = 1;
         ctx.fillStyle = '#12161e';                             // segment gaps
@@ -217,7 +236,9 @@ export class XpShardSystem {
           const a = (k / 6) * Math.PI * 2;
           ctx[k ? 'lineTo' : 'moveTo'](Math.cos(a) * sz * 0.8, Math.sin(a) * sz * 0.8);
         }
-        ctx.closePath(); ctx.fill();
+        ctx.closePath();
+        ctx.lineWidth = 2.8; ctx.stroke();                     // dark outline πίσω από το σώμα
+        ctx.fill();
         ctx.strokeStyle = T.edge; ctx.lineWidth = 1.6;         // magenta seal ring
         ctx.stroke();
         ctx.fillStyle = T.core;                                // gold circuit ticks

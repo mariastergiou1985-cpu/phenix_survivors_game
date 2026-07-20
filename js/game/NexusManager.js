@@ -10,10 +10,22 @@
 
 import { Vec2, CORE_COLORS } from '../constants.js';
 import { PowerMatrix } from '../entities/PowerMatrix.js?v=20260712090000';
-import { BIOME_ID, CHUNK_SIZE } from './MapManager.js?v=20260722800000';
+import { BIOME_ID, CHUNK_SIZE } from './MapManager.js?v=20260724000000';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
-const NEXUS_PER_BIOME    = 1;     // 1 per outer biome — placed near active area, not far away
+const NEXUS_PER_BIOME    = 1;     // 1 per outer biome
+// FEATURE FLAG (Maria stabilization decision 2026-07-19). The outer-biome streaming is
+// implemented and passes its runtime harness (17/17: single active instance, state kept
+// across biomes, hysteresis, idempotent records), but ONE unresolved issue remains: the
+// Endless world rebases by 10032px and CHUNK_SIZE is 1280, so the shift is 7.84 chunks —
+// not a whole number. floor(x / CHUNK_SIZE) therefore changes while the player stands
+// still, which would flip the biome and despawn/respawn the outer Nexus for no gameplay
+// reason. Fixing that properly means either making the rebase period a whole multiple of
+// CHUNK_SIZE or giving ChunkManager a logical origin offset — a separate change.
+// Until then this ships OFF: Endless runs with the four central Nexus only, which is
+// stable. The streaming code stays intact for the follow-up commit. Do NOT delete it.
+const OUTER_NEXUS_STREAMING_ENABLED = false;
+const OUTER_SWAP_HOLD    = 0.6;   // s a biome must be held before the outer Nexus swaps (boundary hysteresis)
 const NEXUS_CAPACITY     = 6;     // was 8 — smaller per-nexus, but 24 total in Endless (144 cores)
 const REWARD_PULSE_INTERVAL = 18; // seconds between reward emissions from charged Nexus (was 30)
 const REWARD_PULSE_RADIUS   = 900; // max distance for reward to home toward player (was 600)
@@ -96,6 +108,11 @@ export class NexusManager {
 
     /** @type {PowerMatrix[]} All active Nexus stations (flat array for Game.js compat) */
     this.matrices = [];
+    this.outerRecords  = [];      // 5 persistent biome state records (see _syncOuterNexus)
+    this._activeOuter  = null;    // the single streamed-in outer Nexus instance, or null
+    this._activeSector = -1;
+    this._pendingSector = -1;
+    this._pendingHold  = 0;
 
     /** @type {Map<string, PowerMatrix[]>} biomeId → Nexus array */
     this.biomeNexus = new Map();
@@ -126,6 +143,11 @@ export class NexusManager {
    */
   init(worldW, worldH) {
     this.matrices = [];
+    this.outerRecords  = [];      // 5 persistent biome state records (see _syncOuterNexus)
+    this._activeOuter  = null;    // the single streamed-in outer Nexus instance, or null
+    this._activeSector = -1;
+    this._pendingSector = -1;
+    this._pendingHold  = 0;
     for (const [, arr] of this.biomeNexus) arr.length = 0;
 
     if (this.endless) {
@@ -142,12 +164,29 @@ export class NexusManager {
    * Capacity reduced from 8 → 6.
    */
   _createAct1Nexus(worldW, worldH) {
-    const positions = [
-      [260,           230],
-      [worldW - 260,  230],
-      [280,           worldH - 200],
-      [worldW - 280,  worldH - 200],
+    // BOUNDS + ASYMMETRY FIX (Maria video QA 2026-07-19). These were [260,230],
+    // [W-260,230], [280,H-200], [W-280,H-200]: a perfect rectangle, and worse, y=230 and
+    // y=H-200 are OUTSIDE the Act 1 walkable deck (measured band y 491..1297), so the top
+    // pair floated 261px above the floor and the bottom pair 191px below it — visible in
+    // the background void but unreachable, because the player clamps to the deck.
+    //
+    // Placement now comes from the caller's authored districts, expressed as fractions of
+    // the real walkable band so it can never drift outside the floor again. Four distinct
+    // districts, no two sharing a row or a column, ~690px+ minimum separation.
+    const band = this.act1Bounds ||
+                 { x0: 204, x1: 2803, y0: 491, y1: 1297 };   // measured deck fallback
+    const bw = band.x1 - band.x0, bh = band.y1 - band.y0;
+    const F = [
+      [0.91, 0.88],   // far right, low
+      [0.40, 0.44],   // left-of-centre, mid height
+      [0.08, 0.79],   // far left, lower
+      [0.72, 0.10],   // right-of-centre, high
     ];
+    const positions = F.map(([fx, fy]) => [
+      Math.round(band.x0 + bw * fx),
+      Math.round(band.y0 + bh * fy),
+    ]);
+    void worldW; void worldH;   // world rect is NOT the walkable area — kept for signature compat
     const neonArr = this.biomeNexus.get(BIOME_ID.NEON_DISTRICT);
     const neonColors = BIOME_NEXUS_COLORS[BIOME_ID.NEON_DISTRICT];
     for (let i = 0; i < positions.length; i++) {
@@ -166,11 +205,20 @@ export class NexusManager {
    */
   _createEndlessNexus() {
     // ── Neon District (center): 4 Nexus in a tighter diamond ──
+    // AUTHORED ASYMMETRY (Maria video QA 2026-07-19): these were a perfect square —
+    // 0.35/0.65 on both axes — so the four Endless Neon Nexus read as machine-placed
+    // furniture and framed together as one cluster. Same authored-district treatment as
+    // the Act 1 layout: four distinct districts, no two sharing a row or a column, none
+    // on a shared centre. Values are fractions of CHUNK_SIZE and stay deterministic, so
+    // the Endless layout is stable across a run and identical between sessions.
+    // NOTE: this list is duplicated in _createEndlessNexus and repositionForEndless and
+    // the two MUST stay identical — entering Endless directly and transitioning from
+    // Act 1 have to produce the same world, or the same run would relayout mid-session.
     const neonPositions = [
-      [CHUNK_SIZE * 0.35,  CHUNK_SIZE * 0.35],
-      [CHUNK_SIZE * 0.65,  CHUNK_SIZE * 0.35],
-      [CHUNK_SIZE * 0.35,  CHUNK_SIZE * 0.65],
-      [CHUNK_SIZE * 0.65,  CHUNK_SIZE * 0.65],
+      [CHUNK_SIZE * 0.22,  CHUNK_SIZE * 0.41],   // west, mid-height
+      [CHUNK_SIZE * 0.58,  CHUNK_SIZE * 0.19],   // centre-east, high
+      [CHUNK_SIZE * 0.79,  CHUNK_SIZE * 0.63],   // far east, below centre
+      [CHUNK_SIZE * 0.38,  CHUNK_SIZE * 0.81],   // centre-west, low
     ];
     const neonArr = this.biomeNexus.get(BIOME_ID.NEON_DISTRICT);
     const neonColors = BIOME_NEXUS_COLORS[BIOME_ID.NEON_DISTRICT];
@@ -188,6 +236,13 @@ export class NexusManager {
     // Placed at ~1.5 chunks from origin in each biome's angular sector center.
     // Angle formula matches ChunkManager._getBiomeForCoords so each Nexus
     // lands inside its own biome territory.
+    // IDEMPOTENCY GUARD (runtime harness 2026-07-19): this builder is reachable from
+    // both Endless entry paths and again on retry/reset. Without clearing first, a second
+    // call appended another five records — the harness measured 10 — which would later
+    // stream in a duplicate outer Nexus and desynchronise every saved charge.
+    this._despawnOuter();
+    this.outerRecords.length = 0;
+    this._activeSector = -1; this._pendingSector = -1; this._pendingHold = 0;
     const ringDist = CHUNK_SIZE * 0.8; // INSIDE the 3x3 playable arena (walls at +/-1.5 chunks) — unified on both Endless entry paths
     const sectorCount = BIOME_RING_ORDER.length;
 
@@ -200,36 +255,142 @@ export class NexusManager {
       const sectorCenter = (s + 0.5) / sectorCount;
       const sectorAngle = sectorCenter * Math.PI * 2 - Math.PI;
 
+      // STREAMED OUTER NEXUS (Maria decision 2026-07-19): previously all five outer
+      // biome Nexus were instantiated at once, so Endless carried 9 permanent Nexus and
+      // the screen read as a cluster of bases. Now each biome keeps a persistent STATE
+      // RECORD here and only the player's current biome is ever instantiated as a world
+      // sprite — see _syncOuterNexus(). Charge/progress survives leaving and returning,
+      // because it lives on the record, not on the throwaway instance.
       for (let n = 0; n < NEXUS_PER_BIOME; n++) {
-        const angle = sectorAngle;
-        const r = ringDist;
-
+        // Deterministic offset per biome so the ring is not a perfect circle: the angle
+        // is nudged within its own sector and the radius varies per biome. Stable across
+        // sessions (derived from the sector index, not Math.random).
+        const wob    = Math.sin((s + 1) * 12.9898) * 0.5;               // −0.5..0.5
+        const angle  = sectorAngle + wob * (Math.PI / sectorCount) * 0.55;
+        const r      = ringDist * (0.82 + 0.26 * (0.5 + 0.5 * Math.sin((s + 1) * 78.233)));
         const x = Math.round(r * Math.cos(angle));
         const y = Math.round(r * Math.sin(angle));
 
         const bColors = BIOME_NEXUS_COLORS[biomeId] || BIOME_NEXUS_COLORS[BIOME_ID.NEON_DISTRICT];
-        const m = new PowerMatrix(new Vec2(x, y), bColors.full, NEXUS_CAPACITY + (this.capacityBonus || 0));
-        m.biomeId = biomeId;
-        m.biomeColors = bColors;
-        this.matrices.push(m);
-        biomeArr.push(m);
+        this.outerRecords.push({
+          biomeId, sector: s, x, y, colors: bColors,
+          capacity: NEXUS_CAPACITY + (this.capacityBonus || 0),
+          stored: NEXUS_CAPACITY + (this.capacityBonus || 0),   // starts full, like the central four
+          activated: false, completed: false, lastInteraction: -Infinity,
+          instance: null,                                        // set only while streamed in
+        });
+        void biomeArr;   // biome arrays stay for the central Nexus; outer live on records
       }
     }
   }
 
+  // ─── OUTER NEXUS STREAMING ───────────────────────────────────────────────
+  /**
+   * Instantiates AT MOST ONE outer-biome Nexus — the one for the biome the player is
+   * currently in. Called every frame; cheap when nothing changes.
+   *
+   * Why: all five used to exist as world sprites at once, which (with the four central
+   * Nexus) put nine permanent bases on the map and made Endless read as a cluster of
+   * stations rather than a city with landmarks in it.
+   *
+   * State lives on the record, the sprite is disposable: leaving a biome writes the
+   * instance's charge back to its record and drops the sprite; returning rebuilds a
+   * sprite from the record, so progress is never lost and rewards never double.
+   *
+   * HYSTERESIS: a player walking along a sector boundary would otherwise cross back and
+   * forth every frame and spawn/despawn continuously. A biome must be held for
+   * OUTER_SWAP_HOLD seconds before the swap commits.
+   */
+  /** Writes the live instance's state back to its record and removes the sprite. */
+  _despawnOuter() {
+    if (!this._activeOuter) return;
+    const prev = this.outerRecords[this._activeSector];
+    if (prev) {
+      prev.stored    = this._activeOuter.stored ?? prev.stored;
+      prev.activated = this._activeOuter.activated ?? prev.activated;
+      prev.instance  = null;
+    }
+    const i = this.matrices.indexOf(this._activeOuter);
+    if (i >= 0) this.matrices.splice(i, 1);   // splice keeps the array identity Game aliases
+    this._activeOuter = null;
+  }
+
+  _syncOuterNexus(biomeId, dt = 0) {
+    if (!OUTER_NEXUS_STREAMING_ENABLED) return;   // see flag comment at top of file
+    if (!this.endless || !this.outerRecords.length) return;
+    // SINGLE SOURCE OF TRUTH (Maria §6, 2026-07-19): the biome ID is supplied by
+    // ChunkManager._getBiomeForCoords(), which works in CHUNK coordinates. An earlier
+    // version of this method derived the sector itself from atan2 on raw world pixels —
+    // a second, independent sector model. That was wrong twice over: it could disagree
+    // with the chunk system about which biome the player is in, and because the Endless
+    // world rebases by −10032px, the raw coordinates change while the player does not
+    // move, so the biome would flip for no gameplay reason and the outer Nexus would
+    // despawn/respawn on every rebase. Never compute the sector here.
+    const sector = this.outerRecords.findIndex(r => r.biomeId === biomeId);
+    if (sector < 0) {                      // player is in the central Neon District
+      if (this._activeOuter) this._despawnOuter();
+      this._pendingSector = -1; this._pendingHold = 0; this._activeSector = -1;
+      return;
+    }
+
+    if (sector !== this._pendingSector) { this._pendingSector = sector; this._pendingHold = 0; }
+    else if (this._pendingHold < OUTER_SWAP_HOLD) { this._pendingHold += dt; }
+
+    const committed = (this._pendingHold >= OUTER_SWAP_HOLD) ? sector : this._activeSector;
+    if (committed === this._activeSector && this._activeOuter) return;   // nothing to do
+
+    this._despawnOuter();   // save state + fully remove the previous instance
+
+    // 2. rebuild the new biome's Nexus from its record
+    const rec = this.outerRecords[committed];
+    this._activeSector = committed;
+    if (!rec) return;
+    const m = new PowerMatrix(new Vec2(rec.x, rec.y), rec.colors.full, rec.capacity);
+    m.biomeId     = rec.biomeId;
+    m.biomeColors = rec.colors;
+    m.stored      = rec.stored;                     // restore charge — no reset, no reward re-grant
+    m.activated   = rec.activated;
+    m.isOuterNexus = true;
+    rec.instance  = m;
+    this._activeOuter = m;
+    this.matrices.push(m);
+  }
+
+  /** Live counts for the QA overlay — never used by gameplay logic. */
+  getBaseCounts() {
+    return {
+      centralNexus:     this.matrices.filter(m => !m.isOuterNexus).length,
+      outerDefinitions: this.outerRecords.length,
+      outerActive:      this._activeOuter ? 1 : 0,
+    };
+  }
+
   // ─── Reposition (Endless entry from Act 1) ──────────────────────────────
   /**
-   * Called when transitioning Act 1 → Endless. Repositions existing 4 Act 1
-   * Nexus to tighter Endless positions, then spawns the remaining 20 outer-biome Nexus.
+   * Called when transitioning Act 1 → Endless. Repositions the four central Neon Nexus
+   * to their authored Endless districts, then builds the outer-biome STATE RECORDS.
+   * BIOME_RING_ORDER has 5 entries and NEXUS_PER_BIOME is 1, so there are 5 outer
+   * records — an older comment here claimed 20, which was never what the code did.
+   * The records are not world objects: _syncOuterNexus() streams in at most one at a
+   * time, so Endless carries 4 permanent central Nexus + 0..1 outer = 5 maximum.
    */
   repositionForEndless() {
     // Move existing Neon District Nexus to Endless positions
     const neonArr = this.biomeNexus.get(BIOME_ID.NEON_DISTRICT);
+    // AUTHORED ASYMMETRY (Maria video QA 2026-07-19): these were a perfect square —
+    // 0.35/0.65 on both axes — so the four Endless Neon Nexus read as machine-placed
+    // furniture and framed together as one cluster. Same authored-district treatment as
+    // the Act 1 layout: four distinct districts, no two sharing a row or a column, none
+    // on a shared centre. Values are fractions of CHUNK_SIZE and stay deterministic, so
+    // the Endless layout is stable across a run and identical between sessions.
+    // NOTE: this list is duplicated in _createEndlessNexus and repositionForEndless and
+    // the two MUST stay identical — entering Endless directly and transitioning from
+    // Act 1 have to produce the same world, or the same run would relayout mid-session.
     const neonPositions = [
-      [CHUNK_SIZE * 0.35,  CHUNK_SIZE * 0.35],
-      [CHUNK_SIZE * 0.65,  CHUNK_SIZE * 0.35],
-      [CHUNK_SIZE * 0.35,  CHUNK_SIZE * 0.65],
-      [CHUNK_SIZE * 0.65,  CHUNK_SIZE * 0.65],
+      [CHUNK_SIZE * 0.22,  CHUNK_SIZE * 0.41],   // west, mid-height
+      [CHUNK_SIZE * 0.58,  CHUNK_SIZE * 0.19],   // centre-east, high
+      [CHUNK_SIZE * 0.79,  CHUNK_SIZE * 0.63],   // far east, below centre
+      [CHUNK_SIZE * 0.38,  CHUNK_SIZE * 0.81],   // centre-west, low
     ];
     for (let i = 0; i < neonArr.length && i < neonPositions.length; i++) {
       neonArr[i].pos.x = neonPositions[i][0];
@@ -238,6 +399,13 @@ export class NexusManager {
 
     // Spawn outer-biome Nexus (matches _createEndlessNexus layout)
     this.endless = true;
+    // IDEMPOTENCY GUARD (runtime harness 2026-07-19): this builder is reachable from
+    // both Endless entry paths and again on retry/reset. Without clearing first, a second
+    // call appended another five records — the harness measured 10 — which would later
+    // stream in a duplicate outer Nexus and desynchronise every saved charge.
+    this._despawnOuter();
+    this.outerRecords.length = 0;
+    this._activeSector = -1; this._pendingSector = -1; this._pendingHold = 0;
     const ringDist = CHUNK_SIZE * 0.8; // INSIDE the 3x3 playable arena — matches _createEndlessNexus
     const sectorCount = BIOME_RING_ORDER.length;
 
@@ -248,19 +416,31 @@ export class NexusManager {
       const sectorCenter = (s + 0.5) / sectorCount;
       const sectorAngle = sectorCenter * Math.PI * 2 - Math.PI;
 
+      // STREAMED OUTER NEXUS (Maria decision 2026-07-19): previously all five outer
+      // biome Nexus were instantiated at once, so Endless carried 9 permanent Nexus and
+      // the screen read as a cluster of bases. Now each biome keeps a persistent STATE
+      // RECORD here and only the player's current biome is ever instantiated as a world
+      // sprite — see _syncOuterNexus(). Charge/progress survives leaving and returning,
+      // because it lives on the record, not on the throwaway instance.
       for (let n = 0; n < NEXUS_PER_BIOME; n++) {
-        const angle = sectorAngle;
-        const r = ringDist;
-
+        // Deterministic offset per biome so the ring is not a perfect circle: the angle
+        // is nudged within its own sector and the radius varies per biome. Stable across
+        // sessions (derived from the sector index, not Math.random).
+        const wob    = Math.sin((s + 1) * 12.9898) * 0.5;               // −0.5..0.5
+        const angle  = sectorAngle + wob * (Math.PI / sectorCount) * 0.55;
+        const r      = ringDist * (0.82 + 0.26 * (0.5 + 0.5 * Math.sin((s + 1) * 78.233)));
         const x = Math.round(r * Math.cos(angle));
         const y = Math.round(r * Math.sin(angle));
 
         const bColors = BIOME_NEXUS_COLORS[biomeId] || BIOME_NEXUS_COLORS[BIOME_ID.NEON_DISTRICT];
-        const m = new PowerMatrix(new Vec2(x, y), bColors.full, NEXUS_CAPACITY + (this.capacityBonus || 0));
-        m.biomeId = biomeId;
-        m.biomeColors = bColors;
-        this.matrices.push(m);
-        biomeArr.push(m);
+        this.outerRecords.push({
+          biomeId, sector: s, x, y, colors: bColors,
+          capacity: NEXUS_CAPACITY + (this.capacityBonus || 0),
+          stored: NEXUS_CAPACITY + (this.capacityBonus || 0),   // starts full, like the central four
+          activated: false, completed: false, lastInteraction: -Infinity,
+          instance: null,                                        // set only while streamed in
+        });
+        void biomeArr;   // biome arrays stay for the central Nexus; outer live on records
       }
     }
 

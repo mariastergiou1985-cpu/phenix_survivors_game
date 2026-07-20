@@ -12,7 +12,13 @@
 //      The browser's native HTTP cache handles those better on its own.
 //   3. Only cache clean same-origin 200 responses, and swallow put() failures — a full
 //      or evicted cache must never surface as a page error.
-const CACHE = 'phenix-shell-v3';   // bumped: purge shells poisoned by the old handler
+// Cache name is tied to the BUILD VERSION (Maria 2026-07-19), not a hand-bumped counter.
+// Keep this equal to the ?v= in index.html's main.js tag: on every deploy the name changes,
+// the activate handler below drops every cache that is not the current one, and a mixed
+// old/new build becomes impossible. (A manual 'v3' style counter is easy to forget, and a
+// forgotten bump is exactly how a stale shell survives a deploy.)
+const BUILD = '20260724000000';    // === index.html main.js ?v=
+const CACHE = 'phenix-shell-' + BUILD;
 self.addEventListener('install', (e) => { self.skipWaiting(); });
 self.addEventListener('activate', (e) => {
   e.waitUntil((async () => {

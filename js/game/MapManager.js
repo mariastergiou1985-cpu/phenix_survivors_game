@@ -210,13 +210,25 @@ export class MapManager {
     this._cityImg.onerror = () => console.warn('[Map] cyber_megacity map missing — endless keeps the chunk world');
     this._cityImg.src = 'assets/maps/new_endless/cyber_megacity.png';
     this.CITY_SCALE = 3;   // 1672×519 → 5016×1557 world px per tile (integer — no distortion)
-    // Maria 2026-07-18 ASSET INVENTORY CORRECTION: το «new chaos map.png» αποδείχθηκε
-    // οπτικά το INTERIOR SPACESHIP (Act 1 concept: παράθυρα με πλανήτες, όαση, hydroponics,
-    // engineering, research, observation). Ο πραγματικός Chaos χάρτης είναι το
-    // chaos_mode_only_new_map.png (multi-biome: ice/void/desert/forest/industrial).
+    // ── WALKABLE deck bands (video-grounded pass 2026-07-19) ──────────────────
+    // Μετρημένα με row-luminance/saturation profiling πάνω στα assets (όχι εκτίμηση):
+    // CITY (519 rows): 0-130 σκyline/νέον (sat>80) → background· 210-415 καθαρή plaza
+    //   (sat≈50, φωτεινό δάπεδο)· 420+ κάγκελα/κάτω δομές → background.
+    // CHAOS (440 rows): 0-120 window band με πλανήτες (sat 96-112) → background·
+    //   135-410 ανοιχτό deck floor (sat≈30)· 415+ κάτω τοίχος → background.
+    // Ο παίκτης/enemies/pickups περιορίζονται σε αυτές τις ζώνες — ποτέ πάνω σε
+    // προσόψεις, σωλήνες, ταράτσες ή παράθυρα. Οριζόντια: άπειρη συνέχεια (mirror tiling).
+    this.CITY_WALK_ROWS  = [210, 415];
+    this.CHAOS_WALK_ROWS = [135, 410];
+    // Maria 2026-07-19 VIDEO-GROUNDED CORRECTION: το gameplay video («chaos mode map is
+    // shit.mp4») απέδειξε ότι το chaos_mode_only_new_map.png είναι το multi-biome patchwork
+    // (πάγος/έρημος/industrial/void με perspective γέφυρες) — FAIL. Το σωστό εγκεκριμένο
+    // asset είναι το «new chaos map.png» (1672×440 top-down station deck, ίδιο pixel-art
+    // style/πλάτος με το megacity), αντιγραμμένο στο canonical path chaos_map.png.
+    // Ένα και μόνο active Chaos path — το παλιό patchwork δεν φορτώνεται πουθενά.
     this._chaosDeckImg = new Image();
     this._chaosDeckImg.onerror = () => console.warn('[Map] chaos map missing — chaos keeps the chunk world');
-    this._chaosDeckImg.src = 'assets/maps/chaos_mode_map/chaos_mode_only_new_map.png';
+    this._chaosDeckImg.src = 'assets/maps/chaos_mode_map/chaos_map.png';
     // ACT 1 — SPACESHIP DECK (Maria's approved asset: assets/maps/act1_spaceship/spaceship.png,
     // 1916×821 — a full station deck floating in space). Width-fit into the fixed 3000×1688
     // world (uniform scale ≈1.566, painterly art → smoothing stays ON, no distortion), space
@@ -269,8 +281,9 @@ export class MapManager {
       console.warn('[MapManager] missing chaos bg — falling back to CHAOS_mode.png');
       this._chaosBgImage.src = `assets/ui/CHAOS_mode.png${v}`;   // safe fallback
     };
-    // Maria's dedicated Chaos Mode map (new).
-    this._chaosBgImage.src = `${M('assets/maps/chaos_mode_map/chaos_mode_only_new_map.png')}${v}`;
+    // Maria's dedicated Chaos Mode map (video-grounded pass 2026-07-19: single canonical
+    // path chaos_map.png — the multi-biome patchwork is no longer referenced anywhere).
+    this._chaosBgImage.src = `${M('assets/maps/chaos_mode_map/chaos_map.png')}${v}`;
 
     // ── Biome map images (for chunk streaming) ───────────────────────────
     this.biomeImages = {};   // { biomeId: Image }

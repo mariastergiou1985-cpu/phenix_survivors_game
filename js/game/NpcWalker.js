@@ -11,6 +11,21 @@ import { FloatingText } from '../entities/FloatingText.js';
 const WALKER_FOLLOW_DIST  = 72;    // target gap from player (px)
 const WALKER_FOLLOW_SPEED = 135;   // px/s approach speed (buffed — keeps pace with the player)
 const WALKER_MANA_REGEN   = 13;   // mana/s — buffed to support 3 weapons
+// ── Per-mode base HP (Maria 2026-07-19) ──────────────────────────────────────────
+// Was `chaosMode ? 2000 : 120`. That 120 is the same number as the intended 120s active
+// window (Game.js _wActiveDur) — the DURATION had been copied into the HP field.
+// Measured on the real _updateEnemyDamage path: sustained incoming contact is 13.8 DPS
+// (7 damage per 0.5s hit-cooldown; the cooldown hard-caps it no matter how big the crowd),
+// so 120 HP downed the Walker in 6.4-8.8s — before it could finish even two shockwave
+// cycles (a cycle needs ~20 mana at 13 mana/s, so ~10-15s for two).
+// Values below are survival-time targets under CONTINUOUS worst-case contact; in normal
+// play contact is intermittent, so effective uptime is longer. The Walker can still be
+// downed under sustained boss + swarm pressure — it is not made invulnerable.
+const WALKER_BASE_HP = {
+  act1:    1200,   // ≈87s at 13.8 DPS continuous
+  endless: 1500,   // ≈109s
+  chaos:   2000,   // ≈145s — unchanged, already validated in play
+};
 const WALKER_DOWNED_DUR   = 20;   // seconds until revive (within same active window)
 const WALKER_REVIVE_PCT   = 0.4;  // revive at 40% HP
 
@@ -116,7 +131,13 @@ export class NpcWalker {
   summon(playerPos, synergyId, activeDur, maxHpBonus, chaosMode) {
     const _synId  = synergyId || 'default';
     const _actDur = (typeof activeDur === 'number' && activeDur > 0) ? activeDur : 60;
-    this.maxHp       = chaosMode ? 2000 : 120 + Math.max(0, (maxHpBonus || 0));
+    // `mode` is now 'act1' | 'endless' | 'chaos'. Older callers passed a boolean chaosMode,
+    // so that form is still accepted rather than silently falling through to act1.
+    const _mode = (chaosMode === true) ? 'chaos'
+                : (chaosMode === false || chaosMode == null) ? 'act1'
+                : String(chaosMode);
+    this.mode        = _mode;
+    this.maxHp       = (WALKER_BASE_HP[_mode] ?? WALKER_BASE_HP.act1) + Math.max(0, (maxHpBonus || 0));
     this.hp          = this.maxHp;
     this.mana        = Math.floor(this.maxMana * 0.4);
     this.pos         = { x: playerPos.x - 60, y: playerPos.y + 16 };
@@ -135,6 +156,17 @@ export class NpcWalker {
     this._synergyId  = _synId;
     this._synergy    = SYNERGY_PROFILES[_synId] || DEFAULT_SYNERGY;
     this._vfx        = [];
+  }
+
+  // Promote an ALREADY-ACTIVE Walker to another mode's HP pool (used when Chaos starts
+  // mid-run). Keeps current HP but guarantees at least 50% of the new pool, exactly as the
+  // old inline code did — it just reads the per-mode table instead of a hardcoded 2000.
+  promoteMode(mode) {
+    const next = WALKER_BASE_HP[mode];
+    if (!next || next <= this.maxHp) return;
+    this.mode  = mode;
+    this.maxHp = next;
+    this.hp    = Math.max(this.hp, Math.round(next * 0.5));
   }
 
   dismiss() {
@@ -544,15 +576,16 @@ export class NpcWalker {
   }
 
   _spawnShockwaveVfx(syn) {
-    // Three large expanding rings from Walker body — much bigger than before
-    this._vfx.push({ type: 'ring', x: this.pos.x, y: this.pos.y, r: 8,  maxR: SHOCKWAVE_RADIUS,       life: 0.75, maxLife: 0.75, color: syn.col1, lw: 4 });
-    this._vfx.push({ type: 'ring', x: this.pos.x, y: this.pos.y, r: 6,  maxR: SHOCKWAVE_RADIUS * 0.7, life: 0.60, maxLife: 0.60, color: syn.col2, lw: 3 });
-    this._vfx.push({ type: 'ring', x: this.pos.x, y: this.pos.y, r: 4,  maxR: SHOCKWAVE_RADIUS * 0.4, life: 0.40, maxLife: 0.40, color: '#ffffff', lw: 2 });
-    // Inner flash burst at Walker
+    // VS-FORMULA VISUAL FIX (Maria video QA 2026-07-19): εδώ γεννιόνταν τα «μεγάλα
+    // κίτρινα circles μαζικά» του Act 1 video — 6 rings εδώ + 1 ανά damage pulse
+    // (_fireShockwavePulse) = 9 ταυτόχρονα expanding rings ως 340px ανά activation,
+    // που διάβαζαν σαν ενιαίο screen-filling κύμα. Αποδείχθηκε με canvas arc
+    // instrumentation (stack: NpcWalker._drawVfx). Κρατάμε ΕΝΑ καθαρό lead ring
+    // (αρχή) + inner flash (κορύφωση)· τα 3 pulse rings του _fireShockwavePulse
+    // μένουν ως το ΑΚΡΙΒΕΣ telegraph κάθε πραγματικού pulse (τέλος). Damage,
+    // pulses, radius και cadence ΑΝΕΓΓΙΧΤΑ — αφαιρέθηκαν μόνο duplicate layers.
+    this._vfx.push({ type: 'ring', x: this.pos.x, y: this.pos.y, r: 8,  maxR: SHOCKWAVE_RADIUS, life: 0.75, maxLife: 0.75, color: syn.col1, lw: 4 });
     this._vfx.push({ type: 'burst', x: this.pos.x, y: this.pos.y, r: 0, maxR: 60, life: 0.30, maxLife: 0.30, color: syn.col1, lw: 3 });
-    // Second and third pulse rings (staggered VFX)
-    this._vfx.push({ type: 'ring', x: this.pos.x, y: this.pos.y, r: 12, maxR: SHOCKWAVE_RADIUS * 0.85, life: 0.65, maxLife: 0.65, color: syn.col1, lw: 2.5 });
-    this._vfx.push({ type: 'ring', x: this.pos.x, y: this.pos.y, r: 20, maxR: SHOCKWAVE_RADIUS * 0.60, life: 0.50, maxLife: 0.50, color: '#aaeeff', lw: 2 });
   }
 
   // ── Mind Glitch / Neural Override ─────────────────────────────────────────

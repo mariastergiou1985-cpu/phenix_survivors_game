@@ -43,11 +43,21 @@ const G = (enemy, weight) => ({ enemy, weight });
 export const STAGE_WAVES = {
   // ═══ ACT 1 — 8λεπτη δραματουργία (§19) ═══
   act1: [
-    { start: 0,   end: 60,  targetAlive: 45,  interval: 0.75, batch: 3, formations: ['PERIMETER'],
+    // EARLY PACING FIX (Maria video QA 2026-07-19): το clean-save Level-1 rendered test
+    // έδειξε 93 spawns στα πρώτα 15s και ~495 σε 90s (≈6/s) — ο starter «καθάριζε»
+    // εκατοντάδες fodder πριν καν υπάρξει build, ό,τι κι αν έδειχνε το HP. Η αιτία ήταν
+    // ΜΟΝΟ η early spawn density (targetAlive 45 από το δευτερόλεπτο 0) — όχι enemy HP,
+    // όχι ο starter. Τα πρώτα 3 minute-blocks απαλύνονται (16/40/75)· από το 3:00 και
+    // μετά η δραματουργία μένει ΑΚΡΙΒΩΣ όπως ήταν. Κανένα global nerf.
+    // VS-benchmark αριθμοί (μετρημένοι σε rendered 90s stationary runs): πρώτο λεπτό
+    // ~1 spawn/s με ~10 ορατούς (όπως το λεπτό 1 του VS), δεύτερο λεπτό ~2/s με
+    // encirclement που χτίζεται — kills(90s) ≈ 100 αντί για 437, και ο ακίνητος
+    // παίκτης μπαίνει σε πραγματική θανάσιμη τροχιά στο λεπτό 2-3.
+    { start: 0,   end: 60,  targetAlive: 10,  interval: 1.5,  batch: 2, formations: ['PERIMETER'],
       groups: [G('Scrap Scavenger', 0.5), G('Glitch Drone', 0.3), G('Rogue Punk', 0.2)] },                       // Readable Entry — ΚΑΘΟΛΟΥ projectiles
-    { start: 60,  end: 120, targetAlive: 80,  interval: 0.50, batch: 4, formations: ['PERIMETER', 'RING_PRESSURE'],
+    { start: 60,  end: 120, targetAlive: 26,  interval: 0.9,  batch: 2, formations: ['PERIMETER', 'RING_PRESSURE'],
       groups: [G('Scrap Scavenger', 0.35), G('Glitch Drone', 0.25), G('Volt Rat', 0.22), G('Rogue Punk', 0.18)] }, // First Surround
-    { start: 120, end: 180, targetAlive: 105, interval: 0.45, batch: 4, formations: ['PERIMETER', 'FAST_HUNTER_BURST'],
+    { start: 120, end: 180, targetAlive: 50,  interval: 0.50, batch: 3, formations: ['PERIMETER', 'FAST_HUNTER_BURST'],
       groups: [G('Scrap Scavenger', 0.28), G('Volt Rat', 0.24), G('Combat Hunter', 0.18),
                G('Stealth Infiltrator', 0.14), G('Rogue Punk', 0.12), G('Cyber Shooter', 0.04)] },                // Speed Contrast — 1ος σπάνιος ranged
     { start: 180, end: 240, targetAlive: 130, interval: 0.42, batch: 5, formations: ['DIRECTIONAL_WALL', 'PERIMETER'],

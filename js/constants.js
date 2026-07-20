@@ -6,6 +6,13 @@ export const WORLD_H = 1688;   // enlarged from 1260 (keeps ~16:9); matrices/cam
 export const FPS    = 60;
 export const WORLD_MARGIN = 40;
 
+// ── DEBUG: world-boundary diagnostics (video-grounded pass 2026-07-19) ────────
+// Το «CRITICAL ERROR: GRID LIMIT REACHED» + τα cyan neon boundary walls είναι πλέον
+// ΜΟΝΟ developer diagnostic. Σε production gameplay δεν εμφανίζονται ποτέ: το Endless/
+// Chaos δάπεδο συνεχίζει άπειρα (mirror tiling + silent world recentering) και το Act 1
+// κρατά τον παίκτη στο deck band του σκάφους — δεν υπάρχει ορατό terminal edge.
+export const DEBUG_WORLD_BOUNDS = false;
+
 // ─── Dynamic world bounds ────────────────────────────────────────────────────
 // Mutable bounds object updated by Game.js each frame when chunk streaming is
 // active. All entity position-clamping and OOB checks should reference this

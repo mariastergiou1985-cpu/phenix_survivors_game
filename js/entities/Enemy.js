@@ -685,6 +685,9 @@ export class Enemy {
 
     // Hit flash — extend duration for heavy hits so they read even behind sprites
     this.hitFlash = isHeavyHit ? FEEDBACK.flashDuration * 2.2 : FEEDBACK.flashDuration;
+    // UI clutter pass (Maria video QA 2026-07-19): common enemies δείχνουν HP bar μόνο
+    // για λίγο ΜΕΤΑ από χτύπημα — όχι μόνιμα πάνω από κάθε μικρό enemy στην ορδή.
+    this._hpBarT = 1.6;
 
     // Knockback impulse — normal enemies only; bosses are immune; elites get half.
     if (!isBossEnemy && game.player) {
@@ -803,6 +806,7 @@ export class Enemy {
       this.hp = Math.min(this.maxHp, this.hp + this._biomeRegen * dt);
     }
     if (this.hitFlash > 0) this.hitFlash -= dt;
+    if (this._hpBarT > 0) this._hpBarT -= dt;   // πρόσφατο-damage παράθυρο για το HP bar
     if (this._guardCrackT > 0) this._guardCrackT -= dt;   // HORDE §8F: σπασμένος φρουρός
 
     // ── Φ7 aggression: Overclocked Bomber is a REAL suicide unit now — inside 70px it
@@ -1190,10 +1194,16 @@ export class Enemy {
       ctx.beginPath(); ctx.arc(this.pos.x, this.pos.y, this.radius + 4, 0, Math.PI * 2); ctx.stroke();
     }
 
-    // Small HP bar
+    // Small HP bar — UI clutter pass (Maria video QA 2026-07-19):
+    //  • bosses/mega/elites: πάντα (readability των στόχων που μετράνε)
+    //  • common enemies: ΜΟΝΟ για ~1.6s μετά από damage και μόνο αν τραυματισμένοι —
+    //    η ορδή δεν σκεπάζεται πια από δεκάδες μόνιμα κόκκινα bars.
     if (this.hp > 1) {
-      const bw = this.radius * 2;
-      drawBar(ctx, this.pos.x - bw / 2, this.pos.y - this.radius - 12, bw, 4, this.hp, this.maxHp, RED);
+      const _always = this.isBoss() || this.isMegaBoss || this.isElite;
+      if (_always || (this._hpBarT > 0 && this.hp < this.maxHp)) {
+        const bw = this.radius * 2;
+        drawBar(ctx, this.pos.x - bw / 2, this.pos.y - this.radius - 12, bw, 4, this.hp, this.maxHp, RED);
+      }
     }
 
     // (Steal progress ring removed — enemies no longer steal)
