@@ -812,7 +812,7 @@ export class Enemy {
     let xp = this.isMegaBoss ? 42 : (this.isBoss() ? 12 : 1 + Math.floor((game.timeAlive || 0) / 150));   // BALANCE: 120→150s per +1 — cards must last past the hour
     // Maria brief 2026-07-18 (Phase 1): kills drop PHYSICAL Data-XP shards — XP is granted
     // only on collection. Direct grant remains ONLY as a safety net if the system is absent.
-    if (game.xpShards) game.xpShards.spawnBurst(this.pos.x, this.pos.y, xp, this.radius);
+    if (game.xpShards) game.xpShards.spawnBurst(this.pos.x, this.pos.y, xp, this.radius, game);   // game → walkable resting spots
     else game.player.gainXp(xp, game.floatingTexts);
 
     game._onVaultKill?.(this.pos);   // VAULT lock progress — nearby kills break the lock

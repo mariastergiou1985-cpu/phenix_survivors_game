@@ -101,5 +101,23 @@ for(let i=0;i<200;i++){const x=(rnd()*2-1)*30000, y=(220+rnd()*180)*S;
 T('walkability αμετάβλητη μετά το rebase', ()=>rBad===0||'got '+rBad);
 T('outer canonical record ΔΕΝ άλλαξε από το rebase', ()=>en.outerRecords[0].x!=null && en.outerRecords[0].fixedX!=null);
 
+
+console.log('\n── I. XP shards: πραγματικό XpShardSystem.spawnBurst ──');
+const { XpShardSystem } = await import(path.join(JS, 'entities/XpShards.js'));
+const xs = new XpShardSystem();
+// minimal Game stand-in exposing only the canonical helper the system now calls
+const fakeGame = { _clampPickupPos: (pos, r=18) => { const c = clampPickup(pos.x, pos.y, r); pos.x=c.x; pos.y=c.y; return pos; } };
+let restBad = 0, spawned = 0;
+for (let i=0;i<400;i++){
+  xs.active.length = 0;
+  xs.spawnBurst((rnd()*2-1)*30000, rnd()*519*S, 20, 14, fakeGame);   // deaths anywhere incl. void
+  for (const sh of xs.active){ spawned++;
+    if (!mm.isWalkableFootprint(sh.tx, sh.ty, 12, 'endless')) restBad++; }
+}
+console.log(`  (${spawned} shards από 400 deaths)`);
+T('invalid XP resting positions από τον πραγματικό spawnBurst = 0', ()=>restBad===0||'got '+restBad);
+T('spawnBurst ΧΩΡΙΣ game δεν κρασάρει (Act 1 / back-compat)',
+  ()=>{ xs.active.length=0; xs.spawnBurst(500, 500, 12, 14); return xs.active.length>0; });
+
 console.log(`\n═══ ${pass} PASS · ${fail} FAIL ═══`);
 process.exit(fail?1:0);

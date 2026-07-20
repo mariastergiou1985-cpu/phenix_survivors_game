@@ -57,14 +57,26 @@ export class XpShardSystem {
     s.vm = 0; s.magnet = false; s.dead = false;
     // pop-out: small toss from the death point with a soft landing (bounce easing in update)
     const a = Math.random() * Math.PI * 2, d = 6 + Math.random() * 22;
-    s.tx = x + Math.cos(a) * d; s.ty = y + Math.sin(a) * d;   // landing spot
+    let lx = x + Math.cos(a) * d, ly = y + Math.sin(a) * d;   // landing spot
+    const g = this._game;
+    if (g?._clampPickupPos) {
+      const c = g._clampPickupPos({ x: lx, y: ly }, 12);       // plain point — helper only reads x/y
+      lx = c.x; ly = c.y;
+    }
+    s.tx = lx; s.ty = ly;
     this.active.push(s);
     return s;
   }
 
   // Enemy death entry point — splits the EXACT xp value into tier denominations.
   // Max ~6 shards per death (mega boss 42 → 3×12 + 1×4 + 2×1).
-  spawnBurst(x, y, total, radius = 12) {
+  // WALKABILITY (Maria 2026-07-19): shards used to land wherever the enemy died, so a kill
+  // next to a façade scattered XP into the background where the player could see it and
+  // never collect it. Every shard's RESTING position (s.tx/s.ty — the landing spot, not the
+  // pop-out animation) now resolves through the canonical model. The toss/magnet motion is
+  // untouched, and so are values, tiers and drop rates.
+  spawnBurst(x, y, total, radius = 12, game = null) {
+    this._game = game || null;
     let v = Math.max(1, Math.round(total));
     let guard = 8;
     while (v > 0 && guard-- > 0) {
