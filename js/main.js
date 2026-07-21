@@ -754,7 +754,7 @@ requestAnimationFrame(loop);
   try { optIn = sessionStorage.getItem('phenix_qa_optin') === '1'; } catch (_) {}
   if (params.get('qa') !== '1' || !optIn) return;   // no flag or no opt-in -> no bridge at all
 
-  let savedRealSave = null, savedBalances = null;
+  let savedRealSave = null, savedBalances = null, savedAchUnlock = null;
   const meta = () => game.meta;
   const isolateSave = () => {
     const m = meta();
@@ -763,12 +763,16 @@ requestAnimationFrame(loop);
     savedBalances = { credits: m.credits, protocolFragments: m.protocolFragments,
                       edenMemory: m.edenMemory, coresSecured: m.coresSecured };
     m._save = () => {};                              // QA can never touch localStorage
+    // Also isolate the platform achievement journal — earning e.g. "first_endless" while
+    // driving real runs would write phenix_platform_achievements_v1 and break the storage gate.
+    if (savedAchUnlock == null) { savedAchUnlock = PlatformAchievements.unlock; PlatformAchievements.unlock = () => {}; }
   };
   const restoreSave = () => {
     const m = meta();
     if (!m || !savedRealSave) return;
     m._save = savedRealSave;
     Object.assign(m, savedBalances);
+    if (savedAchUnlock != null) { PlatformAchievements.unlock = savedAchUnlock; savedAchUnlock = null; }
     savedRealSave = null; savedBalances = null;
   };
   const num = v => (typeof v === 'number' && Number.isFinite(v) ? v : null);
@@ -809,6 +813,30 @@ requestAnimationFrame(loop);
         titan: game._activeTitan ? { type: game._activeTitan.enemyType, hp: num(game._activeTitan.hp) } : null,
         matrixRoles: (game.matrices || []).map(m => (m.chaosRole == null ? 'undefined' : m.chaosRole)),
         pets: len(game._activePets),
+        rewardOrbs: len(game.nexusManager && game.nexusManager.rewardOrbs),
+        hazardPhase: (function () {
+          let tel = 0, act = 0;
+          const scan = (arr) => { if (Array.isArray(arr)) for (const z of arr) {
+            if (z && typeof z.t === 'number' && typeof z.warn === 'number') { if (z.t < z.warn) tel++; else act++; } } };
+          scan(game.bossLavaZones); scan(game.lightningZones);
+          return { telegraphing: tel, active: act };
+        })(),
+        petBoltStats: (function () {
+          const bolts = game._petBolts, enemies = game.enemies, count = len(bolts);
+          if (!count) return { count: 0, moving: 0, nearestEnemyDist: null };
+          let moving = 0, nearest = null;
+          const nb = Math.min(count, 64), ne = Array.isArray(enemies) ? Math.min(enemies.length, 96) : 0;
+          for (let i = 0; i < nb; i++) {
+            const b = bolts[i]; if (!b) continue;
+            if (Math.abs(b.vx || 0) + Math.abs(b.vy || 0) > 1) moving++;
+            for (let jx = 0; jx < ne; jx++) {
+              const e = enemies[jx]; if (!e || !e.pos) continue;
+              const d = Math.hypot(b.x - e.pos.x, b.y - e.pos.y);
+              if (nearest == null || d < nearest) nearest = d;
+            }
+          }
+          return { count: count, moving: moving, nearestEnemyDist: (nearest == null ? null : +nearest.toFixed(1)) };
+        })(),
         lastError: (function () { try { return localStorage.getItem('phenix_lasterror'); } catch (_) { return null; } })(),
       };
     },
@@ -880,7 +908,45 @@ requestAnimationFrame(loop);
       const json = JSON.stringify(Object.keys(o).sort().map(k => [k, o[k]]));
       return { keys: Object.keys(o).sort(), bytes: json.length, hash: json };
     },
+    // ── Batch 2 additions (QA-only). Each goes through isolateSave() and calls a REAL
+    //    production path; none exposes a live Game/array reference or writes progression. ──
+    // Single-frame stepper — the reusable driver in tools/qa/browser/batch2-proof-runner.js
+    // advances the sim one frame at a time through THIS, never touching Game directly.
+    step(dt) {
+      isolateSave();
+      const input = { keys: new Set(), mousePos: { x: 0, y: 0 }, mouseDown: false };
+      if (game.upgradeUI) { try { game.selectUpgrade(0); } catch (_) { game.upgradeUI = null; } }
+      if (game.mutationUI) { try { game.selectMutation(0); } catch (_) { game.mutationUI = null; } }
+      if (game.player) { game.player.hp = game.player.maxHp; game.gameOver = false; }
+      try { game.update(dt || (1 / 60), input); } catch (_) {}
+      return this.snapshot();
+    },
+    showMenu() { isolateSave(); try { game.goToMainMenu(); this._settleFade(); } catch (_) {} return this.snapshot(); },
+    showCharacterSelect() { isolateSave(); try { game.goToCharacterSelect(); this._settleFade(); } catch (_) {} return this.snapshot(); },
+    // Commit any queued screen-transition callback immediately and clear the fade, so a menu /
+    // character-select transition never leaks into a following run and freezes its simulation.
+    _settleFade() { try { const cb = game._fadeCb; game._fadeCb = null; game._fadeDir = 0; game._fadeAlpha = 0; if (cb) cb(); } catch (_) {} },
+    enterArena() { isolateSave(); try { game._enterNullBreachArena(); } catch (e) { return { error: String(e.message) }; } return this.snapshot().nullBreach; },
+    unlockVault() {
+      isolateSave();
+      try {
+        if (!game.vaultDrop) game._spawnVaultAt(game.player.pos.clone());
+        const need = (game.vaultDrop && game.vaultDrop.needed) || 30;
+        for (let i = 0; i < need; i++) game._onVaultKill(game.vaultDrop.pos);   // REAL per-kill unlock path
+      } catch (e) { return { error: String(e.message) }; }
+      return this.snapshot().vault;
+    },
     disable() { restoreSave(); try { sessionStorage.removeItem('phenix_qa_optin'); } catch (_) {} delete window.__phenixQA; return true; },
   };
+  // ── Batch 2 proof runner — QA-only, lazy dynamic import. Both gates (?qa=1 AND the
+  //    sessionStorage opt-in) already passed above, so neither this import nor the file it
+  //    fetches can occur on a normal boot, and a normal boot exposes no runBatch2Proof. ──
+  import('../tools/qa/browser/batch2-proof-runner.js?v=20260806000000')
+    .then(m => m.installBatch2Proof(window.__phenixQA, {
+      getCanvas: () => document.getElementById('game'),
+      sha: (typeof window !== 'undefined' && window.__PHENIX_SHA__) || null,
+    }))
+    .catch(e => { try { console.warn('[QA] batch2 runner failed to load', e); } catch (_) {} });
+
   console.log('[QA] runtime bridge active - save isolated, no progression will persist');
 })();
