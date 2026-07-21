@@ -861,6 +861,25 @@ requestAnimationFrame(loop);
       try { game._updateNexusDefence(1 / 60); } catch (_) {}
       return this.snapshot().matrixRoles;
     },
+    /**
+     * Reliable localStorage snapshot. Use THIS, never Object.entries(localStorage).
+     * A save-isolation "leak" was reported against this bridge and turned out to be a
+     * measurement error: Object.entries() on a Storage object is not a dependable
+     * enumeration, and the baseline had been taken before boot finished writing the default
+     * save, so boot-time writes were attributed to the QA session. Instrumenting
+     * Storage.prototype during a full session (startChaos + advance(240s) + forceVault +
+     * completeArena) recorded ZERO setItem/removeItem/clear calls and a byte-identical
+     * 335-byte store. Snapshot with length + key(i), and only after boot has settled.
+     */
+    storageSnapshot() {
+      const o = {};
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        o[k] = localStorage.getItem(k);
+      }
+      const json = JSON.stringify(Object.keys(o).sort().map(k => [k, o[k]]));
+      return { keys: Object.keys(o).sort(), bytes: json.length, hash: json };
+    },
     disable() { restoreSave(); try { sessionStorage.removeItem('phenix_qa_optin'); } catch (_) {} delete window.__phenixQA; return true; },
   };
   console.log('[QA] runtime bridge active - save isolated, no progression will persist');
