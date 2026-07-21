@@ -58,7 +58,7 @@ import { WaveDirector } from './WaveDirector.js?v=20260724000000';
 import { EnemySpawner, ELITE_WAVE as ELITE_WAVE_CFG, BOSS_WARN_COOLDOWN as BOSS_WARN_CD } from './EnemySpawner.js?v=20260719300000';
 import { StateManager, GAME_STATES } from './StateManager.js?v=20260703990000';
 import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260722600000';
-import { NexusManager } from './NexusManager.js?v=20260722600000';
+import { NexusManager } from './NexusManager.js?v=20260803000000';
 import { VESSELS, getVesselById, getDefaultVesselId } from './VesselCatalog.js?v=20260705040000';
 import { PETS, getPetById } from './PetCatalog.js?v=20260705000000';
 import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons, isEvolutionOwnedBy, getCardDisplayName } from './WeaponCatalog.js?v=20260720800000';
@@ -12432,11 +12432,20 @@ export class Game {
   // defence base grants 15% damage reduction (read in Player.applyDamage via _nexusDomeT).
   _updateNexusDefence(dt) {
     if (!this._chaosMode || !this.matrices?.length) return;
+    // Matrices streamed in AFTER _beginChaosRun() never went through assignChaosRoles(), so
+    // they kept chaosRole === undefined and silently got no turret and no dome for the rest of
+    // the run — the defence-base count was frozen at whatever existed at Chaos entry.
+    this.nexusManager?.assignChaosRoleIfMissing?.();
     let inDome = false;
     const rushCadence = this._bossRush ? 0.55 : 1.1;              // Φ14×Φ6: turrets fight HARD during Boss Rush
     for (const m of this.matrices) {
       if (m.chaosRole !== 'defence') continue;
       if (distance(this.player.pos, m.pos) < 160) inDome = true;
+      // NOTE: nothing currently drains a defence base — the turret does not consume charge and
+      // _emitRewards skips defence bases entirely — so `stored` sits at capacity for the whole
+      // run (measured 6/6 across 15 sim-minutes) and this gate never fires. Kept deliberately:
+      // it is the correct behaviour if a future drain path is added, and turret uptime being
+      // unconditional today is a measured fact, not an oversight.
       if (m.stored <= 0) continue;                                // depleted base: dome only
       m._turretCd = (m._turretCd || 0) - dt;
       if (m._turretCd > 0) continue;

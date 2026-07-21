@@ -67,6 +67,12 @@ export function installEnv() {
   globalThis.sessionStorage = globalThis.localStorage;
   globalThis.requestAnimationFrame = () => 0;
   globalThis.cancelAnimationFrame = () => {};
+  // window-level listeners. Without these, js/effects/toxic_sniper_kit_sprites.js:550 threw on
+  // import and euclid_vector was completely unmeasurable headlessly (~900 update errors/min),
+  // which silently excluded that character from every balance and build audit.
+  globalThis.addEventListener = () => {};
+  globalThis.removeEventListener = () => {};
+  globalThis.dispatchEvent = () => true;
   globalThis.matchMedia = () => ({ matches: false, addEventListener() {}, addListener() {} });
   globalThis.AudioContext = class {
     constructor() { this.destination = {}; this.currentTime = 0; this.state = 'running'; }

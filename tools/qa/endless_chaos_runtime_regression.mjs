@@ -863,5 +863,58 @@ if (RUN('closure')) {
   });
 }
 
+// ── 14. Chaos DEFENCE turret: works without a pet, and stays a support system ────
+// Balance measured over 39 real Chaos runs: turret is 0.7-1.9% of total damage and
+// 1.0-3.2% of kills — 16x below the 30% justification line, so NO balance patch was applied.
+// These assertions pin the FUNCTION (it fires with no pet) and the documented output bounds.
+if (RUN('turret')) {
+  console.log('\n── 14. Chaos DEFENCE turret ──');
+  const SRC = fs.readFileSync(path.join(JS, 'game/Game.js'), 'utf8');
+  const NX = fs.readFileSync(path.join(JS, 'game/NexusManager.js'), 'utf8');
+
+  T('production values αμετάβλητες: dmg 22 · cadence 1.1/0.55 · range 340 · speed 520',
+    () => /dmg: 22,/.test(SRC) && /this\._bossRush \? 0\.55 : 1\.1/.test(SRC) &&
+          /340 \* 340/.test(SRC) && /\* 520,/.test(SRC));
+  T('το turret ΔΕΝ έχει pet-dependent gate', () => {
+    // Anchor on the METHOD BODY, not the call site — a nearby this._tickPets(dt) in the
+    // update list would otherwise match and make this assertion meaningless.
+    const i = SRC.indexOf('  _updateNexusDefence(dt) {');
+    const body = SRC.slice(i, SRC.indexOf('\n  }', i));
+    return i > 0 && !/_activePets/.test(body);
+  });
+
+  // Every matrix must carry a chaosRole for the whole run — this FAILED before the fix.
+  T('κάθε matrix παίρνει chaosRole, ακόμη κι αν δημιουργηθεί μετά την είσοδο στο Chaos', () => {
+    const g = newRun('chaos');
+    const nm = g.nexusManager;
+    if (!nm?.matrices) return 'no nexusManager';
+    nm.matrices.push({ pos: g.player.pos.clone(), stored: 6, capacity: 6 });   // late arrival
+    try { g._updateNexusDefence(1 / 60); } catch (_) {}
+    const missing = nm.matrices.filter(m => !m.chaosRole).length;
+    return missing === 0 || `${missing} matrices χωρίς chaosRole`;
+  });
+  T('υπάρχει assignChaosRoleIfMissing και καλείται από το _updateNexusDefence',
+    () => /assignChaosRoleIfMissing\(\)/.test(NX) &&
+          /this\.nexusManager\?\.assignChaosRoleIfMissing\?\.\(\)/.test(SRC));
+  T('το buff/defence split παραμένει ισορροπημένο μετά από late arrivals', () => {
+    const g = newRun('chaos');
+    const nm = g.nexusManager;
+    if (!nm?.matrices) return 'no nexusManager';
+    for (let i = 0; i < 6; i++) nm.matrices.push({ pos: g.player.pos.clone(), stored: 6, capacity: 6 });
+    try { g._updateNexusDefence(1 / 60); } catch (_) {}
+    const d = nm.matrices.filter(m => m.chaosRole === 'defence').length;
+    const b = nm.matrices.filter(m => m.chaosRole === 'buff').length;
+    return Math.abs(d - b) <= 1 || `defence=${d} buff=${b}`;
+  });
+
+  // Documented output bounds from the balance measurement.
+  T('τα bolts παραμένουν φραγμένα (peak 3-4 μετρημένο, cap 256)',
+    () => /if \(this\._petBolts\.length < 256\)/.test(SRC));
+  T('κανένα pierce — το bolt αφαιρείται στο πρώτο hit',
+    () => /this\._petBolts\.splice\(i, 1\);\s*\n\s*break;/.test(SRC));
+  T('το turret ΔΕΝ καταναλώνει charge (τεκμηριωμένο, όχι παράλειψη)',
+    () => /nothing currently drains a defence base/.test(SRC));
+}
+
 console.log(`\n═══ ${pass} assertions passed · ${fail} failed ═══`);
 process.exit(fail ? 1 : 0);

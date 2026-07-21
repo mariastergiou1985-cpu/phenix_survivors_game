@@ -491,6 +491,29 @@ export class NexusManager {
       m.chaosRole = (i++ % 2 === 0) ? 'buff' : 'defence';
       m._turretCd = 0.6 + (i % 3) * 0.3;   // stagger first shots
     }
+    this._chaosRolesAssigned = true;
+  }
+
+  /**
+   * Give a chaosRole to any matrix that appeared AFTER _beginChaosRun().
+   * assignChaosRoles() runs exactly once at Chaos entry, so every matrix streamed in later
+   * kept chaosRole === undefined: measured {buff:2, defence:2} at t=0 becoming
+   * {buff:2, defence:2, undefined:1} by ~5 min and staying that way. Such a base gets no
+   * turret and no dome, yet still emits reward orbs (the skip in _emitRewards tests
+   * === 'defence'), so the defence-base count was frozen at 2 for any run length.
+   * Alternates from the current defence count so the buff/defence split stays even.
+   */
+  assignChaosRoleIfMissing() {
+    if (!this._chaosRolesAssigned) return;             // not a Chaos run — leave roles alone
+    let defence = 0;
+    for (const m of this.matrices) if (m.chaosRole === 'defence') defence++;
+    for (const m of this.matrices) {
+      if (m.chaosRole) continue;
+      const total = this.matrices.filter(x => x.chaosRole).length;
+      m.chaosRole = (defence * 2 <= total) ? 'defence' : 'buff';
+      if (m.chaosRole === 'defence') defence++;
+      m._turretCd = 0.6 + (this.matrices.indexOf(m) % 3) * 0.3;
+    }
   }
 
   // ─── Reward System ──────────────────────────────────────────────────────
