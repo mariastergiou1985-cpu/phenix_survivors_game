@@ -106,5 +106,30 @@ T('κάθε placeGroundHazard caller ελέγχει το αποτέλεσμα', 
     || `${calls.length} calls checked`; });
 T('placeGroundHazard επιστρέφει null αντί για void placement', ()=>/return null;\s*\/\/ caller must skip/.test(GAME));
 
+console.log('\n── QA runtime bridge safety ──');
+// The bridge exists only so time-gated states (Vault 5:00, Null Breach 5:00, Boss Rush 2:00,
+// Titan 0:40) can be photographed in a browser. It must be invisible and inert in production.
+T('δεν εκτίθεται ποτέ ολόκληρο το Game object', () => !/window\.__phenix\s*=\s*game/.test(MAIN));
+T('το bridge απαιτεί ?qa=1 ΚΑΙ sessionStorage opt-in',
+  () => /params\.get\('qa'\) !== '1' \|\| !optIn\) return;/.test(MAIN));
+T('τίποτα δεν ορίζεται στο window πριν περάσουν και οι δύο έλεγχοι', () => {
+  const i = MAIN.indexOf('function installQaBridge');
+  const gate = MAIN.indexOf("params.get('qa') !== '1' || !optIn) return;", i);
+  const assign = MAIN.indexOf('window.__phenixQA =', i);
+  return gate > 0 && assign > gate;
+});
+T('το QA mode απομονώνει το save (κανένα μόνιμο progression)',
+  () => /m\._save = \(\) => \{\};/.test(MAIN) && /restoreSave/.test(MAIN));
+T('τα reads επιστρέφουν snapshots, όχι live arrays',
+  () => /const len = a => \(Array\.isArray\(a\) \? a\.length : 0\);/.test(MAIN) &&
+        !/return game\.enemies;/.test(MAIN) && !/return game\.player;/.test(MAIN));
+T('ο driver έχει iteration bound και yield',
+  () => /Math\.min\(Math\.ceil\(\(seconds \|\| 1\) \/ dt\), 60 \* 60 \* 90\)/.test(MAIN) &&
+        /await new Promise\(r => setTimeout\(r, 0\)\)/.test(MAIN));
+T('αποτυχία predicate επιστρέφει error αντί να τρέχει για πάντα',
+  () => /predicate never became true within bounds/.test(MAIN));
+T('κάθε state-driving method περνά από isolateSave()',
+  () => (MAIN.match(/isolateSave\(\);/g) || []).length >= 6);
+
 console.log(`\n═══ ${pass} PASS · ${fail} FAIL ═══`);
 process.exit(fail?1:0);

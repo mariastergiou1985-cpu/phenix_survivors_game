@@ -729,3 +729,139 @@ function loop(timestamp) {
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
+// ═══════════════════════════════════════════════════════════════════════════════
+// QA RUNTIME BRIDGE — browser verification only. ABSENT from every normal boot.
+// ═══════════════════════════════════════════════════════════════════════════════
+// Time-gated states (Locked Vault at 5:00, Null Breach at 5:00, Boss Rush at 2:00 of Chaos,
+// Titan at 0:40) cannot be reached in a browser verification pass: the page runs in real time
+// and `game` is a module-scoped const, so there is no way to advance the clock or force an
+// event from outside. This bridge exists solely so those states can be driven through the REAL
+// production paths and photographed.
+//
+// SAFETY CONTRACT:
+//  · Requires BOTH ?qa=1 AND an explicit sessionStorage opt-in. Either alone does nothing.
+//  · Nothing is defined on window unless both are present — a normal boot cannot see it.
+//  · Reads return SNAPSHOTS (numbers / plain objects), never live Game/Player/array refs.
+//  · Enabling QA swaps MetaProgress._save for a no-op and snapshots the balances, so a QA
+//    session cannot write credits, cores, Eden Memory, Protocol Fragments, unlocks or
+//    best-run records into localStorage. disable() restores the real save.
+//  · The driver calls the real Game.update with a fixed dt, is hard-bounded on iterations,
+//    yields between batches so the real loop keeps drawing, and returns an error instead of
+//    spinning forever when a predicate never becomes true.
+(function installQaBridge() {
+  const params = new URLSearchParams(location.search);
+  let optIn = false;
+  try { optIn = sessionStorage.getItem('phenix_qa_optin') === '1'; } catch (_) {}
+  if (params.get('qa') !== '1' || !optIn) return;   // no flag or no opt-in -> no bridge at all
+
+  let savedRealSave = null, savedBalances = null;
+  const meta = () => game.meta;
+  const isolateSave = () => {
+    const m = meta();
+    if (!m || savedRealSave) return;
+    savedRealSave = m._save;
+    savedBalances = { credits: m.credits, protocolFragments: m.protocolFragments,
+                      edenMemory: m.edenMemory, coresSecured: m.coresSecured };
+    m._save = () => {};                              // QA can never touch localStorage
+  };
+  const restoreSave = () => {
+    const m = meta();
+    if (!m || !savedRealSave) return;
+    m._save = savedRealSave;
+    Object.assign(m, savedBalances);
+    savedRealSave = null; savedBalances = null;
+  };
+  const num = v => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+  const len = a => (Array.isArray(a) ? a.length : 0);
+
+  window.__phenixQA = {
+    version: '1',
+    build: (document.querySelector('script[src*="main.js"]')?.getAttribute('src') || '').split('?v=')[1] || null,
+
+    snapshot() {
+      const p = game.player, c = game.camera;
+      return {
+        mode: game._chaosMode ? 'chaos' : game.endless ? 'endless' : 'act1',
+        gameState: game.gameState, paused: !!game.paused, gameOver: !!game.gameOver,
+        timeAlive: num(game.timeAlive), level: num(p && p.level),
+        player: p ? { x: num(p.pos.x), y: num(p.pos.y), hp: num(p.hp), maxHp: num(p.maxHp), mana: num(p.mana) } : null,
+        camera: c ? { x: num(c.x), y: num(c.y) } : null,
+        enemies: len(game.enemies), projectiles: len(game.projectiles), enemyBullets: len(game.enemyBullets),
+        xpShards: len(game.xpShards && game.xpShards.active), healthPickups: len(game.healthPickups),
+        manaPickups: len(game.manaPickups), groundCores: len(game.groundCores),
+        hazards: {
+          bossLavaZones: len(game.bossLavaZones), lightningZones: len(game.lightningZones),
+          nullEchoZones: len(game.nullEchoZones), cybermoteMines: len(game.cybermoteMines),
+          iceFields: len(game._iceFields), voidRifts: len(game._voidRifts),
+          ventBursts: len(game._ventBursts), chaosPylons: len(game._chaosPylons),
+        },
+        petBolts: len(game._petBolts),
+        vault: game.vaultDrop
+          ? { active: true, kills: num(game.vaultDrop.kills), needed: num(game.vaultDrop.needed),
+              unlocked: !!game.vaultDrop.unlocked, timer: num(game.vaultDrop.timer) }
+          : { active: false },
+        vaultIdx: num(game._vaultIdx), vaultSchedule: (game._vaultSchedule || []).slice(),
+        nullBreach: { active: !!game._nullBreachActive, panel: !!game._postArenaChoice,
+                      msgStep: num(game._pacMsgStep), b1: !!game._nullBreach1Done, b2: !!game._nullBreach2Done },
+        bossRush: game._bossRush
+          ? { active: true, t: num(game._bossRush.t), hazard: (game._bossRush.hazard && game._bossRush.hazard.kind) || null }
+          : { active: false, count: num(game._bossRushCount) },
+        titan: game._activeTitan ? { type: game._activeTitan.enemyType, hp: num(game._activeTitan.hp) } : null,
+        matrixRoles: (game.matrices || []).map(m => (m.chaosRole == null ? 'undefined' : m.chaosRole)),
+        pets: len(game._activePets),
+        lastError: (function () { try { return localStorage.getItem('phenix_lasterror'); } catch (_) { return null; } })(),
+      };
+    },
+
+    startRun(characterId) {
+      isolateSave();
+      if (characterId) game.selectedCharacter = characterId;
+      game.gameState = 'playing'; game.reset(); game._enterEndless();
+      return this.snapshot();
+    },
+    startChaos(characterId) {
+      isolateSave();
+      if (characterId) game.selectedCharacter = characterId;
+      game.gameState = 'playing'; game.reset(); game._beginChaosRun();   // real Chaos entry
+      return this.snapshot();
+    },
+    setNoPets() { game._activePets = []; return len(game._activePets) === 0; },
+    pause(v) { game.paused = !!v; return !!game.paused; },
+    resetRun() { isolateSave(); game.reset(); return this.snapshot(); },
+
+    async advance(seconds, predicate) {
+      isolateSave();
+      const dt = 1 / 60, maxIter = Math.min(Math.ceil((seconds || 1) / dt), 60 * 60 * 90);
+      const input = { keys: new Set(), mousePos: { x: 0, y: 0 }, mouseDown: false };
+      let i = 0, hit = false;
+      const test = predicate ? new Function('g', 'return (' + predicate + ');') : null;
+      while (i < maxIter) {
+        for (let b = 0; b < 600 && i < maxIter; b++, i++) {
+          if (game.upgradeUI) { try { game.selectUpgrade(0); } catch (_) { game.upgradeUI = null; } }
+          if (game.mutationUI) { try { game.selectMutation(0); } catch (_) { game.mutationUI = null; } }
+          if (game.player) { game.player.hp = game.player.maxHp; game.gameOver = false; }
+          try { game.update(dt, input); } catch (_) {}
+          if (test) { try { if (test(game)) { hit = true; break; } } catch (_) {} }
+        }
+        if (hit) break;
+        await new Promise(r => setTimeout(r, 0));    // let the real loop draw a frame
+      }
+      return { reached: !!hit || !predicate, iterations: i, simSeconds: +(i * dt).toFixed(1),
+               error: (predicate && !hit) ? 'predicate never became true within bounds' : null,
+               state: this.snapshot() };
+    },
+
+    forceVault() { isolateSave(); try { game._spawnVaultAt(game.player.pos.clone()); } catch (e) { return { error: String(e.message) }; } return this.snapshot().vault; },
+    completeArena() { isolateSave(); try { game._completeNullBreachArena(); } catch (e) { return { error: String(e.message) }; } return this.snapshot().nullBreach; },
+    addLateMatrix() {
+      isolateSave();
+      const m = game.matrices && game.matrices[0];
+      if (!m) return { error: 'no matrices' };
+      game.matrices.push({ pos: m.pos.clone ? m.pos.clone() : { x: m.pos.x + 400, y: m.pos.y }, stored: 6, capacity: 6 });
+      try { game._updateNexusDefence(1 / 60); } catch (_) {}
+      return this.snapshot().matrixRoles;
+    },
+    disable() { restoreSave(); try { sessionStorage.removeItem('phenix_qa_optin'); } catch (_) {} delete window.__phenixQA; return true; },
+  };
+  console.log('[QA] runtime bridge active - save isolated, no progression will persist');
+})();
