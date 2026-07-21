@@ -1031,6 +1031,123 @@ requestAnimationFrame(loop);
       return Object.freeze({ cleared: true, weaponVfx: len(game._activeWeaponVFX) + len(game._evoFx) });
     },
 
+    // ── QA-ONLY BUILDENGINE-LIVE EVOLUTION PROOF (the SHIPPED evolution layer) ────
+    //   Activates a be_ evolution through the REAL BuildEngine production path
+    //   (addWeapon→L5, addPassive→L3, _evolutionReady, _evolve) so the live
+    //   BuildEngineRuntime update/draw path renders it. It NEVER injects the legacy
+    //   _weaponLevels evolution path — in fact it clears the legacy natives so only the
+    //   BE evolution fires. localStorage.setItem is stubbed across _evolve (it writes
+    //   phenix_be_discovered), so no storage/progression write. Returns ONLY frozen
+    //   snapshots (never Game/Player/BE-weapon/arrays), is bounded, and is fully removed
+    //   by clearBeEvolutionProof(). Reachable ONLY after both QA gates.
+    async activateBeEvolutionForProof(evolutionId) {
+      isolateSave();
+      const g = game;
+      if (!g.buildEngine) return Object.freeze({ ok: false, reason: 'no-buildengine' });
+      let be;
+      try { be = await import('./game/BuildEngine.js?v=20260722700000'); }
+      catch (_) { return Object.freeze({ ok: false, reason: 'import-failed' }); }
+      const r = be.EVOLUTION_RECIPES[String(evolutionId)];
+      if (!r) return Object.freeze({ ok: false, reason: 'unknown-evolution' });
+      const wd = be.WEAPON_DEFS[r.weapon] || {};
+      if (this._beProofPrevChar == null) this._beProofPrevChar = g.selectedCharacter;
+      if (wd.owner) { g.selectedCharacter = wd.owner; if (g.player) g.player.selectedCharacter = wd.owner; }
+      let _set = null;
+      try { _set = localStorage.setItem.bind(localStorage); localStorage.setItem = function () {}; } catch (_) {}
+      let evolved = false, eligible = false;
+      try {
+        if (wd.external) { g._weaponLevels.set(r.weapon, 5); }
+        else { g.buildEngine.addWeapon(r.weapon); const w = g.buildEngine.weapons.get(r.weapon); if (w) w.level = 5; }
+        for (let i = 0; i < (r.passiveLevel || 3); i++) g.buildEngine.addPassive(r.passive);
+        const ready = g.buildEngine._evolutionReady();
+        eligible = !!(ready && ready.eid === String(evolutionId));
+        g.buildEngine._evolve(r.weapon);
+        const w = g.buildEngine.weapons.get(r.weapon);
+        evolved = !!(w && w.evolved) || !!wd.external;
+        if (!wd.external && g._weaponLevels && g._weaponLevels.clear) g._weaponLevels.clear();   // isolate: only the BE evo fires
+      } catch (_) {}
+      finally { try { if (_set) localStorage.setItem = _set; } catch (_) {} }
+      this._beProofEvo = String(evolutionId); this._beProofWeapon = r.weapon;
+      return Object.freeze({ ok: !!evolved, evolution: String(evolutionId), weapon: r.weapon, eligible: !!eligible });
+    },
+    // Equip the evolution's BE BASE weapon at max level (NOT evolved) for the base-vs-evo frame.
+    async equipBeBaseForProof(evolutionId) {
+      isolateSave();
+      const g = game;
+      if (!g.buildEngine) return Object.freeze({ ok: false, reason: 'no-buildengine' });
+      let be;
+      try { be = await import('./game/BuildEngine.js?v=20260722700000'); }
+      catch (_) { return Object.freeze({ ok: false, reason: 'import-failed' }); }
+      const r = be.EVOLUTION_RECIPES[String(evolutionId)];
+      if (!r) return Object.freeze({ ok: false, reason: 'unknown-evolution' });
+      const wd = be.WEAPON_DEFS[r.weapon] || {};
+      if (this._beProofPrevChar == null) this._beProofPrevChar = g.selectedCharacter;
+      if (wd.owner) { g.selectedCharacter = wd.owner; if (g.player) g.player.selectedCharacter = wd.owner; }
+      try {
+        if (wd.external) { g._weaponLevels.set(r.weapon, 5); }
+        else { g.buildEngine.addWeapon(r.weapon); const w = g.buildEngine.weapons.get(r.weapon); if (w) { w.level = 5; w.evolved = false; } if (g._weaponLevels && g._weaponLevels.clear) g._weaponLevels.clear(); }
+      } catch (_) {}
+      this._beProofEvo = String(evolutionId) + ':base'; this._beProofWeapon = r.weapon;
+      return Object.freeze({ ok: true, weapon: r.weapon, level: 5, evolved: false });
+    },
+    spawnBeEvolutionProofTargets(seconds) {
+      isolateSave();
+      const g = game, frames = Math.max(1, Math.min(600, Math.ceil((seconds || 3) * 60)));
+      const input = { keys: new Set(), mousePos: { x: 0, y: 0 }, mouseDown: false };
+      for (let i = 0; i < frames; i++) { if (g.player) { g.player.hp = g.player.maxHp; g.gameOver = false; } try { game.update(1 / 60, input); } catch (_) {} }
+      if (Array.isArray(g.enemies)) for (const e of g.enemies) { if (e && e.maxHp) e.hp = e.maxHp; }
+      return Object.freeze({ targets: len(g.enemies) });
+    },
+    advanceBeEvolutionProof(seconds) {
+      isolateSave();
+      const g = game, frames = Math.max(1, Math.min(600, Math.ceil((seconds || 1) * 60)));
+      const input = { keys: new Set(), mousePos: { x: 0, y: 0 }, mouseDown: false };
+      let fxPeak = 0;
+      for (let i = 0; i < frames; i++) {
+        if (g.player) { g.player.hp = g.player.maxHp; g.gameOver = false; }
+        if (Array.isArray(g.enemies)) for (const e of g.enemies) { if (e && e.maxHp) e.hp = e.maxHp; }
+        try { game.update(1 / 60, input); } catch (_) {}
+        const be = g.buildEngine, v = be ? (len(be.shards) + len(be.novas) + len(be.fx) + len(be.patches)) : 0;
+        if (v > fxPeak) fxPeak = v;
+      }
+      return Object.freeze(Object.assign({}, this.snapshotBeEvolutionProof(), { beFxPeak: num(fxPeak) }));
+    },
+    snapshotBeEvolutionProof() {
+      const g = game, be = g.buildEngine;
+      const w = be && this._beProofWeapon ? be.weapons.get(this._beProofWeapon) : null;
+      return Object.freeze({
+        evolution: this._beProofEvo || null, weapon: this._beProofWeapon || null,
+        evolvedActive: !!(w && w.evolved), beWeapons: be ? be.weapons.size : 0,
+        enemies: len(g.enemies), projectiles: len(g.projectiles),
+        beShards: be ? len(be.shards) : 0, beNovas: be ? len(be.novas) : 0, beFx: be ? len(be.fx) : 0,
+        weaponVfx: len(g._activeWeaponVFX) + len(g._evoFx),
+        floatingTexts: len(g.floatingTexts), dmgNums: len(g.dmgNums),
+        legacyEvolved: (g._evolvedWeapons && g._evolvedWeapons.size) || 0,   // must stay 0 (no dual-layer)
+        playerX: num(g.player && g.player.pos && g.player.pos.x), playerY: num(g.player && g.player.pos && g.player.pos.y),
+        cameraX: num(g.camera && g.camera.x), cameraY: num(g.camera && g.camera.y),
+        lastError: (function () { try { return localStorage.getItem('phenix_lasterror'); } catch (_) { return null; } })(),
+      });
+    },
+    clearBeEvolutionProof() {
+      const g = game, be = g.buildEngine;
+      try {
+        if (be) {
+          be.weapons && be.weapons.clear && be.weapons.clear(); be.passives && be.passives.clear && be.passives.clear();
+          if (Array.isArray(be.shards)) be.shards.length = 0; if (Array.isArray(be.novas)) be.novas.length = 0;
+          if (Array.isArray(be.fx)) be.fx.length = 0; if (Array.isArray(be.patches)) be.patches.length = 0;
+        }
+        if (Array.isArray(g._activeWeaponVFX)) g._activeWeaponVFX.length = 0;
+        if (Array.isArray(g._evoFx)) g._evoFx.length = 0;
+        if (Array.isArray(g.projectiles)) g.projectiles.length = 0;
+        if (g._weaponLevels && g._weaponLevels.clear) g._weaponLevels.clear();
+        if (this._beProofPrevChar != null) { g.selectedCharacter = this._beProofPrevChar; if (g.player) g.player.selectedCharacter = this._beProofPrevChar; }
+      } catch (_) {}
+      this._beProofPrevChar = null; this._beProofEvo = null; this._beProofWeapon = null;
+      restoreSave();
+      const be2 = game.buildEngine;
+      return Object.freeze({ cleared: true, beWeapons: be2 ? be2.weapons.size : 0, beFx: be2 ? (len(be2.shards) + len(be2.novas) + len(be2.fx)) : 0 });
+    },
+
     disable() { restoreSave(); try { sessionStorage.removeItem('phenix_qa_optin'); } catch (_) {} delete window.__phenixQA; return true; },
   };
   // ── Batch 2 proof runner — QA-only, lazy dynamic import. Both gates (?qa=1 AND the
