@@ -14,7 +14,11 @@ const T = (n, f) => { let ok = false, note = ''; try { const r = f(); ok = r ===
 
 const METHODS = ['equipWeaponForProof', 'spawnProofTargets', 'fireWeaponProof', 'snapshotWeaponProof', 'clearWeaponProofState'];
 const start = MAIN.indexOf('equipWeaponForProof(');
-const end = MAIN.indexOf('disable() {', start);
+// Scope this guard to the LEGACY weapon-proof methods only. The BuildEngine-live proof methods that
+// follow (activateBeEvolutionForProof … clearBeEvolutionProof) have their own dedicated guard
+// (be_evolution_proof_guard_regression.mjs) and legitimately stub localStorage.setItem across _evolve.
+let end = MAIN.indexOf('activateBeEvolutionForProof(', start);
+if (end < 0) end = MAIN.indexOf('disable() {', start);
 const BLOCK = start >= 0 && end > start ? MAIN.slice(start, end) : '';
 
 console.log('=== WEAPON RENDER PROOF GUARD ===\n-- existence + gating --');
@@ -55,7 +59,8 @@ T('clearWeaponProofState calls restoreSave()', () => {
   return cl.includes('restoreSave()') || 'no restoreSave';
 });
 T('no proof method WRITES localStorage (only getItem for lastError)', () => {
-  return (!/localStorage\.setItem/.test(BLOCK) && !/localStorage\.removeItem/.test(BLOCK) && !/localStorage\.clear/.test(BLOCK)) || 'localStorage write in proof';
+  const CODE = BLOCK.replace(/\/\/[^\n]*/g, '');   // strip line comments — a prose mention is not a write
+  return (!/localStorage\.setItem/.test(CODE) && !/localStorage\.removeItem/.test(CODE) && !/localStorage\.clear/.test(CODE)) || 'localStorage write in proof';
 });
 T('no proof method mutates meta/unlock/progression', () => {
   return !/\bunlockCharacter\b|\bclearStage\b|\bunlockEndless\b|\baddCredits\b|\bunlockRandomSecretSkin\b/.test(BLOCK) || 'progression call in proof';
