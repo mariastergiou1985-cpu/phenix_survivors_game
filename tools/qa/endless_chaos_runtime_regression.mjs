@@ -634,5 +634,123 @@ if (RUN('rewards')) {
     () => /this\.rewardsGranted\s+= false;/.test(SRC) && /if \(this\.rewardsGranted\) return;/.test(SRC) && /this\.rewardsGranted = true;/.test(SRC));
 }
 
+// ── 11. _petBolts: two producers, one gated consumer ────────────────────────
+// The tick and draw loops lived inside _tickPets/_drawPets, which early-return when
+// _activePets is empty — the DEFAULT save state. The Chaos DEFENCE turret feeds the same
+// array without a pet, so with the default loadout the array only ever grew (camped: 1079
+// in 10 min, 1647 in 20 min, drain time INFINITE) and every turret bolt was inert and
+// invisible. Ungating lands ~950 turret hits per 10 min where production landed 0.
+if (RUN('petbolts')) {
+  console.log('\n── 11. _petBolts ──');
+  const SRC = fs.readFileSync(path.join(JS, 'game/Game.js'), 'utf8');
+
+  T('_petBolts είναι array αμέσως μετά το new Game()', () => {
+    const un = muteConsole(); const g = new Game(); un();
+    return Array.isArray(g._petBolts) || `type=${typeof g._petBolts}`;
+  });
+  T('ο tick των projectiles ΔΕΝ είναι gated στα _activePets',
+    () => /_tickPetProjectiles\(dt\) \{/.test(SRC) &&
+          !/_tickPetProjectiles\(dt\) \{\s*\n\s*if \(!this\._activePets/.test(SRC));
+  T('ο draw των projectiles ΔΕΝ είναι gated στα _activePets',
+    () => /_drawPetProjectiles\(ctx\) \{/.test(SRC) &&
+          !/_drawPetProjectiles\(ctx\) \{\s*\n\s*if \(!this\._activePets/.test(SRC));
+  T('καλείται από το κύριο update, όχι μόνο από το _tickPets',
+    () => /this\._tickPetProjectiles\(dt\);   \/\/ ungated/.test(SRC));
+  T('και οι δύο producers έχουν documented cap',
+    () => (SRC.match(/if \(this\._petBolts\.length < 256\)/g) || []).length === 2,
+    `βρέθηκαν ${(SRC.match(/if \(this\._petBolts\.length < 256\)/g) || []).length}/2`);
+  T('υπάρχει max-distance cull (rebase/teleport δεν αφήνει stranded bolts)',
+    () => /_bdx \* _bdx \+ _bdy \* _bdy > 2200 \* 2200/.test(SRC));
+  T('το world rebase μετακινεί τα _petBolts', () => /shA\(this\._petBolts\)/.test(SRC));
+
+  // Behavioural: bolts must MOVE, EXPIRE and DRAIN with zero pets equipped.
+  T('τα bolts κινούνται και λήγουν ΧΩΡΙΣ pet (drain, όχι άπειρο)', () => {
+    const g = newRun('chaos');
+    g._activePets = [];
+    for (let i = 0; i < 60; i++) {
+      g._petBolts.push({ x: 100 + i, y: 100, vx: 300, vy: 0, dmg: 1, color: '#fff', life: 1.1 });
+    }
+    const before = g._petBolts.length;
+    const x0 = g._petBolts[0].x;
+    for (let f = 0; f < 60; f++) { try { g._tickPetProjectiles(1 / 60); } catch (_) {} }
+    const moved = g._petBolts.length === 0 || g._petBolts[0].x !== x0;
+    for (let f = 0; f < 180; f++) { try { g._tickPetProjectiles(1 / 60); } catch (_) {} }
+    return (before === 60 && moved && g._petBolts.length === 0) ||
+      `before=${before} moved=${moved} after=${g._petBolts.length} (παλιά: έμεναν για πάντα)`;
+  });
+  T('το TTL είναι dt-driven (ίδιο drain σε 30/60/120 Hz)', () => {
+    const left = [30, 60, 120].map(hz => {
+      const g = newRun('chaos');
+      g._activePets = [];
+      for (let i = 0; i < 20; i++) g._petBolts.push({ x: 0, y: 0, vx: 0, vy: 0, dmg: 1, color: '#fff', life: 1.1 });
+      const frames = Math.round(2 * hz);           // 2 seconds of game time
+      for (let f = 0; f < frames; f++) { try { g._tickPetProjectiles(1 / hz); } catch (_) {} }
+      return g._petBolts.length;
+    });
+    return (new Set(left).size === 1 && left[0] === 0) || `left=${left.join('/')}`;
+  });
+  T('reset() αδειάζει τα _petBolts', () => {
+    const g = newRun('chaos');
+    g._petBolts.push({ x: 0, y: 0, vx: 0, vy: 0, dmg: 1, color: '#fff', life: 1.1 });
+    const un = muteConsole(); g.reset(); un();
+    return g._petBolts.length === 0 || `length=${g._petBolts.length}`;
+  });
+}
+
+// ── 12. Boss Rush ring: anti-escape safeguard, not a DPS hazard ─────────────
+if (RUN('bossring')) {
+  console.log('\n── 12. Boss Rush ring (anti-escape contract) ──');
+  const SRC = fs.readFileSync(path.join(JS, 'game/Game.js'), 'utf8');
+
+  T('το συμβόλαιο είναι τεκμηριωμένο στην πηγή',
+    () => /ANTI-ESCAPE SAFEGUARD/.test(SRC));
+  T('τα damage values 16 / 18 / 26 παραμένουν αμετάβλητα',
+    () => /dmg: 16,/.test(SRC) && /dmg: 18,/.test(SRC) && /dmg: 26,/.test(SRC));
+  T('ο clamp επαναφέρει τον παίκτη σε finite θέση', () => {
+    const g = newRun('chaos');
+    g._bossRush = { t: 40, dur: 180, cx: 0, cy: 0, hazard: { kind: 'lockdown', r: 400, minR: 150, shrink: 30, dmg: 16, t: 5, dur: 15 }, spawnAcc: 0, titanIdx: 0, flags: { lockdown: true } };
+    g.player.pos.x = 99999; g.player.pos.y = 99999;
+    for (let f = 0; f < 30; f++) { try { g._updateBossRush(1 / 60); } catch (_) {} }
+    const d = Math.hypot(g.player.pos.x - 0, g.player.pos.y - 0);
+    return (Number.isFinite(g.player.pos.x) && Number.isFinite(g.player.pos.y) && d <= 400 + 1) ||
+      `pos=(${g.player.pos.x},${g.player.pos.y}) dist=${d}`;
+  });
+  T('clamped παίκτης ΔΕΝ δέχεται περιοδικό ring damage κάθε frame', () => {
+    const g = newRun('chaos');
+    g._bossRush = { t: 40, dur: 180, cx: 0, cy: 0, hazard: { kind: 'lockdown', r: 400, minR: 150, shrink: 0, dmg: 16, t: 5, dur: 15 }, spawnAcc: 0, titanIdx: 0, flags: { lockdown: true } };
+    g.player.pos.x = 5000; g.player.pos.y = 0;
+    let hits = 0; const realDmg = g._damagePlayer.bind(g);
+    g._damagePlayer = (...a) => { hits++; return realDmg(...a); };
+    for (let f = 0; f < 600; f++) { g.player.hp = g.player.maxHp; try { g._updateBossRush(1 / 60); } catch (_) {} }
+    return hits <= 2 || `${hits} damage calls σε 10s — αυτό θα ήταν per-frame loop`;
+  });
+  T('paused: κανένα breach damage', () => {
+    const g = newRun('chaos');
+    g._bossRush = { t: 40, dur: 180, cx: 0, cy: 0, hazard: { kind: 'lockdown', r: 400, minR: 150, shrink: 30, dmg: 16, t: 5, dur: 15 }, spawnAcc: 0, titanIdx: 0, flags: { lockdown: true } };
+    g.player.pos.x = 5000; g.paused = true;
+    let hits = 0; g._damagePlayer = () => { hits++; };
+    for (let f = 0; f < 300; f++) { try { g._updateBossRush(1 / 60); } catch (_) {} }
+    g.paused = false;
+    return hits === 0 || `${hits} damage calls ενώ paused`;
+  });
+  T('reset() καθαρίζει το ring state', () => {
+    const g = newRun('chaos');
+    g._bossRush = { t: 40, dur: 180, cx: 0, cy: 0, hazard: { kind: 'lockdown', r: 400 }, flags: {} };
+    const un = muteConsole(); g.reset(); un();
+    return g._bossRush == null || `_bossRush=${JSON.stringify(g._bossRush)}`;
+  });
+  T('ίδιο αποτέλεσμα σε 30/60/120 Hz', () => {
+    const res = [30, 60, 120].map(hz => {
+      const g = newRun('chaos');
+      g._bossRush = { t: 40, dur: 180, cx: 0, cy: 0, hazard: { kind: 'lockdown', r: 400, minR: 150, shrink: 0, dmg: 16, t: 5, dur: 15 }, spawnAcc: 0, titanIdx: 0, flags: { lockdown: true } };
+      g.player.pos.x = 5000; g.player.pos.y = 0;
+      let hits = 0; g._damagePlayer = () => { hits++; };
+      for (let f = 0; f < 5 * hz; f++) { try { g._updateBossRush(1 / hz); } catch (_) {} }
+      return hits;
+    });
+    return new Set(res).size === 1 || `hits=${res.join('/')}`;
+  });
+}
+
 console.log(`\n═══ ${pass} assertions passed · ${fail} failed ═══`);
 process.exit(fail ? 1 : 0);

@@ -1137,7 +1137,9 @@ export class Game {
     });
 
     // Active pets runtime state (populated at run start)
-    this._activePets = [];  // [{ def, x, y, timer, angle, ... }]
+    this._activePets = [];
+    this._petBolts   = [];   // also initialised per-run in _initActivePets; constructor guard for early draws
+    this._petBombs   = [];  // [{ def, x, y, timer, angle, ... }]
 
     // Preload relic icon images for HUD display.
     // ONLY the ids that actually have a PNG in assets/relics/ — the HUD already draws a
@@ -2898,13 +2900,30 @@ export class Game {
       }
     }
 
-    // Tick pet bolts
+  }
+
+  // TWO producers feed _petBolts: _tickPetAttack (needs an equipped pet) and
+  // _updateNexusDefence (the Chaos DEFENCE turret, which fires with NO pet equipped).
+  // This loop used to live inside _tickPets, which early-returns when _activePets is empty —
+  // the default save state. Consequences with the default loadout:
+  //   · the array only ever grew: camped at a defence base it climbed linearly to 1079 in
+  //     10 min and 1647 in 20 min, and drain time after the producer stopped was INFINITE.
+  //   · worse, the turret was cosmetically dead: bolts never moved, never hit and never drew.
+  //     Ungating it lands ~950 turret hits per 10 min where production landed 0.
+  // Now ungated, with a max-distance cull so a rebase/teleport cannot strand bolts.
+  _tickPetProjectiles(dt) {
+    if (!this._petBolts) { this._petBolts = []; }
+    if (!this._petBombs) { this._petBombs = []; }
     for (let i = this._petBolts.length - 1; i >= 0; i--) {
       const b = this._petBolts[i];
       b.x += b.vx * dt;
       b.y += b.vy * dt;
       b.life -= dt;
       if (b.life <= 0) { this._petBolts.splice(i, 1); continue; }
+      if (this.player) {                                  // outran the arena (world rebase / teleport)
+        const _bdx = b.x - this.player.pos.x, _bdy = b.y - this.player.pos.y;
+        if (_bdx * _bdx + _bdy * _bdy > 2200 * 2200) { this._petBolts.splice(i, 1); continue; }
+      }
       // Hit detection vs enemies (Π1: spatial-grid neighborhood, was a full scan per bolt)
       const _nearB = this._spatialGrid ? this._spatialGrid.query(b.x, b.y, 70) : this.enemies;
       for (let j = _nearB.length - 1; j >= 0; j--) {
@@ -2982,7 +3001,9 @@ export class Game {
     // contributors all game instead of fading into irrelevance after minute 2.
     const _petMin = this.currentMinute ? this.currentMinute() : 0;
     this.audio?.forgeZap?.();                       // Φ9b: pets are audible now
-    this._petBolts.push({
+    // <=1.82 bolts/s in with a <=1.5s TTL -> steady state under 8. 256 is ~30x headroom;
+    // reaching it means _tickPetProjectiles is not running, which is the bug this guards.
+    if (this._petBolts.length < 256) this._petBolts.push({
       x: pet.x, y: pet.y,
       vx: (dx / dist) * pet.def.boltSpeed,
       vy: (dy / dist) * pet.def.boltSpeed,
@@ -3088,7 +3109,15 @@ export class Game {
 
   _drawPets(ctx) {
     if (!this._activePets || this._activePets.length === 0) return;
+    // Projectiles are drawn by _drawPetProjectiles from the main draw list, NOT from here —
+    // calling it here as well would draw every bolt twice.
+  }
 
+  // Ungated for the same reason as _tickPetProjectiles: the Chaos DEFENCE turret feeds
+  // _petBolts with no pet equipped, so gating the draw on _activePets made every turret
+  // bolt invisible in the default loadout.
+  _drawPetProjectiles(ctx) {
+    if (!this._petBolts) return;
     // Draw pet bolts — comet streaks (trail opposite the velocity, white-hot core)
     for (const b of this._petBolts) {
       ctx.save();
@@ -8543,6 +8572,7 @@ export class Game {
     }
     // ── Cyber-Pet AI tick ─────────────────────────────────────────────────────
     this._tickPets(dt);
+    this._tickPetProjectiles(dt);   // ungated: the Chaos turret produces bolts with no pet equipped
     // ── Acquired Weapon Auto-Fire ─────────────────────────────────────────────
     this._tickAcquiredWeapons(dt);
     // ── Tactical Cache Weapons — independent map entities ───────────────────
@@ -10409,6 +10439,17 @@ export class Game {
       let outside = false;
       if (hz.kind === 'double') outside = (d > hz.r) || (d < (hz.inner || 0));
       else outside = d > hz.r;
+      // ── ANTI-ESCAPE SAFEGUARD, NOT a ring DPS hazard (Maria decision 2026-07-21) ──────
+      // hz.dmg (16 / 18 / 26) is deliberately near-unreachable in normal play: the hard clamp
+      // a few lines below pins the player to hz.r - PLAYER_RADIUS - 4 in the SAME frame, so a
+      // player who simply walks into the wall is repositioned before `outside` can be true
+      // again. Measured: released 5000px outside a lockdown ring, 15s of updates → exactly ONE
+      // damage application. That is the intended contract. This branch exists for the cases the
+      // clamp cannot cover in one frame: a teleport/dash-through, forced displacement, or a
+      // numerical breach (world rebase, non-finite position). It fires once, then the 0.5s
+      // cooldown prevents a per-frame damage loop while the clamp restores a valid position.
+      // Do NOT reinterpret this as continuous ring damage or retune 16/18/26 without a
+      // separate design proof — the three rings are walls, and that is by design.
       if (outside && (this._bossRushDmgCd == null || this._bossRushDmgCd <= 0)) {
         if (this._damagePlayer(hz.dmg, { color: '#ff3344', shake: 4 })) this._bossRushDmgCd = 0.5;
         else this._bossRushDmgCd = 0.5;
@@ -12385,7 +12426,9 @@ export class Game {
       const dx = best.pos.x - m.pos.x, dy = best.pos.y - m.pos.y;
       const dd = Math.hypot(dx, dy) || 1;
       this.audio?.forgeTurret?.();                  // Φ9b: defence turret shot voice
-      this._petBolts.push({ x: m.pos.x, y: m.pos.y - 20, vx: (dx / dd) * 520, vy: (dy / dd) * 520,
+      // <=1.82 bolts/s in with a <=1.5s TTL -> steady state under 8. 256 is ~30x headroom;
+      // reaching it means _tickPetProjectiles is not running, which is the bug this guards.
+      if (this._petBolts.length < 256) this._petBolts.push({ x: m.pos.x, y: m.pos.y - 20, vx: (dx / dd) * 520, vy: (dy / dd) * 520,
                             dmg: 22, color: '#ff5560', life: 1.1 });
       this.audio?.forgeTurret?.();                                // Φ14 role audio (self-throttled)
     }
@@ -20239,6 +20282,7 @@ export class Game {
       this._drawActiveVessel(ctx);
       // ── Cyber-pets — slot-offset escorts around the player (drawn after vessel) ──
       this._drawPets(ctx);
+      this._drawPetProjectiles(ctx);   // ungated (see _tickPetProjectiles)
     }
     this._drawUltAura(ctx);
 
@@ -30007,6 +30051,7 @@ _drawLoreArchive(ctx) {
     shA(this.healthPickups); shA(this.manaPickups); shA(this.armorPickups);
     shA(this.tacticalCacheWeapons); shA(this.floatingTexts); shA(this.dmgNums);
     shA(this._activePets); shA(this.matrices);
+    shA(this._petBolts); shA(this._petBombs);   // sh() shifts .x — bolts are {x,y,vx,vy}
     // vaultDrop is Endless-only and Endless is exactly where rebasing happens: without
     // this it stayed at its old world x and was left 10032px behind, unreachable and
     // still counting down. The object-identity Set above makes the extra call safe even
