@@ -107,6 +107,7 @@ async function driveState(qa, env, def, budget) {
     await env.raf(); snap = qa.snapshot();
     if (!def.predicate(snap)) throwFail(def, 'predicate did not hold on the drawn frame', snap);
   }
+  if (typeof qa.draw === 'function') { try { qa.draw(); } catch (_) {} }   // force the REAL production draw so the capture is valid even in a hidden tab
   const cap = captureFrame(env, { id: def.id, name: def.name, sha: env.sha, build: env.build }, snap);
   cap.steps = steps;
   if (env.requireRealCanvas && cap.dataURL == null) throwFail(def, 'capture did not come from a real canvas', snap);
@@ -291,7 +292,8 @@ async function runBatch2Proof(qa, env, opts) {
   env = Object.assign({
     getCanvas: () => (typeof document !== 'undefined' ? document.getElementById('game') : null),
     raf: () => (typeof requestAnimationFrame !== 'undefined'
-      ? new Promise(r => requestAnimationFrame(() => r())) : Promise.resolve()),
+      ? new Promise(r => { let done = false; const fin = () => { if (!done) { done = true; r(); } }; requestAnimationFrame(fin); setTimeout(fin, 24); })
+      : new Promise(r => setTimeout(r, 0))),   // rAF-or-timeout: never stalls in a hidden/throttled tab
     now: () => (typeof performance !== 'undefined' ? performance.now() : Date.now()),
     makeCanvas: (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; },
     requireRealCanvas: true,
