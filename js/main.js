@@ -949,6 +949,88 @@ requestAnimationFrame(loop);
       } catch (e) { return { error: String(e.message) }; }
       return this.snapshot().vault;
     },
+    // ── QA-ONLY FORCED WEAPON RENDER PROOF (evolution/BE archetypes) ──────────────
+    //   Evolution-only archetypes are blocked from natural view by the P1 reachability defect
+    //   (no weapon reaches L5 in natural play, so no evolution ever fires). This gated proof path
+    //   injects a catalog weapon at a chosen level into the REAL acquired-weapon fire path
+    //   (_tickAcquiredWeapons/_autoFireWeapon) so its VFX renders on the production canvas. It goes
+    //   through isolateSave() (never touches localStorage / progression), is bounded, is fully
+    //   removed by clearWeaponProofState(), and NEVER returns Game/Player/weapon/arrays — only
+    //   frozen immutable snapshots + numeric counters. Reachable ONLY after both gates above.
+    equipWeaponForProof(weaponId, level) {
+      isolateSave();
+      const g = game, L = Math.max(1, Math.min(5, (level | 0) || 1)), wid = String(weaponId);
+      try {
+        if (g._weaponLevels && g._weaponLevels.clear) g._weaponLevels.clear();
+        if (g.buildEngine) { if (g.buildEngine.weapons && g.buildEngine.weapons.clear) g.buildEngine.weapons.clear();
+                             if (g.buildEngine.passives && g.buildEngine.passives.clear) g.buildEngine.passives.clear(); }
+        if (g._evolvedWeapons && g._evolvedWeapons.clear) g._evolvedWeapons.clear();
+        if (g._consumedWeapons && g._consumedWeapons.clear) g._consumedWeapons.clear();
+        if (g._acquiredWeaponTimers && g._acquiredWeaponTimers.clear) g._acquiredWeaponTimers.clear();
+      } catch (_) {}
+      // Neutralize character natives: getWeaponForCharacter()->null so the injected weapon still
+      // auto-fires, while every per-character native system's `selectedCharacter !== 'X'` guard fails.
+      if (this._proofPrevChar == null) this._proofPrevChar = g.selectedCharacter;
+      g.selectedCharacter = '__qa_weapon_proof__';
+      if (g.player) g.player.selectedCharacter = '__qa_weapon_proof__';
+      let ok = false;
+      try { g._weaponLevels.set(wid, L); ok = g._weaponLevels.has(wid); } catch (_) {}
+      this._proofWeapon = ok ? wid : null; this._proofLevel = ok ? L : 0;
+      return Object.freeze({ ok: !!ok, weaponId: wid, level: L });
+    },
+    // Drive the natural spawner briefly + freeze the field so the proof weapon has stable targets.
+    spawnProofTargets(seconds) {
+      isolateSave();
+      const g = game, frames = Math.max(1, Math.min(600, Math.ceil((seconds || 3) * 60)));
+      const input = { keys: new Set(), mousePos: { x: 0, y: 0 }, mouseDown: false };
+      for (let i = 0; i < frames; i++) {
+        if (g.player) { g.player.hp = g.player.maxHp; g.gameOver = false; }
+        try { game.update(1 / 60, input); } catch (_) {}
+      }
+      if (Array.isArray(g.enemies)) for (const e of g.enemies) { if (e && e.maxHp) e.hp = e.maxHp; }
+      return Object.freeze({ targets: len(g.enemies) });
+    },
+    // Drive the proof weapon's fire for `seconds` (bounded), keeping targets alive so VFX renders.
+    fireWeaponProof(seconds) {
+      isolateSave();
+      const g = game, frames = Math.max(1, Math.min(600, Math.ceil((seconds || 1) * 60)));
+      const input = { keys: new Set(), mousePos: { x: 0, y: 0 }, mouseDown: false };
+      let vfxPeak = 0;
+      for (let i = 0; i < frames; i++) {
+        if (g.player) { g.player.hp = g.player.maxHp; g.gameOver = false; }
+        if (Array.isArray(g.enemies)) for (const e of g.enemies) { if (e && e.maxHp) e.hp = e.maxHp; }
+        try { game.update(1 / 60, input); } catch (_) {}
+        const v = len(g._activeWeaponVFX) + len(g._evoFx); if (v > vfxPeak) vfxPeak = v;
+      }
+      return Object.freeze(Object.assign({}, this.snapshotWeaponProof(), { vfxPeak: num(vfxPeak) }));
+    },
+    snapshotWeaponProof() {
+      const g = game;
+      return Object.freeze({
+        weapon: this._proofWeapon || null, level: num(this._proofLevel) || 0,
+        enemies: len(g.enemies), projectiles: len(g.projectiles), enemyBullets: len(g.enemyBullets),
+        weaponVfx: len(g._activeWeaponVFX) + len(g._evoFx),
+        floatingTexts: len(g.floatingTexts), dmgNums: len(g.dmgNums),
+        playerX: num(g.player && g.player.pos && g.player.pos.x), playerY: num(g.player && g.player.pos && g.player.pos.y),
+        cameraX: num(g.camera && g.camera.x), cameraY: num(g.camera && g.camera.y),
+        lastError: (function () { try { return localStorage.getItem('phenix_lasterror'); } catch (_) { return null; } })(),
+      });
+    },
+    clearWeaponProofState() {
+      const g = game;
+      try {
+        if (g._weaponLevels && g._weaponLevels.clear) g._weaponLevels.clear();
+        if (g._acquiredWeaponTimers && g._acquiredWeaponTimers.clear) g._acquiredWeaponTimers.clear();
+        if (Array.isArray(g._activeWeaponVFX)) g._activeWeaponVFX.length = 0;
+        if (Array.isArray(g._evoFx)) g._evoFx.length = 0;
+        if (Array.isArray(g.projectiles)) g.projectiles.length = 0;
+        if (this._proofPrevChar != null) { g.selectedCharacter = this._proofPrevChar; if (g.player) g.player.selectedCharacter = this._proofPrevChar; }
+      } catch (_) {}
+      this._proofPrevChar = null; this._proofWeapon = null; this._proofLevel = 0;
+      restoreSave();
+      return Object.freeze({ cleared: true, weaponVfx: len(game._activeWeaponVFX) + len(game._evoFx) });
+    },
+
     disable() { restoreSave(); try { sessionStorage.removeItem('phenix_qa_optin'); } catch (_) {} delete window.__phenixQA; return true; },
   };
   // ── Batch 2 proof runner — QA-only, lazy dynamic import. Both gates (?qa=1 AND the
