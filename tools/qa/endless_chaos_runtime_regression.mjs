@@ -752,5 +752,116 @@ if (RUN('bossring')) {
   });
 }
 
+// ── 13. D4 / D9 / D10 / D12 closure ─────────────────────────────────────────
+if (RUN('closure')) {
+  console.log('\n── 13. D4 / D9 / D10 / D12 ──');
+  const SRC = fs.readFileSync(path.join(JS, 'game/Game.js'), 'utf8');
+  const EVSRC = fs.readFileSync(path.join(JS, 'game/Events.js'), 'utf8');
+
+  // D4 — matrix-meltdown core ejection bypassed the shared placement helper.
+  T('D4: το core meltdown περνά από _clampPickupPos',
+    () => /new DataCore\(game\._clampPickupPos\(pos\), rollCoreType\(\)\)/.test(EVSRC));
+  T('D4: κανένα raw DataCore(pos) push', () => !/new DataCore\(pos, rollCoreType\(\)\)/.test(EVSRC));
+
+  // D9 — reward-bearing completion must be internally idempotent.
+  const mkMeta = (g) => {
+    const c = { pf: 0, eden: 0, credits: 0, kills: 0 };
+    g.meta = { ...g.meta,
+      addProtocolFragment: n => { c.pf += n; }, addEdenMemory: n => { c.eden += n; },
+      addCredits: n => { c.credits += n; }, recordBossKill: () => { c.kills++; },
+      recordBossEcho: () => false, _save: () => {} };
+    return c;
+  };
+  T('D9: πρώτη completion πληρώνει ΑΚΡΙΒΩΣ μία φορά', () => {
+    const g = newRun('endless');
+    const c = mkMeta(g);
+    g._nullBreachActive = true;
+    g._nullBreachArena = { kills: 5, timer: 0, center: g.player.pos.clone(), radius: 600 };
+    try { g._completeNullBreachArena(); } catch (_) {}
+    return (c.eden > 0 && c.credits > 0) || `eden=${c.eden} credits=${c.credits}`;
+  });
+  T('D9: δεύτερη κλήση στο ΙΔΙΟ frame πληρώνει μηδέν', () => {
+    const g = newRun('endless');
+    const c = mkMeta(g);
+    g._nullBreachActive = true;
+    g._nullBreachArena = { kills: 5, timer: 0, center: g.player.pos.clone(), radius: 600 };
+    try { g._completeNullBreachArena(); } catch (_) {}
+    const first = { ...c };
+    try { g._completeNullBreachArena(); } catch (_) {}
+    return (c.pf === first.pf && c.eden === first.eden && c.credits === first.credits && c.kills === first.kills) ||
+      `pf ${first.pf}→${c.pf} eden ${first.eden}→${c.eden} credits ${first.credits}→${c.credits}`;
+  });
+  T('D9: δεύτερη κλήση σε ΕΠΟΜΕΝΟ frame πληρώνει μηδέν', () => {
+    const g = newRun('endless');
+    const c = mkMeta(g);
+    g._nullBreachActive = true;
+    g._nullBreachArena = { kills: 5, timer: 0, center: g.player.pos.clone(), radius: 600 };
+    try { g._completeNullBreachArena(); } catch (_) {}
+    const first = { ...c };
+    for (let f = 0; f < 30; f++) { try { g.update(1 / 60, IN()); } catch (_) {} }
+    try { g._completeNullBreachArena(); } catch (_) {}
+    return (c.eden === first.eden && c.credits === first.credits) ||
+      `eden ${first.eden}→${c.eden} credits ${first.credits}→${c.credits}`;
+  });
+  T('D9: η ΔΕΥΤΕΡΗ πραγματική arena του run πληρώνει κανονικά', () => {
+    const g = newRun('endless');
+    const c = mkMeta(g);
+    g._nullBreachActive = true;
+    g._nullBreachArena = { kills: 5, timer: 0, center: g.player.pos.clone(), radius: 600 };
+    try { g._completeNullBreachArena(); } catch (_) {}
+    const first = { ...c };
+    g._nullBreachActive = true;                       // arena #2 at 12:00
+    g._nullBreachArena = { kills: 3, timer: 0, center: g.player.pos.clone(), radius: 600 };
+    try { g._completeNullBreachArena(); } catch (_) {}
+    return c.eden > first.eden || `eden stayed ${c.eden} — ο guard μπλοκάρει νόμιμο repeat`;
+  });
+
+  // D10 — one canonical Protocol Fragment accounting path.
+  T('D10: κανένα direct protocolFragments += στο Game.js',
+    () => !/this\.meta\.protocolFragments \+=/.test(SRC));
+  T('D10: και τα 8 sites χρησιμοποιούν addProtocolFragment',
+    () => (SRC.match(/addProtocolFragment\?\.\(/g) || []).length === 8,
+    `βρέθηκαν ${(SRC.match(/addProtocolFragment\?\.\(/g) || []).length}/8`);
+  T('D10: το helper κάνει clamp και save (δεν είναι απλή πρόσθεση)', () => {
+    const g = newRun('endless');
+    if (!g.meta?.addProtocolFragment) return 'no helper';
+    const before = g.meta.protocolFragments || 0;
+    g.meta.addProtocolFragment(3);
+    const mid = g.meta.protocolFragments;
+    g.meta.addProtocolFragment(-5);                   // helper must reject non-positive
+    return (mid === before + 3 && g.meta.protocolFragments === mid) ||
+      `before=${before} mid=${mid} after=${g.meta.protocolFragments}`;
+  });
+
+  // D12 — bounded retry, revalidation, safe fallback, no (0,0), no infinite loop.
+  T('D12: non-finite input επιστρέφει finite θέση', () => {
+    const g = newRun('endless');
+    const out = g._clampPickupPos({ x: NaN, y: Infinity, clone() { return this; } }, 18);
+    return (Number.isFinite(out.x) && Number.isFinite(out.y)) || `out=(${out.x},${out.y})`;
+  });
+  T('D12: κάθε candidate επαληθεύεται πριν γίνει δεκτός',
+    () => /_mm\.isWalkableFootprint\(p\.x, p\.y, radius, _mode\)/.test(SRC));
+  T('D12: bounded retries, όχι infinite loop', () => /_try < 4 && !_fixed/.test(SRC));
+  T('D12: fallback είναι η θέση του παίκτη, ΟΧΙ (0,0)',
+    () => /pos\.x = this\.player\.pos\.x; pos\.y = this\.player\.pos\.y;   \/\/ documented safe fallback/.test(SRC) &&
+          !/pos\.x = 0; pos\.y = 0;/.test(SRC));
+  T('D12: η έξοδος είναι walkable ακόμη και σε adversarial θέσεις', () => {
+    const g = newRun('chaos');
+    const mm = g.mapManager, mode = g._walkMode?.();
+    if (!mm?.isWalkableFootprint || !mode) return 'no walk model';
+    let bad = 0, n = 0;
+    for (let i = 0; i < 200; i++) {
+      const p = new (g.player.pos.constructor)(
+        g.player.pos.x + (Math.random() - 0.5) * 4000,
+        g.player.pos.y + (Math.random() - 0.5) * 4000);
+      const out = g._clampPickupPos(p, 18);
+      n++;
+      if (!Number.isFinite(out.x) || !Number.isFinite(out.y)) { bad++; continue; }
+      if (!mm.isWalkableFootprint(out.x, out.y, 18, mode)) bad++;
+    }
+    return bad === 0 || `${bad}/${n} μη-walkable ή μη-finite έξοδοι`;
+  });
+}
+
 console.log(`\n═══ ${pass} assertions passed · ${fail} failed ═══`);
 process.exit(fail ? 1 : 0);

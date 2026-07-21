@@ -17,7 +17,7 @@ import { Enemy, preloadAllWeaponSprites, selectHpBarEnemies } from '../entities/
 import { SupportDrone }   from '../entities/SupportDrone.js?v=20260711750000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260713600000';
-import { SystemEventManager } from './Events.js?v=20260731000000';
+import { SystemEventManager } from './Events.js?v=20260802000000';
 import { UpgradeUI }      from './UpgradeUI.js?v=20260722500000';
 import { weightedSample } from './Upgrades.js?v=20260722500000';
 import { BuildEngineRuntime } from './BuildEngine.js?v=20260722700000';   // BUILD ENGINE — always on (full migration 2026-07-18)
@@ -9350,6 +9350,13 @@ export class Game {
   }
 
   _clampPickupPos(pos, radius = 18) {
+    // Non-finite input can reach here through a world rebase or a degenerate spawn vector.
+    // Snap to the player before any walkability work — NaN silently defeats every test below.
+    if (!pos || !Number.isFinite(pos.x) || !Number.isFinite(pos.y)) {
+      const _p = this.player?.pos;
+      if (_p && Number.isFinite(_p.x)) { pos = pos || new Vec2(0, 0); pos.x = _p.x; pos.y = _p.y; }
+      else return pos;
+    }
     // WALKABILITY (Maria 2026-07-19): the band clamp below keeps things inside the deck
     // rows, but the video proved rows alone are not enough — a shard could still land in
     // an authored pillar or on a façade, where the player can see it and never reach it.
@@ -9363,11 +9370,29 @@ export class Game {
         // correction would stack them all on one pixel and read as a single pickup. A small
         // deterministic scatter (counter-driven, not Math.random, so runs stay reproducible)
         // spreads the search origins so the corrected drops stay individually visible.
-        this._pickupFixN = ((this._pickupFixN || 0) + 1) % 360;
-        const a = this._pickupFixN * 2.39996;                 // golden angle — even spread
-        const p = _mm.findNearestWalkablePoint(
-          pos.x + Math.cos(a) * 14, pos.y + Math.sin(a) * 14, radius, _mode);
-        pos.x = p.x; pos.y = p.y;
+        // BOUNDED RETRY + REVALIDATION (2026-07-21). This used to trust
+        // findNearestWalkablePoint blindly and return whatever it produced —
+        // placeGroundHazard re-checks its result for exactly this reason. If the corrected
+        // point is still non-walkable (narrow façade edge, pocket with no valid neighbour,
+        // non-finite input) the pickup lands somewhere unreachable and is lost for its whole
+        // lifetime. Try a few widening golden-angle origins, verify EVERY candidate, and fall
+        // back to the player's own position — walkable by construction, since the player is
+        // standing on it — rather than to an arbitrary (0,0).
+        let _fixed = false;
+        for (let _try = 0; _try < 4 && !_fixed; _try++) {
+          this._pickupFixN = ((this._pickupFixN || 0) + 1) % 360;
+          const a = this._pickupFixN * 2.39996;               // golden angle — even spread
+          const r = 14 + _try * 22;                           // widen the search each attempt
+          const p = _mm.findNearestWalkablePoint(
+            pos.x + Math.cos(a) * r, pos.y + Math.sin(a) * r, radius, _mode);
+          if (p && Number.isFinite(p.x) && Number.isFinite(p.y) &&
+              _mm.isWalkableFootprint(p.x, p.y, radius, _mode)) {
+            pos.x = p.x; pos.y = p.y; _fixed = true;
+          }
+        }
+        if (!_fixed && this.player && Number.isFinite(this.player.pos.x) && Number.isFinite(this.player.pos.y)) {
+          pos.x = this.player.pos.x; pos.y = this.player.pos.y;   // documented safe fallback
+        }
       }
       return pos;
     }
@@ -10171,7 +10196,7 @@ export class Game {
         // Boss Rush bounty: titans killed during the rush pay PF (Titan Pact doubles it)
         if (this._bossRush && this.meta) {
           const pf = this._relicOn('rush_titan_pact') ? 4 : 2;
-          this.meta.protocolFragments += pf; this.meta._save?.();
+          this.meta.addProtocolFragment?.(pf);   // canonical path: clamps, null-safe, saves once
           this.floatingTexts.push(new FloatingText('+' + pf + ' \uD83E\uDDE9', this._activeTitan.pos.clone(), '#a855f7', 2.0));
         }
       } catch (_) {}
@@ -14160,7 +14185,7 @@ export class Game {
         this._awardCredits?.(100);
         this.player.hp = this.player.maxHp;                      // full heal
         this.player.mana = this.player.maxMana;
-        if (this.meta) { this.meta.protocolFragments += 3; this.meta._save?.(); }   // +3 PF (same path as boss-kill PF)
+        if (this.meta) this.meta.addProtocolFragment?.(3);   // +3 PF via the canonical accounting path
         this.triggerAnnouncement('◈ LEVEL ' + m + ' — APEX BONUS: +100 CORES · FULL RESTORE · +3 🧩 ◈', '#ff2d95');
         this.screenShake?.trigger(5, 0.4);
       }
@@ -27153,6 +27178,15 @@ _drawLoreArchive(ctx) {
 
   // Arena timer reached zero — success. Performance-based fragment reward (capped at 4).
   _completeNullBreachArena() {
+    // INTERNAL ONE-SHOT GUARD. This function pays Protocol Fragments, Eden Memory, credits,
+    // XP, score and two recordBossKill entries, and opens the post-Arena panel. A second
+    // call — same frame, later frame, or re-entrant — re-paid all of it (measured
+    // [2,1,1,1] → [3,2,2,2]). The caller guards correctly today, but a reward-bearing
+    // completion function must not depend on its caller staying correct.
+    // _nullBreachActive is the natural per-completion latch: true exactly while an arena
+    // runs, cleared below. The SECOND arena of a run (12:00) sets it true again and is paid
+    // normally, so this guards double-payment without blocking legitimate repeats.
+    if (!this._nullBreachActive && !this._nullBreachArena) return;
     const arenaKills = this._nullBreachArena?.kills || 0;
     this._nullBreachArena  = null;
     this._nullBreachActive = false;
@@ -27704,7 +27738,7 @@ _drawLoreArchive(ctx) {
     if (this._nullBreachActive) {
       if (this._nullBreachArena) this._nullBreachArena.kills = (this._nullBreachArena.kills || 0) + 1;
     } else if (this.meta && this.endless) {
-      this.meta.protocolFragments += BOSS_KILL_PF;
+      this.meta.addProtocolFragment?.(BOSS_KILL_PF);   // canonical accounting path
       this.meta._save();
       this.floatingTexts.push(new FloatingText('+' + BOSS_KILL_PF + ' 🧩 FRAGMENT',
         new Vec2(t.pos.x, t.pos.y - 90), '#ff5ea8', 2.5));
@@ -27961,7 +27995,7 @@ _drawLoreArchive(ctx) {
     if (this._nullBreachActive) {
       if (this._nullBreachArena) this._nullBreachArena.kills = (this._nullBreachArena.kills || 0) + 1;
     } else if (this.meta && this.endless) {
-      this.meta.protocolFragments += BOSS_KILL_PF;
+      this.meta.addProtocolFragment?.(BOSS_KILL_PF);   // canonical accounting path
       this.meta._save();
       this.floatingTexts.push(new FloatingText('+' + BOSS_KILL_PF + ' 🧩 FRAGMENT',
         new Vec2(a.pos.x, a.pos.y - 60), '#ff5ea8', 2.5));
@@ -28216,7 +28250,7 @@ _drawLoreArchive(ctx) {
     if (this._nullBreachActive) {
       if (this._nullBreachArena) this._nullBreachArena.kills = (this._nullBreachArena.kills || 0) + 1;
     } else if (this.meta && this.endless) {
-      this.meta.protocolFragments += BOSS_KILL_PF;
+      this.meta.addProtocolFragment?.(BOSS_KILL_PF);   // canonical accounting path
       this.meta._save();
       this.floatingTexts.push(new FloatingText('+' + BOSS_KILL_PF + ' 🧩 FRAGMENT',
         new Vec2(a.pos.x, a.pos.y - 90), '#ff5ea8', 2.5));
@@ -28454,7 +28488,7 @@ _drawLoreArchive(ctx) {
     this.player.gainXp(120, this.floatingTexts);
     this._awardCredits(3);
     if (!this._nullBreachActive && typeof this.meta.protocolFragments !== 'undefined') {
-      this.meta.protocolFragments += BOSS_KILL_PF;
+      this.meta.addProtocolFragment?.(BOSS_KILL_PF);   // canonical accounting path
     }
     if (this._nullBreachArena) this._nullBreachArena.kills = (this._nullBreachArena.kills || 0) + 1;
     this._onBossKilledRelicHook(pos, 'cyberSerpent');
@@ -28827,7 +28861,7 @@ _drawLoreArchive(ctx) {
     this.player.gainXp(180, this.floatingTexts);
     this._awardCredits(5);
     if (!this._nullBreachActive && typeof this.meta.protocolFragments !== 'undefined') {
-      this.meta.protocolFragments += BOSS_KILL_PF;
+      this.meta.addProtocolFragment?.(BOSS_KILL_PF);   // canonical accounting path
     }
     if (this._nullBreachArena) this._nullBreachArena.kills = (this._nullBreachArena.kills || 0) + 1;
     this._onBossKilledRelicHook(pos, 'cyberDragon');
@@ -29479,7 +29513,7 @@ _drawLoreArchive(ctx) {
     if (this._nullBreachActive) {
       if (this._nullBreachArena) this._nullBreachArena.kills = (this._nullBreachArena.kills || 0) + 1;
     } else if (this.meta && this.endless) {
-      this.meta.protocolFragments += BOSS_KILL_PF;
+      this.meta.addProtocolFragment?.(BOSS_KILL_PF);   // canonical accounting path
       this.meta._save();
       this.floatingTexts.push(new FloatingText('+' + BOSS_KILL_PF + ' 🧩 FRAGMENT',
         new Vec2(dd.gunner.pos.x, dd.gunner.pos.y - 68), '#ff5ea8', 2.5));

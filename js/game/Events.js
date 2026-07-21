@@ -162,7 +162,10 @@ export class SystemEventManager {
       const angle  = (i / Math.max(count, 1)) * Math.PI * 2;
       const radius = randomRange(60, 140);
       const pos    = target.pos.add(new Vec2(Math.cos(angle) * radius, Math.sin(angle) * radius));
-      game.groundCores.push(new DataCore(pos, rollCoreType()));
+      // Same canonical placement helper every other pickup spawner uses. The raw polar
+      // offset (60-140px around the matrix) can land a core inside an authored pillar or
+      // façade, where the player can see it and never reach it.
+      game.groundCores.push(new DataCore(game._clampPickupPos(pos), rollCoreType()));
     }
     target.stored = 0;
 
