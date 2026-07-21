@@ -111,7 +111,7 @@ async function driveState(qa, env, def, budget) {
   const cap = captureFrame(env, { id: def.id, name: def.name, sha: env.sha, build: env.build }, snap);
   cap.steps = steps;
   if (env.requireRealCanvas && cap.dataURL == null) throwFail(def, 'capture did not come from a real canvas', snap);
-  if (env.requireRealCanvas && cap.nonBlank === false) throwFail(def, 'captured frame is blank (possible black screen)', snap);
+  if (env.requireRealCanvas && cap.nonBlank === false && !def.allowBlank) throwFail(def, 'captured frame is blank (possible black screen)', snap);
   if (!cap.playerFinite && def.needsPlayer !== false && snap.player) throwFail(def, 'player coordinates are non-finite', snap);
   return cap;
 }
@@ -135,7 +135,9 @@ const STATES = [
 
   { id: 2, name: 'Character select',
     prepare: (qa) => qa.showCharacterSelect(),
-    predicate: s => s.gameState === 'character_select', maxSteps: 900, needsPlayer: false },
+    // Character-select is a DOM overlay (#cgm-charselect) over an intentionally-empty canvas —
+    // its canvas layer is legitimately blank, so exempt it from the black-screen (non-blank) gate.
+    predicate: s => s.gameState === 'character_select', maxSteps: 900, needsPlayer: false, allowBlank: true },
 
   { id: 3, name: 'Normal world (Endless)',
     prepare: (qa) => qa.startRun('skeleton_warrior'),
@@ -213,7 +215,7 @@ const STATES = [
   { id: 21, name: 'Reset',
     prepare: (qa) => { qa.startChaos('skeleton_warrior'); qa.forceVault(); qa.resetRun(); },
     predicate: s => (s.petBolts | 0) === 0 && s.vault && s.vault.active === false && s.titan == null
-                    && s.bossRush && s.bossRush.active === false, maxSteps: 600, needsPlayer: false },
+                    && s.bossRush && s.bossRush.active === false, maxSteps: 600, needsPlayer: false, allowBlank: true },
 
   { id: 22, name: 'Second run',
     prepare: (qa) => { qa.resetRun(); qa.startRun('skeleton_warrior'); },
@@ -223,7 +225,7 @@ const STATES = [
     prepare: (qa) => { qa.startChaos('skeleton_warrior'); qa.forceVault(); qa.addLateMatrix(); qa.resetRun(); },
     predicate: s => (s.petBolts | 0) === 0 && hazardsAllZero(s.hazards) && (s.rewardOrbs | 0) === 0
                     && s.vault && s.vault.active === false && s.titan == null
-                    && s.bossRush && s.bossRush.active === false, maxSteps: 600, needsPlayer: false },
+                    && s.bossRush && s.bossRush.active === false, maxSteps: 600, needsPlayer: false, allowBlank: true },
 
   { id: 24, name: 'Normal XP/drop pacing without phantom reward',
     prepare: (qa) => { qa.resetRun(); qa.startRun('skeleton_warrior'); },

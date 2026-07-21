@@ -954,7 +954,7 @@ requestAnimationFrame(loop);
   // ── Batch 2 proof runner — QA-only, lazy dynamic import. Both gates (?qa=1 AND the
   //    sessionStorage opt-in) already passed above, so neither this import nor the file it
   //    fetches can occur on a normal boot, and a normal boot exposes no runBatch2Proof. ──
-  import('../tools/qa/browser/batch2-proof-runner.js?v=20260807000000')
+  import('../tools/qa/browser/batch2-proof-runner.js?v=20260808000000')
     .then(m => m.installBatch2Proof(window.__phenixQA, {
       getCanvas: () => document.getElementById('game'),
       sha: (typeof window !== 'undefined' && window.__PHENIX_SHA__) || null,
