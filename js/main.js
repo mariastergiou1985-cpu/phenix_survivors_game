@@ -926,6 +926,19 @@ requestAnimationFrame(loop);
     // Commit any queued screen-transition callback immediately and clear the fade, so a menu /
     // character-select transition never leaks into a following run and freezes its simulation.
     _settleFade() { try { const cb = game._fadeCb; game._fadeCb = null; game._fadeDir = 0; game._fadeAlpha = 0; if (cb) cb(); } catch (_) {} },
+    // Force the REAL production draw so a capture is valid even when the QA tab is backgrounded
+    // (Chrome pauses the game's own rAF draw loop when the tab is hidden; canvas readback still
+    // works). This is the exact loop draw path — reset, shake translate, game.draw(ctx).
+    draw() {
+      try {
+        if (ctx.reset) ctx.reset();
+        else { ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; ctx.shadowBlur = 0; }
+        const off = (game.screenShake && game.screenShake.getOffset) ? game.screenShake.getOffset() : [0, 0];
+        ctx.save();
+        try { ctx.translate(off[0], off[1]); game.draw(ctx); } finally { ctx.restore(); }
+      } catch (_) {}
+      return true;
+    },
     enterArena() { isolateSave(); try { game._enterNullBreachArena(); } catch (e) { return { error: String(e.message) }; } return this.snapshot().nullBreach; },
     unlockVault() {
       isolateSave();
@@ -941,7 +954,7 @@ requestAnimationFrame(loop);
   // ── Batch 2 proof runner — QA-only, lazy dynamic import. Both gates (?qa=1 AND the
   //    sessionStorage opt-in) already passed above, so neither this import nor the file it
   //    fetches can occur on a normal boot, and a normal boot exposes no runBatch2Proof. ──
-  import('../tools/qa/browser/batch2-proof-runner.js?v=20260806000000')
+  import('../tools/qa/browser/batch2-proof-runner.js?v=20260807000000')
     .then(m => m.installBatch2Proof(window.__phenixQA, {
       getCanvas: () => document.getElementById('game'),
       sha: (typeof window !== 'undefined' && window.__PHENIX_SHA__) || null,
