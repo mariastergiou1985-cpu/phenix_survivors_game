@@ -779,6 +779,10 @@ export class Enemy {
   }
 
   _die(game) {
+    // Explicit death marker. The Chaos Titan reward used to infer "died" purely from absence
+    // in game.enemies, which also fires on despawn — a full-HP Titan removed for any other
+    // reason paid out its reward relic. _die() is the only real death path.
+    this._killed = true;
     // Φ7: a downed Overclocked Bomber still cooks off — smaller telegraphed blast on death.
     if (this.enemyType === 'Overclocked Bomber' && !this._cookedOff) {
       this._cookedOff = true;
@@ -810,17 +814,20 @@ export class Enemy {
       const _give = _mini ? Math.random() < 0.35 : true;
       if (_give) {
         const _heal = this.isMegaBoss ? 0.25 : _mini ? 0.15 : 0.20;
-        game.healthPickups.push({ pos: this.pos.clone().add
+        const _bp = this.pos.clone().add
           ? this.pos.clone().add(new (this.pos.constructor)(Math.cos(0.7) * 26, Math.sin(0.7) * 26))
-          : { x: this.pos.x + Math.cos(0.7) * 26, y: this.pos.y + Math.sin(0.7) * 26 },
-          timer: 30, heal: _heal, armT: 0.6 });
+          : { x: this.pos.x + Math.cos(0.7) * 26, y: this.pos.y + Math.sin(0.7) * 26 };
+        game.healthPickups.push({ pos: game._clampPickupPos(_bp), timer: 30, heal: _heal, armT: 0.6 });
       }
     }
     // Elite reward: 15% πιθανότητα για 12% heal (ήταν 18%/10%) — mana roll αμετάβλητο.
     if (this.isElite) {
       const r = Math.random();
-      if (r < 0.15)      game.healthPickups.push({ pos: this.pos.clone(), timer: 25, heal: 0.12, armT: 0.6 });
-      else if (r < 0.50) game.manaPickups.push({ pos: this.pos.clone() });
+      // _clampPickupPos like every Game.js spawner. Raw this.pos.clone() dropped pickups on
+      // non-walkable floor (measured 3/20 health, 8/41 mana over 6 min of Chaos) — and pickups
+      // do not move, so a bad placement is unreachable for its whole 25-30s lifetime.
+      if (r < 0.15)      game.healthPickups.push({ pos: game._clampPickupPos(this.pos.clone()), timer: 25, heal: 0.12, armT: 0.6 });
+      else if (r < 0.50) game.manaPickups.push({ pos: game._clampPickupPos(this.pos.clone()) });
     }
     // Normal-enemy XP scales with elapsed time (+1 every 2 min) so dense late-game
     // crowds still feed steady level-ups; bosses keep their flat high values.

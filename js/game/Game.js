@@ -13,11 +13,11 @@ import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260712090000';
 import { Player }         from '../entities/Player.js?v=20260724000000';
 import { XpShardSystem }  from '../entities/XpShards.js?v=20260724000000';   // Phase 1: physical Data-XP
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260706270000';
-import { Enemy, preloadAllWeaponSprites, selectHpBarEnemies } from '../entities/Enemy.js?v=20260724000000';
+import { Enemy, preloadAllWeaponSprites, selectHpBarEnemies } from '../entities/Enemy.js?v=20260731000000';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=20260711750000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260713600000';
-import { SystemEventManager } from './Events.js?v=20260711780000';
+import { SystemEventManager } from './Events.js?v=20260731000000';
 import { UpgradeUI }      from './UpgradeUI.js?v=20260722500000';
 import { weightedSample } from './Upgrades.js?v=20260722500000';
 import { BuildEngineRuntime } from './BuildEngine.js?v=20260722700000';   // BUILD ENGINE — always on (full migration 2026-07-18)
@@ -1216,6 +1216,12 @@ export class Game {
       this.nexusManager.capacityBonus = this._nexusCapacityBonus();   // coreCapacity meta + capacity achievements
     } else {
       this.nexusManager.endless = false;
+      // The NexusManager is REUSED across runs, but rewardOrbs is only initialised in its
+      // constructor and only spliced on collect/expiry — so an uncollected orb survived the
+      // run boundary and paid out in the next run. Measured: one credits orb seeded at the end
+      // of run 1 was still there after reset() and gave meta.credits +3 three seconds into run 2.
+      this.nexusManager.rewardOrbs.length = 0;
+      this.nexusManager.rewardTimer = 0;
     }
     this.matrices     = [];  // will be set to nexusManager.matrices after init()
     this._appliedNexusCapBonus = 0;   // in-run capacity cards applied so far (Memory Bank etc.)
@@ -1228,6 +1234,16 @@ export class Game {
     this._vaultIdx         = 0;      // opportunities consumed this run (only _spawnVaultAt advances it)
     this._vaultPending     = false;  // a window is open but an exclusive event owns the screen
     this._lastVaultSpawnAt = null;
+    // HP-attrition stamps are RUN-scoped. They were initialised with `??=` at the drop site,
+    // so they were set once per PAGE LOAD and never cleared: run 2 started at timeAlive 0 while
+    // the stamp still held run 1's end time, making both the 25s cooldown and the 45s pity
+    // window permanently false. Measured over three consecutive 9-min Chaos runs on one
+    // instance with the player pinned in the pity band: 5 → 1 → 0 attrition drops.
+    this._hpLastDropT  = -999;
+    this._hpLastSpawnT = -999;
+    this._pityArmed    = 0;
+    this._theftAnnounced = false;   // full CORE THEFT banner showed once per page load, not per run
+    this._pickupFixN     = 0;       // cosmetic scatter counter, also leaked across runs
     this.groundCores  = [];
     this.enemies      = [];
     this.projectiles  = [];
@@ -3229,8 +3245,13 @@ export class Game {
     const survivalBonus  = this.timeAlive >= 300 ? 5 : 0;
     const victoryCredits = this.victory ? 15 : 0;
 
-    this.runCreditsEarned = timeCredits + killCredits + coreCredits + survivalBonus + victoryCredits;
-    this.meta.addCredits(this.runCreditsEarned);
+    // ACCUMULATE, do not assign. _awardCredits already added boss-kill, grid-cache and nexus-orb
+    // credits into runCreditsEarned during the run; assigning here discarded all of them from the
+    // END SCREEN (the bank itself was always correct). Measured over 10 min of Chaos:
+    // runCreditsEarned 449 before this line, 573 after, while the real meta.credits delta was 1826.
+    const _endCredits = timeCredits + killCredits + coreCredits + survivalBonus + victoryCredits;
+    this.runCreditsEarned = (this.runCreditsEarned || 0) + _endCredits;
+    this.meta.addCredits(_endCredits);
 
     const finalScore = Math.floor(this.score);
     if (finalScore > this.bestScore) {
@@ -10086,13 +10107,23 @@ export class Game {
   // huge mega-boss (radius 90, ×2 HP on top of boss stats). Their signature screen-abilities
   // will layer on top; for now they are giant boss-tier threats with heavy aimed fire.
   _updateChaosTitans(dt) {
-    if (this.gameOver || this.victory || this.paused) return;
+    if (this.paused) return;
     if (this._chaosTitanTimer == null) { this._chaosTitanTimer = 40; this._chaosTitanIdx = 0; }
     // Only one Titan alive at a time — while it lives, run its signature ability.
     const titan = this.enemies.find(e => e.isMegaBoss && Enemy.CHAOS_TITANS.has(e.enemyType));
-    if (titan) { this._activeTitan = titan; this._runTitanAbility(titan, dt); return; }
-    // The tracked Titan just died → grant its unique reward-relic unlock (earned by the kill).
-    if (this._activeTitan) {
+    if (titan) {
+      if (this.gameOver || this.victory) return;
+      this._activeTitan = titan; this._runTitanAbility(titan, dt); return;
+    }
+    // The tracked Titan died → grant its unique reward-relic unlock (earned by the kill).
+    // gameOver/victory used to early-return ABOVE this block, and reset() nulls _activeTitan,
+    // so killing a Titan on the frame you died silently threw the unlock away (measured:
+    // recordBossKill 0 with gameOver true, 1 with it cleared). The grant now runs first and
+    // only the spawn/timer half below is gated on gameOver/victory.
+    // It also required a REAL kill: absence from `enemies` alone was treated as death, so a
+    // Titan that despawned at full HP paid out (measured: hp 9999, removed from enemies →
+    // recordBossKill fired).
+    if (this._activeTitan && (this._activeTitan.hp <= 0 || this._activeTitan._killed)) {
       const flag = {
         'Giga-Core Overlord': 'titan_overlord', 'Malware Leviathan': 'titan_leviathan',
         'Quantum Void Emperor': 'titan_emperor', 'Apocalypse Mech Tyrant': 'titan_tyrant',
@@ -10116,7 +10147,11 @@ export class Game {
       } catch (_) {}
       this.triggerAnnouncement(this._activeTitan.enemyType.toUpperCase() + ' DESTROYED — REWARD RELIC UNLOCKED', '#7CFF4D');
       this._activeTitan = null;
+    } else if (this._activeTitan) {
+      this._activeTitan = null;   // despawned without dying — drop the tracker, pay nothing
     }
+    // Spawning and the cadence clock stay gated on the run still being live.
+    if (this.gameOver || this.victory) return;
     this._chaosTitanTimer -= dt;
     if (this._chaosTitanTimer > 0) return;
     this._chaosTitanTimer = 55;   // next Titan ~55s after the last one is cleared

@@ -530,5 +530,109 @@ if (RUN('hazard')) {
   });
 }
 
+// ── 10. Rewards / pickups / progression callbacks ───────────────────────────
+if (RUN('rewards')) {
+  console.log('\n── 10. Rewards / pickups ──');
+  const SRC = fs.readFileSync(path.join(JS, 'game/Game.js'), 'utf8');
+  const ESRC = fs.readFileSync(path.join(JS, 'entities/Enemy.js'), 'utf8');
+
+  // D1 — HP-attrition stamps were page-scoped (??=), so run 2 got almost no health drops.
+  T('reset() μηδενίζει τα HP-attrition stamps', () => {
+    const g = newRun('chaos');
+    g._hpLastDropT = 1800; g._hpLastSpawnT = 1800; g._pityArmed = 3;
+    const un = muteConsole(); g.reset(); un();
+    return (g._hpLastDropT <= -999 && g._hpLastSpawnT <= -999 && g._pityArmed === 0) ||
+      `drop=${g._hpLastDropT} spawn=${g._hpLastSpawnT} pity=${g._pityArmed}`;
+  });
+
+  // D2 — uncollected Nexus reward orbs survived the run boundary and paid out in run 2.
+  T('reset() αδειάζει τα nexusManager.rewardOrbs', () => {
+    const g = newRun('chaos');
+    if (!g.nexusManager) return 'no nexusManager';
+    g.nexusManager.rewardOrbs.push({ pos: { x: 0, y: 0 }, kind: 'credits', amount: 3, _collected: false });
+    const un = muteConsole(); g.reset(); un();
+    return g.nexusManager.rewardOrbs.length === 0 || `length=${g.nexusManager.rewardOrbs.length}`;
+  });
+
+  // D3 — Enemy.js pickup drops bypassed _clampPickupPos (3/20 health, 8/41 mana off-mesh).
+  T('τα elite drops περνούν από _clampPickupPos',
+    () => /game\.healthPickups\.push\(\{ pos: game\._clampPickupPos\(this\.pos\.clone\(\)\), timer: 25/.test(ESRC) &&
+          /game\.manaPickups\.push\(\{ pos: game\._clampPickupPos\(this\.pos\.clone\(\)\) \}\)/.test(ESRC));
+  T('τα boss drops περνούν από _clampPickupPos',
+    () => /game\.healthPickups\.push\(\{ pos: game\._clampPickupPos\(_bp\), timer: 30/.test(ESRC));
+  T('κανένα raw this.pos.clone() pickup push στο Enemy.js',
+    () => !/healthPickups\.push\(\{ pos: this\.pos\.clone\(\), timer: 25/.test(ESRC) &&
+          !/manaPickups\.push\(\{ pos: this\.pos\.clone\(\) \}\)/.test(ESRC));
+
+  // D5 — _grantRewards assigned over the in-run total instead of accumulating.
+  T('runCreditsEarned συσσωρεύει, δεν αντικαθιστά', () => {
+    const g = newRun('chaos');
+    g.runCreditsEarned = 449;
+    g.rewardsGranted = false;
+    try { g._grantRewards(); } catch (_) {}
+    return g.runCreditsEarned >= 449 || `runCreditsEarned=${g.runCreditsEarned} (in-run 449 discarded)`;
+  });
+
+  // D6 — reward was thrown away if the Titan died on the frame the player died.
+  T('το Titan reward επιβιώνει θανάτου στο ίδιο frame', () => {
+    const g = newRun('chaos');
+    let kills = 0;
+    g.meta = { ...g.meta, recordBossKill: () => { kills++; }, recordBossEcho: () => false, addEdenMemory: () => {}, _save: () => {} };
+    g._activeTitan = { enemyType: 'Quantum Void Emperor', hp: 0, pos: g.player.pos.clone() };
+    g.enemies.length = 0;
+    g.gameOver = true;
+    try { g._updateChaosTitans(1 / 60); } catch (_) {}
+    return kills === 1 || `recordBossKill fired ${kills}×`;
+  });
+
+  // D7 — absence from `enemies` was treated as death, so a despawn paid the reward.
+  T('το Titan reward απαιτεί ΠΡΑΓΜΑΤΙΚΟ kill (όχι despawn)', () => {
+    const g = newRun('chaos');
+    let kills = 0;
+    g.meta = { ...g.meta, recordBossKill: () => { kills++; }, recordBossEcho: () => false, addEdenMemory: () => {}, _save: () => {} };
+    g._activeTitan = { enemyType: 'Quantum Void Emperor', hp: 9999, pos: g.player.pos.clone() };
+    g.enemies.length = 0;
+    try { g._updateChaosTitans(1 / 60); } catch (_) {}
+    return (kills === 0 && g._activeTitan == null) || `recordBossKill fired ${kills}× on a full-HP despawn`;
+  });
+  T('Enemy._die σημειώνει _killed (η μόνη πραγματική death path)',
+    () => /_die\(game\) \{[\s\S]{0,400}this\._killed = true;/.test(ESRC));
+
+  // D8 / D11 — banner + scatter counters leaked across runs.
+  T('reset() μηδενίζει _theftAnnounced και _pickupFixN', () => {
+    const g = newRun('chaos');
+    g._theftAnnounced = true; g._pickupFixN = 286;
+    const un = muteConsole(); g.reset(); un();
+    return (g._theftAnnounced === false && g._pickupFixN === 0) ||
+      `theft=${g._theftAnnounced} fixN=${g._pickupFixN}`;
+  });
+
+  // Lock-ins that already pass.
+  T('reset() αδειάζει ΟΛΑ τα pickup containers', () => {
+    const g = newRun('chaos');
+    g.healthPickups.push({ pos: { x: 0, y: 0 }, timer: 9 });
+    g.manaPickups.push({ pos: { x: 0, y: 0 } });
+    g.armorPickups.push({ pos: { x: 0, y: 0 } });
+    g.groundCores.push({ pos: { x: 0, y: 0 } });
+    g.gridCache = { pos: { x: 0, y: 0 }, timer: 9 };
+    g.vaultDrop = { pos: { x: 0, y: 0 }, timer: 9 };
+    const un = muteConsole(); g.reset(); un();
+    const dirty = ['healthPickups', 'manaPickups', 'armorPickups', 'groundCores']
+      .filter(k => Array.isArray(g[k]) && g[k].length > 0);
+    return (dirty.length === 0 && g.gridCache == null && g.vaultDrop == null) ||
+      `dirty=${dirty.join(',')} cache=${!!g.gridCache} vault=${!!g.vaultDrop}`;
+  });
+  T('τα MetaProgress unlocks είναι idempotent', () => {
+    const g = newRun('chaos');
+    if (!g.meta?.unlock) return 'no meta.unlock';
+    const before = JSON.stringify(g.meta.unlocked ?? {});
+    g.meta.unlock('log_1985'); const mid = JSON.stringify(g.meta.unlocked ?? {});
+    g.meta.unlock('log_1985'); const after = JSON.stringify(g.meta.unlocked ?? {});
+    return mid === after || 'δεύτερο unlock άλλαξε το state';
+  });
+  T('_grantRewards είναι one-shot ανά run (rewardsGranted)',
+    () => /this\.rewardsGranted\s+= false;/.test(SRC) && /if \(this\.rewardsGranted\) return;/.test(SRC) && /this\.rewardsGranted = true;/.test(SRC));
+}
+
 console.log(`\n═══ ${pass} assertions passed · ${fail} failed ═══`);
 process.exit(fail ? 1 : 0);

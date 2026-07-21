@@ -52,7 +52,7 @@ T('boss rotation παίρνει breathing room μετά την arena',
   () => (SRC.match(/_endlessBossTimer = Math\.max\(this\._endlessBossTimer, 30\)/g) || []).length >= 2);
 T('ΕΝΑΣ Titan τη φορά — ο timer δεν τρέχει καν όσο ζει',
   () => /const titan = this\.enemies\.find\(e => e\.isMegaBoss && Enemy\.CHAOS_TITANS\.has\(e\.enemyType\)\);/.test(SRC) &&
-        /if \(titan\) \{ this\._activeTitan = titan; this\._runTitanAbility\(titan, dt\); return; \}/.test(SRC));
+        /if \(titan\) \{[\s\S]{0,200}this\._activeTitan = titan; this\._runTitanAbility\(titan, dt\); return;/.test(SRC));
 T('ο επόμενος Titan μετριέται ΜΕΤΑ το clear, όχι από το spawn',
   () => /this\._chaosTitanTimer = 55;   \/\/ next Titan ~55s after the last one is cleared/.test(SRC));
 T('Boss Rush δεν ανοίγει όσο η arena είναι ενεργή (mutual exclusion)',

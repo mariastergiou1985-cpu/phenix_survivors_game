@@ -275,13 +275,19 @@ T('_ensurePhasewalkerFx χτίζει ΜΙΑ φορά (_pwFxBuilt guard)',
   () => /if \(this\._pwFxBuilt \|\| !this\._canvas\) return;/.test(GAME));
 T('reset() μηδενίζει και τα τρία modules', () => {
   const i = GAME.indexOf('  reset() {');
-  const seg = GAME.slice(i, i + 6000);
+  // Window must cover the WHOLE reset() body. It was 6000 chars, and additions to reset()
+  // (vault schedule, HP-attrition stamps, theft banner) pushed the Phasewalker nulls to offset
+  // 6070 — the assertions started failing on correct production code. Sized with headroom.
+  const seg = GAME.slice(i, i + 20000);
   return /this\._glitchDash\s*=\s*null/.test(seg) && /this\._empShock\s*=\s*null/.test(seg) &&
          /this\._digitalSingularity\s*=\s*null/.test(seg);
 });
 T('reset() μηδενίζει _pwFxBuilt / _pwDashing / _pwDashStart / _empShockCooldown', () => {
   const i = GAME.indexOf('  reset() {');
-  const seg = GAME.slice(i, i + 6000);
+  // Window must cover the WHOLE reset() body. It was 6000 chars, and additions to reset()
+  // (vault schedule, HP-attrition stamps, theft banner) pushed the Phasewalker nulls to offset
+  // 6070 — the assertions started failing on correct production code. Sized with headroom.
+  const seg = GAME.slice(i, i + 20000);
   return /_pwFxBuilt\s*=\s*false/.test(seg) && /_pwDashing\s*=\s*false/.test(seg) &&
          /_pwDashStart\s*=\s*null/.test(seg) && /_empShockCooldown\s*=\s*0/.test(seg);
 });
