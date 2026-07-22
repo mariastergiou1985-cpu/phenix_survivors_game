@@ -230,13 +230,13 @@ class OrbitalKatanaBarrier {
 
     this.angle = 0;
     this.spinSpeed = 2.4;                        // rad/s
-    this.baseRadius = 92;                        // wider base orbit = more range
+    this.baseRadius = 20;
     this.extendPhase = 0;                        // drives the in/out "extend" pulse
-    this.extendAmt = 48;                         // how far the blades reach out at peak
-    this.bladeLength = Math.max(70, player.height * 1.25);  // BIG → clearly visible
+    this.extendAmt = 8;
+    this.bladeLength = Math.max(28, player.height * 0.4);
     this.bladeWidth = this.bladeLength * 0.22;
     this.damage = 26;                            // per contact; fast re-hit = strong sustained
-    this.knockback = 300;
+    this.knockback = 90;
     this.dripDamage = 6;                         // dripping toxin DOES damage now
 
     // THREE blades, evenly spaced
@@ -272,8 +272,6 @@ class OrbitalKatanaBarrier {
 
       for (const e of this.enemies) {
         if (e.dead || e.dying) continue;
-        // The large blades remain visually prominent, but their free baseline barrier is
-        // contact control rather than a permanent 180px exclusion ring.
         if (dist(cx, cy, e.x, e.y) >= PLAYER_CONTACT_RADIUS + e.radius) continue;
         const last = blade.hits.get(e) ?? -1;
         if (last > 0) { blade.hits.set(e, last - dt); continue; }

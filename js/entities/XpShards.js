@@ -17,7 +17,7 @@ const IS_MOBILE = (typeof navigator !== 'undefined') &&
   ((navigator.maxTouchPoints > 0) ||
    (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(pointer: coarse)').matches));
 
-const CAP        = IS_MOBILE ? 220 : 520;   // hard active cap — beyond this, distant shards merge
+const CAP        = IS_MOBILE ? 100 : 120;   // hard active cap; merged values preserve exact XP
 const SNAP_DIST  = 20;                       // final collect snap (px)
 const CULL_DIST2 = 1500 * 1500;              // draw cull (world px², from player)
 
@@ -46,6 +46,49 @@ export class XpShardSystem {
 
   _obtain() { return this._pool.pop() || {}; }
   _release(s) { if (this._pool.length < CAP) this._pool.push(s); }
+
+  _compact(px = 0, py = 0) {
+    const doomed = new Set();
+    const cells = new Map();
+    for (const shard of this.active) {
+      const key = `${Math.floor(shard.x / 96)},${Math.floor(shard.y / 96)}`;
+      const group = cells.get(key) || [];
+      group.push(shard); cells.set(key, group);
+    }
+    for (const group of cells.values()) {
+      if (group.length <= 12) continue;
+      const anchor = group[0];
+      for (let i = 12; i < group.length; i++) {
+        const shard = group[i];
+        anchor.value += shard.value;
+        anchor.t = Math.max(anchor.t, shard.t);
+        doomed.add(shard);
+      }
+      anchor.tier = tierFor(anchor.value);
+    }
+    if (doomed.size) {
+      this.active = this.active.filter(s => !doomed.has(s));
+      for (const shard of doomed) this._release(shard);
+    }
+    if (this.active.length <= CAP) return;
+
+    const far = this.active.slice().sort((a, b) => {
+      const adx = a.x - px, ady = a.y - py, bdx = b.x - px, bdy = b.y - py;
+      return (bdx * bdx + bdy * bdy) - (adx * adx + ady * ady);
+    });
+    const remove = new Set();
+    for (let i = 0; this.active.length - remove.size > CAP && i + 1 < far.length; i += 2) {
+      const anchor = far[i], shard = far[i + 1];
+      anchor.value += shard.value;
+      anchor.t = Math.max(anchor.t, shard.t);
+      anchor.tier = tierFor(anchor.value);
+      remove.add(shard);
+    }
+    if (remove.size) {
+      this.active = this.active.filter(s => !remove.has(s));
+      for (const shard of remove) this._release(shard);
+    }
+  }
 
   // One shard. t: spawn clock, ph: personal phase, vm: magnet speed.
   _spawn(x, y, value) {
@@ -90,6 +133,7 @@ export class XpShardSystem {
       v -= take;
     }
     if (v > 0) this._spawn(x, y, v);   // guard exhausted — value is still preserved
+    this._compact(game?.player?.pos?.x ?? x, game?.player?.pos?.y ?? y);
   }
 
   update(dt, game) {
@@ -119,7 +163,7 @@ export class XpShardSystem {
       const dx = px - s.x, dy = py - s.y;
       const d2 = dx * dx + dy * dy;
 
-      if (!s.magnet && d2 < pr2) s.magnet = true;                 // enter magnet field
+      if (!s.magnet && (d2 < pr2 || s.t >= 20)) s.magnet = true;  // old XP self-clears
       if (s.magnet) {
         // slow start → accelerate → hard snap at the end (VS-style vacuum)
         s.vm = Math.min(1500, (s.vm || 120) + 2400 * dt);
@@ -137,28 +181,7 @@ export class XpShardSystem {
       }
     }
 
-    // ── CAP enforcement: merge the FARTHEST shards pairwise, preserving exact value ──
-    if (this.active.length > CAP) {
-      const overflow = this.active.length - CAP;
-      // sort a shallow copy of indices by distance desc (far shards merge first)
-      const byDist = this.active.map((s, idx) => {
-        const ddx = s.x - px, ddy = s.y - py;
-        return [ddx * ddx + ddy * ddy, idx];
-      }).sort((a, b) => b[0] - a[0]);
-      const toMerge = Math.min(overflow + 8, Math.floor(this.active.length / 4));
-      const doomed = new Set();
-      for (let k = 0; k + 1 < toMerge * 2 && k + 1 < byDist.length; k += 2) {
-        const a = this.active[byDist[k][1]], b = this.active[byDist[k + 1][1]];
-        if (!a || !b || doomed.has(a) || doomed.has(b)) continue;
-        a.value += b.value;                                       // EXACT XP preserved
-        a.tier = tierFor(a.value);
-        doomed.add(b);
-      }
-      if (doomed.size) {
-        this.active = this.active.filter(s => !doomed.has(s));
-        for (const s of doomed) this._release(s);
-      }
-    }
+    this._compact(px, py);
   }
 
   draw(ctx, game) {

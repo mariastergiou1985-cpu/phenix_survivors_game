@@ -254,11 +254,11 @@ export const WEAPON_DEFS = Object.freeze({
 
   [WEAPON_ID.GLITCH_TEAR]: {
     id: 'glitch_tear',
-    name: 'Glitch Singularity Tear',
-    description: 'A black hole vortex rips through digital space, warping light with RGB distortion.',
+    name: 'Glitch Phase Shard',
+    description: 'Rapid void shards phase through the grid toward the nearest target.',
     character: 'japan_phasewalker',
     element: 'void',
-    behavior: WEAPON_BEHAVIOR.VORTEX,
+    behavior: WEAPON_BEHAVIOR.BOLT_PROJECTILE,
     isEvolution: false,
     color: '#6600CC',
     sprite: 'assets/weapons/vfx/glitch_tear.png',
@@ -267,8 +267,8 @@ export const WEAPON_DEFS = Object.freeze({
     fps: 18,
     baseStats: {
       damage: 35,
-      cooldown: 2.0,
-      aoeRadius: 90,
+      cooldown: 0.18,
+      aoeRadius: 5,
       speed: 4,
       piercing: 5,
     },

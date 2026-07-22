@@ -436,11 +436,33 @@ export class MapManager {
 
   /** True when the whole circular footprint is on floor, not just the centre. */
   isWalkableFootprint(x, y, radius = 0, mode = 'endless') {
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(radius)) return false;
+    if (!Number.isSafeInteger(Math.trunc(x)) || !Number.isSafeInteger(Math.trunc(y))) return false;
     if (!this.isWalkablePoint(x, y, mode)) return false;
     if (radius <= 0) return true;
-    const r = radius;
-    return this.isWalkablePoint(x - r, y, mode) && this.isWalkablePoint(x + r, y, mode)
-        && this.isWalkablePoint(x, y - r, mode) && this.isWalkablePoint(x, y + r, mode);
+    const m = this._walkModel(mode);
+    if (!m) return true;
+    const r = Math.max(0, radius);
+    const scale = m.scale;
+    if ((y - r) / scale < m.rows[0] || (y + r) / scale > m.rows[1]) return false;
+
+    // Exact circle-vs-AABB checks close the diagonal corner gap left by four-point sampling.
+    const tileW = m.tileW * scale;
+    const firstTile = Math.floor((x - r) / tileW) - 1;
+    const lastTile  = Math.floor((x + r) / tileW) + 1;
+    for (let tile = firstTile; tile <= lastTile; tile++) {
+      const mirrored = ((tile % 2) + 2) % 2 === 1;
+      for (const [bx0, bx1, by0, by1] of m.blocks) {
+        const x0 = tile * tileW + (mirrored ? m.tileW - bx1 : bx0) * scale;
+        const x1 = tile * tileW + (mirrored ? m.tileW - bx0 : bx1) * scale;
+        const y0 = by0 * scale, y1 = by1 * scale;
+        const qx = Math.max(x0, Math.min(x1, x));
+        const qy = Math.max(y0, Math.min(y1, y));
+        const dx = x - qx, dy = y - qy;
+        if (dx * dx + dy * dy <= r * r) return false;
+      }
+    }
+    return true;
   }
 
   /**
@@ -452,8 +474,10 @@ export class MapManager {
     const m0 = this._walkModel(mode);
     // Never hand back what we were given if it is not a real number: a caller asking for a
     // safe point must always receive one it can draw with.
-    if (!Number.isFinite(x)) x = 0;
-    if (!Number.isFinite(y)) y = m0 ? (m0.rows[0] + m0.rows[1]) * 0.5 * m0.scale : 0;
+    if (!Number.isFinite(x) || !Number.isSafeInteger(Math.trunc(x))) x = 0;
+    if (!Number.isFinite(y) || !Number.isSafeInteger(Math.trunc(y))) {
+      y = m0 ? (m0.rows[0] + m0.rows[1]) * 0.5 * m0.scale : 0;
+    }
     if (this.isWalkableFootprint(x, y, radius, mode)) return { x, y };
     const m = m0;
     if (!m) return { x, y };
@@ -474,31 +498,36 @@ export class MapManager {
    * Safe spawn honouring a keep-away list, so objects do not pile onto the player or
    * onto each other. Deterministic order, bounded attempts.
    */
-  findSafeSpawnPoint({ x, y, radius = 0, mode = 'endless', avoid = [], minDist = 0 } = {}) {
+  findSafeSpawnPoint({ x, y, radius = 0, mode = 'endless', avoid = [], minDist = 0, within = null } = {}) {
     const _m0 = this._walkModel(mode);
-    if (!Number.isFinite(x)) x = 0;
-    if (!Number.isFinite(y)) y = _m0 ? (_m0.rows[0] + _m0.rows[1]) * 0.5 * _m0.scale : 0;
+    if (!Number.isFinite(x) || !Number.isSafeInteger(Math.trunc(x))) x = 0;
+    if (!Number.isFinite(y) || !Number.isSafeInteger(Math.trunc(y))) {
+      y = _m0 ? (_m0.rows[0] + _m0.rows[1]) * 0.5 * _m0.scale : 0;
+    }
     const ok = (px, py) => {
       if (!this.isWalkableFootprint(px, py, radius, mode)) return false;
+      if (within && !within(px, py, radius)) return false;
       for (const a of avoid) {
         if (!a) continue;
         const ax = a.x ?? a.pos?.x, ay = a.y ?? a.pos?.y;
         if (ax == null || ay == null) continue;
-        if (Math.hypot(px - ax, py - ay) < minDist) return false;   // too close to keep-away
+        const keepAway = Number.isFinite(a.minDist) ? a.minDist : minDist;
+        if (Math.hypot(px - ax, py - ay) < keepAway) return false;   // too close to keep-away
       }
       return true;
     };
     if (ok(x, y)) return { x, y };
     const m = this._walkModel(mode);
-    const STEP = 40, MAX_RINGS = 24;
+    const STEP = 40, MAX_RINGS = 40;
     for (let ring = 1; ring <= MAX_RINGS; ring++) {
-      for (let a = 0; a < 16; a++) {
-        const th = (a / 16) * Math.PI * 2, d = ring * STEP;
+      for (let a = 0; a < 24; a++) {
+        const th = (a / 24) * Math.PI * 2, d = ring * STEP;
         const nx = x + Math.cos(th) * d, ny = y + Math.sin(th) * d;
         if (ok(nx, ny)) return { x: nx, y: ny };
       }
     }
-    return this.findNearestWalkablePoint(x, y, radius, mode);   // never the void
+    const fallback = this.findNearestWalkablePoint(x, y, radius, mode);
+    return !within || ok(fallback.x, fallback.y) ? fallback : null;
   }
 
   getAct1DeckBounds() {

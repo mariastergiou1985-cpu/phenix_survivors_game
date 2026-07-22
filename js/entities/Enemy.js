@@ -1014,9 +1014,10 @@ export class Enemy {
     }
 
     // ΚΑΘΑΡΟ PURSUIT προς την ΠΡΑΓΜΑΤΙΚΗ θέση του παίκτη (§3) με σταθερό seeded
-    // speedVariation (§4). Anti-idle: ακίνητος παίκτης = +12%% πίεση (bounded, υπήρχε).
+    // speedVariation (§4). Anti-idle: a stationary player cannot maintain a permanent
+    // exclusion ring; pursuit gets a bounded rush after the grace window.
     const dir = safeNormalize(player.pos.sub(this.pos));
-    const idlePush = (game._playerIdleT || 0) > 2 ? 1.12 : 1;
+    const idlePush = (game._playerIdleT || 0) > 2 ? 2.2 : 1;
     this.vel = dir.scale(this.baseSpeed * (this.speedVariation || 1) * speedMult * idlePush);
     this._stepMove(game, dt);
   }
@@ -1089,6 +1090,17 @@ export class Enemy {
   // Stuck recovery is deliberately NOT per-frame: an enemy must be genuinely pinned for
   // STUCK_SECS before it is nudged, and then not again until STUCK_COOLDOWN has passed.
   _stepMove(game, dt) {
+    if (this._detourPos && (this._detourT || 0) > 0) {
+      this._detourT -= dt;
+      const dx = this._detourPos.x - this.pos.x, dy = this._detourPos.y - this.pos.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist <= Math.max(18, this.radius || 12) || this._detourT <= 0) {
+        this._detourPos = null;
+      } else {
+        const speed = Math.max(Math.hypot(this.vel.x, this.vel.y), (this.baseSpeed || 80) * 0.7);
+        this.vel = new Vec2(dx / dist * speed, dy / dist * speed);
+      }
+    }
     const fx = this.pos.x, fy = this.pos.y;
     const tx = fx + this.vel.x * dt, ty = fy + this.vel.y * dt;
     const solve = game?._resolveEnemyMove;
@@ -1104,12 +1116,65 @@ export class Enemy {
     if (this._stuckCd > 0) this._stuckCd -= dt;
 
     if ((this._stuckT || 0) >= STUCK_SECS && (this._stuckCd || 0) <= 0) {
-      const rec = game._recoverEnemyPos?.(this.pos.x, this.pos.y, this.radius || 12);
-      if (rec) {
+      const radius = this.radius || 12;
+      const mode = game._walkMode?.();
+      const map = game.mapManager;
+      const legal = (px, py) => !mode || !map?.isWalkableFootprint ||
+        map.isWalkableFootprint(px, py, radius, mode);
+      const reachable = point => {
+        if (!point || !legal(point.x, point.y)) return false;
+        const dx = point.x - this.pos.x, dy = point.y - this.pos.y;
+        const steps = Math.max(1, Math.ceil(Math.hypot(dx, dy) / 24));
+        for (let i = 1; i <= steps; i++) {
+          const t = i / steps;
+          if (!legal(this.pos.x + dx * t, this.pos.y + dy * t)) return false;
+        }
+        return true;
+      };
+      if (!legal(this.pos.x, this.pos.y)) {
+        const rec = game._recoverEnemyPos?.(this.pos.x, this.pos.y, radius);
         const px = game.player?.pos?.x ?? 0, py = game.player?.pos?.y ?? 0;
-        // never resolve on top of the player — that would teleport a threat into their lap
-        if (Math.hypot(rec.x - px, rec.y - py) > 120) { this.pos.x = rec.x; this.pos.y = rec.y; }
+        if (rec && Math.hypot(rec.x - px, rec.y - py) > 120) {
+          this.pos.x = rec.x; this.pos.y = rec.y;
+        }
       }
+      if (game.player?.pos) {
+        const tx = game.player.pos.x - this.pos.x, ty = game.player.pos.y - this.pos.y;
+        const tl = Math.hypot(tx, ty) || 1;
+        const probe = Math.max(12, radius * 0.5);
+        if (!legal(this.pos.x + tx / tl * probe, this.pos.y + ty / tl * probe)) {
+          const nudge = Math.max(24, radius * 0.75 + 8);
+          const nx = this.pos.x - tx / tl * nudge;
+          const ny = this.pos.y - ty / tl * nudge;
+          if (legal(nx, ny)) { this.pos.x = nx; this.pos.y = ny; }
+        }
+      }
+      let detour = game._findEnemyDetour?.(
+        this.pos.x, this.pos.y, radius,
+        game.player?.pos?.x ?? this.pos.x, game.player?.pos?.y ?? this.pos.y);
+      if (!reachable(detour)) detour = null;
+      if (!detour && game.player?.pos) {
+        const base = Math.atan2(game.player.pos.y - this.pos.y, game.player.pos.x - this.pos.x);
+        const preferred = this._encSlot < 0 ? -1 : 1;
+        let bestDistance = Infinity;
+        for (const dist of [240, 360, 480, 600]) {
+          for (const offset of [Math.PI / 4, Math.PI / 3, Math.PI / 2]) {
+            for (const side of [preferred, -preferred]) {
+              const angle = base + side * offset;
+              const candidate = {
+                x: this.pos.x + Math.cos(angle) * dist,
+                y: this.pos.y + Math.sin(angle) * dist,
+              };
+              if (!reachable(candidate)) continue;
+              const remaining = Math.hypot(
+                game.player.pos.x - candidate.x,
+                game.player.pos.y - candidate.y);
+              if (remaining < bestDistance) { detour = candidate; bestDistance = remaining; }
+            }
+          }
+        }
+      }
+      if (detour) { this._detourPos = detour; this._detourT = 7; }
       this._stuckT = 0; this._stuckCd = STUCK_COOLDOWN;
     }
   }
