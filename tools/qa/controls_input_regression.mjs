@@ -9,7 +9,7 @@
 // Run: node tools/qa/controls_input_regression.mjs   (exit 1 on failure)
 
 import { register } from 'node:module';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 import fs from 'node:fs';
 register('./strip-v-loader.mjs', import.meta.url);
@@ -36,8 +36,8 @@ const T = (n, f) => {
 };
 
 // ── real gamepad reader, driven by a synthetic pad ─────────────────────────
-const { GamepadInput } = await import(path.join(JS, 'Gamepad.js'));
-const { Vec2 } = await import(path.join(JS, 'constants.js'));
+const { GamepadInput } = await import(pathToFileURL(path.join(JS, 'Gamepad.js')).href);
+const { Vec2 } = await import(pathToFileURL(path.join(JS, 'constants.js')).href);
 
 let PAD = null;
 Object.defineProperty(globalThis, 'navigator', { value: { getGamepads: () => [PAD] }, configurable: true });
@@ -227,7 +227,8 @@ T('walkable clamp εφαρμόζεται ΜΕΤΑ το player.update (dash + kno
   const c = GAME.indexOf('const b = this.getWalkableBounds();', p);
   return c > p && c - p < 1200;
 });
-T('clamp ελέγχει isFinite πριν εφαρμόσει όρια', () => /if \(isFinite\(b\.x0\)\) this\.player\.pos\.x = Math\.max\(b\.x0, Math\.min\(b\.x1, this\.player\.pos\.x\)\);/.test(GAME));
+T('clamp ελέγχει isFinite πριν εφαρμόσει όρια και κρατά ολόκληρο το footprint', () =>
+  /if \(isFinite\(b\.x0\)\) this\.player\.pos\.x = Math\.max\(b\.x0 \+ PLAYER_RADIUS, Math\.min\(b\.x1 - PLAYER_RADIUS, this\.player\.pos\.x\)\);/.test(GAME));
 T('enemy move resolver υπάρχει (δεν χάθηκε σε conflict resolution)', () => /_resolveEnemyMove = \(fx, fy, tx, ty, r\) =>/.test(GAME));
 T('stuck-recovery resolver υπάρχει', () => /_recoverEnemyPos = \(x, y, r\) =>/.test(GAME));
 

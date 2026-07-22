@@ -1,10 +1,10 @@
-import { Game } from './game/Game.js?v=20260810200000';
-import { AudioManager } from './audio/AudioManager.js?v=20260810100000';
+import { Game } from './game/Game.js?v=20260810234000';
+import { AudioManager } from './audio/AudioManager.js?v=20260810234000';
 import { PlatformAchievements } from './platform/PlatformAchievements.js?v=20260712370000';
 // Steam build: replay any web-earned achievements to Steam on boot (no-op in browsers)
 setTimeout(() => { try { PlatformAchievements.syncPending(); } catch (_) {} }, 3000);
 import { GamepadInput } from './Gamepad.js?v=20260727000000';
-import { initTouchControls } from './TouchInput.js?v=20260727000000';
+import { initTouchControls } from './TouchInput.js?v=20260810210000';
 
 const canvas = document.getElementById('game');
 const ctx    = canvas.getContext('2d');
@@ -41,6 +41,7 @@ window.addEventListener('load', () => {
 const keys    = new Set();
 let mousePos  = { x: 0, y: 0 };
 let mouseDown = false;
+let cardInputLockedUntil = 0;
 
 // ─── Game instance ────────────────────────────────────────────────────────────
 const game = new Game();
@@ -48,17 +49,22 @@ console.log('BUILD 20260616080000 cgm-overlay active');
 
 // ─── Keyboard handling ────────────────────────────────────────────────────────
 const SCROLL_KEYS = new Set(['arrowup', 'arrowdown', 'arrowleft', 'arrowright', ' ']);
+const MOVEMENT_KEYS = new Set(['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'shift']);
 
 window.addEventListener('keydown', e => {
   const key = e.key.toLowerCase();
   if (SCROLL_KEYS.has(key)) e.preventDefault();
 
-  keys.add(key);
+  const movementBlocked = game.gameState === 'playing' &&
+    (game.paused || game.upgradeUI || game.mutationUI || game.gameOver || game.victory);
+  if (!(movementBlocked && MOVEMENT_KEYS.has(key))) keys.add(key);
   // (Audio init handled by _initAudioOnGesture on document — covers overlay clicks too)
 
   // Forced mutation card selection (1/2/3 only — NO skip, NO reroll; ESC cannot close it)
   // ArrowLeft/ArrowRight move the controller cursor; Enter confirms it (dispatched by gamepad A/Cross).
   if (game.mutationUI) {
+    if (performance.now() < cardInputLockedUntil) return;
+    if (e.repeat) return;
     const midx = { '1': 0, '2': 1, '3': 2 }[e.key];
     if (midx !== undefined) {
       game.mutationUI.selectedIndex = midx;
@@ -78,6 +84,7 @@ window.addEventListener('keydown', e => {
   // Upgrade card selection (1/2/3) + reroll (R)
   // ArrowLeft/ArrowRight move the controller cursor; Enter confirms it (dispatched by gamepad A/Cross).
   if (game.upgradeUI) {
+    if (e.repeat) return;
     const idx = { '1': 0, '2': 1, '3': 2 }[e.key];
     if (idx !== undefined) {
       game.upgradeUI.selectedIndex = idx;
@@ -192,6 +199,7 @@ window.addEventListener('keydown', e => {
         game.goToMainMenu();        // game ended → back to start menu
       } else if (!game._stageCompleteBanner) {
         game.paused = !game.paused; // mid-game → toggle pause (blocked during STAGE COMPLETE banner)
+        _releaseAllHeldInput();
       }
     }
     // start_menu: ESC does nothing (no crash)
@@ -204,14 +212,20 @@ window.addEventListener('keyup', e => {
 });
 
 // ─── Mouse handling ───────────────────────────────────────────────────────────
-canvas.addEventListener('mousemove', e => {
+function _canvasPoint(e) {
   const rect = canvas.getBoundingClientRect();
   const scaleX = canvas.width  / rect.width;
   const scaleY = canvas.height / rect.height;
-  mousePos = {
+  return {
     x: (e.clientX - rect.left) * scaleX,
     y: (e.clientY - rect.top)  * scaleY,
   };
+}
+
+canvas.addEventListener('pointermove', e => {
+  mousePos = _canvasPoint(e);
+  game.upgradeUI?.updateHover?.(mousePos);
+  game.mutationUI?.updateHover?.(mousePos);
 });
 
 // ─── Web Audio init on FIRST user gesture anywhere (overlay OR canvas) ───────
@@ -253,18 +267,25 @@ document.addEventListener('touchstart',_initAudioOnGesture, { once: true });
 
 canvas.addEventListener('mousedown', e => {
   if (e.button !== 0) return;
+  mousePos = _canvasPoint(e);
+  game.setMousePos(mousePos);
   mouseDown = true;
 
   // Each block is else-if so only ONE handler fires per click,
   // even if a handler changes game.gameState mid-event.
 
   if (game.mutationUI) {
+    const openPanel = game.mutationUI;
     // ── Forced mutation card (Endless) — click selects; no skip/reroll ─
     game.mutationUI.handleClick(mousePos, game);
+    if (game.mutationUI !== openPanel) cardInputLockedUntil = performance.now() + 250;
 
   } else if (game.upgradeUI) {
+    if (performance.now() < cardInputLockedUntil) return;
+    const openPanel = game.upgradeUI;
     // ── In-game upgrade card (level-up choice) ────────────────────
     game.upgradeUI.handleClick(mousePos, game);
+    if (game.upgradeUI !== openPanel) cardInputLockedUntil = performance.now() + 250;
 
   } else if (game._postArenaChoice && game._pacMsgStep >= 5) {
     // ── Post-Arena NULL decision panel — click on option cards ───
@@ -526,7 +547,7 @@ function applyContextualCursor() {
   const inCombat = game.gameState === 'playing'
     && !game.paused && !game.gameOver && !game.victory && !game.upgradeUI && !game.mutationUI
     && !game._postArenaChoice;
-  const want = inCombat ? 'none' : 'default';
+  const want = inCombat ? 'crosshair' : (game.upgradeUI || game.mutationUI ? 'pointer' : 'default');
   if (want !== _lastCursor) { canvas.style.cursor = want; _lastCursor = want; }
 }
 
@@ -559,8 +580,11 @@ function applyGamepad() {
   game._controllerActivated = pad.activated;
   if (!s || !s.activated) { padClearHeld(); prevDir.up = prevDir.down = prevDir.left = prevDir.right = false; return; }
 
-  const up = s.axes.ly < 0 || s.btn.up.held, down = s.axes.ly > 0 || s.btn.down.held;
-  const left = s.axes.lx < 0 || s.btn.left.held, right = s.axes.lx > 0 || s.btn.right.held;
+  const enter = 0.38, release = 0.28;
+  const up = s.axes.ly < -(prevDir.up ? release : enter) || s.btn.up.held;
+  const down = s.axes.ly > (prevDir.down ? release : enter) || s.btn.down.held;
+  const left = s.axes.lx < -(prevDir.left ? release : enter) || s.btn.left.held;
+  const right = s.axes.lx > (prevDir.right ? release : enter) || s.btn.right.held;
   const eUp = padDirEdge('up', up), eDown = padDirEdge('down', down);
   const eLeft = padDirEdge('left', left), eRight = padDirEdge('right', right);
 
@@ -619,7 +643,9 @@ function _releaseAllHeldInput() {
   mouseDown = false;
   padClearHeld();
   prevDir.up = prevDir.down = prevDir.left = prevDir.right = false;
+  game.player?.cancelMovement?.();
 }
+game._releaseHeldInput = _releaseAllHeldInput;
 window.addEventListener('blur', _releaseAllHeldInput);
 window.addEventListener('pagehide', _releaseAllHeldInput);
 document.addEventListener('visibilitychange', () => { if (document.hidden) _releaseAllHeldInput(); });
@@ -691,6 +717,7 @@ canvas.addEventListener('contextrestored', () => {
 });
 
 function loop(timestamp) {
+  window.__phenixQA?._recordFrame?.(timestamp);
   const dt = Math.min((timestamp - lastTime) / 1000, 0.05);  // cap at 50ms
   lastTime = timestamp;
 
@@ -719,7 +746,8 @@ function loop(timestamp) {
     applyContextualCursor();
 
     // Apply screen shake offset
-    const [ox, oy] = game.screenShake.getOffset();
+    const allowShake = game.gameState === 'playing' && !game.paused && !game.upgradeUI && !game.mutationUI;
+    const [ox, oy] = allowShake ? game.screenShake.getOffset() : [0, 0];
     ctx.save();
     try { ctx.translate(ox, oy); game.draw(ctx); }
     finally { ctx.restore(); }
@@ -755,6 +783,8 @@ requestAnimationFrame(loop);
   if (params.get('qa') !== '1' || !optIn) return;   // no flag or no opt-in -> no bridge at all
 
   let savedRealSave = null, savedBalances = null, savedAchUnlock = null;
+  let lastFrameAt = null;
+  const frameSamples = [];
   const meta = () => game.meta;
   const isolateSave = () => {
     const m = meta();
@@ -787,6 +817,7 @@ requestAnimationFrame(loop);
       return {
         mode: game._chaosMode ? 'chaos' : game.endless ? 'endless' : 'act1',
         gameState: game.gameState, paused: !!game.paused, gameOver: !!game.gameOver,
+        upgradeOpen: !!game.upgradeUI, mutationOpen: !!game.mutationUI,
         timeAlive: num(game.timeAlive), level: num(p && p.level),
         player: p ? { x: num(p.pos.x), y: num(p.pos.y), hp: num(p.hp), maxHp: num(p.maxHp), mana: num(p.mana) } : null,
         camera: c ? { x: num(c.x), y: num(c.y) } : null,
@@ -856,6 +887,45 @@ requestAnimationFrame(loop);
     setNoPets() { game._activePets = []; return len(game._activePets) === 0; },
     pause(v) { game.paused = !!v; return !!game.paused; },
     resetRun() { isolateSave(); game.reset(); return this.snapshot(); },
+    showUpgrade() {
+      isolateSave();
+      if (!game.player || game.gameState !== 'playing') return { error: 'run not active' };
+      game.player.level = Math.max(game.player.level || 1, game._nextCardLevel || 1);
+      game.player.pendingLevelupCount = Math.max(1, game.player.pendingLevelupCount || 0);
+      try { game.update(0, { keys: new Set(), mousePos: { x: 0, y: 0 }, mouseDown: false }); }
+      catch (e) { return { error: String(e.message) }; }
+      return {
+        state: this.snapshot(),
+        cards: (game.upgradeUI?.cardRects || []).map(r => ({ x: r.x, y: r.y, w: r.w, h: r.h })),
+      };
+    },
+    selectUpgrade(index = 0) {
+      isolateSave();
+      try { game.selectUpgrade(index); } catch (e) { return { error: String(e.message) }; }
+      return this.snapshot();
+    },
+    _recordFrame(timestamp) {
+      if (lastFrameAt != null) {
+        const elapsed = timestamp - lastFrameAt;
+        if (Number.isFinite(elapsed) && elapsed >= 0 && elapsed < 5000) {
+          frameSamples.push(elapsed);
+          if (frameSamples.length > 900) frameSamples.shift();
+        }
+      }
+      lastFrameAt = timestamp;
+    },
+    frameStats(reset = false) {
+      const sorted = frameSamples.slice().sort((a, b) => a - b);
+      const pct = p => sorted.length ? sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * p))] : null;
+      const result = {
+        count: sorted.length, p50: pct(0.50), p95: pct(0.95), p99: pct(0.99),
+        max: sorted.length ? sorted[sorted.length - 1] : null,
+        over50: sorted.filter(ms => ms > 50).length,
+        over250: sorted.filter(ms => ms > 250).length,
+      };
+      if (reset) { frameSamples.length = 0; lastFrameAt = null; }
+      return result;
+    },
 
     async advance(seconds, predicate) {
       isolateSave();
@@ -933,7 +1003,8 @@ requestAnimationFrame(loop);
       try {
         if (ctx.reset) ctx.reset();
         else { ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; ctx.shadowBlur = 0; }
-        const off = (game.screenShake && game.screenShake.getOffset) ? game.screenShake.getOffset() : [0, 0];
+        const allowShake = game.gameState === 'playing' && !game.paused && !game.upgradeUI && !game.mutationUI;
+        const off = allowShake && game.screenShake?.getOffset ? game.screenShake.getOffset() : [0, 0];
         ctx.save();
         try { ctx.translate(off[0], off[1]); game.draw(ctx); } finally { ctx.restore(); }
       } catch (_) {}

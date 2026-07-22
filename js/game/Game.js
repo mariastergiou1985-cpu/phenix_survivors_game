@@ -10,15 +10,15 @@ import { clamp, distance, safeNormalize, randomChoice, randomRange, wrapText } f
 import { FloatingText }   from '../entities/FloatingText.js?v=20260703990000';
 import { DataCore, rollCoreType } from '../entities/DataCore.js?v=20260705040000';
 import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260712090000';
-import { Player }         from '../entities/Player.js?v=20260724000000';
+import { Player }         from '../entities/Player.js?v=20260810210000';
 import { XpShardSystem }  from '../entities/XpShards.js?v=20260724000000';   // Phase 1: physical Data-XP
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260706270000';
-import { Enemy, preloadAllWeaponSprites, selectHpBarEnemies } from '../entities/Enemy.js?v=20260731000000';
+import { Enemy, preloadAllWeaponSprites, selectHpBarEnemies } from '../entities/Enemy.js?v=20260810210000';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=20260711750000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260713600000';
 import { SystemEventManager } from './Events.js?v=20260802000000';
-import { UpgradeUI }      from './UpgradeUI.js?v=20260722500000';
+import { UpgradeUI }      from './UpgradeUI.js?v=20260810210000';
 import { weightedSample } from './Upgrades.js?v=20260722500000';
 import { BuildEngineRuntime } from './BuildEngine.js?v=20260810100000';   // BUILD ENGINE — always on (full migration 2026-07-18)
 import './BuildEngineChars1.js?v=20260810100000';   // P2.3a Taekwondo+CyberArm (side-effect register)
@@ -27,7 +27,7 @@ import './BuildEngineChars3.js?v=20260810100000';   // P2.4a Eddie+Dimi (side-ef
 import './BuildEngineChars4.js?v=20260810100000';   // P2.4b Phasewalker+Euclid+Oni (side-effect register)
 import './BuildEngineChars5.js?v=20260810100000';   // P2.5 Universal όπλα 21-25 (side-effect register)
 import './BuildEnginePassives.js?v=20260810100000'; // P2.6 Build passives §26-50 (generic hooks)
-import { MutationUI }      from './MutationUI.js?v=20260703990000';
+import { MutationUI }      from './MutationUI.js?v=20260810210000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260721200000';
 import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, COLLECTIBLE_FRAGMENT_COST, COLLECTIBLE_GRID_COST, ECHO_FRAGMENT_COST, ECHO_GRID_COST, SKILL_TREE, AMULET_DEFS, GRID_TO_PF_RATE } from './MetaProgress.js?v=20260723000000';
@@ -51,7 +51,7 @@ import { Protocol0 } from '../effects/protocol-0.js?v=20260705000000';
 import { LaserEyes } from '../effects/laser-eyes.js?v=20260709100000';
 import { MeteorRain } from '../effects/meteor-rain.js?v=20260712100000';
 import { NpcWalker } from './NpcWalker.js?v=20260724000000';
-import { MapManager, BIOME_ID, BIOME_DEFS, CHUNK_SIZE } from './MapManager.js?v=20260724000000';
+import { MapManager, BIOME_ID, BIOME_DEFS, CHUNK_SIZE } from './MapManager.js?v=20260810234000';
 import { EventBus, EVENTS } from './EventBus.js?v=20260703990000';
 import { HostileProjectileDirector } from './HostileProjectileDirector.js?v=20260719200000';
 import { WaveDirector } from './WaveDirector.js?v=20260724000000';
@@ -590,14 +590,17 @@ class SpatialGrid {
     }
   }
   // All entries within radius r of (x,y) — includes cell margin; caller re-checks distance.
-  query(x, y, r) {
+  query(x, y, r, limit = Infinity) {
     const out = this._scratch; out.length = 0;
     const c = this.cell;
     const x0 = Math.floor((x - r) / c), x1 = Math.floor((x + r) / c);
     const y0 = Math.floor((y - r) / c), y1 = Math.floor((y + r) / c);
     for (let cx = x0; cx <= x1; cx++) for (let cy = y0; cy <= y1; cy++) {
       const arr = this.map.get(this._key(cx, cy));
-      if (arr) for (let i = 0; i < arr.length; i++) out.push(arr[i]);
+      if (arr) for (let i = 0; i < arr.length; i++) {
+        out.push(arr[i]);
+        if (out.length >= limit) return out;
+      }
     }
     return out;
   }
@@ -624,7 +627,7 @@ function moveGroundThreat(game, body, delta) {
   const dx = (delta.x || 0) / steps, dy = (delta.y || 0) / steps;
   for (let i = 0; i < steps; i++) {
     const fx = body.pos.x, fy = body.pos.y;
-    const solve = game.resolveWalkableMove?.bind(game) || game._resolveEnemyMove;
+    const solve = game._resolveEnemyMove;
     const moved = solve ? solve(fx, fy, fx + dx, fy + dy, body.radius || 14)
                         : { x: fx + dx, y: fy + dy };
     if (moved.x === fx && moved.y === fy) break;
@@ -1234,11 +1237,14 @@ export class Game {
   }
 
   reset() {
+    this.audio?.resetEddieRiffs?.();
+    this._eddieUltimateMusicActive = false;
     // Resolve the equipped (cosmetic) outfit sprite for this character, if any.
     const _char       = this.selectedCharacter || 'skeleton_warrior';
+    this.selectedCharacter = _char;
     const _outfit     = this.meta.getSelectedOutfit(_char);
     const _outfitPath = _outfit === 'default' ? null : this.meta.getOutfitAsset(_char, _outfit);
-    this.player       = new Player(this.selectedCharacter, _outfitPath);
+    this.player       = new Player(_char, _outfitPath);
     this._initializeRunStats();           // consolidated stat stacking (grid + vessel + pets + echoes)
     // ── NexusManager: manages all Nexus stations, per-biome health, rewards ──
     if (!this.nexusManager) {
@@ -2016,6 +2022,7 @@ export class Game {
       apply: () => { choice.selected = 'keep'; choice.evolutionApplied = false; return true; },
       canApply: () => true,
     };
+    this._quiesceMovementInput();
     this.upgradeUI = new UpgradeUI([evolveCard, keepCard], {
       title: 'STAGE CLEAR — CHOOSE YOUR REWARD',
       allowReroll: false,
@@ -2347,6 +2354,9 @@ export class Game {
     this._mutationTimer    = MUTATION_INTERVAL;         // first forced mutation at 3:00 into Endless
     this._initializeEndlessStats();    // consolidated Endless stat stacking (protocols + chaos laws)
     this.audio?.startEndlessMusic();   // Endless-only track (dawn) replaces gameplay music
+    if (this._eddieUltimateMusicActive && this._feedbackApoc?.isActive()) {
+      this.audio?.resumeEddieUltimateTrack?.();
+    }
     // Mode-σωστό entry banner (Maria 2026-07-19): το Chaos ΔΕΝ είναι «STAGE 02» — έχει δικό
     // του announcement. Το _beginChaosRun σηκώνει το _enteringChaos flag πριν καλέσει εδώ.
     if (this._enteringChaos) this.triggerAnnouncement('NULL EDEN — CHAOS MODE', RED, { priority: 1 });   // mode transition
@@ -8602,6 +8612,7 @@ export class Game {
     this._checkWeaponEvolutions();   // check if any evolution recipe is now satisfied
     this.score = (this.score ?? 0) + 50;
     this.upgradeUI = null;
+    this._quiesceMovementInput();
     if (_stageClearChoice && this._stageClearEvolutionChoice === _stageClearChoice) {
       this._stageClearEvolutionEvents.push({
         stage: _stageClearChoice.stage,
@@ -8628,6 +8639,7 @@ export class Game {
 
   // Open the forced 3-card mutation picker (Endless only). The world freezes via the update gate.
   _openMutationChoice() {
+    this._quiesceMovementInput();
     this.mutationUI = new MutationUI(sampleMutations(3, this.mutations));
     this.audio?.playEventWarning?.();
     this.triggerAnnouncement('⚠ FORCED MUTATION', '#ff5a3c', { priority: 2 });   // immediate lethal telegraph
@@ -8643,6 +8655,12 @@ export class Game {
     this.mutations.stacks += 1;
     this.mutations.taken[card.key] = (this.mutations.taken[card.key] || 0) + 1;
     this.mutationUI = null;
+    this._quiesceMovementInput();
+  }
+
+  _quiesceMovementInput() {
+    this._releaseHeldInput?.();
+    this.player?.cancelMovement?.();
   }
 
   // One free reroll per level-up screen — re-samples the (already useful) card pool.
@@ -8754,6 +8772,7 @@ export class Game {
         const choices = weightedSample(this.player, 3, { meta: this.meta, endless: this.endless, chaos: this._chaosMode });
         this._injectWeaponCard(choices);   // TASK 1+2: 25% chance to offer a weapon card
         if (choices.length > 0) {
+          this._quiesceMovementInput();
           this.audio?.playLevelUp();
           this.upgradeUI = new UpgradeUI(choices);
           this.rerollsLeft     = 2;     // two free rerolls per level-up screen
@@ -14852,10 +14871,7 @@ export class Game {
       const _a = this._goldImpacts; let _w = 0; for (let _i = 0; _i < _a.length; _i++) { const im = _a[_i]; if (im.life > 0) _a[_w++] = im; } _a.length = _w;
     }
 
-    // ── GUITAR SOLO PERFORMANCE — Eddie only. While active, the WHOLE eddie_riffs track
-    //    plays (map music ducked) and note+lightning waves fire continuously for ≥1.5 min.
-    //    Started by the Red Thunder Curtain ultimate AND auto-repeated while the GUITAR SOLO
-    //    card is held. Other characters are unaffected.
+    // GUITAR SOLO is a bounded Eddie card weapon. Ultimate music has its own lifecycle.
     if (!this.player || this.player.selectedCharacter !== 'eddie') return;
     if (this.paused || this.gameOver || this.victory || this.upgradeUI || this.mutationUI) return;
 
@@ -14863,15 +14879,14 @@ export class Game {
     if (gp) {
       gp.t += dt; gp.waveCd -= dt;
       if (gp.waveCd <= 0) { gp.waveCd = gp.waveEvery; this._fireGuitarWave(gp.lvl); }
-      if (gp.t >= gp.dur) {                              // performance over → stop track, restore music
-        this.audio?.stopEddieRiffs?.();
+      if (gp.t >= gp.dur) {
         this._guitarPerf = null;
-        this._guitarSoloCd = 6;                          // brief gap before the card auto-restarts it
+        this._guitarSoloCd = 8;                          // brief gap before the card auto-restarts it
       }
       return;
     }
 
-    // Auto-repeat via the GUITAR SOLO card (the SPACE ultimate also starts a performance).
+    // Auto-repeat only while the GUITAR SOLO card is owned.
     const lvl = this._cardLvl('eddie_guitar_solo');
     if (lvl < 1) return;
     this._guitarSoloCd -= dt;
@@ -14909,17 +14924,14 @@ export class Game {
     this.screenShake?.trigger?.(3, 0.22);
   }
 
-  // Start a sustained guitar-solo performance: play the full track (ducking map music) and fire
-  // waves for at least ~90s (≥1.5 min). No-op if one is already running or the player isn't Eddie.
+  // Start one bounded card performance. The ultimate never grants this card runtime.
   _startGuitarPerformance() {
     if (this._guitarPerf) return;
     if (!this.player || this.player.selectedCharacter !== 'eddie') return;
-    const lvl = Math.max(1, this._cardLvl('eddie_guitar_solo'));
-    // Runs until the run ends (death / menu) so the whole ALBUM plays through in order — the
-    // performance never self-expires; stopEddieRiffs + _guitarPerf clearing happen on death/menu.
-    const dur = 1e9;
+    const lvl = this._cardLvl('eddie_guitar_solo');
+    if (lvl < 1) return;
+    const dur = 4 + lvl * 0.5;
     this._guitarPerf = { t: 0, dur, waveCd: 0, waveEvery: Math.max(1.6, 2.6 - lvl * 0.2), lvl };
-    this.audio?.playEddieRiffs?.();
     this.triggerAnnouncement('♪ GUITAR SOLO ♫', '#ff2d2d');
     this._fireGuitarWave(lvl);
   }
@@ -16968,12 +16980,12 @@ export class Game {
     p.mana -= cost;
     const sp = this._playerScreenPos();
     this._feedbackApoc.trigger(sp.cx, sp.footY);
+    this._eddieUltimateMusicActive = !!this.audio?.playEddieUltimateTrack?.();
     this.screenShake.trigger(6, 0.3);
     this.audio?.playEventWarning?.();
     this.floatingTexts.push(new FloatingText('FEEDBACK APOCALYPSE!', p.pos.clone(), '#ff2d2d', 1.4));
-    // Keeps the full GUITAR SOLO performance: the whole eddie_riffs track plays (map music
-    // ducked) — the on-beat lightning of the module lands right on top of it.
-    this._startGuitarPerformance();
+    // The ultimate owns only its finite cinematic/audio window. The GUITAR SOLO card keeps
+    // its separate weapon lifecycle and is never granted implicitly by pressing SPACE.
   }
 
   // Lazy builder — mirrors _ensureOssuaryFx (canvas + loaded sprite required).
@@ -16996,11 +17008,16 @@ export class Game {
         this._feedbackApoc.cx = sp.cx; this._feedbackApoc.footY = sp.footY;
       }
       // wave crossings hit lighter, on-beat bolts hit harder (each enemy once per wave)
+      const wasActive = this._feedbackApoc.isActive();
       this._feedbackApoc.update(performance.now(), this.enemies, {
         getX: e => ((e?.pos?.x ?? cam.x) - cam.x) * vs,
         getY: e => ((e?.pos?.y ?? cam.y) - cam.y) * vs,
         onStrike: (e, kind) => { if (e?.takeHit) e.takeHit((kind === 'bolt' ? 40 : 22) * this._amuletUltMult(), this); },
       });
+      if (wasActive && !this._feedbackApoc.isActive() && this._eddieUltimateMusicActive) {
+        this.audio?.stopEddieUltimateTrack?.();
+        this._eddieUltimateMusicActive = false;
+      }
     } catch (err) { console.warn('[FeedbackApoc]', err); }
   }
 
@@ -17984,6 +18001,7 @@ export class Game {
     // Enemies still receive knockback (applied in update() before movement AI) but their
     // AI/movement/shooting is paused for the duration. Player is unaffected.
     const enemyDt = (this._hitStopTimer > 0) ? dt * 0.08 : dt;
+    this._enemyDetourBudget = 6;
     // Distance cull threshold — enemies beyond this from the player are recycled
     // so they can respawn closer. Keeps all enemies actively chasing the player.
     const CULL_DIST = 2000; // compact 3×3 arena — recycle enemies beyond ~1.5 chunks
@@ -18055,7 +18073,7 @@ export class Game {
         if (!e || e.hp <= 0 || e.stunned > 0) continue;
         const _pdx = e.pos.x - _ppx, _pdy = e.pos.y - _ppy;
         if (_pdx * _pdx + _pdy * _pdy > 1690000) continue;          // 1300px
-        const near = _sepGrid.query(e.pos.x, e.pos.y, e.radius + 26);
+        const near = _sepGrid.query(e.pos.x, e.pos.y, e.radius + 26, 48);
         let px = 0, py = 0, n = 0;
         for (const o of near) {
           if (o === e || !o || o.hp <= 0) continue;
@@ -19950,7 +19968,6 @@ export class Game {
       if (!e || e.hp <= 0) continue;
       if (distance(e.pos, this.player.pos) < e.radius + PLAYER_RADIUS) {
         const push = safeNormalize(this.player.pos.sub(e.pos));
-        this.player.pos.addMut(push.scale(60 * dt));   // ήπιο pushback — δεν αντικαθιστά το damage
         if (!strongest || (e.contactDamage || 0) > (strongest.contactDamage || 0)) strongest = e;
       }
     }
@@ -26719,8 +26736,6 @@ _drawLoreArchive(ctx) {
 
     // Contact damage (same rate pattern as regular enemies)
     if (distance(t.pos, this.player.pos) < t.radius + PLAYER_RADIUS) {
-      const push = safeNormalize(this.player.pos.sub(t.pos));
-      this.player.pos.addMut(push.scale(60 * dt));
       if (this.player.dashTimer <= 0 && this.phoenixReviveTimer <= 0) {
         const dmg = t.contactDamage * dt * (1 - this.player.contactDamageReduction);
         this.player.applyDamage(dmg);
@@ -28249,8 +28264,6 @@ _drawLoreArchive(ctx) {
 
     // Contact damage (same pattern as the Titan)
     if (distance(a.pos, this.player.pos) < a.radius + PLAYER_RADIUS) {
-      const push = safeNormalize(this.player.pos.sub(a.pos));
-      this.player.pos.addMut(push.scale(60 * dt));
       if (this.player.dashTimer <= 0 && this.phoenixReviveTimer <= 0) {
         const dmg = a.contactDamage * dt * (1 - this.player.contactDamageReduction);
         this.player.applyDamage(dmg);
@@ -28482,7 +28495,7 @@ _drawLoreArchive(ctx) {
             const slamDmg = Math.round(this.player.maxHp * 0.20);
             if (this._damagePlayer(slamDmg, { color: RED, shake: 6, cap: slamDmg })) {
               const kb = safeNormalize(this.player.pos.sub(s.pos));
-              if (kb.lengthSq() > 0) this.player.pos.addMut(kb.scale(70));   // knock the player back from the impact
+              if (kb.lengthSq() > 0) this.player.applyExternalDisplacement(kb.scale(70));
             }
           } else {
             this._damagePlayer(18, { color: RED, shake: 6 }); // routed through fairness gate (dash/grace/30-cap)
@@ -29476,8 +29489,6 @@ _drawLoreArchive(ctx) {
 
     // Gunner contact push (light — it prefers range)
     if (distance(g.pos, p.pos) < g.radius + PLAYER_RADIUS) {
-      const push = safeNormalize(p.pos.sub(g.pos));
-      p.pos.addMut(push.scale(50 * dt));
       if (p.dashTimer <= 0 && this.phoenixReviveTimer <= 0) {
         p.applyDamage(DD_CONTACT_DMG * 0.5 * dt * (1 - p.contactDamageReduction));
       }
@@ -29628,7 +29639,7 @@ _drawLoreArchive(ctx) {
       const dmg = DD_CONTACT_DMG * (1 - p.contactDamageReduction);
       p.applyDamage(dmg);
       this.screenShake.trigger(4, 0.15);
-      p.pos.addMut(safeNormalize(p.pos.sub(c.pos)).scale(28));
+      p.applyExternalDisplacement(safeNormalize(p.pos.sub(c.pos)).scale(28));
       this.floatingTexts.push(new FloatingText(
         '-' + Math.ceil(dmg) + ' HP', p.pos.clone(), RED, 0.6));
     }
@@ -29728,7 +29739,7 @@ _drawLoreArchive(ctx) {
           this._damagePlayer(16, { color: RED, shake: 7 });
           if (this.player.dashTimer <= 0) {
             const kb = safeNormalize(p.pos.sub(ss.pos));
-            p.pos.addMut(kb.scale(60));
+            p.applyExternalDisplacement(kb.scale(60));
           }
         }
       }
