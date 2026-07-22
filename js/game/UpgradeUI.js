@@ -1,6 +1,7 @@
 import { WIDTH, HEIGHT, YELLOW, WHITE, GREY } from '../constants.js';
 import { drawText, wrapText, roundRect } from '../utils.js';
 import { RARITY_COLORS } from './Upgrades.js?v=20260722500000';
+import { WEAPON_DEFS, PASSIVE_DEFS, EVOLUTION_RECIPES } from './BuildEngine.js?v=20260810100000';
 
 export class UpgradeUI {
   constructor(choices, options = {}) {
@@ -10,7 +11,7 @@ export class UpgradeUI {
     this.allowBanish = options.allowBanish !== false;
 
     const cardW  = 220;
-    const cardH  = 250;   // shorter cards (descriptions are now one short line)
+    const cardH  = 288;   // keeps recipe guidance readable without widening the level-up screen
     const gap    = 30;
     const totalW = choices.length * cardW + (choices.length - 1) * gap;
     const startX = (WIDTH  - totalW) / 2;
@@ -49,6 +50,87 @@ export class UpgradeUI {
       case 'brawler_warrior':  return '#3CFFB0';   // cyan-green energy
       default:                 return null;
     }
+  }
+
+  _recipeHint(upg, game) {
+    const key = String(upg?.key || '');
+    const isWeaponCard = key.startsWith('be_w_');
+    const isCatalystCard = key.startsWith('be_p_');
+    if ((!isWeaponCard && !isCatalystCard) || !game?.buildEngine) return null;
+
+    const id = key.slice(5);
+    const found = Object.entries(EVOLUTION_RECIPES).find(([, recipe]) =>
+      isWeaponCard ? recipe.weapon === id : recipe.passive === id
+    );
+    if (!found) return null;
+
+    const [recipeId, recipe] = found;
+    const weaponDef = WEAPON_DEFS[recipe.weapon];
+    const catalystDef = PASSIVE_DEFS[recipe.passive];
+    if (!weaponDef || !catalystDef) return null;
+
+    const be = game.buildEngine;
+    const weaponState = be.weapons?.get?.(recipe.weapon);
+    const externalLevel = weaponDef.external ? game._weaponLevels?.get?.(recipe.weapon) : 0;
+    const weaponLevel = Math.max(0, Math.min(recipe.weaponLevel, Number(weaponState?.level ?? externalLevel) || 0));
+    const catalystLevel = Math.max(0, Math.min(recipe.passiveLevel, Number(be.passives?.get?.(recipe.passive)) || 0));
+
+    return {
+      recipeId,
+      recipeName: recipe.name,
+      weaponName: weaponDef.name,
+      catalystName: catalystDef.name,
+      weaponLevel,
+      catalystLevel,
+      weaponRequired: recipe.weaponLevel,
+      catalystRequired: recipe.passiveLevel,
+    };
+  }
+
+  _drawRecipeHint(ctx, r, hint, accent) {
+    const x = r.x + 10;
+    const y = r.y + r.h - 84;
+    const w = r.w - 20;
+    const fit = (text, maxWidth, startSize = 10, minSize = 8) => {
+      let size = startSize;
+      ctx.font = `bold ${size}px Consolas, monospace`;
+      while (size > minSize && ctx.measureText(text).width > maxWidth) {
+        size -= 1;
+        ctx.font = `bold ${size}px Consolas, monospace`;
+      }
+    };
+
+    ctx.save();
+    ctx.fillStyle = 'rgba(5,10,18,0.72)';
+    roundRect(ctx, x, y, w, 52, 6);
+    ctx.fill();
+    ctx.strokeStyle = accent + '55';
+    ctx.lineWidth = 1;
+    roundRect(ctx, x, y, w, 52, 6);
+    ctx.stroke();
+
+    const recipeLabel = `RECIPE > ${hint.recipeName}`;
+    fit(recipeLabel, w - 14, 10, 8);
+    ctx.fillStyle = accent;
+    ctx.textAlign = 'left';
+    ctx.fillText(recipeLabel, x + 7, y + 13);
+
+    const rows = [
+      [`W  ${hint.weaponName}`, `${hint.weaponLevel}/${hint.weaponRequired}`],
+      [`C  ${hint.catalystName}`, `${hint.catalystLevel}/${hint.catalystRequired}`],
+    ];
+    rows.forEach(([label, progress], index) => {
+      const rowY = y + 30 + index * 15;
+      fit(label, w - 48, 9, 8);
+      ctx.fillStyle = index === 0 ? '#dce5ef' : '#9edff2';
+      ctx.textAlign = 'left';
+      ctx.fillText(label, x + 7, rowY);
+      ctx.font = 'bold 10px Consolas, monospace';
+      ctx.fillStyle = WHITE;
+      ctx.textAlign = 'right';
+      ctx.fillText(progress, x + w - 7, rowY);
+    });
+    ctx.restore();
   }
 
   handleClick(mousePos, game) {
@@ -95,6 +177,7 @@ export class UpgradeUI {
       const rarity = RARITY_COLORS[upg.rarity] || upg.iconColor;
       const accent = this._accentFor(upg) || rarity;   // special cards override the neon color
       const special = accent !== rarity;
+      const recipeHint = this._recipeHint(upg, game);
 
       // Card background — dark glass panel with a neon accent border + soft outer glow
       ctx.save();
@@ -218,8 +301,9 @@ export class UpgradeUI {
       ctx.fillText(catLabel, r.x + r.w / 2, r.y + 140);
       ctx.textAlign = 'left';
 
-      // Description (word-wrapped, capped at 3 lines so long copy never spills past the card body)
-      wrapText(ctx, upg.description, r.x + 12, r.y + 162, r.w - 24, 20, WHITE, '14px Consolas, monospace', 3);
+      // Recipe cards reserve a quiet footer for ingredient progress; other cards retain 3 lines.
+      wrapText(ctx, upg.description, r.x + 12, r.y + 162, r.w - 24, 20, WHITE, '14px Consolas, monospace', recipeHint ? 2 : 3);
+      if (recipeHint) this._drawRecipeHint(ctx, r, recipeHint, accent);
 
       // Tactical GRID CACHE cards are REPEATABLE deployables (no fixed max level) — showing
       // level dots would falsely imply they "cap out". Instead print a clear repeatable note so

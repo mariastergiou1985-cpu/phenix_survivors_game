@@ -375,8 +375,8 @@ PASSIVE_DEFS.seraphic_wing_array = {
 EVOLUTION_RECIPES.be_wing_guillotine = {
   name: 'Wing Guillotine', weapon: 'holo_energy_knuckles', passive: 'seraphic_wing_array',
   weaponLevel: 5, passiveLevel: 3,
-  damage: 44, cooldown: 1.35,
-  wings: { radius: 120, arc: 1.25, dmg: 36 },       // δύο φτερο-λεπίδες Δ+Α ταυτόχρονα
+  damage: 44, cooldown: 1.00,
+  wings: { radius: 120, arc: 1.25, dmg: 44 },       // δύο φτερο-λεπίδες Δ+Α ταυτόχρονα
   bossMultiplier: 0.80, tags: ['HOLO', 'MELEE', 'WING', 'GUILLOTINE'],
   desc: 'Mechanical wing-blades scissor both flanks at once — a guillotine of light.',
 };
@@ -425,7 +425,7 @@ WEAPON_EXECUTORS.holo_energy_knuckles = {
         g.done = true;
         const near = rt.game._spatialGrid ? rt.game._spatialGrid.query(g.x, g.y, evo.wings.radius + 60) : rt.game.enemies;
         for (const side of [-1, 1]) {
-          const cA = g.dir + side * Math.PI / 2;
+          const cA = g.dir + side * evo.wings.arc / 2;
           for (const e of near) {
             if (!e || e.hp <= 0) continue;
             const dx = e.pos.x - g.x, dy = e.pos.y - g.y, dist = Math.hypot(dx, dy);
@@ -433,7 +433,7 @@ WEAPON_EXECUTORS.holo_energy_knuckles = {
             if (Math.abs(angDiff(Math.atan2(dy, dx), cA)) > evo.wings.arc / 2) continue;
             const set = side < 0 ? g.hitL : g.hitR;
             if (set.has(e)) continue; set.add(e);
-            rt._dealDamage(wid, e, evo.wings.dmg, bm, Math.random() < d.critChance);
+            rt._dealDamage(wid, e, dmg, bm, Math.random() < d.critChance);
           }
         }
       }
@@ -470,7 +470,7 @@ WEAPON_EXECUTORS.holo_energy_knuckles = {
       const k = Math.min(1, g.t / g.dur), fade = 1 - Math.max(0, (g.t - g.dur * 0.5) / (g.dur * 0.65));
       ctx.save(); ctx.translate(g.x, g.y);
       for (const side of [-1, 1]) {
-        const cA = g.dir + side * Math.PI / 2;
+        const cA = g.dir + side * evo.wings.arc / 2;
         const a0 = cA - evo.wings.arc / 2, a1 = a0 + evo.wings.arc * k;
         ctx.globalCompositeOperation = 'lighter';
         ctx.globalAlpha = 0.26 * fade;                             // φτερό-halo
