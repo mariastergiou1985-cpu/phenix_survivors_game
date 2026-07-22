@@ -375,6 +375,21 @@ export class BuildEngineRuntime {
     // 2) Weighted pool: όπλα (νέα/level-up) + catalysts.
     // P2.8: κάθε κάρτα δείχνει badges (NEW/NATIVE/EVOLUTION READY/REQUIRES) + delta
     // SINGLE-TARGET DPS (τρέχον -> επόμενο) — όλα από το ίδιο data source (§13).
+    // P4B recipe convergence: εντόπισε το «lead recipe» = το owned, μη-evolved BE όπλο με catalyst
+    // που έχει τη μεγαλύτερη πρόοδο (weaponLevel×2 + catalystLevel). Ενισχύουμε τα ΥΠΟΛΟΙΠΑ
+    // components του ώστε να «κλείνει» ό,τι ξεκίνησε ο παίκτης, και μειώνουμε τα ΝΕΑ όπλα όσο
+    // ένα recipe είναι σε εξέλιξη (dead-offer protection). ΟΧΙ pre-forced build (ο παίκτης διάλεξε
+    // το όπλο), ΟΧΙ auto-max (κάθε κάρτα την επιλέγει), variety: 2 legacy slots + early acquisition.
+    if (!this._catalystMap) { this._catalystMap = {}; for (const [_pid, _p] of Object.entries(PASSIVE_DEFS)) if (_p.category === 'evolution_passive' && _p.forWeapon) this._catalystMap[_p.forWeapon] = _pid; }
+    let leadW = null, leadP = null, leadScore = -1;
+    for (const [_wid, _w] of this.weapons) {
+      if (_w.evolved) continue;
+      const _cp = this._catalystMap[_wid];
+      if (!_cp) continue;
+      const _score = (_w.level || 0) * 2 + (this.passives.get(_cp) || 0);
+      if (_score > leadScore) { leadScore = _score; leadW = _wid; leadP = _cp; }
+    }
+    const _midRecipe = leadScore >= 6;   // επένδυση ≥ όπλο L3 → σταμάτα να σπρώχνεις νέα όπλα
     const cand = [];
     const _wFull = this.weapons.size >= this.CAPS.weapons;
     const _pFull = this.passives.size >= this.CAPS.passives;
@@ -385,7 +400,13 @@ export class BuildEngineRuntime {
       if (!w && this.banished.has(this._familyOf(wid))) continue;  // P2.7: banished family
       if (!w && this._familyCount(this._familyOf(wid)) >= this.CAPS.perFamily) continue;
       if (w && (w.level >= 5 || w.evolved)) continue;
-      const wt = (w ? 2 : 3) * (d.owner === g.selectedCharacter ? 3 : 1);   // native x3 στον ιδιοκτήτη
+      // P4B (mastery convergence + signature path): τα owned όπλα κερδίζουν βάρος με το invested
+      // level (snowball προς L5 αντί για flood νέων L1)· ο ιδιοκτήτης έχει 2 native όπλα — τα
+      // ενισχύουμε (×5) ώστε ο χαρακτήρας να φτάνει το signature recipe του. Τα νέα παραμένουν
+      // αποκτήσιμα (variety) + 2/3 slots legacy. ΟΧΙ forcing (sampled), ΟΧΙ auto-max.
+      let wt = (w ? (3 + w.level * 3) : 3) * (d.owner === g.selectedCharacter ? 5 : 1);
+      if (wid === leadW) wt *= 3;                                   // convergence: finish the invested weapon
+      else if (!w && _midRecipe) wt *= 0.35;                        // dead-offer protection: μη σπρώχνεις νέα όπλα mid-recipe
       const _badges = (w ? '' : '[NEW] ') + (d.owner === g.selectedCharacter ? '[NATIVE] ' : '');
       const _cur = w ? singleTargetDps(d, w.level) : 0;
       const _nxt = singleTargetDps(d, (w?.level || 0) + 1);
@@ -413,20 +434,30 @@ export class BuildEngineRuntime {
       if (lvl >= p.maxLevel) continue;
       if (this.sealed.has(pid)) continue;                        // P2.7: sealed
       if (!lvl && _pFull) continue;                              // P2.7: 6P cap — μόνο level-ups
-      const wt = ((w ? w.level : extLvl) >= 3 ? 3 : 1);         // x3 όταν το όπλο Lv3+
-      // P2.8 badges: πόσο κοντά είναι το evolution αυτού του catalyst
+      // P4B: catalyst διαθέσιμο από weapon L1· βάρος κλιμακώνει με το weapon investment ώστε
+      // να μπορεί να χτίσει προς L3 μαζί με το όπλο. Όταν κλείνει το recipe ΤΩΡΑ (όπλο L5 +
+      // catalyst ένα βήμα πριν το max), ισχυρό nudge — ΟΧΙ absolute (sampled ενάντια στο pool).
       const _wl = w ? w.level : extLvl;
       const _evoReady = (_wl >= 5 && lvl + 1 >= p.maxLevel);
+      // P4B recipe convergence: το βάρος του catalyst ανεβαίνει με το weapon investment·
+      // όταν το όπλο φτάσει L5 (μισό recipe) οδηγούμε δυνατά τον catalyst προς L3, και
+      // σχεδόν-εγγυημένα στο βήμα που ΚΛΕΙΝΕΙ το recipe. Sampled ενάντια στο pool — ΟΧΙ absolute.
+      let wt = _wl >= 5 ? 24 : _wl >= 4 ? 10 : _wl >= 3 ? 4 : 1;
+      if (_evoReady) wt = 40;                                   // όπλο L5 + catalyst ένα βήμα πριν το max
+      if (pid === leadP) wt *= 3;                              // convergence: finish the invested catalyst
       const _req = _evoReady ? '[EVOLUTION READY] ' : ('[REQUIRES: weapon Lv5 (' + _wl + '/5) + Lv' + p.maxLevel + ' (' + (lvl + 1) + '/' + p.maxLevel + ')] ');
       cand.push({ wt, card: mk('be_p_' + pid, p.name,
         _req + (lvl ? 'Lv' + lvl + ' → Lv' + (lvl + 1) + ' — ' : '') + p.desc, CARD_COLOR.passive, '◈',
         () => self.addPassive(pid)) });
     }
     if (!cand.length) return false;
-    // Οι 2 πρώτες BE προσφορές του run είναι ΕΓΓΥΗΜΕΝΕΣ (ορατότητα του νέου
-    // συστήματος από το 1ο level-up)· μετά 45% ώστε να μην πνίγει το παλιό pool.
+    // Οι 2 πρώτες BE προσφορές του run είναι ΕΓΓΥΗΜΕΝΕΣ (ορατότητα του νέου συστήματος από
+    // το 1ο level-up). P4B: μετά ~85% παρουσία (ήταν 45%) — το BE είναι το ΠΡΩΤΕΥΟΝ
+    // progression layer (25 evolutions) και καταλαμβάνει ΜΟΝΟ 1/3 slot· τα άλλα 2/3 μένουν
+    // πάντα legacy variety, οπότε το 45% throttle λιμοκτονούσε το reachability. ΟΧΙ 100%: ένα
+    // ~15% κρατά περιστασιακά καθαρά-legacy level-ups (variety preserved).
     this._offers = (this._offers || 0) + 1;
-    if (this._offers > 2 && Math.random() > 0.45) return false;
+    if (this._offers > 2 && Math.random() < 0.15) return false;
     let sum = 0; for (const c of cand) sum += c.wt;
     let r = Math.random() * sum, pick = cand[0];
     for (const c of cand) { r -= c.wt; if (r <= 0) { pick = c; break; } }
