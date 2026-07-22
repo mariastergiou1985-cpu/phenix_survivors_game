@@ -1913,6 +1913,21 @@ export class Game {
       this.screenShake?.trigger(6, 0.6);
     }
     if (this.timeAlive < CAMPAIGN_STAGE_SECONDS) return;
+    // P4C LATE-ELIGIBILITY PROTECTION — if the player EARNED the full evolution recipe
+    // (weapon L5 + catalyst L3, _evolutionReady) but the 300s stage boundary cut off before a
+    // level-up could deliver the already-guaranteed evolution card, secure that earned evolution
+    // now so it is never silently swallowed by the clear. NOT free/auto: the COMPLETE recipe was
+    // built by the player's own picks — this only delivers what the very next level-up would have
+    // (the evolution card is a guaranteed top-priority offer once _evolutionReady). Fully guarded:
+    // any throw here must NEVER block the stage clear.
+    try {
+      const _ready = this.buildEngine && this.buildEngine._evolutionReady && this.buildEngine._evolutionReady();
+      const _w = _ready && this.buildEngine.weapons.get(_ready.recipe.weapon);
+      if (_ready && !(_w && _w.evolved)) {
+        this.buildEngine._evolve(_ready.recipe.weapon);
+        this.triggerAnnouncement('SIGNATURE EVOLUTION SECURED — ' + String(_ready.recipe.name || '').toUpperCase(), CYAN, { priority: 1 });
+      }
+    } catch (_) {}
     this._campaignCleared = true;
     const n = this._campaignStage;
     const isFinal = !!CAMPAIGN_STAGES.find(s => s.n === n)?.final;
