@@ -29,6 +29,7 @@ const PLAGUE_PUFF_INTERVAL  = 0.10;  // s between gas-puff spawns (was 0.06)
 const PLAGUE_SLICK_INTERVAL = 0.30;  // s between ground-slick spawns (was 0.18)
 const PLAGUE_PUFF_DPS       = 47;    // gas puff DPS (was 55, ~-15%)
 const PLAGUE_SLICK_DPS      = 19;    // ground slick DPS (was 22, ~-14%)
+const PLAYER_CONTACT_RADIUS = 18;
 // ─────────────────────────────────────────────────────────────────────────────
 const rand  = (a, b) => a + Math.random() * (b - a);
 const dist  = (ax, ay, bx, by) => Math.hypot(ax - bx, ay - by);
@@ -144,6 +145,7 @@ class ToxicSniper {
     this.bullets = [];
     this.fireInterval = 1.5;
     this.fireTimer = 0;
+    this.targetRange = 340;
     this.bulletDamage = 14;
     this.poison = { dps: 6, duration: 3, tickEvery: 0.2 };
   }
@@ -154,6 +156,7 @@ class ToxicSniper {
       if (e.dead || e.dying) continue;
       if (e.x < 0 || e.x > this.bounds.w || e.y < 0 || e.y > this.bounds.h) continue;
       const d = dist(this.player.x, this.player.y, e.x, e.y);
+      if (d > this.targetRange) continue;
       if (d < bestD) { bestD = d; best = e; }
     }
     return best;
@@ -269,6 +272,9 @@ class OrbitalKatanaBarrier {
 
       for (const e of this.enemies) {
         if (e.dead || e.dying) continue;
+        // The large blades remain visually prominent, but their free baseline barrier is
+        // contact control rather than a permanent 180px exclusion ring.
+        if (dist(cx, cy, e.x, e.y) >= PLAYER_CONTACT_RADIUS + e.radius) continue;
         const last = blade.hits.get(e) ?? -1;
         if (last > 0) { blade.hits.set(e, last - dt); continue; }
         const reach = e.radius + this.bladeWidth + this.bladeLength * 0.5;

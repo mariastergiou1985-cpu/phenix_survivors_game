@@ -8,7 +8,7 @@
 //   • Biome-aware Nexus colors + visual states (full/partial/depleted)
 // ────────────────────────────────────────────────────────────────────────────
 
-import { Vec2, CORE_COLORS } from '../constants.js';
+import { Vec2, CORE_COLORS, WORLD_W } from '../constants.js';
 import { PowerMatrix } from '../entities/PowerMatrix.js?v=20260712090000';
 import { BIOME_ID, CHUNK_SIZE } from './MapManager.js?v=20260724000000';
 
@@ -25,6 +25,18 @@ const OUTER_SWAP_HOLD    = 0.6;   // s a biome must be held before the outer Nex
 const NEXUS_CAPACITY     = 6;     // was 8 — smaller per-nexus, but 24 total in Endless (144 cores)
 const REWARD_PULSE_INTERVAL = 18; // seconds between reward emissions from charged Nexus (was 30)
 const REWARD_PULSE_RADIUS   = 900; // max distance for reward to home toward player (was 600)
+
+// One canonical layout for BOTH Endless entry paths: direct Endless initialization and
+// Act 1 -> Endless repositioning. The two y lanes are inside the intersection of the
+// Endless and Chaos walkable bands (including the 44px Nexus footprint), while the x
+// lanes avoid authored obstacle columns. Pair spacing is >= 933px, the start area stays
+// clear, and no viewport can contain more than two central Nexus.
+const ENDLESS_CENTRAL_POSITIONS = Object.freeze([
+  Object.freeze([WORLD_W / 2 - 1500,  700]),
+  Object.freeze([WORLD_W / 2 -  700, 1180]),
+  Object.freeze([WORLD_W / 2 + 1100,  700]),
+  Object.freeze([WORLD_W / 2 + 1900, 1180]),
+]);
 
 // Reward types and their weights
 const REWARD_TYPES = [
@@ -166,21 +178,25 @@ export class NexusManager {
     // pair floated 261px above the floor and the bottom pair 191px below it — visible in
     // the background void but unreachable, because the player clamps to the deck.
     //
-    // Placement now comes from the caller's authored districts, expressed as fractions of
-    // the real walkable band so it can never drift outside the floor again. Four distinct
-    // districts, no two sharing a row or a column, ~690px+ minimum separation.
-    const band = this.act1Bounds ||
+    // Placement uses the real deck bounds when the asset is ready and the measured fallback
+    // during early boot. Inset by the full Nexus footprint plus a small safety margin, then
+    // use two far-separated pairs. This is deterministic, leaves the central spawn clear,
+    // keeps pair spacing above 900px, and caps every camera viewport at two Nexus.
+    const band = this.act1Bounds || this.mapManager?.getAct1DeckBounds?.() ||
                  { x0: 204, x1: 2803, y0: 491, y1: 1297 };   // measured deck fallback
-    const bw = band.x1 - band.x0, bh = band.y1 - band.y0;
+    const inset = NEXUS_FOOTPRINT + 8;
+    const x0 = band.x0 + inset, x1 = band.x1 - inset;
+    const y0 = band.y0 + inset, y1 = band.y1 - inset;
+    const bw = x1 - x0, bh = y1 - y0;
     const F = [
-      [0.91, 0.88],   // far right, low
-      [0.40, 0.44],   // left-of-centre, mid height
-      [0.08, 0.79],   // far left, lower
-      [0.72, 0.10],   // right-of-centre, high
+      [0.00, 0.00],   // far left, high
+      [0.24, 1.00],   // left district, low
+      [0.76, 0.01],   // right district, slightly lower than the left high point
+      [1.00, 0.99],   // far right, slightly higher than the left low point
     ];
     const positions = F.map(([fx, fy]) => [
-      Math.round(band.x0 + bw * fx),
-      Math.round(band.y0 + bh * fy),
+      Math.round(x0 + bw * fx),
+      Math.round(y0 + bh * fy),
     ]);
     void worldW; void worldH;   // world rect is NOT the walkable area — kept for signature compat
     const neonArr = this.biomeNexus.get(BIOME_ID.NEON_DISTRICT);
@@ -200,22 +216,8 @@ export class NexusManager {
    * placed in a ring ~1.5 chunks from origin in their angular sector.
    */
   _createEndlessNexus() {
-    // ── Neon District (center): 4 Nexus in a tighter diamond ──
-    // AUTHORED ASYMMETRY (Maria video QA 2026-07-19): these were a perfect square —
-    // 0.35/0.65 on both axes — so the four Endless Neon Nexus read as machine-placed
-    // furniture and framed together as one cluster. Same authored-district treatment as
-    // the Act 1 layout: four distinct districts, no two sharing a row or a column, none
-    // on a shared centre. Values are fractions of CHUNK_SIZE and stay deterministic, so
-    // the Endless layout is stable across a run and identical between sessions.
-    // NOTE: this list is duplicated in _createEndlessNexus and repositionForEndless and
-    // the two MUST stay identical — entering Endless directly and transitioning from
-    // Act 1 have to produce the same world, or the same run would relayout mid-session.
-    const neonPositions = [
-      [CHUNK_SIZE * 0.22,  CHUNK_SIZE * 0.41],   // west, mid-height
-      [CHUNK_SIZE * 0.58,  CHUNK_SIZE * 0.19],   // centre-east, high
-      [CHUNK_SIZE * 0.79,  CHUNK_SIZE * 0.63],   // far east, below centre
-      [CHUNK_SIZE * 0.38,  CHUNK_SIZE * 0.81],   // centre-west, low
-    ];
+    // ── Neon District (center): shared deterministic placement ──
+    const neonPositions = ENDLESS_CENTRAL_POSITIONS;
     const neonArr = this.biomeNexus.get(BIOME_ID.NEON_DISTRICT);
     const neonColors = BIOME_NEXUS_COLORS[BIOME_ID.NEON_DISTRICT];
     for (let i = 0; i < neonPositions.length; i++) {
@@ -384,21 +386,7 @@ export class NexusManager {
   repositionForEndless() {
     // Move existing Neon District Nexus to Endless positions
     const neonArr = this.biomeNexus.get(BIOME_ID.NEON_DISTRICT);
-    // AUTHORED ASYMMETRY (Maria video QA 2026-07-19): these were a perfect square —
-    // 0.35/0.65 on both axes — so the four Endless Neon Nexus read as machine-placed
-    // furniture and framed together as one cluster. Same authored-district treatment as
-    // the Act 1 layout: four distinct districts, no two sharing a row or a column, none
-    // on a shared centre. Values are fractions of CHUNK_SIZE and stay deterministic, so
-    // the Endless layout is stable across a run and identical between sessions.
-    // NOTE: this list is duplicated in _createEndlessNexus and repositionForEndless and
-    // the two MUST stay identical — entering Endless directly and transitioning from
-    // Act 1 have to produce the same world, or the same run would relayout mid-session.
-    const neonPositions = [
-      [CHUNK_SIZE * 0.22,  CHUNK_SIZE * 0.41],   // west, mid-height
-      [CHUNK_SIZE * 0.58,  CHUNK_SIZE * 0.19],   // centre-east, high
-      [CHUNK_SIZE * 0.79,  CHUNK_SIZE * 0.63],   // far east, below centre
-      [CHUNK_SIZE * 0.38,  CHUNK_SIZE * 0.81],   // centre-west, low
-    ];
+    const neonPositions = ENDLESS_CENTRAL_POSITIONS;
     for (let i = 0; i < neonArr.length && i < neonPositions.length; i++) {
       neonArr[i].pos.x = neonPositions[i][0];
       neonArr[i].pos.y = neonPositions[i][1];

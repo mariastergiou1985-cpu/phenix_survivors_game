@@ -739,12 +739,13 @@ export class Enemy {
     // για λίγο ΜΕΤΑ από χτύπημα — όχι μόνιμα πάνω από κάθε μικρό enemy στην ορδή.
     this._hpBarT = 0.7;   // common-enemy bar fade (was 1.6s — see HP_BAR_BUDGET)
 
-    // Knockback impulse — normal enemies only; bosses are immune; elites get half.
-    if (!isBossEnemy && game.player) {
+    // Only heavy impacts get a small default reaction. Weapon-specific launch/push effects add
+    // their own impulse; ordinary rapid-fire hits must not create a permanent exclusion ring.
+    if (!isBossEnemy && isHeavyHit && game.player) {
       const dx  = this.pos.x - game.player.pos.x;
       const dy  = this.pos.y - game.player.pos.y;
       const len = Math.sqrt(dx * dx + dy * dy) || 1;
-      const str = isHeavyHit ? 290 : 150;
+      const str = 72;
       const kbMult = this.isElite ? 0.45 : 1.0;
       this._kbx = (dx / len) * str * kbMult;
       this._kby = (dy / len) * str * kbMult;
@@ -906,8 +907,10 @@ export class Enemy {
         // ROOT FIX (βίντεο Maria — ΤΟ NaN SEED): this.speed ΔΕΝ ορίζεται πουθενά στην
         // κλάση Enemy => undefined × 2.2 × dt = NaN => η θέση του Executioner γινόταν NaN
         // στην πρώτη του έφοδο και (πριν τα guards) μόλυνε όλη την ορδή + έριχνε το draw.
-        this.pos.x += (this._lungeDirX || 0) * this.baseSpeed * 2.2 * dt;   // LINEAR CHARGE (locked)
-        this.pos.y += (this._lungeDirY || 0) * this.baseSpeed * 2.2 * dt;
+        const nx = this.pos.x + (this._lungeDirX || 0) * this.baseSpeed * 2.2 * dt;
+        const ny = this.pos.y + (this._lungeDirY || 0) * this.baseSpeed * 2.2 * dt;
+        const moved = game._resolveEnemyMove?.(this.pos.x, this.pos.y, nx, ny, this.radius) || { x: nx, y: ny };
+        this.pos.x = moved.x; this.pos.y = moved.y;                 // LINEAR CHARGE (locked)
         if (this._lungeT <= 0) this._lungeRec = 0.6;       // SHORT RECOVERY μετά το charge
       } else if (this._lungeRec > 0) {
         this._lungeRec -= dt;                              // recovery: μισή ταχύτητα (στο movement κάτω)
@@ -921,8 +924,10 @@ export class Enemy {
     // Exponential decay to zero; bosses not displaced (immune). Clamp so micro-drift
     // doesn't persist indefinitely.
     if (this._kbx !== 0 || this._kby !== 0) {
-      this.pos.x += this._kbx * dt;
-      this.pos.y += this._kby * dt;
+      const nx = this.pos.x + this._kbx * dt;
+      const ny = this.pos.y + this._kby * dt;
+      const moved = game._resolveEnemyMove?.(this.pos.x, this.pos.y, nx, ny, this.radius) || { x: nx, y: ny };
+      this.pos.x = moved.x; this.pos.y = moved.y;
       const decay = Math.pow(0.03, dt); // ≈ 0 by ~0.3 s at 60 fps
       this._kbx *= decay;
       this._kby *= decay;
@@ -1001,7 +1006,7 @@ export class Enemy {
     }
 
     // Repel aura — PLAYER upgrade (Sonic Pulse οικογένεια), όχι AI συμπεριφορά: μένει.
-    if (playerDist < player.repelRadius && repelStrength > 0) {
+    if (player.repelRadius > 0 && playerDist < player.repelRadius && repelStrength > 0) {
       const flee = safeNormalize(this.pos.sub(player.pos));
       this.vel = flee.scale(this.baseSpeed * (1.05 + repelStrength));
       this._stepMove(game, dt);

@@ -72,15 +72,23 @@ WEAPON_EXECUTORS.solo_red_thunder = {
       }
       cand.sort((a, b) => a[0] - b[0]);
       const targets = cand.slice(0, ch.targets + extra).map(c => c[1]);
+      const primaryTargets = new Set(targets), hoppedTargets = new Set();
       for (const e of targets) {
         const crit = Math.random() < WEAPON_DEFS.solo_red_thunder.critChance;
         rt._dealDamage('be_solo_of_the_damned', e, dmg, evo.bossMultiplier, crit);
         if (crit) rt._dealDamage('be_solo_of_the_damned', e, dmg * ch.echoDmg, evo.bossMultiplier, false);   // harmonic echo
-        // chain hop στον κοντινότερο γείτονα
+        // Chain outward through the swarm before falling back to an already-hit primary.
         let hopE = null, hd = ch.hopRange * ch.hopRange;
         const near = rt.game._spatialGrid ? rt.game._spatialGrid.query(e.pos.x, e.pos.y, ch.hopRange) : rt.game.enemies;
         for (const n2 of near) { if (n2 && n2.hp > 0 && n2 !== e) {
+          if (primaryTargets.has(n2) || hoppedTargets.has(n2)) continue;
           const dd = (n2.pos.x - e.pos.x) ** 2 + (n2.pos.y - e.pos.y) ** 2; if (dd < hd) { hd = dd; hopE = n2; } } }
+        if (!hopE) {
+          hd = ch.hopRange * ch.hopRange;
+          for (const n2 of near) { if (n2 && n2.hp > 0 && n2 !== e && !hoppedTargets.has(n2)) {
+            const dd = (n2.pos.x - e.pos.x) ** 2 + (n2.pos.y - e.pos.y) ** 2; if (dd < hd) { hd = dd; hopE = n2; } } }
+        }
+        if (hopE) hoppedTargets.add(hopE);
         if (hopE) rt._dealDamage('be_solo_of_the_damned', hopE, dmg * ch.hopDmg, evo.bossMultiplier, false);
         w.bolts.push({ x1: p.pos.x, y1: p.pos.y, x2: e.pos.x, y2: e.pos.y,
                        x3: hopE ? hopE.pos.x : null, y3: hopE ? hopE.pos.y : null, t: 0, life: 0.22 });
@@ -132,7 +140,7 @@ EVOLUTION_RECIPES.be_amp_overdrive_wall = {
   name: 'Amp Overdrive Wall', weapon: 'feedback_cabinet', passive: 'overdriven_vacuum_tube',
   weaponLevel: 5, passiveLevel: 3,
   damage: 34, cooldown: 2.4,
-  wall: { w: 560, h: 60, range: 380, speed: 380, push: 220 },
+  wall: { w: 560, h: 60, range: 380, speed: 380, push: 220, bossHits: 3 },
   bossMultiplier: 0.75, tags: ['SOUND', 'WAVE', 'WALL', 'KNOCKBACK'],
   desc: 'A wall of amplifiers slams one massive overdrive wave across the field.',
 };
@@ -173,8 +181,11 @@ WEAPON_EXECUTORS.feedback_cabinet = {
         if (!e || e.hp <= 0 || wv.hit.has(e)) continue;
         if (!segHit(ax, ay, bx, by, e, halfH)) continue;
         wv.hit.add(e);
-        rt._dealDamage(wid, e, dmg, bm, Math.random() < d.critChance);
-        if (isSmall(e) || wv.wall) if (!(e.isBoss?.() || e.isMegaBoss)) {
+        const boss = e.isBoss?.() || e.isMegaBoss;
+        const impacts = wv.wall && boss ? evo.wall.bossHits : 1;
+        for (let hit = 0; hit < impacts; hit++)
+          rt._dealDamage(wid, e, dmg, bm, Math.random() < d.critChance);
+        if (isSmall(e) || wv.wall) if (!boss) {
           e.pos.x += Math.cos(wv.dir) * push * 0.14; e.pos.y += Math.sin(wv.dir) * push * 0.14;   // σπρώξιμο
         }
       }
