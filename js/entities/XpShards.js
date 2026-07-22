@@ -21,21 +21,20 @@ const CAP        = IS_MOBILE ? 220 : 520;   // hard active cap — beyond this, 
 const SNAP_DIST  = 20;                       // final collect snap (px)
 const CULL_DIST2 = 1500 * 1500;              // draw cull (world px², from player)
 
-// PHENIX cyber identity (Maria unified brief 2026-07-18 §4): NO cyan/blue gem language.
-//   T1 DATA FRAGMENT   — white/silver broken circuit-chip casing, small violet core
-//   T2 ENCRYPTED CELL  — gunmetal segmented chip, bright white edge, acid-lime accent only
-//   T3 NULL DATA CACHE — amber/orange mechanical cache, magenta+gold circuit detail
-const TIER = {
+// Phase 4F visual contract. Values and sizes stay fixed; only the palette and silhouettes
+// distinguish the three bright XP grades from dark, world-sized Power Matrices.
+export const XP_SHARD_VISUALS = Object.freeze({
   // RUNTIME READABILITY PASS (Maria video QA 2026-07-19): στο πραγματικό gameplay zoom
   // (0.72-0.75) τα 8/11/15 world px γίνονταν 6-11 screen px — «λευκές κουκκίδες/χιόνι».
   // Μεγέθη +~35% ώστε η κομμένη γωνία του T1, η segmented capsule του T2 και το
   // mechanical cache του T3 να διαβάζονται στο κανονικό zoom (όχι τεράστια — T3 ≈ 15
   // screen px). Συν σκούρο outline + contact shadow (βλ. draw) για διαχωρισμό από
   // bullets/particles. Καμία αλλαγή σε XP values/merge/cap — καθαρά οπτικό.
-  small:  { max: 2,        size: 11, c: '#d9dee8', core: '#a44dff', edge: '#f4f6fb' },
-  medium: { max: 8,        size: 15, c: '#3a4250', core: '#ffffff', edge: '#b8ff3c' },
-  core:   { max: Infinity, size: 20, c: '#ff9a2d', core: '#ffd447', edge: '#ff2dd0' },
-};
+  small:  { max: 2,        size: 11, body: '#eee9ff', core: '#9c5cff', edge: '#ffffff', glow: 'rgba(156,92,255,0.22)' },
+  medium: { max: 8,        size: 15, body: '#dfff63', core: '#ffffff', edge: '#8cff2f', glow: 'rgba(140,255,47,0.24)' },
+  core:   { max: Infinity, size: 20, body: '#ffd447', core: '#fff8d6', edge: '#ff4fc8', glow: 'rgba(255,79,200,0.25)' },
+});
+const TIER = XP_SHARD_VISUALS;
 function tierFor(v) { return v <= TIER.small.max ? 'small' : v <= TIER.medium.max ? 'medium' : 'core'; }
 
 export class XpShardSystem {
@@ -175,7 +174,7 @@ export class XpShardSystem {
       const pulse = 1 + Math.sin(now * 3.2 + s.ph) * 0.08;
       const sz = T.size * pulse * (s.t < 0.2 ? (0.4 + 3 * s.t) : 1);   // pop-in growth
       const r = s.rot + now * (s.tier === 'core' ? 0.7 : 0.25);
-      // magnet trail: broken-code dashes behind the shard (no glowing blue ball)
+      // Magnet trail uses the tier color, so its value remains readable while moving.
       if (s.magnet && s.vm > 200) {
         const d = Math.max(1, Math.hypot(px - s.x, py - s.y));
         const ux = (s.x - px) / d, uy = (s.y - py) / d;
@@ -189,80 +188,94 @@ export class XpShardSystem {
       }
       ctx.save();
       ctx.translate(s.x, s.y);
-      // contact shadow (un-rotated) — δένει το shard με το δάπεδο, δεν μοιάζει με particle
-      ctx.globalAlpha = 0.30;
+      // Small contact shadow keeps the shard grounded without adding dark visual mass.
+      ctx.globalAlpha = 0.18;
       ctx.fillStyle = '#04060c';
       ctx.beginPath();
-      ctx.ellipse(0, sz * 0.62, sz * 0.72, sz * 0.26, 0, 0, Math.PI * 2);
+      ctx.ellipse(0, sz * 0.70, sz * 0.58, sz * 0.18, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.globalAlpha = 1;
       ctx.rotate(r);
-      // σκούρο περίγραμμα κάτω από κάθε σχήμα — contrast πάνω σε φωτεινό δάπεδο
-      ctx.strokeStyle = 'rgba(6,9,16,0.85)';
-      const flick = Math.sin(now * 11 + s.ph) > 0.86;         // data flicker
+
+      // Polygonal additive auras: visible glow without shadowBlur or a circular matrix halo.
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.fillStyle = T.glow;
+      for (let layer = 2; layer >= 1; layer--) {
+        const halo = sz * (1 + layer * 0.32);
+        ctx.globalAlpha = 0.32 / layer;
+        ctx.beginPath();
+        if (s.tier === 'small') {
+          ctx.moveTo(0, -halo); ctx.lineTo(halo * 0.48, 0);
+          ctx.lineTo(0, halo); ctx.lineTo(-halo * 0.48, 0);
+        } else if (s.tier === 'medium') {
+          ctx.moveTo(-halo * 0.72, -halo * 0.35); ctx.lineTo(0, -halo * 0.62);
+          ctx.lineTo(halo * 0.72, -halo * 0.35); ctx.lineTo(halo * 0.72, halo * 0.35);
+          ctx.lineTo(0, halo * 0.62); ctx.lineTo(-halo * 0.72, halo * 0.35);
+        } else {
+          for (let k = 0; k < 16; k++) {
+            const a = -Math.PI / 2 + k * Math.PI / 8;
+            const rr = halo * (k % 2 ? 0.48 : 0.88);
+            ctx[k ? 'lineTo' : 'moveTo'](Math.cos(a) * rr, Math.sin(a) * rr);
+          }
+        }
+        ctx.closePath(); ctx.fill();
+      }
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = 'rgba(12,8,28,0.82)';
+      const flick = Math.sin(now * 11 + s.ph) > 0.86;
       if (s.tier === 'small') {
-        // T1 DATA FRAGMENT — asymmetric broken circuit-chip: silver casing, cut corner,
-        // two digital notches, small violet energy core. No cyan, no gem.
-        ctx.fillStyle = T.c;
+        // T1: sharp violet XP sliver with an unmistakable white energy notch.
+        ctx.fillStyle = T.body;
         ctx.beginPath();
-        ctx.moveTo(-sz * 0.7, -sz * 0.45);
-        ctx.lineTo(sz * 0.35, -sz * 0.55);
-        ctx.lineTo(sz * 0.7, -sz * 0.1);                       // cut corner
-        ctx.lineTo(sz * 0.55, sz * 0.5);
-        ctx.lineTo(-sz * 0.3, sz * 0.55);
-        ctx.lineTo(-sz * 0.75, sz * 0.05);
+        ctx.moveTo(0, -sz * 0.92);
+        ctx.lineTo(sz * 0.55, -sz * 0.08);
+        ctx.lineTo(sz * 0.16, sz * 0.92);
+        ctx.lineTo(-sz * 0.55, sz * 0.08);
         ctx.closePath();
-        ctx.lineWidth = 2.6; ctx.stroke();                     // dark outline πίσω από το σώμα
-        ctx.fill();
-        ctx.fillStyle = '#8a92a2';                             // digital notches
-        ctx.fillRect(-sz * 0.2, -sz * 0.55, sz * 0.16, sz * 0.2);
-        ctx.fillRect(sz * 0.28, sz * 0.36, sz * 0.18, sz * 0.2);
-        ctx.fillStyle = flick ? '#d9b3ff' : T.core;            // violet core
-        ctx.fillRect(-sz * 0.18, -sz * 0.16, sz * 0.36, sz * 0.32);
+        ctx.lineWidth = 2.2; ctx.stroke(); ctx.fill();
+        ctx.fillStyle = flick ? '#ffffff' : T.core;
+        ctx.beginPath();
+        ctx.moveTo(-sz * 0.14, -sz * 0.48); ctx.lineTo(sz * 0.22, -sz * 0.08);
+        ctx.lineTo(-sz * 0.02, sz * 0.46); ctx.lineTo(-sz * 0.28, sz * 0.02);
+        ctx.closePath(); ctx.fill();
       } else if (s.tier === 'medium') {
-        // T2 ENCRYPTED DATA CELL — gunmetal segmented capsule-chip, bright white edge,
-        // acid-lime accent line only, scan pulse.
-        ctx.fillStyle = T.c;
+        // T2: broad lime XP cell with a white X-rune and two value bars.
+        ctx.fillStyle = T.body;
         ctx.beginPath();
-        ctx.moveTo(-sz * 0.8, -sz * 0.35); ctx.lineTo(sz * 0.5, -sz * 0.5);
-        ctx.lineTo(sz * 0.8, 0); ctx.lineTo(sz * 0.5, sz * 0.5);
-        ctx.lineTo(-sz * 0.8, sz * 0.35);
+        ctx.moveTo(-sz * 0.72, -sz * 0.38); ctx.lineTo(0, -sz * 0.68);
+        ctx.lineTo(sz * 0.72, -sz * 0.38); ctx.lineTo(sz * 0.72, sz * 0.38);
+        ctx.lineTo(0, sz * 0.68); ctx.lineTo(-sz * 0.72, sz * 0.38);
         ctx.closePath();
-        ctx.lineWidth = 2.6; ctx.stroke();                     // dark outline πίσω από το σώμα
-        ctx.fill();
-        ctx.strokeStyle = T.core; ctx.globalAlpha = 0.95; ctx.lineWidth = 1.4;  // white edge
+        ctx.lineWidth = 2.4; ctx.stroke(); ctx.fill();
+        ctx.strokeStyle = T.core; ctx.lineWidth = 1.8;
+        ctx.beginPath();
+        ctx.moveTo(-sz * 0.25, -sz * 0.32); ctx.lineTo(sz * 0.25, sz * 0.32);
+        ctx.moveTo(sz * 0.25, -sz * 0.32); ctx.lineTo(-sz * 0.25, sz * 0.32);
         ctx.stroke();
-        ctx.globalAlpha = 1;
-        ctx.fillStyle = '#12161e';                             // segment gaps
-        ctx.fillRect(-sz * 0.28, -sz * 0.42, sz * 0.1, sz * 0.84);
-        ctx.fillRect(sz * 0.16, -sz * 0.42, sz * 0.1, sz * 0.8);
-        const scan = ((now * 1.4 + s.ph) % 1);                 // scan pulse (lime accent)
-        ctx.fillStyle = T.edge; ctx.globalAlpha = 0.8;
-        ctx.fillRect(-sz * 0.8 + scan * sz * 1.5, -sz * 0.34, sz * 0.08, sz * 0.68);
+        ctx.fillStyle = T.edge;
+        ctx.fillRect(-sz * 0.62, -sz * 0.08, sz * 0.16, sz * 0.16);
+        ctx.fillRect(sz * 0.46, -sz * 0.08, sz * 0.16, sz * 0.16);
       } else {
-        // T3 NULL DATA CACHE — compact mechanical encrypted cache: amber body,
-        // gold circuit ticks, magenta seal, heavier pulse + rotating outer frame.
-        ctx.fillStyle = T.c;
+        // T3: radiant gold XP core with a magenta star corona and white center.
+        ctx.fillStyle = T.body;
         ctx.beginPath();
-        for (let k = 0; k < 6; k++) {
-          const a = (k / 6) * Math.PI * 2;
-          ctx[k ? 'lineTo' : 'moveTo'](Math.cos(a) * sz * 0.8, Math.sin(a) * sz * 0.8);
+        for (let k = 0; k < 12; k++) {
+          const a = -Math.PI / 2 + k * Math.PI / 6;
+          const rr = sz * (k % 2 ? 0.56 : 0.9);
+          ctx[k ? 'lineTo' : 'moveTo'](Math.cos(a) * rr, Math.sin(a) * rr);
         }
         ctx.closePath();
-        ctx.lineWidth = 2.8; ctx.stroke();                     // dark outline πίσω από το σώμα
-        ctx.fill();
-        ctx.strokeStyle = T.edge; ctx.lineWidth = 1.6;         // magenta seal ring
-        ctx.stroke();
-        ctx.fillStyle = T.core;                                // gold circuit ticks
-        for (let k = 0; k < 4; k++) {
-          const a = (k / 4) * Math.PI * 2 + Math.PI / 4;
-          ctx.fillRect(Math.cos(a) * sz * 0.45 - 1.5, Math.sin(a) * sz * 0.45 - 1.5, 3, 3);
-        }
-        ctx.fillStyle = flick ? '#fff2c0' : T.core;
-        ctx.fillRect(-sz * 0.22, -sz * 0.22, sz * 0.44, sz * 0.44);
-        ctx.rotate(-r * 1.8);                                  // counter-rotating outer frame
-        ctx.strokeStyle = T.core; ctx.globalAlpha = 0.6; ctx.lineWidth = 1.2;
-        ctx.strokeRect(-sz * 1.05, -sz * 1.05, sz * 2.1, sz * 2.1);
+        ctx.lineWidth = 2.8; ctx.stroke(); ctx.fill();
+        ctx.strokeStyle = T.edge; ctx.lineWidth = 2; ctx.stroke();
+        ctx.fillStyle = flick ? '#ffffff' : T.core;
+        ctx.beginPath();
+        ctx.moveTo(0, -sz * 0.42); ctx.lineTo(sz * 0.34, 0);
+        ctx.lineTo(0, sz * 0.42); ctx.lineTo(-sz * 0.34, 0);
+        ctx.closePath(); ctx.fill();
+        ctx.rotate(-r * 1.6);
+        ctx.strokeStyle = T.edge; ctx.globalAlpha = 0.72; ctx.lineWidth = 1.4;
+        ctx.strokeRect(-sz * 0.78, -sz * 0.78, sz * 1.56, sz * 1.56);
       }
       ctx.restore();
     }

@@ -12544,10 +12544,16 @@ export class Game {
     vfx.y     = y;
     vfx.angle = angle || 0;
     vfx.scale = scale || 1.0;
-    // Nexus pack: wielder-flavored single-image variant replaces the sheet frames
-    // for matching weapon+character combos (timing/alpha/homing unchanged).
+    // Legacy full-card art is a world VFX only while the legacy layer really owns
+    // this weapon. A same-id BuildEngine weapon always wins to prevent dual visuals.
     const _ovSrc = WIELDER_VFX_OVERRIDES[weaponId + '|' + (this.player ? this.player.selectedCharacter : '')];
-    if (_ovSrc) vfx.overrideImg = _getNexusImage(_ovSrc);
+    const _legacyOwnsWeapon = !this._consumedWeapons?.has(weaponId) && (
+      Number(this._weaponLevels?.get(weaponId) || 0) > 0 || this._evolvedWeapons?.has(weaponId)
+    );
+    const _buildEngineOwnsWeapon = !!this.buildEngine?.weapons?.has?.(weaponId);
+    if (_ovSrc && _legacyOwnsWeapon && !_buildEngineOwnsWeapon) {
+      vfx.overrideImg = _getNexusImage(_ovSrc);
+    }
     // Per-art animation style (transform-only; never alters the illustration pixels).
     vfx.animStyle = WEAPON_ANIM_STYLE[weaponId] || 'spin';
     vfx.aimAngle  = angle || 0;

@@ -2,8 +2,8 @@
 // P2.5 — BUILD ENGINE universal όπλα 21-25 (owner: null — προσφέρονται σε ΟΛΟΥΣ):
 // Null Lance · Ion Halo · Gravity Core · Nano Mine · Blacknet Swarm Drone
 // + 5 catalysts + 5 evolutions (be_*). Spec: docs/P2_BUILD_ENGINE_SPEC_GR.md
-// ΣΗΜΕΙΩΣΗ IDs: τα null_lance/ion_halo του ΠΑΛΙΟΥ WeaponCatalog είναι άλλα αντικείμενα
-// (old-gen evolutions) — εδώ ζουν σε ξεχωριστό namespace (WEAPON_DEFS) μέχρι το P2.7.
+// Internal IDs are namespaced away from the legacy WeaponCatalog evolutions that also use
+// null_lance/ion_halo. Display names and gameplay behavior remain unchanged.
 // Συνταγή ultimates: halo -> σώμα -> λευκός πυρήνας, lighter, caps, ΚΑΝΕΝΑ PNG.
 // ═══════════════════════════════════════════════════════════════════════════════
 import { WEAPON_DEFS, PASSIVE_DEFS, EVOLUTION_RECIPES, WEAPON_EXECUTORS }
@@ -26,7 +26,7 @@ const isRangedOrElite = e => e.isElite || !!e.shootInterval || (e.rank && e.rank
 
 // ═══ 21 · NULL LANCE — γραμμή-pierce, bonus σε μακρινούς, rift στο τέλος ·
 //        Collapsed Horizon -> BE_EVENTIDE_IMPALER (rift που τραβά ΣΤΗ γραμμή) ═══
-WEAPON_DEFS.null_lance = {
+WEAPON_DEFS.build_null_lance = {
   name: 'Null Lance', owner: null, category: 'weapon', kind: 'line_pierce',
   damage:   [15, 18, 22, 27, 33],
   cooldown: [1.50, 1.40, 1.28, 1.16, 1.05],
@@ -41,12 +41,12 @@ WEAPON_DEFS.null_lance = {
 };
 PASSIVE_DEFS.collapsed_horizon = {
   name: 'Collapsed Horizon', category: 'evolution_passive', owner: null,
-  forWeapon: 'null_lance', requiredFor: 'be_eventide_impaler', maxLevel: 3,
+  forWeapon: 'build_null_lance', requiredFor: 'be_eventide_impaler', maxLevel: 3,
   bonuses: [ { lanceRange: 0.10 }, { lanceRange: 0.10, riftPull: 0.25 }, { lanceRange: 0.15, riftPull: 0.40 } ],
   desc: 'The horizon folds along the shaft. Powers the Eventide Impaler.',
 };
 EVOLUTION_RECIPES.be_eventide_impaler = {
-  name: 'Eventide Impaler', weapon: 'null_lance', passive: 'collapsed_horizon',
+  name: 'Eventide Impaler', weapon: 'build_null_lance', passive: 'collapsed_horizon',
   weaponLevel: 5, passiveLevel: 3,
   damage: 40, cooldown: 0.95, range: 440,
   impale: { pull: 90, reDelay: 0.30, reDmg: 0.7 },   // το rift τραβά ΠΑΝΩ στη γραμμή + 2ο pierce
@@ -54,9 +54,9 @@ EVOLUTION_RECIPES.be_eventide_impaler = {
   desc: 'The rift drags everything onto the shaft — then the lance runs them through again.',
 };
 
-WEAPON_EXECUTORS.null_lance = {
+WEAPON_EXECUTORS.build_null_lance = {
   update(rt, w, dt) {
-    const d = WEAPON_DEFS.null_lance, evo = EVOLUTION_RECIPES.be_eventide_impaler;
+    const d = WEAPON_DEFS.build_null_lance, evo = EVOLUTION_RECIPES.be_eventide_impaler;
     const p = rt.game.player;
     w.lances = w.lances || []; w.rifts = w.rifts || [];
     w.cd -= dt;
@@ -66,7 +66,7 @@ WEAPON_EXECUTORS.null_lance = {
       w.lances.push({ a: aimAngle(rt), R, t: 0, x: p.pos.x, y: p.pos.y, fired: false, re: false });
     }
     const dmgBase = w.evolved ? evo.damage : lvl(d, w, 'damage');
-    const wid = w.evolved ? 'be_eventide_impaler' : 'null_lance';
+    const wid = w.evolved ? 'be_eventide_impaler' : 'build_null_lance';
     const bm = w.evolved ? evo.bossMultiplier : d.bossMultiplier;
     const pierceLine = (ln, mult) => {
       const ex = ln.x + Math.cos(ln.a) * ln.R, ey = ln.y + Math.sin(ln.a) * ln.R;
@@ -115,7 +115,7 @@ WEAPON_EXECUTORS.null_lance = {
     }
   },
   draw(rt, ctx, w) {
-    const d = WEAPON_DEFS.null_lance;
+    const d = WEAPON_DEFS.build_null_lance;
     for (const ln of (w.lances || [])) {
       const fade = 1 - ln.t / 0.45;
       const ex = ln.x + Math.cos(ln.a) * ln.R, ey = ln.y + Math.sin(ln.a) * ln.R;
@@ -157,7 +157,7 @@ WEAPON_EXECUTORS.null_lance = {
 
 // ═══ 22 · ION HALO — orbit με μεταβλητή ακτίνα, hits = charge -> chain lightning ·
 //        Conductive Crown -> BE_SOVEREIGN_ION_HALO (ομόκεντροι + θόλος) ═══
-WEAPON_DEFS.ion_halo = {
+WEAPON_DEFS.build_ion_halo = {
   canBlockHostileProjectiles: true,   // HORDE §14: defensive blocker
   name: 'Ion Halo', owner: null, category: 'weapon', kind: 'orbit_variable',
   damage:   [8, 10, 12, 15, 19],
@@ -173,12 +173,12 @@ WEAPON_DEFS.ion_halo = {
 };
 PASSIVE_DEFS.conductive_crown = {
   name: 'Conductive Crown', category: 'evolution_passive', owner: null,
-  forWeapon: 'ion_halo', requiredFor: 'be_sovereign_ion_halo', maxLevel: 3,
+  forWeapon: 'build_ion_halo', requiredFor: 'be_sovereign_ion_halo', maxLevel: 3,
   bonuses: [ { haloDmg: 0.10 }, { haloDmg: 0.10, haloCharge: 1 }, { haloDmg: 0.15, haloCharge: 2 } ],
   desc: 'A crown that conducts. Powers the Sovereign Ion Halo.',
 };
 EVOLUTION_RECIPES.be_sovereign_ion_halo = {
-  name: 'Sovereign Ion Halo', weapon: 'ion_halo', passive: 'conductive_crown',
+  name: 'Sovereign Ion Halo', weapon: 'build_ion_halo', passive: 'conductive_crown',
   weaponLevel: 5, passiveLevel: 3,
   damage: 24, rings: 2,
   dome: { every: 3.0, radius: 150, dmg: 30 },
@@ -186,14 +186,14 @@ EVOLUTION_RECIPES.be_sovereign_ion_halo = {
   desc: 'Two concentric sovereign rings — and every few breaths, a dome of ions slams down.',
 };
 
-WEAPON_EXECUTORS.ion_halo = {
+WEAPON_EXECUTORS.build_ion_halo = {
   update(rt, w, dt) {
-    const d = WEAPON_DEFS.ion_halo, evo = EVOLUTION_RECIPES.be_sovereign_ion_halo;
+    const d = WEAPON_DEFS.build_ion_halo, evo = EVOLUTION_RECIPES.be_sovereign_ion_halo;
     const p = rt.game.player;
     w.ph = (w.ph || 0) + dt; w.charge = w.charge || 0; w.hitOk = w.hitOk || new Map();
     w.bolts = w.bolts || []; w.domeT = (w.domeT ?? evo.dome.every);
     const dmg = (w.evolved ? evo.damage : lvl(d, w, 'damage')) * (1 + rt._catalystSum('haloDmg'));
-    const wid = w.evolved ? 'be_sovereign_ion_halo' : 'ion_halo';
+    const wid = w.evolved ? 'be_sovereign_ion_halo' : 'build_ion_halo';
     const bm = w.evolved ? evo.bossMultiplier : d.bossMultiplier;
     const rings = w.evolved ? evo.rings : 1;
     const breathe = (Math.sin(w.ph * (Math.PI * 2 / d.breathe)) + 1) / 2;   // 0..1
@@ -691,4 +691,4 @@ WEAPON_EXECUTORS.blacknet_swarm_drone = {
   },
 };
 
-export const BE_UNIVERSALS = ['null_lance', 'ion_halo', 'gravity_core', 'nano_mine', 'blacknet_swarm_drone'];
+export const BE_UNIVERSALS = ['build_null_lance', 'build_ion_halo', 'gravity_core', 'nano_mine', 'blacknet_swarm_drone'];
