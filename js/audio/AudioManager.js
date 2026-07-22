@@ -75,6 +75,15 @@ export class AudioManager {
     this._radioAudio    = null;   // PHENIX NULL RADIO — one lore broadcast per session (menu)
     this._radioPlayed   = false;
     this._currentMusic  = null;   // the single track that may be audible; gates _play retries
+    this._eddieRiffsAudio = null;
+    this._eddieRiffsPlaying = false;
+    this._eddiePlaybackMode = null;
+    this._eddieAlbumIdx = 0;
+    this._eddieUltimateNextIdx = 0;
+    this._eddieLastTrackId = null;
+    this._eddiePlayState = null;
+    this._eddieRiffsGain = null;
+    this._eddiePlayToken = 0;
 
     this._setupTrack('assets/audio/music/menu_theme.mp3?v=20260615210000', 0.28, a => { this._menuAudio     = a; });
     this._setupTrack('assets/audio/music/gameplay_theme.mp3?v=20260615210000', 0.20, a => { this._gameplayAudio = a; });
@@ -119,7 +128,8 @@ export class AudioManager {
 
   setMusicVolume(v) {
     this.musicVolume = clamp01(v);
-    this.musicGain.gain.value = this.musicVolume;
+    this.musicGain.gain.value = this.musicVolume * (this._eddieRiffsPlaying ? 0.25 : 1);
+    if (this._eddieRiffsGain) this._eddieRiffsGain.gain.value = 0.9 * this.musicVolume;
     this._saveVolume(VOL_KEYS.music, this.musicVolume);
   }
 
@@ -217,50 +227,128 @@ export class AudioManager {
 
   _playEddieAlbumTrack(i) {
     const a = this._eddieRiffsAudio;
-    if (!a) return;
+    if (!a) return null;
     const album = this._EDDIE_ALBUM();
     this._eddieAlbumIdx = ((i % album.length) + album.length) % album.length;
+    const url = album[this._eddieAlbumIdx];
+    const trackId = url.split('/').pop().split('?')[0].replace(/\.mp3$/i, '');
+    this._eddieLastTrackId = trackId;
+    this._eddiePlayState = {
+      mode: this._eddiePlaybackMode,
+      index: this._eddieAlbumIdx,
+      trackId,
+      url,
+      result: 'pending',
+    };
+    const token = ++this._eddiePlayToken;
+    const attempt = (remaining) => {
+      if (!this._eddieRiffsPlaying || token !== this._eddiePlayToken) return;
+      let playResult;
+      try { playResult = a.play(); }
+      catch (_) {
+        if (remaining > 0) setTimeout(() => attempt(remaining - 1), 250);
+        else if (this._eddiePlayState?.url === url) this._eddiePlayState.result = 'error';
+        return;
+      }
+      if (!playResult?.then) {
+        if (this._eddiePlayState?.url === url) this._eddiePlayState.result = 'playing';
+        return;
+      }
+      playResult.then(() => {
+        if (this._eddiePlayState?.url === url) this._eddiePlayState.result = 'playing';
+      }).catch(() => {
+        if (remaining > 0) setTimeout(() => attempt(remaining - 1), 250);
+        else if (this._eddiePlayState?.url === url) this._eddiePlayState.result = 'blocked';
+      });
+    };
     try {
-      a.src = album[this._eddieAlbumIdx];
+      a.src = url;
       a.currentTime = 0;
-      a.play().catch(() => {});
-    } catch (_) {}
+      this.currentTrackTitle = `EDDIE // ${trackId.replace(/_/g, ' ').toUpperCase()}`;
+      attempt(10);
+    } catch (_) { this._eddiePlayState.result = 'error'; }
+    return this._eddiePlayState;
+  }
+
+  _ensureEddieRiffsAudio() {
+    if (this._eddieRiffsAudio) return this._eddieRiffsAudio;
+    try {
+      const a = new Audio();
+      a.loop = false; a.preload = 'auto';
+      a.onerror = () => console.warn('[Audio] Eddie album track failed to load');
+      const src = this.actx.createMediaElementSource(a);
+      const g   = this.actx.createGain(); g.gain.value = 0.9 * this.musicVolume;
+      src.connect(g); g.connect(this.masterGain);
+      try { g.connect(this.analyser); } catch (_) {}
+      a.onended = () => {
+        if (!this._eddieRiffsPlaying) return;
+        if (this._eddiePlaybackMode === 'album') {
+          this._playEddieAlbumTrack((this._eddieAlbumIdx || 0) + 1);
+        } else {
+          this.stopEddieRiffs();
+        }
+      };
+      this._eddieRiffsAudio = a;
+      this._eddieRiffsGain = g;
+      return a;
+    } catch (_) { return null; }
   }
 
   playEddieRiffs() {
-    if (this.muted) return;
-    if (this._eddieRiffsPlaying) return;
+    if (this.muted) return null;
+    if (this._eddieRiffsPlaying && this._eddiePlaybackMode === 'album') return this._eddiePlayState;
     try {
-      if (!this._eddieRiffsAudio) {
-        const a = new Audio();
-        a.loop = false; a.preload = 'auto';
-        a.onerror = () => console.warn('[Audio] Eddie album track failed to load');
-        const src = this.actx.createMediaElementSource(a);
-        const g   = this.actx.createGain(); g.gain.value = 0.9;
-        src.connect(g); g.connect(this.masterGain);   // direct to master — duck-proof, like the radio
-        try { g.connect(this.analyser); } catch (_) {}
-        // Auto-advance to the NEXT album track the moment one ends (loops at the end).
-        a.onended = () => {
-          if (!this._eddieRiffsPlaying) return;        // stopped → don't chain another song
-          this._playEddieAlbumTrack((this._eddieAlbumIdx || 0) + 1);
-        };
-        this._eddieRiffsAudio = a;
-      }
+      const a = this._ensureEddieRiffsAudio();
+      if (!a) return null;
       if (this.actx.state === 'suspended') this.actx.resume().catch(() => {});
-      // Duck the map music so the guitar album takes the foreground.
       this.musicGain.gain.setTargetAtTime((this.muted ? 0 : this.musicVolume) * 0.25, this.actx.currentTime, 0.4);
+      this._eddiePlaybackMode = 'album';
       this._eddieRiffsPlaying = true;
-      this._playEddieAlbumTrack(this._eddieAlbumIdx || 0);   // start from the top (song 1)
-    } catch (_) {}
+      return this._playEddieAlbumTrack(this._eddieAlbumIdx || 0);
+    } catch (_) { return null; }
+  }
+
+  playEddieUltimateTrack(requestedIndex = null) {
+    if (this.muted) return null;
+    try {
+      const a = this._ensureEddieRiffsAudio();
+      if (!a) return null;
+      try { a.pause(); } catch (_) {}
+      if (this.actx.state === 'suspended') this.actx.resume().catch(() => {});
+      this.musicGain.gain.setTargetAtTime(this.musicVolume * 0.25, this.actx.currentTime, 0.08);
+      const album = this._EDDIE_ALBUM();
+      const index = requestedIndex == null
+        ? this._eddieUltimateNextIdx % album.length
+        : ((requestedIndex % album.length) + album.length) % album.length;
+      this._eddieUltimateNextIdx = (index + 1) % album.length;
+      this._eddiePlaybackMode = 'ultimate';
+      this._eddieRiffsPlaying = true;
+      return this._playEddieAlbumTrack(index);
+    } catch (_) { return null; }
   }
 
   // Stop the album (performance ended / death / menu) and restore the map-music level.
-  stopEddieRiffs() {
+  stopEddieRiffs({ resetRotation = false } = {}) {
     this._eddieRiffsPlaying = false;                  // set FIRST so onended never chains a new song
+    this._eddiePlayToken++;
     const a = this._eddieRiffsAudio;
-    if (a) { try { a.pause(); } catch (_) {} }
+    if (a) { try { a.pause(); a.currentTime = 0; } catch (_) {} }
     this.musicGain.gain.setTargetAtTime(this.muted ? 0 : this.musicVolume, this.actx.currentTime, 0.6);
-    this._eddieAlbumIdx = 0;                           // next performance starts the album from song 1
+    this._eddiePlaybackMode = null;
+    this._eddieAlbumIdx = 0;
+    if (resetRotation) this._eddieUltimateNextIdx = 0;
+    if (this._currentMusic === this._gameplayAudio) this.currentTrackTitle = 'NULL EDEN OST';
+    else if (this._currentMusic === this._endlessAudio) this.currentTrackTitle = 'NYX';
+    else if (this._currentMusic === this._chaosAudio) this.currentTrackTitle = 'Golden Override Protocol';
+    else if (this._currentMusic === this._menuAudio) this.currentTrackTitle = 'Hope';
+  }
+
+  resetEddieRiffs() { this.stopEddieRiffs({ resetRotation: true }); }
+  stopEddieUltimateTrack() { this.stopEddieRiffs(); }
+  resumeEddieUltimateTrack() {
+    if (this._eddieRiffsPlaying && this._eddiePlaybackMode === 'ultimate') return this._eddiePlayState;
+    const index = this._eddiePlayState?.mode === 'ultimate' ? this._eddiePlayState.index : null;
+    return this.playEddieUltimateTrack(index);
   }
 
   // Track length in seconds (0 until metadata has loaded).
@@ -312,7 +400,7 @@ export class AudioManager {
     this._stop(this._gameplayAudio);
     this._stop(this._endlessAudio);
     this._stop(this._chaosAudio);
-    this.stopEddieRiffs();   // cut any lingering Eddie guitar solo when returning to the menu
+    this.resetEddieRiffs();  // cut any lingering Eddie track and reset the next-run rotation
     this._currentMusic = this._menuAudio;
     this.currentTrackTitle = 'Hope';
     this._play(this._menuAudio);
@@ -394,7 +482,7 @@ export class AudioManager {
     this._stop(this._gameplayAudio);
     this._stop(this._endlessAudio);
     this._stop(this._chaosAudio);
-    this.stopEddieRiffs();   // also cut the Eddie guitar solo track + restore ducked music (death / menu / etc.)
+    this.stopEddieRiffs();   // run reset/menu entry owns rotation reset
     this.stopJukebox();      // and any OST jukebox track
   }
 

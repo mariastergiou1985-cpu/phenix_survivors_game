@@ -133,6 +133,7 @@ export class Enemy {
     // player (Vampire-Survivors pressure) instead of stacking into one column. Sign+magnitude random.
     this._encSlot  = (Math.random() < 0.5 ? -1 : 1) * (0.35 + Math.random() * 0.5);
     this._stuckT   = 0;    // short stuck-detection timer
+    this._stuckCd  = Math.random() * 0.8; // stagger expensive detour searches across frames
     this._lastDist = 0;
 
     this.hitFlash   = 0;
@@ -1116,21 +1117,18 @@ export class Enemy {
     if (this._stuckCd > 0) this._stuckCd -= dt;
 
     if ((this._stuckT || 0) >= STUCK_SECS && (this._stuckCd || 0) <= 0) {
+      if (Number.isFinite(game._enemyDetourBudget)) {
+        if (game._enemyDetourBudget <= 0) {
+          this._stuckT = STUCK_SECS;
+          return;
+        }
+        game._enemyDetourBudget--;
+      }
       const radius = this.radius || 12;
       const mode = game._walkMode?.();
       const map = game.mapManager;
       const legal = (px, py) => !mode || !map?.isWalkableFootprint ||
         map.isWalkableFootprint(px, py, radius, mode);
-      const reachable = point => {
-        if (!point || !legal(point.x, point.y)) return false;
-        const dx = point.x - this.pos.x, dy = point.y - this.pos.y;
-        const steps = Math.max(1, Math.ceil(Math.hypot(dx, dy) / 24));
-        for (let i = 1; i <= steps; i++) {
-          const t = i / steps;
-          if (!legal(this.pos.x + dx * t, this.pos.y + dy * t)) return false;
-        }
-        return true;
-      };
       if (!legal(this.pos.x, this.pos.y)) {
         const rec = game._recoverEnemyPos?.(this.pos.x, this.pos.y, radius);
         const px = game.player?.pos?.x ?? 0, py = game.player?.pos?.y ?? 0;
@@ -1149,31 +1147,9 @@ export class Enemy {
           if (legal(nx, ny)) { this.pos.x = nx; this.pos.y = ny; }
         }
       }
-      let detour = game._findEnemyDetour?.(
+      const detour = game._findEnemyDetour?.(
         this.pos.x, this.pos.y, radius,
         game.player?.pos?.x ?? this.pos.x, game.player?.pos?.y ?? this.pos.y);
-      if (!reachable(detour)) detour = null;
-      if (!detour && game.player?.pos) {
-        const base = Math.atan2(game.player.pos.y - this.pos.y, game.player.pos.x - this.pos.x);
-        const preferred = this._encSlot < 0 ? -1 : 1;
-        let bestDistance = Infinity;
-        for (const dist of [240, 360, 480, 600]) {
-          for (const offset of [Math.PI / 4, Math.PI / 3, Math.PI / 2]) {
-            for (const side of [preferred, -preferred]) {
-              const angle = base + side * offset;
-              const candidate = {
-                x: this.pos.x + Math.cos(angle) * dist,
-                y: this.pos.y + Math.sin(angle) * dist,
-              };
-              if (!reachable(candidate)) continue;
-              const remaining = Math.hypot(
-                game.player.pos.x - candidate.x,
-                game.player.pos.y - candidate.y);
-              if (remaining < bestDistance) { detour = candidate; bestDistance = remaining; }
-            }
-          }
-        }
-      }
       if (detour) { this._detourPos = detour; this._detourT = 7; }
       this._stuckT = 0; this._stuckCd = STUCK_COOLDOWN;
     }

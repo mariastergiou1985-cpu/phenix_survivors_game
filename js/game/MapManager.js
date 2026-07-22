@@ -230,6 +230,7 @@ export class MapManager {
     // correct, where a per-pixel mask of a painterly asset is neither.
     this.CITY_BLOCK_COLS  = [ [180, 250, 210, 300], [700, 780, 210, 330], [1240, 1320, 210, 300] ];
     this.CHAOS_BLOCK_COLS = [ [300, 372, 135, 250], [980, 1060, 135, 265] ];
+    this._walkModels = Object.create(null);
     // Maria 2026-07-19 VIDEO-GROUNDED CORRECTION: το gameplay video («chaos mode map is
     // shit.mp4») απέδειξε ότι το chaos_mode_only_new_map.png είναι το multi-biome patchwork
     // (πάγος/έρημος/industrial/void με perspective γέφυρες) — FAIL. Το σωστό εγκεκριμένο
@@ -405,12 +406,19 @@ export class MapManager {
     const chaos = mode === 'chaos';
     const img   = chaos ? this._chaosDeckImg : this._cityImg;
     if (!img || !img.complete || !img.naturalWidth) return null;
-    return {
+    const key = chaos ? 'chaos' : 'endless';
+    const cached = this._walkModels[key];
+    if (cached && cached.tileW === img.naturalWidth && cached.tileH === img.naturalHeight) return cached;
+    const model = {
       rows:   chaos ? this.CHAOS_WALK_ROWS  : this.CITY_WALK_ROWS,
       blocks: chaos ? this.CHAOS_BLOCK_COLS : this.CITY_BLOCK_COLS,
       scale:  this.CITY_SCALE,
       tileW:  img.naturalWidth,
+      tileH:  img.naturalHeight,
+      verticalFloor: !chaos,
     };
+    this._walkModels[key] = model;
+    return model;
   }
 
   /** True when this exact world point sits on real, unobstructed floor. */
@@ -423,6 +431,8 @@ export class MapManager {
     const m = this._walkModel(mode);
     if (!m) return true;                       // no art loaded yet — never block gameplay
     const srcY = y / m.scale;
+    // Endless draws neutral pavement above and below the authored city strip.
+    if (m.verticalFloor && (srcY < 0 || srcY > m.tileH)) return true;
     if (srcY < m.rows[0] || srcY > m.rows[1]) return false;      // skyline / lower structures
     // Mirror tiling: period is 2 tiles, the second mirrored. Fold world x into source x.
     const period = m.tileW * 2;
@@ -444,7 +454,16 @@ export class MapManager {
     if (!m) return true;
     const r = Math.max(0, radius);
     const scale = m.scale;
-    if ((y - r) / scale < m.rows[0] || (y + r) / scale > m.rows[1]) return false;
+    if (m.verticalFloor) {
+      const topNoGoY1 = m.rows[0] * scale;
+      const bottomNoGoY0 = m.rows[1] * scale;
+      const stripY1 = m.tileH * scale;
+      const overlapsTopNoGo = y + r >= 0 && y - r <= topNoGoY1;
+      const overlapsBottomNoGo = y + r >= bottomNoGoY0 && y - r <= stripY1;
+      if (overlapsTopNoGo || overlapsBottomNoGo) return false;
+    } else if ((y - r) / scale < m.rows[0] || (y + r) / scale > m.rows[1]) {
+      return false;
+    }
 
     // Exact circle-vs-AABB checks close the diagonal corner gap left by four-point sampling.
     const tileW = m.tileW * scale;

@@ -490,6 +490,35 @@ export class Player {
   // Bite from Bloodfang/Razorhound. HP is always applied; stagger/knockback/bleed are
   // suppressed while stunImmunityTimer > 0 (anti chain-lock). Returns true if a NEW
   // stagger was applied (for "STAGGERED" feedback). Callers guard dash/phoenix i-frames.
+  cancelMovement() {
+    this.vel.x = 0;
+    this.vel.y = 0;
+    this.dashTimer = 0;
+    this.specialDashTimer = 0;
+  }
+
+  applyExternalDisplacement(delta) {
+    const totalX = Number(delta?.x) || 0;
+    const totalY = Number(delta?.y) || 0;
+    const distance = Math.hypot(totalX, totalY);
+    if (distance <= 0) return;
+    const steps = Math.max(1, Math.ceil(distance / Math.max(8, PLAYER_RADIUS * 0.5)));
+    const dx = totalX / steps;
+    const dy = totalY / steps;
+    for (let i = 0; i < steps; i++) {
+      const fromX = this.pos.x;
+      const fromY = this.pos.y;
+      const moved = typeof this._resolveMove === 'function'
+        ? this._resolveMove(fromX, fromY, fromX + dx, fromY + dy, PLAYER_RADIUS)
+        : { x: fromX + dx, y: fromY + dy };
+      if (moved.x === fromX && moved.y === fromY) break;
+      this.pos.x = moved.x;
+      this.pos.y = moved.y;
+    }
+    this.pos.x = clamp(this.pos.x, WORLD_BOUNDS.left + WORLD_BOUNDS.margin, WORLD_BOUNDS.right - WORLD_BOUNDS.margin);
+    this.pos.y = clamp(this.pos.y, WORLD_BOUNDS.top + WORLD_BOUNDS.margin + 40, WORLD_BOUNDS.bottom - WORLD_BOUNDS.margin);
+  }
+
   applyBite({ hp = 0, stamina = 0, stagger = 0, knockback = 0, dir = null, bleed = 0 } = {}) {
     if (hp > 0) this.applyDamage(hp);                 // routes through Pulse Shield reduction
     if (this.stunImmunityTimer > 0) return false;     // immune to new stagger
@@ -498,7 +527,7 @@ export class Player {
       this.staggerTimer      = Math.max(this.staggerTimer, stagger);
       this.stunImmunityTimer = stagger + 2;            // 2 s immunity after stagger ends
     }
-    if (knockback > 0 && dir) this.pos.addMut(dir.scale(knockback));
+    if (knockback > 0 && dir) this.applyExternalDisplacement(dir.scale(knockback));
     if (bleed > 0) this.bleedTimer = Math.max(this.bleedTimer, bleed);  // refresh, not stack
     return stagger > 0;
   }

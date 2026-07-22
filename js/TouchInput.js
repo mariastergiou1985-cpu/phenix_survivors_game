@@ -229,7 +229,7 @@ export function initTouchControls({ canvas, keys, game, setAim, onQ, onE, onUlt 
   function updateRotate() {
     const portrait = (window.matchMedia && window.matchMedia('(orientation: portrait)').matches)
                      || window.innerHeight > window.innerWidth;
-    const inGameplay = game.gameState === 'playing';
+    const inGameplay = game.gameState === 'playing' && !game.paused && !game.upgradeUI && !game.mutationUI;
     rotate.style.display = (portrait && inGameplay) ? 'flex' : 'none';
   }
   window.addEventListener('resize', updateRotate);
@@ -262,7 +262,7 @@ export function initTouchControls({ canvas, keys, game, setAim, onQ, onE, onUlt 
     // goes idle/disconnects. The controller is polled on every platform, so pads work on mobile too.
     const padActive = !!(g._controllerConnected && g._controllerActivated);
     const showTouch = inPlay && !padActive;
-    const showPause = g.gameState === 'playing' && !g.gameOver && !g.victory;
+    const showPause = g.gameState === 'playing' && !g.gameOver && !g.victory && !g.upgradeUI && !g.mutationUI;
     if (showTouch !== _shown) {
       _shown = showTouch;
       joy.style.display  = showTouch ? '' : 'none';

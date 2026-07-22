@@ -1,7 +1,7 @@
 // COMBAT READABILITY REGRESSION — real modules, no browser, no network.
 // Run: node tools/qa/readability_regression.mjs   (exit 1 on any failure)
 import { register } from 'node:module';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 register('./strip-v-loader.mjs', import.meta.url);
 globalThis.window = globalThis;
@@ -11,7 +11,7 @@ if (!globalThis.performance) globalThis.performance = { now: () => Date.now() };
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const JS   = path.resolve(HERE, '../../js');
-const { selectHpBarEnemies, hasHpBarSlot, MAX_COMMON_BARS } = await import(path.join(JS, 'entities/Enemy.js'));
+const { selectHpBarEnemies, hasHpBarSlot, MAX_COMMON_BARS } = await import(pathToFileURL(path.join(JS, 'entities/Enemy.js')).href);
 
 let pass=0, fail=0;
 const T=(n,f)=>{let ok=false,note='';try{const r=f();ok=r===true;if(typeof r==='string')note=r;}

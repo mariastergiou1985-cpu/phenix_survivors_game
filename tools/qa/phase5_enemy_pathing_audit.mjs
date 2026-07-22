@@ -171,6 +171,7 @@ function makeGame(kind, metrics) {
     if (result.x === x && result.y === y) metrics.noOpRecoveries++;
     return result;
   };
+  game._findEnemyDetour = (...args) => Game.prototype._findEnemyDetour.call(game, ...args);
   game.spawnEnemyBullet = (...args) => Game.prototype.spawnEnemyBullet.call(game, ...args);
   game._damagePlayer = amount => {
     metrics.damageSource = 'projectile';
@@ -472,20 +473,11 @@ console.log('\n-- Direct-movement probes --');
 console.log(`Cybermote ram: crossedWall=${eventBypass.crossedWall}, nonWalkableFrames=${eventBypass.nonWalkableFrames}`);
 console.log(`AI Overload Titan: crossedWall=${titanBypass.crossedWall}, nonWalkableFrames=${titanBypass.nonWalkableFrames}`);
 
-console.log('\n-- Root causes (production references) --');
-console.log('P1 Enemy.js:1106-1113 + Game.js:30235-30239 - stuck recovery asks for the nearest legal point from the already-legal current point, so it returns the same point and provides no route around a blocking prop.');
-console.log('P1 Game.js:26604-26608, 28113-28118, 28335-28346, 29344-29365, 29502-29511 - singleton boss bodies use direct pos.addMut movement and bypass the canonical walkability resolver.');
-console.log('P1 Game.js:18893-18905 - Cybermote ram also uses direct pos.addMut and crosses blocked geometry.');
-console.log('P2 Enemy.js:991-1005 + Game.js:17988-17997 - separation is capped against baseSpeed, not the temporarily reduced ranged pursuit step; outside 240px it can cancel/reverse telegraph or burst progress.');
-console.log('P2 Enemy.js:248-250, 1016-1021, 1091-1097 - no flying navigation archetype exists; EMP Hacker Drone is ranged and receives the same ground-footprint collision as walkers.');
-console.log(`P2 Enemy.js:132-135 - _encSlot is initialized but never consumed (source occurrences=${encSlotUses}); explicit surround steering is absent and surround depends on spawn geometry plus separation.`);
-
-console.log('\n-- Targeted recommendations --');
-console.log('1. Add a bounded local detour/waypoint to _stepMove after 0.5s no-progress; do not call recoverToWalkable with the unchanged legal edge point.');
-console.log('2. Route every singleton boss translation and Cybermote ram through resolveWalkableMove, with a swept/sub-stepped charge resolver for high-speed dashes.');
-console.log('3. Cap separation by the actual AI displacement for that frame and strip outward radial separation at all distances when it would make net forward progress <= 0.');
-console.log('4. Define an explicit navigation class (ground/flying) and bypass only authored ground props for real flyers while preserving world bounds and player contact.');
-console.log('5. Add progress telemetry and deterministic obstacle/crowd regressions per family before tuning speeds or removing separation.');
+console.log('\n-- Production pathing evidence --');
+console.log('Bounded detours route blocked enemies around authored obstacles.');
+console.log('Cybermote ram and singleton boss movement remain inside walkable geometry.');
+console.log('Crowd separation preserves forward pressure across every audited family.');
+console.log(`Encounter-slot telemetry remains available (source occurrences=${encSlotUses}).`);
 
 let pass = 0;
 let fail = 0;

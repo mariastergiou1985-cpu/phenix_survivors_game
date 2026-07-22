@@ -12,16 +12,25 @@ export class MutationUI {
     const startY = (HEIGHT - cardH)  / 2 - 4;
     this.cardRects = choices.map((_, i) => ({ x: startX + i * (cardW + gap), y: startY, w: cardW, h: cardH }));
     this.selectedIndex = 0;   // controller cursor
+    this.hoveredIndex = -1;
   }
 
   handleClick(mousePos, game) {
     for (let i = 0; i < this.cardRects.length; i++) {
       const r = this.cardRects[i];
       if (mousePos.x >= r.x && mousePos.x <= r.x + r.w && mousePos.y >= r.y && mousePos.y <= r.y + r.h) {
+        this.selectedIndex = i;
         game.selectMutation(i);
         return;
       }
     }
+  }
+
+  updateHover(mousePos) {
+    this.hoveredIndex = this.cardRects.findIndex(r =>
+      mousePos.x >= r.x && mousePos.x <= r.x + r.w &&
+      mousePos.y >= r.y && mousePos.y <= r.y + r.h);
+    return this.hoveredIndex >= 0;
   }
 
   draw(ctx, player, game) {
@@ -68,7 +77,7 @@ export class MutationUI {
       }
 
       // Controller cursor highlight — orange outer ring when this card is selected via gamepad
-      if (game?._controllerActivated && i === this.selectedIndex) {
+      if (i === this.hoveredIndex || (game?._controllerActivated && i === this.selectedIndex)) {
         ctx.save();
         ctx.strokeStyle = '#ffb070';
         ctx.lineWidth   = 4;
