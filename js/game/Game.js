@@ -104,6 +104,16 @@ const CAMPAIGN_STAGES = [
   { n: 6, name: 'STAGE 6',     map: 'assets/maps/biomes/stage_6.png',     biome: 'data_wastes'     },
   { n: 7, name: 'FINAL STAGE', map: 'assets/maps/biomes/final_stage.png', biome: 'data_wastes', final: true },
 ];
+// Conservative, art-aligned playable rectangles for each fixed campaign arena.
+const CAMPAIGN_WALK_BOUNDS = Object.freeze({
+  1: { x0: 180, x1: WORLD_W, y0: 300, y1: 1600 },
+  2: { x0: 180, x1: WORLD_W, y0: 520, y1: 1600 },
+  3: { x0: 180, x1: WORLD_W, y0: 260, y1: 1650 },
+  4: { x0: 180, x1: WORLD_W, y0: 360, y1: 1630 },
+  5: { x0: 180, x1: WORLD_W, y0: 300, y1: 1640 },
+  6: { x0: 180, x1: WORLD_W, y0: 220, y1: 1580 },
+  7: { x0: 160, x1: WORLD_W, y0: 500, y1: 1650 },
+});
 const CAMPAIGN_STAGE_SECONDS = 300;   // survive 5 minutes to clear a stage
 // Mobile: campaign stage maps are 2.5–5.3 MB PNGs that often fail to decode on phones
 // (background silently dropped to the bare grid). Swap to the light ~300 KB JPG variants on
@@ -606,6 +616,21 @@ class SpatialGrid {
 const BOSS_SPRITE_FILTERING = Object.freeze({
   'Cyber Dragon': 'smooth',   // 2816x1536 illustration — diagnostics in qa_reports/
 });
+
+function moveGroundThreat(game, body, delta) {
+  if (!body?.pos || !delta) return;
+  const len = Math.hypot(delta.x || 0, delta.y || 0);
+  const steps = Math.max(1, Math.ceil(len / Math.max(8, (body.radius || 14) * 0.5)));
+  const dx = (delta.x || 0) / steps, dy = (delta.y || 0) / steps;
+  for (let i = 0; i < steps; i++) {
+    const fx = body.pos.x, fy = body.pos.y;
+    const solve = game.resolveWalkableMove?.bind(game) || game._resolveEnemyMove;
+    const moved = solve ? solve(fx, fy, fx + dx, fy + dy, body.radius || 14)
+                        : { x: fx + dx, y: fy + dy };
+    if (moved.x === fx && moved.y === fy) break;
+    body.pos.x = moved.x; body.pos.y = moved.y;
+  }
+}
 
 export class Game {
   constructor() {
@@ -6352,11 +6377,11 @@ export class Game {
     // (drives Enemy HP/speed scaling; damage stays conservative). Act 1 uses the real minute.
     const mins = this.currentMinute() + (this.endless ? 8 : 0);
     const e = new Enemy(_waveType || this.chooseEnemyType(), mins);
+    let spawnCandidate = null;
     // HORDE §17: θέση από τον WaveDirector (ΕΚΤΟΣ viewport, 8 sectors) — Act 1 έπαιρνε
     // μέχρι τώρα world-bounds edges 3840px μακριά· τώρα η ορδή φτάνει ΠΑΝΤΑ γρήγορα.
     if (_wavePos && isFinite(_wavePos.x) && isFinite(_wavePos.y)) {
-      const sp = this.resolveEnemySpawn(_wavePos.x, _wavePos.y, e.radius || 14, 220);
-      e.pos.x = sp.x; e.pos.y = sp.y;
+      spawnCandidate = { x: _wavePos.x, y: _wavePos.y };
     }
     else if (_wavePos) _wavePos = null;   // NaN guard: fallback στο chunk/edge placement
     // HORDE §18 ELITE_ESCORT: elite εκτός Endless elite-wave συστήματος (ίδια buffs)
@@ -6370,15 +6395,21 @@ export class Game {
       const sp = this.chunkManager.getSpawnEdge(this.camera, this._viewW, this._viewH, 60);
       // Route the edge candidate through the walkability model so nothing spawns inside a
       // façade or out over the void; bounded fallback, never the player's position.
-      const _sp = this.resolveEnemySpawn(sp.x, sp.y, e.radius || 14, 220);
-      e.pos.x = _sp.x;
-      e.pos.y = _sp.y;
+      spawnCandidate = { x: sp.x, y: sp.y };
       // CORRIDOR chunks (chunk-type variety): tighter spawns — nudge toward view center.
       if (this.chunkManager.currentChunkType() === CHUNK_TYPE.CORRIDOR) {
         const _vcx = this.camera.x + this._viewW / 2, _vcy = this.camera.y + this._viewH / 2;
-        e.pos.x += (_vcx - e.pos.x) * 0.12;
-        e.pos.y += (_vcy - e.pos.y) * 0.12;
+        spawnCandidate.x += (_vcx - spawnCandidate.x) * 0.12;
+        spawnCandidate.y += (_vcy - spawnCandidate.y) * 0.12;
       }
+    }
+    if (spawnCandidate) {
+      const offscreenDist = _wavePos
+        ? Math.max(220, Math.hypot(this._viewW || WIDTH, this._viewH || HEIGHT) * 0.5 + 40)
+        : 220;
+      const sp = this.resolveEnemySpawn(
+        spawnCandidate.x, spawnCandidate.y, e.radius || 14, offscreenDist, e);
+      e.pos.x = sp.x; e.pos.y = sp.y;
     }
     // Armored Swarm Protocol — Endless-only extra HP scaling (modest; never touches Act 1 or bosses,
     // which are already tuned). Applied once at spawn so it can't compound or double-apply.
@@ -6587,6 +6618,12 @@ export class Game {
         if (best) {
           strikeCommitted = true;
           d.cd = 1.1;
+          const dx = best.pos.x - d.x, dy = best.pos.y - d.y;
+          const length = Math.hypot(dx, dy) || 1;
+          this._specialBeams.push({
+            startPos: new Vec2(d.x, d.y), dir: new Vec2(dx / length, dy / length),
+            length, life: 0.14, maxLife: 0.14, color: '#b026ff', core: '#ffffff', width: 8,
+          });
           best.takeHit(14, this);
           this._specialRings.push({ pos: best.pos.clone(), radius: 0, maxRadius: 70, life: 0.28, maxLife: 0.28, color1: '#b026ff', color2: '#ff2d6a' });
         }
@@ -6648,6 +6685,19 @@ export class Game {
       if (g.t <= 0) { g.state = 'punch'; g.t = 0.16; }
     } else if (g.state === 'punch') {
       if (!g.hitDone && g.t <= 0.10) {   // the blow lands a beat into the lunge
+        const liveEnemy = this.enemies.some(e => {
+          if (!e || e.hp <= 0 || !e.pos) return false;
+          const relX = (e.pos.x - p.pos.x) * g.dir;
+          return relX >= -20 && relX <= 310 && Math.abs(e.pos.y - p.pos.y) <= 85 + (e.radius || 0);
+        });
+        const impactX = p.pos.x + g.dir * 250;
+        const liveBoss = [
+          this.titanBoss, this.annihilatorBoss, this.bloodfangBoss,
+          this.cyberSerpentBoss, this.cyberDragonBoss,
+          this.doubleDemonsBoss?.gunner, this.doubleDemonsBoss?.claw,
+        ].some(boss => boss && boss.hp > 0 &&
+          Math.hypot(boss.pos.x - impactX, boss.pos.y - p.pos.y) < 130 + (boss.radius || 0));
+        if (!liveEnemy && !liveBoss) { g.state = 'retract'; g.t = 0.30; return; }
         g.hitDone = true;
         const REACH = 250, HALF = 85, dmg = 34;
         const ox = p.pos.x, oy = p.pos.y;
@@ -6658,11 +6708,12 @@ export class Game {
           if (relX < -20 || relX > REACH + 60) continue;
           if (Math.abs(e.pos.y - oy) > HALF + (e.radius || 0)) continue;
           e.takeHit(dmg, this);
-          if (!(e.isBoss?.() || e.isMegaBoss)) {                     // brief comic impact (no boss shove)
+          if (!(e.isBoss?.() || e.isMegaBoss) && (e._dimiKnockCd || 0) <= 0) {
             const side = Math.sign(e.pos.y - oy);
-            e._kbx = g.dir * 96;
+            e._kbx = g.dir * 40;
             e._kby = side * 24;
             e.stunned = Math.max(e.stunned || 0, 0.12);
+            e._dimiKnockCd = 1.1;
           }
         }
         this._cyberAngelBossHit(new Vec2(ex, oy), 130, dmg);         // standalone bosses feel it too
@@ -6726,6 +6777,9 @@ export class Game {
   _updateDimiGauntlet(dt) {
     const p = this.player;
     if (!p || p.selectedCharacter !== 'dimis_kickboxer') return;
+    for (const e of this.enemies) {
+      if (e?._dimiKnockCd > 0) e._dimiKnockCd = Math.max(0, e._dimiKnockCd - dt);
+    }
     this._dimiSlamTimer -= dt;
     if (this._dimiSlamTimer > 0) return;
     const gm = this._cardLvl('dimi_gauntlet_mastery');
@@ -6739,10 +6793,12 @@ export class Game {
     for (const e of this.enemies) {
       if (!e || !e.pos) continue;
       if (distance(e.pos, p.pos) <= radius + (e.radius || 0)) {
-        if (!(e.isBoss?.() || e.isMegaBoss)) {
+        if (!(e.isBoss?.() || e.isMegaBoss) && (e._dimiKnockCd || 0) <= 0) {
           const push = safeNormalize(e.pos.sub(p.pos));
-          e._kbx = push.x * (58 + 12 * gm + 8 * sr);
-          e._kby = push.y * (58 + 12 * gm + 8 * sr);
+          const impulse = 20 + 6 * gm + 4 * sr;
+          e._kbx = push.x * impulse;
+          e._kby = push.y * impulse;
+          e._dimiKnockCd = 1.1;
         }
         e.takeHit(dmg, this);
         hit++;
@@ -7345,15 +7401,27 @@ export class Game {
         const ll        = p.upgrades['oni_laser_mastery'] || 0;   // Laser Overload mastery
         const laserDmg  = 8 + 3 * ll;                              // 8 → 17 per tick (boosted)
         const splashDmg = Math.max(1, Math.round(laserDmg * 0.5)); // 50% of primary for burst
-        const _targetsSnap = _allLaserTargets.slice();             // snapshot at cast time
+        const castOrigin = p.pos.clone();
+        const _targetsSnap = _allLaserTargets.filter(e =>
+          e?.pos && distance(e.pos, castOrigin) <= 620);            // readable at cast time
+        const castAim = () => {
+          let best = null, bestDist = Infinity;
+          for (const e of _targetsSnap) {
+            if (!(e?.hp > 0) || !e.pos) continue;
+            const d = distance(e.pos, castOrigin);
+            if (d < bestDist) { bestDist = d; best = e; }
+          }
+          return best;
+        };
         this._laserEyes.cast({
           getEyes: () => { const s = this._playerScreenPos(), top = s.footY - s.spriteH;
             return [ { x: s.cx - 6, y: top + s.spriteH * 0.30 }, { x: s.cx + 6, y: top + s.spriteH * 0.30 },
                      { x: s.cx - 12, y: top + s.spriteH * 0.12 }, { x: s.cx + 12, y: top + s.spriteH * 0.12 } ]; },
-          getAim:  () => { const t = nearestLaserTarget(); return t ? { x: toX(t), y: toY(t) } : { x: this._playerScreenPos().cx, y: 0 }; },
-          enemies: _allLaserTargets, getX: toX, getY: toY,
+          getAim:  () => { const t = castAim(); return t ? { x: toX(t), y: toY(t) } : { x: this._playerScreenPos().cx, y: 0 }; },
+          enemies: _targetsSnap, getX: toX, getY: toY,
           onTick:  e => {
             if (!e?.takeHit || !(e.hp > 0)) return;
+            if (!e.pos || distance(e.pos, castOrigin) > 620) return;
             const isBoss = e.isBoss?.() || e.isMegaBoss;
             const dmg = isBoss ? this._capBossDamage(e, laserDmg) : laserDmg;
             e.takeHit(dmg, this);
@@ -7363,6 +7431,7 @@ export class Game {
             for (const nb of _targetsSnap) {
               if (splashCount >= 2) break;
               if (!nb?.takeHit || nb === e || !(nb.hp > 0) || !nb.pos) continue;
+              if (distance(nb.pos, castOrigin) > 620) continue;
               if (distance(nb.pos, e.pos) > 80) continue;
               const nbBoss = nb.isBoss?.() || nb.isMegaBoss;
               nb.takeHit(nbBoss ? this._capBossDamage(nb, splashDmg) : splashDmg, this);
@@ -7373,7 +7442,7 @@ export class Game {
         this._oniLaserCd = 2.5 - 0.3 * ll;   // faster: 2.5s → 1.6s with mastery
       }
     }
-    if (this._laserEyes) { try { this._laserEyes.update(now, _allLaserTargets); } catch (err) { console.warn('[Oni Laser]', err); } }
+    if (this._laserEyes) { try { this._laserEyes.update(now); } catch (err) { console.warn('[Oni Laser]', err); } }
 
     // ── Meteor Rain (auto-weapon 2, AoE) — 5s field, auto-fires on cooldown ──
     if (this._oniMeteorCd > 0) this._oniMeteorCd -= dt;
@@ -7386,10 +7455,15 @@ export class Game {
         // overhaul can only BUFF meteors — never below pre-overhaul values.
         const baseAtk   = 1 + (p.upgrades['Pulse Damage'] || 0);
         const meteorDmg = Math.max(30 + 8 * ml, Math.round(3.5 * baseAtk));
+        const meteorOrigin = p.pos.clone();
         this._oniMeteorWorld = { x: tgt.pos.x, y: tgt.pos.y };   // anchor the field in WORLD space
         this._meteorRain.cast(toX(tgt), toY(tgt), this.enemies, {
           getX: toX, getY: toY,
-          onImpact: e => { if (e?.takeHit) e.takeHit(meteorDmg, this); },   // per-meteor AoE damage
+          onImpact: e => {
+            if (e?.takeHit && e?.pos && distance(e.pos, meteorOrigin) <= 620) {
+              e.takeHit(meteorDmg, this);
+            }
+          },
         });
         this._oniMeteorCd = 9.0 - 1.2 * ml;   // faster fields with mastery (9.0 → 5.4s)
       }
@@ -8860,6 +8934,15 @@ export class Game {
     const _sleetFrozen = !!(this._frozenSleet && this._frozenSleet.phase === 'hold');
     const _frozenInput = _sleetFrozen ? { ...input, keys: new Set() } : input;
     this.player.update(dt, _frozenInput);
+    const _playerWalkMode = this._walkMode();
+    if (_playerWalkMode && this.mapManager?.isWalkableFootprint &&
+        !this.mapManager.isWalkableFootprint(
+          this.player.pos.x, this.player.pos.y, PLAYER_RADIUS, _playerWalkMode)) {
+      const recovered = this.recoverToWalkable(
+        this.player.pos.x, this.player.pos.y, PLAYER_RADIUS);
+      this.player.pos.x = recovered.x;
+      this.player.pos.y = recovered.y;
+    }
     // WALKABLE gameplay floor — ΟΛΑ τα modes (video-grounded pass 2026-07-19): ο ήρωας
     // δεν περπατά ποτέ σε παράθυρα/κτίρια/κάγκελα/ταράτσες. Applied AFTER movement, so
     // dash and knockback obey the same edge. Endless/Chaos: μόνο κάθετο clamp (το x
@@ -8867,8 +8950,8 @@ export class Game {
     {
       const b = this.getWalkableBounds();
       if (b) {
-        if (isFinite(b.x0)) this.player.pos.x = Math.max(b.x0, Math.min(b.x1, this.player.pos.x));
-        this.player.pos.y = Math.max(b.y0, Math.min(b.y1, this.player.pos.y));
+        if (isFinite(b.x0)) this.player.pos.x = Math.max(b.x0 + PLAYER_RADIUS, Math.min(b.x1 - PLAYER_RADIUS, this.player.pos.x));
+        this.player.pos.y = Math.max(b.y0 + PLAYER_RADIUS, Math.min(b.y1 - PLAYER_RADIUS, this.player.pos.y));
       }
     }
     // Silent world recentering (Endless/Chaos) — δεν υπάρχει hard terminal edge.
@@ -11097,18 +11180,12 @@ export class Game {
   }
 
   _handleAutoShooting() {
-    // Auto-fire at the existing cadence — only when a valid target exists (never into empty space).
+    // Auto-fire at the existing cadence - only when a valid target exists (never into empty space).
     const autoRange = {
-      skeleton_warrior: 520,
-      taekwondo_girl: 240,
-      cyber_arm_hero: 560,
-      assassin_clone: 520,
       japan_phasewalker: 500,
-      eddie: 380,
-      dimis_kickboxer: 280,
     }[this.player.selectedCharacter];
-    // Euclid, Brawler and Oni already have complete native weapon runtimes; a generic invisible
-    // long-range shot on top of those kits erased their intended range and crowd-pressure profile.
+    // Every other character already has a complete native weapon loop. Adding this generic
+    // projectile on top would double-fire and erase the intended range/crowd-pressure profile.
     if (!autoRange) return;
     if (!this.player.canShoot()) return;
     if (!this.aimAssist) return;                          // T still toggles auto-fire on/off
@@ -12051,6 +12128,7 @@ export class Game {
       let next = null, nd = JUMP_RADIUS;
       for (const e of this.enemies) {
         if (chosen.includes(e)) continue;
+        if (distance(p.pos, e.pos) > 620) continue;
         const d = distance(last.pos, e.pos);
         if (d < nd) { nd = d; next = e; }
       }
@@ -12166,7 +12244,7 @@ export class Game {
   _fireNeonPierceBeam() {
     const p = this.player;
     const nm = this._cardLvl('cyber_neon_pierce_mastery');   // Neon Lance: wider + stronger
-    const RANGE = 800, WIDTH = 22 * (1 + 0.20 * nm), DMG = 20 * (1 + 0.15 * nm);
+    const RANGE = 620, WIDTH = 22 * (1 + 0.20 * nm), DMG = 20 * (1 + 0.15 * nm);
 
     // Candidates: array enemies + any present singleton mini-boss object
     const singles = [
@@ -14661,7 +14739,7 @@ export class Game {
     if (this._redThunderCd > 0) return;
 
     const p      = this.player;
-    const target = this._autoTarget(p.pos, 750);
+    const target = this._autoTarget(p.pos, 620);
     if (!target) return;                       // hold fire — never riff into empty space
     this._redThunderCd = stats.cooldown;
 
@@ -16601,7 +16679,7 @@ export class Game {
   }
 
   _fireNexusChakram() {
-    const p = this.player, RANGE = 620;
+    const p = this.player, RANGE = 590;
     let target = null, bestD = RANGE;
     for (const t of this._brawlerTargets()) {
       const d = distance(p.pos, t.obj.pos);
@@ -17084,6 +17162,7 @@ export class Game {
     let best = null, bestD = range;
     for (const t of this._brawlerTargets()) {
       if (exclude && exclude.has(t.obj)) continue;
+      if (distance(this.player.pos, t.obj.pos) > 620) continue;
       const d = distance(from, t.obj.pos);
       if (d < bestD) { bestD = d; best = t; }
     }
@@ -17935,6 +18014,7 @@ export class Game {
       }
       // ═══ HORDE §27 LOD: μακρινοί (>1100px) non-elite/non-boss ενημερώνονται κάθε
       // 3 frames με dt×3 — ίδια πραγματική ταχύτητα pursuit, 1/3 κόστος. Κοντινοί: full.
+      e._aiStepX = 0; e._aiStepY = 0;
       let _dtE = enemyDt;
       if (!e.isBoss() && !e.isMegaBoss && !e.isElite) {
         const _ldx = e.pos.x - this.player.pos.x, _ldy = e.pos.y - this.player.pos.y;
@@ -17944,7 +18024,10 @@ export class Game {
           _dtE = enemyDt * 3;
         }
       }
+      const _aiFromX = e.pos.x, _aiFromY = e.pos.y;
       e.update(_dtE, this);
+      e._aiStepX = e.pos.x - _aiFromX;
+      e._aiStepY = e.pos.y - _aiFromY;
       e.keepInBounds();
 
       // Distance cull: recycle enemies that fell too far behind the player (Endless only).
@@ -17987,14 +18070,20 @@ export class Game {
         if (n) {
           const w = e._sepW || 0.06;
           let sx = px * w * 60 * dt, sy = py * w * 60 * dt;
-          const maxStep = e.baseSpeed * dt * 0.45;                  // separation < pursuit, ΠΑΝΤΑ
+          const aiStep = Math.hypot(e._aiStepX || 0, e._aiStepY || 0);
+          const maxStep = aiStep * 0.45;
           const sl = Math.hypot(sx, sy);
           if (sl > maxStep && sl > 0) { sx = sx / sl * maxStep; sy = sy / sl * maxStep; }
           const playerDist = Math.hypot(_pdx, _pdy);
-          if (playerDist < 240 && playerDist > 0) {
+          if (playerDist > 0) {
             const rx = _pdx / playerDist, ry = _pdy / playerDist;
             const outward = sx * rx + sy * ry;
-            if (outward > 0) { sx -= rx * outward; sy -= ry * outward; }
+            const inwardAi = -((e._aiStepX || 0) * rx + (e._aiStepY || 0) * ry);
+            const outwardBudget = Math.max(0, inwardAi - 0.01);
+            if (outward > outwardBudget) {
+              const excess = outward - outwardBudget;
+              sx -= rx * excess; sy -= ry * excess;
+            }
           }
           const nx = e.pos.x + sx, ny = e.pos.y + sy;
           const moved = this._resolveEnemyMove(e.pos.x, e.pos.y, nx, ny, e.radius || 14);
@@ -18124,20 +18213,28 @@ export class Game {
         const _db = this.getWalkableBounds();
         if (_db) for (let j = prevLen; j < this.enemies.length; j++) {
           const e = this.enemies[j];
-          if (isFinite(_db.x0)) e.pos.x = Math.max(_db.x0, Math.min(_db.x1, e.pos.x));
-          e.pos.y = Math.max(_db.y0, Math.min(_db.y1, e.pos.y));
+          const r = e.radius || 14;
+          if (isFinite(_db.x0)) e.pos.x = Math.max(_db.x0 + r, Math.min(_db.x1 - r, e.pos.x));
+          e.pos.y = Math.max(_db.y0 + r, Math.min(_db.y1 - r, e.pos.y));
         }
       }
       // ── Arena-constrained spawn positions: place new enemies inside circle ──
       if (this._nullBreachActive && this._nullBreachArena) {
         const _ac = this._nullBreachArena.center;
         const _aR = this._nullBreachArena.radius;
-        for (let j = prevLen; j < this.enemies.length; j++) {
+        for (let j = this.enemies.length - 1; j >= prevLen; j--) {
           const _ae = this.enemies[j];
           const _ang = Math.random() * Math.PI * 2;
           const _dist = _aR * (0.5 + Math.random() * 0.45);   // 0.5R–0.95R
-          _ae.pos.x = _ac.x + Math.cos(_ang) * _dist;
-          _ae.pos.y = _ac.y + Math.sin(_ang) * _dist;
+          const _insideArena = (x, y, radius) =>
+            Math.hypot(x - _ac.x, y - _ac.y) <= _aR - radius;
+          const _ap = this.resolveEnemySpawn(
+            _ac.x + Math.cos(_ang) * _dist,
+            _ac.y + Math.sin(_ang) * _dist,
+            _ae.radius || 14, 120, _ae, _insideArena);
+          if (!_ap) { this.enemies.splice(j, 1); continue; }
+          _ae.pos.x = _ap.x;
+          _ae.pos.y = _ap.y;
         }
       }
     }
@@ -18328,7 +18425,6 @@ export class Game {
           this.screenShake.trigger(9, 0.4);
           this.particles.spawnExplosion(r.pos, ['#ff6600', '#ffaa22', '#ff3300', '#ffe088', '#ffffff'], 22);
           this.particles.spawnDeathRing(r.pos, '#ff8844', 12, 180, 2.2);
-          this.floatingTexts.push(new FloatingText('-' + dmg + ' HP', this.player.pos.clone(), RED, 1.2));
         } else {
           this.particles.spawnExplosion(r.pos, ['#ff6600', '#ffaa22', '#cc2200'], 10);
           this.particles.spawnDeathRing(r.pos, '#ff6600', 8, 120, 1.5);
@@ -18385,7 +18481,6 @@ export class Game {
                 this.phoenixReviveTimer <= 0 && this.player.dashTimer <= 0) {
               const dmg = Math.round(this.player.maxHp * 0.09);
               this._damagePlayer(dmg, { color: '#ff4444', shake: 5, stagger: 0 });
-              this.floatingTexts.push(new FloatingText('-' + dmg + ' HP', this.player.pos.clone(), '#ff6666', 1.0));
               break;   // one tick, not double for both beams
             }
           }
@@ -18447,7 +18542,6 @@ export class Game {
         if (distance(this.player.pos, z.pos) < z.radius && this.phoenixReviveTimer <= 0 && this.player.dashTimer <= 0) {
           const dmg = Math.round(this.player.maxHp * 0.35);
           this._damagePlayer(dmg, { color: '#ff5533', shake: 8, stagger: 0.5 });
-          this.floatingTexts.push(new FloatingText('-' + dmg + ' HP', this.player.pos.clone(), '#ff5533', 1.2));
         }
         this.particles.spawnExplosion(z.pos, ['#ff3322', '#ff7744', '#ffb066', '#ffffff'], 16);
         this.particles.spawnDeathRing(z.pos, '#ff5533', 10, 150, 1.8);
@@ -18900,7 +18994,7 @@ export class Game {
         }
         if (e._ramT) {
           e._ramT -= dt;
-          e.pos.addMut(e._ramDir.scale(560 * dt));            // burst well above bike cruise speed
+          moveGroundThreat(this, e, e._ramDir.scale(560 * dt));
           if (Math.random() < 0.7) this.particles.spawnHitSparks(e.pos, '#9fdcff');
           if (e._ramT <= 0) e._ramT = 0;
         }
@@ -19325,7 +19419,7 @@ export class Game {
         for (const off of [-1, 1]) {
           const w = this._gunshipWing(g, off);
           ctx.globalAlpha = 0.35 * life;
-          ctx.strokeStyle = '#ff2233'; ctx.lineWidth = 14;
+          ctx.strokeStyle = '#ff2233'; ctx.lineWidth = 30;
           ctx.beginPath(); ctx.moveTo(w.x, w.y); ctx.lineTo(g.aim.x, g.aim.y); ctx.stroke();
           ctx.globalAlpha = 0.75 * life;
           ctx.strokeStyle = '#ff8899'; ctx.lineWidth = 6;
@@ -20520,17 +20614,20 @@ export class Game {
       const alpha = b.life / b.maxLife;
       const endX = b.startPos.x + b.dir.x * b.length;
       const endY = b.startPos.y + b.dir.y * b.length;
+      const beamColor = b.color || '#ff6600';
+      const beamCore = b.core || '#ffe0aa';
+      const beamWidth = b.width || 12;
       ctx.save(); ctx.lineCap = 'round';
       // Outer glow halo (additive blend)
       ctx.globalCompositeOperation = 'lighter';
-      ctx.globalAlpha = alpha * 0.35; ctx.strokeStyle = '#ff6600'; ctx.lineWidth = Math.round(32 * alpha);
+      ctx.globalAlpha = alpha * 0.35; ctx.strokeStyle = beamColor; ctx.lineWidth = Math.round(beamWidth * 2.7 * alpha);
       ctx.beginPath(); ctx.moveTo(b.startPos.x, b.startPos.y); ctx.lineTo(endX, endY); ctx.stroke();
       // Mid beam
       ctx.globalCompositeOperation = 'source-over';
-      ctx.globalAlpha = alpha; ctx.strokeStyle = '#ff6600'; ctx.lineWidth = Math.round(12 * alpha);
+      ctx.globalAlpha = alpha; ctx.strokeStyle = beamColor; ctx.lineWidth = Math.round(beamWidth * alpha);
       ctx.beginPath(); ctx.moveTo(b.startPos.x, b.startPos.y); ctx.lineTo(endX, endY); ctx.stroke();
       // Bright core
-      ctx.strokeStyle = '#ffe0aa'; ctx.lineWidth = Math.round(5 * alpha);
+      ctx.strokeStyle = beamCore; ctx.lineWidth = Math.round(Math.max(2, beamWidth * 0.42) * alpha);
       ctx.beginPath(); ctx.moveTo(b.startPos.x, b.startPos.y); ctx.lineTo(endX, endY); ctx.stroke();
       // White hot center
       ctx.strokeStyle = '#ffffff'; ctx.lineWidth = Math.round(2 * alpha);
@@ -25871,12 +25968,16 @@ _drawLoreArchive(ctx) {
       return false;
     }
     const applied = Math.min(dmg, cap);
+    const hpBefore = this.player.hp;
     this.player.applyDamage(applied);
+    const actual = Math.max(0, hpBefore - this.player.hp);
     this.playerHitCooldown = 0.5;
     this.audio?.playPlayerImpact?.();   // heavy procedural thud on every player hit
     this.screenShake.trigger(shake, 0.2);
     this.particles.spawnHitSparks(this.player.pos, color);
-    this.floatingTexts.push(new FloatingText(`-${Math.ceil(applied)} HP`, this.player.pos.clone(), color, 0.7));
+    if (actual > 0) {
+      this.floatingTexts.push(new FloatingText(`-${Math.ceil(actual)} HP`, this.player.pos.clone(), color, 0.7));
+    }
 
     // ── Relic: Null Venom Chamber — on-hit poison AoE ──────────────────────
     if (this._relicOn('null_venom_chamber')) {
@@ -25891,7 +25992,7 @@ _drawLoreArchive(ctx) {
       }
     }
     // EventBus emit
-    this.events?.emit('player:damaged', { amount: applied });
+    this.events?.emit('player:damaged', { amount: actual });
     return true;
   }
 
@@ -26604,7 +26705,7 @@ _drawLoreArchive(ctx) {
     // Move toward player (slow)
     const toPlayer = this.player.pos.sub(t.pos);
     if (toPlayer.length() > t.radius + PLAYER_RADIUS + 4) {
-      t.pos.addMut(safeNormalize(toPlayer).scale(t.speed * dt));
+      moveGroundThreat(this, t, safeNormalize(toPlayer).scale(t.speed * dt));
     }
     if (this.endless) {
       t.pos.x = clamp(t.pos.x, WORLD_BOUNDS.left + WORLD_BOUNDS.margin + t.radius, WORLD_BOUNDS.right - WORLD_BOUNDS.margin - t.radius);
@@ -28114,7 +28215,7 @@ _drawLoreArchive(ctx) {
       const toMatrix = target.pos.sub(a.pos);
       const reach    = a.radius + MATRIX_RADIUS + 6;
       if (toMatrix.length() > reach) {
-        a.pos.addMut(safeNormalize(toMatrix).scale(a.speed * dt));
+        moveGroundThreat(this, a, safeNormalize(toMatrix).scale(a.speed * dt));
         a.attackTimer = Math.min(a.attackTimer, 2.5);
       } else {
         // Adjacent to the Matrix — periodically annihilate (eject) its cores
@@ -28339,10 +28440,10 @@ _drawLoreArchive(ctx) {
     a.biteTimer -= dt;
     if (a.lungeTimer > 0) {
       a.lungeTimer -= dt;
-      a.pos.addMut(a.lungeDir.scale(a.speed * 3.2 * dt));
+      moveGroundThreat(this, a, a.lungeDir.scale(a.speed * 3.2 * dt));
     } else {
       if (dist > a.radius + PLAYER_RADIUS + 2) {
-        a.pos.addMut(safeNormalize(toPlayer).scale(a.speed * dt));
+        moveGroundThreat(this, a, safeNormalize(toPlayer).scale(a.speed * dt));
       }
       if (a.biteTimer <= 0 && dist < 240) {
         a.biteTimer  = 1.2 + Math.random() * 0.6;
@@ -29351,9 +29452,9 @@ _drawLoreArchive(ctx) {
       const toPNorm  = safeNormalize(toP);
 
       if (dist > DD_GUNNER_RANGE + 40) {
-        g.pos.addMut(toPNorm.scale(DD_GUNNER_SPEED * spdM * dt));
+        moveGroundThreat(this, g, toPNorm.scale(DD_GUNNER_SPEED * spdM * dt));
       } else if (dist < DD_GUNNER_RANGE - 60) {
-        g.pos.addMut(toPNorm.scale(-DD_GUNNER_SPEED * 0.7 * spdM * dt));
+        moveGroundThreat(this, g, toPNorm.scale(-DD_GUNNER_SPEED * 0.7 * spdM * dt));
       }
 
       g.strafeTimer -= dt;
@@ -29362,7 +29463,7 @@ _drawLoreArchive(ctx) {
         g.strafeTimer = 1.6 + Math.random() * 1.4;
       }
       const perp = new Vec2(-toPNorm.y, toPNorm.x).scale(g.strafeDir);
-      g.pos.addMut(perp.scale(DD_GUNNER_SPEED * 0.75 * spdM * dt));
+      moveGroundThreat(this, g, perp.scale(DD_GUNNER_SPEED * 0.75 * spdM * dt));
     }
 
     if (this.endless) {
@@ -29507,7 +29608,7 @@ _drawLoreArchive(ctx) {
     if (!isDashing) {
       const toClaw = p.pos.sub(c.pos);
       if (toClaw.length() > c.radius + PLAYER_RADIUS + 2) {
-        c.pos.addMut(safeNormalize(toClaw).scale(DD_CLAW_SPEED * spdM * dt));
+        moveGroundThreat(this, c, safeNormalize(toClaw).scale(DD_CLAW_SPEED * spdM * dt));
       }
     }
 
@@ -29574,7 +29675,7 @@ _drawLoreArchive(ctx) {
           ds.trailPts.push(c.pos.clone());
           if (ds.trailPts.length > 18) ds.trailPts.shift();
         }
-        c.pos.addMut(ds.dir.scale(ds.dashSpeed * dt));
+        moveGroundThreat(this, c, ds.dir.scale(ds.dashSpeed * dt));
 
         // Hit detection during dash (once only)
         if (!ds.hit && distance(c.pos, p.pos) < c.radius + PLAYER_RADIUS + 8) {
@@ -30154,6 +30255,9 @@ _drawLoreArchive(ctx) {
     const mode = this._walkMode();
     const mm   = this.mapManager;
     if (!mode || !mm?.isWalkableFootprint) return { x: toX, y: toY };
+    if (!mm.isWalkableFootprint(fromX, fromY, radius, mode)) {
+      return mm.findNearestWalkablePoint?.(fromX, fromY, radius, mode) || { x: fromX, y: fromY };
+    }
     if (mm.isWalkableFootprint(toX, toY, radius, mode)) return { x: toX, y: toY };
     if (mm.isWalkableFootprint(toX, fromY, radius, mode)) return { x: toX, y: fromY };  // slide along X
     if (mm.isWalkableFootprint(fromX, toY, radius, mode)) return { x: fromX, y: toY };  // slide along Y
@@ -30163,22 +30267,96 @@ _drawLoreArchive(ctx) {
   /** Shared by every Enemy via _stepMove — identical policy to the player's resolver. */
   _resolveEnemyMove = (fx, fy, tx, ty, r) => this.resolveWalkableMove(fx, fy, tx, ty, r);
 
-  /** Stuck-recovery target for a pinned enemy. Bounded; never called per frame. */
+  /** Stuck-recovery target for a corrupted enemy position. Bounded; never called per frame. */
   _recoverEnemyPos = (x, y, r) => this.recoverToWalkable(x, y, r);
+
+  _findEnemyDetour(x, y, radius, targetX, targetY) {
+    const mode = this._walkMode();
+    const mm = this.mapManager;
+    if (!mode || !mm?.isWalkableFootprint) return null;
+    const reachable = (px, py) => {
+      const dx = px - x, dy = py - y;
+      const steps = Math.max(1, Math.ceil(Math.hypot(dx, dy) / 24));
+      for (let i = 1; i <= steps; i++) {
+        const t = i / steps;
+        if (!mm.isWalkableFootprint(x + dx * t, y + dy * t, radius, mode)) return false;
+      }
+      return true;
+    };
+    const base = Math.atan2(targetY - y, targetX - x);
+    let best = null, bestDistance = Infinity;
+    for (const dist of [240, 360, 480, 600]) {
+      for (const offset of [Math.PI / 4, Math.PI / 3, Math.PI / 2]) {
+        for (const side of [-1, 1]) {
+          const angle = base + side * offset;
+          const px = x + Math.cos(angle) * dist;
+          const py = y + Math.sin(angle) * dist;
+          if (!reachable(px, py)) continue;
+          const remaining = Math.hypot(targetX - px, targetY - py);
+          if (remaining < bestDistance) { best = { x: px, y: py }; bestDistance = remaining; }
+        }
+      }
+    }
+    return best;
+  }
+
+  _moveGroundThreat(body, delta) {
+    moveGroundThreat(this, body, delta);
+  }
 
   /**
    * Canonical enemy spawn placement. Keeps spawns off obstacles and out of the player's
    * lap, with a bounded deterministic fallback — never the void, never the player.
    */
-  resolveEnemySpawn(x, y, radius = 14, minPlayerDist = 260) {
+  resolveEnemySpawn(x, y, radius = 14, minPlayerDist = 260, subject = null, within = null) {
     const mode = this._walkMode();
     const mm   = this.mapManager;
-    if (!mode || !mm?.findSafeSpawnPoint) return { x, y };
-    return mm.findSafeSpawnPoint({
-      x, y, radius, mode,
-      avoid: this.player ? [this.player.pos] : [],
-      minDist: minPlayerDist,
-    });
+    const avoid = [];
+    if (this.player?.pos) avoid.push({ pos: this.player.pos, minDist: minPlayerDist });
+    for (const matrix of (this.matrices || [])) {
+      if (matrix?.pos) avoid.push({ pos: matrix.pos, minDist: radius + MATRIX_RADIUS + 12 });
+    }
+    for (const enemy of (this.enemies || []).slice(-64)) {
+      if (enemy !== subject && enemy?.pos) {
+        avoid.push({ pos: enemy.pos, minDist: radius + (enemy.radius || 14) + 4 });
+      }
+    }
+    for (const list of [this.gunshipZones, this.lightningZones, this.cybermoteMines,
+                        this.bossLavaZones, this._voidRifts, this._ventBursts]) {
+      for (const hazard of (list || [])) {
+        const pos = hazard?.pos || hazard;
+        if (Number.isFinite(pos?.x) && Number.isFinite(pos?.y)) {
+          avoid.push({ pos, minDist: radius + (hazard.radius || hazard.r || 36) + 8 });
+        }
+      }
+    }
+
+    if (mode && mm?.findSafeSpawnPoint) {
+      return mm.findSafeSpawnPoint({ x, y, radius, mode, avoid, minDist: minPlayerDist, within });
+    }
+
+    const bounds = this.getWalkableBounds();
+    if (!bounds) return { x, y };
+    const legal = (px, py) => {
+      if (px < bounds.x0 + radius || px > bounds.x1 - radius ||
+          py < bounds.y0 + radius || py > bounds.y1 - radius) return false;
+      if (within && !within(px, py, radius)) return false;
+      return avoid.every(a => Math.hypot(px - a.pos.x, py - a.pos.y) >= a.minDist);
+    };
+    if (legal(x, y)) return { x, y };
+    for (let ring = 1; ring <= 32; ring++) {
+      const dist = ring * 40;
+      for (let i = 0; i < 16; i++) {
+        const angle = i * Math.PI / 8;
+        const px = x + Math.cos(angle) * dist, py = y + Math.sin(angle) * dist;
+        if (legal(px, py)) return { x: px, y: py };
+      }
+    }
+    const fallback = {
+      x: Math.max(bounds.x0 + radius, Math.min(bounds.x1 - radius, x)),
+      y: Math.max(bounds.y0 + radius, Math.min(bounds.y1 - radius, y)),
+    };
+    return !within || legal(fallback.x, fallback.y) ? fallback : null;
   }
 
   /**
@@ -30250,7 +30428,7 @@ _drawLoreArchive(ctx) {
       }
       return null;
     }
-    if (this._campaignStage) return null;
+    if (this._campaignStage) return CAMPAIGN_WALK_BOUNDS[this._campaignStage] || null;
     return mm?.getAct1DeckBounds?.() || null;
   }
 
