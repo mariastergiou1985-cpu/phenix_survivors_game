@@ -120,6 +120,7 @@ export class WaveDirector {
   constructor() {
     this._formT = 0;          // χρόνος τρέχοντος formation
     this._formIdx = 0;
+    this._formationStarted = false;
     this._formAngle = Math.random() * Math.PI * 2;   // κατεύθυνση για walls/crescent
   }
 
@@ -149,7 +150,12 @@ export class WaveDirector {
     this._formT -= dt;
     if (this._formT <= 0) {
       this._formT = 9 + Math.random() * 5;
-      this._formIdx = Math.floor(Math.random() * blk.formations.length);
+      // Every run opens with the table's perimeter formation so pressure arrives from
+      // multiple readable directions before rotating into walls/bursts.
+      this._formIdx = this._formationStarted
+        ? Math.floor(Math.random() * blk.formations.length)
+        : 0;
+      this._formationStarted = true;
       this._formAngle = Math.random() * Math.PI * 2;
     }
     return blk.formations[this._formIdx] || 'PERIMETER';

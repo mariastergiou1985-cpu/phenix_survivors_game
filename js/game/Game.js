@@ -6354,7 +6354,10 @@ export class Game {
     const e = new Enemy(_waveType || this.chooseEnemyType(), mins);
     // HORDE §17: θέση από τον WaveDirector (ΕΚΤΟΣ viewport, 8 sectors) — Act 1 έπαιρνε
     // μέχρι τώρα world-bounds edges 3840px μακριά· τώρα η ορδή φτάνει ΠΑΝΤΑ γρήγορα.
-    if (_wavePos && isFinite(_wavePos.x) && isFinite(_wavePos.y)) { e.pos.x = _wavePos.x; e.pos.y = _wavePos.y; }
+    if (_wavePos && isFinite(_wavePos.x) && isFinite(_wavePos.y)) {
+      const sp = this.resolveEnemySpawn(_wavePos.x, _wavePos.y, e.radius || 14, 220);
+      e.pos.x = sp.x; e.pos.y = sp.y;
+    }
     else if (_wavePos) _wavePos = null;   // NaN guard: fallback στο chunk/edge placement
     // HORDE §18 ELITE_ESCORT: elite εκτός Endless elite-wave συστήματος (ίδια buffs)
     if (_waveElite && !e.isBoss()) {
@@ -6555,7 +6558,7 @@ export class Game {
     ctx.restore();
   }
 
-  // Dimi Tactical Drone Swarm — 3 drones orbit Dimi and strike the nearest enemies (extra weapon).
+  // Dimi Tactical Drone Swarm — 3 drones orbit Dimi and intercept enemies at contact range.
   // Draws Maria's drone art at each orbit slot; damage via takeHit; guards on character.
   _updateDimiDrones(dt) {
     const p = this.player;
@@ -6563,21 +6566,27 @@ export class Game {
     if (!this._dimiDrones) {
       this._dimiDrones = [0, 1, 2].map(i => ({ ang: i * (Math.PI * 2 / 3), r: 120, cd: 0.4 + i * 0.3, x: p.pos.x, y: p.pos.y }));
     }
+    let strikeCommitted = false;
     for (const d of this._dimiDrones) {
       d.ang += dt * 1.4;
       d.x = p.pos.x + Math.cos(d.ang) * d.r;
       d.y = p.pos.y + Math.sin(d.ang) * d.r;
       d.cd -= dt;
-      if (d.cd <= 0) {
-        d.cd = 1.1;
-        // strike nearest enemy within 420px
-        let best = null, bd = 420 * 420;
+      if (d.cd <= 0 && !strikeCommitted) {
+        // Defensive drones answer an actual contact threat. Limiting the opening burst to
+        // one drone per frame lets contact resolve before the remaining armed drones fire.
+        let best = null, bd = Infinity;
         for (const e of this.enemies) {
           if (!e || e.hp <= 0 || !e.pos) continue;
+          const px = e.pos.x - p.pos.x, py = e.pos.y - p.pos.y;
+          const contactReach = PLAYER_RADIUS + (e.radius || 0);
+          if (px * px + py * py >= contactReach * contactReach) continue;
           const dx = e.pos.x - d.x, dy = e.pos.y - d.y, q = dx * dx + dy * dy;
           if (q < bd) { bd = q; best = e; }
         }
         if (best) {
+          strikeCommitted = true;
+          d.cd = 1.1;
           best.takeHit(14, this);
           this._specialRings.push({ pos: best.pos.clone(), radius: 0, maxRadius: 70, life: 0.28, maxLife: 0.28, color1: '#b026ff', color2: '#ff2d6a' });
         }
@@ -6616,7 +6625,25 @@ export class Game {
     const g = this._dimiGlove;
     g.t -= dt;
     if (g.state === 'cd') {
-      if (g.t <= 0) { g.state = 'windup'; g.t = 0.22; g.dir = (p._facing >= 0 ? 1 : -1); g.hitDone = false; }
+      if (g.t <= 0) {
+        const dir = p._facing >= 0 ? 1 : -1;
+        const ex = p.pos.x + dir * 250;
+        const inCorridor = this.enemies.some(e => {
+          if (!e || e.hp <= 0 || !e.pos) return false;
+          const relX = (e.pos.x - p.pos.x) * dir;
+          return relX >= -20 && relX <= 310 && Math.abs(e.pos.y - p.pos.y) <= 85 + (e.radius || 0);
+        });
+        const bossNearImpact = [
+          this.titanBoss, this.annihilatorBoss, this.bloodfangBoss,
+          this.cyberSerpentBoss, this.cyberDragonBoss,
+          this.doubleDemonsBoss?.gunner, this.doubleDemonsBoss?.claw,
+        ].some(boss => boss && boss.hp > 0 && Math.hypot(boss.pos.x - ex, boss.pos.y - p.pos.y) < 130 + (boss.radius || 0));
+        if (inCorridor || bossNearImpact) {
+          g.state = 'windup'; g.t = 0.22; g.dir = dir; g.hitDone = false;
+        } else {
+          g.t = 0;
+        }
+      }
     } else if (g.state === 'windup') {
       if (g.t <= 0) { g.state = 'punch'; g.t = 0.16; }
     } else if (g.state === 'punch') {
@@ -6631,10 +6658,11 @@ export class Game {
           if (relX < -20 || relX > REACH + 60) continue;
           if (Math.abs(e.pos.y - oy) > HALF + (e.radius || 0)) continue;
           e.takeHit(dmg, this);
-          if (!(e.isBoss?.() || e.isMegaBoss)) {                     // comic launch (no boss shove)
-            e.vel.x += g.dir * 420;
-            e.vel.y += (e.pos.y - oy) * 1.5;
-            e.stunned = Math.max(e.stunned || 0, 0.25);
+          if (!(e.isBoss?.() || e.isMegaBoss)) {                     // brief comic impact (no boss shove)
+            const side = Math.sign(e.pos.y - oy);
+            e._kbx = g.dir * 96;
+            e._kby = side * 24;
+            e.stunned = Math.max(e.stunned || 0, 0.12);
           }
         }
         this._cyberAngelBossHit(new Vec2(ex, oy), 130, dmg);         // standalone bosses feel it too
@@ -6703,13 +6731,19 @@ export class Game {
     const gm = this._cardLvl('dimi_gauntlet_mastery');
     const sr = this.meta?.getLevel?.('syn_gauntlet_resonance') || 0;   // synergy: Resonance Plasma Gauntlets
     this._dimiSlamTimer = Math.max(0.70, 1.5 - 0.15 * gm - 0.06 * sr);
-    const radius = 150 + 20 * gm + 14 * sr;
+    // The base pulse is reactive contact control; upgrades expand it deliberately.
+    // This avoids a free permanent 150px exclusion ring on Dimi's starting kit.
+    const radius = PLAYER_RADIUS + 18 * gm + 12 * sr;
     const dmg    = 16 + 5 * gm + 4 * sr;
     let hit = 0;
     for (const e of this.enemies) {
       if (!e || !e.pos) continue;
       if (distance(e.pos, p.pos) <= radius + (e.radius || 0)) {
-        if (!(e.isBoss?.() || e.isMegaBoss)) e.vel.addMut(safeNormalize(e.pos.sub(p.pos)).scale(190));
+        if (!(e.isBoss?.() || e.isMegaBoss)) {
+          const push = safeNormalize(e.pos.sub(p.pos));
+          e._kbx = push.x * (58 + 12 * gm + 8 * sr);
+          e._kby = push.y * (58 + 12 * gm + 8 * sr);
+        }
         e.takeHit(dmg, this);
         hit++;
       }
@@ -7609,6 +7643,9 @@ export class Game {
     const p = this.player;
     const fr = 1 + (p.fireRateBonus || 0);
     const cand = this._euclidCandidates();
+    const boltUnlocked = this._cardLvl('euclid_vector_ricochet') > 0 ||
+      this._cardLvl('euclid_bolt_multishot') > 0;
+    const needleUnlocked = this._cardLvl('euclid_corrosive_multishot') > 0;
 
     // Two compact toxic auto-guns hovering above Euclid's shoulders; aim at nearest target.
     const bob = Math.sin(performance.now() * 0.006) * 3;
@@ -7624,7 +7661,7 @@ export class Game {
     this._euclidBoltCd -= dt;
     if (this._euclidBoltCd <= 0) {
       this._euclidBoltCd = Math.max(0.28, 0.85 / fr);
-      if (aimT && distance(aimT.pos, p.pos) < 720 && this._euclidBolts.length < 40) {
+      if (boltUnlocked && aimT && distance(aimT.pos, p.pos) < 360 && this._euclidBolts.length < 40) {
         const bounces   = Math.min(5, 2 + this._cardLvl('euclid_vector_ricochet'));
         const boltDmg   = 16 + 3 * this._cardLvl('euclid_toxin_shot_mastery');
         const boltCount = 1 + this._cardLvl('euclid_bolt_multishot');
@@ -7668,7 +7705,7 @@ export class Game {
       const ml    = this._cardLvl('euclid_corrosive_multishot');
       const shots = 1 + Math.floor(ml / 2);                    // +1 projectile every 2 levels
       const pierce = 1 + ml;                                    // +1 pierce per level
-      if (aimT && distance(aimT.pos, p.pos) < 680) {
+      if (needleUnlocked && aimT && distance(aimT.pos, p.pos) < 340) {
         const base = safeNormalize(aimT.pos.sub(gr));
         for (let s = 0; s < shots && this._euclidNeedles.length < 48; s++) {
           const spread = (s - (shots - 1) / 2) * 0.18;
@@ -11061,7 +11098,18 @@ export class Game {
 
   _handleAutoShooting() {
     // Auto-fire at the existing cadence — only when a valid target exists (never into empty space).
-    if (this.player.selectedCharacter === 'euclid_vector') return;   // his weapon IS the toxin kit (ToxicSniper), not the base shot
+    const autoRange = {
+      skeleton_warrior: 520,
+      taekwondo_girl: 240,
+      cyber_arm_hero: 560,
+      assassin_clone: 520,
+      japan_phasewalker: 500,
+      eddie: 380,
+      dimis_kickboxer: 280,
+    }[this.player.selectedCharacter];
+    // Euclid, Brawler and Oni already have complete native weapon runtimes; a generic invisible
+    // long-range shot on top of those kits erased their intended range and crowd-pressure profile.
+    if (!autoRange) return;
     if (!this.player.canShoot()) return;
     if (!this.aimAssist) return;                          // T still toggles auto-fire on/off
 
@@ -11071,11 +11119,12 @@ export class Game {
       const range = 400;   // virtual aim distance from player
       aimPos = this.player.pos.add(new Vec2(this.gamepadAimDir.x * range, this.gamepadAimDir.y * range));
     } else {
-      const target = this._autoTarget(this.player.pos, 750); // wide, screen-aware detection
+      const target = this._autoTarget(this.player.pos, autoRange);
       if (!target) return;                                  // no enemy/boss/carrier in range → hold fire
       aimPos = target.pos;
     }
     const proj = this.player.shoot(aimPos);
+    proj.life = Math.min(proj.life, autoRange / Math.max(1, proj.speed));
     this.audio?.forgeGunshot?.();                             // per-shot report (self-throttled 70ms)
     // Assassin Clone: her base auto-shot IS the Arrow (visible arrow sprite via Player.attackMap,
     // rotated to its travel direction — no orb). Her retired Twin-Dagger mastery card now feeds the
@@ -17935,7 +17984,15 @@ export class Game {
           const maxStep = e.baseSpeed * dt * 0.45;                  // separation < pursuit, ΠΑΝΤΑ
           const sl = Math.hypot(sx, sy);
           if (sl > maxStep && sl > 0) { sx = sx / sl * maxStep; sy = sy / sl * maxStep; }
-          e.pos.x += sx; e.pos.y += sy;
+          const playerDist = Math.hypot(_pdx, _pdy);
+          if (playerDist < 240 && playerDist > 0) {
+            const rx = _pdx / playerDist, ry = _pdy / playerDist;
+            const outward = sx * rx + sy * ry;
+            if (outward > 0) { sx -= rx * outward; sy -= ry * outward; }
+          }
+          const nx = e.pos.x + sx, ny = e.pos.y + sy;
+          const moved = this._resolveEnemyMove(e.pos.x, e.pos.y, nx, ny, e.radius || 14);
+          e.pos.x = moved.x; e.pos.y = moved.y;
         }
       }
     }
@@ -20140,7 +20197,15 @@ export class Game {
     // 2 ── Nexus stations (world/static/interactable layer — NOT enemy/bullet/pet/UI)
     for (const m of this.matrices) {
       this._drawEndlessNexusBase(ctx, m);   // biome-specific sprite UNDER the matrix glow
-      m.draw(ctx, 0);              // no danger blink — overload is now a positive recharge meter
+      const matrixDistance = this.player?.pos ? distance(this.player.pos, m.pos) : Infinity;
+      const proximity = clamp((360 - matrixDistance) / 250, 0, 1);
+      const acceptsCores = !(this._chaosMode && m.chaosRole === 'defence') && m.hasSpace();
+      const captureActive = acceptsCores && (this.player?.carry || 0) > 0 && matrixDistance < 260;
+      m.draw(ctx, {
+        proximity,
+        captureActive,
+        captureProgress: m.capacity > 0 ? m.stored / m.capacity : 0,
+      });
       this._drawNexusRoleMarker(ctx, m);    // Φ14: BUFF star / DEFENCE turret + dome ring (Chaos)
     }
     // 2b ── Nexus reward orbs (homing XP/credit/heal pulses from charged Nexus)
@@ -30126,10 +30191,36 @@ _drawLoreArchive(ctx) {
   placeGroundHazard(x, y, radius = 40) {
     const mode = this._walkMode();
     const mm   = this.mapManager;
-    if (!mode || !mm?.isWalkableFootprint) return { x, y };       // Act 1 — unconstrained
-    if (mm.isWalkableFootprint(x, y, radius, mode)) return { x, y };
-    const p = mm.findNearestWalkablePoint(x, y, radius, mode);
-    if (p && mm.isWalkableFootprint(p.x, p.y, radius, mode)) return p;
+    const clearOfMatrices = (px, py) => (this.matrices || []).every(matrix => {
+      if (!matrix?.pos) return true;
+      return Math.hypot(matrix.pos.x - px, matrix.pos.y - py) >= radius + MATRIX_RADIUS;
+    });
+    const walkable = (px, py) => !mode || !mm?.isWalkableFootprint
+      || mm.isWalkableFootprint(px, py, radius, mode);
+    const legal = (px, py) => walkable(px, py) && clearOfMatrices(px, py);
+    if (legal(x, y)) return { x, y };
+
+    const corrected = mode && mm?.findNearestWalkablePoint
+      ? mm.findNearestWalkablePoint(x, y, radius, mode)
+      : { x, y };
+    if (corrected && legal(corrected.x, corrected.y)) return corrected;
+
+    // Matrix overlap needs a deterministic lateral search; the walkability corrector alone
+    // can legally return the same matrix centre. Search near-to-far and keep the first point
+    // whose complete damage footprint fits both the floor and the matrix exclusion zone.
+    const minOffset = radius + MATRIX_RADIUS + 12;
+    for (let ring = 0; ring < 8; ring++) {
+      const offset = minOffset + ring * 36;
+      for (let i = 0; i < 16; i++) {
+        const angle = i * Math.PI / 8;
+        const qx = x + Math.cos(angle) * offset;
+        const qy = y + Math.sin(angle) * offset;
+        const p = mode && mm?.findNearestWalkablePoint
+          ? mm.findNearestWalkablePoint(qx, qy, radius, mode)
+          : { x: qx, y: qy };
+        if (p && legal(p.x, p.y)) return p;
+      }
+    }
     this._hazardSkips = (this._hazardSkips || 0) + 1;             // counted, never silent
     return null;                                                  // caller must skip
   }

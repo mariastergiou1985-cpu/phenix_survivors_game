@@ -51,7 +51,8 @@ export class Player {
 
     this.pickupRadius = 72;
     this.returnRadius = 70;
-    this.repelRadius  = 115;
+    // Repulsion is effect-driven, not a permanent invisible safe zone around every character.
+    this.repelRadius  = 0;
 
     this.contactDamageReduction = 0;
 
