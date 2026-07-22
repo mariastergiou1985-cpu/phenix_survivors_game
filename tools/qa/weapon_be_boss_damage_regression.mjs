@@ -16,7 +16,7 @@ let vclock = 0; globalThis.performance = { now: () => vclock };
 const _D = globalThis.Date; globalThis.Date = class extends _D { static now() { return vclock; } constructor(...a) { if (a.length) super(...a); else super(vclock); } };
 let _un = muteConsole();
 const { Game } = await import(path.resolve(HERE, '../../js/game/Game.js'));
-const be = await import(path.resolve(HERE, '../../js/game/BuildEngine.js?v=20260722700000'));
+const be = await import(path.resolve(HERE, '../../js/game/BuildEngine.js?v=20260810100000'));
 _un();
 const R = be.EVOLUTION_RECIPES, W = be.WEAPON_DEFS;
 const IN = (k) => ({ keys: k || new Set(), mousePos: { x: 0, y: 0 }, mouseDown: false });
