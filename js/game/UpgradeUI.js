@@ -3,8 +3,11 @@ import { drawText, wrapText, roundRect } from '../utils.js';
 import { RARITY_COLORS } from './Upgrades.js?v=20260722500000';
 
 export class UpgradeUI {
-  constructor(choices) {
+  constructor(choices, options = {}) {
     this.choices = choices;
+    this.title = options.title || null;
+    this.allowReroll = options.allowReroll !== false;
+    this.allowBanish = options.allowBanish !== false;
 
     const cardW  = 220;
     const cardH  = 250;   // shorter cards (descriptions are now one short line)
@@ -50,14 +53,15 @@ export class UpgradeUI {
 
   handleClick(mousePos, game) {
     const rr = this.rerollRect;
-    if (mousePos.x >= rr.x && mousePos.x <= rr.x + rr.w &&
+    if (this.allowReroll &&
+        mousePos.x >= rr.x && mousePos.x <= rr.x + rr.w &&
         mousePos.y >= rr.y && mousePos.y <= rr.y + rr.h) {
       game.rerollUpgrade();
       return;
     }
     // P2.8 (?p2=1): BANISH hit-test — μόνο όταν το Build Engine είναι ενεργό
     const br = this.banishRect;
-    if (game?.buildEngine && this.choices.some(c => String(c?.key || '').startsWith('be_')) &&
+    if (this.allowBanish && game?.buildEngine && this.choices.some(c => String(c?.key || '').startsWith('be_')) &&
         mousePos.x >= br.x && mousePos.x <= br.x + br.w &&
         mousePos.y >= br.y && mousePos.y <= br.y + br.h) {
       game.buildEngine.banishFromUI?.(this);
@@ -83,7 +87,7 @@ export class UpgradeUI {
     ctx.font      = '28px Consolas, monospace';
     ctx.fillStyle = YELLOW;
     ctx.textAlign = 'center';
-    ctx.fillText(`LEVEL ${player.level}  —  CHOOSE AN UPGRADE`, WIDTH / 2, titleY);
+    ctx.fillText(this.title || `LEVEL ${player.level}  —  CHOOSE AN UPGRADE`, WIDTH / 2, titleY);
     ctx.textAlign = 'left';
 
     this.choices.forEach((upg, i) => {
@@ -257,21 +261,23 @@ export class UpgradeUI {
     });
 
     // ── Reroll button (one free reroll per level-up screen) ──────────────────
-    const rr        = this.rerollRect;
-    const available = !game || game.rerollAvailable;
-    ctx.fillStyle   = available ? 'rgba(20,40,60,0.95)' : 'rgba(20,26,34,0.8)';
-    ctx.strokeStyle = available ? YELLOW : GREY;
-    ctx.lineWidth   = 2;
-    roundRect(ctx, rr.x, rr.y, rr.w, rr.h, 8);
-    ctx.fill();
-    ctx.stroke();
-    ctx.font      = 'bold 16px Consolas, monospace';
-    ctx.fillStyle = available ? YELLOW : GREY;
-    ctx.textAlign = 'center';
-    const rerollsLeft = game ? (game.rerollsLeft ?? 0) : 0;
-    ctx.fillText(available ? `↻ REROLL (${rerollsLeft})  [R]` : '↻ REROLL USED', rr.x + rr.w / 2, rr.y + 26);
+    const rr = this.rerollRect;
+    if (this.allowReroll) {
+      const available = !game || game.rerollAvailable;
+      ctx.fillStyle   = available ? 'rgba(20,40,60,0.95)' : 'rgba(20,26,34,0.8)';
+      ctx.strokeStyle = available ? YELLOW : GREY;
+      ctx.lineWidth   = 2;
+      roundRect(ctx, rr.x, rr.y, rr.w, rr.h, 8);
+      ctx.fill();
+      ctx.stroke();
+      ctx.font      = 'bold 16px Consolas, monospace';
+      ctx.fillStyle = available ? YELLOW : GREY;
+      ctx.textAlign = 'center';
+      const rerollsLeft = game ? (game.rerollsLeft ?? 0) : 0;
+      ctx.fillText(available ? `↻ REROLL (${rerollsLeft})  [R]` : '↻ REROLL USED', rr.x + rr.w / 2, rr.y + 26);
+    }
     // P2.8 (?p2=1): BANISH κουμπί — εμφανίζεται μόνο όταν υπάρχει κάρτα Build Engine
-    if (game?.buildEngine && this.choices.some(c => String(c?.key || '').startsWith('be_'))) {
+    if (this.allowBanish && game?.buildEngine && this.choices.some(c => String(c?.key || '').startsWith('be_'))) {
       const br = this.banishRect;
       ctx.fillStyle = '#160b10';
       roundRect(ctx, br.x, br.y, br.w, br.h, 8); ctx.fill();

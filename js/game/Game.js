@@ -1003,6 +1003,9 @@ export class Game {
     this._pendingCampaignStage = 0;   // stage picked in the select screen, applied on run start
     this._campaignSelIndex     = 0;   // highlighted card in the CAMPAIGN select screen
     this._campaignCleared      = false; // guard: stage-clear fires once per run
+    this._stageClearEvolutionChoice = null;
+    this._stageClearEvolutionQueue = [];
+    this._stageClearEvolutionEvents = [];
     this._campaignMapImg       = null;  // loaded stage map Image (bg)
     
     // Menu state
@@ -1520,6 +1523,9 @@ export class Game {
     this._stageSpeedMult      = 1;
     this._campaignStage       = 0;     // campaign run flag (set by _applyCampaignStage after reset)
     this._campaignCleared     = false;
+    this._stageClearEvolutionChoice = null;
+    this._stageClearEvolutionQueue = [];
+    this._stageClearEvolutionEvents = [];
     this._stageCompleteBanner = null;  // full-screen STAGE COMPLETE banner (set on clear)
     this.gridBlackoutActive   = false;
     this.announcement         = null;
@@ -1913,21 +1919,91 @@ export class Game {
       this.screenShake?.trigger(6, 0.6);
     }
     if (this.timeAlive < CAMPAIGN_STAGE_SECONDS) return;
-    // P4C LATE-ELIGIBILITY PROTECTION — if the player EARNED the full evolution recipe
-    // (weapon L5 + catalyst L3, _evolutionReady) but the 300s stage boundary cut off before a
-    // level-up could deliver the already-guaranteed evolution card, secure that earned evolution
-    // now so it is never silently swallowed by the clear. NOT free/auto: the COMPLETE recipe was
-    // built by the player's own picks — this only delivers what the very next level-up would have
-    // (the evolution card is a guaranteed top-priority offer once _evolutionReady). Fully guarded:
-    // any throw here must NEVER block the stage clear.
+    // A recipe earned just before the boundary must remain a player decision. Open a dedicated
+    // stage-clear choice instead of replacing the weapon invisibly; the world is already frozen by
+    // upgradeUI until the player evolves or explicitly keeps the current build.
     try {
-      const _ready = this.buildEngine && this.buildEngine._evolutionReady && this.buildEngine._evolutionReady();
-      const _w = _ready && this.buildEngine.weapons.get(_ready.recipe.weapon);
-      if (_ready && !(_w && _w.evolved)) {
-        this.buildEngine._evolve(_ready.recipe.weapon);
-        this.triggerAnnouncement('SIGNATURE EVOLUTION SECURED — ' + String(_ready.recipe.name || '').toUpperCase(), CYAN, { priority: 1 });
+      const _ready = this.buildEngine?._readyEvolutions?.() || [];
+      if (_ready.length) {
+        this._stageClearEvolutionQueue = _ready.slice();
+        if (this._openNextCampaignEvolutionChoice()) return;
       }
     } catch (_) {}
+    this._completeCampaignStage();
+  }
+
+  _openNextCampaignEvolutionChoice() {
+    while (this._stageClearEvolutionQueue.length) {
+      const ready = this._stageClearEvolutionQueue.shift();
+      const stillReady = this.buildEngine?._readyEvolutions?.()
+        .find(entry => entry.eid === ready.eid);
+      if (stillReady) {
+        this._openCampaignEvolutionChoice(stillReady);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  _openCampaignEvolutionChoice(ready) {
+    if (!ready || this._stageClearEvolutionChoice || this._campaignCleared) return;
+    const recipe = ready.recipe;
+    const choice = {
+      stage: this._campaignStage,
+      eid: ready.eid,
+      weapon: recipe.weapon,
+      selected: null,
+    };
+    this._stageClearEvolutionChoice = choice;
+    const evolveCard = {
+      key: 'campaign_evo_' + ready.eid,
+      name: recipe.name,
+      description: recipe.desc + '  [EVOLUTION]',
+      iconColor: CYAN,
+      icon: 'EV',
+      rarity: 'legendary',
+      maxLevel: 1,
+      reward: true,
+      synergy: true,
+      char: null,
+      _isEvolutionCard: true,
+      apply: () => {
+        const current = this.buildEngine?._readyEvolutions?.()
+          .find(entry => entry.eid === ready.eid);
+        if (!current || !this.buildEngine._evolve(recipe.weapon)) return false;
+        choice.selected = 'evolve';
+        choice.evolutionApplied = true;
+        return true;
+      },
+      canApply: () => true,
+    };
+    const keepCard = {
+      key: 'campaign_keep_build',
+      name: 'KEEP CURRENT BUILD',
+      description: 'Complete the stage without evolving this weapon.',
+      iconColor: '#9aa8b8',
+      icon: 'OK',
+      rarity: 'common',
+      maxLevel: 1,
+      reward: false,
+      synergy: false,
+      char: null,
+      apply: () => { choice.selected = 'keep'; choice.evolutionApplied = false; return true; },
+      canApply: () => true,
+    };
+    this.upgradeUI = new UpgradeUI([evolveCard, keepCard], {
+      title: 'STAGE CLEAR — CHOOSE YOUR REWARD',
+      allowReroll: false,
+      allowBanish: false,
+    });
+    this.rerollAvailable = false;
+    this.rerollsLeft = 0;
+  }
+
+  _completeCampaignStage() {
+    if (!this._campaignStage || this._campaignCleared) return;
+    this._stageClearEvolutionChoice = null;
+    this._stageClearEvolutionQueue.length = 0;
     this._campaignCleared = true;
     const n = this._campaignStage;
     const isFinal = !!CAMPAIGN_STAGES.find(s => s.n === n)?.final;
@@ -8403,9 +8479,11 @@ export class Game {
   }
 
   selectUpgrade(index) {
-    if (!this.upgradeUI || index >= this.upgradeUI.choices.length) return;
+    if (!this.upgradeUI || index < 0 || index >= this.upgradeUI.choices.length) return;
+    const _stageClearChoice = this._stageClearEvolutionChoice;
     const _card = this.upgradeUI.choices[index];
     _card.apply(this.player);
+    if (_stageClearChoice && !_stageClearChoice.selected) return;
     // §22-23: dedicated layered reward sound (with music duck) — tier by card identity.
     const _tier = (_card._isEvolutionCard || String(_card.key || '').includes('evolution') || String(_card.name || '').startsWith('EVOLVE'))
       ? 'evolution' : (_card.rarity === 'legendary' || _card.reward) ? 'rare' : 'common';
@@ -8413,6 +8491,18 @@ export class Game {
     this._checkWeaponEvolutions();   // check if any evolution recipe is now satisfied
     this.score = (this.score ?? 0) + 50;
     this.upgradeUI = null;
+    if (_stageClearChoice && this._stageClearEvolutionChoice === _stageClearChoice) {
+      this._stageClearEvolutionEvents.push({
+        stage: _stageClearChoice.stage,
+        eid: _stageClearChoice.eid,
+        weapon: _stageClearChoice.weapon,
+        decision: _stageClearChoice.selected,
+        evolved: !!_stageClearChoice.evolutionApplied,
+        timeAlive: Number(this.timeAlive || 0),
+      });
+      this._stageClearEvolutionChoice = null;
+      if (!this._openNextCampaignEvolutionChoice()) this._completeCampaignStage();
+    }
   }
 
   // Neutral (no-effect) forced-mutation run-state. All multipliers default to 1 so Act 1 and any
@@ -8446,7 +8536,7 @@ export class Game {
 
   // One free reroll per level-up screen — re-samples the (already useful) card pool.
   rerollUpgrade() {
-    if (!this.upgradeUI || this.rerollsLeft <= 0) return;
+    if (!this.upgradeUI || this.upgradeUI.allowReroll === false || this.rerollsLeft <= 0) return;
     const choices = weightedSample(this.player, 3, { meta: this.meta, endless: this.endless, chaos: this._chaosMode });
     this._injectWeaponCard(choices);   // weapon cards also appear on reroll
     if (choices.length === 0) return;

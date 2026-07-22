@@ -170,6 +170,7 @@ export class BuildEngineRuntime {
     this.CAPS     = { weapons: 6, passives: 6, perFamily: 2 };
     this.banished = new Set();   // banished weapon families (πρώτο tag)
     this.sealed   = new Set();   // sealed passive ids
+    this.evolutionEvents = [];   // successful, recipe-eligible evolutions in this run
   }
 
   // ── P2.7 helpers ────────────────────────────────────────────────────────────
@@ -325,11 +326,20 @@ export class BuildEngineRuntime {
     this.passives.set(id, Math.min(p?.maxLevel || 3, (this.passives.get(id) || 0) + 1));
   }
   _evolve(weaponId) {
+    const ready = this._readyEvolutions().find(entry => entry.recipe.weapon === weaponId);
+    if (!ready) return false;
     let w = this.weapons.get(weaponId);
     if (!w && WEAPON_DEFS[weaponId]?.external) { this.addWeapon(weaponId); w = this.weapons.get(weaponId); }
-    if (w) { w.evolved = true; w.level = 5; w.charge = 0; }
+    if (!w) return false;
+    w.evolved = true; w.level = 5; w.charge = 0;
+    if (WEAPON_DEFS[weaponId]?.external) this.game?._consumedWeapons?.add?.(weaponId);
     let name = weaponId;
     for (const r of Object.values(EVOLUTION_RECIPES)) if (r.weapon === weaponId) { name = r.name; break; }
+    this.evolutionEvents.push({
+      eid: ready.eid,
+      weapon: weaponId,
+      timeAlive: Number(this.game?.timeAlive || 0),
+    });
     this.game.triggerAnnouncement?.('◈ EVOLUTION — ' + name.toUpperCase() + ' ◈', CARD_COLOR.evolution);
     try {   // P2.8: NULL ARSENAL discovery — ξεκλειδώνει το silhouette στο EVOLUTIONS tab
       const dk = 'phenix_be_discovered';
@@ -337,8 +347,10 @@ export class BuildEngineRuntime {
       for (const [eid2, r2] of Object.entries(EVOLUTION_RECIPES)) if (r2.weapon === weaponId) dset.add(eid2);
       localStorage.setItem(dk, JSON.stringify([...dset]));
     } catch (_) {}
+    return true;
   }
-  _evolutionReady() {
+  _readyEvolutions() {
+    const ready = [];
     for (const [eid, r] of Object.entries(EVOLUTION_RECIPES)) {
       const wd = WEAPON_DEFS[r.weapon];
       if (wd?.owner && wd.owner !== this.game.selectedCharacter) continue;   // native evolutions ΜΟΝΟ στον ιδιοκτήτη
@@ -347,9 +359,12 @@ export class BuildEngineRuntime {
       // external data-wrap (π.χ. Solo Red Thunder): το level ζει στο παλιό σύστημα μέχρι το P2.7
       const wl = w ? w.level : (wd?.external ? (this.game._weaponLevels?.get(r.weapon) || 0) : 0);
       if (wl >= r.weaponLevel && (this.passives.get(r.passive) || 0) >= r.passiveLevel)
-        return { eid, recipe: r };
+        ready.push({ eid, recipe: r });
     }
-    return null;
+    return ready;
+  }
+  _evolutionReady() {
+    return this._readyEvolutions()[0] || null;
   }
 
   // ── LEVEL-UP CARDS (§ weighting: native x3 owner, catalyst x3 από weapon Lv3,
@@ -405,8 +420,12 @@ export class BuildEngineRuntime {
       // ενισχύουμε (×5) ώστε ο χαρακτήρας να φτάνει το signature recipe του. Τα νέα παραμένουν
       // αποκτήσιμα (variety) + 2/3 slots legacy. ΟΧΙ forcing (sampled), ΟΧΙ auto-max.
       let wt = (w ? (3 + w.level * 3) : 3) * (d.owner === g.selectedCharacter ? 5 : 1);
-      if (wid === leadW) wt *= 3;                                   // convergence: finish the invested weapon
-      else if (!w && _midRecipe) wt *= 0.35;                        // dead-offer protection: μη σπρώχνεις νέα όπλα mid-recipe
+      if (wid === leadW) {
+        const _leadCatalystLevel = this.passives.get(leadP) || 0;
+        // Build the two recipe halves together instead of letting the native-weapon weight
+        // starve its catalyst after weapon L3.
+        wt *= (w.level >= 3 && _leadCatalystLevel < 3) ? 1.25 : 4;
+      } else if (!w && _midRecipe) wt *= 0.10;
       const _badges = (w ? '' : '[NEW] ') + (d.owner === g.selectedCharacter ? '[NATIVE] ' : '');
       const _cur = w ? singleTargetDps(d, w.level) : 0;
       const _nxt = singleTargetDps(d, (w?.level || 0) + 1);
@@ -444,24 +463,57 @@ export class BuildEngineRuntime {
       // σχεδόν-εγγυημένα στο βήμα που ΚΛΕΙΝΕΙ το recipe. Sampled ενάντια στο pool — ΟΧΙ absolute.
       let wt = _wl >= 5 ? 24 : _wl >= 4 ? 10 : _wl >= 3 ? 4 : 1;
       if (_evoReady) wt = 40;                                   // όπλο L5 + catalyst ένα βήμα πριν το max
-      if (pid === leadP) wt *= 3;                              // convergence: finish the invested catalyst
+      if (pid === leadP) {
+        wt *= 8;
+        if (lvl < Math.min(3, Math.max(0, _wl - 1))) wt *= 2;
+      }
       const _req = _evoReady ? '[EVOLUTION READY] ' : ('[REQUIRES: weapon Lv5 (' + _wl + '/5) + Lv' + p.maxLevel + ' (' + (lvl + 1) + '/' + p.maxLevel + ')] ');
       cand.push({ wt, card: mk('be_p_' + pid, p.name,
         _req + (lvl ? 'Lv' + lvl + ' → Lv' + (lvl + 1) + ' — ' : '') + p.desc, CARD_COLOR.passive, '◈',
         () => self.addPassive(pid)) });
     }
     if (!cand.length) return false;
-    // Οι 2 πρώτες BE προσφορές του run είναι ΕΓΓΥΗΜΕΝΕΣ (ορατότητα του νέου συστήματος από
-    // το 1ο level-up). P4B: μετά ~85% παρουσία (ήταν 45%) — το BE είναι το ΠΡΩΤΕΥΟΝ
-    // progression layer (25 evolutions) και καταλαμβάνει ΜΟΝΟ 1/3 slot· τα άλλα 2/3 μένουν
-    // πάντα legacy variety, οπότε το 45% throttle λιμοκτονούσε το reachability. ΟΧΙ 100%: ένα
-    // ~15% κρατά περιστασιακά καθαρά-legacy level-ups (variety preserved).
+    // The BE card is the focused recipe path chosen by the player. Card pacing already skips
+    // every second level after level 6, so dropping more BE offers here can make an otherwise
+    // focused Act 1 build mathematically unable to finish its 5+3 recipe.
     this._offers = (this._offers || 0) + 1;
-    if (this._offers > 2 && Math.random() < 0.15) return false;
-    let sum = 0; for (const c of cand) sum += c.wt;
-    let r = Math.random() * sum, pick = cand[0];
-    for (const c of cand) { r -= c.wt; if (r <= 0) { pick = c; break; } }
-    choices[choices.length - 1] = pick.card;
+    // When no BE build exists yet, reserve this one BE slot for a native starter. It is still
+    // a visible player choice and the other two sampled cards remain untouched.
+    const _nativeStart = !leadW
+      ? cand.filter(c => {
+          const key = String(c.card?.key || '');
+          return key.startsWith('be_w_') && WEAPON_DEFS[key.slice(5)]?.owner === g.selectedCharacter;
+        })
+      : [];
+    const _leadRecipe = leadW
+      ? cand.filter(c => {
+          const key = String(c.card?.key || '');
+          return key === 'be_w_' + leadW || key === 'be_p_' + leadP;
+        })
+      : [];
+    const _nonLead = _leadRecipe.length
+      ? cand.filter(c => {
+          const key = String(c.card?.key || '');
+          return key !== 'be_w_' + leadW && key !== 'be_p_' + leadP;
+        })
+      : [];
+    // Every fifth offer also exposes a second BE path. It replaces one legacy card instead of the
+    // focused recipe card, so variety stays visible without deleting required recipe progress.
+    const _varietyOffer = _nonLead.length && this._offers % 5 === 0;
+    const pickWeighted = pool => {
+      let sum = 0;
+      for (const c of pool) sum += c.wt;
+      let roll = Math.random() * sum;
+      let pick = pool[0];
+      for (const c of pool) {
+        roll -= c.wt;
+        if (roll <= 0) { pick = c; break; }
+      }
+      return pick.card;
+    };
+    const _focusPool = _nativeStart.length ? _nativeStart : (_leadRecipe.length ? _leadRecipe : cand);
+    choices[choices.length - 1] = pickWeighted(_focusPool);
+    if (_varietyOffer && choices.length > 1) choices[choices.length - 2] = pickWeighted(_nonLead);
     return true;
   }
 

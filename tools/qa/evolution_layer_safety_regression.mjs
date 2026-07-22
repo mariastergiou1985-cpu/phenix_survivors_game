@@ -7,17 +7,17 @@
 //
 // Non-vacuous: every assertion drives the real BuildEngine + Game runtime, not registry inspection.
 // Deterministic (seeded PRNG + virtual clock + cleared store, single process is fine here — no natural runs).
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const { installEnv, muteConsole } = await import(path.join(HERE, 'headless-env.mjs'));
+const { installEnv, muteConsole } = await import(pathToFileURL(path.join(HERE, 'headless-env.mjs')).href);
 installEnv();
 const mulberry32 = (a) => () => { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 Math.random = mulberry32(20260721);
 let vclock = 0; globalThis.performance = { now: () => vclock };
 const _D = globalThis.Date; globalThis.Date = class extends _D { static now() { return vclock; } constructor(...a) { if (a.length) super(...a); else super(vclock); } };
 let _un = muteConsole();
-const { Game } = await import(path.resolve(HERE, '../../js/game/Game.js'));
+const { Game } = await import(pathToFileURL(path.resolve(HERE, '../../js/game/Game.js')).href);
 _un();
 const IN = (k) => ({ keys: k || new Set(), mousePos: { x: 0, y: 0 }, mouseDown: false });
 
@@ -63,9 +63,8 @@ const g2 = newRun('skeleton_warrior');
 drive(g2, 60 * 60);   // 1 min driven
 T('no legacy evolution created during a driven run with BE active', () => g2._evolvedWeapons.size === 0 || `legacy evolvedWeapons=${g2._evolvedWeapons.size}`);
 
-// 4) TRACKED CONFLICT (P2): Eddie's solo_red_thunder is a base weapon in BOTH catalogs. BuildEngine._evolve
-//    does NOT set legacy _consumedWeapons, so the legacy base riff keeps firing after the BE evolution.
-//    This asserts the CURRENT (buggy) behavior as a tripwire — a P2.7 fix (consume the base) flips it.
+// 4) Eddie's solo_red_thunder is a base weapon in BOTH catalogs. BuildEngine._evolve must consume
+//    the legacy base when the BE evolution takes ownership, or both layers fire simultaneously.
 const g3 = newRun('eddie');
 let soloConsumed = null;
 {
@@ -77,8 +76,22 @@ let soloConsumed = null;
   soloConsumed = g3._consumedWeapons.has('solo_red_thunder');
   u();
 }
-T('[TRACKED P2] solo_red_thunder NOT consumed by BE evolve (legacy base still fires) — flips when P2.7 fixes it',
-  () => soloConsumed === false || `solo consumed=${soloConsumed} (if true, the P2.7 base-consume fix landed — re-baseline)`);
+T('solo_red_thunder is consumed by BE evolve (legacy base cannot stack with evolved weapon)',
+  () => soloConsumed === true || `solo consumed=${soloConsumed}`);
+
+// 5) The internal activation path rejects calls that do not have a complete recipe.
+const g4 = newRun('skeleton_warrior');
+let unearnedResult = null, unearnedEvents = -1, unearnedEvolved = null;
+{
+  const u = muteConsole();
+  unearnedResult = g4.buildEngine._evolve('marrow_spitter');
+  unearnedEvents = g4.buildEngine.evolutionEvents.length;
+  unearnedEvolved = !!g4.buildEngine.weapons.get('marrow_spitter')?.evolved;
+  u();
+}
+T('_evolve rejects an incomplete recipe without changing weapon state or emitting an event',
+  () => (unearnedResult === false && unearnedEvents === 0 && !unearnedEvolved)
+    || `result=${unearnedResult}, events=${unearnedEvents}, evolved=${unearnedEvolved}`);
 
 console.log(`\n═══ ${pass} PASS · ${fail} FAIL ═══`);
 process.exit(fail ? 1 : 0);
