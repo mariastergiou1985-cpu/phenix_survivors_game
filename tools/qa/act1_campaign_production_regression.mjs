@@ -18,7 +18,7 @@
 // runs, NOT that evolutions happen (Act1's evolution rate is a separate, documented design
 // property of 5-minute per-stage-reset stages — see PHASE4C notes). Deterministic: seeded PRNG +
 // virtual clock + cleared store + child-process isolation. Exit 1 on regression.
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 
@@ -31,7 +31,7 @@ const SELF = fileURLToPath(import.meta.url);
 // ══════════════════════════════════════════════════════════════════════════════════
 if (process.argv[2] === '--worker') {
   const seed = +process.argv[3], ch = process.argv[4], mode = process.argv[5], stage = +(process.argv[6] || 1);
-  const { installEnv, muteConsole } = await import(path.join(HERE, 'headless-env.mjs'));
+  const { installEnv, muteConsole } = await import(pathToFileURL(path.join(HERE, 'headless-env.mjs')).href);
   installEnv();
   const mulberry32 = (a) => () => { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
   Math.random = mulberry32(seed);
@@ -43,7 +43,7 @@ if (process.argv[2] === '--worker') {
   try { globalThis.sessionStorage.clear && globalThis.sessionStorage.clear(); } catch (_) {}
 
   const un = muteConsole();
-  const { Game } = await import(path.resolve(HERE, '../../js/game/Game.js'));
+  const { Game } = await import(pathToFileURL(path.resolve(HERE, '../../js/game/Game.js')).href);
   const IN = (k) => ({ keys: k || new Set(), mousePos: { x: 0, y: 0 }, mouseDown: false });
   const g = new Game(); g.audio = null;
   g.selectedCharacter = ch; g.gameState = 'playing';

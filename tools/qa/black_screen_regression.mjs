@@ -1,7 +1,7 @@
 // BLACK-SCREEN REGRESSION — static guards against the failure modes that leave the
 // canvas blank. Run: node tools/qa/black_screen_regression.mjs   (exit 1 on failure)
 import { register } from 'node:module';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 import fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
@@ -17,7 +17,7 @@ const MAIN = fs.readFileSync(path.join(JS,'main.js'),'utf8');
 const GAME = fs.readFileSync(path.join(JS,'game/Game.js'),'utf8');
 const PL   = fs.readFileSync(path.join(JS,'entities/Player.js'),'utf8');
 const HTML = fs.readFileSync(path.resolve(HERE,'../../index.html'),'utf8');
-const { MapManager } = await import(path.join(JS,'game/MapManager.js'));
+const { MapManager } = await import(pathToFileURL(path.join(JS,'game/MapManager.js')).href);
 
 let pass=0, fail=0;
 const T=(n,f)=>{let ok=false,note='';try{const r=f();ok=r===true;if(typeof r==='string')note=r;}
