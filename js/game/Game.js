@@ -17008,14 +17008,16 @@ export class Game {
         this._feedbackApoc.cx = sp.cx; this._feedbackApoc.footY = sp.footY;
       }
       // wave crossings hit lighter, on-beat bolts hit harder (each enemy once per wave)
-      const wasActive = this._feedbackApoc.isActive();
       this._feedbackApoc.update(performance.now(), this.enemies, {
         getX: e => ((e?.pos?.x ?? cam.x) - cam.x) * vs,
         getY: e => ((e?.pos?.y ?? cam.y) - cam.y) * vs,
         onStrike: (e, kind) => { if (e?.takeHit) e.takeHit((kind === 'bolt' ? 40 : 22) * this._amuletUltMult(), this); },
       });
-      if (wasActive && !this._feedbackApoc.isActive() && this._eddieUltimateMusicActive) {
-        this.audio?.stopEddieUltimateTrack?.();
+      // P5R FIX (Eddie ultimate music): the Feedback Apocalypse cinematic lasts ~3.65s, but the
+      // 8 approved ultimate tracks are full 3–5 min songs. Do NOT cut the music when the VFX ends
+      // — let the chosen track play out. AudioManager.onended (ultimate mode) restores the ducked
+      // mode BGM on its own. Clear the Game-side latch only once the track has actually finished.
+      if (this._eddieUltimateMusicActive && !this.audio?.isEddieRiffsPlaying?.()) {
         this._eddieUltimateMusicActive = false;
       }
     } catch (err) { console.warn('[FeedbackApoc]', err); }
@@ -30266,13 +30268,16 @@ _drawLoreArchive(ctx) {
     const mode = this._walkMode();
     const mm   = this.mapManager;
     if (!mode || !mm?.isWalkableFootprint) return { x: toX, y: toY };
-    if (!mm.isWalkableFootprint(fromX, fromY, radius, mode)) {
-      return mm.findNearestWalkablePoint?.(fromX, fromY, radius, mode) || { x: fromX, y: fromY };
-    }
+    // P5R FIX (no magnetic pull / no zero-input drift): try the input-driven move + axis-slides
+    // FIRST — an input-driven step toward floor must always win over an input-blind nearest-point
+    // snap, even when 'from' is technically invalid (knockback/clamp pushed us in). Only when NO
+    // legal input-driven move exists do we depenetrate a stuck footprint.
+    const fromOk = mm.isWalkableFootprint(fromX, fromY, radius, mode);
     if (mm.isWalkableFootprint(toX, toY, radius, mode)) return { x: toX, y: toY };
     if (mm.isWalkableFootprint(toX, fromY, radius, mode)) return { x: toX, y: fromY };  // slide along X
     if (mm.isWalkableFootprint(fromX, toY, radius, mode)) return { x: fromX, y: toY };  // slide along Y
-    return { x: fromX, y: fromY };                                                      // blocked
+    if (!fromOk) return mm.findNearestWalkablePoint?.(fromX, fromY, radius, mode) || { x: fromX, y: fromY };
+    return { x: fromX, y: fromY };                                                      // genuinely blocked head-on
   }
 
   /** Shared by every Enemy via _stepMove — identical policy to the player's resolver. */
