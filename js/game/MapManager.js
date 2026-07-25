@@ -226,10 +226,19 @@ export class MapManager {
     // still contains solid pillars, kiosks and cable towers, and the player walked through
     // them. These are authored NO-GO columns expressed in SOURCE-IMAGE x (same space as
     // the row bands), repeated with the tile, plus the row range they actually block.
-    // Kept deliberately coarse — a handful of rectangles is maintainable and provably
-    // correct, where a per-pixel mask of a painterly asset is neither.
-    this.CITY_BLOCK_COLS  = [ [180, 250, 210, 300], [700, 780, 210, 330], [1240, 1320, 210, 300] ];
-    this.CHAOS_BLOCK_COLS = [ [300, 372, 135, 250], [980, 1060, 135, 265] ];
+    // P1-1 (2026-07-25): these hand-typed rectangles were measured against the SHIPPED PNGs
+    // and are wrong. Plain-pavement share of each rect: endless 82% / 23% / 0%, chaos 33% / 34%
+    // — while 30% (Endless) / 51% (Chaos) of the real PAINTED obstacle area stayed walk-through.
+    // The collision was close to an inversion of the art. Because the model is applied to EVERY
+    // mirror tile of an endless world, those 5 wrong rectangles became 6 (Endless) / 4 (Chaos)
+    // invisible slabs per 10032px period — 240-272px wide, covering 42-59% of the walkable
+    // corridor height, standing on open pavement — i.e. an invisible wall on screen at nearly
+    // all times (measured: holding → was 85.9% blocked frames / permanent stuck; now 0.0%).
+    // They protected nothing. Left EMPTY until a mask is DERIVED from the art; the
+    // [x0,x1,y0,y1] contract and every consumer are unchanged, so a generated mask drops in here.
+    // Never hand-type collision geometry for a painterly asset again.
+    this.CITY_BLOCK_COLS  = [];
+    this.CHAOS_BLOCK_COLS = [];
     this._walkModels = Object.create(null);
     // Maria 2026-07-19 VIDEO-GROUNDED CORRECTION: το gameplay video («chaos mode map is
     // shit.mp4») απέδειξε ότι το chaos_mode_only_new_map.png είναι το multi-biome patchwork
@@ -458,8 +467,12 @@ export class MapManager {
       const topNoGoY1 = m.rows[0] * scale;
       const bottomNoGoY0 = m.rows[1] * scale;
       const stripY1 = m.tileH * scale;
-      const overlapsTopNoGo = y + r >= 0 && y - r <= topNoGoY1;
-      const overlapsBottomNoGo = y + r >= bottomNoGoY0 && y - r <= stripY1;
+      // P1-1b: strict at the band edge, matching the non-verticalFloor branch below.
+      // Game.getWalkableBounds() clamps the player to exactly y0+r / y1-r, and an INCLUSIVE
+      // test declared those two clamp results "off-floor", firing a nearest-walkable spiral
+      // that teleported the player ~12px on knockback.
+      const overlapsTopNoGo = y + r >= 0 && y - r < topNoGoY1;
+      const overlapsBottomNoGo = y + r > bottomNoGoY0 && y - r <= stripY1;
       if (overlapsTopNoGo || overlapsBottomNoGo) return false;
     } else if ((y - r) / scale < m.rows[0] || (y + r) / scale > m.rows[1]) {
       return false;
@@ -609,8 +622,12 @@ export class MapManager {
     // Measured: rows 450-490 are the flattest pavement in the concept (lowest pixel
     // variance across the strip) — a repeating band there reads as continuous deck,
     // with no helipads/props to betray the repetition.
-    const bandSy = 450;
+    // P1-2b: rows 450-490 were measured on the 519-row CITY art. The Chaos deck is only 440
+    // rows, so a fixed sy=450 puts the source rect entirely OUTSIDE the image and drawImage
+    // paints NOTHING — a latent full-width black band (dormant today only because the camera
+    // clamp keeps it off-screen). Clamp so the slice always exists in whatever art is passed in.
     const bandSh = 40;
+    const bandSy = Math.max(0, Math.min(450, img.naturalHeight - bandSh));
     const bandTh = bandSh * S;
     for (let i = Math.floor(xA / tw); i * tw < xB; i++) {
       const fx = ((i % 2) + 2) % 2 === 1;
@@ -634,9 +651,18 @@ export class MapManager {
     }
     ctx.imageSmoothingEnabled = prevSmooth;
 
-    // Readability dim — same policy the chunk world uses, so combat stays on top
+    // Readability dim — ANCHORED TO THE CAMERA, never to the player. P1-2 (CHAOS BLACK VEIL):
+    // _updateCamera() clamps camera.y inside the strip (0 .. th-viewH). On the Chaos deck the art
+    // is only 440px tall (th=1320) giving just 472px of camera travel against an 825px walk band,
+    // so the player ends up to 334 world px below the camera centre — a PLAYER-centred 30% black
+    // rect then slides off the top of the screen and its hard edge reads as a BLACK VEIL moving
+    // up/down (measured 270px of travel, 26% of frame height). Camera space is exactly what
+    // ctx.translate(-camera.x,-camera.y) shows, so this can never desync again.
+    const _cam  = g && g.camera ? g.camera : null;
+    const _camX = _cam ? _cam.x : (p.pos.x - vw / 2);
+    const _camY = _cam ? _cam.y : (p.pos.y - vh / 2);
     ctx.fillStyle = opts.gridBlackoutActive ? 'rgba(0,0,0,0.65)' : 'rgba(0,0,0,0.30)';
-    ctx.fillRect(xA, yA, xB - xA, yB - yA);
+    ctx.fillRect(_camX - M, _camY - M, vw + M * 2, vh + M * 2);
   }
 
   /**

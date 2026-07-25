@@ -1,5 +1,5 @@
-import { Game } from './game/Game.js?v=20260810240000';
-import { AudioManager } from './audio/AudioManager.js?v=20260810234000';
+import { Game } from './game/Game.js?v=20260810250000';
+import { AudioManager } from './audio/AudioManager.js?v=20260810250000';
 import { PlatformAchievements } from './platform/PlatformAchievements.js?v=20260712370000';
 // Steam build: replay any web-earned achievements to Steam on boot (no-op in browsers)
 setTimeout(() => { try { PlatformAchievements.syncPending(); } catch (_) {} }, 3000);
@@ -41,7 +41,12 @@ window.addEventListener('load', () => {
 const keys    = new Set();
 let mousePos  = { x: 0, y: 0 };
 let mouseDown = false;
-let cardInputLockedUntil = 0;
+// P1-4: the card guard is keyed to the PANEL INSTANCE, not a wall-clock deadline. Its only job
+// is to stop ONE physical click being consumed twice as one panel is replaced by the next. The
+// old 250ms lock also deafened the MOUSE on back-to-back level-ups (pendingLevelupCount>1 is
+// common in dense combat), while the keyboard 1/2/3 path was never gated — which is exactly why
+// clicking cards felt unreliable and players fell back to the number keys.
+let cardPanelJustClosed = null;
 
 // ─── Game instance ────────────────────────────────────────────────────────────
 const game = new Game();
@@ -63,7 +68,7 @@ window.addEventListener('keydown', e => {
   // Forced mutation card selection (1/2/3 only — NO skip, NO reroll; ESC cannot close it)
   // ArrowLeft/ArrowRight move the controller cursor; Enter confirms it (dispatched by gamepad A/Cross).
   if (game.mutationUI) {
-    if (performance.now() < cardInputLockedUntil) return;
+    if (game.mutationUI === cardPanelJustClosed) return;
     if (e.repeat) return;
     const midx = { '1': 0, '2': 1, '3': 2 }[e.key];
     if (midx !== undefined) {
@@ -278,14 +283,14 @@ canvas.addEventListener('mousedown', e => {
     const openPanel = game.mutationUI;
     // ── Forced mutation card (Endless) — click selects; no skip/reroll ─
     game.mutationUI.handleClick(mousePos, game);
-    if (game.mutationUI !== openPanel) cardInputLockedUntil = performance.now() + 250;
+    if (game.mutationUI !== openPanel) cardPanelJustClosed = openPanel;
 
   } else if (game.upgradeUI) {
-    if (performance.now() < cardInputLockedUntil) return;
+    if (game.upgradeUI === cardPanelJustClosed) return;
     const openPanel = game.upgradeUI;
     // ── In-game upgrade card (level-up choice) ────────────────────
     game.upgradeUI.handleClick(mousePos, game);
-    if (game.upgradeUI !== openPanel) cardInputLockedUntil = performance.now() + 250;
+    if (game.upgradeUI !== openPanel) cardPanelJustClosed = openPanel;
 
   } else if (game._postArenaChoice && game._pacMsgStep >= 5) {
     // ── Post-Arena NULL decision panel — click on option cards ───
@@ -548,7 +553,16 @@ function applyContextualCursor() {
     && !game.paused && !game.gameOver && !game.victory && !game.upgradeUI && !game.mutationUI
     && !game._postArenaChoice;
   const want = inCombat ? 'crosshair' : (game.upgradeUI || game.mutationUI ? 'pointer' : 'default');
-  if (want !== _lastCursor) { canvas.style.cursor = want; _lastCursor = want; }
+  if (want !== _lastCursor) {
+    // P1-4: Chrome does NOT re-evaluate the cursor for a STATIONARY pointer. During combat the
+    // mouse sits still for minutes (movement is WASD, fire is automatic), so when a card panel
+    // opened the new cursor was not picked up and the player was clicking blind. Toggling
+    // through a different value + a reflow forces the compositor to adopt it immediately.
+    canvas.style.cursor = want === 'default' ? 'auto' : 'default';
+    void canvas.offsetWidth;                              // reflow — makes the change observable
+    canvas.style.cursor = want;
+    _lastCursor = want;
+  }
 }
 
 // ─── Controller support (Gamepad API) ──────────────────────────────────────────
@@ -649,6 +663,14 @@ game._releaseHeldInput = _releaseAllHeldInput;
 window.addEventListener('blur', _releaseAllHeldInput);
 window.addEventListener('pagehide', _releaseAllHeldInput);
 document.addEventListener('visibilitychange', () => { if (document.hidden) _releaseAllHeldInput(); });
+
+// EDDIE SEQUENTIAL PLAYLIST — rAF stops while the tab is hidden, so the per-frame
+// _syncEddiePlaylistPause() cannot run. Pause/resume the playlist explicitly on focus
+// loss/regain. Never restarts or advances it — the track and index are preserved.
+window.addEventListener('blur',     () => game.audio?.pauseEddieUltimateTrack?.());
+window.addEventListener('pagehide', () => game.audio?.pauseEddieUltimateTrack?.());
+window.addEventListener('focus',    () => game._syncEddiePlaylistPause?.());
+document.addEventListener('visibilitychange', () => { game._syncEddiePlaylistPause?.(); });
 
 // ─── Mobile touch controls ──────────────────────────────────────────────────
 // Touch-device-gated (no-op on desktop). Injects into the SAME `keys` Set + synthetic

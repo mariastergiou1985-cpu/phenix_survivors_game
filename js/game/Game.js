@@ -18,7 +18,7 @@ import { SupportDrone }   from '../entities/SupportDrone.js?v=20260711750000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260713600000';
 import { SystemEventManager } from './Events.js?v=20260802000000';
-import { UpgradeUI }      from './UpgradeUI.js?v=20260810210000';
+import { UpgradeUI }      from './UpgradeUI.js?v=20260810250000';
 import { weightedSample } from './Upgrades.js?v=20260722500000';
 import { BuildEngineRuntime } from './BuildEngine.js?v=20260810100000';   // BUILD ENGINE — always on (full migration 2026-07-18)
 import './BuildEngineChars1.js?v=20260810100000';   // P2.3a Taekwondo+CyberArm (side-effect register)
@@ -51,7 +51,7 @@ import { Protocol0 } from '../effects/protocol-0.js?v=20260705000000';
 import { LaserEyes } from '../effects/laser-eyes.js?v=20260709100000';
 import { MeteorRain } from '../effects/meteor-rain.js?v=20260712100000';
 import { NpcWalker } from './NpcWalker.js?v=20260724000000';
-import { MapManager, BIOME_ID, BIOME_DEFS, CHUNK_SIZE } from './MapManager.js?v=20260810234000';
+import { MapManager, BIOME_ID, BIOME_DEFS, CHUNK_SIZE } from './MapManager.js?v=20260810250000';
 import { EventBus, EVENTS } from './EventBus.js?v=20260703990000';
 import { HostileProjectileDirector } from './HostileProjectileDirector.js?v=20260719200000';
 import { WaveDirector } from './WaveDirector.js?v=20260724000000';
@@ -1236,6 +1236,18 @@ export class Game {
       .catch(err => console.error('[P2.8] NULL ARSENAL failed to open', err));
   }
 
+  // Keeps the Eddie playlist in lockstep with the game's own pause state. Pausing never
+  // moves currentTrackIndex and never fires 'ended', so resume continues the SAME track.
+  _syncEddiePlaylistPause() {
+    if (!this.audio?.isEddiePlaylistActive?.()) return;
+    const hidden = (typeof document !== 'undefined') && document.hidden;
+    // NOTE: the level-up / mutation card overlays are deliberately NOT included — cutting a
+    // song for a 2-second card pick would be far more jarring than letting it play on.
+    const shouldPause = !!(this.paused || this.gameOver || this.victory || hidden ||
+                           this.gameState !== 'playing');
+    this.audio.setEddiePlaylistPaused?.(shouldPause);
+  }
+
   reset() {
     this.audio?.resetEddieRiffs?.();
     this._eddieUltimateMusicActive = false;
@@ -2354,9 +2366,9 @@ export class Game {
     this._mutationTimer    = MUTATION_INTERVAL;         // first forced mutation at 3:00 into Endless
     this._initializeEndlessStats();    // consolidated Endless stat stacking (protocols + chaos laws)
     this.audio?.startEndlessMusic();   // Endless-only track (dawn) replaces gameplay music
-    if (this._eddieUltimateMusicActive && this._feedbackApoc?.isActive()) {
-      this.audio?.resumeEddieUltimateTrack?.();
-    }
+    // EDDIE SEQUENTIAL PLAYLIST: the Act1 → Endless switch must not un-duck, restart or
+    // advance a running playlist — resume only (no-op when no playlist is active).
+    if (this.audio?.isEddiePlaylistActive?.()) this.audio?.resumeEddieUltimateTrack?.();
     // Mode-σωστό entry banner (Maria 2026-07-19): το Chaos ΔΕΝ είναι «STAGE 02» — έχει δικό
     // του announcement. Το _beginChaosRun σηκώνει το _enteringChaos flag πριν καλέσει εδώ.
     if (this._enteringChaos) this.triggerAnnouncement('NULL EDEN — CHAOS MODE', RED, { priority: 1 });   // mode transition
@@ -8681,6 +8693,7 @@ export class Game {
     // Fade system must tick in ALL states so screen transitions always complete.
     this._updateFade(dt);
     this._stageCompleteWatchdog();   // Phase 15: never stay frozen on the stage-complete banner
+    this._syncEddiePlaylistPause();  // Eddie playlist follows pause / game-over / tab-hidden
 
     if (this.gameState === 'start_menu') {
       this._updateStartMenu(dt, input);
@@ -8775,6 +8788,7 @@ export class Game {
           this._quiesceMovementInput();
           this.audio?.playLevelUp();
           this.upgradeUI = new UpgradeUI(choices);
+          this.upgradeUI.seedHover?.(this);   // P1-4: highlight under a stationary pointer
           this.rerollsLeft     = 2;     // two free rerolls per level-up screen
           // ── Relic: Blacknet Coupon — +1 bonus reroll per level-up ────────
           if (this._relicOn('blacknet_coupon')) this.rerollsLeft += 1;
@@ -16980,7 +16994,15 @@ export class Game {
     p.mana -= cost;
     const sp = this._playerScreenPos();
     this._feedbackApoc.trigger(sp.cx, sp.footY);
-    this._eddieUltimateMusicActive = !!this.audio?.playEddieUltimateTrack?.();
+    // EDDIE SEQUENTIAL PLAYLIST — only the FIRST ultimate of a run may touch the music.
+    // Every later ultimate keeps full damage / VFX / weapon gameplay above, but is a HARD
+    // NO-OP for audio: no track change, no restart, no skip, no index bump, no 2nd instance.
+    // (Second line of defence — AudioManager.playEddieUltimateTrack() enforces the same rule.)
+    if (p.selectedCharacter === 'eddie' &&
+        !this._eddieUltimateMusicActive &&
+        !this.audio?.isEddiePlaylistActive?.()) {
+      this._eddieUltimateMusicActive = !!this.audio?.playEddieUltimateTrack?.();
+    }
     this.screenShake.trigger(6, 0.3);
     this.audio?.playEventWarning?.();
     this.floatingTexts.push(new FloatingText('FEEDBACK APOCALYPSE!', p.pos.clone(), '#ff2d2d', 1.4));
@@ -17017,7 +17039,7 @@ export class Game {
       // 8 approved ultimate tracks are full 3–5 min songs. Do NOT cut the music when the VFX ends
       // — let the chosen track play out. AudioManager.onended (ultimate mode) restores the ducked
       // mode BGM on its own. Clear the Game-side latch only once the track has actually finished.
-      if (this._eddieUltimateMusicActive && !this.audio?.isEddieRiffsPlaying?.()) {
+      if (this._eddieUltimateMusicActive && !this.audio?.isEddiePlaylistActive?.()) {
         this._eddieUltimateMusicActive = false;
       }
     } catch (err) { console.warn('[FeedbackApoc]', err); }
@@ -30783,8 +30805,14 @@ _drawLoreArchive(ctx) {
     const W  = this._canvas.width, H = this._canvas.height;
     // Convert player world-pos → screen-pos via camera
     const cam = this.camera || { x: 0, y: 0 };
-    const sx  = this.player.pos.x - cam.x;
-    const sy  = this.player.pos.y - cam.y;
+    // P1-2c: the camera transform is scale(_viewScale) THEN translate(-cam.x,-cam.y), so a
+    // world-space delta must be multiplied by _viewScale to become a screen coordinate.
+    // Without it the vignette's transparent centre drifted below the bottom of the screen on
+    // the Chaos deck (measured y=740 instead of 629), putting the whole frame inside the dark
+    // ring — a second, softer moving darkness on top of the black veil.
+    const _vs = this._viewScale || 1;
+    const sx  = (this.player.pos.x - cam.x) * _vs;
+    const sy  = (this.player.pos.y - cam.y) * _vs;
     const rad = Math.min(W, H) * 0.65;
     const g   = ctx.createRadialGradient(sx, sy, rad * 0.3, sx, sy, rad);
     g.addColorStop(0, 'transparent');
@@ -32075,13 +32103,21 @@ _drawLoreArchive(ctx) {
     const AOE_R = 95;
     const RANGE = 720;
 
+    // P1-5: _brawlerTargets() allocates a fresh array PLUS one wrapper object PER ENEMY, and it
+    // was called up to 3x per live rocket per frame (two of them nested) — with 5 rockets and
+    // 200 enemies that is ~3000 short-lived objects every frame, a measured top-5 contributor to
+    // the 248-292 KB/frame garbage rate behind the recurring GC hitches. The list only changes
+    // when an enemy dies, and the AoE branch already re-checks hp>0 via _brawlerHit, so building
+    // it ONCE per frame is behaviour-identical.
+    const _rocketTargets = this._brawlerTargets();
+
     for (let i = this._vesselRockets.length - 1; i >= 0; i--) {
       const m = this._vesselRockets[i];
       m.life -= dt;
       if (m.life <= 0) { this._vesselRockets.splice(i, 1); continue; }
 
       let best = null, bestDist = Infinity;
-      for (const t of this._brawlerTargets()) {
+      for (const t of _rocketTargets) {
         const d = distance(t.obj.pos, { x: m.x, y: m.y });
         if (d < bestDist) { bestDist = d; best = t; }
       }
@@ -32103,11 +32139,11 @@ _drawLoreArchive(ctx) {
       for (const tr of m.trail) tr.a -= dt * 1.7;
 
       let boom = false;
-      for (const t of this._brawlerTargets()) {
+      for (const t of _rocketTargets) {
         if (distance(t.obj.pos, { x: m.x, y: m.y }) < (t.obj.radius || 28) + 14) { boom = true; break; }
       }
       if (boom) {
-        for (const t of this._brawlerTargets()) {
+        for (const t of _rocketTargets) {
           if (distance(t.obj.pos, { x: m.x, y: m.y }) <= AOE_R) {
             this._brawlerHit(t, (this._targetIsBoss(t) ? 0.55 : 1) * DMG, '#b24cff');
           }

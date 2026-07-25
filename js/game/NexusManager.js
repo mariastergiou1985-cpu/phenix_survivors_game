@@ -10,7 +10,7 @@
 
 import { Vec2, CORE_COLORS, WORLD_W } from '../constants.js';
 import { PowerMatrix } from '../entities/PowerMatrix.js?v=20260712090000';
-import { BIOME_ID, CHUNK_SIZE } from './MapManager.js?v=20260724000000';
+import { BIOME_ID, CHUNK_SIZE } from './MapManager.js?v=20260810250000';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 const NEXUS_PER_BIOME    = 1;     // 1 per outer biome

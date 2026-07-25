@@ -26,6 +26,11 @@ export class UpgradeUI {
 
     this.selectedIndex = 0;   // controller cursor — highlighted when a gamepad is active
     this.hoveredIndex = -1;
+    // P1-4: a panel that opens under a STATIONARY pointer must already show its hover ring.
+    // pointermove will not fire again until the player physically moves the mouse, so without
+    // this the card under the cursor had no highlight at all — the "hover/focus not working"
+    // half of the unreliable-card-selection report.
+    this.seedHover = (game) => { const mp = game && game._lastMousePos; if (mp) { try { this.updateHover(mp); } catch (_) {} } };
 
     // Reroll button centered below the cards
     const rbW = 240, rbH = 40;

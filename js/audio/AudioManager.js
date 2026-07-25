@@ -75,8 +75,19 @@ export class AudioManager {
     this._radioAudio    = null;   // PHENIX NULL RADIO — one lore broadcast per session (menu)
     this._radioPlayed   = false;
     this._currentMusic  = null;   // the single track that may be audible; gates _play retries
-    this._eddieRiffsAudio = null;
-    this._eddieRiffsPlaying = false;
+    // ── EDDIE ULTIMATE PLAYLIST — run-scoped state (owner-approved naming) ──────
+    // ONE ordered playlist per run: the FIRST Eddie ultimate starts track 1; every later
+    // track starts AUTOMATICALLY on the previous track's 'ended' event. Later ultimates
+    // NEVER touch the audio. After track 8 the playlist is COMPLETED for the whole run.
+    this.playlistActive       = false;  // a playlist is running right now (paused counts as running)
+    this.playlistCompleted    = false;  // all 8 tracks already played THIS run → no second cycle
+    this.currentTrackIndex    = -1;     // 0..7 while active, -1 when idle
+    this.currentAudioInstance = null;   // the ONE <audio> element the playlist may ever use
+    this.playlistOwner        = null;   // 'eddie' while owned, null when idle
+    this.playlistRunId        = 0;      // run ownership — bumped by resetEddieRiffs()
+    this._playlistGen         = 0;      // per-track generation — kills stale 'ended'/retry callbacks
+    this._eddieRiffsAudio = null;       // legacy alias of currentAudioInstance (kept for compat)
+    this._eddieRiffsPlaying = false;    // legacy flag read by isEddieRiffsPlaying() + ducking
     this._eddiePlaybackMode = null;
     this._eddieAlbumIdx = 0;
     this._eddieUltimateNextIdx = 0;
@@ -128,7 +139,10 @@ export class AudioManager {
 
   setMusicVolume(v) {
     this.musicVolume = clamp01(v);
-    this.musicGain.gain.value = this.musicVolume * (this._eddieRiffsPlaying ? 0.25 : 1);
+    // Respect BOTH mute and the Eddie-playlist duck, so moving the music slider mid-playlist
+    // can never un-duck the mode BGM underneath a running playlist (or un-mute it).
+    const base = this.muted ? 0 : this.musicVolume;
+    this.musicGain.gain.value = base * (this.playlistActive ? 0.25 : 1);
     if (this._eddieRiffsGain) this._eddieRiffsGain.gain.value = 0.9 * this.musicVolume;
     this._saveVolume(VOL_KEYS.music, this.musicVolume);
   }
@@ -208,10 +222,18 @@ export class AudioManager {
     audio.currentTime = 0;
   }
 
-  // Eddie GUITAR SOLO ALBUM — an ordered playlist. Song 1 plays, then the NEXT starts the instant
-  // the previous ends (via onended), looping back to the top after the last one. The map music is
-  // DUCKED to 25% for the whole album so the guitar is clearly in front. Routed direct to masterGain
-  // (duck-proof, like the radio). Idempotent while already playing. ADD MORE SONGS IN ORDER BELOW.
+  // ══ EDDIE ULTIMATE PLAYLIST ═════════════════════════════════════════════════
+  // The 8 approved tracks are ONE ordered playlist, scoped to a single run.
+  //   • The FIRST Eddie ultimate of a run starts the playlist at TRACK 1.
+  //   • Track N+1 starts AUTOMATICALLY when track N fires its 'ended' event — no
+  //     further ultimate is ever needed to advance the music.
+  //   • EVERY subsequent ultimate is a hard no-op for audio: no track change, no
+  //     restart, no skip, no index increment, no second audio instance.
+  //   • After track 8 the playlist COMPLETES: mode BGM un-ducks and no second cycle
+  //     can start until a full reset (death / menu / restart / character switch / new run).
+  // The map music is DUCKED to 25% for the whole playlist; the playlist itself is routed
+  // direct to masterGain (duck-proof, like the radio).
+  // DO NOT remove, replace, rename or reorder the 8 entries below.
   _EDDIE_ALBUM() {
     return [
       'assets/audio/music/eddie_riffs.mp3?v=20260707000000',            // 1
@@ -221,142 +243,223 @@ export class AudioManager {
       'assets/audio/music/lattice_integrity.mp3?v=20260707000000',      // 5
       'assets/audio/music/consensus.mp3?v=20260707000000',              // 6
       'assets/audio/music/convergence_protocol.mp3?v=20260707000000',   // 7
-      'assets/audio/music/home_synchronization.mp3?v=20260707000000',   // 8 (then loops to 1)
+      'assets/audio/music/home_synchronization.mp3?v=20260707000000',   // 8 (LAST — playlist ends here)
     ];
   }
 
-  _playEddieAlbumTrack(i) {
-    const a = this._eddieRiffsAudio;
-    if (!a) return null;
+  eddiePlaylistLength() { return this._EDDIE_ALBUM().length; }
+
+  // Duck the mode BGM under the playlist.
+  _duckModeMusicForPlaylist() {
+    try {
+      this.musicGain.gain.cancelScheduledValues?.(this.actx.currentTime);
+      this.musicGain.gain.setTargetAtTime((this.muted ? 0 : this.musicVolume) * 0.25, this.actx.currentTime, 0.08);
+    } catch (_) {}
+  }
+
+  // Restore the mode BGM to full level + re-label NOW PLAYING. Deliberately a NO-OP while
+  // the playlist is active, so a mid-run mode switch (Chaos at 21:00), the radio restore
+  // and the jukebox can never un-duck the music underneath a running playlist.
+  _restoreModeMusic() {
+    if (this.playlistActive) return;
+    try {
+      this.musicGain.gain.cancelScheduledValues?.(this.actx.currentTime);
+      this.musicGain.gain.setTargetAtTime(this.muted ? 0 : this.musicVolume, this.actx.currentTime, 0.6);
+    } catch (_) {}
+    if      (this._currentMusic === this._gameplayAudio) this.currentTrackTitle = 'NULL EDEN OST';
+    else if (this._currentMusic === this._endlessAudio)  this.currentTrackTitle = 'NYX';
+    else if (this._currentMusic === this._chaosAudio)    this.currentTrackTitle = 'Golden Override Protocol';
+    else if (this._currentMusic === this._menuAudio)     this.currentTrackTitle = 'Hope';
+  }
+
+  // Start ONE playlist track by index. Never called from outside — the only entry points are
+  // playEddieUltimateTrack() (index 0) and _onEddiePlaylistTrackEnded() (index+1).
+  _playPlaylistTrack(index) {
     const album = this._EDDIE_ALBUM();
-    this._eddieAlbumIdx = ((i % album.length) + album.length) % album.length;
-    const url = album[this._eddieAlbumIdx];
-    const trackId = url.split('/').pop().split('?')[0].replace(/\.mp3$/i, '');
-    this._eddieLastTrackId = trackId;
-    this._eddiePlayState = {
-      mode: this._eddiePlaybackMode,
-      index: this._eddieAlbumIdx,
-      trackId,
-      url,
-      result: 'pending',
+    // Clamped, NEVER modulo — the playlist must not wrap around into a second cycle.
+    const i = Math.max(0, Math.min(album.length - 1, index | 0));
+    const a = this.currentAudioInstance;
+    if (!a) return null;
+    const url     = album[i];
+    const trackId = url.split('/').pop().split('?')[0].replace(/\.[a-z0-9]+$/i, '');
+    this.currentTrackIndex     = i;
+    this._eddieAlbumIdx        = i;   // legacy mirrors (no longer drive selection)
+    this._eddieUltimateNextIdx = i;
+    this._eddieLastTrackId     = trackId;
+    // A new generation supersedes every earlier track, retry timer and pending 'ended'.
+    const gen = ++this._playlistGen;
+    this._eddiePlayToken = gen;       // legacy mirror
+    a.__eddieGen   = gen;
+    a.__eddieRunId = this.playlistRunId;
+    const state = this._eddiePlayState = {
+      mode: 'ultimate', index: i, trackNumber: i + 1, trackId, url,
+      gen, runId: this.playlistRunId, result: 'pending',
     };
-    const token = ++this._eddiePlayToken;
     const attempt = (remaining) => {
-      if (!this._eddieRiffsPlaying || token !== this._eddiePlayToken) return;
+      if (!this.playlistActive || gen !== this._playlistGen) return;   // superseded → die quietly
       let playResult;
       try { playResult = a.play(); }
       catch (_) {
         if (remaining > 0) setTimeout(() => attempt(remaining - 1), 250);
-        else if (this._eddiePlayState?.url === url) this._eddiePlayState.result = 'error';
+        else if (this._eddiePlayState === state) state.result = 'error';
         return;
       }
-      if (!playResult?.then) {
-        if (this._eddiePlayState?.url === url) this._eddiePlayState.result = 'playing';
+      if (!playResult || typeof playResult.then !== 'function') {
+        if (this._eddiePlayState === state) state.result = 'playing';
         return;
       }
       playResult.then(() => {
-        if (this._eddiePlayState?.url === url) this._eddiePlayState.result = 'playing';
+        if (this._eddiePlayState === state) state.result = 'playing';
       }).catch(() => {
         if (remaining > 0) setTimeout(() => attempt(remaining - 1), 250);
-        else if (this._eddiePlayState?.url === url) this._eddiePlayState.result = 'blocked';
+        else if (this._eddiePlayState === state) state.result = 'blocked';
       });
     };
     try {
       a.src = url;
-      a.currentTime = 0;
+      try { a.currentTime = 0; } catch (_) {}
       this.currentTrackTitle = `EDDIE // ${trackId.replace(/_/g, ' ').toUpperCase()}`;
       attempt(10);
-    } catch (_) { this._eddiePlayState.result = 'error'; }
-    return this._eddiePlayState;
+    } catch (_) { state.result = 'error'; }
+    return state;
   }
 
+  // The SINGLE place the playlist advances. Wired once, to the one audio instance.
+  // Every stale-callback path is rejected before anything moves.
+  _onEddiePlaylistTrackEnded(instance) {
+    if (!this.playlistActive) return;                            // stopped/reset → stale
+    if (!instance || instance !== this.currentAudioInstance) return;  // not the live instance
+    if (instance.__eddieGen   !== this._playlistGen) return;      // superseded track → stale
+    if (instance.__eddieRunId !== this.playlistRunId) return;     // PREVIOUS RUN's callback → stale
+    const last = this._EDDIE_ALBUM().length - 1;                 // 7
+    if (this.currentTrackIndex < last) {
+      this._playPlaylistTrack(this.currentTrackIndex + 1);        // 1→2→3→…→8, automatically
+      return;
+    }
+    // ── Track 8 finished → the playlist is DONE for this whole run ──────────────
+    this.playlistActive     = false;
+    this.playlistCompleted  = true;
+    this.playlistOwner      = null;
+    this.currentTrackIndex  = -1;
+    this._eddieRiffsPlaying = false;
+    this._eddiePlaybackMode = null;
+    this._eddiePlayState    = null;
+    this._playlistGen++;                                          // invalidate in-flight retries
+    this._eddiePlayToken = this._playlistGen;
+    try { instance.pause(); instance.currentTime = 0; } catch (_) {}
+    this._restoreModeMusic();                                     // mode BGM back to full level
+  }
+
+  // Lazily build THE ONE audio instance. Called only from playEddieUltimateTrack(), so a
+  // second element can never exist: everything after the first call reuses this instance.
   _ensureEddieRiffsAudio() {
-    if (this._eddieRiffsAudio) return this._eddieRiffsAudio;
+    if (this.currentAudioInstance) return this.currentAudioInstance;
     try {
       const a = new Audio();
       a.loop = false; a.preload = 'auto';
-      a.onerror = () => console.warn('[Audio] Eddie album track failed to load');
+      a.onerror = () => console.warn('[Audio] Eddie playlist track failed to load');
       const src = this.actx.createMediaElementSource(a);
       const g   = this.actx.createGain(); g.gain.value = 0.9 * this.musicVolume;
       src.connect(g); g.connect(this.masterGain);
       try { g.connect(this.analyser); } catch (_) {}
-      a.onended = () => {
-        if (!this._eddieRiffsPlaying) return;
-        if (this._eddiePlaybackMode === 'album') {
-          this._playEddieAlbumTrack((this._eddieAlbumIdx || 0) + 1);
-        } else {
-          this.stopEddieRiffs();
-        }
-      };
-      this._eddieRiffsAudio = a;
-      this._eddieRiffsGain = g;
+      a.onended = () => this._onEddiePlaylistTrackEnded(a);
+      this.currentAudioInstance = a;
+      this._eddieRiffsAudio     = a;   // legacy alias
+      this._eddieRiffsGain      = g;
       return a;
     } catch (_) { return null; }
   }
 
-  playEddieRiffs() {
-    if (this.muted) return null;
-    if (this._eddieRiffsPlaying && this._eddiePlaybackMode === 'album') return this._eddiePlayState;
-    try {
-      const a = this._ensureEddieRiffsAudio();
-      if (!a) return null;
-      if (this.actx.state === 'suspended') this.actx.resume().catch(() => {});
-      this.musicGain.gain.setTargetAtTime((this.muted ? 0 : this.musicVolume) * 0.25, this.actx.currentTime, 0.4);
-      this._eddiePlaybackMode = 'album';
-      this._eddieRiffsPlaying = true;
-      return this._playEddieAlbumTrack(this._eddieAlbumIdx || 0);
-    } catch (_) { return null; }
-  }
+  // Legacy entry point (Eddie GUITAR SOLO "album"). No call sites remain in the game; kept
+  // as a STRICT alias so it can never open a second, competing audio path.
+  playEddieRiffs() { return this.playEddieUltimateTrack(); }
 
-  playEddieUltimateTrack(requestedIndex = null) {
-    if (this.muted) return null;
+  // ── THE ONLY PUBLIC START ──────────────────────────────────────────────────
+  // First Eddie ultimate of a run → start at track 1. Every later ultimate → hard no-op.
+  // Returns a truthy play-state while the playlist owns the audio (the Game latch reads it).
+  playEddieUltimateTrack() {
+    if (this.playlistActive)    return this._eddiePlayState;   // GUARD: already running → no-op
+    if (this.playlistCompleted) return null;                   // GUARD: all 8 played this run → no-op
+    if (this.muted)             return null;
     try {
       const a = this._ensureEddieRiffsAudio();
       if (!a) return null;
-      try { a.pause(); } catch (_) {}
       if (this.actx.state === 'suspended') this.actx.resume().catch(() => {});
-      this.musicGain.gain.setTargetAtTime(this.musicVolume * 0.25, this.actx.currentTime, 0.08);
-      const album = this._EDDIE_ALBUM();
-      const index = requestedIndex == null
-        ? this._eddieUltimateNextIdx % album.length
-        : ((requestedIndex % album.length) + album.length) % album.length;
-      this._eddieUltimateNextIdx = (index + 1) % album.length;
+      this.playlistActive     = true;
+      this.playlistOwner      = 'eddie';
+      this._eddieRiffsPlaying = true;        // legacy flag (ducking + isEddieRiffsPlaying)
       this._eddiePlaybackMode = 'ultimate';
-      this._eddieRiffsPlaying = true;
-      return this._playEddieAlbumTrack(index);
-    } catch (_) { return null; }
+      this._duckModeMusicForPlaylist();
+      return this._playPlaylistTrack(0);     // TRACK 1
+    } catch (_) {
+      this.playlistActive = false; this._eddieRiffsPlaying = false; this.playlistOwner = null;
+      return null;
+    }
   }
 
-  // Stop the album (performance ended / death / menu) and restore the map-music level.
+  // Stop the playlist and restore the map-music level.
+  //   resetRotation:false → run-end stop (keeps playlistCompleted as-is)
+  //   resetRotation:true  → FULL reset: new run owns the playlist, track 1 is armed again
   stopEddieRiffs({ resetRotation = false } = {}) {
-    this._eddieRiffsPlaying = false;                  // set FIRST so onended never chains a new song
-    this._eddiePlayToken++;
-    const a = this._eddieRiffsAudio;
-    if (a) { try { a.pause(); a.currentTime = 0; } catch (_) {} }
-    this.musicGain.gain.setTargetAtTime(this.muted ? 0 : this.musicVolume, this.actx.currentTime, 0.6);
+    const a = this.currentAudioInstance;
+    this.playlistActive     = false;   // set FIRST so 'ended'/retries can never chain a new track
+    this._eddieRiffsPlaying = false;
+    this._playlistGen++;
+    this._eddiePlayToken    = this._playlistGen;
     this._eddiePlaybackMode = null;
-    this._eddieAlbumIdx = 0;
-    if (resetRotation) this._eddieUltimateNextIdx = 0;
-    if (this._currentMusic === this._gameplayAudio) this.currentTrackTitle = 'NULL EDEN OST';
-    else if (this._currentMusic === this._endlessAudio) this.currentTrackTitle = 'NYX';
-    else if (this._currentMusic === this._chaosAudio) this.currentTrackTitle = 'Golden Override Protocol';
-    else if (this._currentMusic === this._menuAudio) this.currentTrackTitle = 'Hope';
+    this._eddiePlayState    = null;
+    this.currentTrackIndex  = -1;
+    this._eddieAlbumIdx     = 0;
+    if (a) { try { a.pause(); a.currentTime = 0; } catch (_) {} }
+    if (resetRotation) {
+      this.playlistCompleted     = false;
+      this.playlistOwner         = null;
+      this.playlistRunId++;            // run ownership: old 'ended' callbacks are now stale
+      this._eddieUltimateNextIdx = 0;
+      this._eddieLastTrackId     = null;
+    }
+    this._restoreModeMusic();
   }
 
-  resetEddieRiffs() { this.stopEddieRiffs({ resetRotation: true }); }
+  // FULL reset — death / return to menu / restart / character switch / second run.
+  resetEddieRiffs()   { this.stopEddieRiffs({ resetRotation: true }); }
+  resetEddiePlaylist(){ this.resetEddieRiffs(); }              // owner-facing alias
   stopEddieUltimateTrack() { this.stopEddieRiffs(); }
+
+  // ── PAUSE / RESUME / FOCUS ─────────────────────────────────────────────────
+  // Neither of these ever starts, restarts, skips or advances the playlist. They only
+  // pause/un-pause the track already loaded in the single instance, so the playlist index
+  // is untouched and 'ended' cannot fire while paused.
+  pauseEddieUltimateTrack() {
+    if (!this.playlistActive) return false;
+    const a = this.currentAudioInstance;
+    if (a && !a.paused) { try { a.pause(); } catch (_) {} return true; }
+    return false;
+  }
   resumeEddieUltimateTrack() {
-    if (this._eddieRiffsPlaying && this._eddiePlaybackMode === 'ultimate') return this._eddiePlayState;
-    const index = this._eddiePlayState?.mode === 'ultimate' ? this._eddiePlayState.index : null;
-    return this.playEddieUltimateTrack(index);
+    if (!this.playlistActive) return null;                     // completed/stopped → never restarts
+    const a = this.currentAudioInstance;
+    if (!a) return null;
+    if (this.actx.state === 'suspended') this.actx.resume().catch(() => {});
+    if (a.paused) { try { const r = a.play(); r?.catch?.(() => {}); } catch (_) {} }
+    this._duckModeMusicForPlaylist();                          // re-assert the duck after a mode switch
+    return this._eddiePlayState;
+  }
+  // Called every frame by Game — keeps the playlist in lockstep with the game's pause state.
+  setEddiePlaylistPaused(shouldPause) {
+    if (shouldPause) return this.pauseEddieUltimateTrack();
+    return this.resumeEddieUltimateTrack();
   }
 
   // Track length in seconds (0 until metadata has loaded).
   eddieRiffsDuration() {
-    const d = this._eddieRiffsAudio && this._eddieRiffsAudio.duration;
+    const d = this.currentAudioInstance && this.currentAudioInstance.duration;
     return (d && isFinite(d)) ? d : 0;
   }
-  isEddieRiffsPlaying() { return !!this._eddieRiffsPlaying; }
+  isEddieRiffsPlaying()    { return !!this.playlistActive; }
+  isEddiePlaylistActive()  { return !!this.playlistActive; }
+  isEddiePlaylistDone()    { return !!this.playlistCompleted; }
+  eddiePlaylistTrackNumber() { return this.playlistActive ? this.currentTrackIndex + 1 : 0; }
 
   // ── OST JUKEBOX (Collectibles screen) — play a single chosen track on demand, ducking the menu
   // music underneath. Lazily wired; degrades safely. stopJukebox() restores the music level. ──
@@ -371,7 +474,7 @@ export class AudioManager {
         src.connect(g); g.connect(this.masterGain);   // direct to master — duck-proof
         try { g.connect(this.analyser); } catch (_) {}
         a.onended = () => {
-          this.musicGain.gain.setTargetAtTime(this.muted ? 0 : this.musicVolume, this.actx.currentTime, 0.5);
+          this._restoreModeMusic();   // NO-OP while an Eddie playlist is ducking the BGM
           this._jukeboxPlaying = false;
         };
         this._jukeboxAudio = a;
@@ -389,7 +492,7 @@ export class AudioManager {
   stopJukebox() {
     const a = this._jukeboxAudio;
     if (a) { try { a.pause(); } catch (_) {} }
-    this.musicGain.gain.setTargetAtTime(this.muted ? 0 : this.musicVolume, this.actx.currentTime, 0.5);
+    this._restoreModeMusic();   // NO-OP while an Eddie playlist is ducking the BGM
     this._jukeboxPlaying = false;
   }
 
@@ -425,8 +528,8 @@ export class AudioManager {
       this.musicGain.gain.setTargetAtTime((this.muted ? 0 : this.musicVolume) * 0.25, this.actx.currentTime, 0.4);
       this.currentTrackTitle = 'PHENIX NULL RADIO — ONLINE';
       const restore = () => {
-        this.musicGain.gain.setTargetAtTime(this.muted ? 0 : this.musicVolume, this.actx.currentTime, 0.6);
-        if (this._currentMusic === this._menuAudio) this.currentTrackTitle = 'Hope';
+        this._restoreModeMusic();   // NO-OP while an Eddie playlist is ducking the BGM
+        // (NOW PLAYING is relabelled inside _restoreModeMusic — never while a playlist runs)
         this._radioAudio = null;
       };
       audio.onended = restore;
@@ -482,7 +585,7 @@ export class AudioManager {
     this._stop(this._gameplayAudio);
     this._stop(this._endlessAudio);
     this._stop(this._chaosAudio);
-    this.stopEddieRiffs();   // run reset/menu entry owns rotation reset
+    this.resetEddieRiffs();  // run end (death/victory) — FULL playlist reset, track 1 armed again
     this.stopJukebox();      // and any OST jukebox track
   }
 
