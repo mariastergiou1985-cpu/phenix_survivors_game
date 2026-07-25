@@ -13,7 +13,7 @@ import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260712090000';
 import { Player }         from '../entities/Player.js?v=20260810210000';
 import { XpShardSystem }  from '../entities/XpShards.js?v=20260724000000';   // Phase 1: physical Data-XP
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260706270000';
-import { Enemy, preloadAllWeaponSprites, selectHpBarEnemies } from '../entities/Enemy.js?v=20260810210000';
+import { Enemy, preloadAllWeaponSprites, selectHpBarEnemies } from '../entities/Enemy.js?v=20260810260000';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=20260711750000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260713600000';

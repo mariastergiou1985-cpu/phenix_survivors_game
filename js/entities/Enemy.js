@@ -196,6 +196,10 @@ export class Enemy {
     this.archetype = this._archetypeForType(enemyType);
     if (this.archetype !== 'ranged' && this.archetype !== 'miniboss' && this.archetype !== 'boss')
       this.shootInterval = null;
+    // P6A BATCH 1A — MOVEMENT COUNTERPLAY GOVERNOR. Applied here (after the archetype is known)
+    // as a CEILING on the authored speed, never a per-frame rubber-band against the live player:
+    // character speed identity, Move Speed upgrades and enemy role identity all survive intact.
+    this._applySpeedGovernor(minute);
     // §4 Οργανική κίνηση: σταθερή, deterministic παραλλαγή ταχύτητας ανά enemy (LCG seed) —
     // όχι random jitter ανά frame. Ίδια σε όλη τη ζωή του enemy.
     Enemy._seedLCG = ((Enemy._seedLCG || 12345) * 9301 + 49297) % 233280;
@@ -625,6 +629,41 @@ export class Enemy {
     if (side === 'bottom') return new Vec2(B.left + Math.random() * (B.right - B.left), B.bottom + 20);
     if (side === 'left')   return new Vec2(B.left - 20, B.top + 70 + Math.random() * (B.bottom - B.top - 70));
     return new Vec2(B.right + 20, B.top + 70 + Math.random() * (B.bottom - B.top - 70));
+  }
+
+  // ═══ P6A BATCH 1A — ROLE-BASED SPEED BANDS ════════════════════════════════════
+  // MEASURED ROOT CAUSE (102-run deterministic telemetry): normal enemies reached up to
+  // 1.88x the player's speed, so kiting bought only 0-5s, no Endless/Chaos run survived past
+  // 3.5 min, and 0 evolutions ever fired in 102 runs. Movement had stopped being counterplay.
+  // Two compounding causes, both fixed here and ONLY here:
+  //   1) authored speeds already sat inside the player's 189-276 px/s envelope at minute 0
+  //      (Neon Swarmer/Cybermote 235, Volt Rat 220), and
+  //   2) `d = 1 + minute*0.035` scaled speed WITHOUT BOUND — by minute 20 fodder ran ~400 px/s,
+  //      faster than every character alive.
+  // The fix is a CEILING per role, expressed against the roster's reference speed, plus a cap on
+  // the time term for SPEED only. HP / contact damage / the `g` difficulty ramp are untouched:
+  // late game still gets harder, it just stops doing it by outrunning the player.
+  // NOT a rubber-band: no reference to the live player object, so a fast character stays fast, a
+  // slow character stays slow, Move Speed upgrades still matter, and the slowest character (189)
+  // is still legitimately outrun by the `fast`/`charger` roles — which is their design purpose.
+  static SPEED_REF      = 230;    // Player.baseSpeed baseline (roster spans 189-276)
+  static SPEED_TIME_CAP = 1.15;   // ceiling on the minute term for SPEED only (HP/dmg keep ramping)
+  static SPEED_CAND     = 0.82;   // standard-pursuer band — QA candidates 0.82 / 0.90 / 0.98
+  // Ceilings as a fraction of (SPEED_REF * SPEED_CAND). Ordering preserves role identity:
+  // tanks slowest, fodder slow, the `fast` hunter at the band, chargers allowed a burst above it.
+  static SPEED_BANDS = {
+    heavy: 0.62, shield: 0.66, fodder: 0.80, ranged: 0.86,
+    swarm: 0.92, fast: 1.00, charger: 1.06, miniboss: 0.84, boss: 0.86,
+  };
+  _applySpeedGovernor(minute) {
+    // Mega Titans / the designed run-terminator class are exempt: an explicitly authored final
+    // threat is ALLOWED to be inescapable. Everything the horde is made of is not.
+    if (this.isMegaBoss || Enemy.CHAOS_TITANS?.has?.(this.enemyType)) return;
+    const band = Enemy.SPEED_BANDS[this.archetype];
+    if (!band) return;                                  // unknown archetype -> leave authored value
+    const t   = Math.min(1 + (minute || 0) * 0.035, Enemy.SPEED_TIME_CAP);
+    const cap = Enemy.SPEED_REF * Enemy.SPEED_CAND * band * t;
+    if (this.baseSpeed > cap) { this.baseSpeed = cap; this._baseSpeedFull = cap; }
   }
 
   _statsForType(type, minute) {
