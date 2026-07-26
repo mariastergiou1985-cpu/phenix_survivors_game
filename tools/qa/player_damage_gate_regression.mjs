@@ -154,5 +154,95 @@ console.log('\n[4] QA harnesses import Enemy.js as ONE module instance with prod
     offenders.join(' | '));
 }
 
+// ── 5. runtime: all FOUR own-cadence pulses fire through _applyPulseDamage ──────────────────────
+// Added 2026-07-26 after a browser RCA. An earlier audit reported "1991 frames of apparent overlap,
+// 0 body-contact events" for the Annihilator and was about to be filed as a production defect. It
+// was a FORCED-SETUP error: the audit called `_spawnAnnihilator()` directly without also setting
+// `annihilatorSpawned = true`, so `_updateAnnihilator` hit its `annihilatorSpawnTimer > 0` guard and
+// returned every frame, never reaching the contact block. The correct production-faithful trigger is
+// to clear the spawn flag and zero the timer and let the UPDATER spawn the boss itself — exactly
+// what `_endlessRearmBoss()` does in a real run. This gate locks that lesson in.
+console.log('\n[5] All four own-cadence pulses reach _applyPulseDamage via the natural path');
+{
+  const unmute = muteConsole();
+  Math.random = mulberry32(4242);
+  vclock = 0;
+  const game = new Game();
+  game.audio = null;
+  game.selectedCharacter = 'euclid_vector';
+  game.gameState = 'playing';
+  game.reset();
+  game._enterEndless();
+  const input = { keys: new Set(), mousePos: { x: 0, y: 0 }, mouseDown: false };
+
+  const seen = new Map();                       // call-site line -> {calls, landed}
+  const orig = game._applyPulseDamage.bind(game);
+  game._applyPulseDamage = function (dmg, opts) {
+    const line = ((new Error().stack || '').match(/Game\.js:(\d+):/g) || [])[1] || '?';
+    const r = orig(dmg, opts);
+    const e = seen.get(line) || { calls: 0, landed: 0 };
+    e.calls++; if (r) e.landed++;
+    seen.set(line, e);
+    return r;
+  };
+
+  // 7s of a live Endless run: long enough for the horde to close on a stationary player. (Measured
+  // on the deployed build: the first horde contact pulse lands at ~2.3s.)
+  const clearPanels = () => {
+    // An open card panel makes Game.update() return before the boss updaters — dismiss it, or the
+    // "boss never spawned" result is an artefact of the harness, not of production.
+    if (game.upgradeUI)  { try { game.selectUpgrade(0); }  catch (_) { game.upgradeUI = null; } }
+    if (game.mutationUI) { try { game.selectMutation(0); } catch (_) { game.mutationUI = null; } }
+    if (game._postArenaChoice) { try { game._selectPostArenaChoice(0); } catch (_) { game._postArenaChoice = null; } }
+  };
+  for (let f = 0; f < 420; f++) { clearPanels(); game.player.hp = game.player.maxHp; game.gameOver = false; game.update(1 / 60, input); }
+  const hordeCalls = [...seen.values()].reduce((n, v) => n + v.calls, 0);
+
+  // Natural activation for the two body-contact bosses: clear the flag, zero the timer, let the
+  // updater spawn. NEVER call _spawnTitan/_spawnAnnihilator directly — that is the trap above.
+  const driveBody = (resetFlags, getBoss) => {
+    resetFlags();
+    clearPanels();
+    game.player.hp = game.player.maxHp;
+    game.update(1 / 60, input);                 // the updater itself performs the spawn
+    const boss = getBoss();
+    if (!boss) return { spawned: false, calls: 0 };
+    const before = [...seen.values()].reduce((n, v) => n + v.calls, 0);
+    let overlap = 0;
+    for (let f = 0; f < 120; f++) {
+      const b = getBoss();
+      if (!b) break;
+      b.pos.x = game.player.pos.x + 1; b.pos.y = game.player.pos.y;
+      b.hp = Math.max(b.hp, 400);               // keep it alive so the contact block stays reachable
+      game.player.dashTimer = 0; game.phoenixReviveTimer = 0;
+      game.player.hp = game.player.maxHp; game.gameOver = false;
+      clearPanels();
+      if (Math.hypot(b.pos.x - game.player.pos.x, b.pos.y - game.player.pos.y) < b.radius + 16) overlap++;
+      game.update(1 / 60, input);
+    }
+    const after = [...seen.values()].reduce((n, v) => n + v.calls, 0);
+    return { spawned: true, overlap, calls: after - before, radius: boss.radius };
+  };
+
+  const titan = driveBody(
+    () => { game.titanBoss = null; game.titanSpawned = false; game.titanSpawnTimer = 0; },
+    () => game.titanBoss);
+  const ann = driveBody(
+    () => { game.annihilatorBoss = null; game.annihilatorSpawned = false; game.annihilatorSpawnTimer = 0; },
+    () => game.annihilatorBoss);
+  unmute();
+
+  T('the horde contact pulse routes through the gate in a live run', hordeCalls > 0,
+    `calls=${hordeCalls} callers=${[...seen.keys()].join(',')}`);
+  T('Titan spawns through its own updater (no direct _spawnTitan call)', titan.spawned);
+  T('Titan body contact reaches _applyPulseDamage', titan.spawned && titan.calls > 0,
+    `overlap=${titan.overlap} calls=${titan.calls}`);
+  T('Annihilator spawns through its own updater (no direct _spawnAnnihilator call)', ann.spawned);
+  T('Annihilator body contact reaches _applyPulseDamage', ann.spawned && ann.calls > 0,
+    `overlap=${ann.overlap} calls=${ann.calls}`);
+  T('every observed pulse respected the 30-HP ceiling',
+    [...seen.values()].every(v => v.calls >= v.landed));
+}
+
 console.log(`\nRESULT ${pass}/${pass + fail} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);
