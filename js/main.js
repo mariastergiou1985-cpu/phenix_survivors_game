@@ -1,4 +1,4 @@
-import { Game } from './game/Game.js?v=20260811000000';
+import { Game } from './game/Game.js?v=20260812000000';
 import { AudioManager } from './audio/AudioManager.js?v=20260810250000';
 import { PlatformAchievements } from './platform/PlatformAchievements.js?v=20260712370000';
 // Steam build: replay any web-earned achievements to Steam on boot (no-op in browsers)
@@ -60,9 +60,15 @@ window.addEventListener('keydown', e => {
   const key = e.key.toLowerCase();
   if (SCROLL_KEYS.has(key)) e.preventDefault();
 
-  const movementBlocked = game.gameState === 'playing' &&
-    (game.paused || game.upgradeUI || game.mutationUI || game.gameOver || game.victory);
-  if (!(movementBlocked && MOVEMENT_KEYS.has(key))) keys.add(key);
+  // RAW PHYSICAL STATE (2026-07-26, P1 held-movement resume). `keys` is the authoritative record
+  // of what is ACTUALLY held down, and it is now updated unconditionally. It used to drop movement
+  // keydowns while a card panel / pause was up, which broke two cases Maria hit in real play:
+  // a key pressed during the panel was never recorded, and — combined with the modal quiesce that
+  // wiped this Set — a key held THROUGH the panel came back as "not held" and the character stood
+  // still until she released and pressed again. Suppressing movement is NOT this listener's job:
+  // Game.update() returns before the player is touched while paused / upgradeUI / mutationUI /
+  // gameOver / victory, so the world is already frozen and nothing can leak through.
+  keys.add(key);
   // (Audio init handled by _initAudioOnGesture on document — covers overlay clicks too)
 
   // Forced mutation card selection (1/2/3 only — NO skip, NO reroll; ESC cannot close it)
@@ -660,6 +666,18 @@ function _releaseAllHeldInput() {
   game.player?.cancelMovement?.();
 }
 game._releaseHeldInput = _releaseAllHeldInput;
+
+// MODAL QUIESCE — deliberately NOT the same path as _releaseAllHeldInput (2026-07-26).
+// Focus loss means the physical keyboard state becomes UNKNOWABLE, so clearing everything is the
+// only safe answer there. A card panel is the opposite situation: the window still has focus, the
+// key is still physically down, and the browser will not tell us again until the user releases it.
+// Wiping `keys` here is what forced a release/re-press after every level-up. So this clears only
+// the transient pointer latch (a card is selected on mousedown; without this the held button would
+// carry straight into auto-fire) and leaves the keyboard, gamepad and touch state untouched.
+function _quiesceModalInput() {
+  mouseDown = false;
+}
+game._quiesceModalInput = _quiesceModalInput;
 window.addEventListener('blur', _releaseAllHeldInput);
 window.addEventListener('pagehide', _releaseAllHeldInput);
 document.addEventListener('visibilitychange', () => { if (document.hidden) _releaseAllHeldInput(); });

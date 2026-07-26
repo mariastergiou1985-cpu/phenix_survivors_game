@@ -8681,8 +8681,14 @@ export class Game {
     this._quiesceMovementInput();
   }
 
+  // Called when a card / mutation panel opens or closes. It must stop the player MOVING, not
+  // forget which keys the hands are on: Game.update() already returns before the player while a
+  // panel is up, so zeroing the velocity here is enough, and the raw held state has to survive so
+  // movement resumes on the very first frame after the panel closes (2026-07-26 P1).
+  // _releaseHeldInput() stays reserved for blur / page-hide / menu, where the physical keyboard
+  // state genuinely cannot be known any more.
   _quiesceMovementInput() {
-    this._releaseHeldInput?.();
+    this._quiesceModalInput?.();
     this.player?.cancelMovement?.();
   }
 

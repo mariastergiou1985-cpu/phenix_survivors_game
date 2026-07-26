@@ -264,8 +264,15 @@ console.log('\n-- D. allocation and cursor/card lifecycle --');
     !/inCombat \? 'none'/.test(MAIN_SRC));
   gate('mousedown refreshes scaled canvas coordinates before card hit-testing',
     /canvas\.addEventListener\('mousedown',[\s\S]{0,160}mousePos = _canvasPoint\(e\);[\s\S]{0,80}game\.setMousePos\(mousePos\)/.test(MAIN_SRC));
-  gate('blocked modal movement keys are not added to the held-input set',
-    /movementBlocked[\s\S]{0,220}!\(movementBlocked && MOVEMENT_KEYS\.has\(key\)\)/.test(MAIN_SRC));
+  // CONTRACT CHANGED 2026-07-26 (P1 held-movement resume). This used to assert the OPPOSITE: that
+  // movement keys were dropped from the held set while a modal was up. That is what lost a key held
+  // through a level-up. Suppression belongs to Game.update()'s freeze, not to the keydown listener,
+  // so the raw set now records everything. Full coverage lives in held_movement_resume_regression.
+  gate('the raw held-key set records movement keys even while a modal is up',
+    !/movementBlocked && MOVEMENT_KEYS\.has\(key\)/.test(MAIN_SRC) && /^\s*keys\.add\(key\);/m.test(MAIN_SRC));
+  gate('closing a card panel does not wipe the raw held-key set',
+    /_quiesceMovementInput\(\)\s*\{[\s\S]{0,300}_quiesceModalInput/.test(GAME_SRC) &&
+    !/_quiesceMovementInput\(\)\s*\{[\s\S]{0,300}_releaseHeldInput/.test(GAME_SRC));
   gate('focus release also cancels active player movement',
     /function _releaseAllHeldInput[\s\S]{0,260}game\.player\?\.cancelMovement\?\.\(\)/.test(MAIN_SRC));
 
