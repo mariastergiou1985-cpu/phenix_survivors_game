@@ -2351,9 +2351,9 @@ export class Game {
     this._cybermoteTimer   = 300;           // CYBERMOTE pack every 5 min (Endless + Chaos)
     this.nullEcho          = null;
     this.nullEchoZones     = [];
-    this._nullEchoTimer    = 600;           // NULL ECHO every 10 min — the apex event (Claude's own)
+    this._nullEchoTimer    = 600;           // NULL ECHO every 10 min — the apex event
     this.nullWyrm          = null;
-    this._nullWyrmTimer    = 420;           // NULL WYRM every 7 min (Claude's second signature event)
+    this._nullWyrmTimer    = 420;           // NULL WYRM every 7 min (second signature event)
     // Phoenix revives reset on Endless entry: Act 1 uses must not consume the Endless pool.
     // (startEndlessRun already calls reset() which zeroes these; this guard covers continueEndless.)
     this.phoenixReviveCount = 0;
@@ -18610,7 +18610,7 @@ export class Game {
     }
   }
 
-  // ── NULL WYRM (Claude's second signature event, 2026-07-16) — every 7 min, Endless+Chaos. ──
+  // ── NULL WYRM (second signature event, 2026-07-16) — every 7 min, Endless+Chaos. ──
   // A colossal WIREFRAME DATA-SERPENT: 22 counter-rotating hex vertebrae threaded on a
   // white-hot spine, slithering across the arena in a sine sweep. Its PATH is telegraphed
   // as a fading guide-line before entry; touching the body burns. It crosses, banks once
@@ -18735,7 +18735,7 @@ export class Game {
     ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
   }
 
-  // ── NULL ECHO (Claude's own event, 2026-07-12) — every 10 min, Endless + Chaos. ──
+  // ── NULL ECHO (signature event, 2026-07-12) — every 10 min, Endless + Chaos. ──
   // The Grid compiles a corrupted mirror of YOUR character. It stalks you for 30s and
   // attacks with a twisted version of that character's own signature — a DIFFERENT
   // pattern per pilot. Every attack is telegraphed and dodgeable; dash/phoenix protect
