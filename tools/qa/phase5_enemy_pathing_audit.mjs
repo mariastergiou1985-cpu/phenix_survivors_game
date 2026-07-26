@@ -1,7 +1,12 @@
 // Phase 5B read-only production-path audit: enemy pursuit, contact and crowd traffic.
+import { register } from 'node:module';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+
+// See enemy_pressure_stationary_matrix.mjs: a custom query makes Node load a SECOND Enemy module,
+// so overrides made here would not reach the Game instance under audit.
+register('./strip-v-loader.mjs', import.meta.url);
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '../..');
@@ -10,8 +15,8 @@ installEnv();
 
 const restoreImportConsole = muteConsole();
 const { Vec2, PLAYER_RADIUS } = await import(pathToFileURL(path.join(ROOT, 'js/constants.js')).href);
-const { Enemy } = await import(pathToFileURL(path.join(ROOT, 'js/entities/Enemy.js')).href + '?phase5_pathing_audit');
-const { Game } = await import(pathToFileURL(path.join(ROOT, 'js/game/Game.js')).href + '?phase5_pathing_audit');
+const { Enemy } = await import(pathToFileURL(path.join(ROOT, 'js/entities/Enemy.js')).href);
+const { Game } = await import(pathToFileURL(path.join(ROOT, 'js/game/Game.js')).href);
 restoreImportConsole();
 
 const DT = 1 / 60;

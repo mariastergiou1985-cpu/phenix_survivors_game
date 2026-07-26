@@ -488,6 +488,11 @@ const NEXUS_RECHARGE_THRESHOLD = 100;    // kills needed to add +1 Nexus charge
 // and per-second soft caps on how fast the player's PRIMARY/auto-weapons can burn a boss
 // down (ultimates and DoT are capped elsewhere and do NOT route through these).
 const BOSS_MAX_PLAYER_HIT = 30;
+// Lightning Storm anti-chain window. Measured 2026-07-26 (instrumented probe, stationary player,
+// Endless): strike zones spawn every 0.55s and 70% of them are aimed within 70px of the player, so
+// bolts landed every ~0.57s for 30 HP each (the per-hit ceiling) — 10 strikes, 268 HP, dead in under
+// 3s from full. The bolt stays exactly as heavy; it just cannot chain-delete inside one storm.
+const LIGHTNING_HIT_CD    = 1.2;
 const BOSS_DPS_CAP_MINI   = 60;   // titan / annihilator / bloodfang mini-bosses
 const BOSS_DPS_CAP_MEGA   = 40;   // promoted main boss (isMegaBoss)
 
@@ -515,7 +520,11 @@ const DD_ROCKET_DMG    = 14;   // damage on impact
 const DD_ROCKET_CD     = 11;   // base cooldown between Rocket Rain waves   // −20% from support drones                       [15–25% band]
 
 // ── Final-boss (mega-boss) multi-phase encounter ───────────────────────────────
-// All player damage routes through _damagePlayer (dash i-frames / hit grace / 30-HP ceiling),
+// Player damage routes through _damagePlayer (dash i-frames / 0.5s hit grace / 30-HP ceiling), OR —
+// for the four pulses that deliberately own a different cadence (horde contact, boss blood trails,
+// Titan and Annihilator body contact) — through _applyPulseDamage, which enforces everything in
+// _damagePlayer that is NOT about cadence. tools/qa/player_damage_gate_regression.mjs fails the
+// build if player.applyDamage is ever called from a third place.
 // so every attack below is capped and fully dodgeable. Reuses the lava-zone / bullet / telegraph
 // systems; only the signature beam + nova add small self-contained state.
 const FINAL_BEAM_CHARGE  = 1.2;   // s — telegraph line follows the player while charging
@@ -1530,6 +1539,7 @@ export class Game {
                                   // would throw on .push/.length every frame (black screen).
     this.nullWyrm         = null; // NULL WYRM event: wireframe data-serpent sweeping the arena
     this.lightningZones   = [];   // Lightning Storm: telegraphed strike zones (hard-capped)
+    this._lightningHitCd  = 0;    // see LIGHTNING_HIT_CD — armed when a bolt actually damages the player
     this.synergyBursts    = [];   // transient synergy-burst rings (visual; hard-capped, auto-expire)
     this.elementFx        = new ElementFx();   // Phase-1 elemental VFX (bounded, auto-expiring)
     this._elementColors   = Object.fromEntries(Object.entries(ELEMENTS).map(([k, v]) => [k, v.c1]));   // HUD indicator colors
@@ -2330,6 +2340,7 @@ export class Game {
     this._murkActive = false;
     this._stormActive      = 0;             // seconds of active strikes remaining in the current storm
     this._stormSpawnCd     = 0;
+    this._lightningHitCd   = 0;             // anti-chain window between bolts that HIT the player
     this.airstrikeShips    = [];            // clear any carryover hazards on (re)entry
     this.airstrikeRockets  = [];
     this.lightningZones    = [];
@@ -19164,15 +19175,22 @@ export class Game {
       if (this._stormSpawnCd <= 0) { this._stormSpawnCd = 0.55; this._spawnLightningStrikes(); }
     }
 
+    if (this._lightningHitCd > 0) this._lightningHitCd -= dt;
     for (let i = this.lightningZones.length - 1; i >= 0; i--) {
       const z = this.lightningZones[i];
       z.t += dt;
       if (!z.struck && z.t >= z.warn) {       // STRIKE — resolve damage once, when the bolt lands
         z.struck = true;
         const d = distance(this.player.pos, z.pos);
-        if (d < z.radius && this.phoenixReviveTimer <= 0 && this.player.dashTimer <= 0) {
-          const dmg = Math.round(this.player.maxHp * 0.5);    // ~50% max HP clean hit
-          this._damagePlayer(dmg, { color: '#9fd0ff', shake: 9, stagger: 0.7 });   // heavy hit + short stun
+        // LIGHTNING_HIT_CD: a storm fires 2-3 aimed zones every 0.55s, so without this window the
+        // bolts stacked into ~60 HP/s and being caught once was unsurvivable for every build. The
+        // strike still lands at full weight; it just cannot repeat on the player inside 1.2s.
+        if (d < z.radius && this.phoenixReviveTimer <= 0 && this.player.dashTimer <= 0
+            && this._lightningHitCd <= 0) {
+          const dmg = Math.round(this.player.maxHp * 0.5);    // ~50% max HP clean hit (ceiling applies)
+          if (this._damagePlayer(dmg, { color: '#9fd0ff', shake: 9, stagger: 0.7 })) {   // heavy hit + short stun
+            this._lightningHitCd = LIGHTNING_HIT_CD;
+          }
           this.screenShake.trigger(9, 0.35);
           this.particles?.spawnHitSparks(this.player.pos, '#cfe6ff');
           this.floatingTexts.push(new FloatingText('-' + dmg + ' HP', this.player.pos.clone(), '#9fd0ff', 1.2));
@@ -20006,13 +20024,13 @@ export class Game {
       const _crowd = 1 + 0.15 * Math.min(7, Math.max(0, _crowdN - 1));
       const raw = (strongest.contactDamage ?? 8) * IFR * _crowd;
       const dmg = raw * (1 - this.player.contactDamageReduction);
-      this.player.applyDamage(dmg);
+      const _cHit = this._applyPulseDamage(dmg);   // Chaos grace / 30-HP ceiling / Glitch dodge
 
       // Contact ταυτότητες (μεταφέρθηκαν αυτούσιες — δένουν στον enemy του παλμού)
-      if (strongest.enemyType === 'Cryo Claw') {
+      if (_cHit && strongest.enemyType === 'Cryo Claw') {
         this.player._chillT = Math.max(this.player._chillT || 0, 1.2);
       }
-      if (this.playerHitCooldown <= 0) {
+      if (_cHit && this.playerHitCooldown <= 0) {
         this.playerHitCooldown = 0.5;
         this.screenShake.trigger(4, 0.15);
         if (strongest.enemyType === 'Razorhound') {
@@ -25988,6 +26006,26 @@ _drawLoreArchive(ctx) {
     }
   }
 
+  // Shared gate for the damage pulses that keep their OWN i-frame cadence instead of the 0.5s
+  // _damagePlayer grace. Added 2026-07-26 after an instrumented probe showed all of them calling
+  // player.applyDamage directly and therefore skipping three gates that have nothing to do with
+  // cadence: the Chaos entry grace (measured: first contact hit at t=2.13s with the 2.5s window
+  // armed — the protection Maria asked for on 2026-07-19 did not cover the horde that was killing
+  // her), the 30-HP per-hit ceiling, and the Glitch Phantom dodge. Damage magnitude and pulse rate
+  // are unchanged. `perFrame` marks continuous DPS ticks: they roll the dodge once per hit-grace
+  // window instead of 60x/second. Returns true when damage actually landed.
+  _applyPulseDamage(dmg, { perFrame = false } = {}) {
+    if (this._chaosEntryGraceT > 0) return false;
+    if (this._activeVesselPassive === 'glitch_dodge' && (!perFrame || this.playerHitCooldown <= 0)
+        && Math.random() < 0.5) {
+      this.playerHitCooldown = Math.max(this.playerHitCooldown, 0.25);
+      this.floatingTexts.push(new FloatingText('GLITCH DODGE', this.player.pos.clone(), '#a855f7', 0.6));
+      return false;
+    }
+    this.player.applyDamage(Math.min(dmg, BOSS_MAX_PLAYER_HIT));
+    return true;
+  }
+
   // `cap` overrides the per-hit ceiling for specific telegraphed, fully-dodgeable boss attacks
   // (e.g. the final-boss main beam). Defaults to BOSS_MAX_PLAYER_HIT so EVERY existing caller is
   // unchanged. This never touches player stats/damage — it only lets a signalled boss hit land harder.
@@ -26093,8 +26131,8 @@ _drawLoreArchive(ctx) {
         z.dmgAccum += dt;
         if (z.dmgAccum >= 0.5) {                          // tick every 0.5s → ~16 HP/s standing inside
           z.dmgAccum -= 0.5;
-          this.player.applyDamage(z.dps * 0.5 * (1 - this.player.contactDamageReduction));
-          if (this.playerHitCooldown <= 0) {
+          const _tHit = this._applyPulseDamage(z.dps * 0.5 * (1 - this.player.contactDamageReduction));
+          if (_tHit && this.playerHitCooldown <= 0) {
             this.playerHitCooldown = 0.4;
             this.particles.spawnHitSparks(this.player.pos, RED);
             this.floatingTexts.push(new FloatingText('-' + Math.ceil(z.dps * 0.5) + ' HP', this.player.pos.clone(), '#ff5a5a', 0.6));
@@ -26762,8 +26800,8 @@ _drawLoreArchive(ctx) {
     if (distance(t.pos, this.player.pos) < t.radius + PLAYER_RADIUS) {
       if (this.player.dashTimer <= 0 && this.phoenixReviveTimer <= 0) {
         const dmg = t.contactDamage * dt * (1 - this.player.contactDamageReduction);
-        this.player.applyDamage(dmg);
-        if (this.playerHitCooldown <= 0) {
+        const _hit = this._applyPulseDamage(dmg, { perFrame: true });
+        if (_hit && this.playerHitCooldown <= 0) {
           this.playerHitCooldown = 0.5;
           this.screenShake.trigger(4, 0.15);
           this.floatingTexts.push(new FloatingText(`-${Math.ceil(t.contactDamage)} HP`, this.player.pos.clone(), RED, 0.6));
@@ -28290,8 +28328,8 @@ _drawLoreArchive(ctx) {
     if (distance(a.pos, this.player.pos) < a.radius + PLAYER_RADIUS) {
       if (this.player.dashTimer <= 0 && this.phoenixReviveTimer <= 0) {
         const dmg = a.contactDamage * dt * (1 - this.player.contactDamageReduction);
-        this.player.applyDamage(dmg);
-        if (this.playerHitCooldown <= 0) {
+        const _hit = this._applyPulseDamage(dmg, { perFrame: true });
+        if (_hit && this.playerHitCooldown <= 0) {
           this.playerHitCooldown = 0.5;
           this.screenShake.trigger(4, 0.15);
           this.floatingTexts.push(new FloatingText(`-${Math.ceil(a.contactDamage)} HP`, this.player.pos.clone(), RED, 0.6));

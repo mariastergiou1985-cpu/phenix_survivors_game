@@ -1,9 +1,18 @@
 // P1 enemy-pressure gate: 10 characters x 3 modes x 3 seeds x 2 stationary profiles.
 // No player movement, HP mutation, forced damage, forced enemies, or production-value changes.
+import { register } from 'node:module';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
+
+// Node keys ESM modules by the FULL specifier, query string included. Production imports
+// '../entities/Enemy.js?v=<build>', so importing 'Enemy.js' (or any other ?v=) here yields a
+// SECOND module instance and every static override below — including the diagnostic profile's
+// Enemy.prototype.takeHit no-op — silently never reaches the running game. strip-v-loader removes
+// the ?v= from every specifier so this file and Game.js share one Enemy. (Measured 2026-07-26: with
+// the stale '?v=20260731000000' the whole diagnostic profile was inert.)
+register('./strip-v-loader.mjs', import.meta.url);
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SELF = fileURLToPath(import.meta.url);
@@ -46,7 +55,7 @@ if (process.argv[2] === '--worker') {
 
   const unmuteImports = muteConsole();
   const { Game } = await import(pathToFileURL(path.resolve(HERE, '../../js/game/Game.js')).href);
-  const { Enemy } = await import(pathToFileURL(path.resolve(HERE, '../../js/entities/Enemy.js')).href + '?v=20260731000000');
+  const { Enemy } = await import(pathToFileURL(path.resolve(HERE, '../../js/entities/Enemy.js')).href);
   unmuteImports();
 
   const unmuteRun = muteConsole();

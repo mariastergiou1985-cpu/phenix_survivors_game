@@ -28,7 +28,10 @@ globalThis.Date = class extends RealDate {
 
 const unmuteImports = muteConsole();
 const { Game } = await import(pathToFileURL(path.join(ROOT, 'js/game/Game.js')).href);
-const { Enemy } = await import(pathToFileURL(path.join(ROOT, 'js/entities/Enemy.js')).href + '?phase5-range-cc');
+// strip-v-loader is registered above, so a bare specifier resolves to the SAME module instance
+// Game.js uses. '?phase5-range-cc' is not a ?v= and was therefore never stripped — it produced a
+// second Enemy module and made every override in this audit inert.
+const { Enemy } = await import(pathToFileURL(path.join(ROOT, 'js/entities/Enemy.js')).href);
 const { Vec2, WORLD_W, WORLD_H } = await import(pathToFileURL(path.join(ROOT, 'js/constants.js')).href);
 const catalog = await import(pathToFileURL(path.join(ROOT, 'js/game/WeaponCatalog.js')).href);
 // Match Game.js/BuildEngineChars3.js exactly so this audit reads the populated production registry.
