@@ -503,7 +503,9 @@ if (process.argv[2] === '--worker') {
     // exactly what inflated the earlier unavoidable share.
     const mustBreak = tv.touching >= 2 || tv.nearest < 46;
     const canDash = (game.player.dashCooldown || 0) <= 0;
-    if (skill === 'expert') {
+    if (skill === 'stationary') {
+      setDir(0, 0, false);            // control profile: never move, never dash
+    } else if (skill === 'expert') {
       const a = bestOpenArc();
       setDir(a.x, a.y, canDash && (mustBreak || tv.n >= 6));
     } else {
