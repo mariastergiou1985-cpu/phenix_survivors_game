@@ -1,1 +1,14 @@
 *.bat
+
+# ── Internal working files — never part of the public repository ──────────────
+# Session hand-offs, agent/tooling scratch, commit-message drafts and local QA
+# output. None of this is needed to build, run or maintain the game, and it has
+# no business being public. Nothing already tracked is affected by these rules.
+.agents/
+.claude/
+CLAUDE.md
+AGENTS.md
+_*_msg.txt
+CHANGES_SINCE_*.md
+qa_reports/
+tools/qa/_to_delete/

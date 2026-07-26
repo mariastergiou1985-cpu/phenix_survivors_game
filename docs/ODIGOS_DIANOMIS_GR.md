@@ -55,5 +55,5 @@
 **«Έφτιαξα bug fix — τι κάνω;»** Push. Τίποτα άλλο. Web/exe/app ενημερώθηκαν.
 **«Θέλω νέο εικονίδιο στο exe.»** Αλλάζεις τα assets/pwa/icon-*.png, push, κατεβάζεις
 νέο zip από το Actions.
-**«Το Actions έδειξε κόκκινο Χ.»** Στείλε screenshot στον Claude — το φτιάχνει.
+**«Το Actions έδειξε κόκκινο Χ.»** Κράτα screenshot του Actions log — το build ξαναγίνεται μετά τη διόρθωση.
 **«Πόσο κοστίζει όλο αυτό;»** Web/exe/PWA: 0€. Steam: $100 μία φορά. Google Play: $25 μία φορά.

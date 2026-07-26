@@ -4,10 +4,10 @@
 - Σε ΟΤΙΔΗΠΟΤΕ (όπλα, effects, fusions, elements, ultimates, evolutions) μπαίνει **ΜΟΝΟ η art της Maria**.
 - **ΜΟΝΟ διορθώσεις επιτρέπονται** (alpha fix, σύνδεση/wiring, μέγεθος) — **ΟΧΙ αντικατάσταση** με generated/procedural art.
 - Αν κάπου παίζει procedural effect ενώ υπάρχει art της Maria → σύνδεσε την art της. Αν ΔΕΝ υπάρχει art → ΡΩΤΑ την, μη βάζεις generated.
-- Ο Claude πρέπει να ελέγχει κάθε φορά ότι χρησιμοποιείται η δική της art, όχι placeholder/procedural.
+- Το dev pipeline πρέπει να ελέγχει κάθε φορά ότι χρησιμοποιείται η δική της art, όχι placeholder/procedural.
 
 
-*Αυτό είναι το κοινό μας tracker. Ο Claude το ξαναδιαβάζει και θυμίζει στη Maria πού πάμε.
+*Αυτό είναι το κοινό μας tracker. Ξαναδιαβάζεται σε κάθε session και θυμίζει πού πάμε.
 Στόχος: από «6ωρο indie» → «30ωρο survivor-like με δική του ταυτότητα».*
 
 Τελευταία ενημέρωση: 2026-07-16 (fable — P2 BUILD ENGINE ΠΑΡΑΔΟΘΗΚΕ)
@@ -40,31 +40,31 @@ Spec: docs/P2_BUILD_ENGINE_SPEC_GR.md · Πλάνο: docs/P2_IMPLEMENTATION_PLAN
 ---
 
 ## MILESTONE 1 — Πρώτα Evolutions (art-first)
-**Ρόλος Maria: φτιάχνει το art. Ρόλος Claude: το wire-άρει στο παιχνίδι (safe workflow: syntax check → boot → commit → push → live verify).**
+**Ρόλος Maria: σχεδιάζει και φτιάχνει το art. Ρόλος dev pipeline: το wire-άρει στο παιχνίδι (safe workflow: syntax check → boot → commit → push → live verify).**
 
 Convention: κάθε evolution = ΕΝΑ διάφανο PNG στο `assets/weapons/vfx/{name}.png`
 Specs: ~512×512 (ή μεγαλύτερο), διάφανο background, neon cyberpunk glow, χρώμα του element.
 
-### Art batch #1 (ΕΤΟΙΜΟ ✅ — art παραδόθηκε + alpha-fixed από Claude)
+### Art batch #1 (ΕΤΟΙΜΟ ✅ — art παραδόθηκε + alpha-fixed στο pipeline)
 - [x] `assets/weapons/vfx/grid_reaper.png` — **Grid Reaper** (πράσινο lattice crescent) ✅ RGBA
 - [x] `assets/weapons/vfx/cryo_sovereign.png` — **Cryo Sovereign** (γαλάζιο ice field) ✅ RGBA
 - [x] `assets/weapons/vfx/chaos_chord.png` — **Chaos Chord (Eddie)** (χρυσές νότες+αστραπές) ✅ RGBA
-Σημ.: τα originals ήταν RGB χωρίς διαφάνεια (λευκό/σκούρο φόντο)· ο Claude πρόσθεσε alpha (keying) χωρίς να αλλάξει το art.
+Σημ.: τα originals ήταν RGB χωρίς διαφάνεια (λευκό/σκούρο φόντο)· το pipeline πρόσθεσε alpha (keying) χωρίς να αλλάξει το art.
 
-### Wiring plan (Claude — επόμενο focused task, με live test)
+### Wiring plan (dev pipeline — επόμενο focused task, με live test)
 Το σύστημα evolutions είναι «όπλο+όπλο σε L5 → evolved», hard char-lock. Χρειάζεται μικρό owner-override για exclusivity.
 - **Chaos Chord** → Eddie evolution (γεμίζει κενό: ο Eddie ΔΕΝ έχει evolution τώρα). Recipe: solo_red_thunder + owner-override='eddie'. Behavior: BOLT_PROJECTILE→homing notes. Element: thunder_maiden.
 - **Grid Reaper** → toxin evolution. Recipe: shadow_toxic + gas_needle (owners: assassin+euclid). Behavior: WIDE_ARC (line reap). Element: toxin.
 - **Cryo Sovereign** → ice evolution. Recipe: spirit_crescent + (ice base). Behavior: PULL_EXPLODE/VORTEX (freeze-shatter). Element: ice.
 Κάθε ένα: 1-frame sprite (το art είναι ενιαίο image, όχι spritesheet) → static render, δείχνει όλο το art.
 
-### Art batch #2 (ΕΤΟΙΜΟ ✅ — art παραδόθηκε + alpha-fixed από Claude)
+### Art batch #2 (ΕΤΟΙΜΟ ✅ — art παραδόθηκε + alpha-fixed στο pipeline)
 - [x] `assets/weapons/vfx/ion_halo.png` — **Ion Halo** (μπλε ηλεκτρικό δαχτυλίδι) ✅ RGBA
 - [x] `assets/weapons/vfx/null_lance.png` — **Null Lance** (μωβ/λευκό void δόρυ + black hole) ✅ RGBA
 - [x] `assets/weapons/vfx/ember_storm.png` — **Ember Storm** (πορτοκαλί δίνη στάχτης) ✅ RGBA
 Και τα 6 art evolutions είναι πλέον στον φάκελο, alpha-fixed. Επόμενο: wiring στο gameplay.
 
-### Wiring (Claude) — ΕΤΟΙΜΟ ✅
+### Wiring (dev pipeline) — ΕΤΟΙΜΟ ✅
 - [x] Και τα 6 evolutions wired (WEAPON_ID + WEAPON_DEFS + recipes + owner-override + name lookups) → commit `9e2d509` → live verified
   - Chaos Chord → Eddie (γέμισε το κενό του!), Grid Reaper → Euclid, Cryo Sovereign → Taekwondo, Ion Halo → Cyber, Null Lance → Phasewalker, Ember Storm → Oni
   - Deployed: 6 νέα weapons + 10 recipes + owner field· boot καθαρό, καμία μαύρη οθόνη. Cache-bust 20260707110000.
@@ -119,4 +119,4 @@ Art που θα χρειαστεί: capsule (616×353), header, library art, ach
 
 ## Επόμενη ενέργεια ΤΩΡΑ
 ➡ **Maria:** φτιάξε το Art batch #1 (τα 3 PNG παραπάνω).
-➡ **Claude:** μόλις είναι έτοιμα, τα wire-άρω ως 3 πλήρη evolutions και κάνω commit/push/verify.
+➡ **Dev pipeline:** μόλις είναι έτοιμα, τα wire-άρω ως 3 πλήρη evolutions και κάνω commit/push/verify.

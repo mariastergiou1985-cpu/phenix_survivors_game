@@ -17,7 +17,7 @@ The bat script moves them to:
 
 ---
 
-## CAPTURED SCREENSHOTS (Claude — done)
+## CAPTURED SCREENSHOTS (done)
 
 | Shot | Filename | Status | Notes |
 |------|----------|--------|-------|

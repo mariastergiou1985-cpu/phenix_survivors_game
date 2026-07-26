@@ -12,8 +12,8 @@
 - Υποφάκελοι ανά ρόλο: `Burst Execute/`, `Contagion Spread/`, `DoT Area Denial/`, `Orbit Defensive Pressure/`, `Pull Crowd Control/`, `Teleport Unpredictable Coverage/`.
 
 Μέσα στο `pattern_vfx_manifest_pack.zip`:
-- `PATTERN_MANIFEST_FOR_CLAUDE.md` (master placement table, 28 entries)
-- `PATTERN_VFX_EVOLUTIONS_MANIFEST_FOR_CLAUDE.pdf`
+- `PATTERN_MANIFEST_INTERNAL.md` (master placement table, 28 entries)
+- `PATTERN_VFX_EVOLUTIONS_MANIFEST_INTERNAL.pdf`
 - `pattern_manifest.json`
 - `pattern art.png` (ΕΝΑ contact/overview image — όχι isolated ανά VFX)
 
