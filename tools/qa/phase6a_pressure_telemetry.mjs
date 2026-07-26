@@ -81,6 +81,7 @@ if (process.argv[2] === '--worker') {
   const un = muteConsole();
   const { Game }  = await import(pathToFileURL(path.join(ROOT, 'js/game/Game.js')).href);
   const { Enemy } = await import(pathToFileURL(path.join(ROOT, 'js/entities/Enemy.js')).href);
+  const CONSTS = await import(pathToFileURL(path.join(ROOT, 'js/constants.js')).href);
   const GAME_SRC  = (await import('node:fs')).readFileSync(path.join(ROOT, 'js/game/Game.js'), 'utf8');
   un();
 
@@ -105,8 +106,9 @@ if (process.argv[2] === '--worker') {
   game.audio = null;
   game.selectedCharacter = char;
   game.gameState = 'playing';
-  if (mode === 'chaos') { game.reset(); game._beginChaosRun(); }
-  else                  { game.reset(); game._enterEndless(); }
+  if (mode === 'chaos')     { game.reset(); game._beginChaosRun(); }
+  else if (mode === 'act1') { game._pendingCampaignStage = 1; game.paused = false; game.reset(); game._applyCampaignStage(); }
+  else                      { game.reset(); game._enterEndless(); }
 
   // ── instrumentation ─────────────────────────────────────────────────────────────────────────
   const dmg = {};                    // reason -> HP
@@ -202,21 +204,26 @@ if (process.argv[2] === '--worker') {
   // 21 run reported 9.7 "XP/min" and a level 18 run reported 103.5. Both were meaningless. Total
   // collected XP is the sum of what gainXp() actually granted; generated XP is what the shard system
   // spawned; the rest is still on the ground. The identity is asserted at the end of the run.
-  let xpCollected = 0, xpGenerated = 0, pickups = 0;
+  // ACCOUNTING CORRECTION (Phase 6A closure). v2 measured "generated" only through
+  // xpShards.spawnBurst, but XP also reaches the player without ever touching the ground:
+  // Enemy._die() grants directly when shards are unavailable, and Game.js grants flat XP for
+  // pickups, chests, arena and stage rewards. That structural omission is what left a non-zero
+  // identity residue. Every path is now classified, so "unexplained" really means unexplained.
+  let xpCollected = 0, pickups = 0;
+  let xpFromShards = 0, xpDirect = 0, xpSpawnedOnGround = 0;
   const oGain = game.player.gainXp.bind(game.player);
   game.player.gainXp = function (amount, ft) {
-    const before = game.player.xp, beforeLvl = game.player.level;
-    const r = oGain(amount, ft);
     const granted = Math.max(1, Math.round(amount * (game.player.xpMult || 1)));
+    const fromShard = /XpShards\.js/.test(new Error().stack || '');
+    if (fromShard) xpFromShards += granted; else xpDirect += granted;
     xpCollected += granted; pickups++;
-    void before; void beforeLvl;
-    return r;
+    return oGain(amount, ft);
   };
-  if (game.xpShards && typeof game.xpShards.spawnBurst === 'function') {
-    const oBurst = game.xpShards.spawnBurst.bind(game.xpShards);
-    game.xpShards.spawnBurst = function (x, y, total, radius, g) {
-      xpGenerated += Math.max(1, Math.round(total));
-      return oBurst(x, y, total, radius, g);
+  if (game.xpShards && typeof game.xpShards._spawn === 'function') {
+    const oSpawn = game.xpShards._spawn.bind(game.xpShards);
+    game.xpShards._spawn = function (x, y, value) {
+      xpSpawnedOnGround += Math.max(0, Math.round(Number(value) || 0));
+      return oSpawn(x, y, value);
     };
   }
 
@@ -253,11 +260,19 @@ if (process.argv[2] === '--worker') {
     }
     for (const r of (live || [])) noteRocket(r);
   };
-  const freeArcs = () => {                       // how many of 8 escape arcs are clear of threats
+  // ARC MEASUREMENT CORRECTION (Phase 6A closure). The original radius was 260px, which on a
+  // 200-enemy screen marks essentially every sector as "blocked" and made the median free-arc count
+  // 0 for whole runs — a measurement artifact, not geometry. A body 250px away does not deny an
+  // escape direction: at ~230px/s player speed against ~150px/s pursuers there is over a second of
+  // room. An arc is genuinely denied only when a threat sits close enough that stepping that way
+  // means contact almost immediately. Both radii are now reported: NEAR is the escape corridor the
+  // fairness classifier uses, WIDE is retained as a pressure indicator only.
+  const ARC_NEAR = 110, ARC_WIDE = 260;
+  const arcsAt = R => {
     const p = game.player.pos; const blocked = new Set();
     const mark = (x, y, rad) => {
       const d = Math.hypot(x - p.x, y - p.y);
-      if (d > 260) return;
+      if (d > R) return;
       blocked.add(((Math.round(Math.atan2(y - p.y, x - p.x) / (Math.PI / 4)) % 8) + 8) % 8);
       void rad;
     };
@@ -267,6 +282,14 @@ if (process.argv[2] === '--worker') {
     for (const r of (game.airstrikeRockets || [])) mark(r.pos.x, r.pos.y, r.blast);
     return 8 - blocked.size;
   };
+  // CLASSIFIER RADIUS. freeArcs() keeps the original wide radius: it is the STRICTER test (a sector
+  // counts as denied as soon as any threat sits in it within 260px), so every fairness verdict built
+  // on it is conservative. nearArcs() is the physical escape corridor at contact range and is
+  // reported alongside, never substituted for the classifier. An earlier draft of this closure pass
+  // swapped the classifier to the near radius after I misread the occupied-sector series as the
+  // free-arc series; that swap only ever made the numbers friendlier and has been reverted.
+  const freeArcs = () => arcsAt(ARC_WIDE);
+  const nearArcs = () => arcsAt(ARC_NEAR);
   const concurrent = () => ({
     lightning: (game.lightningZones || []).length,
     lava: (game.bossLavaZones || []).length,
@@ -313,6 +336,8 @@ if (process.argv[2] === '--worker') {
     }
     return { vx, vy, n, touching, nearest };
   };
+  const W = CONSTS.WORLD_W || 2048, H = CONSTS.WORLD_H || 2048;
+  const MARGIN = (CONSTS.WORLD_MARGIN || 60) + 90, LOOK = 260;
   const bestOpenArc = () => {                     // expert: 16 rays, pick the emptiest
     const p = game.player.pos; let best = 0, bestScore = -Infinity;
     for (let k = 0; k < 16; k++) {
@@ -325,6 +350,11 @@ if (process.argv[2] === '--worker') {
         const dot = (dx / d) * cx + (dy / d) * cy;
         if (dot > 0.2) score -= dot * (420 - d) / 420;
       }
+      // WALL AWARENESS. Without this the "expert" walks into the world edge, gets clamped and is
+      // then pinned against it — which is why the first closure pass measured the expert profile as
+      // WORSE than the competent one, with 43-50s outliers. A real expert never backs into a wall.
+      const ax = p.x + cx * LOOK, ay = p.y + cy * LOOK;
+      if (ax < MARGIN || ax > W - MARGIN || ay < MARGIN || ay > H - MARGIN) score -= 4;
       if (score > bestScore) { bestScore = score; best = a; }
     }
     return { x: Math.cos(best), y: Math.sin(best) };
@@ -375,7 +405,10 @@ if (process.argv[2] === '--worker') {
   };
 
   const dens = { d100: [], d200: [], d300: [] };
-  const contactBodies = [], arcs = [], roleSamples = {};
+  // arcs = FREE escape sectors (corridor), wideArcs = same at the wide pressure radius,
+  // occArcs = sectors with a body actually in contact. The first two answer "can I leave",
+  // the third answers "how surrounded am I right now".
+  const contactBodies = [], arcs = [], wideArcs = [], occArcs = [], roleSamples = {};
   let exposureFrames = 0, contactFrames = 0, moveDist = 0, escapeSum = 0, escapeN = 0;
   let inContact = false, contactStart = 0;
   const levelTimeline = [], evoTimeline = [], dpsTimeline = [];
@@ -395,7 +428,7 @@ if (process.argv[2] === '--worker') {
       if (d < (e.radius || 14) + PR) { touching++; q.add(Math.round(Math.atan2(dy, dx) / (Math.PI / 4))); }
     }
     dens.d100.push(d100); dens.d200.push(d200); dens.d300.push(d300);
-    contactBodies.push(touching); arcs.push(q.size);
+    contactBodies.push(touching); arcs.push(freeArcs()); wideArcs.push(nearArcs()); occArcs.push(q.size);
     for (const k in roles) roleSamples[k] = (roleSamples[k] || 0) + roles[k];
     if (d300 > 0) exposureFrames++;
     if (touching > 0) {
@@ -406,12 +439,59 @@ if (process.argv[2] === '--worker') {
     }
   };
 
+  // ── §4 closure metrics: dash counterplay, stationary time, evolutions, frame performance ─────
+  let dashCount = 0, dashEscapes = 0, dashAttemptsInContact = 0, stationaryFrames = 0;
+  let prevDashTimer = 0, pendingDash = null, framesRun = 0;
+  let evoCount = 0, firstEvoTime = null, cardsSeen = 0, evoCardsOffered = 0, ownedDeepened = 0;
+  const frameMs = [];
+
   let died = null, killingBlow = null;
   const dt = 1 / 60;
   trackRockets();          // arm the push hook before the first frame
   for (let f = 0; f < MAXS * 60; f++) {
     vclock += 1000 / 60;
-    if (game.upgradeUI)  { try { game.selectUpgrade(0); }  catch (_) { game.upgradeUI = null; } }
+    if (game.upgradeUI) {
+      // CARD POLICY (identical in every cell). "Always slot 0" is not a build: it scatters picks
+      // and no evolution recipe is ever satisfied, so zero evolutions appeared in any run — a
+      // harness artifact that would otherwise read as a progression defect. The bot now plays the
+      // way a player does: take an evolution when offered, otherwise deepen a weapon already owned,
+      // otherwise take the first card.
+      // CARD POLICY (identical in every cell, and the reason the first closure pass reported
+      // "0 weapons owned, 0 evolutions"). Game._injectWeaponCard hands the screen to
+      // buildEngine.injectCards, which always writes its card into the LAST slot. A bot that falls
+      // back to slot 0 therefore skipped every weapon, passive and evolution card ever offered, and
+      // the Build Engine stayed empty for the whole run. That was a harness artifact, not a
+      // progression defect. The bot now builds the way a player does, in this order:
+      //   1 evolution  2 deepen an owned weapon  3 a catalyst that advances a recipe
+      //   4 acquire a weapon  5 any build card  6 first card
+      let pick = 0;
+      try {
+        const ch = game.upgradeUI.choices || [];
+        const key = c => String((c && c.key) || '');
+        const desc = c => String((c && c.description) || '');
+        const owned = new Set(game.buildEngine?.weapons ? [...game.buildEngine.weapons.keys()] : []);
+        cardsSeen++;
+        const isEvo = c => !!c && (c._isEvolutionCard || /^be_evo_/.test(key(c)) ||
+          /\[EVOLUTION\]/.test(desc(c)) || /^EVOLVE/.test(String(c.name || '')));
+        const tiers = [
+          isEvo,
+          c => /^be_w_/.test(key(c)) && owned.has(key(c).slice(5)),
+          c => /^be_p_/.test(key(c)) && /\[EVOLUTION READY\]|\[REQUIRES/.test(desc(c)),
+          c => /^be_w_/.test(key(c)),
+          c => /^be_[wp]_/.test(key(c)),
+        ];
+        for (let t = 0; t < tiers.length; t++) {
+          const i = ch.findIndex(tiers[t]);
+          if (i >= 0) {
+            pick = i;
+            if (t === 0) evoCardsOffered++;
+            if (t === 1) ownedDeepened++;
+            break;
+          }
+        }
+      } catch (_) { pick = 0; }
+      try { game.selectUpgrade(pick); } catch (_) { game.upgradeUI = null; }
+    }
     if (game.mutationUI) { try { game.selectMutation(0); } catch (_) { game.mutationUI = null; } }
     if (game._postArenaChoice) { try { game._selectPostArenaChoice(0); } catch (_) { game._postArenaChoice = null; } }
 
@@ -432,10 +512,36 @@ if (process.argv[2] === '--worker') {
     }
 
     trackRockets();
+    const touchingBefore = tv.touching;
+    const _t0 = process.hrtime.bigint();
     try { game.update(dt, input); } catch (e) { break; }
+    frameMs.push(Number(process.hrtime.bigint() - _t0) / 1e6);
+    framesRun++;
 
-    moveDist += Math.hypot(game.player.pos.x - prev.x, game.player.pos.y - prev.y);
+    const step = Math.hypot(game.player.pos.x - prev.x, game.player.pos.y - prev.y);
+    moveDist += step;
+    if (step < 0.05) stationaryFrames++;
     prev = { x: game.player.pos.x, y: game.player.pos.y };
+
+    // dash rising edge + did it actually break contact 0.5s later
+    const dNow = game.player.dashTimer || 0;
+    if (dNow > 0 && prevDashTimer <= 0) {
+      dashCount++;
+      if (touchingBefore > 0) { dashAttemptsInContact++; pendingDash = { touching: touchingBefore, until: game.timeAlive + 0.5 }; }
+    }
+    prevDashTimer = dNow;
+    if (pendingDash && game.timeAlive >= pendingDash.until) {
+      if (threatVector(340).touching === 0) dashEscapes++;
+      pendingDash = null;
+    }
+    let evNow = 0;
+    if (game.buildEngine?.weapons) { for (const w of game.buildEngine.weapons.values()) if (w && w.evolved) evNow++; }
+    else evNow = game._evolvedWeapons ? game._evolvedWeapons.size : 0;
+    if (evNow > evoCount) {
+      for (let i = evoCount; i < evNow; i++) evoTimeline.push(+game.timeAlive.toFixed(1));
+      if (firstEvoTime == null) firstEvoTime = +game.timeAlive.toFixed(1);
+      evoCount = evNow;
+    }
     if (f % 15 === 0) { sample(); sampleSystems(0.25); }
     if (game.player.level !== lastLevel) { levelTimeline.push({ t: +game.timeAlive.toFixed(1), lvl: game.player.level }); lastLevel = game.player.level; }
     if (f % 300 === 0) {
@@ -507,7 +613,8 @@ if (process.argv[2] === '--worker') {
                d200: { med: med(dens.d200), max: mx(dens.d200) },
                d300: { med: med(dens.d300), max: mx(dens.d300) } },
     contact: { medBodies: med(contactBodies), maxBodies: mx(contactBodies),
-               maxArcs: mx(arcs), medArcs: med(arcs),
+               maxFreeArcs: mx(arcs), medFreeArcs: med(arcs),
+               medOccupiedArcs: med(occArcs), maxOccupiedArcs: mx(occArcs),
                contactUptimePct: +(100 * contactFrames / Math.max(1, dens.d100.length)).toFixed(1),
                exposurePct: +(100 * exposureFrames / Math.max(1, dens.d100.length)).toFixed(1),
                meanEscapeSeconds: escapeN ? +(escapeSum / escapeN).toFixed(2) : null, escapes: escapeN },
@@ -560,17 +667,42 @@ if (process.argv[2] === '--worker') {
       })(),
       sample: rocketHits.slice(0, 3),
       unfairSample: rocketHits.filter(h => /^[CDE]_/.test(h.klass)).slice(0, 8) },
-    xpAccounting: { collected: xpCollected, generated: xpGenerated, onGround: +xpOnGround.toFixed(0),
+    xpAccounting: { collected: xpCollected, fromShards: xpFromShards, direct: xpDirect,
+      spawnedOnGround: xpSpawnedOnGround, onGround: +xpOnGround.toFixed(0),
+      generated: xpSpawnedOnGround + xpDirect,
+      despawned: +(xpSpawnedOnGround - xpFromShards - xpOnGround).toFixed(0),
       pickups, spentInLevels: lvlThresholds, currentBar: game.player.xp, level: game.player.level,
       collectedPerMin: +(xpCollected / minutes).toFixed(1),
+      // both identities must be exactly 0; "despawned" above is real attrition, not a hole
       identityCollected: xpCollected - (lvlThresholds + game.player.xp),
-      identityGenerated: xpGenerated - (xpCollected + xpOnGround) },
+      identityPaths: xpCollected - (xpFromShards + xpDirect),
+      unexplained: Math.abs(xpCollected - (lvlThresholds + game.player.xp))
+                 + Math.abs(xpCollected - (xpFromShards + xpDirect)) },
     progression: { levels: levelTimeline.slice(0, 30),
                    levelsPerMin: +(levelTimeline.length / minutes).toFixed(2) },
     weaponShare: Object.fromEntries(Object.entries(weapon).sort((a, b) => b[1] - a[1]).slice(0, 8)
       .map(([k, v]) => [k, +(100 * v / (totalWeapon || 1)).toFixed(1)])),
     dpsTimeline: dpsTimeline.slice(0, 20),
     movementPx: +moveDist.toFixed(0),
+    dash: { count: dashCount, inContact: dashAttemptsInContact, escapes: dashEscapes,
+            escapeRatePct: dashAttemptsInContact ? +(100 * dashEscapes / dashAttemptsInContact).toFixed(1) : null,
+            perMin: +(dashCount / minutes).toFixed(1) },
+    stationary: { frames: stationaryFrames, framesRun,
+                  pct: +(100 * stationaryFrames / Math.max(1, framesRun)).toFixed(1) },
+    evolutions: { count: evoCount, firstAt: firstEvoTime, timeline: evoTimeline.slice(0, 12),
+                  cardScreens: cardsSeen, evolutionCardsOffered: evoCardsOffered,
+                  ownedWeaponDeepened: ownedDeepened,
+                  weaponsOwned: game.buildEngine?.weapons ? game.buildEngine.weapons.size
+                                : (game._weaponLevels ? game._weaponLevels.size : null),
+                  passivesOwned: game.buildEngine?.passives ? game.buildEngine.passives.size : null,
+                  recipesReady: (() => { try { return game.buildEngine?._readyEvolutions?.().length ?? null; } catch (_) { return null; } })(),
+                  weaponLevels: game.buildEngine?.weapons
+                    ? Object.fromEntries([...game.buildEngine.weapons].map(([k, v]) => [k, (v.level || 0) + (v.evolved ? '*' : '')]))
+                    : (game._weaponLevels ? Object.fromEntries([...game._weaponLevels]) : null) },
+    performance: { updateMs: dist(frameMs), framesRun },
+    freeArcsWide: dist(arcs),        // classifier radius (260px) — conservative
+    escapeCorridor: dist(wideArcs),  // near radius (110px) — physical corridor at contact range
+    occupiedArcs: dist(occArcs),
     deathWindow: events.slice(-8),
     bossOverlapAtDeath: { titan: !!game.titanBoss, annihilator: !!game.annihilatorBoss,
                           bossRush: !!game._bossRush, arena: !!game._nullBreachActive,
@@ -580,23 +712,56 @@ if (process.argv[2] === '--worker') {
 }
 
 // ── parent ────────────────────────────────────────────────────────────────────────────────────
+// ── PHASE 6A CLOSURE MATRIX ───────────────────────────────────────────────────────────────────
+// 2 modes x 2 profiles x 4 characters x 2 seeds = 32, plus 8 Act 1 control cells (seed 12345).
+// Shared protocol for every cell: 240s horizon, dt = 1/60, sampling every 15 frames, card policy
+// "always take slot 0", identical telemetry schema. A third seed can be added per cell with
+// --seed3 for cells whose survival spread turns out to be high.
+const CHARS  = ['skeleton_warrior', 'assassin_clone', 'dimis_kickboxer', 'euclid_vector'];
+const SEEDS  = [12345, 777];
+const SEED3  = 20260721;
+const HORIZON = 240;
 const MATRIX = [];
 for (const mode of ['endless', 'chaos'])
   for (const skill of ['competent', 'expert'])
-    for (const seed of [12345, 777, 20260721])
-      MATRIX.push({ seed, char: 'euclid_vector', mode, skill });
+    for (const char of CHARS)
+      for (const seed of SEEDS)
+        MATRIX.push({ seed, char, mode, skill });
+for (const skill of ['competent', 'expert'])
+  for (const char of CHARS)
+    MATRIX.push({ seed: SEEDS[0], char, mode: 'act1', skill });
+if (process.argv[2] === '--seed3')
+  for (const cell of JSON.parse(process.argv[5] || '[]'))
+    MATRIX.push({ ...cell, seed: SEED3 });
 
 const runOne = job => new Promise(res => {
-  const p = spawn(process.execPath, [SELF, '--worker', String(job.seed), job.char, job.mode, job.skill, '420'],
+  const p = spawn(process.execPath, ['--max-old-space-size=1800', SELF, '--worker',
+    String(job.seed), job.char, job.mode, job.skill, String(HORIZON)],
     { stdio: ['ignore', 'pipe', 'pipe'] });
   let out = '';
   p.stdout.on('data', d => { out += d; });
   p.on('close', () => { try { res(JSON.parse(out)); } catch (_) { res({ ...job, error: 'no output' }); } });
 });
 
+// --batch <start> <count> <outFile>  — appends one JSON line per run, so a long matrix can be
+// completed across several bounded invocations without losing anything on interruption.
+const fsp = await import('node:fs');
+if (process.argv[2] === '--batch') {
+  const start = Number(process.argv[3]), count = Number(process.argv[4]), out = process.argv[5];
+  const slice = MATRIX.slice(start, start + count);
+  for (let i = 0; i < slice.length; i += 2) {
+    const r = await Promise.all(slice.slice(i, i + 2).map(runOne));
+    for (const one of r) fsp.appendFileSync(out, JSON.stringify(one) + '\n');
+    process.stderr.write(`  ${start + i + r.length}/${MATRIX.length}\n`);
+  }
+  process.stderr.write('BATCH DONE\n');
+  process.exit(0);
+}
+if (process.argv[2] === '--count') { console.log(String(MATRIX.length)); process.exit(0); }
+
 const results = [];
-for (let i = 0; i < MATRIX.length; i += 3) {
-  results.push(...await Promise.all(MATRIX.slice(i, i + 3).map(runOne)));
+for (let i = 0; i < MATRIX.length; i += 2) {
+  results.push(...await Promise.all(MATRIX.slice(i, i + 2).map(runOne)));
   process.stderr.write(`  ${results.length}/${MATRIX.length}\n`);
 }
 console.log(JSON.stringify(results, null, 1));

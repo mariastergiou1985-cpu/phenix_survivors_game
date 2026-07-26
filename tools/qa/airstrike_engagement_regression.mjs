@@ -105,5 +105,61 @@ console.log('\n[3] Live run — no unavoidable spawn distance');
     `closest spawn ${Number.isFinite(minSpawn) ? minSpawn.toFixed(1) : 'n/a'}px, floor ${MIN}px`);
 }
 
+// ── [4] W3 GUNSHIP ROCKET PODS (2026-07-26, Phase 6A closure matrix) ────────────────────────────
+// The closure matrix caught the SAME defect on a second rocket path. _updateGunship fires 4 pods
+// (blast 42, h = 0.6 homing) straight from the gunship's own position with no engagement floor.
+// Telemetry recorded four of them spawning 61.3px away with 0.25-0.30s of flight; the clearance a
+// player needs is PLAYER_RADIUS + blast = 58px, which the slowest character (189 px/s) covers in
+// 0.307s — and because these rockets HOME, sidestepping does not clear them either. Undodgeable by
+// construction, exactly like the pre-fix airstrike salvo. These gates FAIL pre-fix, PASS post-fix.
+console.log('\n[4] W3 gunship rocket pods — point-blank hold');
+{
+  const g = mk();
+  const podsAt = dist => {
+    g.airstrikeRockets.length = 0;
+    // `orbit` is mandatory: _updateGunship advances it every frame and a missing value turns the
+    // gunship position into NaN, which silently defeats the distance guard (NaN < 120 is false).
+    const gs = { pos: new Vec2(g.player.pos.x + dist, g.player.pos.y), aim: new Vec2(0, 0),
+                 orbit: 0, phase: 'idle', phaseT: 0, tick: 1, laserCd: 9, rocketCd: 0, mortarCd: 9,
+                 life: 60, hp: 500, maxHp: 500, t: 0 };
+    g.gunship = gs; g.gunships = [gs]; g._gunshipTimer = 999;
+    const q = muteConsole();
+    for (let i = 0; i < 4 && g.airstrikeRockets.length === 0; i++) {
+      try { g._updateGunship(1 / 60); } catch (_) { break; }
+    }
+    q();
+    return g.airstrikeRockets.slice();
+  };
+  const homing = rs => rs.filter(r => Number(r.h || 0) > 0);
+  for (const d of [20, 45, 61, 90]) {
+    const rs = homing(podsAt(d));
+    T(`no homing pod fired from ${d}px (inside the ${MIN}px floor)`, rs.length === 0, `${rs.length} pods`);
+  }
+  // At 119px the gunship is one frame from the floor: it orbits outward at 190 px/s, so it may
+  // cross 120px and fire legitimately. What must hold is not "it never fires" but "nothing is ever
+  // launched from inside the floor" — assert the spawn geometry, not the abstinence.
+  {
+    const rs = homing(podsAt(119));
+    const minD = rs.length ? Math.min(...rs.map(r => Math.hypot(r.pos.x - g.player.pos.x, r.pos.y - g.player.pos.y))) : Infinity;
+    T('at the 119px boundary nothing launches from inside the floor',
+      rs.length === 0 || (Number.isFinite(minD) && minD >= MIN - 1),
+      rs.length ? `${rs.length} pods, closest ${minD.toFixed(1)}px` : 'held fire');
+  }
+  let anyFar = 0;
+  for (const d of [140, 220, 400, 700]) {
+    const rs = homing(podsAt(d));
+    anyFar += rs.length;
+    T(`pods still fire from ${d}px`, rs.length >= 1, `${rs.length} pods`);
+    if (rs.length) {
+      const minD = Math.min(...rs.map(r => Math.hypot(r.pos.x - g.player.pos.x, r.pos.y - g.player.pos.y)));
+      T(`  spawn distance at ${d}px stays outside the floor`, Number.isFinite(minD) && minD >= MIN - 1, `${minD.toFixed(1)}px`);
+      T(`  homing and blast are unchanged at ${d}px`, rs.every(r => r.h === 0.6 && r.blast === 42));
+    }
+  }
+  T('the gunship is not disarmed overall', anyFar > 0, `${anyFar} pods fired at range`);
+  T('the hold is a retry, not a cancel (short recheck, not the full 5.2s cycle)',
+    /if \(distance\(g\.pos, this\.player\.pos\) < AIRSTRIKE_MIN_ENGAGE\) \{\s*\n\s*g\.rocketCd = 0\.5;/.test(GAME_SRC));
+}
+
 console.log(`\nRESULT ${pass}/${pass + fail} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);

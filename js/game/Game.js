@@ -18562,20 +18562,30 @@ export class Game {
       // ── W3 rocket pods: 4 homing rockets into the shared (capped) pool ──
       g.rocketCd -= dt;
       if (g.rocketCd <= 0) {
-        g.rocketCd = 5.2;
-        for (let k = 0; k < 4; k++) {
-          if (this.airstrikeRockets.length >= 40) break;
-          const base = safeNormalize(this.player.pos.sub(g.pos));
-          if (base.lengthSq() === 0) break;
-          const j = randomRange(-0.5, 0.5);
-          const c = Math.cos(j), sn = Math.sin(j);
-          this.airstrikeRockets.push({
-            pos: g.pos.clone(),
-            dir: new Vec2(base.x * c - base.y * sn, base.x * sn + base.y * c),
-            speed: randomRange(200, 250), life: 6.0, radius: 7, blast: 42, h: 0.6,   // 60% homing
-          });
+        // POINT-BLANK HOLD (2026-07-26, Phase 6A closure matrix). Same defect the airstrike salvo
+        // had, on the second rocket path: the gunship closes on the player, and when it fired from
+        // 61px the four pods gave a 0.28s flight against a ~58px clearance requirement — and they
+        // HOME, so sidestepping does not clear them either. Undodgeable by construction. The pods
+        // hold fire inside AIRSTRIKE_MIN_ENGAGE and recheck shortly, so the gunship keeps its
+        // pressure the moment it has room to fire fairly. No damage, cadence or homing value moved.
+        if (distance(g.pos, this.player.pos) < AIRSTRIKE_MIN_ENGAGE) {
+          g.rocketCd = 0.5;
+        } else {
+          g.rocketCd = 5.2;
+          for (let k = 0; k < 4; k++) {
+            if (this.airstrikeRockets.length >= 40) break;
+            const base = safeNormalize(this.player.pos.sub(g.pos));
+            if (base.lengthSq() === 0) break;
+            const j = randomRange(-0.5, 0.5);
+            const c = Math.cos(j), sn = Math.sin(j);
+            this.airstrikeRockets.push({
+              pos: g.pos.clone(),
+              dir: new Vec2(base.x * c - base.y * sn, base.x * sn + base.y * c),
+              speed: randomRange(200, 250), life: 6.0, radius: 7, blast: 42, h: 0.6,   // 60% homing
+            });
+          }
+          this.audio?.playEnemyShoot();
         }
-        this.audio?.playEnemyShoot();
       }
 
       // ── W4 plasma mortar: 2 telegraphed AoE zones, 60% aimed ──
