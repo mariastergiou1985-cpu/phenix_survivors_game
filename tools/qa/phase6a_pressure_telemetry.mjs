@@ -183,18 +183,29 @@ if (process.argv[2] === '--worker') {
   const rocketSeen = new Map();
   const rocketHits = [];
   let pendingRocketHit = null;
+  // Spawn data must be captured at the REAL spawn moment. Sampling the array once per frame missed
+  // every rocket that was created and detonated inside the same update() — that is what produced
+  // 27% F_TELEMETRY_UNCERTAIN in the first classified run. Wrapping push() on the live array closes
+  // that hole; the array identity changes on reset()/_enterEndless(), so the hook is re-armed
+  // whenever a new array appears.
+  const noteRocket = r => {
+    if (rocketSeen.has(r)) return;
+    const d0 = Math.hypot(r.pos.x - game.player.pos.x, r.pos.y - game.player.pos.y);
+    rocketSeen.set(r, {
+      t0: +game.timeAlive.toFixed(2), d0: +d0.toFixed(1), speed: +Number(r.speed).toFixed(0),
+      homing: +Number(r.h || 0).toFixed(2), blast: r.blast,
+      flightSeconds: +(d0 / Math.max(1, r.speed)).toFixed(2),
+    });
+  };
+  let hookedArray = null;
   const trackRockets = () => {
-    const live = game.airstrikeRockets || [];
-    for (const r of live) {
-      if (!rocketSeen.has(r)) {
-        const d0 = Math.hypot(r.pos.x - game.player.pos.x, r.pos.y - game.player.pos.y);
-        rocketSeen.set(r, {
-          t0: +game.timeAlive.toFixed(2), d0: +d0.toFixed(1), speed: +Number(r.speed).toFixed(0),
-          homing: +Number(r.h || 0).toFixed(2), blast: r.blast,
-          flightSeconds: +(d0 / Math.max(1, r.speed)).toFixed(2),
-        });
-      }
+    const live = game.airstrikeRockets;
+    if (live && live !== hookedArray) {
+      hookedArray = live;
+      const oPush = Array.prototype.push;
+      live.push = function (...items) { for (const it of items) { try { noteRocket(it); } catch (_) {} } return oPush.apply(this, items); };
     }
+    for (const r of (live || [])) noteRocket(r);
   };
   const freeArcs = () => {                       // how many of 8 escape arcs are clear of threats
     const p = game.player.pos; const blocked = new Set();
@@ -304,6 +315,7 @@ if (process.argv[2] === '--worker') {
 
   let died = null, killingBlow = null;
   const dt = 1 / 60;
+  trackRockets();          // arm the push hook before the first frame
   for (let f = 0; f < MAXS * 60; f++) {
     vclock += 1000 / 60;
     if (game.upgradeUI)  { try { game.selectUpgrade(0); }  catch (_) { game.upgradeUI = null; } }
@@ -415,7 +427,8 @@ if (process.argv[2] === '--worker') {
     densityDist: { d100: dist(dens.d100), d200: dist(dens.d200), d300: dist(dens.d300) },
     airstrikeFairness: { hits: rocketHits.length, classes: klassCount,
       unavoidablePct: rocketHits.length ? +(100 * ((klassCount.C_UNAVOIDABLE_OVERLAP||0)+(klassCount.D_UNAVOIDABLE_TIMING||0)+(klassCount.E_SPAWNED_ON_PLAYER||0)) / rocketHits.length).toFixed(1) : null,
-      overlapAtHit: overlapCount, sample: rocketHits.slice(0, 4) },
+      overlapAtHit: overlapCount, sample: rocketHits.slice(0, 3),
+      unfairSample: rocketHits.filter(h => /^[CDE]_/.test(h.klass)).slice(0, 8) },
     xpAccounting: { collected: xpCollected, generated: xpGenerated, onGround: +xpOnGround.toFixed(0),
       pickups, spentInLevels: lvlThresholds, currentBar: game.player.xp, level: game.player.level,
       collectedPerMin: +(xpCollected / minutes).toFixed(1),

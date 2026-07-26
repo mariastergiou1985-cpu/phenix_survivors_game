@@ -513,6 +513,16 @@ const DD_CONTACT_DMG  = 14;    // contact damage per second (both bodies)
 const DD_ENRAGE_PCT   = 0.50;  // enrage at 50% shared HP
 const DD_ENRAGE_SPD   = 1.40;  // speed multiplier on enrage
 const DD_SPAWN_DELAY  = 0;     // seconds after rearming before boss appears
+// AIRSTRIKE MINIMUM ENGAGEMENT DISTANCE (measured 2026-07-26). The loitering airstrike ship fires
+// its salvo from its OWN position and its patrol path can cross the player. Telemetry recorded a
+// full 6-rocket salvo spawning 38px from the player with 0.14-0.16s of flight time. These rockets
+// carry no impact telegraph, so the only dodge is lateral clearance of PLAYER_RADIUS + blast = 62px;
+// the slowest character in the roster (189 px/s) needs 0.328s for that, which at the maximum rocket
+// speed of 285 px/s is 94px of travel. Below that the hit is not hard, it is mathematically
+// impossible — the player would have to move at 413 px/s. 120px keeps a margin over the 94px floor.
+// The ship simply holds fire and tries again on its next 3.0-4.2s cycle: damage, blast, cadence,
+// rocket count and aim are all untouched, and this whole system is Endless/Chaos-only.
+const AIRSTRIKE_MIN_ENGAGE = 120;
 const DD_ROCKET_COUNT  = 8;    // max rockets per Rocket Rain wave (perf cap)
 const DD_ROCKET_WARN   = 1.2;  // s of shadow telegraph before rocket hits
 const DD_ROCKET_RADIUS = 55;   // AoE impact radius
@@ -18448,6 +18458,8 @@ export class Game {
 
   // Rocket-rain SALVO: 3–6 rockets fanned across multiple impact zones around the player.
   _fireSalvo(s) {
+    // Point-blank salvos are unavoidable by construction — see AIRSTRIKE_MIN_ENGAGE. Hold fire.
+    if (distance(s.pos, this.player.pos) < AIRSTRIKE_MIN_ENGAGE) return;
     const n = 3 + Math.floor(Math.random() * 4) + (this._hasProto('airstrike_plus') ? 2 : 0);   // 3–6 (+2 with Airstrike+); aim unchanged, pool still capped at 40
     let fired = 0;
     for (let i = 0; i < n; i++) {
