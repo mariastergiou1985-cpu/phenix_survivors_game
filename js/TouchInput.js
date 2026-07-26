@@ -131,9 +131,19 @@ export function initTouchControls({ canvas, keys, game, setAim, onQ, onE, onUlt 
   // stops the browser from hijacking the drag as a scroll/refresh gesture — the actual cause
   // of "joystick does not move the character" on hardware (plain touch events get stolen).
   const DEAD = 8, MAXR = 30;   // smaller deadzone → better diagonal feel; MAXR matched to 90px joy
-  let joyPid = null;
+  // joyLast / joySuspended exist for the level-up card panel (2026-07-26). tick() hides the
+  // joystick whenever a card panel is up, and the old code called joyReset() there — which nulled
+  // joyPid. The thumb is still on the glass, but a display:none element never receives another
+  // pointerdown, so after every single level-up the hero stood still until the player lifted the
+  // thumb and put it back down. This is the touch twin of the keyboard held-movement defect.
+  // Now the panel SUSPENDS the joystick (stop injecting, remember the thumb) instead of resetting
+  // it, and the thumb is tracked at document level so a lift or a slide that happens while the
+  // joystick is hidden is still seen — no phantom walking on resume.
+  let joyPid = null, joyLast = null, joySuspended = false;
   function joyCenter() { const r = joy.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; }
   function joyMove(pt) {
+    joyLast = { clientX: pt.clientX, clientY: pt.clientY };
+    if (joySuspended) return;                  // card panel up — remember the thumb, inject nothing
     const c = joyCenter();
     let dx = pt.clientX - c.x, dy = pt.clientY - c.y;
     const dist = Math.hypot(dx, dy);
@@ -143,8 +153,18 @@ export function initTouchControls({ canvas, keys, game, setAim, onQ, onE, onUlt 
     setKey('a', dx < -DEAD); setKey('d', dx > DEAD);
   }
   function joyReset() {
-    joyPid = null; knob.style.transform = '';
+    joyPid = null; joyLast = null; joySuspended = false; knob.style.transform = '';
     setKey('w', false); setKey('s', false); setKey('a', false); setKey('d', false);
+  }
+  // Card panel / controller takeover: stop moving, keep the thumb.
+  function joySuspend() {
+    joySuspended = true; knob.style.transform = '';
+    setKey('w', false); setKey('s', false); setKey('a', false); setKey('d', false);
+  }
+  function joyResume() {
+    if (!joySuspended) return;
+    joySuspended = false;
+    if (joyPid !== null && joyLast) joyMove(joyLast);   // resume from where the thumb IS now
   }
   joy.addEventListener('pointerdown', e => {
     if (joyPid !== null) return;
@@ -165,6 +185,15 @@ export function initTouchControls({ canvas, keys, game, setAim, onQ, onE, onUlt 
   };
   joy.addEventListener('pointerup', joyUp);
   joy.addEventListener('pointercancel', joyUp);
+
+  // Document-level safety net for the joystick pointer. While the joystick is hidden (card panel,
+  // controller takeover) it cannot receive events at all, and pointer capture is not guaranteed to
+  // survive display:none across browsers. Without this, a thumb lifted during a card panel would
+  // be invisible to us and the hero would walk off on his own when the panel closed.
+  document.addEventListener('pointermove', e => { if (joyPid !== null && e.pointerId === joyPid) joyMove(e); }, { passive: true });
+  const joyDocUp = e => { if (joyPid !== null && e.pointerId === joyPid) joyReset(); };
+  document.addEventListener('pointerup', joyDocUp);
+  document.addEventListener('pointercancel', joyDocUp);
 
   // Backgrounding the tab (call, notification, app switch) does not always deliver
   // pointercancel, so the joystick could stay latched and keep the hero walking on return.
@@ -267,7 +296,8 @@ export function initTouchControls({ canvas, keys, game, setAim, onQ, onE, onUlt 
       _shown = showTouch;
       joy.style.display  = showTouch ? '' : 'none';
       btns.style.display = showTouch ? '' : 'none';
-      if (!showTouch) { joyReset(); clearHeld(); }
+      if (!showTouch) { joySuspend(); clearHeld(); }
+      else             { joyResume(); }
     }
     if (showPause !== _pauseShown) { _pauseShown = showPause; pauseB.style.display = showPause ? '' : 'none'; }
     if (g.gameState !== _lastState) { _lastState = g.gameState; updateRotate(); }
