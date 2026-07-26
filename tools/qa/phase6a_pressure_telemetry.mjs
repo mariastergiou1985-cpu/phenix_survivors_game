@@ -146,7 +146,11 @@ if (process.argv[2] === '--worker') {
         fastestTouching: +fastest.toFixed(0), playerSpeed: +pSpeed.toFixed(0),
         canOutrun: fastest > 0 ? fastest < pSpeed * 0.95 : null,
         dashReady: (game.player.dashCooldown || 0) <= 0,
-        klass: arcs <= 1 ? 'C_CORNERED'
+        // CLASSIFIER CORRECTION 2026-07-26: dash carries i-frames, so a cornered player who still
+        // has dash is not actually trapped — they can pass THROUGH the bodies. Counting those as
+        // unavoidable overstated the squeeze, the same way the rocket sampler overstated fairness.
+        klass: (arcs <= 1 && !((game.player.dashCooldown || 0) <= 0)) ? 'C_CORNERED'
+             : arcs <= 1 ? 'C_CORNERED_BUT_DASH_READY'
              : (fastest >= pSpeed * 0.95 && !((game.player.dashCooldown || 0) <= 0)) ? 'D_CANNOT_DISENGAGE'
              : arcs <= 3 ? 'B_PRESSURED' : 'A_AVOIDABLE',
       });
@@ -469,7 +473,7 @@ if (process.argv[2] === '--worker') {
     hordeFairness: (() => {
       const k = {}; for (const h of hordeHits) k[h.klass] = (k[h.klass] || 0) + 1;
       const arcs = hordeHits.map(h => h.freeArcs), crowd = hordeHits.map(h => h.touching);
-      const unavoid = (k.C_CORNERED || 0) + (k.D_CANNOT_DISENGAGE || 0);
+      const unavoid = (k.C_CORNERED || 0) + (k.D_CANNOT_DISENGAGE || 0);   // dash-ready excluded
       return { events: hordeHits.length, classes: k,
         unavoidablePct: hordeHits.length ? +(100 * unavoid / hordeHits.length).toFixed(1) : null,
         freeArcs: dist(arcs), touchingBodies: dist(crowd),
