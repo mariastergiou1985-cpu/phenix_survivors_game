@@ -343,13 +343,32 @@ if (process.argv[2] === '--worker') {
     for (let k = 0; k < 16; k++) {
       const a = (k / 16) * Math.PI * 2, cx = Math.cos(a), cy = Math.sin(a);
       let score = 0;
+      // PROXIMITY-DOMINANT SCORING (Phase 6A closure RCA). The old linear (420-d)/420 term made a
+      // distant cluster look worse than a body 30px ahead: five enemies at 400px scored ~0.25 total
+      // while one at 30px scored ~0.93, so the "expert" steered INTO imminent contact to avoid far
+      // pressure. Measured in Chaos: 135.2 HP/min of horde contact for expert versus 83.6 for
+      // competent, +62%, which is exactly why the expert profile looked worse than the competent
+      // one. Weighting is now inverse-distance with a hard veto inside 70px, and hazards are scored
+      // too, because an "empty" direction full of lightning is not an escape.
       for (const e of game.enemies) {
         if (!e || e.hp <= 0 || !e.pos) continue;
         const dx = e.pos.x - p.x, dy = e.pos.y - p.y, d = Math.hypot(dx, dy);
         if (d > 420 || d < 1) continue;
         const dot = (dx / d) * cx + (dy / d) * cy;
-        if (dot > 0.2) score -= dot * (420 - d) / 420;
+        if (dot > 0.2) {
+          score -= dot * (420 / Math.max(40, d));
+          if (d < 70) score -= 6;
+        }
       }
+      const hazard = (hx2, hy2, rad, reach) => {
+        const dx = hx2 - p.x, dy = hy2 - p.y, d = Math.hypot(dx, dy);
+        if (d > reach || d < 1) return;
+        const dot = (dx / d) * cx + (dy / d) * cy;
+        if (dot > 0.2 && d < (rad || 40) + 120) score -= 5 * dot;
+      };
+      for (const z of (game.lightningZones || [])) if (z && z.pos && !z.struck) hazard(z.pos.x, z.pos.y, z.radius, 300);
+      for (const z of (game.bossLavaZones || [])) if (z && z.pos) hazard(z.pos.x, z.pos.y, z.radius, 260);
+      for (const r of (game.airstrikeRockets || [])) if (r && r.pos) hazard(r.pos.x, r.pos.y, r.blast, 260);
       // WALL AWARENESS. Without this the "expert" walks into the world edge, gets clamped and is
       // then pinned against it — which is why the first closure pass measured the expert profile as
       // WORSE than the competent one, with 43-50s outliers. A real expert never backs into a wall.
