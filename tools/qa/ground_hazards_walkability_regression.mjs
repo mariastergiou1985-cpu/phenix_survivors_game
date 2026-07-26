@@ -1,7 +1,7 @@
 // GROUND HAZARDS WALKABILITY — real MapManager, mirrors Game.placeGroundHazard.
 // Run: node tools/qa/ground_hazards_walkability_regression.mjs   (exit 1 on failure)
 import { register } from 'node:module';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 import fs from 'node:fs';
 register('./strip-v-loader.mjs', import.meta.url);
@@ -12,7 +12,7 @@ if (!globalThis.performance) globalThis.performance = { now: () => Date.now() };
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const JS   = path.resolve(HERE, '../../js');
-const { MapManager } = await import(path.join(JS, 'game/MapManager.js'));
+const { MapManager } = await import(pathToFileURL(path.join(JS, 'game/MapManager.js')).href);
 
 let pass=0, fail=0;
 const T=(n,f)=>{let ok=false,note='';try{const r=f();ok=r===true;if(typeof r==='string')note=r;}
@@ -22,6 +22,18 @@ const mm = new MapManager({});
 mm._cityImg      = { complete:true, naturalWidth:1672, naturalHeight:519 };
 mm._chaosDeckImg = { complete:true, naturalWidth:1672, naturalHeight:440 };
 const S = mm.CITY_SCALE;
+// ── STALE-ASSERTION CORRECTION (2026-07-26, Phase 6A closure §9) ────────────────────────────────
+// MapManager.CITY_BLOCK_COLS / CHAOS_BLOCK_COLS are DELIBERATELY EMPTY since P1-1 (2026-07-25):
+// the hand-typed rectangles were measured against the shipped PNGs and were close to an inversion
+// of the art, producing invisible slabs on open pavement (85.9% blocked frames while holding a
+// direction). They stay empty until a mask is DERIVED from the art. The assertions below were
+// written against those rectangles and have been failing ever since, for the right reason.
+// They are now MODEL-AWARE: with an empty block model they assert the contract that must hold
+// today (free movement, no invalid footprints), and the moment a real mask is dropped into
+// CITY_BLOCK_COLS / CHAOS_BLOCK_COLS they go back to asserting the geometry automatically.
+// Nothing else in this file is touched.
+const HAS_CITY_BLOCKS  = (mm.CITY_BLOCK_COLS  || []).length > 0;
+const HAS_CHAOS_BLOCKS = (mm.CHAOS_BLOCK_COLS || []).length > 0;
 let seed = 777001;
 const rnd = () => (seed = (seed*1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
 
@@ -109,7 +121,9 @@ T('καμία διπλή μετακίνηση (−20064)', ()=>live.every(h=>Num
 
 console.log('\n── F. mode isolation ──');
 T('Act 1 (mode null) δεν περιορίζεται', ()=>{const p=place(300*S,60*S,70,null);return p.x===300*S&&p.y===60*S;});
-T('chaos χρησιμοποιεί τα δικά του blocks', ()=>mm.isWalkablePoint(330*S,200*S,'chaos')===false);
+T(HAS_CHAOS_BLOCKS ? 'chaos χρησιμοποιεί τα δικά του blocks'
+                   : 'άδειο chaos block model → το hazard placement δεν μετακινεί τίποτα',
+  ()=> mm.isWalkablePoint(330*S,200*S,'chaos') === !HAS_CHAOS_BLOCKS);
 
 console.log('\n── G. Endless Lava Rain παραμένει αφαιρεμένο ──');
 const gameSrc = fs.readFileSync(path.join(JS,'game/Game.js'),'utf8');

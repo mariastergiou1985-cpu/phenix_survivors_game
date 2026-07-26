@@ -1,7 +1,7 @@
 // WALKABILITY RUNTIME INTEGRATION — real MapManager + the real resolver semantics.
 // Run: node tools/qa/walkability_runtime_regression.mjs   (exit 1 on failure)
 import { register } from 'node:module';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 register('./strip-v-loader.mjs', import.meta.url);
 globalThis.window = globalThis;
@@ -11,7 +11,7 @@ if (!globalThis.performance) globalThis.performance = { now: () => Date.now() };
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const JS   = path.resolve(HERE, '../../js');
-const { MapManager } = await import(path.join(JS, 'game/MapManager.js'));
+const { MapManager } = await import(pathToFileURL(path.join(JS, 'game/MapManager.js')).href);
 
 let pass=0, fail=0;
 const T=(n,f)=>{let ok=false,note='';try{const r=f();ok=r===true;if(typeof r==='string')note=r;}
@@ -21,6 +21,18 @@ const mm = new MapManager({});
 mm._cityImg      = { complete:true, naturalWidth:1672, naturalHeight:519 };
 mm._chaosDeckImg = { complete:true, naturalWidth:1672, naturalHeight:440 };
 const S = mm.CITY_SCALE;
+// ── STALE-ASSERTION CORRECTION (2026-07-26, Phase 6A closure §9) ────────────────────────────────
+// MapManager.CITY_BLOCK_COLS / CHAOS_BLOCK_COLS are DELIBERATELY EMPTY since P1-1 (2026-07-25):
+// the hand-typed rectangles were measured against the shipped PNGs and were close to an inversion
+// of the art, producing invisible slabs on open pavement (85.9% blocked frames while holding a
+// direction). They stay empty until a mask is DERIVED from the art. The assertions below were
+// written against those rectangles and have been failing ever since, for the right reason.
+// They are now MODEL-AWARE: with an empty block model they assert the contract that must hold
+// today (free movement, no invalid footprints), and the moment a real mask is dropped into
+// CITY_BLOCK_COLS / CHAOS_BLOCK_COLS they go back to asserting the geometry automatically.
+// Nothing else in this file is touched.
+const HAS_CITY_BLOCKS  = (mm.CITY_BLOCK_COLS  || []).length > 0;
+const HAS_CHAOS_BLOCKS = (mm.CHAOS_BLOCK_COLS || []).length > 0;
 
 // Mirror of Game.resolveWalkableMove — same four-branch policy under test.
 const resolve = (fx, fy, tx, ty, r, mode='endless') => {
@@ -50,7 +62,10 @@ for (let i=0;i<1000;i++) {
 console.log(`  (${slid} slides, ${blocked} fully blocked frames)`);
 T('invalid player footprint = 0', ()=>invalid===0||'got '+invalid);
 T('κανένα teleport (>20px σε ένα frame)', ()=>teleports===0||'got '+teleports);
-T('sliding όντως συμβαίνει (όχι μόνο blocking)', ()=>slid>0||'0 slides');
+T(HAS_CITY_BLOCKS ? 'sliding όντως συμβαίνει (όχι μόνο blocking)'
+                  : 'άδειο block model → ούτε slide ούτε blocked frame',
+  ()=> HAS_CITY_BLOCKS ? (slid>0||'0 slides')
+                       : ((slid===0 && blocked===0)||`slides=${slid} blocked=${blocked}`));
 
 console.log('\n── B. σκόπιμη πορεία πάνω σε authored pillar ──');
 // pillar at src x 180..250, rows 210..300 → world x 540..750 (×3)
@@ -58,7 +73,10 @@ let hx = 500*S, hy = 250*S, hitInside = 0, movedX = 0;
 for (let i=0;i<200;i++){ const r = resolve(hx, hy, hx+6, hy, R); if (r.x!==hx) movedX++; hx=r.x; hy=r.y;
   if (!mm.isWalkableFootprint(hx,hy,R,'endless')) hitInside++; }
 T('ο παίκτης ΔΕΝ μπαίνει μέσα στο pillar', ()=>hitInside===0||'got '+hitInside);
-T('σταμάτησε πριν το pillar 700..780', ()=>hx < 700*S || 'x='+(hx/S).toFixed(0)+' src');
+T(HAS_CITY_BLOCKS ? 'σταμάτησε πριν το pillar 700..780'
+                  : 'άδειο block model → η πορεία περνά ελεύθερα (καμία αόρατη πλάκα)',
+  ()=> HAS_CITY_BLOCKS ? (hx < 700*S || 'x='+(hx/S).toFixed(0)+' src')
+                       : (movedX===200 || `blocked at frame ${movedX}/200, x=${(hx/S).toFixed(0)} src`));
 
 console.log('\n── C. corner: διαγώνια σε μπλοκαρισμένη γωνία ──');
 const cx0 = 178*S, cy0 = 305*S;
@@ -104,7 +122,9 @@ T('Act 1 (mode null) ΔΕΝ περιορίζεται από Endless obstacles',
   ()=>{const r=resolve(600*S, 60*S, 610*S, 60*S, R, null); return r.x===610*S;});
 T('Endless obstacles ΔΕΝ ισχύουν στο chaos model',
   ()=>mm.isWalkablePoint(215*S, 300*S, 'chaos')===true);
-T('chaos έχει δικά του authored blocks', ()=>mm.isWalkablePoint(330*S, 200*S, 'chaos')===false);
+T(HAS_CHAOS_BLOCKS ? 'chaos έχει δικά του authored blocks'
+                   : 'άδειο chaos block model → κάθε σημείο του deck είναι walkable',
+  ()=> mm.isWalkablePoint(330*S, 200*S, 'chaos') === !HAS_CHAOS_BLOCKS);
 
 
 console.log('\n── H. enemy movement: 100 commons γύρω από obstacles ──');
