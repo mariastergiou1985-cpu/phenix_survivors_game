@@ -97,6 +97,7 @@ if (process.argv[2] === '--worker') {
 
   // ── instrumentation ─────────────────────────────────────────────────────────────────────────
   const dmg = {};                    // reason -> HP
+  const requested = {}, firstHit = {}, lastHit = {}, killBlows = {};
   const accepted = {}, rejected = {};
   const events = [];                 // {t, reason, hp}
   let lastReason = null;
@@ -110,8 +111,30 @@ if (process.argv[2] === '--worker') {
   };
   const record = (reason, lost, landed) => {
     if (landed) { accepted[reason] = (accepted[reason] || 0) + 1; } else { rejected[reason] = (rejected[reason] || 0) + 1; }
+    if (reason === 'airstrike' || reason === 'gunship') {
+      // nearest live rocket is the one that just detonated (it is spliced right after this call)
+      let best = null, bestD = Infinity;
+      for (const r of (game.airstrikeRockets || [])) {
+        const d = Math.hypot(r.pos.x - game.player.pos.x, r.pos.y - game.player.pos.y);
+        if (d < bestD) { bestD = d; best = r; }
+      }
+      const spawn = best ? rocketSeen.get(best) : null;
+      pendingRocketHit = {
+        t: +game.timeAlive.toFixed(2), reason, lost: +lost.toFixed(1), landed: !!landed,
+        hitDistance: Number.isFinite(bestD) ? +bestD.toFixed(1) : null,
+        blast: best ? best.blast : null, homing: best ? +Number(best.h || 0).toFixed(2) : null,
+        rocketSpeed: best ? +Number(best.speed).toFixed(0) : null,
+        spawnDistance: spawn ? spawn.d0 : null, flightSeconds: spawn ? spawn.flightSeconds : null,
+        playerSpeed: +Number(game.player.speed || game.player.baseSpeed || 0).toFixed(0),
+        dashReady: (game.player.dashCooldown || 0) <= 0,
+        freeArcs: freeArcs(), concurrent: concurrent(),
+      };
+      rocketHits.push(pendingRocketHit);
+    }
     if (lost > 0) {
       dmg[reason] = (dmg[reason] || 0) + lost;
+      firstHit[reason] ??= +game.timeAlive.toFixed(2);
+      lastHit[reason] = +game.timeAlive.toFixed(2);
       events.push({ t: +game.timeAlive.toFixed(2), reason, lost: +lost.toFixed(2), hp: +game.player.hp.toFixed(1) });
       lastReason = reason;
     }
@@ -119,13 +142,84 @@ if (process.argv[2] === '--worker') {
   const oPulse = game._applyPulseDamage.bind(game);
   game._applyPulseDamage = function (d, o) {
     const reason = reasonFor(site()); const before = game.player.hp;
+    requested[reason] = (requested[reason] || 0) + (Number(d) || 0);
     const r = oPulse(d, o); record(reason, Math.max(0, before - game.player.hp), r); return r;
   };
   const oGate = game._damagePlayer.bind(game);
   game._damagePlayer = function (d, o) {
     const reason = reasonFor(site()); const before = game.player.hp;
+    requested[reason] = (requested[reason] || 0) + (Number(d) || 0);
     const r = oGate(d, o); record(reason, Math.max(0, before - game.player.hp), r); return r;
   };
+  // ── XP ACCOUNTING ─────────────────────────────────────────────────────────────────────────
+  // player.xp is the CURRENT BAR value: gainXp() SUBTRACTS xpToNext on every level-up. Dividing it
+  // by elapsed minutes (as v1 did) measures the leftover bar, not the XP flow, which is why a level
+  // 21 run reported 9.7 "XP/min" and a level 18 run reported 103.5. Both were meaningless. Total
+  // collected XP is the sum of what gainXp() actually granted; generated XP is what the shard system
+  // spawned; the rest is still on the ground. The identity is asserted at the end of the run.
+  let xpCollected = 0, xpGenerated = 0, pickups = 0;
+  const oGain = game.player.gainXp.bind(game.player);
+  game.player.gainXp = function (amount, ft) {
+    const before = game.player.xp, beforeLvl = game.player.level;
+    const r = oGain(amount, ft);
+    const granted = Math.max(1, Math.round(amount * (game.player.xpMult || 1)));
+    xpCollected += granted; pickups++;
+    void before; void beforeLvl;
+    return r;
+  };
+  if (game.xpShards && typeof game.xpShards.spawnBurst === 'function') {
+    const oBurst = game.xpShards.spawnBurst.bind(game.xpShards);
+    game.xpShards.spawnBurst = function (x, y, total, radius, g) {
+      xpGenerated += Math.max(1, Math.round(total));
+      return oBurst(x, y, total, radius, g);
+    };
+  }
+
+  // ── AIRSTRIKE / ROCKET GEOMETRY ───────────────────────────────────────────────────────────
+  // These rockets have NO impact telegraph: they are projectiles (blast 46, gunship 42 with 60%
+  // homing) travelling at 200-285 px/s, i.e. about the player's own speed. "Telegraph duration"
+  // therefore does not exist here — the dodge window is the flight time, and the escape distance is
+  // lateral clearance of PLAYER_RADIUS + blast.
+  const rocketSeen = new Map();
+  const rocketHits = [];
+  let pendingRocketHit = null;
+  const trackRockets = () => {
+    const live = game.airstrikeRockets || [];
+    for (const r of live) {
+      if (!rocketSeen.has(r)) {
+        const d0 = Math.hypot(r.pos.x - game.player.pos.x, r.pos.y - game.player.pos.y);
+        rocketSeen.set(r, {
+          t0: +game.timeAlive.toFixed(2), d0: +d0.toFixed(1), speed: +Number(r.speed).toFixed(0),
+          homing: +Number(r.h || 0).toFixed(2), blast: r.blast,
+          flightSeconds: +(d0 / Math.max(1, r.speed)).toFixed(2),
+        });
+      }
+    }
+  };
+  const freeArcs = () => {                       // how many of 8 escape arcs are clear of threats
+    const p = game.player.pos; const blocked = new Set();
+    const mark = (x, y, rad) => {
+      const d = Math.hypot(x - p.x, y - p.y);
+      if (d > 260) return;
+      blocked.add(((Math.round(Math.atan2(y - p.y, x - p.x) / (Math.PI / 4)) % 8) + 8) % 8);
+      void rad;
+    };
+    for (const e of game.enemies) if (e && e.hp > 0 && e.pos) mark(e.pos.x, e.pos.y, e.radius);
+    for (const z of (game.lightningZones || [])) mark(z.pos.x, z.pos.y, z.radius);
+    for (const z of (game.bossLavaZones || [])) mark(z.pos.x, z.pos.y, z.radius || 40);
+    for (const r of (game.airstrikeRockets || [])) mark(r.pos.x, r.pos.y, r.blast);
+    return 8 - blocked.size;
+  };
+  const concurrent = () => ({
+    lightning: (game.lightningZones || []).length,
+    lava: (game.bossLavaZones || []).length,
+    rockets: (game.airstrikeRockets || []).length,
+    titan: !!game.titanBoss, annihilator: !!game.annihilatorBoss,
+    gunship: !!game._gunship, bossRush: !!game._bossRush, acidRain: !!game.acidRain,
+    enemies300: (game.enemies || []).filter(e => e && e.hp > 0 && e.pos &&
+      Math.hypot(e.pos.x - game.player.pos.x, e.pos.y - game.player.pos.y) < 300).length,
+  });
+
   // weapon damage share
   const weapon = {};
   const oHit = Enemy.prototype.takeHit;
@@ -227,6 +321,7 @@ if (process.argv[2] === '--worker') {
       setDir(tv.vx / len, tv.vy / len, boxed && game.player.dashCooldown <= 0);
     }
 
+    trackRockets();
     try { game.update(dt, input); } catch (e) { break; }
 
     moveDist += Math.hypot(game.player.pos.x - prev.x, game.player.pos.y - prev.y);
@@ -243,6 +338,37 @@ if (process.argv[2] === '--worker') {
   unrun();
 
   const end = died != null ? died : game.timeAlive;
+  const pct=(a,q)=>{ if(!a.length) return null; const b=a.slice().sort((x,y)=>x-y); return b[Math.min(b.length-1,Math.floor(b.length*q))]; };
+  const mean=a=>a.length? +(a.reduce((x,y)=>x+y,0)/a.length).toFixed(2):null;
+  const dist=a=>({mean:mean(a),median:pct(a,.5),p75:pct(a,.75),p90:pct(a,.90),p95:pct(a,.95),p99:pct(a,.99),max:a.length?Math.max(...a):null});
+
+  // ── §7 airstrike fairness classification. These rockets have NO impact telegraph, so the dodge
+  // window is the flight time and the escape requirement is lateral clearance of PLAYER_RADIUS+blast.
+  const PR2 = 16;
+  const classify = h => {
+    if (h.spawnDistance == null || h.flightSeconds == null) return 'F_TELEMETRY_UNCERTAIN';
+    const clearance = PR2 + (h.blast || 46);
+    const spd = h.playerSpeed || 230;
+    const lateralSeconds = clearance / spd;
+    if (h.spawnDistance <= clearance * 1.2) return 'E_SPAWNED_ON_PLAYER';
+    if (h.homing > 0 && h.rocketSpeed >= spd * 0.95 && !h.dashReady) return 'D_UNAVOIDABLE_TIMING';
+    if (h.flightSeconds < lateralSeconds) return 'D_UNAVOIDABLE_TIMING';
+    if (h.freeArcs === 0) return 'C_UNAVOIDABLE_OVERLAP';
+    if (h.freeArcs <= 2 || h.concurrent.rockets >= 6) return 'B_PRESSURED_BUT_FAIR';
+    return 'A_AVOIDABLE';
+  };
+  for (const h of rocketHits) h.klass = classify(h);
+  const klassCount = {};
+  for (const h of rocketHits) klassCount[h.klass] = (klassCount[h.klass] || 0) + 1;
+  const overlapCount = {};
+  for (const h of rocketHits) {
+    const c = h.concurrent || {};
+    for (const k of ['lightning','lava','titan','annihilator','gunship','bossRush','acidRain'])
+      if (c[k]) overlapCount[k] = (overlapCount[k] || 0) + 1;
+  }
+  // XP identity
+  const lvlThresholds = (() => { let t = 0; for (let l = 1; l < game.player.level; l++) t += Math.round(8 + l * 5 + l * l * 1.05); return t; })();
+  const xpOnGround = (game.xpShards?.active || []).reduce((a, sh) => a + (sh.value || sh.v || 0), 0);
   const win = s => events.filter(e => e.t >= end - s).reduce((a, e) => a + e.lost, 0);
   const med = a => { if (!a.length) return null; const s = a.slice().sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; };
   const mx  = a => (a.length ? Math.max(...a) : null);
@@ -273,7 +399,29 @@ if (process.argv[2] === '--worker') {
                meanEscapeSeconds: escapeN ? +(escapeSum / escapeN).toFixed(2) : null, escapes: escapeN },
     roleMix: Object.fromEntries(Object.entries(roleSamples).sort((a, b) => b[1] - a[1])
       .map(([k, v]) => [k, +(100 * v / roleTot).toFixed(1)])),
-    progression: { xpPerMin: +((game.player.xp || 0) / minutes).toFixed(1), levels: levelTimeline.slice(0, 30),
+    censored: died == null,
+    observationSeconds: +end.toFixed(2),
+    damagePerSecond: +(totalDmg / Math.max(1, end)).toFixed(2),
+    perReason: Object.fromEntries(Object.keys({ ...dmg, ...accepted, ...rejected }).map(k => [k, {
+      requested: +(requested[k] || 0).toFixed(1), accepted: +(dmg[k] || 0).toFixed(1),
+      landedEvents: accepted[k] || 0, rejectedEvents: rejected[k] || 0,
+      dmgPerEvent: accepted[k] ? +((dmg[k] || 0) / accepted[k]).toFixed(2) : 0,
+      eventsPerMin: +((accepted[k] || 0) / minutes).toFixed(1),
+      dmgPerMin: +((dmg[k] || 0) / minutes).toFixed(1),
+      share: +(100 * (dmg[k] || 0) / (totalDmg || 1)).toFixed(1),
+      firstHit: firstHit[k] ?? null, lastHit: lastHit[k] ?? null,
+    }])),
+    unattributed: Object.keys(dmg).filter(k => k.startsWith('other:')),
+    densityDist: { d100: dist(dens.d100), d200: dist(dens.d200), d300: dist(dens.d300) },
+    airstrikeFairness: { hits: rocketHits.length, classes: klassCount,
+      unavoidablePct: rocketHits.length ? +(100 * ((klassCount.C_UNAVOIDABLE_OVERLAP||0)+(klassCount.D_UNAVOIDABLE_TIMING||0)+(klassCount.E_SPAWNED_ON_PLAYER||0)) / rocketHits.length).toFixed(1) : null,
+      overlapAtHit: overlapCount, sample: rocketHits.slice(0, 4) },
+    xpAccounting: { collected: xpCollected, generated: xpGenerated, onGround: +xpOnGround.toFixed(0),
+      pickups, spentInLevels: lvlThresholds, currentBar: game.player.xp, level: game.player.level,
+      collectedPerMin: +(xpCollected / minutes).toFixed(1),
+      identityCollected: xpCollected - (lvlThresholds + game.player.xp),
+      identityGenerated: xpGenerated - (xpCollected + xpOnGround) },
+    progression: { levels: levelTimeline.slice(0, 30),
                    levelsPerMin: +(levelTimeline.length / minutes).toFixed(2) },
     weaponShare: Object.fromEntries(Object.entries(weapon).sort((a, b) => b[1] - a[1]).slice(0, 8)
       .map(([k, v]) => [k, +(100 * v / (totalWeapon || 1)).toFixed(1)])),
