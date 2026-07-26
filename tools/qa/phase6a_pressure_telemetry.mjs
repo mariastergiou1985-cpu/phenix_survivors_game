@@ -178,6 +178,7 @@ if (process.argv[2] === '--worker') {
     if (lost > 0) {
       dmg[reason] = (dmg[reason] || 0) + lost;
       firstHit[reason] ??= +game.timeAlive.toFixed(2);
+      chargeOverlap(lost);
       lastHit[reason] = +game.timeAlive.toFixed(2);
       events.push({ t: +game.timeAlive.toFixed(2), reason, lost: +lost.toFixed(2), hp: +game.player.hp.toFixed(1) });
       lastReason = reason;
@@ -330,6 +331,49 @@ if (process.argv[2] === '--worker') {
   };
 
   // ── sampling ────────────────────────────────────────────────────────────────────────────────
+  // ── §8 EVENT-OVERLAP MATRIX ───────────────────────────────────────────────────────────────
+  // Each major threat system is sampled as on/off; contiguous on-samples become intervals. Damage
+  // is stamped with the set of systems active at that instant, so an overlap window can be charged
+  // with what it actually cost. The question this answers: does any single system know it is piling
+  // onto another, or does each schedule itself in isolation and the player pay the sum?
+  const SYSTEMS = {
+    airstrike:  () => (game.airstrikeRockets || []).length > 0 || (game.airstrikeShips || []).length > 0,
+    lightning:  () => (game.lightningZones || []).length > 0 || (game._stormActive || 0) > 0,
+    titan:      () => !!game.titanBoss,
+    annihilator:() => !!game.annihilatorBoss,
+    gunship:    () => !!game._gunship,
+    bossTrail:  () => (game.bossTrails || []).length > 0,
+    bossRush:   () => !!game._bossRush,
+    acidRain:   () => !!game.acidRain,
+    groundHaz:  () => (game.bossLavaZones || []).length > 0 || (game._iceFields || []).length > 0 ||
+                      (game._voidRifts || []).length > 0 || (game.cybermoteMines || []).length > 0,
+    densePeak:  () => (game.enemies || []).filter(e => e && e.hp > 0 && e.pos &&
+                      Math.hypot(e.pos.x - game.player.pos.x, e.pos.y - game.player.pos.y) < 300).length >= 25,
+  };
+  const sysOn = {}, sysTime = {}, pairTime = {}, pairDmg = {};
+  for (const k in SYSTEMS) { sysOn[k] = false; sysTime[k] = 0; }
+  let activeNow = [];
+  const sampleSystems = dtSec => {
+    activeNow = [];
+    for (const k in SYSTEMS) {
+      let on = false; try { on = !!SYSTEMS[k](); } catch (_) {}
+      sysOn[k] = on;
+      if (on) { sysTime[k] += dtSec; activeNow.push(k); }
+    }
+    for (let i = 0; i < activeNow.length; i++)
+      for (let j = i + 1; j < activeNow.length; j++) {
+        const key = activeNow[i] + '+' + activeNow[j];
+        pairTime[key] = (pairTime[key] || 0) + dtSec;
+      }
+  };
+  const chargeOverlap = lost => {
+    for (let i = 0; i < activeNow.length; i++)
+      for (let j = i + 1; j < activeNow.length; j++) {
+        const key = activeNow[i] + '+' + activeNow[j];
+        pairDmg[key] = (pairDmg[key] || 0) + lost;
+      }
+  };
+
   const dens = { d100: [], d200: [], d300: [] };
   const contactBodies = [], arcs = [], roleSamples = {};
   let exposureFrames = 0, contactFrames = 0, moveDist = 0, escapeSum = 0, escapeN = 0;
@@ -392,7 +436,7 @@ if (process.argv[2] === '--worker') {
 
     moveDist += Math.hypot(game.player.pos.x - prev.x, game.player.pos.y - prev.y);
     prev = { x: game.player.pos.x, y: game.player.pos.y };
-    if (f % 15 === 0) sample();
+    if (f % 15 === 0) { sample(); sampleSystems(0.25); }
     if (game.player.level !== lastLevel) { levelTimeline.push({ t: +game.timeAlive.toFixed(1), lvl: game.player.level }); lastLevel = game.player.level; }
     if (f % 300 === 0) {
       const tot = Object.values(weapon).reduce((a, b) => a + b, 0);
@@ -483,6 +527,14 @@ if (process.argv[2] === '--worker') {
     }])),
     unattributed: Object.keys(dmg).filter(k => k.startsWith('other:')),
     densityDist: { d100: dist(dens.d100), d200: dist(dens.d200), d300: dist(dens.d300) },
+    overlapMatrix: (() => {
+      const dur = Object.fromEntries(Object.entries(sysTime).filter(([, v]) => v > 0).map(([k, v]) => [k, +v.toFixed(1)]));
+      const pairs = Object.entries(pairTime).filter(([, v]) => v >= 1)
+        .sort((a, b) => b[1] - a[1]).slice(0, 12)
+        .map(([k, v]) => [k, { seconds: +v.toFixed(1), pctOfRun: +(100 * v / Math.max(1, end)).toFixed(1),
+                               damage: +(pairDmg[k] || 0).toFixed(1) }]);
+      return { systemActiveSeconds: dur, topOverlaps: Object.fromEntries(pairs) };
+    })(),
     hordeFairness: (() => {
       const k = {}; for (const h of hordeHits) k[h.klass] = (k[h.klass] || 0) + 1;
       const arcs = hordeHits.map(h => h.freeArcs), crowd = hordeHits.map(h => h.touching);
