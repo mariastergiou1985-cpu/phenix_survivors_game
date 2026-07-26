@@ -298,15 +298,19 @@ if (process.argv[2] === '--worker') {
     if (dash) keys.add('shift');
   };
   const threatVector = radius => {
-    const p = game.player.pos; let vx = 0, vy = 0, n = 0;
+    const p = game.player.pos; let vx = 0, vy = 0, n = 0, touching = 0, nearest = Infinity;
     for (const e of game.enemies) {
       if (!e || e.hp <= 0 || !e.pos) continue;
       const dx = p.x - e.pos.x, dy = p.y - e.pos.y, d2 = dx * dx + dy * dy;
-      if (d2 > radius * radius || d2 < 1) continue;
-      const d = Math.sqrt(d2), w = 1 / d;
+      if (d2 < 1) continue;
+      const d = Math.sqrt(d2);
+      if (d < nearest) nearest = d;
+      if (d < (e.radius || 14) + 16 + 8) touching++;      // in or entering contact range
+      if (d2 > radius * radius) continue;
+      const w = 1 / d;
       vx += (dx / d) * w; vy += (dy / d) * w; n++;
     }
-    return { vx, vy, n };
+    return { vx, vy, n, touching, nearest };
   };
   const bestOpenArc = () => {                     // expert: 16 rays, pick the emptiest
     const p = game.player.pos; let best = 0, bestScore = -Infinity;
@@ -368,14 +372,19 @@ if (process.argv[2] === '--worker') {
     if (game._postArenaChoice) { try { game._selectPostArenaChoice(0); } catch (_) { game._postArenaChoice = null; } }
 
     const tv = threatVector(340);
+    // DASH AS THE ESCAPE TOOL (2026-07-26). The first version only dashed on raw crowd size, which
+    // is not what a competent player reacts to — they dash to BREAK CONTACT. Dash carries i-frames
+    // and passes through bodies, so it is the counterplay the encirclement design intends. Without
+    // this the harness records "cornered" moments the player could actually have escaped, which is
+    // exactly what inflated the earlier unavoidable share.
+    const mustBreak = tv.touching >= 2 || tv.nearest < 46;
+    const canDash = (game.player.dashCooldown || 0) <= 0;
     if (skill === 'expert') {
       const a = bestOpenArc();
-      const boxed = tv.n >= 6;
-      setDir(a.x, a.y, boxed && game.player.dashCooldown <= 0);
+      setDir(a.x, a.y, canDash && (mustBreak || tv.n >= 6));
     } else {
       const len = Math.hypot(tv.vx, tv.vy) || 1;
-      const boxed = tv.n >= 8;
-      setDir(tv.vx / len, tv.vy / len, boxed && game.player.dashCooldown <= 0);
+      setDir(tv.vx / len, tv.vy / len, canDash && (mustBreak || tv.n >= 8));
     }
 
     trackRockets();
@@ -408,8 +417,12 @@ if (process.argv[2] === '--worker') {
     const spd = h.playerSpeed || 230;
     const lateralSeconds = clearance / spd;
     if (h.spawnDistance <= clearance * 1.2) return 'E_SPAWNED_ON_PLAYER';
-    if (h.homing > 0 && h.rocketSpeed >= spd * 0.95 && !h.dashReady) return 'D_UNAVOIDABLE_TIMING';
-    if (h.flightSeconds < lateralSeconds) return 'D_UNAVOIDABLE_TIMING';
+    // A homing rocket cannot be OUTRUN when it matches the player's speed, but it can still be
+    // side-stepped: the rocket re-aims, so the player needs roughly twice the lateral window. The
+    // earlier rule flagged every same-speed homing rocket as unavoidable regardless of how long it
+    // was in the air, which mislabelled 249px+ gunship shots that had a full second of flight.
+    const needed = h.homing > 0 ? lateralSeconds * 2 : lateralSeconds;
+    if (h.flightSeconds < needed) return 'D_UNAVOIDABLE_TIMING';
     if (h.freeArcs === 0) return 'C_UNAVOIDABLE_OVERLAP';
     if (h.freeArcs <= 2 || h.concurrent.rockets >= 6) return 'B_PRESSURED_BUT_FAIR';
     return 'A_AVOIDABLE';
@@ -483,7 +496,17 @@ if (process.argv[2] === '--worker') {
     })(),
     airstrikeFairness: { hits: rocketHits.length, classes: klassCount,
       unavoidablePct: rocketHits.length ? +(100 * ((klassCount.C_UNAVOIDABLE_OVERLAP||0)+(klassCount.D_UNAVOIDABLE_TIMING||0)+(klassCount.E_SPAWNED_ON_PLAYER||0)) / rocketHits.length).toFixed(1) : null,
-      overlapAtHit: overlapCount, sample: rocketHits.slice(0, 3),
+      overlapAtHit: overlapCount,
+      // #4 gunship check: do the 60%-homing W3 pods also spawn point-blank the way the airstrike
+      // salvo did? Reported separately by homing type over EVERY rocket seen, not just the ones
+      // that connected, so a near-miss point-blank spawn still shows up.
+      spawnDistanceByType: (() => {
+        const g = { airstrike: [], gunshipHoming: [] };
+        for (const v of rocketSeen.values()) (v.homing > 0 ? g.gunshipHoming : g.airstrike).push(v.d0);
+        const summ = a => a.length ? { n: a.length, min: Math.min(...a), median: dist(a).median, max: Math.max(...a) } : { n: 0 };
+        return { airstrike: summ(g.airstrike), gunshipHoming: summ(g.gunshipHoming) };
+      })(),
+      sample: rocketHits.slice(0, 3),
       unfairSample: rocketHits.filter(h => /^[CDE]_/.test(h.klass)).slice(0, 8) },
     xpAccounting: { collected: xpCollected, generated: xpGenerated, onGround: +xpOnGround.toFixed(0),
       pickups, spentInLevels: lvlThresholds, currentBar: game.player.xp, level: game.player.level,
