@@ -74,22 +74,130 @@ console.log('\n-- A. zero-input and lifecycle --');
       GAME_SRC.includes('this.player       = new Player(_char, _outfitPath);'));
 }
 
+// ── B. wall slide, external displacement and invisible-wall sweeps ─────────────────────────────
+// 2026-07-26: this section used to read `mm.CITY_BLOCK_COLS[1]` and build its scenario from
+// hand-typed block rectangles. Production DELIBERATELY emptied CITY_BLOCK_COLS / CHAOS_BLOCK_COLS
+// (MapManager: the authored rectangles were close to an inversion of the art and produced invisible
+// slabs on open pavement — measured 85.9% blocked frames), so the index read threw
+// `Cannot read properties of undefined (reading '0')` and ABORTED the whole suite before sections
+// C and D ever ran. The gates below therefore assert BEHAVIOUR against whatever the current
+// authoritative walkability source reports, and hold whether `blocks` is empty or later carries a
+// mask derived from the art. Nothing here may assume an array index or a specific obstacle shape.
 console.log('\n-- B. wall slide and external displacement --');
 {
   const mm = makeMap();
   const game = makeShell(mm);
-  const p = new Player('skeleton_warrior');
-  p._resolveMove = (fx, fy, tx, ty, r) => game.resolveWalkableMove(fx, fy, tx, ty, r);
-  const block = mm.CITY_BLOCK_COLS[1];
-  p.pos.x = block[0] * mm.CITY_SCALE - PLAYER_RADIUS - 2;
-  p.pos.y = (block[2] + 20) * mm.CITY_SCALE;
-  const beforeY = p.pos.y;
-  p.applyExternalDisplacement({ x: 90, y: 90 });
-  gate('external knockback never places the footprint inside an obstacle',
-    mm.isWalkableFootprint(p.pos.x, p.pos.y, PLAYER_RADIUS, 'endless'));
-  gate('diagonal external force preserves movement on the free wall axis', p.pos.y > beforeY + 20,
-    `slide=${(p.pos.y - beforeY).toFixed(2)}px`);
 
+  const model = mm._walkModel('endless');
+  gate('an authoritative endless walkability model is published', !!model && Array.isArray(model.rows));
+  gate('the gates below do not depend on authored block columns', Array.isArray(model.blocks),
+    `blocks=${model.blocks.length}`);
+
+  const S = model.scale;
+  // Derive the real walkable corridor from the live model instead of hard-coding geometry.
+  let bandTop = null, bandBottom = null;
+  for (let srcY = model.rows[0] - 40; srcY <= model.rows[1] + 40; srcY += 0.5) {
+    if (mm.isWalkableFootprint(500 * S, srcY * S, PLAYER_RADIUS, 'endless')) {
+      if (bandTop === null) bandTop = srcY;
+      bandBottom = srcY;
+    }
+  }
+  gate('the corridor is a real bounded band, not an open plane',
+    bandTop !== null && bandBottom !== null && bandBottom > bandTop,
+    `srcY ${bandTop}..${bandBottom}`);
+  gate('a footprint above the band edge is genuinely rejected',
+    !mm.isWalkableFootprint(500 * S, (model.rows[0] - 10) * S, PLAYER_RADIUS, 'endless'));
+
+  const midY = ((bandTop + bandBottom) / 2) * S;
+
+  // ── knockback into the BOTTOM edge: blocked axis absorbed, free axis preserved ──
+  const pb = new Player('skeleton_warrior');
+  pb._resolveMove = (fx, fy, tx, ty, r) => game.resolveWalkableMove(fx, fy, tx, ty, r);
+  pb.pos.x = 500 * S; pb.pos.y = (bandBottom - 4) * S;
+  const bb = { x: pb.pos.x, y: pb.pos.y };
+  pb.applyExternalDisplacement({ x: 90, y: 90 });
+  gate('external knockback never places the footprint inside an obstacle',
+    mm.isWalkableFootprint(pb.pos.x, pb.pos.y, PLAYER_RADIUS, 'endless'));
+  gate('diagonal external force preserves movement on the free wall axis',
+    Math.abs(pb.pos.x - bb.x) > 80, `freeAxis=${(pb.pos.x - bb.x).toFixed(2)}px`);
+  gate('the blocked component is absorbed, never teleported past the wall',
+    pb.pos.y - bb.y >= 0 && pb.pos.y - bb.y < 90, `blockedAxis=${(pb.pos.y - bb.y).toFixed(2)}px`);
+
+  // ── knockback into the TOP edge behaves the same way (both walls, not just one) ──
+  const pt = new Player('skeleton_warrior');
+  pt._resolveMove = (fx, fy, tx, ty, r) => game.resolveWalkableMove(fx, fy, tx, ty, r);
+  pt.pos.x = 500 * S; pt.pos.y = (bandTop + 4) * S;
+  const bt = { x: pt.pos.x, y: pt.pos.y };
+  pt.applyExternalDisplacement({ x: 90, y: -90 });
+  gate('the opposite wall absorbs its blocked component identically',
+    mm.isWalkableFootprint(pt.pos.x, pt.pos.y, PLAYER_RADIUS, 'endless') &&
+      Math.abs(pt.pos.x - bt.x) > 80 && bt.y - pt.pos.y < 90,
+    `freeAxis=${(pt.pos.x - bt.x).toFixed(2)} blockedAxis=${(pt.pos.y - bt.y).toFixed(2)}`);
+
+  // ── mid-corridor knockback is completely unconstrained (no phantom wall on open floor) ──
+  const pm = new Player('skeleton_warrior');
+  pm._resolveMove = (fx, fy, tx, ty, r) => game.resolveWalkableMove(fx, fy, tx, ty, r);
+  pm.pos.x = 500 * S; pm.pos.y = midY;
+  const bm = { x: pm.pos.x, y: pm.pos.y };
+  pm.applyExternalDisplacement({ x: 90, y: 60 });
+  gate('open corridor floor applies no hidden resistance',
+    Math.abs(pm.pos.x - bm.x - 90) < 1e-6 && Math.abs(pm.pos.y - bm.y - 60) < 1e-6,
+    `dx=${(pm.pos.x - bm.x).toFixed(2)} dy=${(pm.pos.y - bm.y).toFixed(2)}`);
+
+  // ── resolver-level slide: diagonal into a wall keeps the free axis, drops only the blocked one ──
+  const rTop = game.resolveWalkableMove(500 * S, (bandTop + 2) * S, 500 * S + 30, (bandTop + 2) * S - 30, PLAYER_RADIUS);
+  gate('resolveWalkableMove slides along the wall instead of hard-blocking',
+    rTop.x - 500 * S > 29 && Math.abs(rTop.y - (bandTop + 2) * S) < 1e-6,
+    `dx=${(rTop.x - 500 * S).toFixed(2)} dy=${(rTop.y - (bandTop + 2) * S).toFixed(2)}`);
+
+  // ── INVISIBLE-WALL SWEEPS on visually walkable ground (§5A) ──
+  // Horizontal, vertical and diagonal sweeps across the corridor, including the mirror-tiling
+  // seam, must never produce a fully blocked frame, a teleport or an off-floor footprint.
+  for (const mode of ['endless', 'chaos']) {
+    const mdl = mm._walkModel(mode);
+    let lo = null, hi = null;
+    for (let srcY = mdl.rows[0] - 40; srcY <= mdl.rows[1] + 40; srcY += 0.5) {
+      if (mm.isWalkableFootprint(500 * S, srcY * S, PLAYER_RADIUS, mode)) { if (lo === null) lo = srcY; hi = srcY; }
+    }
+    const cy = ((lo + hi) / 2) * S;
+    const g2 = makeShell(mm, mode);
+    let blocked = 0, teleports = 0, offFloor = 0;
+    let x = -3 * mdl.tileW * S, y = cy;                 // start well left of origin, cross seams
+    for (let i = 0; i < 4000; i++) {                    // horizontal sweep over ~4 mirror periods
+      const r = g2.resolveWalkableMove(x, y, x + 7, y, PLAYER_RADIUS, mode);
+      if (r.x === x && r.y === y) blocked++;
+      if (Math.hypot(r.x - x, r.y - y) > 20) teleports++;
+      x = r.x; y = r.y;
+      if (!mm.isWalkableFootprint(x, y, PLAYER_RADIUS, mode)) offFloor++;
+    }
+    gate(`${mode}: horizontal sweep on walkable ground has no invisible wall`,
+      blocked === 0, `blocked=${blocked}`);
+    gate(`${mode}: horizontal sweep never teleports or leaves the floor`,
+      teleports === 0 && offFloor === 0, `teleports=${teleports} offFloor=${offFloor}`);
+
+    let diagBlocked = 0, diagOff = 0;
+    let dx = 0, dy = cy;
+    for (let i = 0; i < 2000; i++) {                    // diagonal zig-zag inside the corridor
+      const vy = (i % 40 < 20) ? 5 : -5;
+      const r = g2.resolveWalkableMove(dx, dy, dx + 5, dy + vy, PLAYER_RADIUS, mode);
+      if (r.x === dx && r.y === dy) diagBlocked++;
+      dx = r.x; dy = r.y;
+      if (!mm.isWalkableFootprint(dx, dy, PLAYER_RADIUS, mode)) diagOff++;
+    }
+    gate(`${mode}: diagonal sweep is never fully blocked on open floor`,
+      diagBlocked === 0 && diagOff === 0, `blocked=${diagBlocked} offFloor=${diagOff}`);
+    gate(`${mode}: no NaN/Infinity reaches the resolved player position`,
+      Number.isFinite(dx) && Number.isFinite(dy) && Number.isFinite(x) && Number.isFinite(y));
+  }
+
+  // ── map-specific runtime behaviour: the two decks are NOT the same model ──
+  gate('endless publishes neutral pavement outside the authored strip',
+    mm.isWalkablePoint(500 * S, -200 * S, 'endless') === true);
+  gate('chaos deck has hard vertical bounds instead of neutral pavement',
+    mm.isWalkablePoint(500 * S, -200 * S, 'chaos') === false &&
+      mm.isWalkablePoint(500 * S, (mm._walkModel('chaos').tileH + 200) * S, 'chaos') === false);
+
+  const p = pm;
   const x0 = p.pos.x, y0 = p.pos.y;
   const enemy = { pos: new constants.Vec2(p.pos.x - 1, p.pos.y), radius: 14, hp: 10, contactDamage: 0, enemyType: 'Test' };
   Object.assign(game, {
