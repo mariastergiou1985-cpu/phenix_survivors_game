@@ -37,7 +37,20 @@ const REASONS = [
   [/_updateDoubleDemons/,         'double_demons'],
   [/_updateBossAttacks/,          'boss_attack'],
   [/_updateEndlessHazards/,       'endless_hazard'],
+  [/_updateChaosPylons/,          'chaos_pylon'],
   [/_updateChaos/,                'chaos_hazard'],
+  // Completed 2026-07-26: an Assassin/Chaos run produced `other:_updateEnemyOrbZones`, i.e.
+  // unattributed damage, which the protocol forbids. Every method in Game.js that can reach
+  // _damagePlayer or _applyPulseDamage now has a reason code.
+  [/_updateEnemyOrbZones/,        'enemy_orb_zone'],
+  [/_updateEnemyBeams/,           'enemy_beam'],
+  [/_updateCybermotes/,           'cybermote_mine'],
+  [/_updateVoidRifts/,            'void_rift'],
+  [/_updateVentBursts/,           'vent_burst'],
+  [/_updateNullEcho|_nullEchoStrike/, 'null_echo'],
+  [/_updateNullWyrm/,             'null_wyrm'],
+  [/_updateCorruptionNovas|_updateCorruptionBeam/, 'final_boss_beam'],
+  [/_updateBossRush/,             'boss_rush_hazard'],
 ];
 
 if (process.argv[2] === '--worker') {
@@ -111,6 +124,33 @@ if (process.argv[2] === '--worker') {
   };
   const record = (reason, lost, landed) => {
     if (landed) { accepted[reason] = (accepted[reason] || 0) + 1; } else { rejected[reason] = (rejected[reason] || 0) + 1; }
+    if (reason === 'horde_contact' && landed) {
+      // §7-equivalent for the horde. The question is not "did it hurt" but "could it have been
+      // avoided": how many escape arcs were open, how crowded was the pulse (the contact formula
+      // multiplies by 1 + 0.15*min(7, n-1)), and could the player disengage at all — an enemy that
+      // is not slower than the player cannot be walked away from. This also tests the bot: contact
+      // taken with 4+ free arcs is the BOT's failure, contact taken with 0-1 is a design squeeze.
+      const p = game.player.pos; let touching = 0, fastest = 0, nearest = Infinity;
+      for (const e of game.enemies) {
+        if (!e || e.hp <= 0 || !e.pos) continue;
+        const d = Math.hypot(e.pos.x - p.x, e.pos.y - p.y);
+        if (d < nearest) nearest = d;
+        if (d < (e.radius || 14) + 16) { touching++; fastest = Math.max(fastest, e.baseSpeed || 0); }
+      }
+      const pSpeed = game.player.speed || game.player.baseSpeed || 230;
+      const arcs = freeArcs();
+      hordeHits.push({
+        t: +game.timeAlive.toFixed(2), lost: +lost.toFixed(2), touching,
+        crowdMult: +(1 + 0.15 * Math.min(7, Math.max(0, touching - 1))).toFixed(2),
+        freeArcs: arcs, nearest: Number.isFinite(nearest) ? +nearest.toFixed(1) : null,
+        fastestTouching: +fastest.toFixed(0), playerSpeed: +pSpeed.toFixed(0),
+        canOutrun: fastest > 0 ? fastest < pSpeed * 0.95 : null,
+        dashReady: (game.player.dashCooldown || 0) <= 0,
+        klass: arcs <= 1 ? 'C_CORNERED'
+             : (fastest >= pSpeed * 0.95 && !((game.player.dashCooldown || 0) <= 0)) ? 'D_CANNOT_DISENGAGE'
+             : arcs <= 3 ? 'B_PRESSURED' : 'A_AVOIDABLE',
+      });
+    }
     if (reason === 'airstrike' || reason === 'gunship') {
       // nearest live rocket is the one that just detonated (it is spliced right after this call)
       let best = null, bestD = Infinity;
@@ -182,6 +222,7 @@ if (process.argv[2] === '--worker') {
   // lateral clearance of PLAYER_RADIUS + blast.
   const rocketSeen = new Map();
   const rocketHits = [];
+  const hordeHits = [];
   let pendingRocketHit = null;
   // Spawn data must be captured at the REAL spawn moment. Sampling the array once per frame missed
   // every rocket that was created and detonated inside the same update() — that is what produced
@@ -425,6 +466,17 @@ if (process.argv[2] === '--worker') {
     }])),
     unattributed: Object.keys(dmg).filter(k => k.startsWith('other:')),
     densityDist: { d100: dist(dens.d100), d200: dist(dens.d200), d300: dist(dens.d300) },
+    hordeFairness: (() => {
+      const k = {}; for (const h of hordeHits) k[h.klass] = (k[h.klass] || 0) + 1;
+      const arcs = hordeHits.map(h => h.freeArcs), crowd = hordeHits.map(h => h.touching);
+      const unavoid = (k.C_CORNERED || 0) + (k.D_CANNOT_DISENGAGE || 0);
+      return { events: hordeHits.length, classes: k,
+        unavoidablePct: hordeHits.length ? +(100 * unavoid / hordeHits.length).toFixed(1) : null,
+        freeArcs: dist(arcs), touchingBodies: dist(crowd),
+        outrunnable: hordeHits.filter(h => h.canOutrun === true).length,
+        notOutrunnable: hordeHits.filter(h => h.canOutrun === false).length,
+        sample: hordeHits.slice(0, 3) };
+    })(),
     airstrikeFairness: { hits: rocketHits.length, classes: klassCount,
       unavoidablePct: rocketHits.length ? +(100 * ((klassCount.C_UNAVOIDABLE_OVERLAP||0)+(klassCount.D_UNAVOIDABLE_TIMING||0)+(klassCount.E_SPAWNED_ON_PLAYER||0)) / rocketHits.length).toFixed(1) : null,
       overlapAtHit: overlapCount, sample: rocketHits.slice(0, 3),
