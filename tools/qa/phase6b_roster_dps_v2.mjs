@@ -91,7 +91,12 @@ const bucketOf = m => { for (const [re, b] of BUCKET) if (re.test(m)) return b; 
 const args = process.argv.slice(2);
 const SECONDS = Number(args[0]) > 0 ? Number(args.shift()) : 45;
 const MOVING = args.includes('--move');
-const IDS = args.filter(a => a !== '--move');
+// QA-ONLY VESSEL CONTROL. The rocket system is gated on `_activeVesselId && _vesselCompanion`,
+// so clearing the companion after the run has started removes exactly that damage source and
+// nothing else - the vessel's declared passive and statMods are untouched (alpha_phoenix has
+// none of either). Never committed as production behaviour.
+const NOVESSEL = args.includes('--novessel');
+const IDS = args.filter(a => a !== '--move' && a !== '--novessel');
 if (!IDS.length) IDS.push('skeleton_warrior');
 
 const ETH = Enemy.prototype.takeHit;
@@ -112,6 +117,7 @@ function run(id) {
   const g = new Game();
   g.audio = null; g.selectedCharacter = id; g.gameState = 'playing';
   g.reset(); g._enterEndless();
+  if (NOVESSEL) { g._vesselCompanion = null; g._activeVesselId = null; }
   const p = g.player;
 
   const by = {}; let total = 0, kills = 0, moved = 0;
@@ -157,6 +163,7 @@ function run(id) {
       setDir(tv.vx / len, tv.vy / len, canDash && (tv.touching >= 2 || tv.nearest < 46));
       input.mousePos = { x: p.pos.x + 400, y: p.pos.y };
     }
+    if (NOVESSEL && (g._vesselCompanion || g._activeVesselId)) { g._vesselCompanion = null; g._activeVesselId = null; }
     try { g.update(1 / 60, input); } catch (_) { break; }
     peakEnemies = Math.max(peakEnemies, g.enemies.length);
     moved += Math.hypot(p.pos.x - prev.x, p.pos.y - prev.y); prev = { x: p.pos.x, y: p.pos.y };
@@ -171,7 +178,7 @@ function run(id) {
   const SHARED = /vesselRocket|npcWalker|_updateNexus|turret/i;
   const sharedPct = rows.filter(r => SHARED.test(r[0])).reduce((a, r) => a + r[2], 0);
   const kitShare = Math.max(0, 100 - sharedPct);
-  return { id, moving: MOVING, movedPx: Math.round(moved), kitSharePct: +kitShare.toFixed(1),
+  return { id, moving: MOVING, vessel: !NOVESSEL, movedPx: Math.round(moved), kitSharePct: +kitShare.toFixed(1),
            seconds: SECONDS, totalDamage: Math.round(total), dps: +(total / SECONDS).toFixed(1),
            kills, killsPerMin: Math.round(kills / (SECONDS / 60)), level: g.player.level,
            weaponShareOfDamagePct: +(100 * weapons / (total || 1)).toFixed(1),
