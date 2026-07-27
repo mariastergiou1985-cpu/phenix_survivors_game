@@ -47,7 +47,11 @@ const lineOwner = (() => {
 const HELPERS = new Set(['_brawlerHit', '_capBossDamage', '_tryCorrode', '_targetIsBoss',
                          '_dealDamage', '_applyElementOnHit', '_onEnemyKilled', '?',
                          // player-side damage plumbing: naming these hides the real threat
-                         '_damagePlayer', '_hurtPlayer', '_applyPlayerDamage', 'applyDamage', 'update']);
+                         '_damagePlayer', '_hurtPlayer', '_applyPlayerDamage', 'applyDamage', 'update',
+                         // _applyPulseDamage is a SHARED gate (chaos grace, 30-HP ceiling, glitch
+                         // dodge) called from body contact, Titan contact and more. Naming it hid
+                         // which of those is actually killing the player.
+                         '_applyPulseDamage']);
 const siteOwner = () => {
   const st = (new Error().stack || '').split('\n');
   let firstHelper = null;
@@ -69,6 +73,7 @@ const METAK = (args.find(a => a.startsWith('--meta=')) || '--meta=clean').slice(
 const BOT   = (args.find(a => a.startsWith('--bot=')) || '--bot=competent').slice(6);
 const SEED  = Number((args.find(a => a.startsWith('--seed=')) || '--seed=12345').slice(7));
 const NOVESSEL = args.includes('--novessel');
+const STATIONARY = args.includes('--stationary');   // mandatory control: an AFK player must still die fast
 
 // ── instrumentation ───────────────────────────────────────────────────────────────────────────
 let dealt = 0, kills = 0;
@@ -119,6 +124,31 @@ function run() {
   // one the in-game QA bridge (main.js __phenixQA.startChaos) uses.
   if (MODE === 'chaos') g._beginChaosRun();
   else g._enterEndless();
+
+  // ── TRUE-CHAOS GATE (2026-07-27) ────────────────────────────────────────────────────────────
+  // The first version of this harness accepted whatever ran. There was no _enterChaosMode, so
+  // --mode=chaos fell through to _enterEndless() and produced byte-identical "chaos" and
+  // "endless" rows in all 28 pairs. Endless numbers were nearly presented as Chaos numbers.
+  // The run now DIES rather than silently degrade: every Chaos-defining flag is asserted, and an
+  // Endless fallback is an explicit hard failure.
+  if (MODE === 'chaos') {
+    const bad = [];
+    if (g._chaosMode !== true)                bad.push('_chaosMode is not true (Endless fallback)');
+    if (g.endless !== true)                   bad.push('endless infrastructure missing');
+    if (!(g._chaosStartedAt >= 0))            bad.push('_chaosStartedAt never set');
+    if (g.nexusManager && g.nexusManager.chaos !== true) bad.push('nexusManager.chaos not engaged');
+    if (!(g._frozenSleetTimer > 0))           bad.push('Chaos hazard scheduler (frozen sleet) not armed');
+    if (typeof g._updateChaosTitans !== 'function') bad.push('Chaos Titan scheduler absent');
+    // the deck the map layer will actually paint must be the CHAOS art, not the Endless city
+    const mm = g.mapManager;
+    if (!mm || !mm._chaosDeckImg)             bad.push('MapManager has no chaos deck image');
+    else if (mm._chaosDeckImg === mm._cityImg) bad.push('chaos deck resolves to the Endless city map');
+    // the card/spawn weighting must be told it is Chaos
+    try { if (g._chaosMode && g.buildEngine && g._chaosMode !== true) bad.push('build weighting not chaos'); } catch (_) {}
+    if (bad.length) { console.error('TRUE-CHAOS GATE FAILED: ' + bad.join(' | ')); process.exit(2); }
+  } else {
+    if (g._chaosMode === true) { console.error('MODE=endless but _chaosMode is true'); process.exit(2); }
+  }
   if (NOVESSEL) { g._vesselCompanion = null; g._activeVesselId = null; }
   const p = g.player;
   ON = true;
@@ -164,9 +194,9 @@ function run() {
     // whenever one is offered, which is what a player chasing a build does.
     if (g.upgradeUI) { try { g.selectUpgrade(g.upgradeUI.choices.length - 1); } catch (_) { g.upgradeUI = null; } }
     if (g.mutationUI) { try { g.selectMutation(0); } catch (_) { g.mutationUI = null; } }
-    const s = steer();
+    const s = STATIONARY ? { vx: 0, vy: 0, nearest: Infinity, touching: 0 } : steer();
     const len = Math.hypot(s.vx, s.vy) || 1;
-    setDir(s.vx / len, s.vy / len, (p.dashCooldown || 0) <= 0 && (s.touching >= 2 || s.nearest < (BOT === 'expert' ? 90 : 46)));
+    if (STATIONARY) input.keys.clear(); else setDir(s.vx / len, s.vy / len, (p.dashCooldown || 0) <= 0 && (s.touching >= 2 || s.nearest < (BOT === 'expert' ? 90 : 46)));
     input.mousePos = { x: p.pos.x + 400, y: p.pos.y };
     if (NOVESSEL && (g._vesselCompanion || g._activeVesselId)) { g._vesselCompanion = null; g._activeVesselId = null; }
     const d0 = dealt, t0 = taken, k0 = kills;
@@ -189,7 +219,12 @@ function run() {
   un();
   const top = o => Object.entries(o).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k, v]) => [k, Math.round(v)]);
   const finalWeapons = beWeapons();
-  return { id: ID, mode: MODE, meta: METAK, metaKeysMaxed: metaKeys, bot: BOT, vessel: !NOVESSEL, seed: SEED,
+  const chaosProof = MODE === 'chaos'
+    ? { chaosMode: g._chaosMode === true, endlessInfra: g.endless === true, chaosStartedAt: g._chaosStartedAt,
+        nexusChaos: g.nexusManager ? g.nexusManager.chaos === true : null,
+        chaosDeckDistinctFromEndless: !!(g.mapManager && g.mapManager._chaosDeckImg && g.mapManager._chaosDeckImg !== g.mapManager._cityImg) }
+    : { chaosMode: g._chaosMode === true };
+  return { id: ID, mode: MODE, meta: METAK, metaKeysMaxed: metaKeys, bot: BOT, vessel: !NOVESSEL, seed: SEED, chaosProof,
            firstEvolutionSec: firstEvoSec, firstEvolutionLevel: firstEvoLvl,
            evolutionsAtEnd: finalWeapons.filter(w => w?.evolved).length,
            weaponsAtEnd: finalWeapons.length,

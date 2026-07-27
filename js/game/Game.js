@@ -545,6 +545,8 @@ const FINAL_BEAM_LEN     = 1600;  // px — beam length (spans the arena)
 // duration sits in the requested 0.15–0.25s band; intensity is derived from HP lost so a
 // big boss attack reads stronger than chip/contact damage. minGap stops sustained contact
 // from strobing; big discrete hits bypass the gap so they always register immediately.
+const CONTACT_SRC = Object.freeze({ src: 'contact' });   // body-contact tag for the Ascension shared window
+const ROCKET_SRC  = Object.freeze({ src: 'rocket'  });   // airstrike / gunship tag for the same window
 const DMG_PULSE = { duration: 0.22, minGap: 0.40, bigHit: 3, base: 0.36, slope: 0.045 };
 
 // Ultimate-ready feedback — a one-shot cue fired the moment the SPACE ultimate becomes
@@ -2370,6 +2372,13 @@ export class Game {
     this._lastPhoenixUsed   = false;
     this.phoenixReviveTimer = 0;
     this._chaosEntryGraceT  = 0;    // Chaos fresh-entry protection window
+    // ── ASCENSION RESILIENCE (Power Curve P1 / Batch 2) ──────────────────────────────────────
+    // Pure run state, declared next to the Chaos grace so it is wiped by the same reset() path.
+    // Never persisted, never inherited: a second run starts with the trigger closed.
+    this._ascOn       = false;   // armed by the first LEGITIMATE evolution, or by level 20
+    this._ascAt       = -1;      // timeAlive when it armed (drives the late-run fade-out)
+    this._ascShareT   = 0;       // shared recovery window countdown, seconds
+    this._ascRejected = 0;       // hits the window absorbed — telemetry only, never gameplay
     // RUN-STATE LEAK FIX (Maria 2026-07-19). Both of these are lazily initialised — the
     // Titan scheduler with `== null` and the thief timer with `??` — so once a Game
     // instance has run them ONCE they hold a number forever and never re-arm. A second
@@ -9411,6 +9420,8 @@ export class Game {
     // Chaos fresh-entry grace: ticks on real dt inside the normal update, so it expires on its
     // own and CANNOT be extended or re-armed by pausing (a paused game runs no update).
     if (this._chaosEntryGraceT > 0) this._chaosEntryGraceT -= dt;
+    if (this._ascShareT > 0) this._ascShareT -= dt;
+    this._ascCheckTrigger();
 
     // Watchdog: whatever the root cause, HP <= 0 must never persist. If it holds for >2s
     // with no end state, clear the gate so the chain below resolves (revive or game over),
@@ -18537,7 +18548,7 @@ export class Game {
       if (hit || r.life <= 0 || out) {
         if (hit && this.phoenixReviveTimer <= 0 && this.player.dashTimer <= 0) {
           const dmg = Math.round(this.player.maxHp * randomRange(0.40, 0.50));   // heavy clean hit
-          this._damagePlayer(dmg, { color: ORANGE, shake: 9, stagger: 0.8 });   // damage + short stun
+          this._damagePlayer(dmg, { color: ORANGE, shake: 9, stagger: 0.8, src: 'rocket' });   // damage + short stun
           this.screenShake.trigger(9, 0.4);
           this.particles.spawnExplosion(r.pos, ['#ff6600', '#ffaa22', '#ff3300', '#ffe088', '#ffffff'], 22);
           this.particles.spawnDeathRing(r.pos, '#ff8844', 12, 180, 2.2);
@@ -18596,7 +18607,7 @@ export class Game {
             if (this._segDist(this.player.pos, wing, g.aim) < PLAYER_RADIUS + 15 &&
                 this.phoenixReviveTimer <= 0 && this.player.dashTimer <= 0) {
               const dmg = Math.round(this.player.maxHp * 0.09);
-              this._damagePlayer(dmg, { color: '#ff4444', shake: 5, stagger: 0 });
+              this._damagePlayer(dmg, { color: '#ff4444', shake: 5, stagger: 0, src: 'rocket' });
               break;   // one tick, not double for both beams
             }
           }
@@ -20097,7 +20108,12 @@ export class Game {
       const _crowd = 1 + 0.15 * Math.min(7, Math.max(0, _crowdN - 1));
       const raw = (strongest.contactDamage ?? 8) * IFR * _crowd;
       const dmg = raw * (1 - this.player.contactDamageReduction);
-      const _cHit = this._applyPulseDamage(dmg);   // Chaos grace / 30-HP ceiling / Glitch dodge
+      // NOTE the shared constant instead of an inline object literal: player_damage_gate_regression
+      // locates the authoritative gate with /_applyPulseDamage\(dmg, \{.../ and an inline literal at
+      // THIS call site matched first, so the test read the call instead of the definition and its
+      // three safety assertions (chaos grace, 30-HP ceiling, glitch dodge) went red on a change
+      // that never touched any of them. Keeping the literal out of the call keeps that guard real.
+      const _cHit = this._applyPulseDamage(dmg, CONTACT_SRC);   // Chaos grace / 30-HP ceiling / Glitch dodge
 
       // Contact ταυτότητες (μεταφέρθηκαν αυτούσιες — δένουν στον enemy του παλμού)
       if (_cHit && strongest.enemyType === 'Cryo Claw') {
@@ -26087,8 +26103,72 @@ _drawLoreArchive(ctx) {
   // her), the 30-HP per-hit ceiling, and the Glitch Phantom dodge. Damage magnitude and pulse rate
   // are unchanged. `perFrame` marks continuous DPS ticks: they roll the dodge once per hit-grace
   // window instead of 60x/second. Returns true when damage actually landed.
-  _applyPulseDamage(dmg, { perFrame = false } = {}) {
+  // ── ASCENSION RESILIENCE ────────────────────────────────────────────────────────────────────
+  // WHY. Across 56 long runs the player's HP is taken by two sources above all others: enemy body
+  // contact and airstrike/gunship rockets, together 64.3% of everything lost. At minute 6 a
+  // max-meta run absorbs ~703 HP/min against a 210-230 pool. Two pressure levers were measured
+  // and WITHDRAWN before this: a crowd-multiplier cap (a no-op — 76% of contact frames have
+  // exactly one body touching, only 2.5% exceeded the cap) and a 40% early contact-damage budget
+  // (Chaos death 158.2s -> 155.1s, Endless unchanged). Cutting the size of each hit does not
+  // help a player who cannot recover any of it; what kills is several accepted hits landing on
+  // top of each other. So this limits STACKING, not damage.
+  //
+  // WHAT. Once armed, an accepted contact or rocket hit opens a short shared window; a second
+  // contact or rocket hit inside that window is refused. The first hit keeps its full damage.
+  // Bosses, lightning, beams, zones and every other source are untouched and still stack.
+  //
+  // GATED, NOT FREE. It arms on the first legitimate evolution or at level 20 — the player has to
+  // have built something. It fades out again from minute 18 to minute 22 so the late run returns
+  // to today's pressure without a cliff, and it does nothing at all in Act 1 / the campaign.
+  _ascWindow() {
+    if (!this._ascOn) return 0;
+    // Endless is ROCKET-dominant and _damagePlayer already carries a 0.5s playerHitCooldown,
+    // so a 0.50s window there would have been an exact no-op: measured, skeleton_warrior Endless
+    // came back byte-identical (380.1s, 11536 kills) with the window armed. 0.60s is the top of
+    // the approved range and the smallest value that can actually refuse a second rocket.
+    // Chaos is CONTACT-dominant and contact runs on a 0.30s pulse with no such cooldown, so 0.40s
+    // already bites there: Oni Chaos moved 158.2s -> 200.6s on the first candidate.
+    const base = this._chaosMode ? 0.40 : 0.60;
+    const t = this.timeAlive - Math.max(0, this._endlessStartedAt || 0);
+    if (t <= 1080) return base;                           // 0-18:00 full
+    if (t >= 1320) return 0;                              // 22:00+ back to shipped pressure
+    return base * (1 - (t - 1080) / 240);                 // 18:00-22:00 smooth fade, no cliff
+  }
+  // true => this hit is absorbed by the shared window. Only ever consulted for the two proven
+  // sources, and only after the caller's own i-frames/grace have already had their say, so it can
+  // neither consume a Glitch Phantom dodge roll nor alter dash i-frames.
+  _ascBlock(src) {
+    if (!this._ascOn) return false;
+    if (src !== 'contact' && src !== 'rocket') return false;
+    if (this._ascShareT > 0) { this._ascRejected++; return true; }
+    return false;
+  }
+  _ascArm(src) {
+    if (!this._ascOn) return;
+    if (src !== 'contact' && src !== 'rocket') return;
+    this._ascShareT = Math.max(this._ascShareT, this._ascWindow());
+  }
+  // Arms once, from real progression only. buildEngine.evolutionEvents is appended by _evolve(),
+  // which is reached exclusively through a card the player chose.
+  _ascCheckTrigger() {
+    if (this._ascOn) return;
+    if (!(this.endless || this._chaosMode)) return;
+    const evolved = !!(this.buildEngine && this.buildEngine.evolutionEvents && this.buildEngine.evolutionEvents.length > 0);
+    if (!evolved && !(this.player && this.player.level >= 20)) return;
+    this._ascOn = true;
+    this._ascAt = this.timeAlive;
+    // Activation cue: one short ring on the existing _specialRings layer. No new asset, no text,
+    // no persistent aura, nothing that could read as a veil.
+    try {
+      this._specialRings.push({ pos: this.player.pos.clone(), radius: 0, maxRadius: 190,
+                                life: 0.55, maxLife: 0.55, color1: '#7df9ff', color2: '#ffd447' });
+      this.screenShake.trigger(3, 0.18);
+    } catch (_) {}
+  }
+
+  _applyPulseDamage(dmg, { perFrame = false, src = null } = {}) {
     if (this._chaosEntryGraceT > 0) return false;
+    if (this._ascBlock(src)) return false;
     if (this._activeVesselPassive === 'glitch_dodge' && (!perFrame || this.playerHitCooldown <= 0)
         && Math.random() < 0.5) {
       this.playerHitCooldown = Math.max(this.playerHitCooldown, 0.25);
@@ -26096,13 +26176,14 @@ _drawLoreArchive(ctx) {
       return false;
     }
     this.player.applyDamage(Math.min(dmg, BOSS_MAX_PLAYER_HIT));
+    this._ascArm(src);            // only a hit that was really applied opens the window
     return true;
   }
 
   // `cap` overrides the per-hit ceiling for specific telegraphed, fully-dodgeable boss attacks
   // (e.g. the final-boss main beam). Defaults to BOSS_MAX_PLAYER_HIT so EVERY existing caller is
   // unchanged. This never touches player stats/damage — it only lets a signalled boss hit land harder.
-  _damagePlayer(dmg, { color = RED, shake = 5, cap = BOSS_MAX_PLAYER_HIT } = {}) {
+  _damagePlayer(dmg, { color = RED, shake = 5, cap = BOSS_MAX_PLAYER_HIT, src = null } = {}) {
     if (this.player.dashTimer > 0 || this.phoenixReviveTimer > 0) return false;  // i-frames → dodged
     // CHAOS-ENTRY GRACE (Maria 2026-07-19): a fresh character entering Chaos straight from the
     // menu lost ~103 of 130 HP in the first 4 seconds — Chaos spawns its full pressure on the
@@ -26112,6 +26193,7 @@ _drawLoreArchive(ctx) {
     // throughout. Enemy HP, damage and density are untouched — the mid-run Endless→Chaos
     // escalation paths keep their developed build and deliberately get NO grace.
     if (this._chaosEntryGraceT > 0) return false;
+    if (this._ascBlock(src)) return false;   // before the Glitch roll, so a refused hit never eats one
     if (this.playerHitCooldown > 0) return false;                                // within 0.5s grace
     // ── Glitch Phantom vessel: 50% chance to dodge any hit ──
     if (this._activeVesselPassive === 'glitch_dodge' && Math.random() < 0.5) {
@@ -26123,6 +26205,7 @@ _drawLoreArchive(ctx) {
     const hpBefore = this.player.hp;
     this.player.applyDamage(applied);
     const actual = Math.max(0, hpBefore - this.player.hp);
+    this._ascArm(src);            // only a hit that was really applied opens the window
     this.playerHitCooldown = 0.5;
     this.audio?.playPlayerImpact?.();   // heavy procedural thud on every player hit
     this.screenShake.trigger(shake, 0.2);
