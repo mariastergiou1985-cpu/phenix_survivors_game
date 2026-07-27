@@ -41,6 +41,8 @@ globalThis.Date = class extends RD { static now() { return vclock; } constructor
 const u0 = muteConsole();
 const { Game }  = await import(pathToFileURL(path.join(ROOT, 'js/game/Game.js')).href);
 const { Enemy } = await import(pathToFileURL(path.join(ROOT, 'js/entities/Enemy.js')).href);
+const { makeCtx } = await import(pathToFileURL(path.join(HERE, 'headless-env.mjs')).href);
+const DRAW_CTX = makeCtx();
 u0();
 
 // line -> enclosing method, built once from the real source
@@ -96,7 +98,10 @@ const MOVING = args.includes('--move');
 // nothing else - the vessel's declared passive and statMods are untouched (alpha_phoenix has
 // none of either). Never committed as production behaviour.
 const NOVESSEL = args.includes('--novessel');
-const IDS = args.filter(a => a !== '--move' && a !== '--novessel');
+// --draw is REQUIRED for a valid roster measurement. Systems that initialise during draw (Oni's
+// whole kit, for one) never come up otherwise, and the character reads as dealing no damage.
+const DRAW = args.includes('--draw');
+const IDS = args.filter(a => !a.startsWith('--'));
 if (!IDS.length) IDS.push('skeleton_warrior');
 
 const ETH = Enemy.prototype.takeHit;
@@ -165,6 +170,7 @@ function run(id) {
     }
     if (NOVESSEL && (g._vesselCompanion || g._activeVesselId)) { g._vesselCompanion = null; g._activeVesselId = null; }
     try { g.update(1 / 60, input); } catch (_) { break; }
+    if (DRAW) { try { g.draw(DRAW_CTX); } catch (_) {} }
     peakEnemies = Math.max(peakEnemies, g.enemies.length);
     moved += Math.hypot(p.pos.x - prev.x, p.pos.y - prev.y); prev = { x: p.pos.x, y: p.pos.y };
     p.hp = p.maxHp; g.gameOver = false;
@@ -178,7 +184,7 @@ function run(id) {
   const SHARED = /vesselRocket|npcWalker|_updateNexus|turret/i;
   const sharedPct = rows.filter(r => SHARED.test(r[0])).reduce((a, r) => a + r[2], 0);
   const kitShare = Math.max(0, 100 - sharedPct);
-  return { id, moving: MOVING, vessel: !NOVESSEL, movedPx: Math.round(moved), kitSharePct: +kitShare.toFixed(1),
+  return { id, moving: MOVING, vessel: !NOVESSEL, drew: DRAW, movedPx: Math.round(moved), kitSharePct: +kitShare.toFixed(1),
            seconds: SECONDS, totalDamage: Math.round(total), dps: +(total / SECONDS).toFixed(1),
            kills, killsPerMin: Math.round(kills / (SECONDS / 60)), level: g.player.level,
            weaponShareOfDamagePct: +(100 * weapons / (total || 1)).toFixed(1),
