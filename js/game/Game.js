@@ -2931,7 +2931,12 @@ export class Game {
         const R = 250;
         for (let i = this.enemies.length - 1; i >= 0; i--) {
           const e = this.enemies[i];
-          if (e.isBoss || e.isMegaBoss) continue;
+          // Enemy.isBoss is a METHOD (Enemy.js:733), so the old `e.isBoss` read a function
+          // reference - always truthy - and this loop skipped EVERY enemy. Grid Eraser's whole
+          // advertised passive ("every 10s, pulse kills small enemies nearby", 5000 grids +
+          // 2 fragments) therefore killed nothing: a 120s Oni run measured byte-identical to
+          // alpha_phoenix on kills, XP and level. Call it, like the other 26 sites in this file.
+          if (e.isBoss?.() || e.isMegaBoss) continue;
           const dx = e.pos.x - p.pos.x, dy = e.pos.y - p.pos.y;
           if (dx * dx + dy * dy <= R * R) {
             e.hp = 0;
