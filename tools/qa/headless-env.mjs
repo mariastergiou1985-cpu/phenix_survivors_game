@@ -59,6 +59,13 @@ function makeEl() {
   return e;
 }
 
+import _envFs from 'node:fs';
+import _envPath from 'node:path';
+import { fileURLToPath as _envFU } from 'node:url';
+// Asset paths in the source are repo-relative ('assets/maps/...'), so resolve them against the
+// repository root rather than the process cwd — harnesses are launched from several directories.
+const _envRoot = _envPath.resolve(_envPath.dirname(_envFU(import.meta.url)), '../..');
+
 export function installEnv() {
   globalThis.window = globalThis;
   globalThis.document = {
@@ -78,7 +85,53 @@ export function installEnv() {
     transferToImageBitmap() { return { width: this.width, height: this.height, close() {} }; }
   };
   globalThis.createImageBitmap = () => Promise.resolve({ width: 1, height: 1, close() {} });
-  globalThis.Image = class { constructor() { this.complete = true; this.naturalWidth = 64; this.naturalHeight = 64; } set src(_) {} get src() { return ''; } addEventListener() {} };
+  // REAL IMAGE DIMENSIONS. The stub used to report 64x64 for every asset, and MapManager derives
+  // its whole walk model from naturalWidth/naturalHeight - so every headless conclusion about
+  // tiling, walkable bands and map geometry was computed against a 64x64 fiction. That already
+  // produced one withdrawn finding (the map-strip fill-rate claim). Read the real dimensions out
+  // of the PNG/JPEG header on disk; fall back to 64x64 only when the file genuinely is not there.
+  const _dimCache = new Map();
+  const _readDims = (src) => {
+    if (!src) return null;
+    const p = String(src).split('?')[0].replace(/^\.?\//, '');
+    if (_dimCache.has(p)) return _dimCache.get(p);
+    let out = null;
+    try {
+      const abs = _envPath.resolve(_envRoot, p);
+      const st = _envFs.statSync(abs);
+      const n = Math.min(st.size, 1 << 20);
+      const all = Buffer.alloc(n);
+      const fd = _envFs.openSync(abs, 'r');
+      _envFs.readSync(fd, all, 0, n, 0);
+      _envFs.closeSync(fd);
+      if (all[0] === 0x89 && all[1] === 0x50) {
+        out = { w: all.readUInt32BE(16), h: all.readUInt32BE(20) };          // PNG IHDR
+      } else if (all[0] === 0xFF && all[1] === 0xD8) {
+        let i = 2;                                                           // JPEG SOFn
+        while (i + 9 < all.length) {
+          if (all[i] !== 0xFF) { i++; continue; }
+          const marker = all[i + 1], len = all.readUInt16BE(i + 2);
+          if (marker >= 0xC0 && marker <= 0xCF && marker !== 0xC4 && marker !== 0xC8 && marker !== 0xCC) {
+            out = { h: all.readUInt16BE(i + 5), w: all.readUInt16BE(i + 7) }; break;
+          }
+          i += 2 + len;
+        }
+      }
+    } catch (_) { out = null; }
+    _dimCache.set(p, out);
+    return out;
+  };
+  globalThis.Image = class {
+    constructor() { this.complete = true; this.naturalWidth = 64; this.naturalHeight = 64; this._src = ''; }
+    set src(v) {
+      this._src = v;
+      const d = _readDims(v);
+      if (d && d.w > 0 && d.h > 0) { this.naturalWidth = d.w; this.naturalHeight = d.h; }
+      if (typeof this.onload === 'function') { try { this.onload(); } catch (_) {} }
+    }
+    get src() { return this._src; }
+    addEventListener() {}
+  };
   globalThis.Audio = class { play() { return Promise.resolve(); } pause() {} addEventListener() {} };
   globalThis.KeyboardEvent = class { constructor(t, o = {}) { this.type = t; this.key = o.key || ''; } };
   globalThis.Event = class { constructor(t) { this.type = t; } };
