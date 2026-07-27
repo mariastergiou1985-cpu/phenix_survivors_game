@@ -90,7 +90,9 @@ const bucketOf = m => { for (const [re, b] of BUCKET) if (re.test(m)) return b; 
 
 const args = process.argv.slice(2);
 const SECONDS = Number(args[0]) > 0 ? Number(args.shift()) : 45;
-const IDS = args.length ? args : ['skeleton_warrior'];
+const MOVING = args.includes('--move');
+const IDS = args.filter(a => a !== '--move');
+if (!IDS.length) IDS.push('skeleton_warrior');
 
 const ETH = Enemy.prototype.takeHit;
 let SINK = null;
@@ -112,21 +114,52 @@ function run(id) {
   g.reset(); g._enterEndless();
   const p = g.player;
 
-  const by = {}; let total = 0, kills = 0;
+  const by = {}; let total = 0, kills = 0, moved = 0;
+  let prev = { x: p.pos.x, y: p.pos.y };
   SINK = (owner, lost, before, e) => {
     const b = bucketOf(owner || 'unknown');
     by[b] = (by[b] || 0) + lost; total += lost;
     if (before > 0 && e.hp <= 0) kills++;
   };
 
+  // MOVING PROFILE (--move). A stationary bot flatters an auto-targeting companion with 720px
+  // reach and starves every kit that needs position or facing, so the 45s stationary baseline
+  // cannot answer "how much of a character's identity actually shows up in a run". This is the
+  // same flee-the-local-threat-centroid policy the Phase 6A competent profile uses.
   const input = { keys: new Set(), mousePos: { x: 0, y: 0 }, mouseDown: false };
+  const setDir = (dx, dy, dash) => {
+    input.keys.clear();
+    if (dy < -0.35) input.keys.add('w'); else if (dy > 0.35) input.keys.add('s');
+    if (dx < -0.35) input.keys.add('a'); else if (dx > 0.35) input.keys.add('d');
+    if (dash) input.keys.add('shift');
+  };
+  const threat = () => {
+    let vx = 0, vy = 0, n = 0, nearest = Infinity, touching = 0;
+    for (const e of g.enemies) {
+      if (!e || e.hp <= 0 || !e.pos) continue;
+      const dx = p.pos.x - e.pos.x, dy = p.pos.y - e.pos.y, d = Math.hypot(dx, dy);
+      if (d > 340 || d < 1) continue;
+      n++; vx += dx / d; vy += dy / d;
+      if (d < nearest) nearest = d;
+      if (d < 16 + (e.radius || 14)) touching++;
+    }
+    return { vx, vy, n, nearest, touching };
+  };
   let peakEnemies = 0;
   for (let f = 0; f < SECONDS * 60; f++) {
     vclock += 1000 / 60;
     if (g.upgradeUI) { try { g.selectUpgrade(0); } catch (_) { g.upgradeUI = null; } }
     if (g.mutationUI) { try { g.selectMutation(0); } catch (_) { g.mutationUI = null; } }
+    if (MOVING) {
+      const tv = threat();
+      const len = Math.hypot(tv.vx, tv.vy) || 1;
+      const canDash = (p.dashCooldown || 0) <= 0;
+      setDir(tv.vx / len, tv.vy / len, canDash && (tv.touching >= 2 || tv.nearest < 46));
+      input.mousePos = { x: p.pos.x + 400, y: p.pos.y };
+    }
     try { g.update(1 / 60, input); } catch (_) { break; }
     peakEnemies = Math.max(peakEnemies, g.enemies.length);
+    moved += Math.hypot(p.pos.x - prev.x, p.pos.y - prev.y); prev = { x: p.pos.x, y: p.pos.y };
     p.hp = p.maxHp; g.gameOver = false;
   }
   SINK = null; un();
@@ -134,7 +167,12 @@ function run(id) {
   const rows = Object.entries(by).sort((a, b) => b[1] - a[1])
     .map(([k, v]) => [k, Math.round(v), +(100 * v / (total || 1)).toFixed(1)]);
   const weapons = rows.filter(r => r[0] === 'starter/weapons').reduce((a, r) => a + r[1], 0);
-  return { id, seconds: SECONDS, totalDamage: Math.round(total), dps: +(total / SECONDS).toFixed(1),
+  // shared, character-agnostic damage sources vs the character's own kit
+  const SHARED = /vesselRocket|npcWalker|_updateNexus|turret/i;
+  const sharedPct = rows.filter(r => SHARED.test(r[0])).reduce((a, r) => a + r[2], 0);
+  const kitShare = Math.max(0, 100 - sharedPct);
+  return { id, moving: MOVING, movedPx: Math.round(moved), kitSharePct: +kitShare.toFixed(1),
+           seconds: SECONDS, totalDamage: Math.round(total), dps: +(total / SECONDS).toFixed(1),
            kills, killsPerMin: Math.round(kills / (SECONDS / 60)), level: g.player.level,
            weaponShareOfDamagePct: +(100 * weapons / (total || 1)).toFixed(1),
            peakEnemies, bySource: rows.slice(0, 8) };
@@ -144,7 +182,7 @@ const out = [];
 for (const id of IDS) {
   const r = run(id); out.push(r);
   console.error(`  ${r.id.padEnd(24)} dps ${String(r.dps).padStart(7)}  total ${String(r.totalDamage).padStart(7)}  ` +
-    `kills/min ${String(r.killsPerMin).padStart(4)}  lvl ${String(r.level).padStart(2)}  weapons ${String(r.weaponShareOfDamagePct).padStart(5)}%  ` +
+    `kills/min ${String(r.killsPerMin).padStart(4)}  lvl ${String(r.level).padStart(2)}  KIT ${String(r.kitSharePct).padStart(5)}%  moved ${String(r.movedPx).padStart(6)}  ` +
     `top: ${r.bySource.slice(0, 3).map(s => s[0] + ' ' + s[2] + '%').join(', ')}`);
 }
 console.log(JSON.stringify(out, null, 1));
