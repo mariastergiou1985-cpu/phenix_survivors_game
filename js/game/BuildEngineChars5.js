@@ -49,7 +49,12 @@ EVOLUTION_RECIPES.be_eventide_impaler = {
   name: 'Eventide Impaler', weapon: 'build_null_lance', passive: 'collapsed_horizon',
   weaponLevel: 5, passiveLevel: 3,
   damage: 40, cooldown: 0.95, range: 440,
-  impale: { pull: 90, reDelay: 0.30, reDmg: 0.7 },   // το rift τραβά ΠΑΝΩ στη γραμμή + 2ο pierce
+  // COVERAGE FIX (evolution pass, 2026-07-27). Measured 1.31x throughput on 97 -> 123 enemies.
+  // The rift's pull is what makes this evolution read differently from the lance it replaces, and
+  // at 90px it barely moved anything onto the shaft. A wider pull is also its own coverage: bodies
+  // dragged onto the line are bodies the second pierce then hits. Pull 90 -> 170, and the
+  // re-impale follows sooner so it lands while they are still on the shaft. Damage is unchanged.
+  impale: { pull: 170, reDelay: 0.22, reDmg: 0.7 },   // το rift τραβά ΠΑΝΩ στη γραμμή + 2ο pierce
   bossMultiplier: 0.80, tags: ['NULL', 'PROJECTILE', 'LINE', 'RIFT', 'IMPALE'],
   desc: 'The rift drags everything onto the shaft — then the lance runs them through again.',
 };

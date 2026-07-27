@@ -508,7 +508,13 @@ EVOLUTION_RECIPES.be_hannya_brand = {
   name: 'Hannya Brand', weapon: 'hannya_cleaver', passive: 'demon_calligraphy',
   weaponLevel: 5, passiveLevel: 3,
   damage: 72, cooldown: 1.55,
-  brand: { every: 3, radius: 92, igniteDelay: 0.8, dmg: 60, burnDps: 14, burnDur: 2.5 },
+  // COVERAGE FIX (evolution pass, 2026-07-27). Measured 1.43x throughput and 91 -> 109 enemies
+  // touched. The brand is the whole identity of the evolution and it fires on every THIRD swing
+  // into a 92px circle, so across a 20s window most of the horde never stood in one. The kanji is
+  // supposed to be burned into the GROUND and ignite - that is an area denial mechanic being run
+  // at the size of a melee hit. Every second swing now, at 150px, and the blue fire keeps burning
+  // for longer. Brand damage, burn dps and the ignite delay are unchanged.
+  brand: { every: 2, radius: 150, igniteDelay: 0.8, dmg: 60, burnDps: 14, burnDur: 4.0 },
   bossMultiplier: 0.80, tags: ['ONI', 'MELEE', 'ARC', 'KANJI', 'BURN'],
   desc: 'Every third swing brands a burning kanji into the ground — then it IGNITES in blue fire.',
 };

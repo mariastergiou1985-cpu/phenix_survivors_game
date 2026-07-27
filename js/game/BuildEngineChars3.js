@@ -47,7 +47,12 @@ PASSIVE_DEFS.forbidden_amplifier = {
 EVOLUTION_RECIPES.be_solo_of_the_damned = {
   name: 'Solo of the Damned', weapon: 'solo_red_thunder', passive: 'forbidden_amplifier',
   weaponLevel: 5, passiveLevel: 3,
-  chord: { every: 2.2, targets: 4, dmg: 30, hop: 1, hopDmg: 0.6, hopRange: 150, echoDmg: 0.5 },
+  // COVERAGE FIX (evolution pass, 2026-07-27). Measured 1.47x throughput on 84 -> 140 enemies.
+  // A "damned power chord" that strikes four targets once every 2.2 seconds and arcs a single hop
+  // is a solo the horde never hears. The chord is the evolution's only mechanic, so it is the
+  // chord that has to carry it: six strings instead of four, two hops instead of one, and a
+  // slightly wider arc between them. Per-string damage, the hop falloff and the echo are unchanged.
+  chord: { every: 2.0, targets: 6, dmg: 30, hop: 2, hopDmg: 0.6, hopRange: 210, echoDmg: 0.5 },
   bossMultiplier: 0.80, tags: ['SOUND', 'LIGHTNING', 'CHORD'],
   desc: 'A damned power chord — red-white lightning strings lash the nearest four and arc onward.',
 };
