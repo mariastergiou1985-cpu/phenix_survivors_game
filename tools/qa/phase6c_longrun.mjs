@@ -113,7 +113,11 @@ function run() {
   let metaKeys = 0;
   if (METAK === 'max' && g.meta) metaKeys = maxMeta(g.meta);
   g.reset();
-  if (MODE === 'chaos' && typeof g._enterChaosMode === 'function') { g._enterEndless(); g._enterChaosMode(); }
+  // CORRECTION (2026-07-27): there is no _enterChaosMode. The earlier version fell through to
+  // _enterEndless() for both modes and produced byte-identical 'chaos' and 'endless' rows in all
+  // 28 pairs - those Chaos numbers were withdrawn. _beginChaosRun() is the real entry, the same
+  // one the in-game QA bridge (main.js __phenixQA.startChaos) uses.
+  if (MODE === 'chaos') g._beginChaosRun();
   else g._enterEndless();
   if (NOVESSEL) { g._vesselCompanion = null; g._activeVesselId = null; }
   const p = g.player;
@@ -146,10 +150,19 @@ function run() {
 
   const rows = [];
   let mDealt = 0, mTaken = 0, mKills = 0, deathSec = null;
+  // build progression, straight off BuildEngine state - no new framework, just read what is there
+  const beWeapons = () => (g.buildEngine?.weapons ? [...g.buildEngine.weapons.values()] : []);
+  const evoCount  = () => beWeapons().filter(w => w?.evolved).length;
+  let firstEvoSec = null, firstEvoLvl = null;
   const F = MIN * 60 * 60;
   for (let f = 0; f < F; f++) {
     vclock += 1000 / 60;
-    if (g.upgradeUI) { try { g.selectUpgrade(0); } catch (_) { g.upgradeUI = null; } }
+    // PICK THE LAST CARD, NOT SLOT 0. _injectWeaponCard() APPENDS the weapon/BuildEngine card,
+    // so a slot-0 bot never takes one: it collects passives forever, the BuildEngine weapon map
+    // stays empty and the run reports zero evolutions. That is a harness artifact, not a game
+    // property - it already invalidated one earlier evolution count. Greedy-last takes the weapon
+    // whenever one is offered, which is what a player chasing a build does.
+    if (g.upgradeUI) { try { g.selectUpgrade(g.upgradeUI.choices.length - 1); } catch (_) { g.upgradeUI = null; } }
     if (g.mutationUI) { try { g.selectMutation(0); } catch (_) { g.mutationUI = null; } }
     const s = steer();
     const len = Math.hypot(s.vx, s.vy) || 1;
@@ -160,6 +173,7 @@ function run() {
     try { g.update(1 / 60, input); } catch (_) { break; }
     try { g.draw(DRAW_CTX); } catch (_) {}
     mDealt += dealt - d0; mTaken += taken - t0; mKills += kills - k0;
+    if (firstEvoSec === null && evoCount() > 0) { firstEvoSec = +(f / 60).toFixed(1); firstEvoLvl = p.level; }
     if (deathSec === null && (g.gameOver || p.hp <= 0)) { deathSec = +(f / 60).toFixed(1); break; }
     if ((f + 1) % 3600 === 0) {
       let ehp = 0; for (const e of g.enemies) ehp += Math.max(0, e?.hp || 0);
@@ -174,7 +188,12 @@ function run() {
   const alive = deathSec === null;
   un();
   const top = o => Object.entries(o).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k, v]) => [k, Math.round(v)]);
+  const finalWeapons = beWeapons();
   return { id: ID, mode: MODE, meta: METAK, metaKeysMaxed: metaKeys, bot: BOT, vessel: !NOVESSEL, seed: SEED,
+           firstEvolutionSec: firstEvoSec, firstEvolutionLevel: firstEvoLvl,
+           evolutionsAtEnd: finalWeapons.filter(w => w?.evolved).length,
+           weaponsAtEnd: finalWeapons.length,
+           weaponLevelsAtEnd: finalWeapons.map(w => (w?.id || '?') + ':' + (w?.level ?? 0) + (w?.evolved ? '*' : '')),
            minutes: MIN, survived: alive, deathSec, finalLevel: p.level, kills, totalDealt: Math.round(dealt),
            totalTaken: Math.round(taken), dealtTop: top(dealtBy), takenTop: top(takenBy), perMinute: rows };
 }
@@ -182,5 +201,5 @@ function run() {
 const r = run();
 console.error(`  ${r.id.padEnd(24)} ${r.mode.padEnd(7)} meta=${r.meta.padEnd(5)} bot=${r.bot.padEnd(9)} vessel=${r.vessel ? 'on ' : 'off'} seed=${r.seed}  ` +
   (r.survived ? `SURVIVED ${r.minutes}min` : `DIED ${r.deathSec}s (min ${(r.deathSec / 60).toFixed(1)})`) +
-  `  lvl ${r.finalLevel}  kills ${r.kills}  taken ${r.totalTaken}  top-threat ${(r.takenTop[0] || ['-'])[0]}`);
+  `  lvl ${r.finalLevel}  kills ${r.kills}  taken ${r.totalTaken}  evo1 ${r.firstEvolutionSec ?? 'never'}s  evos ${r.evolutionsAtEnd}/${r.weaponsAtEnd}  top-threat ${(r.takenTop[0] || ['-'])[0]}`);
 console.log(JSON.stringify(r, null, 1));

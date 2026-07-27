@@ -8844,7 +8844,16 @@ export class Game {
       this.player.pendingLevelupCount--;
       this._checkLevelMilestones();   // Φ12: 5/10/25(+25...) milestone rewards
       if (this.player.level >= this._nextCardLevel) {
-        this._nextCardLevel = this.player.level + (this.player.level >= 6 ? 2 : 1);   // schedule next offer
+        // POWER CURVE P1 (2026-07-27). The every-2nd-level throttle used to start at level 6, and
+        // its stated reason was to spread the card pool across a ~30-minute run instead of
+        // exhausting it by ~10. Measured against 20 max-meta pilot runs, nobody is alive for that
+        // argument to protect: Endless deaths land at 5.8-7.4 min and Chaos at 2.2-4.1 min, and a
+        // character reaching LEVEL 33-40 dies holding only 2-3 weapons and 1-2 evolutions. Half of
+        // every level-up past 6 produced no card at all, in exactly the window where the build has
+        // to come together. The throttle now starts at 20, so the run gets a card on every level
+        // while it is still being built, and the original spreading behaviour takes over afterwards
+        // for the long runs it was written for. No card content, weight, cap or cost changes.
+        this._nextCardLevel = this.player.level + (this.player.level >= 20 ? 2 : 1);   // schedule next offer
         const choices = weightedSample(this.player, 3, { meta: this.meta, endless: this.endless, chaos: this._chaosMode });
         this._injectWeaponCard(choices);   // TASK 1+2: 25% chance to offer a weapon card
         if (choices.length > 0) {
