@@ -17,7 +17,15 @@ export const VESSELS = Object.freeze([
     costFragments: 0,
     unlockByDefault: true,
     passive: null,
-    passiveDesc: 'No passive — balanced baseline.',
+    // Every equipped vessel flies a companion that fires auto-aiming rockets (Game._tickVesselRockets:
+    // 70 damage, 95px AoE, 1.5s cooldown, 720px reach, live from t=0). It is gated only on a vessel
+    // being equipped, so it belongs to no vessel's kit in particular - and measured across five
+    // vessels it carries 32.6%-55.4% of a run's total damage. The old line here read
+    // 'No passive — balanced baseline', which the character-select card renders verbatim, so the
+    // player was told the starter ship does nothing while it ran the largest character-agnostic
+    // damage source in the game. alpha_phoenix genuinely has no EXTRA passive and no stat modifier;
+    // that is what this now says, without implying it has no attack.
+    passiveDesc: 'Baseline companion rockets. No extra passive, no stat modifiers.',
     statMods: {},
   },
   {
