@@ -29,7 +29,7 @@ import './BuildEngineChars5.js?v=20260826000000';   // P2.5 Universal όπλα 2
 import './BuildEnginePassives.js?v=20260810100000'; // P2.6 Build passives §26-50 (generic hooks)
 import { MutationUI }      from './MutationUI.js?v=20260810210000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
-import { drawHUD, drawEndScreen } from './HUD.js?v=20260824000000';
+import { drawHUD, drawEndScreen } from './HUD.js?v=20260827000000';
 import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, COLLECTIBLE_FRAGMENT_COST, COLLECTIBLE_GRID_COST, ECHO_FRAGMENT_COST, ECHO_GRID_COST, SKILL_TREE, AMULET_DEFS, GRID_TO_PF_RATE } from './MetaProgress.js?v=20260723000000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260712520000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
@@ -2380,6 +2380,7 @@ export class Game {
     this._ascShareT   = 0;       // shared recovery window countdown, seconds
     this._ascRejected = 0;       // hits the window absorbed — telemetry only, never gameplay
     this._majorSalvoGapT = 0;    // shared lockout between major rocket events (airstrike/gunship)
+    this._majorEventGraceT = 0;  // post-Boss-Rush pause so held schedulers do not fire together
     // ── ASCENSION BARRIER (Power Curve P1 / Batch 4) ─────────────────────────────────────────
     this._barVal      = 0;       // current barrier charge, HP-equivalent
     this._barMax      = 0;       // 30% of max HP, recomputed each tick so meta/HP cards apply
@@ -9431,6 +9432,7 @@ export class Game {
     if (this._chaosEntryGraceT > 0) this._chaosEntryGraceT -= dt;
     if (this._ascShareT > 0) this._ascShareT -= dt;
     if (this._majorSalvoGapT > 0) this._majorSalvoGapT -= dt;
+    if (this._majorEventGraceT > 0) this._majorEventGraceT -= dt;
     this._tickBarrier(dt);
     this._ascCheckTrigger();
 
@@ -9795,6 +9797,7 @@ export class Game {
   }
 
   _spawnVaultAt(pos) {
+    if (this._majorEventBlocked()) return;   // never open a vault inside a locked arena
     this._vaultIdx++;                              // consume exactly one opportunity
     this._vaultPending = false;
     this._lastVaultSpawnAt = this.timeAlive;
@@ -10559,6 +10562,9 @@ export class Game {
     }
     // Spawning and the cadence clock stay gated on the run still being live.
     if (this.gameOver || this.victory) return;
+    // An ambient Mega Boss must never walk into a Boss Rush: the rush brings its own bosses and
+    // the player is locked in with them.
+    if (this._majorEventBlocked()) { this._chaosTitanTimer = this._holdMajorTimer(this._chaosTitanTimer, 8); return; }
     this._chaosTitanTimer -= dt;
     if (this._chaosTitanTimer > 0) return;
     this._chaosTitanTimer = 55;   // next Titan ~55s after the last one is cleared
@@ -10737,10 +10743,13 @@ export class Game {
         // centre ~260px in a random direction (player is still well inside the 700px wall,
         // and the lock clamp keeps them in). Reads as 'the rush claims its own ground'.
         const _rushAng = Math.random() * Math.PI * 2;
+        // The ring claimed its own ground 260px away and never checked whether that ground
+        // existed. Offer the offset centre as the preferred spot, then validate the WHOLE disk.
+        const _rp = this._placeArena(this.player.pos.x + Math.cos(_rushAng) * 260,
+                                     this.player.pos.y + Math.sin(_rushAng) * 260, 700, 26);
         this._bossRush = {
           t: 0, dur: 180,
-          cx: this.player.pos.x + Math.cos(_rushAng) * 260,
-          cy: this.player.pos.y + Math.sin(_rushAng) * 260,
+          cx: _rp.x, cy: _rp.y, r: _rp.radius,
           hazard: null, spawnAcc: 0, titanIdx: 0, flags: {},
         };
         this.triggerAnnouncement('⚔ CHAOS BOSS RUSH — SURVIVE 3:00 ⚔', '#ffd447');
@@ -10756,7 +10765,7 @@ export class Game {
 
     // \u2500\u2500 Phase 6: PLAYER LOCK \u2014 the arena wall is solid; the fight cannot be skipped \u2500\u2500
     {
-      const LOCK_R = 700 - 18;   // just inside the drawn wall
+      const LOCK_R = (br.r || 700) - 18;   // just inside the drawn wall — follows the validated radius
       const pdx = this.player.pos.x - br.cx, pdy = this.player.pos.y - br.cy;
       const pd  = Math.hypot(pdx, pdy);
       if (pd > LOCK_R && pd > 0) {
@@ -10862,6 +10871,7 @@ export class Game {
           this.player._rushVulnMult = 0;
         }
         this._bossRush = null;
+        this._majorEventGraceT = 6;   // let the arena clear before any global scheduler resumes
     }
   }
 
@@ -10902,7 +10912,7 @@ export class Game {
     // Phase 6: pseudo-3D holographic arena cage \u2014 solid base ring, energy pillars with
     // vertical height (taller/brighter on the near side, shorter/dimmer behind), and a floating
     // top rim. Reads as a 3D cylinder without any real 3D math; purely canvas 2D, bounded cost.
-    const AR = 700 * vs;
+    const AR = ((this._bossRush && this._bossRush.r) || 700) * vs;   // drawn wall = validated radius
     const tNow = performance.now() / 1000;
     const WALL_H = 96 * vs;                                     // pillar height (screen px)
     // base ring (ground contact)
@@ -18488,7 +18498,8 @@ export class Game {
 
   _updateAirstrike(dt) {
     // Cadence: first ~1.5 min, then ~every 2 min — but never more than 1 ship at a time.
-    this._airstrikeTimer -= dt;
+    if (this._majorEventBlocked()) { this._airstrikeTimer = this._holdMajorTimer(this._airstrikeTimer, 6); }
+    else this._airstrikeTimer -= dt;
     if (this._airstrikeTimer <= 0) {
       if (this._majorSalvoBlocked()) { this._airstrikeTimer = 6; }       // a major salvo just opened
       else if (this.airstrikeShips.length < 1) {
@@ -25972,6 +25983,7 @@ _drawLoreArchive(ctx) {
       return;
     }
 
+    if (this._majorEventBlocked() && !this.acidRain) { this.acidRainTimer = this._holdMajorTimer(this.acidRainTimer, 6); return; }
     this.acidRainTimer -= dt;
     if (this.acidRainTimer <= 0) {
       this.acidRain = { timer: 12, damageAccum: 0 };
@@ -27658,12 +27670,19 @@ _drawLoreArchive(ctx) {
       phase1Transmitted:  false,
       midTransmitted:     false,
       finalTransmitted:   false,
-      // World-space arena center (player's position at activation) and containment radius
+      // World-space arena centre and containment radius — VALIDATED, not assumed. The old code
+      // took the player's position and a flat 1100 radius, which cannot fit the walkable band.
       center:             this.player.pos.clone(),
-      radius:             1100,   // containment field radius in world pixels (expanded Null Breach)
+      radius:             1100,
     };
+    {
+      const _pl = this._placeArena(this.player.pos.x, this.player.pos.y, 1100, 26);
+      this._nullBreachArena.center.x = _pl.x;
+      this._nullBreachArena.center.y = _pl.y;
+      this._nullBreachArena.radius   = _pl.radius;
+    }
     // EventBus emit
-    this.events?.emit('arena:started', { center: this._nullBreachArena.center, radius: 1100 });
+    this.events?.emit('arena:started', { center: this._nullBreachArena.center, radius: this._nullBreachArena.radius });
 
     // Track for end screen
     if (!this._arenaResult) {
@@ -30766,6 +30785,95 @@ _drawLoreArchive(ctx) {
     const mm   = this.mapManager;
     if (!mode || !mm?.findNearestWalkablePoint) return { x, y };
     return mm.findNearestWalkablePoint(x, y, radius, mode);
+  }
+
+  // ══ FULL-DISK ARENA VALIDATION (Batch 1, 2026-07-27) ════════════════════════════════════════
+  // Both arenas used to be placed on the player's position with a fixed radius and no check at
+  // all: the Null Breach at radius 1100, the Chaos Boss Rush at 700 offset 260px in a random
+  // direction. The walkable band is 615 world px tall in Endless (rows 210-415 x scale 3) and
+  // 825 in Chaos (rows 135-410). A 1100 radius disk is 2200 across - nearly four times the space
+  // that exists - so a large part of every ring was ALWAYS outside the floor, behind bounds or on
+  // top of a façade. That is exactly the half-arena Maria describes, and it was unavoidable
+  // arithmetic rather than bad luck.
+  //
+  // The fix is two-part and both parts are needed. The radius is first fitted to the band that
+  // actually exists, and only then is the full disk sampled: centre, four inner rings and 64
+  // perimeter points, every one of them through the same canonical walkability model the player
+  // and every pickup use. A candidate that fails is not accepted at a smaller quadrant - the
+  // search moves to a new centre and revalidates from scratch.
+  _arenaFitRadius(desired) {
+    const b = this.getWalkableBounds();
+    if (!b) return desired;                                   // campaign stages publish no band
+    const half = (b.y1 - b.y0) * 0.5 - (PLAYER_RADIUS + 40);  // the band is the binding dimension
+    if (!Number.isFinite(half) || half <= 0) return desired;
+    return Math.max(180, Math.min(desired, Math.floor(half)));
+  }
+  // true only if the WHOLE disk is standable. rings/samples per the batch spec.
+  _validateArenaDisk(cx, cy, radius, pad = 0) {
+    if (!Number.isFinite(cx) || !Number.isFinite(cy) || !(radius > 0)) return false;
+    const mode = this._walkMode?.();
+    const mm = this.mapManager;
+    if (!mode || !mm?.isWalkableFootprint) return true;       // no model published → legacy behaviour
+    const R = PLAYER_RADIUS + pad;
+    if (!mm.isWalkableFootprint(cx, cy, R, mode)) return false;
+    const RINGS = [0.35, 0.60, 0.85, 1.00];
+    for (const k of RINGS) {
+      const n = k >= 1 ? 64 : 32;                             // 64 on the perimeter, 32 inside
+      const r = radius * k;
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * Math.PI * 2;
+        if (!mm.isWalkableFootprint(cx + Math.cos(a) * r, cy + Math.sin(a) * r, R, mode)) return false;
+      }
+    }
+    return true;
+  }
+  // Nearest fully-valid centre for the given radius, searched on a golden-angle spiral so the
+  // candidates spread instead of marching along one axis. Returns null when nothing validates,
+  // and the caller shrinks rather than accepting a partial ring.
+  _findArenaCenter(cx, cy, radius, pad = 0) {
+    if (this._validateArenaDisk(cx, cy, radius, pad)) return { x: cx, y: cy, radius };
+    const GA = 2.39996323;
+    for (let i = 1; i <= 96; i++) {
+      const d = 60 * Math.sqrt(i), a = i * GA;
+      const x = cx + Math.cos(a) * d, y = cy + Math.sin(a) * d;
+      if (this._validateArenaDisk(x, y, radius, pad)) return { x, y, radius };
+    }
+    return null;
+  }
+  // The entry point both arenas call. Fits the radius to the band, then searches; if even the
+  // fitted radius cannot be placed anywhere nearby it steps the radius down in bounded stages and
+  // searches again, so what the player gets is always a COMPLETE circle, never a quadrant.
+  _placeArena(cx, cy, desiredRadius, pad = 0) {
+    let r = this._arenaFitRadius(desiredRadius);
+    for (let step = 0; step < 5; step++) {
+      const hit = this._findArenaCenter(cx, cy, r, pad);
+      if (hit) return hit;
+      r = Math.floor(r * 0.82);
+      if (r < 200) break;
+    }
+    // Last resort: keep the fitted radius and recover the centre onto the floor. Better a small
+    // guaranteed-standable ring than a large one the player cannot cross.
+    const rec = this.recoverToWalkable ? this.recoverToWalkable(cx, cy, PLAYER_RADIUS + pad) : { x: cx, y: cy };
+    return { x: rec.x, y: rec.y, radius: Math.max(200, this._arenaFitRadius(desiredRadius)) };
+  }
+
+  // ══ MAJOR-EVENT EXCLUSIVITY (Batch 1, 2026-07-27) ═══════════════════════════════════════════
+  // The Chaos Boss Rush locks the player inside a ring for three minutes, and until now every
+  // other global scheduler kept running straight through it: acid rain, airstrikes, gunships, the
+  // laser grid, vault drops and the ambient Mega Boss could all open on top of a fight the player
+  // cannot walk away from. This is the single gate they all ask before starting. It deliberately
+  // does NOT touch normal enemy waves or regular combat - only the events that own the screen.
+  //
+  // Timers are NOT frozen while the rush runs; they are held one step from firing, so the moment
+  // it ends nothing detonates all at once. _majorEventGraceT adds a short post-rush pause on top,
+  // for the same reason.
+  _majorEventBlocked() {
+    if (this._bossRush) return true;
+    return (this._majorEventGraceT || 0) > 0;
+  }
+  // Holds a timer just above zero instead of letting it run down and stack up a burst.
+  _holdMajorTimer(v, floor = 3) {
+    return Math.max(v, floor);
   }
 
   getWalkableBounds() {

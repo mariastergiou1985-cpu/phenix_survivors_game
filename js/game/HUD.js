@@ -325,6 +325,23 @@ export function drawHUD(ctx, game) {
     ctx.textAlign = 'left';
   }
 
+  // ── BOSS RUSH COUNTDOWN (Batch 1) ────────────────────────────────────────────────────────
+  // The rush locks the player in for exactly three minutes and gave them no way to know how much
+  // was left. One line inside the existing HUD footprint, directly under the bottom bars; no
+  // overlay, nothing over HP / MP / cards / boss health / the map.
+  if (game._bossRush) {
+    const _rem = Math.max(0, (game._bossRush.dur || 180) - (game._bossRush.t || 0));
+    const _mm = Math.floor(_rem / 60), _ss = Math.floor(_rem % 60);
+    const _txt = _mm + ':' + String(_ss).padStart(2, '0');
+    const _urgent = _rem <= 15;
+    ctx.save();
+    ctx.textAlign = 'center';
+    drawText(ctx, 'BOSS RUSH  ' + _txt, WIDTH / 2, HEIGHT - 44,
+             _urgent ? '#ff5a72' : '#ffd447', 'bold 15px Consolas, monospace');
+    ctx.restore();
+    ctx.textAlign = 'left';
+  }
+
   // First-run hint — teaches the kill → Nexus recharge loop.
   // Auto-dismisses (fades out over its last 1.5s); upper third, never covers
   // the player at screen-centre. Skipped in Endless. Display-only (reads game.timeAlive).
