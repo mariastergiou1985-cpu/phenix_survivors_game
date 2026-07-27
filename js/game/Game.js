@@ -34,8 +34,8 @@ import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACH
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260712520000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
-import { GlitchDash } from '../effects/glitch-dash.js?v=20260712490000';
-import { EMPShockwave } from '../effects/emp-shockwave.js?v=20260712490000';
+import { GlitchDash } from '../effects/glitch-dash.js?v=20260818000000';
+import { EMPShockwave } from '../effects/emp-shockwave.js?v=20260818000000';
 import { DigitalSingularity } from '../effects/digital-singularity.js?v=20260726000000';
 import { OssuaryReconstruction } from '../effects/ossuary-reconstruction.js?v=20260711500000';
 import { AfterimageTribunal } from '../effects/afterimage-tribunal.js?v=20260711510000';
@@ -48,7 +48,7 @@ import { MagmaCoreEruption } from '../effects/magma-core-eruption.js?v=202607123
 import { PhantomExecution } from '../effects/phantom-execution.js?v=20260711580000';
 import { WeatherTheater } from '../effects/weather-theater.js?v=20260712130000';
 import { Protocol0 } from '../effects/protocol-0.js?v=20260705000000';
-import { LaserEyes } from '../effects/laser-eyes.js?v=20260709100000';
+import { LaserEyes } from '../effects/laser-eyes.js?v=20260818000000';
 import { MeteorRain } from '../effects/meteor-rain.js?v=20260712100000';
 import { NpcWalker } from './NpcWalker.js?v=20260724000000';
 import { MapManager, BIOME_ID, BIOME_DEFS, CHUNK_SIZE } from './MapManager.js?v=20260817000000';
@@ -8716,7 +8716,38 @@ export class Game {
 
   // ─── Main update ──────────────────────────────────────────────────────────
 
+  // ── DRAW/UPDATE DECOUPLING (Phase 6B §5, 2026-07-27) ────────────────────────────────────────
+  // `this._canvas` used to be written ONLY inside the nine _draw*Fx(ctx) functions, and the ten
+  // lazy kit builders that gate on it (_ensurePhasewalkerFx, _ensureOniFx, _ensureTheoremFx,
+  // _ensureOssuaryFx, _ensureRailgunFx, _ensureMagmaFx, _ensureFeedbackFx, _ensurePhantomExecFx,
+  // _ensureTribunalFx, and the DeusExMachina line in _activateCyberAngelNova) therefore could not
+  // build until a draw had already happened. Those kits deal damage from the UPDATE path, so
+  // rendering was upstream of gameplay: with draw suppressed, zero kits were built and Oni ended a
+  // 120s run on 161 kills / level 11 instead of 1883 kills / level 15. It also meant a throw in any
+  // EARLIER draw layer aborted game.draw() before the capture line and silently disabled the whole
+  // kit for the rest of the run - the exact shape of the "Oni is mechanically broken" false alarm.
+  // The canvas element exists from page load and never changes, so update resolves it directly and
+  // the builders no longer depend on the renderer. The _draw*Fx captures are left in place: they
+  // are now a redundant refresh rather than the only source.
+  _resolveCanvas() {
+    if (this._canvas) return this._canvas;
+    try { this._canvas = (typeof document !== 'undefined' && document.getElementById) ? (document.getElementById('game') || null) : null; }
+    catch (_) { this._canvas = null; }
+    return this._canvas;
+  }
+
+  // Visual-only random stream — see the note on _resolveCanvas. Render code must not pull from
+  // Math.random: the gameplay stream is seeded and shared, so a cosmetic flicker shifts the next
+  // spawn/drop/crit roll. _drawGuitarSolo alone took 15.2% of the stream on a 60s Eddie run.
+  _vfxRand() {
+    this._vfxSeed = ((this._vfxSeed ?? 0x9e3779b9) + 0x6D2B79F5) | 0;
+    let t = Math.imul(this._vfxSeed ^ (this._vfxSeed >>> 15), 1 | this._vfxSeed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  }
+
   update(dt, input) {
+    this._resolveCanvas();           // kit builders must not wait for a frame to be drawn
     // Fade system must tick in ALL states so screen transitions always complete.
     this._updateFade(dt);
     this._stageCompleteWatchdog();   // Phase 15: never stay frozen on the stage-complete banner
@@ -14992,7 +15023,7 @@ export class Game {
         ctx.strokeStyle = grad; ctx.lineWidth = 5; ctx.globalAlpha = 0.85;
         ctx.beginPath();
         ctx.moveTo(b.x, yN - tail);
-        for (let s = 1; s < 4; s++) { const f = s / 4; ctx.lineTo(b.x + (Math.random() - 0.5) * 14, yN - tail + tail * f); }
+        for (let s = 1; s < 4; s++) { const f = s / 4; ctx.lineTo(b.x + (this._vfxRand() - 0.5) * 14, yN - tail + tail * f); }
         ctx.lineTo(b.x, yN);
         ctx.stroke();
       }

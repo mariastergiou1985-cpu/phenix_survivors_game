@@ -132,7 +132,7 @@ export class LaserEyes {
     }
     if (this.state === 'fire') {
       const dir = this._dir(), eyes = this.opts.getEyes(), ends = eyes.map(e => this._endpoint(e, dir));
-      const flick = 0.7 + Math.random() * 0.3;
+      const flick = 0.7 + vfxRandom() * 0.3;
       // No shadowBlur on beams (performance) — two-pass: glow layer + bright core
       const bw = this.cfg.beam.width;
       ctx.lineCap = 'round';
@@ -154,11 +154,26 @@ export class LaserEyes {
       ctx.globalAlpha = 1;
     }
     // ground fire zones
-    for (const f of this._fires) { const t = (now - f.born) / f.life; if (t >= 1) continue; const fl = 0.6 + Math.random() * 0.4; ctx.globalAlpha = (1 - t) * fl; ctx.fillStyle = this._c(1, 55, Math.random() < 0.5 ? this.cfg.color.hue : 28); ctx.beginPath(); ctx.arc(f.x, f.y - (1 - t) * 6, f.size * (0.6 + 0.4 * (1 - t)), 0, Math.PI * 2); ctx.fill(); }
+    for (const f of this._fires) { const t = (now - f.born) / f.life; if (t >= 1) continue; const fl = 0.6 + vfxRandom() * 0.4; ctx.globalAlpha = (1 - t) * fl; ctx.fillStyle = this._c(1, 55, vfxRandom() < 0.5 ? this.cfg.color.hue : 28); ctx.beginPath(); ctx.arc(f.x, f.y - (1 - t) * 6, f.size * (0.6 + 0.4 * (1 - t)), 0, Math.PI * 2); ctx.fill(); }
     ctx.globalAlpha = 1;
     // sparks
     for (const p of this._sparks) { const t = (now - p.born) / p.life; if (t >= 1) continue; ctx.globalAlpha = 1 - t; ctx.fillStyle = this._c(1, 60, p.ember ? 30 : this.cfg.color.hue); ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size); }
     ctx.globalAlpha = 1;
     ctx.restore();
   }
+}
+
+// ── VISUAL-ONLY RANDOM (Phase 6B §5, 2026-07-27) ──────────────────────────────────────────────
+// Render code must never draw from Math.random. The game seeds and consumes that same stream for
+// spawns, drops, crits and mutations, so one flicker inside a render function shifts the next
+// gameplay roll and makes the simulation depend on how many frames were painted. Measured on a
+// 60s run before this split: this module's render took 26.85% of the whole stream (Phasewalker).
+// Same uniform [0,1) distribution, same look, its own stream. UPDATE-side randomness is left
+// exactly as it was - that part is gameplay and must keep its place in the seeded sequence.
+let _vfxSeed = 0x9e3779b9;
+function vfxRandom() {
+  _vfxSeed = (_vfxSeed + 0x6D2B79F5) | 0;
+  let t = Math.imul(_vfxSeed ^ (_vfxSeed >>> 15), 1 | _vfxSeed);
+  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
 }

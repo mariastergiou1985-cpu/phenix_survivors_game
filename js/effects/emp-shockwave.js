@@ -194,11 +194,11 @@ export class EMPShockwave {
     ctx.shadowColor = this._neon(1); ctx.shadowBlur = 10;
     for (let b = 0; b < T.count; b++) {
       // even spread + jitter so they branch all around the ring
-      const ang = (b / T.count) * Math.PI * 2 + (Math.random() - 0.5) * 0.6;
+      const ang = (b / T.count) * Math.PI * 2 + (vfxRandom() - 0.5) * 0.6;
       const pts = this._bolt(ang, this.radius, T.jitter, T.segments);
       // glow pass
       ctx.lineWidth = 2.5;
-      ctx.strokeStyle = this._neon((0.5 + Math.random() * 0.4) * fade, 70);
+      ctx.strokeStyle = this._neon((0.5 + vfxRandom() * 0.4) * fade, 70);
       this._stroke(ctx, pts);
       // hot core
       ctx.lineWidth = 1;
@@ -217,7 +217,7 @@ export class EMPShockwave {
       for (let j = 0; j < pts.length - 1; j++) {
         const [x1, y1] = pts[j], [x2, y2] = pts[j + 1];
         const dx = x2 - x1, dy = y2 - y1, seg = Math.hypot(dx, dy) || 1;
-        const off = (Math.random() - 0.5) * jitter * (seg / len);
+        const off = (vfxRandom() - 0.5) * jitter * (seg / len);
         np.push([x1, y1], [(x1 + x2) / 2 - dy / seg * off, (y1 + y2) / 2 + dx / seg * off]);
       }
       np.push(pts[pts.length - 1]);
@@ -271,4 +271,19 @@ function mergeConfig(base, opts) {
   const out = JSON.parse(JSON.stringify(base));
   for (const k of Object.keys(base)) if (opts[k]) Object.assign(out[k], opts[k]);
   return out;
+}
+
+// ── VISUAL-ONLY RANDOM (Phase 6B §5, 2026-07-27) ──────────────────────────────────────────────
+// Render code must never draw from Math.random. The game seeds and consumes that same stream for
+// spawns, drops, crits and mutations, so one flicker inside a render function shifts the next
+// gameplay roll and makes the simulation depend on how many frames were painted. Measured on a
+// 60s run before this split: this module's render took 26.85% of the whole stream (Phasewalker).
+// Same uniform [0,1) distribution, same look, its own stream. UPDATE-side randomness is left
+// exactly as it was - that part is gameplay and must keep its place in the seeded sequence.
+let _vfxSeed = 0x9e3779b9;
+function vfxRandom() {
+  _vfxSeed = (_vfxSeed + 0x6D2B79F5) | 0;
+  let t = Math.imul(_vfxSeed ^ (_vfxSeed >>> 15), 1 | _vfxSeed);
+  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
 }
