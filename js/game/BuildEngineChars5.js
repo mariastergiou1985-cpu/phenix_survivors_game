@@ -570,7 +570,13 @@ EVOLUTION_RECIPES.be_blacknet_hive_dominion = {
   name: 'Blacknet Hive Dominion', weapon: 'blacknet_swarm_drone', passive: 'distributed_intelligence',
   weaponLevel: 5, passiveLevel: 3,
   damage: 16, amount: 4,
-  laser: { dps: 18, range: 260, tick: 0.3 },        // συνεχείς laser δεσμοί σε elites
+  // COVERAGE FIX (evolution pass, 2026-07-27). Measured 1.15x throughput and, uniquely in the
+  // whole pool, ZERO change in reach: 104 enemies touched before, 104 after. The standing lasers
+  // only ever pin ELITES, and an ordinary horde has none - so against the thing the player is
+  // actually drowning in, this evolution does nothing at all. "The hive locks a single verdict"
+  // now also means the lasers fall back to the nearest normal targets when no elite is in range,
+  // which is the same behaviour applied to the enemies that are there.
+  laser: { dps: 18, range: 260, tick: 0.3, normalTargets: 3 },   // συνεχείς laser δεσμοί σε elites
   bossMultiplier: 0.80, tags: ['BLACKNET', 'SUMMON', 'DRONE', 'LASER'],
   desc: 'The hive locks a single verdict — shared targets, and standing lasers pin every elite.',
 };
@@ -641,12 +647,28 @@ WEAPON_EXECUTORS.blacknet_swarm_drone = {
       w.laserT = evo.laser.tick;
       w.lasers = [];
       for (const dr of w.drones) {
+        let linked = 0;
+        const _cap = 1 + (evo.laser.normalTargets || 0);
+        // Pass 1 keeps the original priority: elites and ranged enemies first, one beam each.
         for (const e of rt.game.enemies) {
+          if (linked >= 1) break;
           if (!e || e.hp <= 0 || !isRangedOrElite(e)) continue;
           if ((e.pos.x - dr.x) ** 2 + (e.pos.y - dr.y) ** 2 > evo.laser.range ** 2) continue;
           rt._dealDamage(wid, e, evo.laser.dps * evo.laser.tick, bm, false);
           w.lasers.push({ x1: dr.x, y1: dr.y, x2: e.pos.x, y2: e.pos.y });
-          break;                                                   // ένας δεσμός ανά drone
+          linked++;
+        }
+        // Pass 2 is the fix. An ordinary horde contains no elites, so the original loop simply
+        // found nothing and the evolution's headline mechanic never fired - measured as 104
+        // enemies touched before evolving and 104 after, the only zero in the whole pool. The
+        // drones now spend their remaining links on normal targets in range.
+        for (const e of rt.game.enemies) {
+          if (linked >= _cap) break;
+          if (!e || e.hp <= 0 || isRangedOrElite(e)) continue;
+          if ((e.pos.x - dr.x) ** 2 + (e.pos.y - dr.y) ** 2 > evo.laser.range ** 2) continue;
+          rt._dealDamage(wid, e, evo.laser.dps * evo.laser.tick, bm, false);
+          w.lasers.push({ x1: dr.x, y1: dr.y, x2: e.pos.x, y2: e.pos.y });
+          linked++;
         }
       }
     }

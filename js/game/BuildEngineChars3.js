@@ -140,7 +140,15 @@ EVOLUTION_RECIPES.be_amp_overdrive_wall = {
   name: 'Amp Overdrive Wall', weapon: 'feedback_cabinet', passive: 'overdriven_vacuum_tube',
   weaponLevel: 5, passiveLevel: 3,
   damage: 34, cooldown: 2.4,
-  wall: { w: 560, h: 60, range: 380, speed: 380, push: 220, bossHits: 3 },
+  // COVERAGE FIX (evolution pass, 2026-07-27). Measured on an identical horde: 1.07x the
+  // throughput of the level-5 weapon it replaces - a rounding error, not an evolution. The wall is
+  // genuinely wider (targets 277 -> 441) but it fires ONCE every 2.4s and dies after 380px, while
+  // the weapon it replaced fires a volley on a much shorter cooldown. Wider but rarer nets zero.
+  // Its identity is "a WALL of amplifiers", so the fix is reach and staging rather than damage:
+  // the wall now crosses the field (620px) and the cabinet radiates a second wall BACKWARDS, which
+  // is what a feedback cabinet does. Per-hit damage, the one-hit-per-enemy rule, the push and the
+  // boss cap are all unchanged.
+  wall: { w: 560, h: 60, range: 620, speed: 380, push: 220, bossHits: 3, backWall: true },
   bossMultiplier: 0.75, tags: ['SOUND', 'WAVE', 'WALL', 'KNOCKBACK'],
   desc: 'A wall of amplifiers slams one massive overdrive wave across the field.',
 };
@@ -157,6 +165,8 @@ WEAPON_EXECUTORS.feedback_cabinet = {
       if (w.evolved) {
         if (w.waves.length < d.maxActive)
           w.waves.push({ dir, dist: 30, t: 0, hit: new Set(), wall: true, x: p.pos.x, y: p.pos.y });
+        if (evo.wall.backWall && w.waves.length < d.maxActive)
+          w.waves.push({ dir: dir + Math.PI, dist: 30, t: 0.08, hit: new Set(), wall: true, x: p.pos.x, y: p.pos.y });
       } else {
         const n = Math.min(lvl(d, w, 'amount'), d.maxActive - w.waves.length);
         for (let k = 0; k < n; k++)
@@ -246,7 +256,15 @@ EVOLUTION_RECIPES.be_sanction_halo = {
   name: 'Sanction Halo', weapon: 'cyber_gauntlets_injection', passive: 'ophanim_seal',
   weaponLevel: 5, passiveLevel: 3,
   damage: 32, cooldown: 0.34,
-  smite: { dmg: 42, radius: 54, perCombo: 1 },      // χρυσή στήλη σε κάθε marked στο 3ο χτύπημα
+  // COVERAGE FIX (evolution pass, 2026-07-27). Measured 1.24x throughput and, more damningly,
+  // almost no change in who it reaches: 115 enemies touched before, 118 after. The smite fires a
+  // 54px column on each MARKED enemy - a radius smaller than a single body pair, so "calls a smite
+  // on the marked" landed on the marked and nobody else. Dimi is the character Maria describes as
+  // "πολύ λίγος μπροστά στις ορδές", and this is one of his two evolutions.
+  // The column is now a real pillar of light (128px) and the seal chains to one nearby unmarked
+  // enemy per smite, so a finished combo actually clears space instead of tapping one target.
+  // Per-smite damage is unchanged.
+  smite: { dmg: 42, radius: 128, perCombo: 1, chain: 1, chainRange: 190 },
   bossMultiplier: 0.80, tags: ['PUNCH', 'MELEE', 'MARK', 'SMITE'],
   desc: 'Golden seals ring the fists — every finished combo calls a smite on the marked.',
 };
@@ -279,8 +297,27 @@ WEAPON_EXECUTORS.cyber_gauntlets_injection = {
       }
       w.hits.push({ dir, t: 0, combo: w.combo, x: p.pos.x, y: p.pos.y });
       if (w.hits.length > d.maxActive) w.hits.shift();
-      if (w.evolved && fin)                                        // SMITE σε marked (evolution)
+      if (w.evolved && fin) {                                      // SMITE σε marked (evolution)
         for (const e of marked) w.smites.push({ x: e.pos.x, y: e.pos.y, e, t: 0, dur: 0.32, done: false });
+        // The seal chains: each smite also calls one on the nearest UNMARKED enemy in range, so a
+        // finished combo reaches past the bodies already being punched. Bounded by evo.smite.chain
+        // per smite and by chainRange, so it can never cascade across the field.
+        const _ch = evo.smite.chain || 0;
+        if (_ch > 0 && marked.length) {
+          const _seen = new Set(marked);
+          const _pool = rt.game._spatialGrid ? rt.game._spatialGrid.query(p.pos.x, p.pos.y, evo.smite.chainRange + 80) : rt.game.enemies;
+          for (const m of marked) {
+            let added = 0;
+            for (const e2 of _pool) {
+              if (added >= _ch) break;
+              if (!e2 || e2.hp <= 0 || _seen.has(e2)) continue;
+              if (Math.hypot(e2.pos.x - m.pos.x, e2.pos.y - m.pos.y) > evo.smite.chainRange) continue;
+              _seen.add(e2); added++;
+              w.smites.push({ x: e2.pos.x, y: e2.pos.y, e: e2, t: 0, dur: 0.32, done: false });
+            }
+          }
+        }
+      }
     }
     for (let i = w.hits.length - 1; i >= 0; i--) { w.hits[i].t += dt; if (w.hits[i].t > 0.22) w.hits.splice(i, 1); }
     for (let i = w.smites.length - 1; i >= 0; i--) {
@@ -376,7 +413,17 @@ EVOLUTION_RECIPES.be_wing_guillotine = {
   name: 'Wing Guillotine', weapon: 'holo_energy_knuckles', passive: 'seraphic_wing_array',
   weaponLevel: 5, passiveLevel: 3,
   damage: 44, cooldown: 1.00,
-  wings: { radius: 120, arc: 1.25, dmg: 44 },       // δύο φτερο-λεπίδες Δ+Α ταυτόχρονα
+  // COVERAGE FIX (Power Curve / evolution pass, 2026-07-27). Measured on an identical horde over
+  // an identical window, this evolution was a DOWNGRADE: 0.91x the throughput of the level-5
+  // weapon it replaces, and it touched FEWER enemies (159 -> 129). The reason is reach, not
+  // damage. The base weapon throws two piercing fists that travel 380px/s for 1.1s - about 418px
+  // of coverage, three enemies deep. The evolution replaced that with a single 120px arc snapped
+  // once per cast, so the "upgrade" cut the weapon's reach to under a third and its wings hit a
+  // frozen instant instead of sweeping.
+  // Reach now exceeds what it replaced, the two wings between them cover both flanks as the
+  // description always claimed, and the guillotine SWEEPS (see the executor) instead of
+  // photographing one moment. Damage per hit is unchanged.
+  wings: { radius: 210, arc: 2.40, dmg: 44, sweepTicks: 3 },   // δύο φτερο-λεπίδες Δ+Α ταυτόχρονα
   bossMultiplier: 0.80, tags: ['HOLO', 'MELEE', 'WING', 'GUILLOTINE'],
   desc: 'Mechanical wing-blades scissor both flanks at once — a guillotine of light.',
 };
@@ -391,7 +438,7 @@ WEAPON_EXECUTORS.holo_energy_knuckles = {
       w.cd = w.evolved ? evo.cooldown : lvl(d, w, 'cooldown');
       if (w.evolved) {
         const dir = aimAngle(rt);
-        w.wings.push({ dir, t: 0, dur: 0.30, hitL: new Set(), hitR: new Set(), x: p.pos.x, y: p.pos.y, done: false });
+        w.wings.push({ dir, t: 0, dur: 0.30, hitL: new Set(), hitR: new Set(), x: p.pos.x, y: p.pos.y, done: 0 });
       } else {
         const n = Math.min(lvl(d, w, 'amount'), d.maxActive - w.fists.length);
         const base = aimAngle(rt);
@@ -421,8 +468,15 @@ WEAPON_EXECUTORS.holo_energy_knuckles = {
     // WING GUILLOTINE: δύο τόξα-φτερά αριστερά+δεξιά ταυτόχρονα
     for (let i = w.wings.length - 1; i >= 0; i--) {
       const g = w.wings[i]; g.t += dt;
-      if (!g.done && g.t >= g.dur * 0.4) {
-        g.done = true;
+      // A guillotine SWEEPS. The old code took one snapshot at 40% of the swing, so anything that
+      // walked into the arc a frame later was never touched and the blades read as a still image.
+      // The swing now resolves over sweepTicks passes across its duration; each enemy is still
+      // hit at most once per wing (hitL / hitR), so this widens WHO is caught, never how often.
+      const _ticks = evo.wings.sweepTicks || 1;
+      g.done = g.done || 0;
+      const _want = Math.min(_ticks, Math.floor((g.t / g.dur) * _ticks) + 1);
+      while (g.done < _want) {
+        g.done++;
         const near = rt.game._spatialGrid ? rt.game._spatialGrid.query(g.x, g.y, evo.wings.radius + 60) : rt.game.enemies;
         for (const side of [-1, 1]) {
           const cA = g.dir + side * evo.wings.arc / 2;

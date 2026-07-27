@@ -670,7 +670,12 @@ EVOLUTION_RECIPES.be_gate_of_hungry_ghosts = {
   name: 'Gate of Hungry Ghosts', weapon: 'hungry_spirit_lantern', passive: 'yomi_incense',
   weaponLevel: 5, passiveLevel: 3,
   damage: 26, cooldown: 0.95,
-  gate: { every: 6.0, ghosts: 5, length: 300, width: 26, ghostDmg: 24, stagger: 0.35 },
+  // COVERAGE FIX (evolution pass, 2026-07-27). Measured 1.15x throughput and 149 -> 158 enemies
+  // touched. Five ghosts marching a 26px-wide lane once every SIX seconds is a cutscene, not a
+  // weapon: the procession is narrower than one enemy body and arrives so rarely that most of the
+  // run is just the un-evolved lantern. The gate now opens twice as often and the ghosts march in
+  // a real column - wider lane, longer path. Per-ghost damage is unchanged.
+  gate: { every: 3.0, ghosts: 5, length: 460, width: 70, ghostDmg: 24, stagger: 0.35 },
   bossMultiplier: 0.75, tags: ['ONI', 'SPIRIT', 'GATE', 'PROCESSION'],
   desc: 'A torii gate rises — five hungry ghosts march out in procession, devouring the path.',
 };
