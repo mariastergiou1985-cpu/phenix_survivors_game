@@ -24,6 +24,21 @@ export function makeCtx() {
     createLinearGradient: () => ({ addColorStop() {} }),
     createPattern: () => null,
     quadraticCurveTo() {}, bezierCurveTo() {}, isPointInPath: () => false,
+    // getTransform was missing, and its absence was NOT harmless: Game.draw() threw inside
+    // _drawFusionClouds on the very first call, which aborted the whole draw pipeline. Any system
+    // that only initialises during draw therefore never came up headlessly - Oni's entire kit
+    // (Protocol 0, Laser Eyes, Meteor Rain) builds in _drawOniFx behind `if (!this._canvas)`, so
+    // it measured as a character that deals ZERO damage. That is a harness artifact, not a
+    // production defect. Any inert stub that returns a plausible value belongs here.
+    getTransform: () => ({ a: 1, b: 0, c: 0, d: 1, e: 0, f: 0,
+                           inverse() { return this; },
+                           multiply() { return this; },
+                           translate() { return this; },
+                           scale() { return this; } }),
+    setLineDash2() {}, getLineDash: () => [],
+    createConicGradient: () => ({ addColorStop() {} }),
+    createImageData: (w = 1, h = 1) => ({ width: w, height: h, data: new Uint8ClampedArray(w * h * 4) }),
+    reset() {}, roundRect2() {},
   };
 }
 
@@ -54,6 +69,15 @@ export function installEnv() {
     fonts: { add() {}, ready: Promise.resolve() }, hidden: false, referrer: '',
     fullscreenElement: null, exitFullscreen: () => Promise.resolve(),
   };
+  // OffscreenCanvas is used by Effects.drawBloom; without it draw() aborts partway through and
+  // every draw-initialised system stays dark (see the getTransform note above).
+  globalThis.OffscreenCanvas = class {
+    constructor(w = 1, h = 1) { this.width = w; this.height = h; }
+    getContext() { return makeCtx(); }
+    convertToBlob() { return Promise.resolve({}); }
+    transferToImageBitmap() { return { width: this.width, height: this.height, close() {} }; }
+  };
+  globalThis.createImageBitmap = () => Promise.resolve({ width: 1, height: 1, close() {} });
   globalThis.Image = class { constructor() { this.complete = true; this.naturalWidth = 64; this.naturalHeight = 64; } set src(_) {} get src() { return ''; } addEventListener() {} };
   globalThis.Audio = class { play() { return Promise.resolve(); } pause() {} addEventListener() {} };
   globalThis.KeyboardEvent = class { constructor(t, o = {}) { this.type = t; this.key = o.key || ''; } };
