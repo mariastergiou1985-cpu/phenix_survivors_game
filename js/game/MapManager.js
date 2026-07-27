@@ -609,8 +609,23 @@ export class MapManager {
     const vs  = g._viewScale || 1;
     const vw  = 1280 / vs, vh = 720 / vs;                 // visible world rect (fixed zoom)
     const M   = 96;                                        // preload margin — no popping
-    const xA  = p.pos.x - vw / 2 - M, xB = p.pos.x + vw / 2 + M;
-    const yA  = p.pos.y - vh / 2 - M, yB = p.pos.y + vh / 2 + M;
+    // P1 CHAOS BLACK VEIL (2026-07-27, Maria's mayro_pepelo.mp4 at in-game 00:21).
+    // This window decides WHERE the deck art is painted, and it used to be centred on the PLAYER
+    // while the canvas transform is ctx.translate(-camera.x, -camera.y) - centred on the CAMERA.
+    // _updateCamera() clamps camera.y into the strip (0 .. th - viewH), but the player keeps
+    // walking inside a taller walk band, so on the Chaos deck the player sits up to ~334 world px
+    // BELOW the camera centre. Everything above (p.pos.y - vh/2 - 96) then falls outside this
+    // window, no strip row and no neutral deck band is drawn there, and the camera shows bare
+    // canvas: a full-width BLACK rectangle with a hard bottom edge across the top of the screen.
+    // In the video it covers ~26% of frame height, exactly (334 - 96) * _viewScale.
+    // The readability dim at the end of this function was already moved to camera space for this
+    // same class of bug; the TILING was left behind. Anchor both to the camera and the art can
+    // never again stop short of what the camera shows - on either axis.
+    const _c   = g.camera;
+    const _cx0 = _c ? _c.x : (p.pos.x - vw / 2);
+    const _cy0 = _c ? _c.y : (p.pos.y - vh / 2);
+    const xA  = _cx0 - M,      xB = _cx0 + vw + M;
+    const yA  = _cy0 - M,      yB = _cy0 + vh + M;
 
     const prevSmooth = ctx.imageSmoothingEnabled;
     ctx.imageSmoothingEnabled = false;                     // crisp pixels, uniform policy
