@@ -2379,6 +2379,7 @@ export class Game {
     this._ascAt       = -1;      // timeAlive when it armed (drives the late-run fade-out)
     this._ascShareT   = 0;       // shared recovery window countdown, seconds
     this._ascRejected = 0;       // hits the window absorbed — telemetry only, never gameplay
+    this._majorSalvoGapT = 0;    // shared lockout between major rocket events (airstrike/gunship)
     // RUN-STATE LEAK FIX (Maria 2026-07-19). Both of these are lazily initialised — the
     // Titan scheduler with `== null` and the thief timer with `??` — so once a Game
     // instance has run them ONCE they hold a number forever and never re-arm. A second
@@ -8990,7 +8991,7 @@ export class Game {
           this._npcWalker.promoteMode('chaos');
         }
         this.acidRainTimer      = 30;  // Phase 4: first acid rain 30 s into Chaos
-        this._airstrikeTimer    = 15;  // Phase 4: first airstrike 15 s into Chaos
+        this._airstrikeTimer    = 15 * 2.2;  // Phase 4: first airstrike into Chaos, on the Batch-3 early ramp
         this._lightningTimer    = 20;  // Phase 4: first lightning storm 20 s into Chaos
         this._frozenSleetTimer  = 55;  // Phase 4: first Frozen Sleet Storm 55 s into Chaos
       }
@@ -9421,6 +9422,7 @@ export class Game {
     // own and CANNOT be extended or re-armed by pausing (a paused game runs no update).
     if (this._chaosEntryGraceT > 0) this._chaosEntryGraceT -= dt;
     if (this._ascShareT > 0) this._ascShareT -= dt;
+    if (this._majorSalvoGapT > 0) this._majorSalvoGapT -= dt;
     this._ascCheckTrigger();
 
     // Watchdog: whatever the root cause, HP <= 0 must never persist. If it holds for >2s
@@ -18479,7 +18481,12 @@ export class Game {
     // Cadence: first ~1.5 min, then ~every 2 min — but never more than 1 ship at a time.
     this._airstrikeTimer -= dt;
     if (this._airstrikeTimer <= 0) {
-      if (this.airstrikeShips.length < 1) { this._airstrikeTimer = this._chaosMode ? 60 : 120; this._spawnAirstrike(); }
+      if (this._majorSalvoBlocked()) { this._airstrikeTimer = 6; }       // a major salvo just opened
+      else if (this.airstrikeShips.length < 1) {
+        this._airstrikeTimer = (this._chaosMode ? 60 : 120) * this._majorSalvoScale();
+        this._majorSalvoArm();
+        this._spawnAirstrike();
+      }
       else                                  this._airstrikeTimer = 20;   // still airborne → retry soon
     }
 
@@ -18572,7 +18579,12 @@ export class Game {
   _updateGunship(dt) {
     this._gunshipTimer -= dt;
     if (this._gunshipTimer <= 0) {
-      if (this.gunships.length < 1) { this._gunshipTimer = 180; this._spawnGunship(); }
+      if (this._majorSalvoBlocked()) { this._gunshipTimer = 6; }         // a major salvo just opened
+      else if (this.gunships.length < 1) {
+        this._gunshipTimer = 180 * this._majorSalvoScale();
+        this._majorSalvoArm();
+        this._spawnGunship();
+      }
       else this._gunshipTimer = 25;
     }
     for (let i = this.gunships.length - 1; i >= 0; i--) {
@@ -26164,6 +26176,35 @@ _drawLoreArchive(ctx) {
                                 life: 0.55, maxLife: 0.55, color1: '#7df9ff', color2: '#ffd447' });
       this.screenShake.trigger(3, 0.18);
     } catch (_) {}
+  }
+
+  // ── MAJOR ROCKET SALVO RAMP (Power Curve P1 / Batch 3) ──────────────────────────────────────
+  // After Batch 2 removed contact stacking as the leading killer, rockets became the single
+  // largest source at 32.6% of all player HP lost, and Endless median survival barely moved
+  // (369.5s -> 380.9s). Airstrikes respawn every 60s in Chaos and 120s in Endless, gunships every
+  // 180s, and in Chaos the FIRST airstrike is armed 15s into the run - so the heaviest ranged
+  // pressure in the game is already at full cadence while the player still has two weapons.
+  //
+  // The damage, the telegraphs, the engagement floor and the rocket behaviour are all unchanged.
+  // Only the CADENCE of major salvos ramps: sparse while the build forms, shipped cadence from
+  // minute 10 on. Endless / Chaos only - Act 1 and the campaign keep their own schedule.
+  _majorSalvoScale() {
+    if (!(this.endless || this._chaosMode)) return 1;
+    const t = this.timeAlive - Math.max(0, this._endlessStartedAt || 0);
+    if (t >= 600) return 1;                          // 10:00+ : shipped frequency
+    if (t <= 180) return 2.2;                        // 0-3:00 : low
+    if (t <= 360) return 1.6;                        // 3-6:00 : medium
+    return 1.6 - 0.6 * ((t - 360) / 240);            // 6-10:00 : smooth return to shipped
+  }
+  // No two major rocket events may open inside the same protected window early in the run, so an
+  // airstrike and a gunship can never arrive on top of each other before the build exists.
+  _majorSalvoBlocked() {
+    return (this.endless || this._chaosMode) && this._majorSalvoGapT > 0;
+  }
+  _majorSalvoArm() {
+    if (!(this.endless || this._chaosMode)) return;
+    const sc = this._majorSalvoScale();
+    this._majorSalvoGapT = sc > 1 ? 18 * (sc - 1) / 1.2 : 0;   // 18s at the start, 0s from minute 10
   }
 
   _applyPulseDamage(dmg, { perFrame = false, src = null } = {}) {

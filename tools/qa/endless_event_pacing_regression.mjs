@@ -37,7 +37,16 @@ T('endless boss first = 25s', () => /_endlessBossTimer = 25;/.test(SRC));
 T('endless boss repeat = 120s', () => /_endlessBossTimer = 120;/.test(SRC));
 T('chaos boss repeat = 90s', () => /_endlessBossTimer = 90;/.test(SRC));
 T('titan 40s πρώτος, 55s μετά', () => /_chaosTitanTimer = 40/.test(SRC) && /_chaosTitanTimer = 55/.test(SRC));
-T('airstrike 90s endless / 15s chaos', () => /_airstrikeTimer   = 90;/.test(SRC) && /_airstrikeTimer    = 15;/.test(SRC));
+// Batch 3 (major rocket salvo ramp) deliberately moved these two. The base cadences are still
+// pinned here so they cannot drift silently; what changed is that they are multiplied by
+// _majorSalvoScale() while the build is forming, and the Chaos opener carries the 2.2x factor
+// explicitly instead of firing at a flat 15s.
+T('airstrike base 90s endless / chaos opener on the early ramp',
+  () => /_airstrikeTimer   = 90;/.test(SRC) && /_airstrikeTimer    = 15 \* 2\.2;/.test(SRC));
+T('major salvo cadence ramps and returns to shipped frequency by 10:00',
+  () => /_majorSalvoScale\(\)/.test(SRC) && /if \(t >= 600\) return 1;/.test(SRC));
+T('no two major rocket events open inside the same protected window',
+  () => /_majorSalvoBlocked\(\)/.test(SRC) && /_majorSalvoArm\(\)/.test(SRC));
 T('null breach στα 300s και 720s', () => /endlessElapsed >= 300/.test(SRC) && /endlessElapsed >= 720/.test(SRC));
 T('cybermote pack κάθε 300s', () => /_cybermoteTimer   = 300;/.test(SRC));
 T('boss rush schedule: chaos [120,480] · endless [480,900]',
@@ -58,7 +67,8 @@ T('ο επόμενος Titan μετριέται ΜΕΤΑ το clear, όχι απ
 T('Boss Rush δεν ανοίγει όσο η arena είναι ενεργή (mutual exclusion)',
   () => /chaosEl >= next && !this\._nullBreachActive/.test(SRC));
 T('airstrike δεν στοιβάζεται — ξαναδοκιμάζει αν υπάρχει ήδη σκάφος',
-  () => /if \(this\.airstrikeShips\.length < 1\) \{ this\._airstrikeTimer = this\._chaosMode \? 60 : 120; this\._spawnAirstrike\(\); \}/.test(SRC) &&
+  () => /else if \(this\.airstrikeShips\.length < 1\) \{/.test(SRC) &&
+        /this\._airstrikeTimer = \(this\._chaosMode \? 60 : 120\) \* this\._majorSalvoScale\(\);/.test(SRC) &&
         /else                                  this\._airstrikeTimer = 20;/.test(SRC));
 T('η arena κρατά ≤2 σκάφη στον αέρα', () => /arena\.airCd <= 0 && this\.airstrikeShips\.length < 2/.test(SRC));
 T('Locked Vault: ποτέ δεύτερο ενώ ένα είναι ενεργό',
