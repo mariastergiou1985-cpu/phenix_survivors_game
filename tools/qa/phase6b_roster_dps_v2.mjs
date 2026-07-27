@@ -9,7 +9,22 @@
 // using the same technique that got Phase 6A to zero unattributed damage. Game._lastWeaponId is
 // useless here - it is never assigned anywhere in the codebase.
 //
-//   node tools/qa/phase6b_roster_dps_v2.mjs [seconds] <id> [<id> ...]
+//
+// TWO CORRECTIONS FOUND WHILE USING IT (2026-07-27):
+//
+//  1. RUN ONE CHARACTER PER PROCESS. Measuring several characters in one node process gives
+//     ORDER-DEPENDENT results: skeleton_warrior measures 49031 damage when it runs first, 40435
+//     when it runs second and 29160 when it runs third, on the same seed, with an identical
+//     starting state (same HP, speed, weapons, meta, localStorage). Run one pays one-time module
+//     initialisation that consumes RNG, so every later run reads a shifted random stream. Always
+//     invoke this file with a SINGLE character id.
+//
+//  2. SKIP HELPER FRAMES. _brawlerHit is a shared damage-application helper called from dozens of
+//     weapon, pet, ultimate and hazard sites. Taking the first Game.js frame in the stack blamed
+//     it for 76-100% of every character's damage, which names the plumbing rather than the source.
+//     The walk now steps past known helpers to the first real caller.
+//
+//   node tools/qa/phase6b_roster_dps_v2.mjs [seconds] <id>        # one id per process
 import { register } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
@@ -35,15 +50,30 @@ const lineOwner = (() => {
   for (let i = 0; i < lines.length; i++) { const m = lines[i].match(/^  ([A-Za-z_][\w]*)\s*\(/); if (m) cur = m[1]; own[i + 1] = cur; }
   return own;
 })();
+// HELPER FRAMES MUST BE SKIPPED. _brawlerHit is a shared damage-APPLICATION helper called from
+// dozens of weapon, pet, ultimate and hazard sites; taking the first Game.js frame therefore
+// attributed 76-100% of every character's damage to "_brawlerHit", which names the plumbing, not
+// the source. The walk now steps past known helpers to the first real caller.
+const HELPERS = new Set(['_brawlerHit', '_capBossDamage', '_tryCorrode', '_targetIsBoss',
+                         '_dealDamage', '_applyElementOnHit', '_onEnemyKilled', '?']);
 const siteOwner = () => {
   const st = (new Error().stack || '').split('\n');
+  let firstHelper = null;
   for (let i = 2; i < st.length; i++) {
     const m = st[i].match(/Game\.js[^:]*:(\d+):/);
-    if (m) return lineOwner[Number(m[1])] || '?';
+    if (m) {
+      const owner = lineOwner[Number(m[1])] || '?';
+      if (HELPERS.has(owner)) { firstHelper ||= owner; continue; }
+      return owner;
+    }
     if (/BuildEngine[^/]*\.js/.test(st[i])) return 'buildEngine';
     if (/NpcWalker\.js/.test(st[i])) return 'npcWalker';
+    if (/\/js\/entities\/([A-Za-z0-9_]+)\.js/.test(st[i])) {
+      const f = st[i].match(/\/js\/entities\/([A-Za-z0-9_]+)\.js/)[1];
+      if (f !== 'Enemy') return 'entity:' + f;
+    }
   }
-  return 'unknown';
+  return firstHelper ? 'helper-only:' + firstHelper : 'unknown';
 };
 // method -> role bucket. Anything unmatched stays visible under its own method name.
 const BUCKET = [
