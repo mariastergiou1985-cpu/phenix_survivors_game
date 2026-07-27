@@ -29,7 +29,7 @@ import './BuildEngineChars5.js?v=20260810100000';   // P2.5 Universal όπλα 2
 import './BuildEnginePassives.js?v=20260810100000'; // P2.6 Build passives §26-50 (generic hooks)
 import { MutationUI }      from './MutationUI.js?v=20260810210000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
-import { drawHUD, drawEndScreen } from './HUD.js?v=20260721200000';
+import { drawHUD, drawEndScreen } from './HUD.js?v=20260824000000';
 import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, COLLECTIBLE_FRAGMENT_COST, COLLECTIBLE_GRID_COST, ECHO_FRAGMENT_COST, ECHO_GRID_COST, SKILL_TREE, AMULET_DEFS, GRID_TO_PF_RATE } from './MetaProgress.js?v=20260723000000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260712520000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
@@ -2380,6 +2380,14 @@ export class Game {
     this._ascShareT   = 0;       // shared recovery window countdown, seconds
     this._ascRejected = 0;       // hits the window absorbed — telemetry only, never gameplay
     this._majorSalvoGapT = 0;    // shared lockout between major rocket events (airstrike/gunship)
+    // ── ASCENSION BARRIER (Power Curve P1 / Batch 4) ─────────────────────────────────────────
+    this._barVal      = 0;       // current barrier charge, HP-equivalent
+    this._barMax      = 0;       // 30% of max HP, recomputed each tick so meta/HP cards apply
+    this._barDelayT   = 0;       // seconds of damage-free time still owed before recharge starts
+    this._barFlashT   = 0;       // short absorb flash, VFX only
+    this._barAbsorbed = 0;       // telemetry only, never gameplay
+    this._barRecharges = 0;      // times the barrier refilled from empty — telemetry only
+    this._barTrail    = null;    // 3s position ring buffer — the anti-AFK recharge condition
     // RUN-STATE LEAK FIX (Maria 2026-07-19). Both of these are lazily initialised — the
     // Titan scheduler with `== null` and the thief timer with `??` — so once a Game
     // instance has run them ONCE they hold a number forever and never re-arm. A second
@@ -9423,6 +9431,7 @@ export class Game {
     if (this._chaosEntryGraceT > 0) this._chaosEntryGraceT -= dt;
     if (this._ascShareT > 0) this._ascShareT -= dt;
     if (this._majorSalvoGapT > 0) this._majorSalvoGapT -= dt;
+    this._tickBarrier(dt);
     this._ascCheckTrigger();
 
     // Watchdog: whatever the root cause, HP <= 0 must never persist. If it holds for >2s
@@ -26169,6 +26178,9 @@ _drawLoreArchive(ctx) {
     if (!evolved && !(this.player && this.player.level >= 20)) return;
     this._ascOn = true;
     this._ascAt = this.timeAlive;
+    this._barMax = this._barCap();
+    this._barVal = this._barMax;       // the shield is up the moment it is earned
+    this._barDelayT = 0;
     // Activation cue: one short ring on the existing _specialRings layer. No new asset, no text,
     // no persistent aura, nothing that could read as a veil.
     try {
@@ -26207,6 +26219,70 @@ _drawLoreArchive(ctx) {
     this._majorSalvoGapT = sc > 1 ? 18 * (sc - 1) / 1.2 : 0;   // 18s at the start, 0s from minute 10
   }
 
+  // ── ASCENSION BARRIER ───────────────────────────────────────────────────────────────────────
+  // Three batches established that redistributing incoming damage does not extend a run. Card
+  // pacing widened the build, the shared recovery window took contact off the top spot, the salvo
+  // ramp cut rockets from 32.6% to 20.4% - and Endless median survival stayed at ~6 minutes every
+  // single time, because another source simply filled the gap. The gap was never the distribution.
+  // It is that the run has NO recovery: the only regen in Player.js is stamina, and the pickup
+  // economy returns roughly 55 HP/min against 500-700 HP/min incoming.
+  //
+  // The barrier is that missing loop, and it is earned: it arms on the first legitimate evolution
+  // or at level 20, Endless/Chaos only. It absorbs before real HP, it stops recharging the instant
+  // any damage is accepted, and it only refills during genuinely damage-free time - so it pays for
+  // movement, dash timing and opening a corridor, and pays nothing at all for standing in a crowd.
+  // There is deliberately NO time-based fade: the late run outgrows it on its own, because
+  // damage-free windows disappear and it can never finish a recharge.
+  _barCap() { return Math.max(0, Math.round((this.player?.maxHp || 0) * 0.30)); }
+  // Called from inside the authoritative gates, AFTER grace / i-frames / dodge / ceilings, and
+  // BEFORE any HP is touched. Returns the overflow that still has to reach HP.
+  // Barrier 20, accepted 30 -> barrier 0, 10 to HP.
+  _barrierAbsorb(applied) {
+    // TUNING ITERATION (the one allowed by the batch spec): delay 2.5s -> 2.0s. Of the three
+    // knobs this is the binding one - recharge needs a damage-free gap AND 100px of real movement
+    // to coincide, and in a horde the gap is what almost never happens. Capacity and rate only
+    // change what a recharge is worth; the delay changes how often one is possible at all.
+    this._barDelayT = 2.0;                       // any ACCEPTED damage stops recharge immediately
+    if (!this._ascOn || this._barVal <= 0 || !(applied > 0)) return applied;
+    const used = Math.min(this._barVal, applied);
+    this._barVal -= used;
+    this._barAbsorbed += used;
+    this._barFlashT = 0.18;
+    return applied - used;
+  }
+  // ANTI-AFK RECHARGE CONDITION. The first candidate gated recharge on damage-free time alone,
+  // and the stationary control caught it immediately: skeleton_warrior stood still in Endless and
+  // SURVIVED the full 6-minute window at level 47 with 17760 kills, because a stationary player
+  // buried in bodies still gets brief gaps and the barrier kept topping up. Damage-free time is
+  // not the same thing as earning space. Recharge now also requires REAL DISPLACEMENT: the player
+  // must be at least 100 world px from where they were 3 seconds ago. Held input does not count,
+  // animation state does not count, and jittering on the spot nets ~0. A player kiting a horde
+  // clears 100px in well under a second; a player standing in it never does.
+  _barMoved() {
+    const p = this.player; if (!p?.pos) return false;
+    const t = this.timeAlive;
+    if (!this._barTrail) this._barTrail = [];
+    const tr = this._barTrail;
+    if (!tr.length || t - tr[tr.length - 1].t >= 0.25) tr.push({ t, x: p.pos.x, y: p.pos.y });
+    while (tr.length > 1 && t - tr[0].t > 3) tr.shift();
+    if (tr.length < 2 || t - tr[0].t < 2.5) return false;   // not enough history yet → no recharge
+    return Math.hypot(p.pos.x - tr[0].x, p.pos.y - tr[0].y) >= 100;
+  }
+  _tickBarrier(dt) {
+    if (this._barFlashT > 0) this._barFlashT -= dt;
+    if (!this._ascOn) { this._barTrail = null; return; }
+    const _moved = this._barMoved();
+    const cap = this._barCap();
+    this._barMax = cap;
+    if (this._barVal > cap) this._barVal = cap;           // max-HP card lowered the cap
+    if (this._barDelayT > 0) { this._barDelayT -= dt; return; }
+    if (!_moved) return;                                   // damage-free but standing still → nothing
+    if (this._barVal >= cap) return;
+    const wasEmpty = this._barVal <= 0;
+    this._barVal = Math.min(cap, this._barVal + (this.player?.maxHp || 0) * 0.08 * dt);
+    if (wasEmpty && this._barVal > 0) this._barRecharges++;
+  }
+
   _applyPulseDamage(dmg, { perFrame = false, src = null } = {}) {
     if (this._chaosEntryGraceT > 0) return false;
     if (this._ascBlock(src)) return false;
@@ -26216,7 +26292,8 @@ _drawLoreArchive(ctx) {
       this.floatingTexts.push(new FloatingText('GLITCH DODGE', this.player.pos.clone(), '#a855f7', 0.6));
       return false;
     }
-    this.player.applyDamage(Math.min(dmg, BOSS_MAX_PLAYER_HIT));
+    const _toHp = this._barrierAbsorb(Math.min(dmg, BOSS_MAX_PLAYER_HIT));   // barrier first, HP second
+    if (_toHp > 0) this.player.applyDamage(_toHp);
     this._ascArm(src);            // only a hit that was really applied opens the window
     return true;
   }
@@ -26244,7 +26321,8 @@ _drawLoreArchive(ctx) {
     }
     const applied = Math.min(dmg, cap);
     const hpBefore = this.player.hp;
-    this.player.applyDamage(applied);
+    const _toHp = this._barrierAbsorb(applied);              // barrier first, HP second
+    if (_toHp > 0) this.player.applyDamage(_toHp);
     const actual = Math.max(0, hpBefore - this.player.hp);
     this._ascArm(src);            // only a hit that was really applied opens the window
     this.playerHitCooldown = 0.5;

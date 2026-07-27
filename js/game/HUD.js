@@ -306,6 +306,21 @@ export function drawHUD(ctx, game) {
     };
     const hpR = clamp(p.hp / p.maxHp, 0, 1);
     bar(bx0, hpR, '#c81e3c', '#ff5a72', 'HP', `${Math.ceil(p.hp)} / ${Math.round(p.maxHp)}`, hpR < 0.3);
+    // ── Ascension Barrier: one thin cyan line riding on top of the HP bar ────────────────────
+    // Only drawn once the barrier is earned and holding charge. No text, no new asset, no extra
+    // layer over the play area - it sits inside the HP bar's own footprint, so it cannot cover
+    // HP, XP, cards, announcements or the map.
+    if (game._ascOn && game._barVal > 0.5 && game._barMax > 0) {
+      const bR = clamp(game._barVal / game._barMax, 0, 1);
+      const bw = Math.max(0, Math.round(BW2 * bR));
+      if (bw > 2) {
+        ctx.save();
+        ctx.fillStyle = game._barFlashT > 0 ? '#ffffff' : '#7df9ff';
+        ctx.globalAlpha = game._barFlashT > 0 ? 0.95 : 0.85;
+        ctx.fillRect(bx0 + 1, byy - 3, bw - 2, 2.5);
+        ctx.restore();
+      }
+    }
     bar(mx0, clamp(p.mana / p.maxMana, 0, 1), '#0f6c9c', '#38d6ff', 'MP', `${Math.ceil(p.mana)} / ${Math.round(p.maxMana)}`, false);
     ctx.textAlign = 'left';
   }

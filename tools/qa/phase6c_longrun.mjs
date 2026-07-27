@@ -226,6 +226,10 @@ function run() {
     : { chaosMode: g._chaosMode === true };
   return { id: ID, mode: MODE, meta: METAK, metaKeysMaxed: metaKeys, bot: BOT, vessel: !NOVESSEL, seed: SEED, chaosProof,
            firstEvolutionSec: firstEvoSec, firstEvolutionLevel: firstEvoLvl,
+           barrierTriggerSec: g._ascAt >= 0 ? +(g._ascAt).toFixed(1) : null,
+           barrierAbsorbed: Math.round(g._barAbsorbed || 0),
+           barrierRecharges: g._barRecharges || 0,
+           barrierCapAtEnd: Math.round(g._barMax || 0),
            evolutionsAtEnd: finalWeapons.filter(w => w?.evolved).length,
            weaponsAtEnd: finalWeapons.length,
            weaponLevelsAtEnd: finalWeapons.map(w => (w?.id || '?') + ':' + (w?.level ?? 0) + (w?.evolved ? '*' : '')),
