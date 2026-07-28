@@ -5,7 +5,7 @@
 // ───────────────────────────────────────────────────────────────────────────
 
 import { Vec2, WORLD_W, WORLD_H, DARK_BG, GRID_LINE } from '../constants.js';
-import { DECK_MASKS, deckMaskBits, MAIN_OBSTACLES, mainObstacleBits } from './DeckMasks.js?v=20260828010000';
+import { DECK_MASKS, deckMaskBits, MAIN_OBSTACLES, mainObstacleBits } from './DeckMasks.js?v=20260829000000';
 
 // ─── Biome Definitions ───────────────────────────────────────────────────────
 // Each biome defines its visual identity, hazards, enemy modifiers, and colors.
@@ -211,6 +211,9 @@ export class MapManager {
     this._cityImg.onerror = () => console.warn('[Map] cyber_megacity map missing — endless keeps the chunk world');
     this._cityImg.src = 'assets/maps/new_endless/cyber_megacity.png';
     this.CITY_SCALE = 3;   // 1672×519 → 5016×1557 world px per tile (integer — no distortion)
+    // Dynamic destructible-obstacle layer (2026-07-28). Registered by Game after construction;
+    // consulted ONLY on otherwise-blocked cells, so the base masks stay the immutable authority.
+    this._destructibles = null;
     // ── WALKABLE deck bands (video-grounded pass 2026-07-19) ──────────────────
     // Μετρημένα με row-luminance/saturation profiling πάνω στα assets (όχι εκτίμηση):
     // CITY (519 rows): 0-130 σκyline/νέον (sat>80) → background· 210-415 καθαρή plaza
@@ -441,6 +444,9 @@ export class MapManager {
   /** Deck ids of a mode, top to bottom. */
   deckSections() { return ['upper', 'main', 'lower']; }
 
+  /** Register the destructible-obstacle handler (DestructibleObstacles). */
+  setDestructibles(h) { this._destructibles = h || null; }
+
   /** Height of a mode's MAIN strip in world px, or null before the art is ready. */
   _mainDeckH(mode) {
     const img = mode === 'chaos' ? this._chaosDeckImg : this._cityImg;
@@ -503,7 +509,12 @@ export class MapManager {
   /** Mask cell test. OUT OF RANGE IS BLOCKED - a section deck has real edges, not open sky. */
   _maskCell(m, cx, cy) {
     if (cx < 0 || cy < 0 || cx >= m.cols || cy >= m.maskRows) return false;
-    return m.bits[cy * m.cols + cx] === 1;
+    if (m.bits[cy * m.cols + cx] === 1) return true;
+    // DYNAMIC OBSTACLE LAYER (2026-07-28): a blocked cell may belong to a destructible obstacle
+    // that has been destroyed this run. The base mask is never mutated; the overlay is consulted
+    // only on this otherwise-blocked path, so intact behaviour costs nothing.
+    return !!(this._destructibles &&
+              this._destructibles.isOpenSection(m.mode, m.section, cy * m.cols + cx));
   }
   _maskPoint(m, x, y) {
     return this._maskCell(m, Math.floor((x - m.ox) / m.cellW), Math.floor((y - m.oy) / m.cellW));
@@ -599,7 +610,14 @@ export class MapManager {
     if (m.obst && !(opts && opts.ignoreProps)) {
       const oc = Math.floor(srcX / m.obst.cell), orow = Math.floor(srcY / m.obst.cell);
       if (oc >= 0 && orow >= 0 && oc < m.obst.cols && orow < m.obst.maskRows &&
-          m.obst.bits[orow * m.obst.cols + oc] === 1) return false;
+          m.obst.bits[orow * m.obst.cols + oc] === 1) {
+        // DYNAMIC OBSTACLE LAYER (2026-07-28): destroyed destructibles open their cells per TILE
+        // (the strip repeats; each repeat is its own entity). Consulted only on blocked cells.
+        const _tile = Math.floor(x / (m.tileW * m.scale));
+        if (!(this._destructibles &&
+              this._destructibles.isOpenMain(mode === 'chaos' ? 'chaos' : 'endless',
+                                             _tile, orow * m.obst.cols + oc))) return false;
+      }
     }
     return true;
   }
@@ -682,10 +700,14 @@ export class MapManager {
         const s1 = mirrored ? (tileW - l0) : l1;
         const c0 = Math.max(0, Math.floor(s0 / cw));
         const c1 = Math.min(m.obst.cols - 1, Math.floor(s1 / cw));
+        const _mkey = mode === 'chaos' ? 'chaos' : 'endless';
         for (let cy = orow0; cy <= orow1; cy++) {
           const rowOff = cy * m.obst.cols;
           for (let cx = c0; cx <= c1; cx++) {
             if (m.obst.bits[rowOff + cx] !== 1) continue;
+            // DYNAMIC OBSTACLE LAYER (2026-07-28): skip cells of destroyed destructibles per tile.
+            if (this._destructibles &&
+                this._destructibles.isOpenMain(_mkey, tile, rowOff + cx)) continue;
             const sx0 = cx * cw, sx1 = sx0 + cw;
             const wx0 = tx0 + (mirrored ? tileW - sx1 : sx0);
             const wx1 = tx0 + (mirrored ? tileW - sx0 : sx1);

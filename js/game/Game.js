@@ -20,13 +20,14 @@ import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, dr
 import { SystemEventManager } from './Events.js?v=20260802000000';
 import { UpgradeUI }      from './UpgradeUI.js?v=20260810250000';
 import { weightedSample } from './Upgrades.js?v=20260722500000';
-import { BuildEngineRuntime } from './BuildEngine.js?v=20260810100000';   // BUILD ENGINE — always on (full migration 2026-07-18)
+import { BuildEngineRuntime } from './BuildEngine.js?v=20260829000000';   // BUILD ENGINE — always on (full migration 2026-07-18)
 import './BuildEngineChars1.js?v=20260810100000';   // P2.3a Taekwondo+CyberArm (side-effect register)
 import './BuildEngineChars2.js?v=20260810100000';   // P2.3b Brawler+Assassin (side-effect register)
 import './BuildEngineChars3.js?v=20260826000000';   // P2.4a Eddie+Dimi (side-effect register)
 import './BuildEngineChars4.js?v=20260826000000';   // P2.4b Phasewalker+Euclid+Oni (side-effect register)
 import './BuildEngineChars5.js?v=20260826000000';   // P2.5 Universal όπλα 21-25 (side-effect register)
 import './BuildEnginePassives.js?v=20260810100000'; // P2.6 Build passives §26-50 (generic hooks)
+import { DestructibleObstacles } from './DestructibleObstacles.js?v=20260829000000';  // holographic destructible props (2026-07-28)
 import { MutationUI }      from './MutationUI.js?v=20260810210000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260827000000';
@@ -51,7 +52,7 @@ import { Protocol0 } from '../effects/protocol-0.js?v=20260705000000';
 import { LaserEyes } from '../effects/laser-eyes.js?v=20260818000000';
 import { MeteorRain } from '../effects/meteor-rain.js?v=20260712100000';
 import { NpcWalker } from './NpcWalker.js?v=20260724000000';
-import { MapManager, BIOME_ID, BIOME_DEFS, CHUNK_SIZE } from './MapManager.js?v=20260828010000';
+import { MapManager, BIOME_ID, BIOME_DEFS, CHUNK_SIZE } from './MapManager.js?v=20260829000000';
 import { EventBus, EVENTS } from './EventBus.js?v=20260703990000';
 import { HostileProjectileDirector } from './HostileProjectileDirector.js?v=20260719200000';
 import { WaveDirector } from './WaveDirector.js?v=20260724000000';
@@ -673,6 +674,10 @@ export class Game {
     this.events = new EventBus();
     this.mapManager = new MapManager({ game: this });
     this.mapManager.loadBackgrounds('20260702700000');
+    // Destructible obstacles + holographic collision cells (2026-07-28). One instance per Game;
+    // run state clears in reset(). MapManager consults it only on otherwise-blocked cells.
+    this._obstacles = new DestructibleObstacles(this);
+    this.mapManager.setDestructibles(this._obstacles);
     this.spawner = new EnemySpawner({ game: this, events: this.events });
     this.stateManager = new StateManager({ game: this, events: this.events });
     this.chunkManager = new ChunkManager({ game: this, events: this.events, seed: Date.now() });
@@ -1316,6 +1321,8 @@ export class Game {
     this.groundCores  = [];
     this.enemies      = [];
     this.projectiles  = [];
+    // Destructible obstacles: every prop returns intact, colliders restore, zero cross-run leakage.
+    this._obstacles?.resetRun();
     this.homingDiscs  = [];
     this._chainBolts  = [];   // Chain Lightning Laser: travelling lead bolts (visual + carry the chain plan)
     this._chainLinks  = [];   // Chain Lightning Laser: active jump segments (drawn on activation, then fade)
@@ -1581,6 +1588,7 @@ export class Game {
     this._deckFxT     = 0;      // arrival flash timer (existing gate VFX, no new art)
     this._deckLockT   = 0;      // >0 while a system (Boss Rush) owns the deck and exits are locked
     this._deckPark    = Object.create(null);  // deck -> the boss frozen there while the player is away
+    this._gateSrcCache = Object.create(null); // mode:target -> resolved gate source X (see _deckGateSrcX)
     this._deckGateArmed = false;              // a gate only fires after the player has STEPPED OFF it
     this._chaosStartedAt    = -1;         // timeAlive when Chaos engaged; -1 = not yet reached this run
     this._chaosTransTimer   = -1;      // >=0 while glitch transition is playing
@@ -3132,6 +3140,11 @@ export class Game {
           this._petBolts.splice(i, 1);
           break;
         }
+      }
+      // Pet/turret bolts land on solid destructible props too (attacking pets damage obstacles).
+      if (this._petBolts[i] === b && this._obstacles &&
+          this._obstacles.projectileHit(b.x, b.y, 6, b.dmg)) {
+        this._petBolts.splice(i, 1);
       }
     }
 
@@ -6570,6 +6583,7 @@ export class Game {
       }
     }
     this._cyberAngelBossHit(p.pos, radius, dmg);   // standalone bosses/mega bosses live OUTSIDE this.enemies
+    this._obstacles?.damageAt(p.pos.x, p.pos.y, radius, dmg, { heavy: true });   // ultimate nova breaks props
     this._specialRings.push({ pos: p.pos.clone(), radius: 0, maxRadius: radius,
                                life: 0.7, maxLife: 0.7, color1: '#b026ff', color2: '#ff2d6a' });
     (this._dimiAngels ||= []).push({ pos: new Vec2(p.pos.x, p.pos.y - 160), t: 0, life: 6.0, atk: 0.3, dmg: (20 + 4 * _am) * _amu });
@@ -6795,6 +6809,7 @@ export class Game {
           }
         }
         this._cyberAngelBossHit(new Vec2(ex, oy), 130, dmg);         // standalone bosses feel it too
+        this._obstacles?.damageAt(ex, oy, 130, dmg);                 // the punch lands on props too
         this._specialRings.push({ pos: new Vec2(ex, oy), radius: 0, maxRadius: 130,
                                    life: 0.32, maxLife: 0.32, color1: '#ff2222', color2: '#ffffff' });
         this.particles.spawnHitSparks(new Vec2(ex, oy), '#ff3b30');
@@ -6882,6 +6897,7 @@ export class Game {
         hit++;
       }
     }
+    this._obstacles?.damageAt(p.pos.x, p.pos.y, radius, dmg);        // shockwave chips nearby props
     this._specialRings.push({ pos: p.pos.clone(), radius: 0, maxRadius: radius,
                                life: 0.34, maxLife: 0.34, color1: '#b026ff', color2: '#ff2d6a' });
     if (hit) { this.audio?.playHit?.(); this.screenShake?.trigger?.(2, 0.08); }
@@ -6989,6 +7005,9 @@ export class Game {
           if (doDot) e.takeHit(ICE_FIELD_DOT_DMG, this);
         }
       }
+
+      // ── Destructible props inside the field take the same DoT tick (ultimate → heavy) ──
+      if (doDot) this._obstacles?.damageAt(f.pos.x, f.pos.y, f.radius, ICE_FIELD_DOT_DMG, { heavy: true });
 
       // ── Singleton mini-bosses (titan / annihilator / bloodfang) ──
       for (const { boss, die } of singletons) {
@@ -7111,6 +7130,12 @@ export class Game {
       if (perp.lengthSq() < (beamWidth + e.radius) ** 2) {
         e.takeHit(dmg, this);
         hits++;
+      }
+    }
+    // The beam is a straight 600px lance: sample its length so props in the line take the hit.
+    if (this._obstacles) {
+      for (let _d = 80; _d <= beamLength; _d += 160) {
+        this._obstacles.damageAt(p.pos.x + aimDir.x * _d, p.pos.y + aimDir.y * _d, beamWidth + 40, dmg);
       }
     }
     this._specialBeams.push({ startPos: p.pos.clone(), dir: aimDir,
@@ -7380,6 +7405,8 @@ export class Game {
           if (e.isBoss?.() || e.isMegaBoss) e.takeHit(this._capBossDamage(e, det), this);
           else e.takeHit(det + 0.15 * (e.maxHp || 0), this);
         }
+        // Protocol 0 detonation is a true explosion: props around the player break (heavy).
+        this._obstacles?.damageAt(this.player.pos.x, this.player.pos.y, 350, det, { heavy: true });
         this.enemyBullets.length = 0;            // clear all enemy projectiles
         this.hostileDirector?.reset();           // HORDE: επιστροφή ΟΛΩΝ των tokens
         // ── Oni Blood Circuit relic: mark nearby enemies +15% damage taken for 5s ──
@@ -7534,6 +7561,8 @@ export class Game {
         const baseAtk   = 1 + (p.upgrades['Pulse Damage'] || 0);
         const meteorDmg = Math.max(30 + 8 * ml, Math.round(3.5 * baseAtk));
         const meteorOrigin = p.pos.clone();
+        // Meteor field: explosive strikes break props inside the target circle (heavy).
+        this._obstacles?.damageAt(tgt.pos.x, tgt.pos.y, 180, meteorDmg * 2, { heavy: true });
         this._oniMeteorWorld = { x: tgt.pos.x, y: tgt.pos.y };   // anchor the field in WORLD space
         this._meteorRain.cast(toX(tgt), toY(tgt), this.enemies, {
           getX: toX, getY: toY,
@@ -8450,6 +8479,7 @@ export class Game {
     };
     const R = 110 * (1 + 0.12 * this._cardLvl('skeleton_thunder_solo_mastery'));
     const at = new Vec2(tx, ty);
+    this._obstacles?.damageAt(tx, ty, R, 80, { heavy: true });   // a lightning note breaks props
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       const e = this.enemies[i];
       if (distance(e.pos, at) < R + e.radius) {
@@ -9353,6 +9383,9 @@ export class Game {
     if (this._chaosMode) this._updateChaosTitans(dt);   // Chaos-only Mega Titan scheduler
     this._updateTitanWeaponFx(dt);   // Phase 2: Mega Boss weapon-art flashes
     if (this._chaosMode || this.endless) this._updateDeckTransitions(dt);
+    // Destructible obstacles tick: instance materialisation near the player, timers, destruction
+    // sequences. Guarded — a VFX bug here must degrade to "no obstacles", never to a dead frame.
+    try { this._obstacles?.update(dt); } catch (err) { this._warnFx?.('[Obstacles update]', err); }
     if (this._chaosMode || this.endless) this._updateBossRush(dt);   // Maria: arena 2× in Endless AND 2× in Chaos
     this._updateGridCache(dt);
     this._updateNullCache(dt);
@@ -11528,6 +11561,15 @@ export class Game {
         }
       }
 
+      // ── Destructible props are SOLID for hostile fire too: the bullet is absorbed with a
+      // small chip of obstacle damage and a clean spark — no explosion, no player damage.
+      if (this._obstacles && this._obstacles.projectileHit(b.pos.x, b.pos.y, b.radius || 4, 4)) {
+        this.particles?.spawnHitSparks?.(b.pos, '#9fdcff');
+        this.hostileDirector?.release(b.tok);
+        this.enemyBullets.splice(i, 1);
+        continue;
+      }
+
       // Hit player — routed through the shared fairness gate (dash/Phoenix i-frames + 0.5s grace
       // + per-hit ceiling). While dashing the gate returns false, so the bullet is NOT consumed
       // and passes through — a true dodge.
@@ -12164,6 +12206,15 @@ export class Game {
         }
       }
 
+      // Destructible obstacles are SOLID: a shot that reaches one lands on it (real damage,
+      // consumed) — and passes freely once the obstacle is destroyed. Covers every projectile
+      // weapon, base and evolved, through this one existing choke point.
+      if (!hit && this._obstacles &&
+          this._obstacles.projectileHit(p.pos.x, p.pos.y, p.radius, p.damage)) {
+        this.projectiles.splice(i, 1);
+        hit = true;
+      }
+
       if (!hit && !p.alive()) this.projectiles.splice(i, 1);
     }
   }
@@ -12187,6 +12238,9 @@ export class Game {
       e.slowFactor = Math.min(e.slowFactor, 0.45);
       e.takeHit(dmg, this);
     }
+
+    // Destructible obstacles inside the burst take the same AoE damage.
+    this._obstacles?.damageAt(originPos.x, originPos.y, radius, dmg);
 
     // Frost burst visual (matches existing _specialRings ring structure)
     this._specialRings.push({ pos: originPos.clone(), radius: 0, maxRadius: radius,
@@ -12227,6 +12281,12 @@ export class Game {
           hit = true;
           break;
         }
+      }
+      // A disc that reaches a solid destructible prop lands on it (same as projectiles).
+      if (!hit && this._obstacles &&
+          this._obstacles.projectileHit(disc.pos.x, disc.pos.y, disc.radius, disc.damage)) {
+        this.homingDiscs.splice(i, 1);
+        hit = true;
       }
       if (!hit && !disc.alive()) this.homingDiscs.splice(i, 1);
     }
@@ -14870,6 +14930,10 @@ export class Game {
           const dx = e.pos.x - best.pos.x, dy = e.pos.y - best.pos.y;
           if (dx * dx + dy * dy <= aoe2) e.takeHit(stats.damage, this);
         }
+        // ONE central hook for EVERY acquired catalog weapon (base + evolved): destructible
+        // props inside the impact AoE take the same damage; evolutions count as heavy.
+        this._obstacles?.damageAt(best.pos.x, best.pos.y, stats.aoeRadius || 60, stats.damage,
+          getWeaponDef(weaponId)?.isEvolution ? { heavy: true } : null);
         if (!best.takeHit && best.hp !== undefined) {
           best.hp -= this._capBossDamage(best, stats.damage);
           if (best.hitFlash !== undefined) best.hitFlash = 0.08;
@@ -20487,6 +20551,10 @@ export class Game {
 
     // 1b ── World boundary neon grid wall (proximity fade-in, flicker, warning text)
     this._drawWorldBoundaries(ctx);
+
+    // 1b·2 ── Destructible obstacles: holographic collision cells + destruction VFX (world layer,
+    // under entities so enemies/pickups/projectiles are never covered). Guarded for boot safety.
+    try { this._obstacles?.draw(ctx); } catch (err) { this._warnFx?.('[Obstacles draw]', err); }
 
     // 1a ── Null Breach Arena containment field (world-space, under everything else)
     this._drawArenaContainment(ctx);
@@ -30996,13 +31064,133 @@ _drawLoreArchive(ctx) {
   // destination deck's own model BEFORE anything moves. A transition that cannot land safely is
   // refused outright; the player is never half-moved into a wall, a hazard or a solid structure.
   // ══════════════════════════════════════════════════════════════════════════════════════════
+  /**
+   * Source-image X of a gate, resolved ONCE against the walkability model and cached.
+   *
+   * WHY THIS IS A SEARCH AND NOT A CONSTANT
+   * The authored fractions (0.22 / 0.78 of the tile) were chosen before the main strips had prop
+   * collision. Afterwards a real browser run proved the Chaos UPPER gate unreachable: the player
+   * stopped at the same point every time, 310px of movement in 3000 frames, 4 of 16 escape
+   * directions. Three narrower fixes were tried and all three failed - a clear 64px footprint, a
+   * clear ring of 16 approach directions, and a 420px straight corridor were each satisfied AT the
+   * gate while the route to it stayed walled off. They have been removed; this is the one general
+   * answer that replaced them.
+   *
+   * A gate is only a gate if the player can walk to it. So the authored fraction is a PREFERENCE,
+   * and the candidate must be in the SAME REACHABLE COMPONENT as the run's start position -
+   * established by a flood fill over the real walkability model, through the same
+   * isWalkableFootprint the player's own movement uses. Candidates are then scored on the things
+   * that make a route usable rather than merely legal: how wide the tightest point of the path is,
+   * how much open floor surrounds the gate, and how short the walk is.
+   *
+   * Deterministic (fixed scan order, no RNG), bounded (one tile either way, capped queue), and
+   * cached per mode+target; the cache is cleared with the rest of the run state in reset().
+   */
+  _deckGateSrcX(target) {
+    const mm = this.mapManager;
+    const mode = this._chaosMode ? 'chaos' : 'endless';
+    const key = mode + ':' + target;
+    this._gateSrcCache = this._gateSrcCache || Object.create(null);
+    if (this._gateSrcCache[key] != null) return this._gateSrcCache[key];
+    const img = this._chaosMode ? mm && mm._chaosDeckImg : mm && mm._cityImg;
+    if (!img || !img.complete || !img.naturalWidth || !mm.isWalkableFootprint) return null;
+
+    const S = mm.CITY_SCALE, tw = img.naturalWidth;
+    const want = tw * (target === 'upper' ? 0.22 : 0.78);
+    const rows = this._chaosMode ? mm.CHAOS_WALK_ROWS : mm.CITY_WALK_ROWS;
+    const by = (rows[0] + rows[1]) * 0.5 * S;
+    const CELL = 24;                                   // one mask cell at CITY_SCALE 3
+    const R = PLAYER_RADIUS;
+
+    // How much room a point has, in world px, measured with the player's own footprint test.
+    const clearanceAt = (wx, wy) => {
+      let c = 0;
+      for (const r of [R, 32, 48, 64, 80, 96]) {
+        if (!mm.isWalkableFootprint(wx, wy, r, mode)) break;
+        c = r;
+      }
+      return c;
+    };
+
+    // ── REACHABLE COMPONENT from the run's start position ────────────────────────────────────
+    // Breadth-first over the walk band, four-connected, one tile either way. Every cell is tested
+    // with the player's real footprint, so the component is what the player can actually stand in.
+    // Each cell also records the tightest clearance seen on the path that reached it - the number
+    // that decides whether a route is comfortable or a pixel-perfect squeeze.
+    const seed0 = { x: (this.player && this.player.pos && Number.isFinite(this.player.pos.x))
+                      ? this.player.pos.x : WORLD_W / 2, y: by };
+    const seed = mm.findNearestWalkablePoint
+      ? mm.findNearestWalkablePoint(seed0.x, seed0.y, R, mode) : seed0;
+    const cy0 = Math.floor((rows[0] * S + R) / CELL), cy1 = Math.floor((rows[1] * S - R) / CELL);
+    const scx = Math.round(seed.x / CELL), scy = Math.min(cy1, Math.max(cy0, Math.round(seed.y / CELL)));
+    const cxMin = scx - Math.ceil(tw * S / CELL), cxMax = scx + Math.ceil(tw * S / CELL);
+    const K = (cx, cy) => cx + ':' + cy;
+    const minClear = new Map();                        // cell -> tightest clearance on its path
+    const steps = new Map();                           // cell -> path length in cells
+    const queue = [[scx, scy, clearanceAt(scx * CELL, scy * CELL), 0]];
+    minClear.set(K(scx, scy), queue[0][2]); steps.set(K(scx, scy), 0);
+    for (let head = 0; head < queue.length && head < 60000; head++) {
+      const [cx, cy, mc, st] = queue[head];
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = cx + dx, ny = cy + dy;
+        if (nx < cxMin || nx > cxMax || ny < cy0 || ny > cy1) continue;
+        const k = K(nx, ny);
+        if (minClear.has(k)) continue;
+        const c = clearanceAt(nx * CELL, ny * CELL);
+        if (c < R) continue;                           // the player does not fit here at all
+        minClear.set(k, Math.min(mc, c)); steps.set(k, st + 1);
+        queue.push([nx, ny, Math.min(mc, c), st + 1]);
+      }
+    }
+
+    // ── SCORE THE CANDIDATES ─────────────────────────────────────────────────────────────────
+    // Reachability is a gate, not a term: an unreachable column scores nothing at all. Among the
+    // reachable ones the ranking is corridor width first (a 64px squeeze and a 96px walk are not
+    // the same thing to play), then the space around the gate itself, then how far the authored
+    // position had to move, then path length.
+    const CORRIDOR_MIN = 64;                           // hard floor; 72-96 is what we aim for
+    let best = null;
+    const LIMIT = Math.floor(tw * 0.30);
+    for (let d = 0; d <= LIMIT; d += 4) {
+      for (const sgn of (d === 0 ? [0] : [-1, 1])) {
+        const sx = want + sgn * d;
+        if (sx < 48 || sx > tw - 48) continue;
+        const wx = sx * S;
+        // pick the row of this column with the most room, among reachable rows
+        let row = null, rowClear = -1, rowSteps = 0, rowPathClear = -1;
+        for (let cy = cy0; cy <= cy1; cy++) {
+          const k = K(Math.round(wx / CELL), cy);
+          if (!minClear.has(k)) continue;
+          const c = clearanceAt(wx, cy * CELL);
+          if (c > rowClear) { rowClear = c; row = cy; rowPathClear = minClear.get(k); rowSteps = steps.get(k); }
+        }
+        if (row == null || rowPathClear < CORRIDOR_MIN) continue;
+        const score = rowPathClear * 4 + rowClear * 3 - d * 0.6 - rowSteps * 0.4;
+        if (!best || score > best.score) best = { sx, score, rowPathClear, rowClear, rowSteps };
+      }
+    }
+    // Nothing reachable with a usable corridor anywhere in a third of the tile means the art has
+    // changed under us. Fall back to the authored fraction rather than returning null and losing
+    // the gate entirely - a hard-to-reach gate still beats no gate.
+    const chosen = best ? best.sx : want;
+    this._gateSrcCache[key] = chosen;
+    this._gateSrcMeta = this._gateSrcMeta || Object.create(null);
+    this._gateSrcMeta[key] = best
+      ? { srcX: Math.round(best.sx), worldX: Math.round(best.sx * S), moved: Math.round(best.sx - want),
+          corridor: best.rowPathClear, gateClearance: best.rowClear, pathCells: best.rowSteps,
+          componentCells: minClear.size }
+      : { srcX: Math.round(want), fallback: true, componentCells: minClear.size };
+    return chosen;
+  }
+
   _deckGateWorld(target) {
     const mm = this.mapManager;
     if (!(this.endless || this._chaosMode)) return null;
     const img = this._chaosMode ? mm && mm._chaosDeckImg : mm && mm._cityImg;
     if (!img || !img.complete || !img.naturalWidth) return null;
     const S = mm.CITY_SCALE, tw = img.naturalWidth;
-    const gx = tw * (target === 'upper' ? 0.22 : 0.78);
+    const gx = this._deckGateSrcX(target);
+    if (gx == null) return null;
     const rows = this._chaosMode ? mm.CHAOS_WALK_ROWS : mm.CITY_WALK_ROWS;
     const y = (rows[0] + rows[1]) * 0.5 * S;
     const P = 2 * tw * S;
@@ -33044,12 +33232,15 @@ _drawLoreArchive(ctx) {
       for (const t of _rocketTargets) {
         if (distance(t.obj.pos, { x: m.x, y: m.y }) < (t.obj.radius || 28) + 14) { boom = true; break; }
       }
+      // A rocket that reaches a solid destructible prop detonates on it (real explosion path).
+      if (!boom && this._obstacles && this._obstacles.projectileHit(m.x, m.y, 14, 0)) boom = true;
       if (boom) {
         for (const t of _rocketTargets) {
           if (distance(t.obj.pos, { x: m.x, y: m.y }) <= AOE_R) {
             this._brawlerHit(t, (this._targetIsBoss(t) ? 0.55 : 1) * DMG, '#b24cff');
           }
         }
+        this._obstacles?.damageAt(m.x, m.y, AOE_R, DMG, { heavy: true });   // rocket blast breaks props
         this._specialRings.push({
           pos: { x: m.x, y: m.y },
           radius: 0, maxRadius: AOE_R + 10,

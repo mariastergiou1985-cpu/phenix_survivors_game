@@ -1,4 +1,4 @@
-import { Game } from './game/Game.js?v=20260828010000';
+import { Game } from './game/Game.js?v=20260829000000';
 import { AudioManager } from './audio/AudioManager.js?v=20260810250000';
 import { PlatformAchievements } from './platform/PlatformAchievements.js?v=20260712370000';
 // Steam build: replay any web-earned achievements to Steam on boot (no-op in browsers)
@@ -925,6 +925,150 @@ requestAnimationFrame(loop);
       return this.snapshot();
     },
     setNoPets() { game._activePets = []; return len(game._activePets) === 0; },
+
+    // ── MULTI-DECK QA SURFACE (BATCH 1) ────────────────────────────────────────────────────
+    // Read-only. Everything here is a number or a plain object, never a live reference.
+    deckInfo() {
+      const mm = game.mapManager;
+      const mode = game._chaosMode ? 'chaos' : 'endless';
+      const gate = (t) => { const w = game._deckGateWorld ? game._deckGateWorld(t) : null;
+                            return w ? { x: num(w.x), y: num(w.y), dist: num(w.d) } : null; };
+      const deck = game._deck || 'main';
+      const anchor = (deck !== 'main' && mm && mm.deckAnchorWorld) ? mm.deckAnchorWorld(mode, deck) : null;
+      const b = (deck !== 'main' && mm && mm.deckBounds) ? mm.deckBounds(mode, deck) : null;
+      return {
+        deck, mode,
+        gateUpper: deck === 'main' ? gate('upper') : null,
+        gateLower: deck === 'main' ? gate('lower') : null,
+        returnAnchor: anchor ? { x: num(anchor.x), y: num(anchor.y) } : null,
+        bounds: b ? { x0: num(b.x0), x1: num(b.x1), y0: num(b.y0), y1: num(b.y1) } : null,
+        cooldown: num(game._deckCd), gateArmed: !!game._deckGateArmed,
+        lockT: num(game._deckLockT), blockedBy: game._deckTransitionBlocked ? game._deckTransitionBlocked() : null,
+        parked: Object.keys(game._deckPark || {}),
+        gateMeta: JSON.parse(JSON.stringify(game._gateSrcMeta || {})),
+      };
+    },
+
+    // ── QA-ONLY DETERMINISTIC NAVIGATION ───────────────────────────────────────────────────
+    // Drives the REAL production update with a REAL input object - the same {keys, mousePos,
+    // mouseDown} shape the browser loop builds - so movement and collision run through
+    // resolveWalkableMove exactly as they do in play. It NEVER writes player.pos, never teleports
+    // through anything, and never calls _enterDeck: a deck change can only happen because the
+    // player physically walked into a gate and the production validation accepted it.
+    //
+    // It exists because a held-key driver cannot tell a DRIVER stall from a COLLISION stall. This
+    // one measures per-frame displacement, re-aims around props when progress stops, releases every
+    // key before changing direction, and reports the active input and the number of legal escape
+    // directions at the moment it gives up - so the two failure modes are distinguishable.
+    navigate(tx, ty, maxFrames = 2400, tol = 44) {
+      isolateSave();
+      const keys = new Set();
+      const input = { keys, mousePos: { x: 0, y: 0 }, mouseDown: false };
+      const p0deck = game._deck || 'main';
+      let best = Infinity, stall = 0, side = 0, frames = 0, moved = 0, movedFrames = 0;
+      for (; frames < maxFrames; frames++) {
+        const p = game.player; if (!p || !p.pos) break;
+        if (game.upgradeUI) { try { game.selectUpgrade(0); } catch (_) { game.upgradeUI = null; } }
+        if (game.mutationUI) { try { game.selectMutation(0); } catch (_) { game.mutationUI = null; } }
+        // A post-arena choice panel pauses the whole simulation. Without answering it the driver
+        // sees a player that cannot move with every direction legal - which reads as a collision
+        // bug and is not one.
+        if (game._postArenaChoice) { try { game._selectPostArenaChoice(0); } catch (_) { game._postArenaChoice = null; } }
+        if (game.paused) game.paused = false;
+        if ((game._deck || 'main') !== p0deck) break;          // the gate fired — done
+        const dx = tx - p.pos.x, dy = ty - p.pos.y, d = Math.hypot(dx, dy);
+        if (d <= tol) break;
+        if (d < best - 4) { best = d; stall = 0; } else stall++;
+        if (stall > 36) { side = (side + 1) % 5; stall = 0; }   // 0.6s of no progress -> go around
+        keys.clear();                                           // release EVERY key before re-aiming
+        if (side === 0) {
+          if (dx > 14) keys.add('d'); else if (dx < -14) keys.add('a');
+          if (dy > 14) keys.add('s'); else if (dy < -14) keys.add('w');
+        } else if (side === 1) { keys.add('w'); keys.add(dx > 0 ? 'd' : 'a'); }
+        else if (side === 2)   { keys.add('s'); keys.add(dx > 0 ? 'd' : 'a'); }
+        else if (side === 3)   { keys.add('w'); }
+        else                   { keys.add('s'); }
+        const bx = p.pos.x, by = p.pos.y;
+        try { game.update(1 / 60, input); } catch (_) { break; }
+        if (game.gameOver) { game.gameOver = false; p.hp = p.maxHp; }   // survival is not the subject
+        const step = Math.hypot(p.pos.x - bx, p.pos.y - by);
+        moved += step; if (step > 0.25) movedFrames++;
+      }
+      const p = game.player;
+      const mode = game._chaosMode ? 'chaos' : 'endless';
+      const wm = game._walkMode ? game._walkMode() : null;
+      const mm = game.mapManager;
+      let legal = 0;
+      if (p && wm && mm && mm.isWalkableFootprint) {
+        for (let i = 0; i < 16; i++) {
+          const a = (i / 16) * Math.PI * 2;
+          if (mm.isWalkableFootprint(p.pos.x + Math.cos(a) * 6, p.pos.y + Math.sin(a) * 6, 16, wm)) legal++;
+        }
+      }
+      const out = {
+        frames, deckBefore: p0deck, deck: game._deck || 'main', deckChanged: (game._deck || 'main') !== p0deck,
+        pos: p ? { x: num(p.pos.x), y: num(p.pos.y) } : null,
+        target: { x: num(tx), y: num(ty) },
+        distance: p ? num(Math.hypot(tx - p.pos.x, ty - p.pos.y)) : null,
+        totalDisplacement: num(Math.round(moved)), framesThatMoved: movedFrames,
+        activeKeysAtStop: [...keys],
+        legalEscapeDirections: legal,          // 0 => COLLISION stall. >0 with no movement => DRIVER stall.
+        stallKind: movedFrames === 0 ? (legal === 0 ? 'collision' : 'driver') : null,
+        mode, walkMode: wm,
+      };
+      keys.clear();
+      return out;
+    },
+
+    // Arms the next Boss Rush to fire immediately, through the PRODUCTION scheduler - the rush
+    // itself, the deck transfer, the arena placement and the exit lock are all real.
+    armBossRush() {
+      isolateSave();
+      game._bossRushCount = 0;
+      game._bossRushSchedule = [0, 999999];
+      game._chaosStartTime = 0;
+      game._nullBreachActive = false;
+      return { armed: true, deck: game._deck || 'main' };
+    },
+
+    // Advance the real simulation by N frames without any input, auto-answering panels.
+    run(frames = 60) {
+      isolateSave();
+      const input = { keys: new Set(), mousePos: { x: 0, y: 0 }, mouseDown: false };
+      for (let i = 0; i < frames; i++) {
+        if (game.upgradeUI) { try { game.selectUpgrade(0); } catch (_) { game.upgradeUI = null; } }
+        if (game.mutationUI) { try { game.selectMutation(0); } catch (_) { game.mutationUI = null; } }
+        // A post-arena choice panel pauses the whole simulation. Without answering it the driver
+        // sees a player that cannot move with every direction legal - which reads as a collision
+        // bug and is not one.
+        if (game._postArenaChoice) { try { game._selectPostArenaChoice(0); } catch (_) { game._postArenaChoice = null; } }
+        if (game.paused) game.paused = false;
+        if (game.player && game.gameOver) { game.gameOver = false; game.player.hp = game.player.maxHp; }
+        try { game.update(1 / 60, input); } catch (_) { break; }
+      }
+      return this.snapshot();
+    },
+
+    bossRushInfo() {
+      const br = game._bossRush;
+      const bosses = (game.enemies || []).filter(e => e && (e.isMegaBoss || (e.isBoss && e.isBoss()))).length;
+      return {
+        active: !!br,
+        t: br ? num(br.t) : null, dur: br ? num(br.dur) : null,
+        remaining: br ? num(Math.max(0, br.dur - br.t)) : null,
+        cx: br ? num(br.cx) : null, cy: br ? num(br.cy) : null, r: br ? num(br.r) : null,
+        deck: game._deck || 'main', lockT: num(game._deckLockT),
+        exitBlockedBy: game._deckTransitionBlocked ? game._deckTransitionBlocked() : null,
+        enemies: len(game.enemies), bosses,
+        majorEventBlocked: game._majorEventBlocked ? !!game._majorEventBlocked() : null,
+        externalEvents: {
+          acidRain: !!game.acidRain, airstrikes: len(game.airstrikeShips),
+          gunships: len(game.gunshipZones), vault: !!game.vaultDrop,
+          nullBreach: !!game._nullBreachActive, titan: !!game._activeTitan,
+        },
+        credits: num(game.meta && game.meta.credits),
+      };
+    },
     pause(v) { game.paused = !!v; return !!game.paused; },
     resetRun() { isolateSave(); game.reset(); return this.snapshot(); },
     showUpgrade() {
