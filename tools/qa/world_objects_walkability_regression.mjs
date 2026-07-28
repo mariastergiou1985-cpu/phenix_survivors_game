@@ -1,7 +1,7 @@
 // WORLD OBJECTS + PICKUPS WALKABILITY — real modules, no browser, no network.
 // Run: node tools/qa/world_objects_walkability_regression.mjs   (exit 1 on failure)
 import { register } from 'node:module';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 register('./strip-v-loader.mjs', import.meta.url);
 globalThis.window = globalThis;
@@ -11,9 +11,9 @@ if (!globalThis.performance) globalThis.performance = { now: () => Date.now() };
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const JS   = path.resolve(HERE, '../../js');
-const { MapManager }   = await import(path.join(JS, 'game/MapManager.js'));
-const { NexusManager } = await import(path.join(JS, 'game/NexusManager.js'));
-const { BIOME_ID }     = await import(path.join(JS, 'game/MapManager.js'));
+const { MapManager }   = await import(pathToFileURL(path.join(JS, 'game/MapManager.js')).href);
+const { NexusManager } = await import(pathToFileURL(path.join(JS, 'game/NexusManager.js')).href);
+const { BIOME_ID }     = await import(pathToFileURL(path.join(JS, 'game/MapManager.js')).href);
 
 let pass=0, fail=0;
 const T=(n,f)=>{let ok=false,note='';try{const r=f();ok=r===true;if(typeof r==='string')note=r;}
@@ -80,13 +80,30 @@ T('invalid XP resting positions = 0', ()=>xBad===0||'got '+xBad);
 T('unresolved corrections = 0', ()=>xUnres===0||'got '+xUnres);
 
 console.log('\n── F. clustered drop scatter ──');
-// 8 shards from ONE kill inside a pillar — must not stack on one pixel
-const kill = { x: 730*S, y: 250*S };
-const pts = []; for(let i=0;i<8;i++) pts.push(clampPickup(kill.x, kill.y, 12));
-const uniq = new Set(pts.map(p=>`${Math.round(p.x)},${Math.round(p.y)}`)).size;
-console.log(`  (${uniq}/8 μοναδικές θέσεις)`);
-T('τα shards ΔΕΝ στοιβάζονται σε ένα pixel', ()=>uniq>1||'όλα στο ίδιο σημείο');
-T('όλα τα clustered shards valid', ()=>pts.every(p=>mm.isWalkableFootprint(p.x,p.y,12,'endless')));
+// STALE EXPECTATION CORRECTED (2026-07-28). This block used to drop 8 shards at source (730,250)
+// and call it "inside a pillar". It is not: that point is open plaza pavement in the shipped
+// cyber_megacity.png (verified against the asset), and CITY_BLOCK_COLS has been empty since the
+// 2026-07-25 P1 audit found the hand-typed rectangles were close to an inversion of the art.
+// So clampPickup returned the input UNCHANGED on all 8 calls, the golden-angle scatter branch was
+// never reached, and the test failed on a premise that stopped being true.
+//
+// The intent — corrected drops must not stack on one pixel — is right, so it is now tested where
+// the scatter actually lives: at a point the shipped model really does reject. And the opposite
+// property is asserted alongside it, because it matters just as much in this codebase: for a
+// point that IS legal the corrector must be DETERMINISTIC and return it untouched every time.
+const killVoid = { x: 730*S, y: 120*S };          // skyline band — rejected by the row model
+const ptsVoid = []; for(let i=0;i<8;i++) ptsVoid.push(clampPickup(killVoid.x, killVoid.y, 12));
+const uniqVoid = new Set(ptsVoid.map(p=>`${Math.round(p.x)},${Math.round(p.y)}`)).size;
+console.log(`  (${uniqVoid}/8 μοναδικές θέσεις μετά από διόρθωση εκτός δαπέδου)`);
+T('η διόρθωση εκτός δαπέδου ΣΚΟΡΠΙΖΕΙ — τα shards δεν στοιβάζονται σε ένα pixel',
+  ()=>uniqVoid>1||'όλα στο ίδιο σημείο');
+T('όλα τα διορθωμένα shards valid', ()=>ptsVoid.every(p=>mm.isWalkableFootprint(p.x,p.y,12,'endless')));
+const killOk = { x: 730*S, y: 250*S };            // open plaza — verified against the shipped art
+const ptsOk = []; for(let i=0;i<8;i++) ptsOk.push(clampPickup(killOk.x, killOk.y, 12));
+T('ανοιχτή πλατεία στο (730,250) — ο corrector δεν αγγίζει νόμιμο σημείο',
+  ()=>mm.isWalkableFootprint(killOk.x, killOk.y, 12, 'endless') &&
+      ptsOk.every(p=>Math.round(p.x)===Math.round(killOk.x)&&Math.round(p.y)===Math.round(killOk.y))
+      || 'ο corrector μετακίνησε νόμιμο σημείο');
 
 console.log('\n── G. pickups: 1000 candidates ──');
 let pBad=0; for(let i=0;i<1000;i++){const p=clampPickup((rnd()*2-1)*40000, rnd()*519*S, 18);
@@ -103,7 +120,7 @@ T('outer canonical record ΔΕΝ άλλαξε από το rebase', ()=>en.outerR
 
 
 console.log('\n── I. XP shards: πραγματικό XpShardSystem.spawnBurst ──');
-const { XpShardSystem } = await import(path.join(JS, 'entities/XpShards.js'));
+const { XpShardSystem } = await import(pathToFileURL(path.join(JS, 'entities/XpShards.js')).href);
 const xs = new XpShardSystem();
 // minimal Game stand-in exposing only the canonical helper the system now calls
 const fakeGame = { _clampPickupPos: (pos, r=18) => { const c = clampPickup(pos.x, pos.y, r); pos.x=c.x; pos.y=c.y; return pos; } };

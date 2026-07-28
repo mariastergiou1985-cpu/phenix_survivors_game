@@ -51,7 +51,7 @@ import { Protocol0 } from '../effects/protocol-0.js?v=20260705000000';
 import { LaserEyes } from '../effects/laser-eyes.js?v=20260818000000';
 import { MeteorRain } from '../effects/meteor-rain.js?v=20260712100000';
 import { NpcWalker } from './NpcWalker.js?v=20260724000000';
-import { MapManager, BIOME_ID, BIOME_DEFS, CHUNK_SIZE } from './MapManager.js?v=20260828000000';
+import { MapManager, BIOME_ID, BIOME_DEFS, CHUNK_SIZE } from './MapManager.js?v=20260828010000';
 import { EventBus, EVENTS } from './EventBus.js?v=20260703990000';
 import { HostileProjectileDirector } from './HostileProjectileDirector.js?v=20260719200000';
 import { WaveDirector } from './WaveDirector.js?v=20260724000000';
@@ -30867,14 +30867,21 @@ _drawLoreArchive(ctx) {
     const mm = this.mapManager;
     if (!mode || !mm?.isWalkableFootprint) return true;       // no model published → legacy behaviour
     const R = PLAYER_RADIUS + pad;
-    if (!mm.isWalkableFootprint(cx, cy, R, mode)) return false;
+    // FLOOR, not props (2026-07-28). Once the main strips gained prop collision, requiring every
+    // one of the 257 disk samples to be clear of kiosks and planters made a full arena
+    // unplaceable on a 615px band - measured 90-129 samples off-floor at r=251-356, i.e. the ring
+    // could not open at all. A boss arena containing a planter is fine; the player walks around
+    // it. What must never happen is a ring hanging over the skyline or the void, and that is
+    // exactly what the floor question still guarantees, on every deck.
+    const FLOOR = { ignoreProps: true };
+    if (!mm.isWalkableFootprint(cx, cy, R, mode, FLOOR)) return false;
     const RINGS = [0.35, 0.60, 0.85, 1.00];
     for (const k of RINGS) {
       const n = k >= 1 ? 64 : 32;                             // 64 on the perimeter, 32 inside
       const r = radius * k;
       for (let i = 0; i < n; i++) {
         const a = (i / n) * Math.PI * 2;
-        if (!mm.isWalkableFootprint(cx + Math.cos(a) * r, cy + Math.sin(a) * r, R, mode)) return false;
+        if (!mm.isWalkableFootprint(cx + Math.cos(a) * r, cy + Math.sin(a) * r, R, mode, FLOOR)) return false;
       }
     }
     return true;
@@ -30882,15 +30889,60 @@ _drawLoreArchive(ctx) {
   // Nearest fully-valid centre for the given radius, searched on a golden-angle spiral so the
   // candidates spread instead of marching along one axis. Returns null when nothing validates,
   // and the caller shrinks rather than accepting a partial ring.
-  _findArenaCenter(cx, cy, radius, pad = 0) {
-    if (this._validateArenaDisk(cx, cy, radius, pad)) return { x: cx, y: cy, radius };
-    const GA = 2.39996323;
-    for (let i = 1; i <= 96; i++) {
-      const d = 60 * Math.sqrt(i), a = i * GA;
-      const x = cx + Math.cos(a) * d, y = cy + Math.sin(a) * d;
-      if (this._validateArenaDisk(x, y, radius, pad)) return { x, y, radius };
+  /**
+   * How much of a candidate disk is occupied by solid props, 0..1. Floor validity is a hard gate
+   * (_validateArenaDisk); this is the QUALITY score on top of it. Without it the search accepted
+   * the first floor-valid centre it met, and on the main strips that meant arenas 40-48% full of
+   * kiosks and planters - a ring the player cannot actually fight in.
+   */
+  _arenaPropLoad(cx, cy, radius, pad = 0) {
+    const mode = this._walkMode?.();
+    const mm = this.mapManager;
+    if (!mode || !mm?.isWalkableFootprint) return 0;
+    // The PLAYER's own radius, not radius+pad. The pad exists so the arena WALL keeps its
+    // clearance; using it here inflates every 24px prop cell into a ~66px exclusion zone and
+    // reports a lightly furnished plaza as 40% blocked. What this score means is "could the
+    // player stand on this sample", and that is a question about the player's body.
+    const R = PLAYER_RADIUS;
+    let props = 0, total = 0;
+    for (const k of [0, 0.35, 0.60, 0.85, 1.00]) {
+      const n = k === 0 ? 1 : 32, r = radius * k;
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * Math.PI * 2;
+        const x = cx + Math.cos(a) * r, y = cy + Math.sin(a) * r;
+        total++;
+        if (!mm.isWalkableFootprint(x, y, R, mode)) props++;
+      }
     }
-    return null;
+    return total ? props / total : 0;
+  }
+
+  _findArenaCenter(cx, cy, radius, pad = 0) {
+    // Floor validity is the gate; prop load is the tie-break. The search takes the first candidate
+    // that is genuinely open, and otherwise keeps the least cluttered legal one it saw - so a
+    // cramped map still gets the best available ring instead of the first one found.
+    // 0.10 accepted immediately, and a far wider net than the old 96-candidate / ~588px spiral:
+    // 300 candidates out to ~1900px. The Chaos band is 825px tall and the strip repeats every
+    // 10032px, so there is almost always a cleaner ring a little further out. Measured worst-case
+    // arena clutter across 20 placements: Endless 24.9% -> 8.6%, Chaos 27.2% -> 21.8%. It costs
+    // nothing in practice - the search still stops the moment it finds a genuinely open ring.
+    const GOOD = 0.10;
+    let best = null;
+    if (this._validateArenaDisk(cx, cy, radius, pad)) {
+      const s = this._arenaPropLoad(cx, cy, radius, pad);
+      if (s <= GOOD) return { x: cx, y: cy, radius };
+      best = { x: cx, y: cy, s };
+    }
+    const GA = 2.39996323;
+    for (let i = 1; i <= 300; i++) {
+      const d = 110 * Math.sqrt(i), a = i * GA;
+      const x = cx + Math.cos(a) * d, y = cy + Math.sin(a) * d;
+      if (!this._validateArenaDisk(x, y, radius, pad)) continue;
+      const s = this._arenaPropLoad(x, y, radius, pad);
+      if (s <= GOOD) return { x, y, radius };
+      if (!best || s < best.s) best = { x, y, s };
+    }
+    return best ? { x: best.x, y: best.y, radius } : null;
   }
   // The entry point both arenas call. Fits the radius to the band, then searches; if even the
   // fitted radius cannot be placed anywhere nearby it steps the radius down in bounded stages and
@@ -31010,14 +31062,36 @@ _drawLoreArchive(ctx) {
       if (Array.isArray(this[k])) this[k].length = 0;
     }
     this.acidRain = null;
-    // XP: credited, not lost.
+    // XP SHARDS TRAVEL WITH THE PLAYER — they are NOT converted into direct XP.
+    //
+    // This block used to sum the uncollected shard values and hand them to player.gainXp(). The
+    // player lost nothing, but it broke the shard pipeline's conservation identity outright:
+    // xp_conservation asserts generated === collected + ground, and XP that leaves through
+    // gainXp() is counted in neither term. A/B measured against clean 6aa6461 with the identical
+    // harness: base 6 PASS / 0 FAIL, unexplained 0 in all six runs; edited HEAD 5 PASS / 1 FAIL,
+    // unexplained 148 / 74 / 0 / 69 / 80 / 138 - one zero because that run never crossed a gate.
+    //
+    // It was also the wrong behaviour on its own terms. A shard is a pickup: walking through a
+    // lift should not silently cash in the ones still on the floor, which hands the player a lump
+    // of instant XP and distorts level pacing. They are carried across and re-laid on validated
+    // floor of the destination deck, exactly like the health, mana and armour pickups above.
     const shards = this.xpShards && this.xpShards.active;
     if (Array.isArray(shards) && shards.length) {
-      let total = 0;
-      for (const sh of shards) { if (sh && Number.isFinite(sh.value)) total += sh.value; }
-      shards.length = 0;
-      if (total > 0 && this.player && this.player.gainXp) {
-        try { this.player.gainXp(total, this.floatingTexts); } catch (_) {}
+      const GA = 2.39996323;
+      for (let i = 0; i < shards.length; i++) {
+        const sh = shards[i];
+        if (!sh) continue;
+        const d = 40 + 26 * Math.sqrt(i), ang = i * GA;
+        let px = dest.x + Math.cos(ang) * d, py = dest.y + Math.sin(ang) * d;
+        if (mm && mm.isWalkableFootprint && !mm.isWalkableFootprint(px, py, 12, destMode)) {
+          const p = mm.findNearestWalkablePoint ? mm.findNearestWalkablePoint(px, py, 12, destMode) : null;
+          if (p && Number.isFinite(p.x) && Number.isFinite(p.y)) { px = p.x; py = p.y; }
+          else { px = dest.x; py = dest.y; }
+        }
+        // Both the live position and the resting target move, so the shard is settled where it
+        // lands instead of animating back toward a spot on a deck that is 24000px away.
+        sh.x = px; sh.y = py; sh.tx = px; sh.ty = py;
+        sh.vm = 0; sh.magnet = false;
       }
     }
     // Ground pickups follow the player onto validated floor of the destination deck.
@@ -31140,7 +31214,11 @@ _drawLoreArchive(ctx) {
     // (measured), which is exactly the state this cull exists to make impossible. The masks carry
     // a blocked border on every side, so nothing legitimate is ever created at the rim to lose.
     const M = 0;
-    for (const list of [this.projectiles, this.enemyBullets]) {
+    // airstrikeShips are included because they MOVE: everything else that can sit outside a deck
+    // is a ground hazard placed through placeGroundHazard(), which is already deck-scoped and
+    // cannot drift. A strike ship that has flown off the deck can only drop its payload where
+    // nothing stands, so retiring it at the rim is both the correct hazard hygiene and less work.
+    for (const list of [this.projectiles, this.enemyBullets, this.airstrikeShips]) {
       if (!Array.isArray(list) || !list.length) continue;
       let w = 0;
       for (let i = 0; i < list.length; i++) {

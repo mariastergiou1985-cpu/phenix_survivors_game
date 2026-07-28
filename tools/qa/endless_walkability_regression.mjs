@@ -1,7 +1,7 @@
 // ENDLESS WALKABILITY REGRESSION — real MapManager APIs, no browser, no network.
 // Run: node tools/qa/endless_walkability_regression.mjs   (exit 1 on failure)
 import { register } from 'node:module';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 register('./strip-v-loader.mjs', import.meta.url);
 globalThis.window = globalThis;
@@ -11,7 +11,7 @@ if (!globalThis.performance) globalThis.performance = { now: () => Date.now() };
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const JS   = path.resolve(HERE, '../../js');
-const { MapManager } = await import(path.join(JS, 'game/MapManager.js'));
+const { MapManager } = await import(pathToFileURL(path.join(JS, 'game/MapManager.js')).href);
 
 let pass=0, fail=0;
 const T=(n,f)=>{let ok=false,note='';try{const r=f();ok=r===true;if(typeof r==='string')note=r;}
@@ -31,13 +31,33 @@ console.log('═══ ENDLESS WALKABILITY REGRESSION ═══\n── model sa
 T('walkable row band ενεργό (endless)', ()=>mm.isWalkablePoint(0, 300*S, 'endless')===true);
 T('skyline ΑΠΟΡΡΙΠΤΕΤΑΙ', ()=>mm.isWalkablePoint(0, 60*S, 'endless')===false);
 T('κάτω δομές ΑΠΟΡΡΙΠΤΟΝΤΑΙ', ()=>mm.isWalkablePoint(0, 480*S, 'endless')===false);
-T('authored pillar ΑΠΟΡΡΙΠΤΕΤΑΙ', ()=>mm.isWalkablePoint(215*S, 250*S, 'endless')===false);
+// STALE EXPECTATION CORRECTED (2026-07-28). Source (215,250) was asserted to be an "authored
+// pillar". It is not, and it never was in the shipped art: a 300x220 crop of cyber_megacity.png
+// centred there is unbroken plaza pavement, with the nearest solid prop about 60px to the right.
+// The claim came from the hand-typed CITY_BLOCK_COLS rectangles, which the 2026-07-25 P1 audit
+// measured as close to an inversion of the art (plain-pavement share inside the three "obstacle"
+// rects: 82% / 23% / 0%) and which were emptied for exactly that reason. Asserting a wall there
+// asks production to reintroduce the invisible walls that audit removed.
+// The location is therefore asserted for what it actually is - open floor - so the test can never
+// again demand a wall on open pavement. Real rejection is still covered above by the skyline and
+// lower-structure bands, which are the authored geometry that does exist today.
+T('ανοιχτή πλατεία στο (215,250) ΕΙΝΑΙ walkable (verified vs shipped art)',
+  ()=>mm.isWalkablePoint(215*S, 250*S, 'endless')===true);
 T('chaos band ενεργό', ()=>mm.isWalkablePoint(0, 300*S, 'chaos')===true);
 T('chaos window band ΑΠΟΡΡΙΠΤΕΤΑΙ', ()=>mm.isWalkablePoint(0, 60*S, 'chaos')===false);
 
 console.log('\n── footprint vs centre ──');
-T('centre valid αλλά footprint πάνω σε pillar → invalid',
-  ()=>{const x=178*S, y=250*S; return mm.isWalkablePoint(x,y,'endless')===true && mm.isWalkableFootprint(x,y,40,'endless')===false;});
+// Same correction: (178,250) is open pavement too, so a 40px footprint there is legal and the old
+// expectation could only pass while the wrong rectangles existed. The PROPERTY it was protecting -
+// a centre can be legal while the footprint around it is not - is real and still holds; it is now
+// asserted against geometry that actually exists, the walkable band edge. Row 210 is the first
+// walkable row, so a centre 8px inside the band with a 40px radius must be rejected while its
+// centre point alone is accepted.
+T('centre valid αλλά footprint περνά το άκρο της ζώνης → invalid',
+  ()=>{const x=178*S, y=210*S + 8;
+       return mm.isWalkablePoint(x,y,'endless')===true && mm.isWalkableFootprint(x,y,40,'endless')===false;});
+T('(178,250) ανοιχτή πλατεία — footprint 40px νόμιμο',
+  ()=>mm.isWalkableFootprint(178*S, 250*S, 40, 'endless')===true);
 T('footprint στη μέση της plaza → valid', ()=>mm.isWalkableFootprint(500*S, 310*S, 40, 'endless')===true);
 
 console.log('\n── 1000 deterministic candidates → nearest-point correction ──');

@@ -5,7 +5,7 @@
 // ───────────────────────────────────────────────────────────────────────────
 
 import { Vec2, WORLD_W, WORLD_H, DARK_BG, GRID_LINE } from '../constants.js';
-import { DECK_MASKS, deckMaskBits } from './DeckMasks.js?v=20260828000000';
+import { DECK_MASKS, deckMaskBits, MAIN_OBSTACLES, mainObstacleBits } from './DeckMasks.js?v=20260828010000';
 
 // ─── Biome Definitions ───────────────────────────────────────────────────────
 // Each biome defines its visual identity, hazards, enemy modifiers, and colors.
@@ -558,13 +558,25 @@ export class MapManager {
       tileW:  img.naturalWidth,
       tileH:  img.naturalHeight,
       verticalFloor: !chaos,
+      // PROP COLLISION INSIDE THE BAND (2026-07-28). The rows still decide where the floor is;
+      // this only carves the solid props out of it. Coordinates are SOURCE-IMAGE cells, so the
+      // mirror tiling folds into them for free and a prop stands in the same spot of every tile.
+      obst: (() => {
+        const spec = MAIN_OBSTACLES[key];
+        const bits = spec ? mainObstacleBits(key) : null;
+        return (spec && bits) ? { bits, cell: spec.cell, cols: spec.cols, maskRows: spec.maskRows } : null;
+      })(),
     };
     this._walkModels[key] = model;
     return model;
   }
 
   /** True when this exact world point sits on real, unobstructed floor. */
-  isWalkablePoint(x, y, mode = 'endless') {
+  // opts.ignoreProps asks the FLOOR question only: is this on the deck at all, ignoring the solid
+  // props standing on it. The arena validators want exactly that - a boss ring may contain a
+  // planter (the player walks around it), but it must never hang over the skyline or the void.
+  // Everything that MOVES keeps asking the full question and still collides with props.
+  isWalkablePoint(x, y, mode = 'endless', opts = null) {
     // NaN/Infinity GUARD (black-screen audit 2026-07-19): a non-finite coordinate reaching
     // these APIs used to travel straight through them and come back out as a NaN position.
     // That NaN then landed in drawImage()/arc(), which fail SILENTLY on the canvas — the
@@ -584,14 +596,19 @@ export class MapManager {
     for (const [x0, x1, y0, y1] of m.blocks) {
       if (srcX >= x0 && srcX <= x1 && srcY >= y0 && srcY <= y1) return false;
     }
+    if (m.obst && !(opts && opts.ignoreProps)) {
+      const oc = Math.floor(srcX / m.obst.cell), orow = Math.floor(srcY / m.obst.cell);
+      if (oc >= 0 && orow >= 0 && oc < m.obst.cols && orow < m.obst.maskRows &&
+          m.obst.bits[orow * m.obst.cols + oc] === 1) return false;
+    }
     return true;
   }
 
   /** True when the whole circular footprint is on floor, not just the centre. */
-  isWalkableFootprint(x, y, radius = 0, mode = 'endless') {
+  isWalkableFootprint(x, y, radius = 0, mode = 'endless', opts = null) {
     if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(radius)) return false;
     if (!Number.isSafeInteger(Math.trunc(x)) || !Number.isSafeInteger(Math.trunc(y))) return false;
-    if (!this.isWalkablePoint(x, y, mode)) return false;
+    if (!this.isWalkablePoint(x, y, mode, opts)) return false;
     if (radius <= 0) return true;
     const m = this._walkModel(mode);
     if (!m) return true;
@@ -646,6 +663,39 @@ export class MapManager {
         const qy = Math.max(y0, Math.min(y1, y));
         const dx = x - qx, dy = y - qy;
         if (dx * dx + dy * dy <= r * r) return false;
+      }
+    }
+    if (m.obst && !(opts && opts.ignoreProps)) {
+      // Same exact circle-vs-AABB test as the authored rectangles above, one obstacle CELL at a
+      // time. The source-x range of the circle is folded per tile, mirrored where the tile is
+      // mirrored, so a prop blocks identically in every repeat of the infinite strip.
+      const cw   = m.obst.cell * scale;
+      const orow0 = Math.max(0, Math.floor((y - r) / cw));
+      const orow1 = Math.min(m.obst.maskRows - 1, Math.floor((y + r) / cw));
+      for (let tile = firstTile; tile <= lastTile && orow1 >= orow0; tile++) {
+        const mirrored = ((tile % 2) + 2) % 2 === 1;
+        const tx0 = tile * tileW;
+        const lo = Math.max(tx0, x - r), hi = Math.min(tx0 + tileW, x + r);
+        if (hi <= lo) continue;
+        const l0 = lo - tx0, l1 = hi - tx0;
+        const s0 = mirrored ? (tileW - l1) : l0;
+        const s1 = mirrored ? (tileW - l0) : l1;
+        const c0 = Math.max(0, Math.floor(s0 / cw));
+        const c1 = Math.min(m.obst.cols - 1, Math.floor(s1 / cw));
+        for (let cy = orow0; cy <= orow1; cy++) {
+          const rowOff = cy * m.obst.cols;
+          for (let cx = c0; cx <= c1; cx++) {
+            if (m.obst.bits[rowOff + cx] !== 1) continue;
+            const sx0 = cx * cw, sx1 = sx0 + cw;
+            const wx0 = tx0 + (mirrored ? tileW - sx1 : sx0);
+            const wx1 = tx0 + (mirrored ? tileW - sx0 : sx1);
+            const wy0 = cy * cw, wy1 = wy0 + cw;
+            const qx = Math.max(wx0, Math.min(wx1, x));
+            const qy = Math.max(wy0, Math.min(wy1, y));
+            const dx = x - qx, dy = y - qy;
+            if (dx * dx + dy * dy <= r * r) return false;
+          }
+        }
       }
     }
     return true;

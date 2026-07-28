@@ -222,7 +222,12 @@ export class NexusManager {
     const neonColors = BIOME_NEXUS_COLORS[BIOME_ID.NEON_DISTRICT];
     for (let i = 0; i < neonPositions.length; i++) {
       const [x, y] = neonPositions[i];
-      const m = new PowerMatrix(new Vec2(x, y), neonColors.full, NEXUS_CAPACITY + (this.capacityBonus || 0));
+      // The four authored central positions get the SAME canonical correction the outer records
+      // have always had. They were exempt only because nothing on the main strip used to be
+      // solid; with prop collision one of them now lands inside a kiosk, and a Nexus the player
+      // cannot walk up to is a dead objective.
+      const c = this._correctNexusPos(x, y);
+      const m = new PowerMatrix(new Vec2(c.x, c.y), neonColors.full, NEXUS_CAPACITY + (this.capacityBonus || 0));
       m.biomeId = BIOME_ID.NEON_DISTRICT;
       m.biomeColors = neonColors;
       this.matrices.push(m);
@@ -365,6 +370,19 @@ export class NexusManager {
     this.matrices.push(m);
   }
 
+  /**
+   * Resolve an authored Nexus position against the canonical walkability model. Deterministic and
+   * bounded; returns the input untouched when it is already legal, so the four landmarks stay
+   * exactly where they were authored unless a prop actually stands there.
+   */
+  _correctNexusPos(x, y) {
+    const mm = this.mapManager;
+    if (!mm || !mm.isWalkableFootprint) return { x, y };
+    if (mm.isWalkableFootprint(x, y, NEXUS_FOOTPRINT, 'endless')) return { x, y };
+    const p = mm.findNearestWalkablePoint(x, y, NEXUS_FOOTPRINT, 'endless');
+    return (p && Number.isFinite(p.x) && Number.isFinite(p.y)) ? p : { x, y };
+  }
+
   /** Live counts for the QA overlay — never used by gameplay logic. */
   getBaseCounts() {
     return {
@@ -388,8 +406,9 @@ export class NexusManager {
     const neonArr = this.biomeNexus.get(BIOME_ID.NEON_DISTRICT);
     const neonPositions = ENDLESS_CENTRAL_POSITIONS;
     for (let i = 0; i < neonArr.length && i < neonPositions.length; i++) {
-      neonArr[i].pos.x = neonPositions[i][0];
-      neonArr[i].pos.y = neonPositions[i][1];
+      const c = this._correctNexusPos(neonPositions[i][0], neonPositions[i][1]);
+      neonArr[i].pos.x = c.x;
+      neonArr[i].pos.y = c.y;
     }
 
     // Spawn outer-biome Nexus (matches _createEndlessNexus layout)

@@ -166,6 +166,12 @@ for (const mode of ['endless', 'chaos']) {
     const spawned = g.enemies.length;
     let offDeck = 0, offGeom = 0;
     let ground = 0;
+    // A single frame off-floor is not a defect: knockback and separation can push a body across a
+    // prop edge, and resolveWalkableMove pulls it back the moment it next tries to move. What
+    // would be a defect is an enemy that stays there. Candidates are collected, the sim runs on,
+    // and only the ones STILL off-floor afterwards count - which also proves the recovery path
+    // actually works instead of merely assuming it does.
+    const offGeomNow = [];
     for (const e of g.enemies) {
       if (!e || !e.pos) continue;
       if (!g.onActiveDeck(e)) { offDeck++; continue; }
@@ -174,11 +180,19 @@ for (const mode of ['endless', 'chaos']) {
       if (e.isFlying || e.flying || e.airborne || e.hover) continue;
       ground++;
       if (!mm.isWalkablePoint(e.pos.x, e.pos.y, dm)) {
+        offGeomNow.push(e);
+      }
+    }
+    step(g, 45);                                    // give the resolver time to depenetrate
+    for (const e of offGeomNow) {
+      if (!e || !e.pos || e.hp <= 0) continue;      // died in the meantime — nothing to be stuck
+      if (!g.enemies.includes(e)) continue;
+      if (!mm.isWalkablePoint(e.pos.x, e.pos.y, dm)) {
         offGeom++;
         if (offGeom <= 3) {
           const bb = mm.deckBounds(mode, section);
           const inB = bb ? (e.pos.x >= bb.x0 && e.pos.x <= bb.x1 && e.pos.y >= bb.y0 && e.pos.y <= bb.y1) : 'n/a';
-          console.log('      . off-geom ' + (e.name || '?') + ' at (' + Math.round(e.pos.x) + ',' +
+          console.log('      . STUCK off-geom ' + (e.name || '?') + ' at (' + Math.round(e.pos.x) + ',' +
             Math.round(e.pos.y) + ') inBounds=' + inB + ' hp=' + Math.round(e.hp) + ' r=' + (e.radius|0));
         }
       }
@@ -196,7 +210,7 @@ for (const mode of ['endless', 'chaos']) {
     if (_off.length) console.log('      . off-deck: ' + _off.join(', '));
     T(`${mode}: ${section} spawns ordinary combat`, spawned > 0, `${spawned} enemies`);
     T(`${mode}: ${section} nothing lives on another deck`, offDeck === 0, `${offDeck} off-deck`);
-    T(`${mode}: ${section} every ground enemy stands on real floor`, offGeom === 0, `${offGeom} of ${ground} ground enemies off-geometry`);
+    T(`${mode}: ${section} no ground enemy is STUCK off the floor`, offGeom === 0, `${offGeom} still off-geometry after 45 frames (${offGeomNow.length} transient of ${ground})`);
     T(`${mode}: ${section} no NaN after 15s of play`, finite(g.player.pos) && finite(g.camera));
     if (section !== 'main') toMain(g);
   }
