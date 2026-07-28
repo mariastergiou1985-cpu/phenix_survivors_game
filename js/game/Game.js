@@ -51,7 +51,7 @@ import { Protocol0 } from '../effects/protocol-0.js?v=20260705000000';
 import { LaserEyes } from '../effects/laser-eyes.js?v=20260818000000';
 import { MeteorRain } from '../effects/meteor-rain.js?v=20260712100000';
 import { NpcWalker } from './NpcWalker.js?v=20260724000000';
-import { MapManager, BIOME_ID, BIOME_DEFS, CHUNK_SIZE } from './MapManager.js?v=20260820000000';
+import { MapManager, BIOME_ID, BIOME_DEFS, CHUNK_SIZE } from './MapManager.js?v=20260828000000';
 import { EventBus, EVENTS } from './EventBus.js?v=20260703990000';
 import { HostileProjectileDirector } from './HostileProjectileDirector.js?v=20260719200000';
 import { WaveDirector } from './WaveDirector.js?v=20260724000000';
@@ -1571,6 +1571,17 @@ export class Game {
     this._bossRush          = null;    // Boss Rush encounter state (Phase 4-5); null = inactive
     this._bossRushCount     = null;    // rushes triggered this run (lazy-init in _updateBossRush)
     this._bossRushDmgCd     = 0;       // hazard damage cooldown
+    // ── MULTI-DECK RUN STATE (BATCH 1, 2026-07-28) ────────────────────────────────────────
+    // 'main' | 'upper' | 'lower'. The active deck is part of the RUN, not of the map: it decides
+    // walkability, camera clamp, world rebase, placement and rendering, and it is reset here so a
+    // second run can never inherit the previous run's deck.
+    this._deck        = 'main';
+    this._deckReturn  = null;   // { x, y } on MAIN, restored on the way back
+    this._deckCd      = 0;      // transition cooldown — stops an instant bounce back through the gate
+    this._deckFxT     = 0;      // arrival flash timer (existing gate VFX, no new art)
+    this._deckLockT   = 0;      // >0 while a system (Boss Rush) owns the deck and exits are locked
+    this._deckPark    = Object.create(null);  // deck -> the boss frozen there while the player is away
+    this._deckGateArmed = false;              // a gate only fires after the player has STEPPED OFF it
     this._chaosStartedAt    = -1;         // timeAlive when Chaos engaged; -1 = not yet reached this run
     this._chaosTransTimer   = -1;      // >=0 while glitch transition is playing
     this.forceChaos         = false;   // defensive: prevent stale debug-key state leaking into the next run
@@ -9341,6 +9352,7 @@ export class Game {
     if (!this._campaignStage) this._sysEvents.update(dt, this.timeAlive, this);
     if (this._chaosMode) this._updateChaosTitans(dt);   // Chaos-only Mega Titan scheduler
     this._updateTitanWeaponFx(dt);   // Phase 2: Mega Boss weapon-art flashes
+    if (this._chaosMode || this.endless) this._updateDeckTransitions(dt);
     if (this._chaosMode || this.endless) this._updateBossRush(dt);   // Maria: arena 2× in Endless AND 2× in Chaos
     this._updateGridCache(dt);
     this._updateNullCache(dt);
@@ -10742,6 +10754,14 @@ export class Game {
         // Ring forms on a DIFFERENT spot of the map, not centred on the player: offset the
         // centre ~260px in a random direction (player is still well inside the 700px wall,
         // and the lock clamp keeps them in). Reads as 'the rush claims its own ground'.
+        // BATCH 1: the rush is fought on the LOWER DECK — an authored, closed arena with real
+        // walls, which is what a three-minute lock-in should feel like. The move is FORCED (the
+        // player is not asked to walk to a gate first) but the safe-landing validation still runs,
+        // and if the deck cannot be entered for any reason the rush stays on MAIN exactly as it
+        // did before, rather than being skipped. The lower deck is a normal explorable deck at
+        // every other moment of the run; the rush only borrows it.
+        this._enterDeck('lower', { force: true });
+        this._deckLockT = (this._deck === 'lower') ? 186 : 0;   // exits locked for the whole 03:00
         const _rushAng = Math.random() * Math.PI * 2;
         // The ring claimed its own ground 260px away and never checked whether that ground
         // existed. Offer the offset centre as the preferred spot, then validate the WHOLE disk.
@@ -10872,6 +10892,11 @@ export class Game {
         }
         this._bossRush = null;
         this._majorEventGraceT = 6;   // let the arena clear before any global scheduler resumes
+        // Exits unlock at 00:00 and the run goes back to the normal map flow. _enterDeck runs the
+        // same safe-landing validation on the way home, and _deckReturn puts the player back
+        // where they were standing on MAIN — no build, upgrade or run progress is touched.
+        this._deckLockT = 0;
+        this._enterDeck('main', { force: true });
     }
   }
 
@@ -10880,7 +10905,13 @@ export class Game {
     try {
       if (this.chunkManager?.enabled) {
         const sp = this.chunkManager.getSpawnEdge(this.camera, this._viewW, this._viewH, 140);
-        e.pos.x = sp.x; e.pos.y = sp.y;
+        // This was the one spawn path that wrote e.pos straight from the chunk edge without
+        // asking the walkability model. On the main strip that was survivable (the authored
+        // block-column list is empty); on a MASKED section deck it drops swarmers inside pillars
+        // and machine footings, and the Boss Rush now runs on exactly such a deck.
+        const _sp = this.resolveEnemySpawn(sp.x, sp.y, Math.max(12, e.radius || 14), 200, e);
+        if (_sp && Number.isFinite(_sp.x) && Number.isFinite(_sp.y)) { e.pos.x = _sp.x; e.pos.y = _sp.y; }
+        else { e.pos.x = sp.x; e.pos.y = sp.y; }
       }
     } catch (_) {}
   }
@@ -20450,6 +20481,9 @@ export class Game {
     // Nexus (all drawn AFTER this) clearly pop. Covers only the visible view; no layout/bounds change.
     ctx.fillStyle = 'rgba(2,6,16,0.30)';
     ctx.fillRect(this.camera.x, this.camera.y, this._viewW, this._viewH);
+
+    // 1b ── Deck transition gates (world layer, under entities so the player walks ON them)
+    this._drawDeckGates(ctx);
 
     // 1b ── World boundary neon grid wall (proximity fade-in, flicker, warning text)
     this._drawWorldBoundaries(ctx);
@@ -30608,9 +30642,27 @@ _drawLoreArchive(ctx) {
   // and keeps using the existing deck clamps — the Endless/Chaos rectangles must never be
   // applied there.
   _walkMode() {
-    if (this._chaosMode) return 'chaos';
-    if (this.endless)    return 'endless';
+    // BATCH 1: the deck rides on the mode string ('chaos:upper'), so every caller that already
+    // asks _walkMode() — player, enemies, pickups, spawns, hazards, arenas, Vaults — becomes
+    // deck-aware without changing. MapManager._walkModel() splits it back apart.
+    const _d = this._deck && this._deck !== 'main' ? ':' + this._deck : '';
+    if (this._chaosMode) return 'chaos' + _d;
+    if (this.endless)    return 'endless' + _d;
     return null;                       // Act 1 / campaign — not obstacle-constrained
+  }
+
+  /** Deck that owns a world point in the current mode. 'main' outside Endless/Chaos. */
+  deckOf(y) {
+    if (!(this.endless || this._chaosMode)) return 'main';
+    return this.mapManager?.deckAt?.(y, this._chaosMode ? 'chaos' : 'endless') || 'main';
+  }
+
+  /** True when the object stands on the deck the player is on. Everything else is elsewhere. */
+  onActiveDeck(o) {
+    if (!(this.endless || this._chaosMode)) return true;
+    const y = o?.pos?.y ?? o?.y;
+    if (!Number.isFinite(y)) return true;
+    return this.deckOf(y) === (this._deck || 'main');
   }
 
   /**
@@ -30876,9 +30928,284 @@ _drawLoreArchive(ctx) {
     return Math.max(v, floor);
   }
 
+  // ══════════════════════════════════════════════════════════════════════════════════════════
+  // DECK TRANSITIONS — UPPER <-> MAIN <-> LOWER  (BATCH 1, 2026-07-28)
+  // ------------------------------------------------------------------------------------------
+  // The graph is deliberately a line, not a triangle: there is no direct UPPER <-> LOWER link.
+  //
+  // On MAIN the two gates REPEAT with the mirror tile period (2 x tileW x CITY_SCALE = 10032px),
+  // twice per period because every second tile is mirrored, so wherever the player stands on the
+  // infinite strip a gate is at most about a quarter period away — the extra space is reachable
+  // during ordinary play, not only during an event. On a section deck there is exactly ONE gate,
+  // sitting on the authored anchor baked into DeckMasks.js with two clear cells in every
+  // direction.
+  //
+  // Every transition validates the DESTINATION with the player's real radius against the
+  // destination deck's own model BEFORE anything moves. A transition that cannot land safely is
+  // refused outright; the player is never half-moved into a wall, a hazard or a solid structure.
+  // ══════════════════════════════════════════════════════════════════════════════════════════
+  _deckGateWorld(target) {
+    const mm = this.mapManager;
+    if (!(this.endless || this._chaosMode)) return null;
+    const img = this._chaosMode ? mm && mm._chaosDeckImg : mm && mm._cityImg;
+    if (!img || !img.complete || !img.naturalWidth) return null;
+    const S = mm.CITY_SCALE, tw = img.naturalWidth;
+    const gx = tw * (target === 'upper' ? 0.22 : 0.78);
+    const rows = this._chaosMode ? mm.CHAOS_WALK_ROWS : mm.CITY_WALK_ROWS;
+    const y = (rows[0] + rows[1]) * 0.5 * S;
+    const P = 2 * tw * S;
+    const px = (this.player && this.player.pos && Number.isFinite(this.player.pos.x)) ? this.player.pos.x : 0;
+    const k0 = Math.floor(px / P);
+    let best = null;
+    for (let k = k0 - 1; k <= k0 + 1; k++) {
+      for (const local of [gx * S, (2 * tw - gx) * S]) {
+        const x = k * P + local, d = Math.abs(x - px);
+        if (!best || d < best.d) best = { x, y, d, target };
+      }
+    }
+    return best;
+  }
+
+  /** Why a transition may not happen right now, or null when it may. */
+  _deckTransitionBlocked() {
+    if ((this._deckLockT || 0) > 0)  return 'locked';      // a system owns the deck (Boss Rush)
+    if ((this._deckCd || 0) > 0)     return 'cooldown';    // just arrived — no instant bounce back
+    if (this._bossRush)              return 'bossrush';
+    if (this._nullBreachActive)      return 'breach';
+    // A LIVE TITAN OR MEGA BOSS DELIBERATELY DOES NOT BLOCK HERE. The requirement is that a boss
+    // must not FOLLOW the player to another deck - not that a live boss makes the rest of the map
+    // unreachable. In Chaos a Titan is alive for most of the run, so blocking on one left the
+    // upper and lower decks effectively unreachable in ordinary play (measured on this harness:
+    // 0/10 and 4/10 transitions completed). The boss is PARKED on its own deck instead: frozen,
+    // still owned by _activeTitan so the scheduler cannot spawn a replacement, and restored
+    // exactly where it stood the moment the player returns. Changing deck is exploration, never a
+    // way to delete a boss.
+    if (this.upgradeUI || this.mutationUI)     return 'ui';
+    if (this.gameOver || this.paused)          return 'stopped';
+    return null;
+  }
+
+  /**
+   * INACTIVE-DECK SAFETY. Nothing from the deck being left may reach the deck being entered.
+   *  - projectiles and enemy bullets in flight are dropped;
+   *  - ordinary combat entities are retired deterministically: no drops, no XP, no kill credit,
+   *    so walking out of a deck can neither be farmed nor cost the player anything;
+   *  - every hazard zone and arena boundary is dismissed rather than orphaned on an empty deck;
+   *  - earned XP is CREDITED, never deleted;
+   *  - ground pickups the player has not collected yet TRAVEL with them and are re-placed on
+   *    validated floor of the destination deck, so no build or reward is lost.
+   * A live boss or major event cannot get here at all — _deckTransitionBlocked() refuses the
+   * transition while one is running, so nothing can follow the player across.
+   */
+  _clearDeckTransients(dest, destMode) {
+    const mm = this.mapManager;
+    if (Array.isArray(this.projectiles))  this.projectiles.length = 0;
+    if (Array.isArray(this.enemyBullets)) this.enemyBullets.length = 0;
+    if (Array.isArray(this.enemies)) {
+      for (const e of this.enemies) { if (e) { e._retired = true; e.dead = true; e.hp = 0; } }
+      this.enemies.length = 0;
+    }
+    for (const k of ['gunshipZones', 'lightningZones', 'cybermoteMines', 'bossLavaZones',
+                     '_voidRifts', '_ventBursts', 'airstrikeShips']) {
+      if (Array.isArray(this[k])) this[k].length = 0;
+    }
+    this.acidRain = null;
+    // XP: credited, not lost.
+    const shards = this.xpShards && this.xpShards.active;
+    if (Array.isArray(shards) && shards.length) {
+      let total = 0;
+      for (const sh of shards) { if (sh && Number.isFinite(sh.value)) total += sh.value; }
+      shards.length = 0;
+      if (total > 0 && this.player && this.player.gainXp) {
+        try { this.player.gainXp(total, this.floatingTexts); } catch (_) {}
+      }
+    }
+    // Ground pickups follow the player onto validated floor of the destination deck.
+    for (const k of ['healthPickups', 'manaPickups', 'armorPickups', 'tacticalCacheWeapons']) {
+      const list = this[k];
+      if (!Array.isArray(list) || !list.length) continue;
+      for (let i = 0; i < list.length; i++) {
+        const o = list[i]; if (!o) continue;
+        const p = mm && mm.findSafeSpawnPoint
+          ? mm.findSafeSpawnPoint({ x: dest.x + ((i % 5) - 2) * 90, y: dest.y + (Math.floor(i / 5) - 1) * 90,
+                                    radius: 14, mode: destMode, avoid: [], minDist: 0 })
+          : null;
+        const q = p || dest;
+        if (o.pos) { o.pos.x = q.x; o.pos.y = q.y; }
+        else { o.x = q.x; o.y = q.y; }
+      }
+    }
+    // Pets belong to the player, so they come along instead of being stranded.
+    for (const pet of (this._activePets || [])) {
+      if (pet && pet.pos) { pet.pos.x = dest.x; pet.pos.y = dest.y; }
+    }
+  }
+
+  /**
+   * Freeze the deck's boss in place instead of killing it or letting it follow. It leaves the
+   * update list, so it costs nothing and cannot act, but _activeTitan / megaBoss keep pointing at
+   * it: the Chaos Titan scheduler therefore does NOT spawn a replacement, and the player cannot
+   * come back to two of them.
+   */
+  _parkDeckBoss(fromDeck) {
+    const b = (this.megaBoss && this.megaBoss.hp > 0) ? this.megaBoss
+            : (this._activeTitan && this._activeTitan.hp > 0) ? this._activeTitan : null;
+    if (!b) return;
+    const i = (this.enemies || []).indexOf(b);
+    if (i >= 0) this.enemies.splice(i, 1);
+    if (!this._deckPark) this._deckPark = Object.create(null);
+    this._deckPark[fromDeck] = b;
+  }
+
+  /** Put a parked boss back on its feet when the player returns to its deck. */
+  _restoreDeckBoss(toDeck) {
+    const b = this._deckPark && this._deckPark[toDeck];
+    if (!b) return;
+    delete this._deckPark[toDeck];
+    if (b.hp > 0 && Array.isArray(this.enemies) && !this.enemies.includes(b)) this.enemies.push(b);
+  }
+
+  /**
+   * Move the run to another deck. Returns true only when the switch actually happened.
+   * opts.force is for system-owned moves (Boss Rush) and skips the player-facing gate rules,
+   * never the safe-landing validation.
+   */
+  _enterDeck(section, opts = {}) {
+    if (!(this.endless || this._chaosMode)) return false;
+    if (!this.player || !this.player.pos) return false;
+    const mm = this.mapManager;
+    const mode = this._chaosMode ? 'chaos' : 'endless';
+    const from = this._deck || 'main';
+    if (section === from) return false;
+    if (section !== 'main' && from !== 'main') return false;      // no direct UPPER <-> LOWER
+    if (!opts.force && this._deckTransitionBlocked()) return false;
+
+    let dest;
+    if (section === 'main') {
+      const r = this._deckReturn;
+      const gate = this._deckGateWorld(from === 'upper' ? 'upper' : 'lower');
+      dest = {
+        x: (r && Number.isFinite(r.x)) ? r.x : (gate ? gate.x : 0),
+        y: (r && Number.isFinite(r.y)) ? r.y : (gate ? gate.y : 0),
+      };
+    } else {
+      dest = mm && mm.deckAnchorWorld ? mm.deckAnchorWorld(mode, section) : null;
+    }
+    if (!dest || !Number.isFinite(dest.x) || !Number.isFinite(dest.y)) return false;
+
+    // SAFE LANDING — validated on the destination deck, with the player's real footprint plus
+    // slack, before the switch is committed.
+    const destMode = section === 'main' ? mode : (mode + ':' + section);
+    const R = PLAYER_RADIUS + 4;
+    if (mm && mm.isWalkableFootprint && !mm.isWalkableFootprint(dest.x, dest.y, R, destMode)) {
+      const near = mm.findNearestWalkablePoint ? mm.findNearestWalkablePoint(dest.x, dest.y, R, destMode) : null;
+      if (!near || !mm.isWalkableFootprint(near.x, near.y, R, destMode)) return false;
+      dest = near;
+    }
+
+    if (section !== 'main') this._deckReturn = { x: this.player.pos.x, y: this.player.pos.y };
+    this._parkDeckBoss(from);                 // BEFORE the sweep, which retires every enemy left
+    this._clearDeckTransients(dest, destMode);
+    this._deck = section;
+    this._restoreDeckBoss(section);
+    this.player.pos.x = dest.x;
+    this.player.pos.y = dest.y;
+    if (this.player.vel) { this.player.vel.x = 0; this.player.vel.y = 0; }
+    this._deckCd  = 1.6;
+    this._deckFxT = 0.55;
+    this._deckGateArmed = false;   // the arrival point IS a gate — walk off it before it fires
+    if (section === 'main') this._deckReturn = null;
+    try { this._updateCamera(); } catch (_) {}
+    try {
+      this.triggerAnnouncement(
+        section === 'upper' ? '▲ UPPER DECK' : section === 'lower' ? '▼ LOWER DECK' : '■ MAIN DECK',
+        '#39d6ff');
+    } catch (_) {}
+    return true;
+  }
+
+  /**
+   * Ordnance that leaves the active deck is dropped at the edge. Measured on the deck harness:
+   * enemy bullets fired near a deck rim were still alive 3-114px past it, sitting in the empty gap
+   * between decks. Nothing can be hit out there, and they can never reach another deck (24000px
+   * away), but "no projectile travels between decks" has to be structurally true, not merely
+   * improbable - and culling at the rim is also strictly less work than flying them into nowhere.
+   */
+  _cullOffDeckOrdnance() {
+    const active = this._deck || 'main';
+    const b = active === 'main' ? null
+      : (this.mapManager && this.mapManager.deckBounds
+          ? this.mapManager.deckBounds(this._chaosMode ? 'chaos' : 'endless', active) : null);
+    // ZERO margin. A 48px grace band still let bullets sit 12-29px outside the deck rect
+    // (measured), which is exactly the state this cull exists to make impossible. The masks carry
+    // a blocked border on every side, so nothing legitimate is ever created at the rim to lose.
+    const M = 0;
+    for (const list of [this.projectiles, this.enemyBullets]) {
+      if (!Array.isArray(list) || !list.length) continue;
+      let w = 0;
+      for (let i = 0; i < list.length; i++) {
+        const o = list[i];
+        const q = o && (o.pos || o);
+        const y = q && q.y, x = q && q.x;
+        let keep = true;
+        if (Number.isFinite(y)) {
+          if (b) {
+            keep = x >= b.x0 - M && x <= b.x1 + M && y >= b.y0 - M && y <= b.y1 + M;
+          } else {
+            keep = this.deckOf(y) === 'main';
+          }
+        }
+        if (keep) list[w++] = o;
+      }
+      list.length = w;
+    }
+  }
+
+  /** Per-frame gate proximity + cooldown. Cheap: at most two distance checks. */
+  _updateDeckTransitions(dt) {
+    if (!(this.endless || this._chaosMode)) return;
+    this._cullOffDeckOrdnance();
+    if (this._deckCd  > 0) this._deckCd  = Math.max(0, this._deckCd  - dt);
+    if (this._deckFxT > 0) this._deckFxT = Math.max(0, this._deckFxT - dt);
+    if (this._deckLockT > 0) this._deckLockT = Math.max(0, this._deckLockT - dt);
+    const p = this.player;
+    if (!p || !p.pos) return;
+    const GATE_R = 78;
+    // Collect the gates reachable from here: two on MAIN, one on a section deck.
+    const gates = [];
+    if ((this._deck || 'main') === 'main') {
+      for (const target of ['upper', 'lower']) {
+        const gw = this._deckGateWorld(target);
+        if (gw) gates.push({ x: gw.x, y: gw.y, target });
+      }
+    } else {
+      const a = this.mapManager && this.mapManager.deckAnchorWorld
+        ? this.mapManager.deckAnchorWorld(this._chaosMode ? 'chaos' : 'endless', this._deck) : null;
+      if (a) gates.push({ x: a.x, y: a.y, target: 'main' });
+    }
+    let onGate = null;
+    for (const gt of gates) {
+      if (Math.hypot(p.pos.x - gt.x, p.pos.y - gt.y) <= GATE_R) { onGate = gt; break; }
+    }
+    // RE-ARM: the player arrives standing ON the destination gate, so the gate only becomes live
+    // once they have stepped off it. A cooldown alone is not enough — it just delays the bounce.
+    if (!onGate) { this._deckGateArmed = true; return; }
+    if (!this._deckGateArmed) return;
+    if (this._deckTransitionBlocked()) return;
+    this._enterDeck(onGate.target);
+  }
+
   getWalkableBounds() {
     const mm = this.mapManager;
     if (this.endless || this._chaosMode) {
+      // DECK-AWARE (BATCH 1). One global rectangle is no longer the truth: a section deck is a
+      // finite arena with its own rect, and the per-cell mask does the fine work inside it. Every
+      // caller of this method — player clamp, pickups, Vaults, arena fitting, XpShards — follows
+      // the player onto the deck for free.
+      if (this._deck && this._deck !== 'main') {
+        const b = mm?.deckBounds?.(this._chaosMode ? 'chaos' : 'endless', this._deck);
+        return b ? { x0: b.x0, x1: b.x1, y0: b.y0, y1: b.y1 } : null;
+      }
       const img = this._chaosMode ? mm?._chaosDeckImg : mm?._cityImg;
       if (img && img.complete && img.naturalWidth > 0) {
         const S = mm.CITY_SCALE;
@@ -30900,6 +31227,10 @@ _drawLoreArchive(ctx) {
   // ποτέ hard terminal edge και το GRID LIMIT δεν μπορεί να συμβεί σε gameplay.
   _maybeRebaseWorld() {
     if (!(this.endless || this._chaosMode)) return;
+    // Section decks are FINITE and their origin is fixed, so there is no mirror period to rebase
+    // against and nothing to gain: shifting the world by P here would slide the player off the
+    // deck rect while the art stayed put.
+    if (this._deck && this._deck !== 'main') return;
     const mm = this.mapManager;
     const img = this._chaosMode ? mm?._chaosDeckImg : mm?._cityImg;
     if (!(img && img.complete && img.naturalWidth > 0)) return;
@@ -30999,6 +31330,22 @@ _drawLoreArchive(ctx) {
     // ── VIDEO-GROUNDED FRAMING (Maria 2026-07-19) ─────────────────────────────
     // Το viewport πρέπει να ζει πάνω στο map art — ποτέ μισή οθόνη void/διάστημα.
     if (this.endless || this._chaosMode) {
+      // SECTION DECK: a finite authored arena, so the camera is clamped inside its rect on BOTH
+      // axes. When the deck is smaller than the view on an axis it is centred, which is what
+      // keeps the black surround symmetric instead of showing one raw edge.
+      if (this._deck && this._deck !== 'main') {
+        const db = mm?.deckBounds?.(this._chaosMode ? 'chaos' : 'endless', this._deck);
+        if (db) {
+          const dw = db.x1 - db.x0, dh = db.y1 - db.y0;
+          this.camera.x = dw > this._viewW
+            ? Math.max(db.x0, Math.min(cx, db.x1 - this._viewW))
+            : db.x0 + (dw - this._viewW) / 2;
+          this.camera.y = dh > this._viewH
+            ? Math.max(db.y0, Math.min(cy, db.y1 - this._viewH))
+            : db.y0 + (dh - this._viewH) / 2;
+          return;
+        }
+      }
       // City/Chaos strip: κάθετα κλειδωμένη μέσα στο strip (0..th−viewH) ώστε να μη
       // φαίνεται ΠΟΤΕ το neutral band ή άκρη εικόνας· οριζόντια ελεύθερη (άπειρο tiling).
       const img = this._chaosMode ? mm?._chaosDeckImg : mm?._cityImg;
@@ -31248,6 +31595,7 @@ _drawLoreArchive(ctx) {
       chaosMode: this._chaosMode,
       endless: this.endless,
       gridBlackoutActive: this.gridBlackoutActive,
+      deck: this._deck || 'main',
     });
   }
 
@@ -31256,6 +31604,61 @@ _drawLoreArchive(ctx) {
   // flicker/glitch, and warning text.  Drawn in camera-space (world coords).
   // Performance: layered lines only — NO shadowBlur, NO per-pixel ops.
   // ═══════════════════════════════════════════════════════════════════════════
+  /**
+   * Deck gates. Procedural neon VFX in the game's existing cyber language — no new map art and
+   * no new asset. On MAIN both gates are drawn (they repeat with the mirror period, so the
+   * nearest instance of each is always the one shown); on a section deck the single return gate
+   * at the authored anchor is drawn. A locked gate (Boss Rush) reads red and does not pulse.
+   */
+  _drawDeckGates(ctx) {
+    if (!(this.endless || this._chaosMode)) return;
+    const p = this.player;
+    if (!p || !p.pos) return;
+    const locked = (this._deckLockT || 0) > 0 || !!this._bossRush;
+    const gates = [];
+    if ((this._deck || 'main') === 'main') {
+      const gu = this._deckGateWorld('upper'); if (gu) gates.push({ g: gu, up: true });
+      const gl = this._deckGateWorld('lower'); if (gl) gates.push({ g: gl, up: false });
+    } else {
+      const a = this.mapManager && this.mapManager.deckAnchorWorld
+        ? this.mapManager.deckAnchorWorld(this._chaosMode ? 'chaos' : 'endless', this._deck) : null;
+      if (a) gates.push({ g: a, up: this._deck === 'lower' });
+    }
+    if (!gates.length) return;
+    const t = this.timeAlive || 0;
+    ctx.save();
+    for (const { g, up } of gates) {
+      if (!Number.isFinite(g.x) || !Number.isFinite(g.y)) continue;
+      // Cull: only draw what the camera can actually see.
+      if (g.x < this.camera.x - 200 || g.x > this.camera.x + this._viewW + 200 ||
+          g.y < this.camera.y - 200 || g.y > this.camera.y + this._viewH + 200) continue;
+      const near = Math.hypot(p.pos.x - g.x, p.pos.y - g.y) <= 78;
+      const pulse = locked ? 0 : 0.5 + 0.5 * Math.sin(t * 3.4);
+      const col = locked ? '#ff3344' : (near ? '#7CFF4D' : '#39d6ff');
+      ctx.globalAlpha = 0.85;
+      ctx.strokeStyle = col;
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(g.x, g.y, 74, 0, Math.PI * 2); ctx.stroke();
+      ctx.globalAlpha = 0.28 + 0.30 * pulse;
+      ctx.beginPath(); ctx.arc(g.x, g.y, 52 + 10 * pulse, 0, Math.PI * 2); ctx.stroke();
+      ctx.globalAlpha = 0.18;
+      ctx.fillStyle = col;
+      ctx.beginPath(); ctx.arc(g.x, g.y, 46, 0, Math.PI * 2); ctx.fill();
+      // direction chevrons — up for the upper deck, down for the lower
+      ctx.globalAlpha = 0.9;
+      ctx.lineWidth = 4;
+      for (let i = 0; i < 2; i++) {
+        const oy = (up ? -1 : 1) * (10 + i * 16);
+        ctx.beginPath();
+        ctx.moveTo(g.x - 18, g.y + oy + (up ? 12 : -12));
+        ctx.lineTo(g.x,      g.y + oy);
+        ctx.lineTo(g.x + 18, g.y + oy + (up ? 12 : -12));
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+
   _drawWorldBoundaries(ctx) {
     // PRODUCTION KILL-SWITCH (Maria video QA 2026-07-19): τα cyan boundary walls και το
     // «CRITICAL ERROR: GRID LIMIT REACHED» αποδείχθηκαν μόνιμα ορατά στο πραγματικό

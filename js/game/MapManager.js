@@ -5,6 +5,7 @@
 // ───────────────────────────────────────────────────────────────────────────
 
 import { Vec2, WORLD_W, WORLD_H, DARK_BG, GRID_LINE } from '../constants.js';
+import { DECK_MASKS, deckMaskBits } from './DeckMasks.js?v=20260828000000';
 
 // ─── Biome Definitions ───────────────────────────────────────────────────────
 // Each biome defines its visual identity, hazards, enemy modifiers, and colors.
@@ -258,6 +259,32 @@ export class MapManager {
     this._shipImg.onerror = () => console.warn('[Map] act1 spaceship.png missing — Act 1 keeps the legacy map');
     this._shipImg.src = 'assets/maps/act1_spaceship/spaceship.png';
 
+    // ══ MULTI-DECK MAP (BATCH 1, 2026-07-28) ══════════════════════════════════════════════
+    // Each mode owns three decks that are SEPARATE PLACES, not one taller picture. MAIN is the
+    // infinite mirror-tiled strip above; UPPER and LOWER are the authored section assets, used
+    // exactly as drawn. Gradient NCC across every candidate seam peaked at 0.07-0.15 with flat
+    // peaks wandering ±100px, the widths are 2172/1672/2184 (250-256px of void beside the strip
+    // in any single rectangle), and the edges are authored boundaries - railings and window
+    // walls, not continuations. They were never drawn as one image; see DeckMasks.js.
+    //
+    // A deck lives in its own vertical band of the SAME world, separated by DECK_GAP. The gap is
+    // far wider than the camera rect (1280x720 world px at zoom 1) and than any projectile can
+    // travel in its lifetime, so nothing on one deck can see, reach or shoot anything on
+    // another - and deckAt() can name the owner of any world Y in constant time.
+    this.DECK_GAP    = 24000;
+    this._deckImgs   = Object.create(null);
+    this._deckModels = Object.create(null);
+    for (const _mode of ['endless', 'chaos']) {
+      for (const _section of ['upper', 'lower']) {
+        const _spec = DECK_MASKS[_mode] && DECK_MASKS[_mode][_section];
+        if (!_spec) continue;
+        const _img = new Image();
+        _img.onerror = () => console.warn('[Map] deck asset missing: ' + _spec.file);
+        _img.src = _spec.file;
+        this._deckImgs[_mode + ':' + _section] = _img;
+      }
+    }
+
     // Procedural background cache (for biomes without image assets)
     this._bgCanvas = null;
     this._bgCtx = null;
@@ -410,8 +437,114 @@ export class MapManager {
   // rows/columns (and the mirror tiling) happens here.
   // ═══════════════════════════════════════════════════════════════════════════
 
+  // ── DECK GEOMETRY ─────────────────────────────────────────────────────────────────────────
+  /** Deck ids of a mode, top to bottom. */
+  deckSections() { return ['upper', 'main', 'lower']; }
+
+  /** Height of a mode's MAIN strip in world px, or null before the art is ready. */
+  _mainDeckH(mode) {
+    const img = mode === 'chaos' ? this._chaosDeckImg : this._cityImg;
+    if (!img || !img.complete || !img.naturalWidth) return null;
+    return img.naturalHeight * this.CITY_SCALE;
+  }
+
+  /**
+   * World rectangle of one deck. MAIN is horizontally infinite (mirror tiling); the two section
+   * decks are FINITE authored arenas with their own hard edges - which is exactly what the art
+   * is, so no void padding is ever invented to make them match the strip.
+   */
+  deckBounds(mode, section) {
+    const S = this.CITY_SCALE;
+    const mainH = this._mainDeckH(mode);
+    if (mainH == null) return null;
+    if (!section || section === 'main') {
+      const rows = mode === 'chaos' ? this.CHAOS_WALK_ROWS : this.CITY_WALK_ROWS;
+      return { x0: -Infinity, x1: Infinity, y0: rows[0] * S, y1: rows[1] * S, deck: 'main' };
+    }
+    const spec = DECK_MASKS[mode] && DECK_MASKS[mode][section];
+    if (!spec) return null;
+    const w = spec.cols * spec.cell * S, h = spec.rows * spec.cell * S;
+    const oy = section === 'upper' ? -(this.DECK_GAP + h) : (mainH + this.DECK_GAP);
+    return { x0: 0, x1: w, y0: oy, y1: oy + h, deck: section };
+  }
+
+  /** Which deck owns this world Y. 'upper' | 'main' | 'lower'. */
+  deckAt(y, mode) {
+    if (!Number.isFinite(y)) return 'main';
+    if (this._mainDeckH(mode) == null) return 'main';
+    for (const s of ['upper', 'lower']) {
+      const b = this.deckBounds(mode, s);
+      if (b && y >= b.y0 && y <= b.y1) return s;
+    }
+    // MAIN owns everything else: Endless paints neutral pavement above and below its strip and
+    // the walk band is enforced separately, so an out-of-band Y is still MAIN's, not nobody's.
+    return 'main';
+  }
+
+  /** Mask-backed walk model for a section deck. Cached; NEVER re-derived from pixels. */
+  _deckModel(mode, section) {
+    const key = mode + ':' + section;
+    const hit = this._deckModels[key];
+    if (hit) return hit;
+    const spec = DECK_MASKS[mode] && DECK_MASKS[mode][section];
+    const b = this.deckBounds(mode, section);
+    if (!spec || !b) return null;
+    const bits = deckMaskBits(mode, section);
+    if (!bits) return null;
+    const model = {
+      kind: 'mask', mode, section, spec, bits,
+      cols: spec.cols, maskRows: spec.rows, cellW: spec.cell * this.CITY_SCALE,
+      ox: b.x0, oy: b.y0, x1: b.x1, y1: b.y1, scale: this.CITY_SCALE,
+    };
+    this._deckModels[key] = model;
+    return model;
+  }
+
+  /** Mask cell test. OUT OF RANGE IS BLOCKED - a section deck has real edges, not open sky. */
+  _maskCell(m, cx, cy) {
+    if (cx < 0 || cy < 0 || cx >= m.cols || cy >= m.maskRows) return false;
+    return m.bits[cy * m.cols + cx] === 1;
+  }
+  _maskPoint(m, x, y) {
+    return this._maskCell(m, Math.floor((x - m.ox) / m.cellW), Math.floor((y - m.oy) / m.cellW));
+  }
+
+  /** World centre of a deck's authored transition anchor (baked with 2 clear cells all round). */
+  deckAnchorWorld(mode, section) {
+    const m = this._deckModel(mode, section);
+    if (!m) return null;
+    const a = m.spec.anchorCell;
+    return { x: m.ox + (a[0] + 0.5) * m.cellW, y: m.oy + (a[1] + 0.5) * m.cellW };
+  }
+
+  /**
+   * Connected-component id of a world point. Every section deck is baked with EXACTLY ONE
+   * gameplay component - DeckMasks.js drops the rest rather than bridging them with geometry the
+   * artist never drew - so this returns 1 on floor and 0 off it. Callers ask through this name so
+   * that a future multi-component deck cannot silently start dropping objects into a pocket the
+   * player can never reach.
+   */
+  componentAt(x, y, mode = 'endless', section = 'main') {
+    if (!section || section === 'main') return this.isWalkablePoint(x, y, mode) ? 1 : 0;
+    const m = this._deckModel(mode, section);
+    if (!m) return 0;
+    return this._maskPoint(m, x, y) ? 1 : 0;
+  }
+
+  /** Deterministic in-model fallback Y: band centre for a strip, anchor row for a section deck. */
+  _modelFallbackY(m) {
+    if (!m) return 0;
+    if (m.kind === 'mask') return m.oy + (m.spec.anchorCell[1] + 0.5) * m.cellW;
+    return (m.rows[0] + m.rows[1]) * 0.5 * m.scale;
+  }
+
   /** @returns {{rows:number[], blocks:number[][], scale:number, tileW:number}|null} */
   _walkModel(mode) {
+    // 'endless:upper' / 'chaos:lower' - the deck rides on the MODE STRING, so every existing call
+    // site (player, enemies, pickups, spawns, hazards, arenas, Vaults) becomes deck-aware without
+    // a single one of them changing. There is still exactly one walkability authority.
+    const _c = typeof mode === 'string' ? mode.indexOf(':') : -1;
+    if (_c > 0) return this._deckModel(mode.slice(0, _c), mode.slice(_c + 1));
     const chaos = mode === 'chaos';
     const img   = chaos ? this._chaosDeckImg : this._cityImg;
     if (!img || !img.complete || !img.naturalWidth) return null;
@@ -439,6 +572,7 @@ export class MapManager {
     if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
     const m = this._walkModel(mode);
     if (!m) return true;                       // no art loaded yet — never block gameplay
+    if (m.kind === 'mask') return this._maskPoint(m, x, y);
     const srcY = y / m.scale;
     // Endless draws neutral pavement above and below the authored city strip.
     if (m.verticalFloor && (srcY < 0 || srcY > m.tileH)) return true;
@@ -461,6 +595,26 @@ export class MapManager {
     if (radius <= 0) return true;
     const m = this._walkModel(mode);
     if (!m) return true;
+    if (m.kind === 'mask') {
+      const rr = Math.max(0, radius);
+      // FULL FOOTPRINT, never the centre point alone: the whole circle must sit inside the deck
+      // rect, and every mask cell it touches must be floor. Exact circle-vs-cell-AABB, so a
+      // diagonal corner cannot slip between four sample points the way point sampling allows.
+      if (x - rr < m.ox || x + rr > m.x1 || y - rr < m.oy || y + rr > m.y1) return false;
+      const c0 = Math.floor((x - rr - m.ox) / m.cellW), c1 = Math.floor((x + rr - m.ox) / m.cellW);
+      const r0 = Math.floor((y - rr - m.oy) / m.cellW), r1 = Math.floor((y + rr - m.oy) / m.cellW);
+      for (let cy = r0; cy <= r1; cy++) {
+        for (let cx = c0; cx <= c1; cx++) {
+          if (this._maskCell(m, cx, cy)) continue;
+          const bx0 = m.ox + cx * m.cellW, by0 = m.oy + cy * m.cellW;
+          const qx = Math.max(bx0, Math.min(bx0 + m.cellW, x));
+          const qy = Math.max(by0, Math.min(by0 + m.cellW, y));
+          const dx = x - qx, dy = y - qy;
+          if (dx * dx + dy * dy < rr * rr) return false;
+        }
+      }
+      return true;
+    }
     const r = Math.max(0, radius);
     const scale = m.scale;
     if (m.verticalFloor) {
@@ -508,7 +662,7 @@ export class MapManager {
     // safe point must always receive one it can draw with.
     if (!Number.isFinite(x) || !Number.isSafeInteger(Math.trunc(x))) x = 0;
     if (!Number.isFinite(y) || !Number.isSafeInteger(Math.trunc(y))) {
-      y = m0 ? (m0.rows[0] + m0.rows[1]) * 0.5 * m0.scale : 0;
+      y = this._modelFallbackY(m0);
     }
     if (this.isWalkableFootprint(x, y, radius, mode)) return { x, y };
     const m = m0;
@@ -522,6 +676,13 @@ export class MapManager {
         if (this.isWalkableFootprint(nx, ny, radius, mode)) return { x: nx, y: ny };
       }
     }
+    // Deterministic in-model fallback. A section deck returns its AUTHORED ANCHOR, which is baked
+    // with two clear cells in every direction, so the fallback of a mask deck is provably legal
+    // rather than merely inside a band.
+    if (m.kind === 'mask') {
+      const a = this.deckAnchorWorld(m.mode, m.section);
+      if (a) return a;
+    }
     const midY = (m.rows[0] + m.rows[1]) * 0.5 * m.scale;   // deterministic in-band fallback
     return { x, y: midY };
   }
@@ -534,7 +695,7 @@ export class MapManager {
     const _m0 = this._walkModel(mode);
     if (!Number.isFinite(x) || !Number.isSafeInteger(Math.trunc(x))) x = 0;
     if (!Number.isFinite(y) || !Number.isSafeInteger(Math.trunc(y))) {
-      y = _m0 ? (_m0.rows[0] + _m0.rows[1]) * 0.5 * _m0.scale : 0;
+      y = this._modelFallbackY(_m0);
     }
     const ok = (px, py) => {
       if (!this.isWalkableFootprint(px, py, radius, mode)) return false;
@@ -710,6 +871,50 @@ export class MapManager {
   }
 
   /**
+   * Draw one section deck. FINITE arena: the asset is painted once at its own origin, no mirror
+   * tiling and no invented filler - the authored edges ARE the edges of the place. Everything
+   * outside is flat black so the boundary reads as the end of the deck, not as a missing tile.
+   * cropTop skips the white padding baked into chaos_mode_map_upper_section.png (53 rows top,
+   * 49 bottom), so the drawn image and the collision mask share ONE origin: the content box.
+   */
+  _drawDeckWorld(ctx, opts, m) {
+    const img = this._deckImgs[m.mode + ':' + m.section];
+    if (!img || !img.complete || !img.naturalWidth) return false;
+    const g = this.game, p = g && g.player;
+    if (!p) return false;
+    const vs = g._viewScale || 1;
+    const vw = 1280 / vs, vh = 720 / vs;
+    const cam = g.camera;
+    const camX = cam ? cam.x : (p.pos.x - vw / 2);
+    const camY = cam ? cam.y : (p.pos.y - vh / 2);
+    if (!Number.isFinite(camX) || !Number.isFinite(camY)) return false;
+    ctx.fillStyle = '#04040a';
+    ctx.fillRect(camX, camY, vw, vh);
+    const S = m.scale, spec = m.spec;
+    // Source-rect culling, same policy as the main strip: only the visible slice is blitted, and
+    // the destination is derived from the snapped source at the same scale, so the texel mapping
+    // is exact.
+    const L = Math.max(camX, m.ox), R = Math.min(camX + vw, m.x1);
+    const T = Math.max(camY, m.oy), B = Math.min(camY + vh, m.y1);
+    if (R > L && B > T) {
+      const sx0 = Math.max(0, Math.floor((L - m.ox) / S));
+      const sx1 = Math.min(spec.imgW, Math.ceil((R - m.ox) / S));
+      const sy0 = Math.max(0, Math.floor((T - m.oy) / S));
+      const sy1 = Math.min(spec.imgH, Math.ceil((B - m.oy) / S));
+      if (sx1 > sx0 && sy1 > sy0) {
+        const prev = ctx.imageSmoothingEnabled;
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(img, sx0, sy0 + spec.cropTop, sx1 - sx0, sy1 - sy0,
+                           m.ox + sx0 * S, m.oy + sy0 * S, (sx1 - sx0) * S, (sy1 - sy0) * S);
+        ctx.imageSmoothingEnabled = prev;
+      }
+    }
+    ctx.fillStyle = opts.gridBlackoutActive ? 'rgba(0,0,0,0.65)' : 'rgba(0,0,0,0.30)';
+    ctx.fillRect(camX, camY, vw, vh);
+    return true;
+  }
+
+  /**
    * Draw the world background. Drop-in replacement for Game._drawWorldBackground.
    * Phase 0: delegates to legacy image-based rendering.
    * Phase 1: will use chunk-based tile rendering per biome.
@@ -720,6 +925,12 @@ export class MapManager {
     if (this.chunkStreamingEnabled) {
       // Phase 11 (Maria brief): ENDLESS uses the CYBER MEGACITY deck, CHAOS uses Maria's
       // new chaos deck — each with its OWN identity, same seamless world-space system.
+      // MULTI-DECK: while the player stands on a section deck, THAT deck is the world. The main
+      // strip is not drawn at all - it is 24000 world px away and cannot be on screen.
+      if (opts.deck && opts.deck !== 'main') {
+        const _dm = this._deckModel(chaosMode ? 'chaos' : 'endless', opts.deck);
+        if (_dm && this._drawDeckWorld(ctx, opts, _dm)) return;
+      }
       const _deck = chaosMode ? this._chaosDeckImg : (endless ? this._cityImg : null);
       if (_deck && _deck.complete && _deck.naturalWidth > 0) {
         this._drawCityWorld(ctx, opts, _deck);
