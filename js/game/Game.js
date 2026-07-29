@@ -20,7 +20,7 @@ import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, dr
 import { SystemEventManager } from './Events.js?v=20260802000000';
 import { UpgradeUI }      from './UpgradeUI.js?v=20260810250000';
 import { weightedSample } from './Upgrades.js?v=20260722500000';
-import { BuildEngineRuntime } from './BuildEngine.js?v=20260829010000';   // BUILD ENGINE — always on (full migration 2026-07-18)
+import { BuildEngineRuntime } from './BuildEngine.js?v=20260829020000';   // BUILD ENGINE — always on (full migration 2026-07-18)
 import './BuildEngineChars1.js?v=20260810100000';   // P2.3a Taekwondo+CyberArm (side-effect register)
 import './BuildEngineChars2.js?v=20260810100000';   // P2.3b Brawler+Assassin (side-effect register)
 import './BuildEngineChars3.js?v=20260826000000';   // P2.4a Eddie+Dimi (side-effect register)
@@ -51,7 +51,8 @@ import { Protocol0 } from '../effects/protocol-0.js?v=20260705000000';
 import { LaserEyes } from '../effects/laser-eyes.js?v=20260818000000';
 import { MeteorRain } from '../effects/meteor-rain.js?v=20260712100000';
 import { NpcWalker } from './NpcWalker.js?v=20260724000000';
-import { MapManager, BIOME_ID, BIOME_DEFS, CHUNK_SIZE } from './MapManager.js?v=20260829010000';
+import { MapManager, BIOME_ID, BIOME_DEFS, CHUNK_SIZE } from './MapManager.js?v=20260829020000';
+import { AcidRain } from './AcidRain.js?v=20260829020000';   // BATCH 2 major event (2026-07-29)
 import { EventBus, EVENTS } from './EventBus.js?v=20260703990000';
 import { HostileProjectileDirector } from './HostileProjectileDirector.js?v=20260719200000';
 import { WaveDirector } from './WaveDirector.js?v=20260724000000';
@@ -545,6 +546,18 @@ const FINAL_BEAM_LEN     = 1600;  // px — beam length (spans the arena)
 // duration sits in the requested 0.15–0.25s band; intensity is derived from HP lost so a
 // big boss attack reads stronger than chip/contact damage. minGap stops sustained contact
 // from strobing; big discrete hits bypass the gap so they always register immediately.
+// ── AMBIENT CHAOS MEGA BOSS ELIGIBILITY FLOORS (BATCH 2, 2026-07-29) ──────────────────────
+// Run time, in seconds, before the first, second and third ambient Mega Boss may be considered.
+// Indexed by _chaosTitanIdx, so the floor that applies is the one belonging to the boss about to
+// be used - a boss whose turn was blocked cannot let the next one jump ahead of its own floor.
+// The fourth and later fall through to the plain cadence timer.
+const CHAOS_MEGA_BOSS_FLOORS = Object.freeze([480, 960, 1440]);
+
+// Ceiling on how long each major event may hold the exclusivity slot, in seconds. The Boss Rush
+// gets its real duration plus the outro; everything else gets an arrival window, because holding
+// the slot for the whole lifetime of a boss or an uncollected pickup starves every other event.
+const MAJOR_SLOT_HOLD = Object.freeze({ bossRush: 200, acidRain: 30, airstrike: 45, laserGrid: 45, vault: 45, megaBoss: 60 });
+
 const CONTACT_SRC = Object.freeze({ src: 'contact' });   // body-contact tag for the Ascension shared window
 const ROCKET_SRC  = Object.freeze({ src: 'rocket'  });   // airstrike / gunship tag for the same window
 const DMG_PULSE = { duration: 0.22, minGap: 0.40, bigHit: 3, base: 0.36, slope: 0.045 };
@@ -673,6 +686,9 @@ export class Game {
     this.events = new EventBus();
     this.mapManager = new MapManager({ game: this });
     this.mapManager.loadBackgrounds('20260702700000');
+    // BATCH 2: acid rain is a real major event with its own lifecycle, impacts, puddles and
+    // player damage. The old inline version was an enemy purge with a tint and nothing else.
+    this.acidRainSystem = new AcidRain(this);
     this.spawner = new EnemySpawner({ game: this, events: this.events });
     this.stateManager = new StateManager({ game: this, events: this.events });
     this.chunkManager = new ChunkManager({ game: this, events: this.events, seed: Date.now() });
@@ -1683,8 +1699,6 @@ export class Game {
 
     this._coreSpawnTimer = 0;         // rate-limit for matrix-deficit core replenishment
 
-    this.acidRain      = null;  // { timer, damageAccum } | null
-    this.acidRainTimer = 120;   // first acid rain at 2:00 (was 10:00 — too late to ever see)
 
     // Phase 1 (Maria brief 2026-07-18): physical Data-XP shard field — pooled, capped, merging
     this.xpShards = new XpShardSystem();
@@ -2352,9 +2366,8 @@ export class Game {
     this._lightningTimer   = 70;            // first LIGHTNING STORM ~1.2 min in, then every ~2 min
     // Maria 2026-07-18: ACID RAIN is now explicitly armed on Endless entry like every other
     // Endless event — before, it just inherited whatever mid-cycle remainder Act 1 left in
-    // acidRainTimer, so on Continue—Endless the first storm landed at an arbitrary moment.
-    this.acidRain          = null;
-    this.acidRainTimer     = 100;           // first ACID RAIN ~1:40 into Endless, then every ~1:40
+    // the acid rain schedule, so on Continue—Endless the first storm landed at an arbitrary moment.
+    this.acidRainSystem?.reset();           // BATCH 2: full clear - no storm, puddle or timer survives a run
     this._frozenSleetTimer = 150;           // first FROZEN SLEET ~2.5 min into Endless (Chaos arms its own 55s)
     this._whiteoutT  = 0;                    // WHITEOUT PROTOCOL — Glacial biome hazard (active seconds)
     this._whiteoutCd = 45;                   // first whiteout ~45s after entering Glacial territory
@@ -2392,6 +2405,9 @@ export class Game {
     this._ascRejected = 0;       // hits the window absorbed — telemetry only, never gameplay
     this._majorSalvoGapT = 0;    // shared lockout between major rocket events (airstrike/gunship)
     this._majorEventGraceT = 0;  // post-Boss-Rush pause so held schedulers do not fire together
+    this._activeMajorEvent = null;  // BATCH 2: the one slot every major event competes for
+    this._majorSlotT       = 0;     // bounded hold window for whoever owns the slot
+    this._majorEventLog    = [];    // QA-only trace of start/refuse/end decisions
     // ── ASCENSION BARRIER (Power Curve P1 / Batch 4) ─────────────────────────────────────────
     this._barVal      = 0;       // current barrier charge, HP-equivalent
     this._barMax      = 0;       // 30% of max HP, recomputed each tick so meta/HP cards apply
@@ -6371,7 +6387,7 @@ export class Game {
     if (this._bossWarnCd > 0) this._bossWarnCd -= dt;   // age the boss-warning throttle (Endless only)
     this._endlessBossTimer -= dt;
     if (this._endlessBossTimer > 0) return;
-    if (this.acidRain || this.acidRainTimer < 8) { this._endlessBossTimer = 8; return; }  // avoid overlap
+    if (this.acidRainSystem?.active) { this._endlessBossTimer = 8; return; }  // avoid overlap
     const slots = ['titan', 'annihilator', 'bloodfang', 'mech', 'doubleDemon', 'cyberSerpent', 'cyberDragon'];
     this._endlessBossIdx = (this._endlessBossIdx + 1) % slots.length;
     this._endlessRearmBoss(slots[this._endlessBossIdx]);
@@ -9011,7 +9027,6 @@ export class Game {
           // so this can never drift from WALKER_BASE_HP again).
           this._npcWalker.promoteMode('chaos');
         }
-        this.acidRainTimer      = 30;  // Phase 4: first acid rain 30 s into Chaos
         this._airstrikeTimer    = 15 * 2.2;  // Phase 4: first airstrike into Chaos, on the Batch-3 early ramp
         this._lightningTimer    = 20;  // Phase 4: first lightning storm 20 s into Chaos
         this._frozenSleetTimer  = 55;  // Phase 4: first Frozen Sleet Storm 55 s into Chaos
@@ -9229,7 +9244,15 @@ export class Game {
     this._updateEddieNoteClouds(dt);
     this._updateAbilityTimers(dt);
     this._updateQuantumOverhaul(dt);
-    this._updateAcidRain(dt);
+    // BATCH 2: the system owns its lifecycle; the arbiter owns whether it may open at all.
+    this.acidRainSystem.update(dt);
+    if (!this.acidRainSystem.active && this.acidRainSystem.canStart() && this.canStartMajorEvent('acidRain')) {
+      if (this.startMajorEvent('acidRain')) {
+        if (!this.acidRainSystem.requestStart()) this.endMajorEvent('acidRain');
+      }
+    } else if (!this.acidRainSystem.active && this._activeMajorEvent === 'acidRain') {
+      this.endMajorEvent('acidRain');            // the storm finished - free the slot
+    }
     this.xpShards?.update(dt, this);      // Phase 1: Data-XP shard field (magnet + merge + collect)
     this._updateFrozenSleet(dt);          // Chaos + Endless: Frozen Sleet Storm
     // ── WHITEOUT PROTOCOL — Glacial Expanse biome hazard (BIOME_DEFS.hazards, first one live) ──
@@ -9446,6 +9469,10 @@ export class Game {
     if (this._ascShareT > 0) this._ascShareT -= dt;
     if (this._majorSalvoGapT > 0) this._majorSalvoGapT -= dt;
     if (this._majorEventGraceT > 0) this._majorEventGraceT -= dt;
+    if (this._majorSlotT > 0 && this._activeMajorEvent) {
+      this._majorSlotT -= dt;
+      if (this._majorSlotT <= 0) this.endMajorEvent(this._activeMajorEvent);   // hold window over
+    }
     this._tickBarrier(dt);
     this._ascCheckTrigger();
 
@@ -9790,6 +9817,9 @@ export class Game {
   _maybeSpawnVaultDrop(pos) {
     if (!this.endless || this.vaultDrop) return;   // never two at once
     if (!this._vaultWindowOpen()) return;
+    // BATCH 2: the vault sequence owns the screen while it runs, so it takes the slot like any
+    // other major event and gives it back when the drop is gone.
+    if (!this.startMajorEvent('vault')) return;
     this._spawnVaultAt(pos);                       // boss kill = placement, not permission
   }
 
@@ -9856,11 +9886,13 @@ export class Game {
     if (v.timer <= 0) {
       this.floatingTexts.push(new FloatingText('VAULT LOST', v.pos.clone(), '#888888', 1.2));
       this.vaultDrop = null;
+      this.endMajorEvent('vault');   // the sequence is over - free the major-event slot
       return;
     }
     if (v.unlocked && distance(this.player.pos, v.pos) < 64) {
       this._grantVaultReward(v.pos);
       this.vaultDrop = null;
+      this.endMajorEvent('vault');   // the sequence is over - free the major-event slot
     }
   }
 
@@ -10570,16 +10602,41 @@ export class Game {
       } catch (_) {}
       this.triggerAnnouncement(this._activeTitan.enemyType.toUpperCase() + ' DESTROYED — REWARD RELIC UNLOCKED', '#7CFF4D');
       this._activeTitan = null;
+      this.endMajorEvent('megaBoss');            // the ambient slot frees when the boss is gone
     } else if (this._activeTitan) {
       this._activeTitan = null;   // despawned without dying — drop the tracker, pay nothing
+      this.endMajorEvent('megaBoss');
     }
     // Spawning and the cadence clock stay gated on the run still being live.
     if (this.gameOver || this.victory) return;
     // An ambient Mega Boss must never walk into a Boss Rush: the rush brings its own bosses and
     // the player is locked in with them.
     if (this._majorEventBlocked()) { this._chaosTitanTimer = this._holdMajorTimer(this._chaosTitanTimer, 8); return; }
+    // ── AMBIENT MEGA BOSS PACING (BATCH 2, 2026-07-29) ────────────────────────────────────
+    // The old scheduler armed at 40s and re-armed every 55s, so the first ambient Mega Boss
+    // arrived 40 seconds into Chaos and the run was three of them deep before the player had a
+    // build. They are now gated on run time: the first is not eligible before 08:00, the second
+    // before 16:00, the third before 24:00.
+    //
+    // These are ELIGIBILITY floors, not spawn times. The cadence timer still runs on top, so a
+    // Mega Boss arrives some seconds after its floor rather than exactly on it - and because the
+    // floor is checked against the index that is about to be used, a boss whose turn was blocked
+    // cannot let the next one jump the queue. The fourth and later use the plain cadence.
+    const _ambientFloor = CHAOS_MEGA_BOSS_FLOORS[this._chaosTitanIdx];
+    if (_ambientFloor != null && (this.timeAlive || 0) < _ambientFloor) {
+      this._chaosTitanTimer = Math.max(this._chaosTitanTimer, 5);
+      return;
+    }
     this._chaosTitanTimer -= dt;
     if (this._chaosTitanTimer > 0) return;
+    if (!this.startMajorEvent('megaBoss')) { this._chaosTitanTimer = this._holdMajorTimer(this._chaosTitanTimer, 8); return; }
+    // An ambient Mega Boss holds the major-event slot for its ARRIVAL, not for its whole life. The
+    // requirement is that nothing else opens on top of a fresh Mega Boss and that a Mega Boss never
+    // walks into a live event - both are satisfied by a bounded window. Holding it until the boss
+    // died starved every other scheduler: a Titan the player cannot kill quickly kept acid rain,
+    // airstrikes and vaults locked out for the rest of the run (measured: the Chaos storm never
+    // opened at all).
+
     this._chaosTitanTimer = 55;   // next Titan ~55s after the last one is cleared
     const titanNames = ['Giga-Core Overlord', 'Malware Leviathan', 'Quantum Void Emperor', 'Apocalypse Mech Tyrant'];
     const name = titanNames[this._chaosTitanIdx % titanNames.length];
@@ -10768,6 +10825,7 @@ export class Game {
         // existed. Offer the offset centre as the preferred spot, then validate the WHOLE disk.
         const _rp = this._placeArena(this.player.pos.x + Math.cos(_rushAng) * 260,
                                      this.player.pos.y + Math.sin(_rushAng) * 260, 700, 26);
+        if (!this.startMajorEvent('bossRush')) { this._bossRushCount--; this._bossRushWarned = false; return; }
         this._bossRush = {
           t: 0, dur: 180,
           cx: _rp.x, cy: _rp.y, r: _rp.radius,
@@ -10892,6 +10950,7 @@ export class Game {
           this.player._rushVulnMult = 0;
         }
         this._bossRush = null;
+        this.endMajorEvent('bossRush');
         this._majorEventGraceT = 6;   // let the arena clear before any global scheduler resumes
         // Exits unlock at 00:00 and the run goes back to the normal map flow. _enterDeck runs the
         // same safe-landing validation on the way home, and _deckReturn puts the player back
@@ -18530,12 +18589,16 @@ export class Game {
   }
 
   _updateAirstrike(dt) {
+    // BATCH 2: the strike holds the major-event slot while a ship is in the air, and frees it the
+    // moment the last one leaves. Without this the airstrike only READ the exclusivity gate and
+    // never contributed to it, so a storm or a Mega Boss could open on top of a live strike.
+    if (this._activeMajorEvent === 'airstrike' && this.airstrikeShips.length === 0) this.endMajorEvent('airstrike');
     // Cadence: first ~1.5 min, then ~every 2 min — but never more than 1 ship at a time.
     if (this._majorEventBlocked()) { this._airstrikeTimer = this._holdMajorTimer(this._airstrikeTimer, 6); }
     else this._airstrikeTimer -= dt;
     if (this._airstrikeTimer <= 0) {
       if (this._majorSalvoBlocked()) { this._airstrikeTimer = 6; }       // a major salvo just opened
-      else if (this.airstrikeShips.length < 1) {
+      else if (this.airstrikeShips.length < 1 && this.startMajorEvent('airstrike')) {
         this._airstrikeTimer = (this._chaosMode ? 60 : 120) * this._majorSalvoScale();
         this._majorSalvoArm();
         this._spawnAirstrike();
@@ -21116,7 +21179,7 @@ export class Game {
 
     // ── Screen-space block (HUD, overlays) ───────────────────────────────────
     this._drawWeatherTheater(ctx);         // shared cinematic ambience for ALL screen-wide events
-    this._drawAcidRain(ctx);
+    this.acidRainSystem.draw(ctx);
     this._drawFrozenSleet(ctx);            // Chaos Mode: Frozen Sleet Storm overlay
     // Chaos Mode: screen-edge rim glow + player-centred vignette (readability polish)
     if (this._chaosMode) { this._drawChaosRimGlow(ctx); this._drawChaosVignette(ctx); }
@@ -25973,67 +26036,6 @@ _drawLoreArchive(ctx) {
     ctx.restore();
   }
 
-  _updateAcidRain(dt) {
-    const ACID_DPS   = 10;    // damage per second to normal enemies (kills weak, hurts strong)
-    const MINI_VULN  = 0.7;   // mini-bosses take 70% — strong, meaningful chip
-    const MAIN_VULN  = 0.4;   // main boss takes 40% — reduced but still real
-
-    if (this.acidRain) {
-      const ar = this.acidRain;
-      ar.timer       -= dt;
-      ar.damageAccum += dt;
-
-      // Purge tick once per second. Player is never damaged. No per-hit floating numbers/sounds
-      // (avoids spam) — lethal hits route through _die for correct kill/score/XP attribution.
-      if (ar.damageAccum >= 1.0) {
-        ar.damageAccum -= 1.0;
-
-        // Enemies in the main array (reverse index so _die can splice safely)
-        for (let i = this.enemies.length - 1; i >= 0; i--) {
-          const e   = this.enemies[i];
-          const dmg = e.isMegaBoss ? ACID_DPS * MAIN_VULN
-                    : e.isBoss()   ? ACID_DPS * MINI_VULN
-                    : ACID_DPS;
-          e.hp -= dmg;
-          if (e.hp <= 0) { e.hp = 0; e._die(this); }
-        }
-
-        // Separate mini-boss objects take strong-but-survivable chip (killable over time)
-        for (const b of [this.titanBoss, this.annihilatorBoss, this.bloodfangBoss, this.cyberSerpentBoss, this.cyberDragonBoss]) {
-          if (b && b.hp > 0) b.hp = Math.max(0, b.hp - ACID_DPS * MINI_VULN);
-        }
-        if (this.doubleDemonsBoss && this.doubleDemonsBoss.hp > 0)
-          this.doubleDemonsBoss.hp = Math.max(0, this.doubleDemonsBoss.hp - ACID_DPS * MAIN_VULN);
-        if (this.titanBoss && this.titanBoss.hp <= 0)                   this._titanDie();
-        if (this.annihilatorBoss && this.annihilatorBoss.hp <= 0)       this._annihilatorDie();
-        if (this.bloodfangBoss && this.bloodfangBoss.hp <= 0)           this._bloodfangDie();
-        if (this.cyberSerpentBoss && this.cyberSerpentBoss.hp <= 0)     this._cyberSerpentDie();
-        if (this.cyberDragonBoss && this.cyberDragonBoss.hp <= 0)       this._cyberDragonDie();
-        if (this.doubleDemonsBoss && this.doubleDemonsBoss.hp <= 0)     this._doubleDemonsDie();
-      }
-
-      if (ar.timer <= 0) {
-        this.acidRain      = null;
-        this.acidRainTimer = this._chaosMode ? 60 : this.endless ? 100 : 138; // Chaos 60s / Endless ~1:40 / Act 1 2.5 min
-      }
-      return;
-    }
-
-    if (this._majorEventBlocked() && !this.acidRain) { this.acidRainTimer = this._holdMajorTimer(this.acidRainTimer, 6); return; }
-    this.acidRainTimer -= dt;
-    if (this.acidRainTimer <= 0) {
-      this.acidRain = { timer: 12, damageAccum: 0 };
-      this.triggerAnnouncement('INCOMING ACID RAIN', GREEN);
-      // World-space text pinned to the PLAYER — the old fixed (WIDTH/2, HEIGHT/2) point is a
-      // world coordinate near the origin, invisible from anywhere else on the Endless map.
-      this.floatingTexts.push(
-        new FloatingText('TOXIC RAIN PURGE', new Vec2(this.player.pos.x - 90, this.player.pos.y - 70), GREEN, 2.5)
-      );
-      this.audio?.playEventWarning();
-      this.audio?.playAcidRain?.();   // file SFX — throttled 4 s (one per activation)
-    }
-  }
-
   // ─── Boss-combat fairness layer (Boss Threat audit, Steps 1–2) ─────────────
   // Single gate for DISCRETE incoming hits (enemy/boss bullets, beams, shockwaves, and any
   // future boss attack). Enforces dash + Phoenix i-frames uniformly so a dash reliably dodges,
@@ -27523,7 +27525,6 @@ _drawLoreArchive(ctx) {
       this._dragonBolts        = [];
       this.doubleDemonsSpawned = false; this.doubleDemonsSpawnTimer = 0;
       this._endlessBossTimer   = 5;
-      this.acidRainTimer       = 30;
       this._airstrikeTimer     = 15;
       this._lightningTimer     = 20;
     } else {
@@ -27674,7 +27675,7 @@ _drawLoreArchive(ctx) {
     // Defer (but do NOT permanently skip) if a hazard would stack badly.
     // Maria 2026-07-18: the Boss Rush now also blocks the breach — the two big
     // containment events must never run on top of each other.
-    const hazardActive = !!(this.acidRain || this.airstrikeShips.length > 0 || this._bossRush);
+    const hazardActive = !!(this.acidRainSystem?.active || this.airstrikeShips.length > 0 || this._bossRush);
 
     if (!this._nullBreach1Done && endlessElapsed >= 300) {   // 5:00 Endless
       if (!hazardActive) {
@@ -30506,7 +30507,7 @@ _drawLoreArchive(ctx) {
     try {
       const au = this.audio;
       if (au) {
-        if (this.acidRain) au.forgeRainStart?.(); else au.forgeLoopStop?.('rain');
+        if (this.acidRainSystem?.active) au.forgeRainStart?.(); else au.forgeLoopStop?.('rain');
         if (this._lavaRainActive > 0 || (this.bossLavaZones && this.bossLavaZones.length)) au.forgeRumbleStart?.(); else au.forgeLoopStop?.('rumble');
         if (this._frozenSleet) au.forgeWindStart?.(); else au.forgeLoopStop?.('wind');
       }
@@ -30616,15 +30617,228 @@ _drawLoreArchive(ctx) {
     ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over'; ctx.shadowBlur = 0;
   }
 
-  _drawAcidRain(ctx) {
-    if (!this.acidRain) return;
-    // Cinematic pass: the toxic downpour now lives in WeatherTheater (3-depth procedural rain,
-    // splash rings, corrosion bubbles, dripping vignette). Damage logic untouched (_updateAcidRain).
-    const tIn = Math.min(1, (12 - this.acidRain.timer) / 1.2);            // storm ramps in
-    const tOut = Math.min(1, this.acidRain.timer / 1.2);                  // and drains out
-    try { this._weatherTheater.acid(ctx, performance.now() / 1000, WIDTH, HEIGHT, Math.min(tIn, tOut)); }
-    catch (err) { this._warnFx('[WeatherTheater acid]', err); }
+  _drawEndlessNexusBase(ctx, m) {
+    // Pick biome-specific sprite, or fallback for Neon District / Abyssal Trench
+    const img = this._nexusSpriteCache?.[m.biomeId] || this._nexusFallbackImage;
+    if (!(img && img.complete && img.naturalWidth > 0)) return;
+    const D = 128;   // readable but not gigantic
+    // Soft elliptical contact shadow — Nexus reads as planted in the world
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.38)';
+    ctx.beginPath();
+    ctx.ellipse(m.pos.x, m.pos.y + D * 0.30, D * 0.44, D * 0.16, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    ctx.drawImage(img, m.pos.x - D / 2, m.pos.y - D / 2, D, D);
   }
+
+  // ─── Chaos Mode: pylon system ───────────────────────────────────────────────
+  _updateChaosPylons(dt) {
+    const player = this.player;
+    if (!player || player.dead) return;
+
+    // Spawn cooldown
+    this._chaosPylonCd -= dt;
+    if (this._chaosPylonCd <= 0) {
+      this._chaosPylonCd = 4.5 + Math.random() * 3.5;
+      // Spawn 1-2 pylons near player, world-space, not on top of them
+      const count = Math.random() < 0.4 ? 2 : 1;
+      for (let i = 0; i < count; i++) {
+        const angle  = Math.random() * Math.PI * 2;
+        const dist   = 180 + Math.random() * 220;
+        const px     = Math.max(WORLD_BOUNDS.left + 40, Math.min(WORLD_BOUNDS.right - 40, player.pos.x + Math.cos(angle) * dist));
+        const py     = Math.max(WORLD_BOUNDS.top + 40, Math.min(WORLD_BOUNDS.bottom - 40, player.pos.y + Math.sin(angle) * dist));
+        // Danger pylons more common than buff pylons (2:1:1)
+        const roll   = Math.random();
+        const type   = roll < 0.50 ? 'danger' : roll < 0.75 ? 'shield' : 'heal';
+        this._chaosPylons.push({
+          pos: new Vec2(px, py), type, life: 6.0, maxLife: 6.0, radius: 28,
+          triggered: false,
+        });
+      }
+    }
+
+    // Update existing pylons
+    const TRIGGER_R = 48;
+    for (let i = this._chaosPylons.length - 1; i >= 0; i--) {
+      const p = this._chaosPylons[i];
+      p.life -= dt;
+      if (p.life <= 0) { this._chaosPylons.splice(i, 1); continue; }
+
+      if (!p.triggered) {
+        const d = player.pos.distanceTo(p.pos);
+        if (d < TRIGGER_R) {
+          p.triggered = true;
+          p.life      = Math.min(p.life, 0.6); // flash then remove
+          if (p.type === 'danger') {
+            this._damagePlayer(15, { color: '#ff4400', shake: 4 });
+            this._spawnFloatingText('CHAOS PULSE', p.pos.clone(), '#ff4400', 1.2);
+          } else if (p.type === 'shield') {
+            this.player.shieldTimer = Math.max(this.player.shieldTimer, 5.0);
+            this._chaosPylonBuff    = { type: 'shield', timer: 3.0 };
+            this._spawnFloatingText('SHIELD PULSE', p.pos.clone(), '#00eeff', 1.1);
+          } else { // heal
+            const heal = Math.round(this.player.maxHp * 0.08);
+            this.player.hp = Math.min(this.player.maxHp, this.player.hp + heal);
+            this._chaosPylonBuff = { type: 'heal', timer: 3.0 };
+            this._spawnFloatingText('+' + heal + ' HP', p.pos.clone(), '#44ff88', 1.1);
+          }
+        }
+      }
+    }
+
+    // Decay active buff indicator
+    if (this._chaosPylonBuff) {
+      this._chaosPylonBuff.timer -= dt;
+      if (this._chaosPylonBuff.timer <= 0) this._chaosPylonBuff = null;
+    }
+  }
+
+  _spawnFloatingText(text, pos, color, intensity) {
+    if (this.floatingTexts) {
+      this.floatingTexts.push(new FloatingText(text, pos, color, intensity));
+    }
+  }
+
+  _drawChaosPylons(ctx) {
+    const now = performance.now();
+    for (const p of this._chaosPylons) {
+      const lifeFrac = p.life / p.maxLife;
+      const pulse    = 0.7 + 0.3 * Math.sin(now * 0.005 + p.pos.x);
+      const alpha    = Math.min(1, lifeFrac * 3) * pulse;
+      const r        = p.radius;
+
+      // Colour by type
+      let core, glow;
+      if (p.type === 'danger') { core = '#ff4400'; glow = '#ff220088'; }
+      else if (p.type === 'shield') { core = '#00eeff'; glow = '#00bbff66'; }
+      else { core = '#44ff88'; glow = '#22cc6644'; }
+
+      ctx.save();
+      ctx.globalAlpha = alpha;
+
+      // Outer glow ring
+      const grad = ctx.createRadialGradient(p.pos.x, p.pos.y, r * 0.3, p.pos.x, p.pos.y, r * 1.6);
+      grad.addColorStop(0, glow);
+      grad.addColorStop(1, 'transparent');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(p.pos.x, p.pos.y, r * 1.6, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Hexagon body
+      ctx.strokeStyle = core;
+      ctx.lineWidth   = 2;
+      ctx.beginPath();
+      for (let s = 0; s < 6; s++) {
+        const a = (s / 6) * Math.PI * 2 - Math.PI / 6 + now * 0.0008;
+        s === 0 ? ctx.moveTo(p.pos.x + Math.cos(a) * r, p.pos.y + Math.sin(a) * r)
+                : ctx.lineTo(p.pos.x + Math.cos(a) * r, p.pos.y + Math.sin(a) * r);
+      }
+      ctx.closePath();
+      ctx.stroke();
+
+      // Inner core dot
+      ctx.fillStyle = core;
+      ctx.beginPath();
+      ctx.arc(p.pos.x, p.pos.y, 4 + 2 * pulse, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.restore();
+    }
+  }
+
+  _drawChaosDebris(ctx) {
+    // Procedural visual debris — stateless, seeded per position, world-space
+    // No collision, no gameplay effect
+    const now  = performance.now() * 0.001;
+    const seed = [137, 251, 373, 419, 523, 617, 709, 811];
+    ctx.save();
+    ctx.globalAlpha = 0.18;
+    for (let i = 0; i < 32; i++) {
+      const s  = seed[i % seed.length];
+      const bx = ((s * (i + 7) * 97) % WORLD_W);
+      const by = ((s * (i + 3) * 113) % WORLD_H);
+      const sz = 3 + (i % 5);
+      const a  = (now * 0.3 + i * 1.1) % (Math.PI * 2);
+      const ox = Math.cos(a) * 6;
+      const oy = Math.sin(a * 0.7) * 4;
+      ctx.fillStyle = i % 3 === 0 ? '#ff2d95' : i % 3 === 1 ? '#00eeff' : '#ff6600';
+      ctx.fillRect(bx + ox - sz / 2, by + oy - sz / 2, sz, sz);
+    }
+    ctx.restore();
+  }
+
+  _drawChaosRimGlow(ctx) {
+    // Screen-edge magenta rim — readability polish, purely visual
+    const W = this._canvas.width, H = this._canvas.height;
+    const t = performance.now();
+    const a = 0.18 + 0.07 * Math.sin(t * 0.0009);
+
+    // Top edge
+    let g = ctx.createLinearGradient(0, 0, 0, 60);
+    g.addColorStop(0, `rgba(180,0,120,${a})`); g.addColorStop(1, 'transparent');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, 60);
+
+    // Bottom edge
+    g = ctx.createLinearGradient(0, H - 60, 0, H);
+    g.addColorStop(0, 'transparent'); g.addColorStop(1, `rgba(180,0,120,${a})`);
+    ctx.fillStyle = g; ctx.fillRect(0, H - 60, W, 60);
+
+    // Left edge
+    g = ctx.createLinearGradient(0, 0, 60, 0);
+    g.addColorStop(0, `rgba(180,0,120,${a})`); g.addColorStop(1, 'transparent');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, 60, H);
+
+    // Right edge
+    g = ctx.createLinearGradient(W - 60, 0, W, 0);
+    g.addColorStop(0, 'transparent'); g.addColorStop(1, `rgba(180,0,120,${a})`);
+    ctx.fillStyle = g; ctx.fillRect(W - 60, 0, 60, H);
+  }
+
+  _drawChaosVignette(ctx) {
+    // Dark radial vignette centred on player — focuses attention, visual only
+    if (!this.player) return;
+    const W  = this._canvas.width, H = this._canvas.height;
+    // Convert player world-pos → screen-pos via camera
+    const cam = this.camera || { x: 0, y: 0 };
+    // P1-2c: the camera transform is scale(_viewScale) THEN translate(-cam.x,-cam.y), so a
+    // world-space delta must be multiplied by _viewScale to become a screen coordinate.
+    // Without it the vignette's transparent centre drifted below the bottom of the screen on
+    // the Chaos deck (measured y=740 instead of 629), putting the whole frame inside the dark
+    // ring — a second, softer moving darkness on top of the black veil.
+    const _vs = this._viewScale || 1;
+    const sx  = (this.player.pos.x - cam.x) * _vs;
+    const sy  = (this.player.pos.y - cam.y) * _vs;
+    const rad = Math.min(W, H) * 0.65;
+    const g   = ctx.createRadialGradient(sx, sy, rad * 0.3, sx, sy, rad);
+    g.addColorStop(0, 'transparent');
+    g.addColorStop(1, 'rgba(0,0,0,0.18)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  _drawWorldBackground(ctx) {
+    // Delegates to MapManager — supports biome-specific backgrounds + chunk streaming
+    this.mapManager.drawWorldBackground(ctx, {
+      chaosMode: this._chaosMode,
+      endless: this.endless,
+      gridBlackoutActive: this.gridBlackoutActive,
+      deck: this._deck || 'main',
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // WORLD BOUNDARY VFX — Cyberpunk neon grid wall with proximity fade-in,
+  // flicker/glitch, and warning text.  Drawn in camera-space (world coords).
+  // Performance: layered lines only — NO shadowBlur, NO per-pixel ops.
+  // ═══════════════════════════════════════════════════════════════════════════
+  /**
+   * Deck gates. Procedural neon VFX in the game's existing cyber language — no new map art and
+   * no new asset. On MAIN both gates are drawn (they repeat with the mirror period, so the
+   * nearest instance of each is always the one shown); on a section deck the single return gate
+   * at the authored anchor is drawn. A locked gate (Boss Rush) reads red and does not pulse.
+   */
 
   // Effective view scale / visible window. Endless zooms out slightly (ENDLESS_VIEW_SCALE);
   // Act 1 returns the exact globals (WIDTH/VIEW_SCALE === VIEW_W), so Act 1 is byte-identical.
@@ -30973,8 +31187,74 @@ _drawLoreArchive(ctx) {
   // Timers are NOT frozen while the rush runs; they are held one step from firing, so the moment
   // it ends nothing detonates all at once. _majorEventGraceT adds a short post-rush pause on top,
   // for the same reason.
+  // ══ CENTRAL MAJOR-EVENT ARBITER (BATCH 2, 2026-07-29) ══════════════════════════════════
+  // Before this there was no single owner: every event kept its own boolean and asked
+  // _majorEventBlocked(), which only knew about the Boss Rush. Two schedulers that became
+  // eligible in the same frame could therefore both start. One slot now exists, one event holds
+  // it, and every start goes through the same three calls.
+  //
+  // The slot is deliberately coarse. It is not a queue and not a priority system: whoever asks
+  // first in a frame wins, everybody else is refused and reschedules. That is enough, because a
+  // refused scheduler never loses its event - _holdMajorTimer parks its timer just above zero so
+  // it fires shortly after the slot frees, instead of firing the instant it does.
+
+  /** True when this event may open right now. Every decision is traced in _majorEventLog. */
+  canStartMajorEvent(type) {
+    if (!type) return false;
+    if (this.gameOver || this.victory || this.paused) return false;
+    // NO PREEMPTION, NOT EVEN FOR THE BOSS RUSH. Whoever holds the slot keeps it and everyone
+    // else waits their turn. A preempting rush was tried and removed: it is not what mutual
+    // exclusion means, and it is not needed either, because every hold is now bounded (see
+    // MAJOR_SLOT_HOLD) so a deferred rush waits seconds, not minutes. The rush defers by rolling
+    // its own counter back, so the schedule is delayed rather than skipped.
+    if (this._activeMajorEvent) return this._activeMajorEvent === type;
+    if ((this._majorEventGraceT || 0) > 0) return false;   // post-event buffer, never same-frame
+    if (this._bossRush && type !== 'bossRush') return false;
+    return true;
+  }
+
+  /** Claim the slot. Returns false and changes nothing when another event already holds it. */
+  startMajorEvent(type, hold) {
+    if (!this.canStartMajorEvent(type)) { this._logMajorEvent('refused', type); return false; }
+    if (this._activeMajorEvent === type) return true;
+    this._activeMajorEvent = type;
+    // EVERY HOLD IS BOUNDED. The slot exists to stop two events OPENING on top of each other, not
+    // to let one event own the run. Twice already an unbounded hold starved every other scheduler:
+    // an ambient Mega Boss the player could not kill quickly, and a Vault the player never walked
+    // to, each kept acid rain and the airstrikes locked out for minutes (measured: 170 seconds of
+    // vault, and a Chaos run with zero storms). The holder still releases explicitly when its event
+    // really ends; this is the ceiling, not the normal path.
+    this._majorSlotT = hold || MAJOR_SLOT_HOLD[type] || 60;
+    this._logMajorEvent('start', type);
+    return true;
+  }
+
+  /**
+   * Release the slot. The grace period is the whole point: several schedulers can be parked one
+   * step from firing while a three-minute Boss Rush runs, and without a buffer they would all
+   * detonate on the frame it ends. Nothing may start in that frame, and only one thing may start
+   * in the seconds after it.
+   */
+  endMajorEvent(type) {
+    if (this._activeMajorEvent !== type) return false;
+    this._activeMajorEvent = null;
+    this._majorSlotT = 0;
+    this._majorEventGraceT = Math.max(this._majorEventGraceT || 0, 6);
+    this._logMajorEvent('end', type);
+    return true;
+  }
+
+  /** QA-only ring buffer. Never rendered, never shown to a player. */
+  _logMajorEvent(kind, type) {
+    if (!this._majorEventLog) this._majorEventLog = [];
+    this._majorEventLog.push({ t: +(this.timeAlive || 0).toFixed(1), kind, type,
+                               active: this._activeMajorEvent, grace: +(this._majorEventGraceT || 0).toFixed(1) });
+    if (this._majorEventLog.length > 200) this._majorEventLog.shift();
+  }
+
   _majorEventBlocked() {
     if (this._bossRush) return true;
+    if (this._activeMajorEvent) return true;
     return (this._majorEventGraceT || 0) > 0;
   }
   // Holds a timer just above zero instead of letting it run down and stack up a burst.
@@ -31214,6 +31494,10 @@ _drawLoreArchive(ctx) {
     if (this.player.vel) { this.player.vel.x = 0; this.player.vel.y = 0; }
     this._deckCd  = 1.6;
     this._deckFxT = 0.55;
+    // BATCH 2: a storm keeps raining on the deck the player is now standing on, but nothing it
+    // left behind travels - every puddle, drop and particle belonged to the old deck's floor and
+    // would otherwise keep damaging from 24000px away.
+    try { this.acidRainSystem?.onDeckChanged(); } catch (_) {}
     this._deckGateArmed = false;   // the arrival point IS a gate — walk off it before it fires
     if (section === 'main') this._deckReturn = null;
     try { this._updateCamera(); } catch (_) {}
