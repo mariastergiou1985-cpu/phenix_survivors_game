@@ -248,9 +248,7 @@ export class BuildEngineRuntime {
       if (pa.next <= 0) { pa.next = 0.5;
         const near = this.game._spatialGrid ? this.game._spatialGrid.query(pa.x, pa.y, pa.radius + 60) : this.game.enemies;
         for (const e of near) { if (e && e.hp > 0 && Math.hypot(e.pos.x - pa.x, e.pos.y - pa.y) < pa.radius + e.radius)
-          this._dealDamage(pa.wid, e, pa.dps * 0.5, 0.7, false); }
-        // Burn patches tick destructible props under them at the same half-second cadence.
-        this.game._obstacles?.damageAt(pa.x, pa.y, pa.radius, pa.dps * 0.5); }
+          this._dealDamage(pa.wid, e, pa.dps * 0.5, 0.7, false); } }
       if (pa.t >= pa.dur) this.patches.splice(i, 1);
     }
   }
@@ -614,11 +612,6 @@ export class BuildEngineRuntime {
       const sh = this.shards[i];
       sh.t += dt; sh.x += sh.vx * dt; sh.y += sh.vy * dt;
       if (sh.t >= sh.life) { this.shards.splice(i, 1); continue; }
-      // Destructible props are solid for P2 shards: land, damage, consume (same as projectiles).
-      if (g._obstacles && g._obstacles.projectileHit(sh.x, sh.y, 10, sh.dmg,
-            sh.evolved ? { heavy: true } : null)) {
-        this.shards.splice(i, 1); continue;
-      }
       const near = g._spatialGrid ? g._spatialGrid.query(sh.x, sh.y, 70) : g.enemies;
       for (const e of near) {
         if (!e || e.hp <= 0 || sh.hit.has(e)) continue;
@@ -660,12 +653,6 @@ export class BuildEngineRuntime {
     for (let i = this.novas.length - 1; i >= 0; i--) {
       const n = this.novas[i];
       n.t += dt; n.r = 12 + (ch.novaRadius - 12) * Math.min(1, n.t / 0.45);
-      // The reactor nova breaks destructible props in its full ring — applied exactly ONCE
-      // per nova (at mid-expansion), never per frame.
-      if (!n._obstDone && n.t >= 0.25 && g._obstacles) {
-        n._obstDone = true;
-        g._obstacles.damageAt(n.x, n.y, ch.novaRadius, ch.novaDmg, { heavy: true });
-      }
       const near = g._spatialGrid ? g._spatialGrid.query(n.x, n.y, n.r + 80) : g.enemies;
       for (const e of near) {
         if (!e || e.hp <= 0 || n.hit.has(e)) continue;

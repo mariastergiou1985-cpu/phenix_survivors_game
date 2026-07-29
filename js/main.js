@@ -1,4 +1,4 @@
-import { Game } from './game/Game.js?v=20260829000000';
+import { Game } from './game/Game.js?v=20260829010000';
 import { AudioManager } from './audio/AudioManager.js?v=20260810250000';
 import { PlatformAchievements } from './platform/PlatformAchievements.js?v=20260712370000';
 // Steam build: replay any web-earned achievements to Steam on boot (no-op in browsers)
@@ -945,7 +945,6 @@ requestAnimationFrame(loop);
         cooldown: num(game._deckCd), gateArmed: !!game._deckGateArmed,
         lockT: num(game._deckLockT), blockedBy: game._deckTransitionBlocked ? game._deckTransitionBlocked() : null,
         parked: Object.keys(game._deckPark || {}),
-        gateMeta: JSON.parse(JSON.stringify(game._gateSrcMeta || {})),
       };
     },
 

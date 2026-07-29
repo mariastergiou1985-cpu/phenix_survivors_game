@@ -5,7 +5,7 @@
 // ───────────────────────────────────────────────────────────────────────────
 
 import { Vec2, WORLD_W, WORLD_H, DARK_BG, GRID_LINE } from '../constants.js';
-import { DECK_MASKS, deckMaskBits, MAIN_OBSTACLES, mainObstacleBits } from './DeckMasks.js?v=20260829000000';
+import { DECK_MASKS, deckMaskBits } from './DeckMasks.js?v=20260829010000';
 
 // ─── Biome Definitions ───────────────────────────────────────────────────────
 // Each biome defines its visual identity, hazards, enemy modifiers, and colors.
@@ -211,9 +211,6 @@ export class MapManager {
     this._cityImg.onerror = () => console.warn('[Map] cyber_megacity map missing — endless keeps the chunk world');
     this._cityImg.src = 'assets/maps/new_endless/cyber_megacity.png';
     this.CITY_SCALE = 3;   // 1672×519 → 5016×1557 world px per tile (integer — no distortion)
-    // Dynamic destructible-obstacle layer (2026-07-28). Registered by Game after construction;
-    // consulted ONLY on otherwise-blocked cells, so the base masks stay the immutable authority.
-    this._destructibles = null;
     // ── WALKABLE deck bands (video-grounded pass 2026-07-19) ──────────────────
     // Μετρημένα με row-luminance/saturation profiling πάνω στα assets (όχι εκτίμηση):
     // CITY (519 rows): 0-130 σκyline/νέον (sat>80) → background· 210-415 καθαρή plaza
@@ -444,8 +441,6 @@ export class MapManager {
   /** Deck ids of a mode, top to bottom. */
   deckSections() { return ['upper', 'main', 'lower']; }
 
-  /** Register the destructible-obstacle handler (DestructibleObstacles). */
-  setDestructibles(h) { this._destructibles = h || null; }
 
   /** Height of a mode's MAIN strip in world px, or null before the art is ready. */
   _mainDeckH(mode) {
@@ -509,24 +504,60 @@ export class MapManager {
   /** Mask cell test. OUT OF RANGE IS BLOCKED - a section deck has real edges, not open sky. */
   _maskCell(m, cx, cy) {
     if (cx < 0 || cy < 0 || cx >= m.cols || cy >= m.maskRows) return false;
-    if (m.bits[cy * m.cols + cx] === 1) return true;
-    // DYNAMIC OBSTACLE LAYER (2026-07-28): a blocked cell may belong to a destructible obstacle
-    // that has been destroyed this run. The base mask is never mutated; the overlay is consulted
-    // only on this otherwise-blocked path, so intact behaviour costs nothing.
-    return !!(this._destructibles &&
-              this._destructibles.isOpenSection(m.mode, m.section, cy * m.cols + cx));
+    return m.bits[cy * m.cols + cx] === 1;
   }
   _maskPoint(m, x, y) {
     return this._maskCell(m, Math.floor((x - m.ox) / m.cellW), Math.floor((y - m.oy) / m.cellW));
   }
 
-  /** World centre of a deck's authored transition anchor (baked with 2 clear cells all round). */
+  /**
+   * World position of a section deck's return elevator.
+   *
+   * CORNERS, NOT CENTRE (Maria, 2026-07-28), matching the main strip: the route to the UPPER deck
+   * lives on the left, the route to the LOWER deck on the right, so the UPPER deck returns from its
+   * BOTTOM-LEFT corner and the LOWER deck from its TOP-RIGHT. The corner is scanned inward on a
+   * diagonal until a cell with two clear cells in every direction is found, which keeps the player
+   * off the deck's edge and able to slide along it. Deterministic, cached, and it falls back to the
+   * baked anchorCell if a deck ever has no clear corner at all.
+   */
   deckAnchorWorld(mode, section) {
     const m = this._deckModel(mode, section);
     if (!m) return null;
-    const a = m.spec.anchorCell;
-    return { x: m.ox + (a[0] + 0.5) * m.cellW, y: m.oy + (a[1] + 0.5) * m.cellW };
+    const key = mode + ':' + section;
+    this._deckAnchorCache = this._deckAnchorCache || Object.create(null);
+    const hit = this._deckAnchorCache[key];
+    if (hit) return { x: hit.x, y: hit.y };
+    const fromRight = section === 'lower';                 // lower deck returns from the right
+    const fromBottom = section === 'upper';                // upper deck returns from the bottom
+    const clear = (cx, cy) => {
+      if (cx < 2 || cy < 2 || cx >= m.cols - 2 || cy >= m.maskRows - 2) return false;
+      for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+        if (!this._maskCell(m, cx + dx, cy + dy)) return false;
+      }
+      return true;
+    };
+    let found = null;
+    const INSET = 3;                                       // never sit right on the deck edge
+    for (let ring = INSET; ring < Math.max(m.cols, m.maskRows) && !found; ring++) {
+      for (let t = 0; t <= ring && !found; t++) {
+        const cx = fromRight ? m.cols - 1 - ring : ring;
+        const cy = fromBottom ? m.maskRows - 1 - t : t;
+        if (clear(cx, cy)) { found = [cx, cy]; break; }
+        const cx2 = fromRight ? m.cols - 1 - t : t;
+        const cy2 = fromBottom ? m.maskRows - 1 - ring : ring;
+        if (clear(cx2, cy2)) { found = [cx2, cy2]; break; }
+      }
+    }
+    const cell = found || m.spec.anchorCell;
+    const out = { x: m.ox + (cell[0] + 0.5) * m.cellW, y: m.oy + (cell[1] + 0.5) * m.cellW,
+                  cell, corner: (fromBottom ? 'bottom' : 'top') + '-' + (fromRight ? 'right' : 'left'),
+                  fallback: !found };
+    this._deckAnchorCache[key] = out;
+    return { x: out.x, y: out.y };
   }
+
+  /** Which corner each section deck's elevator resolved to, for QA reporting. */
+  deckAnchorMeta() { return this._deckAnchorCache || {}; }
 
   /**
    * Connected-component id of a world point. Every section deck is baked with EXACTLY ONE
@@ -569,24 +600,15 @@ export class MapManager {
       tileW:  img.naturalWidth,
       tileH:  img.naturalHeight,
       verticalFloor: !chaos,
-      // PROP COLLISION INSIDE THE BAND (2026-07-28). The rows still decide where the floor is;
-      // this only carves the solid props out of it. Coordinates are SOURCE-IMAGE cells, so the
-      // mirror tiling folds into them for free and a prop stands in the same spot of every tile.
-      obst: (() => {
-        const spec = MAIN_OBSTACLES[key];
-        const bits = spec ? mainObstacleBits(key) : null;
-        return (spec && bits) ? { bits, cell: spec.cell, cols: spec.cols, maskRows: spec.maskRows } : null;
-      })(),
     };
     this._walkModels[key] = model;
     return model;
   }
 
   /** True when this exact world point sits on real, unobstructed floor. */
-  // opts.ignoreProps asks the FLOOR question only: is this on the deck at all, ignoring the solid
-  // props standing on it. The arena validators want exactly that - a boss ring may contain a
-  // planter (the player walks around it), but it must never hang over the skyline or the void.
-  // Everything that MOVES keeps asking the full question and still collides with props.
+  // opts.ignoreProps is retained for call-site compatibility and is now a no-op: since the
+  // 2026-07-28 decision there ARE no internal props to ignore. Walkability is the deck's real
+  // floor minus only the outer void, so the floor question and the full question are the same one.
   isWalkablePoint(x, y, mode = 'endless', opts = null) {
     // NaN/Infinity GUARD (black-screen audit 2026-07-19): a non-finite coordinate reaching
     // these APIs used to travel straight through them and come back out as a NaN position.
@@ -606,18 +628,6 @@ export class MapManager {
     const srcX = (t < m.tileW) ? t : (period - t);
     for (const [x0, x1, y0, y1] of m.blocks) {
       if (srcX >= x0 && srcX <= x1 && srcY >= y0 && srcY <= y1) return false;
-    }
-    if (m.obst && !(opts && opts.ignoreProps)) {
-      const oc = Math.floor(srcX / m.obst.cell), orow = Math.floor(srcY / m.obst.cell);
-      if (oc >= 0 && orow >= 0 && oc < m.obst.cols && orow < m.obst.maskRows &&
-          m.obst.bits[orow * m.obst.cols + oc] === 1) {
-        // DYNAMIC OBSTACLE LAYER (2026-07-28): destroyed destructibles open their cells per TILE
-        // (the strip repeats; each repeat is its own entity). Consulted only on blocked cells.
-        const _tile = Math.floor(x / (m.tileW * m.scale));
-        if (!(this._destructibles &&
-              this._destructibles.isOpenMain(mode === 'chaos' ? 'chaos' : 'endless',
-                                             _tile, orow * m.obst.cols + oc))) return false;
-      }
     }
     return true;
   }
@@ -681,43 +691,6 @@ export class MapManager {
         const qy = Math.max(y0, Math.min(y1, y));
         const dx = x - qx, dy = y - qy;
         if (dx * dx + dy * dy <= r * r) return false;
-      }
-    }
-    if (m.obst && !(opts && opts.ignoreProps)) {
-      // Same exact circle-vs-AABB test as the authored rectangles above, one obstacle CELL at a
-      // time. The source-x range of the circle is folded per tile, mirrored where the tile is
-      // mirrored, so a prop blocks identically in every repeat of the infinite strip.
-      const cw   = m.obst.cell * scale;
-      const orow0 = Math.max(0, Math.floor((y - r) / cw));
-      const orow1 = Math.min(m.obst.maskRows - 1, Math.floor((y + r) / cw));
-      for (let tile = firstTile; tile <= lastTile && orow1 >= orow0; tile++) {
-        const mirrored = ((tile % 2) + 2) % 2 === 1;
-        const tx0 = tile * tileW;
-        const lo = Math.max(tx0, x - r), hi = Math.min(tx0 + tileW, x + r);
-        if (hi <= lo) continue;
-        const l0 = lo - tx0, l1 = hi - tx0;
-        const s0 = mirrored ? (tileW - l1) : l0;
-        const s1 = mirrored ? (tileW - l0) : l1;
-        const c0 = Math.max(0, Math.floor(s0 / cw));
-        const c1 = Math.min(m.obst.cols - 1, Math.floor(s1 / cw));
-        const _mkey = mode === 'chaos' ? 'chaos' : 'endless';
-        for (let cy = orow0; cy <= orow1; cy++) {
-          const rowOff = cy * m.obst.cols;
-          for (let cx = c0; cx <= c1; cx++) {
-            if (m.obst.bits[rowOff + cx] !== 1) continue;
-            // DYNAMIC OBSTACLE LAYER (2026-07-28): skip cells of destroyed destructibles per tile.
-            if (this._destructibles &&
-                this._destructibles.isOpenMain(_mkey, tile, rowOff + cx)) continue;
-            const sx0 = cx * cw, sx1 = sx0 + cw;
-            const wx0 = tx0 + (mirrored ? tileW - sx1 : sx0);
-            const wx1 = tx0 + (mirrored ? tileW - sx0 : sx1);
-            const wy0 = cy * cw, wy1 = wy0 + cw;
-            const qx = Math.max(wx0, Math.min(wx1, x));
-            const qy = Math.max(wy0, Math.min(wy1, y));
-            const dx = x - qx, dy = y - qy;
-            if (dx * dx + dy * dy <= r * r) return false;
-          }
-        }
       }
     }
     return true;
