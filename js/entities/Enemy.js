@@ -6,7 +6,7 @@ import { clamp, distance, safeNormalize, randomRange, randomChoice, drawBar } fr
 import { DataCore } from './DataCore.js?v=20260705040000';
 import { FloatingText } from './FloatingText.js';
 import { drawGlow } from '../game/Effects.js?v=20260713600000';
-import { PRIMARY_WEAPON_MAP, MINI_WEAPON_MAP, BOSS_WEAPON_MAP, getWeaponById } from '../game/EnemyWeaponCatalog.js?v=20260708300000';
+import { PRIMARY_WEAPON_MAP, MINI_WEAPON_MAP, BOSS_WEAPON_MAP, getWeaponById } from '../game/EnemyWeaponCatalog.js?v=20260829030000';
 
 // ─── Enemy body-sprite cache (each PNG loads & decodes ONCE, shared by all spawns) ──
 const _enemySpriteCache = new Map();
@@ -273,7 +273,10 @@ export class Enemy {
     if (dir.lengthSq() === 0) return;
     const ok = game.spawnEnemyBullet(this.pos.clone(), dir, this.bulletSpeed || 420, this.bulletDamage || 8,
       this.bulletRadius || 6, this.bulletColor,
-      { weaponSprite: this._weaponSprite || null, weaponSize: this._weaponSize || 0, cls: 'ranged' });
+      { weaponSprite: this._weaponSprite || null, weaponSize: this._weaponSize || 0, cls: 'ranged',
+        // BATCH 3: identify the shooter and its catalog weapon so Game.spawnEnemyBullet can route
+        // telegraphed shapes to EnemyWeaponSystem. Without a weaponDef nothing is routed.
+        owner: this, weaponDef: this._weaponDef || null });
     if (ok === false) { this._burstQ = 0; return; }   // §10: χωρίς token -> ακύρωση ΚΑΙ του burst
     game.audio?.playEnemyShoot();
   }
@@ -556,7 +559,10 @@ export class Enemy {
         this.bulletSpeed, this.bulletDamage, this.bulletRadius, this.bulletColor,
         { stun: 0, weaponSprite: this._weaponSprite || null, weaponSize: this._weaponSize || 0,
           behavior: (this.isElite && this._weaponDef?.behavior) || null,
-          cls: _cls, tokenPrepaid: true });
+          cls: _cls, tokenPrepaid: true,
+          // BATCH 3: route only the FIRST shot of a spread through the weapon system — a telegraphed
+          // slash or warned lance is one attack, not one per pellet. The rest keep the plain path.
+          owner: s === 0 ? this : null, weaponDef: s === 0 ? (this._weaponDef || null) : null });
     }
     game.audio?.playEnemyShoot();
   }

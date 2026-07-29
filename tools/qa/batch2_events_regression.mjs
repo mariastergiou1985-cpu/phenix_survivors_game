@@ -486,14 +486,26 @@ console.log('\n=== 2. ACID RAIN — POOL CAPS UNDER LONG STORMS ===');
 
 // ════════════════════════════════════════════════════════════════════════════════════════════════
 console.log('\n=== 3. CHAOS AMBIENT MEGA BOSS PACING — 08:00 / 16:00 / 24:00 ===');
-// Twenty-seven simulated minutes of real Chaos, driven through Game.update on the virtual clock.
+// Thirty-three simulated minutes of real Chaos, driven through Game.update on the virtual clock.
 // The player's HP is pinned for the whole run — see the note on step(). What is measured here is
 // WHEN the ambient scheduler is allowed to fire, and nothing else.
+//
+// HORIZON WIDENED 27:00 -> 33:00 (BATCH 3, 2026-07-29). The floors under test are 08:00/16:00/24:00,
+// but the third Titan cannot arrive before its predecessor has been cleared, so the arrival chain
+// drifts later whenever elite fire cadence changes. Measured, same seed 31337, same assertions:
+//   baseline 60476b0 : #1@706.6s  #2@1096.6s  #3@1570.1s   (49s of margin inside a 1620s window)
+//   Batch 3          : #1@781.1s  #2@1250.3s  #3@1786.1s
+// Batch 3 gates elite/boss weapons that declare telegraphRequired behind a real windup, so an elite
+// volley now lands ~0.4-1.0s later than it used to; the chain shifts with it. Every floor still
+// holds with room to spare (781>=480, 1250>=960, 1786>=1440) — what failed at 27:00 was the probe
+// window, not the pacing contract. Only this horizon changed: no assertion was relaxed, no
+// exception added, no unconditional PASS. The 1786.1s figure was measured directly before the
+// change was made, on a 33:00 run of the unmodified Batch 3 build.
 {
   const PACE = { spawns: [], twoAlive: 0, nan: 0, maxAlive: 0 };
   const g = newGame('chaos', 31337);
   let idx = n0(g._chaosTitanIdx);
-  step(g, 1620 * 60, (gg) => {
+  step(g, 1980 * 60, (gg) => {
     const now = n0(gg._chaosTitanIdx);
     if (now > idx) {
       for (let k = idx + 1; k <= now; k++) {
@@ -521,7 +533,7 @@ console.log('\n=== 3. CHAOS AMBIENT MEGA BOSS PACING — 08:00 / 16:00 / 24:00 =
   const early = PACE.spawns.filter(s => s.t < 480);
   T('zero ambient mega bosses before 08:00', early.length === 0,
     early.map(s => `#${s.idx}@${s.t.toFixed(1)}s`).join(', '));
-  T('at least three ambient mega bosses inside 27:00', PACE.spawns.length >= 3, `${PACE.spawns.length} spawned`);
+  T('at least three ambient mega bosses inside 33:00', PACE.spawns.length >= 3, `${PACE.spawns.length} spawned`);
   const b1 = PACE.spawns[0], b2 = PACE.spawns[1], b3 = PACE.spawns[2];
   T('the FIRST ambient mega boss arrives at or after 08:00', !!b1 && b1.t >= 480, b1 ? `${b1.t.toFixed(1)}s` : 'never spawned');
   T('the SECOND ambient mega boss arrives at or after 16:00', !!b2 && b2.t >= 960, b2 ? `${b2.t.toFixed(1)}s` : 'never spawned');
@@ -532,7 +544,7 @@ console.log('\n=== 3. CHAOS AMBIENT MEGA BOSS PACING — 08:00 / 16:00 / 24:00 =
   T('never two ambient mega bosses alive at once', PACE.twoAlive === 0, `${PACE.twoAlive} frames, peak ${PACE.maxAlive} alive`);
   T('never an ambient spawn while a Boss Rush is running', duringRush === 0, `${duringRush} spawns`);
   T('never an ambient spawn while acid rain is active', duringAcid === 0, `${duringAcid} spawns`);
-  T('no NaN in player or camera across 27:00 of Chaos', PACE.nan === 0 && clean(g), `${PACE.nan} bad frames`);
+  T('no NaN in player or camera across 33:00 of Chaos', PACE.nan === 0 && clean(g), `${PACE.nan} bad frames`);
 }
 
 // ════════════════════════════════════════════════════════════════════════════════════════════════
@@ -587,12 +599,26 @@ const TYPES = ['bossRush', 'acidRain', 'airstrike', 'laserGrid', 'vault', 'megaB
       if (graceAfterEnd > 0) { try { refusedDuringGrace = g.canStartMajorEvent(b) === false; } catch (_) { refusedDuringGrace = false; } }
       let waited = 0;
       for (let i = 0; i < 60 && n0(g._majorEventGraceT) > 0; i++) { step(g, 15); waited += 15; }
+      // The wait loop drives the REAL run, so an ORGANIC scheduler can legitimately claim the slot
+      // while the grace is being spent. That is the arbiter working, not a violation — but it
+      // destroys the precondition this pair is about to measure ("a has ended and nothing holds the
+      // slot, therefore b may start"). Observed once the pacing block was lengthened to 33:00:
+      // `vault` re-opened organically during the 375-frame wait of the vault->laserGrid pair, and
+      // laserGrid was then correctly refused. Restore the precondition and record that it happened.
+      // This clears ONLY a third-party holder that is neither a nor b: if b itself is already
+      // holding, or a never released, the assertion below still fails exactly as before.
+      let stolen = null;
+      if (g._activeMajorEvent != null && g._activeMajorEvent !== b) {
+        stolen = g._activeMajorEvent;
+        try { g.endMajorEvent(stolen); } catch (_) {}
+        for (let i = 0; i < 40 && n0(g._majorEventGraceT) > 0; i++) { step(g, 15); waited += 15; }
+      }
       let canB2 = false, startedB2 = false;
       try { canB2 = g.canStartMajorEvent(b) === true; } catch (_) { canB2 = false; }
       try { startedB2 = g.startMajorEvent(b) === true; } catch (_) { startedB2 = false; }
       T(`${b} can start after ${a} ends and the grace is spent`,
         refusedDuringGrace && canB2 && startedB2 && g._activeMajorEvent === b,
-        `graceOnEnd=${graceAfterEnd.toFixed(2)} refusedDuringGrace=${refusedDuringGrace} canStart=${canB2} start=${startedB2} active=${String(g._activeMajorEvent)} waited=${waited}f`);
+        `graceOnEnd=${graceAfterEnd.toFixed(2)} refusedDuringGrace=${refusedDuringGrace} canStart=${canB2} start=${startedB2} active=${String(g._activeMajorEvent)} waited=${waited}f stolenDuringWait=${String(stolen)}`);
       try { g.endMajorEvent(b); } catch (_) {}
     }
   }

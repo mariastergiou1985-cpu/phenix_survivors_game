@@ -13,7 +13,7 @@ import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260712090000';
 import { Player }         from '../entities/Player.js?v=20260810210000';
 import { XpShardSystem }  from '../entities/XpShards.js?v=20260724000000';   // Phase 1: physical Data-XP
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260706270000';
-import { Enemy, preloadAllWeaponSprites, selectHpBarEnemies } from '../entities/Enemy.js?v=20260810260000';
+import { Enemy, preloadAllWeaponSprites, selectHpBarEnemies } from '../entities/Enemy.js?v=20260829030000';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=20260711750000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260713600000';
@@ -53,6 +53,7 @@ import { MeteorRain } from '../effects/meteor-rain.js?v=20260712100000';
 import { NpcWalker } from './NpcWalker.js?v=20260724000000';
 import { MapManager, BIOME_ID, BIOME_DEFS, CHUNK_SIZE } from './MapManager.js?v=20260829020000';
 import { AcidRain } from './AcidRain.js?v=20260829020000';   // BATCH 2 major event (2026-07-29)
+import { EnemyWeaponSystem } from './EnemyWeaponSystem.js?v=20260829030000';   // BATCH 3 enemy weapon behaviours
 import { EventBus, EVENTS } from './EventBus.js?v=20260703990000';
 import { HostileProjectileDirector } from './HostileProjectileDirector.js?v=20260719200000';
 import { WaveDirector } from './WaveDirector.js?v=20260724000000';
@@ -689,6 +690,10 @@ export class Game {
     // BATCH 2: acid rain is a real major event with its own lifecycle, impacts, puddles and
     // player damage. The old inline version was an enemy purge with a tint and nothing else.
     this.acidRainSystem = new AcidRain(this);
+    // BATCH 3: telegraphed enemy weapon shapes (slash arc / slash wave / ground rupture) and the
+    // windup gate for catalog weapons that declare telegraphRequired. Projectiles, beams and novas
+    // stay on their existing paths — this system only owns what had no real telegraph before.
+    this.enemyWeapons = new EnemyWeaponSystem(this);
     this.spawner = new EnemySpawner({ game: this, events: this.events });
     this.stateManager = new StateManager({ game: this, events: this.events });
     this.chunkManager = new ChunkManager({ game: this, events: this.events, seed: Date.now() });
@@ -2277,6 +2282,14 @@ export class Game {
       this._postArenaChoice = false;
       this.gameState = 'start_menu';
       this.menuIndex = 0;
+      // BATCH 3: returning to the menu must not leave hostile ordnance alive. Nothing updates it in
+      // the menu and the next reset() would clear it, but a live beam/zone/volley across the menu
+      // boundary is an orphan by definition — drop it here, at the boundary that creates it.
+      try { this.enemyWeapons?.forceEnd(); } catch (_) {}
+      if (Array.isArray(this.enemyBullets))   this.enemyBullets.length   = 0;
+      if (Array.isArray(this._enemyBeams))    this._enemyBeams.length    = 0;
+      if (Array.isArray(this._enemyOrbZones)) this._enemyOrbZones.length = 0;
+      this.hostileDirector?.reset();
       this.gameOver  = false;
       this.victory   = false;
       this.paused    = false;
@@ -2368,6 +2381,7 @@ export class Game {
     // Endless event — before, it just inherited whatever mid-cycle remainder Act 1 left in
     // the acid rain schedule, so on Continue—Endless the first storm landed at an arbitrary moment.
     this.acidRainSystem?.reset();           // BATCH 2: full clear - no storm, puddle or timer survives a run
+    this.enemyWeapons?.reset();             // BATCH 3: no telegraph, strike, zone or pending volley survives a run
     this._frozenSleetTimer = 150;           // first FROZEN SLEET ~2.5 min into Endless (Chaos arms its own 55s)
     this._whiteoutT  = 0;                    // WHITEOUT PROTOCOL — Glacial biome hazard (active seconds)
     this._whiteoutCd = 45;                   // first whiteout ~45s after entering Glacial territory
@@ -9246,6 +9260,7 @@ export class Game {
     this._updateQuantumOverhaul(dt);
     // BATCH 2: the system owns its lifecycle; the arbiter owns whether it may open at all.
     this.acidRainSystem.update(dt);
+    this.enemyWeapons?.update(dt);   // BATCH 3: advance telegraphs, arm strikes, fire pending volleys
     if (!this.acidRainSystem.active && this.acidRainSystem.canStart() && this.canStartMajorEvent('acidRain')) {
       if (this.startMajorEvent('acidRain')) {
         if (!this.acidRainSystem.requestStart()) this.endMajorEvent('acidRain');
@@ -11477,6 +11492,36 @@ export class Game {
     // ═══ HORDE §10-§11: ΚΑΝΕΝΑ εχθρικό projectile χωρίς token από τον director ═══
     // Χωρίς token: η βολή ΑΚΥΡΩΝΕΤΑΙ εδώ (όχι queue/απόθεμα) — επιστρέφει false.
     const _cls = opts.cls || 'ranged';
+    // ── BATCH 3: enemy weapon routing gate ───────────────────────────────────────────────────
+    // Only reached when the caller identified its owner AND its catalog weapon (Enemy.js does).
+    // Two hand-overs, in order:
+    //   1. slash_arc / slash_wave / ground rupture  -> EnemyWeaponSystem owns the whole attack.
+    //   2. telegraphRequired projectiles            -> the shot is deferred behind a real warning,
+    //      then re-enters this method from the volley callback with the gate disarmed.
+    // Anything else falls straight through to the existing projectile path, unchanged.
+    // Scope: ELITES, BOSSES and MEGA BOSSES only. Trash shooters already carry their own amber
+    // ranged telegraph (Enemy.js §9) and deferring their pellets too would change global enemy DPS
+    // enough to move Chaos event pacing — measured: ambient Mega Boss #1 slipped 706s -> 781s and the
+    // third fell outside the 27:00 window. The requirement is that HEAVY, unavoidable hits are
+    // telegraphed; that is exactly the elite/boss tier.
+    const _b3Tier = opts.cls === 'elite' || opts.cls === 'boss'
+                 || !!(opts.owner && (opts.owner.isElite || opts.owner.isMegaBoss || opts.owner.isBoss?.()));
+    if (_b3Tier && opts.owner && opts.weaponDef && this.enemyWeapons && !opts._b3Routed) {
+      const _wd = opts.weaponDef;
+      const _tgt = this.player?.pos || null;
+      // The caller may have prepaid its token before this call (Enemy.js multishot does). If the
+      // attack is handed over, that token must go back or it leaks until the 4s reconciliation.
+      const _refund = () => { if (opts.tokenPrepaid) this.hostileDirector?.release(_cls, 1); };
+      try {
+        if (this.enemyWeapons.requestAttack(opts.owner, _wd, _tgt)) { _refund(); return true; }
+        if (_wd.telegraphRequired && (_wd.telegraphTime || 0) > 0) {
+          const _o2 = Object.assign({}, opts, { _b3Routed: true, tokenPrepaid: false, owner: null, weaponDef: null });
+          const _p = pos, _d = dir, _s = speed, _dm = damage, _r = radius, _c = color;
+          if (this.enemyWeapons.requestTelegraphedVolley(opts.owner, _wd, _tgt,
+                () => { this.spawnEnemyBullet(_p, _d, _s, _dm, _r, _c, _o2); })) { _refund(); return true; }
+        }
+      } catch (_) { /* routing must never break the base projectile path */ }
+    }
     const _hd = (this.hostileDirector ||= new HostileProjectileDirector());
     if (this.enemyBullets.length === 0 && _hd.counts.ranged + _hd.counts.elite + _hd.counts.boss > 0)
       _hd.reset();   // self-heal: μετά από run reset/clear δεν μένουν ορφανά tokens
@@ -20562,6 +20607,7 @@ export class Game {
     this._drawVentBursts(ctx);      // INDUSTRIAL vent bursts — same ground-marker layer
     this._drawEddieNoteClouds(ctx); // Eddie dash NOTE CLOUDS — same ground-marker layer (below player)
     this._drawEnemyBeams(ctx);      // elite telegraph/fire beams — above ground markers
+    this.enemyWeapons?.draw(ctx);   // BATCH 3: enemy weapon telegraphs + slash sweeps (world space)
     this._drawBossTrails(ctx);
     // Chaos Mode ambient particle field (world-space, additive blend, bounded)
     if (this._chaosMode) this._chaosAmbient.draw(ctx);
@@ -31357,8 +31403,13 @@ _drawLoreArchive(ctx) {
       for (const e of this.enemies) { if (e) { e._retired = true; e.dead = true; e.hp = 0; } }
       this.enemies.length = 0;
     }
+    // BATCH 3: _enemyBeams and _enemyOrbZones were missing from this list. Both are player-damaging
+    // and both survived a deck change, so an orb zone left on the old deck kept calling _damagePlayer
+    // from 24000px away until it self-expired. "No hostile ordnance travels between decks" has to be
+    // structurally true, not merely short-lived.
     for (const k of ['gunshipZones', 'lightningZones', 'cybermoteMines', 'bossLavaZones',
-                     '_voidRifts', '_ventBursts', 'airstrikeShips']) {
+                     '_voidRifts', '_ventBursts', 'airstrikeShips',
+                     '_enemyBeams', '_enemyOrbZones']) {
       if (Array.isArray(this[k])) this[k].length = 0;
     }
     this.acidRain = null;
@@ -31498,6 +31549,9 @@ _drawLoreArchive(ctx) {
     // left behind travels - every puddle, drop and particle belonged to the old deck's floor and
     // would otherwise keep damaging from 24000px away.
     try { this.acidRainSystem?.onDeckChanged(); } catch (_) {}
+    // BATCH 3: same rule for enemy weapon telegraphs, sweeps and pending volleys — they belong to the
+    // floor the player just left, and a pending volley must never fire across a 24000px deck gap.
+    try { this.enemyWeapons?.onDeckChanged(); } catch (_) {}
     this._deckGateArmed = false;   // the arrival point IS a gate — walk off it before it fires
     if (section === 'main') this._deckReturn = null;
     try { this._updateCamera(); } catch (_) {}
