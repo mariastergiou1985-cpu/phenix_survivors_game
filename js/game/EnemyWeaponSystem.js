@@ -28,6 +28,15 @@
 //   `armed` is set in exactly one place (_armStrike). A weapon that declares telegraphTime 0 is
 //   floored to MIN_TELEGRAPH_S rather than allowed to hit on the spawn frame.
 //
+// THE SECOND RULE — TOKEN ACCOUNTING:
+//   Every hostile-budget token this module takes is stored on the pool object that caused it to be
+//   taken (`tok`), and there is no statement between taking it and pushing that object into a pool.
+//   So the set of tokens held is always exactly enumerable from this.strikes / this.zones /
+//   this.volleys / this.telegraphs, and tokenCounts() derives the answer from them rather than from
+//   a counter that could drift. Game's periodic budget reconciliation MUST add tokenCounts() to its
+//   bullet tally (HostileProjectileDirector.reconcile) — a rebuild from bullets alone zeroes these
+//   tokens while they are still held.
+//
 // Player damage goes through game._damagePlayer() and nowhere else. This file never writes
 // player.hp, never writes any enemy field, and never mutates the weapon definition it is handed.
 // Every field of the weapon def is read defensively (weapon?.x || fallback) because the catalog
@@ -281,6 +290,10 @@ export class EnemyWeaponSystem {
       pal: isDrop ? PAL.zone : PAL.line,
       seed: (this._startedCount * 41 + this.volleys.length * 19) % 997,
       radius: 0, len: 0,
+      // A volley holds NO token: the caller refunds whatever it prepaid when the volley is taken,
+      // and the deferred shot buys its own token when it finally fires. The field is here so the
+      // pool is enumerated and drained exactly like the others.
+      tok: null,
     };
 
     if (isDrop) {
@@ -319,9 +332,51 @@ export class EnemyWeaponSystem {
     this._cooldowns = new WeakMap();
   }
 
+  /**
+   * DIRECTOR TOKENS CURRENTLY HELD BY THIS SYSTEM, per class.
+   *
+   * The authoritative answer to "how much of the hostile budget is this module sitting on", and the
+   * half of the shared budget that has no bullet behind it. Game's 4 s reconciliation MUST add this
+   * to its bullet tally before rebuilding the budget (see HostileProjectileDirector.reconcile):
+   * counting bullets alone zeroes the tokens held here while they are still held, and the later
+   * release then clamps at 0, leaving the shared budget UNDER-counted by up to MAX_STRIKES.
+   *
+   * Derived from live state on every call — it walks the four pools and counts the objects that
+   * really hold a token — so it cannot drift from what was actually taken the way a counter can.
+   * Every pool is bounded (12/16/10/10, halved on mobile), so this is O(<=48) integer work and is
+   * safe to call every frame. Never throws, never returns a non-finite or negative value, returns
+   * all zeros when nothing is held.
+   *
+   * PURELY A READ. It does not expire, disarm, cancel or otherwise touch anything.
+   */
+  tokenCounts() {
+    const out = { ranged: 0, elite: 0, boss: 0 };
+    try {
+      this._countHeld(this.strikes, out);
+      this._countHeld(this.zones, out);
+      this._countHeld(this.volleys, out);
+      this._countHeld(this.telegraphs, out);
+    } catch (_) { /* an unreadable pool reports as "holding nothing", never as a throw */ }
+    return out;
+  }
+
+  /**
+   * One pool's contribution. An object holds AT MOST ONE token and names its class in `tok`, which
+   * is cleared the instant the token goes back (_giveBackToken), so an object can be counted once
+   * per token it actually took and never after it has returned it.
+   */
+  _countHeld(pool, out) {
+    if (!Array.isArray(pool)) return;
+    for (let i = 0; i < pool.length; i++) {
+      const tok = pool[i] && pool[i].tok;
+      if (tok === 'ranged' || tok === 'elite' || tok === 'boss') out[tok]++;
+    }
+  }
+
   /** Plain snapshot for QA overlays and regression harnesses. No live references escape. */
   stats() {
     return {
+      heldTokens: this.tokenCounts(),
       telegraphs: this.telegraphs.length,
       strikes:    this.strikes.length,
       zones:      this.zones.length,
@@ -432,16 +487,20 @@ export class EnemyWeaponSystem {
    * Projectile-like: something physically travels across the arena and occupies hostile screen
    * budget, so this one DOES take a token from the hostile projectile director and returns it the
    * moment the wave ends, however it ends.
+   *
+   * The token is taken as the LAST step before the push, so there is no statement between "the
+   * director handed a token over" and "the object that holds it is in an enumerable pool". That is
+   * what makes tokenCounts() a complete answer rather than an approximation.
    */
   _startSlashWave(enemy, wd, origin, angle) {
     if (this.strikes.length >= MAX_STRIKES) { this._refusedCap++; return false; }
 
-    const cls = this._tokenClass(enemy);
-    if (!this._takeToken(cls)) { this._refusedToken++; return false; }
-
     const range = this._num(wd.range, DEF_WAVE_RANGE, 40, 1400);
     const speed = this._num(wd.projectileSpeed ?? wd.speed, DEF_WAVE_SPEED, 60, 1400) * SLASH_SPEED_MULT;
     const halfW = this._num(wd.impactRadius, DEF_WAVE_HALF_W, 8, 220);
+
+    const grant = this._takeToken(this._tokenClass(enemy));
+    if (!grant.ok) { this._refusedToken++; return false; }
 
     this.strikes.push({
       kind: 'wave',
@@ -457,7 +516,7 @@ export class EnemyWeaponSystem {
       pal: PAL.wave,
       sprite: this._sprite(wd),
       seed: (this._startedCount * 53 + this.strikes.length * 7) % 997,
-      tok: cls,
+      tok: grant.tok,            // the class of the token really held, or null when none was taken
     });
     return true;
   }
@@ -519,6 +578,10 @@ export class EnemyWeaponSystem {
       life: Math.min(LINE_LIFE_S, Math.max(0.2, this._num(wd.telegraphTime, LINE_LIFE_S, 0, MAX_TELEGRAPH_S))),
       pal: PAL.line,
       seed: (this._startedCount * 17 + this.telegraphs.length * 5) % 997,
+      // Cosmetic: holds nothing today. The field exists so this pool is enumerated by
+      // tokenCounts() and drained by the same removal helpers as every other pool — if a warning
+      // line is ever made to cost budget, the accounting already covers it.
+      tok: null,
     });
     return true;
   }
@@ -532,7 +595,7 @@ export class EnemyWeaponSystem {
       // Warning lines belong to the shot their owner was about to take: if the owner dies the
       // shot never happens and the line is a lie, so it goes with them.
       if (tg.t >= tg.life || !this._ownerAlive(tg.owner)) {
-        this.telegraphs.splice(i, 1);
+        this._dropTelegraph(i);
       }
     }
   }
@@ -609,8 +672,8 @@ export class EnemyWeaponSystem {
       const v = this.volleys[i];
 
       if (!this._ownerAlive(v.owner)) {
-        this.volleys.splice(i, 1);
         v.fn = null;                              // the callback can never run after this point
+        this._dropVolley(i);                      // returns the token too, if this pool ever holds one
         this._droppedOwner++;
         this._volleysCancelled++;
         continue;
@@ -631,7 +694,10 @@ export class EnemyWeaponSystem {
       const fn = v.fn;
       v.fired = true;
       v.fn = null;
-      this.volleys.splice(i, 1);
+      // Retired (and its token, if any, handed back) BEFORE the callback runs: the shot the
+      // callback takes buys its own token, so this module must not still be counted as holding one
+      // while that request is being served.
+      this._dropVolley(i);
       if (typeof fn !== 'function') continue;
       try {
         fn();
@@ -743,6 +809,23 @@ export class EnemyWeaponSystem {
     this.zones.splice(i, 1);
   }
 
+  _dropTelegraph(i) {
+    const tg = this.telegraphs[i];
+    if (tg) this._giveBackToken(tg);
+    this.telegraphs.splice(i, 1);
+  }
+
+  _dropVolley(i) {
+    const v = this.volleys[i];
+    if (v) this._giveBackToken(v);
+    this.volleys.splice(i, 1);
+  }
+
+  /**
+   * Empties all four pools and returns EVERY token held by any of them. Because tokenCounts() is
+   * derived from these same arrays, it reads all-zero the instant this returns — reset(),
+   * forceEnd() and onDeckChanged() therefore leave no stale token and no stale count behind.
+   */
   _releaseAll() {
     if (Array.isArray(this.strikes)) {
       for (const s of this.strikes) this._giveBackToken(s);
@@ -752,13 +835,16 @@ export class EnemyWeaponSystem {
       for (const z of this.zones) this._giveBackToken(z);
       this.zones.length = 0;
     } else this.zones = [];
-    if (Array.isArray(this.telegraphs)) this.telegraphs.length = 0;
-    else this.telegraphs = [];
+    if (Array.isArray(this.telegraphs)) {
+      for (const tg of this.telegraphs) this._giveBackToken(tg);
+      this.telegraphs.length = 0;
+    } else this.telegraphs = [];
     // A pending volley is CANCELLED by every clear path: the callback reference is dropped before
     // the array is emptied, so nothing that survives this call can still reach fireFn.
     if (Array.isArray(this.volleys)) {
       for (const v of this.volleys) {
         if (v && !v.fired) { v.fn = null; this._volleysCancelled = (this._volleysCancelled || 0) + 1; }
+        this._giveBackToken(v);
       }
       this.volleys.length = 0;
     } else this.volleys = [];
@@ -776,12 +862,29 @@ export class EnemyWeaponSystem {
     return 'ranged';
   }
 
+  /**
+   * Ask the director for exactly one token.
+   *
+   * Returns { ok, tok }:
+   *   ok  — may the attack proceed at all
+   *   tok — the class of a token this system now HOLDS and must give back, or null when the attack
+   *         proceeds while holding NOTHING (no director wired, or the request threw so whether a
+   *         token was actually taken is unknowable).
+   *
+   * Storing null rather than the class in the "no director" case is what keeps tokenCounts()
+   * honest: it reports only tokens a director really handed over, so it can never invent budget
+   * that the director does not believe it gave out, and _giveBackToken can never release one that
+   * was never taken (which would clamp at 0 and steal budget from another holder).
+   */
   _takeToken(cls) {
     const hd = this.game?.hostileDirector;
     // No director (headless harness, very early boot) means no budget to respect. The pool caps
     // above are still the hard ceiling, so this cannot become an unbounded path.
-    if (!hd || typeof hd.requestTokens !== 'function') return true;
-    try { return !!hd.requestTokens(cls, 1, this.game); } catch (_) { return true; }
+    if (!hd || typeof hd.requestTokens !== 'function') return { ok: true, tok: null };
+    let granted = false;
+    try { granted = !!hd.requestTokens(cls, 1, this.game); }
+    catch (_) { return { ok: true, tok: null }; }
+    return granted ? { ok: true, tok: cls } : { ok: false, tok: null };
   }
 
   _giveBackToken(s) {

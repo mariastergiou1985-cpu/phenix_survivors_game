@@ -113,13 +113,18 @@ const RANGE = Object.freeze({
 //      art belongs to Cyber Shooter — so the spear lands there, not on the
 //      Rogue AI Overlord.)
 //
-// ORDERING RULE: where a legacy kebab map already assigns a primary weapon for
-// an enemy, that weapon is kept in slot 0 so wiring this map up later cannot
+// ORDERING RULE: slot 0 is the PRIMARY weapon — it is the one a runtime lookup
+// resolves. Where a legacy kebab map already assigns a primary weapon for an
+// enemy, that weapon is kept in slot 0 so wiring this map up later cannot
 // silently change the armament enemies fire today. The JSON's remaining weapons
-// follow in spec order.
+// follow in spec order. The ONLY exceptions are the entries declared in
+// LEGACY_ORDER_OVERRIDES below; validateCatalog() fails loudly on any other
+// slot-0 disagreement between this map and the legacy kebab maps.
 //
 // NOT LISTED (deliberate): Razorhound and Cybermote are contact/melee-only —
 // a Bloodfang pack minion and an airstrike mote — and have no weapon identity.
+// They are declared in CONTACT_ONLY_ENEMY_TYPES so their absence is provably
+// intentional rather than an oversight.
 export const ENEMY_TYPE_WEAPONS = Object.freeze({
   // ── Primary / base roster ──────────────────────────────────────────
   'Glitch Drone':            Object.freeze(['aether_crescent_chakram', 'eden_star_lance']),
@@ -130,7 +135,24 @@ export const ENEMY_TYPE_WEAPONS = Object.freeze({
                                             'blacknet_scythe_arc', 'cryo_shard_lance']),
 
   // ── Remapped art-name bosses (see table above) ─────────────────────
-  'Combat Hunter':           Object.freeze(['eden_star_lance', 'magma_reaver_lance',
+  // REACHABILITY RE-HOME (magma_reaver_lance → slot 0, displacing eden_star_lance):
+  //   WHY THIS TYPE — Combat Hunter wears minis/forge-mauler art, and the shipped
+  //   EnemyWeaponCatalogV1.json authors magma_reaver_lance to forge_mauler (see the
+  //   weapon's own ownerEnemyTypes below: 'forge-mauler'). A Forge Mauler whose primary
+  //   is a magma lance is its authored identity; a star lance never was.
+  //   WHY IT WAS NEEDED — magma_reaver_lance (telegraphRequired) had NO owner that
+  //   reaches elite tier with it in slot 0, so it never once fired in a measured
+  //   Endless or Chaos run. Combat Hunter is the most reliably elite-capable type in
+  //   the game: EnemySpawner.ELITE_WAVE.pool (Endless AND Chaos elite waves), every
+  //   ACT1_POOLS tier, CHAOS_POOL, every Endless wave block, and WaveDirector
+  //   HINT_POOLS.act1.elite (the ELITE_ESCORT formation's elite slot).
+  //   WHAT IT REPLACED — eden_star_lance, which is NOT orphaned: it keeps slot 0 on
+  //   Stealth Infiltrator (also ELITE_WAVE.pool — measured firing at 91.8 s) and on
+  //   Rogue AI Overlord, and stays in Combat Hunter's list at slot 1.
+  //   DIFFICULTY — a replaced slot, not an added one, and not a raise: Combat Hunter
+  //   has no _initRole stat case, so an elite inherits the weapon's own numbers —
+  //   22 dmg → 18 dmg per hit (the elite cadence floor of 4.0 s applies either way).
+  'Combat Hunter':           Object.freeze(['magma_reaver_lance', 'eden_star_lance',
                                             'void_ember_comet', 'solar_halo_bolt']),   // forge_mauler set
   'Scrap Scavenger':         Object.freeze(['aether_crescent_chakram', 'cryo_shard_lance',
                                             'arc_circuit_beam']),                      // cryo_warden set
@@ -138,9 +160,26 @@ export const ENEMY_TYPE_WEAPONS = Object.freeze({
                                             'arc_circuit_beam', 'null_rupture_orb']),  // null_hierophant set
   'Overclocked Berserker':   Object.freeze(['abyss_rift_blade', 'blacknet_scythe_arc',
                                             'null_rupture_orb']),                      // pale_bloodknight set
-  'Cyber Shooter':           Object.freeze(['aether_crescent_chakram', 'eden_star_lance',
-                                            'violet_spectral_needle', 'toxic_data_spear',
-                                            'seraph_vector_javelin']),                 // rail_reaper set
+  // REACHABILITY RE-HOME (seraph_vector_javelin → slot 0, displacing aether_crescent_chakram):
+  //   WHY THIS TYPE — Cyber Shooter wears minis/rail-reaper art and the JSON authors
+  //   seraph_vector_javelin to rail_reaper (see the weapon's ownerEnemyTypes below:
+  //   'rail-reaper'). A rail reaper's primary is a warned piercing javelin; a returning
+  //   boomerang chakram is the odd one out in that set.
+  //   WHY IT WAS NEEDED — seraph_vector_javelin (telegraphRequired) sat in slot 4 here
+  //   and slot 1 everywhere else, so no elite ever resolved it and it never fired in a
+  //   measured run. Cyber Shooter is in EnemySpawner.ELITE_WAVE.pool (Endless AND Chaos
+  //   elite waves), in every ACT1_POOLS tier from t=0, in CHAOS_POOL and in the Act 1 /
+  //   Endless wave tables.
+  //   WHAT IT REPLACED — aether_crescent_chakram, which is NOT orphaned: it keeps slot 0
+  //   on Glitch Drone, Rogue Punk, Scrap Scavenger, Pulse Burrower and Wireframe
+  //   Net-Caster, and stays in Cyber Shooter's list at slot 1.
+  //   DIFFICULTY — a replaced slot, not an added one, and a strict zero-delta: Enemy.js
+  //   _initRole pins Cyber Shooter's bullet stats (2.2 s / 440 px/s / 6 dmg), so the
+  //   weapon def only supplies behaviour, sprite and the telegraph routing. The elite's
+  //   heavy shot becomes WARNED where it previously was not.
+  'Cyber Shooter':           Object.freeze(['seraph_vector_javelin', 'aether_crescent_chakram',
+                                            'eden_star_lance', 'violet_spectral_needle',
+                                            'toxic_data_spear']),                      // rail_reaper set
   'Heavy Mech':              Object.freeze(['arc_circuit_beam', 'magma_reaver_lance',
                                             'solar_halo_bolt']),                       // reactor_colossus set
 
@@ -179,6 +218,36 @@ export const ENEMY_TYPE_WEAPONS = Object.freeze({
   'Malware Leviathan':       Object.freeze(['toxic_data_spear', 'null_rupture_orb', 'abyss_rift_blade']),
   'Quantum Void Emperor':    Object.freeze(['null_sigil_beam', 'null_rupture_orb', 'violet_spectral_needle']),
   'Apocalypse Mech Tyrant':  Object.freeze(['magma_reaver_lance', 'arc_circuit_beam', 'seraph_vector_javelin']),
+});
+
+/**
+ * REAL enemyType strings that deliberately carry NO weapon identity.
+ * Both are contact-only by design — Razorhound is the Bloodfang pack minion (pure
+ * melee chaser) and Cybermote is the airstrike event bike, whose attacks live in
+ * Game.js and never do a catalog lookup. Declaring them keeps "ENEMY_TYPE_WEAPONS is
+ * complete" a provable statement: the 38 real enemyTypes in js/entities/Enemy.js are
+ * exactly ENEMY_TYPE_WEAPONS' 36 keys plus these two.
+ */
+export const CONTACT_ONLY_ENEMY_TYPES = Object.freeze(['Razorhound', 'Cybermote']);
+
+/**
+ * Declared slot-0 divergences between ENEMY_TYPE_WEAPONS (canonical) and the legacy
+ * kebab maps (the legacy VIEW of the same data). The legacy maps are frozen in value
+ * for the migration, so a deliberate re-home has to be recorded here rather than by
+ * editing them. Each entry says: for this enemyType, ENEMY_TYPE_WEAPONS[type][0] is
+ * intentionally NOT the legacy effective primary — and this is the id it must be.
+ *
+ * validateCatalog() enforces both directions: an override that does not match, an
+ * override for a type with no legacy entry, and an UNDECLARED slot-0 disagreement all
+ * fail. It also enforces that the displaced legacy primary is still present in the
+ * type's list, so a re-home can never silently delete armament.
+ *
+ * Both entries exist because the weapon they promote is telegraphRequired and had no
+ * elite-tier owner at all — see the block comments at the mapping sites above.
+ */
+export const LEGACY_ORDER_OVERRIDES = Object.freeze({
+  'Combat Hunter': 'magma_reaver_lance',      // was eden_star_lance (PRIMARY_WEAPON_MAP)
+  'Cyber Shooter': 'seraph_vector_javelin',   // was aether_crescent_chakram (PRIMARY_WEAPON_MAP)
 });
 
 // ── Weapon definitions (pre-ownerTypes) ──────────────────────────────
@@ -525,6 +594,14 @@ export const MINI_WEAPON_MAP = Object.freeze({
 const _weaponIndex = new Map(ENEMY_WEAPONS.map(w => [w.id, w]));
 export function getWeaponById(id) { return _weaponIndex.get(id) || null; }
 
+// ── Legacy key derivation — EXACTLY the transform js/entities/Enemy.js applies ──
+// (enemyType.toLowerCase().replace(/ /g, '-')). One definition, used by both the
+// lookup helpers and the consistency proof in validateCatalog().
+export function toLegacyKey(displayName) {
+  return typeof displayName === 'string' ? displayName.toLowerCase().replace(/ /g, '-') : '';
+}
+const _typeByLegacyKey = new Map(Object.keys(ENEMY_TYPE_WEAPONS).map(t => [toLegacyKey(t), t]));
+
 // ── Helper: get all weapons for an enemy type (LEGACY kebab key) ─────
 export function getWeaponsForEnemy(enemyId) {
   const ids = BOSS_WEAPON_MAP[enemyId] || MINI_WEAPON_MAP[enemyId] || PRIMARY_WEAPON_MAP[enemyId] || [];
@@ -632,6 +709,97 @@ export function validateCatalog() {
   checkMap('BOSS_WEAPON_MAP',     BOSS_WEAPON_MAP);
   checkMap('MINI_WEAPON_MAP',     MINI_WEAPON_MAP);
   checkMap('ENEMY_TYPE_WEAPONS',  ENEMY_TYPE_WEAPONS);
+
+  // ── CANONICAL-vs-LEGACY CONSISTENCY ────────────────────────────────
+  // ENEMY_TYPE_WEAPONS is the single source of truth; PRIMARY/MINI/BOSS_WEAPON_MAP are
+  // the legacy kebab-keyed VIEW of the same data, kept for the callers that still import
+  // them. "View of the same data" is only a claim unless it is checked, so it is checked
+  // here and the two can never silently drift apart:
+  //   1. every legacy key names a real ENEMY_TYPE_WEAPONS type (via Enemy.js's own kebab
+  //      derivation) — no legacy key may point at an enemy the canonical map never heard of;
+  //   2. every id a legacy map assigns to a key also appears in that type's canonical list —
+  //      no legacy map may arm an enemy with something the canonical map denies;
+  //   3. the PRIMARY weapon agrees. The legacy EFFECTIVE list is BOSS || MINI || PRIMARY,
+  //      the same precedence js/entities/Enemy.js uses, and its slot 0 must equal the
+  //      canonical slot 0 — unless the divergence is declared in LEGACY_ORDER_OVERRIDES,
+  //      in which case the declaration must match AND the displaced legacy primary must
+  //      still be somewhere in the canonical list (a re-home never deletes armament).
+  {
+    const legacyMaps = [
+      ['BOSS_WEAPON_MAP',    BOSS_WEAPON_MAP],
+      ['MINI_WEAPON_MAP',    MINI_WEAPON_MAP],
+      ['PRIMARY_WEAPON_MAP', PRIMARY_WEAPON_MAP],
+    ];
+    const legacyKeys = new Set();
+
+    for (const [name, map] of legacyMaps) {
+      for (const [key, ids] of Object.entries(map)) {
+        legacyKeys.add(key);
+        const type = _typeByLegacyKey.get(key);
+        if (!type) {
+          errors.push(`${name}['${key}']: no ENEMY_TYPE_WEAPONS type derives this legacy key`);
+          continue;
+        }
+        const canon = ENEMY_TYPE_WEAPONS[type] || [];
+        if (!Array.isArray(ids)) continue;   // already reported by checkMap
+        for (const id of ids) {
+          if (!canon.includes(id)) {
+            errors.push(`${name}['${key}']: '${id}' is not in ENEMY_TYPE_WEAPONS['${type}'] — the legacy view disagrees with the canonical map`);
+          }
+        }
+      }
+    }
+
+    // Primary-weapon agreement, per type, against the effective legacy precedence.
+    for (const key of legacyKeys) {
+      const type = _typeByLegacyKey.get(key);
+      if (!type) continue;   // already reported above
+      const effective = BOSS_WEAPON_MAP[key] || MINI_WEAPON_MAP[key] || PRIMARY_WEAPON_MAP[key];
+      if (!Array.isArray(effective) || effective.length === 0) continue;
+      const legacyPrimary = effective[0];
+      const canon  = ENEMY_TYPE_WEAPONS[type] || [];
+      const canonPrimary = canon[0];
+      const override = Object.prototype.hasOwnProperty.call(LEGACY_ORDER_OVERRIDES, type)
+        ? LEGACY_ORDER_OVERRIDES[type] : null;
+
+      if (override === null) {
+        if (canonPrimary !== legacyPrimary) {
+          errors.push(`ENEMY_TYPE_WEAPONS['${type}']: primary '${canonPrimary}' != legacy primary '${legacyPrimary}' and the divergence is not declared in LEGACY_ORDER_OVERRIDES`);
+        }
+      } else {
+        if (canonPrimary !== override) {
+          errors.push(`LEGACY_ORDER_OVERRIDES['${type}']: declares '${override}' but ENEMY_TYPE_WEAPONS['${type}'][0] is '${canonPrimary}'`);
+        }
+        if (override === legacyPrimary) {
+          errors.push(`LEGACY_ORDER_OVERRIDES['${type}']: stale — it matches the legacy primary '${legacyPrimary}', so there is nothing to override`);
+        }
+        if (!canon.includes(legacyPrimary)) {
+          errors.push(`LEGACY_ORDER_OVERRIDES['${type}']: displaced legacy primary '${legacyPrimary}' is no longer in ENEMY_TYPE_WEAPONS['${type}'] — a re-home must not delete armament`);
+        }
+      }
+    }
+
+    // No override may be declared for a type with no legacy entry at all: there would be
+    // nothing to override, and the entry would rot silently.
+    for (const type of Object.keys(LEGACY_ORDER_OVERRIDES)) {
+      if (!(type in ENEMY_TYPE_WEAPONS)) {
+        errors.push(`LEGACY_ORDER_OVERRIDES['${type}']: not a key of ENEMY_TYPE_WEAPONS`);
+      } else if (!legacyKeys.has(toLegacyKey(type))) {
+        errors.push(`LEGACY_ORDER_OVERRIDES['${type}']: that type has no legacy kebab entry — nothing to override`);
+      }
+    }
+
+    // The declared contact-only types must stay out of every map: listing one would mean
+    // the "no weapon identity" decision was reversed without updating the declaration.
+    for (const t of CONTACT_ONLY_ENEMY_TYPES) {
+      if (t in ENEMY_TYPE_WEAPONS) {
+        errors.push(`CONTACT_ONLY_ENEMY_TYPES: '${t}' is declared weaponless but appears in ENEMY_TYPE_WEAPONS`);
+      }
+      if (legacyKeys.has(toLegacyKey(t))) {
+        errors.push(`CONTACT_ONLY_ENEMY_TYPES: '${t}' is declared weaponless but has a legacy kebab entry`);
+      }
+    }
+  }
 
   return { ok: errors.length === 0, errors };
 }

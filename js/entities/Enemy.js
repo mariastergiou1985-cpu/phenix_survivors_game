@@ -6,7 +6,7 @@ import { clamp, distance, safeNormalize, randomRange, randomChoice, drawBar } fr
 import { DataCore } from './DataCore.js?v=20260705040000';
 import { FloatingText } from './FloatingText.js';
 import { drawGlow } from '../game/Effects.js?v=20260713600000';
-import { PRIMARY_WEAPON_MAP, MINI_WEAPON_MAP, BOSS_WEAPON_MAP, getWeaponById } from '../game/EnemyWeaponCatalog.js?v=20260829030000';
+import { ENEMY_TYPE_WEAPONS, PRIMARY_WEAPON_MAP, MINI_WEAPON_MAP, BOSS_WEAPON_MAP, getWeaponById } from '../game/EnemyWeaponCatalog.js?v=20260829040000';
 
 // ─── Enemy body-sprite cache (each PNG loads & decodes ONCE, shared by all spawns) ──
 const _enemySpriteCache = new Map();
@@ -463,8 +463,16 @@ export class Enemy {
     // Priority: BOSS → MINI → PRIMARY (base enemies). All 3 maps now populated
     // per the addendum visual mapping (Drones→Chakram/Lance, Mechs→Arc Beam,
     // Bosses→Abyss/Blacknet/Cryo).
+    // BATCH 3.2: ENEMY_TYPE_WEAPONS is the CANONICAL source, keyed by the real enemyType display
+    // string. The three kebab maps stay as the legacy view of the same data (validateCatalog() proves
+    // they never disagree) and remain the fallback, so nothing that resolved before stops resolving.
+    // Before this change only 21 of the 36 armed types resolved a weapon: the lookup was
+    // enemyType.toLowerCase().replace(/ /g,'-') against the kebab maps, and 15 types — every Chaos
+    // enemy, all four Chaos Mega Titans and Solar Tyrant — were in none of them, so they fell through
+    // to bare contact damage with no weapon identity at all.
     const catalogKey = this.enemyType.toLowerCase().replace(/ /g, '-');
-    const weaponIds  = BOSS_WEAPON_MAP[catalogKey] || MINI_WEAPON_MAP[catalogKey] || PRIMARY_WEAPON_MAP[catalogKey];
+    const weaponIds  = ENEMY_TYPE_WEAPONS[this.enemyType]
+                    || BOSS_WEAPON_MAP[catalogKey] || MINI_WEAPON_MAP[catalogKey] || PRIMARY_WEAPON_MAP[catalogKey];
     if (weaponIds && weaponIds.length > 0) {
       const wDef = getWeaponById(weaponIds[0]);   // primary weapon
       this._weaponDef = wDef;   // behavior params (cooldown/speed/damage) for catalog-armed shots

@@ -13,7 +13,7 @@ import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260712090000';
 import { Player }         from '../entities/Player.js?v=20260810210000';
 import { XpShardSystem }  from '../entities/XpShards.js?v=20260724000000';   // Phase 1: physical Data-XP
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260706270000';
-import { Enemy, preloadAllWeaponSprites, selectHpBarEnemies } from '../entities/Enemy.js?v=20260829030000';
+import { Enemy, preloadAllWeaponSprites, selectHpBarEnemies } from '../entities/Enemy.js?v=20260829040000';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=20260711750000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260713600000';
@@ -53,9 +53,9 @@ import { MeteorRain } from '../effects/meteor-rain.js?v=20260712100000';
 import { NpcWalker } from './NpcWalker.js?v=20260724000000';
 import { MapManager, BIOME_ID, BIOME_DEFS, CHUNK_SIZE } from './MapManager.js?v=20260829020000';
 import { AcidRain } from './AcidRain.js?v=20260829020000';   // BATCH 2 major event (2026-07-29)
-import { EnemyWeaponSystem } from './EnemyWeaponSystem.js?v=20260829030000';   // BATCH 3 enemy weapon behaviours
+import { EnemyWeaponSystem } from './EnemyWeaponSystem.js?v=20260829040000';   // BATCH 3 enemy weapon behaviours
 import { EventBus, EVENTS } from './EventBus.js?v=20260703990000';
-import { HostileProjectileDirector } from './HostileProjectileDirector.js?v=20260719200000';
+import { HostileProjectileDirector } from './HostileProjectileDirector.js?v=20260829040000';
 import { WaveDirector } from './WaveDirector.js?v=20260724000000';
 import { EnemySpawner, ELITE_WAVE as ELITE_WAVE_CFG, BOSS_WARN_COOLDOWN as BOSS_WARN_CD } from './EnemySpawner.js?v=20260719300000';
 import { StateManager, GAME_STATES } from './StateManager.js?v=20260703990000';
@@ -1293,6 +1293,15 @@ export class Game {
   reset() {
     this.audio?.resetEddieRiffs?.();
     this._eddieUltimateMusicActive = false;
+    // BATCH 3.2: reset() is the ONLY thing every restart path is guaranteed to call. _enterEndless()
+    // and _beginChaosRun() clear the weapon system, but js/main.js restarts (Enter on the end screen,
+    // 'r' after death, the RESTART button) and selectCharacter() reach reset() with no mode entry —
+    // so live strikes, zones, telegraphs and PENDING VOLLEYS survived into the next run. Measured on
+    // a game-over restart: strikes 10 / zones 5 / volleys 5 / telegraphs 5 carried over, and four of
+    // them landed 2 hits for 38.0 damage on the player inside the first 3 s of the fresh run, with the
+    // dead run's deferred volleys firing into it. Clear it here, at the boundary that always runs.
+    try { this.enemyWeapons?.reset(); } catch (_) {}   // reset(), not forceEnd(): a new run must start with fresh counters too
+    this.hostileDirector?.reset();
     // Resolve the equipped (cosmetic) outfit sprite for this character, if any.
     const _char       = this.selectedCharacter || 'skeleton_warrior';
     this.selectedCharacter = _char;
@@ -2285,7 +2294,7 @@ export class Game {
       // BATCH 3: returning to the menu must not leave hostile ordnance alive. Nothing updates it in
       // the menu and the next reset() would clear it, but a live beam/zone/volley across the menu
       // boundary is an orphan by definition — drop it here, at the boundary that creates it.
-      try { this.enemyWeapons?.forceEnd(); } catch (_) {}
+      try { this.enemyWeapons?.reset(); } catch (_) {}   // full clear on the menu boundary, counters included
       if (Array.isArray(this.enemyBullets))   this.enemyBullets.length   = 0;
       if (Array.isArray(this._enemyBeams))    this._enemyBeams.length    = 0;
       if (Array.isArray(this._enemyOrbZones)) this._enemyOrbZones.length = 0;
@@ -11523,7 +11532,13 @@ export class Game {
       } catch (_) { /* routing must never break the base projectile path */ }
     }
     const _hd = (this.hostileDirector ||= new HostileProjectileDirector());
-    if (this.enemyBullets.length === 0 && _hd.counts.ranged + _hd.counts.elite + _hd.counts.boss > 0)
+    // BATCH 3.2: the same bullets-only assumption lived here, and fired FASTER than the 4s pass —
+    // measured, 16 wave strikes in flight went from {boss:16} to {boss:0} on a single spawn call.
+    // The self-heal now stands down whenever EnemyWeaponSystem is holding anything; the reconciliation
+    // above already covers the case it was written for (_clearDeckTransients / reset() truncating
+    // enemyBullets without releasing).
+    if (this.enemyBullets.length === 0 && !this.enemyWeapons?.active?.()
+        && _hd.counts.ranged + _hd.counts.elite + _hd.counts.boss > 0)
       _hd.reset();   // self-heal: μετά από run reset/clear δεν μένουν ορφανά tokens
     if (!opts.tokenPrepaid && !_hd.requestTokens(_cls, 1, this)) return false;
     speed *= this.mutations.enemyBulletSpeedMult;   // ACCELERATED ROUNDS (1.0 outside Endless)
@@ -11562,7 +11577,19 @@ export class Game {
         this._hdReconT = 4;
         const cnt = { ranged: 0, elite: 0, boss: 0 };
         for (const b of this.enemyBullets) cnt[b.tok || 'ranged']++;
-        this.hostileDirector.counts = cnt;
+        // BATCH 3.2: bullets are no longer the only token holders. EnemyWeaponSystem takes a director
+        // token per live slash_wave strike, and that token is backed by no bullet — so rebuilding the
+        // budget from enemyBullets alone DISCARDED those holders, and the later release then clamped
+        // at 0, leaving the shared budget under-counted by up to MAX_STRIKES (16 desktop / 8 mobile).
+        // Measured: 6 strikes in flight -> snapshot {boss:6}; one reconciliation tick -> {boss:0}
+        // while stats().strikes was still 6. Reconciling now sums EVERY holder, and reconcile() is an
+        // accounting write only — it never drops, expires or disarms an attack in progress.
+        const held = this.enemyWeapons?.tokenCounts?.() || { ranged: 0, elite: 0, boss: 0 };
+        this.hostileDirector.reconcile({
+          ranged: cnt.ranged + (held.ranged || 0),
+          elite:  cnt.elite  + (held.elite  || 0),
+          boss:   cnt.boss   + (held.boss   || 0),
+        });
       }
     }
     for (let i = this.enemyBullets.length - 1; i >= 0; i--) {
