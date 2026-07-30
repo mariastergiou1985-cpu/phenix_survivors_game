@@ -9841,9 +9841,9 @@ export class Game {
   _maybeSpawnVaultDrop(pos) {
     if (!this.endless || this.vaultDrop) return;   // never two at once
     if (!this._vaultWindowOpen()) return;
-    // BATCH 2: the vault sequence owns the screen while it runs, so it takes the slot like any
-    // other major event and gives it back when the drop is gone.
-    if (!this.startMajorEvent('vault')) return;
+    // BATCH 3.3: the reservation used to happen HERE and _spawnVaultAt then refused it as "blocked".
+    // _spawnVaultAt is now the single owner of the slot for both entry points, so the reservation and
+    // the spawn can no longer disagree about who is holding it.
     this._spawnVaultAt(pos);                       // boss kill = placement, not permission
   }
 
@@ -9863,17 +9863,49 @@ export class Game {
     return true;
   }
 
+  // SINGLE OWNER OF THE VAULT'S MAJOR-EVENT SLOT (BATCH 3.3).
+  //
+  // The bug this replaces: _maybeSpawnVaultDrop reserved the slot with startMajorEvent('vault') and
+  // then called this method, whose first line was `if (this._majorEventBlocked()) return;`.
+  // _majorEventBlocked() is true whenever _activeMajorEvent is set — INCLUDING the reservation the
+  // vault sequence had just made for itself. So the vault refused its own vault: zero of the six
+  // scheduled windows ever produced a drop, _vaultIdx never advanced past 0, and the phantom 'vault'
+  // claim then held the single major-event slot for MAJOR_SLOT_HOLD.vault = 45s per attempt,
+  // locking out acid rain, airstrikes and ambient mega bosses for nothing.
+  // Measured on a fresh Chaos run at t=301s, before the fix:
+  //   _vaultWindowOpen()=true  canStartMajorEvent('vault')=true
+  //   _majorEventLog=[{t:301, kind:'start', type:'vault', active:'vault'}]
+  //   after: vaultDrop=false  _vaultIdx=0  _activeMajorEvent='vault'
+  //
+  // Now the reservation and the spawn happen in one place, in this order:
+  //   foreign-holder check -> reserve -> place -> (on failure) release immediately.
+  // Exclusivity is unchanged: canStartMajorEvent() still refuses while a Boss Rush runs, while any
+  // OTHER event holds the slot, and during the post-event grace. The only thing that stopped being
+  // a blocker is the vault's own reservation.
+  // Returns true when a vault was actually placed.
   _spawnVaultAt(pos) {
-    if (this._majorEventBlocked()) return;   // never open a vault inside a locked arena
+    if (this.vaultDrop) return false;                        // never two at once
+    if (!this.canStartMajorEvent('vault')) return false;     // a FOREIGN holder, a rush, or the grace
+    if (!this.startMajorEvent('vault')) return false;        // idempotent when 'vault' already holds
+    // From here on the slot is ours. Any failure below must give it straight back, or the run loses
+    // the slot for 45s exactly the way the original bug did.
+    let p = null;
+    try {
+      p = this._clampPickupPos(pos.clone().add(new Vec2(randomRange(-80, 80), randomRange(-80, 80))), 52);   // real vault footprint
+    } catch (_) { p = null; }
+    if (!p || !Number.isFinite(p.x) || !Number.isFinite(p.y)) {
+      this.endMajorEvent('vault');   // placement failed - release NOW so the window can retry safely
+      return false;                  // _vaultIdx deliberately NOT advanced: the opportunity is not spent
+    }
     this._vaultIdx++;                              // consume exactly one opportunity
     this._vaultPending = false;
     this._lastVaultSpawnAt = this.timeAlive;
-    const p = this._clampPickupPos(pos.clone().add(new Vec2(randomRange(-80, 80), randomRange(-80, 80))), 52);   // real vault footprint
     this.vaultDrop = { pos: p, timer: 45, maxTimer: 45, kills: 0, needed: 30, killWindow: 10, unlocked: false, spin: 0 };
     // Low-opacity banner (~0.4), top of screen (away from the player), aligned with other banners.
     this.triggerAnnouncement('LOCKED VAULT — 30 KILLS TO BREACH', '#ffd23c', { alpha: 0.4 });
     // Eden Core announces the locked second cache and its kill-challenge.
     this._queueEdenTransmission('SECOND GRID CACHE SEALED. 30 KILLS WILL BREAK THE LOCK.', { title: 'EDEN CORE', priority: 2, duration: 6 });
+    return true;
   }
 
   _onVaultKill(pos) {

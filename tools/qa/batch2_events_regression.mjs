@@ -565,6 +565,25 @@ const TYPES = ['bossRush', 'acidRain', 'airstrike', 'laserGrid', 'vault', 'megaB
     try { sysOf(g).forceEnd(); } catch (_) {}
     const un = muteConsole();
     g._bossRush = null; g._deckLockT = 0;
+    // BATCH 3.3: the Locked Vault joins the list of live events this teardown has to drop.
+    // It was absent here for a reason that no longer holds: before the vault self-block fix
+    // (_spawnVaultAt refused the slot its own caller had just reserved) NO vault ever spawned,
+    // so there was never one to clear. Now that the six scheduled windows really produce drops,
+    // a vault surviving release() lets a fresh window claim the slot organically between
+    // release() and startMajorEvent(a), and the pair then measures the leftovers instead of the
+    // rule under test — observed exactly once, as
+    //   "megaBoss holds the screen: airstrike is refused" -> start(megaBoss)=false active=vault.
+    // This drops a LIVE EVENT, the same as _bossRush / _activeTitan / acid rain above. No
+    // assertion was weakened and nothing inside a pair was touched.
+    g.vaultDrop = null;
+    // ...and retire the vault SCHEDULER for this matrix game, the same way the block already
+    // splices out mega bosses and nulls _activeTitan. Clearing the live drop alone is not enough:
+    // the delivery guarantee re-spawns a vault during release()'s own wait loop, so it re-claimed
+    // the slot between release() returning and startMajorEvent(a). This game object exists only to
+    // drive the 30 ordered pairs; the vault's real scheduling contract is asserted in full by
+    // tools/qa/endless_chaos_runtime_regression.mjs section 8 (6/6 windows, deferral, no-double,
+    // FPS independence), which is where it belongs.
+    g._vaultIdx = (g._vaultSchedule || []).length;
     // Spliced in place, never reassigned: other systems hold a reference to this exact array.
     if (Array.isArray(g.enemies))
       for (let i = g.enemies.length - 1; i >= 0; i--) if (g.enemies[i] && g.enemies[i].isMegaBoss) g.enemies.splice(i, 1);
