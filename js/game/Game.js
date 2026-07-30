@@ -1068,6 +1068,12 @@ export class Game {
     this._stageIndex     = 0;      // current stage (0 = Stage 1)
     this._stageBiome     = null;   // current stage biome id (whole map = this biome; null = ring)
     this._stageSpeedMult = 1;      // enemy speed mult from the current stage biome
+    // ROADMAP MILESTONE 2 / Slice A — "Εφαρμογή enemyModifiers (speedMult/hpMult) του biome = το
+    // «rule» του stage". The speed mult above was computed in two places and read by nobody, and
+    // hpMult/regenRate were never applied outside chunk streaming, so every Act 1 stage and every
+    // campaign stage played identically. These three now carry the active stage's rule.
+    this._stageHpMult    = 1;      // enemy HP mult from the current stage biome
+    this._stageRegen     = 0;      // enemy HP regen per second from the current stage biome
     // ── STAGE CAMPAIGN (VS-style select → play → clear → unlock next) ──
     this._campaignStage        = 0;   // active campaign stage number (0 = not a campaign run)
     this._pendingCampaignStage = 0;   // stage picked in the select screen, applied on run start
@@ -1627,6 +1633,8 @@ export class Game {
     this._stageIndex          = 0;     // STAGE PROGRESSION reset
     this._stageBiome          = null;
     this._stageSpeedMult      = 1;
+    this._stageHpMult         = 1;     // stage rule — cleared with the rest of the stage state
+    this._stageRegen          = 0;
     this._campaignStage       = 0;     // campaign run flag (set by _applyCampaignStage after reset)
     this._campaignCleared     = false;
     this._stageClearEvolutionChoice = null;
@@ -1985,7 +1993,7 @@ export class Game {
     this._campaignCleared = false;
     this._stageBiome      = st.biome;                                   // enemy rules follow the stage biome
     const def = BIOME_DEFS[st.biome] || {};
-    this._stageSpeedMult  = (def.enemyModifiers && def.enemyModifiers.speedMult) || 1;
+    this._setStageRule(st.biome);   // speed + HP + regen rule of this stage's biome
     const img = new Image(); img.src = _mapSrc(st.map); this._campaignMapImg = img;
     if (this.mapManager) this.mapManager._bgImage = img;               // Maria's stage map as the fixed background
     // Campaign boss roster — the 3 recurring bosses (Cyber Serpent, Matrix Annihilator, AI Overload
@@ -2967,6 +2975,39 @@ export class Game {
   // map (chunk streaming is off), so each stage SWAPS the background image to that biome's map
   // ("separate map per stage"), applies the biome's enemy speed rule, and fires a full-screen
   // 'STAGE N — NAME' announcement. Skipped in Endless/Chaos (they have their own maps).
+  // ── STAGE RULE (ROADMAP MILESTONE 2 / Slice A) ─────────────────────────────
+  // One place that turns a biome id into the stage's enemy rule. Act 1 and the campaign run on a
+  // FIXED map with chunk streaming off, so the streaming path in spawnEnemy — the only code that
+  // ever read BIOME_DEFS.enemyModifiers — never fired for them: _stageSpeedMult was written twice
+  // and read nowhere, hpMult was never applied at all, and abyssal_trench's regenRate did nothing.
+  // Every stage therefore played with identical enemies behind a different picture. The numbers
+  // are Maria's own BIOME_DEFS values, unchanged; this only makes them reach the enemies.
+  _setStageRule(biomeId) {
+    const mods = (BIOME_DEFS[biomeId] && BIOME_DEFS[biomeId].enemyModifiers) || null;
+    this._stageBiome     = biomeId || null;
+    this._stageSpeedMult = (mods && Number.isFinite(mods.speedMult) && mods.speedMult > 0) ? mods.speedMult : 1;
+    this._stageHpMult    = (mods && Number.isFinite(mods.hpMult)    && mods.hpMult    > 0) ? mods.hpMult    : 1;
+    this._stageRegen     = (mods && Number.isFinite(mods.regenRate) && mods.regenRate  > 0) ? mods.regenRate : 0;
+  }
+
+  // Apply the active stage rule to one freshly spawned enemy. Mirrors the streaming path exactly:
+  // once at spawn, non-boss only, HP and maxHp together so the bar never desyncs.
+  _applyStageRule(e) {
+    if (!e || !this._stageBiome) return;
+    if (this.chunkManager?.enabled) return;   // streaming already applied the per-position biome
+    try { if (e.isBoss && e.isBoss()) return; } catch (_) { return; }
+    if (e.isMegaBoss) return;
+    if (this._stageHpMult !== 1 && Number.isFinite(e.hp)) {
+      e.hp = Math.max(1, Math.round(e.hp * this._stageHpMult));
+      e.maxHp = e.hp;
+    }
+    if (this._stageSpeedMult !== 1) {
+      if (Number.isFinite(e._baseSpeedFull)) e._baseSpeedFull *= this._stageSpeedMult;
+      if (Number.isFinite(e.baseSpeed))      e.baseSpeed      *= this._stageSpeedMult;
+    }
+    if (this._stageRegen > 0) e._biomeRegen = this._stageRegen;
+  }
+
   _updateStageProgression() {
     if (this.endless || this.gameState !== 'playing' || this.gameOver || this.victory) return;
     const STAGE_DUR = 12 * 60;   // seconds per stage
@@ -2975,9 +3016,8 @@ export class Game {
     if (this._stageBiome && si === this._stageIndex) return;   // still on the same stage
     this._stageIndex = si;
     const biome = ORDER[si];
-    this._stageBiome = biome;
     const def = BIOME_DEFS[biome] || {};
-    this._stageSpeedMult = (def.enemyModifiers && def.enemyModifiers.speedMult) || 1;
+    this._setStageRule(biome);
     // Swap the fixed Act-1 background to this stage's biome map (separate map per stage).
     const img = this.mapManager && this.mapManager.getBiomeImage ? this.mapManager.getBiomeImage(biome) : null;
     if (img) this.mapManager._bgImage = img;
@@ -6548,6 +6588,11 @@ export class Game {
         if (_mods.regenRate) e._biomeRegen = _mods.regenRate;
       }
     }
+    // Fixed-map counterpart of the block above: Act 1 stages and campaign stages have no chunk
+    // streaming, so their biome rule is applied here from the ACTIVE STAGE instead of from the
+    // enemy's world position. _applyStageRule is a no-op while streaming is on, so exactly one of
+    // the two paths ever runs for any given enemy — no double scaling.
+    this._applyStageRule(e);
     this.enemies.push(e);
     if (e.isBoss()) {
       // Act 1: warn per boss spawn (unchanged). Endless: collapse to one warning per loop window.

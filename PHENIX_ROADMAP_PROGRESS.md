@@ -92,7 +92,18 @@ feature = «ξεκλείδωμα» υπάρχοντος περιεχομένου
 - [ ] `this.runBiome` (default neon_district) — τίθεται στην αρχή του Act 1 run
 - [ ] Νέο Stage-Select overlay από το μενού (λίστα 6 biomes με name/description από BIOME_DEFS)
 - [ ] Legacy background draw: χρήση `mapManager.getBiomeImage(runBiome)` + palette αντί σταθερού bg
-- [ ] Εφαρμογή `enemyModifiers` (speedMult/hpMult) του biome = το «rule» του stage
+- [x] **ΟΛΟΚΛΗΡΩΘΗΚΕ 2026-07-30** — Εφαρμογή `enemyModifiers` (speedMult/hpMult) του biome = το «rule» του stage.
+  Το εύρημα: τα `BIOME_DEFS.enemyModifiers` διαβάζονταν σε ΕΝΑ σημείο, μέσα στο `spawnEnemy`, και μόνο όταν
+  `chunkManager.enabled` — δηλαδή μόνο στους streaming χάρτες (Endless/Chaos). Το Act 1 και το Campaign παίζουν
+  σε ΣΤΑΘΕΡΟ χάρτη με streaming OFF, οπότε το `_stageSpeedMult` γραφόταν σε δύο σημεία και **δεν το διάβαζε κανείς**,
+  το `hpMult` δεν εφαρμοζόταν ποτέ, και το `regenRate: 0.5` του abyssal_trench δεν έκανε τίποτα. Και τα 6 stages
+  του Act 1 και τα 7 του Campaign έπαιζαν με **πανομοιότυπους** εχθρούς πίσω από διαφορετική εικόνα.
+  Η υλοποίηση: `Game._setStageRule(biomeId)` παράγει τον κανόνα σε ένα σημείο, `Game._applyStageRule(e)` τον
+  εφαρμόζει σε ένα σημείο (μία φορά ανά spawn, όχι σε bosses/mega bosses, no-op όσο τρέχει streaming ώστε να μην
+  υπάρξει διπλή εφαρμογή). Καμία τιμή balance δεν άλλαξε — είναι τα νούμερα της Maria στο `BIOME_DEFS`.
+  Μετρημένο (Glitch Drone, ίδιο production spawn path): neon 2.99hp/95sp · industrial 4hp/80.8sp ·
+  orbital 3hp/104.5sp · abyssal 4hp/85.5sp (+0.5 regen) · glacial 4hp/76sp · data_wastes 4hp/85.5sp.
+  QA: `tools/qa/batch4_stage_rules_regression.mjs` 63 PASS / 0 FAIL.
 - [ ] Unlock ladder: 3 stages στην αρχή, τα υπόλοιπα με νίκες/milestones
 Αρχεία: Game.js (menu flow + run start + bg draw), MapManager (ήδη έτοιμο). Cache-bust bump.
 
