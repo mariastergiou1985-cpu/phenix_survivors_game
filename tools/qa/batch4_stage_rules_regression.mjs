@@ -24,7 +24,7 @@ import path from 'node:path';
 register('./strip-v-loader.mjs', import.meta.url);
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '../..');
-const { installEnv, muteConsole } = await import(pathToFileURL(path.join(HERE, 'headless-env.mjs')).href);
+const { installEnv, muteConsole, makeCtx } = await import(pathToFileURL(path.join(HERE, 'headless-env.mjs')).href);
 installEnv();
 
 const u0 = muteConsole();
@@ -333,6 +333,238 @@ console.log('\n=== 6. LIFECYCLE — NO RULE SURVIVES A RUN ===');
   const finite = (o) => o && Number.isFinite(o.x) && Number.isFinite(o.y);
   T('no NaN in player or camera after the lifecycle block',
     finite(g.player?.pos) && finite(g.camera), `player=${JSON.stringify(g.player?.pos)} camera=${JSON.stringify(g.camera)}`);
+}
+
+// ════════════════════════════════════════════════════════════════════════════════════════════════
+console.log('\n=== 7. RUN BIOME — THE RUN STARTS WHERE THE PLAYER PICKED (Slice A) ===');
+{
+  const g = newGame();
+  T('a fresh Game defaults to neon_district', g.runBiome === 'neon_district', String(g.runBiome));
+  T('STAGE_RING has the six selectable stages and excludes the_null',
+    Game.STAGE_RING.length === 6 && !Game.STAGE_RING.includes('the_null'), Game.STAGE_RING.join(','));
+
+  // setRunBiome accepts only real ring biomes.
+  T('setRunBiome accepts every ring biome',
+    Game.STAGE_RING.every(id => g.setRunBiome(id) === true && g.runBiome === id));
+  g.setRunBiome('neon_district');
+  T('setRunBiome refuses the_null (endgame biome, not a stage)', g.setRunBiome('the_null') === false && g.runBiome === 'neon_district');
+  T('setRunBiome refuses an unknown id', g.setRunBiome('no_such_biome') === false && g.runBiome === 'neon_district');
+  T('setRunBiome refuses null/undefined', g.setRunBiome(null) === false && g.setRunBiome(undefined) === false);
+
+  // The default run must reproduce the OLD order exactly — this is the no-regression assertion.
+  T('the default run keeps the original ring order',
+    JSON.stringify(g._stageOrder()) === JSON.stringify(Game.STAGE_RING), g._stageOrder().join(','));
+
+  // A selected biome rotates the ring so it is stage 1, and every biome still appears once.
+  for (const id of Game.STAGE_RING) {
+    g.setRunBiome(id);
+    const order = g._stageOrder();
+    const ok = order[0] === id && order.length === 6 && new Set(order).size === 6
+            && Game.STAGE_RING.every(b => order.includes(b));
+    T(`runBiome ${id}: it is stage 1 and the ring still visits all six once`, ok, order.join(','));
+  }
+
+  // _applyRunBiome arms the rule from frame one, before any stage progression tick.
+  const g2 = newGame();
+  g2.setRunBiome('glacial_expanse');
+  if (g2.chunkManager) g2.chunkManager.enabled = false;
+  const un = muteConsole();
+  g2._applyRunBiome();
+  un();
+  const gm = BIOME_DEFS['glacial_expanse'].enemyModifiers;
+  T('_applyRunBiome puts the chosen stage rule in force immediately',
+    g2._stageBiome === 'glacial_expanse' && g2._stageHpMult === gm.hpMult && g2._stageSpeedMult === gm.speedMult,
+    `biome=${g2._stageBiome} hp=${g2._stageHpMult} sp=${g2._stageSpeedMult}`);
+  const B = baseline();
+  const e = spawnThrough(g2);
+  T('and the very first enemy of the run already carries it',
+    !!e && e.hp === Math.max(1, Math.round(B.hp * gm.hpMult)), e ? `hp ${B.hp} → ${e.hp}` : 'no enemy');
+
+  // Driving the real progression from a selected biome walks the rotated ring.
+  const g3 = newGame();
+  g3.setRunBiome('orbital_nexus');
+  if (g3.chunkManager) g3.chunkManager.enabled = false;
+  g3.endless = false; g3.gameState = 'playing'; g3.gameOver = false; g3.victory = false;
+  const un3 = muteConsole();
+  g3._applyRunBiome();
+  const walk = [];
+  for (const t of [0, 12 * 60 + 1, 24 * 60 + 1, 36 * 60 + 1, 48 * 60 + 1, 60 * 60 + 1]) {
+    g3.timeAlive = t;
+    try { g3._updateStageProgression(); } catch (_) {}
+    walk.push(g3._stageBiome);
+  }
+  un3();
+  console.log('    ' + walk.join(' → '));
+  T('a run selected into orbital_nexus starts there', walk[0] === 'orbital_nexus', walk[0]);
+  T('and still visits all six stages exactly once', new Set(walk).size === 6, walk.join(','));
+  T('every step of the rotated ring carries its own rule',
+    walk.every(b => BIOME_DEFS[b] && BIOME_DEFS[b].enemyModifiers));
+
+  // reset() must NOT clear the selection — it is a run setting like selectedCharacter.
+  const g4 = newGame();
+  g4.setRunBiome('data_wastes');
+  const un4 = muteConsole();
+  g4.reset();
+  un4();
+  T('reset() keeps the selected run biome (it is a setting, not run state)', g4.runBiome === 'data_wastes', String(g4.runBiome));
+  T('but reset() still clears the live stage rule', g4._stageBiome === null && g4._stageHpMult === 1);
+}
+
+// ════════════════════════════════════════════════════════════════════════════════════════════════
+console.log('\n=== 8. STAGE SELECT — OVERLAY, MENU AND COMMIT SEMANTICS (Slice A) ===');
+// The headless DOM in tools/qa/headless-env.mjs is a no-op stub: addEventListener does nothing and
+// querySelector hands back a fresh element. So this block proves the LOGIC — state machine, cursor
+// maths, what commits and what does not, and that render/draw never throw. The real DOM contract
+// (six cards, no the_null in the markup, no listener growth across open/close, a real click, a real
+// keypress) is proven in Chromium by the browser sign-off, not faked here.
+{
+  // Screen changes go through _transition, which parks the callback until the fade reaches black,
+  // so nothing happens until the fade is driven. Driving it also runs _hideMenuOverlay, which calls
+  // vid.pause() on the menu video — and the headless element stub has no pause/play. That is an
+  // ENVIRONMENT gap, not a production one, so it is patched here, locally, for this block only:
+  // the real _hideMenuOverlay still runs, it just finds a media element that answers.
+  const _origGetById = document.getElementById;
+  document.getElementById = function (id) {
+    const el = _origGetById.call(document, id);
+    if (el && typeof el.pause !== 'function') { el.pause = () => {}; el.play = () => Promise.resolve(); }
+    return el;
+  };
+  const flush = (g) => {                    // run the fade to completion so _transition's cb fires
+    const un = muteConsole();
+    let err = null;
+    for (let i = 0; i < 400 && g._fadeDir !== 0; i++) { try { g._updateFade(1 / 30); } catch (e) { err = e; break; } }
+    un();
+    return err;
+  };
+  T('screen transitions can be driven headlessly (no environment gap left)',
+    (() => { const gt = newGame(); const u = muteConsole(); gt.gameState = 'start_menu'; gt._selectMenuItem('SELECT STAGE'); u();
+             return flush(gt) === null; })());
+
+  const g = newGame();
+  T('SELECT STAGE is in the main menu', g.menuItems.includes('SELECT STAGE'), g.menuItems.join(','));
+  T('the menu still offers CAMPAIGN and CHARACTER SELECT alongside it',
+    g.menuItems.includes('CAMPAIGN') && g.menuItems.includes('CHARACTER SELECT'));
+
+  // Opening the screen.
+  const un1 = muteConsole();
+  g.gameState = 'start_menu';
+  g._selectMenuItem('SELECT STAGE');
+  un1();
+  flush(g);
+  T('choosing SELECT STAGE enters the stage_select state', g.gameState === 'stage_select', String(g.gameState));
+  T('the cursor opens on the CURRENT selection, so BACK is a true no-op',
+    g._stageSelIndex === Game.STAGE_RING.indexOf(g.runBiome), `idx=${g._stageSelIndex} runBiome=${g.runBiome}`);
+
+  // Cursor maths: left/right wrap, up/down move a row and wrap.
+  const keyStep = (k) => { const un = muteConsole(); g._updateStageSelect({ keys: new Set([k]), mousePos: { x: 0, y: 0 }, mouseDown: false }); un(); };
+  g._stageSelIndex = 0; keyStep('arrowleft');
+  T('◀ from the first card wraps to the last', g._stageSelIndex === Game.STAGE_RING.length - 1, String(g._stageSelIndex));
+  keyStep('arrowright');
+  T('▶ wraps back to the first', g._stageSelIndex === 0, String(g._stageSelIndex));
+  g._stageSelIndex = 0; keyStep('arrowdown');
+  T('▼ moves one row (3 columns)', g._stageSelIndex === 3, String(g._stageSelIndex));
+  keyStep('arrowup');
+  T('▲ moves back a row', g._stageSelIndex === 0, String(g._stageSelIndex));
+  let inRange = true;
+  for (let i = 0; i < 40; i++) { keyStep(i % 2 ? 'arrowdown' : 'arrowright'); if (!(g._stageSelIndex >= 0 && g._stageSelIndex < Game.STAGE_RING.length)) inRange = false; }
+  T('the cursor can never leave the ring, however long you hold a direction', inRange, String(g._stageSelIndex));
+
+  // CANCEL must not change the selection.
+  const g2 = newGame();
+  g2.setRunBiome('neon_district');
+  const un2 = muteConsole(); g2.gameState = 'start_menu'; g2._selectMenuItem('SELECT STAGE'); un2(); flush(g2);
+  g2._stageSelIndex = Game.STAGE_RING.indexOf('data_wastes');       // move the cursor far away...
+  const un3 = muteConsole(); g2._stageSelectCancel(); un3(); flush(g2);
+  T('CANCEL leaves the selection untouched', g2.runBiome === 'neon_district', String(g2.runBiome));
+  T('CANCEL returns to the main menu', g2.gameState === 'start_menu', String(g2.gameState));
+
+  // ESCAPE is the same path.
+  const g3 = newGame();
+  g3.setRunBiome('orbital_nexus');
+  const un4 = muteConsole(); g3.gameState = 'stage_select'; g3._stageSelIndex = Game.STAGE_RING.indexOf('glacial_expanse');
+  g3._updateStageSelect({ keys: new Set(['escape']), mousePos: { x: 0, y: 0 }, mouseDown: false }); un4(); flush(g3);
+  T('ESC cancels without changing the selection', g3.runBiome === 'orbital_nexus' && g3.gameState === 'start_menu',
+    `runBiome=${g3.runBiome} state=${g3.gameState}`);
+
+  // CONFIRM must commit through the real setter.
+  for (const id of Game.STAGE_RING) {
+    const gc = newGame();
+    gc.setRunBiome('neon_district');
+    const unc = muteConsole();
+    gc.gameState = 'stage_select';
+    gc._stageSelIndex = Game.STAGE_RING.indexOf(id);
+    gc._stageSelectConfirm();
+    unc(); flush(gc);
+    T(`CONFIRM on ${id} commits it and returns to the menu`,
+      gc.runBiome === id && gc.gameState === 'start_menu', `runBiome=${gc.runBiome} state=${gc.gameState}`);
+  }
+
+  // ENTER is the same path as CONFIRM.
+  const g4 = newGame();
+  const un5 = muteConsole();
+  g4.gameState = 'stage_select'; g4._stageSelIndex = Game.STAGE_RING.indexOf('abyssal_trench');
+  g4._updateStageSelect({ keys: new Set(['enter']), mousePos: { x: 0, y: 0 }, mouseDown: false });
+  un5(); flush(g4);
+  T('ENTER confirms the highlighted card', g4.runBiome === 'abyssal_trench', String(g4.runBiome));
+
+  // A corrupted cursor must fall back safely, never commit garbage.
+  const g5 = newGame();
+  g5.setRunBiome('industrial_core');
+  const un6 = muteConsole();
+  g5.gameState = 'stage_select';
+  g5._stageSelIndex = 999;                       // as if something wrote nonsense into the cursor
+  g5._stageSelectConfirm();
+  un6(); flush(g5);
+  T('an out-of-range cursor falls back to neon_district instead of committing garbage',
+    g5.runBiome === 'neon_district' && Game.STAGE_RING.includes(g5.runBiome), String(g5.runBiome));
+
+  // the_null must be unreachable through the screen, not merely absent from the grid.
+  const g6 = newGame();
+  const idxNull = Game.STAGE_RING.indexOf('the_null');
+  T('the_null has no index in the ring, so no card can select it', idxNull === -1, String(idxNull));
+  g6.runBiome = 'the_null';                      // force it past the setter, as hostile DOM would
+  const un7 = muteConsole();
+  g6._applyRunBiome();
+  un7();
+  T('a forced the_null is repaired to neon_district at run start', g6.runBiome === 'neon_district', String(g6.runBiome));
+
+  // Rendering and drawing must never throw, with the overlay built or not.
+  const g7 = newGame();
+  let threw = 0;
+  const un8 = muteConsole();
+  try { g7._renderStageSelectOverlay(); } catch (_) { threw++; }          // no overlay yet → no-op
+  try { g7._buildStageSelectOverlay(); } catch (_) { threw++; }
+  try { g7._renderStageSelectOverlay(); } catch (_) { threw++; }
+  try { g7._showStageSelectOverlay(); } catch (_) { threw++; }
+  try { g7._hideStageSelectOverlay(); } catch (_) { threw++; }
+  try { g7._drawStageSelect(makeCtx()); } catch (_) { threw++; }
+  un8();
+  T('build / render / show / hide / draw all survive the headless DOM', threw === 0, `${threw} throws`);
+
+  // The overlay element is created ONCE. _buildStageSelectOverlay returning early is what keeps the
+  // single delegated listener single — if it rebuilt, every open would add another listener set.
+  const before = g7._stageSelectOverlayEl;
+  const un9 = muteConsole();
+  for (let i = 0; i < 25; i++) { g7._buildStageSelectOverlay(); g7._renderStageSelectOverlay(); g7._showStageSelectOverlay(); g7._hideStageSelectOverlay(); }
+  un9();
+  T('25 open/close cycles reuse the SAME overlay element (no listener accumulation)',
+    g7._stageSelectOverlayEl === before && !!before);
+
+  // The campaign must be completely unaffected by the Act 1 stage choice.
+  const g8 = newGame();
+  g8.setRunBiome('data_wastes');
+  if (g8.chunkManager) g8.chunkManager.enabled = false;
+  g8._pendingCampaignStage = 2;                  // STAGE 2 = industrial_core
+  const un10 = muteConsole();
+  g8._applyRunBiome();                           // Act 1 choice first...
+  g8._applyCampaignStage();                      // ...campaign applied after, exactly as selectCharacter does
+  un10();
+  T('a campaign stage still wins over the Act 1 stage choice',
+    g8._stageBiome === 'industrial_core', String(g8._stageBiome));
+  T('and the campaign stage number is intact', g8._campaignStage === 2, String(g8._campaignStage));
+  T('the Act 1 selection itself is not clobbered by the campaign', g8.runBiome === 'data_wastes', String(g8.runBiome));
+
+  document.getElementById = _origGetById;   // leave the environment exactly as it was found
 }
 
 console.log(`\n${pass} PASS / ${fail} FAIL`);

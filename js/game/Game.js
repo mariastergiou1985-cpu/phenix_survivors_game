@@ -1074,6 +1074,9 @@ export class Game {
     // campaign stage played identically. These three now carry the active stage's rule.
     this._stageHpMult    = 1;      // enemy HP mult from the current stage biome
     this._stageRegen     = 0;      // enemy HP regen per second from the current stage biome
+    // Slice A: the biome an Act 1 run starts in. Survives reset() — it is a RUN SETTING chosen in
+    // the menu, not run state, exactly like selectedCharacter.
+    this.runBiome        = 'neon_district';
     // ── STAGE CAMPAIGN (VS-style select → play → clear → unlock next) ──
     this._campaignStage        = 0;   // active campaign stage number (0 = not a campaign run)
     this._pendingCampaignStage = 0;   // stage picked in the select screen, applied on run start
@@ -1266,7 +1269,7 @@ export class Game {
     // ARSENAL είναι πλέον ο κατάλογος. Ο κώδικας της οθόνης (goToEvolutionMatrix)
     // μένει ανέγγιχτος για εύκολη επαναφορά· τα old-gen evolutions αποσύρονται στο
     // πλήρες migration ούτως ή άλλως.
-    items.push('CHARACTER SELECT', 'UPGRADES', 'COLLECTIBLES', 'RELICS', 'HANGAR');
+    items.push('CHARACTER SELECT', 'SELECT STAGE', 'UPGRADES', 'COLLECTIBLES', 'RELICS', 'HANGAR');
     // P2 FULL MIGRATION: NULL ARSENAL is permanent — the opt-out flag is retired.
     items.push('NULL ARSENAL');
     items.push('SETTINGS', 'EXIT');
@@ -1842,6 +1845,7 @@ export class Game {
       this._hideMenuOverlay();
       this._hideCharSelectOverlay();
       this._hideCampaignOverlay?.();
+      this._hideStageSelectOverlay?.();
       this.selectedCharacter = charId;
       this.audio?.startGameplayMusic();
       this.gameState = 'playing';
@@ -1849,6 +1853,7 @@ export class Game {
       this._stageCompleteBanner = null;    // stage-complete pause — starting the next stage inside the 4.2s
       this._stageCompletePausedAt = 0;     // banner window began the run PAUSED (timer stuck at 00:00 forever).
       this.reset();
+      this._applyRunBiome();        // Slice A: start the stage ring at the selected biome
       this._applyCampaignStage();   // if a campaign stage was picked, apply its map + rules to this run
     });
   }
@@ -1857,6 +1862,7 @@ export class Game {
     this._transition(() => {
       this._hideMenuOverlay();
       this._hideCampaignOverlay?.();
+      this._hideStageSelectOverlay?.();
       this.gameState = 'character_select';
       this.characterIndex = 0;
       this.audio?.startMenuMusic();
@@ -2324,6 +2330,7 @@ export class Game {
       this._hideSettingsOverlay();
       this._hideCharSelectOverlay();
       this._hideCampaignOverlay?.();
+      this._hideStageSelectOverlay?.();
       this._hideUpgradesOverlay();
       this._hideAchievementsOverlay();
       this._hideRelicsOverlay();
@@ -2975,6 +2982,43 @@ export class Game {
   // map (chunk streaming is off), so each stage SWAPS the background image to that biome's map
   // ("separate map per stage"), applies the biome's enemy speed rule, and fires a full-screen
   // 'STAGE N — NAME' announcement. Skipped in Endless/Chaos (they have their own maps).
+  // ── RUN BIOME (ROADMAP MILESTONE 2 / Slice A) ──────────────────────────────
+  // The biome an Act 1 run STARTS in. Default neon_district, which is exactly where the ring
+  // started before, so a run that never picks a stage behaves identically to the old build.
+  // THE_NULL is deliberately not selectable: it is the endgame biome, not a stage in the ring.
+  static get STAGE_RING() {
+    return ['neon_district', 'industrial_core', 'orbital_nexus', 'abyssal_trench', 'glacial_expanse', 'data_wastes'];
+  }
+
+  /** Set the run's starting biome. Returns true if it was accepted. */
+  setRunBiome(biomeId) {
+    if (!Game.STAGE_RING.includes(biomeId) || !BIOME_DEFS[biomeId]) return false;
+    this.runBiome = biomeId;
+    return true;
+  }
+
+  // Arm the run at its chosen biome: stage rule live from frame one, and the fixed Act 1 background
+  // swapped to that biome's map. Called AFTER reset() (which clears stage state) and BEFORE
+  // _applyCampaignStage(), so a campaign stage still wins — the campaign picks its own biome.
+  _applyRunBiome() {
+    const id = Game.STAGE_RING.includes(this.runBiome) ? this.runBiome : 'neon_district';
+    this.runBiome = id;
+    this._stageIndex = 0;
+    this._setStageRule(id);
+    try {
+      const img = this.mapManager?.getBiomeImage ? this.mapManager.getBiomeImage(id) : null;
+      if (img) this.mapManager._bgImage = img;
+    } catch (_) { /* background is cosmetic — never block a run start on it */ }
+  }
+
+  /** The ring, rotated so index 0 is the run's chosen starting biome. */
+  _stageOrder() {
+    const RING = Game.STAGE_RING;
+    const i = RING.indexOf(this.runBiome);
+    if (i <= 0) return RING;                       // unknown or already first → untouched order
+    return RING.slice(i).concat(RING.slice(0, i));
+  }
+
   // ── STAGE RULE (ROADMAP MILESTONE 2 / Slice A) ─────────────────────────────
   // One place that turns a biome id into the stage's enemy rule. Act 1 and the campaign run on a
   // FIXED map with chunk streaming off, so the streaming path in spawnEnemy — the only code that
@@ -3011,7 +3055,11 @@ export class Game {
   _updateStageProgression() {
     if (this.endless || this.gameState !== 'playing' || this.gameOver || this.victory) return;
     const STAGE_DUR = 12 * 60;   // seconds per stage
-    const ORDER = ['neon_district', 'industrial_core', 'orbital_nexus', 'abyssal_trench', 'glacial_expanse', 'data_wastes'];
+    // ROADMAP MILESTONE 2 / Slice A — `this.runBiome`. The ring order is fixed, but the run now
+    // STARTS at the selected biome and walks forward from there, wrapping. Picking Glacial Expanse
+    // means stage 1 IS Glacial Expanse; leaving runBiome at the default reproduces the old
+    // neon → industrial → … order exactly, so an unselected run is byte-for-byte unchanged.
+    const ORDER = this._stageOrder();
     const si = Math.min(ORDER.length - 1, Math.floor(this.timeAlive / STAGE_DUR));
     if (this._stageBiome && si === this._stageIndex) return;   // still on the same stage
     this._stageIndex = si;
@@ -8885,6 +8933,10 @@ export class Game {
       this._updateCampaignSelect(input);
       return;
     }
+    if (this.gameState === 'stage_select') {
+      this._updateStageSelect(input);
+      return;
+    }
     if (this.gameState === 'exit_screen') {
       this._updateExitScreen(input);
       return;
@@ -10597,6 +10649,7 @@ export class Game {
     else if (item === 'START GAME' || item === 'CHARACTER SELECT') this.goToCharacterSelect();
     else if (item === 'ENDLESS MODE')   this.startEndlessRun();
     else if (item === 'CHAOS MODE')    this._selectChaosMode();
+    else if (item === 'SELECT STAGE')   this.goToStageSelect();   // Slice A — Act 1 starting biome
     else if (item === 'UPGRADES')       this.goToUpgradesScreen();
     else if (item === 'COLLECTIBLES')   this.goToAchievementsScreen();   // 'COLLECTIBLES' label → same screen/logic
     else if (item === 'RELICS')         this.goToRelicsScreen();
@@ -20617,6 +20670,11 @@ export class Game {
       this._drawFade(ctx);
       return;
     }
+    if (this.gameState === 'stage_select') {
+      this._drawStageSelect(ctx);
+      this._drawFade(ctx);
+      return;
+    }
     if (this.gameState === 'character_select') {
       this._drawCharacterSelect(ctx);
       this._drawFade(ctx);
@@ -22153,6 +22211,7 @@ export class Game {
         <div class="row"><span class="k">Class</span><span class="v amber"><svg><use href="#i-shield"/></svg><span data-cgm="equip-class">—</span></span></div>
         <div class="row"><span class="k">Element</span><span class="v amber"><svg><use href="#i-bolt"/></svg><span data-cgm="equip-element">—</span></span></div>
         <div class="row"><span class="k">Weapon</span><span class="v amber"><svg><use href="#i-sword"/></svg><span data-cgm="equip-weapon">—</span></span></div>
+        <div class="row"><span class="k">Starting Stage</span><span class="v"><span data-cgm="start-stage">—</span></span></div>
       </section>
 
       <section class="panel" style="--accent:var(--green);--accent-glow:rgba(52,211,153,.5)">
@@ -22404,6 +22463,9 @@ export class Game {
       }
     }
     this._cgmSet('equip-weapon', weapon);
+    // Slice A: the Act 1 starting biome, live from runBiome so SELECT STAGE updates it at once.
+    const _sb = Game.STAGE_RING.includes(this.runBiome) ? this.runBiome : 'neon_district';
+    this._cgmSet('start-stage', (BIOME_DEFS[_sb] && BIOME_DEFS[_sb].name) || _sb);
 
     // Quick Stats panel
     this._cgmSet('qs-element', elIcon + ' ' + elStr);
@@ -24373,6 +24435,246 @@ export class Game {
         else this.triggerAnnouncement('CLEAR THE PREVIOUS STAGE FIRST', '#888888');
       });
     });
+  }
+
+  // ══ STAGE SELECT (ROADMAP MILESTONE 2 / Slice A) ════════════════════════════
+  // Picks the biome an ACT 1 run starts in. Same DOM-overlay shape as CAMPAIGN, and deliberately
+  // NOT the same screen: campaign stages are a fixed authored ladder with their own maps, this
+  // chooses where the six-biome ring begins. Everything shown here — names, descriptions, the
+  // modifier numbers — is read from BIOME_DEFS at render time. Nothing is duplicated into the UI,
+  // so retuning a biome changes the cards with no edit here.
+  //
+  // LISTENERS ARE BOUND EXACTLY ONCE, in _buildStageSelectOverlay, by delegation on the container.
+  // _renderStageSelectOverlay rewrites innerHTML on every open; binding per card there would add a
+  // fresh listener set on every open and leak for the whole session.
+  _buildStageSelectOverlay() {
+    if (this._stageSelectOverlayEl) return;
+    if (!document.getElementById('cgm-stagesel-style')) {
+      const style = document.createElement('style');
+      style.id = 'cgm-stagesel-style';
+      style.textContent = `
+        #cgm-stagesel {
+          position:fixed; inset:0; z-index:120; display:none;
+          align-items:center; justify-content:center; overflow-y:auto;
+          padding:20px 16px; font-family:'Share Tech Mono',ui-monospace,monospace; color:#cfe9ff;
+          background:
+            radial-gradient(1200px 700px at 50% -10%,rgba(46,230,246,.16),transparent 60%),
+            radial-gradient(900px 600px at 12% 30%,rgba(168,85,247,.10),transparent 60%),
+            radial-gradient(900px 600px at 88% 70%,rgba(255,45,149,.09),transparent 60%),
+            linear-gradient(180deg,#0b1030,#070a1c);
+          --cyan:#2ee6f6; --green:#7CFF4D; --amber:#ffd23c; --txt-dim:#6f86b8;
+        }
+        #cgm-stagesel * { box-sizing:border-box; margin:0; padding:0; }
+        #cgm-stagesel .ssl-stage {
+          position:relative; width:100%; max-width:1000px; margin:auto;
+          border:1px solid rgba(46,230,246,.12); border-radius:20px; padding:22px 24px 20px;
+          background:linear-gradient(180deg,rgba(46,230,246,.05),transparent 30%),rgba(7,10,28,.88);
+          box-shadow:inset 0 0 60px rgba(46,230,246,.05),0 30px 80px rgba(0,0,0,.55);
+          display:flex; flex-direction:column; gap:14px;
+        }
+        #cgm-stagesel .ssl-top { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+        #cgm-stagesel .ssl-title { font-family:'Orbitron',sans-serif; font-weight:800; font-size:22px; letter-spacing:3px; color:var(--cyan); text-shadow:0 0 8px rgba(46,230,246,.55); }
+        #cgm-stagesel .ssl-btn { padding:12px 22px; border-radius:10px; cursor:pointer; border:1px solid rgba(46,230,246,.45); background:rgba(10,16,46,.65); color:#e8ffff; font-family:'Orbitron',sans-serif; font-weight:700; font-size:13px; letter-spacing:2px; }
+        #cgm-stagesel .ssl-btn:hover { border-color:var(--cyan); box-shadow:0 0 12px rgba(46,230,246,.4); }
+        #cgm-stagesel .ssl-btn.primary { border-color:var(--green); color:#eaffe0; }
+        #cgm-stagesel .ssl-btn.primary:hover { box-shadow:0 0 14px rgba(124,255,77,.45); }
+        #cgm-stagesel .ssl-sub { font-size:12px; color:var(--txt-dim); letter-spacing:1px; line-height:1.5; }
+        #cgm-stagesel .ssl-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
+        #cgm-stagesel .ssl-card {
+          position:relative; border-radius:12px; overflow:hidden; cursor:pointer;
+          border:1.5px solid rgba(46,230,246,.28); background:rgba(10,16,46,.72);
+          padding:12px 13px 11px; display:flex; flex-direction:column; gap:7px; min-height:150px;
+          transition:border-color .15s, box-shadow .18s, transform .18s;
+        }
+        #cgm-stagesel .ssl-card:hover { border-color:rgba(46,230,246,.6); }
+        #cgm-stagesel .ssl-card.sel { border-color:var(--cyan); box-shadow:0 0 20px rgba(46,230,246,.5); transform:scale(1.02); z-index:2; }
+        #cgm-stagesel .ssl-swatch { position:absolute; inset:0; opacity:.30; z-index:0; }
+        #cgm-stagesel .ssl-card > * { position:relative; z-index:1; }
+        #cgm-stagesel .ssl-name { font-family:'Orbitron',sans-serif; font-weight:700; font-size:15px; letter-spacing:1.5px; color:#e8ffff; text-shadow:0 1px 3px #000; }
+        #cgm-stagesel .ssl-desc { font-size:11.5px; line-height:1.45; color:#a9c2e4; min-height:32px; }
+        #cgm-stagesel .ssl-mods { display:flex; flex-wrap:wrap; gap:6px; margin-top:auto; }
+        #cgm-stagesel .ssl-mod { font-size:11px; letter-spacing:.5px; padding:3px 8px; border-radius:6px; background:rgba(4,8,20,.72); border:1px solid rgba(46,230,246,.22); color:#bcd8f5; }
+        #cgm-stagesel .ssl-mod.up { color:#ff9d7a; border-color:rgba(255,120,80,.35); }
+        #cgm-stagesel .ssl-mod.down { color:#8fe6ff; border-color:rgba(46,230,246,.35); }
+        #cgm-stagesel .ssl-mod.regen { color:var(--green); border-color:rgba(124,255,77,.35); }
+        #cgm-stagesel .ssl-badge { position:absolute; top:8px; right:8px; z-index:3; font-size:10.5px; font-weight:700; color:#041018; background:var(--cyan); padding:3px 8px; border-radius:6px; letter-spacing:1px; }
+        #cgm-stagesel .ssl-foot { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+        #cgm-stagesel .ssl-current { font-size:12.5px; letter-spacing:1px; color:#bcd8f5; }
+        #cgm-stagesel .ssl-current b { color:var(--cyan); }
+        #cgm-stagesel .ssl-hints { font-size:11px; color:#46588a; letter-spacing:1px; }
+        @media (max-width:1024px), (pointer: coarse) {
+          #cgm-stagesel { padding:12px 10px; }
+          #cgm-stagesel .ssl-stage { max-width:100%; padding:16px 12px; }
+          #cgm-stagesel .ssl-grid { grid-template-columns:repeat(2,1fr); gap:10px; }
+          #cgm-stagesel .ssl-title { font-size:17px; letter-spacing:2px; }
+          #cgm-stagesel .ssl-btn { padding:14px 18px; font-size:14px; }
+          #cgm-stagesel .ssl-desc { min-height:0; }
+        }
+        @media (max-width:620px) {
+          #cgm-stagesel .ssl-grid { grid-template-columns:1fr; }
+        }
+      `;
+      document.head.appendChild(style);
+    }
+    const el = document.createElement('div');
+    el.id = 'cgm-stagesel';
+    el.setAttribute('role', 'dialog');
+    el.setAttribute('aria-label', 'Stage Select');
+    document.body.appendChild(el);
+    this._stageSelectOverlayEl = el;
+
+    // ONE delegated handler for the whole overlay, for its whole life.
+    el.addEventListener('click', (ev) => {
+      const back = ev.target.closest('#ssl-back');
+      if (back) { this._stageSelectCancel(); return; }
+      const confirm = ev.target.closest('#ssl-confirm');
+      if (confirm) { this._stageSelectConfirm(); return; }
+      const card = ev.target.closest('.ssl-card');
+      if (!card) return;
+      const i = parseInt(card.dataset.idx, 10);
+      if (!Number.isInteger(i) || i < 0 || i >= Game.STAGE_RING.length) return;   // hostile DOM → ignore
+      this._stageSelIndex = i;
+      this._renderStageSelectOverlay();
+    });
+  }
+
+  _renderStageSelectOverlay() {
+    const el = this._stageSelectOverlayEl;
+    if (!el) return;
+    const RING = Game.STAGE_RING;
+    const pct  = (v) => `${Math.round(v * 100)}%`;
+    const cards = RING.map((id, i) => {
+      const def  = BIOME_DEFS[id] || {};
+      const m    = def.enemyModifiers || {};
+      const sp   = m.speedMult > 0 ? m.speedMult : 1;
+      const hp   = m.hpMult    > 0 ? m.hpMult    : 1;
+      const rg   = m.regenRate > 0 ? m.regenRate : 0;
+      const pal  = def.palette || {};
+      const mods = [
+        `<span class="ssl-mod ${sp > 1 ? 'up' : sp < 1 ? 'down' : ''}">ENEMY SPEED ${pct(sp)}</span>`,
+        `<span class="ssl-mod ${hp > 1 ? 'up' : hp < 1 ? 'down' : ''}">ENEMY HP ${pct(hp)}</span>`,
+        rg ? `<span class="ssl-mod regen">REGEN ${rg}/s</span>` : '',
+      ].filter(Boolean).join('');
+      const swatch = `linear-gradient(140deg,${pal.accent1 || '#2ee6f6'}44,${pal.accent2 || '#a855f7'}22 55%,transparent)`;
+      const sel = i === this._stageSelIndex;
+      return `<div class="ssl-card${sel ? ' sel' : ''}" data-idx="${i}" role="button" tabindex="-1" aria-pressed="${sel}">
+        <div class="ssl-swatch" style="background:${swatch}"></div>
+        ${sel ? '<div class="ssl-badge">STAGE 1</div>' : ''}
+        <div class="ssl-name">${def.name || id}</div>
+        <div class="ssl-desc">${def.description || ''}</div>
+        <div class="ssl-mods">${mods}</div>
+      </div>`;
+    }).join('');
+    const curId  = RING.includes(this.runBiome) ? this.runBiome : RING[0];
+    const curDef = BIOME_DEFS[curId] || {};
+    el.innerHTML = `
+      <div class="ssl-stage">
+        <div class="ssl-top">
+          <div class="ssl-title">SELECT STAGE</div>
+          <button class="ssl-btn" id="ssl-back">◀ BACK</button>
+        </div>
+        <div class="ssl-sub">Choose where your Act 1 run begins. The six stages still rotate in order — your pick becomes STAGE 1 and the rest follow. Each stage carries its own enemy rules.</div>
+        <div class="ssl-grid">${cards}</div>
+        <div class="ssl-foot">
+          <div class="ssl-current">Starting Stage: <b>${curDef.name || curId}</b></div>
+          <button class="ssl-btn primary" id="ssl-confirm">CONFIRM ▶</button>
+        </div>
+        <div class="ssl-hints">◀ ▶ move · ENTER confirm · ESC back — leaving without CONFIRM keeps your current stage</div>
+      </div>`;
+  }
+
+  _showStageSelectOverlay() {
+    this._buildStageSelectOverlay();
+    this._renderStageSelectOverlay();
+    if (this._stageSelectOverlayEl) this._stageSelectOverlayEl.style.display = 'flex';
+  }
+
+  _hideStageSelectOverlay() {
+    if (this._stageSelectOverlayEl) this._stageSelectOverlayEl.style.display = 'none';
+  }
+
+  goToStageSelect() {
+    this._transition(() => {
+      this._hideMenuOverlay();
+      this._hideCampaignOverlay?.();
+      this._hideStageSelectOverlay?.();
+      this.gameState = 'stage_select';
+      // The cursor opens on whatever is currently selected, so BACK is a true no-op.
+      const i = Game.STAGE_RING.indexOf(this.runBiome);
+      this._stageSelIndex = i >= 0 ? i : 0;
+      this.audio?.startMenuMusic();
+      this._showStageSelectOverlay();
+    });
+  }
+
+  /** Leave without touching the selection. */
+  _stageSelectCancel() {
+    this._hideStageSelectOverlay();
+    this.goToMainMenu();
+  }
+
+  /** Commit the highlighted card through the real setter, then leave. */
+  _stageSelectConfirm() {
+    const id = Game.STAGE_RING[this._stageSelIndex];
+    const ok = this.setRunBiome(id);              // the ONLY place the overlay writes the selection
+    if (!ok) this.setRunBiome('neon_district');   // safe fallback — never leave an invalid selection
+    const def = BIOME_DEFS[this.runBiome] || {};
+    this.triggerAnnouncement('STARTING STAGE — ' + String(def.name || this.runBiome).toUpperCase(), '#2ee6f6');
+    this._hideStageSelectOverlay();
+    this.goToMainMenu();
+  }
+
+  _updateStageSelect(input) {
+    const { keys } = input, n = Game.STAGE_RING.length;
+    if (keys.has('arrowleft')  || keys.has('a')) { this._stageSelIndex = (this._stageSelIndex - 1 + n) % n; keys.delete('arrowleft');  keys.delete('a'); this._renderStageSelectOverlay(); }
+    if (keys.has('arrowright') || keys.has('d')) { this._stageSelIndex = (this._stageSelIndex + 1) % n;     keys.delete('arrowright'); keys.delete('d'); this._renderStageSelectOverlay(); }
+    // The grid is 3 wide on desktop, so up/down move by a row — and still wrap, so a gamepad can
+    // never get stuck on an edge.
+    if (keys.has('arrowup')    || keys.has('w')) { this._stageSelIndex = (this._stageSelIndex - 3 + n) % n; keys.delete('arrowup');    keys.delete('w'); this._renderStageSelectOverlay(); }
+    if (keys.has('arrowdown')  || keys.has('s')) { this._stageSelIndex = (this._stageSelIndex + 3) % n;     keys.delete('arrowdown');  keys.delete('s'); this._renderStageSelectOverlay(); }
+    if (keys.has('enter') || keys.has(' ')) { keys.delete('enter'); keys.delete(' '); this._stageSelectConfirm(); return; }
+    if (keys.has('escape') || keys.has('backspace')) { keys.delete('escape'); keys.delete('backspace'); this._stageSelectCancel(); return; }
+  }
+
+  // Canvas fallback, drawn behind the DOM overlay exactly like CAMPAIGN's.
+  _drawStageSelect(ctx) {
+    this._drawBackground(ctx);
+    ctx.fillStyle = 'rgba(4,8,20,0.86)'; ctx.fillRect(0, 0, WIDTH, HEIGHT);
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 34px Consolas, monospace'; ctx.fillStyle = '#2ee6f6';
+    ctx.fillText('SELECT STAGE', WIDTH / 2, 66);
+    ctx.font = '13px Consolas, monospace'; ctx.fillStyle = 'rgba(190,200,215,0.6)';
+    ctx.fillText('Your pick becomes STAGE 1 — the other five follow in order.', WIDTH / 2, 92);
+    const RING = Game.STAGE_RING;
+    for (let i = 0; i < RING.length; i++) {
+      const def = BIOME_DEFS[RING[i]] || {};
+      const m = def.enemyModifiers || {};
+      const col = i % 3, row = (i / 3) | 0;
+      const w = 300, h = 118, gapX = 24, gapY = 22;
+      const x = WIDTH / 2 - (3 * w + 2 * gapX) / 2 + col * (w + gapX);
+      const y = 140 + row * (h + gapY);
+      const sel = i === this._stageSelIndex;
+      ctx.save();
+      ctx.fillStyle = 'rgba(10,16,46,0.78)';
+      ctx.fillRect(x, y, w, h);
+      ctx.lineWidth = sel ? 2.5 : 1.2;
+      ctx.strokeStyle = sel ? '#2ee6f6' : 'rgba(46,230,246,0.28)';
+      ctx.strokeRect(x, y, w, h);
+      ctx.textAlign = 'left';
+      ctx.font = 'bold 16px Consolas, monospace'; ctx.fillStyle = '#e8ffff';
+      ctx.fillText(String(def.name || RING[i]), x + 12, y + 26);
+      ctx.font = '11px Consolas, monospace'; ctx.fillStyle = '#a9c2e4';
+      ctx.fillText(String(def.description || '').slice(0, 44), x + 12, y + 48);
+      ctx.font = '12px Consolas, monospace'; ctx.fillStyle = '#bcd8f5';
+      const sp = m.speedMult > 0 ? m.speedMult : 1, hp = m.hpMult > 0 ? m.hpMult : 1;
+      ctx.fillText(`SPEED ${Math.round(sp * 100)}%   HP ${Math.round(hp * 100)}%`
+        + (m.regenRate > 0 ? `   REGEN ${m.regenRate}/s` : ''), x + 12, y + 74);
+      if (sel) { ctx.fillStyle = '#2ee6f6'; ctx.font = 'bold 11px Consolas, monospace'; ctx.fillText('STAGE 1', x + 12, y + 98); }
+      ctx.restore();
+    }
+    ctx.textAlign = 'center';
+    ctx.font = '12px Consolas, monospace'; ctx.fillStyle = 'rgba(190,200,215,0.55)';
+    ctx.fillText('◀ ▶ move   ENTER confirm   ESC back', WIDTH / 2, HEIGHT - 40);
   }
 
   _showCampaignOverlay() {

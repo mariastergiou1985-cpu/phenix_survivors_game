@@ -89,8 +89,29 @@ hazards, enemyModifiers, music). Στο Act 1 δεν χρησιμοποιούν�
 feature = «ξεκλείδωμα» υπάρχοντος περιεχομένου, ΟΧΙ δημιουργία από το μηδέν.
 
 ### Slice A — Stage Select MVP (ΧΩΡΙΣ νέο art, ασφαλές πρώτο βήμα)
-- [ ] `this.runBiome` (default neon_district) — τίθεται στην αρχή του Act 1 run
-- [ ] Νέο Stage-Select overlay από το μενού (λίστα 6 biomes με name/description από BIOME_DEFS)
+- [x] **ΟΛΟΚΛΗΡΩΘΗΚΕ 2026-07-30** — `this.runBiome` (default neon_district), τίθεται στην αρχή του Act 1 run.
+  `Game.STAGE_RING` = οι 6 επιλέξιμοι biomes· το `the_null` είναι ρητά ΕΞΩ (endgame biome, όχι stage του ring).
+  `setRunBiome(id)` δέχεται μόνο πραγματικό ring biome (απορρίπτει `the_null`, άγνωστα ids, null/undefined).
+  `_stageOrder()` περιστρέφει το ring ώστε το επιλεγμένο biome να είναι το Stage 1 — με το default επιστρέφει
+  **ακριβώς την παλιά σειρά**, οπότε ένα run χωρίς επιλογή είναι αμετάβλητο. `_applyRunBiome()` καλείται στο
+  `selectCharacter` μετά το `reset()` και ΠΡΙΝ το `_applyCampaignStage()`, ώστε το campaign να εξακολουθεί να
+  υπερισχύει· οπλίζει τον stage rule από το πρώτο frame και αλλάζει το fixed background στον χάρτη του biome.
+  Το `runBiome` επιβιώνει του `reset()` — είναι run setting όπως το `selectedCharacter`, όχι run state.
+  Μετρημένο: επιλογή `orbital_nexus` → `orbital_nexus → abyssal_trench → glacial_expanse → data_wastes →
+  neon_district → industrial_core`, και τα 6 stages ακριβώς μία φορά, καθένα με τον δικό του κανόνα.
+  QA: `tools/qa/batch4_stage_rules_regression.mjs` 83 PASS / 0 FAIL.
+- [x] **ΟΛΟΚΛΗΡΩΘΗΚΕ 2026-07-30** — Stage-Select overlay από το μενού (6 biomes με name/description από `BIOME_DEFS`).
+  Νέα είσοδος `SELECT STAGE` στο κεντρικό menu· το panel LOADOUT δείχνει `Starting Stage: <name>` και ενημερώνεται
+  αμέσως μετά το CONFIRM (μετρημένο live: `Neon District` → `Glacial Expanse`). Ίδιο DOM-overlay pattern με το
+  `_showCampaignOverlay()`, νέο state `stage_select` με canvas fallback `_drawStageSelect`.
+  Κάθε κάρτα δείχνει όνομα, περιγραφή, badge STAGE 1 στην επιλεγμένη, και τα modifiers ENEMY SPEED / ENEMY HP /
+  REGEN — **όλα διαβασμένα από τα `BIOME_DEFS` στο render**, τίποτα δεν είναι γραμμένο στο UI.
+  Input: mouse click, ◀ ▶ ▲ ▼ (3-στηλο grid, wrap σε κάθε άκρη), ENTER = confirm, ESC/BACKSPACE = cancel.
+  CONFIRM καλεί το πραγματικό `setRunBiome(id)`· CANCEL/ESC δεν αλλάζει τίποτα· άκυρος cursor πέφτει σε
+  `neon_district`. Το `the_null` δεν έχει index στο ring και ένα forced `the_null` επιδιορθώνεται στο run start.
+  Ένας μόνο delegated listener, δεμένος μία φορά στο build — 8 open/close στον browser κρατούν το ΙΔΙΟ element
+  και ένα μόνο `#cgm-stagesel` node. Hostile card με `data-idx="99"` αγνοείται.
+  QA: `tools/qa/batch4_stage_rules_regression.mjs` 111 PASS / 0 FAIL + πραγματικό Chromium flow.
 - [ ] Legacy background draw: χρήση `mapManager.getBiomeImage(runBiome)` + palette αντί σταθερού bg
 - [x] **ΟΛΟΚΛΗΡΩΘΗΚΕ 2026-07-30** — Εφαρμογή `enemyModifiers` (speedMult/hpMult) του biome = το «rule» του stage.
   Το εύρημα: τα `BIOME_DEFS.enemyModifiers` διαβάζονταν σε ΕΝΑ σημείο, μέσα στο `spawnEnemy`, και μόνο όταν
