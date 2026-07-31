@@ -382,3 +382,48 @@ Art που θα χρειαστεί: capsule (616×353), header, library art, ach
 ## Επόμενη ενέργεια ΤΩΡΑ
 ➡ **Maria:** φτιάξε το Art batch #1 (τα 3 PNG παραπάνω).
 ➡ **Dev pipeline:** μόλις είναι έτοιμα, τα wire-άρω ως 3 πλήρη evolutions και κάνω commit/push/verify.
+
+---
+
+## BATCH 5.3 — WAVE 1 AUTHORED AUDIO (ElevenLabs) ✅ COMPLETE
+
+**Το πρόβλημα που έλυσε.** 28 διαφορετικά event triggers στο `Game.js` καλούσαν τον ΙΔΙΟ
+`playEventWarning` συναγερμό — ο παίκτης άκουγε έναν ήχο και δεν είχε καμία ηχητική πληροφορία για
+το ΤΙ συμβαίνει. Επιπλέον τα 6 enemy signatures (Batch 5.1) και τα 6 boss telegraphs (Batch 5.2)
+είχαν συνολικά 4 audio calls, όλα γενικά.
+
+**Τι μπήκε.** 24 authored κλιπ (ElevenLabs `eleven_text_to_sound_v2`, Starter plan, commercial
+license) στο `assets/audio/sfx/wave1/` ως `.ogg` (primary) + `.mp3` (fallback) — **όχι** `.wav`
+στο repo: το `_loadSfxFile` δοκιμάζει ogg→mp3→wav και κάθε browser χωρίς Ogg Vorbis παίζει MP3,
+άρα τρίτο αντίγραφο θα πρόσθετε μόνο βάρος. Σύνολο 1,9 MB. WAV masters εκτός repo.
+
+**Επεξεργασία ανά αρχείο:** DC offset removal · trim μόνο πραγματικού silence στα −60 dBFS με 5 ms
+pre-roll (transient preserved) · peak normalize −3 dBFS (gain −2,2 dB … +4,7 dB) · **0 clipped
+samples** · κανένα reverb / compression / pitch change.
+
+**Αρχιτεκτονική.**
+- `AudioManager.WAVE1_SFX` — ένα registry, logical id → basenames. Πολλαπλά entries = variations,
+  round-robin ντετερμινιστικά (κανένα `Math.random` σε gameplay path).
+- `_wave1Play(bucket, id, minGap, vol)` → `'played' | 'blocked' | 'nofile'`. Fallback μόνο στο
+  `'nofile'`, ώστε ένα cooldown/cap reject να μη διπλασιάζει τον ήχο.
+- Public: `playEventClass(cls)` · `playBossTelegraph(bossId)` · `playEnemyTell(type)` · `stopWave1()`.
+- Caps: event 1 · boss telegraph 1 ανά boss · enemy tells 3 · anti-spam 0,25 / 0,20 / 0,30 s.
+- Teardown σε `reset()` και `_clearDeckTransients()`.
+- `Game.EVENT_AUDIO_CLASS` — data-driven πίνακας canonical event id → sonic family. Άγνωστο id →
+  `major`, ποτέ undefined, ποτέ silent throw.
+
+**Ηχητικές οικογένειες (10):** airstrike · corrosive · electric · void · arena · boss_echo ·
+supply · blacknet · major. (`cryo` δηλωμένη αλλά χωρίς asset ακόμη → resolve στο `major`.)
+
+**Hooks.** Boss cue μόνο στο IDLE→TELEGRAPH edge· enemy tell μόνο στο READY arm edge, πίσω από το
+υπάρχον `onScreen()` gate. **Καμία αλλαγή σε gameplay, timings, cooldowns ή telegraph windows.**
+
+**Επαλήθευση.** Νέο suite `tools/qa/batch5_3_wave1_audio_regression.mjs` — **46 PASS / 0 FAIL**.
+Regression: 5.2 845/0 · 5.1 602/0 · 4.5 1061/0 · 4.4 281/0 · 4.3 176/0 · batch3 213/0 ·
+black_screen 31/0 · deck_transitions 85/0 · run_state 17/0. Chromium: 9 event classes → 9 διακριτά
+αρχεία· 6 boss telegraphs → 6 διακριτά αρχεία, 2 activations ο καθένας, ένα cue ανά activation,
+κανένα cue μετά τον θάνατο· 0 audio 404· 0 game console errors· canvas 99,7% non-black.
+
+**Cache-bust:** `20260829120000 → 20260829130000`.
+
+**Εκκρεμότητα:** το `cryo` asset δεν κατέβηκε — η κλάση πέφτει στο `major` μέχρι να παραχθεί.

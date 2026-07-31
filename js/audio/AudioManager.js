@@ -1176,6 +1176,132 @@ export class AudioManager {
     if (this._sfxBuffers['sfxRocketRain']) this._playSfxBuffer('sfxRocketRain', 3.0, 0.90);
     else this.generateSound('rocket-rain', 3.0);
   }
+
+  // ═══ WAVE 1 — authored SFX: event classes, boss telegraphs, enemy tells ════
+  // Single source of truth: logical id → file basenames under assets/audio/sfx/wave1/.
+  // Multiple entries = variations, played round-robin (deterministic, no Math.random
+  // in a gameplay path). Files ship as .ogg (primary) + .mp3 (fallback): every browser
+  // that lacks Ogg Vorbis supports MP3, so a third .wav copy would only add repo size.
+  // An id that is absent here is NOT an error — callers fall back (events → the
+  // procedural playEventWarning alarm, enemy tells → silence). No 404 retry loops:
+  // _loadSfxFile keeps the key in _sfxLoading after a failed fetch, so it is tried once.
+  static WAVE1_SFX = {
+    // ── event classes ──
+    event_airstrike: ['event_warning_airstrike_01', 'event_warning_airstrike_02'],
+    event_corrosive: ['event_warning_corrosive_01', 'event_warning_corrosive_02'],
+    event_electric:  ['event_warning_electric_01',  'event_warning_electric_02'],
+    event_void:      ['event_warning_void_01'],
+    event_arena:     ['event_warning_arena_01'],
+    event_boss_echo: ['event_warning_boss_echo_01'],
+    event_supply:    ['event_warning_supply_01'],
+    event_blacknet:  ['event_warning_blacknet_01'],
+    event_major:     ['event_warning_major_01'],
+    // event_cryo: intentionally absent — no approved asset yet, resolves to event_major.
+    // ── boss telegraphs (Batch 5.2 signatures) ──
+    boss_mech:         ['boss_defector_laser_sweep_telegraph'],
+    boss_annihilator:  ['boss_annihilator_forge_slam_telegraph'],
+    boss_titan:        ['boss_titan_orbital_grid_telegraph'],
+    boss_cyberSerpent: ['boss_serpent_charge_telegraph'],
+    boss_cyberDragon:  ['boss_dragon_cryo_breath_telegraph'],
+    boss_bloodfang:    ['boss_bloodfang_pack_assault_telegraph'],
+    // ── enemy signature tells (Batch 5.1 signatures) ──
+    tell_VoltRat:       ['enemy_volt_rat_surge_telegraph'],
+    tell_PulseBurrower: ['enemy_pulse_burrower_burrow_telegraph'],
+    tell_Razorhound:    ['enemy_razorhound_lunge_telegraph'],
+    tell_RiftEye:       ['enemy_rift_eye_aim_telegraph'],
+    tell_HeavyMech:     ['enemy_heavy_mech_brace_telegraph'],
+    tell_AbyssMaw:      ['enemy_abyss_maw_guard_telegraph'],
+  };
+
+  // Concurrency ceilings per category. A bucket may be namespaced with ':' (e.g.
+  // 'bossTelegraph:titan') so each boss gets its own slot of 1 while sharing the cap.
+  static WAVE1_CAPS = { event: 1, bossTelegraph: 1, enemyTell: 3 };
+
+  static _wave1Registry(id) {
+    return Object.prototype.hasOwnProperty.call(AudioManager.WAVE1_SFX, id)
+      ? AudioManager.WAVE1_SFX[id] : null;
+  }
+
+  /**
+   * Play one Wave 1 clip.
+   * @returns {'played'|'blocked'|'nofile'} — callers only fall back on 'nofile',
+   *          so a cooldown/cap rejection stays silent instead of doubling up.
+   */
+  _wave1Play(bucket, id, minGap, vol) {
+    const variants = AudioManager._wave1Registry(id);
+    if (!variants || !variants.length) return 'nofile';
+    if (this.muted) return 'blocked';
+    if (!this.actx) return 'nofile';
+
+    if (!this._w1Active)  this._w1Active  = Object.create(null);
+    if (!this._w1Rr)      this._w1Rr      = Object.create(null);
+    if (!this._w1Sources) this._w1Sources = new Set();
+
+    const capKey = String(bucket).split(':')[0];
+    const cap = AudioManager.WAVE1_CAPS[capKey] || 1;
+    if ((this._w1Active[bucket] || 0) >= cap) return 'blocked';   // concurrency ceiling
+    if (!this._canPlay('w1:' + bucket, minGap)) return 'blocked'; // anti-spam
+
+    const n = (this._w1Rr[id] = ((this._w1Rr[id] || 0) + 1) % variants.length);
+    const base = variants[n];
+    const key = 'w1_' + base;
+    this._loadSfxFile(key,
+      'assets/audio/sfx/wave1/' + base + '.ogg',
+      'assets/audio/sfx/wave1/' + base + '.mp3');
+    const buf = this._sfxBuffers[key];
+    if (!buf) return 'nofile';                     // still decoding → caller falls back
+
+    if (this.actx.state === 'suspended') this.actx.resume();
+    const src = this.actx.createBufferSource();
+    src.buffer = buf;
+    const g = this.actx.createGain();
+    g.gain.value = vol;
+    src.connect(g);
+    g.connect(this.sfxGain);                       // master volume + mute honoured here
+    this._w1Active[bucket] = (this._w1Active[bucket] || 0) + 1;
+    this._w1Sources.add(src);
+    src.onended = () => {
+      this._w1Active[bucket] = Math.max(0, (this._w1Active[bucket] || 1) - 1);
+      this._w1Sources.delete(src);
+    };
+    src.start();
+    return 'played';
+  }
+
+  // Event warning, routed by class. Unknown/missing class → 'major' fallback, and if
+  // even that has no buffer yet the procedural alarm plays: never undefined, never silent.
+  playEventClass(cls) {
+    let id = 'event_' + (cls || 'major');
+    if (!AudioManager._wave1Registry(id)) id = 'event_major';
+    if (this._wave1Play('event', id, 0.25, 0.92) === 'nofile') this.playEventWarning();
+  }
+
+  // Boss signature telegraph — one active cue per boss, fired on TELEGRAPH entry only.
+  playBossTelegraph(bossId) {
+    if (!bossId) return;
+    if (this._wave1Play('bossTelegraph:' + bossId, 'boss_' + bossId, 0.20, 0.95) === 'nofile') {
+      this.playEventWarning();
+    }
+  }
+
+  // Normal-enemy signature tell — quiet by design; stays silent when unmapped so a
+  // rat never borrows a boss-sized alarm.
+  playEnemyTell(enemyType) {
+    if (!enemyType) return;
+    const id = 'tell_' + String(enemyType).replace(/[^A-Za-z0-9]/g, '');
+    this._wave1Play('enemyTell', id, 0.30, 0.55);
+  }
+
+  // Cleanup on run reset / deck transition — stop every live Wave 1 source and clear
+  // the concurrency counters so a new run never starts with a stale ceiling.
+  stopWave1() {
+    if (this._w1Sources) {
+      for (const s of this._w1Sources) { try { s.onended = null; s.stop(); } catch (e) { /* already ended */ } }
+      this._w1Sources.clear();
+    }
+    this._w1Active = Object.create(null);
+  }
+
   // ─── EDEN CORE transmission audio (V1) ──────────────────────────────────────
   // Clip IDs map to files under assets/audio/eden_core/.
   // If the file hasn't loaded yet (or doesn't exist), falls back to a synthesized

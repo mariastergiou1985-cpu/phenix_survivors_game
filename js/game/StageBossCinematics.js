@@ -276,6 +276,10 @@ export function updateBossEncounter(g, bossId, boss, dt) {
       e.summons_pending = 0;
       e.dirX = ndx; e.dirY = ndy;
       armTelegraph(g, e, def, boss, p, dist, ndx, ndy);
+      // Authored boss telegraph cue. Fires on the IDLE->TELEGRAPH edge only: never on the
+      // spawn frame (INTRO runs first and initialDelay gates the first arm), never per-frame,
+      // never during EXECUTE, and never twice inside one activation.
+      try { g && g.audio && g.audio.playBossTelegraph && g.audio.playBossTelegraph(e.bossId); } catch (_) {}
       return;
     }
 

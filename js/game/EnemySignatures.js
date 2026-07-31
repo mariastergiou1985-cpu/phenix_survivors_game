@@ -305,6 +305,10 @@ export function updateSignature(e, game, dt) {
       s.t = def.telegraph; s.teleDur = def.telegraph; s.tele = 0;
       s.hits = 0; s.maxHits = 1; s.active = true;
       s.dirX = ndx; s.dirY = ndy;
+      // Authored signature tell — exactly once per activation, on the READY->TELEGRAPH edge.
+      // onScreen() and concurrencyOk() above already rejected off-camera enemies and pack-wide
+      // unison, so this cannot spam; AudioManager caps it again at 3 concurrent / 0.30 s.
+      try { game && game.audio && game.audio.playEnemyTell && game.audio.playEnemyTell(e.enemyType); } catch (_) {}
       if (s.id === 'zigzag_surge') {
         // pick a side deterministically, and remember it for the telegraph arcs
         const side = sigRand(s) < 0.5 ? -1 : 1;

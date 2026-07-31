@@ -1662,6 +1662,9 @@ export class Game {
     // BATCH 5.2 — the cinematic encounter and every boss summon die with the run.
     this._encOwner            = null;
     try { clearAllBossSummons(this); } catch (_) {}
+    // BATCH 5.3 — authored Wave 1 cues stop with the run too, so a new run never
+    // inherits a live source or a stale concurrency counter.
+    try { this.audio && this.audio.stopWave1 && this.audio.stopWave1(); } catch (_) {}
     if (this.player) { this.player._cryoSlowT = 0; this.player._cryoSlowF = 1; }
     this._stageBossSpawned    = {};
     this._stageBossCleared    = {};
@@ -2287,7 +2290,7 @@ export class Game {
                 : res === 'owned' ? 'Already unlocked.'
                 : 'Cannot unlock.';
     this._pfMsgUntil = performance.now() + 2500;
-    if (res === 'ok') this.audio?.playEventWarning?.();
+    if (res === 'ok') this._eventCue('tryUnlockSelectedCharacterPF');
     this._syncCharSelectOverlay();
   }
 
@@ -8474,7 +8477,7 @@ export class Game {
     const sp = this._playerScreenPos();
     this._theorem.trigger(sp.cx, sp.footY);
     this.screenShake.trigger(5, 0.25);
-    this.audio?.playEventWarning?.();
+    this._eventCue('activateEuclidPlague');
     this.floatingTexts.push(new FloatingText('THEOREM OF ROT!', p.pos.clone(), '#7CFF4D', 1.4));
   }
 
@@ -8615,7 +8618,7 @@ export class Game {
     const sp = this._playerScreenPos();
     this._railgun.trigger(sp.cx, sp.footY);
     this.screenShake.trigger(5, 0.3);
-    this.audio?.playEventWarning?.();
+    this._eventCue('activateOverheatedChains');
     this.floatingTexts.push(new FloatingText('RAILGUN HORIZON!', p.pos.clone(), ORANGE, 1.4));
   }
 
@@ -9227,7 +9230,7 @@ export class Game {
   _openMutationChoice() {
     this._quiesceMovementInput();
     this.mutationUI = new MutationUI(sampleMutations(3, this.mutations));
-    this.audio?.playEventWarning?.();
+    this._eventCue('_openMutationChoice');
     this.triggerAnnouncement('⚠ FORCED MUTATION', '#ff5a3c', { priority: 2 });   // immediate lethal telegraph
   }
 
@@ -9808,7 +9811,7 @@ export class Game {
             this._murkT  = 4.0;
             this._murkActive = true;
             this.triggerAnnouncement('ABYSSAL MURK RISING', '#4488cc');
-            this.audio?.playEventWarning?.();
+            this._eventCue('abyssalMurkRising');
           }
         }
       }
@@ -10134,7 +10137,7 @@ export class Game {
       }
       this._nullCache = { pos: best, decrypt: 0 };
       this._nullCacheDone = true;                 // one attempt per run
-      this.audio?.playEventWarning?.();
+      this._eventCue('_updateNullCache');
       // Faint discovery cue so the player knows to explore (still no map arrow — the static guides).
       this.triggerAnnouncement('◈ NULL SIGNAL DETECTED — DECRYPT NEARBY', '#ff2d95');
       return;
@@ -11342,7 +11345,7 @@ export class Game {
       if (next != null && chaosEl >= next - 5 && chaosEl < next && !this._bossRushWarned) {
         this._bossRushWarned = true;                       // Phase 6: pre-warning beat
         this.triggerAnnouncement('\u26a0 BOSS RUSH INCOMING \u2014 ARENA FORMING \u26a0', '#ff9a2d', { priority: 2 });   // arena lock — restricts movement
-        this.audio?.playEventWarning?.();
+        this._eventCue('_updateBossRush');
       }
       // Mutual exclusion: never open a rush while the Null Breach Arena is running —
       // the start simply defers until the breach closes (schedule keeps them apart anyway).
@@ -11415,7 +11418,7 @@ export class Game {
       br.flags.lockdown = true;
       br.hazard = { kind: 'lockdown', r: 620, minR: 150, shrink: 30, dmg: 16, t: 0, dur: 15 };
       this.triggerAnnouncement('!! LASER GRID LOCKDOWN — STAY INSIDE !!', '#ff4d4d');
-      this.audio?.playEventWarning?.();
+      this._eventCue('_updateBossRush');
     }
     if (T >= 45 && !br.flags.elite) {              // 0:45 Elite assault — chaos enemies
       br.flags.elite = true;
@@ -17650,7 +17653,7 @@ export class Game {
     const sp = this._playerScreenPos();
     this._magma.trigger(sp.cx, sp.footY);
     this.screenShake.trigger(6, 0.35);
-    this.audio?.playEventWarning?.();
+    this._eventCue('activateSkyfallLances');
     this.floatingTexts.push(new FloatingText('MAGMA CORE ERUPTION!', p.pos.clone(), '#ff4d00', 1.4));
   }
 
@@ -17794,7 +17797,7 @@ export class Game {
       this._eddieUltimateMusicActive = !!this.audio?.playEddieUltimateTrack?.();
     }
     this.screenShake.trigger(6, 0.3);
-    this.audio?.playEventWarning?.();
+    this._eventCue('activateRedThunderCurtain');
     this.floatingTexts.push(new FloatingText('FEEDBACK APOCALYPSE!', p.pos.clone(), '#ff2d2d', 1.4));
     // The ultimate owns only its finite cinematic/audio window. The GUITAR SOLO card keeps
     // its separate weapon lifecycle and is never granted implicitly by pressing SPACE.
@@ -18069,7 +18072,7 @@ export class Game {
     const sp = this._playerScreenPos();
     this._phantomExec.trigger(sp.cx, sp.footY);
     this.screenShake.trigger(4, 0.25);
-    this.audio?.playEventWarning?.();
+    this._eventCue('activateChromePhantomProtocol');
     this.floatingTexts.push(new FloatingText('PHANTOM EXECUTION!', p.pos.clone(), '#ff4dd2', 1.4));
   }
 
@@ -18488,7 +18491,7 @@ export class Game {
                           miniDmgThisSec: 0, megaDmgThisSec: 0, bossDmgTimer: 1.0,
                           particles: [], partTimer: 0 };
     this.screenShake.trigger(4, 0.25);
-    this.audio?.playEventWarning?.();
+    this._eventCue('activateSpiritDojang');
     this.floatingTexts.push(new FloatingText('SPIRIT DOJANG FLAG!', p.pos.clone(), CYAN, 1.4));
   }
 
@@ -18645,7 +18648,7 @@ export class Game {
     const sp = this._playerScreenPos();
     this._tribunal.trigger(sp.cx, sp.footY);
     this.screenShake.trigger(6, 0.3);
-    this.audio?.playEventWarning?.();
+    this._eventCue('activateCyberBikeRush');
     this.floatingTexts.push(new FloatingText('AFTERIMAGE TRIBUNAL!', p.pos.clone(), '#14ebd2', 1.4));
   }
 
@@ -19230,7 +19233,7 @@ export class Game {
       angle: Math.random() * Math.PI * 2, fireCd: 1.5, life: 45,
     });
     this.triggerAnnouncement('AIRSTRIKE INBOUND', ORANGE);
-    this.audio?.playEventWarning();
+    this._eventCue('_spawnAirstrike');
   }
 
   // Rocket-rain SALVO: 3–6 rockets fanned across multiple impact zones around the player.
@@ -19483,7 +19486,7 @@ export class Game {
       head: new Vec2(x0, P.y), trail: [], hitCd: 0,
     };
     this.triggerAnnouncement('◈ NULL WYRM — THE GRID IS MOVING ◈', '#7df9ff');
-    this.audio?.playEventWarning?.();
+    this._eventCue('_spawnNullWyrm');
   }
 
   _drawNullWyrm(ctx) {
@@ -19568,7 +19571,7 @@ export class Game {
       E.busy = true; E.phase = 'tell'; E.pt = 0.9;
       E.aim = this.player.pos.clone();
       E.step = 0;
-      this.audio?.playEventWarning?.();
+      this._eventCue('_updateNullEcho');
     }
     if (E.busy) {
       E.pt -= dt;
@@ -19664,7 +19667,7 @@ export class Game {
       kind: cfg.kind, c1: cfg.c1, c2: cfg.c2, charId: char,
     };
     this.triggerAnnouncement('◈ NULL ECHO — YOUR REFLECTION HAS BEEN COMPILED ◈', cfg.c1);
-    this.audio?.playEventWarning?.();
+    this._eventCue('_spawnNullEcho');
     this.audio?.forgeBossRoar?.();
   }
 
@@ -19843,7 +19846,7 @@ export class Game {
           }
           this.particles.spawnDeathRing(e.pos, '#bfe6ff', 14, 190, 2.0);   // split glitch flash
           this.particles.spawnExplosion(e.pos, ['#ffffff', '#9fdcff', '#5577ff'], 18);
-          this.audio?.playEventWarning?.();
+          this._eventCue('_updateCybermotes');
         }
       }
 
@@ -19975,7 +19978,7 @@ export class Game {
       this._stormActive    = this._hasProto('lightning_plus') ? 18 : 12;   // threat pass doubled; Lightning Storm+ extends further
       this._stormSpawnCd   = 0;
       this.triggerAnnouncement('⚠ LIGHTNING STORM HAZARD', '#9fd0ff');
-      this.audio?.playEventWarning();
+      this._eventCue('_updateLightningStorm');
       this.audio?.playLightningStrike?.();  // thunder crack on storm start
     }
 
@@ -23962,6 +23965,59 @@ export class Game {
     }
   }
 
+  // ═══ WAVE 1 EVENT AUDIO ROUTING ═══════════════════════════════════════════
+  // Before Wave 1 every one of the 28 event triggers called the SAME playEventWarning
+  // alarm, so the mix carried no information about WHICH event fired. This table maps
+  // each canonical event id (the method that raises it — the project's existing
+  // identifier for these events) to one of the authored sonic families in
+  // AudioManager.WAVE1_SFX. Data-driven on purpose: no scattered if/else, and adding an
+  // event means adding one line here.
+  static EVENT_AUDIO_CLASS = {
+    // military / ordnance from above
+    _spawnAirstrike:               'airstrike',
+    activateSkyfallLances:         'airstrike',
+    // chemical / thermal ground hazards
+    activateEuclidPlague:          'corrosive',
+    activateOverheatedChains:      'corrosive',
+    // unstable electrical
+    activateRedThunderCurtain:     'electric',
+    _updateCybermotes:             'electric',
+    _updateLightningStorm:         'electric',
+    // void / null / corruption
+    abyssalMurkRising:             'void',
+    _updateNullEcho:               'void',
+    _spawnNullEcho:                'void',
+    // arena lockdown / containment
+    activateSpiritDojang:          'arena',
+    _enterNullBreachArena:         'arena',
+    // large hostile presence
+    _updateBossRush:               'boss_echo',
+    _spawnNullWyrm:                'boss_echo',
+    _updateBossAttacks:            'boss_echo',
+    _updateBloodfang:              'boss_echo',
+    _updateDoubleDemonsBoss:       'boss_echo',
+    // reward / loot arrival
+    _updateNullCache:              'supply',
+    // encrypted / premium access
+    tryUnlockSelectedCharacterPF:  'blacknet',
+    _openMutationChoice:           'blacknet',
+    // neutral high-quality tactical cue
+    activateChromePhantomProtocol: 'major',
+    activateCyberBikeRush:         'major',
+  };
+
+  /**
+   * Single entry point for event warning audio.
+   * An unknown id resolves to the 'major' fallback class — never undefined, never a
+   * silent throw. AudioManager.playEventClass degrades once more to the procedural
+   * alarm if the buffer has not decoded yet, so the cue is never missing entirely.
+   */
+  _eventCue(eventId) {
+    const M = Game.EVENT_AUDIO_CLASS;
+    const cls = (eventId && Object.prototype.hasOwnProperty.call(M, eventId)) ? M[eventId] : 'major';
+    this.audio?.playEventClass?.(cls);
+  }
+
   /** Presents a banner immediately. Split out so priority logic has one display path. */
   _showAnnouncement(text, color, opts, priority = 0) {
     this.announcement = {
@@ -27449,7 +27505,7 @@ _drawLoreArchive(ctx) {
       if (target === 2) this.triggerAnnouncement('PHASE 2 — GRID CORRUPTION RISING', PURPLE);
       else              this.triggerAnnouncement('PHASE 3 — FINAL OVERRIDE', RED);
       this.screenShake.trigger(7, 0.5);
-      this.audio?.playEventWarning();
+      this._eventCue('_updateBossAttacks');
     }
     const phase = boss._phase;
     const late  = this.currentMinute() >= 20 ? 0.7 : 1.0;   // attacks come faster past 20 min
@@ -27501,7 +27557,7 @@ _drawLoreArchive(ctx) {
         this._plasmaWarnCd = 14;
         this.triggerAnnouncement('⚠ REACTOR PLASMA', ORANGE);
       }
-      this.audio?.playEventWarning();
+      this._eventCue('_updateBossAttacks');
     }
 
     // ── CORRUPTION GRID BEAM (signature, phase 2+): only one active at a time ──
@@ -27517,7 +27573,7 @@ _drawLoreArchive(ctx) {
         };
         this.triggerAnnouncement('CORRUPTION BEAM', PURPLE);
         this.screenShake.trigger(3, 0.2);
-        this.audio?.playEventWarning();
+        this._eventCue('_updateBossAttacks');
       }
     }
 
@@ -27527,7 +27583,7 @@ _drawLoreArchive(ctx) {
     if (boss.novaCd <= 0) {
       boss.novaCd = randomRange(8, 12);
       this._corruptionNovas.push({ pos: boss.pos.clone(), radius: FINAL_NOVA_RADIUS, warn: FINAL_NOVA_WARN, t: 0, hit: false });
-      this.audio?.playEventWarning();
+      this._eventCue('_updateBossAttacks');
     }
 
     // ── STUN LANCE (phase 2+): telegraphed aim line tracks the player, then a locked stun bolt ──
@@ -27548,7 +27604,7 @@ _drawLoreArchive(ctx) {
       if (boss.stunCd <= 0) {
         boss.stunCd = randomRange(9, 13) * late;
         boss._stunAim = { t: 0, dir: safeNormalize(this.player.pos.sub(boss.pos)) };
-        this.audio?.playEventWarning();
+        this._eventCue('_updateBossAttacks');
       }
     }
 
@@ -27569,7 +27625,7 @@ _drawLoreArchive(ctx) {
         this.floatingTexts.push(
           new FloatingText('BOSS SUMMONS REINFORCEMENT', new Vec2(WIDTH / 2 - 190, HEIGHT / 2 - 50), RED, 2.0)
         );
-        this.audio?.playEventWarning();
+        this._eventCue('_updateBossAttacks');
       }
     }
   }
@@ -28625,7 +28681,7 @@ _drawLoreArchive(ctx) {
 
     // Announcement + audio
     this.triggerAnnouncement('⚠ NULL BREACH DETECTED', '#ff44cc');
-    this.audio?.playEventWarning?.();
+    this._eventCue('_enterNullBreachArena');
 
     // EDEN CORE transmissions
     this._queueEdenTransmission('NULL BREACH DETECTED.', { priority: 2, duration: 5 });
@@ -29767,7 +29823,7 @@ _drawLoreArchive(ctx) {
     if (a.slamTimer <= 0 && dist < 360) {
       a.slamTimer = 5.5 + Math.random() * 1.5;            // 5.5–7.0s cadence
       this._bloodfangSlams.push({ pos: this.player.pos.clone(), radius: 75, warn: 0.9, impact: 0.25, t: 0, hit: false });
-      this.audio?.playEventWarning();
+      this._eventCue('_updateBloodfang');
     }
     for (let i = this._bloodfangSlams.length - 1; i >= 0; i--) {
       const s = this._bloodfangSlams[i];
@@ -31008,7 +31064,7 @@ _drawLoreArchive(ctx) {
           hit:        false,
         };
         c.slamCd = 5.5 + Math.random() * 2.0;
-        this.audio?.playEventWarning?.();
+        this._eventCue('_updateDoubleDemonsBoss');
       }
     } else {
       const ss = c.slamState;
@@ -32245,6 +32301,9 @@ _drawLoreArchive(ctx) {
    * transition while one is running, so nothing can follow the player across.
    */
   _clearDeckTransients(dest, destMode) {
+    // Wave 1 authored cues are AudioBufferSourceNodes; stop any that are still ringing so a
+    // mode change never carries a boss telegraph into the next deck.
+    try { this.audio && this.audio.stopWave1 && this.audio.stopWave1(); } catch (_) {}
     const mm = this.mapManager;
     if (Array.isArray(this.projectiles))  this.projectiles.length = 0;
     if (Array.isArray(this.enemyBullets)) this.enemyBullets.length = 0;
