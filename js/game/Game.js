@@ -117,6 +117,12 @@ const CAMPAIGN_WALK_BOUNDS = Object.freeze({
   7: { x0: 160, x1: WORLD_W, y0: 500, y1: 1650 },
 });
 const CAMPAIGN_STAGE_SECONDS = 300;   // survive 5 minutes to clear a stage
+// ── MILESTONE 2 / Slice B — Act 1 stage length before that stage's BOSS is summoned.
+// Act 1 runs ACT1_WIN_SECONDS (480s) across the 6-biome ring, so 80s per stage puts one boss
+// window in each stage and keeps the whole arc inside the act. The old `_updateStageProgression`
+// used a hard-coded 12*60 = 720s, which exceeded the entire 480s act — the stage machine could
+// therefore never leave stage 1, and the function was never called at all. Both are fixed here.
+const ACT1_STAGE_SECONDS = 80;
 // Mobile: campaign stage maps are 2.5–5.3 MB PNGs that often fail to decode on phones
 // (background silently dropped to the bare grid). Swap to the light ~300 KB JPG variants on
 // touch devices — used for both the campaign background and the HTML overlay thumbnails.
@@ -1074,6 +1080,13 @@ export class Game {
     // campaign stage played identically. These three now carry the active stage's rule.
     this._stageHpMult    = 1;      // enemy HP mult from the current stage biome
     this._stageRegen     = 0;      // enemy HP regen per second from the current stage biome
+    // ROADMAP MILESTONE 2 / Slice B — stage bosses. `_stageStartT` anchors the current stage's
+    // survival window; the three maps are keyed by biome id so a rotated ring can never mix them up.
+    this._stageStartT       = 0;     // timeAlive when the current stage began
+    this._activeStageBoss   = null;  // { biome, id, name } while a stage boss is on the field
+    this._stageBossSpawned  = {};    // biome → true once its boss has been spawned this run
+    this._stageBossCleared  = {};    // biome → true once its boss is dead (this is the advance gate)
+    this._stageBossRewarded = {};    // biome → true once its reward has been paid (duplicate guard)
     // Slice A: the biome an Act 1 run starts in. Survives reset() — it is a RUN SETTING chosen in
     // the menu, not run state, exactly like selectedCharacter.
     this.runBiome        = 'neon_district';
@@ -1638,6 +1651,13 @@ export class Game {
     this._stageSpeedMult      = 1;
     this._stageHpMult         = 1;     // stage rule — cleared with the rest of the stage state
     this._stageRegen          = 0;
+    // Slice B: stage-boss run state is FULLY cleared here, so restart / death / menu can never
+    // leave a ghost boss, a stale _activeStageBoss, or a pre-cleared stage behind.
+    this._stageStartT         = 0;
+    this._activeStageBoss     = null;
+    this._stageBossSpawned    = {};
+    this._stageBossCleared    = {};
+    this._stageBossRewarded   = {};
     this._campaignStage       = 0;     // campaign run flag (set by _applyCampaignStage after reset)
     this._campaignCleared     = false;
     this._stageClearEvolutionChoice = null;
@@ -2914,6 +2934,22 @@ export class Game {
     if (this._relicOn('leviathan_nanite_core'))    p.xpMult = (p.xpMult || 1) + 0.10;             // nanites harvest → +10% XP
     if (this._relicOn('emperor_singularity_edge')) p.abilityCdMult = (p.abilityCdMult || 1) * 1.10; // gravity control → faster abilities
     if (this._relicOn('tyrant_antimatter_battery')) p.contactDamageReduction = Math.min(0.6, (p.contactDamageReduction || 0) + 0.08); // armor plating
+    // ── MILESTONE 2 / Slice B — Act 1 stage-boss reward relics. One per biome, each with a
+    // distinct effect, all read through the same _relicOn()/equipped-relic path as every relic
+    // above. Nothing here fires unless the player has EARNED and EQUIPPED that relic. ──
+    if (this._relicOn('neon_defector_core')) {                                   // Defector Mech · Neon District
+      p.upgrades['Pulse Damage'] = (p.upgrades['Pulse Damage'] || 0) + 0.5;
+      p.fireRateBonus = (p.fireRateBonus || 0) + 0.03;
+    }
+    if (this._relicOn('annihilator_forge_plate')) {                              // Annihilator · Industrial Core
+      p.maxHp = Math.round(p.maxHp * 1.06); p.hp = Math.min(p.hp, p.maxHp);
+      p.contactDamageReduction = Math.min(0.6, (p.contactDamageReduction || 0) + 0.06);
+    }
+    if (this._relicOn('titan_orbital_gyro')) {                                   // Titan · Orbital Nexus
+      p.speedBonus    = (p.speedBonus || 0) + 0.06;
+      p.abilityCdMult = (p.abilityCdMult || 1) * 1.06;
+    }
+    if (this._relicOn('bloodfang_wastes_fang')) p.xpMult = (p.xpMult || 1) + 0.12; // Bloodfang · Data Wastes
     // ── Dimi's Cyber-Relic — character-gated (only affects Dimi runs) ──
     if (this._relicOn('ossuary_marrow') && p.selectedCharacter === 'skeleton_warrior') {
       p.upgrades['Pulse Damage'] = (p.upgrades['Pulse Damage'] || 0) + 0.5;   // marrow-charged sabers
@@ -3051,6 +3087,12 @@ export class Game {
     const id = ok ? this.runBiome : 'neon_district';
     this.runBiome = id;
     this._stageIndex = 0;
+    // Slice B: a run always starts stage 1 with a fresh, un-armed boss phase.
+    this._stageStartT       = this.timeAlive || 0;
+    this._activeStageBoss   = null;
+    this._stageBossSpawned  = {};
+    this._stageBossCleared  = {};
+    this._stageBossRewarded = {};
     this._setStageRule(id);
     try {
       const img = this.mapManager?.getBiomeImage ? this.mapManager.getBiomeImage(id) : null;
@@ -3099,25 +3141,182 @@ export class Game {
     if (this._stageRegen > 0) e._biomeRegen = this._stageRegen;
   }
 
+  // ══ MILESTONE 2 / Slice B — STAGE BOSSES + UNIQUE REWARDS ═══════════════════
+  // CANONICAL MAPPING: biome → existing boss → existing/​new reward relic. Every boss here already
+  // shipped; nothing new was drawn and no boss was removed from Endless or Chaos (they keep using
+  // the very same spawners through _endlessRearmBoss). The four Chaos Mega Titans are deliberately
+  // NOT used as stage bosses, and `the_null` is not in STAGE_RING so it has no entry by construction.
+  //
+  //   neon_district   → Security Defector Mech  → neon_defector_core     (Defector Core)
+  //   industrial_core → Matrix Annihilator      → annihilator_forge_plate(Forge Plate)
+  //   orbital_nexus   → AI Overload Titan       → titan_orbital_gyro     (Orbital Gyro)
+  //   abyssal_trench  → Cyber Serpent           → serpent_ember_coil     (already existed, req:cyberSerpent)
+  //   glacial_expanse → Cyber Dragon            → dragon_cryo_heart      (already existed, req:cyberDragon)
+  //   data_wastes     → Bloodfang Packmaster    → bloodfang_wastes_fang  (Wastes Fang)
+  //
+  // `id` doubles as the boss-kill key AND the Boss Echo key, which is what the relic `req` fields
+  // already point at — so the reward gate is the existing one, not a second ladder.
+  static get STAGE_BOSSES() {
+    return Object.freeze({
+      neon_district:   Object.freeze({ id:'mech',         name:'SECURITY DEFECTOR MECH', color:'#ffcc33', reward:'neon_defector_core',     rewardName:'DEFECTOR CORE' }),
+      industrial_core: Object.freeze({ id:'annihilator',  name:'MATRIX ANNIHILATOR',     color:'#ff3b3b', reward:'annihilator_forge_plate',rewardName:'FORGE PLATE'   }),
+      orbital_nexus:   Object.freeze({ id:'titan',        name:'AI OVERLOAD TITAN',      color:'#a855f7', reward:'titan_orbital_gyro',     rewardName:'ORBITAL GYRO'  }),
+      abyssal_trench:  Object.freeze({ id:'cyberSerpent', name:'CYBER SERPENT',          color:'#ff7733', reward:'serpent_ember_coil',     rewardName:'SERPENT EMBER COIL' }),
+      glacial_expanse: Object.freeze({ id:'cyberDragon',  name:'CYBER DRAGON',           color:'#00ccff', reward:'dragon_cryo_heart',      rewardName:'DRAGON CRYO HEART'  }),
+      data_wastes:     Object.freeze({ id:'bloodfang',    name:'BLOODFANG PACKMASTER',   color:'#ef4444', reward:'bloodfang_wastes_fang',  rewardName:'WASTES FANG'   }),
+    });
+  }
+
+  /** The stage boss definition for a biome, or null if that biome has none (the_null, unknown). */
+  stageBossFor(biomeId) { return Game.STAGE_BOSSES[biomeId] || null; }
+
+  /** Field name holding the singleton boss object for a stage-boss id ('mech' has none). */
+  static get _STAGE_BOSS_FIELD() {
+    return Object.freeze({ titan:'titanBoss', annihilator:'annihilatorBoss', bloodfang:'bloodfangBoss',
+                           cyberSerpent:'cyberSerpentBoss', cyberDragon:'cyberDragonBoss' });
+  }
+
+  /**
+   * Is this stage boss currently alive? Mirrors the existing `!ref || ref.hp <= 0` idiom that
+   * _endlessRearmBoss already uses, so both systems agree on what "alive" means.
+   */
+  _stageBossAlive(id) {
+    if (id === 'mech') return this.enemies.some(e => e && e.enemyType === 'Security Defector Mech' && e.hp > 0);
+    const f = Game._STAGE_BOSS_FIELD[id];
+    if (!f) return false;
+    const b = this[f];
+    return !!(b && Number.isFinite(b.hp) && b.hp > 0);
+  }
+
+  /**
+   * Spawn a stage boss through its OWN existing spawner. Returns true only if a boss actually
+   * appeared. Every branch is double-spawn safe: it refuses while one is already live, and it
+   * leaves `<name>Spawned` / `<name>SpawnTimer` in exactly the state _endlessRearmBoss expects.
+   */
+  _spawnStageBoss(id) {
+    try {
+      if (id === 'mech') {
+        if (this._stageBossAlive('mech')) return false;
+        const e = new Enemy('Security Defector Mech', this.currentMinute());
+        try { this._placeStageBoss(e); } catch (_) { /* fall back to the spawner's own position */ }
+        this.enemies.push(e);
+        try { this._applyStageRule(e); } catch (_) {}
+        return true;
+      }
+      const f = Game._STAGE_BOSS_FIELD[id];
+      if (!f) return false;
+      if (this[f]) return false;                 // one is already on the field
+      if (id === 'titan')        { this.titanSpawned = true;       this.titanSpawnTimer = 0;       this._spawnTitan(); }
+      else if (id === 'annihilator') { this.annihilatorSpawned = true; this.annihilatorSpawnTimer = 0; this._spawnAnnihilator(); }
+      else if (id === 'bloodfang')   { this.bloodfangSpawned = true;   this.bloodfangSpawnTimer = 0;   this._spawnBloodfang(); }
+      // Serpent and Dragon self-guard on their own `Spawned` flag, so it must NOT be pre-set —
+      // their spawner sets it itself and would otherwise no-op.
+      else if (id === 'cyberSerpent') { if (this.cyberSerpentSpawned) return false; this._spawnCyberSerpent(); }
+      else if (id === 'cyberDragon')  { if (this.cyberDragonSpawned)  return false; this._spawnCyberDragon();  }
+      else return false;
+      return !!this[f];
+    } catch (_) { return false; }               // a failed spawn must never break the run
+  }
+
+  /** Place the Enemy-class stage boss at a sane, finite arena position away from the player. */
+  _placeStageBoss(e) {
+    const p = this.player;
+    if (!p || !e || !e.pos) return;
+    const ang = randomRange(0, Math.PI * 2);
+    const x = p.pos.x + Math.cos(ang) * 620;
+    const y = p.pos.y + Math.sin(ang) * 620;
+    e.pos.x = clamp(x, WORLD_MARGIN + 60, WORLD_W - WORLD_MARGIN - 60);
+    e.pos.y = clamp(y, WORLD_MARGIN + 60, WORLD_H - WORLD_MARGIN - 60);
+  }
+
+  /**
+   * Pay the stage reward EXACTLY ONCE. Guarded three deep: the per-stage `_stageBossRewarded`
+   * set (survives duplicate death callbacks inside one run), `recordBossKill` (idempotent), and
+   * `grantStageRelic` (returns false when already owned). A repeat clear announces nothing.
+   */
+  _awardStageBossReward(biome) {
+    const def = this.stageBossFor(biome);
+    if (!def) return false;
+    if (this._stageBossRewarded[biome]) return false;   // already paid this run
+    this._stageBossRewarded[biome] = true;
+    let firstEver = false;
+    try {
+      this.meta?.recordBossKill(def.id);                            // canonical relic gate
+      this.meta?.recordBossEcho?.(def.id);                          // canonical echo archive
+      firstEver = !!this.meta?.grantStageRelic?.(def.reward);       // the unique reward itself
+    } catch (_) { /* a save hiccup must never break the run */ }
+    const bn = (BIOME_DEFS[biome] && BIOME_DEFS[biome].name) || biome;
+    this.triggerAnnouncement(`${def.name} DEFEATED — ${String(bn).toUpperCase()} SECURED`, GREEN);
+    if (firstEver) this.triggerAnnouncement(`STAGE REWARD UNLOCKED — ${def.rewardName}`, '#2ee6f6');
+    try { this.screenShake?.trigger(4, 0.3); } catch (_) {}
+    return true;
+  }
+
+  /**
+   * Stage-boss phase for the CURRENT stage. Called once per gameplay frame from
+   * _updateStageProgression. Deterministic: the boss arms when the stage's survival window has
+   * elapsed, spawns exactly once, and its death is what clears the stage.
+   */
+  _updateStageBossPhase(biome) {
+    const def = this.stageBossFor(biome);
+    if (!def) { this._stageBossCleared[biome] = true; return; }   // no boss defined → nothing to gate on
+    if (this._stageBossCleared[biome]) return;                    // already beaten this run
+
+    // Not armed yet: wait out this stage's survival window, then spawn — once.
+    if (!this._activeStageBoss) {
+      if (this._stageBossSpawned[biome]) {
+        // It was spawned and is no longer tracked/alive → treat as cleared (defensive, e.g. a
+        // teardown path removed it without passing through the alive→dead observation below).
+        if (!this._stageBossAlive(def.id)) { this._stageBossCleared[biome] = true; this._awardStageBossReward(biome); }
+        return;
+      }
+      if ((this.timeAlive - this._stageStartT) < ACT1_STAGE_SECONDS) return;
+      if (!this._spawnStageBoss(def.id)) return;                  // capped/blocked → retry next frame
+      this._stageBossSpawned[biome] = true;
+      this._activeStageBoss = { biome, id: def.id, name: def.name };
+      this._bossAnnounce(`STAGE BOSS — ${def.name}`, def.color);
+      try { this.audio?.playBossSpawn(); } catch (_) {}
+      try { this.screenShake?.trigger(6, 0.5); } catch (_) {}
+      return;
+    }
+
+    // Armed: the stage clears the moment this boss stops being alive.
+    if (this._activeStageBoss.biome !== biome) { this._activeStageBoss = null; return; }
+    if (this._stageBossAlive(def.id)) return;
+    this._activeStageBoss = null;
+    this._stageBossCleared[biome] = true;
+    this._awardStageBossReward(biome);
+  }
+
   _updateStageProgression() {
-    if (this.endless || this.gameState !== 'playing' || this.gameOver || this.victory) return;
-    const STAGE_DUR = 12 * 60;   // seconds per stage
+    if (this.endless || this._campaignStage || this.gameState !== 'playing' || this.gameOver || this.victory) return;
     // ROADMAP MILESTONE 2 / Slice A — `this.runBiome`. The ring order is fixed, but the run now
     // STARTS at the selected biome and walks forward from there, wrapping. Picking Glacial Expanse
     // means stage 1 IS Glacial Expanse; leaving runBiome at the default reproduces the old
     // neon → industrial → … order exactly, so an unselected run is byte-for-byte unchanged.
     const ORDER = this._stageOrder();
-    const si = Math.min(ORDER.length - 1, Math.floor(this.timeAlive / STAGE_DUR));
-    if (this._stageBiome && si === this._stageIndex) return;   // still on the same stage
-    this._stageIndex = si;
+    const si = Math.min(ORDER.length - 1, Math.max(0, this._stageIndex | 0));
     const biome = ORDER[si];
-    const def = BIOME_DEFS[biome] || {};
-    this._setStageRule(biome);
+    if (!biome) return;
+
+    // Slice B: the stage boss owns the end of the stage.
+    this._updateStageBossPhase(biome);
+
+    // ADVANCE GATE — the stage is not complete until its boss is dead. No timeout bypasses this.
+    if (si >= ORDER.length - 1) return;             // last stage of the ring: nothing to advance to
+    if (!this._stageBossCleared[biome]) return;
+
+    const nsi = si + 1;
+    this._stageIndex = nsi;
+    this._stageStartT = this.timeAlive;             // next stage's survival window starts now
+    const next = ORDER[nsi];
+    const def = BIOME_DEFS[next] || {};
+    this._setStageRule(next);
     // Swap the fixed Act-1 background to this stage's biome map (separate map per stage).
-    const img = this.mapManager && this.mapManager.getBiomeImage ? this.mapManager.getBiomeImage(biome) : null;
+    const img = this.mapManager && this.mapManager.getBiomeImage ? this.mapManager.getBiomeImage(next) : null;
     if (img) this.mapManager._bgImage = img;
     // Full-screen announcement + a small punch on transition.
-    const label = 'STAGE ' + String(si + 1).padStart(2, '0') + ' — ' + (def.name || biome).toUpperCase();
+    const label = 'STAGE ' + String(nsi + 1).padStart(2, '0') + ' — ' + (def.name || next).toUpperCase();
     this.triggerAnnouncement(label, CYAN);
     this.screenShake?.trigger(4, 0.3);
   }
@@ -9090,6 +9289,10 @@ export class Game {
     this.timeAlive += dt;
     this.score += dt;
     this._updateCampaignProgress();   // STAGE CAMPAIGN: survive 5:00 → clear stage → unlock next
+    // MILESTONE 2 / Slice B: Act 1 stage machine — survive the stage window, beat the stage boss,
+    // collect the biome reward, THEN advance. Self-guards on endless/campaign/gameOver/victory, and
+    // sits after the paused/upgradeUI gates so a level-up card or a pause can never advance a stage.
+    this._updateStageProgression();
 
     // ── Vessel passive runtime tick ──────────────────────────────────────────
     this._tickVesselPassives(dt);

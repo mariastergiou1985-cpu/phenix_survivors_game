@@ -58,6 +58,37 @@ function newGame() {
 function unlockAllStages(g) { if (g.meta) g.meta.stagesCleared = Game.STAGE_RING.length - 1; return g; }
 function newGameUnlocked() { return unlockAllStages(newGame()); }
 
+// BATCH 4.4 — Slice B replaced the time-only stage advance with a BOSS-GATED state machine: a stage
+// is not complete until its boss is dead. These walks used to jump `timeAlive` to multiples of
+// 12*60 and read the biome back, which only worked against the old `floor(timeAlive / STAGE_DUR)`
+// formula. They now drive the REAL machine — survive the window, let the boss spawn, kill it — so
+// they exercise more of the code than before, not less. Every assertion below is unchanged.
+const _SB_FIELD = { titan:'titanBoss', annihilator:'annihilatorBoss', bloodfang:'bloodfangBoss',
+                    cyberSerpent:'cyberSerpentBoss', cyberDragon:'cyberDragonBoss' };
+/** Advance the stage machine by exactly ONE stage: survive → boss spawns → boss dies → advance. */
+function stepStage(g, maxSecs = 400) {
+  const un = muteConsole();
+  const si0 = g._stageIndex;
+  for (let i = 0; i < maxSecs * 60; i++) {
+    g.timeAlive += 1 / 60;
+    try { g._updateStageProgression(); } catch (_) {}
+    if (g._activeStageBoss) {
+      const id = g._activeStageBoss.id;
+      if (id === 'mech') { for (const e of g.enemies) if (e && e.enemyType === 'Security Defector Mech') e.hp = 0; }
+      else { const f = _SB_FIELD[id]; if (f && g[f]) g[f].hp = 0; }
+    }
+    if (g._stageIndex !== si0) break;
+  }
+  un();
+  return g._stageBiome;
+}
+/** The biome of every stage of a full 6-stage walk, starting from the run's current stage. */
+function walkStages(g, n = 6) {
+  const out = [g._stageBiome];
+  for (let i = 1; i < n; i++) out.push(stepStage(g));
+  return out;
+}
+
 // A representative non-boss trash type that exists in every mode.
 const TRASH = 'Glitch Drone';
 
@@ -278,13 +309,12 @@ console.log('\n=== 5. THE RULE IS WIRED INTO THE REAL STAGE FLOWS ===');
   if (g.chunkManager) g.chunkManager.enabled = false;
   g.endless = false; g.gameState = 'playing'; g.gameOver = false; g.victory = false;
   const seen = [];
-  const un = muteConsole();
-  for (const t of [0, 12 * 60 + 1, 24 * 60 + 1, 36 * 60 + 1, 48 * 60 + 1, 60 * 60 + 1]) {
-    g.timeAlive = t;
-    try { g._updateStageProgression(); } catch (_) {}
-    seen.push({ t, biome: g._stageBiome, hp: g._stageHpMult, sp: g._stageSpeedMult });
+  const unw0 = muteConsole(); g._applyRunBiome(); unw0();
+  seen.push({ t: g.timeAlive, biome: g._stageBiome, hp: g._stageHpMult, sp: g._stageSpeedMult });
+  for (let i = 1; i < 6; i++) {
+    stepStage(g);
+    seen.push({ t: g.timeAlive, biome: g._stageBiome, hp: g._stageHpMult, sp: g._stageSpeedMult });
   }
-  un();
   console.log('    ' + seen.map(s => `${Math.round(s.t / 60)}m:${s.biome}(${s.hp}hp/${s.sp}sp)`).join('  '));
   T('stage progression walks through six distinct biomes',
     new Set(seen.map(s => s.biome)).size === 6, seen.map(s => s.biome).join(','));
@@ -395,13 +425,8 @@ console.log('\n=== 7. RUN BIOME — THE RUN STARTS WHERE THE PLAYER PICKED (Slic
   g3.endless = false; g3.gameState = 'playing'; g3.gameOver = false; g3.victory = false;
   const un3 = muteConsole();
   g3._applyRunBiome();
-  const walk = [];
-  for (const t of [0, 12 * 60 + 1, 24 * 60 + 1, 36 * 60 + 1, 48 * 60 + 1, 60 * 60 + 1]) {
-    g3.timeAlive = t;
-    try { g3._updateStageProgression(); } catch (_) {}
-    walk.push(g3._stageBiome);
-  }
   un3();
+  const walk = walkStages(g3);
   console.log('    ' + walk.join(' → '));
   T('a run selected into orbital_nexus starts there', walk[0] === 'orbital_nexus', walk[0]);
   T('and still visits all six stages exactly once', new Set(walk).size === 6, walk.join(','));
@@ -630,10 +655,9 @@ console.log('\n=== 9. BIOME VISUAL IDENTITY (Slice A) ===');
   if (gw.chunkManager) gw.chunkManager.enabled = false;
   gw.setRunBiome('orbital_nexus');
   gw.endless = false; gw.gameState = 'playing'; gw.gameOver = false; gw.victory = false;
-  const unw = muteConsole(); gw._applyRunBiome();
-  const walk = [];
-  for (const t of [0, 12 * 60 + 1, 24 * 60 + 1]) { gw.timeAlive = t; try { gw._updateStageProgression(); } catch (_) {} walk.push(gw._biomeVisual()?.id); }
-  unw();
+  const unw = muteConsole(); gw._applyRunBiome(); unw();
+  const walk = [gw._biomeVisual()?.id];
+  for (let i = 1; i < 3; i++) { stepStage(gw); walk.push(gw._biomeVisual()?.id); }
   T('a stage transition moves the active visual biome', walk.join(',') === 'orbital_nexus,abyssal_trench,glacial_expanse', walk.join(','));
 
   // Drawing must not throw and must not leave the canvas black.
@@ -722,10 +746,8 @@ console.log('\n=== 10. STAGE UNLOCK LADDER (Slice A) ===');
   const gw = newGame();
   if (gw.chunkManager) gw.chunkManager.enabled = false;
   gw.endless = false; gw.gameState = 'playing'; gw.gameOver = false; gw.victory = false;
-  const unw = muteConsole(); gw._applyRunBiome();
-  const walk = [];
-  for (const t of [0, 12*60+1, 24*60+1, 36*60+1, 48*60+1, 60*60+1]) { gw.timeAlive = t; try { gw._updateStageProgression(); } catch (_) {} walk.push(gw._stageBiome); }
-  unw();
+  const unw = muteConsole(); gw._applyRunBiome(); unw();
+  const walk = walkStages(gw);
   T('a fresh-save run still visits all six stages in order (the lock is only about STARTING)',
     new Set(walk).size === 6 && walk[0] === 'neon_district', walk.join(','));
 

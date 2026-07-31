@@ -167,8 +167,48 @@ legacy background draw, και unlock ladder πάνω στο υπάρχον `sta
 regression battery 20 suites (0 FAIL) + πραγματικό Chromium proof.
 Επόμενο: **Slice B — Βάθος ανά stage**, πρώτο item «1 stage-boss + 1 unique reward ανά stage».
 
-### Slice B — Βάθος ανά stage (αργότερα)
-- [ ] 1 stage-boss + 1 unique reward ανά stage
+### Slice B — Βάθος ανά stage
+- [x] **ΟΛΟΚΛΗΡΩΘΗΚΕ 2026-07-31** — 1 stage-boss + 1 unique reward ανά stage.
+  **ΤΟ ΕΥΡΗΜΑ:** το `_updateStageProgression()` ήταν **νεκρός κώδικας** — οριζόταν σε μία γραμμή, το
+  ανέφερε ένα σχόλιο σε άλλη, και **δεν το καλούσε κανείς** σε ~34k γραμμές. Το Act 1 δεν άλλαζε ποτέ
+  stage. Και ακόμη κι αν το καλούσε κάποιος, το τοπικό `STAGE_DUR = 12*60` (720s) ήταν **μεγαλύτερο
+  από ολόκληρο το act** (`ACT1_WIN_SECONDS` = 480s), οπότε το `floor(timeAlive/STAGE_DUR)` έμενε
+  καρφωμένο στο 0. Επιπλέον δεν υπήρχε **καμία** αντιστοίχιση boss→biome πουθενά στον κώδικα.
+  **CANONICAL ΠΙΝΑΚΑΣ** (μόνο υπάρχοντα bosses, κανένα νέο art, κανένα PNG δεν άλλαξε):
+  | biome | stage boss | reward relic |
+  |---|---|---|
+  | `neon_district`   | Security Defector Mech | `neon_defector_core` — Defector Core (νέο) |
+  | `industrial_core` | Matrix Annihilator     | `annihilator_forge_plate` — Forge Plate (νέο) |
+  | `orbital_nexus`   | AI Overload Titan      | `titan_orbital_gyro` — Orbital Gyro (νέο) |
+  | `abyssal_trench`  | Cyber Serpent          | `serpent_ember_coil` — υπήρχε ήδη, `req:'cyberSerpent'` |
+  | `glacial_expanse` | Cyber Dragon           | `dragon_cryo_heart` — υπήρχε ήδη, `req:'cyberDragon'` |
+  | `data_wastes`     | Bloodfang Packmaster   | `bloodfang_wastes_fang` — Wastes Fang (νέο) |
+  Οι 4 Chaos Mega Titans **δεν** χρησιμοποιούνται ως απλοί stage bosses, ο `Rogue AI Overlord` μένει
+  στο Campaign final stage, ο Chaos-flagged `doubleDemon` μένει έξω, και το `the_null` δεν έχει entry
+  εξ ορισμού (δεν ανήκει στο `STAGE_RING`). **Κανένας boss δεν αφαιρέθηκε από Endless/Chaos** — το
+  `_endlessRearmBoss` χρησιμοποιεί τους ίδιους ακριβώς spawners και τα ίδια `<name>Spawned` flags.
+  **FLOW:** `_updateStageProgression()` καλείται πλέον από το `update()` (μετά τα paused/upgradeUI
+  gates) και είναι πραγματική state machine, όχι timeout: επιβίωση `ACT1_STAGE_SECONDS` (80s ×
+  6 stages = 480s = ακριβώς το act) → `_updateStageBossPhase()` κάνει **ένα** spawn του boss του
+  biome → **το stage δεν προχωρά όσο ζει** (`_stageBossCleared[biome]` είναι η μοναδική πύλη) →
+  ο θάνατος πληρώνει το reward → advance. Guards: `endless || _campaignStage || gameState !== 'playing'
+  || gameOver || victory`, οπότε Endless, Chaos και Campaign είναι εντελώς ανέπαφα.
+  **REWARD:** χρησιμοποιεί το **υπάρχον** relic system — `type:'boss'` + `req:<bossKillKey>`, ίδιο
+  μοντέλο με τα Chaos Titan relics. Νέο `MetaProgress.grantStageRelic(id)` γράφει στο **ίδιο**
+  `this.relics` store (καμία δεύτερη προοδευτική δομή) και επιστρέφει `true` **μόνο** την πρώτη φορά.
+  Τριπλή προστασία από διπλοπληρωμή: `_stageBossRewarded[biome]` (ανά run) + `recordBossKill`
+  (idempotent) + `grantStageRelic` (refuses owned/unknown/null). 12 διαδοχικές κλήσεις award δεν
+  αλλάζουν τίποτα. Το boss-reward unlock και το Slice A stage-start unlock είναι **ξεχωριστά**:
+  κατοχή reward δεν ξεκλειδώνει starting stage, και το ladder παραμένει monotonic.
+  **ΜΕΤΡΗΜΕΝΟ σε πραγματικό Chromium** (1280×720, fresh storage): Run A Neon District → mech @80.0s,
+  111.2 HP, r=28, pos finite, sprite `security_defector_mech.png`, **9.5 πραγματικό damage στον
+  player**, boss δέχεται damage, πεθαίνει, teardown καθαρό, `neon_defector_core` στο localStorage,
+  advance → Industrial Core / Annihilator. Run B Glacial Expanse (rotated ring
+  `glacial→data_wastes→neon→industrial→orbital→abyssal`) → cyberDragon @80.0s, 1500 HP, r=44, sprite
+  `cyber_dragon_boss.png [loaded]`, **20 damage στον player**, `dragon_cryo_heart` persisted, advance →
+  Data Wastes / Bloodfang. Relic effect ζωντανό: Pulse Damage 0 → **0.5**, fire rate 0 → **0.03**.
+  Canvas 100% / 96% non-black, **0 game-code console errors**.
+  QA: `tools/qa/batch4_stage_boss_rewards_regression.mjs` **281 PASS / 0 FAIL** (11 sections).
 - [ ] Stage-specific enemy sub-pool
 
 ### Art dependency (για αύριο)

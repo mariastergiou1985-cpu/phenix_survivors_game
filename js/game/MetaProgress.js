@@ -319,6 +319,23 @@ export const RELIC_DEFS = [
   { id:'tyrant_antimatter_battery', name:"Tyrant's Anti-Matter Battery", type:'boss', cost:8,
     effect:'Drop below 30% HP: call in a barrage of anti-matter carpet-bombing missiles.',
     req:'titan_tyrant', reqChar:null },
+  // ─── MILESTONE 2 / Slice B — Act 1 STAGE BOSS reward relics ───────────────
+  // One per selectable biome, earned by defeating that biome's stage boss in Act 1.
+  // `req` is the same boss-kill key the stage boss records, so these follow the EXISTING
+  // type:'boss' + req: gating model — no second progression system. Two more stage rewards
+  // (serpent_ember_coil / dragon_cryo_heart) already existed above and are reused as-is.
+  { id:'neon_defector_core',    name:'Defector Core',        type:'boss', cost:6,
+    effect:'Arc-circuit overclock: +0.5 Pulse Damage and +3% fire rate.',
+    req:'mech', reqChar:null },
+  { id:'annihilator_forge_plate', name:'Forge Plate',        type:'boss', cost:7,
+    effect:'Industrial plating: +6% Max HP and 6% less contact damage taken.',
+    req:'annihilator', reqChar:null },
+  { id:'titan_orbital_gyro',    name:'Orbital Gyro',         type:'boss', cost:7,
+    effect:'Zero-g stabilizer: +6% move speed and Q/E recharge 6% faster.',
+    req:'titan', reqChar:null },
+  { id:'bloodfang_wastes_fang', name:'Wastes Fang',          type:'boss', cost:6,
+    effect:'Scavenger instinct: +12% XP from every source.',
+    req:'bloodfang', reqChar:null },
   // ─── Arena-Specific Relics (NULL BREACH ARENA) ───────────────────────────
   { id:'breach_crown',       name:'Breach Crown',       type:'arena',     cost:7,
     effect:'Complete NULL BREACH ARENA without EDEN CORE rescue: gain +0.5 Pulse Damage for the rest of the run.',
@@ -1002,6 +1019,19 @@ export class MetaProgress {
   isRelicEquipped(id) { return this.getEquippedRelic() === id; }
   recordBossKill(id)   { if (!this.bossKills[id]) { this.bossKills[id] = true; this._save(); } }
   hasBossKill(id)      { return this.bossKills[id] === true; }
+
+  // MILESTONE 2 / Slice B — an Act 1 stage boss PAYS its relic instead of selling it. Writes into
+  // the SAME `this.relics` store every other relic uses (no parallel inventory), and returns true
+  // only on the very first grant so a duplicate death callback can never pay twice.
+  // Unknown ids are refused, so forged/renamed save data cannot inject a relic that has no def.
+  grantStageRelic(id) {
+    if (!RELIC_DEFS.some(r => r.id === id)) return false;   // invalid id → ignored, safe fallback
+    if (!this.relics || typeof this.relics !== 'object') this.relics = {};
+    if (this.relics[id] === true) return false;             // already owned → no duplicate reward
+    this.relics[id] = true;
+    this._save();
+    return true;
+  }
 
   tryUnlockRelic(id) {
     const def = RELIC_DEFS.find(r => r.id === id);
