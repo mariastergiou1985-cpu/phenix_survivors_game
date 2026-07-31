@@ -834,6 +834,183 @@ console.log('\n═══ 12. EXACTLY ONE REGISTRY, FROZEN ═══');
     [...viaGate].filter(i => !setOf('abyssal_trench').has(i)).join(','));
 }
 
+// ════════════════════════════════════════════════════════════════════════════════════════════════
+console.log('\n═══ 13. BOSS-LEAK LOCK (BATCH 4.5.1) ═══');
+// WHY THIS SECTION EXISTS — Maria flagged `Solar Tyrant` as a possible boss leak, because the
+// project's ART SPEC files list it under a "boss" heading:
+//     assets/enemies/weapons/EnemyWeaponCatalogV1.json  → "boss_assignments": { "solar_tyrant": {
+//         "asset": "assets/enemies/bosses/solar-tyrant.png", "biome": "Solar / Gold elite / premium boss" }
+//     assets/enemies/weapons/ENEMY_WEAPON_MAPPING_V1.md:103-106  → same claim
+//
+// VERDICT: CONFIRMED_NORMAL_VARIANT. That JSON block names ART FILES, not entities — it files six
+// other keys as "bosses" too (forge_mauler, cryo_warden, null_hierophant, pale_bloodknight,
+// rail_reaper, reactor_colossus) which are provably the sprites worn by Combat Hunter, Scrap
+// Scavenger, Cyber-Net Junkie, Overclocked Berserker, Cyber Shooter and Heavy Mech, exactly as
+// js/game/EnemyWeaponCatalog.js:99-107 documents. The claimed path assets/enemies/bosses/solar-tyrant.png
+// DOES NOT EXIST on disk; the real sprite is assets/enemies/minis/solar-tyrant.png. In gameplay code
+// Solar Tyrant is archetype 'heavy', role 'hunter', isBoss() false, and its HP uses the NORMAL ramp
+// `g` rather than the boss ramp `gB` — and it was already an ordinary Act 1 spawn before Slice B,
+// via HINT_POOLS.act1.heavy and STAGE_WAVES. So the pools are correct and are NOT changed.
+//
+// The assertions below make it impossible for a REAL boss to ever reach a normal pool unnoticed —
+// derived from the live registry by brute force, never from a hand-written list that could drift.
+{
+  // Every id that appears in ANY biome pool, flattened once.
+  const POOL_IDS = [...new Set(BIOMES.flatMap(b => idsOf(b)))];
+  T('the pools contribute a non-trivial id set', POOL_IDS.length >= 15, `${POOL_IDS.length} ids`);
+
+  // ── The full canonical id set, extracted from the SHIPPING registry, not hard-coded here. ──
+  // The union of every `case '<Type>'` in Enemy.js — that is exactly the four switch tables
+  // (_statsForType / _archetypeForType / _roleForType) plus the sprite map keys, i.e. the canonical
+  // roster. Reading the shipping source means a new enemy is picked up automatically and cannot be
+  // silently omitted from this check the way a hand-written list could be.
+  const enemySrc = fs.readFileSync(path.join(ROOT, 'js/entities/Enemy.js'), 'utf8');
+  const ALL_IDS = [...new Set([
+    ...[...enemySrc.matchAll(/case\s+'([^']+)'\s*:/g)].map(m => m[1]),
+    ...[...enemySrc.matchAll(/^\s*'([^']+)':\s*'(?:minis|minions|bosses|chaos_enemies)\//gm)].map(m => m[1]),
+  ])].filter(s => /^[A-Z]/.test(s));
+  T('the production registry yields a large canonical id set', ALL_IDS.length >= 30, `${ALL_IDS.length} ids`);
+  T('every biome-pool id is present in that registry',
+    POOL_IDS.every(i => ALL_IDS.includes(i)), POOL_IDS.filter(i => !ALL_IDS.includes(i)).join(','));
+
+  // ── Brute-force the boss set: construct EVERY registry id and ask the runtime, not a list. ──
+  const un = muteConsole();
+  const RUNTIME_BOSS = ALL_IDS.filter(id => { try { const e = new Enemy(id, 0); return e.isBoss() === true || e.isMegaBoss === true; } catch (_) { return false; } });
+  un();
+  console.log('    runtime boss-rank ids: ' + RUNTIME_BOSS.join(', '));
+  T('the runtime reports at least the 6 known boss-rank ids', RUNTIME_BOSS.length >= 6, RUNTIME_BOSS.join(','));
+  T('NO runtime boss-rank id appears in ANY biome pool',
+    RUNTIME_BOSS.every(i => !POOL_IDS.includes(i)), RUNTIME_BOSS.filter(i => POOL_IDS.includes(i)).join(','));
+  T('every runtime boss-rank id is in BIOME_POOL_EXCLUDED',
+    RUNTIME_BOSS.every(i => BIOME_POOL_EXCLUDED.has(i)), RUNTIME_BOSS.filter(i => !BIOME_POOL_EXCLUDED.has(i)).join(','));
+
+  // ── Tier-ladder bosses (EnemySpawner.chooseEnemyType inserts these by minute). ──
+  // NOTE: that code comments all three as "boss insertions", but 'Heavy Mech' is isBoss()===false —
+  // it is a PACING insertion, not a boss, and is a legitimate heavy in four pools. Proven, not assumed.
+  const TIER_LADDER = ['Heavy Mech', 'Security Defector Mech', 'Rogue AI Overlord'];
+  const unT = muteConsole();
+  const tierBoss = TIER_LADDER.filter(id => { const e = new Enemy(id, 0); return e.isBoss(); });
+  unT();
+  T('tier-ladder: exactly the two real bosses are boss-rank',
+    tierBoss.length === 2 && tierBoss.includes('Security Defector Mech') && tierBoss.includes('Rogue AI Overlord'),
+    tierBoss.join(','));
+  T('tier-ladder bosses are excluded from every pool', tierBoss.every(i => !POOL_IDS.includes(i)));
+  T('Heavy Mech is NOT boss-rank, so its pool membership is legitimate',
+    !tierBoss.includes('Heavy Mech') && POOL_IDS.includes('Heavy Mech'));
+
+  // ── Mega bosses + event-only. ──
+  T('every Chaos Mega Titan is boss-rank at runtime AND out of every pool',
+    [...Enemy.CHAOS_TITANS].every(i => RUNTIME_BOSS.includes(i) && !POOL_IDS.includes(i)));
+  T('the event-only Cybermote is out of every pool', !POOL_IDS.includes('Cybermote'));
+
+  // ── Scripted (non-Enemy) bosses: Batch 4.4 stage-boss keys and their display names. ──
+  const SCRIPTED = ['titan','annihilator','bloodfang','cyberSerpent','cyberDragon','doubleDemon','mech'];
+  T('no scripted boss KEY leaked into a pool', SCRIPTED.every(k => !POOL_IDS.includes(k)));
+  T('no STAGE_BOSSES display name leaked into a pool',
+    Object.values(BOSSES).every(d => !POOL_IDS.includes(d.name) && !POOL_IDS.includes(d.id)),
+    Object.values(BOSSES).filter(d => POOL_IDS.includes(d.name) || POOL_IDS.includes(d.id)).map(d=>d.id).join(','));
+
+  // ── ALIASES must not slip past a name-based check. ──
+  const alias = (s) => [s, s.toLowerCase(), s.toUpperCase(),
+                        s.toLowerCase().replace(/[\s-]+/g, '_'), s.toLowerCase().replace(/[\s_]+/g, '-')];
+  const ALL_ALIASES = new Set(RUNTIME_BOSS.flatMap(alias));
+  T('no boss alias (lower/upper/kebab/snake) appears in any pool',
+    POOL_IDS.every(i => !ALL_ALIASES.has(i)), POOL_IDS.filter(i => ALL_ALIASES.has(i)).join(','));
+  // And the art-spec "boss_assignments" keys are ART LABELS, not entity ids — prove it: none of them
+  // resolves to a boss-rank entity, and none of them is even a constructible registry id.
+  const ART_SPEC_BOSS_KEYS = ['solar_tyrant','forge_mauler','cryo_warden','null_hierophant',
+                              'pale_bloodknight','rail_reaper','reactor_colossus'];
+  T('no art-spec boss_assignments key is a real registry id',
+    ART_SPEC_BOSS_KEYS.every(k => !ALL_IDS.includes(k)), ART_SPEC_BOSS_KEYS.filter(k => ALL_IDS.includes(k)).join(','));
+  T('no art-spec boss_assignments key appears in any pool',
+    ART_SPEC_BOSS_KEYS.every(k => !POOL_IDS.includes(k)));
+
+  // ── SOLAR TYRANT — the specific claim, settled by evidence. ──
+  const unS = muteConsole();
+  const st = new Enemy('Solar Tyrant', 0);
+  const hm = new Enemy('Heavy Mech', 0);
+  const ss = new Enemy('Solar Stinger', 0);
+  const ov = new Enemy('Rogue AI Overlord', 0);
+  unS();
+  T('Solar Tyrant: isBoss() is false', st.isBoss() === false);
+  T('Solar Tyrant: isMegaBoss is false', st.isMegaBoss === false);
+  T('Solar Tyrant: not in Enemy.CHAOS_TITANS', !Enemy.CHAOS_TITANS.has('Solar Tyrant'));
+  T('Solar Tyrant: archetype is heavy, the same bucket as Heavy Mech',
+    st.archetype === 'heavy' && hm.archetype === 'heavy', `${st.archetype} vs ${hm.archetype}`);
+  T('Solar Tyrant: role is NOT boss', st.role !== 'boss', String(st.role));
+  T('Solar Tyrant: HP is on the same order as a normal heavy, not a boss',
+    st.maxHp < ov.maxHp / 4 && st.maxHp > hm.maxHp * 0.8,
+    `tyrant=${st.maxHp} heavy=${hm.maxHp} boss=${ov.maxHp}`);
+  T('Solar Tyrant: radius is a heavy radius, well under the boss radius',
+    st.radius > 0 && st.radius < ov.radius, `${st.radius} vs ${ov.radius}`);
+  T('Solar Tyrant and Solar Stinger are DIFFERENT entities',
+    st.enemyType !== ss.enemyType && st.archetype !== ss.archetype && st.maxHp !== ss.maxHp,
+    `${st.archetype}/${st.maxHp} vs ${ss.archetype}/${ss.maxHp}`);
+  T('Solar Tyrant sprite lives in minis/, NOT bosses/',
+    fs.existsSync(path.join(ROOT, 'assets/enemies/minis/solar-tyrant.png')));
+  T('the art-spec path assets/enemies/bosses/solar-tyrant.png does not exist (it is a stale doc path)',
+    !fs.existsSync(path.join(ROOT, 'assets/enemies/bosses/solar-tyrant.png')));
+  T('Solar Tyrant is not a Batch 4.4 stage boss', Object.values(BOSSES).every(d => d.id !== 'Solar Tyrant' && d.name !== 'SOLAR TYRANT'));
+  T('Solar Tyrant is not in BIOME_POOL_EXCLUDED (it is a legitimate heavy)', !BIOME_POOL_EXCLUDED.has('Solar Tyrant'));
+  T('Solar Tyrant has no scripted singleton field on Game', (() => {
+    const gg = newRun(); return gg.solarTyrant === undefined && gg.solarTyrantBoss === undefined;
+  })());
+  T('Solar Tyrant was ALREADY a normal Act 1 spawn before Slice B (WaveDirector heavy hint)', (() => {
+    const wd = fs.readFileSync(path.join(ROOT, 'js/game/WaveDirector.js'), 'utf8');
+    return /heavy:\s*\[[^\]]*'Solar Tyrant'/.test(wd);
+  })());
+
+  // ── RUNTIME: nothing boss-flagged may come out of a normal pool. ──
+  for (const b of BIOMES) {
+    const g = newRun(b);
+    const unR = muteConsole();
+    let bossSpawned = null, pauseSet = false;
+    for (let i = 0; i < 400; i++) {
+      g.timeAlive = 60; g._stageStartT = 0; g.spawnPauseTimer = 0;
+      const before = g.enemies.length;
+      try { g.spawnEnemy(null, { x: (g.player?.pos?.x ?? 0) + 600, y: (g.player?.pos?.y ?? 0) + 600 }); } catch (_) {}
+      const e = g.enemies.length > before ? g.enemies[g.enemies.length - 1] : null;
+      if (!e) continue;
+      if (e.isBoss() || e.isMegaBoss) { bossSpawned = e.enemyType; break; }
+      if (g.spawnPauseTimer > 0) pauseSet = true;
+      if (g.enemies.length > 200) g.enemies.length = 0;
+    }
+    unR();
+    T(`${b}: 400 real spawns produced NO boss-flagged entity`, bossSpawned === null, String(bossSpawned));
+    T(`${b}: no boss-only side effect (spawnPauseTimer) from a normal spawn`, !pauseSet);
+  }
+
+  // ── The 50-55s activation window, seeded, on the two biomes that gate Solar Tyrant. ──
+  for (const b of ['industrial_core', 'glacial_expanse']) {
+    for (const t of [49, 50, 52, 55, 60]) {
+      const rnd = mulberry32(20260731);
+      const out = new Set();
+      for (let i = 0; i < 6000; i++) out.add(pickBiomeEnemy('Heavy Mech', b, t, rnd));
+      const sawTyrant = out.has('Solar Tyrant');
+      T(`${b} @${t}s: Solar Tyrant ${t >= 50 ? 'IS' : 'is NOT'} reachable`,
+        t >= 50 ? sawTyrant : !sawTyrant, [...out].join(','));
+      T(`${b} @${t}s: every drawn id is non-boss and in this pool`,
+        [...out].every(i => setOf(b).has(i) && !RUNTIME_BOSS.includes(i)),
+        [...out].filter(i => !setOf(b).has(i) || RUNTIME_BOSS.includes(i)).join(','));
+    }
+    // and the entity that actually comes out at 55s is a real, non-boss heavy
+    const unX = muteConsole();
+    const g = newRun(b);
+    let tyrant = null;
+    for (let i = 0; i < 4000 && !tyrant; i++) {
+      g.timeAlive = 55; g._stageStartT = 0;
+      if (g._biomeSpawnType('Heavy Mech') === 'Solar Tyrant') tyrant = new Enemy('Solar Tyrant', g.currentMinute());
+    }
+    unX();
+    T(`${b}: the gate really yields a Solar Tyrant inside its window`, !!tyrant);
+    if (tyrant) {
+      T(`${b}: that Solar Tyrant is NOT boss-rank`, tyrant.isBoss() === false && !tyrant.isMegaBoss);
+      T(`${b}: that Solar Tyrant has finite HP and radius`,
+        Number.isFinite(tyrant.hp) && tyrant.hp > 0 && Number.isFinite(tyrant.radius));
+    }
+  }
+}
+
 console.log(`\n${pass} PASS / ${fail} FAIL`);
 console.log('B4_5_BIOME_ENEMY_POOLS_DONE');
 process.exit(fail === 0 ? 0 : 1);

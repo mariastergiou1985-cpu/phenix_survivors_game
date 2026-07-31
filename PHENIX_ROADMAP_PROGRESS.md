@@ -249,6 +249,28 @@ regression battery 20 suites (0 FAIL) + πραγματικό Chromium proof.
   5.3 → 4.8 → 9.6 → 6.1 → 7.2 → 9.4, τώρα σχεδόν μονότονο **4.6 → 6.0 → 6.7 → 6.6 → 7.8 → 9.6**.
   QA: `tools/qa/batch4_5_biome_enemy_pools_regression.mjs` **993 PASS / 0 FAIL** (12 sections,
   150.000 seeded draws), + πραγματικό Chromium proof σε 4 runs.
+  **ΕΠΑΛΗΘΕΥΣΗ 4.5.1 — `Solar Tyrant`: CONFIRMED_NORMAL_VARIANT (καμία αλλαγή pool).**
+  Ελέγχθηκε επειδή τα ART SPEC αρχεία τον γράφουν ως boss:
+  `assets/enemies/weapons/EnemyWeaponCatalogV1.json` → `"boss_assignments": { "solar_tyrant": {
+  "asset": "assets/enemies/bosses/solar-tyrant.png", "biome": "Solar / Gold elite / premium boss" } }`
+  και το ίδιο στο `ENEMY_WEAPON_MAPPING_V1.md:103-106`. **Αυτά τα αρχεία ονοματίζουν ΕΙΚΟΝΕΣ, όχι
+  οντότητες**: το ίδιο `boss_assignments` block γράφει ως «bosses» άλλα έξι κλειδιά
+  (`forge_mauler`, `cryo_warden`, `null_hierophant`, `pale_bloodknight`, `rail_reaper`,
+  `reactor_colossus`) που είναι απλώς τα sprites των Combat Hunter / Scrap Scavenger /
+  Cyber-Net Junkie / Overclocked Berserker / Cyber Shooter / Heavy Mech — όπως το τεκμηριώνει ρητά
+  ο ίδιος ο κώδικας στο `js/game/EnemyWeaponCatalog.js:99-107`. Η διαδρομή
+  `assets/enemies/bosses/solar-tyrant.png` **δεν υπάρχει στον δίσκο**· το πραγματικό αρχείο είναι
+  `assets/enemies/minis/solar-tyrant.png`. Στον κώδικα παιχνιδιού: `isBoss()` απαριθμεί ρητά μόνο
+  `Security Defector Mech`, `Rogue AI Overlord` και τα 4 `CHAOS_TITANS` → **false**· archetype
+  `'heavy'` (ίδιο bucket με Heavy Mech), role `'hunter'` (όχι `'boss'`), HP `44*g` με τον **κανονικό**
+  ramp `g` και όχι τον boss ramp `gB` (ο Overlord είναι `400*gB`, 8× παραπάνω), radius 26 έναντι 44,
+  κανένα `this.solarTyrantBoss` field όπως έχουν όλα τα πραγματικά bosses, και απουσία από
+  `BOSS_ECHOES` / `STAGE_BOSSES` / `RELIC_DEFS[].req` / `recordBossKill` / tier-ladder insertions /
+  `_endlessRearmBoss` / Boss Rush / Chaos scheduler / `Events.js`. Ήταν **ήδη** κανονικό Act 1 spawn
+  πριν το Slice B, μέσω `HINT_POOLS.act1.heavy` και `STAGE_WAVES`. Και τα 21 pool IDs είναι `normal`.
+  Νέο section 13 «BOSS-LEAK LOCK»: η λίστα των bosses παράγεται **brute-force από το live registry**
+  (κατασκευή κάθε id και έλεγχος `isBoss()`/`isMegaBoss`), όχι από χειρόγραφη λίστα, ώστε ένα
+  μελλοντικό boss να μην μπορεί να διαρρεύσει σιωπηλά. Σύνολο **1061 PASS / 0 FAIL**.
 
 ### Art dependency (για αύριο)
 - [ ] 6 stage-select thumbnails (~400×300) — 1 ανά biome. ASCII names, transparent όχι απαραίτητο.
