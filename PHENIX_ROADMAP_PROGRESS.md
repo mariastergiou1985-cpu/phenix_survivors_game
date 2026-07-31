@@ -209,7 +209,46 @@ regression battery 20 suites (0 FAIL) + πραγματικό Chromium proof.
   Data Wastes / Bloodfang. Relic effect ζωντανό: Pulse Damage 0 → **0.5**, fire rate 0 → **0.03**.
   Canvas 100% / 96% non-black, **0 game-code console errors**.
   QA: `tools/qa/batch4_stage_boss_rewards_regression.mjs` **281 PASS / 0 FAIL** (11 sections).
-- [ ] Stage-specific enemy sub-pool
+- [x] **ΟΛΟΚΛΗΡΩΘΗΚΕ 2026-07-31** — Stage-specific enemy sub-pool.
+  **ΤΟ ΕΥΡΗΜΑ:** το `export { ACT1_POOLS, CHAOS_POOL }` στο τέλος του `EnemySpawner.js` έγραφε
+  *"for future biome-specific overrides"* αλλά **δεν το εισήγαγε κανείς** — μηδέν importers σε όλο το
+  repo. Κάθε Act 1 stage και κάθε campaign stage έκανε spawn το **πανομοιότυπο ρόστερ**· η μόνη
+  διαφορά ανά biome ήταν hpMult/speedMult/regenRate πάνω στον ίδιο εχθρό. Άλλη εικόνα, ίδιοι εχθροί.
+  Δεύτερο εύρημα από το audit: ο **WaveDirector** είναι ο κύριος picker (μόνο το 1ο spawn κάθε tick
+  περνά από το `chooseEnemyType`), οπότε ένα hook μόνο στον EnemySpawner θα άλλαζε ~1 στα 3-17 spawns.
+  **Η ΥΛΟΠΟΙΗΣΗ — post-selection remap, ΟΧΙ δεύτερο spawn system.** Νέο `CAMPAIGN_BIOME_ENEMY_POOLS`
+  (data-driven, `E(id, weight, family, minStageTime, maxStageTime)`) + `pickBiomeEnemy()` στο
+  `EnemySpawner.js`, και **ένα** σημείο κλήσης: `Game._biomeSpawnType()` μέσα στο `spawnEnemy`, εκεί
+  όπου συγκλίνουν **και οι δύο** pickers. Όλη η υπάρχουσα μηχανή μένει ανέπαφη — WaveDirector blocks,
+  formations, weights, tier ladder, `enemyCap()`, `targetAlive`, interval, batch size, elite flag,
+  event overrides, `spawnPauseTimer`, boss flow. Αλλάζει μόνο **ποιος** εχθρός γεμίζει τον ρόλο.
+  **FAMILY PRESERVATION:** ένα `HEAVY_COLUMN` που ζήτησε heavy παίρνει heavy — το Industrial Core
+  απαντά με Heavy Mech, το Glacial Expanse με Abyss Maw. Τα formations κρατούν το νόημά τους.
+  **CANONICAL ΠΙΝΑΚΑΣ** (μόνο υπάρχοντες εχθροί, υπάρχον art, κανένα νέο PNG, κανένα invented id):
+  | biome | pool (weight · family · [από s]) |
+  |---|---|
+  | `neon_district`   | Glitch Drone 4·fodder · Rogue Punk 4·swarm · Volt Rat 3·fodder · Stealth Infiltrator 3·fast · Scrap Scavenger 2·swarm · Combat Hunter 2·fast [30] · Cyber Shooter 2·ranged [15] · Heavy Mech 1·heavy [55] |
+  | `industrial_core` | Scrap Scavenger 4·swarm · Heavy Mech 3·heavy · Pulse Burrower 3·swarm · Overclocked Berserker 3·fast · Combat Hunter 2·fast · Cyber Shooter 2·ranged · Glitch Drone 2·fodder · Solar Tyrant 1·heavy [50] |
+  | `orbital_nexus`   | Glitch Drone 4·fodder · Cyber Shooter 3·ranged · Solar Stinger 3·fast · Volt Rat 2·fodder · Cyber-Net Junkie 2·swarm · Amethyst Fang 2·fast [20] · Rift Eye 2·ranged [25] · Void Widow 2·heavy · Combat Hunter 1·fast |
+  | `abyssal_trench`  | Cyber-Net Junkie 4·swarm · Toxin Leech 4·fast · Abyss Maw 4·heavy · Cryo Claw 3·swarm · Void Widow 2·heavy · Rift Eye 2·ranged · Glitch Drone 2·fodder · Razorhound 1·fast [45] |
+  | `glacial_expanse` | Cryo Claw 4·swarm · Scrap Scavenger 3·swarm · Abyss Maw 3·heavy · Heavy Mech 2·heavy · Combat Hunter 2·fast · Cyber Shooter 2·ranged · Glitch Drone 2·fodder · Stealth Infiltrator 1·fast · Solar Tyrant 1·heavy [50] |
+  | `data_wastes`     | Volt Rat 3·fodder · Ember Scarab 3·swarm · Overclocked Berserker 3·fast · Rogue Punk 2·swarm · Combat Hunter 2·fast · Razorhound 2·fast [25] · Cyber Shooter 2·ranged · Rift Eye 2·ranged [20] · Void Widow 2·heavy · Heavy Mech 2·heavy · Amethyst Fang 1·fast |
+  **EXCLUSIONS** (`BIOME_POOL_EXCLUDED`, περνούν αμετάβλητοι): Rogue AI Overlord, Security Defector
+  Mech, οι 4 Chaos Mega Titans, ο event-only Cybermote και τα 10 Chaos-only types. Έτσι τα boss
+  insertions του tier ladder και το `_spawnStageBoss` δουλεύουν **ακριβώς** όπως πριν.
+  **FALLBACK — ποτέ empty pool, ποτέ undefined:** unknown/null biome, malformed entry, μηδενικό
+  weight, excluded type, Endless, Chaos, streaming map, ή απουσία `_stageBiome` → επιστρέφει τον
+  εισερχόμενο τύπο αμετάβλητο· επιπλέον `try/catch` γύρω από τη μοναδική κλήση.
+  **DETERMINISM:** το `pickBiomeEnemy(type, biome, stageT, rnd = Math.random)` δέχεται injectable
+  RNG. Το production δεν περνά τίποτα (ίδιο `Math.random` με τον υπόλοιπο spawn path — **καμία νέα
+  πηγή τυχαιότητας**), τα tests περνούν seeded mulberry32 και αποδεικνύουν πανομοιότυπες ακολουθίες.
+  **ΜΕΤΡΗΜΕΝΟ SPAWN BUDGET (A/B, 100 runs 480s):** total spawns **+0.05%** (variance-reduced leg),
+  `spawnEnemy` calls +0.07%, **peak alive 173 σε ΚΑΘΕ έναν από τους 100 runs (Δ=0.00%)**, mean alive
+  −0.26%. Per-enemy mean HP **−2.5%** (count-controlled, 219.898 spawns), median HP αμετάβλητο
+  7.0 → 7.0, speed −0.4%. **Κανένα global buff/nerf.** Ramp στον pool άξονα: baseline «σπασμένο»
+  5.3 → 4.8 → 9.6 → 6.1 → 7.2 → 9.4, τώρα σχεδόν μονότονο **4.6 → 6.0 → 6.7 → 6.6 → 7.8 → 9.6**.
+  QA: `tools/qa/batch4_5_biome_enemy_pools_regression.mjs` **993 PASS / 0 FAIL** (12 sections,
+  150.000 seeded draws), + πραγματικό Chromium proof σε 4 runs.
 
 ### Art dependency (για αύριο)
 - [ ] 6 stage-select thumbnails (~400×300) — 1 ανά biome. ASCII names, transparent όχι απαραίτητο.

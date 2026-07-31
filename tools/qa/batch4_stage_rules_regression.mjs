@@ -104,6 +104,23 @@ function baseline() {
            : { hp: NaN, maxHp: NaN, baseSpeed: NaN, full: NaN };
 }
 
+// BATCH 4.5 — baseline for ONE SPECIFIC type, through the same production path, with the biome
+// sub-pool gate bypassed (so the type we ask for is the type we get) and no stage rule in force.
+// This is what a per-biome measurement must be compared against once the gate can substitute types.
+function baselineFor(type) {
+  const g = newGameUnlocked();
+  if (g.chunkManager) g.chunkManager.enabled = false;
+  g._biomeSpawnType = (t) => t;          // bypass the sub-pool gate for the baseline only
+  g._setStageRule(null);
+  const un = muteConsole();
+  const before = g.enemies.length;
+  try { g.spawnEnemy(type, { x: (g.player?.pos?.x ?? 0) + 600, y: (g.player?.pos?.y ?? 0) + 600 }); } catch (_) {}
+  un();
+  const e = g.enemies.length > before ? g.enemies[g.enemies.length - 1] : null;
+  return e ? { type: e.enemyType, hp: e.hp, maxHp: e.maxHp, baseSpeed: e.baseSpeed, full: e._baseSpeedFull }
+           : { type, hp: NaN, maxHp: NaN, baseSpeed: NaN, full: NaN };
+}
+
 // Spawn one enemy through the REAL production path and return it.
 // Game.spawnEnemy(type, pos, elite) builds the Enemy itself — the harness never hands it one, so
 // what is measured here is exactly what the game does on a real spawn.
@@ -177,11 +194,6 @@ console.log('\n=== 2. THE RULE ACTUALLY REACHES A SPAWNED ENEMY (fixed map / Act
     const def = BIOME_DEFS[id];
     if (!def) continue;
     const m = def.enemyModifiers || {};
-    // A neutral hpMult must not touch HP at all — not even round it. Enemy HP is fractional at low
-    // minutes (2.99), so rounding a 1.0 mult would silently change the value and hide a real bug.
-    const hpM = (m.hpMult > 0 ? m.hpMult : 1);
-    const expHp    = hpM === 1 ? B.hp : Math.max(1, Math.round(B.hp * hpM));
-    const expSpeed = B.baseSpeed * (m.speedMult > 0 ? m.speedMult : 1);
 
     const g = newGameUnlocked();
     if (g.chunkManager) g.chunkManager.enabled = false;   // Act 1 / campaign: streaming is OFF
@@ -189,9 +201,22 @@ console.log('\n=== 2. THE RULE ACTUALLY REACHES A SPAWNED ENEMY (fixed map / Act
     const e = spawnThrough(g);
     if (!e) { T(`${id}: enemy reached the roster`, false, 'spawnEnemy produced nothing'); continue; }
 
-    T(`${id}: HP scaled by hpMult ${m.hpMult ?? 1}  (${B.hp} → ${e.hp}, expected ${expHp})`,
+    // BATCH 4.5 — the biome sub-pool gate may legitimately swap the requested probe type for this
+    // biome's same-family equivalent (that IS the feature). So the baseline has to be taken for the
+    // type that ACTUALLY spawned, not for the type we asked for. `baselineFor` re-spawns that exact
+    // type through the same production path with the gate bypassed and no stage rule, which makes
+    // this assertion strictly stronger than before: it now proves the rule reaches whatever the
+    // biome chose, instead of assuming the biome chose the probe.
+    const Bt = baselineFor(e.enemyType);
+    // A neutral hpMult must not touch HP at all — not even round it. Enemy HP is fractional at low
+    // minutes (2.99), so rounding a 1.0 mult would silently change the value and hide a real bug.
+    const hpM = (m.hpMult > 0 ? m.hpMult : 1);
+    const expHp    = hpM === 1 ? Bt.hp : Math.max(1, Math.round(Bt.hp * hpM));
+    const expSpeed = Bt.baseSpeed * (m.speedMult > 0 ? m.speedMult : 1);
+
+    T(`${id}: HP scaled by hpMult ${m.hpMult ?? 1}  [${e.enemyType}] (${Bt.hp} → ${e.hp}, expected ${expHp})`,
       e.hp === expHp && e.maxHp === e.hp, `hp=${e.hp} maxHp=${e.maxHp}`);
-    T(`${id}: speed scaled by speedMult ${m.speedMult ?? 1}  (${B.baseSpeed.toFixed(1)} → ${e.baseSpeed.toFixed(1)})`,
+    T(`${id}: speed scaled by speedMult ${m.speedMult ?? 1}  [${e.enemyType}] (${Bt.baseSpeed.toFixed(1)} → ${e.baseSpeed.toFixed(1)})`,
       near(e.baseSpeed, expSpeed), `got ${e.baseSpeed}, expected ${expSpeed}`);
     if (m.regenRate > 0) {
       T(`${id}: regenRate ${m.regenRate} reached the enemy`, e._biomeRegen === m.regenRate, `got ${e._biomeRegen}`);
@@ -212,10 +237,18 @@ console.log('\n=== 3. THE STAGES ARE ACTUALLY DIFFERENT FROM EACH OTHER ===');
     if (!BIOME_DEFS[id]) continue;
     const g = newGameUnlocked();
     if (g.chunkManager) g.chunkManager.enabled = false;
+    // BATCH 4.5 — this section is about the biome RULE (speedMult/hpMult), so the enemy TYPE has to
+    // be held constant across all six biomes or the comparison measures the sub-pool roll instead.
+    // The gate is bypassed here for exactly that reason; pool composition is proven separately, and
+    // far more thoroughly, in tools/qa/batch4_5_biome_enemy_pools_regression.mjs.
+    g._biomeSpawnType = (t) => t;
     g._setStageRule(id);
     const e = spawnThrough(g);
-    if (e) measured[id] = { hp: e.hp, speed: +e.baseSpeed.toFixed(2) };
+    if (e) measured[id] = { hp: e.hp, speed: +e.baseSpeed.toFixed(2), type: e.enemyType };
   }
+  T('the rule comparison held the enemy type constant across all six biomes',
+    new Set(Object.values(measured).map(m => m.type)).size === 1,
+    [...new Set(Object.values(measured).map(m => m.type))].join(','));
   const ids = Object.keys(measured);
   T('every biome produced a measurable enemy', ids.length >= 6, `${ids.length} measured`);
   const sigs = ids.map(id => `${measured[id].hp}/${measured[id].speed}`);

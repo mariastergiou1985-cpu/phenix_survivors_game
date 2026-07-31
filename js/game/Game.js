@@ -57,7 +57,7 @@ import { EnemyWeaponSystem } from './EnemyWeaponSystem.js?v=20260829040000';   /
 import { EventBus, EVENTS } from './EventBus.js?v=20260703990000';
 import { HostileProjectileDirector } from './HostileProjectileDirector.js?v=20260829040000';
 import { WaveDirector } from './WaveDirector.js?v=20260724000000';
-import { EnemySpawner, ELITE_WAVE as ELITE_WAVE_CFG, BOSS_WARN_COOLDOWN as BOSS_WARN_CD } from './EnemySpawner.js?v=20260719300000';
+import { EnemySpawner, ELITE_WAVE as ELITE_WAVE_CFG, BOSS_WARN_COOLDOWN as BOSS_WARN_CD, pickBiomeEnemy } from './EnemySpawner.js?v=20260829100000';
 import { StateManager, GAME_STATES } from './StateManager.js?v=20260703990000';
 import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260722600000';
 import { NexusManager } from './NexusManager.js?v=20260803000000';
@@ -6813,6 +6813,32 @@ export class Game {
   }
 
   // Enemy type selection — delegated to EnemySpawner (Phase 0 decoupling).
+  /**
+   * ROADMAP MILESTONE 2 / Slice B — the biome sub-pool gate.
+   *
+   * Returns the type this stage's biome wants instead of `type`, or `type` unchanged. Every guard
+   * below is a pass-through, so the pre-Slice-B behaviour is the fallback in all of these cases:
+   *   · Endless or Chaos            → those modes keep their own canonical pools, untouched
+   *   · streaming maps              → biome is per-position there, not per-stage
+   *   · no active stage biome       → nothing to substitute with
+   *   · unknown / malformed biome   → pickBiomeEnemy itself returns the input
+   *   · boss / mini / mega / event / Chaos-only type → excluded by the catalog, passed through
+   *
+   * `stageT` is seconds INTO THE CURRENT 80s STAGE (not the run clock), which is what lets a pool
+   * entry escalate inside its own stage without touching ACT1_STAGE_SECONDS or the boss gate.
+   */
+  _biomeSpawnType(type) {
+    try {
+      if (this.endless || this._chaosMode) return type;        // Endless/Chaos keep their pools
+      if (this.chunkManager?.enabled) return type;             // streaming worlds: per-position biome
+      const biome = this._stageBiome;
+      if (!biome) return type;
+      const stageT = Math.max(0, (this.timeAlive || 0) - (this._stageStartT || 0));
+      const out = pickBiomeEnemy(type, biome, stageT);
+      return (typeof out === 'string' && out) ? out : type;    // never let undefined reach new Enemy
+    } catch (_) { return type; }                               // a pool bug must never break spawning
+  }
+
   chooseEnemyType() {
     return this.spawner.chooseEnemyType(this.timeAlive, {
       chaos:    this._chaosMode,
@@ -6827,7 +6853,15 @@ export class Game {
     // Endless: enemies are stronger from the start by treating them as ~8 minutes further along
     // (drives Enemy HP/speed scaling; damage stays conservative). Act 1 uses the real minute.
     const mins = this.currentMinute() + (this.endless ? 8 : 0);
-    const e = new Enemy(_waveType || this.chooseEnemyType(), mins);
+    // ROADMAP MILESTONE 2 / Slice B — STAGE-SPECIFIC ENEMY SUB-POOLS. This is the single point where
+    // BOTH pickers converge (WaveDirector.pickEnemy / pickFromHint AND EnemySpawner.chooseEnemyType),
+    // so one line here covers every ordinary spawn without forking the selection machinery. It is a
+    // post-selection remap: weights, tiers, formations, batch size, caps and the elite flag have all
+    // already been decided above and are untouched. Returns the input unchanged for bosses, for
+    // Endless/Chaos, and for any unknown biome, so those paths are byte-for-byte as before.
+    let _type = _waveType || this.chooseEnemyType();
+    _type = this._biomeSpawnType(_type);
+    const e = new Enemy(_type, mins);
     let spawnCandidate = null;
     // HORDE §17: θέση από τον WaveDirector (ΕΚΤΟΣ viewport, 8 sectors) — Act 1 έπαιρνε
     // μέχρι τώρα world-bounds edges 3840px μακριά· τώρα η ορδή φτάνει ΠΑΝΤΑ γρήγορα.

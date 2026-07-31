@@ -262,5 +262,177 @@ export class EnemySpawner {
   };
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// ROADMAP MILESTONE 2 / Slice B — STAGE-SPECIFIC ENEMY SUB-POOLS
+// ═══════════════════════════════════════════════════════════════════════════════════════════════
+// This is the consumer the "for future biome-specific overrides" export below was always waiting
+// for. Until now every Act 1 stage and every campaign stage spawned the IDENTICAL roster — the only
+// per-biome difference was hpMult/speedMult/regenRate on the enemy that came out. Different picture,
+// same enemies.
+//
+// HOW IT PLUGS IN — this is a POST-SELECTION REMAP, not a second spawn system. The existing
+// machinery still does all the work: WaveDirector picks the block, the formation, the position, the
+// batch size, the elite flag and the type; EnemySpawner.chooseEnemyType still owns the tier ladder
+// and the boss insertions; enemyCap()/targetAlive/interval still own the budget. Only AFTER a type
+// has been chosen by that machinery does `applyBiomePool` swap it for the biome's own equivalent.
+// Nothing about difficulty scaling, spawn caps, elite rules, event overrides or the boss flow moves.
+//
+// FAMILY PRESERVATION is what keeps the formations meaningful. A HEAVY_COLUMN that asked for a heavy
+// still gets a heavy — Industrial Core answers with a Heavy Mech, Glacial Expanse with an Abyss Maw.
+// A RANGED_POCKET still gets a ranged. So the biome changes WHICH enemies fill a role, never WHICH
+// roles the wave director asked for.
+//
+// Every id below is an existing, shipping enemy with existing art. No new PNG, no placeholder, no
+// invented id — `batch4_5_biome_enemy_pools_regression.mjs` proves that against the real catalog.
+
+/** Spawn family per enemy type — mirrors Enemy._archetypeForType, with shield/charger folded into
+ *  heavy so the five families here match the five HINT_POOLS categories the formations request. */
+const SPAWN_FAMILY = Object.freeze({
+  'Glitch Drone': 'fodder', 'Volt Rat': 'fodder',
+  'Rogue Punk': 'swarm', 'Scrap Scavenger': 'swarm', 'Cyber-Net Junkie': 'swarm',
+  'Ember Scarab': 'swarm', 'Pulse Burrower': 'swarm', 'Cryo Claw': 'swarm',
+  'Combat Hunter': 'fast', 'Stealth Infiltrator': 'fast', 'Overclocked Berserker': 'fast',
+  'Solar Stinger': 'fast', 'Toxin Leech': 'fast', 'Amethyst Fang': 'fast', 'Razorhound': 'fast',
+  'Heavy Mech': 'heavy', 'Solar Tyrant': 'heavy', 'Void Widow': 'heavy', 'Abyss Maw': 'heavy',
+  'Cyber Shooter': 'ranged', 'Rift Eye': 'ranged',
+});
+
+/** Types that must NEVER be produced by a normal biome spawn. Bosses, the mini boss, the Chaos Mega
+ *  Titans, the Chaos-only roster and the event-only Cybermote. A type in this set is passed through
+ *  untouched, so the tier-ladder boss insertions and _spawnStageBoss keep working exactly as before. */
+const BIOME_POOL_EXCLUDED = Object.freeze(new Set([
+  // boss / mini boss / mega boss
+  'Rogue AI Overlord', 'Security Defector Mech',
+  'Giga-Core Overlord', 'Malware Leviathan', 'Quantum Void Emperor', 'Apocalypse Mech Tyrant',
+  // event-only
+  'Cybermote',
+  // Chaos-only roster
+  'Neon Swarmer', 'Data Glitch Stalker', 'Plasma Juggernaut', 'Overclocked Bomber',
+  'EMP Hacker Drone', 'Cyber-Axe Executioner', 'Malware Spreader', 'Void Rift Summoner',
+  'Wireframe Net-Caster', 'Singularity Core Mech',
+]));
+
+// E(id, weight, family, minStageTime, maxStageTime) — `minStageTime`/`maxStageTime` are SECONDS INTO
+// THE CURRENT 80s STAGE, so late entries are the stage's own escalation rather than a global clock.
+const E = (id, weight, family, minStageTime = 0, maxStageTime = Infinity) =>
+  Object.freeze({ id, weight, family, minStageTime, maxStageTime });
+
+/**
+ * biome → weighted sub-pool. Every biome carries all five families, which guarantees a
+ * family-preserving remap can always resolve and no pool can ever be empty for a requested role.
+ */
+const CAMPAIGN_BIOME_ENEMY_POOLS = Object.freeze({
+  // 1 · NEON DISTRICT — the introduction stage. Fast light melee + a little ranged harassment,
+  // lowest pressure of the ring. The single heavy is rare and arrives only in the last third.
+  neon_district: Object.freeze([
+    E('Glitch Drone', 4, 'fodder'), E('Volt Rat', 3, 'fodder'),
+    E('Rogue Punk', 4, 'swarm'), E('Scrap Scavenger', 2, 'swarm'),
+    E('Stealth Infiltrator', 3, 'fast'), E('Combat Hunter', 2, 'fast', 30),
+    E('Cyber Shooter', 2, 'ranged', 15),
+    E('Heavy Mech', 1, 'heavy', 55),
+  ]),
+  // 2 · INDUSTRIAL CORE — mechanical pressure: armoured bodies and chargers, not a swarm stage.
+  // Heavy weight is the highest of the ring and the Solar Tyrant closes the stage out.
+  industrial_core: Object.freeze([
+    E('Glitch Drone', 2, 'fodder'),
+    E('Scrap Scavenger', 4, 'swarm'), E('Pulse Burrower', 3, 'swarm'),
+    E('Overclocked Berserker', 3, 'fast'), E('Combat Hunter', 2, 'fast'),
+    E('Cyber Shooter', 2, 'ranged'),
+    E('Heavy Mech', 3, 'heavy'), E('Solar Tyrant', 1, 'heavy', 50),
+  ]),
+  // 3 · ORBITAL NEXUS — drones and precision projectile pressure. Only Cyber Shooter and Rift Eye
+  // actually fire as non-elites, so readability holds: this is technical spacing, not bullet spam.
+  orbital_nexus: Object.freeze([
+    E('Glitch Drone', 4, 'fodder'), E('Volt Rat', 2, 'fodder'),
+    E('Cyber-Net Junkie', 2, 'swarm'),
+    E('Solar Stinger', 3, 'fast'), E('Amethyst Fang', 2, 'fast', 20), E('Combat Hunter', 1, 'fast'),
+    E('Cyber Shooter', 3, 'ranged'), E('Rift Eye', 2, 'ranged', 25),
+    E('Void Widow', 2, 'heavy'),
+  ]),
+  // 4 · ABYSSAL TRENCH — claustrophobic swarm with toxin/void bodies. The one ambush predator
+  // (Razorhound) is gated to the last half so the player is never boxed in unfairly at the start.
+  abyssal_trench: Object.freeze([
+    E('Glitch Drone', 2, 'fodder'),
+    E('Cyber-Net Junkie', 4, 'swarm'), E('Cryo Claw', 3, 'swarm'),
+    E('Toxin Leech', 4, 'fast'), E('Razorhound', 1, 'fast', 45),
+    E('Rift Eye', 2, 'ranged'),
+    // Abyss Maw at 4 (not 3) is the one measured tune in this table: at 3 the pool-axis mean HP of
+    // abyssal_trench (6.1) sat just under orbital_nexus (6.7) and broke the ring's upward ramp.
+    E('Abyss Maw', 4, 'heavy'), E('Void Widow', 2, 'heavy'),
+  ]),
+  // 5 · GLACIAL EXPANSE — slow, durable targets. Cryo Claw is the only freeze-flavoured body and it
+  // is not stacked with a second one, so control effects stay readable instead of piling up.
+  glacial_expanse: Object.freeze([
+    E('Glitch Drone', 2, 'fodder'),
+    E('Cryo Claw', 4, 'swarm'), E('Scrap Scavenger', 3, 'swarm'),
+    E('Combat Hunter', 2, 'fast'), E('Stealth Infiltrator', 1, 'fast'),
+    E('Cyber Shooter', 2, 'ranged'),
+    E('Abyss Maw', 3, 'heavy'), E('Heavy Mech', 2, 'heavy'), E('Solar Tyrant', 1, 'heavy', 50),
+  ]),
+  // 6 · DATA WASTES — the unstable late-campaign mix: fast bodies, the most ranged weight of the
+  // ring, and two heavies. Harder than everything before it, deliberately short of Chaos density.
+  data_wastes: Object.freeze([
+    E('Volt Rat', 3, 'fodder'),
+    E('Ember Scarab', 3, 'swarm'), E('Rogue Punk', 2, 'swarm'),
+    E('Overclocked Berserker', 3, 'fast'), E('Combat Hunter', 2, 'fast'),
+    E('Razorhound', 2, 'fast', 25), E('Amethyst Fang', 1, 'fast'),
+    E('Cyber Shooter', 2, 'ranged'), E('Rift Eye', 2, 'ranged', 20),
+    E('Void Widow', 2, 'heavy'), E('Heavy Mech', 2, 'heavy'),
+  ]),
+});
+
+/** The family a type belongs to for remap purposes, or null if it has no biome family. */
+function spawnFamilyOf(type) { return SPAWN_FAMILY[type] || null; }
+
+/**
+ * Remap an ALREADY-CHOSEN enemy type to this biome's equivalent of the same family.
+ *
+ * @param {string}   type       the type the existing machinery chose
+ * @param {string|null} biome   active campaign biome id, or null/unknown
+ * @param {number}   stageT     seconds elapsed inside the current 80s stage
+ * @param {function} rnd        RNG in [0,1). Defaults to Math.random — the SAME source the rest of
+ *                              the spawn path already uses, so no new randomness is introduced. The
+ *                              parameter exists so tests can drive it deterministically with a seed.
+ * @returns {string} the biome type, or `type` unchanged on any miss. NEVER undefined.
+ */
+export function pickBiomeEnemy(type, biome, stageT = 0, rnd = Math.random) {
+  // ── Fallbacks, in order. Any of these returns the untouched input, so an unknown biome, a
+  // malformed table or a boss type simply behaves exactly like the pre-Slice-B build. ──
+  if (typeof type !== 'string' || !type) return type;
+  if (BIOME_POOL_EXCLUDED.has(type)) return type;              // bosses / event / chaos-only
+  const pool = (biome && CAMPAIGN_BIOME_ENEMY_POOLS[biome]) || null;
+  if (!Array.isArray(pool) || pool.length === 0) return type;  // unknown/null biome → canonical pool
+
+  const t = Number.isFinite(stageT) ? Math.max(0, stageT) : 0;
+  const live = [];
+  for (const e of pool) {
+    if (!e || typeof e.id !== 'string' || !(e.weight > 0)) continue;   // malformed entry → skipped
+    if (BIOME_POOL_EXCLUDED.has(e.id)) continue;                       // belt & braces
+    const lo = Number.isFinite(e.minStageTime) ? e.minStageTime : 0;
+    const hi = Number.isFinite(e.maxStageTime) ? e.maxStageTime : Infinity;
+    if (t < lo || t > hi) continue;
+    live.push(e);
+  }
+  if (live.length === 0) return type;
+
+  // Prefer the SAME family, so the formation that asked for a heavy still gets a heavy.
+  const fam = spawnFamilyOf(type);
+  let cand = fam ? live.filter(e => e.family === fam) : [];
+  if (cand.length === 0) cand = live;                          // biome has no such family yet → any
+
+  let total = 0;
+  for (const e of cand) total += e.weight;
+  if (!(total > 0)) return type;
+  let r = rnd() * total;
+  for (const e of cand) { r -= e.weight; if (r <= 0) return e.id; }
+  return cand[cand.length - 1].id;                             // float guard — never undefined
+}
+
+/** Read-only view of a biome's sub-pool (used by QA + tooling). Empty array for unknown ids. */
+export function biomeEnemyPool(biome) {
+  const p = biome && CAMPAIGN_BIOME_ENEMY_POOLS[biome];
+  return Array.isArray(p) ? p : [];
+}
+
 // ─── Exported Pool Data (for future biome-specific overrides) ────────────
-export { ACT1_POOLS, CHAOS_POOL };
+export { ACT1_POOLS, CHAOS_POOL, CAMPAIGN_BIOME_ENEMY_POOLS, BIOME_POOL_EXCLUDED, SPAWN_FAMILY };
