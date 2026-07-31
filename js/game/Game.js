@@ -2135,6 +2135,15 @@ export class Game {
         if (skin) this.triggerAnnouncement('SECRET SKIN DECRYPTED — ' + skin.toUpperCase(), '#ff2d95');
       } catch (_) {}
     }
+    // Slice A: a first clear also opens the NEXT selectable starting stage. Announced exactly here,
+    // at the moment the ladder actually advances, so it fires once per unlock and never on load.
+    if (firstClear) {
+      const nextId = Game.STAGE_RING[n];          // stage N cleared → ring index N becomes available
+      if (nextId && this.isStageBiomeUnlocked(nextId)) {
+        const nm = (BIOME_DEFS[nextId] && BIOME_DEFS[nextId].name) || nextId;
+        this.triggerAnnouncement('NEW STARTING STAGE UNLOCKED — ' + String(nm).toUpperCase(), '#2ee6f6');
+      }
+    }
     const allDone = this.meta?.allStagesCleared();
     // Soft, celebratory finish instead of a hard shake + instant cut: a full-screen
     // "STAGE n COMPLETE" banner fades in, holds, then eases back to the campaign map.
@@ -2990,9 +2999,43 @@ export class Game {
     return ['neon_district', 'industrial_core', 'orbital_nexus', 'abyssal_trench', 'glacial_expanse', 'data_wastes'];
   }
 
-  /** Set the run's starting biome. Returns true if it was accepted. */
+  // ── STAGE UNLOCK LADDER (ROADMAP MILESTONE 2 / Slice A) ────────────────────
+  // NO NEW SAVE FIELD. The canonical ladder already exists: MetaProgress.stagesCleared with
+  // isStageUnlocked(n) => n <= stagesCleared + 1, and CAMPAIGN_STAGES already maps stage N to a
+  // biome in exactly the ring order. So ring position i (0-based) unlocks with campaign stage i+1:
+  //
+  //   neon_district    always      industrial_core  clear stage 1     orbital_nexus  clear stage 2
+  //   abyssal_trench   clear 3     glacial_expanse  clear 4           data_wastes    clear 5
+  //
+  // Reusing it means: existing saves keep every unlock they already earned, a save with no field
+  // reads 0 and offers only neon_district, and there is no second ladder to drift out of sync.
+  // the_null is not in STAGE_RING, so it can never be unlocked here by construction.
+  isStageBiomeUnlocked(biomeId) {
+    const i = Game.STAGE_RING.indexOf(biomeId);
+    if (i < 0) return false;                       // not a selectable stage (includes the_null)
+    if (i === 0) return true;                      // neon_district is always open
+    const cleared = Math.max(0, Number(this.meta?.stagesCleared) || 0);   // missing/NaN → 0
+    return cleared >= i;
+  }
+
+  /** Human-readable requirement for a locked stage, for the overlay. */
+  stageBiomeRequirement(biomeId) {
+    const i = Game.STAGE_RING.indexOf(biomeId);
+    if (i <= 0) return '';
+    return `CLEAR CAMPAIGN STAGE ${i}`;
+  }
+
+  /** The unlocked subset, in ring order. Never empty — neon_district is unconditional. */
+  unlockedStageBiomes() { return Game.STAGE_RING.filter(id => this.isStageBiomeUnlocked(id)); }
+
+  /**
+   * Set the run's starting biome. Returns true if it was accepted.
+   * A LOCKED biome is refused here too, not only in the UI, so a forged save, a console call or a
+   * hand-edited selection cannot start a run on a stage the player has not earned.
+   */
   setRunBiome(biomeId) {
     if (!Game.STAGE_RING.includes(biomeId) || !BIOME_DEFS[biomeId]) return false;
+    if (!this.isStageBiomeUnlocked(biomeId)) return false;
     this.runBiome = biomeId;
     return true;
   }
@@ -3001,7 +3044,11 @@ export class Game {
   // swapped to that biome's map. Called AFTER reset() (which clears stage state) and BEFORE
   // _applyCampaignStage(), so a campaign stage still wins — the campaign picks its own biome.
   _applyRunBiome() {
-    const id = Game.STAGE_RING.includes(this.runBiome) ? this.runBiome : 'neon_district';
+    // A selection that is unknown, forged, or no longer unlocked (a wiped save, a hand-edited
+    // localStorage) is repaired here rather than starting a run on a stage the player has not
+    // earned. neon_district is always available, so this can never fail to resolve.
+    const ok = Game.STAGE_RING.includes(this.runBiome) && this.isStageBiomeUnlocked(this.runBiome);
+    const id = ok ? this.runBiome : 'neon_district';
     this.runBiome = id;
     this._stageIndex = 0;
     this._setStageRule(id);
@@ -24498,6 +24545,13 @@ export class Game {
         #cgm-stagesel .ssl-mod.down { color:#8fe6ff; border-color:rgba(46,230,246,.35); }
         #cgm-stagesel .ssl-mod.regen { color:var(--green); border-color:rgba(124,255,77,.35); }
         #cgm-stagesel .ssl-badge { position:absolute; top:8px; right:8px; z-index:3; font-size:10.5px; font-weight:700; color:#041018; background:var(--cyan); padding:3px 8px; border-radius:6px; letter-spacing:1px; }
+        #cgm-stagesel .ssl-badge.lock { background:rgba(8,14,32,.9); color:#8fa4c8; border:1px solid rgba(143,164,200,.35); }
+        #cgm-stagesel .ssl-card.locked { cursor:not-allowed; border-color:rgba(143,164,200,.18); }
+        #cgm-stagesel .ssl-card.locked .ssl-swatch { opacity:.10; }
+        #cgm-stagesel .ssl-card.locked .ssl-name { color:#8fa4c8; }
+        #cgm-stagesel .ssl-card.locked .ssl-desc { color:#5f7398; }
+        #cgm-stagesel .ssl-card.locked:hover { border-color:rgba(143,164,200,.30); }
+        #cgm-stagesel .ssl-req { margin-top:auto; font-size:11px; letter-spacing:.5px; padding:3px 8px; border-radius:6px; background:rgba(4,8,20,.72); border:1px solid rgba(255,210,60,.30); color:var(--amber); align-self:flex-start; }
         #cgm-stagesel .ssl-foot { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
         #cgm-stagesel .ssl-current { font-size:12.5px; letter-spacing:1px; color:#bcd8f5; }
         #cgm-stagesel .ssl-current b { color:var(--cyan); }
@@ -24533,6 +24587,13 @@ export class Game {
       if (!card) return;
       const i = parseInt(card.dataset.idx, 10);
       if (!Number.isInteger(i) || i < 0 || i >= Game.STAGE_RING.length) return;   // hostile DOM → ignore
+      // A locked card is inert: the cursor does not move to it, so ENTER cannot then confirm it.
+      // The class on the element is cosmetic — the check is against the ladder, so stripping the
+      // class in devtools changes nothing.
+      if (!this.isStageBiomeUnlocked(Game.STAGE_RING[i])) {
+        this.triggerAnnouncement(this.stageBiomeRequirement(Game.STAGE_RING[i]), '#888888');
+        return;
+      }
       this._stageSelIndex = i;
       this._renderStageSelectOverlay();
     });
@@ -24556,13 +24617,19 @@ export class Game {
         rg ? `<span class="ssl-mod regen">REGEN ${rg}/s</span>` : '',
       ].filter(Boolean).join('');
       const swatch = `linear-gradient(140deg,${pal.accent1 || '#2ee6f6'}44,${pal.accent2 || '#a855f7'}22 55%,transparent)`;
-      const sel = i === this._stageSelIndex;
-      return `<div class="ssl-card${sel ? ' sel' : ''}" data-idx="${i}" role="button" tabindex="-1" aria-pressed="${sel}">
+      const unlocked = this.isStageBiomeUnlocked(id);
+      const sel = unlocked && i === this._stageSelIndex;
+      // LOCKED STAGES ARE SHOWN, NOT HIDDEN — the player should see what there is to earn, and
+      // exactly what earns it. The class is presentation only; every gate is re-checked against
+      // the ladder in the click handler, the key handler and setRunBiome.
+      return `<div class="ssl-card${sel ? ' sel' : ''}${unlocked ? '' : ' locked'}" data-idx="${i}" role="button" tabindex="-1" aria-pressed="${sel}" aria-disabled="${!unlocked}">
         <div class="ssl-swatch" style="background:${swatch}"></div>
         ${sel ? '<div class="ssl-badge">STAGE 1</div>' : ''}
+        ${unlocked ? '' : '<div class="ssl-badge lock">🔒 LOCKED</div>'}
         <div class="ssl-name">${def.name || id}</div>
         <div class="ssl-desc">${def.description || ''}</div>
-        <div class="ssl-mods">${mods}</div>
+        ${unlocked ? `<div class="ssl-mods">${mods}</div>`
+                   : `<div class="ssl-req">${this.stageBiomeRequirement(id)}</div>`}
       </div>`;
     }).join('');
     const curId  = RING.includes(this.runBiome) ? this.runBiome : RING[0];
@@ -24601,7 +24668,7 @@ export class Game {
       this.gameState = 'stage_select';
       // The cursor opens on whatever is currently selected, so BACK is a true no-op.
       const i = Game.STAGE_RING.indexOf(this.runBiome);
-      this._stageSelIndex = i >= 0 ? i : 0;
+      this._stageSelIndex = (i >= 0 && this.isStageBiomeUnlocked(this.runBiome)) ? i : 0;
       this.audio?.startMenuMusic();
       this._showStageSelectOverlay();
     });
@@ -24616,6 +24683,11 @@ export class Game {
   /** Commit the highlighted card through the real setter, then leave. */
   _stageSelectConfirm() {
     const id = Game.STAGE_RING[this._stageSelIndex];
+    // A locked stage never commits and never leaves the screen — the player is told what unlocks it.
+    if (id && !this.isStageBiomeUnlocked(id)) {
+      this.triggerAnnouncement(this.stageBiomeRequirement(id), '#888888');
+      return;
+    }
     const ok = this.setRunBiome(id);              // the ONLY place the overlay writes the selection
     if (!ok) this.setRunBiome('neon_district');   // safe fallback — never leave an invalid selection
     const def = BIOME_DEFS[this.runBiome] || {};
@@ -24624,14 +24696,26 @@ export class Game {
     this.goToMainMenu();
   }
 
+  // Move the cursor by `step`, skipping every locked stage. neon_district is always unlocked, so
+  // the walk always terminates; the guard is belt-and-braces against a future all-locked ladder.
+  _stageSelStep(step) {
+    const n = Game.STAGE_RING.length;
+    let i = this._stageSelIndex;
+    for (let tries = 0; tries < n; tries++) {
+      i = ((i + step) % n + n) % n;
+      if (this.isStageBiomeUnlocked(Game.STAGE_RING[i])) { this._stageSelIndex = i; break; }
+    }
+    this._renderStageSelectOverlay();
+  }
+
   _updateStageSelect(input) {
-    const { keys } = input, n = Game.STAGE_RING.length;
-    if (keys.has('arrowleft')  || keys.has('a')) { this._stageSelIndex = (this._stageSelIndex - 1 + n) % n; keys.delete('arrowleft');  keys.delete('a'); this._renderStageSelectOverlay(); }
-    if (keys.has('arrowright') || keys.has('d')) { this._stageSelIndex = (this._stageSelIndex + 1) % n;     keys.delete('arrowright'); keys.delete('d'); this._renderStageSelectOverlay(); }
+    const { keys } = input;
+    if (keys.has('arrowleft')  || keys.has('a')) { keys.delete('arrowleft');  keys.delete('a'); this._stageSelStep(-1); }
+    if (keys.has('arrowright') || keys.has('d')) { keys.delete('arrowright'); keys.delete('d'); this._stageSelStep(+1); }
     // The grid is 3 wide on desktop, so up/down move by a row — and still wrap, so a gamepad can
     // never get stuck on an edge.
-    if (keys.has('arrowup')    || keys.has('w')) { this._stageSelIndex = (this._stageSelIndex - 3 + n) % n; keys.delete('arrowup');    keys.delete('w'); this._renderStageSelectOverlay(); }
-    if (keys.has('arrowdown')  || keys.has('s')) { this._stageSelIndex = (this._stageSelIndex + 3) % n;     keys.delete('arrowdown');  keys.delete('s'); this._renderStageSelectOverlay(); }
+    if (keys.has('arrowup')    || keys.has('w')) { keys.delete('arrowup');    keys.delete('w'); this._stageSelStep(-3); }
+    if (keys.has('arrowdown')  || keys.has('s')) { keys.delete('arrowdown');  keys.delete('s'); this._stageSelStep(+3); }
     if (keys.has('enter') || keys.has(' ')) { keys.delete('enter'); keys.delete(' '); this._stageSelectConfirm(); return; }
     if (keys.has('escape') || keys.has('backspace')) { keys.delete('escape'); keys.delete('backspace'); this._stageSelectCancel(); return; }
   }
@@ -32770,9 +32854,47 @@ _drawLoreArchive(ctx) {
     ctx.restore();
   }
 
+  // ── BIOME VISUAL IDENTITY (ROADMAP MILESTONE 2 / Slice A) ──────────────────
+  // Which biome the FIXED-MAP background should be tinted as. Deliberately NOT runBiome: after
+  // Stage 1 the active biome moves along the rotated ring, and a campaign run uses its own stage
+  // biome. _stageBiome already carries exactly that for both — _updateStageProgression writes it
+  // for Act 1, _applyCampaignStage for the campaign.
+  // Returns null while chunk streaming is on, so Endless/Chaos keep their own renderer untouched
+  // and can never receive the legacy tint on top of it.
+  _activeVisualBiome() {
+    if (this.chunkManager?.enabled) return null;
+    const id = this._stageBiome;
+    return (id && BIOME_DEFS[id]) ? id : 'neon_district';   // safe fallback, never a blank screen
+  }
+
+  // Resolved visual rule for that biome. CACHED on the biome id: the object is rebuilt only when
+  // the stage actually changes, so a 60fps background costs no allocation at all.
+  _biomeVisual() {
+    const id = this._activeVisualBiome();
+    if (!id) return null;
+    if (this._bvCacheId === id && this._bvCache) return this._bvCache;
+    const def = BIOME_DEFS[id] || {};
+    const p   = def.palette || {};
+    this._bvCacheId = id;
+    this._bvCache = {
+      id,
+      base:    p.bg      || DARK_BG,
+      grid:    p.grid    || GRID_LINE,
+      ambient: p.ambient || p.bg || DARK_BG,
+      fog:     def.fogColor || null,
+    };
+    return this._bvCache;
+  }
+
   _drawBackground(ctx) {
+    // Slice A: one resolved rule per stage — base fill, grid tint, ambient wash and fog all come
+    // from BIOME_DEFS. READABILITY WINS: the ambient wash is capped at 0.22 and the authored fog
+    // tops out at 0.20, so the darkest stage lands at ~0.38 — exactly the flat value every stage
+    // used before. No stage is darker than the old build, five of them are lighter.
+    const v = this._biomeVisual();
+
     // ── Dark base fill (shown while image loads or on very old browsers) ──────
-    ctx.fillStyle = DARK_BG;
+    ctx.fillStyle = (v && v.base) || DARK_BG;
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
     // ── Cyberpunk city image ─────────────────────────────────────────────────
@@ -32788,16 +32910,29 @@ _drawLoreArchive(ctx) {
 
       ctx.drawImage(img, 0, 0, WIDTH, drawH);
 
-      // Semi-transparent dark overlay so neon game entities pop clearly
-      ctx.fillStyle = this.gridBlackoutActive
-        ? 'rgba(0,0,0,0.65)'   // extra dim during Grid Blackout event
-        : 'rgba(0,0,0,0.38)';
-      ctx.fillRect(0, 0, WIDTH, HEIGHT);
+      // Semi-transparent dark overlay so neon game entities pop clearly. Per stage this is the
+      // biome's own ambient colour instead of flat black, which is what makes Industrial read warm
+      // and Glacial read cold without touching a single pixel of art.
+      if (this.gridBlackoutActive) {
+        ctx.fillStyle = 'rgba(0,0,0,0.65)';   // extra dim during Grid Blackout event — unchanged
+        ctx.fillRect(0, 0, WIDTH, HEIGHT);
+      } else if (v) {
+        ctx.save();
+        ctx.globalAlpha = 0.22;               // capped — see the note at the top of this method
+        ctx.fillStyle = v.ambient;
+        ctx.fillRect(0, 0, WIDTH, HEIGHT);
+        ctx.restore();
+        if (v.fog) { ctx.fillStyle = v.fog; ctx.fillRect(0, 0, WIDTH, HEIGHT); }   // authored alpha
+      } else {
+        ctx.fillStyle = 'rgba(0,0,0,0.38)';   // streaming maps keep the flat legacy wash
+        ctx.fillRect(0, 0, WIDTH, HEIGHT);
+      }
     } else {
-      // Fallback: scrolling neon grid while image loads
+      // Fallback: scrolling neon grid while image loads — tinted by the stage too, so a slow
+      // connection still reads as the right biome instead of the same cyan everywhere.
       const spacing = 48;
       const offset  = Math.floor(performance.now() * 0.025) % spacing;
-      ctx.strokeStyle = GRID_LINE;
+      ctx.strokeStyle = (v && v.grid) || GRID_LINE;
       ctx.lineWidth   = 1;
       for (let x = -spacing; x < WIDTH + spacing; x += spacing) {
         ctx.beginPath();

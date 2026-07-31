@@ -50,6 +50,14 @@ function newGame() {
   return g;
 }
 
+// BATCH 4.3 — the six starting stages are now behind the campaign ladder, so a fresh save can only
+// select neon_district. Every test below that is about ROTATION, RULES or the OVERLAY (not about
+// the ladder itself) needs the ladder granted first, or it would be measuring the lock instead of
+// the thing it is named after. The grant goes through the REAL save field the ladder reads —
+// MetaProgress.stagesCleared — never through a test-only backdoor.
+function unlockAllStages(g) { if (g.meta) g.meta.stagesCleared = Game.STAGE_RING.length - 1; return g; }
+function newGameUnlocked() { return unlockAllStages(newGame()); }
+
 // A representative non-boss trash type that exists in every mode.
 const TRASH = 'Glitch Drone';
 
@@ -57,7 +65,7 @@ const TRASH = 'Glitch Drone';
 // `new Enemy(TRASH, 5)` instead would compare against a different game minute than spawnEnemy uses
 // (it takes this.currentMinute()), and the mismatch would look like a scaling bug that isn't one.
 function baseline() {
-  const g = newGame();
+  const g = newGameUnlocked();
   if (g.chunkManager) g.chunkManager.enabled = false;
   g._setStageRule(null);
   const e = spawnThrough(g);
@@ -144,7 +152,7 @@ console.log('\n=== 2. THE RULE ACTUALLY REACHES A SPAWNED ENEMY (fixed map / Act
     const expHp    = hpM === 1 ? B.hp : Math.max(1, Math.round(B.hp * hpM));
     const expSpeed = B.baseSpeed * (m.speedMult > 0 ? m.speedMult : 1);
 
-    const g = newGame();
+    const g = newGameUnlocked();
     if (g.chunkManager) g.chunkManager.enabled = false;   // Act 1 / campaign: streaming is OFF
     g._setStageRule(id);
     const e = spawnThrough(g);
@@ -171,7 +179,7 @@ console.log('\n=== 3. THE STAGES ARE ACTUALLY DIFFERENT FROM EACH OTHER ===');
   const measured = {};
   for (const id of Object.values(BIOME_ID)) {
     if (!BIOME_DEFS[id]) continue;
-    const g = newGame();
+    const g = newGameUnlocked();
     if (g.chunkManager) g.chunkManager.enabled = false;
     g._setStageRule(id);
     const e = spawnThrough(g);
@@ -338,7 +346,7 @@ console.log('\n=== 6. LIFECYCLE — NO RULE SURVIVES A RUN ===');
 // ════════════════════════════════════════════════════════════════════════════════════════════════
 console.log('\n=== 7. RUN BIOME — THE RUN STARTS WHERE THE PLAYER PICKED (Slice A) ===');
 {
-  const g = newGame();
+  const g = newGameUnlocked();
   T('a fresh Game defaults to neon_district', g.runBiome === 'neon_district', String(g.runBiome));
   T('STAGE_RING has the six selectable stages and excludes the_null',
     Game.STAGE_RING.length === 6 && !Game.STAGE_RING.includes('the_null'), Game.STAGE_RING.join(','));
@@ -365,7 +373,7 @@ console.log('\n=== 7. RUN BIOME — THE RUN STARTS WHERE THE PLAYER PICKED (Slic
   }
 
   // _applyRunBiome arms the rule from frame one, before any stage progression tick.
-  const g2 = newGame();
+  const g2 = newGameUnlocked();
   g2.setRunBiome('glacial_expanse');
   if (g2.chunkManager) g2.chunkManager.enabled = false;
   const un = muteConsole();
@@ -381,7 +389,7 @@ console.log('\n=== 7. RUN BIOME — THE RUN STARTS WHERE THE PLAYER PICKED (Slic
     !!e && e.hp === Math.max(1, Math.round(B.hp * gm.hpMult)), e ? `hp ${B.hp} → ${e.hp}` : 'no enemy');
 
   // Driving the real progression from a selected biome walks the rotated ring.
-  const g3 = newGame();
+  const g3 = newGameUnlocked();
   g3.setRunBiome('orbital_nexus');
   if (g3.chunkManager) g3.chunkManager.enabled = false;
   g3.endless = false; g3.gameState = 'playing'; g3.gameOver = false; g3.victory = false;
@@ -401,7 +409,7 @@ console.log('\n=== 7. RUN BIOME — THE RUN STARTS WHERE THE PLAYER PICKED (Slic
     walk.every(b => BIOME_DEFS[b] && BIOME_DEFS[b].enemyModifiers));
 
   // reset() must NOT clear the selection — it is a run setting like selectedCharacter.
-  const g4 = newGame();
+  const g4 = newGameUnlocked();
   g4.setRunBiome('data_wastes');
   const un4 = muteConsole();
   g4.reset();
@@ -437,10 +445,10 @@ console.log('\n=== 8. STAGE SELECT — OVERLAY, MENU AND COMMIT SEMANTICS (Slice
     return err;
   };
   T('screen transitions can be driven headlessly (no environment gap left)',
-    (() => { const gt = newGame(); const u = muteConsole(); gt.gameState = 'start_menu'; gt._selectMenuItem('SELECT STAGE'); u();
+    (() => { const gt = newGameUnlocked(); const u = muteConsole(); gt.gameState = 'start_menu'; gt._selectMenuItem('SELECT STAGE'); u();
              return flush(gt) === null; })());
 
-  const g = newGame();
+  const g = newGameUnlocked();
   T('SELECT STAGE is in the main menu', g.menuItems.includes('SELECT STAGE'), g.menuItems.join(','));
   T('the menu still offers CAMPAIGN and CHARACTER SELECT alongside it',
     g.menuItems.includes('CAMPAIGN') && g.menuItems.includes('CHARACTER SELECT'));
@@ -470,7 +478,7 @@ console.log('\n=== 8. STAGE SELECT — OVERLAY, MENU AND COMMIT SEMANTICS (Slice
   T('the cursor can never leave the ring, however long you hold a direction', inRange, String(g._stageSelIndex));
 
   // CANCEL must not change the selection.
-  const g2 = newGame();
+  const g2 = newGameUnlocked();
   g2.setRunBiome('neon_district');
   const un2 = muteConsole(); g2.gameState = 'start_menu'; g2._selectMenuItem('SELECT STAGE'); un2(); flush(g2);
   g2._stageSelIndex = Game.STAGE_RING.indexOf('data_wastes');       // move the cursor far away...
@@ -479,7 +487,7 @@ console.log('\n=== 8. STAGE SELECT — OVERLAY, MENU AND COMMIT SEMANTICS (Slice
   T('CANCEL returns to the main menu', g2.gameState === 'start_menu', String(g2.gameState));
 
   // ESCAPE is the same path.
-  const g3 = newGame();
+  const g3 = newGameUnlocked();
   g3.setRunBiome('orbital_nexus');
   const un4 = muteConsole(); g3.gameState = 'stage_select'; g3._stageSelIndex = Game.STAGE_RING.indexOf('glacial_expanse');
   g3._updateStageSelect({ keys: new Set(['escape']), mousePos: { x: 0, y: 0 }, mouseDown: false }); un4(); flush(g3);
@@ -488,7 +496,7 @@ console.log('\n=== 8. STAGE SELECT — OVERLAY, MENU AND COMMIT SEMANTICS (Slice
 
   // CONFIRM must commit through the real setter.
   for (const id of Game.STAGE_RING) {
-    const gc = newGame();
+    const gc = newGameUnlocked();
     gc.setRunBiome('neon_district');
     const unc = muteConsole();
     gc.gameState = 'stage_select';
@@ -500,7 +508,7 @@ console.log('\n=== 8. STAGE SELECT — OVERLAY, MENU AND COMMIT SEMANTICS (Slice
   }
 
   // ENTER is the same path as CONFIRM.
-  const g4 = newGame();
+  const g4 = newGameUnlocked();
   const un5 = muteConsole();
   g4.gameState = 'stage_select'; g4._stageSelIndex = Game.STAGE_RING.indexOf('abyssal_trench');
   g4._updateStageSelect({ keys: new Set(['enter']), mousePos: { x: 0, y: 0 }, mouseDown: false });
@@ -508,7 +516,7 @@ console.log('\n=== 8. STAGE SELECT — OVERLAY, MENU AND COMMIT SEMANTICS (Slice
   T('ENTER confirms the highlighted card', g4.runBiome === 'abyssal_trench', String(g4.runBiome));
 
   // A corrupted cursor must fall back safely, never commit garbage.
-  const g5 = newGame();
+  const g5 = newGameUnlocked();
   g5.setRunBiome('industrial_core');
   const un6 = muteConsole();
   g5.gameState = 'stage_select';
@@ -519,7 +527,7 @@ console.log('\n=== 8. STAGE SELECT — OVERLAY, MENU AND COMMIT SEMANTICS (Slice
     g5.runBiome === 'neon_district' && Game.STAGE_RING.includes(g5.runBiome), String(g5.runBiome));
 
   // the_null must be unreachable through the screen, not merely absent from the grid.
-  const g6 = newGame();
+  const g6 = newGameUnlocked();
   const idxNull = Game.STAGE_RING.indexOf('the_null');
   T('the_null has no index in the ring, so no card can select it', idxNull === -1, String(idxNull));
   g6.runBiome = 'the_null';                      // force it past the setter, as hostile DOM would
@@ -529,7 +537,7 @@ console.log('\n=== 8. STAGE SELECT — OVERLAY, MENU AND COMMIT SEMANTICS (Slice
   T('a forced the_null is repaired to neon_district at run start', g6.runBiome === 'neon_district', String(g6.runBiome));
 
   // Rendering and drawing must never throw, with the overlay built or not.
-  const g7 = newGame();
+  const g7 = newGameUnlocked();
   let threw = 0;
   const un8 = muteConsole();
   try { g7._renderStageSelectOverlay(); } catch (_) { threw++; }          // no overlay yet → no-op
@@ -551,7 +559,7 @@ console.log('\n=== 8. STAGE SELECT — OVERLAY, MENU AND COMMIT SEMANTICS (Slice
     g7._stageSelectOverlayEl === before && !!before);
 
   // The campaign must be completely unaffected by the Act 1 stage choice.
-  const g8 = newGame();
+  const g8 = newGameUnlocked();
   g8.setRunBiome('data_wastes');
   if (g8.chunkManager) g8.chunkManager.enabled = false;
   g8._pendingCampaignStage = 2;                  // STAGE 2 = industrial_core
@@ -565,6 +573,199 @@ console.log('\n=== 8. STAGE SELECT — OVERLAY, MENU AND COMMIT SEMANTICS (Slice
   T('the Act 1 selection itself is not clobbered by the campaign', g8.runBiome === 'data_wastes', String(g8.runBiome));
 
   document.getElementById = _origGetById;   // leave the environment exactly as it was found
+}
+
+// ════════════════════════════════════════════════════════════════════════════════════════════════
+console.log('\n=== 9. BIOME VISUAL IDENTITY (Slice A) ===');
+{
+  const g = newGameUnlocked();
+  if (g.chunkManager) g.chunkManager.enabled = false;
+  T('_activeVisualBiome exists', typeof g._activeVisualBiome === 'function');
+  T('_biomeVisual exists', typeof g._biomeVisual === 'function');
+
+  // Every stage must resolve a DIFFERENT, complete visual rule, straight from BIOME_DEFS.
+  const seen = {};
+  for (const id of Game.STAGE_RING) {
+    g._setStageRule(id);
+    const v = g._biomeVisual();
+    const def = BIOME_DEFS[id], p = def.palette || {};
+    const ok = v && v.id === id && v.base === p.bg && v.grid === p.grid
+            && v.ambient === (p.ambient || p.bg) && v.fog === (def.fogColor || null);
+    T(`${id}: visual rule is BIOME_DEFS (bg ${p.bg}, grid ${p.grid}, fog ${def.fogColor})`, ok, JSON.stringify(v));
+    seen[id] = v ? `${v.base}|${v.grid}|${v.ambient}|${v.fog}` : null;
+  }
+  T('all six stages resolve a DISTINCT visual rule',
+    new Set(Object.values(seen)).size === Game.STAGE_RING.length, `${new Set(Object.values(seen)).size} distinct`);
+
+  // The rule is cached on the biome id — no allocation per frame.
+  g._setStageRule('industrial_core');
+  const a = g._biomeVisual(), b = g._biomeVisual(), c = g._biomeVisual();
+  T('repeated reads return the SAME cached object (no per-frame allocation)', a === b && b === c);
+  g._setStageRule('glacial_expanse');
+  const d = g._biomeVisual();
+  T('changing stage rebuilds the rule exactly once', d !== a && d.id === 'glacial_expanse');
+
+  // Fallback and streaming.
+  g._setStageRule(null);
+  T('no stage biome falls back to neon_district visuals', g._biomeVisual()?.id === 'neon_district', String(g._biomeVisual()?.id));
+  g._setStageRule('no_such_biome');
+  T('an invalid biome falls back to neon_district visuals', g._biomeVisual()?.id === 'neon_district', String(g._biomeVisual()?.id));
+  const gs = newGameUnlocked();
+  if (gs.chunkManager) gs.chunkManager.enabled = true;
+  gs._setStageRule('data_wastes');
+  T('while chunk streaming is on the legacy tint stands down (no double application)',
+    gs._activeVisualBiome() === null && gs._biomeVisual() === null);
+
+  // Campaign uses the CAMPAIGN biome, not the Act 1 pick.
+  const gc = newGameUnlocked();
+  if (gc.chunkManager) gc.chunkManager.enabled = false;
+  gc.setRunBiome('data_wastes');
+  gc._pendingCampaignStage = 2;                    // STAGE 2 = industrial_core
+  const unc = muteConsole(); gc._applyRunBiome(); gc._applyCampaignStage(); unc();
+  T('a campaign run is tinted by its CAMPAIGN biome, not the Act 1 selection',
+    gc._biomeVisual()?.id === 'industrial_core', String(gc._biomeVisual()?.id));
+
+  // Walking the ring must move the active visual biome with it.
+  const gw = newGameUnlocked();
+  if (gw.chunkManager) gw.chunkManager.enabled = false;
+  gw.setRunBiome('orbital_nexus');
+  gw.endless = false; gw.gameState = 'playing'; gw.gameOver = false; gw.victory = false;
+  const unw = muteConsole(); gw._applyRunBiome();
+  const walk = [];
+  for (const t of [0, 12 * 60 + 1, 24 * 60 + 1]) { gw.timeAlive = t; try { gw._updateStageProgression(); } catch (_) {} walk.push(gw._biomeVisual()?.id); }
+  unw();
+  T('a stage transition moves the active visual biome', walk.join(',') === 'orbital_nexus,abyssal_trench,glacial_expanse', walk.join(','));
+
+  // Drawing must not throw and must not leave the canvas black.
+  let threw = 0;
+  const und = muteConsole();
+  for (const id of Game.STAGE_RING) { g._setStageRule(id); try { g._drawBackground(makeCtx()); } catch (_) { threw++; } }
+  und();
+  T('_drawBackground runs for every stage without throwing', threw === 0, `${threw} throws`);
+}
+
+// ════════════════════════════════════════════════════════════════════════════════════════════════
+console.log('\n=== 10. STAGE UNLOCK LADDER (Slice A) ===');
+{
+  const RING = Game.STAGE_RING;
+
+  // Fresh save: only the first stage.
+  const g = newGame();
+  T('a fresh save has stagesCleared 0', (g.meta?.stagesCleared || 0) === 0, String(g.meta?.stagesCleared));
+  T('on a fresh save ONLY neon_district is selectable',
+    g.unlockedStageBiomes().join(',') === 'neon_district', g.unlockedStageBiomes().join(','));
+  for (const id of RING.slice(1)) {
+    T(`fresh save: ${id} is locked and states its requirement`,
+      !g.isStageBiomeUnlocked(id) && /CLEAR CAMPAIGN STAGE \d/.test(g.stageBiomeRequirement(id)),
+      g.stageBiomeRequirement(id));
+  }
+
+  // Each milestone unlocks exactly one more, in order, and never loses one.
+  let prevCount = 1;
+  for (let cleared = 1; cleared <= 5; cleared++) {
+    const gg = newGame();
+    gg.meta.stagesCleared = cleared;
+    const un = gg.unlockedStageBiomes();
+    T(`stagesCleared=${cleared} unlocks exactly ${cleared + 1} stages, up to ${RING[cleared]}`,
+      un.length === cleared + 1 && un[un.length - 1] === RING[cleared], un.join(','));
+    T(`stagesCleared=${cleared} is monotonic (never fewer than before)`, un.length >= prevCount);
+    prevCount = un.length;
+    T(`stagesCleared=${cleared} does NOT unlock ${RING[cleared + 1] || 'anything further'}`,
+      !RING[cleared + 1] || !gg.isStageBiomeUnlocked(RING[cleared + 1]));
+  }
+  const gAll = newGame(); gAll.meta.stagesCleared = 5;
+  T('stagesCleared=5 unlocks all six', gAll.unlockedStageBiomes().length === 6, gAll.unlockedStageBiomes().join(','));
+  const gOver = newGame(); gOver.meta.stagesCleared = 99;
+  T('a higher stagesCleared than the ring still unlocks exactly six', gOver.unlockedStageBiomes().length === 6);
+
+  // the_null can never be unlocked, at any progression.
+  for (const c of [0, 1, 3, 5, 99]) {
+    const gn = newGame(); gn.meta.stagesCleared = c;
+    if (!gn.isStageBiomeUnlocked('the_null') && !gn.unlockedStageBiomes().includes('the_null')) { pass++; }
+    else { fail++; console.log(`  FAIL  the_null is unlockable at stagesCleared=${c}`); }
+  }
+  console.log(`  PASS  the_null is never unlockable (checked at stagesCleared 0,1,3,5,99)`);
+  pass -= 5;   // the loop already counted the five; keep the single summary line honest
+
+  // setRunBiome is the real gate, not just the UI.
+  const gs = newGame();
+  T('setRunBiome REFUSES a locked stage', gs.setRunBiome('data_wastes') === false && gs.runBiome === 'neon_district');
+  T('setRunBiome accepts the unlocked one', gs.setRunBiome('neon_district') === true);
+  gs.meta.stagesCleared = 2;
+  T('after clearing stage 2, setRunBiome accepts orbital_nexus', gs.setRunBiome('orbital_nexus') === true && gs.runBiome === 'orbital_nexus');
+  T('but still refuses abyssal_trench', gs.setRunBiome('abyssal_trench') === false && gs.runBiome === 'orbital_nexus');
+  T('setRunBiome always refuses the_null', gs.setRunBiome('the_null') === false);
+
+  // Save compatibility: missing / invalid fields must degrade safely, never throw.
+  for (const bad of [undefined, null, NaN, -3, 'abc', {}]) {
+    const gb = newGame();
+    gb.meta.stagesCleared = bad;
+    let ok = true;
+    try { ok = gb.isStageBiomeUnlocked('neon_district') === true && gb.unlockedStageBiomes().length >= 1; }
+    catch (_) { ok = false; }
+    T(`a save with stagesCleared=${JSON.stringify(bad)} still offers neon_district and does not throw`, ok);
+  }
+
+  // A run started with a stale/forged selection is repaired at run start.
+  const gr = newGame();
+  gr.meta.stagesCleared = 5; gr.setRunBiome('glacial_expanse');
+  gr.meta.stagesCleared = 0;                       // progress wiped / save replaced under it
+  if (gr.chunkManager) gr.chunkManager.enabled = false;
+  const unr = muteConsole(); gr._applyRunBiome(); unr();
+  T('a now-locked selection is repaired to neon_district at run start', gr.runBiome === 'neon_district', String(gr.runBiome));
+  const gf = newGame();
+  gf.runBiome = 'the_null';                        // forged straight onto the field
+  const unf = muteConsole(); gf._applyRunBiome(); unf();
+  T('a forged the_null selection is repaired at run start', gf.runBiome === 'neon_district', String(gf.runBiome));
+
+  // The lock is about STARTING only — the run must still walk all six stages.
+  const gw = newGame();
+  if (gw.chunkManager) gw.chunkManager.enabled = false;
+  gw.endless = false; gw.gameState = 'playing'; gw.gameOver = false; gw.victory = false;
+  const unw = muteConsole(); gw._applyRunBiome();
+  const walk = [];
+  for (const t of [0, 12*60+1, 24*60+1, 36*60+1, 48*60+1, 60*60+1]) { gw.timeAlive = t; try { gw._updateStageProgression(); } catch (_) {} walk.push(gw._stageBiome); }
+  unw();
+  T('a fresh-save run still visits all six stages in order (the lock is only about STARTING)',
+    new Set(walk).size === 6 && walk[0] === 'neon_district', walk.join(','));
+
+  // Overlay: locked cards exist, are marked, and cannot be reached by the cursor or confirmed.
+  const go = newGame();
+  const uno = muteConsole();
+  go.gameState = 'stage_select'; go._stageSelIndex = 0;
+  go._stageSelStep(+1);                            // everything except neon is locked
+  uno();
+  T('the cursor cannot step onto a locked stage', go._stageSelIndex === 0, String(go._stageSelIndex));
+  go._stageSelIndex = 4;                           // forced onto a locked card
+  const uno2 = muteConsole(); go._stageSelectConfirm(); uno2();
+  T('CONFIRM on a locked stage commits nothing and stays on the screen',
+    go.runBiome === 'neon_district' && go.gameState === 'stage_select', `${go.runBiome} / ${go.gameState}`);
+  go.meta.stagesCleared = 2;
+  go._stageSelIndex = 0;
+  const uno3 = muteConsole(); go._stageSelStep(+1); uno3();
+  T('once unlocked, the cursor steps onto it normally', go._stageSelIndex === 1, String(go._stageSelIndex));
+
+  // The unlock announcement fires once, at the clear, and not again.
+  const ga = newGame();
+  const said = [];
+  ga.triggerAnnouncement = (t) => { said.push(String(t)); };
+  ga._campaignStage = 1; ga._campaignCleared = false;
+  const una = muteConsole(); try { ga._completeCampaignStage(); } catch (_) {} una();
+  const first = said.filter(t => /NEW STARTING STAGE UNLOCKED/.test(t));
+  T('clearing stage 1 announces the new starting stage exactly once', first.length === 1, said.join(' | '));
+  T('and it names the right biome', /INDUSTRIAL CORE/.test(first[0] || ''), first[0] || '');
+  said.length = 0;
+  ga._campaignCleared = false;                     // replay the same stage — already cleared
+  const una2 = muteConsole(); try { ga._completeCampaignStage(); } catch (_) {} una2();
+  T('re-clearing the same stage does NOT announce again',
+    said.filter(t => /NEW STARTING STAGE UNLOCKED/.test(t)).length === 0, said.join(' | '));
+
+  // The campaign itself is untouched by any of this.
+  const gcam = newGame();
+  T('campaign stage 1 is unlocked on a fresh save, exactly as before', gcam.meta.isStageUnlocked(1) === true);
+  T('campaign stage 2 is still locked on a fresh save', gcam.meta.isStageUnlocked(2) === false);
+  gcam.meta.stagesCleared = 3;
+  T('campaign unlock maths are unchanged', gcam.meta.isStageUnlocked(4) === true && gcam.meta.isStageUnlocked(5) === false);
 }
 
 console.log(`\n${pass} PASS / ${fail} FAIL`);

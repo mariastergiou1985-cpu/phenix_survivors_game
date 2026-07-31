@@ -112,7 +112,21 @@ feature = «ξεκλείδωμα» υπάρχοντος περιεχομένου
   Ένας μόνο delegated listener, δεμένος μία φορά στο build — 8 open/close στον browser κρατούν το ΙΔΙΟ element
   και ένα μόνο `#cgm-stagesel` node. Hostile card με `data-idx="99"` αγνοείται.
   QA: `tools/qa/batch4_stage_rules_regression.mjs` 111 PASS / 0 FAIL + πραγματικό Chromium flow.
-- [ ] Legacy background draw: χρήση `mapManager.getBiomeImage(runBiome)` + palette αντί σταθερού bg
+- [x] **ΟΛΟΚΛΗΡΩΘΗΚΕ 2026-07-31** — Legacy background draw: `mapManager.getBiomeImage(runBiome)` + palette/fog αντί σταθερού bg.
+  Το εύρημα: το `_drawBackground()` ήταν σκληρά κωδικοποιημένο — `DARK_BG` base fill, ίδιο `rgba(0,0,0,0.38)` wash
+  και ίδιο `GRID_LINE` σε **κάθε** stage, οπότε η μόνη διαφορά ανάμεσα στα 6 stages ήταν η εικόνα από κάτω.
+  Οι `palette` και `fogColor` των `BIOME_DEFS` δεν διαβάζονταν πουθενά στο fixed-map path.
+  Η υλοποίηση: `Game._activeVisualBiome()` (πηγή αλήθειας = `_stageBiome`, `null` όταν τρέχει streaming ώστε οι
+  Endless/Chaos χάρτες να κρατούν το legacy look) και `Game._biomeVisual()` που παράγει `{id, base, grid, ambient, fog}`
+  από τα `BIOME_DEFS` και το **cache-άρει** σε `_bvCacheId` — ένα object ανά stage, ξαναχτίζεται ακριβώς μία φορά
+  σε αλλαγή stage, μηδέν κόστος ανά frame. Το `_drawBackground` παίρνει base fill από το `palette.bg`, ambient wash
+  με **cap 0.22** + το authored `fogColor` (max 0.20), και ο grid fallback χρωματίζεται με το `palette.grid`.
+  ΑΝΑΓΝΩΣΙΜΟΤΗΤΑ: χειρότερη περίπτωση ≈0.38 = **ακριβώς** η παλιά επίπεδη τιμή· κανένα stage δεν είναι πιο σκοτεινό
+  από πριν, πέντε είναι πιο φωτεινά. Το `gridBlackoutActive` κρατά το 0.65 του event αναλλοίωτο.
+  Μετρημένο σε πραγματικό Chromium (1280×720, δείγματα @200,400 και @950,620), και τα 6 με τη δική τους εικόνα
+  φορτωμένη: neon `21,16,63` · industrial `42,12,6` · orbital `0,17,47` · abyssal `28,97,128` · glacial `33,56,79` ·
+  data_wastes `37,43,45` — **6 διακριτά pixel signatures, 6 διακριτές εικόνες**, palette+fog ταυτίζονται 1:1 με τα
+  `BIOME_DEFS`. Καμία νέα εικόνα, κανένα PNG δεν άλλαξε.
 - [x] **ΟΛΟΚΛΗΡΩΘΗΚΕ 2026-07-30** — Εφαρμογή `enemyModifiers` (speedMult/hpMult) του biome = το «rule» του stage.
   Το εύρημα: τα `BIOME_DEFS.enemyModifiers` διαβάζονταν σε ΕΝΑ σημείο, μέσα στο `spawnEnemy`, και μόνο όταν
   `chunkManager.enabled` — δηλαδή μόνο στους streaming χάρτες (Endless/Chaos). Το Act 1 και το Campaign παίζουν
@@ -125,8 +139,33 @@ feature = «ξεκλείδωμα» υπάρχοντος περιεχομένου
   Μετρημένο (Glitch Drone, ίδιο production spawn path): neon 2.99hp/95sp · industrial 4hp/80.8sp ·
   orbital 3hp/104.5sp · abyssal 4hp/85.5sp (+0.5 regen) · glacial 4hp/76sp · data_wastes 4hp/85.5sp.
   QA: `tools/qa/batch4_stage_rules_regression.mjs` 63 PASS / 0 FAIL.
-- [ ] Unlock ladder: 3 stages στην αρχή, τα υπόλοιπα με νίκες/milestones
+- [x] **ΟΛΟΚΛΗΡΩΘΗΚΕ 2026-07-31** — Unlock ladder: το Neon District πάντα ανοιχτό, τα υπόλοιπα 5 με campaign νίκες.
+  **ΚΑΝΕΝΑ ΝΕΟ SAVE FIELD.** Η κανονική σκάλα υπάρχει ήδη: `MetaProgress.stagesCleared` με
+  `isStageUnlocked(n) => n <= stagesCleared + 1`, και τα `CAMPAIGN_STAGES` αντιστοιχούν ήδη το stage N σε biome
+  **ακριβώς με τη σειρά του ring**. Άρα η θέση i στο ring ξεκλειδώνει με το campaign stage i+1:
+  neon πάντα · industrial = clear stage 1 · orbital = 2 · abyssal = 3 · glacial = 4 · data_wastes = 5.
+  Επαναχρησιμοποίηση σημαίνει: τα υπάρχοντα saves κρατούν ό,τι έχουν ήδη κερδίσει, ένα save χωρίς το πεδίο
+  διαβάζει 0 και προσφέρει μόνο neon_district, και **δεν υπάρχει δεύτερη σκάλα** να ξεσυγχρονιστεί.
+  Το `the_null` δεν ανήκει στο `STAGE_RING`, οπότε είναι αδύνατο να ξεκλειδώσει εξ ορισμού (ελεγμένο σε 0/1/3/5/99).
+  API: `isStageBiomeUnlocked(id)`, `stageBiomeRequirement(id)` → `CLEAR CAMPAIGN STAGE N`, `unlockedStageBiomes()`.
+  Τριπλή πύλη: το UI δείχνει locked κάρτα με badge 🔒 + requirement, ο cursor **προσπερνά** τα locked, το CONFIRM
+  σε locked δεν δεσμεύει τίποτα, το `setRunBiome()` απορρίπτει locked (άμυνα σε forged save/console), και το
+  `_applyRunBiome()` επιδιορθώνει στο run start μια επιλογή που δεν είναι πια ξεκλείδωτη. Κακοσχηματισμένα
+  `stagesCleared` (`undefined`/`null`/`NaN`/`-3`/`'abc'`/`{}`) εκπίπτουν με ασφάλεια στο 0.
+  Η ανακοίνωση `NEW STARTING STAGE UNLOCKED — <NAME>` γίνεται μέσα στο `_completeCampaignStage()` πίσω από το
+  `firstClear`, άρα **ακριβώς μία φορά ανά ξεκλείδωμα** και ποτέ σε load ή σε re-clear.
+  Μετρημένο σε πραγματικό Chromium με το πραγματικό save path (`meta.clearStage(1)` → `_save()` → localStorage):
+  fresh save = 1 ξεκλείδωτο / 5 locked με σωστό requirement· μετά το clear stage 1 → `stagesCleared` 1 και στο
+  localStorage, **1** ανακοίνωση «NEW STARTING STAGE UNLOCKED — INDUSTRIAL CORE», 0 σε re-clear, Orbital ακόμη locked,
+  και το Industrial επιλέγεται με πραγματικό click και ξεκινά πραγματικό run.
 Αρχεία: Game.js (menu flow + run start + bg draw), MapManager (ήδη έτοιμο). Cache-bust bump.
+
+**MILESTONE 2 / Slice A — ΟΛΟΚΛΗΡΩΜΕΝΟ (2026-07-31).** Και τα 5 items κλειστά: `runBiome` + ring rotation,
+Stage-Select overlay + menu integration, εφαρμογή `enemyModifiers` σε Act 1 + Campaign, biome visual identity στο
+legacy background draw, και unlock ladder πάνω στο υπάρχον `stagesCleared`. Χωρίς νέο art, χωρίς νέο save field,
+χωρίς αλλαγή balance. QA: `tools/qa/batch4_stage_rules_regression.mjs` **175 PASS / 0 FAIL** (10 sections) + πλήρη
+regression battery 20 suites (0 FAIL) + πραγματικό Chromium proof.
+Επόμενο: **Slice B — Βάθος ανά stage**, πρώτο item «1 stage-boss + 1 unique reward ανά stage».
 
 ### Slice B — Βάθος ανά stage (αργότερα)
 - [ ] 1 stage-boss + 1 unique reward ανά stage
