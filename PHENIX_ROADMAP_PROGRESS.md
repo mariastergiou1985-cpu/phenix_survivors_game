@@ -322,6 +322,52 @@ regression battery 20 suites (0 FAIL) + πραγματικό Chromium proof.
   bullets 0.0%. Καμία global αύξηση δυσκολίας — μόνο διαφοροποίηση.
   QA: `tools/qa/batch5_1_enemy_signatures_regression.mjs` **602 PASS / 0 FAIL** (40 σημεία + stress
   306 εχθροί × 10 λεπτά + deterministic replay).
+- [x] **BATCH 5.2 — ΟΛΟΚΛΗΡΩΘΗΚΕ 2026-07-31** — Act 1 stage bosses: cinematic gameplay pass.
+  **ΤΟ ΕΥΡΗΜΑ:** τέσσερις από τους έξι stage bosses ήταν μηχανικά απλώς μεγάλοι normal enemies.
+  Ο `mech` είναι **κυριολεκτικά** ένα `Enemy` instance — χωρίς δικό του update, draw, HP bar, intro ή
+  death path. Ο `annihilator` ρίχνει μία ατελεγράφητη σφαίρα κάθε ~3.5s και η signature «Matrix
+  Strike» του κάνει **μηδέν damage** (το core-stealing απενεργοποιήθηκε, η επίθεση έμεινε ως καθαρό
+  cosmetic). Ο `titan` έχει δύο επιθέσεις, **καμία** τηλεγραφημένη — το shockwave ring **είναι** το
+  ίδιο του το hitbox. Ο `cyberSerpent` είναι ένας Razorhound με 1500 HP και **δεν κάνει κανέναν ήχο**.
+  Κανένας από τους έξι δεν είχε intro, κοινή health bar, spawn protection, HP phase ή enrage — και
+  τα `cyber_serpent_boss.png` / `bloodfang_packmaster.png` είναι **byte-identical** (ίδιο md5).
+  **ΑΡΧΙΤΕΚΤΟΝΙΚΗ:** νέο `js/game/StageBossCinematics.js` — data-driven registry + **ένα** update και
+  **ένα** draw call site. Ρητό 5-φασικό state machine ανά boss σε ένα `_enc` object:
+  `INTRO → IDLE → TELEGRAPH → EXECUTE → RECOVER`. **Κάθε** array (markers/strikes/path/summons) ζει
+  ΜΕΣΑ στο `_enc` και είναι hard-capped, οπότε ο θάνατος, το reset και το deck transition τα ρίχνουν
+  όλα μαζί με το boss — δεν υπάρχει global array να διαρρεύσει. Μηδέν `Math.random()`/`Date.now()`.
+  **INTRO (κοινό):** announce priority 2 + όνομα + bounded shake (7/0.5s) + spawn VFX + **bounded
+  spawn protection 1.0s** (μικρότερη από το 1.2s intro) + ησυχία ορδής μέσω του υπάρχοντος
+  `spawnPauseTimer`. Κανένα control lock.
+  **ΚΟΙΝΗ HEALTH BAR:** υπήρχαν **τρεις ασύνδετες** υλοποιήσεις (world-space strip ×3, screen-space
+  ×2) και ο mech δεν είχε **καμία**. Τώρα μία, screen space, για **και τους έξι**, με tick στο 35%.
+  **ΟΙ 6 SIGNATURES** (cd / telegraph / execute / recover):
+  | boss | signature | γεωμετρία | cd | tele | exec | rec |
+  |---|---|---|---|---|---|---|
+  | Security Defector Mech | Laser Sweep | γραμμή → τόξο 132° | 13.5 | 0.95 | 1.10 | 1.30 |
+  | Matrix Annihilator | Forge Slam | cone 60°, 280px | 14.0 | 1.10 | 0.30 | 1.40 |
+  | AI Overload Titan | Orbital Target Grid | 3-5 ground markers | 15.0 | 1.25 | 1.30 | 1.30 |
+  | Cyber Serpent | Serpentine Charge | committed path ribbon | 13.0 | 1.00 | 1.00 | 1.40 |
+  | Cyber Dragon | Cryo Breath Arc | frontal cone 53° | 14.5 | 1.15 | 1.00 | 1.30 |
+  | Bloodfang Packmaster | Pack Assault | directional pack markers | 15.0 | 1.10 | 1.60 | 1.40 |
+  **4 BUGS που έπιασε το suite και διορθώθηκαν:** (1) το spawn protection ήταν **ανενεργό** — καμία
+  κλήση πουθενά· τώρα περνά από το `_capBossDamage`· (2) το `chargeSpeed` του Serpent ήταν **νεκρό
+  tuning** και το boss **τηλεμεταφερόταν** σε 44px βήματα, περνώντας μέσα από τον παίκτη — τώρα
+  speed-driven traversal με capsule hit test· (3) το cryo slow του Dragon **δεν έκανε τίποτα**
+  (`_cryoSlowF` δεν το διάβαζε κανείς) — τώρα χρησιμοποιεί το canonical `_chillT` που το
+  `Player.speed` όντως διαβάζει· (4) το Pack Assault καλούσε **λάθος εχθρούς σε λάθος θέση** (το
+  Batch 4.5 biome gate έκανε remap το Razorhound, και το `_wavePos` το πετούσε 580-1226px μακριά ενώ
+  το telegraph έδειχνε 300px) — νέο `Game.makeBossSummon()` χτίζει τον ακριβή τύπο στο ακριβές σημείο.
+  Επίσης καταχωρήθηκαν 7 legacy boss transient arrays στο `_clearDeckTransients` (μπορούσαν να
+  κάνουν damage μετά από deck transition).
+  **ΜΕΤΡΗΜΕΝΟ Chromium (6 runs):** και οι έξι — intro ✓, 3 activations, **telegraph ΠΑΝΤΑ πριν το
+  damage ✓**, πραγματικό damage και στις δύο κατευθύνσεις, boss death, encounter torn down, summons
+  cleared, stage advance, **reward ακριβώς μία φορά**, 0 lingering hazards, canvas 99.9-100%
+  non-black, **0 game-code console errors**.
+  **BALANCE:** το signature damage είναι **6.3%** του συνολικού boss damage — το υπόλοιπο είναι
+  προϋπάρχον contact/legacy damage που αυτό το batch δεν αγγίζει. Εντός του ορίου ~10%.
+  QA: `tools/qa/batch5_2_stage_boss_cinematic_regression.mjs` **845 PASS / 0 FAIL** (50 σημεία +
+  stress 10 λεπτά ανά boss).
 - [ ] Signatures για τους υπόλοιπους 15 normal enemies (επόμενο Batch 5 item)
 Art: ελάχιστο (procedural VFX).
 

@@ -59,6 +59,9 @@ import { HostileProjectileDirector } from './HostileProjectileDirector.js?v=2026
 import { WaveDirector } from './WaveDirector.js?v=20260724000000';
 import { EnemySpawner, ELITE_WAVE as ELITE_WAVE_CFG, BOSS_WARN_COOLDOWN as BOSS_WARN_CD, pickBiomeEnemy } from './EnemySpawner.js?v=20260829100000';
 import { buildSignatureCensus, signatureIntangible, signatureStats } from './EnemySignatures.js?v=20260829110000';
+import { STAGE_BOSS_SIGNATURES, STAGE_BOSS_IDS, BOSS_INTRO, ENC_PHASE, bossSignatureFor,
+         updateBossEncounter, drawBossEncounter, drawBossHealthBar, clearBossEncounter,
+         clearAllBossSummons, bossProtected, bossEncounterStats } from './StageBossCinematics.js?v=20260829120000';
 import { StateManager, GAME_STATES } from './StateManager.js?v=20260703990000';
 import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260722600000';
 import { NexusManager } from './NexusManager.js?v=20260803000000';
@@ -1656,6 +1659,10 @@ export class Game {
     // leave a ghost boss, a stale _activeStageBoss, or a pre-cleared stage behind.
     this._stageStartT         = 0;
     this._activeStageBoss     = null;
+    // BATCH 5.2 — the cinematic encounter and every boss summon die with the run.
+    this._encOwner            = null;
+    try { clearAllBossSummons(this); } catch (_) {}
+    if (this.player) { this.player._cryoSlowT = 0; this.player._cryoSlowF = 1; }
     this._stageBossSpawned    = {};
     this._stageBossCleared    = {};
     this._stageBossRewarded   = {};
@@ -3258,6 +3265,103 @@ export class Game {
    * _updateStageProgression. Deterministic: the boss arms when the stage's survival window has
    * elapsed, spawns exactly once, and its death is what clears the stage.
    */
+  // ══ BATCH 5.2 — STAGE BOSS CINEMATIC LAYER ═══════════════════════════════
+  // Resolve the live object for a stage-boss id. `mech` is an Enemy in this.enemies; the other five
+  // are singleton object literals on `this`. One accessor so every call site agrees.
+  _stageBossObject(id) {
+    if (id === 'mech') return this.enemies.find(e => e && e.enemyType === 'Security Defector Mech' && e.hp > 0) || null;
+    const f = Game._STAGE_BOSS_FIELD[id];
+    const b = f ? this[f] : null;
+    return (b && Number.isFinite(b.hp) && b.hp > 0) ? b : null;
+  }
+
+  /** The stage boss whose encounter should own the shared health bar right now, or null. */
+  _liveStageBoss() {
+    const a = this._activeStageBoss;
+    if (!a) return null;
+    const b = this._stageBossObject(a.id);
+    return b ? { id: a.id, boss: b } : null;
+  }
+
+  /**
+   * Drive the cinematic layer for the CURRENT stage boss only. Deliberately scoped to the stage
+   * boss: an Endless/Chaos spawn of the same object gets no encounter, so those modes are untouched.
+   */
+  _updateStageBossCinematics(dt) {
+    if (this.endless || this._chaosMode) return;        // Endless/Chaos scheduler untouched
+    if (!Number.isFinite(dt) || dt <= 0) return;
+    // Bounded, self-expiring cryo slow from the dragon's breath. Capped and cleaned up here so it
+    // can never chain-freeze: one timer, one factor, both cleared the instant it lapses.
+    const p = this.player;
+    if (p && p._cryoSlowT > 0) {
+      p._cryoSlowT -= dt;
+      if (p._cryoSlowT <= 0) { p._cryoSlowT = 0; p._cryoSlowF = 1; }
+    }
+    const live = this._liveStageBoss();
+    if (!live) {
+      // The boss is gone: tear down any encounter that outlived it, summons included.
+      if (this._encOwner) { try { clearBossEncounter(this, this._encOwner); } catch (_) {} this._encOwner = null; }
+      return;
+    }
+    if (this._encOwner && this._encOwner !== live.boss) {
+      try { clearBossEncounter(this, this._encOwner); } catch (_) {}
+    }
+    this._encOwner = live.boss;
+    try { updateBossEncounter(this, live.id, live.boss, dt); } catch (_) { /* never break the frame */ }
+  }
+
+  /** World-space telegraphs for the live stage boss. */
+  _drawStageBossCinematics(ctx) {
+    const live = this._liveStageBoss();
+    if (!live) return;
+    try { drawBossEncounter(this, live.boss, ctx); } catch (_) {}
+  }
+
+  /** THE shared boss health bar (screen space). Called from the HUD layer. */
+  _drawStageBossHealthBar(ctx) {
+    const live = this._liveStageBoss();
+    if (!live) return;
+    const enc = live.boss._enc;
+    const def = bossSignatureFor(live.id);
+    if (!enc || !def) return;
+    try { drawBossHealthBar(ctx, live.boss, def.name, def.color, WIDTH, HEIGHT); } catch (_) {}
+  }
+
+  /**
+   * BATCH 5.2 — build ONE boss summon of an EXACT type at an EXACT place.
+   *
+   * Deliberately not `spawnEnemy`: that path runs the request through `_biomeSpawnType` (the Batch
+   * 4.5 biome sub-pool gate remaps by spawn family, so a requested Razorhound came out as an
+   * Overclocked Berserker / Combat Hunter / Amethyst Fang), and supplying `_wavePos` forces an
+   * ~774px offscreen minimum, which landed the pack 580-1226px away while the telegraph arrowheads
+   * pointed at 300px. A signature whose entire content is its telegraph cannot lie about either.
+   *
+   * Placement still goes through the canonical `resolveEnemySpawn`, so walls, hazards and a minimum
+   * player distance are all respected; only the type and the target point are honoured exactly.
+   */
+  makeBossSummon(type, x, y) {
+    try {
+      if (typeof type !== 'string' || !type) return null;
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+      if (this.enemies.length >= this.enemyCap()) return null;
+      const e = new Enemy(type, this.currentMinute());
+      let px = x, py = y;
+      try {
+        const r = this.resolveEnemySpawn?.(x, y, e.radius || 14, 120, e, null);
+        if (r && Number.isFinite(r.x) && Number.isFinite(r.y)) { px = r.x; py = r.y; }
+      } catch (_) { /* keep the telegraphed point */ }
+      e.pos.x = clamp(px, WORLD_MARGIN + 40, WORLD_W - WORLD_MARGIN - 40);
+      e.pos.y = clamp(py, WORLD_MARGIN + 40, WORLD_H - WORLD_MARGIN - 40);
+      if (!Number.isFinite(e.pos.x) || !Number.isFinite(e.pos.y)) return null;
+      this.enemies.push(e);
+      try { this._applyStageRule(e); } catch (_) {}
+      return e;
+    } catch (_) { return null; }
+  }
+
+  /** Bounded spawn protection: the caller asks before applying damage to a stage boss. */
+  _stageBossInvulnerable(boss) { return bossProtected(boss); }
+
   _updateStageBossPhase(biome) {
     const def = this.stageBossFor(biome);
     if (!def) { this._stageBossCleared[biome] = true; return; }   // no boss defined → nothing to gate on
@@ -9716,6 +9820,9 @@ export class Game {
     this._updateCyberSerpent(dt);
     this._updateCyberDragon(dt);
     this._updateDoubleDemonsBoss(dt);
+    // BATCH 5.2 — stage-boss cinematic layer: intro, one signature per boss, shared health bar.
+    // Sits BELOW the paused/gameOver/victory gate, so it freezes with everything else.
+    this._updateStageBossCinematics(dt);
     this._updateBossAttacks(dt);
     this._updateBossTrails(dt);
     this._updateEndlessHazards(dt);   // Endless-only: airstrike ships/rockets + lightning storm
@@ -21202,6 +21309,7 @@ export class Game {
     this._drawCyberSerpent(ctx);
     this._drawCyberDragon(ctx);
     this._drawDoubleDemonsBoss(ctx);
+    this._drawStageBossCinematics(ctx);   // BATCH 5.2: boss telegraphs (world space)
 
     // 4b-pre ── VAULT DROP (locked tier-2 cyber cache)
     this._drawVaultDrop(ctx);
@@ -21688,6 +21796,10 @@ export class Game {
     ctx.fillRect(0, 0, WIDTH, 44);
 
     drawHUD(ctx, this);
+    // BATCH 5.2 — THE shared stage-boss health bar. Screen space, drawn after the HUD so it sits
+    // above it. Replaces nothing: the legacy per-boss strips stay where they are; this is the one
+    // bar that covers all six, including the mech, which previously had none.
+    this._drawStageBossHealthBar(ctx);
     // Edge seal (Maria: thin vertical world-strips leaking at the far left/right):
     // whatever sub-pixel scaling leaves at the borders, this opaque 3px frame owns it.
     ctx.save();
@@ -27185,6 +27297,10 @@ _drawLoreArchive(ctx) {
   // window so it works for both Enemy bosses and the plain mini-boss objects. Ultimates and DoT
   // have their own caps and intentionally do NOT route through here. Returns the effective damage.
   _capBossDamage(boss, rawDmg) {
+    // BATCH 5.2 — bounded stage-boss spawn protection. Without this the intro shimmer promised an
+    // invulnerability that nothing enforced: a burst build could delete the boss during its intro.
+    // Bounded by BOSS_INTRO.protection (1.0s) and strictly shorter than the 1.2s intro.
+    if (this._stageBossInvulnerable(boss)) return 0;
     // Endless raises the per-second cap so sustained DPS actually kills bosses (no HP-sponge feel);
     // Act 1 keeps its original, slower caps untouched.
     const cap = boss.isMegaBoss
@@ -32142,7 +32258,10 @@ _drawLoreArchive(ctx) {
     // structurally true, not merely short-lived.
     for (const k of ['gunshipZones', 'lightningZones', 'cybermoteMines', 'bossLavaZones',
                      '_voidRifts', '_ventBursts', 'airstrikeShips',
-                     '_enemyBeams', '_enemyOrbZones']) {
+                     '_enemyBeams', '_enemyOrbZones',
+                 // BATCH 5.2 — these boss transients could damage across a deck boundary
+                 '_titanShockwaves', '_titanBeams', '_bloodfangSlams', '_serpentTrails',
+                 '_dragonIceShards', '_dragonBolts', 'bossTrails']) {
       if (Array.isArray(this[k])) this[k].length = 0;
     }
     this.acidRain = null;
