@@ -4,6 +4,8 @@ import {
 } from '../constants.js';
 import { clamp, distance, safeNormalize, randomRange, randomChoice, drawBar } from '../utils.js';
 import { DataCore } from './DataCore.js?v=20260705040000';
+import { initSignature, updateSignature, drawSignature, signatureKnockbackMult,
+         signatureDamageMult, signatureIntangible, signatureActive } from '../game/EnemySignatures.js?v=20260829110000';
 import { FloatingText } from './FloatingText.js';
 import { drawGlow } from '../game/Effects.js?v=20260713600000';
 import { ENEMY_TYPE_WEAPONS, PRIMARY_WEAPON_MAP, MINI_WEAPON_MAP, BOSS_WEAPON_MAP, getWeaponById } from '../game/EnemyWeaponCatalog.js?v=20260829040000';
@@ -216,6 +218,10 @@ export class Enemy {
       this._burstN       = enemyType === 'Void Rift Summoner' ? 3 : 1;  // ο ΜΟΝΟΣ burst specialist (§9)
       if (this._burstN > 1) this._rangedCd = 4.0 + Math.random() * 2.0; // burst cooldown 4-6s
     }
+    // MILESTONE 3 / BATCH 5.1 — ENEMY SIGNATURE. `_sig` is null for every type without one, so the
+    // hot path costs a single null check. The seed comes from the SAME static LCG that already
+    // produces speedVariation above, so no new randomness source enters the spawn path.
+    this._sig = initSignature(enemyType, Enemy._seedLCG);
 
     // Load enemy sprite
     this.sprite = null;
@@ -779,6 +785,13 @@ export class Enemy {
       else if (dmg < 40) dmg *= 0.60;
       if (dmg >= 40) this._guardCrackT = 1.5;
     }
+    // BATCH 5.1 — FRONTAL GUARD. The block above is deliberately omnidirectional (its own comment
+    // says hit-direction plumbing was never added). The signature adds the direction the design
+    // always wanted: while the guard is up, only damage arriving inside the frontal cone is cut.
+    // Measured from the PLAYER's position, which is what repositioning actually changes.
+    if (this._sig && game?.player?.pos) {
+      dmg *= signatureDamageMult(this, game.player.pos.x, game.player.pos.y);
+    }
     this.hp       -= dmg;
     game._spawnDmgNum?.(this, dmg);   // VS-style damage numbers (pooled/merged/capped in Game)
 
@@ -800,7 +813,8 @@ export class Enemy {
       const dy  = this.pos.y - game.player.pos.y;
       const len = Math.sqrt(dx * dx + dy * dy) || 1;
       const str = 72;
-      const kbMult = this.isElite ? 0.45 : 1.0;
+      // BATCH 5.1: a braced Heavy Mech resists the shove. Default 1 for every other enemy.
+      const kbMult = (this.isElite ? 0.45 : 1.0) * signatureKnockbackMult(this);
       this._kbx = (dx / len) * str * kbMult;
       this._kby = (dy / len) * str * kbMult;
     }
@@ -1040,6 +1054,29 @@ export class Enemy {
     let speedMult = 1;
     if (this._lungeRec > 0) speedMult = 0.5;               // §8E charger recovery
 
+    // ── MILESTONE 3 / BATCH 5.1 — ENEMY SIGNATURE ────────────────────────────
+    // ONE call. The signature may slow the enemy (speedMult) or take over movement entirely for
+    // this frame (overrideVel). It never writes this.pos directly — an overriding signature still
+    // goes through _stepMove, so walkability, stuck-recovery and detours all keep working.
+    if (this._sig) {
+      const _sr = updateSignature(this, game, dt);
+      if (_sr) {
+        if (_sr.overrideVel) {
+          this.vel = new Vec2(_sr.vx, _sr.vy);
+          this._stepMove(game, dt);
+          return;
+        }
+        speedMult *= _sr.speedMult;
+      }
+      // A ranged enemy mid-signature must not also run the generic ranged loop — one shot, not two.
+      if (signatureActive(this) && arch === 'ranged') {
+        const dirS = safeNormalize(player.pos.sub(this.pos));
+        this.vel = dirS.scale(this.baseSpeed * (this.speedVariation || 1) * speedMult);
+        this._stepMove(game, dt);
+        return;
+      }
+    }
+
     // §9 Ranged Specialist (κανονικός, ΟΧΙ elite): αργή προσέγγιση -> amber telegraph
     // -> 1 βολή (ή burst 3 μόνο στον specialist) -> συνεχίζει να πλησιάζει. ΟΧΙ kiting.
     if (arch === 'ranged' && !this.isElite) {
@@ -1084,6 +1121,9 @@ export class Enemy {
   // Role → distinct shape + outline color (read at a glance, no shadowBlur → cheap at 280 enemies).
   // HORDE §23: κοινή γλώσσα telegraph — amber = φορτίζει. Μικρός καθαρός δακτύλιος
   // ΜΟΝΟ όσο διαρκεί το telegraph του ranged (όχι μόνιμο aura σε normals, §22).
+  /** BATCH 5.1 — signature telegraph, drawn with the enemy so it tracks the sprite exactly. */
+  _drawSignature(ctx) { if (this._sig) drawSignature(this, ctx); }
+
   _drawTelegraph(ctx) {
     if (this._telegraphT > 0) {
       const k = 1 - this._telegraphT / (this._rangedTele || 0.6);
@@ -1356,6 +1396,7 @@ export class Enemy {
     // When a proper sprite is loaded, the sprite IS the visual identity — no overlay needed.
     if (!spritePath) this._drawRoleMarker(ctx);
     this._drawTelegraph(ctx);   // HORDE §23: amber charge ring + shield frontal arc (όλα τα sprites)
+    this._drawSignature(ctx);   // BATCH 5.1: per-enemy signature telegraph (distinct geometry)
 
     // Elite marker (Endless elite waves) — pulsing gold glow + ring so elites read
     // instantly against the normal horde. Purely visual; no balance impact.

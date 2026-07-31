@@ -278,7 +278,51 @@ regression battery 20 suites (0 FAIL) + πραγματικό Chromium proof.
   (Μπορούμε προσωρινά να κόψουμε thumbnails από τις υπάρχουσες map εικόνες — δεν μπλοκάρει το Slice A.)
 
 ## MILESTONE 3 — Enemy signatures στο Act 1 (κυρίως code/VFX)
-- [ ] Ξεκλείδωμα signature attacks σε base (Enemy.js:340) με telegraph
+- [x] **BATCH 5.1 — FOUNDATION ΟΛΟΚΛΗΡΩΘΗΚΕ 2026-07-31** — signature υποδομή + 6 αντιπροσωπευτικές signatures.
+  **ΤΟ ΕΥΡΗΜΑ:** και οι 21 normal enemies τρέχουν το **ΙΔΙΟ** `Enemy.update()` body. Σε ολόκληρη τη
+  μηχανή υπάρχουν μόνο **τρία** per-type branches που αγγίζουν τους 21, και τα τρία είναι μονόγραμμα
+  contact riders (Cryo Claw chill, Razorhound bite, Toxin Leech bleed). **Δέκα** από τους 21 είναι
+  καθαρό chase χωρίς καμία διαφοροποίηση· άλλοι **τρεις** διαφέρουν μόνο κοσμητικά (Stealth
+  Infiltrator = χρώμα hit-flash, Void Widow = sprite filtering, Solar Tyrant = radius). Δηλαδή το
+  ρόστερ διαβάζεται ως **ένας** εχθρός με 21 sprites. Επιπλέον το `Enemy.js:196-198` πετάει το
+  `shootInterval` για κάθε non-ranged archetype, σκοτώνοντας **8** authored `_initRole` stat blocks.
+  **ΑΡΧΙΤΕΚΤΟΝΙΚΗ:** νέο `js/game/EnemySignatures.js` — data-driven registry + **μία** update
+  συνάρτηση, καλούμενη από **ένα** σημείο μέσα στο `Enemy.update()`. Κανένα δεύτερο update system,
+  κανένας global manager, καμία νέα global array, μηδέν per-frame allocations. Ρητό 4-φασικό state
+  machine ανά εχθρό: `READY → TELEGRAPH → EXECUTE → RECOVER → READY`, όλο σε ένα `_sig` object πάνω
+  στο instance — οπότε το cleanup είναι **αυτόματο και ολικό** σε death / reset / deck transition.
+  **DETERMINISM:** μηδέν `Math.random()` στο module· ο κάθε εχθρός παίρνει seed από τον **ίδιο**
+  static LCG που ήδη παράγει το `speedVariation`.
+  **ΟΙ 6 SIGNATURES** (cooldown / telegraph / execute / recover, δευτερόλεπτα):
+  | family | enemy | signature | cd | tele | exec | rec | telegraph geometry |
+  |---|---|---|---|---|---|---|---|
+  | fodder | Volt Rat | Zigzag Surge | 4.2 | 0.35 | 0.30 | 0.25 | ζεύγος εμπρόσθιων τόξων |
+  | swarm | Pulse Burrower | Burrow Reposition | 8.5 | 0.70 | 0.55 | 0.45 | ground ring + σταυρός |
+  | fast | Razorhound | Committed Lunge | 6.5 | 0.45 | 0.35 | 0.90 | κατευθυντική σφήνα |
+  | ranged | Rift Eye | Aimed Rift Shot | 5.5 | 0.60 | 0.12 | 0.40 | aim line + reticle |
+  | heavy | Heavy Mech | Ground Brace | 9.0 | 0.80 | 0.25 | 0.60 | ακτινικός δακτύλιος |
+  | shield | Abyss Maw | Frontal Guard | 7.0 | 0.30 | 2.20 | 0.50 | εμπρόσθιος κώνος 71° |
+  **ΑΣΦΑΛΕΙΑ:** ποτέ ενεργοποίηση στο spawn frame (πρώτο cd ≥ 55% ενός πλήρους cooldown)·
+  deterministic jitter αποσυγχρονίζει τα πακέτα· per-type concurrency ceiling
+  (`maxConcurrentFrac`) που **δεσμεύεται τη στιγμή του arm**, όχι από στιγμιότυπο· ένα damage event
+  ανά activation, και hit που απορρίφθηκε από i-frames **δεν** καταναλώνει το budget· offscreen
+  εχθροί δεν παράγουν telegraph· το burrow δεν κάνει contact damage και δεν βγαίνει ποτέ πάνω στον
+  παίκτη (μέσω του canonical `resolveEnemySpawn`)· κανένα νέο PNG.
+  **4 BUGS που έπιασε το suite και διορθώθηκαν:** (1) το `fireAimedShot` έδινε plain `{x,y}` ενώ το
+  `spawnEnemyBullet` καλεί `dir.clone()` — ο Rift Eye **δεν πυροβολούσε ποτέ** και διέρρεε token·
+  (2) ο frontal guard ξαναστόχευε τον παίκτη **κάθε frame**, άρα ήταν flat omnidirectional ×0.55
+  χωρίς counterplay — τώρα το facing **κλειδώνει** στο commit· (3) το concurrency ceiling
+  ξεπερνιόταν (21/20) επειδή όλοι διάβαζαν το ίδιο stale census· (4) το registry lookup δεν ήταν
+  prototype-safe (`signatureFor('constructor')`).
+  **ΜΕΤΡΗΜΕΝΟ Chromium (5 runs, fresh storage):** και οι 6 έκαναν 3 πλήρεις κύκλους·
+  Razorhound `dirDrift = 0` (κλειδωμένη κατεύθυνση)· Rift Eye `firedProjectile = true`, ≤3 bullets·
+  Pulse Burrower landing finite, μακριά από τον παίκτη, **μηδέν overlap**· Abyss Maw **front 3.3 vs
+  rear 6.0 damage**· canvas 99.7-100% non-black· **0 game-code console errors**.
+  **BALANCE A/B (80s stage ×3):** player damage **−8.6%** (μειώθηκε), kills +2.7%, peak alive +4.0%,
+  bullets 0.0%. Καμία global αύξηση δυσκολίας — μόνο διαφοροποίηση.
+  QA: `tools/qa/batch5_1_enemy_signatures_regression.mjs` **602 PASS / 0 FAIL** (40 σημεία + stress
+  306 εχθροί × 10 λεπτά + deterministic replay).
+- [ ] Signatures για τους υπόλοιπους 15 normal enemies (επόμενο Batch 5 item)
 Art: ελάχιστο (procedural VFX).
 
 ## MILESTONE 4 — Steam funnel

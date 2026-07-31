@@ -58,6 +58,7 @@ import { EventBus, EVENTS } from './EventBus.js?v=20260703990000';
 import { HostileProjectileDirector } from './HostileProjectileDirector.js?v=20260829040000';
 import { WaveDirector } from './WaveDirector.js?v=20260724000000';
 import { EnemySpawner, ELITE_WAVE as ELITE_WAVE_CFG, BOSS_WARN_COOLDOWN as BOSS_WARN_CD, pickBiomeEnemy } from './EnemySpawner.js?v=20260829100000';
+import { buildSignatureCensus, signatureIntangible, signatureStats } from './EnemySignatures.js?v=20260829110000';
 import { StateManager, GAME_STATES } from './StateManager.js?v=20260703990000';
 import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260722600000';
 import { NexusManager } from './NexusManager.js?v=20260803000000';
@@ -18706,6 +18707,10 @@ export class Game {
     // Hit stop: briefly near-freeze enemies on powerful impacts (2-4 frames at 60 fps).
     // Enemies still receive knockback (applied in update() before movement AI) but their
     // AI/movement/shooting is paused for the duration. Player is unaffected.
+    // BATCH 5.1 — rebuild the signature concurrency census ONCE per frame. Recomputing (rather than
+    // incrementing) is what makes it leak-proof: enemies can be removed by the Endless distance cull
+    // and the Bloodfang Razorhound filter without ever running _die().
+    this._sigCensus = buildSignatureCensus(this.enemies, this._sigCensus);
     const enemyDt = (this._hitStopTimer > 0) ? dt * 0.08 : dt;
     this._enemyDetourBudget = 6;
     // Distance cull threshold — enemies beyond this from the player are recycled
@@ -20706,6 +20711,7 @@ export class Game {
     let strongest = null;
     for (const e of near) {
       if (!e || e.hp <= 0) continue;
+      if (signatureIntangible(e)) continue;   // BATCH 5.1: a burrowed enemy deals no contact damage
       if (distance(e.pos, this.player.pos) < e.radius + PLAYER_RADIUS) {
         const push = safeNormalize(this.player.pos.sub(e.pos));
         if (!strongest || (e.contactDamage || 0) > (strongest.contactDamage || 0)) strongest = e;
