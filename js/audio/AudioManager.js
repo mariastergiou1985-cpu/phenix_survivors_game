@@ -717,7 +717,15 @@ export class AudioManager {
   // Intended order, loudest first:
   //   ultimate/cinematic > boss > event > enemy tell > signature weapon > common fire > pew
   static MIX = {
-    fire: { mul: 0.50, minGap: 0.09, cap: 3 },   // x0.50 = -6.02 dB
+    // perCue: retrigger floors for the two cues that used to carry their OWN, stricter
+    // in-body _canPlay() guard. That guard ran AFTER this gate, so a call the body then
+    // silently dropped had already spent a cap slot for 260 ms and moved the retrigger
+    // stamp. Declaring the floor here makes the wrapper the single authority for all
+    // three properties at once: -6.02 dB, retrigger floor, voice cap.
+    fire: {
+      mul: 0.50, minGap: 0.09, cap: 3,           // x0.50 = -6.02 dB
+      perCue: { playVoidNeedleFire: 0.09, playSentryDroneFire: 0.12 },
+    },
     bossBoost:  2.00,        // +6.02 dB
     eventBoost: 2.00,        // +6.02 dB
     tellBoost:  1.50,        // +3.52 dB
@@ -744,7 +752,8 @@ export class AudioManager {
     if (!this._fireActive) this._fireActive = Object.create(null);
     if (!this._fireLast)   this._fireLast   = Object.create(null);
     const now = this.actx ? this.actx.currentTime : 0;
-    if (now - (this._fireLast[cueName] ?? -1e9) < M.minGap) return 0;
+    const minGap = (M.perCue && M.perCue[cueName]) || M.minGap;
+    if (now - (this._fireLast[cueName] ?? -1e9) < minGap) return 0;
     if ((this._fireActive[cueName] || 0) >= M.cap) return 0;
     this._fireLast[cueName] = now;
     this._fireActive[cueName] = (this._fireActive[cueName] || 0) + 1;
@@ -1170,7 +1179,7 @@ export class AudioManager {
 
   // Void Needle — sharp piercing shot.
   playVoidNeedleFire() {
-    if (!this._canPlay("voidFire", 0.08)) return;
+    // Retrigger floor: MIX.fire.perCue.playVoidNeedleFire — enforced by _fireGate().
     this._tone({ type: "triangle", freqStart: 1200, freqEnd: 400, dur: 0.09, gain: 0.13 });
     this._noiseBurst({ dur: 0.07, gain: 0.06, filterType: "highpass", freq: 3000 });
   }
@@ -1186,7 +1195,7 @@ export class AudioManager {
 
   // Sentry Drone — light blaster pop on fire.
   playSentryDroneFire() {
-    if (!this._canPlay("sentryFire", 0.12)) return;
+    // Retrigger floor: MIX.fire.perCue.playSentryDroneFire — enforced by _fireGate().
     this._tone({ type: "triangle", freqStart: 1400, freqEnd: 500, dur: 0.09, gain: 0.12 });
     this._tone({ type: "sawtooth", freqStart: 600,  freqEnd: 200, dur: 0.06, gain: 0.07 });
   }
