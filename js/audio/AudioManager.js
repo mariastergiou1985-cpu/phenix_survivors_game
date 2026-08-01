@@ -21,7 +21,33 @@ export class AudioManager {
     // Master node — its gain reflects masterVolume (or 0 while muted).
     this.masterGain = this.actx.createGain();
     this.masterGain.gain.value = this.muted ? 0 : this.masterVolume;
-    this.masterGain.connect(this.actx.destination);
+
+    // MASTER LIMITER (Maria 2026-08-01). Once the master repair restored a real 1.0,
+    // a measured capture peaked at -0.22 dBFS - music and stacked SFX summing right up
+    // against the ceiling. The SFX compressor below only guards the SFX bus; music went
+    // straight to the output, so nothing held the SUM. This is a brick wall just under
+    // 0 dBFS: a high ratio with a near-zero knee, so it is inaudible until the mix would
+    // otherwise clip and then stops it dead. It changes no slider and no per-clip gain -
+    // it only removes the last dB of headroom risk.
+    try {
+      this.masterLimiter = this.actx.createDynamicsCompressor();
+      this.masterLimiter.threshold.value = -6;     // engage well before the ceiling
+      this.masterLimiter.knee.value = 0;           // hard - a limiter, not a colour
+      this.masterLimiter.ratio.value = 20;         // brick wall
+      this.masterLimiter.attack.value = 0.001;     // catch event-sting transients
+      this.masterLimiter.release.value = 0.20;
+      // WebAudio's DynamicsCompressor is NOT a true brick wall - it overshoots on fast
+      // transients (measured +0.99 dBFS with the limiter alone). A fixed output trim after
+      // it guarantees the ceiling in a way the compressor curve cannot, at the cost of
+      // ~2 dB that the restored master more than covers.
+      this.masterTrim = this.actx.createGain();
+      this.masterTrim.gain.value = 0.80;           // -1.94 dB safety ceiling
+      this.masterGain.connect(this.masterLimiter);
+      this.masterLimiter.connect(this.masterTrim);
+      this.masterTrim.connect(this.actx.destination);
+    } catch (e) {
+      this.masterGain.connect(this.actx.destination);   // ancient browser fallback
+    }
 
     // Music bus — scaled by musicVolume. Per-track base gains feed into this.
     this.musicGain = this.actx.createGain();
@@ -125,6 +151,51 @@ export class AudioManager {
       // Default ON: only OFF when the player explicitly disabled the radio.
       this.radioEnabled = localStorage.getItem(VOL_KEYS.radio) !== 'false';
     } catch (_) { this.radioEnabled = VOL_DEFAULTS.radio; }
+
+    this._repairInaudibleVolumes();
+  }
+
+  /**
+   * AUDIBILITY REPAIR (Maria 2026-08-01).
+   *
+   * A stored master of 0.0172 (1.7%) made the ENTIRE game inaudible - measured
+   * -47.2 LUFS integrated / -35.4 dBFS true peak in a real gameplay capture - while
+   * the SFX slider still read 88%. The mix looked correct on screen and nothing could
+   * be heard, so the fault read as "the new Wave 1/2 SFX don't work" when in fact
+   * every clip played correctly into a master that was practically closed.
+   *
+   * How it got there: the settings panel sets a slider from the raw cursor position
+   * anywhere in its band, so one stray drag across the panel writes a near-zero value
+   * and persists it. The stored numbers carried 17 decimals - a drag, never a typed
+   * choice.
+   *
+   * A master this low is never deliberate: mute (M) exists for real silence, and below
+   * ~5% the game is not quiet, it is off. So we repair it once on load - but ONLY when
+   * the player is not muted, so an intentional mute is never overridden, and only for
+   * the two buses whose loss is unexplainable. musicVolume is deliberately NOT
+   * repaired: turning the music down or fully off while keeping SFX is a normal way to
+   * play.
+   *
+   * This is a repair, not a reset: every other setting the player chose is kept.
+   */
+  _repairInaudibleVolumes() {
+    // Below these the bus is not "quiet", it is effectively silent.
+    const MIN_AUDIBLE_MASTER = 0.05;   // -26 dB - nothing survives this
+    const MIN_AUDIBLE_SFX    = 0.02;   // -34 dB - SFX cannot be heard under music
+    this._volumeRepairs = [];
+
+    if (this.muted) return;            // a real mute is the player's choice - leave it alone
+
+    if (!(this.masterVolume >= MIN_AUDIBLE_MASTER)) {   // also catches NaN/undefined
+      this._volumeRepairs.push({ bus: 'master', from: this.masterVolume, to: VOL_DEFAULTS.master });
+      this.masterVolume = VOL_DEFAULTS.master;
+      this._saveVolume(VOL_KEYS.master, this.masterVolume);
+    }
+    if (!(this.sfxVolume >= MIN_AUDIBLE_SFX)) {
+      this._volumeRepairs.push({ bus: 'sfx', from: this.sfxVolume, to: VOL_DEFAULTS.sfx });
+      this.sfxVolume = VOL_DEFAULTS.sfx;
+      this._saveVolume(VOL_KEYS.sfx, this.sfxVolume);
+    }
   }
 
   _saveVolume(key, val) {
@@ -132,7 +203,10 @@ export class AudioManager {
   }
 
   setMasterVolume(v) {
-    this.masterVolume = clamp01(v);
+    // Snap a near-zero drag to a true 0. Parking at 1.7% looks like an active slider but
+    // is silence - that ambiguity is exactly what hid the -47 LUFS bug. At a real 0 the
+    // panel reads 0% and the cause of the silence is visible.
+    this.masterVolume = clamp01(v) < 0.02 ? 0 : clamp01(v);
     if (!this.muted) this.masterGain.gain.value = this.masterVolume;
     this._saveVolume(VOL_KEYS.master, this.masterVolume);
   }
@@ -1227,6 +1301,59 @@ export class AudioManager {
    * @returns {'played'|'blocked'|'nofile'} — callers only fall back on 'nofile',
    *          so a cooldown/cap rejection stays silent instead of doubling up.
    */
+
+  /**
+   * PER-CLIP LOUDNESS TRIM (Maria 2026-08-01).
+   *
+   * The 25 authored clips were mastered independently and their PERCEIVED level spans
+   * 26 dB: event_warning_boss_echo_01 sits at -3.8 dB mean while boss_titan_orbital_grid
+   * sits at -21.6. Peak-normalising them (most are already 0 dBFS peak) does nothing for
+   * this, because the difference is in average level, not peaks.
+   *
+   * The audible consequence, measured in a real capture: boss telegraphs - the HIGHEST
+   * priority cue, at the highest category gain of 0.95 - came out 9.6 dB BELOW the music,
+   * while events sat 3.5 dB above it. The category gains were correct; the source files
+   * disagreed with them.
+   *
+   * These factors bring each clip to a common perceived target per category
+   * (boss -11 dB, event -13 dB, tell -18 dB) so the intended priority order actually holds:
+   * boss over event over tell. Boost is capped at +9 dB and the master limiter catches the
+   * peaks it creates. Re-measure and regenerate this table if a clip is ever re-rendered.
+   */
+  static WAVE1_TRIM = {
+    boss_annihilator_forge_slam_telegraph: 1.216,
+    boss_bloodfang_pack_assault_telegraph: 1.175,
+    boss_defector_laser_sweep_telegraph: 0.832,
+    boss_dragon_cryo_breath_telegraph: 2.065,
+    boss_serpent_charge_telegraph: 1.905,
+    boss_titan_orbital_grid_telegraph: 2.818,
+    enemy_abyss_maw_guard_telegraph: 2.818,
+    enemy_heavy_mech_brace_telegraph: 2.6,
+    enemy_pulse_burrower_burrow_telegraph: 2.661,
+    enemy_razorhound_lunge_telegraph: 0.851,
+    enemy_rift_eye_aim_telegraph: 2.818,
+    enemy_volt_rat_surge_telegraph: 0.767,
+    event_warning_airstrike_01: 0.724,
+    event_warning_airstrike_02: 0.661,
+    event_warning_arena_01: 1.216,
+    event_warning_blacknet_01: 2.512,
+    event_warning_boss_echo_01: 0.501,
+    event_warning_corrosive_01: 2.818,
+    event_warning_corrosive_02: 2.818,
+    event_warning_cryo_01: 2.818,
+    event_warning_electric_01: 2.291,
+    event_warning_electric_02: 2.455,
+    event_warning_major_01: 0.944,
+    event_warning_supply_01: 2.818,
+    event_warning_void_01: 1.531,
+  };
+
+  /** Trim factor for a clip basename (1 = leave as authored). */
+  static _wave1Trim(base) {
+    const t = AudioManager.WAVE1_TRIM[base];
+    return typeof t === 'number' && t > 0 ? t : 1;
+  }
+
   _wave1Play(bucket, id, minGap, vol) {
     const variants = AudioManager._wave1Registry(id);
     if (!variants || !variants.length) return 'nofile';
@@ -1255,7 +1382,9 @@ export class AudioManager {
     const src = this.actx.createBufferSource();
     src.buffer = buf;
     const g = this.actx.createGain();
-    g.gain.value = vol;
+    // category gain x per-clip loudness trim: the category sets PRIORITY, the trim makes
+    // the differently-mastered source files actually obey it.
+    g.gain.value = vol * AudioManager._wave1Trim(base);
     src.connect(g);
     g.connect(this.sfxGain);                       // master volume + mute honoured here
     this._w1Active[bucket] = (this._w1Active[bucket] || 0) + 1;
