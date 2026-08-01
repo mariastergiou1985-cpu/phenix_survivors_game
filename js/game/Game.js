@@ -22,6 +22,7 @@ import { UpgradeUI }      from './UpgradeUI.js?v=20260902000000';
 import { weightedSample } from './Upgrades.js?v=20260722500000';
 import { BuildEngineRuntime, WEAPON_DEFS as BE_WEAPON_DEFS } from './BuildEngine.js?v=20260902000000';   // BUILD ENGINE — always on (full migration 2026-07-18)
 import { FUSION_DEFS, FUSION_CARD_ORDER, FUSION_ART_READY, FUSION_MAX_TIER, fusionCost, CHAR_DISPLAY_NAMES } from './FusionCatalog.js?v=20260902020000';   // FUSION ARMORY (Batch B)
+import { FusionEngine } from './FusionEngine.js?v=20260902030000';   // FUSION ARMORY runtime (Batch D)
 import './BuildEngineChars1.js?v=20260902000000';   // P2.3a Taekwondo+CyberArm (side-effect register)
 import './BuildEngineChars2.js?v=20260902000000';   // P2.3b Brawler+Assassin (side-effect register)
 import './BuildEngineChars3.js?v=20260902000000';   // P2.4a Eddie+Dimi (side-effect register)
@@ -1514,6 +1515,12 @@ export class Game {
     this.buildEngine = null;
     try { this.buildEngine = new BuildEngineRuntime(this); }
     catch (_) { console.error('[P2] Build Engine failed to construct — legacy weapon system active as fallback'); }
+
+    // ── FUSION ARMORY (Batch D) — per-run instance, πλήρες wipe σε κάθε reset()
+    // (death/restart/menu→νέο run): κανένα fusion state δεν επιβιώνει μεταξύ runs.
+    this.fusionEngine = null;
+    try { if (this.buildEngine) this.fusionEngine = new FusionEngine(this); }
+    catch (_) { console.error('[Fusion] FusionEngine failed to construct — fusions disabled for this run'); }
 
     // ── Starter-weapon safety net (QA-P1: Dimi Kickboxer) ─────────────────────
     // Characters with a legacy base weapon are seeded above. A character with NO
@@ -9768,6 +9775,21 @@ export class Game {
         }
       }
     }
+    // FUSION ARMORY runtime — ίδια αρχιτεκτονική armor με το Build Engine:
+    // κανένα fusion σφάλμα δεν ρίχνει ΠΟΤΕ το frame· 30 συνεχόμενα errors → SAFE MODE.
+    // Το ίδιο το engine είναι no-op εκτός Endless/Chaos (fusionModeOk — layer 5).
+    if (this.fusionEngine) {
+      try { this.fusionEngine.update(_hsDt); this._fusErrs = 0; }
+      catch (fusErr) {
+        this._fusErrs = (this._fusErrs || 0) + 1;
+        if (this._fusErrs <= 3) console.error('[Fusion] update error #' + this._fusErrs + ' at t=' + Math.round(this.timeAlive) + 's', fusErr);
+        if (this._fusErrs >= 30) {
+          console.error('[Fusion] SAFE MODE — το Fusion Armory απενεργοποιήθηκε για αυτό το run');
+          this.triggerAnnouncement?.('◈ FUSION ARMORY SAFE MODE ◈', '#ff6a7a');
+          this.fusionEngine = null;
+        }
+      }
+    }
     this._updateHomingDiscs(_hsDt);
     this._updateChainLightning(dt);
     this._updateNeonPierceBeam(dt);
@@ -15266,6 +15288,11 @@ export class Game {
   // with a 25% probability per level-up. Max 3 weapon slots enforced.
   _injectWeaponCard(choices) {
     if (!choices || choices.length === 0) return;
+
+    // ── FUSION ARMORY: guaranteed κάρτα όταν υπάρχει έτοιμο fusion (Endless/Chaos,
+    //    σωστός χαρακτήρας, αγορασμένη κάρτα, 3/3 weapons, όχι ήδη αποκτημένο).
+    //    Τα έτοιμα BE evolutions ΠΡΟΗΓΟΥΝΤΑΙ (το injectCard επιστρέφει false τότε). ──
+    try { if (this.fusionEngine?.injectCard?.(choices)) return; } catch (_) {}
 
     // ── P2.2 Build Engine cards (?p2=1 μόνο): weighting x3 native/catalyst,
     //    evolution guaranteed — αν έβαλε κάρτα, παρακάμπτει τα υπόλοιπα. ──
@@ -21494,6 +21521,13 @@ export class Game {
       catch (beErr) {
         this._beDrawErrs = (this._beDrawErrs || 0) + 1;
         if (this._beDrawErrs <= 3) console.error('[P2] BuildEngine draw error #' + this._beDrawErrs, beErr);
+      }
+    }
+    if (this.fusionEngine) {                                  // FUSION ARMORY (world-space, ίδιο armor)
+      try { this.fusionEngine.draw(ctx); }
+      catch (fusErr) {
+        this._fusDrawErrs = (this._fusDrawErrs || 0) + 1;
+        if (this._fusDrawErrs <= 3) console.error('[Fusion] draw error #' + this._fusDrawErrs, fusErr);
       }
     }
     this._drawCarriedCores(ctx);                              // courier: orbiting carried cores
