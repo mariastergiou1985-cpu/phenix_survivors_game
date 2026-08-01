@@ -694,7 +694,87 @@ export class AudioManager {
     return true;
   }
 
+
+  // ── MIX HIERARCHY (Maria 2026-08-01) ──────────────────────────────────────
+  // A capture at -21.3 LUFS was dominated by a continuous tonal "pew". The cause was NOT
+  // playShoot - that is already the quietest cue in the game (gain 0.016, throttled 0.16s,
+  // halved twice on 2026-07-18). It was the repeated WEAPON FIRE cues carrying a high gain
+  // and NO throttle at all:
+  //
+  //     playRailSpikeFire     0.20   no throttle   (+22 dB over playShoot)
+  //     playPlasmaBladeSwing  0.16   no throttle
+  //     forgeZap              0.16   no throttle
+  //     playVoidNeedleFire    0.13   no throttle
+  //     playSentryDroneFire   0.12   no throttle
+  //
+  // In Endless with several weapons these fire every time the weapon does, so dozens of
+  // identical short tones overlap into one continuous pitch that masks everything else.
+  //
+  // The fix is per-cue, never a global bus move, and it is applied by WRAPPING the cue
+  // methods rather than editing their bodies - so a future edit to any cue cannot silently
+  // escape the policy, and no method body can end up referencing a variable it never got.
+  //
+  // Intended order, loudest first:
+  //   ultimate/cinematic > boss > event > enemy tell > signature weapon > common fire > pew
+  static MIX = {
+    fire: { mul: 0.50, minGap: 0.09, cap: 3 },   // x0.50 = -6.02 dB
+    bossBoost:  2.00,        // +6.02 dB
+    eventBoost: 2.00,        // +6.02 dB
+    tellBoost:  1.50,        // +3.52 dB
+    // Music ducking: only for cues that carry information the player must not miss.
+    duck: {
+      boss:     { amount: 0.60, hold: 1.6 },   // -4.4 dB
+      event:    { amount: 0.65, hold: 1.4 },   // -3.7 dB
+      ultimate: { amount: 0.58, hold: 1.8 },   // -4.7 dB
+    },
+  };
+  static FIRE_CUES = [
+    'playShoot', 'playEnemyShoot', 'playRailSpikeFire', 'playVoidNeedleFire',
+    'playVoidBeamFire', 'playSentryDroneFire', 'playPlasmaBladeSwing',
+    'forgeZap', 'forgeGunshot', 'playDroneElectro', 'playDroneFlame',
+    'playHomingMissileFire', 'playBlacknetSwarmLaunch',
+  ];
+
+  /**
+   * Retrigger floor + hard voice cap for one repeated fire cue.
+   * Returns the gain multiplier, or 0 when the cue must be dropped this frame.
+   */
+  _fireGate(cueName) {
+    const M = AudioManager.MIX.fire;
+    if (!this._fireActive) this._fireActive = Object.create(null);
+    if (!this._fireLast)   this._fireLast   = Object.create(null);
+    const now = this.actx ? this.actx.currentTime : 0;
+    if (now - (this._fireLast[cueName] ?? -1e9) < M.minGap) return 0;
+    if ((this._fireActive[cueName] || 0) >= M.cap) return 0;
+    this._fireLast[cueName] = now;
+    this._fireActive[cueName] = (this._fireActive[cueName] || 0) + 1;
+    setTimeout(() => { this._fireActive[cueName] = Math.max(0, (this._fireActive[cueName] || 1) - 1); }, 260);
+    return M.mul;
+  }
+
+  /**
+   * Wrap each fire cue once, on the prototype. _tone/_noiseBurst read this._fireMul, so a
+   * cue that is gated out never starts a voice and a cue that passes is attenuated exactly
+   * once, however many tones it layers.
+   */
+  static _installFireGates() {
+    if (AudioManager.__fireGatesInstalled) return;
+    AudioManager.__fireGatesInstalled = true;
+    for (const name of AudioManager.FIRE_CUES) {
+      const orig = AudioManager.prototype[name];
+      if (typeof orig !== 'function') continue;
+      AudioManager.prototype[name] = function (...a) {
+        const fg = this._fireGate(name);
+        if (fg <= 0) return;                    // dropped: too soon, or cap reached
+        const prev = this._fireMul;
+        this._fireMul = fg;
+        try { return orig.apply(this, a); } finally { this._fireMul = prev; }
+      };
+    }
+  }
+
   _tone({ type = 'sine', freqStart, freqEnd, dur, gain = 0.15, delay = 0 }) {
+    gain *= (this._fireMul || 1);   // MIX.fire — see _installFireGates()
     if (!this._voiceOk()) return;
     if (this.muted) return;
     const t0  = this.actx.currentTime + delay;
@@ -721,6 +801,7 @@ export class AudioManager {
 
   // Decaying filtered white-noise burst (for digital crackle / zap texture).
   _noiseBurst({ dur = 0.12, gain = 0.12, filterType = 'highpass', freq = 800, delay = 0 }) {
+    gain *= (this._fireMul || 1);   // MIX.fire — see _installFireGates()
     if (!this._voiceOk()) return;
     if (this.muted) return;
     const t0  = this.actx.currentTime + delay;
@@ -1399,10 +1480,57 @@ export class AudioManager {
 
   // Event warning, routed by class. Unknown/missing class → 'major' fallback, and if
   // even that has no buffer yet the procedural alarm plays: never undefined, never silent.
+
+  /**
+   * Duck the music under an important cue (Maria 2026-08-01).
+   *
+   * Only boss telegraphs, major-event warnings and ultimate casts duck - never a common
+   * weapon shot, which would pump the whole soundtrack in time with the auto-fire. The
+   * ramp is smooth in both directions (120 ms down, 450 ms back) so it reads as the music
+   * stepping aside rather than a gate closing, and the recovery target is read live from
+   * musicVolume so a slider move mid-duck cannot strand the bed at the wrong level.
+   */
+  duckMusic(kind = 'event') {
+    const cfg = AudioManager.MIX.duck[kind] || AudioManager.MIX.duck.event;
+    if (!this.musicGain || !this.actx || this.muted) return;
+    const g = this.musicGain.gain;
+    const now = this.actx.currentTime;
+    const full = this.musicVolume * (this.playlistActive ? 0.25 : 1);
+    const target = full * cfg.amount;
+    if (target >= (this._duckTarget ?? Infinity)) {
+      // A deeper duck is already running - extend its hold instead of fighting it.
+      this._duckUntil = Math.max(this._duckUntil || 0, now + cfg.hold);
+      return;
+    }
+    this._duckTarget = target;
+    this._duckUntil = now + cfg.hold;
+    try {
+      g.cancelScheduledValues(now);
+      g.setValueAtTime(g.value, now);
+      g.linearRampToValueAtTime(target, now + 0.12);          // quick, but not a cut
+    } catch (e) { g.value = target; }
+    clearTimeout(this._duckTimer);
+    const wait = Math.max(0, (this._duckUntil - now) * 1000);
+    this._duckTimer = setTimeout(() => {
+      if (!this.musicGain || !this.actx) return;
+      const t = this.actx.currentTime;
+      const back = this.musicVolume * (this.playlistActive ? 0.25 : 1);   // live, not captured
+      try {
+        const gg = this.musicGain.gain;
+        gg.cancelScheduledValues(t);
+        gg.setValueAtTime(gg.value, t);
+        gg.linearRampToValueAtTime(this.muted ? 0 : back, t + 0.45);      // gentle recovery
+      } catch (e) { this.musicGain.gain.value = this.muted ? 0 : back; }
+      this._duckTarget = null;
+    }, wait);
+  }
+
   playEventClass(cls, proceduralFallback = true) {
     let id = 'event_' + (cls || 'major');
     if (!AudioManager._wave1Registry(id)) id = 'event_major';
-    const r = this._wave1Play('event', id, 0.25, 0.92);
+    // +6.0 dB over the old 0.92: events must clear the weapon layer, not sit inside it.
+    const r = this._wave1Play('event', id, 0.25, 0.92 * AudioManager.MIX.eventBoost);
+    if (r === 'played') this.duckMusic('event');
     if (r === 'nofile' && proceduralFallback) this.playEventWarning();
     return r;                                    // 'played'|'blocked'|'nofile'
   }
@@ -1410,9 +1538,11 @@ export class AudioManager {
   // Boss signature telegraph — one active cue per boss, fired on TELEGRAPH entry only.
   playBossTelegraph(bossId) {
     if (!bossId) return;
-    if (this._wave1Play('bossTelegraph:' + bossId, 'boss_' + bossId, 0.20, 0.95) === 'nofile') {
-      this.playEventWarning();
-    }
+    // +6.0 dB over the old 0.95. Boss telegraphs measured 9.6 dB BELOW the music before
+    // the per-clip trim; with the trim and this boost they now sit clearly on top.
+    const r = this._wave1Play('bossTelegraph:' + bossId, 'boss_' + bossId, 0.20, 0.95 * AudioManager.MIX.bossBoost);
+    if (r === 'played') this.duckMusic('boss');
+    if (r === 'nofile') this.playEventWarning();
   }
 
   // Normal-enemy signature tell — quiet by design; stays silent when unmapped so a
@@ -1420,7 +1550,8 @@ export class AudioManager {
   playEnemyTell(enemyType) {
     if (!enemyType) return;
     const id = 'tell_' + String(enemyType).replace(/[^A-Za-z0-9]/g, '');
-    this._wave1Play('enemyTell', id, 0.30, 0.55);
+    // +3.5 dB: audible as a warning, still clearly below boss and event cues.
+    this._wave1Play('enemyTell', id, 0.30, 0.55 * AudioManager.MIX.tellBoost);
   }
 
   // Cleanup on run reset / deck transition — stop every live Wave 1 source and clear
@@ -1784,6 +1915,7 @@ export class AudioManager {
   // ULT CAST sting — one distinct flavor per character, throttled hard (casts are rare).
   forgeUltCast(flavor) {
     if (this.muted || !this._forgeOk('ult', 900)) return;
+    this.duckMusic('ultimate');       // top of the hierarchy — the music steps aside
     const F = {
       skeleton:   () => { this._tone({ type: 'sawtooth', freqStart: 90,  freqEnd: 30,  dur: 0.7, gain: 0.13 });
                           this._noiseBurst({ dur: 0.5, gain: 0.09, filterType: 'lowpass', freq: 300 }); },              // bone rumble
@@ -1930,3 +2062,5 @@ export class AudioManager {
   }
 
 }
+
+AudioManager._installFireGates();

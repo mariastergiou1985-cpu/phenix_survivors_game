@@ -30,7 +30,10 @@ T('[C7] no .wav master leaked into wave1/', !fs.readdirSync(D).some(f=>f.endsWit
 
 // return-value contract
 const src=fs.readFileSync('js/audio/AudioManager.js','utf8');
-T('[C8] playEventClass returns its result', /playEventClass\(cls, proceduralFallback = true\)[\s\S]{0,400}return r;/.test(src));
+// Window widened 400 -> 900 on 2026-08-01: the mix rebalance added the category boost and
+// the ducking call inside this method, pushing `return r;` past the old fixed window. The
+// contract being checked is unchanged - playEventClass must still return _wave1Play's result.
+T('[C8] playEventClass returns its result', /playEventClass\(cls, proceduralFallback = true\)[\s\S]{0,900}return r;/.test(src));
 const gsrc=fs.readFileSync('js/game/Game.js','utf8');
 T('[C9] frozen sleet falls back to the ice sweep, not the generic alarm',
   /_eventCue\('_updateFrozenSleet', false\) !== 'played'\) this\.audio\?\.playIceSweep/.test(gsrc));
