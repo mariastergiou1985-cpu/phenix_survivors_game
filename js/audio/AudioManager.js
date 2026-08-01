@@ -1196,7 +1196,7 @@ export class AudioManager {
     event_supply:    ['event_warning_supply_01'],
     event_blacknet:  ['event_warning_blacknet_01'],
     event_major:     ['event_warning_major_01'],
-    // event_cryo: intentionally absent — no approved asset yet, resolves to event_major.
+    event_cryo:      ['event_warning_cryo_01'],
     // ── boss telegraphs (Batch 5.2 signatures) ──
     boss_mech:         ['boss_defector_laser_sweep_telegraph'],
     boss_annihilator:  ['boss_annihilator_forge_slam_telegraph'],
@@ -1270,10 +1270,12 @@ export class AudioManager {
 
   // Event warning, routed by class. Unknown/missing class → 'major' fallback, and if
   // even that has no buffer yet the procedural alarm plays: never undefined, never silent.
-  playEventClass(cls) {
+  playEventClass(cls, proceduralFallback = true) {
     let id = 'event_' + (cls || 'major');
     if (!AudioManager._wave1Registry(id)) id = 'event_major';
-    if (this._wave1Play('event', id, 0.25, 0.92) === 'nofile') this.playEventWarning();
+    const r = this._wave1Play('event', id, 0.25, 0.92);
+    if (r === 'nofile' && proceduralFallback) this.playEventWarning();
+    return r;                                    // 'played'|'blocked'|'nofile'
   }
 
   // Boss signature telegraph — one active cue per boss, fired on TELEGRAPH entry only.

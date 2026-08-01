@@ -9788,7 +9788,7 @@ export class Game {
             this._whiteoutCd = 55 + Math.random() * 20;
             this._whiteoutT  = 3.5;
             this.triggerAnnouncement('WHITEOUT PROTOCOL', '#cfe9ff');
-            this.audio?.playIceSweep?.();
+            if (this._eventCue('_whiteoutProtocol', false) !== 'played') this.audio?.playIceSweep?.();
           }
         }
       }
@@ -24001,6 +24001,9 @@ export class Game {
     // encrypted / premium access
     tryUnlockSelectedCharacterPF:  'blacknet',
     _openMutationChoice:           'blacknet',
+    // flash-freeze / glacial hazards
+    _updateFrozenSleet:            'cryo',
+    _whiteoutProtocol:             'cryo',
     // neutral high-quality tactical cue
     activateChromePhantomProtocol: 'major',
     activateCyberBikeRush:         'major',
@@ -24012,10 +24015,10 @@ export class Game {
    * silent throw. AudioManager.playEventClass degrades once more to the procedural
    * alarm if the buffer has not decoded yet, so the cue is never missing entirely.
    */
-  _eventCue(eventId) {
+  _eventCue(eventId, proceduralFallback = true) {
     const M = Game.EVENT_AUDIO_CLASS;
     const cls = (eventId && Object.prototype.hasOwnProperty.call(M, eventId)) ? M[eventId] : 'major';
-    this.audio?.playEventClass?.(cls);
+    return this.audio?.playEventClass?.(cls, proceduralFallback);
   }
 
   /** Presents a banner immediately. Split out so priority logic has one display path. */
@@ -26811,7 +26814,9 @@ _drawLoreArchive(ctx) {
       });
     }
     this._frozenSleet = { phase: 'onset', t: 0, particles };
-    this.audio?.playIceSweep?.();   // ice sweep replaces generic warning for sleet storm
+    // Wave 1 authored cryo cue; the procedural ice sweep stays the fallback so the
+    // storm is never silent while the buffer is still decoding (no generic alarm here).
+    if (this._eventCue('_updateFrozenSleet', false) !== 'played') this.audio?.playIceSweep?.();
   }
 
   _drawFrozenSleet(ctx) {
