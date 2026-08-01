@@ -208,17 +208,59 @@ export class FusionEngine {
   }
   drawArt(ctx, fid, x, y, size, rot = 0, alpha = 1) {
     if (!this.artOk(fid)) return false;                            // fallback ΜΟΝΟ σε πραγματικό fail
-    const im = this._imgs.get(fid);
-    const k = size / Math.max(im.naturalWidth, im.naturalHeight);
+    // Perf: το 1024px asset προ-κλιμακώνεται ΜΙΑ φορά σε 288px offscreen canvas —
+    // το per-frame draw δουλεύει πάνω στο μικρό bitmap (κρίσιμο σε software raster).
+    let sc = this._scaled?.get(fid);
+    if (!sc) {
+      if (!this._scaled) this._scaled = new Map();
+      const im = this._imgs.get(fid);
+      try {
+        sc = document.createElement('canvas');
+        const S2 = 288;
+        const k0 = S2 / Math.max(im.naturalWidth, im.naturalHeight);
+        sc.width = Math.max(1, Math.round(im.naturalWidth * k0));
+        sc.height = Math.max(1, Math.round(im.naturalHeight * k0));
+        sc.getContext('2d').drawImage(im, 0, 0, sc.width, sc.height);
+      } catch (_) { sc = this._imgs.get(fid); }
+      this._scaled.set(fid, sc);
+    }
+    const w = sc.width || sc.naturalWidth, h = sc.height || sc.naturalHeight;
+    const k = size / Math.max(w, h);
     ctx.save();
     ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
     ctx.globalCompositeOperation = 'screen';
     ctx.translate(x, y);
     if (rot) ctx.rotate(rot);
-    ctx.drawImage(im, -im.naturalWidth * k / 2, -im.naturalHeight * k / 2,
-                  im.naturalWidth * k, im.naturalHeight * k);
+    ctx.drawImage(sc, -w * k / 2, -h * k / 2, w * k, h * k);
     ctx.restore();
     return true;
+  }
+  // Cached radial «πέπλο» (σκοτεινό ή φωτεινό): ΠΟΤΕ createRadialGradient ανά frame —
+  // pre-render σε offscreen canvas ανά (ακτίνα-κάδο, χρώματα), draw ως bitmap.
+  veil(ctx, x, y, r, inner, outer, alpha = 1, lighter = false) {
+    if (!this._veils) this._veils = new Map();
+    const rb = Math.max(16, Math.round(r / 24) * 24);              // κάδοι 24px → bounded cache
+    const key = rb + '|' + inner + '|' + outer + '|' + (lighter ? 1 : 0);
+    let cv = this._veils.get(key);
+    if (!cv) {
+      if (this._veils.size > 48) this._veils.clear();              // hard cap
+      try {
+        cv = document.createElement('canvas');
+        cv.width = cv.height = rb * 2;
+        const c2 = cv.getContext('2d');
+        const g = c2.createRadialGradient(rb, rb, 0, rb, rb, rb);
+        g.addColorStop(0, inner);
+        g.addColorStop(1, outer);
+        c2.fillStyle = g;
+        c2.beginPath(); c2.arc(rb, rb, rb, 0, Math.PI * 2); c2.fill();
+      } catch (_) { return; }
+      this._veils.set(key, cv);
+    }
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+    if (lighter) ctx.globalCompositeOperation = 'lighter';
+    ctx.drawImage(cv, x - r, y - r, r * 2, r * 2);
+    ctx.restore();
   }
   addFx(o) { if (this.fx.length < FX_CAP) this.fx.push(o); }
   ring(x, y, r0, r1, dur, color, width = 5) { this.addFx({ kind: 'ring', x, y, r0, r1, t: 0, dur, color, width }); }
@@ -402,11 +444,8 @@ FUSION_EXECUTORS.fus_ossuary_impaler = {
     } else if (st.phase === 'rift' && st.objects.rift) {
       const R = st.objects.rift, radius = A(m.rift.radius, i);
       const wob = 1 + Math.sin(fe._t * 6) * 0.06;
+      fe.veil(ctx, R.x, R.y, radius * 0.5, 'rgba(5,1,16,0.95)', 'rgba(5,1,16,0)');
       ctx.save();
-      const vg = ctx.createRadialGradient(R.x, R.y, 0, R.x, R.y, radius * 0.5);
-      vg.addColorStop(0, 'rgba(5,1,16,0.95)'); vg.addColorStop(1, 'rgba(5,1,16,0)');
-      ctx.fillStyle = vg;
-      ctx.beginPath(); ctx.arc(R.x, R.y, radius * 0.5, 0, Math.PI * 2); ctx.fill();
       ctx.globalCompositeOperation = 'lighter';
       ctx.strokeStyle = d.palette.glow; ctx.lineWidth = 5; ctx.globalAlpha = 0.85;
       ctx.beginPath(); ctx.arc(R.x, R.y, radius * 0.62 * wob, 0, Math.PI * 2); ctx.stroke();
@@ -501,9 +540,16 @@ FUSION_EXECUTORS.fus_black_psalm_choir = {
         }
       } else if (s.mode === 'reform') {
         s.reform -= dt;
-        if (s.reform <= 0) { s.mode = 'orbit'; fe.cue(st.id, 'aftermath'); }
+        if (s.reform <= 0) {
+          s.mode = 'orbit';
+          st.cycle++;                                  // πλήρης κύκλος: pulse→charge→dive→reform
+          fe.cue(st.id, 'aftermath');
+        }
       }
     }
+    // παρατηρησιμότητα φάσης (persistent όπλο): orbit ↔ dive
+    st.phase = st.objects.skulls.some(s2 => s2.mode === 'dive') ? 'dive'
+             : st.objects.skulls.some(s2 => s2.mode === 'reform') ? 'reform' : 'orbit';
     for (let k = st.objects.fields.length - 1; k >= 0; k--) {
       const f = st.objects.fields[k];
       f.t += dt; f.tick += dt;
@@ -755,12 +801,8 @@ FUSION_EXECUTORS.fus_null_storm_eye = {
     const S = st.objects.storm;
     if (!S) return;
     const radius = A(m.radius, i), wallR = radius * 0.8;
+    fe.veil(ctx, S.x, S.y, wallR * 0.5, 'rgba(1,10,6,0.85)', 'rgba(1,10,6,0)');
     ctx.save();
-    // σκοτεινό μάτι
-    const eg = ctx.createRadialGradient(S.x, S.y, 0, S.x, S.y, wallR * 0.5);
-    eg.addColorStop(0, 'rgba(1,10,6,0.85)'); eg.addColorStop(1, 'rgba(1,10,6,0)');
-    ctx.fillStyle = eg;
-    ctx.beginPath(); ctx.arc(S.x, S.y, wallR * 0.5, 0, Math.PI * 2); ctx.fill();
     // eyewall: 3 περιστρεφόμενα τόξα
     ctx.globalCompositeOperation = 'lighter';
     for (let k = 0; k < 3; k++) {
@@ -864,13 +906,9 @@ FUSION_EXECUTORS.fus_tectonic_maw = {
     for (const M of st.objects.maws || []) {
       const sinkR = A(m.sink.radius, i);
       const k = Math.min(1, M.t / A(m.sink.durS, i));
+      fe.veil(ctx, M.x, M.y, sinkR, 'rgba(20,6,2,0.92)', 'rgba(20,6,2,0)');
+      fe.veil(ctx, M.x, M.y, sinkR * 0.6, `rgba(255,106,46,0.4)`, 'rgba(255,106,46,0)', 0.5 + k * 0.4, true);
       ctx.save();
-      const vg = ctx.createRadialGradient(M.x, M.y, 0, M.x, M.y, sinkR);
-      vg.addColorStop(0, 'rgba(20,6,2,0.9)');
-      vg.addColorStop(0.55, `rgba(255,106,46,${0.25 + k * 0.3})`);
-      vg.addColorStop(1, 'rgba(20,6,2,0)');
-      ctx.fillStyle = vg;
-      ctx.beginPath(); ctx.arc(M.x, M.y, sinkR, 0, Math.PI * 2); ctx.fill();
       ctx.globalCompositeOperation = 'lighter';
       ctx.strokeStyle = d.palette.glow; ctx.lineWidth = 4; ctx.globalAlpha = 0.7;
       ctx.setLineDash([12, 9]);
@@ -1367,13 +1405,9 @@ FUSION_EXECUTORS.fus_hungry_hell_feast = {
     if (!M) return;
     const radius = A(m.maw.radius, i);
     // σκοτεινό στόμα + περιστρεφόμενα «δόντια» τόξα
+    fe.veil(ctx, M.x, M.y, radius, 'rgba(16,1,4,0.92)', 'rgba(16,1,4,0)');
+    fe.veil(ctx, M.x, M.y, radius * 0.75, 'rgba(120,10,25,0.4)', 'rgba(120,10,25,0)', 1, true);
     ctx.save();
-    const vg = ctx.createRadialGradient(M.x, M.y, 0, M.x, M.y, radius);
-    vg.addColorStop(0, 'rgba(16,1,4,0.92)');
-    vg.addColorStop(0.7, 'rgba(120,10,25,0.35)');
-    vg.addColorStop(1, 'rgba(16,1,4,0)');
-    ctx.fillStyle = vg;
-    ctx.beginPath(); ctx.arc(M.x, M.y, radius, 0, Math.PI * 2); ctx.fill();
     ctx.globalCompositeOperation = 'lighter';
     for (let k = 0; k < 8; k++) {
       const a = fe._t * 2.4 + (k / 8) * Math.PI * 2;
@@ -1390,13 +1424,7 @@ FUSION_EXECUTORS.fus_hungry_hell_feast = {
     for (let k = 0; k < m.spirits.count; k++) {
       const a = fe._t * 1.6 + (k / m.spirits.count) * Math.PI * 2;
       const sx = M.x + Math.cos(a) * (radius + 70), sy = M.y + Math.sin(a) * (radius + 70);
-      ctx.save(); ctx.globalCompositeOperation = 'lighter';
-      ctx.globalAlpha = 0.85;
-      const sg = ctx.createRadialGradient(sx, sy, 0, sx, sy, 26);
-      sg.addColorStop(0, '#fff1d6'); sg.addColorStop(0.6, d.palette.glow); sg.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.fillStyle = sg;
-      ctx.beginPath(); ctx.arc(sx, sy, 26, 0, Math.PI * 2); ctx.fill();
-      ctx.restore();
+      fe.veil(ctx, sx, sy, 26, '#fff1d6', 'rgba(255,120,60,0)', 0.85, true);
     }
     fe.drawArt(ctx, st.id, M.x, M.y - 30, 200, Math.sin(fe._t * 2) * 0.08, 0.9);
     // souls counter: μικρές ψυχές-σφαίρες γύρω από το art
@@ -1546,9 +1574,15 @@ FUSION_EXECUTORS.fus_ferromag_piledriver = {
       if (st.cd <= 0) { st.phase = 'assemble'; st.t = 0; fe.cue(st.id, 'charge'); }
     } else if (st.phase === 'assemble') {
       if (st.t >= m.assembleS) {
-        const den = fe.densest(200, fe._t);
-        const ang = Math.atan2(den.y - p.pos.y, den.x - p.pos.x);
         const range = A(m.punch.range, i);
+        // Το πιστόνι είναι ΣΤΕΝΗ γραμμή: πυροβολά ΜΟΝΟ όταν υπάρχει πραγματικός
+        // στόχος σε εμβέλεια, και σκοπεύει τον κοντινότερο — ποτέ στο κενό.
+        const tgt = fe.nearestTo(p.pos.x, p.pos.y);
+        if (!tgt || dist2(p.pos.x, p.pos.y, tgt.pos.x, tgt.pos.y) > (range * 1.15) ** 2) {
+          st.t = m.assembleS * 0.75;                   // κράτα τη συναρμολόγηση ζεστή
+          return;
+        }
+        const ang = Math.atan2(tgt.pos.y - p.pos.y, tgt.pos.x - p.pos.x);
         const cosA = Math.cos(ang), sinA = Math.sin(ang);
         const maxFrags = Math.min(m.caps.embeddedFrags,
           A(m.embed.frags, i) + (fe.chaos() ? (d.chaos.extraFrags || 0) : 0));
