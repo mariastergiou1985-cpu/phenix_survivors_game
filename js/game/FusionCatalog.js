@@ -772,13 +772,18 @@ export const FUSION_IDS = Object.freeze(Object.keys(FUSION_DEFS));
 
 // Ποια fusion assets έχουν ΗΔΗ committed art στο repo. Η κάρτα-UI (και αργότερα το
 // gameplay) δείχνει ΜΟΝΟ artReady fusions — ποτέ <img> χωρίς αρχείο, ποτέ 404.
-// Batch B: chars 1-5. Το Batch C τα ανεβάζει σε 20/20 και μετά το σετ μένει πλήρες.
+// Batch C (2026-08-01): ΠΛΗΡΕΣ — 20/20 assets στο assets/weapons/fusions/.
 export const FUSION_ART_READY = Object.freeze(new Set([
   'fus_ossuary_impaler', 'fus_black_psalm_choir',
   'fus_cyclone_metronome', 'fus_null_storm_eye',
   'fus_tectonic_maw', 'fus_pyroclast_payload',
   'fus_compass_of_ruin', 'fus_golden_collapse',
   'fus_hungry_hell_feast', 'fus_night_parade',
+  'fus_ferromag_piledriver', 'fus_scrapstorm_foundry',
+  'fus_widows_loom', 'fus_phantom_needle_protocol',
+  'fus_die_of_fates', 'fus_event_horizon_roulette',
+  'fus_wall_of_sound', 'fus_bass_singularity',
+  'fus_thousand_fist_verdict', 'fus_aegis_of_judgement',
 ]));
 
 // Σειρά εμφάνισης στην κάρτα-UI: ομαδοποίηση ανά χαρακτήρα με τη σειρά του roster.
