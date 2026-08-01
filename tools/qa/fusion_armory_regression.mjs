@@ -357,5 +357,78 @@ T('[E4] fusion ids never leak into WEAPON_DEFS / EVOLUTION_RECIPES (card pool un
   return true;
 });
 
+// ── [F] Batch B — assets στο δίσκο + Upgrades tab integration ─────────────────
+console.log('── F. Art assets & FUSIONS tab');
+const { FUSION_ART_READY } = FC;
+function pngSize(buf) {
+  if (buf.length < 24 || buf.readUInt32BE(0) !== 0x89504e47) return null;
+  return { w: buf.readUInt32BE(16), h: buf.readUInt32BE(20), colorType: buf[25] };
+}
+T('[F1] FUSION_ART_READY ⊆ FUSION_DEFS and every ready art file EXISTS at its canonical path', () => {
+  if (!FUSION_ART_READY || FUSION_ART_READY.size < 10) return 'ready set: ' + (FUSION_ART_READY?.size ?? 'none');
+  for (const fid of FUSION_ART_READY) {
+    if (!FUSION_DEFS[fid]) return fid + ' not in defs';
+    if (!fs.existsSync(path.join(ROOT, FUSION_DEFS[fid].art))) return fid + ' file missing';
+  }
+  return true;
+});
+T('[F2] every ready asset is a REAL ≥1024×1024 RGBA PNG', () => {
+  for (const fid of FUSION_ART_READY) {
+    const buf = fs.readFileSync(path.join(ROOT, FUSION_DEFS[fid].art));
+    const s = pngSize(buf);
+    if (!s) return fid + ': not a PNG';
+    if (s.w < 1024 || s.h < 1024) return fid + ': ' + s.w + '×' + s.h;
+    if (s.colorType !== 6) return fid + ': colorType ' + s.colorType + ' (want RGBA=6)';
+    if (buf.length < 30000) return fid + ': suspiciously small (' + buf.length + 'B)';
+  }
+  return true;
+});
+T('[F3] no orphan files under assets/weapons/fusions (κάθε αρχείο ↔ artReady def)', () => {
+  const base = path.join(ROOT, 'assets/weapons/fusions');
+  if (!fs.existsSync(base)) return 'no fusions asset dir';
+  const found = [];
+  for (const ch of fs.readdirSync(base)) {
+    const dir = path.join(base, ch);
+    if (!fs.statSync(dir).isDirectory()) return 'stray file ' + ch;
+    for (const f of fs.readdirSync(dir)) found.push('assets/weapons/fusions/' + ch + '/' + f);
+  }
+  for (const p of found) {
+    const fid = path.basename(p, '.png');
+    if (!FUSION_DEFS[fid] || FUSION_DEFS[fid].art !== p) return 'orphan ' + p;
+    if (!FUSION_ART_READY.has(fid)) return p + ' on disk but not artReady';
+  }
+  for (const fid of FUSION_ART_READY) if (!found.includes(FUSION_DEFS[fid].art)) return fid + ' ready but absent';
+  return true;
+});
+T('[F4] ONE FusionCatalog.js?v= specifier value across the runtime (no split instance)', () => {
+  const vals = new Set();
+  const scan = (dir) => {
+    for (const f of fs.readdirSync(dir)) {
+      const p = path.join(dir, f);
+      if (fs.statSync(p).isDirectory()) scan(p);
+      else if (f.endsWith('.js')) {
+        for (const m of fs.readFileSync(p, 'utf8').matchAll(/FusionCatalog\.js\?v=(\d+)/g)) vals.add(m[1]);
+      }
+    }
+  };
+  scan(path.join(ROOT, 'js'));
+  return vals.size === 1 ? true : 'specifiers: ' + [...vals].join(', ');
+});
+T('[F5] Upgrades overlay carries the FUSIONS tab + purchase branch + artReady gating', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'js/game/Game.js'), 'utf8');
+  if (!src.includes('data-tab="fusions"')) return 'tab button missing';
+  if (!src.includes("tab === 'fusions'")) return 'sync/click branch missing';
+  if (!src.includes('tryBuyFusionCard')) return 'purchase call missing';
+  if (!src.includes('FUSION_ART_READY.has')) return 'artReady gating missing';
+  if (!/img src="\$\{d\.art\}"/.test(src)) return 'card image missing';
+  if (!src.includes('ENDLESS / CHAOS ONLY')) return 'mode badge missing';
+  return true;
+});
+T('[F6] card list ids are ordered, unique and all artReady', () => {
+  const list = FC.FUSION_CARD_ORDER.filter(fid => FUSION_ART_READY.has(fid));
+  if (new Set(list).size !== list.length) return 'dupes';
+  return list.length === FUSION_ART_READY.size;
+});
+
 console.log(`\n=== ${pass} PASS / ${fail} FAIL ===`);
 process.exit(fail ? 1 : 0);

@@ -20,7 +20,8 @@ import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, dr
 import { SystemEventManager } from './Events.js?v=20260802000000';
 import { UpgradeUI }      from './UpgradeUI.js?v=20260902000000';
 import { weightedSample } from './Upgrades.js?v=20260722500000';
-import { BuildEngineRuntime } from './BuildEngine.js?v=20260902000000';   // BUILD ENGINE — always on (full migration 2026-07-18)
+import { BuildEngineRuntime, WEAPON_DEFS as BE_WEAPON_DEFS } from './BuildEngine.js?v=20260902000000';   // BUILD ENGINE — always on (full migration 2026-07-18)
+import { FUSION_DEFS, FUSION_CARD_ORDER, FUSION_ART_READY, FUSION_MAX_TIER, fusionCost, CHAR_DISPLAY_NAMES } from './FusionCatalog.js?v=20260902010000';   // FUSION ARMORY (Batch B)
 import './BuildEngineChars1.js?v=20260902000000';   // P2.3a Taekwondo+CyberArm (side-effect register)
 import './BuildEngineChars2.js?v=20260902000000';   // P2.3b Brawler+Assassin (side-effect register)
 import './BuildEngineChars3.js?v=20260902000000';   // P2.4a Eddie+Dimi (side-effect register)
@@ -30,7 +31,7 @@ import './BuildEnginePassives.js?v=20260902000000'; // P2.6 Build passives §26-
 import { MutationUI }      from './MutationUI.js?v=20260810210000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260827000000';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, COLLECTIBLE_FRAGMENT_COST, COLLECTIBLE_GRID_COST, ECHO_FRAGMENT_COST, ECHO_GRID_COST, SKILL_TREE, AMULET_DEFS, GRID_TO_PF_RATE } from './MetaProgress.js?v=20260902000000';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, COLLECTIBLE_FRAGMENT_COST, COLLECTIBLE_GRID_COST, ECHO_FRAGMENT_COST, ECHO_GRID_COST, SKILL_TREE, AMULET_DEFS, GRID_TO_PF_RATE } from './MetaProgress.js?v=20260902010000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260712520000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
@@ -4705,6 +4706,7 @@ export class Game {
           <button class="cgu-tab" data-tab="protocols">🧩 PROTOCOLS</button>
           <button class="cgu-tab" data-tab="skilltree">🌳 SKILL TREE</button>
           <button class="cgu-tab" data-tab="amulets">⛨ AMULETS</button>
+          <button class="cgu-tab" data-tab="fusions">⚛ FUSIONS</button>
         </div>
 
         <div class="cgu-grid" id="cgu-grid"></div>
@@ -4797,6 +4799,29 @@ export class Game {
         this._syncUpgradesOverlay();
         return;
       }
+      if (tab === 'fusions') {
+        const fid = this._fusionCardList()[idx];
+        const d   = fid && FUSION_DEFS[fid];
+        if (!d) return;
+        const res = this.meta.tryBuyFusionCard(fid);
+        if      (res === 'ok') {
+          const t = this.meta.getFusionTier(fid);
+          this._upgradeMsg = t === 1
+            ? `${d.name} forged! Complete its 3-weapon recipe in Endless or Chaos to manifest it.`
+            : `${d.name} → TIER ${t}.`;
+        }
+        else if (res === 'max')     this._upgradeMsg = `${d.name} is already MAX TIER.`;
+        else if (res === 'locked')  this._upgradeMsg = 'Fusion cards unlock after the campaign (Endless access).';
+        else if (res === 'poor') {
+          const c = fusionCost(this.meta.getFusionTier(fid) + 1);
+          this._upgradeMsg = `Need ${c.pf} 🧩 Fragments AND ${c.grids} Grid Cores.`;
+        }
+        else if (res === 'invalid') this._upgradeMsg = 'Unknown fusion.';
+        this._upgradeMsgTimer = 2.4;
+        this._confirmReset = false;
+        this._syncUpgradesOverlay();
+        return;
+      }
       if (tab === 'protocols') {
         const pc  = PROTOCOL_CARDS[idx];
         if (!pc) return;
@@ -4831,6 +4856,12 @@ export class Game {
 
     document.body.appendChild(el);
     this._upgradesOverlayEl = el;
+  }
+
+  // FUSION ARMORY: σταθερή σειρά καρτών στο FUSIONS tab — ΜΟΝΟ fusions με committed
+  // art (FUSION_ART_READY) ώστε καμία κάρτα να μην δείξει σπασμένη εικόνα/404.
+  _fusionCardList() {
+    return FUSION_CARD_ORDER.filter(fid => FUSION_ART_READY.has(fid));
   }
 
   _showUpgradesOverlay() {
@@ -4965,6 +4996,48 @@ export class Game {
           </div>
           <div class="cgu-card-desc">Empowers ${am.charName}'s ULTIMATE — +30% damage. Permanent.</div>
           <button class="cgu-buy-btn ${btnClass}" ${owned ? 'disabled' : ''}>${btnLabel}</button>
+        </div>`;
+      }).join('');
+    } else if (tab === 'fusions') {
+      // ⚛ FUSION ARMORY — μόνιμες κάρτες Fusion Weapons. PF + Grid Cores ΜΑΖΙ (atomic).
+      // Η κατοχή ΔΕΝ δίνει το όπλο: ξεκλειδώνει τη δυνατότητα σχηματισμού μέσα σε
+      // Endless/Chaos run όταν συμπληρωθεί το 3-weapon recipe. ENDLESS / CHAOS ONLY.
+      const ids = this._fusionCardList();
+      const endlessOpen = this.meta.isEndlessUnlocked();
+      grid.innerHTML = ids.map((fid, i) => {
+        const d     = FUSION_DEFS[fid];
+        const tier  = this.meta.getFusionTier(fid);
+        const owned = tier >= 1;
+        const maxed = tier >= FUSION_MAX_TIER;
+        const cost  = maxed ? null : fusionCost(tier + 1);
+        const can   = !maxed && endlessOpen && pf >= (cost?.pf || 0) && credits >= (cost?.grids || 0);
+        const compNames = d.components.map((cid, k) => {
+          const nm = (BE_WEAPON_DEFS[cid]?.name || cid);
+          return k === 0 ? `${nm} <span style="opacity:.65">Lv5</span>` : `${nm} <span style="opacity:.65">Lv3+</span>`;
+        });
+        const dots = Array.from({ length: FUSION_MAX_TIER }, (_, k) =>
+          `<span class="cgu-dot${k < tier ? ' syn-filled' : ''}"></span>`).join('');
+        let btnClass = '', btnLabel = '', btnDis = '';
+        if (!endlessOpen)  { btnClass = 'locked';     btnLabel = '🔒 UNLOCK ENDLESS FIRST'; btnDis = 'disabled'; }
+        else if (maxed)    { btnClass = 'maxed';      btnLabel = 'MAX TIER';                btnDis = 'disabled'; }
+        else if (can)      { btnClass = 'syn-afford'; btnLabel = `${owned ? 'TIER ' + (tier + 1) : 'FORGE'} — ${cost.pf} 🧩 + ${cost.grids} Cores`; }
+        else               { btnClass = '';           btnLabel = `${cost.pf} 🧩 + ${cost.grids} Cores needed`; }
+        const tierLine = tier >= 1 ? (d.tiers[Math.min(tier, FUSION_MAX_TIER) - 1] || '') : d.tiers[0];
+        return `<div class="cgu-card syn-card${owned ? ' maxed' : ''}${can ? ' can-afford' : ''}${!endlessOpen ? ' locked-card' : ''}" data-idx="${i}" style="border-color:${owned ? d.palette.glow : ''}">
+          <div style="display:flex;align-items:center;gap:12px;">
+            <img src="${d.art}" alt="" style="width:84px;height:84px;object-fit:contain;mix-blend-mode:screen;filter:drop-shadow(0 0 10px ${d.palette.glow});">
+            <div>
+              <div class="cgu-card-name" style="color:${owned ? d.palette.glow : ''}">${d.name}${owned ? ' ✦' : ''}</div>
+              <div class="cgu-char-tag">${CHAR_DISPLAY_NAMES[d.char] || d.char}</div>
+              <div style="font-size:10px;letter-spacing:1px;color:#ff5a7a;font-weight:700;margin-top:3px;">ENDLESS / CHAOS ONLY · ENDGAME FUSION</div>
+            </div>
+          </div>
+          <div class="cgu-card-desc" style="margin-top:8px"><b>Recipe:</b> ${compNames.join(' + ')}</div>
+          <div class="cgu-card-desc">${d.desc}</div>
+          <div class="cgu-card-desc" style="opacity:.85">▸ ${d.mechanicText}</div>
+          <div class="cgu-card-effect">${tierLine}</div>
+          <div class="cgu-dots">${dots}</div>
+          <button class="cgu-buy-btn ${btnClass}" ${btnDis}>${btnLabel}</button>
         </div>`;
       }).join('');
     } else {
