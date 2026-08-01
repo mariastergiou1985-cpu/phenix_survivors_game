@@ -1379,7 +1379,7 @@ export class AudioManager {
 
   // Concurrency ceilings per category. A bucket may be namespaced with ':' (e.g.
   // 'bossTelegraph:titan') so each boss gets its own slot of 1 while sharing the cap.
-  static WAVE1_CAPS = { event: 1, bossTelegraph: 1, enemyTell: 3 };
+  static WAVE1_CAPS = { event: 1, bossTelegraph: 1, enemyTell: 3, fusion: 2 };
 
   static _wave1Registry(id) {
     return Object.prototype.hasOwnProperty.call(AudioManager.WAVE1_SFX, id)
@@ -1571,6 +1571,63 @@ export class AudioManager {
       this._w1Sources.clear();
     }
     this._w1Active = Object.create(null);
+  }
+
+  // ═══ FUSION ARMORY canonical audio hooks (Batch A, 2026-08-01) ══════════════
+  // Hooks ανά fusion: <fusion_id>_manifest / _charge / _travel / _impact /
+  // _aftermath. Το authored περιεχόμενο θα έρθει σε επόμενο audio Wave: τότε τα
+  // clips μπαίνουν στο WAVE1_SFX registry (+ .ogg/.mp3 στο wave1/) και αυτή η
+  // μέθοδος τα προτιμά αυτόματα — ΚΑΜΙΑ αλλαγή gameplay κώδικα δεν θα χρειαστεί.
+  // Μέχρι τότε: per-fusion ΔΙΑΚΡΙΤΟ procedural voice, παραγόμενο ντετερμινιστικά
+  // από το fusion id (ποτέ ο ίδιος ήχος σε όλα, ποτέ loop, πάντα one-shot →
+  // κανένα orphaned voice· περνά από το sfx bus, σέβεται mute/volume).
+  _fusionSeed(id) {
+    let h = 2166136261;
+    const s = String(id);
+    for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return (h >>> 0);
+  }
+  static FUSION_PHASES = ['manifest', 'charge', 'travel', 'impact', 'aftermath'];
+  playFusionCue(fusionId, phase) {
+    if (!fusionId || AudioManager.FUSION_PHASES.indexOf(phase) < 0) return 'invalid';
+    const hookId = fusionId + '_' + phase;
+    // 1) Authored path — ίδιο συμβόλαιο με playEventClass ('nofile' → fallback,
+    //    'blocked' → σιωπή ώστε ΠΟΤΕ να μη διπλασιαστεί το cue).
+    if (AudioManager._wave1Registry(hookId)) {
+      const r = this._wave1Play('fusion:' + fusionId, hookId, 0.20, 0.90 * AudioManager.MIX.eventBoost);
+      if (r === 'played') { if (phase === 'manifest' || phase === 'impact') this.duckMusic('event'); return r; }
+      if (r === 'blocked') return r;
+    }
+    // 2) Per-fusion procedural voice (bounded, throttled ανά hook).
+    if (this.muted || !this.actx) return 'nofile';
+    if (!this._forgeOk('fus:' + hookId, 240)) return 'blocked';
+    const seed = this._fusionSeed(fusionId);
+    const base   = 140 + (seed % 480);                 // 140-620 Hz — τονικότητα ανά fusion
+    const bright = 1200 + ((seed >>> 9) % 2600);       // 1.2-3.8 kHz accent ανά fusion
+    const wave   = ['sine', 'triangle', 'sawtooth'][(seed >>> 5) % 3];
+    switch (phase) {
+      case 'manifest':   // συναρμολόγηση: ανοδικό shimmer + σπινθήρες
+        this._tone({ type: wave, freqStart: base, freqEnd: base * 2.2, dur: this._v(0.34, 0.15), gain: 0.10 });
+        this._noiseBurst({ dur: 0.06, gain: 0.05, filterType: 'highpass', freq: bright, delay: 0.06 });
+        break;
+      case 'charge':     // ένταση: riser σε χαμηλό gain
+        this._tone({ type: 'sawtooth', freqStart: base * 0.8, freqEnd: base * 1.7, dur: this._v(0.42, 0.15), gain: 0.07 });
+        this._tone({ type: 'sine', freqStart: base * 0.5, freqEnd: base * 0.9, dur: 0.4, gain: 0.05, delay: 0.02 });
+        break;
+      case 'travel':     // κίνηση: doppler whoosh στο accent band
+        this._noiseBurst({ dur: this._v(0.26, 0.2), gain: 0.11, filterType: 'bandpass', freq: bright });
+        this._tone({ type: wave, freqStart: base * 1.6, freqEnd: base * 0.9, dur: 0.22, gain: 0.06 });
+        break;
+      case 'impact':     // χτύπημα: thump + πτώση
+        this._noiseBurst({ dur: this._v(0.16, 0.2), gain: 0.16, filterType: 'lowpass', freq: 420 });
+        this._tone({ type: wave, freqStart: base * 2.0, freqEnd: base * 0.4, dur: 0.24, gain: 0.12, delay: 0.01 });
+        break;
+      case 'aftermath':  // απόσβεση: detuned δίδυμο που σβήνει
+        this._tone({ type: 'sine', freqStart: base * 1.5, freqEnd: base * 1.42, dur: this._v(0.5, 0.2), gain: 0.055 });
+        this._tone({ type: 'triangle', freqStart: base * 2.25, freqEnd: base * 2.1, dur: 0.4, gain: 0.04, delay: 0.05 });
+        break;
+    }
+    return 'forged';
   }
 
   // ─── EDEN CORE transmission audio (V1) ──────────────────────────────────────

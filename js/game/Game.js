@@ -18,19 +18,19 @@ import { SupportDrone }   from '../entities/SupportDrone.js?v=20260711750000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260713600000';
 import { SystemEventManager } from './Events.js?v=20260802000000';
-import { UpgradeUI }      from './UpgradeUI.js?v=20260810250000';
+import { UpgradeUI }      from './UpgradeUI.js?v=20260902000000';
 import { weightedSample } from './Upgrades.js?v=20260722500000';
-import { BuildEngineRuntime } from './BuildEngine.js?v=20260829020000';   // BUILD ENGINE — always on (full migration 2026-07-18)
-import './BuildEngineChars1.js?v=20260810100000';   // P2.3a Taekwondo+CyberArm (side-effect register)
-import './BuildEngineChars2.js?v=20260810100000';   // P2.3b Brawler+Assassin (side-effect register)
-import './BuildEngineChars3.js?v=20260826000000';   // P2.4a Eddie+Dimi (side-effect register)
-import './BuildEngineChars4.js?v=20260826000000';   // P2.4b Phasewalker+Euclid+Oni (side-effect register)
-import './BuildEngineChars5.js?v=20260826000000';   // P2.5 Universal όπλα 21-25 (side-effect register)
-import './BuildEnginePassives.js?v=20260810100000'; // P2.6 Build passives §26-50 (generic hooks)
+import { BuildEngineRuntime } from './BuildEngine.js?v=20260902000000';   // BUILD ENGINE — always on (full migration 2026-07-18)
+import './BuildEngineChars1.js?v=20260902000000';   // P2.3a Taekwondo+CyberArm (side-effect register)
+import './BuildEngineChars2.js?v=20260902000000';   // P2.3b Brawler+Assassin (side-effect register)
+import './BuildEngineChars3.js?v=20260902000000';   // P2.4a Eddie+Dimi (side-effect register)
+import './BuildEngineChars4.js?v=20260902000000';   // P2.4b Phasewalker+Euclid+Oni (side-effect register)
+import './BuildEngineChars5.js?v=20260902000000';   // P2.5 Universal όπλα 21-25 (side-effect register)
+import './BuildEnginePassives.js?v=20260902000000'; // P2.6 Build passives §26-50 (generic hooks)
 import { MutationUI }      from './MutationUI.js?v=20260810210000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260827000000';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, COLLECTIBLE_FRAGMENT_COST, COLLECTIBLE_GRID_COST, ECHO_FRAGMENT_COST, ECHO_GRID_COST, SKILL_TREE, AMULET_DEFS, GRID_TO_PF_RATE } from './MetaProgress.js?v=20260723000000';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, COLLECTIBLE_FRAGMENT_COST, COLLECTIBLE_GRID_COST, ECHO_FRAGMENT_COST, ECHO_GRID_COST, SKILL_TREE, AMULET_DEFS, GRID_TO_PF_RATE } from './MetaProgress.js?v=20260902000000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260712520000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
@@ -1299,7 +1299,7 @@ export class Game {
   // P2.8: NULL ARSENAL — DOM overlay ΠΑΝΩ από το menu (δεν αγγίζει gameState)·
   // dynamic import ώστε το module να μη βαραίνει το boot όταν το flag είναι κλειστό.
   goToNullArsenal() {
-    import('./NullArsenalUI.js?v=20260810100000')
+    import('./NullArsenalUI.js?v=20260902000000')
       .then(m => m.openNullArsenal(this))
       .catch(err => console.error('[P2.8] NULL ARSENAL failed to open', err));
   }

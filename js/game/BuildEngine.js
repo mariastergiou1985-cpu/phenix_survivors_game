@@ -148,6 +148,13 @@ export const WEAPON_EXECUTORS = {};
 // Τα hooks ΔΕΝ τρέχουν σε echo-χτυπήματα (depth guard) — μηδενική αναδρομή.
 export const RUNTIME_HOOKS = { modDamage: [], onDamage: [], onKill: [], tick: [] };
 
+// FUSION ARMORY (2026-08-01): tag registry για τα fusion weapon ids ώστε το
+// _dealDamage να βλέπει tags και για fusion damage (DamageLog/RUNTIME_HOOKS).
+// Το FusionEngine κάνει register εδώ στο import του (ΙΔΙΟ ?v με το Game.js —
+// module-instance κανόνας). Κανένα fusion id ΔΕΝ μπαίνει σε WEAPON_DEFS ή
+// EVOLUTION_RECIPES — η ροή των level-up καρτών μένει ανέγγιχτη.
+export const FUSION_TAGS = {};
+
 export class BuildEngineRuntime {
   constructor(game) {
     console.log('%c[P2] BUILD ENGINE ACTIVE — ' + Object.keys(WEAPON_DEFS).length + ' weapons / ' +
@@ -526,7 +533,7 @@ export class BuildEngineRuntime {
     if (_est?.sanction) dmg *= 1 + 0.12 + (this._catalystSum('markBonus') || 0);   // Dimi Sanction Mark (P2.4a)
     if (_est?.shred) dmg *= 1.15;                                  // Grey-Goo nanite shred / Armor Fracture
     const _depth = this._hookDepth || 0;
-    const _tags = (WEAPON_DEFS[weaponId] || EVOLUTION_RECIPES[weaponId])?.tags || [];
+    const _tags = (WEAPON_DEFS[weaponId] || EVOLUTION_RECIPES[weaponId])?.tags || FUSION_TAGS[weaponId] || [];
     if (_depth === 0)                                              // P2.6 modDamage (ΠΡΙΝ τα boss caps) — armored
       for (const h of RUNTIME_HOOKS.modDamage) { try { const m = h(this, e, weaponId, _tags, dmg); if (m > 0) dmg *= m; } catch (_e) {} }
     const boss = (e.isBoss?.() || e.isMegaBoss);
@@ -550,6 +557,10 @@ export class BuildEngineRuntime {
     if (!g.player) return;
     this._t += dt;
     for (const w of this.weapons.values()) {
+      // FUSION ARMORY: όσο ένα ενεργό fusion ΑΝΤΙΚΑΘΙΣΤΑ ένα component weapon
+      // (def.replaces), το βασικό pattern σιωπά — κανένα duplicate attack. Το flag
+      // το βάζει/καθαρίζει ΜΟΝΟ το FusionEngine (per-run instance → auto-reset).
+      if (w._fusionSuppressed) continue;
       try {                                                        // armor: ανά όπλο
         const ex = WEAPON_EXECUTORS[w.id];
         if (ex) ex.update(this, w, dt);
@@ -769,7 +780,7 @@ export class BuildEngineRuntime {
       }
       // Marrow Reactor: τόξο φόρτισης γύρω από τον παίκτη (charge/24 -> nova)
       for (const w of this.weapons.values()) {
-        if (w.id !== 'marrow_spitter' || !w.evolved) continue;
+        if (w.id !== 'marrow_spitter' || !w.evolved || w._fusionSuppressed) continue;
         const p = this.game.player, full = EVOLUTION_RECIPES.be_marrow_reactor.charge.full;
         const k = Math.min(1, (w.charge || 0) / full);
         if (k <= 0.02 || !p) continue;
@@ -814,7 +825,7 @@ export class BuildEngineRuntime {
       }
       // skulls + pulses + blades
       for (const w of this.weapons.values()) {
-        if (w.id !== 'grave_cantor') continue;
+        if (w.id !== 'grave_cantor' || w._fusionSuppressed) continue;
         const n = w.skulls.length;
         if (w.evolved && n >= 2) {                                 // ηχητικές λεπίδες
           ctx.save(); ctx.globalCompositeOperation = 'lighter';
@@ -833,6 +844,7 @@ export class BuildEngineRuntime {
       }
       // P2.3+ executors: κάθε όπλο ζωγραφίζει τα δικά του (armored — ένα σπασμένο δεν ρίχνει τα άλλα)
       for (const w of this.weapons.values()) {
+        if (w._fusionSuppressed) continue;                         // FUSION replace → και τα visuals σιωπούν
         try { WEAPON_EXECUTORS[w.id]?.draw?.(this, ctx, w); }
         catch (e) { if ((w._drawErrs = (w._drawErrs || 0) + 1) <= 2) console.error('[P2] weapon "' + w.id + '" draw error', e); }
       }

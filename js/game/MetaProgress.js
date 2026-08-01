@@ -1,4 +1,5 @@
 import { PlatformAchievements } from '../platform/PlatformAchievements.js?v=20260712370000';
+import { FUSION_DEFS, FUSION_MAX_TIER, fusionCost } from './FusionCatalog.js?v=20260902000000';
 export const META_UPGRADES = [
   { key: 'maxHp',        name: 'Max HP',        desc: '+10 max HP per level',              maxLevel: 5, baseCost: 10 },
   { key: 'moveSpeed',    name: 'Move Speed',     desc: '+5% movement speed per level',       maxLevel: 5, baseCost: 10 },
@@ -393,6 +394,10 @@ export class MetaProgress {
     this.protocolUnlocks   = {};  // { [characterId]: true }   — PF-purchased character unlocks
     this.protocolCards     = {};  // { [cardId]: true }        — PF-purchased permanent Protocol cards
     this.amulets           = {};  // { [amuletId]: true }      — PF-purchased character amulets (ult +30%)
+    this.fusionCards       = {};  // { [fusionId]: tier 1..3 } — FUSION ARMORY cards (PF+Grids, atomic).
+                                  //   Tier 1 = η κάρτα αγοράστηκε· 2-3 = tier upgrades. Η κατοχή
+                                  //   ΔΕΝ δίνει το όπλο — ξεκλειδώνει μόνο τη δυνατότητα σχηματισμού
+                                  //   σε Endless/Chaos όταν ικανοποιηθεί το 3-weapon recipe in-run.
     this.profileName       = null;// optional custom player profile name (fallback 'PLAYER_01' in UI)
     this.relics       = {};  // { [relicId]: true }  — purchased relics
     this.equippedRelic = null; // 1R loadout (Maria 2026-07-18): the ONE relic active per run
@@ -450,6 +455,16 @@ export class MetaProgress {
       this.protocolUnlocks = (d.protocolUnlocks && typeof d.protocolUnlocks === 'object') ? d.protocolUnlocks : {};
       this.protocolCards   = (d.protocolCards   && typeof d.protocolCards   === 'object') ? d.protocolCards   : {};
       this.amulets         = (d.amulets         && typeof d.amulets         === 'object') ? d.amulets         : {};
+      // FUSION ARMORY — corruption-safe: missing → locked default ({}), invalid ids
+      // αγνοούνται/επισκευάζονται, tiers κόβονται στο [1..FUSION_MAX_TIER].
+      this.fusionCards = {};
+      if (d.fusionCards && typeof d.fusionCards === 'object') {
+        for (const [fid, tier] of Object.entries(d.fusionCards)) {
+          if (!FUSION_DEFS[fid]) continue;                       // άγνωστο id → ignore (repair)
+          const t = Math.floor(Number(tier));
+          if (t >= 1) this.fusionCards[fid] = Math.min(FUSION_MAX_TIER, t);
+        }
+      }
       this.profileName     = (typeof d.profileName === 'string' && d.profileName.trim()) ? d.profileName.slice(0, 16) : null;
       this.relics      = (d.relics     && typeof d.relics    === 'object') ? d.relics    : {};
       this.equippedRelic = (typeof d.equippedRelic === 'string') ? d.equippedRelic : null;
@@ -562,6 +577,7 @@ export class MetaProgress {
         protocolUnlocks: this.protocolUnlocks,
         protocolCards: this.protocolCards,
         amulets: this.amulets,
+        fusionCards: this.fusionCards,
         profileName: this.profileName,
         relics:    this.relics,
         equippedRelic: this.equippedRelic,
@@ -899,6 +915,29 @@ export class MetaProgress {
     else if (this.credits >= (a.creditCost || 2500)) this.credits -= (a.creditCost || 2500);
     else return 'poor';
     this.amulets[id] = true;
+    this._save();
+    return 'ok';
+  }
+
+  // ─── FUSION ARMORY cards (PF + Grid Cores, BOTH required — atomic) ──────────
+  // Ίδιο συμβόλαιο με tryBuyVessel/tryUnlockRelic: έλεγχος ΚΑΙ των δύο πόρων ΠΡΙΝ
+  // από κάθε μετάλλαξη, μετά χρέωση και των δύο ακριβώς μία φορά, dict, _save().
+  // Καμία μερική χρέωση, κανένα throw, string status codes.
+  getFusionTier(id) { return Math.max(0, Math.min(FUSION_MAX_TIER, Math.floor(Number(this.fusionCards?.[id]) || 0))); }
+  hasFusionCard(id) { return this.getFusionTier(id) >= 1; }
+  tryBuyFusionCard(id) {
+    const def = FUSION_DEFS[id];
+    if (!def)                                 return 'invalid';
+    const tier = this.getFusionTier(id);
+    if (tier >= FUSION_MAX_TIER)              return 'max';
+    // Endgame gate: οι κάρτες FUSION αγοράζονται μόνο όταν το Endless έχει ανοίξει
+    // (ίδιο pattern με τα endless-tier vessels/pets) — ποτέ μέσα στο campaign arc.
+    if (!this.isEndlessUnlocked())            return 'locked';
+    const cost = fusionCost(tier + 1);
+    if (this.protocolFragments < cost.pf || this.credits < cost.grids) return 'poor';
+    this.protocolFragments -= cost.pf;
+    this.credits           -= cost.grids;
+    this.fusionCards[id] = tier + 1;
     this._save();
     return 'ok';
   }

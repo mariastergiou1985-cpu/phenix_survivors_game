@@ -1,7 +1,7 @@
 import { WIDTH, HEIGHT, YELLOW, WHITE, GREY } from '../constants.js';
 import { drawText, wrapText, roundRect } from '../utils.js';
 import { RARITY_COLORS } from './Upgrades.js?v=20260722500000';
-import { WEAPON_DEFS, PASSIVE_DEFS, EVOLUTION_RECIPES } from './BuildEngine.js?v=20260810100000';
+import { WEAPON_DEFS, PASSIVE_DEFS, EVOLUTION_RECIPES } from './BuildEngine.js?v=20260902000000';
 
 export class UpgradeUI {
   constructor(choices, options = {}) {
