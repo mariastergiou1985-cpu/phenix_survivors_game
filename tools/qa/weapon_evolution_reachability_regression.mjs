@@ -32,7 +32,7 @@ const SELF = fileURLToPath(import.meta.url);
 // ══════════════════════════════════════════════════════════════════════════════════
 if (process.argv[2] === '--worker') {
   const seed = +process.argv[3], ch = process.argv[4], minutes = +process.argv[5];
-  const { installEnv, muteConsole } = await import(pathToFileURL(path.join(HERE, 'headless-env.mjs')).href);
+  const { installEnv, muteConsole } = await import(path.join(HERE, 'headless-env.mjs'));
   installEnv();
   const mulberry32 = (a) => () => { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
   Math.random = mulberry32(seed);
@@ -44,7 +44,7 @@ if (process.argv[2] === '--worker') {
   try { globalThis.sessionStorage.clear && globalThis.sessionStorage.clear(); } catch (_) {}
 
   const un = muteConsole();
-  const { Game } = await import(pathToFileURL(path.resolve(HERE, '../../js/game/Game.js')).href);
+  const { Game } = await import(path.resolve(HERE, '../../js/game/Game.js'));
   // MODULE IDENTITY (Maria 2026-08-02): the chars modules register every def into
   // './BuildEngine.js?v=<stamp>'. This file was pinned to a DEAD stamp, so it
   // received a 2-weapon BuildEngine instead of 25 and its assertions measured a registry that
@@ -149,13 +149,26 @@ T('≥1 natural evolution fires — every character on ≥1 seed', () => CHARS.e
 T('reachability is not a fluke — ≥50% of all runs reach weapon L5', () => { const n = runs.filter(r => r.maxWeaponLevel >= 5).length; return n >= runs.length / 2 || `only ${n}/${runs.length}`; });
 
 console.log('\n── VARIETY PRESERVED (not a guaranteed-same-build / not fully deterministic) ──');
-T('not every run evolves identically (some runs collection-limited, no evo)', () => { const e = runs.filter(r => r.evolutions > 0).length; return (e > 0 && e < runs.length) || `evolved ${e}/${runs.length} — suspicious if all-or-nothing`; });
+// VARIETY, NOT FAILURE (Maria 2026-08-02). This used to require 0 < evolvedRuns < total, i.e. it
+// demanded that SOME runs fail to evolve — a premise from when reachability was marginal. With
+// the card economy healthy every one of the 20 runs now evolves, so the old form failed on the
+// GOOD outcome. What it was really guarding is that the harness is not trivially fixed: the runs
+// must still differ from one another. That is asserted directly, against player level and the
+// time each run first became eligible, and it still fails if every run becomes identical.
+T('every run reaches an evolution (reachability is not seed-dependent)',
+  () => { const e = runs.filter(r => r.evolutions > 0).length; return e === runs.length || `evolved ${e}/${runs.length}`; });
+T('runs are still genuinely different from one another (not one fixed build)', () => {
+  const lv = new Set(runs.map(r => r.playerLevel));
+  const et = new Set(runs.map(r => r.firstEligible));
+  return (lv.size >= 3 && et.size >= 3) ||
+    `distinct playerLevels=${lv.size}, distinct firstEligible=${et.size} — suspiciously uniform`;
+});
 
 const totalEvo = runs.reduce((s, r) => s + r.evolutions, 0);
 const evoRuns = runs.filter(r => r.evolutions > 0).length;
 console.log(`\n  SUMMARY: ${totalEvo} evolutions across ${runs.length} deterministic runs; ${evoRuns}/${runs.length} runs evolved.`);
 for (const c of CHARS) console.log(`    ${c.padEnd(24)}: L5 ${byChar[c].l5}/${byChar[c].n}, catL3 ${byChar[c].cat}/${byChar[c].n}, eligible ${byChar[c].elig}/${byChar[c].n}, evolved ${byChar[c].evo}/${byChar[c].n}`);
-console.log('  Collection-limited seeds (few level-ups) may not evolve — that is the XP-collection axis (see PHASE4E_XP_BASELINE_ACCOUNTING), not the card economy.');
+console.log('  All seeds now evolve. XP collection remains the separate axis (see PHASE4E_XP_BASELINE_ACCOUNTING).');
 
 console.log(`\n═══ ${pass} PASS · ${fail} FAIL ═══`);
 process.exit(fail ? 1 : 0);
