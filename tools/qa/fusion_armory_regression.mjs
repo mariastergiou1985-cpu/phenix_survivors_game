@@ -350,14 +350,9 @@ T('[E1] ONE BuildEngine.js?v= specifier value across the entire runtime', () => 
 // (act1_late_eligibility 6/6, act1_full_campaign_flow 7/7). A harness must DERIVE the stamp from
 // js/game/BuildEngineChars1.js, never restate it.
 T('[E1b] no tools/qa harness hard-codes a BuildEngine ?v= specifier', () => {
-  // Known pending, deliberately untouched: these three carry UNCOMMITTED local edits (Windows
-  // pathToFileURL fixes) in Maria's working tree, so this pass did not rewrite them. Each still
-  // needs the same one-token change. The list is closed - a NEW stale file fails this test.
-  const PENDING = new Set([
-    'weapon_be_boss_damage_regression.mjs',
-    'weapon_be_live_evolution_regression.mjs',
-    'weapon_evolution_reachability_regression.mjs',
-  ]);
+  // The exemption list is now EMPTY: the last three harnesses were fixed on 2026-08-02, so every
+  // .mjs under tools/qa must derive the stamp. Any file that hard-codes a dead one fails here.
+  const PENDING = new Set();
   const dir = path.join(ROOT, 'tools/qa');
   const live = fs.readFileSync(path.join(ROOT, 'js/game/BuildEngineChars1.js'), 'utf8')
     .match(/BuildEngine\.js\?v=(\d+)/)[1];

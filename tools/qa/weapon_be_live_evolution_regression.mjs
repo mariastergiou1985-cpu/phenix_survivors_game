@@ -9,18 +9,26 @@
 //   · no dual-layer     — legacy _evolvedWeapons stays empty (no simultaneous legacy evolution)
 //   · reset             — g.reset() clears the BE weapon (evolution no longer fires)
 // Deterministic (seeded PRNG + virtual clock + cleared store). Exit 1 on any regression.
-import { fileURLToPath } from 'node:url';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const { installEnv, muteConsole } = await import(path.join(HERE, 'headless-env.mjs'));
+const { installEnv, muteConsole } = await import(pathToFileURL(path.join(HERE, 'headless-env.mjs')).href);
 installEnv();
 const mulberry32 = (a) => () => { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 Math.random = mulberry32(20260721);
 let vclock = 0; globalThis.performance = { now: () => vclock };
 const _D = globalThis.Date; globalThis.Date = class extends _D { static now() { return vclock; } constructor(...a) { if (a.length) super(...a); else super(vclock); } };
 let _un = muteConsole();
-const { Game } = await import(path.resolve(HERE, '../../js/game/Game.js'));
-const be = await import(path.resolve(HERE, '../../js/game/BuildEngine.js?v=20260810100000'));   // SAME instance the game uses
+const { Game } = await import(pathToFileURL(path.resolve(HERE, '../../js/game/Game.js')).href);
+// MODULE IDENTITY (Maria 2026-08-02): the chars modules register every def into
+// './BuildEngine.js?v=<stamp>'. This file was pinned to a DEAD stamp, so it
+// received a 2-weapon BuildEngine instead of 25 and its assertions measured a registry that
+// was simply not there. The stamp is now READ FROM THE SOURCE, so a cache-bust bump can
+// never strand it again.
+const BE_STAMP = readFileSync(path.resolve(HERE, '../../js/game/BuildEngineChars1.js'), 'utf8')
+  .match(/BuildEngine\.js\?v=(\d+)/)[1];
+const be = await import(pathToFileURL(path.resolve(HERE, '../../js/game/BuildEngine.js')).href + '?v=' + BE_STAMP);   // SAME instance the game uses
 _un();
 const R = be.EVOLUTION_RECIPES, W = be.WEAPON_DEFS;
 const IN = (k) => ({ keys: k || new Set(), mousePos: { x: 0, y: 0 }, mouseDown: false });

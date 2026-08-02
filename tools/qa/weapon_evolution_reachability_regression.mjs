@@ -19,7 +19,8 @@
 // native, then finish that weapon (→L5) + its catalyst (→L3), take any evolution offered.
 // Deterministic: seeded PRNG + virtual monotonic clock + cleared store + child-process
 // isolation. If a future change breaks reachability again, THIS GATE FAILS. Exit 1 on failure.
-import { fileURLToPath } from 'node:url';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 
@@ -31,7 +32,7 @@ const SELF = fileURLToPath(import.meta.url);
 // ══════════════════════════════════════════════════════════════════════════════════
 if (process.argv[2] === '--worker') {
   const seed = +process.argv[3], ch = process.argv[4], minutes = +process.argv[5];
-  const { installEnv, muteConsole } = await import(path.join(HERE, 'headless-env.mjs'));
+  const { installEnv, muteConsole } = await import(pathToFileURL(path.join(HERE, 'headless-env.mjs')).href);
   installEnv();
   const mulberry32 = (a) => () => { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
   Math.random = mulberry32(seed);
@@ -43,8 +44,15 @@ if (process.argv[2] === '--worker') {
   try { globalThis.sessionStorage.clear && globalThis.sessionStorage.clear(); } catch (_) {}
 
   const un = muteConsole();
-  const { Game } = await import(path.resolve(HERE, '../../js/game/Game.js'));
-  const be = await import(path.resolve(HERE, '../../js/game/BuildEngine.js?v=20260810100000'));
+  const { Game } = await import(pathToFileURL(path.resolve(HERE, '../../js/game/Game.js')).href);
+  // MODULE IDENTITY (Maria 2026-08-02): the chars modules register every def into
+  // './BuildEngine.js?v=<stamp>'. This file was pinned to a DEAD stamp, so it
+  // received a 2-weapon BuildEngine instead of 25 and its assertions measured a registry that
+  // was simply not there. The stamp is now READ FROM THE SOURCE, so a cache-bust bump can
+  // never strand it again.
+  const BE_STAMP = readFileSync(path.resolve(HERE, '../../js/game/BuildEngineChars1.js'), 'utf8')
+    .match(/BuildEngine\.js\?v=(\d+)/)[1];
+  const be = await import(pathToFileURL(path.resolve(HERE, '../../js/game/BuildEngine.js')).href + '?v=' + BE_STAMP);
   const IN = (k) => ({ keys: k || new Set(), mousePos: { x: 0, y: 0 }, mouseDown: false });
   const g = new Game(); g.audio = null;
   g.selectedCharacter = ch; g.gameState = 'playing'; g.reset(); g._enterEndless();
