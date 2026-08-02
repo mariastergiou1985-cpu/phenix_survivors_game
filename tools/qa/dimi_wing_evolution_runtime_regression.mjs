@@ -209,7 +209,12 @@ console.log('\n-- real hit geometry --');
   const upper = at('upper', 0.75);
   const lower = at('lower', -0.75);
   const rear = at('rear', Math.PI);
-  const outside = at('outside', 0, 150);
+  // DERIVED FROM THE RECIPE, NOT HARD-CODED (Maria 2026-08-02). This fixture used to sit at 150px,
+  // which was outside the 120px arc the evolution had BEFORE the COVERAGE FIX dated 2026-07-27
+  // raised wings.radius to 210 - so the harness had been asserting the old edge and failing on the
+  // new one. It fails identically on the pristine tree. Place the probe just past the real edge.
+  const WINGS = EVOLUTION_RECIPES.be_wing_guillotine.wings;
+  const outside = at('outside', 0, WINGS.radius + 8 /* enemy radius */ + 12);
   rig.game.enemies = [front, upper, lower, rear, outside];
   armWing(rig, true);
   rig.runtime.update(0.13);
@@ -221,9 +226,21 @@ console.log('\n-- real hit geometry --');
     (upper.hits.length === 1 && lower.hits.length === 1 && rear.hits.length === 0) ||
     `upper=${upper.hits.length}, lower=${lower.hits.length}, rear=${rear.hits.length}`
   );
-  test('Wing Guillotine respects its real radial edge', () =>
-    outside.hits.length === 0 || `outsideHits=${outside.hits.length}`
+  test(`Wing Guillotine respects its real radial edge (${WINGS.radius}px)`, () =>
+    outside.hits.length === 0 || `outsideHits=${outside.hits.length}, radius=${WINGS.radius}`
   );
+  // and the edge must genuinely bite: a probe just INSIDE the declared radius has to be caught,
+  // otherwise the assertion above would pass simply because the weapon stopped reaching anything.
+  {
+    const inside = at('inside-edge', 0, WINGS.radius - 12);
+    const rig2 = makeRig();
+    rig2.game.enemies = [inside];
+    armWing(rig2, true);
+    rig2.runtime.update(0.13);
+    test('a target just inside that edge is still caught', () =>
+      inside.hits.length > 0 || `insideHits=0 at ${WINGS.radius - 12}px`
+    );
+  }
 }
 
 console.log('\n-- boss and spread-swarm production measurements --');

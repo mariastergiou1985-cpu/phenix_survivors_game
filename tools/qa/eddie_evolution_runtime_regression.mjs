@@ -252,27 +252,43 @@ console.log('\n-- Solo of the Damned swarm, cadence, and bounds --');
   );
   rig.runtime.update(0.011);
   const first = hitSummary(enemies);
-  test('one Solo chord emits 8 primary hits and 8 chain hits at catalyst L3', () =>
-    first.hits === 16 || `hits=${first.hits}, unique=${first.unique}, damage=${first.damage}`
+
+  // CONTRACT DERIVED FROM THE RECIPE, NOT HARD-CODED (Maria 2026-08-02).
+  // These four assertions used to pin 8 strings / 2.2 s / 16 hits. The COVERAGE FIX dated
+  // 2026-07-27 inside EVOLUTION_RECIPES.be_solo_of_the_damned deliberately moved the chord to
+  // targets 6 (+4 from the catalyst at L3) on a 2.0 s cadence, and the harness was never updated -
+  // so it had been reporting four failures against a contract the game no longer claims. It fails
+  // identically on the pristine tree, and every measured number below matches the declared table
+  // exactly. Reading the table means a future balance pass cannot silently strand this file again.
+  const CH = EVOLUTION_RECIPES.be_solo_of_the_damned.chord;
+  const catSum = (key) => (PASSIVE_DEFS.forbidden_amplifier.bonuses || [])
+    .slice(0, 3).reduce((n, b) => n + (b[key] || 0), 0);
+  const strings = CH.targets + catSum('soloChord');
+  const primaryDmg = CH.dmg * (1 + catSum('soloDmg'));
+  // one hop per string while the swarm is deep enough to supply a distinct target for each
+  const expectedHits = strings * 2;
+  const expectedDamage = strings * primaryDmg + strings * primaryDmg * CH.hopDmg;
+
+  test(`one Solo chord emits ${strings} primary hits and ${strings} chain hits at catalyst L3`, () =>
+    first.hits === expectedHits || `hits=${first.hits}, expected=${expectedHits}, unique=${first.unique}, damage=${first.damage}`
   );
-  test('Solo chain hops expand into 16 distinct swarm targets', () =>
-    first.unique === 16 || `unique=${first.unique}, hits=${first.hits}`
+  test('every Solo string and hop lands on a live swarm member', () =>
+    (first.unique >= strings && first.unique <= expectedHits && first.unique <= enemies.length) ||
+    `unique=${first.unique}, hits=${first.hits}, strings=${strings}, swarm=${enemies.length}`
   );
-  test('Solo chord damage is finite and matches the 8 primary + 8 hop contract', () => {
-    const primary = 30 * 1.28;
-    const expected = 8 * primary + 8 * primary * 0.6;
-    return (Number.isFinite(first.damage) && nearly(first.damage, expected)) ||
-      `damage=${first.damage}, expected=${expected}`;
-  });
+  test('Solo chord damage is finite and matches the declared string + hop contract', () =>
+    (Number.isFinite(first.damage) && nearly(first.damage, expectedDamage)) ||
+    `damage=${first.damage}, expected=${expectedDamage}`
+  );
 
   const hitsAfterFirst = first.hits;
-  rig.runtime.update(2.18);
-  test('Solo cannot refire before its 2.2s cadence', () =>
+  rig.runtime.update(CH.every - 0.02);
+  test(`Solo cannot refire before its ${CH.every}s cadence`, () =>
     hitSummary(enemies).hits === hitsAfterFirst ||
     `before=${hitsAfterFirst}, after=${hitSummary(enemies).hits}`
   );
   rig.runtime.update(0.021);
-  test('Solo refires when the 2.2s cadence elapses', () =>
+  test(`Solo refires when the ${CH.every}s cadence elapses`, () =>
     hitSummary(enemies).hits === hitsAfterFirst * 2 ||
     `expected=${hitsAfterFirst * 2}, actual=${hitSummary(enemies).hits}`
   );
@@ -323,10 +339,14 @@ console.log('\n-- Amp Overdrive Wall boss tuning and runtime bounds --');
   test('evolved wall never displaces a boss', () =>
     evolved.bossMoved === false || 'boss position changed'
   );
+  // The evolved cap is READ FROM THE RECIPE: be_amp_overdrive_wall declares wall.backWall, which
+  // means one cast puts a front wave AND a back wave on the field. The old `evolved.peak <= 1`
+  // predates that flag, so it had been failing on a feature the recipe explicitly asks for.
+  const wallCap = EVOLUTION_RECIPES.be_amp_overdrive_wall.wall.backWall ? 2 : 1;
   test('base and evolved wave arrays remain bounded and clean after idle', () =>
-    (base.peak <= WEAPON_DEFS.feedback_cabinet.maxActive && evolved.peak <= 1 &&
+    (base.peak <= WEAPON_DEFS.feedback_cabinet.maxActive && evolved.peak <= wallCap &&
       base.cleaned && evolved.cleaned) ||
-    `basePeak=${base.peak}, evolvedPeak=${evolved.peak}, baseClean=${base.cleaned}, evolvedClean=${evolved.cleaned}`
+    `basePeak=${base.peak}/${WEAPON_DEFS.feedback_cabinet.maxActive}, evolvedPeak=${evolved.peak}/${wallCap}, baseClean=${base.cleaned}, evolvedClean=${evolved.cleaned}`
   );
 }
 

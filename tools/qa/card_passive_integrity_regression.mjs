@@ -51,10 +51,14 @@ globalThis.performance = globalThis.performance || { now: () => 0 };
 globalThis.requestAnimationFrame = globalThis.requestAnimationFrame || (() => 0);
 
 // MODULE IDENTITY: the chars modules register into this exact specifier.
-const BE = await import('../../js/game/BuildEngine.js?v=20260902100000');
+// The stamp is READ FROM THE SOURCE, never hard-coded: a cache-bust bump used to leave harnesses
+// pinned to a dead specifier, which silently gave them a 2-weapon BuildEngine instead of 25.
+const BE_STAMP = fs.readFileSync(path.join(ROOT, 'js/game/BuildEngineChars1.js'), 'utf8')
+  .match(/BuildEngine\.js\?v=(\d+)/)[1];
+const BE = await import('../../js/game/BuildEngine.js?v=' + BE_STAMP);
 for (const m of ['BuildEngineChars1', 'BuildEngineChars2', 'BuildEngineChars3',
                  'BuildEngineChars4', 'BuildEngineChars5', 'BuildEnginePassives'])
-  await import(`../../js/game/${m}.js?v=20260902100000`);
+  await import(`../../js/game/${m}.js?v=${BE_STAMP}`);
 const UP = await import('../../js/game/Upgrades.js');
 
 const mkRt = (char = 'x') => new BE.BuildEngineRuntime({

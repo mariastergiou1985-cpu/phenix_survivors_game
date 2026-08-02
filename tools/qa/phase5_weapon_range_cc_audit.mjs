@@ -1,6 +1,7 @@
 // Phase 5 Subagent D: production-backed starter weapon range / crowd-control audit.
 // Creates no fixtures outside this file and never mutates production source or tuning values.
 import { register } from 'node:module';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 
@@ -35,7 +36,9 @@ const { Enemy } = await import(pathToFileURL(path.join(ROOT, 'js/entities/Enemy.
 const { Vec2, WORLD_W, WORLD_H } = await import(pathToFileURL(path.join(ROOT, 'js/constants.js')).href);
 const catalog = await import(pathToFileURL(path.join(ROOT, 'js/game/WeaponCatalog.js')).href);
 // Match Game.js/BuildEngineChars3.js exactly so this audit reads the populated production registry.
-const build = await import(pathToFileURL(path.join(ROOT, 'js/game/BuildEngine.js')).href + '?v=20260810100000');
+const BE_STAMP = readFileSync(path.join(ROOT, 'js/game/BuildEngineChars1.js'), 'utf8')
+  .match(/BuildEngine\.js\?v=(\d+)/)[1];   // read from source: a cache-bust bump can never stale this
+const build = await import(pathToFileURL(path.join(ROOT, 'js/game/BuildEngine.js')).href + '?v=' + BE_STAMP);
 unmuteImports();
 
 const CHARS = [

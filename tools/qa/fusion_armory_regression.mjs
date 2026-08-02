@@ -343,6 +343,36 @@ T('[E1] ONE BuildEngine.js?v= specifier value across the entire runtime', () => 
   }
   return vals.size === 1 ? true : 'specifiers: ' + [...vals].join(', ');
 });
+// [E1b] The same trap, one directory over. tools/qa harnesses import BuildEngine too, and a
+// hard-coded ?v= there is INVISIBLE to [E1] because it only walks js/. Three harnesses had been
+// pinned to a dead '?v=20260810100000' for weeks: they silently received a 2-weapon BuildEngine
+// instead of 25 and reported 13 failures against a registry that was simply not there
+// (act1_late_eligibility 6/6, act1_full_campaign_flow 7/7). A harness must DERIVE the stamp from
+// js/game/BuildEngineChars1.js, never restate it.
+T('[E1b] no tools/qa harness hard-codes a BuildEngine ?v= specifier', () => {
+  // Known pending, deliberately untouched: these three carry UNCOMMITTED local edits (Windows
+  // pathToFileURL fixes) in Maria's working tree, so this pass did not rewrite them. Each still
+  // needs the same one-token change. The list is closed - a NEW stale file fails this test.
+  const PENDING = new Set([
+    'weapon_be_boss_damage_regression.mjs',
+    'weapon_be_live_evolution_regression.mjs',
+    'weapon_evolution_reachability_regression.mjs',
+  ]);
+  const dir = path.join(ROOT, 'tools/qa');
+  const live = fs.readFileSync(path.join(ROOT, 'js/game/BuildEngineChars1.js'), 'utf8')
+    .match(/BuildEngine\.js\?v=(\d+)/)[1];
+  const bad = [];
+  for (const f of fs.readdirSync(dir)) {
+    if (!f.endsWith('.mjs') || PENDING.has(f)) continue;
+    const src = fs.readFileSync(path.join(dir, f), 'utf8');
+    for (const line of src.split('\n')) {
+      if (/^\s*\/\//.test(line)) continue;                 // prose, not a specifier
+      const m = line.match(/BuildEngine[A-Za-z0-9]*\.js\?v=(\d+)/);
+      if (m && m[1] !== live) bad.push(`${f}: ${m[1]}`);
+    }
+  }
+  return bad.length === 0 ? true : 'stale: ' + bad.join(' | ') + ` (live ${live})`;
+});
 T('[E2] Game.js imports every BuildEngineChars module with its OWN current ?v (chain sane)', () => {
   const src = fs.readFileSync(path.join(ROOT, 'js/game/Game.js'), 'utf8');
   const chars = [...src.matchAll(/BuildEngineChars\d\.js\?v=(\d+)/g)].map(m => m[1]);

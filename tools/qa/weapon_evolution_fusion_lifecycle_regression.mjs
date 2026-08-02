@@ -23,6 +23,12 @@
  *
  * Run: node tools/qa/weapon_evolution_fusion_lifecycle_regression.mjs
  */
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+
 let pass = 0, fail = 0;
 const ok = (name, cond, detail = '') => {
   if (cond) { pass++; console.log(`  PASS  ${name}`); }
@@ -40,15 +46,19 @@ globalThis.performance = globalThis.performance || { now: () => 0 };
 globalThis.requestAnimationFrame = globalThis.requestAnimationFrame || (() => 0);
 
 // MODULE IDENTITY: BuildEngineChars1-5 + BuildEnginePassives register into
-// './BuildEngine.js?v=20260902100000'. Importing BuildEngine without that exact query yields a
+// the BuildEngine specifier Game.js uses. Importing BuildEngine without that exact query yields a
 // DIFFERENT, nearly-empty module instance and every assertion below would fail for the wrong
 // reason. Keep these specifiers in step with Game.js.
-const BE = await import('../../js/game/BuildEngine.js?v=20260902100000');
+// The stamp is READ FROM THE SOURCE, never hard-coded: a cache-bust bump used to leave harnesses
+// pinned to a dead specifier, which silently gave them a 2-weapon BuildEngine instead of 25.
+const BE_STAMP = fs.readFileSync(path.join(ROOT, 'js/game/BuildEngineChars1.js'), 'utf8')
+  .match(/BuildEngine\.js\?v=(\d+)/)[1];
+const BE = await import('../../js/game/BuildEngine.js?v=' + BE_STAMP);
 for (const m of ['BuildEngineChars1', 'BuildEngineChars2', 'BuildEngineChars3',
                  'BuildEngineChars4', 'BuildEngineChars5', 'BuildEnginePassives'])
-  await import(`../../js/game/${m}.js?v=20260902100000`);
-const FC = await import('../../js/game/FusionCatalog.js?v=20260902100000');
-const FE = await import('../../js/game/FusionEngine.js?v=20260902100000');
+  await import(`../../js/game/${m}.js?v=${BE_STAMP}`);
+const FC = await import('../../js/game/FusionCatalog.js?v=' + BE_STAMP);
+const FE = await import('../../js/game/FusionEngine.js?v=' + BE_STAMP);
 
 const mkGame = (char) => ({
   selectedCharacter: char, gameState: 'playing', endless: true, _bossRush: false,

@@ -3,6 +3,7 @@
 // mutation. Successful evolutions are counted only when _evolve changes a real weapon from
 // non-evolved to evolved, and every such transition must map to exactly one selected evolution
 // card. Each worker also completes a second campaign run on the same Game instance.
+import { readFileSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -49,9 +50,16 @@ if (process.argv[2] === '--worker') {
 
   const unmuteImports = muteConsole();
   const gameUrl = pathToFileURL(path.resolve(HERE, '../../js/game/Game.js')).href;
+  // MODULE IDENTITY (Maria 2026-08-02): BuildEngineChars1-5 + BuildEnginePassives are side-effect
+  // modules that register every def into './BuildEngine.js?v=<stamp>'. Importing BuildEngine with any
+  // OTHER query yields a different, nearly-empty instance (2 weapons instead of 25) and this harness
+  // then silently measures nothing. The stamp is READ FROM THE SOURCE rather than hard-coded, so a
+  // cache-bust bump can never make this file stale again.
+  const BE_STAMP = readFileSync(path.resolve(HERE, '../../js/game/BuildEngineChars1.js'), 'utf8')
+    .match(/BuildEngine\.js\?v=(\d+)/)[1];
   const buildEngineUrl = pathToFileURL(path.resolve(HERE, '../../js/game/BuildEngine.js')).href;
   const { Game } = await import(gameUrl);
-  const beMod = await import(buildEngineUrl + '?v=20260810100000');
+  const beMod = await import(buildEngineUrl + '?v=' + BE_STAMP);
   unmuteImports();
 
   const input = (keys) => ({ keys: keys || new Set(), mousePos: { x: 0, y: 0 }, mouseDown: false });
