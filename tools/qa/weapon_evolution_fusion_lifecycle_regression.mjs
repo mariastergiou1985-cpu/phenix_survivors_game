@@ -40,15 +40,15 @@ globalThis.performance = globalThis.performance || { now: () => 0 };
 globalThis.requestAnimationFrame = globalThis.requestAnimationFrame || (() => 0);
 
 // MODULE IDENTITY: BuildEngineChars1-5 + BuildEnginePassives register into
-// './BuildEngine.js?v=20260902070000'. Importing BuildEngine without that exact query yields a
+// './BuildEngine.js?v=20260902080000'. Importing BuildEngine without that exact query yields a
 // DIFFERENT, nearly-empty module instance and every assertion below would fail for the wrong
 // reason. Keep these specifiers in step with Game.js.
-const BE = await import('../../js/game/BuildEngine.js?v=20260902070000');
+const BE = await import('../../js/game/BuildEngine.js?v=20260902080000');
 for (const m of ['BuildEngineChars1', 'BuildEngineChars2', 'BuildEngineChars3',
                  'BuildEngineChars4', 'BuildEngineChars5', 'BuildEnginePassives'])
-  await import(`../../js/game/${m}.js?v=20260902070000`);
-const FC = await import('../../js/game/FusionCatalog.js?v=20260902070000');
-const FE = await import('../../js/game/FusionEngine.js?v=20260902070000');
+  await import(`../../js/game/${m}.js?v=20260902080000`);
+const FC = await import('../../js/game/FusionCatalog.js?v=20260902080000');
+const FE = await import('../../js/game/FusionEngine.js?v=20260902080000');
 
 const mkGame = (char) => ({
   selectedCharacter: char, gameState: 'playing', endless: true, _bossRush: false,

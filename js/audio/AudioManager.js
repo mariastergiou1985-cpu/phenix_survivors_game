@@ -661,6 +661,10 @@ export class AudioManager {
     this._stop(this._chaosAudio);
     this.resetEddieRiffs();  // run end (death/victory) — FULL playlist reset, track 1 armed again
     this.stopJukebox();      // and any OST jukebox track
+    // Procedural weather loops are NOT music tracks, so nothing above touched them and they
+    // survived death and victory as a permanent drone. They are the only looping voices in the
+    // engine; stopping them here makes stopAll() mean what its name says.
+    for (const _name of Object.keys(this._forgeLoops || {})) this.forgeLoopStop(_name);
   }
 
   toggleMute() {

@@ -544,7 +544,12 @@ export class BuildEngineRuntime {
   // ── damage chokepoint: boss caps + bossMultiplier + crits + DamageLog ────────
   _dealDamage(weaponId, e, raw, bossMult, crit) {
     const g = this.game;
-    if (!e || e.hp <= 0) return false;
+    if (!e || !(e.hp > 0)) return false;            // !(hp > 0) also rejects an already-NaN hp
+    // A single NaN/Infinity/negative raw value used to write e.hp = NaN. From then on NaN <= 0 is
+    // false everywhere, so the enemy was immortal for the rest of the run: this guard, _tickStatus's
+    // cleanup, _updateProjectiles' filter and Enemy.takeHit's death check all read it as alive.
+    if (!Number.isFinite(raw) || raw <= 0) return false;
+    if (!Number.isFinite(bossMult)) bossMult = 1;
     let dmg = raw * (crit ? (weaponId === 'grave_cantor' || weaponId === 'be_revenant_choir' ? 1.5 : 1.6) : 1);
     const _est = this._status.get(e);
     if (_est?.sanction) dmg *= 1 + 0.12 + (this._catalystSum('markBonus') || 0);   // Dimi Sanction Mark (P2.4a)

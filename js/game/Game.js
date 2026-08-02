@@ -13,14 +13,14 @@ import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260712090000';
 import { Player }         from '../entities/Player.js?v=20260810210000';
 import { XpShardSystem }  from '../entities/XpShards.js?v=20260724000000';   // Phase 1: physical Data-XP
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260706270000';
-import { Enemy, preloadAllWeaponSprites, selectHpBarEnemies } from '../entities/Enemy.js?v=20260829040000';
+import { Enemy, preloadAllWeaponSprites, selectHpBarEnemies } from '../entities/Enemy.js?v=20260902080000';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=20260711750000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260713600000';
 import { SystemEventManager } from './Events.js?v=20260802000000';
 import { UpgradeUI }      from './UpgradeUI.js?v=20260902000000';
 import { weightedSample } from './Upgrades.js?v=20260722500000';
-import { BuildEngineRuntime, WEAPON_DEFS as BE_WEAPON_DEFS } from './BuildEngine.js?v=20260902070000';   // BUILD ENGINE — always on (full migration 2026-07-18)
+import { BuildEngineRuntime, WEAPON_DEFS as BE_WEAPON_DEFS } from './BuildEngine.js?v=20260902080000';   // BUILD ENGINE — always on (full migration 2026-07-18)
 import { FUSION_DEFS, FUSION_CARD_ORDER, FUSION_ART_READY, FUSION_MAX_TIER, fusionCost, CHAR_DISPLAY_NAMES } from './FusionCatalog.js?v=20260902070000';   // FUSION ARMORY (Batch B)
 import { FusionEngine } from './FusionEngine.js?v=20260902070000';   // FUSION ARMORY runtime (Batch D)
 import './BuildEngineChars1.js?v=20260902000000';   // P2.3a Taekwondo+CyberArm (side-effect register)
@@ -141,7 +141,11 @@ const WEAPON_VFX_META = Object.freeze({
   magnetic_arc:     { cols: 4, frameW: 128, frameH: 128, totalFrames: 16, fps: 24 },
   spirit_crescent:  { cols: 4, frameW: 256, frameH: 128, totalFrames: 16, fps: 24 },
   shadow_toxic:     { cols: 4, frameW: 128, frameH: 128, totalFrames: 12, fps: 20 },
-  nexus_chakram:    { cols: 6, frameW: 256, frameH: 256, totalFrames: 24, fps: 28 },
+  // Maria's single-illustration form. The old entry asked for a 6x4 grid of 256px frames, but
+  // assets/weapons/vfx/nexus_chakram.png is 332x220 - it cannot hold even one 256px frame past the
+  // first, so 23 of the 24 source rects fell outside the image and the Brawler's signature weapon
+  // played one partial crop followed by 23 blank frames. Same shape as storm_conductor below.
+  nexus_chakram:    { cols: 1, frameW: 1254, frameH: 1254, totalFrames: 1, fps: 1 },
   gas_needle:       { cols: 4, frameW: 128, frameH: 128, totalFrames: 16, fps: 22 },
   cataclysm_pulse:  { cols: 6, frameW: 256, frameH: 256, totalFrames: 24, fps: 20 },
   glitch_tear:      { cols: 5, frameW: 256, frameH: 256, totalFrames: 20, fps: 18 },
@@ -149,14 +153,21 @@ const WEAPON_VFX_META = Object.freeze({
   // frame + matching WIELDER_VFX_OVERRIDES) instead of the old procedural frame sheets.
   storm_conductor:  { cols: 1, frameW: 1254, frameH: 1254, totalFrames: 1, fps: 1 },
   plasma_execution: { cols: 1, frameW: 1254, frameH: 1254, totalFrames: 1, fps: 1 },
-  cataclysm_chain:  { cols: 8, frameW: 256, frameH: 256, totalFrames: 32, fps: 24 },
-  frozen_eden:      { cols: 5, frameW: 256, frameH: 256, totalFrames: 20, fps: 20 },
+  // Same class of defect as nexus_chakram above: both of these are Maria's 1254x1254 single
+  // illustrations, not procedural frame sheets. Asking for an 8x4 grid of 256px frames needs
+  // 2048x1024 and a 5x4 grid needs 1280x1024, so 16 of 32 and 8 of 20 source rects fell outside
+  // the image and rendered blank. Single-illustration form, exactly like storm_conductor.
+  cataclysm_chain:  { cols: 1, frameW: 1254, frameH: 1254, totalFrames: 1, fps: 1 },
+  frozen_eden:      { cols: 1, frameW: 1254, frameH: 1254, totalFrames: 1, fps: 1 },
   // Depth-expansion evolutions — single-illustration art (1254² whole frame). The matching
   // WIELDER_VFX_OVERRIDES entry makes _spawnWeaponVFX draw the whole image in-world (capped
   // 320px, additive) so the real art shows on fire instead of only thin procedural bolts.
   chaos_chord:      { cols: 1, frameW: 1254, frameH: 1254, totalFrames: 1, fps: 1 },
   grid_reaper:      { cols: 1, frameW: 1254, frameH: 1254, totalFrames: 1, fps: 1 },
-  cryo_sovereign:   { cols: 1, frameW: 1254, frameH: 1254, totalFrames: 1, fps: 1 },
+  // assets/weapons/vfx/cryo_sovereign.png is a 156x190 thumbnail, not the 1254x1254 illustration
+  // its siblings are. Declaring 1254 clipped both source and destination, landing the art in the
+  // top-left ~12% of its draw box, off-centre. Declare the real size until full-res art exists.
+  cryo_sovereign:   { cols: 1, frameW: 156, frameH: 190, totalFrames: 1, fps: 1 },
   ion_halo:         { cols: 1, frameW: 1254, frameH: 1254, totalFrames: 1, fps: 1 },
   null_lance:       { cols: 1, frameW: 1254, frameH: 1254, totalFrames: 1, fps: 1 },
   ember_storm:      { cols: 1, frameW: 1254, frameH: 1254, totalFrames: 1, fps: 1 },
@@ -824,7 +835,9 @@ export class Game {
       ['magnetic_arc',     'assets/weapons/vfx/magnetic_arc_burst.png'],
       ['spirit_crescent',  'assets/weapons/vfx/spirit_crescent_kick.png'],
       ['shadow_toxic',     'assets/weapons/vfx/shadow_toxic_cuts.png'],
-      ['nexus_chakram',    'assets/weapons/vfx/nexus_chakram.png'],
+      // 1254x1254 illustration to match the single-frame meta above (the 332x220 vfx/ file is a
+      // thumbnail and cannot be sampled as a frame sheet).
+      ['nexus_chakram',    'assets/weapons/nexus/nexus_nexus_chakram.png'],
       ['gas_needle',       'assets/weapons/vfx/gas_needle_vector.png'],
       ['cataclysm_pulse',  'assets/weapons/vfx/cataclysm_pulse.png'],
       ['glitch_tear',      'assets/weapons/vfx/glitch_tear.png'],
@@ -2365,6 +2378,10 @@ export class Game {
       if (Array.isArray(this._enemyBeams))    this._enemyBeams.length    = 0;
       if (Array.isArray(this._enemyOrbZones)) this._enemyOrbZones.length = 0;
       this.hostileDirector?.reset();
+      // The three weather loops are started by _drawWeatherTheater and stopped ONLY from inside it.
+      // draw() early-returns in the menu, so the loop never got another chance to stop and a rain /
+      // wind / rumble drone played permanently under the menu theme. Idempotent when not running.
+      for (const _loop of ['rain', 'rumble', 'wind']) this.audio?.forgeLoopStop?.(_loop);
       this.gameOver  = false;
       this.victory   = false;
       this.paused    = false;
@@ -13345,7 +13362,10 @@ export class Game {
   // Uniform list of damageable targets: array enemies + present singleton mini-bosses.
   _brawlerTargets() {
     const list = [];
-    for (const e of this.enemies) list.push({ obj: e, arr: true });
+    // hp <= 0 must be filtered here exactly as the singleton branch below already does. Without it a
+    // stale snapshot (an AoE that kills a neighbour mid-loop, or the singularity_aura drain which
+    // never calls _die) hands corpses to every consumer of this helper.
+    for (const e of this.enemies) { if (!e || !(e.hp > 0)) continue; list.push({ obj: e, arr: true }); }
     const singles = [
       [this.titanBoss,        this._titanDie],
       [this.annihilatorBoss,  this._annihilatorDie],
@@ -13367,6 +13387,12 @@ export class Game {
   // Apply a hit (array enemy via takeHit; singleton mini-boss via hp + death routing).
   _brawlerHit(t, dmg, color) {
     const b = t.obj;
+    // The load-bearing guard: every one of this helper's ~20 call sites funnels through here, so one
+    // check covers stale snapshots, aura-zombies and NaN hp alike. !(hp > 0) also rejects NaN.
+    // Without it a corpse could be re-killed, and each re-kill paid a FULL second reward: kill count,
+    // XP, nexus charge, score, drop roll and the boss-kill relic hooks.
+    if (!b || !(b.hp > 0)) return;
+    if (!Number.isFinite(dmg) || dmg <= 0) return;
     // Game Feel: pass element color to enemy so _die() can spawn element death particles.
     b._lastHitColor = color;
 
@@ -27482,9 +27508,22 @@ _drawLoreArchive(ctx) {
     if (boss._dpsWindowStart === undefined || now - boss._dpsWindowStart >= 1.0) {
       boss._dpsWindowStart = now;
       boss._dpsAccum       = 0;
+      boss._dpsLeak        = 0;
     }
+    // Guard first: a non-finite or negative raw value used to poison boss._dpsAccum with NaN,
+    // which then made Math.max(0, cap - NaN) NaN for the rest of the window and disabled the cap.
+    if (!Number.isFinite(rawDmg) || rawDmg <= 0) return 0;
     const room = Math.max(0, cap - (boss._dpsAccum || 0));
-    const eff  = rawDmg <= room ? rawDmg : room + (rawDmg - room) * 0.2;   // diminishing past the cap
+    // The old line was `room + (rawDmg - room) * 0.2`, which is a DIMINISHING RETURN, not a ceiling:
+    // once _dpsAccum passed the cap, room was 0 and every further hit still delivered rawDmg * 0.2,
+    // without limit, inside the same 1 s window. Measured 60 hits of raw 1000 against a mega boss:
+    // 12 068 applied against an 85 budget - a 142x overshoot. The leak is now itself budgeted, so
+    // the true per-second ceiling is cap * 1.2 from all capped sources combined.
+    const leakBudget = 0.2 * cap;
+    const leaked     = Math.max(0, boss._dpsLeak || 0);
+    const give       = Math.min(Math.max(0, rawDmg - room) * 0.2, Math.max(0, leakBudget - leaked));
+    boss._dpsLeak    = leaked + give;
+    const eff        = Math.min(rawDmg, room) + give;
     boss._dpsAccum = (boss._dpsAccum || 0) + eff;
     return eff;
   }

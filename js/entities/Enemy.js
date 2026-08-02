@@ -848,6 +848,9 @@ export class Enemy {
   }
 
   _die(game) {
+    // _die is not re-entrant. Without this a second call on the same corpse paid a full second
+    // reward again — kill count, XP, nexus charge, score, drop roll and the boss-kill relic hooks.
+    if (this._killed) return;
     // Explicit death marker. The Chaos Titan reward used to infer "died" purely from absence
     // in game.enemies, which also fires on despawn — a full-HP Titan removed for any other
     // reason paid out its reward relic. _die() is the only real death path.
