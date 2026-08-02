@@ -217,7 +217,7 @@ export class BuildEngineRuntime {
   _st(e) { let s = this._status.get(e); if (!s) { s = {}; this._status.set(e, s); } return s; }
   applyShock(e, dur) {
     if (e.isBoss?.() || e.isMegaBoss) return;
-    e.slowTimer = Math.max(e.slowTimer || 0, dur); e.slowFactor = 0.02;
+    e.slowTimer = Math.max(e.slowTimer || 0, dur); e.slowFactor = Math.min(e.slowFactor ?? 0.55, 0.02);
     this._st(e).shock = dur;
     if (this.fx.length < FX_CAP) this.fx.push({ kind: 'spark', x: e.pos.x, y: e.pos.y, r: e.radius + 6, t: 0, life: 0.22 });
   }
@@ -248,6 +248,10 @@ export class BuildEngineRuntime {
       if (s.fear !== undefined) { s.fear -= dt; if (s.fear <= 0) delete s.fear; }
       if (s.sanction !== undefined) { s.sanction -= dt; if (s.sanction <= 0) delete s.sanction; }
       if (s.shred !== undefined) { s.shred -= dt; if (s.shred <= 0) delete s.shred; }
+      // scars was the one weapon-authored key with no expiry, so its entry could never become empty
+      // and _status grew without bound - measured 1951 live entries after 300 s, each one pinning a
+      // culled Enemy object. Every key must decay, or the Map is a leak by construction.
+      if (s.scarsT !== undefined) { s.scarsT -= dt; if (s.scarsT <= 0) { delete s.scarsT; delete s.scars; } }
       if (Object.keys(s).length === 0) this._status.delete(e);     // fix: κράτα custom keys (scars κ.ά.)
     }
     for (let i = this.patches.length - 1; i >= 0; i--) {
@@ -541,6 +545,22 @@ export class BuildEngineRuntime {
     return true;
   }
 
+  /**
+   * Crit multiplier for a weapon id. Weapons declare it; evolutions do not, so an evolution id
+   * resolves through the base weapon that owns it. Anything unknown (fusion ids, the legacy
+   * layer) keeps the historical 1.6 so this change cannot move damage it was never meant to.
+   */
+  _critMult(weaponId) {
+    let m = this._cmCache?.get(weaponId);
+    if (m !== undefined) return m;
+    const d = WEAPON_DEFS[weaponId];
+    if (d) m = d.critMult;
+    else for (const w of Object.values(WEAPON_DEFS)) if (w.evolution === weaponId) { m = w.critMult; break; }
+    if (!(m > 0)) m = 1.6;
+    (this._cmCache ||= new Map()).set(weaponId, m);
+    return m;
+  }
+
   // ── damage chokepoint: boss caps + bossMultiplier + crits + DamageLog ────────
   _dealDamage(weaponId, e, raw, bossMult, crit) {
     const g = this.game;
@@ -550,9 +570,16 @@ export class BuildEngineRuntime {
     // cleanup, _updateProjectiles' filter and Enemy.takeHit's death check all read it as alive.
     if (!Number.isFinite(raw) || raw <= 0) return false;
     if (!Number.isFinite(bossMult)) bossMult = 1;
-    let dmg = raw * (crit ? (weaponId === 'grave_cantor' || weaponId === 'be_revenant_choir' ? 1.5 : 1.6) : 1);
+    // The crit multiplier is DECLARED per weapon (WEAPON_DEFS[id].critMult) and NullArsenalUI
+    // renders that number to the player - but this line used to hardcode 1.6 for everything except
+    // two ids. 17 of the 25 weapons diverged: monowire_lash lost 50% of its crit bonus (2.2 -> 1.6),
+    // magma_uppercut 40% (2.0 -> 1.6), while storm_sash and the 1.5 tier silently gained. Evolutions
+    // declare none, so the resolver walks back to the base weapon's value.
+    let dmg = raw * (crit ? this._critMult(weaponId) : 1);
     const _est = this._status.get(e);
-    if (_est?.sanction) dmg *= 1 + 0.12 + (this._catalystSum('markBonus') || 0);   // Dimi Sanction Mark (P2.4a)
+    // markBonus is likewise declared on cyber_gauntlets_injection and was hardcoded here.
+    if (_est?.sanction) dmg *= 1 + (WEAPON_DEFS.cyber_gauntlets_injection?.markBonus ?? 0.12)
+                                 + (this._catalystSum('markBonus') || 0);   // Dimi Sanction Mark (P2.4a)
     if (_est?.shred) dmg *= 1.15;                                  // Grey-Goo nanite shred / Armor Fracture
     const _depth = this._hookDepth || 0;
     const _tags = (WEAPON_DEFS[weaponId] || EVOLUTION_RECIPES[weaponId])?.tags || FUSION_TAGS[weaponId] || [];
@@ -727,7 +754,7 @@ export class BuildEngineRuntime {
           // micro-stagger (όχι bosses)
           if (!e.isBoss?.() && !e.isMegaBoss) {
             e.slowTimer  = Math.max(e.slowTimer || 0, def.stagger);
-            e.slowFactor = 0.08;
+            e.slowFactor = Math.min(e.slowFactor ?? 0.55, 0.08);
           }
         }
       }

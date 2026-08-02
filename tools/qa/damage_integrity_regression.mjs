@@ -49,10 +49,10 @@ globalThis.performance = globalThis.performance || { now: () => 0 };
 globalThis.requestAnimationFrame = globalThis.requestAnimationFrame || (() => 0);
 
 // MODULE IDENTITY: BuildEngineChars1-5 + BuildEnginePassives register into this exact specifier.
-const BE = await import('../../js/game/BuildEngine.js?v=20260902080000');
+const BE = await import('../../js/game/BuildEngine.js?v=20260902090000');
 for (const m of ['BuildEngineChars1', 'BuildEngineChars2', 'BuildEngineChars3',
                  'BuildEngineChars4', 'BuildEngineChars5', 'BuildEnginePassives'])
-  await import(`../../js/game/${m}.js?v=20260902080000`);
+  await import(`../../js/game/${m}.js?v=20260902090000`);
 
 // ── K1 — the boss cap actually bounds ──────────────────────────────────────
 // _capBossDamage is a Game method with no dependencies on game state beyond `this`, so it is
@@ -187,6 +187,59 @@ console.log('\n── 5. K5 — weather loops cannot outlive the run ──');
   // the only other stop site must still be the weather theatre itself
   const sites = (GameSrc.match(/forgeLoopStop/g) || []).length;
   ok('Game.js has both the theatre stops and the boundary stop', sites >= 4, `${sites} call sites`);
+}
+
+
+// ── W3 — declared stats are the applied stats; status keys all expire ──────
+console.log('\n── 6. W3 — critMult, markBonus, slowFactor, scars, smites ──');
+{
+  const g2 = { enemies: [], player: { pos: { x: 0, y: 0 } }, selectedCharacter: 'x', timeAlive: 0,
+               _weaponLevels: new Map(), _consumedWeapons: new Set(), triggerAnnouncement() {},
+               meta: { getFusionTier: () => 0 } };
+  const rt2 = new BE.BuildEngineRuntime(g2);
+  let diverge = [];
+  for (const [id, d] of Object.entries(BE.WEAPON_DEFS)) {
+    if (!d.critMult) continue;
+    if (Math.abs(rt2._critMult(id) - d.critMult) > 1e-9) diverge.push(id);
+  }
+  ok('every declared critMult is the one actually applied', diverge.length === 0,
+     `${diverge.length} diverge (was 17): ${diverge.join(',')}`);
+  ok('an evolution inherits its base weapon crit', Math.abs(rt2._critMult('be_wire_garrote_web') - 2.2) < 1e-9,
+     `got ${rt2._critMult('be_wire_garrote_web')}`);
+  ok('an unknown / legacy id keeps the historical 1.6', rt2._critMult('plasma_blade') === 1.6);
+
+  const beSrc = fs.readFileSync(path.join(ROOT, 'js/game/BuildEngine.js'), 'utf8');
+  ok('markBonus is read from the weapon def, not hardcoded', /markBonus \?\? 0\.12/.test(beSrc));
+  ok('scars expire in _tickStatus', /scarsT/.test(beSrc));
+
+  const enemySrc2 = fs.readFileSync(path.join(ROOT, 'js/entities/Enemy.js'), 'utf8');
+  ok('slowFactor is restored when its timer expires', /slowTimer <= 0\) this\.slowFactor = 0\.55/.test(enemySrc2));
+  const rawWrites = [];
+  for (const f of ['js/game/BuildEngine.js', 'js/game/BuildEngineChars2.js', 'js/game/BuildEngineChars4.js']) {
+    const t = fs.readFileSync(path.join(ROOT, f), 'utf8');
+    for (const m of t.matchAll(/e\.slowFactor = ([^;]+);/g))
+      if (!/Math\.min/.test(m[1])) rawWrites.push(f + ': ' + m[1].trim());
+  }
+  ok('no status source overwrites a stronger slow', rawWrites.length === 0, rawWrites.join(' | '));
+
+  const c3 = fs.readFileSync(path.join(ROOT, 'js/game/BuildEngineChars3.js'), 'utf8');
+  ok('smites are capped', /SMITE_CAP/.test(c3));
+  ok('smites no longer retain a dead Enemy', !/smites\.push\(\{ x: [^}]*\be\b[,:]/.test(c3));
+
+  const gs = fs.readFileSync(path.join(ROOT, 'js/game/Game.js'), 'utf8');
+  ok('the endless cull drops the status entry', /_status\?\.delete\(e\)/.test(gs));
+  // Every place that drives an enemy's hp to 0 outside takeHit() must route the kill through
+  // _die(), or the enemy stays in game.enemies: still moving, still dealing contact damage, and
+  // served to every targeting helper as a live target.
+  const zombies = [];
+  for (const re of [/e\.hp -= DPS \* dt;/g, /\n\s*e\.hp = 0;/g]) {
+    for (const m of gs.matchAll(re)) {
+      const after = gs.slice(m.index, m.index + 420);
+      if (!/_die/.test(after)) zombies.push(gs.slice(0, m.index).split('\n').length);
+    }
+  }
+  ok('no vessel effect leaves a live zombie behind', zombies.length === 0,
+     `unrouted hp writes at Game.js line(s) ${zombies.join(', ')}`);
 }
 
 console.log(`\n${'─'.repeat(52)}`);

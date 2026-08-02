@@ -6,7 +6,7 @@
 // ΚΑΝΕΝΑ PNG, μηδέν shadowBlur.
 // ═══════════════════════════════════════════════════════════════════════════════
 import { WEAPON_DEFS, PASSIVE_DEFS, EVOLUTION_RECIPES, WEAPON_EXECUTORS }
-  from './BuildEngine.js?v=20260902080000';
+  from './BuildEngine.js?v=20260902090000';
 
 function aimAngle(rt) {
   const p = rt.game.player, e = rt._nearestEnemy(p.pos.x, p.pos.y);
@@ -96,7 +96,7 @@ WEAPON_EXECUTORS.faultline_fist = {
             if (segHit(ln.pts[s][0], ln.pts[s][1], ln.pts[s + 1][0], ln.pts[s + 1][1], e, (w.evolved ? evo.width : d.width) / 2)) {
               c.hit.add(e);
               rt._dealDamage(wid, e, dmgBase * ln.mult, bm, Math.random() < d.critChance);
-              if (!e.isBoss?.() && !e.isMegaBoss) { e.slowTimer = Math.max(e.slowTimer || 0, d.stagger); e.slowFactor = 0.10; }
+              if (!e.isBoss?.() && !e.isMegaBoss) { e.slowTimer = Math.max(e.slowTimer || 0, d.stagger); e.slowFactor = Math.min(e.slowFactor ?? 0.55, 0.10); }
               break;
             }
           }

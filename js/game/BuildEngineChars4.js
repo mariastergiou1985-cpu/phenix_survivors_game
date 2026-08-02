@@ -5,7 +5,7 @@
 // ΚΑΝΕΝΑ PNG, μηδέν shadowBlur.
 // ═══════════════════════════════════════════════════════════════════════════════
 import { WEAPON_DEFS, PASSIVE_DEFS, EVOLUTION_RECIPES, WEAPON_EXECUTORS }
-  from './BuildEngine.js?v=20260902080000';
+  from './BuildEngine.js?v=20260902090000';
 
 function aimAngle(rt) {
   const p = rt.game.player, e = rt._nearestEnemy(p.pos.x, p.pos.y);
@@ -78,7 +78,7 @@ WEAPON_EXECUTORS.phase_needle = {
         const st = rt._st(e); st.scars = Math.min(d.scarCap, (st.scars || 0));
         const dmg = dmgBase * mult * (1 + st.scars * scarB);       // re-hit σε scar = bonus
         rt._dealDamage(wid, e, dmg, bm, Math.random() < d.critChance);
-        st.scars = Math.min(d.scarCap, (st.scars || 0) + 1);       // αφήνει phase scar
+        st.scars = Math.min(d.scarCap, (st.scars || 0) + 1); st.scarsT = 6.0;   // phase scar, 6 s window
       }
     };
     for (let i = w.needles.length - 1; i >= 0; i--) {
@@ -758,7 +758,7 @@ WEAPON_EXECUTORS.hungry_spirit_lantern = {
             if ((e.pos.x - gx) ** 2 + (e.pos.y - gy) ** 2 > (evo.gate.width / 2 + e.radius) ** 2) continue;
             gh.hit.add(e);
             rt._dealDamage('be_gate_of_hungry_ghosts', e, evo.gate.ghostDmg, evo.bossMultiplier, false);
-            if (!e.isBoss?.() && !e.isMegaBoss) { e.slowTimer = Math.max(e.slowTimer || 0, evo.gate.stagger); e.slowFactor = 0.12; }
+            if (!e.isBoss?.() && !e.isMegaBoss) { e.slowTimer = Math.max(e.slowTimer || 0, evo.gate.stagger); e.slowFactor = Math.min(e.slowFactor ?? 0.55, 0.12); }
           }
         }
         if (gt.ghosts.every(gh => gh.off > evo.gate.length)) w.gate = null;

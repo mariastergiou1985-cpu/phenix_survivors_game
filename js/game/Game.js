@@ -13,14 +13,14 @@ import { PowerMatrix }    from '../entities/PowerMatrix.js?v=20260712090000';
 import { Player }         from '../entities/Player.js?v=20260810210000';
 import { XpShardSystem }  from '../entities/XpShards.js?v=20260724000000';   // Phase 1: physical Data-XP
 import { Projectile, HomingDisc } from '../entities/Projectile.js?v=20260706270000';
-import { Enemy, preloadAllWeaponSprites, selectHpBarEnemies } from '../entities/Enemy.js?v=20260902080000';
+import { Enemy, preloadAllWeaponSprites, selectHpBarEnemies } from '../entities/Enemy.js?v=20260902090000';
 import { SupportDrone }   from '../entities/SupportDrone.js?v=20260711750000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260713600000';
 import { SystemEventManager } from './Events.js?v=20260802000000';
 import { UpgradeUI }      from './UpgradeUI.js?v=20260902000000';
 import { weightedSample } from './Upgrades.js?v=20260722500000';
-import { BuildEngineRuntime, WEAPON_DEFS as BE_WEAPON_DEFS } from './BuildEngine.js?v=20260902080000';   // BUILD ENGINE — always on (full migration 2026-07-18)
+import { BuildEngineRuntime, WEAPON_DEFS as BE_WEAPON_DEFS } from './BuildEngine.js?v=20260902090000';   // BUILD ENGINE — always on (full migration 2026-07-18)
 import { FUSION_DEFS, FUSION_CARD_ORDER, FUSION_ART_READY, FUSION_MAX_TIER, fusionCost, CHAR_DISPLAY_NAMES } from './FusionCatalog.js?v=20260902070000';   // FUSION ARMORY (Batch B)
 import { FusionEngine } from './FusionEngine.js?v=20260902070000';   // FUSION ARMORY runtime (Batch D)
 import './BuildEngineChars1.js?v=20260902000000';   // P2.3a Taekwondo+CyberArm (side-effect register)
@@ -3479,7 +3479,11 @@ export class Game {
           if (e.isBoss?.() || e.isMegaBoss) continue;
           const dx = e.pos.x - p.pos.x, dy = e.pos.y - p.pos.y;
           if (dx * dx + dy * dy <= R * R) {
+            // Setting hp without _die() left the enemy in game.enemies at 0 hp: still moving, still
+            // dealing contact damage, and served to every targeting helper as a live target until
+            // something else touched it. Route the kill properly.
             e.hp = 0;
+            if (e._die) e._die(this);
           }
         }
         // VFX: expanding cyan ring
@@ -3501,6 +3505,9 @@ export class Game {
           e.pos.x -= dx * pull;
           e.pos.y -= dy * pull;
           e.hp -= DPS * dt;
+          // Same zombie class as the pulse above: this drain had no death check at all, so an enemy
+          // killed by the aura alone sat at negative hp forever, alive to every other system.
+          if (e.hp <= 0) { e.hp = 0; if (e._die) e._die(this); continue; }
         }
       }
     }
@@ -19005,6 +19012,9 @@ export class Game {
         const dx = e.pos.x - this.player.pos.x;
         const dy = e.pos.y - this.player.pos.y;
         if (dx * dx + dy * dy > CULL_DIST * CULL_DIST) {
+          // Culled while ALIVE: nothing will ever expire its status entry, so drop the reference
+          // here or the BuildEngine _status Map keeps the Enemy object alive for the whole run.
+          this.buildEngine?._status?.delete(e);
           this.enemies.splice(i, 1);
           continue;
         }

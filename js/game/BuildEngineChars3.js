@@ -6,7 +6,7 @@
 // Spec: docs/P2_BUILD_ENGINE_SPEC_GR.md. Συνταγή ultimates παντού.
 // ═══════════════════════════════════════════════════════════════════════════════
 import { WEAPON_DEFS, PASSIVE_DEFS, EVOLUTION_RECIPES, WEAPON_EXECUTORS }
-  from './BuildEngine.js?v=20260902080000';
+  from './BuildEngine.js?v=20260902090000';
 
 function aimAngle(rt) {
   const p = rt.game.player, e = rt._nearestEnemy(p.pos.x, p.pos.y);
@@ -303,7 +303,15 @@ WEAPON_EXECUTORS.cyber_gauntlets_injection = {
       w.hits.push({ dir, t: 0, combo: w.combo, x: p.pos.x, y: p.pos.y });
       if (w.hits.length > d.maxActive) w.hits.shift();
       if (w.evolved && fin) {                                      // SMITE σε marked (evolution)
-        for (const e of marked) w.smites.push({ x: e.pos.x, y: e.pos.y, e, t: 0, dur: 0.32, done: false });
+        // Unbounded before: a finisher inside a dense pack queued one smite per marked enemy plus a
+        // chained one each - measured 98-126 concurrent, i.e. ~126 radius-188 AoE queries in a single
+        // frame, a direct contributor to the worst update() frame. The unused enemy field was never read by
+        // update() or draw(), so it was retained garbage holding a dead Enemy for up to 0.32 s.
+        const SMITE_CAP = 24;
+        for (const e of marked) {
+          if (w.smites.length >= SMITE_CAP) break;
+          w.smites.push({ x: e.pos.x, y: e.pos.y, t: 0, dur: 0.32, done: false });
+        }
         // The seal chains: each smite also calls one on the nearest UNMARKED enemy in range, so a
         // finished combo reaches past the bodies already being punched. Bounded by evo.smite.chain
         // per smite and by chainRange, so it can never cascade across the field.
@@ -318,7 +326,8 @@ WEAPON_EXECUTORS.cyber_gauntlets_injection = {
               if (!e2 || e2.hp <= 0 || _seen.has(e2)) continue;
               if (Math.hypot(e2.pos.x - m.pos.x, e2.pos.y - m.pos.y) > evo.smite.chainRange) continue;
               _seen.add(e2); added++;
-              w.smites.push({ x: e2.pos.x, y: e2.pos.y, e: e2, t: 0, dur: 0.32, done: false });
+              if (w.smites.length >= 24) break;              // same SMITE_CAP as the marked branch
+              w.smites.push({ x: e2.pos.x, y: e2.pos.y, t: 0, dur: 0.32, done: false });
             }
           }
         }
