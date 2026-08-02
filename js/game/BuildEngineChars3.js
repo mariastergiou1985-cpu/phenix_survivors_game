@@ -350,6 +350,10 @@ WEAPON_EXECUTORS.cyber_gauntlets_injection = {
   },
   draw(rt, ctx, w) {
     const d = WEAPON_DEFS.cyber_gauntlets_injection;
+    // The smite damages everything inside evo.smite.radius (128px). The art topped out at a
+    // 30 + 24k ring — 54px, well under half the real footprint — so the player could not see
+    // which enemies the pillar was about to take. Draw the ring at the radius that actually hits.
+    const SR = EVOLUTION_RECIPES.be_sanction_halo.smite.radius;
     for (const h of (w.hits || [])) {
       const k = h.t / 0.22, fade = 1 - k;
       const fin = h.combo === 3;
@@ -391,11 +395,11 @@ WEAPON_EXECUTORS.cyber_gauntlets_injection = {
       ctx.globalAlpha = 0.6 * fade; ctx.strokeStyle = '#ffe89a'; ctx.lineWidth = 1.5;
       for (let q = 0; q < 3; q++) {
         const qa = rt._t * 4 + q * Math.PI * 2 / 3;
-        ctx.beginPath(); ctx.arc(s.x, s.y, 18 + 10 * k, qa, qa + 1.4); ctx.stroke();
+        ctx.beginPath(); ctx.arc(s.x, s.y, SR * 0.22 + SR * 0.10 * k, qa, qa + 1.4); ctx.stroke();
       }
       ctx.globalAlpha = 0.5 * fade;
       ctx.strokeStyle = '#ffd447'; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(s.x, s.y, 30 + 24 * k, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(s.x, s.y, SR * 0.5 + SR * 0.5 * k, 0, Math.PI * 2); ctx.stroke();   // ends exactly at the damage radius
       ctx.globalAlpha = 0.95 * fade;                               // λευκός πυρήνας στήλης
       ctx.fillStyle = '#ffffff'; ctx.fillRect(s.x - 2.5, s.y - 84 * (1 - k), 5, 84 * (1 - k));
       ctx.restore();
@@ -511,31 +515,43 @@ WEAPON_EXECUTORS.holo_energy_knuckles = {
   draw(rt, ctx, w) {
     const d = WEAPON_DEFS.holo_energy_knuckles, evo = EVOLUTION_RECIPES.be_wing_guillotine;
     const size = d.size * (1 + rt._catalystSum('holoSize'));
+    // READABILITY: update() hits at (size + e.radius) — `size` is the fist's RADIUS, ~38px against
+    // an average body. The art drew `size` as the fist's full WIDTH, so the visible fist was a
+    // 24px box (radius 12) that killed things 26px away from where it looked. `fw` is the fist's
+    // half-extent in art space, so the drawn outline now matches the radius that actually hits.
+    // Transform only — same colours, same shapes, same layer order, no gameplay value touched.
+    const fw = size;
     for (const f of (w.fists || [])) {
       ctx.save(); ctx.translate(f.x, f.y); ctx.rotate(f.a);
       ctx.globalCompositeOperation = 'lighter';
       ctx.globalAlpha = 0.24;                                      // holo halo
       ctx.fillStyle = '#ffd447';
-      ctx.beginPath(); ctx.arc(0, 0, size * 1.25, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(0, 0, fw * 1.25, 0, Math.PI * 2); ctx.fill();
       // ULTIMATE PASS: RGB-split ghost του ολογράμματος (ψηφιακό glitch)
       const gl = Math.sin(rt._t * 17 + f.x * 0.05) > 0.7 ? 2.5 : 1;
       ctx.globalAlpha = 0.22; ctx.strokeStyle = '#6bd8ff'; ctx.lineWidth = 2;
-      ctx.strokeRect(-size * 0.5 - gl, -size * 0.55, size, size * 1.1);
+      ctx.strokeRect(-fw - gl, -fw * 1.1, fw * 2, fw * 2.2);
       ctx.globalAlpha = 0.22; ctx.strokeStyle = '#ff6bd6';
-      ctx.strokeRect(-size * 0.5 + gl, -size * 0.55, size, size * 1.1);
+      ctx.strokeRect(-fw + gl, -fw * 1.1, fw * 2, fw * 2.2);
       ctx.globalAlpha = 0.6;                                       // σώμα: holo γροθιά (τετράγωνη με δάχτυλα)
       ctx.strokeStyle = '#ffe89a'; ctx.lineWidth = 2;
-      ctx.strokeRect(-size * 0.5, -size * 0.55, size, size * 1.1);
-      for (let q = -1; q <= 1; q++) { ctx.beginPath(); ctx.moveTo(size * 0.5, q * size * 0.33); ctx.lineTo(size * 0.78, q * size * 0.33); ctx.stroke(); }
+      ctx.strokeRect(-fw, -fw * 1.1, fw * 2, fw * 2.2);
+      for (let q = -1; q <= 1; q++) { ctx.beginPath(); ctx.moveTo(fw, q * fw * 0.66); ctx.lineTo(fw * 1.56, q * fw * 0.66); ctx.stroke(); }
       ctx.globalAlpha = 0.35;                                      // scanlines ολογράμματος
       ctx.lineWidth = 1;
-      for (let q = -2; q <= 2; q++) { ctx.beginPath(); ctx.moveTo(-size * 0.5, q * size * 0.22); ctx.lineTo(size * 0.5, q * size * 0.22); ctx.stroke(); }
+      for (let q = -2; q <= 2; q++) { ctx.beginPath(); ctx.moveTo(-fw, q * fw * 0.44); ctx.lineTo(fw, q * fw * 0.44); ctx.stroke(); }
       ctx.globalAlpha = 0.95;                                      // λευκός πυρήνας
-      ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(size * 0.2, 0, 2.2, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(fw * 0.4, 0, 2.8, 0, Math.PI * 2); ctx.fill();
       ctx.restore();
     }
     for (const g of (w.wings || [])) {
-      const k = Math.min(1, g.t / g.dur), fade = 1 - Math.max(0, (g.t - g.dur * 0.5) / (g.dur * 0.65));
+      // fade was unclamped: the wing lives to g.dur + 0.15 (0.45 s), so from ~0.345 s onward it
+      // went NEGATIVE (-0.54 at the last frame). Canvas silently IGNORES a globalAlpha outside
+      // [0,1], so instead of fading out the wing kept whatever alpha the previous draw call had
+      // left behind (0.95 from the fist loop) — the guillotine flashed back to full brightness
+      // for its last ~0.1 s instead of dissolving.
+      const k = Math.min(1, g.t / g.dur);
+      const fade = Math.max(0, Math.min(1, 1 - Math.max(0, (g.t - g.dur * 0.5) / (g.dur * 0.65))));
       ctx.save(); ctx.translate(g.x, g.y);
       for (const side of [-1, 1]) {
         const cA = g.dir + side * evo.wings.arc / 2;

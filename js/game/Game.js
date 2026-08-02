@@ -25,7 +25,7 @@ import { FUSION_DEFS, FUSION_CARD_ORDER, FUSION_ART_READY, FUSION_MAX_TIER, fusi
 import { FusionEngine } from './FusionEngine.js?v=20260902100000';   // FUSION ARMORY runtime (Batch D)
 import './BuildEngineChars1.js?v=20260902100000';   // P2.3a Taekwondo+CyberArm (side-effect register)
 import './BuildEngineChars2.js?v=20260902100000';   // P2.3b Brawler+Assassin (side-effect register)
-import './BuildEngineChars3.js?v=20260902100000';   // P2.4a Eddie+Dimi (side-effect register)
+import './BuildEngineChars3.js?v=20260902110000';   // P2.4a Eddie+Dimi (side-effect register)
 import './BuildEngineChars4.js?v=20260902100000';   // P2.4b Phasewalker+Euclid+Oni (side-effect register)
 import './BuildEngineChars5.js?v=20260902100000';   // P2.5 Universal όπλα 21-25 (side-effect register)
 import './BuildEnginePassives.js?v=20260902100000'; // P2.6 Build passives §26-50 (generic hooks)
@@ -71,7 +71,7 @@ import { VESSELS, getVesselById, getDefaultVesselId } from './VesselCatalog.js?v
 import { PETS, getPetById } from './PetCatalog.js?v=20260705000000';
 import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons, isEvolutionOwnedBy, getCardDisplayName } from './WeaponCatalog.js?v=20260720800000';
 import { TACTICAL_ID, TACTICAL_DEFS, getTacticalDef, getTacticalForCharacter, getAvailableTactical, preloadTacticalSprites, FUSION_TACTICALS } from './TacticalWeaponCatalog.js?v=20260720000000';
-import { VFXSpritePlayer } from './VFXSpritePlayer.js?v=20260724000000';
+import { VFXSpritePlayer } from './VFXSpritePlayer.js?v=20260902110000';
 
 // ── Mastery card → base weapon mapping (for evolution level tracking) ──
 const MASTERY_TO_WEAPON = Object.freeze({
@@ -138,7 +138,12 @@ const _mapSrc = (p) => (_IS_MOBILE_GM && typeof p === 'string' && /\.png$/.test(
 // ── VFX sprite sheet metadata (frame data from Blender render) ──
 const WEAPON_VFX_META = Object.freeze({
   storm_saber:      { cols: 4, frameW: 128, frameH: 128, totalFrames: 16, fps: 24 },
-  magnetic_arc:     { cols: 4, frameW: 128, frameH: 128, totalFrames: 16, fps: 24 },
+  // Same class of defect as nexus_chakram below: assets/weapons/vfx/magnetic_arc_burst.png is a
+  // 1254x1254 single illustration, not a 4x4 grid of 128px frames. The old entry sampled a 128px
+  // crop out of the top-left corner and cycled 16 such corner fragments, so every wielder WITHOUT
+  // a WIELDER_VFX_OVERRIDES entry (i.e. anyone but Euclid / Assassin / Brawler) saw a corner of
+  // the art instead of the art. Single-illustration form.
+  magnetic_arc:     { cols: 1, frameW: 1254, frameH: 1254, totalFrames: 1, fps: 1 },
   spirit_crescent:  { cols: 4, frameW: 256, frameH: 128, totalFrames: 16, fps: 24 },
   shadow_toxic:     { cols: 4, frameW: 128, frameH: 128, totalFrames: 12, fps: 20 },
   // Maria's single-illustration form. The old entry asked for a 6x4 grid of 256px frames, but
@@ -148,7 +153,10 @@ const WEAPON_VFX_META = Object.freeze({
   nexus_chakram:    { cols: 1, frameW: 1254, frameH: 1254, totalFrames: 1, fps: 1 },
   gas_needle:       { cols: 4, frameW: 128, frameH: 128, totalFrames: 16, fps: 22 },
   cataclysm_pulse:  { cols: 6, frameW: 256, frameH: 256, totalFrames: 24, fps: 20 },
-  glitch_tear:      { cols: 5, frameW: 256, frameH: 256, totalFrames: 20, fps: 18 },
+  // glitch_tear.png is 1536x1024 = a 6x4 grid of 256px frames (24). Declaring 5 columns made the
+  // renderer compute col = n % 5 / row = floor(n / 5), so every frame after the first five was
+  // sampled from the wrong cell - the tear played a scrambled sequence and never used column 6.
+  glitch_tear:      { cols: 6, frameW: 256, frameH: 256, totalFrames: 24, fps: 18 },
   // Storm Conductor / Plasma Execution now use Maria's single-illustration art (1254² whole
   // frame + matching WIELDER_VFX_OVERRIDES) instead of the old procedural frame sheets.
   storm_conductor:  { cols: 1, frameW: 1254, frameH: 1254, totalFrames: 1, fps: 1 },
@@ -192,6 +200,15 @@ const WEAPON_ANIM_STYLE = Object.freeze({
   seismic_rift:     'expand',     // shockwave rips outward
   storm_conductor:  'flicker',    // lightning crackle
   plasma_execution: 'pulse',      // plasma throb
+  // These four also reach VFXSpritePlayer through the single-image override path (see
+  // WIELDER_VFX_OVERRIDES), where animStyle is what makes the art move. Without an entry they
+  // silently fell back to 'spin', so a saber slash, an electric arc and a crescent kick all
+  // rotated like a swirl. The remaining WEAPON_VFX_META ids are sheet-only, where animStyle has
+  // no effect at all, so they are deliberately not listed here.
+  magnetic_arc:     'flicker',    // electric arc jitter
+  storm_saber:      'slash',      // saber arc sweep
+  spirit_crescent:  'slash',      // crescent kick sweep
+  solo_red_thunder: 'flicker',    // Eddie's thunder crackle
 });
 
 // ── Nexus Weapon Visual Pack: per-wielder VFX variants (single illustrations,

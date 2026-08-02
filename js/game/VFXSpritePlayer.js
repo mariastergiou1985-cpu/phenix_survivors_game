@@ -136,8 +136,10 @@ export class VFXSpritePlayer {
       if (_om > 560) { const _ok = 560 / _om; odw *= _ok; odh *= _ok; }   // readability safety cap (was 470)
       ctx.save();
       ctx.globalAlpha = Math.max(0, this.alpha * am);
-      ctx.globalCompositeOperation = 'lighter';   // additive blend for energy VFX
-      ctx.globalCompositeOperation = 'screen';   // black art backgrounds vanish (no more squares)
+      // 'screen' (not 'lighter'): black art backgrounds vanish without blowing out to white.
+      // A dead `= 'lighter'` assignment used to sit on the line above, overwritten on the very
+      // next statement — it never took effect and only made the blend mode look ambiguous.
+      ctx.globalCompositeOperation = 'screen';
       ctx.translate(this.x + ox, this.y + oy);
       if (rot !== 0) ctx.rotate(rot);
       ctx.drawImage(oi, -odw / 2, -odh / 2, odw, odh);
