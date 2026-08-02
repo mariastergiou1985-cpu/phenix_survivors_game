@@ -37,9 +37,16 @@ export function fusionCost(tier) {           // tier που ΑΓΟΡΑΖΕΤΑΙ
 export function fusionHookIds(fusionId) {
   return FUSION_AUDIO_PHASES.map(p => fusionId + '_' + p);
 }
-export function fusionModeOk(game) {         // ΟΛΑ τα gates ρωτούν εδώ — μία αλήθεια.
+export function fusionModeOk(game) {         // ΟΛΑ τα gates ΑΠΟΚΤΗΣΗΣ ρωτούν εδώ — μία αλήθεια.
   return !!game && game.gameState === 'playing' && !!game.endless && !game._bossRush;
   // Chaos: _chaosMode συνεπάγεται endless === true. Campaign/Act1: endless=false → false.
+}
+// RUNTIME gate — ξεχωριστό από το gate απόκτησης. Ένα ΗΔΗ αποκτημένο fusion κρατά τα
+// components του _fusionSuppressed· αν σιωπήσει και αυτό μέσα σε Boss Rush, ο παίκτης μένει
+// ΧΩΡΙΣ το fusion ΚΑΙ χωρίς το όπλο που αυτό αντικατέστησε, για όλη τη μάχη. Το Boss Rush
+// μπλοκάρει μόνο ΝΕΕΣ αποκτήσεις.
+export function fusionRunOk(game) {
+  return !!game && game.gameState === 'playing' && !!game.endless;
 }
 
 export const FUSION_DEFS = Object.freeze({

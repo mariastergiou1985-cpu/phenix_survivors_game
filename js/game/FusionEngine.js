@@ -16,9 +16,9 @@
 //    def.chaos. Draw: world-space (καλείται μέσα στο camera block του Game.draw).
 // ════════════════════════════════════════════════════════════════════════════════
 import { FUSION_DEFS, FUSION_CARD_ORDER, FUSION_ART_READY, FUSION_MAX_TIER,
-         fusionModeOk, fusionRecipeReady, CHAR_DISPLAY_NAMES }
-  from './FusionCatalog.js?v=20260902020000';
-import { FUSION_TAGS, WEAPON_DEFS } from './BuildEngine.js?v=20260902000000';
+         fusionModeOk, fusionRunOk, fusionRecipeReady, CHAR_DISPLAY_NAMES }
+  from './FusionCatalog.js?v=20260902070000';
+import { FUSION_TAGS, WEAPON_DEFS } from './BuildEngine.js?v=20260902070000';
 
 // Tag registration: το _dealDamage βλέπει fusion tags για DamageLog/RUNTIME_HOOKS.
 for (const [fid, d] of Object.entries(FUSION_DEFS)) FUSION_TAGS[fid] = d.tags;
@@ -45,6 +45,8 @@ export class FusionEngine {
 
   // ── mode / eligibility (in-run layers) ─────────────────────────────────────────
   modeOk() { const g = this.game; return fusionModeOk(g) && !g.gameOver && !g.victory; }
+  // Tick/draw gate: ό,τι έχει ΗΔΗ αποκτηθεί συνεχίζει να τρέχει μέσα σε Boss Rush.
+  runOk()  { const g = this.game; return fusionRunOk(g)  && !g.gameOver && !g.victory; }
   tierOf(fid) { return this.game.meta?.getFusionTier?.(fid) || 0; }
   ti(fid) { return Math.max(0, Math.min(FUSION_MAX_TIER, this.tierOf(fid)) - 1); }
   chaos() { return !!this.game._chaosMode; }
@@ -270,7 +272,7 @@ export class FusionEngine {
   // ── main loop ───────────────────────────────────────────────────────────────────
   update(dt) {
     const g = this.game;
-    if (!this.modeOk() || !g.player || !Number.isFinite(dt) || dt <= 0) return;
+    if (!this.runOk() || !g.player || !Number.isFinite(dt) || dt <= 0) return;
     this._t += dt;
     for (const st of this.active.values()) {
       try { FUSION_EXECUTORS[st.id]?.update?.(this, st, dt); }
@@ -287,7 +289,7 @@ export class FusionEngine {
   }
 
   draw(ctx) {
-    if (!this.modeOk()) return;
+    if (!this.runOk()) return;
     for (const st of this.active.values()) {
       try { FUSION_EXECUTORS[st.id]?.draw?.(this, ctx, st); }
       catch (e) {

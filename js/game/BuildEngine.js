@@ -336,7 +336,21 @@ export class BuildEngineRuntime {
     const ready = this._readyEvolutions().find(entry => entry.recipe.weapon === weaponId);
     if (!ready) return false;
     let w = this.weapons.get(weaponId);
-    if (!w && WEAPON_DEFS[weaponId]?.external) { this.addWeapon(weaponId); w = this.weapons.get(weaponId); }
+    if (!w && WEAPON_DEFS[weaponId]?.external) {
+      // An external weapon (Solo Red Thunder) lives in the legacy layer and has NEVER occupied a
+      // BE slot, so it must not be refused by the 6W / per-family caps on the way in — addWeapon()
+      // returns silently at the cap, _evolve() then returned false, and because the guaranteed
+      // evolution card ignores that return value the card became a permanent no-op that also
+      // starved every other BuildEngine card for the rest of the run.
+      this.addWeapon(weaponId);
+      w = this.weapons.get(weaponId);
+      if (!w) {
+        this.weapons.set(weaponId, { id: weaponId, level: 5, evolved: false,
+                                     cd: 0.35 + (this.weapons.size % 6) * 0.27,
+                                     volley: 0, burstQ: [], charge: 0, skulls: [], bladeT: 0 });
+        w = this.weapons.get(weaponId);
+      }
+    }
     if (!w) return false;
     w.evolved = true; w.level = 5; w.charge = 0;
     if (WEAPON_DEFS[weaponId]?.external) this.game?._consumedWeapons?.add?.(weaponId);
@@ -362,7 +376,10 @@ export class BuildEngineRuntime {
       const wd = WEAPON_DEFS[r.weapon];
       if (wd?.owner && wd.owner !== this.game.selectedCharacter) continue;   // native evolutions ΜΟΝΟ στον ιδιοκτήτη
       const w = this.weapons.get(r.weapon);
-      if (w?.evolved) continue;
+      // A fusion-suppressed component is skipped forever by update() (see the _fusionSuppressed
+      // guard in the weapon loop). Offering its evolution burned the guaranteed legendary pick on
+      // a weapon that then dealt zero damage for the rest of the run.
+      if (w?.evolved || w?._fusionSuppressed) continue;
       // external data-wrap (π.χ. Solo Red Thunder): το level ζει στο παλιό σύστημα μέχρι το P2.7
       const wl = w ? w.level : (wd?.external ? (this.game._weaponLevels?.get(r.weapon) || 0) : 0);
       if (wl >= r.weaponLevel && (this.passives.get(r.passive) || 0) >= r.passiveLevel)

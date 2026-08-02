@@ -20,9 +20,9 @@ import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, dr
 import { SystemEventManager } from './Events.js?v=20260802000000';
 import { UpgradeUI }      from './UpgradeUI.js?v=20260902000000';
 import { weightedSample } from './Upgrades.js?v=20260722500000';
-import { BuildEngineRuntime, WEAPON_DEFS as BE_WEAPON_DEFS } from './BuildEngine.js?v=20260902000000';   // BUILD ENGINE — always on (full migration 2026-07-18)
-import { FUSION_DEFS, FUSION_CARD_ORDER, FUSION_ART_READY, FUSION_MAX_TIER, fusionCost, CHAR_DISPLAY_NAMES } from './FusionCatalog.js?v=20260902020000';   // FUSION ARMORY (Batch B)
-import { FusionEngine } from './FusionEngine.js?v=20260902050000';   // FUSION ARMORY runtime (Batch D)
+import { BuildEngineRuntime, WEAPON_DEFS as BE_WEAPON_DEFS } from './BuildEngine.js?v=20260902070000';   // BUILD ENGINE — always on (full migration 2026-07-18)
+import { FUSION_DEFS, FUSION_CARD_ORDER, FUSION_ART_READY, FUSION_MAX_TIER, fusionCost, CHAR_DISPLAY_NAMES } from './FusionCatalog.js?v=20260902070000';   // FUSION ARMORY (Batch B)
+import { FusionEngine } from './FusionEngine.js?v=20260902070000';   // FUSION ARMORY runtime (Batch D)
 import './BuildEngineChars1.js?v=20260902000000';   // P2.3a Taekwondo+CyberArm (side-effect register)
 import './BuildEngineChars2.js?v=20260902000000';   // P2.3b Brawler+Assassin (side-effect register)
 import './BuildEngineChars3.js?v=20260902000000';   // P2.4a Eddie+Dimi (side-effect register)
@@ -2132,7 +2132,11 @@ export class Game {
         choice.evolutionApplied = true;
         return true;
       },
-      canApply: () => true,
+      // If apply() returns false the card never sets choice.selected, and selectUpgrade()
+      // returns BEFORE closing the UI — an unresponsive card with no feedback that re-opens at
+      // every stage clear. Never present the card unless the evolution is still applicable.
+      canApply: () => !!this.buildEngine?._readyEvolutions?.()
+                        .find(entry => entry.eid === ready.eid),
     };
     const keepCard = {
       key: 'campaign_keep_build',
