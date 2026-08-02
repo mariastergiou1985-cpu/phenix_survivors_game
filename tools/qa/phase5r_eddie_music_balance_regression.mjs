@@ -71,6 +71,16 @@ gate('album contains exactly eight unique approved tracks', album.length === 8 &
 gate('all eight track assets resolve on disk', album.every(url =>
   existsSync(path.join(ROOT, url.split('?')[0].replaceAll('/', path.sep)))));
 
+// CONTRACT UPDATE (Maria 2026-08-02). This block used to drive the playlist with
+//   for (8) { playEddieUltimateTrack(); stopEddieRiffs(); }
+// i.e. one ultimate per track. P5R deliberately replaced that: ONE ultimate per run arms the
+// playlist at track 1, tracks 2..8 start from the previous track's 'ended' event, and every later
+// ultimate is a hard no-op (AudioManager.js `if (this.playlistActive) return this._eddiePlayState`).
+// stopEddieRiffs() without a reset rewinds the index, so the old loop restarted track 1 eight
+// times and reported eddie_riffs x8 - a failure against a contract the game no longer claims. It
+// fails identically on the pristine tree. stopEddieRiffs({resetRotation:false}) has no production
+// call site at all, so the scenario was unreachable in the shipped game. The 8/8 intent is kept -
+// it is now driven the way production drives it.
 for (const mode of ['act1', 'endless', 'chaos']) {
   const audio = new AudioManager();
   if (mode === 'act1') audio.startGameplayMusic();
@@ -78,16 +88,28 @@ for (const mode of ['act1', 'endless', 'chaos']) {
   else audio.startChaosMusic();
   const mapMusic = audio._currentMusic;
   const selected = [];
-  for (let i = 0; i < 8; i++) {
-    selected.push(audio.playEddieUltimateTrack()?.trackId);
-    audio.stopEddieRiffs();
+  const laterUltimates = [];
+  selected.push(audio.playEddieUltimateTrack()?.trackId);      // one ultimate arms the run
+  const el = audio.currentAudioInstance;
+  for (let i = 1; i < album.length; i++) {
+    laterUltimates.push(audio.playEddieUltimateTrack());        // must not move the cursor
+    el.onended();                                              // production advance path
+    selected.push(audio._eddiePlayState?.trackId);
   }
-  gate(`${mode}: eight ultimate activations rotate through 8/8 tracks`,
+  gate(`${mode}: one run plays all ${album.length} album tracks in order, advancing on 'ended'`,
     selected.join(',') === ids.join(','), selected.join(','));
+  gate(`${mode}: a later ultimate never restarts or skips the running track`,
+    laterUltimates.every((st, i) => st !== null && st.trackId === selected[i]) &&
+    audio.currentAudioInstance === el,
+    `returned=${laterUltimates.map(st => st?.trackId).join(',')}`);
   gate(`${mode}: Eddie playback never replaces the mode BGM authority`, audio._currentMusic === mapMusic);
+  el.onended();                                                // last track ends -> run complete
   gate(`${mode}: ultimate end restores the configured music bus`,
+    audio.playlistActive === false && audio.playlistCompleted === true &&
     audio.musicGain.gain.value === audio.musicVolume,
-    `gain=${audio.musicGain.gain.value}`);
+    `gain=${audio.musicGain.gain.value} completed=${audio.playlistCompleted}`);
+  gate(`${mode}: the album does not loop a second time in the same run`,
+    audio.playEddieUltimateTrack() === null);
 }
 
 console.log('\n-- lifecycle, mute, and no stacking --');
@@ -99,8 +121,13 @@ console.log('\n-- lifecycle, mute, and no stacking --');
   const second = audio.playEddieUltimateTrack();
   gate('repeated ultimate reuses one Eddie media element (no simultaneous track stacking)',
     audio._eddieRiffsAudio === riffAudio && audioInstances.length === instanceCount + 1);
-  gate('repeated ultimate advances to the next track instead of restarting track 1',
-    first?.index === 0 && second?.index === 1);
+  // P5R made a second ultimate a HARD no-op: AudioManager returns the live _eddiePlayState
+  // untouched while playlistActive. The old expectation (second.index === 1) predates that and had
+  // been failing on the guard itself. The invariant that matters - no restart, no skip, no second
+  // element - is asserted directly.
+  gate('repeated ultimate is a hard no-op: same track, no restart, no skip',
+    first?.index === 0 && second === first && audio.currentTrackIndex === 0,
+    `second.index=${second?.index}`);
   audio.resetEddieRiffs();
   gate('death/reset cleanup stops playback and resets rotation',
     !audio.isEddieRiffsPlaying() && audio.playEddieUltimateTrack()?.index === 0);
@@ -110,17 +137,25 @@ console.log('\n-- lifecycle, mute, and no stacking --');
 }
 
 {
+  // PRODUCTION PATH (Maria 2026-08-02). This used to model the transition with stopAll(), but
+  // stopAll() is the RUN-END path - Game.js calls it only on death and victory, and it runs
+  // resetEddieRiffs(). The real Act 1 -> Endless handoff is startEndlessMusic() followed by
+  // `if (isEddiePlaylistActive()) resumeEddieUltimateTrack()`, with no stop at all, so the old
+  // fixture was asserting against a sequence the game never performs.
   const audio = new AudioManager();
   audio.startGameplayMusic();
   const first = audio.playEddieUltimateTrack();
-  audio.stopAll();
   audio.startEndlessMusic();
-  const resumed = audio.resumeEddieUltimateTrack();
-  audio.stopEddieUltimateTrack();
-  const next = audio.playEddieUltimateTrack();
-  gate('Act 1 to Endless transition resumes the same active ultimate track',
-    first?.index === 0 && resumed?.index === 0 && audio._currentMusic === audio._endlessAudio);
-  gate('mode transition preserves the next-track rotation', next?.index === 1);
+  const resumed = audio.isEddiePlaylistActive() ? audio.resumeEddieUltimateTrack() : null;
+  gate('Act 1 to Endless transition keeps the SAME ultimate track playing',
+    first?.index === 0 && resumed?.index === first.index && resumed?.trackId === first.trackId &&
+    audio._currentMusic === audio._endlessAudio,
+    `resumed=${resumed?.trackId}`);
+  audio.currentAudioInstance.onended();
+  gate('mode transition preserves the duck and the next-track rotation',
+    Math.abs(audio.musicGain.gain.value - audio.musicVolume * 0.25) < 1e-9 &&
+    audio._eddiePlayState?.index === 1 && audio._eddiePlayState?.trackId === ids[1],
+    `next=${audio._eddiePlayState?.trackId} gain=${audio.musicGain.gain.value}`);
   audio.setMusicVolume(0.4);
   gate('Eddie overlay obeys the music-volume slider',
     Math.abs(audio._eddieRiffsGain?.gain.value - 0.36) < 1e-9 &&
@@ -161,9 +196,23 @@ for (const mode of ['act1', 'endless', 'chaos']) {
     _playerScreenPos: () => ({ cx: 0, footY: 0 }),
     audio: { stopEddieUltimateTrack() { stopped++; } },
   });
+  // DECOUPLED BY DESIGN (Maria 2026-08-02). Game.js states it directly: the cinematic runs ~3.65 s
+  // while the album tracks are 3-5 minute songs, so the VFX ending must NOT cut the music.
+  // stopEddieUltimateTrack() has no production call site left outside AudioManager's own alias -
+  // this assertion was testing a path that was deleted. What must hold now: the VFX end stops
+  // NOTHING, and the Game latch follows the playlist rather than the cinematic.
+  game.audio.isEddiePlaylistActive = () => true;
   game._updateFeedbackFx(1 / 60);
-  gate('Feedback Apocalypse end stops exactly one Eddie track and clears its latch',
-    stopped === 1 && game._eddieUltimateMusicActive === false);
+  gate('Feedback Apocalypse end never cuts a running Eddie track',
+    stopped === 0, `stopped=${stopped}`);
+  gate('the Eddie music latch follows the playlist, not the cinematic',
+    game._eddieUltimateMusicActive === true, `latch=${game._eddieUltimateMusicActive}`);
+  game.audio.isEddiePlaylistActive = () => false;
+  game._feedbackApoc.active = true;
+  game._updateFeedbackFx(1 / 60);
+  gate('and the latch clears once the playlist itself is finished',
+    stopped === 0 && game._eddieUltimateMusicActive === false,
+    `stopped=${stopped}, latch=${game._eddieUltimateMusicActive}`);
 }
 
 const leakedWaveDamage = (12 + 1 * 2) * (40 + 14 * 1) + (16 + 1 * 3) * (30 + 10 * 1);

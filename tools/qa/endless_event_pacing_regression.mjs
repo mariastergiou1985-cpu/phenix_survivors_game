@@ -55,8 +55,13 @@ T('boss rush schedule: chaos [120,480] · endless [480,900]',
 console.log('\n── deferral guards: γιατί τα major events ΔΕΝ στοιβάζονται ──');
 T('boss rotation στέκεται όσο τρέχει το Null Breach',
   () => /if \(this\._nullBreachActive\) \{ this\._endlessBossTimer = Math\.max\(this\._endlessBossTimer, 15\); return; \}/.test(SRC));
+// The guard is alive and correct; only the STATE it reads was renamed when the BATCH 2 refactor
+// moved the storm into js/game/AcidRain.js. `acidRainTimer` now appears nowhere in js/ at all, and
+// `this.acidRain` survives only as a never-read null assignment - so this assertion had been
+// pinning two fields that no longer exist. AcidRain.active is `_phase !== 'idle'`, i.e. it covers
+// warning -> raining -> fading, so the deferral still spans the whole event.
 T('boss rotation στέκεται για Acid Rain (κανένα ταυτόχρονο θέαμα)',
-  () => /if \(this\.acidRain \|\| this\.acidRainTimer < 8\) \{ this\._endlessBossTimer = 8; return; \}/.test(SRC));
+  () => /if \(this\.acidRainSystem\?\.active\) \{ this\._endlessBossTimer = 8; return; \}/.test(SRC));
 T('boss rotation παίρνει breathing room μετά την arena',
   () => (SRC.match(/_endlessBossTimer = Math\.max\(this\._endlessBossTimer, 30\)/g) || []).length >= 2);
 T('ΕΝΑΣ Titan τη φορά — ο timer δεν τρέχει καν όσο ζει',
@@ -67,7 +72,9 @@ T('ο επόμενος Titan μετριέται ΜΕΤΑ το clear, όχι απ
 T('Boss Rush δεν ανοίγει όσο η arena είναι ενεργή (mutual exclusion)',
   () => /chaosEl >= next && !this\._nullBreachActive/.test(SRC));
 T('airstrike δεν στοιβάζεται — ξαναδοκιμάζει αν υπάρχει ήδη σκάφος',
-  () => /else if \(this\.airstrikeShips\.length < 1\) \{/.test(SRC) &&
+  // The `< 1` anti-stack condition is intact; the major-event slot claim was appended to it, so the
+  // old exact-match regex no longer fits a line that still enforces exactly what it asserts.
+  () => /else if \(this\.airstrikeShips\.length < 1 && this\.startMajorEvent\('airstrike'\)\) \{/.test(SRC) &&
         /this\._airstrikeTimer = \(this\._chaosMode \? 60 : 120\) \* this\._majorSalvoScale\(\);/.test(SRC) &&
         /else                                  this\._airstrikeTimer = 20;/.test(SRC));
 T('η arena κρατά ≤2 σκάφη στον αέρα', () => /arena\.airCd <= 0 && this\.airstrikeShips\.length < 2/.test(SRC));
