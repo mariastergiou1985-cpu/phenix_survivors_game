@@ -20,15 +20,15 @@ import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, dr
 import { SystemEventManager } from './Events.js?v=20260802000000';
 import { UpgradeUI }      from './UpgradeUI.js?v=20260902100000';
 import { weightedSample } from './Upgrades.js?v=20260902100000';
-import { BuildEngineRuntime, WEAPON_DEFS as BE_WEAPON_DEFS } from './BuildEngine.js?v=20260902120000';   // BUILD ENGINE — always on (full migration 2026-07-18)
+import { BuildEngineRuntime, WEAPON_DEFS as BE_WEAPON_DEFS, EVOLUTION_RECIPES as BE_EVOLUTION_RECIPES } from './BuildEngine.js?v=20260902130000';   // BUILD ENGINE — always on (full migration 2026-07-18)
 import { FUSION_DEFS, FUSION_CARD_ORDER, FUSION_ART_READY, FUSION_MAX_TIER, fusionCost, CHAR_DISPLAY_NAMES } from './FusionCatalog.js?v=20260902070000';   // FUSION ARMORY (Batch B)
 import { FusionEngine } from './FusionEngine.js?v=20260902100000';   // FUSION ARMORY runtime (Batch D)
-import './BuildEngineChars1.js?v=20260902120000';   // P2.3a Taekwondo+CyberArm (side-effect register)
-import './BuildEngineChars2.js?v=20260902120000';   // P2.3b Brawler+Assassin (side-effect register)
-import './BuildEngineChars3.js?v=20260902120000';   // P2.4a Eddie+Dimi (side-effect register)
-import './BuildEngineChars4.js?v=20260902120000';   // P2.4b Phasewalker+Euclid+Oni (side-effect register)
-import './BuildEngineChars5.js?v=20260902120000';   // P2.5 Universal όπλα 21-25 (side-effect register)
-import './BuildEnginePassives.js?v=20260902120000'; // P2.6 Build passives §26-50 (generic hooks)
+import './BuildEngineChars1.js?v=20260902130000';   // P2.3a Taekwondo+CyberArm (side-effect register)
+import './BuildEngineChars2.js?v=20260902130000';   // P2.3b Brawler+Assassin (side-effect register)
+import './BuildEngineChars3.js?v=20260902130000';   // P2.4a Eddie+Dimi (side-effect register)
+import './BuildEngineChars4.js?v=20260902130000';   // P2.4b Phasewalker+Euclid+Oni (side-effect register)
+import './BuildEngineChars5.js?v=20260902130000';   // P2.5 Universal όπλα 21-25 (side-effect register)
+import './BuildEnginePassives.js?v=20260902130000'; // P2.6 Build passives §26-50 (generic hooks)
 import { MutationUI }      from './MutationUI.js?v=20260810210000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260827000000';
@@ -15350,7 +15350,27 @@ export class Game {
 
     // ── P2.2 Build Engine cards (?p2=1 μόνο): weighting x3 native/catalyst,
     //    evolution guaranteed — αν έβαλε κάρτα, παρακάμπτει τα υπόλοιπα. ──
-    if (this.buildEngine && this.buildEngine.injectCards(choices)) return;
+    // LEGACY LAYER RESTORE (Maria 2026-08-02). injectCards() returns true on EVERY level-up —
+    // measured 108000 of 108000 draws — so every line below this point had become unreachable in
+    // the shipped build: the WeaponCatalog acquire/upgrade cards, the Tactical Cache card and the
+    // legacy evolution card. The Build Engine owns choices[last] (plus choices[last-1] on its
+    // 1-in-5 variety offer); the legacy layer is now re-run against a PRIVATE one-slot array and
+    // lands on choices[0], so it can never displace a Build-Engine card, never changes BE
+    // weighting or its guaranteed evolution, and never widens a cap.
+    if (this.buildEngine && this.buildEngine.injectCards(choices)) {
+      const _legacySlot = [null];
+      this._injectLegacyWeaponCard(_legacySlot);
+      if (_legacySlot[0]) choices[0] = _legacySlot[0];
+      return;
+    }
+    this._injectLegacyWeaponCard(choices);
+  }
+
+  // Legacy (WeaponCatalog / TacticalWeaponCatalog) card layer. Body extracted VERBATIM from
+  // _injectWeaponCard so it can be driven either with the real `choices` array (the buildEngine
+  // === null emergency path, byte-identical to before) or with a private one-slot array.
+  _injectLegacyWeaponCard(choices) {
+    if (!choices || choices.length === 0) return;
 
     // ── Mastery card art pass: character weapon/mastery cards show the REAL art
     // of the weapon they master (same resolver; null keeps the glyph). Runs on
@@ -15362,11 +15382,12 @@ export class Game {
     }
 
     // ── PRIORITY: Evolution cards appear GUARANTEED when any recipe is ready ──
-    // P2 FULL MIGRATION (Maria 2026-07-18): with the Build Engine active, the old-gen
-    // WeaponCatalog evolutions are RETIRED from the rotation — the be_ evolutions are
-    // the only evolution layer. The old path still runs when buildEngine is null
-    // (emergency fallback if the runtime ever fails to construct).
-    const evoCard = this.buildEngine ? null : this._buildEvolutionCard();
+    // LEGACY LAYER RESTORE (Maria 2026-08-02): the blanket `this.buildEngine ? null :` retirement
+    // is replaced by a PER-RECIPE supersede test inside _buildEvolutionCard(). The 22 legacy
+    // recipes the Build Engine re-issued under the be_ / build_ prefix stay retired, so the two
+    // layers can never offer the same weapon twice; the 11 legacy-only ones come back. The Build
+    // Engine's own guaranteed evolution is untouched — injectCards() places it before this line.
+    const evoCard = this._buildEvolutionCard();
     if (evoCard) {
       choices[choices.length - 1] = evoCard;   // always replace last slot
       return;                                   // evolution takes priority, skip normal weapon card
@@ -15592,6 +15613,10 @@ export class Game {
       // this card in the rotation — filtered before it can enter choices. ──
       if (!isEvolutionOwnedBy(recipe, this.player.selectedCharacter)) continue;
       if (this._evolutionsDone.has(recipe.result)) continue;
+      // SUPERSEDED, NOT DEAD: 22 of the 33 legacy recipes were re-issued by the Build Engine under
+      // the documented be_ / build_ prefix with the SAME display name (be_marrow_reactor,
+      // build_ion_halo, ...). Those stay retired; only the 11 legacy-only evolutions return.
+      if (BE_EVOLUTION_RECIPES['be_' + recipe.result] || BE_WEAPON_DEFS['build_' + recipe.result]) continue;
       const def = getWeaponDef(recipe.result);
       if (!def) continue;
       // Build ingredient names for description
