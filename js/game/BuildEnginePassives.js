@@ -10,7 +10,7 @@
 //  · §50 Phoenix Contingency: revive detect (hp<=0 -> hp>0) -> 8s +15% BE dmg +15% MS.
 // ═══════════════════════════════════════════════════════════════════════════════
 import { WEAPON_DEFS, PASSIVE_DEFS, EVOLUTION_RECIPES, RUNTIME_HOOKS }
-  from './BuildEngine.js?v=20260902090000';
+  from './BuildEngine.js?v=20260902100000';
 
 // ── per-runtime state (καθαρίζει μόνο του όταν πεθάνει το runtime instance) ────
 const STATE = new WeakMap();
@@ -309,7 +309,11 @@ RUNTIME_HOOKS.tick.push((rt, dt) => {
   if (L(rt, 'bp_momentum_shield')) {
     const moving = p.vel && Math.hypot(p.vel.x, p.vel.y) > 40;
     s.moveT = moving ? s.moveT + dt : 0;
-    if (s.moveT >= 2.5) p._armorT = Math.max(p._armorT || 0, 0.35);   // κρατιέται μόνο όσο κινείσαι
+    // _armorT is ALSO the armor-pickup occupancy flag: Game._updateArmorPickups only spawns when
+    // it is <= 0. Refreshing it every frame while moving meant a mobile player never saw another
+    // armor pickup for the rest of the run - and since this passive grants the same +15% DR, the
+    // net effect was losing the 12 s pickup for nothing. Own key, same effect, no side channel.
+    if (s.moveT >= 2.5) p._msArmorT = 0.35;   // κρατιέται μόνο όσο κινείσαι
   }
   // §50 Phoenix Contingency: revive detect -> 8s buff (+15% BE dmg μέσω modDamage +15% MS)
   if (L(rt, 'bp_phoenix_contingency')) {

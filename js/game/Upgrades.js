@@ -274,6 +274,14 @@ export const ALL_UPGRADES = [
     '#ff5cd2', 1, () => {}, '✖', 'legendary', 'assassin_clone', null, false, true, p => (p.upgrades['assassin_clone_twin_dagger_mastery'] || 0) >= 1),
   new UpgradeDefinition('synergy_toxic_geometry', 'Toxic Geometry', 'Toxin shots MARK foes; marks pulse extra poison',
     '#7CFF4D', 1, () => {}, '▲', 'legendary', 'euclid_vector', null, false, true, p => (p.upgrades['euclid_toxin_shot_mastery'] || 0) >= 1),
+  // Game.SYNERGY_FX already declares a mark-layer for these two characters and MetaProgress sells
+  // their meta stars for 1000 PF each, but the cards the FX gates on (player.upgrades[fx.card])
+  // were never written - so both were permanently inert while being paid for. Same shape as the
+  // six above, each gated on that character's own mastery card.
+  new UpgradeDefinition('synergy_phase_companion', 'Phase Companion', 'Phase Shards MARK foes; marks collapse in a void burst',
+    '#9fdcff', 1, () => {}, '◆', 'legendary', 'japan_phasewalker', null, false, true, p => (p.upgrades['phasewalker_phase_shard_mastery'] || 0) >= 1),
+  new UpgradeDefinition('synergy_gauntlet_resonance', 'Gauntlet Resonance', 'Gauntlet shockwaves MARK foes; marks detonate on the next hit',
+    '#b026ff', 1, () => {}, '✊', 'legendary', 'dimis_kickboxer', null, false, true, p => (p.upgrades['dimi_gauntlet_mastery'] || 0) >= 1),
 
   // ── Reward / Gift cards (Phase 1) — Endless-only premium "overdrive" rewards (global, char=null).
   // Endless-gated so Act 1's card pool/balance is untouched. Distinct REWARD styling in UpgradeUI.

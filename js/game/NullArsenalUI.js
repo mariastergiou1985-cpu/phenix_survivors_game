@@ -9,7 +9,7 @@
 // μέχρι το P2.7 migration (δηλωμένο μέσα στο ίδιο το UI).
 // ═══════════════════════════════════════════════════════════════════════════════
 import { WEAPON_DEFS, PASSIVE_DEFS, EVOLUTION_RECIPES, singleTargetDps }
-  from './BuildEngine.js?v=20260902090000';
+  from './BuildEngine.js?v=20260902100000';
 // P2.8 v2.1: τα TACTICALS/ELEMENTS/FUSIONS διαβάζονται read-only από τους
 // ΥΠΑΡΧΟΝΤΕΣ καταλόγους του παλιού συστήματος (ίδια ?v με το Game.js) —
 // καμία αλλαγή gameplay, μόνο παρουσίαση μέχρι το πλήρες migration.
@@ -73,9 +73,17 @@ function weaponCard(id, d, game) {
 
 function passiveCard(id, p) {
   const isCat = p.category === 'evolution_passive';
+  // _catalystSum (BuildEngine.js) ADDS every level up to the current one, so these tables are
+  // INCREMENTS. Rendering only the per-level step made the codex read like a tier table and
+  // understate what the player actually gets by 1.5x-3x on all 25 catalysts (Refraction Anklet
+  // Lv3 read "heelEdge +20%" while the runtime applied +50%). Show both columns.
+  const _fmt = (o) => Object.entries(o).map(([k, v]) => k + ' +' + (v < 1 ? +(v * 100).toFixed(0) + '%' : v)).join(' · ');
   const bon = isCat && p.bonuses
-    ? '<table class="na-t">' + p.bonuses.map((b, i) =>
-        '<tr><td>Lv' + (i + 1) + '</td><td>' + esc(Object.entries(b).map(([k, v]) => k + ' +' + (v < 1 ? (v * 100) + '%' : v)).join(' · ')) + '</td></tr>').join('') + '</table>'
+    ? '<table class="na-t"><tr><td>LEVEL</td><td>THIS LEVEL ADDS</td><td>TOTAL</td></tr>' + p.bonuses.map((b, i) => {
+        const tot = {};
+        for (let j = 0; j <= i; j++) for (const [k, v] of Object.entries(p.bonuses[j])) tot[k] = (tot[k] || 0) + v;
+        return '<tr><td>Lv' + (i + 1) + '</td><td>' + esc(_fmt(b)) + '</td><td>' + esc(_fmt(tot)) + '</td></tr>';
+      }).join('') + '</table>'
     : '<div class="na-desc" style="color:' + C.dim + '">Max level: ' + p.maxLevel + '</div>';
   const link = isCat ? '<div class="na-evo">For <b>' + esc(WEAPON_DEFS[p.forWeapon]?.name || p.forWeapon) + '</b> → unlocks <b style="color:' + C.evolution + '">' + esc(EVOLUTION_RECIPES[p.requiredFor]?.name || '') + '</b></div>' : '';
   return '<div class="na-card" style="--acc:' + C.passive + '">' +

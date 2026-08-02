@@ -49,10 +49,10 @@ globalThis.performance = globalThis.performance || { now: () => 0 };
 globalThis.requestAnimationFrame = globalThis.requestAnimationFrame || (() => 0);
 
 // MODULE IDENTITY: BuildEngineChars1-5 + BuildEnginePassives register into this exact specifier.
-const BE = await import('../../js/game/BuildEngine.js?v=20260902090000');
+const BE = await import('../../js/game/BuildEngine.js?v=20260902100000');
 for (const m of ['BuildEngineChars1', 'BuildEngineChars2', 'BuildEngineChars3',
                  'BuildEngineChars4', 'BuildEngineChars5', 'BuildEnginePassives'])
-  await import(`../../js/game/${m}.js?v=20260902090000`);
+  await import(`../../js/game/${m}.js?v=20260902100000`);
 
 // ── K1 — the boss cap actually bounds ──────────────────────────────────────
 // _capBossDamage is a Game method with no dependencies on game state beyond `this`, so it is

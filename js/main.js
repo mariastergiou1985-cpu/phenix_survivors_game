@@ -1,4 +1,4 @@
-import { Game } from './game/Game.js?v=20260902090000';
+import { Game } from './game/Game.js?v=20260902100000';
 import { AudioManager } from './audio/AudioManager.js?v=20260902080000';
 import { PlatformAchievements } from './platform/PlatformAchievements.js?v=20260712370000';
 // Steam build: replay any web-earned achievements to Steam on boot (no-op in browsers)
@@ -1299,7 +1299,7 @@ requestAnimationFrame(loop);
       const g = game;
       if (!g.buildEngine) return Object.freeze({ ok: false, reason: 'no-buildengine' });
       let be;
-      try { be = await import('./game/BuildEngine.js?v=20260902090000'); }
+      try { be = await import('./game/BuildEngine.js?v=20260902100000'); }
       catch (_) { return Object.freeze({ ok: false, reason: 'import-failed' }); }
       const r = be.EVOLUTION_RECIPES[String(evolutionId)];
       if (!r) return Object.freeze({ ok: false, reason: 'unknown-evolution' });
@@ -1330,7 +1330,7 @@ requestAnimationFrame(loop);
       const g = game;
       if (!g.buildEngine) return Object.freeze({ ok: false, reason: 'no-buildengine' });
       let be;
-      try { be = await import('./game/BuildEngine.js?v=20260902090000'); }
+      try { be = await import('./game/BuildEngine.js?v=20260902100000'); }
       catch (_) { return Object.freeze({ ok: false, reason: 'import-failed' }); }
       const r = be.EVOLUTION_RECIPES[String(evolutionId)];
       if (!r) return Object.freeze({ ok: false, reason: 'unknown-evolution' });

@@ -176,6 +176,7 @@ export class Player {
 
     // Phase 7 — armor shield pickup buff: +15% damage reduction while > 0 (refresh, no stack).
     this._armorT = 0;
+    this._msArmorT = 0;      // Momentum Shield DR window — separate from the pickup's occupancy flag
 
     this.kills             = 0;
     this.coresSecured      = 0;
@@ -212,7 +213,7 @@ export class Player {
     if ((this._vowInvulnT || 0) > 0) return;       // Φ11 Phoenix Vow immunity window
     let mult = this.shieldTimer > 0 ? 0.4 : 1;
     if ((this._tankTimer || 0) > 0) mult *= 0.5;   // Oni Protocol 0: 50% damage reduction
-    if ((this._armorT || 0) > 0) mult *= 0.85;     // Phase 7: armor shield pickup (+15% DR)
+    if ((this._armorT || 0) > 0 || (this._msArmorT || 0) > 0) mult *= 0.85;   // armor pickup OR Momentum Shield (+15% DR, never stacks)
     if ((this._nexusDomeT || 0) > 0) mult *= 0.85; // Φ14: Chaos DEFENCE nexus dome (+15% DR)
     // Φ11 Emergency Protocol: hit while below 30% HP → 1s auto-shield 30% (level-gated CD)
     if ((this._stEmergencyLvl || 0) > 0 && this.hp / this.maxHp < 0.3 && (this._emergCd || 0) <= 0) {
@@ -363,6 +364,7 @@ export class Player {
     if (this.bleedTimer > 0)      { this.bleedTimer -= dt; this.hp = Math.max(0, this.hp - dt); }
     if (this._chillT > 0)           this._chillT -= dt;   // Cryo Claw chill decay
     if ((this._armorT || 0) > 0)    this._armorT -= dt;   // armor pickup buff decay
+    if ((this._msArmorT || 0) > 0)  this._msArmorT -= dt;  // Momentum Shield window (BuildEnginePassives §47)
     if ((this._emergT || 0) > 0)      this._emergT -= dt;       // Φ11 emergency shield window
     if ((this._emergCd || 0) > 0)     this._emergCd -= dt;
     if ((this._vowInvulnT || 0) > 0)  this._vowInvulnT -= dt;   // Φ11 phoenix vow immunity

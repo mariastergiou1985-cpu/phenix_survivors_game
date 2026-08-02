@@ -476,7 +476,10 @@ export class BuildEngineRuntime {
       const w = this.weapons.get(p.forWeapon);
       const fd = WEAPON_DEFS[p.forWeapon];
       const extLvl = (!w && fd?.external) ? (g._weaponLevels?.get(p.forWeapon) || 0) : 0;
-      if ((!w && extLvl < 1) || w?.evolved) continue;           // catalyst μόνο αν υπάρχει το όπλο (ή external με level)
+      // _fusionSuppressed matches the guard already applied to _readyEvolutions: update() skips a
+      // fused component forever, so its catalyst can never be read by anything. Offering it burned
+      // a card slot and one of the 6 passive slots on a bonus with no consumer.
+      if ((!w && extLvl < 1) || w?.evolved || w?._fusionSuppressed) continue;   // catalyst μόνο αν υπάρχει το όπλο (ή external με level)
       const lvl = this.passives.get(pid) || 0;
       if (lvl >= p.maxLevel) continue;
       if (this.sealed.has(pid)) continue;                        // P2.7: sealed
