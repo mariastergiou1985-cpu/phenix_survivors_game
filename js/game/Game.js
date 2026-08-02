@@ -15457,26 +15457,40 @@ export class Game {
     // owning character and NEVER appear in another character's acquisition pool.
     const canAcquire = owned.length < MAX_SLOTS;
     const charId     = this.player.selectedCharacter;
-    const available  = canAcquire
-      ? getAllBaseWeapons().filter(w =>
-          !this._weaponLevels.has(w.id) &&
-          (!w.exclusive || w.character === charId))
-      : [];
 
-    // Build combined pool: upgrades + acquisitions.
-    // EVOLUTION BIAS: ingredients still needed by this character's pending
-    // evolutions get 3x weight, so the recipes are actually reachable in a run.
+    // EVOLUTION BIAS: ingredients still needed by this character's pending evolutions get 3x
+    // weight, so the recipes are actually reachable in a run. Computed BEFORE the acquisition
+    // filter because exclusivity now defers to it — see the comment on `available`.
     const _needed = new Set();
     try {
       for (const r of EVOLUTION_RECIPES) {
         if (!isEvolutionOwnedBy(r, charId)) continue;
         if (this._evolutionsDone.has(r.result)) continue;
+        // Skip the recipes the Build Engine superseded — the SAME guard _buildEvolutionCard()
+        // applies. Without it this set biased acquisition toward, and pierced exclusivity for,
+        // recipes that can never be offered: cataclysm_pulse was opening for eddie and
+        // dimis_kickboxer on solo_of_the_damned / wing_guillotine, both of which are retired.
+        if (BE_EVOLUTION_RECIPES['be_' + r.result] || BE_WEAPON_DEFS['build_' + r.result]) continue;
         for (const ing of r.ingredients) {
           const lv = this._weaponLevels.get(ing) || 0;
           if (lv < 5) _needed.add(ing);
         }
       }
     } catch (e) { /* bias is optional */ }
+
+    // EXCLUSIVITY DEFERS TO A RECIPE THIS CHARACTER OWNS (Maria 2026-08-02).
+    // Exclusive weapons stay hard-locked to their owner in the general pool. The one exception is
+    // an ingredient of an evolution recipe THIS character owns: Seismic Rift is owned by
+    // brawler_warrior and needs nexus_chakram + cataclysm_pulse, but cataclysm_pulse is exclusive
+    // to Oni — so its only owner could never hold both ingredients and the recipe was unreachable
+    // for every character in the game. Narrow by construction: `_needed` only ever contains
+    // ingredients of recipes isEvolutionOwnedBy() already granted to this character, so no
+    // signature weapon leaks into a pool that has no recipe asking for it.
+    const available  = canAcquire
+      ? getAllBaseWeapons().filter(w =>
+          !this._weaponLevels.has(w.id) &&
+          (!w.exclusive || w.character === charId || _needed.has(w.id)))
+      : [];
     const pool = [];
     for (const w of upgradeable) { const n = _needed.has(w.id) ? 3 : 1; for (let bi = 0; bi < n; bi++) pool.push({ type: 'upgrade', id: w.id, level: w.level }); }
     for (const w of available)   { const n = _needed.has(w.id) ? 3 : 1; for (let bi = 0; bi < n; bi++) pool.push({ type: 'acquire', id: w.id }); }
@@ -15547,14 +15561,16 @@ export class Game {
   // Max 3 tactical weapons active at once. Spawns at player position, then DECOUPLES.
   _buildTacticalCard() {
     const MAX_TACTICAL = 2;   // P2 FULL MIGRATION (spec loadout cap 2T — was 3)
-    if (this.tacticalCacheWeapons.length >= MAX_TACTICAL) return null;
-
     const charId = this.player.selectedCharacter;
 
     // ── TACTICAL FUSION (Nexus pack): if BOTH parents of a fusion were deployed
     // this run and the fusion itself hasn't been, offer the fusion card instead.
     // Fusion defs carry character '__fusion__' so getAvailableTactical never
     // surfaces them in the normal pool. ──
+    // THE CAP USED TO BE CHECKED ABOVE THIS SCAN (Maria 2026-08-02), which made all four fusions
+    // unreachable: a fusion needs both parents deployed, i.e. exactly MAX_TACTICAL of them, so the
+    // early return fired precisely when a fusion first became possible. A fusion REPLACES its two
+    // parents rather than adding a third, so it is exempt from the cap and consumes them on apply.
     let pick = null, _isFusion = false;
     const _deployed = this._tacticalDeployedIds || new Set();
     for (const fdef of FUSION_TACTICALS) {
@@ -15563,9 +15579,27 @@ export class Game {
     }
 
     if (!pick) {
+      if (this.tacticalCacheWeapons.length >= MAX_TACTICAL) return null;
+      // A FUSION PARTNER UNLOCKS ONLY AFTER YOU COMMIT TO THE FUSION (Maria 2026-08-02).
+      // Two of the four fusions pair tacticals owned by DIFFERENT characters — Toxic Inferno is
+      // assassin_clone's Hunter Sentry + Oni's Gravity Well, Impact Storm is brawler_warrior's
+      // Heavy Impact Burst + euclid_vector's Proximity Grid — and every character's pool holds
+      // only their own two plus the shared Missile Barrage, so no one could ever deploy both.
+      // The partner is admitted ONLY once its counterpart is already on this run's deployed set,
+      // so the base pool is unchanged and another character's tactical never shows up unbidden.
+      const _partners = new Set();
+      for (const fdef of FUSION_TACTICALS) {
+        if (_deployed.has(fdef.id)) continue;
+        if (_deployed.has(fdef.parents[0]) && !_deployed.has(fdef.parents[1])) _partners.add(fdef.parents[1]);
+        if (_deployed.has(fdef.parents[1]) && !_deployed.has(fdef.parents[0])) _partners.add(fdef.parents[0]);
+      }
       const pool = getAvailableTactical(charId).filter(
-        d => !d.exclusive || d.character === charId
+        d => !d.exclusive || d.character === charId || _partners.has(d.id)
       );
+      for (const pid of _partners) {
+        const pdef = getTacticalDef(pid);
+        if (pdef && !pool.some(d => d.id === pid)) pool.push(pdef);
+      }
       if (pool.length === 0) return null;
       pick = pool[Math.floor(Math.random() * pool.length)];
     }
@@ -15590,10 +15624,22 @@ export class Game {
       char:           null,
       apply(player) {
         player.upgrades[this.key] = (player.upgrades[this.key] || 0) + 1;
+        // A fusion REPLACES its parents: retire any still on the field before spawning it, so the
+        // loadout cap is respected exactly and the two parents cannot keep firing alongside it.
+        if (_isFusion && Array.isArray(pick.parents)) {
+          for (let i = game.tacticalCacheWeapons.length - 1; i >= 0; i--) {
+            if (pick.parents.includes(game.tacticalCacheWeapons[i]?.id)) {
+              game.tacticalCacheWeapons[i].alive = false;
+              game.tacticalCacheWeapons.splice(i, 1);
+            }
+          }
+        }
         // Spawn at player position — then fully decoupled
         game._spawnTacticalWeapon(pick.id, player.pos.x, player.pos.y);
       },
-      canApply() { return game.tacticalCacheWeapons.length < MAX_TACTICAL; },
+      // The fusion is exempt: it removes two entities before adding one, so it can never push the
+      // field over MAX_TACTICAL, and gating it on the cap is what kept it unreachable.
+      canApply() { return _isFusion || game.tacticalCacheWeapons.length < MAX_TACTICAL; },
     };
   }
 
