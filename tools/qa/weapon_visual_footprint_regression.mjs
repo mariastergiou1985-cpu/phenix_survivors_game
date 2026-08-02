@@ -159,7 +159,13 @@ console.log('\n── 6. the cache-bust chain moved together ──');
   ok('sw.js BUILD equals index.html main.js ?v', sw.includes(`const BUILD = '${B}'`), B);
   ok('main.js imports Game.js at the same stamp', mn.includes(`./game/Game.js?v=${B}`));
   ok('Game.js imports the changed chars module at the same stamp', GS.includes(`./BuildEngineChars3.js?v=${B}`));
-  ok('Game.js imports the changed VFX module at the same stamp', GS.includes(`./VFXSpritePlayer.js?v=${B}`));
+  // VFXSpritePlayer only needs a stamp >= the batch that changed it (W5a). Requiring it to equal
+  // the current BUILD would force churn on every later batch that does not touch the file, and a
+  // stamp bump on an unchanged module is pointless cache invalidation, not safety. What must never
+  // come back is the pre-fix 20260724000000, which predates the blend-mode change.
+  const vfxStamp = GS.match(/VFXSpritePlayer\.js\?v=(\d+)/)?.[1];
+  ok('Game.js imports the VFX module at or after the batch that changed it',
+     Number(vfxStamp) >= 20260902110000, `got ${vfxStamp}`);
   // MODULE IDENTITY: all six side-effect registrars must import ONE BuildEngine instance.
   const beStamps = new Set();
   for (const f of ['BuildEngineChars1', 'BuildEngineChars2', 'BuildEngineChars3',

@@ -2218,5 +2218,96 @@ export class AudioManager {
 
 }
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// BUILD ENGINE WEAPON VOICE (Maria 2026-08-02)
+// All 23 BuildEngine executors were silent: the entire live weapon layer made no sound. This
+// layer REUSES existing authored cues only — no Wave 3, no new synthesis — and every one of them
+// passes through MIX.beWeapon, which is deliberately the quietest and tightest class in the mix
+// (quieter than MIX.fire, a longer retrigger floor, and a cap of one simultaneous voice per
+// weapon plus a hard ceiling across the whole layer). The point is to make the weapon you are
+// holding audible, NOT to add another dense repeated tone on top of the one already removed.
+// ═══════════════════════════════════════════════════════════════════════════════
+AudioManager.MIX.beWeapon = {
+  mul: 0.38,        // x0.38 = -8.4 dB, quieter than MIX.fire's x0.50
+  minGap: 0.20,     // per-weapon retrigger floor
+  cap: 1,           // one live voice per weapon id
+  layerCap: 3,      // and never more than 3 BuildEngine weapon voices at once, whatever fires
+  layerGap: 0.05,   // never two BE weapon cues in the same 50 ms
+  // hold MUST NOT exceed minGap. If it did, the cap-1 slot would still be occupied when the
+  // retrigger floor expires, so `hold` - not the declared floor - would silently become the real
+  // rate limit for every weapon. Keeping them equal makes the floor mean exactly what it says.
+  hold: 0.20,       // how long one cue occupies a slot, on the AUDIO clock (never a setTimeout)
+};
+
+// weaponId (or evolution id) -> an EXISTING AudioManager cue chosen for its character.
+AudioManager.BE_WEAPON_SFX = Object.freeze({
+  vector_heel:               'playPlasmaBladeSwing',
+  storm_sash:                'playPlasmaBladeSwing',
+  hydraulic_knuckle:         'playHeavyHit',
+  magnetic_shrapnel:         'playRailSpikeFire',
+  faultline_fist:            'playHeavyHit',
+  magma_uppercut:            'playDroneFlame',
+  monowire_lash:             'playPlasmaBladeSwing',
+  toxin_kunai:               'playVoidNeedleFire',
+  solo_red_thunder:          'playLightningStrike',
+  feedback_cabinet:          'playTitanShockwave',
+  cyber_gauntlets_injection: 'playHeavyHit',
+  holo_energy_knuckles:      'playPlasmaBladeSwing',
+  phase_needle:              'playVoidNeedleFire',
+  probability_disc:          'playShardRingHit',
+  axiom_ray:                 'playVoidBeamFire',
+  phi_cutter:                'playPlasmaBladeSwing',
+  hannya_cleaver:            'playPlasmaBladeSwing',
+  hungry_spirit_lantern:     'playToxicGas',
+  build_null_lance:          'playRailSpikeFire',
+  build_ion_halo:            'playGravityCorePulse',
+  gravity_core:              'playGravityCoreActivate',
+  nano_mine:                 'playNanoMineDrop',
+  blacknet_swarm_drone:      'playBlacknetSwarmLaunch',
+});
+
+AudioManager.prototype.playBuildWeapon = function (weaponId) {
+  if (this.muted) return false;
+  const M = AudioManager.MIX.beWeapon;
+  // Keyed on the BASE weapon id, which is what BuildEngine passes: an evolved weapon keeps its
+  // family's voice rather than falling silent the moment it upgrades.
+  const cue = AudioManager.BE_WEAPON_SFX[weaponId];
+  const fn = cue && this[cue];
+  if (typeof fn !== 'function') return false;
+
+  const now = this.actx ? this.actx.currentTime : 0;
+  if (!this._beLast)   this._beLast   = Object.create(null);
+  if (!this._beVoices) this._beVoices = [];      // [{ id, until }] on the AUDIO clock
+  if (this._beLayerT === undefined) this._beLayerT = -1e9;
+
+  // Occupancy is expressed as a RELEASE TIMESTAMP swept on admission, never as a setTimeout.
+  // A wall-clock timer would drift away from actx.currentTime, and a backgrounded tab throttles
+  // setTimeout to ~1 Hz - which would have left the whole layer holding voice slots it had long
+  // finished playing, i.e. silent. Sweeping on the same clock the floors use is exact and, unlike
+  // a timer, deterministically testable.
+  let n = 0;
+  for (const v of this._beVoices) if (v.until > now) this._beVoices[n++] = v;
+  this._beVoices.length = n;
+
+  // Rejected cues must not consume anything — same rule as the file-buffer path.
+  if (now - this._beLayerT < M.layerGap) return false;
+  if (this._beVoices.length >= M.layerCap) return false;
+  if (now - (this._beLast[weaponId] ?? -1e9) < M.minGap) return false;
+  let mine = 0;
+  for (const v of this._beVoices) if (v.id === weaponId) mine++;
+  if (mine >= M.cap) return false;
+
+  this._beLast[weaponId] = now;
+  this._beLayerT = now;
+  this._beVoices.push({ id: weaponId, until: now + M.hold });
+
+  // The cue may itself be a gated FIRE/IMPACT cue; _fireMul composes multiplicatively, and the
+  // inner gate can still reject it — which is fine, this layer is deliberately the quiet one.
+  const prev = this._fireMul;
+  this._fireMul = (prev || 1) * M.mul;
+  try { fn.call(this); } finally { this._fireMul = prev; }
+  return true;
+};
+
 AudioManager._installFireGates();
 AudioManager._installImpactGates();

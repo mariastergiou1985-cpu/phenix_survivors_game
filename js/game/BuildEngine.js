@@ -613,12 +613,22 @@ export class BuildEngineRuntime {
       // (def.replaces), το βασικό pattern σιωπά — κανένα duplicate attack. Το flag
       // το βάζει/καθαρίζει ΜΟΝΟ το FusionEngine (per-run instance → auto-reset).
       if (w._fusionSuppressed) continue;
+      // AUDIO (Maria 2026-08-02): all 23 BuildEngine executors were silent — the whole live weapon
+      // layer made no sound at all. Rather than edit 23 executors (and risk 23 chances to break
+      // boot), detect the fire centrally: every executor resets its own cadence timer on the frame
+      // it fires, so a timer that went UP across the call is exactly one shot. 20 of 23 use w.cd;
+      // solo_red_thunder uses chordT and build_ion_halo uses domeT.
+      const _t0 = w.cd, _t1 = w.chordT, _t2 = w.domeT;
       try {                                                        // armor: ανά όπλο
         const ex = WEAPON_EXECUTORS[w.id];
         if (ex) ex.update(this, w, dt);
         else if (w.id === 'marrow_spitter') this._updateSpitter(w, dt);
         else if (w.id === 'grave_cantor') this._updateCantor(w, dt);
       } catch (e) { if ((w._errs = (w._errs || 0) + 1) <= 2) console.error('[P2] weapon "' + w.id + '" update error', e); }
+      if ((w.cd > _t0) || (w.chordT > _t1) || (w.domeT > _t2)) {
+        try { g.audio?.playBuildWeapon?.(w.id); }   // base id: an evolution keeps its family's voice
+        catch (_) { /* audio must never be able to stop a weapon */ }
+      }
     }
     try { this._tickStatus(dt); } catch (e) { console.error('[P2] status tick error', e); }
     this._hookDepth = 0;
