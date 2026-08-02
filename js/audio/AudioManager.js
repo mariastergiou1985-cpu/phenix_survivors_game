@@ -726,6 +726,37 @@ export class AudioManager {
       mul: 0.50, minGap: 0.09, cap: 3,           // x0.50 = -6.02 dB
       perCue: { playVoidNeedleFire: 0.09, playSentryDroneFire: 0.12 },
     },
+    // ── MIX.impact (Maria 2026-08-02 hotfix) ────────────────────────────────
+    // _fireGate only ever covered FIRE_CUES. The repeated HIT/IMPACT family had no gate of
+    // any kind. Instrumented Endless run, 151 s, 4-weapon loadout — voices per second and
+    // acoustic profile of the ones that measured loudest against the described symptom
+    // (clean, mid-band, short, high repetition):
+    //   playXpPickup        5.25 v/s  purity 1.00  triangle 620-1040 Hz  0.045 s  NO noise
+    //   playSentryDroneHit  4.28 v/s  purity 0.78  sine 420->120 AND 500->200 (near-duplicates)
+    //   playVoidNeedleHit   2.89 v/s  purity 0.86  saw 320->90 + square 700->200
+    //   playPlasmaBladeHit  1.39 v/s  purity 0.86  gain 0.18
+    //   playRailSpikeImpact 1.20 v/s  purity 0.85  gain 0.20 (loudest single voice)
+    // Deliberately scoped to these five plus the XP ladder: every other impact cue measured
+    // below 0.12 voices/s and is left exactly as it was.
+    impact: {
+      mul: 0.50, minGap: 0.12, cap: 2,           // x0.50 = -6.02 dB, tighter cap than fire
+      perCue: {
+        playSentryDroneHit: 0.22, playVoidNeedleHit: 0.18, playPlasmaBladeHit: 0.16,
+        playRailSpikeImpact: 0.18, playXpPickup: 0.09,
+      },
+    },
+    // ── MIX.fileRepeat (Maria 2026-08-02 hotfix) ────────────────────────────
+    // THE dominant repeated cue in Endless is not procedural, which is why every previous
+    // pass — all of which audited oscillators — walked straight past it. playEnemyDeath is a
+    // FILE buffer at vol 0.85 (5-25x the amplitude of any synthesized tone) on an 80 ms
+    // floor, i.e. up to 12.5 a second; measured 13.6 calls/s. _playSfxBuffer() also bypassed
+    // _voiceOk() entirely, so file cues obeyed NO polyphony budget at all.
+    //
+    // Measured on recorded system audio of a 150 s Endless run, silencing this ONE cue and
+    // changing nothing else:  power 150-700 Hz -80.9% · total power -59.9% · RMS -36.8%.
+    fileRepeat: {
+      vol: 0.50, minGap: 0.14, cap: 3,           // x0.50 amplitude = -6.02 dB
+    },
     bossBoost:  2.00,        // +6.02 dB
     eventBoost: 2.00,        // +6.02 dB
     tellBoost:  1.50,        // +3.52 dB
@@ -742,13 +773,19 @@ export class AudioManager {
     'forgeZap', 'forgeGunshot', 'playDroneElectro', 'playDroneFlame',
     'playHomingMissileFire', 'playBlacknetSwarmLaunch',
   ];
+  // The five measured HIT/IMPACT offenders plus the XP ladder — see MIX.impact above.
+  static IMPACT_CUES = [
+    'playXpPickup', 'playSentryDroneHit', 'playVoidNeedleHit',
+    'playPlasmaBladeHit', 'playRailSpikeImpact',
+  ];
 
   /**
    * Retrigger floor + hard voice cap for one repeated fire cue.
    * Returns the gain multiplier, or 0 when the cue must be dropped this frame.
    */
-  _fireGate(cueName) {
-    const M = AudioManager.MIX.fire;
+  _mixGate(cueName, cls = 'fire') {
+    const M = AudioManager.MIX[cls];
+    if (!M) return 1;
     if (!this._fireActive) this._fireActive = Object.create(null);
     if (!this._fireLast)   this._fireLast   = Object.create(null);
     const now = this.actx ? this.actx.currentTime : 0;
@@ -761,19 +798,22 @@ export class AudioManager {
     return M.mul;
   }
 
+  /** Back-compat alias — the 'fire' class of _mixGate(). */
+  _fireGate(cueName) { return this._mixGate(cueName, 'fire'); }
+
   /**
    * Wrap each fire cue once, on the prototype. _tone/_noiseBurst read this._fireMul, so a
    * cue that is gated out never starts a voice and a cue that passes is attenuated exactly
    * once, however many tones it layers.
    */
-  static _installFireGates() {
-    if (AudioManager.__fireGatesInstalled) return;
-    AudioManager.__fireGatesInstalled = true;
-    for (const name of AudioManager.FIRE_CUES) {
+  static _installGates(cues, cls, flag) {
+    if (AudioManager[flag]) return;
+    AudioManager[flag] = true;
+    for (const name of cues) {
       const orig = AudioManager.prototype[name];
       if (typeof orig !== 'function') continue;
       AudioManager.prototype[name] = function (...a) {
-        const fg = this._fireGate(name);
+        const fg = this._mixGate(name, cls);
         if (fg <= 0) return;                    // dropped: too soon, or cap reached
         const prev = this._fireMul;
         this._fireMul = fg;
@@ -782,10 +822,22 @@ export class AudioManager {
     }
   }
 
+  static _installFireGates() {
+    AudioManager._installGates(AudioManager.FIRE_CUES, 'fire', '__fireGatesInstalled');
+  }
+
+  static _installImpactGates() {
+    AudioManager._installGates(AudioManager.IMPACT_CUES, 'impact', '__impactGatesInstalled');
+  }
+
   _tone({ type = 'sine', freqStart, freqEnd, dur, gain = 0.15, delay = 0 }) {
-    gain *= (this._fireMul || 1);   // MIX.fire — see _installFireGates()
-    if (!this._voiceOk()) return;
+    gain *= (this._fireMul || 1);   // MIX.fire / MIX.impact — see _installFireGates()
+    // ORDER (Maria 2026-08-02): `muted` rejects the sound outright, so it must be tested
+    // BEFORE the polyphony budget. Testing it after meant a rejected cue still spent one of
+    // the 16 slots in the 130 ms window, and cues that DID want to sound were dropped for a
+    // voice nobody could hear.
     if (this.muted) return;
+    if (!this._voiceOk()) return;
     const t0  = this.actx.currentTime + delay;
     const osc = this.actx.createOscillator();
     const g   = this.actx.createGain();
@@ -810,9 +862,9 @@ export class AudioManager {
 
   // Decaying filtered white-noise burst (for digital crackle / zap texture).
   _noiseBurst({ dur = 0.12, gain = 0.12, filterType = 'highpass', freq = 800, delay = 0 }) {
-    gain *= (this._fireMul || 1);   // MIX.fire — see _installFireGates()
+    gain *= (this._fireMul || 1);   // MIX.fire / MIX.impact — see _installFireGates()
+    if (this.muted) return;         // same ordering rule as _tone(): guard first, budget second
     if (!this._voiceOk()) return;
-    if (this.muted) return;
     const t0  = this.actx.currentTime + delay;
     const len = Math.floor(this.actx.sampleRate * dur);
     const buf = this.actx.createBuffer(1, len, this.actx.sampleRate);
@@ -1170,7 +1222,8 @@ export class AudioManager {
 
   // Plasma Blade — impact crackle on successful hit.
   playPlasmaBladeHit() {
-    if (!this._canPlay("plasmaHit", 0.10)) return;
+    // Retrigger floor moved to MIX.impact.perCue.playPlasmaBladeHit — one authority, so the body
+    // can no longer drop a call the gate already charged a cap slot and a stamp for.
     this._tone({ type: "sawtooth", freqStart: 220, freqEnd: 55,  dur: 0.14, gain: 0.18 });
     this._tone({ type: "square",   freqStart: 600, freqEnd: 180, dur: 0.08, gain: 0.12 });
     this._noiseBurst({ dur: 0.07, gain: 0.11, filterType: "highpass", freq: 2000 });
@@ -1186,11 +1239,12 @@ export class AudioManager {
 
   // Void Needle — soft impact on hit.
   playVoidNeedleHit() {
-    if (!this._canPlay("voidHit", 0.08)) return;
+    // Retrigger floor moved to MIX.impact.perCue.playVoidNeedleHit — one authority, so the body
+    // can no longer drop a call the gate already charged a cap slot and a stamp for.
     this._tone({ type: "sawtooth", freqStart: 320, freqEnd: 90,  dur: 0.09, gain: 0.14 });
     this._tone({ type: "square",   freqStart: 700, freqEnd: 200, dur: 0.05, gain: 0.09 });
-    this._noiseBurst({ dur: 0.05, gain: 0.08, filterType: "highpass", freq: 2500 });
-    this._noiseBurst({ dur: 0.04, gain: 0.03, filterType: "highpass", freq: 2200 });
+    // 2500 Hz and 2200 Hz highpass bursts back to back were one texture spending two voices.
+    this._noiseBurst({ dur: 0.055, gain: 0.09, filterType: "highpass", freq: 2400 });
   }
 
   // Sentry Drone — light blaster pop on fire.
@@ -1202,10 +1256,13 @@ export class AudioManager {
 
   // Sentry Drone — small impact on hit.
   playSentryDroneHit() {
-    if (!this._canPlay("sentryHit", 0.10)) return;
-    this._tone({ type: "sine",     freqStart: 420, freqEnd: 120, dur: 0.08, gain: 0.12 });
+    // Retrigger floor moved to MIX.impact.perCue.playSentryDroneHit — one authority, so the body
+    // can no longer drop a call the gate already charged a cap slot and a stamp for.
+    // 3 voices per call, two of them near-identical sine sweeps (420->120 and 500->200) —
+    // measured 4.28 voices/s, the purest repeated tone in the run. The duplicate tail is gone
+    // and the survivor is a triangle over a wider sweep: same event, less pure pitch.
+    this._tone({ type: "triangle", freqStart: 460, freqEnd: 95, dur: 0.075, gain: 0.12 });
     this._noiseBurst({ dur: 0.05, gain: 0.08, filterType: "highpass", freq: 2400 });
-    this._tone({ type: "sine", freqStart: 500, freqEnd: 200, dur: 0.04, gain: 0.04 });
   }
 
   // Shard Ring — resonant contact hum on enemy hit (global throttle keeps it from spamming).
@@ -1228,7 +1285,8 @@ export class AudioManager {
 
   // Rail Spike — deep bass impact on hit.
   playRailSpikeImpact() {
-    if (!this._canPlay("railImpact", 0.15)) return;
+    // Retrigger floor moved to MIX.impact.perCue.playRailSpikeImpact — one authority, so the body
+    // can no longer drop a call the gate already charged a cap slot and a stamp for.
     this._tone({ type: "sine",     freqStart: 100, freqEnd: 25,  dur: 0.30, gain: 0.20 });
     this._tone({ type: "sawtooth", freqStart: 280, freqEnd: 80,  dur: 0.12, gain: 0.12 });
     this._noiseBurst({ dur: 0.15, gain: 0.12, filterType: "bandpass", freq: 400 });
@@ -1259,11 +1317,23 @@ export class AudioManager {
     tryNext(0);
   }
 
-  _playSfxBuffer(key, minGap, vol = 0.9) {
-    if (this.muted) return;
-    if (!this._canPlay(key, minGap)) return;
+  /**
+   * File-backed one-shot. Maria 2026-08-02: this path used to bypass _voiceOk() completely,
+   * so FILE cues obeyed no polyphony budget while every synthesized cue did — and file cues
+   * are the loud ones. It now runs the same canonical budget, in the same guard-first order
+   * as _tone()/_noiseBurst(): every rejection happens BEFORE a slot is spent, so a cue that
+   * is muted, throttled, un-loaded or capped never charges the budget for silence.
+   * @param {number} cap  optional per-key concurrency ceiling (0 = none)
+   * @returns {boolean}   true only when a voice actually started
+   */
+  _playSfxBuffer(key, minGap, vol = 0.9, cap = 0) {
+    if (this.muted) return false;
     const buf = this._sfxBuffers[key];
-    if (!buf) return;
+    if (!buf) return false;                      // still loading — no slot spent
+    if (!this._fileActive) this._fileActive = Object.create(null);
+    if (cap > 0 && (this._fileActive[key] || 0) >= cap) return false;
+    if (!this._canPlay(key, minGap)) return false;
+    if (!this._voiceOk()) return false;          // canonical budget, shared with the synth path
     if (this.actx.state === 'suspended') this.actx.resume();
     const src = this.actx.createBufferSource();
     src.buffer = buf;
@@ -1272,6 +1342,19 @@ export class AudioManager {
     src.connect(g);
     g.connect(this.sfxGain);
     src.start();
+    if (cap > 0) {
+      this._fileActive[key] = (this._fileActive[key] || 0) + 1;
+      let released = false;
+      const release = () => {
+        if (released) return; released = true;
+        this._fileActive[key] = Math.max(0, (this._fileActive[key] || 1) - 1);
+      };
+      src.onended = release;                     // primary
+      // Belt and braces: onended does not fire in every engine (and never in the test
+      // doubles), and a counter that only goes up would silence the cue permanently.
+      setTimeout(release, Math.max(120, ((buf.duration || 0.3) + 0.15) * 1000));
+    }
+    return true;
   }
 
   // ─── File-backed SFX — each method preloads on first call, plays from cache ─
@@ -1283,11 +1366,13 @@ export class AudioManager {
       'assets/audio/sfx/enemy-death.ogg',
       'assets/audio/sfx/enemy-death.mp3',
       'assets/audio/sfx/enemy-death.wav');
+    // MIX.fileRepeat — level, retrigger floor and hard concurrency cap in one place.
+    const R = AudioManager.MIX.fileRepeat;
     if (this._sfxBuffers['sfxEnemyDeath']) {
-      this._playSfxBuffer('sfxEnemyDeath', 0.08, 0.85);
+      this._playSfxBuffer('sfxEnemyDeath', R.minGap, 0.85 * R.vol, R.cap);
     } else {
-      // Buffer still loading — procedural fallback, never silent.
-      this.generateSound('enemy-death', 0.08);
+      // Buffer still loading — procedural fallback, never silent. Same floor as the file.
+      this.generateSound('enemy-death', R.minGap);
     }
   }
 
@@ -2130,3 +2215,4 @@ export class AudioManager {
 }
 
 AudioManager._installFireGates();
+AudioManager._installImpactGates();
