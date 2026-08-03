@@ -206,6 +206,27 @@ export const PF_TOTAL_OBTAINABLE = Object.values(PF_PAYOUTS).reduce((a, b) => a 
 
 // Future Endless-character unlock costs. Progression targets (of the 14 total):
 //   Japan Phasewalker 8 = 57% · Euclid Vector 10 = 71% · Oni Cataclysm 14 = 100%.
+// Campaign stage-gated unlock ladder (PHENIX_DESIGN_DECISIONS A1): Skeleton is the starter; one
+// character unlocks per stage cleared; Eddie + Japan Phasewalker unlock after the FINAL stage
+// (all cleared). Order confirmed with Maria. Extracted 2026-08-03 so the Character-Select UI can
+// SHOW each requirement from the SAME source isCharacterUnlocked enforces — never a second copy.
+// Returns the required stagesCleared count, or null for unmapped characters (always unlocked).
+export function characterStageRequirement(characterId, totalStages) {
+  const REQ = {
+    skeleton_warrior:       0,
+    taekwondo_girl:         1,
+    cyber_arm_hero:         2,
+    brawler_warrior:        3,
+    assassin_clone:         4,
+    euclid_vector:          5,
+    oni_cataclysm_protocol: 6,
+    eddie:                  totalStages,   // 7 → after FINAL (all stages cleared)
+    japan_phasewalker:      totalStages,   // #74 restored — unlocks after the FINAL stage (bonus glitch-walker)
+  };
+  const req = REQ[characterId];
+  return req == null ? null : req;
+}
+
 export const PF_CHARACTER_COSTS = {
   // Characters no longer unlock via Protocol Fragments — they unlock through campaign stage
   // progression (see MetaProgress.isCharacterUnlocked). Kept as an empty map so existing
@@ -1007,22 +1028,7 @@ export class MetaProgress {
   // Character unlock gate. The 3 base characters are always available; Brawler Warrior is
   // unlocked by reaching 10:00 in Endless (flag set via unlock('brawler_warrior')).
   isCharacterUnlocked(characterId) {
-    // Campaign stage-gated unlock (PHENIX_DESIGN_DECISIONS A1): Skeleton is the starter; one
-    // character unlocks per stage cleared; Eddie unlocks after the FINAL stage (all cleared).
-    // Japan Phasewalker unlocks after the FINAL stage too (see totalStages below) — he is a
-    // playable bonus character, NOT coming-soon. Order confirmed with Maria.
-    const REQ = {
-      skeleton_warrior:       0,
-      taekwondo_girl:         1,
-      cyber_arm_hero:         2,
-      brawler_warrior:        3,
-      assassin_clone:         4,
-      euclid_vector:          5,
-      oni_cataclysm_protocol: 6,
-      eddie:                  this.totalStages,   // 7 → after FINAL (all stages cleared)
-      japan_phasewalker:      this.totalStages,   // #74 restored — unlocks after the FINAL stage (bonus glitch-walker)
-    };
-    const req = REQ[characterId];
+    const req = characterStageRequirement(characterId, this.totalStages);
     if (req == null) return true;                 // any unmapped character defaults unlocked (safety)
     return (this.stagesCleared || 0) >= req;
   }

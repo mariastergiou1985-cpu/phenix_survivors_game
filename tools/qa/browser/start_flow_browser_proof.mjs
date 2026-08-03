@@ -121,7 +121,8 @@ const menuLabels = (page) => page.$$eval('#cgm-menu-nav .mbtn', els => els.map(e
       endless: getComputedStyle(document.querySelector('#csc-endless-btn')).display,
       chaos:   getComputedStyle(document.querySelector('#csc-chaos-btn')).display,
     }));
-    gate('A20 campaign entry keeps all three action buttons', btnsA.start !== 'none' && btnsA.endless !== 'none' && btnsA.chaos !== 'none', JSON.stringify(btnsA));
+    // 2026-08-03 char-select redesign: exactly ONE start button per entry mode.
+    gate('A20 campaign entry shows ONLY START GAME', btnsA.start !== 'none' && btnsA.endless === 'none' && btnsA.chaos === 'none', JSON.stringify(btnsA));
     await clickAndSettle(page, '#csc-back-btn');
     gate('A21 char select BACK → stage map', (await state(page)) === 'campaign_select');
 

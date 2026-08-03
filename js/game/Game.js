@@ -32,7 +32,7 @@ import './BuildEnginePassives.js?v=20260902130000'; // P2.6 Build passives §26-
 import { MutationUI }      from './MutationUI.js?v=20260810210000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260827000000';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, COLLECTIBLE_FRAGMENT_COST, COLLECTIBLE_GRID_COST, ECHO_FRAGMENT_COST, ECHO_GRID_COST, SKILL_TREE, AMULET_DEFS, GRID_TO_PF_RATE } from './MetaProgress.js?v=20260902020000';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, COLLECTIBLE_FRAGMENT_COST, COLLECTIBLE_GRID_COST, ECHO_FRAGMENT_COST, ECHO_GRID_COST, SKILL_TREE, AMULET_DEFS, GRID_TO_PF_RATE, characterStageRequirement } from './MetaProgress.js?v=20260903020000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260712520000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
@@ -24660,6 +24660,37 @@ export class Game {
   }
 
   // ─── CHARACTER SELECT DOM overlay ────────────────────────────────────────────
+  // 2026-08-03 premium redesign data feed. Stats are read from the REAL Player
+  // constructor and the starter weapon from the REAL catalogs — the panel can never
+  // drift from gameplay because there is no second copy of any number. Cached per
+  // character id: the values are constructor constants for the whole session.
+  _charDisplayData(c) {
+    this._charStatsCache = this._charStatsCache || new Map();
+    if (this._charStatsCache.has(c.id)) return this._charStatsCache.get(c.id);
+    let hp = 100, spd = 230, armor = 0;
+    try {
+      const p = new Player(c.id);
+      hp = p.maxHp; spd = p.baseSpeed; armor = p.contactDamageReduction || 0;
+    } catch (_) { /* headless/asset gap → constructor defaults above */ }
+    // Starter weapon: the legacy per-character base weapon, else the character's native
+    // Build-Engine weapon — the SAME order the run itself seeds (reset → seedNativeStarter).
+    let weapon = getWeaponForCharacter(c.id)?.name || null;
+    if (!weapon) {
+      for (const id in BE_WEAPON_DEFS) {
+        const d = BE_WEAPON_DEFS[id];
+        if (d && d.owner === c.id && d.category === 'weapon' && !d.external) { weapon = d.name; break; }
+      }
+    }
+    const total = this.meta?.totalStages ?? 7;
+    const req = characterStageRequirement(c.id, total);
+    const reqLabel = (req == null || req <= 0) ? null
+      : (req >= total) ? 'CLEAR THE FINAL STAGE'
+      : ('CLEAR STAGE ' + req);
+    const out = { hp, spd, armor, weapon: weapon || 'FIELD IMPROVISATION', reqLabel };
+    this._charStatsCache.set(c.id, out);
+    return out;
+  }
+
   _initCharSelectOverlay() {
     if (this._charSelectOverlayEl) return;
 
@@ -24678,7 +24709,7 @@ export class Game {
             radial-gradient(900px 600px at 88% 70%,rgba(255,45,149,.10),transparent 60%),
             linear-gradient(180deg,#0b1030,#070a1c);
           --cyan:#2ee6f6; --cyan-dim:#1aa9bd; --magenta:#ff2d95; --purple:#a855f7;
-          --amber:#fbbf24; --green:#34d399; --txt:#cfe9ff; --txt-dim:#6f86b8;
+          --amber:#fbbf24; --green:#7CFF4D; --txt:#cfe9ff; --txt-dim:#6f86b8;
           --txt-faint:#46588a; --panel:rgba(10,16,46,.62); --panel-edge:rgba(46,230,246,.10);
           --glow-cyan:0 0 8px rgba(46,230,246,.55),0 0 22px rgba(46,230,246,.22);
           --glow-amb:0 0 8px rgba(251,191,36,.55),0 0 20px rgba(251,191,36,.2);
@@ -24698,27 +24729,32 @@ export class Game {
         }
         #cgm-charselect * { box-sizing:border-box; margin:0; padding:0; }
         #cgm-charselect .csc-stage {
-          position:relative; z-index:1; width:100%; max-width:900px;
+          position:relative; z-index:1; width:100%; max-width:1150px;
           border:1px solid var(--panel-edge); border-radius:20px;
-          padding:24px 28px 22px;
+          padding:20px 24px 18px;
           background:linear-gradient(180deg,rgba(168,85,247,.05),transparent 30%),rgba(7,10,28,.78);
           box-shadow:inset 0 0 60px rgba(46,230,246,.05),0 30px 80px rgba(0,0,0,.55);
-          display:flex; flex-direction:column; align-items:center; gap:16px;
+          display:flex; flex-direction:column; gap:14px;
         }
         #cgm-charselect .corner { position:absolute;width:34px;height:34px;border:2px solid var(--cyan);opacity:.8;filter:drop-shadow(var(--glow-cyan)); }
         #cgm-charselect .corner.tl{top:-2px;left:-2px;border-right:0;border-bottom:0;border-radius:18px 0 0 0;}
         #cgm-charselect .corner.tr{top:-2px;right:-2px;border-left:0;border-bottom:0;border-radius:0 18px 0 0;}
         #cgm-charselect .corner.bl{bottom:-2px;left:-2px;border-right:0;border-top:0;border-radius:0 0 0 18px;}
         #cgm-charselect .corner.br{bottom:-2px;right:-2px;border-left:0;border-top:0;border-radius:0 0 18px 0;}
-        #cgm-charselect .csc-header {
-          width:100%; display:flex; align-items:center; justify-content:space-between;
-        }
+        #cgm-charselect .csc-header { width:100%; display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
         #cgm-charselect .csc-title {
           font-family:'Orbitron',sans-serif; font-weight:800; font-size:16px;
           letter-spacing:3px; color:var(--cyan); text-shadow:var(--glow-cyan);
-          display:flex; align-items:center; gap:10px;
+          display:flex; align-items:center; gap:10px; margin-right:auto;
         }
         #cgm-charselect .csc-title svg { width:20px; height:20px; }
+        #cgm-charselect .csc-mode-chip {
+          font-family:'Orbitron',sans-serif; font-weight:700; font-size:12px; letter-spacing:2px;
+          padding:6px 14px; border-radius:999px; border:1px solid rgba(46,230,246,.45);
+          color:var(--cyan); background:rgba(46,230,246,.08);
+        }
+        #cgm-charselect .csc-mode-chip.endless { color:var(--green); border-color:rgba(124,255,77,.45); background:rgba(124,255,77,.07); }
+        #cgm-charselect .csc-mode-chip.chaos { color:var(--magenta); border-color:rgba(255,45,149,.45); background:rgba(255,45,149,.07); }
         #cgm-charselect .csc-pf-badge {
           display:flex; align-items:center; gap:7px;
           padding:6px 14px; border-radius:999px;
@@ -24728,105 +24764,63 @@ export class Game {
         }
         #cgm-charselect .csc-pf-badge svg { width:15px;height:15px;color:var(--purple); }
         #cgm-charselect .csc-sep { width:100%; height:1px; background:linear-gradient(90deg,transparent,var(--cyan),transparent); opacity:.3; }
-        #cgm-charselect .csc-outfit-bar {
-          display:flex; align-items:center; gap:10px;
-          font-size:11px; letter-spacing:2px; color:var(--txt-dim);
+        /* ── Two-column body: roster grid left, detail dossier right ── */
+        #cgm-charselect .csc-body { width:100%; display:flex; gap:16px; align-items:stretch; }
+        #cgm-charselect .csc-grid {
+          flex:1 1 auto; display:grid; grid-template-columns:repeat(5,1fr); gap:12px;
+          align-content:start;
         }
-        #cgm-charselect .csc-outfit-bar span { text-transform:uppercase; }
-        #cgm-charselect .csc-obtn {
-          padding:6px 18px; border-radius:8px; cursor:pointer; font-size:11px;
-          letter-spacing:2px; text-transform:uppercase; border:1px solid rgba(46,230,246,.22);
-          background:rgba(10,16,46,.4); color:var(--txt-dim); transition:.14s;
-          font-family:'Share Tech Mono',monospace;
-        }
-        #cgm-charselect .csc-obtn.active { border-color:var(--cyan); color:var(--cyan); background:rgba(46,230,246,.1); box-shadow:var(--glow-cyan); }
-        #cgm-charselect .csc-obtn:disabled { opacity:.4; cursor:not-allowed; }
-        #cgm-charselect .csc-grid { display:flex; flex-wrap:wrap; gap:14px; justify-content:center; width:100%; }
         #cgm-charselect .csc-card {
-          position:relative; width:150px; flex:0 0 150px;
+          position:relative;
           border:1px solid rgba(46,230,246,.22); border-radius:10px;
           background:rgba(10,16,46,.55); overflow:hidden;
           cursor:pointer;
           transition:border-color .15s ease, box-shadow .18s ease, transform .18s cubic-bezier(.22,1,.36,1);
           display:flex; flex-direction:column; align-items:center;
         }
-        #cgm-charselect .csc-card:hover { border-color:rgba(46,230,246,.55); transform:scale(1.03); }
+        #cgm-charselect .csc-card:hover { border-color:rgba(46,230,246,.55); transform:translateY(-2px); }
         #cgm-charselect .csc-card.active {
-          border-color:var(--amber); border-width:2px;
-          box-shadow:0 0 28px rgba(251,191,36,.55),0 0 8px rgba(251,191,36,.3),inset 0 0 18px rgba(251,191,36,.10);
-          transform:scale(1.08); z-index:2;
+          border-color:var(--cyan); border-width:2px;
+          box-shadow:var(--glow-cyan),inset 0 0 18px rgba(46,230,246,.10);
+          transform:translateY(-3px); z-index:2;
         }
-        #cgm-charselect .csc-card.active .csc-portrait img { transform:scale(1.10); transition:transform .3s ease; }
-        @keyframes csc-pop {
-          from { opacity:.4; transform:translateY(6px) scale(.97); }
-          to   { opacity:1;  transform:translateY(0)   scale(1); }
-        }
-        #cgm-charselect .csc-preview-panel {
-          width:100%; display:flex; align-items:center; gap:18px;
-          padding:14px 18px; border-radius:12px;
-          background:linear-gradient(135deg,rgba(46,230,246,.07),rgba(168,85,247,.04),transparent);
-          border:1px solid rgba(46,230,246,.18);
-        }
-        #cgm-charselect .csc-preview-panel.pv-animate { animation:csc-pop .35s cubic-bezier(.22,1,.36,1); }
-        #cgm-charselect .csc-pv-portrait {
-          flex:0 0 76px; height:108px; overflow:hidden;
-          background:rgba(6,12,30,.7); border-radius:10px;
-          border:1px solid rgba(46,230,246,.22);
-          display:flex; align-items:flex-end; justify-content:center;
-        }
-        #cgm-charselect .csc-pv-portrait img {
-          width:100%; height:100%; object-fit:contain; object-position:bottom center;
-        }
-        #cgm-charselect .csc-pv-portrait .csc-pv-fallback {
-          width:52px; height:52px; border-radius:50%; margin-bottom:8px; border:3px solid; flex:none;
-        }
-        #cgm-charselect .csc-pv-info { flex:1; display:flex; flex-direction:column; gap:5px; min-width:0; }
-        #cgm-charselect .csc-pv-name {
-          font-family:'Orbitron',sans-serif; font-weight:800; font-size:13px;
-          color:#fff; letter-spacing:.5px;
-          text-shadow:0 0 14px rgba(46,230,246,.6);
-          white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
-        }
-        #cgm-charselect .csc-pv-role {
-          font-size:10px; color:var(--cyan); letter-spacing:2.5px;
-          text-transform:uppercase; font-weight:700;
-        }
-        #cgm-charselect .csc-pv-divider {
-          height:1px; background:linear-gradient(90deg,rgba(46,230,246,.35),transparent); margin:2px 0;
-        }
-        #cgm-charselect .csc-pv-spec { font-size:11px; color:var(--txt-dim); line-height:1.5; }
-        #cgm-charselect .csc-pv-label {
-          font-size:9px; letter-spacing:2px; color:var(--txt-faint); text-transform:uppercase; margin-top:2px;
-        }
+        #cgm-charselect .csc-card.active .csc-portrait img { transform:scale(1.08); }
         #cgm-charselect .csc-portrait {
-          width:100%; height:140px; overflow:hidden;
+          width:100%; height:118px; overflow:hidden;
           display:flex; align-items:flex-end; justify-content:center;
           position:relative;
+          background:radial-gradient(120px 70px at 50% 100%,rgba(46,230,246,.10),transparent 70%);
         }
         #cgm-charselect .csc-portrait img {
           width:100%; height:100%; object-fit:contain; object-position:bottom center;
           display:block; transition:transform .3s ease;
         }
         #cgm-charselect .csc-portrait .csc-fallback {
-          width:68px; height:68px; border-radius:50%;
+          width:58px; height:58px; border-radius:50%;
           margin-bottom:8px; border:3px solid; flex:none;
         }
         #cgm-charselect .csc-card-name {
-          font-size:9.5px; text-align:center; padding:5px 6px 2px; color:#dff0ff;
+          font-size:9.5px; text-align:center; padding:5px 6px 1px; color:#dff0ff;
           line-height:1.2; font-weight:600; letter-spacing:.3px;
         }
         #cgm-charselect .csc-card-role {
-          font-size:8.5px; color:var(--txt-dim); text-align:center;
+          font-size:8px; color:var(--txt-dim); text-align:center;
           padding:0 4px 6px; letter-spacing:.5px;
         }
+        /* Locked cards: character stays VISIBLE (dimmed), the requirement is stated on the card. */
         #cgm-charselect .csc-lock-overlay {
-          position:absolute; inset:0; background:rgba(4,10,18,.72);
-          display:flex; flex-direction:column; align-items:center; justify-content:center;
-          gap:4px;
+          position:absolute; inset:0; background:rgba(4,10,18,.55);
+          display:flex; flex-direction:column; align-items:center; justify-content:flex-start;
+          gap:4px; padding-top:34px; backdrop-filter:saturate(.35);
         }
-        #cgm-charselect .csc-lock-overlay svg { width:22px;height:22px;color:#9fb0c0; }
-        #cgm-charselect .csc-lock-label { font-size:9px; letter-spacing:2px; color:#9fb0c0; }
-        #cgm-charselect .csc-lock-overlay.coming-soon { background:rgba(0,30,44,.80); }
+        #cgm-charselect .csc-lock-overlay svg { width:16px;height:16px;color:#ffcf6a;filter:drop-shadow(0 0 6px rgba(251,191,36,.5)); }
+        #cgm-charselect .csc-lock-label { font-size:8px; letter-spacing:2px; color:#ffcf6a; font-weight:700; }
+        #cgm-charselect .csc-req-chip {
+          font-size:8px; letter-spacing:1px; color:#ffcf6a; font-weight:700; text-align:center;
+          background:rgba(251,191,36,.12); border:1px solid rgba(251,191,36,.4);
+          border-radius:5px; padding:2px 6px; max-width:92%;
+        }
+        #cgm-charselect .csc-lock-overlay.coming-soon { background:rgba(0,30,44,.80); justify-content:center; }
         #cgm-charselect .csc-lock-overlay.coming-soon svg { color:#00b8d9; }
         #cgm-charselect .csc-lock-overlay.coming-soon .csc-lock-label { color:#00b8d9; font-size:8px; letter-spacing:1.5px; }
         #cgm-charselect .csc-cs-badge {
@@ -24834,44 +24828,84 @@ export class Game {
           background:rgba(255,159,10,.14); border:1px solid rgba(255,159,10,.35);
           border-radius:4px; padding:2px 5px; margin-top:2px; text-transform:uppercase;
         }
-        #cgm-charselect .csc-unlock-area {
-          width:100%; border:1px solid rgba(251,191,36,.28); border-radius:10px;
-          background:rgba(251,191,36,.04); padding:12px 16px; display:none;
-          flex-direction:column; align-items:center; gap:8px;
+        /* ── Detail dossier ── */
+        #cgm-charselect .csc-detail {
+          flex:0 0 300px; display:flex; flex-direction:column; gap:10px;
+          border:1px solid rgba(46,230,246,.18); border-radius:12px;
+          background:linear-gradient(135deg,rgba(46,230,246,.07),rgba(168,85,247,.04),transparent);
+          padding:14px 16px;
         }
-        #cgm-charselect .csc-unlock-hint { font-size:12px; color:#ffcf6a; text-align:center; }
+        @keyframes csc-pop {
+          from { opacity:.4; transform:translateY(6px) scale(.97); }
+          to   { opacity:1;  transform:translateY(0)   scale(1); }
+        }
+        #cgm-charselect .csc-preview-panel { display:flex; align-items:center; gap:14px; }
+        #cgm-charselect .csc-preview-panel.pv-animate { animation:csc-pop .35s cubic-bezier(.22,1,.36,1); }
+        #cgm-charselect .csc-pv-portrait {
+          flex:0 0 84px; height:112px; overflow:hidden;
+          background:rgba(6,12,30,.7); border-radius:10px;
+          border:1px solid rgba(46,230,246,.22);
+          display:flex; align-items:flex-end; justify-content:center;
+        }
+        #cgm-charselect .csc-pv-portrait img { width:100%; height:100%; object-fit:contain; object-position:bottom center; }
+        #cgm-charselect .csc-pv-portrait .csc-pv-fallback { width:52px; height:52px; border-radius:50%; margin-bottom:8px; border:3px solid; flex:none; }
+        #cgm-charselect .csc-pv-head { flex:1; min-width:0; display:flex; flex-direction:column; gap:5px; }
+        #cgm-charselect .csc-pv-name {
+          font-family:'Orbitron',sans-serif; font-weight:800; font-size:13px;
+          color:#fff; letter-spacing:.5px; text-shadow:0 0 14px rgba(46,230,246,.6);
+          line-height:1.3;
+        }
+        #cgm-charselect .csc-pv-role {
+          font-size:10px; color:var(--cyan); letter-spacing:2.5px;
+          text-transform:uppercase; font-weight:700;
+        }
+        #cgm-charselect .csc-pv-divider { height:1px; background:linear-gradient(90deg,rgba(46,230,246,.35),transparent); }
+        #cgm-charselect .csc-pv-label { font-size:9px; letter-spacing:2px; color:var(--txt-faint); text-transform:uppercase; }
+        #cgm-charselect .csc-pv-spec { font-size:11px; color:var(--txt-dim); line-height:1.5; }
+        #cgm-charselect .csc-pv-weapon {
+          font-size:11.5px; color:#8fe6ff; letter-spacing:.5px; font-weight:700;
+          display:flex; align-items:center; gap:7px;
+        }
+        #cgm-charselect .csc-pv-weapon::before { content:"▸"; color:var(--cyan); }
+        /* Stat bars — values come straight from the Player constructor */
+        #cgm-charselect .csc-stats { display:flex; flex-direction:column; gap:7px; }
+        #cgm-charselect .csc-stat { display:grid; grid-template-columns:52px 1fr 44px; align-items:center; gap:8px; }
+        #cgm-charselect .csc-stat-label { font-size:9px; letter-spacing:1.5px; color:var(--txt-faint); }
+        #cgm-charselect .csc-stat-track { height:7px; border-radius:99px; background:rgba(46,230,246,.10); overflow:hidden; border:1px solid rgba(46,230,246,.14); }
+        #cgm-charselect .csc-stat-fill { height:100%; border-radius:99px; width:0%; transition:width .35s cubic-bezier(.22,1,.36,1); }
+        #cgm-charselect .csc-stat-fill.hp    { background:linear-gradient(90deg,#1aa9bd,var(--cyan)); box-shadow:0 0 8px rgba(46,230,246,.5); }
+        #cgm-charselect .csc-stat-fill.spd   { background:linear-gradient(90deg,#3f9e46,var(--green)); box-shadow:0 0 8px rgba(124,255,77,.4); }
+        #cgm-charselect .csc-stat-fill.armor { background:linear-gradient(90deg,#8a6a14,var(--amber)); box-shadow:0 0 8px rgba(251,191,36,.4); }
+        #cgm-charselect .csc-stat-val { font-size:10.5px; color:#dff0ff; text-align:right; font-weight:700; }
+        #cgm-charselect .csc-outfit-bar { display:flex; align-items:center; gap:8px; font-size:10px; letter-spacing:2px; color:var(--txt-dim); }
+        #cgm-charselect .csc-outfit-bar span { text-transform:uppercase; }
+        #cgm-charselect .csc-obtn {
+          padding:5px 14px; border-radius:8px; cursor:pointer; font-size:10px;
+          letter-spacing:2px; text-transform:uppercase; border:1px solid rgba(46,230,246,.22);
+          background:rgba(10,16,46,.4); color:var(--txt-dim); transition:.14s;
+          font-family:'Share Tech Mono',monospace;
+        }
+        #cgm-charselect .csc-obtn.active { border-color:var(--cyan); color:var(--cyan); background:rgba(46,230,246,.1); box-shadow:var(--glow-cyan); }
+        #cgm-charselect .csc-obtn:disabled { opacity:.4; cursor:not-allowed; }
+        #cgm-charselect .csc-unlock-area {
+          border:1px solid rgba(251,191,36,.28); border-radius:10px;
+          background:rgba(251,191,36,.04); padding:10px 12px; display:none;
+          flex-direction:column; align-items:center; gap:7px; margin-top:auto;
+        }
+        #cgm-charselect .csc-unlock-hint { font-size:11.5px; color:#ffcf6a; text-align:center; letter-spacing:.5px; line-height:1.5; }
         #cgm-charselect .csc-pf-btn {
-          padding:9px 28px; border-radius:9px; cursor:pointer;
+          padding:9px 24px; border-radius:9px; cursor:pointer;
           border:1px solid rgba(46,230,246,.4); background:rgba(6,40,52,.82);
           font-family:'Orbitron',sans-serif; font-weight:700; font-size:12px;
           letter-spacing:1.5px; color:#dffaff; transition:.15s;
         }
         #cgm-charselect .csc-pf-btn:hover:not(:disabled) { border-color:var(--cyan); box-shadow:var(--glow-cyan); }
         #cgm-charselect .csc-pf-btn:disabled { opacity:.45; cursor:not-allowed; border-color:rgba(90,74,85,.5); color:#9a8fa0; background:rgba(20,14,22,.7); }
-        #cgm-charselect .csc-pf-msg { font-size:11px; color:#ffd0e0; min-height:14px; text-align:center; }
-        #cgm-charselect .csc-skins-section { width:100%; display:none; flex-direction:column; align-items:center; gap:10px; }
-        #cgm-charselect .csc-skins-label {
-          font-family:'Orbitron',sans-serif; font-weight:700; font-size:11px;
-          letter-spacing:3px; color:var(--purple);
-        }
-        #cgm-charselect .csc-skins-row { display:flex; gap:20px; flex-wrap:wrap; justify-content:center; }
-        #cgm-charselect .csc-skin-thumb {
-          display:flex; flex-direction:column; align-items:center; gap:5px; cursor:pointer;
-        }
-        #cgm-charselect .csc-skin-img {
-          width:52px; height:52px; border-radius:8px; overflow:hidden;
-          border:1px solid rgba(168,85,247,.3); background:rgba(10,16,46,.6);
-          display:flex; align-items:center; justify-content:center;
-        }
-        #cgm-charselect .csc-skin-img img { width:100%; height:100%; object-fit:contain; }
-        #cgm-charselect .csc-skin-img.unlocked { border-color:var(--purple); box-shadow:0 0 10px rgba(168,85,247,.4); }
-        #cgm-charselect .csc-skin-name { font-size:9px; color:var(--txt-dim); text-align:center; max-width:64px; }
-        #cgm-charselect .csc-skin-state { font-size:9px; font-weight:700; letter-spacing:1px; }
-        #cgm-charselect .csc-skin-state.unlocked { color:var(--green); }
-        #cgm-charselect .csc-skin-state.locked { color:#5a7080; }
+        #cgm-charselect .csc-pf-msg { font-size:11px; color:#ffd0e0; min-height:0; text-align:center; }
+        #cgm-charselect .csc-skins-section { display:none; }
         #cgm-charselect .csc-actions { display:flex; gap:12px; flex-wrap:wrap; justify-content:center; }
         #cgm-charselect .csc-abtn {
-          padding:14px 28px; border-radius:11px; cursor:pointer;
+          padding:14px 34px; border-radius:11px; cursor:pointer;
           border:1px solid rgba(46,230,246,.28);
           background:linear-gradient(180deg,rgba(46,230,246,.05),rgba(10,16,46,.35));
           color:var(--txt); font-family:'Orbitron',sans-serif; font-weight:700;
@@ -24884,21 +24918,25 @@ export class Game {
         #cgm-charselect .csc-abtn.start-btn:not(:disabled) { border-color:rgba(46,230,246,.5); }
         #cgm-charselect .csc-abtn.endless-btn:not(:disabled) { border-color:rgba(124,255,77,.4); color:#7CFF4D; }
         #cgm-charselect .csc-abtn.endless-btn:not(:disabled):hover { border-color:#7CFF4D; box-shadow:0 0 10px rgba(124,255,77,.4); }
-        #cgm-charselect .csc-abtn.chaos-btn:not(:disabled) { border-color:rgba(168,85,247,.5); color:#c88bff; }
-        #cgm-charselect .csc-abtn.chaos-btn:not(:disabled):hover { border-color:#a855f7; box-shadow:0 0 10px rgba(168,85,247,.45); }
+        #cgm-charselect .csc-abtn.chaos-btn:not(:disabled) { border-color:rgba(255,45,149,.5); color:#ff7ab8; }
+        #cgm-charselect .csc-abtn.chaos-btn:not(:disabled):hover { border-color:var(--magenta); box-shadow:0 0 10px rgba(255,45,149,.45); }
         #cgm-charselect .csc-hints { color:var(--txt-faint); font-size:11px; letter-spacing:1px; display:flex; gap:16px; flex-wrap:wrap; justify-content:center; }
         #cgm-charselect .csc-hints b { color:var(--cyan); font-weight:400; }
-        /* ── Portrait / phone layout ── vertically centre the panel (kills the big empty band),
-           make cards fill the width 3-per-row (bigger, tappable), and enlarge the action buttons.
-           Gated on narrow viewports only — desktop is untouched. */
+        /* ── Portrait / phone layout: single column, roster on top (3 per row), detail below,
+           big tappable action buttons. Gated on narrow viewports only — desktop untouched. */
         @media (max-width: 1024px), (pointer: coarse) {
           #cgm-charselect { padding:12px 10px; }
-          #cgm-charselect .csc-stage { margin-top:auto; margin-bottom:auto; max-width:100%; padding:16px 12px; gap:12px; }
-          #cgm-charselect .csc-grid { gap:9px; }
-          #cgm-charselect .csc-card { width:auto; flex:1 1 30%; min-width:92px; max-width:31.5%; }
+          #cgm-charselect .csc-stage { margin-top:auto; margin-bottom:auto; max-width:100%; padding:14px 12px; gap:12px; }
+          #cgm-charselect .csc-body { flex-direction:column; gap:12px; }
+          #cgm-charselect .csc-grid { grid-template-columns:repeat(3,1fr); gap:9px; }
+          #cgm-charselect .csc-portrait { height:96px; }
+          #cgm-charselect .csc-detail { flex:1 1 auto; }
           #cgm-charselect .csc-actions { width:100%; gap:9px; }
           #cgm-charselect .csc-abtn { flex:1 1 44%; padding:16px 14px; font-size:14px; }
           #cgm-charselect .csc-abtn.back-btn { flex:1 1 100%; }
+        }
+        @media (max-width: 560px) {
+          #cgm-charselect .csc-grid { grid-template-columns:repeat(2,1fr); }
         }
       `;
       document.head.appendChild(style);
@@ -24909,11 +24947,15 @@ export class Game {
     el.setAttribute('role', 'dialog');
     el.setAttribute('aria-label', 'Select Character');
 
-    // Build character card HTML
+    // Build character card HTML — every datum on a card comes from approved existing
+    // sources: the roster entry, the loaded character asset, and the REAL unlock ladder
+    // (characterStageRequirement — the same map isCharacterUnlocked enforces).
     const cardHtml = this.characters.map((c, i) => {
       const img = this._charImages[c.id];
       const imgSrc = img ? img.src : '';
-      return `<div class="csc-card" data-idx="${i}" data-id="${c.id}" title="${c.name}">
+      const d = this._charDisplayData(c);
+      const reqChip = d.reqLabel ? `<span class="csc-req-chip">${d.reqLabel}</span>` : '';
+      return `<div class="csc-card" data-idx="${i}" data-id="${c.id}" title="${c.name}" role="button" tabindex="-1">
         <div class="csc-portrait">
           ${imgSrc
             ? `<img src="${imgSrc}" alt="${c.name}" loading="eager">`
@@ -24935,25 +24977,9 @@ export class Game {
                  <use href="#i-shield"/>
                </svg>
                <span class="csc-lock-label">LOCKED</span>
+               ${reqChip}
              </div>`
         }
-      </div>`;
-    }).join('');
-
-    // Build secret skins HTML — the trailing unrequested locked skins are removed entirely.
-    const HIDDEN_SKINS = ['toxic_overload', 'null_walker', 'crimson_oni'];
-    const secretChars = this.characters.filter(c => CHARACTER_OUTFITS[c.id]?.secret
-      && !HIDDEN_SKINS.includes(CHARACTER_OUTFITS[c.id].secret.unlockKey));
-    const skinsHtml = secretChars.map(c => {
-      const secret = CHARACTER_OUTFITS[c.id].secret;
-      const key = secret.unlockKey;
-      const skinImg = this._skinImages[key];
-      return `<div class="csc-skin-thumb" data-char="${c.id}" data-skin="${key}">
-        <div class="csc-skin-img" data-key="${key}">
-          ${skinImg ? `<img src="${skinImg.src}" alt="${secret.name}">` : ''}
-        </div>
-        <div class="csc-skin-name">${secret.name}</div>
-        <div class="csc-skin-state" data-key="${key}">?</div>
       </div>`;
     }).join('');
 
@@ -24967,6 +24993,7 @@ export class Game {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><use href="#i-user"/></svg>
             SELECT YOUR CHARACTER
           </div>
+          <div class="csc-mode-chip" id="csc-mode-chip">◆ CAMPAIGN</div>
           <div class="csc-pf-badge">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><use href="#i-diamond"/></svg>
             <span id="csc-pf-count">0</span>&nbsp;FRAGMENTS
@@ -24974,52 +25001,72 @@ export class Game {
         </div>
         <div class="csc-sep"></div>
 
-        <div class="csc-outfit-bar" id="csc-outfit-bar" style="display:none">
-          <span>OUTFIT</span>
-          <button class="csc-obtn active" data-outfit="default">DEFAULT</button>
-          <button class="csc-obtn" data-outfit="secret" id="csc-secret-btn">SECRET SKIN</button>
-        </div>
+        <div class="csc-body">
+          <div class="csc-grid" id="csc-grid">${cardHtml}</div>
 
-        <div class="csc-grid" id="csc-grid">${cardHtml}</div>
-
-        <div class="csc-preview-panel" id="csc-preview-panel">
-          <div class="csc-pv-portrait">
-            <img id="csc-pv-img" src="" alt="" style="display:none">
-            <div class="csc-pv-fallback" id="csc-pv-fallback" style="display:none"></div>
-          </div>
-          <div class="csc-pv-info">
-            <div class="csc-pv-name" id="csc-pv-name"></div>
-            <div class="csc-pv-role" id="csc-pv-role"></div>
+          <aside class="csc-detail" id="csc-detail">
+            <div class="csc-preview-panel" id="csc-preview-panel">
+              <div class="csc-pv-portrait">
+                <img id="csc-pv-img" src="" alt="" style="display:none">
+                <div class="csc-pv-fallback" id="csc-pv-fallback" style="display:none"></div>
+              </div>
+              <div class="csc-pv-head">
+                <div class="csc-pv-name" id="csc-pv-name"></div>
+                <div class="csc-pv-role" id="csc-pv-role"></div>
+                <div class="csc-outfit-bar" id="csc-outfit-bar" style="display:none">
+                  <button class="csc-obtn active" data-outfit="default">DEFAULT</button>
+                  <button class="csc-obtn" data-outfit="secret" id="csc-secret-btn">SECRET</button>
+                </div>
+              </div>
+            </div>
             <div class="csc-pv-divider"></div>
+
+            <div class="csc-stats">
+              <div class="csc-stat">
+                <span class="csc-stat-label">HULL HP</span>
+                <span class="csc-stat-track"><span class="csc-stat-fill hp" id="csc-st-hp-bar"></span></span>
+                <span class="csc-stat-val" id="csc-st-hp"></span>
+              </div>
+              <div class="csc-stat">
+                <span class="csc-stat-label">SPEED</span>
+                <span class="csc-stat-track"><span class="csc-stat-fill spd" id="csc-st-spd-bar"></span></span>
+                <span class="csc-stat-val" id="csc-st-spd"></span>
+              </div>
+              <div class="csc-stat">
+                <span class="csc-stat-label">ARMOR</span>
+                <span class="csc-stat-track"><span class="csc-stat-fill armor" id="csc-st-armor-bar"></span></span>
+                <span class="csc-stat-val" id="csc-st-armor"></span>
+              </div>
+            </div>
+
+            <div class="csc-pv-label">STARTER WEAPON</div>
+            <div class="csc-pv-weapon" id="csc-pv-weapon"></div>
             <div class="csc-pv-label">COMBAT SPECIALTY</div>
             <div class="csc-pv-spec" id="csc-pv-spec"></div>
-          </div>
+
+            <div class="csc-unlock-area" id="csc-unlock-area">
+              <div class="csc-unlock-hint" id="csc-unlock-hint"></div>
+              <button class="csc-pf-btn" id="csc-pf-btn"></button>
+              <div class="csc-pf-msg" id="csc-pf-msg"></div>
+            </div>
+          </aside>
         </div>
 
-        <div class="csc-unlock-area" id="csc-unlock-area">
-          <div class="csc-unlock-hint" id="csc-unlock-hint"></div>
-          <button class="csc-pf-btn" id="csc-pf-btn"></button>
-          <div class="csc-pf-msg" id="csc-pf-msg"></div>
-        </div>
-
-        <div class="csc-skins-section" id="csc-skins-section">
-          <div class="csc-skins-label">◆ SECRET SKINS ◆</div>
-          <div class="csc-skins-row">${skinsHtml}</div>
-        </div>
+        <div class="csc-skins-section" id="csc-skins-section"></div>
         <div class="csc-sep"></div>
 
         <div class="csc-actions">
-          <button class="csc-abtn back-btn" id="csc-back-btn">BACK</button>
+          <button class="csc-abtn back-btn" id="csc-back-btn">◀ BACK</button>
           <button class="csc-abtn start-btn" id="csc-start-btn">START GAME</button>
           <button class="csc-abtn endless-btn" id="csc-endless-btn">START ENDLESS</button>
           <button class="csc-abtn chaos-btn" id="csc-chaos-btn">START CHAOS</button>
         </div>
 
         <div class="csc-hints">
-          <span><b>← →</b> Select</span>
+          <span><b>← → / D-PAD</b> Select</span>
           <span><b>↑ ↓</b> Outfit</span>
-          <span><b>ENTER</b> Start</span>
-          <span><b>ESC</b> Back</span>
+          <span><b>ENTER / A</b> Start</span>
+          <span><b>ESC / B</b> Back</span>
         </div>
       </div>
     `;
@@ -25600,6 +25647,17 @@ export class Game {
     const pfEl = el.querySelector('#csc-pf-count');
     if (pfEl) pfEl.textContent = this.meta.getProtocolFragments();
 
+    // Mode chip — mirrors the entry mode so the screen reads as "pick for <mode>".
+    const modeChip = el.querySelector('#csc-mode-chip');
+    const _csMode = this._charSelectMode || 'default';
+    if (modeChip) {
+      modeChip.classList.toggle('endless', _csMode === 'endless');
+      modeChip.classList.toggle('chaos',   _csMode === 'chaos');
+      modeChip.textContent = _csMode === 'endless' ? '∞ ENDLESS'
+                           : _csMode === 'chaos'   ? '✦ CHAOS'
+                           : '◆ CAMPAIGN';
+    }
+
     // Cards: active highlight + portrait (default vs secret skin) + lock overlay
     el.querySelectorAll('.csc-card').forEach((card, i) => {
       const c = this.characters[i];
@@ -25635,11 +25693,31 @@ export class Game {
       const secretBtn = el.querySelector('#csc-secret-btn');
       if (secretBtn) {
         secretBtn.disabled = !secretOk;
-        secretBtn.textContent = secretOk ? 'SECRET SKIN' : 'SECRET SKIN 🔒';
+        secretBtn.textContent = secretOk ? 'SECRET' : 'SECRET 🔒';
       }
     }
 
-    // Unlock area: show when selected char is locked (never for comingSoon — no PF spend path)
+    // Stat bars + starter weapon — live from the Player constructor / weapon catalogs
+    // via _charDisplayData. Bar scales are display-only normalisation caps chosen just
+    // above the current roster maxima (Eddie 225 HP, Taekwondo 276 speed, Eddie 16% armor).
+    const d = this._charDisplayData(sel);
+    const _pct = (v, cap) => Math.max(4, Math.min(100, Math.round((v / cap) * 100))) + '%';
+    const stHp     = el.querySelector('#csc-st-hp');
+    const stHpBar  = el.querySelector('#csc-st-hp-bar');
+    const stSpd    = el.querySelector('#csc-st-spd');
+    const stSpdBar = el.querySelector('#csc-st-spd-bar');
+    const stArm    = el.querySelector('#csc-st-armor');
+    const stArmBar = el.querySelector('#csc-st-armor-bar');
+    if (stHp)     stHp.textContent     = String(d.hp);
+    if (stHpBar)  stHpBar.style.width  = _pct(d.hp, 240);
+    if (stSpd)    stSpd.textContent    = String(d.spd);
+    if (stSpdBar) stSpdBar.style.width = _pct(d.spd, 290);
+    if (stArm)    stArm.textContent    = Math.round((d.armor || 0) * 100) + '%';
+    if (stArmBar) stArmBar.style.width = _pct((d.armor || 0) * 100, 20);
+    const wEl = el.querySelector('#csc-pv-weapon');
+    if (wEl) wEl.textContent = d.weapon;
+
+    // Unlock area: the requirement shown is the SAME ladder isCharacterUnlocked enforces.
     const unlockArea = el.querySelector('#csc-unlock-area');
     const selLocked = sel.comingSoon || !this.meta.isCharacterUnlocked(sel.id);
     const pfCost = sel.comingSoon ? 0 : PF_CHARACTER_COSTS[sel.id];
@@ -25669,7 +25747,7 @@ export class Game {
       } else if (selLocked) {
         unlockArea.style.display = 'flex';
         const hintEl = el.querySelector('#csc-unlock-hint');
-        if (hintEl) hintEl.textContent = 'Reach 10:00 in Endless Mode to unlock this character.';
+        if (hintEl) hintEl.textContent = '🔒 ' + (d.reqLabel || 'PROGRESS THE CAMPAIGN') + ' TO UNLOCK';
         const pfBtn = el.querySelector('#csc-pf-btn');
         if (pfBtn) { pfBtn.textContent = ''; pfBtn.style.display = 'none'; }
       } else {
@@ -25679,40 +25757,26 @@ export class Game {
       }
     }
 
-    // Secret skins moved to the COLLECTIBLES screen — hidden here so character cards get the space.
+    // Secret skins moved to the COLLECTIBLES screen — section stays hidden here.
     const skinsSection = el.querySelector('#csc-skins-section');
     if (skinsSection) skinsSection.style.display = 'none';
-    el.querySelectorAll('.csc-skin-thumb').forEach(thumb => {
-      const charId = thumb.dataset.char;
-      const skinKey = thumb.dataset.skin;
-      const unlocked = this.meta?.isUnlocked(skinKey) === true;
-      const imgBox = thumb.querySelector('.csc-skin-img');
-      if (imgBox) imgBox.classList.toggle('unlocked', unlocked);
-      const stateEl = thumb.querySelector('.csc-skin-state');
-      if (stateEl) {
-        stateEl.textContent = unlocked ? 'UNLOCKED' : 'LOCKED';
-        stateEl.className = 'csc-skin-state ' + (unlocked ? 'unlocked' : 'locked');
-      }
-    });
 
-    // Action buttons
+    // Action buttons — 2026-08-03 redesign: exactly ONE start button is visible, matching
+    // the entry mode (default/campaign → START GAME, endless → START ENDLESS, chaos →
+    // START CHAOS). All three stay in the DOM with their original handlers untouched.
     const selUnlocked = this.meta.isCharacterUnlocked(sel.id);
     const modeOk      = selUnlocked && !!this.meta?.isEndlessUnlocked();   // Endless + Chaos both need all campaign cleared
     const startBtn    = el.querySelector('#csc-start-btn');
     const endlessBtn  = el.querySelector('#csc-endless-btn');
     const chaosBtn    = el.querySelector('#csc-chaos-btn');
     if (startBtn)   startBtn.disabled   = !selUnlocked;
-    if (endlessBtn) { endlessBtn.disabled = !modeOk; endlessBtn.textContent = modeOk ? 'START ENDLESS' : 'ENDLESS LOCKED'; }
-    if (chaosBtn)   { chaosBtn.disabled   = !modeOk; chaosBtn.textContent   = modeOk ? 'START CHAOS'   : 'CHAOS LOCKED'; }
-    // START GAME flow (2026-08-03): entered for a specific mode → show ONLY that mode's
-    // start button, so the screen reads as "pick your character for <mode>". Default
-    // entry (menu CHARACTER SELECT / campaign) keeps all three, exactly as before.
-    const _csMode = this._charSelectMode || 'default';
-    if (startBtn)   startBtn.style.display   = (_csMode === 'default') ? '' : 'none';
-    if (endlessBtn) endlessBtn.style.display = (_csMode === 'chaos')   ? 'none' : '';
-    if (chaosBtn)   chaosBtn.style.display   = (_csMode === 'endless') ? 'none' : '';
+    if (endlessBtn) { endlessBtn.disabled = !modeOk; endlessBtn.textContent = modeOk ? 'START ENDLESS ▶' : 'ENDLESS LOCKED'; }
+    if (chaosBtn)   { chaosBtn.disabled   = !modeOk; chaosBtn.textContent   = modeOk ? 'START CHAOS ▶'   : 'CHAOS LOCKED'; }
+    if (startBtn)   { startBtn.textContent = selUnlocked ? 'START GAME ▶' : 'CHARACTER LOCKED'; startBtn.style.display = (_csMode === 'default') ? '' : 'none'; }
+    if (endlessBtn) endlessBtn.style.display = (_csMode === 'endless') ? '' : 'none';
+    if (chaosBtn)   chaosBtn.style.display   = (_csMode === 'chaos')   ? '' : 'none';
 
-    // Preview panel — portrait + name + role + specialty
+    // Preview panel — portrait + name + role
     const pvPanel = el.querySelector('#csc-preview-panel');
     const pvImg   = el.querySelector('#csc-pv-img');
     const pvFB    = el.querySelector('#csc-pv-fallback');
