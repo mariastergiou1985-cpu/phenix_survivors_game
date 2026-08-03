@@ -22621,6 +22621,21 @@ export class Game {
   //  _hideMenuOverlay()       — hide; called by every method that exits start_menu
   //  _syncMenuOverlayActive() — update only the active .mbtn; called by _updateStartMenu()
   //
+  // One nav button (2026-08-03 premium nav): icon rail + left label + animated chevron.
+  // Same .mbtn class + data-cgm-item contract as always — dispatch and tests unchanged.
+  _menuItemHTML(label, active) {
+    const ICONS = {
+      'START GAME': 'i-play', 'CHARACTER SELECT': 'i-user', 'UPGRADES': 'i-zapplus',
+      'COLLECTIBLES': 'i-star', 'RELICS': 'i-diamond', 'HANGAR': 'i-node',
+      'NULL ARSENAL': 'i-sword', 'SETTINGS': 'i-gear', 'EXIT': 'i-x',
+    };
+    const primary = label === 'START GAME' ? ' mbtn-primary' : '';
+    return `<button class="mbtn${primary}${active ? ' active' : ''}" data-cgm-item="${label}">` +
+      `<span class="mi"><svg><use href="#${ICONS[label] || 'i-chev'}"/></svg></span>` +
+      `<span class="ml">${label}</span>` +
+      `<svg class="mchev"><use href="#i-chev"/></svg></button>`;
+  }
+
   _initMenuOverlay() {
     if (this._menuOverlayEl) return;   // idempotent
 
@@ -22717,7 +22732,7 @@ export class Game {
       #cgm-overlay .icon-btn{width:38px;height:38px;display:grid;place-items:center;border-radius:999px;border:1px solid rgba(207,233,255,.18);background:rgba(207,233,255,.04);cursor:pointer;color:var(--txt-dim);transition:.2s;}
       #cgm-overlay .icon-btn:hover{color:var(--cyan);border-color:var(--cyan);box-shadow:var(--glow-cyan);}
       #cgm-overlay .icon-btn svg{width:20px;height:20px;}
-      #cgm-overlay .grid{display:grid;grid-template-columns:300px 1fr 308px;gap:var(--gap);align-items:start;}
+      #cgm-overlay .grid{display:grid;grid-template-columns:minmax(250px,300px) minmax(0,1fr) minmax(258px,308px);gap:var(--gap);align-items:start;}
       #cgm-overlay .col{display:flex;flex-direction:column;gap:var(--gap);}
       #cgm-overlay .panel{position:relative;border:1px solid var(--accent,var(--cyan));border-radius:var(--radius);background:var(--panel);padding:14px 16px;box-shadow:inset 0 0 22px rgba(0,0,0,.35),0 0 0 1px rgba(0,0,0,.25);backdrop-filter:blur(3px);}
       #cgm-overlay .panel::before{content:"";position:absolute;left:14px;right:14px;top:0;height:1px;background:linear-gradient(90deg,transparent,var(--accent,var(--cyan)),transparent);opacity:.6;}
@@ -22778,11 +22793,13 @@ export class Game {
       #cgm-overlay .now-row svg{width:16px;height:16px;color:var(--cyan);}
       #cgm-overlay .center{display:flex;flex-direction:column;align-items:center;gap:18px;}
       #cgm-overlay .title{text-align:center;line-height:1;padding-top:4px;}
-      #cgm-overlay .title .l1{font-family:'Press Start 2P',monospace;font-size:clamp(28px,4.4vw,62px);background:linear-gradient(90deg,var(--magenta),var(--purple) 55%,var(--cyan));-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 0 14px rgba(255,45,149,.35));letter-spacing:2px;}
+      #cgm-overlay .title .l1{font-family:'Press Start 2P',monospace;font-size:clamp(28px,4.4vw,62px);background:linear-gradient(90deg,var(--magenta),var(--purple) 40%,var(--cyan) 70%,var(--magenta));background-size:250% 100%;-webkit-background-clip:text;background-clip:text;color:transparent;filter:drop-shadow(0 0 14px rgba(255,45,149,.35));letter-spacing:2px;animation:cgm-title-flow 14s linear infinite;}
+      @keyframes cgm-title-flow{from{background-position:0% 0}to{background-position:250% 0}}
+      @media(prefers-reduced-motion:reduce){#cgm-overlay .title .l1{animation:none;}}
       #cgm-overlay .title .l2{font-family:'Press Start 2P',monospace;font-size:clamp(18px,2.6vw,36px);color:var(--cyan);text-shadow:var(--glow-cyan);margin-top:14px;letter-spacing:5px;}
       #cgm-overlay .title .l3{font-size:clamp(9px,0.85vw,12px);color:var(--txt-dim);letter-spacing:3px;text-transform:uppercase;margin-top:10px;opacity:0.6;}
       #cgm-overlay .stage-mid{display:flex;align-items:stretch;gap:22px;width:100%;justify-content:center;}
-      #cgm-overlay .stage-art{flex:0 0 400px;position:relative;min-height:560px;border-radius:var(--radius);display:grid;place-items:end center;overflow:visible;}
+      #cgm-overlay .stage-art{flex:0 1 400px;min-width:250px;position:relative;min-height:560px;border-radius:var(--radius);display:grid;place-items:end center;overflow:visible;}
       #cgm-overlay .stage-art:not(.has-art){border:1px dashed rgba(46,230,246,.28);background:radial-gradient(120% 80% at 50% 100%,rgba(46,230,246,.08),transparent 70%);}
       /* Slideshow: all arts stacked in the same grid cell, bottom-anchored, cross-fading. */
       #cgm-overlay .stage-art img{display:none;grid-area:1/1;width:auto;height:auto;max-width:100%;max-height:720px;object-fit:contain;object-position:bottom center;align-self:end;justify-self:center;filter:drop-shadow(0 8px 26px rgba(0,0,0,.55)) drop-shadow(0 0 28px rgba(46,230,246,.18));}
@@ -22796,13 +22813,31 @@ export class Game {
       #cgm-overlay .art-corner.b{top:8px;right:8px;border-left:0;border-bottom:0;}
       #cgm-overlay .art-corner.c{bottom:8px;left:8px;border-right:0;border-top:0;}
       #cgm-overlay .art-corner.d{bottom:8px;right:8px;border-left:0;border-top:0;}
-      #cgm-overlay .menu{flex:0 0 360px;display:flex;flex-direction:column;gap:12px;justify-content:center;}
-      #cgm-overlay .mbtn{position:relative;width:100%;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:12px;padding:16px 20px;border-radius:12px;border:1.5px solid rgba(46,230,246,.55);background:linear-gradient(180deg,rgba(46,230,246,.08),rgba(10,16,46,.45));color:var(--txt);font-family:'Orbitron',sans-serif;font-weight:700;font-size:16px;letter-spacing:3px;text-transform:uppercase;transition:.16s ease;box-shadow:0 0 8px rgba(46,230,246,.12),inset 0 1px 0 rgba(255,255,255,.05);}
-      #cgm-overlay .mbtn::after{content:"";position:absolute;right:8px;top:8px;width:10px;height:10px;border-top:2px solid rgba(46,230,246,.6);border-right:2px solid rgba(46,230,246,.6);pointer-events:none;}
-      #cgm-overlay .mbtn svg{width:18px;height:18px;opacity:0;transform:translateX(-6px);transition:.16s;color:var(--cyan);}
-      #cgm-overlay .mbtn:hover,#cgm-overlay .mbtn.active{color:#fff;border-color:var(--cyan);background:linear-gradient(180deg,rgba(46,230,246,.16),rgba(46,230,246,.04));box-shadow:var(--glow-cyan),inset 0 0 18px rgba(46,230,246,.12);}
-      #cgm-overlay .mbtn:hover svg,#cgm-overlay .mbtn.active svg{opacity:1;transform:translateX(0);}
-      #cgm-overlay .mbtn.active::before{content:"";position:absolute;left:0;top:14%;bottom:14%;width:4px;background:var(--cyan);border-radius:4px;box-shadow:var(--glow-cyan);}
+      #cgm-overlay .menu{flex:0 1 372px;min-width:280px;display:flex;flex-direction:column;gap:10px;justify-content:center;}
+      /* ── 2026-08-03 premium nav: icon rail + label left-aligned, animated chevron,
+         scanning sheen on the active item, START GAME as the emphasized primary. ── */
+      #cgm-overlay .mbtn{position:relative;width:100%;cursor:pointer;display:flex;align-items:center;gap:14px;padding:13px 18px 13px 14px;border-radius:12px;border:1px solid rgba(46,230,246,.28);background:linear-gradient(180deg,rgba(46,230,246,.05),rgba(10,16,46,.42));color:var(--txt);font-family:'Orbitron',sans-serif;font-weight:700;font-size:14px;letter-spacing:2.5px;text-transform:uppercase;transition:border-color .16s ease,background .16s ease,box-shadow .16s ease,transform .16s ease;box-shadow:inset 0 1px 0 rgba(255,255,255,.04);overflow:hidden;text-align:left;}
+      #cgm-overlay .mbtn .mi{flex:0 0 34px;height:34px;display:grid;place-items:center;border-radius:9px;border:1px solid rgba(46,230,246,.22);background:rgba(46,230,246,.06);transition:.16s;}
+      #cgm-overlay .mbtn .mi svg{width:17px;height:17px;color:var(--cyan);opacity:.75;transition:.16s;}
+      #cgm-overlay .mbtn .ml{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+      #cgm-overlay .mbtn .mchev{width:16px;height:16px;flex:none;color:var(--cyan);opacity:0;transform:translateX(-8px);transition:.18s;}
+      #cgm-overlay .mbtn::after{content:"";position:absolute;inset:0;background:linear-gradient(105deg,transparent 40%,rgba(46,230,246,.10) 50%,transparent 60%);transform:translateX(-120%);pointer-events:none;}
+      #cgm-overlay .mbtn:hover,#cgm-overlay .mbtn.active{color:#fff;border-color:rgba(46,230,246,.75);background:linear-gradient(180deg,rgba(46,230,246,.13),rgba(46,230,246,.03));box-shadow:var(--glow-cyan),inset 0 0 18px rgba(46,230,246,.10);transform:translateX(3px);}
+      #cgm-overlay .mbtn:hover .mi,#cgm-overlay .mbtn.active .mi{border-color:var(--cyan);background:rgba(46,230,246,.14);box-shadow:0 0 10px rgba(46,230,246,.35);}
+      #cgm-overlay .mbtn:hover .mi svg,#cgm-overlay .mbtn.active .mi svg{opacity:1;filter:drop-shadow(0 0 6px rgba(46,230,246,.7));}
+      #cgm-overlay .mbtn:hover .mchev,#cgm-overlay .mbtn.active .mchev{opacity:1;transform:translateX(0);}
+      #cgm-overlay .mbtn.active::after{animation:cgm-sheen 2.4s ease-in-out infinite;}
+      #cgm-overlay .mbtn.active::before{content:"";position:absolute;left:0;top:16%;bottom:16%;width:3px;background:var(--cyan);border-radius:3px;box-shadow:var(--glow-cyan);}
+      #cgm-overlay .mbtn:focus-visible{outline:2px solid var(--cyan);outline-offset:2px;}
+      #cgm-overlay .mbtn.mbtn-primary{padding:16px 18px 16px 14px;font-size:16px;letter-spacing:3px;border-width:1.5px;border-color:rgba(46,230,246,.6);background:linear-gradient(180deg,rgba(46,230,246,.14),rgba(10,16,46,.5));}
+      #cgm-overlay .mbtn.mbtn-primary .mi{border-color:rgba(46,230,246,.6);background:rgba(46,230,246,.14);}
+      #cgm-overlay .mbtn.mbtn-primary:not(.active):not(:hover){animation:cgm-primary-breathe 3.2s ease-in-out infinite;}
+      @keyframes cgm-sheen{0%{transform:translateX(-120%)}55%,100%{transform:translateX(120%)}}
+      @keyframes cgm-primary-breathe{0%,100%{box-shadow:inset 0 1px 0 rgba(255,255,255,.04),0 0 6px rgba(46,230,246,.10)}50%{box-shadow:inset 0 1px 0 rgba(255,255,255,.04),0 0 16px rgba(46,230,246,.28)}}
+      /* Entrance: the whole stage eases in every time the menu is (re)shown. */
+      #cgm-overlay.cgm-in .stage{animation:cgm-enter .38s cubic-bezier(.22,1,.36,1);}
+      @keyframes cgm-enter{from{opacity:.35;transform:translateY(10px) scale(.992)}to{opacity:1;transform:none}}
+      @media(prefers-reduced-motion:reduce){#cgm-overlay .mbtn.active::after,#cgm-overlay .mbtn.mbtn-primary{animation:none!important;}#cgm-overlay.cgm-in .stage{animation:none;}}
       #cgm-overlay .profile{width:100%;max-width:560px;margin:2px auto 0;display:grid;grid-template-columns:repeat(3,1fr);gap:12px;}
       #cgm-overlay .pcell{border:1px solid rgba(46,230,246,.22);border-radius:12px;background:var(--panel);padding:10px 14px;text-align:center;}
       #cgm-overlay .pcell .pk{font-size:10px;letter-spacing:2px;color:var(--txt-dim);text-transform:uppercase;}
@@ -22853,14 +22888,15 @@ export class Game {
         <g id="i-flame" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.4-.5-2-1-3-1.07-2.14-.6-4 1-6 .14 1.9 1.1 3.7 2.5 5 1.3 1.2 2.5 2.6 2.5 4.5a5 5 0 1 1-10 0c0-.8.3-1.6.8-2.2a2.5 2.5 0 0 0 1.2 2.2Z"/></g>
         <g id="i-star" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="m12 2 2.9 6.3 6.6.6-5 4.4 1.5 6.6L12 17l-5.9 3.5L7.5 13.9l-5-4.4 6.6-.6z"/></g>
         <g id="i-zapplus" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 4 13h7l-1 9 9-12h-7z"/></g>
+        <g id="i-play" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M7 4.5v15l13-7.5z"/></g>
+        <g id="i-x" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></g>
       </defs>`;
       document.body.appendChild(defs);
     }
 
-    // ── Build menu items HTML (ENDLESS MODE shown only if unlocked) ──────────
+    // ── Build menu items HTML — shared with _syncMenuOverlayItems via _menuItemHTML ──
     const _buildMenuItemsHTML = (items, activeIdx) => items.map((label, i) =>
-      `<button class="mbtn${i === activeIdx ? ' active' : ''}" data-cgm-item="${label}">` +
-      `<svg><use href="#i-chev"/></svg>${label}</button>`
+      this._menuItemHTML(label, i === activeIdx)
     ).join('');
 
     // ── Create the overlay div ────────────────────────────────────────────────
@@ -22996,7 +23032,7 @@ export class Game {
   <!-- FOOTER -->
   <div class="footer">
     <span class="age">12+</span>
-    <div class="hints"><span><b>↑↓</b> Navigate</span><span><b>ENTER</b> / Click Select</span><span><b>ESC</b> Back</span></div>
+    <div class="hints"><span><b>↑ ↓ / D-PAD</b> Navigate</span><span><b>ENTER / A</b> Select</span><span><b>ESC / B</b> Back</span></div>
   </div>
 </main>`;
     document.body.appendChild(el);
@@ -23043,10 +23079,7 @@ export class Game {
     const nav = this._menuOverlayEl && this._menuOverlayEl.querySelector('#cgm-menu-nav');
     if (!nav) return;
     const items = this.menuItems;
-    nav.innerHTML = items.map((label, i) =>
-      `<button class="mbtn${i === this.menuIndex ? ' active' : ''}" data-cgm-item="${label}">` +
-      `<svg><use href="#i-chev"/></svg>${label}</button>`
-    ).join('');
+    nav.innerHTML = items.map((label, i) => this._menuItemHTML(label, i === this.menuIndex)).join('');
     // Attach click listeners
     nav.querySelectorAll('.mbtn').forEach((btn, i) => {
       btn.addEventListener('click', () => {
@@ -23227,6 +23260,11 @@ export class Game {
     this._syncMenuOverlayItems();   // rebuild nav (Endless unlock may have changed)
     this._refreshMenuOverlay();     // push live data
     this._menuOverlayEl.style.display = 'flex';
+    // Re-trigger the entrance ease every time the menu is (re)shown — display:none
+    // alone never replays a CSS animation. Pure presentation; reduced-motion opts out.
+    this._menuOverlayEl.classList.remove('cgm-in');
+    void this._menuOverlayEl.offsetWidth;
+    this._menuOverlayEl.classList.add('cgm-in');
     if (this._codeRainCanvas) this._codeRainCanvas.style.display = 'block';
     this._menuOverlayVisible = true;
     this._startEqLoop();
