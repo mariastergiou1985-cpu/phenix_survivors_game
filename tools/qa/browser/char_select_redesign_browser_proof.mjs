@@ -135,6 +135,7 @@ const visibleStarts = (page) => page.evaluate(() => {
     const { ctx, page, pageErrors } = await bootPage(browser, { seedMeta: seed });
     await clickAndSettle(page, '#cgm-menu-nav .mbtn[data-cgm-item="START GAME"]');
     await clickAndSettle(page, '#cgm-modesel .msl-card[data-mode="endless"]');
+    await clickAndSettle(page, '#mi-continue');   // through the ENDLESS briefing (mode_intro, 2026-08-03)
     gate('B1 ENDLESS entry → character_select', (await state(page)) === 'character_select');
     const chipE = await page.$eval('#csc-mode-chip', el => el.textContent.trim());
     const btnsE = await visibleStarts(page);
@@ -146,6 +147,7 @@ const visibleStarts = (page) => page.evaluate(() => {
     await clickAndSettle(page, '#csc-back-btn');
     gate('B4 BACK returns to mode select', (await state(page)) === 'mode_select');
     await clickAndSettle(page, '#cgm-modesel .msl-card[data-mode="chaos"]');
+    await clickAndSettle(page, '#mi-continue');   // through the CHAOS briefing (mode_intro, 2026-08-03)
     const chipC = await page.$eval('#csc-mode-chip', el => el.textContent.trim());
     const btnsC = await visibleStarts(page);
     gate('B5 chaos entry: mode chip + ONLY START CHAOS', /CHAOS/.test(chipC) && !btnsC.start && !btnsC.endless && btnsC.chaos,

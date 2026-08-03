@@ -1939,6 +1939,7 @@ export class Game {
       this._hideCampaignOverlay?.();
       this._hideModeSelectOverlay?.();
       this._hideActSelectOverlay?.();
+      this._hideModeIntroOverlay?.();
       // Routing flags for the START GAME flow (2026-08-03): `mode` is what ENTER/START
       // confirms into ('default' | 'endless' | 'chaos'); `from` is where BACK returns
       // ('menu' | 'mode_select' | 'campaign_select'). Defaults = classic menu behavior.
@@ -2457,6 +2458,7 @@ export class Game {
       this._hideCampaignOverlay?.();
       this._hideModeSelectOverlay?.();
       this._hideActSelectOverlay?.();
+      this._hideModeIntroOverlay?.();
       this._charSelectMode   = 'default';   // returning home always clears char-select routing
       this._charSelectReturn = 'menu';
       this._hideUpgradesOverlay();
@@ -10093,6 +10095,10 @@ export class Game {
     }
     if (this.gameState === 'mode_select') {
       this._updateModeSelect(input);
+      return;
+    }
+    if (this.gameState === 'mode_intro') {
+      this._updateModeIntro(input);
       return;
     }
     if (this.gameState === 'act_select') {
@@ -21950,6 +21956,11 @@ export class Game {
       this._drawFade(ctx);
       return;
     }
+    if (this.gameState === 'mode_intro') {
+      this._drawModeIntro(ctx);
+      this._drawFade(ctx);
+      return;
+    }
     if (this.gameState === 'act_select') {
       this._drawActSelect(ctx);
       this._drawFade(ctx);
@@ -25912,6 +25923,7 @@ export class Game {
       this._hideCharSelectOverlay?.();
       this._hideCampaignOverlay?.();
       this._hideActSelectOverlay?.();
+      this._hideModeIntroOverlay?.();
       this.gameState = 'mode_select';
       this._modeSelIndex = 0;
       this.audio?.startMenuMusic();
@@ -25927,8 +25939,8 @@ export class Game {
     if (!item) return;
     if (item.locked) { this.triggerAnnouncement(item.lockHint, '#888888'); return; }
     if (id === 'campaign')      this.goToActSelect();
-    else if (id === 'endless')  this.goToCharacterSelect({ mode: 'endless', from: 'mode_select' });
-    else if (id === 'chaos')    this.goToCharacterSelect({ mode: 'chaos',   from: 'mode_select' });
+    else if (id === 'endless')  this.goToModeIntro('endless');   // briefing screen → CONTINUE → Character Select
+    else if (id === 'chaos')    this.goToModeIntro('chaos');     // briefing screen → CONTINUE → Character Select
   }
 
   _buildModeSelectOverlay() {
@@ -26126,6 +26138,279 @@ export class Game {
     ctx.fillText('◀ ▶ move   ENTER confirm   ESC back', WIDTH / 2, HEIGHT - 40);
   }
 
+  // ── MODE INTRO (ENDLESS / CHAOS presentation screens, 2026-08-03) ───────────
+  // Pure presentation between Mode Select and Character Select. Reads the SAME
+  // gate (meta.isEndlessUnlocked) and the SAME records (endlessRecords, chaosRanks)
+  // the game already maintains — never mutates gameplay, unlocks, saves or balance.
+  goToModeIntro(mode) {
+    if (mode !== 'endless' && mode !== 'chaos') return;
+    this._transition(() => {
+      this._hideMenuOverlay();
+      this._hideModeSelectOverlay?.();
+      this._hideActSelectOverlay?.();
+      this._hideCharSelectOverlay?.();
+      this.gameState = 'mode_intro';
+      this._modeIntroMode = mode;
+      this._modeIntroFocus = 0;          // 0 = CONTINUE, 1 = BACK
+      this.audio?.startMenuMusic();
+      this._showModeIntroOverlay();
+    });
+  }
+
+  _modeIntroData(mode) {
+    const meta = this.meta;
+    const unlocked = meta?.isEndlessUnlocked?.() === true;
+    const fmtT = (s) => Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
+    if (mode === 'endless') {
+      const r = meta?.endlessRecords || { time: 0, score: 0, level: 0 };
+      return {
+        id: 'endless', accent: 'green', icon: '∞', name: 'ENDLESS MODE',
+        tagline: 'SURVIVAL PROTOCOL · THE INFINITE GRID',
+        desc: 'One life against the open grid. Elite waves, arena breaches and boss echoes keep coming — the run ends only when you fall, and every second feeds your permanent progression.',
+        objective: 'Survive as long as you can. One life — no extraction.',
+        difficulty: { label: 'SCALING', pips: 3, note: 'Pressure keeps climbing the longer you last.' },
+        rewards: 'Endless achievements & Protocol Fragments · Grid Credits · Boss Echo archive · EDEN memory · secret unlocks.',
+        unlocked, lockHint: 'CLEAR ACT 1 TO UNLOCK',
+        best: (r.time > 0 || r.score > 0) ? [
+          ['BEST SURVIVAL', fmtT(r.time)],
+          ['BEST SCORE', Number(r.score || 0).toLocaleString('en-US')],
+          ['BEST LEVEL', 'LV ' + (r.level || 0)],
+        ] : null,
+      };
+    }
+    // CHAOS — best Survival Rank across characters (Phase B chaosRanks).
+    let bs = null;
+    for (const [cid, rec] of Object.entries(meta?.chaosRanks || {})) {
+      if (rec && rec.bestSecs > (bs ? bs.secs : 0)) bs = { secs: rec.bestSecs, rank: rec.bestRank || 'BRONZE', char: this._colCharName(cid) };
+    }
+    return {
+      id: 'chaos', accent: 'pink', icon: '✦', name: 'CHAOS MODE',
+      tagline: 'MAXIMUM PRESSURE · FROM SECOND ONE',
+      desc: 'The gloves come off immediately — the grid opens at full hostility and never relents. Built for pilots who found Endless too polite.',
+      objective: 'Survive the maximum-pressure grid. Every second is earned.',
+      difficulty: { label: 'EXTREME', pips: 5, note: 'Full hostility from the very first spawn.' },
+      rewards: 'Chaos Survival Rank per character (BRONZE → PLATINUM) · everything an Endless run earns.',
+      unlocked, lockHint: 'REACH ENDLESS FIRST',
+      best: bs ? [
+        ['BEST SURVIVAL', fmtT(bs.secs)],
+        ['BEST RANK', bs.rank],
+        ['PILOT', bs.char],
+      ] : null,
+    };
+  }
+
+  _buildModeIntroOverlay() {
+    if (this._modeIntroOverlayEl) return;
+    if (!document.getElementById('cgm-modeintro-style')) {
+      const style = document.createElement('style');
+      style.id = 'cgm-modeintro-style';
+      style.textContent = `
+        #cgm-modeintro {
+          position:fixed; inset:0; z-index:120; display:none;
+          align-items:center; justify-content:center; overflow-y:auto;
+          padding:20px 16px; font-family:'Share Tech Mono',ui-monospace,monospace; color:#cfe9ff;
+          background:
+            radial-gradient(1200px 700px at 50% -10%,rgba(46,230,246,.14),transparent 60%),
+            radial-gradient(900px 600px at 12% 30%,rgba(168,85,247,.10),transparent 60%),
+            radial-gradient(900px 600px at 88% 70%,rgba(255,45,149,.09),transparent 60%),
+            linear-gradient(180deg,#0b1030,#070a1c);
+          --cyan:#2ee6f6; --green:#7CFF4D; --pink:#ff2d95; --amber:#ffd23c;
+          --txt-dim:#6f86b8; --txt-faint:#46588a;
+        }
+        #cgm-modeintro * { box-sizing:border-box; margin:0; padding:0; }
+        #cgm-modeintro .mi-stage {
+          position:relative; width:100%; max-width:880px; margin:auto; --acc:var(--cyan); --accRGB:46,230,246;
+          border:1px solid rgba(var(--accRGB),.16); border-radius:20px; padding:24px 26px 20px;
+          background:linear-gradient(180deg,rgba(var(--accRGB),.06),transparent 32%),rgba(7,10,28,.9);
+          box-shadow:inset 0 0 60px rgba(var(--accRGB),.05),0 30px 80px rgba(0,0,0,.55);
+          display:flex; flex-direction:column; gap:14px;
+        }
+        #cgm-modeintro .mi-stage.acc-green { --acc:var(--green); --accRGB:124,255,77; }
+        #cgm-modeintro .mi-stage.acc-pink  { --acc:var(--pink);  --accRGB:255,45,149; }
+        @keyframes miIn { from { opacity:0; transform:translateY(14px) scale(.985); } to { opacity:1; transform:none; } }
+        #cgm-modeintro .mi-stage.mi-in { animation:miIn .38s cubic-bezier(.22,.9,.3,1) both; }
+        #cgm-modeintro .mi-corner { position:absolute; width:34px; height:34px; border:2px solid var(--acc); opacity:.8; filter:drop-shadow(0 0 6px rgba(var(--accRGB),.55)); }
+        #cgm-modeintro .mi-corner.tl{top:-2px;left:-2px;border-right:0;border-bottom:0;border-radius:18px 0 0 0;}
+        #cgm-modeintro .mi-corner.tr{top:-2px;right:-2px;border-left:0;border-bottom:0;border-radius:0 18px 0 0;}
+        #cgm-modeintro .mi-corner.bl{bottom:-2px;left:-2px;border-right:0;border-top:0;border-radius:0 0 0 18px;}
+        #cgm-modeintro .mi-corner.br{bottom:-2px;right:-2px;border-left:0;border-top:0;border-radius:0 0 18px 0;}
+        #cgm-modeintro .mi-head { display:flex; align-items:center; gap:16px; flex-wrap:wrap; }
+        #cgm-modeintro .mi-icon {
+          width:64px; height:64px; flex-shrink:0; border-radius:14px; display:flex; align-items:center; justify-content:center;
+          font-size:38px; color:var(--acc); border:1px solid rgba(var(--accRGB),.4); background:rgba(var(--accRGB),.07);
+          text-shadow:0 0 18px rgba(var(--accRGB),.65); box-shadow:0 0 18px rgba(var(--accRGB),.2), inset 0 0 16px rgba(var(--accRGB),.08);
+        }
+        #cgm-modeintro .mi-name { font-family:'Orbitron',sans-serif; font-weight:800; font-size:24px; letter-spacing:3px; color:var(--acc); text-shadow:0 0 10px rgba(var(--accRGB),.55); }
+        #cgm-modeintro .mi-tagline { font-family:'Orbitron',sans-serif; font-weight:700; font-size:10px; letter-spacing:2.5px; color:var(--txt-dim); margin-top:4px; }
+        #cgm-modeintro .mi-state { margin-left:auto; font-family:'Orbitron',sans-serif; font-weight:800; font-size:10px; letter-spacing:1.6px; padding:6px 14px; border-radius:999px; }
+        #cgm-modeintro .mi-state.ok { color:var(--green); border:1px solid rgba(124,255,77,.45); background:rgba(124,255,77,.07); }
+        #cgm-modeintro .mi-state.no { color:#8fa4c8; border:1px solid rgba(143,164,200,.35); background:rgba(8,14,32,.9); }
+        #cgm-modeintro .mi-desc { font-size:12.5px; line-height:1.6; color:#a9c2e4; }
+        #cgm-modeintro .mi-sep { width:100%; height:1px; background:linear-gradient(90deg,transparent,var(--acc),transparent); opacity:.3; }
+        #cgm-modeintro .mi-cols { display:flex; gap:16px; align-items:stretch; }
+        #cgm-modeintro .mi-info { flex:1 1 auto; min-width:0; display:flex; flex-direction:column; gap:10px; }
+        #cgm-modeintro .mi-row { border:1px solid rgba(46,90,100,.3); border-radius:12px; background:rgba(10,16,46,.55); padding:11px 14px; display:flex; flex-direction:column; gap:4px; }
+        #cgm-modeintro .mi-row-label { font-family:'Orbitron',sans-serif; font-weight:800; font-size:9px; letter-spacing:2.2px; color:var(--acc); }
+        #cgm-modeintro .mi-row-text { font-size:11.5px; line-height:1.5; color:#cfe9ff; }
+        #cgm-modeintro .mi-diff { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+        #cgm-modeintro .mi-diff-label { font-family:'Orbitron',sans-serif; font-weight:800; font-size:12px; letter-spacing:1.6px; color:var(--acc); }
+        #cgm-modeintro .mi-pips { display:flex; gap:4px; }
+        #cgm-modeintro .mi-pip { width:18px; height:7px; border-radius:3px; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.06); }
+        #cgm-modeintro .mi-pip.on { background:var(--acc); box-shadow:0 0 7px rgba(var(--accRGB),.6); border-color:transparent; }
+        #cgm-modeintro .mi-diff-note { font-size:10px; color:var(--txt-dim); }
+        #cgm-modeintro .mi-best { flex:0 0 250px; border:1px solid rgba(var(--accRGB),.25); border-radius:14px; background:linear-gradient(180deg,rgba(var(--accRGB),.06),transparent 40%),rgba(7,10,28,.8); padding:13px 15px; display:flex; flex-direction:column; gap:9px; }
+        #cgm-modeintro .mi-best-title { font-family:'Orbitron',sans-serif; font-weight:800; font-size:10px; letter-spacing:2.2px; color:var(--acc); }
+        #cgm-modeintro .mi-best-row { display:flex; align-items:baseline; justify-content:space-between; gap:10px; border-bottom:1px solid rgba(255,255,255,.05); padding-bottom:7px; }
+        #cgm-modeintro .mi-best-row:last-child { border-bottom:0; padding-bottom:0; }
+        #cgm-modeintro .mi-best-k { font-size:9px; letter-spacing:1.6px; color:var(--txt-dim); font-family:'Orbitron',sans-serif; font-weight:700; }
+        #cgm-modeintro .mi-best-v { font-family:'Orbitron',sans-serif; font-weight:800; font-size:14px; color:#e8ffff; text-shadow:0 0 8px rgba(var(--accRGB),.35); }
+        #cgm-modeintro .mi-best-empty { font-size:10.5px; color:var(--txt-faint); font-style:italic; line-height:1.5; }
+        #cgm-modeintro .mi-req { font-family:'Orbitron',sans-serif; font-weight:700; font-size:11px; letter-spacing:1.4px; color:var(--amber); border:1px solid rgba(255,210,60,.30); background:rgba(4,8,20,.72); border-radius:8px; padding:9px 14px; text-align:center; }
+        #cgm-modeintro .mi-foot { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+        #cgm-modeintro .mi-btn {
+          padding:13px 26px; border-radius:10px; cursor:pointer; font-family:'Orbitron',sans-serif; font-weight:700;
+          font-size:13px; letter-spacing:2px; transition:border-color .15s, box-shadow .15s, color .15s;
+          border:1px solid rgba(111,134,184,.3); background:rgba(10,16,46,.55); color:var(--txt-dim);
+        }
+        #cgm-modeintro .mi-btn:hover, #cgm-modeintro .mi-btn.focus { border-color:var(--acc); color:#e8ffff; box-shadow:0 0 12px rgba(var(--accRGB),.35); }
+        #cgm-modeintro .mi-btn.primary { border-color:rgba(var(--accRGB),.55); background:rgba(var(--accRGB),.10); color:var(--acc); }
+        #cgm-modeintro .mi-btn.primary:hover, #cgm-modeintro .mi-btn.primary.focus { box-shadow:0 0 18px rgba(var(--accRGB),.5); color:#ffffff; }
+        @keyframes miBreathe { 0%,100% { box-shadow:0 0 10px rgba(var(--accRGB),.25); } 50% { box-shadow:0 0 22px rgba(var(--accRGB),.55); } }
+        #cgm-modeintro .mi-btn.primary:not(.disabled) { animation:miBreathe 2.6s ease-in-out infinite; }
+        #cgm-modeintro .mi-btn.disabled { cursor:not-allowed; opacity:.45; animation:none; }
+        #cgm-modeintro .mi-hints { font-size:11px; color:var(--txt-faint); letter-spacing:1px; text-align:center; }
+        #cgm-modeintro .mi-hints b { color:var(--acc); font-weight:400; }
+        @media (max-width:840px), (pointer: coarse) {
+          #cgm-modeintro { padding:12px 10px; }
+          #cgm-modeintro .mi-stage { padding:18px 14px 14px; }
+          #cgm-modeintro .mi-cols { flex-direction:column; }
+          #cgm-modeintro .mi-best { flex:1 1 auto; }
+          #cgm-modeintro .mi-name { font-size:19px; letter-spacing:2px; }
+          #cgm-modeintro .mi-btn { padding:14px 20px; font-size:14px; flex:1 1 45%; }
+        }
+      `;
+      document.head.appendChild(style);
+    }
+    const el = document.createElement('div');
+    el.id = 'cgm-modeintro';
+    el.setAttribute('role', 'dialog');
+    el.setAttribute('aria-label', 'Mode Briefing');
+    document.body.appendChild(el);
+    this._modeIntroOverlayEl = el;
+
+    // ONE delegated handler for the whole overlay, for its whole life.
+    el.addEventListener('click', (ev) => {
+      if (ev.target.closest('#mi-back')) { this.goToModeSelect(); return; }
+      const cont = ev.target.closest('#mi-continue');
+      if (cont) this._modeIntroContinue();
+    });
+  }
+
+  _renderModeIntroOverlay() {
+    const el = this._modeIntroOverlayEl;
+    if (!el) return;
+    const d = this._modeIntroData(this._modeIntroMode || 'endless');
+    const pips = Array.from({ length: 5 }, (_, i) =>
+      `<span class="mi-pip ${i < d.difficulty.pips ? 'on' : ''}"></span>`).join('');
+    const best = d.best
+      ? d.best.map(([k, v]) => `<div class="mi-best-row"><span class="mi-best-k">${k}</span><span class="mi-best-v">${v}</span></div>`).join('')
+      : `<div class="mi-best-empty">NO RUNS LOGGED — the grid awaits your first attempt.</div>`;
+    el.innerHTML = `
+      <div class="mi-stage acc-${d.accent} mi-in">
+        <span class="mi-corner tl"></span><span class="mi-corner tr"></span>
+        <span class="mi-corner bl"></span><span class="mi-corner br"></span>
+        <div class="mi-head">
+          <div class="mi-icon">${d.icon}</div>
+          <div>
+            <div class="mi-name">${d.name}</div>
+            <div class="mi-tagline">${d.tagline}</div>
+          </div>
+          <div class="mi-state ${d.unlocked ? 'ok' : 'no'}">${d.unlocked ? '✓ UNLOCKED' : '🔒 LOCKED'}</div>
+        </div>
+        <div class="mi-desc">${d.desc}</div>
+        <div class="mi-sep"></div>
+        <div class="mi-cols">
+          <div class="mi-info">
+            <div class="mi-row">
+              <div class="mi-row-label">OBJECTIVE</div>
+              <div class="mi-row-text">${d.objective}</div>
+            </div>
+            <div class="mi-row">
+              <div class="mi-row-label">DIFFICULTY</div>
+              <div class="mi-diff">
+                <span class="mi-diff-label">${d.difficulty.label}</span>
+                <span class="mi-pips">${pips}</span>
+                <span class="mi-diff-note">${d.difficulty.note}</span>
+              </div>
+            </div>
+            <div class="mi-row">
+              <div class="mi-row-label">REWARDS</div>
+              <div class="mi-row-text">${d.rewards}</div>
+            </div>
+          </div>
+          <aside class="mi-best">
+            <div class="mi-best-title">PERSONAL BEST</div>
+            ${best}
+          </aside>
+        </div>
+        ${d.unlocked ? '' : `<div class="mi-req">🔒 ${d.lockHint}</div>`}
+        <div class="mi-foot">
+          <button class="mi-btn ${this._modeIntroFocus === 1 ? 'focus' : ''}" id="mi-back">◀ BACK</button>
+          <button class="mi-btn primary ${d.unlocked ? '' : 'disabled'} ${this._modeIntroFocus === 0 ? 'focus' : ''}"
+                  id="mi-continue" ${d.unlocked ? '' : 'disabled'} aria-disabled="${!d.unlocked}">CONTINUE ▶</button>
+        </div>
+        <div class="mi-hints"><b>◀ ▶</b> select · <b>ENTER / A</b> confirm · <b>ESC / B</b> back</div>
+      </div>`;
+  }
+
+  _showModeIntroOverlay() {
+    this._buildModeIntroOverlay();
+    this._renderModeIntroOverlay();
+    if (this._modeIntroOverlayEl) this._modeIntroOverlayEl.style.display = 'flex';
+  }
+
+  _hideModeIntroOverlay() {
+    if (this._modeIntroOverlayEl) this._modeIntroOverlayEl.style.display = 'none';
+  }
+
+  // CONTINUE → Character Select through the EXISTING entry path (same opts the mode
+  // cards used before this screen existed — routing beyond this screen unchanged).
+  _modeIntroContinue() {
+    const d = this._modeIntroData(this._modeIntroMode || 'endless');
+    if (!d.unlocked) { this.triggerAnnouncement(d.lockHint, '#888888'); return; }
+    this.goToCharacterSelect({ mode: d.id, from: 'mode_select' });
+  }
+
+  _updateModeIntro(input) {
+    const { keys } = input;
+    const take = (...ks) => { let hit = false; for (const k of ks) if (keys.has(k)) { keys.delete(k); hit = true; } return hit; };
+    if (take('escape', 'backspace')) { this.goToModeSelect(); return; }
+    if (take('arrowleft', 'a', 'arrowup', 'w'))    { this._modeIntroFocus = 1; this._renderModeIntroOverlay(); }
+    if (take('arrowright', 'd', 'arrowdown', 's')) { this._modeIntroFocus = 0; this._renderModeIntroOverlay(); }
+    if (take('enter', ' ')) {
+      if (this._modeIntroFocus === 1) this.goToModeSelect();
+      else this._modeIntroContinue();
+    }
+  }
+
+  // Canvas fallback, drawn behind the DOM overlay exactly like Mode Select's.
+  _drawModeIntro(ctx) {
+    this._drawBackground(ctx);
+    ctx.fillStyle = 'rgba(4,8,20,0.86)'; ctx.fillRect(0, 0, WIDTH, HEIGHT);
+    const d = this._modeIntroData(this._modeIntroMode || 'endless');
+    const acc = d.accent === 'pink' ? '#ff2d95' : '#7CFF4D';
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 34px Consolas, monospace'; ctx.fillStyle = acc;
+    ctx.fillText(d.name, WIDTH / 2, 90);
+    ctx.font = '13px Consolas, monospace'; ctx.fillStyle = 'rgba(190,200,215,0.7)';
+    ctx.fillText(String(d.objective).slice(0, 70), WIDTH / 2, 130);
+    ctx.fillText('DIFFICULTY: ' + d.difficulty.label, WIDTH / 2, 156);
+    if (!d.unlocked) { ctx.fillStyle = '#ffd23c'; ctx.fillText('LOCKED — ' + d.lockHint, WIDTH / 2, 190); }
+    ctx.font = 'bold 15px Consolas, monospace'; ctx.fillStyle = d.unlocked ? acc : '#5f7398';
+    ctx.fillText('ENTER — CONTINUE', WIDTH / 2, HEIGHT - 96);
+    ctx.font = '12px Consolas, monospace'; ctx.fillStyle = 'rgba(190,200,215,0.55)';
+    ctx.fillText('ESC — back to Mode Select', WIDTH / 2, HEIGHT - 68);
+  }
   // ── ACT SELECT ──────────────────────────────────────────────────────────────
   goToActSelect() {
     this._transition(() => {

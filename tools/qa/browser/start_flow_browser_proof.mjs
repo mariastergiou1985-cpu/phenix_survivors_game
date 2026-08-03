@@ -151,7 +151,18 @@ const menuLabels = (page) => page.$$eval('#cgm-menu-nav .mbtn', els => els.map(e
     gate('B2 chaos UNLOCKED with seeded save', cardInfo.find(c => c.mode === 'chaos')?.locked === false);
 
     await clickAndSettle(page, '#cgm-modesel .msl-card[data-mode="endless"]');
-    gate('B3 ENDLESS → character_select', (await state(page)) === 'character_select');
+    gate('B3a ENDLESS → mode_intro briefing', (await state(page)) === 'mode_intro');
+    const briefE = await page.evaluate(() => ({
+      name: document.querySelector('#cgm-modeintro .mi-name')?.textContent || '',
+      state: document.querySelector('#cgm-modeintro .mi-state')?.textContent || '',
+      cont: !document.querySelector('#mi-continue')?.disabled,
+      rows: document.querySelectorAll('#cgm-modeintro .mi-row').length,
+    }));
+    gate('B3b briefing shows ENDLESS identity + UNLOCKED + enabled CONTINUE',
+      briefE.name.includes('ENDLESS') && briefE.state.includes('UNLOCKED') && briefE.cont && briefE.rows === 3,
+      JSON.stringify(briefE));
+    await clickAndSettle(page, '#mi-continue');
+    gate('B3c CONTINUE → character_select', (await state(page)) === 'character_select');
     const btnsE = await page.evaluate(() => ({
       start:   getComputedStyle(document.querySelector('#csc-start-btn')).display,
       endless: getComputedStyle(document.querySelector('#csc-endless-btn')).display,
@@ -162,7 +173,14 @@ const menuLabels = (page) => page.$$eval('#cgm-menu-nav .mbtn', els => els.map(e
     gate('B5 char select BACK → mode_select', (await state(page)) === 'mode_select');
 
     await clickAndSettle(page, '#cgm-modesel .msl-card[data-mode="chaos"]');
-    gate('B6 CHAOS → character_select', (await state(page)) === 'character_select');
+    gate('B6a CHAOS → mode_intro briefing', (await state(page)) === 'mode_intro');
+    gate('B6b briefing BACK → mode_select', await (async () => {
+      await clickAndSettle(page, '#mi-back');
+      return (await state(page)) === 'mode_select';
+    })());
+    await clickAndSettle(page, '#cgm-modesel .msl-card[data-mode="chaos"]');
+    await clickAndSettle(page, '#mi-continue');
+    gate('B6c CONTINUE → character_select', (await state(page)) === 'character_select');
     const btnsC = await page.evaluate(() => ({
       start:   getComputedStyle(document.querySelector('#csc-start-btn')).display,
       endless: getComputedStyle(document.querySelector('#csc-endless-btn')).display,
@@ -176,6 +194,7 @@ const menuLabels = (page) => page.$$eval('#cgm-menu-nav .mbtn', els => els.map(e
     // actually leaves the menus. Not a gate in asset-less harnesses.
     await clickAndSettle(page, '#csc-back-btn');                            // chaos entry → back
     await clickAndSettle(page, '#cgm-modesel .msl-card[data-mode="endless"]');
+    await clickAndSettle(page, '#mi-continue');                             // briefing → char select
     await clickAndSettle(page, '#csc-endless-btn');
     const st = await state(page);
     console.log(`INFO  START ENDLESS click → gameState=${st}  (informational; run-start is covered by device regressions)`);
