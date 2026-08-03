@@ -477,18 +477,17 @@ console.log('\n=== 7. RUN BIOME — THE RUN STARTS WHERE THE PLAYER PICKED (Slic
 }
 
 // ════════════════════════════════════════════════════════════════════════════════════════════════
-console.log('\n=== 8. STAGE SELECT — OVERLAY, MENU AND COMMIT SEMANTICS (Slice A) ===');
-// The headless DOM in tools/qa/headless-env.mjs is a no-op stub: addEventListener does nothing and
-// querySelector hands back a fresh element. So this block proves the LOGIC — state machine, cursor
-// maths, what commits and what does not, and that render/draw never throw. The real DOM contract
-// (six cards, no the_null in the markup, no listener growth across open/close, a real click, a real
-// keypress) is proven in Chromium by the browser sign-off, not faked here.
+console.log('\n=== 8. START GAME FLOW — MODE SELECT, ACT SELECT AND ROUTING (2026-08-03 rework) ===');
+// The Slice-A SELECT STAGE screen was removed entirely in the 2026-08-03 flow rework: START GAME
+// now opens MODE SELECT (Campaign / Endless / Chaos) and CAMPAIGN opens ACT SELECT before the
+// stage map. This block proves the LOGIC — menu contract, state machine, cursor maths, lock
+// gates, and the character-select routing flags. The real DOM contract (real clicks, overlay
+// visibility, button scoping) is proven in Chromium by tools/qa/browser/start_flow_browser_proof.mjs.
 {
   // Screen changes go through _transition, which parks the callback until the fade reaches black,
   // so nothing happens until the fade is driven. Driving it also runs _hideMenuOverlay, which calls
   // vid.pause() on the menu video — and the headless element stub has no pause/play. That is an
-  // ENVIRONMENT gap, not a production one, so it is patched here, locally, for this block only:
-  // the real _hideMenuOverlay still runs, it just finds a media element that answers.
+  // ENVIRONMENT gap, not a production one, so it is patched here, locally, for this block only.
   const _origGetById = document.getElementById;
   document.getElementById = function (id) {
     const el = _origGetById.call(document, id);
@@ -503,132 +502,154 @@ console.log('\n=== 8. STAGE SELECT — OVERLAY, MENU AND COMMIT SEMANTICS (Slice
     return err;
   };
   T('screen transitions can be driven headlessly (no environment gap left)',
-    (() => { const gt = newGameUnlocked(); const u = muteConsole(); gt.gameState = 'start_menu'; gt._selectMenuItem('SELECT STAGE'); u();
+    (() => { const gt = newGameUnlocked(); const u = muteConsole(); gt.gameState = 'start_menu'; gt._selectMenuItem('START GAME'); u();
              return flush(gt) === null; })());
 
+  // ── The menu contract after the rework ─────────────────────────────────────
   const g = newGameUnlocked();
-  T('SELECT STAGE is in the main menu', g.menuItems.includes('SELECT STAGE'), g.menuItems.join(','));
-  T('the menu still offers CAMPAIGN and CHARACTER SELECT alongside it',
-    g.menuItems.includes('CAMPAIGN') && g.menuItems.includes('CHARACTER SELECT'));
+  g.meta.endlessUnlocked = true;    // biome unlocks alone do NOT open Endless — the gate needs the flag or a FULL campaign clear
+  T('START GAME is in the main menu', g.menuItems.includes('START GAME'), g.menuItems.join(','));
+  T('SELECT STAGE is GONE from the main menu', !g.menuItems.includes('SELECT STAGE'));
+  T('top-level CAMPAIGN is GONE from the main menu', !g.menuItems.includes('CAMPAIGN'));
+  T('CHARACTER SELECT survives as a top-level entry', g.menuItems.includes('CHARACTER SELECT'));
+  T('the legacy stage-select screen is fully removed (no entry point survives)',
+    typeof g.goToStageSelect === 'undefined' && typeof g._updateStageSelect === 'undefined'
+    && typeof g._drawStageSelect === 'undefined' && typeof g._stageSelectConfirm === 'undefined');
 
-  // Opening the screen.
-  const un1 = muteConsole();
-  g.gameState = 'start_menu';
-  g._selectMenuItem('SELECT STAGE');
-  un1();
-  flush(g);
-  T('choosing SELECT STAGE enters the stage_select state', g.gameState === 'stage_select', String(g.gameState));
-  T('the cursor opens on the CURRENT selection, so BACK is a true no-op',
-    g._stageSelIndex === Game.STAGE_RING.indexOf(g.runBiome), `idx=${g._stageSelIndex} runBiome=${g.runBiome}`);
+  // ── START GAME → MODE SELECT ───────────────────────────────────────────────
+  const un1 = muteConsole(); g.gameState = 'start_menu'; g._selectMenuItem('START GAME'); un1(); flush(g);
+  T('START GAME enters mode_select', g.gameState === 'mode_select', String(g.gameState));
+  T('exactly three modes are offered, in order', g._modeSelectItems.map(m => m.id).join(',') === 'campaign,endless,chaos',
+    g._modeSelectItems.map(m => m.id).join(','));
+  T('all three modes are unlocked once the campaign is cleared',
+    g._modeSelectItems.every(m => !m.locked), JSON.stringify(g._modeSelectItems.map(m => m.locked)));
 
-  // Cursor maths: left/right wrap, up/down move a row and wrap.
-  const keyStep = (k) => { const un = muteConsole(); g._updateStageSelect({ keys: new Set([k]), mousePos: { x: 0, y: 0 }, mouseDown: false }); un(); };
-  g._stageSelIndex = 0; keyStep('arrowleft');
-  T('◀ from the first card wraps to the last', g._stageSelIndex === Game.STAGE_RING.length - 1, String(g._stageSelIndex));
-  keyStep('arrowright');
-  T('▶ wraps back to the first', g._stageSelIndex === 0, String(g._stageSelIndex));
-  g._stageSelIndex = 0; keyStep('arrowdown');
-  T('▼ moves one row (3 columns)', g._stageSelIndex === 3, String(g._stageSelIndex));
-  keyStep('arrowup');
-  T('▲ moves back a row', g._stageSelIndex === 0, String(g._stageSelIndex));
+  // Cursor maths: wrap both ways, never leave the card row.
+  const keyStep = (gg, k) => { const un = muteConsole(); gg._updateModeSelect({ keys: new Set([k]), mousePos: { x: 0, y: 0 }, mouseDown: false }); un(); };
+  g._modeSelIndex = 0; keyStep(g, 'arrowleft');
+  T('◀ from the first mode wraps to the last', g._modeSelIndex === 2, String(g._modeSelIndex));
+  keyStep(g, 'arrowright');
+  T('▶ wraps back to the first', g._modeSelIndex === 0, String(g._modeSelIndex));
   let inRange = true;
-  for (let i = 0; i < 40; i++) { keyStep(i % 2 ? 'arrowdown' : 'arrowright'); if (!(g._stageSelIndex >= 0 && g._stageSelIndex < Game.STAGE_RING.length)) inRange = false; }
-  T('the cursor can never leave the ring, however long you hold a direction', inRange, String(g._stageSelIndex));
+  for (let i = 0; i < 20; i++) { keyStep(g, i % 2 ? 'arrowright' : 'arrowdown'); if (!(g._modeSelIndex >= 0 && g._modeSelIndex < 3)) inRange = false; }
+  T('the mode cursor can never leave the row', inRange, String(g._modeSelIndex));
 
-  // CANCEL must not change the selection.
+  // ESC leaves for the main menu.
+  const gEsc = newGameUnlocked();
+  const unEsc = muteConsole(); gEsc.gameState = 'mode_select';
+  gEsc._updateModeSelect({ keys: new Set(['escape']), mousePos: { x: 0, y: 0 }, mouseDown: false }); unEsc(); flush(gEsc);
+  T('ESC on mode select returns to the main menu', gEsc.gameState === 'start_menu', String(gEsc.gameState));
+
+  // ── Lock gates on a FRESH save ─────────────────────────────────────────────
+  const gl = newGame();
+  T('fresh save: campaign open, endless + chaos locked',
+    (() => { const it = gl._modeSelectItems; return !it[0].locked && it[1].locked === true && it[2].locked === true; })(),
+    JSON.stringify(gl._modeSelectItems.map(m => m.locked)));
+  const unl = muteConsole();
+  gl.gameState = 'mode_select';
+  gl._modeSelectChoose('endless');
+  gl._modeSelectChoose('chaos');
+  unl(); flush(gl);
+  T('locked modes never navigate — the state does not move', gl.gameState === 'mode_select', String(gl.gameState));
+
+  // ── CAMPAIGN → ACT SELECT → stage map, and the BACK chain ─────────────────
   const g2 = newGameUnlocked();
-  g2.setRunBiome('neon_district');
-  const un2 = muteConsole(); g2.gameState = 'start_menu'; g2._selectMenuItem('SELECT STAGE'); un2(); flush(g2);
-  g2._stageSelIndex = Game.STAGE_RING.indexOf('data_wastes');       // move the cursor far away...
-  const un3 = muteConsole(); g2._stageSelectCancel(); un3(); flush(g2);
-  T('CANCEL leaves the selection untouched', g2.runBiome === 'neon_district', String(g2.runBiome));
-  T('CANCEL returns to the main menu', g2.gameState === 'start_menu', String(g2.gameState));
-
-  // ESCAPE is the same path.
-  const g3 = newGameUnlocked();
-  g3.setRunBiome('orbital_nexus');
-  const un4 = muteConsole(); g3.gameState = 'stage_select'; g3._stageSelIndex = Game.STAGE_RING.indexOf('glacial_expanse');
-  g3._updateStageSelect({ keys: new Set(['escape']), mousePos: { x: 0, y: 0 }, mouseDown: false }); un4(); flush(g3);
-  T('ESC cancels without changing the selection', g3.runBiome === 'orbital_nexus' && g3.gameState === 'start_menu',
-    `runBiome=${g3.runBiome} state=${g3.gameState}`);
-
-  // CONFIRM must commit through the real setter.
-  for (const id of Game.STAGE_RING) {
-    const gc = newGameUnlocked();
-    gc.setRunBiome('neon_district');
-    const unc = muteConsole();
-    gc.gameState = 'stage_select';
-    gc._stageSelIndex = Game.STAGE_RING.indexOf(id);
-    gc._stageSelectConfirm();
-    unc(); flush(gc);
-    T(`CONFIRM on ${id} commits it and returns to the menu`,
-      gc.runBiome === id && gc.gameState === 'start_menu', `runBiome=${gc.runBiome} state=${gc.gameState}`);
-  }
-
-  // ENTER is the same path as CONFIRM.
-  const g4 = newGameUnlocked();
+  const un2 = muteConsole(); g2.gameState = 'mode_select'; g2._modeSelectChoose('campaign'); un2(); flush(g2);
+  T('CAMPAIGN enters act_select', g2.gameState === 'act_select', String(g2.gameState));
+  T('the act ladder currently offers exactly ACT 1',
+    Game.ACTS.length === 1 && Game.ACTS[0].n === 1 && Game.ACTS[0].available === true,
+    JSON.stringify(Game.ACTS.map(a => [a.n, a.available])));
+  const un3 = muteConsole(); g2._actSelectChoose(1); un3(); flush(g2);
+  T('ACT 1 opens the campaign stage map', g2.gameState === 'campaign_select', String(g2.gameState));
+  const un4 = muteConsole();
+  g2._updateCampaignSelect({ keys: new Set(['escape']), mousePos: { x: 0, y: 0 }, mouseDown: false });
+  un4(); flush(g2);
+  T('ESC on the stage map returns to act_select (NOT the main menu)', g2.gameState === 'act_select', String(g2.gameState));
   const un5 = muteConsole();
-  g4.gameState = 'stage_select'; g4._stageSelIndex = Game.STAGE_RING.indexOf('abyssal_trench');
-  g4._updateStageSelect({ keys: new Set(['enter']), mousePos: { x: 0, y: 0 }, mouseDown: false });
-  un5(); flush(g4);
-  T('ENTER confirms the highlighted card', g4.runBiome === 'abyssal_trench', String(g4.runBiome));
+  g2._updateActSelect({ keys: new Set(['escape']), mousePos: { x: 0, y: 0 }, mouseDown: false });
+  un5(); flush(g2);
+  T('ESC on act select returns to mode_select', g2.gameState === 'mode_select', String(g2.gameState));
 
-  // A corrupted cursor must fall back safely, never commit garbage.
+  // An unavailable act must be inert (the extensibility contract for Act 2/3).
+  const g2b = newGameUnlocked();
+  const un5b = muteConsole(); g2b.gameState = 'act_select'; g2b._actSelectChoose(99); g2b._actSelectChoose(NaN); un5b(); flush(g2b);
+  T('unknown / unavailable acts never navigate', g2b.gameState === 'act_select', String(g2b.gameState));
+
+  // ── Character-select routing flags ─────────────────────────────────────────
+  const g3 = newGameUnlocked();
+  g3.meta.endlessUnlocked = true;
+  const un6 = muteConsole(); g3.gameState = 'mode_select'; g3._modeSelectChoose('endless'); un6(); flush(g3);
+  T('ENDLESS enters character_select in endless mode',
+    g3.gameState === 'character_select' && g3._charSelectMode === 'endless' && g3._charSelectReturn === 'mode_select',
+    `state=${g3.gameState} mode=${g3._charSelectMode} return=${g3._charSelectReturn}`);
+  const un7 = muteConsole(); g3._charSelectBack(); un7(); flush(g3);
+  T('BACK from an endless entry returns to mode_select', g3.gameState === 'mode_select', String(g3.gameState));
+
+  const g4 = newGameUnlocked();
+  g4.meta.endlessUnlocked = true;
+  const un8 = muteConsole(); g4.gameState = 'mode_select'; g4._modeSelectChoose('chaos'); un8(); flush(g4);
+  T('CHAOS enters character_select in chaos mode',
+    g4.gameState === 'character_select' && g4._charSelectMode === 'chaos', `state=${g4.gameState} mode=${g4._charSelectMode}`);
+
   const g5 = newGameUnlocked();
-  g5.setRunBiome('industrial_core');
-  const un6 = muteConsole();
-  g5.gameState = 'stage_select';
-  g5._stageSelIndex = 999;                       // as if something wrote nonsense into the cursor
-  g5._stageSelectConfirm();
-  un6(); flush(g5);
-  T('an out-of-range cursor falls back to neon_district instead of committing garbage',
-    g5.runBiome === 'neon_district' && Game.STAGE_RING.includes(g5.runBiome), String(g5.runBiome));
+  g5._pendingCampaignStage = 2;
+  const un9 = muteConsole(); g5.goToCharacterSelect({ from: 'campaign_select' }); un9(); flush(g5);
+  T('a campaign entry keeps the pending stage and the campaign return route',
+    g5._pendingCampaignStage === 2 && g5._charSelectReturn === 'campaign_select' && g5._charSelectMode === 'default',
+    `pending=${g5._pendingCampaignStage} return=${g5._charSelectReturn}`);
+  const un10 = muteConsole(); g5._charSelectBack(); un10(); flush(g5);
+  T('BACK from a campaign entry returns to the stage map', g5.gameState === 'campaign_select', String(g5.gameState));
 
-  // the_null must be unreachable through the screen, not merely absent from the grid.
   const g6 = newGameUnlocked();
-  const idxNull = Game.STAGE_RING.indexOf('the_null');
-  T('the_null has no index in the ring, so no card can select it', idxNull === -1, String(idxNull));
-  g6.runBiome = 'the_null';                      // force it past the setter, as hostile DOM would
-  const un7 = muteConsole();
-  g6._applyRunBiome();
-  un7();
-  T('a forced the_null is repaired to neon_district at run start', g6.runBiome === 'neon_district', String(g6.runBiome));
+  g6._pendingCampaignStage = 5;                    // stale pick from an abandoned campaign visit
+  const un11 = muteConsole(); g6.goToCharacterSelect(); un11(); flush(g6);
+  T('a plain menu entry CLEARS a stale campaign stage pick',
+    g6._pendingCampaignStage === 0 && g6._charSelectMode === 'default' && g6._charSelectReturn === 'menu',
+    `pending=${g6._pendingCampaignStage} mode=${g6._charSelectMode} return=${g6._charSelectReturn}`);
 
-  // Rendering and drawing must never throw, with the overlay built or not.
+  // ── Rendering and overlay lifecycle must survive the headless DOM ──────────
   const g7 = newGameUnlocked();
   let threw = 0;
-  const un8 = muteConsole();
-  try { g7._renderStageSelectOverlay(); } catch (_) { threw++; }          // no overlay yet → no-op
-  try { g7._buildStageSelectOverlay(); } catch (_) { threw++; }
-  try { g7._renderStageSelectOverlay(); } catch (_) { threw++; }
-  try { g7._showStageSelectOverlay(); } catch (_) { threw++; }
-  try { g7._hideStageSelectOverlay(); } catch (_) { threw++; }
-  try { g7._drawStageSelect(makeCtx()); } catch (_) { threw++; }
-  un8();
-  T('build / render / show / hide / draw all survive the headless DOM', threw === 0, `${threw} throws`);
+  const un12 = muteConsole();
+  try { g7._renderModeSelectOverlay(); } catch (_) { threw++; }            // no overlay yet → no-op
+  try { g7._buildModeSelectOverlay(); } catch (_) { threw++; }
+  try { g7._renderModeSelectOverlay(); } catch (_) { threw++; }
+  try { g7._showModeSelectOverlay(); } catch (_) { threw++; }
+  try { g7._hideModeSelectOverlay(); } catch (_) { threw++; }
+  try { g7._drawModeSelect(makeCtx()); } catch (_) { threw++; }
+  try { g7._renderActSelectOverlay(); } catch (_) { threw++; }
+  try { g7._buildActSelectOverlay(); } catch (_) { threw++; }
+  try { g7._renderActSelectOverlay(); } catch (_) { threw++; }
+  try { g7._showActSelectOverlay(); } catch (_) { threw++; }
+  try { g7._hideActSelectOverlay(); } catch (_) { threw++; }
+  try { g7._drawActSelect(makeCtx()); } catch (_) { threw++; }
+  un12();
+  T('build / render / show / hide / draw survive the headless DOM for BOTH screens', threw === 0, `${threw} throws`);
 
-  // The overlay element is created ONCE. _buildStageSelectOverlay returning early is what keeps the
-  // single delegated listener single — if it rebuilt, every open would add another listener set.
-  const before = g7._stageSelectOverlayEl;
-  const un9 = muteConsole();
-  for (let i = 0; i < 25; i++) { g7._buildStageSelectOverlay(); g7._renderStageSelectOverlay(); g7._showStageSelectOverlay(); g7._hideStageSelectOverlay(); }
-  un9();
-  T('25 open/close cycles reuse the SAME overlay element (no listener accumulation)',
-    g7._stageSelectOverlayEl === before && !!before);
+  // The overlay elements are created ONCE — the single delegated listener stays single.
+  const beforeM = g7._modeSelectOverlayEl, beforeA = g7._actSelectOverlayEl;
+  const un13 = muteConsole();
+  for (let i = 0; i < 25; i++) {
+    g7._buildModeSelectOverlay(); g7._renderModeSelectOverlay(); g7._showModeSelectOverlay(); g7._hideModeSelectOverlay();
+    g7._buildActSelectOverlay(); g7._renderActSelectOverlay(); g7._showActSelectOverlay(); g7._hideActSelectOverlay();
+  }
+  un13();
+  T('25 open/close cycles reuse the SAME overlay elements (no listener accumulation)',
+    g7._modeSelectOverlayEl === beforeM && g7._actSelectOverlayEl === beforeA && !!beforeM && !!beforeA);
 
-  // The campaign must be completely unaffected by the Act 1 stage choice.
+  // ── The campaign must be completely unaffected by the (now default-only) run biome ──
   const g8 = newGameUnlocked();
   g8.setRunBiome('data_wastes');
   if (g8.chunkManager) g8.chunkManager.enabled = false;
   g8._pendingCampaignStage = 2;                  // STAGE 2 = industrial_core
-  const un10 = muteConsole();
-  g8._applyRunBiome();                           // Act 1 choice first...
+  const un14 = muteConsole();
+  g8._applyRunBiome();                           // Act 1 biome first...
   g8._applyCampaignStage();                      // ...campaign applied after, exactly as selectCharacter does
-  un10();
-  T('a campaign stage still wins over the Act 1 stage choice',
+  un14();
+  T('a campaign stage still wins over the Act 1 run biome',
     g8._stageBiome === 'industrial_core', String(g8._stageBiome));
   T('and the campaign stage number is intact', g8._campaignStage === 2, String(g8._campaignStage));
-  T('the Act 1 selection itself is not clobbered by the campaign', g8.runBiome === 'data_wastes', String(g8.runBiome));
+  T('the run biome itself is not clobbered by the campaign', g8.runBiome === 'data_wastes', String(g8.runBiome));
 
   document.getElementById = _origGetById;   // leave the environment exactly as it was found
 }
@@ -784,21 +805,9 @@ console.log('\n=== 10. STAGE UNLOCK LADDER (Slice A) ===');
   T('a fresh-save run still visits all six stages in order (the lock is only about STARTING)',
     new Set(walk).size === 6 && walk[0] === 'neon_district', walk.join(','));
 
-  // Overlay: locked cards exist, are marked, and cannot be reached by the cursor or confirmed.
-  const go = newGame();
-  const uno = muteConsole();
-  go.gameState = 'stage_select'; go._stageSelIndex = 0;
-  go._stageSelStep(+1);                            // everything except neon is locked
-  uno();
-  T('the cursor cannot step onto a locked stage', go._stageSelIndex === 0, String(go._stageSelIndex));
-  go._stageSelIndex = 4;                           // forced onto a locked card
-  const uno2 = muteConsole(); go._stageSelectConfirm(); uno2();
-  T('CONFIRM on a locked stage commits nothing and stays on the screen',
-    go.runBiome === 'neon_district' && go.gameState === 'stage_select', `${go.runBiome} / ${go.gameState}`);
-  go.meta.stagesCleared = 2;
-  go._stageSelIndex = 0;
-  const uno3 = muteConsole(); go._stageSelStep(+1); uno3();
-  T('once unlocked, the cursor steps onto it normally', go._stageSelIndex === 1, String(go._stageSelIndex));
+  // (The stage-select overlay cursor/confirm gates were removed with the screen itself in the
+  // 2026-08-03 flow rework — the setRunBiome/_applyRunBiome gates above are the surviving
+  // contract, and they are proven directly.)
 
   // The unlock announcement fires once, at the clear, and not again.
   const ga = newGame();

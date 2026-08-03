@@ -1,4 +1,4 @@
-import { Game } from './game/Game.js?v=20260902140000';
+import { Game } from './game/Game.js?v=20260903000000';
 import { AudioManager } from './audio/AudioManager.js?v=20260902120000';
 import { PlatformAchievements } from './platform/PlatformAchievements.js?v=20260712370000';
 // Steam build: replay any web-earned achievements to Steam on boot (no-op in browsers)
@@ -194,7 +194,7 @@ window.addEventListener('keydown', e => {
   // ESC — context-sensitive behaviour
   if (e.key === 'Escape') {
     if (game.gameState === 'character_select') {
-      game.goToMainMenu();          // character select → back to start menu
+      game._charSelectBack();       // character select → back to the screen that opened it (menu / mode select / stage map)
     } else if (game.gameState === 'exit_screen') {
       game.goToMainMenu();          // exit screen → back to start menu
     } else if (game.gameState === 'credits') {
@@ -494,9 +494,9 @@ canvas.addEventListener('mousedown', e => {
     } else if (game._inRect(mousePos, ob.secretRect)) {
       game.meta.setSelectedOutfit(ocid, 'secret');
     } else if (game._inRect(mousePos, act.back)) {
-      game.goToMainMenu();                              // BACK — preserves selected character
+      game._charSelectBack();                           // BACK — returns to the screen that opened Character Select
     } else if (game._inRect(mousePos, act.start)) {
-      game.selectCharacter(game.characters[game.characterIndex].id);   // START GAME (Act 1); self-guards locked
+      game._charSelectConfirm();                        // START — routes into campaign/endless/chaos per entry mode; self-guards locked
     } else if (game._inRect(mousePos, act.endless)) {
       game.startSelectedEndless();                      // START ENDLESS (guards: char + Endless unlocked)
     } else {

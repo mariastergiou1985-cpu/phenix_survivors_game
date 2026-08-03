@@ -1129,6 +1129,10 @@ export class Game {
     // ── STAGE CAMPAIGN (VS-style select → play → clear → unlock next) ──
     this._campaignStage        = 0;   // active campaign stage number (0 = not a campaign run)
     this._pendingCampaignStage = 0;   // stage picked in the select screen, applied on run start
+    this._modeSelIndex     = 0;         // START GAME → MODE SELECT cursor (2026-08-03 flow)
+    this._actSelIndex      = 0;         // CAMPAIGN → ACT SELECT cursor
+    this._charSelectMode   = 'default'; // what ENTER/START confirms into: default | endless | chaos
+    this._charSelectReturn = 'menu';    // where BACK returns: menu | mode_select | campaign_select
     this._campaignSelIndex     = 0;   // highlighted card in the CAMPAIGN select screen
     this._campaignCleared      = false; // guard: stage-clear fires once per run
     this._stageClearEvolutionChoice = null;
@@ -1311,14 +1315,15 @@ export class Game {
   // entry so they never replay Act 1 to reach it. Computed live so the unlock reflects instantly.
   get menuItems() {
     // Lean main nav only. Exit/Credits/Instructions/Audio moved into the SETTINGS screen.
-    // ENDLESS + CHAOS are no longer top-level entries — they live inside START GAME
-    // (Character Select), as START ENDLESS / START CHAOS action buttons.
-    const items = ['CAMPAIGN', 'START GAME'];
+    // 2026-08-03 flow rework: START GAME opens MODE SELECT (Campaign / Endless / Chaos);
+    // CAMPAIGN lives inside it (→ ACT SELECT → the stage map), so its top-level entry is
+    // gone, and the Slice-A SELECT STAGE starting-biome picker was removed entirely.
+    const items = ['START GAME'];
     // EVOLUTION MATRIX αφαιρέθηκε από το μενού (απόφαση Maria 2026-07-16) — το NULL
     // ARSENAL είναι πλέον ο κατάλογος. Ο κώδικας της οθόνης (goToEvolutionMatrix)
     // μένει ανέγγιχτος για εύκολη επαναφορά· τα old-gen evolutions αποσύρονται στο
     // πλήρες migration ούτως ή άλλως.
-    items.push('CHARACTER SELECT', 'SELECT STAGE', 'UPGRADES', 'COLLECTIBLES', 'RELICS', 'HANGAR');
+    items.push('CHARACTER SELECT', 'UPGRADES', 'COLLECTIBLES', 'RELICS', 'HANGAR');
     // P2 FULL MIGRATION: NULL ARSENAL is permanent — the opt-out flag is retired.
     items.push('NULL ARSENAL');
     items.push('SETTINGS', 'EXIT');
@@ -1914,7 +1919,8 @@ export class Game {
       this._hideMenuOverlay();
       this._hideCharSelectOverlay();
       this._hideCampaignOverlay?.();
-      this._hideStageSelectOverlay?.();
+      this._hideModeSelectOverlay?.();
+      this._hideActSelectOverlay?.();
       this.selectedCharacter = charId;
       this.audio?.startGameplayMusic();
       this.gameState = 'playing';
@@ -1927,11 +1933,19 @@ export class Game {
     });
   }
 
-  goToCharacterSelect() {
+  goToCharacterSelect(opts) {
     this._transition(() => {
       this._hideMenuOverlay();
       this._hideCampaignOverlay?.();
-      this._hideStageSelectOverlay?.();
+      this._hideModeSelectOverlay?.();
+      this._hideActSelectOverlay?.();
+      // Routing flags for the START GAME flow (2026-08-03): `mode` is what ENTER/START
+      // confirms into ('default' | 'endless' | 'chaos'); `from` is where BACK returns
+      // ('menu' | 'mode_select' | 'campaign_select'). Defaults = classic menu behavior.
+      this._charSelectMode   = opts?.mode || 'default';
+      this._charSelectReturn = opts?.from || 'menu';
+      // A stale campaign stage pick must never leak into a non-campaign entry.
+      if (this._charSelectReturn !== 'campaign_select') this._pendingCampaignStage = 0;
       this.gameState = 'character_select';
       this.characterIndex = 0;
       this.audio?.startMenuMusic();
@@ -1958,10 +1972,10 @@ export class Game {
     if (keys.has('enter') || keys.has(' ')) {
       keys.delete('enter'); keys.delete(' ');
       const st = CAMPAIGN_STAGES[this._campaignSelIndex];
-      if (this.meta?.isStageUnlocked(st.n)) { this._pendingCampaignStage = st.n; this.goToCharacterSelect(); }
+      if (this.meta?.isStageUnlocked(st.n)) { this._pendingCampaignStage = st.n; this.goToCharacterSelect({ from: 'campaign_select' }); }
       else this.triggerAnnouncement('CLEAR THE PREVIOUS STAGE FIRST', '#888888');
     }
-    if (keys.has('escape')) { this.goToMainMenu(); keys.delete('escape'); }
+    if (keys.has('escape')) { this.goToActSelect(); keys.delete('escape'); }   // BACK → ACT SELECT (new flow)
     // MOUSE (desktop hold-click, polled): same hit-test as the shared method below.
     if (input.mouseDown && input.mousePos) {
       if (!this._campClickLatch) {
@@ -1980,13 +1994,13 @@ export class Game {
     if (this.gameState !== 'campaign_select' || !mp) return;
     // Tappable BACK (mobile has no ESC key) — must match the button drawn in _drawCampaignSelect.
     const _bk = { x: 24, y: 34, w: 132, h: 40 };
-    if (mp.x >= _bk.x && mp.x <= _bk.x + _bk.w && mp.y >= _bk.y && mp.y <= _bk.y + _bk.h) { this.goToMainMenu(); return; }
+    if (mp.x >= _bk.x && mp.x <= _bk.x + _bk.w && mp.y >= _bk.y && mp.y <= _bk.y + _bk.h) { this.goToActSelect(); return; }   // BACK → ACT SELECT (new flow)
     for (let i = 0; i < CAMPAIGN_STAGES.length; i++) {
       const r = this._campaignCardRect(i);
       if (mp.x >= r.x && mp.x <= r.x + r.w && mp.y >= r.y && mp.y <= r.y + r.h) {
         this._campaignSelIndex = i;
         const st = CAMPAIGN_STAGES[i];
-        if (this.meta?.isStageUnlocked(st.n)) { this._pendingCampaignStage = st.n; this.goToCharacterSelect(); }
+        if (this.meta?.isStageUnlocked(st.n)) { this._pendingCampaignStage = st.n; this.goToCharacterSelect({ from: 'campaign_select' }); }
         else this.triggerAnnouncement('CLEAR THE PREVIOUS STAGE FIRST', '#888888');
         return;
       }
@@ -2274,6 +2288,34 @@ export class Game {
     this.startEndlessRun();
   }
 
+  // ── START GAME flow routing (2026-08-03) ────────────────────────────────────
+  // Confirm the highlighted character into whatever mode Character Select was entered
+  // for. Every branch goes through the SAME pre-existing start paths — zero new run
+  // logic, so unlock gates and transitions behave exactly as before.
+  _charSelectConfirm() {
+    const c = this.characters[this.characterIndex];
+    if (!c) return;
+    const mode = this._charSelectMode || 'default';
+    if (mode === 'endless') { this.startSelectedEndless(); return; }
+    if (mode === 'chaos') {
+      // Mirror the START CHAOS button gating exactly (char unlocked + Endless gate).
+      if (c.comingSoon || !this.meta.isCharacterUnlocked(c.id)) return;
+      if (!this.meta?.isEndlessUnlocked()) return;
+      this.selectedCharacter = c.id;
+      this._selectChaosMode();
+      return;
+    }
+    this.selectCharacter(c.id);   // default: campaign / classic Act 1 run
+  }
+
+  // BACK from Character Select returns to the screen that opened it.
+  _charSelectBack() {
+    const r = this._charSelectReturn || 'menu';
+    if (r === 'mode_select') this.goToModeSelect();
+    else if (r === 'campaign_select') this.goToCampaign();
+    else this.goToMainMenu();
+  }
+
   // Character-Select bottom action buttons (mirrored by main.js click hit-test).
   _charSelectActionRects() {
     const w = 200, h = 34, gap = 16, y = HEIGHT - 46;
@@ -2416,7 +2458,10 @@ export class Game {
       this._hideSettingsOverlay();
       this._hideCharSelectOverlay();
       this._hideCampaignOverlay?.();
-      this._hideStageSelectOverlay?.();
+      this._hideModeSelectOverlay?.();
+      this._hideActSelectOverlay?.();
+      this._charSelectMode   = 'default';   // returning home always clears char-select routing
+      this._charSelectReturn = 'menu';
       this._hideUpgradesOverlay();
       this._hideAchievementsOverlay();
       this._hideRelicsOverlay();
@@ -9446,8 +9491,12 @@ export class Game {
       this._updateCampaignSelect(input);
       return;
     }
-    if (this.gameState === 'stage_select') {
-      this._updateStageSelect(input);
+    if (this.gameState === 'mode_select') {
+      this._updateModeSelect(input);
+      return;
+    }
+    if (this.gameState === 'act_select') {
+      this._updateActSelect(input);
       return;
     }
     if (this.gameState === 'exit_screen') {
@@ -11180,11 +11229,10 @@ export class Game {
 
   // Name-based menu dispatch (shared by keyboard + mouse) so item order can change safely.
   _selectMenuItem(item) {
-    if (item === 'CAMPAIGN') this.goToCampaign();
-    else if (item === 'START GAME' || item === 'CHARACTER SELECT') this.goToCharacterSelect();
+    if (item === 'START GAME') this.goToModeSelect();             // Campaign / Endless / Chaos hub
+    else if (item === 'CHARACTER SELECT') this.goToCharacterSelect();
     else if (item === 'ENDLESS MODE')   this.startEndlessRun();
     else if (item === 'CHAOS MODE')    this._selectChaosMode();
-    else if (item === 'SELECT STAGE')   this.goToStageSelect();   // Slice A — Act 1 starting biome
     else if (item === 'UPGRADES')       this.goToUpgradesScreen();
     else if (item === 'COLLECTIBLES')   this.goToAchievementsScreen();   // 'COLLECTIBLES' label → same screen/logic
     else if (item === 'RELICS')         this.goToRelicsScreen();
@@ -11845,13 +11893,12 @@ export class Game {
       this._syncCharSelectOverlay();
     }
     if (keys.has('enter') || keys.has(' ')) {
-      const charId = this.characters[this.characterIndex].id;
-      this.selectCharacter(charId);
+      this._charSelectConfirm();   // routes into campaign / endless / chaos per entry mode
       keys.delete('enter');
       keys.delete(' ');
     }
     if (keys.has('escape')) {
-      this.goToMainMenu();
+      this._charSelectBack();      // returns to the screen that opened Character Select
       keys.delete('escape');
     }
   }
@@ -21298,8 +21345,13 @@ export class Game {
       this._drawFade(ctx);
       return;
     }
-    if (this.gameState === 'stage_select') {
-      this._drawStageSelect(ctx);
+    if (this.gameState === 'mode_select') {
+      this._drawModeSelect(ctx);
+      this._drawFade(ctx);
+      return;
+    }
+    if (this.gameState === 'act_select') {
+      this._drawActSelect(ctx);
       this._drawFade(ctx);
       return;
     }
@@ -23103,7 +23155,8 @@ export class Game {
       }
     }
     this._cgmSet('equip-weapon', weapon);
-    // Slice A: the Act 1 starting biome, live from runBiome so SELECT STAGE updates it at once.
+    // The Act 1 starting biome, live from runBiome (always the default now — the Slice-A
+    // SELECT STAGE picker was removed in the 2026-08-03 flow rework).
     const _sb = Game.STAGE_RING.includes(this.runBiome) ? this.runBiome : 'neon_district';
     this._cgmSet('start-stage', (BIOME_DEFS[_sb] && BIOME_DEFS[_sb].name) || _sb);
 
@@ -24984,7 +25037,7 @@ export class Game {
       card.addEventListener('dblclick', () => {
         const idx = parseInt(card.dataset.idx, 10);
         this.characterIndex = idx;
-        this.selectCharacter(this.characters[idx].id);
+        this._charSelectConfirm();   // respects the entry mode (campaign / endless / chaos)
       });
     });
 
@@ -24999,11 +25052,8 @@ export class Game {
       });
     });
 
-    el.querySelector('#csc-back-btn')?.addEventListener('click', () => this.goToMainMenu());
-    el.querySelector('#csc-start-btn')?.addEventListener('click', () => {
-      const c = this.characters[this.characterIndex];
-      if (c) this.selectCharacter(c.id);
-    });
+    el.querySelector('#csc-back-btn')?.addEventListener('click', () => this._charSelectBack());
+    el.querySelector('#csc-start-btn')?.addEventListener('click', () => this._charSelectConfirm());
     el.querySelector('#csc-endless-btn')?.addEventListener('click', () => this.startSelectedEndless());
     el.querySelector('#csc-chaos-btn')?.addEventListener('click', () => {
       // Chaos needs a valid selection first (mirror START ENDLESS gating), then run the Chaos flow.
@@ -25121,35 +25171,88 @@ export class Game {
         <div class="cmp-grid">${cards}</div>
         <div class="cmp-hints">Tap a stage to deploy</div>
       </div>`;
-    el.querySelector('#cmp-back')?.addEventListener('click', () => this.goToMainMenu());
+    el.querySelector('#cmp-back')?.addEventListener('click', () => this.goToActSelect());   // BACK → ACT SELECT (new flow)
     el.querySelectorAll('.cmp-card').forEach(card => {
       card.addEventListener('click', () => {
         const i = parseInt(card.dataset.idx, 10);
         const st = CAMPAIGN_STAGES[i];
         this._campaignSelIndex = i;
-        if (this.meta?.isStageUnlocked(st.n)) { this._pendingCampaignStage = st.n; this.goToCharacterSelect(); }
+        if (this.meta?.isStageUnlocked(st.n)) { this._pendingCampaignStage = st.n; this.goToCharacterSelect({ from: 'campaign_select' }); }
         else this.triggerAnnouncement('CLEAR THE PREVIOUS STAGE FIRST', '#888888');
       });
     });
   }
 
-  // ══ STAGE SELECT (ROADMAP MILESTONE 2 / Slice A) ════════════════════════════
-  // Picks the biome an ACT 1 run starts in. Same DOM-overlay shape as CAMPAIGN, and deliberately
-  // NOT the same screen: campaign stages are a fixed authored ladder with their own maps, this
-  // chooses where the six-biome ring begins. Everything shown here — names, descriptions, the
-  // modifier numbers — is read from BIOME_DEFS at render time. Nothing is duplicated into the UI,
-  // so retuning a biome changes the cards with no edit here.
+  // ══ START GAME FLOW — MODE SELECT + ACT SELECT (2026-08-03) ═════════════════
+  // START GAME opens MODE SELECT (CAMPAIGN / ENDLESS MODE / CHAOS MODE). CAMPAIGN then
+  // opens ACT SELECT — Act 1 today; a future Act 2/3 is ONE entry in Game.ACTS plus a
+  // branch in _actSelectChoose, nothing else. Both screens are DOM overlays in the same
+  // premium shell as CAMPAIGN, with canvas fallbacks drawn behind them, and every choice
+  // starts through the SAME pre-existing entry points (goToActSelect → goToCampaign,
+  // goToCharacterSelect → startSelectedEndless / _selectChaosMode) — so unlocks, saves
+  // and run transitions are byte-for-byte the paths that already shipped.
   //
-  // LISTENERS ARE BOUND EXACTLY ONCE, in _buildStageSelectOverlay, by delegation on the container.
-  // _renderStageSelectOverlay rewrites innerHTML on every open; binding per card there would add a
-  // fresh listener set on every open and leak for the whole session.
-  _buildStageSelectOverlay() {
-    if (this._stageSelectOverlayEl) return;
-    if (!document.getElementById('cgm-stagesel-style')) {
+  // LISTENERS ARE BOUND EXACTLY ONCE per overlay, by delegation on the container —
+  // _render* rewrites innerHTML on every open; binding per card there would leak.
+
+  // The act ladder. Append future acts here — `available:false` renders a locked
+  // COMING SOON card until its content lands.
+  static get ACTS() {
+    return [
+      { n: 1, name: 'ACT 1', tagline: 'NULL EDEN MEGACITY', art: CAMPAIGN_STAGES[0].map, available: true },
+      // { n: 2, name: 'ACT 2', tagline: '???', art: ..., available: false },
+    ];
+  }
+
+  // Live mode cards — lock states are read from the SAME meta gates the old menu used
+  // (Endless: entered once or full campaign clear; Chaos: behind the Endless gate).
+  get _modeSelectItems() {
+    const endlessOk = this.meta?.isEndlessUnlocked?.() === true;
+    return [
+      { id: 'campaign', label: 'CAMPAIGN',     icon: '▶', accent: 'cyan',
+        desc: 'The authored assault on NULL EDEN. Clear stages, unlock the next, push to the finale.',
+        locked: false },
+      { id: 'endless',  label: 'ENDLESS MODE', icon: '∞', accent: 'green',
+        desc: 'One life against the infinite grid. Difficulty never stops climbing.',
+        locked: !endlessOk, lockHint: 'CLEAR ACT 1 TO UNLOCK' },
+      { id: 'chaos',    label: 'CHAOS MODE',   icon: '✦', accent: 'pink',
+        desc: 'Maximum pressure from second one. For pilots who found Endless too polite.',
+        locked: !endlessOk, lockHint: 'REACH ENDLESS FIRST' },
+    ];
+  }
+
+  goToModeSelect() {
+    this._transition(() => {
+      this._hideMenuOverlay();
+      this._hideCharSelectOverlay?.();
+      this._hideCampaignOverlay?.();
+      this._hideActSelectOverlay?.();
+      this.gameState = 'mode_select';
+      this._modeSelIndex = 0;
+      this.audio?.startMenuMusic();
+      this._showModeSelectOverlay();
+    });
+  }
+
+  // Single dispatch point for a mode choice (DOM click + keyboard ENTER + canvas).
+  // Locked cards never navigate — they announce the SAME requirement strings the old
+  // menu used, and the real gates are re-checked downstream anyway.
+  _modeSelectChoose(id) {
+    const item = this._modeSelectItems.find(m => m.id === id);
+    if (!item) return;
+    if (item.locked) { this.triggerAnnouncement(item.lockHint, '#888888'); return; }
+    if (id === 'campaign')      this.goToActSelect();
+    else if (id === 'endless')  this.goToCharacterSelect({ mode: 'endless', from: 'mode_select' });
+    else if (id === 'chaos')    this.goToCharacterSelect({ mode: 'chaos',   from: 'mode_select' });
+  }
+
+  _buildModeSelectOverlay() {
+    if (this._modeSelectOverlayEl) return;
+    if (!document.getElementById('cgm-modesel-style')) {
       const style = document.createElement('style');
-      style.id = 'cgm-stagesel-style';
+      style.id = 'cgm-modesel-style';
       style.textContent = `
-        #cgm-stagesel {
+        #cgm-modesel, #cgm-actsel {
           position:fixed; inset:0; z-index:120; display:none;
           align-items:center; justify-content:center; overflow-y:auto;
           padding:20px 16px; font-family:'Share Tech Mono',ui-monospace,monospace; color:#cfe9ff;
@@ -25158,254 +25261,323 @@ export class Game {
             radial-gradient(900px 600px at 12% 30%,rgba(168,85,247,.10),transparent 60%),
             radial-gradient(900px 600px at 88% 70%,rgba(255,45,149,.09),transparent 60%),
             linear-gradient(180deg,#0b1030,#070a1c);
-          --cyan:#2ee6f6; --green:#7CFF4D; --amber:#ffd23c; --txt-dim:#6f86b8;
+          --cyan:#2ee6f6; --green:#7CFF4D; --pink:#ff2d95; --amber:#ffd23c; --txt-dim:#6f86b8;
         }
-        #cgm-stagesel * { box-sizing:border-box; margin:0; padding:0; }
-        #cgm-stagesel .ssl-stage {
+        #cgm-modesel *, #cgm-actsel * { box-sizing:border-box; margin:0; padding:0; }
+        .msl-stage {
           position:relative; width:100%; max-width:1000px; margin:auto;
           border:1px solid rgba(46,230,246,.12); border-radius:20px; padding:22px 24px 20px;
           background:linear-gradient(180deg,rgba(46,230,246,.05),transparent 30%),rgba(7,10,28,.88);
           box-shadow:inset 0 0 60px rgba(46,230,246,.05),0 30px 80px rgba(0,0,0,.55);
-          display:flex; flex-direction:column; gap:14px;
+          display:flex; flex-direction:column; gap:16px;
         }
-        #cgm-stagesel .ssl-top { display:flex; align-items:center; justify-content:space-between; gap:12px; }
-        #cgm-stagesel .ssl-title { font-family:'Orbitron',sans-serif; font-weight:800; font-size:22px; letter-spacing:3px; color:var(--cyan); text-shadow:0 0 8px rgba(46,230,246,.55); }
-        #cgm-stagesel .ssl-btn { padding:12px 22px; border-radius:10px; cursor:pointer; border:1px solid rgba(46,230,246,.45); background:rgba(10,16,46,.65); color:#e8ffff; font-family:'Orbitron',sans-serif; font-weight:700; font-size:13px; letter-spacing:2px; }
-        #cgm-stagesel .ssl-btn:hover { border-color:var(--cyan); box-shadow:0 0 12px rgba(46,230,246,.4); }
-        #cgm-stagesel .ssl-btn.primary { border-color:var(--green); color:#eaffe0; }
-        #cgm-stagesel .ssl-btn.primary:hover { box-shadow:0 0 14px rgba(124,255,77,.45); }
-        #cgm-stagesel .ssl-sub { font-size:12px; color:var(--txt-dim); letter-spacing:1px; line-height:1.5; }
-        #cgm-stagesel .ssl-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
-        #cgm-stagesel .ssl-card {
-          position:relative; border-radius:12px; overflow:hidden; cursor:pointer;
+        .msl-top { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+        .msl-title { font-family:'Orbitron',sans-serif; font-weight:800; font-size:22px; letter-spacing:3px; color:var(--cyan); text-shadow:0 0 8px rgba(46,230,246,.55); }
+        .msl-btn { padding:12px 22px; border-radius:10px; cursor:pointer; border:1px solid rgba(46,230,246,.45); background:rgba(10,16,46,.65); color:#e8ffff; font-family:'Orbitron',sans-serif; font-weight:700; font-size:13px; letter-spacing:2px; }
+        .msl-btn:hover { border-color:var(--cyan); box-shadow:0 0 12px rgba(46,230,246,.4); }
+        .msl-sub { font-size:12px; color:var(--txt-dim); letter-spacing:1px; line-height:1.5; }
+        .msl-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; }
+        .msl-card {
+          position:relative; border-radius:14px; overflow:hidden; cursor:pointer;
           border:1.5px solid rgba(46,230,246,.28); background:rgba(10,16,46,.72);
-          padding:12px 13px 11px; display:flex; flex-direction:column; gap:7px; min-height:150px;
+          padding:22px 18px 18px; display:flex; flex-direction:column; align-items:center; gap:10px;
+          min-height:210px; text-align:center;
           transition:border-color .15s, box-shadow .18s, transform .18s;
         }
-        #cgm-stagesel .ssl-card:hover { border-color:rgba(46,230,246,.6); }
-        #cgm-stagesel .ssl-card.sel { border-color:var(--cyan); box-shadow:0 0 20px rgba(46,230,246,.5); transform:scale(1.02); z-index:2; }
-        #cgm-stagesel .ssl-swatch { position:absolute; inset:0; opacity:.30; z-index:0; }
-        #cgm-stagesel .ssl-card > * { position:relative; z-index:1; }
-        #cgm-stagesel .ssl-name { font-family:'Orbitron',sans-serif; font-weight:700; font-size:15px; letter-spacing:1.5px; color:#e8ffff; text-shadow:0 1px 3px #000; }
-        #cgm-stagesel .ssl-desc { font-size:11.5px; line-height:1.45; color:#a9c2e4; min-height:32px; }
-        #cgm-stagesel .ssl-mods { display:flex; flex-wrap:wrap; gap:6px; margin-top:auto; }
-        #cgm-stagesel .ssl-mod { font-size:11px; letter-spacing:.5px; padding:3px 8px; border-radius:6px; background:rgba(4,8,20,.72); border:1px solid rgba(46,230,246,.22); color:#bcd8f5; }
-        #cgm-stagesel .ssl-mod.up { color:#ff9d7a; border-color:rgba(255,120,80,.35); }
-        #cgm-stagesel .ssl-mod.down { color:#8fe6ff; border-color:rgba(46,230,246,.35); }
-        #cgm-stagesel .ssl-mod.regen { color:var(--green); border-color:rgba(124,255,77,.35); }
-        #cgm-stagesel .ssl-badge { position:absolute; top:8px; right:8px; z-index:3; font-size:10.5px; font-weight:700; color:#041018; background:var(--cyan); padding:3px 8px; border-radius:6px; letter-spacing:1px; }
-        #cgm-stagesel .ssl-badge.lock { background:rgba(8,14,32,.9); color:#8fa4c8; border:1px solid rgba(143,164,200,.35); }
-        #cgm-stagesel .ssl-card.locked { cursor:not-allowed; border-color:rgba(143,164,200,.18); }
-        #cgm-stagesel .ssl-card.locked .ssl-swatch { opacity:.10; }
-        #cgm-stagesel .ssl-card.locked .ssl-name { color:#8fa4c8; }
-        #cgm-stagesel .ssl-card.locked .ssl-desc { color:#5f7398; }
-        #cgm-stagesel .ssl-card.locked:hover { border-color:rgba(143,164,200,.30); }
-        #cgm-stagesel .ssl-req { margin-top:auto; font-size:11px; letter-spacing:.5px; padding:3px 8px; border-radius:6px; background:rgba(4,8,20,.72); border:1px solid rgba(255,210,60,.30); color:var(--amber); align-self:flex-start; }
-        #cgm-stagesel .ssl-foot { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
-        #cgm-stagesel .ssl-current { font-size:12.5px; letter-spacing:1px; color:#bcd8f5; }
-        #cgm-stagesel .ssl-current b { color:var(--cyan); }
-        #cgm-stagesel .ssl-hints { font-size:11px; color:#46588a; letter-spacing:1px; }
-        @media (max-width:1024px), (pointer: coarse) {
-          #cgm-stagesel { padding:12px 10px; }
-          #cgm-stagesel .ssl-stage { max-width:100%; padding:16px 12px; }
-          #cgm-stagesel .ssl-grid { grid-template-columns:repeat(2,1fr); gap:10px; }
-          #cgm-stagesel .ssl-title { font-size:17px; letter-spacing:2px; }
-          #cgm-stagesel .ssl-btn { padding:14px 18px; font-size:14px; }
-          #cgm-stagesel .ssl-desc { min-height:0; }
+        .msl-card:hover { border-color:rgba(46,230,246,.6); }
+        .msl-card.sel { border-color:var(--cyan); box-shadow:0 0 22px rgba(46,230,246,.5); transform:scale(1.02); z-index:2; }
+        .msl-card.acc-green.sel { border-color:var(--green); box-shadow:0 0 22px rgba(124,255,77,.45); }
+        .msl-card.acc-pink.sel  { border-color:var(--pink);  box-shadow:0 0 22px rgba(255,45,149,.45); }
+        .msl-icon { font-size:44px; line-height:1; color:var(--cyan); text-shadow:0 0 16px rgba(46,230,246,.6); }
+        .msl-card.acc-green .msl-icon { color:var(--green); text-shadow:0 0 16px rgba(124,255,77,.55); }
+        .msl-card.acc-pink  .msl-icon { color:var(--pink);  text-shadow:0 0 16px rgba(255,45,149,.55); }
+        .msl-name { font-family:'Orbitron',sans-serif; font-weight:700; font-size:16px; letter-spacing:2px; color:#e8ffff; text-shadow:0 1px 3px #000; }
+        .msl-desc { font-size:11.5px; line-height:1.5; color:#a9c2e4; }
+        .msl-badge { position:absolute; top:10px; right:10px; z-index:3; font-size:10.5px; font-weight:700; color:#8fa4c8; background:rgba(8,14,32,.9); border:1px solid rgba(143,164,200,.35); padding:3px 8px; border-radius:6px; letter-spacing:1px; }
+        .msl-req { margin-top:auto; font-size:11px; letter-spacing:.5px; padding:4px 9px; border-radius:6px; background:rgba(4,8,20,.72); border:1px solid rgba(255,210,60,.30); color:var(--amber); }
+        .msl-card.locked { cursor:not-allowed; border-color:rgba(143,164,200,.18); }
+        .msl-card.locked .msl-icon { color:#5f7398; text-shadow:none; }
+        .msl-card.locked .msl-name { color:#8fa4c8; }
+        .msl-card.locked .msl-desc { color:#5f7398; }
+        .msl-card.locked:hover { border-color:rgba(143,164,200,.30); }
+        .msl-hints { font-size:11px; color:#46588a; letter-spacing:1px; text-align:center; }
+        /* ── ACT SELECT ── */
+        .asl-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,340px)); justify-content:center; gap:16px; }
+        .asl-card {
+          position:relative; border-radius:14px; overflow:hidden; cursor:pointer;
+          border:1.5px solid rgba(46,230,246,.28); aspect-ratio:16/10; background:rgba(10,16,46,.7);
+          display:flex; align-items:flex-end;
+          transition:border-color .15s, box-shadow .18s, transform .18s;
         }
-        @media (max-width:620px) {
-          #cgm-stagesel .ssl-grid { grid-template-columns:1fr; }
+        .asl-card:hover { border-color:rgba(46,230,246,.6); }
+        .asl-card.sel { border-color:var(--cyan); box-shadow:0 0 22px rgba(46,230,246,.5); transform:scale(1.02); z-index:2; }
+        .asl-card img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; opacity:.9; }
+        .asl-cap { position:relative; z-index:2; width:100%; padding:12px 12px 10px; background:linear-gradient(0deg,rgba(4,8,20,.96),transparent); text-align:center; }
+        .asl-name { font-family:'Orbitron',sans-serif; font-weight:800; font-size:18px; letter-spacing:2.5px; color:#e8ffff; text-shadow:0 1px 3px #000; }
+        .asl-tag { font-size:11px; letter-spacing:1.5px; color:#8fe6ff; margin-top:2px; }
+        .asl-prog { position:absolute; top:8px; left:8px; z-index:3; font-size:11px; font-weight:700; color:var(--cyan); background:rgba(4,8,20,.82); padding:3px 8px; border-radius:6px; letter-spacing:1px; }
+        .asl-prog.done { color:var(--green); }
+        .asl-card.locked { cursor:not-allowed; border-color:rgba(143,164,200,.18); }
+        .asl-card.locked img { opacity:.3; filter:grayscale(.6); }
+        .asl-lock { position:absolute; inset:0; z-index:3; display:flex; align-items:center; justify-content:center; font-size:30px; }
+        @media (max-width:1024px), (pointer: coarse) {
+          #cgm-modesel, #cgm-actsel { padding:12px 10px; }
+          .msl-stage { max-width:100%; padding:16px 12px; }
+          .msl-grid { grid-template-columns:1fr; gap:12px; }
+          .msl-card { min-height:0; padding:18px 14px 14px; }
+          .msl-title { font-size:17px; letter-spacing:2px; }
+          .msl-btn { padding:14px 18px; font-size:14px; }
         }
       `;
       document.head.appendChild(style);
     }
     const el = document.createElement('div');
-    el.id = 'cgm-stagesel';
+    el.id = 'cgm-modesel';
     el.setAttribute('role', 'dialog');
-    el.setAttribute('aria-label', 'Stage Select');
+    el.setAttribute('aria-label', 'Start Game - Select Mode');
     document.body.appendChild(el);
-    this._stageSelectOverlayEl = el;
+    this._modeSelectOverlayEl = el;
 
     // ONE delegated handler for the whole overlay, for its whole life.
     el.addEventListener('click', (ev) => {
-      const back = ev.target.closest('#ssl-back');
-      if (back) { this._stageSelectCancel(); return; }
-      const confirm = ev.target.closest('#ssl-confirm');
-      if (confirm) { this._stageSelectConfirm(); return; }
-      const card = ev.target.closest('.ssl-card');
+      const back = ev.target.closest('#msl-back');
+      if (back) { this.goToMainMenu(); return; }
+      const card = ev.target.closest('.msl-card');
       if (!card) return;
-      const i = parseInt(card.dataset.idx, 10);
-      if (!Number.isInteger(i) || i < 0 || i >= Game.STAGE_RING.length) return;   // hostile DOM → ignore
-      // A locked card is inert: the cursor does not move to it, so ENTER cannot then confirm it.
-      // The class on the element is cosmetic — the check is against the ladder, so stripping the
-      // class in devtools changes nothing.
-      if (!this.isStageBiomeUnlocked(Game.STAGE_RING[i])) {
-        this.triggerAnnouncement(this.stageBiomeRequirement(Game.STAGE_RING[i]), '#888888');
-        return;
-      }
-      this._stageSelIndex = i;
-      this._renderStageSelectOverlay();
+      const id = card.dataset.mode;
+      const i = this._modeSelectItems.findIndex(m => m.id === id);
+      if (i < 0) return;                            // hostile DOM → ignore
+      this._modeSelIndex = i;
+      this._modeSelectChoose(id);                   // locked cards announce, never navigate
+      this._renderModeSelectOverlay();
     });
   }
 
-  _renderStageSelectOverlay() {
-    const el = this._stageSelectOverlayEl;
+  _renderModeSelectOverlay() {
+    const el = this._modeSelectOverlayEl;
     if (!el) return;
-    const RING = Game.STAGE_RING;
-    const pct  = (v) => `${Math.round(v * 100)}%`;
-    const cards = RING.map((id, i) => {
-      const def  = BIOME_DEFS[id] || {};
-      const m    = def.enemyModifiers || {};
-      const sp   = m.speedMult > 0 ? m.speedMult : 1;
-      const hp   = m.hpMult    > 0 ? m.hpMult    : 1;
-      const rg   = m.regenRate > 0 ? m.regenRate : 0;
-      const pal  = def.palette || {};
-      const mods = [
-        `<span class="ssl-mod ${sp > 1 ? 'up' : sp < 1 ? 'down' : ''}">ENEMY SPEED ${pct(sp)}</span>`,
-        `<span class="ssl-mod ${hp > 1 ? 'up' : hp < 1 ? 'down' : ''}">ENEMY HP ${pct(hp)}</span>`,
-        rg ? `<span class="ssl-mod regen">REGEN ${rg}/s</span>` : '',
-      ].filter(Boolean).join('');
-      const swatch = `linear-gradient(140deg,${pal.accent1 || '#2ee6f6'}44,${pal.accent2 || '#a855f7'}22 55%,transparent)`;
-      const unlocked = this.isStageBiomeUnlocked(id);
-      const sel = unlocked && i === this._stageSelIndex;
-      // LOCKED STAGES ARE SHOWN, NOT HIDDEN — the player should see what there is to earn, and
-      // exactly what earns it. The class is presentation only; every gate is re-checked against
-      // the ladder in the click handler, the key handler and setRunBiome.
-      return `<div class="ssl-card${sel ? ' sel' : ''}${unlocked ? '' : ' locked'}" data-idx="${i}" role="button" tabindex="-1" aria-pressed="${sel}" aria-disabled="${!unlocked}">
-        <div class="ssl-swatch" style="background:${swatch}"></div>
-        ${sel ? '<div class="ssl-badge">STAGE 1</div>' : ''}
-        ${unlocked ? '' : '<div class="ssl-badge lock">🔒 LOCKED</div>'}
-        <div class="ssl-name">${def.name || id}</div>
-        <div class="ssl-desc">${def.description || ''}</div>
-        ${unlocked ? `<div class="ssl-mods">${mods}</div>`
-                   : `<div class="ssl-req">${this.stageBiomeRequirement(id)}</div>`}
+    const cards = this._modeSelectItems.map((m, i) => {
+      const sel = i === this._modeSelIndex;
+      const cls = ['msl-card', 'acc-' + m.accent, sel ? 'sel' : '', m.locked ? 'locked' : ''].filter(Boolean).join(' ');
+      return `<div class="${cls}" data-mode="${m.id}" role="button" tabindex="-1" aria-pressed="${sel}" aria-disabled="${m.locked}">
+        ${m.locked ? '<div class="msl-badge">🔒 LOCKED</div>' : ''}
+        <div class="msl-icon">${m.icon}</div>
+        <div class="msl-name">${m.label}</div>
+        <div class="msl-desc">${m.desc}</div>
+        ${m.locked ? `<div class="msl-req">${m.lockHint}</div>` : ''}
       </div>`;
     }).join('');
-    const curId  = RING.includes(this.runBiome) ? this.runBiome : RING[0];
-    const curDef = BIOME_DEFS[curId] || {};
     el.innerHTML = `
-      <div class="ssl-stage">
-        <div class="ssl-top">
-          <div class="ssl-title">SELECT STAGE</div>
-          <button class="ssl-btn" id="ssl-back">◀ BACK</button>
+      <div class="msl-stage">
+        <div class="msl-top">
+          <div class="msl-title">START GAME</div>
+          <button class="msl-btn" id="msl-back">◀ BACK</button>
         </div>
-        <div class="ssl-sub">Choose where your Act 1 run begins. The six stages still rotate in order — your pick becomes STAGE 1 and the rest follow. Each stage carries its own enemy rules.</div>
-        <div class="ssl-grid">${cards}</div>
-        <div class="ssl-foot">
-          <div class="ssl-current">Starting Stage: <b>${curDef.name || curId}</b></div>
-          <button class="ssl-btn primary" id="ssl-confirm">CONFIRM ▶</button>
-        </div>
-        <div class="ssl-hints">◀ ▶ move · ENTER confirm · ESC back — leaving without CONFIRM keeps your current stage</div>
+        <div class="msl-sub">Choose your protocol. CAMPAIGN advances the story act by act — ENDLESS and CHAOS test how long you last.</div>
+        <div class="msl-grid">${cards}</div>
+        <div class="msl-hints">◀ ▶ move · ENTER confirm · ESC back</div>
       </div>`;
   }
 
-  _showStageSelectOverlay() {
-    this._buildStageSelectOverlay();
-    this._renderStageSelectOverlay();
-    if (this._stageSelectOverlayEl) this._stageSelectOverlayEl.style.display = 'flex';
+  _showModeSelectOverlay() {
+    this._buildModeSelectOverlay();
+    this._renderModeSelectOverlay();
+    if (this._modeSelectOverlayEl) this._modeSelectOverlayEl.style.display = 'flex';
   }
 
-  _hideStageSelectOverlay() {
-    if (this._stageSelectOverlayEl) this._stageSelectOverlayEl.style.display = 'none';
+  _hideModeSelectOverlay() {
+    if (this._modeSelectOverlayEl) this._modeSelectOverlayEl.style.display = 'none';
   }
 
-  goToStageSelect() {
-    this._transition(() => {
-      this._hideMenuOverlay();
-      this._hideCampaignOverlay?.();
-      this._hideStageSelectOverlay?.();
-      this.gameState = 'stage_select';
-      // The cursor opens on whatever is currently selected, so BACK is a true no-op.
-      const i = Game.STAGE_RING.indexOf(this.runBiome);
-      this._stageSelIndex = (i >= 0 && this.isStageBiomeUnlocked(this.runBiome)) ? i : 0;
-      this.audio?.startMenuMusic();
-      this._showStageSelectOverlay();
-    });
-  }
-
-  /** Leave without touching the selection. */
-  _stageSelectCancel() {
-    this._hideStageSelectOverlay();
-    this.goToMainMenu();
-  }
-
-  /** Commit the highlighted card through the real setter, then leave. */
-  _stageSelectConfirm() {
-    const id = Game.STAGE_RING[this._stageSelIndex];
-    // A locked stage never commits and never leaves the screen — the player is told what unlocks it.
-    if (id && !this.isStageBiomeUnlocked(id)) {
-      this.triggerAnnouncement(this.stageBiomeRequirement(id), '#888888');
+  _updateModeSelect(input) {
+    const { keys } = input, n = this._modeSelectItems.length;
+    const step = (d) => { this._modeSelIndex = ((this._modeSelIndex + d) % n + n) % n; this._renderModeSelectOverlay(); };
+    if (keys.has('arrowleft')  || keys.has('a')) { keys.delete('arrowleft');  keys.delete('a'); step(-1); }
+    if (keys.has('arrowright') || keys.has('d')) { keys.delete('arrowright'); keys.delete('d'); step(+1); }
+    if (keys.has('arrowup')    || keys.has('w')) { keys.delete('arrowup');    keys.delete('w'); step(-1); }
+    if (keys.has('arrowdown')  || keys.has('s')) { keys.delete('arrowdown');  keys.delete('s'); step(+1); }
+    if (keys.has('enter') || keys.has(' ')) {
+      keys.delete('enter'); keys.delete(' ');
+      this._modeSelectChoose(this._modeSelectItems[this._modeSelIndex]?.id);
       return;
     }
-    const ok = this.setRunBiome(id);              // the ONLY place the overlay writes the selection
-    if (!ok) this.setRunBiome('neon_district');   // safe fallback — never leave an invalid selection
-    const def = BIOME_DEFS[this.runBiome] || {};
-    this.triggerAnnouncement('STARTING STAGE — ' + String(def.name || this.runBiome).toUpperCase(), '#2ee6f6');
-    this._hideStageSelectOverlay();
-    this.goToMainMenu();
-  }
-
-  // Move the cursor by `step`, skipping every locked stage. neon_district is always unlocked, so
-  // the walk always terminates; the guard is belt-and-braces against a future all-locked ladder.
-  _stageSelStep(step) {
-    const n = Game.STAGE_RING.length;
-    let i = this._stageSelIndex;
-    for (let tries = 0; tries < n; tries++) {
-      i = ((i + step) % n + n) % n;
-      if (this.isStageBiomeUnlocked(Game.STAGE_RING[i])) { this._stageSelIndex = i; break; }
-    }
-    this._renderStageSelectOverlay();
-  }
-
-  _updateStageSelect(input) {
-    const { keys } = input;
-    if (keys.has('arrowleft')  || keys.has('a')) { keys.delete('arrowleft');  keys.delete('a'); this._stageSelStep(-1); }
-    if (keys.has('arrowright') || keys.has('d')) { keys.delete('arrowright'); keys.delete('d'); this._stageSelStep(+1); }
-    // The grid is 3 wide on desktop, so up/down move by a row — and still wrap, so a gamepad can
-    // never get stuck on an edge.
-    if (keys.has('arrowup')    || keys.has('w')) { keys.delete('arrowup');    keys.delete('w'); this._stageSelStep(-3); }
-    if (keys.has('arrowdown')  || keys.has('s')) { keys.delete('arrowdown');  keys.delete('s'); this._stageSelStep(+3); }
-    if (keys.has('enter') || keys.has(' ')) { keys.delete('enter'); keys.delete(' '); this._stageSelectConfirm(); return; }
-    if (keys.has('escape') || keys.has('backspace')) { keys.delete('escape'); keys.delete('backspace'); this._stageSelectCancel(); return; }
+    if (keys.has('escape') || keys.has('backspace')) { keys.delete('escape'); keys.delete('backspace'); this.goToMainMenu(); return; }
   }
 
   // Canvas fallback, drawn behind the DOM overlay exactly like CAMPAIGN's.
-  _drawStageSelect(ctx) {
+  _drawModeSelect(ctx) {
     this._drawBackground(ctx);
     ctx.fillStyle = 'rgba(4,8,20,0.86)'; ctx.fillRect(0, 0, WIDTH, HEIGHT);
     ctx.textAlign = 'center';
     ctx.font = 'bold 34px Consolas, monospace'; ctx.fillStyle = '#2ee6f6';
-    ctx.fillText('SELECT STAGE', WIDTH / 2, 66);
+    ctx.fillText('START GAME', WIDTH / 2, 66);
     ctx.font = '13px Consolas, monospace'; ctx.fillStyle = 'rgba(190,200,215,0.6)';
-    ctx.fillText('Your pick becomes STAGE 1 — the other five follow in order.', WIDTH / 2, 92);
-    const RING = Game.STAGE_RING;
-    for (let i = 0; i < RING.length; i++) {
-      const def = BIOME_DEFS[RING[i]] || {};
-      const m = def.enemyModifiers || {};
-      const col = i % 3, row = (i / 3) | 0;
-      const w = 300, h = 118, gapX = 24, gapY = 22;
-      const x = WIDTH / 2 - (3 * w + 2 * gapX) / 2 + col * (w + gapX);
-      const y = 140 + row * (h + gapY);
-      const sel = i === this._stageSelIndex;
+    ctx.fillText('Choose your protocol.', WIDTH / 2, 92);
+    const items = this._modeSelectItems;
+    const ACC = { cyan: '#2ee6f6', green: '#7CFF4D', pink: '#ff2d95' };
+    for (let i = 0; i < items.length; i++) {
+      const m = items[i];
+      const w = 290, h = 190, gap = 26;
+      const x = WIDTH / 2 - (3 * w + 2 * gap) / 2 + i * (w + gap);
+      const y = 150;
+      const sel = i === this._modeSelIndex;
+      const acc = m.locked ? '#5f7398' : (ACC[m.accent] || '#2ee6f6');
+      ctx.save();
+      ctx.fillStyle = 'rgba(10,16,46,0.78)';
+      ctx.fillRect(x, y, w, h);
+      ctx.lineWidth = sel ? 2.5 : 1.2;
+      ctx.strokeStyle = sel ? acc : 'rgba(46,230,246,0.28)';
+      ctx.strokeRect(x, y, w, h);
+      ctx.font = 'bold 40px Consolas, monospace'; ctx.fillStyle = acc;
+      ctx.fillText(m.icon, x + w / 2, y + 62);
+      ctx.font = 'bold 17px Consolas, monospace'; ctx.fillStyle = m.locked ? '#8fa4c8' : '#e8ffff';
+      ctx.fillText(m.label + (m.locked ? ' 🔒' : ''), x + w / 2, y + 98);
+      ctx.font = '11px Consolas, monospace'; ctx.fillStyle = m.locked ? '#5f7398' : '#a9c2e4';
+      ctx.fillText(String(m.desc).slice(0, 46), x + w / 2, y + 124);
+      if (m.locked) { ctx.fillStyle = '#ffd23c'; ctx.font = 'bold 11px Consolas, monospace'; ctx.fillText(m.lockHint, x + w / 2, y + 160); }
+      ctx.restore();
+    }
+    ctx.font = '12px Consolas, monospace'; ctx.fillStyle = 'rgba(190,200,215,0.55)';
+    ctx.fillText('◀ ▶ move   ENTER confirm   ESC back', WIDTH / 2, HEIGHT - 40);
+  }
+
+  // ── ACT SELECT ──────────────────────────────────────────────────────────────
+  goToActSelect() {
+    this._transition(() => {
+      this._hideMenuOverlay();
+      this._hideModeSelectOverlay?.();
+      this._hideCampaignOverlay?.();
+      this._hideCharSelectOverlay?.();
+      this.gameState = 'act_select';
+      this._actSelIndex = 0;
+      this.audio?.startMenuMusic();
+      this._showActSelectOverlay();
+    });
+  }
+
+  // Single dispatch point for an act choice. Act 1 → the existing campaign stage map,
+  // completely unchanged. Future acts branch here on `act.n`.
+  _actSelectChoose(n) {
+    const act = Game.ACTS.find(a => a.n === n);
+    if (!act) return;
+    if (!act.available) { this.triggerAnnouncement('COMING SOON', '#888888'); return; }
+    if (act.n === 1) { this.goToCampaign(); return; }
+    // Act 2/3 entry points land here when their content ships.
+  }
+
+  _buildActSelectOverlay() {
+    if (this._actSelectOverlayEl) return;
+    this._buildModeSelectOverlay();   // shared stylesheet lives with the mode-select builder
+    const el = document.createElement('div');
+    el.id = 'cgm-actsel';
+    el.setAttribute('role', 'dialog');
+    el.setAttribute('aria-label', 'Campaign - Select Act');
+    document.body.appendChild(el);
+    this._actSelectOverlayEl = el;
+
+    // ONE delegated handler for the whole overlay, for its whole life.
+    el.addEventListener('click', (ev) => {
+      const back = ev.target.closest('#asl-back');
+      if (back) { this.goToModeSelect(); return; }
+      const card = ev.target.closest('.asl-card');
+      if (!card) return;
+      const n = parseInt(card.dataset.act, 10);
+      if (!Number.isInteger(n)) return;             // hostile DOM → ignore
+      const i = Game.ACTS.findIndex(a => a.n === n);
+      if (i >= 0) this._actSelIndex = i;
+      this._actSelectChoose(n);
+    });
+  }
+
+  _renderActSelectOverlay() {
+    const el = this._actSelectOverlayEl;
+    if (!el) return;
+    const cleared = this.meta?.stagesCleared || 0;
+    const total   = CAMPAIGN_STAGES.length;
+    const cards = Game.ACTS.map((a, i) => {
+      const sel = i === this._actSelIndex;
+      const cls = ['asl-card', sel ? 'sel' : '', a.available ? '' : 'locked'].filter(Boolean).join(' ');
+      const prog = (a.n === 1)
+        ? `<div class="asl-prog${cleared >= total ? ' done' : ''}">${cleared >= total ? '✓ COMPLETE' : cleared + '/' + total + ' STAGES'}</div>`
+        : '';
+      return `<div class="${cls}" data-act="${a.n}" role="button" tabindex="-1" aria-pressed="${sel}" aria-disabled="${!a.available}">
+        <img src="${_mapSrc(a.art)}" alt="${a.name}" loading="eager">
+        ${prog}
+        ${a.available ? '' : '<div class="asl-lock">🔒</div>'}
+        <div class="asl-cap">
+          <div class="asl-name">${a.name}</div>
+          <div class="asl-tag">${a.tagline || ''}</div>
+        </div>
+      </div>`;
+    }).join('');
+    el.innerHTML = `
+      <div class="msl-stage">
+        <div class="msl-top">
+          <div class="msl-title">CAMPAIGN — SELECT ACT</div>
+          <button class="msl-btn" id="asl-back">◀ BACK</button>
+        </div>
+        <div class="msl-sub">Each act is its own authored assault. Clear every stage of an act to master it.</div>
+        <div class="asl-grid">${cards}</div>
+        <div class="msl-hints">Tap an act to open its stages · ESC back</div>
+      </div>`;
+  }
+
+  _showActSelectOverlay() {
+    this._buildActSelectOverlay();
+    this._renderActSelectOverlay();
+    if (this._actSelectOverlayEl) this._actSelectOverlayEl.style.display = 'flex';
+  }
+
+  _hideActSelectOverlay() {
+    if (this._actSelectOverlayEl) this._actSelectOverlayEl.style.display = 'none';
+  }
+
+  _updateActSelect(input) {
+    const { keys } = input, n = Game.ACTS.length;
+    const step = (d) => { this._actSelIndex = ((this._actSelIndex + d) % n + n) % n; this._renderActSelectOverlay(); };
+    if (keys.has('arrowleft')  || keys.has('a')) { keys.delete('arrowleft');  keys.delete('a'); step(-1); }
+    if (keys.has('arrowright') || keys.has('d')) { keys.delete('arrowright'); keys.delete('d'); step(+1); }
+    if (keys.has('enter') || keys.has(' ')) {
+      keys.delete('enter'); keys.delete(' ');
+      this._actSelectChoose(Game.ACTS[this._actSelIndex]?.n);
+      return;
+    }
+    if (keys.has('escape') || keys.has('backspace')) { keys.delete('escape'); keys.delete('backspace'); this.goToModeSelect(); return; }
+  }
+
+  // Canvas fallback, drawn behind the DOM overlay exactly like CAMPAIGN's.
+  _drawActSelect(ctx) {
+    this._drawBackground(ctx);
+    ctx.fillStyle = 'rgba(4,8,20,0.86)'; ctx.fillRect(0, 0, WIDTH, HEIGHT);
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 34px Consolas, monospace'; ctx.fillStyle = '#2ee6f6';
+    ctx.fillText('CAMPAIGN — SELECT ACT', WIDTH / 2, 66);
+    const acts = Game.ACTS;
+    const cleared = this.meta?.stagesCleared || 0;
+    const total   = CAMPAIGN_STAGES.length;
+    for (let i = 0; i < acts.length; i++) {
+      const a = acts[i];
+      const w = 340, h = 200, gap = 26;
+      const x = WIDTH / 2 - (acts.length * w + (acts.length - 1) * gap) / 2 + i * (w + gap);
+      const y = 150;
+      const sel = i === this._actSelIndex;
       ctx.save();
       ctx.fillStyle = 'rgba(10,16,46,0.78)';
       ctx.fillRect(x, y, w, h);
       ctx.lineWidth = sel ? 2.5 : 1.2;
       ctx.strokeStyle = sel ? '#2ee6f6' : 'rgba(46,230,246,0.28)';
       ctx.strokeRect(x, y, w, h);
-      ctx.textAlign = 'left';
-      ctx.font = 'bold 16px Consolas, monospace'; ctx.fillStyle = '#e8ffff';
-      ctx.fillText(String(def.name || RING[i]), x + 12, y + 26);
-      ctx.font = '11px Consolas, monospace'; ctx.fillStyle = '#a9c2e4';
-      ctx.fillText(String(def.description || '').slice(0, 44), x + 12, y + 48);
-      ctx.font = '12px Consolas, monospace'; ctx.fillStyle = '#bcd8f5';
-      const sp = m.speedMult > 0 ? m.speedMult : 1, hp = m.hpMult > 0 ? m.hpMult : 1;
-      ctx.fillText(`SPEED ${Math.round(sp * 100)}%   HP ${Math.round(hp * 100)}%`
-        + (m.regenRate > 0 ? `   REGEN ${m.regenRate}/s` : ''), x + 12, y + 74);
-      if (sel) { ctx.fillStyle = '#2ee6f6'; ctx.font = 'bold 11px Consolas, monospace'; ctx.fillText('STAGE 1', x + 12, y + 98); }
+      ctx.font = 'bold 26px Consolas, monospace'; ctx.fillStyle = a.available ? '#e8ffff' : '#8fa4c8';
+      ctx.fillText(a.name + (a.available ? '' : ' 🔒'), x + w / 2, y + 84);
+      ctx.font = '12px Consolas, monospace'; ctx.fillStyle = '#8fe6ff';
+      ctx.fillText(String(a.tagline || ''), x + w / 2, y + 110);
+      if (a.n === 1) {
+        ctx.font = 'bold 12px Consolas, monospace';
+        ctx.fillStyle = cleared >= total ? '#7CFF4D' : '#2ee6f6';
+        ctx.fillText(cleared >= total ? '✓ COMPLETE' : `${cleared}/${total} STAGES CLEARED`, x + w / 2, y + 150);
+      }
       ctx.restore();
     }
-    ctx.textAlign = 'center';
     ctx.font = '12px Consolas, monospace'; ctx.fillStyle = 'rgba(190,200,215,0.55)';
     ctx.fillText('◀ ▶ move   ENTER confirm   ESC back', WIDTH / 2, HEIGHT - 40);
   }
@@ -25535,6 +25707,13 @@ export class Game {
     if (startBtn)   startBtn.disabled   = !selUnlocked;
     if (endlessBtn) { endlessBtn.disabled = !modeOk; endlessBtn.textContent = modeOk ? 'START ENDLESS' : 'ENDLESS LOCKED'; }
     if (chaosBtn)   { chaosBtn.disabled   = !modeOk; chaosBtn.textContent   = modeOk ? 'START CHAOS'   : 'CHAOS LOCKED'; }
+    // START GAME flow (2026-08-03): entered for a specific mode → show ONLY that mode's
+    // start button, so the screen reads as "pick your character for <mode>". Default
+    // entry (menu CHARACTER SELECT / campaign) keeps all three, exactly as before.
+    const _csMode = this._charSelectMode || 'default';
+    if (startBtn)   startBtn.style.display   = (_csMode === 'default') ? '' : 'none';
+    if (endlessBtn) endlessBtn.style.display = (_csMode === 'chaos')   ? 'none' : '';
+    if (chaosBtn)   chaosBtn.style.display   = (_csMode === 'endless') ? 'none' : '';
 
     // Preview panel — portrait + name + role + specialty
     const pvPanel = el.querySelector('#csc-preview-panel');
