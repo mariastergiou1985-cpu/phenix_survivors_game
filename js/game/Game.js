@@ -425,6 +425,189 @@ const THUNDER_NOTES = [
 // Ultimate activation cost (fixed). Mana Core raises maxMana for a bigger pool but NEVER the cost
 // to fire — so taking Mana Core can only speed up ultimates (overflow banks toward the next cast),
 // never delay them. Base maxMana is 100, so a player with no Mana Core is unaffected.
+// ── STRICT VISUAL REPLACEMENT (2026-08-03, Maria): compact premium strike FX ──
+// Replaces ONLY the world VFX of two weapons whose illustration art rendered as
+// huge screen-covering surfaces: NEXUS CHAKRAM (crescent) and STORM CONDUCTOR
+// (lightning). Ultimate-module recipe: additive lighter layers, halo -> body ->
+// white core, ZERO shadowBlur, deterministic per-instance seed, hard-bounded
+// footprint (~180px) so the player, enemies, damage numbers and ground stay
+// readable. Damage / cooldown / targeting / hitboxes live in _autoFireWeapon
+// and are untouched — this object rides the EXISTING _activeWeaponVFX lifecycle
+// (same spawn call, same homing-follow update, same world-space draw layer).
+class WeaponStrikeFx2 {
+  constructor(kind, x, y, angle, scale) {
+    this.kind  = kind;                     // 'crescent' | 'bolt'
+    this.x = x; this.y = y;
+    this.angle = angle || 0;
+    this.t = 0;
+    this.life = kind === 'crescent' ? 0.55 : 0.44;
+    // The old callers pass scale 4.0-4.5 (illustration pixels). Normalize it to a
+    // CONTROLLED size multiplier so nothing ever renders screen-sized again.
+    this.m = Math.max(0.6, Math.min(1.25, (scale || 4.5) / 4.5));
+    this.seed = (Math.random() * 1000) | 0;
+    if (kind === 'bolt') {
+      // Pre-built branched bolts: static geometry per instance, flicker via alpha.
+      this.bolts = [];
+      const n = 5;
+      for (let i = 0; i < n; i++) {
+        const a   = this.angle + (i / n) * Math.PI * 2 + (this._rnd(i) - 0.5) * 0.9;
+        const len = (56 + this._rnd(i + 10) * 30) * this.m;
+        this.bolts.push(this._buildBolt(a, len, i));
+      }
+    } else {
+      // Small energy fragments riding the blade edge (deterministic).
+      this.frags = [];
+      for (let i = 0; i < 6; i++) {
+        this.frags.push({
+          a: -1.05 + this._rnd(i + 3) * 2.1,             // angle inside the arc span
+          sp: 18 + this._rnd(i + 21) * 26,               // outward drift speed
+          ln: 3.5 + this._rnd(i + 33) * 3.5,             // shard length
+        });
+      }
+    }
+  }
+
+  // Deterministic 0..1 hash — same recipe the ultimates use (no Math.random in draw).
+  _rnd(i) {
+    const s = Math.sin((this.seed + 1) * 127.1 + i * 311.7) * 43758.5453;
+    return s - Math.floor(s);
+  }
+
+  _buildBolt(a, len, i) {
+    const segs = 4, pts = [{ x: 0, y: 0 }];
+    let px = 0, py = 0;
+    for (let s = 1; s <= segs; s++) {
+      const jitter = (this._rnd(i * 7 + s) - 0.5) * 24;
+      px += Math.cos(a) * (len / segs) - Math.sin(a) * jitter * 0.5;
+      py += Math.sin(a) * (len / segs) + Math.cos(a) * jitter * 0.5;
+      pts.push({ x: px, y: py });
+    }
+    // One short side branch off the middle joint.
+    const ba = a + (this._rnd(i + 40) - 0.5) * 1.7;
+    const bl = len * 0.34;
+    const mid = pts[2];
+    const branch = [
+      { x: mid.x, y: mid.y },
+      { x: mid.x + Math.cos(ba) * bl * 0.55 + (this._rnd(i + 51) - 0.5) * 8,
+        y: mid.y + Math.sin(ba) * bl * 0.55 + (this._rnd(i + 52) - 0.5) * 8 },
+      { x: mid.x + Math.cos(ba) * bl, y: mid.y + Math.sin(ba) * bl },
+    ];
+    return { pts, branch, phase: this._rnd(i + 60) };
+  }
+
+  update(dt) { this.t += dt; }
+  isDone()   { return this.t >= this.life; }
+
+  _strokePath(ctx, pts, w, style) {
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+    ctx.lineWidth = w;
+    ctx.strokeStyle = style;
+    ctx.stroke();
+  }
+
+  draw(ctx) {
+    const p = Math.min(1, this.t / this.life);
+    const fade = p < 0.14 ? p / 0.14 : Math.max(0, 1 - (p - 0.14) / 0.86);
+    if (fade <= 0) return;
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.lineCap = 'round';
+    if (this.kind === 'bolt') this._drawBolt(ctx, p, fade);
+    else                      this._drawCrescent(ctx, p, fade);
+    ctx.restore();
+  }
+
+  // Branched lightning: small core, short arcs, quick impact flash, clean contact.
+  _drawBolt(ctx, p, fade) {
+    const m = this.m;
+    // Fast impact flash (first ~0.1s only) — small, never a screen sheet.
+    if (p < 0.24) {
+      const fa = (1 - p / 0.24) * 0.45;
+      ctx.beginPath(); ctx.arc(0, 0, 15 * m, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(235,245,255,' + fa.toFixed(3) + ')';
+      ctx.fill();
+    }
+    // Clean contact ring at the hit point.
+    ctx.beginPath(); ctx.arc(0, 0, (9 + 20 * p) * m, 0, Math.PI * 2);
+    ctx.lineWidth = 1.6;
+    ctx.strokeStyle = 'rgba(150,210,255,' + (0.5 * fade).toFixed(3) + ')';
+    ctx.stroke();
+    // Branched bolts — two alternating flicker phases (electric feel, no strobing mess).
+    const phase = Math.floor(this.t * 26);
+    for (let i = 0; i < this.bolts.length; i++) {
+      const b = this.bolts[i];
+      if (((i + phase) % 3) === 0) continue;               // brief per-bolt dropout = crackle
+      this._strokePath(ctx, b.pts, 4.2, 'rgba(88,168,255,' + (0.20 * fade).toFixed(3) + ')');   // halo
+      this._strokePath(ctx, b.pts, 1.5, 'rgba(240,250,255,' + (0.88 * fade).toFixed(3) + ')');  // white core line
+      this._strokePath(ctx, b.branch, 3.0, 'rgba(88,168,255,' + (0.15 * fade).toFixed(3) + ')');
+      this._strokePath(ctx, b.branch, 1.1, 'rgba(226,242,255,' + (0.62 * fade).toFixed(3) + ')');
+    }
+    // Small central energy core: halo -> body -> white core.
+    const g = ctx.createRadialGradient(0, 0, 0, 0, 0, 11 * m);
+    g.addColorStop(0,   'rgba(255,255,255,' + (0.9 * fade).toFixed(3) + ')');
+    g.addColorStop(0.4, 'rgba(160,215,255,' + (0.5 * fade).toFixed(3) + ')');
+    g.addColorStop(1,   'rgba(120,190,255,0)');
+    ctx.beginPath(); ctx.arc(0, 0, 11 * m, 0, Math.PI * 2);
+    ctx.fillStyle = g; ctx.fill();
+  }
+
+  // Cyber energy crescent: thin blade, crisp outer edge, transparent interior,
+  // short trail, small fragments, tiny star hub — big-attack feel, bounded size.
+  _drawCrescent(ctx, p, fade) {
+    const m = this.m, R = 40 * m;
+    ctx.rotate(this.angle + (p * 0.9 - 0.45));             // short slash sweep
+    // Trail: two fainter crescents behind the blade.
+    for (let k = 2; k >= 0; k--) {
+      const aK = k === 0 ? 1 : k === 1 ? 0.34 : 0.14;
+      ctx.save();
+      ctx.rotate(-k * 0.30);
+      // halo stroke
+      ctx.beginPath(); ctx.arc(0, 0, R, -1.22, 1.22);
+      ctx.lineWidth = 7;
+      ctx.strokeStyle = 'rgba(80,180,255,' + (0.16 * fade * aK).toFixed(3) + ')';
+      ctx.stroke();
+      // blade body (thin)
+      ctx.beginPath(); ctx.arc(0, 0, R, -1.18, 1.18);
+      ctx.lineWidth = 2.8;
+      ctx.strokeStyle = 'rgba(140,225,255,' + (0.55 * fade * aK).toFixed(3) + ')';
+      ctx.stroke();
+      // crisp white outer edge
+      ctx.beginPath(); ctx.arc(0, 0, R + 2.4, -1.14, 1.14);
+      ctx.lineWidth = 1.1;
+      ctx.strokeStyle = 'rgba(255,255,255,' + (0.85 * fade * aK).toFixed(3) + ')';
+      ctx.stroke();
+      ctx.restore();
+    }
+    // Energy fragments flying off the blade edge.
+    for (const f of this.frags) {
+      const r = R + 4 + f.sp * p;
+      const fx = Math.cos(f.a) * r, fy = Math.sin(f.a) * r;
+      ctx.beginPath();
+      ctx.moveTo(fx, fy);
+      ctx.lineTo(fx + Math.cos(f.a) * f.ln, fy + Math.sin(f.a) * f.ln);
+      ctx.lineWidth = 1.3;
+      ctx.strokeStyle = 'rgba(200,240,255,' + (0.6 * fade).toFixed(3) + ')';
+      ctx.stroke();
+    }
+    // Tiny 4-point star hub + white core (echoes the chakram identity, small).
+    ctx.lineWidth = 1.2;
+    ctx.strokeStyle = 'rgba(255,255,255,' + (0.8 * fade).toFixed(3) + ')';
+    for (let i = 0; i < 4; i++) {
+      const a = i * Math.PI / 2 + p * 2.4;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a) * 2.4, Math.sin(a) * 2.4);
+      ctx.lineTo(Math.cos(a) * 8.5, Math.sin(a) * 8.5);
+      ctx.stroke();
+    }
+    ctx.beginPath(); ctx.arc(0, 0, 2.3, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,255,255,' + (0.9 * fade).toFixed(3) + ')';
+    ctx.fill();
+  }
+}
+
 const ULTIMATE_MANA_COST = 100;
 
 // ── Boss kill reward — Protocol Fragments ─────────────────────
@@ -14241,6 +14424,20 @@ export class Game {
       this.audio?.forgeEvolution?.();                    // Φ9 forge sting
       this._spawnWeaponAccent(weaponId, x, y, angle || 0, 1.4);
       return null;
+    }
+    // ── STRICT VISUAL REPLACEMENT (2026-08-03, Maria): Nexus Chakram + Storm
+    // Conductor no longer draw their oversized illustration art in-world. They
+    // spawn a compact bespoke procedural strike (WeaponStrikeFx2) through the
+    // SAME lifecycle: same callers, same homing-follow update, same draw layer.
+    // Damage/cooldown/targeting are untouched (_autoFireWeapon). Card icons and
+    // asset files stay as they are — only the world visual changes.
+    if (weaponId === WEAPON_ID.NEXUS_CHAKRAM || weaponId === WEAPON_ID.STORM_CONDUCTOR) {
+      const fx2 = new WeaponStrikeFx2(
+        weaponId === WEAPON_ID.NEXUS_CHAKRAM ? 'crescent' : 'bolt', x, y, angle || 0, scale || 1);
+      if (this._activeWeaponVFX.length >= 24) this._activeWeaponVFX.shift();   // hard cap
+      this._activeWeaponVFX.push(fx2);
+      this._spawnWeaponAccent(weaponId, x, y, angle || 0, 1.0);
+      return fx2;
     }
     const meta = WEAPON_VFX_META[weaponId];
     const sheet = this._weaponVFXSheets[weaponId];
