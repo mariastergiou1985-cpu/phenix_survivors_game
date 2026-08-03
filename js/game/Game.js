@@ -2222,15 +2222,12 @@ export class Game {
         if (skin) this.triggerAnnouncement('SECRET SKIN DECRYPTED — ' + skin.toUpperCase(), '#ff2d95');
       } catch (_) {}
     }
-    // Slice A: a first clear also opens the NEXT selectable starting stage. Announced exactly here,
-    // at the moment the ladder actually advances, so it fires once per unlock and never on load.
-    if (firstClear) {
-      const nextId = Game.STAGE_RING[n];          // stage N cleared → ring index N becomes available
-      if (nextId && this.isStageBiomeUnlocked(nextId)) {
-        const nm = (BIOME_DEFS[nextId] && BIOME_DEFS[nextId].name) || nextId;
-        this.triggerAnnouncement('NEW STARTING STAGE UNLOCKED — ' + String(nm).toUpperCase(), '#2ee6f6');
-      }
-    }
+    // The "NEW STARTING STAGE UNLOCKED" announcement was removed on 2026-08-03. It advertised the
+    // SELECT STAGE screen, and that screen was retired by the START GAME flow rework — so the
+    // message pointed the player at a feature they can no longer reach.
+    // The UNLOCK ITSELF IS UNTOUCHED: the ladder still advances through meta.clearStage(n) above,
+    // and Game.STAGE_RING / isStageBiomeUnlocked() still gate setRunBiome() and _applyRunBiome().
+    // Only the notification is gone.
     const allDone = this.meta?.allStagesCleared();
     // Soft, celebratory finish instead of a hard shake + instant cut: a full-screen
     // "STAGE n COMPLETE" banner fades in, holds, then eases back to the campaign map.

@@ -19,6 +19,7 @@
 //
 //   node tools/qa/batch4_stage_rules_regression.mjs
 import { register } from 'node:module';
+import { readFileSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 register('./strip-v-loader.mjs', import.meta.url);
@@ -809,20 +810,39 @@ console.log('\n=== 10. STAGE UNLOCK LADDER (Slice A) ===');
   // 2026-08-03 flow rework — the setRunBiome/_applyRunBiome gates above are the surviving
   // contract, and they are proven directly.)
 
-  // The unlock announcement fires once, at the clear, and not again.
+  // The "NEW STARTING STAGE UNLOCKED" announcement was REMOVED on 2026-08-03: it advertised the
+  // SELECT STAGE screen, which the START GAME rework retired, so it pointed at a feature the
+  // player can no longer reach. What these gates now prove is that removing the NOTIFICATION did
+  // not remove the UNLOCK — the ladder must still advance on a first clear, and the biome gates
+  // must still open, exactly as before.
   const ga = newGame();
   const said = [];
   ga.triggerAnnouncement = (t) => { said.push(String(t)); };
+  const clearedBefore = ga.meta.stagesCleared;
+  const unlockedBefore = ga.unlockedStageBiomes().slice();
   ga._campaignStage = 1; ga._campaignCleared = false;
   const una = muteConsole(); try { ga._completeCampaignStage(); } catch (_) {} una();
-  const first = said.filter(t => /NEW STARTING STAGE UNLOCKED/.test(t));
-  T('clearing stage 1 announces the new starting stage exactly once', first.length === 1, said.join(' | '));
-  T('and it names the right biome', /INDUSTRIAL CORE/.test(first[0] || ''), first[0] || '');
+  T('the retired announcement is gone',
+    said.filter(t => /NEW STARTING STAGE UNLOCKED/.test(t)).length === 0, said.join(' | '));
+  T('but the ladder still advanced on the first clear',
+    ga.meta.stagesCleared > clearedBefore, `${clearedBefore} -> ${ga.meta.stagesCleared}`);
+  const unlockedAfter = ga.unlockedStageBiomes();
+  T('and the next starting biome really opened',
+    unlockedAfter.length > unlockedBefore.length && unlockedAfter.includes(Game.STAGE_RING[1]),
+    `${unlockedBefore.join(',')} -> ${unlockedAfter.join(',')}`);
+  T('the newly opened biome is selectable through the real gate',
+    ga.isStageBiomeUnlocked(Game.STAGE_RING[1]) === true);
   said.length = 0;
   ga._campaignCleared = false;                     // replay the same stage — already cleared
+  const cleared2 = ga.meta.stagesCleared;
   const una2 = muteConsole(); try { ga._completeCampaignStage(); } catch (_) {} una2();
-  T('re-clearing the same stage does NOT announce again',
+  T('re-clearing the same stage does not advance the ladder again',
+    ga.meta.stagesCleared === cleared2, `${cleared2} -> ${ga.meta.stagesCleared}`);
+  T('and still announces nothing about a starting stage',
     said.filter(t => /NEW STARTING STAGE UNLOCKED/.test(t)).length === 0, said.join(' | '));
+  // the source must not carry the dead string either
+  T('no dead reference to the announcement survives in Game.js',
+    !/NEW STARTING STAGE UNLOCKED\s*'/.test(readFileSync(path.resolve(HERE, '../../js/game/Game.js'), 'utf8')));
 
   // The campaign itself is untouched by any of this.
   const gcam = newGame();
