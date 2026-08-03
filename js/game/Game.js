@@ -20,7 +20,7 @@ import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, dr
 import { SystemEventManager } from './Events.js?v=20260802000000';
 import { UpgradeUI }      from './UpgradeUI.js?v=20260902100000';
 import { weightedSample } from './Upgrades.js?v=20260902100000';
-import { BuildEngineRuntime, WEAPON_DEFS as BE_WEAPON_DEFS, EVOLUTION_RECIPES as BE_EVOLUTION_RECIPES } from './BuildEngine.js?v=20260902130000';   // BUILD ENGINE — always on (full migration 2026-07-18)
+import { BuildEngineRuntime, WEAPON_DEFS as BE_WEAPON_DEFS, EVOLUTION_RECIPES as BE_EVOLUTION_RECIPES, PASSIVE_DEFS as BE_PASSIVE_DEFS } from './BuildEngine.js?v=20260902130000';   // BUILD ENGINE — always on (full migration 2026-07-18)
 import { FUSION_DEFS, FUSION_CARD_ORDER, FUSION_ART_READY, FUSION_MAX_TIER, fusionCost, CHAR_DISPLAY_NAMES } from './FusionCatalog.js?v=20260902070000';   // FUSION ARMORY (Batch B)
 import { FusionEngine } from './FusionEngine.js?v=20260902100000';   // FUSION ARMORY runtime (Batch D)
 import './BuildEngineChars1.js?v=20260902130000';   // P2.3a Taekwondo+CyberArm (side-effect register)
@@ -69,7 +69,7 @@ import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260722600000';
 import { NexusManager } from './NexusManager.js?v=20260803000000';
 import { VESSELS, getVesselById, getDefaultVesselId } from './VesselCatalog.js?v=20260705040000';
 import { PETS, getPetById } from './PetCatalog.js?v=20260705000000';
-import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons, isEvolutionOwnedBy, getCardDisplayName } from './WeaponCatalog.js?v=20260720800000';
+import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons, getEvolutionOwners, isEvolutionOwnedBy, getCardDisplayName } from './WeaponCatalog.js?v=20260720800000';
 import { TACTICAL_ID, TACTICAL_DEFS, getTacticalDef, getTacticalForCharacter, getAvailableTactical, preloadTacticalSprites, FUSION_TACTICALS } from './TacticalWeaponCatalog.js?v=20260720000000';
 import { VFXSpritePlayer } from './VFXSpritePlayer.js?v=20260902110000';
 
@@ -5372,6 +5372,75 @@ export class Game {
         #cgm-achievements .jb-row.locked:hover { border-color:rgba(110,110,130,.16); background:rgba(10,10,16,.5); }
         #cgm-achievements .jb-row.locked .jb-idx { color:#54546a; }
         #cgm-achievements .jb-row.locked .jb-name { color:#7a7a8a; font-weight:600; }
+
+        /* ═══ COLLECTION redesign (2026-08-03): tabs / filters / detail — display only ═══ */
+        @keyframes ctIn { from { opacity:0; transform:translateY(14px) scale(.985); } to { opacity:1; transform:none; } }
+        #cgm-achievements .ca-stage.ct-in { animation:ctIn .38s cubic-bezier(.22,.9,.3,1) both; }
+        #cgm-achievements .ct-tabs { display:flex; flex-wrap:wrap; gap:7px; }
+        #cgm-achievements .ct-tab {
+          display:flex; align-items:center; gap:8px; padding:8px 14px; border-radius:9px; cursor:pointer;
+          border:1px solid rgba(46,230,246,.16); background:rgba(10,16,46,.5);
+          color:var(--txt-dim); font-family:'Orbitron',sans-serif; font-size:10px; letter-spacing:1.2px; font-weight:700;
+          transition:border-color .15s, color .15s, background .15s, box-shadow .15s; white-space:nowrap;
+        }
+        #cgm-achievements .ct-tab:hover { border-color:rgba(46,230,246,.5); color:var(--cyan); }
+        #cgm-achievements .ct-tab.active { border-color:var(--cyan); color:var(--cyan); background:rgba(46,230,246,.09); box-shadow:0 0 12px rgba(46,230,246,.18), inset 0 0 14px rgba(46,230,246,.05); text-shadow:0 0 7px rgba(46,230,246,.5); }
+        #cgm-achievements .ct-tab .n { font-size:9px; color:var(--txt-faint); border:1px solid rgba(111,134,184,.25); border-radius:999px; padding:2px 7px; background:rgba(0,0,0,.35); }
+        #cgm-achievements .ct-tab.active .n { color:var(--cyan); border-color:rgba(46,230,246,.4); }
+        #cgm-achievements .ct-tab.done .n { color:var(--green); border-color:rgba(124,255,77,.4); }
+        #cgm-achievements .ct-toolbar { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; }
+        #cgm-achievements .ct-filters { display:flex; gap:6px; }
+        #cgm-achievements .ct-filters.hidden { visibility:hidden; }
+        #cgm-achievements .ct-flt { padding:5px 13px; border-radius:999px; cursor:pointer; border:1px solid rgba(111,134,184,.22); color:var(--txt-faint); font-family:'Orbitron',sans-serif; font-size:9px; font-weight:700; letter-spacing:1.5px; transition:.15s; }
+        #cgm-achievements .ct-flt:hover { color:var(--txt-dim); border-color:rgba(111,134,184,.45); }
+        #cgm-achievements .ct-flt.active { color:var(--amber); border-color:rgba(251,191,36,.5); background:rgba(251,191,36,.07); }
+        #cgm-achievements .ct-count { font-family:'Orbitron',sans-serif; font-size:10px; font-weight:700; letter-spacing:1px; color:var(--txt-dim); }
+        #cgm-achievements .ct-body { display:flex; align-items:flex-start; gap:16px; }
+        #cgm-achievements .ct-main { flex:1 1 auto; min-width:0; display:flex; flex-direction:column; }
+        #cgm-achievements .ct-panel { display:none; flex-direction:column; gap:14px; }
+        #cgm-achievements .ct-panel.active { display:flex; }
+        #cgm-achievements .ct-panel.flt-unlocked [data-lk="1"] { display:none; }
+        #cgm-achievements .ct-panel.flt-locked [data-lk="0"] { display:none; }
+        #cgm-achievements [data-sidx] { cursor:pointer; }
+        #cgm-achievements .ct-on { outline:2px solid var(--cyan); outline-offset:1px; box-shadow:0 0 14px rgba(46,230,246,.28); }
+        #cgm-achievements .cx-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(228px,1fr)); gap:11px; }
+        #cgm-achievements .cx-card { position:relative; border-radius:12px; border:1px solid rgba(46,90,100,.3); background:rgba(10,16,46,.55); padding:11px 12px; display:flex; gap:11px; align-items:center; transition:border-color .15s, box-shadow .15s, transform .15s; }
+        #cgm-achievements .cx-card:hover { border-color:rgba(46,230,246,.45); transform:translateY(-1px); }
+        #cgm-achievements .cx-card.unlocked { border-color:rgba(52,211,153,.4); background:rgba(0,16,11,.5); }
+        #cgm-achievements .cx-card.locked .cx-name { color:#4a6070; }
+        #cgm-achievements .cx-thumb { width:56px; height:56px; flex-shrink:0; border-radius:10px; border:1px solid rgba(255,255,255,.08); background:rgba(0,0,0,.42); display:flex; align-items:center; justify-content:center; overflow:hidden; font-family:'Orbitron',sans-serif; font-weight:800; font-size:15px; }
+        #cgm-achievements .cx-thumb img { width:100%; height:100%; object-fit:contain; }
+        #cgm-achievements .cx-card.locked .cx-thumb img { filter:grayscale(1) brightness(.38); }
+        #cgm-achievements .cx-card.locked .cx-thumb { color:#3a5060; }
+        #cgm-achievements .cx-info { display:flex; flex-direction:column; gap:3px; flex:1; min-width:0; padding-right:64px; }
+        #cgm-achievements .cx-name { font-family:'Orbitron',sans-serif; font-weight:700; font-size:11px; letter-spacing:.4px; color:#dff0ff; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        #cgm-achievements .cx-sub { font-size:9px; letter-spacing:1.4px; text-transform:uppercase; color:var(--txt-faint); }
+        #cgm-achievements .cx-req { font-size:10px; line-height:1.35; color:#8aa0c0; }
+        #cgm-achievements .cx-card.locked .cx-req { color:#54687e; }
+        #cgm-achievements .cx-status { position:absolute; top:9px; right:10px; font-family:'Orbitron',sans-serif; font-weight:800; font-size:8px; letter-spacing:1.2px; }
+        #cgm-achievements .cx-status.unlocked { color:var(--green); text-shadow:0 0 6px rgba(124,255,77,.45); }
+        #cgm-achievements .cx-status.locked { color:#3a5060; }
+        #cgm-achievements .sk-req { font-size:9px; color:#54687e; text-align:center; line-height:1.35; max-width:120px; }
+        #cgm-achievements .ct-detail { width:288px; flex:0 0 288px; position:sticky; top:6px; border-radius:14px; border:1px solid rgba(46,230,246,.18); background:linear-gradient(180deg,rgba(46,230,246,.05),transparent 35%),rgba(7,10,28,.8); padding:14px 15px 16px; display:flex; flex-direction:column; gap:9px; min-height:200px; box-shadow:inset 0 0 30px rgba(46,230,246,.04); }
+        #cgm-achievements .ctd-kind { font-family:'Orbitron',sans-serif; font-size:8px; font-weight:700; letter-spacing:2.2px; color:var(--txt-faint); }
+        #cgm-achievements .ctd-thumb { width:100%; height:130px; border-radius:10px; border:1px solid rgba(255,255,255,.07); background:rgba(0,0,0,.45); display:flex; align-items:center; justify-content:center; overflow:hidden; font-family:'Orbitron',sans-serif; font-weight:800; font-size:26px; flex-shrink:0; }
+        #cgm-achievements .ctd-thumb img { width:100%; height:100%; object-fit:contain; }
+        #cgm-achievements .ctd-thumb.locked img { filter:grayscale(1) brightness(.38); }
+        #cgm-achievements .ctd-name { font-family:'Orbitron',sans-serif; font-weight:800; font-size:13px; letter-spacing:1px; color:var(--cyan); text-shadow:0 0 8px rgba(46,230,246,.4); line-height:1.35; }
+        #cgm-achievements .ctd-chips { display:flex; gap:6px; flex-wrap:wrap; }
+        #cgm-achievements .ctd-chip { font-family:'Orbitron',sans-serif; font-size:8px; font-weight:700; letter-spacing:1.4px; padding:3px 9px; border-radius:999px; border:1px solid rgba(111,134,184,.3); color:var(--txt-dim); }
+        #cgm-achievements .ctd-chip.ok { color:var(--green); border-color:rgba(124,255,77,.4); background:rgba(124,255,77,.06); }
+        #cgm-achievements .ctd-chip.no { color:#f87171; border-color:rgba(248,113,113,.35); background:rgba(248,113,113,.05); }
+        #cgm-achievements .ctd-chip.owner { color:var(--purple); border-color:rgba(168,85,247,.4); background:rgba(168,85,247,.06); }
+        #cgm-achievements .ctd-desc { font-size:10px; color:var(--txt-dim); line-height:1.5; }
+        #cgm-achievements .ctd-req-label { font-family:'Orbitron',sans-serif; font-size:8px; font-weight:700; letter-spacing:2px; color:var(--amber); margin-top:2px; }
+        #cgm-achievements .ctd-req { font-size:10px; color:#cfe9ff; line-height:1.5; border-left:2px solid rgba(251,191,36,.4); padding-left:9px; }
+        #cgm-achievements .ctd-empty { color:var(--txt-faint); font-size:10px; font-style:italic; }
+        @media (max-width: 980px) { #cgm-achievements .ct-detail { display:none; } }
+        @media (max-width: 640px) {
+          #cgm-achievements .cx-grid { grid-template-columns:repeat(auto-fill,minmax(186px,1fr)); }
+          #cgm-achievements .ct-tab { padding:7px 10px; font-size:9px; }
+        }
       `;
       document.head.appendChild(style);
     }
@@ -5382,7 +5451,7 @@ export class Game {
     el.setAttribute('aria-label', 'Achievements');
 
     el.innerHTML = `
-      <div class="ca-stage">
+      <div class="ca-stage ct-in">
         <span class="corner tl"></span><span class="corner tr"></span>
         <span class="corner bl"></span><span class="corner br"></span>
 
@@ -5394,120 +5463,176 @@ export class Game {
             COLLECTIBLES
           </div>
           <div class="ca-badges">
-            <div class="ca-badge">★ <span id="ca-earned">0</span>&nbsp;/&nbsp;<span id="ca-total">0</span>&nbsp;UNLOCKED</div>
-            <div class="ca-pf">🧩 <span id="ca-pf-earned">0</span>&nbsp;/&nbsp;<span id="ca-pf-total">0</span>&nbsp;FRAGMENTS</div>
+            <div class="ca-badge">&#9733; <span id="ca-earned">0</span>&nbsp;/&nbsp;<span id="ca-total">0</span>&nbsp;UNLOCKED</div>
+            <div class="ca-pf">&#129513; <span id="ca-pf-earned">0</span>&nbsp;/&nbsp;<span id="ca-pf-total">0</span>&nbsp;FRAGMENTS</div>
           </div>
         </div>
         <div class="ca-progress">
           <div class="ca-bar-wrap"><div class="ca-bar" id="ca-bar" style="width:0%"></div></div>
         </div>
-        <div class="ca-sep"></div>
 
-        <div class="ca-grid" id="ca-grid"></div>
-
-        <div class="ca-sep"></div>
-
-        <div class="ce-section" id="ce-section">
-          <div class="ce-header">
-            <div class="ce-title">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18" aria-hidden="true">
-                <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
-              </svg>
-              BOSS ECHO ARCHIVE
-            </div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-              <div class="ce-count" id="ce-count">0 / 6 ARCHIVED</div>
-              <div class="ce-memory" id="ce-memory">EDEN MEMORY: 0%</div>
-            </div>
+        <div class="ct-tabs" id="ct-tabs"></div>
+        <div class="ct-toolbar">
+          <div class="ct-filters" id="ct-filters">
+            <div class="ct-flt active" data-flt="all">ALL</div>
+            <div class="ct-flt" data-flt="unlocked">UNLOCKED</div>
+            <div class="ct-flt" data-flt="locked">LOCKED</div>
           </div>
-          <div class="ce-grid" id="ce-grid"></div>
+          <div class="ct-count" id="ct-count"></div>
         </div>
-
         <div class="ca-sep"></div>
 
-        <div class="em-section" id="em-section">
-          <div class="em-header">
-            <div class="em-title">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18" aria-hidden="true">
-                <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
-              </svg>
-              EDEN MEMORY MILESTONES
+        <div class="ct-body">
+          <div class="ct-main" id="ct-main">
+            <div class="ct-panel" data-panel="characters"><div class="cx-grid" id="cx-characters"></div></div>
+            <div class="ct-panel" data-panel="weapons"><div class="cx-grid" id="cx-weapons"></div></div>
+            <div class="ct-panel" data-panel="evolutions"><div class="cx-grid" id="cx-evolutions"></div></div>
+            <div class="ct-panel" data-panel="fusions"><div class="cx-grid" id="cx-fusions"></div></div>
+            <div class="ct-panel" data-panel="relics"><div class="cx-grid" id="cx-relics"></div></div>
+
+            <div class="ct-panel" data-panel="skins">
+              <div class="sk-section" id="sk-section">
+                <div class="sk-header">
+                  <div class="sk-title">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18" aria-hidden="true"><path d="M20.38 3.46 16 2a4 4 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.47a1 1 0 0 0 .99.84H6v10a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V10h2.15a1 1 0 0 0 .99-.84l.58-3.47a2 2 0 0 0-1.34-2.23z"/></svg>
+                    SECRET SKINS
+                  </div>
+                  <div class="sk-count" id="sk-count">0 / 0 UNLOCKED</div>
+                </div>
+                <div class="sk-grid" id="sk-grid"></div>
+              </div>
             </div>
-            <div class="em-pct" id="em-pct">MEMORY: 0%</div>
+
+            <div class="ct-panel" data-panel="achievements">
+              <div class="ca-grid" id="ca-grid"></div>
+              <div class="ca-sep"></div>
+              <div class="ce-section" id="ce-section">
+                <div class="ce-header">
+                  <div class="ce-title">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18" aria-hidden="true">
+                      <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+                    </svg>
+                    BOSS ECHO ARCHIVE
+                  </div>
+                  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                    <div class="ce-count" id="ce-count">0 / 6 ARCHIVED</div>
+                    <div class="ce-memory" id="ce-memory">EDEN MEMORY: 0%</div>
+                  </div>
+                </div>
+                <div class="ce-grid" id="ce-grid"></div>
+              </div>
+            </div>
+
+            <div class="ct-panel" data-panel="lore">
+              <div class="em-section" id="em-section">
+                <div class="em-header">
+                  <div class="em-title">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18" aria-hidden="true">
+                      <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
+                    </svg>
+                    EDEN MEMORY MILESTONES
+                  </div>
+                  <div class="em-pct" id="em-pct">MEMORY: 0%</div>
+                </div>
+                <div class="em-bar-wrap"><div class="em-bar" id="em-bar" style="width:0%"></div></div>
+                <div class="em-list" id="em-list"></div>
+              </div>
+              <div class="ca-sep"></div>
+              <div class="sl-section" id="sl-section">
+                <div class="sl-header">
+                  <div class="sl-title">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18" aria-hidden="true">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                      <polyline points="14 2 14 8 20 8"/>
+                      <line x1="16" y1="13" x2="8" y2="13"/>
+                      <line x1="16" y1="17" x2="8" y2="17"/>
+                      <polyline points="10 9 9 9 8 9"/>
+                    </svg>
+                    SYSTEM LOGS
+                  </div>
+                  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                    <div class="sl-subtitle">FRAGMENTS OF NULL EDEN</div>
+                    <div class="sl-mem" id="sl-mem">EDEN MEMORY: 0%</div>
+                  </div>
+                </div>
+                <div class="sl-list" id="sl-list"></div>
+              </div>
+            </div>
+
+            <div class="ct-panel" data-panel="ost">
+              <div class="jb-section" id="jb-section">
+                <div class="jb-header">
+                  <div class="jb-title">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18" aria-hidden="true"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+                    OST JUKEBOX
+                  </div>
+                  <div class="jb-now" id="jb-now">&#9834; IDLE</div>
+                </div>
+                <div class="jb-list" id="jb-list"></div>
+              </div>
+            </div>
           </div>
-          <div class="em-bar-wrap"><div class="em-bar" id="em-bar" style="width:0%"></div></div>
-          <div class="em-list" id="em-list"></div>
-        </div>
 
-        <div class="ca-sep"></div>
-
-        <div class="sl-section" id="sl-section">
-          <div class="sl-header">
-            <div class="sl-title">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18" aria-hidden="true">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-                <polyline points="14 2 14 8 20 8"/>
-                <line x1="16" y1="13" x2="8" y2="13"/>
-                <line x1="16" y1="17" x2="8" y2="17"/>
-                <polyline points="10 9 9 9 8 9"/>
-              </svg>
-              SYSTEM LOGS
-            </div>
-            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-              <div class="sl-subtitle">FRAGMENTS OF NULL EDEN</div>
-              <div class="sl-mem" id="sl-mem">EDEN MEMORY: 0%</div>
-            </div>
-          </div>
-          <div class="sl-list" id="sl-list"></div>
-        </div>
-
-        <div class="ca-sep"></div>
-
-        <div class="sk-section" id="sk-section">
-          <div class="sk-header">
-            <div class="sk-title">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18" aria-hidden="true"><path d="M20.38 3.46 16 2a4 4 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.47a1 1 0 0 0 .99.84H6v10a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V10h2.15a1 1 0 0 0 .99-.84l.58-3.47a2 2 0 0 0-1.34-2.23z"/></svg>
-              SECRET SKINS
-            </div>
-            <div class="sk-count" id="sk-count">0 / 0 UNLOCKED</div>
-          </div>
-          <div class="sk-grid" id="sk-grid"></div>
-        </div>
-
-        <div class="ca-sep"></div>
-
-        <div class="jb-section" id="jb-section">
-          <div class="jb-header">
-            <div class="jb-title">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18" aria-hidden="true"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
-              OST JUKEBOX
-            </div>
-            <div class="jb-now" id="jb-now">♪ IDLE</div>
-          </div>
-          <div class="jb-list" id="jb-list"></div>
+          <aside class="ct-detail" id="ct-detail"><div class="ctd-empty">Select an item.</div></aside>
         </div>
 
         <div class="ca-sep"></div>
         <div class="ca-footer">
-          <button class="ca-foot-btn" id="ca-back-btn">◀ BACK</button>
+          <button class="ca-foot-btn" id="ca-back-btn">&#9664; BACK</button>
           <div class="ca-hints">
-            <span><b>ESC</b> Back to menu</span>
-            <span>Complete Endless runs to unlock</span>
+            <span><b>&#9664; &#9654;</b> Item</span>
+            <span><b>&#9650; &#9660;</b> Tab</span>
+            <span><b>ENTER / A</b> Filter &middot; Play (OST)</span>
+            <span><b>ESC / B</b> Back</span>
           </div>
         </div>
       </div>
     `;
 
+    // COLLECTION redesign state (display-only navigation state — never saved)
+    this._colTab    = 'characters';
+    this._colFilter = 'all';
+    this._colSel    = {};        // tab id -> selected data-sidx
+    this._colItems  = null;      // rebuilt on every sync from live catalogs + meta
+
     el.querySelector('#ca-back-btn')?.addEventListener('click', () => this.goToMainMenu());
+
+    // Tab rail + filter chips + card selection — delegated, bound ONCE on persistent nodes
+    const tabsEl = el.querySelector('#ct-tabs');
+    tabsEl?.addEventListener('click', (ev) => {
+      const t = ev.target.closest?.('.ct-tab');
+      if (!t || !tabsEl.contains(t)) return;
+      this._colSetTab(t.dataset.tab);
+    });
+    const fltEl = el.querySelector('#ct-filters');
+    fltEl?.addEventListener('click', (ev) => {
+      const f = ev.target.closest?.('.ct-flt');
+      if (!f || !fltEl.contains(f)) return;
+      this._colSetFilter(f.dataset.flt);
+    });
+    const mainEl = el.querySelector('#ct-main');
+    mainEl?.addEventListener('click', (ev) => {
+      const c = ev.target.closest?.('[data-sidx]');
+      if (!c || !mainEl.contains(c)) return;
+      this._colSel[this._colTab] = Number(c.dataset.sidx);
+      this._colRefreshSelection();
+    });
+
     document.body.appendChild(el);
     this._achievementsOverlayEl = el;
   }
 
   _showAchievementsOverlay() {
     if (!this._achievementsOverlayEl) return;
+    this._colTab    = 'characters';
+    this._colFilter = 'all';
+    this._colSel    = {};
     this._achievementsOverlayEl.style.display = 'flex';
     this._achievementsOverlayVisible = true;
     this._syncAchievementsOverlay();
+    this._achievementsOverlayEl.scrollTop = 0;
+    const stage = this._achievementsOverlayEl.querySelector('.ca-stage');
+    if (stage) { stage.classList.remove('ct-in'); void stage.offsetWidth; stage.classList.add('ct-in'); }
   }
 
   _hideAchievementsOverlay() {
@@ -5717,6 +5842,7 @@ export class Game {
           <div class="sk-thumb ${unlocked ? 'unlocked' : 'locked'}">${img ? `<img src="${img.src}" alt="">` : ''}</div>
           <div class="sk-name">${unlocked ? secret.name : '???'}</div>
           <div class="sk-state ${unlocked ? 'unlocked' : 'locked'}">${unlocked ? '★ UNLOCKED' : '🔒 LOCKED'}</div>
+          ${unlocked ? '' : `<div class="sk-req">${this._colSkinReq(key)}</div>`}
         </div>`;
       }).join('');
       if (skCount) skCount.textContent = unlockedN + ' / ' + skinChars.length + ' UNLOCKED';
@@ -5767,6 +5893,437 @@ export class Game {
         });
       });
     }
+
+    // COLLECTION redesign layer: tabs / counters / filters / selection / detail.
+    // Pure display — rebuilt from the SAME live catalogs and MetaProgress gates.
+    this._colRender();
+  }
+
+  // ─── COLLECTION redesign (2026-08-03) — tabs / filters / detail panel ────────
+  // DISPLAY ONLY: reads the SAME catalogs (roster, WeaponCatalog, BuildEngine,
+  // FusionCatalog, RELIC_DEFS, CHARACTER_OUTFITS, ENDLESS_ACHIEVEMENTS, BOSS_ECHOES,
+  // EDEN_MILESTONES, SYSTEM_LOGS) and the SAME MetaProgress gates the game enforces.
+  // It never mutates unlocks, saves, rewards, stats or gameplay logic.
+  _colTabsDef() {
+    return [
+      { id: 'characters',   label: 'CHARACTERS' },
+      { id: 'weapons',      label: 'WEAPONS' },
+      { id: 'evolutions',   label: 'EVOLUTIONS' },
+      { id: 'fusions',      label: 'FUSIONS' },
+      { id: 'relics',       label: 'RELICS' },
+      { id: 'skins',        label: 'SKINS' },
+      { id: 'achievements', label: 'ACHIEVEMENTS' },
+      { id: 'lore',         label: 'LORE' },
+      { id: 'ost',          label: 'OST' },
+    ];
+  }
+
+  _colCharName(charId) {
+    return this.characters.find(c => c.id === charId)?.name || CHAR_DISPLAY_NAMES[charId] || charId;
+  }
+
+  // Requirement text from the SAME source isCharacterUnlocked enforces (never a copy).
+  _colCharReqText(charId) {
+    const total = this.meta?.totalStages ?? 7;
+    const req = characterStageRequirement(charId, total);
+    if (req === null || req === 0) return 'Available from the start.';
+    if (req >= total) return 'Clear the FINAL campaign stage.';
+    return `Clear campaign stage ${req}.`;
+  }
+
+  // Honest unlock text per secret-skin key — mirrors the REAL grants in Game.js
+  // (Victory unlockMany, Endless survival grants, stage first-clear random decrypt).
+  _colSkinReq(unlockKey) {
+    const CAMPAIGN = 'Win the Act 1 campaign — victory decrypts it. Campaign stage first-clears can also decrypt it at random.';
+    return ({
+      golden_skeleton_warrior: CAMPAIGN,
+      dark_cyber_arm_hero:     CAMPAIGN,
+      grandmaster_dojang_girl: CAMPAIGN,
+      log_1997: 'Survive 18:00 in Endless as Brawler Warrior — or a random campaign first-clear decrypt.',
+      log_1998: 'Survive 15:00 in Endless as Assassin Clone — or a random campaign first-clear decrypt.',
+    })[unlockKey] || 'Hidden unlock condition.';
+  }
+
+  _colBuildItems() {
+    const meta = this.meta;
+    const items = {};
+    const charOk = (id) => !id || meta.isCharacterUnlocked(id);
+    const lockedSuffix = (owner) => ` — needs ${this._colCharName(owner)} unlocked (${this._colCharReqText(owner)})`;
+
+    // CHARACTERS — roster order, gate = meta.isCharacterUnlocked (same as Character Select).
+    items.characters = this.characters.map(c => ({
+      kind: 'CHARACTER', id: c.id, name: c.name, sub: c.role, desc: c.specialty,
+      unlocked: meta.isCharacterUnlocked(c.id),
+      reqText: this._colCharReqText(c.id),
+      img: this._charImages?.[c.id]?.src || null,
+      mono: (c.name || '?').slice(0, 1), color: c.fallbackColor || '#2ee6f6',
+    }));
+
+    // WEAPONS — legacy catalog base weapons + BUILD ENGINE arsenal (owner-gated).
+    const weap = [];
+    for (const def of getAllBaseWeapons()) {
+      const owner = def.character || null;
+      const unlocked = charOk(owner);
+      weap.push({
+        kind: 'WEAPON', id: def.id, name: def.name, tag: 'CLASSIC',
+        sub: owner ? this._colCharName(owner) : 'UNIVERSAL',
+        desc: def.description || '', unlocked,
+        mono: (def.name || '?').slice(0, 1), color: def.color || '#2ee6f6',
+        reqText: unlocked
+          ? (owner ? 'In their level-up card pool.' : 'Universal — in every level-up card pool.')
+          : `In their level-up card pool${lockedSuffix(owner)}`,
+      });
+    }
+    for (const [id, def] of Object.entries(BE_WEAPON_DEFS)) {
+      if (def.category !== 'weapon' || def.external) continue;
+      const owner = def.owner || null;
+      const unlocked = charOk(owner);
+      weap.push({
+        kind: 'WEAPON', id, name: def.name, tag: 'ARSENAL',
+        sub: owner ? this._colCharName(owner) : 'UNIVERSAL',
+        desc: def.desc || '', unlocked,
+        mono: (def.name || '?').slice(0, 1), color: '#a855f7',
+        reqText: unlocked
+          ? (owner ? 'In their level-up card pool.' : 'Universal — in every level-up card pool.')
+          : `In their level-up card pool${lockedSuffix(owner)}`,
+      });
+    }
+    items.weapons = weap;
+
+    // EVOLUTIONS — legacy recipes + BUILD ENGINE recipes; requirement = the real recipe.
+    const evos = [];
+    for (const recipe of EVOLUTION_RECIPES) {
+      const def = getWeaponDef(recipe.result);
+      if (!def) continue;
+      const owners = getEvolutionOwners(recipe);
+      const unlocked = !owners.length || owners.some(o => meta.isCharacterUnlocked(o));
+      const ingNames = recipe.ingredients.map(i => getWeaponDef(i)?.name || i).join(' + ');
+      evos.push({
+        kind: 'EVOLUTION', id: def.id, name: def.name, tag: 'CLASSIC',
+        sub: owners.length ? owners.map(o => this._colCharName(o)).join(' / ') : 'UNIVERSAL',
+        desc: def.description || '', unlocked,
+        mono: (def.name || '?').slice(0, 1), color: def.color || '#fbbf24',
+        reqText: `Evolve in-run: ${ingNames} (weapon Lv ${recipe.minLevel})`
+          + (unlocked ? '' : ` — needs ${owners.map(o => this._colCharName(o)).join(' / ')} unlocked`),
+      });
+    }
+    for (const [id, r] of Object.entries(BE_EVOLUTION_RECIPES)) {
+      const wd = BE_WEAPON_DEFS[r.weapon];
+      const owner = wd?.owner || null;
+      const unlocked = charOk(owner);
+      evos.push({
+        kind: 'EVOLUTION', id, name: r.name, tag: 'ARSENAL',
+        sub: owner ? this._colCharName(owner) : 'UNIVERSAL',
+        desc: r.desc || '', unlocked,
+        mono: (r.name || '?').slice(0, 1), color: '#a855f7',
+        reqText: `Evolve in-run: ${wd?.name || r.weapon} Lv ${r.weaponLevel} + ${BE_PASSIVE_DEFS[r.passive]?.name || r.passive} Lv ${r.passiveLevel}`
+          + (unlocked ? '' : lockedSuffix(owner)),
+      });
+    }
+    items.evolutions = evos;
+
+    // FUSIONS — FUSION ARMORY catalog (20), component names resolved from BuildEngine defs.
+    const t1 = fusionCost(1);
+    items.fusions = FUSION_CARD_ORDER.map(id => {
+      const f = FUSION_DEFS[id];
+      const unlocked = charOk(f.char);
+      const comps = (f.components || []).map(cid =>
+        BE_WEAPON_DEFS[cid]?.name || BE_PASSIVE_DEFS[cid]?.name || cid.replace(/^build_/, '').replace(/_/g, ' '));
+      return {
+        kind: 'FUSION', id, name: f.name, sub: this._colCharName(f.char),
+        desc: f.desc || '', desc2: f.mechanicText || '', unlocked,
+        img: FUSION_ART_READY.has(id) ? f.art : null,
+        mono: (f.name || '?').slice(0, 1), color: f.palette?.glow || '#ff2d95',
+        reqText: `Fuse in-run (FUSION ARMORY): ${comps.join(' + ')} · ${t1.pf} PF + ${t1.grids} ⬡`
+          + (unlocked ? '' : lockedSuffix(f.char)),
+      };
+    });
+
+    // RELICS — RELIC_DEFS + the SAME gates tryUnlockRelic enforces (read-only view;
+    // purchases stay in the NULL RELICS screen).
+    items.relics = RELIC_DEFS.map(r => {
+      const unlocked = meta.isRelicUnlocked(r.id);
+      const reqs = [];
+      if (r.req) {
+        const bossName = BOSS_ECHOES.find(e => e.id === r.req)?.name?.replace(' Echo', '');
+        reqs.push(`Defeat ${bossName || r.req} in Endless`);
+      }
+      if (r.reqChar) reqs.push(`Unlock ${this._colCharName(r.reqChar)}`);
+      if (r.type === 'universal') reqs.push('Clear any campaign stage');
+      reqs.push(`Buy in NULL RELICS: ${RELIC_GRID_COST} ⬡ + ${RELIC_FRAGMENT_COST} 🧩`);
+      return {
+        kind: 'RELIC', id: r.id, name: r.name, sub: (r.type || '').toUpperCase(),
+        desc: r.effect || '', unlocked, mono: '⬡', color: '#fbbf24',
+        stOn: '★ OWNED',
+        reqText: unlocked ? 'Owned — active automatically every run.' : reqs.join(' · '),
+      };
+    });
+
+    // SECRET SKINS — same visible set + gate as the gallery renderer above.
+    const SKIN_HIDDEN = ['toxic_overload', 'null_walker', 'crimson_oni'];
+    items.skins = this.characters
+      .filter(c => CHARACTER_OUTFITS[c.id]?.secret && !SKIN_HIDDEN.includes(CHARACTER_OUTFITS[c.id].secret.unlockKey))
+      .map(c => {
+        const s = CHARACTER_OUTFITS[c.id].secret;
+        const unlocked = meta?.isUnlocked(s.unlockKey) === true;
+        return {
+          kind: 'SECRET SKIN', id: s.unlockKey, name: unlocked ? s.name : '???',
+          sub: this._colCharName(c.id), unlocked,
+          img: this._skinImages?.[s.unlockKey]?.src || null,
+          mono: '★', color: '#a855f7',
+          desc: unlocked ? 'Equip it from Character Select (▲/▼ toggles the outfit).' : '',
+          reqText: unlocked ? 'Decrypted — yours.' : this._colSkinReq(s.unlockKey),
+        };
+      });
+
+    // ACHIEVEMENTS tab = Endless achievements + Boss Echo Archive (same order as the grids).
+    const ach = ENDLESS_ACHIEVEMENTS.map(a => {
+      const got = !!meta.achievements[a.id];
+      const active = got && meta.isCollectibleActive?.(a.id);
+      return {
+        kind: 'ACHIEVEMENT', id: a.id, name: got ? a.name : '???', sub: 'ENDLESS ONLY',
+        unlocked: got, mono: '★', color: '#fbbf24',
+        desc: a.desc,
+        desc2: got ? `${a.protocolName} — ${a.protocolEffect} · ${a.cardName} — ${a.cardEffect}` : '',
+        reqText: got
+          ? (active ? 'Earned — protocol + card ACTIVE.'
+                    : `Earned — activate its protocol + card for ${COLLECTIBLE_GRID_COST} ⬡ + ${COLLECTIBLE_FRAGMENT_COST} 🧩.`)
+          : `${a.desc}.`,
+      };
+    });
+    const ech = BOSS_ECHOES.map(e => {
+      const archived = meta.hasBossEcho(e.id);
+      const eActive = archived && meta.isEchoActive?.(e.id);
+      return {
+        kind: 'BOSS ECHO', id: e.id, name: archived ? e.name : '??? ECHO LOCKED',
+        sub: 'BOSS ECHO ARCHIVE', unlocked: archived, mono: '⬡', color: e.color,
+        stOn: '★ ARCHIVED',
+        desc: archived ? e.lore : '', desc2: archived ? `Passive: ${e.passive}` : '',
+        reqText: archived
+          ? (eActive ? 'Archived — passive ACTIVE.'
+                     : `Archived — activate the passive for ${ECHO_GRID_COST} ⬡ + ${ECHO_FRAGMENT_COST} 🧩.`)
+          : 'Kill this boss in Endless to archive its echo.',
+      };
+    });
+    items.achievements = ach.concat(ech);
+
+    // LORE tab = Eden Memory milestones + System Logs (same order as the lists).
+    const mem = Math.round(meta.getEdenMemory());
+    const mil = EDEN_MILESTONES.map(ms => {
+      const reached = meta.hasMilestone(ms.pct);
+      return {
+        kind: 'EDEN MILESTONE', id: 'ms' + ms.pct,
+        name: reached ? ms.label : '??? MILESTONE LOCKED',
+        sub: `EDEN MEMORY ${ms.pct}%`, unlocked: reached, mono: '◉', color: '#2ee6f6',
+        stOn: '✓ REACHED',
+        desc: reached ? ms.lore : '',
+        reqText: reached ? 'Reached.' : `Accumulate EDEN MEMORY ${ms.pct}% (now: ${mem}%).`,
+      };
+    });
+    const logs = SYSTEM_LOGS.map(l => {
+      const readable = mem >= l.threshold;
+      return {
+        kind: 'SYSTEM LOG', id: l.id,
+        name: readable ? `LOG ${l.num} — ${l.title}` : `LOG ${l.num} — ???`,
+        sub: 'FRAGMENTS OF NULL EDEN', unlocked: readable, mono: l.num, color: '#38bdf8',
+        stOn: '◉ READABLE',
+        desc: readable ? l.text : '',
+        reqText: l.threshold === 0 ? 'Always available.'
+          : (readable ? 'Readable.' : `Requires EDEN MEMORY ${l.threshold}% (now: ${mem}%).`),
+      };
+    });
+    items.lore = mil.concat(logs);
+
+    // OST tab — read straight from the freshly rendered jukebox rows (single source).
+    const jbRows = this._achievementsOverlayEl?.querySelectorAll('#jb-list .jb-row') || [];
+    items.ost = Array.from(jbRows).map((row, i) => {
+      const unlocked = row.dataset.unlocked === '1';
+      const rowText = row.querySelector('.jb-name')?.textContent || '';
+      return {
+        kind: 'OST TRACK', id: row.dataset.jb,
+        name: unlocked ? (row.dataset.name || rowText) : `TRACK ${String(i + 1).padStart(2, '0')} — ???`,
+        sub: 'OST JUKEBOX', unlocked, mono: '♪', color: '#ff2d2d',
+        desc: unlocked ? 'ENTER / A or click to play — press again to pause.' : '',
+        reqText: unlocked ? 'Unlocked — playable.' : rowText || 'Locked.',
+      };
+    });
+
+    return items;
+  }
+
+  _colCardHTML(it, i) {
+    const thumb = it.img
+      ? `<div class="cx-thumb"><img src="${it.img}" alt="" loading="lazy"></div>`
+      : `<div class="cx-thumb" style="color:${it.color || '#2ee6f6'}">${it.mono || '?'}</div>`;
+    return `<div class="cx-card ${it.unlocked ? 'unlocked' : 'locked'}" data-sidx="${i}" data-lk="${it.unlocked ? 0 : 1}">
+      ${thumb}
+      <div class="cx-info">
+        <div class="cx-name">${it.name}</div>
+        <div class="cx-sub">${it.sub || ''}${it.tag ? ' · ' + it.tag : ''}</div>
+        <div class="cx-req">${it.unlocked ? (it.desc || it.reqText || '') : it.reqText}</div>
+      </div>
+      <div class="cx-status ${it.unlocked ? 'unlocked' : 'locked'}">${it.unlocked ? (it.stOn || '★ UNLOCKED') : '🔒 LOCKED'}</div>
+    </div>`;
+  }
+
+  _colRender() {
+    const el = this._achievementsOverlayEl;
+    if (!el || !el.querySelector('#ct-tabs')) return;
+    const items = this._colItems = this._colBuildItems();
+
+    // Tab rail with live unlocked/total counters
+    const tabsEl = el.querySelector('#ct-tabs');
+    tabsEl.innerHTML = this._colTabsDef().map(t => {
+      const list = items[t.id] || [];
+      const n = list.filter(x => x.unlocked).length;
+      const cls = 'ct-tab' + (this._colTab === t.id ? ' active' : '') + (list.length > 0 && n === list.length ? ' done' : '');
+      return `<div class="${cls}" data-tab="${t.id}">${t.label}<span class="n">${n}/${list.length}</span></div>`;
+    }).join('');
+
+    // New collection grids
+    for (const tab of ['characters', 'weapons', 'evolutions', 'fusions', 'relics']) {
+      const grid = el.querySelector('#cx-' + tab);
+      if (grid) grid.innerHTML = (items[tab] || []).map((it, i) => this._colCardHTML(it, i)).join('');
+    }
+
+    // Decorate the legacy grids (display-only data attributes for filter + selection)
+    const markSeq = (sel, list, start) => {
+      el.querySelectorAll(sel).forEach((n, i) => {
+        const it = list[start + i];
+        if (!it) return;
+        n.dataset.sidx = String(start + i);
+        n.dataset.lk = it.unlocked ? '0' : '1';
+      });
+    };
+    markSeq('#ca-grid .ca-card', items.achievements, 0);
+    markSeq('#ce-grid .ce-card', items.achievements, ENDLESS_ACHIEVEMENTS.length);
+    markSeq('#em-list .em-row', items.lore, 0);
+    markSeq('#sl-list .sl-row', items.lore, EDEN_MILESTONES.length);
+    markSeq('#sk-grid .sk-card', items.skins, 0);
+    markSeq('#jb-list .jb-row', items.ost, 0);
+
+    this._colApplyFilter();
+    this._colRefreshSelection();
+  }
+
+  _colApplyFilter() {
+    const el = this._achievementsOverlayEl;
+    if (!el) return;
+    const filterable = !['lore', 'ost'].includes(this._colTab);
+    el.querySelectorAll('.ct-panel').forEach(p => {
+      p.classList.toggle('active', p.dataset.panel === this._colTab);
+      p.classList.remove('flt-unlocked', 'flt-locked');
+      if (p.dataset.panel === this._colTab && filterable && this._colFilter !== 'all') {
+        p.classList.add('flt-' + this._colFilter);
+      }
+    });
+    const flts = el.querySelector('#ct-filters');
+    if (flts) {
+      flts.classList.toggle('hidden', !filterable);
+      flts.querySelectorAll('.ct-flt').forEach(f => f.classList.toggle('active', f.dataset.flt === this._colFilter));
+    }
+    const cnt = el.querySelector('#ct-count');
+    if (cnt) {
+      const list = this._colItems?.[this._colTab] || [];
+      cnt.textContent = `${list.filter(x => x.unlocked).length} / ${list.length} UNLOCKED`;
+    }
+  }
+
+  _colVisibleSelectables() {
+    const el = this._achievementsOverlayEl;
+    if (!el) return [];
+    const panel = el.querySelector(`.ct-panel[data-panel="${this._colTab}"]`);
+    if (!panel) return [];
+    return Array.from(panel.querySelectorAll('[data-sidx]')).filter(n => n.offsetParent !== null);
+  }
+
+  _colRefreshSelection(scroll = false) {
+    const el = this._achievementsOverlayEl;
+    if (!el) return;
+    el.querySelectorAll('.ct-on').forEach(n => n.classList.remove('ct-on'));
+    const detail = el.querySelector('#ct-detail');
+    const vis = this._colVisibleSelectables();
+    if (!vis.length) {
+      if (detail) detail.innerHTML = `<div class="ctd-empty">Nothing matches this filter.</div>`;
+      return;
+    }
+    let node = vis.find(n => Number(n.dataset.sidx) === this._colSel[this._colTab]);
+    if (!node) { node = vis[0]; this._colSel[this._colTab] = Number(node.dataset.sidx); }
+    node.classList.add('ct-on');
+    if (scroll) { try { node.scrollIntoView({ block: 'nearest' }); } catch (_) {} }
+    const it = this._colItems?.[this._colTab]?.[Number(node.dataset.sidx)];
+    if (detail) detail.innerHTML = it ? this._colDetailHTML(it) : `<div class="ctd-empty">Select an item.</div>`;
+  }
+
+  _colDetailHTML(it) {
+    const thumb = it.img
+      ? `<div class="ctd-thumb ${it.unlocked ? '' : 'locked'}"><img src="${it.img}" alt=""></div>`
+      : `<div class="ctd-thumb" style="color:${it.color || '#2ee6f6'}">${it.mono || '?'}</div>`;
+    const chips = [
+      `<span class="ctd-chip ${it.unlocked ? 'ok' : 'no'}">${it.unlocked ? (it.stOn || '★ UNLOCKED') : '🔒 LOCKED'}</span>`,
+      it.sub ? `<span class="ctd-chip owner">${it.sub}</span>` : '',
+      it.tag ? `<span class="ctd-chip">${it.tag}</span>` : '',
+    ].join('');
+    return `<div class="ctd-kind">${it.kind}</div>
+      ${thumb}
+      <div class="ctd-name">${it.name}</div>
+      <div class="ctd-chips">${chips}</div>
+      ${it.desc ? `<div class="ctd-desc">${it.desc}</div>` : ''}
+      ${it.desc2 ? `<div class="ctd-desc">${it.desc2}</div>` : ''}
+      <div class="ctd-req-label">${it.unlocked ? 'STATUS' : 'HOW TO UNLOCK'}</div>
+      <div class="ctd-req">${it.reqText || ''}</div>`;
+  }
+
+  _colSetTab(id) {
+    if (!id || this._colTab === id) return;
+    if (!this._colTabsDef().some(t => t.id === id)) return;
+    this._colTab = id;
+    this._colFilter = 'all';
+    const tabsEl = this._achievementsOverlayEl?.querySelector('#ct-tabs');
+    tabsEl?.querySelectorAll('.ct-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === id));
+    this._colApplyFilter();
+    this._colRefreshSelection();
+    if (this._achievementsOverlayEl) this._achievementsOverlayEl.scrollTop = 0;
+  }
+
+  _colSwitchTab(dir) {
+    const tabs = this._colTabsDef();
+    const i = tabs.findIndex(t => t.id === this._colTab);
+    this._colSetTab(tabs[((i < 0 ? 0 : i) + dir + tabs.length) % tabs.length].id);
+  }
+
+  _colMoveSel(dir) {
+    const vis = this._colVisibleSelectables();
+    if (!vis.length) return;
+    let i = vis.findIndex(n => Number(n.dataset.sidx) === this._colSel[this._colTab]);
+    i = i < 0 ? 0 : (i + dir + vis.length) % vis.length;
+    this._colSel[this._colTab] = Number(vis[i].dataset.sidx);
+    this._colRefreshSelection(true);
+  }
+
+  _colSetFilter(f) {
+    if (!['all', 'unlocked', 'locked'].includes(f)) return;
+    if (['lore', 'ost'].includes(this._colTab)) return;
+    this._colFilter = f;
+    this._colApplyFilter();
+    this._colRefreshSelection();
+  }
+
+  _colCycleFilter() {
+    const order = ['all', 'unlocked', 'locked'];
+    this._colSetFilter(order[(order.indexOf(this._colFilter) + 1) % order.length]);
+  }
+
+  // ENTER / controller A: on OST it plays/pauses the selected track; elsewhere it
+  // cycles the filter. Spending actions (ACTIVATE/BUY) stay mouse/touch-only.
+  _colPrimaryAction() {
+    if (this._colTab === 'ost') {
+      const vis = this._colVisibleSelectables();
+      const node = vis.find(n => Number(n.dataset.sidx) === this._colSel[this._colTab]) || vis[0];
+      if (node && node.classList.contains('jb-row')) node.click();
+      return;
+    }
+    this._colCycleFilter();
   }
 
   _initRelicsOverlay() {
@@ -6804,10 +7361,20 @@ export class Game {
   }
 
   _updateAchievementsScreen(input) {
-    if (input.keys.has('escape')) {
-      this.goToMainMenu();
-      input.keys.delete('escape');
-    }
+    const { keys } = input;
+    const take = (...ks) => {
+      let hit = false;
+      for (const k of ks) if (keys.has(k)) { keys.delete(k); hit = true; }
+      return hit;
+    };
+    if (take('escape')) { this.goToMainMenu(); return; }
+    // DOM overlay navigation (controller D-pad arrives as synthetic Arrow keydowns).
+    if (!this._achievementsOverlayVisible) return;
+    if (take('arrowup', 'w'))    this._colSwitchTab(-1);
+    if (take('arrowdown', 's'))  this._colSwitchTab(1);
+    if (take('arrowleft', 'a'))  this._colMoveSel(-1);
+    if (take('arrowright', 'd')) this._colMoveSel(1);
+    if (take('enter'))           this._colPrimaryAction();
   }
 
   handleAchievementsClick(mousePos) {
