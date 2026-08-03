@@ -5403,6 +5403,22 @@ export class Game {
         #cgm-achievements .ct-panel.flt-locked [data-lk="0"] { display:none; }
         #cgm-achievements [data-sidx] { cursor:pointer; }
         #cgm-achievements .ct-on { outline:2px solid var(--cyan); outline-offset:1px; box-shadow:0 0 14px rgba(46,230,246,.28); }
+        /* Controller/keyboard focus for the ACTIVATE control of the SELECTED card. Display only:
+           the button itself, its click handler and every spend gate are untouched. */
+        #cgm-achievements .ct-on .ca-activate,
+        #cgm-achievements .ct-on .ce-activate {
+          outline:2px solid #ffd447; outline-offset:2px;
+          background:rgba(255,212,71,.24) !important;
+          box-shadow:0 0 14px rgba(255,212,71,.55);
+        }
+        #cgm-achievements .ct-on .ca-activate::after,
+        #cgm-achievements .ct-on .ce-activate::after {
+          content:' [A]'; font-size:9px; letter-spacing:1px; opacity:.85; margin-left:4px;
+        }
+        @media (prefers-reduced-motion: no-preference) {
+          #cgm-achievements .ct-on .ca-activate,
+          #cgm-achievements .ct-on .ce-activate { transition:box-shadow .15s, background .15s; }
+        }
         #cgm-achievements .cx-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(228px,1fr)); gap:11px; }
         #cgm-achievements .cx-card { position:relative; border-radius:12px; border:1px solid rgba(46,90,100,.3); background:rgba(10,16,46,.55); padding:11px 12px; display:flex; gap:11px; align-items:center; transition:border-color .15s, box-shadow .15s, transform .15s; }
         #cgm-achievements .cx-card:hover { border-color:rgba(46,230,246,.45); transform:translateY(-1px); }
@@ -5582,7 +5598,7 @@ export class Game {
           <div class="ca-hints">
             <span><b>&#9664; &#9654;</b> Item</span>
             <span><b>&#9650; &#9660;</b> Tab</span>
-            <span><b>ENTER / A</b> Filter &middot; Play (OST)</span>
+            <span><b>ENTER / A</b> Activate &middot; Filter &middot; Play (OST)</span>
             <span><b>ESC / B</b> Back</span>
           </div>
         </div>
@@ -6314,9 +6330,29 @@ export class Game {
     this._colSetFilter(order[(order.indexOf(this._colFilter) + 1) % order.length]);
   }
 
-  // ENTER / controller A: on OST it plays/pauses the selected track; elsewhere it
-  // cycles the filter. Spending actions (ACTIVATE/BUY) stay mouse/touch-only.
+  // The ACTIVATE control of the currently selected card, or null when the selection has
+  // none (locked, already ACTIVE, filtered out, or a tab that has no spending actions).
+  // Returns the REAL button node so the caller can drive the existing click path.
+  _colActivateNode() {
+    const el = this._achievementsOverlayEl;
+    if (!el || this._colTab !== 'achievements') return null;
+    const vis  = this._colVisibleSelectables();
+    const node = vis.find(n => Number(n.dataset.sidx) === this._colSel[this._colTab]);
+    if (!node) return null;
+    const btn = node.querySelector('.ca-activate, .ce-activate');
+    return btn && btn.offsetParent !== null ? btn : null;
+  }
+
+  // ENTER / controller A. Controller support for the ACTIVATE buttons (2026-08-03):
+  // when the selected card carries an ACTIVATE, this dispatches a real click on THAT
+  // button, so the already-wired delegated handler runs — meaning MetaProgress
+  // tryActivateEcho / tryActivateCollectible stay the one and only spend path. No cost,
+  // affordability, unlock, save or reward logic is duplicated or bypassed here, and the
+  // mouse/touch path is byte-for-byte the same as before.
+  // Otherwise the previous behaviour is kept: OST plays/pauses, elsewhere the filter cycles.
   _colPrimaryAction() {
+    const act = this._colActivateNode();
+    if (act) { act.click(); return; }
     if (this._colTab === 'ost') {
       const vis = this._colVisibleSelectables();
       const node = vis.find(n => Number(n.dataset.sidx) === this._colSel[this._colTab]) || vis[0];

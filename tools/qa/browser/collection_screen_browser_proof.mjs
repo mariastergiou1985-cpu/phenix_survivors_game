@@ -10,7 +10,7 @@ import fs from 'node:fs';
 const BASE = process.argv[2] || 'http://127.0.0.1:8137';
 const EXE  = process.env.PW_CHROMIUM || '/opt/pw-browsers/chromium';
 const SHOTS = process.env.COL_PROOF_SHOTS || '/tmp/collection_proof_shots';
-const BUILD = '20260903040000';
+const BUILD = '20260903050000';
 
 let passN = 0, failN = 0;
 const failures = [];
