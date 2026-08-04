@@ -2144,6 +2144,7 @@ export class Game {
       this.gameState = 'campaign_select';
       const cleared = this.meta?.stagesCleared || 0;
       this._campaignSelIndex = Math.min(CAMPAIGN_STAGES.length - 1, cleared);   // cursor on the next stage to beat
+      this._cmpFootSel = -1;                                                     // focus starts in the stage grid
       this.audio?.startMenuMusic();
       this._showCampaignOverlay();   // portrait-friendly DOM overlay (canvas draw stays as fallback behind it)
     });
@@ -2151,15 +2152,43 @@ export class Game {
 
   _updateCampaignSelect(input) {
     const { keys } = input, n = CAMPAIGN_STAGES.length;
-    if (keys.has('arrowleft')  || keys.has('a')) { this._campaignSelIndex = (this._campaignSelIndex - 1 + n) % n; keys.delete('arrowleft');  keys.delete('a'); }
-    if (keys.has('arrowright') || keys.has('d')) { this._campaignSelIndex = (this._campaignSelIndex + 1) % n;     keys.delete('arrowright'); keys.delete('d'); }
+    if (this._cmpFootSel == null) this._cmpFootSel = -1;
+    const cols = this._cmpCols();
+    let dirty = false;
+    // LEFT/RIGHT: inside the grid it walks the stages (unchanged wrap-around); on the
+    // footer it swaps DEPLOY <-> BACK.
+    if (keys.has('arrowleft')  || keys.has('a')) {
+      if (this._cmpFootSel >= 0) this._cmpFootSel = this._cmpFootSel === 0 ? 1 : 0;
+      else this._campaignSelIndex = (this._campaignSelIndex - 1 + n) % n;
+      keys.delete('arrowleft'); keys.delete('a'); dirty = true;
+    }
+    if (keys.has('arrowright') || keys.has('d')) {
+      if (this._cmpFootSel >= 0) this._cmpFootSel = this._cmpFootSel === 0 ? 1 : 0;
+      else this._campaignSelIndex = (this._campaignSelIndex + 1) % n;
+      keys.delete('arrowright'); keys.delete('d'); dirty = true;
+    }
+    // UP/DOWN: a real visual row, then out into the footer and back again.
+    if (keys.has('arrowup') || keys.has('w')) {
+      if (this._cmpFootSel >= 0) this._cmpFootSel = -1;
+      else if (this._campaignSelIndex - cols >= 0) this._campaignSelIndex -= cols;
+      keys.delete('arrowup'); keys.delete('w'); dirty = true;
+    }
+    if (keys.has('arrowdown') || keys.has('s')) {
+      if (this._cmpFootSel >= 0) { /* already at the bottom */ }
+      else if (this._campaignSelIndex + cols < n) this._campaignSelIndex += cols;
+      else this._cmpFootSel = 0;
+      keys.delete('arrowdown'); keys.delete('s'); dirty = true;
+    }
     if (keys.has('enter') || keys.has(' ')) {
       keys.delete('enter'); keys.delete(' ');
-      const st = CAMPAIGN_STAGES[this._campaignSelIndex];
-      if (this.meta?.isStageUnlocked(st.n)) { this._pendingCampaignStage = st.n; this.goToCharacterSelect({ from: 'campaign_select' }); }
-      else this.triggerAnnouncement('CLEAR THE PREVIOUS STAGE FIRST', '#888888');
+      if (this._cmpFootSel === 1) { this.goToActSelect(); return; }
+      this._cmpDeploy();
+      return;
     }
-    if (keys.has('escape')) { this.goToActSelect(); keys.delete('escape'); }   // BACK → ACT SELECT (new flow)
+    if (keys.has('escape')) { this.goToActSelect(); keys.delete('escape'); return; }   // BACK → ACT SELECT (new flow)
+    if (dirty && this._campaignOverlayEl && this._campaignOverlayEl.style.display !== 'none') {
+      this._renderCampaignOverlay();
+    }
     // MOUSE (desktop hold-click, polled): same hit-test as the shared method below.
     if (input.mouseDown && input.mousePos) {
       if (!this._campClickLatch) {
@@ -26504,35 +26533,158 @@ export class Game {
           --cyan:#2ee6f6; --green:#7CFF4D; --txt-dim:#6f86b8;
         }
         #cgm-campaign * { box-sizing:border-box; margin:0; padding:0; }
+        #cgm-campaign::before {
+          content:""; position:fixed; inset:0; pointer-events:none; z-index:0;
+          background-image:linear-gradient(rgba(46,230,246,.05) 1px,transparent 1px),
+            linear-gradient(90deg,rgba(46,230,246,.05) 1px,transparent 1px);
+          background-size:46px 46px;
+          mask-image:radial-gradient(circle at 50% 40%,#000 0%,transparent 78%);
+        }
+        #cgm-campaign::after {
+          content:""; position:fixed; inset:0; pointer-events:none; z-index:9999;
+          background:repeating-linear-gradient(0deg,rgba(0,0,0,.10) 0 2px,transparent 2px 4px);
+          opacity:.35; mix-blend-mode:overlay;
+        }
         #cgm-campaign .cmp-stage {
-          position:relative; width:100%; max-width:900px; margin:auto;
-          border:1px solid rgba(46,230,246,.12); border-radius:20px; padding:22px 24px 20px;
+          position:relative; z-index:1; width:100%; max-width:1120px; margin:auto;
+          border:1px solid rgba(46,230,246,.12); border-radius:20px; padding:20px 24px 18px;
           background:linear-gradient(180deg,rgba(168,85,247,.05),transparent 30%),rgba(7,10,28,.85);
           box-shadow:inset 0 0 60px rgba(46,230,246,.05),0 30px 80px rgba(0,0,0,.55);
           display:flex; flex-direction:column; gap:14px;
         }
-        #cgm-campaign .cmp-top { display:flex; align-items:center; justify-content:space-between; gap:12px; }
-        #cgm-campaign .cmp-title { font-family:'Orbitron',sans-serif; font-weight:800; font-size:22px; letter-spacing:3px; color:var(--cyan); text-shadow:0 0 8px rgba(46,230,246,.55); }
-        #cgm-campaign .cmp-back { padding:12px 22px; border-radius:10px; cursor:pointer; border:1px solid rgba(46,230,246,.45); background:rgba(10,16,46,.65); color:#e8ffff; font-family:'Orbitron',sans-serif; font-weight:700; font-size:13px; letter-spacing:2px; }
+        #cgm-campaign .cmp-top { display:flex; align-items:flex-start; justify-content:space-between; gap:14px; flex-wrap:wrap; }
+        #cgm-campaign .cmp-tw { display:flex; flex-direction:column; gap:4px; }
+        #cgm-campaign .cmp-title { font-family:'Orbitron',sans-serif; font-weight:800; font-size:20px; letter-spacing:3px; color:var(--cyan); text-shadow:0 0 8px rgba(46,230,246,.55); }
+        #cgm-campaign .cmp-tag { font-size:11px; letter-spacing:2.4px; color:var(--txt-dim); }
+        #cgm-campaign .cmp-progwrap { display:flex; flex-direction:column; gap:6px; align-items:flex-end; min-width:190px; }
+        #cgm-campaign .cmp-progtxt { font-family:'Orbitron',sans-serif; font-weight:700; font-size:11px; letter-spacing:1.8px; color:var(--green); }
+        #cgm-campaign .cmp-progbar { width:190px; height:6px; border-radius:4px; background:rgba(6,12,28,.9); border:1px solid rgba(46,230,246,.18); overflow:hidden; }
+        #cgm-campaign .cmp-progfill { height:100%; background:linear-gradient(90deg,#2ee6f6,#7CFF4D); box-shadow:0 0 10px rgba(124,255,77,.5); }
+        #cgm-campaign .cmp-back {
+          padding:11px 20px; border-radius:10px; cursor:pointer;
+          border:1px solid rgba(46,230,246,.45); background:rgba(10,16,46,.65); color:#e8ffff;
+          font-family:'Orbitron',sans-serif; font-weight:700; font-size:12px; letter-spacing:2px;
+        }
         #cgm-campaign .cmp-back:hover { border-color:var(--cyan); box-shadow:0 0 12px rgba(46,230,246,.4); }
-        #cgm-campaign .cmp-sub { font-size:12px; color:var(--txt-dim); letter-spacing:1px; line-height:1.5; }
-        #cgm-campaign .cmp-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; }
-        #cgm-campaign .cmp-card { position:relative; border-radius:12px; overflow:hidden; cursor:pointer; border:1.5px solid rgba(46,230,246,.28); aspect-ratio:16/10; background:rgba(10,16,46,.7); display:flex; align-items:flex-end; transition:border-color .15s, box-shadow .18s, transform .18s; }
-        #cgm-campaign .cmp-card img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; opacity:.9; }
-        #cgm-campaign .cmp-card .cmp-cap { position:relative; z-index:2; width:100%; padding:8px 10px; font-weight:700; font-size:14px; letter-spacing:1px; text-align:center; color:#e8ffff; background:linear-gradient(0deg,rgba(4,8,20,.94),transparent); text-shadow:0 1px 3px #000; }
-        #cgm-campaign .cmp-card.sel { border-color:var(--cyan); box-shadow:0 0 20px rgba(46,230,246,.5); transform:scale(1.03); z-index:2; }
-        #cgm-campaign .cmp-card.cleared { border-color:var(--green); }
-        #cgm-campaign .cmp-card.locked { cursor:not-allowed; }
-        #cgm-campaign .cmp-card.locked img { opacity:.3; filter:grayscale(.6); }
-        #cgm-campaign .cmp-lock { position:absolute; inset:0; z-index:3; display:flex; align-items:center; justify-content:center; font-size:30px; }
-        #cgm-campaign .cmp-badge { position:absolute; top:6px; left:6px; z-index:3; font-size:11px; font-weight:700; color:var(--green); background:rgba(4,8,20,.82); padding:3px 7px; border-radius:6px; letter-spacing:1px; }
-        #cgm-campaign .cmp-hints { font-size:11px; color:#46588a; letter-spacing:1px; text-align:center; }
-        @media (max-width:1024px), (pointer: coarse) {
-          #cgm-campaign { padding:12px 10px; }
-          #cgm-campaign .cmp-stage { max-width:100%; padding:16px 12px; }
+        #cgm-campaign .cmp-sub { font-size:11px; color:var(--txt-dim); letter-spacing:.8px; line-height:1.5; }
+
+        /* ── progression path — one node per stage, connected ── */
+        #cgm-campaign .cmp-path { display:flex; align-items:center; gap:0; padding:2px 0 4px; }
+        #cgm-campaign .cmp-nodewrap { display:flex; align-items:center; flex:1; min-width:0; }
+        #cgm-campaign .cmp-nodewrap:last-child { flex:0 0 auto; }
+        #cgm-campaign .cmp-node {
+          flex:none; width:30px; height:30px; border-radius:50%; cursor:pointer;
+          display:flex; align-items:center; justify-content:center;
+          font-family:'Orbitron',sans-serif; font-weight:800; font-size:11px;
+          border:2px solid rgba(111,134,184,.4); background:rgba(6,12,28,.9); color:var(--txt-dim);
+          transition:.16s;
+        }
+        #cgm-campaign .cmp-node.done { border-color:var(--green); color:var(--green); background:rgba(124,255,77,.10); }
+        #cgm-campaign .cmp-node.now  { border-color:var(--cyan);  color:#eaffff; background:rgba(46,230,246,.16); box-shadow:0 0 12px rgba(46,230,246,.55); }
+        #cgm-campaign .cmp-node.lock { opacity:.55; }
+        #cgm-campaign .cmp-node.sel  { outline:2px solid #fbbf24; outline-offset:3px; }
+        #cgm-campaign .cmp-link { flex:1; height:2px; min-width:8px; background:rgba(111,134,184,.28); }
+        #cgm-campaign .cmp-link.done { background:linear-gradient(90deg,#7CFF4D,#2ee6f6); box-shadow:0 0 8px rgba(124,255,77,.4); }
+
+        /* ── stage cards — all seven, each carrying its own briefing ── */
+        #cgm-campaign .cmp-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; }
+        #cgm-campaign .cmp-card {
+          position:relative; border-radius:13px; overflow:hidden; cursor:pointer;
+          border:1.5px solid rgba(46,90,100,.35); background:rgba(10,16,46,.7);
+          display:flex; flex-direction:column;
+          transition:border-color .15s, box-shadow .18s, transform .18s;
+        }
+        #cgm-campaign .cmp-card:hover { border-color:rgba(46,230,246,.55); transform:translateY(-2px); }
+        #cgm-campaign .cmp-art { position:relative; width:100%; aspect-ratio:16/9; overflow:hidden; flex:none; }
+        #cgm-campaign .cmp-art img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; opacity:.92; }
+        #cgm-campaign .cmp-art::after {
+          content:""; position:absolute; inset:0;
+          background:linear-gradient(0deg,rgba(4,8,20,.92),rgba(4,8,20,.05) 60%);
+        }
+        #cgm-campaign .cmp-no {
+          position:absolute; top:7px; left:7px; z-index:3;
+          font-family:'Orbitron',sans-serif; font-weight:800; font-size:11px; letter-spacing:1px;
+          padding:3px 8px; border-radius:6px; color:#eaffff;
+          background:rgba(4,8,20,.85); border:1px solid rgba(46,230,246,.4);
+        }
+        #cgm-campaign .cmp-state {
+          position:absolute; top:7px; right:7px; z-index:3;
+          font-family:'Orbitron',sans-serif; font-weight:700; font-size:9px; letter-spacing:1.2px;
+          padding:3px 8px; border-radius:6px; background:rgba(4,8,20,.85);
+          border:1px solid rgba(111,134,184,.4); color:var(--txt-dim);
+        }
+        #cgm-campaign .cmp-state.done { border-color:var(--green); color:var(--green); }
+        #cgm-campaign .cmp-state.now  { border-color:var(--cyan);  color:var(--cyan); }
+        #cgm-campaign .cmp-nm {
+          position:absolute; left:8px; right:8px; bottom:6px; z-index:3;
+          font-family:'Orbitron',sans-serif; font-weight:800; font-size:13px; letter-spacing:1.6px;
+          color:#eaffff; text-shadow:0 1px 4px #000;
+        }
+        #cgm-campaign .cmp-body { padding:9px 11px 11px; display:flex; flex-direction:column; gap:5px; }
+        #cgm-campaign .cmp-biome {
+          font-family:'Orbitron',sans-serif; font-weight:700; font-size:9.5px; letter-spacing:1.6px;
+          color:#a855f7;
+        }
+        #cgm-campaign .cmp-line { display:flex; gap:7px; align-items:baseline; font-size:11px; line-height:1.35; color:#bcd6ee; }
+        #cgm-campaign .cmp-line b {
+          flex:0 0 46px; font-family:'Orbitron',sans-serif; font-weight:700; font-size:8.5px;
+          letter-spacing:1.2px; color:var(--txt-dim);
+        }
+        #cgm-campaign .cmp-line .v { flex:1; min-width:0; }
+        #cgm-campaign .cmp-line.boss .v { color:#ff9a6a; }
+        #cgm-campaign .cmp-line.rew  .v { color:#fbbf24; }
+        #cgm-campaign .cmp-req { font-size:10px; letter-spacing:.4px; color:#7a8290; }
+
+        #cgm-campaign .cmp-card.cleared { border-color:rgba(124,255,77,.5); }
+        #cgm-campaign .cmp-card.current { border-color:rgba(46,230,246,.6); box-shadow:0 0 16px rgba(46,230,246,.2); }
+        #cgm-campaign .cmp-card.locked  { cursor:not-allowed; opacity:.72; }
+        #cgm-campaign .cmp-card.locked .cmp-art img { opacity:.28; filter:grayscale(.7); }
+        #cgm-campaign .cmp-lock { position:absolute; inset:0; z-index:4; display:flex; align-items:center; justify-content:center; font-size:26px; }
+        #cgm-campaign .cmp-card.final .cmp-no { border-color:#ff2d95; color:#ffd0e8; }
+        #cgm-campaign .cmp-card.sel {
+          border-color:#fbbf24; box-shadow:0 0 22px rgba(251,191,36,.45); transform:translateY(-2px) scale(1.015); z-index:2;
+        }
+
+        /* ── footer ── */
+        #cgm-campaign .cmp-foot { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+        #cgm-campaign .cmp-go {
+          padding:13px 34px; border-radius:11px; cursor:pointer;
+          border:1px solid var(--cyan); color:#eaffff;
+          background:linear-gradient(180deg,rgba(46,230,246,.18),rgba(46,230,246,.04));
+          font-family:'Orbitron',sans-serif; font-weight:800; font-size:13px; letter-spacing:2.6px;
+          box-shadow:0 0 14px rgba(46,230,246,.3); transition:.15s;
+        }
+        #cgm-campaign .cmp-go:hover { box-shadow:0 0 22px rgba(46,230,246,.55); color:#fff; }
+        #cgm-campaign .cmp-go.locked {
+          border-color:rgba(111,134,184,.3); color:var(--txt-dim); cursor:not-allowed;
+          background:rgba(10,16,46,.35); box-shadow:none;
+        }
+        #cgm-campaign .cmp-go.navsel, #cgm-campaign .cmp-back.navsel {
+          outline:2px solid #fbbf24; outline-offset:3px;
+        }
+        #cgm-campaign .cmp-hints { font-size:11px; color:#46588a; letter-spacing:1px; display:flex; gap:16px; flex-wrap:wrap; }
+        #cgm-campaign .cmp-hints b { color:var(--cyan); font-weight:400; }
+        @media (max-width:1100px) {
+          #cgm-campaign .cmp-grid { grid-template-columns:repeat(3,1fr); }
+        }
+        @media (max-width:820px), (pointer: coarse) {
+          #cgm-campaign { padding:12px 10px; align-items:flex-start; }
+          #cgm-campaign .cmp-stage { max-width:100%; padding:14px 12px; border-radius:16px; }
           #cgm-campaign .cmp-grid { grid-template-columns:repeat(2,1fr); gap:10px; }
-          #cgm-campaign .cmp-title { font-size:17px; letter-spacing:2px; }
-          #cgm-campaign .cmp-back { padding:14px 18px; font-size:14px; }
+          #cgm-campaign .cmp-title { font-size:16px; letter-spacing:2px; }
+          #cgm-campaign .cmp-progwrap { align-items:flex-start; min-width:0; }
+          #cgm-campaign .cmp-progbar { width:150px; }
+          #cgm-campaign .cmp-back { padding:13px 18px; font-size:13px; }
+          #cgm-campaign .cmp-node { width:26px; height:26px; font-size:10px; }
+          #cgm-campaign .cmp-foot { flex-direction:column; align-items:stretch; }
+          #cgm-campaign .cmp-go { width:100%; padding:15px 20px; }
+          #cgm-campaign .cmp-hints { justify-content:center; }
+        }
+        @media (max-width:520px) {
+          #cgm-campaign .cmp-grid { grid-template-columns:1fr; }
+          #cgm-campaign .cmp-top { flex-direction:column; align-items:stretch; }
+          #cgm-campaign .cmp-back { width:100%; }
+          #cgm-campaign .cmp-line b { flex:0 0 42px; }
         }
       `;
       document.head.appendChild(style);
@@ -26545,41 +26697,141 @@ export class Game {
     this._campaignOverlayEl = el;
   }
 
+  // ─── ACT 1 STAGE MAP redesign (2026-08-04) ──────────────────────────────────
+  // DISPLAY ONLY. Lock state is meta.isStageUnlocked(), clear state is
+  // meta.stagesCleared, the boss and its reward come from Game.STAGE_BOSSES and the
+  // biome name from BIOME_DEFS — the same sources the run itself uses. Deploying
+  // still goes through _pendingCampaignStage + goToCharacterSelect({from:'campaign_select'})
+  // and BACK still calls goToActSelect(), so no campaign logic, unlock, reward, save
+  // or stage rule is touched here.
+  _cmpStageInfo(st) {
+    const boss  = (Game.STAGE_BOSSES || {})[st.biome] || null;
+    const biome = (BIOME_DEFS && BIOME_DEFS[st.biome] && BIOME_DEFS[st.biome].name) || st.biome;
+    return { boss, biome: String(biome).toUpperCase() };
+  }
+
+  // Wording for the primary CTA, derived from the same two numbers the cards use.
+  _cmpCta() {
+    const cleared = this.meta?.stagesCleared || 0;
+    const st = CAMPAIGN_STAGES[this._campaignSelIndex] || CAMPAIGN_STAGES[0];
+    if (!this.meta?.isStageUnlocked(st.n)) return { label: 'LOCKED', locked: true };
+    if (st.n <= cleared)                   return { label: 'REPLAY &#9654;', locked: false };
+    if (cleared === 0 && st.n === 1)       return { label: 'START &#9654;', locked: false };
+    return { label: 'CONTINUE &#9654;', locked: false };
+  }
+
+  // How many columns the grid actually has right now — so UP/DOWN moves a visual row
+  // on desktop, tablet and phone without the handler hard-coding a layout.
+  _cmpCols() {
+    try {
+      const g = this._campaignOverlayEl?.querySelector('.cmp-grid');
+      if (!g) return 4;
+      const n = getComputedStyle(g).gridTemplateColumns.split(' ').filter(Boolean).length;
+      return n > 0 ? n : 4;
+    } catch (_) { return 4; }
+  }
+
   _renderCampaignOverlay() {
     const el = this._campaignOverlayEl;
     if (!el) return;
     const cleared = this.meta?.stagesCleared || 0;
+    const total   = CAMPAIGN_STAGES.length;
+    const esc = (v) => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+    // progression path — one node per stage, links lit up to the last clear
+    const path = CAMPAIGN_STAGES.map((st, i) => {
+      const done = st.n <= cleared;
+      const now  = !done && this.meta?.isStageUnlocked(st.n);
+      const cls  = ['cmp-node', done ? 'done' : '', now ? 'now' : '',
+                    (!done && !now) ? 'lock' : '', i === this._campaignSelIndex ? 'sel' : ''].filter(Boolean).join(' ');
+      const link = i < total - 1 ? `<div class="cmp-link${st.n <= cleared ? ' done' : ''}"></div>` : '';
+      return `<div class="cmp-nodewrap"><div class="${cls}" data-node="${i}" title="${esc(st.name)}">` +
+             `${done ? '&#10003;' : st.n}</div>${link}</div>`;
+    }).join('');
+
     const cards = CAMPAIGN_STAGES.map((st, i) => {
-      const unlocked  = this.meta?.isStageUnlocked(st.n);
+      const unlocked  = this.meta?.isStageUnlocked(st.n) === true;
       const isCleared = st.n <= cleared;
-      const cls = ['cmp-card', unlocked ? '' : 'locked', isCleared ? 'cleared' : '', i === this._campaignSelIndex ? 'sel' : ''].filter(Boolean).join(' ');
+      const isCurrent = unlocked && !isCleared;
+      const { boss, biome } = this._cmpStageInfo(st);
+      const cls = ['cmp-card', unlocked ? '' : 'locked', isCleared ? 'cleared' : '',
+                   isCurrent ? 'current' : '', st.final ? 'final' : '',
+                   i === this._campaignSelIndex ? 'sel' : ''].filter(Boolean).join(' ');
+      const state = isCleared ? '<div class="cmp-state done">&#10003; CLEARED</div>'
+                  : isCurrent ? '<div class="cmp-state now">&#9654; CURRENT</div>'
+                              : '<div class="cmp-state">&#128274; LOCKED</div>';
       return `<div class="${cls}" data-idx="${i}">
-        <img src="${_mapSrc(st.map)}" alt="${st.name}" loading="eager">
-        ${isCleared ? '<div class="cmp-badge">✓ CLEARED</div>' : ''}
-        ${unlocked ? '' : '<div class="cmp-lock">🔒</div>'}
-        <div class="cmp-cap">${st.name}</div>
+        <div class="cmp-art">
+          <img src="${_mapSrc(st.map)}" alt="${esc(st.name)}" loading="eager">
+          <div class="cmp-no">${st.final ? 'FINAL' : String(st.n).padStart(2, '0')}</div>
+          ${state}
+          ${unlocked ? '' : '<div class="cmp-lock">&#128274;</div>'}
+          <div class="cmp-nm">${esc(st.name)}</div>
+        </div>
+        <div class="cmp-body">
+          <div class="cmp-biome">${esc(biome)}</div>
+          <div class="cmp-line boss"><b>BOSS</b><span class="v">${boss ? esc(boss.name) : '&mdash;'}</span></div>
+          <div class="cmp-line rew"><b>REWARD</b><span class="v">${boss ? esc(boss.rewardName) : '&mdash;'}</span></div>
+          ${unlocked ? '' : `<div class="cmp-req">Clear stage ${st.n - 1} to unlock.</div>`}
+        </div>
       </div>`;
     }).join('');
+
+    const cta = this._cmpCta();
+    const foot = this._cmpFootSel;
+    const pct = Math.round((Math.min(cleared, total) / total) * 100);
+
     el.innerHTML = `
       <div class="cmp-stage">
         <div class="cmp-top">
-          <div class="cmp-title">CAMPAIGN</div>
-          <button class="cmp-back" id="cmp-back">◀ BACK</button>
+          <div class="cmp-tw">
+            <div class="cmp-title">ACT 1 &mdash; STAGE MAP</div>
+            <div class="cmp-tag">NULL EDEN MEGACITY</div>
+          </div>
+          <div class="cmp-progwrap">
+            <div class="cmp-progtxt">${Math.min(cleared, total)} / ${total} STAGES CLEARED</div>
+            <div class="cmp-progbar"><div class="cmp-progfill" style="width:${pct}%"></div></div>
+          </div>
+          <button class="cmp-back${foot === 1 ? ' navsel' : ''}" id="cmp-back">&#9664; BACK</button>
         </div>
-        <div class="cmp-sub">Survive 5:00 to clear a stage and unlock the next. Beat them all to open ENDLESS + CHAOS.</div>
+        <div class="cmp-sub">Survive 5:00 and beat the stage boss to clear a stage and unlock the next. Beat them all to open ENDLESS + CHAOS.</div>
+        <div class="cmp-path">${path}</div>
         <div class="cmp-grid">${cards}</div>
-        <div class="cmp-hints">Tap a stage to deploy</div>
+        <div class="cmp-foot">
+          <button class="cmp-go${cta.locked ? ' locked' : ''}${foot === 0 ? ' navsel' : ''}" id="cmp-go">${cta.label}</button>
+          <div class="cmp-hints">
+            <span><b>&#9664;&#9654;&#9650;&#9660;</b> Stage</span>
+            <span><b>ENTER / A</b> Deploy</span>
+            <span><b>ESC / B</b> Back</span>
+          </div>
+        </div>
       </div>`;
-    el.querySelector('#cmp-back')?.addEventListener('click', () => this.goToActSelect());   // BACK → ACT SELECT (new flow)
-    el.querySelectorAll('.cmp-card').forEach(card => {
-      card.addEventListener('click', () => {
-        const i = parseInt(card.dataset.idx, 10);
-        const st = CAMPAIGN_STAGES[i];
+
+    el.querySelector('#cmp-back')?.addEventListener('click', () => this.goToActSelect());   // BACK → ACT SELECT
+    el.querySelector('#cmp-go')?.addEventListener('click', () => this._cmpDeploy());
+    el.querySelectorAll('.cmp-card, .cmp-node').forEach(node => {
+      node.addEventListener('click', () => {
+        const i = parseInt(node.dataset.idx ?? node.dataset.node, 10);
+        if (!Number.isFinite(i)) return;
         this._campaignSelIndex = i;
-        if (this.meta?.isStageUnlocked(st.n)) { this._pendingCampaignStage = st.n; this.goToCharacterSelect({ from: 'campaign_select' }); }
-        else this.triggerAnnouncement('CLEAR THE PREVIOUS STAGE FIRST', '#888888');
+        this._cmpFootSel = -1;
+        if (node.classList.contains('cmp-node')) { this._renderCampaignOverlay(); return; }
+        this._cmpDeploy();
       });
     });
+  }
+
+  // The one place a stage is entered from this screen — shared by the cards, the
+  // primary CTA, the canvas hit-test and the keyboard/controller path.
+  _cmpDeploy() {
+    const st = CAMPAIGN_STAGES[this._campaignSelIndex];
+    if (!st) return;
+    if (this.meta?.isStageUnlocked(st.n)) {
+      this._pendingCampaignStage = st.n;
+      this.goToCharacterSelect({ from: 'campaign_select' });
+    } else {
+      this.triggerAnnouncement('CLEAR THE PREVIOUS STAGE FIRST', '#888888');
+    }
   }
 
   // ══ START GAME FLOW — MODE SELECT + ACT SELECT (2026-08-03) ═════════════════
