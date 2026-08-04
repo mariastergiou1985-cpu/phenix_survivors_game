@@ -786,6 +786,40 @@ export class AudioManager {
     fileRepeat: {
       vol: 0.50, minGap: 0.14, cap: 3,           // x0.50 amplitude = -6.02 dB
     },
+    // ── MIX.missileImpact (Maria 2026-08-04) ────────────────────────────────
+    // playHomingMissileImpact appears in NEITHER FIRE_CUES nor IMPACT_CUES, so alone among
+    // the repeated combat cues it had no mix gate of any kind — its only guard was its own
+    // _canPlay('homingImpact', 0.12) floor, i.e. up to 8.3 firings a second. Each firing is
+    // THREE voices summing to 0.38, and the loudest of them is a 0.32 s 180->32 Hz sine: a
+    // long sub-bass tail in the one band nothing else occupies, so overlapping impacts
+    // stack there and pull the whole mix down through masterLimiter. Two independent
+    // systems call it — brawler homing missiles and the vessel companion's rockets — and
+    // they share the single floor.
+    //
+    // Measured on the SFX bus before this change (peak of the rendered signal, one hit):
+    //   playHomingMissileImpact  0.2158     <- loudest cue measured
+    //   playRailSpikeFire        0.1152     -5.45 dB below it
+    //   playRailSpikeImpact      0.1039     -6.35 dB
+    //   playHeavyHit             0.0995     -6.73 dB
+    //   playEventWarning         0.0789     -8.75 dB
+    //   playBossWarning          0.0791     -8.72 dB
+    // The one cue that is neither a weapon nor a warning was louder than every weapon AND
+    // every warning in the game.
+    //
+    // Policy: attenuate the cue's own voices, lengthen the retrigger floor, and cap how
+    // many tails may overlap. The SOUND is untouched — same oscillator types, frequencies,
+    // envelopes and durations — and it still routes through sfxGain, so SFX 0 and mute
+    // silence it completely.
+    missileImpact: {
+      mul: 0.22,        // x0.22 = -13.15 dB; the three voices now sum to 0.084
+      minGap: 0.22,     // was 0.12 -> at most ~4.5 hits/s instead of ~8.3
+      cap: 2,           // never more than 2 overlapping tails
+      // hold is one tail's own length (0.32 s sine) plus release. It deliberately EXCEEDS
+      // minGap, which is what lets the cap bind at all: between 0.22 s and 0.34 s after a
+      // hit a second one is admitted and a third is not. The floor is the primary rate
+      // limit; the cap is the ceiling on how much can ever sound at once.
+      hold: 0.34,
+    },
     bossBoost:  2.00,        // +6.02 dB
     eventBoost: 2.00,        // +6.02 dB
     tellBoost:  1.50,        // +3.52 dB
@@ -829,6 +863,32 @@ export class AudioManager {
 
   /** Back-compat alias — the 'fire' class of _mixGate(). */
   _fireGate(cueName) { return this._mixGate(cueName, 'fire'); }
+
+  /**
+   * Retrigger floor + hard overlap cap for playHomingMissileImpact, and the ONE authority
+   * for that cue's rate and level — see MIX.missileImpact.
+   *
+   * Occupancy is expressed as a RELEASE TIMESTAMP swept on admission, on the AUDIO clock,
+   * never as a setTimeout. A backgrounded tab throttles timers to ~1 Hz, which would leave
+   * slots held long after the tail had finished and silence the cue outright; sweeping on
+   * the same clock the floor uses is exact and, unlike a timer, deterministically testable.
+   *
+   * Returns the gain multiplier, or 0 when the cue must be dropped.
+   */
+  _missileImpactGate() {
+    const M = AudioManager.MIX.missileImpact;
+    const now = this.actx ? this.actx.currentTime : 0;
+    if (!this._miTails) this._miTails = [];
+    let n = 0;
+    for (const until of this._miTails) if (until > now) this._miTails[n++] = until;
+    this._miTails.length = n;
+    // A rejected cue must consume nothing — same rule as every other gate in this file.
+    if (now - (this._miLast ?? -1e9) < M.minGap) return 0;
+    if (this._miTails.length >= M.cap) return 0;
+    this._miLast = now;
+    this._miTails.push(now + M.hold);
+    return M.mul;
+  }
 
   /**
    * Wrap each fire cue once, on the prototype. _tone/_noiseBurst read this._fireMul, so a
@@ -1962,12 +2022,24 @@ export class AudioManager {
     this._tone({ type: 'triangle', freqStart: 700, freqEnd: 1400, dur: 0.12, gain: 0.08 });
   }
 
-  // Homing Missile — direct impact explosion. Throttled 0.12 s.
+  // Homing Missile — direct impact explosion. Level, retrigger floor and overlap cap all
+  // come from MIX.missileImpact via _missileImpactGate(). The old in-body
+  // _canPlay('homingImpact', 0.12) floor is gone deliberately: two authorities is the exact
+  // bug documented on MIX.fire.perCue — the body's guard ran after the gate, so a call the
+  // body then dropped had already spent a slot and moved the stamp. The three voices below
+  // are untouched; only the multiplier the gate returns is new.
   playHomingMissileImpact() {
-    if (!this._canPlay('homingImpact', 0.12)) return;
-    this._tone({ type: 'sine', freqStart: 180, freqEnd: 32, dur: 0.32, gain: 0.18 });
-    this._noiseBurst({ dur: 0.25, gain: 0.13, filterType: 'highpass', freq: 500 });
-    this._noiseBurst({ dur: 0.20, gain: 0.07, filterType: 'bandpass', freq: 350, delay: 0.05 });
+    const mul = this._missileImpactGate();
+    if (mul <= 0) return;                       // dropped: too soon, or the cap is full
+    const prev = this._fireMul;
+    // Composes multiplicatively, so if this cue is ever reached through another gated layer
+    // it is attenuated by both rather than having the outer one silently overwritten.
+    this._fireMul = (prev || 1) * mul;          // _tone/_noiseBurst apply it once, per layer
+    try {
+      this._tone({ type: 'sine', freqStart: 180, freqEnd: 32, dur: 0.32, gain: 0.18 });
+      this._noiseBurst({ dur: 0.25, gain: 0.13, filterType: 'highpass', freq: 500 });
+      this._noiseBurst({ dur: 0.20, gain: 0.07, filterType: 'bandpass', freq: 350, delay: 0.05 });
+    } finally { this._fireMul = prev; }
   }
 
   // ─── Game Feel SFX ──────────────────────────────────────────────────────────
