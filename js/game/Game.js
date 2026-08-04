@@ -12632,11 +12632,41 @@ export class Game {
 
   _updateSettings(input) {
     const { keys } = input;
+    // DOM overlay owns the screen when it is up. The legacy list below is the canvas
+    // fallback and is left exactly as it was so nothing regresses if the overlay fails
+    // to build (it is created inside a try/catch at construction).
+    if (this._settingsOverlayVisible) { this._updateSettingsOverlayKeys(keys); return; }
     const n = this.settingsItems.length;
     if (keys.has('arrowup') || keys.has('w'))   { this._settingsIndex = (this._settingsIndex - 1 + n) % n; keys.delete('arrowup'); keys.delete('w'); this._syncSettingsOverlayActive(); }
     if (keys.has('arrowdown') || keys.has('s')) { this._settingsIndex = (this._settingsIndex + 1) % n;     keys.delete('arrowdown'); keys.delete('s'); this._syncSettingsOverlayActive(); }
     if (keys.has('enter') || keys.has(' '))     { this._selectSettingsItem(this.settingsItems[this._settingsIndex]); keys.delete('enter'); keys.delete(' '); }
     if (keys.has('escape'))                      { this.goToMainMenu(); keys.delete('escape'); }
+  }
+
+  // Keyboard AND controller: main.js maps D-pad/stick to Arrow keydowns and A/B to
+  // Enter/Escape, so this one handler serves both without any input-logic change.
+  _updateSettingsOverlayKeys(keys) {
+    const take = (...names) => {
+      let hit = false;
+      for (const k of names) if (keys.has(k)) { hit = true; keys.delete(k); }
+      return hit;
+    };
+    if (this._setsConfirmOpen) {
+      if (take('arrowleft', 'a'))  { this._setsConfirmSel = 0; this._setsRender(); }
+      if (take('arrowright', 'd')) { this._setsConfirmSel = 1; this._setsRender(); }
+      if (take('enter', ' ')) {
+        if (this._setsConfirmSel === 1) this._setsResetDefaults();
+        this._setsCloseConfirm();
+      }
+      if (take('escape')) this._setsCloseConfirm();
+      return;
+    }
+    if (take('arrowup', 'w'))    this._setsMove(-1);
+    if (take('arrowdown', 's'))  this._setsMove(1);
+    if (take('arrowleft', 'a'))  this._setsAdjust(-1);
+    if (take('arrowright', 'd')) this._setsAdjust(1);
+    if (take('enter', ' '))      this._setsActivate();
+    if (take('escape'))          this.goToMainMenu();
   }
 
   _selectSettingsItem(item) {
@@ -24553,6 +24583,169 @@ export class Game {
           display:flex; gap:18px; flex-wrap:wrap; justify-content:center;
         }
         #cgm-settings .cgs-hints b { color:var(--cyan); font-weight:400; }
+
+        /* ── SETTINGS redesign (2026-08-04) — tabs / rows / controls ─────────────
+           Pure presentation. Every control reads and writes the SAME AudioManager
+           setters, the SAME game flags and the SAME save actions as before. */
+        #cgm-settings { align-items:flex-start; overflow-y:auto; padding:18px 16px 24px; }
+        #cgm-settings .cgs-stage {
+          max-width:920px; align-items:stretch; gap:14px; padding:24px 28px 20px;
+        }
+        #cgm-settings .cgs-topbar { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+        #cgm-settings .cgs-pad {
+          padding:5px 12px; border-radius:999px; font-family:'Orbitron',sans-serif;
+          font-weight:700; font-size:10px; letter-spacing:1.5px;
+          border:1px solid rgba(111,134,184,.28); color:var(--txt-dim); background:rgba(10,16,46,.4);
+        }
+        #cgm-settings .cgs-pad.on { border-color:var(--green); color:var(--green); background:rgba(52,211,153,.08); }
+
+        #cgm-settings .cgs-tabs { display:flex; gap:8px; flex-wrap:wrap; }
+        #cgm-settings .cgs-tab {
+          padding:9px 20px; border-radius:9px; cursor:pointer;
+          border:1px solid rgba(46,230,246,.18); background:rgba(10,16,46,.45);
+          color:var(--txt-dim); font-family:'Orbitron',sans-serif; font-weight:700;
+          font-size:11px; letter-spacing:2px; transition:.15s;
+        }
+        #cgm-settings .cgs-tab:hover { border-color:rgba(46,230,246,.5); color:var(--txt); }
+        #cgm-settings .cgs-tab.active {
+          border-color:var(--cyan); color:#fff;
+          background:linear-gradient(180deg,rgba(46,230,246,.16),rgba(46,230,246,.03));
+          box-shadow:var(--glow-cyan);
+        }
+        #cgm-settings .cgs-tabs.nav-on { outline:2px solid var(--amber); outline-offset:5px; border-radius:12px; }
+
+        #cgm-settings .cgs-body { display:flex; flex-direction:column; gap:9px; min-height:262px; }
+        #cgm-settings .cgs-panel { display:none; flex-direction:column; gap:9px; }
+        #cgm-settings .cgs-panel.active { display:flex; }
+        #cgm-settings .cgs-note {
+          font-size:11px; color:var(--txt-faint); letter-spacing:.5px; line-height:1.5; padding:2px 2px 4px;
+        }
+
+        #cgm-settings .cgs-row {
+          display:flex; align-items:center; gap:16px;
+          padding:11px 14px; border-radius:11px;
+          border:1px solid rgba(46,90,100,.28); background:rgba(10,16,46,.5);
+          transition:border-color .15s, box-shadow .15s, background .15s;
+        }
+        #cgm-settings .cgs-row.sel {
+          border-color:var(--amber); background:rgba(251,191,36,.06);
+          box-shadow:0 0 14px rgba(251,191,36,.28);
+        }
+        #cgm-settings .cgs-row-label {
+          flex:0 0 236px; display:flex; flex-direction:column; gap:3px;
+          font-family:'Orbitron',sans-serif; font-weight:700; font-size:11px;
+          letter-spacing:1.6px; color:var(--txt);
+        }
+        #cgm-settings .cgs-row-sub { font-family:'Share Tech Mono',monospace; font-weight:400; font-size:10px; letter-spacing:.4px; color:var(--txt-faint); }
+        #cgm-settings .cgs-row-ctl { flex:1; display:flex; align-items:center; gap:12px; justify-content:flex-end; }
+
+        /* slider */
+        #cgm-settings .cgs-track {
+          position:relative; flex:1; height:10px; min-width:120px; border-radius:6px; cursor:pointer;
+          background:rgba(6,12,28,.9); border:1px solid rgba(46,230,246,.18);
+          touch-action:none;
+        }
+        #cgm-settings .cgs-fill {
+          position:absolute; inset:0 auto 0 0; border-radius:6px;
+          background:linear-gradient(90deg,var(--cyan-dim),var(--cyan));
+          box-shadow:0 0 10px rgba(46,230,246,.4);
+        }
+        #cgm-settings .cgs-knob {
+          position:absolute; top:50%; width:16px; height:16px; margin-left:-8px;
+          transform:translateY(-50%); border-radius:50%;
+          background:#eafcff; border:2px solid var(--cyan); box-shadow:0 0 10px rgba(46,230,246,.7);
+          pointer-events:none;
+        }
+        #cgm-settings .cgs-row.sel .cgs-knob { border-color:var(--amber); box-shadow:0 0 12px rgba(251,191,36,.8); }
+        #cgm-settings .cgs-val {
+          flex:0 0 52px; text-align:right; font-family:'Orbitron',sans-serif; font-weight:700;
+          font-size:12px; color:var(--amber);
+        }
+
+        /* toggle */
+        #cgm-settings .cgs-sw {
+          position:relative; width:60px; height:26px; border-radius:999px; cursor:pointer; flex:none;
+          background:rgba(6,12,28,.9); border:1px solid rgba(111,134,184,.35); transition:.16s;
+        }
+        #cgm-settings .cgs-sw i {
+          position:absolute; top:2px; left:2px; width:20px; height:20px; border-radius:50%;
+          background:var(--txt-dim); transition:.16s;
+        }
+        #cgm-settings .cgs-sw.on { border-color:var(--green); background:rgba(52,211,153,.16); }
+        #cgm-settings .cgs-sw.on i { left:36px; background:var(--green); box-shadow:0 0 10px rgba(52,211,153,.8); }
+        #cgm-settings .cgs-state {
+          flex:0 0 44px; text-align:right; font-family:'Orbitron',sans-serif; font-weight:700; font-size:11px;
+          letter-spacing:1px; color:var(--txt-dim);
+        }
+        #cgm-settings .cgs-state.on { color:var(--green); }
+
+        /* info / bindings / actions */
+        #cgm-settings .cgs-info { font-family:'Orbitron',sans-serif; font-weight:700; font-size:11px; letter-spacing:1.4px; color:var(--cyan); }
+        #cgm-settings .cgs-keys { display:flex; align-items:center; gap:7px; flex-wrap:wrap; justify-content:flex-end; }
+        #cgm-settings .cgs-key {
+          padding:4px 9px; border-radius:6px; font-family:'Orbitron',sans-serif; font-weight:700;
+          font-size:10px; letter-spacing:1px; white-space:nowrap;
+          border:1px solid rgba(46,230,246,.35); color:#dff0ff; background:rgba(46,230,246,.07);
+        }
+        #cgm-settings .cgs-key.padkey { border-color:rgba(168,85,247,.45); color:#e6d4ff; background:rgba(168,85,247,.10); }
+        #cgm-settings .cgs-key.none { border-color:rgba(111,134,184,.22); color:var(--txt-faint); background:transparent; }
+        #cgm-settings .cgs-act {
+          padding:8px 18px; border-radius:8px; cursor:pointer;
+          border:1px solid rgba(46,230,246,.4); background:rgba(46,230,246,.08); color:#dff0ff;
+          font-family:'Orbitron',sans-serif; font-weight:700; font-size:11px; letter-spacing:1.5px; transition:.15s;
+        }
+        #cgm-settings .cgs-act:hover { border-color:var(--cyan); box-shadow:var(--glow-cyan); color:#fff; }
+
+        /* footer */
+        #cgm-settings .cgs-foot { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; }
+        #cgm-settings .cgs-foot-l, #cgm-settings .cgs-foot-r { display:flex; gap:8px; flex-wrap:wrap; }
+        #cgm-settings .cgs-fbtn {
+          padding:10px 20px; border-radius:9px; cursor:pointer;
+          border:1px solid rgba(111,134,184,.25); background:rgba(10,16,46,.35); color:var(--txt-dim);
+          font-family:'Orbitron',sans-serif; font-weight:700; font-size:11px; letter-spacing:1.8px; transition:.15s;
+        }
+        #cgm-settings .cgs-fbtn:hover { border-color:var(--txt-dim); color:#fff; }
+        #cgm-settings .cgs-fbtn.danger { border-color:rgba(255,120,120,.35); color:#ffb4b4; }
+        #cgm-settings .cgs-fbtn.danger:hover { border-color:#ff8080; color:#fff; background:rgba(255,80,80,.10); }
+        #cgm-settings .cgs-fbtn.sel {
+          outline:2px solid var(--amber); outline-offset:3px; color:#fff;
+          box-shadow:0 0 12px rgba(251,191,36,.4);
+        }
+
+        /* reset confirmation */
+        #cgm-settings .cgs-confirm {
+          position:fixed; inset:0; z-index:60; display:none;
+          align-items:center; justify-content:center; padding:20px;
+          background:rgba(3,6,16,.82); backdrop-filter:blur(3px);
+        }
+        #cgm-settings .cgs-confirm.open { display:flex; }
+        #cgm-settings .cgs-cbox {
+          width:100%; max-width:430px; border-radius:16px; padding:24px 26px 20px;
+          border:1px solid rgba(255,120,120,.35); background:linear-gradient(180deg,rgba(40,10,16,.92),rgba(7,10,28,.96));
+          box-shadow:0 24px 70px rgba(0,0,0,.6); display:flex; flex-direction:column; gap:14px;
+        }
+        #cgm-settings .cgs-ctitle { font-family:'Orbitron',sans-serif; font-weight:800; font-size:13px; letter-spacing:2.4px; color:#ffb4b4; }
+        #cgm-settings .cgs-ctext  { font-size:12px; line-height:1.65; color:var(--txt); }
+        #cgm-settings .cgs-ctext b { color:var(--amber); font-weight:400; }
+        #cgm-settings .cgs-cbtns  { display:flex; gap:10px; justify-content:flex-end; flex-wrap:wrap; }
+
+        /* responsive */
+        @media (max-width:760px) {
+          #cgm-settings .cgs-stage { padding:18px 14px 16px; border-radius:16px; }
+          #cgm-settings .cgs-tabs { flex-wrap:nowrap; overflow-x:auto; padding-bottom:4px; }
+          #cgm-settings .cgs-tab { flex:none; padding:10px 15px; }
+          #cgm-settings .cgs-row { flex-direction:column; align-items:stretch; gap:9px; padding:12px; }
+          #cgm-settings .cgs-row-label { flex:none; }
+          #cgm-settings .cgs-row-ctl { justify-content:space-between; }
+          #cgm-settings .cgs-keys { justify-content:flex-start; }
+          #cgm-settings .cgs-track { min-width:0; height:14px; }
+          #cgm-settings .cgs-sw { width:66px; height:30px; }
+          #cgm-settings .cgs-sw i { width:24px; height:24px; }
+          #cgm-settings .cgs-sw.on i { left:38px; }
+          #cgm-settings .cgs-foot { flex-direction:column; align-items:stretch; }
+          #cgm-settings .cgs-foot-l, #cgm-settings .cgs-foot-r { flex-direction:column; }
+          #cgm-settings .cgs-fbtn, #cgm-settings .cgs-act { width:100%; padding:13px 16px; }
+        }
       `;
       document.head.appendChild(style);
     }
@@ -24574,53 +24767,106 @@ export class Game {
         </div>
         <div class="cgs-sep"></div>
 
-        <div class="cgs-menu">
-          <button class="cgs-mbtn" data-idx="0">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><use href="#i-music"/></svg>
-            AUDIO
-          </button>
-          <button class="cgs-mbtn" data-idx="1">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><use href="#i-bolt"/></svg>
-            CONTROLS / HOW TO PLAY
-          </button>
-          <button class="cgs-mbtn" data-idx="2">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><use href="#i-diamond"/></svg>
-            BACKUP SAVE
-          </button>
-          <button class="cgs-mbtn" data-idx="3">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><use href="#i-diamond"/></svg>
-            RESTORE SAVE
-          </button>
-          <button class="cgs-mbtn" data-idx="4">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><use href="#i-star"/></svg>
-            CREDITS
-          </button>
-          <button class="cgs-mbtn" data-idx="5">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><use href="#i-node"/></svg>
-            LORE / ARCHIVE
-          </button>
-          <div class="cgs-sep" style="margin:4px 0;"></div>
-          <button class="cgs-mbtn back-btn" data-idx="6">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><use href="#i-chev"/></svg>
-            BACK
-          </button>
+        <div class="cgs-topbar">
+          <div class="cgs-tabs" id="cgs-tabs"></div>
+          <div class="cgs-pad" id="cgs-padstate">CONTROLLER: NOT DETECTED</div>
+        </div>
+
+        <div class="cgs-body" id="cgs-body"></div>
+
+        <div class="cgs-sep"></div>
+
+        <div class="cgs-foot">
+          <div class="cgs-foot-l">
+            <button class="cgs-fbtn danger" data-foot="reset">RESET TO DEFAULTS</button>
+          </div>
+          <div class="cgs-foot-r">
+            <button class="cgs-fbtn" data-foot="credits">CREDITS</button>
+            <button class="cgs-fbtn" data-foot="lore">LORE / ARCHIVE</button>
+            <button class="cgs-fbtn" data-foot="back">&#9664; BACK</button>
+          </div>
         </div>
 
         <div class="cgs-hints">
-          <span><b>\u2191\u2193</b>\u00a0Navigate</span>
-          <span><b>ENTER</b>\u00a0Select</span>
-          <span><b>ESC</b>\u00a0Back</span>
+          <span><b>&#9650;&#9660;</b>&nbsp;Row</span>
+          <span><b>&#9664;&#9654;</b>&nbsp;Adjust / Tab</span>
+          <span><b>ENTER / A</b>&nbsp;Select</span>
+          <span><b>ESC / B</b>&nbsp;Back</span>
+        </div>
+      </div>
+
+      <div class="cgs-confirm" id="cgs-confirm" role="alertdialog" aria-label="Reset settings to defaults">
+        <div class="cgs-cbox">
+          <div class="cgs-ctitle">RESET TO DEFAULTS?</div>
+          <div class="cgs-ctext">
+            This restores the <b>audio levels, mute and NULL RADIO</b> to their factory values
+            and turns <b>aim assist</b> back on.<br><br>
+            Your <b>save, progression, unlocks, relics and key bindings are not touched</b>.
+          </div>
+          <div class="cgs-cbtns">
+            <button class="cgs-fbtn" data-confirm="cancel">CANCEL</button>
+            <button class="cgs-fbtn danger" data-confirm="reset">RESET</button>
+          </div>
         </div>
       </div>
     `;
 
-    // ── Click handlers ────────────────────────────────────────────────────────
-    el.querySelectorAll('.cgs-mbtn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const idx = parseInt(btn.dataset.idx, 10);
-        this._settingsIndex = idx;
-        this._selectSettingsItem(this.settingsItems[idx]);
-      });
+    // ── Mouse / touch handlers ────────────────────────────────────────────────
+    // Delegated on the persistent root: the tab rail, body and dialog are rebuilt by
+    // _setsRender() on every change, so per-node listeners would die on the first sync.
+    el.addEventListener('click', (ev) => {
+      const t = ev.target;
+      const confirmBtn = t.closest?.('[data-confirm]');
+      if (confirmBtn) {
+        if (confirmBtn.dataset.confirm === 'reset') this._setsResetDefaults();
+        this._setsCloseConfirm();
+        return;
+      }
+      if (this._setsConfirmOpen) return;                       // modal blocks the screen behind it
+      const tab = t.closest?.('.cgs-tab');
+      if (tab) { this._setsSetTab(tab.dataset.tab); return; }
+      const foot = t.closest?.('[data-foot]');
+      if (foot) { this._setsRunFoot(foot.dataset.foot); return; }
+      const row = t.closest?.('.cgs-row');
+      if (!row) return;
+      const item = this._setsRowById(row.dataset.row);
+      if (!item) return;
+      this._setsSel = this._setsNav().findIndex(e => e.k === 'row' && e.id === item.id);
+      if (t.closest('.cgs-track')) { this._setsRender(); return; }   // handled by pointerdown
+      if (t.closest('.cgs-sw') || t.closest('.cgs-act') || item.kind === 'toggle' || item.kind === 'action') {
+        this._setsActivateRow(item);
+        return;
+      }
+      this._setsRender();
+    });
+
+    // Slider drag — pointer events cover mouse AND touch with one path.
+    // The geometry is captured ONCE, at pointerdown. _setsRender() rebuilds the body's
+    // innerHTML, so the track node the drag started on is DETACHED after the first move;
+    // re-measuring it then returns a 0-width rect and every later sample clamps to 100%.
+    // The panel does not move during a drag, so the frozen rect is also the correct one.
+    el.addEventListener('pointerdown', (ev) => {
+      if (this._setsConfirmOpen) return;
+      const track = ev.target.closest?.('.cgs-track');
+      if (!track) return;
+      const row = track.closest('.cgs-row');
+      const item = this._setsRowById(row?.dataset.row);
+      if (!item || item.kind !== 'slider') return;
+      ev.preventDefault();
+      this._setsSel = this._setsNav().findIndex(e => e.k === 'row' && e.id === item.id);
+      const rect = track.getBoundingClientRect();
+      const trackValue = (clientX) =>
+        Math.max(0, Math.min(1, (clientX - rect.left) / Math.max(1, rect.width)));
+      const drag = (e2) => { item.set(trackValue(e2.clientX)); this._setsRender(); };
+      const stop = () => {
+        window.removeEventListener('pointermove', drag);
+        window.removeEventListener('pointerup', stop);
+        window.removeEventListener('pointercancel', stop);
+      };
+      window.addEventListener('pointermove', drag);
+      window.addEventListener('pointerup', stop);
+      window.addEventListener('pointercancel', stop);
+      drag(ev);
     });
 
     document.body.appendChild(el);
@@ -24631,7 +24877,12 @@ export class Game {
     if (!this._settingsOverlayEl) return;
     this._settingsOverlayEl.style.display = 'flex';
     this._settingsOverlayVisible = true;
+    this._setsTab  = this._setsTab || 'audio';
+    this._setsSel  = 0;
+    this._setsFoot = 0;
+    this._setsCloseConfirm();
     this._syncSettingsOverlayActive();
+    this._setsRender();
   }
 
   _hideSettingsOverlay() {
@@ -24645,6 +24896,261 @@ export class Game {
     this._settingsOverlayEl.querySelectorAll('.cgs-mbtn').forEach((btn, i) =>
       btn.classList.toggle('active', i === this._settingsIndex)
     );
+  }
+
+  // ─── SETTINGS redesign (2026-08-04) — tabs / sliders / toggles / bindings ────
+  // UI ONLY. Every row below reads and writes something that ALREADY existed:
+  // AudioManager's persisted setters, this.aimAssist (the T key), the fullscreen
+  // call the F key makes, and the save-code modals. Nothing new is stored, no
+  // binding is remappable, and no gameplay value is touched. Read-only rows are
+  // marked 'info' and have no setter at all.
+  _setsTabsDef() {
+    return [
+      { id: 'audio',    label: 'AUDIO' },
+      { id: 'display',  label: 'DISPLAY' },
+      { id: 'gameplay', label: 'GAMEPLAY' },
+      { id: 'controls', label: 'CONTROLS' },
+    ];
+  }
+
+  _setsSpec() {
+    const a = this.audio;
+    const pad = this._controllerConnected
+      ? (this._controllerType === 'ps' ? 'CONNECTED — PLAYSTATION' : 'CONNECTED — XBOX / GENERIC')
+      : 'NOT DETECTED';
+    // kb = keyboard chip(s), gp = controller chip(s). '—' renders as a dimmed "none" chip.
+    const bind = (id, label, kb, gp, sub) => ({ id, kind: 'bind', label, sub, kb, gp });
+    return {
+      audio: [
+        { id: 'master', kind: 'slider', label: 'MASTER VOLUME', get: () => a ? a.masterVolume : 1,
+          set: v => a && a.setMasterVolume(v) },
+        { id: 'music', kind: 'slider', label: 'MUSIC', get: () => a ? a.musicVolume : 0.7,
+          set: v => a && a.setMusicVolume(v) },
+        { id: 'sfx', kind: 'slider', label: 'SOUND EFFECTS', get: () => a ? a.sfxVolume : 0.8,
+          set: v => a && a.setSfxVolume(v) },
+        { id: 'eden', kind: 'slider', label: 'EDEN CORE VOICE', sub: 'transmissions', get: () => a ? a.edenVolume : 0.95,
+          set: v => a && a.setEdenVolume(v) },
+        { id: 'mute', kind: 'toggle', label: 'MUTE ALL', sub: 'shortcut: M', get: () => !!(a && a.muted),
+          set: () => a && a.toggleMute() },
+        { id: 'radio', kind: 'toggle', label: 'PHENIX NULL RADIO', sub: 'menu broadcast', get: () => !!(a && a.radioEnabled),
+          set: () => a && a.setRadioEnabled(!a.radioEnabled) },
+      ],
+      display: [
+        { id: 'fullscreen', kind: 'toggle', label: 'FULLSCREEN', sub: 'shortcut: F',
+          get: () => !!document.fullscreenElement, set: () => this._setsToggleFullscreen() },
+        { id: 'res', kind: 'info', label: 'RENDER RESOLUTION', sub: 'fixed canvas', get: () => WIDTH + ' x ' + HEIGHT },
+        { id: 'viewport', kind: 'info', label: 'WINDOW', sub: 'read only',
+          get: () => Math.round(window.innerWidth) + ' x ' + Math.round(window.innerHeight) },
+        { id: 'padstate', kind: 'info', label: 'CONTROLLER', sub: 'auto-detected', get: () => pad },
+      ],
+      gameplay: [
+        { id: 'aim', kind: 'toggle', label: 'AIM ASSIST', sub: 'shortcut: T — session only, never saved',
+          get: () => !!this.aimAssist, set: () => { this.aimAssist = !this.aimAssist; } },
+        { id: 'backup', kind: 'action', label: 'BACKUP SAVE', sub: 'copy a save code', cta: 'OPEN',
+          run: () => this._backupSave() },
+        { id: 'restore', kind: 'action', label: 'RESTORE SAVE', sub: 'paste a save code', cta: 'OPEN',
+          run: () => this._restoreSave() },
+      ],
+      controls: [
+        bind('b-move',  'MOVE',            ['W', 'A', 'S', 'D'], ['LEFT STICK', 'D-PAD']),
+        bind('b-aim',   'AIM',             ['MOUSE'],            ['RIGHT STICK'], 'auto-aim when idle'),
+        bind('b-dash',  'DASH',            ['SHIFT'],            ['RT', 'LT', 'B']),
+        bind('b-shield','PULSE SHIELD',    ['Q'],                ['LB']),
+        bind('b-emp',   'EMP',             ['E'],                ['RB']),
+        bind('b-ult',   'ULTIMATE',        ['SPACE'],            ['Y']),
+        bind('b-pause', 'PAUSE',           ['ESC'],              ['START']),
+        bind('b-card',  'PICK CARD',       ['1', '2', '3', 'ENTER'], ['A', 'X', 'Y']),
+        bind('b-menu',  'MENU CONFIRM / BACK', ['ENTER', 'ESC'], ['A', 'B']),
+        bind('b-mute',  'MUTE',            ['M'],                []),
+        bind('b-auto',  'AUTO-FIRE TOGGLE',['T'],                []),
+        bind('b-full',  'FULLSCREEN',      ['F'],                []),
+        bind('b-restart','RESTART (after a run ends)', ['R'],    ['B']),
+        { id: 'howto', kind: 'action', label: 'HOW TO PLAY', sub: 'objectives, systems and tips', cta: 'OPEN',
+          run: () => this.goToInstructions() },
+      ],
+    };
+  }
+
+  _setsRows() { return this._setsSpec()[this._setsTab] || []; }
+  _setsRowById(id) { return this._setsRows().find(r => r.id === id) || null; }
+
+  // Flat navigation model shared by mouse, keyboard and controller:
+  //   entry 0        = the tab rail   (LEFT/RIGHT switches tab)
+  //   entries 1..n   = the rows       (LEFT/RIGHT adjusts the row's control)
+  //   last entry     = the footer     (LEFT/RIGHT moves between footer buttons)
+  _setsNav() {
+    return [{ k: 'tabs' }]
+      .concat(this._setsRows().map(r => ({ k: 'row', id: r.id })))
+      .concat([{ k: 'foot' }]);
+  }
+
+  _setsFootDef() { return ['reset', 'credits', 'lore', 'back']; }
+
+  _setsToggleFullscreen() {
+    // Exactly what the F key already does — same calls, same guards, same silence on refusal.
+    try {
+      if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {});
+      else document.exitFullscreen().catch(() => {});
+    } catch (_) { /* unsupported / blocked — never throw from a settings row */ }
+    setTimeout(() => this._setsRender(), 220);   // the flag flips after the browser transition
+  }
+
+  _setsRender() {
+    const el = this._settingsOverlayEl;
+    if (!el || !el.querySelector('#cgs-tabs')) return;
+    const nav  = this._setsNav();
+    if (this._setsSel == null || this._setsSel >= nav.length) this._setsSel = 0;
+    const cur  = nav[this._setsSel];
+
+    const padEl = el.querySelector('#cgs-padstate');
+    if (padEl) {
+      const on = !!this._controllerConnected;
+      padEl.textContent = 'CONTROLLER: ' + (on
+        ? (this._controllerType === 'ps' ? 'PLAYSTATION' : 'XBOX / GENERIC')
+        : 'NOT DETECTED');
+      padEl.classList.toggle('on', on);
+    }
+
+    const tabsEl = el.querySelector('#cgs-tabs');
+    tabsEl.innerHTML = this._setsTabsDef().map(t =>
+      '<div class="cgs-tab' + (t.id === this._setsTab ? ' active' : '') + '" data-tab="' + t.id + '">' + t.label + '</div>'
+    ).join('');
+    tabsEl.classList.toggle('nav-on', cur && cur.k === 'tabs');
+
+    const esc = (v) => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const chip = (list, cls) => (list && list.length)
+      ? list.map(k => '<span class="cgs-key ' + cls + '">' + esc(k) + '</span>').join('')
+      : '<span class="cgs-key none">&mdash;</span>';
+
+    const body = el.querySelector('#cgs-body');
+    body.innerHTML = this._setsRows().map(r => {
+      const sel = cur && cur.k === 'row' && cur.id === r.id;
+      let ctl = '';
+      if (r.kind === 'slider') {
+        const v = Math.max(0, Math.min(1, Number(r.get()) || 0));
+        const pct = Math.round(v * 100);
+        ctl = '<div class="cgs-track"><div class="cgs-fill" style="width:' + pct + '%"></div>' +
+              '<div class="cgs-knob" style="left:' + pct + '%"></div></div>' +
+              '<div class="cgs-val">' + pct + '%</div>';
+      } else if (r.kind === 'toggle') {
+        const on = !!r.get();
+        ctl = '<div class="cgs-sw' + (on ? ' on' : '') + '"><i></i></div>' +
+              '<div class="cgs-state' + (on ? ' on' : '') + '">' + (on ? 'ON' : 'OFF') + '</div>';
+      } else if (r.kind === 'info') {
+        ctl = '<div class="cgs-info">' + esc(r.get()) + '</div>';
+      } else if (r.kind === 'bind') {
+        ctl = '<div class="cgs-keys">' + chip(r.kb, '') + chip(r.gp, 'padkey') + '</div>';
+      } else if (r.kind === 'action') {
+        ctl = '<button class="cgs-act">' + esc(r.cta || 'OPEN') + '</button>';
+      }
+      return '<div class="cgs-row' + (sel ? ' sel' : '') + '" data-row="' + r.id + '">' +
+               '<div class="cgs-row-label">' + esc(r.label) +
+                 (r.sub ? '<span class="cgs-row-sub">' + esc(r.sub) + '</span>' : '') +
+               '</div>' +
+               '<div class="cgs-row-ctl">' + ctl + '</div>' +
+             '</div>';
+    }).join('') + (this._setsTab === 'controls'
+      ? '<div class="cgs-note">Bindings are fixed in this build &mdash; this screen shows them, it does not remap them. ' +
+        'Controller labels use the Xbox names; on a PlayStation pad A/B/X/Y are Cross/Circle/Square/Triangle and LB/RB are L1/R1.</div>'
+      : '');
+
+    el.querySelectorAll('[data-foot]').forEach(b => {
+      const isSel = cur && cur.k === 'foot' && this._setsFootDef()[this._setsFoot] === b.dataset.foot;
+      b.classList.toggle('sel', !!isSel);
+    });
+
+    const conf = el.querySelector('#cgs-confirm');
+    if (conf) {
+      conf.classList.toggle('open', !!this._setsConfirmOpen);
+      conf.querySelectorAll('[data-confirm]').forEach(b =>
+        b.classList.toggle('sel', !!this._setsConfirmOpen &&
+          (this._setsConfirmSel === 1 ? 'reset' : 'cancel') === b.dataset.confirm));
+    }
+  }
+
+  _setsSetTab(id) {
+    if (!id || !this._setsTabsDef().some(t => t.id === id)) return;
+    this._setsTab = id;
+    this._setsSel = 0;
+    this._setsRender();
+  }
+
+  _setsSwitchTab(dir) {
+    const tabs = this._setsTabsDef();
+    const i = tabs.findIndex(t => t.id === this._setsTab);
+    this._setsSetTab(tabs[((i < 0 ? 0 : i) + dir + tabs.length) % tabs.length].id);
+  }
+
+  _setsMove(dir) {
+    const nav = this._setsNav();
+    this._setsSel = (this._setsSel + dir + nav.length) % nav.length;
+    this._setsRender();
+  }
+
+  // LEFT/RIGHT. One rule: it changes whatever is focused.
+  _setsAdjust(dir) {
+    const cur = this._setsNav()[this._setsSel];
+    if (!cur) return;
+    if (cur.k === 'tabs') { this._setsSwitchTab(dir); return; }
+    if (cur.k === 'foot') {
+      const n = this._setsFootDef().length;
+      this._setsFoot = (this._setsFoot + dir + n) % n;
+      this._setsRender();
+      return;
+    }
+    const r = this._setsRowById(cur.id);
+    if (!r) return;
+    if (r.kind === 'slider') {
+      const v = Math.max(0, Math.min(1, Number(r.get()) || 0));
+      r.set(Math.max(0, Math.min(1, Math.round((v + dir * 0.05) * 100) / 100)));
+      this._setsRender();
+    } else if (r.kind === 'toggle') {
+      r.set();
+      this._setsRender();
+    }
+  }
+
+  _setsActivateRow(r) {
+    if (!r) return;
+    if (r.kind === 'toggle') { r.set(); this._setsRender(); }
+    else if (r.kind === 'action') { r.run(); }
+    else this._setsRender();
+  }
+
+  // ENTER / controller A.
+  _setsActivate() {
+    const cur = this._setsNav()[this._setsSel];
+    if (!cur) return;
+    if (cur.k === 'tabs') { this._setsSel = 1; this._setsRender(); return; }
+    if (cur.k === 'foot') { this._setsRunFoot(this._setsFootDef()[this._setsFoot]); return; }
+    this._setsActivateRow(this._setsRowById(cur.id));
+  }
+
+  _setsRunFoot(id) {
+    if (id === 'reset')        this._setsOpenConfirm();
+    else if (id === 'credits') this.goToCredits();
+    else if (id === 'lore')    this.goToLoreArchive();
+    else if (id === 'back')    this.goToMainMenu();
+  }
+
+  _setsOpenConfirm()  { this._setsConfirmOpen = true;  this._setsConfirmSel = 0; this._setsRender(); }
+  _setsCloseConfirm() { this._setsConfirmOpen = false; this._setsConfirmSel = 0; this._setsRender(); }
+
+  // Restores ONLY the preferences this screen owns, to the values AudioManager already
+  // ships as VOL_DEFAULTS, through the same persisted setters. Saves, progression,
+  // unlocks, relics and bindings are deliberately not referenced anywhere here.
+  _setsResetDefaults() {
+    const a = this.audio;
+    if (a) {
+      a.setMasterVolume(1.0);
+      a.setMusicVolume(0.70);
+      a.setSfxVolume(0.80);
+      if (a.setEdenVolume) a.setEdenVolume(0.95);
+      if (a.muted && a.toggleMute) a.toggleMute();       // default: not muted
+      if (a.setRadioEnabled) a.setRadioEnabled(true);
+    }
+    this.aimAssist = true;
+    this._setsRender();
   }
 
   // ─── SETTINGS overlay — clean, keeps the theme/logo/protagonists visible ─────
