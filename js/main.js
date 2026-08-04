@@ -1,4 +1,4 @@
-import { Game } from './game/Game.js?v=20260904080000';
+import { Game } from './game/Game.js?v=20260904090000';
 import { AudioManager } from './audio/AudioManager.js?v=20260904070000';
 import { PlatformAchievements } from './platform/PlatformAchievements.js?v=20260712370000';
 // Steam build: replay any web-earned achievements to Steam on boot (no-op in browsers)
@@ -692,6 +692,18 @@ function _quiesceModalInput() {
   mouseDown = false;
 }
 game._quiesceModalInput = _quiesceModalInput;
+
+// SCREEN-TRANSITION KEY DROP (2026-08-04).
+// A screen change runs through a fade, so the screen that ARRIVES is live while the key
+// that triggered the change can still be held. Both screens then consume the same press:
+// measured, a single ENTER on START GAME advanced twice — through MODE SELECT and on into
+// ACT SELECT, skipping the screen entirely — and a single ESC could walk back two levels.
+// Only the transient confirm/back keys are dropped; movement and modifiers are untouched,
+// so nothing that must survive a transition is affected.
+function _dropTransitionKeys() {
+  for (const k of ['enter', ' ', 'escape', 'backspace']) { keys.delete(k); padHeld.delete(k); }
+}
+game._dropTransitionKeys = _dropTransitionKeys;
 window.addEventListener('blur', _releaseAllHeldInput);
 window.addEventListener('pagehide', _releaseAllHeldInput);
 document.addEventListener('visibilitychange', () => { if (document.hidden) _releaseAllHeldInput(); });

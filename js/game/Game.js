@@ -2682,6 +2682,10 @@ export class Game {
   _updateFade(dt) {
     if (this._fadeDir === 0) return;
     this._fadeAlpha += this._fadeDir * this._fadeSpeed * dt;
+    // The screen is about to change under a still-held key — see _dropTransitionKeys in
+    // main.js. Dropping the confirm/back keys here is what stops the arriving screen from
+    // acting on the press that summoned it.
+    if (this._fadeDir === 1 && this._fadeAlpha >= 1) { try { this._dropTransitionKeys?.(); } catch (_) {} }
     if (this._fadeDir === 1 && this._fadeAlpha >= 1) {
       // Fully black — run the state swap callback, then fade back in
       this._fadeAlpha = 1;
