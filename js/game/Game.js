@@ -12353,21 +12353,37 @@ export class Game {
     this._updateMenuCodeRain(dt);
     const { keys } = input;
     if (keys.has('arrowup') || keys.has('w')) {
+      this._menuRadioFocus = false;          // never leave the player stranded on the switch
       this.menuIndex = (this.menuIndex - 1 + this.menuItems.length) % this.menuItems.length;
       keys.delete('arrowup');
       keys.delete('w');
       this._syncMenuOverlayActive();
     }
     if (keys.has('arrowdown') || keys.has('s')) {
+      this._menuRadioFocus = false;
       this.menuIndex = (this.menuIndex + 1) % this.menuItems.length;
       keys.delete('arrowdown');
       keys.delete('s');
       this._syncMenuOverlayActive();
     }
+    // LEFT/RIGHT were unused on this screen (the rail is vertical), so they now move
+    // focus onto the NULL RADIO switch and back. That gives the controller a real path
+    // to it — D-pad right, A to toggle — without touching the menu item list.
+    if (keys.has('arrowright') || keys.has('d')) {
+      this._menuRadioFocus = true;
+      keys.delete('arrowright'); keys.delete('d');
+      this._syncMenuOverlayActive();
+    }
+    if (keys.has('arrowleft') || keys.has('a')) {
+      this._menuRadioFocus = false;
+      keys.delete('arrowleft'); keys.delete('a');
+      this._syncMenuOverlayActive();
+    }
     if (keys.has('enter') || keys.has(' ')) {
-      this._selectMenuItem(this.menuItems[this.menuIndex]);
       keys.delete('enter');
       keys.delete(' ');
+      if (this._menuRadioFocus) this._toggleMenuRadio();
+      else this._selectMenuItem(this.menuItems[this.menuIndex]);
     }
   }
 
@@ -23989,6 +24005,19 @@ export class Game {
       #cgm-overlay .eq>i:nth-child(8){animation-delay:.35s} #cgm-overlay .eq>i:nth-child(9){animation-delay:.10s}
       #cgm-overlay .eq>i:nth-child(10){animation-delay:.40s} #cgm-overlay .eq>i:nth-child(11){animation-delay:.25s}
       @keyframes cgm-eq{0%,100%{transform:scaleY(.25)} 50%{transform:scaleY(1)}}
+      /* PHENIX NULL RADIO switch — sits under the equalizer, in the NOW PLAYING panel.
+         Presentation only: it calls the same AudioManager.setRadioEnabled the settings
+         row calls, so the persisted opt-out has exactly one owner. */
+      #cgm-overlay .radio-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:11px;padding-top:10px;border-top:1px solid rgba(46,230,246,.12);}
+      #cgm-overlay .radio-label{font-family:'Orbitron',sans-serif;font-weight:700;font-size:9.5px;letter-spacing:1.6px;color:var(--txt-dim);}
+      #cgm-overlay .radio-sw{position:relative;display:flex;align-items:center;gap:8px;cursor:pointer;padding:5px 11px 5px 7px;border-radius:999px;border:1px solid rgba(111,134,184,.35);background:rgba(6,12,28,.85);transition:.16s;font-family:'Orbitron',sans-serif;font-weight:800;font-size:10px;letter-spacing:1.4px;color:var(--txt-dim);}
+      #cgm-overlay .radio-sw i{width:9px;height:9px;border-radius:50%;background:var(--txt-dim);transition:.16s;flex:none;}
+      #cgm-overlay .radio-sw:hover{border-color:rgba(46,230,246,.6);color:#dff0ff;}
+      #cgm-overlay .radio-sw.on{border-color:#ff2d95;color:#ffd0e8;background:rgba(255,45,149,.10);box-shadow:0 0 12px rgba(255,45,149,.30);}
+      #cgm-overlay .radio-sw.on i{background:#ff2d95;box-shadow:0 0 9px #ff2d95;}
+      #cgm-overlay .radio-sw.onair i{animation:cgm-radio-pulse .9s ease-in-out infinite;}
+      @keyframes cgm-radio-pulse{0%,100%{opacity:1}50%{opacity:.35}}
+      #cgm-overlay .radio-sw.navsel{outline:2px solid #fbbf24;outline-offset:3px;color:#fff;}
       #cgm-eq-bars.live>i{animation:none;transition:transform 0.06s linear;}
       #cgm-eq-bars.radio>i{background:linear-gradient(180deg,#ff2d95,#7a1548);box-shadow:0 0 10px rgba(255,45,149,.55);}
       #cgm-overlay .now-radio{color:#ff2d95!important;text-shadow:0 0 8px rgba(255,45,149,.6);animation:cgm-onair 1.2s ease-in-out infinite;}
@@ -24232,6 +24261,11 @@ export class Game {
         <div class="now-row"><span class="label">NOW PLAYING</span><svg><use href="#i-music"/></svg></div>
         <div class="now-row" style="margin-top:6px"><span style="font-size:12px;color:var(--txt-dim);letter-spacing:1px" data-cgm="now-playing">NULL EDEN OST</span></div>
         <div class="eq" id="cgm-eq-bars"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <div class="radio-row">
+          <span class="radio-label">PHENIX NULL RADIO</span>
+          <button class="radio-sw" id="cgm-radio-sw" role="switch" aria-checked="true"
+                  aria-label="PHENIX NULL RADIO on or off"><i></i><b>ON</b></button>
+        </div>
       </section>
 
       <section class="panel" style="--accent:var(--cyan)">
@@ -24309,9 +24343,40 @@ export class Game {
   _syncMenuOverlayActive() {
     const nav = this._menuOverlayEl && this._menuOverlayEl.querySelector('#cgm-menu-nav');
     if (!nav) return;
-    nav.querySelectorAll('.mbtn').forEach((btn, i) => btn.classList.toggle('active', i === this.menuIndex));
+    const onRadio = !!this._menuRadioFocus;
+    nav.querySelectorAll('.mbtn').forEach((btn, i) =>
+      btn.classList.toggle('active', !onRadio && i === this.menuIndex));
     const active = nav.querySelectorAll('.mbtn')[this.menuIndex];
-    if (active) active.focus({ preventScroll: true });
+    if (active && !onRadio) active.focus({ preventScroll: true });
+    this._syncRadioSwitch();
+  }
+
+  // ─── PHENIX NULL RADIO switch (main menu, 2026-08-04) ───────────────────────
+  // The button is a VIEW of AudioManager.radioEnabled — it stores nothing itself and
+  // calls the same setRadioEnabled the settings row calls, so the persisted opt-out
+  // keeps exactly one owner. OFF cuts the broadcast immediately and leaves the menu
+  // theme (Hope) playing on its own; ON re-arms the one-shot and starts it.
+  _syncRadioSwitch() {
+    const el = this._menuOverlayEl?.querySelector('#cgm-radio-sw');
+    if (!el) return;
+    const on    = this.audio ? this.audio.radioEnabled !== false : true;
+    const onAir = !!this.audio?.isRadioOnAir?.();
+    el.classList.toggle('on', on);
+    el.classList.toggle('onair', on && onAir);
+    el.classList.toggle('navsel', !!this._menuRadioFocus);
+    el.setAttribute('aria-checked', on ? 'true' : 'false');
+    const b = el.querySelector('b');
+    if (b) b.textContent = on ? (onAir ? 'ON AIR' : 'ON') : 'OFF';
+  }
+
+  /** Single dispatch for the switch — mouse, keyboard and controller all land here. */
+  _toggleMenuRadio() {
+    if (!this.audio) return;
+    const next = !(this.audio.radioEnabled !== false);
+    this.audio.setRadioEnabled(next);
+    this._syncRadioSwitch();
+    this.triggerAnnouncement(next ? 'PHENIX NULL RADIO — ON' : 'PHENIX NULL RADIO — OFF',
+      next ? '#ff2d95' : '#8899aa');
   }
 
   // Set a single data-cgm element's text content.
@@ -24455,6 +24520,20 @@ export class Game {
     const audioTitle = this.audio?.currentTrackTitle || 'NULL EDEN OST';
     const nowStr = muted ? 'MUTED' : audioTitle;
     this._cgmSet('now-playing', nowStr);
+    const radioSw = this._menuOverlayEl.querySelector('#cgm-radio-sw');
+    if (radioSw && !radioSw._wired) {
+      radioSw._wired = true;
+      radioSw.addEventListener('click', () => { this._menuRadioFocus = true; this._toggleMenuRadio(); });
+      // ONE OWNER FOR THE KEYBOARD (2026-08-04). It is a real <button>, so once it holds DOM
+      // focus the browser turns Enter/Space into a native click — and the menu's own Enter
+      // handler fires in the same frame. Both toggled, so the radio flipped twice and looked
+      // dead. The native activation is suppressed here and _updateStartMenu stays the single
+      // owner, which also keeps the controller (a SYNTHETIC Enter, which never triggers a
+      // native click) on exactly the same path as the keyboard.
+      radioSw.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter' || ev.key === ' ' || ev.key === 'Spacebar') ev.preventDefault();
+      });
+    }
     const eqEl = this._menuOverlayEl.querySelector('#cgm-eq-bars');
     if (eqEl) eqEl.classList.toggle('muted-eq', muted);
 

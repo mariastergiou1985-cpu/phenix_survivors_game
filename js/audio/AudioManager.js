@@ -186,12 +186,21 @@ export class AudioManager {
 
     if (this.muted) return;            // a real mute is the player's choice - leave it alone
 
-    if (!(this.masterVolume >= MIN_AUDIBLE_MASTER)) {   // also catches NaN/undefined
+    // A DELIBERATE ZERO IS NOT A CORRUPTED VALUE (2026-08-04). The repair used to fire
+    // on anything below the threshold, which includes a real 0 — so a player who pulled
+    // master or SFX to 0 got it back at 1.0 / 0.8 on the next boot, and the setting they
+    // chose was silently discarded. The ambiguity this repair exists to remove is the
+    // slider that LOOKS open and is silent, i.e. strictly between 0 and the threshold.
+    // Exactly 0 is unambiguous: the panel reads 0%, the cause of the silence is visible,
+    // and it is now respected. NaN / undefined still repair, as before.
+    const broken = (v, floor) => !(v >= 0) || (v > 0 && v < floor);
+
+    if (broken(this.masterVolume, MIN_AUDIBLE_MASTER)) {
       this._volumeRepairs.push({ bus: 'master', from: this.masterVolume, to: VOL_DEFAULTS.master });
       this.masterVolume = VOL_DEFAULTS.master;
       this._saveVolume(VOL_KEYS.master, this.masterVolume);
     }
-    if (!(this.sfxVolume >= MIN_AUDIBLE_SFX)) {
+    if (broken(this.sfxVolume, MIN_AUDIBLE_SFX)) {
       this._volumeRepairs.push({ bus: 'sfx', from: this.sfxVolume, to: VOL_DEFAULTS.sfx });
       this.sfxVolume = VOL_DEFAULTS.sfx;
       this._saveVolume(VOL_KEYS.sfx, this.sfxVolume);
@@ -222,7 +231,9 @@ export class AudioManager {
   }
 
   setSfxVolume(v) {
-    this.sfxVolume = clamp01(v);
+    // Same near-zero snap the master slider already had: parking at 1.7% looks like an
+    // active slider and is silence. At a true 0 the panel reads 0% and says so honestly.
+    this.sfxVolume = clamp01(v) < 0.02 ? 0 : clamp01(v);
     this.sfxGain.gain.value = this.sfxVolume;
     this._saveVolume(VOL_KEYS.sfx, this.sfxVolume);
   }
@@ -598,7 +609,9 @@ export class AudioManager {
       src.connect(gain);
       gain.connect(this.masterGain);   // direct to master — ducking music leaves the radio loud
       try { gain.connect(this.analyser); } catch (_) {}   // menu equalizer dances to the broadcast
-      this._radioAudio = audio;
+      this._radioAudio    = audio;
+      this._radioSrcNode  = src;       // kept so stopMenuRadio can release the graph
+      this._radioGainNode = gain;
       this.musicGain.gain.setTargetAtTime((this.muted ? 0 : this.musicVolume) * 0.25, this.actx.currentTime, 0.4);
       this.currentTrackTitle = 'PHENIX NULL RADIO — ONLINE';
       const restore = () => {
@@ -613,12 +626,24 @@ export class AudioManager {
   }
 
   // Cut the broadcast when leaving the menu (run start etc.); restores music level.
+  // Full teardown (2026-08-04): pause, rewind, drop the handler and release the graph
+  // node. A paused element with a live MediaElementSource kept the broadcast one
+  // resume() away from coming back, and if _radioRestore threw, _radioAudio stayed set
+  // and the music bus stayed ducked at 25% with no broadcast to explain it.
   stopMenuRadio() {
     const a = this._radioAudio;
     if (!a) return;
-    try { a.pause(); } catch (_) {}
+    this._radioAudio = null;                 // cleared FIRST so a throw below cannot strand it
+    try { a.pause(); a.currentTime = 0; a.onended = null; } catch (_) {}
+    try { this._radioSrcNode?.disconnect(); } catch (_) {}
+    try { this._radioGainNode?.disconnect(); } catch (_) {}
+    this._radioSrcNode = null; this._radioGainNode = null;
     try { this._radioRestore?.(); } catch (_) {}
+    this._radioRestore = null;
   }
+
+  /** True while the broadcast is actually on air. The menu button reads this. */
+  isRadioOnAir() { return !!this._radioAudio; }
 
   startGameplayMusic() {
     this.stopMenuRadio();
