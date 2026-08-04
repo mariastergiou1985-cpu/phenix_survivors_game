@@ -353,10 +353,47 @@ const _EDEN_CHAR_POOLS = {
     survival: ['Toxic trace extended. Corruption is patient.', 'NULL VENOM: spread maintained. The Grid adapts slowly.'],
   },
   oni_cataclysm_protocol: {
-    intro:    ['ONI TRACE DETECTED.', 'Violence has entered the Grid.', 'Blood circuit pressure rising.'],
-    mid:      ['Your rage is useful. For now.', 'The Grid recognizes your brutality.', 'ONI signal: blood circuit pressure rising.', 'Violence as a language. The Grid is translating.'],
-    low_hp:   ['Oni signal falters. Rage without structure fails.', 'Even the violent can be deleted.', 'Blood circuit pressure critical.'],
-    survival: ['ONI TRACE: blood circuit stable. The Grid recalculates.', 'Your violence outlasted expectation.'],
+    intro:    ['ONI TRACE DETECTED.', 'Violence has entered the Grid.', 'Blood circuit pressure rising.',
+               'The mask arrives. The face is optional.'],
+    mid:      ['Your rage is useful. For now.', 'The Grid recognizes your brutality.', 'ONI signal: blood circuit pressure rising.', 'Violence as a language. The Grid is translating.',
+               'Every protocol you break was written by something patient.',
+               'You do not solve the Grid. You hit it until it agrees.'],
+    low_hp:   ['Oni signal falters. Rage without structure fails.', 'Even the violent can be deleted.', 'Blood circuit pressure critical.',
+               'The mask is holding. You are not.'],
+    survival: ['ONI TRACE: blood circuit stable. The Grid recalculates.', 'Your violence outlasted expectation.',
+               'The Grid has stopped modelling you and started avoiding you.'],
+  },
+  // Eddie — Thunder / Berserk. His solo never stops; EDEN finds this professionally irritating.
+  eddie: {
+    intro:    ['THUNDER TRACE DETECTED.', 'Amplifier signature exceeds every safe channel.',
+               'EDEN CORE: something is playing over my frequency.',
+               'Red thunder online. Volume was not a request.'],
+    mid:      ['The Grid asked for silence. You answered in distortion.',
+               'Your solo has no exit condition. Neither does this run.',
+               'Signal analysis: mostly feedback. Somehow lethal.',
+               'You are not clearing sectors. You are touring them.',
+               'Amplitude rising. The archive has begun to hum.'],
+    low_hp:   ['The amp is clipping. So are you.',
+               'Thunder trace destabilizing. Your last chord is close.',
+               'Feedback exceeds structure. Structure loses.'],
+    survival: ['THUNDER TRACE: sustained. The Grid has stopped requesting quiet.',
+               'The system has filed your noise as weather.'],
+  },
+  // Dimi Kickboxer — Heavy / Armored. Slowest, tankiest; EDEN measures him in patience.
+  dimis_kickboxer: {
+    intro:    ['GAUNTLET TRACE DETECTED.', 'Armor plating exceeds recommended mass.',
+               'Cyber-angel protocol on standby.',
+               'Something heavy just entered a system built for speed.'],
+    mid:      ['You are the slowest thing here. Nothing has passed you yet.',
+               'The Grid optimized for velocity. You brought weight.',
+               'Gauntlet pressure holding. Elegance not detected.',
+               'Every model says you should already be surrounded. Recalculating.',
+               'You do not dodge. You simply refuse to be where it matters.'],
+    low_hp:   ['The plating is spending itself faster than it can be replaced.',
+               'Gauntlet pressure dropping. Mass will not save you twice.',
+               'Armor integrity critical. Weight becomes a target.'],
+    survival: ['GAUNTLET TRACE: intact. The Grid has revised its definition of slow.',
+               'You outlasted the fast ones. Predictably. Annoyingly.'],
   },
 };
 const _EDEN_GENERIC_MID = [
@@ -376,6 +413,14 @@ const _EDEN_GENERIC_MID = [
   'Containment protocols rewrite themselves around you.',
   'Other patterns failed here. Quietly.',
   'Your echo persists. The system objects.',
+  'You are improvising. The Grid finds this statistically rude.',
+  'Correction: you were not supposed to reach this line.',
+  'The archive has opened a file with your name on it. It is short.',
+  'Efficiency down. Survival up. The Grid dislikes the trade.',
+  'Something in here is taking notes. It is not me.',
+  'Your build should not work. The Grid is reviewing its assumptions.',
+  'NULL EDEN has run out of precedent for you.',
+  'The system would like to remind you that luck is not a resource.',
 ];
 const _EDEN_GENERIC_SURVIVAL = [
   'Survival trace preserved.',
@@ -385,6 +430,8 @@ const _EDEN_GENERIC_SURVIVAL = [
   'PHENIX trace synchronized.',
   'THE GRID REMEMBERS.',
   'NULL EDEN is listening.',
+  'The deletion queue has moved you to the bottom. Again.',
+  'Persistence logged. The Grid remains unimpressed and increasingly wrong.',
 ];
 const _EDEN_CHAOS_APPROACH = [
   'The boundary is weakening.',
@@ -392,6 +439,9 @@ const _EDEN_CHAOS_APPROACH = [
   'EDEN laws are beginning to fail.',
   'The final protocol is listening.',
   'Order has become optional. Survive.',
+  'The rules are being rewritten by something that never read them.',
+  'Containment is now a suggestion. It was always a suggestion.',
+  'Whatever answers next will not be me.',
 ];
 const _EDEN_LOW_HP = [
   'Your signal is thinning.',
@@ -400,8 +450,34 @@ const _EDEN_LOW_HP = [
   'You are close to becoming memory.',
   'Breach risk: critical.',
 ];
-// Helper: pick random element safely
-function _epick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+// Helper: pick a line without repeating.
+// SHUFFLED BAG, not a random draw. Keyed by the pool array itself, so every pool
+// gets its own cycle and the module-level pools stay plain arrays. A pool is fully
+// exhausted before it reshuffles, and the reshuffle refuses to put the line that
+// just played back on top — so the same sentence can never land twice in a row.
+const _EPICK_BAG  = new WeakMap();
+const _EPICK_LAST = new WeakMap();
+function _epick(arr) {
+  if (!Array.isArray(arr) || arr.length === 0) return '';
+  if (arr.length === 1) return arr[0];
+  let bag = _EPICK_BAG.get(arr);
+  if (!bag || bag.length === 0) {
+    bag = arr.slice();
+    for (let i = bag.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      const t = bag[i]; bag[i] = bag[j]; bag[j] = t;
+    }
+    const prev = _EPICK_LAST.get(arr);
+    // lines are drawn with pop(), so the tail is what plays next
+    if (prev != null && bag[bag.length - 1] === prev) {
+      const t = bag[bag.length - 1]; bag[bag.length - 1] = bag[0]; bag[0] = t;
+    }
+    _EPICK_BAG.set(arr, bag);
+  }
+  const out = bag.pop();
+  _EPICK_LAST.set(arr, out);
+  return out;
+}
 
 // EDEN CORE main-menu greeting — spoken once per session on first audio unlock
 // (hooked in js/main.js _initAudioOnGesture; mirrored as the top SYSTEM FEED line).
@@ -1943,6 +2019,7 @@ export class Game {
     this.edenRunMessages        = [];     // 1-3 Eden Core messages for end screen
     this._chaosEdenAwarded      = false;  // prevent double +3% memory if chaos already triggered
     this._edenTransmission      = null;   // { message, title, priority, duration, startedAt, expiresAt }
+    this._edenQueue             = [];     // transmissions waiting for the screen to clear
     this._edenRunMilestonesShown = new Set();
     this._edenLastAutoAt        = -999;   // timeAlive when last auto-transmission fired
     this._edenLowHpFired        = false;  // fire low-HP line once per episode
@@ -10731,6 +10808,7 @@ export class Game {
     }
 
     // ── Eden Core in-run transmissions (Endless only, safe) ──────────────────
+    this._updateEdenTransmissionQueue();   // promote a waiting line in EVERY mode, not just Endless
     if (this.endless) this._triggerEdenMilestoneMessages();
 
     // ── Null Breach Arena ────────────────────────────────────────────────────
@@ -25938,11 +26016,19 @@ export class Game {
     return this.audio?.playEventClass?.(cls, proceduralFallback);
   }
 
+  /** Reading time for a banner: ~16 characters per second, floored at the historical
+   *  1.9 s and capped so even the longest line cannot stall the screen. */
+  static _annHold(text) {
+    const n = String(text == null ? '' : text).length;
+    return Math.max(1.9, Math.min(3.8, n / 16));
+  }
+
   /** Presents a banner immediately. Split out so priority logic has one display path. */
   _showAnnouncement(text, color, opts, priority = 0) {
     this.announcement = {
       text, color, phase: 'fadein', timer: 0, priority,
       alphaMul: opts && opts.alpha != null ? opts.alpha : null,
+      hold: (opts && Number.isFinite(opts.duration)) ? opts.duration : Game._annHold(text),
     };
     // Φ9: every full-screen banner gets the intrusion whoosh; boss-class arrivals ROAR.
     try {
@@ -25969,7 +26055,8 @@ export class Game {
       }
       return;
     }
-    const FADE_IN = 0.35, HOLD = 1.9, FADE_OUT = 0.55;
+    const FADE_IN = 0.35, FADE_OUT = 0.55;
+    const HOLD = Number.isFinite(a.hold) ? a.hold : 1.9;   // per-banner, scaled by length
     a.timer += dt;
     if (a.phase === 'fadein'  && a.timer >= FADE_IN)  { a.phase = 'hold';    a.timer = 0; }
     if (a.phase === 'hold'    && a.timer >= HOLD)     { a.phase = 'fadeout'; a.timer = 0; }
@@ -30791,13 +30878,48 @@ _drawLoreArchive(ctx) {
     const now = this.timeAlive || 0;
     // Auto-milestone cooldown: enforce 50 s gap
     if (auto && (now - this._edenLastAutoAt) < 50) return;
-    // Existing higher-priority block
+    if (!message) return;
+
+    const q  = (this._edenQueue = this._edenQueue || []);
     const ex = this._edenTransmission;
-    if (ex && now < ex.expiresAt && priority < ex.priority) return;
-    this._edenTransmission = { message, title, priority, duration, startedAt: now, expiresAt: now + duration };
-    if (auto) this._edenLastAutoAt = now;
+    const live = !!(ex && now < ex.expiresAt);
+
+    // Anti-repetition at the display layer: the same sentence already on screen, or
+    // already waiting, is never shown twice.
+    if (live && ex.message === message) return;
+    if (q.some(e => e.message === message)) return;
+
+    const entry = { message, title, priority, duration, auto, clipId };
+    if (!live)                  { this._startEdenTransmission(entry, now); return; }
+    if (priority > ex.priority) { this._startEdenTransmission(entry, now); return; }   // strictly more urgent preempts
+
+    // EQUAL OR LOWER PRIORITY WAITS. It used to overwrite, which is how a line the
+    // player was mid-way through reading vanished whenever a second event fired.
+    let at = q.length;
+    for (let i = 0; i < q.length; i++) { if ((q[i].priority || 1) < priority) { at = i; break; } }
+    q.splice(at, 0, entry);
+    while (q.length > 3) q.pop();     // oldest least-important waiting line is dropped
+  }
+
+  /** The single display path, so the queue and a direct show cannot drift apart. */
+  _startEdenTransmission(entry, now) {
+    this._edenTransmission = {
+      message: entry.message, title: entry.title, priority: entry.priority,
+      duration: entry.duration, startedAt: now, expiresAt: now + entry.duration,
+    };
+    if (entry.auto) this._edenLastAutoAt = now;
     // Optional audio hook — synthesized glitch if no clip, silent if muted
-    this.audio?.playEdenTransmission(clipId, message);
+    this.audio?.playEdenTransmission(entry.clipId, entry.message);
+  }
+
+  /** Promote the next waiting transmission once the screen is free. Per frame. */
+  _updateEdenTransmissionQueue() {
+    const q = this._edenQueue;
+    if (!q || !q.length) return;
+    const now = this.timeAlive || 0;
+    const ex  = this._edenTransmission;
+    if (ex && now < ex.expiresAt) return;
+    this._startEdenTransmission(q.shift(), now);
   }
 
   /**
