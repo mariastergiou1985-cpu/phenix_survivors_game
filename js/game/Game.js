@@ -1929,6 +1929,19 @@ export class Game {
     this._bossRush          = null;    // Boss Rush encounter state (Phase 4-5); null = inactive
     this._bossRushCount     = null;    // rushes triggered this run (lazy-init in _updateBossRush)
     this._bossRushDmgCd     = 0;       // hazard damage cooldown
+    this._bossRushWarned    = false;   // pre-warning beat already announced for the pending entry
+    this._bossRushSchedule  = null;    // re-derived per mode on the next lazy-init
+    // ── THE MAJOR-EVENT ARBITER IS PART OF THE RUN, NOT OF THE SESSION (Maria 2026-08-04) ──
+    // reset() is the only call every restart path is guaranteed to make, and it already cleared
+    // _bossRush, _bossRushCount, _deck and _deckLockT — but not the slot those events hold. A
+    // player who died INSIDE a Boss Rush and pressed RETRY started the next run with
+    // _activeMajorEvent still 'bossRush' and _majorSlotT still counting, and canStartMajorEvent()
+    // refuses every type that is not the holder: acid rain, airstrikes, the gunship, the laser
+    // grid, vault drops and the ambient Mega Boss were all locked out of the fresh run until the
+    // dead run's hold drained — up to 200 s of a run with no major events at all.
+    this._activeMajorEvent  = null;
+    this._majorSlotT        = 0;
+    this._majorEventGraceT  = 0;
     // ── MULTI-DECK RUN STATE (BATCH 1, 2026-07-28) ────────────────────────────────────────
     // 'main' | 'upper' | 'lower'. The active deck is part of the RUN, not of the map: it decides
     // walkability, camera clamp, world rebase, placement and rendering, and it is reset here so a
@@ -12703,6 +12716,21 @@ export class Game {
       // Mutual exclusion: never open a rush while the Null Breach Arena is running —
       // the start simply defers until the breach closes (schedule keeps them apart anyway).
       if (next != null && chaosEl >= next && !this._nullBreachActive) {
+        // ── THE SLOT IS CLAIMED BEFORE ANYTHING IRREVERSIBLE HAPPENS (Maria 2026-08-04) ──
+        // This check used to sit FOUR statements lower, after the forced deck move, the 186 s
+        // exit lock and the Glass Vow relic buff. canStartMajorEvent() refuses whenever another
+        // major event holds the slot or the 6 s post-event grace is running — both ordinary
+        // mid-run states — and on that refusal the code returned having already teleported the
+        // player onto the lower deck and locked the exits for three minutes with NO rush
+        // running, and having handed out a permanent +1.0 Pulse Damage / 1.25x vulnerability
+        // that only the CLEAR branch ever takes back. Measured in the browser before the fix:
+        // a rush due while an acid-rain storm held the slot left deck=lower, _deckLockT=186 s,
+        // _bossRush=null.
+        //
+        // Deferral semantics are unchanged: the counter is simply not advanced, so the same
+        // schedule entry stays due and the rush retries on a later frame rather than being
+        // skipped. That is exactly what the old increment-then-decrement dance achieved.
+        if (!this.startMajorEvent('bossRush')) { this._bossRushWarned = false; return; }
         this._bossRushWarned = false;
         this._bossRushCount++;
         // ARENA RELIC: Glass Vow — sharper blade, thinner skin, only while the rush runs
@@ -12727,7 +12755,6 @@ export class Game {
         // existed. Offer the offset centre as the preferred spot, then validate the WHOLE disk.
         const _rp = this._placeArena(this.player.pos.x + Math.cos(_rushAng) * 260,
                                      this.player.pos.y + Math.sin(_rushAng) * 260, 700, 26);
-        if (!this.startMajorEvent('bossRush')) { this._bossRushCount--; this._bossRushWarned = false; return; }
         this._bossRush = {
           t: 0, dur: 180,
           cx: _rp.x, cy: _rp.y, r: _rp.radius,
