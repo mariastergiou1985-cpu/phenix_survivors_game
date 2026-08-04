@@ -1,4 +1,4 @@
-import { Game } from './game/Game.js?v=20260904030000';
+import { Game } from './game/Game.js?v=20260904040000';
 import { AudioManager } from './audio/AudioManager.js?v=20260902120000';
 import { PlatformAchievements } from './platform/PlatformAchievements.js?v=20260712370000';
 // Steam build: replay any web-earned achievements to Steam on boot (no-op in browsers)
@@ -206,7 +206,15 @@ window.addEventListener('keydown', e => {
     } else if (game.gameState === 'evolution_matrix') {
       game.goToMainMenu();
     } else if (game.gameState === 'playing') {
-      if (game.gameOver || game.victory) {
+      // POST-ARENA PANEL FIRST (2026-08-04). The panel prints "ESC = CONTINUE ENDLESS" and
+      // Game.update has always had a handler for it — but it could never run: this branch
+      // toggled pause and _releaseAllHeldInput() clears `keys`, so 'escape' was gone before
+      // update() looked. ESC therefore paused the game instead of doing what the panel said,
+      // and the controller inherited the same bug through B / Start. Routed to the panel's
+      // OWN existing action; nothing about the three options changed.
+      if (game._postArenaChoice) {
+        game._selectPostArenaChoice(0);
+      } else if (game.gameOver || game.victory) {
         game.goToMainMenu();        // game ended → back to start menu
       } else if (!game._stageCompleteBanner) {
         game.paused = !game.paused; // mid-game → toggle pause (blocked during STAGE COMPLETE banner)
@@ -608,8 +616,14 @@ function applyGamepad() {
   const eUp = padDirEdge('up', up), eDown = padDirEdge('down', down);
   const eLeft = padDirEdge('left', left), eRight = padDirEdge('right', right);
 
+  // _postArenaChoice belongs in this list (2026-08-04). The post-Endless panel freezes the
+  // run but leaves gameState === 'playing', so without it the controller kept driving the
+  // hero: the stick/D-pad never reached CONTINUE ENDLESS / ENTER CHAOS MODE / RETURN MAIN
+  // MENU and A/B did nothing there. applyContextualCursor already excluded it; this is the
+  // same omission on the input side. Keyboard and mouse are untouched.
   const inGameplay = game.gameState === 'playing' && !game.paused && !game.gameOver &&
-                     !game.victory && !game.upgradeUI && !game.mutationUI;
+                     !game.victory && !game.upgradeUI && !game.mutationUI &&
+                     !game._postArenaChoice;
   const cardUI = game.upgradeUI || game.mutationUI;
 
   if (inGameplay) {

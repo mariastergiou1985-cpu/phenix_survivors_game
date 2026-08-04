@@ -2890,6 +2890,15 @@ export class Game {
         '#cgm-chaos-law-sel .cls-card.coming-soon{',
         'cursor:default;opacity:0.55;pointer-events:none;}',
         '#cgm-chaos-law-sel .cls-card.coming-soon:hover{background:rgba(6,12,28,0.7);}',
+        // Keyboard / controller focus. Display only — the click handlers are unchanged.
+        '#cgm-chaos-law-sel .cls-card.cls-on{background:rgba(10,20,44,0.95);',
+        'outline:2px solid #fbbf24;outline-offset:2px;',
+        'box-shadow:0 0 18px rgba(251,191,36,.45);}',
+        '#cgm-chaos-law-sel .cls-skip button.cls-on{outline:2px solid #fbbf24;',
+        'outline-offset:2px;border-color:rgba(251,191,36,.6);color:#ffe9b0;}',
+        '#cgm-chaos-law-sel .cls-hint{text-align:center;font-size:9.5px;letter-spacing:1.6px;',
+        'color:rgba(120,160,200,0.55);}',
+        '#cgm-chaos-law-sel .cls-hint b{color:#2ee6f6;font-weight:400;}',
         '#cgm-chaos-law-sel .cls-cs-tag{',
         'font-size:7.5px;letter-spacing:2px;color:#ff9f0a;font-weight:700;',
         'background:rgba(255,159,10,.12);border:1px solid rgba(255,159,10,.30);',
@@ -2936,11 +2945,21 @@ export class Game {
         ).join('')
       + '</div>'
       + '<div class="cls-skip"><button id="cls-back-btn">\u2190 BACK</button><button id="cls-skip-btn">SKIP \u2014 STANDARD ENDLESS</button></div>'
+      + '<div class="cls-hint"><b>\u25b2\u25bc</b> SELECT \u00b7 <b>ENTER / A</b> CONFIRM \u00b7 <b>ESC / B</b> BACK</div>'
       + '</div>';
     document.body.appendChild(el);
 
+    // Keyboard / controller model (2026-08-04). The selectable ring is: every PLAYABLE law
+    // card, then SKIP, then BACK. Coming-soon cards carry no data-law and are skipped, which
+    // matches the mouse (they are pointer-events:none). Confirming just clicks the very same
+    // node the mouse would, so the run-start path is shared byte for byte.
+    this._clsVisible = true;
+    this._clsIdx     = 0;
+    this._clsSync();
+
     el.querySelectorAll('.cls-card').forEach(card => {
       card.addEventListener('click', () => {
+        this._clsVisible = false;
         this.runChaosLaw = card.dataset.law;
         this._hideChaosLawSelectionOverlay();
         this._hideMenuOverlay();          // guarantee the main-menu overlay never lingers over the run
@@ -2951,6 +2970,7 @@ export class Game {
       });
     });
     document.getElementById('cls-skip-btn').addEventListener('click', () => {
+      this._clsVisible = false;
       this.runChaosLaw = null;
       this._hideChaosLawSelectionOverlay();
       this._hideMenuOverlay();            // guarantee the main-menu overlay never lingers over the run after SKIP
@@ -2960,6 +2980,7 @@ export class Game {
       this._enterEndless();
     });
     document.getElementById('cls-back-btn').addEventListener('click', () => {
+      this._clsVisible = false;
       this._pendingChaosStart = false;
       this._hideChaosLawSelectionOverlay();
       this.goToMainMenu();
@@ -2967,8 +2988,57 @@ export class Game {
   }
 
   _hideChaosLawSelectionOverlay() {
+    this._clsVisible = false;
     const el = document.getElementById('cgm-chaos-law-sel');
     if (el) el.remove();
+  }
+
+  // The focusable ring, in visual order: playable law cards, then SKIP, then BACK.
+  _clsNodes() {
+    const el = document.getElementById('cgm-chaos-law-sel');
+    if (!el) return [];
+    return [
+      ...el.querySelectorAll('.cls-card[data-law]'),
+      el.querySelector('#cls-skip-btn'),
+      el.querySelector('#cls-back-btn'),
+    ].filter(Boolean);
+  }
+
+  _clsSync() {
+    const nodes = this._clsNodes();
+    if (!nodes.length) return;
+    if (!(this._clsIdx >= 0) || this._clsIdx >= nodes.length) this._clsIdx = 0;
+    nodes.forEach((n, i) => n.classList.toggle('cls-on', i === this._clsIdx));
+    try { nodes[this._clsIdx].scrollIntoView({ block: 'nearest' }); } catch (_) {}
+  }
+
+  _clsMove(dir) {
+    const n = this._clsNodes().length;
+    if (!n) return;
+    this._clsIdx = ((this._clsIdx || 0) + dir + n) % n;
+    this._clsSync();
+  }
+
+  // main.js maps D-pad/stick to Arrow keydowns and A/B to Enter/Escape, so one handler
+  // serves keyboard and controller alike. No input logic is changed anywhere.
+  _updateChaosLawKeys(keys) {
+    if (!keys) return;
+    const take = (...names) => {
+      let hit = false;
+      for (const k of names) if (keys.has(k)) { hit = true; keys.delete(k); }
+      return hit;
+    };
+    if (take('arrowup', 'w', 'arrowleft', 'a'))    this._clsMove(-1);
+    if (take('arrowdown', 's', 'arrowright', 'd')) this._clsMove(1);
+    if (take('enter', ' ')) {
+      const node = this._clsNodes()[this._clsIdx];
+      if (node) node.click();            // the SAME handler the mouse fires
+      return;
+    }
+    if (take('escape')) {
+      const back = document.getElementById('cls-back-btn');
+      if (back) back.click();            // the SAME handler the mouse fires
+    }
   }
 
   /** Returns active Chaos Law multipliers for this run. All fields default to 1 (no effect). */
@@ -4960,6 +5030,50 @@ export class Game {
         #cgm-upgrades .cgu-foot-btn.reset-confirm { border-color:var(--magenta); background:rgba(255,45,149,.18); color:#fff; animation:cgu-pulse .6s infinite alternate; }
         @keyframes cgu-pulse { to { box-shadow:0 0 18px rgba(255,45,149,.7); } }
         #cgm-upgrades .cgu-hints { color:var(--txt-faint); font-size:11px; letter-spacing:1px; display:flex; gap:14px; flex-wrap:wrap; align-items:center; }
+        /* GRID FORGE bulk dialog (2026-08-04). Presentation only — the conversion itself
+           still runs through MetaProgress.convertGridsToPF, unchanged. */
+        #cgm-upgrades .cgu-fq { display:flex; gap:6px; flex-wrap:wrap; justify-content:center; margin:2px 0 4px; }
+        #cgm-upgrades .cgu-fchip {
+          padding:7px 13px; border-radius:8px; cursor:pointer;
+          border:1px solid rgba(46,230,246,.28); background:rgba(10,16,46,.5); color:var(--txt);
+          font-family:'Orbitron',sans-serif; font-weight:700; font-size:11px; letter-spacing:1px;
+          transition:.14s;
+        }
+        #cgm-upgrades .cgu-fchip:hover { border-color:var(--cyan); color:#fff; }
+        #cgm-upgrades .cgu-fchip.on {
+          border-color:var(--cyan); color:#fff;
+          background:linear-gradient(180deg,rgba(46,230,246,.18),rgba(46,230,246,.04));
+          box-shadow:var(--glow-cyan);
+        }
+        #cgm-upgrades .cgu-fchip.poor { opacity:.4; }
+        #cgm-upgrades .cgu-frow { display:flex; gap:9px; align-items:center; justify-content:center; margin:2px 0; flex-wrap:wrap; }
+        #cgm-upgrades .cgu-flabel { font-family:'Orbitron',sans-serif; font-weight:700; font-size:10px; letter-spacing:1.6px; color:var(--txt-dim); }
+        #cgm-upgrades .cgu-fnum {
+          width:96px; padding:9px 11px; border-radius:8px; text-align:center;
+          border:1px solid rgba(46,230,246,.35); background:rgba(6,12,28,.9); color:#eaffff;
+          font-family:'Orbitron',sans-serif; font-weight:700; font-size:14px;
+        }
+        #cgm-upgrades .cgu-fnum:focus { outline:2px solid var(--cyan); outline-offset:1px; }
+        #cgm-upgrades .cgu-fmax { padding:8px 16px; font-size:11px; letter-spacing:1.4px; }
+        #cgm-upgrades .cgu-fprev {
+          display:flex; gap:10px; align-items:center; justify-content:center; flex-wrap:wrap;
+          padding:11px 12px; border-radius:10px; margin:4px 0 2px;
+          border:1px solid rgba(46,230,246,.18); background:rgba(6,12,28,.7);
+          font-family:'Orbitron',sans-serif; font-weight:700; font-size:13px; letter-spacing:1px;
+        }
+        #cgm-upgrades .cgu-fprev .cost { color:#ff9a6a; }
+        #cgm-upgrades .cgu-fprev .arrow { color:var(--txt-dim); }
+        #cgm-upgrades .cgu-fprev .gain { color:#fbbf24; }
+        #cgm-upgrades .cgu-fprev .after { font-size:10px; color:var(--txt-dim); letter-spacing:1px; width:100%; text-align:center; }
+        #cgm-upgrades .cgu-fprev.poor { border-color:rgba(255,120,120,.45); }
+        #cgm-upgrades .cgu-fprev.poor .cost { color:#ff8080; }
+        #cgm-upgrades .cgu-modal-btn.confirm[disabled] { opacity:.4; cursor:not-allowed; box-shadow:none; }
+        @media (max-width:560px) {
+          #cgm-upgrades .cgu-fchip { padding:9px 12px; }
+          #cgm-upgrades .cgu-fnum { width:100%; }
+          #cgm-upgrades .cgu-frow { flex-direction:column; align-items:stretch; }
+          #cgm-upgrades .cgu-fmax { width:100%; }
+        }
         #cgm-upgrades .cgu-hints b { color:var(--cyan); font-weight:400; }
         /* ── RESET PROTOCOL confirmation modal ─────────────────────────────── */
         #cgm-upgrades .cgu-modal-backdrop { position:fixed; inset:0; z-index:60; display:none; align-items:center; justify-content:center; background:rgba(3,6,14,.72); backdrop-filter:blur(2px); }
@@ -5037,6 +5151,28 @@ export class Game {
         </div>
       </div>
 
+      <div class="cgu-modal-backdrop" id="cgu-forge-modal">
+        <div class="cgu-modal" role="dialog" aria-modal="true" aria-label="Grid Forge">
+          <div class="cgu-modal-title">&#9879; GRID FORGE</div>
+          <div class="cgu-modal-body">
+            Convert surplus Cores into Protocol Fragments. Pick how many fragments to forge.
+          </div>
+          <div class="cgu-fq" id="cgu-fq"></div>
+          <div class="cgu-frow">
+            <label class="cgu-flabel" for="cgu-fqty">FRAGMENTS</label>
+            <input class="cgu-fnum" id="cgu-fqty" type="number" min="1" max="100" step="1" value="1"
+                   inputmode="numeric" aria-label="Fragments to forge">
+            <button class="cgu-foot-btn cgu-fmax" id="cgu-fmax">MAX</button>
+          </div>
+          <div class="cgu-fprev" id="cgu-fprev"></div>
+          <div class="cgu-modal-note" id="cgu-fnote"></div>
+          <div class="cgu-modal-btns">
+            <button class="cgu-modal-btn cancel"  id="cgu-forge-cancel">CANCEL</button>
+            <button class="cgu-modal-btn confirm" id="cgu-forge-confirm">CONFIRM FORGE</button>
+          </div>
+        </div>
+      </div>
+
       <div class="cgu-modal-backdrop" id="cgu-reset-modal">
         <div class="cgu-modal" role="alertdialog" aria-modal="true" aria-label="Reset Protocol">
           <div class="cgu-modal-title">RESET PROTOCOL</div>
@@ -5062,20 +5198,34 @@ export class Game {
 
     // RESET PROGRESS — opens the RESET PROTOCOL confirmation modal (replaces double-click)
     el.querySelector('#cgu-reset-btn')?.addEventListener('click', () => this._openResetModal());
+    // (GRID FORGE bulk dialog is wired just below.)
 
     // GRID FORGE — spend surplus Cores(grids) for Protocol Fragments. Grids are heavily
     // oversupplied (see qa_reports/ECONOMY_MATH.md); this is the sink for them. The PF it
     // grants is excluded from the pilot-level metric inside convertGridsToPF (loop-proof).
-    el.querySelector('#cgu-forge-btn')?.addEventListener('click', () => {
-      const res = this.meta?.convertGridsToPF?.(1);
-      if (res?.ok) {
-        this._upgradeMsg = `GRID FORGE — ${res.spent} CORES → +${res.gained} 🧩`;
-        this.audio?.forgeMilestone?.();
-      } else {
-        this._upgradeMsg = `GRID FORGE needs ${GRID_TO_PF_RATE} CORES.`;
-      }
-      this._upgradeMsgTimer = 2.5;
-      this._syncUpgradesOverlay();
+    //
+    // BULK (2026-08-04): the button now opens a quantity dialog instead of forging a single
+    // fragment on the spot. The ECONOMY IS UNCHANGED — the dialog still calls the very same
+    // MetaProgress.convertGridsToPF(n), whose cost is n * GRID_TO_PF_RATE and whose loop
+    // guard (rewardedPFTotal) is untouched. Forging n fragments costs exactly what forging
+    // one, n times, always cost. The dialog only makes the price visible before you pay it.
+    el.querySelector('#cgu-forge-btn')?.addEventListener('click', () => this._openForgeModal());
+
+    const forgeModal = el.querySelector('#cgu-forge-modal');
+    forgeModal?.addEventListener('click', e => { if (e.target === forgeModal) this._closeForgeModal(); });
+    el.querySelector('#cgu-forge-cancel')?.addEventListener('click', () => this._closeForgeModal());
+    el.querySelector('#cgu-forge-confirm')?.addEventListener('click', () => this._confirmForge());
+    el.querySelector('#cgu-fmax')?.addEventListener('click', () => {
+      this._setForgeQty(this.meta?.affordableForgedPF?.() || 0);
+    });
+    el.querySelector('#cgu-fq')?.addEventListener('click', (ev) => {
+      const chip = ev.target.closest?.('.cgu-fchip');
+      if (chip) this._setForgeQty(Number(chip.dataset.qty));
+    });
+    const qtyEl = el.querySelector('#cgu-fqty');
+    qtyEl?.addEventListener('input', () => this._setForgeQty(Number(qtyEl.value), true));
+    qtyEl?.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter') { ev.preventDefault(); this._confirmForge(); }
     });
 
     const resetModal = el.querySelector('#cgu-reset-modal');
@@ -5189,6 +5339,96 @@ export class Game {
   // ── RESET PROTOCOL confirmation modal (DOM overlay path) ────────────────────
   // Body text is computed LIVE from meta state so the promised refund always
   // matches exactly what meta.respec() pays back (100% of spent Grid Cores).
+  // ─── GRID FORGE bulk dialog (2026-08-04) ────────────────────────────────────
+  // UI ONLY. Nothing here computes a price: the cost shown is n * GRID_TO_PF_RATE, the
+  // same arithmetic MetaProgress.convertGridsToPF performs, and the actual spend is that
+  // single call. No new currency path, no rate change, no bulk discount.
+  _forgeQtyOptions() {
+    const opts = [1];
+    for (let q = 10; q <= 100; q += 10) opts.push(q);
+    return opts;
+  }
+
+  _openForgeModal() {
+    const affordable = this.meta?.affordableForgedPF?.() || 0;
+    this._forgeQty = Math.max(1, Math.min(100, affordable > 0 ? Math.min(affordable, 10) : 1));
+    this._forgeModalOpen = true;
+    this._syncForgeModal();
+    const m = this._upgradesOverlayEl?.querySelector('#cgu-forge-modal');
+    if (m) m.classList.add('open');
+  }
+
+  _closeForgeModal() {
+    this._forgeModalOpen = false;
+    const m = this._upgradesOverlayEl?.querySelector('#cgu-forge-modal');
+    if (m) m.classList.remove('open');
+  }
+
+  _setForgeQty(n, fromInput = false) {
+    const v = Math.max(1, Math.min(100, Math.floor(Number(n) || 0) || 1));
+    this._forgeQty = v;
+    this._syncForgeModal(fromInput);
+  }
+
+  _syncForgeModal(skipInput = false) {
+    const el = this._upgradesOverlayEl;
+    if (!el) return;
+    const box = el.querySelector('#cgu-forge-modal');
+    if (!box) return;
+    if (!(this._forgeQty >= 1)) this._forgeQty = 1;
+    const qty        = this._forgeQty;
+    const cores      = this.meta?.credits || 0;
+    const cost       = qty * GRID_TO_PF_RATE;
+    const affordable = this.meta?.affordableForgedPF?.() || 0;
+    const can        = cores >= cost;
+
+    const chips = el.querySelector('#cgu-fq');
+    if (chips) {
+      chips.innerHTML = this._forgeQtyOptions().map(q =>
+        '<button class="cgu-fchip' + (q === qty ? ' on' : '') + (q > affordable ? ' poor' : '') +
+        '" data-qty="' + q + '">' + q + '</button>').join('');
+    }
+    const input = el.querySelector('#cgu-fqty');
+    if (input && !skipInput && String(qty) !== input.value) input.value = String(qty);
+
+    const prev = el.querySelector('#cgu-fprev');
+    if (prev) {
+      prev.classList.toggle('poor', !can);
+      prev.innerHTML =
+        '<span class="cost">' + cost.toLocaleString() + ' &#11041; CORES</span>' +
+        '<span class="arrow">&#8594;</span>' +
+        '<span class="gain">+' + qty + ' &#129513; FRAGMENTS</span>' +
+        '<span class="after">BALANCE AFTER &nbsp;' +
+          (can ? (cores - cost).toLocaleString() : cores.toLocaleString()) + ' &#11041;' +
+          ' &nbsp;&middot;&nbsp; ' +
+          ((this.meta?.getProtocolFragments?.() || 0) + (can ? qty : 0)) + ' &#129513;</span>';
+    }
+    const note = el.querySelector('#cgu-fnote');
+    if (note) {
+      note.textContent = can
+        ? `Rate ${GRID_TO_PF_RATE} Cores → 1 Fragment. You can afford up to ${affordable}.`
+        : `Not enough Cores. You have ${cores.toLocaleString()} and can afford up to ${affordable}.`;
+    }
+    const confirm = el.querySelector('#cgu-forge-confirm');
+    if (confirm) confirm.disabled = !can;
+  }
+
+  // The single spend. Identical call the old one-shot button made, with n instead of 1.
+  _confirmForge() {
+    const qty = Math.max(1, Math.min(100, Math.floor(this._forgeQty) || 1));
+    const res = this.meta?.convertGridsToPF?.(qty);
+    if (res?.ok) {
+      this._upgradeMsg = `GRID FORGE — ${res.spent} CORES → +${res.gained} 🧩`;
+      this.audio?.forgeMilestone?.();
+      this._closeForgeModal();
+    } else {
+      this._upgradeMsg = `GRID FORGE needs ${qty * GRID_TO_PF_RATE} CORES.`;
+      this._syncForgeModal();
+    }
+    this._upgradeMsgTimer = 2.5;
+    this._syncUpgradesOverlay();
+  }
+
   _openResetModal() {
     const el = this._upgradesOverlayEl;
     if (!el) return;
@@ -5237,6 +5477,7 @@ export class Game {
       forgeEl.style.opacity = can ? '1' : '0.45';
       forgeEl.style.cursor  = can ? 'pointer' : 'not-allowed';
     }
+    this._syncForgeModal();
 
     el.querySelectorAll('.cgu-tab').forEach(btn => {
       btn.classList.remove('active-core','active-syn','active-proto');
@@ -10293,6 +10534,13 @@ export class Game {
     this._stageCompleteWatchdog();   // Phase 15: never stay frozen on the stage-complete banner
     this._syncEddiePlaylistPause();  // Eddie playlist follows pause / game-over / tab-hidden
 
+    // CHAOS LAW SELECTION owns every key while it is up. It is opened from the menu flow
+    // (gameState is still start_menu) and from the Chaos entry, so without this guard the
+    // screen underneath would consume the arrows and the overlay would stay mouse-only.
+    if (this._clsVisible) {
+      this._updateChaosLawKeys(input.keys);
+      return;
+    }
     if (this.gameState === 'start_menu') {
       this._updateStartMenu(dt, input);
       return;
