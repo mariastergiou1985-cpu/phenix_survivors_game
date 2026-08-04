@@ -1013,135 +1013,223 @@ export class NpcWalker {
   }
 
   // ── Screen-space HUD panel ────────────────────────────────────────────────
+  // PREMIUM REDESIGN (2026-08-03, Maria): visual pass ONLY — same signature, same
+  // caller, same states and data (walkerSummonCd / downed / hp / mana / cooldowns),
+  // same width and anchor, still returns H. Cleaner glass frame with corner ticks,
+  // one controlled glow pass on the border, a short deterministic glitch window
+  // (time-based, ~every 4s for 0.14s), typographic hierarchy (label / title /
+  // value columns) and slow readable pulses. No triggers or logic changed.
   drawHUDPanel(ctx, x, y, width, walkerSummonCd) {
     const W   = width;
-    const PAD = 8;
+    const PAD = 9;
     const ROW = 14;
-    const BH  = 6;
+    const BH  = 7;
     const syn = this._synergy;
+    const now = (typeof performance !== 'undefined' ? performance.now() : Date.now()) * 0.001;
+    const pulse = 0.5 + 0.5 * Math.sin(now * 2.4);                 // slow, readable breathing
+    const glitchOn = (now % 4.1) < 0.14;                            // controlled glitch window
 
-    const hasGlitch = this._glitchedTargets.filter(g => !g.isDone).length > 0;
-    const hasDashReady  = this._dashCd <= 0;
-    const hasShield     = this._shieldAppliedTimer > 0;
-    const activeH   = PAD + ROW + 4 + BH + 3 + BH + 4 + ROW + 4 + ROW + (hasGlitch ? ROW + 2 : 0) + ROW + 2 + (hasShield ? ROW + 2 : 0) + PAD;
+    const hasGlitch    = this._glitchedTargets.filter(g => !g.isDone).length > 0;
+    const hasShield    = this._shieldAppliedTimer > 0;
+    const activeH = PAD + 4 + ROW + 6 + (BH + 9) * 2 + ROW + 2 + ROW + (hasGlitch ? ROW + 2 : 0) + ROW + 2 + (hasShield ? ROW + 2 : 0) + PAD;
     const H = !this._active
-      ? PAD + ROW + 4 + ROW + PAD
+      ? PAD + 4 + ROW + 6 + ROW + PAD
       : this.downed
-        ? PAD + ROW + 4 + BH + PAD
+        ? PAD + 4 + ROW + 6 + BH + 6 + PAD
         : activeH;
 
+    const accent = !this._active ? '#7fb8d8'
+                 : this.downed   ? '#ff4466'
+                 : (syn && syn.col1) || '#2ee6f6';
+    const accentGlow = !this._active ? 'rgba(127,184,216,0.55)'
+                     : this.downed   ? 'rgba(255,68,102,0.75)'
+                     : 'rgba(46,230,246,0.7)';
+
     ctx.save();
-    ctx.fillStyle = 'rgba(6,12,24,0.9)';   // dark glass — matches Eden transmission panel language
-    if (ctx.roundRect) {
-      ctx.beginPath(); ctx.roundRect(x, y, W, H, 5); ctx.fill();
-    } else {
-      ctx.fillRect(x, y, W, H);
-    }
-    const borderCol = !this._active
-      ? 'rgba(110,150,180,0.6)'
-      : this.downed
-        ? 'rgba(255,68,102,0.8)'
-        : (syn.col1 + 'cc');
-    ctx.strokeStyle = borderCol;
+
+    // Glass body — vertical gradient, slightly deeper than the old flat fill.
+    const bg = ctx.createLinearGradient(x, y, x, y + H);
+    bg.addColorStop(0, 'rgba(9,17,34,0.94)');
+    bg.addColorStop(1, 'rgba(4,8,18,0.90)');
+    ctx.fillStyle = bg;
+    if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(x, y, W, H, 6); ctx.fill(); }
+    else { ctx.fillRect(x, y, W, H); }
+
+    // ONE controlled glow pass, on the border only (never on text).
+    ctx.strokeStyle = accent;
     ctx.lineWidth   = 1.5;
-    ctx.shadowColor = borderCol;
-    ctx.shadowBlur  = this._active && !this.downed ? 10 : 5;
-    if (ctx.roundRect) {
-      ctx.beginPath(); ctx.roundRect(x, y, W, H, 5); ctx.stroke();
-    } else {
-      ctx.strokeRect(x, y, W, H);
-    }
+    ctx.shadowColor = accentGlow;
+    ctx.shadowBlur  = !this._active ? 5 : this.downed ? (8 + 6 * pulse) : 12;
+    if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(x, y, W, H, 6); ctx.stroke(); }
+    else { ctx.strokeRect(x, y, W, H); }
     ctx.shadowBlur = 0;
+
+    // Inner top highlight + left accent spine.
+    ctx.globalAlpha = 0.35;
+    ctx.strokeStyle = 'rgba(220,245,255,0.5)';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x + 7, y + 1.5); ctx.lineTo(x + W - 7, y + 1.5); ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = accent;
+    ctx.fillRect(x + 1.5, y + 6, 2, H - 12);
+
+    // Cyber corner ticks (tl + br) — the frame language of the menu overlays.
+    ctx.strokeStyle = accent;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(x + 0.5, y + 9); ctx.lineTo(x + 0.5, y + 0.5); ctx.lineTo(x + 9, y + 0.5);
+    ctx.moveTo(x + W - 0.5, y + H - 9); ctx.lineTo(x + W - 0.5, y + H - 0.5); ctx.lineTo(x + W - 9, y + H - 0.5);
+    ctx.stroke();
+
+    // Controlled glitch: two 1px slice lines inside the frame during the window.
+    if (glitchOn) {
+      const gy1 = y + 6 + ((now * 37) % (H - 12));
+      const gy2 = y + 6 + ((now * 61 + 17) % (H - 12));
+      ctx.globalAlpha = 0.35;
+      ctx.fillStyle = accent;
+      ctx.fillRect(x + 4, gy1, W - 8, 1);
+      ctx.globalAlpha = 0.18;
+      ctx.fillRect(x + 10, gy2, W - 20, 1);
+      ctx.globalAlpha = 1;
+    }
 
     const barX = x + PAD;
     const barW = W - PAD * 2;
-    let   cy   = y + PAD + ROW - 2;
+    let cy = y + PAD + 3;
+
+    // ── Header: micro-label + title + status dot (typographic hierarchy) ──
+    const title = (label, dotCol) => {
+      ctx.textAlign = 'left';
+      ctx.font = '7px Consolas, monospace';
+      ctx.fillStyle = 'rgba(140,180,205,0.6)';
+      ctx.fillText('A L L Y   L I N K', barX, cy);
+      cy += ROW - 3;
+      if (glitchOn) {                                    // brief RGB-split echo, title only
+        ctx.font = 'bold 11px Consolas, monospace';
+        ctx.fillStyle = 'rgba(255,70,120,0.35)'; ctx.fillText(label, barX - 1, cy);
+        ctx.fillStyle = 'rgba(46,230,246,0.35)'; ctx.fillText(label, barX + 1, cy);
+      }
+      ctx.font = 'bold 11px Consolas, monospace';
+      ctx.fillStyle = '#eaf6ff';
+      ctx.fillText(label, barX, cy);
+      ctx.beginPath(); ctx.arc(x + W - PAD - 3, cy - 4, 3, 0, Math.PI * 2);
+      ctx.fillStyle = dotCol; ctx.fill();
+      cy += 6;
+    };
+    // Label/value row helper — label left, value right (aligned columns).
+    const row = (labelTxt, valueTxt, colL, colV) => {
+      ctx.font = '9px Consolas, monospace';
+      ctx.textAlign = 'left';  ctx.fillStyle = colL; ctx.fillText(labelTxt, barX, cy);
+      ctx.textAlign = 'right'; ctx.fillStyle = colV; ctx.fillText(valueTxt, x + W - PAD, cy);
+      ctx.textAlign = 'left';
+    };
+    // Rounded stat bar with thin outline + gradient fill.
+    const bar = (label, val, max, colA, colB) => {
+      ctx.font = '7px Consolas, monospace';
+      ctx.fillStyle = 'rgba(185,215,235,0.62)';
+      ctx.textAlign = 'left';  ctx.fillText(label, barX, cy);
+      ctx.textAlign = 'right'; ctx.fillText(Math.ceil(val) + ' / ' + max, x + W - PAD, cy);
+      ctx.textAlign = 'left';
+      cy += 3;
+      ctx.fillStyle = 'rgba(255,255,255,0.07)';
+      if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(barX, cy, barW, BH, 3); ctx.fill(); }
+      else ctx.fillRect(barX, cy, barW, BH);
+      const w = Math.max(0, Math.min(1, val / max)) * barW;
+      if (w > 1) {
+        const g = ctx.createLinearGradient(barX, 0, barX + barW, 0);
+        g.addColorStop(0, colA); g.addColorStop(1, colB);
+        ctx.fillStyle = g;
+        if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(barX, cy, w, BH, 3); ctx.fill(); }
+        else ctx.fillRect(barX, cy, w, BH);
+      }
+      ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+      ctx.lineWidth = 1;
+      if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(barX, cy, barW, BH, 3); ctx.stroke(); }
+      else ctx.strokeRect(barX, cy, barW, BH);
+      cy += BH + 9;
+    };
 
     if (!this._active) {
-      ctx.font      = 'bold 10px Consolas, monospace';
-      ctx.fillStyle = '#9fd8e8';
-      ctx.textAlign = 'left';
-      ctx.fillText('KIROSHI WALKER', barX, cy);
-      cy += ROW + 4;
+      // ── OFFLINE / INBOUND ──
+      title('KIROSHI WALKER', 'rgba(255,200,80,' + (0.45 + 0.45 * pulse).toFixed(2) + ')');
+      cy += ROW - 4;
       const cd   = Math.max(0, Math.ceil(walkerSummonCd || 0));
-      const mins = Math.floor(cd / 60).toString().padStart(1, '0');
+      const mins = Math.floor(cd / 60).toString();
       const secs = (cd % 60).toString().padStart(2, '0');
-      ctx.font      = '9px Consolas, monospace';
-      ctx.fillStyle = 'rgba(170,220,235,0.9)';
-      ctx.fillText('OFFLINE — INBOUND ' + mins + ':' + secs, barX, cy);
+      // Marching chevrons — slow, readable "incoming" motion (3 states, 0.45s step).
+      const step = Math.floor(now / 0.45) % 3;
+      let chev = '';
+      for (let i = 0; i < 3; i++) chev += (i === step ? '»' : '·') + ' ';
+      ctx.font = '9px Consolas, monospace';
+      ctx.fillStyle = 'rgba(255,205,110,' + (0.55 + 0.35 * pulse).toFixed(2) + ')';
+      ctx.fillText(chev.trim(), barX, cy);
+      ctx.font = '9px Consolas, monospace';
+      ctx.textAlign = 'left';
+      ctx.fillStyle = 'rgba(200,230,245,0.9)';
+      ctx.fillText('OFFLINE', barX + 26, cy);
+      ctx.textAlign = 'right';
+      ctx.fillStyle = '#ffd27a';
+      ctx.font = 'bold 10px Consolas, monospace';
+      ctx.fillText('INBOUND ' + mins + ':' + secs, x + W - PAD, cy);
+      ctx.textAlign = 'left';
     } else if (this.downed) {
-      ctx.font      = 'bold 10px Consolas, monospace';
-      ctx.fillStyle = '#ff7799';
+      // ── DOWNED / REVIVING ──
+      title('KIROSHI — DOWNED', 'rgba(255,68,102,' + (0.5 + 0.5 * pulse).toFixed(2) + ')');
+      cy += ROW - 6;
+      const revivePct = Math.max(0, Math.min(1, 1 - this.downedTimer / WALKER_DOWNED_DUR));
+      ctx.font = '7px Consolas, monospace';
+      ctx.fillStyle = 'rgba(255,150,170,0.75)';
+      ctx.textAlign = 'left';  ctx.fillText('REBOOT', barX, cy);
+      ctx.textAlign = 'right'; ctx.fillText(Math.round(revivePct * 100) + '%  ·  ' + Math.ceil(this.downedTimer) + 's', x + W - PAD, cy);
       ctx.textAlign = 'left';
-      ctx.fillText('KIROSHI — DOWNED (' + Math.ceil(this.downedTimer) + 's)', barX, cy);
-      cy += ROW + 4;
-      const revivePct = 1 - this.downedTimer / WALKER_DOWNED_DUR;
-      ctx.fillStyle = 'rgba(255,68,102,0.22)'; ctx.fillRect(barX, cy, barW, BH);
-      ctx.fillStyle = '#ff4466';
-      ctx.fillRect(barX, cy, Math.round(barW * revivePct), BH);
+      cy += 3;
+      ctx.fillStyle = 'rgba(255,68,102,0.16)';
+      if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(barX, cy, barW, BH, 3); ctx.fill(); }
+      else ctx.fillRect(barX, cy, barW, BH);
+      const rg = ctx.createLinearGradient(barX, 0, barX + barW, 0);
+      rg.addColorStop(0, '#ff4466'); rg.addColorStop(1, '#ff8899');
+      ctx.fillStyle = rg;
+      const rw = Math.round(barW * revivePct);
+      if (rw > 1) {
+        if (ctx.roundRect) { ctx.beginPath(); ctx.roundRect(barX, cy, rw, BH, 3); ctx.fill(); }
+        else ctx.fillRect(barX, cy, rw, BH);
+      }
     } else {
-      ctx.font      = 'bold 10px Consolas, monospace';
-      ctx.fillStyle = syn.col1;
-      ctx.textAlign = 'left';
-      ctx.fillText('KIROSHI WALKER', barX, cy);
-      cy += ROW + 4;
-      // HP bar
-      ctx.fillStyle = 'rgba(255,68,102,0.22)'; ctx.fillRect(barX, cy, barW, BH);
-      ctx.fillStyle = '#ff4466';
-      ctx.fillRect(barX, cy, Math.round(barW * Math.max(0, this.hp / this.maxHp)), BH);
-      ctx.font = '7px Consolas, monospace'; ctx.fillStyle = 'rgba(200,200,230,0.55)';
-      ctx.fillText('HP ' + Math.ceil(this.hp) + '/' + this.maxHp, barX, cy - 1);
-      cy += BH + 3;
-      // Mana bar
-      ctx.fillStyle = 'rgba(68,136,255,0.22)'; ctx.fillRect(barX, cy, barW, BH);
-      ctx.fillStyle = '#4488ff';
-      ctx.fillRect(barX, cy, Math.round(barW * Math.max(0, this.mana / this.maxMana)), BH);
-      ctx.font = '7px Consolas, monospace'; ctx.fillStyle = 'rgba(200,200,230,0.55)';
-      ctx.fillText('MP ' + Math.ceil(this.mana) + '/' + this.maxMana, barX, cy - 1);
-      cy += BH + 4;
+      // ── ONLINE ──
+      title('KIROSHI WALKER', 'rgba(120,255,190,' + (0.55 + 0.4 * pulse).toFixed(2) + ')');
+      cy += ROW - 4;
+      bar('HP', this.hp, this.maxHp, '#ff4466', '#ff7a55');
+      bar('MP', this.mana, this.maxMana, '#3a7bff', '#44c8ff');
       // Active duration
       const actSec = Math.ceil(this._activeDur);
-      const aMins  = Math.floor(actSec / 60).toString().padStart(1, '0');
+      const aMins  = Math.floor(actSec / 60).toString();
       const aSecs  = (actSec % 60).toString().padStart(2, '0');
-      ctx.font      = '9px Consolas, monospace';
-      ctx.fillStyle = 'rgba(160,220,200,0.55)';
-      ctx.fillText('ACTIVE ' + aMins + ':' + aSecs, barX, cy + ROW - 2);
-      cy += ROW + 4;
+      row('UPLINK', aMins + ':' + aSecs, 'rgba(150,210,190,0.55)', 'rgba(190,240,220,0.85)');
+      cy += ROW;
       // Shockwave status
       if (this.abilityCd <= 0 && this.mana >= ABILITY_MANA_COST) {
-        ctx.fillStyle = '#aaff88';
-        ctx.fillText('⚡ SHOCKWAVE  READY', barX, cy);
+        row('⚡ SHOCKWAVE', 'READY', '#aaff88', '#aaff88');
       } else if (this.mana < ABILITY_MANA_COST) {
-        ctx.fillStyle = 'rgba(120,160,200,0.5)';
-        ctx.fillText('⚡ CHARGING  ' + Math.floor(this.mana / ABILITY_MANA_COST * 100) + '%', barX, cy);
+        row('⚡ SHOCKWAVE', Math.floor(this.mana / ABILITY_MANA_COST * 100) + '%', 'rgba(130,170,210,0.55)', 'rgba(150,190,225,0.8)');
       } else {
         const cdL = Math.ceil(this.abilityCd);
-        const cm  = Math.floor(cdL / 60).toString().padStart(1, '0');
-        const cs  = (cdL % 60).toString().padStart(2, '0');
-        ctx.fillStyle = 'rgba(120,160,200,0.5)';
-        ctx.fillText('⚡ SHOCKWAVE  ' + cm + ':' + cs, barX, cy);
+        row('⚡ SHOCKWAVE', Math.floor(cdL / 60) + ':' + (cdL % 60).toString().padStart(2, '0'),
+            'rgba(130,170,210,0.55)', 'rgba(150,190,225,0.8)');
       }
       // Mind Glitch status
       if (hasGlitch) {
         cy += ROW + 2;
         const gc = this._glitchedTargets.filter(g => !g.isDone).length;
-        ctx.fillStyle = '#ee88ff';
-        ctx.fillText('⚙ GLITCH  x' + gc + '  ACTIVE', barX, cy);
+        row('⚙ GLITCH', 'x' + gc + ' ACTIVE', '#ee88ff', '#ee88ff');
       }
       // Dash status
       cy += ROW + 2;
-      if (this._dashCd <= 0) {
-        ctx.fillStyle = '#88ffcc';
-        ctx.fillText('» DASH  READY', barX, cy);
-      } else {
-        ctx.fillStyle = 'rgba(120,200,170,0.45)';
-        ctx.fillText('» DASH  ' + Math.ceil(this._dashCd) + 's', barX, cy);
-      }
+      if (this._dashCd <= 0) row('» DASH', 'READY', '#88ffcc', '#88ffcc');
+      else row('» DASH', Math.ceil(this._dashCd) + 's', 'rgba(120,200,170,0.5)', 'rgba(140,220,190,0.75)');
       // Shield active indicator
       if (this._shieldAppliedTimer > 0) {
         cy += ROW + 2;
-        ctx.fillStyle = '#44ccff';
-        ctx.fillText('🛡 SHIELD  ' + Math.ceil(this._shieldAppliedTimer) + 's', barX, cy);
+        row('🛡 SHIELD', Math.ceil(this._shieldAppliedTimer) + 's', '#44ccff', '#44ccff');
       }
     }
 
