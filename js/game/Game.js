@@ -2704,6 +2704,7 @@ export class Game {
   }
 
   goToMainMenu() {
+    this._hideResultsOverlay?.();
     // Save Endless records before fading (must happen synchronously)
     if (this.endless && !this.rewardsGranted && this.timeAlive > 5) {
       this._grantRewards();
@@ -23351,8 +23352,13 @@ export class Game {
 
     if (this.upgradeUI) this.upgradeUI.draw(ctx, this.player, this);
     if (this.mutationUI) this.mutationUI.draw(ctx, this.player, this);
-    if (this.victory)        this._drawVictoryScreen(ctx);
-    else if (this.gameOver)  drawEndScreen(ctx, this);
+    // RESULTS OVERLAY (2026-08-04). The DOM screen owns the presentation when it is up;
+    // the canvas screens below are left completely intact as the fallback path.
+    this._syncResultsOverlay();
+    if (!this._resultsOverlayVisible) {
+      if (this.victory)        this._drawVictoryScreen(ctx);
+      else if (this.gameOver)  drawEndScreen(ctx, this);
+    }
     this.buildEngine?.drawPanels(ctx, this);                  // P2.8 (?p2=1): CURRENT BUILD / DAMAGE REPORT
 
     // WHITEOUT overlay — white fog closing from the screen edges (Glacial hazard)
@@ -26430,6 +26436,331 @@ export class Game {
 
     ctx.textAlign = 'left';
     ctx.restore();
+  }
+
+  // ═══ END-OF-RUN / RESULTS SCREEN (2026-08-04) ═══════════════════════════════
+  // Presentation only. Every number is read from the same fields the canvas screens
+  // read, the damage rows come from the same BuildEngine log, and the buttons are the
+  // SAME set, in the SAME order, dispatching the SAME actions as before — which is why
+  // main.js's existing end-screen key handler keeps driving them with no change at all.
+  //
+  // Button sets, unchanged from the canvas screens:
+  //   defeat   0 RETRY   1 UPGRADES   2 MAIN MENU
+  //   victory  0 RETURN TO MAIN MENU  1 CONTINUE — ENDLESS
+  // Only the LABELS are mode-aware, so a Chaos retry does not claim to be a Campaign one.
+  _resultsMode() {
+    if (this._chaosMode) return { id: 'chaos',    label: 'CHAOS MODE',    accent: '#ff2d95' };
+    if (this.endless)    return { id: 'endless',  label: 'ENDLESS MODE',  accent: '#7CFF4D' };
+    return { id: 'campaign', label: 'CAMPAIGN', accent: '#2ee6f6' };
+  }
+
+  _resultsButtons() {
+    const m = this._resultsMode();
+    if (this.victory) {
+      return [
+        { key: 'menu',     label: 'RETURN TO MAIN MENU', accent: 'cyan' },
+        { key: 'continue', label: 'CONTINUE \u2014 ENDLESS', accent: 'green' },
+      ];
+    }
+    const retry = m.id === 'chaos'   ? 'RETRY \u2014 CHAOS'
+                : m.id === 'endless' ? 'RETRY \u2014 ENDLESS'
+                                     : 'RETRY STAGE';
+    return [
+      { key: 'retry',    label: retry,       accent: 'cyan' },
+      { key: 'upgrades', label: 'UPGRADES',  accent: 'amber' },
+      { key: 'menu',     label: 'MAIN MENU', accent: 'dim' },
+    ];
+  }
+
+  // The ONE dispatch point. Identical to what main.js's Enter handler already does for
+  // each index — kept here so mouse, keyboard and controller cannot drift apart.
+  _resultsActivate(key) {
+    if (key === 'retry')         { this.reset(); this.audio?.startGameplayMusic(); }
+    else if (key === 'upgrades') { this.audio?.startMenuMusic(); this.goToUpgradesScreen(); }
+    else if (key === 'menu')     { this.goToMainMenu(); }
+    else if (key === 'continue') { this.continueEndless(); }
+  }
+
+  _buildResultsOverlay() {
+    if (this._resultsOverlayEl) return;
+    if (!document.getElementById('cgm-results-style')) {
+      const st = document.createElement('style');
+      st.id = 'cgm-results-style';
+      st.textContent = `
+        #cgm-results {
+          position:fixed; inset:0; z-index:150; display:none;
+          align-items:flex-start; justify-content:center; overflow-y:auto;
+          padding:18px 14px 24px;
+          font-family:'Share Tech Mono',ui-monospace,monospace; color:#cfe9ff;
+          background:
+            radial-gradient(1200px 700px at 50% -10%,rgba(168,85,247,.18),transparent 60%),
+            radial-gradient(900px 600px at 12% 30%,rgba(46,230,246,.10),transparent 60%),
+            radial-gradient(900px 600px at 88% 70%,rgba(255,45,149,.10),transparent 60%),
+            linear-gradient(180deg,#0b1030,#070a1c);
+          --cyan:#2ee6f6; --cyan-dim:#1aa9bd; --magenta:#ff2d95; --purple:#a855f7;
+          --amber:#fbbf24; --green:#7CFF4D; --red:#ff5a6e;
+          --txt:#cfe9ff; --txt-dim:#6f86b8; --txt-faint:#46588a;
+          --panel-edge:rgba(46,230,246,.12);
+          --glow-cyan:0 0 8px rgba(46,230,246,.55),0 0 22px rgba(46,230,246,.22);
+        }
+        #cgm-results::before {
+          content:""; position:fixed; inset:0; pointer-events:none; z-index:0;
+          background-image:linear-gradient(rgba(46,230,246,.05) 1px,transparent 1px),
+            linear-gradient(90deg,rgba(46,230,246,.05) 1px,transparent 1px);
+          background-size:46px 46px;
+          mask-image:radial-gradient(circle at 50% 40%,#000 0%,transparent 78%);
+        }
+        #cgm-results::after {
+          content:""; position:fixed; inset:0; pointer-events:none; z-index:9999;
+          background:repeating-linear-gradient(0deg,rgba(0,0,0,.10) 0 2px,transparent 2px 4px);
+          opacity:.35; mix-blend-mode:overlay;
+        }
+        #cgm-results * { box-sizing:border-box; margin:0; padding:0; }
+        #cgm-results .rs-stage {
+          position:relative; z-index:1; width:100%; max-width:1000px; margin:auto;
+          border:1px solid var(--panel-edge); border-radius:20px; padding:20px 24px 18px;
+          background:linear-gradient(180deg,rgba(168,85,247,.05),transparent 30%),rgba(7,10,28,.88);
+          box-shadow:inset 0 0 60px rgba(46,230,246,.05),0 30px 80px rgba(0,0,0,.6);
+          display:flex; flex-direction:column; gap:13px;
+        }
+        #cgm-results .rs-top { display:flex; align-items:flex-start; justify-content:space-between; gap:14px; flex-wrap:wrap; }
+        #cgm-results .rs-tw { display:flex; flex-direction:column; gap:5px; }
+        #cgm-results .rs-title {
+          font-family:'Orbitron',sans-serif; font-weight:900; font-size:26px; letter-spacing:5px;
+        }
+        #cgm-results .rs-title.win  { color:var(--green); text-shadow:0 0 10px rgba(124,255,77,.6); }
+        #cgm-results .rs-title.lose { color:var(--red);   text-shadow:0 0 10px rgba(255,90,110,.6); }
+        #cgm-results .rs-sub { font-size:11.5px; letter-spacing:1.4px; color:var(--txt-dim); line-height:1.5; }
+        #cgm-results .rs-mode {
+          align-self:flex-start; padding:5px 13px; border-radius:999px;
+          font-family:'Orbitron',sans-serif; font-weight:800; font-size:10px; letter-spacing:2px;
+          border:1px solid currentColor; background:rgba(6,12,28,.7);
+        }
+        #cgm-results .rs-scorewrap { display:flex; flex-direction:column; align-items:flex-end; gap:2px; }
+        #cgm-results .rs-slabel { font-family:'Orbitron',sans-serif; font-weight:700; font-size:9.5px; letter-spacing:2.4px; color:var(--cyan); }
+        #cgm-results .rs-score { font-family:'Orbitron',sans-serif; font-weight:900; font-size:38px; letter-spacing:1px; color:var(--amber); text-shadow:0 0 16px rgba(251,191,36,.55); line-height:1; }
+        #cgm-results .rs-best { font-size:11px; letter-spacing:1.2px; color:var(--txt-dim); }
+        #cgm-results .rs-pb {
+          margin-top:3px; padding:3px 10px; border-radius:999px; align-self:flex-end;
+          font-family:'Orbitron',sans-serif; font-weight:800; font-size:9px; letter-spacing:1.8px;
+          color:#0a0a12; background:linear-gradient(90deg,#fbbf24,#ffe9a8); box-shadow:0 0 14px rgba(251,191,36,.6);
+        }
+        #cgm-results .rs-sep { width:100%; height:1px; background:linear-gradient(90deg,transparent,var(--cyan),transparent); opacity:.35; }
+
+        #cgm-results .rs-stats { display:grid; grid-template-columns:repeat(5,1fr); gap:9px; }
+        #cgm-results .rs-stat {
+          border:1px solid rgba(46,90,100,.32); border-radius:11px; background:rgba(10,16,46,.55);
+          padding:10px 11px; display:flex; flex-direction:column; gap:4px;
+        }
+        #cgm-results .rs-stat .k { font-family:'Orbitron',sans-serif; font-weight:700; font-size:8.5px; letter-spacing:1.5px; color:var(--txt-faint); }
+        #cgm-results .rs-stat .v { font-family:'Orbitron',sans-serif; font-weight:800; font-size:17px; color:#eaffff; }
+        #cgm-results .rs-stat.reward .v { color:var(--amber); }
+        #cgm-results .rs-stat .sub { font-size:9.5px; letter-spacing:.6px; color:var(--txt-dim); }
+
+        #cgm-results .rs-dmg { border:1px solid rgba(46,90,100,.32); border-radius:12px; background:rgba(10,16,46,.5); overflow:hidden; }
+        #cgm-results .rs-dmg-h {
+          display:flex; align-items:center; justify-content:space-between; gap:10px;
+          padding:9px 13px; border-bottom:1px solid rgba(46,230,246,.14);
+          font-family:'Orbitron',sans-serif; font-weight:800; font-size:10px; letter-spacing:2.2px; color:var(--cyan);
+        }
+        #cgm-results .rs-dmg-h .tot { color:var(--txt-dim); font-size:9.5px; letter-spacing:1.2px; }
+        #cgm-results .rs-row { display:grid; grid-template-columns:1fr 84px 74px 54px; gap:8px; align-items:center; padding:6px 13px; font-size:11.5px; }
+        #cgm-results .rs-row.head { font-family:'Orbitron',sans-serif; font-weight:700; font-size:8.5px; letter-spacing:1.5px; color:var(--txt-faint); padding-bottom:3px; }
+        #cgm-results .rs-row .num { text-align:right; font-family:'Orbitron',sans-serif; font-weight:700; }
+        #cgm-results .rs-row .wep { position:relative; color:#dff0ff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        #cgm-results .rs-row .dmg { color:#ff9a6a; }
+        #cgm-results .rs-row .dps { color:var(--cyan); }
+        #cgm-results .rs-row .kil { color:var(--green); }
+        #cgm-results .rs-row.bar { position:relative; }
+        #cgm-results .rs-row.bar::before {
+          content:""; position:absolute; left:0; top:0; bottom:0; width:var(--share,0%);
+          background:linear-gradient(90deg,rgba(46,230,246,.13),transparent); pointer-events:none;
+        }
+        #cgm-results .rs-empty { padding:14px 13px; font-size:11px; color:var(--txt-faint); letter-spacing:.8px; }
+
+        #cgm-results .rs-foot { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+        #cgm-results .rs-btns { display:flex; gap:10px; flex-wrap:wrap; }
+        #cgm-results .rs-btn {
+          padding:13px 26px; border-radius:11px; cursor:pointer;
+          font-family:'Orbitron',sans-serif; font-weight:800; font-size:12px; letter-spacing:2.2px;
+          border:1px solid rgba(46,230,246,.4); background:linear-gradient(180deg,rgba(46,230,246,.12),rgba(46,230,246,.02));
+          color:#dff0ff; transition:.15s;
+        }
+        #cgm-results .rs-btn:hover { border-color:var(--cyan); box-shadow:var(--glow-cyan); color:#fff; }
+        #cgm-results .rs-btn.green { border-color:rgba(124,255,77,.45); color:#dcffcb; background:linear-gradient(180deg,rgba(124,255,77,.12),rgba(124,255,77,.02)); }
+        #cgm-results .rs-btn.amber { border-color:rgba(251,191,36,.42); color:#ffeec2; background:linear-gradient(180deg,rgba(251,191,36,.10),rgba(251,191,36,.02)); }
+        #cgm-results .rs-btn.dim   { border-color:rgba(111,134,184,.3); color:var(--txt-dim); background:rgba(10,16,46,.35); }
+        #cgm-results .rs-btn.sel   { outline:2px solid var(--amber); outline-offset:3px; color:#fff; box-shadow:0 0 16px rgba(251,191,36,.45); }
+        #cgm-results .rs-hints { font-size:11px; color:var(--txt-faint); letter-spacing:1px; display:flex; gap:15px; flex-wrap:wrap; }
+        #cgm-results .rs-hints b { color:var(--cyan); font-weight:400; }
+
+        @media (max-width:900px) {
+          #cgm-results .rs-stats { grid-template-columns:repeat(3,1fr); }
+        }
+        @media (max-width:640px) {
+          #cgm-results { padding:12px 10px 20px; }
+          #cgm-results .rs-stage { padding:15px 12px; border-radius:16px; }
+          #cgm-results .rs-title { font-size:20px; letter-spacing:3px; }
+          #cgm-results .rs-top { flex-direction:column; align-items:stretch; }
+          #cgm-results .rs-scorewrap { align-items:flex-start; }
+          #cgm-results .rs-pb { align-self:flex-start; }
+          #cgm-results .rs-stats { grid-template-columns:repeat(2,1fr); }
+          #cgm-results .rs-row { grid-template-columns:1fr 66px 58px 40px; gap:6px; font-size:10.5px; padding:6px 9px; }
+          #cgm-results .rs-foot { flex-direction:column; align-items:stretch; }
+          #cgm-results .rs-btns { flex-direction:column; }
+          #cgm-results .rs-btn { width:100%; padding:15px 18px; }
+          #cgm-results .rs-hints { justify-content:center; }
+        }
+      `;
+      document.head.appendChild(st);
+    }
+    const el = document.createElement('div');
+    el.id = 'cgm-results';
+    el.setAttribute('role', 'dialog');
+    el.setAttribute('aria-label', 'Run results');
+    document.body.appendChild(el);
+    this._resultsOverlayEl = el;
+
+    // Delegated once on the persistent root — the body is rebuilt on every sync.
+    el.addEventListener('click', (ev) => {
+      const b = ev.target.closest?.('[data-rsbtn]');
+      if (!b) return;
+      const i = Number(b.dataset.rsidx);
+      if (Number.isFinite(i)) this._endScreenBtnIndex = i;
+      this._resultsActivate(b.dataset.rsbtn);
+    });
+  }
+
+  _hideResultsOverlay() {
+    this._resultsOverlayVisible = false;
+    this._resultsShownFor = null;
+    // DISMISSAL LATCH. goToMainMenu() runs through a FADE: for the frames it lasts,
+    // gameState is still 'playing' and gameOver is still true, so the flags alone put the
+    // screen straight back up — and once the menu is reached draw() early-returns, so
+    // nothing ever took it down again. The latch is cleared the moment a run is no longer
+    // in an end state, i.e. when the next run begins.
+    this._resultsDismissed = true;
+    if (this._resultsOverlayEl) this._resultsOverlayEl.style.display = 'none';
+  }
+
+  // Called from draw(). Builds once per end-of-run, then only refreshes the selection —
+  // rebuilding every frame would fight the CSS transitions and re-read the damage log 60x/s.
+  _syncResultsOverlay() {
+    // gameState is part of the condition, not just the flags. goToMainMenu() hides the
+    // overlay but does NOT clear gameOver, so on the very next frame the flags alone would
+    // put the results screen straight back up over the main menu.
+    const ended = !!(this.gameOver || this.victory);
+    if (!ended) this._resultsDismissed = false;      // a live run re-arms the screen
+    const on = this.gameState === 'playing' && ended && !this._resultsDismissed &&
+               !this.upgradeUI && !this.mutationUI;
+    if (!on) {
+      if (this._resultsOverlayVisible) {
+        this._resultsOverlayVisible = false;
+        this._resultsShownFor = null;
+        if (this._resultsOverlayEl) this._resultsOverlayEl.style.display = 'none';
+      }
+      return;
+    }
+    this._buildResultsOverlay();
+    const el = this._resultsOverlayEl;
+    if (!el) return;
+    const stamp = (this.victory ? 'W' : 'L') + ':' + Math.round(this.score || 0) + ':' + Math.round(this.timeAlive || 0);
+    if (this._resultsShownFor !== stamp) {
+      this._resultsShownFor = stamp;
+      el.innerHTML = this._resultsHTML();
+      el.style.display = 'flex';
+      this._resultsOverlayVisible = true;
+    }
+    this._syncResultsSelection();
+  }
+
+  _syncResultsSelection() {
+    const el = this._resultsOverlayEl;
+    if (!el) return;
+    const i = this._endScreenBtnIndex ?? 0;
+    el.querySelectorAll('[data-rsbtn]').forEach(b => b.classList.toggle('sel', Number(b.dataset.rsidx) === i));
+  }
+
+  _resultsHTML() {
+    const esc = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const m = this._resultsMode();
+    const win = !!this.victory;
+    const t = Math.max(0, Math.floor(this.timeAlive || 0));
+    const mm = String(Math.floor(t / 60)).padStart(2, '0'), ss = String(t % 60).padStart(2, '0');
+    const score = Math.floor(this.score || 0);
+    const best  = Math.floor(this.bestScore || 0);
+    const lvl   = this.player?.level ?? 1;
+    const kills = this.kills ?? this.killCount ?? 0;
+    const cores = this.runCreditsEarned ?? 0;
+
+    // Damage rows come from the SAME BuildEngine log the canvas report reads.
+    let rows = [];
+    try { rows = this.buildEngine?.log?.report?.(performance.now()) || []; } catch (_) { rows = []; }
+    const grand = rows.reduce((a, r) => a + (r.total || 0), 0);
+    const top = rows.slice(0, 6);
+    const nice = (id) => String(id || '').replace(/^build_|^be_/, '').replace(/_/g, ' ').toUpperCase();
+
+    const dmgBody = top.length
+      ? '<div class="rs-row head"><span>WEAPON</span><span class="num">DAMAGE</span><span class="num">DPS</span><span class="num">KILLS</span></div>' +
+        top.map(r => '<div class="rs-row bar" style="--share:' + (r.share || 0) + '%">' +
+          '<span class="wep">' + esc(nice(r.id)) + '</span>' +
+          '<span class="num dmg">' + Math.round(r.total || 0).toLocaleString() + '</span>' +
+          '<span class="num dps">' + Math.round(r.avgDps || 0).toLocaleString() + '</span>' +
+          '<span class="num kil">' + (r.kills || 0) + '</span></div>').join('')
+      : '<div class="rs-empty">No weapon damage was recorded for this run.</div>';
+
+    const btns = this._resultsButtons();
+    const sel  = this._endScreenBtnIndex ?? 0;
+    const btnHTML = btns.map((b, i) =>
+      '<button class="rs-btn ' + b.accent + (i === sel ? ' sel' : '') + '" data-rsbtn="' + b.key +
+      '" data-rsidx="' + i + '">' + b.label + '</button>').join('');
+
+    const subtitle = win
+      ? esc(this.finalMessage || 'RUN COMPLETE')
+      : esc(this.finalMessage || 'RUN ENDED');
+
+    const pb = (this.isNewHighScore && score > 0)
+      ? '<div class="rs-pb">&#9733; NEW PERSONAL BEST</div>' : '';
+
+    return `
+      <div class="rs-stage">
+        <div class="rs-top">
+          <div class="rs-tw">
+            <div class="rs-title ${win ? 'win' : 'lose'}">${win ? 'VICTORY' : 'DEFEAT'}</div>
+            <div class="rs-mode" style="color:${m.accent}">${m.label}</div>
+            <div class="rs-sub">${subtitle}</div>
+          </div>
+          <div class="rs-scorewrap">
+            <div class="rs-slabel">SCORE</div>
+            <div class="rs-score">${score.toLocaleString()}</div>
+            <div class="rs-best">PERSONAL BEST ${Math.max(best, score).toLocaleString()}</div>
+            ${pb}
+          </div>
+        </div>
+        <div class="rs-sep"></div>
+        <div class="rs-stats">
+          <div class="rs-stat"><span class="k">TIME SURVIVED</span><span class="v">${mm}:${ss}</span></div>
+          <div class="rs-stat"><span class="k">LEVEL</span><span class="v">${lvl}</span></div>
+          <div class="rs-stat"><span class="k">KILLS</span><span class="v">${Number(kills).toLocaleString()}</span></div>
+          <div class="rs-stat reward"><span class="k">GRID CORES</span><span class="v">+${Number(cores).toLocaleString()}</span>
+            <span class="sub">total ${Number(this.meta?.credits ?? 0).toLocaleString()}</span></div>
+          <div class="rs-stat"><span class="k">FRAGMENTS</span><span class="v">${Number(this.meta?.protocolFragments ?? 0).toLocaleString()}</span>
+            <span class="sub">protocol</span></div>
+        </div>
+        <div class="rs-dmg">
+          <div class="rs-dmg-h"><span>DAMAGE REPORT</span><span class="tot">TOTAL ${Math.round(grand).toLocaleString()}</span></div>
+          ${dmgBody}
+        </div>
+        <div class="rs-sep"></div>
+        <div class="rs-foot">
+          <div class="rs-btns">${btnHTML}</div>
+          <div class="rs-hints">
+            <span><b>&#9664;&#9654;</b> Select</span>
+            <span><b>ENTER / A</b> Confirm</span>
+            <span><b>ESC / B</b> Main Menu</span>
+          </div>
+        </div>
+      </div>`;
   }
 
   // Outfit toggle bar (top-centre): OUTFIT: [ DEFAULT ] [ SECRET | LOCKED ] for the
