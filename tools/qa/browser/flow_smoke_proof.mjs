@@ -128,14 +128,41 @@ const padUntil = async (name, predicate, max = 14) => {
 // Screen changes run through a FADE. Firing the next input while one is still in flight
 // lets the SAME still-held key be seen by the screen that just arrived, which reads as a
 // double-back. A real player does not press again mid-transition; neither does this.
+//
+// GAMESTATE IS NOT THE END OF THE TRANSITION (measured 2026-08-04). gameState flips at the
+// fade's MIDPOINT, so both settle() and waitState() used to return while the arriving screen
+// was still animating in. Measured on the main menu during the fade-in after an ESC, sampling
+// the START GAME button every frame:
+//
+//     box y 265.5 -> 257.8 -> 254.5 -> 253.6 -> 253.0     maxJump 7.7 px
+//     childList mutations 0   node replacements 0   overlay interception none
+//
+// The button is not covered and the DOM is not churning — the menu simply slides in. But
+// page.click() requires the element to be STABLE (same box on two consecutive animation
+// frames) before it will dispatch, so a click issued into that window fails actionability and
+// Playwright loops on "retrying click action - waiting 500ms" until the whole action times
+// out. That is what made this proof fail intermittently at the second START GAME click; the
+// GAME was never at fault, and a real click there is accepted (verified separately).
+//
+// Waiting for the fade to finish is what a player does anyway, so this changes nothing about
+// the route being exercised — it only stops the harness racing the animation it already
+// documented it must not race.
+const fadeDone = async (ms = 2500) => {
+  try {
+    await page.waitForFunction(
+      () => (window.__g._fadeDir ?? 0) === 0 && (window.__g._fadeAlpha ?? 0) <= 0.001,
+      null, { timeout: ms });
+  } catch (_) { /* a screen with no fade never sets these — never block on it */ }
+};
 const settle = async (ms = 900) => {
   let last = null;
   for (let i = 0; i < Math.ceil(ms / 150); i++) {
     const now = await page.evaluate(() => window.__g.gameState);
-    if (now === last) return now;
+    if (now === last) { await fadeDone(); return now; }
     last = now;
     await page.waitForTimeout(150);
   }
+  await fadeDone();
   return last;
 };
 const key = async (k) => {
@@ -152,8 +179,10 @@ const keyUntil = async (k, predicate, max = 14) => {
 };
 const gs = () => page.evaluate(() => window.__g.gameState);
 const waitState = async (want, ms = 4000) => {
-  try { await page.waitForFunction(w => window.__g.gameState === w, want, { timeout: ms }); return true; }
+  try { await page.waitForFunction(w => window.__g.gameState === w, want, { timeout: ms }); }
   catch (_) { return false; }
+  await fadeDone();          // the state flips mid-fade; the screen is not ready until it ends
+  return true;
 };
 // Canvas luminance — a black screen is the one failure a state check cannot see.
 const notBlack = () => page.evaluate(() => {
