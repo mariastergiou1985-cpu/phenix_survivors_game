@@ -529,29 +529,64 @@ export class MapManager {
     if (hit) return { x: hit.x, y: hit.y };
     const fromRight = section === 'lower';                 // lower deck returns from the right
     const fromBottom = section === 'upper';                // upper deck returns from the bottom
-    const clear = (cx, cy) => {
-      if (cx < 2 || cy < 2 || cx >= m.cols - 2 || cy >= m.maskRows - 2) return false;
-      for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+    // ── THE ARRIVAL POCKET HAD TO BE BIG ENOUGH TO STAND IN (Maria 2026-08-04) ──────────
+    // This search asked for two clear cells in every direction and took the FIRST cell that
+    // passed, scanning inward from the deck corner. Two cells is 48 world px, and because the
+    // scan starts at the outer edge the first qualifying cell is by construction the most
+    // cramped legal one on the whole deck. Measured on the shipped masks, free run from the
+    // arrival cell in each direction:
+    //
+    //   endless/lower   UP 48   DOWN 48   LEFT 144  RIGHT 48    <- a 192 x 96 px alcove
+    //   chaos/upper     UP 96   DOWN 48   LEFT 48   RIGHT 1320
+    //   chaos/lower     UP 72   DOWN 600  LEFT 1008 RIGHT 48
+    //   endless/upper   UP 336  DOWN 48   LEFT 336  RIGHT 768
+    //
+    // The player is ~32 px across, so on endless/lower the elevator was dropping them into a
+    // pocket barely three body-widths wide with the deck edge on three sides: it reads as
+    // invisible walls and no free movement, which is exactly what it was.
+    //
+    // DeckMasks.js already states the intended figure - "a cell with two clear cells in every
+    // direction (>=120 world px of slack around a 32px player)". 120 px at 24 px per cell is
+    // FIVE cells, not two; the code shipped a quarter of the documented clearance. CLEAR_CELLS
+    // implements the number the data file always specified.
+    //
+    // Nothing else changes. The scan still starts at the same corner and still walks inward, so
+    // each deck's elevator still arrives from the side its route comes from - on endless/lower
+    // the arrival moves 13 cells left and 22 down, staying in the same top-right region of the
+    // deck, and opens up to UP 432 / DOWN 792 / LEFT 2232 / RIGHT 264. The map and the elevator
+    // design are untouched; only the choice of standing spot inside the authored floor changes.
+    //
+    // The ladder exists so a future deck with no such room degrades gracefully instead of
+    // falling straight through to the baked anchorCell (which is itself only a 2-cell pick, and
+    // on endless/lower is a narrow vertical shaft: UP 48 / DOWN 528 / LEFT 72 / RIGHT 72).
+    // All four shipped decks satisfy the top rung.
+    const CLEAR_CELLS = 5;                                 // >=120 world px of slack, as documented
+    const clear = (cx, cy, R) => {
+      if (cx < R || cy < R || cx >= m.cols - R || cy >= m.maskRows - R) return false;
+      for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) {
         if (!this._maskCell(m, cx + dx, cy + dy)) return false;
       }
       return true;
     };
-    let found = null;
-    const INSET = 3;                                       // never sit right on the deck edge
-    for (let ring = INSET; ring < Math.max(m.cols, m.maskRows) && !found; ring++) {
-      for (let t = 0; t <= ring && !found; t++) {
-        const cx = fromRight ? m.cols - 1 - ring : ring;
-        const cy = fromBottom ? m.maskRows - 1 - t : t;
-        if (clear(cx, cy)) { found = [cx, cy]; break; }
-        const cx2 = fromRight ? m.cols - 1 - t : t;
-        const cy2 = fromBottom ? m.maskRows - 1 - ring : ring;
-        if (clear(cx2, cy2)) { found = [cx2, cy2]; break; }
+    let found = null, foundR = 0;
+    for (let R = CLEAR_CELLS; R >= 2 && !found; R--) {
+      const INSET = Math.max(3, R);                        // never sit right on the deck edge
+      for (let ring = INSET; ring < Math.max(m.cols, m.maskRows) && !found; ring++) {
+        for (let t = 0; t <= ring && !found; t++) {
+          const cx = fromRight ? m.cols - 1 - ring : ring;
+          const cy = fromBottom ? m.maskRows - 1 - t : t;
+          if (clear(cx, cy, R)) { found = [cx, cy]; break; }
+          const cx2 = fromRight ? m.cols - 1 - t : t;
+          const cy2 = fromBottom ? m.maskRows - 1 - ring : ring;
+          if (clear(cx2, cy2, R)) { found = [cx2, cy2]; break; }
+        }
       }
+      if (found) { foundR = R; break; }
     }
     const cell = found || m.spec.anchorCell;
     const out = { x: m.ox + (cell[0] + 0.5) * m.cellW, y: m.oy + (cell[1] + 0.5) * m.cellW,
                   cell, corner: (fromBottom ? 'bottom' : 'top') + '-' + (fromRight ? 'right' : 'left'),
-                  fallback: !found };
+                  fallback: !found, clearCells: foundR, clearPx: foundR * m.cellW };
     this._deckAnchorCache[key] = out;
     return { x: out.x, y: out.y };
   }
