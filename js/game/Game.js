@@ -20657,6 +20657,13 @@ export class Game {
     // moment the last one leaves. Without this the airstrike only READ the exclusivity gate and
     // never contributed to it, so a storm or a Mega Boss could open on top of a live strike.
     if (this._activeMajorEvent === 'airstrike' && this.airstrikeShips.length === 0) this.endMajorEvent('airstrike');
+    // NULL BREACH ARENA: no aircraft, ever. Hold the timer instead of draining it, so the
+    // strike is deferred to after the arena rather than cancelled or stacked into a burst.
+    if (!this._aircraftEventsAllowed()) {
+      this._airstrikeTimer = this._holdMajorTimer(this._airstrikeTimer, 6);
+      this._updateRockets(dt);          // let anything already in the air finish its arc out
+      return;
+    }
     // Cadence: first ~1.5 min, then ~every 2 min — but never more than 1 ship at a time.
     if (this._majorEventBlocked()) { this._airstrikeTimer = this._holdMajorTimer(this._airstrikeTimer, 6); }
     else this._airstrikeTimer -= dt;
@@ -20757,6 +20764,11 @@ export class Game {
   //   W3     rocket pods — 4 homing rockets (h=0.6) into the shared rocket pool
   //   W4     plasma mortar — 2 telegraphed AoE zones (60% aimed / 40% offset)
   _updateGunship(dt) {
+    // NULL BREACH ARENA: no aircraft, ever. Held, not drained — see _aircraftEventsAllowed.
+    if (!this._aircraftEventsAllowed()) {
+      this._gunshipTimer = this._holdMajorTimer(this._gunshipTimer, 6);
+      return;
+    }
     this._gunshipTimer -= dt;
     if (this._gunshipTimer <= 0) {
       if (this._majorSalvoBlocked()) { this._gunshipTimer = 6; }         // a major salvo just opened
@@ -23246,6 +23258,13 @@ export class Game {
 
     this._drawComboPopups(ctx);        // combo milestone popups (world-space, on top of the action)
 
+    // ACID RAIN IS WORLD-SPACE (2026-08-04). It used to be called below, in the
+    // screen-space block, where its world coordinates painted a green rectangle
+    // instead of a storm. Everything it draws — haze, streaks, splashes, puddles —
+    // is in world units, so it belongs inside the camera transform, above the
+    // entities and below the player marker.
+    this.acidRainSystem.draw(ctx);
+
     this._drawPlayerMarker(ctx);       // clear "you are here" marker — above every world effect
 
     ctx.restore();  // end camera-space block
@@ -23268,7 +23287,7 @@ export class Game {
 
     // ── Screen-space block (HUD, overlays) ───────────────────────────────────
     this._drawWeatherTheater(ctx);         // shared cinematic ambience for ALL screen-wide events
-    this.acidRainSystem.draw(ctx);
+    // (acidRainSystem.draw moved into the camera-space block above — it is world-space.)
     this._drawFrozenSleet(ctx);            // Chaos Mode: Frozen Sleet Storm overlay
     // Chaos Mode: screen-edge rim glow + player-centred vignette (readability polish)
     if (this._chaosMode) { this._drawChaosRimGlow(ctx); this._drawChaosVignette(ctx); }
@@ -31390,10 +31409,12 @@ _drawLoreArchive(ctx) {
   // Activate the Null Breach Arena.
   _enterNullBreachArena() {
     this._nullBreachActive = true;
+    // A ship launched moments before the arena opened would keep bombing through the whole
+    // gauntlet. Clear the aircraft layer on the boundary that creates the problem.
+    this._clearAircraftEvents();
     this._nullBreachArena  = {
       timer:              120,    // 2-minute countdown
       spawnCd:            5,      // first mini-boss rearm in 5s
-      airCd:              8,      // first airstrike in 8s
       majorCd:            0,      // major boss cooldown (starts ready — first one at elapsed≥30)
       miniBossIdx:        0,      // round-robin index for titan/bloodfang/annihilator
       majorIdx:           0,      // round-robin index for serpent/dragon/doubleDemon
@@ -31452,7 +31473,6 @@ _drawLoreArchive(ctx) {
 
     arena.timer   -= dt;
     arena.spawnCd -= dt;
-    arena.airCd   -= dt;
     arena.majorCd -= dt;
 
     // ── Hard vector clamp: player cannot leave the arena circle ──────────
@@ -31485,11 +31505,11 @@ _drawLoreArchive(ctx) {
       _dd.maxHp = Math.round(_dd.maxHp * ARENA_HP_MULT);
     }
 
-    // ── Aircraft pressure: keep ships in the air the whole arena ──
-    if (arena.airCd <= 0 && this.airstrikeShips.length < 2) {
-      this._spawnAirstrike();
-      arena.airCd = 25 + Math.random() * 10;
-    }
+    // ── Aircraft pressure: REMOVED (2026-08-04) ──
+    // The arena used to launch its own airstrike every ~25-35 s, up to two ships at once,
+    // for the full two minutes. Those rockets landed straight across the boss finishers the
+    // arena exists to showcase. The gauntlet's own pressure — the boss and elite rotation
+    // below, at ARENA_HP_MULT — is unchanged; only the aircraft layer is gone.
 
     // Count currently active bosses
     const activeMinis = [this.titanBoss, this.bloodfangBoss, this.annihilatorBoss]
@@ -34951,6 +34971,29 @@ _drawLoreArchive(ctx) {
     if (this._bossRush) return true;
     if (this._activeMajorEvent) return true;
     return (this._majorEventGraceT || 0) > 0;
+  }
+
+  /**
+   * Aircraft events (AIRSTRIKE ships, GUNSHIP) are barred from the Null Breach Arena.
+   * The arena is a scripted boss gauntlet whose finishers own the screen; rockets and
+   * a tracking laser raining over them hid the very thing the player is supposed to
+   * read and react to. Outside the arena nothing changes — cadence, counts, damage and
+   * spawn rules are untouched, and the timers are HELD rather than drained, so a strike
+   * that came due mid-arena still arrives once the arena is over instead of being lost.
+   */
+  _aircraftEventsAllowed() { return !this._nullBreachActive; }
+
+  /**
+   * Clear every aircraft and its live ordnance. Called on the arena boundary: a ship
+   * launched a second before the arena opened would otherwise keep bombing through the
+   * whole gauntlet. This is a boundary clear, the same shape as the enemy-ordnance clear
+   * on the menu boundary — no cadence, count or damage value is altered.
+   */
+  _clearAircraftEvents() {
+    if (Array.isArray(this.airstrikeShips))   this.airstrikeShips.length   = 0;
+    if (Array.isArray(this.airstrikeRockets)) this.airstrikeRockets.length = 0;
+    if (Array.isArray(this.gunships))         this.gunships.length         = 0;
+    if (this._activeMajorEvent === 'airstrike') this.endMajorEvent('airstrike');
   }
   // Holds a timer just above zero instead of letting it run down and stack up a burst.
   _holdMajorTimer(v, floor = 3) {
