@@ -29,8 +29,8 @@ import './BuildEngineChars3.js?v=20260902130000';   // P2.4a Eddie+Dimi (side-ef
 import './BuildEngineChars4.js?v=20260902130000';   // P2.4b Phasewalker+Euclid+Oni (side-effect register)
 import './BuildEngineChars5.js?v=20260902130000';   // P2.5 Universal όπλα 21-25 (side-effect register)
 import './BuildEnginePassives.js?v=20260902130000'; // P2.6 Build passives §26-50 (generic hooks)
-import { MutationUI }      from './MutationUI.js?v=20260810210000';
-import { sampleMutations } from './Mutations.js?v=20260703990000';
+import { MutationUI }      from './MutationUI.js?v=20260904180000';
+import { sampleMutations, sampleCorruptedMutation } from './Mutations.js?v=20260904180000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260904170000';
 import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, COLLECTIBLE_FRAGMENT_COST, COLLECTIBLE_GRID_COST, ECHO_FRAGMENT_COST, ECHO_GRID_COST, SKILL_TREE, AMULET_DEFS, GRID_TO_PF_RATE, characterStageRequirement } from './MetaProgress.js?v=20260903020000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260712520000';
@@ -54,7 +54,7 @@ import { LaserEyes } from '../effects/laser-eyes.js?v=20260818000000';
 import { MeteorRain } from '../effects/meteor-rain.js?v=20260712100000';
 import { NpcWalker } from './NpcWalker.js?v=20260904030000';
 import { MapManager, BIOME_ID, BIOME_DEFS, CHUNK_SIZE } from './MapManager.js?v=20260904120000';
-import { getChaosDoctrine } from './ChaosDoctrine.js?v=20260904170000';
+import { getChaosDoctrine } from './ChaosDoctrine.js?v=20260904180000';
 import { AcidRain } from './AcidRain.js?v=20260829020000';   // BATCH 2 major event (2026-07-29)
 import { EnemyWeaponSystem } from './EnemyWeaponSystem.js?v=20260829040000';   // BATCH 3 enemy weapon behaviours
 import { EventBus, EVENTS } from './EventBus.js?v=20260703990000';
@@ -10665,9 +10665,32 @@ export class Game {
   // Open the forced 3-card mutation picker (Endless only). The world freezes via the update gate.
   _openMutationChoice() {
     this._quiesceMovementInput();
-    this.mutationUI = new MutationUI(sampleMutations(3, this.mutations));
+    this.mutationUI = new MutationUI(this._buildMutationChoices());
     this._eventCue('_openMutationChoice');
     this.triggerAnnouncement('⚠ FORCED MUTATION', '#ff5a3c', { priority: 2 });   // immediate lethal telegraph
+  }
+
+  /**
+   * Build the forced-mutation hand. Everyone gets the shipped three ordinary cards.
+   *
+   * REROLL DOCTRINE (japan_phasewalker, Chaos only) trades the THIRD slot for a CORRUPTED offer:
+   * two ordinary cards plus one card carrying a real bonus AND a real drawback, both printed
+   * before the pick. The hand stays three cards wide, so keys 1/2/3, the arrow cursor, Enter and
+   * every card rect keep working exactly as shipped — no navigation change, for any input.
+   *
+   * If no corrupted card can pay its bonus in full at this moment the hand falls back to three
+   * ordinary cards: the slot is never filled with a card that overstates what it does.
+   */
+  _buildMutationChoices() {
+    const doc = this._doctrine();                     // null outside Chaos, for everyone
+    const M = doc && doc.mutation;
+    if (!M) return sampleMutations(3, this.mutations);
+    const corrupt = sampleCorruptedMutation(this, this.mutations);
+    if (!corrupt) return sampleMutations(3, this.mutations);
+    const hand = sampleMutations(M.normalCards, this.mutations);
+    if (hand.length < M.normalCards) return sampleMutations(3, this.mutations);
+    hand.push(corrupt);
+    return hand;
   }
 
   // Apply the chosen mutation and resume. No skip path exists — a valid index must be picked.
@@ -10676,11 +10699,15 @@ export class Game {
     const choices = this.mutationUI.choices;
     if (index < 0 || index >= choices.length) return;
     const card = choices[index];
-    card.apply(this.mutations);
+    card.apply(this.mutations, this);   // second arg: CORRUPTED cards need the run to pay the bonus
     this.mutations.stacks += 1;
     this.mutations.taken[card.key] = (this.mutations.taken[card.key] || 0) + 1;
     this.mutationUI = null;
     this._quiesceMovementInput();
+    // A corrupted pact is loud on purpose — the player must see the trade land, not guess at it.
+    if (card.corrupted) {
+      this.triggerAnnouncement('◈ CORRUPTED PACT SEALED ◈', '#ff2d95', { priority: 2 });
+    }
   }
 
   // Called when a card / mutation panel opens or closes. It must stop the player MOVING, not
@@ -23298,9 +23325,18 @@ export class Game {
     this._drawBossCorruption(ctx);
 
     // 6b ── Phoenix revive effect (epic multi-layer, world-space)
-    if (this.phoenixReviveTimer > 0) {
-      const elapsed = 3.0 - this.phoenixReviveTimer;           // 0 at birth → 3 at end
-      const alpha   = Math.max(0, this.phoenixReviveTimer / 3.0);
+    //
+    // The burst is a 3-SECOND animation and every real revive sets the timer to <= 3. That is no
+    // longer the only thing that opens this gate: `phoenixReviveTimer` is also the run's i-frame
+    // window, and two Chaos doctrines hold it far longer (OSSUARY DEBT scatters the Skeleton for
+    // 8 s, CORRUPTED PHASE buys 5 s of immunity). Those are NOT revives, so they set the type to
+    // 'none' and no burst plays. `elapsed` is clamped as well: at timer > 3 it would go negative
+    // and hand createRadialGradient a NEGATIVE radius, which throws and kills the rest of the
+    // frame's draw — every frame, for the whole window. Belt and braces, on purpose.
+    if (this.phoenixReviveTimer > 0 && this.phoenixReviveType !== 'none') {
+      const vt      = Math.min(3.0, this.phoenixReviveTimer);
+      const elapsed = Math.max(0, 3.0 - vt);                   // 0 at birth → 3 at end
+      const alpha   = Math.max(0, Math.min(1, vt / 3.0));
       const rtype   = this.phoenixReviveType || 'orange';
       const px = this.player.pos.x;
       const py = this.player.pos.y;
@@ -23347,7 +23383,7 @@ export class Game {
 
       // ── Layer 2: radial gradient burst ─────────────────────────────────
       {
-        const gr = 50 + elapsed * 40;
+        const gr = Math.max(1, 50 + elapsed * 40);   // never negative — see the note above
         const grd = ctx.createRadialGradient(px, py, 0, px, py, gr);
         const gc  = rtype === 'blue' ? '0,200,255' : rtype === 'gold' ? '255,210,0' : '255,160,0';
         grd.addColorStop(0, `rgba(${gc},${(alpha * 0.55).toFixed(3)})`);
@@ -36354,6 +36390,7 @@ _drawLoreArchive(ctx) {
         this._doctrineShatterT = 0;
         this._doctrineReassembled++;
         this.player.hp = Math.max(1, Math.round(this.player.maxHp * doc.debt.reviveHpPct));
+        this.phoenixReviveType  = 'none';   // i-frames only — the doctrine draws its own effect
         this.phoenixReviveTimer = 2.0;
         this.screenShake?.trigger(8, 0.5);
         this.triggerAnnouncement('\u25c8 REASSEMBLED \u2014 THE OSSUARY HOLDS \u25c8', '#cfe9ff', { priority: 2 });
@@ -36666,6 +36703,9 @@ _drawLoreArchive(ctx) {
     // hp is lifted off zero and the gate is held so the death chain cannot re-enter while he
     // is scattered; phoenixReviveTimer also grants the i-frames, so nothing can finish him.
     this.player.hp = 1;
+    // 'none' = hold the i-frame gate WITHOUT replaying the 3 s phoenix burst. An 8 s window fed
+    // into that animation drove its gradient radius negative and threw every frame (fixed 2026-08-05).
+    this.phoenixReviveType  = 'none';
     this.phoenixReviveTimer = D.windowSecs;
     this.screenShake?.trigger(10, 0.6);
     this.audio?.playPlayerDeath?.();

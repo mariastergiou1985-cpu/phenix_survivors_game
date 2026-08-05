@@ -131,6 +131,9 @@ const rig = await page.evaluate(async (dv) => {
   try { window.__Enemy = (await import(`./js/entities/Enemy.js?v=${ev}`)).Enemy; } catch (_) { window.__Enemy = null; }
   // addKillScore hands the position straight to the particle system, which calls pos.clone().
   window.__pt = (x, y) => ({ x, y, clone() { return window.__pt(this.x, this.y); } });
+  // draw(ctx) takes the context the RAF loop hands it - a rig that forces a frame must too.
+  window.__ctx = () => (document.querySelector('canvas#game') ||
+    [...document.querySelectorAll('canvas')].find(x => x.width > 400)).getContext('2d');
   window.__IN = { keys: new Set(), mousePos: { x: 0, y: 0 }, mouseDown: false };
   window.__step = (n) => {
     for (let i = 0; i < n; i++) {
@@ -1131,6 +1134,27 @@ check('O07 a MARROW PYLON stays as a turret instead of paying out, and fires rea
   marrow.placed === 1 && marrow.fired > 0, `${marrow.placed} turret, ${marrow.fired} bolts`);
 check('O08 turrets are hard-capped', marrow.capped === marrow.max, `${marrow.capped} / ${marrow.max}`);
 
+// O09 — DRAW a real frame while he is scattered. The 8 s window is held on the same field the
+// 3 s phoenix burst animates from; before 2026-08-05 that drove the burst's gradient radius
+// negative, createRadialGradient threw, and everything below it in draw() was lost every frame.
+const scatterDraw = await page.evaluate(() => {
+  const g = window.__g;
+  window.__run('skeleton_warrior', true);
+  g._lastPhoenixUsed = true; g._doctrineShatters = 0;
+  const ok = g._doctrineTryShatter();
+  const held = { t: g.phoenixReviveTimer, type: g.phoenixReviveType };
+  let threw = null;
+  for (let i = 0; i < 12; i++) {
+    try { g.draw(window.__ctx()); } catch (e) { threw = String(e && e.message || e); break; }
+    g.phoenixReviveTimer = Math.max(0.05, g.phoenixReviveTimer - 0.6);   // walk 8 s -> under 3 s
+  }
+  return { ok, held, threw };
+});
+check('O09 a frame DRAWN while he is scattered does not throw — the 8 s hold is not a 3 s burst',
+  scatterDraw.ok === true && scatterDraw.threw === null &&
+  scatterDraw.held.t === 8 && scatterDraw.held.type === 'none',
+  JSON.stringify(scatterDraw));
+
 // ════════════════════════════════════════════════════════════════════════════
 // P. BRAWLER WARRIOR — FAULT MAP + QUAKE PYLON
 // ════════════════════════════════════════════════════════════════════════════
@@ -1300,6 +1324,282 @@ check('G02 a restart clears EVERY doctrine field, all ten characters',
   JSON.stringify(after));
 
 // ════════════════════════════════════════════════════════════════════════════
+// Q. JAPAN PHASEWALKER — THE CORRUPTED MUTATION SLOT
+//    Every check here defends one promise: the card never overstates what it does.
+// ════════════════════════════════════════════════════════════════════════════
+const corrupt = await page.evaluate(async () => {
+  const g = window.__g;
+  const mut = await import(`./js/game/Mutations.js?v=${(await fetch('./js/game/Game.js?v=' + window.__BUILD)
+    .then(r => r.text())).match(/Mutations\.js\?v=(\d+)/)[1]}`);
+  const hand = () => g._buildMutationChoices().map(c => ({ key: c.key, corrupted: !!c.corrupted }));
+
+  // (a) THE GATE — the slot exists only for this character, and only inside Chaos.
+  window.__run('japan_phasewalker', false);
+  const endless = [];
+  for (let i = 0; i < 12; i++) endless.push(hand());
+
+  const OTHERS = ['cyber_arm_hero', 'assassin_clone', 'euclid_vector', 'oni_cataclysm_protocol',
+                  'eddie', 'taekwondo_girl', 'dimis_kickboxer', 'skeleton_warrior', 'brawler_warrior'];
+  const otherHands = [];
+  for (const c of OTHERS) {
+    window.__run(c, true);
+    for (let i = 0; i < 4; i++) otherHands.push({ c, h: hand() });
+  }
+
+  // (b) the shape of HIS hand in Chaos: still three cards, the THIRD one corrupted.
+  window.__run('japan_phasewalker', true);
+  g.player.hp = Math.floor(g.player.maxHp * 0.5);        // keep every corrupted card payable
+  const mine = [];
+  for (let i = 0; i < 40; i++) mine.push(hand());
+  const shapes = {
+    widths:  [...new Set(mine.map(h => h.length))],
+    thirdOk: mine.every(h => h.length === 3 && h[2].corrupted === true),
+    firstTwoPlain: mine.every(h => !h[0].corrupted && !h[1].corrupted),
+    distinct: mine.every(h => new Set(h.map(c => c.key)).size === 3),
+    seen: [...new Set(mine.map(h => h[2].key))].sort(),
+  };
+
+  // (c) both halves are PRINTED, and the risk names the real fields.
+  const RISKY = ['spawn', 'pickup', 'mana', 'projectile', 'Plasma', 'elite'];
+  const printed = [];
+  for (let i = 0; i < 30; i++) {
+    const c = g._buildMutationChoices()[2];
+    printed.push({
+      bonus: typeof c.bonus === 'string' && c.bonus.length > 8,
+      risk:  typeof c.risk === 'string' && c.risk.length > 8,
+      named: RISKY.some(w => c.risk.includes(w)),
+      inDesc: c.desc.includes('BONUS') && c.desc.includes('RISK'),
+      two: c.risk.includes(' + '),
+    });
+  }
+  const prints = {
+    bonus: printed.every(p => p.bonus), risk: printed.every(p => p.risk),
+    named: printed.every(p => p.named), inDesc: printed.every(p => p.inDesc),
+    two: printed.every(p => p.two),
+  };
+
+  // (d) the BONUS is real — each card's advertised bonus, measured through selectMutation().
+  const takeUntil = (key, prep) => {
+    for (let t = 0; t < 400; t++) {
+      window.__run('japan_phasewalker', true);
+      if (prep) prep();
+      const h = g._buildMutationChoices();
+      if (h[2].key !== key) continue;
+      g.mutationUI = { choices: h };
+      const before = prep ? prep.snapshot?.() : null;
+      g.selectMutation(2);
+      return { ok: true, before };
+    }
+    return { ok: false };
+  };
+  const half = () => { g.player.hp = Math.floor(g.player.maxHp * 0.5); };
+
+  const rFate = takeUntil('corrupt_fate', half);
+  const paidFate = { got: rFate.ok, pending: g._doctrinePendingReroll === true };
+
+  const rFlesh = takeUntil('corrupt_flesh', half);
+  const paidFlesh = { got: rFlesh.ok, full: g.player.hp === g.player.maxHp };
+
+  const rPhase = takeUntil('corrupt_phase', half);
+  const paidPhase = { got: rPhase.ok, iframes: g.phoenixReviveTimer >= 5 };
+
+  // (e) the RISK is real, and it is CLAMPED to the same caps the ordinary cards use.
+  //     Applying a corrupted card 30x must never push a field past the shipped floor/ceiling.
+  const m = { spawnRateMult: 1, pickupRadiusMult: 1, manaGainMult: 1,
+              enemyBulletSpeedMult: 1, plasmaOnPlayerChanceBonus: 0, eliteIntervalMult: 1,
+              stacks: 0, taken: {} };
+  const before = { ...m };
+  for (const card of mut.CORRUPTED_MUTATIONS) {
+    const stamped = { apply: (mm) => { for (const k of card.risks) mut.MUTATIONS.find(x => x.key === k).apply(mm); } };
+    for (let i = 0; i < 30; i++) stamped.apply(m);
+  }
+  const clamped = {
+    moved: m.spawnRateMult < before.spawnRateMult && m.eliteIntervalMult < before.eliteIntervalMult &&
+           m.manaGainMult < before.manaGainMult && m.pickupRadiusMult < before.pickupRadiusMult &&
+           m.enemyBulletSpeedMult > before.enemyBulletSpeedMult &&
+           m.plasmaOnPlayerChanceBonus > before.plasmaOnPlayerChanceBonus,
+    inBounds: m.spawnRateMult >= 0.62 - 1e-9 && m.pickupRadiusMult >= 0.55 - 1e-9 &&
+              m.manaGainMult >= 0.55 - 1e-9 && m.enemyBulletSpeedMult <= 1.5 + 1e-9 &&
+              m.plasmaOnPlayerChanceBonus <= 0.40 + 1e-9 && m.eliteIntervalMult >= 0.62 - 1e-9,
+    m,
+  };
+
+  // (f) a bonus that could not be paid IN FULL is never offered.
+  window.__run('japan_phasewalker', true);
+  g.player.hp = g.player.maxHp;                       // a full heal would heal nothing
+  const atFull = [];
+  for (let i = 0; i < 60; i++) atFull.push(g._buildMutationChoices()[2].key);
+  const withheld = !atFull.includes('corrupt_flesh');
+
+  // (g) an already-capped drawback SAYS SO instead of being quietly charged.
+  const capped = { spawnRateMult: 0.62, pickupRadiusMult: 1, manaGainMult: 1,
+                   enemyBulletSpeedMult: 1, plasmaOnPlayerChanceBonus: 0, eliteIntervalMult: 1,
+                   stacks: 0, taken: {} };
+  let honestCap = null;
+  for (let i = 0; i < 200 && honestCap === null; i++) {
+    const c = mut.sampleCorruptedMutation(g, capped);
+    if (c && c.key === 'corrupt_fate') honestCap = c.risk.includes('ALREADY AT CAP');
+  }
+
+  return { endless, otherHands, shapes, prints, paidFate, paidFlesh, paidPhase,
+           clamped, withheld, atFullSeen: [...new Set(atFull)].sort(), honestCap };
+});
+check('Q01 japan_phasewalker gets NO corrupted card outside Chaos',
+  corrupt.endless.every(h => h.length === 3 && h.every(c => !c.corrupted)));
+check('Q02 no other character ever sees a corrupted card, even in Chaos',
+  corrupt.otherHands.every(o => o.h.length === 3 && o.h.every(c => !c.corrupted)),
+  `${corrupt.otherHands.length} hands over 9 characters`);
+check('Q03 in Chaos his hand is still THREE cards and the THIRD is the corrupted one',
+  corrupt.shapes.thirdOk && corrupt.shapes.firstTwoPlain &&
+  corrupt.shapes.widths.length === 1 && corrupt.shapes.widths[0] === 3,
+  `widths ${corrupt.shapes.widths.join('/')}, third seen: ${corrupt.shapes.seen.join(', ')}`);
+check('Q04 the three cards are always distinct — the corrupted slot never duplicates a plain card',
+  corrupt.shapes.distinct === true);
+check('Q05 the card PRINTS both halves before the pick, and the risk names real effects',
+  corrupt.prints.bonus && corrupt.prints.risk && corrupt.prints.named &&
+  corrupt.prints.inDesc && corrupt.prints.two, JSON.stringify(corrupt.prints));
+check('Q06 CORRUPTED FATE really pays — the shipped law reroll is armed',
+  corrupt.paidFate.got && corrupt.paidFate.pending, JSON.stringify(corrupt.paidFate));
+check('Q07 CORRUPTED FLESH really pays — HP goes to full',
+  corrupt.paidFlesh.got && corrupt.paidFlesh.full, JSON.stringify(corrupt.paidFlesh));
+check('Q08 CORRUPTED PHASE really pays — 5 s on the shipped i-frame gate',
+  corrupt.paidPhase.got && corrupt.paidPhase.iframes, JSON.stringify(corrupt.paidPhase));
+check('Q09 the drawback is real AND clamped to the ordinary cards’ own caps — 90 stacks stay in bounds',
+  corrupt.clamped.moved && corrupt.clamped.inBounds, JSON.stringify(corrupt.clamped.m));
+check('Q10 a bonus that cannot be paid in full is never offered (full HP hides the heal card)',
+  corrupt.withheld === true, `third-slot cards at full HP: ${corrupt.atFullSeen.join(', ')}`);
+check('Q11 an already-capped drawback says so out loud instead of being charged silently',
+  corrupt.honestCap === true, String(corrupt.honestCap));
+
+// ── Q12-Q14: the picker still answers to mouse, keyboard and controller, on the third card ──
+const navQ = await page.evaluate(() => {
+  const g = window.__g;
+  const out = {};
+  const open = () => {
+    window.__run('japan_phasewalker', true);
+    g.player.hp = Math.floor(g.player.maxHp * 0.5);
+    g._openMutationChoice();
+    return g.mutationUI;
+  };
+  // MOUSE — click the third card's own rect.
+  let ui = open();
+  const rects = ui.cardRects.length, third = ui.cardRects[2];
+  const key3 = ui.choices[2].key, corrupt3 = !!ui.choices[2].corrupted;
+  ui.handleClick({ x: third.x + third.w / 2, y: third.y + third.h / 2 }, g);
+  out.mouse = { rects, closed: g.mutationUI === null, took: (g.mutations.taken[key3] || 0) > 0, corrupt3 };
+  // The rects must sit fully on screen — the taller corrupted row must not run off the canvas.
+  ui = open();
+  out.onScreen = ui.cardRects.every(r => r.x >= 0 && r.y >= 0 && r.x + r.w <= 1280 && r.y + r.h <= 720);
+  out.tall = ui.cardRects[0].h > 200 && ui.hasCorrupt === true;
+  g.mutationUI = null;
+  return out;
+});
+check('Q12 mouse: clicking the third card takes exactly that card and closes the picker',
+  navQ.mouse.rects === 3 && navQ.mouse.corrupt3 === true && navQ.mouse.closed && navQ.mouse.took,
+  JSON.stringify(navQ.mouse));
+check('Q13 the taller corrupted row still fits the 1280x720 canvas',
+  navQ.onScreen === true && navQ.tall === true, JSON.stringify(navQ));
+
+// Keyboard + controller go through the REAL listeners: a keydown on document, and a virtual
+// gamepad whose D-pad/A travel GamepadInput.poll -> applyGamepad -> padTap -> keydown.
+const kb = await page.evaluate(async () => {
+  const g = window.__g;
+  window.__run('japan_phasewalker', true);
+  g.player.hp = Math.floor(g.player.maxHp * 0.5);
+  g._openMutationChoice();
+  const key3 = g.mutationUI.choices[2].key;
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: '3', bubbles: true }));
+  return { closed: g.mutationUI === null, took: (g.mutations.taken[key3] || 0) > 0, key3 };
+});
+check('Q14 keyboard: "3" selects the corrupted card through the shipped listener',
+  kb.closed && kb.took, JSON.stringify(kb));
+
+const padNav = await page.evaluate(async () => {
+  const g = window.__g;
+  window.__run('japan_phasewalker', true);
+  g.player.hp = Math.floor(g.player.maxHp * 0.5);
+  g._openMutationChoice();
+  const key3 = g.mutationUI.choices[2].key;
+  const start = g.mutationUI.selectedIndex;
+  // ArrowRight is exactly what the pad's D-pad emits (main.js applyGamepad -> padTap -> keydown).
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+  const one = g.mutationUI.selectedIndex;
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+  const two = g.mutationUI.selectedIndex;
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  return { start, one, two, closed: g.mutationUI === null, took: (g.mutations.taken[key3] || 0) > 0 };
+});
+check('Q15 controller: the cursor walks to the corrupted card and A/Enter confirms it',
+  padNav.start === 0 && padNav.one === 1 && padNav.two === 2 && padNav.closed && padNav.took,
+  JSON.stringify(padNav));
+
+// A real frame with the picker open — it must draw without throwing and without a black screen.
+await page.evaluate(() => {
+  const g = window.__g;
+  window.__run('japan_phasewalker', true);
+  g.player.hp = Math.floor(g.player.maxHp * 0.5);
+  g._openMutationChoice();
+  try { g.draw(window.__ctx()); } catch (_) {}
+});
+await shot('04_corrupted_mutation.png');
+const cardLum = await page.evaluate(() => {
+  const c = document.querySelector('canvas#game') || [...document.querySelectorAll('canvas')].find(x => x.width > 400);
+  if (!c) return { ok: false };
+  const o = document.createElement('canvas'); o.width = 160; o.height = 90;
+  const cx = o.getContext('2d', { willReadFrequently: true });
+  cx.drawImage(c, 0, 0, 160, 90);
+  const d = cx.getImageData(0, 0, 160, 90).data;
+  let sum = 0, mx = 0; const colors = new Set();
+  for (let i = 0; i < d.length; i += 4) {
+    const l = (d[i] + d[i + 1] + d[i + 2]) / 3; sum += l; if (l > mx) mx = l;
+    colors.add((d[i] >> 4) + ',' + (d[i + 1] >> 4) + ',' + (d[i + 2] >> 4));
+  }
+  return { ok: true, mean: +(sum / (d.length / 4)).toFixed(2), max: mx, colors: colors.size };
+});
+check('Q16 the corrupted picker draws a real frame — no black screen behind it',
+  cardLum.ok && !(cardLum.mean < 6 && cardLum.max < 24) && cardLum.colors > 4, JSON.stringify(cardLum));
+await page.evaluate(() => { window.__g.mutationUI = null; });
+
+// Q17 — the same trap as O09, from the other direction: CORRUPTED PHASE holds the i-frame gate
+// for 5 s, which is longer than the phoenix burst it shares a field with.
+const phaseDraw = await page.evaluate(() => {
+  const g = window.__g;
+  let armed = false;
+  for (let t = 0; t < 400 && !armed; t++) {
+    window.__run('japan_phasewalker', true);
+    g.player.hp = Math.floor(g.player.maxHp * 0.5);
+    const h = g._buildMutationChoices();
+    if (h[2].key !== 'corrupt_phase') continue;
+    g.mutationUI = { choices: h };
+    g.selectMutation(2);
+    armed = true;
+  }
+  const held = { t: g.phoenixReviveTimer, type: g.phoenixReviveType };
+  let threw = null;
+  for (let i = 0; i < 10; i++) {
+    try { g.draw(window.__ctx()); } catch (e) { threw = String(e && e.message || e); break; }
+    g.phoenixReviveTimer = Math.max(0.05, g.phoenixReviveTimer - 0.6);
+  }
+  return { armed, held, threw };
+});
+check('Q17 a frame DRAWN during CORRUPTED PHASE immunity does not throw',
+  phaseDraw.armed && phaseDraw.threw === null &&
+  phaseDraw.held.t >= 5 && phaseDraw.held.type === 'none', JSON.stringify(phaseDraw));
+
+// Q18 — an ORDINARY revive is untouched: it still plays its burst, from its own type.
+const reviveFx = await page.evaluate(() => {
+  const g = window.__g;
+  window.__run('japan_phasewalker', true);
+  g.phoenixReviveType = 'gold'; g.phoenixReviveTimer = 2.5;
+  let threw = null;
+  try { g.draw(window.__ctx()); } catch (e) { threw = String(e && e.message || e); }
+  return { threw, t: g.phoenixReviveTimer, type: g.phoenixReviveType };
+});
+check('Q18 an ordinary phoenix revive still draws its burst, unchanged',
+  reviveFx.threw === null && reviveFx.type === 'gold' && reviveFx.t === 2.5,
+  JSON.stringify(reviveFx));
+
+// ════════════════════════════════════════════════════════════════════════════
 // H. NO BLACK SCREEN, NO ERRORS
 // ════════════════════════════════════════════════════════════════════════════
 await page.evaluate(() => { const g = window.__g; g.gameOver = false; g.player.hp = g.player.maxHp; window.__step(90); });
@@ -1325,6 +1625,7 @@ check('H03 zero console errors across the whole session', consoleErrors.length =
 
 fs.writeFileSync(path.join(OUT, 'report.json'), JSON.stringify({
   build: BUILD, doctrineV: DOC_V, laws, heat, foundry, fate, reroll, confirmed, others, dist, after, lum,
+  corrupt, navQ, kb, padNav, cardLum, scatterDraw, phaseDraw, reviveFx,
   pass: passN, fail: failN, failures, results, pageErrors, consoleErrors,
 }, null, 2));
 

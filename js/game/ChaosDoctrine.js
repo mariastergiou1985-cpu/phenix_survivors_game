@@ -56,6 +56,17 @@ export const CHAOS_DOCTRINE = Object.freeze({
       maxCharges:   3,     // hard ceiling; a charge is consumed immediately, this is the backstop
     }),
 
+    // CORRUPTED MUTATION SLOT — Chaos only, this character only. The forced-mutation picker
+    // keeps its shipped three-card layout and its shipped navigation; what changes is that the
+    // THIRD slot is a CORRUPTED offer instead of a third ordinary negative. A corrupted card
+    // carries a REAL bonus and a REAL drawback and prints BOTH before the pick. Nothing is
+    // hidden, nothing is rolled after the pick, and no corrupted card is ever offered when its
+    // bonus could not be paid in full — see Mutations.js sampleCorruptedMutation().
+    mutation: Object.freeze({
+      normalCards:  2,     // slots 1-2 stay ordinary forced mutations
+      corruptCards: 1,     // slot 3 is the corrupted offer
+    }),
+
     // FATE PYLON — a d6 over effects that ALL already exist. No new effect is invented; the
     // die only changes which existing one lands and how hard.
     pylon: Object.freeze({
