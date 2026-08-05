@@ -1712,7 +1712,11 @@ FUSION_EXECUTORS.fus_scrapstorm_foundry = {
         }
         // forge drone
         const hitsPer = Math.max(2, Math.round(m.forge.hitsPerDrone * (fe.chaos() ? (d.chaos.hitsPerDroneMult || 1) : 1)));
-        const cap = Math.min(m.caps.dronesAlive, A(m.forge.droneCap, i));
+        // CHAOS DOCTRINE (cyber_arm_hero, Chaos only): FOUNDRY PYLON stacks add drone slots.
+        // Added INSIDE the existing Math.min so caps.dronesAlive stays the hard ceiling and the
+        // fusion remains the single authority on its own drone count. Zero for everyone else.
+        const _fd = fe.chaos() ? (fe.game._doctrineFoundryStacks || 0) : 0;
+        const cap = Math.min(m.caps.dronesAlive, A(m.forge.droneCap, i) + _fd);
         if (R.hits >= hitsPer && st.objects.drones.length < cap) {
           R.hits = 0;
           const den = fe.densest(170, fe._t * 3);

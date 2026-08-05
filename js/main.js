@@ -1,4 +1,4 @@
-import { Game } from './game/Game.js?v=20260904120000';
+import { Game } from './game/Game.js?v=20260904130000';
 import { AudioManager } from './audio/AudioManager.js?v=20260904100000';
 import { PlatformAchievements } from './platform/PlatformAchievements.js?v=20260712370000';
 // Steam build: replay any web-earned achievements to Steam on boot (no-op in browsers)
@@ -621,9 +621,16 @@ function applyGamepad() {
   // hero: the stick/D-pad never reached CONTINUE ENDLESS / ENTER CHAOS MODE / RETURN MAIN
   // MENU and A/B did nothing there. applyContextualCursor already excluded it; this is the
   // same omission on the input side. Keyboard and mouse are untouched.
+  // _clsVisible joins that list for the same reason (2026-08-04). The CHAOS DOCTRINE law
+  // reroll reopens the Chaos Law overlay MID-RUN, which freezes the run but leaves
+  // gameState === 'playing' — so without this the pad kept driving the hero: A/Cross is not
+  // even bound in gameplay, so the overlay could not be confirmed by controller at all, and
+  // the D-pad only appeared to work because it was emitting WASD movement that the overlay's
+  // handler happens to also accept. Measured: 4 consecutive A presses swallowed, twice.
+  // Keyboard and mouse are untouched; this only restores the menu mapping while a menu is up.
   const inGameplay = game.gameState === 'playing' && !game.paused && !game.gameOver &&
                      !game.victory && !game.upgradeUI && !game.mutationUI &&
-                     !game._postArenaChoice;
+                     !game._postArenaChoice && !game._clsVisible;
   const cardUI = game.upgradeUI || game.mutationUI;
 
   if (inGameplay) {

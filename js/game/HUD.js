@@ -139,12 +139,45 @@ export function drawHUD(ctx, game) {
     drawText(ctx, '!! GRID BLACKOUT ACTIVE !!', WIDTH / 2, 96, RED, '16px Consolas, monospace');
   }
 
+  // ── CHAOS DOCTRINE readout (pilot: cyber_arm_hero heat, japan_phasewalker rerolls) ──
+  // Display only. Drawn above the pylon badge row and only inside Chaos for the two piloted
+  // characters, so nothing moves for the other eight or in Endless.
+  if (game._chaosMode && game.player) {
+    const _cid = game.player.selectedCharacter;
+    if (_cid === 'cyber_arm_hero') {
+      const h  = Math.max(0, Math.min(1, game._doctrineHeat || 0));
+      const BW = 118, BH = 7, bx = WIDTH / 2 - BW / 2, by = 126;
+      const red = h >= 1;
+      ctx.save();
+      ctx.globalAlpha = red ? (0.75 + 0.25 * Math.abs(Math.sin(Date.now() / 140))) : 0.85;
+      ctx.fillStyle = 'rgba(6,10,22,0.72)';
+      ctx.fillRect(bx - 1, by - 1, BW + 2, BH + 2);
+      ctx.fillStyle = red ? '#ff3a1f' : '#ff9a2d';
+      ctx.fillRect(bx, by, Math.round(BW * h), BH);
+      ctx.strokeStyle = red ? '#ff3a1f' : 'rgba(255,154,45,0.55)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(bx - 0.5, by - 0.5, BW + 1, BH + 1);
+      ctx.textAlign = 'center';
+      drawText(ctx, red ? 'REDLINE \u2014 RAILGUN FREE' : 'HEAT',
+               WIDTH / 2, by - 3, red ? '#ff3a1f' : '#ff9a2d', 'bold 10px Consolas, monospace');
+      ctx.restore();
+    } else if (_cid === 'japan_phasewalker' && (game._doctrineRerollsUsed || 0) > 0) {
+      ctx.save();
+      ctx.globalAlpha = 0.85;
+      ctx.textAlign = 'center';
+      drawText(ctx, 'FATE REROLLS USED: ' + game._doctrineRerollsUsed,
+               WIDTH / 2, 126, '#a855f7', 'bold 10px Consolas, monospace');
+      ctx.restore();
+    }
+  }
+
   // Chaos pylon buff indicator (real buffs only — no speed, display only)
   if (game._chaosMode && game._chaosPylonBuff) {
     const buff    = game._chaosPylonBuff;
     const isShield = buff.type === 'shield';
-    const color   = isShield ? CYAN : '#44ff88';
-    const label   = isShield ? 'S SHIELD PULSE ACTIVE' : '+ HEAL PULSE ACTIVE';
+    const isFoundry = buff.type === 'foundry';
+    const color   = isFoundry ? '#ff9a2d' : isShield ? CYAN : '#44ff88';
+    const label   = isFoundry ? 'F FOUNDRY VENT' : isShield ? 'S SHIELD PULSE ACTIVE' : '+ HEAL PULSE ACTIVE';
     const fade    = Math.min(1, buff.timer);
     ctx.save();
     ctx.globalAlpha = fade * (0.75 + 0.25 * Math.abs(Math.sin(Date.now() / 200)));

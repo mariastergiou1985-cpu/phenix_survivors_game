@@ -22,7 +22,7 @@ import { UpgradeUI }      from './UpgradeUI.js?v=20260902100000';
 import { weightedSample } from './Upgrades.js?v=20260902100000';
 import { BuildEngineRuntime, WEAPON_DEFS as BE_WEAPON_DEFS, EVOLUTION_RECIPES as BE_EVOLUTION_RECIPES, PASSIVE_DEFS as BE_PASSIVE_DEFS } from './BuildEngine.js?v=20260902130000';   // BUILD ENGINE — always on (full migration 2026-07-18)
 import { FUSION_DEFS, FUSION_CARD_ORDER, FUSION_ART_READY, FUSION_MAX_TIER, fusionCost, CHAR_DISPLAY_NAMES } from './FusionCatalog.js?v=20260902070000';   // FUSION ARMORY (Batch B)
-import { FusionEngine } from './FusionEngine.js?v=20260902100000';   // FUSION ARMORY runtime (Batch D)
+import { FusionEngine } from './FusionEngine.js?v=20260904130000';   // FUSION ARMORY runtime (Batch D)
 import './BuildEngineChars1.js?v=20260902130000';   // P2.3a Taekwondo+CyberArm (side-effect register)
 import './BuildEngineChars2.js?v=20260902130000';   // P2.3b Brawler+Assassin (side-effect register)
 import './BuildEngineChars3.js?v=20260902130000';   // P2.4a Eddie+Dimi (side-effect register)
@@ -31,7 +31,7 @@ import './BuildEngineChars5.js?v=20260902130000';   // P2.5 Universal όπλα 2
 import './BuildEnginePassives.js?v=20260902130000'; // P2.6 Build passives §26-50 (generic hooks)
 import { MutationUI }      from './MutationUI.js?v=20260810210000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
-import { drawHUD, drawEndScreen } from './HUD.js?v=20260827000000';
+import { drawHUD, drawEndScreen } from './HUD.js?v=20260904130000';
 import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, COLLECTIBLE_FRAGMENT_COST, COLLECTIBLE_GRID_COST, ECHO_FRAGMENT_COST, ECHO_GRID_COST, SKILL_TREE, AMULET_DEFS, GRID_TO_PF_RATE, characterStageRequirement } from './MetaProgress.js?v=20260903020000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260712520000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
@@ -54,6 +54,7 @@ import { LaserEyes } from '../effects/laser-eyes.js?v=20260818000000';
 import { MeteorRain } from '../effects/meteor-rain.js?v=20260712100000';
 import { NpcWalker } from './NpcWalker.js?v=20260904030000';
 import { MapManager, BIOME_ID, BIOME_DEFS, CHUNK_SIZE } from './MapManager.js?v=20260904120000';
+import { getChaosDoctrine } from './ChaosDoctrine.js?v=20260904130000';
 import { AcidRain } from './AcidRain.js?v=20260829020000';   // BATCH 2 major event (2026-07-29)
 import { EnemyWeaponSystem } from './EnemyWeaponSystem.js?v=20260829040000';   // BATCH 3 enemy weapon behaviours
 import { EventBus, EVENTS } from './EventBus.js?v=20260703990000';
@@ -2079,9 +2080,24 @@ export class Game {
     this._frozenSleetTimer = 9999; // first trigger on Chaos start (overridden in chaos block)
 
     // Chaos Mode pylons — danger (damage player) + buff (shield / heal). No speed buff.
-    this._chaosPylons    = [];   // { pos, type:'danger'|'shield'|'heal', life, maxLife, radius }
+    this._chaosPylons    = [];   // { pos, type:'danger'|'shield'|'heal'|'fate'|'foundry', life, maxLife, radius }
     this._chaosPylonCd   = 0;   // spawn cooldown
-    this._chaosPylonBuff = null; // active pylon buff: { type:'shield'|'heal', timer } | null
+    this._chaosPylonBuff = null; // active pylon buff: { type:'shield'|'heal'|..., timer } | null
+    // ── CHAOS DOCTRINE run state (pilot: japan_phasewalker, cyber_arm_hero) ──────────────
+    // Declared HERE, inside reset(), for the same reason every other run field is: reset() is
+    // the only call every restart path is guaranteed to make, so a doctrine can never leak
+    // into the next run. Verified by the proof's restart section.
+    this._doctrineHeat          = 0;      // 0..1, cyber_arm_hero only
+    this._doctrineHeatVentCd    = 0;      // seconds to the next redline vent tick
+    this._doctrineHeatRedlines  = 0;      // QA/telemetry: times the bar hit 1.0 this run
+    this._doctrineRerollCharges = 0;      // japan_phasewalker only
+    this._doctrineRerollsUsed   = 0;
+    this._doctrineFoundryStacks = 0;      // cyber_arm_hero only, read by FusionEngine
+    this._doctrineFired         = 0;      // QA: doctrine pylons triggered this run
+    this._doctrineHeatShot      = false;
+    this._doctrinePendingReroll = false;
+    this._doctrineLawXpApplied  = 1;      // the law xpMult already folded into player.xpMult
+    this._clsRerollMode         = false;  // the law overlay is a mid-run reroll, not a run start
 
     this.killsSinceHealthDrop = 0;   // counts toward the next HP CELL drop
     this.healthPickups        = [];  // [{ pos: Vec2, timer: number }] — heals 25% maxHp on touch
@@ -3004,12 +3020,19 @@ export class Game {
     }
 
     const V1_LAWS = [
+      // TEXT CORRECTED 2026-08-04. These three strings had drifted from the numbers the game
+      // actually applies in _getActiveChaosLawModifiers(): Blood Grid was printed as "+10%
+      // score" while it runs +15% score AND +10% enemy speed, Frozen Eden as "+10% XP" while it
+      // runs +15% XP AND -10% enemy speed, and No Mercy as "+10% boss HP / +15% score" while it
+      // runs +12% / +18%. The codex table (CHAOS_LAWS) was already right; only this overlay -
+      // the one the player actually reads before committing - was wrong. NO modifier value
+      // changed: the numbers below are copied out of the switch, not chosen.
       { id: 'blood_grid',        name: 'BLOOD GRID',        color: '#ef4444',
-        effect: '+10% score multiplier for this run.' },
+        effect: 'Enemies +10% faster \u00b7 +15% score multiplier for this run.' },
       { id: 'frozen_eden',       name: 'FROZEN EDEN',       color: '#00ccff',
-        effect: '+10% XP gain for this run.' },
+        effect: 'Enemies chilled -10% speed \u00b7 +15% XP gain for this run.' },
       { id: 'no_mercy_protocol', name: 'NO MERCY PROTOCOL', color: '#fbbf24',
-        effect: '+10% boss HP \u00b7 +15% score multiplier for this run.' },
+        effect: 'Bosses +12% HP \u00b7 +18% score multiplier for this run.' },
       // Preview-only \u2014 not yet active. Shown non-selectable so players see future content.
       // ALL LAWS OPEN (Maria 2026-07-12): the three former previews are live.
       { id: 'serpent_law',   name: 'SERPENT LAW',   color: '#ff7733',
@@ -3057,6 +3080,15 @@ export class Game {
         this._clsVisible = false;
         this.runChaosLaw = card.dataset.law;
         this._hideChaosLawSelectionOverlay();
+        // CHAOS DOCTRINE reroll: the overlay was opened MID-RUN, so it must only swap the law
+        // and hand control back. Touching reset()/_enterEndless() here would restart the run
+        // the player is standing in. Everything else about the overlay - markup, styling,
+        // focus ring, keyboard and controller nav - is the shipped path, unchanged.
+        if (this._clsRerollMode) {
+          this._clsRerollMode = false;
+          this._applyChaosLawReroll();
+          return;
+        }
         this._hideMenuOverlay();          // guarantee the main-menu overlay never lingers over the run
         if (this._pendingChaosStart) { this._pendingChaosStart = false; this._beginChaosRun(); return; }
         this.gameState = 'playing';
@@ -3066,6 +3098,13 @@ export class Game {
     });
     document.getElementById('cls-skip-btn').addEventListener('click', () => {
       this._clsVisible = false;
+      if (this._clsRerollMode) {                 // mid-run SKIP = drop the law entirely
+        this._clsRerollMode = false;
+        this.runChaosLaw = null;
+        this._hideChaosLawSelectionOverlay();
+        this._applyChaosLawReroll();
+        return;
+      }
       this.runChaosLaw = null;
       this._hideChaosLawSelectionOverlay();
       this._hideMenuOverlay();            // guarantee the main-menu overlay never lingers over the run after SKIP
@@ -3076,10 +3115,35 @@ export class Game {
     });
     document.getElementById('cls-back-btn').addEventListener('click', () => {
       this._clsVisible = false;
+      if (this._clsRerollMode) {                 // mid-run BACK = cancel, keep the current law
+        this._clsRerollMode = false;
+        this._hideChaosLawSelectionOverlay();
+        this.triggerAnnouncement('\u25c8 REROLL DECLINED \u2014 LAW UNCHANGED \u25c8', '#a855f7', { priority: 2 });
+        return;
+      }
       this._pendingChaosStart = false;
       this._hideChaosLawSelectionOverlay();
       this.goToMainMenu();
     });
+  }
+
+  /**
+   * Commit a mid-run law swap. The only live consumer that reads its multiplier ONCE rather
+   * than per-use is xpMult (folded into player.xpMult at _initializeEndlessStats), so the swap
+   * re-derives that one factor from the ratio of old to new instead of re-running the whole
+   * stat init - which would wipe the run. score / bossHp / enemySpeed are read per-event and
+   * pick the new law up on their own with no work here.
+   */
+  _applyChaosLawReroll() {
+    const p = this.player;
+    const nowMods = this._getActiveChaosLawModifiers();
+    const prev = Math.max(0.0001, this._doctrineLawXpApplied || 1);
+    if (p && Number.isFinite(p.xpMult) && p.xpMult > 0) {
+      p.xpMult = (p.xpMult / prev) * nowMods.xpMult;
+    }
+    this._doctrineLawXpApplied = nowMods.xpMult;
+    const label = this.runChaosLaw ? String(this.runChaosLaw).replace(/_/g, ' ').toUpperCase() : 'NO LAW';
+    this.triggerAnnouncement('\u25c8 CHAOS LAW REWRITTEN \u2014 ' + label + ' \u25c8', '#a855f7', { priority: 2 });
   }
 
   _hideChaosLawSelectionOverlay() {
@@ -3173,7 +3237,8 @@ export class Game {
     this._applyEndlessProtocols();          // one-shot Achievement Protocol stat boosts
     // Chaos Law — xpMult boost (applied after protocols so stacking is clean)
     { const _clm = this._getActiveChaosLawModifiers();
-      if (_clm.xpMult !== 1 && this.player) this.player.xpMult = (this.player.xpMult || 1) * _clm.xpMult; }
+      if (_clm.xpMult !== 1 && this.player) this.player.xpMult = (this.player.xpMult || 1) * _clm.xpMult;
+      this._doctrineLawXpApplied = _clm.xpMult; }   // baseline for a Chaos Doctrine law reroll
     this._checkEndlessAchievements();       // grant FIRST ENDLESS RUN immediately on entering Endless
 
     // Update debug runConfig with Endless-specific boosts
@@ -9926,7 +9991,11 @@ export class Game {
     const p = this.player;
     if (p.selectedCharacter !== 'cyber_arm_hero') return;   // Cyber Arm Hero only
     if (this.overChains) return;                            // already running
-    if (p.mana < ULTIMATE_MANA_COST) {                      // same NOT-ENOUGH-MANA behavior as Thunder Solo
+    // CHAOS DOCTRINE (cyber_arm_hero, Chaos only): at redline the shot is free. This is the
+    // payoff half of the loop whose cost is the vent damage in _updateChaosDoctrine.
+    const _doc     = this._doctrine();
+    const _redline = !!(_doc && _doc.heat && this._doctrineHeat >= _doc.heat.freeUltAt);
+    if (!_redline && p.mana < ULTIMATE_MANA_COST) {          // same NOT-ENOUGH-MANA behavior as Thunder Solo
       this.floatingTexts.push(new FloatingText('NOT ENOUGH MANA', p.pos.clone(), ORANGE, 1.0));
       return;
     }
@@ -9934,7 +10003,8 @@ export class Game {
     // full-width horizon shot + real screen tear). Chains code stays, never scheduled.
     this._ensureRailgunFx();
     if (!this._railgun || this._railgun.isActive()) return;
-    p.mana -= ULTIMATE_MANA_COST;                           // fixed 100 cost; Mana Core overflow banks toward next cast
+    if (_redline) { this._doctrineVentHeat(); }             // firing IS the vent
+    else { p.mana -= ULTIMATE_MANA_COST; }                  // fixed 100 cost; Mana Core overflow banks toward next cast
     const sp = this._playerScreenPos();
     this._railgun.trigger(sp.cx, sp.footY);
     this.screenShake.trigger(5, 0.3);
@@ -10901,6 +10971,7 @@ export class Game {
       }
       // Chaos pylons: bounded danger/buff objects (gameplay: damage + shield/heal)
       this._updateChaosPylons(dt);
+      this._updateChaosDoctrine(dt);
     }
 
     if (this.comboTimer > 0) {
@@ -12516,6 +12587,9 @@ export class Game {
         }
       } catch (_) {}
       this.triggerAnnouncement(this._activeTitan.enemyType.toUpperCase() + ' DESTROYED — REWARD RELIC UNLOCKED', '#7CFF4D');
+      // CHAOS DOCTRINE: a Titan kill pays japan_phasewalker a Chaos Law reroll. No-op for the
+      // other nine. Deferred one frame so the kill's own banners land before the overlay.
+      try { this._doctrinePendingReroll = !!this._doctrine()?.reroll; } catch (_) {}
       this._activeTitan = null;
       this.endMajorEvent('megaBoss');            // the ambient slot frees when the boss is gone
     } else if (this._activeTitan) {
@@ -17024,6 +17098,7 @@ export class Game {
         if (d2 < bestD2) { bestD2 = d2; best = b; }
       }
       if (best) {
+        this._doctrineAddHeat();   // CHAOS DOCTRINE: no-op unless cyber_arm_hero inside Chaos
         const angle = Math.atan2(best.pos.y - py, best.pos.x - px);
         const vfx = this._spawnWeaponVFX(weaponId, best.pos.x, best.pos.y, angle, 4.5);   // bigger, premium presence (was 3.75)
         // 70% homing: the VFX tracks its target while animating instead of
@@ -35986,9 +36061,101 @@ _drawLoreArchive(ctx) {
   }
 
   // ─── Chaos Mode: pylon system ───────────────────────────────────────────────
+  // ══ CHAOS DOCTRINE (pilot) ═══════════════════════════════════════════════════════════
+  /**
+   * The active character's Chaos Doctrine, or null. THE ONLY gate the rest of the code needs:
+   * it returns null outside Chaos and null for the eight characters with no entry, so every
+   * doctrine read site is a single `if (!doc) return;` and the other eight characters run the
+   * exact code they ran before this file existed.
+   */
+  _doctrine() {
+    if (!this._chaosMode || !this.player) return null;
+    return getChaosDoctrine(this.player.selectedCharacter);
+  }
+
+  /**
+   * HEAT DOCTRINE tick — cyber_arm_hero only. Heat is ADDED in _autoFireWeapon (a shot only
+   * happens when a target is inside the 620 px acquisition radius), so the cooling here is
+   * what makes position the control: break contact and the bar falls.
+   */
+  _updateChaosDoctrine(dt) {
+    const doc = this._doctrine();
+    if (!doc) { this._doctrinePendingReroll = false; return; }
+    // Deferred Titan-kill reroll: opening the law overlay from inside the Titan teardown would
+    // freeze the run mid-teardown, so the grant is taken here, one frame later.
+    if (this._doctrinePendingReroll) {
+      this._doctrinePendingReroll = false;
+      this._doctrineGrantReroll('TITAN DESTROYED');
+      return;
+    }
+    if (!doc.heat || !this.player) return;
+    const H = doc.heat;
+
+    // Cool whenever no shot was charged this frame. _doctrineHeatShot is set by
+    // _autoFireWeapon and consumed here, so one flag serves any number of weapons.
+    if (!this._doctrineHeatShot) {
+      this._doctrineHeat = Math.max(0, this._doctrineHeat - H.coolPerSec * dt);
+    }
+    this._doctrineHeatShot = false;
+
+    // Redline: the ultimate goes free, and standing in the red costs HP through the REAL
+    // damage path (not a silent hp write), so armour, shields and i-frames all still apply.
+    if (this._doctrineHeat >= H.freeUltAt) {
+      this._doctrineHeatVentCd -= dt;
+      if (this._doctrineHeatVentCd <= 0) {
+        this._doctrineHeatVentCd = H.ventEvery;
+        this._damagePlayer(H.ventDmg, { color: '#ff9a2d', shake: 2 });
+      }
+    } else {
+      this._doctrineHeatVentCd = 0;
+    }
+  }
+
+  /** Add heat for one weapon shot. No-op for everyone except cyber_arm_hero inside Chaos. */
+  _doctrineAddHeat() {
+    const doc = this._doctrine();
+    if (!doc || !doc.heat) return;
+    const before = this._doctrineHeat;
+    this._doctrineHeat = Math.min(1, this._doctrineHeat + doc.heat.perShot);
+    this._doctrineHeatShot = true;
+    if (before < 1 && this._doctrineHeat >= 1) {
+      this._doctrineHeatRedlines++;
+      this.triggerAnnouncement('\u25b2 REDLINE \u2014 RAILGUN FREE, PLATING BURNING \u25b2', '#ff9a2d', { priority: 2 });
+    }
+  }
+
+  /** Dump the heat bar (FOUNDRY PYLON, and the ultimate's own vent). */
+  _doctrineVentHeat() {
+    this._doctrineHeat = 0;
+    this._doctrineHeatVentCd = 0;
+  }
+
+  /**
+   * Grant a Chaos Law reroll and spend it immediately by reopening the EXISTING law overlay in
+   * reroll mode. The overlay's `_clsVisible` guard in update() returns before any gameplay
+   * runs, so the run freezes behind it exactly as it does at run start - no new pause path, no
+   * new input binding, and controller navigation is the shipped one.
+   */
+  _doctrineGrantReroll(reason) {
+    const doc = this._doctrine();
+    if (!doc || !doc.reroll) return false;
+    if (this.gameOver || this.victory) return false;
+    if (this._clsVisible) return false;                       // never stack two overlays
+    this._doctrineRerollCharges = Math.min(doc.reroll.maxCharges,
+                                           this._doctrineRerollCharges + doc.reroll.perTitanKill);
+    if (this._doctrineRerollCharges <= 0) return false;
+    this._doctrineRerollCharges--;
+    this._doctrineRerollsUsed++;
+    this._clsRerollMode = true;
+    this._showChaosLawSelectionOverlay();
+    this.triggerAnnouncement('\u25c8 FATE REROLL \u2014 ' + (reason || 'CHOOSE A NEW LAW') + ' \u25c8', '#a855f7', { priority: 2 });
+    return true;
+  }
+
   _updateChaosPylons(dt) {
     const player = this.player;
     if (!player || player.dead) return;
+    const doc = this._doctrine();
 
     // Spawn cooldown
     this._chaosPylonCd -= dt;
@@ -36003,7 +36170,11 @@ _drawLoreArchive(ctx) {
         const py     = Math.max(WORLD_BOUNDS.top + 40, Math.min(WORLD_BOUNDS.bottom - 40, player.pos.y + Math.sin(angle) * dist));
         // Danger pylons more common than buff pylons (2:1:1)
         const roll   = Math.random();
-        const type   = roll < 0.50 ? 'danger' : roll < 0.75 ? 'shield' : 'heal';
+        let   type   = roll < 0.50 ? 'danger' : roll < 0.75 ? 'shield' : 'heal';
+        // CHAOS DOCTRINE: one pylon in four becomes the character's own. The base 50/25/25 roll
+        // is computed first and only then overridden, so a character with no doctrine gets a
+        // bit-for-bit identical distribution to before.
+        if (doc && doc.pylon && Math.random() < 0.25) type = doc.pylon.id;
         this._chaosPylons.push({
           pos: new Vec2(px, py), type, life: 6.0, maxLife: 6.0, radius: 28,
           triggered: false,
@@ -36023,7 +36194,9 @@ _drawLoreArchive(ctx) {
         if (d < TRIGGER_R) {
           p.triggered = true;
           p.life      = Math.min(p.life, 0.6); // flash then remove
-          if (p.type === 'danger') {
+          if (p.type === 'fate' || p.type === 'foundry') {
+            this._doctrineTriggerPylon(p);
+          } else if (p.type === 'danger') {
             this._damagePlayer(15, { color: '#ff4400', shake: 4 });
             this._spawnFloatingText('CHAOS PULSE', p.pos.clone(), '#ff4400', 1.2);
           } else if (p.type === 'shield') {
@@ -36044,6 +36217,55 @@ _drawLoreArchive(ctx) {
     if (this._chaosPylonBuff) {
       this._chaosPylonBuff.timer -= dt;
       if (this._chaosPylonBuff.timer <= 0) this._chaosPylonBuff = null;
+    }
+  }
+
+  /**
+   * Resolve a doctrine pylon. Every outcome reuses an effect that already ships - the base
+   * pylon numbers (15 dmg / 5 s shield / 8% heal), the law overlay, the fusion drone cap - so
+   * nothing new has to be balanced from scratch.
+   */
+  _doctrineTriggerPylon(p) {
+    const doc = this._doctrine();
+    if (!doc || !doc.pylon || doc.pylon.id !== p.type) {
+      // A doctrine pylon outliving its doctrine (character swap mid-session, or a stale entity
+      // after a restart) resolves harmlessly rather than throwing.
+      this._spawnFloatingText('NULL PYLON', p.pos.clone(), '#8899aa', 0.9);
+      return;
+    }
+    this._doctrineFired++;
+    const P = doc.pylon;
+
+    if (P.id === 'fate') {
+      const face = P.faces[Math.floor(Math.random() * P.faces.length)];
+      if (face === 'danger2') {
+        this._damagePlayer(30, { color: '#a855f7', shake: 6 });        // 2x the base 15
+        this._spawnFloatingText('SNAKE EYES', p.pos.clone(), '#a855f7', 1.3);
+      } else if (face === 'shield2') {
+        this.player.shieldTimer = Math.max(this.player.shieldTimer, 10.0);   // 2x the base 5 s
+        this._chaosPylonBuff = { type: 'shield', timer: 3.0 };
+        this._spawnFloatingText('DOUBLE SHIELD', p.pos.clone(), '#a855f7', 1.2);
+      } else if (face === 'heal2') {
+        const heal = Math.round(this.player.maxHp * 0.16);              // 2x the base 8%
+        this.player.hp = Math.min(this.player.maxHp, this.player.hp + heal);
+        this._chaosPylonBuff = { type: 'heal', timer: 3.0 };
+        this._spawnFloatingText('+' + heal + ' HP', p.pos.clone(), '#a855f7', 1.2);
+      } else { // jackpot
+        this._spawnFloatingText('JACKPOT', p.pos.clone(), '#ffd447', 1.6);
+        this._doctrineGrantReroll('THE DIE FAVOURS YOU');
+      }
+      return;
+    }
+
+    if (P.id === 'foundry') {
+      this._doctrineVentHeat();
+      if (this._doctrineFoundryStacks < P.maxStacks) {
+        this._doctrineFoundryStacks += P.foundryStack;
+        this._spawnFloatingText('FOUNDRY +1 DRONE', p.pos.clone(), '#ff9a2d', 1.3);
+      } else {
+        this._spawnFloatingText('HEAT VENTED', p.pos.clone(), '#ff9a2d', 1.2);
+      }
+      this._chaosPylonBuff = { type: 'foundry', timer: 3.0 };
     }
   }
 
