@@ -155,9 +155,9 @@ const rig = await page.evaluate(async (dv) => {
 }, DOC_V);
 check('A03x the Enemy class is available to the rig', await page.evaluate(() => !!window.__Enemy));
 const PILOT = ['japan_phasewalker', 'cyber_arm_hero', 'assassin_clone', 'euclid_vector',
-               'oni_cataclysm_protocol', 'eddie'];
-check('A03 the doctrine table ships exactly the six piloted characters',
-  rig.chars.length === 6 && PILOT.every(c => rig.chars.includes(c)), rig.chars.join(', '));
+               'oni_cataclysm_protocol', 'eddie', 'taekwondo_girl', 'dimis_kickboxer'];
+check('A03 the doctrine table ships exactly the eight piloted characters',
+  rig.chars.length === 8 && PILOT.every(c => rig.chars.includes(c)), rig.chars.join(', '));
 
 // ════════════════════════════════════════════════════════════════════════════
 // B. THE LAW TEXT NOW MATCHES THE LAW
@@ -407,7 +407,7 @@ check('E11 the run keeps a finite, positive xpMult after the swap',
 const others = await page.evaluate(() => {
   const g = window.__g;
   const out = {};
-  for (const c of ['skeleton_warrior', 'taekwondo_girl', 'brawler_warrior', 'dimis_kickboxer']) {
+  for (const c of ['skeleton_warrior', 'brawler_warrior']) {
     window.__run(c, true);
     const doc = !!g._doctrine();
     // 600 pylon spawns: the distribution must stay the shipped 50/25/25 with nothing else in it
@@ -427,7 +427,7 @@ const others = await page.evaluate(() => {
 const allClean = Object.values(others).every(o =>
   o.doc === false && o.heat === 0 && o.rerolls === 0 &&
   o.types.length === 3 && o.types.join(',') === 'danger,heal,shield');
-check('F01 the other four characters get NO doctrine, NO heat, NO rerolls',
+check('F01 the remaining two characters get NO doctrine, NO heat, NO rerolls',
   allClean, JSON.stringify(Object.fromEntries(Object.entries(others).map(([k, v]) => [k, v.types.join('/')]))));
 
 const dist = await page.evaluate(() => {
@@ -847,6 +847,191 @@ check('L08 an AMP PYLON hands one encore AND speeds the set up — two-sided',
   `enc ${amp.before.enc}->${amp.after.enc}, songs ${amp.before.songs}->${amp.after.songs}, period ${amp.before.per}->${amp.after.per}`);
 
 // ════════════════════════════════════════════════════════════════════════════
+// M. TAEKWONDO GIRL — MOMENTUM LAW + FROST PYLON
+// ════════════════════════════════════════════════════════════════════════════
+const momentum = await page.evaluate(() => {
+  const g = window.__g;
+  const M = window.__cd.CHAOS_DOCTRINE.taekwondo_girl.momentum;
+
+  window.__run('taekwondo_girl', false);
+  const endlessDoc = !!g._doctrine();
+
+  window.__run('taekwondo_girl', true);
+  g._doctrineFrostNodes = []; g._doctrineStillT = 0; g._doctrineLastPos = null;
+  g._doctrineFrostbites = 0; g.enemies.length = 0;
+
+  // (a) moving fast lays a trail
+  const step = (dx) => { g.player.pos.x += dx; g._updateChaosDoctrine(1 / 60); };
+  const fast = (M.speedThreshold / 60) * 1.6;
+  for (let i = 0; i < 90; i++) step(fast);
+  const moving = { nodes: g._doctrineFrostNodes.length, still: +g._doctrineStillT.toFixed(2),
+                   frostbites: g._doctrineFrostbites, capped: g._doctrineFrostNodes.length <= M.maxNodes };
+
+  // (b) the trail chills and bites what crosses it, using the enemy's own shipped slow field
+  const mk = (x, y) => {
+    let e = null;
+    try { e = new window.__Enemy('Neon Swarmer', 1); } catch (_) { return null; }
+    e.maxHp = 100000; e.hp = 100000; e.slowTimer = 0;
+    e.pos.x = x; e.pos.y = y; g.enemies.push(e); return e;
+  };
+  const nd = g._doctrineFrostNodes[g._doctrineFrostNodes.length - 1];
+  const onTrail = mk(nd.x, nd.y);
+  const offTrail = mk(nd.x + 4000, nd.y + 4000);
+  for (let i = 0; i < 60; i++) g._updateChaosDoctrine(1 / 60);
+  const bite = { hurt: onTrail.hp < onTrail.maxHp, slowed: onTrail.slowTimer > 0,
+                 offHurt: offTrail.hp < offTrail.maxHp };
+
+  // (c) standing still bites HER, through the shipped player chill
+  g._doctrineStillT = 0; g._doctrineFrostbites = 0; g.player._chillT = 0;
+  for (let i = 0; i < Math.ceil((M.stillSecs + 2.2) * 60); i++) g._updateChaosDoctrine(1 / 60);
+  const frostbite = { count: g._doctrineFrostbites, chill: g.player._chillT > 0,
+                      stillClamped: g._doctrineStillT <= M.stillSecs + 1e-6 };
+
+  // (d) THE FROZEN-SCREEN GUARD: a panel the game itself opened must never count as standing
+  // still. This is the failure mode the design flagged, so it is asserted directly.
+  g._doctrineStillT = 0; g._doctrineFrostbites = 0;
+  g.upgradeUI = { qa: true };
+  for (let i = 0; i < 300; i++) g._updateChaosDoctrine(1 / 60);   // 5 s frozen
+  const duringPanel = { still: g._doctrineStillT, frostbites: g._doctrineFrostbites };
+  g.upgradeUI = null;
+  return { endlessDoc, moving, bite, frostbite, duringPanel, maxNodes: M.maxNodes };
+});
+check('M01 the momentum law does NOT exist in Endless', momentum.endlessDoc === false);
+check('M02 moving fast lays a frost trail, hard-capped',
+  momentum.moving.nodes > 0 && momentum.moving.capped === true,
+  `${momentum.moving.nodes} nodes, cap ${momentum.maxNodes}`);
+check('M03 moving keeps the still-counter at zero and never frostbites',
+  momentum.moving.still === 0 && momentum.moving.frostbites === 0, JSON.stringify(momentum.moving));
+check('M04 the trail chills and bites what crosses it, and nothing off it',
+  momentum.bite.hurt === true && momentum.bite.slowed === true && momentum.bite.offHurt === false,
+  JSON.stringify(momentum.bite));
+check('M05 standing still bites HER through the shipped player chill, and does not compound',
+  momentum.frostbite.count > 0 && momentum.frostbite.chill === true &&
+  momentum.frostbite.stillClamped === true, JSON.stringify(momentum.frostbite));
+check('M06 a panel the GAME opened never counts as standing still — the flagged failure mode',
+  momentum.duringPanel.still === 0 && momentum.duringPanel.frostbites === 0,
+  JSON.stringify(momentum.duringPanel));
+
+const frost = await page.evaluate(() => {
+  const g = window.__g;
+  const P = window.__cd.CHAOS_DOCTRINE.taekwondo_girl.pylon;
+  window.__run('taekwondo_girl', true);
+  g.enemies.length = 0; g.player._chillT = 0;
+  const mk = (dx) => {
+    let e = null;
+    try { e = new window.__Enemy('Neon Swarmer', 1); } catch (_) { return null; }
+    e.maxHp = 1000; e.hp = 1000; e.slowTimer = 0;
+    e.pos.x = g.player.pos.x + dx; e.pos.y = g.player.pos.y;
+    g.enemies.push(e); return e;
+  };
+  const near = mk(80), far = mk(P.radius + 300);
+  g._doctrineTriggerPylon({ pos: window.__pt(g.player.pos.x, g.player.pos.y), type: 'frost' });
+  return { nearSlowed: near.slowTimer > 0, farUntouched: far.slowTimer === 0,
+           selfChill: g.player._chillT > 0, buff: g._chaosPylonBuff?.type };
+});
+check('M07 a FROST PYLON chills enemies inside its radius only',
+  frost.nearSlowed === true && frost.farUntouched === true, JSON.stringify(frost));
+check('M08 it is two-sided — it chills HER too', frost.selfChill === true, `buff ${frost.buff}`);
+
+// ════════════════════════════════════════════════════════════════════════════
+// N. DIMI KICKBOXER — JUDGEMENT ROUND + AEGIS PYLON
+// ════════════════════════════════════════════════════════════════════════════
+const dimi = await page.evaluate(() => {
+  const g = window.__g;
+  const R = window.__cd.CHAOS_DOCTRINE.dimis_kickboxer.round;
+  const P = window.__cd.CHAOS_DOCTRINE.dimis_kickboxer.pylon;
+
+  window.__run('dimis_kickboxer', false);
+  const endlessDoc = !!g._doctrine();
+  const endlessHp = g.player.hp;
+  g._damagePlayer(20, {});
+  const endlessTookIt = g.player.hp < endlessHp;
+
+  window.__run('dimis_kickboxer', true);
+  g._doctrineRoundT = 0; g._doctrineVerdict = 0; g._doctrineVerdicts = 0;
+  g._doctrineAegisT = 0; g._doctrineRoundsOpened = 0;
+
+  // (a) a Round is declared, and never on top of a Boss Rush
+  g._doctrineRoundCd = 0; g._bossRush = { t: 1 };
+  for (let i = 0; i < 10; i++) g._updateChaosDoctrine(1 / 60);
+  const blockedByRush = g._doctrineRoundT === 0;
+  g._bossRush = null;
+  g._doctrineRoundCd = 0;
+  for (let i = 0; i < 10; i++) g._updateChaosDoctrine(1 / 60);
+  const opened = { on: g._doctrineRoundT > 0, count: g._doctrineRoundsOpened };
+
+  // (b) during a Round the hit STILL lands — it only also charges the Verdict
+  g._doctrineVerdict = 0;
+  g.player.hp = g.player.maxHp;
+  g.playerHitCooldown = 0; g._chaosEntryGraceT = 0; g.player.dashTimer = 0;
+  const hpBefore = g.player.hp;
+  g._damagePlayer(15, {});
+  const duringRound = { charged: g._doctrineVerdict > 0, tookIt: g.player.hp < hpBefore };
+
+  // (c) his panic button is HELD while the Round runs
+  g.player.specialCooldown = 0;
+  g._updateChaosDoctrine(1 / 60);
+  const ultHeld = g.player.specialCooldown > 0;
+
+  // (d) a full Verdict smites the field and closes the Round early
+  g.enemies.length = 0;
+  const mk = (dx) => {
+    let e = null;
+    try { e = new window.__Enemy('Neon Swarmer', 1); } catch (_) { return null; }
+    e.maxHp = 100000; e.hp = 100000;
+    e.pos.x = g.player.pos.x + dx; e.pos.y = g.player.pos.y;
+    g.enemies.push(e); return e;
+  };
+  const near = mk(100), far = mk(R.smiteRadius + 400);
+  g._doctrineVerdict = 0.99;
+  g.playerHitCooldown = 0;
+  g._damagePlayer(1, {});
+  const verdict = { fired: g._doctrineVerdicts === 1, roundClosed: g._doctrineRoundT === 0,
+                    reset: g._doctrineVerdict === 0,
+                    nearHurt: near.hp < near.maxHp, farUntouched: far.hp === far.maxHp };
+
+  // (e) the ultimate cooldown is HELD, not destroyed — it is free again once the Round ends
+  g.player.specialCooldown = 0;
+  g._updateChaosDoctrine(1 / 60);
+  const ultFreeAfter = g.player.specialCooldown === 0;
+
+  // (f) an AEGIS PYLON refuses damage outright and charges the Verdict instead
+  g._doctrineAegisT = 0; g._doctrineVerdict = 0;
+  g._doctrineTriggerPylon({ pos: window.__pt(g.player.pos.x, g.player.pos.y), type: 'aegis' });
+  const immuneOn = g.doctrineAegisImmune();
+  g.player.hp = g.player.maxHp;
+  g.playerHitCooldown = 0;
+  const hpB2 = g.player.hp;
+  const refused = g._damagePlayer(40, {}) === false;
+  const aegis = { immuneOn, refused, unhurt: g.player.hp === hpB2, charged: g._doctrineVerdict > 0,
+                  secs: +g._doctrineAegisT.toFixed(2), want: P.immuneSecs };
+
+  // (g) it expires
+  for (let i = 0; i < Math.ceil(P.immuneSecs * 60) + 30; i++) g._updateChaosDoctrine(1 / 60);
+  const aegisExpired = g.doctrineAegisImmune() === false;
+
+  return { endlessDoc, endlessTookIt, blockedByRush, opened, duringRound, ultHeld, verdict,
+           ultFreeAfter, aegis, aegisExpired };
+});
+check('N01 the round does NOT exist in Endless, and damage lands normally there',
+  dimi.endlessDoc === false && dimi.endlessTookIt === true);
+check('N02 a Round never opens on top of a Boss Rush', dimi.blockedByRush === true);
+check('N03 a Round is declared once the arbiter allows it',
+  dimi.opened.on === true && dimi.opened.count === 1, JSON.stringify(dimi.opened));
+check('N04 during a Round the hit STILL lands — it only also charges the Verdict',
+  dimi.duringRound.charged === true && dimi.duringRound.tookIt === true, JSON.stringify(dimi.duringRound));
+check('N05 his panic button is HELD while the Round runs', dimi.ultHeld === true);
+check('N06 a full Verdict smites the field, inside its radius only, and closes the Round',
+  dimi.verdict.fired && dimi.verdict.roundClosed && dimi.verdict.reset &&
+  dimi.verdict.nearHurt && dimi.verdict.farUntouched, JSON.stringify(dimi.verdict));
+check('N07 the ultimate cooldown was HELD, not destroyed — it is free the moment the Round ends',
+  dimi.ultFreeAfter === true);
+check('N08 an AEGIS PYLON refuses the hit outright and charges the Verdict instead',
+  dimi.aegis.immuneOn && dimi.aegis.refused && dimi.aegis.unhurt && dimi.aegis.charged,
+  JSON.stringify(dimi.aegis));
+check('N09 the aegis expires on its own', dimi.aegisExpired === true);
+
+// ════════════════════════════════════════════════════════════════════════════
 // G. RESET / CLEANUP
 // ════════════════════════════════════════════════════════════════════════════
 const after = await page.evaluate(() => {
@@ -863,6 +1048,10 @@ const after = await page.evaluate(() => {
   g._doctrineDebt = 1; g._doctrineFallout = { x: 0, y: 0, r: 10, t: 5, cd: 0 };
   g._doctrineFalloutCasts = 2; g._doctrineBeatT = 0.3; g._doctrineSongs = 4;
   g._doctrineEncores = 3; g._doctrineFeedbacks = 2;
+  g._doctrineFrostNodes = [{ x: 0, y: 0, t: 1, max: 1, cd: 0 }]; g._doctrineStillT = 2;
+  g._doctrineFrostbites = 3; g._doctrineLastPos = { x: 5, y: 5 }; g._doctrineFrostDrop = 0.1;
+  g._doctrineRoundT = 8; g._doctrineRoundCd = 20; g._doctrineVerdict = 0.5;
+  g._doctrineVerdicts = 2; g._doctrineRoundsOpened = 3; g._doctrineAegisT = 2;
   const armed = { heat: g._doctrineHeat, stacks: g._doctrineFoundryStacks, charges: g._doctrineRerollCharges };
   g.gameOver = true;
   g.reset();
@@ -879,11 +1068,15 @@ const after = await page.evaluate(() => {
     debt: g._doctrineDebt, fallout: g._doctrineFallout, falloutCasts: g._doctrineFalloutCasts,
     beatT: g._doctrineBeatT, songs: g._doctrineSongs, encores: g._doctrineEncores,
     feedbacks: g._doctrineFeedbacks,
+    frostNodes: g._doctrineFrostNodes.length, stillT: g._doctrineStillT,
+    frostbites: g._doctrineFrostbites, lastPos: g._doctrineLastPos, frostDrop: g._doctrineFrostDrop,
+    roundT: g._doctrineRoundT, roundCd: g._doctrineRoundCd, verdict: g._doctrineVerdict,
+    verdicts: g._doctrineVerdicts, roundsOpened: g._doctrineRoundsOpened, aegisT: g._doctrineAegisT,
   };
 });
 check('G01 the rig really armed the doctrine before the restart',
   after.armed.heat === 1 && after.armed.stacks === 3 && after.armed.charges === 2, JSON.stringify(after.armed));
-check('G02 a restart clears EVERY doctrine field, all six characters',
+check('G02 a restart clears EVERY doctrine field, all eight characters',
   after.heat === 0 && after.stacks === 0 && after.charges === 0 && after.used === 0 &&
   after.fired === 0 && after.pending === false && after.rerollMode === false &&
   after.ventCd === 0 && after.redlines === 0 && after.lawXp === 1 &&
@@ -892,7 +1085,11 @@ check('G02 a restart clears EVERY doctrine field, all six characters',
   after.axiomLines === 0 && after.proofNodes === 0 && after.proofProved === 0 &&
   after.proofFlash === 0 &&
   after.debt === 0 && after.fallout === null && after.falloutCasts === 0 &&
-  after.beatT === 0 && after.songs === 0 && after.encores === 0 && after.feedbacks === 0,
+  after.beatT === 0 && after.songs === 0 && after.encores === 0 && after.feedbacks === 0 &&
+  after.frostNodes === 0 && after.stillT === 0 && after.frostbites === 0 &&
+  after.lastPos === null && after.frostDrop === 0 &&
+  after.roundT === 0 && after.roundCd === 0 && after.verdict === 0 &&
+  after.verdicts === 0 && after.roundsOpened === 0 && after.aegisT === 0,
   JSON.stringify(after));
 
 // ════════════════════════════════════════════════════════════════════════════

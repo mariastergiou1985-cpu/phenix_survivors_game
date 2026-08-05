@@ -226,6 +226,38 @@ export function drawHUD(ctx, game) {
         ctx.beginPath(); ctx.arc(WIDTH / 2, by + 4, r + 5, 0, Math.PI * 2); ctx.stroke();
       }
       ctx.restore();
+    } else if (_cid === 'taekwondo_girl') {
+      const still = (game._doctrineStillT || 0);
+      const biting = still >= 2.5;
+      if (biting || (game._doctrineFrostNodes || []).length > 0) {
+        ctx.save();
+        ctx.globalAlpha = biting ? (0.75 + 0.25 * Math.abs(Math.sin(Date.now() / 150))) : 0.85;
+        ctx.textAlign = 'center';
+        drawText(ctx, biting ? 'FROSTBITE \u2014 KEEP MOVING' : 'MOMENTUM \u2014 TRAIL LIVE',
+                 WIDTH / 2, 126, '#7ae7ff', 'bold 10px Consolas, monospace');
+        ctx.restore();
+      }
+    } else if (_cid === 'dimis_kickboxer') {
+      const roundOn = (game._doctrineRoundT || 0) > 0;
+      const aegis = (game._doctrineAegisT || 0) > 0;
+      if (roundOn || aegis) {
+        const v = Math.max(0, Math.min(1, game._doctrineVerdict || 0));
+        const BW = 118, BH = 7, bx = WIDTH / 2 - BW / 2, by = 126;
+        ctx.save();
+        ctx.globalAlpha = aegis ? (0.75 + 0.25 * Math.abs(Math.sin(Date.now() / 140))) : 0.9;
+        ctx.fillStyle = 'rgba(6,10,22,0.72)';
+        ctx.fillRect(bx - 1, by - 1, BW + 2, BH + 2);
+        ctx.fillStyle = '#ffe9a3';
+        ctx.fillRect(bx, by, Math.round(BW * v), BH);
+        ctx.strokeStyle = aegis ? '#ffe9a3' : 'rgba(255,233,163,0.55)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(bx - 0.5, by - 0.5, BW + 1, BH + 1);
+        ctx.textAlign = 'center';
+        drawText(ctx, aegis ? 'AEGIS HOLDS \u2014 VERDICT CHARGING'
+                            : 'JUDGEMENT ROUND ' + Math.ceil(game._doctrineRoundT) + 's',
+                 WIDTH / 2, by - 3, '#ffe9a3', 'bold 10px Consolas, monospace');
+        ctx.restore();
+      }
     } else if (_cid === 'japan_phasewalker' && (game._doctrineRerollsUsed || 0) > 0) {
       ctx.save();
       ctx.globalAlpha = 0.85;
@@ -244,7 +276,9 @@ export function drawHUD(ctx, game) {
                        venom:   ['#7CFF4D', 'V VENOM PURGE'],
                        proof:   ['#ffd447', 'Q PROOF ANCHORED'],
                        pyre:    ['#ff4d2d', 'P PYRE \u2014 DEBT PAID'],
-                       amp:     ['#ff2d55', 'A AMP \u2014 ENCORE'] };
+                       amp:     ['#ff2d55', 'A AMP \u2014 ENCORE'],
+                       frost:   ['#7ae7ff', 'F FROST FIELD'],
+                       aegis:   ['#ffe9a3', 'A AEGIS \u2014 IMMUNE'] };
     const docB    = DOC_BUFF[buff.type] || null;
     const color   = docB ? docB[0] : isShield ? CYAN : '#44ff88';
     const label   = docB ? docB[1] : isShield ? 'S SHIELD PULSE ACTIVE' : '+ HEAL PULSE ACTIVE';

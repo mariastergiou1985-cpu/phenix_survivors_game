@@ -31,7 +31,7 @@ import './BuildEngineChars5.js?v=20260902130000';   // P2.5 Universal όπλα 2
 import './BuildEnginePassives.js?v=20260902130000'; // P2.6 Build passives §26-50 (generic hooks)
 import { MutationUI }      from './MutationUI.js?v=20260810210000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
-import { drawHUD, drawEndScreen } from './HUD.js?v=20260904150000';
+import { drawHUD, drawEndScreen } from './HUD.js?v=20260904160000';
 import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, COLLECTIBLE_FRAGMENT_COST, COLLECTIBLE_GRID_COST, ECHO_FRAGMENT_COST, ECHO_GRID_COST, SKILL_TREE, AMULET_DEFS, GRID_TO_PF_RATE, characterStageRequirement } from './MetaProgress.js?v=20260903020000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260712520000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
@@ -54,7 +54,7 @@ import { LaserEyes } from '../effects/laser-eyes.js?v=20260818000000';
 import { MeteorRain } from '../effects/meteor-rain.js?v=20260712100000';
 import { NpcWalker } from './NpcWalker.js?v=20260904030000';
 import { MapManager, BIOME_ID, BIOME_DEFS, CHUNK_SIZE } from './MapManager.js?v=20260904120000';
-import { getChaosDoctrine } from './ChaosDoctrine.js?v=20260904150000';
+import { getChaosDoctrine } from './ChaosDoctrine.js?v=20260904160000';
 import { AcidRain } from './AcidRain.js?v=20260829020000';   // BATCH 2 major event (2026-07-29)
 import { EnemyWeaponSystem } from './EnemyWeaponSystem.js?v=20260829040000';   // BATCH 3 enemy weapon behaviours
 import { EventBus, EVENTS } from './EventBus.js?v=20260703990000';
@@ -2115,6 +2115,17 @@ export class Game {
     this._doctrineSongs         = 0;      // Mega Titans killed this run = songs played
     this._doctrineEncores       = 0;      // on-beat ultimates
     this._doctrineFeedbacks     = 0;      // missed beats
+    this._doctrineFrostNodes    = [];     // { x, y, t, cd } trail, taekwondo_girl only
+    this._doctrineFrostDrop     = 0;
+    this._doctrineStillT        = 0;      // seconds spent below the speed threshold
+    this._doctrineFrostbites    = 0;      // QA: frostbite refreshes this run
+    this._doctrineLastPos       = null;
+    this._doctrineRoundT        = 0;      // seconds left on an active JUDGEMENT ROUND
+    this._doctrineRoundCd       = 0;      // seconds to the next one
+    this._doctrineVerdict       = 0;      // 0..1
+    this._doctrineVerdicts      = 0;      // QA: rounds completed
+    this._doctrineRoundsOpened  = 0;
+    this._doctrineAegisT        = 0;      // seconds of AEGIS PYLON immunity left
 
     this.killsSinceHealthDrop = 0;   // counts toward the next HP CELL drop
     this.healthPickups        = [];  // [{ pos: Vec2, timer: number }] — heals 25% maxHp on touch
@@ -30578,9 +30589,11 @@ _drawLoreArchive(ctx) {
   // (e.g. the final-boss main beam). Defaults to BOSS_MAX_PLAYER_HIT so EVERY existing caller is
   // unchanged. This never touches player stats/damage — it only lets a signalled boss hit land harder.
   _damagePlayer(dmg, { color = RED, shake = 5, cap = BOSS_MAX_PLAYER_HIT, src = null } = {}) {
-    // CHAOS DOCTRINE: one hit from ANY source breaks assassin_clone's shroud. Placed at the
-    // single damage gate rather than at each source, so nothing can slip past it.
+    // CHAOS DOCTRINE: the single damage gate. One hit from ANY source breaks assassin_clone's
+    // shroud, and for dimis_kickboxer a hit charges the Verdict - or is refused outright while
+    // an AEGIS PYLON holds. Placed here rather than at each source so nothing can slip past.
     try { this._doctrineBreakShroud(); } catch (_) {}
+    try { if (this._doctrineAbsorb()) return false; } catch (_) {}
     if (this.player.dashTimer > 0 || this.phoenixReviveTimer > 0) return false;  // i-frames → dodged
     // CHAOS-ENTRY GRACE (Maria 2026-07-19): a fresh character entering Chaos straight from the
     // menu lost ~103 of 130 HP in the first 4 seconds — Chaos spawns its full pressure on the
@@ -36207,6 +36220,99 @@ _drawLoreArchive(ctx) {
       while (this._doctrineBeatT >= per) this._doctrineBeatT -= per;
     }
 
+    // MOMENTUM LAW (taekwondo_girl). Speed is measured from the REAL position delta, so it
+    // needs no knowledge of how movement is produced and cannot drift from it.
+    if (doc.momentum && this.player) {
+      const M = doc.momentum;
+      const p = this.player.pos;
+      const last = this._doctrineLastPos;
+      const moved = last ? Math.hypot(p.x - last.x, p.y - last.y) : 0;
+      this._doctrineLastPos = { x: p.x, y: p.y };
+      const spd = dt > 0 ? moved / dt : 0;
+
+      // FROZEN-SCREEN GUARD: never count "standing still" while the game itself is holding the
+      // player in place. Punishing someone for a panel the game opened is a bug, not a design.
+      const frozen = !!(this.upgradeUI || this.mutationUI || this.paused || this._clsVisible ||
+                        this._bossRush?.hazard || this._stageCompleteBanner);
+
+      if (spd >= M.speedThreshold) {
+        this._doctrineStillT = 0;
+        this._doctrineFrostDrop -= dt;
+        if (this._doctrineFrostDrop <= 0) {
+          this._doctrineFrostDrop = M.dropEvery;
+          if (this._doctrineFrostNodes.length >= M.maxNodes) this._doctrineFrostNodes.shift();
+          this._doctrineFrostNodes.push({ x: p.x, y: p.y, t: M.nodeLife, max: M.nodeLife, cd: 0 });
+        }
+      } else if (!frozen) {
+        this._doctrineStillT += dt;
+        if (this._doctrineStillT >= M.stillSecs) {
+          this._doctrineStillT = M.stillSecs;          // clamp: it bites, it does not compound
+          this._doctrineFrostbiteCd = (this._doctrineFrostbiteCd || 0) - dt;
+          if (this._doctrineFrostbiteCd <= 0) {
+            this._doctrineFrostbiteCd = M.frostbiteEvery;
+            this.player._chillT = Math.max(this.player._chillT || 0, M.frostbiteEvery + 0.2);
+            this._doctrineFrostbites++;
+          }
+        }
+      }
+
+      // trail nodes bite whatever crosses them, using the enemy's OWN shipped slow fields
+      for (let i = this._doctrineFrostNodes.length - 1; i >= 0; i--) {
+        const nd = this._doctrineFrostNodes[i];
+        nd.t -= dt; nd.cd -= dt;
+        if (nd.t <= 0) { this._doctrineFrostNodes.splice(i, 1); continue; }
+        if (nd.cd > 0) continue;
+        nd.cd = M.tickEvery;
+        let n = 0;
+        const r2 = M.nodeRadius * M.nodeRadius;
+        for (const e of this.enemies.slice()) {        // snapshot: takeHit splices this.enemies
+          if (n >= M.maxVictimsPerTick) break;
+          if (!e || e.hp <= 0 || !e.pos) continue;
+          const dx = e.pos.x - nd.x, dy = e.pos.y - nd.y;
+          if (dx * dx + dy * dy > r2) continue;
+          const isBig = (e.isBoss && e.isBoss()) || e.isMegaBoss;
+          if (!isBig) e.slowTimer = Math.max(e.slowTimer || 0, M.slowSecs);
+          const dmg = isBig ? M.nodeDamage * 0.25 : M.nodeDamage;
+          try { e.takeHit(isBig && this._capBossDamage ? this._capBossDamage(e, dmg) : dmg, this); } catch (_) { continue; }
+          n++;
+        }
+      }
+    }
+
+    // JUDGEMENT ROUND (dimis_kickboxer). Declared through the major-event arbiter so it can
+    // never open on top of a Boss Rush or an ambient Mega Boss.
+    if (doc.round && this.player) {
+      const R = doc.round;
+      if (this._doctrineAegisT > 0) this._doctrineAegisT = Math.max(0, this._doctrineAegisT - dt);
+      if (this._doctrineRoundT > 0) {
+        this._doctrineRoundT -= dt;
+        if (R.holdUltimate && this.player.specialCooldown !== undefined) {
+          // HELD, not reset: he fights the Round without the panic button and gets it back
+          // exactly as it was the moment the Round ends.
+          this.player.specialCooldown = Math.max(this.player.specialCooldown, 0.25);
+        }
+        if (this._doctrineRoundT <= 0) {
+          this._doctrineRoundT = 0;
+          this._doctrineVerdict = 0;                    // an unfinished verdict is simply lost
+          this.triggerAnnouncement('\u25c8 ROUND OVER \u2014 NO VERDICT \u25c8', '#ffe9a3', { priority: 3 });
+        }
+      } else {
+        this._doctrineRoundCd -= dt;
+        // The Round is a MODIFIER, not a screen owner, so it asks the arbiter without claiming
+        // the slot - it must never open on top of a Boss Rush or an ambient Mega Boss, but it
+        // also must not lock anything else out while it runs.
+        const _arbiterOk = !this._bossRush && !this._activeTitan &&
+                           (!this.canStartMajorEvent || !!this.canStartMajorEvent('judgementRound'));
+        if (this._doctrineRoundCd <= 0 && !this.gameOver && !this.victory && _arbiterOk) {
+          this._doctrineRoundCd = R.everySecs;
+          this._doctrineRoundT  = R.durationSecs;
+          this._doctrineVerdict = 0;
+          this._doctrineRoundsOpened++;
+          this.triggerAnnouncement('\u2696 JUDGEMENT ROUND \u2014 ABSORB TO CHARGE THE VERDICT \u2696', '#ffe9a3', { priority: 2 });
+        }
+      }
+    }
+
     if (!doc.heat || !this.player) return;
     const H = doc.heat;
 
@@ -36369,6 +36475,57 @@ _drawLoreArchive(ctx) {
     this.triggerAnnouncement('\u25c8 FALLOUT \u2014 THE GROUND IS HOT, YOURS TOO \u25c8', '#ff4d2d', { priority: 2 });
   }
 
+  /** True while an AEGIS PYLON is holding him immune. */
+  doctrineAegisImmune() {
+    const doc = this._doctrine();
+    return !!(doc && doc.round && this._doctrineAegisT > 0);
+  }
+
+  /**
+   * A hit landed on dimis_kickboxer. During a Round it charges the Verdict; under an AEGIS
+   * PYLON it charges it AND is refused entirely. Returns true when the hit must be dropped.
+   */
+  _doctrineAbsorb() {
+    const doc = this._doctrine();
+    if (!doc || !doc.round) return false;
+    const R = doc.round;
+    if (this._doctrineAegisT > 0) {
+      this._doctrineVerdict = Math.min(1, this._doctrineVerdict + (doc.pylon?.chargePerBlock || 0));
+      this._doctrineCheckVerdict();
+      return true;                                   // refused: nothing gets through the aegis
+    }
+    if (this._doctrineRoundT > 0) {
+      this._doctrineVerdict = Math.min(1, this._doctrineVerdict + R.chargePerHit);
+      this._doctrineCheckVerdict();
+    }
+    return false;                                    // the hit still lands — only the meter moved
+  }
+
+  /** Full Verdict: the field is smitten and the Round closes early, in his favour. */
+  _doctrineCheckVerdict() {
+    const doc = this._doctrine();
+    if (!doc || !doc.round || this._doctrineVerdict < 1) return;
+    const R = doc.round;
+    this._doctrineVerdict = 0;
+    this._doctrineRoundT = 0;
+    this._doctrineVerdicts++;
+    let n = 0;
+    const r2 = R.smiteRadius * R.smiteRadius;
+    const px = this.player?.pos?.x ?? 0, py = this.player?.pos?.y ?? 0;
+    for (const e of this.enemies.slice()) {           // snapshot: takeHit splices this.enemies
+      if (n >= R.maxVictims) break;
+      if (!e || e.hp <= 0 || !e.pos) continue;
+      const dx = e.pos.x - px, dy = e.pos.y - py;
+      if (dx * dx + dy * dy > r2) continue;
+      const isBig = (e.isBoss && e.isBoss()) || e.isMegaBoss;
+      const dmg = isBig ? R.smiteDamage * 0.25 : R.smiteDamage;
+      try { e.takeHit(isBig && this._capBossDamage ? this._capBossDamage(e, dmg) : dmg, this); } catch (_) { continue; }
+      n++;
+    }
+    this.screenShake?.trigger(6, 0.5);
+    this.triggerAnnouncement('\u2696 VERDICT \u2014 SANCTION \u00d7' + this._doctrineVerdicts + ' \u2696', '#ffe9a3', { priority: 2 });
+  }
+
   /** Dump the heat bar (FOUNDRY PYLON, and the ultimate's own vent). */
   _doctrineVentHeat() {
     this._doctrineHeat = 0;
@@ -36440,7 +36597,8 @@ _drawLoreArchive(ctx) {
           p.triggered = true;
           p.life      = Math.min(p.life, 0.6); // flash then remove
           if (p.type === 'fate' || p.type === 'foundry' || p.type === 'venom' ||
-              p.type === 'proof' || p.type === 'pyre' || p.type === 'amp') {
+              p.type === 'proof' || p.type === 'pyre' || p.type === 'amp' ||
+              p.type === 'frost' || p.type === 'aegis') {
             this._doctrineTriggerPylon(p);
           } else if (p.type === 'danger') {
             this._damagePlayer(15, { color: '#ff4400', shake: 4 });
@@ -36602,6 +36760,35 @@ _drawLoreArchive(ctx) {
       return;
     }
 
+    if (P.id === 'frost') {
+      // Two-sided: the zone chills everything in it — including her.
+      let n = 0;
+      const r2 = P.radius * P.radius;
+      for (const e of this.enemies.slice()) {          // snapshot: takeHit splices this.enemies
+        if (n >= P.maxVictims) break;
+        if (!e || e.hp <= 0 || !e.pos) continue;
+        if ((e.isBoss && e.isBoss()) || e.isMegaBoss) continue;
+        const dx = e.pos.x - p.pos.x, dy = e.pos.y - p.pos.y;
+        if (dx * dx + dy * dy > r2) continue;
+        e.slowTimer = Math.max(e.slowTimer || 0, P.slowSecs);
+        n++;
+      }
+      if (this.player) this.player._chillT = Math.max(this.player._chillT || 0, P.selfChill);
+      this._chaosPylonBuff = { type: 'frost', timer: 3.0 };
+      this._spawnFloatingText('FROST \u00d7' + n, p.pos.clone(), '#7ae7ff', 1.2);
+      return;
+    }
+
+    if (P.id === 'aegis') {
+      // Nothing can hurt him for the window, and every refused hit charges the Verdict. No
+      // movement clamp: the cost is that he spends the immunity walking INTO the crowd, and
+      // the crowd is still there when it drops.
+      this._doctrineAegisT = Math.max(this._doctrineAegisT, P.immuneSecs);
+      this._chaosPylonBuff = { type: 'aegis', timer: 3.0 };
+      this._spawnFloatingText('AEGIS \u2014 JUDGEMENT HOLDS', p.pos.clone(), '#ffe9a3', 1.4);
+      return;
+    }
+
     if (P.id === 'foundry') {
       this._doctrineVentHeat();
       if (this._doctrineFoundryStacks < P.maxStacks) {
@@ -36625,6 +36812,32 @@ _drawLoreArchive(ctx) {
    * transform the pylons use - no second convention to get wrong.
    */
   _drawDoctrineFx(ctx) {
+    const frost = this._doctrineFrostNodes;
+    if (frost && frost.length) {
+      ctx.save();
+      for (const nd of frost) {
+        const a = Math.max(0, nd.t / (nd.max || 1));
+        const g = ctx.createRadialGradient(nd.x, nd.y, 0, nd.x, nd.y, 86);
+        g.addColorStop(0, `rgba(122,231,255,${0.22 * a})`);
+        g.addColorStop(1, 'rgba(58,214,255,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(nd.x, nd.y, 86, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.restore();
+    }
+    if (this._doctrineAegisT > 0 && this.player?.pos) {
+      const a = Math.min(1, this._doctrineAegisT / 1.5);
+      const pp = this.player.pos;
+      ctx.save();
+      ctx.globalAlpha = a * 0.85;
+      ctx.strokeStyle = '#ffe9a3';
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(pp.x, pp.y, 44, 0, Math.PI * 2); ctx.stroke();
+      ctx.globalAlpha = a * 0.35;
+      ctx.lineWidth = 8;
+      ctx.beginPath(); ctx.arc(pp.x, pp.y, 52, 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
+    }
     const F = this._doctrineFallout;
     if (F && F.t > 0) {
       const a = Math.min(1, F.t / 2);
@@ -36714,6 +36927,8 @@ _drawLoreArchive(ctx) {
       else if (p.type === 'proof')   { core = '#ffd447'; glow = '#ffcc0066'; }
       else if (p.type === 'pyre')    { core = '#ff4d2d'; glow = '#ff2d0066'; }
       else if (p.type === 'amp')     { core = '#ff2d55'; glow = '#ff005566'; }
+      else if (p.type === 'frost')   { core = '#7ae7ff'; glow = '#3ad6ff66'; }
+      else if (p.type === 'aegis')   { core = '#ffe9a3'; glow = '#ffd06666'; }
       else { core = '#44ff88'; glow = '#22cc6644'; }
 
       ctx.save();

@@ -1,5 +1,5 @@
 // ══════════════════════════════════════════════════════════════════════════════════════════════
-// CHAOS DOCTRINE — per-character Chaos Mode identity (PILOT: 6 of 10 characters)
+// CHAOS DOCTRINE — per-character Chaos Mode identity (PILOT: 8 of 10 characters)
 // ----------------------------------------------------------------------------------------------
 // WHY THIS FILE EXISTS
 // Chaos Mode changes the WORLD and never the PLAYER. Measured before this file: across ~85
@@ -23,7 +23,9 @@
 //   euclid_vector      AXIOM DOCTRINE  + PROOF PYLON     (wave 2)
 //   oni_cataclysm_...  CATACLYSM DEBT  + PYRE PYLON      (wave 3)
 //   eddie              SETLIST         + AMP PYLON       (wave 3)
-// The other four have NO entry, get NO doctrine, and are byte-for-byte unaffected: every read
+//   taekwondo_girl     MOMENTUM LAW    + FROST PYLON     (wave 4)
+//   dimis_kickboxer    JUDGEMENT ROUND + AEGIS PYLON     (wave 4)
+// The other two have NO entry, get NO doctrine, and are byte-for-byte unaffected: every read
 // site starts with `const doc = this._doctrine(); if (!doc) return;`, and `_doctrine()` returns
 // null outside Chaos and for any character without an entry here.
 //
@@ -259,6 +261,94 @@ export const CHAOS_DOCTRINE = Object.freeze({
       glow:  '#ff005566',
       freeEncore: 1,
       songs:      1,
+    }),
+  }),
+
+  // ── TAEKWONDO GIRL ──────────────────────────────────────────────────────────────────────
+  // The speed character in a mode that punishes standing still - and Chaos never once rewarded
+  // actually MOVING. A player who sprints across the deck and one who kites in a three-metre
+  // circle get exactly the same run. MOMENTUM LAW makes the distance she covers the mechanic.
+  // It fits the map too: the chaos decks are roughly twice as open as the endless ones.
+  taekwondo_girl: Object.freeze({
+    id: 'taekwondo_girl',
+    label: 'MOMENTUM LAW',
+    color: '#7ae7ff',
+
+    momentum: Object.freeze({
+      // Both halves reuse the SHIPPED chill: Enemy.slowTimer/slowFactor for the trail, and
+      // Player._chillT for the frostbite. No new status system, no new per-entity field.
+      speedThreshold: 130,   // world px/s above which the trail forms
+      dropEvery:      0.14,  // seconds between trail nodes
+      nodeLife:       2.2,
+      nodeRadius:      86,
+      nodeDamage:       9,   // per tick, to enemies crossing it
+      tickEvery:      0.35,
+      slowSecs:       1.20,  // written into the enemy's own slowTimer
+      maxNodes:        26,   // hard cap: the trail is a ribbon, not a carpet
+      maxVictimsPerTick: 10,
+
+      // Standing still bites back. The counter is PAUSED whenever the player could not move
+      // even if they wanted to - card panel, mutation panel, the law overlay, pause, and the
+      // Boss Rush hazard rings - because punishing someone for a screen the game itself froze
+      // is a bug, not a design.
+      stillSecs:      2.5,   // grace before frostbite starts
+      frostbiteEvery: 1.0,   // seconds per frostbite refresh while still
+    }),
+
+    // FROST PYLON - two-sided. The zone halves enemy speed, and it slows HER shots inside it
+    // too, so the safest ground is also the ground where she does least.
+    pylon: Object.freeze({
+      id:    'frost',
+      name:  'FROST PYLON',
+      color: '#7ae7ff',
+      glow:  '#3ad6ff66',
+      radius:      260,
+      slowSecs:    4.0,
+      maxVictims:   24,
+      selfChill:   2.0,   // seconds of her own chill, applied on touch — the cost side
+    }),
+  }),
+
+  // ── DIMI KICKBOXER ──────────────────────────────────────────────────────────────────────
+  // The only character with a DEFENSIVE fusion (Aegis of Judgement), the only cooldown-gated
+  // ultimate rather than a mana one, and the only holy element in the game. And Chaos tests
+  // exactly one thing: damage output. His entire distinguishing identity sits idle in the mode
+  // where it should shine.
+  dimis_kickboxer: Object.freeze({
+    id: 'dimis_kickboxer',
+    label: 'JUDGEMENT ROUND',
+    color: '#ffe9a3',
+
+    // WHAT THIS DELIBERATELY IS NOT. The proposal's version locked his damage output for 20 s.
+    // That was flagged there as the most aggressive idea in the document and as needing a
+    // playtest BEFORE shipping, and on reflection it is simply bad: zeroing a player's output
+    // for twenty seconds in a mode with 800 enemies on screen is not risk/reward, it is a death
+    // sentence dressed as design. What ships instead keeps every ounce of the "his Chaos tests
+    // DEFENCE" idea and none of the lockout: during a Round the hits he takes CHARGE something
+    // instead of only hurting, and the cost is that his panic button is unavailable.
+    round: Object.freeze({
+      everySecs:    75,    // how often Chaos declares one
+      durationSecs: 20,
+      chargePerHit: 0.14,  // ~7 absorbed hits to a full verdict
+      smiteDamage:  240,
+      smiteRadius:  520,
+      maxVictims:    24,
+      // While a Round runs his ultimate cooldown is HELD, not reset - he fights it without the
+      // panic button, and gets the button back untouched the moment the Round ends.
+      holdUltimate: true,
+    }),
+
+    // AEGIS PYLON - the engine of the doctrine. Five seconds during which nothing can hurt him
+    // AND every hit that would have landed charges the Verdict instead. No movement clamp: the
+    // natural cost is that he spends the immunity walking INTO the crowd, and the crowd is
+    // still there when it drops.
+    pylon: Object.freeze({
+      id:    'aegis',
+      name:  'AEGIS PYLON',
+      color: '#ffe9a3',
+      glow:  '#ffd06666',
+      immuneSecs:      5.0,
+      chargePerBlock: 0.10,
     }),
   }),
 });
