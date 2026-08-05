@@ -4567,7 +4567,12 @@ export class Game {
       score: finalScore,
       level: this.player.level,
       char:  this.player.selectedCharacter || 'unknown',
-      mode:  this.endless ? 'Endless' : (this.victory ? 'Act 1 Win' : 'Act 1'),
+      // Chaos is checked FIRST because a Chaos run goes through _enterEndless(), so `endless`
+      // is true for it too — which is exactly why every Chaos run used to be filed as 'Endless'
+      // and the player's own log could not tell a 25-minute Chaos run from a 25-minute Endless
+      // one (fixed 2026-08-05). Nothing gates on this string: the only readers are recordRun's
+      // own `entry.mode || 'Act 1'` normaliser and the end-screen history table.
+      mode:  this._chaosMode ? 'Chaos' : (this.endless ? 'Endless' : (this.victory ? 'Act 1 Win' : 'Act 1')),
     });
 
     // Eden Core: generate end-of-run narrative messages + accrue Eden Memory
@@ -26959,6 +26964,50 @@ export class Game {
           '<span class="num kil">' + (r.kills || 0) + '</span></div>').join('')
       : '<div class="rs-empty">No weapon damage was recorded for this run.</div>';
 
+    // ── CHAOS SURVIVAL RANK ────────────────────────────────────────────────────────────────
+    // Chaos-only. The canvas end screen has drawn this badge since Phase B, but draw() renders
+    // the canvas screens ONLY when the DOM overlay is down (23577) — and on a normal death it is
+    // up. So the rank a player spent 30 minutes earning has never once been on screen.
+    //
+    // Same four ranks and the same colours as HUD.js _drawChaosRankBadge, so the two screens
+    // cannot drift. `chaosRank` / `chaosTimeSecs` are set by _grantRewards before this renders,
+    // and meta.chaosRanks is keyed by this.selectedCharacter — the same key submitChaosRun writes.
+    //
+    // Everything is inline-styled on purpose: no new CSS rule can leak onto the Endless or
+    // Campaign screens, and the whole band is ABSENT from the HTML unless chaosRank is set.
+    let rankHTML = '';
+    if (this.chaosRank) {
+      const RANK_COLOR = { BRONZE: '#cd7f32', SILVER: '#c0c0c0', GOLD: '#FFD700', PLATINUM: '#e0e0f8' };
+      const RANK_GLOW  = { BRONZE: '#7a4010', SILVER: '#606060', GOLD: '#aa7700', PLATINUM: '#7070aa' };
+      const col = RANK_COLOR[this.chaosRank] || '#ffffff';
+      const glw = RANK_GLOW[this.chaosRank]  || '#888888';
+      const clk = (s) => {
+        const v = Math.max(0, Math.floor(Number(s) || 0));
+        return String(Math.floor(v / 60)).padStart(2, '0') + ':' + String(v % 60).padStart(2, '0');
+      };
+      const cid  = this.selectedCharacter || this.player?.selectedCharacter || '';
+      const rec  = this.meta?.chaosRanks?.[cid] || null;
+      const cName = this.characters?.find(c => c.id === cid)?.name || '';
+      const bSecs = rec?.bestSecs ?? this.chaosTimeSecs ?? 0;
+      const bRank = rec?.bestRank ?? this.chaosRank;
+      const bCol  = RANK_COLOR[bRank] || '#ffffff';
+      rankHTML =
+        '<div style="margin:10px 0 2px;padding:10px 14px;border:1.5px solid ' + col + ';border-radius:6px;' +
+        'background:rgba(46,230,246,0.05);box-shadow:0 0 10px ' + glw + '55;text-align:center;">' +
+          '<div style="font-family:\'Orbitron\',sans-serif;font-weight:700;font-size:8.5px;' +
+          'letter-spacing:1.5px;color:#2ee6f6;">&#9889; CHAOS SURVIVAL RANK</div>' +
+          '<div style="font-family:\'Orbitron\',sans-serif;font-weight:800;font-size:21px;' +
+          'letter-spacing:2px;color:' + col + ';text-shadow:0 0 8px ' + glw + ';margin-top:5px;">' +
+            esc(this.chaosRank) + '</div>' +
+          '<div style="font-family:Consolas,monospace;font-size:11px;letter-spacing:.6px;' +
+          'color:#eaffff;margin-top:4px;">THIS RUN &middot; ' + clk(this.chaosTimeSecs) + ' IN CHAOS</div>' +
+          '<div style="font-family:Consolas,monospace;font-size:10px;letter-spacing:.6px;' +
+          'color:#8fa8b8;margin-top:3px;">BEST' + (cName ? ' &middot; ' + esc(cName) : '') + ' &middot; ' +
+            '<span style="color:' + bCol + ';font-weight:700;">' + esc(bRank) + '</span> &middot; ' +
+            clk(bSecs) + '</div>' +
+        '</div>';
+    }
+
     const btns = this._resultsButtons();
     const sel  = this._endScreenBtnIndex ?? 0;
     const btnHTML = btns.map((b, i) =>
@@ -26997,6 +27046,7 @@ export class Game {
           <div class="rs-stat"><span class="k">FRAGMENTS</span><span class="v">${Number(this.meta?.protocolFragments ?? 0).toLocaleString()}</span>
             <span class="sub">protocol</span></div>
         </div>
+        ${rankHTML}
         <div class="rs-dmg">
           <div class="rs-dmg-h"><span>DAMAGE REPORT</span><span class="tot">TOTAL ${Math.round(grand).toLocaleString()}</span></div>
           ${dmgBody}
