@@ -32,7 +32,7 @@ import './BuildEnginePassives.js?v=20260902130000'; // P2.6 Build passives §26-
 import { MutationUI }      from './MutationUI.js?v=20260904180000';
 import { sampleMutations, sampleCorruptedMutation } from './Mutations.js?v=20260904180000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260904170000';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, COLLECTIBLE_FRAGMENT_COST, COLLECTIBLE_GRID_COST, ECHO_FRAGMENT_COST, ECHO_GRID_COST, SKILL_TREE, AMULET_DEFS, GRID_TO_PF_RATE, characterStageRequirement } from './MetaProgress.js?v=20260904240000';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, COLLECTIBLE_FRAGMENT_COST, COLLECTIBLE_GRID_COST, ECHO_FRAGMENT_COST, ECHO_GRID_COST, SKILL_TREE, AMULET_DEFS, GRID_TO_PF_RATE, characterStageRequirement } from './MetaProgress.js?v=20260904250000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260712520000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
@@ -760,6 +760,21 @@ const SYSTEM_LOGS = [
     text: 'Every survivor now carries two weapons that did not exist last cycle. The forge did not make them. The characters did.' },
   { id: 'log10', num: '10', threshold: 95, title: 'THE BOSSES REMEMBER',
     text: 'Containment reports say the longer a warden survives, the more it learns. Enrage. Nova. Reinforcement. Do not let them study you.' },
+];
+
+// ── CHAOS SIGILS — cosmetic marks for HOW a Chaos run was played ──────────
+// Not "how long": every condition is about a decision or a standard held, which is what makes
+// them replayable without grind. Purely cosmetic — the keys are read by the CHAOS tab and the
+// character card and by nothing else. No stat, no currency, no buff.
+const CHAOS_SIGILS = [
+  { id: 'sg_titanbreaker', mark: '▲', name: 'TITANBREAKER', color: '#7CFF4D',
+    req: 'Destroy all four Mega Titans in a single Chaos run.' },
+  { id: 'sg_unbroken',     mark: '◇', name: 'UNBROKEN',     color: '#00eeff',
+    req: 'Reach 10:00 in Chaos without taking a single CHAOS PULSE.' },
+  { id: 'sg_apex',         mark: '◆', name: 'APEX PROTOCOL', color: '#ffd447',
+    req: 'Clear a Boss Rush in Chaos Mode.' },
+  { id: 'sg_pactbound',    mark: '◈', name: 'PACTBOUND',    color: '#ff2d95',
+    req: 'Seal three corrupted pacts in a single Chaos run.' },
 ];
 
 // ── BROKEN ARCHIVE — Chaos-only lore, earned by FAILING ───────────────────
@@ -1973,6 +1988,9 @@ export class Game {
     this._deckGateArmed = false;              // a gate only fires after the player has STEPPED OFF it
     this._chaosStartedAt    = -1;         // timeAlive when Chaos engaged; -1 = not yet reached this run
     this._chaosTitansKilled = 0;          // Mega Titans destroyed this run — Chaos Ledger only
+    this._chaosTitanTypes   = [];         // DISTINCT Mega Titans destroyed this run — sigil only
+    this._chaosPulseHits    = 0;          // CHAOS PULSE (danger pylon) hits taken — sigil only
+    this._chaosRushCleared  = 0;          // Boss Rushes cleared this run — sigil only
     this._chaosTransTimer   = -1;      // >=0 while glitch transition is playing
     this.forceChaos         = false;   // defensive: prevent stale debug-key state leaking into the next run
     this._chaosCoreCd       = 0;       // cooldown for bonus gold-core spawns
@@ -3527,7 +3545,10 @@ export class Game {
     if (this._relicOn('null_battery')) p.abilityCdMult = 1.08;
     // ── Chaos Mega Titan reward relics (single-tier passive versions; the full 5-tier
     // bespoke mechanics are a later pass — these give a real, safe bonus meanwhile). ──
-    if (this._relicOn('overlord_prism_array'))     p.pulseDamage = (p.pulseDamage || 0) + 2;      // laser array → +projectile damage
+    // overlord_prism_array no longer pays a flat +2 pulse damage. Its card has always promised
+    // "orbiting drones fire Plasma-White laser beams that pierce the swarm" and it now delivers
+    // exactly that, through the shipped _petBolts pipeline (see _updatePrismDrones). The stat
+    // line is deliberately GONE — this replaces it rather than stacking on top of it.
     if (this._relicOn('leviathan_nanite_core'))    p.xpMult = (p.xpMult || 1) + 0.10;             // nanites harvest → +10% XP
     if (this._relicOn('emperor_singularity_edge')) p.abilityCdMult = (p.abilityCdMult || 1) * 1.10; // gravity control → faster abilities
     if (this._relicOn('tyrant_antimatter_battery')) p.contactDamageReduction = Math.min(0.6, (p.contactDamageReduction || 0) + 0.08); // armor plating
@@ -4148,6 +4169,7 @@ export class Game {
       });
     }
     this._petBolts = [];  // active pet projectiles [{x, y, vx, vy, dmg, color, life}]
+    this._prismDrones = [];  // overlord_prism_array orbiters — rebuilt on the first tick that needs them
     this._petBombs = [];  // active freeze bombs [{x, y, targetX, targetY, timer, radius, color}]
   }
 
@@ -4375,7 +4397,85 @@ export class Game {
     });
   }
 
+  /**
+   * OVERLORD'S PRISM ARRAY — the relic's own card text, finally implemented.
+   *
+   * Two drones orbit the player and fire Plasma-White beams at the nearest enemy in range. It
+   * uses the shipped _petBolts pipeline verbatim: the same array, the same tick, the same
+   * collision, the same cull. No new projectile type, no new update loop, no new draw pass for
+   * the bolts themselves.
+   *
+   * BALANCE, stated plainly: this REPLACES the flat +2 pulse damage the relic used to give — it
+   * does not stack with it. At 2 drones x 1.3 s x 26 damage it is worth roughly 40 dps at full
+   * uptime, which is more than the +2 it replaces and is the deliberate upgrade. Only one relic
+   * can be equipped at a time, so it competes with every other relic rather than adding to them.
+   * Damage is FLAT — it does not scale with run time the way pets do, so it cannot run away late.
+   */
+  _updatePrismDrones(dt) {
+    const on = this._relicOn('overlord_prism_array');
+    if (!on) { if (this._prismDrones?.length) this._prismDrones.length = 0; return; }
+    const p = this.player;
+    if (!p || p.dead || this.gameOver || this.victory) return;
+    if (!Array.isArray(this._prismDrones)) this._prismDrones = [];
+
+    const COUNT = 2, ORBIT = 74, SPIN = 1.5, RANGE = 460, CADENCE = 1.3, DMG = 26, SPEED = 620;
+    if (this._prismDrones.length !== COUNT) {
+      this._prismDrones = Array.from({ length: COUNT }, (_, i) => ({
+        ang: (i / COUNT) * Math.PI * 2, cd: i * (CADENCE / COUNT),
+      }));
+    }
+    const r2 = RANGE * RANGE;
+    for (const d of this._prismDrones) {
+      d.ang += SPIN * dt;
+      d.x = p.pos.x + Math.cos(d.ang) * ORBIT;
+      d.y = p.pos.y + Math.sin(d.ang) * ORBIT;
+      if (d.cd > 0) { d.cd -= dt; continue; }
+
+      let best = null, bestD = r2;
+      for (const e of this.enemies) {          // read-only scan: nothing is spliced here
+        if (!e || e.hp <= 0 || !e.pos) continue;
+        const dx = e.pos.x - d.x, dy = e.pos.y - d.y;
+        const dd = dx * dx + dy * dy;
+        if (dd < bestD) { bestD = dd; best = e; }
+      }
+      if (!best) continue;
+
+      d.cd = CADENCE;
+      const dx = best.pos.x - d.x, dy = best.pos.y - d.y;
+      const dist = Math.hypot(dx, dy) || 1;
+      if (this._petBolts.length < 256) this._petBolts.push({
+        x: d.x, y: d.y,
+        vx: (dx / dist) * SPEED, vy: (dy / dist) * SPEED,
+        dmg: DMG, color: '#eaffff', life: 1.2,
+      });
+    }
+  }
+
+  /** The two orbiting drones themselves. Their bolts are drawn by the shipped pet-bolt pass. */
+  _drawPrismDrones(ctx) {
+    if (!this._prismDrones?.length || !this._relicOn('overlord_prism_array')) return;
+    ctx.save();
+    for (const d of this._prismDrones) {
+      if (!Number.isFinite(d.x) || !Number.isFinite(d.y)) continue;
+      const g = ctx.createRadialGradient(d.x, d.y, 0, d.x, d.y, 13);
+      g.addColorStop(0, 'rgba(234,255,255,0.85)');
+      g.addColorStop(1, 'rgba(180,230,255,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(d.x, d.y, 13, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#eaffff'; ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      for (let i = 0; i < 3; i++) {
+        const a = d.ang * 2 + (i / 3) * Math.PI * 2;
+        const px = d.x + Math.cos(a) * 5.5, py = d.y + Math.sin(a) * 5.5;
+        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      }
+      ctx.closePath(); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   _drawPets(ctx) {
+    this._drawPrismDrones(ctx);
     if (!this._activePets || this._activePets.length === 0) return;
     // Projectiles are drawn by _drawPetProjectiles from the main draw list, NOT from here —
     // calling it here as well would draw every bolt twice.
@@ -4638,6 +4738,22 @@ export class Game {
         if (this.gameOver && _titanAlive)         this.meta?.unlock?.('ba_still_standing');
         if (_t >= 600 && !(this._chaosTitansKilled > 0)) this.meta?.unlock?.('ba_long_silence');
       } catch (_e) { console.warn('[Broken Archive] unlock error', _e); }
+
+      // ── CHAOS SIGILS ───────────────────────────────────────────────────────
+      // Cosmetic marks for HOW the run was played. Same inert storage as the archive: the keys
+      // are read by the CHAOS tab and the character card and by nothing else. The corrupted
+      // count is re-derived from mutations.taken, the same source the ledger uses.
+      try {
+        let _pacts = 0;
+        const _tk = this.mutations?.taken || {};
+        for (const k of Object.keys(_tk)) {
+          if (k.indexOf('corrupt_') === 0) _pacts += Math.max(0, Math.floor(_tk[k] || 0));
+        }
+        if ((this._chaosTitanTypes || []).length >= 4)          this.meta?.unlock?.('sg_titanbreaker');
+        if (this.chaosTimeSecs >= 600 && !(this._chaosPulseHits > 0)) this.meta?.unlock?.('sg_unbroken');
+        if ((this._chaosRushCleared || 0) > 0)                  this.meta?.unlock?.('sg_apex');
+        if (_pacts >= 3)                                        this.meta?.unlock?.('sg_pactbound');
+      } catch (_e) { console.warn('[Chaos Sigils] unlock error', _e); }
     }
     try { this._generateEdenRunMessages(); } catch(e) { console.warn('[Eden] _generateEdenRunMessages error:', e); }
   }
@@ -6251,6 +6367,14 @@ export class Game {
             </div>
 
             <div class="ct-panel" data-panel="chaos">
+              <div class="sl-section" id="cxc-sigils-section">
+                <div class="sl-header">
+                  <div class="sl-title">&#9670; CHAOS SIGILS</div>
+                  <div class="sl-subtitle" id="cxc-sigils-n">0 / 4</div>
+                </div>
+                <div class="sl-list" id="cxc-sigils"></div>
+              </div>
+              <div class="ca-sep"></div>
               <div class="em-section" id="cxc-ranks-section">
                 <div class="em-header">
                   <div class="em-title">&#9880; CHAOS SURVIVAL RANKS</div>
@@ -6991,6 +7115,25 @@ export class Game {
    * Read-only: nothing here is clickable, purchasable or spendable.
    */
   _colRenderChaosPanel(el, items) {
+    // SIGILS first — cosmetic marks, rendered read-only like everything else on this tab.
+    const escS = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const sgEl = el.querySelector('#cxc-sigils');
+    if (sgEl) {
+      sgEl.innerHTML = CHAOS_SIGILS.map(s => {
+        const on = !!this.meta?.isUnlocked?.(s.id);
+        return `<div class="sl-row${on ? ' readable' : ''}">
+          <div class="sl-num${on ? ' readable' : ''}" style="${on ? 'color:' + s.color : ''}">${s.mark}</div>
+          <div class="sl-info">
+            <div class="sl-title-row${on ? ' readable' : ' locked'}" style="${on ? 'color:' + s.color : ''}">${on ? escS(s.name) : '???'}</div>
+            <div class="sl-text${on ? '' : ' locked'}">${escS(s.req)}</div>
+          </div>
+          <div class="sl-status${on ? ' readable' : ' locked'}">${on ? '&#9670; EARNED' : '&#10005; LOCKED'}</div>
+        </div>`;
+      }).join('');
+    }
+    const sgN = el.querySelector('#cxc-sigils-n');
+    if (sgN) sgN.textContent = `${CHAOS_SIGILS.filter(s => this.meta?.isUnlocked?.(s.id)).length} / ${CHAOS_SIGILS.length}`;
+
     const nChars = (this.characters || []).length;
     const ranks  = items.slice(0, nChars);
     const titans = items.slice(nChars);
@@ -7063,6 +7206,23 @@ export class Game {
       try { total = (this.meta?.getChaosLedger?.() || []).length; } catch (_) { total = 0; }
       ln.textContent = `${total} RUN${total === 1 ? '' : 'S'} LOGGED`;
     }
+  }
+
+  /**
+   * The earned Chaos Sigils, as a small mark row for a character card. Sigils are account-wide,
+   * not per character, so every card shows the same row — it is a pilot's record, not a
+   * character's. Renders nothing at all until at least one is earned, so a player who has never
+   * touched Chaos sees the card exactly as it shipped. Purely decorative.
+   */
+  _sigilRowHTML() {
+    let earned = [];
+    try { earned = CHAOS_SIGILS.filter(s => this.meta?.isUnlocked?.(s.id)); } catch (_) { earned = []; }
+    if (!earned.length) return '';
+    return '<div class="csc-sigils" style="display:flex;justify-content:center;gap:5px;margin-top:3px;' +
+           'line-height:1;">' +
+      earned.map(s => '<span title="' + s.name + '" style="font-size:11px;color:' + s.color +
+        ';text-shadow:0 0 6px ' + s.color + '99;">' + s.mark + '</span>').join('') +
+    '</div>';
   }
 
   /** CORRUPTED section of the LORE tab — the three Broken Archive entries. */
@@ -11190,6 +11350,7 @@ export class Game {
     }
     // ── Cyber-Pet AI tick ─────────────────────────────────────────────────────
     this._tickPets(dt);
+    this._updatePrismDrones(dt);    // overlord_prism_array — produces bolts, so it runs BEFORE the tick
     this._tickPetProjectiles(dt);   // ungated: the Chaos turret produces bolts with no pet equipped
     // ── Acquired Weapon Auto-Fire ─────────────────────────────────────────────
     this._tickAcquiredWeapons(dt);
@@ -12914,6 +13075,9 @@ export class Game {
       }[this._activeTitan.enemyType];
       try { if (flag && this.meta) this.meta.recordBossKill(flag); } catch (_) {}
       this._chaosTitansKilled = (this._chaosTitansKilled || 0) + 1;   // Chaos Ledger tally only
+      // DISTINCT types, for the TITANBREAKER sigil: the four cycle, so killing the same one
+      // twice must not count as two of the four.
+      if (flag && !this._chaosTitanTypes.includes(flag)) this._chaosTitanTypes.push(flag);
       // THE RELIC ITSELF, not just permission to buy it. recordBossKill only lifts the `req`
       // gate on tryUnlockRelic, which then still charges 25 PF + 250 credits — so killing the
       // hardest boss in the game paid LESS than an Act 1 stage boss, which calls grantStageRelic
@@ -13328,6 +13492,7 @@ export class Game {
     // ── Completion — survive to the end ──
     if (T >= br.dur) {
       br.hazard = null;
+      if (this._chaosMode) this._chaosRushCleared = (this._chaosRushCleared || 0) + 1;   // APEX sigil
       this.triggerAnnouncement('◈ BOSS RUSH CLEARED — CHAOS APEX SURVIVED ◈', '#7CFF4D');
       this.audio?.playStageComplete?.(false);
       this.screenShake?.trigger(6, 0.6);
@@ -27736,6 +27901,7 @@ export class Game {
         </div>
         <div class="csc-card-name">${c.name}</div>
         <div class="csc-card-role">${c.role}</div>
+        ${this._sigilRowHTML()}
         ${c.comingSoon
           ? `<div class="csc-lock-overlay coming-soon">
                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
@@ -28907,6 +29073,19 @@ export class Game {
 
   _syncCharSelectOverlay() {
     const el = this._charSelectOverlayEl;
+    // Sigil marks are refreshed on every SYNC, not just on build. _initCharSelectOverlay runs
+    // once per session and returns early ever after, so a sigil earned mid-session would
+    // otherwise not appear on a card until the page was reloaded. Only the mark row is
+    // rewritten — the cards themselves are left exactly as they were built.
+    if (el) {
+      const row = this._sigilRowHTML();
+      el.querySelectorAll('.csc-card').forEach(card => {
+        const cur = card.querySelector('.csc-sigils');
+        if (!row) { if (cur) cur.remove(); return; }
+        if (cur) cur.outerHTML = row;
+        else card.querySelector('.csc-card-role')?.insertAdjacentHTML('afterend', row);
+      });
+    }
     if (!el) return;
     const idx = this.characterIndex;
     const sel = this.characters[idx];
@@ -37236,6 +37415,7 @@ _drawLoreArchive(ctx) {
             this._doctrineTriggerPylon(p);
           } else if (p.type === 'danger') {
             this._damagePlayer(15, { color: '#ff4400', shake: 4 });
+            this._chaosPulseHits = (this._chaosPulseHits || 0) + 1;   // UNBROKEN sigil, tally only
             this._spawnFloatingText('CHAOS PULSE', p.pos.clone(), '#ff4400', 1.2);
           } else if (p.type === 'shield') {
             this.player.shieldTimer = Math.max(this.player.shieldTimer, 5.0);
