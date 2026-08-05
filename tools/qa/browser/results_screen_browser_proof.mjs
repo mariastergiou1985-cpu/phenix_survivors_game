@@ -144,8 +144,12 @@ const endRun = async ({ victory = false, endless = false, chaos = false, score =
     g.upgradeUI = null; g.mutationUI = null; g.paused = false;
     g.endless = o.endless; g._chaosMode = o.chaos;
     g.score = o.score; g.bestScore = o.best; g.isNewHighScore = o.pb;
-    g.timeAlive = o.t; g.kills = o.kills; g.runCreditsEarned = o.cores;
-    if (g.player) g.player.level = o.lvl;
+    // player.kills, NOT g.kills. This rig used to set `g.kills`, a field that has never existed
+    // on Game — the same phantom the KILLS tile used to read. Both sides agreeing on a field
+    // nobody assigns is why B06 stayed green while the shipped screen printed 0 on every run.
+    // The assertion below is unchanged; only the field it is fed through is now the real one.
+    g.timeAlive = o.t; g.runCreditsEarned = o.cores;
+    if (g.player) { g.player.level = o.lvl; g.player.kills = o.kills; }
     g.finalMessage = o.victory ? 'CITY GRID STABILIZED — VICTORY' : 'CYBER-HERO OFFLINE';
     g.victory = o.victory; g.gameOver = !o.victory;
     g._endScreenBtnIndex = 0;

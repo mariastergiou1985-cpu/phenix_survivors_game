@@ -26935,7 +26935,12 @@ export class Game {
     const score = Math.floor(this.score || 0);
     const best  = Math.floor(this.bestScore || 0);
     const lvl   = this.player?.level ?? 1;
-    const kills = this.kills ?? this.killCount ?? 0;
+    // KILLS reads the run's real counter. `this.kills` and `this.killCount` were never assigned
+    // on Game — the only kill counter in the game is player.kills, incremented once per death in
+    // Enemy.js takeHit — so both nullish coalesces fell through and this tile printed 0 on every
+    // run, in every mode, forever (fixed 2026-08-05). The canvas end screen (HUD.js) and the
+    // credit payout in _grantRewards already read player.kills; this line now agrees with them.
+    const kills = this.player?.kills ?? 0;
     const cores = this.runCreditsEarned ?? 0;
 
     // Damage rows come from the SAME BuildEngine log the canvas report reads.
