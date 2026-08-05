@@ -32,7 +32,7 @@ import './BuildEnginePassives.js?v=20260902130000'; // P2.6 Build passives §26-
 import { MutationUI }      from './MutationUI.js?v=20260904180000';
 import { sampleMutations, sampleCorruptedMutation } from './Mutations.js?v=20260904180000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260904170000';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, COLLECTIBLE_FRAGMENT_COST, COLLECTIBLE_GRID_COST, ECHO_FRAGMENT_COST, ECHO_GRID_COST, SKILL_TREE, AMULET_DEFS, GRID_TO_PF_RATE, characterStageRequirement } from './MetaProgress.js?v=20260903020000';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, COLLECTIBLE_FRAGMENT_COST, COLLECTIBLE_GRID_COST, ECHO_FRAGMENT_COST, ECHO_GRID_COST, SKILL_TREE, AMULET_DEFS, GRID_TO_PF_RATE, characterStageRequirement } from './MetaProgress.js?v=20260904230000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260712520000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
@@ -1955,6 +1955,7 @@ export class Game {
     this._deckPark    = Object.create(null);  // deck -> the boss frozen there while the player is away
     this._deckGateArmed = false;              // a gate only fires after the player has STEPPED OFF it
     this._chaosStartedAt    = -1;         // timeAlive when Chaos engaged; -1 = not yet reached this run
+    this._chaosTitansKilled = 0;          // Mega Titans destroyed this run — Chaos Ledger only
     this._chaosTransTimer   = -1;      // >=0 while glitch transition is playing
     this.forceChaos         = false;   // defensive: prevent stale debug-key state leaking into the next run
     this._chaosCoreCd       = 0;       // cooldown for bonus gold-core spawns
@@ -4586,6 +4587,28 @@ export class Game {
       this.chaosRank = _cMins >= 30 ? 'PLATINUM' : _cMins >= 20 ? 'GOLD' : _cMins >= 10 ? 'SILVER' : 'BRONZE';
       try { if (this.meta && this.selectedCharacter) this.meta.submitChaosRun(this.selectedCharacter, this.chaosTimeSecs); }
       catch(_e) { console.warn('[Chaos Rank] submitChaosRun error', _e); }
+
+      // ── CHAOS LEDGER ───────────────────────────────────────────────────────
+      // Mint one entry describing what this run WAS. Purely a record: nothing reads it back into
+      // gameplay, so it cannot move balance. The corrupted count is derived from the mutations
+      // already taken this run rather than tracked separately — mutations.taken is the canonical
+      // record of every forced pick, and only REROLL DOCTRINE cards are keyed `corrupt_`.
+      try {
+        let _corrupted = 0;
+        const _taken = this.mutations?.taken || {};
+        for (const k of Object.keys(_taken)) {
+          if (k.indexOf('corrupt_') === 0) _corrupted += Math.max(0, Math.floor(_taken[k] || 0));
+        }
+        this.meta?.recordChaosRun?.({
+          char:      this.selectedCharacter,
+          law:       this.runChaosLaw || null,
+          secs:      this.chaosTimeSecs,
+          rank:      this.chaosRank,
+          kills:     this.player?.kills ?? 0,
+          titans:    this._chaosTitansKilled || 0,
+          corrupted: _corrupted,
+        });
+      } catch (_e) { console.warn('[Chaos Ledger] recordChaosRun error', _e); }
     }
     try { this._generateEdenRunMessages(); } catch(e) { console.warn('[Eden] _generateEdenRunMessages error:', e); }
   }
@@ -12658,6 +12681,7 @@ export class Game {
         'Quantum Void Emperor': 'titan_emperor', 'Apocalypse Mech Tyrant': 'titan_tyrant',
       }[this._activeTitan.enemyType];
       try { if (flag && this.meta) this.meta.recordBossKill(flag); } catch (_) {}
+      this._chaosTitansKilled = (this._chaosTitansKilled || 0) + 1;   // Chaos Ledger tally only
       // THE RELIC ITSELF, not just permission to buy it. recordBossKill only lifts the `req`
       // gate on tryUnlockRelic, which then still charges 25 PF + 250 credits — so killing the
       // hardest boss in the game paid LESS than an Act 1 stage boss, which calls grantStageRelic
@@ -26961,6 +26985,39 @@ export class Game {
     el.querySelectorAll('[data-rsbtn]').forEach(b => b.classList.toggle('sel', Number(b.dataset.rsidx) === i));
   }
 
+  /**
+   * The CHAOS LEDGER strip inside the rank band — the last 3 runs of the stored 20, newest first.
+   * Called only from the Chaos branch of _resultsHTML, so it never renders for another mode.
+   * Every value is escaped and every field defaulted: a ledger written by an older build (or a
+   * hand-edited save) must degrade to a readable row, never to a broken screen.
+   */
+  _chaosLedgerHTML(esc, clk, RANK_COLOR) {
+    let rows = [];
+    try { rows = (this.meta?.getChaosLedger?.() || []).slice(0, 3); } catch (_) { rows = []; }
+    if (!rows.length) return '';
+    const total = (() => { try { return (this.meta.getChaosLedger() || []).length; } catch (_) { return rows.length; } })();
+    const law = (l) => (l ? String(l).replace(/_/g, ' ').toUpperCase() : 'NO LAW');
+    const name = (id) => this.characters?.find(c => c.id === id)?.name || String(id || '?');
+    const line = rows.map((r, i) => {
+      const rc = RANK_COLOR[r.rank] || '#ffffff';
+      const bits = [
+        esc(name(r.char)), esc(law(r.law)), clk(r.secs),
+        '<span style="color:' + rc + ';">' + esc(r.rank || '?') + '</span>',
+        (r.kills || 0) + ' K',
+      ];
+      if (r.titans) bits.push(r.titans + ' TITAN' + (r.titans > 1 ? 'S' : ''));
+      if (r.corrupted) bits.push('<span style="color:#ff2d95;">' + r.corrupted + ' CORRUPTED</span>');
+      return '<div style="opacity:' + (i === 0 ? '1' : '0.55') + ';margin-top:2px;">' +
+             (i === 0 ? '&#9656; ' : '&nbsp;&nbsp;&nbsp;') + bits.join(' &middot; ') + '</div>';
+    }).join('');
+    return '<div style="margin-top:9px;padding-top:7px;border-top:1px solid rgba(46,230,246,0.18);' +
+           'font-family:Consolas,monospace;font-size:10px;letter-spacing:.5px;color:#c8dbe6;">' +
+             '<div style="font-family:\'Orbitron\',sans-serif;font-weight:700;font-size:8px;' +
+             'letter-spacing:1.4px;color:#2ee6f6;margin-bottom:3px;">CHAOS LEDGER &middot; ' +
+             total + ' RUN' + (total === 1 ? '' : 'S') + ' LOGGED</div>' + line +
+           '</div>';
+  }
+
   _resultsHTML() {
     const esc = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const m = this._resultsMode();
@@ -27035,6 +27092,11 @@ export class Game {
           'color:#8fa8b8;margin-top:3px;">BEST' + (cName ? ' &middot; ' + esc(cName) : '') + ' &middot; ' +
             '<span style="color:' + bCol + ';font-weight:700;">' + esc(bRank) + '</span> &middot; ' +
             clk(bSecs) + '</div>' +
+          // ── CHAOS LEDGER, short form ────────────────────────────────────────────────────
+          // This run's own line first — character, law, time, rank, kills, titans, corrupted —
+          // then the two before it, so the player can see what they just beat and what they are
+          // chasing. The full history lives in meta.chaosLedger; no Collection tab yet.
+          this._chaosLedgerHTML(esc, clk, RANK_COLOR) +
         '</div>';
     }
 

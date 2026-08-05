@@ -435,6 +435,10 @@ export class MetaProgress {
     this.edenMilestonesSeen = {};  // { [threshold]: true } milestone one-fire guard
     this.systemLogsSeen    = {};  // { [threshold]: true } system log one-fire feed guard
     this.chaosRanks    = {};  // Phase B: { [charId]: { bestSecs, bestRank } } — Chaos Survival Rank per character
+    // CHAOS LEDGER — the last 20 Chaos runs, newest first. One entry is minted per Chaos run and
+    // is never spent, bought or gated: it is a record of what happened, not a currency.
+    // { char, law, secs, rank, kills, titans, corrupted, date }
+    this.chaosLedger   = [];
     // ── Vessel system ──────────────────────────────────────────────────────
     this.selectedVessel   = 'alpha_phoenix';   // currently equipped vessel id
     this.unlockedVessels  = { alpha_phoenix: true };  // { [vesselId]: true }
@@ -527,6 +531,7 @@ export class MetaProgress {
       this.edenMilestonesSeen = (d.edenMilestonesSeen && typeof d.edenMilestonesSeen === 'object') ? d.edenMilestonesSeen : {};
       this.systemLogsSeen    = (d.systemLogsSeen    && typeof d.systemLogsSeen    === 'object') ? d.systemLogsSeen    : {};
       this.chaosRanks    = (d.chaosRanks    && typeof d.chaosRanks    === 'object') ? d.chaosRanks    : {}; // Phase B
+      this.chaosLedger   = Array.isArray(d.chaosLedger) ? d.chaosLedger.slice(0, 20) : [];   // newest first
       // Vessel system — safe defaults for old saves (alpha_phoenix always unlocked)
       this.selectedVessel  = (typeof d.selectedVessel === 'string' && d.selectedVessel) ? d.selectedVessel : 'alpha_phoenix';
       this.unlockedVessels = (d.unlockedVessels && typeof d.unlockedVessels === 'object') ? d.unlockedVessels : { alpha_phoenix: true };
@@ -615,6 +620,7 @@ export class MetaProgress {
         edenMilestonesSeen: this.edenMilestonesSeen,
         systemLogsSeen:     this.systemLogsSeen,
         chaosRanks:         this.chaosRanks,           // Phase B: Chaos Survival Rank per character
+        chaosLedger:        this.chaosLedger,          // last 20 Chaos runs, newest first
         selectedVessel:     this.selectedVessel,
         unlockedVessels:    this.unlockedVessels,
         selectedPets:       this.selectedPets,
@@ -895,6 +901,7 @@ export class MetaProgress {
     this.equippedRelic = null;
     this.bossKills = {};
     this.runHistory = [];
+    this.chaosLedger = [];
     this.edenMemoryPercent  = 0;
     this.systemFeedMessages = [];
     this.bossEchoes         = {};
@@ -1114,6 +1121,30 @@ export class MetaProgress {
     this._save();
   }
   getRunHistory() { return this.runHistory || []; }
+
+  // ─── CHAOS LEDGER ───────────────────────────────────────────────────────────
+  // One entry per Chaos run: what the run WAS, not what it earned. Nothing here is spendable and
+  // nothing gates on it, so it can never affect balance — it exists so a run leaves a trace.
+  // Newest first, hard-capped at 20 like runHistory.
+  recordChaosRun(entry) {
+    if (!entry || typeof entry !== 'object') return null;
+    if (!Array.isArray(this.chaosLedger)) this.chaosLedger = [];
+    const e = {
+      char:      entry.char || 'Unknown',
+      law:       entry.law || null,                       // null = ran with NO LAW, a real state
+      secs:      Math.max(0, Math.floor(entry.secs || 0)),
+      rank:      entry.rank || 'BRONZE',
+      kills:     Math.max(0, Math.floor(entry.kills || 0)),
+      titans:    Math.max(0, Math.floor(entry.titans || 0)),
+      corrupted: Math.max(0, Math.floor(entry.corrupted || 0)),
+      date:      new Date().toLocaleDateString(),
+    };
+    this.chaosLedger.unshift(e);
+    if (this.chaosLedger.length > 20) this.chaosLedger.length = 20;
+    this._save();
+    return e;
+  }
+  getChaosLedger() { return this.chaosLedger || []; }
 
   // ─── Eden Core narrative methods ────────────────────────────────────────────
   getEdenMemory()  { return Math.min(100, Math.max(0, this.edenMemoryPercent || 0)); }
