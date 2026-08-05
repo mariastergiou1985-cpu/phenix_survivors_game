@@ -32,7 +32,7 @@ import './BuildEnginePassives.js?v=20260902130000'; // P2.6 Build passives §26-
 import { MutationUI }      from './MutationUI.js?v=20260904180000';
 import { sampleMutations, sampleCorruptedMutation } from './Mutations.js?v=20260904180000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260904170000';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, COLLECTIBLE_FRAGMENT_COST, COLLECTIBLE_GRID_COST, ECHO_FRAGMENT_COST, ECHO_GRID_COST, SKILL_TREE, AMULET_DEFS, GRID_TO_PF_RATE, characterStageRequirement } from './MetaProgress.js?v=20260904250000';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, COLLECTIBLE_FRAGMENT_COST, COLLECTIBLE_GRID_COST, ECHO_FRAGMENT_COST, ECHO_GRID_COST, SKILL_TREE, AMULET_DEFS, GRID_TO_PF_RATE, characterStageRequirement } from './MetaProgress.js?v=20260904260000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260712520000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
@@ -775,6 +775,16 @@ const CHAOS_SIGILS = [
     req: 'Clear a Boss Rush in Chaos Mode.' },
   { id: 'sg_pactbound',    mark: '◈', name: 'PACTBOUND',    color: '#ff2d95',
     req: 'Seal three corrupted pacts in a single Chaos run.' },
+  // Wave 2. Three of these four need NO new run state at all — they read runChaosLaw,
+  // player.kills, meta.chaosRanks and the shipped phoenixReviveCount.
+  { id: 'sg_lawless',      mark: '○', name: 'LAWLESS',      color: '#c0c0c0',
+    req: 'Survive 12:00 in Chaos with NO LAW active.' },
+  { id: 'sg_centurion',    mark: '✶', name: 'CENTURION',    color: '#ff9a4d',
+    req: 'Destroy 1,000 enemies in a single Chaos run.' },
+  { id: 'sg_full_roster',  mark: '⬢', name: 'FULL ROSTER',  color: '#a855f7',
+    req: 'Log a Chaos Survival Rank with all ten characters.' },
+  { id: 'sg_iron_will',    mark: '✚', name: 'IRON WILL',    color: '#7CFF4D',
+    req: 'Reach 15:00 in Chaos without spending a single Phoenix revive.' },
 ];
 
 // ── BROKEN ARCHIVE — Chaos-only lore, earned by FAILING ───────────────────
@@ -3549,7 +3559,10 @@ export class Game {
     // "orbiting drones fire Plasma-White laser beams that pierce the swarm" and it now delivers
     // exactly that, through the shipped _petBolts pipeline (see _updatePrismDrones). The stat
     // line is deliberately GONE — this replaces it rather than stacking on top of it.
-    if (this._relicOn('leviathan_nanite_core'))    p.xpMult = (p.xpMult || 1) + 0.10;             // nanites harvest → +10% XP
+    // leviathan_nanite_core no longer pays a flat +10% XP. Its card has always promised
+    // "enemies that die release Toxic-Cyan nanites that spread damage-over-time" and it now
+    // delivers that through the shipped damage and status pipelines (see _updateNaniteClouds).
+    // The stat line is deliberately GONE — this replaces it rather than stacking on top of it.
     if (this._relicOn('emperor_singularity_edge')) p.abilityCdMult = (p.abilityCdMult || 1) * 1.10; // gravity control → faster abilities
     if (this._relicOn('tyrant_antimatter_battery')) p.contactDamageReduction = Math.min(0.6, (p.contactDamageReduction || 0) + 0.08); // armor plating
     // ── MILESTONE 2 / Slice B — Act 1 stage-boss reward relics. One per biome, each with a
@@ -4170,6 +4183,8 @@ export class Game {
     }
     this._petBolts = [];  // active pet projectiles [{x, y, vx, vy, dmg, color, life}]
     this._prismDrones = [];  // overlord_prism_array orbiters — rebuilt on the first tick that needs them
+    this._naniteClouds = []; // leviathan_nanite_core clouds [{x, y, t, cd}]
+    this._naniteSeedCd = 0;  // seed rate ceiling
     this._petBombs = [];  // active freeze bombs [{x, y, targetX, targetY, timer, radius, color}]
   }
 
@@ -4398,6 +4413,83 @@ export class Game {
   }
 
   /**
+   * LEVIATHAN'S NANITE CORE — the relic's own card text, finally implemented.
+   *
+   * A dead enemy releases a Toxic-Cyan nanite cloud. The cloud damages what stands in it through
+   * Enemy.takeHit — the shipped damage gate, nothing new — and clogs it through the shipped
+   * slowTimer/slowFactor status the Cryo path already uses. No new field on Enemy, no new status
+   * system, no new damage path.
+   *
+   * SPREAD is the card's word and it is literal: a cloud's kills re-enter addKillScore, which
+   * seeds another cloud where they fell. Three separate ceilings keep that from running away —
+   * a hard cloud cap, a per-tick victim cap, and a seed cooldown — because an uncapped chain
+   * reaction over an 800-enemy Chaos field is a frame-rate bug waiting to happen.
+   *
+   * BALANCE, stated plainly: this REPLACES the flat +10% XP the relic used to give. At 9 damage
+   * per 0.4 s inside 92 px it is a mop-up tool, not a primary — it finishes what is already
+   * dying rather than opening fights. Only one relic can be equipped at a time.
+   */
+  _seedNaniteCloud(x, y) {
+    if (!this._relicOn('leviathan_nanite_core')) return;
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    if (!Array.isArray(this._naniteClouds)) this._naniteClouds = [];
+    if (this._naniteSeedCd > 0) return;                  // rate ceiling
+    this._naniteSeedCd = 0.12;
+    if (this._naniteClouds.length >= 18) this._naniteClouds.shift();   // FIFO count ceiling
+    this._naniteClouds.push({ x, y, t: 3.0, cd: 0 });
+  }
+
+  _updateNaniteClouds(dt) {
+    if (this._naniteSeedCd > 0) this._naniteSeedCd -= dt;
+    const clouds = this._naniteClouds;
+    if (!Array.isArray(clouds) || !clouds.length) return;
+    if (!this._relicOn('leviathan_nanite_core')) { clouds.length = 0; return; }
+
+    const R = 92, R2 = R * R, DMG = 9, TICK = 0.40, MAX_PER_TICK = 8;
+    for (let i = clouds.length - 1; i >= 0; i--) {
+      const c = clouds[i];
+      c.t -= dt;
+      if (c.t <= 0) { clouds.splice(i, 1); continue; }
+      c.cd -= dt;
+      if (c.cd > 0) continue;
+      c.cd = TICK;
+      let n = 0;
+      // Snapshot: takeHit splices this.enemies, and a kill here re-enters addKillScore, which
+      // pushes onto `clouds` — iterating either live would skip entries or never terminate.
+      for (const e of this.enemies.slice()) {
+        if (n >= MAX_PER_TICK) break;
+        if (!e || e.hp <= 0 || !e.pos) continue;
+        const dx = e.pos.x - c.x, dy = e.pos.y - c.y;
+        if (dx * dx + dy * dy > R2) continue;
+        const isBig = (e.isBoss && e.isBoss()) || e.isMegaBoss;
+        const dmg = isBig ? DMG * 0.25 : DMG;
+        try {
+          e.takeHit(isBig && this._capBossDamage ? this._capBossDamage(e, dmg) : dmg, this);
+          e.slowTimer = Math.max(e.slowTimer || 0, 0.8);   // shipped status field, shipped factor
+        } catch (_) { continue; }
+        n++;
+      }
+    }
+  }
+
+  /** The clouds themselves — Toxic-Cyan, drawn in world space with the entity layer. */
+  _drawNaniteClouds(ctx) {
+    const clouds = this._naniteClouds;
+    if (!Array.isArray(clouds) || !clouds.length) return;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (const c of clouds) {
+      const a = Math.max(0, Math.min(1, c.t / 3.0)) * 0.30;
+      const g = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, 92);
+      g.addColorStop(0, `rgba(60,255,220,${a.toFixed(3)})`);
+      g.addColorStop(1, 'rgba(60,255,220,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(c.x, c.y, 92, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  /**
    * OVERLORD'S PRISM ARRAY — the relic's own card text, finally implemented.
    *
    * Two drones orbit the player and fire Plasma-White beams at the nearest enemy in range. It
@@ -4475,6 +4567,7 @@ export class Game {
   }
 
   _drawPets(ctx) {
+    this._drawNaniteClouds(ctx);
     this._drawPrismDrones(ctx);
     if (!this._activePets || this._activePets.length === 0) return;
     // Projectiles are drawn by _drawPetProjectiles from the main draw list, NOT from here —
@@ -4753,6 +4846,16 @@ export class Game {
         if (this.chaosTimeSecs >= 600 && !(this._chaosPulseHits > 0)) this.meta?.unlock?.('sg_unbroken');
         if ((this._chaosRushCleared || 0) > 0)                  this.meta?.unlock?.('sg_apex');
         if (_pacts >= 3)                                        this.meta?.unlock?.('sg_pactbound');
+
+        // Wave 2. LAWLESS / CENTURION / IRON WILL read state that already existed; FULL ROSTER
+        // reads the persisted chaosRanks, so it can complete on any run — including this one,
+        // because submitChaosRun has already written this character's record above.
+        if (this.chaosTimeSecs >= 720 && !this.runChaosLaw)     this.meta?.unlock?.('sg_lawless');
+        if ((this.player?.kills || 0) >= 1000)                  this.meta?.unlock?.('sg_centurion');
+        if (this.chaosTimeSecs >= 900 && !(this.phoenixReviveCount > 0)) this.meta?.unlock?.('sg_iron_will');
+        const _ranked = Object.keys(this.meta?.chaosRanks || {})
+          .filter(id => (this.characters || []).some(c => c.id === id)).length;
+        if (_ranked >= (this.characters || []).length && _ranked > 0) this.meta?.unlock?.('sg_full_roster');
       } catch (_e) { console.warn('[Chaos Sigils] unlock error', _e); }
     }
     try { this._generateEdenRunMessages(); } catch(e) { console.warn('[Eden] _generateEdenRunMessages error:', e); }
@@ -4951,6 +5054,9 @@ export class Game {
     // CHAOS DOCTRINE: euclid_vector's axiom draws a line between consecutive kills. addKillScore
     // is the canonical "an enemy died here" moment, so it is the one hook that needs to exist.
     if (pos) { try { this._doctrineAxiomKill(pos); } catch (_) {} }
+    // LEVIATHAN'S NANITE CORE: a death seeds a nanite cloud here. Same canonical hook, and the
+    // spread is exactly this — a cloud's own kills re-enter through addKillScore and seed more.
+    if (pos) { try { this._seedNaniteCloud(pos.x, pos.y); } catch (_) {} }
 
     // HP CELL drop: one healing pickup every ~25 non-elite kills, near the defeated enemy.
     // Does not touch overload / credits / score / combo, and never replaces Phoenix revives.
@@ -11350,6 +11456,7 @@ export class Game {
     }
     // ── Cyber-Pet AI tick ─────────────────────────────────────────────────────
     this._tickPets(dt);
+    this._updateNaniteClouds(dt);   // leviathan_nanite_core — ticks DoT through the shipped takeHit
     this._updatePrismDrones(dt);    // overlord_prism_array — produces bolts, so it runs BEFORE the tick
     this._tickPetProjectiles(dt);   // ungated: the Chaos turret produces bolts with no pet equipped
     // ── Acquired Weapon Auto-Fire ─────────────────────────────────────────────

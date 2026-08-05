@@ -288,13 +288,18 @@ const ui = await page.evaluate(() => {
   const open = { sec: window.__sec('cxc-sigils'), n: window.__sec('cxc-sigils-n').text, cards: window.__cards() };
   return { locked, open };
 });
-check('S07 the CHAOS tab lists all four, locked, with their requirements',
-  ui.locked.sec.rows === 4 && ui.locked.n === '0 / 4' &&
+// Total-agnostic, for the same reason as S08: this file owns wave 1, not the size of the set.
+// It asserts the four it wiped are present and locked, and that NONE of them is counted.
+check('S07 the CHAOS tab lists the four, locked, with their requirements',
+  ui.locked.sec.rows >= 4 && /^0 \/ \d+$/.test(ui.locked.n) &&
   /Destroy all four Mega Titans/.test(ui.locked.sec.text) &&
-  (ui.locked.sec.text.match(/\?\?\?/g) || []).length === 4,
+  (ui.locked.sec.text.match(/\?\?\?/g) || []).length >= 4,
   `${ui.locked.sec.rows} rows, ${ui.locked.n}`);
+// Total-agnostic on purpose: sigils are added in waves, and hardcoding "4 / 4" made this check
+// fail the moment wave 2 landed even though nothing about wave 1 had changed. The claim is that
+// the four THIS file is about are named and counted, not that four is the whole set.
 check('S08 earning them names them on the tab',
-  ui.open.n === '4 / 4' && /TITANBREAKER/.test(ui.open.sec.text) &&
+  /^4 \/ \d+$/.test(ui.open.n) && /TITANBREAKER/.test(ui.open.sec.text) &&
   /UNBROKEN/.test(ui.open.sec.text) && /APEX PROTOCOL/.test(ui.open.sec.text) &&
   /PACTBOUND/.test(ui.open.sec.text), ui.open.n);
 check('S09 the character cards show the marks — and show NOTHING before any are earned',
@@ -415,7 +420,11 @@ check('P07 CONTROL — without the relic there are no drones and no plasma-white
 // clean sheet and read 0.23 where it expected 0.08. The relic's own contribution is the claim.
 const others = await page.evaluate(() => {
   const g = window.__g;
-  const FIELDS = { leviathan_nanite_core: 'xpMult', emperor_singularity_edge: 'abilityCdMult',
+  // leviathan_nanite_core was REMOVED from this list on 2026-08-05: its flat +10% xpMult was
+  // deliberately replaced by the nanite DoT, so asserting the stat line still exists would be
+  // asserting the old behaviour against a change that was requested. Its own proof
+  // (chaos_sigils2_nanite_proof) now owns it.
+  const FIELDS = { emperor_singularity_edge: 'abilityCdMult',
                    tyrant_antimatter_battery: 'contactDamageReduction' };
   g.meta.relics = {}; g.meta.equippedRelic = null;
   window.__run('endless', 'skeleton_warrior');
@@ -428,8 +437,7 @@ const others = await page.evaluate(() => {
   }
   return { base, out };
 });
-check('P08 CONTROL — the other three Titan relics are untouched, still their shipped stat lines',
-  Math.abs(others.out.leviathan_nanite_core - 0.10) < 1e-3 &&      // xpMult 1 -> 1.10
+check('P08 CONTROL — the two still-unimplemented Titan relics keep their shipped stat lines',
   Math.abs(others.out.emperor_singularity_edge - 0.10) < 1e-3 &&   // abilityCdMult 1 -> 1.10
   Math.abs(others.out.tyrant_antimatter_battery - 0.08) < 1e-3,    // +8% contact DR
   JSON.stringify(others));

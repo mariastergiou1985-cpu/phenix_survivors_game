@@ -87,6 +87,10 @@ export const UNLOCK_KEYS = [
   'sg_unbroken',         // reached 10:00 in Chaos without taking a single CHAOS PULSE
   'sg_apex',             // cleared a Boss Rush in Chaos
   'sg_pactbound',        // sealed three corrupted pacts in one Chaos run
+  'sg_lawless',          // survived 12:00 in Chaos with NO LAW active
+  'sg_centurion',        // 1,000 kills in a single Chaos run
+  'sg_full_roster',      // logged a Chaos rank with all ten characters
+  'sg_iron_will',        // reached 15:00 in Chaos without spending a single Phoenix revive
 ];
 
 // Equippable outfits per base character. `default` is always available; `secret` reuses the
