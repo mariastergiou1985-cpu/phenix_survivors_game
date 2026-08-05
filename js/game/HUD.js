@@ -161,6 +161,34 @@ export function drawHUD(ctx, game) {
       drawText(ctx, red ? 'REDLINE \u2014 RAILGUN FREE' : 'HEAT',
                WIDTH / 2, by - 3, red ? '#ff3a1f' : '#ff9a2d', 'bold 10px Consolas, monospace');
       ctx.restore();
+    } else if (_cid === 'assassin_clone') {
+      const sh = Math.max(0, Math.min(1, game._doctrineShroud || 0));
+      const armed = (game._doctrineShroudWindow || 0) > 0;
+      const BW = 118, BH = 7, bx = WIDTH / 2 - BW / 2, by = 126;
+      ctx.save();
+      ctx.globalAlpha = armed ? (0.75 + 0.25 * Math.abs(Math.sin(Date.now() / 160))) : 0.85;
+      ctx.fillStyle = 'rgba(6,10,22,0.72)';
+      ctx.fillRect(bx - 1, by - 1, BW + 2, BH + 2);
+      ctx.fillStyle = '#7CFF4D';
+      ctx.fillRect(bx, by, Math.round(BW * (armed ? 1 : sh)), BH);
+      ctx.strokeStyle = armed ? '#7CFF4D' : 'rgba(124,255,77,0.55)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(bx - 0.5, by - 0.5, BW + 1, BH + 1);
+      ctx.textAlign = 'center';
+      drawText(ctx, armed ? 'SHROUD ARMED \u2014 EXECUTE' : 'SHROUD',
+               WIDTH / 2, by - 3, '#7CFF4D', 'bold 10px Consolas, monospace');
+      ctx.restore();
+    } else if (_cid === 'euclid_vector') {
+      const nodes = (game._doctrineProofNodes || []).length;
+      if (nodes > 0 || (game._doctrineAxiomHits || 0) > 0) {
+        ctx.save();
+        ctx.globalAlpha = 0.85;
+        ctx.textAlign = 'center';
+        const txt = nodes > 0 ? ('PROOF ' + nodes + '/3 VERTICES')
+                              : ('AXIOM ASSERTIONS: ' + game._doctrineAxiomHits);
+        drawText(ctx, txt, WIDTH / 2, 126, '#ffd447', 'bold 10px Consolas, monospace');
+        ctx.restore();
+      }
     } else if (_cid === 'japan_phasewalker' && (game._doctrineRerollsUsed || 0) > 0) {
       ctx.save();
       ctx.globalAlpha = 0.85;
@@ -175,9 +203,12 @@ export function drawHUD(ctx, game) {
   if (game._chaosMode && game._chaosPylonBuff) {
     const buff    = game._chaosPylonBuff;
     const isShield = buff.type === 'shield';
-    const isFoundry = buff.type === 'foundry';
-    const color   = isFoundry ? '#ff9a2d' : isShield ? CYAN : '#44ff88';
-    const label   = isFoundry ? 'F FOUNDRY VENT' : isShield ? 'S SHIELD PULSE ACTIVE' : '+ HEAL PULSE ACTIVE';
+    const DOC_BUFF = { foundry: ['#ff9a2d', 'F FOUNDRY VENT'],
+                       venom:   ['#7CFF4D', 'V VENOM PURGE'],
+                       proof:   ['#ffd447', 'Q PROOF ANCHORED'] };
+    const docB    = DOC_BUFF[buff.type] || null;
+    const color   = docB ? docB[0] : isShield ? CYAN : '#44ff88';
+    const label   = docB ? docB[1] : isShield ? 'S SHIELD PULSE ACTIVE' : '+ HEAL PULSE ACTIVE';
     const fade    = Math.min(1, buff.timer);
     ctx.save();
     ctx.globalAlpha = fade * (0.75 + 0.25 * Math.abs(Math.sin(Date.now() / 200)));

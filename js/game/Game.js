@@ -22,7 +22,7 @@ import { UpgradeUI }      from './UpgradeUI.js?v=20260902100000';
 import { weightedSample } from './Upgrades.js?v=20260902100000';
 import { BuildEngineRuntime, WEAPON_DEFS as BE_WEAPON_DEFS, EVOLUTION_RECIPES as BE_EVOLUTION_RECIPES, PASSIVE_DEFS as BE_PASSIVE_DEFS } from './BuildEngine.js?v=20260902130000';   // BUILD ENGINE — always on (full migration 2026-07-18)
 import { FUSION_DEFS, FUSION_CARD_ORDER, FUSION_ART_READY, FUSION_MAX_TIER, fusionCost, CHAR_DISPLAY_NAMES } from './FusionCatalog.js?v=20260902070000';   // FUSION ARMORY (Batch B)
-import { FusionEngine } from './FusionEngine.js?v=20260904130000';   // FUSION ARMORY runtime (Batch D)
+import { FusionEngine } from './FusionEngine.js?v=20260904140000';   // FUSION ARMORY runtime (Batch D)
 import './BuildEngineChars1.js?v=20260902130000';   // P2.3a Taekwondo+CyberArm (side-effect register)
 import './BuildEngineChars2.js?v=20260902130000';   // P2.3b Brawler+Assassin (side-effect register)
 import './BuildEngineChars3.js?v=20260902130000';   // P2.4a Eddie+Dimi (side-effect register)
@@ -31,7 +31,7 @@ import './BuildEngineChars5.js?v=20260902130000';   // P2.5 Universal όπλα 2
 import './BuildEnginePassives.js?v=20260902130000'; // P2.6 Build passives §26-50 (generic hooks)
 import { MutationUI }      from './MutationUI.js?v=20260810210000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
-import { drawHUD, drawEndScreen } from './HUD.js?v=20260904130000';
+import { drawHUD, drawEndScreen } from './HUD.js?v=20260904140000';
 import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, COLLECTIBLE_FRAGMENT_COST, COLLECTIBLE_GRID_COST, ECHO_FRAGMENT_COST, ECHO_GRID_COST, SKILL_TREE, AMULET_DEFS, GRID_TO_PF_RATE, characterStageRequirement } from './MetaProgress.js?v=20260903020000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260712520000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
@@ -54,7 +54,7 @@ import { LaserEyes } from '../effects/laser-eyes.js?v=20260818000000';
 import { MeteorRain } from '../effects/meteor-rain.js?v=20260712100000';
 import { NpcWalker } from './NpcWalker.js?v=20260904030000';
 import { MapManager, BIOME_ID, BIOME_DEFS, CHUNK_SIZE } from './MapManager.js?v=20260904120000';
-import { getChaosDoctrine } from './ChaosDoctrine.js?v=20260904130000';
+import { getChaosDoctrine } from './ChaosDoctrine.js?v=20260904140000';
 import { AcidRain } from './AcidRain.js?v=20260829020000';   // BATCH 2 major event (2026-07-29)
 import { EnemyWeaponSystem } from './EnemyWeaponSystem.js?v=20260829040000';   // BATCH 3 enemy weapon behaviours
 import { EventBus, EVENTS } from './EventBus.js?v=20260703990000';
@@ -2098,6 +2098,16 @@ export class Game {
     this._doctrinePendingReroll = false;
     this._doctrineLawXpApplied  = 1;      // the law xpMult already folded into player.xpMult
     this._clsRerollMode         = false;  // the law overlay is a mid-run reroll, not a run start
+    this._doctrineShroud        = 0;      // 0..1, assassin_clone only
+    this._doctrineShroudWindow  = 0;      // seconds left on an ARMED execution window
+    this._doctrineShroudArms    = 0;      // QA: windows armed this run
+    this._doctrineAxiomLast     = null;   // { x, y } of the previous kill, euclid_vector only
+    this._doctrineAxiomCd       = 0;
+    this._doctrineAxiomLines    = [];     // { ax, ay, bx, by, t } drawn trails
+    this._doctrineAxiomHits     = 0;      // QA: enemies struck by the axiom this run
+    this._doctrineProofNodes    = [];     // { x, y } anchored PROOF PYLON vertices
+    this._doctrineProofFlash    = 0;      // { pts, t } lifetime of the closing flash
+    this._doctrineProofProved   = 0;      // QA: triangles closed this run
 
     this.killsSinceHealthDrop = 0;   // counts toward the next HP CELL drop
     this.healthPickups        = [];  // [{ pos: Vec2, timer: number }] — heals 25% maxHp on touch
@@ -4739,6 +4749,9 @@ export class Game {
     else if (this.comboCount >= 5)  bonus = 10;
     else if (this.comboCount >= 2)  bonus = 5;
     this.score += Math.round((10 + bonus) * this._getActiveChaosLawModifiers().scoreMult);
+    // CHAOS DOCTRINE: euclid_vector's axiom draws a line between consecutive kills. addKillScore
+    // is the canonical "an enemy died here" moment, so it is the one hook that needs to exist.
+    if (pos) { try { this._doctrineAxiomKill(pos); } catch (_) {} }
 
     // HP CELL drop: one healing pickup every ~25 non-elite kills, near the defeated enemy.
     // Does not touch overload / credits / score / combo, and never replaces Phoenix revives.
@@ -30530,6 +30543,9 @@ _drawLoreArchive(ctx) {
   // (e.g. the final-boss main beam). Defaults to BOSS_MAX_PLAYER_HIT so EVERY existing caller is
   // unchanged. This never touches player stats/damage — it only lets a signalled boss hit land harder.
   _damagePlayer(dmg, { color = RED, shake = 5, cap = BOSS_MAX_PLAYER_HIT, src = null } = {}) {
+    // CHAOS DOCTRINE: one hit from ANY source breaks assassin_clone's shroud. Placed at the
+    // single damage gate rather than at each source, so nothing can slip past it.
+    try { this._doctrineBreakShroud(); } catch (_) {}
     if (this.player.dashTimer > 0 || this.phoenixReviveTimer > 0) return false;  // i-frames → dodged
     // CHAOS-ENTRY GRACE (Maria 2026-07-19): a fresh character entering Chaos straight from the
     // menu lost ~103 of 130 HP in the first 4 seconds — Chaos spawns its full pressure on the
@@ -36088,6 +36104,37 @@ _drawLoreArchive(ctx) {
       this._doctrineGrantReroll('TITAN DESTROYED');
       return;
     }
+    // SHROUD DOCTRINE (assassin_clone): the meter only grows while he goes untouched. It is
+    // NOT reset here - _damagePlayer breaks it, so a single hit from any source wipes it.
+    if (doc.shroud && this.player) {
+      const S = doc.shroud;
+      if (this._doctrineShroudWindow > 0) {
+        this._doctrineShroudWindow = Math.max(0, this._doctrineShroudWindow - dt);
+        if (this._doctrineShroudWindow === 0) this._doctrineShroud = 0;   // window lapsed unspent
+      } else if (this._doctrineShroud < 1) {
+        this._doctrineShroud = Math.min(1, this._doctrineShroud + S.fillPerSec * dt);
+        if (this._doctrineShroud >= 1) {
+          this._doctrineShroudWindow = S.windowSecs;
+          this._doctrineShroudArms++;
+          this.triggerAnnouncement('\u25c8 SHROUD ARMED \u2014 EXECUTION WINDOW OPEN \u25c8', '#7CFF4D', { priority: 2 });
+        }
+      }
+    }
+
+    // AXIOM DOCTRINE (euclid_vector): cooldown + trail decay. The lines themselves are drawn
+    // by addKillScore, which is where a kill is actually registered.
+    if (doc.axiom) {
+      if (this._doctrineAxiomCd > 0) this._doctrineAxiomCd = Math.max(0, this._doctrineAxiomCd - dt);
+      for (let i = this._doctrineAxiomLines.length - 1; i >= 0; i--) {
+        this._doctrineAxiomLines[i].t -= dt;
+        if (this._doctrineAxiomLines[i].t <= 0) this._doctrineAxiomLines.splice(i, 1);
+      }
+      if (this._doctrineProofFlash && this._doctrineProofFlash.t > 0) {
+        this._doctrineProofFlash.t -= dt;
+        if (this._doctrineProofFlash.t <= 0) this._doctrineProofFlash = 0;
+      }
+    }
+
     if (!doc.heat || !this.player) return;
     const H = doc.heat;
 
@@ -36122,6 +36169,72 @@ _drawLoreArchive(ctx) {
       this._doctrineHeatRedlines++;
       this.triggerAnnouncement('\u25b2 REDLINE \u2014 RAILGUN FREE, PLATING BURNING \u25b2', '#ff9a2d', { priority: 2 });
     }
+  }
+
+  /** True while assassin_clone holds an ARMED execution window. Read by FusionEngine. */
+  doctrineShroudArmed() {
+    const doc = this._doctrine();
+    return !!(doc && doc.shroud && this._doctrineShroudWindow > 0);
+  }
+
+  /** The execution-threshold bonus an armed shroud grants, or 0. Read by FusionEngine. */
+  doctrineExecBonus() {
+    const doc = this._doctrine();
+    if (!doc || !doc.shroud || this._doctrineShroudWindow <= 0) return 0;
+    return doc.shroud.execBonus || 0;
+  }
+
+  /** Any damage taken breaks the shroud. Called from _damagePlayer, which is the one gate. */
+  _doctrineBreakShroud() {
+    const doc = this._doctrine();
+    if (!doc || !doc.shroud) return;
+    if (this._doctrineShroud > 0 || this._doctrineShroudWindow > 0) {
+      const wasArmed = this._doctrineShroudWindow > 0;
+      this._doctrineShroud = 0;
+      this._doctrineShroudWindow = 0;
+      if (wasArmed) this.triggerAnnouncement('\u25c8 SHROUD BROKEN \u25c8', '#7CFF4D', { priority: 3 });
+    }
+  }
+
+  /**
+   * AXIOM DOCTRINE (euclid_vector): two kills define a line, and the line is asserted through
+   * everything standing on it. Every bound here exists because an unbounded version would
+   * delete Chaos at 800 enemies - see the caps block in ChaosDoctrine.js.
+   */
+  _doctrineAxiomKill(pos) {
+    const doc = this._doctrine();
+    if (!doc || !doc.axiom || !pos || !Number.isFinite(pos.x) || !Number.isFinite(pos.y)) return;
+    const A = doc.axiom;
+    const prev = this._doctrineAxiomLast;
+    this._doctrineAxiomLast = { x: pos.x, y: pos.y };
+    if (!prev) return;
+    if (this._doctrineAxiomCd > 0) return;
+    const dx = pos.x - prev.x, dy = pos.y - prev.y;
+    const len = Math.hypot(dx, dy);
+    if (!(len >= A.minSeparation)) return;          // a blob cannot draw a line
+    this._doctrineAxiomCd = A.cooldown;
+
+    const ux = dx / len, uy = dy / len;
+    let victims = 0;
+    // Snapshot: takeHit can chain-kill and splice this.enemies mid-loop, which silently skips
+    // entries (measured on the VENOM PYLON: 2 of 3 eligible enemies hit instead of 3).
+    for (const e of this.enemies.slice()) {
+      if (victims >= A.maxVictims) break;
+      if (!e || e.hp <= 0 || !e.pos) continue;
+      // perpendicular distance to the SEGMENT, not the infinite line
+      const px = e.pos.x - prev.x, py = e.pos.y - prev.y;
+      const t  = px * ux + py * uy;
+      if (t < 0 || t > len) continue;
+      const perp = Math.abs(px * uy - py * ux);
+      if (perp > A.lineWidth) continue;
+      const isBig = (e.isBoss && e.isBoss()) || e.isMegaBoss;
+      const dmg = isBig ? A.damage * A.bossFraction : A.damage;
+      try { e.takeHit(isBig && this._capBossDamage ? this._capBossDamage(e, dmg) : dmg, this); } catch (_) { continue; }
+      victims++;
+      this._doctrineAxiomHits++;
+    }
+    if (this._doctrineAxiomLines.length >= 12) this._doctrineAxiomLines.shift();
+    this._doctrineAxiomLines.push({ ax: prev.x, ay: prev.y, bx: pos.x, by: pos.y, t: A.trailSecs, max: A.trailSecs });
   }
 
   /** Dump the heat bar (FOUNDRY PYLON, and the ultimate's own vent). */
@@ -36194,7 +36307,7 @@ _drawLoreArchive(ctx) {
         if (d < TRIGGER_R) {
           p.triggered = true;
           p.life      = Math.min(p.life, 0.6); // flash then remove
-          if (p.type === 'fate' || p.type === 'foundry') {
+          if (p.type === 'fate' || p.type === 'foundry' || p.type === 'venom' || p.type === 'proof') {
             this._doctrineTriggerPylon(p);
           } else if (p.type === 'danger') {
             this._damagePlayer(15, { color: '#ff4400', shake: 4 });
@@ -36257,6 +36370,71 @@ _drawLoreArchive(ctx) {
       return;
     }
 
+    if (P.id === 'venom') {
+      // Finish what he started: only enemies ALREADY at or under execPct, never a boss, and
+      // never more than maxKills. Every finish feeds the shroud back.
+      let kills = 0;
+      const r2 = P.radius * P.radius;
+      // Snapshot — see the note in _doctrineAxiomKill: takeHit splices this.enemies.
+      for (const e of this.enemies.slice()) {
+        if (kills >= P.maxKills) break;
+        if (!e || e.hp <= 0 || !e.pos) continue;
+        if ((e.isBoss && e.isBoss()) || e.isMegaBoss) continue;
+        const dx = e.pos.x - p.pos.x, dy = e.pos.y - p.pos.y;
+        if (dx * dx + dy * dy > r2) continue;
+        const maxHp = e.maxHp || e.hp;
+        if (e.hp > maxHp * P.execPct) continue;
+        try { e.takeHit(e.hp + 1, this); } catch (_) { continue; }
+        kills++;
+      }
+      if (kills > 0 && this._doctrineShroudWindow <= 0) {
+        this._doctrineShroud = Math.min(1, this._doctrineShroud + P.shroudPerKill * kills);
+      }
+      this._doctrineVenomKills = (this._doctrineVenomKills || 0) + kills;
+      this._chaosPylonBuff = { type: 'venom', timer: 3.0 };
+      this._spawnFloatingText(kills > 0 ? 'VENOM \u00d7' + kills : 'VENOM \u2014 NO PREY',
+                              p.pos.clone(), '#7CFF4D', 1.2);
+      return;
+    }
+
+    if (P.id === 'proof') {
+      // Anchor a vertex instead of paying out. The third anchor closes the triangle.
+      this._doctrineProofNodes.push({ x: p.pos.x, y: p.pos.y });
+      if (this._doctrineProofNodes.length < P.vertices) {
+        this._spawnFloatingText('VERTEX ' + this._doctrineProofNodes.length + '/' + P.vertices,
+                                p.pos.clone(), '#ffd447', 1.1);
+        this._chaosPylonBuff = { type: 'proof', timer: 3.0 };
+        return;
+      }
+      const pts = this._doctrineProofNodes.slice(0, P.vertices);
+      this._doctrineProofNodes = [];
+      const inTri = (x, y) => {
+        const [a, b, c] = pts;
+        const d1 = (x - b.x) * (a.y - b.y) - (a.x - b.x) * (y - b.y);
+        const d2 = (x - c.x) * (b.y - c.y) - (b.x - c.x) * (y - c.y);
+        const d3 = (x - a.x) * (c.y - a.y) - (c.x - a.x) * (y - a.y);
+        const neg = (d1 < 0) || (d2 < 0) || (d3 < 0);
+        const pos = (d1 > 0) || (d2 > 0) || (d3 > 0);
+        return !(neg && pos);
+      };
+      let hit = 0;
+      // Snapshot — see the note in _doctrineAxiomKill: takeHit splices this.enemies.
+      for (const e of this.enemies.slice()) {
+        if (hit >= P.maxVictims) break;
+        if (!e || e.hp <= 0 || !e.pos) continue;
+        if (!inTri(e.pos.x, e.pos.y)) continue;
+        const isBig = (e.isBoss && e.isBoss()) || e.isMegaBoss;
+        const dmg = isBig ? P.damage * 0.25 : P.damage;
+        try { e.takeHit(isBig && this._capBossDamage ? this._capBossDamage(e, dmg) : dmg, this); } catch (_) { continue; }
+        hit++;
+      }
+      this._doctrineProofProved++;
+      this._doctrineProofFlash = { pts, t: P.flashSecs, max: P.flashSecs };
+      this._chaosPylonBuff = { type: 'proof', timer: 3.0 };
+      this._spawnFloatingText('Q.E.D. \u00d7' + hit, p.pos.clone(), '#ffd447', 1.5);
+      return;
+    }
+
     if (P.id === 'foundry') {
       this._doctrineVentHeat();
       if (this._doctrineFoundryStacks < P.maxStacks) {
@@ -36275,7 +36453,67 @@ _drawLoreArchive(ctx) {
     }
   }
 
+  /**
+   * Doctrine world VFX. Drawn from inside _drawChaosPylons so it inherits exactly the same
+   * transform the pylons use - no second convention to get wrong.
+   */
+  _drawDoctrineFx(ctx) {
+    const lines = this._doctrineAxiomLines;
+    if (lines && lines.length) {
+      ctx.save();
+      ctx.lineCap = 'round';
+      for (const L of lines) {
+        const a = Math.max(0, L.t / (L.max || 1));
+        ctx.globalAlpha = a * 0.9;
+        ctx.strokeStyle = '#ffd447';
+        ctx.lineWidth = 2 + 3 * a;
+        ctx.beginPath(); ctx.moveTo(L.ax, L.ay); ctx.lineTo(L.bx, L.by); ctx.stroke();
+        ctx.globalAlpha = a * 0.35;
+        ctx.strokeStyle = '#fff6c9';
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(L.ax, L.ay); ctx.lineTo(L.bx, L.by); ctx.stroke();
+      }
+      ctx.restore();
+    }
+    const nodes = this._doctrineProofNodes;
+    if (nodes && nodes.length) {
+      ctx.save();
+      ctx.globalAlpha = 0.75;
+      ctx.strokeStyle = '#ffd447';
+      ctx.lineWidth = 2;
+      for (const n of nodes) { ctx.beginPath(); ctx.arc(n.x, n.y, 16, 0, Math.PI * 2); ctx.stroke(); }
+      if (nodes.length > 1) {
+        ctx.globalAlpha = 0.45;
+        ctx.setLineDash([8, 8]);
+        ctx.beginPath();
+        ctx.moveTo(nodes[0].x, nodes[0].y);
+        for (let i = 1; i < nodes.length; i++) ctx.lineTo(nodes[i].x, nodes[i].y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      ctx.restore();
+    }
+    const fl = this._doctrineProofFlash;
+    if (fl && fl.t > 0 && fl.pts && fl.pts.length === 3) {
+      const a = Math.max(0, fl.t / (fl.max || 1));
+      ctx.save();
+      ctx.globalAlpha = a * 0.30;
+      ctx.fillStyle = '#ffd447';
+      ctx.beginPath();
+      ctx.moveTo(fl.pts[0].x, fl.pts[0].y);
+      ctx.lineTo(fl.pts[1].x, fl.pts[1].y);
+      ctx.lineTo(fl.pts[2].x, fl.pts[2].y);
+      ctx.closePath(); ctx.fill();
+      ctx.globalAlpha = a * 0.95;
+      ctx.strokeStyle = '#fff6c9';
+      ctx.lineWidth = 2 + 2 * a;
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
   _drawChaosPylons(ctx) {
+    this._drawDoctrineFx(ctx);
     const now = performance.now();
     for (const p of this._chaosPylons) {
       const lifeFrac = p.life / p.maxLife;
@@ -36287,6 +36525,10 @@ _drawLoreArchive(ctx) {
       let core, glow;
       if (p.type === 'danger') { core = '#ff4400'; glow = '#ff220088'; }
       else if (p.type === 'shield') { core = '#00eeff'; glow = '#00bbff66'; }
+      else if (p.type === 'fate')    { core = '#a855f7'; glow = '#a855f766'; }
+      else if (p.type === 'foundry') { core = '#ff9a2d'; glow = '#ff6a0066'; }
+      else if (p.type === 'venom')   { core = '#7CFF4D'; glow = '#44ff8866'; }
+      else if (p.type === 'proof')   { core = '#ffd447'; glow = '#ffcc0066'; }
       else { core = '#44ff88'; glow = '#22cc6644'; }
 
       ctx.save();

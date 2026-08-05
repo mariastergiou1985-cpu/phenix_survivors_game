@@ -1357,7 +1357,9 @@ FUSION_EXECUTORS.fus_hungry_hell_feast = {
       }
       if (M.execT >= m.execute.everyS && M.execCount < m.execute.maxPerCycle) {
         M.execT = 0;
-        const pct = A(m.execute.pctMaxHp, i) + (fe.chaos() ? (d.chaos.execPctBonus || 0) : 0);
+        // CHAOS DOCTRINE (assassin_clone): an ARMED shroud widens the execution window once.
+        const pct = A(m.execute.pctMaxHp, i) + (fe.chaos() ? (d.chaos.execPctBonus || 0) : 0)
+                  + (fe.chaos() ? (fe.game.doctrineExecBonus?.() || 0) : 0);
         for (const e of fe.near(M.x, M.y, radius)) {
           if (fe.isBoss(e)) continue;
           const maxHp = e.maxHp || e.hp;
@@ -1860,7 +1862,9 @@ FUSION_EXECUTORS.fus_widows_loom = {
       }
       if (L.t >= durS) {
         // CINCH
-        const execPct = A(m.cinch.execPct, i) + (fe.chaos() ? (d.chaos.execPctBonus || 0) : 0);
+        // CHAOS DOCTRINE (assassin_clone): an ARMED shroud widens the execution window once.
+        const execPct = A(m.cinch.execPct, i) + (fe.chaos() ? (d.chaos.execPctBonus || 0) : 0)
+                      + (fe.chaos() ? (fe.game.doctrineExecBonus?.() || 0) : 0);
         let executions = 0;
         for (const e of fe.near(L.cx, L.cy, L.R + 40)) {
           const stacks = st.objects.venom.get(e) || 0;
@@ -1979,7 +1983,10 @@ FUSION_EXECUTORS.fus_phantom_needle_protocol = {
           fe.dealDamage(st.id, e, A(m.needles.dmg, i));
           if (!fe.isBoss(e)) {
             const maxHp = e.maxHp || e.hp;
-            if (e.hp > 0 && e.hp <= maxHp * m.needles.executeBelowPct) {
+            // CHAOS DOCTRINE (assassin_clone): an ARMED shroud widens the execution window.
+            const _needPct = m.needles.executeBelowPct
+                           + (fe.chaos() ? (fe.game.doctrineExecBonus?.() || 0) : 0);
+            if (e.hp > 0 && e.hp <= maxHp * _needPct) {
               fe.dealDamage(st.id, e, Math.min(m.needles.execCap, e.hp + 1));
             }
           } else if (rt && rt._status && typeof e.takeHit === 'function') {

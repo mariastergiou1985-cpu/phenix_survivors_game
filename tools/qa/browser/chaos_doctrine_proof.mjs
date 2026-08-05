@@ -108,6 +108,7 @@ await page.waitForSelector('#cgm-overlay', { timeout: 20000 });
 await page.waitForTimeout(1300);
 
 check('A00 sw.js BUILD equals index.html main.js ?v=', BUILD === IDX_V, `${BUILD} vs ${IDX_V}`);
+await page.evaluate(b => { window.__BUILD = b; }, BUILD);
 await page.evaluate(async (build) => {
   const mod = await import(`./js/game/Game.js?v=${build}`);
   await new Promise((res) => {
@@ -125,6 +126,11 @@ const rig = await page.evaluate(async (dv) => {
   g.meta._save = () => {};
   const cd = await import(`./js/game/ChaosDoctrine.js?v=${dv}`);
   window.__cd = cd;
+  const src = await fetch('./js/game/Game.js?v=' + window.__BUILD).then(r => r.text()).catch(() => '');
+  const ev = (src.match(/Enemy\.js\?v=(\d+)/) || [])[1] || '';
+  try { window.__Enemy = (await import(`./js/entities/Enemy.js?v=${ev}`)).Enemy; } catch (_) { window.__Enemy = null; }
+  // addKillScore hands the position straight to the particle system, which calls pos.clone().
+  window.__pt = (x, y) => ({ x, y, clone() { return window.__pt(this.x, this.y); } });
   window.__IN = { keys: new Set(), mousePos: { x: 0, y: 0 }, mouseDown: false };
   window.__step = (n) => {
     for (let i = 0; i < n; i++) {
@@ -147,9 +153,10 @@ const rig = await page.evaluate(async (dv) => {
   };
   return { chars: cd.doctrineCharacters() };
 }, DOC_V);
-check('A03 the doctrine table ships exactly the two piloted characters',
-  rig.chars.length === 2 && rig.chars.includes('japan_phasewalker') && rig.chars.includes('cyber_arm_hero'),
-  rig.chars.join(', '));
+check('A03x the Enemy class is available to the rig', await page.evaluate(() => !!window.__Enemy));
+const PILOT = ['japan_phasewalker', 'cyber_arm_hero', 'assassin_clone', 'euclid_vector'];
+check('A03 the doctrine table ships exactly the four piloted characters',
+  rig.chars.length === 4 && PILOT.every(c => rig.chars.includes(c)), rig.chars.join(', '));
 
 // ════════════════════════════════════════════════════════════════════════════
 // B. THE LAW TEXT NOW MATCHES THE LAW
@@ -399,8 +406,8 @@ check('E11 the run keeps a finite, positive xpMult after the swap',
 const others = await page.evaluate(() => {
   const g = window.__g;
   const out = {};
-  for (const c of ['skeleton_warrior', 'taekwondo_girl', 'brawler_warrior', 'euclid_vector',
-                   'oni_cataclysm_protocol', 'assassin_clone', 'eddie', 'dimis_kickboxer']) {
+  for (const c of ['skeleton_warrior', 'taekwondo_girl', 'brawler_warrior',
+                   'oni_cataclysm_protocol', 'eddie', 'dimis_kickboxer']) {
     window.__run(c, true);
     const doc = !!g._doctrine();
     // 600 pylon spawns: the distribution must stay the shipped 50/25/25 with nothing else in it
@@ -420,7 +427,7 @@ const others = await page.evaluate(() => {
 const allClean = Object.values(others).every(o =>
   o.doc === false && o.heat === 0 && o.rerolls === 0 &&
   o.types.length === 3 && o.types.join(',') === 'danger,heal,shield');
-check('F01 the other eight characters get NO doctrine, NO heat, NO rerolls',
+check('F01 the other six characters get NO doctrine, NO heat, NO rerolls',
   allClean, JSON.stringify(Object.fromEntries(Object.entries(others).map(([k, v]) => [k, v.types.join('/')]))));
 
 const dist = await page.evaluate(() => {
@@ -442,6 +449,209 @@ check('F02 a piloted character DOES get its own pylon, at roughly one in four',
   `${dist.foundryPct}% foundry of ${dist.total} — ${JSON.stringify(dist.seen)}`);
 
 // ════════════════════════════════════════════════════════════════════════════
+// I. ASSASSIN CLONE — SHROUD DOCTRINE + VENOM PYLON
+// ════════════════════════════════════════════════════════════════════════════
+const shroud = await page.evaluate(async () => {
+  const g = window.__g;
+  const S = window.__cd.CHAOS_DOCTRINE.assassin_clone.shroud;
+
+  // (a) Endless: nothing exists.
+  window.__run('assassin_clone', false);
+  const endlessDoc = !!g._doctrine();
+  for (let i = 0; i < 120; i++) g._updateChaosDoctrine(1 / 60);
+  const endlessShroud = g._doctrineShroud;
+
+  // (b) Chaos: it fills while untouched, and arms exactly once.
+  window.__run('assassin_clone', true);
+  g._doctrineShroud = 0; g._doctrineShroudWindow = 0; g._doctrineShroudArms = 0;
+  let armBanner = 0, breakBanner = 0;
+  const ta = g.triggerAnnouncement.bind(g);
+  g.triggerAnnouncement = (t, c, o) => {
+    if (/SHROUD ARMED/.test(String(t))) armBanner++;
+    if (/SHROUD BROKEN/.test(String(t))) breakBanner++;
+    return ta(t, c, o);
+  };
+  const need = Math.ceil((1 / S.fillPerSec) * 60) + 8;
+  for (let i = 0; i < need; i++) g._updateChaosDoctrine(1 / 60);
+  const armed = { shroud: g._doctrineShroud, window: +g._doctrineShroudWindow.toFixed(2),
+                  arms: g._doctrineShroudArms, isArmed: g.doctrineShroudArmed(),
+                  bonus: g.doctrineExecBonus() };
+
+  // (c) ONE hit from any source breaks it — asserted at the single damage gate.
+  g.player.hp = g.player.maxHp;
+  g._damagePlayer(1, {});
+  const broken = { shroud: g._doctrineShroud, window: g._doctrineShroudWindow,
+                   isArmed: g.doctrineShroudArmed(), bonus: g.doctrineExecBonus() };
+
+  // (d) an unspent window lapses back to empty rather than lingering
+  // Step until the window expires and read on THAT frame: the meter is designed to start
+  // refilling immediately afterwards, so sampling later would measure the refill, not the lapse.
+  g._doctrineShroud = 1; g._doctrineShroudWindow = 0.2;
+  let lapsed = null;
+  for (let i = 0; i < 60 && !lapsed; i++) {
+    g._updateChaosDoctrine(1 / 60);
+    if (g._doctrineShroudWindow === 0) lapsed = { shroud: g._doctrineShroud, window: g._doctrineShroudWindow };
+  }
+  g.triggerAnnouncement = ta;
+  return { endlessDoc, endlessShroud, armed, armBanner, broken, breakBanner, lapsed,
+           fillPerSec: S.fillPerSec, execBonus: S.execBonus };
+});
+check('I01 the shroud does NOT exist in Endless',
+  shroud.endlessDoc === false && shroud.endlessShroud === 0, `doc ${shroud.endlessDoc}`);
+check('I02 the shroud fills while untouched and arms exactly once',
+  shroud.armed.isArmed === true && shroud.armed.arms === 1 && shroud.armBanner === 1,
+  `armed ${shroud.armed.isArmed}, arms ${shroud.armed.arms}, banners ${shroud.armBanner}`);
+check('I03 an armed shroud widens the execution threshold by exactly execBonus',
+  Math.abs(shroud.armed.bonus - shroud.execBonus) < 1e-9, `${shroud.armed.bonus} vs ${shroud.execBonus}`);
+check('I04 ONE point of damage from any source breaks it, at the single damage gate',
+  shroud.broken.shroud === 0 && shroud.broken.window === 0 &&
+  shroud.broken.isArmed === false && shroud.broken.bonus === 0 && shroud.breakBanner === 1,
+  JSON.stringify(shroud.broken));
+check('I05 an unspent window lapses back to empty rather than lingering',
+  !!shroud.lapsed && shroud.lapsed.shroud === 0 && shroud.lapsed.window === 0,
+  JSON.stringify(shroud.lapsed));
+
+const venom = await page.evaluate(() => {
+  const g = window.__g;
+  const P = window.__cd.CHAOS_DOCTRINE.assassin_clone.pylon;
+  window.__run('assassin_clone', true);
+  g.enemies.length = 0;
+  g._doctrineShroud = 0; g._doctrineShroudWindow = 0; g._doctrineVenomKills = 0;
+  const mk = (hpFrac, dist, boss) => {
+    let e = null;
+    try { e = new window.__Enemy('Neon Swarmer', 1); } catch (_) { return null; }
+    e.maxHp = 1000; e.hp = Math.round(1000 * hpFrac);
+    e.pos.x = g.player.pos.x + dist; e.pos.y = g.player.pos.y;
+    if (boss) e.isMegaBoss = true;
+    g.enemies.push(e); return e;
+  };
+  const weak   = [mk(0.10, 20), mk(0.25, 60), mk(0.29, 100)];   // inside, under 30%
+  const strong = [mk(0.80, 40), mk(0.50, 80)];                  // inside, over 30%
+  const far    = [mk(0.05, P.radius + 200)];                    // under 30% but out of range
+  const bossE  = mk(0.05, 50, true);                            // under 30% but a Mega Boss
+  g._doctrineTriggerPylon({ pos: g.player.pos.clone(), type: 'venom' });
+  return {
+    weakDead:   weak.every(e => e && e.hp <= 0),
+    strongAlive: strong.every(e => e && e.hp > 0),
+    farAlive:   far.every(e => e && e.hp > 0),
+    bossAlive:  !!bossE && bossE.hp > 0,
+    kills: g._doctrineVenomKills,
+    shroudFed: g._doctrineShroud > 0,
+    buff: g._chaosPylonBuff?.type,
+  };
+});
+check('I06 a VENOM PYLON finishes only enemies already under its threshold',
+  venom.weakDead === true && venom.strongAlive === true, JSON.stringify(venom));
+check('I07 it respects its radius and never touches a Mega Boss',
+  venom.farAlive === true && venom.bossAlive === true, `far alive ${venom.farAlive}, boss alive ${venom.bossAlive}`);
+check('I08 every finish feeds the shroud back', venom.kills === 3 && venom.shroudFed === true,
+  `${venom.kills} kills, shroud fed ${venom.shroudFed}, buff ${venom.buff}`);
+
+// ════════════════════════════════════════════════════════════════════════════
+// J. EUCLID VECTOR — AXIOM DOCTRINE + PROOF PYLON
+// ════════════════════════════════════════════════════════════════════════════
+const axiom = await page.evaluate(() => {
+  const g = window.__g;
+  const A = window.__cd.CHAOS_DOCTRINE.euclid_vector.axiom;
+
+  // Endless first.
+  window.__run('euclid_vector', false);
+  const endlessDoc = !!g._doctrine();
+
+  window.__run('euclid_vector', true);
+  g.enemies.length = 0;
+  const P0 = { x: g.player.pos.x, y: g.player.pos.y };
+  const mk = (x, y) => {
+    let e = null;
+    try { e = new window.__Enemy('Neon Swarmer', 1); } catch (_) { return null; }
+    e.maxHp = 100000; e.hp = 100000; e.pos.x = x; e.pos.y = y;
+    g.enemies.push(e); return e;
+  };
+  // a row ON the line, one clearly OFF it
+  const on  = [];
+  for (let i = 1; i <= 9; i++) on.push(mk(P0.x + i * 60, P0.y));
+  const off = mk(P0.x + 300, P0.y + A.lineWidth * 4);
+
+  // (a) two kills too close together must NOT draw a line
+  g._doctrineAxiomLast = null; g._doctrineAxiomCd = 0; g._doctrineAxiomHits = 0;
+  g.addKillScore(window.__pt(P0.x, P0.y), false);
+  g.addKillScore(window.__pt(P0.x + A.minSeparation * 0.4, P0.y), false);
+  const tooClose = g._doctrineAxiomHits;
+
+  // (b) two distant kills DO
+  g._doctrineAxiomLast = null; g._doctrineAxiomCd = 0; g._doctrineAxiomHits = 0;
+  g.addKillScore(window.__pt(P0.x, P0.y), false);
+  g.addKillScore(window.__pt(P0.x + 620, P0.y), false);
+  const hits = g._doctrineAxiomHits;
+  const lines = g._doctrineAxiomLines.length;
+  const offUntouched = off && off.hp === off.maxHp;
+
+  // (c) the cooldown holds the rate down
+  g._doctrineAxiomHits = 0;
+  for (let i = 0; i < 20; i++) {
+    g.addKillScore(window.__pt(P0.x, P0.y), false);
+    g.addKillScore(window.__pt(P0.x + 620, P0.y), false);
+  }
+  const spamHits = g._doctrineAxiomHits;
+
+  // (d) a Mega Boss on the line takes only the fraction
+  g.enemies.length = 0;
+  const boss = mk(P0.x + 300, P0.y); boss.isMegaBoss = true; boss.maxHp = 1e7; boss.hp = 1e7;
+  g._doctrineAxiomLast = null; g._doctrineAxiomCd = 0;
+  g.addKillScore(window.__pt(P0.x, P0.y), false);
+  g.addKillScore(window.__pt(P0.x + 620, P0.y), false);
+  const bossTook = 1e7 - boss.hp;
+
+  return { endlessDoc, tooClose, hits, lines, offUntouched, spamHits, bossTook,
+           maxVictims: A.maxVictims, dmg: A.damage, frac: A.bossFraction };
+});
+check('J01 the axiom does NOT exist in Endless', axiom.endlessDoc === false);
+check('J02 two kills too close together draw NO line — a blob cannot cheat it',
+  axiom.tooClose === 0, `${axiom.tooClose} hits`);
+check('J03 two distant kills assert a line through the enemies standing on it',
+  axiom.hits > 0 && axiom.lines === 1, `${axiom.hits} victims, ${axiom.lines} trail`);
+check('J04 the line is capped at maxVictims however dense the row',
+  axiom.hits <= axiom.maxVictims, `${axiom.hits} <= ${axiom.maxVictims}`);
+check('J05 an enemy off the line is untouched', axiom.offUntouched === true);
+check('J06 the cooldown bounds the rate — 20 kill pairs cannot fire 20 lines',
+  axiom.spamHits <= axiom.maxVictims, `${axiom.spamHits} victims from 20 pairs`);
+check('J07 a Mega Boss on the line takes only the bounded fraction',
+  axiom.bossTook > 0 && axiom.bossTook <= axiom.dmg * axiom.frac + 0.01,
+  `${axiom.bossTook} vs full ${axiom.dmg}`);
+
+const proof = await page.evaluate(() => {
+  const g = window.__g;
+  const P = window.__cd.CHAOS_DOCTRINE.euclid_vector.pylon;
+  window.__run('euclid_vector', true);
+  g.enemies.length = 0;
+  g._doctrineProofNodes = []; g._doctrineProofProved = 0;
+  const c = { x: g.player.pos.x, y: g.player.pos.y };
+  const mk = (x, y) => {
+    let e = null;
+    try { e = new window.__Enemy('Neon Swarmer', 1); } catch (_) { return null; }
+    e.maxHp = 100000; e.hp = 100000; e.pos.x = x; e.pos.y = y;
+    g.enemies.push(e); return e;
+  };
+  const inside  = mk(c.x, c.y - 60);           // inside the triangle below
+  const outside = mk(c.x + 900, c.y + 900);    // far outside
+  const v = [{ x: c.x - 300, y: c.y - 300 }, { x: c.x + 300, y: c.y - 300 }, { x: c.x, y: c.y + 300 }];
+  const steps = [];
+  for (const pt of v) {
+    g._doctrineTriggerPylon({ pos: window.__pt(pt.x, pt.y), type: 'proof' });
+    steps.push(g._doctrineProofNodes.length);
+  }
+  return { steps, proved: g._doctrineProofProved, nodesAfter: g._doctrineProofNodes.length,
+           insideHurt: inside.hp < inside.maxHp, outsideUntouched: outside.hp === outside.maxHp,
+           flash: !!g._doctrineProofFlash };
+});
+check('J08 the first two PROOF PYLONS anchor vertices instead of paying out',
+  proof.steps[0] === 1 && proof.steps[1] === 2, JSON.stringify(proof.steps));
+check('J09 the third closes the triangle and proves the interior',
+  proof.proved === 1 && proof.nodesAfter === 0 && proof.insideHurt === true, JSON.stringify(proof));
+check('J10 an enemy outside the triangle is untouched', proof.outsideUntouched === true);
+check('J11 the closing flash is armed for the draw pass', proof.flash === true);
+
+// ════════════════════════════════════════════════════════════════════════════
 // G. RESET / CLEANUP
 // ════════════════════════════════════════════════════════════════════════════
 const after = await page.evaluate(() => {
@@ -450,6 +660,11 @@ const after = await page.evaluate(() => {
   g._doctrineHeat = 1; g._doctrineFoundryStacks = 3; g._doctrineRerollCharges = 2;
   g._doctrineRerollsUsed = 4; g._doctrineFired = 9; g._doctrinePendingReroll = true;
   g._clsRerollMode = true; g._doctrineHeatVentCd = 0.5; g._doctrineHeatRedlines = 3;
+  g._doctrineShroud = 1; g._doctrineShroudWindow = 4; g._doctrineShroudArms = 2;
+  g._doctrineAxiomLast = { x: 1, y: 1 }; g._doctrineAxiomCd = 0.4; g._doctrineAxiomHits = 7;
+  g._doctrineAxiomLines = [{ ax: 0, ay: 0, bx: 1, by: 1, t: 1, max: 1 }];
+  g._doctrineProofNodes = [{ x: 0, y: 0 }, { x: 1, y: 1 }]; g._doctrineProofProved = 3;
+  g._doctrineProofFlash = { pts: [], t: 1, max: 1 };
   const armed = { heat: g._doctrineHeat, stacks: g._doctrineFoundryStacks, charges: g._doctrineRerollCharges };
   g.gameOver = true;
   g.reset();
@@ -459,14 +674,22 @@ const after = await page.evaluate(() => {
     used: g._doctrineRerollsUsed, fired: g._doctrineFired, pending: g._doctrinePendingReroll,
     rerollMode: g._clsRerollMode, ventCd: g._doctrineHeatVentCd, redlines: g._doctrineHeatRedlines,
     lawXp: g._doctrineLawXpApplied,
+    shroud: g._doctrineShroud, shroudWin: g._doctrineShroudWindow, shroudArms: g._doctrineShroudArms,
+    axiomLast: g._doctrineAxiomLast, axiomCd: g._doctrineAxiomCd, axiomHits: g._doctrineAxiomHits,
+    axiomLines: g._doctrineAxiomLines.length, proofNodes: g._doctrineProofNodes.length,
+    proofProved: g._doctrineProofProved, proofFlash: g._doctrineProofFlash,
   };
 });
 check('G01 the rig really armed the doctrine before the restart',
   after.armed.heat === 1 && after.armed.stacks === 3 && after.armed.charges === 2, JSON.stringify(after.armed));
-check('G02 a restart clears EVERY doctrine field',
+check('G02 a restart clears EVERY doctrine field, all four characters',
   after.heat === 0 && after.stacks === 0 && after.charges === 0 && after.used === 0 &&
   after.fired === 0 && after.pending === false && after.rerollMode === false &&
-  after.ventCd === 0 && after.redlines === 0 && after.lawXp === 1,
+  after.ventCd === 0 && after.redlines === 0 && after.lawXp === 1 &&
+  after.shroud === 0 && after.shroudWin === 0 && after.shroudArms === 0 &&
+  after.axiomLast === null && after.axiomCd === 0 && after.axiomHits === 0 &&
+  after.axiomLines === 0 && after.proofNodes === 0 && after.proofProved === 0 &&
+  after.proofFlash === 0,
   JSON.stringify(after));
 
 // ════════════════════════════════════════════════════════════════════════════
