@@ -32,7 +32,7 @@ import './BuildEnginePassives.js?v=20260902130000'; // P2.6 Build passives §26-
 import { MutationUI }      from './MutationUI.js?v=20260904180000';
 import { sampleMutations, sampleCorruptedMutation } from './Mutations.js?v=20260904180000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260904170000';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, COLLECTIBLE_FRAGMENT_COST, COLLECTIBLE_GRID_COST, ECHO_FRAGMENT_COST, ECHO_GRID_COST, SKILL_TREE, AMULET_DEFS, GRID_TO_PF_RATE, characterStageRequirement } from './MetaProgress.js?v=20260904230000';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, COLLECTIBLE_FRAGMENT_COST, COLLECTIBLE_GRID_COST, ECHO_FRAGMENT_COST, ECHO_GRID_COST, SKILL_TREE, AMULET_DEFS, GRID_TO_PF_RATE, characterStageRequirement } from './MetaProgress.js?v=20260904240000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260712520000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
@@ -760,6 +760,23 @@ const SYSTEM_LOGS = [
     text: 'Every survivor now carries two weapons that did not exist last cycle. The forge did not make them. The characters did.' },
   { id: 'log10', num: '10', threshold: 95, title: 'THE BOSSES REMEMBER',
     text: 'Containment reports say the longer a warden survives, the more it learns. Enrage. Nova. Reinforcement. Do not let them study you.' },
+];
+
+// ── BROKEN ARCHIVE — Chaos-only lore, earned by FAILING ───────────────────
+// The System Logs above unlock by ACCUMULATING Eden Memory, which caps at 100 and then stops
+// giving. These unlock the other way round: from the specific shapes a Chaos run takes when it
+// ends badly. Chaos guarantees a supply of those, so the archive keeps paying long after the
+// memory bar is full. Text only — the keys grant no currency, no outfit and no stat.
+const BROKEN_ARCHIVE = [
+  { id: 'ba_cold_open', num: 'C1', title: 'THE GRID DOES NOT WARM UP',
+    req: 'Die in Chaos inside the first 3:00.',
+    text: 'It does not open a door for you. There is no first wave, no measuring glance, no polite exchange of terms. The archive logs your arrival and your ending in the same entry, because there was no interval between them worth recording.' },
+  { id: 'ba_still_standing', num: 'C2', title: 'IT WAS STILL STANDING',
+    req: 'Die in Chaos with a Mega Titan still alive on the field.',
+    text: 'The thing that outlived you did not celebrate. It completed its rotation, found nothing left to track, and went back to waiting. EDEN CORE notes, without comment, that it has never once had to finish what it started.' },
+  { id: 'ba_long_silence', num: 'C3', title: 'THE LONG SILENCE',
+    req: 'Survive 10:00 in Chaos without destroying a single Mega Titan.',
+    text: 'Ten minutes of perfect avoidance. The Grid has no word for this and so it files the run under endurance, which is the same drawer it uses for machinery that has not yet broken. Survival is not the same as an answer. You were present. You were not decisive.' },
 ];
 
 // ── Taekwondo Crystal Ice Field (replaces Lightning Dash Strike) ───────────────
@@ -4609,6 +4626,18 @@ export class Game {
           corrupted: _corrupted,
         });
       } catch (_e) { console.warn('[Chaos Ledger] recordChaosRun error', _e); }
+
+      // ── BROKEN ARCHIVE ─────────────────────────────────────────────────────
+      // Three ways a Chaos run ends badly, each unlocking one archive entry. meta.unlock() is
+      // idempotent and the keys are inert: they are read ONLY by the LORE tab. Nothing here
+      // grants currency, an outfit or a stat, so no amount of failing can move the economy.
+      try {
+        const _t = this.chaosTimeSecs;
+        const _titanAlive = !!(this._activeTitan && this._activeTitan.hp > 0);
+        if (this.gameOver && _t < 180)            this.meta?.unlock?.('ba_cold_open');
+        if (this.gameOver && _titanAlive)         this.meta?.unlock?.('ba_still_standing');
+        if (_t >= 600 && !(this._chaosTitansKilled > 0)) this.meta?.unlock?.('ba_long_silence');
+      } catch (_e) { console.warn('[Broken Archive] unlock error', _e); }
     }
     try { this._generateEdenRunMessages(); } catch(e) { console.warn('[Eden] _generateEdenRunMessages error:', e); }
   }
@@ -6221,6 +6250,32 @@ export class Game {
               </div>
             </div>
 
+            <div class="ct-panel" data-panel="chaos">
+              <div class="em-section" id="cxc-ranks-section">
+                <div class="em-header">
+                  <div class="em-title">&#9880; CHAOS SURVIVAL RANKS</div>
+                  <div class="em-pct" id="cxc-ranks-n">0 / 0</div>
+                </div>
+                <div class="em-list" id="cxc-ranks"></div>
+              </div>
+              <div class="ca-sep"></div>
+              <div class="sl-section" id="cxc-titans-section">
+                <div class="sl-header">
+                  <div class="sl-title">&#9650; MEGA TITANS</div>
+                  <div class="sl-subtitle" id="cxc-titans-n">0 / 4 DESTROYED</div>
+                </div>
+                <div class="sl-list" id="cxc-titans"></div>
+              </div>
+              <div class="ca-sep"></div>
+              <div class="sl-section" id="cxc-ledger-section">
+                <div class="sl-header">
+                  <div class="sl-title">&#9670; CHAOS LEDGER</div>
+                  <div class="sl-subtitle" id="cxc-ledger-n">0 RUNS LOGGED</div>
+                </div>
+                <div class="sl-list" id="cxc-ledger"></div>
+              </div>
+            </div>
+
             <div class="ct-panel" data-panel="lore">
               <div class="em-section" id="em-section">
                 <div class="em-header">
@@ -6254,6 +6309,17 @@ export class Game {
                   </div>
                 </div>
                 <div class="sl-list" id="sl-list"></div>
+              </div>
+              <div class="ca-sep"></div>
+              <div class="sl-section" id="ba-section">
+                <div class="sl-header">
+                  <div class="sl-title">&#9670; CORRUPTED</div>
+                  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                    <div class="sl-subtitle">BROKEN ARCHIVE &mdash; RECOVERED FROM FAILED CHAOS RUNS</div>
+                    <div class="sl-mem" id="ba-n">0 / 3</div>
+                  </div>
+                </div>
+                <div class="sl-list" id="ba-list"></div>
               </div>
             </div>
 
@@ -6611,8 +6677,20 @@ export class Game {
       { id: 'relics',       label: 'RELICS' },
       { id: 'skins',        label: 'SKINS' },
       { id: 'achievements', label: 'ACHIEVEMENTS' },
+      { id: 'chaos',        label: 'CHAOS' },
       { id: 'lore',         label: 'LORE' },
       { id: 'ost',          label: 'OST' },
+    ];
+  }
+
+  // The four Chaos Mega Titans, and the relic each one hands over. Kept next to the tab that
+  // renders them so the list cannot drift from _updateChaosTitans' own map.
+  _chaosTitanDefs() {
+    return [
+      { flag: 'titan_overlord',  name: 'GIGA-CORE OVERLORD',     relic: 'overlord_prism_array' },
+      { flag: 'titan_leviathan', name: 'MALWARE LEVIATHAN',      relic: 'leviathan_nanite_core' },
+      { flag: 'titan_emperor',   name: 'QUANTUM VOID EMPEROR',   relic: 'emperor_singularity_edge' },
+      { flag: 'titan_tyrant',    name: 'APOCALYPSE MECH TYRANT', relic: 'tyrant_antimatter_battery' },
     ];
   }
 
@@ -6830,7 +6908,50 @@ export class Game {
           : (readable ? 'Readable.' : `Requires EDEN MEMORY ${l.threshold}% (now: ${mem}%).`),
       };
     });
-    items.lore = mil.concat(logs);
+    // BROKEN ARCHIVE — appended to the LORE list so the tab counter and the detail pane pick it
+    // up for free. Order matters: _colRender markSeq's these by offset after the system logs.
+    const broken = BROKEN_ARCHIVE.map(b => {
+      const open = !!meta.isUnlocked?.(b.id);
+      return {
+        kind: 'BROKEN ARCHIVE', id: b.id,
+        name: open ? `${b.num} — ${b.title}` : `${b.num} — ???`,
+        sub: 'CORRUPTED', unlocked: open, mono: b.num, color: '#ff2d95',
+        stOn: '◈ RECOVERED',
+        desc: open ? b.text : '',
+        reqText: open ? 'Recovered.' : b.req,
+      };
+    });
+    items.lore = mil.concat(logs, broken);
+
+    // CHAOS tab — 10 per-character Survival Ranks + 4 Mega Titans = 14 countable entries.
+    // The Chaos Ledger rows underneath are a log, not collectibles, so they are NOT counted.
+    const ranks = (this.characters || []).map(c => {
+      const rec = meta.chaosRanks?.[c.id] || null;
+      const secs = Math.max(0, Math.floor(rec?.bestSecs || 0));
+      const mm = String(Math.floor(secs / 60)).padStart(2, '0'), ss = String(secs % 60).padStart(2, '0');
+      return {
+        kind: 'CHAOS RANK', id: 'crank_' + c.id,
+        name: c.name, sub: rec ? `${rec.bestRank} · ${mm}:${ss}` : 'NO RUN LOGGED',
+        unlocked: !!rec, mono: '◈', color: '#ff2d95',
+        stOn: rec ? rec.bestRank : '', bestSecs: secs, bestRank: rec?.bestRank || null,
+        desc: rec ? `Best Chaos survival: ${mm}:${ss}.` : '',
+        reqText: rec ? 'Logged.' : 'Finish a Chaos run with this character.',
+      };
+    });
+    const titans = this._chaosTitanDefs().map(t => {
+      const killed = !!meta.bossKills?.[t.flag];
+      const owned  = !!meta.relics?.[t.relic];
+      return {
+        kind: 'MEGA TITAN', id: t.flag,
+        name: killed ? t.name : '??? MEGA TITAN',
+        sub: killed ? (owned ? 'RELIC ACQUIRED' : 'DESTROYED') : 'NOT YET DESTROYED',
+        unlocked: killed, mono: '▲', color: '#7CFF4D',
+        stOn: '✓ DESTROYED',
+        desc: killed ? (RELIC_DEFS.find(r => r.id === t.relic)?.effect || '') : '',
+        reqText: killed ? 'Destroyed in Chaos.' : 'Destroy this Mega Titan in Chaos Mode.',
+      };
+    });
+    items.chaos = ranks.concat(titans);
 
     // OST tab — read straight from the freshly rendered jukebox rows (single source).
     const jbRows = this._achievementsOverlayEl?.querySelectorAll('#jb-list .jb-row') || [];
@@ -6864,6 +6985,107 @@ export class Game {
     </div>`;
   }
 
+  /**
+   * CHAOS tab body — ranks, Titans and the Chaos Ledger. Reuses the LORE tab's own row classes
+   * (em-row / sl-row) so it inherits the shipped styling instead of introducing a second look.
+   * Read-only: nothing here is clickable, purchasable or spendable.
+   */
+  _colRenderChaosPanel(el, items) {
+    const nChars = (this.characters || []).length;
+    const ranks  = items.slice(0, nChars);
+    const titans = items.slice(nChars);
+    const RANK_COLOR = { BRONZE: '#cd7f32', SILVER: '#c0c0c0', GOLD: '#FFD700', PLATINUM: '#e0e0f8' };
+    const esc = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+    const rEl = el.querySelector('#cxc-ranks');
+    if (rEl) {
+      rEl.innerHTML = ranks.map(it => {
+        const on = it.unlocked, col = RANK_COLOR[it.bestRank] || '#3a5060';
+        return `<div class="em-row${on ? ' reached' : ''}">
+          <div class="em-badge${on ? ' reached' : ''}" style="${on ? 'color:' + col : ''}">&#9670;</div>
+          <div class="em-info">
+            <div class="em-label${on ? ' reached' : ' locked'}">${esc(it.name)}</div>
+            <div class="em-lore${on ? '' : ' locked'}">${on ? esc(it.desc) : 'Finish a Chaos run with this character.'}</div>
+          </div>
+          <div class="em-status${on ? ' reached' : ' locked'}" style="${on ? 'color:' + col : ''}">${on ? esc(it.stOn) : '&#10005; NO RUN'}</div>
+        </div>`;
+      }).join('');
+    }
+    const rn = el.querySelector('#cxc-ranks-n');
+    if (rn) rn.textContent = `${ranks.filter(x => x.unlocked).length} / ${ranks.length}`;
+
+    const tEl = el.querySelector('#cxc-titans');
+    if (tEl) {
+      tEl.innerHTML = titans.map(it => {
+        const on = it.unlocked;
+        return `<div class="sl-row${on ? ' readable' : ''}">
+          <div class="sl-num${on ? ' readable' : ''}">&#9650;</div>
+          <div class="sl-info">
+            <div class="sl-title-row${on ? ' readable' : ' locked'}">${esc(it.name)}</div>
+            <div class="sl-text${on ? '' : ' locked'}">${on ? esc(it.desc) : esc(it.reqText)}</div>
+          </div>
+          <div class="sl-status${on ? ' readable' : ' locked'}">${on ? esc(it.sub) : '&#10005; LOCKED'}</div>
+        </div>`;
+      }).join('');
+    }
+    const tn = el.querySelector('#cxc-titans-n');
+    if (tn) tn.textContent = `${titans.filter(x => x.unlocked).length} / ${titans.length} DESTROYED`;
+
+    // The ledger: the last 8 of the stored 20. A log, not a collectible — never counted.
+    let led = [];
+    try { led = (this.meta?.getChaosLedger?.() || []).slice(0, 8); } catch (_) { led = []; }
+    const lEl = el.querySelector('#cxc-ledger');
+    if (lEl) {
+      const law = (l) => (l ? String(l).replace(/_/g, ' ').toUpperCase() : 'NO LAW');
+      const nm  = (id) => this.characters?.find(c => c.id === id)?.name || String(id || '?');
+      const clk = (s) => {
+        const v = Math.max(0, Math.floor(Number(s) || 0));
+        return String(Math.floor(v / 60)).padStart(2, '0') + ':' + String(v % 60).padStart(2, '0');
+      };
+      lEl.innerHTML = led.length ? led.map(r => {
+        const col = RANK_COLOR[r.rank] || '#c8dbe6';
+        const bits = [esc(law(r.law)), (r.kills || 0) + ' KILLS'];
+        if (r.titans)    bits.push(r.titans + ' TITAN' + (r.titans > 1 ? 'S' : ''));
+        if (r.corrupted) bits.push(r.corrupted + ' CORRUPTED');
+        return `<div class="sl-row readable">
+          <div class="sl-num readable" style="color:${col}">${esc(clk(r.secs))}</div>
+          <div class="sl-info">
+            <div class="sl-title-row readable">${esc(nm(r.char))}</div>
+            <div class="sl-text">${bits.join(' &middot; ')}${r.date ? ' &middot; ' + esc(r.date) : ''}</div>
+          </div>
+          <div class="sl-status readable" style="color:${col}">${esc(r.rank || '?')}</div>
+        </div>`;
+      }).join('') : '<div class="sl-row"><div class="sl-info"><div class="sl-text locked">No Chaos run logged yet.</div></div></div>';
+    }
+    const ln = el.querySelector('#cxc-ledger-n');
+    if (ln) {
+      let total = 0;
+      try { total = (this.meta?.getChaosLedger?.() || []).length; } catch (_) { total = 0; }
+      ln.textContent = `${total} RUN${total === 1 ? '' : 'S'} LOGGED`;
+    }
+  }
+
+  /** CORRUPTED section of the LORE tab — the three Broken Archive entries. */
+  _colRenderBrokenArchive(el) {
+    const esc = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const list = el.querySelector('#ba-list');
+    if (list) {
+      list.innerHTML = BROKEN_ARCHIVE.map(b => {
+        const on = !!this.meta?.isUnlocked?.(b.id);
+        return `<div class="sl-row${on ? ' readable' : ''}">
+          <div class="sl-num${on ? ' readable' : ''}" style="${on ? 'color:#ff2d95' : ''}">${esc(b.num)}</div>
+          <div class="sl-info">
+            <div class="sl-title-row${on ? ' readable' : ' locked'}" style="${on ? 'color:#ff2d95' : ''}">${on ? esc(b.title) : '???'}</div>
+            <div class="sl-text${on ? '' : ' locked'}">${on ? esc(b.text) : esc(b.req)}</div>
+          </div>
+          <div class="sl-status${on ? ' readable' : ' locked'}">${on ? '&#9670; RECOVERED' : '&#10005; LOST'}</div>
+        </div>`;
+      }).join('');
+    }
+    const n = el.querySelector('#ba-n');
+    if (n) n.textContent = `${BROKEN_ARCHIVE.filter(b => this.meta?.isUnlocked?.(b.id)).length} / ${BROKEN_ARCHIVE.length}`;
+  }
+
   _colRender() {
     const el = this._achievementsOverlayEl;
     if (!el || !el.querySelector('#ct-tabs')) return;
@@ -6895,8 +7117,16 @@ export class Game {
     };
     markSeq('#ca-grid .ca-card', items.achievements, 0);
     markSeq('#ce-grid .ce-card', items.achievements, ENDLESS_ACHIEVEMENTS.length);
+    // CHAOS + CORRUPTED are rendered here rather than in _syncAchievementsOverlay because they
+    // read run data (chaosRanks, bossKills, chaosLedger, unlocks) that changes between opens.
+    this._colRenderChaosPanel(el, items.chaos || []);
+    this._colRenderBrokenArchive(el);
+
     markSeq('#em-list .em-row', items.lore, 0);
     markSeq('#sl-list .sl-row', items.lore, EDEN_MILESTONES.length);
+    markSeq('#ba-list .sl-row', items.lore, EDEN_MILESTONES.length + SYSTEM_LOGS.length);
+    markSeq('#cxc-ranks .em-row', items.chaos, 0);
+    markSeq('#cxc-titans .sl-row', items.chaos, (this.characters || []).length);
     markSeq('#sk-grid .sk-card', items.skins, 0);
     markSeq('#jb-list .jb-row', items.ost, 0);
 
@@ -6907,7 +7137,9 @@ export class Game {
   _colApplyFilter() {
     const el = this._achievementsOverlayEl;
     if (!el) return;
-    const filterable = !['lore', 'ost'].includes(this._colTab);
+    // CHAOS joins lore/ost as unfilterable: its ledger rows are a log with no locked/unlocked
+    // state, so an ALL/UNLOCKED/LOCKED filter would only ever half-apply to the panel.
+    const filterable = !['lore', 'ost', 'chaos'].includes(this._colTab);
     el.querySelectorAll('.ct-panel').forEach(p => {
       p.classList.toggle('active', p.dataset.panel === this._colTab);
       p.classList.remove('flt-unlocked', 'flt-locked');

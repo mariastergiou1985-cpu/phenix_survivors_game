@@ -75,6 +75,11 @@ export const UNLOCK_KEYS = [
   'grandmaster_dojang_girl',
   'log_1997',   // Endless-only LOG that unlocks the Brawler Warrior secret outfit
   'log_1998',   // Assassin Clone secret outfit (LOG #1998). Reserved key — stays LOCKED for now
+  // ── BROKEN ARCHIVE — Chaos lore earned by FAILING. Text only: these keys unlock archive
+  // entries in the LORE tab and nothing else. No outfit, no currency, no stat, no gameplay.
+  'ba_cold_open',        // died in Chaos inside the first 3:00
+  'ba_still_standing',   // died in Chaos with a Mega Titan still alive on the field
+  'ba_long_silence',     // survived 10:00 in Chaos without destroying a single Mega Titan
 ];
 
 // Equippable outfits per base character. `default` is always available; `secret` reuses the
