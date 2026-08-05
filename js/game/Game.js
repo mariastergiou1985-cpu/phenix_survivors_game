@@ -26691,10 +26691,36 @@ export class Game {
     ];
   }
 
+  /**
+   * RETRY from the end screen. A Chaos run restarts IN CHAOS.
+   *
+   * Until 2026-08-05 every retry path called reset() alone — and reset() clears _chaosMode
+   * (1929), _chaosStartedAt (1957) and endless (2029). So the button labelled RETRY — CHAOS
+   * silently started an Act 1 campaign run: the single highest-intent moment for another run
+   * was the one that threw the player out of the mode.
+   *
+   * The run's Chaos Law is KEPT. reset() never touches `runChaosLaw` (it is cleared only in the
+   * constructor, startEndlessRun, startChaosRun and the overlay's own handlers), so one press
+   * gives one new run under the same law. Re-opening the law overlay here is deliberately NOT
+   * done: main.js's end-screen handler owns Enter while gameOver is true and would eat the
+   * overlay's confirm — a new input conflict this fix has no business creating.
+   *
+   * Every other mode is untouched: the same reset() and the same music call, in the same order.
+   * Victory is excluded so the R key on an Act 1 win behaves exactly as it always has.
+   */
+  retryRun() {
+    if (this._chaosMode && !this.victory) {
+      this._beginChaosRun();          // reset() + Endless infra + Chaos state — the shipped entry
+      return;                         // _beginChaosRun starts the Chaos track itself
+    }
+    this.reset();
+    this.audio?.startGameplayMusic();
+  }
+
   // The ONE dispatch point. Identical to what main.js's Enter handler already does for
   // each index — kept here so mouse, keyboard and controller cannot drift apart.
   _resultsActivate(key) {
-    if (key === 'retry')         { this.reset(); this.audio?.startGameplayMusic(); }
+    if (key === 'retry')         { this.retryRun(); }
     else if (key === 'upgrades') { this.audio?.startMenuMusic(); this.goToUpgradesScreen(); }
     else if (key === 'menu')     { this.goToMainMenu(); }
     else if (key === 'continue') { this.continueEndless(); }

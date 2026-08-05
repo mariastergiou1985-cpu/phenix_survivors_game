@@ -1,4 +1,4 @@
-import { Game } from './game/Game.js?v=20260904180000';
+import { Game } from './game/Game.js?v=20260904190000';
 import { AudioManager } from './audio/AudioManager.js?v=20260904100000';
 import { PlatformAchievements } from './platform/PlatformAchievements.js?v=20260712370000';
 // Steam build: replay any web-earned achievements to Steam on boot (no-op in browsers)
@@ -128,7 +128,9 @@ window.addEventListener('keydown', e => {
     }
     if (e.key === 'Enter') {
       const idx = game._endScreenBtnIndex ?? 0;
-      if (idx === 0) { game.reset(); game.audio?.startGameplayMusic(); }
+      // retryRun(), not reset(): a Chaos run must restart in Chaos. This line is BOTH the
+      // keyboard Enter and the controller A/Cross (the pad dispatches a synthetic Enter).
+      if (idx === 0) { game.retryRun(); }
       else if (idx === 1) { game.audio?.startMenuMusic(); game.goToUpgradesScreen(); }
       else { game.goToMainMenu(); }
       return;
@@ -185,10 +187,9 @@ window.addEventListener('keydown', e => {
   if (key === 't' && game.gameState === 'playing' && !game.gameOver && !game.victory) {
     game.aimAssist = !game.aimAssist;
   }
-  // Restart after game over / victory
+  // Restart after game over / victory — retryRun() keeps a Chaos run in Chaos.
   if (key === 'r' && (game.gameOver || game.victory)) {
-    game.reset();
-    game.audio?.startGameplayMusic();
+    game.retryRun();
   }
 
   // ESC — context-sensitive behaviour
@@ -339,8 +340,7 @@ canvas.addEventListener('mousedown', e => {
     const _hit = (r) => r && mousePos.x >= r.x && mousePos.x <= r.x + r.w &&
                          mousePos.y >= r.y && mousePos.y <= r.y + r.h;
     if (ebr && _hit(ebr[0])) {
-      game.reset();
-      game.audio?.startGameplayMusic();
+      game.retryRun();                 // canvas-fallback end screen — same rule as the DOM one
     } else if (ebr && _hit(ebr[1])) {
       game.audio?.startMenuMusic();
       game.goToUpgradesScreen();
