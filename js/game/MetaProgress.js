@@ -459,6 +459,10 @@ export class MetaProgress {
     // is never spent, bought or gated: it is a record of what happened, not a currency.
     // { char, law, secs, rank, kills, titans, corrupted, date }
     this.chaosLedger   = [];
+    // LAW MASTERY — the best Chaos survival time achieved under each Chaos Law.
+    // { [lawId]: bestSecs }. A RECORD, not a currency and not a tier: nothing reads it except
+    // the law card in the pre-run selection overlay. There is deliberately no Law II here.
+    this.lawMastery    = {};
     // ── Vessel system ──────────────────────────────────────────────────────
     this.selectedVessel   = 'alpha_phoenix';   // currently equipped vessel id
     this.unlockedVessels  = { alpha_phoenix: true };  // { [vesselId]: true }
@@ -552,6 +556,7 @@ export class MetaProgress {
       this.systemLogsSeen    = (d.systemLogsSeen    && typeof d.systemLogsSeen    === 'object') ? d.systemLogsSeen    : {};
       this.chaosRanks    = (d.chaosRanks    && typeof d.chaosRanks    === 'object') ? d.chaosRanks    : {}; // Phase B
       this.chaosLedger   = Array.isArray(d.chaosLedger) ? d.chaosLedger.slice(0, 20) : [];   // newest first
+      this.lawMastery    = (d.lawMastery    && typeof d.lawMastery    === 'object') ? d.lawMastery    : {}; // best secs per Law
       // Vessel system — safe defaults for old saves (alpha_phoenix always unlocked)
       this.selectedVessel  = (typeof d.selectedVessel === 'string' && d.selectedVessel) ? d.selectedVessel : 'alpha_phoenix';
       this.unlockedVessels = (d.unlockedVessels && typeof d.unlockedVessels === 'object') ? d.unlockedVessels : { alpha_phoenix: true };
@@ -641,6 +646,7 @@ export class MetaProgress {
         systemLogsSeen:     this.systemLogsSeen,
         chaosRanks:         this.chaosRanks,           // Phase B: Chaos Survival Rank per character
         chaosLedger:        this.chaosLedger,          // last 20 Chaos runs, newest first
+        lawMastery:         this.lawMastery,           // best Chaos secs per Chaos Law
         selectedVessel:     this.selectedVessel,
         unlockedVessels:    this.unlockedVessels,
         selectedPets:       this.selectedPets,
@@ -699,6 +705,41 @@ export class MetaProgress {
       };
       this._save();
     }
+  }
+
+  // LAW MASTERY — best Chaos survival time per Chaos Law. Deliberately the same shape and the
+  // same guards as submitChaosRun above, because it is the same kind of thing: a personal best.
+  // It grants NOTHING. No tier, no Law II, no stat, no currency — the only reader is the law
+  // card in the pre-run selection overlay.
+  submitLawRun(lawId, secs) {
+    if (!lawId || typeof secs !== 'number' || secs <= 0) return false;
+    if (!this.lawMastery || typeof this.lawMastery !== 'object') this.lawMastery = {};
+    const cur = Math.max(0, Math.floor(this.lawMastery[lawId] || 0));
+    const now = Math.floor(secs);
+    if (now <= cur) return false;
+    this.lawMastery[lawId] = now;
+    this._save();
+    return true;                                     // true = a NEW record, for the banner
+  }
+
+  getLawBest(lawId) { return Math.max(0, Math.floor((this.lawMastery || {})[lawId] || 0)); }
+  getLawMastery()   { return this.lawMastery || {}; }
+
+  // CONTRACT PAYOUT — Protocol Fragments earned by completing a run contract.
+  //
+  // Deliberately NOT addProtocolFragment(). That helper (the arena Null Fragment) leaves the PF
+  // visible to getProtocolFragmentsEarned(), which drives the PILOT LEVEL, which itself pays out
+  // Cores and more PF — so a "+2 PF" reward would quietly become "+2 PF and a slice of a level".
+  // The brief was +2 PF and nothing else, so this mirrors convertGridsToPF and
+  // claimPlayerLevelRewards: the fragments are spendable, but excluded from the level metric via
+  // rewardedPFTotal. Loop-proof by construction.
+  awardContractPF(n) {
+    const pf = Math.max(0, Math.floor(Number(n) || 0));
+    if (pf <= 0) return 0;
+    this.protocolFragments = Math.max(0, (this.protocolFragments || 0) + pf);
+    this.rewardedPFTotal   = Math.max(0, (this.rewardedPFTotal   || 0) + pf);   // level-neutral
+    this._save();
+    return pf;
   }
 
   // Evaluate Endless achievements against a finished-run stats snapshot
@@ -922,6 +963,7 @@ export class MetaProgress {
     this.bossKills = {};
     this.runHistory = [];
     this.chaosLedger = [];
+    this.lawMastery  = {};
     this.edenMemoryPercent  = 0;
     this.systemFeedMessages = [];
     this.bossEchoes         = {};

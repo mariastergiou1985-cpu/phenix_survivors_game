@@ -32,7 +32,7 @@ import './BuildEnginePassives.js?v=20260902130000'; // P2.6 Build passives §26-
 import { MutationUI }      from './MutationUI.js?v=20260904180000';
 import { sampleMutations, sampleCorruptedMutation } from './Mutations.js?v=20260904180000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260904170000';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, COLLECTIBLE_FRAGMENT_COST, COLLECTIBLE_GRID_COST, ECHO_FRAGMENT_COST, ECHO_GRID_COST, SKILL_TREE, AMULET_DEFS, GRID_TO_PF_RATE, characterStageRequirement } from './MetaProgress.js?v=20260904270000';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, COLLECTIBLE_FRAGMENT_COST, COLLECTIBLE_GRID_COST, ECHO_FRAGMENT_COST, ECHO_GRID_COST, SKILL_TREE, AMULET_DEFS, GRID_TO_PF_RATE, characterStageRequirement } from './MetaProgress.js?v=20260904280000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260712520000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
@@ -736,6 +736,22 @@ const CHAOS_LAWS = [
     desc: 'Enemies +5% faster. Score +20%, XP +8%.',
     future: 'High risk / high reward: unstable Grid, maximum payout.' },
 ];
+
+// ── TITAN CONTRACT (pilot) ─────────────────────────────────────────────────
+// ONE contract, offered on every Chaos run, shown before the run starts. Single source of truth
+// for the goal, the window, the payout and the wording — the pre-run card, the engage-time
+// transmission and the payout all read these fields, so the promise the player is shown cannot
+// drift from the condition the code checks. Failure has NO penalty by design.
+const TITAN_CONTRACT = {
+  id: 'tc_two_titans',
+  name: 'TITAN CONTRACT',
+  titans: 2,
+  limitSecs: 900,                                   // 15:00
+  pf: 2,
+  goal: 'Destroy 2 Mega Titans before 15:00.',
+  reward: '+2 Protocol Fragments',
+  penalty: 'No penalty on failure.',
+};
 
 // ── System Logs / Lore Archive — unlock via Eden Memory threshold ──────────
 const SYSTEM_LOGS = [
@@ -2012,6 +2028,12 @@ export class Game {
     this._chaosTitanTypes   = [];         // DISTINCT Mega Titans destroyed this run — sigil only
     this._chaosPulseHits    = 0;          // CHAOS PULSE (danger pylon) hits taken — sigil only
     this._chaosRushCleared  = 0;          // Boss Rushes cleared this run — sigil only
+    // TITAN CONTRACT (pilot) — destroy 2 Mega Titans before 15:00. Success pays +2 PF, failure
+    // costs nothing at all. `_titanContractAt` is the chaosTimeSecs stamped the moment the SECOND
+    // Titan fell (-1 = it has not happened), so "before 15:00" is judged on when the kill landed
+    // rather than on how the run happened to end.
+    this._titanContractAt   = -1;
+    this._titanContractPaid = false;      // once-per-run guard on the payout
     this._chaosTransTimer   = -1;      // >=0 while glitch transition is playing
     this.forceChaos         = false;   // defensive: prevent stale debug-key state leaking into the next run
     this._chaosCoreCd       = 0;       // cooldown for bonus gold-core spawns
@@ -3108,6 +3130,22 @@ export class Game {
         'background:rgba(255,159,10,.12);border:1px solid rgba(255,159,10,.30);',
         'border-radius:4px;padding:2px 5px;margin-top:2px;',
         'text-transform:uppercase;align-self:flex-start;}',
+        // LAW MASTERY — the personal best on the card. Muted by default so it never competes
+        // with the law name or its effect line; only a set record gets the cyan.
+        '#cgm-chaos-law-sel .cls-card-best{font-size:8px;letter-spacing:1.8px;margin-top:3px;',
+        'color:rgba(120,160,200,0.55);text-transform:uppercase;}',
+        '#cgm-chaos-law-sel .cls-card-best b{color:#2ee6f6;font-weight:400;letter-spacing:2px;}',
+        // TITAN CONTRACT — one calm amber strip above the buttons. Deliberately not a card and
+        // not selectable: there is nothing to accept or decline, so it must not join the ring.
+        '#cgm-chaos-law-sel .cls-contract{border:1px solid rgba(255,159,10,0.30);',
+        'background:rgba(255,159,10,0.07);border-radius:8px;padding:9px 12px;',
+        'display:flex;flex-direction:column;gap:3px;}',
+        '#cgm-chaos-law-sel .cls-contract .cc-h{font-size:8px;letter-spacing:2.6px;',
+        'color:#ff9f0a;font-weight:700;}',
+        '#cgm-chaos-law-sel .cls-contract .cc-g{font-size:10px;letter-spacing:0.6px;color:#eaffff;}',
+        '#cgm-chaos-law-sel .cls-contract .cc-r{font-size:8.5px;letter-spacing:1.4px;',
+        'color:rgba(120,160,200,0.70);}',
+        '#cgm-chaos-law-sel .cls-contract .cc-r b{color:#7CFF4D;font-weight:400;}',
       ].join('');
       document.head.appendChild(style);
     }
@@ -3136,6 +3174,16 @@ export class Game {
         effect: 'Enemies +5% faster \u00b7 +20% score \u00b7 +8% XP.' },
     ];
 
+    // LAW MASTERY on the card. Read LIVE from meta on every open — the overlay is rebuilt from
+    // scratch each time (the `existing.remove()` at the top), so a record set last run is on the
+    // card the next time it is opened, with no refresh path to forget.
+    const _lawBestHTML = (lawId) => {
+      const s = this.meta?.getLawBest?.(lawId) || 0;
+      if (s <= 0) return 'BEST — NO RECORD';
+      const m = Math.floor(s / 60), r = s % 60;
+      return 'BEST <b>' + m + ':' + String(r).padStart(2, '0') + '</b>';
+    };
+
     const el = document.createElement('div');
     el.id = 'cgm-chaos-law-sel';
     el.innerHTML = '<div class="cls-box">'
@@ -3152,8 +3200,14 @@ export class Game {
           : '<div class="cls-card" data-law="' + l.id + '" style="border-color:' + l.color + '33;">'
             + '<div class="cls-card-name" style="color:' + l.color + ';text-shadow:0 0 8px ' + l.color + '88;">' + l.name + '</div>'
             + '<div class="cls-card-effect">' + l.effect + '</div>'
+            + '<div class="cls-card-best">' + _lawBestHTML(l.id) + '</div>'
             + '</div>'
         ).join('')
+      + '</div>'
+      + '<div class="cls-contract">'
+        + '<div class="cc-h">' + TITAN_CONTRACT.name + '</div>'
+        + '<div class="cc-g">' + TITAN_CONTRACT.goal + '</div>'
+        + '<div class="cc-r">REWARD <b>' + TITAN_CONTRACT.reward + '</b> \u00b7 ' + TITAN_CONTRACT.penalty + '</div>'
       + '</div>'
       + '<div class="cls-skip"><button id="cls-back-btn">\u2190 BACK</button><button id="cls-skip-btn">SKIP \u2014 STANDARD ENDLESS</button></div>'
       + '<div class="cls-hint"><b>\u25b2\u25bc</b> SELECT \u00b7 <b>ENTER / A</b> CONFIRM \u00b7 <b>ESC / B</b> BACK</div>'
@@ -4968,6 +5022,14 @@ export class Game {
       this.chaosRank = _cMins >= 30 ? 'PLATINUM' : _cMins >= 20 ? 'GOLD' : _cMins >= 10 ? 'SILVER' : 'BRONZE';
       try { if (this.meta && this.selectedCharacter) this.meta.submitChaosRun(this.selectedCharacter, this.chaosTimeSecs); }
       catch(_e) { console.warn('[Chaos Rank] submitChaosRun error', _e); }
+
+      // ── LAW MASTERY ────────────────────────────────────────────────────────
+      // Best Chaos time under this run's Law. Only runs that HAD a law are recorded — a lawless
+      // run has no card to write to. Nothing is granted; the value is displayed and nothing else.
+      // submitLawRun returns true on a new record, but nothing consumes that here: the record is
+      // read off meta by the law card on the next open, which is the whole feature.
+      try { if (this.runChaosLaw) this.meta?.submitLawRun?.(this.runChaosLaw, this.chaosTimeSecs); }
+      catch (_e) { console.warn('[Law Mastery] submitLawRun error', _e); }
 
       // ── CHAOS LEDGER ───────────────────────────────────────────────────────
       // Mint one entry describing what this run WAS. Purely a record: nothing reads it back into
@@ -13332,6 +13394,13 @@ export class Game {
     this.audio?.startChaosMusic();    // override the Endless track started by _enterEndless()
     // #71 — discreet floating cue, not a central banner.
     this.floatingTexts.push(new FloatingText('⚡ CHAOS MODE ⚡', this.player.pos.add(new Vec2(-70, -90)), '#ff2d95', 2.5));
+    // TITAN CONTRACT, announced at engage. The pre-run card carries it whenever the Law overlay
+    // opens, but that overlay is gated on Eden Memory >= 50% — below that, Chaos starts directly
+    // and this transmission is the earliest the player can be told. Same strings, one source.
+    try {
+      this._queueEdenTransmission(TITAN_CONTRACT.goal + ' Reward ' + TITAN_CONTRACT.reward + '. ' + TITAN_CONTRACT.penalty,
+        { title: TITAN_CONTRACT.name, priority: 2, duration: 6 });
+    } catch (_e) { console.warn('[Titan Contract] banner error', _e); }
   }
 
   // ── Chaos Mega Titan scheduler (Chaos-only) ────────────────────────────────
@@ -13361,7 +13430,25 @@ export class Game {
         'Quantum Void Emperor': 'titan_emperor', 'Apocalypse Mech Tyrant': 'titan_tyrant',
       }[this._activeTitan.enemyType];
       try { if (flag && this.meta) this.meta.recordBossKill(flag); } catch (_) {}
-      this._chaosTitansKilled = (this._chaosTitansKilled || 0) + 1;   // Chaos Ledger tally only
+      this._chaosTitansKilled = (this._chaosTitansKilled || 0) + 1;   // Chaos Ledger tally + contract
+      // ── TITAN CONTRACT (pilot) ────────────────────────────────────────────
+      // Paid HERE, the moment it is fulfilled, rather than at run end — the same shape as the
+      // arena Null Fragment, and it means the reward does not depend on how the run finishes.
+      // Stamped once (_titanContractPaid), Chaos only, and silent past 15:00: failure carries no
+      // penalty and no message, exactly as briefed.
+      try {
+        if (this._chaosMode && this._titanContractAt < 0 && this._chaosTitansKilled >= 2) {
+          const _at = Math.max(0, Math.floor(this.timeAlive - (this._chaosStartedAt >= 0 ? this._chaosStartedAt : this.timeAlive)));
+          this._titanContractAt = _at;
+          if (_at <= TITAN_CONTRACT.limitSecs && !this._titanContractPaid) {
+            this._titanContractPaid = true;
+            this.meta?.awardContractPF?.(TITAN_CONTRACT.pf);
+            this._queueEdenTransmission(
+              'TITAN CONTRACT FULFILLED — ' + TITAN_CONTRACT.pf + ' PROTOCOL FRAGMENTS TRANSFERRED.',
+              { title: 'CONTRACT', priority: 2, duration: 6 });
+          }
+        }
+      } catch (_e) { console.warn('[Titan Contract] payout error', _e); }
       // DISTINCT types, for the TITANBREAKER sigil: the four cycle, so killing the same one
       // twice must not count as two of the four.
       if (flag && !this._chaosTitanTypes.includes(flag)) this._chaosTitanTypes.push(flag);
