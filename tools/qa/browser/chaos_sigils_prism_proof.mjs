@@ -95,7 +95,14 @@ check('A01 live Game instance captured on the shipped ?v=', await page.evaluate(
 check('A02 zero page errors at boot', pageErrors.length === 0, pageErrors.slice(0, 3).join(' | '));
 
 const SG = ['sg_titanbreaker', 'sg_unbroken', 'sg_apex', 'sg_pactbound'];
-await page.evaluate(async (SG) => {
+// The wipe has to clear EVERY sigil, not just wave 1's four. This file grants all four Titan
+// relics in an earlier check, and as of wave 3 that legitimately earns RELIQUARY — which then
+// survived a four-key wipe and showed up as '1 / 12' on a tab this check expects to be empty.
+// The ASSERTIONS still own wave 1 only; the wipe just has to leave a clean sheet behind it.
+const SG_ALL = ['sg_titanbreaker', 'sg_unbroken', 'sg_apex', 'sg_pactbound',
+  'sg_lawless', 'sg_centurion', 'sg_full_roster', 'sg_iron_will',
+  'sg_archivist', 'sg_reliquary', 'sg_platinum', 'sg_chronicler'];
+await page.evaluate(async ([SG, SG_ALL]) => {
   const g = window.__g;
   g.meta._save = () => {};
   const src = await fetch('./js/game/Game.js?v=' + window.__BUILD).then(r => r.text()).catch(() => '');
@@ -113,7 +120,7 @@ await page.evaluate(async (SG) => {
   };
   window.__ctx = () => (document.querySelector('canvas#game') ||
     [...document.querySelectorAll('canvas')].find(x => x.width > 400)).getContext('2d');
-  window.__wipe = () => { for (const k of SG) delete g.meta.unlocks[k]; };
+  window.__wipe = () => { for (const k of SG_ALL) delete g.meta.unlocks[k]; };
   window.__has = () => SG.map(k => !!g.meta.isUnlocked(k));
   window.__run = (mode, charId, law) => {
     g.selectedCharacter = charId || 'skeleton_warrior';
@@ -170,7 +177,7 @@ await page.evaluate(async (SG) => {
     maxHp: g.player?.maxHp ?? 0, speed: g.player?.speed ?? 0, pulse: g.player?.pulseDamage ?? 0,
     fireRate: g.player?.fireRate ?? 0, relics: Object.keys(g.meta.relics || {}).length,
   });
-}, SG);
+}, [SG, SG_ALL]);
 check('A03 the Enemy class is available to the rig', await page.evaluate(() => !!window.__Enemy));
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -437,9 +444,14 @@ const others = await page.evaluate(() => {
   }
   return { base, out };
 });
-check('P08 CONTROL — the two still-unimplemented Titan relics keep their shipped stat lines',
-  Math.abs(others.out.emperor_singularity_edge - 0.10) < 1e-3 &&   // abilityCdMult 1 -> 1.10
-  Math.abs(others.out.tyrant_antimatter_battery - 0.08) < 1e-3,    // +8% contact DR
+// Updated 2026-08-05, and the reason matters: this asserted the two relics still paid +0.10
+// abilityCdMult and +0.08 contact DR. Wave 3 implements both, and both implementations REPLACE
+// the flat stat rather than stacking on it — the same trade the Leviathan made a wave earlier.
+// The claim this file can still honestly make is that all four Titan relics are now off the
+// flat-stat books, so the Overlord's drones are not competing with a hidden passive.
+check('P08 CONTROL — neither Titan relic pays a flat stat line any more',
+  Math.abs(others.out.emperor_singularity_edge) < 1e-3 &&
+  Math.abs(others.out.tyrant_antimatter_battery) < 1e-3,
   JSON.stringify(others));
 
 // ── Draw a real frame with the drones up ──

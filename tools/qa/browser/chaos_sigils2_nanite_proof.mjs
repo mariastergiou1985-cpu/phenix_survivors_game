@@ -99,7 +99,13 @@ check('A02 zero page errors at boot', pageErrors.length === 0, pageErrors.slice(
 const ALL8 = ['sg_titanbreaker', 'sg_unbroken', 'sg_apex', 'sg_pactbound',
               'sg_lawless', 'sg_centurion', 'sg_full_roster', 'sg_iron_will'];
 const NEW4 = ALL8.slice(4);
-await page.evaluate(async ([ALL8, NEW4]) => {
+// Wipes the WHOLE set for the same reason wave 1's does: wave 3's keys are earned by state this
+// file sets up (all four Titan relics owned earns RELIQUARY), and a leftover unlock skews the
+// tab counter. The assertions below still own wave 2's eight.
+const SG_ALL = ['sg_titanbreaker', 'sg_unbroken', 'sg_apex', 'sg_pactbound',
+  'sg_lawless', 'sg_centurion', 'sg_full_roster', 'sg_iron_will',
+  'sg_archivist', 'sg_reliquary', 'sg_platinum', 'sg_chronicler'];
+await page.evaluate(async ([ALL8, NEW4, SG_ALL]) => {
   const g = window.__g;
   g.meta._save = () => {};
   const src = await fetch('./js/game/Game.js?v=' + window.__BUILD).then(r => r.text()).catch(() => '');
@@ -117,7 +123,7 @@ await page.evaluate(async ([ALL8, NEW4]) => {
   };
   window.__ctx = () => (document.querySelector('canvas#game') ||
     [...document.querySelectorAll('canvas')].find(x => x.width > 400)).getContext('2d');
-  window.__wipe = () => { for (const k of ALL8) delete g.meta.unlocks[k]; };
+  window.__wipe = () => { for (const k of SG_ALL) delete g.meta.unlocks[k]; };
   window.__new = () => NEW4.map(k => !!g.meta.isUnlocked(k));
   window.__run = (mode, charId, law) => {
     g.selectedCharacter = charId || 'skeleton_warrior';
@@ -168,7 +174,7 @@ await page.evaluate(async ([ALL8, NEW4]) => {
     maxHp: g.player?.maxHp ?? 0, speed: g.player?.speed ?? 0, xpMult: g.player?.xpMult ?? 0,
     pulse: g.player?.pulseDamage ?? 0, relics: Object.keys(g.meta.relics || {}).length,
   });
-}, [ALL8, NEW4]);
+}, [ALL8, NEW4, SG_ALL]);
 check('A03 the Enemy class is available to the rig', await page.evaluate(() => !!window.__Enemy));
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -277,15 +283,18 @@ const ui = await page.evaluate(() => {
   const open = { sec: window.__sec('cxc-sigils'), n: window.__sec('cxc-sigils-n').text, cards: window.__cards() };
   return { locked, open };
 });
-check('S07 the CHAOS tab now lists EIGHT sigils, locked, with their requirements',
-  ui.locked.sec.rows === 8 && ui.locked.n === '0 / 8' &&
+// Total-agnostic, exactly as wave 1's equivalent was made when wave 2 landed: this file owns the
+// EIGHT of waves 1-2, not the size of the set. Wave 3 took the set to twelve, and "rows === 8"
+// would have failed against a tab that is working perfectly.
+check('S07 the CHAOS tab lists the eight, locked, with their requirements',
+  ui.locked.sec.rows >= 8 && /^0 \/ \d+$/.test(ui.locked.n) &&
   /Survive 12:00 in Chaos with NO LAW/.test(ui.locked.sec.text) &&
   /1,000 enemies/.test(ui.locked.sec.text) &&
   /all ten characters/.test(ui.locked.sec.text) &&
   /without spending a single Phoenix revive/.test(ui.locked.sec.text),
   `${ui.locked.sec.rows} rows, ${ui.locked.n}`);
 check('S08 earning them names all eight on the tab',
-  ui.open.n === '8 / 8' && ['TITANBREAKER', 'UNBROKEN', 'APEX PROTOCOL', 'PACTBOUND',
+  /^8 \/ \d+$/.test(ui.open.n) && ['TITANBREAKER', 'UNBROKEN', 'APEX PROTOCOL', 'PACTBOUND',
     'LAWLESS', 'CENTURION', 'FULL ROSTER', 'IRON WILL'].every(n => ui.open.sec.text.includes(n)),
   ui.open.n);
 check('S09 the character cards carry all eight marks, and none before any are earned',
@@ -451,9 +460,16 @@ const others = await page.evaluate(() => {
   out.prismDrones = (g._prismDrones || []).length;
   return out;
 });
-check('N12 CONTROL — the two unimplemented Titan relics are untouched, and the Overlord still works',
-  Math.abs(others.emperor_singularity_edge - 0.10) < 1e-3 &&
-  Math.abs(others.tyrant_antimatter_battery - 0.08) < 1e-3 &&
+// The expectation here FLIPPED on 2026-08-05, and it is worth saying why rather than quietly
+// editing the numbers. This check used to assert emperor_singularity_edge still paid +0.10
+// abilityCdMult and tyrant_antimatter_battery still paid +0.08 contact DR, because at the time
+// both were unimplemented and those flat stats were all they did. Wave 3 implements both — the
+// singularity and the low-HP barrage REPLACE those stat lines, exactly as the nanite DoT replaced
+// the Leviathan's +10% xpMult one wave earlier. Asserting the old numbers would be asserting
+// against a change that was asked for. Both deltas must now read 0.
+check('N12 CONTROL — no Titan relic pays a flat stat any more, and the Overlord still works',
+  Math.abs(others.emperor_singularity_edge) < 1e-3 &&
+  Math.abs(others.tyrant_antimatter_battery) < 1e-3 &&
   others.prismDrones === 2, JSON.stringify(others));
 
 // ── A real frame with clouds on screen ──

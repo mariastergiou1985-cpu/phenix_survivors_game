@@ -91,6 +91,10 @@ export const UNLOCK_KEYS = [
   'sg_centurion',        // 1,000 kills in a single Chaos run
   'sg_full_roster',      // logged a Chaos rank with all ten characters
   'sg_iron_will',        // reached 15:00 in Chaos without spending a single Phoenix revive
+  'sg_archivist',        // recovered all three Broken Archive entries
+  'sg_reliquary',        // owns all four Mega Titan relics
+  'sg_platinum',         // earned PLATINUM with any character
+  'sg_chronicler',       // filled the Chaos Ledger to its full 20 runs
 ];
 
 // Equippable outfits per base character. `default` is always available; `secret` reuses the
