@@ -11004,7 +11004,11 @@ export class Game {
             'Order has become optional. Survive.',
           ]);
           this.meta.addSystemMessage(cmsg);
-          this._chaosEdenAwarded = true;
+          // NOTE: this block only TALKS. It used to also set _chaosEdenAwarded = true without
+          // ever calling addMem(3), so a run that escalated into Chaos here silently lost the
+          // +3 Eden Memory that a run started from _beginChaosRun kept. The flag means "the +3
+          // has been paid", and only the one site in _generateEdenRunMessages pays it, so only
+          // that site may set it (fixed 2026-08-05).
           // In-run popup for Chaos
           this._queueEdenTransmission(cmsg, { title: 'EDEN CORE', priority: 2, duration: 7, clipId: 'chaos' });
         }
@@ -12654,6 +12658,25 @@ export class Game {
         'Quantum Void Emperor': 'titan_emperor', 'Apocalypse Mech Tyrant': 'titan_tyrant',
       }[this._activeTitan.enemyType];
       try { if (flag && this.meta) this.meta.recordBossKill(flag); } catch (_) {}
+      // THE RELIC ITSELF, not just permission to buy it. recordBossKill only lifts the `req`
+      // gate on tryUnlockRelic, which then still charges 25 PF + 250 credits — so killing the
+      // hardest boss in the game paid LESS than an Act 1 stage boss, which calls grantStageRelic
+      // and hands its relic over free. Same call, same canonical path, now for the megas too.
+      // grantStageRelic returns true only on the FIRST ever grant, so repeat kills are silent
+      // and nothing else about the payout changes (fixed 2026-08-05).
+      let _relicNew = false, _relicName = '';
+      try {
+        const _rid = {
+          titan_overlord:  'overlord_prism_array',    titan_leviathan: 'leviathan_nanite_core',
+          titan_emperor:   'emperor_singularity_edge', titan_tyrant:   'tyrant_antimatter_battery',
+        }[flag];
+        if (_rid && this.meta?.grantStageRelic) {
+          _relicNew = !!this.meta.grantStageRelic(_rid);
+          // Name from RELIC_DEFS (already imported), so the banner can never drift from the
+          // relics screen the way a hand-copied string would.
+          if (_relicNew) _relicName = (RELIC_DEFS.find(r => r.id === _rid)?.name || _rid).toUpperCase();
+        }
+      } catch (_) {}
       try {                                                     // echo archive entry per mega (once)
         const echoKey = {
           'Giga-Core Overlord': 'overlordMega', 'Malware Leviathan': 'leviathanMega',
@@ -12670,7 +12693,14 @@ export class Game {
           this.floatingTexts.push(new FloatingText('+' + pf + ' \uD83E\uDDE9', this._activeTitan.pos.clone(), '#a855f7', 2.0));
         }
       } catch (_) {}
-      this.triggerAnnouncement(this._activeTitan.enemyType.toUpperCase() + ' DESTROYED — REWARD RELIC UNLOCKED', '#7CFF4D');
+      // The old banner always read "REWARD RELIC UNLOCKED", which reads as "you got it" but only
+      // ever meant "you may now pay for it". It now states what actually happened, and names the
+      // relic on the kill that earns it.
+      if (_relicNew) {
+        this.triggerAnnouncement(this._activeTitan.enemyType.toUpperCase() + ' DESTROYED — RELIC ACQUIRED: ' + _relicName, '#7CFF4D');
+      } else {
+        this.triggerAnnouncement(this._activeTitan.enemyType.toUpperCase() + ' DESTROYED', '#7CFF4D');
+      }
       // CHAOS DOCTRINE: a Mega Titan kill is the run's escalation beat, and three doctrines
       // read it - a Chaos Law reroll (japan_phasewalker), a step of cataclysm debt (oni) and a
       // song on the setlist (eddie). No-op for everyone else. The reroll is deferred one frame
@@ -31943,7 +31973,8 @@ _drawLoreArchive(ctx) {
         const _cmsg = 'NULL EDEN BOUNDARY BREACHED. Chaos signal accepted.';
         this.meta.addSystemMessage(_cmsg);
         this._queueEdenTransmission(_cmsg, { title: 'NULL TRANSMISSION', priority: 3, duration: 7 });
-        this._chaosEdenAwarded = true;
+        // Messaging only — see the note on the 21:00 escalation path. Setting the paid-flag here
+        // cost this entry path its +3 Eden Memory (fixed 2026-08-05).
       }
       // Rearm all boss rotation slots for Chaos
       this.titanSpawned        = false; this.titanSpawnTimer        = 0;
