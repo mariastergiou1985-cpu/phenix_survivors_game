@@ -154,9 +154,10 @@ const rig = await page.evaluate(async (dv) => {
   return { chars: cd.doctrineCharacters() };
 }, DOC_V);
 check('A03x the Enemy class is available to the rig', await page.evaluate(() => !!window.__Enemy));
-const PILOT = ['japan_phasewalker', 'cyber_arm_hero', 'assassin_clone', 'euclid_vector'];
-check('A03 the doctrine table ships exactly the four piloted characters',
-  rig.chars.length === 4 && PILOT.every(c => rig.chars.includes(c)), rig.chars.join(', '));
+const PILOT = ['japan_phasewalker', 'cyber_arm_hero', 'assassin_clone', 'euclid_vector',
+               'oni_cataclysm_protocol', 'eddie'];
+check('A03 the doctrine table ships exactly the six piloted characters',
+  rig.chars.length === 6 && PILOT.every(c => rig.chars.includes(c)), rig.chars.join(', '));
 
 // ════════════════════════════════════════════════════════════════════════════
 // B. THE LAW TEXT NOW MATCHES THE LAW
@@ -406,8 +407,7 @@ check('E11 the run keeps a finite, positive xpMult after the swap',
 const others = await page.evaluate(() => {
   const g = window.__g;
   const out = {};
-  for (const c of ['skeleton_warrior', 'taekwondo_girl', 'brawler_warrior',
-                   'oni_cataclysm_protocol', 'eddie', 'dimis_kickboxer']) {
+  for (const c of ['skeleton_warrior', 'taekwondo_girl', 'brawler_warrior', 'dimis_kickboxer']) {
     window.__run(c, true);
     const doc = !!g._doctrine();
     // 600 pylon spawns: the distribution must stay the shipped 50/25/25 with nothing else in it
@@ -427,7 +427,7 @@ const others = await page.evaluate(() => {
 const allClean = Object.values(others).every(o =>
   o.doc === false && o.heat === 0 && o.rerolls === 0 &&
   o.types.length === 3 && o.types.join(',') === 'danger,heal,shield');
-check('F01 the other six characters get NO doctrine, NO heat, NO rerolls',
+check('F01 the other four characters get NO doctrine, NO heat, NO rerolls',
   allClean, JSON.stringify(Object.fromEntries(Object.entries(others).map(([k, v]) => [k, v.types.join('/')]))));
 
 const dist = await page.evaluate(() => {
@@ -652,6 +652,201 @@ check('J10 an enemy outside the triangle is untouched', proof.outsideUntouched =
 check('J11 the closing flash is armed for the draw pass', proof.flash === true);
 
 // ════════════════════════════════════════════════════════════════════════════
+// K. ONI — CATACLYSM DEBT + PYRE PYLON
+// ════════════════════════════════════════════════════════════════════════════
+const oni = await page.evaluate(() => {
+  const g = window.__g;
+  const D = window.__cd.CHAOS_DOCTRINE.oni_cataclysm_protocol.debt;
+
+  window.__run('oni_cataclysm_protocol', false);
+  const endlessDoc = !!g._doctrine();
+
+  window.__run('oni_cataclysm_protocol', true);
+  g._doctrineDebt = 0; g._doctrineFallout = null; g._doctrineFalloutCasts = 0;
+
+  // (a) three Titan kills fill the debt, and it never exceeds 1
+  for (let i = 0; i < 5; i++) {
+    g._doctrineDebt = Math.min(1, g._doctrineDebt + D.perTitanKill);
+  }
+  const filled = g._doctrineDebt;
+
+  // (b) with NO debt and NO mana the ultimate refuses, exactly as before the doctrine
+  g._doctrineDebt = 0; g.player.mana = 0;
+  let cast = false;
+  const ep = g._ensureOniFx.bind(g);
+  g._ensureOniFx = () => { ep(); if (g._protocol0 && !g._protocol0.__qa) { g._protocol0.__qa = 1; const t = g._protocol0.trigger?.bind(g._protocol0); if (t) g._protocol0.trigger = (...a) => { cast = true; return t(...a); }; } };
+  g.activateProtocol0Cataclysm();
+  const coldRefused = !cast && !g._doctrineFallout;
+
+  // (c) at FULL debt it fires with zero mana, clears the debt and lights the fallout
+  g._doctrineDebt = 1; g.player.mana = 0;
+  g.activateProtocol0Cataclysm();
+  const indebted = { debt: g._doctrineDebt, fallout: !!g._doctrineFallout,
+                     casts: g._doctrineFalloutCasts, mana: g.player.mana };
+
+  // (d) the fallout burns enemies AND him
+  g.enemies.length = 0;
+  const mk = (dx) => {
+    let e = null;
+    try { e = new window.__Enemy('Neon Swarmer', 1); } catch (_) { return null; }
+    e.maxHp = 100000; e.hp = 100000;
+    e.pos.x = g.player.pos.x + dx; e.pos.y = g.player.pos.y;
+    g.enemies.push(e); return e;
+  };
+  const near = mk(60), far = mk(D.falloutRadius + 400);
+  if (g._doctrineFallout) { g._doctrineFallout.x = g.player.pos.x; g._doctrineFallout.y = g.player.pos.y; }
+  let selfHits = 0;
+  const dp = g._damagePlayer.bind(g);
+  g._damagePlayer = (n, o) => { selfHits++; return dp(n, o); };
+  g.player.hp = g.player.maxHp;
+  for (let i = 0; i < 120; i++) g._updateChaosDoctrine(1 / 60);   // 2 s
+  g._damagePlayer = dp;
+  const burn = { nearHurt: near.hp < near.maxHp, farUntouched: far.hp === far.maxHp, selfHits };
+
+  // (e) it expires on its own
+  for (let i = 0; i < Math.ceil(D.falloutSecs * 60) + 30; i++) g._updateChaosDoctrine(1 / 60);
+  const expired = g._doctrineFallout === null;
+  return { endlessDoc, filled, coldRefused, indebted, burn, expired, perTitan: D.perTitanKill };
+});
+check('K01 the debt does NOT exist in Endless', oni.endlessDoc === false);
+check('K02 Titan kills fill the debt and it is clamped at 1', oni.filled === 1, String(oni.filled));
+check('K03 with no debt and no mana Protocol 0 still refuses, exactly as before',
+  oni.coldRefused === true);
+check('K04 at FULL debt the cast is free, clears the debt and lights the fallout',
+  oni.indebted.debt === 0 && oni.indebted.fallout === true &&
+  oni.indebted.casts === 1 && oni.indebted.mana === 0, JSON.stringify(oni.indebted));
+check('K05 the fallout burns enemies inside it and nobody outside',
+  oni.burn.nearHurt === true && oni.burn.farUntouched === true, JSON.stringify(oni.burn));
+check('K06 the fallout does not care whose side he is on — it burns HIM too',
+  oni.burn.selfHits > 0, `${oni.burn.selfHits} self ticks in 2 s`);
+check('K07 the fallout expires on its own', oni.expired === true);
+
+const pyre = await page.evaluate(() => {
+  const g = window.__g;
+  const P = window.__cd.CHAOS_DOCTRINE.oni_cataclysm_protocol.pylon;
+  window.__run('oni_cataclysm_protocol', true);
+  g.enemies.length = 0;
+  g._doctrineDebt = 1;
+  const mk = (dx) => {
+    let e = null;
+    try { e = new window.__Enemy('Neon Swarmer', 1); } catch (_) { return null; }
+    e.maxHp = 100000; e.hp = 100000;
+    e.pos.x = g.player.pos.x + dx; e.pos.y = g.player.pos.y;
+    g.enemies.push(e); return e;
+  };
+  const near = mk(80), far = mk(P.radius + 300);
+  g._doctrineTriggerPylon({ pos: window.__pt(g.player.pos.x, g.player.pos.y), type: 'pyre' });
+  return { debt: +g._doctrineDebt.toFixed(2), relief: P.debtRelief,
+           nearHurt: near.hp < near.maxHp, farUntouched: far.hp === far.maxHp,
+           buff: g._chaosPylonBuff?.type };
+});
+check('K08 a PYRE PYLON burns inside its radius only',
+  pyre.nearHurt === true && pyre.farUntouched === true, JSON.stringify(pyre));
+check('K09 it pays down exactly one Titan worth of debt',
+  Math.abs(pyre.debt - (1 - pyre.relief)) < 0.01, `${pyre.debt} after paying ${pyre.relief}`);
+
+// ════════════════════════════════════════════════════════════════════════════
+// L. EDDIE — SETLIST + AMP PYLON
+// ════════════════════════════════════════════════════════════════════════════
+const eddie = await page.evaluate(() => {
+  const g = window.__g;
+  const S = window.__cd.CHAOS_DOCTRINE.eddie.setlist;
+
+  window.__run('eddie', false);
+  const endlessDoc = !!g._doctrine();
+  const endlessCost = g.doctrineUltCost(80);
+
+  window.__run('eddie', true);
+  g._doctrineSongs = 0; g._doctrineEncores = 0; g._doctrineFeedbacks = 0; g._doctrineBeatT = 0;
+  const basePeriod = g._doctrineBeatPeriod();
+
+  // THE BEAT IS LOGICAL, NOT ACOUSTIC. Silence the whole audio system and the clock must be
+  // byte-identical: this is the one property that decides whether a muted player keeps the
+  // mechanic at all.
+  const audioBefore = g.audio;
+  g._doctrineBeatT = 0;
+  for (let i = 0; i < 37; i++) g._updateChaosDoctrine(1 / 60);
+  const withAudio = +g._doctrineBeatT.toFixed(6);
+  g.audio = null;
+  g._doctrineBeatT = 0;
+  for (let i = 0; i < 37; i++) g._updateChaosDoctrine(1 / 60);
+  const withoutAudio = +g._doctrineBeatT.toFixed(6);
+  g.audio = audioBefore;
+
+  // the beat wraps and both on- and off-beat phases are reachable
+  let onSeen = 0, offSeen = 0;
+  g._doctrineBeatT = 0;
+  for (let i = 0; i < 240; i++) {
+    g._updateChaosDoctrine(1 / 60);
+    if (g.doctrineOnBeat()) onSeen++; else offSeen++;
+  }
+
+  // songs speed the set up, floored
+  g._doctrineSongs = 0;  const p0 = g._doctrineBeatPeriod();
+  g._doctrineSongs = 3;  const p3 = g._doctrineBeatPeriod();
+  g._doctrineSongs = 99; const pMax = g._doctrineBeatPeriod();
+  g._doctrineSongs = 0;
+
+  // encores cut the cost, floored at minCost
+  g._doctrineEncores = 0; const c0 = g.doctrineUltCost(80);
+  g._doctrineEncores = 2; const c2 = g.doctrineUltCost(80);
+  g._doctrineEncores = 50; const cMax = g.doctrineUltCost(80);
+  g._doctrineEncores = 0;
+
+  // judging: forced on-beat, then forced off-beat
+  g._doctrineBeatT = 0;
+  const onBeatWas = g.doctrineOnBeat();
+  const gotEncore = g._doctrineJudgeBeat();
+  const afterEncore = g._doctrineEncores;
+  g._doctrineBeatT = g._doctrineBeatPeriod() / 2;      // exactly between beats
+  let fbDmg = 0;
+  const dp = g._damagePlayer.bind(g);
+  g._damagePlayer = (n, o) => { fbDmg += n; return dp(n, o); };
+  g.player.hp = g.player.maxHp;
+  const gotFeedback = g._doctrineJudgeBeat();
+  g._damagePlayer = dp;
+
+  return { endlessDoc, endlessCost, basePeriod, withAudio, withoutAudio, onSeen, offSeen,
+           p0, p3, pMax, minPeriod: S.minPeriod, c0, c2, cMax, minCost: S.minCost,
+           onBeatWas, gotEncore, afterEncore, gotFeedback, fbDmg,
+           feedbacks: g._doctrineFeedbacks };
+});
+check('L01 the setlist does NOT exist in Endless, and the cost is the shipped 80',
+  eddie.endlessDoc === false && eddie.endlessCost === 80, `cost ${eddie.endlessCost}`);
+check('L02 THE BEAT IS LOGICAL — muting the whole audio system changes it not at all',
+  eddie.withAudio === eddie.withoutAudio && eddie.withAudio > 0,
+  `${eddie.withAudio} with audio vs ${eddie.withoutAudio} with audio nulled`);
+check('L03 both on-beat and off-beat phases are reachable as the clock wraps',
+  eddie.onSeen > 0 && eddie.offSeen > 0, `${eddie.onSeen} on / ${eddie.offSeen} off of 240 frames`);
+check('L04 each song speeds the set up, floored at minPeriod',
+  eddie.p3 < eddie.p0 && eddie.pMax === eddie.minPeriod,
+  `${eddie.p0} -> ${eddie.p3} -> floor ${eddie.pMax}`);
+check('L05 encores cut the ultimate cost, floored at minCost so it never goes free',
+  eddie.c0 === 80 && eddie.c2 < 80 && eddie.cMax === eddie.minCost,
+  `${eddie.c0} / ${eddie.c2} / floor ${eddie.cMax}`);
+check('L06 landing the solo ON the beat pays an encore',
+  eddie.onBeatWas === true && eddie.gotEncore === true && eddie.afterEncore === 1,
+  `onBeat ${eddie.onBeatWas}, encore ${eddie.gotEncore}`);
+check('L07 missing the beat pays feedback in HP, through the real damage path',
+  eddie.gotFeedback === false && eddie.fbDmg > 0 && eddie.feedbacks === 1,
+  `feedback dmg ${eddie.fbDmg}, count ${eddie.feedbacks}`);
+
+const amp = await page.evaluate(() => {
+  const g = window.__g;
+  window.__run('eddie', true);
+  g._doctrineEncores = 0; g._doctrineSongs = 0;
+  const before = { enc: g._doctrineEncores, songs: g._doctrineSongs, per: g._doctrineBeatPeriod() };
+  g._doctrineTriggerPylon({ pos: window.__pt(g.player.pos.x, g.player.pos.y), type: 'amp' });
+  const after = { enc: g._doctrineEncores, songs: g._doctrineSongs, per: g._doctrineBeatPeriod(),
+                  buff: g._chaosPylonBuff?.type };
+  return { before, after };
+});
+check('L08 an AMP PYLON hands one encore AND speeds the set up — two-sided',
+  amp.after.enc === amp.before.enc + 1 && amp.after.songs === amp.before.songs + 1 &&
+  amp.after.per < amp.before.per,
+  `enc ${amp.before.enc}->${amp.after.enc}, songs ${amp.before.songs}->${amp.after.songs}, period ${amp.before.per}->${amp.after.per}`);
+
+// ════════════════════════════════════════════════════════════════════════════
 // G. RESET / CLEANUP
 // ════════════════════════════════════════════════════════════════════════════
 const after = await page.evaluate(() => {
@@ -665,6 +860,9 @@ const after = await page.evaluate(() => {
   g._doctrineAxiomLines = [{ ax: 0, ay: 0, bx: 1, by: 1, t: 1, max: 1 }];
   g._doctrineProofNodes = [{ x: 0, y: 0 }, { x: 1, y: 1 }]; g._doctrineProofProved = 3;
   g._doctrineProofFlash = { pts: [], t: 1, max: 1 };
+  g._doctrineDebt = 1; g._doctrineFallout = { x: 0, y: 0, r: 10, t: 5, cd: 0 };
+  g._doctrineFalloutCasts = 2; g._doctrineBeatT = 0.3; g._doctrineSongs = 4;
+  g._doctrineEncores = 3; g._doctrineFeedbacks = 2;
   const armed = { heat: g._doctrineHeat, stacks: g._doctrineFoundryStacks, charges: g._doctrineRerollCharges };
   g.gameOver = true;
   g.reset();
@@ -678,18 +876,23 @@ const after = await page.evaluate(() => {
     axiomLast: g._doctrineAxiomLast, axiomCd: g._doctrineAxiomCd, axiomHits: g._doctrineAxiomHits,
     axiomLines: g._doctrineAxiomLines.length, proofNodes: g._doctrineProofNodes.length,
     proofProved: g._doctrineProofProved, proofFlash: g._doctrineProofFlash,
+    debt: g._doctrineDebt, fallout: g._doctrineFallout, falloutCasts: g._doctrineFalloutCasts,
+    beatT: g._doctrineBeatT, songs: g._doctrineSongs, encores: g._doctrineEncores,
+    feedbacks: g._doctrineFeedbacks,
   };
 });
 check('G01 the rig really armed the doctrine before the restart',
   after.armed.heat === 1 && after.armed.stacks === 3 && after.armed.charges === 2, JSON.stringify(after.armed));
-check('G02 a restart clears EVERY doctrine field, all four characters',
+check('G02 a restart clears EVERY doctrine field, all six characters',
   after.heat === 0 && after.stacks === 0 && after.charges === 0 && after.used === 0 &&
   after.fired === 0 && after.pending === false && after.rerollMode === false &&
   after.ventCd === 0 && after.redlines === 0 && after.lawXp === 1 &&
   after.shroud === 0 && after.shroudWin === 0 && after.shroudArms === 0 &&
   after.axiomLast === null && after.axiomCd === 0 && after.axiomHits === 0 &&
   after.axiomLines === 0 && after.proofNodes === 0 && after.proofProved === 0 &&
-  after.proofFlash === 0,
+  after.proofFlash === 0 &&
+  after.debt === 0 && after.fallout === null && after.falloutCasts === 0 &&
+  after.beatT === 0 && after.songs === 0 && after.encores === 0 && after.feedbacks === 0,
   JSON.stringify(after));
 
 // ════════════════════════════════════════════════════════════════════════════

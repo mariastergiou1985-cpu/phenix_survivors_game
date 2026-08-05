@@ -1,5 +1,5 @@
 // ══════════════════════════════════════════════════════════════════════════════════════════════
-// CHAOS DOCTRINE — per-character Chaos Mode identity (PILOT: 4 of 10 characters)
+// CHAOS DOCTRINE — per-character Chaos Mode identity (PILOT: 6 of 10 characters)
 // ----------------------------------------------------------------------------------------------
 // WHY THIS FILE EXISTS
 // Chaos Mode changes the WORLD and never the PLAYER. Measured before this file: across ~85
@@ -21,7 +21,9 @@
 //   cyber_arm_hero     HEAT DOCTRINE   + FOUNDRY PYLON   (wave 1)
 //   assassin_clone     SHROUD DOCTRINE + VENOM PYLON     (wave 2)
 //   euclid_vector      AXIOM DOCTRINE  + PROOF PYLON     (wave 2)
-// The other six have NO entry, get NO doctrine, and are byte-for-byte unaffected: every read
+//   oni_cataclysm_...  CATACLYSM DEBT  + PYRE PYLON      (wave 3)
+//   eddie              SETLIST         + AMP PYLON       (wave 3)
+// The other four have NO entry, get NO doctrine, and are byte-for-byte unaffected: every read
 // site starts with `const doc = this._doctrine(); if (!doc) return;`, and `_doctrine()` returns
 // null outside Chaos and for any character without an entry here.
 //
@@ -176,6 +178,87 @@ export const CHAOS_DOCTRINE = Object.freeze({
       damage:   180,
       maxVictims: 24,
       flashSecs: 0.7,
+    }),
+  }),
+
+  // ── ONI CATACLYSM PROTOCOL ──────────────────────────────────────────────────────────────
+  // His ultimate is ALREADY a miniature Chaos: eight seconds of 50% damage reduction and +40%
+  // move speed with a molten trail, then a screen-wide detonation that also takes 15% of every
+  // normal enemy's max HP. So in Chaos the character does not escalate - he simply repeats.
+  // CATACLYSM DEBT gives the repetition a price that grows with the run.
+  oni_cataclysm_protocol: Object.freeze({
+    id: 'oni_cataclysm_protocol',
+    label: 'CATACLYSM DEBT',
+    color: '#ff4d2d',
+
+    // Every Mega Titan he kills adds a step of debt. At full debt Protocol 0 costs NO mana -
+    // but firing it while indebted leaves the ground irradiated, and the fallout does not care
+    // whose side he is on. The player keeps the trigger: the ultimate is never auto-fired, so
+    // the decision "take the free cast and live in the fallout, or pay down the debt first"
+    // stays theirs. That is the whole doctrine.
+    debt: Object.freeze({
+      perTitanKill: 0.34,   // three Titans to full
+      falloutSecs:   14,
+      falloutRadius: 420,
+      falloutTick:  0.5,    // seconds between fallout damage ticks
+      falloutEnemy:  26,    // per tick, to enemies
+      falloutSelf:    5,    // per tick, to HIM - through the real _damagePlayer path
+      maxVictims:    18,    // per tick, so a dense crowd cannot uncap it
+    }),
+
+    // PYRE PYLON - the safety valve. It burns enemies around it AND pays down one step of debt,
+    // so the player can choose to stay solvent instead of banking the free cast. Without it the
+    // debt would be a one-way ratchet; with it, it is a decision every time a pylon appears.
+    pylon: Object.freeze({
+      id:    'pyre',
+      name:  'PYRE PYLON',
+      color: '#ff4d2d',
+      glow:  '#ff2d0066',
+      radius:      300,
+      damage:       90,
+      maxVictims:   14,
+      debtRelief: 0.34,   // exactly one Titan's worth
+    }),
+  }),
+
+  // ── EDDIE ────────────────────────────────────────────────────────────────────────────────
+  // He owns something no other character has: a 150 ms BEAT CLOCK inside his ultimate, and real
+  // hooks into the audio system. In Chaos that is currently decoration - the music changes and
+  // means nothing. SETLIST makes the beat mechanical.
+  //
+  // THE BEAT COUNTER HERE IS LOGICAL, NOT ACOUSTIC. It advances on dt in _updateChaosDoctrine
+  // and never reads the audio clock, so a player with the sound muted, SFX at 0 or the tab
+  // backgrounded plays exactly the same game. Tying it to audio would have silently deleted the
+  // mechanic for anyone playing quiet - that was the flagged risk in the proposal, and this is
+  // the answer to it.
+  eddie: Object.freeze({
+    id: 'eddie',
+    label: 'SETLIST',
+    color: '#ff2d55',
+
+    // The timed action is the ULTIMATE, not the kill: a player cannot choose the frame a Titan
+    // dies on, but they absolutely choose when to hit the solo. Land it on the beat and the
+    // crowd gives you an encore; miss and you get feedback.
+    setlist: Object.freeze({
+      basePeriod:   0.60,   // seconds per beat at the top of the set
+      periodPerSong: 0.06,  // each Mega Titan killed is a song - the set gets faster
+      minPeriod:    0.30,
+      window:       0.12,   // +/- around the beat that counts as on-beat
+      encoreCut:       6,   // mana off the ultimate per encore stack
+      minCost:        50,   // floor: his ultimate is 80, so at most five encores matter
+      feedbackDmg:     8,   // missing the beat bites, through the real _damagePlayer path
+      maxSongs:       10,
+    }),
+
+    // AMP PYLON - two-sided, like everything else he does. It hands him one guaranteed encore
+    // AND advances the set by a song, so the beat he has to hit gets tighter from then on.
+    pylon: Object.freeze({
+      id:    'amp',
+      name:  'AMP PYLON',
+      color: '#ff2d55',
+      glow:  '#ff005566',
+      freeEncore: 1,
+      songs:      1,
     }),
   }),
 });

@@ -189,6 +189,43 @@ export function drawHUD(ctx, game) {
         drawText(ctx, txt, WIDTH / 2, 126, '#ffd447', 'bold 10px Consolas, monospace');
         ctx.restore();
       }
+    } else if (_cid === 'oni_cataclysm_protocol') {
+      const d = Math.max(0, Math.min(1, game._doctrineDebt || 0));
+      const full = d >= 1;
+      const BW = 118, BH = 7, bx = WIDTH / 2 - BW / 2, by = 126;
+      ctx.save();
+      ctx.globalAlpha = full ? (0.75 + 0.25 * Math.abs(Math.sin(Date.now() / 150))) : 0.85;
+      ctx.fillStyle = 'rgba(6,10,22,0.72)';
+      ctx.fillRect(bx - 1, by - 1, BW + 2, BH + 2);
+      ctx.fillStyle = '#ff4d2d';
+      ctx.fillRect(bx, by, Math.round(BW * d), BH);
+      ctx.strokeStyle = full ? '#ff4d2d' : 'rgba(255,77,45,0.55)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(bx - 0.5, by - 0.5, BW + 1, BH + 1);
+      ctx.textAlign = 'center';
+      drawText(ctx, full ? 'DEBT FULL \u2014 PROTOCOL 0 FREE' : 'CATACLYSM DEBT',
+               WIDTH / 2, by - 3, '#ff4d2d', 'bold 10px Consolas, monospace');
+      ctx.restore();
+    } else if (_cid === 'eddie') {
+      // Beat indicator: a pip that swells on the beat. Driven by the LOGICAL beat, so it reads
+      // identically with the sound off.
+      const on = !!game.doctrineOnBeat?.();
+      const BW = 118, bx = WIDTH / 2 - BW / 2, by = 128;
+      ctx.save();
+      ctx.globalAlpha = 0.9;
+      ctx.textAlign = 'center';
+      drawText(ctx, 'SET ' + (game._doctrineSongs || 0) + ' \u00b7 ENCORE \u00d7' + (game._doctrineEncores || 0),
+               WIDTH / 2, by - 6, '#ff2d55', 'bold 10px Consolas, monospace');
+      ctx.globalAlpha = on ? 1 : 0.35;
+      ctx.fillStyle = '#ff2d55';
+      const r = on ? 7 : 4;
+      ctx.beginPath(); ctx.arc(WIDTH / 2, by + 4, r, 0, Math.PI * 2); ctx.fill();
+      if (on) {
+        ctx.globalAlpha = 0.5;
+        ctx.strokeStyle = '#ff8fa8'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(WIDTH / 2, by + 4, r + 5, 0, Math.PI * 2); ctx.stroke();
+      }
+      ctx.restore();
     } else if (_cid === 'japan_phasewalker' && (game._doctrineRerollsUsed || 0) > 0) {
       ctx.save();
       ctx.globalAlpha = 0.85;
@@ -205,7 +242,9 @@ export function drawHUD(ctx, game) {
     const isShield = buff.type === 'shield';
     const DOC_BUFF = { foundry: ['#ff9a2d', 'F FOUNDRY VENT'],
                        venom:   ['#7CFF4D', 'V VENOM PURGE'],
-                       proof:   ['#ffd447', 'Q PROOF ANCHORED'] };
+                       proof:   ['#ffd447', 'Q PROOF ANCHORED'],
+                       pyre:    ['#ff4d2d', 'P PYRE \u2014 DEBT PAID'],
+                       amp:     ['#ff2d55', 'A AMP \u2014 ENCORE'] };
     const docB    = DOC_BUFF[buff.type] || null;
     const color   = docB ? docB[0] : isShield ? CYAN : '#44ff88';
     const label   = docB ? docB[1] : isShield ? 'S SHIELD PULSE ACTIVE' : '+ HEAL PULSE ACTIVE';

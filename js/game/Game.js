@@ -31,7 +31,7 @@ import './BuildEngineChars5.js?v=20260902130000';   // P2.5 Universal όπλα 2
 import './BuildEnginePassives.js?v=20260902130000'; // P2.6 Build passives §26-50 (generic hooks)
 import { MutationUI }      from './MutationUI.js?v=20260810210000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
-import { drawHUD, drawEndScreen } from './HUD.js?v=20260904140000';
+import { drawHUD, drawEndScreen } from './HUD.js?v=20260904150000';
 import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, COLLECTIBLE_FRAGMENT_COST, COLLECTIBLE_GRID_COST, ECHO_FRAGMENT_COST, ECHO_GRID_COST, SKILL_TREE, AMULET_DEFS, GRID_TO_PF_RATE, characterStageRequirement } from './MetaProgress.js?v=20260903020000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260712520000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
@@ -54,7 +54,7 @@ import { LaserEyes } from '../effects/laser-eyes.js?v=20260818000000';
 import { MeteorRain } from '../effects/meteor-rain.js?v=20260712100000';
 import { NpcWalker } from './NpcWalker.js?v=20260904030000';
 import { MapManager, BIOME_ID, BIOME_DEFS, CHUNK_SIZE } from './MapManager.js?v=20260904120000';
-import { getChaosDoctrine } from './ChaosDoctrine.js?v=20260904140000';
+import { getChaosDoctrine } from './ChaosDoctrine.js?v=20260904150000';
 import { AcidRain } from './AcidRain.js?v=20260829020000';   // BATCH 2 major event (2026-07-29)
 import { EnemyWeaponSystem } from './EnemyWeaponSystem.js?v=20260829040000';   // BATCH 3 enemy weapon behaviours
 import { EventBus, EVENTS } from './EventBus.js?v=20260703990000';
@@ -2108,6 +2108,13 @@ export class Game {
     this._doctrineProofNodes    = [];     // { x, y } anchored PROOF PYLON vertices
     this._doctrineProofFlash    = 0;      // { pts, t } lifetime of the closing flash
     this._doctrineProofProved   = 0;      // QA: triangles closed this run
+    this._doctrineDebt          = 0;      // 0..1, oni_cataclysm_protocol only
+    this._doctrineFallout       = null;   // { x, y, r, t, cd } irradiated ground
+    this._doctrineFalloutCasts  = 0;      // QA: indebted casts this run
+    this._doctrineBeatT         = 0;      // LOGICAL beat phase, eddie only — never the audio clock
+    this._doctrineSongs         = 0;      // Mega Titans killed this run = songs played
+    this._doctrineEncores       = 0;      // on-beat ultimates
+    this._doctrineFeedbacks     = 0;      // missed beats
 
     this.killsSinceHealthDrop = 0;   // counts toward the next HP CELL drop
     this.healthPickups        = [];  // [{ pos: Vec2, timer: number }] — heals 25% maxHp on touch
@@ -9264,11 +9271,18 @@ export class Game {
     if (p.selectedCharacter !== 'oni_cataclysm_protocol') return;
     this._ensureOniFx();
     if (!this._protocol0 || this._protocol0.isRunning()) return;
-    if (p.mana < ULTIMATE_MANA_COST) {
+    // CHAOS DOCTRINE (oni, Chaos only): at full CATACLYSM DEBT the cast is free - and the
+    // ground it leaves behind is hot for everyone standing on it, him included. The player
+    // still pulls the trigger; the doctrine only changes what the cast costs and what it
+    // leaves. Nothing about the ultimate's own damage, radius or mastery scaling is touched.
+    const _oDoc  = this._doctrine();
+    const _indebted = !!(_oDoc && _oDoc.debt && this._doctrineDebt >= 1);
+    if (!_indebted && p.mana < ULTIMATE_MANA_COST) {
       this.floatingTexts.push(new FloatingText('NOT ENOUGH MANA', p.pos.clone(), RED, 1.0));
       return;
     }
-    p.mana -= ULTIMATE_MANA_COST;
+    if (_indebted) { this._doctrineDebt = 0; this._doctrineLightFallout(p.pos.x, p.pos.y); }
+    else { p.mana -= ULTIMATE_MANA_COST; }
     this.audio?.forgeUltCast?.('oni');                     // Φ9 cast sting
     const cl = p.upgrades['oni_protocol0_mastery'] || 0;   // Total Cataclysm mastery level
     const vs = this._viewScale, cam = this.camera;
@@ -12600,9 +12614,24 @@ export class Game {
         }
       } catch (_) {}
       this.triggerAnnouncement(this._activeTitan.enemyType.toUpperCase() + ' DESTROYED — REWARD RELIC UNLOCKED', '#7CFF4D');
-      // CHAOS DOCTRINE: a Titan kill pays japan_phasewalker a Chaos Law reroll. No-op for the
-      // other nine. Deferred one frame so the kill's own banners land before the overlay.
-      try { this._doctrinePendingReroll = !!this._doctrine()?.reroll; } catch (_) {}
+      // CHAOS DOCTRINE: a Mega Titan kill is the run's escalation beat, and three doctrines
+      // read it - a Chaos Law reroll (japan_phasewalker), a step of cataclysm debt (oni) and a
+      // song on the setlist (eddie). No-op for everyone else. The reroll is deferred one frame
+      // so the kill's own banners land before the overlay opens.
+      try {
+        const _d = this._doctrine();
+        this._doctrinePendingReroll = !!(_d && _d.reroll);
+        if (_d && _d.debt) {
+          this._doctrineDebt = Math.min(1, this._doctrineDebt + _d.debt.perTitanKill);
+          if (this._doctrineDebt >= 1) {
+            this.triggerAnnouncement('\u25c8 CATACLYSM DEBT FULL \u2014 PROTOCOL 0 IS FREE \u25c8', '#ff4d2d', { priority: 2 });
+          }
+        }
+        if (_d && _d.setlist) {
+          this._doctrineSongs = Math.min(_d.setlist.maxSongs, this._doctrineSongs + 1);
+          this.triggerAnnouncement('\u25c8 SONG ' + this._doctrineSongs + ' \u2014 THE SET SPEEDS UP \u25c8', '#ff2d55', { priority: 2 });
+        }
+      } catch (_) {}
       this._activeTitan = null;
       this.endMajorEvent('megaBoss');            // the ambient slot frees when the boss is gone
     } else if (this._activeTitan) {
@@ -19371,7 +19400,10 @@ export class Game {
     const p = this.player;
     if (p.selectedCharacter !== 'eddie') return;                // Eddie only
     if (this._redCurtain) return;                               // already running
-    const cost = 80;                                            // fits his 80 max mana (see note above)
+    // CHAOS DOCTRINE (eddie, Chaos only): SETLIST. Encores earned by landing the solo ON the
+    // beat permanently cut what every later cast costs this run, floored so it can never go
+    // free. doctrineUltCost() returns `base` unchanged outside Chaos and for everyone else.
+    const cost = this.doctrineUltCost(80);                      // fits his 80 max mana (see note above)
     if (p.mana < cost) {                                        // same NOT-ENOUGH-MANA behavior as other ultimates
       this.floatingTexts.push(new FloatingText('NOT ENOUGH MANA', p.pos.clone(), CYAN, 1.0));
       return;
@@ -19381,6 +19413,9 @@ export class Game {
     this._ensureFeedbackFx();
     if (!this._feedbackApoc || this._feedbackApoc.isActive()) return;
     p.mana -= cost;
+    // Judge the timing AFTER the cast is committed, so an encore or a feedback bite can never
+    // change whether the ultimate fires - only what it costs next time.
+    try { this._doctrineJudgeBeat(); } catch (_) {}
     const sp = this._playerScreenPos();
     this._feedbackApoc.trigger(sp.cx, sp.footY);
     // EDDIE SEQUENTIAL PLAYLIST — only the FIRST ultimate of a run may touch the music.
@@ -36135,6 +36170,43 @@ _drawLoreArchive(ctx) {
       }
     }
 
+    // CATACLYSM DEBT (oni): the irradiated ground left by an indebted cast. It does not care
+    // whose side anyone is on - enemies AND he take it, through the real damage paths.
+    if (this._doctrineFallout) {
+      const F = this._doctrineFallout;
+      F.t -= dt;
+      F.cd -= dt;
+      if (F.cd <= 0 && doc.debt) {
+        F.cd = doc.debt.falloutTick;
+        let n = 0;
+        const r2 = F.r * F.r;
+        // Snapshot — takeHit can chain-kill and splice this.enemies mid-loop.
+        for (const e of this.enemies.slice()) {
+          if (n >= doc.debt.maxVictims) break;
+          if (!e || e.hp <= 0 || !e.pos) continue;
+          const dx = e.pos.x - F.x, dy = e.pos.y - F.y;
+          if (dx * dx + dy * dy > r2) continue;
+          const isBig = (e.isBoss && e.isBoss()) || e.isMegaBoss;
+          const dmg = isBig ? doc.debt.falloutEnemy * 0.25 : doc.debt.falloutEnemy;
+          try { e.takeHit(isBig && this._capBossDamage ? this._capBossDamage(e, dmg) : dmg, this); } catch (_) { continue; }
+          n++;
+        }
+        if (this.player && this.player.pos) {
+          const px = this.player.pos.x - F.x, py = this.player.pos.y - F.y;
+          if (px * px + py * py <= r2) this._damagePlayer(doc.debt.falloutSelf, { color: '#ff4d2d', shake: 2 });
+        }
+      }
+      if (F.t <= 0) this._doctrineFallout = null;
+    }
+
+    // SETLIST (eddie): a LOGICAL beat, advanced on dt. It never reads the audio clock, so the
+    // mechanic is identical with the sound muted, SFX at 0, or the tab in the background.
+    if (doc.setlist) {
+      this._doctrineBeatT += dt;
+      const per = this._doctrineBeatPeriod();
+      while (this._doctrineBeatT >= per) this._doctrineBeatT -= per;
+    }
+
     if (!doc.heat || !this.player) return;
     const H = doc.heat;
 
@@ -36237,6 +36309,66 @@ _drawLoreArchive(ctx) {
     this._doctrineAxiomLines.push({ ax: prev.x, ay: prev.y, bx: pos.x, by: pos.y, t: A.trailSecs, max: A.trailSecs });
   }
 
+  /** Seconds per beat right now — the set gets faster with every song. eddie only. */
+  _doctrineBeatPeriod() {
+    const doc = this._doctrine();
+    if (!doc || !doc.setlist) return 0;
+    const S = doc.setlist;
+    return Math.max(S.minPeriod, S.basePeriod - S.periodPerSong * (this._doctrineSongs || 0));
+  }
+
+  /** How far off the nearest beat we are, in seconds. eddie only. */
+  _doctrineBeatOffset() {
+    const per = this._doctrineBeatPeriod();
+    if (!per) return Infinity;
+    const t = this._doctrineBeatT % per;
+    return Math.min(t, per - t);
+  }
+
+  /** True when the ultimate would land ON the beat right now. */
+  doctrineOnBeat() {
+    const doc = this._doctrine();
+    if (!doc || !doc.setlist) return false;
+    return this._doctrineBeatOffset() <= doc.setlist.window;
+  }
+
+  /** Eddie's ultimate cost after encores. Floors at setlist.minCost. */
+  doctrineUltCost(base) {
+    const doc = this._doctrine();
+    if (!doc || !doc.setlist) return base;
+    const S = doc.setlist;
+    return Math.max(S.minCost, base - S.encoreCut * (this._doctrineEncores || 0));
+  }
+
+  /**
+   * Resolve the timing of one Eddie ultimate. On the beat: an encore, which permanently cuts
+   * the cost of every later cast this run. Off it: feedback, paid in HP through the real
+   * damage path. Returns true when it was an encore.
+   */
+  _doctrineJudgeBeat() {
+    const doc = this._doctrine();
+    if (!doc || !doc.setlist) return false;
+    const S = doc.setlist;
+    if (this.doctrineOnBeat()) {
+      this._doctrineEncores++;
+      this.triggerAnnouncement('\u25c8 ENCORE \u00d7' + this._doctrineEncores + ' \u2014 ON THE BEAT \u25c8', '#ff2d55', { priority: 2 });
+      return true;
+    }
+    this._doctrineFeedbacks++;
+    this._damagePlayer(S.feedbackDmg, { color: '#ff2d55', shake: 3 });
+    this.triggerAnnouncement('\u25c8 FEEDBACK \u2014 OFF THE BEAT \u25c8', '#ff2d55', { priority: 3 });
+    return false;
+  }
+
+  /** Light the irradiated ground an indebted Protocol 0 leaves behind. oni only. */
+  _doctrineLightFallout(x, y) {
+    const doc = this._doctrine();
+    if (!doc || !doc.debt) return;
+    this._doctrineFallout = { x, y, r: doc.debt.falloutRadius, t: doc.debt.falloutSecs, cd: 0 };
+    this._doctrineFalloutCasts++;
+    this.triggerAnnouncement('\u25c8 FALLOUT \u2014 THE GROUND IS HOT, YOURS TOO \u25c8', '#ff4d2d', { priority: 2 });
+  }
+
   /** Dump the heat bar (FOUNDRY PYLON, and the ultimate's own vent). */
   _doctrineVentHeat() {
     this._doctrineHeat = 0;
@@ -36307,7 +36439,8 @@ _drawLoreArchive(ctx) {
         if (d < TRIGGER_R) {
           p.triggered = true;
           p.life      = Math.min(p.life, 0.6); // flash then remove
-          if (p.type === 'fate' || p.type === 'foundry' || p.type === 'venom' || p.type === 'proof') {
+          if (p.type === 'fate' || p.type === 'foundry' || p.type === 'venom' ||
+              p.type === 'proof' || p.type === 'pyre' || p.type === 'amp') {
             this._doctrineTriggerPylon(p);
           } else if (p.type === 'danger') {
             this._damagePlayer(15, { color: '#ff4400', shake: 4 });
@@ -36435,6 +36568,40 @@ _drawLoreArchive(ctx) {
       return;
     }
 
+    if (P.id === 'pyre') {
+      // The safety valve: it burns, and it pays down exactly one Titan's worth of debt. Staying
+      // solvent is a choice against banking the free cast, which is the whole decision.
+      let hit = 0;
+      const r2 = P.radius * P.radius;
+      for (const e of this.enemies.slice()) {          // snapshot: takeHit splices this.enemies
+        if (hit >= P.maxVictims) break;
+        if (!e || e.hp <= 0 || !e.pos) continue;
+        const dx = e.pos.x - p.pos.x, dy = e.pos.y - p.pos.y;
+        if (dx * dx + dy * dy > r2) continue;
+        const isBig = (e.isBoss && e.isBoss()) || e.isMegaBoss;
+        const dmg = isBig ? P.damage * 0.25 : P.damage;
+        try { e.takeHit(isBig && this._capBossDamage ? this._capBossDamage(e, dmg) : dmg, this); } catch (_) { continue; }
+        hit++;
+      }
+      const before = this._doctrineDebt;
+      this._doctrineDebt = Math.max(0, this._doctrineDebt - P.debtRelief);
+      this._chaosPylonBuff = { type: 'pyre', timer: 3.0 };
+      this._spawnFloatingText(before > this._doctrineDebt ? 'PYRE \u2014 DEBT PAID' : 'PYRE \u00d7' + hit,
+                              p.pos.clone(), '#ff4d2d', 1.3);
+      return;
+    }
+
+    if (P.id === 'amp') {
+      // Two-sided, like everything he does: a guaranteed encore now, and the set gets faster
+      // from here on, so every later beat is harder to hit.
+      const S = doc.setlist || {};
+      this._doctrineEncores += P.freeEncore;
+      this._doctrineSongs = Math.min(S.maxSongs || 10, (this._doctrineSongs || 0) + P.songs);
+      this._chaosPylonBuff = { type: 'amp', timer: 3.0 };
+      this._spawnFloatingText('AMP \u2014 ENCORE, FASTER SET', p.pos.clone(), '#ff2d55', 1.4);
+      return;
+    }
+
     if (P.id === 'foundry') {
       this._doctrineVentHeat();
       if (this._doctrineFoundryStacks < P.maxStacks) {
@@ -36458,6 +36625,22 @@ _drawLoreArchive(ctx) {
    * transform the pylons use - no second convention to get wrong.
    */
   _drawDoctrineFx(ctx) {
+    const F = this._doctrineFallout;
+    if (F && F.t > 0) {
+      const a = Math.min(1, F.t / 2);
+      const pulse = 0.55 + 0.25 * Math.abs(Math.sin(performance.now() * 0.004));
+      ctx.save();
+      ctx.globalAlpha = a * 0.18 * pulse;
+      ctx.fillStyle = '#ff4d2d';
+      ctx.beginPath(); ctx.arc(F.x, F.y, F.r, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = a * 0.85;
+      ctx.strokeStyle = '#ff7a4d';
+      ctx.lineWidth = 3;
+      ctx.setLineDash([14, 10]);
+      ctx.beginPath(); ctx.arc(F.x, F.y, F.r, 0, Math.PI * 2); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
     const lines = this._doctrineAxiomLines;
     if (lines && lines.length) {
       ctx.save();
@@ -36529,6 +36712,8 @@ _drawLoreArchive(ctx) {
       else if (p.type === 'foundry') { core = '#ff9a2d'; glow = '#ff6a0066'; }
       else if (p.type === 'venom')   { core = '#7CFF4D'; glow = '#44ff8866'; }
       else if (p.type === 'proof')   { core = '#ffd447'; glow = '#ffcc0066'; }
+      else if (p.type === 'pyre')    { core = '#ff4d2d'; glow = '#ff2d0066'; }
+      else if (p.type === 'amp')     { core = '#ff2d55'; glow = '#ff005566'; }
       else { core = '#44ff88'; glow = '#22cc6644'; }
 
       ctx.save();
