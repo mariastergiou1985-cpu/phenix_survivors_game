@@ -155,9 +155,10 @@ const rig = await page.evaluate(async (dv) => {
 }, DOC_V);
 check('A03x the Enemy class is available to the rig', await page.evaluate(() => !!window.__Enemy));
 const PILOT = ['japan_phasewalker', 'cyber_arm_hero', 'assassin_clone', 'euclid_vector',
-               'oni_cataclysm_protocol', 'eddie', 'taekwondo_girl', 'dimis_kickboxer'];
-check('A03 the doctrine table ships exactly the eight piloted characters',
-  rig.chars.length === 8 && PILOT.every(c => rig.chars.includes(c)), rig.chars.join(', '));
+               'oni_cataclysm_protocol', 'eddie', 'taekwondo_girl', 'dimis_kickboxer',
+               'skeleton_warrior', 'brawler_warrior'];
+check('A03 the doctrine table now covers all ten characters',
+  rig.chars.length === 10 && PILOT.every(c => rig.chars.includes(c)), rig.chars.join(', '));
 
 // ════════════════════════════════════════════════════════════════════════════
 // B. THE LAW TEXT NOW MATCHES THE LAW
@@ -404,31 +405,48 @@ check('E11 the run keeps a finite, positive xpMult after the swap',
 // ════════════════════════════════════════════════════════════════════════════
 // F. THE OTHER EIGHT ARE UNTOUCHED
 // ════════════════════════════════════════════════════════════════════════════
+// With the roster complete there is no character left to prove "untouched" against, so the
+// property that matters is no longer WHO is excluded but WHAT excludes them: the gate. Every
+// one of the ten must produce the shipped 50/25/25 distribution and zero doctrine state in
+// ENDLESS, and its own pylon in CHAOS. That is the same guarantee, asserted at its source.
 const others = await page.evaluate(() => {
   const g = window.__g;
   const out = {};
-  for (const c of ['skeleton_warrior', 'brawler_warrior']) {
-    window.__run(c, true);
-    const doc = !!g._doctrine();
-    // 600 pylon spawns: the distribution must stay the shipped 50/25/25 with nothing else in it
+  const spin = (n) => {
     g._chaosPylons.length = 0;
     const seen = {};
-    for (let i = 0; i < 600; i++) {
+    for (let i = 0; i < n; i++) {
       g._chaosPylonCd = -1;
       g._updateChaosPylons(0.016);
       for (const p of g._chaosPylons) seen[p.type] = (seen[p.type] || 0) + 1;
       g._chaosPylons.length = 0;
     }
+    return seen;
+  };
+  for (const c of window.__cd.doctrineCharacters()) {
+    window.__run(c, false);                       // ENDLESS
+    const endlessDoc = !!g._doctrine();
+    const endlessTypes = Object.keys(spin(300)).sort();
     for (let i = 0; i < 30; i++) g._doctrineAddHeat();
-    out[c] = { doc, types: Object.keys(seen).sort(), heat: g._doctrineHeat, rerolls: g._doctrineRerollCharges };
+    const endlessHeat = g._doctrineHeat;
+    window.__run(c, true);                        // CHAOS
+    const chaosTypes = Object.keys(spin(500)).sort();
+    out[c] = { endlessDoc, endlessTypes, endlessHeat, chaosTypes,
+               own: window.__cd.CHAOS_DOCTRINE[c].pylon.id };
   }
   return out;
 });
-const allClean = Object.values(others).every(o =>
-  o.doc === false && o.heat === 0 && o.rerolls === 0 &&
-  o.types.length === 3 && o.types.join(',') === 'danger,heal,shield');
-check('F01 the remaining two characters get NO doctrine, NO heat, NO rerolls',
-  allClean, JSON.stringify(Object.fromEntries(Object.entries(others).map(([k, v]) => [k, v.types.join('/')]))));
+const endlessClean = Object.values(others).every(o =>
+  o.endlessDoc === false && o.endlessHeat === 0 &&
+  o.endlessTypes.join(',') === 'danger,heal,shield');
+check('F01 ALL TEN characters are byte-identical to the shipped game in Endless',
+  endlessClean,
+  JSON.stringify(Object.fromEntries(Object.entries(others).map(([k, v]) => [k, v.endlessTypes.join('/')]))));
+const chaosOwn = Object.entries(others).every(([, v]) =>
+  v.chaosTypes.includes(v.own) && v.chaosTypes.length === 4);
+check('F01b in CHAOS each of the ten gets its OWN pylon and only its own',
+  chaosOwn,
+  JSON.stringify(Object.fromEntries(Object.entries(others).map(([k, v]) => [k, v.chaosTypes.join('/')]))));
 
 const dist = await page.evaluate(() => {
   const g = window.__g;
@@ -1032,6 +1050,186 @@ check('N08 an AEGIS PYLON refuses the hit outright and charges the Verdict inste
 check('N09 the aegis expires on its own', dimi.aegisExpired === true);
 
 // ════════════════════════════════════════════════════════════════════════════
+// O. SKELETON WARRIOR — OSSUARY DEBT + MARROW PYLON
+// ════════════════════════════════════════════════════════════════════════════
+const ossuary = await page.evaluate(() => {
+  const g = window.__g;
+  const D = window.__cd.CHAOS_DOCTRINE.skeleton_warrior.debt;
+
+  window.__run('skeleton_warrior', false);
+  const endlessShatter = g._doctrineTryShatter();
+
+  window.__run('skeleton_warrior', true);
+  g._doctrineShatters = 0; g._doctrineReassembled = 0; g._doctrineShards.length = 0;
+  g._doctrineShatterT = 0;
+
+  // (a) it shatters instead of dying, with the right number of shards
+  const first = g._doctrineTryShatter();
+  const shattered = { ok: first, shards: g._doctrineShards.length, want: D.shards,
+                      hp: g.player.hp, gate: g.phoenixReviveTimer > 0,
+                      window: +g._doctrineShatterT.toFixed(1) };
+
+  // (b) nothing can finish him while scattered — the shipped i-frame gate does it
+  g.playerHitCooldown = 0; g._chaosEntryGraceT = 0;
+  const refused = g._damagePlayer(9999, {}) === false;
+
+  // (c) collecting every shard reassembles him
+  for (const sh of g._doctrineShards.slice()) { g.player.pos.x = sh.x; g.player.pos.y = sh.y; g._updateChaosDoctrine(1 / 60); }
+  g._updateChaosDoctrine(1 / 60);
+  const back = { shards: g._doctrineShards.length, shatterT: g._doctrineShatterT,
+                 hp: g.player.hp, pct: g.player.hp / g.player.maxHp,
+                 reassembled: g._doctrineReassembled };
+
+  // (d) the SECOND shatter asks for one more shard
+  const second = g._doctrineTryShatter();
+  const escalated = { ok: second, shards: g._doctrineShards.length, want: D.shards + D.shardStep };
+
+  // (e) running out of time hands the run back to the SHIPPED death chain rather than ending
+  // it here: hp goes to 0 and the gate clears, so the next frame resolves game over normally.
+  for (let i = 0; i < Math.ceil(D.windowSecs * 60) + 30; i++) g._updateChaosDoctrine(1 / 60);
+  const lapsed = { shatterT: g._doctrineShatterT, hp: g.player.hp,
+                   gate: g.phoenixReviveTimer, shards: g._doctrineShards.length,
+                   gameOverNotForced: g.gameOver === false };
+  return { endlessShatter, shattered, refused, back, escalated, lapsed };
+});
+check('O01 he does NOT shatter in Endless — the shipped death chain is untouched there',
+  ossuary.endlessShatter === false);
+check('O02 in Chaos he shatters instead of dying, with the right shard count',
+  ossuary.shattered.ok === true && ossuary.shattered.shards === ossuary.shattered.want &&
+  ossuary.shattered.hp === 1 && ossuary.shattered.gate === true,
+  JSON.stringify(ossuary.shattered));
+check('O03 nothing can finish him while scattered — the shipped i-frame gate holds',
+  ossuary.refused === true);
+check('O04 recovering every shard puts him back together at the right HP',
+  ossuary.back.shards === 0 && ossuary.back.shatterT === 0 &&
+  Math.abs(ossuary.back.pct - 0.40) < 0.02 && ossuary.back.reassembled === 1,
+  JSON.stringify(ossuary.back));
+check('O05 the SECOND shatter of a run asks for one more shard',
+  ossuary.escalated.ok === true && ossuary.escalated.shards === ossuary.escalated.want,
+  JSON.stringify(ossuary.escalated));
+check('O06 running out of time hands the run back to the shipped death chain, not to a new one',
+  ossuary.lapsed.shatterT === 0 && ossuary.lapsed.hp === 0 && ossuary.lapsed.gate === 0 &&
+  ossuary.lapsed.shards === 0, JSON.stringify(ossuary.lapsed));
+
+const marrow = await page.evaluate(() => {
+  const g = window.__g;
+  const P = window.__cd.CHAOS_DOCTRINE.skeleton_warrior.pylon;
+  window.__run('skeleton_warrior', true);
+  g._doctrineTurrets.length = 0; g._petBolts.length = 0; g.enemies.length = 0;
+  let e = null;
+  try { e = new window.__Enemy('Neon Swarmer', 1); } catch (_) {}
+  if (e) { e.maxHp = 100000; e.hp = 100000; e.pos.x = g.player.pos.x + 120; e.pos.y = g.player.pos.y; g.enemies.push(e); }
+  g._doctrineTriggerPylon({ pos: window.__pt(g.player.pos.x, g.player.pos.y), type: 'marrow' });
+  const placed = g._doctrineTurrets.length;
+  for (let i = 0; i < 130; i++) g._updateChaosDoctrine(1 / 60);   // > 2 cadences
+  const fired = g._petBolts.length;
+  for (let i = 0; i < 9; i++) g._doctrineTriggerPylon({ pos: window.__pt(g.player.pos.x, g.player.pos.y), type: 'marrow' });
+  return { placed, fired, capped: g._doctrineTurrets.length, max: P.maxTurrets,
+           buff: g._chaosPylonBuff?.type };
+});
+check('O07 a MARROW PYLON stays as a turret instead of paying out, and fires real bolts',
+  marrow.placed === 1 && marrow.fired > 0, `${marrow.placed} turret, ${marrow.fired} bolts`);
+check('O08 turrets are hard-capped', marrow.capped === marrow.max, `${marrow.capped} / ${marrow.max}`);
+
+// ════════════════════════════════════════════════════════════════════════════
+// P. BRAWLER WARRIOR — FAULT MAP + QUAKE PYLON
+// ════════════════════════════════════════════════════════════════════════════
+const fault = await page.evaluate(() => {
+  const g = window.__g;
+  const F = window.__cd.CHAOS_DOCTRINE.brawler_warrior.fault;
+
+  window.__run('brawler_warrior', false);
+  g._doctrineDropScar(0, 0);
+  const endlessScars = g._doctrineScars.length;
+
+  window.__run('brawler_warrior', true);
+  g._doctrineScars.length = 0; g._doctrineScarDrop = 0; g._doctrineCollapses = 0;
+  g.enemies.length = 0;
+
+  // (a) a ground attack leaves a scar — through the shipped accent classification
+  g._spawnWeaponAccent('seismic_rift', g.player.pos.x, g.player.pos.y, 0, 1);
+  const fromAccent = g._doctrineScars.length;
+
+  // (b) the drop cooldown holds the rate down whatever the fire rate
+  for (let i = 0; i < 50; i++) g._spawnWeaponAccent('seismic_rift', g.player.pos.x + i * 10, g.player.pos.y, 0, 1);
+  const spammed = g._doctrineScars.length;
+
+  // (c) scars bite what stands on them, and nothing off them
+  const mk = (x, y) => {
+    let e = null;
+    try { e = new window.__Enemy('Neon Swarmer', 1); } catch (_) { return null; }
+    e.maxHp = 1e7; e.hp = 1e7; e.pos.x = x; e.pos.y = y; g.enemies.push(e); return e;
+  };
+  const sc = g._doctrineScars[0];
+  const on = mk(sc.x, sc.y), off = mk(sc.x + 5000, sc.y + 5000);
+  for (let i = 0; i < 60; i++) g._updateChaosDoctrine(1 / 60);
+  const bite = { onHurt: on.hp < on.maxHp, offUntouched: off.hp === off.maxHp };
+
+  // (d) the FIFO ceiling holds even in the pathological case where the doctrine never ticks
+  //     (drops without a frame between them) — the array itself is the last line of defence.
+  g._doctrineScars.length = 0; g._doctrineCollapses = 0; g.enemies.length = 0;
+  for (let i = 0; i < 200; i++) { g._doctrineScarDrop = 0; g._doctrineDropScar(i * 40, 0); }
+  const ceiling = { scars: g._doctrineScars.length, max: F.maxScars, collapses: g._doctrineCollapses };
+
+  // (e) the real loop: a scar is dropped INSIDE a frame and the doctrine ticks after it, so a
+  //     saturated map collapses on the very next tick and never reaches the FIFO ceiling.
+  //     Only the 0.35 s drop cooldown is accelerated; the ordering is the shipped one.
+  g._doctrineScars.length = 0; g._doctrineCollapses = 0; g.enemies.length = 0;
+  let peak = 0;
+  for (let i = 0; i < 120; i++) {
+    g._doctrineScarDrop = 0;
+    g._doctrineDropScar(i * 400, 0);              // spread out: no scar overlaps another
+    peak = Math.max(peak, g._doctrineScars.length);
+    g._updateChaosDoctrine(1 / 60);
+  }
+  const collapse = { collapses: g._doctrineCollapses, peak, left: g._doctrineScars.length };
+
+  return { endlessScars, fromAccent, spammed, bite, ceiling, collapse, collapseAt: F.collapseAt,
+           maxScars: F.maxScars };
+});
+check('P01 no scar is ever left in Endless', fault.endlessScars === 0);
+check('P02 a ground attack leaves a scar, through the shipped accent classification',
+  fault.fromAccent === 1, `${fault.fromAccent} scar`);
+check('P03 the drop cooldown holds the rate down — 50 attacks are not 50 scars',
+  fault.spammed <= 3, `${fault.spammed} scars from 51 ground attacks`);
+check('P04 scars bite what stands on them and nothing off them',
+  fault.bite.onHurt === true && fault.bite.offUntouched === true, JSON.stringify(fault.bite));
+check('P05 the FIFO ceiling holds — the only persistent-state doctrine cannot grow unbounded',
+  fault.ceiling.scars <= fault.ceiling.max,
+  `${fault.ceiling.scars} <= ${fault.ceiling.max} after 200 drops (${fault.ceiling.collapses} collapses)`);
+check('P06 a saturated map COLLAPSES instead of forcing a deck transition, and never reaches the ceiling',
+  fault.collapse.collapses > 0 && fault.collapse.peak === fault.collapseAt &&
+  fault.collapse.peak < fault.maxScars,
+  `${fault.collapse.collapses} collapses, peak ${fault.collapse.peak} scars (collapseAt ${fault.collapseAt}, ceiling ${fault.maxScars})`);
+
+const quake = await page.evaluate(() => {
+  const g = window.__g;
+  const P = window.__cd.CHAOS_DOCTRINE.brawler_warrior.pylon;
+  window.__run('brawler_warrior', true);
+  g._doctrineScars.length = 0; g.enemies.length = 0;
+  const c = { x: g.player.pos.x, y: g.player.pos.y };
+  for (let i = 0; i < 6; i++) { g._doctrineScarDrop = 0; g._doctrineDropScar(c.x + i * 20, c.y); }
+  g._doctrineScarDrop = 0; g._doctrineDropScar(c.x + P.radius + 900, c.y);   // far away, must survive
+  const before = g._doctrineScars.length;
+  const mk = (dx) => {
+    let e = null;
+    try { e = new window.__Enemy('Neon Swarmer', 1); } catch (_) { return null; }
+    e.maxHp = 1e7; e.hp = 1e7; e.slowTimer = 0;
+    e.pos.x = c.x + dx; e.pos.y = c.y; g.enemies.push(e); return e;
+  };
+  const near = mk(50), far = mk(P.radius + 900);
+  g._doctrineTriggerPylon({ pos: window.__pt(c.x, c.y), type: 'quake' });
+  return { before, after: g._doctrineScars.length,
+           nearHurt: near.hp < near.maxHp, nearStaggered: near.slowTimer > 0,
+           farUntouched: far.hp === far.maxHp, buff: g._chaosPylonBuff?.type };
+});
+check('P07 a QUAKE PYLON spends the scars inside its radius and leaves the rest',
+  quake.before === 7 && quake.after === 1, `${quake.before} -> ${quake.after} scars`);
+check('P08 it damages and staggers inside its radius only',
+  quake.nearHurt === true && quake.nearStaggered === true && quake.farUntouched === true,
+  JSON.stringify(quake));
+
+// ════════════════════════════════════════════════════════════════════════════
 // G. RESET / CLEANUP
 // ════════════════════════════════════════════════════════════════════════════
 const after = await page.evaluate(() => {
@@ -1052,6 +1250,9 @@ const after = await page.evaluate(() => {
   g._doctrineFrostbites = 3; g._doctrineLastPos = { x: 5, y: 5 }; g._doctrineFrostDrop = 0.1;
   g._doctrineRoundT = 8; g._doctrineRoundCd = 20; g._doctrineVerdict = 0.5;
   g._doctrineVerdicts = 2; g._doctrineRoundsOpened = 3; g._doctrineAegisT = 2;
+  g._doctrineShatterT = 4; g._doctrineShards = [{ x: 1, y: 1 }]; g._doctrineShatters = 2;
+  g._doctrineReassembled = 1; g._doctrineTurrets = [{ x: 0, y: 0, cd: 0 }];
+  g._doctrineScars = [{ x: 0, y: 0, cd: 0 }]; g._doctrineScarDrop = 0.2; g._doctrineCollapses = 3;
   const armed = { heat: g._doctrineHeat, stacks: g._doctrineFoundryStacks, charges: g._doctrineRerollCharges };
   g.gameOver = true;
   g.reset();
@@ -1072,11 +1273,14 @@ const after = await page.evaluate(() => {
     frostbites: g._doctrineFrostbites, lastPos: g._doctrineLastPos, frostDrop: g._doctrineFrostDrop,
     roundT: g._doctrineRoundT, roundCd: g._doctrineRoundCd, verdict: g._doctrineVerdict,
     verdicts: g._doctrineVerdicts, roundsOpened: g._doctrineRoundsOpened, aegisT: g._doctrineAegisT,
+    shatterT: g._doctrineShatterT, shards: g._doctrineShards.length, shatters: g._doctrineShatters,
+    reassembled: g._doctrineReassembled, turrets: g._doctrineTurrets.length,
+    scars: g._doctrineScars.length, scarDrop: g._doctrineScarDrop, collapses: g._doctrineCollapses,
   };
 });
 check('G01 the rig really armed the doctrine before the restart',
   after.armed.heat === 1 && after.armed.stacks === 3 && after.armed.charges === 2, JSON.stringify(after.armed));
-check('G02 a restart clears EVERY doctrine field, all eight characters',
+check('G02 a restart clears EVERY doctrine field, all ten characters',
   after.heat === 0 && after.stacks === 0 && after.charges === 0 && after.used === 0 &&
   after.fired === 0 && after.pending === false && after.rerollMode === false &&
   after.ventCd === 0 && after.redlines === 0 && after.lawXp === 1 &&
@@ -1089,7 +1293,10 @@ check('G02 a restart clears EVERY doctrine field, all eight characters',
   after.frostNodes === 0 && after.stillT === 0 && after.frostbites === 0 &&
   after.lastPos === null && after.frostDrop === 0 &&
   after.roundT === 0 && after.roundCd === 0 && after.verdict === 0 &&
-  after.verdicts === 0 && after.roundsOpened === 0 && after.aegisT === 0,
+  after.verdicts === 0 && after.roundsOpened === 0 && after.aegisT === 0 &&
+  after.shatterT === 0 && after.shards === 0 && after.shatters === 0 &&
+  after.reassembled === 0 && after.turrets === 0 &&
+  after.scars === 0 && after.scarDrop === 0 && after.collapses === 0,
   JSON.stringify(after));
 
 // ════════════════════════════════════════════════════════════════════════════

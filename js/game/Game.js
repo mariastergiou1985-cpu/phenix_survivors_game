@@ -31,7 +31,7 @@ import './BuildEngineChars5.js?v=20260902130000';   // P2.5 Universal όπλα 2
 import './BuildEnginePassives.js?v=20260902130000'; // P2.6 Build passives §26-50 (generic hooks)
 import { MutationUI }      from './MutationUI.js?v=20260810210000';
 import { sampleMutations } from './Mutations.js?v=20260703990000';
-import { drawHUD, drawEndScreen } from './HUD.js?v=20260904160000';
+import { drawHUD, drawEndScreen } from './HUD.js?v=20260904170000';
 import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, COLLECTIBLE_FRAGMENT_COST, COLLECTIBLE_GRID_COST, ECHO_FRAGMENT_COST, ECHO_GRID_COST, SKILL_TREE, AMULET_DEFS, GRID_TO_PF_RATE, characterStageRequirement } from './MetaProgress.js?v=20260903020000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260712520000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
@@ -54,7 +54,7 @@ import { LaserEyes } from '../effects/laser-eyes.js?v=20260818000000';
 import { MeteorRain } from '../effects/meteor-rain.js?v=20260712100000';
 import { NpcWalker } from './NpcWalker.js?v=20260904030000';
 import { MapManager, BIOME_ID, BIOME_DEFS, CHUNK_SIZE } from './MapManager.js?v=20260904120000';
-import { getChaosDoctrine } from './ChaosDoctrine.js?v=20260904160000';
+import { getChaosDoctrine } from './ChaosDoctrine.js?v=20260904170000';
 import { AcidRain } from './AcidRain.js?v=20260829020000';   // BATCH 2 major event (2026-07-29)
 import { EnemyWeaponSystem } from './EnemyWeaponSystem.js?v=20260829040000';   // BATCH 3 enemy weapon behaviours
 import { EventBus, EVENTS } from './EventBus.js?v=20260703990000';
@@ -2126,6 +2126,14 @@ export class Game {
     this._doctrineVerdicts      = 0;      // QA: rounds completed
     this._doctrineRoundsOpened  = 0;
     this._doctrineAegisT        = 0;      // seconds of AEGIS PYLON immunity left
+    this._doctrineShatterT      = 0;      // seconds left to reassemble, skeleton_warrior only
+    this._doctrineShards        = [];     // { x, y } bone shards on the ground
+    this._doctrineShatters      = 0;      // QA: times he has shattered this run
+    this._doctrineReassembled   = 0;      // QA: times he put himself back together
+    this._doctrineTurrets       = [];     // { x, y, cd } MARROW PYLON turrets
+    this._doctrineScars         = [];     // { x, y, cd } FAULT MAP scars, brawler_warrior only
+    this._doctrineScarDrop      = 0;
+    this._doctrineCollapses     = 0;      // QA: fault-map collapses this run
 
     this.killsSinceHealthDrop = 0;   // counts toward the next HP CELL drop
     this.healthPickups        = [];  // [{ pos: Vec2, timer: number }] — heals 25% maxHp on touch
@@ -11499,6 +11507,12 @@ export class Game {
         this._triggerPhoenixRevive();
       } else if (!this._lastPhoenixUsed) {
         this._triggerLastPhoenix();          // THE LAST PHOENIX — once per run, every mode
+      // CHAOS DOCTRINE — OSSUARY DEBT (skeleton_warrior, Chaos only). Deliberately the LAST
+      // rung: every rung above it is untouched, so this adds exactly one more chance and only
+      // one he has to earn. Returns false for everyone else and outside Chaos, in which case
+      // the game-over branch below runs exactly as it always has.
+      } else if (this._doctrineTryShatter()) {
+        /* scattered — the reassembly window owns the next few seconds */
       } else {
         this.gameOver           = true;
         this._endScreenBtnIndex = 0;   // controller nav: start on RETRY
@@ -15043,6 +15057,10 @@ export class Game {
     else if (bh === 'pull_explode')                                         kind = 'implode';
     else if (bh === 'line_cloud')                                           kind = 'mist';
     else if (bh === 'nova')                                                 kind = 'nova';
+    // CHAOS DOCTRINE: a ground attack leaves a permanent scar on brawler_warrior's FAULT MAP.
+    // This function already classifies the behaviour, so the doctrine reuses that judgement
+    // rather than re-deriving it. No-op for everyone else and outside Chaos.
+    if (kind === 'ground') { try { this._doctrineDropScar(x, y); } catch (_) {} }
     if (this._weaponAccents.length >= 40) this._weaponAccents.shift();      // hard cap
     this._weaponAccents.push({ x, y, ang, t: 0, life: kind === 'implode' ? 0.85 : 0.72,
                                kind, c: def.color || '#9fd8ff', scale: Math.min(scale, 2.2),
@@ -36313,6 +36331,93 @@ _drawLoreArchive(ctx) {
       }
     }
 
+    // OSSUARY DEBT (skeleton_warrior): the reassembly window.
+    if (doc.debt && this._doctrineShatterT > 0) {
+      const D = doc.debt;
+      this._doctrineShatterT -= dt;
+      const p = this.player?.pos;
+      if (p) {
+        const pr2 = D.pickupRadius * D.pickupRadius;
+        for (let i = this._doctrineShards.length - 1; i >= 0; i--) {
+          const sh = this._doctrineShards[i];
+          const dx = p.x - sh.x, dy = p.y - sh.y;
+          if (dx * dx + dy * dy <= pr2) {
+            this._doctrineShards.splice(i, 1);
+            this._spawnFloatingText('SHARD ' + (this._doctrineShardsNeeded - this._doctrineShards.length) +
+                                    '/' + this._doctrineShardsNeeded, p.clone(), '#cfe9ff', 1.1);
+          }
+        }
+      }
+      if (this._doctrineShards.length === 0) {
+        // Reassembled. phoenixReviveTimer is left with a little i-frame tail, exactly as the
+        // shipped revives do, so he does not respawn into the hit that killed him.
+        this._doctrineShatterT = 0;
+        this._doctrineReassembled++;
+        this.player.hp = Math.max(1, Math.round(this.player.maxHp * doc.debt.reviveHpPct));
+        this.phoenixReviveTimer = 2.0;
+        this.screenShake?.trigger(8, 0.5);
+        this.triggerAnnouncement('\u25c8 REASSEMBLED \u2014 THE OSSUARY HOLDS \u25c8', '#cfe9ff', { priority: 2 });
+      } else if (this._doctrineShatterT <= 0) {
+        // Out of time. Hand the run back to the SHIPPED death chain rather than ending it here:
+        // clearing the gate with hp at 0 makes the next frame resolve game over through exactly
+        // the same code every other death uses — rewards, audio, end screen and all.
+        this._doctrineShatterT = 0;
+        this._doctrineShards.length = 0;
+        this.phoenixReviveTimer = 0;
+        this.player.hp = 0;
+        this.triggerAnnouncement('\u25c8 THE OSSUARY SCATTERS \u25c8', '#cfe9ff', { priority: 3 });
+      }
+    }
+
+    // MARROW PYLON turrets — they fire through the shipped _petBolts pipeline.
+    if (doc.pylon && doc.pylon.id === 'marrow' && this._doctrineTurrets.length) {
+      const T = doc.pylon;
+      for (const t of this._doctrineTurrets) {
+        t.cd -= dt;
+        if (t.cd > 0) continue;
+        let best = null, bd = T.range * T.range;
+        for (const e of this.enemies) {
+          if (!e || e.hp <= 0 || !e.pos) continue;
+          const dx = e.pos.x - t.x, dy = e.pos.y - t.y, q = dx * dx + dy * dy;
+          if (q < bd) { bd = q; best = e; }
+        }
+        if (!best) continue;
+        t.cd = T.cadence;
+        const dx = best.pos.x - t.x, dy = best.pos.y - t.y;
+        const dd = Math.hypot(dx, dy) || 1;
+        if (this._petBolts.length < 256) this._petBolts.push({
+          x: t.x, y: t.y, vx: (dx / dd) * T.boltSpeed, vy: (dy / dd) * T.boltSpeed,
+          dmg: T.boltDamage, color: '#cfe9ff', life: 1.5,
+        });
+      }
+    }
+
+    // FAULT MAP (brawler_warrior): the scars bite, and a saturated map collapses.
+    if (doc.fault && this._doctrineScars.length) {
+      const F = doc.fault;
+      if (this._doctrineScarDrop > 0) this._doctrineScarDrop -= dt;
+      for (const sc of this._doctrineScars) {
+        sc.cd -= dt;
+        if (sc.cd > 0) continue;
+        sc.cd = F.tickEvery;
+        let n = 0;
+        const r2 = F.scarRadius * F.scarRadius;
+        for (const e of this.enemies.slice()) {      // snapshot: takeHit splices this.enemies
+          if (n >= F.maxVictimsPerTick) break;
+          if (!e || e.hp <= 0 || !e.pos) continue;
+          const dx = e.pos.x - sc.x, dy = e.pos.y - sc.y;
+          if (dx * dx + dy * dy > r2) continue;
+          const isBig = (e.isBoss && e.isBoss()) || e.isMegaBoss;
+          const dmg = isBig ? F.scarDamage * 0.25 : F.scarDamage;
+          try { e.takeHit(isBig && this._capBossDamage ? this._capBossDamage(e, dmg) : dmg, this); } catch (_) { continue; }
+          n++;
+        }
+      }
+      if (this._doctrineScars.length >= F.collapseAt) this._doctrineCollapseFaults();
+    } else if (doc.fault && this._doctrineScarDrop > 0) {
+      this._doctrineScarDrop -= dt;
+    }
+
     if (!doc.heat || !this.player) return;
     const H = doc.heat;
 
@@ -36526,6 +36631,88 @@ _drawLoreArchive(ctx) {
     this.triggerAnnouncement('\u2696 VERDICT \u2014 SANCTION \u00d7' + this._doctrineVerdicts + ' \u2696', '#ffe9a3', { priority: 2 });
   }
 
+  /**
+   * OSSUARY DEBT. Called from the LAST rung of the shipped death chain. Returns true when he
+   * shattered instead of dying, false for everyone else - in which case the caller's game-over
+   * branch runs untouched.
+   */
+  _doctrineTryShatter() {
+    const doc = this._doctrine();
+    if (!doc || !doc.debt || !this.player?.pos) return false;
+    if (this._doctrineShatterT > 0) return true;              // already scattered
+    const D = doc.debt;
+    const need = Math.min(D.maxShards, D.shards + D.shardStep * (this._doctrineShatters || 0));
+    if (need > D.maxShards) return false;
+    this._doctrineShatters++;
+    this._doctrineShardsNeeded = need;
+    this._doctrineShatterT = D.windowSecs;
+    this._doctrineShards.length = 0;
+    const p = this.player.pos;
+    for (let i = 0; i < need; i++) {
+      const a = (Math.PI * 2 * i) / need + Math.random() * 0.4;
+      const r = D.spawnRadius * (0.55 + Math.random() * 0.45);
+      let x = p.x + Math.cos(a) * r, y = p.y + Math.sin(a) * r;
+      // Land every shard on ground he can actually stand on, or the window is unwinnable.
+      try {
+        const mode = this._walkMode?.();
+        if (mode && this.mapManager?.isWalkableFootprint &&
+            !this.mapManager.isWalkableFootprint(x, y, PLAYER_RADIUS, mode)) {
+          const near = this.mapManager.findNearestWalkablePoint?.(x, y, PLAYER_RADIUS, mode);
+          if (near && Number.isFinite(near.x)) { x = near.x; y = near.y; }
+        }
+      } catch (_) {}
+      this._doctrineShards.push({ x, y });
+    }
+    // hp is lifted off zero and the gate is held so the death chain cannot re-enter while he
+    // is scattered; phoenixReviveTimer also grants the i-frames, so nothing can finish him.
+    this.player.hp = 1;
+    this.phoenixReviveTimer = D.windowSecs;
+    this.screenShake?.trigger(10, 0.6);
+    this.audio?.playPlayerDeath?.();
+    this.triggerAnnouncement('\u25c8 SHATTERED \u2014 RECOVER ' + need + ' SHARDS \u25c8', '#cfe9ff', { priority: 1 });
+    return true;
+  }
+
+  /** Drop a FAULT MAP scar. No-op for everyone except brawler_warrior inside Chaos. */
+  _doctrineDropScar(x, y) {
+    const doc = this._doctrine();
+    if (!doc || !doc.fault) return;
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    if (this._doctrineScarDrop > 0) return;
+    const F = doc.fault;
+    this._doctrineScarDrop = F.dropCooldown;
+    if (this._doctrineScars.length >= F.maxScars) this._doctrineScars.shift();   // FIFO ceiling
+    this._doctrineScars.push({ x, y, cd: 0 });
+  }
+
+  /** The map has had enough: one quake across every scar, then a clean slate. */
+  _doctrineCollapseFaults() {
+    const doc = this._doctrine();
+    if (!doc || !doc.fault || !this._doctrineScars.length) return;
+    const F = doc.fault;
+    const scars = this._doctrineScars.slice();
+    this._doctrineScars.length = 0;
+    this._doctrineCollapses++;
+    let n = 0;
+    const r2 = F.scarRadius * F.scarRadius;
+    for (const e of this.enemies.slice()) {          // snapshot: takeHit splices this.enemies
+      if (n >= F.collapseVictims) break;
+      if (!e || e.hp <= 0 || !e.pos) continue;
+      let on = false;
+      for (const sc of scars) {
+        const dx = e.pos.x - sc.x, dy = e.pos.y - sc.y;
+        if (dx * dx + dy * dy <= r2) { on = true; break; }
+      }
+      if (!on) continue;
+      const isBig = (e.isBoss && e.isBoss()) || e.isMegaBoss;
+      const dmg = isBig ? F.collapseDamage * 0.25 : F.collapseDamage;
+      try { e.takeHit(isBig && this._capBossDamage ? this._capBossDamage(e, dmg) : dmg, this); } catch (_) { continue; }
+      n++;
+    }
+    this.screenShake?.trigger(9, 0.7);
+    this.triggerAnnouncement('\u25c8 THE MAP COLLAPSES \u25c8', '#ff9a4d', { priority: 2 });
+  }
+
   /** Dump the heat bar (FOUNDRY PYLON, and the ultimate's own vent). */
   _doctrineVentHeat() {
     this._doctrineHeat = 0;
@@ -36598,7 +36785,8 @@ _drawLoreArchive(ctx) {
           p.life      = Math.min(p.life, 0.6); // flash then remove
           if (p.type === 'fate' || p.type === 'foundry' || p.type === 'venom' ||
               p.type === 'proof' || p.type === 'pyre' || p.type === 'amp' ||
-              p.type === 'frost' || p.type === 'aegis') {
+              p.type === 'frost' || p.type === 'aegis' ||
+              p.type === 'marrow' || p.type === 'quake') {
             this._doctrineTriggerPylon(p);
           } else if (p.type === 'danger') {
             this._damagePlayer(15, { color: '#ff4400', shake: 4 });
@@ -36789,6 +36977,45 @@ _drawLoreArchive(ctx) {
       return;
     }
 
+    if (P.id === 'marrow') {
+      // It does not pay out — it STAYS, and fires for the rest of the run.
+      if (this._doctrineTurrets.length >= P.maxTurrets) this._doctrineTurrets.shift();
+      this._doctrineTurrets.push({ x: p.pos.x, y: p.pos.y, cd: 0 });
+      this._chaosPylonBuff = { type: 'marrow', timer: 3.0 };
+      this._spawnFloatingText('MARROW TURRET ' + this._doctrineTurrets.length + '/' + P.maxTurrets,
+                              p.pos.clone(), '#cfe9ff', 1.3);
+      return;
+    }
+
+    if (P.id === 'quake') {
+      // A controlled discharge: detonate every scar inside the radius at once and clear them.
+      const r2 = P.radius * P.radius;
+      const spent = [];
+      for (let i = this._doctrineScars.length - 1; i >= 0; i--) {
+        const sc = this._doctrineScars[i];
+        const dx = sc.x - p.pos.x, dy = sc.y - p.pos.y;
+        if (dx * dx + dy * dy > r2) continue;
+        spent.push(sc);
+        this._doctrineScars.splice(i, 1);
+      }
+      let n = 0;
+      for (const e of this.enemies.slice()) {         // snapshot: takeHit splices this.enemies
+        if (n >= P.maxVictims) break;
+        if (!e || e.hp <= 0 || !e.pos) continue;
+        const dx = e.pos.x - p.pos.x, dy = e.pos.y - p.pos.y;
+        if (dx * dx + dy * dy > r2) continue;
+        const isBig = (e.isBoss && e.isBoss()) || e.isMegaBoss;
+        if (!isBig) e.slowTimer = Math.max(e.slowTimer || 0, P.staggerSecs);
+        const dmg = (isBig ? 0.25 : 1) * P.perScarDamage * Math.max(1, spent.length);
+        try { e.takeHit(isBig && this._capBossDamage ? this._capBossDamage(e, dmg) : dmg, this); } catch (_) { continue; }
+        n++;
+      }
+      this.screenShake?.trigger(7, 0.5);
+      this._chaosPylonBuff = { type: 'quake', timer: 3.0 };
+      this._spawnFloatingText('QUAKE \u2014 ' + spent.length + ' FAULTS SPENT', p.pos.clone(), '#ff9a4d', 1.4);
+      return;
+    }
+
     if (P.id === 'foundry') {
       this._doctrineVentHeat();
       if (this._doctrineFoundryStacks < P.maxStacks) {
@@ -36812,6 +37039,47 @@ _drawLoreArchive(ctx) {
    * transform the pylons use - no second convention to get wrong.
    */
   _drawDoctrineFx(ctx) {
+    const scars = this._doctrineScars;
+    if (scars && scars.length) {
+      ctx.save();
+      for (const sc of scars) {
+        const g = ctx.createRadialGradient(sc.x, sc.y, 0, sc.x, sc.y, 92);
+        g.addColorStop(0, 'rgba(255,154,77,0.20)');
+        g.addColorStop(1, 'rgba(255,106,45,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(sc.x, sc.y, 92, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.globalAlpha = 0.55; ctx.strokeStyle = '#ff9a4d'; ctx.lineWidth = 1.5;
+      for (const sc of scars) { ctx.beginPath(); ctx.arc(sc.x, sc.y, 30, 0, Math.PI * 2); ctx.stroke(); }
+      ctx.restore();
+    }
+    const shards = this._doctrineShards;
+    if (shards && shards.length) {
+      const pulse = 0.6 + 0.4 * Math.abs(Math.sin(performance.now() * 0.006));
+      ctx.save();
+      ctx.globalAlpha = pulse;
+      ctx.fillStyle = '#cfe9ff';
+      ctx.strokeStyle = '#eaffff';
+      ctx.lineWidth = 2;
+      for (const sh of shards) {
+        ctx.beginPath(); ctx.arc(sh.x, sh.y, 11, 0, Math.PI * 2); ctx.fill();
+        ctx.globalAlpha = pulse * 0.5;
+        ctx.beginPath(); ctx.arc(sh.x, sh.y, 24, 0, Math.PI * 2); ctx.stroke();
+        ctx.globalAlpha = pulse;
+      }
+      ctx.restore();
+    }
+    const turrets = this._doctrineTurrets;
+    if (turrets && turrets.length) {
+      ctx.save();
+      ctx.globalAlpha = 0.8;
+      ctx.strokeStyle = '#cfe9ff'; ctx.lineWidth = 2;
+      for (const t of turrets) {
+        ctx.beginPath(); ctx.arc(t.x, t.y, 18, 0, Math.PI * 2); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(t.x - 9, t.y + 14); ctx.lineTo(t.x, t.y - 14); ctx.lineTo(t.x + 9, t.y + 14); ctx.stroke();
+      }
+      ctx.restore();
+    }
     const frost = this._doctrineFrostNodes;
     if (frost && frost.length) {
       ctx.save();
@@ -36929,6 +37197,8 @@ _drawLoreArchive(ctx) {
       else if (p.type === 'amp')     { core = '#ff2d55'; glow = '#ff005566'; }
       else if (p.type === 'frost')   { core = '#7ae7ff'; glow = '#3ad6ff66'; }
       else if (p.type === 'aegis')   { core = '#ffe9a3'; glow = '#ffd06666'; }
+      else if (p.type === 'marrow')  { core = '#cfe9ff'; glow = '#9fd8ff66'; }
+      else if (p.type === 'quake')   { core = '#ff9a4d'; glow = '#ff6a2d66'; }
       else { core = '#44ff88'; glow = '#22cc6644'; }
 
       ctx.save();

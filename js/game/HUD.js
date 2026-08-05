@@ -258,6 +258,32 @@ export function drawHUD(ctx, game) {
                  WIDTH / 2, by - 3, '#ffe9a3', 'bold 10px Consolas, monospace');
         ctx.restore();
       }
+    } else if (_cid === 'skeleton_warrior') {
+      const shattered = (game._doctrineShatterT || 0) > 0;
+      if (shattered) {
+        const left = (game._doctrineShards || []).length;
+        ctx.save();
+        ctx.globalAlpha = 0.75 + 0.25 * Math.abs(Math.sin(Date.now() / 120));
+        ctx.textAlign = 'center';
+        drawText(ctx, 'SHATTERED \u2014 ' + left + ' SHARDS \u00b7 ' + game._doctrineShatterT.toFixed(1) + 's',
+                 WIDTH / 2, 126, '#cfe9ff', 'bold 11px Consolas, monospace');
+        ctx.restore();
+      } else if ((game._doctrineTurrets || []).length > 0) {
+        ctx.save();
+        ctx.globalAlpha = 0.85; ctx.textAlign = 'center';
+        drawText(ctx, 'MARROW TURRETS: ' + game._doctrineTurrets.length,
+                 WIDTH / 2, 126, '#cfe9ff', 'bold 10px Consolas, monospace');
+        ctx.restore();
+      }
+    } else if (_cid === 'brawler_warrior') {
+      const n = (game._doctrineScars || []).length;
+      if (n > 0) {
+        ctx.save();
+        ctx.globalAlpha = 0.85; ctx.textAlign = 'center';
+        drawText(ctx, 'FAULT MAP: ' + n + ' SCARS', WIDTH / 2, 126, '#ff9a4d',
+                 'bold 10px Consolas, monospace');
+        ctx.restore();
+      }
     } else if (_cid === 'japan_phasewalker' && (game._doctrineRerollsUsed || 0) > 0) {
       ctx.save();
       ctx.globalAlpha = 0.85;
@@ -278,7 +304,9 @@ export function drawHUD(ctx, game) {
                        pyre:    ['#ff4d2d', 'P PYRE \u2014 DEBT PAID'],
                        amp:     ['#ff2d55', 'A AMP \u2014 ENCORE'],
                        frost:   ['#7ae7ff', 'F FROST FIELD'],
-                       aegis:   ['#ffe9a3', 'A AEGIS \u2014 IMMUNE'] };
+                       aegis:   ['#ffe9a3', 'A AEGIS \u2014 IMMUNE'],
+                       marrow:  ['#cfe9ff', 'M MARROW TURRET'],
+                       quake:   ['#ff9a4d', 'Q QUAKE \u2014 FAULTS SPENT'] };
     const docB    = DOC_BUFF[buff.type] || null;
     const color   = docB ? docB[0] : isShield ? CYAN : '#44ff88';
     const label   = docB ? docB[1] : isShield ? 'S SHIELD PULSE ACTIVE' : '+ HEAL PULSE ACTIVE';

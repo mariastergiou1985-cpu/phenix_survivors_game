@@ -1,5 +1,5 @@
 // ══════════════════════════════════════════════════════════════════════════════════════════════
-// CHAOS DOCTRINE — per-character Chaos Mode identity (PILOT: 8 of 10 characters)
+// CHAOS DOCTRINE — per-character Chaos Mode identity (ALL 10 characters)
 // ----------------------------------------------------------------------------------------------
 // WHY THIS FILE EXISTS
 // Chaos Mode changes the WORLD and never the PLAYER. Measured before this file: across ~85
@@ -25,9 +25,12 @@
 //   eddie              SETLIST         + AMP PYLON       (wave 3)
 //   taekwondo_girl     MOMENTUM LAW    + FROST PYLON     (wave 4)
 //   dimis_kickboxer    JUDGEMENT ROUND + AEGIS PYLON     (wave 4)
-// The other two have NO entry, get NO doctrine, and are byte-for-byte unaffected: every read
-// site starts with `const doc = this._doctrine(); if (!doc) return;`, and `_doctrine()` returns
-// null outside Chaos and for any character without an entry here.
+//   skeleton_warrior   OSSUARY DEBT    + MARROW PYLON    (wave 5)
+//   brawler_warrior    FAULT MAP       + QUAKE PYLON     (wave 5)
+// The roster is complete. The gate has NOT changed and is not going to: every read site still
+// starts with `const doc = this._doctrine(); if (!doc) return;`, and `_doctrine()` still
+// returns null outside Chaos and for any character without an entry here — which is now the
+// same thing as saying every one of these is Chaos-only.
 //
 // NOTHING HERE IS A FLAT BUFF. No +damage, no +speed, no multiplier. Each doctrine is a RULE
 // with a cost, expressed entirely through systems and assets that already ship.
@@ -349,6 +352,95 @@ export const CHAOS_DOCTRINE = Object.freeze({
       glow:  '#ffd06666',
       immuneSecs:      5.0,
       chargePerBlock: 0.10,
+    }),
+  }),
+
+  // ── SKELETON WARRIOR ────────────────────────────────────────────────────────────────────
+  // His identity is REASSEMBLY: his ultimate literally rewinds every bone shard back along the
+  // path it flew. And Chaos never once threatened him with anything permanent, so there was
+  // never anything to put back together - he was just a tank in a denser crowd.
+  skeleton_warrior: Object.freeze({
+    id: 'skeleton_warrior',
+    label: 'OSSUARY DEBT',
+    color: '#cfe9ff',
+
+    // WHERE THIS SITS IN THE DEATH CHAIN MATTERS MORE THAN WHAT IT DOES. It is the LAST rung,
+    // after the arena rescue, Broken Halo, every Phoenix and the Last Phoenix - not before
+    // them. Slotting it earlier would have handed him an extra revive on every single death,
+    // which is a straight power increase to a shipped, tuned ladder. As the last rung it adds
+    // exactly one more chance, and only one he has to earn.
+    //
+    // The shattered state reuses phoenixReviveTimer rather than inventing an invulnerability
+    // system: that field already gates the entire death chain AND already grants i-frames in
+    // _damagePlayer, so setting it is all that "he cannot die or be hit while scattered" needs.
+    debt: Object.freeze({
+      windowSecs:   8.0,
+      shards:         3,   // FIRST shatter. Each later one in the same run asks for one more.
+      shardStep:      1,
+      maxShards:      6,
+      spawnRadius:  300,
+      pickupRadius:  46,
+      reviveHpPct:  0.40,
+    }),
+
+    // MARROW PYLON - his fusion's tier 3 already leaves firing pylons behind, so Chaos giving
+    // him a permanent one is the same idea the character already has. It fires through the
+    // shipped _petBolts pipeline, the same one the defence Nexus turret uses.
+    pylon: Object.freeze({
+      id:    'marrow',
+      name:  'MARROW PYLON',
+      color: '#cfe9ff',
+      glow:  '#9fd8ff66',
+      maxTurrets:    4,
+      range:       520,
+      cadence:    1.05,   // seconds between shots
+      boltDamage:   34,
+      boltSpeed:   520,
+    }),
+  }),
+
+  // ── BRAWLER WARRIOR ─────────────────────────────────────────────────────────────────────
+  // He cracks the planet in his ultimate and the map does not remember. Every faultline,
+  // every rift, every geyser is gone in seconds. He is the character who should leave a mark
+  // and leaves none.
+  brawler_warrior: Object.freeze({
+    id: 'brawler_warrior',
+    label: 'FAULT MAP',
+    color: '#ff9a4d',
+
+    // THE ONE DOCTRINE WITH PERSISTENT WORLD STATE, and therefore the only one with a real
+    // performance budget. Every bound here exists for that:
+    //   maxScars   a hard FIFO ceiling — the map is a record, not an accumulator
+    //   tickEvery  scars bite on a shared cadence, not per frame
+    //   maxVictimsPerTick / radius keep one tick's cost flat whatever the density
+    // And it deliberately does NOT force a deck transition when it saturates. The proposal had
+    // it evicting the player to the other deck; forced deck moves are exactly what produced
+    // the Boss Rush soft-lock in this project, so saturation COLLAPSES the fault map instead —
+    // one quake across every scar, then a clean slate. Same escalation, none of the risk.
+    fault: Object.freeze({
+      scarRadius:      92,
+      scarDamage:       7,   // per tick, to enemies standing on it
+      tickEvery:      0.40,
+      maxVictimsPerTick: 12,
+      maxScars:        48,   // FIFO
+      collapseAt:      36,   // scars needed before the map collapses
+      collapseDamage: 150,
+      collapseVictims:  30,
+      dropCooldown:  0.35,   // minimum seconds between scars, whatever the fire rate
+    }),
+
+    // QUAKE PYLON - a controlled discharge. It detonates every scar inside its radius at once
+    // and clears them, so he can choose to spend the map instead of waiting for it to collapse
+    // on its own.
+    pylon: Object.freeze({
+      id:    'quake',
+      name:  'QUAKE PYLON',
+      color: '#ff9a4d',
+      glow:  '#ff6a2d66',
+      radius:        360,
+      perScarDamage:  40,
+      maxVictims:     20,
+      staggerSecs:   1.5,   // written into the enemy's own shipped slowTimer
     }),
   }),
 });
