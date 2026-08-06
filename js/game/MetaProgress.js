@@ -972,6 +972,30 @@ export class MetaProgress {
     this.bossEchoes         = {};
     this.collectiblesActive = {};
     this.echoesActive       = {};
+    // ── FIELDS THAT USED TO SURVIVE A RESET ────────────────────────────────────
+    // Every one of these is PERSISTED by _save(), so leaving it out of reset() did not merely skip
+    // it — it brought the value straight back on the next load, while everything around it was
+    // zero. Found by diffing the constructor's field list against this method: nine survivors.
+    //
+    // chaosRanks is the one that matters most and the one that was asked for: the Chaos Survival
+    // Rank per character is THE Chaos record, and it outlived a wipe entirely. Everything derived
+    // from it came back with it — NULL EDEN MASTER, the RANKS column of CHAOS COMPLETION, and the
+    // FULL ROSTER sigil's condition.
+    this.chaosRanks              = {};   // Chaos Survival Rank per character — the Chaos record
+    // rewardedPFTotal is the Contract residue: awardContractPF adds to it to keep contract PF out
+    // of the pilot level. Left behind, it permanently suppressed level progression after a wipe.
+    this.rewardedPFTotal         = 0;
+    // One-fire guards. `unlocks` was cleared but these were not, so after a reset the Eden
+    // milestones and system logs could never fire again — permanently silent, with no way back.
+    this.edenMilestonesSeen      = {};
+    this.systemLogsSeen          = {};
+    // Progress that is not Chaos but is the same defect: all persisted, all survived.
+    this.fusionCards             = {};
+    this.lastPlayerLevelRewarded = 1;
+    this.bestEddieTime           = 0;
+    this.totalEddieTime          = 0;
+    // profileName is DELIBERATELY kept. It is the player's chosen name, not progress, and wiping
+    // it on a progress reset would be a surprise rather than a fix. Say the word and it goes.
     this._save();
   }
 

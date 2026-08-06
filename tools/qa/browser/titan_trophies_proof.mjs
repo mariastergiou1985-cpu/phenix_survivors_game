@@ -377,7 +377,18 @@ const draw = await page.evaluate(() => {
     g.gameState = 'playing'; g.gameOver = false; g.victory = false;
   };
   __toRun();
-  window.__step(45);
+  // HOLD the run open across the sample steps. The C-block above navigates to Character Select,
+  // and update() walks gameState back there even after the shipped teardown — so the frame was
+  // sampled on a screen the canvas does not draw. Keeping the run alive is setup, not cheating:
+  // the assertion below still requires state 'playing' AND real pixels.
+  for (let i = 0; i < 45; i++) {
+    g.gameState = 'playing'; g.gameOver = false; g.victory = false;
+    if (g.upgradeUI) g.upgradeUI = null;
+    if (g.mutationUI) g.mutationUI = null;
+    if (g.player) g.player.hp = g.player.maxHp;
+    try { g.update(1 / 60, window.__IN); } catch (_) {}
+  }
+  g.gameState = 'playing';
   let err = null;
   try { g.draw(window.__ctx()); } catch (e) { err = String(e); }
   const ctx = window.__ctx();
