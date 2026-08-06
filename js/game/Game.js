@@ -860,6 +860,27 @@ const CHAOS_SIGILS = [
 // giving. These unlock the other way round: from the specific shapes a Chaos run takes when it
 // ends badly. Chaos guarantees a supply of those, so the archive keeps paying long after the
 // memory bar is full. Text only — the keys grant no currency, no outfit and no stat.
+// ── TITAN TROPHIES — one cosmetic badge per Mega Titan ─────────────────────
+// Earned on the FIRST kill of that Titan, shown on the CHAOS tab and on every character card.
+//
+// Deliberately NO new save key and NO entry in UNLOCK_KEYS: the first kill of each Mega Titan has
+// been recorded in meta.bossKills since long before this, by recordBossKill() in
+// _updateChaosTitans. Reading that directly means there is nothing to keep in sync, nothing to
+// migrate, and it is retroactive — a player who felled the Overlord months ago already owns its
+// trophy the next time they open the tab. `flag` is the same key _chaosTitanDefs() uses.
+//
+// Cosmetic in the strictest sense: nothing outside these two render paths ever reads them.
+const TITAN_TROPHIES = [
+  { flag: 'titan_overlord',  mark: '❖', name: 'OVERLORD TROPHY',   color: '#7CFF4D',
+    titan: 'GIGA-CORE OVERLORD',     req: 'Destroy the Giga-Core Overlord.' },
+  { flag: 'titan_leviathan', mark: '✹', name: 'LEVIATHAN TROPHY',  color: '#2ee6f6',
+    titan: 'MALWARE LEVIATHAN',      req: 'Destroy the Malware Leviathan.' },
+  { flag: 'titan_emperor',   mark: '✵', name: 'EMPEROR TROPHY',    color: '#ffd447',
+    titan: 'QUANTUM VOID EMPEROR',   req: 'Destroy the Quantum Void Emperor.' },
+  { flag: 'titan_tyrant',    mark: '❂', name: 'TYRANT TROPHY',     color: '#ff7733',
+    titan: 'APOCALYPSE MECH TYRANT', req: 'Destroy the Apocalypse Mech Tyrant.' },
+];
+
 const BROKEN_ARCHIVE = [
   { id: 'ba_cold_open', num: 'C1', title: 'THE GRID DOES NOT WARM UP',
     req: 'Die in Chaos inside the first 3:00.',
@@ -6777,6 +6798,14 @@ export class Game {
                 <div class="sl-list" id="cxc-sigils"></div>
               </div>
               <div class="ca-sep"></div>
+              <div class="sl-section" id="cxc-trophies-section">
+                <div class="sl-header">
+                  <div class="sl-title">&#9873; TITAN TROPHIES</div>
+                  <div class="sl-subtitle" id="cxc-trophies-n">0 / 4</div>
+                </div>
+                <div class="sl-list" id="cxc-trophies"></div>
+              </div>
+              <div class="ca-sep"></div>
               <div class="em-section" id="cxc-ranks-section">
                 <div class="em-header">
                   <div class="em-title">&#9880; CHAOS SURVIVAL RANKS</div>
@@ -7592,6 +7621,24 @@ export class Game {
     const sgN = el.querySelector('#cxc-sigils-n');
     if (sgN) sgN.textContent = `${CHAOS_SIGILS.filter(s => this.meta?.isUnlocked?.(s.id)).length} / ${CHAOS_SIGILS.length}`;
 
+    // TITAN TROPHIES — same read-only row markup as the sigils, read straight off bossKills.
+    const trEl = el.querySelector('#cxc-trophies');
+    if (trEl) {
+      trEl.innerHTML = TITAN_TROPHIES.map(t => {
+        const on = !!this.meta?.bossKills?.[t.flag];
+        return `<div class="sl-row${on ? ' readable' : ''}">
+          <div class="sl-num${on ? ' readable' : ''}" style="${on ? 'color:' + t.color : ''}">${t.mark}</div>
+          <div class="sl-info">
+            <div class="sl-title-row${on ? ' readable' : ' locked'}" style="${on ? 'color:' + t.color : ''}">${on ? escS(t.name) : '???'}</div>
+            <div class="sl-text${on ? '' : ' locked'}">${escS(t.req)}</div>
+          </div>
+          <div class="sl-status${on ? ' readable' : ' locked'}">${on ? '&#9873; CLAIMED' : '&#10005; LOCKED'}</div>
+        </div>`;
+      }).join('');
+    }
+    const trN = el.querySelector('#cxc-trophies-n');
+    if (trN) trN.textContent = `${TITAN_TROPHIES.filter(t => this.meta?.bossKills?.[t.flag]).length} / ${TITAN_TROPHIES.length}`;
+
     const nChars = (this.characters || []).length;
     const ranks  = items.slice(0, nChars);
     const titans = items.slice(nChars);
@@ -7682,6 +7729,23 @@ export class Game {
            'line-height:1;">' +
       earned.map(s => '<span title="' + s.name + '" style="font-size:11px;color:' + s.color +
         ';text-shadow:0 0 6px ' + s.color + '99;">' + s.mark + '</span>').join('') +
+    '</div>';
+  }
+
+  /**
+   * TITAN TROPHIES for a character card — the same shape as _sigilRowHTML, one row below it.
+   * Account-wide, like the sigils: a Titan you felled is a pilot's record, not a character's.
+   * Renders nothing at all until the first Titan falls.
+   */
+  _trophyRowHTML() {
+    let earned = [];
+    try { earned = TITAN_TROPHIES.filter(t => this.meta?.bossKills?.[t.flag] === true); }
+    catch (_) { earned = []; }
+    if (!earned.length) return '';
+    return '<div class="csc-trophies" style="display:flex;justify-content:center;gap:5px;margin-top:2px;' +
+           'line-height:1;">' +
+      earned.map(t => '<span title="' + t.name + '" style="font-size:11px;color:' + t.color +
+        ';text-shadow:0 0 6px ' + t.color + '99;">' + t.mark + '</span>').join('') +
     '</div>';
   }
 
@@ -28423,6 +28487,7 @@ export class Game {
         <div class="csc-card-name">${c.name}</div>
         <div class="csc-card-role">${c.role}</div>
         ${this._sigilRowHTML()}
+        ${this._trophyRowHTML()}
         ${c.comingSoon
           ? `<div class="csc-lock-overlay coming-soon">
                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true">
@@ -29605,6 +29670,18 @@ export class Game {
         if (!row) { if (cur) cur.remove(); return; }
         if (cur) cur.outerHTML = row;
         else card.querySelector('.csc-card-role')?.insertAdjacentHTML('afterend', row);
+      });
+      // Titan trophies, refreshed the same way and for the same reason: the cards are built once
+      // per session, so a Titan felled mid-session must be re-read here or its badge would not
+      // appear until the page reloaded. Anchored AFTER the sigil row when one exists, so the two
+      // rows keep their order however they are (re)built.
+      const trow = this._trophyRowHTML();
+      el.querySelectorAll('.csc-card').forEach(card => {
+        const cur = card.querySelector('.csc-trophies');
+        if (!trow) { if (cur) cur.remove(); return; }
+        if (cur) { cur.outerHTML = trow; return; }
+        const anchor = card.querySelector('.csc-sigils') || card.querySelector('.csc-card-role');
+        anchor?.insertAdjacentHTML('afterend', trow);
       });
     }
     if (!el) return;
