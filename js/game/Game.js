@@ -864,6 +864,26 @@ const CHAOS_SIGILS = [
 // giving. These unlock the other way round: from the specific shapes a Chaos run takes when it
 // ends badly. Chaos guarantees a supply of those, so the archive keeps paying long after the
 // memory bar is full. Text only — the keys grant no currency, no outfit and no stat.
+// ── LAW SEALS — one cosmetic seal per Chaos Law ────────────────────────────
+// Earned by surviving 10:00 in Chaos under that Law. Shown on the Law's own card in the pre-run
+// selection overlay and listed on the CHAOS tab.
+//
+// Like the Titan Trophies, NO new save key and nothing in UNLOCK_KEYS. meta.lawMastery already
+// stores the best Chaos time per Law (it is what prints "BEST 12:34" on the card), so the seal is
+// simply that record reaching 10:00. Nothing to keep in sync, nothing to migrate, and retroactive:
+// a Law you have already run past 10:00 is already sealed.
+//
+// `law` matches CHAOS_LAWS[].id and the id the pre-run overlay writes to runChaosLaw.
+const LAW_SEAL_SECS = 600;                       // 10:00
+const LAW_SEALS = [
+  { law: 'blood_grid',        mark: '◈', name: 'SEAL OF THE BLOOD GRID',   color: '#ef4444' },
+  { law: 'frozen_eden',       mark: '❄', name: 'SEAL OF FROZEN EDEN',      color: '#00ccff' },
+  { law: 'serpent_law',       mark: '§', name: 'SEAL OF THE SERPENT',      color: '#ff7733' },
+  { law: 'dragon_law',        mark: '⌘', name: 'SEAL OF THE DRAGON',       color: '#a855f7' },
+  { law: 'no_mercy_protocol', mark: '⚔', name: 'SEAL OF NO MERCY',         color: '#fbbf24' },
+  { law: 'broken_signal',     mark: '☈', name: 'SEAL OF THE BROKEN SIGNAL', color: '#ff2d95' },
+];
+
 // ── TITAN TROPHIES — one cosmetic badge per Mega Titan ─────────────────────
 // Earned on the FIRST kill of that Titan, shown on the CHAOS tab and on every character card.
 //
@@ -3217,6 +3237,11 @@ export class Game {
         '#cgm-chaos-law-sel .cls-card-best{font-size:8px;letter-spacing:1.8px;margin-top:3px;',
         'color:rgba(120,160,200,0.55);text-transform:uppercase;}',
         '#cgm-chaos-law-sel .cls-card-best b{color:#2ee6f6;font-weight:400;letter-spacing:2px;}',
+        // LAW SEAL line — same muted baseline as the BEST line, lit in the Law's own colour once
+        // earned so a sealed card reads at a glance without another badge competing for space.
+        '#cgm-chaos-law-sel .cls-card-seal{font-size:8px;letter-spacing:1.6px;margin-top:2px;',
+        'text-transform:uppercase;font-weight:700;}',
+        '#cgm-chaos-law-sel .cls-card-seal.locked{color:rgba(120,160,200,0.38);font-weight:400;}',
         // TITAN CONTRACT — one calm amber strip above the buttons. Deliberately not a card and
         // not selectable: there is nothing to accept or decline, so it must not join the ring.
         '#cgm-chaos-law-sel .cls-contract{border:1px solid rgba(255,159,10,0.30);',
@@ -3265,6 +3290,15 @@ export class Game {
       const m = Math.floor(s / 60), r = s % 60;
       return 'BEST <b>' + m + ':' + String(r).padStart(2, '0') + '</b>';
     };
+    // LAW SEAL — the same record, read at its 10:00 threshold. Rendered as its own line so the
+    // card reads "how far you got" and then "sealed or not", rather than overloading one string.
+    const _lawSealHTML = (lawId) => {
+      const d = this._lawSealDef(lawId);
+      if (!d) return '';
+      if (!this._lawSealed(lawId)) return '<div class="cls-card-seal locked">UNSEALED · 10:00 TO SEAL</div>';
+      return '<div class="cls-card-seal" style="color:' + d.color + ';text-shadow:0 0 6px ' + d.color +
+             '99;">' + d.mark + ' ' + d.name + '</div>';
+    };
 
     // The overlay is also opened for plain Endless and for the mid-run Doctrine reroll, where no
     // Chaos contract has been rolled — the strip simply does not render in those cases.
@@ -3287,6 +3321,7 @@ export class Game {
             + '<div class="cls-card-name" style="color:' + l.color + ';text-shadow:0 0 8px ' + l.color + '88;">' + l.name + '</div>'
             + '<div class="cls-card-effect">' + l.effect + '</div>'
             + '<div class="cls-card-best">' + _lawBestHTML(l.id) + '</div>'
+            + _lawSealHTML(l.id)
             + '</div>'
         ).join('')
       + '</div>'
@@ -6836,6 +6871,14 @@ export class Game {
                 <div class="sl-list" id="cxc-trophies"></div>
               </div>
               <div class="ca-sep"></div>
+              <div class="sl-section" id="cxc-seals-section">
+                <div class="sl-header">
+                  <div class="sl-title">&#9878; LAW SEALS</div>
+                  <div class="sl-subtitle" id="cxc-seals-n">0 / 6</div>
+                </div>
+                <div class="sl-list" id="cxc-seals"></div>
+              </div>
+              <div class="ca-sep"></div>
               <div class="em-section" id="cxc-ranks-section">
                 <div class="em-header">
                   <div class="em-title">&#9880; CHAOS SURVIVAL RANKS</div>
@@ -7669,6 +7712,28 @@ export class Game {
     const trN = el.querySelector('#cxc-trophies-n');
     if (trN) trN.textContent = `${TITAN_TROPHIES.filter(t => this.meta?.bossKills?.[t.flag]).length} / ${TITAN_TROPHIES.length}`;
 
+    // LAW SEALS — same read-only row markup, derived from lawMastery at its 10:00 threshold. The
+    // requirement line names the Law, and an earned seal also prints the record that earned it.
+    const slEl = el.querySelector('#cxc-seals');
+    if (slEl) {
+      const lawName = (id) => (CHAOS_LAWS.find(l => l.id === id)?.name || String(id).replace(/_/g, ' ')).toUpperCase();
+      const clkS = (s) => Math.floor(s / 60) + ':' + String(Math.floor(s) % 60).padStart(2, '0');
+      slEl.innerHTML = LAW_SEALS.map(s => {
+        const on   = this._lawSealed(s.law);
+        const best = this.meta?.getLawBest?.(s.law) || 0;
+        return `<div class="sl-row${on ? ' readable' : ''}">
+          <div class="sl-num${on ? ' readable' : ''}" style="${on ? 'color:' + s.color : ''}">${s.mark}</div>
+          <div class="sl-info">
+            <div class="sl-title-row${on ? ' readable' : ' locked'}" style="${on ? 'color:' + s.color : ''}">${on ? escS(s.name) : '???'}</div>
+            <div class="sl-text${on ? '' : ' locked'}">Survive 10:00 in Chaos under ${escS(lawName(s.law))}.${best > 0 ? ' Best ' + clkS(best) + '.' : ''}</div>
+          </div>
+          <div class="sl-status${on ? ' readable' : ' locked'}">${on ? '&#9878; SEALED' : '&#10005; UNSEALED'}</div>
+        </div>`;
+      }).join('');
+    }
+    const slN = el.querySelector('#cxc-seals-n');
+    if (slN) slN.textContent = `${LAW_SEALS.filter(s => this._lawSealed(s.law)).length} / ${LAW_SEALS.length}`;
+
     const nChars = (this.characters || []).length;
     const ranks  = items.slice(0, nChars);
     const titans = items.slice(nChars);
@@ -7761,6 +7826,13 @@ export class Game {
         ';text-shadow:0 0 6px ' + s.color + '99;">' + s.mark + '</span>').join('') +
     '</div>';
   }
+
+  /** True once this Law's best Chaos time has reached 10:00. The seal, derived, never stored. */
+  _lawSealed(lawId) {
+    try { return (this.meta?.getLawBest?.(lawId) || 0) >= LAW_SEAL_SECS; } catch (_) { return false; }
+  }
+
+  _lawSealDef(lawId) { return LAW_SEALS.find(s => s.law === lawId) || null; }
 
   /**
    * TITAN TROPHIES for a character card — the same shape as _sigilRowHTML, one row below it.
