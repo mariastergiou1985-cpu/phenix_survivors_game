@@ -101,7 +101,11 @@ const ALL12 = ['sg_titanbreaker', 'sg_unbroken', 'sg_apex', 'sg_pactbound',
                'sg_lawless', 'sg_centurion', 'sg_full_roster', 'sg_iron_will',
                'sg_archivist', 'sg_reliquary', 'sg_platinum', 'sg_chronicler'];
 const NEW4 = ALL12.slice(8);
-const BA = ['ba_cold_open', 'ba_still_standing', 'ba_long_silence'];
+// The archive went from three entries to six on 2026-08-06. ARCHIVIST is BROKEN_ARCHIVE.every(),
+// so it has ALWAYS meant "the whole archive" — the list here is what had to follow, and the wipe
+// (ALL12.concat(BA)) has to clear all six or a leftover skews the check.
+const BA = ['ba_cold_open', 'ba_still_standing', 'ba_long_silence',
+            'ba_broken_word', 'ba_the_bargain', 'ba_unfinished'];
 const TITAN_RELICS = ['overlord_prism_array', 'leviathan_nanite_core',
                       'emperor_singularity_edge', 'tyrant_antimatter_battery'];
 await page.evaluate(async ([ALL12, NEW4, BA, TR]) => {
@@ -183,15 +187,18 @@ const arch = await page.evaluate(() => {
   const g = window.__g;
   window.__wipe();
   window.__run('chaos', 'skeleton_warrior', 'blood_grid');
-  for (const k of window.__BA.slice(0, 2)) g.meta.unlock(k);   // two of three
+  // ALL BUT ONE, then the last. Slicing to a fixed 2-of-3 stopped being "one short" the moment
+  // the archive grew to six — it became three short, which the check would still have called a
+  // pass for the wrong reason. Indexing off the list keeps the claim as written.
+  for (const k of window.__BA.slice(0, -1)) g.meta.unlock(k);   // all but one
   window.__end(5 * 60);
   const two = window.__new();
-  g.meta.unlock(window.__BA[2]);                                // now all three
+  g.meta.unlock(window.__BA[window.__BA.length - 1]);           // now the whole archive
   window.__run('chaos', 'skeleton_warrior', 'blood_grid');
   window.__end(5 * 60);
   return { two, three: window.__new() };
 });
-check('S01 ARCHIVIST — earned only once ALL three archive entries are recovered',
+check('S01 ARCHIVIST — earned only once the WHOLE archive is recovered',
   arch.two[0] === false && arch.three[0] === true, JSON.stringify(arch));
 
 const reliq = await page.evaluate(() => {

@@ -32,7 +32,7 @@ import './BuildEnginePassives.js?v=20260902130000'; // P2.6 Build passives §26-
 import { MutationUI }      from './MutationUI.js?v=20260904180000';
 import { sampleMutations, sampleCorruptedMutation } from './Mutations.js?v=20260904180000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260904290000';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, COLLECTIBLE_FRAGMENT_COST, COLLECTIBLE_GRID_COST, ECHO_FRAGMENT_COST, ECHO_GRID_COST, SKILL_TREE, AMULET_DEFS, GRID_TO_PF_RATE, characterStageRequirement } from './MetaProgress.js?v=20260904290000';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, COLLECTIBLE_FRAGMENT_COST, COLLECTIBLE_GRID_COST, ECHO_FRAGMENT_COST, ECHO_GRID_COST, SKILL_TREE, AMULET_DEFS, GRID_TO_PF_RATE, characterStageRequirement } from './MetaProgress.js?v=20260904310000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260712520000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
@@ -846,7 +846,11 @@ const CHAOS_SIGILS = [
   // exists (unlocks, relics, chaosRanks, chaosLedger), so the set closes at twelve with no new
   // run counters at all.
   { id: 'sg_archivist',    mark: '⬡', name: 'ARCHIVIST',    color: '#ff2d95',
-    req: 'Recover all three Broken Archive entries.' },
+    // Total-agnostic wording. It read "all three" and the archive just became six — the sigil
+    // condition (BROKEN_ARCHIVE.every) always meant "the whole archive", so the text was the part
+    // that was wrong, and hardcoding a number is what made it wrong. Existing owners keep it:
+    // meta.unlock() is permanent and idempotent.
+    req: 'Recover every Broken Archive entry.' },
   { id: 'sg_reliquary',    mark: '✦', name: 'RELIQUARY',    color: '#7CFF4D',
     req: 'Own all four Mega Titan relics.' },
   { id: 'sg_platinum',     mark: '★', name: 'PLATINUM STANDARD', color: '#e0e0f8',
@@ -891,6 +895,17 @@ const BROKEN_ARCHIVE = [
   { id: 'ba_long_silence', num: 'C3', title: 'THE LONG SILENCE',
     req: 'Survive 10:00 in Chaos without destroying a single Mega Titan.',
     text: 'Ten minutes of perfect avoidance. The Grid has no word for this and so it files the run under endurance, which is the same drawer it uses for machinery that has not yet broken. Survival is not the same as an answer. You were present. You were not decisive.' },
+  // Second wave. All three are recovered from FAILURE, like the first three, and all three are
+  // inert: the keys are read by the CORRUPTED section of the LORE tab and by nothing else.
+  { id: 'ba_broken_word', num: 'C4', title: 'THE BROKEN WORD',
+    req: 'End a Chaos run with its contract unfulfilled.',
+    text: 'The contract was not a demand. It was an offer, stated plainly, with the terms visible before you accepted anything at all. EDEN CORE does not punish the shortfall — it simply closes the entry and does not reopen it. There is no debt. That is what makes it sit badly. A creditor can be argued with; a ledger that has stopped caring cannot.' },
+  { id: 'ba_the_bargain', num: 'C5', title: 'WHAT THE PACT WAS FOR',
+    req: 'Die in Chaos after sealing a corrupted pact.',
+    text: 'You read the drawback. It was printed under the bonus in the same size, in the same light, and you took the card anyway, because the alternative was slower and slower was also fatal. The archive records no deception. It records only that the terms were met on both sides, and that yours ran out first.' },
+  { id: 'ba_unfinished', num: 'C6', title: 'THE UNFINISHED ROTATION',
+    req: 'Die in Chaos with a Mega Titan still active.',
+    text: 'A companion entry to C2, and the archive keeps both because they are not the same observation. C2 is about the thing that outlived you. This one is about the space where you stopped: mid-approach, mid-decision, a plan half-executed and now unrecoverable. The Titan is incidental. What the Grid files here is the shape of an intention that never finished resolving.' },
 ];
 
 // ── Taekwondo Crystal Ice Field (replaces Lightning Dash Strike) ───────────────
@@ -5131,7 +5146,7 @@ export class Game {
       } catch (_e) { console.warn('[Chaos Ledger] recordChaosRun error', _e); }
 
       // ── BROKEN ARCHIVE ─────────────────────────────────────────────────────
-      // Three ways a Chaos run ends badly, each unlocking one archive entry. meta.unlock() is
+      // SIX ways a Chaos run ends badly, each unlocking one archive entry. meta.unlock() is
       // idempotent and the keys are inert: they are read ONLY by the LORE tab. Nothing here
       // grants currency, an outfit or a stat, so no amount of failing can move the economy.
       try {
@@ -5140,6 +5155,21 @@ export class Game {
         if (this.gameOver && _t < 180)            this.meta?.unlock?.('ba_cold_open');
         if (this.gameOver && _titanAlive)         this.meta?.unlock?.('ba_still_standing');
         if (_t >= 600 && !(this._chaosTitansKilled > 0)) this.meta?.unlock?.('ba_long_silence');
+
+        // Second wave. The corrupted-pact count is re-derived from mutations.taken, the same
+        // source the ledger and the PACTBOUND sigil use — there is no separate tally to drift.
+        let _pacts2 = 0;
+        const _tk2 = this.mutations?.taken || {};
+        for (const k of Object.keys(_tk2)) {
+          if (k.indexOf('corrupt_') === 0) _pacts2 += Math.max(0, Math.floor(_tk2[k] || 0));
+        }
+        // C4 needs a contract to have been offered at all — a run with none has nothing to fail.
+        if (this.runChaosContract && !(this._contractDoneAt >= 0)) this.meta?.unlock?.('ba_broken_word');
+        if (this.gameOver && _pacts2 > 0)         this.meta?.unlock?.('ba_the_bargain');
+        // C6 shares C2's condition, at Maria's explicit instruction (2026-08-06) after I flagged
+        // the overlap. The two are companion entries and unlock together, by design, not by
+        // accident — the proof asserts they always move as a pair so this can never read as a bug.
+        if (this.gameOver && _titanAlive)         this.meta?.unlock?.('ba_unfinished');
       } catch (_e) { console.warn('[Broken Archive] unlock error', _e); }
 
       // ── CHAOS SIGILS ───────────────────────────────────────────────────────

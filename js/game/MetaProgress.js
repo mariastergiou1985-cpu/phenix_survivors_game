@@ -80,6 +80,9 @@ export const UNLOCK_KEYS = [
   'ba_cold_open',        // died in Chaos inside the first 3:00
   'ba_still_standing',   // died in Chaos with a Mega Titan still alive on the field
   'ba_long_silence',     // survived 10:00 in Chaos without destroying a single Mega Titan
+  'ba_broken_word',      // ended a Chaos run with its contract unfulfilled
+  'ba_the_bargain',      // died in Chaos after sealing a corrupted pact
+  'ba_unfinished',       // died in Chaos with a Mega Titan still active (companion to C2)
   // ── CHAOS SIGILS — cosmetic marks for HOW a Chaos run was played. Like the archive keys
   // above they are inert: read only by the CHAOS tab and the character card. No stat, no
   // currency, no outfit, no gameplay effect of any kind.
