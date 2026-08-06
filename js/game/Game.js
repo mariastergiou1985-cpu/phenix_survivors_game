@@ -1851,6 +1851,21 @@ export class Game {
       // of run 1 was still there after reset() and gave meta.credits +3 three seconds into run 2.
       this.nexusManager.rewardOrbs.length = 0;
       this.nexusManager.rewardTimer = 0;
+      // CHAOS FLAGS, same class of leak as rewardOrbs above and fixed the same way. `chaos` is set
+      // true by _beginChaosRun and by the mid-run escalation, and was cleared NOWHERE — so on a
+      // REUSED manager it survived into the next run. NexusManager reads it in two places:
+      //   · a `defence` matrix is skipped for rewards entirely      (NexusManager ~533)
+      //   · rewards come from pickChaosReward, not pickWeightedReward (NexusManager ~540)
+      // which means every Campaign and Endless run started after ANY Chaos run was quietly using
+      // the Chaos reward table and ignoring half its Nexus stations. `_chaosRolesAssigned` leaked
+      // with it, keeping _assignLateChaosRoles live outside Chaos.
+      //
+      // Cleared HERE rather than in _beginChaosRun, because reset() is the one path every run
+      // goes through — Campaign, Endless, Chaos and RETRY alike — and _beginChaosRun sets the flag
+      // back to true immediately after calling reset(), so a Chaos run is unaffected.
+      this.nexusManager.chaos = false;
+      this.nexusManager._chaosRolesAssigned = false;
+      for (const m of (this.nexusManager.matrices || [])) { if (m) m.chaosRole = undefined; }
     }
     this.matrices     = [];  // will be set to nexusManager.matrices after init()
     this._appliedNexusCapBonus = 0;   // in-run capacity cards applied so far (Memory Bank etc.)

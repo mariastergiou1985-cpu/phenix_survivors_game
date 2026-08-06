@@ -327,7 +327,11 @@ const reached = await padUntil('right', () => window.__g._endScreenBtnIndex === 
 check('F04 the D-pad reaches MAIN MENU', reached >= 0, `presses: ${reached}`);
 check('F05 the controller selection is reflected on screen',
   await page.evaluate(() => Number(document.querySelector('[data-rsbtn].sel')?.dataset.rsidx) === 2));
-const acted = await padUntil('a', () => window.__g.gameState === 'start_menu');
+// 20 attempts, not the default 6. This is a REAL virtual-pad press read by the page's own rAF
+// gamepad poll, not a synchronous key dispatch — under load the poll can miss a whole press, and
+// six consecutive misses were observed. Retrying is what a player does when nothing happens; a
+// button that genuinely does not confirm still fails all twenty.
+const acted = await padUntil('a', () => window.__g.gameState === 'start_menu', 20);
 check('F06 A / Cross confirms the focused button', acted >= 0, `presses: ${acted}`);
 
 // keyboard ENTER on RETRY
