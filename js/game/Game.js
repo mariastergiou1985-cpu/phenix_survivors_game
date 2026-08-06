@@ -6870,6 +6870,15 @@ export class Game {
             </div>
 
             <div class="ct-panel" data-panel="chaos">
+              <div class="em-section" id="cxc-completion-section">
+                <div class="em-header">
+                  <div class="em-title">&#9673; CHAOS COMPLETION</div>
+                  <div class="em-pct" id="cxc-completion-pct">0%</div>
+                </div>
+                <div class="em-bar-wrap"><div class="em-bar" id="cxc-completion-bar" style="width:0%"></div></div>
+                <div class="sl-subtitle" id="cxc-completion-parts"></div>
+              </div>
+              <div class="ca-sep"></div>
               <div class="sl-section" id="cxc-master-section">
                 <div class="sl-header">
                   <div class="sl-title">&#9772; NULL EDEN MASTER</div>
@@ -7700,6 +7709,19 @@ export class Game {
   _colRenderChaosPanel(el, items) {
     const escS = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
+    // CHAOS COMPLETION — the headline percentage, with its own breakdown underneath so the number
+    // is never a black box: a player can see exactly which of the five sources is holding it back.
+    const comp = this._chaosCompletion();
+    const cPct = el.querySelector('#cxc-completion-pct');
+    if (cPct) cPct.textContent = `${comp.pct}%`;
+    const cBar = el.querySelector('#cxc-completion-bar');
+    if (cBar) cBar.style.width = `${comp.pct}%`;
+    const cParts = el.querySelector('#cxc-completion-parts');
+    if (cParts) {
+      cParts.textContent = `${comp.done} / ${comp.total} · ` +
+        comp.parts.map(p => `${p.label} ${p.done}/${p.total}`).join('  ·  ');
+    }
+
     // NULL EDEN MASTER — one row, derived from chaosRanks. The requirement line carries the live
     // count, so an unearned badge still tells the player exactly how far along they are.
     const mp = this._masterProgress();
@@ -7867,6 +7889,43 @@ export class Game {
       earned.map(s => '<span title="' + s.name + '" style="font-size:11px;color:' + s.color +
         ';text-shadow:0 0 6px ' + s.color + '99;">' + s.mark + '</span>').join('') +
     '</div>';
+  }
+
+  /**
+   * CHAOS COMPLETION — one percentage over everything Chaos has to collect.
+   *
+   * Five sources, every one of them ALREADY derivable from state the game persists:
+   *   RANKS    a logged Chaos Survival Rank per playable character   meta.chaosRanks
+   *   TITANS   the four Mega Titan trophies                          meta.bossKills
+   *   SEALS    the six Law Seals                                     meta.lawMastery >= 10:00
+   *   SIGILS   the twelve Chaos Sigils                               meta.unlocks
+   *   ARCHIVE  the six Broken Archive entries                        meta.unlocks
+   *
+   * Nothing new is stored and nothing is counted twice: the Chaos Ledger and the NULL EDEN MASTER
+   * badge are deliberately NOT in here, because the ledger is a log rather than a collectible and
+   * the master badge is itself derived from RANKS — including it would count the same ten records
+   * twice. The denominator is computed from the tables, never hardcoded, so adding a sigil or an
+   * archive entry moves this on its own.
+   */
+  _chaosCompletion() {
+    const meta = this.meta;
+    const roster = (this.characters || []).filter(c => !c.comingSoon);
+    const part = (label, done, total) => ({ label, done: Math.max(0, done), total: Math.max(0, total) });
+    let parts = [];
+    try {
+      parts = [
+        part('RANKS',   roster.filter(c => !!meta?.chaosRanks?.[c.id]).length, roster.length),
+        part('TITANS',  TITAN_TROPHIES.filter(t => meta?.bossKills?.[t.flag] === true).length, TITAN_TROPHIES.length),
+        part('SEALS',   LAW_SEALS.filter(s => this._lawSealed(s.law)).length, LAW_SEALS.length),
+        part('SIGILS',  CHAOS_SIGILS.filter(s => !!meta?.isUnlocked?.(s.id)).length, CHAOS_SIGILS.length),
+        part('ARCHIVE', BROKEN_ARCHIVE.filter(b => !!meta?.isUnlocked?.(b.id)).length, BROKEN_ARCHIVE.length),
+      ];
+    } catch (_) { parts = []; }
+    const done  = parts.reduce((a, p) => a + p.done, 0);
+    const total = parts.reduce((a, p) => a + p.total, 0);
+    // Floored, not rounded: 99% must mean "not finished". Rounding would print 100% at 37 of 38.
+    const pct = total > 0 ? Math.floor((done / total) * 100) : 0;
+    return { pct, done, total, parts };
   }
 
   /**
