@@ -1199,6 +1199,10 @@ export class MetaProgress {
       kills:     Math.max(0, Math.floor(entry.kills || 0)),
       titans:    Math.max(0, Math.floor(entry.titans || 0)),
       corrupted: Math.max(0, Math.floor(entry.corrupted || 0)),
+      // Which contract the run carried, and whether it was completed. null = a legacy entry from
+      // before contracts existed, which the renderers must not print as "failed".
+      contract:     entry.contract || null,
+      contractDone: entry.contract ? !!entry.contractDone : false,
       date:      new Date().toLocaleDateString(),
     };
     this.chaosLedger.unshift(e);

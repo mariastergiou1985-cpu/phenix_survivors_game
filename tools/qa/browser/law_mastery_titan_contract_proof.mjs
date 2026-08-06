@@ -1,16 +1,16 @@
 // ════════════════════════════════════════════════════════════════════════════════
-// LAW MASTERY and the pilot TITAN CONTRACT.
+// LAW MASTERY, and the pre-run contract strip.
 //
 //  1. Law Mastery: the best Chaos survival time under each Chaos Law, persisted and printed on
 //     that Law's card in the pre-run selection overlay. A RECORD, nothing more — explicitly NO
 //     Law II, no tier, no stat, no currency. The L-block proves the recording rules AND that the
 //     feature grants nothing.
-//  2. Titan Contract (pilot): destroy 2 Mega Titans before 15:00 for +2 PF, no penalty on
-//     failure. The C-block proves the reward pays exactly once, only on time, only in Chaos, and
-//     that MISSING it costs the player nothing at all.
+//  2. The two contract checks that are about THIS overlay: that a contract strip is shown before
+//     the run at all, and that it stays out of the keyboard/controller focus ring.
 //
-// Every Titan kill in this file goes through the shipped _updateChaosTitans() handler — the same
-// code path a real kill takes — not through a hand-set counter.
+// The contract SYSTEM itself — the random roll, all three conditions, the once-only cap, the
+// no-penalty control, level-neutrality, and the HUD / Results / Ledger surfaces — is owned by
+// tools/qa/browser/chaos_contracts_proof.mjs. This file deliberately does not duplicate it.
 //
 // Run: node tools/qa/browser/law_mastery_titan_contract_proof.mjs [port]
 // Writes: /tmp/law_contract_proof/  (report.json + screenshots)
@@ -304,161 +304,21 @@ check('L10 CONTROL — no Law II: a mastered Law applies byte-identical modifier
 // ════════════════════════════════════════════════════════════════════════════
 // C. TITAN CONTRACT (pilot)
 // ════════════════════════════════════════════════════════════════════════════
-check('C01 the contract is SHOWN before the run, with goal, reward and no-penalty',
-  ui.set?.contract && /TITAN CONTRACT/.test(ui.set.contract.h) &&
-  /2 Mega Titans before 15:00/.test(ui.set.contract.g) &&
+// The pilot contract this file was written against became THREE contracts, rolled at random per
+// run, on 2026-08-06. Everything that pinned itself to "the run always carries tc_two_titans" —
+// the old C02..C10 — now lives in tools/qa/browser/chaos_contracts_proof.mjs, which owns the roll,
+// all three conditions, the once-only cap, the no-penalty control, level-neutrality and the three
+// surfaces, in 30 checks. Those checks were MOVED, not dropped; keeping a copy here pinned to one
+// contract would just be two descriptions of the same behaviour, drifting apart.
+//
+// What still belongs to THIS file is the pre-run overlay it already owned: that a contract strip
+// is present at all, and that it stays out of the keyboard/controller ring.
+check('C01 a contract strip is shown before the run, with its reward and its no-penalty line',
+  ui.set?.contract && ui.set.contract.h.length > 0 && ui.set.contract.g.length > 0 &&
+  /CONTRACT/.test(ui.set.contract.h) &&
   /\+2 Protocol Fragments/.test(ui.set.contract.r) &&
   /No penalty on failure/.test(ui.set.contract.r),
   JSON.stringify(ui.set?.contract));
-
-const onTime = await page.evaluate(() => {
-  const g = window.__g;
-  window.__run('chaos', 'blood_grid');
-  const before = window.__wallet();
-  window.__killTitan(window.__TITANS[0], 120);
-  const afterOne = window.__wallet();
-  window.__killTitan(window.__TITANS[1], 400);
-  const afterTwo = window.__wallet();
-  return { before, afterOne, afterTwo, at: g._titanContractAt, paid: g._titanContractPaid,
-           titans: g._chaosTitansKilled };
-});
-check('C02 two Titans before 15:00 pays exactly +2 PF',
-  onTime.afterTwo.pf - onTime.before.pf === 2 && onTime.paid === true && onTime.at === 400,
-  JSON.stringify({ pf: `${onTime.before.pf} -> ${onTime.afterTwo.pf}`, at: onTime.at, titans: onTime.titans }));
-check('C03 the FIRST Titan alone pays nothing — the contract needs two',
-  onTime.afterOne.pf === onTime.before.pf, `${onTime.before.pf} -> ${onTime.afterOne.pf}`);
-
-const noDouble = await page.evaluate(() => {
-  const g = window.__g;
-  window.__run('chaos', 'blood_grid');
-  const before = window.__wallet();
-  window.__killTitan(window.__TITANS[0], 60);
-  window.__killTitan(window.__TITANS[1], 120);
-  const afterTwo = window.__wallet();
-  window.__killTitan(window.__TITANS[2], 200);   // 3rd and 4th must not re-pay
-  window.__killTitan(window.__TITANS[3], 260);
-  const afterFour = window.__wallet();
-  window.__end(600);                             // and neither must the run-end reward path
-  return { before, afterTwo, afterFour, afterEnd: window.__wallet(), titans: g._chaosTitansKilled };
-});
-check('C04 CAP — it pays ONCE: the 3rd and 4th Titan, and run end, add nothing',
-  noDouble.afterTwo.pf - noDouble.before.pf === 2 &&
-  noDouble.afterFour.pf === noDouble.afterTwo.pf &&
-  noDouble.afterEnd.pf === noDouble.afterTwo.pf && noDouble.titans === 4,
-  JSON.stringify({ before: noDouble.before.pf, two: noDouble.afterTwo.pf,
-                   four: noDouble.afterFour.pf, end: noDouble.afterEnd.pf }));
-
-// Measured AT THE KILL, not across a whole run. The first version of these three checks compared
-// the wallet before the run against the wallet after __end(), and read "+4 PF, +25 credits, +7
-// Eden" on a FAILED contract — none of which was the contract. That is the run's own shipped
-// payout (Chaos Eden Memory, endless achievements, score credits) and it would have been there
-// with no contract in the game at all. The contract pays at the moment it is fulfilled, so that
-// is the only moment at which its contribution is separable.
-const tooLate = await page.evaluate(() => {
-  const g = window.__g;
-  window.__run('chaos', 'blood_grid');
-  window.__killTitan(window.__TITANS[0], 300);
-  const before = window.__wallet();
-  window.__killTitan(window.__TITANS[1], 901);   // ONE second past the window
-  return { before, after: window.__wallet(), at: g._titanContractAt, paid: g._titanContractPaid };
-});
-check('C05 two Titans ONE SECOND past 15:00 pays nothing',
-  tooLate.after.pf === tooLate.before.pf && tooLate.paid === false && tooLate.at === 901,
-  JSON.stringify({ pf: `${tooLate.before.pf} -> ${tooLate.after.pf}`, at: tooLate.at, paid: tooLate.paid }));
-
-const oneOnly = await page.evaluate(() => {
-  const g = window.__g;
-  window.__run('chaos', 'blood_grid');
-  const before = window.__wallet();
-  window.__killTitan(window.__TITANS[0], 100);
-  const atKill = window.__wallet();
-  window.__end(1400);
-  return { before, atKill, at: g._titanContractAt, paid: g._titanContractPaid };
-});
-check('C06 one Titan in the window is not enough, and stamps nothing',
-  oneOnly.atKill.pf === oneOnly.before.pf && oneOnly.at === -1 && oneOnly.paid === false,
-  JSON.stringify({ at: oneOnly.at, pf: `${oneOnly.before.pf} -> ${oneOnly.atKill.pf}` }));
-
-// NO PENALTY, proved as a MATCHED CONTROL rather than as an absolute. Two runs identical in every
-// way that pays — same character, same law, same TWO Titan kills, same end time — differing only
-// in whether the second kill landed inside the window. Every Titan's first-kill relic and echo is
-// pre-consumed so neither run gets a one-time grant the other misses. If failing carried any
-// penalty at all it would show up as a difference other than the winner's +2 PF.
-const matched = await page.evaluate(() => {
-  const g = window.__g;
-  const delta = (a, b) => { const o = {}; for (const k of Object.keys(a)) o[k] = +(b[k] - a[k]).toFixed(4); return o; };
-  // Pre-consume every first-kill grant so the two runs below start from the same shelf.
-  window.__run('chaos', 'blood_grid');
-  for (let i = 0; i < 4; i++) window.__killTitan(window.__TITANS[i], 60 + i * 30);
-  window.__end(1000);
-
-  window.__run('chaos', 'blood_grid');                       // WIN — inside the window
-  const w0 = window.__wallet();
-  window.__killTitan(window.__TITANS[0], 100);
-  window.__killTitan(window.__TITANS[1], 200);
-  window.__end(1000);
-  const win = delta(w0, window.__wallet());
-
-  window.__run('chaos', 'blood_grid');                       // LOSE — one second late
-  const l0 = window.__wallet();
-  window.__killTitan(window.__TITANS[0], 800);
-  window.__killTitan(window.__TITANS[1], 901);
-  window.__end(1000);
-  const lose = delta(l0, window.__wallet());
-  return { win, lose, diff: delta(lose, win) };
-});
-check('C07 FAILURE HAS NO PENALTY — vs a matched winning run the ONLY difference is the +2 PF',
-  matched.diff.pf === 2 && matched.diff.rewardedPF === 2 &&
-  Object.entries(matched.diff).every(([k, v]) => (k === 'pf' || k === 'rewardedPF') ? v === 2 : v === 0) &&
-  matched.lose.pf === 0 && matched.lose.credits >= 0,
-  JSON.stringify({ win: matched.win, lose: matched.lose, diff: matched.diff }));
-
-const levelNeutral = await page.evaluate(() => {
-  const g = window.__g;
-  window.__run('chaos', 'blood_grid');
-  const before = window.__wallet();
-  window.__killTitan(window.__TITANS[0], 60);
-  window.__killTitan(window.__TITANS[1], 120);
-  const after = window.__wallet();
-  return { before, after };
-});
-check('C08 the +2 PF is LEVEL-NEUTRAL — spendable, but it cannot inflate the pilot level',
-  levelNeutral.after.pf - levelNeutral.before.pf === 2 &&
-  levelNeutral.after.rewardedPF - levelNeutral.before.rewardedPF === 2 &&
-  levelNeutral.after.level === levelNeutral.before.level,
-  JSON.stringify({ pf: `${levelNeutral.before.pf}->${levelNeutral.after.pf}`,
-                   rewardedPF: `${levelNeutral.before.rewardedPF}->${levelNeutral.after.rewardedPF}`,
-                   level: `${levelNeutral.before.level}->${levelNeutral.after.level}` }));
-
-const freshRun = await page.evaluate(() => {
-  const g = window.__g;
-  window.__run('chaos', 'blood_grid');
-  window.__killTitan(window.__TITANS[0], 60);
-  window.__killTitan(window.__TITANS[1], 120);
-  const armed = { at: g._titanContractAt, paid: g._titanContractPaid, titans: g._chaosTitansKilled };
-  window.__run('chaos', 'blood_grid');            // a NEW run must offer it again
-  const reset = { at: g._titanContractAt, paid: g._titanContractPaid, titans: g._chaosTitansKilled };
-  const before = window.__wallet();
-  window.__killTitan(window.__TITANS[0], 60);
-  window.__killTitan(window.__TITANS[1], 120);
-  return { armed, reset, gained: window.__wallet().pf - before.pf };
-});
-check('C09 a fresh run re-arms the contract and it can be earned again',
-  freshRun.reset.at === -1 && freshRun.reset.paid === false && freshRun.reset.titans === 0 &&
-  freshRun.gained === 2, JSON.stringify(freshRun));
-
-const notChaos = await page.evaluate(() => {
-  const g = window.__g;
-  window.__run('endless', null);
-  g._chaosMode = false;
-  const before = window.__wallet();
-  window.__killTitan(window.__TITANS[0], 60);
-  window.__killTitan(window.__TITANS[1], 120);
-  return { before, after: window.__wallet(), paid: g._titanContractPaid };
-});
-check('C10 CONTROL — outside Chaos the contract never pays',
-  notChaos.after.pf === notChaos.before.pf && notChaos.paid === false,
-  JSON.stringify({ pf: `${notChaos.before.pf} -> ${notChaos.after.pf}`, paid: notChaos.paid }));
 
 const ring = await page.evaluate(() => {
   const g = window.__g;

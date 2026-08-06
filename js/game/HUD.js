@@ -118,6 +118,40 @@ export function drawHUD(ctx, game) {
   drawText(ctx, `${Math.floor(ncVal)}/${ncMax}`, 168, 37, nc, '11px Consolas, monospace');
   drawText(ctx, 'KILLS RECHARGE NEXUS', 12, 47, 'rgba(150,180,200,0.5)', '9px Consolas, monospace');
 
+  // ── CHAOS CONTRACT readout ────────────────────────────────────────────────
+  // Left column, under the Nexus meter — the only free band there, and away from the crowded
+  // centre (KILLS 65, CHAOS badge 84, pylon buff 112, doctrine 126). Chaos only, so nothing
+  // moves in Endless or Campaign. Display only: every value comes from game._contractState(),
+  // the SAME snapshot the Results screen and the Ledger read, so the bar the player watches and
+  // the verdict they are shown at the end cannot disagree.
+  if (game._chaosMode && typeof game._contractState === 'function') {
+    let cs = null;
+    try { cs = game._contractState(); } catch (_) { cs = null; }
+    if (cs) {
+      const col = cs.done ? '#7CFF4D' : cs.lost ? 'rgba(150,180,200,0.45)' : '#ff9f0a';
+      const BW = 150, BH = 5, bx = 12, by = 78;
+      ctx.save();
+      ctx.textAlign = 'left';
+      drawText(ctx, 'CONTRACT · ' + cs.name, 12, 62,
+               cs.lost ? 'rgba(150,180,200,0.45)' : '#ff9f0a', '9px Consolas, monospace');
+      const line = cs.done ? '✓ COMPLETE · +' + cs.pf + ' PF'
+                 : cs.lost ? '✗ MISSED · NO PENALTY'
+                 : cs.hud;
+      ctx.globalAlpha = cs.done ? (0.75 + 0.25 * Math.abs(Math.sin(Date.now() / 260))) : 1;
+      drawText(ctx, line, 12, 74, col, 'bold 10px Consolas, monospace');
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = 'rgba(6,10,22,0.72)';
+      ctx.fillRect(bx - 1, by - 1, BW + 2, BH + 2);
+      ctx.fillStyle = col;
+      ctx.fillRect(bx, by, Math.round(BW * Math.max(0, Math.min(1, cs.prog || 0))), BH);
+      ctx.strokeStyle = cs.lost ? 'rgba(150,180,200,0.30)' : 'rgba(255,159,10,0.55)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(bx - 0.5, by - 0.5, BW + 1, BH + 1);
+      ctx.restore();
+      ctx.textAlign = 'left';
+    }
+  }
+
   // ── Top-right: Data-Core icon + live Grid Credits ───────────────────────
   const credits = (game.meta?.credits ?? 0).toLocaleString();
   ctx.textAlign = 'right';

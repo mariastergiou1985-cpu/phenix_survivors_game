@@ -31,8 +31,8 @@ import './BuildEngineChars5.js?v=20260902130000';   // P2.5 Universal όπλα 2
 import './BuildEnginePassives.js?v=20260902130000'; // P2.6 Build passives §26-50 (generic hooks)
 import { MutationUI }      from './MutationUI.js?v=20260904180000';
 import { sampleMutations, sampleCorruptedMutation } from './Mutations.js?v=20260904180000';
-import { drawHUD, drawEndScreen } from './HUD.js?v=20260904170000';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, COLLECTIBLE_FRAGMENT_COST, COLLECTIBLE_GRID_COST, ECHO_FRAGMENT_COST, ECHO_GRID_COST, SKILL_TREE, AMULET_DEFS, GRID_TO_PF_RATE, characterStageRequirement } from './MetaProgress.js?v=20260904280000';
+import { drawHUD, drawEndScreen } from './HUD.js?v=20260904290000';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, COLLECTIBLE_FRAGMENT_COST, COLLECTIBLE_GRID_COST, ECHO_FRAGMENT_COST, ECHO_GRID_COST, SKILL_TREE, AMULET_DEFS, GRID_TO_PF_RATE, characterStageRequirement } from './MetaProgress.js?v=20260904290000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260712520000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
@@ -737,21 +737,62 @@ const CHAOS_LAWS = [
     future: 'High risk / high reward: unstable Grid, maximum payout.' },
 ];
 
-// ── TITAN CONTRACT (pilot) ─────────────────────────────────────────────────
-// ONE contract, offered on every Chaos run, shown before the run starts. Single source of truth
-// for the goal, the window, the payout and the wording — the pre-run card, the engage-time
-// transmission and the payout all read these fields, so the promise the player is shown cannot
-// drift from the condition the code checks. Failure has NO penalty by design.
-const TITAN_CONTRACT = {
-  id: 'tc_two_titans',
-  name: 'TITAN CONTRACT',
-  titans: 2,
-  limitSecs: 900,                                   // 15:00
-  pf: 2,
-  goal: 'Destroy 2 Mega Titans before 15:00.',
-  reward: '+2 Protocol Fragments',
-  penalty: 'No penalty on failure.',
+// ── CHAOS CONTRACTS ────────────────────────────────────────────────────────
+// THREE contracts; every Chaos run rolls exactly ONE of them at random and shows it before the
+// run. Success pays +2 PF. Failure has NO penalty — there is deliberately no failure branch
+// anywhere in the code, which is why the proof can assert it rather than just claim it.
+//
+// This table is the single source of truth. The pre-run card, the engage transmission, the HUD
+// readout, the Results strip and the Ledger row all read these same fields and these same
+// predicates, so what the player is promised, what they watch tick up, and what the payout
+// actually checks cannot drift apart.
+//
+//   test(g)  → the contract is COMPLETE right now
+//   lost(g)  → it can no longer be completed this run (shown greyed; still costs nothing)
+//   prog(g)  → 0..1 for the HUD bar
+//   hud(g)   → the one-line progress readout
+const _clkS = (s) => {
+  const v = Math.max(0, Math.floor(Number(s) || 0));
+  return Math.floor(v / 60) + ':' + String(v % 60).padStart(2, '0');
 };
+const CHAOS_CONTRACTS = [
+  {
+    id: 'tc_two_titans', name: 'TITAN CONTRACT', pf: 2,
+    goal: 'Destroy 2 Mega Titans before 15:00.',
+    test: (g) => (g._chaosTitansKilled || 0) >= 2 && g._chaosSecs() <= 900,
+    // Past 15:00 it is gone, FULL STOP — the kill count is irrelevant. The first version of this
+    // read `secs > 900 && kills < 2`, which left a run that killed its second Titan at 15:01 in
+    // limbo: never completable (test needs secs <= 900) but never reported lost either, so the HUD
+    // showed it as still live for the rest of the run. _contractState only asks this when the
+    // contract is not already done, so "the window shut" is the whole condition.
+    lost: (g) => g._chaosSecs() > 900,
+    prog: (g) => Math.min(1, (g._chaosTitansKilled || 0) / 2),
+    hud:  (g) => 'TITANS ' + Math.min(2, g._chaosTitansKilled || 0) + '/2 · ' +
+                 _clkS(900 - g._chaosSecs()) + ' LEFT',
+  },
+  {
+    id: 'tc_boss_rush', name: 'RUSH CONTRACT', pf: 2,
+    goal: 'Clear a Chaos Boss Rush.',
+    test: (g) => (g._chaosRushCleared || 0) > 0,
+    lost: () => false,                                     // available for the whole run
+    prog: (g) => Math.min(1, g._chaosRushCleared || 0),
+    hud:  (g) => 'BOSS RUSH ' + Math.min(1, g._chaosRushCleared || 0) + '/1 CLEARED',
+  },
+  {
+    // BOTH readings of "without taking a Chaos Pylon", per Maria 2026-08-06: no danger pylon may
+    // hit you AND no buff pylon may be collected. _chaosPulseHits was already tallied for the
+    // UNBROKEN sigil; _chaosPylonsTaken is new and counts every NON-danger pylon triggered.
+    id: 'tc_no_pylon', name: 'SILENCE CONTRACT', pf: 2,
+    goal: 'Survive 10:00 without touching a single Chaos Pylon — no buff taken, no pulse taken.',
+    test: (g) => g._chaosSecs() >= 600 && !(g._chaosPulseHits > 0) && !(g._chaosPylonsTaken > 0),
+    lost: (g) => (g._chaosPulseHits || 0) > 0 || (g._chaosPylonsTaken || 0) > 0,
+    prog: (g) => Math.min(1, g._chaosSecs() / 600),
+    hud:  (g) => 'UNTOUCHED ' + _clkS(g._chaosSecs()) + ' / 10:00',
+  },
+];
+const CONTRACT_BY_ID = (id) => CHAOS_CONTRACTS.find(c => c.id === id) || null;
+const CONTRACT_REWARD  = '+2 Protocol Fragments';
+const CONTRACT_PENALTY = 'No penalty on failure.';
 
 // ── System Logs / Lore Archive — unlock via Eden Memory threshold ──────────
 const SYSTEM_LOGS = [
@@ -2028,12 +2069,17 @@ export class Game {
     this._chaosTitanTypes   = [];         // DISTINCT Mega Titans destroyed this run — sigil only
     this._chaosPulseHits    = 0;          // CHAOS PULSE (danger pylon) hits taken — sigil only
     this._chaosRushCleared  = 0;          // Boss Rushes cleared this run — sigil only
-    // TITAN CONTRACT (pilot) — destroy 2 Mega Titans before 15:00. Success pays +2 PF, failure
-    // costs nothing at all. `_titanContractAt` is the chaosTimeSecs stamped the moment the SECOND
-    // Titan fell (-1 = it has not happened), so "before 15:00" is judged on when the kill landed
+    // CHAOS CONTRACT — one rolled per run. `_contractDoneAt` is the chaos-clock second at which it
+    // completed (-1 = not completed), so "before 15:00" is judged on WHEN the condition was met
     // rather than on how the run happened to end.
-    this._titanContractAt   = -1;
-    this._titanContractPaid = false;      // once-per-run guard on the payout
+    //
+    // NOTE: `runChaosContract` is deliberately NOT cleared here. reset() runs INSIDE
+    // _beginChaosRun(), after the pre-run card has already shown the player which contract they
+    // are taking — clearing it here would hand them a different one than they were promised.
+    // Exactly the same reasoning that keeps reset() off runChaosLaw.
+    this._contractDoneAt    = -1;
+    this._contractPaid      = false;      // once-per-run guard on the payout
+    this._chaosPylonsTaken  = 0;          // BUFF pylons collected this run — SILENCE contract
     this._chaosTransTimer   = -1;      // >=0 while glitch transition is playing
     this.forceChaos         = false;   // defensive: prevent stale debug-key state leaking into the next run
     this._chaosCoreCd       = 0;       // cooldown for bonus gold-core spawns
@@ -3184,6 +3230,10 @@ export class Game {
       return 'BEST <b>' + m + ':' + String(r).padStart(2, '0') + '</b>';
     };
 
+    // The overlay is also opened for plain Endless and for the mid-run Doctrine reroll, where no
+    // Chaos contract has been rolled — the strip simply does not render in those cases.
+    const _con = this._activeContract();
+
     const el = document.createElement('div');
     el.id = 'cgm-chaos-law-sel';
     el.innerHTML = '<div class="cls-box">'
@@ -3204,11 +3254,15 @@ export class Game {
             + '</div>'
         ).join('')
       + '</div>'
-      + '<div class="cls-contract">'
-        + '<div class="cc-h">' + TITAN_CONTRACT.name + '</div>'
-        + '<div class="cc-g">' + TITAN_CONTRACT.goal + '</div>'
-        + '<div class="cc-r">REWARD <b>' + TITAN_CONTRACT.reward + '</b> \u00b7 ' + TITAN_CONTRACT.penalty + '</div>'
-      + '</div>'
+      // The contract THIS run rolled \u2014 not a fixed one. startChaosRun() rolls before opening this
+      // overlay precisely so the card and the run agree.
+      + (_con
+        ? '<div class="cls-contract">'
+          + '<div class="cc-h">' + _con.name + ' &middot; THIS RUN</div>'
+          + '<div class="cc-g">' + _con.goal + '</div>'
+          + '<div class="cc-r">REWARD <b>' + CONTRACT_REWARD + '</b> \u00b7 ' + CONTRACT_PENALTY + '</div>'
+        + '</div>'
+        : '')
       + '<div class="cls-skip"><button id="cls-back-btn">\u2190 BACK</button><button id="cls-skip-btn">SKIP \u2014 STANDARD ENDLESS</button></div>'
       + '<div class="cls-hint"><b>\u25b2\u25bc</b> SELECT \u00b7 <b>ENTER / A</b> CONFIRM \u00b7 <b>ESC / B</b> BACK</div>'
       + '</div>';
@@ -5050,6 +5104,8 @@ export class Game {
           kills:     this.player?.kills ?? 0,
           titans:    this._chaosTitansKilled || 0,
           corrupted: _corrupted,
+          contract:     this.runChaosContract || null,
+          contractDone: this._contractDoneAt >= 0,
         });
       } catch (_e) { console.warn('[Chaos Ledger] recordChaosRun error', _e); }
 
@@ -7155,6 +7211,62 @@ export class Game {
 
   // The four Chaos Mega Titans, and the relic each one hands over. Kept next to the tab that
   // renders them so the list cannot drift from _updateChaosTitans' own map.
+  // ── CHAOS CONTRACT ENGINE ───────────────────────────────────────────────────
+  // Seconds elapsed on the CHAOS clock (not the run clock). 0 before Chaos engages.
+  _chaosSecs() {
+    if (!(this._chaosStartedAt >= 0)) return 0;
+    return Math.max(0, Math.floor((this.timeAlive || 0) - this._chaosStartedAt));
+  }
+
+  /** Rolls ONE contract at random for the run about to start. */
+  _rollChaosContract() {
+    const def = CHAOS_CONTRACTS[Math.floor(Math.random() * CHAOS_CONTRACTS.length)];
+    this.runChaosContract = def.id;
+    this._contractRolled  = true;      // consumed by _beginChaosRun so it does not re-roll
+    return def;
+  }
+
+  _activeContract() { return CONTRACT_BY_ID(this.runChaosContract); }
+
+  /**
+   * The ONE snapshot every surface reads — HUD, Results and Ledger. Keeping this in a single
+   * method is the reason the bar the player watches, the line the Results prints and the record
+   * the Ledger stores can never disagree about whether the contract was completed.
+   */
+  _contractState() {
+    const def = this._activeContract();
+    if (!def) return null;
+    const done = this._contractDoneAt >= 0;
+    let lost = false;
+    try { lost = !done && !!def.lost(this); } catch (_) { lost = false; }
+    let prog = 0, hud = '';
+    try { prog = Math.max(0, Math.min(1, def.prog(this) || 0)); } catch (_) {}
+    try { hud  = String(def.hud(this) || ''); } catch (_) {}
+    return { id: def.id, name: def.name, goal: def.goal, pf: def.pf,
+             done, lost, prog: done ? 1 : prog, hud, at: this._contractDoneAt };
+  }
+
+  /**
+   * Per-frame contract check. Pays the moment the condition is met — the same shape as the
+   * shipped arena Null Fragment — so the reward never depends on how the run ends. Guarded to
+   * fire once, and only inside Chaos. There is NO else-branch: failing simply never pays.
+   */
+  _updateChaosContract() {
+    if (!this._chaosMode || this._contractPaid) return;
+    const def = this._activeContract();
+    if (!def || !this.player || this.player.dead || this.gameOver || this.victory) return;
+    let ok = false;
+    try { ok = !!def.test(this); } catch (_) { return; }
+    if (!ok) return;
+    this._contractPaid   = true;
+    this._contractDoneAt = this._chaosSecs();
+    try {
+      this.meta?.awardContractPF?.(def.pf);
+      this._queueEdenTransmission(def.name + ' FULFILLED — ' + def.pf + ' PROTOCOL FRAGMENTS TRANSFERRED.',
+        { title: 'CONTRACT', priority: 2, duration: 6 });
+    } catch (_e) { console.warn('[Chaos Contract] payout error', _e); }
+  }
+
   _chaosTitanDefs() {
     return [
       { flag: 'titan_overlord',  name: 'GIGA-CORE OVERLORD',     relic: 'overlord_prism_array' },
@@ -7536,6 +7648,8 @@ export class Game {
         const bits = [esc(law(r.law)), (r.kills || 0) + ' KILLS'];
         if (r.titans)    bits.push(r.titans + ' TITAN' + (r.titans > 1 ? 'S' : ''));
         if (r.corrupted) bits.push(r.corrupted + ' CORRUPTED');
+        const cb = this._ledgerContractBit(r, esc);
+        if (cb) bits.push(cb);
         return `<div class="sl-row readable">
           <div class="sl-num readable" style="color:${col}">${esc(clk(r.secs))}</div>
           <div class="sl-info">
@@ -12160,6 +12274,7 @@ export class Game {
     // FINAL) — the random System Events (drone swarm, mega-boss, blackout, etc.) do NOT run here.
     if (!this._campaignStage) this._sysEvents.update(dt, this.timeAlive, this);
     if (this._chaosMode) this._updateChaosTitans(dt);   // Chaos-only Mega Titan scheduler
+    if (this._chaosMode) this._updateChaosContract();   // Chaos-only contract check (pays once)
     this._updateTitanWeaponFx(dt);   // Phase 2: Mega Boss weapon-art flashes
     if (this._chaosMode || this.endless) this._updateDeckTransitions(dt);
     if (this._chaosMode || this.endless) this._updateBossRush(dt);   // Maria: arena 2× in Endless AND 2× in Chaos
@@ -13361,6 +13476,10 @@ export class Game {
     if (this.characters?.find(c => c.id === this.selectedCharacter && c.comingSoon)) {
       this.selectedCharacter = this.characters.find(c => !c.comingSoon && this.meta.isCharacterUnlocked(c.id))?.id || 'skeleton_warrior';
     }
+    // Roll the run's contract HERE, before the law overlay opens, so the card shows the contract
+    // the run will actually carry. _beginChaosRun consumes the _contractRolled flag rather than
+    // rolling again, which is what stops the player being promised one contract and given another.
+    this._rollChaosContract();
     // Chaos Law gate: Eden Memory >= 50% → offer law selection before engaging Chaos (same gate as
     // direct Endless). The overlay's confirm/skip handlers route back into _beginChaosRun() because
     // _pendingChaosStart is set. Below that threshold, start Chaos immediately with no law.
@@ -13377,6 +13496,11 @@ export class Game {
   // and the Chaos Law overlay confirm/skip handlers.
   _beginChaosRun() {
     this.gameState = 'playing';
+    // A run reached here WITHOUT startChaosRun (RETRY — CHAOS, mid-run escalation) never had a
+    // pre-run card, so it rolls its own. A run that did come through startChaosRun keeps the
+    // contract that card already showed.
+    if (!this._contractRolled) this._rollChaosContract();
+    this._contractRolled = false;
     this.reset();
     this._enteringChaos = true;       // banner routing: NULL EDEN — CHAOS MODE (όχι STAGE 02)
     this._enterEndless();             // set up all Endless infrastructure
@@ -13398,8 +13522,9 @@ export class Game {
     // opens, but that overlay is gated on Eden Memory >= 50% — below that, Chaos starts directly
     // and this transmission is the earliest the player can be told. Same strings, one source.
     try {
-      this._queueEdenTransmission(TITAN_CONTRACT.goal + ' Reward ' + TITAN_CONTRACT.reward + '. ' + TITAN_CONTRACT.penalty,
-        { title: TITAN_CONTRACT.name, priority: 2, duration: 6 });
+      const _cd = this._activeContract();
+      if (_cd) this._queueEdenTransmission(_cd.goal + ' Reward ' + CONTRACT_REWARD + '. ' + CONTRACT_PENALTY,
+        { title: _cd.name, priority: 2, duration: 6 });
     } catch (_e) { console.warn('[Titan Contract] banner error', _e); }
   }
 
@@ -13431,24 +13556,10 @@ export class Game {
       }[this._activeTitan.enemyType];
       try { if (flag && this.meta) this.meta.recordBossKill(flag); } catch (_) {}
       this._chaosTitansKilled = (this._chaosTitansKilled || 0) + 1;   // Chaos Ledger tally + contract
-      // ── TITAN CONTRACT (pilot) ────────────────────────────────────────────
-      // Paid HERE, the moment it is fulfilled, rather than at run end — the same shape as the
-      // arena Null Fragment, and it means the reward does not depend on how the run finishes.
-      // Stamped once (_titanContractPaid), Chaos only, and silent past 15:00: failure carries no
-      // penalty and no message, exactly as briefed.
-      try {
-        if (this._chaosMode && this._titanContractAt < 0 && this._chaosTitansKilled >= 2) {
-          const _at = Math.max(0, Math.floor(this.timeAlive - (this._chaosStartedAt >= 0 ? this._chaosStartedAt : this.timeAlive)));
-          this._titanContractAt = _at;
-          if (_at <= TITAN_CONTRACT.limitSecs && !this._titanContractPaid) {
-            this._titanContractPaid = true;
-            this.meta?.awardContractPF?.(TITAN_CONTRACT.pf);
-            this._queueEdenTransmission(
-              'TITAN CONTRACT FULFILLED — ' + TITAN_CONTRACT.pf + ' PROTOCOL FRAGMENTS TRANSFERRED.',
-              { title: 'CONTRACT', priority: 2, duration: 6 });
-          }
-        }
-      } catch (_e) { console.warn('[Titan Contract] payout error', _e); }
+      // The TITAN contract is evaluated by _updateChaosContract() on the very next frame, along
+      // with the other two — one checker for all three, rather than a payout bolted onto this
+      // kill handler. Checked here too so the +2 PF lands on the kill frame itself.
+      try { this._updateChaosContract(); } catch (_e) { console.warn('[Chaos Contract] titan check', _e); }
       // DISTINCT types, for the TITANBREAKER sigil: the four cycle, so killing the same one
       // twice must not count as two of the four.
       if (flag && !this._chaosTitanTypes.includes(flag)) this._chaosTitanTypes.push(flag);
@@ -27762,6 +27873,39 @@ export class Game {
    * Every value is escaped and every field defaulted: a ledger written by an older build (or a
    * hand-edited save) must degrade to a readable row, never to a broken screen.
    */
+  /**
+   * THIS run's contract on the Results screen: which one it was, and whether it was completed.
+   * Reads _contractState() — the same snapshot the HUD watched all run and the same flag the
+   * Ledger stored — so the three can never tell the player different stories.
+   */
+  _contractResultHTML(esc, clk) {
+    const st = this._contractState();
+    if (!st) return '';
+    const col = st.done ? '#7CFF4D' : '#ff9f0a';
+    const tag = st.done ? '&#10003; COMPLETE &middot; +' + st.pf + ' PF' : '&#10007; NOT COMPLETED';
+    return '<div style="margin-top:9px;padding-top:7px;border-top:1px solid rgba(255,159,10,0.20);' +
+           'font-family:Consolas,monospace;font-size:10px;letter-spacing:.5px;color:#c8dbe6;">' +
+             '<div style="font-family:\'Orbitron\',sans-serif;font-weight:700;font-size:8px;' +
+             'letter-spacing:1.4px;color:#ff9f0a;margin-bottom:3px;">CONTRACT &middot; ' +
+             esc(st.name) + '</div>' +
+             '<div>' + esc(st.goal) + '</div>' +
+             '<div style="color:' + col + ';font-weight:700;margin-top:2px;">' + tag +
+               (st.done && st.at >= 0 ? ' &middot; AT ' + clk(st.at) : '') +
+             '</div>' +
+             (st.done ? '' :
+               '<div style="color:rgba(120,160,200,0.55);margin-top:1px;">No penalty.</div>') +
+           '</div>';
+  }
+
+  /** Short contract mark for a Ledger row. '' for legacy entries that predate contracts. */
+  _ledgerContractBit(r, esc) {
+    if (!r || !r.contract) return '';
+    const def = CONTRACT_BY_ID(r.contract);
+    const nm  = def ? def.name.replace(/ CONTRACT$/, '') : String(r.contract).toUpperCase();
+    return '<span style="color:' + (r.contractDone ? '#7CFF4D' : '#ff9f0a') + ';">' +
+           (r.contractDone ? '&#10003; ' : '&#10007; ') + esc(nm) + '</span>';
+  }
+
   _chaosLedgerHTML(esc, clk, RANK_COLOR) {
     let rows = [];
     try { rows = (this.meta?.getChaosLedger?.() || []).slice(0, 3); } catch (_) { rows = []; }
@@ -27778,6 +27922,8 @@ export class Game {
       ];
       if (r.titans) bits.push(r.titans + ' TITAN' + (r.titans > 1 ? 'S' : ''));
       if (r.corrupted) bits.push('<span style="color:#ff2d95;">' + r.corrupted + ' CORRUPTED</span>');
+      const cb = this._ledgerContractBit(r, esc);
+      if (cb) bits.push(cb);
       return '<div style="opacity:' + (i === 0 ? '1' : '0.55') + ';margin-top:2px;">' +
              (i === 0 ? '&#9656; ' : '&nbsp;&nbsp;&nbsp;') + bits.join(' &middot; ') + '</div>';
     }).join('');
@@ -27867,6 +28013,7 @@ export class Game {
           // This run's own line first — character, law, time, rank, kills, titans, corrupted —
           // then the two before it, so the player can see what they just beat and what they are
           // chasing. The full history lives in meta.chaosLedger; no Collection tab yet.
+          this._contractResultHTML(esc, clk) +
           this._chaosLedgerHTML(esc, clk, RANK_COLOR) +
         '</div>';
     }
@@ -35978,6 +36125,11 @@ _drawLoreArchive(ctx) {
         if (d < TRIGGER_R) {
           p.triggered = true;
           p.life      = Math.min(p.life, 0.6); // flash then remove
+          // THIS copy of _updateChaosPylons is the DEAD one — Game.js defines the method twice
+          // (pre-existing, reported separately) and the later definition wins, so the live loop is
+          // the one further down that also tallies _chaosPulseHits. Instrumented anyway, because
+          // a tally that silently depends on which duplicate survives is not a tally.
+          if (p.type !== 'danger') this._chaosPylonsTaken = (this._chaosPylonsTaken || 0) + 1;
           if (p.type === 'danger') {
             this._damagePlayer(15, { color: '#ff4400', shake: 4 });
             this._spawnFloatingText('CHAOS PULSE', p.pos.clone(), '#ff4400', 1.2);
@@ -37782,6 +37934,10 @@ _drawLoreArchive(ctx) {
         if (d < TRIGGER_R) {
           p.triggered = true;
           p.life      = Math.min(p.life, 0.6); // flash then remove
+          // SILENCE contract: every NON-danger pylon is a BUFF the player chose to take. Counted
+          // once, here, where the trigger actually happens — danger pylons have their own tally
+          // (_chaosPulseHits) and are not double-counted into this one.
+          if (p.type !== 'danger') this._chaosPylonsTaken = (this._chaosPylonsTaken || 0) + 1;
           if (p.type === 'fate' || p.type === 'foundry' || p.type === 'venom' ||
               p.type === 'proof' || p.type === 'pyre' || p.type === 'amp' ||
               p.type === 'frost' || p.type === 'aegis' ||
