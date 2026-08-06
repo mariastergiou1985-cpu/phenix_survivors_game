@@ -884,6 +884,28 @@ const LAW_SEALS = [
   { law: 'broken_signal',     mark: '☈', name: 'SEAL OF THE BROKEN SIGNAL', color: '#ff2d95' },
 ];
 
+// ── CHAOS RUN TITLES — cosmetic marks on what a single run WAS ─────────────
+// Awarded per run, shown on the Chaos Results screen and on that run's Ledger row.
+//
+// DERIVED, and derived from the LEDGER ENTRY ITSELF. recordChaosRun already stores titans, secs
+// and corrupted for every Chaos run, so a title is a read over the record rather than a fourth
+// field beside it. That is what lets old Ledger rows earn their titles retroactively, and what
+// makes it impossible for the Results screen and the Ledger to disagree — both call the same
+// function on the same three numbers.
+//
+// A run can hold MORE THAN ONE. They are not ranked and not exclusive: they describe the run.
+const CHAOS_TITLES = [
+  { id: 'titan_hunter',   name: 'TITAN HUNTER',   color: '#7CFF4D',
+    req: 'Destroy all four Mega Titans in one run.',
+    test: (r) => (r?.titans || 0) >= 4 },
+  { id: 'law_survivor',   name: 'LAW SURVIVOR',   color: '#2ee6f6',
+    req: 'Survive 20:00 in Chaos.',
+    test: (r) => (r?.secs || 0) >= 1200 },
+  { id: 'corrupted_soul', name: 'CORRUPTED SOUL', color: '#ff2d95',
+    req: 'Seal three corrupted mutations in one run.',
+    test: (r) => (r?.corrupted || 0) >= 3 },
+];
+
 // ── NULL EDEN MASTER — one cosmetic badge for the whole roster ─────────────
 // Earned when EVERY playable character has reached at least SILVER on the Chaos Survival Rank.
 //
@@ -7856,6 +7878,8 @@ export class Game {
         if (r.corrupted) bits.push(r.corrupted + ' CORRUPTED');
         const cb = this._ledgerContractBit(r, esc);
         if (cb) bits.push(cb);
+        const tb = this._titleChipsHTML(r, esc, true);
+        if (tb) bits.push(tb);
         return `<div class="sl-row readable">
           <div class="sl-num readable" style="color:${col}">${esc(clk(r.secs))}</div>
           <div class="sl-info">
@@ -7889,6 +7913,47 @@ export class Game {
       earned.map(s => '<span title="' + s.name + '" style="font-size:11px;color:' + s.color +
         ';text-shadow:0 0 6px ' + s.color + '99;">' + s.mark + '</span>').join('') +
     '</div>';
+  }
+
+  /**
+   * The titles a run earned, from a { titans, secs, corrupted } record. ONE function, called by
+   * both the Results screen and the Ledger — which is the whole reason they cannot disagree.
+   * Returns [] for a run that earned none, which is the normal case.
+   */
+  _chaosTitlesFor(rec) {
+    if (!rec) return [];
+    try { return CHAOS_TITLES.filter(t => t.test(rec)); } catch (_) { return []; }
+  }
+
+  /** The live run's record, in the same shape recordChaosRun stores. */
+  _thisRunTitleRec() {
+    let corrupted = 0;
+    try {
+      const taken = this.mutations?.taken || {};
+      for (const k of Object.keys(taken)) {
+        if (k.indexOf('corrupt_') === 0) corrupted += Math.max(0, Math.floor(taken[k] || 0));
+      }
+    } catch (_) {}
+    // chaosTimeSecs is only written by _grantRewards, so mid-run it is still 0 — which made this
+    // report "no LAW SURVIVOR" for a run that had been going 25 minutes. The Results screen never
+    // saw it (it renders after _grantRewards), but a function called _thisRunTitleRec has to be
+    // right whenever it is called, not only at the one moment it happens to be called today.
+    // Falls back to the live Chaos clock, which is the same value _grantRewards will store.
+    const secs = this.chaosTimeSecs || this._chaosSecs();
+    return { titans: this._chaosTitansKilled || 0, secs, corrupted };
+  }
+
+  /** Title chips, shared by the Results strip and the Ledger row. '' when none were earned. */
+  _titleChipsHTML(rec, esc, small) {
+    const earned = this._chaosTitlesFor(rec);
+    if (!earned.length) return '';
+    const fs = small ? '8px' : '9px';
+    return earned.map(t =>
+      '<span style="display:inline-block;font-family:\'Orbitron\',sans-serif;font-weight:700;' +
+      'font-size:' + fs + ';letter-spacing:1.6px;color:' + t.color + ';' +
+      'border:1px solid ' + t.color + '55;background:' + t.color + '14;' +
+      'border-radius:4px;padding:1px 6px;margin:1px 3px 1px 0;">' + esc(t.name) + '</span>'
+    ).join('');
   }
 
   /**
@@ -28163,6 +28228,22 @@ export class Game {
    * Reads _contractState() — the same snapshot the HUD watched all run and the same flag the
    * Ledger stored — so the three can never tell the player different stories.
    */
+  /**
+   * THIS run's earned titles on the Results screen. Reads the live run through the same record
+   * shape and the same predicates the Ledger row uses, so the two can never disagree.
+   */
+  _runTitlesHTML(esc) {
+    const rec = this._thisRunTitleRec();
+    const chips = this._titleChipsHTML(rec, esc, false);
+    if (!chips) return '';
+    return '<div style="margin-top:9px;padding-top:7px;border-top:1px solid rgba(46,230,246,0.18);' +
+           'font-family:Consolas,monospace;font-size:10px;letter-spacing:.5px;color:#c8dbe6;">' +
+             '<div style="font-family:\'Orbitron\',sans-serif;font-weight:700;font-size:8px;' +
+             'letter-spacing:1.4px;color:#2ee6f6;margin-bottom:3px;">RUN TITLES</div>' +
+             '<div>' + chips + '</div>' +
+           '</div>';
+  }
+
   _contractResultHTML(esc, clk) {
     const st = this._contractState();
     if (!st) return '';
@@ -28209,6 +28290,8 @@ export class Game {
       if (r.corrupted) bits.push('<span style="color:#ff2d95;">' + r.corrupted + ' CORRUPTED</span>');
       const cb = this._ledgerContractBit(r, esc);
       if (cb) bits.push(cb);
+      const tb = this._titleChipsHTML(r, esc, true);
+      if (tb) bits.push(tb);
       return '<div style="opacity:' + (i === 0 ? '1' : '0.55') + ';margin-top:2px;">' +
              (i === 0 ? '&#9656; ' : '&nbsp;&nbsp;&nbsp;') + bits.join(' &middot; ') + '</div>';
     }).join('');
@@ -28298,6 +28381,7 @@ export class Game {
           // This run's own line first — character, law, time, rank, kills, titans, corrupted —
           // then the two before it, so the player can see what they just beat and what they are
           // chasing. The full history lives in meta.chaosLedger; no Collection tab yet.
+          this._runTitlesHTML(esc) +
           this._contractResultHTML(esc, clk) +
           this._chaosLedgerHTML(esc, clk, RANK_COLOR) +
         '</div>';
