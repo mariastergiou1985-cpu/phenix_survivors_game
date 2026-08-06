@@ -378,10 +378,15 @@ const draw = await page.evaluate(() => {
   // a legitimately blank surface and calling it a black screen. Diagnosed 14/14 reproducible with
   // gameState 'character_select'. The state is now forced, and asserted, before sampling.
   const __toRun = () => {
+    // Leave the DOM screens through the SHIPPED teardown, not by ripping nodes out. Removing
+    // #cgm-charselect by hand left g._charSelectOverlayEl cached, so update() walked gameState
+    // straight back to 'character_select' and the frame sampled a screen the canvas does not draw.
+    try { g._hideCharSelectOverlay?.(); } catch (_) {}
+    try { g._hideChaosLawSelectionOverlay?.(); } catch (_) {}
+    try { g._hideMenuOverlay?.(); } catch (_) {}
     for (const sel of ['#cgm-charselect', '#cgm-collection', '#cgm-chaos-law-sel']) {
       const n = document.querySelector(sel); if (n) n.remove();
     }
-    try { g._hideMenuOverlay?.(); } catch (_) {}
     g.selectedCharacter = 'skeleton_warrior';
     g.gameState = 'playing'; g.runChaosLaw = 'blood_grid';
     g._contractRolled = true; g.runChaosContract = 'tc_boss_rush';

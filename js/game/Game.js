@@ -2177,6 +2177,8 @@ export class Game {
     this._contractDoneAt    = -1;
     this._contractPaid      = false;      // once-per-run guard on the payout
     this._chaosPylonsTaken  = 0;          // BUFF pylons collected this run — SILENCE contract
+    this._lanceCd           = 0;          // OVERLORD echo PRISM LANCE — cooldown
+    this._lanceFired        = 0;          // OVERLORD echo PRISM LANCE — per-run cap tally
     this._chaosTransTimer   = -1;      // >=0 while glitch transition is playing
     this.forceChaos         = false;   // defensive: prevent stale debug-key state leaking into the next run
     this._chaosCoreCd       = 0;       // cooldown for bonus gold-core spawns
@@ -4951,6 +4953,53 @@ export class Game {
     }
   }
 
+  /**
+   * OVERLORD ECHO — PRISM LANCE. Chaos-only active effect, replacing the echo's old flat
+   * +0.2 pulse damage.
+   *
+   * Every LANCE_CD seconds it fires ONE Plasma-White bolt at the nearest enemy, through the
+   * shipped _petBolts pipeline — the same projectile the Overlord's own drones use, so it needs no
+   * new projectile type, no new draw pass and no new collision code. _tickPetProjectiles already
+   * owns its travel, its damage and its expiry.
+   *
+   * THREE HARD CAPS, deliberately conservative for an echo that costs nothing to keep active:
+   *   LANCE_CD    one shot every 4 s, and the cooldown only ticks while Chaos is live;
+   *   RUN_CAP     40 lances per run, after which it is silent for the rest of the run;
+   *   RANGE       it needs a target inside 520 px — it never fires into empty space.
+   */
+  _updateOverlordLance(dt) {
+    if (!this._chaosMode) return;                       // CHAOS ONLY, by design
+    if (!this.meta?.isEchoActive?.('overlordMega')) return;
+    const p = this.player;
+    if (!p || p.dead || this.gameOver || this.victory) return;
+
+    const LANCE_CD = 4.0, RUN_CAP = 40, RANGE = 520, SPEED = 620, DMG = 26, LIFE = 1.2;
+    if (this._lanceCd > 0) { this._lanceCd -= dt; return; }
+    if ((this._lanceFired || 0) >= RUN_CAP) return;
+
+    let best = null, bestD = RANGE * RANGE;
+    for (const e of this.enemies) {                     // read-only scan; nothing is spliced here
+      if (!e || e.hp <= 0 || !e.pos) continue;
+      const dx = e.pos.x - p.pos.x, dy = e.pos.y - p.pos.y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < bestD) { bestD = d2; best = e; }
+    }
+    if (!best) return;                                  // no target → no shot, no cooldown burned
+
+    const dx = best.pos.x - p.pos.x, dy = best.pos.y - p.pos.y;
+    const dist = Math.hypot(dx, dy) || 1;
+    // Same 256 guard the shipped pet-bolt spawners use.
+    if (this._petBolts.length >= 256) return;
+    this._petBolts.push({
+      x: p.pos.x, y: p.pos.y,
+      vx: (dx / dist) * SPEED, vy: (dy / dist) * SPEED,
+      dmg: DMG, color: '#eaffff', life: LIFE,
+    });
+    this._lanceCd    = LANCE_CD;
+    this._lanceFired = (this._lanceFired || 0) + 1;
+    try { this.audio?.forgeZap?.(); } catch (_) {}
+  }
+
   /** The two orbiting drones themselves. Their bolts are drawn by the shipped pet-bolt pass. */
   _drawPrismDrones(ctx) {
     if (!this._prismDrones?.length || !this._relicOn('overlord_prism_array')) return;
@@ -5106,7 +5155,9 @@ export class Game {
     return {
       maxHpMult:        (h('titan') ? 1.03 : 1) * (h('leviathanMega') ? 1.03 : 1),
       moveSpeedBonus:   (h('bloodfang') ? 0.02 : 0) + (h('emperorMega') ? 0.02 : 0),
-      pulseDamageBonus: (h('annihilator') ? 0.2  : 0) + (h('cyberSerpent') ? 0.2 : 0) + (h('overlordMega') ? 0.2 : 0),
+      // overlordMega no longer pays a flat +0.2 pulse damage. It is now an ACTIVE Chaos-only
+      // effect — the PRISM LANCE, see _updateOverlordLance. Replaces, does not stack.
+      pulseDamageBonus: (h('annihilator') ? 0.2  : 0) + (h('cyberSerpent') ? 0.2 : 0),
       fireRateBonus:    (h('cyberDragon') ? 0.02 : 0) + (h('doubleDemon')  ? 0.02 : 0) + (h('tyrantMega') ? 0.02 : 0),
     };
   }
@@ -12647,6 +12698,7 @@ export class Game {
     if (!this._campaignStage) this._sysEvents.update(dt, this.timeAlive, this);
     if (this._chaosMode) this._updateChaosTitans(dt);   // Chaos-only Mega Titan scheduler
     if (this._chaosMode) this._updateChaosContract();   // Chaos-only contract check (pays once)
+    if (this._chaosMode) this._updateOverlordLance(dt); // overlordMega echo — PRISM LANCE
     this._updateTitanWeaponFx(dt);   // Phase 2: Mega Boss weapon-art flashes
     if (this._chaosMode || this.endless) this._updateDeckTransitions(dt);
     if (this._chaosMode || this.endless) this._updateBossRush(dt);   // Maria: arena 2× in Endless AND 2× in Chaos

@@ -386,10 +386,15 @@ check('C03 CONTROL — titles are NOT collectibles: CHAOS COMPLETION does not mo
 await shot('results.png');
 const draw = await page.evaluate(() => {
   const g = window.__g;
+  // Leave the DOM screens through the SHIPPED teardown, not by ripping nodes out. Removing
+  // #cgm-charselect by hand left g._charSelectOverlayEl cached, so update() walked gameState
+  // straight back to 'character_select' and the frame sampled a screen the canvas does not draw.
+  try { g._hideCharSelectOverlay?.(); } catch (_) {}
+  try { g._hideChaosLawSelectionOverlay?.(); } catch (_) {}
+  try { g._hideMenuOverlay?.(); } catch (_) {}
   for (const sel of ['#cgm-charselect', '#cgm-collection', '#cgm-chaos-law-sel']) {
     const n = document.querySelector(sel); if (n) n.remove();
   }
-  try { g._hideMenuOverlay?.(); } catch (_) {}
   window.__start();
   g.gameState = 'playing'; g.gameOver = false; g.victory = false;
   window.__step(45);
