@@ -259,9 +259,16 @@ check('U02 a sealed Law prints its seal; one short of 10:00 still reads UNSEALED
   /UNSEALED/.test(card.mixed.cards.find(c => c.law === 'frozen_eden').seal) &&
   card.mixed.cards.find(c => c.law === 'frozen_eden').locked === true,
   JSON.stringify(card.mixed.cards.slice(0, 2)));
-check('U03 the seal line is NOT selectable — the keyboard/controller ring is unchanged',
-  card.cold.ring === 8 && card.mixed.ring === 8 && card.cold.ringHasSeal === false,
-  JSON.stringify({ ring: card.mixed.ring, hasSeal: card.cold.ringHasSeal }));
+// Total-agnostic: the claim is that the seal LINE is not in the focus ring, not that the ring is
+// eight nodes. It is exactly the playable law cards plus SKIP plus BACK — which is 9 once BLOOD
+// GRID II is offered, and hardcoding 8 made this fail against a ring that was working perfectly.
+check('U03 the seal line is NOT selectable — the ring is the cards plus SKIP and BACK, nothing more',
+  card.cold.ring === card.cold.cards.length + 2 &&
+  card.mixed.ring === card.mixed.cards.length + 2 &&
+  card.cold.ringHasSeal === false,
+  JSON.stringify({ coldCards: card.cold.cards.length, coldRing: card.cold.ring,
+                   mixedCards: card.mixed.cards.length, mixedRing: card.mixed.ring,
+                   hasSeal: card.cold.ringHasSeal }));
 
 const tab = await page.evaluate(() => {
   const g = window.__g;

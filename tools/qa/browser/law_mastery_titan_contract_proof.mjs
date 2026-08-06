@@ -332,13 +332,16 @@ const ring = await page.evaluate(() => {
   }
   const onCount = document.querySelectorAll('#cgm-chaos-law-sel .cls-on').length;
   window.__closeLaw();
-  return { ring: o?.ring, hasContract: o?.ringHasContract, seen, onCount };
+  return { ring: o?.ring, cards: o?.cards?.length ?? -1, hasContract: o?.ringHasContract, seen, onCount };
 });
-check('C11 the contract strip is NOT selectable — the keyboard/controller ring is unchanged',
-  ring.ring === 8 && ring.hasContract === false && ring.onCount === 1 &&
+// Total-agnostic for the same reason law_seals U03 is: the ring is the playable law cards plus
+// SKIP plus BACK, and BLOOD GRID II legitimately makes that 9. The claim is that the CONTRACT
+// STRIP is not in it — the size never was the point.
+check('C11 the contract strip is NOT selectable — the ring is the cards plus SKIP and BACK',
+  ring.ring === ring.cards + 2 && ring.hasContract === false && ring.onCount === 1 &&
   ring.seen.includes('cls-skip-btn') && ring.seen.includes('cls-back-btn') &&
   ring.seen.includes('blood_grid'),
-  JSON.stringify({ ring: ring.ring, hasContract: ring.hasContract, onCount: ring.onCount }));
+  JSON.stringify({ cards: ring.cards, ring: ring.ring, hasContract: ring.hasContract, onCount: ring.onCount }));
 
 // ════════════════════════════════════════════════════════════════════════════
 // D. DRAW / REGRESSION

@@ -735,6 +735,10 @@ const CHAOS_LAWS = [
   { id: 'broken_signal',     name: 'Broken Signal',        color: '#ff2d95',
     desc: 'Enemies +5% faster. Score +20%, XP +8%.',
     future: 'High risk / high reward: unstable Grid, maximum payout.' },
+  // LAW II, pilot. One only — the other five Laws deliberately have no second tier yet.
+  { id: 'blood_grid_ii',     name: 'Blood Grid II',        color: '#ff6b6b',
+    desc: 'Enemies +20% faster, bosses +15% HP. Score +40%.',
+    future: 'The Grid stops pacing itself. Unlocked by the Seal of the Blood Grid.' },
 ];
 
 // ── CHAOS CONTRACTS ────────────────────────────────────────────────────────
@@ -3205,6 +3209,8 @@ export class Game {
       this._queueEdenTransmission('FROZEN EDEN ACTIVE. XP absorption amplified.', { title: 'CHAOS LAW', priority: 2, duration: 6 });
     } else if (this.runChaosLaw === 'no_mercy_protocol') {
       this._queueEdenTransmission('NO MERCY PROTOCOL ACTIVE. Boss containment exceeded.', { title: 'CHAOS LAW', priority: 2, duration: 6 });
+    } else if (this.runChaosLaw === 'blood_grid_ii') {
+      this._queueEdenTransmission('BLOOD GRID II ACTIVE. Acceleration +20%. Boss integrity +15%. Score multiplier +40%.', { title: 'CHAOS LAW II', priority: 2, duration: 6 });
     }
   }
 
@@ -3317,6 +3323,17 @@ export class Game {
       { id: 'broken_signal', name: 'BROKEN SIGNAL', color: '#ff2d95',
         effect: 'Enemies +5% faster \u00b7 +20% score \u00b7 +8% XP.' },
     ];
+
+    // BLOOD GRID II \u2014 pilot Law II, appended ONLY when its Law Seal is earned. Appended, never
+    // substituted: the original Blood Grid stays on the board, so this is an extra option rather
+    // than a replacement, and a player who has not sealed it sees exactly the six cards they saw
+    // before. The numbers here are copied out of _getActiveChaosLawModifiers, not chosen again \u2014
+    // the drift between the overlay text and the applied modifiers was a real bug on 2026-08-04
+    // and is not worth repeating.
+    if (this._lawSealed('blood_grid')) {
+      V1_LAWS.push({ id: 'blood_grid_ii', name: 'BLOOD GRID II', color: '#ff6b6b',
+        effect: 'Enemies +20% faster \u00b7 bosses +15% HP \u00b7 +40% score. Harder by design.' });
+    }
 
     // LAW MASTERY on the card. Read LIVE from meta on every open — the overlay is rebuilt from
     // scratch each time (the `existing.remove()` at the top), so a record set last run is on the
@@ -3519,6 +3536,11 @@ export class Game {
       case 'dragon_law':        mods.xpMult    = 1.12; mods.bossHpMult = 1.15; break;       // cryo-elite bosses
       case 'no_mercy_protocol': mods.scoreMult = 1.18; mods.bossHpMult = 1.12; break;       // boss overdrive
       case 'broken_signal':     mods.scoreMult = 1.20; mods.xpMult = 1.08; mods.enemySpeedMult = 1.05; break; // high risk/reward
+      // BLOOD GRID II — pilot. Strictly harder than Blood Grid on BOTH axes it touches (+20%
+      // enemy speed against +10%, and bosses gain HP where the original left them alone), and it
+      // pays for that with a materially better score multiplier. Offered ONLY once the Blood Grid
+      // Law Seal is earned, and always alongside the original — it replaces nothing.
+      case 'blood_grid_ii':     mods.scoreMult = 1.40; mods.enemySpeedMult = 1.20; mods.bossHpMult = 1.15; break;
     }
     return mods;
   }
@@ -34205,6 +34227,7 @@ _drawLoreArchive(ctx) {
     // ── Active Chaos Law indicator ──────────────────────────────────────────────
     if (this.runChaosLaw) {
       const _lawLabel = this.runChaosLaw === 'blood_grid'        ? 'BLOOD GRID'
+                      : this.runChaosLaw === 'blood_grid_ii'     ? 'BLOOD GRID II'
                       : this.runChaosLaw === 'frozen_eden'       ? 'FROZEN EDEN'
                       : this.runChaosLaw === 'no_mercy_protocol' ? 'NO MERCY'
                       : this.runChaosLaw === 'serpent_law'       ? 'SERPENT LAW'
@@ -34212,6 +34235,7 @@ _drawLoreArchive(ctx) {
                       : this.runChaosLaw === 'broken_signal'     ? 'BROKEN SIGNAL'
                       : this.runChaosLaw.toUpperCase().replace(/_/g, ' ');
       const _lawColor = this.runChaosLaw === 'blood_grid'        ? '#ef4444'
+                      : this.runChaosLaw === 'blood_grid_ii'     ? '#ff6b6b'
                       : this.runChaosLaw === 'frozen_eden'       ? '#00ccff'
                       : this.runChaosLaw === 'no_mercy_protocol' ? '#fbbf24'
                       : this.runChaosLaw === 'serpent_law'       ? '#ff7733'
