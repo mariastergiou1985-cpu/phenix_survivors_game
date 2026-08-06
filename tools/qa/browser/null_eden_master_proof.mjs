@@ -1,16 +1,18 @@
 // ════════════════════════════════════════════════════════════════════════════════
-// LAW SEALS — six cosmetic seals, one per Chaos Law, earned at 10:00 under that Law.
+// NULL EDEN MASTER — one cosmetic badge for the whole roster.
 //
-// Like the Titan Trophies, these mint NO new save state: meta.lawMastery already stores the best
-// Chaos time per Law (it is what prints "BEST 12:34" on the card), so the seal is that record
-// reaching 10:00. The S-block proves the threshold and the per-Law independence; the U-block
-// proves both surfaces; the C-block proves it changes nothing.
+// Earned when EVERY playable character has reached at least SILVER on the Chaos Survival Rank.
+// Derived from meta.chaosRanks, which submitChaosRun has written at the end of every Chaos run
+// since Phase B — so no new save key, nothing in UNLOCK_KEYS, and retroactive.
 //
-// Every seal in the S-block is earned by a REAL Chaos run driven through _grantRewards, so
-// submitLawRun writes the record the same way a player's run does.
+// The two things worth proving hardest:
+//   M-block — "at least SILVER" really means GOLD and PLATINUM count too, and nine of ten is not
+//             enough. A string compare would have got the first part wrong.
+//   U-block — it shows on the CHAOS tab and in Character Select, including when the tenth rank
+//             lands MID-SESSION with the header already built.
 //
-// Run: node tools/qa/browser/law_seals_proof.mjs [port]
-// Writes: /tmp/law_seals_proof/  (report.json + screenshots)
+// Run: node tools/qa/browser/null_eden_master_proof.mjs [port]
+// Writes: /tmp/null_eden_master_proof/  (report.json + screenshots)
 // ════════════════════════════════════════════════════════════════════════════════
 import http from 'node:http';
 import fs from 'node:fs';
@@ -20,10 +22,10 @@ import { chromium } from 'playwright-core';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, '../../..');
-const OUT  = '/tmp/law_seals_proof';
+const OUT  = '/tmp/null_eden_master_proof';
 fs.mkdirSync(OUT, { recursive: true });
 
-const PORT = Number(process.argv[2]) || 8925;
+const PORT = Number(process.argv[2]) || 8927;
 const EXE  = process.env.PW_CHROMIUM || '/opt/pw-browsers/chromium';
 
 const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript',
@@ -95,11 +97,9 @@ await page.evaluate(async (build) => {
 check('A01 live Game instance captured on the shipped ?v=', await page.evaluate(() => !!window.__g));
 check('A02 zero page errors at boot', pageErrors.length === 0, pageErrors.slice(0, 3).join(' | '));
 
-const LAWS = ['blood_grid', 'frozen_eden', 'serpent_law', 'dragon_law', 'no_mercy_protocol', 'broken_signal'];
-await page.evaluate(async ([LAWS]) => {
+await page.evaluate(async () => {
   const g = window.__g;
   g.meta._save = () => {};
-  window.__LAWS = LAWS;
   window.__IN = { keys: new Set(), mousePos: { x: 0, y: 0 }, mouseDown: false };
   window.__step = (n) => {
     for (let i = 0; i < n; i++) {
@@ -111,22 +111,30 @@ await page.evaluate(async ([LAWS]) => {
   };
   window.__ctx = () => (document.querySelector('canvas#game') ||
     [...document.querySelectorAll('canvas')].find(x => x.width > 400)).getContext('2d');
-  window.__wipe = () => { g.meta.lawMastery = {}; };
-  // A REAL Chaos run under `law`, ended at `secs` through the shipped reward path — so the record
-  // is written by submitLawRun exactly as a player's run writes it.
-  window.__run = (law, secs) => {
-    g.selectedCharacter = 'skeleton_warrior';
-    g.gameState = 'playing'; g.runChaosLaw = law;
+  window.__roster = () => (g.characters || []).filter(c => !c.comingSoon).map(c => c.id);
+  window.__wipe = () => { g.meta.chaosRanks = {}; };
+  // Sets ranks through the SHIPPED submitChaosRun, so the thresholds under test are the game's own
+  // (10 / 20 / 30 minutes) rather than a rank string I typed into the harness.
+  window.__rank = (charId, secs) => { g.meta.submitChaosRun(charId, secs); };
+  window.__setAll = (secs, skipLast) => {
+    window.__wipe();
+    const r = window.__roster();
+    const n = skipLast ? r.length - 1 : r.length;
+    for (let i = 0; i < n; i++) window.__rank(r[i], secs);
+  };
+  window.__master = () => ({ is: !!g._isNullEdenMaster(), prog: g._masterProgress() });
+  // A REAL Chaos run for the given character, ended at `secs` through the shipped reward path.
+  window.__run = (charId, secs) => {
+    g.selectedCharacter = charId;
+    g.gameState = 'playing'; g.runChaosLaw = 'blood_grid';
     g._contractRolled = true; g.runChaosContract = 'tc_boss_rush';
     try { g._beginChaosRun(); } catch (_) {}
-    g.runChaosLaw = law;
     window.__step(20);
     g.meta.endlessRecords = { time: 999999, score: 999999999, level: 9999 };
     g.timeAlive = (g._chaosStartedAt >= 0 ? g._chaosStartedAt : 0) + secs;
     g.gameOver = true; g.victory = false; g.rewardsGranted = false;
     try { g._grantRewards(); } catch (e) { window.__err = String(e); }
   };
-  window.__sealed = () => LAWS.map(l => !!g._lawSealed(l));
   window.__stats = () => ({
     credits: g.meta.credits || 0, pf: g.meta.protocolFragments || 0,
     eden: g.meta.getEdenMemory ? g.meta.getEdenMemory() : 0,
@@ -138,171 +146,182 @@ await page.evaluate(async ([LAWS]) => {
     xpMult: g.player?.xpMult || 0, cdMult: g.player?.abilityCdMult || 0,
     dr: g.player?.contactDamageReduction || 0, pulse: g.player?.pulseDamage || 0,
   });
-  // The pre-run Law overlay, read back per card.
-  window.__openLaw = () => {
-    try { g._showChaosLawSelectionOverlay(); } catch (e) { window.__err = String(e); }
-    const el = document.getElementById('cgm-chaos-law-sel');
-    if (!el) return null;
-    const cards = [...el.querySelectorAll('.cls-card[data-law]')].map(c => ({
-      law:  c.dataset.law,
-      best: (c.querySelector('.cls-card-best')?.textContent || '').trim(),
-      seal: (c.querySelector('.cls-card-seal')?.textContent || '').trim(),
-      locked: !!c.querySelector('.cls-card-seal.locked'),
-    }));
-    const ring = g._clsNodes ? g._clsNodes().length : -1;
-    const ringHasSeal = g._clsNodes ? g._clsNodes().some(n => n.classList?.contains('cls-card-seal')) : true;
-    try { g._hideChaosLawSelectionOverlay(); } catch (_) {}
-    return { cards, ring, ringHasSeal };
-  };
   window.__openCol = (tab) => {
     try { g.goToAchievementsScreen(); } catch (_) {}
     try { g._colSelectTab?.(tab); } catch (_) {}
     try { const t = document.querySelector(`.ct-tab[data-tab="${tab}"]`); if (t) t.click(); } catch (_) {}
-  };
-  window.__sealSection = () => {
-    const sec = document.querySelector('#cxc-seals');
-    const n   = document.querySelector('#cxc-seals-n');
+    const sec = document.querySelector('#cxc-master');
+    const n   = document.querySelector('#cxc-master-n');
     if (!sec) return null;
-    const rows = [...sec.querySelectorAll('.sl-row')].map(r => ({
-      mark:  (r.querySelector('.sl-num')?.textContent || '').trim(),
-      title: (r.querySelector('.sl-title-row')?.textContent || '').trim(),
-      req:   (r.querySelector('.sl-text')?.textContent || '').trim(),
-      st:    (r.querySelector('.sl-status')?.textContent || '').trim(),
-    }));
-    return { rows, n: (n?.textContent || '').trim(), text: sec.textContent };
+    const row = sec.querySelector('.sl-row');
+    return {
+      mark:  (row?.querySelector('.sl-num')?.textContent || '').trim(),
+      title: (row?.querySelector('.sl-title-row')?.textContent || '').trim(),
+      req:   (row?.querySelector('.sl-text')?.textContent || '').trim(),
+      st:    (row?.querySelector('.sl-status')?.textContent || '').trim(),
+      n:     (n?.textContent || '').trim(),
+    };
   };
-}, [LAWS]);
-
-// ════════════════════════════════════════════════════════════════════════════
-// S. EARNING THEM
-// ════════════════════════════════════════════════════════════════════════════
-const threshold = await page.evaluate(() => {
-  const g = window.__g;
-  window.__wipe();
-  const cold = window.__sealed();
-  window.__run('blood_grid', 599);                 // ONE SECOND short of 10:00
-  const short = { sealed: window.__sealed(), best: g.meta.getLawBest('blood_grid') };
-  window.__run('blood_grid', 600);                 // exactly 10:00
-  const exact = { sealed: window.__sealed(), best: g.meta.getLawBest('blood_grid') };
-  return { cold, short, exact };
+  // Character Select. Anchored on the badge element itself, and its VISIBILITY is read from the
+  // computed style — textContent bubbles, and a hidden element still has text.
+  window.__csc = () => {
+    try { g.goToCharacterSelect?.(); } catch (_) {}
+    try { g._syncCharSelectOverlay?.(); } catch (_) {}
+    const b = document.querySelector('#csc-master-badge');
+    if (!b) return { present: false };
+    return {
+      present: true,
+      shown: getComputedStyle(b).display !== 'none',
+      text: (b.textContent || '').trim(),
+      title: b.title || '',
+    };
+  };
 });
-check('S01 no Law is sealed before any run',
-  threshold.cold.every(v => v === false), JSON.stringify(threshold.cold));
-check('S02 9:59 does not seal it, 10:00 exactly does',
-  threshold.short.sealed[0] === false && threshold.short.best === 599 &&
-  threshold.exact.sealed[0] === true && threshold.exact.best === 600,
-  JSON.stringify({ at599: threshold.short, at600: threshold.exact }));
 
-const perLaw = await page.evaluate(() => {
+// ════════════════════════════════════════════════════════════════════════════
+// M. EARNING IT
+// ════════════════════════════════════════════════════════════════════════════
+const roster = await page.evaluate(() => window.__roster());
+check('M00 the playable roster is the ten characters the badge is about',
+  roster.length === 10, `${roster.length} playable`);
+
+const ladder = await page.evaluate(() => {
   const g = window.__g;
-  window.__wipe();
-  const out = [];
-  for (const law of window.__LAWS) {
-    window.__run(law, 700);
-    out.push(window.__sealed().filter(Boolean).length);
+  const out = {};
+  //  9:59 -> BRONZE, 10:00 -> SILVER, 20:00 -> GOLD, 30:00 -> PLATINUM (submitChaosRun's own map)
+  for (const [label, secs] of [['bronze', 599], ['silver', 600], ['gold', 1200], ['platinum', 1800]]) {
+    window.__setAll(secs);
+    out[label] = { ...window.__master(), rank: g.meta.chaosRanks[window.__roster()[0]]?.bestRank };
   }
-  return { out, mastery: { ...g.meta.lawMastery } };
+  return out;
 });
-check('S03 each Law seals ONLY itself — six runs, six seals, one at a time',
-  JSON.stringify(perLaw.out) === JSON.stringify([1, 2, 3, 4, 5, 6]) &&
-  Object.keys(perLaw.mastery).length === 6,
-  JSON.stringify(perLaw.out));
+check('M01 BRONZE across the roster is NOT enough',
+  ladder.bronze.rank === 'BRONZE' && ladder.bronze.is === false && ladder.bronze.prog.at === 0,
+  JSON.stringify(ladder.bronze));
+check('M02 SILVER across the roster earns it',
+  ladder.silver.rank === 'SILVER' && ladder.silver.is === true && ladder.silver.prog.at === 10,
+  JSON.stringify(ladder.silver));
+check('M03 "at least SILVER" really includes GOLD and PLATINUM',
+  ladder.gold.rank === 'GOLD' && ladder.gold.is === true &&
+  ladder.platinum.rank === 'PLATINUM' && ladder.platinum.is === true,
+  JSON.stringify({ gold: ladder.gold.is, platinum: ladder.platinum.is }));
 
-const lawless = await page.evaluate(() => {
+const nine = await page.evaluate(() => {
+  const g = window.__g;
+  window.__setAll(900, true);                    // nine at SILVER, one untouched
+  const at9 = window.__master();
+  window.__rank(window.__roster()[9], 900);      // the tenth
+  const at10 = window.__master();
+  window.__wipe();
+  window.__setAll(900);
+  window.__rank(window.__roster()[3], 100);      // a WORSE later run for one of them
+  const afterWorse = window.__master();
+  return { at9, at10, afterWorse };
+});
+check('M04 nine of ten is not enough — the tenth completes it',
+  nine.at9.is === false && nine.at9.prog.at === 9 &&
+  nine.at10.is === true && nine.at10.prog.at === 10,
+  JSON.stringify({ at9: nine.at9.prog, at10: nine.at10.prog }));
+check('M05 a later WORSE run cannot take it away — chaosRanks holds a best, not a last',
+  nine.afterWorse.is === true && nine.afterWorse.prog.at === 10, JSON.stringify(nine.afterWorse));
+
+const mixed = await page.evaluate(() => {
   const g = window.__g;
   window.__wipe();
-  window.__run(null, 1200);                        // a LAWLESS run, well past 10:00
-  const afterLawless = window.__sealed();
-  g.selectedCharacter = 'skeleton_warrior';        // and plain Endless under a "law"
-  g.gameState = 'playing'; g.reset();
-  try { g._enterEndless(); } catch (_) {}
-  g.runChaosLaw = 'blood_grid';
-  g.meta.endlessRecords = { time: 999999, score: 999999999, level: 9999 };
-  g.timeAlive = 1200; g.gameOver = true; g.rewardsGranted = false;
-  try { g._grantRewards(); } catch (_) {}
-  return { afterLawless, afterEndless: window.__sealed() };
+  const r = window.__roster();
+  // A realistic spread: some GOLD, some SILVER, one stuck on BRONZE.
+  r.forEach((id, i) => window.__rank(id, i === 5 ? 400 : (i % 2 ? 1300 : 700)));
+  const stuck = window.__master();
+  window.__rank(r[5], 650);                      // that one finally clears 10:00
+  return { stuck, after: window.__master() };
 });
-check('S04 CONTROL — a lawless run seals nothing, and Endless never seals at all',
-  lawless.afterLawless.every(v => !v) && lawless.afterEndless.every(v => !v),
-  JSON.stringify(lawless));
+check('M06 one character short of SILVER holds the whole badge back',
+  mixed.stuck.is === false && mixed.stuck.prog.at === 9 &&
+  mixed.after.is === true && mixed.after.prog.at === 10,
+  JSON.stringify({ stuck: mixed.stuck.prog, after: mixed.after.prog }));
 
-const keepBest = await page.evaluate(() => {
+const real = await page.evaluate(() => {
   const g = window.__g;
   window.__wipe();
-  window.__run('dragon_law', 900);                 // sealed at 15:00
-  const sealed = g._lawSealed('dragon_law');
-  window.__run('dragon_law', 120);                 // a much worse later run
-  return { sealed, stillSealed: g._lawSealed('dragon_law'), best: g.meta.getLawBest('dragon_law') };
+  const r = window.__roster();
+  for (let i = 0; i < r.length - 1; i++) window.__run(r[i], 700);   // nine REAL Chaos runs
+  const at9 = window.__master();
+  window.__run(r[r.length - 1], 700);                               // the tenth, for real
+  return { at9, at10: window.__master() };
 });
-check('S05 a later WORSE run cannot un-seal it — the record is a best, not a last',
-  keepBest.sealed === true && keepBest.stillSealed === true && keepBest.best === 900,
-  JSON.stringify(keepBest));
+check('M07 earned through TEN REAL Chaos runs, not by writing ranks by hand',
+  real.at9.is === false && real.at9.prog.at === 9 && real.at10.is === true && real.at10.prog.at === 10,
+  JSON.stringify({ at9: real.at9.prog, at10: real.at10.prog }));
 
 // ════════════════════════════════════════════════════════════════════════════
 // U. THE TWO SURFACES
 // ════════════════════════════════════════════════════════════════════════════
-const card = await page.evaluate(() => {
-  const g = window.__g;
-  window.__wipe();
-  const cold = window.__openLaw();
-  g.meta.lawMastery = { blood_grid: 754, frozen_eden: 400 };
-  const mixed = window.__openLaw();
-  return { cold, mixed };
-});
-check('U01 every Law card carries a seal line, unsealed by default',
-  card.cold && card.cold.cards.length === 6 &&
-  card.cold.cards.every(c => c.locked === true && /UNSEALED · 10:00 TO SEAL/.test(c.seal)),
-  JSON.stringify(card.cold?.cards[0]));
-check('U02 a sealed Law prints its seal; one short of 10:00 still reads UNSEALED',
-  /SEAL OF THE BLOOD GRID/.test(card.mixed.cards.find(c => c.law === 'blood_grid').seal) &&
-  card.mixed.cards.find(c => c.law === 'blood_grid').locked === false &&
-  /UNSEALED/.test(card.mixed.cards.find(c => c.law === 'frozen_eden').seal) &&
-  card.mixed.cards.find(c => c.law === 'frozen_eden').locked === true,
-  JSON.stringify(card.mixed.cards.slice(0, 2)));
-check('U03 the seal line is NOT selectable — the keyboard/controller ring is unchanged',
-  card.cold.ring === 8 && card.mixed.ring === 8 && card.cold.ringHasSeal === false,
-  JSON.stringify({ ring: card.mixed.ring, hasSeal: card.cold.ringHasSeal }));
-
 const tab = await page.evaluate(() => {
-  const g = window.__g;
+  window.__setAll(900, true);                    // nine of ten
+  const partial = window.__openCol('chaos');
+  window.__setAll(900);                          // all ten
+  const full = window.__openCol('chaos');
   window.__wipe();
-  window.__openCol('chaos');
-  const locked = window.__sealSection();
-  g.meta.lawMastery = { blood_grid: 700, dragon_law: 1200 };
-  window.__openCol('chaos');
-  const some = window.__sealSection();
-  for (const l of window.__LAWS) g.meta.lawMastery[l] = 900;
-  window.__openCol('chaos');
-  const all = window.__sealSection();
-  return { locked, some, all };
+  const empty = window.__openCol('chaos');
+  return { empty, partial, full };
 });
-check('U04 the CHAOS tab lists all SIX, unsealed, naming the Law each one needs',
-  tab.locked && tab.locked.rows.length === 6 && tab.locked.n === '0 / 6' &&
-  tab.locked.rows.every(r => r.title === '???' && /Survive 10:00 in Chaos under /.test(r.req) &&
-                             /UNSEALED/.test(r.st)) &&
-  /BLOOD GRID/.test(tab.locked.text) && /BROKEN SIGNAL/.test(tab.locked.text),
-  JSON.stringify({ n: tab.locked?.n, first: tab.locked?.rows[0] }));
-check('U05 the tab counts and names only the ones actually sealed, and shows the record',
-  tab.some.n === '2 / 6' &&
-  /SEAL OF THE BLOOD GRID/.test(tab.some.text) && /SEAL OF THE DRAGON/.test(tab.some.text) &&
-  !/SEAL OF FROZEN EDEN/.test(tab.some.text) &&
-  /Best 11:40/.test(tab.some.text) && /Best 20:00/.test(tab.some.text),
-  JSON.stringify({ n: tab.some.n }));
-check('U06 all six names and all six distinct marks reach the tab',
-  tab.all.n === '6 / 6' &&
-  ['SEAL OF THE BLOOD GRID', 'SEAL OF FROZEN EDEN', 'SEAL OF THE SERPENT',
-   'SEAL OF THE DRAGON', 'SEAL OF NO MERCY', 'SEAL OF THE BROKEN SIGNAL']
-    .every(n => tab.all.text.includes(n)) &&
-  new Set(tab.all.rows.map(r => r.mark)).size === 6,
-  JSON.stringify(tab.all.rows.map(r => r.mark)));
+check('U01 the CHAOS tab shows it LOCKED with the live count while short',
+  tab.partial && tab.partial.title === '???' && /LOCKED/.test(tab.partial.st) &&
+  tab.partial.n === '9 / 10' && /9 of 10 at SILVER or better/.test(tab.partial.req),
+  JSON.stringify(tab.partial));
+check('U02 the CHAOS tab names it and marks it MASTERED once all ten are there',
+  tab.full && tab.full.title === 'NULL EDEN MASTER' && /MASTERED/.test(tab.full.st) &&
+  tab.full.n === '10 / 10' && tab.full.mark === '☬',
+  JSON.stringify(tab.full));
+check('U03 a fresh save reads 0 / 10, not a blank or a NaN',
+  tab.empty && tab.empty.n === '0 / 10' && /0 of 10 at SILVER or better/.test(tab.empty.req),
+  JSON.stringify(tab.empty));
+
+const csc = await page.evaluate(() => {
+  window.__wipe();
+  const none = window.__csc();
+  window.__setAll(900, true);
+  const nine = window.__csc();
+  window.__setAll(900);
+  const all = window.__csc();
+  return { none, nine, all };
+});
+check('U04 Character Select hides the badge entirely until it is earned',
+  csc.none.present === true && csc.none.shown === false && csc.none.text === '' &&
+  csc.nine.shown === false,
+  JSON.stringify({ none: csc.none.shown, nine: csc.nine.shown }));
+check('U05 Character Select shows it, named, once all ten are at SILVER',
+  csc.all.shown === true && /NULL EDEN MASTER/.test(csc.all.text) && /☬/.test(csc.all.text) &&
+  /at least SILVER/.test(csc.all.title),
+  JSON.stringify(csc.all));
+
+const midSession = await page.evaluate(() => {
+  window.__wipe();
+  window.__setAll(900, true);
+  window.__csc();                                 // header built, badge hidden
+  const before = window.__csc();
+  window.__run(window.__roster()[9], 700);        // the tenth rank lands MID-SESSION
+  const after = window.__csc();
+  return { before, after };
+});
+check('U06 the tenth rank landing MID-SESSION shows the badge without a reload',
+  midSession.before.shown === false && midSession.after.shown === true &&
+  /NULL EDEN MASTER/.test(midSession.after.text),
+  JSON.stringify({ before: midSession.before.shown, after: midSession.after.shown }));
+
+const revoke = await page.evaluate(() => {
+  window.__setAll(900);
+  const on = window.__csc();
+  window.__wipe();
+  const off = window.__csc();
+  return { on: on.shown, off: off.shown, text: off.text };
+});
+check('U07 it disappears cleanly when the ranks go away — no orphan chip left behind',
+  revoke.on === true && revoke.off === false && revoke.text === '', JSON.stringify(revoke));
 
 // ════════════════════════════════════════════════════════════════════════════
-// C. COSMETIC — it must change nothing
+// C. COSMETIC — no gameplay reward
 // ════════════════════════════════════════════════════════════════════════════
-// No _grantRewards between the two snapshots. The first version called __run() again to "play a
-// bit after earning them", and __run ends the run through the reward path — so it read +1 credit
-// and +3 Eden Memory and blamed the seals for the run's own shipped payout. The seals are granted,
-// both surfaces are opened, and 60 real frames are stepped, all inside ONE unfinished run.
 const cosmetic = await page.evaluate(() => {
   const g = window.__g;
   window.__wipe();
@@ -312,13 +331,13 @@ const cosmetic = await page.evaluate(() => {
   try { g._beginChaosRun(); } catch (_) {}
   window.__step(20);
   const before = window.__stats();
-  for (const l of window.__LAWS) g.meta.lawMastery[l] = 3600;   // every seal, maxed
-  window.__openCol('chaos'); window.__openLaw();
+  window.__setAll(1800);                          // PLATINUM everywhere — the badge, maxed
+  window.__openCol('chaos'); window.__csc();
   window.__step(60);
-  return { before, after: window.__stats() };
+  return { before, after: window.__stats(), is: g._isNullEdenMaster() };
 });
-check('C01 owning all six changes NO currency, NO stat, NO relic and NO unlock',
-  JSON.stringify(cosmetic.before) === JSON.stringify(cosmetic.after),
+check('C01 earning it changes NO currency, NO stat, NO relic and NO unlock',
+  cosmetic.is === true && JSON.stringify(cosmetic.before) === JSON.stringify(cosmetic.after),
   JSON.stringify({ before: cosmetic.before, after: cosmetic.after }));
 
 const noKeys = await page.evaluate(async (build) => {
@@ -326,43 +345,45 @@ const noKeys = await page.evaluate(async (build) => {
   const g = window.__g;
   const keep = localStorage.getItem('phenix_meta');
   const stub = g.meta._save, proto = Object.getPrototypeOf(g.meta);
-  // A save written before seals existed already carries the lawMastery that earns them.
   g.meta._save = proto._save;
-  g.meta.lawMastery = { serpent_law: 1000, frozen_eden: 200 };
+  window.__setAll(900);
   g.meta._save();
   const fresh = new MetaProgress();
+  const ranked = Object.keys(fresh.chaosRanks || {}).length;
   const out = {
-    keys: UNLOCK_KEYS.filter(k => /seal/i.test(k)),
-    reloaded: { serpent: fresh.getLawBest('serpent_law'), frozen: fresh.getLawBest('frozen_eden') },
-    hasSealKey: JSON.stringify(fresh).toLowerCase().includes('seal'),
+    // Anchored on the badge's own name, not on a bare /master/ — that matched the shipped
+    // `grandmaster_dojang_girl` secret-skin key and reported a "new" key this commit never added.
+    keys: UNLOCK_KEYS.filter(k => /null_?eden_?master/i.test(k)),
+    ranked,
+    hasMasterKey: JSON.stringify(fresh).toLowerCase().includes('nulledenmaster'),
   };
   g.meta._save = stub;
   if (keep !== null) localStorage.setItem('phenix_meta', keep);
   return out;
 }, BUILD);
-check('C02 no new UNLOCK_KEYS entry and no new save field — the seal is derived from lawMastery',
-  noKeys.keys.length === 0 && noKeys.hasSealKey === false &&
-  noKeys.reloaded.serpent === 1000 && noKeys.reloaded.frozen === 200,
+check('C02 RETROACTIVE — no new UNLOCK_KEYS entry and no new save field; it reads chaosRanks',
+  noKeys.keys.length === 0 && noKeys.hasMasterKey === false && noKeys.ranked === 10,
   JSON.stringify(noKeys));
 
 const others = await page.evaluate(() => {
-  const g = window.__g;
-  for (const l of window.__LAWS) g.meta.lawMastery[l] = 3600;
+  window.__setAll(1800);
   window.__openCol('chaos');
   return {
-    sig: document.querySelector('#cxc-sigils-n')?.textContent?.trim(),
-    tro: document.querySelector('#cxc-trophies-n')?.textContent?.trim(),
-    ranks: document.querySelector('#cxc-ranks-n')?.textContent?.trim(),
+    sig:  document.querySelector('#cxc-sigils-n')?.textContent?.trim(),
+    tro:  document.querySelector('#cxc-trophies-n')?.textContent?.trim(),
+    seal: document.querySelector('#cxc-seals-n')?.textContent?.trim(),
+    rank: document.querySelector('#cxc-ranks-n')?.textContent?.trim(),
   };
 });
-check('C03 CONTROL — the sigil, trophy and rank sections are untouched by the new one',
-  /\/ 12$/.test(others.sig || '') && /\/ 4$/.test(others.tro || '') && /\/ 10$/.test(others.ranks || ''),
+check('C03 CONTROL — the sigil, trophy, seal and rank sections are untouched by the new one',
+  /\/ 12$/.test(others.sig || '') && /\/ 4$/.test(others.tro || '') &&
+  /\/ 6$/.test(others.seal || '') && /\/ 10$/.test(others.rank || ''),
   JSON.stringify(others));
 
 // ════════════════════════════════════════════════════════════════════════════
 // D. DRAW / REGRESSION
 // ════════════════════════════════════════════════════════════════════════════
-await shot('chaos_tab.png');
+await shot('char_select.png');
 const draw = await page.evaluate(() => {
   const g = window.__g;
   // Force a REAL run before sampling. The DOM screens this file opens (Collection, Character

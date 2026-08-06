@@ -355,7 +355,23 @@ check('C04 CONTROL — the sigil, rank and Mega Titan sections are untouched by 
 await shot('chaos_tab.png');
 const draw = await page.evaluate(() => {
   const g = window.__g;
-  window.__run();
+  // Force a REAL run before sampling. The DOM screens this file opens (Collection, Character
+  // Select) leave gameState on those screens and their overlay up, and draw() correctly renders
+  // nothing to the canvas there — so a "no black screen" check that sampled from one was reading
+  // a legitimately blank surface and calling it a black screen. Diagnosed 14/14 reproducible with
+  // gameState 'character_select'. The state is now forced, and asserted, before sampling.
+  const __toRun = () => {
+    for (const sel of ['#cgm-charselect', '#cgm-collection', '#cgm-chaos-law-sel']) {
+      const n = document.querySelector(sel); if (n) n.remove();
+    }
+    try { g._hideMenuOverlay?.(); } catch (_) {}
+    g.selectedCharacter = 'skeleton_warrior';
+    g.gameState = 'playing'; g.runChaosLaw = 'blood_grid';
+    g._contractRolled = true; g.runChaosContract = 'tc_boss_rush';
+    try { g._beginChaosRun(); } catch (_) {}
+    g.gameState = 'playing'; g.gameOver = false; g.victory = false;
+  };
+  __toRun();
   window.__step(45);
   let err = null;
   try { g.draw(window.__ctx()); } catch (e) { err = String(e); }
@@ -369,11 +385,12 @@ const draw = await page.evaluate(() => {
     colors.add((d[i] >> 4) + ',' + (d[i + 1] >> 4) + ',' + (d[i + 2] >> 4));
   }
   const n = Math.floor(d.length / (4 * 97));
-  return { mean: sum / n, max, colors: colors.size, err };
+  return { mean: sum / n, max, colors: colors.size, err, state: g.gameState };
 });
 await shot('chaos_run.png');
-check('D01 the game is still rendering — no black screen',
-  draw.err === null && draw.mean > 3 && draw.max > 40 && draw.colors > 30, JSON.stringify(draw));
+check('D01 the game is still rendering IN A RUN — no black screen',
+  draw.err === null && draw.state === 'playing' &&
+  draw.mean > 3 && draw.max > 40 && draw.colors > 30, JSON.stringify(draw));
 check('D02 zero page errors across the whole session',
   pageErrors.length === 0, pageErrors.slice(0, 3).join(' | '));
 check('D03 zero console errors across the whole session',

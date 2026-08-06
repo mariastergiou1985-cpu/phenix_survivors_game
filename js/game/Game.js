@@ -884,6 +884,21 @@ const LAW_SEALS = [
   { law: 'broken_signal',     mark: '☈', name: 'SEAL OF THE BROKEN SIGNAL', color: '#ff2d95' },
 ];
 
+// ── NULL EDEN MASTER — one cosmetic badge for the whole roster ─────────────
+// Earned when EVERY playable character has reached at least SILVER on the Chaos Survival Rank.
+//
+// Derived, like the Law Seals and the Titan Trophies: meta.chaosRanks already stores
+// { bestSecs, bestRank } per character, written by submitChaosRun at the end of every Chaos run.
+// No new save key, nothing in UNLOCK_KEYS, and retroactive.
+//
+// The rank ladder is ordered here rather than compared by string, because "at least SILVER" has to
+// keep meaning GOLD and PLATINUM too. It mirrors submitChaosRun's own thresholds (10/20/30 min).
+const RANK_ORDER = { BRONZE: 0, SILVER: 1, GOLD: 2, PLATINUM: 3 };
+const NULL_EDEN_MASTER = {
+  mark: '☬', name: 'NULL EDEN MASTER', color: '#e0e0f8',
+  req: 'Reach at least SILVER Chaos Rank with every character.',
+};
+
 // ── TITAN TROPHIES — one cosmetic badge per Mega Titan ─────────────────────
 // Earned on the FIRST kill of that Titan, shown on the CHAOS tab and on every character card.
 //
@@ -6855,6 +6870,14 @@ export class Game {
             </div>
 
             <div class="ct-panel" data-panel="chaos">
+              <div class="sl-section" id="cxc-master-section">
+                <div class="sl-header">
+                  <div class="sl-title">&#9772; NULL EDEN MASTER</div>
+                  <div class="sl-subtitle" id="cxc-master-n">0 / 10</div>
+                </div>
+                <div class="sl-list" id="cxc-master"></div>
+              </div>
+              <div class="ca-sep"></div>
               <div class="sl-section" id="cxc-sigils-section">
                 <div class="sl-header">
                   <div class="sl-title">&#9670; CHAOS SIGILS</div>
@@ -7675,8 +7698,27 @@ export class Game {
    * Read-only: nothing here is clickable, purchasable or spendable.
    */
   _colRenderChaosPanel(el, items) {
-    // SIGILS first — cosmetic marks, rendered read-only like everything else on this tab.
     const escS = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+    // NULL EDEN MASTER — one row, derived from chaosRanks. The requirement line carries the live
+    // count, so an unearned badge still tells the player exactly how far along they are.
+    const mp = this._masterProgress();
+    const mOn = this._isNullEdenMaster();
+    const mEl = el.querySelector('#cxc-master');
+    if (mEl) {
+      mEl.innerHTML = `<div class="sl-row${mOn ? ' readable' : ''}">
+        <div class="sl-num${mOn ? ' readable' : ''}" style="${mOn ? 'color:' + NULL_EDEN_MASTER.color : ''}">${NULL_EDEN_MASTER.mark}</div>
+        <div class="sl-info">
+          <div class="sl-title-row${mOn ? ' readable' : ' locked'}" style="${mOn ? 'color:' + NULL_EDEN_MASTER.color : ''}">${mOn ? escS(NULL_EDEN_MASTER.name) : '???'}</div>
+          <div class="sl-text${mOn ? '' : ' locked'}">${escS(NULL_EDEN_MASTER.req)} ${mp.at} of ${mp.total} at SILVER or better.</div>
+        </div>
+        <div class="sl-status${mOn ? ' readable' : ' locked'}">${mOn ? '&#9772; MASTERED' : '&#10005; LOCKED'}</div>
+      </div>`;
+    }
+    const mN = el.querySelector('#cxc-master-n');
+    if (mN) mN.textContent = `${mp.at} / ${mp.total}`;
+
+    // SIGILS — cosmetic marks, rendered read-only like everything else on this tab.
     const sgEl = el.querySelector('#cxc-sigils');
     if (sgEl) {
       sgEl.innerHTML = CHAOS_SIGILS.map(s => {
@@ -7825,6 +7867,24 @@ export class Game {
       earned.map(s => '<span title="' + s.name + '" style="font-size:11px;color:' + s.color +
         ';text-shadow:0 0 6px ' + s.color + '99;">' + s.mark + '</span>').join('') +
     '</div>';
+  }
+
+  /**
+   * How many PLAYABLE characters have reached at least SILVER, and how many there are.
+   * `comingSoon` roster entries are excluded — a badge that can never be earned because a
+   * character is not shipped yet would be a bug, not a challenge.
+   */
+  _masterProgress() {
+    const roster = (this.characters || []).filter(c => !c.comingSoon);
+    const ranks  = this.meta?.chaosRanks || {};
+    const at = roster.filter(c => (RANK_ORDER[ranks[c.id]?.bestRank] ?? -1) >= RANK_ORDER.SILVER).length;
+    return { at, total: roster.length };
+  }
+
+  /** True once every playable character sits at SILVER or better. Derived, never stored. */
+  _isNullEdenMaster() {
+    const p = this._masterProgress();
+    return p.total > 0 && p.at >= p.total;
   }
 
   /** True once this Law's best Chaos time has reached 10:00. The seal, derived, never stored. */
@@ -28366,6 +28426,15 @@ export class Game {
         #cgm-charselect .corner.bl{bottom:-2px;left:-2px;border-right:0;border-top:0;border-radius:0 0 0 18px;}
         #cgm-charselect .corner.br{bottom:-2px;right:-2px;border-left:0;border-top:0;border-radius:0 0 18px 0;}
         #cgm-charselect .csc-header { width:100%; display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+        /* NULL EDEN MASTER — sits beside the mode chip, hidden entirely until earned. Platinum
+           tone deliberately, to read as the top of the rank ladder it is derived from. */
+        #cgm-charselect .csc-master-badge {
+          display:flex; align-items:center; gap:6px;
+          font-family:'Orbitron',sans-serif; font-weight:700; font-size:9px; letter-spacing:2px;
+          color:#e0e0f8; background:rgba(224,224,248,0.08);
+          border:1px solid rgba(224,224,248,0.35); border-radius:5px; padding:4px 9px;
+          text-shadow:0 0 8px rgba(224,224,248,0.55);
+        }
         #cgm-charselect .csc-title {
           font-family:'Orbitron',sans-serif; font-weight:800; font-size:16px;
           letter-spacing:3px; color:var(--cyan); text-shadow:var(--glow-cyan);
@@ -28620,6 +28689,7 @@ export class Game {
             SELECT YOUR CHARACTER
           </div>
           <div class="csc-mode-chip" id="csc-mode-chip">◆ CAMPAIGN</div>
+          <div class="csc-master-badge" id="csc-master-badge" style="display:none"></div>
           <div class="csc-pf-badge">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><use href="#i-diamond"/></svg>
             <span id="csc-pf-count">0</span>&nbsp;FRAGMENTS
@@ -29785,6 +29855,20 @@ export class Game {
         const anchor = card.querySelector('.csc-sigils') || card.querySelector('.csc-card-role');
         anchor?.insertAdjacentHTML('afterend', trow);
       });
+      // NULL EDEN MASTER, refreshed for the same reason: the header is built once per session, so
+      // the badge earned by the run that just ended has to be re-read here or it would not show
+      // until the page reloaded. Hidden outright when unearned — no empty chip, no "0 / 10" tease.
+      const mb = el.querySelector('#csc-master-badge');
+      if (mb) {
+        if (this._isNullEdenMaster()) {
+          mb.innerHTML = '<span>' + NULL_EDEN_MASTER.mark + '</span><span>' + NULL_EDEN_MASTER.name + '</span>';
+          mb.style.display = '';
+          mb.title = NULL_EDEN_MASTER.req;
+        } else {
+          mb.innerHTML = '';
+          mb.style.display = 'none';
+        }
+      }
     }
     if (!el) return;
     const idx = this.characterIndex;

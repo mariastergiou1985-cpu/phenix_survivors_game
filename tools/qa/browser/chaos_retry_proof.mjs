@@ -249,11 +249,29 @@ const rkey = await page.evaluate(() => {
 check('R07 the R key restarts in Chaos',
   rkey.chaos === true && rkey.endless === true && rkey.over === false, JSON.stringify(rkey));
 
-// (4) the CONTROLLER — a real virtual-pad A press, all the way through the production route
+// (4) the CONTROLLER — a real virtual-pad A press, all the way through the production route.
+//
+// This is the only check in the file that depends on WALL-CLOCK timing: the pad press is read by
+// the page's own rAF gamepad poll, not by a synchronous dispatch like R06's Enter or R07's R. With
+// fixed sleeps around it, a poll that landed outside the press window silently missed the button
+// and the check read "still on the end screen" — measured 4 of 11 runs on one build and 1 of 13 on
+// another, i.e. a loaded machine, not a code difference. It now WAITS for the transition, up to a
+// deadline, instead of guessing how long the poll needs. A genuinely broken retry still fails:
+// the deadline expires and the state is reported exactly as it stands.
+// Diagnosed rather than assumed: on a failing run the state was byte-identical to what
+// __dieInChaos leaves behind (over true, time 900, the SAME grace/sleet values), which means the
+// press was never sampled at all — not that it was sampled late. Waiting longer cannot recover a
+// press the poll never saw, so the press is REPEATED, the way a player would press A again when
+// nothing happened. Five attempts; a genuinely broken retry still fails all five.
 await page.evaluate(() => { window.__dieInChaos('no_mercy_protocol'); window.__g._endScreenBtnIndex = 0; });
-await pad('a');
-await page.evaluate(() => window.__step(5));
-const padState = await page.evaluate(() => window.__state());
+let padState = null;
+for (let attempt = 0; attempt < 5; attempt++) {
+  await pad('a');
+  await page.evaluate(() => window.__step(5));
+  padState = await page.evaluate(() => window.__state());
+  if (padState.over === false) break;
+  await page.evaluate(() => { window.__g._endScreenBtnIndex = 0; });
+}
 check('R08 controller: A/Cross on the end screen restarts in Chaos',
   padState.chaos === true && padState.endless === true && padState.over === false,
   JSON.stringify(padState));
