@@ -868,6 +868,21 @@ const CHAOS_SIGILS = [
 // giving. These unlock the other way round: from the specific shapes a Chaos run takes when it
 // ends badly. Chaos guarantees a supply of those, so the archive keeps paying long after the
 // memory bar is full. Text only — the keys grant no currency, no outfit and no stat.
+// ── FROZEN SLEET STORM — phase durations, ONE definition ───────────────────
+// The logic (_updateFrozenSleet) and the visual (_drawFrozenSleet) each used to declare their own
+// copy of these three numbers, and they had already drifted: the update ran HOLD 2.0 — the value
+// Maria asked for when the player freeze was capped ("must NEVER exceed 2s, was up to 7.5s in
+// Chaos") — while the draw still declared `this._chaosMode ? 5.5 : 3.0`, the pre-cap numbers.
+//
+// Stated honestly: the stale HOLD_DUR in the draw was DEAD — during `hold` the frost is drawn at
+// full coverage regardless of duration, so nothing looked wrong today. ONSET and RECOVERY were
+// duplicated but still equal. The defect is that the two halves each owned a copy at all: retune
+// one and the frost animation silently desyncs from the freeze the player is actually standing in.
+//
+// One definition now, read by both. No duration is changed by this: HOLD stays at the 2.0 the
+// update has been running, so the freeze the player feels is exactly what it was.
+const FROZEN_SLEET = { ONSET: 0.65, HOLD: 2.0, RECOVERY: 1.1 };
+
 // ── LAW SEALS — one cosmetic seal per Chaos Law ────────────────────────────
 // Earned by surviving 10:00 in Chaos under that Law. Shown on the Law's own card in the pre-run
 // selection overlay and listed on the CHAOS tab.
@@ -31720,9 +31735,9 @@ _drawLoreArchive(ctx) {
         p.y += p.vy * dt;
         if (p.y > 720) { p.y = -8; p.x = Math.random() * 1280; }
       }
-      const ONSET_DUR    = 0.65;
-      const HOLD_DUR     = 2.0;   // Maria: the player freeze must NEVER exceed 2s (was up to 7.5s in Chaos)
-      const RECOVERY_DUR = 1.1;
+      // ONE source, shared with _drawFrozenSleet — see FROZEN_SLEET. HOLD is still the 2.0 Maria
+      // capped the player freeze at; nothing about the timing changes here.
+      const { ONSET: ONSET_DUR, HOLD: HOLD_DUR, RECOVERY: RECOVERY_DUR } = FROZEN_SLEET;
       if (fs.phase === 'onset' && fs.t >= ONSET_DUR) {
         fs.phase = 'hold';
         fs.t     = 0;
@@ -31764,9 +31779,9 @@ _drawLoreArchive(ctx) {
     const W  = 1280, H = 720;
     const CX = W / 2, CY = H / 2;
 
-    const ONSET_DUR    = 0.65;
-    const HOLD_DUR     = this._chaosMode ? 5.5 : 3.0;
-    const RECOVERY_DUR = 1.1;
+    // THE SAME source the update reads. This block used to declare its own copy, with a HOLD of
+    // 5.5 / 3.0 left over from before the freeze was capped at 2 s.
+    const { ONSET: ONSET_DUR, RECOVERY: RECOVERY_DUR } = FROZEN_SLEET;
 
     // Progress within each phase (0→1)
     let freezeProgress = 0; // 0 = no frost, 1 = full frost
