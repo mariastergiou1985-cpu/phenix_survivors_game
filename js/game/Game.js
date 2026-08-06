@@ -716,6 +716,63 @@ const EDEN_MILESTONES = [
   { pct: 100, label: 'TRUE NULL EDEN SIGNAL DETECTED', lore: 'Full memory reconstruction achieved. EDEN CORE fully awakened.' },
 ];
 
+// ── LAW II — the six second tiers, in ONE table ────────────────────────────
+// Each is unlocked by its parent's LAW SEAL (survive 10:00 under that Law), is OPTIONAL — the
+// parent card stays on the board beside it — and is STRICTLY HARDER on every axis the parent
+// touches, paid for with a better score multiplier.
+//
+// `parent` is the Law whose Seal opens it, and it is also the row the proof compares against, so
+// "strictly harder" is checked against the shipped parent numbers rather than against constants
+// typed twice. `effect` is the exact string the pre-run card prints — one source for the text and
+// the modifiers, because the overlay drifting from the applied values was a real shipped bug.
+//
+// FROZEN EDEN II is the interesting one: its parent's gift is CHILLED enemies (speed 0.90), so the
+// harder tier takes the chill away entirely and pushes past neutral to 1.05.
+const LAW_II = {
+  blood_grid_ii: { parent: 'blood_grid', name: 'BLOOD GRID II', color: '#ff6b6b',
+    score: 1.40, xp: 1.00, boss: 1.15, speed: 1.20,
+    effect: 'Enemies +20% faster · bosses +15% HP · +40% score. Harder by design.' },
+  frozen_eden_ii: { parent: 'frozen_eden', name: 'FROZEN EDEN II', color: '#66e0ff',
+    score: 1.30, xp: 1.25, boss: 1.10, speed: 1.05,
+    effect: 'The chill BREAKS — enemies +5% faster · bosses +10% HP · +30% score · +25% XP.' },
+  serpent_law_ii: { parent: 'serpent_law', name: 'SERPENT LAW II', color: '#ff9a55',
+    score: 1.35, xp: 1.00, boss: 1.20, speed: 1.15,
+    effect: 'Enemies +15% faster · bosses +20% HP · +35% score. Harder by design.' },
+  dragon_law_ii: { parent: 'dragon_law', name: 'DRAGON LAW II', color: '#c07aff',
+    score: 1.30, xp: 1.20, boss: 1.35, speed: 1.08,
+    effect: 'Bosses +35% HP · enemies +8% faster · +30% score · +20% XP.' },
+  no_mercy_protocol_ii: { parent: 'no_mercy_protocol', name: 'NO MERCY II', color: '#ffd166',
+    score: 1.45, xp: 1.00, boss: 1.30, speed: 1.10,
+    effect: 'Bosses +30% HP · enemies +10% faster · +45% score. Harder by design.' },
+  broken_signal_ii: { parent: 'broken_signal', name: 'BROKEN SIGNAL II', color: '#ff5fb0',
+    score: 1.50, xp: 1.12, boss: 1.12, speed: 1.18,
+    effect: 'Enemies +18% faster · bosses +12% HP · +50% score · +12% XP.' },
+};
+const LAW_II_IDS = Object.keys(LAW_II);
+
+// The EDEN CORE engage transmission for a Law II is BUILT from the same numbers, not typed a
+// seventh time. Order is speed → boss → score → XP, which reproduces the shipped BLOOD GRID II
+// line character for character, so the pilot broadcasts exactly what it broadcast before the
+// table existed. An axis the tier does not touch is simply omitted.
+function lawIIBroadcast(d) {
+  const pct = (v) => (v >= 1 ? '+' : '-') + Math.round(Math.abs(v - 1) * 100) + '%';
+  const bits = [];
+  if (d.speed !== 1) bits.push('Acceleration ' + pct(d.speed));
+  if (d.boss  !== 1) bits.push('Boss integrity ' + pct(d.boss));
+  if (d.score !== 1) bits.push('Score multiplier ' + pct(d.score));
+  if (d.xp    !== 1) bits.push('XP absorption ' + pct(d.xp));
+  return d.name + ' ACTIVE. ' + bits.join('. ') + '.';
+}
+
+// One display name for a Law id, used by the Ledger rows and the reroll announcement. A LAW II id
+// reads the table, so the Ledger says exactly what the card said. Every base-Law id falls straight
+// through to the shipped underscore-to-space form, so no existing row changes by one character —
+// that fall-through is the point, not an oversight.
+function lawDisplayName(l) {
+  if (!l) return 'NO LAW';
+  return (LAW_II[l]?.name || String(l).replace(/_/g, ' ')).toUpperCase();
+}
+
 const CHAOS_LAWS = [
   { id: 'blood_grid',        name: 'Blood Grid',           color: '#ef4444',
     desc: 'Enemies move +10% faster. Score +15%.',
@@ -735,11 +792,14 @@ const CHAOS_LAWS = [
   { id: 'broken_signal',     name: 'Broken Signal',        color: '#ff2d95',
     desc: 'Enemies +5% faster. Score +20%, XP +8%.',
     future: 'High risk / high reward: unstable Grid, maximum payout.' },
-  // LAW II, pilot. One only — the other five Laws deliberately have no second tier yet.
-  { id: 'blood_grid_ii',     name: 'Blood Grid II',        color: '#ff6b6b',
-    desc: 'Enemies +20% faster, bosses +15% HP. Score +40%.',
-    future: 'The Grid stops pacing itself. Unlocked by the Seal of the Blood Grid.' },
 ];
+// The six LAW II entries are appended from the LAW_II table rather than retyped here, so the codex
+// can never disagree with the pre-run card or the applied modifiers.
+for (const _id of LAW_II_IDS) {
+  const _d = LAW_II[_id];
+  CHAOS_LAWS.push({ id: _id, name: _d.name, color: _d.color, desc: _d.effect,
+    future: 'Second tier. Unlocked by the Law Seal of its parent Law.' });
+}
 
 // ── CHAOS CONTRACTS ────────────────────────────────────────────────────────
 // THREE contracts; every Chaos run rolls exactly ONE of them at random and shows it before the
@@ -3234,15 +3294,18 @@ export class Game {
     this._breachCrownActive  = false;   // Breach Crown — armed on clean arena complete
     this._secondDebtFired    = false;   // Second Signal Debt — once per rescue   // snapshot so endlessElapsed = timeAlive - _endlessStartedAt
 
-    // Chaos Law — one-fire EDEN CORE transmission on run start
-    if (this.runChaosLaw === 'blood_grid') {
+    // Chaos Law — one-fire EDEN CORE transmission on run start.
+    // LAW II is checked FIRST and generated from the table, so adding a tier can never leave it
+    // silent or, worse, matching its parent's line.
+    const _iiBroadcast = LAW_II[this.runChaosLaw];
+    if (_iiBroadcast) {
+      this._queueEdenTransmission(lawIIBroadcast(_iiBroadcast), { title: 'CHAOS LAW II', priority: 2, duration: 6 });
+    } else if (this.runChaosLaw === 'blood_grid') {
       this._queueEdenTransmission('BLOOD GRID ACTIVE. Enemy acceleration +7%. Score multiplier +10%.', { title: 'CHAOS LAW', priority: 2, duration: 6 });
     } else if (this.runChaosLaw === 'frozen_eden') {
       this._queueEdenTransmission('FROZEN EDEN ACTIVE. XP absorption amplified.', { title: 'CHAOS LAW', priority: 2, duration: 6 });
     } else if (this.runChaosLaw === 'no_mercy_protocol') {
       this._queueEdenTransmission('NO MERCY PROTOCOL ACTIVE. Boss containment exceeded.', { title: 'CHAOS LAW', priority: 2, duration: 6 });
-    } else if (this.runChaosLaw === 'blood_grid_ii') {
-      this._queueEdenTransmission('BLOOD GRID II ACTIVE. Acceleration +20%. Boss integrity +15%. Score multiplier +40%.', { title: 'CHAOS LAW II', priority: 2, duration: 6 });
     }
   }
 
@@ -3356,15 +3419,17 @@ export class Game {
         effect: 'Enemies +5% faster \u00b7 +20% score \u00b7 +8% XP.' },
     ];
 
-    // BLOOD GRID II \u2014 pilot Law II, appended ONLY when its Law Seal is earned. Appended, never
-    // substituted: the original Blood Grid stays on the board, so this is an extra option rather
-    // than a replacement, and a player who has not sealed it sees exactly the six cards they saw
-    // before. The numbers here are copied out of _getActiveChaosLawModifiers, not chosen again \u2014
-    // the drift between the overlay text and the applied modifiers was a real bug on 2026-08-04
-    // and is not worth repeating.
-    if (this._lawSealed('blood_grid')) {
-      V1_LAWS.push({ id: 'blood_grid_ii', name: 'BLOOD GRID II', color: '#ff6b6b',
-        effect: 'Enemies +20% faster \u00b7 bosses +15% HP \u00b7 +40% score. Harder by design.' });
+    // LAW II \u2014 appended ONLY for the parents whose Law Seal is earned. Appended, never
+    // substituted: the original Law stays on the board beside its second tier, so this is an extra
+    // option rather than a replacement, and a player who has sealed nothing sees exactly the six
+    // cards they saw before. Name, colour and effect text are READ FROM LAW_II, the same table
+    // _getActiveChaosLawModifiers applies \u2014 the drift between the overlay text and the applied
+    // modifiers was a real bug on 2026-08-04 and is not worth repeating six times over.
+    for (const _id of LAW_II_IDS) {
+      const _d = LAW_II[_id];
+      if (this._lawSealed(_d.parent)) {
+        V1_LAWS.push({ id: _id, name: _d.name, color: _d.color, effect: _d.effect });
+      }
     }
 
     // LAW MASTERY on the card. Read LIVE from meta on every open — the overlay is rebuilt from
@@ -3500,7 +3565,7 @@ export class Game {
       p.xpMult = (p.xpMult / prev) * nowMods.xpMult;
     }
     this._doctrineLawXpApplied = nowMods.xpMult;
-    const label = this.runChaosLaw ? String(this.runChaosLaw).replace(/_/g, ' ').toUpperCase() : 'NO LAW';
+    const label = lawDisplayName(this.runChaosLaw);
     this.triggerAnnouncement('\u25c8 CHAOS LAW REWRITTEN \u2014 ' + label + ' \u25c8', '#a855f7', { priority: 2 });
   }
 
@@ -3568,12 +3633,15 @@ export class Game {
       case 'dragon_law':        mods.xpMult    = 1.12; mods.bossHpMult = 1.15; break;       // cryo-elite bosses
       case 'no_mercy_protocol': mods.scoreMult = 1.18; mods.bossHpMult = 1.12; break;       // boss overdrive
       case 'broken_signal':     mods.scoreMult = 1.20; mods.xpMult = 1.08; mods.enemySpeedMult = 1.05; break; // high risk/reward
-      // BLOOD GRID II — pilot. Strictly harder than Blood Grid on BOTH axes it touches (+20%
-      // enemy speed against +10%, and bosses gain HP where the original left them alone), and it
-      // pays for that with a materially better score multiplier. Offered ONLY once the Blood Grid
-      // Law Seal is earned, and always alongside the original — it replaces nothing.
-      case 'blood_grid_ii':     mods.scoreMult = 1.40; mods.enemySpeedMult = 1.20; mods.bossHpMult = 1.15; break;
     }
+    // ── LAW II ─────────────────────────────────────────────────────────────────
+    // The six second tiers live in ONE table (LAW_II) rather than six more switch cases, because
+    // they are the same change six times: strictly harder on every axis the parent touches, plus
+    // a better score multiplier, offered only once the parent's Law Seal is earned. Keeping them
+    // in a table is what lets the pre-run overlay, the codex and the proof all read the same
+    // numbers instead of three hand-copied sets — the drift the 2026-08-04 fix was about.
+    const ii = LAW_II[this.runChaosLaw];
+    if (ii) { mods.scoreMult = ii.score; mods.xpMult = ii.xp; mods.bossHpMult = ii.boss; mods.enemySpeedMult = ii.speed; }
     return mods;
   }
 
@@ -7968,7 +8036,7 @@ export class Game {
     try { led = (this.meta?.getChaosLedger?.() || []).slice(0, 8); } catch (_) { led = []; }
     const lEl = el.querySelector('#cxc-ledger');
     if (lEl) {
-      const law = (l) => (l ? String(l).replace(/_/g, ' ').toUpperCase() : 'NO LAW');
+      const law = (l) => lawDisplayName(l);
       const nm  = (id) => this.characters?.find(c => c.id === id)?.name || String(id || '?');
       const clk = (s) => {
         const v = Math.max(0, Math.floor(Number(s) || 0));
@@ -28381,7 +28449,7 @@ export class Game {
     try { rows = (this.meta?.getChaosLedger?.() || []).slice(0, 3); } catch (_) { rows = []; }
     if (!rows.length) return '';
     const total = (() => { try { return (this.meta.getChaosLedger() || []).length; } catch (_) { return rows.length; } })();
-    const law = (l) => (l ? String(l).replace(/_/g, ' ').toUpperCase() : 'NO LAW');
+    const law = (l) => lawDisplayName(l);
     const name = (id) => this.characters?.find(c => c.id === id)?.name || String(id || '?');
     const line = rows.map((r, i) => {
       const rc = RANK_COLOR[r.rank] || '#ffffff';
@@ -34308,16 +34376,20 @@ _drawLoreArchive(ctx) {
 
     // ── Active Chaos Law indicator ──────────────────────────────────────────────
     if (this.runChaosLaw) {
-      const _lawLabel = this.runChaosLaw === 'blood_grid'        ? 'BLOOD GRID'
-                      : this.runChaosLaw === 'blood_grid_ii'     ? 'BLOOD GRID II'
+      // LAW II reads its label and colour from the LAW_II table, so the six second tiers cannot be
+      // the one place that still says the wrong name. The six base Laws keep their shipped
+      // ternary untouched — this is an added lookup, not a rewrite of what already works.
+      const _ii = LAW_II[this.runChaosLaw];
+      const _lawLabel = _ii ? _ii.name
+                      : this.runChaosLaw === 'blood_grid'        ? 'BLOOD GRID'
                       : this.runChaosLaw === 'frozen_eden'       ? 'FROZEN EDEN'
                       : this.runChaosLaw === 'no_mercy_protocol' ? 'NO MERCY'
                       : this.runChaosLaw === 'serpent_law'       ? 'SERPENT LAW'
                       : this.runChaosLaw === 'dragon_law'        ? 'DRAGON LAW'
                       : this.runChaosLaw === 'broken_signal'     ? 'BROKEN SIGNAL'
                       : this.runChaosLaw.toUpperCase().replace(/_/g, ' ');
-      const _lawColor = this.runChaosLaw === 'blood_grid'        ? '#ef4444'
-                      : this.runChaosLaw === 'blood_grid_ii'     ? '#ff6b6b'
+      const _lawColor = _ii ? _ii.color
+                      : this.runChaosLaw === 'blood_grid'        ? '#ef4444'
                       : this.runChaosLaw === 'frozen_eden'       ? '#00ccff'
                       : this.runChaosLaw === 'no_mercy_protocol' ? '#fbbf24'
                       : this.runChaosLaw === 'serpent_law'       ? '#ff7733'

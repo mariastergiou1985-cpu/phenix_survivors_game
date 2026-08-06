@@ -297,16 +297,29 @@ check('N01 CONTROL — the other five Laws and the original Blood Grid are byte-
   JSON.stringify(others.broken_signal) === JSON.stringify({ scoreMult: 1.2, xpMult: 1.08, bossHpMult: 1, enemySpeedMult: 1.05 }),
   JSON.stringify(others.blood_grid));
 
+// UPDATED, not silenced. This check used to read "sealing ALL SIX Laws still yields exactly ONE
+// Law II — the pilot, and no others", which was true while BLOOD GRID II was the only tier that
+// existed. The full set shipped later, so that wording now describes a build that is gone. The
+// claim this FILE is responsible for was never "only one tier exists" — it was "the pilot's gate
+// is its OWN parent's Seal, and nobody else's". That is what it asserts now, and it is a strictly
+// stronger statement than the one it replaces: five other Seals are held while BLOOD GRID's is
+// withheld, and the pilot still refuses to appear.
 const noOtherII = await page.evaluate(() => {
   const g = window.__g;
-  // Seal EVERY law. Only ONE second-tier card may appear — the pilot.
-  for (const l of window.__BASE6) window.__seal(l);
-  const o = window.__openLaw(); window.__closeLaw();
-  const ii = o.cards.filter(c => /_ii$/.test(c.law));
-  return { count: o.cards.length, ii: ii.map(c => c.law) };
+  const others = window.__BASE6.filter(l => l !== 'blood_grid');
+  g.meta.lawMastery = {};
+  for (const l of others) window.__seal(l);          // every Seal EXCEPT the pilot's parent
+  const without = window.__openLaw(); window.__closeLaw();
+  window.__seal('blood_grid');                        // now add it
+  const withIt = window.__openLaw(); window.__closeLaw();
+  const ii = (o) => o.cards.filter(c => /_ii$/.test(c.law)).map(c => c.law);
+  return { withoutCount: without.cards.length, withoutII: ii(without),
+           withCount: withIt.cards.length, withII: ii(withIt) };
 });
-check('N02 sealing ALL SIX Laws still yields exactly ONE Law II — the pilot, and no others',
-  noOtherII.count === 7 && JSON.stringify(noOtherII.ii) === JSON.stringify(['blood_grid_ii']),
+check('N02 the pilot answers to ITS OWN Seal only — five other Seals held, and it still stays off the board',
+  noOtherII.withoutCount === 11 && noOtherII.withoutII.length === 5 &&
+  !noOtherII.withoutII.includes('blood_grid_ii') &&
+  noOtherII.withCount === 12 && noOtherII.withII.includes('blood_grid_ii'),
   JSON.stringify(noOtherII));
 
 const seals = await page.evaluate(() => {
