@@ -76,6 +76,7 @@ window.addEventListener('keydown', e => {
   if (game.mutationUI) {
     if (game.mutationUI === cardPanelJustClosed) return;
     if (e.repeat) return;
+    if (e.key === 'Escape') return;   // a card panel can NEVER be dismissed — pick one
     const midx = { '1': 0, '2': 1, '3': 2 }[e.key];
     if (midx !== undefined) {
       game.mutationUI.selectedIndex = midx;
@@ -96,6 +97,11 @@ window.addEventListener('keydown', e => {
   // ArrowLeft/ArrowRight move the controller cursor; Enter confirms it (dispatched by gamepad A/Cross).
   if (game.upgradeUI) {
     if (e.repeat) return;
+    // ESC cannot dismiss an upgrade panel. This was already true by omission — the branch fell
+    // through to the return below — but "by omission" is one careless `else` away from becoming
+    // false, and losing an upgrade to a stray ESC is not a bug worth re-earning. Explicit now,
+    // and asserted by toxic card-guard proof E01/E02.
+    if (e.key === 'Escape') return;
     const idx = { '1': 0, '2': 1, '3': 2 }[e.key];
     if (idx !== undefined) {
       game.upgradeUI.selectedIndex = idx;
@@ -597,6 +603,13 @@ function padClearHeld() { for (const k of padHeld) keys.delete(k); padHeld.clear
 function padTap(key) { window.dispatchEvent(new KeyboardEvent('keydown', { key })); padTapUp.push(key); }
 function padDirEdge(name, now) { const was = prevDir[name]; prevDir[name] = now; return now && !was; }
 
+// CARD PANEL INPUT GUARD state (2026-08-06, Maria). See the cardUI branch below for what this
+// exists to stop. Reset the moment no panel is up, so the next level-up re-arms from scratch.
+let padCardPanel    = null;    // the panel instance the guard is currently armed against
+let padCardArmed    = false;   // face buttons may act on the panel
+let padCardOpenedAt = 0;       // performance.now() at the frame the panel appeared
+const CARD_GUARD_MS = 200;     // settle window; long enough to swallow a spam re-press
+
 function applyGamepad() {
   // Release last frame's taps so a held button still fires only once.
   for (const k of padTapUp) window.dispatchEvent(new KeyboardEvent('keyup', { key: k }));
@@ -658,11 +671,47 @@ function applyGamepad() {
       // X/Square and Y/Triangle remain direct shortcuts for cards 2 and 3.
       // Left/Right (D-pad + analog) move the cursor via the ArrowLeft/ArrowRight events already
       // dispatched above; the keydown handler updates selectedIndex and the draw method highlights it.
-      if (s.btn.a.pressed) padTap('Enter');    // confirm cursor
-      if (s.btn.x.pressed) padTap('2');
-      if (s.btn.y.pressed) padTap('3');
-      if (s.btn.b.pressed) padTap('r');
+      //
+      // ── INPUT BLEED GUARD (2026-08-06, Maria) ───────────────────────────────────
+      // Y/Triangle is the ULTIMATE in gameplay and a direct shortcut for card 3 here. The panel
+      // opens between two polls, so a Triangle the player pressed to fire the ultimate landed on
+      // the card screen instead and instantly picked card 3 — from the player's seat the cards
+      // "closed" and the upgrade was gone. B/Circle is the same bleed one button over: it is dash
+      // in gameplay and REROLL here, so a dash mashed at level-up silently burned the reroll.
+      //
+      // The guard is deliberately about the PRESS, not the button: a face button may only act on
+      // the panel once every face button has been RELEASED after the panel appeared, and after a
+      // short settle window that swallows a spam re-press across the same transition. Nothing is
+      // remapped and no shortcut is removed — a real, fresh press still does exactly what it did.
+      if (padCardPanel !== cardUI) {
+        padCardPanel   = cardUI;
+        padCardArmed   = false;
+        padCardOpenedAt = performance.now();
+      }
+      const faceIdle = !s.btn.a.held && !s.btn.b.held && !s.btn.x.held && !s.btn.y.held;
+      if (!padCardArmed && faceIdle && (performance.now() - padCardOpenedAt) >= CARD_GUARD_MS) {
+        padCardArmed = true;
+      }
+      if (padCardArmed) {
+        if (s.btn.a.pressed) padTap('Enter');    // confirm cursor
+        if (s.btn.x.pressed) padTap('2');
+        if (s.btn.b.pressed) padTap('r');
+      }
+      // Y/TRIANGLE SELECTS NOTHING HERE — deliberately, and this is a real trade, not an
+      // oversight. The arm guard above stops the press that COINCIDED with the panel, but
+      // Triangle is the ultimate: a player mashing it through a level-up releases and re-presses,
+      // and a later fresh press was still landing on card 3. Measured, spamming through the
+      // transition: the panel closed and card 3 was taken. Maria's requirement is that spamming
+      // Triangle leaves the panel OPEN and loses nothing, and the only way to mean that is for
+      // this button to have no card action at all.
+      // What this costs: the Triangle -> card 3 shortcut is gone. A/Cross plus Left/Right still
+      // reaches every card, and X/Square still takes card 2, so nothing became unreachable.
+      // NO BACK/CANCEL, by construction. Start/Options and B/Circle are not mapped to Escape in
+      // this branch, and the keydown handler swallows Escape while a panel is up. A card panel
+      // can only be left by choosing a card.
     } else {
+      padCardPanel = null;
+      padCardArmed = false;
       if (s.btn.a.pressed)     padTap('Enter');  // A / Cross → confirm/select
       if (s.btn.b.pressed)     padTap('Escape'); // B / Circle → back
       if (s.btn.start.pressed) padTap('Escape'); // Start/Options → back/menu
