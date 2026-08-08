@@ -26128,8 +26128,6 @@ export class Game {
           <img class="slideshow-img" src="assets/ui/main%20theme%20taekwon%20do%20.png?v=20260710160000" alt="Character art">
           <img class="slideshow-img" src="assets/ui/oni%20best%20art.png?v=20260710160000" alt="Character art">
           <img class="slideshow-img" src="assets/ui/assasin.png?v=20260710160000" alt="Character art">
-          <img class="slideshow-img" src="assets/ui/main_menu_trio.png?v=20260908030000" alt="Character art">
-          <img class="slideshow-img" src="assets/ui/vilian%20main%20menu%20fist%20theme%20.png?v=20260908030000" alt="Character art">
         </div>
         <nav class="menu" id="cgm-menu-nav">
           <!-- populated by _syncMenuOverlayItems() -->
@@ -37106,23 +37104,54 @@ _drawLoreArchive(ctx) {
     try { this._drawBiomeAmbientArt(ctx, t, _wm); } catch (err) { this._warnFx('[BiomeAmbient]', err); }
   }
 
-  // ── Biome ambient art (wiring 2026-08-08): 3 αργές πτώσεις του biome art,
-  // screen-space, additive, χαμηλό alpha. Visual-only — καμία λογική/σύγκρουση.
+  // ── Biome ambient art v2 (animation pass 2026-08-08): κάθε biome έχει δική του
+  // «προσωπικότητα» κίνησης — sway/rotation/pulse/flicker/spin — με καθαρό
+  // fade-in/out στον κύκλο ζωής, camera parallax (δένει με τον κόσμο, όχι
+  // αυτοκόλλητο οθόνης) και boost όσο φυσάει η endless καταιγίδα.
+  // Καθαρά visual-only: deterministic από t, μηδέν state, μηδέν gameplay.
   _drawBiomeAmbientArt(ctx, t, wm = 1) {
     if (this.gameState !== 'playing' || !this.endless) return;
     const src = BIOME_AMBIENT_ART[this.runBiome];
     if (!src) return;
     const img = _getNexusImage(src);
     if (!(img && img.complete && img.naturalWidth > 0)) return;
+    // motion profile ανά biome (fall = ταχύτητα πτώσης, sway = ταλάντωση x,
+    // rot = εύρος γωνίας, spin = συνεχής περιστροφή, puls = scale breathing,
+    // flick = ηλεκτρικό τρεμόπαιγμα alpha)
+    const P = ({
+      neon_district:   { fall: 0.052, sway: 26, rot: 0.06, spin: 0,    puls: 0.03, flick: 1 },
+      orbital_nexus:   { fall: 0.026, sway: 18, rot: 0.10, spin: 0,    puls: 0.06, flick: 0 },
+      abyssal_trench:  { fall: 0.020, sway: 12, rot: 0,    spin: 0.22, puls: 0.05, flick: 0 },
+      glacial_expanse: { fall: 0.060, sway: 34, rot: 0.09, spin: 0,    puls: 0.02, flick: 0 },
+      data_wastes:     { fall: 0.030, sway: 22, rot: 0.07, spin: 0,    puls: 0.08, flick: 0 },
+    })[this.runBiome] || { fall: 0.03, sway: 20, rot: 0.06, spin: 0, puls: 0.04, flick: 0 };
+    // καταιγίδα → το biome «ζωντανεύει» περισσότερο (δένει με το event, όχι σκέτο ντεκόρ)
+    const stormK = 1 + 0.6 * Math.min(1, (this._stormActive || 0) / 3);
+    const parX = (this.camera ? -this.camera.x * 0.05 : 0);          // ρηχό parallax βάθους
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     const H0 = 180, W0 = H0 * (img.naturalWidth / img.naturalHeight);
     for (let i = 0; i < 3; i++) {
-      const ph = (t * (0.030 + i * 0.011) + i * 0.37) % 1;           // αργό loop πτώσης
-      const x = ((i * 0.31 + 0.12 + Math.abs(Math.sin(i * 7.3)) * 0.05) % 1) * (WIDTH - W0);
-      const y = ph * (HEIGHT + H0 * 2) - H0;
-      ctx.globalAlpha = 0.15 * wm * Math.sin(Math.PI * ph);
-      ctx.drawImage(img, x, y, W0, H0);
+      const sc = 0.78 + i * 0.22;                                    // ποικιλία μεγέθους
+      const w2 = W0 * sc, h2 = H0 * sc;
+      const ph = (t * (P.fall + i * 0.011) + i * 0.37) % 1;          // κύκλος ζωής 0→1
+      const env = Math.sin(Math.PI * ph);                            // ομαλό fade-in/out
+      const baseX = ((i * 0.31 + 0.12) % 1) * (WIDTH - w2);
+      const x = ((baseX + parX % WIDTH) + WIDTH) % WIDTH;            // wrap με parallax
+      const y = ph * (HEIGHT + h2 * 2) - h2;
+      const sway = Math.sin(t * (0.5 + i * 0.17) + i * 2.1) * P.sway * env;
+      const ang = P.spin ? (t * P.spin + i * 2.1)                    // void orb: συνεχές spin
+                         : Math.sin(t * 0.6 + i * 1.4) * P.rot;      // αλλιώς: αργό λίκνισμα
+      const scale = 1 + Math.sin(t * 1.7 + i * 2.6) * P.puls;        // breathing pulse
+      let a = 0.15 * wm * stormK * env;
+      if (P.flick) a *= 0.72 + 0.28 * Math.abs(Math.sin(t * 9.5 + i * 3.3) * Math.sin(t * 3.7 + i)); // spark flicker
+      ctx.save();
+      ctx.translate(x + w2 / 2 + sway, y + h2 / 2);
+      ctx.rotate(ang);
+      ctx.scale(scale, scale);
+      ctx.globalAlpha = Math.min(0.28, a);
+      ctx.drawImage(img, -w2 / 2, -h2 / 2, w2, h2);
+      ctx.restore();
     }
     ctx.restore();
     ctx.globalAlpha = 1;

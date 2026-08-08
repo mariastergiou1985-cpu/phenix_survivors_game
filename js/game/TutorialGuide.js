@@ -13,8 +13,10 @@
  * και το main.js gamepad poll κόβεται μέσω window.__phenixTutModal.
  *
  * Persistence: localStorage 'phenix_tutorial_v1' {seen:[], done:bool}.
- * Υπάρχον save (stagesCleared/endlessUnlocked) => auto-done (δεν ενοχλεί
- * παλιούς παίκτες). QA harness (?qa=1 / phenix_qa_optin) => inert, εκτός αν
+ * ΚΑΝΕΝΑ auto-complete για υπάρχοντα saves (add-on Maria 2026-08-08): όποιο save
+ * δεν έχει ολοκληρώσει πραγματικά το tutorial το βλέπει μία φορά, αυτόματα στο
+ * Main Menu. Πρώτο βήμα armed 600ms (δεν κλείνει από κατά λάθος input).
+ * QA harness (?qa=1 / phenix_qa_optin) => inert, εκτός αν
  * window.__phenixTutorialForce (ώστε να μη σπάσει ΚΑΝΕΝΑ υπάρχον proof).
  * Replay: SETTINGS → REPLAY TUTORIAL → game._tutorial.replay().
  */
@@ -86,8 +88,8 @@ export class TutorialGuide {
       const qa = /[?&]qa=1/.test(location.search) || sessionStorage.getItem('phenix_qa_optin') === '1';
       if (qa && !window.__phenixTutorialForce) this._qaInert = true;
     } catch (_) {}
-    // Υπάρχον save => μην ενοχλείς παλιό παίκτη: auto-done μία φορά
-    if (!this.done && this._hasExistingProgress()) { this.done = true; this._save(); }
+    // Add-on (Maria): ΚΑΝΕΝΑ auto-complete για υπάρχοντα saves — όποιος δεν έχει
+    // ολοκληρώσει πραγματικά το tutorial, το βλέπει μία φορά από το Main Menu.
     this._onKeyDown = this._onKeyDown.bind(this);
     this._onKeyUp = this._onKeyUp.bind(this);
     window.addEventListener('keydown', this._onKeyDown, { capture: true });
@@ -97,13 +99,6 @@ export class TutorialGuide {
     this._raf = requestAnimationFrame(this._loop);
   }
 
-  _hasExistingProgress() {
-    try {
-      const m = JSON.parse(localStorage.getItem('phenix_meta') || 'null');
-      if (m && ((m.stagesCleared | 0) >= 1 || m.endlessUnlocked || (m.totalRuns | 0) >= 1)) return true;
-    } catch (_) {}
-    return false;
-  }
   _load() {
     try { return JSON.parse(localStorage.getItem(TUT_KEY) || 'null') || {}; } catch (_) { return {}; }
   }
@@ -142,10 +137,13 @@ export class TutorialGuide {
     this._el = ov;
   }
 
+  _armed() { return performance.now() >= (this._armedAt || 0); }
+
   _show(idx) {
     this._ensureDom();
     this.stepIdx = idx;
     this.visible = true;
+    this._armedAt = performance.now() + 600;   // arming: το βήμα δεν κλείνει από κατά λάθος input
     window.__phenixTutModal = true;
     const s = STEPS[idx];
     this._el.style.display = 'block';
@@ -184,7 +182,7 @@ export class TutorialGuide {
   }
 
   _continue() {
-    if (!this.visible) return;
+    if (!this.visible || !this._armed()) return;
     const s = STEPS[this.stepIdx];
     if (s) { this.seen.add(s.id); }
     if (this.seen.size >= STEPS.length || (s && s.id === 'relics')) { this.done = true; }

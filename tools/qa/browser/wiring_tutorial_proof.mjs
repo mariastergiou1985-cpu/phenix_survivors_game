@@ -12,7 +12,7 @@ import { chromium } from 'playwright-core';
 
 const BASE = process.argv[2] || 'http://127.0.0.1:8138';
 const EXE  = process.env.PW_CHROMIUM || '/opt/pw-browsers/chromium';
-const BUILD = '20260908030000';
+const BUILD = '20260908040000';
 let failures = 0;
 const gate = (n, ok, d = '') => { if (!ok) failures++; console.log(`${ok ? 'PASS' : 'FAIL'}  ${n}${d ? '  — ' + d : ''}`); };
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
@@ -38,19 +38,11 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
       await new Promise((res) => { const o = mod.Game.prototype.update;
         mod.Game.prototype.update = function (...a) { window.__g = this; mod.Game.prototype.update = o; res(); return o.apply(this, a); }; });
     }, BUILD);
-    // W1: slideshow περιέχει τα 2 νέα UI arts και φορτώνουν (poll — serial harness server)
-    let slides = [];
-    for (let i = 0; i < 40; i++) {
-      slides = await page.evaluate(() => [...document.querySelectorAll('.slideshow-img')]
-        .map(i => ({ src: i.src, ok: i.complete && i.naturalWidth > 0 })));
-      const mine = slides.filter(s => /main_menu_trio|vilian/.test(s.src));
-      if (mine.length >= 2 && mine.every(s => s.ok)) break;
-      await sleep(300);
-    }
-    const trio = slides.find(s => /main_menu_trio/.test(s.src));
-    const vil  = slides.find(s => /vilian/.test(s.src));
-    gate('W1 slideshow: main_menu_trio μπήκε+φορτώνει', !!trio && trio.ok, trio?.src);
-    gate('W1 slideshow: villain theme μπήκε+φορτώνει', !!vil && vil.ok, vil?.src);
+    // W1 (rev. Maria): τα 2 UI arts ΑΦΑΙΡΕΘΗΚΑΝ από το slideshow — μένουν 6, κανένα δικό μας
+    await sleep(800);
+    const slides = await page.evaluate(() => [...document.querySelectorAll('.slideshow-img')].map(i => i.src));
+    gate('W1 slideshow: trio/villain ΕΚΤΟΣ rotation', !slides.some(s => /main_menu_trio|vilian/.test(s)), slides.length + ' slides');
+    gate('W1b slideshow: 6 slides, κανένα κενό src', slides.length === 6 && slides.every(s => /assets\/ui\//.test(s)), String(slides.length));
     // W2: tactical sprite cache έχει τα 3 νέα arts φορτωμένα
     let tac = [];
     for (let i = 0; i < 40; i++) {
@@ -132,8 +124,7 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
       await new Promise((res) => { const o = mod.Game.prototype.update;
         mod.Game.prototype.update = function (...a) { window.__g = this; mod.Game.prototype.update = o; res(); return o.apply(this, a); }; });
     }, BUILD);
-    // replay() καθαρίζει το auto-done (υπάρχον save) και ξαναρχίζει από S1 — τεστάρει ΚΑΙ το replay
-    await page.evaluate(() => window.__phenixTutorial.replay());
+    // Add-on: ΚΑΝΕΝΑ grandfather — με υπάρχον save το S1 πρέπει να ανοίξει ΜΟΝΟ ΤΟΥ στο μενού.
     const vis = async () => page.evaluate(() => { const el = document.getElementById('tut-overlay'); return !!el && el.style.display !== 'none'; });
     const stepId = async () => page.evaluate(() => { const t = window.__phenixTutorial; return t.visible ? t.stepIdx : -1; });
     const waitStep = async (want, ms = 9000) => {
@@ -143,7 +134,15 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
         if (id === want) return true; } await sleep(150); }
       return false;
     };
-    gate('T1 S1 menu_start εμφανίζεται', await waitStep('menu_start'));
+    gate('T0 S1 auto-start σε ΥΠΑΡΧΟΝ save (χωρίς replay)', await waitStep('menu_start'));
+    // arming: Enter αμέσως μετά το άνοιγμα ΔΕΝ κλείνει το βήμα
+    await page.keyboard.press('Enter'); await sleep(220);
+    gate('T0b πρώτο step δεν προσπερνιέται από κατά λάθος input (armed)', await vis());
+    await sleep(700); await page.keyboard.press('Enter'); await sleep(250);
+    gate('T0c μετά το arming το Enter δουλεύει', !(await vis()));
+    // replay: μηδενίζει progress και ξαναρχίζει από Main Menu
+    await page.evaluate(() => window.__phenixTutorial.replay());
+    gate('T1 S1 ξανά μετά από REPLAY TUTORIAL', await waitStep('menu_start'));
     // T2: το overlay μπλοκάρει click-through πάνω από το START GAME
     const blocked = await page.evaluate(() => {
       const b = document.querySelector('#cgm-menu-nav .mbtn[data-cgm-item="START GAME"]');
@@ -153,7 +152,7 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
       return !!el && !!el.closest && !!el.closest('#tut-overlay');
     });
     gate('T2 overlay μπλοκάρει click-through στο UI από πίσω', blocked);
-    const enter = async () => { await page.keyboard.press('Enter'); await sleep(220); };
+    const enter = async () => { await sleep(750); await page.keyboard.press('Enter'); await sleep(220); };
     await enter();
     gate('T3 Enter κλείνει το βήμα', !(await vis()));
     const click = async (sel) => { await page.click(sel, { timeout: 8000 }); await sleep(150); await page.evaluate(() => window.__phenixQA?._settleFade?.()); await sleep(150); };
@@ -175,6 +174,25 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
     const hasReplay = await page.evaluate(() => window.__g.settingsItems.includes('REPLAY TUTORIAL'));
     gate('T11 REPLAY TUTORIAL στα Settings', hasReplay);
     gate('T12 μηδέν page errors (tutorial route)', pageErrors.length === 0, pageErrors.slice(0, 2).join('|'));
+    await ctx.close();
+  }
+
+  // ── Context 3: FRESH save (κανένα phenix_meta) → S1 auto-start στο μενού ──
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+    await ctx.addInitScript(() => {
+      try { sessionStorage.setItem('phenix_qa_optin', '1'); } catch (_) {}
+      window.__phenixTutorialForce = 1;
+    });
+    const page = await ctx.newPage();
+    await page.goto(BASE + '/index.html?qa=1', { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.waitForFunction(() => window.__phenixQA?.snapshot?.()?.gameState === 'start_menu', null, { timeout: 20000 });
+    let fresh = false;
+    for (let i = 0; i < 40 && !fresh; i++) {
+      fresh = await page.evaluate(() => { const t = window.__phenixTutorial; return !!t && t.visible && t.stepIdx === 0; });
+      if (!fresh) await sleep(150);
+    }
+    gate('T13 fresh save: S1 auto-start στο Main Menu', fresh);
     await ctx.close();
   }
 
