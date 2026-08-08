@@ -44,8 +44,12 @@ export function drawHUD(ctx, game) {
   drawText(ctx, `${Math.floor(p.xp)} / ${p.xpToNext} XP`, WIDTH - 70, 25, '#8fc6e8', '12px Consolas, monospace');
 
   // ── Top-center: timer + kills (skull) ───────────────────────────────────
-  const mins = Math.floor(game.timeAlive / 60).toString().padStart(2, '0');
-  const secs = Math.floor(game.timeAlive % 60).toString().padStart(2, '0');
+  // Countdown όπου το run έχει πραγματική διάρκεια (Act 1 8:00 · campaign γύροι 5:00)·
+  // Endless & Chaos δεν έχουν τέλος → μένει elapsed. Display-only (runDurationSeconds).
+  const _dur = game.runDurationSeconds;
+  const _tShow = (_dur != null) ? Math.max(0, _dur - game.timeAlive) : game.timeAlive;
+  const mins = Math.floor(_tShow / 60).toString().padStart(2, '0');
+  const secs = Math.floor(_tShow % 60).toString().padStart(2, '0');
   // premium glass chip behind timer + kills: dark pill, cyan rim, corner ticks
   {
     ctx.save();

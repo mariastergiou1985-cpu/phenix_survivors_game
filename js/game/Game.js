@@ -31,7 +31,7 @@ import './BuildEngineChars5.js?v=20260902130000';   // P2.5 Universal όπλα 2
 import './BuildEnginePassives.js?v=20260902130000'; // P2.6 Build passives §26-50 (generic hooks)
 import { MutationUI }      from './MutationUI.js?v=20260904180000';
 import { sampleMutations, sampleCorruptedMutation } from './Mutations.js?v=20260904180000';
-import { drawHUD, drawEndScreen } from './HUD.js?v=20260904290000';
+import { drawHUD, drawEndScreen } from './HUD.js?v=20260908050000';
 import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, COLLECTIBLE_FRAGMENT_COST, COLLECTIBLE_GRID_COST, ECHO_FRAGMENT_COST, ECHO_GRID_COST, SKILL_TREE, AMULET_DEFS, GRID_TO_PF_RATE, characterStageRequirement } from './MetaProgress.js?v=20260904400000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260712520000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
@@ -9803,6 +9803,15 @@ export class Game {
 
   currentMinute()             { return Math.floor(this.timeAlive / 60); }
   coreVolatilityMultiplier()  { return 1 + (this.timeAlive / WIN_TIME_SECONDS) * 1.8; }
+
+  // Display-only (2026-08-08, Maria): η πραγματική διάρκεια του τρέχοντος run αν υπάρχει,
+  // αλλιώς null. ΔΕΝ τη διαβάζει κανένα gameplay/win check — μόνο το HUD timer chip,
+  // ώστε να δείχνει remaining αντί για elapsed. Endless & Chaos δεν έχουν χρονικό τέλος.
+  get runDurationSeconds() {
+    if (this.endless) return null;                            // Endless & Chaos: infinite
+    if (this._campaignStage) return CAMPAIGN_STAGE_SECONDS;   // campaign γύροι: 5:00
+    return ACT1_WIN_SECONDS;                                  // Act 1: 8:00 (12:00→8:00, Maria 2026-07-18)
+  }
   overloadRateMultiplier()    { return 1 + Math.floor(this.timeAlive / 120) * 0.05; }
   // Population caps — delegated to EnemySpawner (Phase 0 decoupling).
   enemyCap() {
