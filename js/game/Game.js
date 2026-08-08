@@ -510,6 +510,38 @@ const EDDIE_RAIN = {
   cdNormal:   0.30, cdElite:   0.90, cdBoss:   2.40,
 };
 
+// ── NULL ARENA SIEGE — one table for the whole encirclement ────────────────────
+// The arena was a fixed containment circle with a hard vector clamp: the player was walled in
+// for two minutes with no way out but the timer. This replaces the wall with a RING OF ARMORED
+// BODIES that closes in, and gives the player a real answer — cut a hole and run through it.
+//
+// closeSpeed is deliberately slow: the siege is pressure, not a timer. armorFromDmg is the
+// FRACTION of incoming damage that armor absorbs, so raw DPS works but is the slow way through;
+// armorFromStun is a flat chunk taken every time a node is stunned or frozen, which is what
+// makes CC the efficient answer Maria asked for.
+const SIEGE = {
+  // THE ARENA IS AN ELLIPSE, not a circle, and that is the only way it can actually get bigger.
+  // _arenaFitRadius clamps any arena to half the WALKABLE BAND minus padding, and the Endless band
+  // is 615 px tall — so a circle is stuck at ~251 no matter what is requested, which is what the
+  // 1100 arena had always been. getWalkableBounds() returns x0:-Infinity, x1:Infinity there: the
+  // band is unbounded HORIZONTALLY. wideX is therefore free, ry stays band-capped, and the arena
+  // grows by the aspect ratio instead of not growing at all.
+  wideX: 1600,           // requested half-width; capped only on a finite deck
+  radiusMult: 1.60,      // requested half-HEIGHT before the band cap (kept for the fit record)
+  nodes: 20,             // evenly spaced over 360 degrees (18 deg apart)
+  ringFrac: 0.95,        // spawn radius as a fraction of the arena radius
+  closeSpeed: 5.2,       // px/s inward
+  minFrac: 0.24,         // they stop closing here, so the centre is never fully crushed
+  armor: 240, hp: 380,
+  armorFromDmg: 0.55,    // fraction of a hit that eats armor instead of HP
+  armorFromStun: 85,     // armor destroyed per stun/CC application — the efficient route
+  stunCd: 0.45,          // per-node refractory on the CC bonus, so one freeze is not infinite
+  gapNodes: 3,           // consecutive dead nodes that count as a real hole
+  breakoutFrac: 0.88,    // how far out the player must get, inside a hole, to be through
+  contactDmg: 13, contactCd: 0.9,
+  hpMult: 1.0,           // siege bodies use the shipped spawn HP, then this
+};
+
 // Musical-note glyphs sliced from the same sheet (transparent background).
 const THUNDER_NOTES = [
   { sx: 745, sy: 890, sw: 125, sh: 165 }, // eighth note
@@ -2533,6 +2565,7 @@ export class Game {
     this._nullBreachArena   = null;
     this._nullBreach1Done   = false;
     this._nullBreach2Done   = false;
+    this._breakoutRelic     = null;   // the siege-breakout second relic slot is RUN-SCOPED
     this._arenaRescueUsed   = false;
     this._arenaResult       = null;
     this._endlessStartedAt  = 0;      // timeAlive when Endless began (direct=0, Act1→Endless=nonzero)
@@ -3306,6 +3339,7 @@ export class Game {
     this._nullBreachArena   = null;
     this._nullBreach1Done   = false;
     this._nullBreach2Done   = false;
+    this._breakoutRelic     = null;   // the siege-breakout second relic slot is RUN-SCOPED
     this._arenaRescueUsed   = false;
     this._arenaResult       = null;
     this._endlessStartedAt  = this.timeAlive;
@@ -5905,7 +5939,14 @@ export class Game {
   // ×1.3 on every ultimate damage hook while the ACTIVE character's amulet is owned.
   // 1R loadout (Maria 2026-07-18): a relic's gameplay effect fires ONLY while it is the
   // equipped run relic. Ownership alone (shop 'OWNED') no longer powers anything.
-  _relicOn(id) { return !!this.meta?.isRelicEquipped?.(id); }
+  // A relic counts as ON if it is the EQUIPPED one, or if this run earned a second slot by
+  // breaking out of a Null Arena siege. The breakout slot is RUN-SCOPED — it lives on Game, not
+  // in the save — so nothing about the one-relic equip rule or the save format changes, and it
+  // is gone the moment the run ends.
+  _relicOn(id) {
+    if (this._breakoutRelic && this._breakoutRelic === id) return true;
+    return !!this.meta?.isRelicEquipped?.(id);
+  }
 
   _amuletUltMult() {
     const am = (this.meta && this.player && this.meta.hasAmuletFor(this.player.selectedCharacter)) ? 1.3 : 1;
@@ -22182,7 +22223,11 @@ export class Game {
 
       // Distance cull: recycle enemies that fell too far behind the player (Endless only).
       // Bosses and elites are exempt — they should always persist.
-      if (this.endless && !e.isBoss() && !e.isMegaBoss && !e.isElite) {
+      // SIEGE NODES ARE EXEMPT, like bosses and elites. They hold a formation the player is
+      // supposed to break; letting the distance cull delete them meant walking far enough from
+      // the centre emptied the ring, which my own gap scan then read as a fully open wall and
+      // paid a free breakout. Found by the proof, and it is the exact shape of an exploit.
+      if (this.endless && !e._siege && !e.isBoss() && !e.isMegaBoss && !e.isElite) {
         const dx = e.pos.x - this.player.pos.x;
         const dy = e.pos.y - this.player.pos.y;
         if (dx * dx + dy * dy > CULL_DIST * CULL_DIST) {
@@ -33906,14 +33951,31 @@ _drawLoreArchive(ctx) {
       // World-space arena centre and containment radius — VALIDATED, not assumed. The old code
       // took the player's position and a flat 1100 radius, which cannot fit the walkable band.
       center:             this.player.pos.clone(),
-      radius:             1100,
+      radius:             Math.round(1100 * SIEGE.radiusMult),
+      // SIEGE state. `nodes` holds the live enemy references in ring order, so a gap is a run of
+      // consecutive dead slots and nothing has to be searched geometrically.
+      siege:              null,
+      brokeOut:           false,
+      gapAngle:           null,
     };
     {
-      const _pl = this._placeArena(this.player.pos.x, this.player.pos.y, 1100, 26);
+      // _placeArena VALIDATES the radius against the walkable band and may shrink it, so the
+      // bigger arena is a request, not an assumption — if the map cannot hold 1760 here, this
+      // returns what it can and the siege ring is built from the value that came back.
+      const _R = Math.round(1100 * SIEGE.radiusMult);
+      const _pl = this._placeArena(this.player.pos.x, this.player.pos.y, _R, 26);
       this._nullBreachArena.center.x = _pl.x;
       this._nullBreachArena.center.y = _pl.y;
-      this._nullBreachArena.radius   = _pl.radius;
+      // ry keeps the VALIDATED circular fit — _placeArena already proved this disk is standable,
+      // and the ellipse only ever extends along the band, which is walkable by construction.
+      this._nullBreachArena.ry     = _pl.radius;
+      this._nullBreachArena.rx     = Math.max(_pl.radius, this._arenaFitWidth(SIEGE.wideX));
+      // `radius` stays the SMALLER semi-axis. Everything outside this feature that reads it — the
+      // arena:started event and the arena-constrained enemy spawn ring — then stays inside the
+      // ellipse instead of leaking outside it. Conservative on purpose.
+      this._nullBreachArena.radius = _pl.radius;
     }
+    this._spawnSiegeRing();
     // EventBus emit
     this.events?.emit('arena:started', { center: this._nullBreachArena.center, radius: this._nullBreachArena.radius });
 
@@ -33945,6 +34007,278 @@ _drawLoreArchive(ctx) {
     }
   }
 
+  // ══════════════════════════════════════════════════════════════════════════════
+  // NULL ARENA SIEGE
+  // ══════════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Build the encircling ring. Nodes are REAL enemies spawned through the shipped spawnEnemy
+   * path with an explicit position, which is what makes every weapon, every AoE and every
+   * status effect in the game reach them without a single special case. They are then marked
+   * with `_siege` and given armor.
+   */
+  _spawnSiegeRing() {
+    const arena = this._nullBreachArena;
+    if (!arena) return;
+    // The ring is a SCALE of the ellipse, not a radius. k = 1 sits exactly on the boundary, so the
+    // siege closes by shrinking k and stays the same SHAPE as the arena it is holding.
+    const k = SIEGE.ringFrac;
+    const nodes = new Array(SIEGE.nodes).fill(null);
+    for (let i = 0; i < SIEGE.nodes; i++) {
+      const ang = (i / SIEGE.nodes) * Math.PI * 2;
+      const x = arena.center.x + Math.cos(ang) * arena.rx * k;
+      const y = arena.center.y + Math.sin(ang) * arena.ry * k;
+      const before = this.enemies.length;
+      try { this.spawnEnemy(null, new Vec2(x, y), false); } catch (_) { continue; }
+      if (this.enemies.length <= before) continue;              // enemyCap refused — leave the slot empty
+      const e = this.enemies[this.enemies.length - 1];
+      e.pos.x = x; e.pos.y = y;
+      e._siege = { idx: i, ang, armor: SIEGE.armor, maxArmor: SIEGE.armor, stunCd: 0, touchCd: 0 };
+      e.hp = Math.round(SIEGE.hp * SIEGE.hpMult);
+      e.maxHp = e.hp;
+      // Armor is applied by WRAPPING the node's own takeHit, not by editing every damage site in
+      // the game. There are dozens of those and they all funnel through here, so this is the one
+      // place armor can be added without touching a single weapon. The original return value is
+      // preserved because callers read it to know whether the enemy died.
+      const _origTakeHit = e.takeHit.bind(e);
+      e._siegeTakeHitWrapped = true;
+      e.takeHit = (dmg, src, ...rest) => _origTakeHit(this._siegeAbsorb(e, dmg), src, ...rest);
+      // The FORMATION owns this node's position, so its steering AI must not fight it. Pinning in
+      // _updateSiege alone was not enough: _updateEnemies runs LATER in the same frame and walked
+      // them off the ring — measured radii spread 230..236 and angular gaps 0.258..0.333 rad on a
+      // ring that should be exactly even. Status timers still need to tick, so the wrap keeps the
+      // stun/slow decay and drops only the movement.
+      e._siegeOrigUpdate = e.update.bind(e);
+      e.update = (edt) => {
+        if (e.stunned > 0) e.stunned = Math.max(0, e.stunned - edt);
+        if (e.slowTimer > 0) e.slowTimer = Math.max(0, e.slowTimer - edt);
+        if (e.hitFlash > 0) e.hitFlash = Math.max(0, e.hitFlash - edt);
+      };
+      e.keepInBounds = () => {};
+      nodes[i] = e;
+    }
+    arena.siege = { nodes, k, dead: 0 };
+  }
+
+  /** True while this run is inside a siege that has not been broken. */
+  _siegeActive() {
+    const a = this._nullBreachArena;
+    return !!(a && a.siege && !a.brokeOut);
+  }
+
+  /**
+   * Armor bookkeeping for one hit on a siege node. Returns the damage that reaches HP.
+   *
+   * Armor absorbs a FRACTION of raw damage, so shooting through it works and is the slow route.
+   * A node that is stunned or frozen loses a flat chunk of armor per application, gated by a
+   * short refractory window so a single sustained freeze cannot delete the ring for free — that
+   * is the "more effective from stun/CC" rule, with the obvious exploit closed.
+   */
+  _siegeAbsorb(e, dmg) {
+    const s = e && e._siege;
+    if (!s || s.armor <= 0) return dmg;
+    const eaten = Math.min(s.armor, dmg * SIEGE.armorFromDmg);
+    s.armor -= eaten;
+    if (s.armor <= 0) {
+      s.armor = 0;
+      this.floatingTexts.push(new FloatingText('ARMOR BREACHED', e.pos.clone(), '#ff66ff', 1.4));
+      this.particles?.spawnHitSparks?.(e.pos, '#ff66ff');
+    }
+    return Math.max(0, dmg - eaten);
+  }
+
+  _updateSiege(dt) {
+    const arena = this._nullBreachArena;
+    if (!arena || !arena.siege) return;
+    const S = arena.siege, nodes = S.nodes;
+    const cx = arena.center.x, cy = arena.center.y;
+    const rx = arena.rx || arena.radius, ry = arena.ry || arena.radius;
+    // Closing speed is expressed in px along the SHORT axis, so a wide arena does not make the
+    // siege take proportionally longer to arrive.
+    const kFloor = SIEGE.minFrac;
+    S.k = Math.max(kFloor, S.k - (SIEGE.closeSpeed / Math.max(1, ry)) * dt);
+
+    let alive = 0;
+    for (let i = 0; i < nodes.length; i++) {
+      const e = nodes[i];
+      if (!e) continue;
+      if (e.hp <= 0 || !this.enemies.includes(e)) { nodes[i] = null; continue; }
+      alive++;
+      const s = e._siege;
+      // Hold formation: the node owns its angle and the ring owns the radius. Nothing else moves
+      // them, so the encirclement cannot be kited into a clump.
+      e.pos.x = cx + Math.cos(s.ang) * rx * S.k;
+      e.pos.y = cy + Math.sin(s.ang) * ry * S.k;
+      e.vel.x = 0; e.vel.y = 0;
+
+      // CC eats armor. Checked here rather than at the damage site because a stun can come from
+      // anywhere in the game — a freeze field, an EMP, a note — and this way every source counts.
+      if (s.stunCd > 0) s.stunCd -= dt;
+      if (s.armor > 0 && (e.stunned || 0) > 0 && s.stunCd <= 0) {
+        s.stunCd = SIEGE.stunCd;
+        s.armor = Math.max(0, s.armor - SIEGE.armorFromStun);
+        this.floatingTexts.push(new FloatingText('ARMOR -' + SIEGE.armorFromStun, e.pos.clone(), '#9fd8ff', 1.0));
+        if (s.armor === 0) this.floatingTexts.push(new FloatingText('ARMOR BREACHED', e.pos.clone(), '#ff66ff', 1.4));
+      }
+
+      // Contact damage — the ring hurts to stand in.
+      if (s.touchCd > 0) s.touchCd -= dt;
+      if (s.touchCd <= 0 && distance(this.player.pos, e.pos) < (e.radius || 18) + 22) {
+        s.touchCd = SIEGE.contactCd;
+        this._damagePlayer(SIEGE.contactDmg, { color: '#ff66ff', shake: 3 });
+      }
+    }
+    S.dead = nodes.length - alive;
+
+    // ── THE HOLE ────────────────────────────────────────────────────────────────
+    // A gap is the longest run of consecutive EMPTY slots, walked circularly. Storing the ring
+    // in slot order is what makes this a scan instead of a geometry problem.
+    let best = 0, bestStart = -1;
+    const N = nodes.length;
+    if (alive === 0) {
+      // WHOLE RING DOWN. Handled first, because the scan below only starts a run at a slot whose
+      // PREDECESSOR is occupied — on an all-empty ring no such slot exists, so it returned a gap
+      // of zero and the player was walled in by a siege that no longer existed. Found by the
+      // proof, not by reading it.
+      best = N; bestStart = 0;
+    } else {
+      for (let start = 0; start < N; start++) {
+        if (nodes[start]) continue;
+        if (nodes[(start - 1 + N) % N]) {          // only count runs from their first empty slot
+          let len = 0;
+          while (len < N && !nodes[(start + len) % N]) len++;
+          if (len > best) { best = len; bestStart = start; }
+        }
+      }
+    }
+    arena.gapNodes = best;
+    arena.gapAngle = bestStart < 0 ? null
+      : ((bestStart + (best - 1) / 2) / N) * Math.PI * 2;
+    arena.gapHalfWidth = (best / N) * Math.PI;      // half the angular span of the run
+
+    // ── BREAKOUT ───────────────────────────────────────────────────────────────
+    // Cutting the hole is not enough: the player has to go THROUGH it. That is the whole point
+    // of "a real passage" — a reward for using the hole, not for making it.
+    if (best >= SIEGE.gapNodes && arena.gapAngle !== null) {
+      const dx = this.player.pos.x - cx, dy = this.player.pos.y - cy;
+      const pr = this._arenaNorm(this.player.pos.x, this.player.pos.y);
+      // The gap angle is a RING-SLOT angle, so the player's bearing has to be measured in the same
+      // normalised space — atan2 on raw px would drift on a 6:1 ellipse and the hole would appear
+      // to be somewhere it is not.
+      let da = Math.atan2(dy / ry, dx / rx) - arena.gapAngle;
+      while (da > Math.PI) da -= Math.PI * 2;
+      while (da < -Math.PI) da += Math.PI * 2;
+      if (pr >= SIEGE.breakoutFrac && Math.abs(da) <= arena.gapHalfWidth) {
+        this._breakoutNullBreachArena();
+      }
+    }
+  }
+
+  /** Remove every surviving node. Called on arena end, breakout, death and reset. */
+  _clearSiege() {
+    const S = this._nullBreachArena?.siege;
+    if (!S) return;
+    for (const e of S.nodes) {
+      if (!e) continue;
+      e._siege = null;
+      const i = this.enemies.indexOf(e);
+      if (i >= 0) this.enemies.splice(i, 1);
+    }
+    S.nodes.length = 0;
+  }
+
+  /**
+   * The player cut a hole and walked out. Maria's rule: keep the normal Null Arena reward AND
+   * add one extra relic, used alongside the first.
+   *
+   * The extra relic is RUN-SCOPED and is chosen only from relics whose effect is read LIVE
+   * through _relicOn at the moment it matters. Relics whose effect is baked into player stats by
+   * _applyMetaUpgrades at run start are deliberately excluded: granting one of those mid-run
+   * would do nothing without re-running the whole meta pass, and re-running it is not a safe
+   * thing to do to a live run. Stated rather than papered over.
+   */
+  _breakoutNullBreachArena() {
+    const arena = this._nullBreachArena;
+    if (!arena || arena.brokeOut) return;
+    arena.brokeOut = true;
+    const gained = this._grantBreakoutRelic();
+    this.triggerAnnouncement('◈ SIEGE BROKEN ◈', '#ff66ff', { priority: 2 });
+    this.floatingTexts.push(new FloatingText('BREAKOUT', this.player.pos.clone(), '#ff66ff', 2.2));
+    this._queueEdenTransmission(
+      'SIEGE LINE FAILED. You were not supposed to have a direction.',
+      { title: 'NULL BREACH', priority: 2, duration: 6 });
+    if (gained) {
+      this.floatingTexts.push(new FloatingText('+1 RELIC SLOT', this.player.pos.clone(), '#ffd23c', 2.4));
+      this.meta?.addSystemMessage?.('SIEGE BROKEN. SECOND RELIC SLOT ACTIVE FOR THIS RUN.');
+    }
+    this._clearSiege();
+    // The normal reward path, unchanged. _completeNullBreachArena owns the fragments, the Eden
+    // memory, the credits, the score, the boss-kill flags and the post-arena panel; a breakout
+    // pays exactly that and nothing less.
+    this._completeNullBreachArena();
+  }
+
+  // Relic ids whose effect is evaluated at EVENT time through _relicOn. Anything applied inside
+  // _applyMetaUpgrades is absent on purpose — see _breakoutNullBreachArena.
+  _breakoutRelicPool() {
+    const LIVE = ['emperor_singularity_edge', 'tyrant_antimatter_battery', 'leviathan_nanite_core',
+                  'overlord_prism_array', 'oni_blood_circuit', 'serpent_ember_coil',
+                  'dragon_cryo_heart', 'broken_halo', 'mirror_kill_protocol',
+                  'crescent_soul_bead', 'null_venom_chamber', 'breach_crown',
+                  'elite_signal_core', 'eden_core_fragment', 'blacknet_coupon'];
+    const equipped = this.meta?.getEquippedRelic?.() || null;
+    const owned = LIVE.filter(id => id !== equipped && this.meta?.isRelicUnlocked?.(id));
+    // A player who owns nothing else still gets a second slot — the arena's own relic — so the
+    // breakout is never a reward that silently pays nothing.
+    return owned.length ? owned : (equipped === 'breach_crown' ? ['elite_signal_core'] : ['breach_crown']);
+  }
+
+  _grantBreakoutRelic() {
+    if (this._breakoutRelic) return false;                    // one extra slot per run
+    const pool = this._breakoutRelicPool();
+    if (!pool.length) return false;
+    this._breakoutRelic = pool[(Math.random() * pool.length) | 0];
+    return true;
+  }
+
+  _drawSiege(ctx) {
+    const arena = this._nullBreachArena;
+    const S = arena?.siege;
+    if (!S || !S.nodes.length) return;
+    ctx.save();
+    for (const e of S.nodes) {
+      if (!e || e.hp <= 0) continue;
+      const s = e._siege;
+      const frac = s.maxArmor > 0 ? s.armor / s.maxArmor : 0;
+      const r = (e.radius || 18) + 9;
+      ctx.globalCompositeOperation = 'lighter';
+      // Armor plate: bright magenta while intact, dim and broken once breached.
+      ctx.globalAlpha = frac > 0 ? 0.55 + 0.35 * frac : 0.18;
+      ctx.strokeStyle = frac > 0 ? '#ff66ff' : '#5a2a55';
+      ctx.lineWidth = frac > 0 ? 3.5 : 1.5;
+      ctx.beginPath();
+      ctx.arc(e.pos.x, e.pos.y, r, 0, Math.PI * 2 * (frac > 0 ? frac : 1));
+      ctx.stroke();
+      if (frac <= 0) {
+        ctx.globalAlpha = 0.5; ctx.strokeStyle = '#ffd23c'; ctx.lineWidth = 1.2;
+        ctx.beginPath(); ctx.arc(e.pos.x, e.pos.y, r * 0.7, 0, Math.PI * 2); ctx.stroke();
+      }
+    }
+    // The hole, drawn as an open arc so the player can SEE the way out.
+    if (arena.gapAngle !== null && (arena.gapNodes || 0) >= SIEGE.gapNodes) {
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = 0.5;
+      ctx.strokeStyle = '#7CFF4D'; ctx.lineWidth = 6;
+      ctx.beginPath();
+      ctx.ellipse(arena.center.x, arena.center.y,
+                  (arena.rx || arena.radius) * S.k, (arena.ry || arena.radius) * S.k, 0,
+                  arena.gapAngle - arena.gapHalfWidth, arena.gapAngle + arena.gapHalfWidth);
+      ctx.stroke();
+    }
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
+
   // Per-frame update: continuous boss/elite/aircraft gauntlet for the full 2 minutes.
   // Pressure never stops — when a boss dies, a new one queues up after a short delay.
   _updateNullBreachArena(dt) {
@@ -33955,15 +34289,31 @@ _drawLoreArchive(ctx) {
     arena.spawnCd -= dt;
     arena.majorCd -= dt;
 
-    // ── Hard vector clamp: player cannot leave the arena circle ──────────
+    this._updateSiege(dt);
+    if (!this._nullBreachArena) return;         // a breakout completes the arena inside _updateSiege
+
+    // ── Vector clamp: the player cannot leave the arena circle — EXCEPT through a hole ──
+    // The clamp is what made the old arena a wall. It stays, because without it the containment
+    // means nothing, but it now yields inside an OPEN GAP: cut three consecutive nodes out of the
+    // ring and that arc stops holding you. That is the difference between a timer and an escape.
+    const _arx = arena.rx || arena.radius, _ary = arena.ry || arena.radius;
     const _adx = this.player.pos.x - arena.center.x;
     const _ady = this.player.pos.y - arena.center.y;
-    const _adist = Math.sqrt(_adx * _adx + _ady * _ady);
-    const _apad = 24;  // inset so player stays visually inside the ring
-    if (_adist > arena.radius - _apad) {
-      const _aang = Math.atan2(_ady, _adx);
-      this.player.pos.x = arena.center.x + Math.cos(_aang) * (arena.radius - _apad);
-      this.player.pos.y = arena.center.y + Math.sin(_aang) * (arena.radius - _apad);
+    const _anorm = this._arenaNorm(this.player.pos.x, this.player.pos.y);
+    const _alimit = 1 - 24 / Math.max(1, _ary);   // the same 24 px inset, expressed on the ellipse
+    let _inGap = false;
+    if (arena.gapAngle !== null && (arena.gapNodes || 0) >= SIEGE.gapNodes) {
+      let _da = Math.atan2(_ady / _ary, _adx / _arx) - arena.gapAngle;
+      while (_da > Math.PI) _da -= Math.PI * 2;
+      while (_da < -Math.PI) _da += Math.PI * 2;
+      _inGap = Math.abs(_da) <= (arena.gapHalfWidth || 0);
+    }
+    if (!_inGap && _anorm > _alimit && _anorm > 0) {
+      // Scale the offset back onto the boundary rather than rebuilding it from an angle: on an
+      // ellipse the two are not the same operation, and the angular form pulls the player sideways.
+      const _k = _alimit / _anorm;
+      this.player.pos.x = arena.center.x + _adx * _k;
+      this.player.pos.y = arena.center.y + _ady * _k;
     }
 
     const elapsed = 120 - arena.timer;
@@ -34077,6 +34427,7 @@ _drawLoreArchive(ctx) {
     // normally, so this guards double-payment without blocking legitimate repeats.
     if (!this._nullBreachActive && !this._nullBreachArena) return;
     const arenaKills = this._nullBreachArena?.kills || 0;
+    this._clearSiege();                       // no node may outlive the arena that owns it
     this._nullBreachArena  = null;
     this._nullBreachActive = false;
     this._endlessBossTimer = Math.max(this._endlessBossTimer, 30);  // breathing room after arena
@@ -34220,7 +34571,12 @@ _drawLoreArchive(ctx) {
   _drawArenaContainment(ctx) {
     const arena = this._nullBreachArena;
     if (!arena || !arena.center) return;
-    const cx = arena.center.x, cy = arena.center.y, R = arena.radius;
+    const cx = arena.center.x, cy = arena.center.y;
+    // The containment is an ELLIPSE. RX/RY replace the single R; every ring below is drawn with
+    // ctx.ellipse so the stroke keeps its real thickness on both axes.
+    const RX = arena.rx || arena.radius, RY = arena.ry || arena.radius;
+    const R  = RY;                       // short axis — kept for the outer-dim rect maths
+    this._drawSiege(ctx);
     const now = performance.now();
     const pulse = 0.6 + 0.4 * Math.sin(now * 0.004);
     const fastPulse = 0.5 + 0.5 * Math.sin(now * 0.012);
@@ -34235,8 +34591,8 @@ _drawLoreArchive(ctx) {
     ctx.globalAlpha = 0.22 + urgency * 0.12;
     ctx.fillStyle = '#08001a';
     ctx.beginPath();
-    ctx.rect(cx - R - 600, cy - R - 600, (R + 600) * 2, (R + 600) * 2);
-    ctx.arc(cx, cy, R, 0, Math.PI * 2, true);
+    ctx.rect(cx - RX - 900, cy - RY - 900, (RX + 900) * 2, (RY + 900) * 2);
+    ctx.ellipse(cx, cy, RX, RY, 0, 0, Math.PI * 2, true);
     ctx.fill();
 
     // ── Stacked neon containment rings (glitching forcefield) ─────────────
@@ -34246,21 +34602,21 @@ _drawLoreArchive(ctx) {
     ctx.lineWidth = 5 + urgency * 2;
     ctx.setLineDash([22, 10]);
     ctx.lineDashOffset = -now * 0.04;
-    ctx.beginPath(); ctx.arc(cx + glitchX, cy + glitchY, R, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(cx + glitchX, cy + glitchY, RX, RY, 0, 0, Math.PI * 2); ctx.stroke();
     ctx.setLineDash([]);
 
     // Ring 2: mid cyan (solid, slightly inset)
     ctx.globalAlpha = 0.45 + 0.25 * pulse;
     ctx.strokeStyle = '#00e6ff';
     ctx.lineWidth = 2.5;
-    ctx.beginPath(); ctx.arc(cx - glitchX * 0.5, cy - glitchY * 0.5, R - 6, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(cx - glitchX * 0.5, cy - glitchY * 0.5, RX - 6, RY - 6, 0, 0, Math.PI * 2); ctx.stroke();
 
     // Ring 3: inner glow (additive, wider)
     ctx.globalCompositeOperation = 'lighter';
     ctx.globalAlpha = 0.14 + 0.10 * pulse + urgency * 0.08;
     ctx.strokeStyle = '#ff44cc';
     ctx.lineWidth = 10 + urgency * 4;
-    ctx.beginPath(); ctx.arc(cx, cy, R + 3, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(cx, cy, RX + 3, RY + 3, 0, 0, Math.PI * 2); ctx.stroke();
 
     // Ring 4: fast-pulse white spark ring (urgency intensifies)
     ctx.globalAlpha = (0.06 + urgency * 0.12) * fastPulse;
@@ -34268,7 +34624,7 @@ _drawLoreArchive(ctx) {
     ctx.lineWidth = 1.5;
     ctx.setLineDash([3, 28]);
     ctx.lineDashOffset = now * 0.08;
-    ctx.beginPath(); ctx.arc(cx, cy, R - 2, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(cx, cy, RX - 2, RY - 2, 0, 0, Math.PI * 2); ctx.stroke();
     ctx.setLineDash([]);
     ctx.globalCompositeOperation = 'source-over';
 
@@ -34279,15 +34635,15 @@ _drawLoreArchive(ctx) {
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     for (let i = 0; i < 8; i++) {
       const a = (i / 8) * Math.PI * 2;
-      ctx.fillText('◈', cx + Math.cos(a) * (R + 16), cy + Math.sin(a) * (R + 16));
+      ctx.fillText('◈', cx + Math.cos(a) * (RX + 16), cy + Math.sin(a) * (RY + 16));
     }
 
     // ── Radial scan ticks (8 at 22.5deg offsets) ─────────────────────────────
     ctx.strokeStyle = '#00e6ff'; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.30 + urgency * 0.15;
     for (let i = 0; i < 8; i++) {
       const a = (i / 8) * Math.PI * 2 + Math.PI / 8;
-      const ix = cx + Math.cos(a) * (R - 14), iy = cy + Math.sin(a) * (R - 14);
-      const ox = cx + Math.cos(a) * (R + 12), oy = cy + Math.sin(a) * (R + 12);
+      const ix = cx + Math.cos(a) * (RX - 14), iy = cy + Math.sin(a) * (RY - 14);
+      const ox = cx + Math.cos(a) * (RX + 12), oy = cy + Math.sin(a) * (RY + 12);
       ctx.beginPath(); ctx.moveTo(ix, iy); ctx.lineTo(ox, oy); ctx.stroke();
     }
 
@@ -34299,7 +34655,7 @@ _drawLoreArchive(ctx) {
       ctx.strokeStyle = Math.random() < 0.5 ? '#ff44cc' : '#00e6ff';
       ctx.lineWidth = 3 + Math.random() * 3;
       ctx.beginPath();
-      ctx.arc(cx + glitchX * 2, cy + glitchY * 2, R - 1, gAngle, gAngle + gLen);
+      ctx.ellipse(cx + glitchX * 2, cy + glitchY * 2, RX - 1, RY - 1, 0, gAngle, gAngle + gLen);
       ctx.stroke();
     }
 
@@ -37066,6 +37422,28 @@ _drawLoreArchive(ctx) {
     if (!Number.isFinite(half) || half <= 0) return desired;
     return Math.max(180, Math.min(desired, Math.floor(half)));
   }
+  // Horizontal half-extent for an ELLIPTICAL arena. The vertical band is the binding dimension for
+  // a circle; horizontally the Endless/Chaos band publishes x0:-Infinity / x1:Infinity, so there is
+  // nothing to bind and the request stands. A finite deck DOES bind, and is capped here.
+  _arenaFitWidth(desired) {
+    const b = this.getWalkableBounds();
+    if (!b) return desired;
+    if (!Number.isFinite(b.x0) || !Number.isFinite(b.x1)) return desired;   // unbounded band
+    const half = (b.x1 - b.x0) * 0.5 - (PLAYER_RADIUS + 40);
+    if (!Number.isFinite(half) || half <= 0) return desired;
+    return Math.max(180, Math.min(desired, Math.floor(half)));
+  }
+
+  // Normalised ELLIPSE distance from the arena centre: 1.0 is exactly on the boundary. Every
+  // containment and breakout test goes through this one function so the circle-era assumption
+  // that "distance in px" means "distance to the wall" cannot survive anywhere.
+  _arenaNorm(x, y) {
+    const a = this._nullBreachArena;
+    if (!a) return 0;
+    const rx = a.rx || a.radius, ry = a.ry || a.radius;
+    return Math.hypot((x - a.center.x) / rx, (y - a.center.y) / ry);
+  }
+
   // true only if the WHOLE disk is standable. rings/samples per the batch spec.
   _validateArenaDisk(cx, cy, radius, pad = 0) {
     if (!Number.isFinite(cx) || !Number.isFinite(cy) || !(radius > 0)) return false;
