@@ -827,9 +827,129 @@ export class MapManager {
     ctx.fillRect(0, 0, this.worldW, this.worldH);
     ctx.drawImage(img, 0, 0, iw, ih, 0, y0, this.worldW, th); // painterly art — smoothing stays on
     // walkable band published via getAct1DeckBounds() (lazy — see below)
+    // Ambient ship life (2026-08-08, Maria): ζωγραφίζεται ΠΡΙΝ το readability dim ώστε
+    // να διαβάζεται ως μέρος του περιβάλλοντος και να μένει διακριτικό στο combat.
+    try { this._drawShipAmbience(ctx, S, y0, th); } catch (_) {}
     // readability dim (ship art is BRIGHT — combat must sit on top)
     ctx.fillStyle = opts.gridBlackoutActive ? 'rgba(0,0,0,0.65)' : 'rgba(0,0,0,0.30)';
     ctx.fillRect(0, 0, this.worldW, this.worldH);
+  }
+
+  // ── ACT 1 SHIP AMBIENCE (2026-08-08, Maria) — visual-only, world-space ──────
+  // Διακριτική «ζωή» πάνω στο ίδιο το deck: neon/machinery pulses στους τοίχους,
+  // περιστασιακοί steam vents, σπάνιες ηλεκτρικές εκκενώσεις, και αργή κίνηση
+  // φωτός/αστεριών ΕΞΩ από τα παράθυρα (στις space ζώνες πάνω/κάτω από το σκάφος).
+  // Όλα deterministic από game.timeAlive (παγώνουν σε pause), με φυσικά fades.
+  // Το δάπεδο/combat ζώνη μένει καθαρή: anchors ΜΟΝΟ σε τοίχους/παράθυρα +
+  // απόσβεση όταν ο παίκτης πλησιάζει (καμία σύγκρουση, καμία gameplay αλλαγή).
+  _drawShipAmbience(ctx, S, y0, th) {
+    const g = this.game;
+    if (!g || g.gameState !== 'playing') return;
+    const t = g.timeAlive || 0;
+    const W = this.worldW;
+    const px = g.player ? g.player.pos.x : -9999, py = g.player ? g.player.pos.y : -9999;
+    const hush = (x, y) => {                                    // combat-clearance απόσβεση
+      const d = Math.hypot(x - px, y - py);
+      return d < 170 ? 0 : d < 300 ? (d - 170) / 130 : 1;
+    };
+    const h2 = (i, k) => { const v = Math.sin(i * 127.1 + k * 311.7) * 43758.5453; return v - Math.floor(v); };
+    const wallTop = y0 + Math.round(170 * S);                   // λίγο ΠΑΝΩ από το walkable band
+    const wallBot = y0 + Math.round(714 * S);                   // λίγο ΚΑΤΩ από το band
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+
+    // 1 ── Neon / machinery pulses: 12 μικρά φώτα στους δύο τοίχους, ασύγχρονα breathing.
+    for (let i = 0; i < 12; i++) {
+      const x = (0.06 + 0.88 * (i / 11)) * W + (h2(i, 1) - 0.5) * 60 * S;
+      const y = (i % 2 ? wallTop : wallBot) + (h2(i, 2) - 0.5) * 14 * S;
+      const ph = t * (0.55 + h2(i, 3) * 0.5) + h2(i, 4) * 7;
+      const a = (0.10 + 0.16 * (0.5 + 0.5 * Math.sin(ph * Math.PI * 2))) * hush(x, y);
+      if (a <= 0.01) continue;
+      const col = h2(i, 5) < 0.55 ? '#2ee6f6' : (h2(i, 5) < 0.8 ? '#ffb400' : '#ff4fa0');
+      const r = (7 + h2(i, 6) * 8) * S;
+      const gr = ctx.createRadialGradient(x, y, 0, x, y, r * 3.2);
+      gr.addColorStop(0, col); gr.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.globalAlpha = a; ctx.fillStyle = gr;
+      ctx.beginPath(); ctx.arc(x, y, r * 3.2, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = a * 1.6; ctx.fillStyle = '#eaffff';
+      ctx.beginPath(); ctx.arc(x, y, r * 0.45, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // 2 ── Steam vents: 5 σημεία στον πάνω τοίχο· κύκλος 6s, φυσάει ~1.6s με puffs που
+    // ανεβαίνουν, μεγαλώνουν και σβήνουν (fade-in/out μέσω sin envelope ανά puff).
+    for (let v = 0; v < 5; v++) {
+      const vx = (0.14 + 0.18 * v) * W + (h2(v, 7) - 0.5) * 90 * S;
+      const vy = wallTop + 6 * S;
+      const cyc = (t * (0.14 + h2(v, 8) * 0.05) + h2(v, 9)) % 1;   // 0..1 κύκλος ~6-7s
+      if (cyc > 0.26) continue;                                    // φυσάει μόνο στο πρώτο κομμάτι
+      const k = cyc / 0.26;
+      const A = hush(vx, vy);
+      if (A <= 0.01) continue;
+      for (let p = 0; p < 4; p++) {
+        const pk = Math.min(1, Math.max(0, k * 1.35 - p * 0.16));
+        if (pk <= 0) continue;
+        const env = Math.sin(Math.PI * pk);
+        const yy = vy - pk * 90 * S, xx = vx + Math.sin((t + p) * 2.1 + v) * 10 * S * pk;
+        const rr = (10 + pk * 26) * S;
+        const sg = ctx.createRadialGradient(xx, yy, 0, xx, yy, rr);
+        sg.addColorStop(0, 'rgba(210,230,240,0.5)'); sg.addColorStop(1, 'rgba(210,230,240,0)');
+        ctx.globalAlpha = 0.16 * env * A;
+        ctx.fillStyle = sg;
+        ctx.beginPath(); ctx.arc(xx, yy, rr, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+
+    // 3 ── Electrical sparks: 4 σημεία κοντά στις γωνίες του deck· σπάνιο flash (~7% duty)
+    // με 2 μικρά jitter τόξα — σβήνουν αμέσως (χωρίς state, καθαρό flicker).
+    for (let s = 0; s < 4; s++) {
+      const sx = (s % 2 ? 0.90 : 0.10) * W + (h2(s, 10) - 0.5) * 120 * S;
+      const sy = (s < 2 ? wallTop : wallBot) + (h2(s, 11) - 0.5) * 10 * S;
+      const cyc = (t * (0.5 + h2(s, 12) * 0.3) + h2(s, 13)) % 1;
+      if (cyc > 0.07) continue;
+      const env = Math.sin(Math.PI * (cyc / 0.07));
+      const A = env * hush(sx, sy);
+      if (A <= 0.01) continue;
+      ctx.globalAlpha = 0.55 * A;
+      ctx.strokeStyle = '#bfe9ff'; ctx.lineWidth = 1.6 * S; ctx.lineCap = 'round';
+      for (let b = 0; b < 2; b++) {
+        ctx.beginPath();
+        let jx = sx, jy = sy;
+        ctx.moveTo(jx, jy);
+        for (let seg = 0; seg < 4; seg++) {
+          jx += (h2(s * 7 + seg, 14 + b) - 0.5) * 26 * S;
+          jy += (4 + h2(s * 5 + seg, 16 + b) * 12) * S * (s < 2 ? 1 : -1);
+          ctx.lineTo(jx, jy);
+        }
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 0.35 * A;
+      ctx.fillStyle = '#eaffff';
+      ctx.beginPath(); ctx.arc(sx, sy, 3.5 * S * env, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // 4 ── Έξω από τα παράθυρα (space ζώνες πάνω/κάτω από το σκάφος): αργά drifting
+    // αστέρια-streaks + ένα πολύ αργό soft light sweep. Μόνο στις μπάντες 0..y0 και y0+th..H.
+    for (const [by0, by1, dir] of [[0, y0, 1], [y0 + th, this.worldH, -1]]) {
+      const bh = by1 - by0;
+      if (bh < 20) continue;
+      for (let st = 0; st < 14; st++) {
+        const spd = 26 + h2(st, 20) * 40;                         // world px/s — αργό drift
+        const x = ((h2(st, 21) * W + dir * t * spd) % W + W) % W;
+        const y = by0 + (0.18 + 0.64 * h2(st, 22)) * bh;
+        const tw = 0.5 + 0.5 * Math.sin(t * (0.8 + h2(st, 23)) + st);
+        ctx.globalAlpha = 0.10 + 0.14 * tw;
+        ctx.strokeStyle = '#cfe6ff'; ctx.lineWidth = 1.2 * S; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - dir * (8 + spd * 0.22) * S, y); ctx.stroke();
+      }
+      const sw = ((t * 0.012 + (dir > 0 ? 0 : 0.5)) % 1) * (W + 900 * S) - 450 * S;   // sweep ~80s
+      const gg = ctx.createRadialGradient(sw, by0 + bh / 2, 0, sw, by0 + bh / 2, 420 * S);
+      gg.addColorStop(0, 'rgba(120,150,255,0.10)'); gg.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = gg;
+      ctx.fillRect(Math.max(0, sw - 420 * S), by0, 840 * S, bh);
+    }
+    ctx.restore();
+    ctx.globalAlpha = 1;
   }
 
   /**
