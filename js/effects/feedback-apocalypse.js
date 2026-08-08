@@ -20,6 +20,9 @@ export const FEEDBACK_CONFIG = {
   beat:   { ms: 150 },
   waves:  { count: 4, speed: 340, hitBand: 46, ampl: 9, teeth: 26 },   // waveform ring params
   bolts:  { everyMs: 150, maxPerBeat: 2, segs: 7, shake: 12 },
+  // The ring the SOLO bolts land inside, in screen px around Eddie. squash matches the game's
+  // vertical foreshortening so the ring reads as ground, not as a circle painted on the camera.
+  ring:   { rIn: 70, rOut: 330, squash: 0.9, hitR: 96 },
   flash:  { maxRadius: 380, shake: 20 },
   color:  { red: '#ff2d2d', gold: '#ffb43c', hot: '#fff2a8', glow: 'rgba(255,45,45,' },
 };
@@ -119,11 +122,28 @@ export class FeedbackApocalypse {
         const live = (enemies || []).filter(e => e && (e.hp === undefined || e.hp > 0));
         let n = Math.min(this.cfg.bolts.maxPerBeat, Math.max(1, live.length));
         for (let i = 0; i < n; i++) {
-          const e = live.length ? live[(Math.random() * live.length) | 0] : null;
-          let x = this.cx + (Math.random() - 0.5) * 500, y = this._cy() + (Math.random() - 0.5) * 300;
-          if (e && hooks.getX) { x = hooks.getX(e); y = hooks.getY(e); }
+          // AROUND EDDIE (2026-08-06, Maria). These used to teleport onto a random live enemy
+          // anywhere on screen, so the curtain had no relationship to where Eddie was standing.
+          // They now land inside a ring centred on him — and because Game re-pins this.cx/footY
+          // to his screen position every frame, the ring follows him with no extra bookkeeping.
+          const a = Math.random() * Math.PI * 2;
+          const rr = this.cfg.ring.rIn + Math.random() * (this.cfg.ring.rOut - this.cfg.ring.rIn);
+          const x = this.cx + Math.cos(a) * rr;
+          const y = this._cy() + Math.sin(a) * rr * this.cfg.ring.squash;
           this._spawnBolt(x, y, Math.random() < 0.35);
-          if (e && hooks.onStrike) hooks.onStrike(e, 'bolt');
+          // GROUND CONTACT -> a homing note, spawned by the host in world space.
+          if (hooks.onLand) hooks.onLand(x, y);
+          // Damage still resolves against whatever is actually under the strike, so moving the
+          // bolts did not move the damage onto empty ground: the nearest live enemy inside the
+          // impact radius takes it, and nothing outside it does.
+          if (hooks.onStrike && live.length) {
+            let best = null, bd = Infinity;
+            for (const e of live) {
+              const d = Math.hypot((hooks.getX ? hooks.getX(e) : 0) - x, (hooks.getY ? hooks.getY(e) : 0) - y);
+              if (d < bd) { bd = d; best = e; }
+            }
+            if (best && bd <= this.cfg.ring.hitR) hooks.onStrike(best, 'bolt');
+          }
         }
         this._shake = Math.max(this._shake, this.cfg.bolts.shake * 0.6);
       }

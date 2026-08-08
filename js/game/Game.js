@@ -41,7 +41,7 @@ import { EMPShockwave } from '../effects/emp-shockwave.js?v=20260818000000';
 import { DigitalSingularity } from '../effects/digital-singularity.js?v=20260726000000';
 import { OssuaryReconstruction } from '../effects/ossuary-reconstruction.js?v=20260711500000';
 import { AfterimageTribunal } from '../effects/afterimage-tribunal.js?v=20260711510000';
-import { FeedbackApocalypse } from '../effects/feedback-apocalypse.js?v=20260711520000';
+import { FeedbackApocalypse } from '../effects/feedback-apocalypse.js?v=20260904450000';
 import { OniMaskOverture } from '../effects/oni-mask-overture.js?v=20260711530000';
 import { EuclidTheorem } from '../effects/euclid-theorem.js?v=20260716800000';
 import { DeusExMachina } from '../effects/deus-ex-machina.js?v=20260721900000';
@@ -492,6 +492,24 @@ const THUNDER_STRIKES = [
   { sx:  70, sy: 620, sw: 210, sh:  560, ax: 0.43, ay: 0.68 }, // medium-left bolt
   { sx: 830, sy: 300, sw: 215, sh:  600, ax: 0.50, ay: 0.83 }, // medium-right bolt
 ];
+// ── EDDIE FALLING RAIN — one table for the letters and the notes they become ──
+// Every number the falling-strike -> homing-note chain uses, in one place, because the chain
+// spans two files (Game.js and effects/feedback-apocalypse.js) and hand-copying the stun tiers
+// into both is exactly how a "boss stagger" quietly becomes a boss stun-lock.
+//
+// rIn/rOut is the ring the letters fall INSIDE, measured from Eddie, so they land around him
+// instead of at absolute camera points. squash flattens the ring to match the game's ~0.9
+// vertical foreshortening. The stun tiers are Maria's rule: normals full, elites reduced,
+// bosses a small stagger only — and each tier carries a refractory window so a burst of notes
+// cannot chain its windows into a lock.
+const EDDIE_RAIN = {
+  rIn: 90, rOut: 430, squash: 0.9, dropH: 620, fall: 0.34,
+  maxNotes: 26, noteLife: 2.6, noteSpeed: 470, noteTurn: 7.0, noteHitR: 34,
+  noteDmgFrac: 0.55,
+  stunNormal: 1.10, stunElite: 0.45, stunBoss: 0.22,
+  cdNormal:   0.30, cdElite:   0.90, cdBoss:   2.40,
+};
+
 // Musical-note glyphs sliced from the same sheet (transparent background).
 const THUNDER_NOTES = [
   { sx: 745, sy: 890, sw: 125, sh: 165 }, // eighth note
@@ -2188,7 +2206,8 @@ export class Game {
     this._guitarSoloCd    = 4;  // Eddie GUITAR SOLO card cooldown (seconds before a performance can auto-start)
     this._guitarPerf      = null; // active sustained solo performance { t, dur, waveCd, waveEvery, lvl } | null
     this._guitarNotes     = []; // big red note-riff projectiles [{x,y,vx,vy,life,glyph,rot}]
-    this._goldStrikes     = []; // full-map golden lightning bolts [{x,gy,top,t,fall,done}]
+    this._goldStrikes     = []; // golden lightning bolts, ring-offset from Eddie [{ox,oy,x,gy,top,t,fall,done}]
+    this._eddieNotes      = []; // homing musical notes spawned where a falling strike LANDED
     this._goldImpacts     = []; // golden strike ground impact rings (cap 24)
     this._murkActive  = false; // ABYSSAL MURK live flag (halves effective pickup radius while true)
     this.bossTrails    = [];   // boss/mini-boss corruption blood trails — player-only DoT (capped, auto-expire)
@@ -12963,6 +12982,7 @@ export class Game {
         this._guitarNotes.length  = 0;
         this._goldStrikes.length  = 0;
         this._goldImpacts.length  = 0;
+        if (this._eddieNotes) this._eddieNotes.length = 0;   // homing notes die with the solo
         // OST Jukebox unlock: record this Eddie survival time (unlocks tracks by duration).
         if (this.player?.selectedCharacter === 'eddie') this.meta?.recordEddieTime?.(this.timeAlive);
         this._grantRewards();
@@ -18801,10 +18821,17 @@ export class Game {
       }
       { const _a = this._guitarNotes; let _w = 0; for (let _i = 0; _i < _a.length; _i++) { const n = _a[_i]; if (n.life > 0) _a[_w++] = n; } _a.length = _w; }
     }
-    // ── advance golden full-map strikes (fall → ground AoE) ──
+    // ── advance golden strikes: they TRACK Eddie while airborne, then land ──
     if (this._goldStrikes.length) {
-      const R = 115;
+      const R  = 115;
+      const _p = this.player;
       for (const b of this._goldStrikes) {
+        // Re-resolve the stored polar offset against Eddie's CURRENT position, so a strike in
+        // flight follows him instead of hanging where the camera was when it spawned. Strikes
+        // from before this change have no `ox`, so they keep their absolute point — an in-flight
+        // save-state or a mid-frame upgrade cannot make this throw.
+        if (b.ox !== undefined && _p) { b.x = _p.pos.x + b.ox; b.gy = _p.pos.y + b.oy; }
+        b.top = b.gy - EDDIE_RAIN.dropH;
         b.t += dt;
         if (b.t < b.fall) continue;
         b.done = true;
@@ -18814,9 +18841,13 @@ export class Game {
           this._brawlerHit(t, (this._targetIsBoss(t) ? 0.6 : 1) * b.dmg, '#ffd23c');
         }
         if (this._goldImpacts.length < 24) this._goldImpacts.push({ x: b.x, y: b.gy, r: R, life: 0.4, maxLife: 0.4 });
+        // GROUND CONTACT -> a homing musical note. This is the whole point of the change: the
+        // letter that lands becomes a note that hunts.
+        this._spawnEddieNote(b.x, b.gy, b.dmg);
       }
       { const _a = this._goldStrikes; let _w = 0; for (let _i = 0; _i < _a.length; _i++) { const b = _a[_i]; if (!b.done) _a[_w++] = b; } _a.length = _w; }
     }
+    this._updateEddieNotes(dt);
     if (this._goldImpacts.length) {
       for (const im of this._goldImpacts) im.life -= dt;
       const _a = this._goldImpacts; let _w = 0; for (let _i = 0; _i < _a.length; _i++) { const im = _a[_i]; if (im.life > 0) _a[_w++] = im; } _a.length = _w;
@@ -18844,6 +18875,114 @@ export class Game {
     if (this._guitarSoloCd <= 0) this._startGuitarPerformance();
   }
 
+  // ── EDDIE NOTE STRIKE — one falling letter becomes one homing note ───────────
+  // Spawned at the ground-contact point of a falling strike (GUITAR SOLO gold strike, and the
+  // ultimate's sky bolts through _eddieNoteFromScreen). It homes on the nearest live enemy,
+  // deals its damage ONCE, applies a tiered stun and then expires — it never lingers and it
+  // never hits twice, so this adds no sustained DPS to either source.
+  _spawnEddieNote(x, y, srcDmg) {
+    if (!this._eddieNotes) this._eddieNotes = [];
+    if (this._eddieNotes.length >= EDDIE_RAIN.maxNotes) return;    // hard cap, perf
+    this._eddieNotes.push({
+      x, y, vx: 0, vy: 0, life: EDDIE_RAIN.noteLife,
+      dmg: Math.max(1, Math.round((srcDmg || 30) * EDDIE_RAIN.noteDmgFrac)),
+      glyph: Math.random() < 0.5 ? '♪' : '♫',
+      rot: Math.random() * 6, spent: false,
+    });
+  }
+
+  // Screen-space entry point for the ultimate module, which knows nothing about world space.
+  _eddieNoteFromScreen(sx, sy, dmg) {
+    const vs = this._viewScale || 1;
+    this._spawnEddieNote(this.camera.x + sx / vs, this.camera.y + sy / vs, dmg);
+  }
+
+  /**
+   * Tiered stun. Maria's rule, verbatim: normals full, elites reduced, bosses only a small
+   * stagger so this can never become a stun-lock.
+   *
+   * The lock is prevented by TWO things, not one. The boss value is a stagger rather than a
+   * stun, AND every target carries a per-target refractory window (`_eddieStunCd`) so a burst
+   * of notes landing together cannot chain their windows end to end. Without the second one a
+   * capped-but-repeated 0.35 s is still a permanent lock, which is the failure mode being
+   * asked about.
+   */
+  _applyEddieStun(e) {
+    if (!e) return 0;
+    const boss = (() => { try { return !!(e.isBoss?.() || e.isMegaBoss); } catch (_) { return false; } })();
+    const cd = e._eddieStunCd || 0;
+    if (cd > 0) return 0;                                          // still refractory — no stun
+    const dur = boss ? EDDIE_RAIN.stunBoss
+              : e.isElite ? EDDIE_RAIN.stunElite
+              : EDDIE_RAIN.stunNormal;
+    e.stunned = Math.max(e.stunned || 0, dur);
+    e._eddieStunCd = boss ? EDDIE_RAIN.cdBoss : e.isElite ? EDDIE_RAIN.cdElite : EDDIE_RAIN.cdNormal;
+    return dur;
+  }
+
+  _updateEddieNotes(dt) {
+    const arr = this._eddieNotes;
+    if (!arr || !arr.length) {
+      // Refractory windows still have to tick down while no note is alive, or a boss stunned by
+      // the last note of a wave would stay refractory until the next one spawned.
+      this._tickEddieStunCds(dt);
+      return;
+    }
+    for (const n of arr) {
+      n.life -= dt;
+      n.rot  += dt * 6;
+      // Home on the nearest live target through the SHIPPED target list, so bosses, mega titans
+      // and multi-body enemies are all reachable exactly as every other Eddie hit reaches them.
+      let best = null, bd = Infinity;
+      for (const t of this._brawlerTargets()) {
+        const d = distance(t.obj.pos, { x: n.x, y: n.y });
+        if (d < bd) { bd = d; best = t; }
+      }
+      if (best) {
+        const ang = Math.atan2(best.obj.pos.y - n.y, best.obj.pos.x - n.x);
+        const sp  = EDDIE_RAIN.noteSpeed;
+        n.vx += (Math.cos(ang) * sp - n.vx) * Math.min(1, dt * EDDIE_RAIN.noteTurn);
+        n.vy += (Math.sin(ang) * sp - n.vy) * Math.min(1, dt * EDDIE_RAIN.noteTurn);
+        if (bd <= EDDIE_RAIN.noteHitR + (best.obj.radius || 0)) {
+          this._brawlerHit(best, (this._targetIsBoss(best) ? 0.6 : 1) * n.dmg, '#ffd23c');
+          this._applyEddieStun(best.obj);
+          n.spent = true;                                          // one hit, then gone
+        }
+      }
+      n.x += n.vx * dt; n.y += n.vy * dt;
+    }
+    { let w = 0; for (let i = 0; i < arr.length; i++) { const n = arr[i]; if (n.life > 0 && !n.spent) arr[w++] = n; } arr.length = w; }
+    this._tickEddieStunCds(dt);
+  }
+
+  _tickEddieStunCds(dt) {
+    for (const e of this.enemies || []) { if (e && e._eddieStunCd > 0) e._eddieStunCd -= dt; }
+  }
+
+  _drawEddieNotes(ctx) {
+    const arr = this._eddieNotes;
+    if (!arr || !arr.length) return;
+    ctx.save();
+    for (const n of arr) {
+      const a = Math.max(0, Math.min(1, n.life / EDDIE_RAIN.noteLife));
+      ctx.save();
+      ctx.translate(n.x, n.y);
+      ctx.rotate(Math.sin(n.rot) * 0.5);
+      ctx.globalAlpha = 0.95 * a;
+      ctx.shadowColor = '#ffd23c'; ctx.shadowBlur = 16;
+      ctx.fillStyle = '#ffd23c';
+      ctx.font = 'bold 34px Consolas, monospace';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(n.glyph, 0, 0);
+      ctx.fillStyle = '#fff6d0';
+      ctx.font = 'bold 19px Consolas, monospace';
+      ctx.fillText(n.glyph, 0, 0);
+      ctx.restore();
+    }
+    ctx.restore();
+    ctx.globalAlpha = 1; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+  }
+
   // Fire ONE solo wave: giant red note-riffs fan toward the nearest cluster + golden lightning
   // strikes rain across the whole visible map.
   _fireGuitarWave(lvl) {
@@ -18866,11 +19005,25 @@ export class Game {
     }
     const strikes = 16 + lvl * 3;
     const sDmg    = 30 + 10 * lvl;
+    // ── AROUND EDDIE, AND THEY FOLLOW HIM (2026-08-06, Maria) ─────────────────────
+    // These used to land at absolute camera-space points — randomRange across the whole visible
+    // map — so they fell wherever the CAMERA happened to be and stayed pinned there while Eddie
+    // walked away. Each strike now stores a POLAR OFFSET from him instead of a world point, and
+    // the update resolves it against his CURRENT position every frame, so the curtain travels
+    // with him in Act 1, Endless and Chaos alike (nothing here reads a mode flag).
     for (let i = 0; i < strikes; i++) {
-      const gx  = this.camera.x + randomRange(30, this._viewW - 30);
-      const gy  = this.camera.y + randomRange(this._viewH * 0.14, this._viewH - 30);
-      const top = this.camera.y - 60;
-      this._goldStrikes.push({ x: gx, gy: gy, top: top, t: 0, fall: Math.max(0.12, (gy - top) / 1650), done: false, dmg: sDmg });
+      const ang = Math.random() * Math.PI * 2;
+      const rad = EDDIE_RAIN.rIn + Math.random() * (EDDIE_RAIN.rOut - EDDIE_RAIN.rIn);
+      this._goldStrikes.push({
+        ox: Math.cos(ang) * rad, oy: Math.sin(ang) * rad * EDDIE_RAIN.squash,
+        x: p.pos.x + Math.cos(ang) * rad, gy: p.pos.y + Math.sin(ang) * rad * EDDIE_RAIN.squash,
+        // `top` is computed HERE and not left for the first update: _fireGuitarWave runs from
+        // inside _updateGuitarSolo, AFTER that method's strike-advance loop, so a strike spawned
+        // this frame is drawn before any update touches it. Leaving top at 0 drew the bolt from
+        // the world origin for exactly one frame.
+        top: p.pos.y + Math.sin(ang) * rad * EDDIE_RAIN.squash - EDDIE_RAIN.dropH,
+        t: 0, fall: EDDIE_RAIN.fall, done: false, dmg: sDmg,
+      });
     }
     this.screenShake?.trigger?.(3, 0.22);
   }
@@ -20976,7 +21129,15 @@ export class Game {
       this._feedbackApoc.update(performance.now(), this.enemies, {
         getX: e => ((e?.pos?.x ?? cam.x) - cam.x) * vs,
         getY: e => ((e?.pos?.y ?? cam.y) - cam.y) * vs,
-        onStrike: (e, kind) => { if (e?.takeHit) e.takeHit((kind === 'bolt' ? 40 : 22) * this._amuletUltMult(), this); },
+        onStrike: (e, kind) => {
+          if (e?.takeHit) e.takeHit((kind === 'bolt' ? 40 : 22) * this._amuletUltMult(), this);
+          // Only the BOLTS stagger. The waveform rings cross dozens of enemies per pass, so
+          // stunning on those would be a soft lock on everything in the arena at once.
+          if (kind === 'bolt') this._applyEddieStun(e);
+        },
+        // GROUND CONTACT -> a homing note, in world space. The module works in screen space and
+        // must stay that way, so the conversion lives here rather than being pushed into it.
+        onLand: (sx, sy) => this._eddieNoteFromScreen(sx, sy, 40 * this._amuletUltMult()),
       });
       // P5R FIX (Eddie ultimate music): the Feedback Apocalypse cinematic lasts ~3.65s, but the
       // 8 approved ultimate tracks are full 3–5 min songs. Do NOT cut the music when the VFX ends
@@ -24617,6 +24778,7 @@ export class Game {
     this._drawSkyfall(ctx);         // Brawler ultimate impacts
     this._drawRedThunderCurtain(ctx); // Eddie ultimate — red note-bolt storm (below player)
     this._drawGuitarSolo(ctx);        // Eddie GUITAR SOLO — big red notes + golden lightning
+    this._drawEddieNotes(ctx);        // homing notes from every landed falling strike
     this._drawCrescentSlashes(ctx); // Brawler secondary
     this._drawChakrams(ctx);        // Brawler primary
     this._drawChromePhantom(ctx);   // Assassin ultimate (clone overlays + burst rings)
