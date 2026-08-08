@@ -1375,7 +1375,7 @@ export class Game {
     ['skeleton_warrior', 'taekwondo_girl', 'cyber_arm_hero', 'brawler_warrior', 'assassin_clone', 'dimis_kickboxer'].forEach(id => {
       const img = new Image();
       img.onerror = () => console.warn(`[Char] missing assets/characters/${id}.png — fallback circle used`);
-      img.src = `assets/characters/${id}.png?v=20260908010000`;
+      img.src = `assets/characters/${id}.png?v=20260908020000`;
       this._charImages[id] = img;
     });
     // Japan Phasewalker portrait lives in the endless/ subfolder (Character Select + FX modules).

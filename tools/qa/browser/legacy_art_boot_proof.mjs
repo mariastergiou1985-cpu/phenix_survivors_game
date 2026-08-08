@@ -20,7 +20,10 @@ import fs from 'node:fs';
 const BASE  = process.argv[2] || 'http://127.0.0.1:8138';
 const EXE   = process.env.PW_CHROMIUM || '/opt/pw-browsers/chromium';
 const SHOTS = process.env.ART_PROOF_SHOTS || '/tmp/legacy_art_shots';
-const BUILD = '20260908010000';
+const BUILD = '20260908020000';
+// Per-asset ?v: το chars line πήρε νέο bust στο revert του Taekwondo art (20260908020000)·
+// nexus/lava/marker κρατούν το bust του 5284bee (αρχεία αμετάβλητα από τότε).
+const ASSET_V = { taek: '20260908020000', lava: '20260908010000', marker: '20260908010000', nexus: '20260908010000' };
 
 let failures = 0;
 const gate = (name, ok, detail = '') => {
@@ -87,7 +90,7 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   });
   for (const [k, v] of Object.entries(sprites)) gate(`A3 sprite loaded: ${k}`, v.ok, v.ok ? '' : v.src);
   for (const k of ['lava', 'marker', 'nexus', 'taek'])
-    gate(`A3 ?v bumped: ${k}`, sprites[k].src.includes(BUILD), sprites[k].src);
+    gate(`A3 ?v bumped: ${k}`, sprites[k].src.includes(ASSET_V[k]), sprites[k].src);
 
   // A4: production flow μέχρι το char select (νέο taekwondo portrait ορατό)
   const click = async (sel) => { await page.click(sel, { timeout: 8000 }); await sleep(160); await page.evaluate(() => window.__phenixQA?._settleFade?.()); await sleep(160); };
