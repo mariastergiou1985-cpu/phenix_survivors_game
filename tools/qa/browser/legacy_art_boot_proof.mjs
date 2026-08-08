@@ -20,7 +20,7 @@ import fs from 'node:fs';
 const BASE  = process.argv[2] || 'http://127.0.0.1:8138';
 const EXE   = process.env.PW_CHROMIUM || '/opt/pw-browsers/chromium';
 const SHOTS = process.env.ART_PROOF_SHOTS || '/tmp/legacy_art_shots';
-const BUILD = '20260908020000';
+const BUILD = '20260908030000';
 // Per-asset ?v: το chars line πήρε νέο bust στο revert του Taekwondo art (20260908020000)·
 // nexus/lava/marker κρατούν το bust του 5284bee (αρχεία αμετάβλητα από τότε).
 const ASSET_V = { taek: '20260908020000', lava: '20260908010000', marker: '20260908010000', nexus: '20260908010000' };

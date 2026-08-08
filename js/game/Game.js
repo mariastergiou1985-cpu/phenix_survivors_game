@@ -49,6 +49,7 @@ import { RailgunHorizon } from '../effects/railgun-horizon.js?v=20260711560000';
 import { MagmaCoreEruption } from '../effects/magma-core-eruption.js?v=20260712300000';
 import { PhantomExecution } from '../effects/phantom-execution.js?v=20260711580000';
 import { WeatherTheater } from '../effects/weather-theater.js?v=20260712130000';
+import { TutorialGuide } from './TutorialGuide.js?v=20260908030000';
 import { Protocol0 } from '../effects/protocol-0.js?v=20260705000000';
 import { LaserEyes } from '../effects/laser-eyes.js?v=20260818000000';
 import { MeteorRain } from '../effects/meteor-rain.js?v=20260712100000';
@@ -241,6 +242,19 @@ const WIELDER_VFX_OVERRIDES = Object.freeze({
   'storm_conductor|cyber_arm_hero':       'assets/weapons/vfx/storm_conductor_hd.png',
   'plasma_execution|assassin_clone':      'assets/weapons/vfx/plasma_execution_hd.png',
   'plasma_execution|brawler_warrior':     'assets/weapons/vfx/plasma_execution_hd.png',
+  // Wiring 2026-08-08 (Maria): τα νέα replacement arts στα κανονικά wielder slots.
+  'magnetic_arc|skeleton_warrior':        'assets/weapons/ArcThunder_Burst.png',
+  'spirit_crescent|taekwondo_girl':       'assets/weapons/crescent_aura.png',
+});
+
+// ── Biome ambient art (wiring 2026-08-08): διακριτικό falling-art ανά endless biome.
+// Καθαρά διακοσμητικό layer μέσα στο Weather Theater — μηδέν gameplay επίδραση.
+const BIOME_AMBIENT_ART = Object.freeze({
+  neon_district:   'assets/effects/ambient/biome_storm_spark.png',
+  orbital_nexus:   'assets/effects/ambient/biome_solar_flare.png',
+  abyssal_trench:  'assets/effects/ambient/biome_null_void_orb.png',
+  glacial_expanse: 'assets/weapons/biome_crystal_stream.png',
+  data_wastes:     'assets/effects/ambient/biome_eden_bloom_pulse.png',
 });
 
 // Lazy one-time Image cache for Nexus pack illustrations (VFX overrides + card icons).
@@ -1923,7 +1937,7 @@ export class Game {
   }
 
   // SETTINGS sub-menu — the single home for Audio, Controls/How-To-Play, Credits.
-  get settingsItems() { return ['AUDIO', 'CONTROLS / HOW TO PLAY', 'BACKUP SAVE', 'RESTORE SAVE', 'CREDITS', 'LORE / ARCHIVE', 'BACK']; }
+  get settingsItems() { return ['AUDIO', 'CONTROLS / HOW TO PLAY', 'REPLAY TUTORIAL', 'BACKUP SAVE', 'RESTORE SAVE', 'CREDITS', 'LORE / ARCHIVE', 'BACK']; }
 
   // P2.8: NULL ARSENAL — DOM overlay ΠΑΝΩ από το menu (δεν αγγίζει gameState)·
   // dynamic import ώστε το module να μη βαραίνει το boot όταν το flag είναι κλειστό.
@@ -2066,6 +2080,7 @@ export class Game {
     this._magma               = null;   // Brawler Warrior ultimate (Magma Core Eruption)
     this._phantomExec         = null;   // Assassin Clone ultimate (Phantom Execution)
     this._weatherTheater      = new WeatherTheater();   // shared cinematic weather/hazard engine
+    this._tutorial            = this._tutorial || new TutorialGuide(this);  // first-run guided tutorial (overlay-only, singleton — το init τρέχει ανά run)
     this._pwFxBuilt           = false;
     this._pwDashing           = false;
     this._pwDashStart         = null;
@@ -14766,6 +14781,7 @@ export class Game {
 
   _selectSettingsItem(item) {
     if      (item === 'AUDIO')            this.goToAudioSettings();
+    else if (item === 'REPLAY TUTORIAL')  this._tutorial?.replay();
     else if (item === 'BACKUP SAVE')      this._backupSave();
     else if (item === 'RESTORE SAVE')     this._restoreSave();
     else if (item === 'CREDITS')          this.goToCredits();
@@ -26112,6 +26128,8 @@ export class Game {
           <img class="slideshow-img" src="assets/ui/main%20theme%20taekwon%20do%20.png?v=20260710160000" alt="Character art">
           <img class="slideshow-img" src="assets/ui/oni%20best%20art.png?v=20260710160000" alt="Character art">
           <img class="slideshow-img" src="assets/ui/assasin.png?v=20260710160000" alt="Character art">
+          <img class="slideshow-img" src="assets/ui/main_menu_trio.png?v=20260908030000" alt="Character art">
+          <img class="slideshow-img" src="assets/ui/vilian%20main%20menu%20fist%20theme%20.png?v=20260908030000" alt="Character art">
         </div>
         <nav class="menu" id="cgm-menu-nav">
           <!-- populated by _syncMenuOverlayItems() -->
@@ -37085,6 +37103,29 @@ _drawLoreArchive(ctx) {
         th.sleet(ctx, t, WIDTH, HEIGHT, (this._frozenSleet.phase === 'hold' ? 1 : 0.6) * _wm);
       }
     } catch (err) { this._warnFx('[WeatherTheater]', err); }
+    try { this._drawBiomeAmbientArt(ctx, t, _wm); } catch (err) { this._warnFx('[BiomeAmbient]', err); }
+  }
+
+  // ── Biome ambient art (wiring 2026-08-08): 3 αργές πτώσεις του biome art,
+  // screen-space, additive, χαμηλό alpha. Visual-only — καμία λογική/σύγκρουση.
+  _drawBiomeAmbientArt(ctx, t, wm = 1) {
+    if (this.gameState !== 'playing' || !this.endless) return;
+    const src = BIOME_AMBIENT_ART[this.runBiome];
+    if (!src) return;
+    const img = _getNexusImage(src);
+    if (!(img && img.complete && img.naturalWidth > 0)) return;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const H0 = 180, W0 = H0 * (img.naturalWidth / img.naturalHeight);
+    for (let i = 0; i < 3; i++) {
+      const ph = (t * (0.030 + i * 0.011) + i * 0.37) % 1;           // αργό loop πτώσης
+      const x = ((i * 0.31 + 0.12 + Math.abs(Math.sin(i * 7.3)) * 0.05) % 1) * (WIDTH - W0);
+      const y = ph * (HEIGHT + H0 * 2) - H0;
+      ctx.globalAlpha = 0.15 * wm * Math.sin(Math.PI * ph);
+      ctx.drawImage(img, x, y, W0, H0);
+    }
+    ctx.restore();
+    ctx.globalAlpha = 1;
   }
 
   // EMP blast renderer — PHASE A (t<0.12) white implode flash · PHASE B (0.12-0.62)

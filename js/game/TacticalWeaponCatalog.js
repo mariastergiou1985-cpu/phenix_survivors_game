@@ -491,6 +491,7 @@ export const TACTICAL_DEFS = Object.freeze({
     name: 'Scrap Magnet Coil',
     description: 'A magnet coil rips scrap metal out of the grid itself — shards orbit it in a razor cloud and shear everything in reach.',
     character: 'cyber_arm_hero',
+    sprite: 'assets/weapons/nexus/Weapon 4 Nanite Nano-Swarm Cloud.png',   // wiring 2026-08-08 — νέο replacement art (card icon + world draw)
     behavior: TACTICAL_BEHAVIOR.STATIONARY_TOTEM,
     procedural: true,
     baseDamage: 74, aoeRadius: 190, tickRate: 0.9, duration: 12,
@@ -511,6 +512,7 @@ export const TACTICAL_DEFS = Object.freeze({
     name: 'Umbral Snare',
     description: 'A pool of living shadow — invisible wires sweep across it, glinting only as they cut.',
     character: 'assassin_clone',
+    sprite: 'assets/weapons/vfx/active_override beam.png',   // wiring 2026-08-08 — νέο replacement art (card icon + world draw)
     behavior: TACTICAL_BEHAVIOR.STATIONARY_TOTEM,
     procedural: true,
     baseDamage: 76, aoeRadius: 170, tickRate: 0.8, duration: 12,
@@ -521,6 +523,7 @@ export const TACTICAL_DEFS = Object.freeze({
     name: 'Phase Beacon',
     description: 'A beacon that exists in two places at once — it BLINKS between its twin positions, and the swap itself is the weapon.',
     character: 'japan_phasewalker',
+    sprite: 'assets/weapons/nexus/Weapon 3 Orbital Laser Beacon Gun.png',   // wiring 2026-08-08 — νέο replacement art (card icon + world draw)
     behavior: TACTICAL_BEHAVIOR.STATIONARY_TOTEM,
     procedural: true,
     baseDamage: 78, aoeRadius: 185, tickRate: 1.0, duration: 12,
