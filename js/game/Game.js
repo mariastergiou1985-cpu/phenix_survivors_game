@@ -1366,7 +1366,7 @@ export class Game {
     // the Nexus Burst art (auto-shown when approaching a biome), used for all players.
     this._nexusFallbackImage = new Image();
     this._nexusFallbackImage.onerror = () => console.warn('[Nexus] missing assets/nexus/nexus_burst.png');
-    this._nexusFallbackImage.src = 'assets/nexus/nexus_burst.png?v=20260706280000';
+    this._nexusFallbackImage.src = 'assets/nexus/nexus_burst.png?v=20260908010000';
 
     // Chaos Mode background — loaded by MapManager.loadBackgrounds()
 
@@ -1375,7 +1375,7 @@ export class Game {
     ['skeleton_warrior', 'taekwondo_girl', 'cyber_arm_hero', 'brawler_warrior', 'assassin_clone', 'dimis_kickboxer'].forEach(id => {
       const img = new Image();
       img.onerror = () => console.warn(`[Char] missing assets/characters/${id}.png — fallback circle used`);
-      img.src = `assets/characters/${id}.png?v=20260711430000`;
+      img.src = `assets/characters/${id}.png?v=20260908010000`;
       this._charImages[id] = img;
     });
     // Japan Phasewalker portrait lives in the endless/ subfolder (Character Select + FX modules).
@@ -1561,11 +1561,11 @@ export class Game {
     // Falling lava-bomb sheet (2×3 molten meteors) — rains from the sky into lava zones.
     this._lavaBombsSprite = new Image();
     this._lavaBombsSprite.onerror = () => console.warn('[Hazard] lavabombs_t.png not found — drawn fallback used');
-    this._lavaBombsSprite.src = 'assets/weapons/lavabombs_t.png?v=20260706310000';
+    this._lavaBombsSprite.src = 'assets/weapons/lavabombs_t.png?v=20260908010000';
     // Red strike-marker reticle — incoming-attack ground marker (replaces the plain red circle).
     this._strikeMarkerSprite = new Image();
     this._strikeMarkerSprite.onerror = () => console.warn('[Hazard] marker_t.png not found — drawn fallback used');
-    this._strikeMarkerSprite.src = 'assets/weapons/marker_t.png?v=20260706310000';
+    this._strikeMarkerSprite.src = 'assets/weapons/marker_t.png?v=20260908010000';
     // Endless hazard art (single-frame transparent PNGs).
     this._airstrikeSprite = new Image();
     this._airstrikeSprite.onerror = () => console.warn('[Endless] airstrike_sheet.png not found — drawn fallback used');
