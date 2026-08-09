@@ -31,7 +31,7 @@ import './BuildEngineChars5.js?v=20260902130000';   // P2.5 Universal όπλα 2
 import './BuildEnginePassives.js?v=20260902130000'; // P2.6 Build passives §26-50 (generic hooks)
 import { MutationUI }      from './MutationUI.js?v=20260904180000';
 import { sampleMutations, sampleCorruptedMutation } from './Mutations.js?v=20260904180000';
-import { drawHUD, drawEndScreen } from './HUD.js?v=20260908050000';
+import { drawHUD, drawEndScreen } from './HUD.js?v=20260904290000';
 import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, COLLECTIBLE_FRAGMENT_COST, COLLECTIBLE_GRID_COST, ECHO_FRAGMENT_COST, ECHO_GRID_COST, SKILL_TREE, AMULET_DEFS, GRID_TO_PF_RATE, characterStageRequirement } from './MetaProgress.js?v=20260904400000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260712520000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
@@ -49,12 +49,11 @@ import { RailgunHorizon } from '../effects/railgun-horizon.js?v=20260711560000';
 import { MagmaCoreEruption } from '../effects/magma-core-eruption.js?v=20260712300000';
 import { PhantomExecution } from '../effects/phantom-execution.js?v=20260711580000';
 import { WeatherTheater } from '../effects/weather-theater.js?v=20260712130000';
-import { TutorialGuide } from './TutorialGuide.js?v=20260908030000';
 import { Protocol0 } from '../effects/protocol-0.js?v=20260705000000';
 import { LaserEyes } from '../effects/laser-eyes.js?v=20260818000000';
 import { MeteorRain } from '../effects/meteor-rain.js?v=20260712100000';
 import { NpcWalker } from './NpcWalker.js?v=20260904030000';
-import { MapManager, BIOME_ID, BIOME_DEFS, CHUNK_SIZE } from './MapManager.js?v=20260908110000';
+import { MapManager, BIOME_ID, BIOME_DEFS, CHUNK_SIZE } from './MapManager.js?v=20260904120000';
 import { getChaosDoctrine } from './ChaosDoctrine.js?v=20260904180000';
 import { AcidRain } from './AcidRain.js?v=20260829020000';   // BATCH 2 major event (2026-07-29)
 import { EnemyWeaponSystem } from './EnemyWeaponSystem.js?v=20260829040000';   // BATCH 3 enemy weapon behaviours
@@ -242,19 +241,6 @@ const WIELDER_VFX_OVERRIDES = Object.freeze({
   'storm_conductor|cyber_arm_hero':       'assets/weapons/vfx/storm_conductor_hd.png',
   'plasma_execution|assassin_clone':      'assets/weapons/vfx/plasma_execution_hd.png',
   'plasma_execution|brawler_warrior':     'assets/weapons/vfx/plasma_execution_hd.png',
-  // Wiring 2026-08-08 (Maria): τα νέα replacement arts στα κανονικά wielder slots.
-  'magnetic_arc|skeleton_warrior':        'assets/weapons/ArcThunder_Burst.png',
-  'spirit_crescent|taekwondo_girl':       'assets/weapons/crescent_aura.png',
-});
-
-// ── Biome ambient art (wiring 2026-08-08): διακριτικό falling-art ανά endless biome.
-// Καθαρά διακοσμητικό layer μέσα στο Weather Theater — μηδέν gameplay επίδραση.
-const BIOME_AMBIENT_ART = Object.freeze({
-  neon_district:   'assets/effects/ambient/biome_storm_spark.png',
-  orbital_nexus:   'assets/effects/ambient/biome_solar_flare.png',
-  abyssal_trench:  'assets/effects/ambient/biome_null_void_orb.png',
-  glacial_expanse: 'assets/weapons/biome_crystal_stream.png',
-  data_wastes:     'assets/effects/ambient/biome_eden_bloom_pulse.png',
 });
 
 // Lazy one-time Image cache for Nexus pack illustrations (VFX overrides + card icons).
@@ -1380,7 +1366,7 @@ export class Game {
     // the Nexus Burst art (auto-shown when approaching a biome), used for all players.
     this._nexusFallbackImage = new Image();
     this._nexusFallbackImage.onerror = () => console.warn('[Nexus] missing assets/nexus/nexus_burst.png');
-    this._nexusFallbackImage.src = 'assets/nexus/nexus_burst.png?v=20260908010000';
+    this._nexusFallbackImage.src = 'assets/nexus/nexus_burst.png?v=20260706280000';
 
     // Chaos Mode background — loaded by MapManager.loadBackgrounds()
 
@@ -1389,7 +1375,7 @@ export class Game {
     ['skeleton_warrior', 'taekwondo_girl', 'cyber_arm_hero', 'brawler_warrior', 'assassin_clone', 'dimis_kickboxer'].forEach(id => {
       const img = new Image();
       img.onerror = () => console.warn(`[Char] missing assets/characters/${id}.png — fallback circle used`);
-      img.src = `assets/characters/${id}.png?v=20260908020000`;
+      img.src = `assets/characters/${id}.png?v=20260711430000`;
       this._charImages[id] = img;
     });
     // Japan Phasewalker portrait lives in the endless/ subfolder (Character Select + FX modules).
@@ -1575,11 +1561,11 @@ export class Game {
     // Falling lava-bomb sheet (2×3 molten meteors) — rains from the sky into lava zones.
     this._lavaBombsSprite = new Image();
     this._lavaBombsSprite.onerror = () => console.warn('[Hazard] lavabombs_t.png not found — drawn fallback used');
-    this._lavaBombsSprite.src = 'assets/weapons/lavabombs_t.png?v=20260908010000';
+    this._lavaBombsSprite.src = 'assets/weapons/lavabombs_t.png?v=20260706310000';
     // Red strike-marker reticle — incoming-attack ground marker (replaces the plain red circle).
     this._strikeMarkerSprite = new Image();
     this._strikeMarkerSprite.onerror = () => console.warn('[Hazard] marker_t.png not found — drawn fallback used');
-    this._strikeMarkerSprite.src = 'assets/weapons/marker_t.png?v=20260908010000';
+    this._strikeMarkerSprite.src = 'assets/weapons/marker_t.png?v=20260706310000';
     // Endless hazard art (single-frame transparent PNGs).
     this._airstrikeSprite = new Image();
     this._airstrikeSprite.onerror = () => console.warn('[Endless] airstrike_sheet.png not found — drawn fallback used');
@@ -1937,7 +1923,7 @@ export class Game {
   }
 
   // SETTINGS sub-menu — the single home for Audio, Controls/How-To-Play, Credits.
-  get settingsItems() { return ['AUDIO', 'CONTROLS / HOW TO PLAY', 'REPLAY TUTORIAL', 'BACKUP SAVE', 'RESTORE SAVE', 'CREDITS', 'LORE / ARCHIVE', 'BACK']; }
+  get settingsItems() { return ['AUDIO', 'CONTROLS / HOW TO PLAY', 'BACKUP SAVE', 'RESTORE SAVE', 'CREDITS', 'LORE / ARCHIVE', 'BACK']; }
 
   // P2.8: NULL ARSENAL — DOM overlay ΠΑΝΩ από το menu (δεν αγγίζει gameState)·
   // dynamic import ώστε το module να μη βαραίνει το boot όταν το flag είναι κλειστό.
@@ -2080,7 +2066,6 @@ export class Game {
     this._magma               = null;   // Brawler Warrior ultimate (Magma Core Eruption)
     this._phantomExec         = null;   // Assassin Clone ultimate (Phantom Execution)
     this._weatherTheater      = new WeatherTheater();   // shared cinematic weather/hazard engine
-    this._tutorial            = this._tutorial || new TutorialGuide(this);  // first-run guided tutorial (overlay-only, singleton — το init τρέχει ανά run)
     this._pwFxBuilt           = false;
     this._pwDashing           = false;
     this._pwDashStart         = null;
@@ -9803,15 +9788,6 @@ export class Game {
 
   currentMinute()             { return Math.floor(this.timeAlive / 60); }
   coreVolatilityMultiplier()  { return 1 + (this.timeAlive / WIN_TIME_SECONDS) * 1.8; }
-
-  // Display-only (2026-08-08, Maria): η πραγματική διάρκεια του τρέχοντος run αν υπάρχει,
-  // αλλιώς null. ΔΕΝ τη διαβάζει κανένα gameplay/win check — μόνο το HUD timer chip,
-  // ώστε να δείχνει remaining αντί για elapsed. Endless & Chaos δεν έχουν χρονικό τέλος.
-  get runDurationSeconds() {
-    if (this.endless) return null;                            // Endless & Chaos: infinite
-    if (this._campaignStage) return CAMPAIGN_STAGE_SECONDS;   // campaign γύροι: 5:00
-    return ACT1_WIN_SECONDS;                                  // Act 1: 8:00 (12:00→8:00, Maria 2026-07-18)
-  }
   overloadRateMultiplier()    { return 1 + Math.floor(this.timeAlive / 120) * 0.05; }
   // Population caps — delegated to EnemySpawner (Phase 0 decoupling).
   enemyCap() {
@@ -14790,7 +14766,6 @@ export class Game {
 
   _selectSettingsItem(item) {
     if      (item === 'AUDIO')            this.goToAudioSettings();
-    else if (item === 'REPLAY TUTORIAL')  this._tutorial?.replay();
     else if (item === 'BACKUP SAVE')      this._backupSave();
     else if (item === 'RESTORE SAVE')     this._restoreSave();
     else if (item === 'CREDITS')          this.goToCredits();
@@ -32103,11 +32078,16 @@ _drawLoreArchive(ctx) {
 
     // ── Layer 1: Dark navy base via radial gradient from edges inward ─────────
     const grad = ctx.createRadialGradient(CX, CY, Math.max(0, innerR - 30), CX, CY, maxInner * 1.1);
+    // VISUAL QA 2026-08-08: measured at HOLD this veil covered 100% of the screen at mean alpha
+    // 0.676, peaking at 0.86 — the map art lost most of its colour and enemies read as flat
+    // silhouettes for the full two seconds. Stops pulled ~25% so the storm still says FROZEN but
+    // the player can still read what is coming at them. Durations are untouched: HOLD stays the
+    // 2.0 s cap Maria set, and this is the alpha only.
     grad.addColorStop(0,   'rgba(0,0,0,0)');
-    grad.addColorStop(0.25, 'rgba(2,6,22,0.55)');
-    grad.addColorStop(0.55, 'rgba(4,12,38,0.80)');
-    grad.addColorStop(0.80, 'rgba(3,15,50,0.86)');
-    grad.addColorStop(1,   'rgba(2,8,28,0.75)');
+    grad.addColorStop(0.25, 'rgba(2,6,22,0.40)');
+    grad.addColorStop(0.55, 'rgba(4,12,38,0.60)');
+    grad.addColorStop(0.80, 'rgba(3,15,50,0.66)');
+    grad.addColorStop(1,   'rgba(2,8,28,0.56)');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, W, H);
 
@@ -32124,7 +32104,10 @@ _drawLoreArchive(ctx) {
     }
 
     // ── Layer 3: Frost crystal dendrite lines radiating from corners ──────────
-    const crystalAlpha = freezeProgress * 0.75;
+    // VISUAL QA 2026-08-08: the corner dendrites were the single loudest thing on the frozen
+    // frame — eight hard white starbursts reading louder than the enemies. 0.75 -> 0.55. Branch
+    // COUNT and length are untouched, so the frost pattern is the same shape, just less shouty.
+    const crystalAlpha = freezeProgress * 0.55;
     if (crystalAlpha > 0.02) {
       ctx.globalAlpha = crystalAlpha;
       ctx.strokeStyle = '#a8e8ff';
@@ -37110,60 +37093,6 @@ _drawLoreArchive(ctx) {
         th.sleet(ctx, t, WIDTH, HEIGHT, (this._frozenSleet.phase === 'hold' ? 1 : 0.6) * _wm);
       }
     } catch (err) { this._warnFx('[WeatherTheater]', err); }
-    try { this._drawBiomeAmbientArt(ctx, t, _wm); } catch (err) { this._warnFx('[BiomeAmbient]', err); }
-  }
-
-  // ── Biome ambient art v2 (animation pass 2026-08-08): κάθε biome έχει δική του
-  // «προσωπικότητα» κίνησης — sway/rotation/pulse/flicker/spin — με καθαρό
-  // fade-in/out στον κύκλο ζωής, camera parallax (δένει με τον κόσμο, όχι
-  // αυτοκόλλητο οθόνης) και boost όσο φυσάει η endless καταιγίδα.
-  // Καθαρά visual-only: deterministic από t, μηδέν state, μηδέν gameplay.
-  _drawBiomeAmbientArt(ctx, t, wm = 1) {
-    if (this.gameState !== 'playing' || !this.endless) return;
-    const src = BIOME_AMBIENT_ART[this.runBiome];
-    if (!src) return;
-    const img = _getNexusImage(src);
-    if (!(img && img.complete && img.naturalWidth > 0)) return;
-    // motion profile ανά biome (fall = ταχύτητα πτώσης, sway = ταλάντωση x,
-    // rot = εύρος γωνίας, spin = συνεχής περιστροφή, puls = scale breathing,
-    // flick = ηλεκτρικό τρεμόπαιγμα alpha)
-    const P = ({
-      neon_district:   { fall: 0.052, sway: 26, rot: 0.06, spin: 0,    puls: 0.03, flick: 1 },
-      orbital_nexus:   { fall: 0.026, sway: 18, rot: 0.10, spin: 0,    puls: 0.06, flick: 0 },
-      abyssal_trench:  { fall: 0.020, sway: 12, rot: 0,    spin: 0.22, puls: 0.05, flick: 0 },
-      glacial_expanse: { fall: 0.060, sway: 34, rot: 0.09, spin: 0,    puls: 0.02, flick: 0 },
-      data_wastes:     { fall: 0.030, sway: 22, rot: 0.07, spin: 0,    puls: 0.08, flick: 0 },
-    })[this.runBiome] || { fall: 0.03, sway: 20, rot: 0.06, spin: 0, puls: 0.04, flick: 0 };
-    // καταιγίδα → το biome «ζωντανεύει» περισσότερο (δένει με το event, όχι σκέτο ντεκόρ)
-    const stormK = 1 + 0.6 * Math.min(1, (this._stormActive || 0) / 3);
-    const parX = (this.camera ? -this.camera.x * 0.05 : 0);          // ρηχό parallax βάθους
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    const H0 = 180, W0 = H0 * (img.naturalWidth / img.naturalHeight);
-    for (let i = 0; i < 3; i++) {
-      const sc = 0.78 + i * 0.22;                                    // ποικιλία μεγέθους
-      const w2 = W0 * sc, h2 = H0 * sc;
-      const ph = (t * (P.fall + i * 0.011) + i * 0.37) % 1;          // κύκλος ζωής 0→1
-      const env = Math.sin(Math.PI * ph);                            // ομαλό fade-in/out
-      const baseX = ((i * 0.31 + 0.12) % 1) * (WIDTH - w2);
-      const x = ((baseX + parX % WIDTH) + WIDTH) % WIDTH;            // wrap με parallax
-      const y = ph * (HEIGHT + h2 * 2) - h2;
-      const sway = Math.sin(t * (0.5 + i * 0.17) + i * 2.1) * P.sway * env;
-      const ang = P.spin ? (t * P.spin + i * 2.1)                    // void orb: συνεχές spin
-                         : Math.sin(t * 0.6 + i * 1.4) * P.rot;      // αλλιώς: αργό λίκνισμα
-      const scale = 1 + Math.sin(t * 1.7 + i * 2.6) * P.puls;        // breathing pulse
-      let a = 0.15 * wm * stormK * env;
-      if (P.flick) a *= 0.72 + 0.28 * Math.abs(Math.sin(t * 9.5 + i * 3.3) * Math.sin(t * 3.7 + i)); // spark flicker
-      ctx.save();
-      ctx.translate(x + w2 / 2 + sway, y + h2 / 2);
-      ctx.rotate(ang);
-      ctx.scale(scale, scale);
-      ctx.globalAlpha = Math.min(0.28, a);
-      ctx.drawImage(img, -w2 / 2, -h2 / 2, w2, h2);
-      ctx.restore();
-    }
-    ctx.restore();
-    ctx.globalAlpha = 1;
   }
 
   // EMP blast renderer — PHASE A (t<0.12) white implode flash · PHASE B (0.12-0.62)
@@ -39403,7 +39332,11 @@ _drawLoreArchive(ctx) {
     // Screen-edge magenta rim — readability polish, purely visual
     const W = this._canvas.width, H = this._canvas.height;
     const t = performance.now();
-    const a = 0.18 + 0.07 * Math.sin(t * 0.0009);
+    // VISUAL QA 2026-08-08: measured max alpha 0.43 in Chaos — the four 60 px bands OVERLAP at
+    // the corners, so the peak is roughly double the value written here, and the frame read as a
+    // red curtain framing the play area rather than as a rim. 0.18+0.07 -> 0.13+0.05 keeps the
+    // Chaos framing and stops it competing with the fight. Band width is untouched.
+    const a = 0.13 + 0.05 * Math.sin(t * 0.0009);
 
     // Top edge
     let g = ctx.createLinearGradient(0, 0, 0, 60);
