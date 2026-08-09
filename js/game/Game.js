@@ -37110,9 +37110,16 @@ _drawLoreArchive(ctx) {
         th.sleet(ctx, t, WIDTH, HEIGHT, (this._frozenSleet.phase === 'hold' ? 1 : 0.6) * _wm);
       }
     } catch (err) { this._warnFx('[WeatherTheater]', err); }
-    try { this._drawBiomeAmbientArt(ctx, t, _wm); } catch (err) { this._warnFx('[BiomeAmbient]', err); }
+    // Biome ambient art ΑΦΑΙΡΕΘΗΚΕ από το live world rendering (Maria 2026-08-09):
+    // τα full-illustration PNGs διάβαζαν σαν στατικά stickers πάνω στο έδαφος
+    // παρά το motion pass v2. Την ambience πλέον την κουβαλούν τα procedural
+    // layers (city life/rain στο Endless, distortion στο Chaos, ship ambience
+    // στο Act 1). Τα PNG assets μένουν στο repo ως art/icon πόροι.
   }
 
+  // ── RETIRED από το live rendering (2026-08-09, Maria) — ΔΕΝ καλείται πια.
+  // Κρατιέται μόνο ως αναφορά/πιθανή card-icon χρήση· κανένα draw site δεν
+  // υπάρχει (το call site στο _drawWeatherTheater αφαιρέθηκε).
   // ── Biome ambient art v2 (animation pass 2026-08-08): κάθε biome έχει δική του
   // «προσωπικότητα» κίνησης — sway/rotation/pulse/flicker/spin — με καθαρό
   // fade-in/out στον κύκλο ζωής, camera parallax (δένει με τον κόσμο, όχι
