@@ -191,6 +191,26 @@ for (const [group, kind] of [[out.be,'be'], [out.legacy,'legacy']]) {
     r.ctl = ctl.l + ctl.r;
   }
 }
+// SIGN-OFF: solo_red_thunder is the ONE weapon this harness cannot exercise, because its runtime
+// (Game.js _updateSoloRedThunder) returns immediately unless the character IS Eddie. Rather than
+// leave it asserted-around, run it properly: select Eddie, grant it, drive its own update, and
+// require real damage. After this, zero weapons in either system are unverified.
+const eddie = await page.evaluate(() => {
+  const g = window.__g, P = g.player;
+  window.__clean();
+  g.selectedCharacter = 'eddie'; P.selectedCharacter = 'eddie';
+  window.__aim(1);
+  const {L,R} = window.__crowds();
+  try { g._grantBaseWeapon('solo_red_thunder', 5); } catch (e) { return { err: String(e) }; }
+  for (let i=0;i<420;i++) {
+    window.__aim(1);
+    try { g._updateSoloRedThunder(1/60); } catch(e){ return { err:'solo '+e }; }
+    try { g._updateProjectiles(1/60); } catch(e){ return { err:'proj '+e }; }
+  }
+  const dmg = [...L,...R].reduce((a,e)=>a+e.dmgTaken,0);
+  g.selectedCharacter = 'dimis_kickboxer'; P.selectedCharacter = 'dimis_kickboxer';
+  return { dmg: Math.round(dmg) };
+});
 await browser.close(); srv.close();
 
 // The player aims LEFT in every run. RIGHT is where the nearest body is.
@@ -230,6 +250,9 @@ line(out.legacy.__auto.length <= 8, `Legacy auto-aim ${out.legacy.__auto.length}
 const beSilentReal = out.be.__silent.filter(k => k !== 'solo_red_thunder');
 line(beSilentReal.length === 0, `no Build Engine weapon went silent (${beSilentReal.length}; solo_red_thunder is Eddie-gated and cannot fire in this harness)`);
 line(out.legacy.__silent.length === 0, `no legacy weapon went silent (${out.legacy.__silent.length})`);
+console.log(`\n══ SIGN-OFF: the one Eddie-gated weapon, run as Eddie ══`);
+console.log(`   solo_red_thunder damage with Eddie selected: ${eddie.dmg}${eddie.err?'  ERR='+eddie.err:''}`);
+line(!eddie.err && eddie.dmg > 0, `solo_red_thunder is ALIVE when its character is selected (${eddie.dmg} dmg) — no weapon left unverified`);
 line(errs.length === 0, `zero page/console errors (${errs.length})` + (errs.length?' :: '+errs.slice(0,3).join(' | '):''));
 
 console.log(`\n──────── ${pass} PASS / ${fail} FAIL ────────\n`);

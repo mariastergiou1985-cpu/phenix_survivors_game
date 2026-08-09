@@ -20310,19 +20310,86 @@ export class Game {
 
   // ── STATIONARY TOTEM: periodic AoE at drop point ──
   _tickTotem(w, dt) {
+    // ── TACTICAL TRUTH FIX (2026-08-09) ────────────────────────────────────────
+    // These two ran the plain totem loop: a damage pulse in a circle, nothing else. Their
+    // NAMES promised a mechanic that did not exist anywhere in the file. Both fixes live above
+    // the cooldown gate because both are continuous, not per-pulse.
+
+    // SCRAP MAGNET COIL — it is a MAGNET. It never pulled anything: "Scrap Magnet Coil" was a
+    // stationary damage circle. Now it drags what it catches toward the coil, bounded per
+    // second and never bosses (the same rule every other pull in the game follows).
+    if (w.id === 'tac_scrap_coil') {
+      const pullR = (w.def.aoeRadius || 190) + 70, pullR2 = pullR * pullR;
+      for (const e of this.enemies) {
+        if (!e || e.hp <= 0 || !e.pos) continue;
+        let isB = false; try { isB = !!(e.isBoss?.() || e.isMegaBoss); } catch (_) {}
+        if (isB) continue;
+        const dx = w.x - e.pos.x, dy = w.y - e.pos.y;
+        const d2 = dx * dx + dy * dy;
+        if (d2 > pullR2 || d2 < 100) continue;
+        const d = Math.sqrt(d2);
+        const step = Math.min(150 * dt, d - 8);          // bounded: never teleports, never overshoots
+        if (step <= 0) continue;
+        e.pos.x += (dx / d) * step;
+        e.pos.y += (dy / d) * step;
+      }
+    }
+
+    // PHASE BEACON — it BLINKS. Its own description says it "exists in two places at once" and
+    // that "the swap itself is the weapon", but w.x/w.y never changed and it simply pulsed in
+    // place. It now owns a twin position and phases between the two; the pulse fires from
+    // whichever one it currently occupies. The DROP COORDS stay locked (they are documented as
+    // never changing and other systems read them) — the blink rides on bx/by.
+    if (w.id === 'tac_phase_beacon') {
+      if (w.bx === undefined) {
+        const a = Math.random() * Math.PI * 2, r = 210;
+        w.bx = w.x; w.by = w.y;
+        w.twinX = w.x + Math.cos(a) * r; w.twinY = w.y + Math.sin(a) * r;
+        w.atTwin = false; w.blinkT = 1.4;
+      }
+      w.blinkT -= dt;
+      if (w.blinkT <= 0) {
+        w.blinkT = 1.4;
+        w.atTwin = !w.atTwin;
+        this._spawnTacParticles(w, w.bx, w.by, 6);        // depart
+        w.bx = w.atTwin ? w.twinX : w.x;
+        w.by = w.atTwin ? w.twinY : w.y;
+        this._spawnTacParticles(w, w.bx, w.by, 6);        // arrive
+      }
+    }
+
     if (w.cooldown > 0) return;
     w.cooldown = w.def.tickRate;
+    // The pulse fires from where the weapon actually IS — identical to w.x/w.y for every
+    // totem except the beacon, which may currently be standing at its twin.
+    const ox = (w.bx !== undefined) ? w.bx : w.x;
+    const oy = (w.by !== undefined) ? w.by : w.y;
     const r2 = (w.def.aoeRadius || 200) * (w.def.aoeRadius || 200);
     for (const e of this.enemies) {
       if (!e || e.hp <= 0) continue;
-      const dx = e.pos.x - w.x, dy = e.pos.y - w.y;
+      const dx = e.pos.x - ox, dy = e.pos.y - oy;
       if (dx * dx + dy * dy <= r2) {
         e.takeHit(w.def.baseDamage, this);
         this._spawnTacParticles(w, e.pos.x, e.pos.y, 3);
       }
     }
     // EMP pulse particles at drop point
-    this._spawnTacParticles(w, w.x, w.y, w.def.particles?.count || 8);
+    this._spawnTacParticles(w, ox, oy, w.def.particles?.count || 8);
+  }
+
+  // EMP JAMMER stun. Tiered and refractory, so a 280px field cannot become a permanent lock:
+  // bosses get a short stagger, elites less than trash, and each enemy has a cooldown before it
+  // can be stunned again. Expiry is absolute against timeAlive, so no extra per-frame tick.
+  _applyEmpStun(e) {
+    if (!e) return 0;
+    let boss = false; try { boss = !!(e.isBoss?.() || e.isMegaBoss); } catch (_) {}
+    const now = this.timeAlive || 0;
+    if ((e._empStunCdUntil || 0) > now) return 0;                  // still refractory
+    const dur = boss ? 0.22 : e.isElite ? 0.45 : 1.00;
+    const cd  = boss ? 2.40 : e.isElite ? 0.90 : 0.35;
+    e.stunned = Math.max(e.stunned || 0, dur);
+    e._empStunCdUntil = now + cd;
+    return dur;
   }
 
   // ── GROUND SHOCKWAVE: expanding ring from drop point ──
@@ -20344,6 +20411,10 @@ export class Game {
       const d2 = dx * dx + dy * dy;
       if (d2 <= rOuter2 && d2 >= rInner2) {
         e.takeHit(w.def.baseDamage, this);
+        // TACTICAL TRUTH FIX: the EMP JAMMER carried no EMP. Its def declares gridLock and
+        // emp_sparks, its description says it "scrambles", and the whole effect was a plain
+        // damage ring — nothing in the file ever scrambled anything. It stuns now.
+        if (w.id === 'tac_emp_jammer') this._applyEmpStun(e);
         w.hitSet.add(e);
         this._spawnTacParticles(w, e.pos.x, e.pos.y, 2);
       }
@@ -20378,6 +20449,46 @@ export class Game {
 
   // ── HORIZONTAL SLASH: wide sweep from drop point ──
   _tickSlash(w, dt) {
+    // TACTICAL TRUTH FIX: CHAKRAM KINETIC STORM had no chakram and no storm. It was a byte-for-byte
+    // clone of the Kinetic Wave's static 400x60 box — a fusion named after spinning discs that
+    // never rotated anything. It now carries REAL orbiting chakrams: three discs circling the drop
+    // point, each hitting what it passes through, on the def's own cadence. The box is gone for
+    // this one weapon only; every other horizontal_slash tactical keeps the shipped behaviour.
+    if (w.id === 'fusion_chakram_kinetic') {
+      if (!w.chakrams) {
+        // STAGGERED ORBITS, and this is not decoration. Three discs on ONE radius sweep a ring
+        // and leave the middle completely untouched — measured: an enemy 100px from the drop
+        // point took ZERO, where the old 400x60 box covered it. That would have been a coverage
+        // REGRESSION hiding behind a nicer name. Inner/mid/outer bands overlap into a disc.
+        const W = w.def.slashWidth || 400;
+        w.chakrams = [
+          { a: 0,                 r: W * 0.22, hitT: 0 },
+          { a: Math.PI * 2 / 3,   r: W * 0.42, hitT: 0 },
+          { a: Math.PI * 4 / 3,   r: W * 0.62, hitT: 0 },
+        ];
+        w.orbitR = W * 0.42;                                       // kept for the draw's fallback
+      }
+      const HIT_R = 46;
+      for (const c of w.chakrams) {
+        c.a += dt * 3.1;                                           // rad/s — the storm actually spins
+        c.hitT -= dt;
+        const cx = w.x + Math.cos(c.a) * c.r;
+        const cy = w.y + Math.sin(c.a) * c.r;
+        if (c.hitT > 0) continue;                                  // per-disc cadence, not per-frame
+        for (const e of this.enemies) {
+          if (!e || e.hp <= 0) continue;
+          const dx = e.pos.x - cx, dy = e.pos.y - cy;
+          if (dx * dx + dy * dy > (HIT_R + (e.radius || 18)) ** 2) continue;
+          e.takeHit(w.def.baseDamage, this);
+          this._spawnTacParticles(w, e.pos.x, e.pos.y, 3);
+          if (w.def.hitStopMs) this._hitStopTimer = Math.max(this._hitStopTimer, w.def.hitStopMs / 1000);
+          c.hitT = w.def.tickRate;
+          break;                                                   // one body per disc per cadence
+        }
+      }
+      return;
+    }
+
     if (w.cooldown > 0) return;
     w.cooldown = w.def.tickRate;
     w.slashPhase = 1.0; // reset visual sweep
@@ -21256,6 +21367,37 @@ export class Game {
         case 'stationary_totem':
           this._drawTotemFx(ctx, w, cam);
           break;
+        case 'horizontal_slash':
+          // Only the chakram fusion draws here. horizontal_slash had NO draw case at all —
+          // slashPhase is written on every hit and read nowhere — so without this the three
+          // discs would deal damage while being completely invisible.
+          if (w.id === 'fusion_chakram_kinetic' && w.chakrams) {
+            ctx.save();
+            ctx.globalCompositeOperation = 'lighter';
+            for (const c of w.chakrams) {
+              const cr = (c.r !== undefined) ? c.r : w.orbitR;
+              const cx = w.x + Math.cos(c.a) * cr - cam.x;
+              const cy = w.y + Math.sin(c.a) * cr - cam.y;
+              ctx.globalAlpha = 0.30 * fadeAlpha;                  // halo
+              ctx.strokeStyle = w.def.color || '#44ccff'; ctx.lineWidth = 9;
+              ctx.beginPath(); ctx.arc(cx, cy, 30, 0, Math.PI * 2); ctx.stroke();
+              ctx.globalAlpha = 0.85 * fadeAlpha;                  // body
+              ctx.lineWidth = 3.5;
+              ctx.beginPath(); ctx.arc(cx, cy, 30, 0, Math.PI * 2); ctx.stroke();
+              ctx.globalAlpha = 0.95 * fadeAlpha;                  // white core edge + blades
+              ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.4;
+              ctx.beginPath(); ctx.arc(cx, cy, 22, 0, Math.PI * 2); ctx.stroke();
+              for (let b = 0; b < 4; b++) {
+                const ba = c.a * 3 + b * Math.PI / 2;
+                ctx.beginPath();
+                ctx.moveTo(cx + Math.cos(ba) * 12, cy + Math.sin(ba) * 12);
+                ctx.lineTo(cx + Math.cos(ba) * 31, cy + Math.sin(ba) * 31);
+                ctx.stroke();
+              }
+            }
+            ctx.restore();
+          }
+          break;
         case 'linear_beam':
           this._drawBeamFx(ctx, w, cam);
           break;
@@ -21500,7 +21642,10 @@ export class Game {
   // damage field at aoeRadius, so the AoE that actually deals damage is VISIBLE and
   // lingers the whole duration (was just a tiny 72px sprite with no field).
   _drawTotemFx(ctx, w, cam) {
-    const sx = w.x - cam.x, sy = w.y - cam.y;
+    // The PHASE BEACON is drawn wherever it currently stands, not at its anchor — otherwise the
+    // blink would be invisible and the pulses would appear to come from nowhere.
+    const sx = ((w.bx !== undefined) ? w.bx : w.x) - cam.x;
+    const sy = ((w.by !== undefined) ? w.by : w.y) - cam.y;
     const R   = w.def.aoeRadius || 200;
     const col = w.def.color || '#00ccff';
     const fade = Math.min(1, w.timer / 1.0);
