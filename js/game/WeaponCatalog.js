@@ -36,6 +36,12 @@ export const WEAPON_ID = Object.freeze({
   BONECIRCUIT_STORM:  'bonecircuit_storm',
   VENOM_SHROUD:       'venom_shroud',
   SEISMIC_RIFT:       'seismic_rift',
+  // ── Evolution VFX Batch 1 (2026-08-09, Maria manifest) — όλα procedural ──
+  ABSOLUTE_ZERO_TEMPEST: 'absolute_zero_tempest', // taekwondo — Chain Lightning + ice bursts
+  ASTRAL_GLACIER:        'astral_glacier',        // phasewalker — Orbiting cosmic ice blades
+  BLOODFROST_GUILLOTINE: 'bloodfrost_guillotine', // skeleton — Mark + Detonate guillotine
+  CAUSTIC_INFERNO:       'caustic_inferno',       // brawler — Ground rift λάβας + acid
+  CRYO_VENOM_FANG:       'cryo_venom_fang',       // euclid — Lingering τοξική παγωμένη ομίχλη
   MARROW_REACTOR:   'marrow_reactor',   // NEW skeleton evolution (procedural)
   MIRROR_CASCADE:   'mirror_cascade',   // NEW taekwondo evolution (procedural)
   FOUNDRY_PISTON:   'foundry_piston',   // NEW cyber-arm evolution (procedural)
@@ -791,6 +797,70 @@ export const WEAPON_DEFS = Object.freeze({
     baseStats: { damage: 26, cooldown: 3.0, aoeRadius: 150, speed: 0, piercing: 99 },
   },
 
+  // ── EVOLUTION VFX BATCH 1 (2026-08-09) — από το manifest της Maria
+  // (pattern_vfx_manifest_pack). Όλα procedural: ΚΑΝΕΝΑ PNG στο live gameplay —
+  // το in-world visual είναι bespoke χορογραφία στο Game._drawEvoFx (ultimate-style).
+  [WEAPON_ID.ABSOLUTE_ZERO_TEMPEST]: {
+    id: 'absolute_zero_tempest',
+    name: 'Absolute Zero Tempest',
+    description: 'White-cyan chain lightning leaps target to target — every impact flash-freezes into an ice burst of shards and sparks.',
+    character: 'taekwondo_girl',
+    element: 'ice',
+    behavior: WEAPON_BEHAVIOR.CIRCLE_360,
+    isEvolution: true,
+    procedural: true,
+    color: '#bfe9ff',
+    baseStats: { damage: 30, cooldown: 2.7, aoeRadius: 150, speed: 0, piercing: 99 },
+  },
+  [WEAPON_ID.ASTRAL_GLACIER]: {
+    id: 'astral_glacier',
+    name: 'Astral Glacier',
+    description: 'Cosmic ice crystals condense from stardust and ORBIT as blades — a glacier of the void that grinds everything in its ring.',
+    character: 'japan_phasewalker',
+    element: 'ice',
+    behavior: WEAPON_BEHAVIOR.VORTEX,
+    isEvolution: true,
+    procedural: true,
+    color: '#9fc8ff',
+    baseStats: { damage: 27, cooldown: 2.9, aoeRadius: 150, speed: 0, piercing: 99 },
+  },
+  [WEAPON_ID.BLOODFROST_GUILLOTINE]: {
+    id: 'bloodfrost_guillotine',
+    name: 'Bloodfrost Guillotine',
+    description: 'A blood rune marks the ground — then a frozen guillotine blade DROPS, shattering into red crystals and freezing mist.',
+    character: 'skeleton_warrior',
+    element: 'ice',
+    behavior: WEAPON_BEHAVIOR.GROUND_SHOCKWAVE,
+    isEvolution: true,
+    procedural: true,
+    color: '#ff4d5e',
+    baseStats: { damage: 38, cooldown: 2.8, aoeRadius: 130, speed: 0, piercing: 99 },
+  },
+  [WEAPON_ID.CAUSTIC_INFERNO]: {
+    id: 'caustic_inferno',
+    name: 'Caustic Inferno',
+    description: 'The ground RIPS open into a boiling lava rift — neon acid corrodes its edges while black smoke chokes the air above.',
+    character: 'brawler_warrior',
+    element: 'fire',
+    behavior: WEAPON_BEHAVIOR.GROUND_SHOCKWAVE,
+    isEvolution: true,
+    procedural: true,
+    color: '#ff7a2a',
+    baseStats: { damage: 32, cooldown: 2.8, aoeRadius: 160, speed: 0, piercing: 99 },
+  },
+  [WEAPON_ID.CRYO_VENOM_FANG]: {
+    id: 'cryo_venom_fang',
+    name: 'Cryo Venom Fang',
+    description: 'Twin crystal fangs BITE — the wound exhales a lingering toxic frost-fog of neon droplets, ice crystals and slow-rising bubbles.',
+    character: 'euclid_vector',
+    element: 'toxin',
+    behavior: WEAPON_BEHAVIOR.NOVA,
+    isEvolution: true,
+    procedural: true,
+    color: '#54e88a',
+    baseStats: { damage: 28, cooldown: 2.6, aoeRadius: 150, speed: 0, piercing: 99 },
+  },
+
 });
 
 // ── Evolution recipes ───────────────────────────────────────────────
@@ -991,6 +1061,37 @@ export const EVOLUTION_RECIPES = Object.freeze([
     ingredients: [WEAPON_ID.NEXUS_CHAKRAM, WEAPON_ID.CATACLYSM_PULSE],
     minLevel: 5,
     owner: ['brawler_warrior'],
+  },
+  // ── Evolution VFX Batch 1 (2026-08-09) ──
+  {
+    result: WEAPON_ID.ABSOLUTE_ZERO_TEMPEST,
+    ingredients: [WEAPON_ID.SPIRIT_CRESCENT, WEAPON_ID.STORM_SABER],
+    minLevel: 5,
+    owner: ['taekwondo_girl'],
+  },
+  {
+    result: WEAPON_ID.ASTRAL_GLACIER,
+    ingredients: [WEAPON_ID.NEXUS_CHAKRAM, WEAPON_ID.GLITCH_TEAR],
+    minLevel: 5,
+    owner: ['japan_phasewalker'],
+  },
+  {
+    result: WEAPON_ID.BLOODFROST_GUILLOTINE,
+    ingredients: [WEAPON_ID.GAS_NEEDLE, WEAPON_ID.SPIRIT_CRESCENT],
+    minLevel: 5,
+    owner: ['skeleton_warrior'],
+  },
+  {
+    result: WEAPON_ID.CAUSTIC_INFERNO,
+    ingredients: [WEAPON_ID.CATACLYSM_PULSE, WEAPON_ID.GLITCH_TEAR],
+    minLevel: 5,
+    owner: ['brawler_warrior'],
+  },
+  {
+    result: WEAPON_ID.CRYO_VENOM_FANG,
+    ingredients: [WEAPON_ID.GAS_NEEDLE, WEAPON_ID.GLITCH_TEAR],
+    minLevel: 5,
+    owner: ['euclid_vector'],
   },
 ]);
 

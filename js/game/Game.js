@@ -71,7 +71,7 @@ import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260722600000';
 import { NexusManager } from './NexusManager.js?v=20260803000000';
 import { VESSELS, getVesselById, getDefaultVesselId } from './VesselCatalog.js?v=20260705040000';
 import { PETS, getPetById } from './PetCatalog.js?v=20260705000000';
-import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons, getEvolutionOwners, isEvolutionOwnedBy, getCardDisplayName } from './WeaponCatalog.js?v=20260720800000';
+import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons, getEvolutionOwners, isEvolutionOwnedBy, getCardDisplayName } from './WeaponCatalog.js?v=20260908140000';
 import { TACTICAL_ID, TACTICAL_DEFS, getTacticalDef, getTacticalForCharacter, getAvailableTactical, preloadTacticalSprites, FUSION_TACTICALS } from './TacticalWeaponCatalog.js?v=20260720000000';
 import { VFXSpritePlayer } from './VFXSpritePlayer.js?v=20260902110000';
 
@@ -18083,6 +18083,349 @@ export class Game {
           ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(0, 0, 4 + pulse * 4, 0, Math.PI * 2); ctx.fill();
           ctx.restore();
         }
+      } else if (f.id === 'absolute_zero_tempest') {
+        // ── ABSOLUTE ZERO TEMPEST (Batch 1 · taekwondo · Chain Lightning) ──
+        // ACT 1: 5 λευκοκύανοι κεραυνοί ΑΛΥΣΙΔΩΝΟΝΤΑΙ προς τα έξω (ζιγκ-ζαγκ,
+        // time-quantized rechain — «ζωντανό» ρεύμα). ACT 2: σε κάθε άκρο ICE BURST
+        // με παγοθραύσματα + λευκό flash (§2/§6). ACT 3: frost mist dissolve.
+        const glow = f.color || '#bfe9ff';
+        const pulse = Math.pow(Math.max(0, Math.sin(f.t * Math.PI * 2 * 6)), 6);
+        const seg = Math.floor(f.t / 0.09);                       // rechain κάθε 90ms
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        for (let i = 0; i < 5; i++) {
+          const a2 = (i / 5) * Math.PI * 2 + prV(f.seed, i) * 0.9;
+          const reach = f.R * (0.55 + prV(f.seed, i + 5) * 0.45);
+          const bolts = k < 0.72;
+          let px = 0, py = 0;
+          if (bolts) {                                            // double-stroke bolt (§B σε additive)
+            for (const [lw, col, al] of [[5, glow, 0.4], [1.8, '#ffffff', 0.95]]) {
+              ctx.globalAlpha = al * Math.min(1, k / 0.14) * (k > 0.6 ? 1 - (k - 0.6) / 0.12 : 1);
+              ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.lineCap = 'round';
+              ctx.beginPath(); ctx.moveTo(0, 0);
+              px = 0; py = 0;
+              for (let s = 1; s <= 4; s++) {
+                const jit = (prV(f.seed + seg, i * 9 + s) - 0.5) * 30;
+                px = Math.cos(a2) * (reach * s / 4) - Math.sin(a2) * jit;
+                py = (Math.sin(a2) * (reach * s / 4) + Math.cos(a2) * jit) * 0.75;
+                ctx.lineTo(px, py);
+              }
+              ctx.stroke();
+            }
+          } else { px = Math.cos(a2) * reach; py = Math.sin(a2) * reach * 0.75; }
+          // ice burst στο endpoint: κρύσταλλοι-βελάκια + flash, μετά shatter/fade
+          const bK = Math.max(0, Math.min(1, (k - 0.2 - i * 0.05) / 0.6));
+          if (bK > 0) {
+            const shat = Math.max(0, (k - 0.72) / 0.43);          // ACT 3 σκόρπισμα
+            for (let c2 = 0; c2 < 4; c2++) {
+              const ca = prV(f.seed, i * 7 + c2 + 30) * Math.PI * 2;
+              const cd = 6 + bK * 10 + shat * 26;
+              const cx2 = px + Math.cos(ca) * cd, cy2 = py + Math.sin(ca) * cd * 0.7;
+              ctx.save();
+              ctx.translate(cx2, cy2); ctx.rotate(ca + f.t * 2);
+              ctx.globalAlpha = bK * (1 - shat) * 0.9;
+              ctx.fillStyle = c2 % 2 ? '#eaf8ff' : glow;
+              ctx.beginPath(); ctx.moveTo(0, -5); ctx.lineTo(2.4, 0); ctx.lineTo(0, 5); ctx.lineTo(-2.4, 0); ctx.closePath(); ctx.fill();
+              ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 0.8; ctx.stroke();
+              ctx.restore();
+            }
+            ctx.globalAlpha = bK * (1 - shat) * (0.4 + pulse * 0.5);
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath(); ctx.arc(px, py, 2.6 + pulse * 2.4, 0, Math.PI * 2); ctx.fill();
+          }
+        }
+        if (k > 0.72) {                                           // frost mist dissolve
+          const mK = (k - 0.72) / 0.43;
+          ctx.globalAlpha = (1 - mK) * 0.22;
+          ctx.fillStyle = '#dff2ff';
+          ctx.beginPath(); ctx.ellipse(0, f.R * 0.18, f.R * (0.5 + mK * 0.6), f.R * 0.2, 0, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.restore();
+      } else if (f.id === 'astral_glacier') {
+        // ── ASTRAL GLACIER (Batch 1 · phasewalker · Orbiting Blades) ──
+        // ACT 1: stardust συμπυκνώνεται σε 4 κρυστάλλινες λεπίδες. ACT 2: οι λεπίδες
+        // ΤΡΟΧΙΟΔΡΟΜΟΥΝ (ελλειπτικά) με starlight trails + nebula core breathing.
+        // ACT 3: εκσφενδονίζονται σπειροειδώς και διαλύονται σε αστρόσκονη.
+        const glow = f.color || '#9fc8ff', neb = '#c7a8ff';
+        const cond = Math.min(1, k / 0.3);
+        const fling = Math.max(0, (k - 0.75) / 0.4);
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.20 + 0.10 * Math.sin(f.t * 3.2);      // nebula core
+        const ng = ctx.createRadialGradient(0, 0, 0, 0, 0, f.R * 0.5);
+        ng.addColorStop(0, neb); ng.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = ng;
+        ctx.beginPath(); ctx.arc(0, 0, f.R * 0.5, 0, Math.PI * 2); ctx.fill();
+        for (let i = 0; i < 4; i++) {
+          const oa = f.t * 3.4 + (i / 4) * Math.PI * 2 + f.seed;
+          const orbR = f.R * (0.75 * cond + fling * 1.1);
+          const bx = Math.cos(oa) * orbR, by = Math.sin(oa) * orbR * 0.7;
+          if (cond < 1) {                                          // stardust converging (§1)
+            for (let d2 = 0; d2 < 3; d2++) {
+              const dd = (1 - cond) * (30 + prV(f.seed, i * 5 + d2) * 40);
+              ctx.globalAlpha = cond * 0.8;
+              ctx.fillStyle = '#ffffff';
+              ctx.beginPath();
+              ctx.arc(bx + Math.cos(d2 * 2.1 + f.t * 5) * dd, by + Math.sin(d2 * 2.1 + f.t * 5) * dd * 0.7, 1.3, 0, Math.PI * 2);
+              ctx.fill();
+            }
+          }
+          // starlight trail — τόξο πίσω από τη λεπίδα (3 στρώσεις §2)
+          const trailA = Math.min(1, cond) * (1 - fling);
+          for (const [lw, col, al] of [[6, neb, 0.18], [3, glow, 0.42], [1.2, '#ffffff', 0.8]]) {
+            ctx.globalAlpha = trailA * al;
+            ctx.strokeStyle = col; ctx.lineWidth = lw;
+            ctx.beginPath();
+            for (let s2 = 0; s2 <= 10; s2++) {
+              const ta = oa - (s2 / 10) * 0.85;
+              const tx = Math.cos(ta) * orbR, ty = Math.sin(ta) * orbR * 0.7;
+              s2 === 0 ? ctx.moveTo(tx, ty) : ctx.lineTo(tx, ty);
+            }
+            ctx.stroke();
+          }
+          // η κρυστάλλινη λεπίδα (ρόμβος με λευκή ακμή), σβήνει στο fling
+          ctx.save();
+          ctx.translate(bx, by); ctx.rotate(oa + Math.PI / 2);
+          ctx.globalAlpha = cond * (1 - fling);
+          ctx.fillStyle = glow;
+          ctx.beginPath(); ctx.moveTo(0, -11); ctx.lineTo(4.5, 0); ctx.lineTo(0, 11); ctx.lineTo(-4.5, 0); ctx.closePath(); ctx.fill();
+          ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.2; ctx.stroke();
+          const gl = Math.pow(Math.max(0, Math.sin(f.t * 7 + i * 2)), 7);   // §7 glint
+          if (gl > 0.5) { ctx.globalAlpha = gl * cond; ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(0, -11, 2, 0, Math.PI * 2); ctx.fill(); }
+          ctx.restore();
+          if (fling > 0) {                                         // αστρόσκονη διάλυσης
+            for (let d3 = 0; d3 < 4; d3++) {
+              ctx.globalAlpha = (1 - fling) * 0.8;
+              ctx.fillStyle = d3 % 2 ? '#ffffff' : glow;
+              ctx.beginPath();
+              ctx.arc(bx + (prV(f.seed, i * 9 + d3) - 0.5) * 26 * fling * 3, by + (prV(f.seed, i * 9 + d3 + 40) - 0.5) * 20 * fling * 3, 1.4, 0, Math.PI * 2);
+              ctx.fill();
+            }
+          }
+        }
+        ctx.restore();
+      } else if (f.id === 'bloodfrost_guillotine') {
+        // ── BLOODFROST GUILLOTINE (Batch 1 · skeleton · Mark + Detonate) ──
+        // ACT 1: κόκκινο blood RUNE στο έδαφος (περιστρεφόμενο, breathing). ACT 2:
+        // η ΛΕΠΙΔΑ πέφτει κατακόρυφα με ghost streaks — SLAM σε λευκό flash.
+        // ACT 3: σπάει σε κόκκινους κρυστάλλους + λευκή παγωμένη ομίχλη + slam ring.
+        const blood = f.color || '#ff4d5e', frost = '#dff2ff';
+        const mark = Math.min(1, k / 0.3);
+        const drop = k < 0.3 ? 0 : Math.min(1, (k - 0.3) / 0.2);   // γρήγορη πτώση
+        const det  = Math.max(0, (k - 0.5) / 0.65);
+        const pulse = Math.pow(Math.max(0, Math.sin(f.t * Math.PI * 2 * 5)), 6);
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        if (det < 0.5) {                                           // ACT 1 rune (σβήνει μετά το slam)
+          const rA = mark * (det > 0 ? 1 - det * 2 : 1);
+          ctx.save();
+          ctx.translate(0, f.R * 0.16); ctx.scale(1, 0.42); ctx.rotate(f.t * 0.8);
+          ctx.globalAlpha = rA * (0.5 + 0.3 * Math.sin(f.t * 4));
+          ctx.strokeStyle = blood; ctx.lineWidth = 3;
+          ctx.setLineDash([12, 7]);
+          ctx.beginPath(); ctx.arc(0, 0, f.R * 0.55 * mark, 0, Math.PI * 2); ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.globalAlpha = rA * 0.85;
+          ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.4;
+          for (let g2 = 0; g2 < 3; g2++) {                         // rune glyphs
+            const ga = g2 * (Math.PI * 2 / 3) - f.t * 0.8;
+            const gr2 = f.R * 0.34 * mark;
+            ctx.beginPath();
+            ctx.moveTo(Math.cos(ga) * gr2, Math.sin(ga) * gr2);
+            ctx.lineTo(Math.cos(ga + 0.5) * gr2 * 0.55, Math.sin(ga + 0.5) * gr2 * 0.55);
+            ctx.lineTo(Math.cos(ga - 0.4) * gr2 * 0.3, Math.sin(ga - 0.4) * gr2 * 0.3);
+            ctx.stroke();
+          }
+          ctx.restore();
+        }
+        if (drop > 0 && det < 0.25) {                              // ACT 2 η λεπίδα πέφτει
+          const bladeY = -170 + drop * 170;
+          for (let g3 = 2; g3 >= 0; g3--) {                        // 2 ghosts + solid (§4)
+            const gy = bladeY - g3 * 26 * (1 - drop);
+            ctx.globalAlpha = (g3 ? 0.22 : 0.95) * (det > 0 ? 1 - det * 4 : 1);
+            ctx.fillStyle = g3 ? blood : '#f4f8ff';
+            ctx.beginPath();                                       // λεπίδα: trapezoid με αιχμή
+            ctx.moveTo(-16, gy - 60); ctx.lineTo(16, gy - 60);
+            ctx.lineTo(10, gy - 6); ctx.lineTo(0, gy + 8); ctx.lineTo(-10, gy - 6);
+            ctx.closePath(); ctx.fill();
+            if (!g3) {                                             // ακμή: κόκκινη πλάτη + λευκή κόψη (§B)
+              ctx.strokeStyle = blood; ctx.lineWidth = 3; ctx.stroke();
+              ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.2; ctx.stroke();
+            }
+          }
+        }
+        if (det > 0) {                                             // ACT 3 detonation
+          const sr = 8 + det * f.R * 1.35;                         // slam ring (§3)
+          ctx.globalAlpha = (1 - det) * 0.8;
+          ctx.strokeStyle = blood; ctx.lineWidth = 5;
+          ctx.beginPath(); ctx.ellipse(0, f.R * 0.16, sr, sr * 0.42, 0, 0, Math.PI * 2); ctx.stroke();
+          ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.6;
+          ctx.beginPath(); ctx.ellipse(0, f.R * 0.16, sr * 0.88, sr * 0.37, 0, 0, Math.PI * 2); ctx.stroke();
+          ctx.globalAlpha = Math.max(0, 1 - det * 3) * (0.5 + pulse * 0.4);  // λευκό impact flash
+          ctx.fillStyle = '#ffffff';
+          ctx.beginPath(); ctx.arc(0, 0, 26 * (1 - det * 2), 0, Math.PI * 2); ctx.fill();
+          for (let c3 = 0; c3 < 9; c3++) {                         // κόκκινοι κρύσταλλοι εκτοξεύονται
+            const ca2 = prV(f.seed, c3 + 60) * Math.PI * 2;
+            const cd2 = det * (26 + prV(f.seed, c3 + 70) * f.R * 0.9);
+            ctx.save();
+            ctx.translate(Math.cos(ca2) * cd2, Math.sin(ca2) * cd2 * 0.6 - det * 8 + det * det * 30);
+            ctx.rotate(ca2 + f.t * 3);
+            ctx.globalAlpha = (1 - det) * 0.9;
+            ctx.fillStyle = c3 % 3 ? blood : '#ff9aa4';
+            ctx.beginPath(); ctx.moveTo(0, -6); ctx.lineTo(2.8, 0); ctx.lineTo(0, 6); ctx.lineTo(-2.8, 0); ctx.closePath(); ctx.fill();
+            ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 0.7; ctx.stroke();
+            ctx.restore();
+          }
+          ctx.globalAlpha = (1 - det) * 0.3;                       // παγωμένη ομίχλη
+          ctx.fillStyle = frost;
+          ctx.beginPath(); ctx.ellipse(0, f.R * 0.2, f.R * (0.4 + det * 0.7), f.R * 0.17, 0, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.restore();
+      } else if (f.id === 'caustic_inferno') {
+        // ── CAUSTIC INFERNO (Batch 1 · brawler · Ground Rift) ──
+        // ACT 1: το έδαφος ΣΚΙΖΕΤΑΙ — ζιγκ-ζαγκ ρωγμή ανοίγει κατά μήκος. ACT 2: η
+        // λάβα ΒΡΑΖΕΙ (σκάνε φυσαλίδες §6), neon acid διαβρώνει τα χείλη, μαύρος
+        // καπνός ανεβαίνει. ACT 3: η ρωγμή κρυώνει σε embers + acid sparks dissolve.
+        const lava = f.color || '#ff7a2a', acid = '#7dff5e';
+        const open = Math.min(1, k / 0.28);
+        const cool = Math.max(0, (k - 0.72) / 0.43);
+        const rot = prV(f.seed, 1) * Math.PI;                      // τυχαίος προσανατολισμός ρωγμής
+        ctx.save();
+        ctx.rotate(rot);
+        // η ρωγμή: 7 segments, πλάτος που «αναπνέει» με το βράσιμο
+        const segs = [];
+        for (let s3 = 0; s3 <= 6; s3++) {
+          const sx3 = (s3 / 6 - 0.5) * f.R * 1.7 * open;
+          const sy3 = (prV(f.seed, s3 + 10) - 0.5) * 34;
+          segs.push([sx3, sy3]);
+        }
+        const boil = 1 + 0.14 * Math.sin(f.t * 9);
+        ctx.globalCompositeOperation = 'source-over';              // σκοτεινό εσωτερικό πρώτα
+        ctx.globalAlpha = open * (1 - cool * 0.6) * 0.7;
+        ctx.strokeStyle = '#1a0703'; ctx.lineWidth = 17 * open * boil; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        ctx.beginPath(); segs.forEach(([x2, y2], i2) => i2 ? ctx.lineTo(x2, y2) : ctx.moveTo(x2, y2)); ctx.stroke();
+        ctx.globalCompositeOperation = 'lighter';                  // λάβα μέσα (3 στρώσεις §2)
+        for (const [lw, col, al] of [[12, lava, 0.5], [6, '#ffc76a', 0.7], [2.2, '#fff3d8', 0.95]]) {
+          ctx.globalAlpha = open * (1 - cool) * al;
+          ctx.strokeStyle = col; ctx.lineWidth = lw * open * boil;
+          ctx.beginPath(); segs.forEach(([x2, y2], i2) => i2 ? ctx.lineTo(x2, y2) : ctx.moveTo(x2, y2)); ctx.stroke();
+        }
+        for (let b2 = 0; b2 < 6; b2++) {                           // ACT 2: bubbles που σκάνε (§6)
+          const bp = (f.t * (0.9 + prV(f.seed, b2 + 20) * 0.7) + prV(f.seed, b2 + 30)) % 1;
+          if (bp > 0.4 || cool > 0.5) continue;
+          const bi = Math.floor(prV(f.seed + Math.floor(f.t / 0.4), b2) * 6);
+          const [bx2, by2] = segs[bi];
+          const env2 = Math.sin(Math.PI * (bp / 0.4));
+          ctx.globalAlpha = env2 * 0.85 * (1 - cool);
+          ctx.fillStyle = '#ffe9b8';
+          ctx.beginPath(); ctx.arc(bx2 + (prV(f.seed, b2 + 40) - 0.5) * 14, by2, 2 + env2 * 3.4, 0, Math.PI * 2); ctx.fill();
+        }
+        // acid corrosion στα χείλη: πράσινες dashed γραμμές που «τρώνε» προς τα έξω
+        ctx.globalAlpha = open * (1 - cool * 0.5) * (0.5 + 0.2 * Math.sin(f.t * 5.6));
+        ctx.strokeStyle = acid; ctx.lineWidth = 2;
+        ctx.setLineDash([7, 9]); ctx.lineDashOffset = -f.t * 34;
+        for (const side of [-1, 1]) {
+          ctx.beginPath();
+          segs.forEach(([x2, y2], i2) => { const yy = y2 + side * (11 + Math.sin(f.t * 3 + i2) * 3) * open * boil; i2 ? ctx.lineTo(x2, yy) : ctx.moveTo(x2, yy); });
+          ctx.stroke();
+        }
+        ctx.setLineDash([]);
+        if (cool > 0) {                                            // ACT 3: acid sparks dissolve
+          for (let a3 = 0; a3 < 7; a3++) {
+            const [ax, ay] = segs[Math.floor(prV(f.seed, a3 + 80) * 6.99)];
+            ctx.globalAlpha = (1 - cool) * 0.9;
+            ctx.fillStyle = a3 % 2 ? acid : '#eaffe0';
+            ctx.beginPath(); ctx.arc(ax + (prV(f.seed, a3 + 90) - 0.5) * 20, ay - cool * 24, 1.5, 0, Math.PI * 2); ctx.fill();
+          }
+        }
+        ctx.globalCompositeOperation = 'source-over';              // μαύρος καπνός από πάνω
+        for (let sm = 0; sm < 3; sm++) {
+          const sp = (f.t * 0.5 + sm * 0.33) % 1;
+          const [smx, smy] = segs[1 + sm * 2];
+          ctx.globalAlpha = Math.sin(Math.PI * sp) * 0.20 * open * (1 - cool * 0.5);
+          ctx.fillStyle = '#0b0705';
+          ctx.beginPath();
+          ctx.ellipse(smx + Math.sin(f.t * 1.7 + sm) * 8, smy - 14 - sp * 44, 10 + sp * 14, 7 + sp * 9, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+      } else if (f.id === 'cryo_venom_fang') {
+        // ── CRYO VENOM FANG (Batch 1 · euclid · Lingering Cloud) ──
+        // ACT 1: δύο κρυστάλλινοι ΚΥΝΟΔΟΝΤΕΣ δαγκώνουν προς τα μέσα + venom splash.
+        // ACT 2: τοξική παγωμένη ομίχλη — organic blobs, κυανοί κρύσταλλοι (§7
+        // glints), neon σταγόνες που πέφτουν, φυσαλίδες που ανεβαίνουν. ACT 3:
+        // η ομίχλη διαλύεται προς τα έξω, οι κρύσταλλοι θρυμματίζονται.
+        const ven = f.color || '#54e88a', ice2 = '#8ff0ff';
+        const bite = Math.min(1, k / 0.22);
+        const foggy = Math.min(1, Math.max(0, (k - 0.16) / 0.3));
+        const dis = Math.max(0, (k - 0.8) / 0.35);
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        if (k < 0.4) {                                             // ACT 1 fangs
+          const fb = 1 - Math.abs(bite * 2 - 1);                   // μέσα-έξω δάγκωμα
+          for (const side of [-1, 1]) {
+            ctx.save();
+            ctx.translate(side * (34 - bite * 26), -6);
+            ctx.rotate(side * (0.5 - bite * 0.35));
+            ctx.globalAlpha = Math.min(1, k / 0.08) * (k > 0.3 ? 1 - (k - 0.3) / 0.1 : 1);
+            ctx.fillStyle = ice2;
+            ctx.beginPath(); ctx.moveTo(0, -18); ctx.lineTo(side * -9, 4); ctx.lineTo(0, 20); ctx.lineTo(side * 4, 2); ctx.closePath(); ctx.fill();
+            ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.3; ctx.stroke();
+            ctx.restore();
+          }
+          if (fb > 0.75) {                                         // venom splash στη δαγκωματιά
+            for (let v2 = 0; v2 < 6; v2++) {
+              const va2 = prV(f.seed, v2 + 15) * Math.PI * 2;
+              ctx.globalAlpha = (fb - 0.75) * 4 * 0.85;
+              ctx.fillStyle = ven;
+              ctx.beginPath(); ctx.arc(Math.cos(va2) * 14, Math.sin(va2) * 10, 1.8, 0, Math.PI * 2); ctx.fill();
+            }
+          }
+        }
+        for (let c4 = 0; c4 < 6; c4++) {                           // ACT 2 τοξική ομίχλη (blobs)
+          const ba2 = prV(f.seed, c4 + 25) * Math.PI * 2;
+          const br2 = f.R * (0.2 + prV(f.seed, c4 + 35) * 0.45) * (1 + dis * 0.8);
+          const bx3 = Math.cos(ba2 + f.t * 0.5) * br2;
+          const by3 = Math.sin(ba2 + f.t * 0.5) * br2 * 0.62;
+          const rr3 = (16 + prV(f.seed, c4 + 45) * 16) * (1 + 0.12 * Math.sin(f.t * 2.4 + c4));
+          const fg = ctx.createRadialGradient(bx3, by3, 0, bx3, by3, rr3);
+          fg.addColorStop(0, ven); fg.addColorStop(1, 'rgba(0,0,0,0)');
+          ctx.globalAlpha = foggy * (1 - dis) * 0.30;
+          ctx.fillStyle = fg;
+          ctx.beginPath(); ctx.arc(bx3, by3, rr3, 0, Math.PI * 2); ctx.fill();
+        }
+        for (let i3 = 0; i3 < 5; i3++) {                           // κυανοί κρύσταλλοι μέσα στην ομίχλη
+          const ia = prV(f.seed, i3 + 55) * Math.PI * 2;
+          const ir = f.R * (0.16 + prV(f.seed, i3 + 65) * 0.4);
+          const ix = Math.cos(ia) * ir, iy = Math.sin(ia) * ir * 0.62;
+          const shat2 = dis * (1 + prV(f.seed, i3 + 75));
+          ctx.save();
+          ctx.translate(ix + shat2 * (prV(f.seed, i3) - 0.5) * 50, iy + shat2 * (prV(f.seed, i3 + 5) - 0.5) * 36);
+          ctx.rotate(prV(f.seed, i3 + 85) * Math.PI + f.t * 0.7);
+          ctx.globalAlpha = foggy * (1 - dis) * 0.9;
+          ctx.fillStyle = ice2;
+          ctx.beginPath(); ctx.moveTo(0, -6); ctx.lineTo(2.6, 0); ctx.lineTo(0, 6); ctx.lineTo(-2.6, 0); ctx.closePath(); ctx.fill();
+          const gl2 = Math.pow(Math.max(0, Math.sin(f.t * 6 + i3 * 2.4)), 7);   // §7 glint
+          if (gl2 > 0.45) { ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(0, -6, 1.6, 0, Math.PI * 2); ctx.fill(); }
+          ctx.restore();
+        }
+        for (let d4 = 0; d4 < 5; d4++) {                           // neon σταγόνες πέφτουν
+          const dp = (f.t * (0.8 + prV(f.seed, d4 + 95) * 0.5) + prV(f.seed, d4 + 105)) % 1;
+          const dx2 = (prV(f.seed, d4 + 115) - 0.5) * f.R * 0.9;
+          ctx.globalAlpha = foggy * (1 - dis) * Math.sin(Math.PI * dp) * 0.85;
+          ctx.fillStyle = ven;
+          ctx.beginPath(); ctx.ellipse(dx2, -14 + dp * 40, 1.4, 3, 0, 0, Math.PI * 2); ctx.fill();
+        }
+        for (let bb = 0; bb < 4; bb++) {                           // φυσαλίδες ανεβαίνουν + pop
+          const bpr = (f.t * (0.5 + prV(f.seed, bb + 125) * 0.4) + prV(f.seed, bb + 135)) % 1;
+          const bxx = (prV(f.seed, bb + 145) - 0.5) * f.R * 0.8 + Math.sin(f.t * 2 + bb) * 5;
+          const byy = 18 - bpr * 46;
+          ctx.globalAlpha = foggy * (1 - dis) * (bpr > 0.85 ? (1 - bpr) / 0.15 : 0.7);
+          ctx.strokeStyle = '#d8ffe8'; ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.arc(bxx, byy, 2.2 + bpr * 1.6, 0, Math.PI * 2); ctx.stroke();
+          if (bpr > 0.85) { ctx.fillStyle = '#ffffff'; ctx.globalAlpha = (1 - bpr) / 0.15 * 0.8; ctx.beginPath(); ctx.arc(bxx, byy, 1, 0, Math.PI * 2); ctx.fill(); }
+        }
+        ctx.restore();
       }
       } catch (e) { /* one broken evo VFX must never kill the frame */ }
       ctx.restore();
