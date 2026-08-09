@@ -22,7 +22,7 @@ import fs from 'node:fs';
 const BASE  = process.argv[2] || 'http://127.0.0.1:8138';
 const EXE   = process.env.PW_CHROMIUM || '/opt/pw-browsers/chromium';
 const SHOTS = process.env.EVO2_PROOF_SHOTS || '/tmp/evo_batch2_shots';
-const BUILD = '20260908150000';
+const BUILD = '20260908160000';
 
 const FIVE = [
   { id: 'eclipse_frostfang',   name: 'Eclipse Frostfang',   owner: 'assassin_clone',

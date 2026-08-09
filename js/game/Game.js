@@ -71,7 +71,7 @@ import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260722600000';
 import { NexusManager } from './NexusManager.js?v=20260803000000';
 import { VESSELS, getVesselById, getDefaultVesselId } from './VesselCatalog.js?v=20260705040000';
 import { PETS, getPetById } from './PetCatalog.js?v=20260705000000';
-import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons, getEvolutionOwners, isEvolutionOwnedBy, getCardDisplayName } from './WeaponCatalog.js?v=20260908150000';
+import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons, getEvolutionOwners, isEvolutionOwnedBy, getCardDisplayName } from './WeaponCatalog.js?v=20260908160000';
 import { TACTICAL_ID, TACTICAL_DEFS, getTacticalDef, getTacticalForCharacter, getAvailableTactical, preloadTacticalSprites, FUSION_TACTICALS } from './TacticalWeaponCatalog.js?v=20260720000000';
 import { VFXSpritePlayer } from './VFXSpritePlayer.js?v=20260902110000';
 
@@ -18801,6 +18801,117 @@ export class Game {
           ctx.beginPath(); ctx.arc(0, 0, puff, 0, Math.PI * 2); ctx.fill();
           ctx.restore();
         }
+      } else if (f.id === 'bio_shock_reaper') {
+        // ── BIO-SHOCK REAPER (manifest #14 — Final Evolution) ──
+        // Μολυσμένο bio-circuit grid: 6 κόμβοι ξυπνούν γύρω από τον στόχο, neon
+        // πράσινοι/κίτρινοι τοξικοί κεραυνοί διακλαδίζονται κόμβο-σε-κόμβο
+        // (jitter reseed ~7Hz, double stroke §B, heartbeat gating §6) με forks·
+        // overload: οι κόμβοι φλασάρουν λευκοί με ring pulse + sparks· toxic
+        // drips + infection motes· στο τέλος το grid ΒΡΑΧΥΚΥΚΛΩΝΕΙ (flicker)
+        // και οι κόμβοι σκάνε σε πράσινη ομίχλη (§3).
+        const R = f.R;
+        const tox = f.color || '#7dff3a', yel = '#ffe93a', mist = '#3fae2a';
+        const dis = Math.max(0, (k - 0.76) / 0.24);
+        const flick = dis > 0 ? (Math.sin(f.t * 34) > -0.2 ? 1 : 0.25) : 1;   // βραχυκύκλωμα
+        const jf = (f.t * 7) | 0;                                  // jitter reseed ~7Hz
+        const NODES = 6;
+        const nx = [], ny = [], nk = [];
+        for (let i = 0; i < NODES; i++) {
+          const na = (i / NODES) * Math.PI * 2 + prV(f.seed, i) * 0.9;
+          const nr = R * (0.55 + prV(f.seed, i + 10) * 0.5);
+          nx.push(Math.cos(na) * nr);
+          ny.push(Math.sin(na) * nr * 0.68);
+          nk.push(Math.min(1, Math.max(0, (k - i * 0.035) / 0.14)));   // staggered pop-in
+        }
+        if (k >= 0.1) {                                            // web + spokes + forks
+          ctx.save();
+          ctx.globalCompositeOperation = 'lighter';
+          for (let i = 0; i < NODES + 2; i++) {
+            const a1 = i % NODES, b1 = i < NODES ? (i + 1) % NODES : -1;   // -1 = spoke στο κέντρο
+            const x1 = nx[a1], y1 = ny[a1];
+            const x2 = b1 < 0 ? 0 : nx[b1], y2 = b1 < 0 ? 0 : ny[b1];
+            if (nk[a1] < 1 || (b1 >= 0 && nk[b1] < 1)) continue;
+            const beat = Math.pow(Math.max(0, Math.sin(f.t * (4.5 + prV(f.seed, i + 20) * 2.5) + i * 1.7)), 3);  // §6
+            if (beat < 0.12) continue;
+            const zpts = [];
+            for (let s2 = 1; s2 <= 3; s2++) {
+              const sk = s2 / 3;
+              zpts.push([
+                x1 + (x2 - x1) * sk + (s2 < 3 ? (prV(f.seed, i * 11 + s2 + jf) - 0.5) * 22 : 0),
+                y1 + (y2 - y1) * sk + (s2 < 3 ? (prV(f.seed, i * 11 + s2 + 40 + jf) - 0.5) * 16 : 0),
+              ]);
+            }
+            for (let pass = 0; pass < 2; pass++) {                 // §B πράσινο κάτω, κίτρινο/λευκό πάνω
+              ctx.globalAlpha = flick * (1 - dis) * beat * (pass ? 0.95 : 0.5);
+              ctx.strokeStyle = pass ? (i % 2 ? '#f4ffe0' : yel) : tox;
+              ctx.lineWidth = pass ? 1.1 : 2.8;
+              ctx.beginPath(); ctx.moveTo(x1, y1);
+              for (const zp of zpts) ctx.lineTo(zp[0], zp[1]);
+              ctx.stroke();
+            }
+            const mx = zpts[0][0], my = zpts[0][1];                // fork παρακλάδι
+            const fa = prV(f.seed, i + 60) * Math.PI * 2;
+            ctx.globalAlpha = flick * (1 - dis) * beat * 0.6;
+            ctx.strokeStyle = i % 2 ? yel : tox; ctx.lineWidth = 1.3;
+            ctx.beginPath(); ctx.moveTo(mx, my);
+            ctx.lineTo(mx + Math.cos(fa) * 16 + (prV(f.seed, i + 70 + jf) - 0.5) * 8,
+                       my + Math.sin(fa) * 11 + (prV(f.seed, i + 80 + jf) - 0.5) * 8);
+            ctx.stroke();
+          }
+          ctx.restore();
+        }
+        for (let i = 0; i < NODES; i++) {                          // κόμβοι + overload
+          if (nk[i] <= 0) continue;
+          const ov = Math.min(1, Math.max(0, (k - 0.45 - i * 0.04) / 0.2));
+          ctx.save();
+          ctx.translate(nx[i], ny[i]);
+          const ns = nk[i] * (1 - dis * 0.85);
+          ctx.globalAlpha = flick * (1 - dis) * 0.95;
+          ctx.fillStyle = '#0d2a08';
+          ctx.beginPath(); ctx.arc(0, 0, 5.5 * ns, 0, Math.PI * 2); ctx.fill();
+          ctx.strokeStyle = tox; ctx.lineWidth = 1.8;
+          ctx.beginPath(); ctx.arc(0, 0, 5.5 * ns, 0, Math.PI * 2); ctx.stroke();
+          ctx.strokeStyle = '#eaffdc'; ctx.lineWidth = 0.8;
+          ctx.beginPath(); ctx.arc(0, 0, 3.2 * ns, 0, Math.PI * 2); ctx.stroke();
+          if (ov > 0 && ov < 1) {
+            ctx.globalCompositeOperation = 'lighter';
+            ctx.globalAlpha = (1 - ov) * 0.9 * flick;              // λευκό flash
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath(); ctx.arc(0, 0, 3 + ov * 5, 0, Math.PI * 2); ctx.fill();
+            ctx.globalAlpha = (1 - ov) * 0.7;                      // ring pulse
+            ctx.strokeStyle = i % 2 ? yel : tox; ctx.lineWidth = 2.2 - ov * 1.6;
+            ctx.beginPath(); ctx.arc(0, 0, 6 + ov * 22, 0, Math.PI * 2); ctx.stroke();
+            ctx.fillStyle = yel;                                   // sparks
+            for (let s3 = 0; s3 < 4; s3++) {
+              const sa = prV(f.seed, i * 5 + s3 + 90) * Math.PI * 2;
+              const sr = 6 + ov * (14 + prV(f.seed, i * 5 + s3 + 100) * 10);
+              ctx.globalAlpha = (1 - ov) * 0.85;
+              ctx.beginPath(); ctx.arc(Math.cos(sa) * sr, Math.sin(sa) * sr * 0.8, 1.2, 0, Math.PI * 2); ctx.fill();
+            }
+          }
+          if (dis > 0) {                                           // §3 σκάει σε πράσινη ομίχλη
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.globalAlpha = (1 - dis) * 0.4;
+            ctx.fillStyle = mist;
+            ctx.beginPath(); ctx.ellipse(0, -dis * 6, 8 + dis * 14, 6 + dis * 9, 0, 0, Math.PI * 2); ctx.fill();
+          }
+          ctx.restore();
+        }
+        for (let d3 = 0; d3 < 5; d3++) {                           // toxic drips πέφτουν
+          const dp = (f.t * (0.7 + prV(f.seed, d3 + 110) * 0.5) + prV(f.seed, d3 + 120)) % 1;
+          const dx3 = (prV(f.seed, d3 + 130) - 0.5) * R * 1.1;
+          ctx.globalAlpha = (1 - dis) * Math.sin(Math.PI * dp) * 0.8;
+          ctx.fillStyle = d3 % 2 ? tox : yel;
+          ctx.beginPath(); ctx.ellipse(dx3, -8 + dp * 34, 1.3, 2.8, 0, 0, Math.PI * 2); ctx.fill();
+        }
+        for (let m3 = 0; m3 < 4; m3++) {                           // infection motes ανεβαίνουν
+          const mp = (f.t * (0.4 + prV(f.seed, m3 + 140) * 0.3) + prV(f.seed, m3 + 150)) % 1;
+          const mx3 = (prV(f.seed, m3 + 160) - 0.5) * R * 0.9 + Math.sin(f.t * 2.2 + m3) * 6;
+          ctx.globalAlpha = (1 - dis) * (1 - mp) * 0.55;
+          ctx.fillStyle = tox;
+          ctx.beginPath(); ctx.arc(mx3, 12 - mp * 40, 1.5 + prV(f.seed, m3 + 170), 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.globalAlpha = 1;
       }
       } catch (e) { /* one broken evo VFX must never kill the frame */ }
       ctx.restore();

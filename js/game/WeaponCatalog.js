@@ -48,6 +48,8 @@ export const WEAPON_ID = Object.freeze({
   SHATTER_RIFT_BLADE:    'shatter_rift_blade',    // eddie — Ground rift + void ice crystals
   STORMRIFT_EDGE:        'stormrift_edge',        // cyber-arm — Void rifts + electric cuts
   VAPORIZE_BLADE:        'vaporize_blade',        // brawler — Arc slash πάγος/φωτιά + ατμός
+  // ── Final Evolution (2026-08-09, Maria manifest #14) — το τελευταίο ελεύθερο recipe ──
+  BIO_SHOCK_REAPER:      'bio_shock_reaper',      // euclid — Toxic chain lightning bio-circuit
   MARROW_REACTOR:   'marrow_reactor',   // NEW skeleton evolution (procedural)
   MIRROR_CASCADE:   'mirror_cascade',   // NEW taekwondo evolution (procedural)
   FOUNDRY_PISTON:   'foundry_piston',   // NEW cyber-arm evolution (procedural)
@@ -929,6 +931,20 @@ export const WEAPON_DEFS = Object.freeze({
     baseStats: { damage: 30, cooldown: 2.7, aoeRadius: 150, speed: 0, piercing: 99 },
   },
 
+  // ── Final Evolution (2026-08-09) — procedural, ΚΑΝΕΝΑ sprite in-world ──
+  [WEAPON_ID.BIO_SHOCK_REAPER]: {
+    id: 'bio_shock_reaper',
+    name: 'Bio-Shock Reaper',
+    description: 'An infected circuit wakes up — neon green-yellow toxic lightning branches node to node until the whole grid overloads and shorts out in venom mist.',
+    character: 'euclid_vector',
+    element: 'electric',
+    behavior: WEAPON_BEHAVIOR.CIRCLE_360,
+    isEvolution: true,
+    procedural: true,
+    color: '#7dff3a',
+    baseStats: { damage: 32, cooldown: 2.8, aoeRadius: 155, speed: 0, piercing: 99 },
+  },
+
 });
 
 // ── Evolution recipes ───────────────────────────────────────────────
@@ -1192,6 +1208,13 @@ export const EVOLUTION_RECIPES = Object.freeze([
     ingredients: [WEAPON_ID.SPIRIT_CRESCENT, WEAPON_ID.SOLO_RED_THUNDER],
     minLevel: 5,
     owner: ['brawler_warrior'],
+  },
+  // ── Final Evolution (2026-08-09): το ΤΕΛΕΥΤΑΙΟ ελεύθερο ζεύγος του pool (36/36 πλέον).
+  {
+    result: WEAPON_ID.BIO_SHOCK_REAPER,
+    ingredients: [WEAPON_ID.SOLO_RED_THUNDER, WEAPON_ID.GAS_NEEDLE],
+    minLevel: 5,
+    owner: ['euclid_vector'],
   },
 ]);
 

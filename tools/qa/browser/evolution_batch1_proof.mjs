@@ -23,7 +23,7 @@ import fs from 'node:fs';
 const BASE  = process.argv[2] || 'http://127.0.0.1:8138';
 const EXE   = process.env.PW_CHROMIUM || '/opt/pw-browsers/chromium';
 const SHOTS = process.env.EVO1_PROOF_SHOTS || '/tmp/evolution_batch1_shots';
-const BUILD = '20260908150000';
+const BUILD = '20260908160000';
 
 const FIVE = [
   { id: 'absolute_zero_tempest', name: 'Absolute Zero Tempest', owner: 'taekwondo_girl',    ing: ['spirit_crescent', 'storm_saber'] },
@@ -87,7 +87,7 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
   // B2/B3/B8: defs + recipes + no-PNG (μέσα από το ΙΔΙΟ module instance του build)
   const wiring = await page.evaluate(async (five) => {
-    const mod = await import(`./js/game/WeaponCatalog.js?v=20260908150000`);
+    const mod = await import(`./js/game/WeaponCatalog.js?v=20260908160000`);
     const out = { defs: 0, recipes: 0, noPng: 0, names: [] };
     for (const f of five) {
       const d = mod.getWeaponDef ? mod.getWeaponDef(f.id) : (mod.WEAPON_DEFS || {})[f.id];
