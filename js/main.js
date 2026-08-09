@@ -1,4 +1,4 @@
-import { Game } from './game/Game.js?v=20260904480000';
+import { Game } from './game/Game.js?v=20260908110000';
 import { AudioManager } from './audio/AudioManager.js?v=20260904100000';
 import { PlatformAchievements } from './platform/PlatformAchievements.js?v=20260712370000';
 // Steam build: replay any web-earned achievements to Steam on boot (no-op in browsers)
@@ -611,6 +611,7 @@ let padCardOpenedAt = 0;       // performance.now() at the frame the panel appea
 const CARD_GUARD_MS = 200;     // settle window; long enough to swallow a spam re-press
 
 function applyGamepad() {
+  if (window.__phenixTutModal) { padClearHeld(); return; }   // tutorial modal: κανένα gamepad bleed
   // Release last frame's taps so a held button still fires only once.
   for (const k of padTapUp) window.dispatchEvent(new KeyboardEvent('keyup', { key: k }));
   padTapUp.length = 0;
