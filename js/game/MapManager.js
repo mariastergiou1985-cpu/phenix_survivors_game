@@ -1228,6 +1228,9 @@ export class MapManager {
     // Distant city life (2026-08-09, Maria): ζωγραφίζεται ΠΡΙΝ το readability dim και
     // ΜΟΝΟ πάνω στο endless megacity art (όχι στο chaos deck) — καθαρά visual layer.
     try { if (img === this._cityImg) this._drawCityAmbience(ctx, tw, th, S, xA, xB, _camX, _camY, vw, vh); } catch (_) {}
+    // Rain + neon reflections (2026-08-09, Maria): ίδιο layer contract — πριν το dim,
+    // μόνο endless city art, ποτέ παράλληλα με το acid rain event.
+    try { if (img === this._cityImg) this._drawCityRain(ctx, tw, th, S, xA, xB, _camX, _camY, vw, vh); } catch (_) {}
     ctx.fillStyle = opts.gridBlackoutActive ? 'rgba(0,0,0,0.65)' : 'rgba(0,0,0,0.30)';
     ctx.fillRect(_camX, _camY, vw, vh);
   }
@@ -1371,6 +1374,143 @@ export class MapManager {
           ctx.beginPath(); ctx.arc(x, y, 14 * S, 0, Math.PI * 2); ctx.fill();
         }
       }
+    }
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
+
+  // ── ENDLESS MEGACITY: RAIN + NEON REFLECTIONS (2026-08-09, Maria) — visual-only ─
+  // Διακριτική animated βροχή πάνω στο megacity: 3 βάθη με parallax, world-grid
+  // splash hits στο έδαφος, αργές neon αντανακλάσεις σε «βρεγμένα» σημεία και
+  // σπάνια light streaks. Όλα deterministic από timeAlive, zero state, bounded,
+  // χαμηλό alpha (≤0.16), hush γύρω από τον παίκτη, κάτω από entities & πριν το
+  // dim — δεν καλύπτουν enemies/projectiles, δεν αλλάζουν map art/gameplay.
+  // Σιωπά όσο τρέχει το acid rain event (ποτέ διπλή βροχή).
+  _drawCityRain(ctx, tw, th, S, xA, xB, camX, camY, vw, vh) {
+    const g = this.game;
+    if (!g || g.gameState !== 'playing') return;
+    if (g.acidRainSystem && g.acidRainSystem.active) return;
+    const t = g.timeAlive || 0;
+    const px = g.player ? g.player.pos.x : -1e9, py = g.player ? g.player.pos.y : -1e9;
+    const hush = (x, y) => { const d = Math.hypot(x - px, y - py); return d < 170 ? 0 : d < 300 ? (d - 170) / 130 : 1; };
+    const h2 = (i, k) => { const v = Math.sin(i * 127.1 + k * 311.7) * 43758.5453; return v - Math.floor(v); };
+    const u = S / 3;
+    const yA = camY - 60, yB = camY + vh + 60;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+
+    // 1 ── Λεπτή βροχή σε 3 βάθη: το μακρινό layer έχει parallax (κινείται ελαφρά
+    // με την κάμερα → διαβάζεται πίσω), το κοντινό είναι πιο γρήγορο/μακρύ/έντονο.
+    const LAYERS = [
+      { n: 22, spd: 560, len: 26, w: 1.0, a: 0.045, par: 0.05 },
+      { n: 20, spd: 760, len: 38, w: 1.2, a: 0.075, par: 0.02 },
+      { n: 16, spd: 980, len: 54, w: 1.5, a: 0.105, par: 0.00 },
+    ];
+    const PW = 640, PH = 640;                       // world-space περίοδος μοτίβου
+    ctx.strokeStyle = '#bcd8ff'; ctx.lineCap = 'round';
+    for (let li = 0; li < LAYERS.length; li++) {
+      const L = LAYERS[li];
+      ctx.lineWidth = L.w * u;
+      for (let k = 0; k < L.n; k++) {
+        const bx   = ((h2(k, 80 + li * 7) * PW + camX * L.par) % PW + PW) % PW;
+        const fall = (h2(k, 81 + li * 7) * PH + t * L.spd * (0.85 + 0.3 * h2(k, 82 + li))) % PH;
+        for (let cx0 = Math.floor(xA / PW) * PW; cx0 < xB; cx0 += PW) {
+          const x = cx0 + bx;
+          if (x < xA || x > xB) continue;
+          for (let cy0 = Math.floor(yA / PH) * PH; cy0 < yB; cy0 += PH) {
+            const y = cy0 + fall;
+            if (y < yA || y > yB) continue;
+            const a = L.a * hush(x, y);
+            if (a <= 0.008) continue;
+            ctx.globalAlpha = a;
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+            ctx.lineTo(x - 4 * u, y - L.len * u);   // ελαφριά κλίση ανέμου
+            ctx.stroke();
+          }
+        }
+      }
+    }
+
+    // 2 ── Splash hits: world grid 160px· κάθε «ενεργό» κελί δίνει περιοδικά ένα
+    // μικρό ripple (προοπτική έλλειψη) + αναπήδηση σταγόνας, σε νέο σημείο ανά κύκλο.
+    const GC = 160;
+    for (let gx = Math.floor(xA / GC); gx * GC < xB; gx++) {
+      for (let gy = Math.floor(yA / GC); gy * GC < yB; gy++) {
+        if (h2(gx * 13 + 7, gy * 17 + 3) < 0.55) continue;
+        const per = 0.9 + h2(gx, gy) * 1.3;
+        const ph0 = h2(gx * 3, gy * 5);
+        const cyc = ((t / per) + ph0) % 1;
+        if (cyc > 0.30) continue;
+        const k = cyc / 0.30;
+        const cycN = Math.floor((t / per) + ph0);
+        const x = gx * GC + GC / 2 + (h2(gx + cycN, gy * 7) - 0.5) * GC * 0.8;
+        const y = gy * GC + GC / 2 + (h2(gx * 7, gy + cycN) - 0.5) * GC * 0.8;
+        const A = hush(x, y);
+        if (A <= 0.01) continue;
+        const env = Math.sin(Math.PI * k);
+        ctx.globalAlpha = 0.10 * env * A;
+        ctx.strokeStyle = '#cfe8ff'; ctx.lineWidth = 1.2 * u;
+        ctx.save(); ctx.translate(x, y); ctx.scale(1, 0.45); ctx.translate(-x, -y);
+        ctx.beginPath(); ctx.arc(x, y, (2 + 9 * k) * u, 0, Math.PI * 2); ctx.stroke();
+        ctx.restore();
+        if (k < 0.4) {
+          ctx.globalAlpha = 0.12 * (1 - k / 0.4) * A;
+          ctx.fillStyle = '#e8f4ff';
+          ctx.beginPath(); ctx.arc(x, y - 3 * u * k, 1.1 * u, 0, Math.PI * 2); ctx.fill();
+        }
+      }
+    }
+
+    // 3 ── Neon αντανακλάσεις: αραιά «βρεγμένα» σημεία σε world grid 420px — κάθετο
+    // neon smear που αναπνέει αργά και τρεμουλιάζει ελαφρά (wet-ground look).
+    const RC = 420;
+    for (let gx = Math.floor(xA / RC); gx * RC < xB; gx++) {
+      for (let gy = Math.floor(yA / RC); gy * RC < yB; gy++) {
+        const r = h2(gx * 29 + 11, gy * 23 + 5);
+        if (r < 0.45) continue;
+        const x = gx * RC + (0.2 + 0.6 * h2(gx, gy * 3)) * RC;
+        const y = gy * RC + (0.2 + 0.6 * h2(gx * 5, gy)) * RC;
+        const A = hush(x, y);
+        if (A <= 0.01) continue;
+        const col = r < 0.63 ? '#37e0f0' : (r < 0.81 ? '#ff5fd0' : '#ffb54a');
+        const ph = t * (0.15 + h2(gx, gy * 9) * 0.2) + h2(gx * 7, gy * 7) * 7;
+        const breathe = 0.5 + 0.5 * Math.sin(ph * Math.PI * 2);
+        const wob = Math.sin(t * 1.1 + gx * 3 + gy) * 4 * u;
+        const w = (26 + h2(gx, gy * 13) * 24) * u, hh = (60 + h2(gx * 3, gy * 11) * 60) * u;
+        const gr = ctx.createLinearGradient(x, y - hh / 2, x, y + hh / 2);
+        gr.addColorStop(0, 'rgba(0,0,0,0)');
+        gr.addColorStop(0.5, col);
+        gr.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.globalAlpha = (0.035 + 0.05 * breathe) * A;
+        ctx.fillStyle = gr;
+        ctx.fillRect(x - w / 2 + wob, y - hh / 2, w, hh);
+      }
+    }
+
+    // 4 ── Occasional light streaks: 1 πιθανό πέρασμα ανά world-cell 1500px κάθε
+    // ~9-17s — γρήγορο glint από city lights/traffic, με φυσικό fade in/out.
+    const SC = 1500;
+    for (let gx = Math.floor((xA - SC) / SC); gx * SC < xB + SC; gx++) {
+      const per = 9 + h2(gx * 31, 95) * 8;
+      const ph0 = h2(gx * 13, 96);
+      const cyc = ((t / per) + ph0) % 1;
+      if (cyc > 0.16) continue;
+      const kk = cyc / 0.16;
+      const cycN = Math.floor((t / per) + ph0);
+      const dir = h2(gx + cycN, 99) < 0.5 ? 1 : -1;
+      const x = gx * SC + h2(gx * 7 + cycN, 97) * SC + dir * kk * 600;
+      const y = h2(gx * 9 + cycN, 98) * th;
+      if (x < xA || x > xB || y < yA || y > yB) continue;
+      const env = Math.sin(Math.PI * kk);
+      const A = hush(x, y);
+      if (A <= 0.01) continue;
+      ctx.globalAlpha = 0.11 * env * A;
+      ctx.strokeStyle = gx % 2 ? '#8fe8ff' : '#ffb0e0'; ctx.lineWidth = 2 * u; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - dir * 140 * u, y - 10 * u); ctx.stroke();
+      ctx.globalAlpha = 0.16 * env * A;
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath(); ctx.arc(x, y, 1.8 * u, 0, Math.PI * 2); ctx.fill();
     }
     ctx.restore();
     ctx.globalAlpha = 1;

@@ -1,26 +1,24 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// ENDLESS MEGACITY — DISTANT CITY LIFE RUNTIME PROOF (2026-08-09, Maria)
+// ENDLESS MEGACITY — RAIN + NEON REFLECTIONS RUNTIME PROOF (2026-08-09, Maria)
 //
 // Πραγματικό endless run μέσω production flow. Gates:
-//   E1 boot → start_menu, 0 page errors
-//   E2 ζωντανό Game instance
-//   E3 endless: playing, endless=true, city strip ενεργό (chunkStreaming + _cityImg)
-//   E4 _drawCityAmbience υπάρχει και καλείται κάθε frame (draw-spy)
-//   E5 stub-ctx render με camY=0 (skyline ορατό) → πραγματικά draw ops
-//   E5b stub-ctx render με κάμερα στο ΚΕΝΤΡΟ του plaza → ΜΗΔΕΝ draw ops
-//       (τα εφέ μένουν μακριά από το combat area)
-//   E6 κίνηση: με τον παίκτη κοντά στο skyline, δύο canvas samples 900ms απόσταση
-//      διαφέρουν στο πάνω band (όχι static PNG overlay)
-//   E7 guard: το call site ενεργοποιείται ΜΟΝΟ για το endless city art (όχι chaos)
-//   E8 μηδέν page errors / μηδέν non-404 console errors συνολικά
-// Usage:  node tools/qa/browser/endless_city_life_proof.mjs [baseUrl]
+//   R1 boot → start_menu, 0 page errors
+//   R2 ζωντανό Game instance
+//   R3 endless: playing, endless=true, city strip ενεργό
+//   R4 _drawCityRain υπάρχει και καλείται κάθε frame (draw-spy)
+//   R5 stub-ctx render στο plaza → πραγματικά rain/splash/reflection ops
+//   R5b acid rain mutual exclusion: με acidRainSystem active → ΜΗΔΕΝ ops
+//   R6 κίνηση βροχής: δύο canvas samples 700ms απόσταση διαφέρουν αισθητά
+//   R7 guard: call site μόνο για το endless city art (όχι chaos deck)
+//   R8 μηδέν page errors / μηδέν non-404 console errors συνολικά
+// Usage:  node tools/qa/browser/endless_city_rain_proof.mjs [baseUrl]
 // ─────────────────────────────────────────────────────────────────────────────
 import { chromium } from 'playwright-core';
 import fs from 'node:fs';
 
 const BASE  = process.argv[2] || 'http://127.0.0.1:8138';
 const EXE   = process.env.PW_CHROMIUM || '/opt/pw-browsers/chromium';
-const SHOTS = process.env.CITY_PROOF_SHOTS || '/tmp/endless_city_shots';
+const SHOTS = process.env.RAIN_PROOF_SHOTS || '/tmp/endless_rain_shots';
 const BUILD = '20260908090000';
 
 let failures = 0;
@@ -55,8 +53,8 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
   await page.goto(BASE + '/index.html?qa=1', { waitUntil: 'domcontentloaded', timeout: 30000 });
   await page.waitForFunction(() => window.__phenixQA?.snapshot?.()?.gameState === 'start_menu', null, { timeout: 20000 });
-  gate('E1 boot → start_menu', true);
-  gate('E1b μηδέν page errors στο boot', pageErrors.length === 0, pageErrors.join(' | '));
+  gate('R1 boot → start_menu', true);
+  gate('R1b μηδέν page errors στο boot', pageErrors.length === 0, pageErrors.join(' | '));
 
   await page.evaluate(async (build) => {
     const mod = await import(`./js/game/Game.js?v=${build}`);
@@ -68,7 +66,7 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
       };
     });
   }, BUILD);
-  gate('E2 ζωντανό Game instance', await page.evaluate(() => !!window.__g));
+  gate('R2 ζωντανό Game instance', await page.evaluate(() => !!window.__g));
 
   const click = async (sel) => { await page.click(sel, { timeout: 8000 }); await sleep(160); await page.evaluate(() => window.__phenixQA?._settleFade?.()); await sleep(160); };
   await click('#cgm-menu-nav .mbtn[data-cgm-item="START GAME"]');
@@ -84,24 +82,23 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
     return { gs: g.gameState, endless: !!g.endless,
              city: !!(mm.chunkStreamingEnabled && mm._cityImg?.complete && mm._cityImg.naturalWidth > 0) };
   });
-  gate('E3 endless: playing', st.gs === 'playing' && st.endless, JSON.stringify(st));
-  gate('E3b city strip ενεργό', st.city);
+  gate('R3 endless: playing + city strip', st.gs === 'playing' && st.endless && st.city, JSON.stringify(st));
 
-  // E4: η μέθοδος υπάρχει και καλείται κάθε frame
+  // R4: υπάρχει + καλείται κάθε frame
   const spy = await page.evaluate(async () => {
     const mm = window.__g.mapManager;
-    if (typeof mm._drawCityAmbience !== 'function') return { exists: false, calls: 0 };
+    if (typeof mm._drawCityRain !== 'function') return { exists: false, calls: 0 };
     let calls = 0;
-    const orig = mm._drawCityAmbience.bind(mm);
-    mm._drawCityAmbience = (...a) => { calls++; return orig(...a); };
+    const orig = mm._drawCityRain.bind(mm);
+    mm._drawCityRain = (...a) => { calls++; return orig(...a); };
     await new Promise(r => setTimeout(r, 2000));
-    mm._drawCityAmbience = orig;
+    mm._drawCityRain = orig;
     return { exists: true, calls };
   });
-  gate('E4 _drawCityAmbience υπάρχει', spy.exists);
-  gate('E4b καλείται κάθε frame', spy.calls > 30, `${spy.calls} calls / 2s`);
+  gate('R4 _drawCityRain υπάρχει', spy.exists);
+  gate('R4b καλείται κάθε frame', spy.calls > 30, `${spy.calls} calls / 2s`);
 
-  // E5 / E5b: stub-ctx render — μετράμε πραγματικά draw ops χωρίς να αγγίξουμε το παιχνίδι
+  // R5 / R5b: stub-ctx render + acid-rain mutual exclusion
   const stub = await page.evaluate(() => {
     const g = window.__g, mm = g.mapManager;
     const mk = () => {
@@ -117,52 +114,58 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
     const S  = mm.CITY_SCALE;
     const tw = mm._cityImg.naturalWidth * S, th = mm._cityImg.naturalHeight * S;
     const vs = g._viewScale || 1, vw = 1280 / vs, vh = 720 / vs;
-    // skyline ορατό (κάμερα στην κορυφή του strip)
-    const cA = mk();
-    mm._drawCityAmbience(cA, tw, th, S, -96, vw + 96, 0, 0, vw, vh);
-    // κάμερα στο κέντρο του plaza — και τα δύο bands εκτός οθόνης
     const midY = Math.max(0, th / 2 - vh / 2);
-    const cB = mk();
-    mm._drawCityAmbience(cB, tw, th, S, -96, vw + 96, 0, midY, vw, vh);
-    return { top: cA.ops, mid: cB.ops, midY: Math.round(midY), th: Math.round(th) };
+    const cA = mk();
+    mm._drawCityRain(cA, tw, th, S, -96, vw + 96, 0, midY, vw, vh);
+    // acid-rain active → η ambient βροχή σωπαίνει
+    const ar = g.acidRainSystem;
+    let acidOps = -1;
+    if (ar) {
+      const prev = ar._phase;
+      ar._phase = 'storm';
+      const cB = mk();
+      mm._drawCityRain(cB, tw, th, S, -96, vw + 96, 0, midY, vw, vh);
+      ar._phase = prev;
+      acidOps = cB.ops;
+    }
+    return { plaza: cA.ops, acidOps };
   });
-  gate('E5 skyline ορατό → draw ops > 20', stub.top > 20, `ops=${stub.top}`);
-  gate('E5b plaza κέντρο → ΜΗΔΕΝ ops (combat area καθαρό)', stub.mid === 0, `ops=${stub.mid} (camY=${stub.midY}, th=${stub.th})`);
+  gate('R5 plaza → rain/splash/reflection ops > 40', stub.plaza > 40, `ops=${stub.plaza}`);
+  gate('R5b acid rain active → ΜΗΔΕΝ ambient ops', stub.acidOps === 0, `ops=${stub.acidOps}`);
 
-  // E6: κίνηση στο skyline — δύο samples του καμβά διαφέρουν (όχι static overlay)
-  await page.evaluate(() => { const g = window.__g; g.player.pos.y = 200; g.player.maxHp = 99999; g.player.hp = 99999; });
-  await sleep(500);
-  await shot('skyline.png');
+  // R6: κίνηση βροχής — samples στο μεσαίο band του καμβά
+  await page.evaluate(() => { const g = window.__g; g.player.maxHp = 99999; g.player.hp = 99999; });
+  await sleep(300);
+  await shot('rain.png');
   const motion = await page.evaluate(async () => {
     const cv = document.querySelector('canvas');
     const grab = () => {
       const c = document.createElement('canvas');
-      c.width = cv.width; c.height = 220;
+      c.width = cv.width; c.height = cv.height;
       const cx = c.getContext('2d');
       cx.drawImage(cv, 0, 0);
-      return cx.getImageData(0, 0, cv.width, 220).data;
+      return cx.getImageData(0, Math.floor(cv.height * 0.3), cv.width, 200).data;
     };
     const a = grab();
-    await new Promise(r => setTimeout(r, 900));
+    await new Promise(r => setTimeout(r, 700));
     const b = grab();
     let diff = 0;
     for (let i = 0; i < a.length; i += 16) diff += Math.abs(a[i] - b[i]);
     return diff;
   });
-  gate('E6 skyline band κινείται (frame diff > 3000)', motion > 3000, `diff=${motion}`);
-  await sleep(600);
-  await shot('skyline2.png');
+  gate('R6 βροχή κινείται (frame diff > 3000)', motion > 3000, `diff=${motion}`);
+  await shot('rain2.png');
 
-  // E7: guard στο call site — ενεργό ΜΟΝΟ για το endless city art
+  // R7: guard στο call site
   const guard = await page.evaluate(() => {
     const src = window.__g.mapManager._drawCityWorld.toString();
-    return /img === this\._cityImg/.test(src) && /_drawCityAmbience/.test(src);
+    return /img === this\._cityImg/.test(src) && /_drawCityRain/.test(src);
   });
-  gate('E7 call-site guard: μόνο endless city art (όχι chaos deck)', guard);
+  gate('R7 call-site guard: μόνο endless city art', guard);
 
   await sleep(800);
-  gate('E8 μηδέν page errors συνολικά', pageErrors.length === 0, pageErrors.slice(0, 3).join(' | '));
-  gate('E8b μηδέν non-404 console errors', consoleErrors.length === 0, consoleErrors.slice(0, 3).join(' | '));
+  gate('R8 μηδέν page errors συνολικά', pageErrors.length === 0, pageErrors.slice(0, 3).join(' | '));
+  gate('R8b μηδέν non-404 console errors', consoleErrors.length === 0, consoleErrors.slice(0, 3).join(' | '));
 
   await browser.close();
   console.log(failures ? `\n✘ ${failures} gates FAILED` : '\n✔ ALL GATES PASS');
