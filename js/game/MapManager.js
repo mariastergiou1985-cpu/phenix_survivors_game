@@ -830,6 +830,10 @@ export class MapManager {
     // Ambient ship life (2026-08-08, Maria): ζωγραφίζεται ΠΡΙΝ το readability dim ώστε
     // να διαβάζεται ως μέρος του περιβάλλοντος και να μένει διακριτικό στο combat.
     try { this._drawShipAmbience(ctx, S, y0, th); } catch (_) {}
+    // Combat lighting reactions (2026-08-09, Maria): το περιβάλλον απαντά διακριτικά
+    // σε explosions / ultimate / boss spawn / heavy impacts — καθαρά visual layer,
+    // κάτω από entities & πριν το dim, ποτέ full-screen flash.
+    try { this._drawShipCombatLight(ctx, S, y0, th); } catch (_) {}
     // readability dim (ship art is BRIGHT — combat must sit on top)
     ctx.fillStyle = opts.gridBlackoutActive ? 'rgba(0,0,0,0.65)' : 'rgba(0,0,0,0.30)';
     ctx.fillRect(0, 0, this.worldW, this.worldH);
@@ -855,6 +859,16 @@ export class MapManager {
     const h2 = (i, k) => { const v = Math.sin(i * 127.1 + k * 311.7) * 43758.5453; return v - Math.floor(v); };
     const wallTop = y0 + Math.round(170 * S);                   // λίγο ΠΑΝΩ από το walkable band
     const wallBot = y0 + Math.round(714 * S);                   // λίγο ΚΑΤΩ από το band
+    // Boss-spawn flicker (2026-08-09): για ~2.6s τα ship lights «κόβουν» με deterministic
+    // dropouts και επανέρχονται ομαλά στο τέλος. LK πολλαπλασιάζει ΜΟΝΟ alpha (visual-only).
+    let LK = 1;
+    const _fu = this._cmbFlickerUntil || -1;
+    if (t < _fu) {
+      const q = Math.sin(t * 31) + Math.sin(t * 17.3 + 2.1);
+      LK = q > -0.4 ? 1.0 : 0.18;
+      const rem = _fu - t;
+      if (rem < 0.6) LK = LK * (rem / 0.6) + (1 - rem / 0.6);   // ease back στο 1
+    }
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
 
@@ -863,7 +877,7 @@ export class MapManager {
       const x = (0.06 + 0.88 * (i / 11)) * W + (h2(i, 1) - 0.5) * 60 * S;
       const y = (i % 2 ? wallTop : wallBot) + (h2(i, 2) - 0.5) * 14 * S;
       const ph = t * (0.55 + h2(i, 3) * 0.5) + h2(i, 4) * 7;
-      const a = (0.10 + 0.16 * (0.5 + 0.5 * Math.sin(ph * Math.PI * 2))) * hush(x, y);
+      const a = (0.10 + 0.16 * (0.5 + 0.5 * Math.sin(ph * Math.PI * 2))) * hush(x, y) * LK;
       if (a <= 0.01) continue;
       const col = h2(i, 5) < 0.55 ? '#2ee6f6' : (h2(i, 5) < 0.8 ? '#ffb400' : '#ff4fa0');
       const r = (7 + h2(i, 6) * 8) * S;
@@ -947,6 +961,151 @@ export class MapManager {
       ctx.globalAlpha = 1;
       ctx.fillStyle = gg;
       ctx.fillRect(Math.max(0, sw - 420 * S), by0, 840 * S, bh);
+    }
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
+
+  // ── ACT 1 COMBAT LIGHTING REACTIONS (2026-08-09, Maria) — visual-only ───────
+  // Το περιβάλλον απαντά διακριτικά στα μεγάλα combat events. Καθαρά rendering
+  // layer: παρατηρεί υπάρχον state (particles/mana/enemies/screenShake), ΔΕΝ
+  // αλλάζει gameplay/damage. Όλα world-space, bounded (queue≤24, ≤8 booms/frame),
+  // χαμηλό alpha (≤0.22), κανένα full-screen flash· ζωγραφίζεται ΚΑΤΩ από τα
+  // entities (μέσα στο map layer) ώστε να μην καλύπτει ποτέ bullets/enemies.
+  _cmbPush(kind, x, y, pow) {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    const g = this.game;
+    const t = (g && g.timeAlive) || 0;
+    const Q = this._cmbQ || (this._cmbQ = []);
+    if (kind === 'boom') {                                       // throttle: όχι στροβοσκόπιο
+      let recent = 0;
+      for (let i = Q.length - 1; i >= 0; i--) if (Q[i].kind === 'boom' && t - Q[i].t0 < 0.12) recent++;
+      if (recent >= 3) return;
+    }
+    Q.push({ kind, x, y, pow: Math.max(0.15, Math.min(1, pow || 0.5)), t0: t });
+    if (Q.length > 24) Q.shift();
+  }
+
+  _cmbObserve(g, t) {
+    // 1 ── Explosions: ένα-σημείο observer πάνω στο ΥΠΑΡΧΟΝ VFX choke point
+    // (ParticleSystem.spawnExplosion). Καλεί ΠΑΝΤΑ το original αναλλοίωτο.
+    const ps = g.particles;
+    if (ps && this._cmbWrapT !== ps && typeof ps.spawnExplosion === 'function') {
+      const mm = this, orig = ps.spawnExplosion.bind(ps);
+      ps.spawnExplosion = function (pos, colors, count = 24) {
+        try { if ((count || 0) >= 14) mm._cmbPush('boom', pos?.x, pos?.y, Math.min(1, (count || 16) / 30)); } catch (_) {}
+        return orig(pos, colors, count);
+      };
+      this._cmbWrapT = ps;                                       // re-wrap αν αλλάξει instance
+    }
+    const px = g.player ? g.player.pos.x : NaN, py = g.player ? g.player.pos.y : NaN;
+    // 2 ── Ultimate cast: πτώση mana ≥60 σε ένα frame (κόστος ult = 100, fixed).
+    const mana = g.player?.mana;
+    if (Number.isFinite(mana)) {
+      if (Number.isFinite(this._cmbPrevMana) && this._cmbPrevMana - mana >= 60) this._cmbPush('ult', px, py, 1);
+      this._cmbPrevMana = mana;
+    }
+    // 3 ── Boss spawn: νέο boss entity στη λίστα → 2.6s flicker + warning pulse.
+    const en = g.enemies;
+    if (Array.isArray(en)) {
+      const seen = this._cmbSeen || (this._cmbSeen = new WeakSet());
+      for (let i = 0; i < en.length; i++) {
+        const e = en[i];
+        if (!e || e.dead || seen.has(e)) continue;
+        let b = false;
+        try { b = (typeof e.isBoss === 'function' && e.isBoss()) || !!e.isMegaBoss; } catch (_) {}
+        if (!b) continue;
+        seen.add(e);
+        if (t > 1.2) {                                           // όχι flicker για ό,τι προϋπάρχει στο 1ο frame
+          this._cmbFlickerUntil = t + 2.6;
+          this._cmbWarn = { x: e.pos?.x ?? px, y: e.pos?.y ?? py, t0: t };
+        }
+      }
+    }
+    // 4 ── Heavy impact: rising edge του screen-shake intensity (≥5) → στιγμιαίο glow.
+    const inten = g.screenShake ? (g.screenShake.intensity || 0) : 0;
+    if (inten >= 5 && (this._cmbPrevShake || 0) < 5 && Number.isFinite(px))
+      this._cmbPush('impact', px, py, Math.min(1, inten / 12));
+    this._cmbPrevShake = inten;
+  }
+
+  _drawShipCombatLight(ctx, S, y0, th) {
+    const g = this.game;
+    if (!g || g.gameState !== 'playing') return;
+    const t = g.timeAlive || 0;
+    this._cmbObserve(g, t);
+    const Q = this._cmbQ || (this._cmbQ = []);
+    for (let i = Q.length - 1; i >= 0; i--) if (t - Q[i].t0 > 1.1 || t < Q[i].t0) Q.splice(i, 1);
+    const warn = this._cmbWarn;
+    if (warn && (t - warn.t0 > 2.6 || t < warn.t0)) this._cmbWarn = null;
+    if (!Q.length && !this._cmbWarn) return;
+    const wallTop = y0 + Math.round(170 * S), wallBot = y0 + Math.round(714 * S);
+    const px = g.player ? g.player.pos.x : 0, py = g.player ? g.player.pos.y : 0;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const wallBand = (x, y, R, col, a) => {                      // απαλή λωρίδα στον κοντινό τοίχο
+      const wy = Math.abs(y - wallTop) < Math.abs(y - wallBot) ? wallTop : wallBot;
+      if (Math.abs(y - wy) > 300 * S) return;
+      const gr = ctx.createLinearGradient(x - R * 1.4, wy, x + R * 1.4, wy);
+      gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(0.5, col); gr.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.globalAlpha = a;
+      ctx.fillStyle = gr;
+      ctx.fillRect(x - R * 1.4, wy - 12 * S, R * 2.8, 24 * S);
+    };
+    const floorGlow = (x, y, R, col, a) => {                     // squashed ellipse — «φως στο πάτωμα»
+      const gr = ctx.createRadialGradient(x, y, 0, x, y, R);
+      gr.addColorStop(0, col); gr.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.globalAlpha = a;
+      ctx.fillStyle = gr;
+      ctx.save(); ctx.translate(x, y); ctx.scale(1, 0.55); ctx.translate(-x, -y);
+      ctx.beginPath(); ctx.arc(x, y, R, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    };
+    let booms = 0;
+    for (let i = 0; i < Q.length; i++) {
+      const ev = Q[i], age = t - ev.t0;
+      if (ev.kind === 'boom') {
+        const LIFE = 0.32;
+        if (age > LIFE || booms >= 8) continue;
+        booms++;
+        const env = Math.sin(Math.PI * Math.min(1, age / LIFE));
+        const R = (70 + 90 * ev.pow) * S;
+        floorGlow(ev.x, ev.y, R, 'rgba(255,184,106,0.9)', 0.16 * env * ev.pow);
+        wallBand(ev.x, ev.y, R, 'rgba(255,184,106,0.8)', 0.10 * env * ev.pow);
+      } else if (ev.kind === 'impact') {
+        const LIFE = 0.22;
+        if (age > LIFE) continue;
+        const env = Math.sin(Math.PI * age / LIFE);
+        const R = (60 + 60 * ev.pow) * S;
+        floorGlow(ev.x, ev.y, R, 'rgba(191,233,255,0.9)', 0.13 * env * ev.pow);
+        wallBand(ev.x, ev.y, R * 0.8, 'rgba(191,233,255,0.7)', 0.07 * env * ev.pow);
+      } else if (ev.kind === 'ult') {
+        const LIFE = 0.9;                                        // λίγο ισχυρότερο, γύρω από τον παίκτη
+        if (age > LIFE) continue;
+        const k = age / LIFE, env = Math.sin(Math.PI * k);
+        const R = (40 + 210 * k) * S;
+        ctx.globalAlpha = 0.20 * (1 - k);
+        ctx.strokeStyle = '#bffcff'; ctx.lineWidth = (3 + 5 * (1 - k)) * S;
+        ctx.beginPath(); ctx.arc(px, py, R, 0, Math.PI * 2); ctx.stroke();
+        floorGlow(px, py, 170 * S, 'rgba(140,240,255,0.8)', 0.12 * env);
+      }
+    }
+    // Boss warning pulse: αργό κόκκινο breathing στο σημείο εμφάνισης (όσο κρατά το flicker).
+    const w = this._cmbWarn;
+    if (w) {
+      const k = (t - w.t0) / 2.6, env = Math.sin(Math.PI * Math.min(1, Math.max(0, k)));
+      const R = (150 + 24 * Math.sin(t * 5.2)) * S;
+      const gr = ctx.createRadialGradient(w.x, w.y, 0, w.x, w.y, R);
+      gr.addColorStop(0, 'rgba(255,59,77,0.85)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.globalAlpha = (0.09 + 0.06 * (0.5 + 0.5 * Math.sin(t * 6))) * env;
+      ctx.fillStyle = gr;
+      ctx.beginPath(); ctx.arc(w.x, w.y, R, 0, Math.PI * 2); ctx.fill();
+      if (k < 0.35) {                                            // αρχικό expanding ring μία φορά
+        const rk = k / 0.35;
+        ctx.globalAlpha = 0.16 * (1 - rk);
+        ctx.strokeStyle = '#ff6b7a'; ctx.lineWidth = 2.5 * S;
+        ctx.beginPath(); ctx.arc(w.x, w.y, (40 + 300 * rk) * S, 0, Math.PI * 2); ctx.stroke();
+      }
     }
     ctx.restore();
     ctx.globalAlpha = 1;
