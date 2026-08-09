@@ -31,6 +31,12 @@ const FX_CAP = 60;
 
 // ── μικρο-helpers ────────────────────────────────────────────────────────────────
 const A = (v, i) => (Array.isArray(v) ? v[Math.max(0, Math.min(i, v.length - 1))] : v);
+// ── TARGETING PASS 2026-08-09: όρια στροφής για τα fusions που ΚΡΑΤΑΝΕ homing.
+// Ήταν όλα «τέλειο κλείδωμα»: ξαναϋπολόγιζαν κατεύθυνση κατευθείαν στον στόχο κάθε frame,
+// χωρίς αδράνεια — αδύνατο να αποφευχθούν. Τώρα στρίβουν με πεπερασμένο ρυθμό (rad/s).
+const DRONE_TURN  = 3.2;    // scrapstorm scrap-drone
+const NEEDLE_TURN = 5.0;    // phantom needle (γρήγορη, αλλά όχι απόλυτη)
+const CHIP_TURN   = 4.2;    // event horizon chip-disc
 const dist2 = (x1, y1, x2, y2) => { const dx = x2 - x1, dy = y2 - y1; return dx * dx + dy * dy; };
 
 export class FusionEngine {
@@ -41,6 +47,8 @@ export class FusionEngine {
     this._imgs = new Map();       // fusionId -> Image (lazy, _failed flag σε πραγματικό fail)
     this._t = 0;
     this._acquiredOrder = [];     // για το report/QA
+    this._pending = [];           // TARGETING PASS: telegraphed strikes σε ΑΝΑΜΟΝΗ (bounded)
+    this._lastAim = 0;            // τελευταία έγκυρη γωνία σκόπευσης του παίκτη
   }
 
   // ── mode / eligibility (in-run layers) ─────────────────────────────────────────
@@ -182,6 +190,51 @@ export class FusionEngine {
     }
     return best;
   }
+  // ══ TARGETING PASS (2026-08-09) ═══════════════════════════════════════════════
+  // Πριν: 19/20 fusions διάβαζαν θέσεις εχθρών για να αποφασίσουν ΠΟΥ χτυπάνε, και
+  // σχεδόν όλα έριχναν τη ζημιά στο ΙΔΙΟ frame με τη σκόπευση — τέλειο auto-lock που
+  // δεν γινόταν να αποφευχθεί. Τα τρία εργαλεία παρακάτω αντικαθιστούν αυτό το μοτίβο.
+
+  // ΣΚΟΠΕΥΕΙ Ο ΠΑΙΚΤΗΣ, όχι το όπλο. Δεξί stick -> κατεύθυνση κίνησης -> τελευταία
+  // γνωστή -> facing. ΚΑΜΙΑ ανάγνωση θέσης εχθρού. Bosses και απλοί εχθροί: ίδιο
+  // logic, γιατί κανένας από τους δύο δεν συμμετέχει στην απόφαση.
+  aimAngle() {
+    const g = this.game, p = g.player;
+    if (!p || !p.pos) return this._lastAim || 0;
+    const s = g.gamepadAimDir;
+    if (s && Number.isFinite(s.x) && Number.isFinite(s.y) && (s.x * s.x + s.y * s.y) > 0.09) {
+      this._lastAim = Math.atan2(s.y, s.x);
+      return this._lastAim;
+    }
+    const v = p.vel;
+    if (v && (v.x * v.x + v.y * v.y) > 400) {                      // ~20 px/s νεκρή ζώνη
+      this._lastAim = Math.atan2(v.y, v.x);
+      return this._lastAim;
+    }
+    if (Number.isFinite(this._lastAim) && this._lastAim !== 0) return this._lastAim;
+    return (p._facing || 1) > 0 ? 0 : Math.PI;
+  }
+  // Σημείο εδάφους μπροστά στον παίκτη: ΤΟΠΟΣ, όχι σώμα. Κλειδώνει μόλις επιστραφεί.
+  aimPoint(range = 300) {
+    const p = this.game.player, a = this.aimAngle();
+    return { x: p.pos.x + Math.cos(a) * range, y: p.pos.y + Math.sin(a) * range, a, aimed: true };
+  }
+  // Ορατή προειδοποίηση σε ΚΛΕΙΔΩΜΕΝΟ σημείο για `delay` δευτερόλεπτα πριν σκάσει.
+  telegraph(x, y, r, delay, color) {
+    this.addFx({ kind: 'tele', x, y, r: Math.max(8, r), t: 0, dur: Math.max(0.08, delay),
+                 color: color || '#ffcc44' });
+  }
+  // Telegraphed χτύπημα. Η θέση κλειδώνει ΤΩΡΑ, η ζημιά τρέχει ΜΕΤΑ το delay — και
+  // ξαναρωτά τους στόχους εκείνη τη στιγμή, από το κλειδωμένο σημείο. Ο εχθρός που
+  // κουνήθηκε στο ενδιάμεσο ΞΕΦΕΥΓΕΙ. Αυτό είναι όλο το νόημα αυτού του pass.
+  strike(x, y, r, delay, color, fn) {
+    if (typeof fn !== 'function') return;
+    const d = Math.max(0.08, Number(delay) || 0);
+    if (this._pending.length >= 48) { try { fn(); } catch (_) {} return; }   // hard cap, ποτέ σιωπηλή απώλεια
+    this._pending.push({ t: 0, delay: d, fn });
+    this.telegraph(x, y, r, d, color);
+  }
+
   // ήπιο pull (ποτέ σε bosses/singletons) — bounded ταχύτητα
   pull(e, tx, ty, perS, dt) {
     if (this.isBoss(e) || !e.pos) return;
@@ -281,6 +334,19 @@ export class FusionEngine {
         if (st._errs <= 2) console.error('[Fusion] "' + st.id + '" update error', e);
       }
     }
+    // TARGETING PASS: telegraphed χτυπήματα ωριμάζουν ΕΔΩ, αφού έχουν τρέξει όλοι οι
+    // executors — ώστε ένα strike που μπήκε φέτος το frame να μη σκάσει στο ίδιο frame.
+    for (let i = this._pending.length - 1; i >= 0; i--) {
+      const s = this._pending[i];
+      s.t += dt;
+      if (s.t >= s.delay) {
+        this._pending.splice(i, 1);
+        try { s.fn(); } catch (err) {
+          this._strikeErrs = (this._strikeErrs || 0) + 1;
+          if (this._strikeErrs <= 2) console.error('[Fusion] telegraphed strike error', err);
+        }
+      }
+    }
     for (let i = this.fx.length - 1; i >= 0; i--) {
       const f = this.fx[i];
       f.t += dt;
@@ -317,6 +383,19 @@ export class FusionEngine {
         ctx.strokeStyle = f.color; ctx.lineWidth = f.width * (1 - k * 0.6);
         ctx.lineCap = 'round';
         ctx.beginPath(); ctx.moveTo(f.x1, f.y1); ctx.lineTo(f.x2, f.y2); ctx.stroke();
+      } else if (f.kind === 'tele') {
+        // ΠΡΟΕΙΔΟΠΟΙΗΣΗ: σταθερό περίγραμμα + δαχτυλίδι που ΚΛΕΙΝΕΙ προς τα μέσα.
+        // Όταν το δαχτυλίδι φτάσει στο κέντρο, σκάει. Διαβάζεται σαν χρόνος, όχι σαν ζημιά.
+        ctx.globalAlpha = 0.34 + 0.30 * k;
+        ctx.strokeStyle = f.color; ctx.lineWidth = 2;
+        ctx.setLineDash([9, 7]);
+        ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.globalAlpha = 0.55 + 0.35 * k;
+        ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(f.x, f.y, Math.max(3, f.r * (1 - k)), 0, Math.PI * 2); ctx.stroke();
+        ctx.globalAlpha = 0.85 * k;
+        ctx.beginPath(); ctx.arc(f.x, f.y, 3, 0, Math.PI * 2); ctx.stroke();
       }
     }
     ctx.restore();
@@ -352,24 +431,29 @@ FUSION_EXECUTORS.fus_ossuary_impaler = {
       if (st.cd <= 0) { st.phase = 'charge'; st.t = 0; fe.cue(st.id, 'charge'); }
     } else if (st.phase === 'charge') {
       if (st.t >= m.chargeS) {
-        const den = fe.densest(200, fe._t);
-        const ang = Math.atan2(den.y - p.pos.y, den.x - p.pos.x);
-        st.objects.lance = { x: p.pos.x, y: p.pos.y, ang, trav: 0 };
+        // TARGETING PASS: σκοπεύει ο ΠΑΙΚΤΗΣ. Η γωνία κλειδώνει εδώ και δεν ξανακοιτάζει
+        // ποτέ θέσεις εχθρών — ήταν densest(200), τέλειο auto-lock στο πυκνότερο σώμα.
+        const ang = fe.aimAngle();
+        st.objects.lance = { x: p.pos.x, y: p.pos.y, ang, trav: 0, hit: new Set() };
         st.phase = 'travel'; st.t = 0;
         fe.cue(st.id, 'travel');
-        // lane damage: όλα τα targets στον διάδρομο πληρώνουν ΜΙΑ φορά
-        const cosA = Math.cos(ang), sinA = Math.sin(ang);
-        for (const e of fe.targets()) {
-          const dx = e.pos.x - p.pos.x, dy = e.pos.y - p.pos.y;
-          const along = dx * cosA + dy * sinA, side = Math.abs(-dx * sinA + dy * cosA);
-          if (along > 0 && along < m.range && side < m.laneWidth + (e.radius || 20)) {
-            fe.dealDamage(st.id, e, A(m.laneDamage, i));
-          }
-        }
       }
     } else if (st.phase === 'travel') {
       const L = st.objects.lance;
+      const prev = L.trav;
       L.trav += m.travelSpeed * dt;
+      // TARGETING PASS: η ζημιά του διαδρόμου δίνεται ΚΑΘΩΣ περνά η αιχμή, όχι μονομιάς
+      // τη στιγμή της σκόπευσης. Ό,τι βγει από τον διάδρομο πριν φτάσει η λόγχη, γλιτώνει.
+      const cosA = Math.cos(L.ang), sinA = Math.sin(L.ang);
+      for (const e of fe.targets()) {
+        if (L.hit.has(e)) continue;
+        const dx = e.pos.x - L.x, dy = e.pos.y - L.y;
+        const along = dx * cosA + dy * sinA, side = Math.abs(-dx * sinA + dy * cosA);
+        if (along > prev && along <= L.trav && side < m.laneWidth + (e.radius || 20)) {
+          L.hit.add(e);
+          fe.dealDamage(st.id, e, A(m.laneDamage, i));
+        }
+      }
       if (L.trav >= m.range) {
         st.objects.rift = { x: L.x + Math.cos(L.ang) * m.range, y: L.y + Math.sin(L.ang) * m.range, t: 0, tick: 0 };
         st.phase = 'rift'; st.t = 0;
@@ -385,11 +469,15 @@ FUSION_EXECUTORS.fus_ossuary_impaler = {
         for (const e of fe.near(R.x, R.y, radius)) fe.dealDamage(st.id, e, A(m.rift.tickDmg, i));
       }
       if (R.t >= durS) {
-        // nova
+        // nova — TELEGRAPHED: το novaR (230/250/270) ξεπερνούσε το σχεδιασμένο rift, οπότε
+        // η εξωτερική ζώνη έσκαγε χωρίς καμία ένδειξη. Τώρα προειδοποιεί 0.45s στο κλειδωμένο κέντρο.
         const novaR = A(m.nova.radius, i);
-        for (const e of fe.near(R.x, R.y, novaR)) fe.dealDamage(st.id, e, A(m.nova.dmg, i));
-        fe.ring(R.x, R.y, 30, novaR, 0.5, d.palette.core, 8);
-        fe.flash(R.x, R.y, novaR * 0.7, 0.45, d.palette.glow);
+        const nx = R.x, ny = R.y, nDmg = A(m.nova.dmg, i);
+        fe.strike(nx, ny, novaR, 0.45, d.palette.core, () => {
+          for (const e of fe.near(nx, ny, novaR)) fe.dealDamage(st.id, e, nDmg);
+          fe.ring(nx, ny, 30, novaR, 0.5, d.palette.core, 8);
+          fe.flash(nx, ny, novaR * 0.7, 0.45, d.palette.glow);
+        });
         fe.cue(st.id, 'aftermath');
         // T3: pylons
         if (fe.tierOf(st.id) >= 3) {
@@ -408,11 +496,16 @@ FUSION_EXECUTORS.fus_ossuary_impaler = {
         pl.t += dt;
         if (!pl.fired && pl.t >= 0.6) {
           pl.fired = true;
-          const tgt = fe.nearestTo(pl.x, pl.y);
-          if (tgt && dist2(pl.x, pl.y, tgt.pos.x, tgt.pos.y) < FUSION_DEFS[st.id].t3.pylonRange ** 2) {
-            fe.dealDamage(st.id, tgt, FUSION_DEFS[st.id].t3.pylonVolleyDmg);
-            fe.beam(pl.x, pl.y, tgt.pos.x, tgt.pos.y, 0.25, d.palette.glow, 6);
-          }
+          // TARGETING PASS: ο πυλώνας ήταν auto-turret (nearestTo τη στιγμή της βολής). Τώρα
+          // ρίχνει ΠΡΟΣ ΤΑ ΕΞΩ από το ρήγμα, σε σταθερή ακτίνα, με 0.28s προειδοποίηση.
+          const t3 = FUSION_DEFS[st.id].t3;
+          const pa = Math.atan2(pl.y - (st.objects.rift?.y ?? pl.y), pl.x - (st.objects.rift?.x ?? pl.x));
+          const reach = Math.min(t3.pylonRange, 260), R2 = 60;
+          const gx = pl.x + Math.cos(pa) * reach, gy = pl.y + Math.sin(pa) * reach;
+          fe.beam(pl.x, pl.y, gx, gy, 0.28, d.palette.glow, 6);
+          fe.strike(gx, gy, R2, 0.28, d.palette.glow, () => {
+            for (const e of fe.near(gx, gy, R2)) { fe.dealDamage(st.id, e, t3.pylonVolleyDmg); break; }
+          });
         }
       }
       if (st.t >= (py.length ? FUSION_DEFS[st.id].t3.pylonLifeS : 0.5)) {
@@ -502,33 +595,39 @@ FUSION_EXECUTORS.fus_black_psalm_choir = {
           }
         }
         if (s.charge >= m.chargeFull && diving < m.caps.simultaneousDives) {
-          const den = fe.densest(160, s.a);
-          if (den.n > 0) {
-            s.mode = 'dive'; s.dive = { tx: den.x, ty: den.y };
-            diving++;
-            fe.cue(st.id, 'travel');
-          }
+          // TARGETING PASS: το κρανίο βουτάει εκεί που ΔΕΙΧΝΕΙ Ο ΠΑΙΚΤΗΣ — ήταν densest(160),
+          // δηλαδή κλείδωνε πάνω στο πυκνότερο σώμα και έσκαγε ακριβώς εκεί.
+          const den = fe.aimPoint(260);
+          s.mode = 'dive'; s.dive = { tx: den.x, ty: den.y };
+          diving++;
+          fe.cue(st.id, 'travel');
         }
       } else if (s.mode === 'dive') {
         const dx = s.dive.tx - s.x, dy = s.dive.ty - s.y;
         const dd = Math.hypot(dx, dy) || 1;
         const step = A(m.dive.speed, 0) * dt;
         if (dd <= step + 4) {
-          // έκρηξη + chains
-          for (const e of fe.near(s.dive.tx, s.dive.ty, m.dive.radius)) fe.dealDamage(st.id, e, A(m.dive.dmg, i));
-          fe.flash(s.dive.tx, s.dive.ty, m.dive.radius, 0.4, d.palette.glow);
+          // έκρηξη + chains — TELEGRAPHED: η βουτιά προσγειώνεται και ΜΕΤΑ σκάει (0.22s).
+          // Όποιος προλάβει να βγει από την ακτίνα σε αυτό το παράθυρο, γλιτώνει.
+          const bx = s.dive.tx, by = s.dive.ty, bR = m.dive.radius, bDmg = A(m.dive.dmg, i);
+          const chainsN = Math.min(m.caps.chainsPerDive, A(m.chains.count, i) + (fe.chaos() ? (d.chaos.extraChain || 0) : 0));
+          const chDmg = A(m.chains.dmg, i), chRange = m.chains.range;
           fe.cue(st.id, 'impact');
-          let chains = Math.min(m.caps.chainsPerDive, A(m.chains.count, i) + (fe.chaos() ? (d.chaos.extraChain || 0) : 0));
-          const hitSet = new Set();
-          let cx = s.dive.tx, cy = s.dive.ty;
-          while (chains-- > 0) {
-            const nxt = fe.nearestTo(cx, cy, hitSet);
-            if (!nxt || dist2(cx, cy, nxt.pos.x, nxt.pos.y) > m.chains.range ** 2) break;
-            fe.dealDamage(st.id, nxt, A(m.chains.dmg, i));
-            fe.beam(cx, cy, nxt.pos.x, nxt.pos.y, 0.22, d.palette.glow, 4);
-            hitSet.add(nxt);
-            cx = nxt.pos.x; cy = nxt.pos.y;
-          }
+          fe.strike(bx, by, bR, 0.22, d.palette.glow, () => {
+            for (const e of fe.near(bx, by, bR)) fe.dealDamage(st.id, e, bDmg);
+            fe.flash(bx, by, bR, 0.4, d.palette.glow);
+            let chains = chainsN;
+            const hitSet = new Set();
+            let cx = bx, cy = by;
+            while (chains-- > 0) {
+              const nxt = fe.nearestTo(cx, cy, hitSet);
+              if (!nxt || dist2(cx, cy, nxt.pos.x, nxt.pos.y) > chRange ** 2) break;
+              fe.dealDamage(st.id, nxt, chDmg);
+              fe.beam(cx, cy, nxt.pos.x, nxt.pos.y, 0.22, d.palette.glow, 4);
+              hitSet.add(nxt);
+              cx = nxt.pos.x; cy = nxt.pos.y;
+            }
+          });
           // T3 psalm field
           if (fe.tierOf(st.id) >= 3 && st.objects.fields.length < 3) {
             const f = d.t3.field;
@@ -608,9 +707,9 @@ FUSION_EXECUTORS.fus_cyclone_metronome = {
       }
     } else if (st.phase === 'charge') {
       if (st.t >= 0.5) {
-        const den = fe.densest(200, fe._t * 1.7);
-        const p = fe.game.player;
-        const ang = Math.atan2(den.y - p.pos.y, den.x - p.pos.x);
+        // TARGETING PASS: ο κυκλώνας φεύγει προς την κατεύθυνση του ΠΑΙΚΤΗ (ήταν densest(200)).
+        // Το σώμα του ήδη ταξιδεύει και χτυπά όσο περνά — δεν χρειάζεται lock.
+        const ang = fe.aimAngle();
         this._spawnCyclone(fe, st, ang, 1);
         if (fe.tierOf(st.id) >= 3 && st.objects.cyclones.length < 2) {
           this._spawnCyclone(fe, st, ang + Math.PI, d.t3.mirrorDmgMult);
@@ -718,7 +817,9 @@ FUSION_EXECUTORS.fus_null_storm_eye = {
       if (st.cd <= 0) { st.phase = 'charge'; st.t = 0; fe.cue(st.id, 'charge'); }
     } else if (st.phase === 'charge') {
       if (st.t >= 0.6) {
-        const den = fe.densest(220, fe._t);
+        // TARGETING PASS: η καταιγίδα φυτεύεται ΜΠΡΟΣΤΑ ΣΤΟΝ ΠΑΙΚΤΗ, όχι πάνω στο πυκνότερο
+        // σώμα (ήταν densest(220) — φύτρωνε ακριβώς πάνω στον εχθρό).
+        const den = fe.aimPoint(320);
         st.objects.storm = { x: den.x, y: den.y, t: 0, tick: 0, lanceT: 0, kills: 0 };
         st.phase = 'storm'; st.t = 0;
         fe.cue(st.id, 'travel');
@@ -758,30 +859,39 @@ FUSION_EXECUTORS.fus_null_storm_eye = {
       if (S.lanceT >= lanceEvery) {
         S.lanceT = 0;
         const n = Math.min(m.caps.lancesPerBurst, A(m.lances.count, i));
-        const hitSet = new Set();
+        // TARGETING PASS: οι λόγχες ήταν hitscan σε nearestTo — διάλεγαν σώμα και το χτυπούσαν
+        // στο ΙΔΙΟ frame, αδύνατο να αποφευχθούν. Τώρα είναι ΣΤΑΘΕΡΕΣ ΑΚΤΙΝΕΣ σε ίσες γωνίες
+        // γύρω από το μάτι, με 0.30s προειδοποίηση: η καταιγίδα χτυπά ΓΥΡΩ ΤΗΣ, δεν σημαδεύει.
+        S.spoke = (S.spoke || 0) + 0.37;                            // αργή περιστροφή της ρόδας
         for (let k = 0; k < n; k++) {
-          const tgt = fe.nearestTo(S.x, S.y, hitSet);
-          if (!tgt) break;
-          hitSet.add(tgt);
-          const ang = Math.atan2(tgt.pos.y - S.y, tgt.pos.x - S.x);
-          // lance line: pierce στους πρώτους pierce στόχους στη γραμμή
+          const ang = S.spoke + (k / n) * Math.PI * 2;
           const cosA = Math.cos(ang), sinA = Math.sin(ang);
-          let hits = 0;
-          for (const e of fe.targets()) {
-            const dx = e.pos.x - S.x, dy = e.pos.y - S.y;
-            const along = dx * cosA + dy * sinA, side = Math.abs(-dx * sinA + dy * cosA);
-            if (along > 0 && along < m.lances.range && side < 22 + (e.radius || 18)) {
-              fe.dealDamage(st.id, e, A(m.lances.dmg, i));
-              if (++hits >= m.lances.pierce) break;
+          const ex = S.x + cosA * m.lances.range, ey = S.y + sinA * m.lances.range;
+          fe.beam(S.x, S.y, ex, ey, 0.30, d.palette.glow, 3);        // ΠΡΟΕΙΔΟΠΟΙΗΣΗ πρώτα
+          fe.strike(S.x + cosA * m.lances.range * 0.5, S.y + sinA * m.lances.range * 0.5,
+                    m.lances.range * 0.5, 0.30, d.palette.core, () => {
+            let hits = 0;
+            for (const e of fe.targets()) {
+              const dx = e.pos.x - S.x, dy = e.pos.y - S.y;
+              const along = dx * cosA + dy * sinA, side = Math.abs(-dx * sinA + dy * cosA);
+              if (along > 0 && along < m.lances.range && side < 22 + (e.radius || 18)) {
+                fe.dealDamage(st.id, e, A(m.lances.dmg, i));
+                if (++hits >= m.lances.pierce) break;
+              }
             }
-          }
-          fe.beam(S.x, S.y, S.x + cosA * m.lances.range, S.y + sinA * m.lances.range, 0.28, d.palette.core, 6);
+            fe.beam(S.x, S.y, ex, ey, 0.28, d.palette.core, 6);
+          });
         }
         fe.cue(st.id, 'impact');
       }
       if (S.t >= durS) {
-        for (const e of fe.near(S.x, S.y, m.collapse.radius)) fe.dealDamage(st.id, e, A(m.collapse.dmg, i));
-        fe.flash(S.x, S.y, m.collapse.radius * 0.8, 0.5, d.palette.glow);
+        // TELEGRAPHED: το collapse (240) ξεπερνούσε τον σχεδιασμένο κύκλο σε T1/T2 και έσκαγε
+        // στο frame που έληγε ο χρόνος. Τώρα προειδοποιεί 0.40s στο κλειδωμένο κέντρο.
+        const sx = S.x, sy = S.y, cR = m.collapse.radius, cDmg = A(m.collapse.dmg, i);
+        fe.strike(sx, sy, cR, 0.40, d.palette.glow, () => {
+          for (const e of fe.near(sx, sy, cR)) fe.dealDamage(st.id, e, cDmg);
+          fe.flash(sx, sy, cR * 0.8, 0.5, d.palette.glow);
+        });
         fe.cue(st.id, 'aftermath');
         st.objects.storm = null;
         st.phase = 'cooldown'; st.cd = A(m.cooldown, i); st.cycle++;
@@ -828,16 +938,21 @@ FUSION_EXECUTORS.fus_tectonic_maw = {
   start(fe, st) { st.phase = 'cooldown'; st.cd = 1.6; st.objects.maws = []; st.objects.crusts = []; },
   _openMaw(fe, st, x, y, dmgMult) {
     const d = FUSION_DEFS[st.id], m = d.mech, i = fe.ti(st.id);
-    // crack star: 6 arms instant damage
+    // crack star: 6 arms — TELEGRAPHED. Ήταν "instant damage" στο ίδιο frame με τη σκόπευση,
+    // και το fe.beam ζωγραφιζόταν ΜΕΤΑ τη ζημιά (απόδειξη, όχι προειδοποίηση). Τώρα οι δοκοί
+    // ανάβουν πρώτες και το ρήγμα σκίζει 0.38s αργότερα, από ΚΛΕΙΔΩΜΕΝΟ κέντρο.
     for (let k = 0; k < m.caps.crackArms; k++) {
       const a = (k / m.caps.crackArms) * Math.PI * 2;
       const cosA = Math.cos(a), sinA = Math.sin(a);
-      for (const e of fe.near(x, y, m.crackRange)) {
-        const dx = e.pos.x - x, dy = e.pos.y - y;
-        const along = dx * cosA + dy * sinA, side = Math.abs(-dx * sinA + dy * cosA);
-        if (along > 0 && side < 34 + (e.radius || 18)) fe.dealDamage(st.id, e, A(m.crackDmg, i) * dmgMult);
-      }
       fe.beam(x, y, x + cosA * m.crackRange, y + sinA * m.crackRange, 0.45, d.palette.glow, 6);
+      fe.strike(x + cosA * m.crackRange * 0.5, y + sinA * m.crackRange * 0.5,
+                m.crackRange * 0.5, 0.38, d.palette.glow, () => {
+        for (const e of fe.near(x, y, m.crackRange)) {
+          const dx = e.pos.x - x, dy = e.pos.y - y;
+          const along = dx * cosA + dy * sinA, side = Math.abs(-dx * sinA + dy * cosA);
+          if (along > 0 && side < 34 + (e.radius || 18)) fe.dealDamage(st.id, e, A(m.crackDmg, i) * dmgMult);
+        }
+      });
     }
     st.objects.maws.push({ x, y, t: 0, tick: 0, dmgMult });
     fe.cue(st.id, 'impact');
@@ -852,7 +967,8 @@ FUSION_EXECUTORS.fus_tectonic_maw = {
       if (st.cd <= 0) { st.phase = 'charge'; st.t = 0; fe.cue(st.id, 'charge'); }
     } else if (st.phase === 'charge') {
       if (st.t >= 0.5) {
-        const den = fe.densest(200, fe._t);
+        // TARGETING PASS: το ρήγμα ανοίγει ΜΠΡΟΣΤΑ ΣΤΟΝ ΠΑΙΚΤΗ (ήταν densest(200)).
+        const den = fe.aimPoint(300);
         this._openMaw(fe, st, den.x, den.y, 1);
         st.objects.secondQueued = fe.tierOf(st.id) >= 3;
         st.phase = 'active'; st.t = 0;
@@ -860,7 +976,9 @@ FUSION_EXECUTORS.fus_tectonic_maw = {
     } else if (st.phase === 'active') {
       if (st.objects.secondQueued && st.t >= d.t3.secondMaw.delayS) {
         st.objects.secondQueued = false;
-        const den = fe.densest(200, fe._t + 2);
+        // TARGETING PASS: και το δεύτερο στόμα του T3 — ήταν ΝΕΟ densest ακριβώς εκεί που
+        // είχε τρέξει ο κόσμος, δηλαδή τιμωρούσε την αποφυγή. Τώρα ακολουθεί τη σκόπευση.
+        const den = fe.aimPoint(300);
         this._openMaw(fe, st, den.x, den.y, d.t3.secondMaw.dmgMult);
       }
       if (!st.objects.maws.length && !st.objects.secondQueued) {
@@ -882,12 +1000,15 @@ FUSION_EXECUTORS.fus_tectonic_maw = {
           for (const e of fe.near(M.x, M.y, sinkR)) fe.dealDamage(st.id, e, A(m.sink.tickDmg, i) * M.dmgMult);
         }
       } else {
-        // geyser + crust
+        // geyser + crust — TELEGRAPHED: ο πίδακας προειδοποιεί 0.35s πριν ξεσπάσει.
         const gR = A(m.geyser.radius, i) * radiusMult;
-        for (const e of fe.near(M.x, M.y, gR)) fe.dealDamage(st.id, e, A(m.geyser.dmg, i) * M.dmgMult);
-        fe.flash(M.x, M.y, gR, 0.5, d.palette.glow);
-        fe.ring(M.x, M.y, 30, gR + 40, 0.55, '#ffd9a1', 8);
-        fe.game.screenShake?.trigger?.(10, 0.4);
+        const gx = M.x, gy = M.y, gDmg = A(m.geyser.dmg, i) * M.dmgMult;
+        fe.strike(gx, gy, gR, 0.35, '#ffd9a1', () => {
+          for (const e of fe.near(gx, gy, gR)) fe.dealDamage(st.id, e, gDmg);
+          fe.flash(gx, gy, gR, 0.5, d.palette.glow);
+          fe.ring(gx, gy, 30, gR + 40, 0.55, '#ffd9a1', 8);
+          fe.game.screenShake?.trigger?.(10, 0.4);
+        });
         st.objects.crusts.push({ x: M.x, y: M.y, t: 0, tick: 0, dmgMult: M.dmgMult,
           dur: m.crust.durS * (fe.chaos() ? (d.chaos.crustDurMult || 1) : 1) });
         st.objects.maws.splice(k, 1);
@@ -943,8 +1064,8 @@ FUSION_EXECUTORS.fus_pyroclast_payload = {
       if (st.cd <= 0) { st.phase = 'launch'; st.t = 0; fe.cue(st.id, 'charge'); }
     } else if (st.phase === 'launch') {
       if (st.t >= 0.55) {
-        const den = fe.densest(200, fe._t);
-        const ang = Math.atan2(den.y - p.pos.y, den.x - p.pos.x);
+        // TARGETING PASS: ο διάδρομος ναρκών στρώνεται προς την κατεύθυνση του ΠΑΙΚΤΗ.
+        const ang = fe.aimAngle();
         const n = Math.min(m.caps.mines, A(m.mines.count, i) + (fe.chaos() ? (d.chaos.extraMine || 0) : 0));
         const len = A(m.corridorLen, i);
         st.objects.mines = [];
@@ -1021,9 +1142,14 @@ FUSION_EXECUTORS.fus_pyroclast_payload = {
         }
         if (mn) {
           mn.dead = true;
+          // TELEGRAPHED: η ακτίνα ζημιάς (120) ήταν πολύ μεγαλύτερη από το σχεδιασμένο sprite
+          // και έσκαγε στο tick χωρίς ένδειξη. Τώρα 0.25s προειδοποίηση ανά νάρκη.
           const wDmg = A(m.wave.dmg, i) * (fe.chaos() ? (d.chaos.waveDmgMult || 1) : 1);
-          for (const e of fe.near(mn.x, mn.y, m.wave.radius)) fe.dealDamage(st.id, e, wDmg);
-          fe.flash(mn.x, mn.y, m.wave.radius, 0.35, d.palette.glow);
+          const wx = mn.x, wy = mn.y, wR = m.wave.radius;
+          fe.strike(wx, wy, wR, 0.25, d.palette.glow, () => {
+            for (const e of fe.near(wx, wy, wR)) fe.dealDamage(st.id, e, wDmg);
+            fe.flash(wx, wy, wR, 0.35, d.palette.glow);
+          });
           // T3: τελευταία νάρκη → null implosion
           const remaining = mines.some(x => !x.dead);
           if (!remaining && fe.tierOf(st.id) >= 3) {
@@ -1153,11 +1279,16 @@ FUSION_EXECUTORS.fus_compass_of_ruin = {
       }
       if (C.t >= durS) {
         // Q.E.D.
+        // TELEGRAPHED: το qR (240-280) ξεπερνούσε τον σχεδιασμένο κύκλο (230-270) και έσκαγε
+        // στο frame που έληγε ο χρόνος. Τώρα 0.40s προειδοποίηση στο κλειδωμένο κέντρο.
         const qR = A(m.qed.radius, i);
         const qDmg = A(m.qed.dmg, i) * (fe.chaos() ? (d.chaos.qedDmgMult || 1) : 1);
-        for (const e of fe.near(C.x, C.y, qR)) fe.dealDamage(st.id, e, qDmg);
-        fe.flash(C.x, C.y, qR * 0.8, 0.5, d.palette.core);
-        fe.ring(C.x, C.y, 40, qR, 0.55, d.palette.glow, 9);
+        const qx = C.x, qy = C.y;
+        fe.strike(qx, qy, qR, 0.40, d.palette.core, () => {
+          for (const e of fe.near(qx, qy, qR)) fe.dealDamage(st.id, e, qDmg);
+          fe.flash(qx, qy, qR * 0.8, 0.5, d.palette.core);
+          fe.ring(qx, qy, 40, qR, 0.55, d.palette.glow, 9);
+        });
         fe.cue(st.id, 'impact');
         // T3 scissor: δύο διαμετρικές δέσμες
         if (fe.tierOf(st.id) >= 3) {
@@ -1217,7 +1348,8 @@ FUSION_EXECUTORS.fus_golden_collapse = {
       if (st.cd <= 0) { st.phase = 'charge'; st.t = 0; fe.cue(st.id, 'charge'); }
     } else if (st.phase === 'charge') {
       if (st.t >= 0.6) {
-        const den = fe.densest(220, fe._t);
+        // TARGETING PASS: η σπείρα στήνεται ΜΠΡΟΣΤΑ ΣΤΟΝ ΠΑΙΚΤΗ (ήταν densest(220)).
+        const den = fe.aimPoint(300);
         const n = Math.min(m.caps.nodes, A(m.nodes.count, i));
         const R0 = A(m.spiralRadius, i);
         const nodes = [];
@@ -1258,11 +1390,14 @@ FUSION_EXECUTORS.fus_golden_collapse = {
           fe.flash(nd.x, nd.y, m.nodes.radius, 0.35, d.palette.glow);
           fe.cue(st.id, 'impact');
         } else {
-          // implosion
+          // implosion — TELEGRAPHED 0.45s στο κλειδωμένο κέντρο της σπείρας
           const iR = A(m.implosion.radius, i);
           const dmg = A(m.implosion.dmg, i) * (1 + S.amp);
-          for (const e of fe.near(S.x, S.y, iR)) fe.dealDamage(st.id, e, dmg);
-          fe.flash(S.x, S.y, iR, 0.55, '#fff6cf');
+          const ix = S.x, iy = S.y;
+          fe.strike(ix, iy, iR, 0.45, '#fff6cf', () => {
+            for (const e of fe.near(ix, iy, iR)) fe.dealDamage(st.id, e, dmg);
+            fe.flash(ix, iy, iR, 0.55, '#fff6cf');
+          });
           fe.ring(S.x, S.y, iR, 20, 0.5, d.palette.glow, 10);
           st.objects.residue = { x: S.x, y: S.y, t: 0, tick: 0,
             dur: m.residue.durS * (fe.chaos() ? (d.chaos.residueDurMult || 1) : 1) };
@@ -1338,7 +1473,8 @@ FUSION_EXECUTORS.fus_hungry_hell_feast = {
       if (st.cd <= 0) { st.phase = 'charge'; st.t = 0; fe.cue(st.id, 'charge'); }
     } else if (st.phase === 'charge') {
       if (st.t >= 0.6) {
-        const den = fe.densest(220, fe._t);
+        // TARGETING PASS: το στόμα σκίζεται ΜΠΡΟΣΤΑ ΣΤΟΝ ΠΑΙΚΤΗ (ήταν densest(220)).
+        const den = fe.aimPoint(280);
         st.objects.maw = { x: den.x, y: den.y, t: 0, tick: 0, execT: 0, souls: 0, execCount: 0, secondCourse: false };
         st.phase = 'feast'; st.t = 0;
         fe.cue(st.id, 'travel');
@@ -1386,16 +1522,21 @@ FUSION_EXECUTORS.fus_hungry_hell_feast = {
         fe.cue(st.id, 'charge');
       }
       if (M.t >= durS) {
-        // final bite: κώνος/δίσκος γύρω από το maw
+        // final bite — TELEGRAPHED. Ήταν το χειρότερο instant του αρχείου: ακτίνα 240 ενώ το
+        // σχεδιασμένο στόμα είναι 150-180, δηλαδή σκότωνε καθαρά έξω από ό,τι έβλεπε ο παίκτης,
+        // στο ακριβές frame που έληγε ο χρόνος. Τώρα 0.50s προειδοποίηση στο πλήρες 240.
         const biteDmg = (A(m.bite.baseDmg, i) + A(m.bite.perSoul, i) * M.souls);
-        for (const e of fe.near(M.x, M.y, m.bite.radius)) fe.dealDamage(st.id, e, biteDmg);
-        if (M.secondCourse) {
-          for (const e of fe.near(M.x, M.y, m.bite.radius)) {
-            fe.dealDamage(st.id, e, biteDmg * d.t3.secondCourse.biteDmgMult);
+        const bx = M.x, by = M.y, bR = m.bite.radius, second = M.secondCourse;
+        fe.strike(bx, by, bR, 0.50, d.palette.glow, () => {
+          for (const e of fe.near(bx, by, bR)) fe.dealDamage(st.id, e, biteDmg);
+          if (second) {
+            for (const e of fe.near(bx, by, bR)) {
+              fe.dealDamage(st.id, e, biteDmg * d.t3.secondCourse.biteDmgMult);
+            }
           }
-        }
-        fe.flash(M.x, M.y, m.bite.radius, 0.55, d.palette.glow);
-        fe.game.screenShake?.trigger?.(11, 0.45);
+          fe.flash(bx, by, bR, 0.55, d.palette.glow);
+          fe.game.screenShake?.trigger?.(11, 0.45);
+        });
         fe.cue(st.id, 'impact');
         fe.cue(st.id, 'aftermath');
         st.objects.maw = null;
@@ -1455,8 +1596,8 @@ FUSION_EXECUTORS.fus_night_parade = {
       if (st.cd <= 0) { st.phase = 'charge'; st.t = 0; fe.cue(st.id, 'charge'); }
     } else if (st.phase === 'charge') {
       if (st.t >= 0.7) {
-        const den = fe.densest(220, fe._t);
-        const ang = Math.atan2(den.y - p.pos.y, den.x - p.pos.x);
+        // TARGETING PASS: η πομπή ξεκινά την πορεία της προς την κατεύθυνση του ΠΑΙΚΤΗ.
+        const ang = fe.aimAngle();
         const n = Math.min(m.caps.lanterns, A(m.lanterns, i) + (fe.chaos() ? (d.chaos.extraLantern || 0) : 0));
         const lans = [];
         for (let k = 0; k < n; k++) {
@@ -1524,10 +1665,12 @@ FUSION_EXECUTORS.fus_night_parade = {
         if (st.objects.bIdx < P.lans.length) {
           const L = P.lans[st.objects.bIdx++];
           const dmgMult = P.returned ? d.t3.returnMarch.dmgMult : 1;
-          for (const e of fe.near(L.x, L.y, m.endBursts.radius)) {
-            fe.dealDamage(st.id, e, A(m.endBursts.dmg, i) * dmgMult);
-          }
-          fe.flash(L.x, L.y, m.endBursts.radius, 0.35, d.palette.glow);
+          // TELEGRAPHED: κάθε φανάρι προειδοποιεί 0.22s πριν σκάσει (ακτίνα 110 vs sprite 92).
+          const lx = L.x, ly = L.y, bR2 = m.endBursts.radius, bDmg2 = A(m.endBursts.dmg, i) * dmgMult;
+          fe.strike(lx, ly, bR2, 0.22, d.palette.glow, () => {
+            for (const e of fe.near(lx, ly, bR2)) fe.dealDamage(st.id, e, bDmg2);
+            fe.flash(lx, ly, bR2, 0.35, d.palette.glow);
+          });
           fe.cue(st.id, 'impact');
         } else {
           st.objects.par = null;
@@ -1591,14 +1734,22 @@ FUSION_EXECUTORS.fus_ferromag_piledriver = {
         const maxFrags = Math.min(m.caps.embeddedFrags,
           A(m.embed.frags, i) + (fe.chaos() ? (d.chaos.extraFrags || 0) : 0));
         const embedded = [];
-        for (const e of fe.targets()) {
-          const dx = e.pos.x - p.pos.x, dy = e.pos.y - p.pos.y;
-          const along = dx * cosA + dy * sinA, side = Math.abs(-dx * sinA + dy * cosA);
-          if (along > 0 && along < range && side < m.punch.width * 0.5 + (e.radius || 18)) {
-            fe.dealDamage(st.id, e, A(m.punch.dmg, i));
-            if (embedded.length < maxFrags) embedded.push(e);
+        // TARGETING PASS: το lock στον κοντινότερο ΜΕΝΕΙ — μαγνητισμός σημαίνει έλξη, είναι
+        // το concept του όπλου. Αυτό που αλλάζει είναι η ΠΑΡΑΔΟΣΗ: η γραμμή κλειδώνει τώρα,
+        // ανάβει, και το πιστόνι χτυπά 0.26s μετά. Ο εχθρός που βγει από τη γραμμή γλιτώνει.
+        const px0 = p.pos.x, py0 = p.pos.y;
+        fe.beam(px0, py0, px0 + cosA * range, py0 + sinA * range, 0.26, d.palette.glow, 4);
+        fe.strike(px0 + cosA * range * 0.5, py0 + sinA * range * 0.5, range * 0.5, 0.26,
+                  d.palette.core, () => {
+          for (const e of fe.targets()) {
+            const dx = e.pos.x - px0, dy = e.pos.y - py0;
+            const along = dx * cosA + dy * sinA, side = Math.abs(-dx * sinA + dy * cosA);
+            if (along > 0 && along < range && side < m.punch.width * 0.5 + (e.radius || 18)) {
+              fe.dealDamage(st.id, e, A(m.punch.dmg, i));
+              if (embedded.length < maxFrags) embedded.push(e);
+            }
           }
-        }
+        });
         st.objects.punch = { x: p.pos.x, y: p.pos.y, ang, range, t: 0 };
         st.objects.embedded = embedded;
         fe.flash(p.pos.x + cosA * range * 0.5, p.pos.y + sinA * range * 0.5, 90, 0.35, d.palette.glow);
@@ -1721,8 +1872,14 @@ FUSION_EXECUTORS.fus_scrapstorm_foundry = {
         const cap = Math.min(m.caps.dronesAlive, A(m.forge.droneCap, i) + _fd);
         if (R.hits >= hitsPer && st.objects.drones.length < cap) {
           R.hits = 0;
-          const den = fe.densest(170, fe._t * 3);
-          st.objects.drones.push({ x: p.pos.x, y: p.pos.y - m.ring.radius, tx: den.x, ty: den.y, t: 0 });
+          // TARGETING PASS: το drone ΚΡΑΤΑΕΙ auto-targeting — το ίδιο το κείμενο του fusion
+          // λέει "homing scrap-drone". Αλλά ΔΕΝ ήταν homing: κλείδωνε παγωμένες συντεταγμένες
+          // (densest) και πετούσε ευθεία εκεί. Τώρα κρατά ΖΩΝΤΑΝΗ αναφορά στόχου και στρίβει
+          // με περιορισμένο ρυθμό — πραγματικό steering, όχι τηλεμεταφορά σε παλιό σημείο.
+          const tgt = fe.nearestTo(p.pos.x, p.pos.y);
+          const a0 = tgt ? Math.atan2(tgt.pos.y - p.pos.y, tgt.pos.x - p.pos.x) : fe.aimAngle();
+          st.objects.drones.push({ x: p.pos.x, y: p.pos.y - m.ring.radius,
+                                   target: tgt || null, ang: a0, t: 0 });
           fe.cue(st.id, 'travel');
         }
       }
@@ -1740,10 +1897,21 @@ FUSION_EXECUTORS.fus_scrapstorm_foundry = {
     for (let k = st.objects.drones.length - 1; k >= 0; k--) {
       const dr = st.objects.drones[k];
       dr.t += dt;
-      const dx = dr.tx - dr.x, dy = dr.ty - dr.y;
-      const dd = Math.hypot(dx, dy) || 1;
+      // ΠΡΑΓΜΑΤΙΚΟ HOMING με όριο στροφής (DRONE_TURN rad/s): το drone ξαναδιαβάζει τη ΖΩΝΤΑΝΗ
+      // θέση του στόχου του, αλλά μπορεί να στρίψει μόνο τόσο ανά δευτερόλεπτο — ένας εχθρός
+      // που στρίβει απότομα το κάνει να προσπεράσει. Χάνει τον στόχο -> ξαναδιαλέγει κοντινότερο.
+      if (!dr.target || dr.target.hp <= 0) dr.target = fe.nearestTo(dr.x, dr.y);
+      if (dr.target && dr.target.pos) {
+        let da = Math.atan2(dr.target.pos.y - dr.y, dr.target.pos.x - dr.x) - dr.ang;
+        while (da >  Math.PI) da -= Math.PI * 2;
+        while (da < -Math.PI) da += Math.PI * 2;
+        const maxTurn = DRONE_TURN * dt;
+        dr.ang += Math.max(-maxTurn, Math.min(maxTurn, da));
+      }
       const step = m.forge.speed * dt;
-      if (dd <= step + 6 || dr.t > 3) {
+      const tdd = dr.target && dr.target.pos
+        ? Math.hypot(dr.target.pos.x - dr.x, dr.target.pos.y - dr.y) : Infinity;
+      if (tdd <= step + 6 + (dr.target?.radius || 0) || dr.t > 3) {
         for (const e of fe.near(dr.x, dr.y, 100)) fe.dealDamage(st.id, e, A(m.forge.droneDmg, i));
         for (const e of fe.near(dr.x, dr.y, 160)) fe.dealDamage(st.id, e, A(m.forge.coneDmg, i));
         fe.flash(dr.x, dr.y, 120, 0.4, d.palette.glow);
@@ -1754,7 +1922,7 @@ FUSION_EXECUTORS.fus_scrapstorm_foundry = {
         }
         st.objects.drones.splice(k, 1);
       } else {
-        dr.x += (dx / dd) * step; dr.y += (dy / dd) * step;
+        dr.x += Math.cos(dr.ang) * step; dr.y += Math.sin(dr.ang) * step;
       }
     }
     for (let k = st.objects.slags.length - 1; k >= 0; k--) {
@@ -1787,7 +1955,7 @@ FUSION_EXECUTORS.fus_scrapstorm_foundry = {
       fe.drawArt(ctx, st.id, p.pos.x, p.pos.y - 130, 110, 0, 0.55);
     }
     for (const dr of st.objects.drones || []) {
-      fe.drawArt(ctx, st.id, dr.x, dr.y, 66, Math.atan2(dr.ty - dr.y, dr.tx - dr.x), 0.95);
+      fe.drawArt(ctx, st.id, dr.x, dr.y, 66, dr.ang || 0, 0.95);
     }
     for (const s of st.objects.slags || []) {
       ctx.save(); ctx.globalCompositeOperation = 'lighter';
@@ -1822,7 +1990,8 @@ FUSION_EXECUTORS.fus_widows_loom = {
       if (st.cd <= 0) { st.phase = 'charge'; st.t = 0; fe.cue(st.id, 'charge'); }
     } else if (st.phase === 'charge') {
       if (st.t >= 0.6) {
-        const den = fe.densest(220, fe._t);
+        // TARGETING PASS: ο ιστός υφαίνεται ΜΠΡΟΣΤΑ ΣΤΟΝ ΠΑΙΚΤΗ (ήταν densest(220)).
+        const den = fe.aimPoint(300);
         this._weave(fe, st, den.x, den.y, 1, 1);
         st.objects.venom.clear();
         st.objects.rewoven = false;
@@ -1865,22 +2034,28 @@ FUSION_EXECUTORS.fus_widows_loom = {
         // CHAOS DOCTRINE (assassin_clone): an ARMED shroud widens the execution window once.
         const execPct = A(m.cinch.execPct, i) + (fe.chaos() ? (d.chaos.execPctBonus || 0) : 0)
                       + (fe.chaos() ? (fe.game.doctrineExecBonus?.() || 0) : 0);
-        let executions = 0;
-        for (const e of fe.near(L.cx, L.cy, L.R + 40)) {
-          const stacks = st.objects.venom.get(e) || 0;
-          const marked = stacks >= m.cinch.stacksNeeded;
-          if (marked && !fe.isBoss(e) && executions < m.caps.executionsPerCinch) {
-            const maxHp = e.maxHp || e.hp;
-            if (e.hp <= maxHp * execPct) {
-              fe.dealDamage(st.id, e, Math.min(m.cinch.execCap, e.hp + 1));
-              executions++;
-              fe.flash(e.pos.x, e.pos.y, 44, 0.3, d.palette.glow);
-              continue;
+        // TELEGRAPHED: το κλείσιμο του ιστού (execute + burst) έσκαγε στο frame που έληγε ο
+        // χρόνος. Τώρα ο ιστός «σφίγγει» ορατά 0.40s — όποιος βγει από τον κύκλο ΔΕΝ πληρώνει,
+        // ούτε καν το execute, γιατί το fe.near() ξανατρέχει τη στιγμή που σφίγγει.
+        const lx2 = L.cx, ly2 = L.cy, lR2 = L.R, lMul = L.dmgMult;
+        fe.ring(lx2, ly2, lR2, 20, 0.5, d.palette.glow, 7);
+        fe.strike(lx2, ly2, lR2 + 40, 0.40, d.palette.glow, () => {
+          let executions = 0;
+          for (const e of fe.near(lx2, ly2, lR2 + 40)) {
+            const stacks = st.objects.venom.get(e) || 0;
+            const marked = stacks >= m.cinch.stacksNeeded;
+            if (marked && !fe.isBoss(e) && executions < m.caps.executionsPerCinch) {
+              const maxHp = e.maxHp || e.hp;
+              if (e.hp <= maxHp * execPct) {
+                fe.dealDamage(st.id, e, Math.min(m.cinch.execCap, e.hp + 1));
+                executions++;
+                fe.flash(e.pos.x, e.pos.y, 44, 0.3, d.palette.glow);
+                continue;
+              }
             }
+            fe.dealDamage(st.id, e, A(m.cinch.burstDmg, i) * lMul);
           }
-          fe.dealDamage(st.id, e, A(m.cinch.burstDmg, i) * L.dmgMult);
-        }
-        fe.ring(L.cx, L.cy, L.R, 20, 0.5, d.palette.glow, 7);
+        });
         fe.cue(st.id, 'impact');
         // T3 BLACK WIDOW: άμεσο reweave μικρότερου ιστού μία φορά
         if (fe.tierOf(st.id) >= 3 && !st.objects.rewoven) {
@@ -1958,6 +2133,7 @@ FUSION_EXECUTORS.fus_phantom_needle_protocol = {
       if (st.t >= m.sigilS) {
         st.objects.needles = st.objects.marks.filter(e => e && e.hp > 0).map((e, k) => ({
           x: p.pos.x + (k - 1) * 40, y: p.pos.y - 60, target: e, hit: false,
+          ang: Math.atan2(e.pos.y - (p.pos.y - 60), e.pos.x - (p.pos.x + (k - 1) * 40)),
         }));
         st.phase = 'flight'; st.t = 0;
         fe.cue(st.id, 'travel');
@@ -1972,14 +2148,30 @@ FUSION_EXECUTORS.fus_phantom_needle_protocol = {
         const dd = Math.hypot(dx, dy) || 1;
         const step = m.needles.speed * dt;
         if (dd <= step + (e.radius || 18)) { nd.hit = true; nd.hx = e.pos.x; nd.hy = e.pos.y; }
-        else { nd.x += (dx / dd) * step; nd.y += (dy / dd) * step; allArrived = false; }
+        else {
+          // TARGETING PASS: η βελόνα ΚΡΑΤΑΕΙ homing — «phantom needle που κυνηγά τον πιο
+          // δυνατό» ΕΙΝΑΙ το concept. Αυτό που έφυγε είναι το ΤΕΛΕΙΟ κλείδωμα: ήταν
+          // dir = normalize(target - pos) κάθε frame, χωρίς αδράνεια. Τώρα στρίβει το πολύ
+          // NEEDLE_TURN rad/s, οπότε ένας εχθρός που κόβει απότομα την κάνει να προσπεράσει.
+          let da = Math.atan2(dy, dx) - nd.ang;
+          while (da >  Math.PI) da -= Math.PI * 2;
+          while (da < -Math.PI) da += Math.PI * 2;
+          const maxTurn = NEEDLE_TURN * dt;
+          nd.ang += Math.max(-maxTurn, Math.min(maxTurn, da));
+          nd.x += Math.cos(nd.ang) * step; nd.y += Math.sin(nd.ang) * step;
+          allArrived = false;
+        }
       }
-      if (allArrived || st.t > 1.4) {
+      // ΗΤΑΝ `allArrived || st.t > 1.4`: το 1.4 ήταν timer-commit — αν η βελόνα δεν προλάβαινε,
+      // η ζημιά έμπαινε ΕΤΣΙ ΚΙ ΑΛΛΙΩΣ, από απόσταση, χωρίς άφιξη. Τηλεμεταφορά ζημιάς.
+      // Τώρα το 2.2 είναι ΜΟΝΟ lifetime: ό,τι δεν έφτασε, ΧΑΝΕΤΑΙ (φιλτράρεται στο χτύπημα).
+      if (allArrived || st.t > 2.2) {
         // ΤΑΥΤΟΧΡΟΝΟ χτύπημα
         const rt = fe.game.buildEngine;
         for (const nd of st.objects.needles) {
           const e = nd.target;
           if (!e || e.hp <= 0) continue;
+          if (!nd.hit) continue;                       // δεν έφτασε -> δεν χτυπά. Καμία ζημιά εξ αποστάσεως.
           fe.dealDamage(st.id, e, A(m.needles.dmg, i));
           if (!fe.isBoss(e)) {
             const maxHp = e.maxHp || e.hp;
@@ -2056,8 +2248,7 @@ FUSION_EXECUTORS.fus_phantom_needle_protocol = {
     }
     for (const nd of st.objects.needles || []) {
       if (nd.hit || !nd.target) continue;
-      const ang = Math.atan2(nd.target.pos.y - nd.y, nd.target.pos.x - nd.x);
-      fe.drawArt(ctx, st.id, nd.x, nd.y, 74, ang, 0.9);
+      fe.drawArt(ctx, st.id, nd.x, nd.y, 74, nd.ang || 0, 0.9);   // δείχνει την ΠΡΑΓΜΑΤΙΚΗ πορεία
     }
   },
 };
@@ -2069,38 +2260,46 @@ FUSION_EXECUTORS.fus_die_of_fates = {
     const d = FUSION_DEFS[st.id], m = d.mech, i = fe.ti(st.id);
     const faceDmgMult = dmgMult * (fe.chaos() ? (d.chaos.faceDmgMult || 1) : 1);
     if (k === 0) {          // needle nova
+      // TARGETING PASS: ήταν hitscan — nearestTo και ζημιά στην ΙΔΙΑ γραμμή, το beam μετά.
+      // Τώρα το ζάρι σημαδεύει ΣΗΜΕΙΑ ΕΔΑΦΟΥΣ (εκεί που στέκονται τώρα) και οι βελόνες
+      // προσγειώνονται 0.26s αργότερα. Η επιλογή στόχου μένει — είναι fusion τύχης.
       const f = m.faces.needleNova;
       const hitSet = new Set();
       for (let n = 0; n < Math.min(m.caps.novaNeedles, f.count); n++) {
         const tgt = fe.nearestTo(x, y, hitSet);
         if (!tgt || dist2(x, y, tgt.pos.x, tgt.pos.y) > f.range ** 2) break;
-        fe.dealDamage(st.id, tgt, A(f.dmg, i) * faceDmgMult);
-        fe.beam(x, y, tgt.pos.x, tgt.pos.y, 0.22, d.palette.glow, 3.5);
         hitSet.add(tgt);
+        const gx = tgt.pos.x, gy = tgt.pos.y, nR = 46, nDmg = A(f.dmg, i) * faceDmgMult;
+        fe.beam(x, y, gx, gy, 0.26, d.palette.glow, 3.5);
+        fe.strike(gx, gy, nR, 0.26, d.palette.glow, () => {
+          for (const e2 of fe.near(gx, gy, nR)) { fe.dealDamage(st.id, e2, nDmg); break; }
+        });
       }
     } else if (k === 1) {   // phase rift (field)
       if (st.objects.fields.length < m.caps.fieldsAlive) {
         st.objects.fields.push({ kind: 'rift', x, y, t: 0, tick: 0, dmgMult: faceDmgMult });
       }
     } else if (k === 2) {   // lance volley
+      // TARGETING PASS: ήταν nearestTo ανά λόγχη ΧΩΡΙΣ κανένα όριο απόστασης, hitscan στο ίδιο
+      // frame. Τώρα είναι ΣΤΑΘΕΡΗ ΒΕΝΤΑΛΙΑ γύρω από το ζάρι, με 0.28s προειδοποίηση.
       const f = m.faces.lanceVolley;
-      const hitSet = new Set();
+      const base = (k * 1.7) + (st.objects.die ? st.objects.die.bounce * 0.9 : 0);
       for (let n = 0; n < f.count; n++) {
-        const tgt = fe.nearestTo(x, y, hitSet);
-        if (!tgt) break;
-        hitSet.add(tgt);
-        const ang = Math.atan2(tgt.pos.y - y, tgt.pos.x - x);
+        const ang = base + (n / Math.max(1, f.count)) * Math.PI * 2;
         const cosA = Math.cos(ang), sinA = Math.sin(ang);
-        let hits = 0;
-        for (const e of fe.targets()) {
-          const dx = e.pos.x - x, dy = e.pos.y - y;
-          const along = dx * cosA + dy * sinA, side = Math.abs(-dx * sinA + dy * cosA);
-          if (along > 0 && along < f.range && side < 20 + (e.radius || 18)) {
-            fe.dealDamage(st.id, e, A(f.dmg, i) * faceDmgMult);
-            if (++hits >= f.pierce) break;
+        fe.beam(x, y, x + cosA * f.range, y + sinA * f.range, 0.28, d.palette.core, 5);
+        fe.strike(x + cosA * f.range * 0.5, y + sinA * f.range * 0.5, f.range * 0.5, 0.28,
+                  d.palette.core, () => {
+          let hits = 0;
+          for (const e of fe.targets()) {
+            const dx = e.pos.x - x, dy = e.pos.y - y;
+            const along = dx * cosA + dy * sinA, side = Math.abs(-dx * sinA + dy * cosA);
+            if (along > 0 && along < f.range && side < 20 + (e.radius || 18)) {
+              fe.dealDamage(st.id, e, A(f.dmg, i) * faceDmgMult);
+              if (++hits >= f.pierce) break;
+            }
           }
-        }
-        fe.beam(x, y, x + cosA * f.range, y + sinA * f.range, 0.25, d.palette.core, 5);
+        });
       }
     } else {                // slow field
       if (st.objects.fields.length < m.caps.fieldsAlive) {
@@ -2211,7 +2410,7 @@ FUSION_EXECUTORS.fus_event_horizon_roulette = {
     st.objects.discs.push({
       x: p.pos.x + Math.cos(ang) * m.wheel.radius,
       y: p.pos.y + Math.sin(ang) * m.wheel.radius,
-      bouncesLeft: m.payout.bounces, target: null, dmgMult, t: 0, hitSet: new Set(),
+      bouncesLeft: m.payout.bounces, target: null, dmgMult, t: 0, hitSet: new Set(), ang,
     });
   },
   update(fe, st, dt) {
@@ -2262,8 +2461,13 @@ FUSION_EXECUTORS.fus_event_horizon_roulette = {
         fe.cue(st.id, 'travel');
       }
       if (W.t >= durS) {
-        for (const e of fe.near(p.pos.x, p.pos.y, m.collapse.radius)) fe.dealDamage(st.id, e, A(m.collapse.dmg, i));
-        fe.ring(p.pos.x, p.pos.y, m.wheel.radius, 20, 0.5, d.palette.glow, 8);
+        // TELEGRAPHED: το collapse έσκαγε στο frame που έληγε ο τροχός. Τώρα το κέντρο
+        // ΚΛΕΙΔΩΝΕΙ εκεί που ήταν ο παίκτης και προειδοποιεί 0.38s.
+        const wx = p.pos.x, wy = p.pos.y, wR = m.collapse.radius, wDmg = A(m.collapse.dmg, i);
+        fe.ring(wx, wy, m.wheel.radius, 20, 0.5, d.palette.glow, 8);
+        fe.strike(wx, wy, wR, 0.38, d.palette.glow, () => {
+          for (const e of fe.near(wx, wy, wR)) fe.dealDamage(st.id, e, wDmg);
+        });
         fe.cue(st.id, 'aftermath');
         st.objects.wheel = null;
         st.phase = 'cooldown'; st.cd = A(m.cooldown, i); st.cycle++;
@@ -2281,6 +2485,16 @@ FUSION_EXECUTORS.fus_event_horizon_roulette = {
       const dx = e.pos.x - ds.x, dy = e.pos.y - ds.y;
       const dd = Math.hypot(dx, dy) || 1;
       const step = m.payout.speed * dt;
+      // TARGETING PASS: ο δίσκος ΚΡΑΤΑΕΙ homing — «ricochet chip» ΕΙΝΑΙ το concept. Έφυγε το
+      // τέλειο κλείδωμα (dir = normalize(target-pos) κάθε frame, μηδέν αδράνεια, αδύνατο να
+      // αστοχήσει). Τώρα στρίβει το πολύ CHIP_TURN rad/s και μπορεί να προσπεράσει.
+      {
+        let da = Math.atan2(dy, dx) - ds.ang;
+        while (da >  Math.PI) da -= Math.PI * 2;
+        while (da < -Math.PI) da += Math.PI * 2;
+        const maxTurn = CHIP_TURN * dt;
+        ds.ang += Math.max(-maxTurn, Math.min(maxTurn, da));
+      }
       if (dd <= step + (e.radius || 18)) {
         fe.dealDamage(st.id, e, A(m.payout.discDmg, i) * ds.dmgMult);
         // bridge arc: τροχός ↔ δίσκος
@@ -2294,7 +2508,7 @@ FUSION_EXECUTORS.fus_event_horizon_roulette = {
         ds.target = null;
         if (--ds.bouncesLeft <= 0) st.objects.discs.splice(k, 1);
       } else {
-        ds.x += (dx / dd) * step; ds.y += (dy / dd) * step;
+        ds.x += Math.cos(ds.ang) * step; ds.y += Math.sin(ds.ang) * step;
       }
     }
   },
@@ -2333,18 +2547,25 @@ FUSION_EXECUTORS.fus_wall_of_sound = {
     const d = FUSION_DEFS[st.id], m = d.mech, i = fe.ti(st.id);
     const dmg = A(m.solo.dmg, i) * dmgMult;
     const range = A(m.waves.range, i);
+    // TELEGRAPHED: το solo έσκαγε στο ίδιο frame με το beat και το beam ζωγραφιζόταν ΜΕΤΑ.
+    // Τώρα ο διάδρομος ανάβει πρώτος και το solo κόβει 0.32s αργότερα, σε ΚΛΕΙΔΩΜΕΝΗ γραμμή.
+    const sx = S.x, sy = S.y, scos = S.cos, ssin = S.sin;
+    fe.strike(sx + scos * range * 0.5, sy + ssin * range * 0.5, range * 0.5, 0.32,
+              d.palette.glow, () => {
     for (const e of fe.targets()) {
-      const dx = e.pos.x - S.x, dy = e.pos.y - S.y;
-      const along = dx * S.cos + dy * S.sin;
-      const side = -dx * S.sin + dy * S.cos;
+      const dx = e.pos.x - sx, dy = e.pos.y - sy;
+      const along = dx * scos + dy * ssin;
+      const side = -dx * ssin + dy * scos;
       if (along > -40 && along < range && Math.abs(side) < m.solo.width * 0.5 + (e.radius || 18)) {
         fe.dealDamage(st.id, e, dmg);
       }
     }
-    fe.beam(S.x - S.sin * m.solo.width * 0.5, S.y + S.cos * m.solo.width * 0.5,
-            S.x + S.cos * range - S.sin * -m.solo.width * 0.5, S.y + S.sin * range + S.cos * -m.solo.width * 0.5,
+      fe.flash(sx + scos * range * 0.4, sy + ssin * range * 0.4, 140, 0.4, d.palette.glow);
+    });
+    // ΠΡΟΕΙΔΟΠΟΙΗΣΗ πρώτα (ήταν μετά τη ζημιά): η κόκκινη γραμμή ανάβει τώρα, το solo κόβει μετά.
+    fe.beam(sx - ssin * m.solo.width * 0.5, sy + scos * m.solo.width * 0.5,
+            sx + scos * range - ssin * -m.solo.width * 0.5, sy + ssin * range + scos * -m.solo.width * 0.5,
             0.4, d.palette.glow, 12);
-    fe.flash(S.x + S.cos * range * 0.4, S.y + S.sin * range * 0.4, 140, 0.4, d.palette.glow);
   },
   update(fe, st, dt) {
     fe.tickShowcase(st, dt);
@@ -2356,8 +2577,8 @@ FUSION_EXECUTORS.fus_wall_of_sound = {
       if (st.cd <= 0) { st.phase = 'charge'; st.t = 0; fe.cue(st.id, 'charge'); }
     } else if (st.phase === 'charge') {
       if (st.t >= 0.6) {
-        const den = fe.densest(220, fe._t);
-        const ang = Math.atan2(den.y - p.pos.y, den.x - p.pos.x);
+        // TARGETING PASS: η σκηνή κοιτάζει προς την κατεύθυνση του ΠΑΙΚΤΗ (ήταν densest(220)).
+        const ang = fe.aimAngle();
         st.objects.stage = {
           x: p.pos.x, y: p.pos.y, cos: Math.cos(ang), sin: Math.sin(ang),
           t: 0, beatT: 0, beats: 0, bridgeT: 0,
@@ -2371,22 +2592,36 @@ FUSION_EXECUTORS.fus_wall_of_sound = {
       const beatS = m.waves.beatS * (fe.chaos() ? (d.chaos.beatMult || 1) : 1);
       const soloEvery = fe.chaos() ? (d.chaos.soloEveryBeats || m.solo.everyBeats) : m.solo.everyBeats;
       S.t += dt; S.beatT += dt; S.bridgeT += dt;
-      if (S.beatT >= beatS) {
-        S.beatT = 0; S.beats++;
+      // HIT DELIVERY: το beat χτυπούσε ΟΛΟ τον διάδρομο (μέχρι 620px) σε ένα frame, ενώ το
+      // draw ζωγράφιζε ένα κύμα να προχωράει — δηλαδή το ορατό κύμα ήταν καθαρά διακοσμητικό
+      // και η ζημιά στα 600px έμπαινε ταυτόχρονα με τη ζημιά στο μέτωπο. Τώρα η ζημιά ΑΚΟΛΟΥΘΕΙ
+      // το ορατό μέτωπο: ίδιος τύπος (range * beatT/beatS), οπότε ό,τι βλέπεις είναι ό,τι χτυπά.
+      {
         const range = A(m.waves.range, i);
         const dmg = A(m.waves.dmg, i);
-        for (const e of fe.targets()) {
-          const dx = e.pos.x - S.x, dy = e.pos.y - S.y;
-          const along = dx * S.cos + dy * S.sin;
-          const side = -dx * S.sin + dy * S.cos;
-          if (along > 0 && along < range && Math.abs(side) < m.waves.width * 0.5 + (e.radius || 18)) {
-            fe.dealDamage(st.id, e, dmg);
-            if (!fe.isBoss(e)) {                       // push προς τα εμπρός
-              e.pos.x += S.cos * m.waves.push * dt * 6;
-              e.pos.y += S.sin * m.waves.push * dt * 6;
+        const front = range * Math.min(1, S.beatT / beatS);
+        const prevFront = range * Math.max(0, (S.beatT - dt) / beatS);
+        if (!S.waveHit) S.waveHit = new Set();
+        if (front > prevFront) {
+          for (const e of fe.targets()) {
+            if (S.waveHit.has(e)) continue;
+            const dx = e.pos.x - S.x, dy = e.pos.y - S.y;
+            const along = dx * S.cos + dy * S.sin;
+            const side = -dx * S.sin + dy * S.cos;
+            if (along > prevFront && along <= front && Math.abs(side) < m.waves.width * 0.5 + (e.radius || 18)) {
+              S.waveHit.add(e);
+              fe.dealDamage(st.id, e, dmg);
+              if (!fe.isBoss(e)) {                     // push προς τα εμπρός
+                e.pos.x += S.cos * m.waves.push * dt * 6;
+                e.pos.y += S.sin * m.waves.push * dt * 6;
+              }
             }
           }
         }
+      }
+      if (S.beatT >= beatS) {
+        S.beatT = 0; S.beats++;
+        S.waveHit = new Set();                         // νέο κύμα -> καθαρό set
         if (S.beats % soloEvery === 0) {
           this._soloSweep(fe, st, S, 1);
           fe.cue(st.id, 'impact');
@@ -2412,9 +2647,13 @@ FUSION_EXECUTORS.fus_wall_of_sound = {
         // screech γύρω από κάθε πύργο
         const t1x = S.x - S.sin * m.towerGap * 0.5, t1y = S.y + S.cos * m.towerGap * 0.5;
         const t2x = S.x + S.sin * m.towerGap * 0.5, t2y = S.y - S.cos * m.towerGap * 0.5;
+        // TELEGRAPHED: το screech προειδοποιεί 0.35s σε κάθε πύργο πριν σκάσει.
         for (const [tx2, ty2] of [[t1x, t1y], [t2x, t2y]]) {
-          for (const e of fe.near(tx2, ty2, m.screech.radius)) fe.dealDamage(st.id, e, A(m.screech.dmg, i));
-          fe.ring(tx2, ty2, 30, m.screech.radius, 0.45, d.palette.glow, 6);
+          const sR = m.screech.radius, sDmg = A(m.screech.dmg, i);
+          fe.ring(tx2, ty2, 30, sR, 0.45, d.palette.glow, 6);
+          fe.strike(tx2, ty2, sR, 0.35, d.palette.glow, () => {
+            for (const e of fe.near(tx2, ty2, sR)) fe.dealDamage(st.id, e, sDmg);
+          });
         }
         // T3 ENCORE: full-length solo και προς τις δύο κατευθύνσεις
         if (fe.tierOf(st.id) >= 3 && d.t3.encore.bothDirections) {
@@ -2466,7 +2705,8 @@ FUSION_EXECUTORS.fus_bass_singularity = {
       if (st.cd <= 0) { st.phase = 'charge'; st.t = 0; fe.cue(st.id, 'charge'); }
     } else if (st.phase === 'charge') {
       if (st.t >= 0.6) {
-        const den = fe.densest(220, fe._t);
+        // TARGETING PASS: ο πυρήνας πέφτει ΜΠΡΟΣΤΑ ΣΤΟΝ ΠΑΙΚΤΗ (ήταν densest(220)).
+        const den = fe.aimPoint(280);
         st.objects.core = { x: den.x, y: den.y, t: 0, rhythmT: 0, mode: 'inhale', drops: 0, tick: 0, roadieT: 0 };
         st.phase = 'core'; st.t = 0;
         fe.cue(st.id, 'travel');
@@ -2486,18 +2726,22 @@ FUSION_EXECUTORS.fus_bass_singularity = {
         }
         if (C.rhythmT >= rhythmS) { C.rhythmT = 0; C.mode = 'drop'; }
       } else {
-        // DROP
+        // DROP — TELEGRAPHED. Ένα bass drop ΠΡΕΠΕΙ να ακούγεται πριν σκάσει: 0.30s build-up
+        // στο κλειδωμένο κέντρο. Ήταν ένα frame, χωρίς καμία προειδοποίηση.
         const R = A(m.drop.radius, i);
-        for (const e of fe.near(C.x, C.y, R)) {
-          fe.dealDamage(st.id, e, A(m.drop.dmg, i));
-          if (!fe.isBoss(e)) {
-            const dd = Math.hypot(e.pos.x - C.x, e.pos.y - C.y) || 1;
-            e.pos.x += ((e.pos.x - C.x) / dd) * m.drop.push * 0.3;
-            e.pos.y += ((e.pos.y - C.y) / dd) * m.drop.push * 0.3;
+        const cx2 = C.x, cy2 = C.y, dDmg = A(m.drop.dmg, i);
+        fe.ring(cx2, cy2, 20, R, 0.4, d.palette.glow, 7);
+        fe.strike(cx2, cy2, R, 0.30, d.palette.core, () => {
+          for (const e of fe.near(cx2, cy2, R)) {
+            fe.dealDamage(st.id, e, dDmg);
+            if (!fe.isBoss(e)) {
+              const dd = Math.hypot(e.pos.x - cx2, e.pos.y - cy2) || 1;
+              e.pos.x += ((e.pos.x - cx2) / dd) * m.drop.push * 0.3;
+              e.pos.y += ((e.pos.y - cy2) / dd) * m.drop.push * 0.3;
+            }
           }
-        }
-        fe.ring(C.x, C.y, 20, R, 0.4, d.palette.glow, 7);
-        fe.game.screenShake?.trigger?.(7, 0.3);
+          fe.game.screenShake?.trigger?.(7, 0.3);
+        });
         fe.cue(st.id, 'impact');
         C.drops++;
         // T3: κάθε δεύτερο drop → ταξιδεύον δαχτυλίδι
@@ -2518,10 +2762,14 @@ FUSION_EXECUTORS.fus_bass_singularity = {
         }
       }
       if (C.t >= durS) {
+        // TELEGRAPHED 0.45s: το τελικό boom προειδοποιεί στο κλειδωμένο κέντρο.
         const boomDmg = A(m.boom.dmg, i) * (fe.chaos() ? (d.chaos.boomDmgMult || 1) : 1);
-        for (const e of fe.near(C.x, C.y, m.boom.radius)) fe.dealDamage(st.id, e, boomDmg);
-        fe.flash(C.x, C.y, m.boom.radius * 0.8, 0.55, d.palette.glow);
-        fe.game.screenShake?.trigger?.(12, 0.5);
+        const bx3 = C.x, by3 = C.y, bR3 = m.boom.radius;
+        fe.strike(bx3, by3, bR3, 0.45, d.palette.core, () => {
+          for (const e of fe.near(bx3, by3, bR3)) fe.dealDamage(st.id, e, boomDmg);
+          fe.flash(bx3, by3, bR3 * 0.8, 0.55, d.palette.glow);
+          fe.game.screenShake?.trigger?.(12, 0.5);
+        });
         fe.cue(st.id, 'aftermath');
         st.objects.core = null;
         st.phase = 'cooldown'; st.cd = A(m.cooldown, i); st.cycle++;
@@ -2585,8 +2833,8 @@ FUSION_EXECUTORS.fus_thousand_fist_verdict = {
       if (st.cd <= 0) { st.phase = 'charge'; st.t = 0; fe.cue(st.id, 'charge'); }
     } else if (st.phase === 'charge') {
       if (st.t >= 0.5) {
-        const den = fe.densest(200, fe._t);
-        const ang = Math.atan2(den.y - p.pos.y, den.x - p.pos.x);
+        // TARGETING PASS: ο διάδρομος των γροθιών δείχνει προς τον ΠΑΙΚΤΗ (ήταν densest(200)).
+        const ang = fe.aimAngle();
         const n = Math.min(m.caps.fists, A(m.fists.count, i) + (fe.chaos() ? (d.chaos.extraFist || 0) : 0));
         const len = A(m.corridorLen, i);
         const fists = [];
@@ -2606,34 +2854,43 @@ FUSION_EXECUTORS.fus_thousand_fist_verdict = {
         if (R.idx < R.fists.length) {
           const F = R.fists[R.idx++];
           F.fired = true;
-          for (const e of fe.near(F.x, F.y, m.fists.radius)) {
-            fe.dealDamage(st.id, e, A(m.fists.dmg, i));
-            R.marked.add(e);
-            // sanction mark στο canonical BE status channel (συνεργεί με _dealDamage)
-            if (rt && rt._status && typeof e.takeHit === 'function') {
-              const cur = rt._status.get(e) || {};
-              cur.sanction = Math.max(cur.sanction || 0, 2.0);
-              rt._status.set(e, cur);
+          // TELEGRAPHED 0.20s ανά γροθιά: η θέση είναι ήδη κλειδωμένη από τη σκόπευση, τώρα
+          // ανάβει κιόλας πριν πέσει — ο εχθρός που προχωρά μέσα στον διάδρομο μπορεί να βγει.
+          const fx = F.x, fy = F.y, fR = m.fists.radius, fDmg = A(m.fists.dmg, i);
+          fe.strike(fx, fy, fR, 0.20, d.palette.glow, () => {
+            for (const e of fe.near(fx, fy, fR)) {
+              fe.dealDamage(st.id, e, fDmg);
+              R.marked.add(e);
+              // sanction mark στο canonical BE status channel (συνεργεί με _dealDamage)
+              if (rt && rt._status && typeof e.takeHit === 'function') {
+                const cur = rt._status.get(e) || {};
+                cur.sanction = Math.max(cur.sanction || 0, 2.0);
+                rt._status.set(e, cur);
+              }
             }
-          }
-          fe.flash(F.x, F.y, m.fists.radius, 0.3, d.palette.glow);
-          fe.game.screenShake?.trigger?.(5, 0.2);
+            fe.flash(fx, fy, fR, 0.3, d.palette.glow);
+            fe.game.screenShake?.trigger?.(5, 0.2);
+          });
           fe.cue(st.id, 'impact');
         } else {
           // VERDICT: null uppercut στο τέλος του διαδρόμου
           const bonus = A(m.verdict.markedBonusPct, i) + (fe.chaos() ? (d.chaos.verdictBonusPct || 0) : 0);
+          // TELEGRAPHED 0.55s — το πιο βαρύ χτύπημα του fusion, σε σημείο που είχε κλειδώσει
+          // δευτερόλεπτα πριν. Το uppercut ήταν instant και το ring/flash έμπαιναν ΜΕΤΑ.
+          const ex2 = R.endX, ey2 = R.endY, uR = m.uppercut.radius, uDmg = A(m.uppercut.dmg, i);
+          fe.ring(ex2, ey2, 30, uR + 40, 0.55, d.palette.glow, 8);
+          fe.strike(ex2, ey2, uR, 0.55, '#f0e6ff', () => {
           let kills = [];
-          for (const e of fe.near(R.endX, R.endY, m.uppercut.radius)) {
+          for (const e of fe.near(ex2, ey2, uR)) {
             const hpBefore = e.hp;
-            fe.dealDamage(st.id, e, A(m.uppercut.dmg, i));
+            fe.dealDamage(st.id, e, uDmg);
             if (R.marked.has(e) && e.hp > 0) {
               const maxHp = e.maxHp || hpBefore;
               fe.dealDamage(st.id, e, Math.min(m.verdict.cap, maxHp * bonus));
             }
             if (hpBefore > 0 && e.hp <= 0 && R.marked.has(e)) kills.push(e);
           }
-          fe.flash(R.endX, R.endY, m.uppercut.radius, 0.5, '#f0e6ff');
-          fe.ring(R.endX, R.endY, 30, m.uppercut.radius + 40, 0.5, d.palette.glow, 8);
+          fe.flash(ex2, ey2, uR, 0.5, '#f0e6ff');
           fe.game.screenShake?.trigger?.(10, 0.4);
           // T3 UNANIMOUS RULING: τα marks μεταφέρονται
           if (fe.tierOf(st.id) >= 3) {
@@ -2653,6 +2910,7 @@ FUSION_EXECUTORS.fus_thousand_fist_verdict = {
               }
             }
           }
+          });
           fe.cue(st.id, 'aftermath');
           st.objects.run = null;
           st.phase = 'cooldown'; st.cd = A(m.cooldown, i) * cdMult; st.cycle++;
@@ -2689,28 +2947,43 @@ FUSION_EXECUTORS.fus_aegis_of_judgement = {
         fe.pull(e, p.pos.x, p.pos.y, d.t3.slamFirst.pullPerS, d.t3.slamFirst.durS);
       }
     }
+    // TARGETING PASS: το barrage ήταν ΟΛΟ instant — nearestTo και dealDamage δύο γραμμές
+    // απόσταση, N γροθιές σε ΕΝΑ frame, το beam ζωγραφιζόταν μετά. Τώρα είναι ΒΕΝΤΑΛΙΑ σε
+    // σταθερές γωνίες γύρω από τον παίκτη (η ασπίδα χτυπά ΓΥΡΩ ΤΗΣ — δεν σημαδεύει κανέναν),
+    // κάθε γροθιά προσγειώνεται σε κλειδωμένο σημείο 0.30s αργότερα.
     const fists = Math.min(m.caps.barrageFists, A(m.barrage.fists, i));
-    const hitSet = new Set();
-    for (let k = 0; k < fists; k++) {
-      const tgt = fe.nearestTo(p.pos.x, p.pos.y, hitSet);
-      if (!tgt || dist2(p.pos.x, p.pos.y, tgt.pos.x, tgt.pos.y) > m.barrage.range ** 2) break;
-      fe.dealDamage(st.id, tgt, A(m.barrage.dmg, i));
-      fe.beam(p.pos.x, p.pos.y, tgt.pos.x, tgt.pos.y, 0.25, d.palette.glow, 6);
-      hitSet.add(tgt);
-    }
-    // ion arcs ανάμεσα στα θύματα
-    const victims = [...hitSet];
-    const arcs = Math.min(A(m.arcs.count, i), victims.length - 1);
     const arcDmg = A(m.arcs.dmg, i) * (fe.chaos() ? (d.chaos.arcDmgMult || 1) : 1);
-    for (let k = 0; k < arcs; k++) {
-      const a = victims[k], b = victims[k + 1];
-      if (dist2(a.pos.x, a.pos.y, b.pos.x, b.pos.y) < m.arcs.range ** 2) {
-        fe.dealDamage(st.id, a, arcDmg);
-        fe.dealDamage(st.id, b, arcDmg);
-        fe.beam(a.pos.x, a.pos.y, b.pos.x, b.pos.y, 0.22, d.palette.core, 3.5);
-      }
+    const arcsN = A(m.arcs.count, i);
+    const bDmg = A(m.barrage.dmg, i);
+    const reach = m.barrage.range * 0.72, fistR = 74;
+    const base = fe.aimAngle();
+    const px1 = p.pos.x, py1 = p.pos.y;
+    const spots = [];
+    for (let k = 0; k < fists; k++) {
+      const a = base + (k / fists) * Math.PI * 2;
+      spots.push({ x: px1 + Math.cos(a) * reach, y: py1 + Math.sin(a) * reach });
+      fe.beam(px1, py1, spots[k].x, spots[k].y, 0.30, d.palette.glow, 6);
     }
-    fe.flash(p.pos.x, p.pos.y, m.barrage.range * 0.5, 0.45, d.palette.glow);
+    for (let k = 0; k < spots.length; k++) {
+      const s2 = spots[k];
+      fe.strike(s2.x, s2.y, fistR, 0.30, d.palette.glow, () => {
+        const victims = [];
+        for (const e of fe.near(s2.x, s2.y, fistR)) {
+          fe.dealDamage(st.id, e, bDmg);
+          if (victims.length < arcsN + 1) victims.push(e);
+        }
+        // ion arcs ανάμεσα στα θύματα ΤΗΣ ΙΔΙΑΣ γροθιάς
+        for (let q = 0; q + 1 < victims.length && q < arcsN; q++) {
+          const a2 = victims[q], b2 = victims[q + 1];
+          if (dist2(a2.pos.x, a2.pos.y, b2.pos.x, b2.pos.y) < m.arcs.range ** 2) {
+            fe.dealDamage(st.id, a2, arcDmg);
+            fe.dealDamage(st.id, b2, arcDmg);
+            fe.beam(a2.pos.x, a2.pos.y, b2.pos.x, b2.pos.y, 0.22, d.palette.core, 3.5);
+          }
+        }
+      });
+    }
+    fe.flash(px1, py1, m.barrage.range * 0.5, 0.45, d.palette.glow);
     fe.cue(st.id, 'impact');
   },
   update(fe, st, dt) {
