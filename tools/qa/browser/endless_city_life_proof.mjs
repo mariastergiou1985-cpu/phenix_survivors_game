@@ -21,7 +21,7 @@ import fs from 'node:fs';
 const BASE  = process.argv[2] || 'http://127.0.0.1:8138';
 const EXE   = process.env.PW_CHROMIUM || '/opt/pw-browsers/chromium';
 const SHOTS = process.env.CITY_PROOF_SHOTS || '/tmp/endless_city_shots';
-const BUILD = '20260908100000';
+const BUILD = '20260908110000';
 
 let failures = 0;
 const gate = (name, ok, detail = '') => {
@@ -117,6 +117,12 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
     const S  = mm.CITY_SCALE;
     const tw = mm._cityImg.naturalWidth * S, th = mm._cityImg.naturalHeight * S;
     const vs = g._viewScale || 1, vw = 1280 / vs, vh = 720 / vs;
+    // Το gate μετράει το AMBIENT baseline — αν τρέχει τυχαία boss-spawn event
+    // (2026-08-09 feature, δικό του proof), κρύψ' το προσωρινά και επανάφερέ το.
+    const savedEvt = mm._envBossEvt, savedPre = mm._envPreK;
+    mm._envBossEvt = null; mm._envPreK = 0;
+    const savedTimer = g._endlessBossTimer;
+    if (Number.isFinite(savedTimer) && savedTimer < 3) g._endlessBossTimer = 30;
     // skyline ορατό (κάμερα στην κορυφή του strip)
     const cA = mk();
     mm._drawCityAmbience(cA, tw, th, S, -96, vw + 96, 0, 0, vw, vh);
@@ -124,6 +130,8 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
     const midY = Math.max(0, th / 2 - vh / 2);
     const cB = mk();
     mm._drawCityAmbience(cB, tw, th, S, -96, vw + 96, 0, midY, vw, vh);
+    mm._envBossEvt = savedEvt; mm._envPreK = savedPre;
+    g._endlessBossTimer = savedTimer;
     return { top: cA.ops, mid: cB.ops, midY: Math.round(midY), th: Math.round(th) };
   });
   gate('E5 skyline ορατό → draw ops > 20', stub.top > 20, `ops=${stub.top}`);

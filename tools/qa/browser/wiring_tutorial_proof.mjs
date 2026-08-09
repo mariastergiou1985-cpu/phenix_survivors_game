@@ -12,7 +12,7 @@ import { chromium } from 'playwright-core';
 
 const BASE = process.argv[2] || 'http://127.0.0.1:8138';
 const EXE  = process.env.PW_CHROMIUM || '/opt/pw-browsers/chromium';
-const BUILD = '20260908100000';
+const BUILD = '20260908110000';
 let failures = 0;
 const gate = (n, ok, d = '') => { if (!ok) failures++; console.log(`${ok ? 'PASS' : 'FAIL'}  ${n}${d ? '  — ' + d : ''}`); };
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));

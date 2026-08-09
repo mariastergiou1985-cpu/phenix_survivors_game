@@ -1260,6 +1260,47 @@ export class MapManager {
     const botY = 470 * S;                                // industrial band: world y ∈ [~1410, th]
     const skyVisible = camY < skyH && camY + vh > 0;
     const botVisible = camY + vh > botY && camY < th;
+    // ── Boss-spawn αντίδραση (2026-08-09, Maria): watch + warning glow τρέχουν
+    // ΠΑΝΤΑ (και μέσα στο plaza) — τα band effects απλά τρεμοπαίζουν/σβήνουν.
+    if (t < (this._envLastT ?? 0)) { this._envTrafficWarp = 0; }        // νέο run → reset warp
+    const bevt = this._envBossWatch(g, t);
+    const preK = this._envPreK || 0;
+    let FK = 1;                                    // flicker/dim factor για τα city lights
+    if (bevt) {
+      const age = t - bevt.t0;
+      if (age < 2.6) {
+        const q = Math.sin(t * 29) + Math.sin(t * 16.7 + 2.3);
+        FK = q > -0.5 ? 0.85 : 0.22;
+        const rem = 2.6 - age;
+        if (rem < 0.6) FK = FK * (rem / 0.6) + (1 - rem / 0.6);         // ομαλή επάνοδος
+      }
+    } else if (preK > 0) {
+      FK = 1 - 0.25 * preK * (0.7 + 0.3 * Math.sin(t * 11));           // «κάτι έρχεται» dim
+    }
+    // traffic time-warp: στιγμιαία επιβράδυνση ΧΩΡΙΣ position jump (συνεχής χρόνος)
+    const dtF = Math.max(0, Math.min(0.1, t - (this._envLastT ?? t)));
+    this._envLastT = t;
+    const slowK = (bevt && (t - bevt.t0) < 1.6) ? 0.35 : (preK > 0 ? 1 - 0.3 * preK : 1);
+    this._envTrafficWarp = (this._envTrafficWarp || 0) + dtF * (1 - slowK);
+    const tt = t - this._envTrafficWarp;           // ρολόι traffic
+    if (bevt) {                                     // warning glow στο σημείο spawn
+      const age = t - bevt.t0, env = Math.sin(Math.PI * Math.min(1, age / 2.6));
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      const R = 260 + 40 * Math.sin(t * 5.4);
+      const gr = ctx.createRadialGradient(bevt.x, bevt.y, 0, bevt.x, bevt.y, R);
+      gr.addColorStop(0, 'rgba(255,120,60,0.85)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.globalAlpha = (0.08 + 0.05 * (0.5 + 0.5 * Math.sin(t * 6.2))) * env;
+      ctx.fillStyle = gr;
+      ctx.beginPath(); ctx.arc(bevt.x, bevt.y, R, 0, Math.PI * 2); ctx.fill();
+      if (age < 0.7) {
+        ctx.globalAlpha = 0.15 * (1 - age / 0.7);
+        ctx.strokeStyle = '#ffb066'; ctx.lineWidth = 2.5 * u;
+        ctx.beginPath(); ctx.arc(bevt.x, bevt.y, 40 + 420 * (age / 0.7), 0, Math.PI * 2); ctx.stroke();
+      }
+      ctx.restore();
+      ctx.globalAlpha = 1;
+    }
     if (!skyVisible && !botVisible) return;
     const i0 = Math.floor(xA / tw), i1 = Math.floor((xB - 1) / tw);
     ctx.save();
@@ -1275,7 +1316,7 @@ export class MapManager {
         for (let i = i0; i <= i1; i++) {
           const x = i * tw + lx;
           if (x < xA || x > xB) continue;
-          const a = (0.05 + 0.07 * twk) * hush(x, y);
+          const a = (0.05 + 0.07 * twk) * hush(x, y) * FK;
           if (a <= 0.01) continue;
           ctx.globalAlpha = a;
           ctx.fillStyle = col;
@@ -1289,13 +1330,13 @@ export class MapManager {
         const col = lane ? '#ffab5e' : '#9fe8ff';
         for (let k = 0; k < 8; k++) {
           const spd = 34 + h2(lane * 9 + k, 40) * 30;    // world px/s — αργό distant flow
-          const raw = h2(lane * 9 + k, 41) * tw + dir * t * spd + camX * 0.08;
+          const raw = h2(lane * 9 + k, 41) * tw + dir * tt * spd + camX * 0.08;
           const lx  = ((raw % tw) + tw) % tw;
           const jy  = ly + (h2(lane * 9 + k, 42) - 0.5) * 5 * S;
           for (let i = i0; i <= i1; i++) {
             const x = i * tw + lx;
             if (x < xA || x > xB) continue;
-            const a = 0.16 * hush(x, jy);
+            const a = 0.16 * hush(x, jy) * FK;
             if (a <= 0.01) continue;
             ctx.globalAlpha = a;
             ctx.strokeStyle = col; ctx.lineWidth = 2.2 * u; ctx.lineCap = 'round';
@@ -1326,7 +1367,7 @@ export class MapManager {
           ctx.fill();
           ctx.globalCompositeOperation = 'lighter';
           const blink = (Math.sin(t * 6.3 + k * 4) > 0.55) ? 1 : 0.25;
-          ctx.globalAlpha = 0.20 * blink * A;
+          ctx.globalAlpha = 0.20 * blink * A * FK;
           ctx.fillStyle = k % 2 ? '#ff5f6e' : '#6ff3ff';
           ctx.beginPath(); ctx.arc(x + dir * 6 * u, y - 1 * u, 1.5 * u, 0, Math.PI * 2); ctx.fill();
           ctx.globalAlpha = 0.10 * A;                     // αχνό engine trail
@@ -1344,7 +1385,7 @@ export class MapManager {
           const fx = ((i % 2) + 2) % 2 === 1;
           const x = i * tw + (fx ? tw - lx : lx);
           if (x < xA || x > xB) continue;
-          const a = (0.05 + 0.08 * (0.5 + 0.5 * Math.sin(ph * Math.PI * 2))) * hush(x, y);
+          const a = (0.05 + 0.08 * (0.5 + 0.5 * Math.sin(ph * Math.PI * 2))) * hush(x, y) * FK;
           if (a <= 0.01) continue;
           const r = (5 + h2(n, 63) * 5) * S;
           const gr = ctx.createRadialGradient(x, y, 0, x, y, r * 2.6);
@@ -1367,7 +1408,7 @@ export class MapManager {
           const fx = ((i % 2) + 2) % 2 === 1;
           const x = i * tw + (fx ? tw - lx : lx);
           if (x < xA || x > xB) continue;
-          const a = (0.04 + 0.06 * (0.5 + 0.5 * Math.sin(ph * Math.PI * 2))) * hush(x, y);
+          const a = (0.04 + 0.06 * (0.5 + 0.5 * Math.sin(ph * Math.PI * 2))) * hush(x, y) * FK;
           if (a <= 0.01) continue;
           const gr = ctx.createRadialGradient(x, y, 0, x, y, 14 * S);
           gr.addColorStop(0, col); gr.addColorStop(1, 'rgba(0,0,0,0)');
@@ -1379,6 +1420,32 @@ export class MapManager {
     }
     ctx.restore();
     ctx.globalAlpha = 1;
+  }
+
+  // ── BOSS-SPAWN ENVIRONMENT WATCH (2026-08-09, Maria) — κοινό για Endless/Chaos ─
+  // Καθαρά observational: WeakSet scan στη λίστα enemies για νέα boss entities
+  // (ίδιο pattern με το Act 1 combat-light) + read-only ανάγνωση του
+  // _endlessBossTimer για «λίγο πριν» anticipation (0..3s πριν το rotation spawn).
+  // Δεν αγγίζει boss stats/AI/gameplay — μόνο καταγράφει {x, y, t0} για 3s.
+  _envBossWatch(g, t) {
+    const seen = this._envSeen || (this._envSeen = new WeakSet());
+    const en = g.enemies;
+    if (Array.isArray(en)) {
+      for (let i = 0; i < en.length; i++) {
+        const e = en[i];
+        if (!e || e.dead || seen.has(e)) continue;
+        let b = false;
+        try { b = (typeof e.isBoss === 'function' && e.isBoss()) || !!e.isMegaBoss; } catch (_) {}
+        if (!b) continue;
+        seen.add(e);
+        if (t > 1.2) this._envBossEvt = { x: e.pos?.x ?? 0, y: e.pos?.y ?? 0, t0: t };
+      }
+    }
+    const evt = this._envBossEvt;
+    if (evt && (t - evt.t0 > 3 || t < evt.t0)) this._envBossEvt = null;
+    const bt = g._endlessBossTimer;
+    this._envPreK = (Number.isFinite(bt) && bt > 0 && bt < 3) ? (1 - bt / 3) : 0;
+    return this._envBossEvt;
   }
 
   // ── ENDLESS MEGACITY: RAIN + NEON REFLECTIONS (2026-08-09, Maria) — visual-only ─
@@ -1539,6 +1606,12 @@ export class MapManager {
     const dev = (wx, wy) => M ? { x: M.a * wx + M.c * wy + M.e, y: M.b * wx + M.d * wy + M.f }
                              : { x: wx - camX, y: wy - camY };
     const cw = ctx.canvas ? ctx.canvas.width : 0, chh = ctx.canvas ? ctx.canvas.height : 0;
+    // Boss-spawn αντίδραση (2026-08-09): για ~3s τα distortions εντείνονται (boost
+    // στα duty windows + alphas με cap), + local pulse & floor warning στο spawn.
+    const bevt = this._envBossWatch(g, t);
+    const preK = this._envPreK || 0;
+    const boost = bevt ? 1.6 : 1 + 0.5 * preK;
+    const aB = Math.min(1.35, boost);
     ctx.save();
 
     // 1 ── Glitch/rift slices + light shift: world grid 900px, ~0.5s ριπή κάθε 7-13s.
@@ -1550,8 +1623,9 @@ export class MapManager {
         const per = 7 + h2(gx * 17, gy * 13) * 6;
         const ph0 = h2(gx * 3, gy * 11);
         const cyc = ((t / per) + ph0) % 1;
-        if (cyc > 0.07) continue;
-        const k = cyc / 0.07;
+        const w1 = 0.07 * boost;
+        if (cyc > w1) continue;
+        const k = cyc / w1;
         const cycN = Math.floor((t / per) + ph0);
         const bx = gx * GG + h2(gx + cycN, gy * 7) * GG;
         const by = gy * GG + h2(gx * 7, gy + cycN) * GG;
@@ -1570,10 +1644,10 @@ export class MapManager {
           if (rx + off < 0 || rx + rw + off > cw) continue;
           ctx.save();
           ctx.setTransform(1, 0, 0, 1, 0, 0);                  // device space
-          ctx.globalAlpha = 0.45 * A;
+          ctx.globalAlpha = Math.min(0.6, 0.45 * A * aB);
           try { ctx.drawImage(ctx.canvas, rx, ry, rw, rh, rx + off, ry, rw, rh); } catch (_) {}
           ctx.globalCompositeOperation = 'lighter';
-          ctx.globalAlpha = 0.06 * A;
+          ctx.globalAlpha = 0.06 * A * aB;
           ctx.fillStyle = s % 2 ? '#4be8ff' : '#ff4fd8';
           ctx.fillRect(rx + off, ry, rw, Math.max(1, rh * 0.4));
           ctx.restore();
@@ -1598,8 +1672,9 @@ export class MapManager {
         const per = 9 + h2(gx * 23, gy * 19) * 7;
         const ph0 = h2(gx * 5, gy * 3);
         const cyc = ((t / per) + ph0) % 1;
-        if (cyc > 0.09) continue;
-        const k = cyc / 0.09;
+        const w2 = 0.09 * boost;
+        if (cyc > w2) continue;
+        const k = cyc / w2;
         const cycN = Math.floor((t / per) + ph0);
         const x = gx * CG + h2(gx + cycN, gy * 9) * CG;
         const y = gy * CG + h2(gx * 9, gy + cycN) * CG;
@@ -1607,7 +1682,7 @@ export class MapManager {
         if (A <= 0.01) continue;
         const R = (30 + 190 * k) * u * 3;
         ctx.lineWidth = 2 * u;
-        ctx.globalAlpha = 0.12 * (1 - k) * A;
+        ctx.globalAlpha = 0.12 * (1 - k) * A * aB;
         ctx.strokeStyle = '#ff3b4d';
         ctx.beginPath(); ctx.arc(x + 2.5 * u, y, R, 0, Math.PI * 2); ctx.stroke();
         ctx.strokeStyle = '#37e0f0';
@@ -1623,8 +1698,9 @@ export class MapManager {
         const per = 10 + h2(gx * 31, gy * 29) * 8;
         const ph0 = h2(gx * 7, gy * 5);
         const cyc = ((t / per) + ph0) % 1;
-        if (cyc > 0.16) continue;
-        const k = cyc / 0.16;
+        const w3 = 0.16 * boost;
+        if (cyc > w3) continue;
+        const k = cyc / w3;
         const cycN = Math.floor((t / per) + ph0);
         const x = gx * TG + (0.15 + 0.7 * h2(gx + cycN, gy * 11)) * TG;
         const y = gy * TG + (0.15 + 0.7 * h2(gx * 11, gy + cycN)) * TG;
@@ -1676,8 +1752,9 @@ export class MapManager {
         const per = 11 + h2(gx * 37, gy * 41) * 8;
         const ph0 = h2(gx * 13, gy * 7);
         const cyc = ((t / per) + ph0) % 1;
-        if (cyc > 0.10) continue;
-        const k = cyc / 0.10;
+        const w4 = 0.10 * boost;
+        if (cyc > w4) continue;
+        const k = cyc / w4;
         const cycN = Math.floor((t / per) + ph0);
         const x = gx * WG + (0.2 + 0.6 * h2(gx + cycN, gy * 13)) * WG;
         const y = gy * WG + (0.2 + 0.6 * h2(gx * 13, gy + cycN)) * WG;
@@ -1695,6 +1772,40 @@ export class MapManager {
         ctx.globalAlpha = 0.09 * env * A;
         ctx.strokeStyle = '#bfa8ff'; ctx.lineWidth = 3 * u;
         ctx.beginPath(); ctx.arc(x, y, R, 0, Math.PI * 2); ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    // 5 ── Boss spawn: local distortion pulse (1s) + floor warning (2.6s) στο σημείο.
+    if (bevt) {
+      const age = t - bevt.t0;
+      const env = Math.sin(Math.PI * Math.min(1, age / 2.6));
+      const wr = 150 + 14 * Math.sin(t * 5.6);
+      ctx.save();
+      ctx.translate(bevt.x, bevt.y); ctx.scale(1, 0.55); ctx.translate(-bevt.x, -bevt.y);
+      ctx.globalCompositeOperation = 'source-over';                   // σκούρο floor warning
+      ctx.globalAlpha = 0.14 * env;
+      ctx.fillStyle = '#05030f';
+      ctx.beginPath(); ctx.arc(bevt.x, bevt.y, wr, 0, Math.PI * 2); ctx.fill();
+      ctx.globalCompositeOperation = 'lighter';                       // magenta χείλος
+      ctx.globalAlpha = (0.10 + 0.05 * (0.5 + 0.5 * Math.sin(t * 6.4))) * env;
+      ctx.strokeStyle = '#ff4fd8'; ctx.lineWidth = 2.2 * u;
+      ctx.beginPath(); ctx.arc(bevt.x, bevt.y, wr, 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
+      if (age < 1.0) {                                                // local distortion pulse
+        const k = age / 1.0;
+        const R = 50 + 360 * k;
+        ctx.save();
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = 0.12 * (1 - k);
+        ctx.strokeStyle = '#000000'; ctx.lineWidth = 7 * u;
+        ctx.beginPath(); ctx.arc(bevt.x, bevt.y, Math.max(1, R - 12), 0, Math.PI * 2); ctx.stroke();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.14 * (1 - k);
+        ctx.strokeStyle = '#ff3b4d'; ctx.lineWidth = 2.4 * u;
+        ctx.beginPath(); ctx.arc(bevt.x + 3, bevt.y, R, 0, Math.PI * 2); ctx.stroke();
+        ctx.strokeStyle = '#37e0f0';
+        ctx.beginPath(); ctx.arc(bevt.x - 3, bevt.y, R, 0, Math.PI * 2); ctx.stroke();
         ctx.restore();
       }
     }
