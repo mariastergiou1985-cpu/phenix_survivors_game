@@ -20,7 +20,7 @@ import fs from 'node:fs';
 const BASE  = process.argv[2] || 'http://127.0.0.1:8138';
 const EXE   = process.env.PW_CHROMIUM || '/opt/pw-browsers/chromium';
 const SHOTS = process.env.ART_PROOF_SHOTS || '/tmp/legacy_art_shots';
-const BUILD = '20260908120000';
+const BUILD = '20260908130000';
 // Per-asset ?v: το chars line πήρε νέο bust στο revert του Taekwondo art (20260908020000)·
 // nexus/lava/marker κρατούν το bust του 5284bee (αρχεία αμετάβλητα από τότε).
 const ASSET_V = { taek: '20260908020000', lava: '20260908010000', marker: '20260908010000', nexus: '20260908010000' };
@@ -121,25 +121,28 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   const png = fs.readFileSync(SHOTS + '/playing.png');
   gate('A5b screenshot γράφτηκε (>50KB)', png.length > 50000, `${png.length}B`);
 
-  // A6: plasma_execution override art = ΝΕΟ αρχείο, εμφανίζεται in-world
+  // A6 (rev. 2026-08-09, Maria): το plasma_execution είναι πλέον PROCEDURAL
+  // in-world (WeaponStrikeFx2 'plasma' — το HD PNG μένει μόνο ως card icon).
   await page.evaluate(() => {
     const g = window.__g;
     g._weaponLevels.set('plasma_execution', 5);
     g.player.maxHp = 99999; g.player.hp = 99999;
   });
-  let sawPlasma = false;
+  let sawPlasma = false, sawOldArt = false;
   for (let i = 0; i < 30; i++) {
     await sleep(300);
     const s = await page.evaluate(() => {
       const g = window.__g;
       const fx = g._activeWeaponVFX || [];
-      const isNew = (img) => !!(img && /plasma_execution_hd/.test(img.src || '') && img.complete && img.naturalWidth > 0);
-      // override path (assassin/brawler) Ή sheet path (όλοι οι άλλοι wielders — 1-frame illustration)
-      return fx.some(v => v && (isNew(v.overrideImg) || isNew(v.spriteSheet)));
+      const isOld = (img) => !!(img && /plasma_execution_hd/.test(img.src || ''));
+      return { p: fx.some(v => v && v.kind === 'plasma'),
+               o: fx.some(v => v && (isOld(v.overrideImg) || isOld(v.spriteSheet))) };
     });
-    if (s) { sawPlasma = true; await shot('plasma_fx.png'); break; }
+    sawOldArt = sawOldArt || s.o;
+    if (s.p) { sawPlasma = true; await shot('plasma_fx.png'); break; }
   }
-  gate('A6 plasma_execution in-world art = νέο PNG και εμφανίζεται', sawPlasma);
+  gate('A6 plasma_execution in-world = procedural plasma strike (όχι PNG)', sawPlasma && !sawOldArt,
+       JSON.stringify({ sawPlasma, sawOldArt }));
 
   gate('A7 μηδέν page errors συνολικά', pageErrors.length === 0, pageErrors.slice(0, 3).join(' | '));
   gate('A7b μηδέν non-404 console errors', consoleErrors.length === 0, consoleErrors.slice(0, 3).join(' | '));

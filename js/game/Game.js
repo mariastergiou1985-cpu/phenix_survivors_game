@@ -247,6 +247,19 @@ const WIELDER_VFX_OVERRIDES = Object.freeze({
   'spirit_crescent|taekwondo_girl':       'assets/weapons/crescent_aura.png',
 });
 
+// ── CARD-ONLY overrides (2026-08-09, Maria): αυτά τα illustrations διάβαζαν σαν
+// στατικό art κολλημένο στη μάχη — μένουν ΜΟΝΟ ως card icons. Το in-world visual
+// είναι πλέον procedural (WeaponStrikeFx2 για magnetic_arc/plasma) ή το κανονικό
+// animated frame sheet (spirit_crescent 16-frame). Τα magnetic_arc/plasma keys
+// είναι εδώ για σαφήνεια — δεν φτάνουν καν στο override path (early return).
+const WORLD_OVERRIDE_CARD_ONLY = new Set([
+  'spirit_crescent|taekwondo_girl',
+  'magnetic_arc|euclid_vector', 'magnetic_arc|assassin_clone',
+  'magnetic_arc|brawler_warrior', 'magnetic_arc|skeleton_warrior',
+  'plasma_execution|assassin_clone', 'plasma_execution|brawler_warrior',
+  'storm_conductor|skeleton_warrior', 'storm_conductor|cyber_arm_hero',
+]);
+
 // ── Biome ambient art (wiring 2026-08-08): διακριτικό falling-art ανά endless biome.
 // Καθαρά διακοσμητικό layer μέσα στο Weather Theater — μηδέν gameplay επίδραση.
 const BIOME_AMBIENT_ART = Object.freeze({
@@ -577,11 +590,11 @@ const THUNDER_NOTES = [
 // (same spawn call, same homing-follow update, same world-space draw layer).
 class WeaponStrikeFx2 {
   constructor(kind, x, y, angle, scale) {
-    this.kind  = kind;                     // 'crescent' | 'bolt'
+    this.kind  = kind;                     // 'crescent' | 'bolt' | 'plasma'
     this.x = x; this.y = y;
     this.angle = angle || 0;
     this.t = 0;
-    this.life = kind === 'crescent' ? 0.55 : 0.44;
+    this.life = kind === 'crescent' ? 0.55 : (kind === 'plasma' ? 0.62 : 0.44);
     // The old callers pass scale 4.0-4.5 (illustration pixels). Normalize it to a
     // CONTROLLED size multiplier so nothing ever renders screen-sized again.
     this.m = Math.max(0.6, Math.min(1.25, (scale || 4.5) / 4.5));
@@ -594,6 +607,19 @@ class WeaponStrikeFx2 {
         const a   = this.angle + (i / n) * Math.PI * 2 + (this._rnd(i) - 0.5) * 0.9;
         const len = (56 + this._rnd(i + 10) * 30) * this.m;
         this.bolts.push(this._buildBolt(a, len, i));
+      }
+    } else if (kind === 'plasma') {
+      // Expanding-spiral shards (2026-08-09, Maria): 3 πλάγιες plasma λεπίδες που
+      // ξετυλίγονται σπειροειδώς προς τα έξω με ουρά — ό,τι κάνει και το behavior
+      // του όπλου (EXPANDING_SPIRAL), σε καθαρή procedural μορφή.
+      this.shards = [];
+      for (let i = 0; i < 3; i++) {
+        this.shards.push({
+          a0:  (i / 3) * Math.PI * 2 + this._rnd(i + 5) * 0.7,   // αρχική γωνία
+          spn: 3.2 + this._rnd(i + 15) * 1.4,                    // ταχύτητα σπείρας
+          r1:  (74 + this._rnd(i + 25) * 30) * this.m,           // τελική ακτίνα
+          w:   7 + this._rnd(i + 35) * 4,                        // πλάτος λεπίδας
+        });
       }
     } else {
       // Small energy fragments riding the blade edge (deterministic).
@@ -656,12 +682,75 @@ class WeaponStrikeFx2 {
     ctx.translate(this.x, this.y);
     ctx.globalCompositeOperation = 'lighter';
     ctx.lineCap = 'round';
-    if (this.kind === 'bolt') this._drawBolt(ctx, p, fade);
-    else                      this._drawCrescent(ctx, p, fade);
+    if (this.kind === 'bolt')        this._drawBolt(ctx, p, fade);
+    else if (this.kind === 'plasma') this._drawPlasma(ctx, p, fade);
+    else                             this._drawCrescent(ctx, p, fade);
     ctx.restore();
   }
 
   // Branched lightning: small core, short arcs, quick impact flash, clean contact.
+  // PLASMA EXECUTION (2026-08-09, Maria): expanding spiral — καθαρό spawn (core
+  // flash), motion (3 λεπίδες ξετυλίγονται σπειροειδώς), pulse/energy (breathing
+  // core + ring), readability (bounded ~170px), fade/dissolve (ουρές σβήνουν +
+  // θραύσματα σκορπούν στο τέλος). Ίδια συνταγή με τα ultimates: 'lighter',
+  // halo → body → white core, deterministic seed, μηδέν shadowBlur.
+  _drawPlasma(ctx, p, fade) {
+    const PINK = '#ff7adf', PALE = '#ffd2f2';
+    const spin = p * 1.0;
+    // core flash στο spawn + breathing core μετά
+    const coreR = p < 0.18 ? 26 * (1 - p / 0.18) + 8 : 8 + 2 * Math.sin(p * 20);
+    ctx.globalAlpha = fade * 0.9;
+    ctx.fillStyle = PALE;
+    ctx.beginPath(); ctx.arc(0, 0, Math.max(1, coreR * 0.5 * this.m), 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = fade * 0.4;
+    ctx.fillStyle = PINK;
+    ctx.beginPath(); ctx.arc(0, 0, Math.max(1, coreR * this.m), 0, Math.PI * 2); ctx.fill();
+    // 3 spiral λεπίδες: κάθε μία ζωγραφίζεται ως τόξο-ουρά που ξετυλίγεται
+    for (let i = 0; i < this.shards.length; i++) {
+      const sh = this.shards[i];
+      const r  = sh.r1 * p;                                  // ακτίνα μεγαλώνει με τον χρόνο
+      const a  = sh.a0 + spin * sh.spn;                      // γωνία στρίβει — σπείρα
+      const TAIL = 0.85;                                     // μήκος ουράς σε rad
+      // halo → body → white edge, τρία περάσματα πάνω στην ίδια ουρά
+      for (const [lw, col, al] of [[sh.w * 1.9, PINK, 0.22], [sh.w, PINK, 0.55], [sh.w * 0.38, '#ffffff', 0.9]]) {
+        ctx.globalAlpha = fade * al;
+        ctx.strokeStyle = col; ctx.lineWidth = lw * this.m; ctx.lineCap = 'round';
+        ctx.beginPath();
+        for (let s = 0; s <= 8; s++) {
+          const k = s / 8;
+          const aa = a - TAIL * k;
+          const rr = Math.max(2, r - 16 * k * this.m);       // η ουρά μένει πιο μέσα
+          const px2 = Math.cos(aa) * rr, py2 = Math.sin(aa) * rr;
+          s === 0 ? ctx.moveTo(px2, py2) : ctx.lineTo(px2, py2);
+        }
+        ctx.stroke();
+      }
+      // αιχμή λεπίδας — φωτεινή κεφαλή
+      ctx.globalAlpha = fade;
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(Math.cos(a) * r, Math.sin(a) * r, Math.max(1.2, sh.w * 0.34 * this.m), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // δαχτυλίδι ενέργειας που απλώνεται και σβήνει
+    ctx.globalAlpha = fade * 0.35 * (1 - p * 0.5);
+    ctx.strokeStyle = PINK; ctx.lineWidth = 2.2 * this.m;
+    ctx.beginPath(); ctx.arc(0, 0, (30 + 120 * p) * this.m, 0, Math.PI * 2); ctx.stroke();
+    // dissolve: στο τελευταίο 30% θραύσματα σκορπούν από τις αιχμές
+    if (p > 0.7) {
+      const dk = (p - 0.7) / 0.3;
+      for (let i = 0; i < 8; i++) {
+        const da = this._rnd(i + 70) * Math.PI * 2;
+        const dr = (this.shards[i % 3].r1 + 12 + dk * (18 + this._rnd(i + 80) * 22)) * this.m;
+        ctx.globalAlpha = fade * (1 - dk) * 0.8;
+        ctx.fillStyle = i % 2 ? PINK : PALE;
+        ctx.beginPath();
+        ctx.arc(Math.cos(da) * dr, Math.sin(da) * dr, 1.6, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+
   _drawBolt(ctx, p, fade) {
     const m = this.m;
     // Fast impact flash (first ~0.1s only) — small, never a screen sheet.
@@ -16581,9 +16670,17 @@ export class Game {
     // SAME lifecycle: same callers, same homing-follow update, same draw layer.
     // Damage/cooldown/targeting are untouched (_autoFireWeapon). Card icons and
     // asset files stay as they are — only the world visual changes.
-    if (weaponId === WEAPON_ID.NEXUS_CHAKRAM || weaponId === WEAPON_ID.STORM_CONDUCTOR) {
-      const fx2 = new WeaponStrikeFx2(
-        weaponId === WEAPON_ID.NEXUS_CHAKRAM ? 'crescent' : 'bolt', x, y, angle || 0, scale || 1);
+    // ── ΕΠΕΚΤΑΣΗ 2026-08-09 (Maria): + MAGNETIC ARC (η 1254² «σφαίρα» και τα
+    // arc-burst override illustrations διάβαζαν σαν κολλημένο art — τώρα
+    // procedural bolt strike) + PLASMA EXECUTION (νέο 'plasma' kind — expanding
+    // spiral shards, στο πνεύμα του EXPANDING_SPIRAL behavior του).
+    // Cards/icons κρατούν το illustration art μέσω _weaponCardIcon — μόνο το
+    // world visual αλλάζει. Damage/cooldown/targeting αμετάβλητα.
+    if (weaponId === WEAPON_ID.NEXUS_CHAKRAM || weaponId === WEAPON_ID.STORM_CONDUCTOR
+        || weaponId === WEAPON_ID.MAGNETIC_ARC || weaponId === WEAPON_ID.PLASMA_EXECUTION) {
+      const _k2 = weaponId === WEAPON_ID.NEXUS_CHAKRAM ? 'crescent'
+                : weaponId === WEAPON_ID.PLASMA_EXECUTION ? 'plasma' : 'bolt';
+      const fx2 = new WeaponStrikeFx2(_k2, x, y, angle || 0, scale || 1);
       if (this._activeWeaponVFX.length >= 24) this._activeWeaponVFX.shift();   // hard cap
       this._activeWeaponVFX.push(fx2);
       this._spawnWeaponAccent(weaponId, x, y, angle || 0, 1.0);
@@ -16604,7 +16701,11 @@ export class Game {
       Number(this._weaponLevels?.get(weaponId) || 0) > 0 || this._evolvedWeapons?.has(weaponId)
     );
     const _buildEngineOwnsWeapon = !!this.buildEngine?.weapons?.has?.(weaponId);
-    if (_ovSrc && _legacyOwnsWeapon && !_buildEngineOwnsWeapon) {
+    // Card-only overrides (2026-08-09, Maria): illustrations που διάβαζαν σαν
+    // κολλημένο art in-world μένουν ΜΟΝΟ ως card icons (_weaponCardIcon) — το
+    // in-world πέφτει στο κανονικό animated frame sheet του όπλου.
+    const _cardOnly = WORLD_OVERRIDE_CARD_ONLY.has(weaponId + '|' + (this.player ? this.player.selectedCharacter : ''));
+    if (_ovSrc && !_cardOnly && _legacyOwnsWeapon && !_buildEngineOwnsWeapon) {
       vfx.overrideImg = _getNexusImage(_ovSrc);
     }
     // Per-art animation style (transform-only; never alters the illustration pixels).
@@ -20222,7 +20323,7 @@ export class Game {
     for (const w of this.tacticalCacheWeapons) {
       if (!w.alive) continue;
       const sx = w.x - cam.x, sy = w.y - cam.y;
-      const sprite = this._tacticalSpriteCache.get(w.id);
+      const sprite = (w.def && w.def.spriteCardOnly) ? null : this._tacticalSpriteCache.get(w.id);
       const fadeAlpha = Math.min(1, w.timer / 1.0);
 
       // ── Sprite-only rendering per behavior ──
@@ -20412,7 +20513,7 @@ export class Game {
   // ── VFX draw helpers — SPRITE-ONLY, zero fillRect geometry ──
 
   _drawDroneFx(ctx, w, cam) {
-    const sprite = this._tacticalSpriteCache.get(w.id);
+    const sprite = (w.def && w.def.spriteCardOnly) ? null : this._tacticalSpriteCache.get(w.id);
     const dx = w.droneX - cam.x, dy = w.droneY - cam.y;
     const size = 48;
     // Predator identity: rotating RADAR SWEEP cone + hunting blink — reads as a killer
@@ -20494,7 +20595,7 @@ export class Game {
     // slowly rotating, with 3 orbiting charge nodes arc-linked to it — and every ~0.9s a
     // real jagged bolt SLAMS from the blade tip to a random point on the field rim.
     {
-      const spr2 = this._tacticalSpriteCache.get(w.id);
+      const spr2 = (w.def && w.def.spriteCardOnly) ? null : this._tacticalSpriteCache.get(w.id);
       const bob = Math.sin(now * 2.2) * 5;
       const by2 = sy - 46 + bob;
       ctx.save();
@@ -20568,7 +20669,7 @@ export class Game {
       ctx.stroke();
     }
     ctx.restore();
-    const sprite = this._tacticalSpriteCache.get(w.id);
+    const sprite = (w.def && w.def.spriteCardOnly) ? null : this._tacticalSpriteCache.get(w.id);
     if (sprite && sprite.complete && sprite.naturalWidth > 0) {
       const sz = 132 * (1 + 0.05 * pulse);
       ctx.save();
@@ -20608,7 +20709,7 @@ export class Game {
     ctx.globalAlpha = 0.8 * hot * fade; ctx.fillStyle = g;
     ctx.beginPath(); ctx.arc(ex, ey, 40 * hot, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
-    const sprite = this._tacticalSpriteCache.get(w.id);
+    const sprite = (w.def && w.def.spriteCardOnly) ? null : this._tacticalSpriteCache.get(w.id);
     if (sprite && sprite.complete && sprite.naturalWidth > 0) {
       const sz = 120;
       ctx.save();
@@ -20654,7 +20755,7 @@ export class Game {
     ctx.globalAlpha = 0.28 * fade; ctx.fillStyle = g;
     ctx.beginPath(); ctx.arc(sx, sy, 70, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
-    const sprite = this._tacticalSpriteCache.get(w.id);
+    const sprite = (w.def && w.def.spriteCardOnly) ? null : this._tacticalSpriteCache.get(w.id);
     if (sprite && sprite.complete && sprite.naturalWidth > 0) {
       const sz = 128;
       ctx.save();
@@ -20667,7 +20768,7 @@ export class Game {
   }
 
   _drawMineFx(ctx, w, cam) {
-    const sprite = this._tacticalSpriteCache.get(w.id);
+    const sprite = (w.def && w.def.spriteCardOnly) ? null : this._tacticalSpriteCache.get(w.id);
     const mSize = 32;
     for (const mine of w.mines) {
       if (!mine.alive) continue;
@@ -20685,7 +20786,7 @@ export class Game {
   // _drawSingularityFx — REMOVED: was rendering 900×900 fillRect debug geometry
 
   _drawRainFx(ctx, w, cam) {
-    const sprite = this._tacticalSpriteCache.get(w.id);
+    const sprite = (w.def && w.def.spriteCardOnly) ? null : this._tacticalSpriteCache.get(w.id);
     if (!sprite || !sprite.complete || sprite.naturalWidth <= 0) return;
     ctx.save();
     for (const spike of w.spikes) {
@@ -20699,7 +20800,7 @@ export class Game {
   }
 
   _drawVolleyFx(ctx, w, cam) {
-    const sprite = this._tacticalSpriteCache.get(w.id);
+    const sprite = (w.def && w.def.spriteCardOnly) ? null : this._tacticalSpriteCache.get(w.id);
     const ready  = sprite && sprite.complete && sprite.naturalWidth > 0;
     const mSize = 78;   // BIG readable volley missiles (premium — was a tiny 36px speck)
     ctx.save();
@@ -20746,7 +20847,7 @@ export class Game {
     // raw world coords on this screen-space layer — fragments rendered far from where they
     // actually landed, so the rain looked absent and its damage looked like it never happened.
     const cam = this.camera;
-    const sprite = this._tacticalSpriteCache.get(w.id);
+    const sprite = (w.def && w.def.spriteCardOnly) ? null : this._tacticalSpriteCache.get(w.id);
     if (sprite && sprite.complete && sprite.naturalWidth > 0) {
       // SLOGAN CURTAIN — the Eddie slogan art DROPS from the top like a full-map curtain,
       // covering the whole view, then LINGERS ~1.5s and fades. One-shot at deploy (not a
@@ -20816,7 +20917,7 @@ export class Game {
   }
 
   _drawSwordBurstFx(ctx, w) {
-    const sprite = this._tacticalSpriteCache.get(w.id);
+    const sprite = (w.def && w.def.spriteCardOnly) ? null : this._tacticalSpriteCache.get(w.id);
     const ready = sprite && sprite.complete && sprite.naturalWidth > 0;
     const cam = this.camera;                                     // screen-space like every tactical FX
     if (ready && !w.swords.length) {                              // idle cache marker at drop point
@@ -36995,22 +37096,42 @@ _drawLoreArchive(ctx) {
       const prog  = Math.min(1, activeT / sh.warnT);
       const { pos } = sh;
 
-      // Ground marker: red strike reticle (replaces the plain red circle), tightening as impact nears.
-      const _mk = this._strikeMarkerSprite;
+      // Ground marker — PROCEDURAL strike reticle (2026-08-09, Maria): το στατικό
+      // marker_t.png διάβαζε σαν PNG στόχος πάνω στη μάχη. Νέο ζωντανό στόχαστρο:
+      // περιστρεφόμενο dashed δαχτυλίδι, 4 chevrons που ΣΥΓΚΛΙΝΟΥΝ όσο πλησιάζει
+      // η πρόσκρουση, παλλόμενος πυρήνας-σταυρός και θερμό glow που δυναμώνει.
+      // (Το marker_t.png μένει στο repo ως asset — καμία in-world χρήση πια.)
       ctx.save();
-      if (_mk && _mk.complete && _mk.naturalWidth > 0) {
-        const ms = DD_ROCKET_RADIUS * 2.6 * (1 - 0.12 * prog);   // slight tighten = imminence
-        ctx.globalAlpha = 0.5 + 0.45 * prog;
-        ctx.drawImage(_mk, pos.x - ms / 2, pos.y - ms / 2, ms, ms);
-      } else {
-        ctx.globalAlpha = 0.10 + 0.25 * prog;
-        ctx.fillStyle   = ORANGE;
-        ctx.beginPath(); ctx.arc(pos.x, pos.y, DD_ROCKET_RADIUS, 0, Math.PI * 2); ctx.fill();
-        ctx.globalAlpha = 0.35 + 0.55 * prog;
-        ctx.strokeStyle = RED; ctx.lineWidth = 2; ctx.setLineDash([8, 6]);
-        ctx.beginPath(); ctx.arc(pos.x, pos.y, DD_ROCKET_RADIUS, 0, Math.PI * 2); ctx.stroke();
-        ctx.setLineDash([]);
+      const _rt  = performance.now() * 0.001;
+      const _rr  = DD_ROCKET_RADIUS * (1.15 - 0.18 * prog);
+      ctx.globalAlpha = 0.30 + 0.45 * prog;
+      ctx.strokeStyle = RED; ctx.lineWidth = 2.4;
+      ctx.setLineDash([14, 10]); ctx.lineDashOffset = -_rt * 46;
+      ctx.beginPath(); ctx.arc(pos.x, pos.y, _rr, 0, Math.PI * 2); ctx.stroke();
+      ctx.setLineDash([]);
+      const _cd = _rr * (1.65 - 0.62 * prog);                  // chevrons συγκλίνουν
+      for (let _cv = 0; _cv < 4; _cv++) {
+        const _ca = _rt * 0.9 + _cv * Math.PI / 2;
+        ctx.save();
+        ctx.translate(pos.x + Math.cos(_ca) * _cd, pos.y + Math.sin(_ca) * _cd);
+        ctx.rotate(_ca + Math.PI);
+        ctx.globalAlpha = 0.45 + 0.5 * prog;
+        ctx.strokeStyle = ORANGE; ctx.lineWidth = 2.6; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(-7, -7); ctx.lineTo(0, 0); ctx.lineTo(-7, 7); ctx.stroke();
+        ctx.restore();
       }
+      const _pk = 0.5 + 0.5 * Math.sin(_rt * (7 + 9 * prog)); // ο παλμός ΕΠΙΤΑΧΥΝΕΙ
+      ctx.globalAlpha = (0.30 + 0.5 * prog) * (0.55 + 0.45 * _pk);
+      ctx.strokeStyle = '#ffdd66'; ctx.lineWidth = 1.8; ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(pos.x - 9, pos.y); ctx.lineTo(pos.x + 9, pos.y);
+      ctx.moveTo(pos.x, pos.y - 9); ctx.lineTo(pos.x, pos.y + 9);
+      ctx.stroke();
+      const _gr = ctx.createRadialGradient(pos.x, pos.y, 0, pos.x, pos.y, _rr);
+      _gr.addColorStop(0, 'rgba(255,120,40,0.8)'); _gr.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.globalAlpha = 0.08 + 0.30 * prog;
+      ctx.fillStyle = _gr;
+      ctx.beginPath(); ctx.arc(pos.x, pos.y, _rr, 0, Math.PI * 2); ctx.fill();
       ctx.restore();
 
       // Rocket falling from above (visible in last 40% of warn time)
@@ -38269,9 +38390,6 @@ _drawLoreArchive(ctx) {
   // Endless Nexus base sprite drawn UNDER a matrix — biome-specific architecture.
   // World/static layer, NOT enemy/bullet/pet/UI layer.
   _drawEndlessNexusBase(ctx, m) {
-    // Pick biome-specific sprite, or fallback for Neon District / Abyssal Trench
-    const img = this._nexusSpriteCache?.[m.biomeId] || this._nexusFallbackImage;
-    if (!(img && img.complete && img.naturalWidth > 0)) return;
     const D = 128;   // readable but not gigantic
     // Soft elliptical contact shadow — Nexus reads as planted in the world
     ctx.save();
@@ -38280,7 +38398,45 @@ _drawLoreArchive(ctx) {
     ctx.ellipse(m.pos.x, m.pos.y + D * 0.30, D * 0.44, D * 0.16, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
-    ctx.drawImage(img, m.pos.x - D / 2, m.pos.y - D / 2, D, D);
+    // Biome-specific αρχιτεκτονική art όπου υπάρχει — αυτή είναι κτίριο, ΟΚ ως εικόνα.
+    const img = this._nexusSpriteCache?.[m.biomeId];
+    if (img && img.complete && img.naturalWidth > 0) {
+      ctx.drawImage(img, m.pos.x - D / 2, m.pos.y - D / 2, D, D);
+      return;
+    }
+    // PROCEDURAL fallback βάθρο (2026-08-09, Maria): το στατικό nexus_burst.png
+    // (εικονογράφηση έκρηξης) διάβαζε σαν PNG σφαίρα καρφωμένη στο έδαφος. Νέο
+    // ζωντανό βάθρο: breathing ελλειπτικά δαχτυλίδια + 3 orbiting κόμβοι + κάθετη
+    // ενεργειακή στήλη με flicker. (Το nexus_burst.png μένει στο repo ως asset.)
+    const t = this.timeAlive || 0;
+    const ph = (m.pos.x + m.pos.y) * 0.013;
+    const bre = 0.5 + 0.5 * Math.sin(t * 2.1 + ph);
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.save();
+    ctx.translate(m.pos.x, m.pos.y + 18); ctx.scale(1, 0.42);
+    ctx.globalAlpha = 0.45 + 0.3 * bre;
+    ctx.strokeStyle = '#37e0f0'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.arc(0, 0, 40 + 4 * bre, 0, Math.PI * 2); ctx.stroke();
+    ctx.globalAlpha = 0.20;
+    ctx.lineWidth = 1.6;
+    ctx.beginPath(); ctx.arc(0, 0, 54 + 6 * bre, 0, Math.PI * 2); ctx.stroke();
+    ctx.restore();
+    for (let i = 0; i < 3; i++) {                            // orbiting κόμβοι
+      const a = t * 1.4 + ph + i * (Math.PI * 2 / 3);
+      ctx.globalAlpha = 0.55 + 0.35 * Math.sin(t * 5 + i * 2.1);
+      ctx.fillStyle = '#bffcff';
+      ctx.beginPath();
+      ctx.arc(m.pos.x + Math.cos(a) * 34, m.pos.y + 18 + Math.sin(a) * 14, 2.6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    const colg = ctx.createLinearGradient(m.pos.x, m.pos.y + 16, m.pos.x, m.pos.y - 52);
+    colg.addColorStop(0, 'rgba(55,224,240,0.55)'); colg.addColorStop(1, 'rgba(55,224,240,0)');
+    ctx.globalAlpha = 0.45 + 0.3 * Math.abs(Math.sin(t * 5.3 + ph));
+    ctx.fillStyle = colg;
+    ctx.fillRect(m.pos.x - 7, m.pos.y - 52, 14, 68);
+    ctx.restore();
+    ctx.globalAlpha = 1;
   }
 
   // ─── Chaos Mode: pylon system ───────────────────────────────────────────────

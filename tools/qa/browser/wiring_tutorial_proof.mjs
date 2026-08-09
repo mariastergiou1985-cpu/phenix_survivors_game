@@ -12,7 +12,7 @@ import { chromium } from 'playwright-core';
 
 const BASE = process.argv[2] || 'http://127.0.0.1:8138';
 const EXE  = process.env.PW_CHROMIUM || '/opt/pw-browsers/chromium';
-const BUILD = '20260908120000';
+const BUILD = '20260908130000';
 let failures = 0;
 const gate = (n, ok, d = '') => { if (!ok) failures++; console.log(`${ok ? 'PASS' : 'FAIL'}  ${n}${d ? '  — ' + d : ''}`); };
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
@@ -73,13 +73,28 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
     const gs = await page.evaluate(() => window.__phenixQA?.snapshot?.()?.gameState);
     gate('W4a endless run με SKELETON ξεκινά', gs === 'playing', String(gs));
     await page.evaluate(() => { const g = window.__g; g._weaponLevels.set('magnetic_arc', 3); g.player.maxHp = 99999; g.player.hp = 99999; });
-    let sawArc = false;
-    for (let i = 0; i < 30 && !sawArc; i++) {
+    // Rev. 2026-08-09 (Maria): το magnetic_arc είναι πλέον CARD-ONLY art — in-world
+    // παίζει procedural WeaponStrikeFx2 'bolt', και το ArcThunder μένει στο card icon.
+    let sawBolt = false, sawStaticArt = false;
+    for (let i = 0; i < 30 && !sawBolt; i++) {
       await sleep(300);
-      sawArc = await page.evaluate(() => (window.__g._activeWeaponVFX || [])
-        .some(v => v?.overrideImg && /ArcThunder_Burst/.test(v.overrideImg.src) && v.overrideImg.naturalWidth > 0));
+      const r = await page.evaluate(() => {
+        const fx = window.__g._activeWeaponVFX || [];
+        return {
+          bolt: fx.some(v => v && v.kind === 'bolt'),
+          art:  fx.some(v => (v?.overrideImg && /ArcThunder|toxic_arc/.test(v.overrideImg.src))
+                          || (v?.spriteSheet && /magnetic_arc_burst/.test(v.spriteSheet.src))),
+        };
+      });
+      sawBolt = r.bolt; sawStaticArt = sawStaticArt || r.art;
     }
-    gate('W4b magnetic_arc|skeleton → ArcThunder override ζωντανό in-world', sawArc);
+    gate('W4b magnetic_arc → procedural bolt strike in-world (όχι illustration)', sawBolt && !sawStaticArt,
+         JSON.stringify({ sawBolt, sawStaticArt }));
+    const cardIcon = await page.evaluate(() => {
+      const im = window.__g._weaponCardIcon('magnetic_arc');
+      return !!(im && /ArcThunder_Burst/.test(decodeURIComponent(im.src || '')));
+    });
+    gate('W4c ArcThunder κρατιέται ως CARD icon (skeleton)', cardIcon);
     // W5: biome ambient hook υπάρχει + το art του τρέχοντος biome φορτώνει (μέσω cache)
     const amb = await page.evaluate(async () => {
       const g = window.__g;
