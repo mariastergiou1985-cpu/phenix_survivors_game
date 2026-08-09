@@ -20,15 +20,15 @@ import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, dr
 import { SystemEventManager } from './Events.js?v=20260802000000';
 import { UpgradeUI }      from './UpgradeUI.js?v=20260902100000';
 import { weightedSample } from './Upgrades.js?v=20260902100000';
-import { BuildEngineRuntime, WEAPON_DEFS as BE_WEAPON_DEFS, EVOLUTION_RECIPES as BE_EVOLUTION_RECIPES, PASSIVE_DEFS as BE_PASSIVE_DEFS } from './BuildEngine.js?v=20260902130000';   // BUILD ENGINE — always on (full migration 2026-07-18)
+import { BuildEngineRuntime, WEAPON_DEFS as BE_WEAPON_DEFS, EVOLUTION_RECIPES as BE_EVOLUTION_RECIPES, PASSIVE_DEFS as BE_PASSIVE_DEFS } from './BuildEngine.js?v=20260908180000';   // BUILD ENGINE — always on (full migration 2026-07-18)
 import { FUSION_DEFS, FUSION_CARD_ORDER, FUSION_ART_READY, FUSION_MAX_TIER, fusionCost, CHAR_DISPLAY_NAMES } from './FusionCatalog.js?v=20260902070000';   // FUSION ARMORY (Batch B)
 import { FusionEngine } from './FusionEngine.js?v=20260908170000';   // FUSION ARMORY runtime (Batch D)
-import './BuildEngineChars1.js?v=20260902130000';   // P2.3a Taekwondo+CyberArm (side-effect register)
-import './BuildEngineChars2.js?v=20260902130000';   // P2.3b Brawler+Assassin (side-effect register)
-import './BuildEngineChars3.js?v=20260902130000';   // P2.4a Eddie+Dimi (side-effect register)
-import './BuildEngineChars4.js?v=20260902130000';   // P2.4b Phasewalker+Euclid+Oni (side-effect register)
-import './BuildEngineChars5.js?v=20260902130000';   // P2.5 Universal όπλα 21-25 (side-effect register)
-import './BuildEnginePassives.js?v=20260902130000'; // P2.6 Build passives §26-50 (generic hooks)
+import './BuildEngineChars1.js?v=20260908180000';   // P2.3a Taekwondo+CyberArm (side-effect register)
+import './BuildEngineChars2.js?v=20260908180000';   // P2.3b Brawler+Assassin (side-effect register)
+import './BuildEngineChars3.js?v=20260908180000';   // P2.4a Eddie+Dimi (side-effect register)
+import './BuildEngineChars4.js?v=20260908180000';   // P2.4b Phasewalker+Euclid+Oni (side-effect register)
+import './BuildEngineChars5.js?v=20260908180000';   // P2.5 Universal όπλα 21-25 (side-effect register)
+import './BuildEnginePassives.js?v=20260908180000'; // P2.6 Build passives §26-50 (generic hooks)
 import { MutationUI }      from './MutationUI.js?v=20260904180000';
 import { sampleMutations, sampleCorruptedMutation } from './Mutations.js?v=20260904180000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260908050000';
@@ -19656,46 +19656,133 @@ export class Game {
     t -= dt;
     if (t <= 0) {
       t = stats.cooldown;
-      // AUTO-AIM: nearest living target INCLUDING bosses/mini-bosses (was enemies-only,
-      // so acquired weapons spun uselessly during boss fights).
-      const px = this.player.pos.x, py = this.player.pos.y;
-      let best = null, bestD2 = 620 * 620;
-      for (const e of this.enemies) {
-        if (!e || e.hp <= 0) continue;
-        const dx = e.pos.x - px, dy = e.pos.y - py;
-        const d2 = dx * dx + dy * dy;
-        if (d2 < bestD2) { bestD2 = d2; best = e; }
-      }
-      const _ddW = this.doubleDemonsBoss && this.doubleDemonsBoss.hp > 0
-        ? [this.doubleDemonsBoss.gunner, this.doubleDemonsBoss.claw] : [];
-      for (const b of [this.titanBoss, this.annihilatorBoss, this.bloodfangBoss, this.cyberSerpentBoss, this.cyberDragonBoss, ..._ddW]) {
-        if (!b || b.hp <= 0 || !b.pos) continue;
-        const dx = b.pos.x - px, dy = b.pos.y - py;
-        const d2 = dx * dx + dy * dy;
-        if (d2 < bestD2) { bestD2 = d2; best = b; }
-      }
-      if (best) {
-        this._doctrineAddHeat();   // CHAOS DOCTRINE: no-op unless cyber_arm_hero inside Chaos
-        const angle = Math.atan2(best.pos.y - py, best.pos.x - px);
-        const vfx = this._spawnWeaponVFX(weaponId, best.pos.x, best.pos.y, angle, 4.5);   // bigger, premium presence (was 3.75)
-        // 70% homing: the VFX tracks its target while animating instead of
-        // spinning at the cast point after the target has moved away.
-        if (vfx) { vfx.follow = best; vfx.followK = 0.7; }
-        // Damage at impact point: AoE vs enemies + capped direct hit vs bosses.
-        const aoe2 = (stats.aoeRadius || 60) * (stats.aoeRadius || 60);
-        for (const e of this.enemies) {
-          if (!e || e.hp <= 0) continue;
-          const dx = e.pos.x - best.pos.x, dy = e.pos.y - best.pos.y;
-          if (dx * dx + dy * dy <= aoe2) e.takeHit(stats.damage, this);
-        }
-        if (!best.takeHit && best.hp !== undefined) {
-          best.hp -= this._capBossDamage(best, stats.damage);
-          if (best.hitFlash !== undefined) best.hitFlash = 0.08;
-        }
-        this.audio?.playShoot?.();
-      }
+      this._deliverAcquiredWeapon(weaponId, stats);
     }
     this._acquiredWeaponTimers.set(weaponId, t);
+  }
+
+  // Shared aim for every legacy delivery below. ONE source of truth with the Build Engine:
+  // right stick -> movement direction -> last known -> facing. Reads no enemy position.
+  _legacyAim() {
+    const be = this.buildEngine;
+    if (be && typeof be.playerAim === 'function') return be.playerAim();
+    return (this.player?._facing || 1) > 0 ? 0 : Math.PI;
+  }
+  // Damage one {obj,arr,die} target through the shared brawler path (handles enemies AND the
+  // singleton bosses, with the boss damage cap).
+  _acqHit(t, dmg) { try { this._brawlerHit(t, dmg, '#cfe9ff'); } catch (_) {} }
+
+  // ── ACQUIRED WEAPON DELIVERY ────────────────────────────────────────────────
+  // WHAT THIS REPLACES. Every acquired legacy weapon and evolution — 52 of the 53 in
+  // WeaponCatalog — used to run one block: pick the nearest body within 620px (bosses included)
+  // and apply an AoE centred ON THAT BODY in the SAME FRAME. No projectile, no travel, no shape,
+  // no warning. It could not miss, and no amount of movement could avoid it. The `vfx.follow`
+  // that carried a "70% homing" comment moved only the sprite, after the damage had landed.
+  //
+  // Delivery is now chosen from the weapon's OWN `behavior` field, so each family fights the way
+  // its catalog entry already claimed it did.
+  _deliverAcquiredWeapon(weaponId, stats) {
+    const def = getWeaponDef(weaponId);
+    const bh  = def?.behavior || '';
+    const p   = this.player;
+    if (!p) return;
+    const R   = stats.aoeRadius || 60;
+    const dmg = stats.damage;
+    const ang = this._legacyAim();
+    const cosA = Math.cos(ang), sinA = Math.sin(ang);
+
+    // ── SEEKING SHOTS — the only families that keep target acquisition, because a bolt and a
+    //    thrown disc are aimed things by definition. They now TRAVEL: the shot is a real
+    //    Projectile on the shipped damage path, so a target that moves off the line is missed.
+    if (bh === 'bolt_projectile' || bh === 'orbit_throw') {
+      const best = this._autoTarget(p.pos, 620);
+      if (!best) return;                                     // never fire into empty space
+      this._doctrineAddHeat();
+      const a = Math.atan2(best.pos.y - p.pos.y, best.pos.x - p.pos.x);
+      const dir = new Vec2(Math.cos(a), Math.sin(a));
+      const proj = new Projectile(p.pos.add(dir.scale(30)), dir, dmg, null);
+      proj.speed  = bh === 'bolt_projectile' ? 980 : 560;
+      proj.life   = 620 / proj.speed;
+      proj.radius = Math.max(10, Math.min(28, R * 0.4));
+      this.projectiles.push(proj);
+      this._spawnWeaponVFX(weaponId, p.pos.x + cosA * 50, p.pos.y + sinA * 50, a, 3.4);
+      this.audio?.playShoot?.();
+      return;
+    }
+
+    this._doctrineAddHeat();
+
+    // ── GROUND — telegraphed AoE on a LOCKED point ahead of the player. The warning is the
+    //    whole point: the circle is drawn, then it detonates, and fe.near re-runs at that moment.
+    if (bh === 'ground_shockwave' || bh === 'sequential_ground') {
+      const gx = p.pos.x + cosA * 210, gy = p.pos.y + sinA * 210;
+      const gR = R + 40;
+      this._spawnWeaponVFX(weaponId, gx, gy, ang, 4.2);
+      const be = this.buildEngine;
+      const land = () => {
+        for (const tt of this._brawlerTargets()) {
+          const dx = tt.obj.pos.x - gx, dy = tt.obj.pos.y - gy;
+          if (dx * dx + dy * dy <= gR * gR) this._acqHit(tt, dmg);
+        }
+      };
+      if (be && typeof be.strike === 'function') be.strike(gx, gy, gR, 0.34, '#ffb347', land);
+      else land();
+      this.audio?.playShoot?.();
+      return;
+    }
+
+    // ── LANE — a corridor in the aimed direction. No target, no lock; stand out of it and live.
+    if (bh === 'line_cloud') {
+      const len = R + 300, halfW = Math.max(34, R * 0.6);
+      for (const tt of this._brawlerTargets()) {
+        const dx = tt.obj.pos.x - p.pos.x, dy = tt.obj.pos.y - p.pos.y;
+        const along = dx * cosA + dy * sinA, side = Math.abs(-dx * sinA + dy * cosA);
+        if (along > 0 && along < len && side < halfW + (tt.obj.radius || 18)) this._acqHit(tt, dmg);
+      }
+      this._spawnWeaponVFX(weaponId, p.pos.x + cosA * len * 0.45, p.pos.y + sinA * len * 0.45, ang, 4.0);
+      this.audio?.playShoot?.();
+      return;
+    }
+
+    // ── ARCS AND CONES — a shape in front of the player. Instant, but it is a SHAPE: what is
+    //    outside it takes nothing, and the player has to face the right way.
+    if (bh === 'forward_arc' || bh === 'forward_cone' || bh === 'wide_arc' || bh === 'cross_slash') {
+      const reach = R + 130;
+      const half  = bh === 'wide_arc'     ? Math.PI * 0.52
+                  : bh === 'forward_cone' ? Math.PI * 0.26
+                  : bh === 'cross_slash'  ? Math.PI * 0.20
+                  :                         Math.PI * 0.34;
+      const blades = bh === 'cross_slash' ? [ang - 0.55, ang + 0.55] : [ang];   // X, not a disc
+      const done = new Set();
+      for (const bA of blades) {
+        const bc = Math.cos(bA), bs = Math.sin(bA);
+        for (const tt of this._brawlerTargets()) {
+          if (done.has(tt.obj)) continue;
+          const dx = tt.obj.pos.x - p.pos.x, dy = tt.obj.pos.y - p.pos.y;
+          const dist = Math.hypot(dx, dy);
+          if (dist > reach + (tt.obj.radius || 18)) continue;
+          let da = Math.atan2(dy, dx) - Math.atan2(bs, bc);
+          while (da >  Math.PI) da -= Math.PI * 2;
+          while (da < -Math.PI) da += Math.PI * 2;
+          if (Math.abs(da) > half) continue;
+          done.add(tt.obj);
+          this._acqHit(tt, dmg);
+        }
+        this._spawnWeaponVFX(weaponId, p.pos.x + bc * reach * 0.55, p.pos.y + bs * reach * 0.55, bA, 3.8);
+      }
+      this.audio?.playShoot?.();
+      return;
+    }
+
+    // ── AROUND THE PLAYER — 360 rings, novas, spirals, vortices, implosions. These never had
+    //    any business picking a body: they are radial by definition. No aim is read at all.
+    const rr = R + 60;
+    for (const tt of this._brawlerTargets()) {
+      const dx = tt.obj.pos.x - p.pos.x, dy = tt.obj.pos.y - p.pos.y;
+      if (dx * dx + dy * dy <= rr * rr) this._acqHit(tt, dmg);
+    }
+    this._spawnWeaponVFX(weaponId, p.pos.x, p.pos.y, ang, 4.2);
+    this.audio?.playShoot?.();
   }
 
   // ── SOLO RED THUNDER — Eddie native weapon (auto-fires red riff bolts) ──────
