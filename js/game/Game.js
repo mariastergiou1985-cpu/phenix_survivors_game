@@ -25708,6 +25708,19 @@ export class Game {
       return;
     }
 
+    // ── LEGACY CHARACTER ART: the one invariant that replaces twelve reminders ──────────────
+    // The main-menu DOM overlay carries a slideshow of six LARGE character illustrations
+    // (assets/ui/walker main theme 2.png and friends, 352x529 on a 1440-wide canvas). It is a
+    // sibling of the game canvas, so it paints OVER the play field, and nothing on the canvas
+    // side can hide it. Hiding it was left to every screen transition remembering to call
+    // _hideMenuOverlay() — there are ~12 such calls, two of them already carrying the comment
+    // "guarantee the main-menu overlay never lingers over the run", which is the fingerprint of
+    // a leak that had to be patched twice at the call sites rather than once at the invariant.
+    // A run is by definition a state where that art must not be on screen, so assert it here,
+    // where "a run is being drawn" is already established. Menu / Character Select / Collection
+    // portraits are untouched: this only runs while gameState === 'playing'.
+    if (this._menuOverlayVisible) { try { this._hideMenuOverlay(); } catch (_) {} }
+
     // ── Camera-space block (world entities) ─────────────────────────────────
     // Zoom out slightly so more of the battlefield is visible (Endless zooms out a touch more).
     ctx.save();
