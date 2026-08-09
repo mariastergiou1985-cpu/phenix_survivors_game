@@ -12,7 +12,7 @@ import { chromium } from 'playwright-core';
 
 const BASE = process.argv[2] || 'http://127.0.0.1:8138';
 const EXE  = process.env.PW_CHROMIUM || '/opt/pw-browsers/chromium';
-const BUILD = '20260908090000';
+const BUILD = '20260908100000';
 let failures = 0;
 const gate = (n, ok, d = '') => { if (!ok) failures++; console.log(`${ok ? 'PASS' : 'FAIL'}  ${n}${d ? '  — ' + d : ''}`); };
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
@@ -135,7 +135,10 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
       return false;
     };
     gate('T0 S1 auto-start σε ΥΠΑΡΧΟΝ save (χωρίς replay)', await waitStep('menu_start'));
-    // arming: Enter αμέσως μετά το άνοιγμα ΔΕΝ κλείνει το βήμα
+    // arming: Enter μέσα στο 600ms παράθυρο ΔΕΝ κλείνει το βήμα. Το πραγματικό
+    // show μπορεί να έγινε δευτερόλεπτα πριν το εντοπίσει το poll (racy), οπότε
+    // ξανα-οπλίζουμε ντετερμινιστικά με την ΙΔΙΑ τιμή που βάζει το _show().
+    await page.evaluate(() => { const t = window.__phenixTutorial; t._armedAt = performance.now() + 600; });
     await page.keyboard.press('Enter'); await sleep(220);
     gate('T0b πρώτο step δεν προσπερνιέται από κατά λάθος input (armed)', await vis());
     await sleep(700); await page.keyboard.press('Enter'); await sleep(250);

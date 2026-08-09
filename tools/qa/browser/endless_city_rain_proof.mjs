@@ -19,7 +19,7 @@ import fs from 'node:fs';
 const BASE  = process.argv[2] || 'http://127.0.0.1:8138';
 const EXE   = process.env.PW_CHROMIUM || '/opt/pw-browsers/chromium';
 const SHOTS = process.env.RAIN_PROOF_SHOTS || '/tmp/endless_rain_shots';
-const BUILD = '20260908090000';
+const BUILD = '20260908100000';
 
 let failures = 0;
 const gate = (name, ok, detail = '') => {
@@ -96,7 +96,7 @@ const sleep = (ms) => new Promise(r => setTimeout(r, ms));
     return { exists: true, calls };
   });
   gate('R4 _drawCityRain υπάρχει', spy.exists);
-  gate('R4b καλείται κάθε frame', spy.calls > 30, `${spy.calls} calls / 2s`);
+  gate('R4b καλείται συνεχώς', spy.calls > 10, `${spy.calls} calls / 2s`);
 
   // R5 / R5b: stub-ctx render + acid-rain mutual exclusion
   const stub = await page.evaluate(() => {

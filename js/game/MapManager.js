@@ -1231,6 +1231,8 @@ export class MapManager {
     // Rain + neon reflections (2026-08-09, Maria): ίδιο layer contract — πριν το dim,
     // μόνο endless city art, ποτέ παράλληλα με το acid rain event.
     try { if (img === this._cityImg) this._drawCityRain(ctx, tw, th, S, xA, xB, _camX, _camY, vw, vh); } catch (_) {}
+    // Chaos world distortion (2026-08-09, Maria): ο κόσμος «σπάει» — ΜΟΝΟ στο chaos deck art.
+    try { if (img === this._chaosDeckImg) this._drawChaosDistortion(ctx, S, xA, xB, _camX, _camY, vw, vh); } catch (_) {}
     ctx.fillStyle = opts.gridBlackoutActive ? 'rgba(0,0,0,0.65)' : 'rgba(0,0,0,0.30)';
     ctx.fillRect(_camX, _camY, vw, vh);
   }
@@ -1516,6 +1518,190 @@ export class MapManager {
     ctx.globalAlpha = 1;
   }
 
+  // ── CHAOS MODE: WORLD DISTORTION (2026-08-09, Maria) — visual-only ──────────
+  // Ο κόσμος του Chaos «σπάει»: μικρά glitch/rift slices (πραγματική μετατόπιση
+  // ήδη ζωγραφισμένων map pixels μέσω device-space self-copy — ΠΡΙΝ τα entities,
+  // άρα παραμορφώνεται ΜΟΝΟ το περιβάλλον), χρωματικοί (chromatic) παλμοί,
+  // στιγμιαία light shifts, null tears που ανοίγουν/κλείνουν με dissolve και
+  // σπάνια distortion waves σε πάτωμα/τοίχους. Όλα world-grid deterministic από
+  // timeAlive, bounded, χαμηλό alpha (≤0.16), hush γύρω από τον παίκτη, κανένα
+  // full-screen φίλτρο. Δεν αγγίζει map art/gameplay/Chaos laws/enemies/balance.
+  _drawChaosDistortion(ctx, S, xA, xB, camX, camY, vw, vh) {
+    const g = this.game;
+    if (!g || g.gameState !== 'playing') return;
+    const t = g.timeAlive || 0;
+    const px = g.player ? g.player.pos.x : -1e9, py = g.player ? g.player.pos.y : -1e9;
+    const hush = (x, y) => { const d = Math.hypot(x - px, y - py); return d < 170 ? 0 : d < 300 ? (d - 170) / 130 : 1; };
+    const h2 = (i, k) => { const v = Math.sin(i * 127.1 + k * 311.7) * 43758.5453; return v - Math.floor(v); };
+    const u = (S || 3) / 3;
+    const yA = camY - 60, yB = camY + vh + 60;
+    const M = ctx.getTransform ? ctx.getTransform() : null;
+    const dev = (wx, wy) => M ? { x: M.a * wx + M.c * wy + M.e, y: M.b * wx + M.d * wy + M.f }
+                             : { x: wx - camX, y: wy - camY };
+    const cw = ctx.canvas ? ctx.canvas.width : 0, chh = ctx.canvas ? ctx.canvas.height : 0;
+    ctx.save();
+
+    // 1 ── Glitch/rift slices + light shift: world grid 900px, ~0.5s ριπή κάθε 7-13s.
+    // Κάθε ριπή: 3 λεπτές λωρίδες του ΗΔΗ ζωγραφισμένου map αντιγράφονται με μικρό
+    // offset (device space) + λεπτό neon tint + ένα stepped light band.
+    const GG = 900;
+    for (let gx = Math.floor(xA / GG); gx * GG < xB; gx++) {
+      for (let gy = Math.floor(yA / GG); gy * GG < yB; gy++) {
+        const per = 7 + h2(gx * 17, gy * 13) * 6;
+        const ph0 = h2(gx * 3, gy * 11);
+        const cyc = ((t / per) + ph0) % 1;
+        if (cyc > 0.07) continue;
+        const k = cyc / 0.07;
+        const cycN = Math.floor((t / per) + ph0);
+        const bx = gx * GG + h2(gx + cycN, gy * 7) * GG;
+        const by = gy * GG + h2(gx * 7, gy + cycN) * GG;
+        const A = hush(bx, by);
+        if (A <= 0.01) continue;
+        const flick = Math.floor(k * 5);                       // 5 διαδοχικά flickers στη ριπή
+        for (let s = 0; s < 3; s++) {
+          const sy = by + (h2(s + flick, gx * 5 + cycN) - 0.5) * 120;
+          const wW = 60 + h2(s * 3, flick + gy) * 90;
+          const hW = 10 + h2(s * 7, flick * 3 + gx) * 16;
+          const off = (h2(s + 1, flick * 7 + gx + gy) - 0.5) * 28 * u;
+          const p0 = dev(bx - wW / 2, sy - hW / 2), p1 = dev(bx + wW / 2, sy + hW / 2);
+          const rx = Math.min(p0.x, p1.x), ry = Math.min(p0.y, p1.y);
+          const rw = Math.abs(p1.x - p0.x), rh = Math.abs(p1.y - p0.y);
+          if (rw < 2 || rh < 2 || rx < 0 || ry < 0 || rx + rw > cw || ry + rh > chh) continue;
+          if (rx + off < 0 || rx + rw + off > cw) continue;
+          ctx.save();
+          ctx.setTransform(1, 0, 0, 1, 0, 0);                  // device space
+          ctx.globalAlpha = 0.45 * A;
+          try { ctx.drawImage(ctx.canvas, rx, ry, rw, rh, rx + off, ry, rw, rh); } catch (_) {}
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.globalAlpha = 0.06 * A;
+          ctx.fillStyle = s % 2 ? '#4be8ff' : '#ff4fd8';
+          ctx.fillRect(rx + off, ry, rw, Math.max(1, rh * 0.4));
+          ctx.restore();
+        }
+        // stepped light shift — λεπτή φωτεινή γραμμή που «πηδάει» θέση ανά flicker
+        const lbY = by + ((flick % 3) - 1) * 40;
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.07 * A;
+        ctx.strokeStyle = '#bfe9ff'; ctx.lineWidth = 2 * u; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(bx - 90, lbY); ctx.lineTo(bx + 90, lbY); ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    // 2 ── Chromatic pulses: grid 1100px, σύντομος διπλός δακτύλιος red/cyan με
+    // μικρό offset — τοπικό chromatic aberration, όχι full-screen φίλτρο.
+    const CG = 1100;
+    ctx.globalCompositeOperation = 'lighter';
+    for (let gx = Math.floor(xA / CG); gx * CG < xB; gx++) {
+      for (let gy = Math.floor(yA / CG); gy * CG < yB; gy++) {
+        const per = 9 + h2(gx * 23, gy * 19) * 7;
+        const ph0 = h2(gx * 5, gy * 3);
+        const cyc = ((t / per) + ph0) % 1;
+        if (cyc > 0.09) continue;
+        const k = cyc / 0.09;
+        const cycN = Math.floor((t / per) + ph0);
+        const x = gx * CG + h2(gx + cycN, gy * 9) * CG;
+        const y = gy * CG + h2(gx * 9, gy + cycN) * CG;
+        const A = hush(x, y);
+        if (A <= 0.01) continue;
+        const R = (30 + 190 * k) * u * 3;
+        ctx.lineWidth = 2 * u;
+        ctx.globalAlpha = 0.12 * (1 - k) * A;
+        ctx.strokeStyle = '#ff3b4d';
+        ctx.beginPath(); ctx.arc(x + 2.5 * u, y, R, 0, Math.PI * 2); ctx.stroke();
+        ctx.strokeStyle = '#37e0f0';
+        ctx.beginPath(); ctx.arc(x - 2.5 * u, y, R, 0, Math.PI * 2); ctx.stroke();
+      }
+    }
+
+    // 3 ── Null tears: grid 1300px· άνοιγμα (scale-in) → hold → κλείσιμο με dissolve
+    // (fade + συρρίκνωση + 6 θραύσματα που σκορπούν). Σκούρος πυρήνας + neon χείλος.
+    const TG = 1300;
+    for (let gx = Math.floor(xA / TG); gx * TG < xB; gx++) {
+      for (let gy = Math.floor(yA / TG); gy * TG < yB; gy++) {
+        const per = 10 + h2(gx * 31, gy * 29) * 8;
+        const ph0 = h2(gx * 7, gy * 5);
+        const cyc = ((t / per) + ph0) % 1;
+        if (cyc > 0.16) continue;
+        const k = cyc / 0.16;
+        const cycN = Math.floor((t / per) + ph0);
+        const x = gx * TG + (0.15 + 0.7 * h2(gx + cycN, gy * 11)) * TG;
+        const y = gy * TG + (0.15 + 0.7 * h2(gx * 11, gy + cycN)) * TG;
+        const A = hush(x, y);
+        if (A <= 0.01) continue;
+        const sc  = k < 0.2 ? k / 0.2 : (k > 0.65 ? 1 - (k - 0.65) / 0.35 : 1);
+        const dis = k > 0.65 ? (k - 0.65) / 0.35 : 0;
+        const hgt = (60 + h2(gx, gy * 17) * 60) * sc * u * 3;
+        const wdt = hgt * 0.28;
+        if (hgt < 2) continue;
+        const wob = Math.sin(t * 9 + gx + gy) * 2 * u;
+        ctx.globalCompositeOperation = 'source-over';          // σκούρος πυρήνας
+        ctx.globalAlpha = 0.5 * sc * (1 - dis) * A;
+        ctx.fillStyle = '#03050e';
+        ctx.beginPath();
+        ctx.moveTo(x + wob, y - hgt / 2);
+        ctx.quadraticCurveTo(x + wdt + wob, y, x + wob, y + hgt / 2);
+        ctx.quadraticCurveTo(x - wdt + wob, y, x + wob, y - hgt / 2);
+        ctx.fill();
+        ctx.globalCompositeOperation = 'lighter';              // neon χείλος
+        ctx.globalAlpha = 0.16 * sc * (1 - dis * 0.6) * A;
+        ctx.strokeStyle = '#ff4fd8'; ctx.lineWidth = 1.8 * u;
+        ctx.stroke();
+        ctx.globalAlpha = 0.10 * sc * (1 - dis) * A;
+        ctx.strokeStyle = '#9ff3ff'; ctx.lineWidth = 0.8 * u;
+        ctx.beginPath();
+        ctx.moveTo(x + wob, y - hgt * 0.34);
+        ctx.quadraticCurveTo(x + wdt * 0.5 + wob, y, x + wob, y + hgt * 0.34);
+        ctx.stroke();
+        if (dis > 0) {                                          // dissolve θραύσματα
+          for (let d = 0; d < 6; d++) {
+            const an = (d / 6) * Math.PI * 2 + h2(d, gx + gy) * 0.8;
+            const rr = dis * (20 + h2(d, cycN) * 26) * u * 3;
+            ctx.globalAlpha = 0.20 * (1 - dis) * A;
+            ctx.fillStyle = d % 2 ? '#ff4fd8' : '#9ff3ff';
+            ctx.beginPath();
+            ctx.arc(x + Math.cos(an) * rr, y + Math.sin(an) * rr * 0.6, 1.4 * u, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+      }
+    }
+
+    // 4 ── Distortion waves: grid 1600px· αργός δακτύλιος που απλώνεται σε πάτωμα/
+    // τοίχους — φωτεινό μέτωπο + σκοτεινός «διαθλαστικός» συνοδός, ελλειπτικά (0.75).
+    const WG = 1600;
+    for (let gx = Math.floor(xA / WG); gx * WG < xB; gx++) {
+      for (let gy = Math.floor(yA / WG); gy * WG < yB; gy++) {
+        const per = 11 + h2(gx * 37, gy * 41) * 8;
+        const ph0 = h2(gx * 13, gy * 7);
+        const cyc = ((t / per) + ph0) % 1;
+        if (cyc > 0.10) continue;
+        const k = cyc / 0.10;
+        const cycN = Math.floor((t / per) + ph0);
+        const x = gx * WG + (0.2 + 0.6 * h2(gx + cycN, gy * 13)) * WG;
+        const y = gy * WG + (0.2 + 0.6 * h2(gx * 13, gy + cycN)) * WG;
+        const A = hush(x, y);
+        if (A <= 0.01) continue;
+        const env = Math.sin(Math.PI * k);
+        const R = (40 + 300 * k) * u * 3;
+        ctx.save();
+        ctx.translate(x, y); ctx.scale(1, 0.75); ctx.translate(-x, -y);
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = 0.10 * env * A;
+        ctx.strokeStyle = '#000000'; ctx.lineWidth = 6 * u;
+        ctx.beginPath(); ctx.arc(x, y, Math.max(1, R - 10 * u), 0, Math.PI * 2); ctx.stroke();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.09 * env * A;
+        ctx.strokeStyle = '#bfa8ff'; ctx.lineWidth = 3 * u;
+        ctx.beginPath(); ctx.arc(x, y, R, 0, Math.PI * 2); ctx.stroke();
+        ctx.restore();
+      }
+    }
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
+
   /**
    * Draw one section deck. FINITE arena: the asset is painted once at its own origin, no mirror
    * tiling and no invented filler - the authored edges ARE the edges of the place. Everything
@@ -1555,6 +1741,8 @@ export class MapManager {
         ctx.imageSmoothingEnabled = prev;
       }
     }
+    // Chaos world distortion και στα chaos SECTION decks (ίδιο visual contract, πριν το dim).
+    try { if (m.mode === 'chaos') this._drawChaosDistortion(ctx, m.scale, camX - 96, camX + vw + 96, camX, camY, vw, vh); } catch (_) {}
     ctx.fillStyle = opts.gridBlackoutActive ? 'rgba(0,0,0,0.65)' : 'rgba(0,0,0,0.30)';
     ctx.fillRect(camX, camY, vw, vh);
     return true;
