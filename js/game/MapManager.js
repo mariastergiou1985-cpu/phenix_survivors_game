@@ -1225,8 +1225,155 @@ export class MapManager {
     // against a 0.92 Mpx canvas - 1.9x the screen, 26% of all covered pixels, for a flat colour
     // whose extra border is off-screen by construction. Clamping it to the camera rect is
     // pixel-identical on screen.
+    // Distant city life (2026-08-09, Maria): ζωγραφίζεται ΠΡΙΝ το readability dim και
+    // ΜΟΝΟ πάνω στο endless megacity art (όχι στο chaos deck) — καθαρά visual layer.
+    try { if (img === this._cityImg) this._drawCityAmbience(ctx, tw, th, S, xA, xB, _camX, _camY, vw, vh); } catch (_) {}
     ctx.fillStyle = opts.gridBlackoutActive ? 'rgba(0,0,0,0.65)' : 'rgba(0,0,0,0.30)';
     ctx.fillRect(_camX, _camY, vw, vh);
+  }
+
+  // ── ENDLESS MEGACITY: DISTANT CITY LIFE (2026-08-09, Maria) — visual-only ───
+  // Διακριτική «ζωή» στα ΜΑΚΡΙΝΑ layers του strip: skyline band (source rows 0-57)
+  // και σκοτεινό industrial κάτω band (rows ~470+). Τίποτα στο plaza/combat χώρο.
+  //   • ultra-far window lights: twinkle + parallax f≈0.94 (πιο αργά από τον κόσμο)
+  //   • distant traffic: 2 lanes με αργά dots+tails, αντίθετες φορές, parallax
+  //   • flying vehicles: 3 σκούρες silhouettes με blinking nav light, parallax
+  //   • building pulses: glows ΚΟΛΛΗΜΕΝΑ σε πύργους του art (mirror-aware, ΧΩΡΙΣ
+  //     parallax — δεν ξεκολλάνε από το map art), breathing
+  // Όλα deterministic από timeAlive, bounded (σταθερά counts, zero state), χαμηλό
+  // alpha (≤0.20), hush κοντά στον παίκτη, κάτω από entities & πριν το dim — δεν
+  // καλύπτουν ποτέ enemies/projectiles και δεν αλλάζουν map geometry/gameplay.
+  _drawCityAmbience(ctx, tw, th, S, xA, xB, camX, camY, vw, vh) {
+    const g = this.game;
+    if (!g || g.gameState !== 'playing') return;
+    const t = g.timeAlive || 0;
+    const px = g.player ? g.player.pos.x : -1e9, py = g.player ? g.player.pos.y : -1e9;
+    const hush = (x, y) => { const d = Math.hypot(x - px, y - py); return d < 170 ? 0 : d < 300 ? (d - 170) / 130 : 1; };
+    const h2 = (i, k) => { const v = Math.sin(i * 127.1 + k * 311.7) * 43758.5453; return v - Math.floor(v); };
+    const u = S / 3;                                     // art-relative μονάδα (CITY_SCALE=3 baseline)
+    const skyH = 58 * S;                                 // skyline band: world y ∈ [0, ~174]
+    const botY = 470 * S;                                // industrial band: world y ∈ [~1410, th]
+    const skyVisible = camY < skyH && camY + vh > 0;
+    const botVisible = camY + vh > botY && camY < th;
+    if (!skyVisible && !botVisible) return;
+    const i0 = Math.floor(xA / tw), i1 = Math.floor((xB - 1) / tw);
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+
+    if (skyVisible) {
+      // 1 ── Ultra-far window lights: 26 σημεία/περίοδο, twinkle, parallax f=0.94.
+      for (let k = 0; k < 26; k++) {
+        const lx = ((h2(k, 31) * tw + camX * 0.06) % tw + tw) % tw;
+        const y  = (4 + h2(k, 32) * 16) * S;
+        const twk = 0.5 + 0.5 * Math.sin(t * (0.35 + h2(k, 33) * 0.5) + k * 2.1);
+        const col = h2(k, 34) < 0.5 ? '#bfe9ff' : (h2(k, 34) < 0.8 ? '#ffd9f2' : '#fff3c4');
+        for (let i = i0; i <= i1; i++) {
+          const x = i * tw + lx;
+          if (x < xA || x > xB) continue;
+          const a = (0.05 + 0.07 * twk) * hush(x, y);
+          if (a <= 0.01) continue;
+          ctx.globalAlpha = a;
+          ctx.fillStyle = col;
+          ctx.beginPath(); ctx.arc(x, y, (1.2 + h2(k, 35) * 1.2) * u * 3, 0, Math.PI * 2); ctx.fill();
+        }
+      }
+      // 2 ── Distant traffic: 2 lanes (y=35/48 art px), αντίθετες φορές, dot+tail.
+      for (let lane = 0; lane < 2; lane++) {
+        const dir = lane ? -1 : 1;
+        const ly  = (lane ? 48 : 35) * S;
+        const col = lane ? '#ffab5e' : '#9fe8ff';
+        for (let k = 0; k < 8; k++) {
+          const spd = 34 + h2(lane * 9 + k, 40) * 30;    // world px/s — αργό distant flow
+          const raw = h2(lane * 9 + k, 41) * tw + dir * t * spd + camX * 0.08;
+          const lx  = ((raw % tw) + tw) % tw;
+          const jy  = ly + (h2(lane * 9 + k, 42) - 0.5) * 5 * S;
+          for (let i = i0; i <= i1; i++) {
+            const x = i * tw + lx;
+            if (x < xA || x > xB) continue;
+            const a = 0.16 * hush(x, jy);
+            if (a <= 0.01) continue;
+            ctx.globalAlpha = a;
+            ctx.strokeStyle = col; ctx.lineWidth = 2.2 * u; ctx.lineCap = 'round';
+            ctx.beginPath(); ctx.moveTo(x, jy); ctx.lineTo(x - dir * 16 * u, jy); ctx.stroke();
+            ctx.globalAlpha = a * 1.5;
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath(); ctx.arc(x, jy, 1.6 * u, 0, Math.PI * 2); ctx.fill();
+          }
+        }
+      }
+      // 3 ── Flying vehicles: 3 σκούρες silhouettes, αργές, blinking nav light.
+      for (let k = 0; k < 3; k++) {
+        const dir = k % 2 ? -1 : 1;
+        const spd = 18 + h2(k, 50) * 14;
+        const raw = h2(k, 51) * tw + dir * t * spd + camX * 0.10;
+        const lx  = ((raw % tw) + tw) % tw;
+        const y   = (10 + h2(k, 52) * 30) * S + Math.sin(t * 0.4 + k * 2) * 3 * S;
+        for (let i = i0; i <= i1; i++) {
+          const x = i * tw + lx;
+          if (x < xA || x > xB) continue;
+          const A = hush(x, y);
+          if (A <= 0.01) continue;
+          ctx.globalCompositeOperation = 'source-over';   // σκούρο σώμα — όχι additive
+          ctx.globalAlpha = 0.38 * A;
+          ctx.fillStyle = '#0b1120';
+          ctx.beginPath();
+          ctx.ellipse(x, y, 8 * u, 2.4 * u, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.globalCompositeOperation = 'lighter';
+          const blink = (Math.sin(t * 6.3 + k * 4) > 0.55) ? 1 : 0.25;
+          ctx.globalAlpha = 0.20 * blink * A;
+          ctx.fillStyle = k % 2 ? '#ff5f6e' : '#6ff3ff';
+          ctx.beginPath(); ctx.arc(x + dir * 6 * u, y - 1 * u, 1.5 * u, 0, Math.PI * 2); ctx.fill();
+          ctx.globalAlpha = 0.10 * A;                     // αχνό engine trail
+          ctx.strokeStyle = '#8fd8ff'; ctx.lineWidth = 1.5 * u; ctx.lineCap = 'round';
+          ctx.beginPath(); ctx.moveTo(x - dir * 9 * u, y); ctx.lineTo(x - dir * 20 * u, y); ctx.stroke();
+        }
+      }
+      // 4 ── Building pulses: glows ΠΑΝΩ σε πύργους του art (mirror-aware, όχι parallax).
+      const TOW = [[50, 25], [185, 15], [320, 28], [660, 10], [1010, 22], [1395, 14], [1600, 26]];
+      for (let n = 0; n < TOW.length; n++) {
+        const lx = TOW[n][0] * S, y = TOW[n][1] * S;
+        const ph = t * (0.30 + h2(n, 60) * 0.35) + h2(n, 61) * 7;
+        const col = h2(n, 62) < 0.45 ? '#4be8ff' : (h2(n, 62) < 0.75 ? '#ff5fd0' : '#ffb54a');
+        for (let i = i0; i <= i1; i++) {
+          const fx = ((i % 2) + 2) % 2 === 1;
+          const x = i * tw + (fx ? tw - lx : lx);
+          if (x < xA || x > xB) continue;
+          const a = (0.05 + 0.08 * (0.5 + 0.5 * Math.sin(ph * Math.PI * 2))) * hush(x, y);
+          if (a <= 0.01) continue;
+          const r = (5 + h2(n, 63) * 5) * S;
+          const gr = ctx.createRadialGradient(x, y, 0, x, y, r * 2.6);
+          gr.addColorStop(0, col); gr.addColorStop(1, 'rgba(0,0,0,0)');
+          ctx.globalAlpha = a;
+          ctx.fillStyle = gr;
+          ctx.beginPath(); ctx.arc(x, y, r * 2.6, 0, Math.PI * 2); ctx.fill();
+        }
+      }
+    }
+
+    if (botVisible) {
+      // 5 ── Industrial κάτω band: 4 αχνά machinery pulses, glued στο art (mirror-aware).
+      const IND = [[240, 486], [700, 478], [1150, 492], [1500, 482]];
+      for (let n = 0; n < IND.length; n++) {
+        const lx = IND[n][0] * S, y = Math.min(th - 6 * S, IND[n][1] * S);
+        const ph = t * (0.4 + h2(n, 70) * 0.4) + h2(n, 71) * 5;
+        const col = n % 2 ? '#ffb54a' : '#37e0f0';
+        for (let i = i0; i <= i1; i++) {
+          const fx = ((i % 2) + 2) % 2 === 1;
+          const x = i * tw + (fx ? tw - lx : lx);
+          if (x < xA || x > xB) continue;
+          const a = (0.04 + 0.06 * (0.5 + 0.5 * Math.sin(ph * Math.PI * 2))) * hush(x, y);
+          if (a <= 0.01) continue;
+          const gr = ctx.createRadialGradient(x, y, 0, x, y, 14 * S);
+          gr.addColorStop(0, col); gr.addColorStop(1, 'rgba(0,0,0,0)');
+          ctx.globalAlpha = a;
+          ctx.fillStyle = gr;
+          ctx.beginPath(); ctx.arc(x, y, 14 * S, 0, Math.PI * 2); ctx.fill();
+        }
+      }
+    }
+    ctx.restore();
+    ctx.globalAlpha = 1;
   }
 
   /**

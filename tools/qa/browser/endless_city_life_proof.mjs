@@ -1,0 +1,170 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// ENDLESS MEGACITY — DISTANT CITY LIFE RUNTIME PROOF (2026-08-09, Maria)
+//
+// Πραγματικό endless run μέσω production flow. Gates:
+//   E1 boot → start_menu, 0 page errors
+//   E2 ζωντανό Game instance
+//   E3 endless: playing, endless=true, city strip ενεργό (chunkStreaming + _cityImg)
+//   E4 _drawCityAmbience υπάρχει και καλείται κάθε frame (draw-spy)
+//   E5 stub-ctx render με camY=0 (skyline ορατό) → πραγματικά draw ops
+//   E5b stub-ctx render με κάμερα στο ΚΕΝΤΡΟ του plaza → ΜΗΔΕΝ draw ops
+//       (τα εφέ μένουν μακριά από το combat area)
+//   E6 κίνηση: με τον παίκτη κοντά στο skyline, δύο canvas samples 900ms απόσταση
+//      διαφέρουν στο πάνω band (όχι static PNG overlay)
+//   E7 guard: το call site ενεργοποιείται ΜΟΝΟ για το endless city art (όχι chaos)
+//   E8 μηδέν page errors / μηδέν non-404 console errors συνολικά
+// Usage:  node tools/qa/browser/endless_city_life_proof.mjs [baseUrl]
+// ─────────────────────────────────────────────────────────────────────────────
+import { chromium } from 'playwright-core';
+import fs from 'node:fs';
+
+const BASE  = process.argv[2] || 'http://127.0.0.1:8138';
+const EXE   = process.env.PW_CHROMIUM || '/opt/pw-browsers/chromium';
+const SHOTS = process.env.CITY_PROOF_SHOTS || '/tmp/endless_city_shots';
+const BUILD = '20260908080000';
+
+let failures = 0;
+const gate = (name, ok, detail = '') => {
+  if (!ok) failures++;
+  console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? '  — ' + detail : ''}`);
+};
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+(async () => {
+  fs.mkdirSync(SHOTS, { recursive: true });
+  const browser = await chromium.launch({ executablePath: EXE, headless: true });
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+  await ctx.addInitScript(() => {
+    try { sessionStorage.setItem('phenix_qa_optin', '1'); } catch (_) {}
+    try { localStorage.setItem('phenix_meta', JSON.stringify({ endlessUnlocked: true, stagesCleared: 6 })); } catch (_) {}
+  });
+  const page = await ctx.newPage();
+  const pageErrors = [], consoleErrors = [];
+  page.on('pageerror', (e) => pageErrors.push(String(e && e.message || e)));
+  page.on('console', (m) => {
+    if (m.type() !== 'error') return;
+    const t = m.text();
+    if (/Failed to load resource/.test(t)) return;
+    consoleErrors.push(t);
+  });
+  const cdp = await ctx.newCDPSession(page);
+  const shot = async (name) => {
+    const { data } = await cdp.send('Page.captureScreenshot', { format: 'png' });
+    fs.writeFileSync(SHOTS + '/' + name, Buffer.from(data, 'base64'));
+  };
+
+  await page.goto(BASE + '/index.html?qa=1', { waitUntil: 'domcontentloaded', timeout: 30000 });
+  await page.waitForFunction(() => window.__phenixQA?.snapshot?.()?.gameState === 'start_menu', null, { timeout: 20000 });
+  gate('E1 boot → start_menu', true);
+  gate('E1b μηδέν page errors στο boot', pageErrors.length === 0, pageErrors.join(' | '));
+
+  await page.evaluate(async (build) => {
+    const mod = await import(`./js/game/Game.js?v=${build}`);
+    await new Promise((res) => {
+      const orig = mod.Game.prototype.update;
+      mod.Game.prototype.update = function (...a) {
+        window.__g = this; mod.Game.prototype.update = orig; res();
+        return orig.apply(this, a);
+      };
+    });
+  }, BUILD);
+  gate('E2 ζωντανό Game instance', await page.evaluate(() => !!window.__g));
+
+  const click = async (sel) => { await page.click(sel, { timeout: 8000 }); await sleep(160); await page.evaluate(() => window.__phenixQA?._settleFade?.()); await sleep(160); };
+  await click('#cgm-menu-nav .mbtn[data-cgm-item="START GAME"]');
+  await click('#cgm-modesel .msl-card[data-mode="endless"]');
+  await click('#mi-continue');
+  await sleep(400);
+  await page.evaluate(() => { document.querySelector('.csc-card')?.click(); });
+  await sleep(250);
+  await click('#csc-endless-btn');
+  await sleep(800);
+  const st = await page.evaluate(() => {
+    const g = window.__g, mm = g.mapManager;
+    return { gs: g.gameState, endless: !!g.endless,
+             city: !!(mm.chunkStreamingEnabled && mm._cityImg?.complete && mm._cityImg.naturalWidth > 0) };
+  });
+  gate('E3 endless: playing', st.gs === 'playing' && st.endless, JSON.stringify(st));
+  gate('E3b city strip ενεργό', st.city);
+
+  // E4: η μέθοδος υπάρχει και καλείται κάθε frame
+  const spy = await page.evaluate(async () => {
+    const mm = window.__g.mapManager;
+    if (typeof mm._drawCityAmbience !== 'function') return { exists: false, calls: 0 };
+    let calls = 0;
+    const orig = mm._drawCityAmbience.bind(mm);
+    mm._drawCityAmbience = (...a) => { calls++; return orig(...a); };
+    await new Promise(r => setTimeout(r, 2000));
+    mm._drawCityAmbience = orig;
+    return { exists: true, calls };
+  });
+  gate('E4 _drawCityAmbience υπάρχει', spy.exists);
+  gate('E4b καλείται κάθε frame', spy.calls > 30, `${spy.calls} calls / 2s`);
+
+  // E5 / E5b: stub-ctx render — μετράμε πραγματικά draw ops χωρίς να αγγίξουμε το παιχνίδι
+  const stub = await page.evaluate(() => {
+    const g = window.__g, mm = g.mapManager;
+    const mk = () => {
+      const c = { ops: 0, globalAlpha: 1, globalCompositeOperation: '', fillStyle: '', strokeStyle: '', lineWidth: 0, lineCap: '' };
+      for (const f of ['save', 'restore', 'beginPath', 'moveTo', 'lineTo', 'translate', 'scale'])
+        c[f] = () => {};
+      for (const f of ['arc', 'ellipse', 'fill', 'stroke', 'fillRect'])
+        c[f] = () => { c.ops++; };
+      c.createRadialGradient = () => ({ addColorStop: () => {} });
+      c.createLinearGradient = () => ({ addColorStop: () => {} });
+      return c;
+    };
+    const S  = mm.CITY_SCALE;
+    const tw = mm._cityImg.naturalWidth * S, th = mm._cityImg.naturalHeight * S;
+    const vs = g._viewScale || 1, vw = 1280 / vs, vh = 720 / vs;
+    // skyline ορατό (κάμερα στην κορυφή του strip)
+    const cA = mk();
+    mm._drawCityAmbience(cA, tw, th, S, -96, vw + 96, 0, 0, vw, vh);
+    // κάμερα στο κέντρο του plaza — και τα δύο bands εκτός οθόνης
+    const midY = Math.max(0, th / 2 - vh / 2);
+    const cB = mk();
+    mm._drawCityAmbience(cB, tw, th, S, -96, vw + 96, 0, midY, vw, vh);
+    return { top: cA.ops, mid: cB.ops, midY: Math.round(midY), th: Math.round(th) };
+  });
+  gate('E5 skyline ορατό → draw ops > 20', stub.top > 20, `ops=${stub.top}`);
+  gate('E5b plaza κέντρο → ΜΗΔΕΝ ops (combat area καθαρό)', stub.mid === 0, `ops=${stub.mid} (camY=${stub.midY}, th=${stub.th})`);
+
+  // E6: κίνηση στο skyline — δύο samples του καμβά διαφέρουν (όχι static overlay)
+  await page.evaluate(() => { const g = window.__g; g.player.pos.y = 200; g.player.maxHp = 99999; g.player.hp = 99999; });
+  await sleep(500);
+  await shot('skyline.png');
+  const motion = await page.evaluate(async () => {
+    const cv = document.querySelector('canvas');
+    const grab = () => {
+      const c = document.createElement('canvas');
+      c.width = cv.width; c.height = 220;
+      const cx = c.getContext('2d');
+      cx.drawImage(cv, 0, 0);
+      return cx.getImageData(0, 0, cv.width, 220).data;
+    };
+    const a = grab();
+    await new Promise(r => setTimeout(r, 900));
+    const b = grab();
+    let diff = 0;
+    for (let i = 0; i < a.length; i += 16) diff += Math.abs(a[i] - b[i]);
+    return diff;
+  });
+  gate('E6 skyline band κινείται (frame diff > 3000)', motion > 3000, `diff=${motion}`);
+  await sleep(600);
+  await shot('skyline2.png');
+
+  // E7: guard στο call site — ενεργό ΜΟΝΟ για το endless city art
+  const guard = await page.evaluate(() => {
+    const src = window.__g.mapManager._drawCityWorld.toString();
+    return /img === this\._cityImg/.test(src) && /_drawCityAmbience/.test(src);
+  });
+  gate('E7 call-site guard: μόνο endless city art (όχι chaos deck)', guard);
+
+  await sleep(800);
+  gate('E8 μηδέν page errors συνολικά', pageErrors.length === 0, pageErrors.slice(0, 3).join(' | '));
+  gate('E8b μηδέν non-404 console errors', consoleErrors.length === 0, consoleErrors.slice(0, 3).join(' | '));
+
+  await browser.close();
+  console.log(failures ? `\n✘ ${failures} gates FAILED` : '\n✔ ALL GATES PASS');
+  process.exit(failures ? 1 : 0);
+})().catch((e) => { console.error('CRASH', e); process.exit(2); });
