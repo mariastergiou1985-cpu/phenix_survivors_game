@@ -42,6 +42,12 @@ export const WEAPON_ID = Object.freeze({
   BLOODFROST_GUILLOTINE: 'bloodfrost_guillotine', // skeleton — Mark + Detonate guillotine
   CAUSTIC_INFERNO:       'caustic_inferno',       // brawler — Ground rift λάβας + acid
   CRYO_VENOM_FANG:       'cryo_venom_fang',       // euclid — Lingering τοξική παγωμένη ομίχλη
+  // ── Evolution VFX Batch 2 (2026-08-09, Maria manifest) — όλα procedural ──
+  ECLIPSE_FROSTFANG:     'eclipse_frostfang',     // assassin — Echo blade φαντάσματα + frost
+  CRIMSON_SINGULARITY:   'crimson_singularity',   // brawler — Pull vortex → plasma nova
+  SHATTER_RIFT_BLADE:    'shatter_rift_blade',    // eddie — Ground rift + void ice crystals
+  STORMRIFT_EDGE:        'stormrift_edge',        // cyber-arm — Void rifts + electric cuts
+  VAPORIZE_BLADE:        'vaporize_blade',        // brawler — Arc slash πάγος/φωτιά + ατμός
   MARROW_REACTOR:   'marrow_reactor',   // NEW skeleton evolution (procedural)
   MIRROR_CASCADE:   'mirror_cascade',   // NEW taekwondo evolution (procedural)
   FOUNDRY_PISTON:   'foundry_piston',   // NEW cyber-arm evolution (procedural)
@@ -861,6 +867,68 @@ export const WEAPON_DEFS = Object.freeze({
     baseStats: { damage: 28, cooldown: 2.6, aoeRadius: 150, speed: 0, piercing: 99 },
   },
 
+  // ── Evolution VFX Batch 2 (2026-08-09) — procedural, ΚΑΝΕΝΑ sprite in-world ──
+  [WEAPON_ID.ECLIPSE_FROSTFANG]: {
+    id: 'eclipse_frostfang',
+    name: 'Eclipse Frostfang',
+    description: 'Ghost blades slip out of the dark — rapid echo dashes crossing the mark, each one exhaling smoke and a frost-white bite.',
+    character: 'assassin_clone',
+    element: 'shadow',
+    behavior: WEAPON_BEHAVIOR.CIRCLE_360,
+    isEvolution: true,
+    procedural: true,
+    color: '#c9d2dc',
+    baseStats: { damage: 29, cooldown: 2.6, aoeRadius: 150, speed: 0, piercing: 99 },
+  },
+  [WEAPON_ID.CRIMSON_SINGULARITY]: {
+    id: 'crimson_singularity',
+    name: 'Crimson Singularity',
+    description: 'A red-black hole tears open and DRINKS the field — then collapses and detonates in a twin nova of crimson and cyan plasma.',
+    character: 'brawler_warrior',
+    element: 'void',
+    behavior: WEAPON_BEHAVIOR.PULL_EXPLODE,
+    isEvolution: true,
+    procedural: true,
+    color: '#ff2f45',
+    baseStats: { damage: 34, cooldown: 2.9, aoeRadius: 160, speed: 0, piercing: 99 },
+  },
+  [WEAPON_ID.SHATTER_RIFT_BLADE]: {
+    id: 'shatter_rift_blade',
+    name: 'Shatter Rift Blade',
+    description: 'The ground splits along violet fault lines — white ice crystals erupt from the rift, humming with black void energy.',
+    character: 'eddie',
+    element: 'ice',
+    behavior: WEAPON_BEHAVIOR.GROUND_SHOCKWAVE,
+    isEvolution: true,
+    procedural: true,
+    color: '#b48cff',
+    baseStats: { damage: 33, cooldown: 2.8, aoeRadius: 150, speed: 0, piercing: 99 },
+  },
+  [WEAPON_ID.STORMRIFT_EDGE]: {
+    id: 'stormrift_edge',
+    name: 'Stormrift Edge',
+    description: 'Ragged void rifts rip open in the air — electric cuts of yellow-white lightning lash out of each wound before it seals.',
+    character: 'cyber_arm_hero',
+    element: 'electric',
+    behavior: WEAPON_BEHAVIOR.GROUND_SHOCKWAVE,
+    isEvolution: true,
+    procedural: true,
+    color: '#c65cff',
+    baseStats: { damage: 31, cooldown: 2.7, aoeRadius: 155, speed: 0, piercing: 99 },
+  },
+  [WEAPON_ID.VAPORIZE_BLADE]: {
+    id: 'vaporize_blade',
+    name: 'Vaporize Blade',
+    description: 'One 180° slash, two elements — an ice-white edge meets a fire-orange edge and the collision boils into dense steam.',
+    character: 'brawler_warrior',
+    element: 'fire',
+    behavior: WEAPON_BEHAVIOR.WIDE_ARC,
+    isEvolution: true,
+    procedural: true,
+    color: '#ff9a3d',
+    baseStats: { damage: 30, cooldown: 2.7, aoeRadius: 150, speed: 0, piercing: 99 },
+  },
+
 });
 
 // ── Evolution recipes ───────────────────────────────────────────────
@@ -1092,6 +1160,38 @@ export const EVOLUTION_RECIPES = Object.freeze([
     ingredients: [WEAPON_ID.GAS_NEEDLE, WEAPON_ID.GLITCH_TEAR],
     minLevel: 5,
     owner: ['euclid_vector'],
+  },
+  // ── Batch 2 (2026-08-09). Τα 5 ζεύγη είναι τα ΜΟΝΑ αχρησιμοποίητα που
+  // απέμεναν στο 9-ingredient pool (30/36 ήδη πιασμένα) — μηδέν collision.
+  {
+    result: WEAPON_ID.ECLIPSE_FROSTFANG,
+    ingredients: [WEAPON_ID.SHADOW_TOXIC, WEAPON_ID.SOLO_RED_THUNDER],
+    minLevel: 5,
+    owner: ['assassin_clone'],
+  },
+  {
+    result: WEAPON_ID.CRIMSON_SINGULARITY,
+    ingredients: [WEAPON_ID.NEXUS_CHAKRAM, WEAPON_ID.SOLO_RED_THUNDER],
+    minLevel: 5,
+    owner: ['brawler_warrior'],
+  },
+  {
+    result: WEAPON_ID.SHATTER_RIFT_BLADE,
+    ingredients: [WEAPON_ID.SOLO_RED_THUNDER, WEAPON_ID.GLITCH_TEAR],
+    minLevel: 5,
+    owner: ['eddie'],
+  },
+  {
+    result: WEAPON_ID.STORMRIFT_EDGE,
+    ingredients: [WEAPON_ID.MAGNETIC_ARC, WEAPON_ID.SHADOW_TOXIC],
+    minLevel: 5,
+    owner: ['cyber_arm_hero'],
+  },
+  {
+    result: WEAPON_ID.VAPORIZE_BLADE,
+    ingredients: [WEAPON_ID.SPIRIT_CRESCENT, WEAPON_ID.SOLO_RED_THUNDER],
+    minLevel: 5,
+    owner: ['brawler_warrior'],
   },
 ]);
 

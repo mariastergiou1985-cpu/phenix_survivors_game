@@ -71,7 +71,7 @@ import { ChunkManager, CHUNK_TYPE } from './ChunkManager.js?v=20260722600000';
 import { NexusManager } from './NexusManager.js?v=20260803000000';
 import { VESSELS, getVesselById, getDefaultVesselId } from './VesselCatalog.js?v=20260705040000';
 import { PETS, getPetById } from './PetCatalog.js?v=20260705000000';
-import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons, getEvolutionOwners, isEvolutionOwnedBy, getCardDisplayName } from './WeaponCatalog.js?v=20260908140000';
+import { WEAPON_ID, EVOLUTION_RECIPES, getWeaponDef, getWeaponStatsAtLevel, checkAllEvolutionsReady, getWeaponForCharacter, getAllBaseWeapons, getEvolutionOwners, isEvolutionOwnedBy, getCardDisplayName } from './WeaponCatalog.js?v=20260908150000';
 import { TACTICAL_ID, TACTICAL_DEFS, getTacticalDef, getTacticalForCharacter, getAvailableTactical, preloadTacticalSprites, FUSION_TACTICALS } from './TacticalWeaponCatalog.js?v=20260720000000';
 import { VFXSpritePlayer } from './VFXSpritePlayer.js?v=20260902110000';
 
@@ -18426,6 +18426,381 @@ export class Game {
           if (bpr > 0.85) { ctx.fillStyle = '#ffffff'; ctx.globalAlpha = (1 - bpr) / 0.15 * 0.8; ctx.beginPath(); ctx.arc(bxx, byy, 1, 0, Math.PI * 2); ctx.fill(); }
         }
         ctx.restore();
+      } else if (f.id === 'eclipse_frostfang') {
+        // ── ECLIPSE FROSTFANG (manifest #07) ──
+        // Φαντάσματα σπαθιών: 5 ημιδιαφανή echo blades κάνουν γρήγορα dashes
+        // μέσα από τον στόχο (μαύρο/λευκογκρίζο), αφήνουν καπνό + afterimages
+        // (§4)· frost glints στην αιχμή (§7)· impact: σταυρωτό flash + frost
+        // shards· μετά όλα διαλύονται σε καπνό (§3).
+        const R = f.R * 0.95;
+        const ghost = '#d7dde6', frost = '#a8e8ff', smoke = '#9aa0ab';
+        const dis = Math.max(0, (k - 0.78) / 0.22);
+        for (let i = 0; i < 5; i++) {
+          const a2 = prV(f.seed, i) * Math.PI * 2;
+          const dk = Math.min(1, Math.max(0, (k - i * 0.085) / 0.34));
+          if (dk <= 0 || dk >= 1) continue;
+          const ease = dk < 0.5 ? 2 * dk * dk : 1 - Math.pow(-2 * dk + 2, 2) / 2;
+          const px2 = Math.cos(a2), py2 = Math.sin(a2) * 0.72;
+          const d0 = -R * 1.25 + ease * R * 2.5;
+          for (let s2 = 0; s2 < 3; s2++) {                         // trail καπνού
+            const sb = d0 - (s2 + 1) * 26;
+            ctx.globalAlpha = (1 - dis) * (0.16 - s2 * 0.04) * Math.sin(Math.PI * dk);
+            ctx.fillStyle = smoke;
+            ctx.beginPath(); ctx.ellipse(px2 * sb, py2 * sb, 9 + s2 * 5 + dk * 6, 7 + s2 * 4, 0, 0, Math.PI * 2); ctx.fill();
+          }
+          for (let g2 = 2; g2 >= 0; g2--) {                        // 2 ghosts + solid (§4)
+            const gd = d0 - g2 * 16;
+            ctx.save();
+            ctx.translate(px2 * gd, py2 * gd);
+            ctx.rotate(Math.atan2(py2, px2));
+            ctx.globalAlpha = (1 - dis) * (g2 ? 0.55 - g2 * 0.18 : 0.34) * Math.sin(Math.PI * Math.min(1, dk * 1.15));
+            ctx.beginPath();
+            ctx.moveTo(30, 0); ctx.lineTo(6, -4.6); ctx.lineTo(-26, -2); ctx.lineTo(-26, 2); ctx.lineTo(6, 4.6); ctx.closePath();
+            if (!g2) {
+              ctx.fillStyle = ghost; ctx.fill();
+              ctx.strokeStyle = '#191d24'; ctx.lineWidth = 3.4; ctx.stroke();   // §B σκιά κάτω
+              ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.2; ctx.stroke();   // §B αιχμή πάνω
+              const gl = Math.pow(Math.max(0, Math.sin(f.t * 7 + i * 2.1)), 6); // §7 frost glint
+              if (gl > 0.4) { ctx.fillStyle = frost; ctx.beginPath(); ctx.arc(30, 0, 2.4, 0, Math.PI * 2); ctx.fill(); }
+            } else { ctx.strokeStyle = ghost; ctx.lineWidth = 1.4; ctx.stroke(); }
+            ctx.restore();
+          }
+        }
+        if (k >= 0.5 && k < 0.72) {                                // IMPACT — σταυρωτό flash
+          const fk = (k - 0.5) / 0.22;
+          ctx.save();
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.globalAlpha = (1 - fk) * 0.9;
+          ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 3.5 - fk * 2;
+          for (let x2 = 0; x2 < 2; x2++) {
+            const xa = x2 ? 0.7 : -0.7;
+            ctx.beginPath();
+            ctx.moveTo(Math.cos(xa) * -R * 0.5 * (1 + fk), Math.sin(xa) * -R * 0.36 * (1 + fk));
+            ctx.lineTo(Math.cos(xa) * R * 0.5 * (1 + fk), Math.sin(xa) * R * 0.36 * (1 + fk));
+            ctx.stroke();
+          }
+          ctx.globalAlpha = (1 - fk) * 0.75;                       // frost shards
+          ctx.fillStyle = frost;
+          for (let s3 = 0; s3 < 6; s3++) {
+            const sa = prV(f.seed, s3 + 20) * Math.PI * 2;
+            const sr = 12 + fk * R * 0.7;
+            ctx.save();
+            ctx.translate(Math.cos(sa) * sr, Math.sin(sa) * sr * 0.7);
+            ctx.rotate(sa + fk * 2);
+            ctx.beginPath(); ctx.moveTo(0, -5); ctx.lineTo(2.2, 0); ctx.lineTo(0, 5); ctx.lineTo(-2.2, 0); ctx.closePath(); ctx.fill();
+            ctx.restore();
+          }
+          ctx.restore();
+        }
+        if (dis > 0) {                                             // §3 dissolve σε καπνό
+          ctx.globalAlpha = (1 - dis) * 0.35;
+          ctx.fillStyle = smoke;
+          for (let p2 = 0; p2 < 5; p2++) {
+            const pa = prV(f.seed, p2 + 40) * Math.PI * 2;
+            const pr2 = R * (0.25 + dis * 0.6) * (0.5 + prV(f.seed, p2 + 45));
+            ctx.beginPath(); ctx.ellipse(Math.cos(pa) * pr2, Math.sin(pa) * pr2 * 0.7 - dis * 14, 12 + dis * 12, 9 + dis * 8, 0, 0, Math.PI * 2); ctx.fill();
+          }
+          ctx.globalAlpha = 1;
+        }
+      } else if (f.id === 'crimson_singularity') {
+        // ── CRIMSON SINGULARITY (manifest #23) ──
+        // PULL: μαύρος ορίζοντας + κόκκινο photon rim + σωματίδια που σπειροειδώς
+        // καταπίνονται + accretion arcs· COLLAPSE: snap σε σημείο + λευκό flash·
+        // BURST: δίδυμη nova (crimson + cyan), radial plasma spikes, embers (§3).
+        const R = f.R;
+        const red = f.color || '#ff2f45', cyan = '#6fe8ff';
+        const pull = Math.min(1, k / 0.55);
+        const hz = R * (0.10 + pull * 0.10) * (k >= 0.55 ? Math.max(0.06, 1 - (k - 0.55) / 0.08) : 1);
+        if (k < 0.63) {
+          ctx.save();
+          ctx.globalCompositeOperation = 'lighter';
+          for (let i = 0; i < 10; i++) {                           // in-falling σωματίδια
+            const cyc = ((f.t * (0.55 + prV(f.seed, i) * 0.35)) + prV(f.seed, i + 10)) % 1;
+            const pr2 = R * 1.25 * (1 - cyc);
+            if (pr2 < hz * 1.3) continue;
+            const pa = prV(f.seed, i + 20) * Math.PI * 2 + f.t * 1.1 + cyc * 2.2;
+            ctx.globalAlpha = cyc * 0.75;
+            ctx.strokeStyle = i % 3 ? red : '#ffd7dc';
+            ctx.lineWidth = 1.3 + cyc * 1.4;
+            ctx.beginPath();
+            ctx.moveTo(Math.cos(pa) * pr2, Math.sin(pa) * pr2 * 0.72);
+            ctx.lineTo(Math.cos(pa + 0.22) * (pr2 - 20), Math.sin(pa + 0.22) * (pr2 - 20) * 0.72);
+            ctx.stroke();
+          }
+          for (let d2 = 0; d2 < 2; d2++) {                         // accretion arcs
+            const oa = f.t * (2.4 + d2 * 0.7) + d2 * 2.6;
+            ctx.globalAlpha = 0.55 - d2 * 0.18;
+            ctx.strokeStyle = d2 ? red : '#ffffff';
+            ctx.lineWidth = 2.4 - d2 * 0.8;
+            ctx.beginPath(); ctx.ellipse(0, 0, hz * 2.1, hz * 0.72, oa * 0.11, oa, oa + Math.PI * 1.25); ctx.stroke();
+          }
+          ctx.globalCompositeOperation = 'source-over';            // ο ΟΡΙΖΟΝΤΑΣ
+          ctx.globalAlpha = 1;
+          ctx.fillStyle = '#05010a';
+          ctx.beginPath(); ctx.arc(0, 0, hz, 0, Math.PI * 2); ctx.fill();
+          ctx.globalCompositeOperation = 'lighter';                // κόκκινο photon rim
+          ctx.globalAlpha = 0.8 + 0.2 * Math.sin(f.t * 6);
+          ctx.strokeStyle = red; ctx.lineWidth = 2.2;
+          ctx.beginPath(); ctx.arc(0, 0, hz + 1.6, 0, Math.PI * 2); ctx.stroke();
+          ctx.globalAlpha = 0.3;
+          ctx.strokeStyle = '#7a0d1e'; ctx.lineWidth = 5;
+          ctx.beginPath(); ctx.arc(0, 0, hz + 4.4, 0, Math.PI * 2); ctx.stroke();
+          ctx.restore();
+        }
+        if (k >= 0.55) {                                           // SNAP + NOVA
+          const bk = Math.min(1, (k - 0.55) / 0.45);
+          const dis2 = Math.max(0, (k - 0.8) / 0.2);
+          ctx.save();
+          ctx.globalCompositeOperation = 'lighter';
+          if (bk < 0.18) {
+            ctx.globalAlpha = (1 - bk / 0.18) * 0.9;
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath(); ctx.arc(0, 0, 14 + bk * 130, 0, Math.PI * 2); ctx.fill();
+          }
+          const nr = R * (0.15 + bk * 1.05);                       // δίδυμη nova
+          ctx.globalAlpha = (1 - bk) * 0.85;
+          ctx.strokeStyle = red; ctx.lineWidth = 5 - bk * 3;
+          ctx.beginPath(); ctx.ellipse(0, 0, nr, nr * 0.72, 0, 0, Math.PI * 2); ctx.stroke();
+          ctx.globalAlpha = (1 - bk) * 0.7;
+          ctx.strokeStyle = cyan; ctx.lineWidth = 3 - bk * 2;
+          ctx.beginPath(); ctx.ellipse(0, 0, nr * 0.78, nr * 0.56, 0, 0, Math.PI * 2); ctx.stroke();
+          for (let s2 = 0; s2 < 10; s2++) {                        // radial plasma spikes
+            const sa = (s2 / 10) * Math.PI * 2 + prV(f.seed, s2 + 30) * 0.5;
+            const s0 = nr * 0.75, s1 = nr * (1.0 + prV(f.seed, s2 + 40) * 0.35);
+            ctx.globalAlpha = (1 - bk) * (1 - dis2) * 0.8;
+            ctx.strokeStyle = s2 % 2 ? red : cyan;
+            ctx.lineWidth = 2.2 - bk * 1.2;
+            ctx.beginPath();
+            ctx.moveTo(Math.cos(sa) * s0, Math.sin(sa) * s0 * 0.72);
+            ctx.lineTo(Math.cos(sa) * s1, Math.sin(sa) * s1 * 0.72);
+            ctx.stroke();
+          }
+          for (let e2 = 0; e2 < 8; e2++) {                         // embers
+            const ea = prV(f.seed, e2 + 50) * Math.PI * 2;
+            const er = R * bk * (0.5 + prV(f.seed, e2 + 60) * 0.6);
+            ctx.globalAlpha = (1 - bk) * 0.85;
+            ctx.fillStyle = e2 % 3 ? red : '#ffd7dc';
+            ctx.beginPath(); ctx.arc(Math.cos(ea) * er, Math.sin(ea) * er * 0.72 - bk * 10, 1.6 + prV(f.seed, e2 + 70), 0, Math.PI * 2); ctx.fill();
+          }
+          ctx.restore();
+        }
+      } else if (f.id === 'shatter_rift_blade') {
+        // ── SHATTER RIFT BLADE (manifest #06) ──
+        // Το έδαφος σκίζεται: 3 μωβ τεθλασμένες ρωγμές ανοίγουν προοδευτικά
+        // (void underlay → violet → λευκή hot γραμμή, §B)· λευκοί κρύσταλλοι
+        // πάγου ΥΨΩΝΟΝΤΑΙ από τις ρωγμές με void wisps· shatter pulse ring·
+        // §3 dissolve σε ανοδική sparkle σκόνη.
+        const R = f.R;
+        const viol = f.color || '#b48cff', ice2 = '#f2f8ff';
+        const open = Math.min(1, k / 0.4);
+        const dis = Math.max(0, (k - 0.76) / 0.24);
+        for (let c2 = 0; c2 < 3; c2++) {                           // ρωγμές
+          const ca = prV(f.seed, c2) * Math.PI * 2;
+          const grow = Math.min(1, open * (1.25 - c2 * 0.12));
+          for (let pass = 0; pass < 3; pass++) {
+            ctx.globalAlpha = (1 - dis) * (pass === 0 ? 0.8 : pass === 1 ? 0.85 : 0.7);
+            ctx.strokeStyle = pass === 0 ? '#1c0b30' : pass === 1 ? viol : '#ffffff';
+            ctx.lineWidth = pass === 0 ? 7 - c2 : pass === 1 ? 3 : 1.1;
+            ctx.beginPath(); ctx.moveTo(0, 0);
+            for (let s2 = 1; s2 <= 5; s2++) {
+              const sk = s2 / 5;
+              if (sk > grow) break;
+              const wig = (prV(f.seed, c2 * 10 + s2) - 0.5) * 0.9;
+              const rr = R * 1.05 * sk;
+              ctx.lineTo(Math.cos(ca + wig * 0.5) * rr, Math.sin(ca + wig * 0.5) * rr * 0.62);
+            }
+            ctx.stroke();
+          }
+        }
+        if (k >= 0.28) {                                           // κρύσταλλοι υψώνονται
+          const ck = Math.min(1, (k - 0.28) / 0.3);
+          for (let i = 0; i < 7; i++) {
+            const ia = prV(f.seed, i + 20) * Math.PI * 2;
+            const ir = R * (0.25 + prV(f.seed, i + 27) * 0.7);
+            const pop = Math.min(1, Math.max(0, ck * 2.4 - prV(f.seed, i + 34)));
+            if (pop <= 0) continue;
+            const hh = (16 + prV(f.seed, i + 41) * 20) * pop * (1 - dis * 0.9);
+            ctx.save();
+            ctx.translate(Math.cos(ia) * ir, Math.sin(ia) * ir * 0.62);
+            ctx.globalAlpha = (1 - dis) * 0.95;
+            ctx.beginPath();                                       // spire
+            ctx.moveTo(0, -hh); ctx.lineTo(4.5, 0); ctx.lineTo(2, 4); ctx.lineTo(-2, 4); ctx.lineTo(-4.5, 0); ctx.closePath();
+            ctx.fillStyle = ice2; ctx.fill();
+            ctx.strokeStyle = viol; ctx.lineWidth = 1.4; ctx.stroke();
+            const gl = Math.pow(Math.max(0, Math.sin(f.t * 6 + i * 1.9)), 7);  // §7 glint
+            if (gl > 0.4) { ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(0, -hh, 1.8, 0, Math.PI * 2); ctx.fill(); }
+            ctx.globalAlpha = (1 - dis) * 0.28 * (0.6 + 0.4 * Math.sin(f.t * 3 + i));  // void wisp
+            ctx.fillStyle = '#12041f';
+            ctx.beginPath(); ctx.ellipse(0, -hh - 7 - Math.sin(f.t * 2 + i) * 3, 7, 4, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.restore();
+          }
+        }
+        if (k >= 0.42 && k < 0.66) {                               // shatter pulse ring
+          const rk = (k - 0.42) / 0.24;
+          ctx.save();
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.globalAlpha = (1 - rk) * 0.7;
+          ctx.strokeStyle = viol; ctx.lineWidth = 3.5 - rk * 2.5;
+          ctx.beginPath(); ctx.ellipse(0, 0, R * (0.3 + rk * 0.8), R * (0.3 + rk * 0.8) * 0.62, 0, 0, Math.PI * 2); ctx.stroke();
+          ctx.restore();
+        }
+        if (dis > 0) {                                             // §3 ανοδική sparkle σκόνη
+          ctx.globalAlpha = (1 - dis) * 0.8;
+          for (let p2 = 0; p2 < 9; p2++) {
+            const pa = prV(f.seed, p2 + 60) * Math.PI * 2;
+            const pr2 = R * 0.6 * prV(f.seed, p2 + 70);
+            ctx.fillStyle = p2 % 3 ? ice2 : viol;
+            ctx.beginPath();
+            ctx.arc(Math.cos(pa) * pr2, Math.sin(pa) * pr2 * 0.62 - dis * (14 + prV(f.seed, p2 + 80) * 22), 1.3, 0, Math.PI * 2);
+            ctx.fill();
+          }
+          ctx.globalAlpha = 1;
+        }
+      } else if (f.id === 'stormrift_edge') {
+        // ── STORMRIFT EDGE (manifest #21) ──
+        // 4 ακανόνιστες μωβ void σχισμές-«μάτια» ανοίγουν σκόρπιες· από μέσα
+        // ξεπηδούν κίτρινες/λευκές ηλεκτρικές κοπές (double stroke §B, jitter
+        // reseed ~6Hz) με sparks· στο τέλος φλασάρουν λευκές και ΣΦΡΑΓΙΖΟΥΝ
+        // (width→0) διαλυόμενες σε violet motes (§3).
+        const R = f.R;
+        const viol = f.color || '#c65cff', bolt = '#ffe14a';
+        for (let i = 0; i < 4; i++) {
+          const rx = (prV(f.seed, i) - 0.5) * R * 1.5;
+          const ry = (prV(f.seed, i + 8) - 0.5) * R * 1.05;
+          const ra = prV(f.seed, i + 16) * Math.PI;
+          const born = prV(f.seed, i + 24) * 0.22;
+          const ok2 = Math.min(1, Math.max(0, (k - born) / 0.16));
+          const seal = Math.min(1, Math.max(0, (k - 0.72 - born * 0.4) / 0.2));
+          const w2 = ok2 * (1 - seal);
+          if (w2 <= 0) continue;
+          const len = R * (0.32 + prV(f.seed, i + 32) * 0.22);
+          ctx.save();
+          ctx.translate(rx, ry);
+          ctx.rotate(ra);
+          ctx.globalAlpha = 0.95;                                  // σχισμή-μάτι
+          ctx.beginPath();
+          ctx.moveTo(-len / 2, 0);
+          ctx.quadraticCurveTo(0, -12 * w2, len / 2, 0);
+          ctx.quadraticCurveTo(0, 12 * w2, -len / 2, 0);
+          ctx.closePath();
+          ctx.fillStyle = '#0c0316'; ctx.fill();
+          ctx.strokeStyle = viol; ctx.lineWidth = 2.4; ctx.stroke();
+          ctx.strokeStyle = '#efdcff'; ctx.lineWidth = 0.9; ctx.stroke();
+          const fl = seal > 0 && seal < 0.45 ? (1 - seal / 0.45) : 0;
+          if (fl > 0) {                                            // λευκό flash στο σφράγισμα
+            ctx.globalAlpha = fl * 0.85;
+            ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 3;
+            ctx.beginPath(); ctx.moveTo(-len / 2, 0); ctx.lineTo(len / 2, 0); ctx.stroke();
+          }
+          const zap = Math.pow(Math.max(0, Math.sin(f.t * (5 + prV(f.seed, i + 40) * 3) + i * 2.3)), 5) * w2;
+          if (zap > 0.25 && seal < 0.6) {                          // ηλεκτρική κοπή
+            ctx.globalCompositeOperation = 'lighter';
+            const za = (prV(f.seed, i + 48) - 0.5) * 1.6;
+            const jf = (f.t * 6) | 0;                              // jitter reseed ~6Hz
+            const zpts = [];
+            let zx = 0, zy = 0;
+            for (let s2 = 1; s2 <= 4; s2++) {
+              const zr = (R * 0.5 / 4) * s2;
+              zx = Math.cos(za) * zr + (prV(f.seed, i * 9 + s2 + jf) - 0.5) * 16;
+              zy = Math.sin(za) * zr * 0.7 + (prV(f.seed, i * 9 + s2 + 50 + jf) - 0.5) * 16;
+              zpts.push([zx, zy]);
+            }
+            for (let pass = 0; pass < 2; pass++) {                 // §B κίτρινο κάτω, λευκό πάνω
+              ctx.globalAlpha = zap * (pass ? 0.95 : 0.55);
+              ctx.strokeStyle = pass ? '#ffffff' : bolt;
+              ctx.lineWidth = pass ? 1.1 : 2.6;
+              ctx.beginPath(); ctx.moveTo(0, 0);
+              for (const zp of zpts) ctx.lineTo(zp[0], zp[1]);
+              ctx.stroke();
+            }
+            ctx.globalAlpha = zap * 0.9;                           // spark στην απόληξη
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath(); ctx.arc(zx, zy, 2.2, 0, Math.PI * 2); ctx.fill();
+            ctx.globalCompositeOperation = 'source-over';
+          }
+          if (seal > 0.4) {                                        // §3 violet motes
+            ctx.globalAlpha = (1 - seal) * 0.8;
+            ctx.fillStyle = viol;
+            for (let m2 = 0; m2 < 4; m2++) {
+              const ma = prV(f.seed, i * 7 + m2 + 60) * Math.PI * 2;
+              const mr = seal * 20 * (0.5 + prV(f.seed, i * 7 + m2 + 70));
+              ctx.beginPath();
+              ctx.arc(Math.cos(ma) * (len / 2) * prV(f.seed, m2 + 80), Math.sin(ma) * mr - seal * 8, 1.2, 0, Math.PI * 2);
+              ctx.fill();
+            }
+          }
+          ctx.restore();
+        }
+      } else if (f.id === 'vaporize_blade') {
+        // ── VAPORIZE BLADE (manifest #01) ──
+        // Μπροστινό 180° slash γύρω από το f.angle: η αιχμή σαρώνει από -90° σε
+        // +90°· το trail μένει — αριστερό μισό ΠΑΓΟΣ (λευκό/κυανό), δεξί μισό
+        // ΦΩΤΙΑ (πορτοκαλί), 3 τοξωτές λωρίδες 'lighter' (§C)· στο κέντρο πυκνός
+        // λευκογκρίζος ΑΤΜΟΣ (source-over) που φουσκώνει· impact rim flash +
+        // sparks (κυανά/πύρινα)· όλα εξατμίζονται στο fade (§3).
+        const R = f.R;
+        const base = f.angle;
+        const sw = Math.min(1, k / 0.45);
+        const dis = Math.max(0, (k - 0.74) / 0.26);
+        const a0 = base - Math.PI / 2;
+        const aEdge = a0 + Math.PI * sw;
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        for (let band = 0; band < 3; band++) {                     // trail — 3 λωρίδες
+          const br = R * (0.9 - band * 0.18);
+          const iceEnd = Math.min(aEdge, base);
+          if (iceEnd > a0 + 0.02) {                                // μισό ΠΑΓΟΣ
+            ctx.globalAlpha = (1 - dis) * (0.5 - band * 0.13);
+            ctx.strokeStyle = band === 0 ? '#eaffff' : (band === 1 ? '#9fe8ff' : '#57c8f0');
+            ctx.lineWidth = 10 - band * 2.5;
+            ctx.beginPath(); ctx.arc(0, 0, br, a0, iceEnd); ctx.stroke();
+          }
+          if (aEdge > base + 0.02) {                               // μισό ΦΩΤΙΑ
+            ctx.globalAlpha = (1 - dis) * (0.5 - band * 0.13);
+            ctx.strokeStyle = band === 0 ? '#ffe6c4' : (band === 1 ? '#ffab52' : '#ff7a2a');
+            ctx.lineWidth = 10 - band * 2.5;
+            ctx.beginPath(); ctx.arc(0, 0, br, base, aEdge); ctx.stroke();
+          }
+        }
+        if (sw < 1) {                                              // leading edge λεπίδα
+          ctx.globalAlpha = 0.95;
+          ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.moveTo(Math.cos(aEdge) * R * 0.45, Math.sin(aEdge) * R * 0.45);
+          ctx.lineTo(Math.cos(aEdge) * R * 1.02, Math.sin(aEdge) * R * 1.02);
+          ctx.stroke();
+          const gl = Math.pow(Math.max(0, Math.sin(f.t * 9)), 4);  // §7 glint
+          if (gl > 0.3) { ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(Math.cos(aEdge) * R, Math.sin(aEdge) * R, 2.6, 0, Math.PI * 2); ctx.fill(); }
+        }
+        if (k >= 0.45 && k < 0.7) {                                // IMPACT — rim flash + sparks
+          const ik = (k - 0.45) / 0.25;
+          ctx.globalAlpha = (1 - ik) * 0.8;
+          ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2.4 - ik * 1.6;
+          ctx.beginPath(); ctx.arc(0, 0, R * (0.95 + ik * 0.18), a0, a0 + Math.PI); ctx.stroke();
+          for (let s2 = 0; s2 < 8; s2++) {
+            const sa = a0 + (s2 + 0.5) / 8 * Math.PI;
+            const sr = R * (0.95 + ik * (0.3 + prV(f.seed, s2 + 10) * 0.35));
+            ctx.globalAlpha = (1 - ik) * 0.9;
+            ctx.fillStyle = s2 < 4 ? '#9fe8ff' : '#ffab52';
+            ctx.beginPath(); ctx.arc(Math.cos(sa) * sr, Math.sin(sa) * sr, 1.7 + prV(f.seed, s2 + 20), 0, Math.PI * 2); ctx.fill();
+          }
+        }
+        ctx.restore();
+        const stK = Math.min(1, Math.max(0, (k - 0.12) / 0.5));    // ΑΤΜΟΣ (source-over §Ε)
+        for (let p2 = 0; p2 < 6; p2++) {
+          const pa = prV(f.seed, p2 + 30) * Math.PI - Math.PI / 2 + base;
+          const pr2 = R * (0.2 + prV(f.seed, p2 + 38) * 0.45) * (1 + dis * 0.7);
+          const puff = 10 + stK * 14 + prV(f.seed, p2 + 46) * 8 + dis * 10;
+          const sg = ctx.createRadialGradient(0, 0, 0, 0, 0, puff);
+          sg.addColorStop(0, 'rgba(226,230,236,0.55)');
+          sg.addColorStop(1, 'rgba(226,230,236,0)');
+          ctx.save();
+          ctx.translate(Math.cos(pa) * pr2, Math.sin(pa) * pr2 - stK * 8 - dis * 12);
+          ctx.globalAlpha = stK * (1 - dis) * (0.5 + 0.2 * Math.sin(f.t * 2.4 + p2));
+          ctx.fillStyle = sg;
+          ctx.beginPath(); ctx.arc(0, 0, puff, 0, Math.PI * 2); ctx.fill();
+          ctx.restore();
+        }
       }
       } catch (e) { /* one broken evo VFX must never kill the frame */ }
       ctx.restore();
