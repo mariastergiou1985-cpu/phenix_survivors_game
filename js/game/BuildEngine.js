@@ -178,6 +178,52 @@ export class BuildEngineRuntime {
     this.banished = new Set();   // banished weapon families (πρώτο tag)
     this.sealed   = new Set();   // sealed passive ids
     this.evolutionEvents = [];   // successful, recipe-eligible evolutions in this run
+    this._pending = [];          // TARGETING PASS: telegraphed χτυπήματα σε αναμονή (bounded)
+    this._lastAim = 0;           // τελευταία έγκυρη γωνία σκόπευσης του παίκτη
+  }
+
+  // ══ TARGETING PASS (2026-08-09) ═════════════════════════════════════════════════
+  // Πριν: το κοινό aimAngle() κάθε chars-file διάβαζε _nearestEnemy() και ΚΛΕΙΔΩΝΕ πάνω
+  // στο σώμα — 46 από τα 50 όπλα σκόπευαν μόνα τους. Τα τρία εργαλεία εδώ το αντικαθιστούν.
+
+  // ΣΚΟΠΕΥΕΙ Ο ΠΑΙΚΤΗΣ. Δεξί stick -> κατεύθυνση κίνησης -> τελευταία γνωστή -> facing.
+  // ΚΑΜΙΑ ανάγνωση θέσης εχθρού: bosses και απλοί εχθροί περνούν από το ίδιο ακριβώς logic,
+  // γιατί κανένας από τους δύο δεν συμμετέχει στην απόφαση.
+  playerAim() {
+    const g = this.game, p = g.player;
+    if (!p || !p.pos) return this._lastAim || 0;
+    const s = g.gamepadAimDir;
+    if (s && Number.isFinite(s.x) && Number.isFinite(s.y) && (s.x * s.x + s.y * s.y) > 0.09) {
+      this._lastAim = Math.atan2(s.y, s.x);
+      return this._lastAim;
+    }
+    const v = p.vel;
+    if (v && (v.x * v.x + v.y * v.y) > 400) {                    // ~20 px/s νεκρή ζώνη
+      this._lastAim = Math.atan2(v.y, v.x);
+      return this._lastAim;
+    }
+    if (Number.isFinite(this._lastAim) && this._lastAim !== 0) return this._lastAim;
+    return (p._facing || 1) > 0 ? 0 : Math.PI;
+  }
+  // Σημείο εδάφους μπροστά στον παίκτη: ΤΟΠΟΣ, όχι σώμα.
+  aimPoint(range = 260) {
+    const p = this.game.player, a = this.playerAim();
+    return { x: p.pos.x + Math.cos(a) * range, y: p.pos.y + Math.sin(a) * range, a };
+  }
+  // Ορατή προειδοποίηση σε ΚΛΕΙΔΩΜΕΝΟ σημείο (ζωγραφίζεται στο ίδιο fx layer).
+  telegraph(x, y, r, delay, color) {
+    if (this.fx.length >= FX_CAP) return;
+    this.fx.push({ kind: 'tele', x, y, r: Math.max(8, r), t: 0, life: Math.max(0.08, delay),
+                   c: color || '#ffcc44' });
+  }
+  // Telegraphed χτύπημα: η θέση κλειδώνει ΤΩΡΑ, η ζημιά τρέχει ΜΕΤΑ το delay και ξαναρωτά
+  // τους στόχους εκείνη τη στιγμή, από το κλειδωμένο σημείο. Ο εχθρός που κουνήθηκε ξεφεύγει.
+  strike(x, y, r, delay, color, fn) {
+    if (typeof fn !== 'function') return;
+    const d = Math.max(0.08, Number(delay) || 0);
+    if (this._pending.length >= 48) { try { fn(); } catch (_) {} return; }   // cap, ποτέ σιωπηλή απώλεια
+    this._pending.push({ t: 0, delay: d, fn });
+    this.telegraph(x, y, r, d, color);
   }
 
   // ── P2.7 helpers ────────────────────────────────────────────────────────────
@@ -637,6 +683,18 @@ export class BuildEngineRuntime {
     }
     this._updateShards(dt);
     this._updateNovas(dt);
+    // TARGETING PASS: τα telegraphed χτυπήματα ωριμάζουν ΕΔΩ, αφού έχουν τρέξει όλα τα όπλα —
+    // ώστε ένα strike που μπήκε φέτος το frame να μη σκάσει στο ίδιο frame.
+    for (let i = this._pending.length - 1; i >= 0; i--) {
+      const s = this._pending[i];
+      s.t += dt;
+      if (s.t >= s.delay) {
+        this._pending.splice(i, 1);
+        try { s.fn(); } catch (err) {
+          if ((this._strikeErrs = (this._strikeErrs || 0) + 1) <= 2) console.error('[P2] telegraphed strike error', err);
+        }
+      }
+    }
     for (let i = this.fx.length - 1; i >= 0; i--) { this.fx[i].t += dt; if (this.fx[i].t >= this.fx[i].life) this.fx.splice(i, 1); }
   }
 
@@ -926,7 +984,18 @@ export class BuildEngineRuntime {
       for (const f of this.fx) {
         const k = f.t / f.life;
         ctx.save(); ctx.globalCompositeOperation = 'lighter';
-        if (f.kind === 'pulse') {
+        if (f.kind === 'tele') {
+          // ΠΡΟΕΙΔΟΠΟΙΗΣΗ: σταθερό διάστικτο περίγραμμα + δαχτυλίδι που κλείνει προς τα μέσα.
+          // Όταν φτάσει στο κέντρο, σκάει. Διαβάζεται σαν ΧΡΟΝΟΣ, όχι σαν ζημιά.
+          ctx.globalAlpha = 0.32 + 0.30 * k;
+          ctx.strokeStyle = f.c; ctx.lineWidth = 2;
+          ctx.setLineDash([9, 7]);
+          ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2); ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.globalAlpha = 0.55 + 0.35 * k;
+          ctx.lineWidth = 3;
+          ctx.beginPath(); ctx.arc(f.x, f.y, Math.max(3, f.r * (1 - k)), 0, Math.PI * 2); ctx.stroke();
+        } else if (f.kind === 'pulse') {
           for (let rp = 0; rp < 3; rp++) {                         // τριπλός ηχητικός κυματισμός
             const rk = Math.max(0, k - rp * 0.14);
             if (rk <= 0) continue;

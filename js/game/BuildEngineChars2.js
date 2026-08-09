@@ -6,12 +6,14 @@
 // ΚΑΝΕΝΑ PNG, μηδέν shadowBlur.
 // ═══════════════════════════════════════════════════════════════════════════════
 import { WEAPON_DEFS, PASSIVE_DEFS, EVOLUTION_RECIPES, WEAPON_EXECUTORS }
-  from './BuildEngine.js?v=20260902130000';
+  from './BuildEngine.js?v=20260908180000';
 
 function aimAngle(rt) {
-  const p = rt.game.player, e = rt._nearestEnemy(p.pos.x, p.pos.y);
-  if (e) return Math.atan2(e.pos.y - p.pos.y, e.pos.x - p.pos.x);
-  return (p._facing || 1) > 0 ? 0 : Math.PI;
+  // TARGETING PASS 2026-08-09: ΗΤΑΝ _nearestEnemy() -> τέλειο auto-lock πάνω στο σώμα, για
+  // 46 από τα 50 όπλα, με ένα helper αντιγραμμένο σε 5 αρχεία. Τώρα σκοπεύει ο ΠΑΙΚΤΗΣ.
+  // Τα όπλα που ΠΡΕΠΕΙ να κυνηγούν (probability_disc, hungry_spirit_lantern, magnetic_shrapnel,
+  // blacknet_swarm_drone, solo_red_thunder) δεν περνούν από εδώ — κάνουν δικό τους scan.
+  return rt.playerAim();
 }
 function angDiff(a, b) { let d = a - b; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d; }
 function lvl(def, w, key) { const i = Math.min(w.level - 1, 4); return def[key][i]; }

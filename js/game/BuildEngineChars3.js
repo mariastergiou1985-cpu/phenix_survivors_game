@@ -6,12 +6,14 @@
 // Spec: docs/P2_BUILD_ENGINE_SPEC_GR.md. Συνταγή ultimates παντού.
 // ═══════════════════════════════════════════════════════════════════════════════
 import { WEAPON_DEFS, PASSIVE_DEFS, EVOLUTION_RECIPES, WEAPON_EXECUTORS }
-  from './BuildEngine.js?v=20260902130000';
+  from './BuildEngine.js?v=20260908180000';
 
 function aimAngle(rt) {
-  const p = rt.game.player, e = rt._nearestEnemy(p.pos.x, p.pos.y);
-  if (e) return Math.atan2(e.pos.y - p.pos.y, e.pos.x - p.pos.x);
-  return (p._facing || 1) > 0 ? 0 : Math.PI;
+  // TARGETING PASS 2026-08-09: ΗΤΑΝ _nearestEnemy() -> τέλειο auto-lock πάνω στο σώμα, για
+  // 46 από τα 50 όπλα, με ένα helper αντιγραμμένο σε 5 αρχεία. Τώρα σκοπεύει ο ΠΑΙΚΤΗΣ.
+  // Τα όπλα που ΠΡΕΠΕΙ να κυνηγούν (probability_disc, hungry_spirit_lantern, magnetic_shrapnel,
+  // blacknet_swarm_drone, solo_red_thunder) δεν περνούν από εδώ — κάνουν δικό τους scan.
+  return rt.playerAim();
 }
 function angDiff(a, b) { let d = a - b; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d; }
 function lvl(def, w, key) { const i = Math.min(w.level - 1, 4); return def[key][i]; }
@@ -76,8 +78,32 @@ WEAPON_EXECUTORS.solo_red_thunder = {
         if (dd < 420 * 420) cand.push([dd, e]);
       }
       cand.sort((a, b) => a[0] - b[0]);
-      const targets = cand.slice(0, ch.targets + extra).map(c => c[1]);
+      // TARGETING PASS: ο χορδισμός χτυπούσε 6-10 σώματα ΑΚΑΡΙΑΙΑ, στο ίδιο frame με την
+      // επιλογή τους — αδύνατο να αποφευχθεί. Τώρα κλειδώνει ΣΗΜΕΙΑ ΕΔΑΦΟΥΣ (εκεί που στέκονται
+      // τη στιγμή της νότας) και η νότα σκάει 0.30s μετά, από αυτά τα σημεία. Το lock μένει —
+      // «η κιθάρα παίζει μόνη της» ΕΙΝΑΙ το concept του Eddie — αλλά πια μπορείς να ξεφύγεις.
+      const spots = cand.slice(0, ch.targets + extra).map(c => ({ x: c[1].pos.x, y: c[1].pos.y }));
+      const SOLO_R = 62, SOLO_DELAY = 0.30;
+      for (const s of spots) {
+        rt.strike(s.x, s.y, SOLO_R, SOLO_DELAY, '#ff4d5e', () => {
+          const hitHere = [];
+          for (const e2 of rt.game.enemies) {
+            if (!e2 || e2.hp <= 0) continue;
+            const dd2 = (e2.pos.x - s.x) ** 2 + (e2.pos.y - s.y) ** 2;
+            if (dd2 <= SOLO_R * SOLO_R) { hitHere.push(e2); break; }   // ένα σώμα ανά νότα
+          }
+          for (const e2 of hitHere) {
+            const crit2 = Math.random() < WEAPON_DEFS.solo_red_thunder.critChance;
+            rt._dealDamage('be_solo_of_the_damned', e2, dmg, evo.bossMultiplier, crit2);
+            if (crit2) rt._dealDamage('be_solo_of_the_damned', e2, dmg * ch.echoDmg, evo.bossMultiplier, false);
+          }
+        });
+      }
+      const targets = [];                          // η ΑΚΑΡΙΑΙΑ διαδρομή δεν τρέχει πια
       const primaryTargets = new Set(targets), hoppedTargets = new Set();
+      for (const s of spots) {                     // οπτικά bolts προς τα κλειδωμένα σημεία
+        w.bolts.push({ x1: p.pos.x, y1: p.pos.y, x2: s.x, y2: s.y, t: 0, life: 0.30 });
+      }
       for (const e of targets) {
         const crit = Math.random() < WEAPON_DEFS.solo_red_thunder.critChance;
         rt._dealDamage('be_solo_of_the_damned', e, dmg, evo.bossMultiplier, crit);

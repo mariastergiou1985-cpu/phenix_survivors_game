@@ -5,13 +5,17 @@
 // ΚΑΝΕΝΑ PNG, μηδέν shadowBlur.
 // ═══════════════════════════════════════════════════════════════════════════════
 import { WEAPON_DEFS, PASSIVE_DEFS, EVOLUTION_RECIPES, WEAPON_EXECUTORS }
-  from './BuildEngine.js?v=20260902130000';
+  from './BuildEngine.js?v=20260908180000';
 
 function aimAngle(rt) {
-  const p = rt.game.player, e = rt._nearestEnemy(p.pos.x, p.pos.y);
-  if (e) return Math.atan2(e.pos.y - p.pos.y, e.pos.x - p.pos.x);
-  return (p._facing || 1) > 0 ? 0 : Math.PI;
+  // TARGETING PASS 2026-08-09: ΗΤΑΝ _nearestEnemy() -> τέλειο auto-lock πάνω στο σώμα, για
+  // 46 από τα 50 όπλα, με ένα helper αντιγραμμένο σε 5 αρχεία. Τώρα σκοπεύει ο ΠΑΙΚΤΗΣ.
+  // Τα όπλα που ΠΡΕΠΕΙ να κυνηγούν (probability_disc, hungry_spirit_lantern, magnetic_shrapnel,
+  // blacknet_swarm_drone, solo_red_thunder) δεν περνούν από εδώ — κάνουν δικό τους scan.
+  return rt.playerAim();
 }
+const DISC_TURN   = 4.6;   // probability disc / quantum roulette — rad/s
+const SPIRIT_TURN = 3.4;   // hungry spirit lantern — rad/s
 function angDiff(a, b) { let d = a - b; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d; }
 function lvl(def, w, key) { const i = Math.min(w.level - 1, 4); return def[key][i]; }
 function segHit(ax, ay, bx, by, e, halfW) {
@@ -192,10 +196,20 @@ WEAPON_EXECUTORS.probability_disc = {
         for (const e of near) { if (e && e.hp > 0 && !ds.hit.has(e)) {
           const dd = (e.pos.x - ds.x) ** 2 + (e.pos.y - ds.y) ** 2; if (dd < bd) { bd = dd; ds.tgt = e; } } }
         if (!ds.tgt) { w.discs.splice(i, 1); continue; }
+        ds.ang = Math.atan2(ds.tgt.pos.y - ds.y, ds.tgt.pos.x - ds.x);
       }
       const spd = d.speed * ds.mods.speed;
       const dx = ds.tgt.pos.x - ds.x, dy = ds.tgt.pos.y - ds.y, dist = Math.hypot(dx, dy) || 1;
-      ds.x += (dx / dist) * spd * dt; ds.y += (dy / dist) * spd * dt;
+      // TARGETING PASS: ο δίσκος ΚΡΑΤΑΕΙ homing — «bouncing probability disc» ΕΙΝΑΙ το concept.
+      // Έφυγε το ΤΕΛΕΙΟ κλείδωμα: ήταν dir = normalize(target - pos) κάθε frame, μηδέν αδράνεια,
+      // αδύνατο να αστοχήσει. Τώρα στρίβει το πολύ DISC_TURN rad/s και μπορεί να προσπεράσει.
+      if (ds.ang === undefined) ds.ang = Math.atan2(dy, dx);
+      let dA = Math.atan2(dy, dx) - ds.ang;
+      while (dA >  Math.PI) dA -= Math.PI * 2;
+      while (dA < -Math.PI) dA += Math.PI * 2;
+      const mT = DISC_TURN * dt;
+      ds.ang += Math.max(-mT, Math.min(mT, dA));
+      ds.x += Math.cos(ds.ang) * spd * dt; ds.y += Math.sin(ds.ang) * spd * dt;
       if (dist < d.size * ds.mods.size + ds.tgt.radius) {
         const e = ds.tgt;
         ds.hit.add(e);
@@ -716,8 +730,17 @@ WEAPON_EXECUTORS.hungry_spirit_lantern = {
       const ty = s.back ? p.pos.y : (s.tgt && s.tgt.hp > 0 ? s.tgt.pos.y : p.pos.y);
       if (!s.back && (!s.tgt || s.tgt.hp <= 0)) { s.back = true; }
       const dx = tx - s.x, dy = ty - s.y, dist = Math.hypot(dx, dy) || 1;
-      s.x += (dx / dist) * d.speed * dt + Math.sin(s.ph) * 18 * dt;
-      s.y += (dy / dist) * d.speed * dt + Math.cos(s.ph) * 18 * dt;
+      // TARGETING PASS: το πνεύμα ΚΡΑΤΑΕΙ homing — «hunt the weakest» ΕΙΝΑΙ το concept, και είναι
+      // ο μόνος στοχευτής lowest-HP στο παιχνίδι. Έφυγε το τέλειο κλείδωμα: στρίβει πια το πολύ
+      // SPIRIT_TURN rad/s, οπότε ένας εχθρός που κόβει απότομα το κάνει να προσπεράσει.
+      if (s.ang === undefined) s.ang = Math.atan2(dy, dx);
+      let dA2 = Math.atan2(dy, dx) - s.ang;
+      while (dA2 >  Math.PI) dA2 -= Math.PI * 2;
+      while (dA2 < -Math.PI) dA2 += Math.PI * 2;
+      const mT2 = SPIRIT_TURN * dt;
+      s.ang += Math.max(-mT2, Math.min(mT2, dA2));
+      s.x += Math.cos(s.ang) * d.speed * dt + Math.sin(s.ph) * 18 * dt;
+      s.y += Math.sin(s.ang) * d.speed * dt + Math.cos(s.ph) * 18 * dt;
       if (!s.back && dist < 14 + (s.tgt.radius || 0)) {
         rt._dealDamage(wid, s.tgt, dmg, bm, Math.random() < d.critChance);
         s.back = true;

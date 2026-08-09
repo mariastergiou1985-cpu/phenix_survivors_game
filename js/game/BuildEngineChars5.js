@@ -7,12 +7,14 @@
 // Συνταγή ultimates: halo -> σώμα -> λευκός πυρήνας, lighter, caps, ΚΑΝΕΝΑ PNG.
 // ═══════════════════════════════════════════════════════════════════════════════
 import { WEAPON_DEFS, PASSIVE_DEFS, EVOLUTION_RECIPES, WEAPON_EXECUTORS }
-  from './BuildEngine.js?v=20260902130000';
+  from './BuildEngine.js?v=20260908180000';
 
 function aimAngle(rt) {
-  const p = rt.game.player, e = rt._nearestEnemy(p.pos.x, p.pos.y);
-  if (e) return Math.atan2(e.pos.y - p.pos.y, e.pos.x - p.pos.x);
-  return (p._facing || 1) > 0 ? 0 : Math.PI;
+  // TARGETING PASS 2026-08-09: ΗΤΑΝ _nearestEnemy() -> τέλειο auto-lock πάνω στο σώμα, για
+  // 46 από τα 50 όπλα, με ένα helper αντιγραμμένο σε 5 αρχεία. Τώρα σκοπεύει ο ΠΑΙΚΤΗΣ.
+  // Τα όπλα που ΠΡΕΠΕΙ να κυνηγούν (probability_disc, hungry_spirit_lantern, magnetic_shrapnel,
+  // blacknet_swarm_drone, solo_red_thunder) δεν περνούν από εδώ — κάνουν δικό τους scan.
+  return rt.playerAim();
 }
 function lvl(def, w, key) { const i = Math.min(w.level - 1, 4); return def[key][i]; }
 function segHit(ax, ay, bx, by, e, halfW) {
@@ -460,14 +462,16 @@ WEAPON_EXECUTORS.nano_mine = {
     const cap = (w.evolved ? evo.cap : lvl(d, w, 'cap')) + rt._catalystSum('mineCap');
     if (w.cd <= 0 && w.mines.length < Math.min(cap, d.maxActive)) {
       w.cd = w.evolved ? evo.cooldown : lvl(d, w, 'cooldown');
-      w.mines.push({ x: p.pos.x, y: p.pos.y, t: 0, armT: 0.35, mini: false });
+      w.mines.push({ x: p.pos.x, y: p.pos.y, t: 0, armT: 0.35, mini: false, dir: rt.playerAim() });
     }
     const dmgBase = (w.evolved ? evo.damage : lvl(d, w, 'damage')) * (1 + rt._catalystSum('mineDmg'));
     const wid = w.evolved ? 'be_grey_goo_minefield' : 'nano_mine';
     const bm = w.evolved ? evo.bossMultiplier : d.bossMultiplier;
     const explode = (m) => {
-      const tgt = rt._nearestEnemy(m.x, m.y, 220);
-      const dir = tgt ? Math.atan2(tgt.pos.y - m.y, tgt.pos.x - m.x) : Math.random() * Math.PI * 2;
+      // TARGETING PASS: ο κώνος έστρεφε πάνω στον κοντινότερο τη ΣΤΙΓΜΗ της έκρηξης — μια νάρκη
+      // που «γυρίζει» για να σε βρει. Τώρα η φορά ΚΛΕΙΔΩΝΕΙ όταν στρώνεται η νάρκη (m.dir), οπότε
+      // ό,τι στέκεται έξω από αυτόν τον κώνο γλιτώνει. Καμία ανάγνωση εχθρού στην έκρηξη.
+      const dir = Number.isFinite(m.dir) ? m.dir : Math.random() * Math.PI * 2;
       const near = rt.game._spatialGrid ? rt.game._spatialGrid.query(m.x, m.y, d.cone.radius + 70) : rt.game.enemies;
       for (const e of near) {
         if (!e || e.hp <= 0) continue;
@@ -481,7 +485,7 @@ WEAPON_EXECUTORS.nano_mine = {
       if (rt.fx.length < 48) rt.fx.push({ kind: 'shockring', x: m.x, y: m.y, r: d.cone.radius * 0.7, t: 0, life: 0.3, col: '#9dff6b' });
       if (w.evolved && !m.mini)                                    // γεννά mini-mines
         for (let k = 0; k < evo.mini.count && w.mines.length < d.maxActive; k++)
-          w.mines.push({ x: m.x + (Math.random() - 0.5) * 70, y: m.y + (Math.random() - 0.5) * 70, t: 0, armT: 0.4, mini: true });
+          w.mines.push({ x: m.x + (Math.random() - 0.5) * 70, y: m.y + (Math.random() - 0.5) * 70, t: 0, armT: 0.4, mini: true, dir: dir + (Math.random() - 0.5) * 1.2 });
     };
     for (let i = w.mines.length - 1; i >= 0; i--) {
       const m = w.mines[i]; m.t += dt; m.armT -= dt;
