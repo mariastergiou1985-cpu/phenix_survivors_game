@@ -19209,6 +19209,23 @@ export class Game {
     }
   }
 
+  // WORLD-SPACE. The single call site (the `_drawPatternVFX(ctx)` line in draw()) sits INSIDE the
+  // camera-space block, where ctx already carries scale(_viewScale) + translate(-camera). This
+  // function used to ALSO convert world -> screen itself:
+  //     const sx = (p.x - this.camera.x) * vs;
+  // so the camera was subtracted twice and the scale applied twice. Final position was
+  // ((p.x - cam.x) * vs - cam.x) * vs, which collapses toward the canvas origin as the camera
+  // approaches 0 and slides off the top-left as the player moves right/down — the art never sat
+  // on the world point it was spawned at (player + 70px, see _updatePatternVFX).
+  //
+  // Now it is PURELY world-space: translate straight to p.x / p.y and let the ambient camera
+  // transform do the one conversion it exists to do.
+  //
+  // `w` / `h` DELIBERATELY KEEP the `* vs` factor. That looks like a leftover but it is what makes
+  // this a position-only fix: these are world units now, and the camera block multiplies them by
+  // vs on the way to the screen, so the on-screen size stays exactly naturalWidth*0.5*grow*vs² —
+  // byte-identical to before. Dropping the `* vs` would have "cleaned up" the formula and silently
+  // scaled every pattern effect up by 1/vs (~1.33x). Art, timing, alpha and growth are untouched.
   _drawPatternVFX(ctx) {
     if (!this._patternVFX || !this._patternVFX.length) return;
     const vs = this._viewScale || 1;
@@ -19218,14 +19235,12 @@ export class Game {
       const k = p.t / p.life;                       // 0..1
       const alpha = Math.sin(Math.min(1, k) * Math.PI) * 0.85;   // fade in/out
       const grow = (0.85 + 0.35 * k) * p.scale;
-      const sx = (p.x - this.camera.x) * vs;
-      const sy = (p.y - this.camera.y) * vs;
       const w = img.naturalWidth * 0.5 * grow * vs;   // premium size (art stays large, readable)
       const h = img.naturalHeight * 0.5 * grow * vs;
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';       // additive glow (bg already transparent)
       ctx.globalAlpha = alpha;
-      ctx.translate(sx, sy);
+      ctx.translate(p.x, p.y);                        // world-space: the point it was spawned at
       ctx.rotate(p.rot + k * 0.25);
       ctx.drawImage(img, -w / 2, -h / 2, w, h);
       ctx.restore();
