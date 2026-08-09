@@ -22,11 +22,19 @@
  */
 
 const TUT_KEY = 'phenix_tutorial_v1';
+// Record format version. v1 = {seen,done}. v2 adds nothing to the payload — it exists ONLY so the
+// one-time migration below can tell an un-migrated record from a migrated one and never re-run.
+const TUT_VER = 2;
 
 const STEPS = [
   { id: 'menu_start',
     when: (g) => g.gameState === 'start_menu',
     target: () => document.querySelector('#cgm-menu-nav .mbtn[data-cgm-item="START GAME"]'),
+    // The first step's whole job is to point at START GAME. On a cold boot the loop can reach
+    // start_menu BEFORE the menu overlay is mounted, and _position() silently falls back to a
+    // centred card with no highlight — the player would get the text without the thing it points
+    // at. requireTarget holds the step until the button actually exists in the DOM.
+    requireTarget: true,
     title: 'WELCOME TO NULL EDEN',
     text: 'Everything begins at START GAME. The SYSTEM is waiting for you, pilot.' },
   { id: 'mode_select',
@@ -82,6 +90,25 @@ export class TutorialGuide {
     const st = this._load();
     this.seen = new Set(st.seen || []);
     this.done = !!st.done;
+
+    // ── ONE-TIME MIGRATION off the first tutorial build (e627c26) ──────────────────────────
+    // That build ran, in this constructor:
+    //     if (!this.done && this._hasExistingProgress()) { this.done = true; this._save(); }
+    // with _hasExistingProgress() true for any save that had stagesCleared >= 1, endlessUnlocked
+    // or totalRuns >= 1. So every existing player was marked complete WITHOUT EVER SEEING A STEP,
+    // and the current build reads that flag and stays silent forever. Those saves can never see
+    // the tutorial again, which is exactly the bug.
+    //
+    // The discriminator is exact, not a guess: `done` can only legitimately become true inside
+    // _continue(), which ALWAYS runs `this.seen.add(s.id)` first. A genuine completion therefore
+    // ALWAYS carries at least one seen step. done === true with an EMPTY seen list can only have
+    // come from that auto-complete. Nothing else in the file's history writes that combination.
+    if ((st.v | 0) < TUT_VER) {
+      if (this.done && this.seen.size === 0) {
+        this.done = false;                       // auto-completed, never actually shown -> owed one
+      }
+      this._save();                              // stamps v:2 so this never runs twice
+    }
     // QA harness => inert (κανένα υπάρχον proof δεν πρέπει να δει overlay)
     this._qaInert = false;
     try {
@@ -103,11 +130,18 @@ export class TutorialGuide {
     try { return JSON.parse(localStorage.getItem(TUT_KEY) || 'null') || {}; } catch (_) { return {}; }
   }
   _save() {
-    try { localStorage.setItem(TUT_KEY, JSON.stringify({ seen: [...this.seen], done: this.done })); } catch (_) {}
+    try { localStorage.setItem(TUT_KEY, JSON.stringify({ v: TUT_VER, seen: [...this.seen], done: this.done })); } catch (_) {}
   }
 
-  /** SETTINGS → REPLAY TUTORIAL */
+  /** SETTINGS → REPLAY TUTORIAL — ALWAYS from step 1, whatever state it was in. */
   replay() {
+    // Tearing down the live overlay first matters: without it a replay triggered while a step was
+    // somehow still on screen would keep visible/stepIdx pointing at the OLD step, and the loop
+    // early-returns on `this.visible` — the replay would resume mid-tutorial instead of restarting.
+    this._hide();
+    this.stepIdx = -1;
+    this._armedAt = 0;
+    this._padWasDown = false;
     this.seen.clear(); this.done = false; this._qaInert = false; this._save();
     this.game.goToMainMenu?.();
   }
@@ -233,6 +267,14 @@ export class TutorialGuide {
       if (this.seen.has(s.id)) continue;
       let ok = false;
       try { ok = !!s.when(g, this); } catch (_) { ok = false; }
+      // A step that exists to point at something waits for that something. Without this the
+      // first step can fire before the menu overlay mounts and lose its own highlight.
+      if (ok && s.requireTarget) {
+        let t = null;
+        try { t = s.target?.(); } catch (_) { t = null; }
+        const r = (t && t.getBoundingClientRect) ? t.getBoundingClientRect() : null;
+        if (!r || r.width < 4 || r.height < 4) ok = false;
+      }
       if (ok) { this._show(i); return; }
     }
   }
