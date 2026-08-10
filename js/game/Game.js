@@ -21361,7 +21361,24 @@ export class Game {
   }
 
   _drawTacticalWeapons(ctx) {
-    const cam = this.camera;
+    // ══ WORLD-SPACE (2026-08-09 camera-transform fix) ═══════════════════════════════════════
+    // This whole subtree was written in the screen-space convention — every helper subtracts a
+    // camera from every coordinate — but its single call site sits INSIDE the camera block,
+    // where ctx already carries scale(_viewScale) + translate(-camera). The camera was therefore
+    // subtracted TWICE: a weapon at world X rendered at (w.x - 2*cam.x) * viewScale, drifting
+    // further from its true spot the further the camera got from the world origin.
+    //
+    // That these coordinates are WORLD is not an assumption — it is what the tick functions
+    // prove: _tickChordRain deals its damage with `e.pos.x - f.x` and _tickTotem with
+    // `e.pos.x - w.x`, both against ENEMY WORLD POSITIONS. Damage was always resolved in world
+    // space; only the drawing disagreed, which is exactly why these weapons could hurt something
+    // that was nowhere near the art.
+    //
+    // The camera is neutralised HERE, at the three points the subtree obtains it, rather than by
+    // hand-editing the ~16 `- cam.x` expressions spread across nine helpers. Every subtraction
+    // becomes a no-op, each draw lands on its true world point, and — the reason this shape was
+    // chosen — not one geometry or SIZE expression is retyped, so nothing can drift by a typo.
+    const cam = { x: 0, y: 0 };
     for (const w of this.tacticalCacheWeapons) {
       if (!w.alive) continue;
       const sx = w.x - cam.x, sy = w.y - cam.y;
@@ -21919,10 +21936,12 @@ export class Game {
   // the camera transform (translate(-camera)), so world coords land exactly where the damage
   // zones tick. Fragments render on the world layer below entities; impact flashes above ground.
   _drawChordRainFx(ctx, w) {
-    // SCREEN-SPACE like every other tactical FX (world - camera). The first version drew in
-    // raw world coords on this screen-space layer — fragments rendered far from where they
-    // actually landed, so the rain looked absent and its damage looked like it never happened.
-    const cam = this.camera;
+    // WORLD-SPACE, like the rest of the tactical subtree — see the note in _drawTacticalWeapons.
+    // The comment that used to sit here claimed this layer was screen-space and that drawing in
+    // "raw world coords" was the bug. It was the opposite: _tickChordRain resolves its damage with
+    // `e.pos.x - f.x` against enemy WORLD positions, so f.x has always been a world coordinate,
+    // and subtracting the camera from it inside the camera block is the double transform.
+    const cam = { x: 0, y: 0 };
     const sprite = (w.def && w.def.spriteCardOnly) ? null : this._tacticalSpriteCache.get(w.id);
     if (sprite && sprite.complete && sprite.naturalWidth > 0) {
       // SLOGAN CURTAIN — the Eddie slogan art DROPS from the top like a full-map curtain,
@@ -21934,19 +21953,27 @@ export class Game {
       const total = DROP + HOLD + FADE;                // ~2.75s total appearance
       if (elapsed <= total) {
         // Full-view curtain: cover the whole map width, tall enough to read as a curtain.
+        // VIEW-ANCHORED, EXPRESSED IN WORLD COORDS. _viewW / _viewH are world units
+        // (WIDTH / _viewScale), so the SIZE below is already correct and is left untouched. The
+        // ORIGIN was not: cx was a bare 0, i.e. the world origin, so inside the camera block this
+        // full-screen sheet of art was pinned to the top-left corner of the MAP and slid off the
+        // viewport as soon as the player walked away from spawn (visible as a huge banner stuck
+        // top-left near the origin, invisible everywhere else). Anchoring to the camera puts it
+        // back over the view it was written for. Position-only — cw/ch/alpha/timing unchanged.
         const cw = this._viewW;
         const ch = this._viewH * 0.9;
-        const cx = 0;
+        const cx = this.camera.x;
+        const cTop = this.camera.y;                    // world y of the top edge of the view
         let alpha, cy;
         if (elapsed < DROP) {                          // dropping down from above the top edge
           const k = elapsed / DROP;
-          cy = -ch + (this._viewH * 0.05 + ch) * k;    // slide to rest near the top
+          cy = cTop - ch + (this._viewH * 0.05 + ch) * k;    // slide to rest near the top
           alpha = 0.85 * k;
         } else if (elapsed < DROP + HOLD) {            // hanging in place (linger 1.5s)
-          cy = this._viewH * 0.05;
+          cy = cTop + this._viewH * 0.05;
           alpha = 0.85;
         } else {                                       // fade out
-          cy = this._viewH * 0.05;
+          cy = cTop + this._viewH * 0.05;
           alpha = 0.85 * Math.max(0, 1 - (elapsed - DROP - HOLD) / FADE);
         }
         ctx.save();
@@ -21995,7 +22022,7 @@ export class Game {
   _drawSwordBurstFx(ctx, w) {
     const sprite = (w.def && w.def.spriteCardOnly) ? null : this._tacticalSpriteCache.get(w.id);
     const ready = sprite && sprite.complete && sprite.naturalWidth > 0;
-    const cam = this.camera;                                     // screen-space like every tactical FX
+    const cam = { x: 0, y: 0 };                                  // world-space — see _drawTacticalWeapons
     if (ready && !w.swords.length) {                              // idle cache marker at drop point
       ctx.save();
       ctx.globalAlpha = Math.min(1, w.timer / 1.0) * 0.9;
