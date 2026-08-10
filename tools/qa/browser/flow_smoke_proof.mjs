@@ -110,6 +110,7 @@ const shot = async (n) => {
   fs.writeFileSync(path.join(OUT, n), Buffer.from(data, 'base64'));
 };
 const pad = async (name) => {
+  await clearTutorial();          // pad button 0 is the tutorial's own CONTINUE — it would eat the press
   await page.evaluate(b => window.__padSet(b, true), BTN[name]);
   await page.waitForTimeout(240);
   await page.evaluate(b => window.__padSet(b, false), BTN[name]);
@@ -138,7 +139,7 @@ const padUntil = async (name, predicate, max = 14) => {
 //     childList mutations 0   node replacements 0   overlay interception none
 //
 // The button is not covered and the DOM is not churning — the menu simply slides in. But
-// page.click() requires the element to be STABLE (same box on two consecutive animation
+// Playwright's click requires the element to be STABLE (same box on two consecutive animation
 // frames) before it will dispatch, so a click issued into that window fails actionability and
 // Playwright loops on "retrying click action - waiting 500ms" until the whole action times
 // out. That is what made this proof fail intermittently at the second START GAME click; the
@@ -165,7 +166,56 @@ const settle = async (ms = 900) => {
   await fadeDone();
   return last;
 };
+// ── TUTORIAL ────────────────────────────────────────────────────────────────
+// Since the tutorial visibility fix (3332b84) a save that has not genuinely completed the
+// tutorial is OWED it — and this proof runs on a throwaway browser profile, so it is owed it on
+// every single run. #tut-overlay is properly modal: inset:0 with pointer-events:auto, a
+// 100000px box-shadow scrim on #tut-hl, and a keydown handler that calls
+// stopImmediatePropagation on everything except Enter/Space. Playwright therefore reported
+// "#tut-hl from #tut-overlay subtree intercepts pointer events" and looped until the whole
+// action timed out. That was the tutorial working exactly as specified, not a regression.
+//
+// It is dismissed the way a player dismisses it: the CONTINUE button on the card, falling back
+// to ENTER, which is the tutorial's own documented key (the button literally reads
+// "CONTINUE (ENTER / A)"). Nothing here disables it. In particular the ?qa=1 /
+// phenix_qa_optin escape hatch that sets _qaInert is deliberately NOT used — a proof that
+// switches the feature off cannot tell you the feature still works, and T03 below asserts the
+// tutorial stayed live for the whole run.
+//
+// This runs before EVERY interaction rather than once at the start, because the steps fire at
+// start_menu, mode_select, act_select/campaign_select, character_select and again on the first
+// seconds of gameplay.
+let tutSteps = 0, tutByButton = 0, tutByKey = 0, tutSeenAtAll = false;
+const tutVisible = () => page.evaluate(() => {
+  const el = document.getElementById('tut-overlay');
+  if (!el) return false;
+  const cs = getComputedStyle(el);
+  return cs.display !== 'none' && cs.visibility !== 'hidden';
+});
+// A step ignores input for 600ms after it appears (_armedAt) so a stray keypress cannot skip it.
+// Waiting that out is what a player does anyway; pressing into it just no-ops and wastes a retry.
+const tutArmed = () => page.waitForFunction(() => {
+  const t = window.__phenixTutorial;
+  return !t || !t.visible || performance.now() >= (t._armedAt || 0);
+}, null, { timeout: 3000 }).catch(() => {});
+const clearTutorial = async (max = 14) => {
+  for (let i = 0; i < max; i++) {
+    if (!(await tutVisible())) return;
+    tutSeenAtAll = true;
+    await tutArmed();
+    const before = await page.evaluate(() => window.__phenixTutorial?.seen?.size ?? -1);
+    let via = 'button';
+    try { await page.click('#tut-continue', { timeout: 1200 }); }
+    catch (_) { via = 'key'; await page.keyboard.press('Enter'); }
+    await page.waitForTimeout(260);
+    const after = await page.evaluate(() => window.__phenixTutorial?.seen?.size ?? -1);
+    if (after > before) { tutSteps++; if (via === 'button') tutByButton++; else tutByKey++; }
+  }
+};
+const click = async (sel, opts) => { await clearTutorial(); return page.click(sel, opts); };
+
 const key = async (k) => {
+  await clearTutorial();          // the overlay eats every key except ENTER/SPACE while it is up
   await page.keyboard.down(k); await page.waitForTimeout(140);
   await page.keyboard.up(k);   await page.waitForTimeout(260);
   await settle();
@@ -242,7 +292,7 @@ await toMenu();
 // ════════════════════════════════════════════════════════════════════════════
 // B. MOUSE — the full Campaign route, then every Back
 // ════════════════════════════════════════════════════════════════════════════
-await page.click('#cgm-menu-nav .mbtn[data-cgm-item="START GAME"]');
+await click('#cgm-menu-nav .mbtn[data-cgm-item="START GAME"]');
 check('B01 mouse: MAIN MENU -> MODE SELECT', await waitState('mode_select'), await gs());
 const modeCards = await page.evaluate(() =>
   Array.from(document.querySelectorAll('#cgm-modesel .msl-card')).map(c => c.dataset.mode));
@@ -250,12 +300,12 @@ check('B02 mode select offers campaign, endless and chaos',
   ['campaign', 'endless', 'chaos'].every(m => modeCards.includes(m)), JSON.stringify(modeCards));
 await shot('01_mode_select.png');
 
-await page.click('#cgm-modesel .msl-card[data-mode="campaign"]');
+await click('#cgm-modesel .msl-card[data-mode="campaign"]');
 check('B03 mouse: CAMPAIGN -> ACT SELECT', await waitState('act_select'), await gs());
 await shot('02_act_select.png');
-await page.click('#cgm-actsel .asl-card[data-act="1"]');
+await click('#cgm-actsel .asl-card[data-act="1"]');
 check('B04 mouse: ACT 1 -> CAMPAIGN STAGE MAP', await waitState('campaign_select'), await gs());
-await page.click('#cgm-campaign .cmp-card[data-idx="0"]');
+await click('#cgm-campaign .cmp-card[data-idx="0"]');
 check('B05 mouse: a stage -> CHARACTER SELECT', await waitState('character_select'), await gs());
 check('B06 the campaign route arms the stage it picked and remembers where BACK goes',
   await page.evaluate(() => window.__g._pendingCampaignStage === 1 && window.__g._charSelectReturn === 'campaign_select'),
@@ -274,14 +324,14 @@ check('B10 ESC: MODE SELECT -> MAIN MENU', await waitState('start_menu'), await 
 check('B11 no frame stall across the whole back chain', (await freezeMs()) < 2000, String(await freezeMs()));
 
 // Endless and Chaos both route through the briefing screen
-await page.click('#cgm-menu-nav .mbtn[data-cgm-item="START GAME"]');
+await click('#cgm-menu-nav .mbtn[data-cgm-item="START GAME"]');
 await waitState('mode_select');
 await page.waitForSelector('#cgm-modesel .msl-card[data-mode="endless"]', { state: 'visible', timeout: 8000 });
-await page.click('#cgm-modesel .msl-card[data-mode="endless"]');
+await click('#cgm-modesel .msl-card[data-mode="endless"]');
 check('B12 mouse: ENDLESS -> its briefing screen', await waitState('mode_intro'), await gs());
 check('B13 the briefing is the ENDLESS one', await page.evaluate(() => window.__g._modeIntroMode) === 'endless');
 await shot('04_endless_briefing.png');
-await page.click('#mi-continue');
+await click('#mi-continue');
 check('B14 mouse: briefing CONTINUE -> CHARACTER SELECT', await waitState('character_select'), await gs());
 await key('Escape');
 check('B15 ESC from character select returns to MODE SELECT for endless',
@@ -290,15 +340,15 @@ check('B15 ESC from character select returns to MODE SELECT for endless',
 // reach mode select explicitly — do not assume the previous step left us there
 if ((await gs()) !== 'mode_select') {
   await toMenu();
-  await page.click('#cgm-menu-nav .mbtn[data-cgm-item="START GAME"]');
+  await click('#cgm-menu-nav .mbtn[data-cgm-item="START GAME"]');
   await waitState('mode_select');
 }
 await page.waitForSelector('#cgm-modesel .msl-card[data-mode="chaos"]', { state: 'visible', timeout: 8000 });
-await page.click('#cgm-modesel .msl-card[data-mode="chaos"]');
+await click('#cgm-modesel .msl-card[data-mode="chaos"]');
 check('B16 mouse: CHAOS -> its briefing screen', await waitState('mode_intro'), await gs());
 check('B17 the briefing is the CHAOS one', await page.evaluate(() => window.__g._modeIntroMode) === 'chaos');
 await shot('05_chaos_briefing.png');
-await page.click('#mi-back');
+await click('#mi-back');
 check('B18 briefing BACK -> MODE SELECT', await waitState('mode_select'), await gs());
 await key('Escape');
 await waitState('start_menu');
@@ -356,17 +406,19 @@ check('D08 no frame stall across the controller pass', (await freezeMs()) < 2000
 // ════════════════════════════════════════════════════════════════════════════
 const enterEndless = async () => {
   await toMenu();
-  await page.click('#cgm-menu-nav .mbtn[data-cgm-item="START GAME"]');
+  await click('#cgm-menu-nav .mbtn[data-cgm-item="START GAME"]');
   await waitState('mode_select');
-  await page.click('#cgm-modesel .msl-card[data-mode="endless"]');
+  await click('#cgm-modesel .msl-card[data-mode="endless"]');
   await waitState('mode_intro');
-  await page.click('#mi-continue');
+  await click('#mi-continue');
   await waitState('character_select');
-  await page.click('#csc-endless-btn').catch(async () => { await page.click('#csc-start-btn'); });
+  await click('#csc-endless-btn').catch(async () => { await click('#csc-start-btn'); });
   return await waitState('playing', 8000);
 };
 check('E01 the real route reaches GAMEPLAY', await enterEndless(), await gs());
-await page.waitForTimeout(2200);
+await page.waitForTimeout(1200);
+await clearTutorial();            // the MOVE OR DIE step fires here, and its scrim darkens the canvas
+await page.waitForTimeout(1000);
 const live = await page.evaluate(() => ({
   state: window.__g.gameState, endless: !!window.__g.endless,
   t: Math.round(window.__g.timeAlive), hp: window.__g.player?.hp ?? -1,
@@ -407,7 +459,7 @@ check('E08 exactly one results button is selected', res.sel === 1, String(res.se
 await shot('07_results.png');
 
 // RETRY (mouse)
-await page.click('[data-rsbtn="retry"]');
+await click('[data-rsbtn="retry"]');
 await page.waitForTimeout(900);
 const afterRetry = await page.evaluate(() => ({ over: window.__g.gameOver, gs: window.__g.gameState,
                                                 t: Math.round(window.__g.timeAlive) }));
@@ -454,7 +506,7 @@ const vres = await page.evaluate(() => {
 check('E18 a victory shows VICTORY with the menu/continue pair',
   vres.title === 'VICTORY' && JSON.stringify(vres.btns) === JSON.stringify(['menu', 'continue']),
   JSON.stringify(vres));
-await page.click('[data-rsbtn="continue"]');
+await click('[data-rsbtn="continue"]');
 await page.waitForTimeout(1000);
 check('E19 CONTINUE — ENDLESS leaves the victory screen into an Endless run',
   await page.evaluate(() => window.__g.victory === false && !!window.__g.endless &&
@@ -471,7 +523,7 @@ check('F01 no input is stuck held after the whole pass',
     return !g.player || !g.player.vel || (Math.abs(g.player.vel.x || 0) + Math.abs(g.player.vel.y || 0)) < 0.5;
   }));
 check('F02 the menu still responds after everything', await (async () => {
-  await page.click('#cgm-menu-nav .mbtn[data-cgm-item="START GAME"]');
+  await click('#cgm-menu-nav .mbtn[data-cgm-item="START GAME"]');
   const ok = await waitState('mode_select');
   await key('Escape'); await waitState('start_menu');
   return ok;
@@ -480,6 +532,22 @@ check('F03 worst frame across the final pass is not a freeze', (await freezeMs()
 const blackMenu = await notBlack();
 check('F04 the main menu is still rendering', blackMenu.ok, JSON.stringify(blackMenu));
 await shot('08_back_at_menu.png');
+
+// ── TUTORIAL: assert the harness met it and dealt with it honestly ──────────
+check('T01 the tutorial actually appeared during this run (a fresh profile is owed it)',
+  tutSeenAtAll, JSON.stringify({ tutSeenAtAll, tutSteps }));
+check('T02 every step was closed through the tutorial\'s OWN UI (CONTINUE button / ENTER)',
+  tutSteps > 0 && (tutByButton + tutByKey) === tutSteps,
+  JSON.stringify({ steps: tutSteps, viaButton: tutByButton, viaEnter: tutByKey }));
+const tutLive = await page.evaluate(() => {
+  const t = window.__phenixTutorial;
+  return { present: !!t, qaInert: t ? !!t._qaInert : null, qaParam: /[?&]qa=1/.test(location.search),
+           optIn: (() => { try { return sessionStorage.getItem('phenix_qa_optin'); } catch (_) { return null; } })(),
+           seen: t ? t.seen.size : -1, done: t ? !!t.done : null };
+});
+check('T03 the tutorial was never disabled or bypassed — no ?qa=1, no opt-in, _qaInert false',
+  tutLive.present && tutLive.qaInert === false && tutLive.qaParam === false && tutLive.optIn !== '1',
+  JSON.stringify(tutLive));
 
 check('G01 zero page errors across the whole flow', pageErrors.length === 0, pageErrors.slice(0, 4).join(' | '));
 const gameErrors = consoleErrors.filter(t => !/audio\/music|failed to load|Could not load|radio broadcast/.test(t));
