@@ -32795,7 +32795,13 @@ _drawLoreArchive(ctx) {
     ctx.fillStyle = 'rgba(0,0,0,0.85)';
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
-    const pw = 1140, ph = 580;
+    // 580 -> 606: the two new CONTROLS rows add 26px of table, and the text column was already
+    // finishing 8px past the inner glass rect at the old height — measured, last bullet y=632
+    // against a sub-panel bottom of 624. Without this the last line would have landed at 658,
+    // outside the panel frame itself (650). The container grows by exactly the height of what was
+    // added and nothing else moves: same widths, same fonts, same spacing, same line-height, and
+    // the panel is centred so the relationship between every element is unchanged.
+    const pw = 1140, ph = 606;
     const px = Math.round((WIDTH  - pw) / 2);
     const py = Math.round((HEIGHT - ph) / 2);
 
@@ -32877,6 +32883,12 @@ _drawLoreArchive(ctx) {
       ['E ability', 'E',             'RB',            'R1'],
       ['Dash',      'SHIFT',         'B / RT',        'Circle / R2'],
       ['Ultimate',  'SPACE',         'Y',             '△ Triangle'],
+      // The two bindings added when activateSpecial() and activateSpiritDojang() were connected
+      // to input. Written in exactly the same shape as the rows above, and the labels are checked
+      // against js/main.js by tools/qa/browser/controls_screen_bindings_proof.mjs — which then
+      // presses these very keys in a live run, so the screen cannot drift from the bindings.
+      ['Special',            'C',     'X',             '□ Square'],
+      ['Dojang (Taekwondo)', 'V',     'A',             '✕ Cross'],
     ];
     ctrlRows.forEach(([a, k, xb, ps]) => {
       ctx.font = 'bold 11px Consolas, monospace'; ctx.fillStyle = YELLOW; ctx.fillText(a, colA, cy);
