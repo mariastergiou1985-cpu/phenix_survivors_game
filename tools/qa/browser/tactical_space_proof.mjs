@@ -213,16 +213,18 @@ for (const id of TACS) {
   console.log(`   ${id.padEnd(26)} ${fmt(cells[0])}  ${fmt(cells[1])}  ${fmt(cells[2])}  ${String(w).padStart(5)}${bad?'  *** OFF ***':''}`);
 }
 console.log('');
-// Three weapons paint nothing, and none of it is caused by this change:
-//   tac_kinetic_wave / tac_heavy_impact_burst -> behaviour 'horizontal_slash', which has no draw
-//     case in _drawTacticalWeapons at all (slashPhase is written on every hit and read nowhere).
-//   fusion_overdrive_void -> 'homing_volley'; its missiles only exist after a salvo timer that is
-//     longer than this sample window.
+// tac_kinetic_wave and tac_heavy_impact_burst are INVISIBLE TO THIS PROBE, which is not the same
+// as invisible in the game. This file hooks drawImage and arc only, and their draw is built from
+// strokeRect / fillRect / moveTo+lineTo — no image and no arc anywhere in it. Their visibility and
+// position are covered by tools/qa/browser/horizontal_slash_draw_proof.mjs, which hooks every
+// primitive and measures against the weapon's own hitbox footprint.
+// fusion_overdrive_void ('homing_volley') can also read as silent here: its missiles only exist
+// after a salvo timer longer than this sample window.
 // Named rather than hidden by a lowered threshold.
 const SILENT_BY_DESIGN = ['tac_kinetic_wave','tac_heavy_impact_burst'];
 const measuredSilent = TACS.filter(id => !MODES.some(m => out[m][id].n));
 const unexpectedSilent = measuredSilent.filter(id => !SILENT_BY_DESIGN.includes(id));
-line(unexpectedSilent.length === 0, `every tactical that draws at all was sampled (${sampled}/${TACS.length}; measured silent: ${measuredSilent.join(', ') || 'none'})` + (unexpectedSilent.length?` UNEXPECTED: ${unexpectedSilent.join(', ')}`:''));
+line(unexpectedSilent.length === 0, `every tactical that draws at all was sampled (${sampled}/${TACS.length}; no drawImage/arc primitives (see the note above): ${measuredSilent.join(', ') || 'none'})` + (unexpectedSilent.length?` UNEXPECTED: ${unexpectedSilent.join(', ')}`:''));
 line(offenders.length === 0, `every tactical draw lands within ${TOL}px of its own drop point (off: ${offenders.join(', ') || 'none'})`);
 console.log(`   worst positional error observed (excluding the full-screen curtain): ${worst}px`);
 line(hOffenders.length === 0, `no tactical primitive is pushed horizontally out of the viewport (off: ${hOffenders.join(', ') || 'none'})`);

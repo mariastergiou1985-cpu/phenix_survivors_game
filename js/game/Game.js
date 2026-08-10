@@ -21428,6 +21428,79 @@ export class Game {
               }
             }
             ctx.restore();
+          } else {
+            // ── KINETIC WAVE / HEAVY IMPACT BURST — procedural, no sprite.
+            // Both shipped a 400x60 damage box and NO draw at all: 85 damage every 1.0s from
+            // something the player could not see. Measured on the pre-change build, each painted
+            // 0 primitives across a 3s sample while the chakram fusion beside them painted 957.
+            //
+            // Everything below is DERIVED and nothing is written back. The box is the hitbox
+            // itself (w.def.slashWidth/slashHeight), so the art cannot promise reach the damage
+            // does not have; the position is w.x/w.y; the sweep clock is (tickRate - cooldown).
+            // w.slashPhase is deliberately left alone — mutating state from inside a draw would
+            // make the animation frame-rate dependent and couple rendering to gameplay.
+            const hw = (w.def.slashWidth  || 400) / 2;
+            const hh = (w.def.slashHeight ||  60) / 2;
+            const rate  = Math.max(0.05, w.def.tickRate || 1.0);
+            const since = Math.min(rate, Math.max(0, rate - w.cooldown));    // s since the last strike
+            const col   = w.def.color || '#44ccff';
+            const SWEEP = Math.min(0.30, rate * 0.32);
+            const k     = Math.min(1, since / SWEEP);                        // 0 -> 1 across the box
+            const ease  = k * k * (3 - 2 * k);
+            const bx    = sx - hw + 2 * hw * ease;                           // blade x this frame
+            ctx.save();
+            ctx.globalCompositeOperation = 'lighter';
+
+            // Resting zone: a faint outline so the box is readable between strikes, breathing
+            // slowly rather than sitting dead on the floor.
+            ctx.globalAlpha = fadeAlpha * (0.16 + 0.05 * Math.sin((w.angle || 0) * 1.6));
+            ctx.strokeStyle = col; ctx.lineWidth = 1.5;
+            ctx.strokeRect(sx - hw, sy - hh, hw * 2, hh * 2);
+
+            if (k < 1) {
+              // Smear behind the blade — the ground it has already cut.
+              const gsm = ctx.createLinearGradient(sx - hw, sy, Math.max(sx - hw + 1, bx), sy);
+              gsm.addColorStop(0, 'rgba(68,204,255,0)');
+              gsm.addColorStop(1, col);
+              ctx.globalAlpha = fadeAlpha * 0.34 * (1 - k * 0.55);
+              ctx.fillStyle = gsm;
+              ctx.fillRect(sx - hw, sy - hh, Math.max(0, bx - (sx - hw)), hh * 2);
+              // Leading edge, raked so it reads as a cut rather than a wall.
+              const x1 = bx + hh * 0.55, y1 = sy - hh, x2 = bx - hh * 0.55, y2 = sy + hh;
+              ctx.globalAlpha = fadeAlpha * 0.50;
+              ctx.strokeStyle = col; ctx.lineWidth = 9;
+              ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+              ctx.globalAlpha = fadeAlpha * 0.95;
+              ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 3;
+              ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+              // White vector flash on impact — the def's own glitchFx.vectorFlash, one bright
+              // frame as the strike lands.
+              if (k < 0.12) {
+                ctx.globalAlpha = fadeAlpha * 0.42 * (1 - k / 0.12);
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(sx - hw, sy - hh, hw * 2, hh * 2);
+              }
+            }
+
+            // Vertical floor spikes — the def's own particles.spikes. Each ignites as the blade
+            // reaches it and fades over ~0.42s; deterministic from the index so they do not
+            // jitter frame to frame.
+            const SPIKES = 9;
+            for (let s2 = 0; s2 < SPIKES; s2++) {
+              const f = (s2 + 0.5) / SPIKES;
+              const lit = since - f * SWEEP;
+              if (lit < 0 || lit > 0.42) continue;
+              const a2 = 1 - lit / 0.42;
+              const px = sx - hw + f * hw * 2;
+              const rnd = Math.abs((Math.sin(s2 * 12.9898 + 4.1) * 43758.5453) % 1);
+              const up = hh * (1.15 + rnd * 1.5) * a2;
+              ctx.globalAlpha = fadeAlpha * 0.8 * a2;
+              ctx.strokeStyle = (s2 % 2) ? '#ffffff' : col;
+              ctx.lineWidth = 2;
+              ctx.beginPath(); ctx.moveTo(px, sy + hh); ctx.lineTo(px, sy + hh - up); ctx.stroke();
+              ctx.beginPath(); ctx.moveTo(px, sy - hh); ctx.lineTo(px, sy - hh + up * 0.6); ctx.stroke();
+            }
+            ctx.restore();
           }
           break;
         case 'linear_beam':
@@ -40735,6 +40808,153 @@ _drawLoreArchive(ctx) {
       gridBlackoutActive: this.gridBlackoutActive,
       deck: this._deck || 'main',
     });
+    // Act 1 only: the space outside the ship windows. Part of the BACKGROUND layer on purpose —
+    // it must sit under every entity, projectile and VFX in the frame.
+    this._drawAct1WindowSpace(ctx);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ACT 1 SHIP WINDOWS — the space outside actually moves.
+  //
+  // Measured before writing a line of this: in a live Act 1 run, with the camera held still and
+  // the background layer sampled on its own, the average channel delta across the top and left
+  // glazing over 3.2 seconds was 0.000. Not "slow" — frozen. MapManager._drawShipWorld is a
+  // single static PNG blit with no time term anywhere in it, so every star, planet and light out
+  // there was paint on a wall.
+  //
+  // Design constraints this had to satisfy, all of them checkable:
+  //   · visible ONLY outside the windows — clipped to (visible view MINUS the walkable deck rect
+  //     the map itself publishes via getAct1DeckBounds), so it can never paint over combat;
+  //   · slow — the fastest star drifts 22 px/s, the planets 0.9-2.4 px/s;
+  //   · the map PNG is untouched; this reads as motion behind the glass already painted on it;
+  //   · no gameplay, collision or camera coupling — nothing here is ever read back;
+  //   · deterministic from timeAlive and an index: zero stored state, nothing to save or restore,
+  //     and identical on a reload.
+  //
+  // Drawn in WORLD coordinates: _drawWorldBackground runs inside the camera block.
+  _drawAct1WindowSpace(ctx) {
+    if (this.gameState !== 'playing') return;
+    if (this.endless || this._chaosMode || this._campaignStage) return;   // classic Act 1 only
+    const mm = this.mapManager;
+    const b = (mm && typeof mm.getAct1DeckBounds === 'function') ? mm.getAct1DeckBounds() : null;
+    if (!b) return;                       // ship art missing -> legacy map -> there are no windows
+    const cam = this.camera, vw = this._viewW, vh = this._viewH;
+    if (!cam || !(vw > 0) || !(vh > 0)) return;
+    const t = this.timeAlive || 0;
+
+    // Deterministic hash — same star in the same place on every run and every reload.
+    const h = (i, s) => { const v = Math.sin(i * 12.9898 + s * 78.233) * 43758.5453; return v - Math.floor(v); };
+    const TW = vw + 240, TH = vh + 240;            // wrap tile, generous so nothing pops at an edge
+    const ox = cam.x - 120, oy = cam.y - 120;      // world origin of that tile
+    const wrap = (v, m) => { const r = v % m; return r < 0 ? r + m : r; };
+
+    ctx.save();
+    // Clip: the visible view with the walkable deck punched out of it. This single call is what
+    // guarantees "only outside the windows" and "never covers combat" — not a hand-tuned alpha.
+    ctx.beginPath();
+    ctx.rect(cam.x, cam.y, vw, vh);
+    ctx.rect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0);
+    ctx.clip('evenodd');
+
+    // ── PLANETS: distant bodies, the slowest thing on screen. Normal composite so they read as
+    // solid bodies rather than glow; the gradient fades to transparent so there is no hard rim.
+    const PLANETS = [
+      { r: 168, spd: 0.9, par: 0.020, yk: 0.14, c1: '#7fb0ff', c2: 'rgba(14,26,64,0)' },
+      { r:  96, spd: 1.6, par: 0.036, yk: 0.78, c1: '#ffb37a', c2: 'rgba(52,24,14,0)' },
+      { r:  58, spd: 2.4, par: 0.058, yk: 0.44, c1: '#bf95ff', c2: 'rgba(34,20,60,0)' },
+    ];
+    const PP = TW * 2.2;                            // long period: a planet takes minutes to cross
+    for (let k = 0; k < PLANETS.length; k++) {
+      const P = PLANETS[k];
+      const px = ox - TW * 0.6 + wrap(h(k, 3) * PP - t * P.spd - cam.x * P.par, PP);
+      const py = oy + TH * P.yk + Math.sin(t * 0.05 + k * 2.1) * 16 - cam.y * P.par * 0.5;
+      if (px < cam.x - P.r - 80 || px > cam.x + vw + P.r + 80) continue;
+      const g1 = ctx.createRadialGradient(px - P.r * 0.32, py - P.r * 0.34, P.r * 0.08, px, py, P.r);
+      g1.addColorStop(0, P.c1);
+      g1.addColorStop(0.55, P.c1.length === 7 ? P.c1 + '55' : P.c1);
+      g1.addColorStop(1, P.c2);
+      ctx.globalAlpha = 0.40;
+      ctx.fillStyle = g1;
+      ctx.beginPath(); ctx.arc(px, py, P.r, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 0.16;                       // thin lit limb, so it reads as a sphere
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.strokeStyle = P.c1; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(px, py, P.r * 0.985, Math.PI * 1.06, Math.PI * 1.72); ctx.stroke();
+      ctx.globalCompositeOperation = 'source-over';
+    }
+
+    // ── STARS: three depth layers. Different speeds and different camera-parallax factors is what
+    // produces depth; a single layer would just look like sliding wallpaper.
+    ctx.globalCompositeOperation = 'lighter';
+    // Counts are for the whole wrap tile, and the clip throws away everything behind the deck —
+    // which is most of it. Sized so the glazing itself reads as a real starfield, not four dots.
+    const LAYERS = [
+      { n: 300, spd:  5, par: 0.05, r: 0.9, a: 0.30 },   // far
+      { n: 170, spd: 11, par: 0.12, r: 1.4, a: 0.46 },   // mid
+      { n:  80, spd: 22, par: 0.23, r: 2.1, a: 0.64 },   // near
+    ];
+    for (let L = 0; L < LAYERS.length; L++) {
+      const S = LAYERS[L];
+      ctx.globalAlpha = S.a;
+      ctx.fillStyle = '#dbe8ff';
+      ctx.beginPath();                              // one path per layer — 3 fills, not 230
+      for (let i = 0; i < S.n; i++) {
+        const x = ox + wrap(h(i, L + 1) * TW - t * S.spd - cam.x * S.par, TW);
+        const y = oy + wrap(h(i, L + 9) * TH - cam.y * S.par, TH);
+        ctx.rect(x - S.r, y - S.r, S.r * 2, S.r * 2);
+      }
+      ctx.fill();
+      // A handful twinkle. Kept to every 6th star so the batch above stays a single fill.
+      for (let i = 0; i < S.n; i += 7) {
+        const x = ox + wrap(h(i, L + 1) * TW - t * S.spd - cam.x * S.par, TW);
+        const y = oy + wrap(h(i, L + 9) * TH - cam.y * S.par, TH);
+        const tw = 0.55 + 0.45 * Math.sin(t * (1.1 + h(i, L + 17) * 1.9) + i * 1.7);
+        ctx.globalAlpha = S.a * tw;
+        ctx.fillRect(x - S.r * 1.7, y - S.r * 1.7, S.r * 3.4, S.r * 3.4);
+      }
+    }
+
+    // ── TRAVEL STREAKS: short light trails sliding past. This is the cue that reads as "the ship
+    // is moving", rather than "the ship is parked in a starfield".
+    ctx.globalAlpha = 1;
+    for (let i = 0; i < 16; i++) {
+      const spd = 74 + h(i, 21) * 78;
+      const len = 24 + h(i, 22) * 56;
+      const x = ox + wrap(h(i, 23) * TW - t * spd, TW);
+      const y = oy + wrap(h(i, 24) * TH - cam.y * 0.10, TH);
+      const gs = ctx.createLinearGradient(x, y, x + len, y);
+      gs.addColorStop(0, 'rgba(150,190,255,0)');
+      gs.addColorStop(1, 'rgba(190,220,255,' + (0.10 + h(i, 25) * 0.10).toFixed(3) + ')');
+      ctx.strokeStyle = gs; ctx.lineWidth = 1 + h(i, 26);
+      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + len, y); ctx.stroke();
+    }
+
+    // ── SPACE TRAFFIC: distant craft crossing the view every 14-27s, with a blinking nav light.
+    // Small and infrequent on purpose — traffic, not a dogfight.
+    for (let i = 0; i < 4; i++) {
+      const period = 14 + h(i, 31) * 13;
+      const ph = wrap(t / period + h(i, 32), 1);
+      const dir = h(i, 33) < 0.5 ? 1 : -1;
+      const x = ox - 160 + (dir > 0 ? ph : 1 - ph) * (TW + 320);
+      const y = oy + (0.08 + h(i, 34) * 0.84) * TH - cam.y * 0.08;
+      const trail = 34 + h(i, 35) * 30;
+      const gt = ctx.createLinearGradient(x, y, x - dir * trail, y);
+      gt.addColorStop(0, 'rgba(210,235,255,0.55)');
+      gt.addColorStop(1, 'rgba(120,170,255,0)');
+      ctx.strokeStyle = gt; ctx.lineWidth = 1.6;
+      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - dir * trail, y); ctx.stroke();
+      ctx.globalAlpha = 0.75;
+      ctx.fillStyle = '#eaf4ff';
+      ctx.fillRect(x - 1.4, y - 1.4, 2.8, 2.8);
+      ctx.globalAlpha = 0.30 + 0.55 * Math.abs(Math.sin(t * 3.1 + i * 2.3));   // nav strobe
+      ctx.fillStyle = i % 2 ? '#ff7a7a' : '#7affc8';
+      ctx.fillRect(x - dir * 5 - 1, y - 1, 2, 2);
+      ctx.globalAlpha = 1;
+    }
+
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 1;
+    ctx.restore();
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
