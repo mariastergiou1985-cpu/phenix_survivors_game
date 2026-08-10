@@ -18,9 +18,9 @@ import { SupportDrone }   from '../entities/SupportDrone.js?v=20260711750000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260713600000';
 import { SystemEventManager } from './Events.js?v=20260908320000';
-import { UpgradeUI }      from './UpgradeUI.js?v=20260908320000';
+import { UpgradeUI }      from './UpgradeUI.js?v=20260908330000';
 import { weightedSample } from './Upgrades.js?v=20260908260000';
-import { BuildEngineRuntime, WEAPON_DEFS as BE_WEAPON_DEFS, EVOLUTION_RECIPES as BE_EVOLUTION_RECIPES, PASSIVE_DEFS as BE_PASSIVE_DEFS } from './BuildEngine.js?v=20260908180000';   // BUILD ENGINE — always on (full migration 2026-07-18)
+import { BuildEngineRuntime, WEAPON_DEFS as BE_WEAPON_DEFS, EVOLUTION_RECIPES as BE_EVOLUTION_RECIPES, PASSIVE_DEFS as BE_PASSIVE_DEFS } from './BuildEngine.js?v=20260908330000';   // BUILD ENGINE — always on (full migration 2026-07-18)
 import { FUSION_DEFS, FUSION_CARD_ORDER, FUSION_ART_READY, FUSION_MAX_TIER, fusionCost, CHAR_DISPLAY_NAMES } from './FusionCatalog.js?v=20260902070000';   // FUSION ARMORY (Batch B)
 import { FusionEngine } from './FusionEngine.js?v=20260908170000';   // FUSION ARMORY runtime (Batch D)
 import './BuildEngineChars1.js?v=20260908180000';   // P2.3a Taekwondo+CyberArm (side-effect register)
@@ -32,7 +32,7 @@ import './BuildEnginePassives.js?v=20260908180000'; // P2.6 Build passives §26-
 import { MutationUI }      from './MutationUI.js?v=20260904180000';
 import { sampleMutations, sampleCorruptedMutation } from './Mutations.js?v=20260904180000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260908050000';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RETIRED_SECRET_SKINS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, COLLECTIBLE_FRAGMENT_COST, COLLECTIBLE_GRID_COST, ECHO_FRAGMENT_COST, ECHO_GRID_COST, SKILL_TREE, AMULET_DEFS, GRID_TO_PF_RATE, characterStageRequirement } from './MetaProgress.js?v=20260908310000';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RETIRED_SECRET_SKINS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, COLLECTIBLE_FRAGMENT_COST, COLLECTIBLE_GRID_COST, ECHO_FRAGMENT_COST, ECHO_GRID_COST, SKILL_TREE, AMULET_DEFS, GRID_TO_PF_RATE, characterStageRequirement } from './MetaProgress.js?v=20260908330000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260712520000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
@@ -5943,7 +5943,7 @@ export class Game {
       if (!this._inRect(mousePos, rects[i])) continue;
       const upg = list[i];
       // Locked synergy (Oni) — cannot be purchased until the character is unlocked.
-      if ((upg.lockedUntil && !this.meta.isProtocolUnlocked(upg.lockedUntil)) || (upg.char && !this.meta.isCharacterUnlocked(upg.char))) {
+      if ((upg.lockedUntil && !this.meta.isMetaGateOpen(upg.lockedUntil)) || (upg.char && !this.meta.isCharacterUnlocked(upg.char))) {
         this._upgradeMsg = `${upg.charName} must be unlocked first.`;
         this._upgradeMsgTimer = 2.2;
         this._confirmReset = false;
@@ -6550,7 +6550,7 @@ export class Game {
           const _pn = (SKILL_TREE.find(n => n.key === upg.prereq) || {}).name || 'the previous node';
           this._upgradeMsg      = `Unlock ${_pn} first.`;
           this._upgradeMsgTimer = 2.2;
-        } else if ((upg.lockedUntil && !this.meta.isProtocolUnlocked(upg.lockedUntil)) || (upg.char && !this.meta.isCharacterUnlocked(upg.char))) {
+        } else if ((upg.lockedUntil && !this.meta.isMetaGateOpen(upg.lockedUntil)) || (upg.char && !this.meta.isCharacterUnlocked(upg.char))) {
           this._upgradeMsg      = `${upg.charName || upg.name} must be unlocked first.`;
           this._upgradeMsgTimer = 2.2;
         } else {
@@ -6751,7 +6751,7 @@ export class Game {
         const lvl    = this.meta.getLevel(upg.key);
         const cost   = upgradeCost(upg, lvl);
         const maxed  = lvl >= upg.maxLevel;
-        const locked = !!((upg.lockedUntil && !this.meta.isProtocolUnlocked(upg.lockedUntil)) || (upg.char && !this.meta.isCharacterUnlocked(upg.char)) || (upg.prereq && this.meta.getLevel(upg.prereq) < 1));
+        const locked = !!((upg.lockedUntil && !this.meta.isMetaGateOpen(upg.lockedUntil)) || (upg.char && !this.meta.isCharacterUnlocked(upg.char)) || (upg.prereq && this.meta.getLevel(upg.prereq) < 1));
         const can    = !maxed && !locked && credits >= cost;
         const dots   = Array.from({length: upg.maxLevel}, (_, d) =>
           `<span class="cgu-dot${d < lvl ? (isSyn ? ' syn-filled' : ' filled') : ''}"></span>`
@@ -9575,7 +9575,7 @@ export class Game {
 
   // Premium synergy upgrade card: name + character + ★ strip + flat 1000-Core cost / MAX / LOCKED.
   _drawSynergyUpgradeCard(ctx, upg, r, lvl, cost, maxed) {
-    const locked = !!((upg.lockedUntil && !this.meta.isProtocolUnlocked(upg.lockedUntil)) || (upg.char && !this.meta.isCharacterUnlocked(upg.char)));
+    const locked = !!((upg.lockedUntil && !this.meta.isMetaGateOpen(upg.lockedUntil)) || (upg.char && !this.meta.isCharacterUnlocked(upg.char)));
     const accent = locked ? '#5a5a6a' : '#ffd23c';
     const can    = !maxed && !locked && this.meta.credits >= cost;
 
@@ -16670,6 +16670,20 @@ export class Game {
   // Adds it to _weaponLevels at the given level, enabling cross-character evolution recipes.
   _grantBaseWeapon(weaponId, level) {
     const cur = this._weaponLevels.get(weaponId) || 0;
+    // EXCLUSIVITY, ENFORCED AT THE CHOKE POINT (2026-08-10). Every acquisition route — the
+    // level-up weapon card, the Overcharge vault, and the "future weapon-drop mechanic" this
+    // method was written for — lands here, so this is the one place that can promise a signature
+    // weapon never reaches the wrong hands no matter which path is added next. It gates
+    // ACQUISITION only: a weapon already held keeps levelling normally, so the vault's +1 to an
+    // owned weapon and the character's own starter are untouched.
+    if (cur === 0) {
+      const _d = getWeaponDef(weaponId);
+      if (_d?.exclusive && _d.character && _d.character !== this.selectedCharacter) {
+        console.warn('[exclusivity] refused ' + weaponId + ' for ' + this.selectedCharacter +
+                     ' — locked to ' + _d.character);
+        return;
+      }
+    }
     if (level > cur) {
       this._weaponLevels.set(weaponId, level);
       // Sync player.upgrades so _cardLvl(weaponId) returns the correct level
@@ -16729,7 +16743,37 @@ export class Game {
     }
     const meta = WEAPON_VFX_META[weaponId];
     const sheet = this._weaponVFXSheets[weaponId];
-    if (!meta || !sheet || !sheet.complete || sheet.naturalWidth === 0) return null;
+    // ── SINGLE-ILLUSTRATION WEAPONS (2026-08-10) ────────────────────────────────────────────
+    // WEAPON_VFX_META describes FRAME SHEETS, and a few weapons are deliberately not in it because
+    // their art is one illustration — Solo Red Thunder says so in its own definition ("NOT a frame
+    // sheet, so it has no grid/totalFrames/fps and must never be added to WEAPON_VFX_META").
+    // The guard below reads `!meta` and returns null, so for those weapons this method has always
+    // bailed out before reaching the override branch: no muzzle flash, and — because
+    // _spawnWeaponAccent() is only called at the end of this method — no accent layer either.
+    // Measured on Eddie: firing Solo Red Thunder produced 0 VFX objects and 0 draw calls.
+    //
+    // Their art already exists and is already keyed by wielder in WIELDER_VFX_OVERRIDES. This
+    // builds the one-frame player that entry was always meant to feed, under exactly the same
+    // ownership rules the sheet path uses below. Damage, cooldown, projectile, targeting and
+    // behaviour are untouched — this adds the missing visual, nothing else.
+    if (!meta) {
+      const _key = weaponId + '|' + (this.player ? this.player.selectedCharacter : '');
+      const _art = WIELDER_VFX_OVERRIDES[_key];
+      if (!_art || WORLD_OVERRIDE_CARD_ONLY.has(_key)) return null;
+      if (this.buildEngine?.weapons?.has?.(weaponId)) return null;      // BE owns it → no dual visual
+      const _img = _getNexusImage(_art);
+      if (!_img || !_img.complete || !_img.naturalWidth) return null;
+      const _v = new VFXSpritePlayer(_img, _img.naturalWidth, _img.naturalHeight, 1, 1, 12);
+      _v.x = x; _v.y = y; _v.angle = angle || 0; _v.scale = scale || 1.0;
+      _v.overrideImg = _img;                                            // single-image render mode
+      _v.animStyle   = WEAPON_ANIM_STYLE[weaponId] || 'spin';
+      _v.aimAngle    = angle || 0;
+      _v.play();
+      this._activeWeaponVFX.push(_v);
+      this._spawnWeaponAccent(weaponId, x, y, angle || 0, scale || 1);
+      return _v;
+    }
+    if (!sheet || !sheet.complete || sheet.naturalWidth === 0) return null;
     const vfx = new VFXSpritePlayer(sheet, meta.frameW, meta.frameH, meta.totalFrames, meta.cols, meta.fps);
     vfx.x     = x;
     vfx.y     = y;
@@ -19496,18 +19540,39 @@ export class Game {
       }
     } catch (e) { /* bias is optional */ }
 
-    // EXCLUSIVITY DEFERS TO A RECIPE THIS CHARACTER OWNS (Maria 2026-08-02).
-    // Exclusive weapons stay hard-locked to their owner in the general pool. The one exception is
-    // an ingredient of an evolution recipe THIS character owns: Seismic Rift is owned by
-    // brawler_warrior and needs nexus_chakram + cataclysm_pulse, but cataclysm_pulse is exclusive
-    // to Oni — so its only owner could never hold both ingredients and the recipe was unreachable
-    // for every character in the game. Narrow by construction: `_needed` only ever contains
-    // ingredients of recipes isEvolutionOwnedBy() already granted to this character, so no
-    // signature weapon leaks into a pool that has no recipe asking for it.
+    // EXCLUSIVITY IS ABSOLUTE (2026-08-10).
+    //
+    // The 2026-08-02 rule let `_needed` pierce exclusivity so a recipe whose ingredient list
+    // crosses characters could still be completed. It was described as narrow. It was not:
+    // measured across the full roster, SIX of the ten characters could acquire a weapon
+    // hard-locked to somebody else —
+    //   cyber_arm_hero  cataclysm_pulse  (foundry_piston)
+    //   brawler_warrior cataclysm_pulse  (seismic_rift, caustic_inferno)
+    //                   solo_red_thunder (crimson_singularity, vaporize_blade)
+    //   assassin_clone  solo_red_thunder (eclipse_frostfang)
+    //   euclid_vector   cataclysm_pulse  (cataclysm_chain)  solo_red_thunder (bio_shock_reaper)
+    //   eddie           cataclysm_pulse  (solo_of_the_damned)
+    //   dimis_kickboxer cataclysm_pulse  (wing_guillotine)
+    // Demonic Cataclysm Pulse says "HARD-LOCKED to Oni — never appears in other characters'
+    // weapon pools" in its own definition, and Solo Red Thunder says the same for Eddie. A brawler
+    // holding Oni's signature weapon is not an edge case of a recipe rule, it is the rule being
+    // wrong.
+    //
+    // `_needed` keeps its other job — it still biases ACQUISITION ORDER toward ingredients of
+    // recipes this character owns, which is what makes an owned recipe converge. It just no longer
+    // decides who may hold a signature weapon.
+    //
+    // CONSEQUENCE, STATED PLAINLY: a legacy recipe that needs a foreign character's exclusive
+    // weapon is now unreachable for an owner who is not that character. Nothing breaks and no dead
+    // card appears — the evolution card is only offered once its ingredients are at level 5, so a
+    // recipe that cannot gather them is simply never offered. The owners of the exclusives keep
+    // every recipe of their own (Oni: hannya_brand, gate_of_hungry_ghosts, ember_storm; Eddie:
+    // amp_overdrive_wall, chaos_chord, shatter_rift_blade), and Solo of the Damned — the one
+    // recipe needing BOTH exclusives — lives on in the Build Engine as be_solo_of_the_damned.
     const available  = canAcquire
       ? getAllBaseWeapons().filter(w =>
           !this._weaponLevels.has(w.id) &&
-          (!w.exclusive || w.character === charId || _needed.has(w.id)))
+          (!w.exclusive || w.character === charId))
       : [];
     const pool = [];
     for (const w of upgradeable) { const n = _needed.has(w.id) ? 3 : 1; for (let bi = 0; bi < n; bi++) pool.push({ type: 'upgrade', id: w.id, level: w.level }); }

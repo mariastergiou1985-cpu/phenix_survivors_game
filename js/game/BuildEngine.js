@@ -446,9 +446,19 @@ export class BuildEngineRuntime {
   injectCards(choices) {
     if (!choices || choices.length === 0) return false;
     const self = this, g = this.game;
-    const mk = (key, name, desc, color, badge, applyFn) => ({
+    // LEVEL DISPLAY (2026-08-10). The card row of dots is drawn by UpgradeUI from
+    // `player.upgrades[card.key]`, and nothing ever writes player.upgrades['be_w_...'] — the Build
+    // Engine keeps its levels in its OWN weapons/passives maps. So every BE card drew ZERO filled
+    // dots out of maxLevel 9 while its own description line said "Lv3 -> Lv4": the two halves of
+    // the same card disagreed, and the dots were wrong for every BE card ever offered.
+    //
+    // `level` and `displayMax` carry the REAL numbers to the renderer. maxLevel stays 9 — it is
+    // untouched, and so is every cap the engine actually enforces (weapons 5, catalysts and build
+    // passives their own p.maxLevel). This is a display fix and nothing else.
+    const mk = (key, name, desc, color, badge, applyFn, level = 0, displayMax = 0) => ({
       key, name, description: desc, iconColor: color, icon: badge, rarity: 'rare',
       maxLevel: 9, synergy: true, char: null,
+      level, displayMax,
       apply() { applyFn(); }, canApply() { return true; },
     });
 
@@ -457,7 +467,7 @@ export class BuildEngineRuntime {
     if (ready) {
       const r = ready.recipe;
       choices[choices.length - 1] = mk('be_evo_' + ready.eid, r.name,
-        r.desc + '  [EVOLUTION]', CARD_COLOR.evolution, '☠', () => self._evolve(r.weapon));
+        r.desc + '  [EVOLUTION]', CARD_COLOR.evolution, '☠', () => self._evolve(r.weapon), 0, 0);
       return true;
     }
 
@@ -506,7 +516,7 @@ export class BuildEngineRuntime {
       const _delta = w ? '  [ST-DPS ' + _cur + ' → ' + _nxt + ']' : '  [ST-DPS ' + _nxt + ']';
       cand.push({ wt, card: mk('be_w_' + wid, d.name,
         _badges + (w ? 'Lv' + w.level + ' → Lv' + (w.level + 1) + ' — ' : '') + d.desc + _delta,
-        CARD_COLOR.weapon, '❖', () => self.addWeapon(wid)) });
+        CARD_COLOR.weapon, '❖', () => self.addWeapon(wid), (w?.level || 0), 5) });
     }
     for (const [pid, p] of Object.entries(PASSIVE_DEFS)) {
       if (p.category === 'build_passive') {                        // P2.6: global build passives
@@ -516,7 +526,7 @@ export class BuildEngineRuntime {
         if (!bl && _pFull) continue;                               // P2.7: 6P cap — μόνο level-ups
         cand.push({ wt: 1, card: mk('be_p_' + pid, p.name,
           (bl ? 'Level ' + (bl + 1) + ' — ' : '') + p.desc, CARD_COLOR.passive, '◆',
-          () => self.addPassive(pid)) });
+          () => self.addPassive(pid), bl, p.maxLevel) });
         continue;
       }
       const w = this.weapons.get(p.forWeapon);
@@ -547,7 +557,7 @@ export class BuildEngineRuntime {
       const _req = _evoReady ? '[EVOLUTION READY] ' : ('[REQUIRES: weapon Lv5 (' + _wl + '/5) + Lv' + p.maxLevel + ' (' + (lvl + 1) + '/' + p.maxLevel + ')] ');
       cand.push({ wt, card: mk('be_p_' + pid, p.name,
         _req + (lvl ? 'Lv' + lvl + ' → Lv' + (lvl + 1) + ' — ' : '') + p.desc, CARD_COLOR.passive, '◈',
-        () => self.addPassive(pid)) });
+        () => self.addPassive(pid), lvl, p.maxLevel) });
     }
     if (!cand.length) return false;
     // The BE card is the focused recipe path chosen by the player. Card pacing already skips

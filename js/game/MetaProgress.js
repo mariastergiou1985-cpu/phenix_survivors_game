@@ -934,6 +934,32 @@ export class MetaProgress {
 
   addCredits(n) { this.credits += n; this._save(); }
 
+  /**
+   * Is a meta-upgrade's `lockedUntil` gate open?
+   *
+   * `lockedUntil` was written against protocolUnlocks — the Protocol-Fragment purchase path. That
+   * path is closed: PF_CHARACTER_COSTS is deliberately an empty map (characters unlock through
+   * campaign stages now), so protocolUnlockCost() returns 0, tryUnlockCharacterWithPF() answers
+   * 'invalid', and NOTHING can ever write protocolUnlocks[id] = true. The two synergies carrying a
+   * lockedUntil — Cataclysm Chain Reaction and Red Thunder Resonance — were therefore locked
+   * forever: 10,000 Grid Cores of content behind a flag with no writer.
+   *
+   * The requirement itself is unchanged and is NOT relaxed. `lockedUntil` names a CHARACTER, and
+   * that character's real gate is the campaign ladder (Oni at stage 6, Eddie after the final
+   * stage), which is what the sibling `char` check on the same entries already uses. This resolves
+   * the gate through whichever path can actually be satisfied.
+   *
+   * An id that is neither a purchased protocol unlock nor a known character stays LOCKED — the
+   * safety default of isCharacterUnlocked() (unmapped → true) must not leak in here and open a
+   * gate nobody earned.
+   */
+  isMetaGateOpen(id) {
+    if (!id) return true;
+    if (this.isProtocolUnlocked(id)) return true;                       // PF path, if it ever reopens
+    if (characterStageRequirement(id, this.totalStages) != null) return this.isCharacterUnlocked(id);
+    return false;
+  }
+
   // ─── Secret unlocks ─────────────────────────────────────────────────────────
   isUnlocked(key) { return this.unlocks[key] === true; }
 

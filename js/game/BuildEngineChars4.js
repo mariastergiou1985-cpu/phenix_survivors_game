@@ -5,7 +5,7 @@
 // ΚΑΝΕΝΑ PNG, μηδέν shadowBlur.
 // ═══════════════════════════════════════════════════════════════════════════════
 import { WEAPON_DEFS, PASSIVE_DEFS, EVOLUTION_RECIPES, WEAPON_EXECUTORS }
-  from './BuildEngine.js?v=20260908180000';
+  from './BuildEngine.js?v=20260908330000';
 
 function aimAngle(rt) {
   // TARGETING PASS 2026-08-09: ΗΤΑΝ _nearestEnemy() -> τέλειο auto-lock πάνω στο σώμα, για

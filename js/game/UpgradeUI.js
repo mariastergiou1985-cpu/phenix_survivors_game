@@ -1,7 +1,7 @@
 import { WIDTH, HEIGHT, YELLOW, WHITE, GREY } from '../constants.js';
 import { drawText, wrapText, roundRect } from '../utils.js';
 import { RARITY_COLORS } from './Upgrades.js?v=20260908260000';
-import { WEAPON_DEFS, PASSIVE_DEFS, EVOLUTION_RECIPES } from './BuildEngine.js?v=20260908180000';   // SAME stamp as Game.js — a different ?v= is a SECOND BuildEngine module
+import { WEAPON_DEFS, PASSIVE_DEFS, EVOLUTION_RECIPES } from './BuildEngine.js?v=20260908330000';   // SAME stamp as Game.js — a different ?v= is a SECOND BuildEngine module
 
 export class UpgradeUI {
   constructor(choices, options = {}) {
@@ -333,7 +333,15 @@ export class UpgradeUI {
         ctx.restore();
       } else {
         // Current level dots — capped at 10 so re-offerable cards never overflow the card.
-        const level = Math.min(player.upgrades[upg.key] ?? 0, 10);
+        //
+        // `upg.level` / `upg.displayMax` win when the card carries them. A Build Engine card keeps
+        // its level inside the engine's own weapons/passives maps, never in player.upgrades, so
+        // reading player.upgrades for it always answered 0 — the row showed 0 filled dots out of 9
+        // while the card's own text read "Lv3 -> Lv4". Legacy cards carry neither field and fall
+        // back to exactly what they used before, so nothing about them changed.
+        const _lvSrc  = Number.isFinite(upg.level) ? upg.level : (player.upgrades[upg.key] ?? 0);
+        const _maxSrc = Number.isFinite(upg.displayMax) ? upg.displayMax : upg.maxLevel;
+        const level = Math.min(_lvSrc, 10);
         for (let d = 0; d < level; d++) {
           ctx.fillStyle = upg.iconColor;
           ctx.beginPath();
@@ -341,7 +349,7 @@ export class UpgradeUI {
           ctx.fill();
         }
         // Empty dots to max — same cap: past 10 the dot row is meaningless.
-        for (let d = level; d < Math.min(upg.maxLevel, 10); d++) {
+        for (let d = level; d < Math.min(_maxSrc, 10); d++) {
           ctx.strokeStyle = upg.iconColor + '55';
           ctx.lineWidth   = 1;
           ctx.beginPath();
