@@ -451,6 +451,10 @@ export class MetaProgress {
     this.edenMemoryPercent  = 0;   // 0–100, persisted
     this.lastPlayerLevelRewarded = 1;   // account-level rewards claimed up to this menu level
     this.rewardedPFTotal = 0;           // PF granted BY level rewards — excluded from progression (breaks the feedback loop)
+    // A brand-new profile is born already migrated: it cannot be a polluted save, and starting
+    // at 0 would make its very first _save() write 0 and put it through the migration branch on
+    // the next load for nothing. _load() overwrites this from disk for an existing save.
+    this.economyRepairVersion = 3;      // ECONOMY_REPAIR_VERSION — see the repair block in _load()
     this.systemFeedMessages = [];  // last 8 { text, ts } entries, newest first
     this.bossEchoes         = {};  // { [bossKey]: true } first-time echo archives
     this.collectiblesActive = {};  // { [achId]: true }  — paid activation (PF + grids) of earned collectibles
@@ -526,24 +530,47 @@ export class MetaProgress {
       this.edenMemoryPercent  = Math.min(100, Math.max(0, Number(d.edenMemoryPercent) || 0));
       this.lastPlayerLevelRewarded = Math.max(1, Math.floor(Number(d.lastPlayerLevelRewarded) || 1));
       this.rewardedPFTotal = Math.max(0, Math.floor(Number(d.rewardedPFTotal) || 0));
-      // ── ONE-TIME REPAIR (2026-07-12): the first version of level rewards fed PF back
-      // into the level metric → runaway loop (levels 213→1494, cores in the millions).
-      // Detect a polluted save and settle it to generous-but-sane values.
-      // v2: also settle saves that already ran the too-generous v1 repair (100k/300).
-      if (!d.economyRepairV2 && ((this.credits || 0) > 20000 || (this.protocolFragments || 0) > 120)) {
-        this.credits           = Math.min(this.credits || 0, 20000);
-        this.protocolFragments = Math.min(this.protocolFragments || 0, 120);
-        this._save();
+      // ── ONE-TIME ECONOMY REPAIR ────────────────────────────────────────────────
+      // v1/v2 (2026-07-12): the first version of level rewards fed PF back into the level
+      // metric → runaway loop (levels 213→1494, cores in the millions). A polluted save is
+      // settled to generous-but-sane values. v2 also settled saves that had run the
+      // too-generous v1 repair (100k/300).
+      //
+      // v3 (this change) fixes the half that had NO version flag at all. The second clamp
+      // below used to sit bare in the load path, gated only on
+      //     lastPlayerLevelRewarded > 300 || credits > 500000
+      // and it re-ran on EVERY load. Because it rewrites lastPlayerLevelRewarded to the
+      // current level it looked self-limiting, but `credits > 500000` is a threshold a real
+      // late-game player reaches — and once they did, every single launch reset them to
+      // 20000 credits and 120 PF. A banked 600k was destroyed again and again, silently.
+      //
+      // The whole repair now sits behind a PERSISTED version number. Once a save records
+      // version 3 it is never inspected again, so no later load can reduce a balance the
+      // player legitimately earned. Not one repair VALUE changed: a save that still needs
+      // migrating gets exactly the same numbers it would have got before.
+      const ECONOMY_REPAIR_VERSION = 3;
+      // A save written by the previous build has no version field but does carry
+      // economyRepairV2:true, so it is treated as already at v2 — it must not be clamped by
+      // the v2 rule a second time.
+      const _repairAt = Math.max(Number(d.economyRepairVersion) || 0, d.economyRepairV2 ? 2 : 0);
+      if (_repairAt < ECONOMY_REPAIR_VERSION) {
+        if (_repairAt < 2 && ((this.credits || 0) > 20000 || (this.protocolFragments || 0) > 120)) {
+          this.credits           = Math.min(this.credits || 0, 20000);
+          this.protocolFragments = Math.min(this.protocolFragments || 0, 120);
+        }
+        if (this.lastPlayerLevelRewarded > 300 || (this.credits || 0) > 500000) {
+          this.credits           = Math.min(this.credits || 0, 20000);    // Maria's numbers
+          this.protocolFragments = Math.min(this.protocolFragments || 0, 120);
+          this.rewardedPFTotal   = Math.max(0, this.getProtocolFragmentsEarned() - 250);
+          const lv = this.getPlayerProgression().level;
+          this.lastPlayerLevelRewarded = lv;      // no back-claims on the repaired level
+        }
+        this.economyRepairVersion = ECONOMY_REPAIR_VERSION;
+        this._save();                    // the version is written in the SAME save as the repair
+      } else {
+        this.economyRepairVersion = _repairAt;
       }
-      this.economyRepairV2 = true;
-      if (this.lastPlayerLevelRewarded > 300 || (this.credits || 0) > 500000) {
-        this.credits           = Math.min(this.credits || 0, 20000);    // Maria's numbers
-        this.protocolFragments = Math.min(this.protocolFragments || 0, 120);
-        this.rewardedPFTotal   = Math.max(0, this.getProtocolFragmentsEarned() - 250);
-        const lv = this.getPlayerProgression().level;
-        this.lastPlayerLevelRewarded = lv;      // no back-claims on the repaired level
-        this._save();
-      }
+      this.economyRepairV2 = true;       // kept so an older build reading this save still sees it
       this.systemFeedMessages = Array.isArray(d.systemFeedMessages) ? d.systemFeedMessages.slice(0, 8) : [];
       this.bossEchoes         = (d.bossEchoes && typeof d.bossEchoes === 'object') ? d.bossEchoes : {};
       // Paid-activation maps (Maria 2026-07-18). GRANDFATHERING: a save from before this
@@ -641,6 +668,10 @@ export class MetaProgress {
         lastPlayerLevelRewarded: this.lastPlayerLevelRewarded,
         rewardedPFTotal: this.rewardedPFTotal,
         economyRepairV2: true,
+        // Without this the version never reaches disk and the repair runs again on every
+        // load — which is the whole bug. Defaults to 0 so a save written before this field
+        // existed is still migrated exactly once.
+        economyRepairVersion: this.economyRepairVersion || 0,
         systemFeedMessages: this.systemFeedMessages,
         bossEchoes:         this.bossEchoes,
         collectiblesActive: this.collectiblesActive,
