@@ -1,4 +1,4 @@
-import { Game } from './game/Game.js?v=20260908250000';
+import { Game } from './game/Game.js?v=20260908260000';
 import { AudioManager } from './audio/AudioManager.js?v=20260904100000';
 import { PlatformAchievements } from './platform/PlatformAchievements.js?v=20260712370000';
 // Steam build: replay any web-earned achievements to Steam on boot (no-op in browsers)
@@ -185,6 +185,19 @@ window.addEventListener('keydown', e => {
   if (key === 'q') game.activatePulseShield();   // Pulse Shield — shared by ALL characters
   if (key === 'e') game.activateEMPCloud();       // EMP stun — shared by ALL (Phasewalker layers his Shockwave VFX inside)
   if (key === ' ') { game.activateThunderSolo(); game.activateOverheatedChains(); game.activateCyberBikeRush(); game.activateSkyfallLances(); game.activateChromePhantomProtocol(); game.activateDigitalSingularity(); game.activateEuclidPlague(); game.activateProtocol0Cataclysm(); game.activateRedThunderCurtain(); game.activateDimiAngelUltimate(); }   // SPACE ultimate (per-character; each self-guards)
+  // C — per-character SPECIAL. activateSpecial() has existed since the special system shipped,
+  // with a 25s cooldown on Player (specialCooldown / specialMaxCooldown) that ticks down every
+  // frame and a HUD ring already drawing it — but NOTHING ever called it. Dimi was rewired out
+  // of it into the SPACE chain and nobody noticed the other three went with it, so Bone Guard
+  // Blast, Lightning Dash + Crystal Ice Field and Overdrive Beam could not be fired at all.
+  // A new key rather than an existing one: Q/E/SPACE/SHIFT are all taken and remapping any of
+  // them would change a binding players already have in their fingers.
+  if (key === 'c') game.activateSpecial();
+  // V — Spirit Dojang Flag. Fully implemented (field, tick damage, update and draw both wired
+  // into the loop) but in no input path: taekwondo's SPACE goes to activateCyberBikeRush, which
+  // now fires Afterimage Tribunal. It needs its own key because SPACE and C are both already
+  // spoken for on this character.
+  if (key === 'v') game.activateSpiritDojang();
   if (key === 'm') game.audio?.toggleMute();
   // P2 FULL MIGRATION (Maria 2026-07-18): F9 opt-out retired — the Build Engine is
   // unconditionally ON (a stale phenix_p2='0' from the soft-migration era is cleared
@@ -688,6 +701,12 @@ function applyGamepad() {
     if (s.btn.lb.pressed)    { padTap('q'); pad.rumble(90, 0.4, 0.5); }   // LB / L1 → Pulse Shield
     if (s.btn.rb.pressed)    { padTap('e'); pad.rumble(90, 0.4, 0.5); }   // RB / R1 → EMP
     if (s.btn.y.pressed)     { padTap(' '); pad.rumble(200, 0.85, 0.6); } // Y / Triangle → Ultimate (big rumble)
+    // X/Square and A/Cross were the only face buttons with NO gameplay binding, which is why
+    // they are the ones taken here — nothing is remapped and dash (RT/LT/B) and the ultimate (Y)
+    // are untouched. Both go through padTap, so they land on the same keyboard handlers above and
+    // there is exactly one implementation of each ability.
+    if (s.btn.x.pressed)     { padTap('c'); pad.rumble(120, 0.6, 0.5); }  // X / Square → SPECIAL
+    if (s.btn.a.pressed)     { padTap('v'); pad.rumble(120, 0.6, 0.5); }  // A / Cross → Spirit Dojang Flag
     if (s.btn.start.pressed) padTap('Escape');   // Start/Options → pause (B/Circle is now gameplay dash)
     // Right stick → manual aim direction (overrides auto-aim while active)
     if (s.axes.rx !== 0 || s.axes.ry !== 0) {

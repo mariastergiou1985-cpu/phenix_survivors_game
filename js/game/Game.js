@@ -18,8 +18,8 @@ import { SupportDrone }   from '../entities/SupportDrone.js?v=20260711750000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260713600000';
 import { SystemEventManager } from './Events.js?v=20260802000000';
-import { UpgradeUI }      from './UpgradeUI.js?v=20260902100000';
-import { weightedSample } from './Upgrades.js?v=20260902100000';
+import { UpgradeUI }      from './UpgradeUI.js?v=20260908260000';
+import { weightedSample } from './Upgrades.js?v=20260908260000';
 import { BuildEngineRuntime, WEAPON_DEFS as BE_WEAPON_DEFS, EVOLUTION_RECIPES as BE_EVOLUTION_RECIPES, PASSIVE_DEFS as BE_PASSIVE_DEFS } from './BuildEngine.js?v=20260908180000';   // BUILD ENGINE — always on (full migration 2026-07-18)
 import { FUSION_DEFS, FUSION_CARD_ORDER, FUSION_ART_READY, FUSION_MAX_TIER, fusionCost, CHAR_DISPLAY_NAMES } from './FusionCatalog.js?v=20260902070000';   // FUSION ARMORY (Batch B)
 import { FusionEngine } from './FusionEngine.js?v=20260908170000';   // FUSION ARMORY runtime (Batch D)
@@ -10064,8 +10064,13 @@ export class Game {
   }
 
   activateSpecial() {
-    if (this.gameState !== 'playing' || this.gameOver || this.victory || this.upgradeUI) return;
+    // `paused` and `mutationUI` join the guard: this was never reachable before, so the two gates
+    // every other ability carries had never had to hold here. Without them the special would fire
+    // through the pause screen and through a forced mutation card.
+    if (this.gameState !== 'playing' || this.paused || this.gameOver || this.victory ||
+        this.upgradeUI || this.mutationUI) return;
     const p = this.player;
+    if (!p) return;
     if (p.specialCooldown > 0) return;
     if      (p.selectedCharacter === 'skeleton_warrior')  this._activateBoneGuardBlast();
     else if (p.selectedCharacter === 'taekwondo_girl')    this._activateLightningDashStrike();

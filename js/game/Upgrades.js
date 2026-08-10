@@ -166,10 +166,17 @@ export const ALL_UPGRADES = [
   // ID kept unchanged for save compatibility; effect target moved to the live auto-weapon.
   new UpgradeDefinition('taekwondo_aqua_trail_mastery', 'Spirit Pierce', 'Spirit Crescent Kicks: +1 pierce & wider arc per level',
     CYAN, 3, () => {}, '🌀', 'epic', 'taekwondo_girl'),
-  // Repurposed from the retired Spirit Dojang ultimate → now buffs her Cyber Ride ultimate.
-  // ID kept unchanged so existing saves / references stay valid; only display + effect target changed.
-  new UpgradeDefinition('taekwondo_dojang_flag_mastery', 'Cyber Ride Mastery', 'Cyber Ride: stronger headlight lasers & wider ram per level',
-    BLUE, 3, () => {}, '🏍️', 'legendary', 'taekwondo_girl'),
+  // LABEL CORRECTED, effect untouched. The note that used to sit here said this card had been
+  // repurposed onto Cyber Ride — but the effect target was never actually moved: the only two
+  // reads of this id in the whole codebase are Game._updateSpiritDojang (field RADIUS, +12% per
+  // level) and Game._drawSpiritDojang. Cyber Ride was then retired as well
+  // (activateCyberBikeRush now fires Afterimage Tribunal), so the card was pointing at a
+  // mechanic that no longer exists AND its real target was unreachable — a legendary that did
+  // nothing at all. Spirit Dojang is now bound to an input, which makes the existing effect live;
+  // this only makes the card say what it has always done. ID unchanged so saves stay valid, and
+  // not one number moved.
+  new UpgradeDefinition('taekwondo_dojang_flag_mastery', 'Dojang Flag Mastery', 'Spirit Dojang: +12% field radius per level',
+    BLUE, 3, () => {}, '🏳️', 'legendary', 'taekwondo_girl'),
   // Brawler Warrior — chakram / crescent claw / skyfall lances identity
   new UpgradeDefinition('brawler_chakram_mastery', 'Razor Chakram', 'Nexus Chakram: +1 pierce & stronger return',
     GREEN, 3, () => {}, '◎', 'rare', 'brawler_warrior'),
