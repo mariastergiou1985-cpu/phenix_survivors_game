@@ -32,7 +32,7 @@ import './BuildEnginePassives.js?v=20260908180000'; // P2.6 Build passives §26-
 import { MutationUI }      from './MutationUI.js?v=20260904180000';
 import { sampleMutations, sampleCorruptedMutation } from './Mutations.js?v=20260904180000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260908050000';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, COLLECTIBLE_FRAGMENT_COST, COLLECTIBLE_GRID_COST, ECHO_FRAGMENT_COST, ECHO_GRID_COST, SKILL_TREE, AMULET_DEFS, GRID_TO_PF_RATE, characterStageRequirement } from './MetaProgress.js?v=20260908280000';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, COLLECTIBLE_FRAGMENT_COST, COLLECTIBLE_GRID_COST, ECHO_FRAGMENT_COST, ECHO_GRID_COST, SKILL_TREE, AMULET_DEFS, GRID_TO_PF_RATE, characterStageRequirement } from './MetaProgress.js?v=20260908290000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260712520000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
@@ -49,7 +49,7 @@ import { RailgunHorizon } from '../effects/railgun-horizon.js?v=20260711560000';
 import { MagmaCoreEruption } from '../effects/magma-core-eruption.js?v=20260712300000';
 import { PhantomExecution } from '../effects/phantom-execution.js?v=20260711580000';
 import { WeatherTheater } from '../effects/weather-theater.js?v=20260712130000';
-import { TutorialGuide } from './TutorialGuide.js?v=20260908200000';
+import { TutorialGuide } from './TutorialGuide.js?v=20260908290000';
 import { Protocol0 } from '../effects/protocol-0.js?v=20260705000000';
 import { LaserEyes } from '../effects/laser-eyes.js?v=20260818000000';
 import { MeteorRain } from '../effects/meteor-rain.js?v=20260712100000';
@@ -19299,6 +19299,34 @@ export class Game {
   // Injects a weapon card (acquire OR upgrade) into the 3-card level-up pool
   // with a 25% probability per level-up. Max 3 weapon slots enforced.
   _injectWeaponCard(choices) {
+    if (!choices) return;
+    // AN EMPTY `choices` IS A VALID INPUT, not a reason to bail out.
+    // weightedSample() returns [] once the legacy UPGRADE pool is exhausted — which at high level
+    // is precisely when the Build Engine still has weapons and evolutions left to offer — and the
+    // old `length === 0` early return meant injectCards() was never reached at all. The level-up
+    // then produced nothing: `if (choices.length > 0)` failed, no panel opened, the pending level
+    // had already been decremented so it was consumed silently, and every BE weapon and evolution
+    // became unobtainable for the rest of the run.
+    //
+    // Both injectors write into FIXED slots — the Build Engine owns the last (and last-1 on its
+    // 1-in-5 variety offer), the legacy layer owns index 0 — so an empty array is padded to the
+    // SAME three-slot geometry a normal level-up has. Nothing about precedence, weighting, caps
+    // or rarity changes; the injectors cannot tell the difference. Any slot nobody claimed is
+    // removed again afterwards, so a blank card can never reach the UI, and if neither injector
+    // had anything the array is empty again and the behaviour is exactly what it was.
+    const _padded = choices.length === 0;
+    if (_padded) choices.push(null, null, null);
+    this._injectWeaponCardPass(choices);
+    if (_padded) {
+      const _filled = choices.filter(Boolean);
+      choices.length = 0;
+      for (const c of _filled) choices.push(c);
+    }
+  }
+
+  // Body of the card-injection pass, extracted VERBATIM so _injectWeaponCard above can pad an
+  // empty array before running it. Every line below is unchanged.
+  _injectWeaponCardPass(choices) {
     if (!choices || choices.length === 0) return;
 
     // ── FUSION ARMORY: guaranteed κάρτα όταν υπάρχει έτοιμο fusion (Endless/Chaos,

@@ -133,25 +133,30 @@ console.log('\n══ META ECONOMY — the repair must run ONCE and never take m
      JSON.stringify(b) === JSON.stringify(a) && JSON.stringify(d) === JSON.stringify(a));
 }
 
-// ── CASE 3: RICH late-game save, balances above the repair values ──────────
+// ── CASE 3: RICH late-game save, balances above the old repair values ──────
 // This is the case that was being robbed on every launch: economyRepairV2 was already true, so
 // the FIRST repair was correctly skipped, and the second one fired anyway because credits were
-// over 500000 — and it fired again on the next load, and the next.
+// over 500000 — and it fired again on the next load, and the next. The v3 trigger no longer
+// treats a large balance as corruption, so this save must come through the FIRST load untouched:
+// not "settled once", untouched.
 {
   put(baseSave({ credits: 640000, protocolFragments: 900, lastPlayerLevelRewarded: 180,
                  rewardedPFTotal: 500, economyRepairV2: true }));
-  const before = { credits: 640000, pf: 900, lastLv: 180 };
+  const before = { credits: 640000, pf: 900, lastLv: 180, rewardedPFTotal: 500 };
   const a = snap(load());
   const b = snap(load());
   const c = snap(load());
   const d = snap(load());
-  console.log('\n   CASE 3  RICH LATE-GAME (above the repair values)');
-  console.log(`     BEFORE  credits=${before.credits} PF=${before.pf} lastLv=${before.lastLv}`);
+  console.log('\n   CASE 3  RICH LATE-GAME (legitimately above the repair values)');
+  console.log(`     BEFORE  credits=${before.credits} PF=${before.pf} lastLv=${before.lastLv} rewardedPF=${before.rewardedPFTotal}`);
   console.log(`     FIRST   ${fmt(a)}`);
   console.log(`     RELOAD1 ${fmt(b)}`);
   console.log(`     RELOAD2 ${fmt(c)}`);
   console.log(`     RELOAD3 ${fmt(d)}`);
-  ok('CASE 3 reloads 1-3 take nothing further — the balance stops moving after the first load',
+  ok('CASE 3 the rich save is UNCHANGED from the very first load — no credit is taken',
+     a.credits === before.credits && a.pf === before.pf && a.lastLv === before.lastLv &&
+     a.rewardedPFTotal === before.rewardedPFTotal, `${fmt(a)}`);
+  ok('CASE 3 reloads 1-3 take nothing further',
      b.credits === a.credits && c.credits === a.credits && d.credits === a.credits &&
      b.pf === a.pf && d.pf === a.pf, `${fmt(a)} -> ${fmt(d)}`);
   ok('CASE 3 the version is recorded so the repair can never fire again', a.ver === 3);
@@ -199,6 +204,36 @@ console.log('\n══ META ECONOMY — the repair must run ONCE and never take m
   ok('CASE 5 a genuinely polluted save is still repaired',
      a.credits === 20000 && a.pf === 120 && a.lastLv <= 300, fmt(a));
   ok('CASE 5 and only once', JSON.stringify(b) === JSON.stringify(a));
+}
+
+// ── CASE 6: a LEGITIMATELY rich save must not be repaired even at the extreme ───
+// 5,000,000 credits with a sane level is a very good player, not a damaged save. If the trigger
+// ever drifts back to a balance threshold, this is the case that catches it.
+{
+  put(baseSave({ credits: 5000000, protocolFragments: 9000, lastPlayerLevelRewarded: 240,
+                 rewardedPFTotal: 800, economyRepairV2: true }));
+  const a = snap(load()), b = snap(load()), c = snap(load()), d = snap(load());
+  console.log('\n   CASE 6  VERY RICH, SANE LEVEL');
+  console.log(`     BEFORE  credits=5000000 PF=9000 lastLv=240`);
+  console.log(`     FIRST   ${fmt(a)}`);
+  console.log(`     RELOAD1 ${fmt(b)}   RELOAD2 ${fmt(c)}   RELOAD3 ${fmt(d)}`);
+  ok('CASE 6 a huge but sane balance is never treated as corruption',
+     a.credits === 5000000 && a.pf === 9000 && a.lastLv === 240, fmt(a));
+  ok('CASE 6 stable across three reloads',
+     JSON.stringify(d) === JSON.stringify(a), `${fmt(a)} -> ${fmt(d)}`);
+}
+
+// ── CASE 7: corrupted level AND a big balance — the level still decides ─────
+{
+  put(baseSave({ credits: 5000000, protocolFragments: 9000, lastPlayerLevelRewarded: 1200,
+                 economyRepairV2: true }));
+  const a = snap(load()), b = snap(load());
+  console.log('\n   CASE 7  CORRUPTED LEVEL + big balance');
+  console.log(`     BEFORE  credits=5000000 PF=9000 lastLv=1200`);
+  console.log(`     FIRST   ${fmt(a)}   RELOAD1 ${fmt(b)}`);
+  ok('CASE 7 a save carrying the runaway signature is still repaired',
+     a.credits === 20000 && a.pf === 120 && a.lastLv <= 300, fmt(a));
+  ok('CASE 7 and only once', JSON.stringify(b) === JSON.stringify(a));
 }
 
 console.log(`\n═══ ${pass} PASS · ${fail} FAIL ═══\n`);

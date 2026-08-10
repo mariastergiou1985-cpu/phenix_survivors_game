@@ -558,7 +558,13 @@ export class MetaProgress {
           this.credits           = Math.min(this.credits || 0, 20000);
           this.protocolFragments = Math.min(this.protocolFragments || 0, 120);
         }
-        if (this.lastPlayerLevelRewarded > 300 || (this.credits || 0) > 500000) {
+        // TRIGGER NARROWED to the actual signature of the runaway loop. It used to also fire on
+        // `credits > 500000`, which is not corruption at all — it is a number a real late-game
+        // player banks, and it cost them the whole balance. lastPlayerLevelRewarded is the metric
+        // the old bug actually polluted: PF was fed back into the level, driving it 213 → 1494,
+        // and no legitimate account reaches 300. That is the one condition that identifies a
+        // damaged save without accusing a rich one. Repair values are untouched.
+        if (this.lastPlayerLevelRewarded > 300) {
           this.credits           = Math.min(this.credits || 0, 20000);    // Maria's numbers
           this.protocolFragments = Math.min(this.protocolFragments || 0, 120);
           this.rewardedPFTotal   = Math.max(0, this.getProtocolFragmentsEarned() - 250);

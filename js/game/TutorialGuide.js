@@ -255,6 +255,19 @@ export class TutorialGuide {
     if (this.done || this._qaInert) { if (this.visible) this._hide(); return; }
     const g = this.game;
     if (!g) return;
+    // ── CARD PANELS OWN THE INPUT ────────────────────────────────────────────────────────
+    // A level-up or forced-mutation panel is answered with 1/2/3, R and the controller face
+    // buttons. A tutorial step drawn over it eats exactly those: _onKeyDown consumes every key
+    // except ENTER/SPACE, and _show() sets window.__phenixTutModal, which makes main.js's
+    // applyGamepad() return before the pad can reach the cards. The LEVEL UP and WEAPONS steps
+    // fire on `player.level >= 2` and on having seen level_up — both true during a level-up — so
+    // they landed on top of the card screen and the player could not pick a card.
+    //
+    // The step is NOT skipped and NOT marked seen. It is DEFERRED: hidden if it was already up,
+    // and simply not started while a panel is open. Both conditions stay true afterwards, so the
+    // loop below shows it on its own the moment the player has chosen a card — which is also a
+    // better moment to explain what just happened.
+    if (g.upgradeUI || g.mutationUI) { if (this.visible) this._hide(); return; }
     if (this.visible) {
       const s = STEPS[this.stepIdx];
       if (s) this._position(s);                      // ακολουθεί layout/resize
