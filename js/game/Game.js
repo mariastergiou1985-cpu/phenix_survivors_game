@@ -2031,7 +2031,7 @@ export class Game {
   // P2.8: NULL ARSENAL — DOM overlay ΠΑΝΩ από το menu (δεν αγγίζει gameState)·
   // dynamic import ώστε το module να μη βαραίνει το boot όταν το flag είναι κλειστό.
   goToNullArsenal() {
-    import('./NullArsenalUI.js?v=20260902100000')
+    import('./NullArsenalUI.js?v=20260908250000')
       .then(m => m.openNullArsenal(this))
       .catch(err => console.error('[P2.8] NULL ARSENAL failed to open', err));
   }
@@ -12409,8 +12409,12 @@ export class Game {
       this._updateLoreArchive(input);
       return;
     }
-    if (this.gameState === 'hangar') {
-      if (input.keys && input.keys.has('Escape')) this.goToMainMenu();
+    if (this.gameState === 'hangar' || this.gameState === 'relics') {
+      // `keys` is filled by main.js with e.key.toLowerCase(), so the old `has('Escape')` here
+      // could never match and HANGAR had no keyboard exit at all. RELICS had no branch of any
+      // kind. Both cases are accepted so this stays correct whichever way the Set is filled,
+      // and RELICS now leaves the same way every other menu screen does.
+      if (input.keys && (input.keys.has('escape') || input.keys.has('Escape'))) this.goToMainMenu();
       return;
     }
     if (this.gameState !== 'playing') return;
@@ -29698,7 +29702,16 @@ export class Game {
       this._beginChaosRun();          // reset() + Endless infra + Chaos state — the shipped entry
       return;                         // _beginChaosRun starts the Chaos track itself
     }
+    // ENDLESS had the same hole Chaos was already patched for, one mode over. The results screen
+    // reads "RETRY — ENDLESS", but reset() clears `endless` (and disables chunk streaming, the
+    // Endless Nexus layout, the elite-wave clock and the boss rotation) and nothing turned any of
+    // it back on — so RETRY silently handed the player an ACT 1 run that ends in VICTORY.
+    // Captured before reset() because reset() is what destroys the flag. The pair below is
+    // byte-identical to the shipped Main-Menu entry, startEndlessRun(): reset() then
+    // _enterEndless().
+    const wasEndless = !!this.endless && !this.victory;
     this.reset();
+    if (wasEndless) this._enterEndless();
     this.audio?.startGameplayMusic();
   }
 

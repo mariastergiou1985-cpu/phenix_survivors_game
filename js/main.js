@@ -1,4 +1,4 @@
-import { Game } from './game/Game.js?v=20260908240000';
+import { Game } from './game/Game.js?v=20260908250000';
 import { AudioManager } from './audio/AudioManager.js?v=20260904100000';
 import { PlatformAchievements } from './platform/PlatformAchievements.js?v=20260712370000';
 // Steam build: replay any web-earned achievements to Steam on boot (no-op in browsers)
@@ -57,6 +57,13 @@ const SCROLL_KEYS = new Set(['arrowup', 'arrowdown', 'arrowleft', 'arrowright', 
 const MOVEMENT_KEYS = new Set(['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright', 'shift']);
 
 window.addEventListener('keydown', e => {
+  // NULL ARSENAL owns the keyboard while its panel is up. Its own window-capture listener stops
+  // real keypresses before this one runs; this guard is for the CONTROLLER, whose keys arrive as
+  // window.dispatchEvent() from padTap() and are therefore targeted AT window, where capture
+  // cannot pre-empt anything. Returning before `keys.add` is the point: otherwise the key stays
+  // in the Set and Game.update's start_menu handler drives the menu behind the opaque panel.
+  // ESCAPE is not special-cased here — the panel's own listener closes it.
+  if (window.__phenixArsenalModal) return;
   const key = e.key.toLowerCase();
   if (SCROLL_KEYS.has(key)) e.preventDefault();
 
@@ -212,7 +219,24 @@ window.addEventListener('keydown', e => {
       game.goToMainMenu();
     } else if (game.gameState === 'evolution_matrix') {
       game.goToMainMenu();
+    } else if (game.gameState === 'relics' || game.gameState === 'hangar') {
+      // RELICS and HANGAR were the only two menu screens with no ESC branch here. RELICS had no
+      // keyboard exit anywhere in the codebase, and HANGAR's own handler in Game.update tested
+      // `keys.has('Escape')` while this listener stores `e.key.toLowerCase()` — so it never
+      // matched either. Both could only be left by clicking their BACK button, which on a
+      // controller-only setup is a hard lock: B/Circle dispatches this exact Escape event.
+      game.goToMainMenu();
     } else if (game.gameState === 'playing') {
+      // CHAOS LAW overlay first, and it must be a no-op here. The CHAOS DOCTRINE reroll opens
+      // the law overlay MID-RUN, which leaves gameState === 'playing'. This branch then toggled
+      // pause AND called _releaseAllHeldInput(), which clears `keys` — so the run froze behind
+      // the overlay and the 'escape' the overlay's OWN handler waits for
+      // (Game._updateChaosLawKeys -> cls-back-btn.click()) was already gone. Doing nothing here
+      // lets the key survive into update(), where the shipped handler cancels the reroll exactly
+      // as the mouse does. Same fix covers the controller: B/Circle dispatches Escape.
+      if (game._clsVisible) {
+        /* the overlay owns this key — see Game._updateChaosLawKeys */
+      } else
       // POST-ARENA PANEL FIRST (2026-08-04). The panel prints "ESC = CONTINUE ENDLESS" and
       // Game.update has always had a handler for it — but it could never run: this branch
       // toggled pause and _releaseAllHeldInput() clears `keys`, so 'escape' was gone before
@@ -621,6 +645,16 @@ function applyGamepad() {
   game._controllerType      = pad.type;
   game._controllerActivated = pad.activated;
   if (!s || !s.activated) { padClearHeld(); prevDir.up = prevDir.down = prevDir.left = prevDir.right = false; return; }
+
+  // NULL ARSENAL modal: opaque, full-screen, and it owns the pad the same way it owns the
+  // keyboard. Only BACK gets through, mapped to the panel's own ESCAPE — without this the
+  // D-pad and A/Cross went to the start menu underneath and could start a run behind it.
+  if (window.__phenixArsenalModal) {
+    padClearHeld();
+    prevDir.up = prevDir.down = prevDir.left = prevDir.right = false;
+    if (s.btn.b.pressed || s.btn.start.pressed) padTap('Escape');
+    return;
+  }
 
   const enter = 0.38, release = 0.28;
   const up = s.axes.ly < -(prevDir.up ? release : enter) || s.btn.up.held;

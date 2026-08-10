@@ -239,9 +239,42 @@ export function openNullArsenal(game) {
     b.addEventListener('click', () => render(t));
     tabsEl.appendChild(b);
   }
-  const close = () => { document.removeEventListener('keydown', onKey, true); root.remove(); };
-  const onKey = e => { if (e.key === 'Escape') { e.stopPropagation(); e.preventDefault(); close(); } };
-  document.addEventListener('keydown', onKey, true);
+  // ── MODAL INPUT OWNERSHIP ───────────────────────────────────────────────────
+  // This panel is opaque and covers the whole screen, but it used to swallow ESCAPE ONLY.
+  // Every other key fell straight through to the live start menu underneath: arrows moved a
+  // cursor nobody could see and ENTER started a run BEHIND the panel — and no goTo* call
+  // removes this node, so the run was then played blind under an opaque overlay.
+  //
+  // Two separate leaks had to be closed, because they take different routes:
+  //   · a real keypress targets document.body, so a WINDOW listener in the CAPTURE phase runs
+  //     before main.js's window listener and can stop it. The old listener was on `document`,
+  //     which is too late for that and, worse, is not on the path at all for the second case;
+  //   · the controller does not press keys — main.js's padTap() calls window.dispatchEvent(),
+  //     so the event is TARGETED AT WINDOW and a document-level listener never sees it. That is
+  //     why B/Circle and the D-pad drove the menu behind the panel with nothing stopping them.
+  // The flag lets main.js ignore that window-targeted case, and lets applyGamepad map B/Start
+  // to this panel's BACK instead of the menu's.
+  const close = () => {
+    window.removeEventListener('keydown', onKey, true);
+    window.removeEventListener('keyup',   onKeyUp, true);
+    try { window.__phenixArsenalModal = false; } catch (_) {}
+    root.remove();
+  };
+  const onKey = e => {
+    // System keys stay usable (refresh / devtools / fullscreen).
+    if (e.key === 'F5' || e.key === 'F11' || e.key === 'F12' || (e.ctrlKey && !e.altKey)) return;
+    e.stopImmediatePropagation();
+    e.preventDefault();
+    if (e.key === 'Escape') close();
+    // everything else is consumed: nothing reaches the menu underneath
+  };
+  const onKeyUp = e => {
+    if (e.key === 'F5' || e.key === 'F11' || e.key === 'F12' || (e.ctrlKey && !e.altKey)) return;
+    e.stopImmediatePropagation();
+  };
+  try { window.__phenixArsenalModal = true; } catch (_) {}
+  window.addEventListener('keydown', onKey, true);
+  window.addEventListener('keyup',   onKeyUp, true);
   root.querySelector('#na-close').addEventListener('click', close);
   render('CHARACTERS');
 }
