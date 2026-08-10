@@ -54,7 +54,7 @@ import { Protocol0 } from '../effects/protocol-0.js?v=20260705000000';
 import { LaserEyes } from '../effects/laser-eyes.js?v=20260818000000';
 import { MeteorRain } from '../effects/meteor-rain.js?v=20260712100000';
 import { NpcWalker } from './NpcWalker.js?v=20260904030000';
-import { MapManager, BIOME_ID, BIOME_DEFS, CHUNK_SIZE } from './MapManager.js?v=20260908110000';
+import { MapManager, BIOME_ID, BIOME_DEFS, CHUNK_SIZE } from './MapManager.js?v=20260908300000';
 import { getChaosDoctrine } from './ChaosDoctrine.js?v=20260904180000';
 import { AcidRain } from './AcidRain.js?v=20260829020000';   // BATCH 2 major event (2026-07-29)
 import { EnemyWeaponSystem } from './EnemyWeaponSystem.js?v=20260829040000';   // BATCH 3 enemy weapon behaviours
@@ -23868,6 +23868,41 @@ export class Game {
       e.baseSpeed     *= ELITE_WAVE.speedMult;
       e.radius        *= ELITE_WAVE.radiusMult;
       // Damage intentionally unchanged (×1.0) in Phase 1 — no new/elevated damage path.
+      // ── PLACEMENT (2026-08-10) ────────────────────────────────────────────────────────────
+      // This loop used to push the elite straight into the world with whatever position the
+      // Enemy constructor had picked, and the constructor picks Enemy._spawnEdge(): a random
+      // point on the FIXED WORLD_BOUNDS rectangle. That rectangle has nothing to do with the
+      // camera or with the endless walkable band, so measured over three runs 55 of 64 elites
+      // landed outside the band — most of them on the neutral pavement above or below the city
+      // strip — and exactly ONE of 64 ever reached the player. An elite wave that cannot arrive
+      // is not a wave.
+      //
+      // The fix asks for the position the same way the ordinary spawns do — a point just outside
+      // the view, with the SAME offscreen distance _updateSpawning's batch uses — then pre-clamps
+      // it into the walkable bounds so the resolver is handed a request that is already inside the
+      // reachable region, then runs it through resolveEnemySpawn (walkability + player/enemy/hazard
+      // keep-away + the reachable-region rule), and finally applies the same walkable-bounds clamp
+      // the wave batch gets. getWalkableBounds() is deck-aware, so this is correct on a section
+      // deck too. Batch size, pool, cadence, stats and the announcement are untouched — the only
+      // thing that changes is WHERE the elite appears, which is the whole defect.
+      const _er = e.radius || 14;
+      const _vw = this._viewW || WIDTH, _vh = this._viewH || HEIGHT;
+      const _off = Math.max(220, Math.hypot(_vw, _vh) * 0.5 + 40);      // wave-director's own value
+      const _ang = Math.random() * Math.PI * 2;
+      let _ex = this.camera.x + _vw / 2 + Math.cos(_ang) * (_off + 40);
+      let _ey = this.camera.y + _vh / 2 + Math.sin(_ang) * (_off + 40);
+      const _b0 = this.getWalkableBounds();
+      if (_b0) {
+        if (isFinite(_b0.x0)) _ex = Math.max(_b0.x0 + _er, Math.min(_b0.x1 - _er, _ex));
+        _ey = Math.max(_b0.y0 + _er, Math.min(_b0.y1 - _er, _ey));
+      }
+      const _esp = this.resolveEnemySpawn(_ex, _ey, _er, _off, e);
+      if (_esp && Number.isFinite(_esp.x) && Number.isFinite(_esp.y)) { e.pos.x = _esp.x; e.pos.y = _esp.y; }
+      else { e.pos.x = _ex; e.pos.y = _ey; }
+      if (_b0) {
+        if (isFinite(_b0.x0)) e.pos.x = Math.max(_b0.x0 + _er, Math.min(_b0.x1 - _er, e.pos.x));
+        e.pos.y = Math.max(_b0.y0 + _er, Math.min(_b0.y1 - _er, e.pos.y));
+      }
       this.enemies.push(e);
       spawned++;
     }
@@ -38770,7 +38805,17 @@ _drawLoreArchive(ctx) {
     }
 
     if (mode && mm?.findSafeSpawnPoint) {
-      return mm.findSafeSpawnPoint({ x, y, radius, mode, avoid, minDist: minPlayerDist, within });
+      // `connected: player` — an enemy must land in the SAME reachable region the player is in.
+      // The endless strip publishes neutral pavement above and below the city band as walkable
+      // (it is floor: it is drawn, and other systems stand things on it), but the solid skyline
+      // rows separate it from the band. Without this the spiral below could return a legal point
+      // out there, and the enemy would walk the pavement for the rest of its life without ever
+      // being able to enter the fight. Measured before this line: 0/1006 r=14 spawns escaped, but
+      // 32/49 Heavy Mechs, 32/48 Security Defector Mechs and 27/48 Rogue AI Overlords did, and not
+      // one of them ever reached the player. The check is a division and two comparisons — the
+      // per-spawn cost is unchanged for practical purposes and no path search was added.
+      return mm.findSafeSpawnPoint({ x, y, radius, mode, avoid, minDist: minPlayerDist, within,
+                                     connected: this.player?.pos || null });
     }
 
     const bounds = this.getWalkableBounds();

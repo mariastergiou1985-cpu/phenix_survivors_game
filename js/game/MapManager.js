@@ -768,16 +768,55 @@ export class MapManager {
   }
 
   /**
+   * WHICH CONNECTED WALKABLE REGION a world Y belongs to.
+   *
+   * isWalkablePoint() answers "is this floor", and for the endless strip the honest answer above
+   * y<0 and below y>tileH is YES: that neutral pavement is drawn, the camera pans over it, and
+   * other systems legitimately treat it as ground. What it is NOT is *reachable*: the authored
+   * skyline rows sit between it and the play band and are solid, so nothing standing on the
+   * pavement can ever walk into the band, and nothing in the band can walk out to it.
+   *
+   * Walkability and reachability are therefore two different questions, and a caller that only
+   * asked the first one could be handed a legal, permanently unreachable placement. This is the
+   * second question, answered in a division and two comparisons — no flood fill, so it is cheap
+   * enough to sit inside the per-spawn candidate loop.
+   *
+   * Section decks are baked with exactly one gameplay component (see componentAt), so a mask
+   * model is a single region by construction.
+   *
+   * @returns {'deck'|'band'|'above'|'below'|'off'}
+   */
+  walkRegion(y, mode = 'endless') {
+    const m = this._walkModel(mode);
+    if (!m) return 'band';                        // no art loaded yet — never block gameplay
+    if (m.kind === 'mask') return 'deck';         // one baked component per section deck
+    if (!Number.isFinite(y)) return 'off';
+    const srcY = y / m.scale;
+    if (m.verticalFloor && srcY < 0) return 'above';
+    if (m.verticalFloor && srcY > m.tileH) return 'below';
+    if (srcY < m.rows[0] || srcY > m.rows[1]) return 'off';
+    return 'band';
+  }
+
+  /**
    * Safe spawn honouring a keep-away list, so objects do not pile onto the player or
    * onto each other. Deterministic order, bounded attempts.
    */
-  findSafeSpawnPoint({ x, y, radius = 0, mode = 'endless', avoid = [], minDist = 0, within = null } = {}) {
+  // `connected` is an optional reference point — pass the player and the result is guaranteed to
+  // be in the SAME reachable region as them, not merely on floor somewhere. It is opt-in because
+  // only movers need it: a hazard, a pickup or a Vault drawn on the neutral pavement is a cosmetic
+  // oddity, while an enemy placed there can never fight.
+  findSafeSpawnPoint({ x, y, radius = 0, mode = 'endless', avoid = [], minDist = 0, within = null,
+                       connected = null } = {}) {
     const _m0 = this._walkModel(mode);
     if (!Number.isFinite(x) || !Number.isSafeInteger(Math.trunc(x))) x = 0;
     if (!Number.isFinite(y) || !Number.isSafeInteger(Math.trunc(y))) {
       y = this._modelFallbackY(_m0);
     }
+    const _refY = connected ? (connected.y ?? connected.pos?.y) : null;
+    const _region = Number.isFinite(_refY) ? this.walkRegion(_refY, mode) : null;
     const ok = (px, py) => {
+      if (_region && this.walkRegion(py, mode) !== _region) return false;   // floor, but not reachable
       if (!this.isWalkableFootprint(px, py, radius, mode)) return false;
       if (within && !within(px, py, radius)) return false;
       for (const a of avoid) {
@@ -799,7 +838,15 @@ export class MapManager {
         if (ok(nx, ny)) return { x: nx, y: ny };
       }
     }
-    const fallback = this.findNearestWalkablePoint(x, y, radius, mode);
+    let fallback = this.findNearestWalkablePoint(x, y, radius, mode);
+    // findNearestWalkablePoint asks the walkability question, so its spiral can settle on the
+    // pavement too. When a region was demanded, replace it with the deterministic in-region point
+    // the model already publishes — the band's centre line at this x, which is always inside the
+    // walkable rows. Only the strip needs this: a mask deck is one region and its own fallback is
+    // the baked anchor.
+    if (_region && m && m.kind !== 'mask' && this.walkRegion(fallback.y, mode) !== _region) {
+      fallback = { x, y: this._modelFallbackY(m) };
+    }
     return !within || ok(fallback.x, fallback.y) ? fallback : null;
   }
 

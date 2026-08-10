@@ -197,6 +197,10 @@ srv.listen(PORT, async () => {
               cls: classify(e), cls0: classify(e),
               type: e.enemyType,
               x: e.pos.x, y: e.pos.y, r: rr,
+              // The walk mode AT SPAWN TIME. A run that takes the elevator to a section deck
+              // switches the model from the strip to a mask, and judging a deck spawn against the
+              // strip's rows would invent failures (or hide them). Every later test uses this.
+              mode: mode2,
               t: +(g2.timeAlive || 0).toFixed(2),
               px, py,
               pointOK: !!g2.mapManager.isWalkablePoint(e.pos.x, e.pos.y, mode2),
@@ -317,9 +321,10 @@ srv.listen(PORT, async () => {
               Object.entries(report.phaseB.forcedTypes).map(([k, v]) => `${v}× ${k}`).join(', '));
 
   // let the forced spawns live a while so their movement is measured too
-  for (let n = 0; n < 30; n++) {
-    const k = ['KeyD', 'KeyA'][n % 2];
-    await pg.keyboard.down(k); await sleep(500); await pg.keyboard.up(k); await sleep(30);
+  for (let n = 0; n < 80; n++) {
+    if (n % 8 === 0) await clearTutorial(2);
+    const k = ['KeyD', 'KeyA'][Math.floor(n / 6) % 2];
+    await pg.keyboard.down(k); await sleep(450); await pg.keyboard.up(k); await sleep(30);
     await pg.evaluate(() => {
       const g = window.__spG;
       if (g.upgradeUI) { try { g.selectUpgrade(0); } catch (_) { g.upgradeUI = null; } }
@@ -338,6 +343,7 @@ srv.listen(PORT, async () => {
     // genuinely enclosed spawn terminates instead of walking the infinite strip forever.
     const STEP = 32, CAP = 60000;
     const routeExists = (rec) => {
+      const mode = rec.mode;              // the model this spawn was actually placed against
       const r = rec.r;
       const sx = rec.x, sy = rec.y, tx = rec.px, ty = rec.py;
       if (!mm.isWalkableFootprint(sx, sy, r, mode)) return { ok: false, why: 'spawn footprint blocked', nodes: 0 };
@@ -371,13 +377,21 @@ srv.listen(PORT, async () => {
     // Which of the five horizontal zones the endless strip model defines did it land in?
     // Only `band` is connected to the player: the model calls the pavement above y<0 and below
     // y>tileH*scale walkable too, but a no-go strip sits between them and the play band.
-    const m = mm._walkModel(mode);
-    const BAND0 = m.rows[0] * m.scale, BAND1 = m.rows[1] * m.scale, STRIP1 = m.tileH * m.scale;
-    const zoneOf = (y) => y < 0 ? 'above' : y < BAND0 ? 'noGoTop' : y <= BAND1 ? 'band'
+    // Zone constants come from the STRIP model, never from whatever model happens to be active
+    // when the analysis runs: a run that ends on a section deck has a mask model with no rows,
+    // and reading rows[0] off it used to throw here.
+    const m = mm._walkModel(String(mode).split(':')[0]) || mm._walkModel(mode);
+    const BAND0 = (m?.rows?.[0] ?? 0) * (m?.scale ?? 1);
+    const BAND1 = (m?.rows?.[1] ?? 0) * (m?.scale ?? 1);
+    const STRIP1 = (m?.tileH ?? 0) * (m?.scale ?? 1);
+    // A section deck is a mask with ONE baked component, so 'deck' is its only region. Only the
+    // strip has the five-zone geometry.
+    const zoneOf = (y, recMode) => (recMode || '').includes(':') ? 'deck'
+                        : y < 0 ? 'above' : y < BAND0 ? 'noGoTop' : y <= BAND1 ? 'band'
                         : y <= STRIP1 ? 'noGoBottom' : 'below';
 
     for (const rec of recs) {
-      rec.zone = zoneOf(rec.y);
+      rec.zone = zoneOf(rec.y, rec.mode);
       const rt = routeExists(rec);
       rec.route = rt.ok;
       rec.routeWhy = rt.why;
@@ -430,7 +444,7 @@ srv.listen(PORT, async () => {
       return h;
     };
     const zoneTable = {};
-    for (const z of ['above', 'noGoTop', 'band', 'noGoBottom', 'below']) {
+    for (const z of ['above', 'noGoTop', 'band', 'noGoBottom', 'below', 'deck']) {
       const R = recs.filter(r => r.zone === z);
       zoneTable[z] = { n: R.length, footBad: R.filter(r => !r.footOK).length,
                        noRoute: R.filter(r => !r.route).length,
@@ -496,7 +510,7 @@ srv.listen(PORT, async () => {
   }
   console.log(`\n  the endless strip has ${report.model.blocks} obstacle columns — walkability is the horizontal band alone.`);
   console.log(`  zones:  above y<0  ·  NO-GO 0..${a.band[0]}  ·  BAND ${a.band[0]}..${a.band[1]}  ·  NO-GO ..${a.strip}  ·  below y>${a.strip}`);
-  console.log('  zone          n    footBad  noRoute  reached   spawn paths that put enemies there');
+  console.log('  zone          n    footBad  noRoute  reached   spawn paths that put enemies there   (deck = on a section deck, one baked component)');
   for (const [z, v] of Object.entries(a.zoneTable)) {
     console.log(`    ${z.padEnd(11)} ${String(v.n).padStart(5)} ${String(v.footBad).padStart(9)} ${String(v.noRoute).padStart(8)} ${String(v.reached).padStart(8)}   ${v.srcs.join(', ') || '-'}`);
   }
