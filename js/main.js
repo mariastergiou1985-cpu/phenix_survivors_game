@@ -1,4 +1,4 @@
-import { Game } from './game/Game.js?v=20260908310000';
+import { Game } from './game/Game.js?v=20260908320000';
 import { AudioManager } from './audio/AudioManager.js?v=20260904100000';
 import { PlatformAchievements } from './platform/PlatformAchievements.js?v=20260712370000';
 // Steam build: replay any web-earned achievements to Steam on boot (no-op in browsers)
@@ -1301,10 +1301,12 @@ requestAnimationFrame(loop);
      */
     storageSnapshot() {
       const o = {};
-      for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i);
-        o[k] = localStorage.getItem(k);
-      }
+      try {
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          o[k] = localStorage.getItem(k);
+        }
+      } catch (_) { /* blocked store — an empty snapshot, not a thrown QA hook */ }
       const json = JSON.stringify(Object.keys(o).sort().map(k => [k, o[k]]));
       return { keys: Object.keys(o).sort(), bytes: json.length, hash: json };
     },

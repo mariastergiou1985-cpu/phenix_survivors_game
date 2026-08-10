@@ -1,7 +1,7 @@
 import { WIDTH, HEIGHT, YELLOW, WHITE, GREY } from '../constants.js';
 import { drawText, wrapText, roundRect } from '../utils.js';
 import { RARITY_COLORS } from './Upgrades.js?v=20260908260000';
-import { WEAPON_DEFS, PASSIVE_DEFS, EVOLUTION_RECIPES } from './BuildEngine.js?v=20260902130000';
+import { WEAPON_DEFS, PASSIVE_DEFS, EVOLUTION_RECIPES } from './BuildEngine.js?v=20260908180000';   // SAME stamp as Game.js — a different ?v= is a SECOND BuildEngine module
 
 export class UpgradeUI {
   constructor(choices, options = {}) {

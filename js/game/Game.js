@@ -17,8 +17,8 @@ import { Enemy, preloadAllWeaponSprites, selectHpBarEnemies } from '../entities/
 import { SupportDrone }   from '../entities/SupportDrone.js?v=20260711750000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260713600000';
-import { SystemEventManager } from './Events.js?v=20260802000000';
-import { UpgradeUI }      from './UpgradeUI.js?v=20260908260000';
+import { SystemEventManager } from './Events.js?v=20260908320000';
+import { UpgradeUI }      from './UpgradeUI.js?v=20260908320000';
 import { weightedSample } from './Upgrades.js?v=20260908260000';
 import { BuildEngineRuntime, WEAPON_DEFS as BE_WEAPON_DEFS, EVOLUTION_RECIPES as BE_EVOLUTION_RECIPES, PASSIVE_DEFS as BE_PASSIVE_DEFS } from './BuildEngine.js?v=20260908180000';   // BUILD ENGINE — always on (full migration 2026-07-18)
 import { FUSION_DEFS, FUSION_CARD_ORDER, FUSION_ART_READY, FUSION_MAX_TIER, fusionCost, CHAR_DISPLAY_NAMES } from './FusionCatalog.js?v=20260902070000';   // FUSION ARMORY (Batch B)
@@ -1419,7 +1419,15 @@ export class Game {
     this.paused    = false;
     this.aimAssist = true;
     this.meta      = new MetaProgress();
-    this.bestScore      = parseInt(localStorage.getItem('phenix_best_score') || '0', 10);
+    // BLOCKED-STORAGE GUARD (2026-08-10). Bare, in the CONSTRUCTOR. In a private window, with
+    // site data blocked, or inside an iframe with third-party storage partitioned off, touching
+    // localStorage THROWS — and a throw here happens before anything exists, so `new Game()`
+    // never returns, main.js never gets an instance, and the canvas stays black with one console
+    // line. The project's storage pattern everywhere else is try/catch with a safe default; this
+    // is the same. A best score nobody can persist is a cosmetic loss, not a boot failure.
+    this.bestScore = 0;
+    try { this.bestScore = parseInt(localStorage.getItem('phenix_best_score') || '0', 10) || 0; }
+    catch (_) { this.bestScore = 0; }
     this.isNewHighScore = false;
     this.runChaosLaw    = null;   // set by Chaos Law selection overlay; null = no law active
     this._pendingChaosStart = false; // true while the law overlay is open on the DIRECT Chaos path
@@ -2037,7 +2045,7 @@ export class Game {
   // P2.8: NULL ARSENAL — DOM overlay ΠΑΝΩ από το menu (δεν αγγίζει gameState)·
   // dynamic import ώστε το module να μη βαραίνει το boot όταν το flag είναι κλειστό.
   goToNullArsenal() {
-    import('./NullArsenalUI.js?v=20260908250000')
+    import('./NullArsenalUI.js?v=20260908320000')
       .then(m => m.openNullArsenal(this))
       .catch(err => console.error('[P2.8] NULL ARSENAL failed to open', err));
   }
@@ -3906,7 +3914,8 @@ export class Game {
     const isBackup = mode === 'backup';
     let code = '';
     if (isBackup) {
-      const raw = localStorage.getItem('phenix_meta') || '';
+      let raw = '';
+      try { raw = localStorage.getItem('phenix_meta') || ''; } catch (_) { raw = ''; }
       if (!raw) { wrap.remove(); this.triggerAnnouncement('ΔΕΝ ΒΡΕΘΗΚΕ ΑΠΟΘΗΚΕΥΣΗ ΕΔΩ', '#ff8866'); return; }
       code = btoa(unescape(encodeURIComponent(raw)));
       try { navigator.clipboard?.writeText(code); } catch (_) {}
@@ -5468,7 +5477,13 @@ export class Game {
     if (finalScore > this.bestScore) {
       this.bestScore      = finalScore;
       this.isNewHighScore = true;
-      localStorage.setItem('phenix_best_score', finalScore);
+      // Everything that matters at the end of a run is BELOW this line — Endless personal
+      // records, the Endless achievement milestones, the local run history, the Chaos and Law
+      // submissions. An unguarded setItem here threw on a blocked store and took all of it with
+      // it: the player finished the run and lost the record, the achievement and the history
+      // entry, silently. The in-memory bestScore still updates, so the END SCREEN is correct for
+      // this session either way.
+      try { localStorage.setItem('phenix_best_score', finalScore); } catch (_) {}
     }
 
     // Endless-mode personal records (separate from the global best score above).
