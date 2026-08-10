@@ -32,7 +32,7 @@ import './BuildEnginePassives.js?v=20260908180000'; // P2.6 Build passives §26-
 import { MutationUI }      from './MutationUI.js?v=20260904180000';
 import { sampleMutations, sampleCorruptedMutation } from './Mutations.js?v=20260904180000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260908050000';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, COLLECTIBLE_FRAGMENT_COST, COLLECTIBLE_GRID_COST, ECHO_FRAGMENT_COST, ECHO_GRID_COST, SKILL_TREE, AMULET_DEFS, GRID_TO_PF_RATE, characterStageRequirement } from './MetaProgress.js?v=20260908290000';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RETIRED_SECRET_SKINS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, COLLECTIBLE_FRAGMENT_COST, COLLECTIBLE_GRID_COST, ECHO_FRAGMENT_COST, ECHO_GRID_COST, SKILL_TREE, AMULET_DEFS, GRID_TO_PF_RATE, characterStageRequirement } from './MetaProgress.js?v=20260908310000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260712520000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
@@ -1316,6 +1316,12 @@ const STUN_LANCE_DURATION = 1.1;  // s — player stagger/root on hit (2s anti-l
 // invariant is untouched. Gated entirely on Game.endless — never fires in Act 1.
 // ELITE_WAVE config now lives in EnemySpawner.js — aliased here for backward compat.
 const ELITE_WAVE = ELITE_WAVE_CFG;
+
+// Ground-orb lifetime, seconds. The health drop has always used 45 (see the `timer: 45` it is
+// pushed with); mana and armor now use the SAME number so the three pickups behave identically and
+// no drop rate, value or spawn cadence changes — only the ability of a forgotten orb to sit in the
+// world forever and hold the `length === 0` respawn gate shut.
+const ORB_LIFETIME = 45;
 
 // ─── Character Weapon Synergy mark-layer (modular) ──────────────────────────────────────────
 // Per-character visual identity for the synergy mark + burst. Active ONLY when the player picked the
@@ -7606,9 +7612,9 @@ export class Game {
     }
 
     // ── Secret Skins gallery (moved here from Character Select) ──
-    const _HIDDEN_SK = ['toxic_overload', 'null_walker', 'crimson_oni'];
+    const _HIDDEN_SK = RETIRED_SECRET_SKINS;                    // one shared list — see MetaProgress
     const skinChars = this.characters.filter(c => CHARACTER_OUTFITS[c.id]?.secret
-      && !_HIDDEN_SK.includes(CHARACTER_OUTFITS[c.id].secret.unlockKey));
+      && !_HIDDEN_SK.has(CHARACTER_OUTFITS[c.id].secret.unlockKey));
     const skGrid  = el.querySelector('#sk-grid');
     const skCount = el.querySelector('#sk-count');
     if (skGrid) {
@@ -7909,9 +7915,9 @@ export class Game {
     });
 
     // SECRET SKINS — same visible set + gate as the gallery renderer above.
-    const SKIN_HIDDEN = ['toxic_overload', 'null_walker', 'crimson_oni'];
+    const SKIN_HIDDEN = RETIRED_SECRET_SKINS;                   // one shared list — see MetaProgress
     items.skins = this.characters
-      .filter(c => CHARACTER_OUTFITS[c.id]?.secret && !SKIN_HIDDEN.includes(CHARACTER_OUTFITS[c.id].secret.unlockKey))
+      .filter(c => CHARACTER_OUTFITS[c.id]?.secret && !SKIN_HIDDEN.has(CHARACTER_OUTFITS[c.id].secret.unlockKey))
       .map(c => {
         const s = CHARACTER_OUTFITS[c.id].secret;
         const unlocked = meta?.isUnlocked(s.unlockKey) === true;
@@ -13635,6 +13641,12 @@ export class Game {
     // Collect
     for (let i = this.manaPickups.length - 1; i >= 0; i--) {
       const m = this.manaPickups[i];
+      // LIFETIME (2026-08-10). Health orbs have always expired after ORB_LIFETIME; mana and armor
+      // had no timer at all, and the respawn gate below is `length === 0`. One orb the player
+      // walked away from therefore sat in the world forever and blocked EVERY future mana orb for
+      // the rest of the run — the drop was not rare, it was permanently withheld. The counter runs
+      // even while the magnet is pulling, so an orb cannot be kept alive by being approached.
+      m.timer = (m.timer ?? ORB_LIFETIME) - dt;
       const d = distance(this.player.pos, m.pos);
       // Gentle magnet pull
       if (d < MAGNET_R && d > PLAYER_RADIUS + PICKUP_R) {
@@ -13649,7 +13661,9 @@ export class Game {
         this.particles.spawnCorePickup(m.pos, CYAN);
         this.audio?.playCorePickup();
         this.manaPickups.splice(i, 1);
+        continue;
       }
+      if (m.timer <= 0) this.manaPickups.splice(i, 1);      // expired → the spawner is free again
     }
     // Time-based spawn — one every 30s, only while mana < 100 and none already present (no spam/dupes)
     this.manaPickupTimer -= dt;
@@ -13662,7 +13676,7 @@ export class Game {
           this.player.pos.x + Math.cos(ang) * r,
           this.player.pos.y + Math.sin(ang) * r,
         ));
-        this.manaPickups.push({ pos });
+        this.manaPickups.push({ pos, timer: ORB_LIFETIME });
       }
     }
   }
@@ -13734,6 +13748,7 @@ export class Game {
     const MAGNET_R = Math.max(90, (this.player.pickupRadius || 0) * (this._murkActive ? 0.5 : 1));
     for (let i = this.armorPickups.length - 1; i >= 0; i--) {
       const m = this.armorPickups[i];
+      m.timer = (m.timer ?? ORB_LIFETIME) - dt;      // same lifetime rule as health/mana — see above
       const d = distance(this.player.pos, m.pos);
       if (d < MAGNET_R && d > PLAYER_RADIUS + PICKUP_R) {
         const pull = Math.min(1, dt * 3.5);
@@ -13746,7 +13761,9 @@ export class Game {
         this.particles.spawnCorePickup(m.pos, '#ffd447');
         this.audio?.playCorePickup();
         this.armorPickups.splice(i, 1);
+        continue;
       }
+      if (m.timer <= 0) this.armorPickups.splice(i, 1);
     }
     this.armorPickupTimer -= dt;
     if (this.armorPickupTimer <= 0) {
@@ -13758,7 +13775,7 @@ export class Game {
           this.player.pos.x + Math.cos(ang) * r,
           this.player.pos.y + Math.sin(ang) * r,
         ));
-        this.armorPickups.push({ pos });
+        this.armorPickups.push({ pos, timer: ORB_LIFETIME });
       }
     }
   }
@@ -32088,9 +32105,9 @@ export class Game {
     // Secret skins — their OWN centered row (decoupled from the 2-row card grid). Only characters
     // that actually have a secret outfit appear, so there is never an empty slot or overlap.
     // The trailing unrequested locked skins are removed entirely.
-    const HIDDEN_SKINS = ['toxic_overload', 'null_walker', 'crimson_oni'];
+    const HIDDEN_SKINS = RETIRED_SECRET_SKINS;                  // one shared list — see MetaProgress
     const secretChars = this.characters.filter(c => CHARACTER_OUTFITS[c.id]?.secret
-      && !HIDDEN_SKINS.includes(CHARACTER_OUTFITS[c.id].secret.unlockKey));
+      && !HIDDEN_SKINS.has(CHARACTER_OUTFITS[c.id].secret.unlockKey));
     const stW = 52, stH = 50, stGap = 28, stTop = 518;
     const stRowW = secretChars.length * stW + (secretChars.length - 1) * stGap;
     let stCx = Math.round(WIDTH / 2 - stRowW / 2) + stW / 2;

@@ -103,6 +103,14 @@ export const UNLOCK_KEYS = [
 // Equippable outfits per base character. `default` is always available; `secret` reuses the
 // EXISTING Easter-Egg unlock flags + secret-skin assets (no new keys/assets invented).
 // Cosmetic only — outfits change the sprite path, never stats/weapons/balance.
+// SECRET SKINS THE PLAYER NEVER REQUESTED. One list, exported, so the reward pool, the persistence
+// sweep in _load() and the three UI strips that hide them cannot drift apart — which is exactly how
+// a skin came to be announced by the Null Cache and deleted on the next launch. Membership here is
+// a display/reward decision only: it changes no unlock requirement and no reward rate.
+export const RETIRED_SECRET_SKINS = new Set(['toxic_overload', 'null_walker', 'crimson_oni']);
+// Bumped only if that list ever changes and the sweep needs to run once more.
+const SECRET_SKIN_LOCK_VERSION = 1;
+
 export const CHARACTER_OUTFITS = {
   skeleton_warrior: {
     default: { name: 'Default', asset: 'assets/characters/skeleton_warrior.png' },
@@ -417,6 +425,7 @@ export class MetaProgress {
     this.credits = 0;
     this.levels  = {};
     this.unlocks = {};
+    this.secretSkinLockVersion = SECRET_SKIN_LOCK_VERSION;   // one-time retired-skin sweep — see _load()
     // Personal Endless-mode records — kept SEPARATE from Act 1 / global high score.
     // { time: seconds survived, score: best score, level: highest player level }.
     this.endlessRecords = { time: 0, score: 0, level: 0 };
@@ -493,6 +502,7 @@ export class MetaProgress {
       // Same typeof guard already used for protocolUnlocks/amulets/relics below.
       this.levels  = (d.levels  && typeof d.levels  === 'object') ? d.levels  : {};
       this.unlocks = (d.unlocks && typeof d.unlocks === 'object') ? d.unlocks : {};
+      this.secretSkinLockVersion = Number(d.secretSkinLockVersion) || 0;
       const er = (d.endlessRecords && typeof d.endlessRecords === 'object') ? d.endlessRecords : {};
       this.endlessRecords = {
         time:  Number(er.time)  || 0,
@@ -625,13 +635,25 @@ export class MetaProgress {
         }
       }
 
-      // Force-lock secret skins the player never requested (Euclid TOXIC OVERLOAD,
-      // Phasewalker NULL WALKER, Oni CRIMSON PROTOCOL) — keep these slots locked/empty.
-      let _relockedSecret = false;
-      for (const _k of ['toxic_overload', 'null_walker', 'crimson_oni']) {
-        if (this.unlocks[_k]) { delete this.unlocks[_k]; _relockedSecret = true; }
+      // Clear the three secret skins the player never requested (Euclid TOXIC OVERLOAD,
+      // Phasewalker NULL WALKER, Oni CRIMSON PROTOCOL) out of saves that picked one up from the
+      // old Null Cache pool. Those slots stay retired — the decision is unchanged — but this is a
+      // ONE-TIME migration now, not a sweep on every launch.
+      //
+      // Deleting on every load was half of a loop: hasLockedSecretSkin() saw the three keys as
+      // "still locked", so the cache kept spawning; the decrypt granted one; the announcement
+      // fired; the next load deleted it; repeat forever. The other half is fixed at the source —
+      // unlockRandomSecretSkin() can no longer pick a retired key — so nothing puts one back and
+      // there is nothing left for a repeated sweep to catch. Anything the player unlocks from here
+      // on is theirs: _load() no longer deletes a single unlock flag.
+      if ((Number(this.secretSkinLockVersion) || 0) < SECRET_SKIN_LOCK_VERSION) {
+        let _relockedSecret = false;
+        for (const _k of RETIRED_SECRET_SKINS) {
+          if (this.unlocks[_k]) { delete this.unlocks[_k]; _relockedSecret = true; }
+        }
+        this.secretSkinLockVersion = SECRET_SKIN_LOCK_VERSION;
+        if (_relockedSecret || !d.secretSkinLockVersion) this._save();
       }
-      if (_relockedSecret) this._save();
     } catch (_) {}
   }
 
@@ -652,6 +674,7 @@ export class MetaProgress {
         credits: this.credits,
         levels:  this.levels,
         unlocks: this.unlocks,
+        secretSkinLockVersion: this.secretSkinLockVersion || 0,
         endlessRecords: this.endlessRecords,
         bestEddieTime: this.bestEddieTime,
         totalEddieTime: this.totalEddieTime,
@@ -921,16 +944,24 @@ export class MetaProgress {
   }
 
   // ── Secret skins (Null Cache discovery) ──────────────────────────────────────
-  // True if any character still has a locked secret skin (drives Null Cache spawning).
+  // Both of these now read RETIRED_SECRET_SKINS, which is the same list _load() keeps empty and the
+  // same list the Character Select / Collection / Victory strips hide. Before that they walked the
+  // FULL outfit table: hasLockedSecretSkin() therefore stayed true forever (three keys can never be
+  // unlocked), so the Null Cache was scheduled in every eligible run and, once the five grantable
+  // skins were owned, its only possible reward was a retired key — announced as a discovery, saved,
+  // and deleted again by the very next _load(). The reward pool and the requirements are unchanged;
+  // what is gone is the ability to promise something that does not exist.
+  // True if any character still has a GRANTABLE locked secret skin (drives Null Cache spawning).
   hasLockedSecretSkin() {
     return Object.values(CHARACTER_OUTFITS)
-      .some(o => o?.secret?.unlockKey && !this.isUnlocked(o.secret.unlockKey));
+      .some(o => o?.secret?.unlockKey && !RETIRED_SECRET_SKINS.has(o.secret.unlockKey)
+                 && !this.isUnlocked(o.secret.unlockKey));
   }
   // Unlock a RANDOM still-locked secret skin (Null Cache decrypt reward). Returns its name or null.
   unlockRandomSecretSkin() {
     const locked = Object.values(CHARACTER_OUTFITS)
       .map(o => o?.secret)
-      .filter(s => s?.unlockKey && !this.isUnlocked(s.unlockKey));
+      .filter(s => s?.unlockKey && !RETIRED_SECRET_SKINS.has(s.unlockKey) && !this.isUnlocked(s.unlockKey));
     if (!locked.length) return null;
     const pick = locked[Math.floor(Math.random() * locked.length)];
     this.unlock(pick.unlockKey);   // persists via unlock()

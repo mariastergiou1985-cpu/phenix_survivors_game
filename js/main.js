@@ -1,4 +1,4 @@
-import { Game } from './game/Game.js?v=20260908300000';
+import { Game } from './game/Game.js?v=20260908310000';
 import { AudioManager } from './audio/AudioManager.js?v=20260904100000';
 import { PlatformAchievements } from './platform/PlatformAchievements.js?v=20260712370000';
 // Steam build: replay any web-earned achievements to Steam on boot (no-op in browsers)
@@ -689,9 +689,20 @@ function applyGamepad() {
   // the D-pad only appeared to work because it was emitting WASD movement that the overlay's
   // handler happens to also accept. Measured: 4 consecutive A presses swallowed, twice.
   // Keyboard and mouse are untouched; this only restores the menu mapping while a menu is up.
+  // _stageCompleteBanner is listed EXPLICITLY (2026-08-10) even though the banner also sets
+  // `paused`. Measured: with the banner up and `paused` false — the state the Phase 15 watchdog
+  // and the 4.2 s setTimeout both pass through — the pad drove the hero and burned the ultimate,
+  // Pulse Shield, EMP, SPECIAL and the Dojang flag under a full-screen "STAGE n COMPLETE". Every
+  // other entry in this list is a panel that owns the screen; the banner is one too, and it should
+  // not be relying on a second flag staying in sync to say so. Nothing else changes: during the
+  // banner the run is paused anyway, so no reachable input was taken away.
+  //
+  // Deliberately NOT here: _vaultPending. That flag means "a vault window is open but a boss rush /
+  // arena / Titan owns the screen" — it is true during LIVE combat, and gating on it would freeze
+  // the player's controller in the middle of a boss fight.
   const inGameplay = game.gameState === 'playing' && !game.paused && !game.gameOver &&
                      !game.victory && !game.upgradeUI && !game.mutationUI &&
-                     !game._postArenaChoice && !game._clsVisible;
+                     !game._postArenaChoice && !game._clsVisible && !game._stageCompleteBanner;
   const cardUI = game.upgradeUI || game.mutationUI;
 
   if (inGameplay) {
