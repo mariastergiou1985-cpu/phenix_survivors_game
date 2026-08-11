@@ -18,7 +18,7 @@
 import { FUSION_DEFS, FUSION_CARD_ORDER, FUSION_ART_READY, FUSION_MAX_TIER,
          fusionModeOk, fusionRunOk, fusionRecipeReady, CHAR_DISPLAY_NAMES }
   from './FusionCatalog.js?v=20260902070000';
-import { FUSION_TAGS, WEAPON_DEFS } from './BuildEngine.js?v=20260908330000';
+import { FUSION_TAGS, WEAPON_DEFS } from './BuildEngine.js?v=20260908350000';
 
 // Tag registration: το _dealDamage βλέπει fusion tags για DamageLog/RUNTIME_HOOKS.
 for (const [fid, d] of Object.entries(FUSION_DEFS)) FUSION_TAGS[fid] = d.tags;

@@ -18,21 +18,21 @@ import { SupportDrone }   from '../entities/SupportDrone.js?v=20260711750000';
 
 import { ParticleSystem, ScreenShake, drawVignette, drawDamagePulse, EMPRing, drawGlow, ChaosAmbientSystem, drawCRTVignette, drawChromaticAberration, drawBloom } from './Effects.js?v=20260713600000';
 import { SystemEventManager } from './Events.js?v=20260908320000';
-import { UpgradeUI }      from './UpgradeUI.js?v=20260908330000';
+import { UpgradeUI }      from './UpgradeUI.js?v=20260908350000';
 import { weightedSample } from './Upgrades.js?v=20260908260000';
-import { BuildEngineRuntime, WEAPON_DEFS as BE_WEAPON_DEFS, EVOLUTION_RECIPES as BE_EVOLUTION_RECIPES, PASSIVE_DEFS as BE_PASSIVE_DEFS } from './BuildEngine.js?v=20260908330000';   // BUILD ENGINE — always on (full migration 2026-07-18)
+import { BuildEngineRuntime, WEAPON_DEFS as BE_WEAPON_DEFS, EVOLUTION_RECIPES as BE_EVOLUTION_RECIPES, PASSIVE_DEFS as BE_PASSIVE_DEFS } from './BuildEngine.js?v=20260908350000';   // BUILD ENGINE — always on (full migration 2026-07-18)
 import { FUSION_DEFS, FUSION_CARD_ORDER, FUSION_ART_READY, FUSION_MAX_TIER, fusionCost, CHAR_DISPLAY_NAMES } from './FusionCatalog.js?v=20260902070000';   // FUSION ARMORY (Batch B)
-import { FusionEngine } from './FusionEngine.js?v=20260908340000';   // FUSION ARMORY runtime (Batch D)
-import './BuildEngineChars1.js?v=20260908340000';   // P2.3a Taekwondo+CyberArm (side-effect register)
-import './BuildEngineChars2.js?v=20260908340000';   // P2.3b Brawler+Assassin (side-effect register)
-import './BuildEngineChars3.js?v=20260908340000';   // P2.4a Eddie+Dimi (side-effect register)
-import './BuildEngineChars4.js?v=20260908340000';   // P2.4b Phasewalker+Euclid+Oni (side-effect register)
-import './BuildEngineChars5.js?v=20260908340000';   // P2.5 Universal όπλα 21-25 (side-effect register)
-import './BuildEnginePassives.js?v=20260908340000'; // P2.6 Build passives §26-50 (generic hooks)
+import { FusionEngine } from './FusionEngine.js?v=20260908350000';   // FUSION ARMORY runtime (Batch D)
+import './BuildEngineChars1.js?v=20260908350000';   // P2.3a Taekwondo+CyberArm (side-effect register)
+import './BuildEngineChars2.js?v=20260908350000';   // P2.3b Brawler+Assassin (side-effect register)
+import './BuildEngineChars3.js?v=20260908350000';   // P2.4a Eddie+Dimi (side-effect register)
+import './BuildEngineChars4.js?v=20260908350000';   // P2.4b Phasewalker+Euclid+Oni (side-effect register)
+import './BuildEngineChars5.js?v=20260908350000';   // P2.5 Universal όπλα 21-25 (side-effect register)
+import './BuildEnginePassives.js?v=20260908350000'; // P2.6 Build passives §26-50 (generic hooks)
 import { MutationUI }      from './MutationUI.js?v=20260904180000';
 import { sampleMutations, sampleCorruptedMutation } from './Mutations.js?v=20260904180000';
 import { drawHUD, drawEndScreen } from './HUD.js?v=20260908050000';
-import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RETIRED_SECRET_SKINS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, COLLECTIBLE_FRAGMENT_COST, COLLECTIBLE_GRID_COST, ECHO_FRAGMENT_COST, ECHO_GRID_COST, SKILL_TREE, AMULET_DEFS, GRID_TO_PF_RATE, characterStageRequirement } from './MetaProgress.js?v=20260908330000';
+import { MetaProgress, META_UPGRADES, SYNERGY_UPGRADES, upgradeCost, ENDLESS_ACHIEVEMENTS, CHARACTER_OUTFITS, PF_CHARACTER_COSTS, PF_TOTAL_OBTAINABLE, PROTOCOL_CARDS, RELIC_DEFS, RETIRED_SECRET_SKINS, RELIC_FRAGMENT_COST, RELIC_GRID_COST, COLLECTIBLE_FRAGMENT_COST, COLLECTIBLE_GRID_COST, ECHO_FRAGMENT_COST, ECHO_GRID_COST, SKILL_TREE, AMULET_DEFS, GRID_TO_PF_RATE, characterStageRequirement } from './MetaProgress.js?v=20260908350000';
 import { ElementFx, CHARACTER_ELEMENT, ELEMENTS, ELEMENT_ICON, FUSION_FX, CHARACTER_FUSION, FUSION_PAIRS, fusionKey } from '../Elements.js?v=20260712520000';
 // Japan Phasewalker (Endless unlockable) ability/VFX modules — kept as separate, self-contained
 // files in js/effects/ and used ONLY when selectedCharacter === 'japan_phasewalker'.
@@ -2045,7 +2045,7 @@ export class Game {
   // P2.8: NULL ARSENAL — DOM overlay ΠΑΝΩ από το menu (δεν αγγίζει gameState)·
   // dynamic import ώστε το module να μη βαραίνει το boot όταν το flag είναι κλειστό.
   goToNullArsenal() {
-    import('./NullArsenalUI.js?v=20260908340000')
+    import('./NullArsenalUI.js?v=20260908350000')
       .then(m => m.openNullArsenal(this))
       .catch(err => console.error('[P2.8] NULL ARSENAL failed to open', err));
   }
@@ -10093,10 +10093,14 @@ export class Game {
     const p = this.player;
     if (!p) return;
     if (p.specialCooldown > 0) return;
+    // THREE characters, not four. Dimi was removed on 2026-08-11: his Cyber-Angel Nova is the
+    // SPACE ultimate (activateDimiAngelUltimate), and this branch fired the SAME move off the SAME
+    // 25s cooldown, so C and SPACE were one ability wearing two buttons — whichever the player
+    // pressed first worked and the other did nothing for 25 seconds. He has no second special to
+    // put here, so he is off the SPECIAL path rather than given an invented one. SPACE is untouched.
     if      (p.selectedCharacter === 'skeleton_warrior')  this._activateBoneGuardBlast();
     else if (p.selectedCharacter === 'taekwondo_girl')    this._activateLightningDashStrike();
     else if (p.selectedCharacter === 'cyber_arm_hero')    this._activateOverdriveBeam();
-    else if (p.selectedCharacter === 'dimis_kickboxer')   this._activateCyberAngelNova();
   }
 
   // Dimi ultimate — Cyber-Angel Summoning: a large heavy-bruiser AoE nova (big radius,
@@ -32961,7 +32965,10 @@ _drawLoreArchive(ctx) {
     // outside the panel frame itself (650). The container grows by exactly the height of what was
     // added and nothing else moves: same widths, same fonts, same spacing, same line-height, and
     // the panel is centred so the relationship between every element is unchanged.
-    const pw = 1140, ph = 606;
+    //
+    // 606 -> 619: same arithmetic again for the one SPECIAL scope line added below the controls
+    // table (13px, one table line-height). Nothing else moves.
+    const pw = 1140, ph = 619;
     const px = Math.round((WIDTH  - pw) / 2);
     const py = Math.round((HEIGHT - ph) / 2);
 
@@ -33047,7 +33054,13 @@ _drawLoreArchive(ctx) {
       // to input. Written in exactly the same shape as the rows above, and the labels are checked
       // against js/main.js by tools/qa/browser/controls_screen_bindings_proof.mjs — which then
       // presses these very keys in a live run, so the screen cannot drift from the bindings.
-      ['Special',            'C',     'X',             '□ Square'],
+      //
+      // Both rows are SCOPED, because neither input does anything on most of the roster: V plants
+      // the Spirit Dojang for Taekwondo Girl only, and activateSpecial() branches on exactly three
+      // characters and returns silently for the other seven. Printed unqualified, the SPECIAL row
+      // promised an ability to all ten — seven of them press C and nothing happens, which reads as
+      // a broken build rather than as a character without a special.
+      ['Special (3 heroes)', 'C',     'X',             '□ Square'],
       ['Dojang (Taekwondo)', 'V',     'A',             '✕ Cross'],
     ];
     ctrlRows.forEach(([a, k, xb, ps]) => {
@@ -33056,6 +33069,12 @@ _drawLoreArchive(ctx) {
       ctx.fillText(k, colK, cy); ctx.fillText(xb, colX, cy); ctx.fillText(ps, colP, cy);
       cy += 13;
     });
+    // Names the three, so "3 heroes" is not a riddle. Kept to one table line-height (13px) — the
+    // panel height above was raised by exactly that. Dimi is deliberately NOT here: his Cyber-Angel
+    // Nova is the SPACE ultimate, and C used to fire that same move a second time.
+    ctx.font = '10px Consolas, monospace'; ctx.fillStyle = 'rgba(190,215,240,0.78)';
+    ctx.fillText('SPECIAL: Skeleton Warrior, Cyber Arm Hero, Taekwondo Girl only. Others have none.', colA, cy);
+    cy += 13;
     cy += 4;
 
     // ── COMBAT & BUILDS ────────────────────────────────────────

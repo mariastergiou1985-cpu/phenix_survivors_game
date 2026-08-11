@@ -489,6 +489,37 @@ export class BuildEngineRuntime {
       if (_score > leadScore) { leadScore = _score; leadW = _wid; leadP = _cp; }
     }
     const _midRecipe = leadScore >= 6;   // επένδυση ≥ όπλο L3 → σταμάτα να σπρώχνεις νέα όπλα
+    // EXTERNAL LEAD (Eddie / be_solo_of_the_damned, 2026-08-11). An external weapon lives in the
+    // legacy layer and NEVER enters this.weapons, so the scan above cannot see it and its catalyst
+    // could never become leadP. The consequence was total, not partial: the BE slot goes to
+    // _nativeStart while no lead exists and to _leadRecipe once one does, and _nonLead (the 1-in-5
+    // variety slot) is empty whenever _leadRecipe is — so for an Eddie who had not yet acquired a
+    // native BE weapon, be_p_forbidden_amplifier was in `cand` and could not be drawn from any
+    // pool. Measured on the pre-fix build: 0 offers in 161 real level-up panels, and 0 of 3 drives
+    // reached the evolution in 120 picks each, while every other BE evolution closes in 8-29.
+    //
+    // Scanned here rather than folded into the loop above so that _midRecipe — the new-weapon
+    // suppression — keeps reading ONLY owned BE weapons. Eddie starts holding Solo Red Thunder, so
+    // folding it in would have suppressed his new-weapon offers from the first card of every run:
+    // an offer-rate change, which is not what this fixes.
+    //
+    // The lead is held only while the catalyst can still be levelled. A finished (or unreachable)
+    // half must not sit at the top of the score table and starve a real BE recipe of its lead
+    // weighting for the rest of the run.
+    for (const [_wid, _d] of Object.entries(WEAPON_DEFS)) {
+      if (!_d.external) continue;
+      if (_d.owner && _d.owner !== g.selectedCharacter) continue;
+      const _bw = this.weapons.get(_wid);
+      if (_bw?.evolved) continue;
+      const _cp = this._catalystMap[_wid];
+      if (!_cp) continue;
+      const _cl = this.passives.get(_cp) || 0;
+      if (_cl >= (PASSIVE_DEFS[_cp]?.maxLevel || 0)) continue;   // that half is already closed
+      const _xl = _bw ? (_bw.level || 0) : (g._weaponLevels?.get(_wid) || 0);
+      if (_xl < 1) continue;                                     // the player is not holding it
+      const _score = _xl * 2 + _cl;
+      if (_score > leadScore) { leadScore = _score; leadW = _wid; leadP = _cp; }
+    }
     const cand = [];
     const _wFull = this.weapons.size >= this.CAPS.weapons;
     const _pFull = this.passives.size >= this.CAPS.passives;

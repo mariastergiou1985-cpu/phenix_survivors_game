@@ -657,14 +657,29 @@ export class MetaProgress {
     } catch (_) {}
   }
 
-  // True if the loaded save shows any Endless activity: any Endless achievement earned, any
-  // Endless personal record set, or an Endless-only secret unlock (log_1997 Brawler skin /
-  // log_1998 / the Brawler Warrior unlock earned at 10:00 Endless).
+  // True if the loaded save shows any Endless activity. Every marker below is written by code that
+  // can ONLY run inside an Endless run, and that is the whole requirement: this backfill decides
+  // whether ENDLESS + CHAOS open, so a marker a campaign player can also earn opens both modes six
+  // stages early and the 7-stage gate stops meaning anything.
+  //
+  //   achievements     — unlockEndlessAchievements(), called from _checkEndlessAchievements()
+  //                      (returns unless this.endless) and from _grantRewards() under if (this.endless).
+  //   endlessRecords   — submitEndlessRun(), called only under if (this.endless).
+  //   brawler_warrior  — Game.js grants it at _eliteWaveElapsed >= 600, a clock that only ticks in
+  //                      the Endless update path, with no character gate.
+  //
+  // log_1997 / log_1998 were listed here and had to go. Campaign now pays a secret skin on every
+  // FIRST stage clear (_completeCampaignStage -> unlockRandomSecretSkin), both LOG keys sit in that
+  // random pool, and drawing one made a player who had never touched Endless look like a veteran:
+  // measured on the pre-fix build, 60 of 60 fresh saves opened ENDLESS + CHAOS after 1-4 campaign
+  // clears. Removing them costs the migration nothing — the in-run grants are at 15:00 (log_1998)
+  // and 18:00 (log_1997) of an Endless run and brawler_warrior fires at 10:00 of that same run, so
+  // any save that earned a LOG the real way already carries the marker above it.
   _hasEndlessHistory() {
     if (this.achievements && Object.keys(this.achievements).length > 0) return true;
     const r = this.endlessRecords || {};
     if ((r.time || 0) > 0 || (r.score || 0) > 0 || (r.level || 0) > 0) return true;
-    if (this.isUnlocked('log_1997') || this.isUnlocked('log_1998') || this.isUnlocked('brawler_warrior')) return true;
+    if (this.isUnlocked('brawler_warrior')) return true;
     return false;
   }
 
