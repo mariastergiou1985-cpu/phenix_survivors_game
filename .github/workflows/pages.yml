@@ -1,0 +1,94 @@
+# PHENIX: NULL EDEN - public demo deployment (ARTIFACT, not the repository)
+#
+# WHY. GitHub Pages publishes a repository, and with .nojekyll present it publishes EVERY tracked
+# file. The live site therefore hands out the whole QA suite, the Electron shell source, the
+# internal design docs, the Adobe/Blender source .zip packs and the *.png.orig.bak art backups.
+# Verified on 2026-08-11 by fetching
+#   /tools/qa/browser/release_package_proof.mjs
+# from the published site and getting the script's real source back.
+#
+# Deploying an artifact fixes that WITHOUT changing repository visibility: only what
+# tools/build-public-site.js emits is published, and that script is an allow-list plus a leak check
+# that fails the build rather than shipping a dev file.
+#
+# configure-pages runs with enablement: true, so the first successful run switches this repo's
+# Pages source from "branch" to "GitHub Actions" on its own.
+name: Deploy public demo
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [ main ]
+    paths:
+      - 'index.html'
+      - 'press.html'
+      - 'manifest.json'
+      - 'sw.js'
+      - 'js/**'
+      - 'assets/**'
+      - 'LICENSE'
+      - 'tools/build-public-site.js'
+      - '.github/workflows/pages.yml'
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # The builder prefers a git allow-list, so it needs the checkout to be a real repo.
+      # It exits non-zero if anything from tools/, electron/, docs/ or a source pack reaches _site.
+      - name: Assemble the public site
+        run: node tools/build-public-site.js
+
+      - name: Verify no dev file reached the artifact
+        shell: bash
+        run: |
+          set -e
+          cd _site
+          bad=$(find . -type f \( \
+              -iname '*.zip' -o -iname '*.bak' -o -iname '*.orig' -o -iname '*.py' \
+              -o -iname '*.bat' -o -iname '*.md' -o -iname '*.map' -o -iname '*.log' \
+              -o -iname '*.txt' -o -iname '*.csv' -o -iname '*.ini' \) | wc -l)
+          dirs=$(ls -d tools electron docs qa_reports release_store_package .github 2>/dev/null | wc -l)
+          echo "dev-extension files: $bad   dev dirs: $dirs"
+          test "$bad" -eq 0
+          test "$dirs" -eq 0
+          test -f index.html && test -f press.html && test -f LICENSE
+          echo "artifact is runtime-only"
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

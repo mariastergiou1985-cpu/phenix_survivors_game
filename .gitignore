@@ -19,3 +19,6 @@ tools/qa/_to_delete/
 # away is moved here and removed locally instead. Note: comments must be on their OWN line —
 # git has no inline comment syntax, so "pattern  # why" is a literal pattern that matches nothing.
 /_to_delete/
+
+# Public Pages artifact, assembled by tools/build-public-site.js - never committed.
+_site/
