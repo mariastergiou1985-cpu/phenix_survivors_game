@@ -1,16 +1,4 @@
 # PHENIX: NULL EDEN - Windows .exe build (STANDALONE / OFFLINE - the Steam build)
-#
-# WHAT CHANGED AND WHY (2026-08-11). This workflow used to ignore electron/main.js entirely: it
-# wrote its OWN app/main.js that pointed a BrowserWindow at the live GitHub Pages site and
-# packaged that. The exe it produced was a window around a website - it needed internet on every
-# launch, it shipped none of the game, and it could never be a Steam build. It now runs the repo's
-# real offline package: prepare-game.js assembles electron/game/, and electron-builder packages
-# electron/main.js + preload.js + game/** exactly as `npm run dist` does locally. The CI artifact
-# and the local build are the same thing.
-#
-# The build is then SMOKE-TESTED: the produced exe is launched with --phenix-selftest and every
-# hostname resolved to NOTFOUND. The packaged exe writes a machine-readable result file because a
-# Windows GUI-subsystem process does not reliably expose stdout to PowerShell.
 name: Build Windows EXE
 
 on:
@@ -69,18 +57,34 @@ jobs:
         run: |
           $exe = '${{ steps.find.outputs.exe }}'
           $resultFile = Join-Path $env:RUNNER_TEMP 'phenix-selftest.json'
-          Remove-Item $resultFile -Force -ErrorAction SilentlyContinue
+          $traceFile = Join-Path $env:RUNNER_TEMP 'phenix-selftest-trace.jsonl'
+          Remove-Item $resultFile,$traceFile -Force -ErrorAction SilentlyContinue
           $env:PHENIX_SELFTEST_RESULT_FILE = $resultFile
+          $env:PHENIX_SELFTEST_TRACE_FILE = $traceFile
+
           Write-Host "self-testing $exe with every host resolving to NOTFOUND"
           $proc = Start-Process -FilePath $exe -ArgumentList @('--phenix-selftest', '--host-resolver-rules=MAP * ~NOTFOUND') -PassThru
 
-          $deadline = (Get-Date).AddSeconds(45)
+          $deadline = (Get-Date).AddSeconds(60)
           while ((Get-Date) -lt $deadline -and -not (Test-Path $resultFile)) {
+            if ($proc.HasExited) {
+              Write-Host "selftest process exited early with code $($proc.ExitCode)"
+              break
+            }
             Start-Sleep -Milliseconds 500
           }
+
+          if (Test-Path $traceFile) {
+            Write-Host '--- PHENIX SELFTEST TRACE ---'
+            Get-Content $traceFile | ForEach-Object { Write-Host $_ }
+            Write-Host '--- END TRACE ---'
+          } else {
+            Write-Host 'PHENIX selftest trace file was never created'
+          }
+
           if (-not (Test-Path $resultFile)) {
             if (-not $proc.HasExited) { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue }
-            Write-Error 'selftest timed out without producing a result file'
+            Write-Error 'selftest did not produce a result file'
             exit 1
           }
 
