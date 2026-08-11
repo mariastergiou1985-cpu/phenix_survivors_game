@@ -10,7 +10,7 @@
 // gradually replaced by stateManager.setState() calls.
 // ──────────────────────────────────────────────────────────────────────────
 
-import { EVENTS } from './EventBus.js?v=20260702700000';
+import { EVENTS } from './EventBus.js?v=20260703990000';
 
 // ─── Valid Game States ──────────────────────────────────────────────────────
 export const GAME_STATES = Object.freeze({

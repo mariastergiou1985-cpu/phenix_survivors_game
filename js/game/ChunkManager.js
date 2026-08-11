@@ -9,8 +9,8 @@
 //   • Spawn helpers (camera-relative enemy placement)
 // ────────────────────────────────────────────────────────────────────────────
 
-import { EVENTS } from './EventBus.js?v=20260702700000';
-import { BIOME_ID, BIOME_DEFS, CHUNK_SIZE, ACTIVE_GRID } from './MapManager.js?v=20260817000000';
+import { EVENTS } from './EventBus.js?v=20260703990000';
+import { BIOME_ID, BIOME_DEFS, CHUNK_SIZE, ACTIVE_GRID } from './MapManager.js?v=20260908300000';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 const UNLOAD_DISTANCE = 2;   // chunks beyond active grid before unload
