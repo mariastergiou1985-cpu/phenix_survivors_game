@@ -37,6 +37,15 @@ const DENY_EXT = new Set([
 ]);
 const DENY_NAME = new Set(['desktop.ini', 'Thumbs.db', '.DS_Store']);
 
+// Whole folders that belong to the website, not to the game. assets/press holds the marketing
+// screenshots for press.html — press.html is not packaged, and nothing in js/, index.html or sw.js
+// ever references assets/press, so every Steam customer was downloading the press kit with the
+// game. Checked by grepping the packaged code for each asset folder before adding one here:
+// assets/pwa stays (manifest.json cites the icons and electron-builder takes its app icon from
+// game/assets/pwa/icon.ico), and assets/emp stays even though nothing seems to reference its one
+// file — an art asset is not something this script gets to decide is dead.
+const DENY_DIR = ['assets/press'].map((d) => path.normalize(d));
+
 // ── git allow-list ───────────────────────────────────────────────────────────
 let tracked = null;
 try {
@@ -58,6 +67,21 @@ let copied = 0, bytes = 0;
 
 const allow = (abs, stat) => {
   const rel = path.relative(SRC, abs);
+  const relN = path.normalize(rel);
+  if (DENY_DIR.some((d) => relN === d || relN.startsWith(d + path.sep))) {
+    // cpSync stops descending the moment a directory is refused, so the files inside it are never
+    // offered to this filter and would vanish from the report. Measure and log the folder here —
+    // a packager that drops things without saying so is how the press kit shipped for months.
+    if (stat.isDirectory()) {
+      let n = 0, bytes = 0;
+      const walk = (d) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+        const p = path.join(d, e.name);
+        if (e.isDirectory()) walk(p); else { n++; bytes += fs.statSync(p).size; } } };
+      try { walk(abs); } catch (_) {}
+      skipped.push([`${rel}/  (${n} files)`, bytes, 'dir']);
+    }
+    return false;
+  }
   if (stat.isDirectory()) return true;                       // directories are walked, not shipped
   const base = path.basename(abs);
   if (DENY_NAME.has(base))                       { skipped.push([rel, stat.size, 'name']); return false; }
