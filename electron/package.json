@@ -6,8 +6,13 @@
   "main": "main.js",
   "author": "InkSpireM Visuals",
   "scripts": {
+    "prepare-game": "node prepare-game.js",
     "start": "electron .",
-    "dist": "electron-builder --win"
+    "selftest": "electron . --phenix-selftest",
+    "dist": "node prepare-game.js && electron-builder --win"
+  },
+  "dependencies": {
+    "steamworks.js": "^0.4.0"
   },
   "devDependencies": {
     "electron": "^33.0.0",
@@ -19,14 +24,30 @@
     "files": [
       "main.js",
       "preload.js",
-      "game/**/*"
+      "package.json",
+      "game/**/*",
+      "node_modules/**/*",
+      "!node_modules/steamworks.js/dist/linux64/**",
+      "!node_modules/steamworks.js/dist/osx/**",
+      "!node_modules/**/{README,readme,CHANGELOG,LICENSE}*",
+      "!node_modules/**/*.{md,ts,map}"
+    ],
+    "asarUnpack": [
+      "**/*.node",
+      "node_modules/steamworks.js/**"
+    ],
+    "extraFiles": [
+      {
+        "from": "node_modules/steamworks.js/dist/win64/steam_api64.dll",
+        "to": "steam_api64.dll"
+      }
     ],
     "win": {
       "target": [
         "nsis",
         "portable"
       ],
-      "icon": "game/assets/pwa/icon-512.png"
+      "icon": "game/assets/pwa/icon.ico"
     },
     "nsis": {
       "oneClick": false,

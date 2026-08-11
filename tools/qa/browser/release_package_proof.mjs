@@ -88,56 +88,51 @@ console.log('── 0. Electron boot, offline (win.loadFile) ──');
      path.join(ROOT, 'node_modules/electron/dist/electron'),
      '/tmp/etest/node_modules/electron/dist/electron'].find(p => fs.existsSync(p));
   if (!ELECTRON) {
-    console.log('     SKIPPED — no electron binary found. Verify locally with:  cd electron && npm install && npm start');
+    console.log('     SKIPPED — no electron binary found. Verify locally with:  cd electron && npm run selftest');
     console.log('     (set ELECTRON_BIN=/path/to/electron to run it here)');
     out.fileBoot = null;
   } else {
     const { execFileSync } = await import('node:child_process');
+    // Run the SHIPPED shell, not a copy of it. An earlier version of this proof wrote its own
+    // main.js "in the shape of" electron/main.js and left out sandbox:false — so it reproduced the
+    // exact preload failure the real file had already been fixed for, and reported a healthy build
+    // as broken. The only honest way to test a shell is to run that shell.
     const tmp = fs.mkdtempSync('/tmp/phenix-eboot-');
-    fs.writeFileSync(path.join(tmp, 'package.json'), JSON.stringify({ name: 'eboot', version: '1.0.0', main: 'main.js' }));
-    fs.copyFileSync(path.join(ROOT, 'electron/preload.js'), path.join(tmp, 'preload.js'));
-    // The shipped createWindow, verbatim in shape, plus a probe and a hard exit.
-    fs.writeFileSync(path.join(tmp, 'main.js'), `
-const { app, BrowserWindow } = require('electron');
-const path = require('path');
-const GAME = ${JSON.stringify(PKG)};
-const errors = [];
-app.whenReady().then(() => {
-  const win = new BrowserWindow({ width: 1600, height: 900, show: false, fullscreen: false,
-    webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: false, nodeIntegration: false } });
-  win.webContents.on('console-message', (_e, lvl, msg) => { if (lvl >= 2) errors.push(String(msg).slice(0, 200)); });
-  win.loadFile(path.join(GAME, 'index.html'));
-  setTimeout(async () => {
-    let r; try { r = await win.webContents.executeJavaScript(\`(() => {
-      const c = document.getElementById('game'); let lum = -1;
-      try { const g = c.getContext('2d'); const d = g.getImageData(0,0,c.width,c.height).data;
-            let s=0,n=0; for(let i=0;i<d.length;i+=4000){s+=(d[i]+d[i+1]+d[i+2])/3;n++;} lum=Math.round(s/n); } catch(e){}
-      return JSON.stringify({ protocol: location.protocol, canvas: c ? c.width+'x'+c.height : null,
-        moduleGraphAlive: !!(window.__phenixTutorial || document.getElementById('cgm-overlay')), luminance: lum });
-    })()\`); } catch (e) { r = JSON.stringify({ err: String(e).slice(0,200) }); }
-    console.log('PROBE::' + r);
-    console.log('ERRS::' + JSON.stringify(errors.filter(e => !/steamworks|Security Warning/i.test(e)).slice(0,3)));
-    app.quit();
-  }, 9000);
-});
-app.on('window-all-closed', () => app.quit());
-`);
+    for (const f of ['main.js', 'preload.js', 'package.json']) {
+      fs.copyFileSync(path.join(ROOT, 'electron', f), path.join(tmp, f));
+    }
+    // strip scripts so `electron .` cannot recurse through npm
+    const pj = JSON.parse(fs.readFileSync(path.join(tmp, 'package.json'), 'utf8'));
+    delete pj.scripts; fs.writeFileSync(path.join(tmp, 'package.json'), JSON.stringify(pj, null, 2));
+    fs.symlinkSync(PKG, path.join(tmp, 'game'));
+    const nm = [path.join(ROOT, 'electron/node_modules'), '/tmp/etest/node_modules'].find(p => fs.existsSync(path.join(p, 'steamworks.js')));
+    if (nm) { fs.mkdirSync(path.join(tmp, 'node_modules'), { recursive: true });
+              fs.cpSync(path.join(nm, 'steamworks.js'), path.join(tmp, 'node_modules/steamworks.js'), { recursive: true }); }
+    console.log(`     steamworks.js in the test app: ${nm ? 'yes' : 'NO — install it in electron/'}`);
     let stdout = '';
     try {
       // --host-resolver-rules="MAP * ~NOTFOUND" is a machine with no internet at all.
-      stdout = execFileSync('xvfb-run', ['-a', ELECTRON, tmp, '--no-sandbox', '--host-resolver-rules=MAP * ~NOTFOUND'],
-        { encoding: 'utf8', timeout: 90000, stdio: ['ignore', 'pipe', 'pipe'] });
+      stdout = execFileSync('xvfb-run', ['-a', ELECTRON, tmp, '--phenix-selftest', '--no-sandbox',
+                                         '--host-resolver-rules=MAP * ~NOTFOUND'],
+        { encoding: 'utf8', timeout: 120000, stdio: ['ignore', 'pipe', 'pipe'] });
     } catch (e) { stdout = (e.stdout || '') + (e.stderr || ''); }
-    const probe = JSON.parse((stdout.match(/PROBE::(.*)/) || [, '{}'])[1]);
-    const eerrs = JSON.parse((stdout.match(/ERRS::(.*)/) || [, '[]'])[1]);
-    console.log(`     protocol=${probe.protocol} canvas=${probe.canvas} moduleGraphAlive=${probe.moduleGraphAlive} luminance=${probe.luminance}`);
+    const probe = JSON.parse((stdout.match(/PHENIX_SELFTEST::(.*)/) || [, '{}'])[1]);
+    const verdict = (stdout.match(/PHENIX_SELFTEST_RESULT::(\w+)/) || [, '?'])[1];
+    console.log(`     ${JSON.stringify(probe)}`);
     console.log(`     DNS: every host resolves to NOTFOUND — this is a machine with no internet`);
-    for (const e of eerrs) console.log(`     console: ${e}`);
-    line(probe.protocol === 'file:', `the packaged shell loads over file:// exactly as electron/main.js does (${probe.protocol})`);
-    line(probe.moduleGraphAlive === true && probe.luminance > 3,
+    line(probe.protocol === 'file:', `the packaged shell loads over file:// (${probe.protocol})`);
+    line(probe.booted === true && probe.luminance > 3,
          `the game boots and paints with NO network at all (luminance ${probe.luminance})`);
-    line(eerrs.length === 0, `no renderer errors in the packaged shell (${eerrs.length})`);
-    out.fileBoot = probe.moduleGraphAlive === true && probe.luminance > 3 && eerrs.length === 0;
+    line((probe.errors || []).length === 0, `no renderer errors in the packaged shell (${(probe.errors||[]).length})` +
+         ((probe.errors||[]).length ? ' :: ' + probe.errors[0] : ''));
+    line(probe.steamBridge === true && probe.achievementsBridged === true,
+         `the Steam bridge is injected — window.phenixSteam.activate exists (status: ${probe.steamStatus})`);
+    line(probe.steamAppId !== 480, `the build is NOT running on Valve's 480 test app (appId ${probe.steamAppId})`);
+    line(verdict === 'PASS', `the shell's own --phenix-selftest agrees (${verdict})`);
+    out.fileBoot = probe.booted === true && probe.luminance > 3 && (probe.errors || []).length === 0;
+    out.steamBridge = probe.steamBridge === true && probe.achievementsBridged === true;
+    out.steamStatus = probe.steamStatus;
+    out.steamAppId = probe.steamAppId;
     fs.rmSync(tmp, { recursive: true, force: true });
   }
 }
@@ -429,9 +424,10 @@ const localLoad  = /loadFile\(/.test(emain);
 // heredoc. Detect the URL it hard-codes AND the loadURL call that consumes it; matching only
 // on `loadURL('http` misses `const GAME_URL = '…'` + `win.loadURL(GAME_URL)` and would report
 // the single most important fact in this whole run backwards.
-const wfUrl      = (wf.match(/GAME_URL\s*=\s*'(https?:\/\/[^']+)'/) || [])[1] || null;
-const wfRemote   = /loadURL\(\s*(['"]https?:\/\/|GAME_URL)/.test(wf) || !!wfUrl;
-const wfOwnMain  = /Set-Content\s+app\/main\.js/.test(wf);
+const wfCode     = wf.split('\n').filter(l => !/^\s*#/.test(l)).join('\n');   // comments are not behaviour
+const wfUrl      = (wfCode.match(/GAME_URL\s*=\s*'(https?:\/\/[^']+)'/) || [])[1] || null;
+const wfRemote   = /loadURL\(\s*(['"]https?:\/\/|GAME_URL)/.test(wfCode) || !!wfUrl;
+const wfOwnMain  = /Set-Content\s+app\/main\.js/.test(wfCode);
 console.log(`     electron/main.js  -> ${localLoad ? 'loadFile(game/index.html)  [STANDALONE INTENT]' : 'loadURL  [ONLINE]'}`);
 console.log(`     build-exe.yml     -> ${wfOwnMain ? 'writes its OWN app/main.js (electron/main.js is NOT used)' : 'uses electron/main.js'}`);
 console.log(`                          ${wfRemote ? 'and that generated shell does loadURL(' + wfUrl + ')  [ONLINE]' : 'local load'}`);
