@@ -9,8 +9,8 @@
 # and the local build are the same thing.
 #
 # The build is then SMOKE-TESTED: the produced exe is launched with --phenix-selftest and every
-# hostname resolved to NOTFOUND, so a build that only boots because the runner has internet fails
-# here instead of on a customer's machine.
+# hostname resolved to NOTFOUND. The packaged exe writes a machine-readable result file because a
+# Windows GUI-subsystem process does not reliably expose stdout to PowerShell.
 name: Build Windows EXE
 
 on:
@@ -38,7 +38,6 @@ jobs:
         with:
           node-version: '22'
 
-      # prepare-game.js prefers a git allow-list, so it needs the checkout to be a real repo.
       - name: Assemble the offline game payload
         run: node electron/prepare-game.js
 
@@ -46,8 +45,6 @@ jobs:
         working-directory: electron
         run: npm install --no-audit --no-fund
 
-      # `npm run dist` also runs prepare-game.js - harmless, and it keeps the CI command identical
-      # to the one in BUILD.md so the two can never drift.
       - name: Build the installer + portable exe
         working-directory: electron
         run: npm run dist
@@ -67,18 +64,38 @@ jobs:
           Write-Host "exe: $($exe.FullName)"
           "exe=$($exe.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
-      # THE POINT OF THE WHOLE FILE: prove the produced exe boots the game with no internet.
       - name: Smoke-test the exe OFFLINE
         shell: pwsh
         run: |
           $exe = '${{ steps.find.outputs.exe }}'
+          $resultFile = Join-Path $env:RUNNER_TEMP 'phenix-selftest.json'
+          Remove-Item $resultFile -Force -ErrorAction SilentlyContinue
+          $env:PHENIX_SELFTEST_RESULT_FILE = $resultFile
           Write-Host "self-testing $exe with every host resolving to NOTFOUND"
-          $out = & $exe --phenix-selftest --host-resolver-rules="MAP * ~NOTFOUND" 2>&1 | Out-String
-          Write-Host $out
-          if ($out -notmatch 'PHENIX_SELFTEST_RESULT::PASS') {
-            Write-Error 'the packaged exe did not boot offline'
+          $proc = Start-Process -FilePath $exe -ArgumentList @('--phenix-selftest', '--host-resolver-rules=MAP * ~NOTFOUND') -PassThru
+
+          $deadline = (Get-Date).AddSeconds(45)
+          while ((Get-Date) -lt $deadline -and -not (Test-Path $resultFile)) {
+            Start-Sleep -Milliseconds 500
+          }
+          if (-not (Test-Path $resultFile)) {
+            if (-not $proc.HasExited) { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue }
+            Write-Error 'selftest timed out without producing a result file'
             exit 1
           }
+
+          $raw = Get-Content $resultFile -Raw
+          Write-Host "PHENIX_SELFTEST_FILE::$raw"
+          try { $result = $raw | ConvertFrom-Json } catch {
+            Write-Error 'selftest result file is not valid JSON'
+            exit 1
+          }
+          if ($result.result -ne 'PASS') {
+            Write-Error "the packaged exe did not boot offline: $raw"
+            exit 1
+          }
+          if (-not $proc.HasExited) { $proc.WaitForExit(10000) | Out-Null }
+          Write-Host 'PHENIX_SELFTEST_RESULT::PASS'
 
       - name: Package the build folder
         shell: pwsh
