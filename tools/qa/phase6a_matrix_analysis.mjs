@@ -3,8 +3,54 @@
 // phase6a_pressure_telemetry.mjs --batch) and answers the closure gates with numbers.
 // Reporting only: this file never touches production and never re-runs the game.
 import fs from 'node:fs';
-const L = fs.readFileSync(process.argv[2] || 'qa_reports/phase6a_matrix.jsonl', 'utf8')
-  .trim().split('\n').map(l => JSON.parse(l));
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+// 2026-08-11 QA refresh — input handling, not expectations.
+// Verified against live producer output (phase6a_pressure_telemetry.mjs --worker): every field
+// this report reads is still emitted under the current schema, so nothing below is stale.
+// What did fail was getting the data in at all:
+//   * the default path was resolved against process.cwd(), so the report only found its input
+//     when launched from the repo root — the same trap headless-env.mjs calls out ("harnesses are
+//     launched from several directories"). Now resolved against the repo root like its siblings.
+//   * a missing input produced a raw ENOENT stack trace instead of naming the producer. Note that
+//     --batch is the only supported writer: the --worker path prints ONE object with no trailing
+//     newline, so hand-concatenating worker output does NOT make valid JSONL.
+// A missing, empty or malformed input still EXITS NON-ZERO — this only replaces a stack trace
+// with an actionable message, it never lets a bad input report success.
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const DEFAULT_IN = path.join(ROOT, 'qa_reports', 'phase6a_matrix.jsonl');
+const IN = process.argv[2] ? path.resolve(process.argv[2]) : DEFAULT_IN;
+
+let raw;
+try {
+  raw = fs.readFileSync(IN, 'utf8');
+} catch (err) {
+  console.error(`PHASE 6A MATRIX ANALYSIS — no input to report on.`);
+  console.error(`  looked for: ${IN}  (${err.code || err.message})`);
+  console.error(`  This file is REPORTING ONLY — it never runs the game, it reads the matrix that`);
+  console.error(`  phase6a_pressure_telemetry.mjs produces. Generate it first, then re-run:`);
+  console.error(`    node tools/qa/phase6a_pressure_telemetry.mjs --count`);
+  console.error(`    node tools/qa/phase6a_pressure_telemetry.mjs --batch 0 <count> qa_reports/phase6a_matrix.jsonl`);
+  console.error(`    node tools/qa/phase6a_matrix_analysis.mjs [path/to/matrix.jsonl]`);
+  process.exit(2);
+}
+const L = [];
+raw.split('\n').forEach((line, i) => {
+  const s = line.trim();
+  if (!s) return;                       // tolerate blank lines only — they carry no run data
+  try {
+    L.push(JSON.parse(s));
+  } catch (err) {
+    // An interrupted --batch append can leave a half-written line. Say which one, do not guess.
+    console.error(`PHASE 6A MATRIX ANALYSIS — malformed JSON on line ${i + 1} of ${IN}: ${err.message}`);
+    process.exit(2);
+  }
+});
+if (!L.length) {
+  console.error(`PHASE 6A MATRIX ANALYSIS — ${IN} contains no runs; nothing to report.`);
+  process.exit(2);
+}
 const n2 = x => x == null ? 'n/a' : (+x).toFixed(1);
 const pct = (a, q) => { if (!a.length) return null; const b = a.slice().sort((x, y) => x - y); return b[Math.min(b.length - 1, Math.floor(b.length * q))]; };
 const mean = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;

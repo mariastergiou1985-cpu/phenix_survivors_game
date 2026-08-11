@@ -17,6 +17,16 @@ const restoreImportConsole = muteConsole();
 const { Vec2, PLAYER_RADIUS } = await import(pathToFileURL(path.join(ROOT, 'js/constants.js')).href);
 const { Enemy } = await import(pathToFileURL(path.join(ROOT, 'js/entities/Enemy.js')).href);
 const { Game } = await import(pathToFileURL(path.join(ROOT, 'js/game/Game.js')).href);
+// 2026-08-11 QA refresh: drive the REAL projectile-budget director instead of a hand-rolled fake.
+// The harness used to inline a stub with only requestTokens/release/reset. BATCH 3.2 made
+// _updateEnemyBullets call `hostileDirector.reconcile({...})` every 4s — the only supported way to
+// rebuild the budget now that direct `.counts` assignment is retired (see the reconcile() doc in
+// js/game/HostileProjectileDirector.js) — and the stub had no such method, so every simulate()
+// run died with "this.hostileDirector.reconcile is not a function". Using the production class
+// keeps the harness from drifting from the token contract again, and it enforces the real caps
+// rather than the stub's unlimited `return true`.
+const { HostileProjectileDirector } = await import(
+  pathToFileURL(path.join(ROOT, 'js/game/HostileProjectileDirector.js')).href);
 restoreImportConsole();
 
 const DT = 1 / 60;
@@ -140,12 +150,7 @@ function makeGame(kind, metrics) {
     _spatialGrid: new AuditGrid(),
     mapManager: makeMap(kind === 'obstacle'),
     mutations: { enemyBulletSpeedMult: 1 },
-    hostileDirector: {
-      counts: { ranged: 0, elite: 0, boss: 0 },
-      requestTokens(cls, count) { this.counts[cls] = (this.counts[cls] || 0) + count; return true; },
-      release(cls) { this.counts[cls] = Math.max(0, (this.counts[cls] || 0) - 1); },
-      reset() { this.counts = { ranged: 0, elite: 0, boss: 0 }; },
-    },
+    hostileDirector: new HostileProjectileDirector(),
     camera: { x: PLAYER_X - 640, y: PLAYER_Y - 360 },
     _viewW: 1280,
     _viewH: 720,
@@ -178,6 +183,25 @@ function makeGame(kind, metrics) {
   };
   game._findEnemyDetour = (...args) => Game.prototype._findEnemyDetour.call(game, ...args);
   game.spawnEnemyBullet = (...args) => Game.prototype.spawnEnemyBullet.call(game, ...args);
+  // 2026-08-11 QA refresh: contact damage no longer reaches _damagePlayer. HORDE REBUILD §7
+  // routes the contact pulse in _checkPlayerEnemyCollisions through _applyPulseDamage(dmg,
+  // CONTACT_SRC) — see the note at js/game/Game.js:25683 explaining why the call site keeps the
+  // shared constant instead of an inline literal — so the shell needs that gate or the whole
+  // body-damage half of this audit dies with "_applyPulseDamage is not a function".
+  // The REAL methods are bound rather than re-implemented: _applyPulseDamage's collaborators are
+  // all self-gating on inert state (_ascOn false → _ascBlock/_ascArm no-op, _barVal 0 →
+  // _barrierAbsorb passes the damage straight through), so what this audit measures is still
+  // production logic, and player.applyDamage keeps recording into metrics.damage as before.
+  Object.assign(game, {
+    _chaosEntryGraceT: 0,
+    _activeVesselPassive: null,
+    _ascOn: false, _ascShareT: 0, _ascRejected: 0,
+    _barVal: 0, _barDelayT: 0, _barAbsorbed: 0, _barFlashT: 0,
+  });
+  game._ascBlock = (...args) => Game.prototype._ascBlock.call(game, ...args);
+  game._ascArm = (...args) => Game.prototype._ascArm.call(game, ...args);
+  game._barrierAbsorb = (...args) => Game.prototype._barrierAbsorb.call(game, ...args);
+  game._applyPulseDamage = (...args) => Game.prototype._applyPulseDamage.call(game, ...args);
   game._damagePlayer = amount => {
     metrics.damageSource = 'projectile';
     game.player.applyDamage(amount);

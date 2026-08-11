@@ -576,18 +576,44 @@ console.log('\n=== 8. START GAME FLOW — MODE SELECT, ACT SELECT AND ROUTING (2
   T('unknown / unavailable acts never navigate', g2b.gameState === 'act_select', String(g2b.gameState));
 
   // ── Character-select routing flags ─────────────────────────────────────────
+  // MODE INTRO (2026-08-03): ENDLESS and CHAOS no longer jump straight from the mode card to
+  // Character Select — _modeSelectChoose now calls goToModeIntro(mode), a briefing screen whose
+  // CONTINUE runs the SAME goToCharacterSelect({ mode, from: 'mode_select' }) the cards used to
+  // call ("routing beyond this screen unchanged"). These walks asserted the pre-briefing shortcut,
+  // so they stopped at mode_intro and every later state read was collateral. The walk below covers
+  // the whole route instead of less of it: the briefing is entered with the right mode, its own
+  // keyboard CONTINUE is what advances, and the destination flags are asserted exactly as before.
   const g3 = newGameUnlocked();
   g3.meta.endlessUnlocked = true;
   const un6 = muteConsole(); g3.gameState = 'mode_select'; g3._modeSelectChoose('endless'); un6(); flush(g3);
-  T('ENDLESS enters character_select in endless mode',
+  T('ENDLESS opens the endless briefing first',
+    g3.gameState === 'mode_intro' && g3._modeIntroMode === 'endless' && g3._modeIntroFocus === 0,
+    `state=${g3.gameState} mode=${g3._modeIntroMode} focus=${g3._modeIntroFocus}`);
+  const un6b = muteConsole();
+  g3._updateModeIntro({ keys: new Set(['enter']), mousePos: { x: 0, y: 0 }, mouseDown: false });   // CONTINUE
+  un6b(); flush(g3);
+  T('CONTINUE from the briefing enters character_select in endless mode',
     g3.gameState === 'character_select' && g3._charSelectMode === 'endless' && g3._charSelectReturn === 'mode_select',
     `state=${g3.gameState} mode=${g3._charSelectMode} return=${g3._charSelectReturn}`);
   const un7 = muteConsole(); g3._charSelectBack(); un7(); flush(g3);
   T('BACK from an endless entry returns to mode_select', g3.gameState === 'mode_select', String(g3.gameState));
 
+  // ESC on the briefing is its own way back — it must land on mode_select, not the main menu.
+  const g3b = newGameUnlocked();
+  g3b.meta.endlessUnlocked = true;
+  const un7b = muteConsole(); g3b.gameState = 'mode_select'; g3b._modeSelectChoose('endless'); un7b(); flush(g3b);
+  const un7c = muteConsole();
+  g3b._updateModeIntro({ keys: new Set(['escape']), mousePos: { x: 0, y: 0 }, mouseDown: false });
+  un7c(); flush(g3b);
+  T('ESC on the mode briefing returns to mode_select', g3b.gameState === 'mode_select', String(g3b.gameState));
+
   const g4 = newGameUnlocked();
   g4.meta.endlessUnlocked = true;
   const un8 = muteConsole(); g4.gameState = 'mode_select'; g4._modeSelectChoose('chaos'); un8(); flush(g4);
+  T('CHAOS opens the chaos briefing first',
+    g4.gameState === 'mode_intro' && g4._modeIntroMode === 'chaos',
+    `state=${g4.gameState} mode=${g4._modeIntroMode}`);
+  const un8b = muteConsole(); g4._modeIntroContinue(); un8b(); flush(g4);
   T('CHAOS enters character_select in chaos mode',
     g4.gameState === 'character_select' && g4._charSelectMode === 'chaos', `state=${g4.gameState} mode=${g4._charSelectMode}`);
 

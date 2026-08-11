@@ -23,9 +23,17 @@
  *      `(!w.exclusive || w.character === charId)`. Its only owner could therefore never hold both
  *      ingredients, and no character in the game could reach the recipe.
  *
- *      Fix: exclusivity defers to `_needed` — the ingredients of recipes isEvolutionOwnedBy()
- *      has already granted THIS character. Narrow by construction: a signature weapon can only
- *      surface in a pool that has a recipe actively asking for it.
+ *      Fix (2026-08-02): exclusivity defers to `_needed` — the ingredients of recipes
+ *      isEvolutionOwnedBy() has already granted THIS character.
+ *
+ *      SUPERSEDED 2026-08-10 — "EXCLUSIVITY IS ABSOLUTE" (js/game/Game.js, _buildWeaponCard).
+ *      The `_needed` piercing above was described as narrow and measured as anything but: six of
+ *      the ten characters could acquire a weapon hard-locked to somebody else. It was removed.
+ *      Character-exclusive weapons now stay exclusive on EVERY acquisition path, `_needed` keeps
+ *      only its acquisition-ORDER bias, and a legacy recipe that needs a foreign character's
+ *      exclusive is intentionally unreachable for an owner who is not that character (no dead
+ *      card results — an evolution is only offered once every ingredient is level 5).
+ *      Section 3 below asserts that shipped rule; see the dated note there.
  *
  * Run: node tools/qa/tactical_fusion_reachability_regression.mjs
  */
@@ -155,60 +163,104 @@ console.log('\n── 2. T1b — every fusion is reachable, and only via its own
      T.getAvailableTactical('assassin_clone').some(x => x.id === 'tac_gravity_well'));
 }
 
-console.log('\n── 3. T2 — an exclusive weapon reaches only the recipe that needs it ──');
+console.log('\n── 3. T2 — exclusivity is ABSOLUTE on every acquisition path ──');
 {
+  // 2026-08-11 QA refresh. This section used to assert the 2026-08-02 rule "the acquisition
+  // filter defers to _needed", i.e. a foreign character could acquire a signature weapon while
+  // one of their recipes listed it as an ingredient. The shipped game retired that piercing —
+  // see "EXCLUSIVITY IS ABSOLUTE (2026-08-10)" in js/game/Game.js _buildWeaponCard, which
+  // measured the supposedly narrow exception opening a foreign exclusive for SIX of the ten
+  // characters and concluded "a brawler holding Oni's signature weapon is not an edge case of a
+  // recipe rule, it is the rule being wrong". The expectations below track the shipped rule:
+  // the filter is unconditional, `_needed` keeps only its acquisition-ORDER bias, and a legacy
+  // recipe needing a foreign exclusive is unreachable BY DESIGN for a non-owner.
   const src = GS.slice(GS.indexOf('_buildWeaponCard() {'));
-  ok('the acquisition filter defers to _needed',
-     /\(!w\.exclusive \|\| w\.character === charId \|\| _needed\.has\(w\.id\)\)/.test(src));
-  ok('_needed is computed BEFORE the filter uses it',
-     src.indexOf('const _needed = new Set();') < src.indexOf('const available  = canAcquire'));
+  ok('the acquisition filter is unconditional — exclusivity never defers to _needed',
+     /\(!w\.exclusive \|\| w\.character === charId\)\)/.test(src)
+     && !/!w\.exclusive \|\| w\.character === charId \|\| _needed\.has\(w\.id\)/.test(src));
+  ok('_needed is still computed BEFORE the acquisition pool is built',
+     src.indexOf('const _needed = new Set();') !== -1
+     && src.indexOf('const _needed = new Set();') < src.indexOf('const available  = canAcquire'));
+  // `_needed` kept its other job. Without this, deleting _needed outright would pass the check
+  // above by accident instead of by rule.
+  ok('_needed still biases acquisition ORDER (3x weight), which is what it kept',
+     /_needed\.has\(w\.id\) \? 3 : 1/.test(src));
+  // The supersede guard inside the _needed loop is what stopped the bias pointing at recipes the
+  // Build Engine retired and can never offer.
+  ok('the _needed loop still skips recipes the Build Engine superseded',
+     /BE_EVOLUTION_RECIPES\['be_' \+ r\.result\] \|\| BE_WEAPON_DEFS\['build_' \+ r\.result\]/.test(src));
 
-  // reproduce _needed for every character and check the blast radius
   const recipes = WC.EVOLUTION_RECIPES || WC.RECIPES;
   const own = WC.isEvolutionOwnedBy;
   ok('the recipe table and ownership helper are available', !!recipes && typeof own === 'function');
   if (recipes && typeof own === 'function') {
-    // reproduce the production supersede guard: a retired recipe must not pierce exclusivity
     const superseded = (r) => !!(BE.EVOLUTION_RECIPES['be_' + r.result] || BE.WEAPON_DEFS['build_' + r.result]);
     const exclusives = Object.values(WC.WEAPON_DEFS).filter(w => w.exclusive);
     ok('there are exclusive weapons to reason about', exclusives.length > 0, `${exclusives.length}`);
-    const opened = [];
-    for (const c of CHARS) {
-      const needed = new Set();
-      for (const r of Object.values(recipes)) {
-        if (!own(r, c)) continue;
-        if (superseded(r)) continue;
-        for (const ing of r.ingredients) needed.add(ing);
-      }
-      for (const w of exclusives) if (w.character !== c && needed.has(w.id)) opened.push(`${c}:${w.id}`);
-    }
-    console.log(`  evidence  exclusivity is pierced in exactly ${opened.length} (character, weapon) case(s): ${opened.join(', ') || 'none'}`);
-    ok('the exception is narrow, not a blanket unlock', opened.length <= 2, opened.join(', '));
-    ok('and it never fires for a recipe the Build Engine superseded',
-       !opened.includes('eddie:cataclysm_pulse') && !opened.includes('dimis_kickboxer:cataclysm_pulse'),
-       opened.join(', '));
-    ok('and it covers the case that was dead', opened.includes('brawler_warrior:cataclysm_pulse'), opened.join(', '));
+    ok('every exclusive weapon is hard-locked to exactly one roster character',
+       exclusives.every(w => CHARS.includes(w.character)),
+       exclusives.map(w => `${w.id}->${w.character}`).join(', '));
 
-    // seismic_rift must now be satisfiable by its declared owner
+    // The live recipes each character owns, and the ingredients that absolute exclusivity puts
+    // permanently out of their reach.
+    const live = (c) => Object.values(recipes).filter(r => own(r, c) && !superseded(r));
+    const foreignIngs = (c, r) => r.ingredients.filter(i => {
+      const w = WC.WEAPON_DEFS[i];
+      return w && w.exclusive && w.character !== c;
+    });
+    const unreachable = [];
+    for (const c of CHARS)
+      for (const r of live(c)) {
+        const f = foreignIngs(c, r);
+        if (f.length) unreachable.push(`${c}:${r.result}(${f.join('+')})`);
+      }
+    console.log(`  evidence  ${unreachable.length} live (character, recipe) pair(s) are unreachable by design: ${unreachable.join(', ') || 'none'}`);
+
+    // The other half of the decision, stated in the source: "The owners of the exclusives keep
+    // every recipe of their own." Derived from the catalog, not hard-coded, so it still fails if
+    // a future recipe puts one exclusive into another exclusive owner's recipe.
+    const ownerBlocked = [];
+    for (const w of exclusives)
+      for (const r of live(w.character)) {
+        const f = foreignIngs(w.character, r);
+        if (f.length) ownerBlocked.push(`${w.character}:${r.result}(${f.join('+')})`);
+      }
+    ok('an exclusive weapon never blocks a recipe belonging to its own owner',
+       ownerBlocked.length === 0, ownerBlocked.join(', '));
+
+    // seismic_rift is the case this harness was written around. Under the shipped rule its owner
+    // is held back by the foreign exclusive rather than handed it.
     const rift = Object.values(recipes).find(r => r.result === 'seismic_rift');
     ok('the seismic_rift recipe still exists', !!rift);
     if (rift) {
       const owner = CHARS.find(c => own(rift, c));
       ok('it still has a declared owner', !!owner, String(owner));
-      const needed = new Set();
-      for (const r of Object.values(recipes)) if (own(r, owner) && !superseded(r)) for (const ing of r.ingredients) needed.add(ing);
-      const blocked = rift.ingredients.filter(ing => {
-        const w = WC.WEAPON_DEFS[ing];
-        return w?.exclusive && w.character !== owner && !needed.has(ing);
-      });
-      ok(`${owner} can now hold every seismic_rift ingredient`, blocked.length === 0, blocked.join(', '));
+      const blocked = foreignIngs(owner, rift);
+      ok(`${owner} is held back from seismic_rift by exactly the foreign exclusive`,
+         blocked.length === 1
+         && WC.WEAPON_DEFS[blocked[0]].exclusive === true
+         && WC.WEAPON_DEFS[blocked[0]].character !== owner,
+         `blocked=[${blocked.join(', ')}]`);
+      // "Nothing breaks and no dead card appears" — measured, not asserted by inspection. Give
+      // the owner the strongest inventory the shipped filter permits (every base weapon they may
+      // legally acquire, all at max level) and confirm the recipe still never reports ready.
+      const bestInv = WC.getAllBaseWeapons()
+        .filter(w => !w.exclusive || w.character === owner)
+        .map(w => ({ id: w.id, level: 5 }));
+      const ready = WC.checkAllEvolutionsReady(bestInv).map(r => r.result);
+      ok('a recipe needing a foreign exclusive never reports ready, so no dead card can appear',
+         !ready.includes('seismic_rift'), `ready=${ready.join(', ')}`);
+      // ...while a recipe with no foreign ingredient still does, so the check above is not
+      // passing merely because nothing is ever ready.
+      ok('recipes without a foreign exclusive DO still report ready for the same owner',
+         ready.length > 0, `${ready.length}`);
     }
-    // NOTHING may open for a character with no recipe asking for it
-    const oni = new Set();
-    for (const r of Object.values(recipes)) if (own(r, 'oni_cataclysm_protocol') && !superseded(r)) for (const ing of r.ingredients) oni.add(ing);
-    const strayForOni = exclusives.filter(w => w.character !== 'oni_cataclysm_protocol' && oni.has(w.id));
-    ok('no other character\'s signature weapon leaks into Oni\'s pool', strayForOni.length === 0,
-       strayForOni.map(w => w.id).join(', '));
+    // Oni keeps his own signature weapon and never receives Eddie's.
+    const oniPool = WC.getAllBaseWeapons()
+      .filter(w => !w.exclusive || w.character === 'oni_cataclysm_protocol').map(w => w.id);
+    ok('no other character\'s signature weapon leaks into Oni\'s pool',
+       oniPool.includes('cataclysm_pulse') && !oniPool.includes('solo_red_thunder'),
+       `cataclysm_pulse=${oniPool.includes('cataclysm_pulse')} solo_red_thunder=${oniPool.includes('solo_red_thunder')}`);
   }
 }
 

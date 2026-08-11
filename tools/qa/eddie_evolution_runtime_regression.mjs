@@ -5,6 +5,7 @@
 import { register } from 'node:module';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
+import fs from 'node:fs';
 
 register('./strip-v-loader.mjs', import.meta.url);
 
@@ -250,8 +251,8 @@ console.log('\n-- Solo of the Damned swarm, cadence, and bounds --');
   test('Solo does not fire before its deterministic 0.8s opening delay', () =>
     hitSummary(enemies).hits === 0 || `hits=${hitSummary(enemies).hits}`
   );
-  rig.runtime.update(0.011);
-  const first = hitSummary(enemies);
+  rig.runtime.update(0.011);                       // the chord fires in THIS frame
+  const atNote = hitSummary(enemies);
 
   // CONTRACT DERIVED FROM THE RECIPE, NOT HARD-CODED (Maria 2026-08-02).
   // These four assertions used to pin 8 strings / 2.2 s / 16 hits. The COVERAGE FIX dated
@@ -260,49 +261,81 @@ console.log('\n-- Solo of the Damned swarm, cadence, and bounds --');
   // so it had been reporting four failures against a contract the game no longer claims. It fails
   // identically on the pristine tree, and every measured number below matches the declared table
   // exactly. Reading the table means a future balance pass cannot silently strand this file again.
+  //
+  // TELEGRAPHED GROUND STRIKES (TARGETING PASS, js/game/BuildEngineChars3.js, 2026-08-09).
+  // The same four then went stale a second time, in a way the recipe table alone cannot express.
+  // They demanded "N instant primary hits AND N instant chain hits, in the frame the chord fires" -
+  // which is precisely the mechanic the targeting pass removed: the chord "χτυπούσε 6-10 σώματα
+  // ΑΚΑΡΙΑΙΑ, στο ίδιο frame με την επιλογή τους - αδύνατο να αποφευχθεί". It now locks GROUND
+  // SPOTS where the nearest bodies stand, telegraphs them, and lands SOLO_DELAY later for ONE body
+  // per note ("ένα σώμα ανά νότα"), with the instant chain route left explicitly dead in the source
+  // (`const targets = []` / "η ΑΚΑΡΙΑΙΑ διαδρομή δεν τρέχει πια"). So the note count and the damage
+  // per note are still pinned exactly - what is gone is the hop the game no longer fires, and what
+  // is new is that the delay itself is now asserted (a chord that landed instantly would fail).
+  // SOLO_R / SOLO_DELAY are READ OUT OF THE EXECUTOR for the same reason the chord table is: a
+  // retune must move the expectation with it instead of stranding this file a third time.
+  const SOLO_SRC = fs.readFileSync(path.resolve(HERE, '../../js/game/BuildEngineChars3.js'), 'utf8');
+  const soloConst = SOLO_SRC.match(/const SOLO_R = (\d+(?:\.\d+)?), SOLO_DELAY = (\d+(?:\.\d+)?);/);
+  const SOLO_R = soloConst ? Number(soloConst[1]) : NaN;
+  const SOLO_DELAY = soloConst ? Number(soloConst[2]) : NaN;
   const CH = EVOLUTION_RECIPES.be_solo_of_the_damned.chord;
   const catSum = (key) => (PASSIVE_DEFS.forbidden_amplifier.bonuses || [])
     .slice(0, 3).reduce((n, b) => n + (b[key] || 0), 0);
   const strings = CH.targets + catSum('soloChord');
   const primaryDmg = CH.dmg * (1 + catSum('soloDmg'));
-  // one hop per string while the swarm is deep enough to supply a distinct target for each
-  const expectedHits = strings * 2;
-  const expectedDamage = strings * primaryDmg + strings * primaryDmg * CH.hopDmg;
+  const expectedDamage = strings * primaryDmg;     // one body per note, no instant chain
 
-  test(`one Solo chord emits ${strings} primary hits and ${strings} chain hits at catalyst L3`, () =>
-    first.hits === expectedHits || `hits=${first.hits}, expected=${expectedHits}, unique=${first.unique}, damage=${first.damage}`
+  test(`the chord arms ${strings} telegraphed notes and lands NOTHING in the firing frame`, () =>
+    (Number.isFinite(SOLO_DELAY) && SOLO_DELAY > 0 && SOLO_R > 0 &&
+      atNote.hits === 0 && rig.runtime._pending.length === strings) ||
+    `pending=${rig.runtime._pending.length}, expected=${strings}, instantHits=${atNote.hits}, ` +
+      `delay=${SOLO_DELAY}, radius=${SOLO_R}`
   );
-  test('every Solo string and hop lands on a live swarm member', () =>
-    (first.unique >= strings && first.unique <= expectedHits && first.unique <= enemies.length) ||
-    `unique=${first.unique}, hits=${first.hits}, strings=${strings}, swarm=${enemies.length}`
+
+  runFor(SOLO_DELAY + 0.02, dt => rig.runtime.update(dt));
+  const first = hitSummary(enemies);
+  test(`each of the ${strings} notes lands one live body ${SOLO_DELAY}s later`, () =>
+    (first.hits === strings && first.unique === strings && first.unique <= enemies.length) ||
+    `hits=${first.hits}, unique=${first.unique}, expected=${strings}, swarm=${enemies.length}`
   );
-  test('Solo chord damage is finite and matches the declared string + hop contract', () =>
+  test('the instant chain path stays disabled (no body takes two hits from one chord)', () =>
+    enemies.every(enemy => enemy.hits.length <= 1) ||
+    `worst body took ${Math.max(...enemies.map(enemy => enemy.hits.length))} hits`
+  );
+  test('Solo chord damage is finite and matches the declared per-note contract', () =>
     (Number.isFinite(first.damage) && nearly(first.damage, expectedDamage)) ||
     `damage=${first.damage}, expected=${expectedDamage}`
   );
 
   const hitsAfterFirst = first.hits;
-  rig.runtime.update(CH.every - 0.02);
+  runFor(CH.every - SOLO_DELAY - 0.06, dt => rig.runtime.update(dt));
   test(`Solo cannot refire before its ${CH.every}s cadence`, () =>
     hitSummary(enemies).hits === hitsAfterFirst ||
     `before=${hitsAfterFirst}, after=${hitSummary(enemies).hits}`
   );
-  rig.runtime.update(0.021);
+  runFor(0.1, dt => rig.runtime.update(dt));       // chord 2 has fired; its notes are still in the air
+  test('a refired chord is telegraphed too — nothing lands early', () =>
+    (hitSummary(enemies).hits === hitsAfterFirst && rig.runtime._pending.length === strings) ||
+    `hits=${hitSummary(enemies).hits}, expected=${hitsAfterFirst}, pending=${rig.runtime._pending.length}`
+  );
+  runFor(SOLO_DELAY, dt => rig.runtime.update(dt));
   test(`Solo refires when the ${CH.every}s cadence elapses`, () =>
     hitSummary(enemies).hits === hitsAfterFirst * 2 ||
     `expected=${hitsAfterFirst * 2}, actual=${hitSummary(enemies).hits}`
   );
 
+  // A PEAK HAS TO BE OBSERVED TO BE A BOUND. This loop used to step 2.2 s at a time, and a bolt
+  // lives 0.30 s: every bolt of a chord was pushed AND expired inside one update() call, so the
+  // measurement was a constant 0 against a bound of 10 - it could not have caught a leak. Driven at
+  // frame resolution it sees the real high-water mark (one bolt per note, cleared well inside the
+  // 2.0 s cadence), and the bound it is named after is a bound again. Same limit, same intent.
   let boltPeak = weapon.bolts.length;
-  for (let i = 0; i < 40; i++) {
-    rig.runtime.update(2.2);
-    boltPeak = Math.max(boltPeak, weapon.bolts.length);
-  }
+  runFor(CH.every * 4, dt => { rig.runtime.update(dt); boltPeak = Math.max(boltPeak, weapon.bolts.length); });
   test('Solo visual bolt state stays within its hard bound during repeated chords', () =>
-    boltPeak <= 10 || `boltPeak=${boltPeak}`
+    (boltPeak > 0 && boltPeak <= 10) || `boltPeak=${boltPeak}`
   );
-  weapon.chordT = 999;
-  rig.runtime.update(0.23);
+  weapon.chordT = 999;                             // no further chords
+  runFor(0.35, dt => rig.runtime.update(dt));      // one full bolt life with room to spare
   test('Solo visual bolts expire after combat', () =>
     weapon.bolts.length === 0 || `bolts=${weapon.bolts.length}`
   );

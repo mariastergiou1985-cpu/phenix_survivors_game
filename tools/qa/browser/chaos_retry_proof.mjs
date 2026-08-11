@@ -15,8 +15,10 @@
 // padTap → keydown, and a real click on the real DOM button. Nothing calls retryRun() by hand
 // except R01, which establishes the rule the other checks then reach through the UI.
 //
-// Half the checks defend the OTHER direction: Endless and Act 1 retries must be byte-identical
-// to what they were, because the brief was to change nothing else.
+// Half the checks defend the OTHER direction: an ACT 1 retry must be byte-identical to what it
+// was, because the brief was to change nothing else. ENDLESS is the one exception, and only
+// because it had the SAME hole (2026-08-05 → the retryRun() docblock in Game.js): a RETRY on an
+// Endless results screen must stay Endless. C01 below asserts that shipped contract.
 //
 // Run: node tools/qa/browser/chaos_retry_proof.mjs [port]
 // Writes: /tmp/chaos_retry_proof/  (report.json + screenshots)
@@ -99,7 +101,52 @@ const shot = async (n) => {
   const { data } = await cdp.send('Page.captureScreenshot', { format: 'png' });
   fs.writeFileSync(path.join(OUT, n), Buffer.from(data, 'base64'));
 };
+// ── TUTORIAL (2026-08-08, TutorialGuide.js) ─────────────────────────────────
+// Every fresh browser profile is OWED the first-run tutorial, and this proof runs on a
+// throwaway profile every time. #tut-overlay is properly modal: its keydown handler is
+// registered on WINDOW with capture:true and calls stopImmediatePropagation on everything
+// except Enter/Space — and it consumes Enter/Space itself to advance the step. R06 and R07
+// dispatch their keydown at `document`, so the window-capture listener still sees them
+// first: from 2026-08-08 onward the tutorial swallowed R06's ENTER before main.js's own
+// window listener could run, and the end screen never received the press. That is the
+// tutorial working exactly as specified, not a retry regression — the proof predates it.
+//
+// It is dismissed the way a player dismisses it: the CONTINUE button on the card, falling
+// back to ENTER, which is the tutorial's own documented key (the button reads
+// "CONTINUE (ENTER / A)"). Copied from the clearTutorial helper in flow_smoke_proof.mjs.
+// Nothing here disables it: the ?qa=1 / phenix_qa_optin escape hatch that sets _qaInert is
+// deliberately NOT used — a proof that switches the feature off cannot tell you the feature
+// still works — and E01/E02 below assert the tutorial stayed live for the whole session.
+let tutSteps = 0, tutByButton = 0, tutByKey = 0, tutSeenAtAll = false;
+const tutVisible = () => page.evaluate(() => {
+  const el = document.getElementById('tut-overlay');
+  if (!el) return false;
+  const cs = getComputedStyle(el);
+  return cs.display !== 'none' && cs.visibility !== 'hidden';
+});
+// A step ignores input for 600ms after it appears (_armedAt) so a stray keypress cannot skip
+// it. Waiting that out is what a player does anyway; pressing into it just no-ops.
+const tutArmed = () => page.waitForFunction(() => {
+  const t = window.__phenixTutorial;
+  return !t || !t.visible || performance.now() >= (t._armedAt || 0);
+}, null, { timeout: 3000 }).catch(() => {});
+const clearTutorial = async (max = 14) => {
+  for (let i = 0; i < max; i++) {
+    if (!(await tutVisible())) return;
+    tutSeenAtAll = true;
+    await tutArmed();
+    const before = await page.evaluate(() => window.__phenixTutorial?.seen?.size ?? -1);
+    let via = 'button';
+    try { await page.click('#tut-continue', { timeout: 1200 }); }
+    catch (_) { via = 'key'; await page.keyboard.press('Enter'); }
+    await page.waitForTimeout(260);
+    const after = await page.evaluate(() => window.__phenixTutorial?.seen?.size ?? -1);
+    if (after > before) { tutSteps++; if (via === 'button') tutByButton++; else tutByKey++; }
+  }
+};
+
 const pad = async (name) => {
+  await clearTutorial();          // pad button 0 is the tutorial's own CONTINUE — it would eat the press
   await page.evaluate(b => window.__padSet(b, true), BTN[name]);
   await page.waitForTimeout(240);
   await page.evaluate(b => window.__padSet(b, false), BTN[name]);
@@ -229,6 +276,7 @@ check('R05 DOM button: the label says CHAOS and clicking it restarts in Chaos',
   JSON.stringify(domBtn));
 
 // (2) keyboard Enter on the end screen — the shipped document listener
+await clearTutorial();   // the tutorial's window-capture handler eats ENTER before main.js sees it
 const kb = await page.evaluate(() => {
   window.__dieInChaos('serpent_law');
   window.__g._endScreenBtnIndex = 0;
@@ -240,6 +288,7 @@ check('R06 keyboard: Enter on button 0 restarts in Chaos',
   kb.chaos === true && kb.endless === true && kb.over === false, JSON.stringify(kb));
 
 // (3) the R key — the shipped document listener
+await clearTutorial();   // R is not ENTER/SPACE, so the overlay stops it dead while a step is up
 const rkey = await page.evaluate(() => {
   window.__dieInChaos('broken_signal');
   document.dispatchEvent(new KeyboardEvent('keydown', { key: 'r', bubbles: true }));
@@ -300,10 +349,25 @@ const endless = await page.evaluate(() => {
   window.__step(5);
   return { armed, after: window.__state() };
 });
-check('C01 an ENDLESS retry is unchanged — still a plain reset, no Chaos leaks in',
+// C01 USED TO ASSERT THE BUG. It read `endless.after.endless === false`, i.e. that a RETRY on
+// an Endless results screen dropped the player out of Endless — which is precisely the hole
+// Game.js retryRun() was fixed to close (see its docblock: "ENDLESS had the same hole Chaos was
+// already patched for, one mode over. The results screen reads 'RETRY — ENDLESS', but reset()
+// clears `endless` ... so RETRY silently handed the player an ACT 1 run that ends in VICTORY.").
+// retryRun() now captures `wasEndless` before reset() and calls _enterEndless() after it — the
+// byte-identical pair the Main-Menu entry startEndlessRun() uses. The expectation is therefore
+// INVERTED to the shipped contract: an Endless retry restarts IN ENDLESS.
+//
+// The Chaos-leak half of the old check is kept and TIGHTENED rather than dropped: chaos still
+// false, _chaosStartedAt still -1, and frozenSleetTimer must be the plain-Endless 150 (minus the
+// five frames stepped above). That last one is the discriminating witness that _enterEndless()
+// genuinely ran — _beginChaosRun arms 55 and a bare reset leaves 9999, so a Chaos leak or a
+// reset-only regression both still fail this line.
+check('C01 an ENDLESS retry restarts IN ENDLESS — and no Chaos leaks in',
   endless.armed.endless === true && endless.armed.chaos === false &&
-  endless.after.chaos === false && endless.after.endless === false &&
-  endless.after.over === false && endless.after.startedAt === -1,
+  endless.after.chaos === false && endless.after.endless === true &&
+  endless.after.over === false && endless.after.startedAt === -1 &&
+  endless.after.sleet > 149 && endless.after.sleet <= 150,
   JSON.stringify(endless.after));
 
 const act1 = await page.evaluate(() => {
@@ -372,6 +436,24 @@ check('D02 the retried Chaos run renders — no black screen',
   JSON.stringify(lum));
 check('D03 zero page errors across the whole session', pageErrors.length === 0, pageErrors.slice(0, 3).join(' | '));
 check('D04 zero console errors across the whole session', consoleErrors.length === 0, consoleErrors.slice(0, 3).join(' | '));
+
+// ════════════════════════════════════════════════════════════════════════════
+// E. THE TUTORIAL WAS MET HONESTLY, NOT SWITCHED OFF
+// Guards the harness fix above: if a later edit ever "solves" the overlay by taking the
+// ?qa=1 / phenix_qa_optin inert path (or by touching TutorialGuide.js), these fail at once.
+// ════════════════════════════════════════════════════════════════════════════
+const tutLive = await page.evaluate(() => {
+  const t = window.__phenixTutorial;
+  return { present: !!t, qaInert: t ? !!t._qaInert : null, qaParam: /[?&]qa=1/.test(location.search),
+           optIn: (() => { try { return sessionStorage.getItem('phenix_qa_optin'); } catch (_) { return null; } })(),
+           seen: t ? t.seen.size : -1 };
+});
+check('E01 the tutorial was never disabled or bypassed — no ?qa=1, no opt-in, _qaInert false',
+  tutLive.present && tutLive.qaInert === false && tutLive.qaParam === false && tutLive.optIn !== '1',
+  JSON.stringify(tutLive));
+check('E02 the tutorial really came up on this fresh profile and every step was closed through its OWN UI (CONTINUE / ENTER)',
+  tutSeenAtAll && tutSteps > 0 && (tutByButton + tutByKey) === tutSteps,
+  JSON.stringify({ tutSeenAtAll, steps: tutSteps, viaButton: tutByButton, viaEnter: tutByKey }));
 
 fs.writeFileSync(path.join(OUT, 'report.json'), JSON.stringify({
   build: BUILD, armed, rule, domBtn, kb, rkey, padState, canvasPath, endless, act1, vict, overlay, lum,

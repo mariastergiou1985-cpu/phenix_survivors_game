@@ -85,10 +85,26 @@ console.log('\n── 2. A real mute is never overridden ──');
 }
 
 console.log('\n── 3. Zero / NaN / junk / out-of-range settings ──');
+// A DELIBERATE ZERO IS NOT A CORRUPTED VALUE (AudioManager._repairInaudibleVolumes, 2026-08-04).
+// This block used to expect a stored 0 to come back as 0.80. That was the pre-2026-08-04 behaviour
+// and it is exactly the bug that decision removed: a player who pulled SFX to 0 got it back at 0.80
+// on the next boot and the setting they chose was silently discarded. The ambiguity the repair
+// exists to remove is the slider that LOOKS open and is silent, i.e. STRICTLY between 0 and the
+// floor — so both halves are pinned here: a true 0 survives untouched, and 0 < v < floor is still
+// repaired. NaN / junk still repair, unchanged, two blocks below.
 {
   installEnv({ [K.sfx]: '0' });
   const a = new AudioManager();
-  ok('sfx of exactly 0 is repaired', a.sfxVolume === 0.80, `got ${a.sfxVolume}`);
+  ok('sfx of exactly 0 is RESPECTED, not repaired', a.sfxVolume === 0, `got ${a.sfxVolume}`);
+  ok('...and no sfx repair is recorded for it', a._volumeRepairs.every(r => r.bus !== 'sfx'),
+     JSON.stringify(a._volumeRepairs));
+}
+{
+  installEnv({ [K.sfx]: '0.01' });          // the real failure class: open-looking slider, inaudible
+  const a = new AudioManager();
+  ok('sfx strictly between 0 and the floor is still repaired', a.sfxVolume === 0.80, `got ${a.sfxVolume}`);
+  ok('...and that repair is reported', a._volumeRepairs.some(r => r.bus === 'sfx' && r.from === 0.01),
+     JSON.stringify(a._volumeRepairs));
 }
 { installEnv({ [K.master]: 'NaN', [K.sfx]: 'banana' });
   const a = new AudioManager();
@@ -96,7 +112,14 @@ console.log('\n── 3. Zero / NaN / junk / out-of-range settings ──');
   ok('junk string sfx → audible default', a.sfxVolume === 0.80, `got ${a.sfxVolume}`); }
 { installEnv({ [K.master]: '-5', [K.music]: '400', [K.sfx]: '99' });
   const a = new AudioManager();
-  ok('negative master clamped then repaired', a.masterVolume === 1.0, `got ${a.masterVolume}`);
+  // _loadVolumes clamps BEFORE the repair runs, so -5 reaches _repairInaudibleVolumes as a plain 0,
+  // indistinguishable from a player who dragged the slider to the bottom — and by the 2026-08-04
+  // decision a true 0 is a choice, not corruption. Asserting 1.0 here demanded the opposite of the
+  // shipped rule. The clamp itself is what this line pins now, and it still fails on any leak of a
+  // negative (or any silent bounce back to the default).
+  ok('negative master clamps to a true 0 and is then respected', a.masterVolume === 0, `got ${a.masterVolume}`);
+  ok('...with no master repair recorded', a._volumeRepairs.every(r => r.bus !== 'master'),
+     JSON.stringify(a._volumeRepairs));
   ok('0-100 style music value clamped to 1', a.musicVolume === 1, `got ${a.musicVolume}`);
   ok('0-100 style sfx value clamped to 1', a.sfxVolume === 1, `got ${a.sfxVolume}`); }
 { installEnv({});

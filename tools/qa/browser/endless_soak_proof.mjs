@@ -22,7 +22,9 @@
 // drifts from the production cache-bust the way a hard-coded ?v= would.
 //
 // Navigation goes through the REAL menu the player uses — START GAME → MODE SELECT → ENDLESS →
-// character select → START ENDLESS — using the same DOM selectors as start_flow_browser_proof.mjs.
+// MODE BRIEFING (CONTINUE) → character select → START ENDLESS — using the same DOM selectors as
+// start_flow_browser_proof.mjs. The briefing screen is the 2026-08-03 START GAME rework; see the
+// note at the click itself.
 // Driving _enterEndless() directly would skip the entry flow entirely and stop noticing when it
 // breaks, which is precisely what happened when the START GAME rework landed.
 //
@@ -91,11 +93,22 @@ srv.listen(PORT, async () => {
   report.nav = { afterStartGame: await gameState() };
   await click('#cgm-modesel .msl-card[data-mode="endless"]', { force: true });
   report.nav.afterModeSelect = await gameState();
-  if (report.nav.afterModeSelect !== 'character_select')
-    throw new Error(`ENDLESS did not reach character_select (got ${report.nav.afterModeSelect}) — the entry flow changed`);
+  // MODE BRIEFING (2026-08-03 START GAME rework). Choosing ENDLESS or CHAOS in Mode Select no
+  // longer lands on Character Select: Game.js _modeSelectChoose() routes both to
+  // goToModeIntro(mode), which sets gameState 'mode_intro' and shows the briefing overlay, and
+  // only #mi-continue → _modeIntroContinue() → goToCharacterSelect({mode:'endless',
+  // from:'mode_select'}) carries on. This driver deliberately walks the REAL menu instead of
+  // calling _enterEndless(), so it has to walk the real extra screen too. BOTH hops keep a hard
+  // guard, so an entry flow that breaks at either one still stops the soak.
+  if (report.nav.afterModeSelect !== 'mode_intro')
+    throw new Error(`ENDLESS did not reach the mode briefing (got ${report.nav.afterModeSelect}) — the entry flow changed`);
+  await click('#mi-continue');
+  report.nav.afterModeIntro = await gameState();
+  if (report.nav.afterModeIntro !== 'character_select')
+    throw new Error(`mode briefing CONTINUE did not reach character_select (got ${report.nav.afterModeIntro}) — the entry flow changed`);
   await click('#csc-endless-btn');
   report.nav.afterStartEndless = await gameState();
-  console.log(`  entry flow: START GAME → ${report.nav.afterStartGame} → mode ENDLESS → ${report.nav.afterModeSelect} → START ENDLESS → ${report.nav.afterStartEndless}`);
+  console.log(`  entry flow: START GAME → ${report.nav.afterStartGame} → mode ENDLESS → ${report.nav.afterModeSelect} → CONTINUE → ${report.nav.afterModeIntro} → START ENDLESS → ${report.nav.afterStartEndless}`);
 
   // Live instance via the SAME module specifier production uses — a different ?v= would hand us a
   // second Game class and we would be driving something the player never runs.

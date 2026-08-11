@@ -77,7 +77,33 @@ T('airstrike δεν στοιβάζεται — ξαναδοκιμάζει αν �
   () => /else if \(this\.airstrikeShips\.length < 1 && this\.startMajorEvent\('airstrike'\)\) \{/.test(SRC) &&
         /this\._airstrikeTimer = \(this\._chaosMode \? 60 : 120\) \* this\._majorSalvoScale\(\);/.test(SRC) &&
         /else                                  this\._airstrikeTimer = 20;/.test(SRC));
-T('η arena κρατά ≤2 σκάφη στον αέρα', () => /arena\.airCd <= 0 && this\.airstrikeShips\.length < 2/.test(SRC));
+// AIRCRAFT PRESSURE: REMOVED (2026-08-04) — the decision is documented in Game.js at the arena
+// update ("Aircraft pressure: REMOVED (2026-08-04) … those rockets landed straight across the boss
+// finishers the arena exists to showcase"). This line used to grep `arena.airCd <= 0 &&
+// this.airstrikeShips.length < 2`, i.e. it pinned the OLD two-ship cap; `airCd` now appears nowhere
+// in js/ at all, so the assertion was greping deleted code. The shipped contract is strictly safer
+// than the one it claimed — ZERO aircraft during the arena, not two — so it is that contract that is
+// pinned here, in the four places that actually enforce it. Any of them regressing fails this test.
+T('η arena δεν ανέχεται ΚΑΝΕΝΑ σκάφος στον αέρα (0, όχι ≤2)', () => {
+  // 1. the gate itself: aircraft events are forbidden exactly while the arena is up
+  const gate = /_aircraftEventsAllowed\(\) \{ return !this\._nullBreachActive; \}/.test(SRC);
+  // 2. BOTH aircraft schedulers read it and return BEFORE any spawn (held, not drained)
+  const held = (SRC.match(/if \(!this\._aircraftEventsAllowed\(\)\) \{[\s\S]{0,240}?return;/g) || []).length;
+  // 3. crossing the arena boundary clears the layer, so a ship launched a second earlier is gone
+  const clearedOnEntry = /_enterNullBreachArena\(\) \{[\s\S]{0,600}?this\._clearAircraftEvents\(\);/.test(SRC);
+  const clearBody = (/_clearAircraftEvents\(\) \{[\s\S]*?\n  \}/.exec(SRC) || [''])[0];
+  const clearsAll = /this\.airstrikeShips\.length\s+= 0;/.test(clearBody) &&
+                    /this\.airstrikeRockets\.length = 0;/.test(clearBody) &&
+                    /this\.gunships\.length\s+= 0;/.test(clearBody);
+  // 4. and the arena's own update never launches one of its own
+  // (both markers are matched as METHOD DEFINITIONS — `_completeNullBreachArena` is also CALLED
+  //  earlier in the file, and a bare indexOf for it would slice a backwards, empty range)
+  const arenaStart = SRC.indexOf('\n  _updateNullBreachArena(dt) {');
+  const arenaBody = arenaStart < 0 ? '' : SRC.slice(arenaStart, SRC.indexOf('\n  _completeNullBreachArena() {', arenaStart));
+  const launches = arenaBody.length > 0 && /_spawnAirstrike|_spawnGunship|airstrikeShips\.push|airCd/.test(arenaBody);
+  return (gate && held >= 2 && clearedOnEntry && clearsAll && arenaBody.length > 0 && !launches) ||
+    `gate=${gate} heldSchedulers=${held} clearedOnEntry=${clearedOnEntry} clearsAll=${clearsAll} arenaLaunches=${launches}`;
+});
 T('Locked Vault: ποτέ δεύτερο ενώ ένα είναι ενεργό',
   () => /if \(!this\.endless \|\| this\.vaultDrop\) return;/.test(SRC));
 

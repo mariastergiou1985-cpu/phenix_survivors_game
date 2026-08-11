@@ -69,8 +69,26 @@ console.log('\n── 0. module identity (a wrong ?v= would make every number be
   ok('the BuildEngine registry really loaded', Object.keys(BE.WEAPON_DEFS).length === 25,
      `${Object.keys(BE.WEAPON_DEFS).length} weapons`);
   ok('25 BE evolution recipes', Object.keys(BE.EVOLUTION_RECIPES).length === 25);
-  ok('the legacy catalog is intact', Object.keys(WC.WEAPON_DEFS).length === 42,
-     `${Object.keys(WC.WEAPON_DEFS).length}`);
+  // 2026-08-11 QA refresh: this used to hard-code `=== 42` (the 9 base + 33 evolutions the
+  // catalog shipped with when this harness was written). Content has landed since and the
+  // shipped WeaponCatalog now carries 53 defs (9 base + 44 evolutions), so the literal was
+  // stale, not the game. Replaced with the derived invariant that actually makes every number
+  // below meaningful: the catalog loaded with real base weapons AND its evolution defs are in
+  // exact bijection with EVOLUTION_RECIPES. NOTE deliberately not asserting
+  // base+evolutions===total — getAllBaseWeapons/getAllEvolutions are a filter and its exact
+  // complement, so that equality is true by construction and could never fail.
+  // This still fails on: an unloaded/stubbed catalog, an evolution def with no recipe, a
+  // recipe whose result id is missing or typo'd, or a recipe pointing at a non-evolution.
+  const wcBase = WC.getAllBaseWeapons();
+  const wcEvoIds = WC.getAllEvolutions().map(w => w.id).sort();
+  const wcRecipeResults = Object.values(WC.EVOLUTION_RECIPES).map(r => r.result).sort();
+  const evoRecipeBijection =
+    wcEvoIds.length === wcRecipeResults.length &&
+    wcEvoIds.every((id, i) => id === wcRecipeResults[i]) &&
+    wcRecipeResults.every(id => WC.WEAPON_DEFS[id] && WC.WEAPON_DEFS[id].isEvolution);
+  ok('the legacy catalog is intact', wcBase.length > 0 && evoRecipeBijection,
+     `${Object.keys(WC.WEAPON_DEFS).length} defs = ${wcBase.length} base + ${wcEvoIds.length} evolutions, ` +
+     `${wcRecipeResults.length} recipes, bijection=${evoRecipeBijection}`);
 }
 
 console.log('\n── 1. neither kill switch survives ──');

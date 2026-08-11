@@ -43,9 +43,27 @@ function shippedMapDimensions(map) {
   map._act1BoundsCache = null;
 }
 
+// 2026-08-11 QA refresh — ask the walkability question the way the game asks it.
+// BATCH 1 put the DECK ON THE MODE STRING ('chaos:lower'); MapManager._walkModel() splits it back
+// apart, and Game._walkMode() is what every production call site passes. A BARE 'chaos' therefore
+// always selects the MAIN strip model no matter which deck the point is on. This audit passed the
+// bare mode, so as soon as a run stepped onto a section deck, every shard resting on that deck's
+// real floor was judged against the main strip's row band and counted as "resting on non-walkable
+// geometry" — and, in accessibility(), as unreachable.
+// Measured on chaos/7331 at the shipped 180s horizon: the player spent 2323 of 10800 frames on
+// 'lower', 121 shards were flagged, ALL of them on 'lower' and ALL legal under 'chaos:lower',
+// with ty 25576..26878 sitting inside deckBounds(chaos,lower)=25320..27864 while the main band is
+// 405..1230. The game was placing them correctly; the harness was asking the wrong model.
+// This is a stricter question, not a looser one: a shard off the floor of its OWN deck still fails.
+function walkModeAt(game, mode, y) {
+  if (mode === 'act1') return mode;
+  const deck = typeof game.deckOf === 'function' ? game.deckOf(y) : 'main';
+  return deck && deck !== 'main' ? `${mode}:${deck}` : mode;
+}
+
 function walkable(game, mode, x, y, radius = 12) {
   if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
-  if (mode !== 'act1') return game.mapManager.isWalkableFootprint(x, y, radius, mode);
+  if (mode !== 'act1') return game.mapManager.isWalkableFootprint(x, y, radius, walkModeAt(game, mode, y));
   const b = game.mapManager.getAct1DeckBounds();
   return !!b && x - radius >= b.x0 && x + radius <= b.x1
     && y - radius >= b.y0 && y + radius <= b.y1;
@@ -74,11 +92,45 @@ function accessibility(game, mode, shards) {
     return { unreachable: targets.filter(t => !walkable(game, mode, t.x, t.y, 12)).length, behindObstacle };
   }
 
-  let minX = Math.min(p.x, ...targets.map(t => t.x)) - 240;
-  let maxX = Math.max(p.x, ...targets.map(t => t.x)) + 240;
-  const model = game.mapManager._walkModel(mode);
-  let minY = model.rows[0] * model.scale;
-  let maxY = model.rows[1] * model.scale;
+  // Same 2026-08-11 refresh as walkable(): decks are separate world regions, so one flood over the
+  // main strip's row band can never contain a shard on a section deck (chaos 'lower' lives at
+  // y 25320..27864). Flood EACH deck that holds shards, in that deck's own model and bounds.
+  let unreachable = 0;
+  const byDeck = new Map();
+  for (const t of targets) {
+    const deck = typeof game.deckOf === 'function' ? game.deckOf(t.y) : 'main';
+    if (!byDeck.has(deck)) byDeck.set(deck, []);
+    byDeck.get(deck).push(t);
+  }
+  for (const [deck, group] of byDeck) unreachable += unreachableOnDeck(game, mode, deck, group);
+  return { unreachable, behindObstacle };
+}
+
+function unreachableOnDeck(game, mode, deck, targets) {
+  const mm = game.mapManager;
+  const p = game.player.pos;
+  const dmode = deck === 'main' ? mode : `${mode}:${deck}`;
+  const model = mm._walkModel(dmode);
+  if (!model) return targets.length;   // no model at all → nothing here can be stood on
+  // Seed the flood where a player really arrives on this deck: their own position when they are
+  // standing on it, otherwise the deck's AUTHORED ANCHOR, which MapManager guarantees legal
+  // ("baked with two clear cells in every direction") and which is where a gate delivers them.
+  let seed = (game._deck || 'main') === deck ? { x: p.x, y: p.y } : null;
+  if (!seed && deck !== 'main' && typeof mm.deckAnchorWorld === 'function') {
+    seed = mm.deckAnchorWorld(mode, deck);
+  }
+  if (!seed) seed = { x: p.x, y: p.y };
+
+  let minX, maxX, minY, maxY;
+  if (model.kind === 'mask') {
+    minX = model.ox; maxX = model.x1;
+    minY = model.oy; maxY = model.y1;
+  } else {
+    minX = Math.min(seed.x, ...targets.map(t => t.x)) - 240;
+    maxX = Math.max(seed.x, ...targets.map(t => t.x)) + 240;
+    minY = model.rows[0] * model.scale;
+    maxY = model.rows[1] * model.scale;
+  }
   let step = 32;
   if (((maxX - minX) / step) * ((maxY - minY) / step) > 80000) step = 64;
   minX = Math.floor(minX / step) * step;
@@ -90,7 +142,7 @@ function accessibility(game, mode, shards) {
   const ixFor = x => Math.max(0, Math.min(cols - 1, Math.round((x - minX) / step)));
   const iyFor = y => Math.max(0, Math.min(rows - 1, Math.round((y - minY) / step)));
   const legal = (ix, iy) => walkable(game, mode, minX + ix * step, minY + iy * step, 20);
-  let sx = ixFor(p.x), sy = iyFor(p.y);
+  let sx = ixFor(seed.x), sy = iyFor(seed.y);
   if (!legal(sx, sy)) {
     let found = false;
     for (let ring = 1; ring <= 4 && !found; ring++) {
@@ -119,9 +171,8 @@ function accessibility(game, mode, shards) {
   }
   const pickupRadius = (game.player.pickupRadius || 90)
     * (game._mutationEffects?.pickupRadiusMult || 1);
-  const unreachable = targets.filter(t => !reachablePoints.some(([x, y]) =>
+  return targets.filter(t => !reachablePoints.some(([x, y]) =>
     Math.hypot(x - t.x, y - t.y) <= pickupRadius)).length;
-  return { unreachable, behindObstacle };
 }
 
 function mulberry32(seed) {

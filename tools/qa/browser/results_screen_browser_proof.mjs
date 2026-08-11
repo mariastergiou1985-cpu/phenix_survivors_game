@@ -92,7 +92,52 @@ const shot = async (name) => {
   const { data } = await cdp.send('Page.captureScreenshot', { format: 'png' });
   fs.writeFileSync(path.join(OUT, name), Buffer.from(data, 'base64'));
 };
+// ── TUTORIAL (2026-08-08, TutorialGuide.js) ─────────────────────────────────
+// Every fresh browser profile is OWED the first-run tutorial, and this proof runs on a
+// throwaway profile on every run. #tut-overlay is properly modal — inset:0 with
+// pointer-events:auto, a 100000px box-shadow scrim on #tut-hl, and a window-CAPTURE keydown
+// handler that calls stopImmediatePropagation on everything except Enter/Space. So from
+// 2026-08-08 onward Playwright reported "<div id="tut-overlay"> intercepts pointer events"
+// on the first real click (E01's RETRY) and looped until the whole action timed out, and a
+// synthetic keydown would have been eaten too. That is the tutorial working exactly as
+// specified, not a regression — the harness simply predates it.
+//
+// It is dismissed the way a player dismisses it: the CONTINUE button on the card, falling
+// back to ENTER, which is the tutorial's own documented key (the button reads
+// "CONTINUE (ENTER / A)"). Copied from the clearTutorial helper in flow_smoke_proof.mjs.
+// Nothing here disables it: the ?qa=1 / phenix_qa_optin escape hatch that sets _qaInert is
+// deliberately NOT used — a proof that switches the feature off cannot tell you the feature
+// still works — and J01 below asserts the tutorial stayed live for the whole session.
+let tutSteps = 0, tutByButton = 0, tutByKey = 0, tutSeenAtAll = false;
+const tutVisible = () => page.evaluate(() => {
+  const el = document.getElementById('tut-overlay');
+  if (!el) return false;
+  const cs = getComputedStyle(el);
+  return cs.display !== 'none' && cs.visibility !== 'hidden';
+});
+// A step ignores input for 600ms after it appears (_armedAt) so a stray keypress cannot skip
+// it. Waiting that out is what a player does anyway; pressing into it just no-ops.
+const tutArmed = () => page.waitForFunction(() => {
+  const t = window.__phenixTutorial;
+  return !t || !t.visible || performance.now() >= (t._armedAt || 0);
+}, null, { timeout: 3000 }).catch(() => {});
+const clearTutorial = async (max = 14) => {
+  for (let i = 0; i < max; i++) {
+    if (!(await tutVisible())) return;
+    tutSeenAtAll = true;
+    await tutArmed();
+    const before = await page.evaluate(() => window.__phenixTutorial?.seen?.size ?? -1);
+    let via = 'button';
+    try { await page.click('#tut-continue', { timeout: 1200 }); }
+    catch (_) { via = 'key'; await page.keyboard.press('Enter'); }
+    await page.waitForTimeout(260);
+    const after = await page.evaluate(() => window.__phenixTutorial?.seen?.size ?? -1);
+    if (after > before) { tutSteps++; if (via === 'button') tutByButton++; else tutByKey++; }
+  }
+};
+
 const pad = async (name) => {
+  await clearTutorial();          // pad button 0 is the tutorial's own CONTINUE — it would eat the press
   await page.evaluate(b => window.__padSet(b, true), BTN[name]);
   await page.waitForTimeout(260);
   await page.evaluate(b => window.__padSet(b, false), BTN[name]);
@@ -106,9 +151,13 @@ const padUntil = async (name, predicate, max = 6) => {
   return await page.evaluate(predicate) ? max : -1;
 };
 const key = async (k) => {
+  await clearTutorial();          // the overlay swallows every key except ENTER/SPACE while it is up
   await page.keyboard.down(k); await page.waitForTimeout(150);
   await page.keyboard.up(k);   await page.waitForTimeout(320);
 };
+// Real DOM clicks go through the tutorial the same way: the modal scrim intercepts pointer
+// events, so the step on screen is answered before the button underneath is clicked.
+const click = async (sel, opts) => { await clearTutorial(); return page.click(sel, opts); };
 
 await page.goto(BASE + '/index.html?nosw=1', { waitUntil: 'domcontentloaded' });
 await page.waitForSelector('#cgm-overlay', { timeout: 20000 });
@@ -273,7 +322,7 @@ await shot('04_victory.png');
 // ── E. THE BUTTONS ACTUALLY DO WHAT THEY SAY ─────────────────────────────────
 // RETRY — mouse
 await endRun({ endless: true });
-await page.click('[data-rsbtn="retry"]');
+await click('[data-rsbtn="retry"]');
 await page.waitForTimeout(700);
 const retried = await page.evaluate(() => ({ over: window.__g.gameOver, vis: window.__g._resultsOverlayVisible,
                                              t: Math.round(window.__g.timeAlive) }));
@@ -282,7 +331,7 @@ check('E01 RETRY starts a fresh run and clears the screen',
 
 // UPGRADES — mouse
 await endRun({});
-await page.click('[data-rsbtn="upgrades"]');
+await click('[data-rsbtn="upgrades"]');
 await page.waitForTimeout(800);
 check('E02 UPGRADES routes to the upgrades screen',
   await page.evaluate(() => window.__g.gameState) === 'upgrades',
@@ -290,7 +339,7 @@ check('E02 UPGRADES routes to the upgrades screen',
 
 // MAIN MENU — mouse
 await endRun({});
-await page.click('[data-rsbtn="menu"]');
+await click('[data-rsbtn="menu"]');
 await page.waitForTimeout(900);
 const toMenu = await page.evaluate(() => ({ gs: window.__g.gameState, vis: window.__g._resultsOverlayVisible,
   display: getComputedStyle(document.getElementById('cgm-results')).display }));
@@ -299,7 +348,7 @@ check('E03 MAIN MENU routes to the menu and hides the screen',
 
 // CONTINUE — ENDLESS, from a victory
 await endRun({ victory: true });
-await page.click('[data-rsbtn="continue"]');
+await click('[data-rsbtn="continue"]');
 await page.waitForTimeout(900);
 const cont = await page.evaluate(() => ({ victory: window.__g.victory, endless: !!window.__g.endless,
                                           vis: window.__g._resultsOverlayVisible }));
@@ -398,6 +447,22 @@ const h3 = await page.evaluate(() => ({
 check('H03 a new run takes the results screen down',
   h3.vis === false && h3.display === 'none' && h3.over === false && h3.win === false,
   JSON.stringify(h3));
+
+// ── J. THE TUTORIAL WAS MET HONESTLY, NOT SWITCHED OFF ───────────────────────
+// Guards the fix above: if a later edit ever "solves" the overlay by taking the ?qa=1 /
+// phenix_qa_optin inert path (or by touching TutorialGuide.js), these fail immediately.
+const tutLive = await page.evaluate(() => {
+  const t = window.__phenixTutorial;
+  return { present: !!t, qaInert: t ? !!t._qaInert : null, qaParam: /[?&]qa=1/.test(location.search),
+           optIn: (() => { try { return sessionStorage.getItem('phenix_qa_optin'); } catch (_) { return null; } })(),
+           seen: t ? t.seen.size : -1 };
+});
+check('J01 the tutorial was never disabled or bypassed — no ?qa=1, no opt-in, _qaInert false',
+  tutLive.present && tutLive.qaInert === false && tutLive.qaParam === false && tutLive.optIn !== '1',
+  JSON.stringify(tutLive));
+check('J02 the tutorial really came up on this fresh profile and every step was closed through its OWN UI (CONTINUE / ENTER)',
+  tutSeenAtAll && tutSteps > 0 && (tutByButton + tutByKey) === tutSteps,
+  JSON.stringify({ tutSeenAtAll, steps: tutSteps, viaButton: tutByButton, viaEnter: tutByKey }));
 
 check('I01 zero page errors across the whole session', pageErrors.length === 0, pageErrors.slice(0, 3).join(' | '));
 const gameErrors = consoleErrors.filter(t => !/audio\/music|failed to load|Could not load/.test(t));

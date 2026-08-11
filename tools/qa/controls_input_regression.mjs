@@ -199,8 +199,22 @@ T('ο pause gate προηγείται του player.update στη ροή', () =>
 });
 T('controller ΔΕΝ κρατά movement keys εκτός gameplay',
   () => /\} else \{\s*\n\s*padClearHeld\(\);\s+\/\/ no held movement outside gameplay/.test(MAIN));
-T('gameplay gate του controller ελέγχει paused + όλα τα UI',
-  () => /const inGameplay = game\.gameState === 'playing' && !game\.paused && !game\.gameOver &&\s*\n\s*!game\.victory && !game\.upgradeUI && !game\.mutationUI;/.test(MAIN));
+// The gate GREW; it did not move. applyGamepad's inGameplay now also excludes _postArenaChoice
+// and _clsVisible (both 2026-08-04) and _stageCompleteBanner (2026-08-10) — three panels that
+// freeze the run while leaving gameState === 'playing', so before they were listed the pad kept
+// driving the hero underneath them. The old regex pinned the exact five-flag line and therefore
+// failed on its own fix. Requiring AT LEAST the current set keeps every one of them mandatory
+// (dropping any single flag fails this) while letting the next panel be added without a red test.
+T('gameplay gate του controller ελέγχει paused + όλα τα UI (τουλάχιστον το τρέχον σύνολο)', () => {
+  const i = MAIN.indexOf('const inGameplay =');
+  if (i < 0) return 'δεν βρέθηκε το inGameplay gate';
+  const expr = MAIN.slice(i, MAIN.indexOf(';', i));
+  const REQUIRED = ['paused', 'gameOver', 'victory', 'upgradeUI', 'mutationUI',
+                    '_postArenaChoice', '_clsVisible', '_stageCompleteBanner'];
+  const missing = REQUIRED.filter(f => !new RegExp('!game\\.' + f + '\\b').test(expr));
+  if (!/game\.gameState === 'playing'/.test(expr)) return 'το gate δεν απαιτεί gameState playing';
+  return missing.length === 0 || 'λείπουν από το gate: ' + missing.join(', ');
+});
 T('pad taps απελευθερώνονται το επόμενο frame (ένα press = μία ενέργεια)',
   () => /for \(const k of padTapUp\) window\.dispatchEvent\(new KeyboardEvent\('keyup'/.test(MAIN));
 T('Frozen Sleet παγώνει το input χωρίς να αγγίξει το keys Set',

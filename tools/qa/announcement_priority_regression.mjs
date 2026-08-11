@@ -86,10 +86,60 @@ T('reset() καθαρίζει announcement και _annQueue', ()=>{
   const i=SRC.indexOf('\n  reset() {'); let j=SRC.indexOf('{',i), d=0, e=-1;
   for(let p=j;p<SRC.length;p++){ if(SRC[p]==='{')d++; else if(SRC[p]==='}'){d--; if(!d){e=p;break;}} }
   const r=SRC.slice(j,e); return r.includes('this.announcement') && r.includes('_annQueue'); });
-T('2 explicit priority-2 call sites', ()=>(SRC.match(/triggerAnnouncement\([^\n]*priority: 2/g)||[]).length===2);
-T('4 explicit priority-1 call sites', ()=>(SRC.match(/triggerAnnouncement\([^\n]*priority: 1/g)||[]).length===4);
-T('event timers/cooldowns αμετάβλητα (καμία αλλαγή σε _updateAnnouncement διάρκειες)',
-  ()=>/FADE_IN = 0\.35, HOLD = 1\.9, FADE_OUT = 0\.55/.test(SRC));
+// CALL-SITE COUNTS DE-FROZEN (verified against js/game/Game.js, 2026-08-11).
+// These two assertions used to pin "2 explicit priority-2 call sites" and "4 explicit priority-1".
+// Measured on the shipped tree: 18 and 5, plus a priority-3 tier — every new critical banner adds
+// one, so the frozen numbers turned ordinary content growth into a red test while proving nothing
+// about behaviour. What is asserted instead is the PROPERTY the queue actually depends on: every
+// call site passes a priority the queue can order (triggerAnnouncement keeps it only when
+// Number.isFinite is true, so anything else silently degrades to informational), the escalation
+// band is really in use, and every level that exists in source is ordered correctly by the queue.
+const annCalls = (() => {
+  const out = [], NEEDLE = 'triggerAnnouncement(';
+  let i = 0;
+  while ((i = SRC.indexOf(NEEDLE, i)) !== -1) {
+    let d = 0, j = i + NEEDLE.length - 1;
+    for (; j < SRC.length; j++) { const c = SRC[j]; if (c === '(') d++; else if (c === ')') { d--; if (!d) break; } }
+    out.push(SRC.slice(i, j + 1)); i = j + 1;
+  }
+  return out;
+})();
+const annPrios = annCalls.map(c => (c.match(/priority\s*:\s*([^,}\s]+)/) || [])[1]).filter(v => v !== undefined);
+T('κάθε explicit priority σε call site είναι έγκυρο (finite, μη-αρνητικός ακέραιος)', ()=>{
+  const bad = annPrios.filter(v => !/^\d+$/.test(v));
+  return (annCalls.length > 0 && annPrios.length > 0 && bad.length === 0) ||
+    `calls=${annCalls.length} explicit=${annPrios.length} bad=[${bad.join(', ')}]`;
+});
+T('η κλίμακα priority χρησιμοποιείται όντως (default 0 + important + critical)', ()=>{
+  const lv = new Set(annPrios.map(Number));
+  return (annPrios.length < annCalls.length && lv.has(1) && [...lv].some(v => v >= 2)) ||
+    `levels=[${[...lv].sort((a,b)=>a-b).join(',')}] explicit=${annPrios.length}/${annCalls.length}`;
+});
+T('κάθε priority level του source προηγείται πραγματικά κάθε χαμηλότερου', ()=>{
+  const levels = [...new Set(annPrios.map(Number))].sort((a,b)=>a-b);
+  for (const hi of levels.filter(v=>v>=1)) for (const lo of [0, ...levels].filter(v=>v<hi)) {
+    const x = mk(); trigger(x,'ACTIVE',lo); trigger(x,'LOW',lo); trigger(x,'HIGH',hi);
+    const shown = x.announcement.text === 'HIGH';                       // preempted an informational
+    const ahead = x._annQueue.length > 0 && x._annQueue[0].text === 'HIGH';
+    if (!shown && !ahead) return `priority ${hi} έμεινε πίσω από ${lo}`;
+  }
+  return levels.length > 1 || `μόνο ένα level: [${levels.join(',')}]`;
+});
+// BANNER HOLD IS PER-BANNER SINCE Game._annHold (verified 2026-08-11): the flat
+// `FADE_IN = 0.35, HOLD = 1.9, FADE_OUT = 0.55` line this used to grep no longer exists — reading
+// time is now ~16 chars/second, "floored at the historical 1.9 s and capped so even the longest
+// line cannot stall the screen", with an explicit opts.duration overriding it. The fades are
+// unchanged. So the drift guard now pins the whole shipped duration contract: the same two fade
+// constants in BOTH the update and the draw path, the 1.9 s floor, the finite cap, the fallback
+// when a banner carries no hold, and the caller override.
+T('duration contract: fades αμετάβλητα, hold με floor 1.9 και φραγμένο cap', ()=>{
+  const fades = (SRC.match(/const FADE_IN = 0\.35, FADE_OUT = 0\.55;/g)||[]).length;
+  const floorCap = /return Math\.max\(1\.9, Math\.min\(3\.8, n \/ 16\)\);/.test(SRC);
+  const fallback = /const HOLD = Number\.isFinite\(a\.hold\) \? a\.hold : 1\.9;/.test(SRC);
+  const override = /hold: \(opts && Number\.isFinite\(opts\.duration\)\) \? opts\.duration : Game\._annHold\(text\),/.test(SRC);
+  return (fades >= 2 && floorCap && fallback && override) ||
+    `fades=${fades} floorCap=${floorCap} fallback=${fallback} override=${override}`;
+});
 
 console.log(`\n═══ ${pass} PASS · ${fail} FAIL ═══`);
 process.exit(fail?1:0);

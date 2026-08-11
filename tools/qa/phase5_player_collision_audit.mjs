@@ -273,6 +273,29 @@ mm._cityImg = imageStub(byPath['assets/maps/new_endless/cyber_megacity.png']);
 mm._chaosDeckImg = imageStub(byPath['assets/maps/chaos_mode_map/chaos_map.png']);
 mm._act1BoundsCache = null;
 
+// ── 2026-08-11 QA refresh: η γεωμετρία σύγκρουσης είναι ΖΩΝΗ ΓΡΑΜΜΩΝ, όχι authored στήλες ──
+// Αυτό το harness ήταν γραμμένο γύρω από τα CITY_BLOCK_COLS / CHAOS_BLOCK_COLS (τα 5 hand-typed
+// ορθογώνια του Maria video QA 2026-07-19). Το audit «P1-1 (2026-07-25)» στο js/game/MapManager.js
+// τα μέτρησε πάνω στα SHIPPED PNG και τα βρήκε σχεδόν ανεστραμμένα ως προς το art (πλακόστρωτο
+// 82%/23%/0% μέσα στα rects, ενώ 30-51% της πραγματικής βαμμένης μάζας έμενε walk-through) και τα
+// ΑΔΕΙΑΣΕ σκόπιμα: «Left EMPTY until a mask is DERIVED from the art». Το μετρημένο αποτέλεσμα ήταν
+// 85.9% blocked frames / μόνιμο κόλλημα → 0.0%.
+// Συνέπεια για το QA: το `worldRects()` επιστρέφει πλέον κενή λίστα, οπότε κάθε gate που δειγμάτιζε
+// «το κέντρο ενός rect» ήταν είτε κενό (vacuous PASS) είτε έσκαγε σε `undefined` rect. Τα gates
+// παρακάτω δοκιμάζουν τη γεωμετρία που ΟΝΤΩΣ υπάρχει — τα δύο οριζόντια όρια της walkable ζώνης
+// (CITY_WALK_ROWS / CHAOS_WALK_ROWS) και τη συνέχεια του διαδρόμου — με την ίδια αυστηρότητα.
+// Το συμβόλαιο [x0,x1,y0,y1] και κάθε consumer μένουν ως έχουν, ώστε ένα παραγόμενο mask να
+// μπορεί να «πέσει μέσα» χωρίς αλλαγή εδώ.
+function bandOf(mode) {
+  const rows = mode === 'chaos' ? mm.CHAOS_WALK_ROWS : mm.CITY_WALK_ROWS;
+  const img  = mode === 'chaos' ? mm._chaosDeckImg : mm._cityImg;
+  return {
+    top:        rows[0] * mm.CITY_SCALE,
+    bottom:     rows[1] * mm.CITY_SCALE,
+    tileBottom: img.naturalHeight * mm.CITY_SCALE,
+  };
+}
+
 console.log('\n-- Β. Ακτίνα παίκτη και ελεύθερη κίνηση --');
 WORLD_BOUNDS.left = -1000000;
 WORLD_BOUNDS.top = -1000000;
@@ -291,92 +314,108 @@ metricLine('διαγώνια/ελεύθερη', diagonal);
 gate('η διαγώνια κίνηση κανονικοποιείται στην ίδια μετατόπιση με την ευθεία', Math.abs(cardinal.displacement - diagonal.displacement) < 0.01, `ευθεία=${cardinal.displacement.toFixed(2)} διαγώνια=${diagonal.displacement.toFixed(2)}`);
 gate('η ελεύθερη κίνηση δεν έχει μπλοκαρισμένα ή μηδενικά frames', cardinal.blockedFrames === 0 && diagonal.blockedFrames === 0 && cardinal.zeroMotionFrames === 0 && diagonal.zeroMotionFrames === 0);
 
-console.log('\n-- Γ. Authored εμπόδια και δομή αόρατων colliders --');
+console.log('\n-- Γ. Authored walkable ζώνη και δομή colliders --');
 let badAuthoredSamples = 0;
+const bandEvidence = [];
 for (const mode of ['endless', 'chaos']) {
+  const b = bandOf(mode);
+  // Ό,τι είναι ΕΚΤΟΣ της authored ζώνης αλλά μέσα στο tile (skyline / κάτω δομές) απορρίπτεται.
+  for (const y of [b.top - 1, b.top - 40, b.bottom + 1, b.bottom + 40]) {
+    if (mm.isWalkablePoint(1500, y, mode)) { badAuthoredSamples++; bandEvidence.push(`${mode}@${y}=δεκτό`); }
+  }
+  // Το εσωτερικό της ζώνης δέχεται ολόκληρο το footprint των 16px.
+  for (const y of [b.top + PLAYER_RADIUS + 2, (b.top + b.bottom) / 2, b.bottom - PLAYER_RADIUS - 2]) {
+    if (!mm.isWalkableFootprint(1500, y, PLAYER_RADIUS, mode)) { badAuthoredSamples++; bandEvidence.push(`${mode}@${y}=απορρίφθηκε`); }
+  }
+  // Κάθε authored rect που θα προστεθεί στο μέλλον οφείλει να απορρίπτει το κέντρο του.
   for (const rect of worldRects(mm, mode)) {
-    const cx = (rect.x0 + rect.x1) / 2;
-    const cy = (rect.y0 + rect.y1) / 2;
-    if (mm.isWalkablePoint(cx, cy, mode)) badAuthoredSamples++;
+    if (mm.isWalkablePoint((rect.x0 + rect.x1) / 2, (rect.y0 + rect.y1) / 2, mode)) {
+      badAuthoredSamples++; bandEvidence.push(`${mode}:rect-κέντρο=δεκτό`);
+    }
   }
 }
-gate('και τα 5 authored no-go ορθογώνια απορρίπτουν το κέντρο τους', badAuthoredSamples === 0, `λανθασμένα-δεκτά=${badAuthoredSamples}`);
+gate('η authored walkable ζώνη απορρίπτει το εξωτερικό της και δέχεται το εσωτερικό της',
+  badAuthoredSamples === 0, `αστοχίες=${badAuthoredSamples} ${bandEvidence.join(' ')}`);
 gate('οι authored ζώνες και τα ορθογώνια χωρούν στις διαστάσεις των εικόνων',
   mm.CITY_WALK_ROWS[1] <= mm._cityImg.naturalHeight &&
   mm.CHAOS_WALK_ROWS[1] <= mm._chaosDeckImg.naturalHeight &&
   mm.CITY_BLOCK_COLS.every(r => r[0] >= 0 && r[1] <= mm._cityImg.naturalWidth && r[2] >= mm.CITY_WALK_ROWS[0] && r[3] <= mm.CITY_WALK_ROWS[1]) &&
   mm.CHAOS_BLOCK_COLS.every(r => r[0] >= 0 && r[1] <= mm._chaosDeckImg.naturalWidth && r[2] >= mm.CHAOS_WALK_ROWS[0] && r[3] <= mm.CHAOS_WALK_ROWS[1]));
 
-console.log('\n-- Δ. Ευθεία σύγκρουση, ολίσθηση τοίχου και διαδρομή γύρω από μεγάλα props --');
-const cityRect = worldRects(mm, 'endless')[0];
-const chaosRect = worldRects(mm, 'chaos')[0];
+console.log('\n-- Δ. Ευθεία σύγκρουση, ολίσθηση τοίχου και συνέχεια διαδρόμου --');
+// Ο μόνος τοίχος που υπάρχει πλέον στο endless/chaos είναι τα δύο ΟΡΙΖΟΝΤΙΑ όρια της ζώνης,
+// οπότε η ευθεία σύγκρουση οδηγείται προς τα πάνω ('w') και ο ελεύθερος άξονας της ολίσθησης
+// είναι ο x (πριν ήταν το αντίστροφο, επειδή τα authored rects ήταν κατακόρυφες στήλες).
+const cityBand = bandOf('endless');
+const chaosBand = bandOf('chaos');
 const straight = runPlayerRoute({
-  mm, mode: 'endless', start: { x: (cityRect.x0 + cityRect.x1) / 2, y: cityRect.y1 + PLAYER_RADIUS + 80 },
+  mm, mode: 'endless', start: { x: 1500, y: cityBand.top + PLAYER_RADIUS + 120 },
   frames: 60, keysAt: () => new Set(['w']), slideAxis: 'y',
 });
 const citySlide = runPlayerRoute({
-  mm, mode: 'endless', start: { x: cityRect.x1 + PLAYER_RADIUS + 3, y: 280 * mm.CITY_SCALE },
-  frames: 30, keysAt: () => new Set(['a', 'w']), slideAxis: 'y',
+  mm, mode: 'endless', start: { x: 1500, y: cityBand.top + PLAYER_RADIUS + 6 },
+  frames: 30, keysAt: () => new Set(['a', 'w']), slideAxis: 'x',
 });
 const chaosSlide = runPlayerRoute({
-  mm, mode: 'chaos', start: { x: chaosRect.x1 + PLAYER_RADIUS + 3, y: 220 * mm.CITY_SCALE },
-  frames: 30, keysAt: () => new Set(['a', 'w']), slideAxis: 'y',
+  mm, mode: 'chaos', start: { x: 1500, y: chaosBand.top + PLAYER_RADIUS + 6 },
+  frames: 30, keysAt: () => new Set(['a', 'w']), slideAxis: 'x',
 });
 metricLine('ευθεία/endless', straight);
 metricLine('ολίσθηση-τοίχου/endless', citySlide);
 metricLine('ολίσθηση-τοίχου/chaos', chaosSlide);
-gate('η ευθεία κίνηση σταματά πριν από το εμπόδιο χωρίς διείσδυση', straight.blockedFrames > 0 && straight.maxPenetration <= 0.01, `μπλοκαρισμένα=${straight.blockedFrames} διείσδυση=${straight.maxPenetration.toFixed(2)}`);
+gate('η ευθεία κίνηση σταματά πριν από το όριο ζώνης χωρίς διείσδυση', straight.blockedFrames > 0 && straight.maxPenetration <= 0.01, `μπλοκαρισμένα=${straight.blockedFrames} διείσδυση=${straight.maxPenetration.toFixed(2)}`);
 gate('η ολίσθηση τοίχου διατηρεί ουσιαστική κίνηση στον ελεύθερο άξονα', citySlide.slideDistance > 60 && chaosSlide.slideDistance > 60 && citySlide.zeroMotionFrames === 0 && chaosSlide.zeroMotionFrames === 0, `city=${citySlide.slideDistance.toFixed(2)} chaos=${chaosSlide.slideDistance.toFixed(2)}`);
 
-const minClearance = mode => {
-  const rows = mode === 'chaos' ? mm.CHAOS_WALK_ROWS : mm.CITY_WALK_ROWS;
-  const blocks = mode === 'chaos' ? mm.CHAOS_BLOCK_COLS : mm.CITY_BLOCK_COLS;
-  const bottomGaps = blocks.map(b => (rows[1] - b[3]) * mm.CITY_SCALE - PLAYER_RADIUS * 2);
-  const horizontalGaps = blocks.slice(1).map((b, i) => (b[0] - blocks[i][1]) * mm.CITY_SCALE - PLAYER_RADIUS * 2);
-  return Math.min(...bottomGaps, ...horizontalGaps);
+// Ωφέλιμο ύψος διαδρόμου: όλο το εύρος της ζώνης μείον τη διάμετρο του παίκτη. Χωρίς authored
+// στήλες δεν υπάρχει οριζόντιο «πέρασμα» να μετρηθεί — υπάρχει ΕΝΑΣ συνεχής διάδρομος, και αυτό
+// ακριβώς είναι το μετρήσιμο αποτέλεσμα της απόφασης 2026-07-25 (85.9% blocked frames → 0.0%).
+const corridorClearance = mode => {
+  const b = bandOf(mode);
+  return (b.bottom - b.top) - PLAYER_RADIUS * 2;
 };
-const cityGap = minClearance('endless');
-const chaosGap = minClearance('chaos');
+const cityGap = corridorClearance('endless');
+const chaosGap = corridorClearance('chaos');
 const gapRoute = runPlayerRoute({
   mm,
   mode: 'endless',
-  start: { x: 650 * mm.CITY_SCALE, y: ((330 * mm.CITY_SCALE + PLAYER_RADIUS) + (mm.CITY_WALK_ROWS[1] * mm.CITY_SCALE - PLAYER_RADIUS)) / 2 },
+  start: { x: 650 * mm.CITY_SCALE, y: (cityBand.top + cityBand.bottom) / 2 },
   frames: 180,
   keysAt: () => new Set(['d']),
   slideAxis: 'x',
 });
-metricLine('στενότερο authored πέρασμα', gapRoute);
-gate('όλα τα authored περάσματα υπερβαίνουν τη διάμετρο παίκτη των 32px', cityGap > 0 && chaosGap > 0, `ωφέλιμο city=${cityGap.toFixed(0)}px chaos=${chaosGap.toFixed(0)}px`);
-gate('το στενότερο production πέρασμα διασχίζεται χωρίς κόλλημα', gapRoute.displacement > 600 && gapRoute.zeroMotionFrames === 0 && gapRoute.maxPenetration <= 0.01, `απόσταση=${gapRoute.displacement.toFixed(2)} μηδενικά=${gapRoute.zeroMotionFrames}`);
+metricLine('συνεχής οριζόντιος διάδρομος', gapRoute);
+gate('ο walkable διάδρομος υπερβαίνει τη διάμετρο παίκτη των 32px', cityGap > 0 && chaosGap > 0, `ωφέλιμο city=${cityGap.toFixed(0)}px chaos=${chaosGap.toFixed(0)}px`);
+gate('ο διάδρομος διασχίζεται οριζόντια χωρίς κόλλημα ή αόρατο τοίχο', gapRoute.displacement > 600 && gapRoute.zeroMotionFrames === 0 && gapRoute.blockedFrames === 0 && gapRoute.maxPenetration <= 0.01, `απόσταση=${gapRoute.displacement.toFixed(2)} μηδενικά=${gapRoute.zeroMotionFrames} μπλοκαρισμένα=${gapRoute.blockedFrames}`);
 
 console.log('\n-- Ε. Σύγκρουση dash στο production όριο frame των 50ms --');
 const dash = runPlayerRoute({
   mm,
   mode: 'endless',
   character: 'taekwondo_girl',
-  start: { x: (cityRect.x0 + cityRect.x1) / 2, y: cityRect.y1 + PLAYER_RADIUS + 184 },
+  start: { x: 1500, y: cityBand.top + PLAYER_RADIUS + 184 },
   frames: 10,
   dt: 0.05,
   keysAt: frame => frame === 0 ? new Set(['w', 'shift']) : new Set(['w']),
   slideAxis: 'y',
 });
 metricLine('dash/endless@20Hz', dash);
-gate('το dash μπλοκάρεται από το εμπόδιο χωρίς tunnelling ή διείσδυση', dash.blockedFrames > 0 && dash.maxPenetration <= 0.01 && dash.maxStep <= 49, `μέγιστο-βήμα=${dash.maxStep.toFixed(2)} διείσδυση=${dash.maxPenetration.toFixed(2)}`);
+gate('το dash μπλοκάρεται από το όριο ζώνης χωρίς tunnelling ή διείσδυση', dash.blockedFrames > 0 && dash.maxPenetration <= 0.01 && dash.maxStep <= 49, `μέγιστο-βήμα=${dash.maxStep.toFixed(2)} διείσδυση=${dash.maxPenetration.toFixed(2)}`);
 
-console.log('\n-- ΣΤ. Ακριβές κυκλικό footprint στις γωνίες εμποδίων --');
+console.log('\n-- ΣΤ. Ακριβές κυκλικό footprint στα όρια της ζώνης --');
+// Ίδια αυστηρότητα με το παλιό corner sweep, στη γεωμετρία που υπάρχει: σαρώνει κάθε
+// υπο-pixel θέση όπου ο κύκλος των 16px τέμνει το πάνω/κάτω όριο και απαιτεί το
+// isWalkableFootprint να ΜΗΝ τη δεχτεί (center-only έλεγχος θα την περνούσε).
 let cornerMisses = 0;
 let maxCornerPenetration = 0;
 let worstCorner = null;
+const edgeSampleX = [1500, 650 * mm.CITY_SCALE, -4321.5];
 for (const mode of ['endless', 'chaos']) {
-  for (const rect of worldRects(mm, mode)) {
-    for (const side of [-1, 1]) {
-      const cx = side < 0 ? rect.x0 : rect.x1;
-      const cy = rect.y1;
-      for (let ax = 0.25; ax < PLAYER_RADIUS; ax += 0.25) {
-        for (let ay = 0.25; ay < PLAYER_RADIUS; ay += 0.25) {
-          const x = cx + side * ax;
-          const y = cy + ay;
-          const pen = circleRectPenetration(x, y, PLAYER_RADIUS, rect);
+  const b = bandOf(mode);
+  for (const edge of [b.top, b.bottom]) {
+    for (const x of edgeSampleX) {
+      for (let d = 0.25; d < PLAYER_RADIUS; d += 0.25) {
+        for (const y of [edge + d, edge - d]) {
+          const pen = exactModelPenetration(mm, mode, x, y, PLAYER_RADIUS);
           if (pen > EPS && mm.isWalkableFootprint(x, y, PLAYER_RADIUS, mode)) {
             cornerMisses++;
             if (pen > maxCornerPenetration) {
@@ -389,20 +428,21 @@ for (const mode of ['endless', 'chaos']) {
     }
   }
 }
-gate('το κυκλικό footprint δεν έχει ψευδώς walkable δείγματα σε γωνίες', cornerMisses === 0,
+gate('το κυκλικό footprint δεν έχει ψευδώς walkable δείγματα στα όρια', cornerMisses === 0,
   `αστοχίες=${cornerMisses} μέγιστη-διείσδυση=${maxCornerPenetration.toFixed(2)}px στο ${worstCorner ? `${worstCorner.mode}(${worstCorner.x.toFixed(2)},${worstCorner.y.toFixed(2)})` : 'κανένα'}`);
 
 console.log('\n-- Ζ. Ανάκτηση από άκυρη κολλημένη θέση --');
 const stuck = runPlayerRoute({
   mm,
   mode: 'endless',
-  start: { x: (cityRect.x0 + cityRect.x1) / 2, y: (cityRect.y0 + cityRect.y1) / 2 },
+  // Εξαναγκασμένη θέση μέσα στην ΠΑΝΩ no-go ζώνη (skyline), βαθύτερα από μία ακτίνα.
+  start: { x: 1500, y: cityBand.top - 60 },
   frames: 180,
   keysAt: () => new Set(['s']),
   slideAxis: 'y',
   startInvalid: true,
 });
-metricLine('εξαναγκασμένη-θέση-μέσα-σε-εμπόδιο', stuck);
+metricLine('εξαναγκασμένη-θέση-εκτός-ζώνης', stuck);
 gate('ο παίκτης ανακτάται από άκυρη θέση εμποδίου μέσα σε 120 frames', stuck.recoveryFrames != null && stuck.recoveryFrames <= 120,
   `ανάκτηση=${stuck.recoveryFrames == null ? 'καμία' : `${stuck.recoveryFrames}f`} μηδενικά=${stuck.zeroMotionFrames}f κόλλημα=${stuck.stuckSeconds.toFixed(2)}s`);
 
@@ -448,7 +488,8 @@ console.log(`    footprint γωνιών: ${cornerMisses} ψευδώς walkable �
 console.log(`    ανάκτηση άκυρης θέσης: ${stuck.recoveryFrames == null ? 'καμία ανάκτηση' : `${stuck.recoveryFrames} frames`}, ${stuck.zeroMotionFrames}/${stuck.inputFrames} frames μηδενικής κίνησης`);
 console.log(`    Act 1: το center-only clamp επιτρέπει ${act1.maxPenetration.toFixed(2)}px από την ακτίνα ${PLAYER_RADIUS}px έξω από το μετρημένο κατάστρωμα`);
 console.log(`    Campaign: ${campaignCollisionModels}/7 χάρτες εκθέτουν collision coverage, αντιπροσωπευτική μετατόπιση 60f=${campaignFree.displacement.toFixed(2)}px, μπλοκαρισμένα=${campaignFree.blockedFrames}`);
-console.log('    πηγή: MapManager.js:438-443, Game.js:30142-30160, Game.js:30242-30254, Game.js:8868-8872, Player.js:420-429');
+console.log(`    ζώνες: endless rows=${JSON.stringify(mm.CITY_WALK_ROWS)} chaos rows=${JSON.stringify(mm.CHAOS_WALK_ROWS)} scale=${mm.CITY_SCALE}, authored στήλες endless=${mm.CITY_BLOCK_COLS.length} chaos=${mm.CHAOS_BLOCK_COLS.length}`);
+console.log('    πηγή: MapManager.js CITY_BLOCK_COLS/CHAOS_BLOCK_COLS (απόφαση P1-1 2026-07-25), MapManager._walkModel/isWalkablePoint/isWalkableFootprint, Player.js _resolveMove');
 
 console.log(`\n=== ΑΠΟΤΕΛΕΣΜΑ: ${pass} PASS / ${fail} FAIL ===`);
 process.exit(fail ? 1 : 0);
