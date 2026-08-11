@@ -3,16 +3,16 @@
 // and runtime create→fire→damage→reset→2nd-run for the legacy 42-weapon catalog + Build-Engine seed.
 // Run: node tools/qa/weapon_catalog_lifecycle_regression.mjs   (exit 1 on failure)
 import { register } from 'node:module';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 register('./strip-v-loader.mjs', import.meta.url);
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const { installEnv, muteConsole } = await import(path.join(HERE, 'headless-env.mjs'));
+const { installEnv, muteConsole } = await import(pathToFileURL(path.join(HERE, 'headless-env.mjs')).href);
 installEnv();
 let _un = muteConsole();
-const wc = await import(path.resolve(HERE, '../../js/game/WeaponCatalog.js'));
-const { Game } = await import(path.resolve(HERE, '../../js/game/Game.js'));
-let Enemy = null; try { Enemy = (await import(path.resolve(HERE, '../../js/entities/Enemy.js'))).Enemy; } catch (_) {}
+const wc = await import(pathToFileURL(path.resolve(HERE, '../../js/game/WeaponCatalog.js')).href);
+const { Game } = await import(pathToFileURL(path.resolve(HERE, '../../js/game/Game.js')).href);
+let Enemy = null; try { Enemy = (await import(pathToFileURL(path.resolve(HERE, '../../js/entities/Enemy.js')).href)).Enemy; } catch (_) {}
 _un();
 
 let pass = 0, fail = 0;

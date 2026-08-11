@@ -9,6 +9,13 @@
 CLAUDE.md
 AGENTS.md
 _*_msg.txt
+# Same drafts under the other name they were saved as (_cm36 … _cm50). Every one of them has
+# already been consumed by git commit -F: _cm50.txt's first line is the subject of a428f4b.
+_cm*.txt
 CHANGES_SINCE_*.md
 qa_reports/
 tools/qa/_to_delete/
+# The repo-root parking folder. The Cowork bridge cannot delete files, so anything being thrown
+# away is moved here and removed locally instead. Note: comments must be on their OWN line —
+# git has no inline comment syntax, so "pattern  # why" is a literal pattern that matches nothing.
+/_to_delete/

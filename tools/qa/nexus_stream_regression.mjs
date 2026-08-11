@@ -1,7 +1,7 @@
 // NEXUS STREAMING + WORLD-REBASE REGRESSION — real modules, no browser, no network.
 // Run: node tools/qa/nexus_stream_regression.mjs   (exit 1 on any failure)
 import { register } from 'node:module';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 register('./strip-v-loader.mjs', import.meta.url);
 
@@ -12,9 +12,9 @@ if (!globalThis.performance) globalThis.performance = { now: () => Date.now() };
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const JS   = path.resolve(HERE, '../../js');                       // repo-relative, no absolute paths
-const { NexusManager } = await import(path.join(JS, 'game/NexusManager.js'));
-const { ChunkManager } = await import(path.join(JS, 'game/ChunkManager.js'));
-const { BIOME_ID, CHUNK_SIZE } = await import(path.join(JS, 'game/MapManager.js'));
+const { NexusManager } = await import(pathToFileURL(path.join(JS, 'game/NexusManager.js')).href);
+const { ChunkManager } = await import(pathToFileURL(path.join(JS, 'game/ChunkManager.js')).href);
+const { BIOME_ID, CHUNK_SIZE } = await import(pathToFileURL(path.join(JS, 'game/MapManager.js')).href);
 
 let pass = 0, fail = 0;
 const T = (n, f) => { let ok=false, note='';

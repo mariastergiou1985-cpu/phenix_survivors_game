@@ -3,16 +3,16 @@
 // real enemy hit, finite POSITIVE damage, monotonic runtime scaling (L1<mid<max dmg-per-window),
 // bounded VFX pool, reset clearing, and 2nd-run non-doubling. Bounded (~20s). Exit 1 on any failure.
 import { register } from 'node:module';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 register('./strip-v-loader.mjs', import.meta.url);
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const { installEnv, muteConsole } = await import(path.join(HERE, 'headless-env.mjs'));
+const { installEnv, muteConsole } = await import(pathToFileURL(path.join(HERE, 'headless-env.mjs')).href);
 installEnv();
 let _un = muteConsole();
-const wc = await import(path.resolve(HERE, '../../js/game/WeaponCatalog.js'));
-const { Game } = await import(path.resolve(HERE, '../../js/game/Game.js'));
-let Enemy = null; try { Enemy = (await import(path.resolve(HERE, '../../js/entities/Enemy.js'))).Enemy; } catch (_) {}
+const wc = await import(pathToFileURL(path.resolve(HERE, '../../js/game/WeaponCatalog.js')).href);
+const { Game } = await import(pathToFileURL(path.resolve(HERE, '../../js/game/Game.js')).href);
+let Enemy = null; try { Enemy = (await import(pathToFileURL(path.resolve(HERE, '../../js/entities/Enemy.js')).href)).Enemy; } catch (_) {}
 _un();
 const IN = (k)=>({keys:k||new Set(),mousePos:{x:0,y:0},mouseDown:false});
 const ids = Object.keys(wc.WEAPON_DEFS);
