@@ -2,6 +2,7 @@
 // The game itself lives in ./game (a copy of the repo web files) — ZERO code changes.
 const { app, BrowserWindow } = require('electron');
 const path = require('path');
+const fs = require('fs');
 
 // SELF-TEST MODE (--phenix-selftest). Boots the REAL packaged shell hidden, waits for the game to
 // come up, reads the canvas back, prints one machine-readable line and exits 0/1. This is what lets
@@ -78,8 +79,22 @@ function runSelfTest(win) {
     probe.errors = real.slice(0, 3);
     const ok = probe.booted === true && probe.luminance > 3 &&
                probe.achievementsBridged === true && real.length === 0;
+    const result = ok ? 'PASS' : 'FAIL';
+    const payload = { result, probe };
     console.log('PHENIX_SELFTEST::' + JSON.stringify(probe));
-    console.log('PHENIX_SELFTEST_RESULT::' + (ok ? 'PASS' : 'FAIL'));
+    console.log('PHENIX_SELFTEST_RESULT::' + result);
+
+    // A packaged Windows Electron executable is a GUI-subsystem process, so PowerShell cannot
+    // reliably capture console.log/stdout from it. CI therefore supplies a result-file path and
+    // polls that file. Keep stdout too because `npm run selftest` in development can still show it.
+    const resultFile = process.env.PHENIX_SELFTEST_RESULT_FILE;
+    if (resultFile) {
+      try {
+        fs.writeFileSync(resultFile, JSON.stringify(payload), 'utf8');
+      } catch (e) {
+        console.error('[selftest] could not write result file:', e);
+      }
+    }
     app.exit(ok ? 0 : 1);
   }, 12000);
 }
