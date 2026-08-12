@@ -1,0 +1,122 @@
+name: Isolate PHENIX package metadata crash
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/electron-package-metadata-isolate.yml'
+
+jobs:
+  probe:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: minimal-control
+            name: phenix-preready-min
+            product: ''
+            build: 'no'
+          - id: phenix-name-only
+            name: phenix-null-eden
+            product: ''
+            build: 'no'
+          - id: product-safe
+            name: phenix-null-eden
+            product: 'PHENIX NULL EDEN'
+            build: 'no'
+          - id: product-colon
+            name: phenix-null-eden
+            product: 'PHENIX: NULL EDEN'
+            build: 'no'
+          - id: safe-product-with-build
+            name: phenix-null-eden
+            product: 'PHENIX NULL EDEN'
+            build: 'yes'
+          - id: colon-product-with-build
+            name: phenix-null-eden
+            product: 'PHENIX: NULL EDEN'
+            build: 'yes'
+    runs-on: windows-2025
+    name: ${{ matrix.id }}
+
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Build metadata variant
+        shell: pwsh
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP '${{ matrix.id }}'
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+
+          $pkg = [ordered]@{
+            name = '${{ matrix.name }}'
+            version = '1.0.0'
+            main = 'main.js'
+            devDependencies = [ordered]@{ electron = '33.4.11' }
+          }
+          if ('${{ matrix.product }}' -ne '') { $pkg.productName = '${{ matrix.product }}' }
+          if ('${{ matrix.build }}' -eq 'yes') {
+            $pkg.build = [ordered]@{
+              appId = 'com.inkspirem.phenixnulleden'
+              productName = 'PHENIX NULL EDEN'
+              files = @('main.js','node_modules/**/*')
+              win = [ordered]@{ target = @('nsis','portable') }
+            }
+          }
+          $pkg | ConvertTo-Json -Depth 20 | Set-Content (Join-Path $dir 'package.json') -Encoding utf8
+
+          @'
+          const { app } = require('electron');
+          const fs = require('fs');
+          const SELFTEST = process.argv.includes('--phenix-selftest');
+          const TRACE = process.env.PHENIX_SELFTEST_TRACE_FILE || '';
+          function mark(stage) { try { if (TRACE) fs.appendFileSync(TRACE, JSON.stringify({stage,name:app.getName()})+'\n'); } catch {} }
+          if (SELFTEST) {
+            app.disableHardwareAcceleration();
+            app.commandLine.appendSwitch('disable-gpu');
+            mark('main-loaded');
+          }
+          app.whenReady().then(()=>{ mark('app-ready'); setTimeout(()=>app.exit(0),200); });
+          setTimeout(()=>app.exit(3),20000);
+          '@ | Set-Content (Join-Path $dir 'main.js') -Encoding utf8
+
+          Push-Location $dir
+          npm install --no-audit --no-fund
+          Pop-Location
+          "APPDIR=$dir" | Out-File $env:GITHUB_ENV -Append
+          "EXE=$((Resolve-Path (Join-Path $dir 'node_modules/electron/dist/electron.exe')).Path)" | Out-File $env:GITHUB_ENV -Append
+
+      - name: Run metadata probe
+        shell: pwsh
+        run: |
+          $trace = Join-Path $env:RUNNER_TEMP '${{ matrix.id }}-trace.jsonl'
+          $chrome = Join-Path $env:RUNNER_TEMP '${{ matrix.id }}-chromium.log'
+          Remove-Item $trace,$chrome -Force -ErrorAction SilentlyContinue
+          $env:PHENIX_SELFTEST_TRACE_FILE = $trace
+          $env:ELECTRON_ENABLE_LOGGING = '1'
+
+          $psi = [System.Diagnostics.ProcessStartInfo]::new()
+          $psi.FileName = $env:EXE
+          $psi.UseShellExecute = $false
+          [void]$psi.ArgumentList.Add($env:APPDIR)
+          [void]$psi.ArgumentList.Add('--phenix-selftest')
+          [void]$psi.ArgumentList.Add('--enable-logging=file')
+          [void]$psi.ArgumentList.Add("--log-file=$chrome")
+          [void]$psi.ArgumentList.Add('--v=1')
+
+          $p = [System.Diagnostics.Process]::Start($psi)
+          $deadline = (Get-Date).AddSeconds(25)
+          while (-not $p.HasExited -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 200 }
+          if (-not $p.HasExited) { $p.Kill($true); $p.WaitForExit() }
+
+          $last = 'none'
+          if (Test-Path $trace) {
+            Get-Content $trace | ForEach-Object { Write-Host $_ }
+            foreach ($line in Get-Content $trace) { try { $o=$line|ConvertFrom-Json; if($o.stage){$last=$o.stage} } catch {} }
+          }
+          $hex = '0x{0:X8}' -f ($p.ExitCode -band 0xFFFFFFFF)
+          Write-Host "VERDICT:: ${{ matrix.id }} | exit=$($p.ExitCode) $hex | last-stage=$last"
+          if ($p.ExitCode -ne 0 -or $last -ne 'app-ready') { exit 1 }
