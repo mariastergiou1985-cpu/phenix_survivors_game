@@ -32,6 +32,10 @@ name: Diagnose Windows EXE crash
 
 on:
   workflow_dispatch: {}
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/exe-diagnose.yml'
 
 jobs:
   probe:
