@@ -65,7 +65,10 @@ jobs:
               -iname '*.zip' -o -iname '*.bak' -o -iname '*.orig' -o -iname '*.py' \
               -o -iname '*.bat' -o -iname '*.md' -o -iname '*.map' -o -iname '*.log' \
               -o -iname '*.txt' -o -iname '*.csv' -o -iname '*.ini' \) | wc -l)
-          dirs=$(ls -d tools electron docs qa_reports release_store_package .github 2>/dev/null | wc -l)
+          dirs=0
+          for d in tools electron docs qa_reports release_store_package .github; do
+            if [ -e "$d" ]; then dirs=$((dirs + 1)); fi
+          done
           echo "dev-extension files: $bad   dev dirs: $dirs"
           test "$bad" -eq 0
           test "$dirs" -eq 0
