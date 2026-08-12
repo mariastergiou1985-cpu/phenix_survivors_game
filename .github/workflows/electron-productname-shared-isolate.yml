@@ -1,0 +1,106 @@
+name: Verify PHENIX productName startup crash
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/electron-productname-shared-isolate.yml'
+
+jobs:
+  probe:
+    runs-on: windows-2025
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Electron once
+        shell: pwsh
+        run: |
+          $base = Join-Path $env:RUNNER_TEMP 'electron-base'
+          New-Item -ItemType Directory -Force -Path $base | Out-Null
+          Set-Content -Path (Join-Path $base 'package.json') -Encoding utf8 -Value '{"name":"electron-base","version":"1.0.0","devDependencies":{"electron":"33.4.11"}}'
+          Push-Location $base
+          npm install --no-audit --no-fund
+          Pop-Location
+          $exe = (Resolve-Path (Join-Path $base 'node_modules/electron/dist/electron.exe')).Path
+          "ELECTRON_EXE=$exe" | Out-File $env:GITHUB_ENV -Append
+
+      - name: Run all metadata variants with same Electron binary
+        shell: pwsh
+        run: |
+          $variants = @(
+            @{ id='control'; product=$null; full=$false },
+            @{ id='safe-product'; product='PHENIX NULL EDEN'; full=$false },
+            @{ id='colon-product'; product='PHENIX: NULL EDEN'; full=$false },
+            @{ id='safe-fullmeta'; product='PHENIX NULL EDEN'; full=$true },
+            @{ id='colon-fullmeta'; product='PHENIX: NULL EDEN'; full=$true }
+          )
+
+          $failed = $false
+          foreach ($v in $variants) {
+            $dir = Join-Path $env:RUNNER_TEMP ("app-" + $v.id)
+            New-Item -ItemType Directory -Force -Path $dir | Out-Null
+            $pkg = [ordered]@{ name='phenix-null-eden'; version='1.0.0'; main='main.js' }
+            if ($null -ne $v.product) { $pkg.productName = $v.product }
+            if ($v.full) {
+              $pkg.description = 'A cyber-survival roguelite by InkSpireM Visuals'
+              $pkg.author = 'InkSpireM Visuals'
+              $pkg.scripts = [ordered]@{ start='electron .'; selftest='electron . --phenix-selftest' }
+              $pkg.build = [ordered]@{
+                appId='com.inkspirem.phenixnulleden'
+                productName='PHENIX NULL EDEN'
+                files=@('main.js','preload.js','game/**/*','node_modules/**/*')
+                asarUnpack=@('**/*.node','node_modules/steamworks.js/**')
+                win=[ordered]@{ target=@('nsis','portable') }
+              }
+            }
+            $pkg | ConvertTo-Json -Depth 20 | Set-Content (Join-Path $dir 'package.json') -Encoding utf8
+
+            @'
+            const { app } = require('electron');
+            const fs = require('fs');
+            const trace = process.env.PHENIX_SELFTEST_TRACE_FILE || '';
+            function mark(stage) { try { fs.appendFileSync(trace, JSON.stringify({stage,name:app.getName()})+'\n'); } catch {} }
+            app.disableHardwareAcceleration();
+            app.commandLine.appendSwitch('disable-gpu');
+            mark('main-loaded');
+            app.whenReady().then(()=>{ mark('app-ready'); setTimeout(()=>app.exit(0),200); });
+            setTimeout(()=>{ mark('timeout'); app.exit(3); },20000);
+            '@ | Set-Content (Join-Path $dir 'main.js') -Encoding utf8
+
+            $trace = Join-Path $env:RUNNER_TEMP ($v.id + '-trace.jsonl')
+            $chrome = Join-Path $env:RUNNER_TEMP ($v.id + '-chromium.log')
+            Remove-Item $trace,$chrome -Force -ErrorAction SilentlyContinue
+            $env:PHENIX_SELFTEST_TRACE_FILE = $trace
+            $env:ELECTRON_ENABLE_LOGGING = '1'
+
+            $psi = [System.Diagnostics.ProcessStartInfo]::new()
+            $psi.FileName = $env:ELECTRON_EXE
+            $psi.UseShellExecute = $false
+            [void]$psi.ArgumentList.Add($dir)
+            [void]$psi.ArgumentList.Add('--phenix-selftest')
+            [void]$psi.ArgumentList.Add('--enable-logging=file')
+            [void]$psi.ArgumentList.Add("--log-file=$chrome")
+            [void]$psi.ArgumentList.Add('--v=1')
+
+            $p = [System.Diagnostics.Process]::Start($psi)
+            $deadline = (Get-Date).AddSeconds(25)
+            while (-not $p.HasExited -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 200 }
+            if (-not $p.HasExited) { $p.Kill($true); $p.WaitForExit() }
+
+            $last = 'none'
+            if (Test-Path $trace) {
+              foreach ($line in Get-Content $trace) {
+                Write-Host $line
+                try { $o=$line|ConvertFrom-Json; if($o.stage){$last=$o.stage} } catch {}
+              }
+            }
+            $hex = '0x{0:X8}' -f ($p.ExitCode -band 0xFFFFFFFF)
+            Write-Host "VERDICT:: $($v.id) | exit=$($p.ExitCode) $hex | last-stage=$last"
+            if ($v.id -match '^colon-' -and $p.ExitCode -eq 0 -and $last -eq 'app-ready') { Write-Host 'COLON_VARIANT_PASSED' }
+            if ($v.id -notmatch '^colon-' -and ($p.ExitCode -ne 0 -or $last -ne 'app-ready')) { $failed = $true }
+          }
+
+          if ($failed) { exit 1 }
