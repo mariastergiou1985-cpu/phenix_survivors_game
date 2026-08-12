@@ -1,0 +1,79 @@
+name: Electron 43 bare startup check
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/electron43-bare-check.yml'
+
+jobs:
+  probe:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: e43-win2025-bare
+            gpuoff: 'no'
+          - id: e43-win2025-gpuoff
+            gpuoff: 'yes'
+    runs-on: windows-2025
+    name: ${{ matrix.id }}
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Run Electron 43 startup probe
+        shell: pwsh
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP 'e43-bare'
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          Set-Content -Path (Join-Path $dir 'package.json') -Encoding utf8 -Value '{"name":"e43-bare","version":"1.0.0","main":"main.cjs"}'
+          @'
+          const { app } = require('electron');
+          const fs = require('fs');
+          const trace = process.env.BARE_TRACE_FILE;
+          const mark = (stage) => fs.appendFileSync(trace, JSON.stringify({stage,electron:process.versions.electron})+'\n');
+          mark('main-loaded');
+          if (process.env.TEST_GPUOFF === '1') {
+            app.disableHardwareAcceleration();
+            app.commandLine.appendSwitch('disable-gpu');
+            mark('gpuoff-set');
+          }
+          app.whenReady().then(() => { mark('app-ready'); setTimeout(() => app.exit(0), 200); });
+          setTimeout(() => { mark('timeout'); app.exit(3); }, 20000);
+          '@ | Set-Content -Path (Join-Path $dir 'main.cjs') -Encoding utf8
+
+          Push-Location $dir
+          npm install --no-audit --no-fund --save-exact electron@43.4.0
+          node -e "require('electron')" | Out-Host
+          Pop-Location
+
+          $exe = Join-Path $dir 'node_modules\electron\dist\electron.exe'
+          if (-not (Test-Path $exe)) { throw "Electron 43 executable not found at $exe" }
+
+          $trace = Join-Path $env:RUNNER_TEMP 'e43-trace.jsonl'
+          Remove-Item $trace -Force -ErrorAction SilentlyContinue
+          $env:BARE_TRACE_FILE = $trace
+          $env:TEST_GPUOFF = if ('${{ matrix.gpuoff }}' -eq 'yes') { '1' } else { '0' }
+
+          $psi = [System.Diagnostics.ProcessStartInfo]::new()
+          $psi.FileName = $exe
+          $psi.UseShellExecute = $false
+          [void]$psi.ArgumentList.Add($dir)
+          $p = [System.Diagnostics.Process]::Start($psi)
+          $deadline = (Get-Date).AddSeconds(30)
+          while (-not $p.HasExited -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 250 }
+          if (-not $p.HasExited) { $p.Kill($true); $p.WaitForExit() }
+
+          $last = 'none'
+          if (Test-Path $trace) {
+            Get-Content $trace | ForEach-Object { Write-Host $_ }
+            foreach ($line in Get-Content $trace) {
+              try { $o = $line | ConvertFrom-Json; if ($o.stage) { $last = $o.stage } } catch {}
+            }
+          }
+          $hex = '0x{0:X8}' -f ($p.ExitCode -band 0xFFFFFFFF)
+          Write-Host "VERDICT:: ${{ matrix.id }} | exit=$($p.ExitCode) $hex | last-stage=$last"
+          if ($p.ExitCode -ne 0 -or $last -ne 'app-ready') { exit 1 }
