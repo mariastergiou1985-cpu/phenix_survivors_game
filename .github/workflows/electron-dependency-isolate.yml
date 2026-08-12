@@ -1,0 +1,100 @@
+name: Isolate PHENIX Electron dependency crash
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/electron-dependency-isolate.yml'
+
+jobs:
+  probe:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: electron-only
+            steamworks: 'no'
+            builder: 'no'
+          - id: builder-only
+            steamworks: 'no'
+            builder: 'yes'
+          - id: steamworks-only
+            steamworks: 'yes'
+            builder: 'no'
+          - id: full-deps
+            steamworks: 'yes'
+            builder: 'yes'
+    runs-on: windows-2025
+    name: ${{ matrix.id }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Build package variant
+        shell: pwsh
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP '${{ matrix.id }}'
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          Copy-Item electron/package.json (Join-Path $dir 'package.json')
+          $pkg = Get-Content (Join-Path $dir 'package.json') -Raw | ConvertFrom-Json
+          $pkg.main = 'main.js'
+          $pkg.dependencies = [ordered]@{}
+          $pkg.devDependencies = [ordered]@{ electron = '33.4.11' }
+          if ('${{ matrix.steamworks }}' -eq 'yes') { $pkg.dependencies['steamworks.js'] = '^0.4.0' }
+          if ('${{ matrix.builder }}' -eq 'yes') { $pkg.devDependencies['electron-builder'] = '^25.0.0' }
+          $pkg | ConvertTo-Json -Depth 20 | Set-Content (Join-Path $dir 'package.json') -Encoding utf8
+
+          @'
+          const { app, BrowserWindow } = require('electron');
+          const path = require('path');
+          const fs = require('fs');
+          const SELFTEST = process.argv.includes('--phenix-selftest');
+          const TRACE = process.env.PHENIX_SELFTEST_TRACE_FILE || '';
+          function mark(stage) { try { if (TRACE) fs.appendFileSync(TRACE, JSON.stringify({stage})+'\n'); } catch {} }
+          if (SELFTEST) {
+            app.disableHardwareAcceleration();
+            app.commandLine.appendSwitch('disable-gpu');
+            mark('main-loaded');
+            process.on('uncaughtException',()=>app.exit(1));
+            process.on('unhandledRejection',()=>app.exit(1));
+          }
+          app.whenReady().then(()=>{ mark('app-ready'); setTimeout(()=>app.exit(0),200); });
+          '@ | Set-Content (Join-Path $dir 'main.js') -Encoding utf8
+
+          Push-Location $dir
+          npm install --no-audit --no-fund
+          npm ls electron steamworks.js electron-builder --depth=0
+          Pop-Location
+          "APPDIR=$dir" | Out-File $env:GITHUB_ENV -Append
+          "EXE=$((Resolve-Path (Join-Path $dir 'node_modules/electron/dist/electron.exe')).Path)" | Out-File $env:GITHUB_ENV -Append
+
+      - name: Run pre-ready probe
+        shell: pwsh
+        run: |
+          $trace = Join-Path $env:RUNNER_TEMP '${{ matrix.id }}-trace.jsonl'
+          Remove-Item $trace -Force -ErrorAction SilentlyContinue
+          $env:PHENIX_SELFTEST_TRACE_FILE = $trace
+          $env:ELECTRON_ENABLE_LOGGING = '1'
+          $psi = [System.Diagnostics.ProcessStartInfo]::new()
+          $psi.FileName = $env:EXE
+          $psi.UseShellExecute = $false
+          [void]$psi.ArgumentList.Add($env:APPDIR)
+          [void]$psi.ArgumentList.Add('--phenix-selftest')
+          [void]$psi.ArgumentList.Add('--enable-logging=file')
+          [void]$psi.ArgumentList.Add('--v=1')
+          $p = [System.Diagnostics.Process]::Start($psi)
+          $deadline = (Get-Date).AddSeconds(20)
+          while (-not $p.HasExited -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 200 }
+          if (-not $p.HasExited) { $p.Kill($true); $p.WaitForExit() }
+          $last = 'none'
+          if (Test-Path $trace) {
+            Get-Content $trace | ForEach-Object { Write-Host $_ }
+            foreach ($line in Get-Content $trace) { try { $o=$line|ConvertFrom-Json; if($o.stage){$last=$o.stage} } catch {} }
+          }
+          $hex = '0x{0:X8}' -f ($p.ExitCode -band 0xFFFFFFFF)
+          Write-Host "VERDICT:: ${{ matrix.id }} | exit=$($p.ExitCode) $hex | last-stage=$last"
+          if ($p.ExitCode -ne 0 -or $last -ne 'app-ready') { exit 1 }
