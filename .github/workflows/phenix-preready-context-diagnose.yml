@@ -1,0 +1,138 @@
+name: Diagnose PHENIX pre-ready context
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/phenix-preready-context-diagnose.yml'
+
+jobs:
+  probe:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: minimalpkg-preready
+            mode: minimal
+          - id: phenixpkg-preready
+            mode: phenixpkg
+          - id: actual-phenix-dev
+            mode: actual
+    runs-on: windows-2025
+    name: ${{ matrix.id }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Prepare probe
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:RUNNER_TEMP '${{ matrix.id }}'
+          New-Item -ItemType Directory -Force -Path $root | Out-Null
+
+          if ('${{ matrix.mode }}' -eq 'actual') {
+            node electron/prepare-game.js
+            Push-Location electron
+            npm install --no-audit --no-fund
+            Pop-Location
+            "APPDIR=$((Resolve-Path 'electron').Path)" | Out-File $env:GITHUB_ENV -Append
+            "EXE=$((Resolve-Path 'electron/node_modules/electron/dist/electron.exe').Path)" | Out-File $env:GITHUB_ENV -Append
+            exit 0
+          }
+
+          if ('${{ matrix.mode }}' -eq 'phenixpkg') {
+            Copy-Item electron/package.json (Join-Path $root 'package.json')
+            if (Test-Path electron/package-lock.json) { Copy-Item electron/package-lock.json (Join-Path $root 'package-lock.json') }
+          } else {
+            Set-Content -Path (Join-Path $root 'package.json') -Encoding utf8 -Value '{"name":"phenix-preready-min","version":"1.0.0","main":"main.js","devDependencies":{"electron":"33.4.11"}}'
+          }
+
+          @'
+          const { app, BrowserWindow } = require('electron');
+          const path = require('path');
+          const fs = require('fs');
+          const SELFTEST = process.argv.includes('--phenix-selftest');
+          const SELFTEST_RESULT_FILE = process.env.PHENIX_SELFTEST_RESULT_FILE || '';
+          const SELFTEST_TRACE_FILE = process.env.PHENIX_SELFTEST_TRACE_FILE || '';
+          function writeSelfTestTrace(stage, extra = {}) {
+            if (!SELFTEST || !SELFTEST_TRACE_FILE) return;
+            try { fs.appendFileSync(SELFTEST_TRACE_FILE, JSON.stringify({t:new Date().toISOString(),stage,...extra})+'\n','utf8'); } catch (_) {}
+          }
+          function writeSelfTestResult(result, probe = {}) {
+            if (!SELFTEST || !SELFTEST_RESULT_FILE) return;
+            try { fs.writeFileSync(SELFTEST_RESULT_FILE, JSON.stringify({result,probe}),'utf8'); }
+            catch (e) { writeSelfTestTrace('result-write-failed',{error:String(e).slice(0,300)}); }
+          }
+          if (SELFTEST) {
+            app.disableHardwareAcceleration();
+            app.commandLine.appendSwitch('disable-gpu');
+            writeSelfTestTrace('main-loaded',{argv:process.argv,resultFile:SELFTEST_RESULT_FILE,platform:process.platform});
+            process.on('uncaughtException',(e)=>{
+              const probe={err:`uncaughtException: ${String(e&&(e.stack||e)).slice(0,500)}`};
+              writeSelfTestTrace('uncaught-exception',probe); writeSelfTestResult('FAIL',probe); app.exit(1);
+            });
+            process.on('unhandledRejection',(e)=>{
+              const probe={err:`unhandledRejection: ${String(e&&(e.stack||e)).slice(0,500)}`};
+              writeSelfTestTrace('unhandled-rejection',probe); writeSelfTestResult('FAIL',probe); app.exit(1);
+            });
+          }
+          app.whenReady().then(()=>{ writeSelfTestTrace('app-ready'); setTimeout(()=>app.exit(0),200); });
+          app.on('window-all-closed',()=>app.quit());
+          '@ | Set-Content -Path (Join-Path $root 'main.js') -Encoding utf8
+
+          Push-Location $root
+          npm install --no-audit --no-fund
+          Pop-Location
+          "APPDIR=$root" | Out-File $env:GITHUB_ENV -Append
+          "EXE=$((Resolve-Path (Join-Path $root 'node_modules/electron/dist/electron.exe')).Path)" | Out-File $env:GITHUB_ENV -Append
+
+      - name: Run exact pre-ready launch
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $trace = Join-Path $env:RUNNER_TEMP '${{ matrix.id }}-trace.jsonl'
+          $result = Join-Path $env:RUNNER_TEMP '${{ matrix.id }}-result.json'
+          $chrome = Join-Path $env:RUNNER_TEMP '${{ matrix.id }}-chromium.log'
+          Remove-Item $trace,$result,$chrome -Force -ErrorAction SilentlyContinue
+          $env:PHENIX_SELFTEST_TRACE_FILE = $trace
+          $env:PHENIX_SELFTEST_RESULT_FILE = $result
+          $env:ELECTRON_ENABLE_LOGGING = '1'
+
+          $psi = [System.Diagnostics.ProcessStartInfo]::new()
+          $psi.FileName = $env:EXE
+          $psi.UseShellExecute = $false
+          [void]$psi.ArgumentList.Add($env:APPDIR)
+          [void]$psi.ArgumentList.Add('--phenix-selftest')
+          [void]$psi.ArgumentList.Add('--enable-logging=file')
+          [void]$psi.ArgumentList.Add("--log-file=$chrome")
+          [void]$psi.ArgumentList.Add('--v=1')
+
+          $p = [System.Diagnostics.Process]::Start($psi)
+          $deadline = (Get-Date).AddSeconds(40)
+          $ready = $false
+          while (-not $p.HasExited -and (Get-Date) -lt $deadline) {
+            if (Test-Path $trace) {
+              $raw = Get-Content $trace -Raw -ErrorAction SilentlyContinue
+              if ($raw -match '"stage":"app-ready"') { $ready = $true; break }
+            }
+            Start-Sleep -Milliseconds 200
+          }
+
+          if ($ready -and -not $p.HasExited) { $p.Kill($true); $p.WaitForExit() }
+          elseif (-not $p.HasExited) { $p.Kill($true); $p.WaitForExit() }
+
+          $last = 'none'
+          if (Test-Path $trace) {
+            Get-Content $trace | ForEach-Object { Write-Host $_ }
+            foreach ($line in Get-Content $trace) { try { $o=$line|ConvertFrom-Json; if($o.stage){$last=$o.stage} } catch {} }
+          }
+          $code = $p.ExitCode
+          $hex = '0x{0:X8}' -f ($code -band 0xFFFFFFFF)
+          Write-Host "VERDICT:: ${{ matrix.id }} | ready=$ready | exit=$code $hex | last-stage=$last"
+          if (-not $ready) { exit 1 }
