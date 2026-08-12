@@ -63,12 +63,23 @@ jobs:
           $env:PHENIX_SELFTEST_TRACE_FILE = $traceFile
 
           Write-Host "self-testing $exe with every host resolving to NOTFOUND"
-          $proc = Start-Process -FilePath $exe -ArgumentList @('--phenix-selftest', '--host-resolver-rules=MAP * ~NOTFOUND') -PassThru
+
+          # Start-Process -ArgumentList joins an array with spaces without preserving quoting.
+          # Chromium then received the resolver rule as 3 argv entries. ProcessStartInfo.ArgumentList
+          # performs the Windows quoting correctly and guarantees the resolver rule is one argument.
+          $psi = [System.Diagnostics.ProcessStartInfo]::new()
+          $psi.FileName = $exe
+          $psi.UseShellExecute = $false
+          [void]$psi.ArgumentList.Add('--phenix-selftest')
+          [void]$psi.ArgumentList.Add('--host-resolver-rules=MAP * ~NOTFOUND')
+          $proc = [System.Diagnostics.Process]::Start($psi)
+          if (-not $proc) { Write-Error 'failed to start packaged exe'; exit 1 }
 
           $deadline = (Get-Date).AddSeconds(60)
           while ((Get-Date) -lt $deadline -and -not (Test-Path $resultFile)) {
             if ($proc.HasExited) {
-              Write-Host "selftest process exited early with code $($proc.ExitCode)"
+              $hex = '0x{0:X8}' -f ($proc.ExitCode -band 0xFFFFFFFF)
+              Write-Host "selftest process exited early with code $($proc.ExitCode) ($hex)"
               break
             }
             Start-Sleep -Milliseconds 500
@@ -78,13 +89,38 @@ jobs:
             Write-Host '--- PHENIX SELFTEST TRACE ---'
             Get-Content $traceFile | ForEach-Object { Write-Host $_ }
             Write-Host '--- END TRACE ---'
+
+            # Prove the packaged EXE itself received the resolver switch as ONE argv entry.
+            $mainLoaded = $null
+            foreach ($line in Get-Content $traceFile) {
+              try {
+                $entry = $line | ConvertFrom-Json
+                if ($entry.stage -eq 'main-loaded') { $mainLoaded = $entry; break }
+              } catch {}
+            }
+            if (-not $mainLoaded) {
+              Write-Error 'ARGUMENT QUOTING UNVERIFIED: main-loaded trace entry missing'
+              exit 1
+            }
+            $seen = @($mainLoaded.argv)
+            $rule = @($seen | Where-Object { $_ -like '--host-resolver-rules=*' })
+            $fragments = @($seen | Where-Object { $_ -eq '*' -or $_ -eq '~NOTFOUND' })
+            if ($rule.Count -ne 1 -or $rule[0] -ne '--host-resolver-rules=MAP * ~NOTFOUND' -or $fragments.Count -ne 0) {
+              Write-Error "ARGUMENT QUOTING BROKEN: argv=$($seen | ConvertTo-Json -Compress)"
+              exit 1
+            }
+            Write-Host 'ARGUMENT_QUOTING::PASS'
           } else {
             Write-Host 'PHENIX selftest trace file was never created'
           }
 
           if (-not (Test-Path $resultFile)) {
-            if (-not $proc.HasExited) { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue }
-            Write-Error 'selftest did not produce a result file'
+            if (-not $proc.HasExited) { $proc.Kill($true); $proc.WaitForExit() }
+            $exitInfo = if ($proc.HasExited) {
+              $hex = '0x{0:X8}' -f ($proc.ExitCode -band 0xFFFFFFFF)
+              "$($proc.ExitCode) ($hex)"
+            } else { 'still-running' }
+            Write-Error "selftest did not produce a result file; process=$exitInfo"
             exit 1
           }
 
