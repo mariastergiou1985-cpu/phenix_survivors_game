@@ -58,17 +58,18 @@ jobs:
             }
             $pkg | ConvertTo-Json -Depth 20 | Set-Content (Join-Path $dir 'package.json') -Encoding utf8
 
-            @'
-            const { app } = require('electron');
-            const fs = require('fs');
-            const trace = process.env.PHENIX_SELFTEST_TRACE_FILE || '';
-            function mark(stage) { try { fs.appendFileSync(trace, JSON.stringify({stage,name:app.getName()})+'\n'); } catch {} }
-            app.disableHardwareAcceleration();
-            app.commandLine.appendSwitch('disable-gpu');
-            mark('main-loaded');
-            app.whenReady().then(()=>{ mark('app-ready'); setTimeout(()=>app.exit(0),200); });
-            setTimeout(()=>{ mark('timeout'); app.exit(3); },20000);
-            '@ | Set-Content (Join-Path $dir 'main.js') -Encoding utf8
+            $main = @(
+              "const { app } = require('electron');",
+              "const fs = require('fs');",
+              "const trace = process.env.PHENIX_SELFTEST_TRACE_FILE || '';",
+              "function mark(stage) { try { fs.appendFileSync(trace, JSON.stringify({stage,name:app.getName()})+'\\n'); } catch {} }",
+              "app.disableHardwareAcceleration();",
+              "app.commandLine.appendSwitch('disable-gpu');",
+              "mark('main-loaded');",
+              "app.whenReady().then(()=>{ mark('app-ready'); setTimeout(()=>app.exit(0),200); });",
+              "setTimeout(()=>{ mark('timeout'); app.exit(3); },20000);"
+            )
+            Set-Content -Path (Join-Path $dir 'main.js') -Value $main -Encoding utf8
 
             $trace = Join-Path $env:RUNNER_TEMP ($v.id + '-trace.jsonl')
             $chrome = Join-Path $env:RUNNER_TEMP ($v.id + '-chromium.log')
@@ -99,8 +100,7 @@ jobs:
             }
             $hex = '0x{0:X8}' -f ($p.ExitCode -band 0xFFFFFFFF)
             Write-Host "VERDICT:: $($v.id) | exit=$($p.ExitCode) $hex | last-stage=$last"
-            if ($v.id -match '^colon-' -and $p.ExitCode -eq 0 -and $last -eq 'app-ready') { Write-Host 'COLON_VARIANT_PASSED' }
-            if ($v.id -notmatch '^colon-' -and ($p.ExitCode -ne 0 -or $last -ne 'app-ready')) { $failed = $true }
+            if ($p.ExitCode -ne 0 -or $last -ne 'app-ready') { $failed = $true }
           }
 
           if ($failed) { exit 1 }
