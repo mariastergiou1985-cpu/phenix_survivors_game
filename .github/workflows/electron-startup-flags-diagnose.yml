@@ -1,0 +1,97 @@
+name: Diagnose Electron startup flags
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/electron-startup-flags-diagnose.yml'
+
+jobs:
+  probe:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: control
+            envlog: 'no'
+            phenix: 'no'
+            chromelog: 'no'
+          - id: phenix-selftest-only
+            envlog: 'no'
+            phenix: 'yes'
+            chromelog: 'no'
+          - id: env-logging-only
+            envlog: 'yes'
+            phenix: 'no'
+            chromelog: 'no'
+          - id: chromium-log-flags
+            envlog: 'no'
+            phenix: 'no'
+            chromelog: 'yes'
+          - id: exact-diagnostic-flags
+            envlog: 'yes'
+            phenix: 'yes'
+            chromelog: 'yes'
+    runs-on: windows-2025
+    name: ${{ matrix.id }}
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Run startup flag probe
+        shell: pwsh
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP 'flag-probe'
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          Set-Content -Path (Join-Path $dir 'package.json') -Encoding utf8 -Value '{"name":"flag-probe","version":"1.0.0","main":"main.cjs"}'
+          @'
+          const { app } = require('electron');
+          const fs = require('fs');
+          const trace = process.env.BARE_TRACE_FILE;
+          function mark(stage) { try { fs.appendFileSync(trace, JSON.stringify({stage,argv:process.argv})+'\n'); } catch {} }
+          if (process.argv.includes('--phenix-selftest')) {
+            app.disableHardwareAcceleration();
+            app.commandLine.appendSwitch('disable-gpu');
+          }
+          mark('main-loaded');
+          app.whenReady().then(() => { mark('app-ready'); setTimeout(() => app.exit(0), 200); });
+          setTimeout(() => { mark('timeout'); app.exit(3); }, 20000);
+          '@ | Set-Content -Path (Join-Path $dir 'main.cjs') -Encoding utf8
+
+          Push-Location $dir
+          npm install --no-audit --no-fund --save-exact electron@33.4.11
+          Pop-Location
+
+          $exe = Join-Path $dir 'node_modules\electron\dist\electron.exe'
+          $trace = Join-Path $env:RUNNER_TEMP '${{ matrix.id }}-trace.jsonl'
+          $chromeLog = Join-Path $env:RUNNER_TEMP '${{ matrix.id }}-chromium.log'
+          Remove-Item $trace,$chromeLog -Force -ErrorAction SilentlyContinue
+          $env:BARE_TRACE_FILE = $trace
+          if ('${{ matrix.envlog }}' -eq 'yes') { $env:ELECTRON_ENABLE_LOGGING = '1' } else { Remove-Item Env:ELECTRON_ENABLE_LOGGING -ErrorAction SilentlyContinue }
+
+          $psi = [System.Diagnostics.ProcessStartInfo]::new()
+          $psi.FileName = $exe
+          $psi.UseShellExecute = $false
+          [void]$psi.ArgumentList.Add($dir)
+          if ('${{ matrix.phenix }}' -eq 'yes') { [void]$psi.ArgumentList.Add('--phenix-selftest') }
+          if ('${{ matrix.chromelog }}' -eq 'yes') {
+            [void]$psi.ArgumentList.Add('--enable-logging=file')
+            [void]$psi.ArgumentList.Add("--log-file=$chromeLog")
+            [void]$psi.ArgumentList.Add('--v=1')
+          }
+
+          $p = [System.Diagnostics.Process]::Start($psi)
+          $deadline = (Get-Date).AddSeconds(30)
+          while (-not $p.HasExited -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 250 }
+          if (-not $p.HasExited) { $p.Kill($true); $p.WaitForExit() }
+
+          $last = 'none'
+          if (Test-Path $trace) {
+            Get-Content $trace | ForEach-Object { Write-Host $_ }
+            foreach ($line in Get-Content $trace) { try { $o=$line|ConvertFrom-Json; if($o.stage){$last=$o.stage} } catch {} }
+          }
+          $hex = '0x{0:X8}' -f ($p.ExitCode -band 0xFFFFFFFF)
+          Write-Host "VERDICT:: ${{ matrix.id }} | exit=$($p.ExitCode) $hex | last-stage=$last | chrome-log=$([bool](Test-Path $chromeLog))"
+          if ($p.ExitCode -ne 0 -or $last -ne 'app-ready') { exit 1 }
