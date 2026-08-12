@@ -1,0 +1,245 @@
+# PHENIX: NULL EDEN - Windows EXE crash isolation (DIAGNOSTIC ONLY, changes nothing)
+#
+# WHY. The packaged Windows exe dies between the 'main-loaded' trace entry and 'app-ready' with
+# 0xC0000005 (STATUS_ACCESS_VIOLATION - a native access violation, not a JS throw, which is why
+# neither the uncaughtException nor the unhandledRejection handler in electron/main.js fires).
+# Almost no JS runs in that window: app.disableHardwareAcceleration(), one appendSwitch, two
+# process handlers, then control is inside Chromium's own browser-process startup.
+#
+# This workflow does not fix anything. It runs the same selftest across five variants so the
+# crash can be attributed to ONE of: the packaging, Electron on Windows, or the resolver switch.
+#
+#   packaged-resolver     packaged exe + --host-resolver-rules   <- the failing baseline
+#   packaged-noresolver   packaged exe, no resolver switch       <- isolates the resolver
+#   dev-resolver          electron . --phenix-selftest + rule    <- isolates the packaging
+#   dev-noresolver        electron . --phenix-selftest           <- the plainest possible run
+#   packaged-nosandbox    packaged exe + rule + --no-sandbox     <- sandbox/zygote startup is in
+#                                                                   the same window; on Linux the
+#                                                                   identical sources pass with it
+#
+# Reference point already measured OFF Windows: Electron 33.4.11 on Linux, with electron/main.js
+# 7a827be3 and electron/preload.js 5fac872c, reaches app-ready and returns PASS both with and
+# without the resolver rule. So the rule alone is not fatal to Chromium startup.
+#
+# Every variant collects what a pre-ready native crash actually needs:
+#   - the exe's own JSONL trace (how far it got)
+#   - the decimal AND hex exit code
+#   - Chromium's internal log (--enable-logging=file --v=1) - the single most useful artefact here
+#   - a Windows Error Reporting crash dump, via HKLM LocalDumps
+#
+# No variant fails the job. All five must run, or there is nothing to compare.
+name: Diagnose Windows EXE crash
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  probe:
+    runs-on: windows-latest
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: packaged-resolver
+            mode: packaged
+            resolver: 'yes'
+            extra: ''
+          - id: packaged-noresolver
+            mode: packaged
+            resolver: 'no'
+            extra: ''
+          - id: dev-resolver
+            mode: dev
+            resolver: 'yes'
+            extra: ''
+          - id: dev-noresolver
+            mode: dev
+            resolver: 'no'
+            extra: ''
+          - id: packaged-nosandbox
+            mode: packaged
+            resolver: 'yes'
+            extra: '--no-sandbox'
+    name: ${{ matrix.id }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Collect crash dumps for every faulting process
+        shell: pwsh
+        run: |
+          $dumps = Join-Path $env:RUNNER_TEMP 'dumps'
+          New-Item -ItemType Directory -Force -Path $dumps | Out-Null
+          $key = 'HKLM:\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps'
+          New-Item -Path $key -Force | Out-Null
+          New-ItemProperty -Path $key -Name DumpFolder -Value $dumps -PropertyType ExpandString -Force | Out-Null
+          New-ItemProperty -Path $key -Name DumpCount  -Value 10 -PropertyType DWord -Force | Out-Null
+          New-ItemProperty -Path $key -Name DumpType   -Value 2  -PropertyType DWord -Force | Out-Null
+          Write-Host "WER LocalDumps -> $dumps"
+
+      - name: Assemble the offline game payload
+        run: node electron/prepare-game.js
+
+      - name: Install dependencies
+        working-directory: electron
+        run: npm install --no-audit --no-fund
+
+      - name: Build the exe
+        if: matrix.mode == 'packaged'
+        working-directory: electron
+        run: npm run dist
+
+      - name: Resolve what to launch
+        id: target
+        shell: pwsh
+        working-directory: electron
+        run: |
+          if ('${{ matrix.mode }}' -eq 'packaged') {
+            $exe = Get-ChildItem -Path dist -Recurse -Filter '*.exe' |
+                   Where-Object { $_.FullName -match 'win-unpacked' } | Select-Object -First 1
+            if (-not $exe) { $exe = Get-ChildItem -Path dist -Recurse -Filter '*.exe' | Select-Object -First 1 }
+            if (-not $exe) { Write-Error 'no exe produced'; exit 1 }
+            "target=$($exe.FullName)"  | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+            "appdir=."                 | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          } else {
+            $el = Join-Path (Get-Location) 'node_modules\electron\dist\electron.exe'
+            if (-not (Test-Path $el)) { Write-Error "dev electron missing at $el"; exit 1 }
+            "target=$el"                       | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+            "appdir=$((Get-Location).Path)"    | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          }
+          Write-Host "mode=${{ matrix.mode }} resolver=${{ matrix.resolver }} extra='${{ matrix.extra }}'"
+
+      - name: Run the selftest and record how it dies
+        id: probe
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $tmp        = $env:RUNNER_TEMP
+          $resultFile = Join-Path $tmp 'phenix-selftest.json'
+          $traceFile  = Join-Path $tmp 'phenix-selftest-trace.jsonl'
+          $chromeLog  = Join-Path $tmp 'chromium.log'
+          Remove-Item $resultFile,$traceFile,$chromeLog -Force -ErrorAction SilentlyContinue
+          $env:PHENIX_SELFTEST_RESULT_FILE = $resultFile
+          $env:PHENIX_SELFTEST_TRACE_FILE  = $traceFile
+          $env:ELECTRON_ENABLE_LOGGING     = '1'
+
+          # ProcessStartInfo.ArgumentList, not Start-Process: Start-Process joins the array with
+          # spaces and quotes nothing, which is what split the resolver rule into three argv entries.
+          $psi = [System.Diagnostics.ProcessStartInfo]::new()
+          $psi.FileName        = '${{ steps.target.outputs.target }}'
+          $psi.UseShellExecute = $false
+          if ('${{ matrix.mode }}' -eq 'dev') { [void]$psi.ArgumentList.Add('${{ steps.target.outputs.appdir }}') }
+          [void]$psi.ArgumentList.Add('--phenix-selftest')
+          if ('${{ matrix.resolver }}' -eq 'yes') { [void]$psi.ArgumentList.Add('--host-resolver-rules=MAP * ~NOTFOUND') }
+          if ('${{ matrix.extra }}' -ne '')       { [void]$psi.ArgumentList.Add('${{ matrix.extra }}') }
+          # Chromium's own log is the only thing that speaks about a crash before app-ready.
+          [void]$psi.ArgumentList.Add('--enable-logging=file')
+          [void]$psi.ArgumentList.Add("--log-file=$chromeLog")
+          [void]$psi.ArgumentList.Add('--v=1')
+
+          Write-Host 'launching with:'
+          foreach ($a in $psi.ArgumentList) { Write-Host "   [$a]" }
+
+          $proc = [System.Diagnostics.Process]::Start($psi)
+          if (-not $proc) { Write-Host 'FAILED TO START'; "verdict=start-failed" | Out-File $env:GITHUB_OUTPUT -Append; exit 0 }
+
+          $deadline = (Get-Date).AddSeconds(120)
+          while ((Get-Date) -lt $deadline -and -not (Test-Path $resultFile) -and -not $proc.HasExited) {
+            Start-Sleep -Milliseconds 500
+          }
+          $code = 'still-running'; $hex = ''
+          if ($proc.HasExited) {
+            $code = $proc.ExitCode
+            $hex  = '0x{0:X8}' -f ($code -band 0xFFFFFFFF)
+          } else {
+            $proc.Kill($true); $proc.WaitForExit()
+          }
+          Write-Host "exit code: $code $hex"
+
+          Write-Host '--- TRACE ---'
+          if (Test-Path $traceFile) { Get-Content $traceFile | ForEach-Object { Write-Host $_ } }
+          else { Write-Host '(no trace file - the process never reached electron/main.js)' }
+          Write-Host '--- END TRACE ---'
+
+          $lastStage = 'none'
+          if (Test-Path $traceFile) {
+            foreach ($line in Get-Content $traceFile) {
+              try { $e = $line | ConvertFrom-Json; if ($e.stage) { $lastStage = $e.stage } } catch {}
+            }
+          }
+          $result = 'NO-RESULT-FILE'
+          if (Test-Path $resultFile) {
+            $raw = Get-Content $resultFile -Raw
+            Write-Host "RESULT FILE:: $raw"
+            try { $result = ($raw | ConvertFrom-Json).result } catch { $result = 'BAD-JSON' }
+          }
+
+          Write-Host '--- CHROMIUM LOG (last 60 lines) ---'
+          if (Test-Path $chromeLog) { Get-Content $chromeLog -Tail 60 | ForEach-Object { Write-Host $_ } }
+          else { Write-Host '(no chromium log)' }
+          Write-Host '--- END CHROMIUM LOG ---'
+
+          $dumps = Join-Path $tmp 'dumps'
+          $dmp = @(Get-ChildItem -Path $dumps -Filter '*.dmp' -ErrorAction SilentlyContinue)
+          Write-Host "crash dumps captured: $($dmp.Count)"
+          foreach ($d in $dmp) { Write-Host "   $($d.Name)  $([math]::Round($d.Length/1MB,1)) MB" }
+
+          $verdict = "${{ matrix.id }} | result=$result | exit=$code $hex | last-stage=$lastStage | dumps=$($dmp.Count)"
+          Write-Host "VERDICT:: $verdict"
+          New-Item -ItemType Directory -Force -Path (Join-Path $tmp 'verdict') | Out-Null
+          $verdict | Out-File -FilePath (Join-Path $tmp 'verdict\verdict.txt') -Encoding utf8
+          "| ${{ matrix.id }} | $result | $code $hex | $lastStage | $($dmp.Count) |" |
+            Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          exit 0
+
+      - name: Upload everything this variant produced
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: diag-${{ matrix.id }}
+          path: |
+            ${{ runner.temp }}/phenix-selftest.json
+            ${{ runner.temp }}/phenix-selftest-trace.jsonl
+            ${{ runner.temp }}/chromium.log
+            ${{ runner.temp }}/dumps
+            ${{ runner.temp }}/verdict
+          if-no-files-found: ignore
+          retention-days: 14
+
+  report:
+    needs: probe
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download every verdict
+        uses: actions/download-artifact@v4
+        with:
+          path: all
+          pattern: diag-*
+      - name: Comparison table
+        shell: bash
+        run: |
+          {
+            echo '## Windows EXE crash isolation'
+            echo
+            echo '| variant | result | exit code | last trace stage | dumps |'
+            echo '|---|---|---|---|---|'
+            for f in $(find all -name verdict.txt | sort); do
+              tr -d '\r' < "$f" | awk -F' \\| ' '{printf "| %s | %s | %s | %s | %s |\n", $1, $2, $3, $4, $5}' \
+                | sed 's/result=//; s/exit=//; s/last-stage=//; s/dumps=//'
+            done
+            echo
+            echo 'Reading it:'
+            echo '- packaged fails and dev passes  -> PACKAGING'
+            echo '- both packaged variants fail the same way, dev passes both -> PACKAGING'
+            echo '- resolver variants fail and no-resolver variants pass -> RESOLVER'
+            echo '- everything fails, including dev-noresolver -> ELECTRON WINDOWS'
+            echo '- packaged-nosandbox passes while packaged-resolver crashes -> sandbox startup'
+          } >> "$GITHUB_STEP_SUMMARY"
+          cat "$GITHUB_STEP_SUMMARY"
